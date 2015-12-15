@@ -11,7 +11,7 @@ cimport numpy as np
 from numpy cimport ndarray, dtype, import_array
 
 
-from definitions cimport (malloc, realloc, PyBytes_FromStringAndSize)
+from .definitions cimport (malloc, realloc, PyBytes_FromStringAndSize)
 
 
 cdef extern from "blosc.h":
