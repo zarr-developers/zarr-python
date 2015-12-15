@@ -70,7 +70,8 @@ cdef class zchunk:
         array = np.ascontiguousarray(array)
 
         # determine compression options
-        cname, clevel, shuffle = get_cparams(cname, clevel, shuffle)
+        self.cname, self.clevel, self.shuffle = \
+            get_cparams(cname, clevel, shuffle)
 
         # determine size, shape and dtype
         self.size = array.size
@@ -78,9 +79,9 @@ cdef class zchunk:
         self.dtype = np.dtype(array.dtype.base)
 
         # compress the data
-        self.compress(array, cname, clevel, shuffle)
+        self.compress(array)
 
-    cdef compress(self, ndarray array, bytes cname, int clevel, int shuffle):
+    cdef compress(self, ndarray array):
         cdef:
             size_t nbytes, nbytes_check, cbytes, blocksize, itemsize
             char *dest
@@ -92,15 +93,15 @@ cdef class zchunk:
         itemsize = array.dtype.base.itemsize
 
         # set compressor
-        if blosc_set_compressor(cname) < 0:
-            raise ValueError("compressor not available: %s" % cname)
+        if blosc_set_compressor(self.cname) < 0:
+            raise ValueError("compressor not available: %s" % self.cname)
 
         # allocate memory for compressed data
         dest = <char *> malloc(nbytes + BLOSC_MAX_OVERHEAD)
 
         # perform compression
-        cbytes = blosc_compress(clevel, shuffle, itemsize, nbytes, array.data,
-                                dest, nbytes + BLOSC_MAX_OVERHEAD)
+        cbytes = blosc_compress(self.clevel, self.shuffle, itemsize, nbytes,
+                                array.data, dest, nbytes + BLOSC_MAX_OVERHEAD)
 
         # check compression was successful
         if cbytes <= 0:

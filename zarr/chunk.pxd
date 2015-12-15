@@ -4,7 +4,10 @@ from numpy cimport ndarray, dtype
 cdef class zchunk:
     cdef char *data
     cdef public size_t size, nbytes, cbytes, blocksize
+    cdef public bytes cname
+    cdef public int clevel
+    cdef public int shuffle
     cdef public tuple shape
     cdef public dtype dtype
-    cdef compress(self, ndarray array, bytes cname, int clevel, int shuffle)
+    cdef compress(self, ndarray array)
     cdef decompress(self, char *dest)
