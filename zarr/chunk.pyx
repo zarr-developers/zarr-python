@@ -1,3 +1,9 @@
+# -*- coding: utf-8 -*-
+from __future__ import absolute_import, print_function, division
+
+
+# TODO use blosc contextual functions
+# TODO free memory from chunk if garbage collected
 
 
 import numpy as np
@@ -67,6 +73,7 @@ cdef class zchunk:
     def __cinit__(self, array, cname=None, clevel=None, shuffle=None):
 
         # ensure array is C contiguous
+        # TODO adapt to either C or F layout
         array = np.ascontiguousarray(array)
 
         # determine compression options
