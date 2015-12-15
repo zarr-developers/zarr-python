@@ -100,8 +100,10 @@ cdef class zchunk:
         dest = <char *> malloc(nbytes + BLOSC_MAX_OVERHEAD)
 
         # perform compression
-        cbytes = blosc_compress(self.clevel, self.shuffle, itemsize, nbytes,
-                                array.data, dest, nbytes + BLOSC_MAX_OVERHEAD)
+        with nogil:
+            cbytes = blosc_compress(self.clevel, self.shuffle, itemsize,
+                                    nbytes, array.data, dest,
+                                    nbytes + BLOSC_MAX_OVERHEAD)
 
         # check compression was successful
         if cbytes <= 0:
@@ -136,7 +138,8 @@ cdef class zchunk:
             int ret
 
         # do decompression
-        ret = blosc_decompress(self.data, dest, self.nbytes)
+        with nogil:
+            ret = blosc_decompress(self.data, dest, self.nbytes)
 
         # handle errors
         if ret <= 0:
