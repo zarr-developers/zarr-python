@@ -30,7 +30,7 @@ from .definitions cimport malloc, realloc, free
 from zarr import defaults
 
 
-def get_cparams(cname, clevel, shuffle):
+def get_cparams(cname=None, clevel=None, shuffle=None):
 
     # determine compressor
     cname = cname if cname is not None else defaults.cname
