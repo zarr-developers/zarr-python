@@ -2,7 +2,6 @@
 from __future__ import absolute_import, print_function, division
 from threading import RLock
 import itertools
-import logging
 # TODO PY2 compatibility
 from functools import reduce
 import operator
@@ -13,12 +12,13 @@ cimport numpy as np
 from numpy cimport ndarray, dtype
 
 
-logger = logging.getLogger(__name__)
-
-
-def debug(*args):
-    msg = str(args[0]) + ': ' + ', '.join(map(repr, args[1:]))
-    logger.debug(msg)
+# import logging
+# logger = logging.getLogger(__name__)
+#
+#
+# def debug(*args):
+#     msg = str(args[0]) + ': ' + ', '.join(map(repr, args[1:]))
+#     logger.debug(msg)
 
 
 cdef extern from "blosc.h":
@@ -126,8 +126,6 @@ cdef class Chunk:
             return self.data == NULL
 
     def __setitem__(self, key, value):
-        debug('Chunk.__setitem__', key)
-        debug('self.shape', self.shape)
 
         if is_total_slice(key, self.shape):
             # completely replace the contents of this chunk
@@ -199,8 +197,6 @@ cdef class Chunk:
         cdef:
             ndarray array
 
-        debug('Chunk.__getitem__', item)
-
         # setup output array
         array = np.empty(self.shape, dtype=self.dtype)
 
@@ -259,6 +255,9 @@ class Synchronized(object):
         with self.lock:
             self.chunk.__setitem__(key, value)
 
+    def __getattr__(self, item):
+        return getattr(self.chunk, item)
+
 
 def normalise_array_selection(item, shape):
 
@@ -288,14 +287,12 @@ def normalise_array_selection(item, shape):
 
 
 def normalise_axis_selection(item, l):
-    debug('normalise_axis_selection', item, l)
     if isinstance(item, int):
         if item < 0:
             # handle wraparound
             item = l + item
         if item > (l - 1) or item < 0:
             raise IndexError('index out of bounds: %s' % item)
-        debug('int item transformed', item)
         return item, item + 1
 
     elif isinstance(item, slice):
@@ -311,7 +308,6 @@ def normalise_axis_selection(item, l):
             raise IndexError('index out of bounds: %s, %s' % (start, stop))
         if stop > l:
             stop = l
-        debug('start, stop', start, stop)
         return start, stop
 
     else:
@@ -333,7 +329,6 @@ def normalise_shape(shape):
 
 
 def normalise_chunks(chunks, shape):
-    debug('normalise_chunks', chunks, shape)
     if isinstance(chunks, int):
         chunks = (chunks,)
     else:
@@ -349,8 +344,7 @@ def normalise_chunks(chunks, shape):
 cdef class Array:
 
     def __cinit__(self, shape, chunks, dtype=None, cname=None, clevel=None,
-                  shuffle=None, fill_value=None):
-        # TODO add synchronized option
+                  shuffle=None, fill_value=None, synchronized=True):
 
         # N.B., the convention in h5py and dask is to use the "chunks"
         # argument as a tuple representing the shape of each chunk,
@@ -378,12 +372,21 @@ cdef class Array:
         self.cdata = np.empty(cdata_shape, dtype=object)
 
         # instantiate chunks
-        self.cdata.flat = [Chunk(self.chunks, dtype=dtype, cname=cname,
-                                 clevel=clevel, shuffle=shuffle,
-                                 fill_value=fill_value)
+        if synchronized:
+            def create_chunk(*args, **kwargs):
+                return Synchronized(Chunk(*args, **kwargs))
+        else:
+            create_chunk = Chunk
+        self.cdata.flat = [create_chunk(self.chunks, dtype=dtype, cname=cname,
+                                        clevel=clevel, shuffle=shuffle,
+                                        fill_value=fill_value)
                            for _ in self.cdata.flat]
 
-        # TODO what about chunks overhanging the edge?
+        # N.B., in the current implementation, some chunks may overhang
+        # the edge of the array. This is handled during the __getitem__ and
+        # __setitem__ methods by setting appropriate slices on the chunks,
+        # however it may be wasteful depending on chunk shape and the
+        # relationship to array shape.
 
     property nbytes:
         def __get__(self):
@@ -400,44 +403,36 @@ cdef class Array:
             return a
 
     def __getitem__(self, item):
-        debug('Array.__getitem__', item)
 
         # normalise selection
         selection = normalise_array_selection(item, self.shape)
-        debug('selection', selection)
 
         # determine output array shape
         out_shape = tuple(stop - start for start, stop in selection)
-        debug('out_shape', out_shape)
 
         # setup output array
         out = np.empty(out_shape, dtype=self.dtype)
 
         # determine indices of overlapping chunks
         chunk_range = get_chunk_range(selection, self.chunks)
-        debug('chunk_range', chunk_range)
 
         # iterate over chunks in range
         for cidx in itertools.product(*chunk_range):
-            debug('cidx', cidx)
 
             # determine chunk offset
             offset = [i * c for i, c in zip(cidx, self.chunks)]
-            debug('offset', offset)
 
             # determine required index range within chunk
             chunk_selection = tuple(
                 slice(max(0, start - o), min(c, stop - o))
                 for (start, stop), o, c in zip(selection, offset, self.chunks)
             )
-            debug('chunk_selection', chunk_selection)
 
             # determine index range within output array
             out_selection = tuple(
                 slice(max(0, o - start), min(o + c - start, stop - start))
                 for (start, stop), o, c, in zip(selection, offset, self.chunks)
             )
-            debug('out_selection', out_selection)
 
             # read data into output array
             chunk = self.cdata[cidx]
@@ -446,7 +441,6 @@ cdef class Array:
         return out
 
     def __setitem__(self, key, value):
-        debug('Array.__setitem__', key)
 
         # normalise value
         if not np.isscalar(value):
@@ -454,29 +448,24 @@ cdef class Array:
 
         # normalise selection
         selection = normalise_array_selection(key, self.shape)
-        debug('selection', selection)
 
         # determine indices of overlapping chunks
         chunk_range = get_chunk_range(selection, self.chunks)
-        debug('chunk_range', chunk_range)
 
         # iterate over chunks in range
         for cidx in itertools.product(*chunk_range):
-            debug('cidx', cidx)
 
             # current chunk
             chunk = self.cdata[cidx]
 
             # determine chunk offset
             offset = [i * c for i, c in zip(cidx, self.chunks)]
-            debug('offset', offset)
 
             # determine required index range within chunk
             chunk_selection = tuple(
                 slice(max(0, start - o), min(c, stop - o))
                 for (start, stop), o, c in zip(selection, offset, self.chunks)
             )
-            debug('chunk_selection', chunk_selection)
 
             if np.isscalar(value):
                 chunk[chunk_selection] = value
@@ -488,7 +477,6 @@ cdef class Array:
                     slice(max(0, o - start), min(o + c - start, stop - start))
                     for (start, stop), o, c, in zip(selection, offset, self.chunks)
                 )
-                debug('value_selection', value_selection)
 
                 # set data in chunk
                 chunk[chunk_selection] = value[value_selection]
