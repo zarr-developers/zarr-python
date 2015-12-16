@@ -2,11 +2,23 @@
 from __future__ import absolute_import, print_function, division
 from threading import RLock
 import itertools
+import logging
+# TODO PY2 compatibility
+from functools import reduce
+import operator
 
 
 import numpy as np
 cimport numpy as np
 from numpy cimport ndarray, dtype
+
+
+logger = logging.getLogger(__name__)
+
+
+def debug(*args):
+    msg = str(args[0]) + ': ' + ', '.join(map(repr, args[1:]))
+    logger.debug(msg)
 
 
 cdef extern from "blosc.h":
@@ -68,6 +80,20 @@ def get_cparams(cname=None, clevel=None, shuffle=None):
     return cname, clevel, shuffle
 
 
+def is_total_slice(item, shape):
+    if item == Ellipsis:
+        return True
+    if item == slice(None):
+        return True
+    if isinstance(item, tuple):
+        return all(
+            (isinstance(s, slice) and
+            ((s == slice(None)) or (s.stop - s.start == l)))
+            for s, l in zip(item, shape)
+        )
+    return False
+
+
 # noinspection PyAttributeOutsideInit
 cdef class Chunk:
 
@@ -95,16 +121,27 @@ cdef class Chunk:
         self.cbytes = 0
         self.blocksize = 0
 
-    def __setitem__(self, key, value):
+    property is_empty:
+        def __get__(self):
+            return self.data == NULL
 
-        if key == Ellipsis or key == slice(None, None, None):
+    def __setitem__(self, key, value):
+        debug('Chunk.__setitem__', key, value)
+        debug('self.shape', self.shape)
+
+        if is_total_slice(key, self.shape):
             # completely replace the contents of this chunk
 
-            # ensure array is C contiguous
-            # TODO adapt to either C or F layout
-            array = np.ascontiguousarray(value, dtype=self.dtype)
-            if array.shape != self.shape:
-                raise ValueError('bad value shape')
+            if np.isscalar(value):
+                array = np.empty(self.shape, dtype=self.dtype)
+                array.fill(value)
+
+            else:
+                # ensure array is C contiguous
+                # TODO adapt to either C or F layout
+                array = np.ascontiguousarray(value, dtype=self.dtype)
+                if array.shape != self.shape:
+                    raise ValueError('bad value shape')
 
         else:
             # partially replace the contents of this chunk
@@ -115,13 +152,16 @@ cdef class Chunk:
             # modify
             array[key] = value
 
-        # compress the data
+        # compress the data and store
         self.compress(array)
 
     cdef compress(self, ndarray array):
         cdef:
             size_t nbytes, nbytes_check, cbytes, blocksize, itemsize
             char *dest
+
+        # ensure any existing data is cleared
+        self.clear()
 
         # compute the total number of bytes in the array
         nbytes = array.itemsize * array.size
@@ -159,6 +199,8 @@ cdef class Chunk:
         cdef:
             ndarray array
 
+        debug('Chunk.__getitem__', item)
+
         # setup output array
         array = np.empty(self.shape, dtype=self.dtype)
 
@@ -188,9 +230,19 @@ cdef class Chunk:
         if ret <= 0:
             raise RuntimeError("error during blosc compression: %d" % ret)
 
-    def __dealloc__(self):
+    cdef free(self):
         if self.data != NULL:
             free(self.data)
+
+    cdef clear(self):
+        self.free()
+        self.data = NULL
+        self.nbytes = 0
+        self.cbytes = 0
+        self.blocksize = 0
+
+    def __dealloc__(self):
+        self.free()
 
 
 class Synchronized(object):
@@ -215,7 +267,7 @@ def normalise_array_selection(item, shape):
         item = (item,)
     elif isinstance(item, slice):
         item = (item,)
-    elif isinstance(item, Ellipsis):
+    elif item == Ellipsis:
         item = (slice(None),)
 
     # handle tuple of indices/slices
@@ -236,21 +288,30 @@ def normalise_array_selection(item, shape):
 
 
 def normalise_axis_selection(item, l):
+    debug('normalise_axis_selection', item, l)
     if isinstance(item, int):
         if item < 0:
             # handle wraparound
             item = l + item
         if item > (l - 1) or item < 0:
             raise IndexError('index out of bounds: %s' % item)
+        debug('int item transformed', item)
         return item, item + 1
 
     elif isinstance(item, slice):
-        if item.step is not None:
+        if item.step is not None and item.step != 1:
             raise NotImplementedError('TODO')
         start = 0 if item.start is None else item.start
         stop = l if item.stop is None else item.stop
+        if start < 0:
+            start = l + start
+        if stop < 0:
+            stop = l + stop
+        if start < 0 or stop < 0:
+            raise IndexError('index out of bounds: %s, %s' % (start, stop))
         if stop > l:
             stop = l
+        debug('start, stop', start, stop)
         return start, stop
 
     else:
@@ -263,28 +324,42 @@ def get_chunk_range(selection, chunks):
     return chunk_range
 
 
+def normalise_shape(shape):
+    if isinstance(shape, int):
+        shape = (shape,)
+    else:
+        shape = tuple(shape)
+    return shape
+
+
+def normalise_chunks(chunks, shape):
+    if isinstance(chunks, int):
+        chunks = (chunks,)
+    else:
+        chunks = tuple(chunks)
+    if len(chunks) != len(shape):
+        raise ValueError('chunks and shape not compatible')
+    # handle None in chunks
+    chunks = tuple(s if c is None else c for s, c in zip(shape, chunks))
+    return chunks
+
+
 cdef class Array:
 
     def __cinit__(self, shape, chunks, dtype=None, cname=None, clevel=None,
                   shuffle=None, fill_value=None):
+        # TODO add synchronized option
+
+        # N.B., the convention in h5py and dask is to use the "chunks"
+        # argument as a tuple representing the shape of each chunk,
+        # so we follow that convention here. The actual array of chunk
+        # objects will be stored as the "cdata" attribute
 
         # set shape
-        if isinstance(shape, int):
-            shape = (shape,)
-        else:
-            shape = tuple(shape)
-        self.shape = shape
+        self.shape = normalise_shape(shape)
 
         # set chunks
-        if isinstance(chunks, int):
-            chunks = (chunks,)
-        else:
-            chunks = tuple(chunks)
-        if len(chunks) != len(shape):
-            raise ValueError('chunks and shape not compatible')
-        # handle None in chunks
-        chunks = tuple(s if c is None else c for s, c in zip(shape, chunks))
-        self.chunks = chunks
+        self.chunks = normalise_chunks(chunks, self.shape)
 
         # set dtype
         self.dtype = np.dtype(dtype)
@@ -293,55 +368,74 @@ cdef class Array:
         self.cname, self.clevel, self.shuffle = \
             get_cparams(cname, clevel, shuffle)
 
-        # initialise chunks
+        # determine the number and arrangement of chunks
         cdata_shape = tuple(int(np.ceil(s / c))
-                            for s, c in zip(shape, chunks))
+                            for s, c in zip(self.shape, self.chunks))
+
+        # initialise an object array to hold pointers to chunk objects
         self.cdata = np.empty(cdata_shape, dtype=object)
-        # TODO what about chunks overhanging the edge?
-        self.cdata.flat = [Chunk(chunks, dtype=dtype, cname=cname,
+
+        # instantiate chunks
+        self.cdata.flat = [Chunk(self.chunks, dtype=dtype, cname=cname,
                                  clevel=clevel, shuffle=shuffle,
                                  fill_value=fill_value)
                            for _ in self.cdata.flat]
 
+        # TODO what about chunks overhanging the edge?
+
     property nbytes:
         def __get__(self):
-            return sum(c.nbytes for c in self.cdata.flat)
+            return self.dtype.itemsize * reduce(operator.mul, self.shape)
 
     property cbytes:
         def __get__(self):
             return sum(c.cbytes for c in self.cdata.flat)
 
+    property is_empty:
+        def __get__(self):
+            a = np.empty_like(self.cdata, dtype='b1')
+            a.flat = [c.is_empty for c in self.cdata.flat]
+            return a
+
     def __getitem__(self, item):
+        debug('Array.__getitem__', item)
 
         # normalise selection
         selection = normalise_array_selection(item, self.shape)
+        debug('selection', selection)
 
         # determine output array shape
         out_shape = tuple(stop - start for start, stop in selection)
+        debug('out_shape', out_shape)
 
         # setup output array
         out = np.empty(out_shape, dtype=self.dtype)
 
         # determine indices of overlapping chunks
         chunk_range = get_chunk_range(selection, self.chunks)
+        debug('chunk_range', chunk_range)
 
         # iterate over chunks in range
         for cidx in itertools.product(*chunk_range):
+            debug('cidx', cidx)
 
             # determine chunk offset
             offset = [i * c for i, c in zip(cidx, self.chunks)]
+            debug('offset', offset)
 
             # determine required index range within chunk
             chunk_selection = tuple(
-                (max(0, start - o), min(c, stop - o))
+                slice(max(0, start - o), min(c, stop - o))
                 for (start, stop), o, c in zip(selection, offset, self.chunks)
             )
+            debug('chunk_selection', chunk_selection)
 
             # determine index range within output array
             out_selection = tuple(
-                (max(0, o - start), min(o + c - start, stop - start))
+                slice(max(0, o - start), min(o + c - start, stop - start))
                 for (start, stop), o, c, in zip(selection, offset, self.chunks)
             )
+            debug('out_selection', out_selection)
 
             # read data into output array
             chunk = self.cdata[cidx]
@@ -350,32 +444,49 @@ cdef class Array:
         return out
 
     def __setitem__(self, key, value):
+        debug('Array.__setitem__', key, value)
+
+        # normalise value
+        if not np.isscalar(value):
+            value = np.asarray(value)
 
         # normalise selection
         selection = normalise_array_selection(key, self.shape)
+        debug('selection', selection)
 
         # determine indices of overlapping chunks
         chunk_range = get_chunk_range(selection, self.chunks)
+        debug('chunk_range', chunk_range)
 
         # iterate over chunks in range
         for cidx in itertools.product(*chunk_range):
+            debug('cidx', cidx)
+
+            # current chunk
+            chunk = self.cdata[cidx]
 
             # determine chunk offset
             offset = [i * c for i, c in zip(cidx, self.chunks)]
+            debug('offset', offset)
 
             # determine required index range within chunk
             chunk_selection = tuple(
-                (max(0, start - o), min(c, stop - o))
+                slice(max(0, start - o), min(c, stop - o))
                 for (start, stop), o, c in zip(selection, offset, self.chunks)
             )
+            debug('chunk_selection', chunk_selection)
 
-            # determine index within value
-            # determine index range within output array
-            value_selection = tuple(
-                (max(0, o - start), min(o + c - start, stop - start))
-                for (start, stop), o, c, in zip(selection, offset, self.chunks)
-            )
+            if np.isscalar(value):
+                chunk[chunk_selection] = value
 
-            # read data into chunk
-            chunk = self.cdata[cidx]
-            chunk[chunk_selection] = value[value_selection]
+            else:
+
+                # determine index within value
+                value_selection = tuple(
+                    slice(max(0, o - start), min(o + c - start, stop - start))
+                    for (start, stop), o, c, in zip(selection, offset, self.chunks)
+                )
+                debug('value_selection', value_selection)
+
+                # set data in chunk
+                chunk[chunk_selection] = value[value_selection]

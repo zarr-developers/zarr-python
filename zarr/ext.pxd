@@ -10,6 +10,8 @@ cdef class Chunk:
     cdef public int shuffle
     cdef public tuple shape
     cdef public dtype dtype
+    cdef free(self)
+    cdef clear(self)
     cdef compress(self, ndarray array)
     cdef decompress(self, char *dest)
 
