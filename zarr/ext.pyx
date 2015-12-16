@@ -68,7 +68,7 @@ def get_cparams(cname, clevel, shuffle):
     return cname, clevel, shuffle
 
 
-cdef class zchunk:
+cdef class Chunk:
 
     def __cinit__(self, array, cname=None, clevel=None, shuffle=None):
 

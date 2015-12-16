@@ -8,7 +8,7 @@ import zarr
 
 
 def _test_create_default(a):
-    c = zarr.zchunk(a)
+    c = zarr.Chunk(a)
 
     # check properties
     eq(a.shape, c.shape)
@@ -28,7 +28,7 @@ def _test_create_default(a):
 
 
 def _test_create_cparams(a, cname, clevel, shuffle):
-    c = zarr.zchunk(a, cname, clevel, shuffle)
+    c = zarr.Chunk(a, cname, clevel, shuffle)
     # check properties
     eq(a.shape, c.shape)
     eq(a.dtype, c.dtype)

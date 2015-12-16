@@ -27,8 +27,8 @@ include_dirs.append(np.get_include())
 
 from Cython.Build import cythonize
 ext_modules = cythonize([
-    Extension('zarr.chunk',
-              sources=['zarr/chunk.pyx'] + blosc_sources,
+    Extension('zarr.ext',
+              sources=['zarr/ext.pyx'] + blosc_sources,
               include_dirs=include_dirs,
               define_macros=define_macros,
               ),

@@ -1,7 +1,7 @@
 from numpy cimport ndarray, dtype
 
 
-cdef class zchunk:
+cdef class Chunk:
     cdef char *data
     cdef public size_t size, nbytes, cbytes, blocksize
     cdef public bytes cname
