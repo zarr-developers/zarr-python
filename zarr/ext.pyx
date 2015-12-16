@@ -243,20 +243,20 @@ cdef class Chunk:
 
 class Synchronized(object):
 
-    def __init__(self, chunk):
-        self.chunk = chunk
+    def __init__(self, inner):
+        self.inner = inner
         self.lock = RLock()
 
     def __getitem__(self, item):
         with self.lock:
-            return self.chunk.__getitem__(item)
+            return self.inner.__getitem__(item)
             
     def __setitem__(self, key, value):
         with self.lock:
-            self.chunk.__setitem__(key, value)
+            self.inner.__setitem__(key, value)
 
     def __getattr__(self, item):
-        return getattr(self.chunk, item)
+        return getattr(self.inner, item)
 
 
 def normalise_array_selection(item, shape):
