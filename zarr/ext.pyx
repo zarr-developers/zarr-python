@@ -63,7 +63,11 @@ cdef class Chunk:
                  shuffle=None, fill_value=None):
 
         # set shape and dtype
-        self.shape = tuple(shape)
+        if isinstance(shape, int):
+            shape = (shape,)
+        else:
+            shape = tuple(shape)
+        self.shape = shape
         self.dtype = np.dtype(dtype)
 
         # set compression options

@@ -107,19 +107,24 @@ def test_create_chunk():
 
 def test_create_chunk_fill_value():
 
-    shape = 100,
+    for shape in 100, (100, 100):
 
-    # default dtype and fill_value
-    c = zarr.Chunk(shape)
-    a = c[:]
-    eq(shape, a.shape)
-    eq(np.dtype(None), a.dtype)
+        # default dtype and fill_value
+        c = zarr.Chunk(shape)
+        a = c[:]
+        e = np.empty(shape)
+        eq(e.shape, a.shape)
+        eq(e.dtype, a.dtype)
 
-    # specified dtype and fill_value
-    dtype = 'u4'
-    fill_value = 1
-    c = zarr.Chunk(shape, dtype=dtype, fill_value=fill_value)
-    a = c[:]
-    e = np.empty(shape, dtype=dtype)
-    e.fill(fill_value)
-    assert np.array_equal(e, a)
+        # specified dtype and fill_value
+        for dtype in 'i4', 'f8':
+            for fill_value in 1, -1:
+                c = zarr.Chunk(shape, dtype=dtype, fill_value=fill_value)
+                a = c[:]
+                e = np.empty(shape, dtype=dtype)
+                e.fill(fill_value)
+                assert np.array_equal(e, a)
+
+
+def test_create_array():
+    pass
