@@ -2,51 +2,29 @@
 from __future__ import absolute_import, print_function, division
 
 
-# TODO free memory from chunk if garbage collected
-
-
 import numpy as np
 cimport numpy as np
-from numpy cimport ndarray, dtype, import_array
-
-
-from .definitions cimport (malloc, realloc, PyBytes_FromStringAndSize)
+from numpy cimport ndarray, dtype
 
 
 cdef extern from "blosc.h":
     cdef enum:
         BLOSC_MAX_OVERHEAD,
         BLOSC_VERSION_STRING,
-        BLOSC_VERSION_DATE,
-        BLOSC_MAX_TYPESIZE
+        BLOSC_VERSION_DATE
 
-    void blosc_init()
-    void blosc_destroy()
-    void blosc_get_versions(char *version_str, char *version_date)
-    int blosc_set_nthreads(int nthreads)
     int blosc_compname_to_compcode(const char *compname)
-    int blosc_set_compressor(const char *compname)
-    int blosc_compress(int clevel, int doshuffle, size_t typesize,
-                       size_t nbytes, void *src, void *dest,
-                       size_t destsize) nogil
     int blosc_compress_ctx(int clevel, int doshuffle, size_t typesize,
                            size_t nbytes, const void* src, void* dest,
                            size_t destsize, const char* compressor,
 				           size_t blocksize, int numinternalthreads) nogil
-    int blosc_decompress(void *src, void *dest, size_t destsize) nogil
     int blosc_decompress_ctx(const void *src, void *dest, size_t destsize,
                              int numinternalthreads) nogil
-    int blosc_getitem(void *src, int start, int nitems, void *dest) nogil
-    void blosc_free_resources()
     void blosc_cbuffer_sizes(void *cbuffer, size_t *nbytes,
                              size_t *cbytes, size_t *blocksize)
-    void blosc_cbuffer_metainfo(void *cbuffer, size_t *typesize, int *flags)
-    void blosc_cbuffer_versions(void *cbuffer, int *version, int *versionlz)
-    void blosc_set_blocksize(size_t blocksize)
-    char *blosc_list_compressors()
 
 
-import_array()
+from .definitions cimport malloc, realloc, free
 
 
 from zarr import defaults
@@ -158,6 +136,9 @@ cdef class Chunk:
         # handle errors
         if ret <= 0:
             raise RuntimeError("error during blosc compression: %d" % ret)
+
+    def __dealloc__(self):
+        free(self.data)
 
 
 def blosc_version():
