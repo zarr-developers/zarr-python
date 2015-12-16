@@ -3,7 +3,8 @@ from numpy cimport ndarray, dtype
 
 cdef class Chunk:
     cdef char *data
-    cdef public size_t size, nbytes, cbytes, blocksize
+    cdef public object fill_value
+    cdef public size_t nbytes, cbytes, blocksize
     cdef public char *cname
     cdef public int clevel
     cdef public int shuffle

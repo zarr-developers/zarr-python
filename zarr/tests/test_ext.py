@@ -36,32 +36,33 @@ def test_get_cparams():
 
 
 def _test_create_chunk_default(a):
-    c = zarr.Chunk(a)
+    c = zarr.Chunk(a.shape, a.dtype)
+    c[:] = a
 
     # check properties
     eq(a.shape, c.shape)
     eq(a.dtype, c.dtype)
-    eq(a.size, c.size)
-    eq(a.size * a.dtype.itemsize, c.nbytes)
+    eq(a.nbytes, c.nbytes)
     eq(zarr.defaults.cname, c.cname)
     eq(zarr.defaults.clevel, c.clevel)
     eq(zarr.defaults.shuffle, c.shuffle)
 
     # check compression is sane
     assert c.cbytes < c.nbytes
-    assert c.blocksize < c.nbytes
+    assert c.blocksize <= c.nbytes
 
     # check round-trip
-    assert np.array_equal(a, np.array(c))
+    assert np.array_equal(a, c[:])
 
 
 def _test_create_chunk_cparams(a, cname, clevel, shuffle):
-    c = zarr.Chunk(a, cname, clevel, shuffle)
+    c = zarr.Chunk(a.shape, a.dtype, cname, clevel, shuffle)
+    c[:] = a
+
     # check properties
     eq(a.shape, c.shape)
     eq(a.dtype, c.dtype)
-    eq(a.size, c.size)
-    eq(a.size * a.dtype.itemsize, c.nbytes)
+    eq(a.nbytes, c.nbytes)
     eq(cname, c.cname)
     eq(clevel, c.clevel)
     eq(shuffle, c.shuffle)
@@ -73,7 +74,7 @@ def _test_create_chunk_cparams(a, cname, clevel, shuffle):
         assert c.cbytes < c.nbytes, (c.nbytes, c.cbytes)
 
     # check round-trip
-    assert np.array_equal(a, np.array(c))
+    assert np.array_equal(a, c[:])
 
 
 def _test_create_chunk(a):
@@ -102,3 +103,23 @@ def test_create_chunk():
         _test_create_chunk(np.linspace(-1, 1, 1e5, dtype=dtype))
         print('2-dimensional')
         _test_create_chunk(np.linspace(-1, 1, 1e5, dtype=dtype).reshape((100, -1)))
+
+
+def test_create_chunk_fill_value():
+
+    shape = 100,
+
+    # default dtype and fill_value
+    c = zarr.Chunk(shape)
+    a = c[:]
+    eq(shape, a.shape)
+    eq(np.dtype(None), a.dtype)
+
+    # specified dtype and fill_value
+    dtype = 'u4'
+    fill_value = 1
+    c = zarr.Chunk(shape, dtype=dtype, fill_value=fill_value)
+    a = c[:]
+    e = np.empty(shape, dtype=dtype)
+    e.fill(fill_value)
+    assert np.array_equal(e, a)

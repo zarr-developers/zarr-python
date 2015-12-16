@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, print_function, division
+from threading import RLock
 
 
 import numpy as np
@@ -58,20 +59,45 @@ def get_cparams(cname=None, clevel=None, shuffle=None):
 # noinspection PyAttributeOutsideInit
 cdef class Chunk:
 
-    def __cinit__(self, array, cname=None, clevel=None, shuffle=None):
+    def __init__(self, shape, dtype=None, cname=None, clevel=None,
+                 shuffle=None, fill_value=None):
 
-        # ensure array is C contiguous
-        # TODO adapt to either C or F layout
-        array = np.ascontiguousarray(array)
+        # set shape and dtype
+        self.shape = tuple(shape)
+        self.dtype = np.dtype(dtype)
 
-        # determine compression options
+        # set compression options
         self.cname, self.clevel, self.shuffle = \
             get_cparams(cname, clevel, shuffle)
 
-        # determine size, shape and dtype
-        self.size = array.size
-        self.shape = array.shape
-        self.dtype = np.dtype(array.dtype.base)
+        # set fill_value
+        self.fill_value = fill_value
+
+        # initialise other attributes
+        self.data = NULL
+        self.nbytes = 0
+        self.cbytes = 0
+        self.blocksize = 0
+
+    def __setitem__(self, key, value):
+
+        if key == Ellipsis or key == slice(None, None, None):
+            # completely replace the contents of this chunk
+
+            # ensure array is C contiguous
+            # TODO adapt to either C or F layout
+            array = np.ascontiguousarray(value, dtype=self.dtype)
+            if array.shape != self.shape:
+                raise ValueError('bad value shape')
+
+        else:
+            # partially replace the contents of this chunk
+
+            # decompress existing data
+            array = self[:]
+
+            # modify
+            array[key] = value
 
         # compress the data
         self.compress(array)
@@ -113,17 +139,26 @@ cdef class Chunk:
         self.cbytes = cbytes
         self.blocksize = blocksize
 
-    def __array__(self):
+    def __getitem__(self, item):
         cdef:
             ndarray array
 
         # setup output array
         array = np.empty(self.shape, dtype=self.dtype)
 
-        # decompress data
-        self.decompress(array.data)
+        if self.data == NULL:
+            # data not initialised
+            if self.fill_value is not None:
+                array.fill(self.fill_value)
 
-        return array
+        else:
+            # data initialised, decompress into array
+            self.decompress(array.data)
+
+        return array[item]
+
+    def __array__(self):
+        return self[:]
 
     cdef decompress(self, char *dest):
         cdef:
@@ -138,7 +173,23 @@ cdef class Chunk:
             raise RuntimeError("error during blosc compression: %d" % ret)
 
     def __dealloc__(self):
-        free(self.data)
+        if self.data != NULL:
+            free(self.data)
+
+
+class Synchronized(object):
+
+    def __init__(self, chunk):
+        self.chunk = chunk
+        self.lock = RLock()
+
+    def __getitem__(self, item):
+        with self.lock:
+            return self.chunk.__getitem__(item)
+            
+    def __setitem__(self, key, value):
+        with self.lock:
+            self.chunk.__setitem__(key, value)
 
 
 def blosc_version():
