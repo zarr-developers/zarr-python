@@ -126,7 +126,7 @@ cdef class Chunk:
             return self.data == NULL
 
     def __setitem__(self, key, value):
-        debug('Chunk.__setitem__', key, value)
+        debug('Chunk.__setitem__', key)
         debug('self.shape', self.shape)
 
         if is_total_slice(key, self.shape):
@@ -333,12 +333,14 @@ def normalise_shape(shape):
 
 
 def normalise_chunks(chunks, shape):
+    debug('normalise_chunks', chunks, shape)
     if isinstance(chunks, int):
         chunks = (chunks,)
     else:
         chunks = tuple(chunks)
     if len(chunks) != len(shape):
-        raise ValueError('chunks and shape not compatible')
+        raise ValueError('chunks and shape not compatible: %r, %r' %
+                         (chunks, shape))
     # handle None in chunks
     chunks = tuple(s if c is None else c for s, c in zip(shape, chunks))
     return chunks
@@ -444,7 +446,7 @@ cdef class Array:
         return out
 
     def __setitem__(self, key, value):
-        debug('Array.__setitem__', key, value)
+        debug('Array.__setitem__', key)
 
         # normalise value
         if not np.isscalar(value):

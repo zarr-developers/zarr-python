@@ -83,3 +83,50 @@ def test_array_1d_set_scalar():
         a[:] = value
         z[:] = value
         assert_array_equal(a, z[:])
+
+
+def test_array_2d():
+
+    a = np.arange(10000).reshape((1000, 10))
+    z = zarr.Array(a.shape, chunks=(100, 2), dtype=a.dtype)
+
+    # check properties
+    eq(a.shape, z.shape)
+    eq(a.dtype, z.dtype)
+    eq((100, 2), z.chunks)
+    eq((10, 5), z.cdata.shape)
+    eq(zarr.defaults.cname, z.cname)
+    eq(zarr.defaults.clevel, z.clevel)
+    eq(zarr.defaults.shuffle, z.shuffle)
+
+    # set data
+    z[:] = a
+
+    # check properties
+    eq(a.nbytes, z.nbytes)
+    eq(sum(c.cbytes for c in z.cdata.flat), z.cbytes)
+
+    # check round-trip
+    assert_array_equal(a, z[:])
+    assert_array_equal(a, z[...])
+
+    # check slicing
+    assert_array_equal(a[:10], z[:10])
+    assert_array_equal(a[10:20], z[10:20])
+    assert_array_equal(a[-10:], z[-10:])
+    # ...across chunk boundaries...
+    assert_array_equal(a[:110], z[:110])
+    assert_array_equal(a[190:310], z[190:310])
+    assert_array_equal(a[-110:], z[-110:])
+
+    # check partial assignment
+    b = np.arange(10000, 20000).reshape((1000, 10))
+    z = zarr.Array(a.shape, chunks=(100, 2), dtype=a.dtype)
+    z[:] = a
+    assert_array_equal(a, z[:])
+    z[190:310, 3:7] = b[190:310, 3:7]
+    assert_array_equal(a[:190], z[:190])
+    assert_array_equal(a[:, :3], z[:, :3])
+    assert_array_equal(b[190:310, 3:7], z[190:310, 3:7])
+    assert_array_equal(a[310:], z[310:])
+    assert_array_equal(a[:, 7:], z[:, 7:])
