@@ -12,3 +12,13 @@ cdef class Chunk:
     cdef public dtype dtype
     cdef compress(self, ndarray array)
     cdef decompress(self, char *dest)
+
+
+cdef class Array:
+    cdef public char *cname
+    cdef public int clevel
+    cdef public int shuffle
+    cdef public tuple shape
+    cdef public tuple chunks
+    cdef public dtype dtype
+    cdef public ndarray cdata

@@ -75,6 +75,7 @@ def _test_create_chunk_cparams(a, cname, clevel, shuffle):
 
     # check round-trip
     assert np.array_equal(a, c[:])
+    assert np.array_equal(a, c[...])
 
 
 def _test_create_chunk(a):
@@ -128,41 +129,63 @@ def test_create_chunk_fill_value():
 
 def test_array_1d():
 
-    a = np.arange(1e5)
-    z = zarr.array(a.shape, chunks=100)
+    a = np.arange(1050)
+    z = zarr.Array(a.shape, chunks=100, dtype=a.dtype)
 
     # check properties
     eq(a.shape, z.shape)
-    eq((100,), z.chunks)
     eq(a.dtype, z.dtype)
+    eq((100,), z.chunks)
+    eq((11,), z.cdata.shape)
     eq(zarr.defaults.cname, z.cname)
     eq(zarr.defaults.clevel, z.clevel)
     eq(zarr.defaults.shuffle, z.shuffle)
 
-    # assign data
+    # set data
     z[:] = a
 
     # check properties
     eq(a.nbytes, z.nbytes)
-    assert a.cbytes < a.nbytes
+    eq(a.cbytes, sum(c.cbytes for c in a.cdata))
 
     # check round-trip
     assert np.array_equal(a, z[:])
+    assert np.array_equal(a, z[...])
 
     # check slicing
     assert np.array_equal(a[:10], z[:10])
     assert np.array_equal(a[10:20], z[10:20])
     assert np.array_equal(a[-10:], z[-10:])
+    # ...across chunk boundaries...
+    assert np.array_equal(a[:110], z[:110])
+    assert np.array_equal(a[190:310], z[190:310])
+    assert np.array_equal(a[-110:], z[-110:])
 
     # check partial assignment
     b = np.arange(1e5, 2e5)
-    z = zarr.array(a.shape, chunks=100)
+    z = zarr.Array(a.shape, chunks=100)
     z[:] = a
     assert np.array_equal(a, z[:])
-    z[10:20] = b[10:20]
-    assert np.array_equal(a[:10], z[:10])
-    assert np.array_equal(b[10:20], z[10:20])
-    assert np.array_equal(a[20:], z[20:])
+    z[190:310] = b[190:310]
+    assert np.array_equal(a[:190], z[:190])
+    assert np.array_equal(b[190:310], z[190:310])
+    assert np.array_equal(a[310:], z[310:])
 
-    # TODO check partial assignment with fill_value
-    # TODO check get and set across chunk boundaries
+
+def test_array_1d_fill_value():
+
+    for fill_value in 0, 1, 10:
+
+        a = np.arange(1050)
+        b = np.empty_like(a)
+        b.fill(fill_value)
+        z = zarr.Array(a.shape, chunks=100, fill_value=fill_value)
+        z[190:310] = a[190:310]
+
+        assert np.array_equal(b[:190], z[:190])
+        assert np.array_equal(a[190:310], z[190:310])
+        assert np.array_equal(b[310:], z[310:])
+
+
+def test_array_1d_set_scalar():
+    assert False, 'TODO'
