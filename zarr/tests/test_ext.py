@@ -126,5 +126,43 @@ def test_create_chunk_fill_value():
                 assert np.array_equal(e, a)
 
 
-def test_create_array():
-    pass
+def test_array_1d():
+
+    a = np.arange(1e5)
+    z = zarr.array(a.shape, chunks=100)
+
+    # check properties
+    eq(a.shape, z.shape)
+    eq((100,), z.chunks)
+    eq(a.dtype, z.dtype)
+    eq(zarr.defaults.cname, z.cname)
+    eq(zarr.defaults.clevel, z.clevel)
+    eq(zarr.defaults.shuffle, z.shuffle)
+
+    # assign data
+    z[:] = a
+
+    # check properties
+    eq(a.nbytes, z.nbytes)
+    assert a.cbytes < a.nbytes
+
+    # check round-trip
+    assert np.array_equal(a, z[:])
+
+    # check slicing
+    assert np.array_equal(a[:10], z[:10])
+    assert np.array_equal(a[10:20], z[10:20])
+    assert np.array_equal(a[-10:], z[-10:])
+
+    # check partial assignment
+    b = np.arange(1e5, 2e5)
+    z = zarr.array(a.shape, chunks=100)
+    z[:] = a
+    assert np.array_equal(a, z[:])
+    z[10:20] = b[10:20]
+    assert np.array_equal(a[:10], z[:10])
+    assert np.array_equal(b[10:20], z[10:20])
+    assert np.array_equal(a[20:], z[20:])
+
+    # TODO check partial assignment with fill_value
+    # TODO check get and set across chunk boundaries
