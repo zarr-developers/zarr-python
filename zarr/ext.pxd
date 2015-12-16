@@ -4,7 +4,7 @@ from numpy cimport ndarray, dtype
 cdef class Chunk:
     cdef char *data
     cdef public size_t size, nbytes, cbytes, blocksize
-    cdef public bytes cname
+    cdef public char *cname
     cdef public int clevel
     cdef public int shuffle
     cdef public tuple shape

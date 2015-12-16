@@ -2,7 +2,6 @@
 from __future__ import absolute_import, print_function, division
 
 
-# TODO use blosc contextual functions
 # TODO free memory from chunk if garbage collected
 
 
@@ -25,11 +24,18 @@ cdef extern from "blosc.h":
     void blosc_destroy()
     void blosc_get_versions(char *version_str, char *version_date)
     int blosc_set_nthreads(int nthreads)
+    int blosc_compname_to_compcode(const char *compname)
     int blosc_set_compressor(const char *compname)
     int blosc_compress(int clevel, int doshuffle, size_t typesize,
                        size_t nbytes, void *src, void *dest,
                        size_t destsize) nogil
+    int blosc_compress_ctx(int clevel, int doshuffle, size_t typesize,
+                           size_t nbytes, const void* src, void* dest,
+                           size_t destsize, const char* compressor,
+				           size_t blocksize, int numinternalthreads) nogil
     int blosc_decompress(void *src, void *dest, size_t destsize) nogil
+    int blosc_decompress_ctx(const void *src, void *dest, size_t destsize,
+                             int numinternalthreads) nogil
     int blosc_getitem(void *src, int start, int nitems, void *dest) nogil
     void blosc_free_resources()
     void blosc_cbuffer_sizes(void *cbuffer, size_t *nbytes,
@@ -52,6 +58,9 @@ def get_cparams(cname, clevel, shuffle):
     cname = cname if cname is not None else defaults.cname
     if type(cname) != bytes:
         cname = cname.encode()
+    # check compressor is available
+    if blosc_compname_to_compcode(cname) < 0:
+        raise ValueError("compressor not available: %s" % cname)
 
     # determine compression level
     clevel = clevel if clevel is not None else defaults.clevel
@@ -68,6 +77,7 @@ def get_cparams(cname, clevel, shuffle):
     return cname, clevel, shuffle
 
 
+# noinspection PyAttributeOutsideInit
 cdef class Chunk:
 
     def __cinit__(self, array, cname=None, clevel=None, shuffle=None):
@@ -99,18 +109,15 @@ cdef class Chunk:
         # determine itemsize
         itemsize = array.dtype.base.itemsize
 
-        # set compressor
-        if blosc_set_compressor(self.cname) < 0:
-            raise ValueError("compressor not available: %s" % self.cname)
-
         # allocate memory for compressed data
         dest = <char *> malloc(nbytes + BLOSC_MAX_OVERHEAD)
 
         # perform compression
         with nogil:
-            cbytes = blosc_compress(self.clevel, self.shuffle, itemsize,
-                                    nbytes, array.data, dest,
-                                    nbytes + BLOSC_MAX_OVERHEAD)
+            cbytes = blosc_compress_ctx(self.clevel, self.shuffle, itemsize,
+                                        nbytes, array.data, dest,
+                                        nbytes + BLOSC_MAX_OVERHEAD,
+                                        self.cname, 0, 1)
 
         # check compression was successful
         if cbytes <= 0:
@@ -146,21 +153,12 @@ cdef class Chunk:
 
         # do decompression
         with nogil:
-            ret = blosc_decompress(self.data, dest, self.nbytes)
+            ret = blosc_decompress_ctx(self.data, dest, self.nbytes, 1)
 
         # handle errors
         if ret <= 0:
             raise RuntimeError("error during blosc compression: %d" % ret)
 
-
-def _blosc_set_nthreads(nthreads):
-    return blosc_set_nthreads(nthreads)
-
-def _blosc_init():
-    blosc_init()
-
-def _blosc_destroy():
-    blosc_destroy()
 
 def blosc_version():
     # all the 'decode' contorsions are for Python 3 returning actual strings
