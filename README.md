@@ -20,6 +20,7 @@ Highly experimental, pre-alpha. Bug reports and pull requests very welcome.
 ```python
 >>> import numpy as np
 >>> import zarr
+
 ```
 
 Create a 1-dimensional array:
@@ -28,6 +29,7 @@ Create a 1-dimensional array:
 >>> z = zarr.empty(10000000, dtype='i4', chunks=100000)
 >>> z
 zarr.ext.Array((10000000,), int32, chunks=(100000,), nbytes=38.1M, cbytes=0, cname=blosclz, clevel=5, shuffle=1)
+
 ```
 
 TODO
