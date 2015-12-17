@@ -336,6 +336,8 @@ def normalise_chunks(chunks, shape):
         chunks = (chunks,)
     else:
         chunks = tuple(chunks)
+    if len(chunks) < len(shape):
+        chunks += shape[len(chunks):]
     if len(chunks) != len(shape):
         raise ValueError('chunks and shape not compatible: %r, %r' %
                          (chunks, shape))
@@ -344,6 +346,7 @@ def normalise_chunks(chunks, shape):
     return chunks
 
 
+# noinspection PyAttributeOutsideInit
 cdef class Array:
 
     def __cinit__(self, shape, chunks, dtype=None, cname=None, clevel=None,
@@ -381,16 +384,18 @@ cdef class Array:
         self.cdata = np.empty(cdata_shape, dtype=object)
 
         # determine function for instantiating chunks
-        if synchronized:
+        if self.synchronized:
             def create_chunk(*args, **kwargs):
                 return Synchronized(Chunk(*args, **kwargs))
         else:
             create_chunk = Chunk
 
         # instantiate chunks
-        self.cdata.flat = [create_chunk(self.chunks, dtype=dtype, cname=cname,
-                                        clevel=clevel, shuffle=shuffle,
-                                        fill_value=fill_value)
+        self.cdata.flat = [create_chunk(self.chunks, dtype=self.dtype,
+                                        cname=self.cname,
+                                        clevel=self.clevel,
+                                        shuffle=self.shuffle,
+                                        fill_value=self.fill_value)
                            for _ in self.cdata.flat]
 
         # N.B., in the current implementation, some chunks may overhang
@@ -505,3 +510,69 @@ cdef class Array:
         r += ', shuffle=%s' % self.shuffle
         r += ')'
         return r
+
+    def resize(self, *args):
+
+        # normalise new shape argument
+        if len(args) == 1:
+            new_shape = args[0]
+        else:
+            new_shape = args
+        if isinstance(new_shape, int):
+            new_shape = (new_shape,)
+        else:
+            new_shape = tuple(new_shape)
+        if len(new_shape) != len(self.shape):
+            raise ValueError('new shape must have same number of dimensions')
+
+        # handle None in new_shape
+        new_shape = tuple(s if n is None else n
+                          for s, n in zip(self.shape, new_shape))
+
+        # set new shape
+        self.shape = new_shape
+
+        # determine the new number and arrangement of chunks
+        new_cdata_shape = tuple(int(np.ceil(s / c))
+                                for s, c in zip(new_shape, self.chunks))
+
+        # resize chunks array
+        self.cdata.resize(new_cdata_shape, refcheck=False)
+
+        # determine function for instantiating chunks
+        if self.synchronized:
+            def create_chunk(*args, **kwargs):
+                return Synchronized(Chunk(*args, **kwargs))
+        else:
+            create_chunk = Chunk
+
+        # instantiate any new chunks as needed
+        self.cdata.flat = [create_chunk(self.chunks, dtype=self.dtype,
+                                        cname=self.cname,
+                                        clevel=self.clevel,
+                                        shuffle=self.shuffle,
+                                        fill_value=self.fill_value)
+                           if c == 0 else c
+                           for c in self.cdata.flat]
+
+    def append(self, data):
+
+        # ensure data is array-like
+        if not hasattr(data, 'shape') or not hasattr(data, 'dtype'):
+            data = np.asanyarray(data)
+
+        # ensure shapes are compatible for trailing dimensions
+        if self.shape[1:] != data.shape[1:]:
+            raise ValueError('shape not compatible')
+
+        # remember old shape
+        old_shape = self.shape
+
+        # determine new shape
+        new_shape = (self.shape[0] + data.shape[0],) + self.shape[1:]
+
+        # resize
+        self.resize(new_shape)
+
+        # store data
+        self[old_shape[0]:] = data

@@ -45,7 +45,7 @@ def full(shape, chunks, fill_value, dtype=None, cname=None, clevel=None,
 
 
 def array(data, chunks=None, dtype=None, cname=None, clevel=None,
-          shuffle=None, synchronized=True):
+          shuffle=None, synchronized=True, fill_value=None):
     """TODO"""
 
     # ensure data is array-like
@@ -72,7 +72,8 @@ def array(data, chunks=None, dtype=None, cname=None, clevel=None,
 
     # create array
     z = _ext.Array(shape, chunks=chunks, dtype=dtype, cname=cname,
-                   clevel=clevel, shuffle=shuffle, synchronized=synchronized)
+                   clevel=clevel, shuffle=shuffle,
+                   synchronized=synchronized, fill_value=fill_value)
 
     # fill with data
     z[:] = data

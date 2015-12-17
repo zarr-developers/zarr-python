@@ -17,7 +17,7 @@ cdef class Chunk:
 
 
 cdef class Array:
-    cdef public char *cname
+    cdef public bytes cname
     cdef public int clevel
     cdef public int shuffle
     cdef public tuple shape

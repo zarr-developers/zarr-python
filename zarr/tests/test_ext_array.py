@@ -131,3 +131,96 @@ def test_array_2d():
     assert_array_equal(b[190:310, 3:7], z[190:310, 3:7])
     assert_array_equal(a[310:], z[310:])
     assert_array_equal(a[:, 7:], z[:, 7:])
+
+
+def test_resize_1d():
+
+    z = Array(105, chunks=10, dtype='i4')
+    eq((105,), z.shape)
+    eq((105,), z[:].shape)
+    eq(np.dtype('i4'), z.dtype)
+    eq(np.dtype('i4'), z[:].dtype)
+    eq((10,), z.chunks)
+
+    z.resize(205)
+    eq((205,), z.shape)
+    eq((205,), z[:].shape)
+    eq(np.dtype('i4'), z.dtype)
+    eq(np.dtype('i4'), z[:].dtype)
+    eq((10,), z.chunks)
+
+    z.resize(55)
+    eq((55,), z.shape)
+    eq((55,), z[:].shape)
+    eq(np.dtype('i4'), z.dtype)
+    eq(np.dtype('i4'), z[:].dtype)
+    eq((10,), z.chunks)
+
+
+def test_resize_2d():
+
+    z = Array((105, 105), chunks=(10, 10), dtype='i4')
+    eq((105, 105), z.shape)
+    eq((105, 105), z[:].shape)
+    eq(np.dtype('i4'), z.dtype)
+    eq(np.dtype('i4'), z[:].dtype)
+    eq((10, 10), z.chunks)
+
+    z.resize((205, 205))
+    eq((205, 205), z.shape)
+    eq((205, 205), z[:].shape)
+    eq(np.dtype('i4'), z.dtype)
+    eq(np.dtype('i4'), z[:].dtype)
+    eq((10, 10), z.chunks)
+
+    z.resize((55, 55))
+    eq((55, 55), z.shape)
+    eq((55, 55), z[:].shape)
+    eq(np.dtype('i4'), z.dtype)
+    eq(np.dtype('i4'), z[:].dtype)
+    eq((10, 10), z.chunks)
+
+    z.resize((55, 1))
+    eq((55, 1), z.shape)
+    eq((55, 1), z[:].shape)
+    eq(np.dtype('i4'), z.dtype)
+    eq(np.dtype('i4'), z[:].dtype)
+    eq((10, 10), z.chunks)
+
+
+def test_append_1d():
+
+    a = np.arange(105, dtype='i4')
+    z = Array(a.shape, chunks=10, dtype=a.dtype)
+    z[:] = a
+    eq(a.shape, z.shape)
+    eq(a.dtype, z.dtype)
+    eq((10,), z.chunks)
+    assert_array_equal(a, z[:])
+
+    b = np.arange(105, 205, dtype='i4')
+    e = np.append(a, b)
+    z.append(b)
+    eq(e.shape, z.shape)
+    eq(e.dtype, z.dtype)
+    eq((10,), z.chunks)
+    assert_array_equal(e, z[:])
+
+
+def test_append_2d():
+
+    a = np.arange(105*105, dtype='i4').reshape((105, 105))
+    z = Array(a.shape, chunks=(10, 10), dtype=a.dtype)
+    z[:] = a
+    eq(a.shape, z.shape)
+    eq(a.dtype, z.dtype)
+    eq((10, 10), z.chunks)
+    assert_array_equal(a, z[:])
+
+    b = np.arange(105*105, 2*105*105, dtype='i4').reshape((105, 105))
+    e = np.append(a, b, axis=0)
+    z.append(b)
+    eq(e.shape, z.shape)
+    eq(e.dtype, z.dtype)
+    eq((10, 10), z.chunks)
+    assert_array_equal(e, z[:])
