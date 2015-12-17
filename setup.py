@@ -2,6 +2,9 @@
 from __future__ import absolute_import, print_function, division
 from glob import glob
 import os
+import re
+import platform
+import ctypes
 from setuptools import setup, Extension
 
 
@@ -19,6 +22,21 @@ blosc_sources += glob('c-blosc/internal-complibs/zlib*/*.c')
 include_dirs += [os.path.join('c-blosc', 'blosc')]
 include_dirs += glob('c-blosc/internal-complibs/*')
 define_macros += [('HAVE_LZ4', 1), ('HAVE_SNAPPY', 1), ('HAVE_ZLIB', 1)]
+define_macros += [('CYTHON_TRACE', 1)]
+
+
+extra_compile_args = []
+if re.match("i.86|x86|AMD", platform.machine()) is not None:
+    # always enable SSE2 for AMD/Intel machines
+    extra_compile_args.append('-DSHUFFLE_SSE2_ENABLED')
+
+is_32bit = ctypes.sizeof(ctypes.c_voidp) == 4
+if is_32bit:
+    if os.name == 'posix':
+        extra_compile_args.append("-msse2")
+    elif os.name == 'nt':
+        # this is currently broken for windows
+        extra_compile_args.append("/arch:sse2")
 
 
 import numpy as np
@@ -31,6 +49,7 @@ ext_modules = cythonize([
               sources=['zarr/ext.pyx'] + blosc_sources,
               include_dirs=include_dirs,
               define_macros=define_macros,
+              extra_compile_args=extra_compile_args,
               ),
 ])
 

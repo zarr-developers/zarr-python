@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 # cython: embedsignature=True
 # cython: profile=True
+# cython: linetrace=True
+# cython: binding=True
 from __future__ import absolute_import, print_function, division
 from threading import RLock
 import itertools
@@ -377,6 +379,53 @@ def normalise_chunks(chunks, shape):
     return chunks
 
 
+def array_getitem(Array self, item):
+    """Array.__getitem__ broken out as separate function to enable line
+    profiling."""
+
+    # normalise selection
+    selection = normalise_array_selection(item, self.shape)
+
+    # determine output array shape
+    out_shape = tuple(stop - start for start, stop in selection)
+
+    # setup output array
+    out = np.empty(out_shape, dtype=self.dtype)
+
+    # determine indices of overlapping chunks
+    chunk_range = get_chunk_range(selection, self.chunks)
+
+    # iterate over chunks in range
+    for cidx in itertools.product(*chunk_range):
+
+        # determine chunk offset
+        offset = [i * c for i, c in zip(cidx, self.chunks)]
+
+        # determine required index range within chunk
+        chunk_selection = [
+            slice(max(0, start - o), min(c, stop - o))
+            for (start, stop), o, c in zip(selection, offset, self.chunks)
+        ]
+
+        # determine index range within output array
+        out_selection = [
+            slice(max(0, o - start), min(o + c - start, stop - start))
+            for (start, stop), o, c, in zip(selection, offset, self.chunks)
+        ]
+
+        # obtain data from chunk
+        chunk = self.cdata[cidx]
+        tmp = chunk[tuple(chunk_selection)]
+
+        # set data in output array
+        # N.B., this additional step costs ~30%, but may be possible in some
+        # circumstances at least to read directly into `out`, if the selection
+        # produces a C contiguous array?
+        out[tuple(out_selection)] = tmp
+
+    return out
+
+
 # noinspection PyAttributeOutsideInit
 cdef class Array:
 
@@ -450,42 +499,10 @@ cdef class Array:
             return a
 
     def __getitem__(self, item):
+        return array_getitem(self, item)
 
-        # normalise selection
-        selection = normalise_array_selection(item, self.shape)
-
-        # determine output array shape
-        out_shape = tuple(stop - start for start, stop in selection)
-
-        # setup output array
-        out = np.empty(out_shape, dtype=self.dtype)
-
-        # determine indices of overlapping chunks
-        chunk_range = get_chunk_range(selection, self.chunks)
-
-        # iterate over chunks in range
-        for cidx in itertools.product(*chunk_range):
-
-            # determine chunk offset
-            offset = [i * c for i, c in zip(cidx, self.chunks)]
-
-            # determine required index range within chunk
-            chunk_selection = tuple(
-                slice(max(0, start - o), min(c, stop - o))
-                for (start, stop), o, c in zip(selection, offset, self.chunks)
-            )
-
-            # determine index range within output array
-            out_selection = tuple(
-                slice(max(0, o - start), min(o + c - start, stop - start))
-                for (start, stop), o, c, in zip(selection, offset, self.chunks)
-            )
-
-            # read data into output array
-            chunk = self.cdata[cidx]
-            out[out_selection] = chunk[chunk_selection]
-
-        return out
+    def __array__(self):
+        return self[:]
 
     def __setitem__(self, key, value):
 
