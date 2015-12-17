@@ -12,6 +12,9 @@ cimport numpy as np
 from numpy cimport ndarray, dtype
 
 
+from zarr import util as _util
+
+
 # import logging
 # logger = logging.getLogger(__name__)
 #
@@ -121,9 +124,9 @@ cdef class Chunk:
         self.cbytes = 0
         self.blocksize = 0
 
-    property is_empty:
+    property is_initialised:
         def __get__(self):
-            return self.data == NULL
+            return self.data != NULL
 
     def __setitem__(self, key, value):
 
@@ -364,6 +367,12 @@ cdef class Array:
         self.cname, self.clevel, self.shuffle = \
             get_cparams(cname, clevel, shuffle)
 
+        # set fill_value
+        self.fill_value = fill_value
+
+        # set synchronization option
+        self.synchronized = synchronized
+
         # determine the number and arrangement of chunks
         cdata_shape = tuple(int(np.ceil(s / c))
                             for s, c in zip(self.shape, self.chunks))
@@ -371,12 +380,14 @@ cdef class Array:
         # initialise an object array to hold pointers to chunk objects
         self.cdata = np.empty(cdata_shape, dtype=object)
 
-        # instantiate chunks
+        # determine function for instantiating chunks
         if synchronized:
             def create_chunk(*args, **kwargs):
                 return Synchronized(Chunk(*args, **kwargs))
         else:
             create_chunk = Chunk
+
+        # instantiate chunks
         self.cdata.flat = [create_chunk(self.chunks, dtype=dtype, cname=cname,
                                         clevel=clevel, shuffle=shuffle,
                                         fill_value=fill_value)
@@ -396,10 +407,10 @@ cdef class Array:
         def __get__(self):
             return sum(c.cbytes for c in self.cdata.flat)
 
-    property is_empty:
+    property is_initialised:
         def __get__(self):
             a = np.empty_like(self.cdata, dtype='b1')
-            a.flat = [c.is_empty for c in self.cdata.flat]
+            a.flat = [c.is_initialised for c in self.cdata.flat]
             return a
 
     def __getitem__(self, item):
@@ -442,10 +453,6 @@ cdef class Array:
 
     def __setitem__(self, key, value):
 
-        # normalise value
-        if not np.isscalar(value):
-            value = np.asarray(value)
-
         # normalise selection
         selection = normalise_array_selection(key, self.shape)
 
@@ -468,9 +475,12 @@ cdef class Array:
             )
 
             if np.isscalar(value):
+
+                # fill chunk with scalar value
                 chunk[chunk_selection] = value
 
             else:
+                # assume value is array-like
 
                 # determine index within value
                 value_selection = tuple(
@@ -480,3 +490,18 @@ cdef class Array:
 
                 # set data in chunk
                 chunk[chunk_selection] = value[value_selection]
+
+    def __repr__(self):
+        r = '%s.%s(' % (type(self).__module__, type(self).__name__)
+        r += '%s' % str(self.shape)
+        r += ', %s' % str(self.dtype)
+        r += ', chunks=%s' % str(self.chunks)
+        r += ', nbytes=%s' % _util.human_readable_size(self.nbytes)
+        r += ', cbytes=%s' % _util.human_readable_size(self.cbytes)
+        if self.cbytes > 0:
+            r += ', cratio=%.1f' % (self.nbytes / self.cbytes)
+        r += ', cname=%s' % str(self.cname, 'ascii')
+        r += ', clevel=%s' % self.clevel
+        r += ', shuffle=%s' % self.shuffle
+        r += ')'
+        return r

@@ -3,17 +3,17 @@ from __future__ import absolute_import, print_function, division
 
 
 from nose.tools import eq_ as eq, assert_raises
-import zarr
 from zarr.ext import get_cparams
+from zarr import defaults
 
 
 def test_get_cparams():
 
     # defaults
     cname, clevel, shuffle = get_cparams()
-    eq(zarr.defaults.cname, cname)
-    eq(zarr.defaults.clevel, clevel)
-    eq(zarr.defaults.shuffle, shuffle)
+    eq(defaults.cname, cname)
+    eq(defaults.clevel, clevel)
+    eq(defaults.shuffle, shuffle)
 
     # valid
     cname, clevel, shuffle = get_cparams('zlib', 1, 2)

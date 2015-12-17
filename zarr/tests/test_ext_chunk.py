@@ -5,20 +5,21 @@ from __future__ import absolute_import, print_function, division
 from nose.tools import eq_ as eq
 import numpy as np
 from numpy.testing import assert_array_equal
-import zarr
+from zarr.ext import Chunk
+from zarr import defaults
 
 
 def _test_create_chunk_default(a):
-    c = zarr.Chunk(a.shape, a.dtype)
+    c = Chunk(a.shape, a.dtype)
     c[:] = a
 
     # check properties
     eq(a.shape, c.shape)
     eq(a.dtype, c.dtype)
     eq(a.nbytes, c.nbytes)
-    eq(zarr.defaults.cname, c.cname)
-    eq(zarr.defaults.clevel, c.clevel)
-    eq(zarr.defaults.shuffle, c.shuffle)
+    eq(defaults.cname, c.cname)
+    eq(defaults.clevel, c.clevel)
+    eq(defaults.shuffle, c.shuffle)
 
     # check compression is sane
     assert c.cbytes < c.nbytes
@@ -30,7 +31,7 @@ def _test_create_chunk_default(a):
 
 
 def _test_create_chunk_cparams(a, cname, clevel, shuffle):
-    c = zarr.Chunk(a.shape, a.dtype, cname, clevel, shuffle)
+    c = Chunk(a.shape, a.dtype, cname, clevel, shuffle)
     c[:] = a
 
     # check properties
@@ -85,7 +86,7 @@ def test_create_chunk_fill_value():
     for shape in 100, (100, 100):
 
         # default dtype and fill_value
-        c = zarr.Chunk(shape)
+        c = Chunk(shape)
         a = c[:]
         e = np.empty(shape)
         eq(e.shape, a.shape)
@@ -94,7 +95,7 @@ def test_create_chunk_fill_value():
         # specified dtype and fill_value
         for dtype in 'i4', 'f8':
             for fill_value in 1, -1:
-                c = zarr.Chunk(shape, dtype=dtype, fill_value=fill_value)
+                c = Chunk(shape, dtype=dtype, fill_value=fill_value)
                 e = np.empty(shape, dtype=dtype)
                 e.fill(fill_value)
                 assert_array_equal(e, c[:])

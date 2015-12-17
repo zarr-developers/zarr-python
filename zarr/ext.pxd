@@ -24,3 +24,5 @@ cdef class Array:
     cdef public tuple chunks
     cdef public dtype dtype
     cdef public ndarray cdata
+    cdef public object fill_value
+    cdef public bint synchronized
