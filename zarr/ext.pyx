@@ -253,7 +253,7 @@ class Synchronized(object):
     def __getitem__(self, item):
         with self.lock:
             return self.inner.__getitem__(item)
-            
+
     def __setitem__(self, key, value):
         with self.lock:
             self.inner.__setitem__(key, value)

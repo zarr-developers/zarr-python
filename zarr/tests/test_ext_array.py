@@ -115,10 +115,22 @@ def test_array_2d():
     assert_array_equal(a[:10], z[:10])
     assert_array_equal(a[10:20], z[10:20])
     assert_array_equal(a[-10:], z[-10:])
+    assert_array_equal(a[:, :2], z[:, :2])
+    assert_array_equal(a[:, 2:4], z[:, 2:4])
+    assert_array_equal(a[:, -2:], z[:, -2:])
+    assert_array_equal(a[:10, :2], z[:10, :2])
+    assert_array_equal(a[10:20, 2:4], z[10:20, 2:4])
+    assert_array_equal(a[-10:, -2:], z[-10:, -2:])
     # ...across chunk boundaries...
     assert_array_equal(a[:110], z[:110])
     assert_array_equal(a[190:310], z[190:310])
     assert_array_equal(a[-110:], z[-110:])
+    assert_array_equal(a[:, :3], z[:, :3])
+    assert_array_equal(a[:, 3:7], z[:, 3:7])
+    assert_array_equal(a[:, -3:], z[:, -3:])
+    assert_array_equal(a[:110, :3], z[:110, :3])
+    assert_array_equal(a[190:310, 3:7], z[190:310, 3:7])
+    assert_array_equal(a[-110:, -3:], z[-110:, -3:])
 
     # check partial assignment
     b = np.arange(10000, 20000).reshape((1000, 10))
