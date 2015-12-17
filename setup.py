@@ -37,7 +37,7 @@ ext_modules = cythonize([
 
 setup(
     name='zarr',
-    description='TODO',
+    description='A minimal implementation of chunked, compressed, N-dimensional arrays',
     long_description='TODO',
     use_scm_version={
         'version_scheme': 'guess-next-dev',
