@@ -10,7 +10,33 @@ import zarr.ext as _ext
 
 def empty(shape, chunks, dtype=None, cname=None, clevel=None, shuffle=None,
           synchronized=True):
-    """TODO"""
+    """Create an empty array.
+
+    Parameters
+    ----------
+    shape : int or tuple of ints
+        Array shape.
+    chunks : int or tuple of ints
+        Chunk shape.
+    dtype : string or dtype, optional
+        NumPy dtype.
+    cname : string, optional
+        Name of compression library to use, e.g., 'blosclz', 'lz4', 'zlib',
+        'snappy'.
+    clevel : int, optional
+        Compression level, 0 means no compression.
+    shuffle : int, optional
+        Shuffle filter, 0 means no shuffle, 1 means byte shuffle, 2 means
+        bit shuffle.
+    synchronized : bool, optional
+        If True, each chunk will be protected with a lock to prevent data
+        collision during write operations.
+
+    Returns
+    -------
+    z : zarr.ext.Array
+
+    """
 
     return _ext.Array(shape, chunks=chunks, dtype=dtype, cname=cname,
                       clevel=clevel, shuffle=shuffle,
@@ -19,7 +45,33 @@ def empty(shape, chunks, dtype=None, cname=None, clevel=None, shuffle=None,
 
 def zeros(shape, chunks, dtype=None, cname=None, clevel=None, shuffle=None,
           synchronized=True):
-    """TODO"""
+    """Create an array filled with zeros.
+
+    Parameters
+    ----------
+    shape : int or tuple of ints
+        Array shape.
+    chunks : int or tuple of ints
+        Chunk shape.
+    dtype : string or dtype, optional
+        NumPy dtype.
+    cname : string, optional
+        Name of compression library to use, e.g., 'blosclz', 'lz4', 'zlib',
+        'snappy'.
+    clevel : int, optional
+        Compression level, 0 means no compression.
+    shuffle : int, optional
+        Shuffle filter, 0 means no shuffle, 1 means byte shuffle, 2 means
+        bit shuffle.
+    synchronized : bool, optional
+        If True, each chunk will be protected with a lock to prevent data
+        collision during write operations.
+
+    Returns
+    -------
+    z : zarr.ext.Array
+
+    """
 
     return _ext.Array(shape, chunks=chunks, dtype=dtype, cname=cname,
                       clevel=clevel, shuffle=shuffle, fill_value=0,
@@ -27,8 +79,35 @@ def zeros(shape, chunks, dtype=None, cname=None, clevel=None, shuffle=None,
 
 
 def ones(shape, chunks, dtype=None, cname=None, clevel=None, shuffle=None,
-          synchronized=True):
-    """TODO"""
+         synchronized=True):
+    """Create an array filled with ones.
+
+    Parameters
+    ----------
+    shape : int or tuple of ints
+        Array shape.
+    chunks : int or tuple of ints
+        Chunk shape.
+    dtype : string or dtype, optional
+        NumPy dtype.
+    cname : string, optional
+        Name of compression library to use, e.g., 'blosclz', 'lz4', 'zlib',
+        'snappy'.
+    clevel : int, optional
+        Compression level, 0 means no compression.
+    shuffle : int, optional
+        Shuffle filter, 0 means no shuffle, 1 means byte shuffle, 2 means
+        bit shuffle.
+    synchronized : bool, optional
+        If True, each chunk will be protected with a lock to prevent data
+        collision during write operations.
+
+    Returns
+    -------
+    z : zarr.ext.Array
+
+    """
+
 
     return _ext.Array(shape, chunks=chunks, dtype=dtype, cname=cname,
                       clevel=clevel, shuffle=shuffle, fill_value=1,
@@ -37,7 +116,35 @@ def ones(shape, chunks, dtype=None, cname=None, clevel=None, shuffle=None,
 
 def full(shape, chunks, fill_value, dtype=None, cname=None, clevel=None,
          shuffle=None, synchronized=True):
-    """TODO"""
+    """Create an array filled with `fill_value`.
+
+    Parameters
+    ----------
+    shape : int or tuple of ints
+        Array shape.
+    chunks : int or tuple of ints
+        Chunk shape.
+    fill_value : object
+        Default value to use for uninitialised portions of the array.
+    dtype : string or dtype, optional
+        NumPy dtype.
+    cname : string, optional
+        Name of compression library to use, e.g., 'blosclz', 'lz4', 'zlib',
+        'snappy'.
+    clevel : int, optional
+        Compression level, 0 means no compression.
+    shuffle : int, optional
+        Shuffle filter, 0 means no shuffle, 1 means byte shuffle, 2 means
+        bit shuffle.
+    synchronized : bool, optional
+        If True, each chunk will be protected with a lock to prevent data
+        collision during write operations.
+
+    Returns
+    -------
+    z : zarr.ext.Array
+
+    """
 
     return _ext.Array(shape, chunks=chunks, dtype=dtype, cname=cname,
                       clevel=clevel, shuffle=shuffle, fill_value=fill_value,
@@ -46,7 +153,33 @@ def full(shape, chunks, fill_value, dtype=None, cname=None, clevel=None,
 
 def array(data, chunks=None, dtype=None, cname=None, clevel=None,
           shuffle=None, synchronized=True, fill_value=None):
-    """TODO"""
+    """Create an array filled with `data`.
+
+    Parameters
+    ----------
+    data : array_like
+        Data to store.
+    chunks : int or tuple of ints
+        Chunk shape.
+    dtype : string or dtype, optional
+        NumPy dtype.
+    cname : string, optional
+        Name of compression library to use, e.g., 'blosclz', 'lz4', 'zlib',
+        'snappy'.
+    clevel : int, optional
+        Compression level, 0 means no compression.
+    shuffle : int, optional
+        Shuffle filter, 0 means no shuffle, 1 means byte shuffle, 2 means
+        bit shuffle.
+    synchronized : bool, optional
+        If True, each chunk will be protected with a lock to prevent data
+        collision during write operations.
+
+    Returns
+    -------
+    z : zarr.ext.Array
+
+    """
 
     # ensure data is array-like
     if not hasattr(data, 'shape') or not hasattr(data, 'dtype'):

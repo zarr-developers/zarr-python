@@ -82,7 +82,7 @@ over data. Try it with [dask.array](http://dask.pydata.org/en/latest/array.html)
 of the same size or larger than chunks. It is not and will never be 
 optimised for single item access. 
 
-Chunks sizes > 1M are generally good. Optimal chunk shape will depend on 
+Chunks sizes >= 1M are generally good. Optimal chunk shape will depend on 
 the correlation structure in your data.
 
 ## Acknowledgments

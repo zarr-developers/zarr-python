@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+# cython: embedsignature=True
+# cython: profile=True
 from __future__ import absolute_import, print_function, division
 from threading import RLock
 import itertools
@@ -48,6 +50,8 @@ from zarr import defaults
 
 
 def blosc_version():
+    """Return the version of c-blosc that zarr was compiled with."""
+
     # all the 'decode' contorsions are for Python 3 returning actual strings
     ver_str = <char *> BLOSC_VERSION_STRING
     if hasattr(ver_str, "decode"):
@@ -59,6 +63,23 @@ def blosc_version():
 
 
 def get_cparams(cname=None, clevel=None, shuffle=None):
+    """Convenience function to normalise compression parameters.
+
+    If any values are None, they will be substituted with values from the
+    `zarr.defaults` module.
+
+    Parameters
+    ----------
+    cname : string, optional
+        Name of compression library to use, e.g., 'blosclz', 'lz4', 'zlib',
+        'snappy'.
+    clevel : int, optional
+        Compression level, 0 means no compression.
+    shuffle : int, optional
+        Shuffle filter, 0 means no shuffle, 1 means byte shuffle, 2 means
+        bit shuffle.
+
+    """
 
     # determine compressor
     cname = cname if cname is not None else defaults.cname
@@ -84,6 +105,10 @@ def get_cparams(cname=None, clevel=None, shuffle=None):
 
 
 def is_total_slice(item, shape):
+    """Determine whether `item` specifies a complete slice of array with the
+    given `shape`. Used to optimise __setitem__ operations on the Chunk
+    class."""
+
     if item == Ellipsis:
         return True
     if item == slice(None):
@@ -104,11 +129,7 @@ cdef class Chunk:
                   shuffle=None, fill_value=None):
 
         # set shape and dtype
-        if isinstance(shape, int):
-            shape = (shape,)
-        else:
-            shape = tuple(shape)
-        self.shape = shape
+        self.shape = normalise_shape(shape)
         self.dtype = np.dtype(dtype)
 
         # set compression options
@@ -139,7 +160,6 @@ cdef class Chunk:
 
             else:
                 # ensure array is C contiguous
-                # TODO adapt to either C or F layout
                 array = np.ascontiguousarray(value, dtype=self.dtype)
                 if array.shape != self.shape:
                     raise ValueError('bad value shape')
@@ -161,7 +181,7 @@ cdef class Chunk:
             size_t nbytes, nbytes_check, cbytes, blocksize, itemsize
             char *dest
 
-        # ensure any existing data is cleared
+        # ensure any existing data is cleared and memory freed
         self.clear()
 
         # compute the total number of bytes in the array
@@ -204,7 +224,7 @@ cdef class Chunk:
         array = np.empty(self.shape, dtype=self.dtype)
 
         if self.data == NULL:
-            # data not initialised
+            # data not initialised, use fill_value
             if self.fill_value is not None:
                 array.fill(self.fill_value)
 
@@ -263,6 +283,8 @@ class Synchronized(object):
 
 
 def normalise_array_selection(item, shape):
+    """Convenience function to normalise a selection within an array with
+    the given `shape`."""
 
     # normalise item
     if isinstance(item, int):
@@ -290,6 +312,9 @@ def normalise_array_selection(item, shape):
 
 
 def normalise_axis_selection(item, l):
+    """Convenience function to normalise a selection within a single axis
+    of size `l`."""
+
     if isinstance(item, int):
         if item < 0:
             # handle wraparound
@@ -300,7 +325,7 @@ def normalise_axis_selection(item, l):
 
     elif isinstance(item, slice):
         if item.step is not None and item.step != 1:
-            raise NotImplementedError('TODO')
+            raise NotImplementedError('slice with step not supported')
         start = 0 if item.start is None else item.start
         stop = l if item.stop is None else item.stop
         if start < 0:
@@ -318,12 +343,15 @@ def normalise_axis_selection(item, l):
 
 
 def get_chunk_range(selection, chunks):
+    """Convenience function to get a range over all chunk indices,
+    for iterating over chunks."""
     chunk_range = [range(start//l, int(np.ceil(stop/l)))
                    for (start, stop), l in zip(selection, chunks)]
     return chunk_range
 
 
 def normalise_shape(shape):
+    """Convenience function to normalise the `shape` argument."""
     if isinstance(shape, int):
         shape = (shape,)
     else:
@@ -332,11 +360,14 @@ def normalise_shape(shape):
 
 
 def normalise_chunks(chunks, shape):
+    """Convenience function to normalise the `chunks` argument for an array
+    with the given `shape`."""
     if isinstance(chunks, int):
         chunks = (chunks,)
     else:
         chunks = tuple(chunks)
     if len(chunks) < len(shape):
+        # assume chunks across remaining dimensions
         chunks += shape[len(chunks):]
     if len(chunks) != len(shape):
         raise ValueError('chunks and shape not compatible: %r, %r' %

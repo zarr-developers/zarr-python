@@ -34,11 +34,16 @@ ext_modules = cythonize([
               ),
 ])
 
+description = 'A minimal implementation of chunked, compressed, ' \
+              'N-dimensional arrays for Python.'
+
+with open('README.md') as f:
+    long_description = f.read()
 
 setup(
     name='zarr',
-    description='A minimal implementation of chunked, compressed, N-dimensional arrays',
-    long_description='TODO',
+    description=description,
+    long_description=long_description,
     use_scm_version={
         'version_scheme': 'guess-next-dev',
         'local_scheme': 'dirty-tag',
