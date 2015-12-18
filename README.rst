@@ -82,7 +82,7 @@ Resize the array and add more data::
     zarr.ext.Array((20000, 1000), int32, chunks=(1000, 100), cname='blosclz', clevel=5, shuffle=1)
       nbytes: 76.3M; cbytes: 4.0M; ratio: 19.3
 
-For convenience, an `append` method is also available, which can be used to
+For convenience, an ``append()`` method is also available, which can be used to
 append data to any axis::
 
     >>> a = np.arange(10000000, dtype='i4').reshape(10000, 1000)
