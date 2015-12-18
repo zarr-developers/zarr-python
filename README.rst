@@ -41,7 +41,8 @@ Fill it with some data::
 
     >>> z[:] = np.arange(10000000, dtype='i4').reshape(10000, 1000)
     >>> z
-    zarr.ext.Array((10000, 1000), int32, chunks=(1000, 100), nbytes=38.1M, cbytes=2.0M, cratio=19.3, cname=blosclz, clevel=5, shuffle=1)
+    zarr.ext.Array((10000, 1000), int32, chunks=(1000, 100), cname='blosclz', clevel=5, shuffle=1)
+      nbytes: 38.1M; cbytes: 2.0M; ratio: 19.3
 
 Obtain a NumPy array::
 
@@ -58,10 +59,12 @@ Resize the array and add more data::
 
     >>> z.resize(20000, 1000)
     >>> z
-    zarr.ext.Array((20000, 1000), int32, chunks=(1000, 100), nbytes=76.3M, cbytes=2.0M, cratio=38.5, cname=blosclz, clevel=5, shuffle=1)
+    zarr.ext.Array((20000, 1000), int32, chunks=(1000, 100), cname='blosclz', clevel=5, shuffle=1)
+      nbytes: 76.3M; cbytes: 2.0M; ratio: 38.5
     >>> z[10000:, :] = np.arange(10000000, dtype='i4').reshape(10000, 1000)
     >>> z
-    zarr.ext.Array((20000, 1000), int32, chunks=(1000, 100), nbytes=76.3M, cbytes=4.0M, cratio=19.3, cname=blosclz, clevel=5, shuffle=1)
+    zarr.ext.Array((20000, 1000), int32, chunks=(1000, 100), cname='blosclz', clevel=5, shuffle=1)
+      nbytes: 76.3M; cbytes: 4.0M; ratio: 19.3
 
 For convenience, an `append` method is also available, which can be used to
 append data to any axis:
@@ -69,13 +72,16 @@ append data to any axis:
     >>> a = np.arange(10000000, dtype='i4').reshape(10000, 1000)
     >>> z = zarr.array(a, chunks=(1000, 100))
     >>> z
-    zarr.ext.Array((10000, 1000), int32, chunks=(1000, 100), nbytes=38.1M, cbytes=2.0M, cratio=19.3, cname=blosclz, clevel=5, shuffle=1)
+    zarr.ext.Array((10000, 1000), int32, chunks=(1000, 100), cname='blosclz', clevel=5, shuffle=1)
+      nbytes: 38.1M; cbytes: 2.0M; ratio: 19.3
     >>> z.append(a+a)
     >>> z
-    zarr.ext.Array((20000, 1000), int32, chunks=(1000, 100), nbytes=76.3M, cbytes=3.6M, cratio=21.2, cname=blosclz, clevel=5, shuffle=1)
+    zarr.ext.Array((20000, 1000), int32, chunks=(1000, 100), cname='blosclz', clevel=5, shuffle=1)
+      nbytes: 76.3M; cbytes: 3.6M; ratio: 21.2
     >>> z.append(np.vstack([a, a]), axis=1)
     >>> z
-    zarr.ext.Array((20000, 2000), int32, chunks=(1000, 100), nbytes=152.6M, cbytes=7.6M, cratio=20.2, cname=blosclz, clevel=5, shuffle=1)
+    zarr.ext.Array((20000, 2000), int32, chunks=(1000, 100), cname='blosclz', clevel=5, shuffle=1)
+      nbytes: 152.6M; cbytes: 7.6M; ratio: 20.2
 
 Tuning
 ------
