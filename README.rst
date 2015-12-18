@@ -4,10 +4,20 @@ zarr
 A minimal implementation of chunked, compressed, N-dimensional arrays for 
 Python.
 
+* Source code: https://github.com/alimanfoo/zarr
+* Download: https://pypi.python.org/pypi/zarr
+
 Installation
 ------------
 
-Install from GitHub (requires NumPy and Cython pre-installed)::
+Installation currently requires NumPy and Cython pre-installed. Currently
+only compatible with Python >= 3.4.
+
+Install from PyPI::
+
+    $ pip install -U zarr
+
+Install from GitHub::
 
     $ pip install -U git+https://github.com/alimanfoo/zarr.git@master
 
