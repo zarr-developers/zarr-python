@@ -26,17 +26,17 @@ define_macros += [('CYTHON_TRACE', 1)]
 
 
 extra_compile_args = []
-if re.match("i.86|x86|AMD", platform.machine()) is not None:
+if re.match('i.86|x86|AMD', platform.machine()) is not None:
     # always enable SSE2 for AMD/Intel machines
     extra_compile_args.append('-DSHUFFLE_SSE2_ENABLED')
 
 is_32bit = ctypes.sizeof(ctypes.c_voidp) == 4
 if is_32bit:
     if os.name == 'posix':
-        extra_compile_args.append("-msse2")
+        extra_compile_args.append('-msse2')
     elif os.name == 'nt':
         # this is currently broken for windows
-        extra_compile_args.append("/arch:sse2")
+        extra_compile_args.append('/arch:sse2')
 
 
 import numpy as np
@@ -56,7 +56,7 @@ ext_modules = cythonize([
 description = 'A minimal implementation of chunked, compressed, ' \
               'N-dimensional arrays for Python.'
 
-with open('README.md') as f:
+with open('README.rst') as f:
     long_description = f.read()
 
 setup(
@@ -75,6 +75,8 @@ setup(
         'setuptools-scm>1.5.4'
     ],
     ext_modules=ext_modules,
+    package_dir={'': '.'},
+    packages=['zarr', 'zarr.tests'],
     classifiers=[
         'Development Status :: 2 - Pre-Alpha',
         'Intended Audience :: Developers',
