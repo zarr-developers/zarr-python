@@ -1,62 +1,53 @@
 from numpy cimport ndarray, dtype
 
 
-cdef class Chunk:
-    cdef char *data
-    cdef public object fill_value
-    cdef public size_t nbytes, cbytes, blocksize
-    cdef public char *cname
-    cdef public int clevel
-    cdef public int shuffle
-    cdef public tuple shape
-    cdef public dtype dtype
+cdef class AbstractChunk:
+    cdef object _fill_value
+    cdef char *_cname
+    cdef int _clevel
+    cdef int _shuffle
+    cdef tuple _shape
+    cdef dtype _dtype
+    cdef void get(self, ndarray array)
+    cdef void put(self, ndarray array)
+    # these methods to be overridden in sub-classes
+    cdef tuple retrieve(self)
+    cdef void store(self, char *data, size_t nbytes, size_t cbytes)
+    cdef void clear(self)
+
+
+cdef class Chunk(AbstractChunk):
+    cdef size_t _nbytes, _cbytes
+    cdef char *_data
     cdef free(self)
-    cdef clear(self)
-    cdef compress(self, ndarray array)
-    cdef decompress(self, char *dest)
-
-
-# TODO remove code duplication with Chunk class
-cdef class PersistentChunk:
-    cdef public object path
-    cdef public object fill_value
-    cdef public char *cname
-    cdef public int clevel
-    cdef public int shuffle
-    cdef public tuple shape
-    cdef public dtype dtype
-    cdef read_header(self)
-    cdef read(self)
-    cdef write(self, bytes data)
-    cdef compress(self, ndarray array)
-    cdef decompress(self, char *dest)
 
 
 cdef class SynchronizedChunk(Chunk):
-    cdef object lock
+    cdef object _lock
 
 
-cdef class Array:
-    cdef public bytes cname
-    cdef public int clevel
-    cdef public int shuffle
-    cdef public tuple shape
-    cdef public tuple chunks
-    cdef public dtype dtype
-    cdef public ndarray cdata
-    cdef public object fill_value
-    cdef public bint synchronized
+cdef class PersistentChunk(AbstractChunk):
+    cdef object _path
+    cdef read_header(self)
+    cdef read(self)
+    cdef write(self, bytes data)
 
 
-# TODO remove code duplication with Array class
-cdef class PersistentArray:
-    cdef public bytes cname
-    cdef public int clevel
-    cdef public int shuffle
-    cdef public tuple shape
-    cdef public tuple chunks
-    cdef public dtype dtype
-    cdef public object mode
-    cdef public ndarray cdata
-    cdef public object fill_value
-    cdef public bint synchronized
+cdef class AbstractArray:
+    cdef bytes _cname
+    cdef int _clevel
+    cdef int _shuffle
+    cdef tuple _shape
+    cdef tuple _chunks
+    cdef dtype _dtype
+    cdef ndarray _cdata
+    cdef object _fill_value
+
+
+cdef class Array(AbstractArray):
+    pass
+
+
+cdef class PersistentArray(AbstractArray):
+    cdef object _mode
+    cdef object _path
