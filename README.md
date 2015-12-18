@@ -18,8 +18,10 @@ Highly experimental, pre-alpha. Bug reports and pull requests very welcome.
 ## Design goals
 
 * Chunking in multiple dimensions
+* Resize any dimension
 * Concurrent reads
 * Concurrent writes
+* Release the GIL during compression and decompression
 
 ## Usage
 
@@ -41,7 +43,7 @@ zarr.ext.Array((10000, 1000), int32, chunks=(1000, 100), nbytes=38.1M, cbytes=0,
 Fill it with some data:
 
 ```python
->>> z[:] = np.arange(10000000, dtype='i4').reshape((10000, 1000))
+>>> z[:] = np.arange(10000000, dtype='i4').reshape(10000, 1000)
 >>> z
 zarr.ext.Array((10000, 1000), int32, chunks=(1000, 100), nbytes=38.1M, cbytes=2.0M, cratio=19.3, cname=blosclz, clevel=5, shuffle=1)
 
@@ -73,6 +75,23 @@ zarr.ext.Array((20000, 1000), int32, chunks=(1000, 100), nbytes=76.3M, cbytes=4.
 
 ```
 
+For convenience, an `append` method is available, which can be used to 
+append data to any axis:
+
+```python
+>>> a = np.arange(10000000, dtype='i4').reshape(10000, 1000)
+>>> z = zarr.array(a, chunks=(1000, 100))
+>>> z
+zarr.ext.Array((10000, 1000), int32, chunks=(1000, 100), nbytes=38.1M, cbytes=2.0M, cratio=19.3, cname=blosclz, clevel=5, shuffle=1)
+>>> z.append(a+a)
+>>> z
+zarr.ext.Array((20000, 1000), int32, chunks=(1000, 100), nbytes=76.3M, cbytes=3.6M, cratio=21.2, cname=blosclz, clevel=5, shuffle=1)
+>>> z.append(np.vstack([a, a]), axis=1)
+>>> z
+zarr.ext.Array((20000, 2000), int32, chunks=(1000, 100), nbytes=152.6M, cbytes=7.6M, cratio=20.2, cname=blosclz, clevel=5, shuffle=1)
+
+```
+
 ## Tuning
 
 ``zarr`` is designed for use in parallel computations working chunk-wise 
@@ -88,5 +107,5 @@ the correlation structure in your data.
 ## Acknowledgments
 
 ``zarr`` uses [c-blosc](https://github.com/Blosc/c-blosc) internally for 
-compression and decompression, and borrows code heavily from 
+compression and decompression and borrows code heavily from 
 [bcolz](http://bcolz.blosc.org/).
