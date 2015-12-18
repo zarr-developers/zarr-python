@@ -147,12 +147,15 @@ def test_array_2d():
 
 def test_resize_1d():
 
-    z = Array(105, chunks=10, dtype='i4')
+    z = Array(105, chunks=10, dtype='i4', fill_value=0)
+    a = np.arange(105, dtype='i4')
+    z[:] = a
     eq((105,), z.shape)
     eq((105,), z[:].shape)
     eq(np.dtype('i4'), z.dtype)
     eq(np.dtype('i4'), z[:].dtype)
     eq((10,), z.chunks)
+    assert_array_equal(a, z[:])
 
     z.resize(205)
     eq((205,), z.shape)
@@ -160,6 +163,8 @@ def test_resize_1d():
     eq(np.dtype('i4'), z.dtype)
     eq(np.dtype('i4'), z[:].dtype)
     eq((10,), z.chunks)
+    assert_array_equal(a, z[:105])
+    assert_array_equal(np.zeros(100, dtype='i4'), z[105:])
 
     z.resize(55)
     eq((55,), z.shape)
@@ -167,16 +172,20 @@ def test_resize_1d():
     eq(np.dtype('i4'), z.dtype)
     eq(np.dtype('i4'), z[:].dtype)
     eq((10,), z.chunks)
+    assert_array_equal(a[:55], z[:55])
 
 
 def test_resize_2d():
 
-    z = Array((105, 105), chunks=(10, 10), dtype='i4')
+    z = Array((105, 105), chunks=(10, 10), dtype='i4', fill_value=0)
+    a = np.arange(105*105, dtype='i4').reshape((105, 105))
+    z[:] = a
     eq((105, 105), z.shape)
     eq((105, 105), z[:].shape)
     eq(np.dtype('i4'), z.dtype)
     eq(np.dtype('i4'), z[:].dtype)
     eq((10, 10), z.chunks)
+    assert_array_equal(a, z[:])
 
     z.resize((205, 205))
     eq((205, 205), z.shape)
@@ -184,6 +193,9 @@ def test_resize_2d():
     eq(np.dtype('i4'), z.dtype)
     eq(np.dtype('i4'), z[:].dtype)
     eq((10, 10), z.chunks)
+    assert_array_equal(a, z[:105, :105])
+    assert_array_equal(np.zeros((100, 205), dtype='i4'), z[105:, :])
+    assert_array_equal(np.zeros((205, 100), dtype='i4'), z[:, 105:])
 
     z.resize((55, 55))
     eq((55, 55), z.shape)
@@ -191,6 +203,7 @@ def test_resize_2d():
     eq(np.dtype('i4'), z.dtype)
     eq(np.dtype('i4'), z[:].dtype)
     eq((10, 10), z.chunks)
+    assert_array_equal(a[:55, :55], z[:])
 
     z.resize((55, 1))
     eq((55, 1), z.shape)
@@ -198,6 +211,7 @@ def test_resize_2d():
     eq(np.dtype('i4'), z.dtype)
     eq(np.dtype('i4'), z[:].dtype)
     eq((10, 10), z.chunks)
+    assert_array_equal(a[:55, :1], z[:])
 
 
 def test_append_1d():
@@ -232,6 +246,25 @@ def test_append_2d():
     b = np.arange(105*105, 2*105*105, dtype='i4').reshape((105, 105))
     e = np.append(a, b, axis=0)
     z.append(b)
+    eq(e.shape, z.shape)
+    eq(e.dtype, z.dtype)
+    eq((10, 10), z.chunks)
+    assert_array_equal(e, z[:])
+
+
+def test_append_2d_axis():
+
+    a = np.arange(105*105, dtype='i4').reshape((105, 105))
+    z = Array(a.shape, chunks=(10, 10), dtype=a.dtype)
+    z[:] = a
+    eq(a.shape, z.shape)
+    eq(a.dtype, z.dtype)
+    eq((10, 10), z.chunks)
+    assert_array_equal(a, z[:])
+
+    b = np.arange(105*105, 2*105*105, dtype='i4').reshape((105, 105))
+    e = np.append(a, b, axis=1)
+    z.append(b, axis=1)
     eq(e.shape, z.shape)
     eq(e.dtype, z.dtype)
     eq((10, 10), z.chunks)

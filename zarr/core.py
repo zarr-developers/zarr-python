@@ -45,7 +45,8 @@ def empty(shape, chunks, dtype=None, cname=None, clevel=None, shuffle=None,
 
 def zeros(shape, chunks, dtype=None, cname=None, clevel=None, shuffle=None,
           synchronized=True):
-    """Create an array filled with zeros.
+    """Create an array, with zero being used as the default value for
+    uninitialised portions of the array.
 
     Parameters
     ----------
@@ -80,7 +81,8 @@ def zeros(shape, chunks, dtype=None, cname=None, clevel=None, shuffle=None,
 
 def ones(shape, chunks, dtype=None, cname=None, clevel=None, shuffle=None,
          synchronized=True):
-    """Create an array filled with ones.
+    """Create an array, with one being used as the default value for
+    uninitialised portions of the array.
 
     Parameters
     ----------
@@ -116,7 +118,8 @@ def ones(shape, chunks, dtype=None, cname=None, clevel=None, shuffle=None,
 
 def full(shape, chunks, fill_value, dtype=None, cname=None, clevel=None,
          shuffle=None, synchronized=True):
-    """Create an array filled with `fill_value`.
+    """Create an array, with `fill_value` being used as the default value for
+    uninitialised portions of the array.
 
     Parameters
     ----------
@@ -174,6 +177,8 @@ def array(data, chunks=None, dtype=None, cname=None, clevel=None,
     synchronized : bool, optional
         If True, each chunk will be protected with a lock to prevent data
         collision during write operations.
+    fill_value : object
+        Default value to use for uninitialised portions of the array.
 
     Returns
     -------
