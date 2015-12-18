@@ -16,6 +16,10 @@ cdef class Chunk:
     cdef decompress(self, char *dest)
 
 
+cdef class SynchronizedChunk(Chunk):
+    cdef object lock
+
+
 cdef class Array:
     cdef public bytes cname
     cdef public int clevel

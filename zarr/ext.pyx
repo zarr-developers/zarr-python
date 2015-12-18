@@ -106,7 +106,7 @@ def get_cparams(cname=None, clevel=None, shuffle=None):
     return cname, clevel, shuffle
 
 
-def is_total_slice(item, shape):
+cdef is_total_slice(item, tuple shape):
     """Determine whether `item` specifies a complete slice of array with the
     given `shape`. Used to optimise __setitem__ operations on the Chunk
     class."""
@@ -124,11 +124,63 @@ def is_total_slice(item, shape):
     return False
 
 
+def chunk_setitem(Chunk self, key, value):
+    """Chunk.__setitem__ broken out as separate function to enable line
+    profiling."""
+
+    if is_total_slice(key, self.shape):
+        # completely replace the contents of this chunk
+
+        if np.isscalar(value):
+            array = np.empty(self.shape, dtype=self.dtype)
+            array.fill(value)
+
+        else:
+            # ensure array is C contiguous
+            array = np.ascontiguousarray(value, dtype=self.dtype)
+            if array.shape != self.shape:
+                raise ValueError('bad value shape')
+
+    else:
+        # partially replace the contents of this chunk
+
+        # decompress existing data
+        array = self[:]
+
+        # modify
+        array[key] = value
+
+    # compress the data and store
+    self.compress(array)
+
+
+def chunk_getitem(Chunk self, item):
+    """Chunk.__getitem__ broken out as separate function to enable line
+    profiling."""
+
+    cdef:
+        ndarray array
+
+    # setup output array
+    array = np.empty(self.shape, dtype=self.dtype)
+
+    if self.data == NULL:
+        # data not initialised, use fill_value
+        if self.fill_value is not None:
+            array.fill(self.fill_value)
+
+    else:
+        # data initialised, decompress into array
+        self.decompress(array.data)
+
+    return array[item]
+
+
 # noinspection PyAttributeOutsideInit
 cdef class Chunk:
 
     def __cinit__(self, shape, dtype=None, cname=None, clevel=None,
-                  shuffle=None, fill_value=None):
+                  shuffle=None, fill_value=None, **kwargs):
 
         # set shape and dtype
         self.shape = normalise_shape(shape)
@@ -152,31 +204,7 @@ cdef class Chunk:
             return self.data != NULL
 
     def __setitem__(self, key, value):
-
-        if is_total_slice(key, self.shape):
-            # completely replace the contents of this chunk
-
-            if np.isscalar(value):
-                array = np.empty(self.shape, dtype=self.dtype)
-                array.fill(value)
-
-            else:
-                # ensure array is C contiguous
-                array = np.ascontiguousarray(value, dtype=self.dtype)
-                if array.shape != self.shape:
-                    raise ValueError('bad value shape')
-
-        else:
-            # partially replace the contents of this chunk
-
-            # decompress existing data
-            array = self[:]
-
-            # modify
-            array[key] = value
-
-        # compress the data and store
-        self.compress(array)
+        chunk_setitem(self, key, value)
 
     cdef compress(self, ndarray array):
         cdef:
@@ -219,22 +247,7 @@ cdef class Chunk:
         self.blocksize = blocksize
 
     def __getitem__(self, item):
-        cdef:
-            ndarray array
-
-        # setup output array
-        array = np.empty(self.shape, dtype=self.dtype)
-
-        if self.data == NULL:
-            # data not initialised, use fill_value
-            if self.fill_value is not None:
-                array.fill(self.fill_value)
-
-        else:
-            # data initialised, decompress into array
-            self.decompress(array.data)
-
-        return array[item]
+        return chunk_getitem(self, item)
 
     def __array__(self):
         return self[:]
@@ -266,25 +279,17 @@ cdef class Chunk:
         self.free()
 
 
-class Synchronized(object):
+cdef class SynchronizedChunk(Chunk):
 
-    def __init__(self, inner):
-        self.inner = inner
+    def __cinit__(self, *args, **kargs):
         self.lock = RLock()
-
-    def __getitem__(self, item):
-        with self.lock:
-            return self.inner.__getitem__(item)
 
     def __setitem__(self, key, value):
         with self.lock:
-            self.inner.__setitem__(key, value)
-
-    def __getattr__(self, item):
-        return getattr(self.inner, item)
+            super(SynchronizedChunk, self).__setitem__(key, value)
 
 
-def normalise_array_selection(item, shape):
+cdef normalise_array_selection(item, shape):
     """Convenience function to normalise a selection within an array with
     the given `shape`."""
 
@@ -313,7 +318,7 @@ def normalise_array_selection(item, shape):
         raise ValueError('expected indices or slice, found: %r' % item)
 
 
-def normalise_axis_selection(item, l):
+cdef normalise_axis_selection(item, l):
     """Convenience function to normalise a selection within a single axis
     of size `l`."""
 
@@ -344,7 +349,7 @@ def normalise_axis_selection(item, l):
         raise ValueError('expected integer or slice, found: %r' % item)
 
 
-def get_chunk_range(selection, chunks):
+cdef get_chunk_range(tuple selection, tuple chunks):
     """Convenience function to get a range over all chunk indices,
     for iterating over chunks."""
     chunk_range = [range(start//l, int(np.ceil(stop/l)))
@@ -352,7 +357,7 @@ def get_chunk_range(selection, chunks):
     return chunk_range
 
 
-def normalise_shape(shape):
+cdef normalise_shape(shape):
     """Convenience function to normalise the `shape` argument."""
     if isinstance(shape, int):
         shape = (shape,)
@@ -361,7 +366,7 @@ def normalise_shape(shape):
     return shape
 
 
-def normalise_chunks(chunks, shape):
+cdef normalise_chunks(chunks, tuple shape):
     """Convenience function to normalise the `chunks` argument for an array
     with the given `shape`."""
     if isinstance(chunks, int):
@@ -383,6 +388,9 @@ def array_getitem(Array self, item):
     """Array.__getitem__ broken out as separate function to enable line
     profiling."""
 
+    cdef ndarray dest
+    cdef Chunk chunk
+
     # normalise selection
     selection = normalise_array_selection(item, self.shape)
 
@@ -398,32 +406,85 @@ def array_getitem(Array self, item):
     # iterate over chunks in range
     for cidx in itertools.product(*chunk_range):
 
+        # access current chunk
+        chunk = self.cdata[cidx]
+
+        # determine chunk offset
+        offset = [i * c for i, c in zip(cidx, self.chunks)]
+
+        # determine index range within output array
+        out_selection = tuple(
+            slice(max(0, o - start), min(o + c - start, stop - start))
+            for (start, stop), o, c, in zip(selection, offset, self.chunks)
+        )
+
+        # determine required index range within chunk
+        chunk_selection = tuple(
+            slice(max(0, start - o), min(c, stop - o))
+            for (start, stop), o, c in zip(selection, offset, self.chunks)
+        )
+
+        # obtain the destination array as a view of the output array
+        dest = out[out_selection]
+
+        if chunk.is_initialised and \
+                is_total_slice(chunk_selection, chunk.shape) and \
+                dest.flags.c_contiguous:
+
+            # optimisation, destination is C contiguous so we can decompress
+            # directly from the chunk into the output array
+            chunk.decompress(dest.data)
+
+        else:
+
+            # set data in output array
+            tmp = chunk[chunk_selection]
+            dest[:] = tmp
+
+    return out
+
+
+def array_setitem(Array self, key, value):
+    """Array.__setitem__ broken out as separate function to enable line
+    profiling."""
+
+    # normalise selection
+    selection = normalise_array_selection(key, self.shape)
+
+    # determine indices of overlapping chunks
+    chunk_range = get_chunk_range(selection, self.chunks)
+
+    # iterate over chunks in range
+    for cidx in itertools.product(*chunk_range):
+
+        # current chunk
+        chunk = self.cdata[cidx]
+
         # determine chunk offset
         offset = [i * c for i, c in zip(cidx, self.chunks)]
 
         # determine required index range within chunk
-        chunk_selection = [
+        chunk_selection = tuple(
             slice(max(0, start - o), min(c, stop - o))
             for (start, stop), o, c in zip(selection, offset, self.chunks)
-        ]
+        )
 
-        # determine index range within output array
-        out_selection = [
-            slice(max(0, o - start), min(o + c - start, stop - start))
-            for (start, stop), o, c, in zip(selection, offset, self.chunks)
-        ]
+        if np.isscalar(value):
 
-        # obtain data from chunk
-        chunk = self.cdata[cidx]
-        tmp = chunk[tuple(chunk_selection)]
+            # fill chunk with scalar value
+            chunk[chunk_selection] = value
 
-        # set data in output array
-        # N.B., this additional step costs ~30%, but may be possible in some
-        # circumstances at least to read directly into `out`, if the selection
-        # produces a C contiguous array?
-        out[tuple(out_selection)] = tmp
+        else:
+            # assume value is array-like
 
-    return out
+            # determine index within value
+            value_selection = tuple(
+                slice(max(0, o - start), min(o + c - start, stop - start))
+                for (start, stop), o, c, in zip(selection, offset, self.chunks)
+            )
+
+            # set data in chunk
+            chunk[chunk_selection] = value[value_selection]
 
 
 # noinspection PyAttributeOutsideInit
@@ -465,8 +526,7 @@ cdef class Array:
 
         # determine function for instantiating chunks
         if self.synchronized:
-            def create_chunk(*args, **kwargs):
-                return Synchronized(Chunk(*args, **kwargs))
+            create_chunk = SynchronizedChunk
         else:
             create_chunk = Chunk
 
@@ -505,44 +565,7 @@ cdef class Array:
         return self[:]
 
     def __setitem__(self, key, value):
-
-        # normalise selection
-        selection = normalise_array_selection(key, self.shape)
-
-        # determine indices of overlapping chunks
-        chunk_range = get_chunk_range(selection, self.chunks)
-
-        # iterate over chunks in range
-        for cidx in itertools.product(*chunk_range):
-
-            # current chunk
-            chunk = self.cdata[cidx]
-
-            # determine chunk offset
-            offset = [i * c for i, c in zip(cidx, self.chunks)]
-
-            # determine required index range within chunk
-            chunk_selection = tuple(
-                slice(max(0, start - o), min(c, stop - o))
-                for (start, stop), o, c in zip(selection, offset, self.chunks)
-            )
-
-            if np.isscalar(value):
-
-                # fill chunk with scalar value
-                chunk[chunk_selection] = value
-
-            else:
-                # assume value is array-like
-
-                # determine index within value
-                value_selection = tuple(
-                    slice(max(0, o - start), min(o + c - start, stop - start))
-                    for (start, stop), o, c, in zip(selection, offset, self.chunks)
-                )
-
-                # set data in chunk
-                chunk[chunk_selection] = value[value_selection]
+        array_setitem(self, key, value)
 
     def __repr__(self):
         r = '%s.%s(' % (type(self).__module__, type(self).__name__)
@@ -560,6 +583,7 @@ cdef class Array:
         return r
 
     def resize(self, *args):
+        """TODO"""
 
         # normalise new shape argument
         if len(args) == 1:
@@ -589,8 +613,7 @@ cdef class Array:
 
         # determine function for instantiating chunks
         if self.synchronized:
-            def create_chunk(*args, **kwargs):
-                return Synchronized(Chunk(*args, **kwargs))
+            create_chunk = SynchronizedChunk
         else:
             create_chunk = Chunk
 
@@ -604,6 +627,7 @@ cdef class Array:
                            for c in self.cdata.flat]
 
     def append(self, data):
+        """TODO"""
 
         # ensure data is array-like
         if not hasattr(data, 'shape') or not hasattr(data, 'dtype'):
