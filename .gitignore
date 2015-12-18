@@ -64,3 +64,6 @@ zarr/*.c
 
 # setuptools-scm
 zarr/version.py
+
+# test data
+*.zarr
