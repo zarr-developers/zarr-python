@@ -69,13 +69,13 @@ Resize the array and add more data:
 >>> z.resize(20000, 1000)
 >>> z
 zarr.ext.Array((20000, 1000), int32, chunks=(1000, 100), nbytes=76.3M, cbytes=2.0M, cratio=38.5, cname=blosclz, clevel=5, shuffle=1)
->>> z[10000:, :] = np.arange(10000000, dtype='i4').reshape((10000, 1000))
+>>> z[10000:, :] = np.arange(10000000, dtype='i4').reshape(10000, 1000)
 >>> z
 zarr.ext.Array((20000, 1000), int32, chunks=(1000, 100), nbytes=76.3M, cbytes=4.0M, cratio=19.3, cname=blosclz, clevel=5, shuffle=1)
 
 ```
 
-For convenience, an `append` method is available, which can be used to 
+For convenience, an `append` method is also available, which can be used to 
 append data to any axis:
 
 ```python
