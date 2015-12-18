@@ -104,7 +104,7 @@ Tuning
 
 ``zarr`` is designed for use in parallel computations working chunk-wise 
 over data. Try it with `dask.array
-<http://dask.pydata.org/en/latest/array.html>`_).
+<http://dask.pydata.org/en/latest/array.html>`_.
 
 ``zarr`` is optimised for accessing and storing data in contiguous slices, 
 of the same size or larger than chunks. It is not and will never be 
