@@ -572,14 +572,14 @@ cdef class Array:
         r += '%s' % str(self.shape)
         r += ', %s' % str(self.dtype)
         r += ', chunks=%s' % str(self.chunks)
-        r += ', nbytes=%s' % _util.human_readable_size(self.nbytes)
-        r += ', cbytes=%s' % _util.human_readable_size(self.cbytes)
-        if self.cbytes > 0:
-            r += ', cratio=%.1f' % (self.nbytes / self.cbytes)
-        r += ', cname=%s' % str(self.cname, 'ascii')
+        r += ', cname=%r' % str(self.cname, 'ascii')
         r += ', clevel=%s' % self.clevel
         r += ', shuffle=%s' % self.shuffle
         r += ')'
+        r += '\n  nbytes: %s' % _util.human_readable_size(self.nbytes)
+        r += '; cbytes: %s' % _util.human_readable_size(self.cbytes)
+        if self.cbytes > 0:
+            r += '; ratio: %.1f' % (self.nbytes / self.cbytes)
         return r
 
     def resize(self, *args):

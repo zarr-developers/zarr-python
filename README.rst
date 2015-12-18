@@ -34,7 +34,8 @@ Create an array::
     >>> import zarr
     >>> z = zarr.empty((10000, 1000), dtype='i4', chunks=(1000, 100))
     >>> z
-    zarr.ext.Array((10000, 1000), int32, chunks=(1000, 100), nbytes=38.1M, cbytes=0, cname=blosclz, clevel=5, shuffle=1)
+    zarr.ext.Array((10000, 1000), int32, chunks=(1000, 100), cname='blosclz', clevel=5, shuffle=1)
+      nbytes: 38.1M; cbytes: 0
 
 Fill it with some data::
 
@@ -80,7 +81,8 @@ Tuning
 ------
 
 ``zarr`` is designed for use in parallel computations working chunk-wise 
-over data. Try it with [dask.array](http://dask.pydata.org/en/latest/array.html).
+over data. Try it with `dask.array <http://dask.pydata.org/en/latest/array>`_
+.html).
 
 ``zarr`` is optimised for accessing and storing data in contiguous slices, 
 of the same size or larger than chunks. It is not and will never be 
@@ -92,6 +94,6 @@ the correlation structure in your data.
 Acknowledgments
 ---------------
 
-``zarr`` uses [c-blosc](https://github.com/Blosc/c-blosc) internally for 
+``zarr`` uses `c-blosc <https://github.com/Blosc/c-blosc>`_ internally for
 compression and decompression and borrows code heavily from 
-[bcolz](http://bcolz.blosc.org/).
+`bcolz <http://bcolz.blosc.org/>`_.
