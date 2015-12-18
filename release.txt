@@ -4,6 +4,6 @@ git tag -a v$version -m v$version
 git push --tags
 python setup.py build_ext --inplace
 nosetests -v
-python -m doctest README.md
+python -m doctest README.rst -o NORMALIZE_WHITESPACE
 python setup.py register sdist
 twine upload dist/zarr-${version}.tar.gz
