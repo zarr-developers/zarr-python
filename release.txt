@@ -1,0 +1,7 @@
+python setup.py build_ext --inplace
+nosetests -v
+python -m doctest README.md
+version=`tail -n1 zarr/version.py | sed -e "s/.*version[ ]=[ ]'\(.*\)'/\1/"`
+echo $version
+python setup.py register sdist
+twine upload dist/zarr-${version}.tar.gz
