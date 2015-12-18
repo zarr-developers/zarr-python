@@ -75,4 +75,23 @@ setup(
         'setuptools-scm>1.5.4'
     ],
     ext_modules=ext_modules,
+    classifiers=[
+        'Development Status :: 2 - Pre-Alpha',
+        'Intended Audience :: Developers',
+        'Intended Audience :: Information Technology',
+        'Intended Audience :: Science/Research',
+        'License :: OSI Approved :: MIT License',
+        'Programming Language :: Python',
+        'Topic :: Software Development :: Libraries :: Python Modules',
+        'Operating System :: Unix',
+        'Programming Language :: Python :: 3',
+        'Programming Language :: Python :: 3.4',
+        'Programming Language :: Python :: 3.5',
+    ],
+    author='Alistair Miles',
+    author_email='alimanfoo@googlemail.com',
+    maintainer='Alistair Miles',
+    maintainer_email='alimanfoo@googlemail.com',
+    url='https://github.com/alimanfoo/zarr',
+    license='MIT',
 )
