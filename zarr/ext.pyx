@@ -289,7 +289,7 @@ cdef class SynchronizedChunk(Chunk):
             super(SynchronizedChunk, self).__setitem__(key, value)
 
 
-cdef normalise_array_selection(item, shape):
+def normalise_array_selection(item, shape):
     """Convenience function to normalise a selection within an array with
     the given `shape`."""
 
@@ -318,7 +318,7 @@ cdef normalise_array_selection(item, shape):
         raise ValueError('expected indices or slice, found: %r' % item)
 
 
-cdef normalise_axis_selection(item, l):
+def normalise_axis_selection(item, l):
     """Convenience function to normalise a selection within a single axis
     of size `l`."""
 
@@ -349,7 +349,7 @@ cdef normalise_axis_selection(item, l):
         raise ValueError('expected integer or slice, found: %r' % item)
 
 
-cdef get_chunk_range(tuple selection, tuple chunks):
+def get_chunk_range(tuple selection, tuple chunks):
     """Convenience function to get a range over all chunk indices,
     for iterating over chunks."""
     chunk_range = [range(start//l, int(np.ceil(stop/l)))
@@ -357,22 +357,22 @@ cdef get_chunk_range(tuple selection, tuple chunks):
     return chunk_range
 
 
-cdef normalise_shape(shape):
+def normalise_shape(shape):
     """Convenience function to normalise the `shape` argument."""
-    if isinstance(shape, int):
-        shape = (shape,)
-    else:
-        shape = tuple(shape)
+    try:
+        shape = tuple(int(s) for s in shape)
+    except TypeError:
+        shape = (int(shape),)
     return shape
 
 
-cdef normalise_chunks(chunks, tuple shape):
+def normalise_chunks(chunks, tuple shape):
     """Convenience function to normalise the `chunks` argument for an array
     with the given `shape`."""
-    if isinstance(chunks, int):
-        chunks = (chunks,)
-    else:
-        chunks = tuple(chunks)
+    try:
+        chunks = tuple(int(c) for c in chunks)
+    except TypeError:
+        chunks = (int(chunks),)
     if len(chunks) < len(shape):
         # assume chunks across remaining dimensions
         chunks += shape[len(chunks):]
