@@ -1,0 +1,2 @@
+recursive-include c-blosc *
+recursive-include zarr *.pyx
