@@ -22,6 +22,8 @@ def test_array_1d():
     eq(defaults.cname, z.cname)
     eq(defaults.clevel, z.clevel)
     eq(defaults.shuffle, z.shuffle)
+    eq(a.nbytes, z.nbytes)
+    eq(0, z.cbytes)
 
     # set data
     z[:] = a

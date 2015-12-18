@@ -1143,6 +1143,7 @@ cdef class PersistentArray:
             self.dtype = np.dtype(dtype)
             self.cname, self.clevel, self.shuffle = \
                 get_cparams(cname, clevel, shuffle)
+            self.fill_value = fill_value
             metadata = {'shape': self.shape,
                         'chunks': self.chunks,
                         'dtype': self.dtype,
