@@ -8,18 +8,20 @@ cdef class AbstractChunk:
     cdef int _shuffle
     cdef tuple _shape
     cdef dtype _dtype
-    cdef void get(self, ndarray array)
-    cdef void put(self, ndarray array)
-    # these methods to be overridden in sub-classes
-    cdef tuple retrieve(self)
-    cdef void store(self, char *data, size_t nbytes, size_t cbytes)
-    cdef void clear(self)
+    cdef size_t _size
+    cdef size_t _itemsize
+    cdef size_t _nbytes
+    # override in sub-classes
+    cdef void get(self, char *dest)
+    cdef void put(self, char *source)
 
 
 cdef class Chunk(AbstractChunk):
-    cdef size_t _nbytes, _cbytes
     cdef char *_data
-    cdef free(self)
+    cdef size_t _nbytes
+    cdef size_t _blocksize
+    cdef void clear(self)
+    cdef void free(self)
 
 
 cdef class SynchronizedChunk(Chunk):
@@ -28,20 +30,31 @@ cdef class SynchronizedChunk(Chunk):
 
 cdef class PersistentChunk(AbstractChunk):
     cdef object _path
-    cdef read_header(self)
-    cdef read(self)
-    cdef write(self, bytes data)
+    cdef dict read_header(self)
+    cdef bytes read(self)
+    cdef void write(self, bytes data)
+
+
+cdef class SynchronizedPersistentChunk(PersistentChunk):
+    # TODO
+    pass
 
 
 cdef class AbstractArray:
-    cdef bytes _cname
-    cdef int _clevel
-    cdef int _shuffle
     cdef tuple _shape
     cdef tuple _chunks
     cdef dtype _dtype
-    cdef ndarray _cdata
+    cdef size_t _size
+    cdef size_t _itemsize
+    cdef size_t _nbytes
+    cdef bytes _cname
+    cdef int _clevel
+    cdef int _shuffle
     cdef object _fill_value
+    # override in sub-classes
+    cdef void init_chunks(self)
+    cdef AbstractChunk create_chunk(self, tuple cidx)
+    cdef AbstractChunk get_chunk(self, tuple cidx)
 
 
 cdef class Array(AbstractArray):
