@@ -510,13 +510,24 @@ cdef class PersistentChunk(BaseChunk):
             raise RuntimeError('error during blosc compression: %d' % ret)
 
     cdef void write(self, bytes data):
+
         # N.B., write to a temporary file then move into place to avoid data
-        # corruption due to errors during write leaving partially written files
-        tmp = tempfile.mktemp(suffix='.partial', prefix=self._basename + '.',
-                              dir=self._dirname)
-        with open(tmp, 'wb') as f:
+        # corruption that could happen if errors during write leave partially
+        # written files
+
+        temp_path = None
+
+        # write to temporary file
+        with tempfile.NamedTemporaryFile(mode='wb', delete=False,
+                                         dir=self._dirname,
+                                         prefix=self._basename + '.',
+                                         suffix='.partial') as f:
             f.write(data)
-        os.replace(tmp, self._path)
+            temp_path = f.name
+
+        # move temporary file into place
+        if temp_path is not None:
+            os.replace(temp_path, self._path)
 
     cdef void put(self, char *source):
         cdef:
