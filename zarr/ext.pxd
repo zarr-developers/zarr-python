@@ -11,15 +11,14 @@ cdef class BaseChunk:
     cdef size_t _size
     cdef size_t _itemsize
     cdef size_t _nbytes
-    # override in sub-classes
+    # abstract methods
     cdef void get(self, char *dest)
     cdef void put(self, char *source)
 
 
 cdef class Chunk(BaseChunk):
     cdef char *_data
-    cdef size_t _nbytes
-    cdef size_t _blocksize
+    cdef size_t _cbytes
     cdef void clear(self)
     cdef void free(self)
 
@@ -32,7 +31,7 @@ cdef class PersistentChunk(BaseChunk):
     cdef object _path
     cdef object _basename
     cdef object _dirname
-    cdef dict read_header(self)
+    cdef tuple read_header(self)
     cdef bytes read(self)
     cdef void write(self, bytes data)
 
@@ -53,16 +52,44 @@ cdef class BaseArray:
     cdef int _clevel
     cdef int _shuffle
     cdef object _fill_value
-    # override in sub-classes
-    cdef void init_chunks(self)
+    # abstract methods
     cdef BaseChunk create_chunk(self, tuple cidx)
     cdef BaseChunk get_chunk(self, tuple cidx)
 
 
 cdef class Array(BaseArray):
+    cdef ndarray _cdata
+
+
+cdef class SynchronizedArray(Array):
     pass
 
 
 cdef class PersistentArray(BaseArray):
     cdef object _mode
     cdef object _path
+
+
+cdef class SynchronizedPersistentArray(PersistentArray):
+    # TODO
+    pass
+
+
+cdef class LazyArray(BaseArray):
+    # TODO
+    pass
+
+
+cdef class LazyPersistentArray(BaseArray):
+    # TODO
+    pass
+
+
+cdef class SynchronizedLazyArray(BaseArray):
+    # TODO
+    pass
+
+
+cdef class SynchronizedLazyPersistentArray(BaseArray):
+    # TODO
+    pass

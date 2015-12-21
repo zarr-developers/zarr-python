@@ -29,12 +29,16 @@ from zarr import defaults
 ###############################################################################
 
 
+# noinspection PyUnresolvedReferences
 import numpy as np
 cimport numpy as np
+# noinspection PyUnresolvedReferences
 from numpy cimport ndarray, dtype
+# noinspection PyUnresolvedReferences
 from libc.stdint cimport uintptr_t
+# noinspection PyUnresolvedReferences
 from .definitions cimport (malloc, realloc, free, PyBytes_AsString,
-    PyBytes_FromStringAndSize)
+                           PyBytes_FromStringAndSize)
 
 
 ###############################################################################
@@ -181,8 +185,12 @@ def decode_uint32(bytes fourbyte):
     return struct.unpack('<I', fourbyte)[0]
 
 
-BloscHeader = namedtuple('BloscHeader', ['version', 'versionlz', 'flags',
-                                         'typesize', 'nbytes', 'blocksize',
+BloscHeader = namedtuple('BloscHeader', ['version',
+                                         'versionlz',
+                                         'flags',
+                                         'typesize',
+                                         'nbytes',
+                                         'blocksize',
                                          'cbytes'])
 
 
@@ -191,18 +199,18 @@ def decode_blosc_header(bytes b):
 
     Parameters
     ----------
-    buffer_ : string of bytes
+    b : string of bytes
         the compressed buffer
 
     Returns
     -------
-    settings : dict
-        a dict containing the settings from Blosc
+    settings : namedtuple
+        a named tuple containing the settings from Blosc
 
     Notes
     -----
 
-    The Blosc 1.1.3 header is 16 bytes as follows:
+    The Blosc header is 16 bytes as follows:
 
     |-0-|-1-|-2-|-3-|-4-|-5-|-6-|-7-|-8-|-9-|-A-|-B-|-C-|-D-|-E-|-F-|
       ^   ^   ^   ^ |     nbytes    |   blocksize   |    cbytes     |
@@ -214,11 +222,10 @@ def decode_blosc_header(bytes b):
 
     The first four are simply bytes, the last three are are each unsigned ints
     (uint32) each occupying 4 bytes. The header is always little-endian.
-    'cbytes' is the length of the buffer including header and nbytes is the
+    'cbytes' is the length of the buffer including header and 'nbytes' is the
     length of the data when uncompressed.
 
     """
-    debug('decode_blosc_header', len(b))
     header = BloscHeader(version=decode_byte(b[0]),
                          versionlz=decode_byte(b[1]),
                          flags=decode_byte(b[2]),
@@ -259,7 +266,7 @@ cdef class BaseChunk:
     property shape:
         def __get__(self):
             return self._shape
-    
+
     property dtype:
         def __get__(self):
             return self._dtype
@@ -312,32 +319,32 @@ cdef class BaseChunk:
 
     def __setitem__(self, key, value):
         cdef ndarray array
-        
+
         if is_total_slice(key, self._shape):
             # completely replace the contents of this chunk
-    
+
             if np.isscalar(value):
 
                 # setup array filled with value
                 array = np.empty(self._shape, dtype=self._dtype)
                 array.fill(value)
-    
+
             else:
 
                 # ensure array is C contiguous
                 array = np.ascontiguousarray(value, dtype=self._dtype)
-                if array.shape != self._shape:
+                if np.asarray(array).shape != self._shape:
                     raise ValueError('bad value shape')
-    
+
         else:
             # partially replace the contents of this chunk
-    
+
             # decompress existing data
             array = self[:]
-    
+
             # modify
             array[key] = value
-    
+
         # compress the data and store
         self.put(array.data)
 
@@ -354,11 +361,11 @@ cdef class BaseChunk:
             # override in sub-class
             raise NotImplementedError()
 
-    cdef get(self, char *dest):
+    cdef void get(self, char *dest):
         # override in sub-class
         raise NotImplementedError()
 
-    cdef put(self, char *source):
+    cdef void put(self, char *source):
         # override in sub-class
         raise NotImplementedError()
 
@@ -371,7 +378,6 @@ cdef class Chunk(BaseChunk):
 
         # initialise attributes
         self._data = NULL
-        self._nbytes = 0
         self._cbytes = 0
 
     property is_initialised:
@@ -382,7 +388,7 @@ cdef class Chunk(BaseChunk):
         def __get__(self):
             return self._cbytes
 
-    cdef get(self, char *dest):
+    cdef void get(self, char *dest):
         cdef int ret
 
         # do decompression
@@ -393,7 +399,7 @@ cdef class Chunk(BaseChunk):
         if ret <= 0:
             raise RuntimeError('error during blosc compression: %d' % ret)
 
-    cdef put(self, char *source):
+    cdef void put(self, char *source):
         cdef:
             size_t nbytes_check, cbytes, blocksize
             char *dest
@@ -407,8 +413,8 @@ cdef class Chunk(BaseChunk):
         # perform compression
         with nogil:
             cbytes = blosc_compress_ctx(self._clevel, self._shuffle,
-                                        self._itemsize, self._nbytes, 
-                                        source, dest, 
+                                        self._itemsize, self._nbytes,
+                                        source, dest,
                                         self._nbytes + BLOSC_MAX_OVERHEAD,
                                         self._cname, 0, 1)
 
@@ -425,20 +431,20 @@ cdef class Chunk(BaseChunk):
         self._cbytes = cbytes
         self._blocksize = blocksize
 
-    cdef free(self):
+    cdef void free(self):
         if self._data != NULL:
             free(self._data)
 
-    cdef clear(self):
+    cdef void clear(self):
         self.free()
         self._data = NULL
-        self._nbytes = 0
         self._cbytes = 0
 
     def __dealloc__(self):
         self.free()
 
 
+# noinspection PyAbstractClass
 cdef class SynchronizedChunk(Chunk):
 
     def __cinit__(self, **kargs):
@@ -461,8 +467,8 @@ cdef class PersistentChunk(BaseChunk):
     property is_initialised:
         def __get__(self):
             return os.path.exists(self._path)
-        
-    cdef dict read_header(self):
+
+    cdef tuple read_header(self):
         with open(self._path, 'rb') as f:
             header_raw = f.read(BLOSC_HEADER_LENGTH)
             header = decode_blosc_header(header_raw)
@@ -480,7 +486,7 @@ cdef class PersistentChunk(BaseChunk):
         with open(self._path, 'rb') as f:
             header_raw = f.read(BLOSC_HEADER_LENGTH)
             header = decode_blosc_header(header_raw)
-            # check nbytes consistency here
+            # check nbytes consistency
             if self._nbytes != header.nbytes:
                 raise RuntimeError('expected nbytes %s, found %s' %
                                    (self._nbytes, header.nbytes))
@@ -489,7 +495,7 @@ cdef class PersistentChunk(BaseChunk):
             data = f.read(header.cbytes)
             return data
 
-    cdef get(self, char *dest):
+    cdef void get(self, char *dest):
         cdef:
             int ret
             bytes data
@@ -506,8 +512,8 @@ cdef class PersistentChunk(BaseChunk):
         # handle errors
         if ret <= 0:
             raise RuntimeError('error during blosc compression: %d' % ret)
-    
-    cdef write(self, bytes data):
+
+    cdef void write(self, bytes data):
         # N.B., write to a temporary file then move into place to avoid data
         # corruption due to errors during write leaving partially written files
         tmp = tempfile.mktemp(suffix='.partial', prefix=self._basename + '.',
@@ -516,7 +522,7 @@ cdef class PersistentChunk(BaseChunk):
             f.write(data)
         os.replace(tmp, self._path)
 
-    cdef put(self, char *source):
+    cdef void put(self, char *source):
         cdef:
             size_t nbytes_check, cbytes, blocksize
             char *dest
@@ -527,8 +533,8 @@ cdef class PersistentChunk(BaseChunk):
 
         # perform compression
         with nogil:
-            cbytes = blosc_compress_ctx(self._clevel, self._shuffle, 
-                                        self._itemsize, self._nbytes, 
+            cbytes = blosc_compress_ctx(self._clevel, self._shuffle,
+                                        self._itemsize, self._nbytes,
                                         source, dest,
                                         self._nbytes + BLOSC_MAX_OVERHEAD,
                                         self._cname, 0, 1)
@@ -553,9 +559,10 @@ cdef class PersistentChunk(BaseChunk):
         self.write(data_bytes)
 
         # free memory
-        free(data)    
+        free(data)
 
 
+# noinspection PyAbstractClass
 cdef class SynchronizedPersistentChunk(PersistentChunk):
 
     def __cinit__(self, **kargs):
@@ -658,6 +665,33 @@ def normalise_chunks(chunks, tuple shape):
     return chunks
 
 
+METAPATH = '__zmeta__'
+DATAPATH = '__zdata__'
+DATASUFFIX = '.blosc'
+
+
+def read_array_metadata(path):
+
+    # check path exists
+    if not os.path.exists(path):
+        raise ValueError('path not found: %s' % path)
+
+    # check metadata file
+    meta_path = os.path.join(path, METAPATH)
+    if not os.path.exists(meta_path):
+        raise ValueError('array metadata not found: %s' % path)
+
+    with open(meta_path, 'rb') as f:
+        meta = pickle.load(f)
+        return meta
+
+
+def write_array_metadata(path, meta):
+    meta_path = os.path.join(path, METAPATH)
+    with open(meta_path, 'wb') as f:
+        pickle.dump(meta, f, protocol=0)
+
+
 ###############################################################################
 # ARRAY CLASSES                                                               #
 ###############################################################################
@@ -717,31 +751,10 @@ cdef class BaseArray:
         def __get__(self):
             return self._nbytes
 
-    property cbytes:
-        def __get__(self):
-            # override in sub-class
-            pass
-
-    property is_initialised:
-        def __get__(self):
-            # override in sub-class
-            pass
-
-    cdef void init_chunks(self):
-        # override in sub-class
-        pass
-
-    cdef BaseChunk create_chunk(self, tuple cidx):
-        # override in sub-class
-        pass
-
-    cdef BaseChunk get_chunk(self, tuple cidx):
-        # override in sub-class
-        pass
-
     def __getitem__(self, item):
         cdef ndarray dest
         cdef BaseChunk chunk
+        cdef tuple cidx
 
         # normalise selection
         selection = normalise_array_selection(item, self._shape)
@@ -764,13 +777,13 @@ cdef class BaseArray:
             # determine chunk offset
             offset = [i * c for i, c in zip(cidx, self._chunks)]
 
-            # determine index range within output array
+            # determine region within output array
             out_selection = tuple(
                 slice(max(0, o - start), min(o + c - start, stop - start))
                 for (start, stop), o, c, in zip(selection, offset, self._chunks)
             )
 
-            # determine required index range within chunk
+            # determine region within chunk
             chunk_selection = tuple(
                 slice(max(0, start - o), min(c, stop - o))
                 for (start, stop), o, c in zip(selection, offset, self._chunks)
@@ -843,20 +856,15 @@ cdef class BaseArray:
         r += '%s' % str(self._shape)
         r += ', %s' % str(self._dtype)
         r += ', chunks=%s' % str(self._chunks)
-        r += ', cname=%r' % str(self._cname, 'ascii')
-        r += ', clevel=%s' % self._clevel
-        r += ', shuffle=%s' % self._shuffle
         r += ')'
+        r += '\n cname: %r' % str(self._cname, 'ascii')
+        r += '; clevel: %s' % self._clevel
+        r += '; shuffle: %s' % self._shuffle
         r += '\n  nbytes: %s' % _util.human_readable_size(self.nbytes)
         r += '; cbytes: %s' % _util.human_readable_size(self.cbytes)
         if self.cbytes > 0:
             r += '; ratio: %.1f' % (self.nbytes / self.cbytes)
         return r
-
-    def resize(self, *args):
-        # override in sub-class
-        pass
-
 
     def append(self, data, axis=0):
         """Append `data` to `axis`.
@@ -906,51 +914,26 @@ cdef class BaseArray:
         )
         self[append_selection] = data
 
-
-# noinspection PyAttributeOutsideInit
-cdef class Array(BaseArray):
-    # TODO review me
-
-    def __cinit__(self, **kwargs):
-
-        # TODO initialise chunks
-
-        # determine the number and arrangement of chunks
-        cdata_shape = tuple(int(np.ceil(s / c))
-                            for s, c in zip(self._shape, self._chunks))
-
-        # initialise an object array to hold pointers to chunk objects
-        self.cdata = np.empty(cdata_shape, dtype=object)
-
-        # determine function for instantiating chunks
-        if self.synchronized:
-            create_chunk = SynchronizedChunk
-        else:
-            create_chunk = Chunk
-
-        # instantiate chunks
-        self.cdata.flat = [create_chunk(self._chunks, dtype=self._dtype,
-                                        cname=self._cname,
-                                        clevel=self._clevel,
-                                        shuffle=self._shuffle,
-                                        fill_value=self.fill_value)
-                           for _ in self.cdata.flat]
-
-        # N.B., in the current implementation, some chunks may overhang
-        # the edge of the array. This is handled during the __getitem__ and
-        # __setitem__ methods by setting appropriate slices on the chunks,
-        # however it may be wasteful depending on chunk shape and the
-        # relationship to array shape.
+    # abstract properties and methods follow
+    ########################################
 
     property cbytes:
         def __get__(self):
-            return sum(c.cbytes for c in self.cdata.flat)
+            # override in sub-class
+            raise NotImplementedError()
 
     property is_initialised:
         def __get__(self):
-            a = np.empty_like(self.cdata, dtype='b1')
-            a.flat = [c.is_initialised for c in self.cdata.flat]
-            return a
+            # override in sub-class
+            raise NotImplementedError()
+
+    cdef BaseChunk create_chunk(self, tuple cidx):
+        # override in sub-class
+        raise NotImplementedError()
+
+    cdef BaseChunk get_chunk(self, tuple cidx):
+        # override in sub-class
+        raise NotImplementedError()
 
     def resize(self, *args):
         """Resize the array by growing or shrinking one or more dimensions.
@@ -980,6 +963,52 @@ cdef class Array(BaseArray):
         shrinking then regrowing an array.
 
         """
+        # override in sub-class
+        raise NotImplementedError()
+
+
+# noinspection PyAttributeOutsideInit,PyAbstractClass
+cdef class Array(BaseArray):
+
+    def __cinit__(self, **kwargs):
+
+        # determine the number and arrangement of chunks
+        cdata_shape = tuple(int(np.ceil(s / c))
+                            for s, c in zip(self._shape, self._chunks))
+
+        # initialise an object array to hold pointers to chunk objects
+        self._cdata = np.empty(cdata_shape, dtype=object)
+
+        # instantiate chunks
+        self._cdata.flat = [self.create_chunk(None) for _ in self._cdata.flat]
+
+        # N.B., in the current implementation, some chunks may overhang
+        # the edge of the array. This is handled during the __getitem__ and
+        # __setitem__ methods by setting appropriate slices on the chunks,
+        # however it may be wasteful depending on chunk shape and the
+        # relationship to array shape.
+
+    property cbytes:
+        def __get__(self):
+            return sum(c.cbytes for c in self._cdata.flat)
+
+    property is_initialised:
+        def __get__(self):
+            a = np.empty_like(self._cdata, dtype='b1')
+            a.flat = [c.is_initialised for c in self._cdata.flat]
+            return a
+
+    cdef BaseChunk get_chunk(self, tuple cidx):
+        return self._cdata[cidx]
+
+    cdef BaseChunk create_chunk(self, tuple cidx):
+        # ignore chunk index here, not needed
+        return Chunk(self._chunks, dtype=self._dtype, cname=self._cname,
+                     clevel=self._clevel, shuffle=self._shuffle,
+                     fill_value=self._fill_value)
+
+    def resize(self, *args):
+        """TODO inherit docstring"""
 
         # normalise new shape argument
         if len(args) == 1:
@@ -998,7 +1027,7 @@ cdef class Array(BaseArray):
                           for s, n in zip(self._shape, new_shape))
 
         # work-around Cython problems with accessing .shape attribute as tuple
-        old_cdata = np.asarray(self.cdata)
+        old_cdata = np.asarray(self._cdata)
 
         # remember old cdata shape
         old_cdata_shape = old_cdata.shape
@@ -1016,213 +1045,208 @@ cdef class Array(BaseArray):
         )
         new_cdata[cdata_overlap] = old_cdata[cdata_overlap]
 
-        # determine function for instantiating chunks
-        if self.synchronized:
-            create_chunk = SynchronizedChunk
-        else:
-            create_chunk = Chunk
-
         # instantiate any new chunks as needed
-        new_cdata.flat = [create_chunk(self._chunks, dtype=self._dtype,
-                                       cname=self._cname,
-                                       clevel=self._clevel,
-                                       shuffle=self._shuffle,
-                                       fill_value=self.fill_value)
-                          if c is None else c
+        new_cdata.flat = [self.create_chunk(None) if c is None else c
                           for c in new_cdata.flat]
 
         # set new shape
         self._shape = new_shape
 
         # set new chunks
-        self.cdata = new_cdata
+        self._cdata = new_cdata
 
 
-def read_array_metadata(path):
+# noinspection PyAbstractClass
+cdef class SynchronizedArray(Array):
 
-    # check path exists
-    if not os.path.exists(path):
-        raise ValueError('path not found: %s' % path)
-
-    # check metadata file
-    meta_path = os.path.join(path, 'meta')
-    if not os.path.exists(meta_path):
-        raise ValueError('path does not contain an array: %s' % path)
-
-    with open(meta_path, 'rb') as f:
-        meta = pickle.load(f)
-        return meta
+    cdef BaseChunk create_chunk(self, tuple cidx):
+        # ignore chunk index here, not needed
+        return SynchronizedChunk(self._chunks, dtype=self._dtype,
+                                 cname=self._cname, clevel=self._clevel,
+                                 shuffle=self._shuffle,
+                                 fill_value=self._fill_value)
 
 
-def write_array_metadata(path, meta):
-    meta_path = os.path.join(path, 'meta')
-    with open(meta_path, 'wb') as f:
-        pickle.dump(meta, f, protocol=0)
+# noinspection PyAttributeOutsideInit
+cdef class PersistentArray(BaseArray):
 
+    def __cinit__(self, path=None, mode='a', **kwargs):
 
-# TODO remove code duplication with Array class
+        # use same mode semantics as h5py, although N.B., here `path` is a
+        # directory:
+        # r : readonly, must exist
+        # r+ : read/write, must exist
+        # w : create, delete if exists
+        # w- or x : create, fail if exists
+        # a : read/write if exists, create otherwise (default)
 
-
-def persistent_array_getitem(PersistentArray self, item):
-    """TODO refactor"""
-
-    cdef ndarray dest
-    cdef PersistentChunk chunk
-
-    # normalise selection
-    selection = normalise_array_selection(item, self._shape)
-
-    # determine output array shape
-    out_shape = tuple(stop - start for start, stop in selection)
-
-    # setup output array
-    out = np.empty(out_shape, dtype=self._dtype)
-
-    # determine indices of overlapping chunks
-    chunk_range = get_chunk_range(selection, self._chunks)
-
-    # iterate over chunks in range
-    for cidx in itertools.product(*chunk_range):
-
-        # access current chunk
-        chunk = self.cdata[cidx]
-
-        # determine chunk offset
-        offset = [i * c for i, c in zip(cidx, self._chunks)]
-
-        # determine index range within output array
-        out_selection = tuple(
-            slice(max(0, o - start), min(o + c - start, stop - start))
-            for (start, stop), o, c, in zip(selection, offset, self._chunks)
-        )
-
-        # determine required index range within chunk
-        chunk_selection = tuple(
-            slice(max(0, start - o), min(c, stop - o))
-            for (start, stop), o, c in zip(selection, offset, self._chunks)
-        )
-
-        # obtain the destination array as a view of the output array
-        dest = out[out_selection]
-
-        if chunk.is_initialised and \
-                is_total_slice(chunk_selection, chunk.shape) and \
-                dest.flags.c_contiguous:
-
-            # optimisation, destination is C contiguous so we can decompress
-            # directly from the chunk into the output array
-            chunk.get(dest.data)
-
-        else:
-
-            # set data in output array
-            tmp = chunk[chunk_selection]
-            dest[:] = tmp
-
-    return out
-
-
-cdef class PersistentArray:
-
-    def __cinit__(self, path, mode='r', shape=None, chunks=None, dtype=None,
-                  cname=None, clevel=None, shuffle=None, fill_value=None):
-
-        # TODO synchronization
-
-        if mode in 'ra':
-            metadata = read_array_metadata(path)
-            self._shape = metadata['shape']
-            self._dtype = metadata['dtype']
-            self._chunks = metadata['chunks']
-            self._cname = metadata['cname']
-            self._clevel = metadata['clevel']
-            self._shuffle = metadata['shuffle']
-            self.fill_value = metadata['fill_value']
+        if mode in ['r', 'r+']:
+            self._open(path)
 
         elif mode == 'w':
             if os.path.exists(path):
                 shutil.rmtree(path)
-            os.makedirs(os.path.join(path, 'data'))
-            self._shape = normalise_shape(shape)
-            self._chunks = normalise_chunks(chunks, self._shape)
-            self._dtype = np.dtype(dtype)
-            self._cname, self._clevel, self._shuffle = \
-                normalise_cparams(cname, clevel, shuffle)
-            self.fill_value = fill_value
-            metadata = {'shape': self._shape,
-                        'chunks': self._chunks,
-                        'dtype': self._dtype,
-                        'cname': self._cname,
-                        'clevel': self._clevel,
-                        'shuffle': self._shuffle,
-                        'fill_value': self.fill_value}
-            write_array_metadata(path, metadata)
+            self._create(path, **kwargs)
+
+        elif mode in ['w-', 'x']:
+            if os.path.exists(path):
+                raise ValueError('path exists: %s' % path)
+            self._create(path, **kwargs)
+
+        elif mode == 'a':
+            if os.path.exists(path):
+                self._open(path)
+            else:
+                self._create(path, **kwargs)
 
         else:
-            raise ValueError('unexpected mode: %r' % mode)
+            raise ValueError('bad mode: %r' % mode)
 
-        # set mode
-        self.mode = mode
+        self._path = path
+        self._mode = mode
 
         # determine the number and arrangement of chunks
         cdata_shape = tuple(int(np.ceil(s / c))
                             for s, c in zip(self._shape, self._chunks))
 
         # initialise an object array to hold pointers to chunk objects
-        self.cdata = np.empty(cdata_shape, dtype=object)
+        self._cdata = np.empty(cdata_shape, dtype=object)
 
         # instantiate chunks
         for cidx in itertools.product(*(range(n) for n in cdata_shape)):
-            chunk_fn = '.'.join(map(str, cidx)) + '.blosc'
-            chunk_path = os.path.join(path, 'data', chunk_fn)
-            self.cdata[cidx] = PersistentChunk(
-                chunk_path, self._chunks, dtype=self._dtype, cname=self._cname,
-                clevel=self._clevel, shuffle=self._shuffle,
-                fill_value=self.fill_value
-            )
+            self._cdata[cidx] = self.create_chunk(cidx)
 
-    property nbytes:
-        def __get__(self):
-            return self._dtype.itemsize * reduce(operator.mul, self._shape)
+    def _create(self, path, shape=None, chunks=None, dtype=None,
+               cname=None, clevel=None, shuffle=None, fill_value=None):
+        os.makedirs(os.path.join(path, DATAPATH))
+        self._shape = normalise_shape(shape)
+        self._chunks = normalise_chunks(chunks, self._shape)
+        self._dtype = np.dtype(dtype)
+        self._cname, self._clevel, self._shuffle = \
+            normalise_cparams(cname, clevel, shuffle)
+        self._fill_value = fill_value
+        metadata = {'shape': self._shape,
+                    'chunks': self._chunks,
+                    'dtype': self._dtype,
+                    'cname': self._cname,
+                    'clevel': self._clevel,
+                    'shuffle': self._shuffle,
+                    'fill_value': self._fill_value}
+        write_array_metadata(path, metadata)
+
+    def _open(self, path):
+        metadata = read_array_metadata(path)
+        self._shape = metadata['shape']
+        self._dtype = metadata['dtype']
+        self._chunks = metadata['chunks']
+        self._cname = metadata['cname']
+        self._clevel = metadata['clevel']
+        self._shuffle = metadata['shuffle']
+        self._fill_value = metadata['fill_value']
 
     property cbytes:
         def __get__(self):
-            return sum(c.cbytes for c in self.cdata.flat)
+            return sum(c.cbytes for c in self._cdata.flat)
 
     property is_initialised:
         def __get__(self):
-            a = np.empty_like(self.cdata, dtype='b1')
-            a.flat = [c.is_initialised for c in self.cdata.flat]
+            a = np.empty_like(self._cdata, dtype='b1')
+            a.flat = [c.is_initialised for c in self._cdata.flat]
             return a
 
-    def __getitem__(self, item):
-        return persistent_array_getitem(self, item)
+    cdef BaseChunk get_chunk(self, tuple cidx):
+        return self._cdata[cidx]
 
-    def __array__(self):
-        return self[:]
+    cdef BaseChunk create_chunk(self, tuple cidx):
+        chunk_filename = '.'.join(map(str, cidx)) + DATASUFFIX
+        chunk_path = os.path.join(self._path, DATAPATH, chunk_filename)
+        return PersistentChunk(chunk_path, self._chunks, dtype=self._dtype,
+                               cname=self._cname, clevel=self._clevel,
+                               shuffle=self._shuffle,
+                               fill_value=self._fill_value)
+
+    def resize(self, *args):
+        """TODO inherit docstring"""
+
+        # TODO remove code duplication with Array if possible
+
+        # normalise new shape argument
+        if len(args) == 1:
+            new_shape = args[0]
+        else:
+            new_shape = args
+        if isinstance(new_shape, int):
+            new_shape = (new_shape,)
+        else:
+            new_shape = tuple(new_shape)
+        if len(new_shape) != len(self._shape):
+            raise ValueError('new shape must have same number of dimensions')
+
+        # handle None in new_shape
+        new_shape = tuple(s if n is None else n
+                          for s, n in zip(self._shape, new_shape))
+
+        # work-around Cython problems with accessing .shape attribute as tuple
+        old_cdata = np.asarray(self._cdata)
+
+        # remember old cdata shape
+        old_cdata_shape = old_cdata.shape
+
+        # determine the new number and arrangement of chunks
+        new_cdata_shape = tuple(int(np.ceil(s / c))
+                                for s, c in zip(new_shape, self._chunks))
+
+        # setup new chunks array
+        new_cdata = np.empty(new_cdata_shape, dtype=object)
+
+        # copy across any chunks to be kept
+        cdata_overlap = tuple(
+            slice(min(o, n)) for o, n in zip(old_cdata_shape, new_cdata_shape)
+        )
+        new_cdata[cdata_overlap] = old_cdata[cdata_overlap]
+
+        # instantiate any new chunks as needed
+        for cidx in itertools.product(*(range(n) for n in new_cdata_shape)):
+            if new_cdata[cidx] is None:
+                new_cdata[cidx] = self.create_chunk(cidx)
+
+        # set new shape
+        self._shape = new_shape
+
+        # set new chunks
+        self._cdata = new_cdata
 
     def __setitem__(self, key, value):
-        if self.mode == 'r':
+        if self._mode == 'r':
             raise ValueError('array is read-only')
-        array_setitem(self, key, value)
+        super(PersistentArray, self).__setitem__(key, value)
 
     def __repr__(self):
-        # TODO more line breaks?
-        r = '%s.%s(' % (type(self).__module__, type(self).__name__)
-        r += '%s' % str(self._shape)
-        r += ', %s' % str(self._dtype)
-        r += ', path=%s' % self.path
-        r += ', mode=%r' % self.mode
-        r += ', chunks=%s' % str(self._chunks)
-        r += ', cname=%r' % str(self._cname, 'ascii')
-        r += ', clevel=%s' % self._clevel
-        r += ', shuffle=%s' % self._shuffle
-        r += ')'
-        r += '\n  nbytes: %s' % _util.human_readable_size(self.nbytes)
-        r += '; cbytes: %s' % _util.human_readable_size(self.cbytes)
-        if self.cbytes > 0:
-            r += '; ratio: %.1f' % (self.nbytes / self.cbytes)
+        r = super(PersistentArray, self).__repr__()
+        r += '\n  path: %s' % self._path
         return r
 
-    # TODO resize
-    # TODO append
+
+cdef class SynchronizedPersistentArray(PersistentArray):
+    # TODO
+    pass
+
+
+cdef class LazyArray(BaseArray):
+    # TODO
+    pass
+
+
+cdef class LazyPersistentArray(BaseArray):
+    # TODO
+    pass
+
+
+cdef class SynchronizedLazyArray(BaseArray):
+    # TODO
+    pass
+
+
+cdef class SynchronizedLazyPersistentArray(BaseArray):
+    # TODO
+    pass
