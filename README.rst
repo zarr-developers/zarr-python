@@ -121,7 +121,6 @@ append data to any axis::
 
 Create a persistent array (data saved to disk)::
 
-    >>> import tempfile
     >>> path = 'example.zarr'
     >>> z = zarr.open(path, shape=(10000, 1000), dtype='i4', chunks=(1000, 100))
     >>> z[:] = np.arange(10000000, dtype='i4').reshape(10000, 1000)
