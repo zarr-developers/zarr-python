@@ -24,7 +24,7 @@ Install from GitHub::
 Status
 ------
 
-Highly experimental, pre-alpha. Bug reports and pull requests welcome.
+Highly experimental, alpha. Bug reports and pull requests welcome.
 
 Design goals
 ------------

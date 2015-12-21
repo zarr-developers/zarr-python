@@ -34,7 +34,7 @@ def empty(shape, chunks, dtype=None, cname=None, clevel=None, shuffle=None,
 
     Returns
     -------
-    z : zarr.ext.Array
+    z : zarr Array
 
     """
 
@@ -73,7 +73,7 @@ def zeros(shape, chunks, dtype=None, cname=None, clevel=None, shuffle=None,
 
     Returns
     -------
-    z : zarr.ext.Array
+    z : zarr Array
 
     """
 
@@ -112,7 +112,7 @@ def ones(shape, chunks, dtype=None, cname=None, clevel=None, shuffle=None,
 
     Returns
     -------
-    z : zarr.ext.Array
+    z : zarr Array
 
     """
 
@@ -153,7 +153,7 @@ def full(shape, chunks, fill_value, dtype=None, cname=None, clevel=None,
 
     Returns
     -------
-    z : zarr.ext.Array
+    z : zarr Array
 
     """
 
@@ -193,7 +193,7 @@ def array(data, chunks=None, dtype=None, cname=None, clevel=None,
 
     Returns
     -------
-    z : zarr.ext.Array
+    z : zarr Array
 
     """
 
@@ -235,7 +235,39 @@ def array(data, chunks=None, dtype=None, cname=None, clevel=None,
 
 def open(path, mode='a', shape=None, chunks=None, dtype=None, cname=None,
          clevel=None, shuffle=None, fill_value=None):
-    """TODO"""
+    """Open a persistent array.
+
+    Parameters
+    ----------
+    path : string
+        Path to directory in which to store the array.
+    mode : {'r', 'r+', 'a', 'w', 'w-'}
+        Persistence mode: 'r' means readonly (must exist); 'r+' means
+        read/write (must exist); 'a' means read/write (create if doesn't
+        exist); 'w' means create (overwrite if exists); 'w-' means create
+        (fail if exists).
+    shape : int or tuple of ints
+        Array shape.
+    chunks : int or tuple of ints
+        Chunk shape.
+    dtype : string or dtype, optional
+        NumPy dtype.
+    cname : string, optional
+        Name of compression library to use, e.g., 'blosclz', 'lz4', 'zlib',
+        'snappy'.
+    clevel : int, optional
+        Compression level, 0 means no compression.
+    shuffle : int, optional
+        Shuffle filter, 0 means no shuffle, 1 means byte shuffle, 2 means
+        bit shuffle.
+    fill_value : object
+        Default value to use for uninitialised portions of the array.
+
+    Returns
+    -------
+    z : zarr Array
+
+    """
 
     # TODO synchronized option
 
