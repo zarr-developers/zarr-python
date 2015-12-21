@@ -53,7 +53,7 @@ def empty(shape, chunks, dtype=None, cname=None, clevel=None, shuffle=None,
         else:
             cls = _ext.Array
     return cls(shape=shape, chunks=chunks, dtype=dtype, cname=cname,
-               clevel=clevel, shuffle=shuffle)
+               clevel=clevel, shuffle=shuffle, fill_value=None)
 
 
 def zeros(shape, chunks, dtype=None, cname=None, clevel=None, shuffle=None,
@@ -287,7 +287,8 @@ def array(data, chunks=None, dtype=None, cname=None, clevel=None,
 
 # noinspection PyShadowingBuiltins
 def open(path, mode='a', shape=None, chunks=None, dtype=None, cname=None,
-         clevel=None, shuffle=None, fill_value=None, synchronized=True):
+         clevel=None, shuffle=None, fill_value=None, synchronized=True,
+         lazy=False):
     """Open a persistent array.
 
     Parameters
@@ -318,6 +319,10 @@ def open(path, mode='a', shape=None, chunks=None, dtype=None, cname=None,
     synchronized : bool, optional
         If True, each chunk will be protected with a lock to prevent data
         collision during write operations.
+    lazy : bool, optional
+        If True, an alternative array class is used which instantiates chunk
+        objects only on demand. This may reduce overhead when working with
+        small regions of very large arrays with a large number of chunks.
 
     Returns
     -------
@@ -325,12 +330,16 @@ def open(path, mode='a', shape=None, chunks=None, dtype=None, cname=None,
 
     """
 
-    # TODO lazy option
-    
     if synchronized:
-        cls = _ext.SynchronizedPersistentArray
+        if lazy:
+            cls = _ext.SynchronizedLazyPersistentArray
+        else:
+            cls = _ext.SynchronizedPersistentArray
     else:
-        cls = _ext.PersistentArray
+        if lazy:
+            cls = _ext.LazyPersistentArray
+        else:
+            cls = _ext.PersistentArray
     return cls(path=path, mode=mode, shape=shape, chunks=chunks, dtype=dtype,
                cname=cname, clevel=clevel, shuffle=shuffle,
                fill_value=fill_value)

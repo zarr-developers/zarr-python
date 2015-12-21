@@ -11,5 +11,7 @@ def human_readable_size(size):
         return "%.1fM" % (size / float(2**20))
     elif size < 2**40:
         return "%.1fG" % (size / float(2**30))
-    else:
+    elif size < 2**50:
         return "%.1fT" % (size / float(2**40))
+    else:
+        return "%.1fP" % (size / float(2**50))
