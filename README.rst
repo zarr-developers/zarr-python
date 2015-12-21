@@ -10,8 +10,8 @@ Python.
 Installation
 ------------
 
-Installation currently requires NumPy and Cython pre-installed. Currently
-only compatible with Python >= 3.4.
+Installation requires NumPy and Cython pre-installed. Currently only
+compatible with Python >= 3.4.
 
 Install from PyPI::
 
@@ -24,7 +24,10 @@ Install from GitHub::
 Status
 ------
 
-Experimental, alpha. Bug reports welcome.
+Experimental, proof-of-concept. This is alpha-quality software. Things may
+break, change or disappear without warning.
+
+Bug reports and suggestions welcome.
 
 Design goals
 ------------
