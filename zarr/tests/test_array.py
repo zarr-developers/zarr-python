@@ -11,7 +11,8 @@ from nose.tools import eq_ as eq, assert_false, assert_true, assert_raises
 import numpy as np
 from numpy.testing import assert_array_equal
 from zarr.ext import Array, SynchronizedArray, PersistentArray, \
-    SynchronizedPersistentArray, LazyArray, SynchronizedLazyArray
+    SynchronizedPersistentArray, LazyArray, SynchronizedLazyArray, \
+    LazyPersistentArray, SynchronizedLazyPersistentArray
 from zarr import defaults
 
 
@@ -327,6 +328,7 @@ class TestPersistentArray(TestCase, ArrayTests):
         eq(defaults.shuffle, z2.shuffle)
         eq(a.nbytes, z2.nbytes)
         eq(z.cbytes, z2.cbytes)
+        assert_array_equal(z.is_initialized, z2.is_initialized)
         assert_array_equal(a, z2[:])
 
         # check read-only
@@ -343,6 +345,7 @@ class TestPersistentArray(TestCase, ArrayTests):
         eq(defaults.shuffle, z3.shuffle)
         eq(a.nbytes, z3.nbytes)
         eq(z.cbytes, z3.cbytes)
+        assert_array_equal(z.is_initialized, z3.is_initialized)
         assert_array_equal(a, z3[:])
 
         # check can write
@@ -356,6 +359,9 @@ class TestPersistentArray(TestCase, ArrayTests):
         # open for writing (must not exist)
         with assert_raises(ValueError):
             self.create_array(path=path, mode='w-')
+            
+        # tidy up
+        shutil.rmtree(path)
 
     def test_persistence_1d(self):
         self._test_persistence(np.arange(1050), chunks=(100,))
@@ -364,6 +370,59 @@ class TestPersistentArray(TestCase, ArrayTests):
         a = np.arange(10000).reshape((1000, 10))
         chunks = (100, 2)
         self._test_persistence(a, chunks=chunks)
+        
+    def test_resize_persistence(self):
+
+        # setup path
+        path = tempfile.mktemp()
+        assert_false(os.path.exists(path))
+
+        # setup array
+        a = np.arange(1050, dtype='i4')
+        z = self.create_array(path=path, shape=a.shape,
+                              dtype=a.dtype, chunks=100,
+                              fill_value=0)
+        z[:] = a
+
+        # resize
+        z.resize(2100)
+        z[1050:] = a
+        
+        # re-open
+        z2 = self.create_array(path=path, mode='r')
+        
+        # check resize is persistent
+        eq((2100,), z2.shape)
+        eq(a.dtype, z2.dtype)
+        eq((100,), z2.chunks)
+        eq(defaults.cname, z2.cname)
+        eq(defaults.clevel, z2.clevel)
+        eq(defaults.shuffle, z2.shuffle)
+        eq(2 * a.nbytes,
+           z2.nbytes)
+        eq(z.cbytes, z2.cbytes)
+        assert_array_equal(a, z2[:1050])
+        assert_array_equal(a, z2[1050:])
+        
+        # resize again
+        z.resize(525)
+        
+        # re-open
+        z3 = self.create_array(path=path, mode='r')
+        
+        # check resize is persistent
+        eq((525,), z3.shape)
+        eq(a.dtype, z3.dtype)
+        eq((100,), z3.chunks)
+        eq(defaults.cname, z3.cname)
+        eq(defaults.clevel, z3.clevel)
+        eq(defaults.shuffle, z3.shuffle)
+        eq(a.nbytes/2, z3.nbytes)
+        eq(z.cbytes, z3.cbytes)
+        assert_array_equal(a[:525], z3[:])
+        
+        # tidy up
+        shutil.rmtree(path)
 
 
 class TestSynchronizedPersistentArray(TestPersistentArray):
@@ -388,3 +447,27 @@ class TestSynchronizedLazyArray(TestCase, ArrayTests):
 
     def create_array(self, **kwargs):
         return SynchronizedLazyArray(**kwargs)
+
+
+class TestLazyPersistentArray(TestPersistentArray):
+
+    def create_array(self, **kwargs):
+        path = kwargs.get('path', tempfile.mktemp())
+        kwargs['path'] = path
+        # tidy up
+        atexit.register(
+            lambda: shutil.rmtree(path) if os.path.exists(path) else None
+        )
+        return LazyPersistentArray(**kwargs)
+
+
+class TestSynchronizedLazyPersistentArray(TestPersistentArray):
+
+    def create_array(self, **kwargs):
+        path = kwargs.get('path', tempfile.mktemp())
+        kwargs['path'] = path
+        # tidy up
+        atexit.register(
+            lambda: shutil.rmtree(path) if os.path.exists(path) else None
+        )
+        return SynchronizedLazyPersistentArray(**kwargs)

@@ -53,42 +53,41 @@ cdef class BaseArray:
     cdef int _clevel
     cdef int _shuffle
     cdef object _fill_value
+    cdef object _cdata
     # abstract methods
     cdef BaseChunk create_chunk(self, tuple cidx)
     cdef BaseChunk get_chunk(self, tuple cidx)
 
 
 cdef class Array(BaseArray):
-    cdef ndarray _cdata
+    pass
 
 
 cdef class SynchronizedArray(Array):
     pass
 
 
+cdef class LazyArray(BaseArray):
+    pass
+
+
+cdef class SynchronizedLazyArray(LazyArray):
+    cdef object _lock
+
+
 cdef class PersistentArray(BaseArray):
-    cdef ndarray _cdata
     cdef object _mode
     cdef object _path
+    cdef object get_chunk_path(self, tuple cidx)
 
 
 cdef class SynchronizedPersistentArray(PersistentArray):
     pass
 
 
-cdef class LazyArray(BaseArray):
-    cdef dict _cdata
-
-
-cdef class SynchronizedLazyArray(LazyArray):
+cdef class LazyPersistentArray(PersistentArray):
     pass
 
 
-cdef class LazyPersistentArray(BaseArray):
-    # TODO
-    pass
-
-
-cdef class SynchronizedLazyPersistentArray(BaseArray):
-    # TODO
-    pass
+cdef class SynchronizedLazyPersistentArray(LazyPersistentArray):
+    cdef object _lock
