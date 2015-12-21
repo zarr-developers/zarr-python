@@ -58,10 +58,7 @@ class ChunkTests(object):
         eq(a.size, c.size)
         eq(a.itemsize, c.itemsize)
         eq(a.nbytes, c.nbytes)
-        if c.clevel > 0 and c.shuffle > 0:
-            # N.B., for some arrays, shuffle is required to achieve any
-            # compression
-            assert c.cbytes < c.nbytes, (c.nbytes, c.cbytes)
+        assert_true(c.cbytes > 0)
         assert_true(c.is_initialized)
 
         # check round-trip
@@ -81,18 +78,18 @@ class ChunkTests(object):
         for dtype in 'u1', 'u4', 'u8', 'i1', 'i4', 'i8':
             print(dtype)
             print('1-dimensional')
-            self._test_create_chunk(np.arange(1e5, dtype=dtype))
+            self._test_create_chunk(np.arange(1e4, dtype=dtype))
             print('2-dimensional')
-            self._test_create_chunk(np.arange(1e5, dtype=dtype)
+            self._test_create_chunk(np.arange(1e4, dtype=dtype)
                                     .reshape(100, -1))
 
         # linspace
         for dtype in 'f2', 'f4', 'f8':
             print(dtype)
             print('1-dimensional')
-            self._test_create_chunk(np.linspace(-1, 1, 1e5, dtype=dtype))
+            self._test_create_chunk(np.linspace(-1, 1, 1e4, dtype=dtype))
             print('2-dimensional')
-            self._test_create_chunk(np.linspace(-1, 1, 1e5, dtype=dtype)
+            self._test_create_chunk(np.linspace(-1, 1, 1e4, dtype=dtype)
                                     .reshape(100, -1))
 
     def test_create_chunk_fill_value(self):
@@ -209,18 +206,18 @@ class TestPersistentChunk(TestCase, ChunkTests):
         for dtype in 'u1', 'u4', 'u8', 'i1', 'i4', 'i8':
             print(dtype)
             print('1-dimensional')
-            self._test_persistence(np.arange(1e5, dtype=dtype))
+            self._test_persistence(np.arange(1e4, dtype=dtype))
             print('2-dimensional')
-            self._test_persistence(np.arange(1e5, dtype=dtype)
+            self._test_persistence(np.arange(1e4, dtype=dtype)
                                    .reshape(100, -1))
 
         # linspace
         for dtype in 'f2', 'f4', 'f8':
             print(dtype)
             print('1-dimensional')
-            self._test_persistence(np.linspace(-1, 1, 1e5, dtype=dtype))
+            self._test_persistence(np.linspace(-1, 1, 1e4, dtype=dtype))
             print('2-dimensional')
-            self._test_persistence(np.linspace(-1, 1, 1e5, dtype=dtype)
+            self._test_persistence(np.linspace(-1, 1, 1e4, dtype=dtype)
                                    .reshape(100, -1))
 
 
