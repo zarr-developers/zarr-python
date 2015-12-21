@@ -869,7 +869,7 @@ cdef class BaseArray:
         r += ', %s' % str(self._dtype)
         r += ', chunks=%s' % str(self._chunks)
         r += ')'
-        r += '\n  cname: %r' % str(self._cname, 'ascii')
+        r += '\n  cname: %s' % str(self._cname, 'ascii')
         r += '; clevel: %s' % self._clevel
         r += '; shuffle: %s' % _repr_shuffle[self._shuffle]
         r += '\n  nbytes: %s' % _util.human_readable_size(self.nbytes)
@@ -1171,7 +1171,7 @@ cdef class PersistentArray(BaseArray):
             self._cdata[cidx] = self.create_chunk(cidx)
 
     def _create(self, path, shape=None, chunks=None, dtype=None,
-               cname=None, clevel=None, shuffle=None, fill_value=None):
+                cname=None, clevel=None, shuffle=None, fill_value=None):
 
         # create directories
         data_path = os.path.join(path, defaults.datapath)
@@ -1289,7 +1289,7 @@ cdef class PersistentArray(BaseArray):
 
     def __repr__(self):
         r = super(PersistentArray, self).__repr__()
-        r += '\n  path: %s' % self._path
+        r += '\n  mode: %s; path: %s' % (self._mode, self._path)
         return r
 
     def iter_chunks(self):

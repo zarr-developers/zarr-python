@@ -42,10 +42,10 @@ Create an array::
 
     >>> import numpy as np
     >>> import zarr
-    >>> z = zarr.empty((10000, 1000), dtype='i4', chunks=(1000, 100))
+    >>> z = zarr.empty(shape=(10000, 1000), dtype='i4', chunks=(1000, 100))
     >>> z
     zarr.ext.SynchronizedArray((10000, 1000), int32, chunks=(1000, 100))
-      cname: 'blosclz'; clevel: 5; shuffle: 1 (BYTESHUFFLE)
+      cname: blosclz; clevel: 5; shuffle: 1 (BYTESHUFFLE)
       nbytes: 38.1M; cbytes: 0; initialized: 0/100
 
 Fill it with some data::
@@ -53,7 +53,7 @@ Fill it with some data::
     >>> z[:] = np.arange(10000000, dtype='i4').reshape(10000, 1000)
     >>> z
     zarr.ext.SynchronizedArray((10000, 1000), int32, chunks=(1000, 100))
-      cname: 'blosclz'; clevel: 5; shuffle: 1 (BYTESHUFFLE)
+      cname: blosclz; clevel: 5; shuffle: 1 (BYTESHUFFLE)
       nbytes: 38.1M; cbytes: 2.0M; ratio: 19.3; initialized: 100/100
 
 Obtain a NumPy array by slicing::
@@ -88,12 +88,12 @@ Resize the array and add more data::
     >>> z.resize(20000, 1000)
     >>> z
     zarr.ext.SynchronizedArray((20000, 1000), int32, chunks=(1000, 100))
-      cname: 'blosclz'; clevel: 5; shuffle: 1 (BYTESHUFFLE)
+      cname: blosclz; clevel: 5; shuffle: 1 (BYTESHUFFLE)
       nbytes: 76.3M; cbytes: 2.0M; ratio: 38.5; initialized: 100/200
     >>> z[10000:, :] = np.arange(10000000, dtype='i4').reshape(10000, 1000)
     >>> z
     zarr.ext.SynchronizedArray((20000, 1000), int32, chunks=(1000, 100))
-      cname: 'blosclz'; clevel: 5; shuffle: 1 (BYTESHUFFLE)
+      cname: blosclz; clevel: 5; shuffle: 1 (BYTESHUFFLE)
       nbytes: 76.3M; cbytes: 4.0M; ratio: 19.3; initialized: 200/200
 
 For convenience, an ``append()`` method is also available, which can be used to
@@ -103,18 +103,33 @@ append data to any axis::
     >>> z = zarr.array(a, chunks=(1000, 100))
     >>> z
     zarr.ext.SynchronizedArray((10000, 1000), int32, chunks=(1000, 100))
-      cname: 'blosclz'; clevel: 5; shuffle: 1 (BYTESHUFFLE)
+      cname: blosclz; clevel: 5; shuffle: 1 (BYTESHUFFLE)
       nbytes: 38.1M; cbytes: 2.0M; ratio: 19.3; initialized: 100/100
     >>> z.append(a+a)
     >>> z
     zarr.ext.SynchronizedArray((20000, 1000), int32, chunks=(1000, 100))
-      cname: 'blosclz'; clevel: 5; shuffle: 1 (BYTESHUFFLE)
+      cname: blosclz; clevel: 5; shuffle: 1 (BYTESHUFFLE)
       nbytes: 76.3M; cbytes: 3.6M; ratio: 21.2; initialized: 200/200
     >>> z.append(np.vstack([a, a]), axis=1)
     >>> z
     zarr.ext.SynchronizedArray((20000, 2000), int32, chunks=(1000, 100))
-      cname: 'blosclz'; clevel: 5; shuffle: 1 (BYTESHUFFLE)
+      cname: blosclz; clevel: 5; shuffle: 1 (BYTESHUFFLE)
       nbytes: 152.6M; cbytes: 7.6M; ratio: 20.2; initialized: 400/400
+
+Create a persistent array (data saved to disk)::
+
+    >>> import tempfile
+    >>> path = 'example.zarr'
+    >>> z = zarr.open(path, shape=(10000, 1000), dtype='i4', chunks=(1000, 100))
+    >>> z[:] = np.arange(10000000, dtype='i4').reshape(10000, 1000)
+    >>> z
+    zarr.ext.PersistentArray((10000, 1000), int32, chunks=(1000, 100))
+      cname: blosclz; clevel: 5; shuffle: 1 (BYTESHUFFLE)
+      nbytes: 38.1M; cbytes: 2.0M; ratio: 19.3; initialized: 100/100
+      mode: a; path: example.zarr
+
+There is no need to close a persistent array. Data are automatically flushed
+to disk.
 
 Tuning
 ------

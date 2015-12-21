@@ -231,3 +231,15 @@ def array(data, chunks=None, dtype=None, cname=None, clevel=None,
     z[:] = data
 
     return z
+
+
+def open(path, mode='a', shape=None, chunks=None, dtype=None, cname=None,
+         clevel=None, shuffle=None, fill_value=None):
+    """TODO"""
+
+    # TODO synchronized option
+
+    cls = _ext.PersistentArray
+    return cls(path=path, mode=mode, shape=shape, chunks=chunks, dtype=dtype,
+               cname=cname, clevel=clevel, shuffle=shuffle,
+               fill_value=fill_value)
