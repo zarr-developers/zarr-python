@@ -12,13 +12,13 @@ from zarr.ext import Array
 def test_array_1d():
 
     a = np.arange(1050)
-    z = Array(a.shape, chunks=100, dtype=a.dtype)
+    z = Array(shape=a.shape, chunks=100, dtype=a.dtype)
 
     # check properties
     eq(a.shape, z.shape)
     eq(a.dtype, z.dtype)
     eq((100,), z.chunks)
-    eq((11,), z.cdata.shape)
+    eq((11,), z.cdata_shape)
     eq(defaults.cname, z.cname)
     eq(defaults.clevel, z.clevel)
     eq(defaults.shuffle, z.shuffle)
@@ -30,7 +30,7 @@ def test_array_1d():
 
     # check properties
     eq(a.nbytes, z.nbytes)
-    eq(sum(c.cbytes for c in z.cdata.flat), z.cbytes)
+    eq(sum(c.cbytes for c in z.iter_chunks()), z.cbytes)
 
     # check round-trip
     assert_array_equal(a, z[:])
@@ -47,7 +47,7 @@ def test_array_1d():
 
     # check partial assignment
     b = np.arange(1e5, 2e5)
-    z = Array(a.shape, chunks=100)
+    z = Array(shape=a.shape, chunks=100)
     z[:] = a
     assert_array_equal(a, z[:])
     z[190:310] = b[190:310]
@@ -63,7 +63,7 @@ def test_array_1d_fill_value():
         a = np.arange(1050)
         f = np.empty_like(a)
         f.fill(fill_value)
-        z = Array(a.shape, chunks=100, fill_value=fill_value)
+        z = Array(shape=a.shape, chunks=100, fill_value=fill_value)
         z[190:310] = a[190:310]
 
         assert_array_equal(f[:190], z[:190])
@@ -75,7 +75,7 @@ def test_array_1d_set_scalar():
 
     # setup
     a = np.empty(100)
-    z = Array(a.shape, chunks=10, dtype=a.dtype)
+    z = Array(shape=a.shape, chunks=10, dtype=a.dtype)
     z[:] = a
     assert_array_equal(a, z[:])
 
@@ -91,13 +91,13 @@ def test_array_1d_set_scalar():
 def test_array_2d():
 
     a = np.arange(10000).reshape((1000, 10))
-    z = Array(a.shape, chunks=(100, 2), dtype=a.dtype)
+    z = Array(shape=a.shape, chunks=(100, 2), dtype=a.dtype)
 
     # check properties
     eq(a.shape, z.shape)
     eq(a.dtype, z.dtype)
     eq((100, 2), z.chunks)
-    eq((10, 5), z.cdata.shape)
+    eq((10, 5), z.cdata_shape)
     eq(defaults.cname, z.cname)
     eq(defaults.clevel, z.clevel)
     eq(defaults.shuffle, z.shuffle)
@@ -107,7 +107,7 @@ def test_array_2d():
 
     # check properties
     eq(a.nbytes, z.nbytes)
-    eq(sum(c.cbytes for c in z.cdata.flat), z.cbytes)
+    eq(sum(c.cbytes for c in z.iter_chunks()), z.cbytes)
 
     # check round-trip
     assert_array_equal(a, z[:])
@@ -136,7 +136,7 @@ def test_array_2d():
 
     # check partial assignment
     b = np.arange(10000, 20000).reshape((1000, 10))
-    z = Array(a.shape, chunks=(100, 2), dtype=a.dtype)
+    z = Array(shape=a.shape, chunks=(100, 2), dtype=a.dtype)
     z[:] = a
     assert_array_equal(a, z[:])
     z[190:310, 3:7] = b[190:310, 3:7]
@@ -149,7 +149,7 @@ def test_array_2d():
 
 def test_resize_1d():
 
-    z = Array(105, chunks=10, dtype='i4', fill_value=0)
+    z = Array(shape=105, chunks=10, dtype='i4', fill_value=0)
     a = np.arange(105, dtype='i4')
     z[:] = a
     eq((105,), z.shape)
@@ -179,7 +179,7 @@ def test_resize_1d():
 
 def test_resize_2d():
 
-    z = Array((105, 105), chunks=(10, 10), dtype='i4', fill_value=0)
+    z = Array(shape=(105, 105), chunks=(10, 10), dtype='i4', fill_value=0)
     a = np.arange(105*105, dtype='i4').reshape((105, 105))
     z[:] = a
     eq((105, 105), z.shape)
@@ -219,7 +219,7 @@ def test_resize_2d():
 def test_append_1d():
 
     a = np.arange(105, dtype='i4')
-    z = Array(a.shape, chunks=10, dtype=a.dtype)
+    z = Array(shape=a.shape, chunks=10, dtype=a.dtype)
     z[:] = a
     eq(a.shape, z.shape)
     eq(a.dtype, z.dtype)
@@ -238,7 +238,7 @@ def test_append_1d():
 def test_append_2d():
 
     a = np.arange(105*105, dtype='i4').reshape((105, 105))
-    z = Array(a.shape, chunks=(10, 10), dtype=a.dtype)
+    z = Array(shape=a.shape, chunks=(10, 10), dtype=a.dtype)
     z[:] = a
     eq(a.shape, z.shape)
     eq(a.dtype, z.dtype)
@@ -257,7 +257,7 @@ def test_append_2d():
 def test_append_2d_axis():
 
     a = np.arange(105*105, dtype='i4').reshape((105, 105))
-    z = Array(a.shape, chunks=(10, 10), dtype=a.dtype)
+    z = Array(shape=a.shape, chunks=(10, 10), dtype=a.dtype)
     z[:] = a
     eq(a.shape, z.shape)
     eq(a.dtype, z.dtype)

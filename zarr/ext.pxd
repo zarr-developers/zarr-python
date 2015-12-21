@@ -31,7 +31,7 @@ cdef class PersistentChunk(BaseChunk):
     cdef object _path
     cdef object _basename
     cdef object _dirname
-    cdef tuple read_header(self)
+    cdef object read_header(self)
     cdef bytes read(self)
     cdef void write(self, bytes data)
 
@@ -43,6 +43,7 @@ cdef class SynchronizedPersistentChunk(PersistentChunk):
 
 cdef class BaseArray:
     cdef tuple _shape
+    cdef tuple _cdata_shape
     cdef tuple _chunks
     cdef dtype _dtype
     cdef size_t _size
@@ -54,7 +55,7 @@ cdef class BaseArray:
     cdef object _fill_value
     # abstract methods
     cdef BaseChunk create_chunk(self, tuple cidx)
-    cdef BaseChunk get_chunk(self, tuple cidx)
+    cpdef BaseChunk get_chunk(self, tuple cidx)
 
 
 cdef class Array(BaseArray):
@@ -66,6 +67,7 @@ cdef class SynchronizedArray(Array):
 
 
 cdef class PersistentArray(BaseArray):
+    cdef ndarray _cdata
     cdef object _mode
     cdef object _path
 

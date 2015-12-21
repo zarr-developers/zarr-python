@@ -1,7 +1,7 @@
 zarr
 ====
 
-A minimal implementation of chunked, compressed, N-dimensional arrays for 
+A minimal implementation of chunked, compressed, N-dimensional arrays for
 Python.
 
 * Source code: https://github.com/alimanfoo/zarr
@@ -44,15 +44,17 @@ Create an array::
     >>> import zarr
     >>> z = zarr.empty((10000, 1000), dtype='i4', chunks=(1000, 100))
     >>> z
-    zarr.ext.Array((10000, 1000), int32, chunks=(1000, 100), cname='blosclz', clevel=5, shuffle=1)
-      nbytes: 38.1M; cbytes: 0
+    zarr.ext.SynchronizedArray((10000, 1000), int32, chunks=(1000, 100))
+      cname: 'blosclz'; clevel: 5; shuffle: 1 (BYTESHUFFLE)
+      nbytes: 38.1M; cbytes: 0; initialized: 0/100
 
 Fill it with some data::
 
     >>> z[:] = np.arange(10000000, dtype='i4').reshape(10000, 1000)
     >>> z
-    zarr.ext.Array((10000, 1000), int32, chunks=(1000, 100), cname='blosclz', clevel=5, shuffle=1)
-      nbytes: 38.1M; cbytes: 2.0M; ratio: 19.3
+    zarr.ext.SynchronizedArray((10000, 1000), int32, chunks=(1000, 100))
+      cname: 'blosclz'; clevel: 5; shuffle: 1 (BYTESHUFFLE)
+      nbytes: 38.1M; cbytes: 2.0M; ratio: 19.3; initialized: 100/100
 
 Obtain a NumPy array by slicing::
 
@@ -85,12 +87,14 @@ Resize the array and add more data::
 
     >>> z.resize(20000, 1000)
     >>> z
-    zarr.ext.Array((20000, 1000), int32, chunks=(1000, 100), cname='blosclz', clevel=5, shuffle=1)
-      nbytes: 76.3M; cbytes: 2.0M; ratio: 38.5
+    zarr.ext.SynchronizedArray((20000, 1000), int32, chunks=(1000, 100))
+      cname: 'blosclz'; clevel: 5; shuffle: 1 (BYTESHUFFLE)
+      nbytes: 76.3M; cbytes: 2.0M; ratio: 38.5; initialized: 100/200
     >>> z[10000:, :] = np.arange(10000000, dtype='i4').reshape(10000, 1000)
     >>> z
-    zarr.ext.Array((20000, 1000), int32, chunks=(1000, 100), cname='blosclz', clevel=5, shuffle=1)
-      nbytes: 76.3M; cbytes: 4.0M; ratio: 19.3
+    zarr.ext.SynchronizedArray((20000, 1000), int32, chunks=(1000, 100))
+      cname: 'blosclz'; clevel: 5; shuffle: 1 (BYTESHUFFLE)
+      nbytes: 76.3M; cbytes: 4.0M; ratio: 19.3; initialized: 200/200
 
 For convenience, an ``append()`` method is also available, which can be used to
 append data to any axis::
@@ -98,34 +102,37 @@ append data to any axis::
     >>> a = np.arange(10000000, dtype='i4').reshape(10000, 1000)
     >>> z = zarr.array(a, chunks=(1000, 100))
     >>> z
-    zarr.ext.Array((10000, 1000), int32, chunks=(1000, 100), cname='blosclz', clevel=5, shuffle=1)
-      nbytes: 38.1M; cbytes: 2.0M; ratio: 19.3
+    zarr.ext.SynchronizedArray((10000, 1000), int32, chunks=(1000, 100))
+      cname: 'blosclz'; clevel: 5; shuffle: 1 (BYTESHUFFLE)
+      nbytes: 38.1M; cbytes: 2.0M; ratio: 19.3; initialized: 100/100
     >>> z.append(a+a)
     >>> z
-    zarr.ext.Array((20000, 1000), int32, chunks=(1000, 100), cname='blosclz', clevel=5, shuffle=1)
-      nbytes: 76.3M; cbytes: 3.6M; ratio: 21.2
+    zarr.ext.SynchronizedArray((20000, 1000), int32, chunks=(1000, 100))
+      cname: 'blosclz'; clevel: 5; shuffle: 1 (BYTESHUFFLE)
+      nbytes: 76.3M; cbytes: 3.6M; ratio: 21.2; initialized: 200/200
     >>> z.append(np.vstack([a, a]), axis=1)
     >>> z
-    zarr.ext.Array((20000, 2000), int32, chunks=(1000, 100), cname='blosclz', clevel=5, shuffle=1)
-      nbytes: 152.6M; cbytes: 7.6M; ratio: 20.2
+    zarr.ext.SynchronizedArray((20000, 2000), int32, chunks=(1000, 100))
+      cname: 'blosclz'; clevel: 5; shuffle: 1 (BYTESHUFFLE)
+      nbytes: 152.6M; cbytes: 7.6M; ratio: 20.2; initialized: 400/400
 
 Tuning
 ------
 
-``zarr`` is designed for use in parallel computations working chunk-wise 
+``zarr`` is designed for use in parallel computations working chunk-wise
 over data. Try it with `dask.array
 <http://dask.pydata.org/en/latest/array.html>`_.
 
-``zarr`` is optimised for accessing and storing data in contiguous slices, 
-of the same size or larger than chunks. It is not and will never be 
-optimised for single item access. 
+``zarr`` is optimised for accessing and storing data in contiguous slices,
+of the same size or larger than chunks. It is not and will never be
+optimised for single item access.
 
-Chunks sizes >= 1M are generally good. Optimal chunk shape will depend on 
+Chunks sizes >= 1M are generally good. Optimal chunk shape will depend on
 the correlation structure in your data.
 
 Acknowledgments
 ---------------
 
 ``zarr`` uses `c-blosc <https://github.com/Blosc/c-blosc>`_ internally for
-compression and decompression and borrows code heavily from 
+compression and decompression and borrows code heavily from
 `bcolz <http://bcolz.blosc.org/>`_.

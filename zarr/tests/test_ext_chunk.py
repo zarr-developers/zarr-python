@@ -2,6 +2,14 @@
 from __future__ import absolute_import, print_function, division
 
 
+import sys
+
+
+def log(*msg):
+    msg = ', '.join(map(str, msg))
+    print(msg, file=sys.stderr, flush=True)
+
+
 from nose.tools import eq_ as eq
 import numpy as np
 from numpy.testing import assert_array_equal
@@ -10,7 +18,8 @@ from zarr import defaults
 
 
 def _test_create_chunk_default(a):
-    c = Chunk(a.shape, a.dtype)
+    # log('create chunk', a.shape, a.dtype)
+    c = Chunk(shape=a.shape, dtype=a.dtype)
     c[:] = a
 
     # check properties
@@ -23,7 +32,6 @@ def _test_create_chunk_default(a):
 
     # check compression is sane
     assert c.cbytes < c.nbytes
-    assert c.blocksize <= c.nbytes
 
     # check round-trip
     assert_array_equal(a, c[:])
@@ -31,7 +39,9 @@ def _test_create_chunk_default(a):
 
 
 def _test_create_chunk_cparams(a, cname, clevel, shuffle):
-    c = Chunk(a.shape, a.dtype, cname, clevel, shuffle)
+    # log('create chunk', a.shape, a.dtype, cname, clevel, shuffle)
+    c = Chunk(shape=a.shape, dtype=a.dtype, cname=cname, clevel=clevel,
+              shuffle=shuffle)
     c[:] = a
 
     # check properties
@@ -43,7 +53,6 @@ def _test_create_chunk_cparams(a, cname, clevel, shuffle):
     eq(shuffle, c.shuffle)
 
     # check compression is sane
-    assert c.blocksize <= c.nbytes
     if clevel > 0 and shuffle > 0:
         # N.B., for some arrays, shuffle is required to achieve any compression
         assert c.cbytes < c.nbytes, (c.nbytes, c.cbytes)
@@ -70,7 +79,7 @@ def test_create_chunk():
         print('1-dimensional')
         _test_create_chunk(np.arange(1e5, dtype=dtype))
         print('2-dimensional')
-        _test_create_chunk(np.arange(1e5, dtype=dtype).reshape((100, -1)))
+        _test_create_chunk(np.arange(1e5, dtype=dtype).reshape((1000, -1)))
 
     # linspace
     for dtype in 'f2', 'f4', 'f8':
@@ -78,7 +87,9 @@ def test_create_chunk():
         print('1-dimensional')
         _test_create_chunk(np.linspace(-1, 1, 1e5, dtype=dtype))
         print('2-dimensional')
-        _test_create_chunk(np.linspace(-1, 1, 1e5, dtype=dtype).reshape((100, -1)))
+        _test_create_chunk(
+            np.linspace(-1, 1, 1e5, dtype=dtype).reshape(1000, -1)
+        )
 
 
 def test_create_chunk_fill_value():

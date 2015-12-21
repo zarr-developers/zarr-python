@@ -17,28 +17,26 @@ def test_array_1d():
 
     path = tempfile.mktemp()
     assert_false(os.path.exists(path))
-    
+
     # open for reading (does not exist)
     with assert_raises(ValueError):
-        z = PersistentArray(path)
-    with assert_raises(ValueError):
-        z = PersistentArray(path, mode='r')
+        z = PersistentArray(path=path, mode='r')
     # open for appending (does not exist)
     with assert_raises(ValueError):
-        z = PersistentArray(path, mode='a')
-        
+        z = PersistentArray(path=path, mode='r+')
+
     # open for writing
-    z = PersistentArray(path, mode='w', shape=a.shape, chunks=100, 
+    z = PersistentArray(path=path, mode='w', shape=a.shape, chunks=100,
                         dtype=a.dtype)
-    
+
     # check directory creation
     assert_true(os.path.exists(path))
-    
+
     # check properties
     eq(a.shape, z.shape)
     eq(a.dtype, z.dtype)
     eq((100,), z.chunks)
-    eq((11,), z.cdata.shape)
+    eq((11,), z.cdata_shape)
     eq(defaults.cname, z.cname)
     eq(defaults.clevel, z.clevel)
     eq(defaults.shuffle, z.shuffle)
@@ -50,7 +48,7 @@ def test_array_1d():
 
     # check properties
     eq(a.nbytes, z.nbytes)
-    eq(sum(c.cbytes for c in z.cdata.flat), z.cbytes)
+    eq(sum(c.cbytes for c in z.iter_chunks()), z.cbytes)
 
     # check round-trip
     assert_array_equal(a, z[:])
@@ -66,11 +64,11 @@ def test_array_1d():
     assert_array_equal(a[-110:], z[-110:])
 
     # open for reading
-    z2 = PersistentArray(path, mode='r')
+    z2 = PersistentArray(path=path, mode='r')
     eq(a.shape, z2.shape)
     eq(a.dtype, z2.dtype)
     eq((100,), z2.chunks)
-    eq((11,), z2.cdata.shape)
+    eq((11,), z2.cdata_shape)
     eq(defaults.cname, z2.cname)
     eq(defaults.clevel, z2.clevel)
     eq(defaults.shuffle, z2.shuffle)
@@ -83,13 +81,13 @@ def test_array_1d():
     # check read-only
     with assert_raises(ValueError):
         z2[:] = 0
-        
+
     # open for appending
-    z3 = PersistentArray(path, mode='a')
+    z3 = PersistentArray(path=path, mode='a')
     eq(a.shape, z3.shape)
     eq(a.dtype, z3.dtype)
     eq((100,), z3.chunks)
-    eq((11,), z3.cdata.shape)
+    eq((11,), z3.cdata_shape)
     eq(defaults.cname, z3.cname)
     eq(defaults.clevel, z3.clevel)
     eq(defaults.shuffle, z3.shuffle)
@@ -117,7 +115,7 @@ def test_array_1d_fill_value():
         a = np.arange(1050)
         f = np.empty_like(a)
         f.fill(fill_value)
-        z = PersistentArray(path, mode='w', shape=a.shape, chunks=100,
+        z = PersistentArray(path=path, mode='w', shape=a.shape, chunks=100,
                             fill_value=fill_value)
         z[190:310] = a[190:310]
 
@@ -125,7 +123,7 @@ def test_array_1d_fill_value():
         assert_array_equal(a[190:310], z[190:310])
         assert_array_equal(f[310:], z[310:])
 
-        z2 = PersistentArray(path, mode='r')
+        z2 = PersistentArray(path=path, mode='r')
 
         assert_array_equal(f[:190], z2[:190])
         assert_array_equal(a[190:310], z2[190:310])
@@ -138,15 +136,15 @@ def test_array_2d():
 
     a = np.arange(10000).reshape((1000, 10))
     path = tempfile.mktemp()
-    
-    z = PersistentArray(path, mode='w', shape=a.shape, chunks=(100, 2), 
+
+    z = PersistentArray(path=path, mode='w', shape=a.shape, chunks=(100, 2),
                         dtype=a.dtype)
 
     # check properties
     eq(a.shape, z.shape)
     eq(a.dtype, z.dtype)
     eq((100, 2), z.chunks)
-    eq((10, 5), z.cdata.shape)
+    eq((10, 5), z.cdata_shape)
     eq(defaults.cname, z.cname)
     eq(defaults.clevel, z.clevel)
     eq(defaults.shuffle, z.shuffle)
@@ -158,7 +156,7 @@ def test_array_2d():
 
     # check properties
     eq(a.nbytes, z.nbytes)
-    eq(sum(c.cbytes for c in z.cdata.flat), z.cbytes)
+    eq(sum(c.cbytes for c in z.iter_chunks()), z.cbytes)
 
     # check round-trip
     assert_array_equal(a, z[:])
@@ -184,22 +182,22 @@ def test_array_2d():
     assert_array_equal(a[:110, :3], z[:110, :3])
     assert_array_equal(a[190:310, 3:7], z[190:310, 3:7])
     assert_array_equal(a[-110:, -3:], z[-110:, -3:])
-    
+
     # check open for reading
-    z2 = PersistentArray(path, mode='r')
+    z2 = PersistentArray(path=path, mode='r')
 
     # check properties
     eq(a.shape, z2.shape)
     eq(a.dtype, z2.dtype)
     eq((100, 2), z2.chunks)
-    eq((10, 5), z2.cdata.shape)
+    eq((10, 5), z2.cdata_shape)
     eq(defaults.cname, z2.cname)
     eq(defaults.clevel, z2.clevel)
     eq(defaults.shuffle, z2.shuffle)
     eq(a.nbytes, z2.nbytes)
     eq(z.cbytes, z2.cbytes)
 
-    # check data    
+    # check data
     assert_array_equal(a, z2[:])
     assert_array_equal(a, z2[...])
 
@@ -223,7 +221,7 @@ def test_array_2d():
     assert_array_equal(a[:110, :3], z2[:110, :3])
     assert_array_equal(a[190:310, 3:7], z2[190:310, 3:7])
     assert_array_equal(a[-110:, -3:], z2[-110:, -3:])
-    
+
 
 # TODO test resize
 # TODO test append

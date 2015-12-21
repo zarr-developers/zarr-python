@@ -15,7 +15,6 @@ import struct
 import ctypes
 import pickle
 import shutil
-import logging
 import tempfile
 from collections import namedtuple
 
@@ -77,16 +76,13 @@ def blosc_version():
 
 
 ###############################################################################
-# SETUP LOGGING                                                               #
+# DEBUG LOGGING                                                               #
 ###############################################################################
 
 
-logger = logging.getLogger(__name__)
-
-
-def debug(*args):
-    msg = str(args[0]) + ': ' + ', '.join(map(repr, args[1:]))
-    logger.debug(msg)
+def debug(*msg):
+    msg = ', '.join(map(str, msg))
+    print(msg, file=sys.stderr, flush=True)
 
 
 ###############################################################################
@@ -94,8 +90,8 @@ def debug(*args):
 ###############################################################################
 
 
-def normalise_cparams(cname=None, clevel=None, shuffle=None):
-    """Convenience function to normalise compression parameters.
+def normalize_cparams(cname=None, clevel=None, shuffle=None):
+    """Convenience function to normalize compression parameters.
 
     If any values are None, they will be substituted with values from the
     `zarr.defaults` module.
@@ -142,8 +138,8 @@ def normalise_cparams(cname=None, clevel=None, shuffle=None):
     return cname, clevel, shuffle
 
 
-def normalise_shape(shape):
-    """Convenience function to normalise the `shape` argument."""
+def normalize_shape(shape):
+    """Convenience function to normalize the `shape` argument."""
     try:
         shape = tuple(int(s) for s in shape)
     except TypeError:
@@ -248,7 +244,7 @@ cdef class BaseChunk:
                   clevel=None, shuffle=None, fill_value=0, **kwargs):
 
         # set shape and dtype
-        self._shape = normalise_shape(shape)
+        self._shape = normalize_shape(shape)
         self._dtype = np.dtype(dtype)
 
         # set derived attributes
@@ -258,10 +254,10 @@ cdef class BaseChunk:
 
         # set compression options
         self._cname, self._clevel, self._shuffle = \
-            normalise_cparams(cname, clevel, shuffle)
+            normalize_cparams(cname, clevel, shuffle)
 
         # set fill_value
-        self.fill_value = fill_value
+        self._fill_value = fill_value
 
     property shape:
         def __get__(self):
@@ -301,16 +297,16 @@ cdef class BaseChunk:
         # setup output array
         array = np.empty(self._shape, dtype=self._dtype)
 
-        if self.is_initialised:
+        if self.is_initialized:
 
-            # data initialised, decompress into array
+            # data initialized, decompress into array
             self.get(array.data)
 
         else:
 
-            # data not initialised, use fill_value
-            if self.fill_value is not None:
-                array.fill(self.fill_value)
+            # data not initialized, use fill_value
+            if self._fill_value is not None:
+                array.fill(self._fill_value)
 
         return array[item]
 
@@ -351,7 +347,7 @@ cdef class BaseChunk:
     # abstract properties and methods follow
     ########################################
 
-    property is_initialised:
+    property is_initialized:
         def __get__(self):
             # override in sub-class
             raise NotImplementedError()
@@ -376,11 +372,11 @@ cdef class Chunk(BaseChunk):
     def __cinit__(self, shape=None, dtype=None, cname=None, clevel=None,
                   shuffle=None, fill_value=None, **kwargs):
 
-        # initialise attributes
+        # initialize attributes
         self._data = NULL
         self._cbytes = 0
 
-    property is_initialised:
+    property is_initialized:
         def __get__(self):
             return self._data != NULL
 
@@ -429,7 +425,6 @@ cdef class Chunk(BaseChunk):
         blosc_cbuffer_sizes(self._data, &nbytes_check, &cbytes, &blocksize)
         assert nbytes_check == self._nbytes
         self._cbytes = cbytes
-        self._blocksize = blocksize
 
     cdef void free(self):
         if self._data != NULL:
@@ -464,11 +459,11 @@ cdef class PersistentChunk(BaseChunk):
         self._basename = os.path.basename(path)
         self._dirname = os.path.dirname(path)
 
-    property is_initialised:
+    property is_initialized:
         def __get__(self):
             return os.path.exists(self._path)
 
-    cdef tuple read_header(self):
+    cdef object read_header(self):
         with open(self._path, 'rb') as f:
             header_raw = f.read(BLOSC_HEADER_LENGTH)
             header = decode_blosc_header(header_raw)
@@ -476,11 +471,11 @@ cdef class PersistentChunk(BaseChunk):
 
     property cbytes:
         def __get__(self):
-            if not self.is_initialised:
-                return 0
-            else:
+            if self.is_initialized:
                 header = self.read_header()
                 return header.cbytes
+            else:
+                return 0
 
     cdef bytes read(self):
         with open(self._path, 'rb') as f:
@@ -488,6 +483,7 @@ cdef class PersistentChunk(BaseChunk):
             header = decode_blosc_header(header_raw)
             # check nbytes consistency
             if self._nbytes != header.nbytes:
+                # should never happen
                 raise RuntimeError('expected nbytes %s, found %s' %
                                    (self._nbytes, header.nbytes))
             # seek back BLOSC_HEADER_LENGTH bytes relative to current position
@@ -579,11 +575,11 @@ cdef class SynchronizedPersistentChunk(PersistentChunk):
 ###############################################################################
 
 
-def normalise_array_selection(item, shape):
-    """Convenience function to normalise a selection within an array with
+def normalize_array_selection(item, shape):
+    """Convenience function to normalize a selection within an array with
     the given `shape`."""
 
-    # normalise item
+    # normalize item
     if isinstance(item, int):
         item = (item,)
     elif isinstance(item, slice):
@@ -595,7 +591,7 @@ def normalise_array_selection(item, shape):
     if isinstance(item, tuple):
 
         # determine start and stop indices for all axes
-        selection = tuple(normalise_axis_selection(i, l)
+        selection = tuple(normalize_axis_selection(i, l)
                           for i, l in zip(item, shape))
 
         # fill out selection if not completely specified
@@ -608,8 +604,8 @@ def normalise_array_selection(item, shape):
         raise ValueError('expected indices or slice, found: %r' % item)
 
 
-def normalise_axis_selection(item, l):
-    """Convenience function to normalise a selection within a single axis
+def normalize_axis_selection(item, l):
+    """Convenience function to normalize a selection within a single axis
     of size `l`."""
 
     if isinstance(item, int):
@@ -647,8 +643,8 @@ def get_chunk_range(tuple selection, tuple chunks):
     return chunk_range
 
 
-def normalise_chunks(chunks, tuple shape):
-    """Convenience function to normalise the `chunks` argument for an array
+def normalize_chunks(chunks, tuple shape):
+    """Convenience function to normalize the `chunks` argument for an array
     with the given `shape`."""
     try:
         chunks = tuple(int(c) for c in chunks)
@@ -665,11 +661,6 @@ def normalise_chunks(chunks, tuple shape):
     return chunks
 
 
-METAPATH = '__zmeta__'
-DATAPATH = '__zdata__'
-DATASUFFIX = '.blosc'
-
-
 def read_array_metadata(path):
 
     # check path exists
@@ -677,7 +668,7 @@ def read_array_metadata(path):
         raise ValueError('path not found: %s' % path)
 
     # check metadata file
-    meta_path = os.path.join(path, METAPATH)
+    meta_path = os.path.join(path, defaults.metapath)
     if not os.path.exists(meta_path):
         raise ValueError('array metadata not found: %s' % path)
 
@@ -687,7 +678,7 @@ def read_array_metadata(path):
 
 
 def write_array_metadata(path, meta):
-    meta_path = os.path.join(path, METAPATH)
+    meta_path = os.path.join(path, defaults.metapath)
     with open(meta_path, 'wb') as f:
         pickle.dump(meta, f, protocol=0)
 
@@ -697,6 +688,14 @@ def write_array_metadata(path, meta):
 ###############################################################################
 
 
+_repr_shuffle = [
+    '0 (NOSHUFFLE)',
+    '1 (BYTESHUFFLE)',
+    '2 (BITSHUFFLE)',
+]
+
+
+# noinspection PyUnresolvedReferences
 cdef class BaseArray:
 
     def __cinit__(self, shape=None, chunks=None, dtype=None, cname=None,
@@ -706,30 +705,16 @@ cdef class BaseArray:
         # argument as a tuple representing the shape of each chunk,
         # so we follow that convention here.
 
-        # set shape
-        self._shape = normalise_shape(shape)
-
-        # set chunks
-        self._chunks = normalise_chunks(chunks, self._shape)
-
-        # set dtype
-        self._dtype = np.dtype(dtype)
-
-        # set derived attributes
-        self._size = reduce(operator.mul, self._shape)
-        self._itemsize = self._dtype.itemsize
-        self._nbytes = self._size * self._itemsize
-
-        # set compression options
-        self._cname, self._clevel, self._shuffle = \
-            normalise_cparams(cname, clevel, shuffle)
-
-        # set fill_value
-        self._fill_value = fill_value
+        # delegate entirely to sub-classes
+        pass
 
     property shape:
         def __get__(self):
             return self._shape
+
+    property cdata_shape:
+        def __get__(self):
+            return self._cdata_shape
 
     property chunks:
         def __get__(self):
@@ -739,25 +724,39 @@ cdef class BaseArray:
         def __get__(self):
             return self._dtype
 
+    property cname:
+        def __get__(self):
+            return self._cname
+
+    property clevel:
+        def __get__(self):
+            return self._clevel
+
+    property shuffle:
+        def __get__(self):
+            return self._shuffle
+
+    # derived properties
+
     property size:
         def __get__(self):
-            return self._size
+            return reduce(operator.mul, self._shape)
 
     property itemsize:
         def __get__(self):
-            return self._itemsize
+            return self._dtype.itemsize
 
     property nbytes:
         def __get__(self):
-            return self._nbytes
+            return self.size * self.itemsize
 
     def __getitem__(self, item):
         cdef ndarray dest
         cdef BaseChunk chunk
         cdef tuple cidx
 
-        # normalise selection
-        selection = normalise_array_selection(item, self._shape)
+        # normalize selection
+        selection = normalize_array_selection(item, self._shape)
 
         # determine output array shape
         out_shape = tuple(stop - start for start, stop in selection)
@@ -792,7 +791,7 @@ cdef class BaseArray:
             # obtain the destination array as a view of the output array
             dest = out[out_selection]
 
-            if chunk.is_initialised and \
+            if chunk.is_initialized and \
                     is_total_slice(chunk_selection, chunk.shape) and \
                     dest.flags.c_contiguous:
 
@@ -813,8 +812,8 @@ cdef class BaseArray:
 
     def __setitem__(self, key, value):
 
-        # normalise selection
-        selection = normalise_array_selection(key, self._shape)
+        # normalize selection
+        selection = normalize_array_selection(key, self._shape)
 
         # determine indices of overlapping chunks
         chunk_range = get_chunk_range(selection, self._chunks)
@@ -857,13 +856,16 @@ cdef class BaseArray:
         r += ', %s' % str(self._dtype)
         r += ', chunks=%s' % str(self._chunks)
         r += ')'
-        r += '\n cname: %r' % str(self._cname, 'ascii')
+        r += '\n  cname: %r' % str(self._cname, 'ascii')
         r += '; clevel: %s' % self._clevel
-        r += '; shuffle: %s' % self._shuffle
+        r += '; shuffle: %s' % _repr_shuffle[self._shuffle]
         r += '\n  nbytes: %s' % _util.human_readable_size(self.nbytes)
         r += '; cbytes: %s' % _util.human_readable_size(self.cbytes)
         if self.cbytes > 0:
             r += '; ratio: %.1f' % (self.nbytes / self.cbytes)
+        n_chunks = reduce(operator.mul, self._cdata_shape)
+        r += '; initialized: %s/%s' % (np.count_nonzero(self.is_initialized),
+                                       n_chunks)
         return r
 
     def append(self, data, axis=0):
@@ -922,7 +924,7 @@ cdef class BaseArray:
             # override in sub-class
             raise NotImplementedError()
 
-    property is_initialised:
+    property is_initialized:
         def __get__(self):
             # override in sub-class
             raise NotImplementedError()
@@ -931,7 +933,7 @@ cdef class BaseArray:
         # override in sub-class
         raise NotImplementedError()
 
-    cdef BaseChunk get_chunk(self, tuple cidx):
+    cpdef BaseChunk get_chunk(self, tuple cidx):
         # override in sub-class
         raise NotImplementedError()
 
@@ -951,14 +953,14 @@ cdef class BaseArray:
         N.B., this function does *not* behave in the same way as the numpy
         resize method on the ndarray class. Existing data are *not*
         reorganised in any way. Axes are simply grown or shrunk. When
-        growing an axis, uninitialised portions of the array will appear to
+        growing an axis, uninitialized portions of the array will appear to
         contain the value of the `fill_value` attribute on this array,
         and when shrinking an array any data beyond the new shape will be
         lost (although see note below).
 
         N.B., because of the way the underlying chunks are organised,
         and in particular the fact that chunks may overhang the edge of the
-        array, the value of uninitialised portions of this array is not
+        array, the value of uninitialized portions of this array is not
         guaranteed to respect the setting of the `fill_value` attribute when
         shrinking then regrowing an array.
 
@@ -966,18 +968,44 @@ cdef class BaseArray:
         # override in sub-class
         raise NotImplementedError()
 
+    def iter_chunks(self):
+        """TODO docstring"""
+        raise NotImplementedError()
+
+    def enumerate_chunks(self):
+        """TODO docstring"""
+        raise NotImplementedError()
+
 
 # noinspection PyAttributeOutsideInit,PyAbstractClass
 cdef class Array(BaseArray):
 
-    def __cinit__(self, **kwargs):
+    def __cinit__(self, shape=None, chunks=None, dtype=None, cname=None,
+                  clevel=None, shuffle=None, fill_value=None, **kwargs):
+
+        # set shape
+        self._shape = normalize_shape(shape)
+
+        # set chunks
+        self._chunks = normalize_chunks(chunks, self._shape)
 
         # determine the number and arrangement of chunks
-        cdata_shape = tuple(int(np.ceil(s / c))
-                            for s, c in zip(self._shape, self._chunks))
+        self._cdata_shape = tuple(
+            int(np.ceil(s / c)) for s, c in zip(self._shape, self._chunks)
+        )
 
-        # initialise an object array to hold pointers to chunk objects
-        self._cdata = np.empty(cdata_shape, dtype=object)
+        # set dtype
+        self._dtype = np.dtype(dtype)
+
+        # set compression options
+        self._cname, self._clevel, self._shuffle = \
+            normalize_cparams(cname, clevel, shuffle)
+
+        # set fill_value
+        self._fill_value = fill_value
+
+        # initialize an object array to hold pointers to chunk objects
+        self._cdata = np.empty(self._cdata_shape, dtype=object)
 
         # instantiate chunks
         self._cdata.flat = [self.create_chunk(None) for _ in self._cdata.flat]
@@ -992,25 +1020,25 @@ cdef class Array(BaseArray):
         def __get__(self):
             return sum(c.cbytes for c in self._cdata.flat)
 
-    property is_initialised:
+    property is_initialized:
         def __get__(self):
             a = np.empty_like(self._cdata, dtype='b1')
-            a.flat = [c.is_initialised for c in self._cdata.flat]
+            a.flat = [c.is_initialized for c in self._cdata.flat]
             return a
 
-    cdef BaseChunk get_chunk(self, tuple cidx):
+    cpdef BaseChunk get_chunk(self, tuple cidx):
         return self._cdata[cidx]
 
     cdef BaseChunk create_chunk(self, tuple cidx):
         # ignore chunk index here, not needed
-        return Chunk(self._chunks, dtype=self._dtype, cname=self._cname,
+        return Chunk(shape=self._chunks, dtype=self._dtype, cname=self._cname,
                      clevel=self._clevel, shuffle=self._shuffle,
                      fill_value=self._fill_value)
 
     def resize(self, *args):
         """TODO inherit docstring"""
 
-        # normalise new shape argument
+        # normalize new shape argument
         if len(args) == 1:
             new_shape = args[0]
         else:
@@ -1049,11 +1077,20 @@ cdef class Array(BaseArray):
         new_cdata.flat = [self.create_chunk(None) if c is None else c
                           for c in new_cdata.flat]
 
-        # set new shape
+        # set new attributes
         self._shape = new_shape
-
-        # set new chunks
+        self._cdata_shape = new_cdata_shape
         self._cdata = new_cdata
+
+    def iter_chunks(self):
+        """TODO inherit docstring"""
+        for c in self._cdata.flat:
+            yield c
+
+    def enumerate_chunks(self):
+        """TODO inherit docstring"""
+        for cidx in itertools.product(*(range(n) for n in self._cdata_shape)):
+            yield self._cdata[cidx]
 
 
 # noinspection PyAbstractClass
@@ -1061,7 +1098,7 @@ cdef class SynchronizedArray(Array):
 
     cdef BaseChunk create_chunk(self, tuple cidx):
         # ignore chunk index here, not needed
-        return SynchronizedChunk(self._chunks, dtype=self._dtype,
+        return SynchronizedChunk(shape=self._chunks, dtype=self._dtype,
                                  cname=self._cname, clevel=self._clevel,
                                  shuffle=self._shuffle,
                                  fill_value=self._fill_value)
@@ -1106,25 +1143,32 @@ cdef class PersistentArray(BaseArray):
         self._mode = mode
 
         # determine the number and arrangement of chunks
-        cdata_shape = tuple(int(np.ceil(s / c))
-                            for s, c in zip(self._shape, self._chunks))
+        self._cdata_shape = tuple(
+            int(np.ceil(s / c)) for s, c in zip(self._shape, self._chunks)
+        )
 
-        # initialise an object array to hold pointers to chunk objects
-        self._cdata = np.empty(cdata_shape, dtype=object)
+        # initialize an object array to hold pointers to chunk objects
+        self._cdata = np.empty(self._cdata_shape, dtype=object)
 
         # instantiate chunks
-        for cidx in itertools.product(*(range(n) for n in cdata_shape)):
+        for cidx in itertools.product(*(range(n) for n in self._cdata_shape)):
             self._cdata[cidx] = self.create_chunk(cidx)
 
     def _create(self, path, shape=None, chunks=None, dtype=None,
                cname=None, clevel=None, shuffle=None, fill_value=None):
-        os.makedirs(os.path.join(path, DATAPATH))
-        self._shape = normalise_shape(shape)
-        self._chunks = normalise_chunks(chunks, self._shape)
+
+        # create directory
+        os.makedirs(os.path.join(path, defaults.datapath))
+
+        # set attributes
+        self._shape = normalize_shape(shape)
+        self._chunks = normalize_chunks(chunks, self._shape)
         self._dtype = np.dtype(dtype)
         self._cname, self._clevel, self._shuffle = \
-            normalise_cparams(cname, clevel, shuffle)
+            normalize_cparams(cname, clevel, shuffle)
         self._fill_value = fill_value
+
+        # write metadata
         metadata = {'shape': self._shape,
                     'chunks': self._chunks,
                     'dtype': self._dtype,
@@ -1135,7 +1179,11 @@ cdef class PersistentArray(BaseArray):
         write_array_metadata(path, metadata)
 
     def _open(self, path):
+
+        # read metadata
         metadata = read_array_metadata(path)
+
+        # set attributes
         self._shape = metadata['shape']
         self._dtype = metadata['dtype']
         self._chunks = metadata['chunks']
@@ -1148,21 +1196,22 @@ cdef class PersistentArray(BaseArray):
         def __get__(self):
             return sum(c.cbytes for c in self._cdata.flat)
 
-    property is_initialised:
+    property is_initialized:
         def __get__(self):
             a = np.empty_like(self._cdata, dtype='b1')
-            a.flat = [c.is_initialised for c in self._cdata.flat]
+            a.flat = [c.is_initialized for c in self._cdata.flat]
             return a
 
-    cdef BaseChunk get_chunk(self, tuple cidx):
+    cpdef BaseChunk get_chunk(self, tuple cidx):
         return self._cdata[cidx]
 
     cdef BaseChunk create_chunk(self, tuple cidx):
-        chunk_filename = '.'.join(map(str, cidx)) + DATASUFFIX
-        chunk_path = os.path.join(self._path, DATAPATH, chunk_filename)
-        return PersistentChunk(chunk_path, self._chunks, dtype=self._dtype,
-                               cname=self._cname, clevel=self._clevel,
-                               shuffle=self._shuffle,
+        chunk_filename = '.'.join(map(str, cidx)) + defaults.datasuffix
+        chunk_path = os.path.join(self._path, defaults.datapath,
+                                  chunk_filename)
+        return PersistentChunk(path=chunk_path, shape=self._chunks,
+                               dtype=self._dtype, cname=self._cname,
+                               clevel=self._clevel, shuffle=self._shuffle,
                                fill_value=self._fill_value)
 
     def resize(self, *args):
@@ -1170,7 +1219,7 @@ cdef class PersistentArray(BaseArray):
 
         # TODO remove code duplication with Array if possible
 
-        # normalise new shape argument
+        # normalize new shape argument
         if len(args) == 1:
             new_shape = args[0]
         else:
@@ -1210,10 +1259,9 @@ cdef class PersistentArray(BaseArray):
             if new_cdata[cidx] is None:
                 new_cdata[cidx] = self.create_chunk(cidx)
 
-        # set new shape
+        # set new attributes
         self._shape = new_shape
-
-        # set new chunks
+        self._cdata_shape = new_cdata_shape
         self._cdata = new_cdata
 
     def __setitem__(self, key, value):
@@ -1225,6 +1273,16 @@ cdef class PersistentArray(BaseArray):
         r = super(PersistentArray, self).__repr__()
         r += '\n  path: %s' % self._path
         return r
+
+    def iter_chunks(self):
+        """TODO inherit docstring"""
+        for c in self._cdata.flat:
+            yield c
+
+    def enumerate_chunks(self):
+        """TODO inherit docstring"""
+        for cidx in itertools.product(*(range(n) for n in self._cdata_shape)):
+            yield self._cdata[cidx]
 
 
 cdef class SynchronizedPersistentArray(PersistentArray):

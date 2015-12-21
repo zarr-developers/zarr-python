@@ -30,7 +30,7 @@ def empty(shape, chunks, dtype=None, cname=None, clevel=None, shuffle=None,
         bit shuffle.
     synchronized : bool, optional
         If True, each chunk will be protected with a lock to prevent data
-        collision during write operations.
+        collision during concurrent write operations.
 
     Returns
     -------
@@ -38,9 +38,12 @@ def empty(shape, chunks, dtype=None, cname=None, clevel=None, shuffle=None,
 
     """
 
-    return _ext.Array(shape, chunks=chunks, dtype=dtype, cname=cname,
-                      clevel=clevel, shuffle=shuffle,
-                      synchronized=synchronized)
+    if synchronized:
+        cls = _ext.SynchronizedArray
+    else:
+        cls = _ext.Array
+    return cls(shape=shape, chunks=chunks, dtype=dtype, cname=cname,
+               clevel=clevel, shuffle=shuffle)
 
 
 def zeros(shape, chunks, dtype=None, cname=None, clevel=None, shuffle=None,
@@ -66,7 +69,7 @@ def zeros(shape, chunks, dtype=None, cname=None, clevel=None, shuffle=None,
         bit shuffle.
     synchronized : bool, optional
         If True, each chunk will be protected with a lock to prevent data
-        collision during write operations.
+        collision during concurrent write operations.
 
     Returns
     -------
@@ -74,9 +77,12 @@ def zeros(shape, chunks, dtype=None, cname=None, clevel=None, shuffle=None,
 
     """
 
-    return _ext.Array(shape, chunks=chunks, dtype=dtype, cname=cname,
-                      clevel=clevel, shuffle=shuffle, fill_value=0,
-                      synchronized=synchronized)
+    if synchronized:
+        cls = _ext.SynchronizedArray
+    else:
+        cls = _ext.Array
+    return cls(shape=shape, chunks=chunks, dtype=dtype, cname=cname,
+               clevel=clevel, shuffle=shuffle, fill_value=0)
 
 
 def ones(shape, chunks, dtype=None, cname=None, clevel=None, shuffle=None,
@@ -110,10 +116,12 @@ def ones(shape, chunks, dtype=None, cname=None, clevel=None, shuffle=None,
 
     """
 
-
-    return _ext.Array(shape, chunks=chunks, dtype=dtype, cname=cname,
-                      clevel=clevel, shuffle=shuffle, fill_value=1,
-                      synchronized=synchronized)
+    if synchronized:
+        cls = _ext.SynchronizedArray
+    else:
+        cls = _ext.Array
+    return cls(shape=shape, chunks=chunks, dtype=dtype, cname=cname,
+               clevel=clevel, shuffle=shuffle, fill_value=1)
 
 
 def full(shape, chunks, fill_value, dtype=None, cname=None, clevel=None,
@@ -149,9 +157,12 @@ def full(shape, chunks, fill_value, dtype=None, cname=None, clevel=None,
 
     """
 
-    return _ext.Array(shape, chunks=chunks, dtype=dtype, cname=cname,
-                      clevel=clevel, shuffle=shuffle, fill_value=fill_value,
-                      synchronized=synchronized)
+    if synchronized:
+        cls = _ext.SynchronizedArray
+    else:
+        cls = _ext.Array
+    return cls(shape=shape, chunks=chunks, dtype=dtype, cname=cname,
+               clevel=clevel, shuffle=shuffle, fill_value=fill_value)
 
 
 def array(data, chunks=None, dtype=None, cname=None, clevel=None,
@@ -209,9 +220,12 @@ def array(data, chunks=None, dtype=None, cname=None, clevel=None,
             raise ValueError('chunks must be specified')
 
     # create array
-    z = _ext.Array(shape, chunks=chunks, dtype=dtype, cname=cname,
-                   clevel=clevel, shuffle=shuffle,
-                   synchronized=synchronized, fill_value=fill_value)
+    if synchronized:
+        cls = _ext.SynchronizedArray
+    else:
+        cls = _ext.Array
+    z = cls(shape=shape, chunks=chunks, dtype=dtype, cname=cname,
+            clevel=clevel, shuffle=shuffle, fill_value=fill_value)
 
     # fill with data
     z[:] = data

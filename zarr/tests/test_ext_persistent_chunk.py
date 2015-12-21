@@ -14,14 +14,15 @@ from zarr import defaults
 
 
 def _test_create_chunk_cparams(a, cname, clevel, shuffle):
-    
+
     # setup file
     path = tempfile.mktemp()
     assert_false(os.path.exists(path))
-    
+
     # instantiate a persistent chunk
-    c = PersistentChunk(path, a.shape, a.dtype, cname, clevel, shuffle)
-    
+    c = PersistentChunk(path=path, shape=a.shape, dtype=a.dtype, cname=cname,
+                        clevel=clevel, shuffle=shuffle)
+
     # check properties
     eq(a.shape, c.shape)
     eq(a.dtype, c.dtype)
@@ -37,13 +38,13 @@ def _test_create_chunk_cparams(a, cname, clevel, shuffle):
         eq(defaults.shuffle, c.shuffle)
     else:
         eq(shuffle, c.shuffle)
-    eq(0, c.nbytes)
+    eq(a.nbytes, c.nbytes)
     eq(0, c.cbytes)
-    assert_false(c.is_initialised)
-    
+    assert_false(c.is_initialized)
+
     # store some data
     c[:] = a
-    
+
     # check properties after storing data
     eq(a.shape, c.shape)
     eq(a.dtype, c.dtype)
@@ -51,26 +52,27 @@ def _test_create_chunk_cparams(a, cname, clevel, shuffle):
     if c.clevel > 0 and c.shuffle > 0:
         # N.B., for some arrays, shuffle is required to achieve any compression
         assert c.cbytes < c.nbytes, (c.nbytes, c.cbytes)
-    assert_true(c.is_initialised)
+    assert_true(c.is_initialized)
     assert_true(os.path.exists(path))
 
     # check round trip
     assert_array_equal(a, c[:])
     assert_array_equal(a, c[...])
-    
+
     # check persistence
-    c2 = PersistentChunk(path, a.shape, a.dtype, cname, clevel, shuffle)
+    c2 = PersistentChunk(path=path, shape=a.shape, dtype=a.dtype, cname=cname,
+                         clevel=clevel, shuffle=shuffle)
     eq(a.shape, c2.shape)
     eq(a.dtype, c2.dtype)
     eq(a.nbytes, c2.nbytes)
     if c.clevel > 0 and c.shuffle > 0:
         # N.B., for some arrays, shuffle is required to achieve any compression
         assert c2.cbytes < c2.nbytes, (c2.nbytes, c2.cbytes)
-    assert_true(c2.is_initialised)
+    assert_true(c2.is_initialized)
     assert_array_equal(a, c2[:])
     assert_array_equal(a, c2[...])
 
-    # tidy up    
+    # tidy up
     os.remove(path)
 
 
@@ -109,21 +111,21 @@ def test_create_chunk_fill_value():
         assert_false(os.path.exists(path))
 
         # default dtype and fill_value
-        c = PersistentChunk(path, shape)
+        c = PersistentChunk(path=path, shape=shape)
         a = c[:]
         e = np.empty(shape)
         eq(e.shape, a.shape)
         eq(e.dtype, a.dtype)
-        assert_false(c.is_initialised)
+        assert_false(c.is_initialized)
         assert_false(os.path.exists(path))
 
         # specified dtype and fill_value
         for dtype in 'i4', 'f8':
             for fill_value in 1, -1:
-                c = PersistentChunk(path, shape, dtype=dtype,
+                c = PersistentChunk(path=path, shape=shape, dtype=dtype,
                                     fill_value=fill_value)
                 e = np.empty(shape, dtype=dtype)
                 e.fill(fill_value)
                 assert_array_equal(e, c[:])
-                assert_false(c.is_initialised)
+                assert_false(c.is_initialized)
                 assert_false(os.path.exists(path))
