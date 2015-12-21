@@ -815,6 +815,14 @@ cdef class BaseArray:
         def __get__(self):
             return self.size * self.itemsize
 
+    property chunk_size:
+        def __get__(self):
+            return reduce(operator.mul, self._chunks)
+
+    property chunk_nbytes:
+        def __get__(self):
+            return self.chunk_size * self.itemsize
+
     def __getitem__(self, item):
         cdef ndarray dest
         cdef BaseChunk chunk
@@ -928,6 +936,8 @@ cdef class BaseArray:
         r += '; cbytes: %s' % _util.human_readable_size(self.cbytes)
         if self.cbytes > 0:
             r += '; ratio: %.1f' % (self.nbytes / self.cbytes)
+        # r += '; chunk_nbytes: %s' % \
+        #      _util.human_readable_size(self.chunk_nbytes)
         n_chunks = reduce(operator.mul, self._cdata_shape)
         r += '; initialized: %s/%s' % (np.count_nonzero(self.is_initialized),
                                        n_chunks)
@@ -1140,7 +1150,7 @@ cdef class PersistentArray(BaseArray):
         meta_path = os.path.join(path, defaults.metapath)
 
         if mode in ['r', 'r+']:
-            self._open(path)
+            self._open(path, **kwargs)
 
         elif mode == 'w':
             if os.path.exists(path):
@@ -1154,7 +1164,7 @@ cdef class PersistentArray(BaseArray):
 
         elif mode == 'a':
             if os.path.exists(meta_path):
-                self._open(path)
+                self._open(path, **kwargs)
             else:
                 self._create(path, **kwargs)
 
@@ -1207,19 +1217,32 @@ cdef class PersistentArray(BaseArray):
                     'fill_value': self._fill_value}
         _write_array_metadata(path, metadata)
 
-    def _open(self, path):
+    def _open(self, path, shape=None, chunks=None, dtype=None, cname=None, 
+              clevel=None, shuffle=None, fill_value=None):
 
         # read metadata
         metadata = _read_array_metadata(path)
 
         # set attributes
         self._shape = metadata['shape']
-        self._dtype = metadata['dtype']
         self._chunks = metadata['chunks']
+        self._dtype = metadata['dtype']
         self._cname = metadata['cname']
         self._clevel = metadata['clevel']
         self._shuffle = metadata['shuffle']
         self._fill_value = metadata['fill_value']
+        
+        # check consistency with user arguments
+        if shape is not None and _normalize_shape(shape) != self._shape:
+            raise ValueError('shape %r not consistent with existing %r' %
+                             (shape, self._shape))
+        if chunks is not None and \
+                _normalize_chunks(chunks, self._shape) != self._chunks:
+            raise ValueError('chunks %r not consistent with existing %r' %
+                             (chunks, self._chunks))
+        if dtype is not None and np.dtype(dtype) != self._dtype:
+            raise ValueError('dtype %r not consistent with existing %r' %
+                             (dtype, self._dtype))
 
     property cbytes:
         def __get__(self):
@@ -1455,6 +1478,7 @@ cdef class LazyPersistentArray(PersistentArray):
                 bn = os.path.basename(fn)[:-len(defaults.datasuffix)]
                 cidx = tuple(map(int, bn.split('.')))
                 a[cidx] = True
+            return a
 
     cdef BaseChunk get_chunk(self, tuple cidx):
         return _lazy_get_chunk(self, cidx)
@@ -1486,6 +1510,8 @@ cdef class LazyPersistentArray(PersistentArray):
             yield cidx, chunk
 
     def resize(self, *args):
+        if self._mode == 'r':
+            raise ValueError('array is read-only')
 
         # do resize
         _lazy_resize(self, *args)

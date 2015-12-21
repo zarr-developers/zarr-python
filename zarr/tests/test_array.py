@@ -36,6 +36,7 @@ class ArrayTests(object):
         eq(defaults.shuffle, z.shuffle)
         eq(a.nbytes, z.nbytes)
         eq(0, z.cbytes)
+        eq(0, np.count_nonzero(z.is_initialized))
 
         # set data
         z[:] = a
@@ -43,6 +44,7 @@ class ArrayTests(object):
         # check properties
         eq(a.nbytes, z.nbytes)
         eq(sum(c.cbytes for c in z.iter_chunks()), z.cbytes)
+        eq(11, np.count_nonzero(z.is_initialized))
 
         # check round-trip
         assert_array_equal(a, z[:])
@@ -108,6 +110,7 @@ class ArrayTests(object):
         eq(defaults.cname, z.cname)
         eq(defaults.clevel, z.clevel)
         eq(defaults.shuffle, z.shuffle)
+        eq(0, np.count_nonzero(z.is_initialized))
 
         # set data
         z[:] = a
@@ -115,6 +118,7 @@ class ArrayTests(object):
         # check properties
         eq(a.nbytes, z.nbytes)
         eq(sum(c.cbytes for c in z.iter_chunks()), z.cbytes)
+        eq(50, np.count_nonzero(z.is_initialized))
 
         # check round-trip
         assert_array_equal(a, z[:])
@@ -329,11 +333,14 @@ class TestPersistentArray(TestCase, ArrayTests):
         eq(a.nbytes, z2.nbytes)
         eq(z.cbytes, z2.cbytes)
         assert_array_equal(z.is_initialized, z2.is_initialized)
+        assert_true(np.count_nonzero(z2.is_initialized) > 0)
         assert_array_equal(a, z2[:])
 
         # check read-only
         with assert_raises(ValueError):
             z2[:] = 0
+        with assert_raises(ValueError):
+            z2.resize(100)
 
         # open for read/write if exists
         z3 = self.create_array(path=path, mode='r+')
@@ -346,6 +353,7 @@ class TestPersistentArray(TestCase, ArrayTests):
         eq(a.nbytes, z3.nbytes)
         eq(z.cbytes, z3.cbytes)
         assert_array_equal(z.is_initialized, z3.is_initialized)
+        assert_true(np.count_nonzero(z3.is_initialized) > 0)
         assert_array_equal(a, z3[:])
 
         # check can write
