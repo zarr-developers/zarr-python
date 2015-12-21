@@ -459,6 +459,13 @@ cdef class PersistentChunk(BaseChunk):
         self._basename = os.path.basename(path)
         self._dirname = os.path.dirname(path)
 
+        # check consistency
+        if os.path.exists(path):
+            header = self.read_header()
+            if self._nbytes != header.nbytes:
+                raise ValueError('expected nbytes %s, found %s' %
+                                 (self._nbytes, header.nbytes))
+
     property is_initialized:
         def __get__(self):
             return os.path.exists(self._path)
@@ -481,11 +488,6 @@ cdef class PersistentChunk(BaseChunk):
         with open(self._path, 'rb') as f:
             header_raw = f.read(BLOSC_HEADER_LENGTH)
             header = decode_blosc_header(header_raw)
-            # check nbytes consistency
-            if self._nbytes != header.nbytes:
-                # should never happen
-                raise RuntimeError('expected nbytes %s, found %s' %
-                                   (self._nbytes, header.nbytes))
             # seek back BLOSC_HEADER_LENGTH bytes relative to current position
             f.seek(-BLOSC_HEADER_LENGTH, 1)
             data = f.read(header.cbytes)
