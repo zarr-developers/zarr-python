@@ -9,7 +9,7 @@ import os
 from nose.tools import eq_ as eq, assert_false, assert_true, assert_raises
 import numpy as np
 from numpy.testing import assert_array_equal
-from zarr.ext import Chunk, PersistentChunk
+from zarr.ext import Chunk, PersistentChunk, SynchronizedChunk
 from zarr import defaults
 
 
@@ -69,7 +69,7 @@ class ChunkTests(object):
 
     def _test_create_chunk(self, a):
         for cname in None, b'blosclz', b'lz4', b'snappy', b'zlib':
-            for clevel in None, 0, 1, 5:
+            for clevel in None, 0, 5:
                 for shuffle in None, 0, 1, 2:
                     print(cname, clevel, shuffle)
                     self._test_create_chunk_cparams(a, cname, clevel, shuffle)
@@ -115,13 +115,19 @@ class ChunkTests(object):
                     assert_array_equal(e, c[:])
 
 
-class TestMemoryChunks(TestCase, ChunkTests):
+class TestChunk(TestCase, ChunkTests):
 
     def create_chunk(self, **kwargs):
         return Chunk(**kwargs)
 
 
-class TestPersistentChunks(TestCase, ChunkTests):
+class TestSynchronizedChunk(TestCase, ChunkTests):
+
+    def create_chunk(self, **kwargs):
+        return SynchronizedChunk(**kwargs)
+
+
+class TestPersistentChunk(TestCase, ChunkTests):
 
     def create_chunk(self, **kwargs):
         path = kwargs.get('path', tempfile.mktemp())
@@ -215,3 +221,6 @@ class TestPersistentChunks(TestCase, ChunkTests):
             print('2-dimensional')
             self._test_persistence(np.linspace(-1, 1, 1e5, dtype=dtype)
                                    .reshape(100, -1))
+
+
+# TODO test persistent synchronized chunks

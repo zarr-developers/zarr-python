@@ -712,13 +712,13 @@ _repr_shuffle = [
 cdef class BaseArray:
 
     def __cinit__(self, shape=None, chunks=None, dtype=None, cname=None,
-                  clevel=None, shuffle=None, fill_value=None, **kwargs):
+                  clevel=None, shuffle=None, fill_value=0, **kwargs):
 
         # N.B., the convention in h5py and dask is to use the "chunks"
         # argument as a tuple representing the shape of each chunk,
         # so we follow that convention here.
 
-        # delegate entirely to sub-classes
+        # delegate attribute setting entirely to sub-classes
         pass
 
     property shape:
@@ -1130,6 +1130,9 @@ cdef class PersistentArray(BaseArray):
         # w- or x : create, fail if exists
         # a : read/write if exists, create otherwise (default)
 
+        # use metadata file as indicator of array existence
+        meta_path = os.path.join(path, defaults.metapath)
+
         if mode in ['r', 'r+']:
             self._open(path)
 
@@ -1139,12 +1142,12 @@ cdef class PersistentArray(BaseArray):
             self._create(path, **kwargs)
 
         elif mode in ['w-', 'x']:
-            if os.path.exists(path):
-                raise ValueError('path exists: %s' % path)
+            if os.path.exists(meta_path):
+                raise ValueError('array exists: %s' % path)
             self._create(path, **kwargs)
 
         elif mode == 'a':
-            if os.path.exists(path):
+            if os.path.exists(meta_path):
                 self._open(path)
             else:
                 self._create(path, **kwargs)
@@ -1170,8 +1173,10 @@ cdef class PersistentArray(BaseArray):
     def _create(self, path, shape=None, chunks=None, dtype=None,
                cname=None, clevel=None, shuffle=None, fill_value=None):
 
-        # create directory
-        os.makedirs(os.path.join(path, defaults.datapath))
+        # create directories
+        data_path = os.path.join(path, defaults.datapath)
+        if not os.path.exists(data_path):
+            os.makedirs(data_path)
 
         # set attributes
         self._shape = normalize_shape(shape)
