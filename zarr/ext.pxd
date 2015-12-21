@@ -55,7 +55,7 @@ cdef class BaseArray:
     cdef object _fill_value
     # abstract methods
     cdef BaseChunk create_chunk(self, tuple cidx)
-    cpdef BaseChunk get_chunk(self, tuple cidx)
+    cdef BaseChunk get_chunk(self, tuple cidx)
 
 
 cdef class Array(BaseArray):
@@ -77,16 +77,14 @@ cdef class SynchronizedPersistentArray(PersistentArray):
 
 
 cdef class LazyArray(BaseArray):
-    # TODO
+    cdef dict _cdata
+
+
+cdef class SynchronizedLazyArray(LazyArray):
     pass
 
 
 cdef class LazyPersistentArray(BaseArray):
-    # TODO
-    pass
-
-
-cdef class SynchronizedLazyArray(BaseArray):
     # TODO
     pass
 

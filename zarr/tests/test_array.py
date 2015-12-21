@@ -11,7 +11,7 @@ from nose.tools import eq_ as eq, assert_false, assert_true, assert_raises
 import numpy as np
 from numpy.testing import assert_array_equal
 from zarr.ext import Array, SynchronizedArray, PersistentArray, \
-    SynchronizedPersistentArray
+    SynchronizedPersistentArray, LazyArray, SynchronizedLazyArray
 from zarr import defaults
 
 
@@ -376,3 +376,15 @@ class TestSynchronizedPersistentArray(TestPersistentArray):
             lambda: shutil.rmtree(path) if os.path.exists(path) else None
         )
         return SynchronizedPersistentArray(**kwargs)
+
+
+class TestLazyArray(TestCase, ArrayTests):
+
+    def create_array(self, **kwargs):
+        return LazyArray(**kwargs)
+
+
+class TestSynchronizedLazyArray(TestCase, ArrayTests):
+
+    def create_array(self, **kwargs):
+        return SynchronizedLazyArray(**kwargs)

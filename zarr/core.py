@@ -5,11 +5,11 @@ from __future__ import absolute_import, print_function, division
 import numpy as np
 
 
-import zarr.ext as _ext
+from zarr import ext as _ext
 
 
 def empty(shape, chunks, dtype=None, cname=None, clevel=None, shuffle=None,
-          synchronized=True):
+          synchronized=True, lazy=False):
     """Create an empty array.
 
     Parameters
@@ -31,6 +31,10 @@ def empty(shape, chunks, dtype=None, cname=None, clevel=None, shuffle=None,
     synchronized : bool, optional
         If True, each chunk will be protected with a lock to prevent data
         collision during concurrent write operations.
+    lazy : bool, optional
+        If True, an alternative array class is used which instantiates chunk
+        objects only on demand. This may reduce overhead when working with
+        small regions of very large arrays with a large number of chunks.
 
     Returns
     -------
@@ -39,15 +43,21 @@ def empty(shape, chunks, dtype=None, cname=None, clevel=None, shuffle=None,
     """
 
     if synchronized:
-        cls = _ext.SynchronizedArray
+        if lazy:
+            cls = _ext.SynchronizedLazyArray
+        else:
+            cls = _ext.SynchronizedArray
     else:
-        cls = _ext.Array
+        if lazy:
+            cls = _ext.LazyArray
+        else:
+            cls = _ext.Array
     return cls(shape=shape, chunks=chunks, dtype=dtype, cname=cname,
                clevel=clevel, shuffle=shuffle)
 
 
 def zeros(shape, chunks, dtype=None, cname=None, clevel=None, shuffle=None,
-          synchronized=True):
+          synchronized=True, lazy=False):
     """Create an array, with zero being used as the default value for
     uninitialised portions of the array.
 
@@ -70,6 +80,10 @@ def zeros(shape, chunks, dtype=None, cname=None, clevel=None, shuffle=None,
     synchronized : bool, optional
         If True, each chunk will be protected with a lock to prevent data
         collision during concurrent write operations.
+    lazy : bool, optional
+        If True, an alternative array class is used which instantiates chunk
+        objects only on demand. This may reduce overhead when working with
+        small regions of very large arrays with a large number of chunks.
 
     Returns
     -------
@@ -78,15 +92,21 @@ def zeros(shape, chunks, dtype=None, cname=None, clevel=None, shuffle=None,
     """
 
     if synchronized:
-        cls = _ext.SynchronizedArray
+        if lazy:
+            cls = _ext.SynchronizedLazyArray
+        else:
+            cls = _ext.SynchronizedArray
     else:
-        cls = _ext.Array
+        if lazy:
+            cls = _ext.LazyArray
+        else:
+            cls = _ext.Array
     return cls(shape=shape, chunks=chunks, dtype=dtype, cname=cname,
                clevel=clevel, shuffle=shuffle, fill_value=0)
 
 
 def ones(shape, chunks, dtype=None, cname=None, clevel=None, shuffle=None,
-         synchronized=True):
+         synchronized=True, lazy=False):
     """Create an array, with one being used as the default value for
     uninitialised portions of the array.
 
@@ -109,6 +129,10 @@ def ones(shape, chunks, dtype=None, cname=None, clevel=None, shuffle=None,
     synchronized : bool, optional
         If True, each chunk will be protected with a lock to prevent data
         collision during write operations.
+    lazy : bool, optional
+        If True, an alternative array class is used which instantiates chunk
+        objects only on demand. This may reduce overhead when working with
+        small regions of very large arrays with a large number of chunks.
 
     Returns
     -------
@@ -117,15 +141,21 @@ def ones(shape, chunks, dtype=None, cname=None, clevel=None, shuffle=None,
     """
 
     if synchronized:
-        cls = _ext.SynchronizedArray
+        if lazy:
+            cls = _ext.SynchronizedLazyArray
+        else:
+            cls = _ext.SynchronizedArray
     else:
-        cls = _ext.Array
+        if lazy:
+            cls = _ext.LazyArray
+        else:
+            cls = _ext.Array
     return cls(shape=shape, chunks=chunks, dtype=dtype, cname=cname,
                clevel=clevel, shuffle=shuffle, fill_value=1)
 
 
 def full(shape, chunks, fill_value, dtype=None, cname=None, clevel=None,
-         shuffle=None, synchronized=True):
+         shuffle=None, synchronized=True, lazy=False):
     """Create an array, with `fill_value` being used as the default value for
     uninitialised portions of the array.
 
@@ -150,6 +180,10 @@ def full(shape, chunks, fill_value, dtype=None, cname=None, clevel=None,
     synchronized : bool, optional
         If True, each chunk will be protected with a lock to prevent data
         collision during write operations.
+    lazy : bool, optional
+        If True, an alternative array class is used which instantiates chunk
+        objects only on demand. This may reduce overhead when working with
+        small regions of very large arrays with a large number of chunks.
 
     Returns
     -------
@@ -158,15 +192,21 @@ def full(shape, chunks, fill_value, dtype=None, cname=None, clevel=None,
     """
 
     if synchronized:
-        cls = _ext.SynchronizedArray
+        if lazy:
+            cls = _ext.SynchronizedLazyArray
+        else:
+            cls = _ext.SynchronizedArray
     else:
-        cls = _ext.Array
+        if lazy:
+            cls = _ext.LazyArray
+        else:
+            cls = _ext.Array
     return cls(shape=shape, chunks=chunks, dtype=dtype, cname=cname,
                clevel=clevel, shuffle=shuffle, fill_value=fill_value)
 
 
 def array(data, chunks=None, dtype=None, cname=None, clevel=None,
-          shuffle=None, fill_value=None, synchronized=True):
+          shuffle=None, fill_value=None, synchronized=True, lazy=False):
     """Create an array filled with `data`.
 
     Parameters
@@ -190,12 +230,28 @@ def array(data, chunks=None, dtype=None, cname=None, clevel=None,
     synchronized : bool, optional
         If True, each chunk will be protected with a lock to prevent data
         collision during write operations.
+    lazy : bool, optional
+        If True, an alternative array class is used which instantiates chunk
+        objects only on demand. This may reduce overhead when working with
+        small regions of very large arrays with a large number of chunks.
 
     Returns
     -------
     z : zarr Array
 
     """
+
+    # determine array class to use
+    if synchronized:
+        if lazy:
+            cls = _ext.SynchronizedLazyArray
+        else:
+            cls = _ext.SynchronizedArray
+    else:
+        if lazy:
+            cls = _ext.LazyArray
+        else:
+            cls = _ext.Array
 
     # ensure data is array-like
     if not hasattr(data, 'shape') or not hasattr(data, 'dtype'):
@@ -219,11 +275,7 @@ def array(data, chunks=None, dtype=None, cname=None, clevel=None,
         else:
             raise ValueError('chunks must be specified')
 
-    # create array
-    if synchronized:
-        cls = _ext.SynchronizedArray
-    else:
-        cls = _ext.Array
+    # instantiate array
     z = cls(shape=shape, chunks=chunks, dtype=dtype, cname=cname,
             clevel=clevel, shuffle=shuffle, fill_value=fill_value)
 
@@ -273,6 +325,8 @@ def open(path, mode='a', shape=None, chunks=None, dtype=None, cname=None,
 
     """
 
+    # TODO lazy option
+    
     if synchronized:
         cls = _ext.SynchronizedPersistentArray
     else:

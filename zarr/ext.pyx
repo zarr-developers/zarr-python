@@ -949,7 +949,7 @@ cdef class BaseArray:
         # override in sub-class
         raise NotImplementedError()
 
-    cpdef BaseChunk get_chunk(self, tuple cidx):
+    cdef BaseChunk get_chunk(self, tuple cidx):
         # override in sub-class
         raise NotImplementedError()
 
@@ -1042,7 +1042,7 @@ cdef class Array(BaseArray):
             a.flat = [c.is_initialized for c in self._cdata.flat]
             return a
 
-    cpdef BaseChunk get_chunk(self, tuple cidx):
+    cdef BaseChunk get_chunk(self, tuple cidx):
         return self._cdata[cidx]
 
     cdef BaseChunk create_chunk(self, tuple cidx):
@@ -1106,7 +1106,7 @@ cdef class Array(BaseArray):
     def enumerate_chunks(self):
         """TODO inherit docstring"""
         for cidx in itertools.product(*(range(n) for n in self._cdata_shape)):
-            yield self._cdata[cidx]
+            yield cidx, self._cdata[cidx]
 
 
 # noinspection PyAbstractClass
@@ -1223,7 +1223,7 @@ cdef class PersistentArray(BaseArray):
             a.flat = [c.is_initialized for c in self._cdata.flat]
             return a
 
-    cpdef BaseChunk get_chunk(self, tuple cidx):
+    cdef BaseChunk get_chunk(self, tuple cidx):
         return self._cdata[cidx]
 
     cdef BaseChunk create_chunk(self, tuple cidx):
@@ -1320,17 +1320,122 @@ cdef class SynchronizedPersistentArray(PersistentArray):
         )
 
 
+# noinspection PyAttributeOutsideInit
 cdef class LazyArray(BaseArray):
-    # TODO
-    pass
+
+    def __cinit__(self, shape=None, chunks=None, dtype=None, cname=None,
+                  clevel=None, shuffle=None, fill_value=None, **kwargs):
+
+        # set shape
+        self._shape = normalize_shape(shape)
+
+        # set chunks
+        self._chunks = normalize_chunks(chunks, self._shape)
+
+        # determine the number and arrangement of chunks
+        self._cdata_shape = tuple(
+            int(np.ceil(s / c)) for s, c in zip(self._shape, self._chunks)
+        )
+
+        # set dtype
+        self._dtype = np.dtype(dtype)
+
+        # set compression options
+        self._cname, self._clevel, self._shuffle = \
+            normalize_cparams(cname, clevel, shuffle)
+
+        # set fill_value
+        self._fill_value = fill_value
+
+        # initialize a dictionary for chunk objects
+        self._cdata = dict()
+
+        # instantiate chunks - not now!
+
+    property cbytes:
+        def __get__(self):
+            return sum(c.cbytes for c in self._cdata.values())
+
+    property is_initialized:
+        def __get__(self):
+            a = np.zeros(self._cdata_shape, dtype='b1')
+            for cidx, chunk in self._cdata.items():
+                a[cidx] = chunk.is_initialized
+            return a
+
+    cdef BaseChunk get_chunk(self, tuple cidx):
+        try:
+            chunk = self._cdata[cidx]
+        except KeyError:
+            chunk = self.create_chunk(cidx)
+            self._cdata[cidx] = chunk
+        return chunk
+
+    cdef BaseChunk create_chunk(self, tuple cidx):
+        # ignore chunk index here, not needed
+        return Chunk(shape=self._chunks, dtype=self._dtype, cname=self._cname,
+                     clevel=self._clevel, shuffle=self._shuffle,
+                     fill_value=self._fill_value)
+
+    def resize(self, *args):
+        """TODO inherit docstring"""
+
+        # normalize new shape argument
+        if len(args) == 1:
+            new_shape = args[0]
+        else:
+            new_shape = args
+        if isinstance(new_shape, int):
+            new_shape = (new_shape,)
+        else:
+            new_shape = tuple(new_shape)
+        if len(new_shape) != len(self._shape):
+            raise ValueError('new shape must have same number of dimensions')
+
+        # handle None in new_shape
+        new_shape = tuple(s if n is None else n
+                          for s, n in zip(self._shape, new_shape))
+
+        # determine the new number and arrangement of chunks
+        new_cdata_shape = tuple(int(np.ceil(s / c))
+                                for s, c in zip(new_shape, self._chunks))
+
+        # setup new chunks container
+        new_cdata = dict()
+
+        # copy across any chunks to be kept
+        for cidx, chunk in self._cdata.items():
+            if all(i < c for i, c in zip(cidx, new_cdata_shape)):
+                new_cdata[cidx] = chunk
+
+        # set new attributes
+        self._shape = new_shape
+        self._cdata_shape = new_cdata_shape
+        self._cdata = new_cdata
+
+    def iter_chunks(self):
+        """TODO inherit docstring"""
+        for cidx in itertools.product(*(range(n) for n in self._cdata_shape)):
+            yield self._cdata.get(cidx, None)
+
+    def enumerate_chunks(self):
+        """TODO inherit docstring"""
+        for cidx in itertools.product(*(range(n) for n in self._cdata_shape)):
+            yield cidx, self._cdata.get(cidx, None)
+
+
+# noinspection PyAbstractClass
+cdef class SynchronizedLazyArray(LazyArray):
+
+    cdef BaseChunk create_chunk(self, tuple cidx):
+        # ignore chunk index here, not needed
+        return SynchronizedChunk(shape=self._chunks, dtype=self._dtype,
+                                 cname=self._cname, clevel=self._clevel,
+                                 shuffle=self._shuffle,
+                                 fill_value=self._fill_value)
 
 
 cdef class LazyPersistentArray(BaseArray):
-    # TODO
-    pass
-
-
-cdef class SynchronizedLazyArray(BaseArray):
     # TODO
     pass
 
