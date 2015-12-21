@@ -15,24 +15,31 @@ import struct
 import ctypes
 import pickle
 import shutil
+import logging
+import tempfile
+from collections import namedtuple
+
+
+from zarr import util as _util
+from zarr import defaults
+
+
+###############################################################################
+# CYTHON IMPORTS                                                              #
+###############################################################################
 
 
 import numpy as np
 cimport numpy as np
 from numpy cimport ndarray, dtype
 from libc.stdint cimport uintptr_t
+from .definitions cimport (malloc, realloc, free, PyBytes_AsString,
+    PyBytes_FromStringAndSize)
 
 
-from zarr import util as _util
-
-
-import logging
-logger = logging.getLogger(__name__)
-
-
-def debug(*args):
-    msg = str(args[0]) + ': ' + ', '.join(map(repr, args[1:]))
-    logger.debug(msg)
+###############################################################################
+# BLOSC IMPORTS                                                               #
+###############################################################################
 
 
 cdef extern from "blosc.h":
@@ -52,18 +59,6 @@ cdef extern from "blosc.h":
                              size_t *cbytes, size_t *blocksize)
 
 
-from .definitions cimport (malloc, realloc, free, PyBytes_AsString,
-    PyBytes_FromStringAndSize)
-
-
-from zarr import defaults
-
-
-###############################################################################
-# MISC HELPERS                                                                #
-###############################################################################
-
-
 def blosc_version():
     """Return the version of c-blosc that zarr was compiled with."""
 
@@ -77,7 +72,25 @@ def blosc_version():
     return ver_str, ver_date
 
 
-def get_cparams(cname=None, clevel=None, shuffle=None):
+###############################################################################
+# SETUP LOGGING                                                               #
+###############################################################################
+
+
+logger = logging.getLogger(__name__)
+
+
+def debug(*args):
+    msg = str(args[0]) + ': ' + ', '.join(map(repr, args[1:]))
+    logger.debug(msg)
+
+
+###############################################################################
+# MISC HELPERS                                                                #
+###############################################################################
+
+
+def normalise_cparams(cname=None, clevel=None, shuffle=None):
     """Convenience function to normalise compression parameters.
 
     If any values are None, they will be substituted with values from the
@@ -93,6 +106,12 @@ def get_cparams(cname=None, clevel=None, shuffle=None):
     shuffle : int, optional
         Shuffle filter, 0 means no shuffle, 1 means byte shuffle, 2 means
         bit shuffle.
+
+    Returns
+    -------
+    cname
+    clevel
+    shuffle
 
     """
 
@@ -119,6 +138,15 @@ def get_cparams(cname=None, clevel=None, shuffle=None):
     return cname, clevel, shuffle
 
 
+def normalise_shape(shape):
+    """Convenience function to normalise the `shape` argument."""
+    try:
+        shape = tuple(int(s) for s in shape)
+    except TypeError:
+        shape = (int(shape),)
+    return shape
+
+
 cdef is_total_slice(item, tuple shape):
     """Determine whether `item` specifies a complete slice of array with the
     given `shape`. Used to optimise __setitem__ operations on the Chunk
@@ -137,13 +165,77 @@ cdef is_total_slice(item, tuple shape):
     return False
 
 
+# for the persistence layer
+BLOSC_HEADER_LENGTH = 16
+
+
+if sys.version_info >= (3, 0):
+    def decode_byte(byte):
+        return byte
+else:
+    def decode_byte(byte):
+        return int(byte.encode('hex'), 16)
+
+
+def decode_uint32(bytes fourbyte):
+    return struct.unpack('<I', fourbyte)[0]
+
+
+BloscHeader = namedtuple('BloscHeader', ['version', 'versionlz', 'flags',
+                                         'typesize', 'nbytes', 'blocksize',
+                                         'cbytes'])
+
+
+def decode_blosc_header(bytes b):
+    """Read and decode header from compressed Blosc buffer.
+
+    Parameters
+    ----------
+    buffer_ : string of bytes
+        the compressed buffer
+
+    Returns
+    -------
+    settings : dict
+        a dict containing the settings from Blosc
+
+    Notes
+    -----
+
+    The Blosc 1.1.3 header is 16 bytes as follows:
+
+    |-0-|-1-|-2-|-3-|-4-|-5-|-6-|-7-|-8-|-9-|-A-|-B-|-C-|-D-|-E-|-F-|
+      ^   ^   ^   ^ |     nbytes    |   blocksize   |    cbytes     |
+      |   |   |   |
+      |   |   |   +--typesize
+      |   |   +------flags
+      |   +----------versionlz
+      +--------------version
+
+    The first four are simply bytes, the last three are are each unsigned ints
+    (uint32) each occupying 4 bytes. The header is always little-endian.
+    'cbytes' is the length of the buffer including header and nbytes is the
+    length of the data when uncompressed.
+
+    """
+    debug('decode_blosc_header', len(b))
+    header = BloscHeader(version=decode_byte(b[0]),
+                         versionlz=decode_byte(b[1]),
+                         flags=decode_byte(b[2]),
+                         typesize=decode_byte(b[3]),
+                         nbytes=decode_uint32(b[4:8]),
+                         blocksize=decode_uint32(b[8:12]),
+                         cbytes=decode_uint32(b[12:16]))
+    return header
+
+
 ###############################################################################
 # CHUNK CLASSES                                                               #
 ###############################################################################
 
 
 # noinspection PyAttributeOutsideInit
-cdef class AbstractChunk:
+cdef class BaseChunk:
 
     def __cinit__(self, shape=None, dtype=None, cname=None,
                   clevel=None, shuffle=None, fill_value=0, **kwargs):
@@ -159,7 +251,7 @@ cdef class AbstractChunk:
 
         # set compression options
         self._cname, self._clevel, self._shuffle = \
-            get_cparams(cname, clevel, shuffle)
+            normalise_cparams(cname, clevel, shuffle)
 
         # set fill_value
         self.fill_value = fill_value
@@ -196,16 +288,6 @@ cdef class AbstractChunk:
         def __get__(self):
             return self._shuffle
 
-    property is_initialised:
-        def __get__(self):
-            # override in sub-class
-            pass
-
-    property cbytes:
-        def __get__(self):
-            # override in sub-class
-            pass
-
     def __getitem__(self, item):
         cdef ndarray array
 
@@ -227,10 +309,6 @@ cdef class AbstractChunk:
 
     def __array__(self):
         return self[:]
-
-    cdef get(self, char *dest):
-        # override in sub-class
-        pass
 
     def __setitem__(self, key, value):
         cdef ndarray array
@@ -263,13 +341,30 @@ cdef class AbstractChunk:
         # compress the data and store
         self.put(array.data)
 
+    # abstract properties and methods follow
+    ########################################
+
+    property is_initialised:
+        def __get__(self):
+            # override in sub-class
+            raise NotImplementedError()
+
+    property cbytes:
+        def __get__(self):
+            # override in sub-class
+            raise NotImplementedError()
+
+    cdef get(self, char *dest):
+        # override in sub-class
+        raise NotImplementedError()
+
     cdef put(self, char *source):
         # override in sub-class
-        pass
+        raise NotImplementedError()
 
 
 # noinspection PyAttributeOutsideInit
-cdef class Chunk(AbstractChunk):
+cdef class Chunk(BaseChunk):
 
     def __cinit__(self, shape=None, dtype=None, cname=None, clevel=None,
                   shuffle=None, fill_value=None, **kwargs):
@@ -354,78 +449,14 @@ cdef class SynchronizedChunk(Chunk):
             super(SynchronizedChunk, self).__setitem__(key, value)
 
 
-# For the persistence layer
-EXTENSION = '.blp'
-MAGIC = b'blpk'
-BLOSCPACK_HEADER_LENGTH = 16
-BLOSC_HEADER_LENGTH = 16
-FORMAT_VERSION = 1
-MAX_FORMAT_VERSION = 255
-MAX_CHUNKS = (2 ** 63) - 1
-
-
-if sys.version_info >= (3, 0):
-    def decode_byte(byte):
-        return byte
-else:
-    def decode_byte(byte):
-        return int(byte.encode('hex'), 16)
-
-
-def decode_uint32(bytes fourbyte):
-    debug('decode_uint32', fourbyte, len(fourbyte))
-    return struct.unpack('<I', fourbyte)[0]
-
-
-cdef decode_blosc_header(bytes b):
-    """Read and decode header from compressed Blosc buffer.
-
-    Parameters
-    ----------
-    buffer_ : string of bytes
-        the compressed buffer
-
-    Returns
-    -------
-    settings : dict
-        a dict containing the settings from Blosc
-
-    Notes
-    -----
-
-    The Blosc 1.1.3 header is 16 bytes as follows:
-
-    |-0-|-1-|-2-|-3-|-4-|-5-|-6-|-7-|-8-|-9-|-A-|-B-|-C-|-D-|-E-|-F-|
-      ^   ^   ^   ^ |     nbytes    |   blocksize   |    ctbytes    |
-      |   |   |   |
-      |   |   |   +--typesize
-      |   |   +------flags
-      |   +----------versionlz
-      +--------------version
-
-    The first four are simply bytes, the last three are are each unsigned ints
-    (uint32) each occupying 4 bytes. The header is always little-endian.
-    'ctbytes' is the length of the buffer including header and nbytes is the
-    length of the data when uncompressed.
-
-    """
-    debug('decode_blosc_header', len(b))
-    header = {'version': decode_byte(b[0]),
-              'versionlz': decode_byte(b[1]),
-              'flags': decode_byte(b[2]),
-              'typesize': decode_byte(b[3]),
-              'nbytes': decode_uint32(b[4:8]),
-              'blocksize': decode_uint32(b[8:12]),
-              'ctbytes': decode_uint32(b[12:16])}
-    return header
-
-
-cdef class PersistentChunk(AbstractChunk):
+cdef class PersistentChunk(BaseChunk):
 
     def __cinit__(self, path=None, **kwargs):
 
         # set file path
         self._path = path
+        self._basename = os.path.basename(path)
+        self._dirname = os.path.dirname(path)
 
     property is_initialised:
         def __get__(self):
@@ -433,9 +464,9 @@ cdef class PersistentChunk(AbstractChunk):
         
     cdef dict read_header(self):
         with open(self._path, 'rb') as f:
-            blosc_header_raw = f.read(BLOSC_HEADER_LENGTH)
-            blosc_header = decode_blosc_header(blosc_header_raw)
-            return blosc_header
+            header_raw = f.read(BLOSC_HEADER_LENGTH)
+            header = decode_blosc_header(header_raw)
+            return header
 
     property cbytes:
         def __get__(self):
@@ -443,39 +474,47 @@ cdef class PersistentChunk(AbstractChunk):
                 return 0
             else:
                 header = self.read_header()
-                return header['ctbytes']
+                return header.cbytes
 
     cdef bytes read(self):
         with open(self._path, 'rb') as f:
-            blosc_header_raw = f.read(BLOSC_HEADER_LENGTH)
-            blosc_header = decode_blosc_header(blosc_header_raw)
-            cbytes = blosc_header['ctbytes']
+            header_raw = f.read(BLOSC_HEADER_LENGTH)
+            header = decode_blosc_header(header_raw)
+            # check nbytes consistency here
+            if self._nbytes != header.nbytes:
+                raise RuntimeError('expected nbytes %s, found %s' %
+                                   (self._nbytes, header.nbytes))
             # seek back BLOSC_HEADER_LENGTH bytes relative to current position
             f.seek(-BLOSC_HEADER_LENGTH, 1)
-            data = f.read(cbytes)
+            data = f.read(header.cbytes)
             return data
 
     cdef get(self, char *dest):
         cdef:
             int ret
             bytes data
-            char *compressed
+            char *source
 
         # read compressed data from file
         data = self.read()
-        compressed = PyBytes_AsString(data)
+        source = PyBytes_AsString(data)
 
         # do decompression
         with nogil:
-            ret = blosc_decompress_ctx(compressed, dest, self._nbytes, 1)
+            ret = blosc_decompress_ctx(source, dest, self._nbytes, 1)
 
         # handle errors
         if ret <= 0:
             raise RuntimeError('error during blosc compression: %d' % ret)
     
     cdef write(self, bytes data):
-        with open(self._path, 'wb') as f:
+        # N.B., write to a temporary file then move into place to avoid data
+        # corruption due to errors during write leaving partially written files
+        tmp = tempfile.mktemp(suffix='.partial', prefix=self._basename + '.',
+                              dir=self._dirname)
+        with open(tmp, 'wb') as f:
             f.write(data)
+        os.replace(tmp, self._path)
 
     cdef put(self, char *source):
         cdef:
@@ -504,8 +543,6 @@ cdef class PersistentChunk(AbstractChunk):
         # get information about the compressed data
         blosc_cbuffer_sizes(data, &nbytes_check, &cbytes, &blocksize)
         assert nbytes_check == self._nbytes
-
-        # write data directly to file
 
         # wrap as python bytes
         data_bytes = ctypes.string_at(<uintptr_t> data, cbytes)
@@ -603,15 +640,6 @@ def get_chunk_range(tuple selection, tuple chunks):
     return chunk_range
 
 
-def normalise_shape(shape):
-    """Convenience function to normalise the `shape` argument."""
-    try:
-        shape = tuple(int(s) for s in shape)
-    except TypeError:
-        shape = (int(shape),)
-    return shape
-
-
 def normalise_chunks(chunks, tuple shape):
     """Convenience function to normalise the `chunks` argument for an array
     with the given `shape`."""
@@ -635,7 +663,7 @@ def normalise_chunks(chunks, tuple shape):
 ###############################################################################
 
 
-cdef class AbstractArray:
+cdef class BaseArray:
 
     def __cinit__(self, shape=None, chunks=None, dtype=None, cname=None,
                   clevel=None, shuffle=None, fill_value=None, **kwargs):
@@ -660,7 +688,7 @@ cdef class AbstractArray:
 
         # set compression options
         self._cname, self._clevel, self._shuffle = \
-            get_cparams(cname, clevel, shuffle)
+            normalise_cparams(cname, clevel, shuffle)
 
         # set fill_value
         self._fill_value = fill_value
@@ -703,17 +731,17 @@ cdef class AbstractArray:
         # override in sub-class
         pass
 
-    cdef AbstractChunk create_chunk(self, tuple cidx):
+    cdef BaseChunk create_chunk(self, tuple cidx):
         # override in sub-class
         pass
 
-    cdef AbstractChunk get_chunk(self, tuple cidx):
+    cdef BaseChunk get_chunk(self, tuple cidx):
         # override in sub-class
         pass
 
     def __getitem__(self, item):
         cdef ndarray dest
-        cdef AbstractChunk chunk
+        cdef BaseChunk chunk
 
         # normalise selection
         selection = normalise_array_selection(item, self._shape)
@@ -880,7 +908,7 @@ cdef class AbstractArray:
 
 
 # noinspection PyAttributeOutsideInit
-cdef class Array(AbstractArray):
+cdef class Array(BaseArray):
     # TODO review me
 
     def __cinit__(self, **kwargs):
@@ -1009,202 +1037,6 @@ cdef class Array(AbstractArray):
         # set new chunks
         self.cdata = new_cdata
 
-# TODO refactor as sub-class of AbstractChunk
-
-
-cdef class PersistentChunk:
-
-    def __cinit__(self, path, shape, dtype=None, cname=None,
-                  clevel=None, shuffle=None, fill_value=None, **kwargs):
-
-        # set filepath
-        self.path = path
-        debug('path', path)
-
-        # set shape and dtype
-        self._shape = normalise_shape(shape)
-        self._dtype = np.dtype(dtype)
-
-        # set compression options
-        self._cname, self._clevel, self._shuffle = \
-            get_cparams(cname, clevel, shuffle)
-
-        # set fill_value
-        self.fill_value = fill_value
-
-    property is_initialised:
-        def __get__(self):
-            return os.path.exists(self.path)
-
-    cdef read_header(self):
-        debug('read_header')
-        with open(self.path, 'rb') as f:
-            # bloscpack_header = f.read(BLOSCPACK_HEADER_LENGTH)
-            blosc_header_raw = f.read(BLOSC_HEADER_LENGTH)
-            debug('blosc_header_raw', len(blosc_header_raw))
-            blosc_header = decode_blosc_header(blosc_header_raw)
-            return blosc_header
-
-    property cbytes:
-        def __get__(self):
-            if not os.path.exists(self.path):
-                return 0
-            else:
-                header = self.read_header()
-                return header['ctbytes']
-
-    property nbytes:
-        def __get__(self):
-            if not os.path.exists(self.path):
-                return 0
-            else:
-                header = self.read_header()
-                return header['nbytes']
-
-    cdef read(self):
-        with open(self.path, 'rb') as f:
-            # bloscpack_header = f.read(BLOSCPACK_HEADER_LENGTH)
-            blosc_header_raw = f.read(BLOSC_HEADER_LENGTH)
-            blosc_header = decode_blosc_header(blosc_header_raw)
-            cbytes = blosc_header['ctbytes']
-            nbytes = blosc_header['nbytes']
-            # seek back BLOSC_HEADER_LENGTH bytes relative to current position
-            f.seek(-BLOSC_HEADER_LENGTH, 1)
-            compressed_data = f.read(cbytes)
-            return nbytes, compressed_data
-
-    cdef get(self, char *dest):
-        # TODO remove code duplication with Chunk class
-        cdef:
-            int ret
-            char *compressed
-            size_t nbytes
-            bytes data
-
-        # read compressed data from file
-        nbytes, data = self.read()
-        compressed = PyBytes_AsString(data)
-
-        # do decompression
-        with nogil:
-            ret = blosc_decompress_ctx(compressed, dest, nbytes, 1)
-
-        # handle errors
-        if ret <= 0:
-            raise RuntimeError("error during blosc compression: %d" % ret)
-
-    def __getitem__(self, item):
-        # TODO remove code duplication with Chunk class
-
-        cdef ndarray array
-
-        # setup output array
-        array = np.empty(self._shape, dtype=self._dtype)
-
-        if self.is_initialised:
-
-            # data initialised, decompress into array
-            self.get(array.data)
-
-        else:
-
-            # data not initialised, use fill_value
-            if self.fill_value is not None:
-                array.fill(self.fill_value)
-
-        return array[item]
-
-    cdef write(self, bytes data):
-        debug('write', len(data))
-        # bloscpack_header = create_bloscpack_header(1)
-        with open(self.path, 'wb') as f:
-            # f.write(bloscpack_header)
-            f.write(data)
-
-    cdef put(self, ndarray array):
-        debug('compress', array.nbytes)
-        # TODO remove code duplication with Chunk class
-
-        cdef:
-            size_t nbytes, nbytes_check, cbytes, blocksize, itemsize
-            char *dest
-            char *data
-
-        # compute the total number of bytes in the array
-        nbytes = array.itemsize * array.size
-
-        # determine itemsize
-        itemsize = array.dtype.base.itemsize
-
-        # allocate memory for compressed data
-        dest = <char *> malloc(nbytes + BLOSC_MAX_OVERHEAD)
-
-        # perform compression
-        with nogil:
-            cbytes = blosc_compress_ctx(self._clevel, self._shuffle, itemsize,
-                                        nbytes, array.data, dest,
-                                        nbytes + BLOSC_MAX_OVERHEAD,
-                                        self._cname, 0, 1)
-
-        # check compression was successful
-        debug('cbytes', cbytes)
-        if cbytes <= 0:
-            raise RuntimeError("error during blosc compression: %d" % cbytes)
-
-        # free the unused memory
-        data = <char *> realloc(dest, cbytes)
-
-        # get information about the compressed data
-        blosc_cbuffer_sizes(dest, &nbytes_check, &cbytes, &blocksize)
-        assert nbytes_check == nbytes
-
-        # write data directly to file
-
-        # obtain memory address of start of data
-        address = <uintptr_t> data
-
-        # wrap as python bytes
-        data_bytes = ctypes.string_at(address, cbytes)
-
-        # write bytes to file
-        self.write(data_bytes)
-
-        # free memory
-        free(data)
-
-        # # original implementation from bcolz, implies a copy?
-        # data_bytes = PyBytes_FromStringAndSize(data, <Py_ssize_t> cbytes)
-        # free(data)
-        # self.write(data_bytes)
-
-    def __setitem__(self, key, value):
-        # TODO remove code duplication with Chunk class
-
-        if is_total_slice(key, self._shape):
-            # completely replace the contents of this chunk
-
-            if np.isscalar(value):
-                array = np.empty(self._shape, dtype=self._dtype)
-                array.fill(value)
-
-            else:
-                # ensure array is C contiguous
-                array = np.ascontiguousarray(value, dtype=self._dtype)
-                if array.shape != self._shape:
-                    raise ValueError('bad value shape')
-
-        else:
-            # partially replace the contents of this chunk
-
-            # decompress existing data
-            array = self[:]
-
-            # modify
-            array[key] = value
-
-        # compress the data and store
-        self.put(array)
-
 
 def read_array_metadata(path):
 
@@ -1315,7 +1147,7 @@ cdef class PersistentArray:
             self._chunks = normalise_chunks(chunks, self._shape)
             self._dtype = np.dtype(dtype)
             self._cname, self._clevel, self._shuffle = \
-                get_cparams(cname, clevel, shuffle)
+                normalise_cparams(cname, clevel, shuffle)
             self.fill_value = fill_value
             metadata = {'shape': self._shape,
                         'chunks': self._chunks,
