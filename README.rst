@@ -133,6 +133,18 @@ Create a persistent array (data saved to disk)::
 There is no need to close a persistent array. Data are automatically flushed
 to disk.
 
+If you're working with really big arrays, try the 'lazy' option::
+
+    >>> path = 'big.zarr'
+    >>> z = zarr.open(path, shape=(1e8, 1e7), dtype='i4', chunks=(1000, 1000), lazy=True)
+    >>> z
+    zarr.ext.SynchronizedLazyPersistentArray((100000000, 10000000), int32, chunks=(1000, 1000))
+      cname: blosclz; clevel: 5; shuffle: 1 (BYTESHUFFLE)
+      nbytes: 3.6P; cbytes: 0; initialized: 0/1000000000
+      mode: a; path: big.zarr
+
+Yes, that is 3.6 petabytes.
+
 Tuning
 ------
 
