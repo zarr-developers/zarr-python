@@ -37,8 +37,8 @@ cdef class PersistentChunk(BaseChunk):
 
 
 cdef class SynchronizedPersistentChunk(PersistentChunk):
-    # TODO
-    pass
+    cdef object _thread_lock
+    cdef object _file_lock
 
 
 cdef class BaseArray:
@@ -73,7 +73,6 @@ cdef class PersistentArray(BaseArray):
 
 
 cdef class SynchronizedPersistentArray(PersistentArray):
-    # TODO
     pass
 
 

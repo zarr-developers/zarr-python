@@ -166,7 +166,7 @@ def full(shape, chunks, fill_value, dtype=None, cname=None, clevel=None,
 
 
 def array(data, chunks=None, dtype=None, cname=None, clevel=None,
-          shuffle=None, synchronized=True, fill_value=None):
+          shuffle=None, fill_value=None, synchronized=True):
     """Create an array filled with `data`.
 
     Parameters
@@ -185,11 +185,11 @@ def array(data, chunks=None, dtype=None, cname=None, clevel=None,
     shuffle : int, optional
         Shuffle filter, 0 means no shuffle, 1 means byte shuffle, 2 means
         bit shuffle.
+    fill_value : object
+        Default value to use for uninitialised portions of the array.
     synchronized : bool, optional
         If True, each chunk will be protected with a lock to prevent data
         collision during write operations.
-    fill_value : object
-        Default value to use for uninitialised portions of the array.
 
     Returns
     -------
@@ -233,8 +233,9 @@ def array(data, chunks=None, dtype=None, cname=None, clevel=None,
     return z
 
 
+# noinspection PyShadowingBuiltins
 def open(path, mode='a', shape=None, chunks=None, dtype=None, cname=None,
-         clevel=None, shuffle=None, fill_value=None):
+         clevel=None, shuffle=None, fill_value=None, synchronized=True):
     """Open a persistent array.
 
     Parameters
@@ -262,6 +263,9 @@ def open(path, mode='a', shape=None, chunks=None, dtype=None, cname=None,
         bit shuffle.
     fill_value : object
         Default value to use for uninitialised portions of the array.
+    synchronized : bool, optional
+        If True, each chunk will be protected with a lock to prevent data
+        collision during write operations.
 
     Returns
     -------
@@ -269,9 +273,10 @@ def open(path, mode='a', shape=None, chunks=None, dtype=None, cname=None,
 
     """
 
-    # TODO synchronized option
-
-    cls = _ext.PersistentArray
+    if synchronized:
+        cls = _ext.SynchronizedPersistentArray
+    else:
+        cls = _ext.PersistentArray
     return cls(path=path, mode=mode, shape=shape, chunks=chunks, dtype=dtype,
                cname=cname, clevel=clevel, shuffle=shuffle,
                fill_value=fill_value)

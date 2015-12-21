@@ -10,7 +10,8 @@ import shutil
 from nose.tools import eq_ as eq, assert_false, assert_true, assert_raises
 import numpy as np
 from numpy.testing import assert_array_equal
-from zarr.ext import Array, SynchronizedArray, PersistentArray
+from zarr.ext import Array, SynchronizedArray, PersistentArray, \
+    SynchronizedPersistentArray
 from zarr import defaults
 
 
@@ -363,3 +364,15 @@ class TestPersistentArray(TestCase, ArrayTests):
         a = np.arange(10000).reshape((1000, 10))
         chunks = (100, 2)
         self._test_persistence(a, chunks=chunks)
+
+
+class TestSynchronizedPersistentArray(TestPersistentArray):
+
+    def create_array(self, **kwargs):
+        path = kwargs.get('path', tempfile.mktemp())
+        kwargs['path'] = path
+        # tidy up
+        atexit.register(
+            lambda: shutil.rmtree(path) if os.path.exists(path) else None
+        )
+        return SynchronizedPersistentArray(**kwargs)

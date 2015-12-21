@@ -19,6 +19,7 @@ import tempfile
 from collections import namedtuple
 
 
+import fasteners
 from zarr import util as _util
 from zarr import defaults
 
@@ -574,13 +575,15 @@ cdef class PersistentChunk(BaseChunk):
 # noinspection PyAbstractClass
 cdef class SynchronizedPersistentChunk(PersistentChunk):
 
-    def __cinit__(self, **kargs):
-        # TODO
-        pass
+    def __cinit__(self, **kwargs):
+        lock_path = self._path + '.lock'
+        self._thread_lock = RLock()
+        self._file_lock = fasteners.InterProcessLock(lock_path)
 
     def __setitem__(self, key, value):
-        # TODO
-        pass
+        with self._thread_lock:
+            with self._file_lock:
+                super(SynchronizedPersistentChunk, self).__setitem__(key, value)
 
 
 ###############################################################################
@@ -1303,9 +1306,18 @@ cdef class PersistentArray(BaseArray):
             yield self._cdata[cidx]
 
 
+# noinspection PyAbstractClass
 cdef class SynchronizedPersistentArray(PersistentArray):
-    # TODO
-    pass
+
+    cdef BaseChunk create_chunk(self, tuple cidx):
+        chunk_filename = '.'.join(map(str, cidx)) + defaults.datasuffix
+        chunk_path = os.path.join(self._path, defaults.datapath,
+                                  chunk_filename)
+        return SynchronizedPersistentChunk(
+            path=chunk_path, shape=self._chunks, dtype=self._dtype,
+            cname=self._cname, clevel=self._clevel, shuffle=self._shuffle,
+            fill_value=self._fill_value
+        )
 
 
 cdef class LazyArray(BaseArray):

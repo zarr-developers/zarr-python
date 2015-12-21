@@ -9,7 +9,8 @@ import os
 from nose.tools import eq_ as eq, assert_false, assert_true, assert_raises
 import numpy as np
 from numpy.testing import assert_array_equal
-from zarr.ext import Chunk, PersistentChunk, SynchronizedChunk
+from zarr.ext import Chunk, PersistentChunk, SynchronizedChunk, \
+    SynchronizedPersistentChunk
 from zarr import defaults
 
 
@@ -223,4 +224,13 @@ class TestPersistentChunk(TestCase, ChunkTests):
                                    .reshape(100, -1))
 
 
-# TODO test persistent synchronized chunks
+class TestSynchronizedPersistentChunk(TestPersistentChunk):
+
+    def create_chunk(self, **kwargs):
+        path = kwargs.get('path', tempfile.mktemp())
+        kwargs['path'] = path
+        # tidy up
+        atexit.register(
+            lambda: os.remove(path) if os.path.exists(path) else None
+        )
+        return SynchronizedPersistentChunk(**kwargs)

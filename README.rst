@@ -123,7 +123,7 @@ Create a persistent array (data saved to disk)::
     >>> z = zarr.open(path, shape=(10000, 1000), dtype='i4', chunks=(1000, 100))
     >>> z[:] = np.arange(10000000, dtype='i4').reshape(10000, 1000)
     >>> z
-    zarr.ext.PersistentArray((10000, 1000), int32, chunks=(1000, 100))
+    zarr.ext.SynchronizedPersistentArray((10000, 1000), int32, chunks=(1000, 100))
       cname: blosclz; clevel: 5; shuffle: 1 (BYTESHUFFLE)
       nbytes: 38.1M; cbytes: 2.0M; ratio: 19.3; initialized: 100/100
       mode: a; path: example.zarr
