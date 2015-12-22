@@ -119,7 +119,7 @@ append data to any axis::
       cname: blosclz; clevel: 5; shuffle: 1 (BYTESHUFFLE)
       nbytes: 152.6M; cbytes: 7.6M; ratio: 20.2; initialized: 400/400
 
-Create a persistent array (data saved to disk)::
+Create a persistent array (data stored on disk)::
 
     >>> path = 'example.zarr'
     >>> z = zarr.open(path, shape=(10000, 1000), dtype='i4', chunks=(1000, 100))
