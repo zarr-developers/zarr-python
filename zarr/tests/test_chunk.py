@@ -231,3 +231,24 @@ class TestSynchronizedPersistentChunk(TestPersistentChunk):
             lambda: os.remove(path) if os.path.exists(path) else None
         )
         return SynchronizedPersistentChunk(**kwargs)
+
+
+def test_shuffles():
+
+    # setup
+    a = np.arange(256, dtype='u1')
+    # no shuffle
+    c0 = Chunk(shape=a.shape, dtype=a.dtype, shuffle=0)
+    c0[:] = a
+    # byte shuffle
+    c1 = Chunk(shape=a.shape, dtype=a.dtype, shuffle=1)
+    c1[:] = a
+    # bit shuffle
+    c2 = Chunk(shape=a.shape, dtype=a.dtype, shuffle=2)
+    c2[:] = a
+
+    # expect no effect of byte shuffle because using single byte dtype
+    assert c0.cbytes == c1.cbytes
+
+    # expect improvement from bitshuffle
+    assert c2.cbytes < c1.cbytes
