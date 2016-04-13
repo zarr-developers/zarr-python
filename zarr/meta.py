@@ -65,6 +65,7 @@ def encode_dtype(d):
 def _decode_dtype_descr(d):
     # need to convert list items to tuples
     if isinstance(d, list):
+        # recurse to handle nested structures
         d = [(f, _decode_dtype_descr(v)) for f, v in d]
     return d
 
