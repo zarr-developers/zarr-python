@@ -276,6 +276,18 @@ class ArrayTests(object):
         eq((10, 10), z.chunks)
         assert_array_equal(e, z[:])
 
+    def test_attrs(self):
+        z = self.create_array(shape=(100, 100), chunks=(10, 10), dtype='i4')
+        assert hasattr(z, 'attrs')
+        with assert_raises(KeyError):
+            v = z.attrs['foo']
+        z.attrs['foo'] = 42
+        eq(42, z.attrs['foo'])
+        z.attrs['bar'] = 4.2
+        eq(4.2, z.attrs['bar'])
+        z.attrs['baz'] = 'quux'
+        eq('quux', z.attrs['baz'])
+
 
 class TestArray(TestCase, ArrayTests):
 
@@ -322,6 +334,11 @@ class TestPersistentArray(TestCase, ArrayTests):
         # set data
         z[:] = a
 
+        # set attributes
+        z.attrs['foo'] = 42
+        z.attrs['bar'] = 4.2
+        z.attrs['baz'] = 'quux'
+
         # open for reading
         z2 = self.create_array(path=path, mode='r')
         eq(a.shape, z2.shape)
@@ -335,12 +352,17 @@ class TestPersistentArray(TestCase, ArrayTests):
         assert_array_equal(z.is_initialized, z2.is_initialized)
         assert_true(np.count_nonzero(z2.is_initialized) > 0)
         assert_array_equal(a, z2[:])
+        eq(42, z2.attrs['foo'])
+        eq(4.2, z2.attrs['bar'])
+        eq('quux', z2.attrs['baz'])
 
         # check read-only
         with assert_raises(ValueError):
             z2[:] = 0
         with assert_raises(ValueError):
             z2.resize(100)
+        with assert_raises(ValueError):
+            z2.attrs['foo'] = 0
 
         # open for read/write if exists
         z3 = self.create_array(path=path, mode='r+')

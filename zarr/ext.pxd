@@ -53,6 +53,7 @@ cdef class BaseArray:
     cdef int _clevel
     cdef int _shuffle
     cdef object _fill_value
+    cdef object _attrs
     cdef object _cdata
     # abstract methods
     cdef BaseChunk create_chunk(self, tuple cidx)
