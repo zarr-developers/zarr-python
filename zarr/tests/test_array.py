@@ -374,21 +374,28 @@ class TestPersistentArray(TestCase, ArrayTests):
         shutil.rmtree(path)
 
     def test_persistence_1d(self):
+
         # simple dtype
-        self._test_persistence(np.arange(1050), chunks=(100,))
+        for dtype in '<i4', '>i4':
+            a = np.arange(1050, dtype=dtype)
+            self._test_persistence(a, chunks=(100,))
+
         # structured dtype
         dtype = np.dtype([('a', 'i4'), ('b', 'S10')])
-        self._test_persistence(np.empty(10000, dtype=dtype), chunks=(100,))
+        a = np.empty(10000, dtype=dtype)
+        self._test_persistence(a, chunks=(100,))
 
     def test_persistence_2d(self):
-        chunks = (100, 2)
+
         # simple dtype
-        a = np.arange(10000).reshape((1000, 10))
-        self._test_persistence(a, chunks=chunks)
+        for dtype in '<i4', '>i4':
+            a = np.arange(10000, dtype=dtype).reshape((1000, 10))
+            self._test_persistence(a, chunks=(100, 2))
+
         # structured dtype
         dtype = np.dtype([('a', 'i4'), ('b', 'S10')])
-        self._test_persistence(np.empty((1000, 10), dtype=dtype),
-                               chunks=chunks)
+        a = np.empty((1000, 10), dtype=dtype)
+        self._test_persistence(a, chunks=(100, 2))
 
     def test_resize_persistence(self):
 
