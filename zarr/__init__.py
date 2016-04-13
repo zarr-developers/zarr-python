@@ -14,7 +14,7 @@ from zarr.version import version as __version__
 
 
 import multiprocessing
-_cpu_count = multiprocessing.cpu_count()
+ncores = multiprocessing.cpu_count()
 _init()
-set_blosc_options(use_context=False, nthreads=_cpu_count)
+set_blosc_options(use_context=False, nthreads=ncores)
 atexit.register(_destroy)
