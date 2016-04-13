@@ -380,10 +380,14 @@ class TestPersistentArray(TestCase, ArrayTests):
             a = np.arange(1050, dtype=dtype)
             self._test_persistence(a, chunks=(100,))
 
-        # structured dtype
-        dtype = np.dtype([('a', 'i4'), ('b', 'S10')])
-        a = np.empty(10000, dtype=dtype)
-        self._test_persistence(a, chunks=(100,))
+        # structured dtypes
+        dtypes = [
+            np.dtype([('a', 'i4'), ('b', 'S10')]),
+            np.dtype([('a', 'i4'), ('b', [('c', '?'), ('d', 'S10')])]),
+        ]
+        for dtype in dtypes:
+            a = np.empty(10000, dtype=dtype)
+            self._test_persistence(a, chunks=(100,))
 
     def test_persistence_2d(self):
 
@@ -392,10 +396,14 @@ class TestPersistentArray(TestCase, ArrayTests):
             a = np.arange(10000, dtype=dtype).reshape((1000, 10))
             self._test_persistence(a, chunks=(100, 2))
 
-        # structured dtype
-        dtype = np.dtype([('a', 'i4'), ('b', 'S10')])
-        a = np.empty((1000, 10), dtype=dtype)
-        self._test_persistence(a, chunks=(100, 2))
+        # structured dtypes
+        dtypes = [
+            np.dtype([('a', 'i4'), ('b', 'S10')]),
+            np.dtype([('a', 'i4'), ('b', [('c', '?'), ('d', 'S10')])]),
+        ]
+        for dtype in dtypes:
+            a = np.empty((1000, 10), dtype=dtype)
+            self._test_persistence(a, chunks=(100, 2))
 
     def test_resize_persistence(self):
 
