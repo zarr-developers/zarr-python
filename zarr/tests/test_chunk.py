@@ -11,7 +11,7 @@ import numpy as np
 from numpy.testing import assert_array_equal
 from zarr.ext import Chunk, PersistentChunk, SynchronizedChunk, \
     SynchronizedPersistentChunk
-from zarr import defaults
+from zarr import defaults, set_blosc_options
 
 
 class ChunkTests(object):
@@ -252,3 +252,14 @@ def test_shuffles():
 
     # expect improvement from bitshuffle
     assert c2.cbytes < c1.cbytes
+
+
+class TestChunkUsingContext(TestChunk):
+
+    @classmethod
+    def setUpClass(cls):
+        set_blosc_options(use_context=True)
+
+    @classmethod
+    def tearDownClass(cls):
+        set_blosc_options(use_context=False)
