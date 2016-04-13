@@ -74,7 +74,7 @@ cdef extern from "blosc.h":
 
 
 def blosc_version():
-    """Return the version of c-blosc that zarr was compiled with."""
+    """Return the version of blosc that zarr was compiled with."""
 
     # all the 'decode' contorsions are for Python 3 returning actual strings
     ver_str = <char *> BLOSC_VERSION_STRING
@@ -97,7 +97,24 @@ def destroy():
 _blosc_use_context = False
 
 
-def set_blosc_options(use_context, nthreads=None):
+def set_blosc_options(use_context=False, nthreads=None):
+    """Set options for how the blosc compressor is used.
+
+    Parameters
+    ----------
+    use_context : bool, optional
+        If False, blosc will be used in non-contextual mode, which is best
+        when using zarr in a single-threaded environment because it allows
+        blosc to use multiple threads internally. If True, blosc will be used
+        in contextual mode, which is better when using zarr in a
+        multi-threaded environment like dask.array because it avoids the blosc
+        global lock and so multiple blosc operations can be running
+        concurrently.
+    nthreads : int, optional
+        Number of internal threads to use when running blosc in non-contextual
+        mode.
+
+    """
     global _blosc_use_context
     _blosc_use_context = use_context
     if not use_context:
