@@ -801,6 +801,10 @@ cdef class BaseArray:
         def __get__(self):
             return self._shuffle
 
+    property fill_value:
+        def __get__(self):
+            return self._fill_value
+
     # derived properties
 
     property size:
@@ -822,6 +826,18 @@ cdef class BaseArray:
     property chunk_nbytes:
         def __get__(self):
             return self.chunk_size * self.itemsize
+
+    property is_synchronized:
+        def __get__(self):
+            return False
+
+    property is_lazy:
+        def __get__(self):
+            return False
+
+    property is_persistent:
+        def __get__(self):
+            return False
 
     def __getitem__(self, item):
         cdef ndarray dest
@@ -1132,6 +1148,10 @@ cdef class SynchronizedArray(Array):
                                  shuffle=self._shuffle,
                                  fill_value=self._fill_value)
 
+    property is_synchronized:
+        def __get__(self):
+            return True
+
 
 # noinspection PyAttributeOutsideInit
 cdef class PersistentArray(BaseArray):
@@ -1254,6 +1274,10 @@ cdef class PersistentArray(BaseArray):
             a.flat = [c.is_initialized for c in self._cdata.flat]
             return a
 
+    property is_persistent:
+        def __get__(self):
+            return True
+
     cdef BaseChunk get_chunk(self, tuple cidx):
         return self._cdata[cidx]
 
@@ -1315,6 +1339,10 @@ cdef class SynchronizedPersistentArray(PersistentArray):
             dtype=self._dtype, cname=self._cname, clevel=self._clevel,
             shuffle=self._shuffle, fill_value=self._fill_value
         )
+
+    property is_synchronized:
+        def __get__(self):
+            return True
 
 
 ###############################################################################
@@ -1410,6 +1438,10 @@ cdef class LazyArray(BaseArray):
                 a[cidx] = chunk.is_initialized
             return a
 
+    property is_lazy:
+        def __get__(self):
+            return True
+
     cdef BaseChunk create_chunk(self, tuple cidx):
         # ignore chunk index here, not needed
         return Chunk(shape=self._chunks, dtype=self._dtype, cname=self._cname,
@@ -1449,6 +1481,10 @@ cdef class SynchronizedLazyArray(LazyArray):
                                  shuffle=self._shuffle,
                                  fill_value=self._fill_value)
 
+    property is_synchronized:
+        def __get__(self):
+            return True
+
 
 # noinspection PyAbstractClass,PyAttributeOutsideInit
 cdef class LazyPersistentArray(PersistentArray):
@@ -1479,6 +1515,10 @@ cdef class LazyPersistentArray(PersistentArray):
                 cidx = tuple(map(int, bn.split('.')))
                 a[cidx] = True
             return a
+
+    property is_lazy:
+        def __get__(self):
+            return True
 
     cdef BaseChunk get_chunk(self, tuple cidx):
         return _lazy_get_chunk(self, cidx)
@@ -1547,3 +1587,7 @@ cdef class SynchronizedLazyPersistentArray(LazyPersistentArray):
             cname=self._cname, clevel=self._clevel, shuffle=self._shuffle,
             fill_value=self._fill_value
         )
+
+    property is_synchronized:
+        def __get__(self):
+            return True

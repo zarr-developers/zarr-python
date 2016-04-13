@@ -287,7 +287,7 @@ def array(data, chunks=None, dtype=None, cname=None, clevel=None,
 
 # noinspection PyShadowingBuiltins
 def open(path, mode='a', shape=None, chunks=None, dtype=None, cname=None,
-         clevel=None, shuffle=None, fill_value=None, synchronized=True,
+         clevel=None, shuffle=None, fill_value=0, synchronized=True,
          lazy=False):
     """Open a persistent array.
 
@@ -343,3 +343,94 @@ def open(path, mode='a', shape=None, chunks=None, dtype=None, cname=None,
     return cls(path=path, mode=mode, shape=shape, chunks=chunks, dtype=dtype,
                cname=cname, clevel=clevel, shuffle=shuffle,
                fill_value=fill_value)
+
+
+def empty_like(z, shape=None, chunks=None, dtype=None, cname=None, clevel=None,
+               shuffle=None, synchronized=None, lazy=None):
+    """Create an empty array like 'z'."""
+    
+    shape = shape if shape is not None else z.shape
+    chunks = chunks if chunks is not None else z.chunks
+    dtype = dtype if dtype is not None else z.dtype
+    cname = cname if cname is not None else z.cname
+    clevel = clevel if clevel is not None else z.clevel
+    shuffle = shuffle if shuffle is not None else z.shuffle
+    synchronized = synchronized if synchronized is not None \
+        else z.is_synchronized
+    lazy = lazy if lazy is not None else z.is_lazy
+    return empty(shape, chunks, dtype=dtype, cname=cname, clevel=clevel, 
+                 shuffle=shuffle, synchronized=synchronized, lazy=lazy)
+
+
+def zeros_like(z, shape=None, chunks=None, dtype=None, cname=None, clevel=None,
+               shuffle=None, synchronized=None, lazy=None):
+    """Create an array of zeros like 'z'."""
+    
+    shape = shape if shape is not None else z.shape
+    chunks = chunks if chunks is not None else z.chunks
+    dtype = dtype if dtype is not None else z.dtype
+    cname = cname if cname is not None else z.cname
+    clevel = clevel if clevel is not None else z.clevel
+    shuffle = shuffle if shuffle is not None else z.shuffle
+    synchronized = synchronized if synchronized is not None \
+        else z.is_synchronized
+    lazy = lazy if lazy is not None else z.is_lazy
+    return zeros(shape, chunks, dtype=dtype, cname=cname, clevel=clevel, 
+                 shuffle=shuffle, synchronized=synchronized, lazy=lazy)
+
+
+def ones_like(z, shape=None, chunks=None, dtype=None, cname=None, clevel=None,
+              shuffle=None, synchronized=None, lazy=None):
+    """Create an array of ones like 'z'."""
+    
+    shape = shape if shape is not None else z.shape
+    chunks = chunks if chunks is not None else z.chunks
+    dtype = dtype if dtype is not None else z.dtype
+    cname = cname if cname is not None else z.cname
+    clevel = clevel if clevel is not None else z.clevel
+    shuffle = shuffle if shuffle is not None else z.shuffle
+    synchronized = synchronized if synchronized is not None \
+        else z.is_synchronized
+    lazy = lazy if lazy is not None else z.is_lazy
+    return ones(shape, chunks, dtype=dtype, cname=cname, clevel=clevel, 
+                shuffle=shuffle, synchronized=synchronized, lazy=lazy)
+
+
+def full_like(z, shape=None, chunks=None, fill_value=None, dtype=None, 
+              cname=None, clevel=None, shuffle=None, synchronized=None, 
+              lazy=None):
+    """Create a filled array like 'z'."""
+    
+    shape = shape if shape is not None else z.shape
+    chunks = chunks if chunks is not None else z.chunks
+    dtype = dtype if dtype is not None else z.dtype
+    cname = cname if cname is not None else z.cname
+    clevel = clevel if clevel is not None else z.clevel
+    shuffle = shuffle if shuffle is not None else z.shuffle
+    fill_value = fill_value if fill_value is not None else z.fill_value
+    synchronized = synchronized if synchronized is not None \
+        else z.is_synchronized
+    lazy = lazy if lazy is not None else z.is_lazy
+    return full(shape, chunks, fill_value, dtype=dtype, cname=cname,
+                clevel=clevel, shuffle=shuffle, synchronized=synchronized,
+                lazy=lazy)
+
+
+def open_like(z, path, mode='a', shape=None, chunks=None, dtype=None,
+              cname=None, clevel=None, shuffle=None, fill_value=None,
+              synchronized=None, lazy=None):
+    """Open a persistent array like 'z'."""
+
+    shape = shape if shape is not None else z.shape
+    chunks = chunks if chunks is not None else z.chunks
+    dtype = dtype if dtype is not None else z.dtype
+    cname = cname if cname is not None else z.cname
+    clevel = clevel if clevel is not None else z.clevel
+    shuffle = shuffle if shuffle is not None else z.shuffle
+    fill_value = fill_value if fill_value is not None else z.fill_value
+    synchronized = synchronized if synchronized is not None \
+        else z.is_synchronized
+    lazy = lazy if lazy is not None else z.is_lazy
+    return open(path, mode=mode, shape=shape, chunks=chunks, dtype=dtype,
+                cname=cname, clevel=clevel, shuffle=shuffle,
+                fill_value=fill_value, synchronized=synchronized, lazy=lazy)
