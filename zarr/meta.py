@@ -59,11 +59,15 @@ def encode_dtype(d):
     if d.fields is None:
         return d.str
     else:
-        return str(d)
+        return d.descr
 
 
-def decode_dtype(s):
-    try:
-        return np.dtype(s)
-    except ValueError:
-        return np.dtype(ast.literal_eval(s))
+def _decode_dtype_descr(d):
+    # need to convert list items to tuples
+    if isinstance(d, list):
+        d = [(f, _decode_dtype_descr(v)) for f, v in d]
+    return d
+
+
+def decode_dtype(d):
+    return np.dtype(_decode_dtype_descr(d))
