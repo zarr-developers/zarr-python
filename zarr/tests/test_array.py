@@ -360,9 +360,11 @@ class TestPersistentArray(TestCase, ArrayTests):
         z3[:] = 0
 
         # check effect of write
-        assert_array_equal(np.zeros_like(a), z3[:])
-        assert_array_equal(np.zeros_like(a), z2[:])
-        assert_array_equal(np.zeros_like(a), z[:])
+        expect = np.empty_like(a)
+        expect[:] = 0
+        assert_array_equal(expect, z3[:])
+        assert_array_equal(expect, z2[:])
+        assert_array_equal(expect, z[:])
 
         # open for writing (must not exist)
         with assert_raises(ValueError):
@@ -372,13 +374,22 @@ class TestPersistentArray(TestCase, ArrayTests):
         shutil.rmtree(path)
 
     def test_persistence_1d(self):
+        # simple dtype
         self._test_persistence(np.arange(1050), chunks=(100,))
+        # structured dtype
+        dtype = np.dtype([('a', 'i4'), ('b', 'S10')])
+        self._test_persistence(np.empty(10000, dtype=dtype), chunks=(100,))
 
     def test_persistence_2d(self):
-        a = np.arange(10000).reshape((1000, 10))
         chunks = (100, 2)
+        # simple dtype
+        a = np.arange(10000).reshape((1000, 10))
         self._test_persistence(a, chunks=chunks)
-        
+        # structured dtype
+        dtype = np.dtype([('a', 'i4'), ('b', 'S10')])
+        self._test_persistence(np.empty((1000, 10), dtype=dtype),
+                               chunks=chunks)
+
     def test_resize_persistence(self):
 
         # setup path

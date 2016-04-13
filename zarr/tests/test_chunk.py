@@ -92,6 +92,14 @@ class ChunkTests(object):
             self._test_create_chunk(np.linspace(-1, 1, 1e4, dtype=dtype)
                                     .reshape(100, -1))
 
+        # structured dtype
+        dtype = np.dtype([('a', 'i4'), ('b', 'S10')])
+        print(dtype)
+        print('1-dimensional')
+        self._test_create_chunk(np.empty(10000, dtype=dtype))
+        print('2-dimensional')
+        self._test_create_chunk(np.empty((100, 100), dtype=dtype))
+
     def test_create_chunk_fill_value(self):
 
         for shape in 100, (100, 100):
