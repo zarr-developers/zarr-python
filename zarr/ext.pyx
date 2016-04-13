@@ -6,7 +6,6 @@
 from __future__ import absolute_import, print_function, division
 from threading import RLock
 import itertools
-# TODO PY2 compatibility
 from functools import reduce
 import operator
 import sys
@@ -531,7 +530,7 @@ cdef class PersistentChunk(BaseChunk):
 
         # move temporary file into place
         if temp_path is not None:
-            os.replace(temp_path, self._path)
+            os.rename(temp_path, self._path)
 
     cdef void put(self, char *source):
         cdef:
