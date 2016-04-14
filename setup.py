@@ -30,14 +30,14 @@ cpu_info = cpuinfo.get_cpu_info()
 
 # SSE2
 if 'sse2' in cpu_info['flags']:
-    print('SSE2 support detected')
+    print('SSE2 detected')
     extra_compile_args.append('-DSHUFFLE_SSE2_ENABLED')
     extra_compile_args.append('-msse2')
     blosc_sources += [f for f in glob('c-blosc/blosc/*.c') if 'sse2' in f]
 
 # AVX2
 if 'avx2' in cpu_info['flags']:
-    print('AVX2 support detected')
+    print('AVX2 detected')
     extra_compile_args.append('-DSHUFFLE_AVX2_ENABLED')
     extra_compile_args.append('-mavx2')
     blosc_sources += [f for f in glob('c-blosc/blosc/*.c') if 'avx2' in f]
