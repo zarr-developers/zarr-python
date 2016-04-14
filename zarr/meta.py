@@ -4,11 +4,14 @@ from __future__ import absolute_import, print_function, division
 
 import os
 import json
-import ast
+import sys
 import numpy as np
 
 
 from zarr import defaults as _defaults
+
+
+PY2 = sys.version_info[0] == 2
 
 
 def read_array_metadata(path):
@@ -38,12 +41,15 @@ def read_array_metadata(path):
 def write_array_metadata(path, shape, chunks, dtype, cname, clevel, shuffle,
                          fill_value):
 
+    if not PY2:
+        cname = str(cname, 'ascii')
+
     # construct metadata dictionary
     meta = dict(
         shape=shape,
         chunks=chunks,
         dtype=encode_dtype(dtype),
-        cname=str(cname, 'ascii'),
+        cname=cname,
         clevel=clevel,
         shuffle=shuffle,
         fill_value=fill_value,
@@ -63,12 +69,17 @@ def encode_dtype(d):
 
 
 def _decode_dtype_descr(d):
-    # need to convert list items to tuples
+    # need to convert list of lists to list of tuples
     if isinstance(d, list):
         # recurse to handle nested structures
-        d = [(f, _decode_dtype_descr(v)) for f, v in d]
+        if PY2:
+            # under PY2 numpy rejects unicode field names
+            d = [(f.encode('ascii'), _decode_dtype_descr(v)) for f, v in d]
+        else:
+            d = [(f, _decode_dtype_descr(v)) for f, v in d]
     return d
 
 
 def decode_dtype(d):
-    return np.dtype(_decode_dtype_descr(d))
+    d = _decode_dtype_descr(d)
+    return np.dtype(d)
