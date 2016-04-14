@@ -40,7 +40,7 @@ class PersistentAttributes(object):
 
         # write modified data
         with open(self._path, mode='w') as f:
-            json.dump(d, f)
+            json.dump(d, f, indent=4, sort_keys=True)
 
     def __delitem__(self, key):
 
@@ -60,7 +60,7 @@ class PersistentAttributes(object):
 
         # write modified data
         with open(self._path, mode='w') as f:
-            json.dump(d, f)
+            json.dump(d, f, indent=4, sort_keys=True)
 
     def asdict(self):
         if not os.path.exists(self._path):
