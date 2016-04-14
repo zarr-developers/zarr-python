@@ -13,7 +13,7 @@ from numpy.testing import assert_array_equal
 from zarr.ext import Array, SynchronizedArray, PersistentArray, \
     SynchronizedPersistentArray, LazyArray, SynchronizedLazyArray, \
     LazyPersistentArray, SynchronizedLazyPersistentArray
-from zarr import defaults
+from zarr import defaults, set_blosc_options
 
 
 class ArrayTests(object):
@@ -479,3 +479,14 @@ class TestSynchronizedLazyPersistentArray(TestPersistentArray):
             lambda: shutil.rmtree(path) if os.path.exists(path) else None
         )
         return SynchronizedLazyPersistentArray(**kwargs)
+
+
+class TestArrayUsingContext(TestArray):
+
+    @classmethod
+    def setUpClass(cls):
+        set_blosc_options(use_context=True)
+
+    @classmethod
+    def tearDownClass(cls):
+        set_blosc_options(use_context=False)

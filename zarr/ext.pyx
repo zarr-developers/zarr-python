@@ -17,6 +17,7 @@ import shutil
 import tempfile
 from collections import namedtuple
 from glob import glob
+import multiprocessing
 import fasteners
 
 
@@ -52,6 +53,14 @@ cdef extern from "blosc.h":
         BLOSC_VERSION_STRING,
         BLOSC_VERSION_DATE
 
+    void blosc_init()
+    void blosc_destroy()
+    int blosc_set_nthreads(int nthreads)
+    int blosc_set_compressor(const char *compname)
+    int blosc_compress(int clevel, int doshuffle, size_t typesize,
+                       size_t nbytes, void *src, void *dest,
+                       size_t destsize) nogil
+    int blosc_decompress(void *src, void *dest, size_t destsize) nogil
     int blosc_compname_to_compcode(const char *compname)
     int blosc_compress_ctx(int clevel, int doshuffle, size_t typesize,
                            size_t nbytes, const void* src, void* dest,
@@ -64,7 +73,7 @@ cdef extern from "blosc.h":
 
 
 def blosc_version():
-    """Return the version of c-blosc that zarr was compiled with."""
+    """Return the version of blosc that zarr was compiled with."""
 
     # all the 'decode' contorsions are for Python 3 returning actual strings
     ver_str = <char *> BLOSC_VERSION_STRING
@@ -74,6 +83,43 @@ def blosc_version():
     if hasattr(ver_date, "decode"):
         ver_date = ver_date.decode()
     return ver_str, ver_date
+
+
+def init():
+    blosc_init()
+
+
+def destroy():
+    blosc_destroy()
+
+
+_blosc_use_context = False
+
+
+def set_blosc_options(use_context=False, nthreads=None):
+    """Set options for how the blosc compressor is used.
+
+    Parameters
+    ----------
+    use_context : bool, optional
+        If False, blosc will be used in non-contextual mode, which is best
+        when using zarr in a single-threaded environment because it allows
+        blosc to use multiple threads internally. If True, blosc will be used
+        in contextual mode, which is better when using zarr in a
+        multi-threaded environment like dask.array because it avoids the blosc
+        global lock and so multiple blosc operations can be running
+        concurrently.
+    nthreads : int, optional
+        Number of internal threads to use when running blosc in non-contextual
+        mode.
+
+    """
+    global _blosc_use_context
+    _blosc_use_context = use_context
+    if not use_context:
+        if nthreads is None:
+            nthreads = multiprocessing.cpu_count()
+        blosc_set_nthreads(nthreads)
 
 
 ###############################################################################
@@ -122,7 +168,7 @@ def _normalize_cparams(cname=None, clevel=None, shuffle=None):
         cname = cname.encode()
     # check compressor is available
     if blosc_compname_to_compcode(cname) < 0:
-        raise ValueError("compressor not available: %s" % cname)
+        raise ValueError('compressor not available: %s' % cname)
 
     # determine compression level
     clevel = clevel if clevel is not None else defaults.clevel
@@ -389,8 +435,12 @@ cdef class Chunk(BaseChunk):
         cdef int ret
 
         # do decompression
-        with nogil:
-            ret = blosc_decompress_ctx(self._data, dest, self._nbytes, 1)
+        if _blosc_use_context:
+            with nogil:
+                ret = blosc_decompress_ctx(self._data, dest, self._nbytes, 1)
+        else:
+            with nogil:
+                ret = blosc_decompress(self._data, dest, self._nbytes)
 
         # handle errors
         if ret <= 0:
@@ -408,12 +458,20 @@ cdef class Chunk(BaseChunk):
         dest = <char *> malloc(self._nbytes + BLOSC_MAX_OVERHEAD)
 
         # perform compression
-        with nogil:
-            cbytes = blosc_compress_ctx(self._clevel, self._shuffle,
-                                        self._itemsize, self._nbytes,
-                                        source, dest,
-                                        self._nbytes + BLOSC_MAX_OVERHEAD,
-                                        self._cname, 0, 1)
+        if _blosc_use_context:
+            with nogil:
+                cbytes = blosc_compress_ctx(self._clevel, self._shuffle,
+                                            self._itemsize, self._nbytes,
+                                            source, dest,
+                                            self._nbytes + BLOSC_MAX_OVERHEAD,
+                                            self._cname, 0, 1)
+        else:
+            # compressor should have been checked already
+            assert blosc_set_compressor(self._cname) >= 0
+            with nogil:
+                cbytes = blosc_compress(self._clevel, self._shuffle,
+                                        self._itemsize, self._nbytes, source,
+                                        dest, self._nbytes + BLOSC_MAX_OVERHEAD)
 
         # check compression was successful
         if cbytes <= 0:
@@ -505,8 +563,12 @@ cdef class PersistentChunk(BaseChunk):
         source = PyBytes_AsString(data)
 
         # do decompression
-        with nogil:
-            ret = blosc_decompress_ctx(source, dest, self._nbytes, 1)
+        if _blosc_use_context:
+            with nogil:
+                ret = blosc_decompress_ctx(source, dest, self._nbytes, 1)
+        else:
+            with nogil:
+                ret = blosc_decompress(source, dest, self._nbytes)
 
         # handle errors
         if ret <= 0:
@@ -542,12 +604,20 @@ cdef class PersistentChunk(BaseChunk):
         dest = <char *> malloc(self._nbytes + BLOSC_MAX_OVERHEAD)
 
         # perform compression
-        with nogil:
-            cbytes = blosc_compress_ctx(self._clevel, self._shuffle,
-                                        self._itemsize, self._nbytes,
-                                        source, dest,
-                                        self._nbytes + BLOSC_MAX_OVERHEAD,
-                                        self._cname, 0, 1)
+        if _blosc_use_context:
+            with nogil:
+                cbytes = blosc_compress_ctx(self._clevel, self._shuffle,
+                                            self._itemsize, self._nbytes,
+                                            source, dest,
+                                            self._nbytes + BLOSC_MAX_OVERHEAD,
+                                            self._cname, 0, 1)
+        else:
+            # compressor should have been checked already
+            assert blosc_set_compressor(self._cname) >= 0
+            with nogil:
+                cbytes = blosc_compress(self._clevel, self._shuffle,
+                                        self._itemsize, self._nbytes, source,
+                                        dest, self._nbytes + BLOSC_MAX_OVERHEAD)
 
         # check compression was successful
         if cbytes <= 0:
@@ -1321,6 +1391,7 @@ cdef class SynchronizedPersistentArray(PersistentArray):
 ###############################################################################
 
 
+# noinspection PyUnresolvedReferences,PyProtectedMember
 cdef _lazy_get_chunk(BaseArray array, tuple cidx):
     try:
         chunk = array._cdata[cidx]
