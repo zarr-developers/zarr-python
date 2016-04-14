@@ -1,28 +1,27 @@
 # -*- coding: utf-8 -*-
 # cython: embedsignature=True
-# cython: profile=True
-# cython: linetrace=True
-# cython: binding=True
+# cython: profile=False
+# cython: linetrace=False
+# cython: binding=False
 from __future__ import absolute_import, print_function, division
 from threading import RLock
 import itertools
-# TODO PY2 compatibility
 from functools import reduce
 import operator
 import sys
 import os
 import struct
 import ctypes
-import pickle
 import shutil
 import tempfile
 from collections import namedtuple
 from glob import glob
+import multiprocessing
 import fasteners
 
 
-from zarr import util as _util, attrs as _attrs
-from zarr import defaults
+from zarr import util as _util, meta as _meta, defaults as _defaults, \
+    attrs as _attrs
 
 
 ###############################################################################
@@ -53,6 +52,14 @@ cdef extern from "blosc.h":
         BLOSC_VERSION_STRING,
         BLOSC_VERSION_DATE
 
+    void blosc_init()
+    void blosc_destroy()
+    int blosc_set_nthreads(int nthreads)
+    int blosc_set_compressor(const char *compname)
+    int blosc_compress(int clevel, int doshuffle, size_t typesize,
+                       size_t nbytes, void *src, void *dest,
+                       size_t destsize) nogil
+    int blosc_decompress(void *src, void *dest, size_t destsize) nogil
     int blosc_compname_to_compcode(const char *compname)
     int blosc_compress_ctx(int clevel, int doshuffle, size_t typesize,
                            size_t nbytes, const void* src, void* dest,
@@ -65,7 +72,7 @@ cdef extern from "blosc.h":
 
 
 def blosc_version():
-    """Return the version of c-blosc that zarr was compiled with."""
+    """Return the version of blosc that zarr was compiled with."""
 
     # all the 'decode' contorsions are for Python 3 returning actual strings
     ver_str = <char *> BLOSC_VERSION_STRING
@@ -75,6 +82,43 @@ def blosc_version():
     if hasattr(ver_date, "decode"):
         ver_date = ver_date.decode()
     return ver_str, ver_date
+
+
+def init():
+    blosc_init()
+
+
+def destroy():
+    blosc_destroy()
+
+
+_blosc_use_context = False
+
+
+def set_blosc_options(use_context=False, nthreads=None):
+    """Set options for how the blosc compressor is used.
+
+    Parameters
+    ----------
+    use_context : bool, optional
+        If False, blosc will be used in non-contextual mode, which is best
+        when using zarr in a single-threaded environment because it allows
+        blosc to use multiple threads internally. If True, blosc will be used
+        in contextual mode, which is better when using zarr in a
+        multi-threaded environment like dask.array because it avoids the blosc
+        global lock and so multiple blosc operations can be running
+        concurrently.
+    nthreads : int, optional
+        Number of internal threads to use when running blosc in non-contextual
+        mode.
+
+    """
+    global _blosc_use_context
+    _blosc_use_context = use_context
+    if not use_context:
+        if nthreads is None:
+            nthreads = multiprocessing.cpu_count()
+        blosc_set_nthreads(nthreads)
 
 
 ###############################################################################
@@ -118,21 +162,21 @@ def _normalize_cparams(cname=None, clevel=None, shuffle=None):
     """
 
     # determine compressor
-    cname = cname if cname is not None else defaults.cname
+    cname = cname if cname is not None else _defaults.cname
     if type(cname) != bytes:
-        cname = cname.encode()
+        cname = cname.encode('ascii')
     # check compressor is available
     if blosc_compname_to_compcode(cname) < 0:
-        raise ValueError("compressor not available: %s" % cname)
+        raise ValueError('compressor not available: %s' % cname)
 
     # determine compression level
-    clevel = clevel if clevel is not None else defaults.clevel
+    clevel = clevel if clevel is not None else _defaults.clevel
     clevel = int(clevel)
     if clevel < 0 or clevel > 9:
         raise ValueError('invalid compression level: %s' % clevel)
 
     # determine shuffle filter
-    shuffle = shuffle if shuffle is not None else defaults.shuffle
+    shuffle = shuffle if shuffle is not None else _defaults.shuffle
     shuffle = int(shuffle)
     if shuffle not in [0, 1, 2]:
         raise ValueError('invalid shuffle: %s' % shuffle)
@@ -390,8 +434,12 @@ cdef class Chunk(BaseChunk):
         cdef int ret
 
         # do decompression
-        with nogil:
-            ret = blosc_decompress_ctx(self._data, dest, self._nbytes, 1)
+        if _blosc_use_context:
+            with nogil:
+                ret = blosc_decompress_ctx(self._data, dest, self._nbytes, 1)
+        else:
+            with nogil:
+                ret = blosc_decompress(self._data, dest, self._nbytes)
 
         # handle errors
         if ret <= 0:
@@ -409,12 +457,20 @@ cdef class Chunk(BaseChunk):
         dest = <char *> malloc(self._nbytes + BLOSC_MAX_OVERHEAD)
 
         # perform compression
-        with nogil:
-            cbytes = blosc_compress_ctx(self._clevel, self._shuffle,
-                                        self._itemsize, self._nbytes,
-                                        source, dest,
-                                        self._nbytes + BLOSC_MAX_OVERHEAD,
-                                        self._cname, 0, 1)
+        if _blosc_use_context:
+            with nogil:
+                cbytes = blosc_compress_ctx(self._clevel, self._shuffle,
+                                            self._itemsize, self._nbytes,
+                                            source, dest,
+                                            self._nbytes + BLOSC_MAX_OVERHEAD,
+                                            self._cname, 0, 1)
+        else:
+            # compressor should have been checked already
+            assert blosc_set_compressor(self._cname) >= 0
+            with nogil:
+                cbytes = blosc_compress(self._clevel, self._shuffle,
+                                        self._itemsize, self._nbytes, source,
+                                        dest, self._nbytes + BLOSC_MAX_OVERHEAD)
 
         # check compression was successful
         if cbytes <= 0:
@@ -506,8 +562,12 @@ cdef class PersistentChunk(BaseChunk):
         source = PyBytes_AsString(data)
 
         # do decompression
-        with nogil:
-            ret = blosc_decompress_ctx(source, dest, self._nbytes, 1)
+        if _blosc_use_context:
+            with nogil:
+                ret = blosc_decompress_ctx(source, dest, self._nbytes, 1)
+        else:
+            with nogil:
+                ret = blosc_decompress(source, dest, self._nbytes)
 
         # handle errors
         if ret <= 0:
@@ -531,7 +591,7 @@ cdef class PersistentChunk(BaseChunk):
 
         # move temporary file into place
         if temp_path is not None:
-            os.replace(temp_path, self._path)
+            os.rename(temp_path, self._path)
 
     cdef void put(self, char *source):
         cdef:
@@ -543,12 +603,20 @@ cdef class PersistentChunk(BaseChunk):
         dest = <char *> malloc(self._nbytes + BLOSC_MAX_OVERHEAD)
 
         # perform compression
-        with nogil:
-            cbytes = blosc_compress_ctx(self._clevel, self._shuffle,
-                                        self._itemsize, self._nbytes,
-                                        source, dest,
-                                        self._nbytes + BLOSC_MAX_OVERHEAD,
-                                        self._cname, 0, 1)
+        if _blosc_use_context:
+            with nogil:
+                cbytes = blosc_compress_ctx(self._clevel, self._shuffle,
+                                            self._itemsize, self._nbytes,
+                                            source, dest,
+                                            self._nbytes + BLOSC_MAX_OVERHEAD,
+                                            self._cname, 0, 1)
+        else:
+            # compressor should have been checked already
+            assert blosc_set_compressor(self._cname) >= 0
+            with nogil:
+                cbytes = blosc_compress(self._clevel, self._shuffle,
+                                        self._itemsize, self._nbytes, source,
+                                        dest, self._nbytes + BLOSC_MAX_OVERHEAD)
 
         # check compression was successful
         if cbytes <= 0:
@@ -676,28 +744,6 @@ def _normalize_chunks(chunks, tuple shape):
     # handle None in chunks
     chunks = tuple(s if c is None else c for s, c in zip(shape, chunks))
     return chunks
-
-
-def _read_array_metadata(path):
-
-    # check path exists
-    if not os.path.exists(path):
-        raise ValueError('path not found: %s' % path)
-
-    # check metadata file
-    meta_path = os.path.join(path, defaults.metapath)
-    if not os.path.exists(meta_path):
-        raise ValueError('array metadata not found: %s' % path)
-
-    with open(meta_path, 'rb') as f:
-        meta = pickle.load(f)
-        return meta
-
-
-def _write_array_metadata(path, meta):
-    meta_path = os.path.join(path, defaults.metapath)
-    with open(meta_path, 'wb') as f:
-        pickle.dump(meta, f, protocol=0)
 
 
 def _array_resize(BaseArray array, *args):
@@ -1154,7 +1200,7 @@ cdef class PersistentArray(BaseArray):
         # a : read/write if exists, create otherwise (default)
 
         # use metadata file as indicator of array existence
-        meta_path = os.path.join(path, defaults.metapath)
+        meta_path = os.path.join(path, _defaults.metapath)
 
         if mode in ['r', 'r+']:
             self._open(path, **kwargs)
@@ -1202,14 +1248,14 @@ cdef class PersistentArray(BaseArray):
             self._cdata[cidx] = self.create_chunk(cidx)
 
     def _init_attrs(self):
-        attr_path = os.path.join(self._path, defaults.attrpath)
+        attr_path = os.path.join(self._path, _defaults.attrpath)
         self._attrs = _attrs.PersistentAttributes(attr_path, mode=self._mode)
 
     def _create(self, path, shape=None, chunks=None, dtype=None,
                 cname=None, clevel=None, shuffle=None, fill_value=None):
 
         # create directories
-        data_path = os.path.join(path, defaults.datapath)
+        data_path = os.path.join(path, _defaults.datapath)
         if not os.path.exists(data_path):
             os.makedirs(data_path)
 
@@ -1222,20 +1268,20 @@ cdef class PersistentArray(BaseArray):
         self._fill_value = fill_value
 
         # write metadata
-        metadata = {'shape': self._shape,
-                    'chunks': self._chunks,
-                    'dtype': self._dtype,
-                    'cname': self._cname,
-                    'clevel': self._clevel,
-                    'shuffle': self._shuffle,
-                    'fill_value': self._fill_value}
-        _write_array_metadata(path, metadata)
+        _meta.write_array_metadata(path,
+                                   shape=self._shape,
+                                   chunks=self._chunks,
+                                   dtype=self._dtype,
+                                   cname=self._cname,
+                                   clevel=self._clevel,
+                                   shuffle=self._shuffle,
+                                   fill_value=self._fill_value)
 
-    def _open(self, path, shape=None, chunks=None, dtype=None, cname=None, 
+    def _open(self, path, shape=None, chunks=None, dtype=None, cname=None,
               clevel=None, shuffle=None, fill_value=None):
 
         # read metadata
-        metadata = _read_array_metadata(path)
+        metadata = _meta.read_array_metadata(path)
 
         # set attributes
         self._shape = metadata['shape']
@@ -1245,7 +1291,7 @@ cdef class PersistentArray(BaseArray):
         self._clevel = metadata['clevel']
         self._shuffle = metadata['shuffle']
         self._fill_value = metadata['fill_value']
-        
+
         # check consistency with user arguments
         if shape is not None and _normalize_shape(shape) != self._shape:
             raise ValueError('shape %r not consistent with existing %r' %
@@ -1280,8 +1326,8 @@ cdef class PersistentArray(BaseArray):
         return self._cdata[cidx]
 
     cdef object get_chunk_path(self, tuple cidx):
-        chunk_filename = '.'.join(map(str, cidx)) + defaults.datasuffix
-        chunk_path = os.path.join(self._path, defaults.datapath,
+        chunk_filename = '.'.join(map(str, cidx)) + _defaults.datasuffix
+        chunk_path = os.path.join(self._path, _defaults.datapath,
                                   chunk_filename)
         return chunk_path
 
@@ -1300,14 +1346,14 @@ cdef class PersistentArray(BaseArray):
         _array_resize(self, *args)
 
         # write metadata
-        metadata = {'shape': self._shape,
-                    'chunks': self._chunks,
-                    'dtype': self._dtype,
-                    'cname': self._cname,
-                    'clevel': self._clevel,
-                    'shuffle': self._shuffle,
-                    'fill_value': self._fill_value}
-        _write_array_metadata(self._path, metadata)
+        _meta.write_array_metadata(self._path,
+                                   shape=self._shape,
+                                   chunks=self._chunks,
+                                   dtype=self._dtype,
+                                   cname=self._cname,
+                                   clevel=self._clevel,
+                                   shuffle=self._shuffle,
+                                   fill_value=self._fill_value)
 
     def __setitem__(self, key, value):
         if self._mode == 'r':
@@ -1339,7 +1385,7 @@ cdef class SynchronizedPersistentArray(PersistentArray):
         )
 
     def _init_attrs(self):
-        attr_path = os.path.join(self._path, defaults.attrpath)
+        attr_path = os.path.join(self._path, _defaults.attrpath)
         self._attrs = _attrs.SynchronizedPersistentAttributes(attr_path,
                                                               mode=self._mode)
 
@@ -1349,6 +1395,7 @@ cdef class SynchronizedPersistentArray(PersistentArray):
 ###############################################################################
 
 
+# noinspection PyUnresolvedReferences,PyProtectedMember
 cdef _lazy_get_chunk(BaseArray array, tuple cidx):
     try:
         chunk = array._cdata[cidx]
@@ -1484,7 +1531,7 @@ cdef class SynchronizedLazyArray(LazyArray):
 cdef class LazyPersistentArray(PersistentArray):
 
     def _init_cdata(self):
-        
+
         # initialize a dictionary for chunk objects
         self._cdata = dict()
 
@@ -1494,7 +1541,7 @@ cdef class LazyPersistentArray(PersistentArray):
         def __get__(self):
             # N.B., chunk objects are instantiated lazily, so there may be
             # data on disk but no corresponding chunk object yet
-            data_dir = os.path.join(self._path, defaults.datapath)
+            data_dir = os.path.join(self._path, _defaults.datapath)
             return sum(os.path.getsize(os.path.join(data_dir, fn))
                        for fn in os.listdir(data_dir))
 
@@ -1502,10 +1549,10 @@ cdef class LazyPersistentArray(PersistentArray):
         def __get__(self):
             # N.B., chunk objects are instantiated lazily, so there may be
             # data on disk but no corresponding chunk object yet
-            data_dir = os.path.join(self._path, defaults.datapath)
+            data_dir = os.path.join(self._path, _defaults.datapath)
             a = np.zeros(self._cdata_shape, dtype='b1')
-            for fn in glob(os.path.join(data_dir, '*' + defaults.datasuffix)):
-                bn = os.path.basename(fn)[:-len(defaults.datasuffix)]
+            for fn in glob(os.path.join(data_dir, '*' + _defaults.datasuffix)):
+                bn = os.path.basename(fn)[:-len(_defaults.datasuffix)]
                 cidx = tuple(map(int, bn.split('.')))
                 a[cidx] = True
             return a
@@ -1547,14 +1594,14 @@ cdef class LazyPersistentArray(PersistentArray):
         _lazy_resize(self, *args)
 
         # write metadata
-        metadata = {'shape': self._shape,
-                    'chunks': self._chunks,
-                    'dtype': self._dtype,
-                    'cname': self._cname,
-                    'clevel': self._clevel,
-                    'shuffle': self._shuffle,
-                    'fill_value': self._fill_value}
-        _write_array_metadata(self._path, metadata)
+        _meta.write_array_metadata(self._path,
+                                   shape=self._shape,
+                                   chunks=self._chunks,
+                                   dtype=self._dtype,
+                                   cname=self._cname,
+                                   clevel=self._clevel,
+                                   shuffle=self._shuffle,
+                                   fill_value=self._fill_value)
 
 
 # noinspection PyAbstractClass
@@ -1569,8 +1616,8 @@ cdef class SynchronizedLazyPersistentArray(LazyPersistentArray):
             return _lazy_get_chunk(self, cidx)
 
     cdef BaseChunk create_chunk(self, tuple cidx):
-        chunk_filename = '.'.join(map(str, cidx)) + defaults.datasuffix
-        chunk_path = os.path.join(self._path, defaults.datapath,
+        chunk_filename = '.'.join(map(str, cidx)) + _defaults.datasuffix
+        chunk_path = os.path.join(self._path, _defaults.datapath,
                                   chunk_filename)
         return SynchronizedPersistentChunk(
             path=chunk_path, shape=self._chunks, dtype=self._dtype,
@@ -1579,6 +1626,6 @@ cdef class SynchronizedLazyPersistentArray(LazyPersistentArray):
         )
 
     def _init_attrs(self):
-        attr_path = os.path.join(self._path, defaults.attrpath)
+        attr_path = os.path.join(self._path, _defaults.attrpath)
         self._attrs = _attrs.SynchronizedPersistentAttributes(attr_path,
                                                               mode=self._mode)

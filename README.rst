@@ -7,11 +7,14 @@ Python.
 * Source code: https://github.com/alimanfoo/zarr
 * Download: https://pypi.python.org/pypi/zarr
 
+.. image:: https://travis-ci.org/alimanfoo/zarr.svg?branch=master
+    :target: https://travis-ci.org/alimanfoo/zarr
+
 Installation
 ------------
 
-Installation requires NumPy and Cython pre-installed. Currently only
-compatible with Python >= 3.4.
+Installation requires Numpy and Cython pre-installed. Can only be installed on
+Linux currently.
 
 Install from PyPI::
 
@@ -114,10 +117,6 @@ append data to any axis
 
     >>> a = np.arange(10000000, dtype='i4').reshape(10000, 1000)
     >>> z = zarr.array(a, chunks=(1000, 100))
-    >>> z
-    zarr.ext.SynchronizedArray((10000, 1000), int32, chunks=(1000, 100))
-      cname: blosclz; clevel: 5; shuffle: 1 (BYTESHUFFLE)
-      nbytes: 38.1M; cbytes: 2.0M; ratio: 19.3; initialized: 100/100
     >>> z.append(a+a)
     >>> z
     zarr.ext.SynchronizedArray((20000, 1000), int32, chunks=(1000, 100))
@@ -128,6 +127,9 @@ append data to any axis
     zarr.ext.SynchronizedArray((20000, 2000), int32, chunks=(1000, 100))
       cname: blosclz; clevel: 5; shuffle: 1 (BYTESHUFFLE)
       nbytes: 152.6M; cbytes: 7.6M; ratio: 20.2; initialized: 400/400
+
+Persistence
+-----------
 
 Create a persistent array (data stored on disk)
 
@@ -157,7 +159,8 @@ If you're working with really big arrays, try the 'lazy' option
       nbytes: 3.6P; cbytes: 0; initialized: 0/1000000000
       mode: a; path: big.zarr
 
-Yes, that is 3.6 petabytes.
+See the [persistence documentation](PERSISTENCE.rst) for more details of the
+file format.
 
 Tuning
 ------

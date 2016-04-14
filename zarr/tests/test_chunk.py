@@ -11,7 +11,7 @@ import numpy as np
 from numpy.testing import assert_array_equal
 from zarr.ext import Chunk, PersistentChunk, SynchronizedChunk, \
     SynchronizedPersistentChunk
-from zarr import defaults
+from zarr import defaults, set_blosc_options
 
 
 class ChunkTests(object):
@@ -91,6 +91,14 @@ class ChunkTests(object):
             print('2-dimensional')
             self._test_create_chunk(np.linspace(-1, 1, 1e4, dtype=dtype)
                                     .reshape(100, -1))
+
+        # structured dtype
+        dtype = np.dtype([('a', 'i4'), ('b', 'S10')])
+        print(dtype)
+        print('1-dimensional')
+        self._test_create_chunk(np.empty(10000, dtype=dtype))
+        print('2-dimensional')
+        self._test_create_chunk(np.empty((100, 100), dtype=dtype))
 
     def test_create_chunk_fill_value(self):
 
@@ -252,3 +260,14 @@ def test_shuffles():
 
     # expect improvement from bitshuffle
     assert c2.cbytes < c1.cbytes
+
+
+class TestChunkUsingContext(TestChunk):
+
+    @classmethod
+    def setUpClass(cls):
+        set_blosc_options(use_context=True)
+
+    @classmethod
+    def tearDownClass(cls):
+        set_blosc_options(use_context=False)

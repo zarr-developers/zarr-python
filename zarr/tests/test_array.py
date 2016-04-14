@@ -13,7 +13,7 @@ from numpy.testing import assert_array_equal
 from zarr.ext import Array, SynchronizedArray, PersistentArray, \
     SynchronizedPersistentArray, LazyArray, SynchronizedLazyArray, \
     LazyPersistentArray, SynchronizedLazyPersistentArray
-from zarr import defaults
+from zarr import defaults, set_blosc_options
 
 
 class ArrayTests(object):
@@ -382,9 +382,11 @@ class TestPersistentArray(TestCase, ArrayTests):
         z3[:] = 0
 
         # check effect of write
-        assert_array_equal(np.zeros_like(a), z3[:])
-        assert_array_equal(np.zeros_like(a), z2[:])
-        assert_array_equal(np.zeros_like(a), z[:])
+        expect = np.empty_like(a)
+        expect[:] = 0
+        assert_array_equal(expect, z3[:])
+        assert_array_equal(expect, z2[:])
+        assert_array_equal(expect, z[:])
 
         # open for writing (must not exist)
         with assert_raises(ValueError):
@@ -394,13 +396,37 @@ class TestPersistentArray(TestCase, ArrayTests):
         shutil.rmtree(path)
 
     def test_persistence_1d(self):
-        self._test_persistence(np.arange(1050), chunks=(100,))
+
+        # simple dtype
+        for dtype in '<i4', '>i4':
+            a = np.arange(1050, dtype=dtype)
+            self._test_persistence(a, chunks=(100,))
+
+        # structured dtypes
+        dtypes = [
+            np.dtype([('a', 'i4'), ('b', 'S10')]),
+            np.dtype([('a', 'i4'), ('b', [('c', '?'), ('d', 'S10')])]),
+        ]
+        for dtype in dtypes:
+            a = np.empty(10000, dtype=dtype)
+            self._test_persistence(a, chunks=(100,))
 
     def test_persistence_2d(self):
-        a = np.arange(10000).reshape((1000, 10))
-        chunks = (100, 2)
-        self._test_persistence(a, chunks=chunks)
-        
+
+        # simple dtype
+        for dtype in '<i4', '>i4':
+            a = np.arange(10000, dtype=dtype).reshape((1000, 10))
+            self._test_persistence(a, chunks=(100, 2))
+
+        # structured dtypes
+        dtypes = [
+            np.dtype([('a', 'i4'), ('b', 'S10')]),
+            np.dtype([('a', 'i4'), ('b', [('c', '?'), ('d', 'S10')])]),
+        ]
+        for dtype in dtypes:
+            a = np.empty((1000, 10), dtype=dtype)
+            self._test_persistence(a, chunks=(100, 2))
+
     def test_resize_persistence(self):
 
         # setup path
@@ -501,3 +527,14 @@ class TestSynchronizedLazyPersistentArray(TestPersistentArray):
             lambda: shutil.rmtree(path) if os.path.exists(path) else None
         )
         return SynchronizedLazyPersistentArray(**kwargs)
+
+
+class TestArrayUsingContext(TestArray):
+
+    @classmethod
+    def setUpClass(cls):
+        set_blosc_options(use_context=True)
+
+    @classmethod
+    def tearDownClass(cls):
+        set_blosc_options(use_context=False)
