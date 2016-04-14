@@ -1,0 +1,13 @@
+language: python
+
+python:
+  - 2.7
+  - 3.4
+  - 3.5
+
+install:
+  - pip install -Uv pip setuptools setuptools_scm nose -rrequirements.txt --use-mirrors
+  - python setup.py build_ext --inplace
+
+script:
+  - nosetests -v
