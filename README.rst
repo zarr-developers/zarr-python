@@ -136,13 +136,13 @@ Create a persistent array (data stored on disk)
 .. code-block:: python
 
     >>> path = 'example.zarr'
-    >>> z = zarr.open(path, shape=(10000, 1000), dtype='i4', chunks=(1000, 100))
+    >>> z = zarr.open(path, mode='w', shape=(10000, 1000), dtype='i4', chunks=(1000, 100))
     >>> z[:] = np.arange(10000000, dtype='i4').reshape(10000, 1000)
     >>> z
     zarr.ext.SynchronizedPersistentArray((10000, 1000), int32, chunks=(1000, 100))
       cname: blosclz; clevel: 5; shuffle: 1 (BYTESHUFFLE)
       nbytes: 38.1M; cbytes: 2.0M; ratio: 19.3; initialized: 100/100
-      mode: a; path: example.zarr
+      mode: w; path: example.zarr
 
 There is no need to close a persistent array. Data are automatically flushed
 to disk.
@@ -152,12 +152,12 @@ If you're working with really big arrays, try the 'lazy' option
 .. code-block:: python
 
     >>> path = 'big.zarr'
-    >>> z = zarr.open(path, shape=(1e8, 1e7), dtype='i4', chunks=(1000, 1000), lazy=True)
+    >>> z = zarr.open(path, mode='w', shape=(1e8, 1e7), dtype='i4', chunks=(1000, 1000), lazy=True)
     >>> z
     zarr.ext.SynchronizedLazyPersistentArray((100000000, 10000000), int32, chunks=(1000, 1000))
       cname: blosclz; clevel: 5; shuffle: 1 (BYTESHUFFLE)
       nbytes: 3.6P; cbytes: 0; initialized: 0/1000000000
-      mode: a; path: big.zarr
+      mode: w; path: big.zarr
 
 See the [persistence documentation](PERSISTENCE.rst) for more details of the
 file format.
@@ -165,16 +165,25 @@ file format.
 Tuning
 ------
 
-``zarr`` is designed for use in parallel computations working chunk-wise
-over data. Try it with `dask.array
-<http://dask.pydata.org/en/latest/array.html>`_.
-
 ``zarr`` is optimised for accessing and storing data in contiguous slices,
 of the same size or larger than chunks. It is not and will never be
 optimised for single item access.
 
 Chunks sizes >= 1M are generally good. Optimal chunk shape will depend on
 the correlation structure in your data.
+
+``zarr`` is designed for use in parallel computations working
+chunk-wise over data. Try it with `dask.array
+<http://dask.pydata.org/en/latest/array.html>`_. If using in a
+multi-threaded, set zarr to use blosc in contextual mode::
+
+    >>> zarr.set_blosc_options(use_context=True)
+
+If using zarr in a single-threaded context, set zarr to use blosc in
+non-contextual mode, which allows blosc to use multiple threads
+internally::
+
+    >>> zarr.set_blosc_options(use_context=False, nthreads=4)
 
 Acknowledgments
 ---------------
