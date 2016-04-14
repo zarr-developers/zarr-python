@@ -20,7 +20,8 @@ import multiprocessing
 import fasteners
 
 
-from zarr import util as _util, meta as _meta, defaults as _defaults
+from zarr import util as _util, meta as _meta, defaults as _defaults, \
+    attrs as _attrs
 
 
 ###############################################################################
@@ -846,6 +847,10 @@ cdef class BaseArray:
         def __get__(self):
             return self._shuffle
 
+    property attrs:
+        def __get__(self):
+            return self._attrs
+
     # derived properties
 
     property size:
@@ -1130,6 +1135,9 @@ cdef class Array(BaseArray):
         # instantiate chunks
         self._cdata.flat = [self.create_chunk(None) for _ in self._cdata.flat]
 
+        # setup attributes container
+        self._attrs = dict()
+
         # N.B., in the current implementation, some chunks may overhang
         # the edge of the array. This is handled during the __getitem__ and
         # __setitem__ methods by setting appropriate slices on the chunks,
@@ -1227,6 +1235,9 @@ cdef class PersistentArray(BaseArray):
         # initialize chunks
         self._init_cdata()
 
+        # initialise attributes
+        self._init_attrs()
+
     def _init_cdata(self):
 
         # initialize an object array to hold pointers to chunk objects
@@ -1235,6 +1246,10 @@ cdef class PersistentArray(BaseArray):
         # instantiate chunks
         for cidx in itertools.product(*(range(n) for n in self._cdata_shape)):
             self._cdata[cidx] = self.create_chunk(cidx)
+
+    def _init_attrs(self):
+        attr_path = os.path.join(self._path, _defaults.attrpath)
+        self._attrs = _attrs.PersistentAttributes(attr_path, mode=self._mode)
 
     def _create(self, path, shape=None, chunks=None, dtype=None,
                 cname=None, clevel=None, shuffle=None, fill_value=None):
@@ -1288,6 +1303,14 @@ cdef class PersistentArray(BaseArray):
         if dtype is not None and np.dtype(dtype) != self._dtype:
             raise ValueError('dtype %r not consistent with existing %r' %
                              (dtype, self._dtype))
+
+    property path:
+        def __get__(self):
+            return self._path
+
+    property mode:
+        def __get__(self):
+            return self._mode
 
     property cbytes:
         def __get__(self):
@@ -1360,6 +1383,11 @@ cdef class SynchronizedPersistentArray(PersistentArray):
             dtype=self._dtype, cname=self._cname, clevel=self._clevel,
             shuffle=self._shuffle, fill_value=self._fill_value
         )
+
+    def _init_attrs(self):
+        attr_path = os.path.join(self._path, _defaults.attrpath)
+        self._attrs = _attrs.SynchronizedPersistentAttributes(attr_path,
+                                                              mode=self._mode)
 
 
 ###############################################################################
@@ -1442,6 +1470,9 @@ cdef class LazyArray(BaseArray):
 
         # initialize a dictionary for chunk objects
         self._cdata = dict()
+
+        # initialise attributes
+        self._attrs = dict()
 
         # instantiate chunks - not now!
 
@@ -1593,3 +1624,8 @@ cdef class SynchronizedLazyPersistentArray(LazyPersistentArray):
             cname=self._cname, clevel=self._clevel, shuffle=self._shuffle,
             fill_value=self._fill_value
         )
+
+    def _init_attrs(self):
+        attr_path = os.path.join(self._path, _defaults.attrpath)
+        self._attrs = _attrs.SynchronizedPersistentAttributes(attr_path,
+                                                              mode=self._mode)

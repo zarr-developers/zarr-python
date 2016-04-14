@@ -7,6 +7,7 @@ clevel = 5
 shuffle = 1  # byte shuffle
 
 # for persistence
+attrpath = '__zattr__'
 metapath = '__zmeta__'
 datapath = '__zdata__'
 datasuffix = '.blosc'
