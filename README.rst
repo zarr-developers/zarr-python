@@ -7,6 +7,9 @@ Python.
 * Source code: https://github.com/alimanfoo/zarr
 * Download: https://pypi.python.org/pypi/zarr
 
+.. image:: https://travis-ci.org/alimanfoo/zarr.svg?branch=master
+    :target: https://travis-ci.org/alimanfoo/zarr
+
 Installation
 ------------
 

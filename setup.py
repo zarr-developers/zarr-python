@@ -2,48 +2,47 @@
 from __future__ import absolute_import, print_function, division
 from glob import glob
 import os
-import re
-import platform
-import ctypes
 from setuptools import setup, Extension
+import cpuinfo
+import numpy as np
+from Cython.Build import cythonize
 
 
+# setup
 blosc_sources = []
+extra_compile_args = []
 include_dirs = []
 define_macros = []
 
-
-# We still have to figure out how to detect AVX2 in Python,
-# so no AVX2 support for the time being
-blosc_sources += [f for f in glob('c-blosc/blosc/*.c') if 'avx2' not in f]
+# generic setup
+blosc_sources += [f for f in glob('c-blosc/blosc/*.c')
+                  if 'avx2' not in f and 'sse2' not in f]
 blosc_sources += glob('c-blosc/internal-complibs/lz4*/*.c')
 blosc_sources += glob('c-blosc/internal-complibs/snappy*/*.cc')
 blosc_sources += glob('c-blosc/internal-complibs/zlib*/*.c')
 include_dirs += [os.path.join('c-blosc', 'blosc')]
 include_dirs += glob('c-blosc/internal-complibs/*')
 define_macros += [('HAVE_LZ4', 1), ('HAVE_SNAPPY', 1), ('HAVE_ZLIB', 1)]
-define_macros += [('CYTHON_TRACE', 1)]
-
-
-extra_compile_args = []
-if re.match('i.86|x86|AMD', platform.machine()) is not None:
-    # always enable SSE2 for AMD/Intel machines
-    extra_compile_args.append('-DSHUFFLE_SSE2_ENABLED')
-
-is_32bit = ctypes.sizeof(ctypes.c_voidp) == 4
-if is_32bit:
-    if os.name == 'posix':
-        extra_compile_args.append('-msse2')
-    elif os.name == 'nt':
-        # this is currently broken for windows
-        extra_compile_args.append('/arch:sse2')
-
-
-import numpy as np
 include_dirs.append(np.get_include())
 
+# determine CPU support for SSE2 and AVX2
+cpu_info = cpuinfo.get_cpu_info()
 
-from Cython.Build import cythonize
+# SSE2
+if 'sse2' in cpu_info['flags']:
+    print('SSE2 detected')
+    extra_compile_args.append('-DSHUFFLE_SSE2_ENABLED')
+    extra_compile_args.append('-msse2')
+    blosc_sources += [f for f in glob('c-blosc/blosc/*.c') if 'sse2' in f]
+
+# AVX2
+if 'avx2' in cpu_info['flags']:
+    print('AVX2 detected')
+    extra_compile_args.append('-DSHUFFLE_AVX2_ENABLED')
+    extra_compile_args.append('-mavx2')
+    blosc_sources += [f for f in glob('c-blosc/blosc/*.c') if 'avx2' in f]
+
+# define extension module
 ext_modules = cythonize([
     Extension('zarr.ext',
               sources=['zarr/ext.pyx'] + blosc_sources,
