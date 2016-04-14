@@ -14,12 +14,8 @@ Configuration metadata
 ----------------------
 
 Within a root directory, a file called "__zmeta__" contains essential
-configuration metadata about the array. This comprises the shape of the
-array, chunk shape, data type (dtype), compression library,
-compression level, shuffle filter and default fill value for
-uninitialised portions of the array. The format of this file is JSON.
-
-Mandatory fields and allowed values are as follows:
+configuration metadata about the array. The format of this file is
+JSON. Mandatory fields and allowed values are as follows:
 
 * ``shape`` - list of integers - the size of each dimension of the array
 * ``chunks`` - list of integers - the size of each dimension of a chunk, i.e., the chunk shape

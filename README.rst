@@ -6,6 +6,7 @@ for Python.
 
 * Source code: https://github.com/alimanfoo/zarr
 * Download: https://pypi.python.org/pypi/zarr
+* Release notes: https://github.com/alimanfoo/zarr/releases
 
 .. image:: https://travis-ci.org/alimanfoo/zarr.svg?branch=master
     :target: https://travis-ci.org/alimanfoo/zarr
@@ -185,3 +186,4 @@ Acknowledgments
 ``zarr`` uses `c-blosc <https://github.com/Blosc/c-blosc>`_ internally for
 compression and decompression and borrows code heavily from
 `bcolz <http://bcolz.blosc.org/>`_.
+
