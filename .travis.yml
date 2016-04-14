@@ -1,0 +1,14 @@
+language: python
+
+python:
+  - 2.7
+  - 3.4
+  - 3.5
+
+install:
+  - pip install -U pip setuptools setuptools_scm wheel
+  - pip install -U nose -rrequirements.txt
+  - python setup.py build_ext --inplace
+
+script:
+  - nosetests -v

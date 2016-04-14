@@ -1,0 +1,3 @@
+cython
+numpy
+fasteners

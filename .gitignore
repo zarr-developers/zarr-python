@@ -67,3 +67,4 @@ zarr/version.py
 
 # test data
 *.zarr
+*~
