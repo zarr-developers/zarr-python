@@ -4,7 +4,7 @@ zarr - Persistence
 This document describes the file organisation and formats used to save zarr
 arrays on disk.
 
-All data and metadata associated with a zarr array is stored within a
+All data and metadata associated with a zarr array are stored within a
 directory on the file system. Within this directory there are a number
 of files and sub-directories storing different components of the data
 and metadata. Here I'll refer to a directory containing a zarr array
@@ -23,7 +23,7 @@ Mandatory fields and allowed values are as follows:
 
 * ``shape`` - list of integers - the size of each dimension of the array
 * ``chunks`` - list of integers - the size of each dimension of a chunk, i.e., the chunk shape
-* ``dtype`` - string or list of lists - a description of the data type, following Numpy convention
+* ``dtype`` - string - a description of the data type, following Numpy convention
 * ``fill_value`` - scalar value - value to use for uninitialised portions of the array
 * ``cname`` - string - name of the compression library used
 * ``clevel`` - integer - compression level
@@ -60,7 +60,7 @@ metadata associated with the array, i.e., user attributes. The format
 of this file is JSON.
 
 For example::
-  
+
     >>> import zarr
     >>> z = zarr.open('example.zarr', mode='w', shape=(1000000, 1000),
     ...               chunks=(10000, 100), dtype='i4', fill_value=42,
@@ -69,16 +69,20 @@ For example::
     >>> z.attrs['bar'] = 4.2
     >>> z.attrs['baz'] = 'quux'
     >>> print(open('example.zarr/__zattr__').read())
-
-TODO add results above
+    {
+        "bar": 4.2,
+        "baz": "quux",
+        "foo": 42
+    }
 
 Array data
 ----------
 
 Within a root directory, a sub-directory called "__zdata__" contains
 the array data. The array data is divided into chunks, each of which
-is compressed using the [blosc meta-compression library](TODO). Each
-chunk is stored in a separate file.
+is compressed using the `blosc meta-compression library
+<https://github.com/blosc/c-blosc>`_. Each chunk is stored in a
+separate file.
 
 The chunk files are named according to the chunk indices. E.g., for a
 2-dimensional array with shape (100, 100) and chunk shape (10, 10)
@@ -101,8 +105,8 @@ header is organised as follows::
       |   +----------blosclz version
       +--------------blosc version
 
-For more details on the header, see the [C-Blosc header
-description](https://github.com/Blosc/c-blosc/blob/master/README_HEADER.rst).
+For more details on the header, see the `c-blosc header description
+<https://github.com/Blosc/c-blosc/blob/master/README_HEADER.rst>`_.
 
 If a file does not exist on the file system for any given chunk in an
 array, that indicates the chunk has not been initialised, and the
