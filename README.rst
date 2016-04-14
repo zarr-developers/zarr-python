@@ -44,8 +44,10 @@ Design goals
 Usage
 -----
 
-Create an array::
+Create an array:
 
+.. code-block::
+     
     >>> import numpy as np
     >>> import zarr
     >>> z = zarr.empty(shape=(10000, 1000), dtype='i4', chunks=(1000, 100))
@@ -54,16 +56,20 @@ Create an array::
       cname: blosclz; clevel: 5; shuffle: 1 (BYTESHUFFLE)
       nbytes: 38.1M; cbytes: 0; initialized: 0/100
 
-Fill it with some data::
+Fill it with some data:
 
+.. code-block::
+     
     >>> z[:] = np.arange(10000000, dtype='i4').reshape(10000, 1000)
     >>> z
     zarr.ext.SynchronizedArray((10000, 1000), int32, chunks=(1000, 100))
       cname: blosclz; clevel: 5; shuffle: 1 (BYTESHUFFLE)
       nbytes: 38.1M; cbytes: 2.0M; ratio: 19.3; initialized: 100/100
 
-Obtain a NumPy array by slicing::
+Obtain a NumPy array by slicing:
 
+.. code-block::
+     
     >>> z[:]
     array([[      0,       1,       2, ...,     997,     998,     999],
            [   1000,    1001,    1002, ...,    1997,    1998,    1999],
@@ -89,8 +95,10 @@ Obtain a NumPy array by slicing::
            [9998000, 9998001, 9998002, ..., 9998097, 9998098, 9998099],
            [9999000, 9999001, 9999002, ..., 9999097, 9999098, 9999099]], dtype=int32)
 
-Resize the array and add more data::
+Resize the array and add more data:
 
+.. code-block::
+     
     >>> z.resize(20000, 1000)
     >>> z
     zarr.ext.SynchronizedArray((20000, 1000), int32, chunks=(1000, 100))
@@ -123,9 +131,9 @@ append data to any axis:
 Persistence
 -----------
 
-Create a persistent array (data stored on disk)
+Create a persistent array (data stored on disk):
 
-.. code-block:: python
+.. code-block::
 
     >>> path = 'example.zarr'
     >>> z = zarr.open(path, mode='w', shape=(10000, 1000), dtype='i4', chunks=(1000, 100))
@@ -139,9 +147,9 @@ Create a persistent array (data stored on disk)
 There is no need to close a persistent array. Data are automatically flushed
 to disk.
 
-If you're working with really big arrays, try the 'lazy' option
+If you're working with really big arrays, try the 'lazy' option:
 
-.. code-block:: python
+.. code-block::
 
     >>> path = 'big.zarr'
     >>> z = zarr.open(path, mode='w', shape=(1e8, 1e7), dtype='i4', chunks=(1000, 1000), lazy=True)
