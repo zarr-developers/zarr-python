@@ -12,7 +12,6 @@ import sys
 import os
 import struct
 import ctypes
-import pickle
 import shutil
 import tempfile
 from collections import namedtuple
@@ -21,8 +20,7 @@ import multiprocessing
 import fasteners
 
 
-from zarr import util as _util
-from zarr import defaults
+from zarr import util as _util, meta as _meta, defaults as _defaults
 
 
 ###############################################################################
@@ -163,21 +161,21 @@ def _normalize_cparams(cname=None, clevel=None, shuffle=None):
     """
 
     # determine compressor
-    cname = cname if cname is not None else defaults.cname
+    cname = cname if cname is not None else _defaults.cname
     if type(cname) != bytes:
-        cname = cname.encode()
+        cname = cname.encode('ascii')
     # check compressor is available
     if blosc_compname_to_compcode(cname) < 0:
         raise ValueError('compressor not available: %s' % cname)
 
     # determine compression level
-    clevel = clevel if clevel is not None else defaults.clevel
+    clevel = clevel if clevel is not None else _defaults.clevel
     clevel = int(clevel)
     if clevel < 0 or clevel > 9:
         raise ValueError('invalid compression level: %s' % clevel)
 
     # determine shuffle filter
-    shuffle = shuffle if shuffle is not None else defaults.shuffle
+    shuffle = shuffle if shuffle is not None else _defaults.shuffle
     shuffle = int(shuffle)
     if shuffle not in [0, 1, 2]:
         raise ValueError('invalid shuffle: %s' % shuffle)
@@ -747,28 +745,6 @@ def _normalize_chunks(chunks, tuple shape):
     return chunks
 
 
-def _read_array_metadata(path):
-
-    # check path exists
-    if not os.path.exists(path):
-        raise ValueError('path not found: %s' % path)
-
-    # check metadata file
-    meta_path = os.path.join(path, defaults.metapath)
-    if not os.path.exists(meta_path):
-        raise ValueError('array metadata not found: %s' % path)
-
-    with open(meta_path, 'rb') as f:
-        meta = pickle.load(f)
-        return meta
-
-
-def _write_array_metadata(path, meta):
-    meta_path = os.path.join(path, defaults.metapath)
-    with open(meta_path, 'wb') as f:
-        pickle.dump(meta, f, protocol=0)
-
-
 def _array_resize(BaseArray array, *args):
 
     # normalize new shape argument
@@ -1216,7 +1192,7 @@ cdef class PersistentArray(BaseArray):
         # a : read/write if exists, create otherwise (default)
 
         # use metadata file as indicator of array existence
-        meta_path = os.path.join(path, defaults.metapath)
+        meta_path = os.path.join(path, _defaults.metapath)
 
         if mode in ['r', 'r+']:
             self._open(path, **kwargs)
@@ -1264,7 +1240,7 @@ cdef class PersistentArray(BaseArray):
                 cname=None, clevel=None, shuffle=None, fill_value=None):
 
         # create directories
-        data_path = os.path.join(path, defaults.datapath)
+        data_path = os.path.join(path, _defaults.datapath)
         if not os.path.exists(data_path):
             os.makedirs(data_path)
 
@@ -1277,20 +1253,20 @@ cdef class PersistentArray(BaseArray):
         self._fill_value = fill_value
 
         # write metadata
-        metadata = {'shape': self._shape,
-                    'chunks': self._chunks,
-                    'dtype': self._dtype,
-                    'cname': self._cname,
-                    'clevel': self._clevel,
-                    'shuffle': self._shuffle,
-                    'fill_value': self._fill_value}
-        _write_array_metadata(path, metadata)
+        _meta.write_array_metadata(path,
+                                   shape=self._shape,
+                                   chunks=self._chunks,
+                                   dtype=self._dtype,
+                                   cname=self._cname,
+                                   clevel=self._clevel,
+                                   shuffle=self._shuffle,
+                                   fill_value=self._fill_value)
 
     def _open(self, path, shape=None, chunks=None, dtype=None, cname=None,
               clevel=None, shuffle=None, fill_value=None):
 
         # read metadata
-        metadata = _read_array_metadata(path)
+        metadata = _meta.read_array_metadata(path)
 
         # set attributes
         self._shape = metadata['shape']
@@ -1327,8 +1303,8 @@ cdef class PersistentArray(BaseArray):
         return self._cdata[cidx]
 
     cdef object get_chunk_path(self, tuple cidx):
-        chunk_filename = '.'.join(map(str, cidx)) + defaults.datasuffix
-        chunk_path = os.path.join(self._path, defaults.datapath,
+        chunk_filename = '.'.join(map(str, cidx)) + _defaults.datasuffix
+        chunk_path = os.path.join(self._path, _defaults.datapath,
                                   chunk_filename)
         return chunk_path
 
@@ -1347,14 +1323,14 @@ cdef class PersistentArray(BaseArray):
         _array_resize(self, *args)
 
         # write metadata
-        metadata = {'shape': self._shape,
-                    'chunks': self._chunks,
-                    'dtype': self._dtype,
-                    'cname': self._cname,
-                    'clevel': self._clevel,
-                    'shuffle': self._shuffle,
-                    'fill_value': self._fill_value}
-        _write_array_metadata(self._path, metadata)
+        _meta.write_array_metadata(self._path,
+                                   shape=self._shape,
+                                   chunks=self._chunks,
+                                   dtype=self._dtype,
+                                   cname=self._cname,
+                                   clevel=self._clevel,
+                                   shuffle=self._shuffle,
+                                   fill_value=self._fill_value)
 
     def __setitem__(self, key, value):
         if self._mode == 'r':
@@ -1534,7 +1510,7 @@ cdef class LazyPersistentArray(PersistentArray):
         def __get__(self):
             # N.B., chunk objects are instantiated lazily, so there may be
             # data on disk but no corresponding chunk object yet
-            data_dir = os.path.join(self._path, defaults.datapath)
+            data_dir = os.path.join(self._path, _defaults.datapath)
             return sum(os.path.getsize(os.path.join(data_dir, fn))
                        for fn in os.listdir(data_dir))
 
@@ -1542,10 +1518,10 @@ cdef class LazyPersistentArray(PersistentArray):
         def __get__(self):
             # N.B., chunk objects are instantiated lazily, so there may be
             # data on disk but no corresponding chunk object yet
-            data_dir = os.path.join(self._path, defaults.datapath)
+            data_dir = os.path.join(self._path, _defaults.datapath)
             a = np.zeros(self._cdata_shape, dtype='b1')
-            for fn in glob(os.path.join(data_dir, '*' + defaults.datasuffix)):
-                bn = os.path.basename(fn)[:-len(defaults.datasuffix)]
+            for fn in glob(os.path.join(data_dir, '*' + _defaults.datasuffix)):
+                bn = os.path.basename(fn)[:-len(_defaults.datasuffix)]
                 cidx = tuple(map(int, bn.split('.')))
                 a[cidx] = True
             return a
@@ -1587,14 +1563,14 @@ cdef class LazyPersistentArray(PersistentArray):
         _lazy_resize(self, *args)
 
         # write metadata
-        metadata = {'shape': self._shape,
-                    'chunks': self._chunks,
-                    'dtype': self._dtype,
-                    'cname': self._cname,
-                    'clevel': self._clevel,
-                    'shuffle': self._shuffle,
-                    'fill_value': self._fill_value}
-        _write_array_metadata(self._path, metadata)
+        _meta.write_array_metadata(self._path,
+                                   shape=self._shape,
+                                   chunks=self._chunks,
+                                   dtype=self._dtype,
+                                   cname=self._cname,
+                                   clevel=self._clevel,
+                                   shuffle=self._shuffle,
+                                   fill_value=self._fill_value)
 
 
 # noinspection PyAbstractClass
@@ -1609,8 +1585,8 @@ cdef class SynchronizedLazyPersistentArray(LazyPersistentArray):
             return _lazy_get_chunk(self, cidx)
 
     cdef BaseChunk create_chunk(self, tuple cidx):
-        chunk_filename = '.'.join(map(str, cidx)) + defaults.datasuffix
-        chunk_path = os.path.join(self._path, defaults.datapath,
+        chunk_filename = '.'.join(map(str, cidx)) + _defaults.datasuffix
+        chunk_path = os.path.join(self._path, _defaults.datapath,
                                   chunk_filename)
         return SynchronizedPersistentChunk(
             path=chunk_path, shape=self._chunks, dtype=self._dtype,
