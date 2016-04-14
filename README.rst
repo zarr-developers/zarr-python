@@ -7,10 +7,13 @@ Python.
 * Source code: https://github.com/alimanfoo/zarr
 * Download: https://pypi.python.org/pypi/zarr
 
+.. image:: https://travis-ci.org/alimanfoo/zarr.svg?branch=master
+    :target: https://travis-ci.org/alimanfoo/zarr
+
 Installation
 ------------
 
-Installation requires NumPy and Cython pre-installed. Currently only
+Installation requires Numpy and Cython pre-installed. Currently only
 compatible with Python >= 3.4.
 
 Install from PyPI::
