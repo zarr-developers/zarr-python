@@ -1,8 +1,8 @@
 zarr
 ====
 
-A minimal implementation of chunked, compressed, N-dimensional arrays for
-Python.
+A minimal implementation of chunked, compressed, N-dimensional arrays
+for Python.
 
 * Source code: https://github.com/alimanfoo/zarr
 * Download: https://pypi.python.org/pypi/zarr
@@ -13,8 +13,8 @@ Python.
 Installation
 ------------
 
-Installation requires Numpy and Cython pre-installed. Can only be installed on
-Linux currently.
+Installation requires Numpy and Cython pre-installed. Can only be
+installed on Linux currently.
 
 Install from PyPI::
 
@@ -27,8 +27,8 @@ Install from GitHub::
 Status
 ------
 
-Experimental, proof-of-concept. This is alpha-quality software. Things may
-break, change or disappear without warning.
+Experimental, proof-of-concept. This is alpha-quality software. Things
+may break, change or disappear without warning.
 
 Bug reports and suggestions welcome.
 
@@ -44,9 +44,7 @@ Design goals
 Usage
 -----
 
-Create an array
-
-.. code-block:: python
+Create an array::
 
     >>> import numpy as np
     >>> import zarr
@@ -56,9 +54,7 @@ Create an array
       cname: blosclz; clevel: 5; shuffle: 1 (BYTESHUFFLE)
       nbytes: 38.1M; cbytes: 0; initialized: 0/100
 
-Fill it with some data
-
-.. code-block:: python
+Fill it with some data::
 
     >>> z[:] = np.arange(10000000, dtype='i4').reshape(10000, 1000)
     >>> z
@@ -66,9 +62,7 @@ Fill it with some data
       cname: blosclz; clevel: 5; shuffle: 1 (BYTESHUFFLE)
       nbytes: 38.1M; cbytes: 2.0M; ratio: 19.3; initialized: 100/100
 
-Obtain a NumPy array by slicing
-
-.. code-block:: python
+Obtain a NumPy array by slicing::
 
     >>> z[:]
     array([[      0,       1,       2, ...,     997,     998,     999],
@@ -95,9 +89,7 @@ Obtain a NumPy array by slicing
            [9998000, 9998001, 9998002, ..., 9998097, 9998098, 9998099],
            [9999000, 9999001, 9999002, ..., 9999097, 9999098, 9999099]], dtype=int32)
 
-Resize the array and add more data
-
-.. code-block:: python
+Resize the array and add more data::
 
     >>> z.resize(20000, 1000)
     >>> z
@@ -111,10 +103,10 @@ Resize the array and add more data
       nbytes: 76.3M; cbytes: 4.0M; ratio: 19.3; initialized: 200/200
 
 For convenience, an ``append()`` method is also available, which can be used to
-append data to any axis
+append data to any axis:
 
-.. code-block:: python
-
+.. code-block::
+     
     >>> a = np.arange(10000000, dtype='i4').reshape(10000, 1000)
     >>> z = zarr.array(a, chunks=(1000, 100))
     >>> z.append(a+a)
