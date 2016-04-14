@@ -1,2 +1,3 @@
 recursive-include c-blosc *
 recursive-include zarr *.pyx
+include cpuinfo.py

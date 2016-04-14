@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 # cython: embedsignature=True
-# cython: profile=True
-# cython: linetrace=True
-# cython: binding=True
+# cython: profile=False
+# cython: linetrace=False
+# cython: binding=False
 from __future__ import absolute_import, print_function, division
 from threading import RLock
 import itertools
@@ -1216,7 +1216,7 @@ cdef class PersistentArray(BaseArray):
                     'fill_value': self._fill_value}
         _write_array_metadata(path, metadata)
 
-    def _open(self, path, shape=None, chunks=None, dtype=None, cname=None, 
+    def _open(self, path, shape=None, chunks=None, dtype=None, cname=None,
               clevel=None, shuffle=None, fill_value=None):
 
         # read metadata
@@ -1230,7 +1230,7 @@ cdef class PersistentArray(BaseArray):
         self._clevel = metadata['clevel']
         self._shuffle = metadata['shuffle']
         self._fill_value = metadata['fill_value']
-        
+
         # check consistency with user arguments
         if shape is not None and _normalize_shape(shape) != self._shape:
             raise ValueError('shape %r not consistent with existing %r' %
@@ -1453,7 +1453,7 @@ cdef class SynchronizedLazyArray(LazyArray):
 cdef class LazyPersistentArray(PersistentArray):
 
     def _init_cdata(self):
-        
+
         # initialize a dictionary for chunk objects
         self._cdata = dict()
 
