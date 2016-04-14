@@ -159,18 +159,18 @@ If you're working with really big arrays, try the 'lazy' option:
       nbytes: 3.6P; cbytes: 0; initialized: 0/1000000000
       mode: w; path: big.zarr
 
-See the [persistence documentation](PERSISTENCE.rst) for more details of the
-file format.
+See the `persistence documentation <PERSISTENCE.rst>`_ for more
+details of the file format.
 
 Tuning
 ------
 
-``zarr`` is optimised for accessing and storing data in contiguous slices,
-of the same size or larger than chunks. It is not and will never be
-optimised for single item access.
+``zarr`` is optimised for accessing and storing data in contiguous
+slices, of the same size or larger than chunks. It is not and probably
+never will be optimised for single item access.
 
-Chunks sizes >= 1M are generally good. Optimal chunk shape will depend on
-the correlation structure in your data.
+Chunks sizes >= 1M are generally good. Optimal chunk shape will depend
+on the correlation structure in your data.
 
 ``zarr`` is designed for use in parallel computations working
 chunk-wise over data. Try it with `dask.array
@@ -178,12 +178,6 @@ chunk-wise over data. Try it with `dask.array
 multi-threaded, set zarr to use blosc in contextual mode::
 
     >>> zarr.set_blosc_options(use_context=True)
-
-If using zarr in a single-threaded context, set zarr to use blosc in
-non-contextual mode, which allows blosc to use multiple threads
-internally::
-
-    >>> zarr.set_blosc_options(use_context=False, nthreads=4)
 
 Acknowledgments
 ---------------
