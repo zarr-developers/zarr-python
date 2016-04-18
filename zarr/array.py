@@ -5,12 +5,43 @@ from __future__ import absolute_import, print_function, division
 from functools import reduce  # TODO PY2 compatibility
 import operator
 import itertools
+import multiprocessing
 import numpy as np
 
 
-from zarr.blosc import compress, decompress
+from zarr import blosc
 from zarr.util import is_total_slice, normalize_array_selection, \
     get_chunk_range
+
+
+_blosc_use_context = False
+
+
+def set_blosc_options(use_context=False, nthreads=None):
+    """Set options for how the blosc compressor is used.
+
+    Parameters
+    ----------
+    use_context : bool, optional
+        If False, blosc will be used in non-contextual mode, which is best
+        when using zarr in a single-threaded environment because it allows
+        blosc to use multiple threads internally. If True, blosc will be used
+        in contextual mode, which is better when using zarr in a
+        multi-threaded environment like dask.array because it avoids the blosc
+        global lock and so multiple blosc operations can be running
+        concurrently.
+    nthreads : int, optional
+        Number of internal threads to use when running blosc in non-contextual
+        mode.
+
+    """
+    global _blosc_use_context
+    _blosc_use_context = use_context
+    if not use_context:
+        if nthreads is None:
+            # diminishing returns beyond 4 threads?
+            nthreads = max(4, multiprocessing.cpu_count())
+        blosc.set_nthreads(nthreads)
 
 
 class Array(object):
@@ -37,6 +68,10 @@ class Array(object):
 
         # user-defined attributes
         self._attrs = store.attrs
+
+    @property
+    def store(self):
+        return self._store
 
     @property
     def shape(self):
@@ -170,11 +205,13 @@ class Array(object):
                 # determine index within value
                 value_selection = tuple(
                     slice(max(0, o - start), min(o + c - start, stop - start))
-                    for (start, stop), o, c, in zip(selection, offset, self._chunks)
+                    for (start, stop), o, c, in zip(selection, offset,
+                                                    self._chunks)
                 )
 
                 # put data
-                self._chunk_setitem(cidx, chunk_selection, value[value_selection])
+                self._chunk_setitem(cidx, chunk_selection,
+                                    value[value_selection])
 
     def _chunk_getitem(self, cidx, item, dest):
         """Obtain part or whole of a chunk.
@@ -192,26 +229,36 @@ class Array(object):
 
         # override this in sub-classes, e.g., if need to use a lock
 
-        # obtain compressed data for chunk
-        cdata = self._store.data[cidx]
+        try:
 
-        if is_total_slice(item, self._chunks) and dest.flags.c_contiguous:
+            # obtain compressed data for chunk
+            cdata = self._store.data[cidx]
 
-            # optimisation: we want the whole chunk, and the destination is
-            # C contiguous, so we can decompress directly from the chunk
-            # into the destination array
-            decompress(cdata, dest)
+        except KeyError:
+
+            # chunk not initialized
+            if self._fill_value is not None:
+                dest.fill(self._fill_value)
 
         else:
 
-            # decompress chunk
-            chunk = np.empty(self._chunks, dtype=self._dtype)
-            decompress(cdata, chunk)
+            if is_total_slice(item, self._chunks) and dest.flags.c_contiguous:
 
-            # set data in output array
-            # (split into two lines for profiling)
-            tmp = chunk[item]
-            dest[:] = tmp
+                # optimisation: we want the whole chunk, and the destination is
+                # C contiguous, so we can decompress directly from the chunk
+                # into the destination array
+                blosc.decompress(cdata, dest, _blosc_use_context)
+
+            else:
+
+                # decompress chunk
+                chunk = np.empty(self._chunks, dtype=self._dtype)
+                blosc.decompress(cdata, chunk, _blosc_use_context)
+
+                # set data in output array
+                # (split into two lines for profiling)
+                tmp = chunk[item]
+                dest[:] = tmp
 
     def _chunk_setitem(self, cidx, key, value):
         """Replace part or whole of a chunk.
@@ -248,18 +295,30 @@ class Array(object):
         else:
             # partially replace the contents of this chunk
 
-            # obtain compressed data for chunk
-            cdata = self._store.data[cidx]
+            try:
 
-            # decompress
-            chunk = np.empty(self._chunks, dtype=self._dtype)
-            decompress(cdata, chunk)
+                # obtain compressed data for chunk
+                cdata = self._store.data[cidx]
+
+            except KeyError:
+
+                # chunk not initialized
+                chunk = np.empty(self.chunks, dtype=self._dtype)
+                if self._fill_value is not None:
+                    chunk.fill(self._fill_value)
+
+            else:
+
+                # decompress chunk
+                chunk = np.empty(self.chunks, dtype=self._dtype)
+                blosc.decompress(cdata, chunk, _blosc_use_context)
 
             # modify
             chunk[key] = value
 
         # compress
-        cdata = compress(chunk, self._cname, self._clevel, self._shuffle)
+        cdata = blosc.compress(chunk, self._cname, self._clevel,
+                               self._shuffle, _blosc_use_context)
 
         # store
         self._store.data[cidx] = cdata

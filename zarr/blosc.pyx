@@ -37,8 +37,6 @@ cdef extern from "blosc.h":
 				           size_t blocksize, int numinternalthreads) nogil
     int blosc_decompress_ctx(const void *src, void *dest, size_t destsize,
                              int numinternalthreads) nogil
-    void blosc_cbuffer_sizes(void *cbuffer, size_t *nbytes,
-                             size_t *cbytes, size_t *blocksize)
 
 
 def version():
@@ -62,6 +60,10 @@ def destroy():
 
 def compname_to_compcode(bytes cname):
     return blosc_compname_to_compcode(cname)
+
+
+def set_nthreads(int nthreads):
+    blosc_set_nthreads(nthreads)
 
 
 def decompress(bytes cdata, np.ndarray array, use_context):
