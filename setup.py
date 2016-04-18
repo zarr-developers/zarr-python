@@ -44,8 +44,8 @@ if 'avx2' in cpu_info['flags']:
 
 # define extension module
 ext_modules = cythonize([
-    Extension('zarr.ext',
-              sources=['zarr/ext.pyx'] + blosc_sources,
+    Extension('zarr.blosc',
+              sources=['zarr/blosc.pyx'] + blosc_sources,
               include_dirs=include_dirs,
               define_macros=define_macros,
               extra_compile_args=extra_compile_args,
