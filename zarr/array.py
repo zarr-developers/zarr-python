@@ -40,7 +40,7 @@ def set_blosc_options(use_context=False, nthreads=None):
     if not use_context:
         if nthreads is None:
             # diminishing returns beyond 4 threads?
-            nthreads = max(4, multiprocessing.cpu_count())
+            nthreads = min(4, multiprocessing.cpu_count())
         blosc.set_nthreads(nthreads)
 
 
