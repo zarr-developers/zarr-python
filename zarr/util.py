@@ -2,6 +2,91 @@
 from __future__ import absolute_import, print_function, division
 
 
+import numpy as np
+
+
+from zarr import blosc
+from zarr import defaults
+
+
+def normalize_cparams(cname=None, clevel=None, shuffle=None):
+    """Convenience function to normalize compression parameters.
+
+    If any values are None, they will be substituted with values from the
+    `zarr.defaults` module.
+
+    Parameters
+    ----------
+    cname : string, optional
+        Name of compression library to use, e.g., 'blosclz', 'lz4', 'zlib',
+        'snappy'.
+    clevel : int, optional
+        Compression level, 0 means no compression.
+    shuffle : int, optional
+        Shuffle filter, 0 means no shuffle, 1 means byte shuffle, 2 means
+        bit shuffle.
+
+    Returns
+    -------
+    cname
+    clevel
+    shuffle
+
+    """
+
+    # determine compressor
+    cname = cname if cname is not None else defaults.cname
+    if not isinstance(cname, bytes):
+        cname = cname.encode('ascii')
+    # check compressor is available
+    if blosc.compname_to_compcode(cname) < 0:
+        raise ValueError('compressor not available: %s' % cname)
+
+    # determine compression level
+    clevel = clevel if clevel is not None else defaults.clevel
+    clevel = int(clevel)
+    if clevel < 0 or clevel > 9:
+        raise ValueError('invalid compression level: %s' % clevel)
+
+    # determine shuffle filter
+    shuffle = shuffle if shuffle is not None else defaults.shuffle
+    shuffle = int(shuffle)
+    if shuffle not in [0, 1, 2]:
+        raise ValueError('invalid shuffle: %s' % shuffle)
+
+    return cname, clevel, shuffle
+
+
+def normalize_shape(shape):
+    """Convenience function to normalize the `shape` argument."""
+
+    try:
+        shape = tuple(int(s) for s in shape)
+    except TypeError:
+        shape = (int(shape),)
+    return shape
+
+
+def normalize_chunks(chunks, shape):
+    """Convenience function to normalize the `chunks` argument for an array
+    with the given `shape`."""
+
+    try:
+        chunks = tuple(int(c) for c in chunks)
+    except TypeError:
+        chunks = (int(chunks),)
+    if len(chunks) < len(shape):
+        # assume chunks across remaining dimensions
+        chunks += shape[len(chunks):]
+    if len(chunks) != len(shape):
+        raise ValueError('chunks and shape not compatible: %r, %r' %
+                         (chunks, shape))
+    # handle None in chunks
+    chunks = tuple(s if c is None else c for s, c in zip(shape, chunks))
+    return chunks
+
+
+# noinspection PyTypeChecker
 def is_total_slice(item, shape):
     """Determine whether `item` specifies a complete slice of array with the
     given `shape`. Used to optimise __setitem__ operations on the Chunk
@@ -51,6 +136,7 @@ def normalize_axis_selection(item, l):
         raise ValueError('expected integer or slice, found: %r' % item)
 
 
+# noinspection PyTypeChecker
 def normalize_array_selection(item, shape):
     """Convenience function to normalize a selection within an array with
     the given `shape`."""

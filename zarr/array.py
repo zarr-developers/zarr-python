@@ -31,9 +31,7 @@ class Array(object):
         self._chunks = store.meta['chunks']
         self._dtype = store.meta['dtype']
         self._cname = store.meta['cname']
-        # TODO check valid cname here?
         self._clevel = store.meta['clevel']
-        # TODO check valid clevel here?
         self._shuffle = store.meta['shuffle']
         self._fill_value = store.meta['fill_value']
 
@@ -76,6 +74,11 @@ class Array(object):
     def cbytes(self):
         # pass through
         return self._store.cbytes
+
+    @property
+    def initialized(self):
+        # pass through
+        return self._store.initialized
 
     # derived properties
 

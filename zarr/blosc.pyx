@@ -60,13 +60,8 @@ def destroy():
     blosc_destroy()
 
 
-def compname_to_compcode(cname):
-    if not isinstance(cname, bytes):
-        cname = cname.encode('ascii')
-    ccode = blosc_compname_to_compcode(cname)
-    if ccode < 0:
-        raise ValueError('compressor not available: %r' % cname)
-    return ccode
+def compname_to_compcode(bytes cname):
+    return blosc_compname_to_compcode(cname)
 
 
 def decompress(bytes cdata, np.ndarray array, use_context):
