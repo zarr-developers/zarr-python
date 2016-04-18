@@ -7,18 +7,32 @@ from contextlib import contextmanager
 
 
 class ArraySynchronizer(metaclass=ABCMeta):
+    """Abstract class defining the interface to a synchronization manager for a
+    single array."""
 
     @contextmanager
     @abstractmethod
-    def lock_array(self): pass
+    def lock_array(self):
+        """Obtain a lock on the entire array."""
+        pass
 
     @contextmanager
     @abstractmethod
-    def lock_attrs(self): pass
+    def lock_attrs(self):
+        """Obtain a lock on the user-defined attributes."""
+        pass
 
     @contextmanager
     @abstractmethod
-    def lock_chunk(self, key): pass
+    def lock_chunk(self, key):
+        """Obtain a lock on a single chunk.
+
+        Parameters
+        ----------
+        key : tuple of ints
+            Chunk index.
+        """
+        pass
 
 
 class ThreadSynchronizer(ArraySynchronizer):

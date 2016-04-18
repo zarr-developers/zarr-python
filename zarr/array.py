@@ -223,7 +223,7 @@ class Array(object):
             Value to set.
 
         """
-        
+
         # override this in sub-classes, e.g., if need to use a lock
 
         if is_total_slice(key, self._chunks):
