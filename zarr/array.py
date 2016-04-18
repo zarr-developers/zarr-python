@@ -9,100 +9,24 @@ import numpy as np
 
 
 from zarr.blosc import compress, decompress
-
-
-def _is_total_slice(item, shape):
-    """Determine whether `item` specifies a complete slice of array with the
-    given `shape`. Used to optimise __setitem__ operations on the Chunk
-    class."""
-
-    if item == Ellipsis:
-        return True
-    if item == slice(None):
-        return True
-    if isinstance(item, tuple):
-        return all(
-            (isinstance(s, slice) and
-            ((s == slice(None)) or (s.stop - s.start == l)))
-            for s, l in zip(item, shape)
-        )
-    return False
-
-
-def _normalize_axis_selection(item, l):
-    """Convenience function to normalize a selection within a single axis
-    of size `l`."""
-
-    if isinstance(item, int):
-        if item < 0:
-            # handle wraparound
-            item = l + item
-        if item > (l - 1) or item < 0:
-            raise IndexError('index out of bounds: %s' % item)
-        return item, item + 1
-
-    elif isinstance(item, slice):
-        if item.step is not None and item.step != 1:
-            raise NotImplementedError('slice with step not supported')
-        start = 0 if item.start is None else item.start
-        stop = l if item.stop is None else item.stop
-        if start < 0:
-            start = l + start
-        if stop < 0:
-            stop = l + stop
-        if start < 0 or stop < 0:
-            raise IndexError('index out of bounds: %s, %s' % (start, stop))
-        if stop > l:
-            stop = l
-        return start, stop
-
-    else:
-        raise ValueError('expected integer or slice, found: %r' % item)
-
-
-def _normalize_array_selection(item, shape):
-    """Convenience function to normalize a selection within an array with
-    the given `shape`."""
-
-    # normalize item
-    if isinstance(item, int):
-        item = (item,)
-    elif isinstance(item, slice):
-        item = (item,)
-    elif item == Ellipsis:
-        item = (slice(None),)
-
-    # handle tuple of indices/slices
-    if isinstance(item, tuple):
-
-        # determine start and stop indices for all axes
-        selection = tuple(_normalize_axis_selection(i, l)
-                          for i, l in zip(item, shape))
-
-        # fill out selection if not completely specified
-        if len(selection) < len(shape):
-            selection += tuple((0, l) for l in shape[len(selection):])
-
-        return selection
-
-    else:
-        raise ValueError('expected indices or slice, found: %r' % item)
-
-
-def _get_chunk_range(selection, chunks):
-    """Convenience function to get a range over all chunk indices,
-    for iterating over chunks."""
-    chunk_range = [range(start//l, int(np.ceil(stop/l)))
-                   for (start, stop), l in zip(selection, chunks)]
-    return chunk_range
+from zarr.util import is_total_slice, normalize_array_selection, \
+    get_chunk_range
 
 
 class Array(object):
 
     def __init__(self, store):
+        """Instantiate an array.
+
+        Parameters
+        ----------
+        store : zarr.store.base.ArrayStore
+            Array store.
+
+        """
         self._store = store
 
-        # store configuration metadata
+        # configuration metadata
         self._shape = store.meta['shape']
         self._chunks = store.meta['chunks']
         self._dtype = store.meta['dtype']
@@ -113,7 +37,7 @@ class Array(object):
         self._shuffle = store.meta['shuffle']
         self._fill_value = store.meta['fill_value']
 
-        # store user-defined attributes
+        # user-defined attributes
         self._attrs = store.attrs
 
     @property
@@ -172,7 +96,7 @@ class Array(object):
     def __getitem__(self, item):
 
         # normalize selection
-        selection = _normalize_array_selection(item, self._shape)
+        selection = normalize_array_selection(item, self._shape)
 
         # determine output array shape
         out_shape = tuple(stop - start for start, stop in selection)
@@ -181,7 +105,7 @@ class Array(object):
         out = np.empty(out_shape, dtype=self._dtype)
 
         # determine indices of chunks overlapping the selection
-        chunk_range = _get_chunk_range(selection, self._chunks)
+        chunk_range = get_chunk_range(selection, self._chunks)
 
         # iterate over chunks in range
         for cidx in itertools.product(*chunk_range):
@@ -215,10 +139,10 @@ class Array(object):
     def __setitem__(self, key, value):
 
         # normalize selection
-        selection = _normalize_array_selection(key, self._shape)
+        selection = normalize_array_selection(key, self._shape)
 
         # determine indices of chunks overlapping the selection
-        chunk_range = _get_chunk_range(selection, self._chunks)
+        chunk_range = get_chunk_range(selection, self._chunks)
 
         # iterate over chunks in range
         for cidx in itertools.product(*chunk_range):
@@ -250,24 +174,36 @@ class Array(object):
                 self._chunk_setitem(cidx, chunk_selection, value[value_selection])
 
     def _chunk_getitem(self, cidx, item, dest):
+        """Obtain part or whole of a chunk.
+
+        Parameters
+        ----------
+        cidx : tuple of ints
+            Indices of the chunk.
+        item : tuple of slices
+            Location of region within the chunk.
+        dest : ndarray
+            Numpy array to store result in.
+
+        """
 
         # override this in sub-classes, e.g., if need to use a lock
 
         # obtain compressed data for chunk
         cdata = self._store.data[cidx]
 
-        if _is_total_slice(item, self._chunks) and dest.flags.c_contiguous:
+        if is_total_slice(item, self._chunks) and dest.flags.c_contiguous:
 
             # optimisation: we want the whole chunk, and the destination is
             # C contiguous, so we can decompress directly from the chunk
             # into the destination array
-            decompress(cdata, dest, self._cname, self._clevel, self._shuffle)
+            decompress(cdata, dest)
 
         else:
 
             # decompress chunk
             chunk = np.empty(self._chunks, dtype=self._dtype)
-            decompress(cdata, chunk, self._cname, self._clevel, self._shuffle)
+            decompress(cdata, chunk)
 
             # set data in output array
             # (split into two lines for profiling)
@@ -275,10 +211,22 @@ class Array(object):
             dest[:] = tmp
 
     def _chunk_setitem(self, cidx, key, value):
+        """Replace part or whole of a chunk.
 
+        Parameters
+        ----------
+        cidx : tuple of ints
+            Indices of the chunk.
+        key : tuple of slices
+            Location of region within the chunk.
+        value : scalar or ndarray
+            Value to set.
+
+        """
+        
         # override this in sub-classes, e.g., if need to use a lock
 
-        if _is_total_slice(key, self._chunks):
+        if is_total_slice(key, self._chunks):
 
             # optimisation: we are completely replacing the chunk, so no need
             # to access the existing chunk data
@@ -302,7 +250,7 @@ class Array(object):
 
             # decompress
             chunk = np.empty(self._chunks, dtype=self._dtype)
-            decompress(cdata, chunk, self._cname, self._clevel, self._shuffle)
+            decompress(cdata, chunk)
 
             # modify
             chunk[key] = value
@@ -329,8 +277,6 @@ class Array(object):
         # TODO
         pass
 
-    # TODO
-
 
 class SynchronizedArray(Array):
 
@@ -338,4 +284,8 @@ class SynchronizedArray(Array):
         super(SynchronizedArray, self).__init__(store)
         self._synchronizer = synchronizer
 
-    # TODO
+    def _chunk_setitem(self, cidx, key, value):
+        with self._synchronizer.lock_chunk(cidx):
+            super(SynchronizedArray, self)._chunk_setitem(cidx, key, value)
+
+    # TODO synchronize anything else?

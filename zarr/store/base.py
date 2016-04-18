@@ -6,77 +6,36 @@ from abc import ABCMeta, abstractmethod
 
 
 class ArrayStore(metaclass=ABCMeta):
+    """Abstract class defining the interface for storage of a single array."""
 
     @property
     @abstractmethod
-    def meta(self): pass
-
-    @property
-    @abstractmethod
-    def data(self): pass
-
-    @property
-    @abstractmethod
-    def attrs(self): pass
-
-    @property
-    @abstractmethod
-    def cbytes(self): pass
-
-    @property
-    @abstractmethod
-    def initialized(self): pass
-
-
-class MemoryStore(ArrayStore):
-
-    def __init__(self):
-        # TODO
-        pass
-
-    @property
     def meta(self):
+        """A MutableMapping holding configuration metadata for the array."""
         pass
 
     @property
+    @abstractmethod
     def data(self):
+        """A MutableMapping holding compressed data for each chunk of the
+        array."""
         pass
 
     @property
+    @abstractmethod
     def attrs(self):
+        """A MutableMapping holding user-defined attributes."""
         pass
 
     @property
+    @abstractmethod
     def cbytes(self):
+        """The total size in number of bytes of compressed data held for the
+        array."""
         pass
 
     @property
+    @abstractmethod
     def initialized(self):
-        pass
-
-
-class DirectoryStore(ArrayStore):
-
-    def __init__(self, path):
-        self._path = path
-        # TODO
-
-    @property
-    def meta(self):
-        pass
-
-    @property
-    def data(self):
-        pass
-
-    @property
-    def attrs(self):
-        pass
-
-    @property
-    def cbytes(self):
-        pass
-
-    @property
-    def initialized(self):
+        """The number of chunks that have been initialized."""
         pass
