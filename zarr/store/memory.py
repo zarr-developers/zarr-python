@@ -7,7 +7,8 @@ import numpy as np
 
 from zarr.store.base import ArrayStore
 from zarr.compat import itervalues
-from zarr.util import normalize_cparams, normalize_shape, normalize_chunks
+from zarr.util import normalize_cparams, normalize_shape, normalize_chunks, \
+    frozendict
 
 
 class MemoryStore(ArrayStore):
@@ -24,7 +25,7 @@ class MemoryStore(ArrayStore):
             fill_value = np.array(fill_value, dtype=dtype)[()]
 
         # setup internal data structures
-        self._meta = dict(
+        self._meta = frozendict(
             shape=shape,
             chunks=chunks,
             dtype=dtype,

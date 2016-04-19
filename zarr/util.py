@@ -1,5 +1,8 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, print_function, division
+import collections
+import operator
+import functools
 
 
 import numpy as np
@@ -174,3 +177,33 @@ def get_chunk_range(selection, chunks):
     return chunk_range
 
 
+# noinspection PyPep8Naming
+class frozendict(collections.Mapping):
+
+    def __init__(self, *args, **kwargs):
+        self._dict = dict(*args, **kwargs)
+        self._hash = None
+
+    def __contains__(self, x):
+        return x in self._dict
+
+    def __getitem__(self, key):
+        return self._dict[key]
+
+    def copy(self, **add_or_replace):
+        return frozendict(self, **add_or_replace)
+
+    def __iter__(self):
+        return iter(self._dict)
+
+    def __len__(self):
+        return len(self._dict)
+
+    def __repr__(self):
+        return '<frozendict %s>' % repr(self._dict)
+
+    def __hash__(self):
+        if self._hash is None:
+            hashes = map(hash, self.items())
+            self._hash = functools.reduce(operator.xor, hashes, 0)
+        return self._hash
