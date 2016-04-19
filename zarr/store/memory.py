@@ -21,8 +21,6 @@ class MemoryStore(ArrayStore):
         chunks = normalize_chunks(chunks, shape)
         dtype = np.dtype(dtype)
         cname, clevel, shuffle = normalize_cparams(cname, clevel, shuffle)
-        if fill_value is not None:
-            fill_value = np.array(fill_value, dtype=dtype)[()]
 
         # setup internal data structures
         self._meta = frozendict(
