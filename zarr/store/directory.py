@@ -3,16 +3,15 @@ from __future__ import absolute_import, print_function, division
 import os
 import shutil
 import json
-from collections import MutableMapping
 
 
 import numpy as np
 
 
 from zarr.store.base import ArrayStore
-from zarr.util import normalize_shape, normalize_chunks, normalize_cparams, \
-    frozendict
+from zarr.util import normalize_shape, normalize_chunks, normalize_cparams
 from zarr.compat import PY2
+from zarr.mappings import frozendict, Directory
 
 
 METAPATH = '__zmeta__'
@@ -83,7 +82,7 @@ class DirectoryStore(ArrayStore):
         if fill_value is not None:
             fill_value = np.array(fill_value, dtype=dtype)[()]
 
-        # set meta
+        # setup meta
         self._meta = frozendict(
             shape=shape,
             chunks=chunks,
@@ -97,10 +96,20 @@ class DirectoryStore(ArrayStore):
         # write metadata
         write_array_metadata(path, self._meta)
 
+        # setup data
+        self._data = Directory(data_path)
+
+        # TODO setup attrs
+
     def _open(self, path):
 
         # read metadata
         self._meta = read_array_metadata(path)
+
+        # setup data
+        self._data = Directory(os.path.join(path, DATAPATH))
+
+        # TODO setup attrs
 
     @property
     def meta(self):
@@ -108,8 +117,7 @@ class DirectoryStore(ArrayStore):
 
     @property
     def data(self):
-        # TODO
-        pass
+        return self._data
 
     @property
     def attrs(self):
@@ -118,13 +126,11 @@ class DirectoryStore(ArrayStore):
 
     @property
     def cbytes(self):
-        # TODO
-        pass
+        return self._data.size()
 
     @property
     def initialized(self):
-        # TODO
-        pass
+        return len(self._data)
 
 
 def read_array_metadata(path):
@@ -187,34 +193,3 @@ def _decode_dtype_descr(d):
 def decode_dtype(d):
     d = _decode_dtype_descr(d)
     return np.dtype(d)
-
-
-class ChunkData(MutableMapping):
-
-    def __init__(self, path):
-        # TODO
-        pass
-
-    def __iter__(self):
-        # TODO
-        pass
-
-    def __contains__(self, x):
-        # TODO
-        pass
-
-    def __len__(self):
-        # TODO
-        pass
-
-    def __getitem__(self, key):
-        # TODO
-        pass
-
-    def __setitem__(self, key, value):
-        # TODO
-        pass
-
-    def __delitem__(self, key):
-        # TODO
-        pass

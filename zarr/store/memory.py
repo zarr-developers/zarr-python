@@ -7,8 +7,8 @@ import numpy as np
 
 from zarr.store.base import ArrayStore
 from zarr.compat import itervalues
-from zarr.util import normalize_cparams, normalize_shape, normalize_chunks, \
-    frozendict
+from zarr.util import normalize_cparams, normalize_shape, normalize_chunks
+from zarr.mappings import frozendict
 
 
 class MemoryStore(ArrayStore):

@@ -40,7 +40,7 @@ def set_blosc_options(use_context=False, nthreads=None):
     if not use_context:
         if nthreads is None:
             # diminishing returns beyond 4 threads?
-            nthreads = min(4, multiprocessing.cpu_count())
+            nthreads = max(4, multiprocessing.cpu_count())
         blosc.set_nthreads(nthreads)
 
 
@@ -232,7 +232,8 @@ class Array(object):
         try:
 
             # obtain compressed data for chunk
-            cdata = self._store.data[cidx]
+            ckey = '.'.join(map(str, cidx))
+            cdata = self._store.data[ckey]
 
         except KeyError:
 
@@ -298,7 +299,8 @@ class Array(object):
             try:
 
                 # obtain compressed data for chunk
-                cdata = self._store.data[cidx]
+                ckey = '.'.join(map(str, cidx))
+                cdata = self._store.data[ckey]
 
             except KeyError:
 
@@ -321,7 +323,8 @@ class Array(object):
                                self._shuffle, _blosc_use_context)
 
         # store
-        self._store.data[cidx] = cdata
+        ckey = '.'.join(map(str, cidx))
+        self._store.data[ckey] = cdata
 
     def __repr__(self):
         # TODO
