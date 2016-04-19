@@ -39,3 +39,8 @@ class ArrayStore(metaclass=ABCMeta):
     def initialized(self):
         """The number of chunks that have been initialized."""
         pass
+
+    @abstractmethod
+    def resize(self, *args):
+        """Resize the array."""
+        pass

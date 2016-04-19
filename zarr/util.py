@@ -172,3 +172,24 @@ def get_chunk_range(selection, chunks):
     chunk_range = [range(start//l, int(np.ceil(stop/l)))
                    for (start, stop), l in zip(selection, chunks)]
     return chunk_range
+
+
+def normalize_resize_args(old_shape, *args):
+
+    # normalize new shape argument
+    if len(args) == 1:
+        new_shape = args[0]
+    else:
+        new_shape = args
+    if isinstance(new_shape, int):
+        new_shape = (new_shape,)
+    else:
+        new_shape = tuple(new_shape)
+    if len(new_shape) != len(old_shape):
+        raise ValueError('new shape must have same number of dimensions')
+
+    # handle None in new_shape
+    new_shape = tuple(s if n is None else n
+                      for s, n in zip(old_shape, new_shape))
+
+    return new_shape

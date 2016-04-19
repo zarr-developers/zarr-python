@@ -11,7 +11,7 @@ import numpy as np
 
 from zarr import blosc
 from zarr.util import is_total_slice, normalize_array_selection, \
-    get_chunk_range
+    get_chunk_range, normalize_resize_args
 
 
 _blosc_use_context = False
@@ -55,19 +55,8 @@ class Array(object):
             Array store.
 
         """
+
         self._store = store
-
-        # configuration metadata
-        self._shape = store.meta['shape']
-        self._chunks = store.meta['chunks']
-        self._dtype = store.meta['dtype']
-        self._cname = store.meta['cname']
-        self._clevel = store.meta['clevel']
-        self._shuffle = store.meta['shuffle']
-        self._fill_value = store.meta['fill_value']
-
-        # user-defined attributes
-        self._attrs = store.attrs
 
     @property
     def store(self):
@@ -75,39 +64,38 @@ class Array(object):
 
     @property
     def shape(self):
-        return self._shape
+        return self._store.meta['shape']
 
     @property
     def chunks(self):
-        return self._chunks
+        return self._store.meta['chunks']
 
     @property
     def dtype(self):
-        return self._dtype
+        return self._store.meta['dtype']
 
     @property
     def cname(self):
-        return self._cname
+        return self._store.meta['cname']
 
     @property
     def clevel(self):
-        return self._clevel
+        return self._store.meta['clevel']
 
     @property
     def shuffle(self):
-        return self._shuffle
+        return self._store.meta['shuffle']
 
     @property
     def fill_value(self):
-        return self._fill_value
+        return self._store.meta['fill_value']
 
     @property
     def attrs(self):
-        return self._attrs
+        return self._store.attrs
 
     @property
     def cbytes(self):
-        # pass through
         return self._store.cbytes
 
     @property
@@ -119,11 +107,11 @@ class Array(object):
 
     @property
     def size(self):
-        return reduce(operator.mul, self._shape)
+        return reduce(operator.mul, self.shape)
 
     @property
     def itemsize(self):
-        return self._dtype.itemsize
+        return self.dtype.itemsize
 
     @property
     def nbytes(self):
@@ -134,33 +122,33 @@ class Array(object):
     def __getitem__(self, item):
 
         # normalize selection
-        selection = normalize_array_selection(item, self._shape)
+        selection = normalize_array_selection(item, self.shape)
 
         # determine output array shape
         out_shape = tuple(stop - start for start, stop in selection)
 
         # setup output array
-        out = np.empty(out_shape, dtype=self._dtype)
+        out = np.empty(out_shape, dtype=self.dtype)
 
         # determine indices of chunks overlapping the selection
-        chunk_range = get_chunk_range(selection, self._chunks)
+        chunk_range = get_chunk_range(selection, self.chunks)
 
         # iterate over chunks in range
         for cidx in itertools.product(*chunk_range):
 
             # determine chunk offset
-            offset = [i * c for i, c in zip(cidx, self._chunks)]
+            offset = [i * c for i, c in zip(cidx, self.chunks)]
 
             # determine region within output array
             out_selection = tuple(
                 slice(max(0, o - start), min(o + c - start, stop - start))
-                for (start, stop), o, c, in zip(selection, offset, self._chunks)
+                for (start, stop), o, c, in zip(selection, offset, self.chunks)
             )
 
             # determine region within chunk
             chunk_selection = tuple(
                 slice(max(0, start - o), min(c, stop - o))
-                for (start, stop), o, c in zip(selection, offset, self._chunks)
+                for (start, stop), o, c in zip(selection, offset, self.chunks)
             )
 
             # obtain the destination array as a view of the output array
@@ -177,21 +165,21 @@ class Array(object):
     def __setitem__(self, key, value):
 
         # normalize selection
-        selection = normalize_array_selection(key, self._shape)
+        selection = normalize_array_selection(key, self.shape)
 
         # determine indices of chunks overlapping the selection
-        chunk_range = get_chunk_range(selection, self._chunks)
+        chunk_range = get_chunk_range(selection, self.chunks)
 
         # iterate over chunks in range
         for cidx in itertools.product(*chunk_range):
 
             # determine chunk offset
-            offset = [i * c for i, c in zip(cidx, self._chunks)]
+            offset = [i * c for i, c in zip(cidx, self.chunks)]
 
             # determine required index range within chunk
             chunk_selection = tuple(
                 slice(max(0, start - o), min(c, stop - o))
-                for (start, stop), o, c in zip(selection, offset, self._chunks)
+                for (start, stop), o, c in zip(selection, offset, self.chunks)
             )
 
             if np.isscalar(value):
@@ -206,7 +194,7 @@ class Array(object):
                 value_selection = tuple(
                     slice(max(0, o - start), min(o + c - start, stop - start))
                     for (start, stop), o, c, in zip(selection, offset,
-                                                    self._chunks)
+                                                    self.chunks)
                 )
 
                 # put data
@@ -238,12 +226,12 @@ class Array(object):
         except KeyError:
 
             # chunk not initialized
-            if self._fill_value is not None:
-                dest.fill(self._fill_value)
+            if self.fill_value is not None:
+                dest.fill(self.fill_value)
 
         else:
 
-            if is_total_slice(item, self._chunks) and dest.flags.c_contiguous:
+            if is_total_slice(item, self.chunks) and dest.flags.c_contiguous:
 
                 # optimisation: we want the whole chunk, and the destination is
                 # C contiguous, so we can decompress directly from the chunk
@@ -253,7 +241,7 @@ class Array(object):
             else:
 
                 # decompress chunk
-                chunk = np.empty(self._chunks, dtype=self._dtype)
+                chunk = np.empty(self.chunks, dtype=self.dtype)
                 blosc.decompress(cdata, chunk, _blosc_use_context)
 
                 # set data in output array
@@ -277,7 +265,7 @@ class Array(object):
 
         # override this in sub-classes, e.g., if need to use a lock
 
-        if is_total_slice(key, self._chunks):
+        if is_total_slice(key, self.chunks):
 
             # optimisation: we are completely replacing the chunk, so no need
             # to access the existing chunk data
@@ -285,13 +273,13 @@ class Array(object):
             if np.isscalar(value):
 
                 # setup array filled with value
-                chunk = np.empty(self._chunks, dtype=self._dtype)
+                chunk = np.empty(self.chunks, dtype=self.dtype)
                 chunk.fill(value)
 
             else:
 
                 # ensure array is C contiguous
-                chunk = np.ascontiguousarray(value, dtype=self._dtype)
+                chunk = np.ascontiguousarray(value, dtype=self.dtype)
 
         else:
             # partially replace the contents of this chunk
@@ -305,22 +293,22 @@ class Array(object):
             except KeyError:
 
                 # chunk not initialized
-                chunk = np.empty(self.chunks, dtype=self._dtype)
-                if self._fill_value is not None:
-                    chunk.fill(self._fill_value)
+                chunk = np.empty(self.chunks, dtype=self.dtype)
+                if self.fill_value is not None:
+                    chunk.fill(self.fill_value)
 
             else:
 
                 # decompress chunk
-                chunk = np.empty(self.chunks, dtype=self._dtype)
+                chunk = np.empty(self.chunks, dtype=self.dtype)
                 blosc.decompress(cdata, chunk, _blosc_use_context)
 
             # modify
             chunk[key] = value
 
         # compress
-        cdata = blosc.compress(chunk, self._cname, self._clevel,
-                               self._shuffle, _blosc_use_context)
+        cdata = blosc.compress(chunk, self.cname, self.clevel,
+                               self.shuffle, _blosc_use_context)
 
         # store
         ckey = '.'.join(map(str, cidx))
@@ -335,12 +323,56 @@ class Array(object):
         pass
 
     def resize(self, *args):
-        # TODO
-        pass
+        # pass through
+        self._store.resize(*args)
 
     def append(self, data, axis=0):
-        # TODO
-        pass
+        """Append `data` to `axis`.
+
+        Parameters
+        ----------
+        data : array_like
+            Data to be appended.
+        axis : int
+            Axis along which to append.
+
+        Notes
+        -----
+        The size of all dimensions other than `axis` must match between this
+        array and `data`.
+
+        """
+
+        # ensure data is array-like
+        if not hasattr(data, 'shape') or not hasattr(data, 'dtype'):
+            data = np.asanyarray(data)
+
+        # ensure shapes are compatible for non-append dimensions
+        self_shape_preserved = tuple(s for i, s in enumerate(self.shape)
+                                     if i != axis)
+        data_shape_preserved = tuple(s for i, s in enumerate(data.shape)
+                                     if i != axis)
+        if self_shape_preserved != data_shape_preserved:
+            raise ValueError('shapes not compatible')
+
+        # remember old shape
+        old_shape = self.shape
+
+        # determine new shape
+        new_shape = tuple(
+            self.shape[i] if i != axis else self.shape[i] + data.shape[i]
+            for i in range(len(self.shape))
+        )
+
+        # resize
+        self.resize(new_shape)
+
+        # store data
+        append_selection = tuple(
+            slice(None) if i != axis else slice(old_shape[i], new_shape[i])
+            for i in range(len(self.shape))
+        )
+        self[append_selection] = data
 
 
 class SynchronizedArray(Array):

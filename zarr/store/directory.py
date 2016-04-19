@@ -9,7 +9,8 @@ import numpy as np
 
 
 from zarr.store.base import ArrayStore
-from zarr.util import normalize_shape, normalize_chunks, normalize_cparams
+from zarr.util import normalize_shape, normalize_chunks, normalize_cparams, \
+    normalize_resize_args
 from zarr.compat import PY2
 from zarr.mappings import frozendict, Directory
 
@@ -129,6 +130,32 @@ class DirectoryStore(ArrayStore):
     @property
     def initialized(self):
         return len(self._data)
+
+    def resize(self, *args):
+        if self._mode == 'r':
+            raise ValueError('array store is read-only')
+
+        # normalize new shape argument
+        old_shape = self.meta['shape']
+        new_shape = normalize_resize_args(old_shape, *args)
+
+        # determine the new number and arrangement of chunks
+        chunks = self.meta['chunks']
+        new_cdata_shape = tuple(int(np.ceil(s / c))
+                                for s, c in zip(new_shape, chunks))
+
+        # remove any chunks not within range
+        for ckey in self.data:
+            cidx = map(int, ckey.split('.'))
+            if all(i < c for i, c in zip(cidx, new_cdata_shape)):
+                pass  # keep the chunk
+            else:
+                del self._data[ckey]
+
+        # update metadata
+        new_meta = frozendict(self._meta, shape=new_shape)
+        write_array_metadata(self._path, new_meta)
+        self._meta = new_meta
 
 
 def read_array_metadata(path):
