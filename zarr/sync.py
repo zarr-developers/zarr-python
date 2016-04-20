@@ -1,9 +1,13 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, print_function, division
-
-
 from abc import ABCMeta, abstractmethod
 from contextlib import contextmanager
+from threading import Lock
+from collections import defaultdict
+import os
+
+
+import fasteners
 
 
 class ArraySynchronizer(metaclass=ABCMeta):
@@ -38,22 +42,38 @@ class ArraySynchronizer(metaclass=ABCMeta):
 class ThreadSynchronizer(ArraySynchronizer):
 
     def __init__(self):
-        pass
+        self._mutex = Lock()
+        self._array_lock = Lock()
+        self._attrs_lock = Lock()
+        self._chunk_locks = defaultdict(Lock)
 
     @contextmanager
     def lock_array(self):
-        # TODO
-        pass
+        self._array_lock.acquire()
+        try:
+            yield
+        finally:
+            self._array_lock.release()
 
     @contextmanager
     def lock_attrs(self):
-        # TODO
-        pass
+        self._attrs_lock.acquire()
+        try:
+            yield
+        finally:
+            self._attrs_lock.release()
 
     @contextmanager
     def lock_chunk(self, key):
-        # TODO
-        pass
+        with self._mutex:
+            # TODO is the mutex needed? Or is defaultdict already
+            # synchronized?
+            lock = self._chunk_locks[key]
+        lock.acquire()
+        try:
+            yield
+        finally:
+            lock.release()
 
 
 class ProcessSynchronizer(ArraySynchronizer):
@@ -63,15 +83,30 @@ class ProcessSynchronizer(ArraySynchronizer):
 
     @contextmanager
     def lock_array(self):
-        # TODO
-        pass
+        lock = fasteners.InterProcessLock(os.path.join(self._path,
+                                                       'array.lock'))
+        lock.acquire()
+        try:
+            yield
+        finally:
+            lock.release()
 
     @contextmanager
     def lock_attrs(self):
-        # TODO
-        pass
+        lock = fasteners.InterProcessLock(os.path.join(self._path,
+                                                       'attrs.lock'))
+        lock.acquire()
+        try:
+            yield
+        finally:
+            lock.release()
 
     @contextmanager
     def lock_chunk(self, key):
-        # TODO
-        pass
+        lock = fasteners.InterProcessLock(os.path.join(self._path,
+                                                       'chunk.%s.lock' % key))
+        lock.acquire()
+        try:
+            yield
+        finally:
+            lock.release()
