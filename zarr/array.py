@@ -10,6 +10,7 @@ import numpy as np
 
 
 from zarr import blosc
+from zarr.sync import SynchronizedAttributes
 from zarr.util import is_total_slice, normalize_array_selection, \
     get_chunk_range, human_readable_size
 
@@ -413,10 +414,20 @@ class SynchronizedArray(Array):
     def __init__(self, store, synchronizer):
         super(SynchronizedArray, self).__init__(store)
         self._synchronizer = synchronizer
+        # wrap attributes
+        self._attrs = SynchronizedAttributes(store.attrs, synchronizer)
 
     def _chunk_setitem(self, cidx, key, value):
         with self._synchronizer.lock_chunk(cidx):
             super(SynchronizedArray, self)._chunk_setitem(cidx, key, value)
+
+    def resize(self, *args):
+        with self._synchronizer.lock_array():
+            super(SynchronizedArray, self).resize(*args)
+
+    def append(self, data, axis=0):
+        with self._synchronizer.lock_array():
+            super(SynchronizedArray, self).append(data, axis=axis)
 
     def __repr__(self):
         r = super(SynchronizedArray, self).__repr__()
@@ -424,5 +435,3 @@ class SynchronizedArray(Array):
               (type(self._synchronizer).__module__,
                type(self._synchronizer).__name__))
         return r
-
-    # TODO synchronize anything else?

@@ -3,7 +3,7 @@ from __future__ import absolute_import, print_function, division
 from abc import ABCMeta, abstractmethod
 from contextlib import contextmanager
 from threading import Lock
-from collections import defaultdict
+from collections import defaultdict, MutableMapping
 import os
 
 
@@ -110,3 +110,34 @@ class ProcessSynchronizer(ArraySynchronizer):
             yield
         finally:
             lock.release()
+
+
+class SynchronizedAttributes(MutableMapping):
+    
+    def __init__(self, attrs, synchronizer):
+        self._attrs = attrs
+        self._synchronizer = synchronizer
+        
+    def __contains__(self, x):
+        with self._synchronizer.lock_attrs():
+            return self._attrs.__contains__(x)
+
+    def __getitem__(self, key):
+        with self._synchronizer.lock_attrs():
+            return self._attrs.__getitem__(key)
+
+    def __iter__(self):
+        with self._synchronizer.lock_attrs():
+            return self._attrs.__iter__()
+
+    def __len__(self):
+        with self._synchronizer.lock_attrs():
+            return self._attrs.__len__()
+
+    def __setitem__(self, key, value):
+        with self._synchronizer.lock_attrs():
+            self._attrs.__setitem__(key, value)
+
+    def __delitem__(self, key):
+        with self._synchronizer.lock_attrs():
+            self._attrs.__delitem__(key)
