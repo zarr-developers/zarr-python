@@ -108,9 +108,11 @@ class JSONFile(MutableMapping):
 
     """
 
-    def __init__(self, path, read_only=False):
+    def __init__(self, path, **kwargs):
         self._path = path
-        self._read_only = read_only
+        if kwargs:
+            with open(self._path, mode='w') as f:
+                json.dump(kwargs, f, indent=4, sort_keys=True)
 
     def __contains__(self, x):
         return x in self.asdict()
@@ -124,10 +126,6 @@ class JSONFile(MutableMapping):
             return json.load(f)[item]
 
     def __setitem__(self, key, value):
-
-        # handle read-only state
-        if self._read_only:
-            raise ValueError('array is read-only')
 
         # load existing data
         if not os.path.exists(self._path):

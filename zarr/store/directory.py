@@ -2,7 +2,6 @@
 from __future__ import absolute_import, print_function, division
 import os
 import shutil
-import json
 
 
 import numpy as np
@@ -83,7 +82,9 @@ class DirectoryStore(ArrayStore):
         cname, clevel, shuffle = normalize_cparams(cname, clevel, shuffle)
 
         # setup meta
-        self._meta = frozendict(
+        meta_path = os.path.join(path, METAPATH)
+        meta = MetadataJSONFile(
+            meta_path,
             shape=shape,
             chunks=chunks,
             dtype=dtype,
@@ -92,9 +93,7 @@ class DirectoryStore(ArrayStore):
             shuffle=shuffle,
             fill_value=fill_value
         )
-
-        # write metadata
-        write_array_metadata(path, self._meta)
+        self._meta = meta
 
         # setup data
         self._data = Directory(data_path)
@@ -105,7 +104,7 @@ class DirectoryStore(ArrayStore):
     def _open(self, path):
 
         # read metadata
-        self._meta = read_array_metadata(path)
+        self._meta = MetadataJSONFile(os.path.join(path, METAPATH))
 
         # setup data
         self._data = Directory(os.path.join(path, DATAPATH))
@@ -156,47 +155,41 @@ class DirectoryStore(ArrayStore):
                 del self._data[ckey]
 
         # update metadata
-        new_meta = frozendict(self._meta, shape=new_shape)
-        write_array_metadata(self._path, new_meta)
-        self._meta = new_meta
+        self._meta['shape'] = new_shape
 
 
-def read_array_metadata(path):
+class MetadataJSONFile(JSONFile):
+    
+    def __init__(self, path, **kwargs):
+        kwargs = {key: encode_metadata(key, value)
+                  for key, value in kwargs.items()}
+        super(MetadataJSONFile, self).__init__(path, **kwargs)
 
-    # check path exists
-    if not os.path.exists(path):
-        raise ValueError('path not found: %s' % path)
+    def __getitem__(self, key):
+        value = super(MetadataJSONFile, self).__getitem__(key)
+        return decode_metadata(key, value)
 
-    # check metadata file
-    meta_path = os.path.join(path, METAPATH)
-    if not os.path.exists(meta_path):
-        raise ValueError('array metadata not found: %s' % path)
-
-    # read from file
-    with open(meta_path) as f:
-        meta = json.load(f)
-
-    # decode some values
-    meta['shape'] = tuple(meta['shape'])
-    meta['chunks'] = tuple(meta['chunks'])
-    meta['cname'] = meta['cname'].encode('ascii')
-    meta['dtype'] = decode_dtype(meta['dtype'])
-
-    return frozendict(meta)
+    def __setitem__(self, key, value):
+        value = encode_metadata(key, value)
+        super(MetadataJSONFile, self).__setitem__(key, value)
+    
+    
+def encode_metadata(key, value):
+    if not PY2 and key == 'cname':
+        value = str(value, 'ascii')
+    if key == 'dtype':
+        value = encode_dtype(value)
+    return value
 
 
-def write_array_metadata(path, meta):
-
-    # setup dictionary with values that can be serialized to json
-    json_meta = dict(meta)
-    if not PY2:
-        json_meta['cname'] = str(meta['cname'], 'ascii')
-    json_meta['dtype'] = encode_dtype(meta['dtype'])
-
-    # write to file
-    meta_path = os.path.join(path, METAPATH)
-    with open(meta_path, 'w') as f:
-        json.dump(json_meta, f, indent=4, sort_keys=True)
+def decode_metadata(key, value):
+    if key in ('shape', 'chunks'):
+        value = tuple(value)
+    elif key == 'cname':
+        value = value.encode('ascii')
+    elif key == 'dtype':
+        return decode_dtype(value)
+    return value
 
 
 def encode_dtype(d):
