@@ -4,7 +4,6 @@ from functools import reduce  # TODO PY2 compatibility
 import operator
 import itertools
 import multiprocessing
-import sys
 
 
 import numpy as np
@@ -15,9 +14,11 @@ from zarr.util import is_total_slice, normalize_array_selection, \
     get_chunk_range, human_readable_size
 
 
-def log(*msg):
-    print(*msg, file=sys.stderr)
-    sys.stderr.flush()
+# import sys
+#
+# def log(*msg):
+#     print(*msg, file=sys.stderr)
+#     sys.stderr.flush()
 
 
 _blosc_use_context = False
@@ -46,7 +47,7 @@ def set_blosc_options(use_context=False, nthreads=None):
     if not use_context:
         if nthreads is None:
             # diminishing returns beyond 4 threads?
-            nthreads = max(4, multiprocessing.cpu_count())
+            nthreads = min(4, multiprocessing.cpu_count())
         blosc.set_nthreads(nthreads)
 
 
@@ -399,6 +400,7 @@ class Array(object):
         self.resize(new_shape)
 
         # store data
+        # noinspection PyTypeChecker
         append_selection = tuple(
             slice(None) if i != axis else slice(old_shape[i], new_shape[i])
             for i in range(len(self.shape))

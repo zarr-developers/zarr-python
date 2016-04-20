@@ -1,16 +1,23 @@
 # -*- coding: utf-8 -*-
+# cython: embedsignature=True
+# cython: profile=False
+# cython: linetrace=False
+# cython: binding=False
 from __future__ import absolute_import, print_function, division
-
-
 import sys
 import ctypes
-# noinspection PyUnresolvedReferences
-import numpy as np
-cimport numpy as np
+
+
+from numpy cimport ndarray
 # noinspection PyUnresolvedReferences
 from libc.stdint cimport uintptr_t
 # noinspection PyUnresolvedReferences
 from .definitions cimport malloc, realloc, free, PyBytes_AsString
+
+
+# def log(*msg):
+#     print(*msg, file=sys.stderr)
+#     sys.stderr.flush()
 
 
 PY2 = sys.version_info[0] == 2
@@ -42,8 +49,8 @@ cdef extern from "blosc.h":
 def version():
     """Return the version of blosc that zarr was compiled with."""
 
-    ver_str = <char*> BLOSC_VERSION_STRING
-    ver_date = <char*> BLOSC_VERSION_DATE
+    ver_str = <char *> BLOSC_VERSION_STRING
+    ver_date = <char *> BLOSC_VERSION_DATE
     if not PY2:
         ver_str = ver_str.decode()
         ver_date = ver_date.decode()
@@ -66,7 +73,7 @@ def set_nthreads(int nthreads):
     blosc_set_nthreads(nthreads)
 
 
-def decompress(bytes cdata, np.ndarray array, use_context):
+def decompress(bytes cdata, ndarray array, use_context):
     """Decompress data into a numpy array.
 
     Parameters
@@ -84,11 +91,10 @@ def decompress(bytes cdata, np.ndarray array, use_context):
     the uncompressed data.
 
     """
-
     cdef:
         int ret
-        char* source
-        char* dest
+        char *source
+        char *dest
         size_t nbytes
 
     # setup
@@ -109,7 +115,7 @@ def decompress(bytes cdata, np.ndarray array, use_context):
         raise RuntimeError('error during blosc decompression: %d' % ret)
 
 
-def compress(np.ndarray array, char* cname, int clevel, int shuffle,
+def compress(ndarray array, char* cname, int clevel, int shuffle,
              use_context):
     """Compress data in a numpy array.
 
@@ -134,9 +140,9 @@ def compress(np.ndarray array, char* cname, int clevel, int shuffle,
     """
 
     cdef:
-        char* source
-        char* dest
-        char* cdata
+        char *source
+        char *dest
+        char *cdata
         size_t nbytes, cbytes, itemsize
         bytes cdata_bytes
 
@@ -146,7 +152,7 @@ def compress(np.ndarray array, char* cname, int clevel, int shuffle,
     # allocate memory for compressed data
     nbytes = array.nbytes
     itemsize = array.dtype.itemsize
-    dest = <char*> malloc(nbytes + BLOSC_MAX_OVERHEAD)
+    dest = <char *> malloc(nbytes + BLOSC_MAX_OVERHEAD)
 
     # perform compression
     if use_context:
@@ -168,7 +174,7 @@ def compress(np.ndarray array, char* cname, int clevel, int shuffle,
         raise RuntimeError('error during blosc compression: %d' % cbytes)
 
     # free the unused memory
-    cdata = <char*> realloc(dest, cbytes)
+    cdata = <char *> realloc(dest, cbytes)
 
     # store as bytes
     cdata_bytes = ctypes.string_at(<uintptr_t> cdata, cbytes)
