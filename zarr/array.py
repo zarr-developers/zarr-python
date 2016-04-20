@@ -11,7 +11,7 @@ import numpy as np
 
 from zarr import blosc
 from zarr.util import is_total_slice, normalize_array_selection, \
-    get_chunk_range, normalize_resize_args
+    get_chunk_range, human_readable_size
 
 
 _blosc_use_context = False
@@ -42,6 +42,13 @@ def set_blosc_options(use_context=False, nthreads=None):
             # diminishing returns beyond 4 threads?
             nthreads = max(4, multiprocessing.cpu_count())
         blosc.set_nthreads(nthreads)
+
+
+_repr_shuffle = [
+    '0 (NOSHUFFLE)',
+    '1 (BYTESHUFFLE)',
+    '2 (BITSHUFFLE)',
+]
 
 
 class Array(object):
@@ -103,8 +110,6 @@ class Array(object):
         # pass through
         return self._store.initialized
 
-    # derived properties
-
     @property
     def size(self):
         return reduce(operator.mul, self.shape)
@@ -116,6 +121,12 @@ class Array(object):
     @property
     def nbytes(self):
         return self.size * self.itemsize
+
+    @property
+    def cdata_shape(self):
+        return tuple(
+            int(np.ceil(s / c)) for s, c in zip(self.shape, self.chunks)
+        )
 
     # methods
 
@@ -315,12 +326,26 @@ class Array(object):
         self._store.data[ckey] = cdata
 
     def __repr__(self):
-        # TODO
-        pass
+        r = '%s.%s(' % (type(self).__module__, type(self).__name__)
+        r += '%s' % str(self.shape)
+        r += ', %s' % str(self.dtype)
+        r += ', chunks=%s' % str(self.chunks)
+        r += ')'
+        r += '\n  cname: %s' % str(self.cname, 'ascii')
+        r += '; clevel: %s' % self.clevel
+        r += '; shuffle: %s' % _repr_shuffle[self.shuffle]
+        r += '\n  nbytes: %s' % human_readable_size(self.nbytes)
+        r += '; cbytes: %s' % human_readable_size(self.cbytes)
+        if self.cbytes > 0:
+            r += '; ratio: %.1f' % (self.nbytes / self.cbytes)
+        n_chunks = reduce(operator.mul, self.cdata_shape)
+        r += '; initialized: %s/%s' % (self.initialized, n_chunks)
+        r += '\n  store: %s.%s' % (type(self._store).__module__,
+                                   type(self._store).__name__)
+        return r
 
     def __str__(self):
-        # TODO
-        pass
+        return repr(self)
 
     def resize(self, *args):
         # pass through
@@ -384,5 +409,12 @@ class SynchronizedArray(Array):
     def _chunk_setitem(self, cidx, key, value):
         with self._synchronizer.lock_chunk(cidx):
             super(SynchronizedArray, self)._chunk_setitem(cidx, key, value)
+
+    def __repr__(self):
+        r = super(SynchronizedArray, self).__repr__()
+        r += ('\n  synchronizer: %s.%s' %
+              (type(self._synchronizer).__module__,
+               type(self._synchronizer).__name__))
+        return r
 
     # TODO synchronize anything else?
