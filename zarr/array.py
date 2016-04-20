@@ -1,17 +1,23 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, print_function, division
-
-
 from functools import reduce  # TODO PY2 compatibility
 import operator
 import itertools
 import multiprocessing
+import sys
+
+
 import numpy as np
 
 
 from zarr import blosc
 from zarr.util import is_total_slice, normalize_array_selection, \
     get_chunk_range, human_readable_size
+
+
+def log(*msg):
+    print(*msg, file=sys.stderr)
+    sys.stderr.flush()
 
 
 _blosc_use_context = False
