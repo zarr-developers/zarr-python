@@ -10,7 +10,11 @@ import os
 import fasteners
 
 
-class ArraySynchronizer(metaclass=ABCMeta):
+from zarr.compat import add_metaclass
+
+
+@add_metaclass(ABCMeta)
+class ArraySynchronizer(object):
     """Abstract class defining the interface to a synchronization manager for a
     single array."""
 

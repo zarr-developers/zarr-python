@@ -1,11 +1,13 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, print_function, division
-
-
 from abc import ABCMeta, abstractmethod
 
 
-class ArrayStore(metaclass=ABCMeta):
+from zarr.compat import add_metaclass
+
+
+@add_metaclass(ABCMeta)
+class ArrayStore(object):
     """Abstract class defining the interface for storage of a single array."""
 
     @property
