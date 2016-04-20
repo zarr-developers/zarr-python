@@ -5,6 +5,7 @@ import functools
 import operator
 import os
 import tempfile
+import json
 
 
 # noinspection PyPep8Naming
@@ -95,3 +96,92 @@ class Directory(MutableMapping):
     def size(self):
         return sum(os.path.getsize(os.path.join(self._path, key))
                    for key in self.keys())
+
+
+class JSONFile(MutableMapping):
+    """Mutable Mapping interface to a JSON file. Keys must be strings,
+    values must be JSON serializable.
+
+    Parameters
+    ----------
+    path : string
+
+    """
+
+    def __init__(self, path, read_only=False):
+        self._path = path
+        self._read_only = read_only
+
+    def __contains__(self, x):
+        return x in self.asdict()
+
+    def __getitem__(self, item):
+
+        if not os.path.exists(self._path):
+            raise KeyError(item)
+
+        with open(self._path, mode='r') as f:
+            return json.load(f)[item]
+
+    def __setitem__(self, key, value):
+
+        # handle read-only state
+        if self._read_only:
+            raise ValueError('array is read-only')
+
+        # load existing data
+        if not os.path.exists(self._path):
+            d = dict()
+        else:
+            with open(self._path, mode='r') as f:
+                d = json.load(f)
+
+        # set key value
+        d[key] = value
+
+        # write modified data
+        with open(self._path, mode='w') as f:
+            json.dump(d, f, indent=4, sort_keys=True)
+
+    def __delitem__(self, key):
+
+        # handle read-only state
+        if self._read_only:
+            raise ValueError('array is read-only')
+
+        # load existing data
+        if not os.path.exists(self._path):
+            d = dict()
+        else:
+            with open(self._path, mode='r') as f:
+                d = json.load(f)
+
+        # delete key value
+        del d[key]
+
+        # write modified data
+        with open(self._path, mode='w') as f:
+            json.dump(d, f, indent=4, sort_keys=True)
+
+    def asdict(self):
+        if not os.path.exists(self._path):
+            d = dict()
+        else:
+            with open(self._path, mode='r') as f:
+                d = json.load(f)
+        return d
+
+    def __iter__(self):
+        return iter(self.asdict())
+
+    def __len__(self):
+        return len(self.asdict())
+
+    def keys(self):
+        return self.asdict().keys()
+
+    def values(self):
+        return self.asdict().values()
+
+    def items(self):
+        return self.asdict().items()

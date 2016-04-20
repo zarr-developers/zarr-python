@@ -82,11 +82,11 @@ separate file.
 
 The chunk files are named according to the chunk indices. E.g., for a
 2-dimensional array with shape (100, 100) and chunk shape (10, 10)
-there will be 100 chunks in total. The file "0.0.blosc" stores data
+there will be 100 chunks in total. The file "0.0" stores data
 for the chunk with indices (0, 0) within chunk rows and columns
 respectively, i.e., the first chunk, containing data for the segment
 of the array that would be obtained by the slice ``z[0:10, 0:10]``;
-the file "4.2.blosc" stores the chunk in the fifth row third column,
+the file "4.2" stores the chunk in the fifth row third column,
 containing data for the slize ``z[40:50, 20:30]``; etc.
 
 Each chunk file is a binary file following the blosc version 1 format,
@@ -121,4 +121,4 @@ For example::
     []
     >>> z[:] = 0
     >>> sorted(os.listdir('example.zarr/__zdata__'))[:5]
-    ['0.0.blosc', '0.1.blosc', '0.2.blosc', '0.3.blosc', '0.4.blosc']
+    ['0.0', '0.1', '0.2', '0.3', '0.4']

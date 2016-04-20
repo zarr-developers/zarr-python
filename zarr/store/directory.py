@@ -12,7 +12,7 @@ from zarr.store.base import ArrayStore
 from zarr.util import normalize_shape, normalize_chunks, normalize_cparams, \
     normalize_resize_args
 from zarr.compat import PY2
-from zarr.mappings import frozendict, Directory
+from zarr.mappings import frozendict, Directory, JSONFile
 
 
 METAPATH = '__zmeta__'
@@ -32,6 +32,7 @@ class DirectoryStore(ArrayStore):
         # w : create, delete if exists
         # w- or x : create, fail if exists
         # a : read/write if exists, create otherwise (default)
+        self._mode = mode
 
         # use metadata file as indicator of array existence
         meta_path = os.path.join(path, METAPATH)
@@ -98,7 +99,8 @@ class DirectoryStore(ArrayStore):
         # setup data
         self._data = Directory(data_path)
 
-        # TODO setup attrs
+        # setup attrs
+        self._attrs = JSONFile(os.path.join(path, ATTRPATH))
 
     def _open(self, path):
 
@@ -108,7 +110,9 @@ class DirectoryStore(ArrayStore):
         # setup data
         self._data = Directory(os.path.join(path, DATAPATH))
 
-        # TODO setup attrs
+        # setup attrs
+        self._attrs = JSONFile(os.path.join(path, ATTRPATH),
+                               read_only=(self._mode == 'r'))
 
     @property
     def meta(self):
@@ -120,8 +124,7 @@ class DirectoryStore(ArrayStore):
 
     @property
     def attrs(self):
-        # TODO
-        pass
+        return self._attrs
 
     @property
     def cbytes(self):
