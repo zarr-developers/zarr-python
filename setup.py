@@ -78,7 +78,7 @@ setup(
     ],
     ext_modules=ext_modules,
     package_dir={'': '.'},
-    packages=['zarr', 'zarr.tests'],
+    packages=['zarr', 'zarr.tests', 'zarr.store'],
     classifiers=[
         'Development Status :: 2 - Pre-Alpha',
         'Intended Audience :: Developers',
