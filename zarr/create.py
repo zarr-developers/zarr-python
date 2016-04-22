@@ -6,8 +6,7 @@ import numpy as np
 
 
 from zarr.core import Array, SynchronizedArray
-from zarr.store.memory import MemoryStore
-from zarr.store.directory import DirectoryStore
+from zarr.store import MemoryStore, DirectoryStore
 
 
 def _create(shape, chunks, dtype, cname, clevel, shuffle, fill_value,

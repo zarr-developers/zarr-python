@@ -17,41 +17,56 @@ class DirectoryMap(MutableMapping):
 
     """
 
-    def __init__(self, path):
-        self._path = path
-        if not os.path.exists(self._path):
-            os.makedirs(self._path)
+    def __init__(self, path, read_only=False):
+        self.path = path
+        self.read_only = read_only
+        if not os.path.exists(self.path):
+            if read_only:
+                raise ValueError('path does not exist')
+            else:
+                os.makedirs(self.path)
 
     def __getitem__(self, key):
         try:
-            with open(os.path.join(self._path, key), 'rb') as f:
+            with open(os.path.join(self.path, key), 'rb') as f:
                 return f.read()
         except (IOError, OSError):
             raise KeyError(key)
 
     def __setitem__(self, key, value):
+
+        # guard conditions
+        if self.read_only:
+            raise PermissionError('mapping is read-only')
         if not isinstance(value, bytes):
             raise ValueError('value must be of type bytes')
 
         # write to temporary file
         with tempfile.NamedTemporaryFile(mode='wb', delete=False,
-                                         dir=self._path,
+                                         dir=self.path,
                                          prefix=key + '.',
                                          suffix='.partial') as f:
             f.write(value)
             temp_path = f.name
 
         # move temporary file into place
-        os.rename(temp_path, os.path.join(self._path, key))
+        os.rename(temp_path, os.path.join(self.path, key))
 
     def __delitem__(self, key):
-        os.remove(os.path.join(self._path, key))
+
+        # guard conditions
+        if self.read_only:
+            raise PermissionError('mapping is read-only')
+        if key not in self:
+            raise KeyError(key)
+
+        os.remove(os.path.join(self.path, key))
 
     def __contains__(self, key):
-        return os.path.exists(os.path.join(self._path, key))
+        return os.path.exists(os.path.join(self.path, key))
 
     def keys(self):
-        return iter(os.listdir(self._path))
+        return iter(os.listdir(self.path))
 
     def __iter__(self):
         return self.keys()
@@ -59,8 +74,10 @@ class DirectoryMap(MutableMapping):
     def __len__(self):
         return sum(1 for _ in self.keys())
 
+    @property
     def size(self):
-        return sum(os.path.getsize(os.path.join(self._path, key))
+        """Total size of all values in number of bytes."""
+        return sum(os.path.getsize(os.path.join(self.path, key))
                    for key in self.keys())
 
 
@@ -74,66 +91,79 @@ class JSONFileMap(MutableMapping):
 
     """
 
-    def __init__(self, path, **kwargs):
-        self._path = path
-        if kwargs:
-            with open(self._path, mode='w') as f:
-                json.dump(kwargs, f, indent=4, sort_keys=True)
+    def __init__(self, path, read_only=False):
+
+        # guard conditions
+        if not os.path.exists(path):
+            if read_only:
+                raise ValueError('path does not exist: %s' % path)
+            else:
+                with open(path, mode='w') as f:
+                    json.dump(dict(), f, indent=4, sort_keys=True)
+
+        # setup instance
+        self.path = path
+        self.read_only = read_only
 
     def __contains__(self, x):
         return x in self.asdict()
 
     def __getitem__(self, item):
-
-        if not os.path.exists(self._path):
-            raise KeyError(item)
-
-        with open(self._path, mode='r') as f:
-            return json.load(f)[item]
+        return self.asdict()[item]
 
     def __setitem__(self, key, value):
 
+        # guard conditions
+        if self.read_only:
+            raise PermissionError('mapping is read-only')
+
         # load existing data
-        if not os.path.exists(self._path):
-            d = dict()
-        else:
-            with open(self._path, mode='r') as f:
-                d = json.load(f)
+        d = self.asdict()
 
         # set key value
         d[key] = value
 
         # write modified data
-        with open(self._path, mode='w') as f:
+        with open(self.path, mode='w') as f:
             json.dump(d, f, indent=4, sort_keys=True)
 
     def __delitem__(self, key):
 
-        # handle read-only state
-        if self._read_only:
-            raise ValueError('array is read-only')
+        # guard conditions
+        if self.read_only:
+            raise PermissionError('mapping is read-only')
 
         # load existing data
-        if not os.path.exists(self._path):
-            d = dict()
-        else:
-            with open(self._path, mode='r') as f:
-                d = json.load(f)
+        d = self.asdict()
 
         # delete key value
         del d[key]
 
         # write modified data
-        with open(self._path, mode='w') as f:
+        with open(self.path, mode='w') as f:
             json.dump(d, f, indent=4, sort_keys=True)
 
     def asdict(self):
-        if not os.path.exists(self._path):
-            d = dict()
-        else:
-            with open(self._path, mode='r') as f:
-                d = json.load(f)
+        with open(self.path, mode='r') as f:
+            d = json.load(f)
         return d
+
+    def update(self, *args, **kwargs):
+        # override to provide update in a single write
+
+        # guard conditions
+        if self.read_only:
+            raise PermissionError('mapping is read-only')
+
+        # load existing data
+        d = self.asdict()
+
+        # update
+        d.update(*args, **kwargs)
+
+        # write modified data
+        with open(self.path, mode='w') as f:
+            json.dump(d, f, indent=4, sort_keys=True)
 
     def __iter__(self):
         return iter(self.asdict())
