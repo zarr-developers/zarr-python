@@ -23,7 +23,9 @@ Install from PyPI::
 
 Install from GitHub::
 
-    $ pip install -U git+https://github.com/alimanfoo/zarr.git@master
+    $ git clone --recursive https://github.com/alimanfoo/zarr.git
+    $ cd zarr
+    $ python setup.py install
 
 Status
 ------
