@@ -55,10 +55,10 @@ Create an array:
     >>> import zarr
     >>> z = zarr.empty(shape=(10000, 1000), dtype='i4', chunks=(1000, 100))
     >>> z
-    zarr.array.Array((10000, 1000), int32, chunks=(1000, 100))
+    zarr.core.Array((10000, 1000), int32, chunks=(1000, 100))
       cname: blosclz; clevel: 5; shuffle: 1 (BYTESHUFFLE)
       nbytes: 38.1M; cbytes: 0; initialized: 0/100
-      store: zarr.store.memory.MemoryStore
+      store: zarr.store.MemoryStore
 
 Fill it with some data:
 
@@ -66,10 +66,10 @@ Fill it with some data:
      
     >>> z[:] = np.arange(10000000, dtype='i4').reshape(10000, 1000)
     >>> z
-    zarr.array.Array((10000, 1000), int32, chunks=(1000, 100))
+    zarr.core.Array((10000, 1000), int32, chunks=(1000, 100))
       cname: blosclz; clevel: 5; shuffle: 1 (BYTESHUFFLE)
       nbytes: 38.1M; cbytes: 2.0M; ratio: 19.3; initialized: 100/100
-      store: zarr.store.memory.MemoryStore
+      store: zarr.store.MemoryStore
 
 Obtain a NumPy array by slicing:
 
@@ -106,16 +106,16 @@ Resize the array and add more data:
      
     >>> z.resize(20000, 1000)
     >>> z
-    zarr.array.Array((20000, 1000), int32, chunks=(1000, 100))
+    zarr.core.Array((20000, 1000), int32, chunks=(1000, 100))
       cname: blosclz; clevel: 5; shuffle: 1 (BYTESHUFFLE)
       nbytes: 76.3M; cbytes: 2.0M; ratio: 38.5; initialized: 100/200
-      store: zarr.store.memory.MemoryStore
+      store: zarr.store.MemoryStore
     >>> z[10000:, :] = np.arange(10000000, dtype='i4').reshape(10000, 1000)
     >>> z
-    zarr.array.Array((20000, 1000), int32, chunks=(1000, 100))
+    zarr.core.Array((20000, 1000), int32, chunks=(1000, 100))
       cname: blosclz; clevel: 5; shuffle: 1 (BYTESHUFFLE)
       nbytes: 76.3M; cbytes: 4.0M; ratio: 19.3; initialized: 200/200
-      store: zarr.store.memory.MemoryStore
+      store: zarr.store.MemoryStore
 
 For convenience, an ``append()`` method is also available, which can be used to
 append data to any axis:
@@ -126,16 +126,16 @@ append data to any axis:
     >>> z = zarr.array(a, chunks=(1000, 100))
     >>> z.append(a+a)
     >>> z
-    zarr.array.Array((20000, 1000), int32, chunks=(1000, 100))
+    zarr.core.Array((20000, 1000), int32, chunks=(1000, 100))
       cname: blosclz; clevel: 5; shuffle: 1 (BYTESHUFFLE)
       nbytes: 76.3M; cbytes: 3.6M; ratio: 21.2; initialized: 200/200
-      store: zarr.store.memory.MemoryStore
+      store: zarr.store.MemoryStore
     >>> z.append(np.vstack([a, a]), axis=1)
     >>> z
-    zarr.array.Array((20000, 2000), int32, chunks=(1000, 100))
+    zarr.core.Array((20000, 2000), int32, chunks=(1000, 100))
       cname: blosclz; clevel: 5; shuffle: 1 (BYTESHUFFLE)
       nbytes: 152.6M; cbytes: 7.6M; ratio: 20.2; initialized: 400/400
-      store: zarr.store.memory.MemoryStore
+      store: zarr.store.MemoryStore
 
 Persistence
 -----------
@@ -148,10 +148,10 @@ Create a persistent array (data stored on disk):
     >>> z = zarr.open(path, mode='w', shape=(10000, 1000), dtype='i4', chunks=(1000, 100))
     >>> z[:] = np.arange(10000000, dtype='i4').reshape(10000, 1000)
     >>> z
-    zarr.array.Array((10000, 1000), int32, chunks=(1000, 100))
+    zarr.core.Array((10000, 1000), int32, chunks=(1000, 100))
       cname: blosclz; clevel: 5; shuffle: 1 (BYTESHUFFLE)
       nbytes: 38.1M; cbytes: 2.0M; ratio: 19.3; initialized: 100/100
-      store: zarr.store.directory.DirectoryStore
+      store: zarr.store.DirectoryStore
 
 There is no need to close a persistent array. Data are automatically flushed
 to disk.

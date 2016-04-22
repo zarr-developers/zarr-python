@@ -243,7 +243,7 @@ class MetadataJSONFile(JSONFileMap):
 def json_encode_metadata(key, value):
     if value is None:
         pass
-    elif not PY2 and key == 'cname':
+    elif not PY2 and key == 'cname' and isinstance(value, bytes):
         value = str(value, 'ascii')
     elif key == 'dtype':
         value = json_encode_dtype(value)
