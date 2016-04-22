@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, print_function, division
-
-
 import tempfile
 import shutil
 import atexit
 import os
+
+
 import numpy as np
 from nose.tools import eq_ as eq
 from numpy.testing import assert_array_equal

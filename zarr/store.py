@@ -183,8 +183,8 @@ def _create_directory_store(path, shape, chunks, dtype=None, cname=None,
             os.makedirs(data_path)
 
         # setup metadata
-        meta = MetadataJSONFile(
-            os.path.join(path, METAPATH),
+        meta = MetadataJSONFile(os.path.join(path, METAPATH))
+        meta.update(
             shape=shape,
             chunks=chunks,
             dtype=dtype,
@@ -221,10 +221,8 @@ def _open_directory_store(path, mode):
 
 class MetadataJSONFile(JSONFileMap):
 
-    def __init__(self, path, **kwargs):
-        kwargs = {key: json_encode_metadata(key, value)
-                  for key, value in kwargs.items()}
-        super(MetadataJSONFile, self).__init__(path, **kwargs)
+    def __init__(self, path):
+        super(MetadataJSONFile, self).__init__(path)
 
     def __getitem__(self, key):
         value = super(MetadataJSONFile, self).__getitem__(key)
@@ -234,18 +232,30 @@ class MetadataJSONFile(JSONFileMap):
         value = json_encode_metadata(key, value)
         super(MetadataJSONFile, self).__setitem__(key, value)
 
+    def update(self, *args, **kwargs):
+        d = dict()
+        d.update(*args, **kwargs)
+        for key, value in d.items():
+            d[key] = json_encode_metadata(key, value)
+        super(MetadataJSONFile, self).update(d)
+
 
 def json_encode_metadata(key, value):
-    if not PY2 and key == 'cname':
+    if value is None:
+        pass
+    elif not PY2 and key == 'cname':
         value = str(value, 'ascii')
-    if key == 'dtype':
+    elif key == 'dtype':
         value = json_encode_dtype(value)
     return value
 
 
 def json_decode_metadata(key, value):
-    if key in ('shape', 'chunks'):
-        value = tuple(value)
+    if value is None:
+        pass
+    elif key in ('shape', 'chunks'):
+        if isinstance(value, list):
+            value = tuple(value)
     elif key == 'cname':
         value = value.encode('ascii')
     elif key == 'dtype':
@@ -254,7 +264,9 @@ def json_decode_metadata(key, value):
 
 
 def json_encode_dtype(d):
-    if d.fields is None:
+    if not isinstance(d, np.dtype):
+        return d
+    elif d.fields is None:
         return d.str
     else:
         return d.descr
