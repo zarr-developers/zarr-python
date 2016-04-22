@@ -4,7 +4,7 @@ import multiprocessing
 import atexit
 
 
-from zarr.array import Array, SynchronizedArray, set_blosc_options
+from zarr.core import Array, SynchronizedArray, set_blosc_options
 from zarr.store.base import ArrayStore
 from zarr.store.memory import MemoryStore
 from zarr.store.directory import DirectoryStore

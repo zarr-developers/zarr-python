@@ -5,7 +5,7 @@ from __future__ import absolute_import, print_function, division
 import numpy as np
 
 
-from zarr.array import Array, SynchronizedArray
+from zarr.core import Array, SynchronizedArray
 from zarr.store.memory import MemoryStore
 from zarr.store.directory import DirectoryStore
 

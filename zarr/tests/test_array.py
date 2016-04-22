@@ -8,7 +8,7 @@ from nose.tools import eq_ as eq, assert_is_instance
 
 
 from zarr.store.memory import MemoryStore
-from zarr.array import Array
+from zarr.core import Array
 from zarr import defaults
 
 

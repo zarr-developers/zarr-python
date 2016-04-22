@@ -8,7 +8,7 @@ from numpy.testing import assert_array_equal
 from nose.tools import eq_ as eq, assert_is_instance
 
 from zarr.store.dictstore import DictStore
-from zarr.array import Array
+from zarr.core import Array
 
 
 def test_dictstore():
