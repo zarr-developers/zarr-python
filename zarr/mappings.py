@@ -6,7 +6,7 @@ import tempfile
 import json
 
 
-class Directory(MutableMapping):
+class DirectoryMap(MutableMapping):
     """Mutable Mapping interface to a directory. Keys must be strings,
     values must be bytes.
 
@@ -64,7 +64,7 @@ class Directory(MutableMapping):
                    for key in self.keys())
 
 
-class JSONFile(MutableMapping):
+class JSONFileMap(MutableMapping):
     """Mutable Mapping interface to a JSON file. Keys must be strings,
     values must be JSON serializable.
 

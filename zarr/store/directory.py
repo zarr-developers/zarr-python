@@ -8,14 +8,58 @@ import numpy as np
 
 
 from zarr.store.base import ArrayStore
-from zarr.util import normalize_shape, normalize_chunks, normalize_cparams
 from zarr.compat import PY2
-from zarr.mappings import Directory, JSONFile
+from zarr.mappings import DirectoryMap, JSONFileMap
 
 
 METAPATH = '__zmeta__'
 DATAPATH = '__zdata__'
 ATTRPATH = '__zattr__'
+
+
+def _create_directory_store(path, shape, chunks, dtype=None, cname=None,
+                            clevel=None, shuffle=None, fill_value=None):
+
+        # create directories
+        data_path = os.path.join(path, DATAPATH)
+        if not os.path.exists(data_path):
+            os.makedirs(data_path)
+
+        # setup meta
+        meta_path = os.path.join(path, METAPATH)
+        meta = JSONMetadata(
+            meta_path,
+            shape=shape,
+            chunks=chunks,
+            dtype=dtype,
+            cname=cname,
+            clevel=clevel,
+            shuffle=shuffle,
+            fill_value=fill_value
+        )
+
+        # setup data
+        data = DirectoryMap(data_path)
+
+        # setup attrs
+        attrs = JSONFileMap(os.path.join(path, ATTRPATH))
+
+        return meta, data, attrs
+
+
+def _open_directory_store(path, mode):
+
+    # setup metadata
+    meta = JSONMetadata(os.path.join(path, METAPATH))
+
+    # setup data
+    data = DirectoryMap(os.path.join(path, DATAPATH))
+
+    # setup attrs
+    attrs = JSONFileMap(os.path.join(path, ATTRPATH),
+                        read_only=(mode == 'r'))
+
+    return meta, data, attrs
 
 
 class DirectoryStore(ArrayStore):
@@ -33,7 +77,6 @@ class DirectoryStore(ArrayStore):
         # w : create, delete if exists
         # w- or x : create, fail if exists
         # a : read/write if exists, create otherwise (default)
-        self._mode = mode
 
         # handle mode
         create = False
@@ -55,121 +98,68 @@ class DirectoryStore(ArrayStore):
 
         # instantiate
         if create:
-            meta, data, attrs = self._create(
+            meta, data, attrs = _create_directory_store(
                 path, shape=shape, chunks=chunks, dtype=dtype, cname=cname,
                 clevel=clevel, shuffle=shuffle, fill_value=fill_value
             )
         else:
-            meta, data, attrs = self._open(path)
+            meta, data, attrs = _open_directory_store(path, mode)
         super(DirectoryStore, self).__init__(meta, data, attrs)
 
-        # setup additional members
-        self._path = path
-        self._mode = mode
 
-    def _create(self, path, shape, chunks, dtype=None, cname=None,
-                clevel=None, shuffle=None, fill_value=None):
-
-        # create directories
-        data_path = os.path.join(path, DATAPATH)
-        if not os.path.exists(data_path):
-            os.makedirs(data_path)
-
-        # normalize arguments now to avoid any encoding issues
-        shape = normalize_shape(shape)
-        chunks = normalize_chunks(chunks, shape)
-        dtype = np.dtype(dtype)
-        cname, clevel, shuffle = normalize_cparams(cname, clevel, shuffle)
-
-        # setup meta
-        meta_path = os.path.join(path, METAPATH)
-        meta = MetadataJSONFile(
-            meta_path,
-            shape=shape,
-            chunks=chunks,
-            dtype=dtype,
-            cname=cname,
-            clevel=clevel,
-            shuffle=shuffle,
-            fill_value=fill_value
-        )
-
-        # setup data
-        data = Directory(data_path)
-
-        # setup attrs
-        attrs = JSONFile(os.path.join(path, ATTRPATH))
-
-        return meta, data, attrs
-
-    def _open(self, path):
-
-        # read metadata
-        meta = MetadataJSONFile(os.path.join(path, METAPATH))
-
-        # setup data
-        data = Directory(os.path.join(path, DATAPATH))
-
-        # setup attrs
-        attrs = JSONFile(os.path.join(path, ATTRPATH),
-                         read_only=(self._mode == 'r'))
-
-        return meta, data, attrs
-
-
-class MetadataJSONFile(JSONFile):
+class JSONMetadata(JSONFileMap):
     
     def __init__(self, path, **kwargs):
-        kwargs = {key: encode_metadata(key, value)
+        kwargs = {key: json_encode_metadata(key, value)
                   for key, value in kwargs.items()}
-        super(MetadataJSONFile, self).__init__(path, **kwargs)
+        super(JSONMetadata, self).__init__(path, **kwargs)
 
     def __getitem__(self, key):
-        value = super(MetadataJSONFile, self).__getitem__(key)
-        return decode_metadata(key, value)
+        value = super(JSONMetadata, self).__getitem__(key)
+        return json_decode_metadata(key, value)
 
     def __setitem__(self, key, value):
-        value = encode_metadata(key, value)
-        super(MetadataJSONFile, self).__setitem__(key, value)
+        value = json_encode_metadata(key, value)
+        super(JSONMetadata, self).__setitem__(key, value)
     
     
-def encode_metadata(key, value):
+def json_encode_metadata(key, value):
     if not PY2 and key == 'cname':
         value = str(value, 'ascii')
     if key == 'dtype':
-        value = encode_dtype(value)
+        value = json_encode_dtype(value)
     return value
 
 
-def decode_metadata(key, value):
+def json_decode_metadata(key, value):
     if key in ('shape', 'chunks'):
         value = tuple(value)
     elif key == 'cname':
         value = value.encode('ascii')
     elif key == 'dtype':
-        return decode_dtype(value)
+        return json_decode_dtype(value)
     return value
 
 
-def encode_dtype(d):
+def json_encode_dtype(d):
     if d.fields is None:
         return d.str
     else:
         return d.descr
 
 
-def _decode_dtype_descr(d):
+def _json_decode_dtype_descr(d):
     # need to convert list of lists to list of tuples
     if isinstance(d, list):
         # recurse to handle nested structures
         if PY2:
             # under PY2 numpy rejects unicode field names
-            d = [(f.encode('ascii'), _decode_dtype_descr(v)) for f, v in d]
+            d = [(f.encode('ascii'), _json_decode_dtype_descr(v)) for f, v in d]
         else:
-            d = [(f, _decode_dtype_descr(v)) for f, v in d]
+            d = [(f, _json_decode_dtype_descr(v)) for f, v in d]
     return d
 
 
-def decode_dtype(d):
-    d = _decode_dtype_descr(d)
+def json_decode_dtype(d):
+    d = _json_decode_dtype_descr(d)
     return np.dtype(d)

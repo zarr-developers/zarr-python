@@ -2,14 +2,7 @@
 from __future__ import absolute_import, print_function, division
 
 
-import numpy as np
-
-
 from zarr.store.base import ArrayStore
-from zarr.compat import itervalues
-from zarr.util import normalize_cparams, normalize_shape, normalize_chunks, \
-    normalize_resize_args
-from zarr.mappings import frozendict
 
 
 class MemoryStore(ArrayStore):

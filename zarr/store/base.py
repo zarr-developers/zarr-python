@@ -61,6 +61,7 @@ class ArrayStore(object):
     def cbytes(self):
         """The total size in number of bytes of compressed data held for the
         array."""
+
         if hasattr(self.data, 'cbytes'):
             # pass through
             return self.data.cbytes
