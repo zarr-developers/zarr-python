@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, print_function, division
+
+import json
 import os
 import shutil
-
 
 import numpy as np
 
@@ -39,10 +40,26 @@ class ArrayStore(object):
     >>> z[:] = 42
     >>> sorted(data.keys())
     ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9']
-
     """
 
-    def __init__(self, meta, data, attrs, read_only=False):
+    def __init__(self, meta=None, data=None, attrs=None, read_only=False,
+                 count_cbytes=False, **extra_meta):
+        if data is None:
+            data = dict()
+        if attrs is None:
+            attrs = dict()
+        if 'attrs' in data:
+            for k, v in json.loads(data['attrs']).items():
+                if k not in attrs:
+                    attrs[k] = v
+        if meta is None:
+            meta = dict()
+        if 'meta' in data:
+            from .meta import loads
+            for k, v in loads(data['meta']).items():
+                if k not in meta:
+                    meta[k] = v
+        meta.update(extra_meta)
 
         # normalize configuration metadata
         shape = normalize_shape(meta['shape'])
@@ -103,6 +120,12 @@ class ArrayStore(object):
         # update metadata
         self.meta['shape'] = new_shape
 
+    def flush(self):
+        """ Encode and flush metadata and attrs to data """
+        from . import meta
+        self.data['meta'] = meta.dumps(self.meta)
+        self.data['attrs'] = json.dumps(self.attrs, indent=4, sort_keys=True)
+
 
 class MemoryStore(ArrayStore):
     """Array store using dictionaries."""
@@ -121,6 +144,9 @@ class MemoryStore(ArrayStore):
         data = dict()
         attrs = dict()
         super(MemoryStore, self).__init__(meta, data, attrs)
+
+    def flush(self):
+        pass
 
 
 METAPATH = '__zmeta__'
