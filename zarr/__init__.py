@@ -5,9 +5,7 @@ import atexit
 
 
 from zarr.core import Array, SynchronizedArray, set_blosc_options
-from zarr.store.base import ArrayStore
-from zarr.store.memory import MemoryStore
-from zarr.store.directory import DirectoryStore
+from zarr.store import ArrayStore, MemoryStore, DirectoryStore
 from zarr.sync import ThreadSynchronizer, ProcessSynchronizer
 from zarr.create import array, empty, zeros, ones, full, open, empty_like, \
     zeros_like, ones_like, full_like, open_like
