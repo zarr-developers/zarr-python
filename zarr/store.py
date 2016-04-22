@@ -34,9 +34,11 @@ class ArrayStore(object):
     >>> attrs = dict()
     >>> store = zarr.ArrayStore(meta, data, attrs)
     >>> z = zarr.Array(store)
-    >>> meta
+    >>> meta['dtype']
+    dtype('float64')
     >>> z[:] = 42
     >>> sorted(data.keys())
+    ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9']
 
     """
 
