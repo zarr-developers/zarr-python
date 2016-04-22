@@ -8,10 +8,9 @@ import numpy as np
 
 
 from zarr.store.base import ArrayStore
-from zarr.util import normalize_shape, normalize_chunks, normalize_cparams, \
-    normalize_resize_args
+from zarr.util import normalize_shape, normalize_chunks, normalize_cparams
 from zarr.compat import PY2
-from zarr.mappings import frozendict, Directory, JSONFile
+from zarr.mappings import Directory, JSONFile
 
 
 METAPATH = '__zmeta__'
@@ -24,6 +23,9 @@ class DirectoryStore(ArrayStore):
     def __init__(self, path, mode='a', shape=None, chunks=None, dtype=None,
                  cname=None, clevel=None, shuffle=None, fill_value=None):
 
+        # use metadata file as indicator of array existence
+        meta_path = os.path.join(path, METAPATH)
+
         # use same mode semantics as h5py, although N.B., here `path` is a
         # directory:
         # r : readonly, must exist
@@ -33,49 +35,47 @@ class DirectoryStore(ArrayStore):
         # a : read/write if exists, create otherwise (default)
         self._mode = mode
 
-        # use metadata file as indicator of array existence
-        meta_path = os.path.join(path, METAPATH)
-
+        # handle mode
+        create = False
         if mode in ['r', 'r+']:
-            self._open(path)
-
+            pass
         elif mode == 'w':
             if os.path.exists(path):
                 shutil.rmtree(path)
-            self._create(path, shape=shape, chunks=chunks, dtype=dtype,
-                         cname=cname, clevel=clevel, shuffle=shuffle,
-                         fill_value=fill_value)
-
+            create = True
         elif mode in ['w-', 'x']:
             if os.path.exists(meta_path):
                 raise ValueError('array exists: %s' % path)
-            self._create(path, shape=shape, chunks=chunks, dtype=dtype,
-                         cname=cname, clevel=clevel, shuffle=shuffle,
-                         fill_value=fill_value)
-
+            create = True
         elif mode == 'a':
-            if os.path.exists(meta_path):
-                self._open(path)
-            else:
-                self._create(path, shape=shape, chunks=chunks, dtype=dtype,
-                             cname=cname, clevel=clevel, shuffle=shuffle,
-                             fill_value=fill_value)
-
+            if not os.path.exists(meta_path):
+                create = True
         else:
             raise ValueError('bad mode: %r' % mode)
 
+        # instantiate
+        if create:
+            meta, data, attrs = self._create(
+                path, shape=shape, chunks=chunks, dtype=dtype, cname=cname,
+                clevel=clevel, shuffle=shuffle, fill_value=fill_value
+            )
+        else:
+            meta, data, attrs = self._open(path)
+        super(DirectoryStore, self).__init__(meta, data, attrs)
+
+        # setup additional members
         self._path = path
         self._mode = mode
 
-    def _create(self, path, shape=None, chunks=None, dtype=None,
-                cname=None, clevel=None, shuffle=None, fill_value=None):
+    def _create(self, path, shape, chunks, dtype=None, cname=None,
+                clevel=None, shuffle=None, fill_value=None):
 
         # create directories
         data_path = os.path.join(path, DATAPATH)
         if not os.path.exists(data_path):
             os.makedirs(data_path)
 
-        # normalize arguments
+        # normalize arguments now to avoid any encoding issues
         shape = normalize_shape(shape)
         chunks = normalize_chunks(chunks, shape)
         dtype = np.dtype(dtype)
@@ -93,69 +93,28 @@ class DirectoryStore(ArrayStore):
             shuffle=shuffle,
             fill_value=fill_value
         )
-        self._meta = meta
 
         # setup data
-        self._data = Directory(data_path)
+        data = Directory(data_path)
 
         # setup attrs
-        self._attrs = JSONFile(os.path.join(path, ATTRPATH))
+        attrs = JSONFile(os.path.join(path, ATTRPATH))
+
+        return meta, data, attrs
 
     def _open(self, path):
 
         # read metadata
-        self._meta = MetadataJSONFile(os.path.join(path, METAPATH))
+        meta = MetadataJSONFile(os.path.join(path, METAPATH))
 
         # setup data
-        self._data = Directory(os.path.join(path, DATAPATH))
+        data = Directory(os.path.join(path, DATAPATH))
 
         # setup attrs
-        self._attrs = JSONFile(os.path.join(path, ATTRPATH),
-                               read_only=(self._mode == 'r'))
+        attrs = JSONFile(os.path.join(path, ATTRPATH),
+                         read_only=(self._mode == 'r'))
 
-    @property
-    def meta(self):
-        return self._meta
-
-    @property
-    def data(self):
-        return self._data
-
-    @property
-    def attrs(self):
-        return self._attrs
-
-    @property
-    def cbytes(self):
-        return self._data.size()
-
-    @property
-    def initialized(self):
-        return len(self._data)
-
-    def resize(self, *args):
-        if self._mode == 'r':
-            raise ValueError('array store is read-only')
-
-        # normalize new shape argument
-        old_shape = self.meta['shape']
-        new_shape = normalize_resize_args(old_shape, *args)
-
-        # determine the new number and arrangement of chunks
-        chunks = self.meta['chunks']
-        new_cdata_shape = tuple(int(np.ceil(s / c))
-                                for s, c in zip(new_shape, chunks))
-
-        # remove any chunks not within range
-        for ckey in self.data:
-            cidx = map(int, ckey.split('.'))
-            if all(i < c for i, c in zip(cidx, new_cdata_shape)):
-                pass  # keep the chunk
-            else:
-                del self._data[ckey]
-
-        # update metadata
-        self._meta['shape'] = new_shape
+        return meta, data, attrs
 
 
 class MetadataJSONFile(JSONFile):
