@@ -13,26 +13,32 @@ PY2 = sys.version_info[0] == 2
 
 def loads(b):
     meta = json.loads(b)
-
-    # decode some values
-    meta['shape'] = tuple(meta['shape'])
-    meta['chunks'] = tuple(meta['chunks'])
-    meta['cname'] = meta['cname'].encode('ascii')
-    meta['dtype'] = decode_dtype(meta['dtype'])
+    if meta['compression'] not in ('blosc', None):
+        raise NotImplementedError("Only Blosc and no-compression are supported")
+    meta = dict(
+        shape=tuple(meta['shape']),
+        chunks=tuple(meta['chunks']),
+        dtype=decode_dtype(meta['dtype']),
+        fill_value=meta['fill_value'],
+        cname=meta['compression_opts']['cname'].encode('ascii'),
+        clevel=meta['compression_opts']['clevel'],
+        shuffle=meta['compression_opts']['shuffle']
+    )
 
     return meta
 
 
 def dumps(meta):
-    # construct metadata dictionary
     meta = dict(
         shape=meta['shape'],
         chunks=meta['chunks'],
         dtype=encode_dtype(meta['dtype']),
-        cname=meta['cname'] if PY2 else str(meta['cname'], 'ascii'),
-        clevel=meta['clevel'],
-        shuffle=meta['shuffle'],
         fill_value=meta['fill_value'],
+        compression='blosc',
+        compression_opts=dict(
+            cname=meta['cname'] if PY2 else str(meta['cname'], 'ascii'),
+            clevel=meta['clevel'],
+            shuffle=meta['shuffle'])
     )
 
     return json.dumps(meta, indent=4, sort_keys=True)
