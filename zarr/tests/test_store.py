@@ -9,6 +9,7 @@ import numpy as np
 from numpy.testing import assert_array_equal
 
 import zarr
+from zarr import meta
 from zarr.store import ArrayStore
 from zarr.core import Array
 
@@ -58,7 +59,14 @@ def test_resize():
     x.resize((50, 200))
 
     assert x.store.data is data
-    eq(set(data), {'%d.%d' % (i, j) for i in range(5) for j in range(10)})
+    eq(set(data) - {'meta', 'attrs'},
+       {'%d.%d' % (i, j) for i in range(5) for j in range(10)})
+
+
+def test_flush_metadata_on_resize():
+    x = Array(ArrayStore(shape=(100, 100), chunks=(10, 10), dtype='f4'))
+    x.resize((50, 200))
+    eq(meta.loads(x.store.data['meta']), x.store.meta)
 
 
 def test_flush_meta_to_data():

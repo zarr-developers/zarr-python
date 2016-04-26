@@ -43,7 +43,7 @@ class ArrayStore(object):
     """
 
     def __init__(self, meta=None, data=None, attrs=None, read_only=False,
-                 count_cbytes=False, **extra_meta):
+                 **extra_meta):
         if data is None:
             data = dict()
         if attrs is None:
@@ -119,6 +119,7 @@ class ArrayStore(object):
 
         # update metadata
         self.meta['shape'] = new_shape
+        self.flush()
 
     def flush(self):
         """ Encode and flush metadata and attrs to data """
