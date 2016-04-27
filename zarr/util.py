@@ -5,58 +5,6 @@ from __future__ import absolute_import, print_function, division
 import numpy as np
 
 
-from zarr import blosc
-from zarr import defaults
-
-
-def normalize_cparams(cname=None, clevel=None, shuffle=None):
-    """Convenience function to normalize compression parameters.
-
-    If any values are None, they will be substituted with values from the
-    `zarr.defaults` module.
-
-    Parameters
-    ----------
-    cname : string, optional
-        Name of compression library to use, e.g., 'blosclz', 'lz4', 'zlib',
-        'snappy'.
-    clevel : int, optional
-        Compression level, 0 means no compression.
-    shuffle : int, optional
-        Shuffle filter, 0 means no shuffle, 1 means byte shuffle, 2 means
-        bit shuffle.
-
-    Returns
-    -------
-    cname
-    clevel
-    shuffle
-
-    """
-
-    # determine compressor
-    cname = cname if cname is not None else defaults.cname
-    if not isinstance(cname, bytes):
-        cname = cname.encode('ascii')
-    # check compressor is available
-    if blosc.compname_to_compcode(cname) < 0:
-        raise ValueError('compressor not available: %s' % cname)
-
-    # determine compression level
-    clevel = clevel if clevel is not None else defaults.clevel
-    clevel = int(clevel)
-    if clevel < 0 or clevel > 9:
-        raise ValueError('invalid compression level: %s' % clevel)
-
-    # determine shuffle filter
-    shuffle = shuffle if shuffle is not None else defaults.shuffle
-    shuffle = int(shuffle)
-    if shuffle not in [0, 1, 2]:
-        raise ValueError('invalid shuffle: %s' % shuffle)
-
-    return cname, clevel, shuffle
-
-
 def normalize_shape(shape):
     """Convenience function to normalize the `shape` argument."""
 

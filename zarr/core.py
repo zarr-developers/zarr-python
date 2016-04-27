@@ -3,50 +3,19 @@ from __future__ import absolute_import, print_function, division
 from functools import reduce  # TODO PY2 compatibility
 import operator
 import itertools
-import multiprocessing
 import json
 
 
 import numpy as np
 
 
-from zarr import blosc
-from zarr.sync import SynchronizedAttributes
+from zarr.compression import get_compressor_cls
 from zarr.util import is_total_slice, normalize_array_selection, \
     get_chunk_range, human_readable_size, normalize_shape, normalize_chunks, \
     normalize_resize_args
 from zarr.meta import decode_metadata, encode_metadata
+from zarr.attrs import Attributes, SynchronizedAttributes
 from zarr.compat import itervalues
-
-
-_blosc_use_context = False
-
-
-def set_blosc_options(use_context=False, nthreads=None):
-    """Set options for how the blosc compressor is used.
-
-    Parameters
-    ----------
-    use_context : bool, optional
-        If False, blosc will be used in non-contextual mode, which is best
-        when using zarr in a single-threaded environment because it allows
-        blosc to use multiple threads internally. If True, blosc will be used
-        in contextual mode, which is better when using zarr in a
-        multi-threaded environment like dask.array because it avoids the blosc
-        global lock and so multiple blosc operations can be running
-        concurrently.
-    nthreads : int, optional
-        Number of internal threads to use when running blosc in non-contextual
-        mode.
-
-    """
-    global _blosc_use_context
-    _blosc_use_context = use_context
-    if not use_context:
-        if nthreads is None:
-            # diminishing returns beyond 4 threads?
-            nthreads = min(4, multiprocessing.cpu_count())
-        blosc.set_nthreads(nthreads)
 
 
 _repr_shuffle = [
@@ -69,12 +38,12 @@ def init_store(store, shape, chunks, dtype=None, compression='blosc',
     shape = normalize_shape(shape)
     chunks = normalize_chunks(chunks, shape)
     dtype = np.dtype(dtype)
-    if compression != 'blosc':
-        raise NotImplementedError('only blosc compression is '
-                                  'currently implemented')
-    compression_opts = normalize_blosc_opts(compression_opts)
+    compressor_cls = get_compressor_cls(compression)
+    compression_opts = compressor_cls.normalize_compression_opts(
+        compression_opts
+    )
 
-    # handle any pre-existing data in store
+    # delete any pre-existing items in store
     for key in list(store.keys()):
         del store[key]
 
@@ -85,7 +54,7 @@ def init_store(store, shape, chunks, dtype=None, compression='blosc',
     store['meta'] = encode_metadata(meta)
 
     # initialise attributes
-    store['attrs'] = json.dumps(dict())
+    store['attrs'] = json.dumps(dict()).encode('ascii')
 
 
 class Array(object):
@@ -102,6 +71,9 @@ class Array(object):
 
         """
 
+        # N.B., expect at this point store is fully initialised with all
+        # configuration metadata fully specified and normalised
+
         self.store = store
         self.readonly = readonly
 
@@ -117,11 +89,10 @@ class Array(object):
             self.chunks = meta['chunks']
             self.dtype = meta['dtype']
             self.compression = meta['compression']
-            if self.compression != 'blosc':
-                raise NotImplementedError('only blosc compression is '
-                                          'currently implemented')
             self.compression_opts = meta['compression_opts']
             self.fill_value = meta['fill_value']
+            compressor_cls = get_compressor_cls(self.compression)
+            self.compressor = compressor_cls(self.compression_opts)
 
         # initialise attributes
         self.attrs = Attributes(store, readonly=readonly)
@@ -146,9 +117,10 @@ class Array(object):
         return self.size * self.itemsize
 
     @property
-    def cbytes(self):
-        """The total number of stored bytes of data for the array."""
-
+    def nbytes_stored(self):
+        """The total number of stored bytes of data for the array. N.B.,
+        this will include configuration metadata and user attributes encoded
+        as JSON."""
         if hasattr(self.store, 'size'):
             # pass through
             return self.store.size
@@ -276,7 +248,7 @@ class Array(object):
 
             # obtain compressed data for chunk
             ckey = '.'.join(map(str, cidx))
-            cdata = self.store.data[ckey]
+            cdata = self.store[ckey]
 
         except KeyError:
 
@@ -291,13 +263,13 @@ class Array(object):
                 # optimisation: we want the whole chunk, and the destination is
                 # C contiguous, so we can decompress directly from the chunk
                 # into the destination array
-                blosc.decompress(cdata, dest, _blosc_use_context)
+                self.compressor.decompress(cdata, dest)
 
             else:
 
                 # decompress chunk
                 chunk = np.empty(self.chunks, dtype=self.dtype)
-                blosc.decompress(cdata, chunk, _blosc_use_context)
+                self.compressor.decompress(cdata, chunk)
 
                 # set data in output array
                 # (split into two lines for profiling)
@@ -343,7 +315,7 @@ class Array(object):
 
                 # obtain compressed data for chunk
                 ckey = '.'.join(map(str, cidx))
-                cdata = self.store.data[ckey]
+                cdata = self.store[ckey]
 
             except KeyError:
 
@@ -356,33 +328,28 @@ class Array(object):
 
                 # decompress chunk
                 chunk = np.empty(self.chunks, dtype=self.dtype)
-                blosc.decompress(cdata, chunk, _blosc_use_context)
+                self.compressor.decompress(cdata, chunk)
 
             # modify
             chunk[key] = value
 
         # compress
-        # TODO translate compression options
-        cdata = blosc.compress(chunk, self.cname, self.clevel,
-                               self.shuffle, _blosc_use_context)
+        cdata = self.compressor.compress(chunk)
 
         # store
         ckey = '.'.join(map(str, cidx))
-        self.store.data[ckey] = cdata
+        self.store[ckey] = cdata
 
     def __repr__(self):
-        # TODO handle compression options
         r = '%s.%s(' % (type(self).__module__, type(self).__name__)
         r += '%s' % str(self.shape)
         r += ', %s' % str(self.dtype)
         r += ', chunks=%s' % str(self.chunks)
         r += ')'
-        r += '\n  cname: %s' % str(self.cname, 'ascii')
-        r += '; clevel: %s' % self.clevel
-        r += '; shuffle: %s' % _repr_shuffle[self.shuffle]
+        r += '\n  compression: %s' % self.compression
         r += '\n  nbytes: %s' % human_readable_size(self.nbytes)
-        r += '; cbytes: %s' % human_readable_size(self.cbytes)
         if self.cbytes > 0:
+            r += '; cbytes: %s' % human_readable_size(self.cbytes)
             r += '; ratio: %.1f' % (self.nbytes / self.cbytes)
         n_chunks = reduce(operator.mul, self.cdata_shape)
         r += '; initialized: %s/%s' % (self.initialized, n_chunks)

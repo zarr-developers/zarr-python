@@ -72,9 +72,8 @@ def test_empty_like():
     eq(z.shape, z2.shape)
     eq(z.chunks, z2.chunks)
     eq(z.dtype, z2.dtype)
-    eq(z.cname, z2.cname)
-    eq(z.clevel, z2.clevel)
-    eq(z.shuffle, z2.shuffle)
+    eq(z.compression, z2.compression)
+    eq(z.compression_opts, z2.compression_opts)
     eq(z.fill_value, z2.fill_value)
 
 
@@ -84,9 +83,8 @@ def test_zeros_like():
     eq(z.shape, z2.shape)
     eq(z.chunks, z2.chunks)
     eq(z.dtype, z2.dtype)
-    eq(z.cname, z2.cname)
-    eq(z.clevel, z2.clevel)
-    eq(z.shuffle, z2.shuffle)
+    eq(z.compression, z2.compression)
+    eq(z.compression_opts, z2.compression_opts)
     eq(z.fill_value, z2.fill_value)
 
 
@@ -96,9 +94,8 @@ def test_ones_like():
     eq(z.shape, z2.shape)
     eq(z.chunks, z2.chunks)
     eq(z.dtype, z2.dtype)
-    eq(z.cname, z2.cname)
-    eq(z.clevel, z2.clevel)
-    eq(z.shuffle, z2.shuffle)
+    eq(z.compression, z2.compression)
+    eq(z.compression_opts, z2.compression_opts)
     eq(z.fill_value, z2.fill_value)
 
 
@@ -108,9 +105,8 @@ def test_full_like():
     eq(z.shape, z2.shape)
     eq(z.chunks, z2.chunks)
     eq(z.dtype, z2.dtype)
-    eq(z.cname, z2.cname)
-    eq(z.clevel, z2.clevel)
-    eq(z.shuffle, z2.shuffle)
+    eq(z.compression, z2.compression)
+    eq(z.compression_opts, z2.compression_opts)
     eq(z.fill_value, z2.fill_value)
 
 
@@ -124,7 +120,6 @@ def test_open_like():
     eq(z.shape, z2.shape)
     eq(z.chunks, z2.chunks)
     eq(z.dtype, z2.dtype)
-    eq(z.cname, z2.cname)
-    eq(z.clevel, z2.clevel)
-    eq(z.shuffle, z2.shuffle)
+    eq(z.compression, z2.compression)
+    eq(z.compression_opts, z2.compression_opts)
     eq(z.fill_value, z2.fill_value)

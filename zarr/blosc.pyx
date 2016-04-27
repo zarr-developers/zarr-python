@@ -6,6 +6,7 @@
 from __future__ import absolute_import, print_function, division
 import sys
 import ctypes
+import multiprocessing
 
 
 from numpy cimport ndarray
@@ -13,11 +14,6 @@ from numpy cimport ndarray
 from libc.stdint cimport uintptr_t
 # noinspection PyUnresolvedReferences
 from .definitions cimport malloc, realloc, free, PyBytes_AsString
-
-
-# def log(*msg):
-#     print(*msg, file=sys.stderr)
-#     sys.stderr.flush()
 
 
 PY2 = sys.version_info[0] == 2
@@ -73,7 +69,7 @@ def set_nthreads(int nthreads):
     blosc_set_nthreads(nthreads)
 
 
-def decompress(bytes cdata, ndarray array, use_context):
+def decompress(bytes cdata, ndarray array):
     """Decompress data into a numpy array.
 
     Parameters
@@ -82,8 +78,6 @@ def decompress(bytes cdata, ndarray array, use_context):
         Compressed data, including blosc header.
     array : ndarray
         Numpy array to decompress into.
-    use_context : bool
-        If True, use blosc contextual mode. Otherwise use global locking mode.
 
     Notes
     -----
@@ -103,7 +97,7 @@ def decompress(bytes cdata, ndarray array, use_context):
     nbytes = array.nbytes
 
     # perform decompression
-    if use_context:
+    if _use_context:
         with nogil:
             ret = blosc_decompress_ctx(source, dest, nbytes, 1)
 
@@ -115,8 +109,7 @@ def decompress(bytes cdata, ndarray array, use_context):
         raise RuntimeError('error during blosc decompression: %d' % ret)
 
 
-def compress(ndarray array, char* cname, int clevel, int shuffle,
-             use_context):
+def compress(ndarray array, char* cname, int clevel, int shuffle):
     """Compress data in a numpy array.
 
     Parameters
@@ -129,8 +122,6 @@ def compress(ndarray array, char* cname, int clevel, int shuffle,
         Compression level.
     shuffle : int
         Shuffle filter.
-    use_context : bool
-        If True, use blosc contextual mode. Otherwise use global locking mode.
 
     Returns
     -------
@@ -155,7 +146,7 @@ def compress(ndarray array, char* cname, int clevel, int shuffle,
     dest = <char *> malloc(nbytes + BLOSC_MAX_OVERHEAD)
 
     # perform compression
-    if use_context:
+    if _use_context:
         with nogil:
             cbytes = blosc_compress_ctx(clevel, shuffle, itemsize, nbytes,
                                         source, dest,
@@ -180,3 +171,22 @@ def compress(ndarray array, char* cname, int clevel, int shuffle,
     cdata_bytes = ctypes.string_at(<uintptr_t> cdata, cbytes)
 
     return cdata_bytes
+
+
+_use_context = False
+
+
+# noinspection PyPep8Naming
+class use_context(object):
+
+    def __init__(self, use_context=True):
+        global _use_context
+        self.old_use_context = _use_context
+        _use_context = use_context
+
+    def __enter__(self):
+        return
+
+    def __exit__(self):
+        global _use_context
+        _use_context = self.old_use_context

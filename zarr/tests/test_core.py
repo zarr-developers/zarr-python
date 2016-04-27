@@ -7,13 +7,12 @@ from numpy.testing import assert_array_equal
 from nose.tools import eq_ as eq, assert_is_instance
 
 
-from zarr.store import MemoryStore
-from zarr.core import Array
-from zarr import defaults
+from zarr.core import Array, init_store
 
 
 def create_array(shape, chunks, **kwargs):
-    store = MemoryStore(shape, chunks, **kwargs)
+    store = dict()
+    init_store(store, shape, chunks, **kwargs)
     return Array(store)
 
 
@@ -26,11 +25,11 @@ def test_1d():
     eq(a.shape, z.shape)
     eq(a.dtype, z.dtype)
     eq((100,), z.chunks)
-    eq(defaults.cname, z.cname)
-    eq(defaults.clevel, z.clevel)
-    eq(defaults.shuffle, z.shuffle)
+    # eq(defaults.cname, z.cname)
+    # eq(defaults.clevel, z.clevel)
+    # eq(defaults.shuffle, z.shuffle)
     eq(a.nbytes, z.nbytes)
-    eq(0, z.cbytes)
+    eq(sum(len(v) for v in z.store.values()), z.nbytes_stored)
     eq(0, z.initialized)
 
     # check empty
@@ -44,8 +43,7 @@ def test_1d():
 
     # check properties
     eq(a.nbytes, z.nbytes)
-    assert z.cbytes > 0
-    eq(z.store.cbytes, z.cbytes)
+    eq(sum(len(v) for v in z.store.values()), z.nbytes_stored)
     eq(11, z.initialized)
 
     # check slicing
@@ -111,10 +109,10 @@ def test_array_2d():
     eq(a.shape, z.shape)
     eq(a.dtype, z.dtype)
     eq((100, 2), z.chunks)
-    eq(defaults.cname, z.cname)
-    eq(defaults.clevel, z.clevel)
-    eq(defaults.shuffle, z.shuffle)
-    eq(0, z.cbytes)
+    # eq(defaults.cname, z.cname)
+    # eq(defaults.clevel, z.clevel)
+    # eq(defaults.shuffle, z.shuffle)
+    eq(sum(len(v) for v in z.store.values()), z.nbytes_stored)
     eq(0, z.initialized)
 
     # set data
@@ -122,7 +120,7 @@ def test_array_2d():
 
     # check properties
     eq(a.nbytes, z.nbytes)
-    assert z.cbytes > 0
+    eq(sum(len(v) for v in z.store.values()), z.nbytes_stored)
     eq(50, z.initialized)
 
     # check slicing
@@ -285,15 +283,3 @@ def test_append_2d_axis():
     eq(e.dtype, z.dtype)
     eq((10, 10), z.chunks)
     assert_array_equal(e, z[:])
-
-
-def test_create_with_mutable_mapping():
-    x = Array({}, shape=(1000, 1000), chunks=(100, 100))
-    assert_is_instance(x, Array)
-    eq(x.shape, (1000, 1000))
-
-    x[:] = 1
-    x.store.flush()
-
-    y = Array(x.store.data.copy())
-    eq(y.store.meta, x.store.meta)

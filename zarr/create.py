@@ -7,14 +7,11 @@ import numpy as np
 
 
 from zarr.core import Array, SynchronizedArray, init_store
+from zarr.mappings import DirectoryMap
 
 
-def _create(shape, chunks, dtype, cname, clevel, shuffle, fill_value,
-            synchronizer, store=None):
-
-    # translate into generic compression config
-    compression = 'blosc'
-    compression_opts = dict(cname=cname, clevel=clevel, shuffle=shuffle)
+def _create(shape, chunks, dtype, compression, compression_opts, fill_value,
+            synchronizer):
 
     # initialise store
     store = dict()
@@ -31,8 +28,8 @@ def _create(shape, chunks, dtype, cname, clevel, shuffle, fill_value,
     return z
 
 
-def empty(shape, chunks, dtype=None, cname=None, clevel=None, shuffle=None,
-          synchronizer=None):
+def empty(shape, chunks, dtype=None, compression='blosc', 
+          compression_opts=None, synchronizer=None):
     """Create an empty array.
 
     Parameters
@@ -43,30 +40,27 @@ def empty(shape, chunks, dtype=None, cname=None, clevel=None, shuffle=None,
         Chunk shape.
     dtype : string or dtype, optional
         NumPy dtype.
-    cname : string, optional
-        Name of compression library to use, e.g., 'blosclz', 'lz4', 'zlib',
-        'snappy'.
-    clevel : int, optional
-        Compression level, 0 means no compression.
-    shuffle : int, optional
-        Shuffle filter, 0 means no shuffle, 1 means byte shuffle, 2 means
-        bit shuffle.
+    compression : string, optional
+        Name of primary compression library, e.g., 'blosc', 'zlib'.
+    compression_opts : object, optional
+        Options to primary compressor. E.g., for blosc, provide a dictionary 
+        with keys 'cname', 'clevel' and 'shuffle'.
     synchronizer : zarr.sync.ArraySynchronizer, optional
         Array synchronizer.
 
     Returns
     -------
-    z : zarr.array.Array
+    z : zarr.core.Array
 
     """
 
-    return _create(shape=shape, chunks=chunks, dtype=dtype, cname=cname,
-                   clevel=clevel, shuffle=shuffle, fill_value=None,
-                   synchronizer=synchronizer)
+    return _create(shape=shape, chunks=chunks, dtype=dtype, 
+                   compression=compression, compression_opts=compression_opts, 
+                   fill_value=None, synchronizer=synchronizer)
 
 
-def zeros(shape, chunks, dtype=None, cname=None, clevel=None, shuffle=None,
-          synchronizer=None):
+def zeros(shape, chunks, dtype=None, compression='blosc', 
+          compression_opts=None, synchronizer=None):
     """Create an array, with zero being used as the default value for
     uninitialised portions of the array.
 
@@ -78,30 +72,28 @@ def zeros(shape, chunks, dtype=None, cname=None, clevel=None, shuffle=None,
         Chunk shape.
     dtype : string or dtype, optional
         NumPy dtype.
-    cname : string, optional
-        Name of compression library to use, e.g., 'blosclz', 'lz4', 'zlib',
-        'snappy'.
-    clevel : int, optional
-        Compression level, 0 means no compression.
-    shuffle : int, optional
-        Shuffle filter, 0 means no shuffle, 1 means byte shuffle, 2 means
-        bit shuffle.
+    compression : string, optional
+        Name of primary compression library, e.g., 'blosc', 'zlib'.
+    compression_opts : object, optional
+        Options to primary compressor. E.g., for blosc, provide a dictionary 
+        with keys 'cname', 'clevel' and 'shuffle'.
     synchronizer : zarr.sync.ArraySynchronizer, optional
         Array synchronizer.
 
     Returns
     -------
-    z : zarr.array.Array
+    z : zarr.core.Array
 
     """
 
-    return _create(shape=shape, chunks=chunks, dtype=dtype, cname=cname,
-                   clevel=clevel, shuffle=shuffle, fill_value=0,
+    return _create(shape=shape, chunks=chunks, dtype=dtype, 
+                   compression=compression, 
+                   compression_opts=compression_opts, fill_value=0,
                    synchronizer=synchronizer)
 
 
-def ones(shape, chunks, dtype=None, cname=None, clevel=None, shuffle=None,
-         synchronizer=None):
+def ones(shape, chunks, dtype=None, compression='blosc', 
+         compression_opts=None, synchronizer=None):
     """Create an array, with one being used as the default value for
     uninitialised portions of the array.
 
@@ -113,30 +105,27 @@ def ones(shape, chunks, dtype=None, cname=None, clevel=None, shuffle=None,
         Chunk shape.
     dtype : string or dtype, optional
         NumPy dtype.
-    cname : string, optional
-        Name of compression library to use, e.g., 'blosclz', 'lz4', 'zlib',
-        'snappy'.
-    clevel : int, optional
-        Compression level, 0 means no compression.
-    shuffle : int, optional
-        Shuffle filter, 0 means no shuffle, 1 means byte shuffle, 2 means
-        bit shuffle.
+    compression : string, optional
+        Name of primary compression library, e.g., 'blosc', 'zlib'.
+    compression_opts : object, optional
+        Options to primary compressor. E.g., for blosc, provide a dictionary 
+        with keys 'cname', 'clevel' and 'shuffle'.
     synchronizer : zarr.sync.ArraySynchronizer, optional
         Array synchronizer.
 
     Returns
     -------
-    z : zarr.array.Array
+    z : zarr.core.Array
 
     """
 
-    return _create(shape=shape, chunks=chunks, dtype=dtype, cname=cname,
-                   clevel=clevel, shuffle=shuffle, fill_value=1,
-                   synchronizer=synchronizer)
+    return _create(shape=shape, chunks=chunks, dtype=dtype, 
+                   compression=compression, compression_opts=compression_opts, 
+                   fill_value=1, synchronizer=synchronizer)
 
 
-def full(shape, chunks, fill_value, dtype=None, cname=None, clevel=None,
-         shuffle=None, synchronizer=None):
+def full(shape, chunks, fill_value, dtype=None, compression='blosc', 
+         compression_opts=None, synchronizer=None):
     """Create an array, with `fill_value` being used as the default value for
     uninitialised portions of the array.
 
@@ -150,30 +139,27 @@ def full(shape, chunks, fill_value, dtype=None, cname=None, clevel=None,
         Default value to use for uninitialised portions of the array.
     dtype : string or dtype, optional
         NumPy dtype.
-    cname : string, optional
-        Name of compression library to use, e.g., 'blosclz', 'lz4', 'zlib',
-        'snappy'.
-    clevel : int, optional
-        Compression level, 0 means no compression.
-    shuffle : int, optional
-        Shuffle filter, 0 means no shuffle, 1 means byte shuffle, 2 means
-        bit shuffle.
+    compression : string, optional
+        Name of primary compression library, e.g., 'blosc', 'zlib'.
+    compression_opts : object, optional
+        Options to primary compressor. E.g., for blosc, provide a dictionary 
+        with keys 'cname', 'clevel' and 'shuffle'.
     synchronizer : zarr.sync.ArraySynchronizer, optional
         Array synchronizer.
 
     Returns
     -------
-    z : zarr.array.Array
+    z : zarr.core.Array
 
     """
 
-    return _create(shape=shape, chunks=chunks, dtype=dtype, cname=cname,
-                   clevel=clevel, shuffle=shuffle, fill_value=fill_value,
-                   synchronizer=synchronizer)
+    return _create(shape=shape, chunks=chunks, dtype=dtype,
+                   compression=compression, compression_opts=compression_opts,
+                   fill_value=fill_value, synchronizer=synchronizer)
 
 
-def array(data, chunks=None, dtype=None, cname=None, clevel=None,
-          shuffle=None, fill_value=None, synchronizer=None):
+def array(data, chunks=None, dtype=None, compression='blosc',
+          compression_opts=None, fill_value=None, synchronizer=None):
     """Create an array filled with `data`.
 
     Parameters
@@ -184,14 +170,11 @@ def array(data, chunks=None, dtype=None, cname=None, clevel=None,
         Chunk shape.
     dtype : string or dtype, optional
         NumPy dtype.
-    cname : string, optional
-        Name of compression library to use, e.g., 'blosclz', 'lz4', 'zlib',
-        'snappy'.
-    clevel : int, optional
-        Compression level, 0 means no compression.
-    shuffle : int, optional
-        Shuffle filter, 0 means no shuffle, 1 means byte shuffle, 2 means
-        bit shuffle.
+    compression : string, optional
+        Name of primary compression library, e.g., 'blosc', 'zlib'.
+    compression_opts : object, optional
+        Options to primary compressor. E.g., for blosc, provide a dictionary
+        with keys 'cname', 'clevel' and 'shuffle'.
     fill_value : object
         Default value to use for uninitialised portions of the array.
     synchronizer : zarr.sync.ArraySynchronizer, optional
@@ -199,7 +182,7 @@ def array(data, chunks=None, dtype=None, cname=None, clevel=None,
 
     Returns
     -------
-    z : zarr.array.Array
+    z : zarr.core.Array
 
     """
 
@@ -227,9 +210,9 @@ def array(data, chunks=None, dtype=None, cname=None, clevel=None,
             raise ValueError('chunks must be specified')
 
     # instantiate array
-    z = _create(shape=shape, chunks=chunks, dtype=dtype, cname=cname,
-                clevel=clevel, shuffle=shuffle, fill_value=fill_value,
-                synchronizer=synchronizer)
+    z = _create(shape=shape, chunks=chunks, dtype=dtype,
+                compression=compression, compression_opts=compression_opts,
+                fill_value=fill_value, synchronizer=synchronizer)
 
     # fill with data
     z[:] = data
@@ -238,8 +221,9 @@ def array(data, chunks=None, dtype=None, cname=None, clevel=None,
 
 
 # noinspection PyShadowingBuiltins
-def open(path, mode='a', shape=None, chunks=None, dtype=None, cname=None,
-         clevel=None, shuffle=None, fill_value=0, synchronizer=None):
+def open(path, mode='a', shape=None, chunks=None, dtype=None,
+         compression='blosc', compression_opts=None, fill_value=0,
+         synchronizer=None):
     """Open an array stored on the file system.
 
     Parameters
@@ -257,14 +241,11 @@ def open(path, mode='a', shape=None, chunks=None, dtype=None, cname=None,
         Chunk shape.
     dtype : string or dtype, optional
         NumPy dtype.
-    cname : string, optional
-        Name of compression library to use, e.g., 'blosclz', 'lz4', 'zlib',
-        'snappy'.
-    clevel : int, optional
-        Compression level, 0 means no compression.
-    shuffle : int, optional
-        Shuffle filter, 0 means no shuffle, 1 means byte shuffle, 2 means
-        bit shuffle.
+    compression : string, optional
+        Name of primary compression library, e.g., 'blosc', 'zlib'.
+    compression_opts : object, optional
+        Options to primary compressor. E.g., for blosc, provide a dictionary
+        with keys 'cname', 'clevel' and 'shuffle'.
     fill_value : object
         Default value to use for uninitialised portions of the array.
     synchronizer : zarr.sync.ArraySynchronizer, optional
@@ -272,7 +253,7 @@ def open(path, mode='a', shape=None, chunks=None, dtype=None, cname=None,
 
     Returns
     -------
-    z : zarr.array.Array
+    z : zarr.core.Array
 
     """
 
@@ -291,10 +272,6 @@ def open(path, mode='a', shape=None, chunks=None, dtype=None, cname=None,
         elif mode in ['r', 'r+']:
             raise ValueError('path does not exist: %r' % path)
 
-    # translate into generic compression config
-    compression = 'blosc'
-    compression_opts = dict(cname=cname, clevel=clevel, shuffle=shuffle)
-
     # setup store
     store = DirectoryMap(path)
     exists = 'meta' in store  # use metadata key as indicator of existence
@@ -306,9 +283,8 @@ def open(path, mode='a', shape=None, chunks=None, dtype=None, cname=None,
         raise ValueError('array exists')
     elif mode == 'w' or (mode in ['a', 'w-', 'x'] and not exists):
         init_store(store, shape=shape, chunks=chunks, dtype=dtype,
-                   compression=compression,
-                   compression_opts=compression_opts, fill_value=fill_value,
-                   overwrite=True)
+                   compression=compression, compression_opts=compression_opts,
+                   fill_value=fill_value, overwrite=True)
 
     # determine readonly status
     readonly = mode == 'r'
@@ -322,75 +298,75 @@ def open(path, mode='a', shape=None, chunks=None, dtype=None, cname=None,
     return z
 
 
-def empty_like(z, shape=None, chunks=None, dtype=None, cname=None, clevel=None,
-               shuffle=None, synchronizer=None):
+def empty_like(z, shape=None, chunks=None, dtype=None, compression='blosc',
+               compression_opts=None, synchronizer=None):
     """Create an empty array like 'z'."""
 
     shape = shape if shape is not None else z.shape
     chunks = chunks if chunks is not None else z.chunks
     dtype = dtype if dtype is not None else z.dtype
-    cname = cname if cname is not None else z.cname
-    clevel = clevel if clevel is not None else z.clevel
-    shuffle = shuffle if shuffle is not None else z.shuffle
-    return empty(shape, chunks, dtype=dtype, cname=cname, clevel=clevel,
-                 shuffle=shuffle, synchronizer=synchronizer)
+    compression = compression if compression is not None else z.compression
+    compression_opts = compression_opts if compression_opts is not None else \
+        z.compression_opts
+    return empty(shape, chunks, dtype=dtype, compression=compression,
+                 compression_opts=compression_opts, synchronizer=synchronizer)
 
 
-def zeros_like(z, shape=None, chunks=None, dtype=None, cname=None, clevel=None,
-               shuffle=None, synchronizer=None):
+def zeros_like(z, shape=None, chunks=None, dtype=None, compression='blosc',
+               compression_opts=None, synchronizer=None):
     """Create an array of zeros like 'z'."""
 
     shape = shape if shape is not None else z.shape
     chunks = chunks if chunks is not None else z.chunks
     dtype = dtype if dtype is not None else z.dtype
-    cname = cname if cname is not None else z.cname
-    clevel = clevel if clevel is not None else z.clevel
-    shuffle = shuffle if shuffle is not None else z.shuffle
-    return zeros(shape, chunks, dtype=dtype, cname=cname, clevel=clevel,
-                 shuffle=shuffle, synchronizer=synchronizer)
+    compression = compression if compression is not None else z.compression
+    compression_opts = compression_opts if compression_opts is not None else \
+        z.compression_opts
+    return zeros(shape, chunks, dtype=dtype, compression=compression,
+                 compression_opts=compression_opts, synchronizer=synchronizer)
 
 
-def ones_like(z, shape=None, chunks=None, dtype=None, cname=None, clevel=None,
-              shuffle=None, synchronizer=None):
+def ones_like(z, shape=None, chunks=None, dtype=None, compression='blosc',
+              compression_opts=None, synchronizer=None):
     """Create an array of ones like 'z'."""
 
     shape = shape if shape is not None else z.shape
     chunks = chunks if chunks is not None else z.chunks
     dtype = dtype if dtype is not None else z.dtype
-    cname = cname if cname is not None else z.cname
-    clevel = clevel if clevel is not None else z.clevel
-    shuffle = shuffle if shuffle is not None else z.shuffle
-    return ones(shape, chunks, dtype=dtype, cname=cname, clevel=clevel,
-                shuffle=shuffle, synchronizer=synchronizer)
+    compression = compression if compression is not None else z.compression
+    compression_opts = compression_opts if compression_opts is not None else \
+        z.compression_opts
+    return ones(shape, chunks, dtype=dtype, compression=compression,
+                compression_opts=compression_opts, synchronizer=synchronizer)
 
 
 def full_like(z, shape=None, chunks=None, fill_value=None, dtype=None,
-              cname=None, clevel=None, shuffle=None, synchronizer=None):
+              compression='blosc', compression_opts=None, synchronizer=None):
     """Create a filled array like 'z'."""
 
     shape = shape if shape is not None else z.shape
     chunks = chunks if chunks is not None else z.chunks
     dtype = dtype if dtype is not None else z.dtype
-    cname = cname if cname is not None else z.cname
-    clevel = clevel if clevel is not None else z.clevel
-    shuffle = shuffle if shuffle is not None else z.shuffle
+    compression = compression if compression is not None else z.compression
+    compression_opts = compression_opts if compression_opts is not None else \
+        z.compression_opts
     fill_value = fill_value if fill_value is not None else z.fill_value
-    return full(shape, chunks, fill_value, dtype=dtype, cname=cname,
-                clevel=clevel, shuffle=shuffle, synchronizer=synchronizer)
+    return full(shape, chunks, fill_value, dtype=dtype, compression=compression,
+                compression_opts=compression_opts, synchronizer=synchronizer)
 
 
 def open_like(z, path, mode='a', shape=None, chunks=None, dtype=None,
-              cname=None, clevel=None, shuffle=None, fill_value=None,
+              compression='blosc', compression_opts=None, fill_value=None,
               synchronizer=None):
     """Open a persistent array like 'z'."""
 
     shape = shape if shape is not None else z.shape
     chunks = chunks if chunks is not None else z.chunks
     dtype = dtype if dtype is not None else z.dtype
-    cname = cname if cname is not None else z.cname
-    clevel = clevel if clevel is not None else z.clevel
-    shuffle = shuffle if shuffle is not None else z.shuffle
+    compression = compression if compression is not None else z.compression
+    compression_opts = compression_opts if compression_opts is not None else \
+        z.compression_opts
     fill_value = fill_value if fill_value is not None else z.fill_value
     return open(path, mode=mode, shape=shape, chunks=chunks, dtype=dtype,
-                cname=cname, clevel=clevel, shuffle=shuffle,
+                compression=compression, compression_opts=compression_opts,
                 fill_value=fill_value, synchronizer=synchronizer)

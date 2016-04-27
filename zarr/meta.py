@@ -1,17 +1,16 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, print_function, division
 import json
-import sys
 
 
 import numpy as np
 
 
-PY2 = sys.version_info[0] == 2
+from zarr.compat import PY2
 
 
 def decode_metadata(b):
-    meta = json.loads(b)
+    meta = json.loads(str(b, 'ascii'))
     meta = dict(
         shape=tuple(meta['shape']),
         chunks=tuple(meta['chunks']),
@@ -32,7 +31,8 @@ def encode_metadata(meta):
         compression_opts=meta['compression_opts'],
         fill_value=meta['fill_value'],
     )
-    return json.dumps(meta, indent=4, sort_keys=True)
+    s = json.dumps(meta, indent=4, sort_keys=True, ensure_ascii=True)
+    return s.encode('ascii')
 
 
 def encode_dtype(d):
