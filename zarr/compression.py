@@ -7,7 +7,7 @@ import numpy as np
 
 
 from zarr import blosc
-from zarr.compat import PY2, text_type, binary_type
+from zarr.compat import text_type
 
 
 registry = dict()
@@ -22,10 +22,10 @@ class BloscCompressor(object):
     def __init__(self, compression_opts):
         # at this point we expect compression_opts to be fully specified and
         # normalized
-        if PY2:
-            self.cname = compression_opts['cname']
-        else:
-            self.cname = compression_opts['cname'].encode('ascii')
+        cname = compression_opts['cname']
+        if isinstance(cname, text_type):
+            cname = cname.encode('ascii')
+        self.cname = cname
         self.clevel = compression_opts['clevel']
         self.shuffle = compression_opts['shuffle']
 
