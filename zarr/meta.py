@@ -1,46 +1,37 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, print_function, division
-
 import json
 import sys
-import numpy as np
 
-from zarr import defaults as _defaults
+
+import numpy as np
 
 
 PY2 = sys.version_info[0] == 2
 
 
-def loads(b):
+def decode_metadata(b):
     meta = json.loads(b)
-    if meta['compression'] not in ('blosc', None):
-        raise NotImplementedError("Only Blosc and no-compression are supported")
     meta = dict(
         shape=tuple(meta['shape']),
         chunks=tuple(meta['chunks']),
         dtype=decode_dtype(meta['dtype']),
+        compression=meta['compression'],
+        compression_opts=meta['compression_opts'],
         fill_value=meta['fill_value'],
-        cname=meta['compression_opts']['cname'].encode('ascii'),
-        clevel=meta['compression_opts']['clevel'],
-        shuffle=meta['compression_opts']['shuffle']
     )
-
     return meta
 
 
-def dumps(meta):
+def encode_metadata(meta):
     meta = dict(
         shape=meta['shape'],
         chunks=meta['chunks'],
         dtype=encode_dtype(meta['dtype']),
+        compression=meta['compression'],
+        compression_opts=meta['compression_opts'],
         fill_value=meta['fill_value'],
-        compression='blosc',
-        compression_opts=dict(
-            cname=meta['cname'] if PY2 else str(meta['cname'], 'ascii'),
-            clevel=meta['clevel'],
-            shuffle=meta['shuffle'])
     )
-
     return json.dumps(meta, indent=4, sort_keys=True)
 
 
@@ -57,7 +48,8 @@ def _decode_dtype_descr(d):
         # recurse to handle nested structures
         if PY2:
             # under PY2 numpy rejects unicode field names
-            d = [(f.encode('ascii'), _decode_dtype_descr(v)) for f, v in d]
+            d = [(f.encode('ascii'), _decode_dtype_descr(v)) 
+                 for f, v in d]
         else:
             d = [(f, _decode_dtype_descr(v)) for f, v in d]
     return d

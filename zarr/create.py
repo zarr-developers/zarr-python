@@ -1,22 +1,28 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, print_function, division
+import os
 
 
 import numpy as np
 
 
-from zarr.core import Array, SynchronizedArray
-from zarr.store import MemoryStore, DirectoryStore
+from zarr.core import Array, SynchronizedArray, init_store
 
 
 def _create(shape, chunks, dtype, cname, clevel, shuffle, fill_value,
-            synchronizer):
+            synchronizer, store=None):
 
-    # setup memory store
-    store = MemoryStore(shape=shape, chunks=chunks, dtype=dtype, cname=cname,
-                        clevel=clevel, shuffle=shuffle, fill_value=fill_value)
+    # translate into generic compression config
+    compression = 'blosc'
+    compression_opts = dict(cname=cname, clevel=clevel, shuffle=shuffle)
 
-    # handle optional synchronizer
+    # initialise store
+    store = dict()
+    init_store(store, shape=shape, chunks=chunks, dtype=dtype,
+               compression=compression, compression_opts=compression_opts,
+               fill_value=fill_value)
+
+    # instantiate array
     if synchronizer is not None:
         z = SynchronizedArray(store, synchronizer)
     else:
@@ -234,7 +240,7 @@ def array(data, chunks=None, dtype=None, cname=None, clevel=None,
 # noinspection PyShadowingBuiltins
 def open(path, mode='a', shape=None, chunks=None, dtype=None, cname=None,
          clevel=None, shuffle=None, fill_value=0, synchronizer=None):
-    """Open a persistent array.
+    """Open an array stored on the file system.
 
     Parameters
     ----------
@@ -270,16 +276,48 @@ def open(path, mode='a', shape=None, chunks=None, dtype=None, cname=None,
 
     """
 
-    # setup directory store
-    store = DirectoryStore(path=path, mode=mode, shape=shape, chunks=chunks,
-                           dtype=dtype, cname=cname, clevel=clevel,
-                           shuffle=shuffle, fill_value=fill_value)
+    # use same mode semantics as h5py, although N.B., here `path` is a
+    # directory:
+    # r : readonly, must exist
+    # r+ : read/write, must exist
+    # w : create, delete if exists
+    # w- or x : create, fail if exists
+    # a : read/write if exists, create otherwise (default)
+
+    # ensure directory exists
+    if not os.path.exists(path):
+        if mode in ['w', 'w-', 'x', 'a']:
+            os.makedirs(path)
+        elif mode in ['r', 'r+']:
+            raise ValueError('path does not exist: %r' % path)
+
+    # translate into generic compression config
+    compression = 'blosc'
+    compression_opts = dict(cname=cname, clevel=clevel, shuffle=shuffle)
+
+    # setup store
+    store = DirectoryMap(path)
+    exists = 'meta' in store  # use metadata key as indicator of existence
+
+    # ensure store is initialized
+    if mode in ['r', 'r+'] and not exists:
+        raise ValueError('array does not exist')
+    elif mode in ['w-', 'x'] and exists:
+        raise ValueError('array exists')
+    elif mode == 'w' or (mode in ['a', 'w-', 'x'] and not exists):
+        init_store(store, shape=shape, chunks=chunks, dtype=dtype,
+                   compression=compression,
+                   compression_opts=compression_opts, fill_value=fill_value,
+                   overwrite=True)
+
+    # determine readonly status
+    readonly = mode == 'r'
 
     # handle optional synchronizer
     if synchronizer is not None:
-        z = SynchronizedArray(store, synchronizer)
+        z = SynchronizedArray(store, synchronizer, readonly=readonly)
     else:
-        z = Array(store)
+        z = Array(store, readonly=readonly)
 
     return z
 

@@ -13,31 +13,31 @@ class DirectoryMap(MutableMapping):
     Parameters
     ----------
     path : string
-    suffix : string
 
     """
 
-    def __init__(self, path, read_only=False):
+    def __init__(self, path):
+
+        # guard conditions
+        if not os.path.exists(path):
+            raise ValueError('path does not exist')
+        elif not os.path.isdir(path):
+            raise ValueError('path is not a directory')
+
         self.path = path
-        self.read_only = read_only
-        if not os.path.exists(self.path):
-            if read_only:
-                raise ValueError('path does not exist')
-            else:
-                os.makedirs(self.path)
 
     def __getitem__(self, key):
-        try:
-            with open(os.path.join(self.path, key), 'rb') as f:
-                return f.read()
-        except (IOError, OSError):
+
+        # guard conditions
+        if key not in self:
             raise KeyError(key)
+
+        with open(os.path.join(self.path, key), 'rb') as f:
+            return f.read()
 
     def __setitem__(self, key, value):
 
         # guard conditions
-        if self.read_only:
-            raise PermissionError('mapping is read-only')
         if not isinstance(value, bytes):
             raise ValueError('value must be of type bytes')
 
@@ -55,18 +55,18 @@ class DirectoryMap(MutableMapping):
     def __delitem__(self, key):
 
         # guard conditions
-        if self.read_only:
-            raise PermissionError('mapping is read-only')
         if key not in self:
             raise KeyError(key)
 
         os.remove(os.path.join(self.path, key))
 
     def __contains__(self, key):
-        return os.path.exists(os.path.join(self.path, key))
+        return os.path.isfile(os.path.join(self.path, key))
 
     def keys(self):
-        return iter(os.listdir(self.path))
+        for key in os.listdir(self.path):
+            if os.path.isfile(os.path.join(self.path, key)):
+                yield key
 
     def __iter__(self):
         return self.keys()
@@ -91,11 +91,11 @@ class JSONFileMap(MutableMapping):
 
     """
 
-    def __init__(self, path, read_only=False):
+    def __init__(self, path, readonly=False):
 
         # guard conditions
         if not os.path.exists(path):
-            if read_only:
+            if readonly:
                 raise ValueError('path does not exist: %s' % path)
             else:
                 with open(path, mode='w') as f:
@@ -103,7 +103,7 @@ class JSONFileMap(MutableMapping):
 
         # setup instance
         self.path = path
-        self.read_only = read_only
+        self.readonly = readonly
 
     def __contains__(self, x):
         return x in self.asdict()
@@ -114,7 +114,7 @@ class JSONFileMap(MutableMapping):
     def __setitem__(self, key, value):
 
         # guard conditions
-        if self.read_only:
+        if self.readonly:
             raise PermissionError('mapping is read-only')
 
         # load existing data
@@ -130,7 +130,7 @@ class JSONFileMap(MutableMapping):
     def __delitem__(self, key):
 
         # guard conditions
-        if self.read_only:
+        if self.readonly:
             raise PermissionError('mapping is read-only')
 
         # load existing data
@@ -152,7 +152,7 @@ class JSONFileMap(MutableMapping):
         # override to provide update in a single write
 
         # guard conditions
-        if self.read_only:
+        if self.readonly:
             raise PermissionError('mapping is read-only')
 
         # load existing data

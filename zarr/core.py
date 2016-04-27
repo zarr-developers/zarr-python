@@ -1,11 +1,10 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, print_function, division
-
-from collections import MutableMapping
 from functools import reduce  # TODO PY2 compatibility
 import operator
 import itertools
 import multiprocessing
+import json
 
 
 import numpy as np
@@ -14,7 +13,10 @@ import numpy as np
 from zarr import blosc
 from zarr.sync import SynchronizedAttributes
 from zarr.util import is_total_slice, normalize_array_selection, \
-    get_chunk_range, human_readable_size
+    get_chunk_range, human_readable_size, normalize_shape, normalize_chunks, \
+    normalize_resize_args
+from zarr.meta import decode_metadata, encode_metadata
+from zarr.compat import itervalues
 
 
 _blosc_use_context = False
@@ -54,40 +56,82 @@ _repr_shuffle = [
 ]
 
 
+def init_store(store, shape, chunks, dtype=None, compression='blosc',
+               compression_opts=None, fill_value=None, overwrite=False):
+    """Initialise an array store with the given configuration."""
+
+    # guard conditions
+    empty = len(store) == 0
+    if not empty and not overwrite:
+        raise ValueError('store is not empty')
+
+    # normalise metadata
+    shape = normalize_shape(shape)
+    chunks = normalize_chunks(chunks, shape)
+    dtype = np.dtype(dtype)
+    if compression != 'blosc':
+        raise NotImplementedError('only blosc compression is '
+                                  'currently implemented')
+    compression_opts = normalize_blosc_opts(compression_opts)
+
+    # handle any pre-existing data in store
+    for key in list(store.keys()):
+        del store[key]
+
+    # initialise metadata
+    meta = dict(shape=shape, chunks=chunks, dtype=dtype,
+                compression=compression, compression_opts=compression_opts,
+                fill_value=fill_value)
+    store['meta'] = encode_metadata(meta)
+
+    # initialise attributes
+    store['attrs'] = json.dumps(dict())
+
+
 class Array(object):
 
-    def __init__(self, store, **kwargs):
-        """Instantiate an array.
+    def __init__(self, store, readonly=False):
+        """Instantiate an array from an existing store.
 
         Parameters
         ----------
-        store : zarr.store.base.ArrayStore
+        store : MutableMapping
             Array store.
+        readonly : bool, optional
+            True if array should be protected against modification.
 
         """
-        if isinstance(store, MutableMapping):
-            from .store import ArrayStore
-            store = ArrayStore(data=store, **kwargs)
 
         self.store = store
-        self.shape = store.meta['shape']
-        self.chunks = store.meta['chunks']
-        self.dtype = store.meta['dtype']
-        self.cname = store.meta['cname']
-        self.clevel = store.meta['clevel']
-        self.shuffle = store.meta['shuffle']
-        self.fill_value = store.meta['fill_value']
-        self.attrs = store.attrs
+        self.readonly = readonly
 
-    @property
-    def cbytes(self):
-        # pass through
-        return self.store.cbytes
+        # initialise metadata
+        try:
+            meta_bytes = store['meta']
+        except KeyError:
+            raise ValueError('store has no metadata')
+        else:
+            meta = decode_metadata(meta_bytes)
+            self.meta = meta
+            self.shape = meta['shape']
+            self.chunks = meta['chunks']
+            self.dtype = meta['dtype']
+            self.compression = meta['compression']
+            if self.compression != 'blosc':
+                raise NotImplementedError('only blosc compression is '
+                                          'currently implemented')
+            self.compression_opts = meta['compression_opts']
+            self.fill_value = meta['fill_value']
 
-    @property
-    def initialized(self):
-        # pass through
-        return self.store.initialized
+        # initialise attributes
+        self.attrs = Attributes(store, readonly=readonly)
+
+    def flush_metadata(self):
+        meta = dict(shape=self.shape, chunks=self.chunks, dtype=self.dtype,
+                    compression=self.compression,
+                    compression_opts=self.compression_opts,
+                    fill_value=self.fill_value)
+        self.store['meta'] = encode_metadata(meta)
 
     @property
     def size(self):
@@ -102,12 +146,29 @@ class Array(object):
         return self.size * self.itemsize
 
     @property
+    def cbytes(self):
+        """The total number of stored bytes of data for the array."""
+
+        if hasattr(self.store, 'size'):
+            # pass through
+            return self.store.size
+        elif isinstance(self.store, dict):
+            # cheap to compute by summing length of values
+            return sum(len(v) for v in itervalues(self.store))
+        else:
+            return -1
+
+    @property
+    def initialized(self):
+        """The number of chunks that have been initialized."""
+        # N.B., expect 'meta' and 'attrs' keys in store also, so subtract 2
+        return len(self.store) - 2
+
+    @property
     def cdata_shape(self):
         return tuple(
             int(np.ceil(s / c)) for s, c in zip(self.shape, self.chunks)
         )
-
-    # methods
 
     def __getitem__(self, item):
 
@@ -155,7 +216,7 @@ class Array(object):
     def __setitem__(self, key, value):
 
         # guard conditions
-        if self.store.read_only:
+        if self.readonly:
             raise PermissionError('array is read-only')
 
         # normalize selection
@@ -301,6 +362,7 @@ class Array(object):
             chunk[key] = value
 
         # compress
+        # TODO translate compression options
         cdata = blosc.compress(chunk, self.cname, self.clevel,
                                self.shuffle, _blosc_use_context)
 
@@ -309,6 +371,7 @@ class Array(object):
         self.store.data[ckey] = cdata
 
     def __repr__(self):
+        # TODO handle compression options
         r = '%s.%s(' % (type(self).__module__, type(self).__name__)
         r += '%s' % str(self.shape)
         r += ', %s' % str(self.dtype)
@@ -331,16 +394,33 @@ class Array(object):
         return repr(self)
 
     def resize(self, *args):
+        """Resize the array."""
 
         # guard conditions
-        if self.store.read_only:
+        if self.readonly:
             raise PermissionError('array is read-only')
 
-        # pass through
-        self.store.resize(*args)
+        # normalize new shape argument
+        old_shape = self.shape
+        new_shape = normalize_resize_args(old_shape, *args)
 
-        # update shape after resize
-        self.shape = self.store.meta['shape']
+        # determine the new number and arrangement of chunks
+        chunks = self.chunks
+        new_cdata_shape = tuple(int(np.ceil(s / c))
+                                for s, c in zip(new_shape, chunks))
+
+        # remove any chunks not within range
+        for key in list(self.store):
+            if key not in ['meta', 'attrs']:
+                cidx = map(int, key.split('.'))
+                if all(i < c for i, c in zip(cidx, new_cdata_shape)):
+                    pass  # keep the chunk
+                else:
+                    del self.store[key]
+
+        # update metadata
+        self.shape = new_shape
+        self.flush_metadata()
 
     def append(self, data, axis=0):
         """Append `data` to `axis`.
@@ -360,7 +440,7 @@ class Array(object):
         """
 
         # guard conditions
-        if self.store.read_only:
+        if self.readonly:
             raise PermissionError('array is read-only')
 
         # ensure data is array-like
@@ -398,27 +478,27 @@ class Array(object):
 
 class SynchronizedArray(Array):
 
-    def __init__(self, store, synchronizer):
-        super(SynchronizedArray, self).__init__(store)
-        self._synchronizer = synchronizer
-        # wrap attributes
-        self.attrs = SynchronizedAttributes(store.attrs, synchronizer)
+    def __init__(self, store, synchronizer, readonly=False):
+        super(SynchronizedArray, self).__init__(store, readonly=readonly)
+        self.synchronizer = synchronizer
+        self.attrs = SynchronizedAttributes(store, synchronizer,
+                                            readonly=readonly)
 
     def _chunk_setitem(self, cidx, key, value):
-        with self._synchronizer.lock_chunk(cidx):
+        with self.synchronizer.lock_chunk(cidx):
             super(SynchronizedArray, self)._chunk_setitem(cidx, key, value)
 
     def resize(self, *args):
-        with self._synchronizer.lock_array():
+        with self.synchronizer.lock_array():
             super(SynchronizedArray, self).resize(*args)
 
     def append(self, data, axis=0):
-        with self._synchronizer.lock_array():
+        with self.synchronizer.lock_array():
             super(SynchronizedArray, self).append(data, axis=axis)
 
     def __repr__(self):
         r = super(SynchronizedArray, self).__repr__()
         r += ('\n  synchronizer: %s.%s' %
-              (type(self._synchronizer).__module__,
-               type(self._synchronizer).__name__))
+              (type(self.synchronizer).__module__,
+               type(self.synchronizer).__name__))
         return r
