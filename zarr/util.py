@@ -7,7 +7,8 @@ import numpy as np
 
 def normalize_shape(shape):
     """Convenience function to normalize the `shape` argument."""
-
+    if shape is None:
+        raise ValueError('shape expected')
     try:
         shape = tuple(int(s) for s in shape)
     except TypeError:
@@ -18,7 +19,8 @@ def normalize_shape(shape):
 def normalize_chunks(chunks, shape):
     """Convenience function to normalize the `chunks` argument for an array
     with the given `shape`."""
-
+    if chunks is None:
+        raise ValueError('chunks expected')
     try:
         chunks = tuple(int(c) for c in chunks)
     except TypeError:

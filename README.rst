@@ -56,9 +56,9 @@ Create an array:
     >>> z = zarr.empty(shape=(10000, 1000), dtype='i4', chunks=(1000, 100))
     >>> z
     zarr.core.Array((10000, 1000), int32, chunks=(1000, 100))
-      cname: blosclz; clevel: 5; shuffle: 1 (BYTESHUFFLE)
-      nbytes: 38.1M; cbytes: 0; initialized: 0/100
-      store: zarr.store.MemoryStore
+      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
+      nbytes: 38.1M; nbytes_stored: 278; ratio: 143884.9; initialized: 0/100
+      store: builtins.dict
 
 Fill it with some data:
 
@@ -67,9 +67,9 @@ Fill it with some data:
     >>> z[:] = np.arange(10000000, dtype='i4').reshape(10000, 1000)
     >>> z
     zarr.core.Array((10000, 1000), int32, chunks=(1000, 100))
-      cname: blosclz; clevel: 5; shuffle: 1 (BYTESHUFFLE)
-      nbytes: 38.1M; cbytes: 2.0M; ratio: 19.3; initialized: 100/100
-      store: zarr.store.MemoryStore
+      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
+      nbytes: 38.1M; nbytes_stored: 2.0M; ratio: 19.3; initialized: 100/100
+      store: builtins.dict
 
 Obtain a NumPy array by slicing:
 
@@ -107,15 +107,15 @@ Resize the array and add more data:
     >>> z.resize(20000, 1000)
     >>> z
     zarr.core.Array((20000, 1000), int32, chunks=(1000, 100))
-      cname: blosclz; clevel: 5; shuffle: 1 (BYTESHUFFLE)
-      nbytes: 76.3M; cbytes: 2.0M; ratio: 38.5; initialized: 100/200
-      store: zarr.store.MemoryStore
+      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
+      nbytes: 76.3M; nbytes_stored: 2.0M; ratio: 38.5; initialized: 100/200
+      store: builtins.dict
     >>> z[10000:, :] = np.arange(10000000, dtype='i4').reshape(10000, 1000)
     >>> z
     zarr.core.Array((20000, 1000), int32, chunks=(1000, 100))
-      cname: blosclz; clevel: 5; shuffle: 1 (BYTESHUFFLE)
-      nbytes: 76.3M; cbytes: 4.0M; ratio: 19.3; initialized: 200/200
-      store: zarr.store.MemoryStore
+      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
+      nbytes: 76.3M; nbytes_stored: 4.0M; ratio: 19.3; initialized: 200/200
+      store: builtins.dict
 
 For convenience, an ``append()`` method is also available, which can be used to
 append data to any axis:
@@ -127,15 +127,15 @@ append data to any axis:
     >>> z.append(a+a)
     >>> z
     zarr.core.Array((20000, 1000), int32, chunks=(1000, 100))
-      cname: blosclz; clevel: 5; shuffle: 1 (BYTESHUFFLE)
-      nbytes: 76.3M; cbytes: 3.6M; ratio: 21.2; initialized: 200/200
-      store: zarr.store.MemoryStore
+      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
+      nbytes: 76.3M; nbytes_stored: 3.6M; ratio: 21.2; initialized: 200/200
+      store: builtins.dict
     >>> z.append(np.vstack([a, a]), axis=1)
     >>> z
     zarr.core.Array((20000, 2000), int32, chunks=(1000, 100))
-      cname: blosclz; clevel: 5; shuffle: 1 (BYTESHUFFLE)
-      nbytes: 152.6M; cbytes: 7.6M; ratio: 20.2; initialized: 400/400
-      store: zarr.store.MemoryStore
+      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
+      nbytes: 152.6M; nbytes_stored: 7.6M; ratio: 20.2; initialized: 400/400
+      store: builtins.dict
 
 Persistence
 -----------
@@ -149,9 +149,9 @@ Create a persistent array (data stored on disk):
     >>> z[:] = np.arange(10000000, dtype='i4').reshape(10000, 1000)
     >>> z
     zarr.core.Array((10000, 1000), int32, chunks=(1000, 100))
-      cname: blosclz; clevel: 5; shuffle: 1 (BYTESHUFFLE)
-      nbytes: 38.1M; cbytes: 2.0M; ratio: 19.3; initialized: 100/100
-      store: zarr.store.DirectoryStore
+      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
+      nbytes: 38.1M; nbytes_stored: 2.0M; ratio: 19.3; initialized: 100/100
+      store: zarr.mappings.DirectoryMap
 
 There is no need to close a persistent array. Data are automatically flushed
 to disk.
@@ -174,7 +174,12 @@ chunk-wise over data. Try it with `dask.array
 <http://dask.pydata.org/en/latest/array.html>`_. If using in a
 multi-threaded, set zarr to use blosc in contextual mode::
 
-    >>> zarr.set_blosc_options(use_context=True)
+    >>> from zarr import blosc
+    >>> blosc.use_context(True)
+    <zarr.blosc.use_context...
+
+This can also be used as a context manager if you only want to switch to
+non-contextual mode for a specific operation.
 
 Acknowledgments
 ---------------

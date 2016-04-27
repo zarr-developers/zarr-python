@@ -59,7 +59,7 @@ class Attributes(MutableMapping):
         self.put(d)
 
     def asdict(self):
-        return json.loads(self.store[self.key])
+        return json.loads(str(self.store[self.key], 'ascii'))
 
     def update(self, *args, **kwargs):
         # override to provide update in a single write

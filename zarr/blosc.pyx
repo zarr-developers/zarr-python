@@ -6,7 +6,6 @@
 from __future__ import absolute_import, print_function, division
 import sys
 import ctypes
-import multiprocessing
 
 
 from numpy cimport ndarray
@@ -16,7 +15,7 @@ from libc.stdint cimport uintptr_t
 from .definitions cimport malloc, realloc, free, PyBytes_AsString
 
 
-PY2 = sys.version_info[0] == 2
+from zarr.compat import PY2, text_type
 
 
 cdef extern from "blosc.h":
@@ -61,7 +60,9 @@ def destroy():
     blosc_destroy()
 
 
-def compname_to_compcode(bytes cname):
+def compname_to_compcode(cname):
+    if isinstance(cname, text_type):
+        cname = cname.encode('ascii')
     return blosc_compname_to_compcode(cname)
 
 
@@ -187,6 +188,6 @@ class use_context(object):
     def __enter__(self):
         return
 
-    def __exit__(self):
+    def __exit__(self, *args, **kwargs):
         global _use_context
         _use_context = self.old_use_context

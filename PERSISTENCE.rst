@@ -1,6 +1,8 @@
 zarr - Persistence
 ==================
 
+TODO generalise this to any storage system supporting key/value access.
+
 This document describes the file organisation and formats used to save zarr
 arrays on disk.
 
@@ -13,7 +15,7 @@ as a root directory.
 Configuration metadata
 ----------------------
 
-Within a root directory, a file called "__zmeta__" contains essential
+Within a root directory, a file called "meta" contains essential
 configuration metadata about the array. The format of this file is
 JSON. Mandatory fields and allowed values are as follows:
 
@@ -21,37 +23,40 @@ JSON. Mandatory fields and allowed values are as follows:
 * ``chunks`` - list of integers - the size of each dimension of a chunk, i.e., the chunk shape
 * ``dtype`` - string - a description of the data type, following Numpy convention
 * ``fill_value`` - scalar value - value to use for uninitialised portions of the array
-* ``cname`` - string - name of the compression library used
-* ``clevel`` - integer - compression level
-* ``shuffle`` - integer - shuffle filter (0 = no shuffle, 1 = byte shuffle, 2 = bit shuffle)
+* ``compression`` - string - name of the primary compression library used
+* ``compression_opts`` - compression options
 
 For example::
 
     >>> import zarr
     >>> z = zarr.open('example.zarr', mode='w', shape=(1000000, 1000),
     ...               chunks=(10000, 100), dtype='i4', fill_value=42,
-    ...               cname='lz4', clevel=3, shuffle=1)
-    >>> print(open('example.zarr/__zmeta__').read())
+    ...               compression='blosc', compression_opts=dict(cname='lz4',
+    ...               clevel=3, shuffle=1))
+    >>> print(open('example.zarr/meta').read())
     {
         "chunks": [
             10000,
             100
         ],
-        "clevel": 3,
-        "cname": "lz4",
+        "compression": "blosc",
+        "compression_opts": {
+            "clevel": 3,
+            "cname": "lz4",
+            "shuffle": 1
+        },
         "dtype": "<i4",
         "fill_value": 42,
         "shape": [
             1000000,
             1000
-        ],
-        "shuffle": 1
+        ]
     }
 
 User metadata (attributes)
 --------------------------
 
-Within a root directory, a file called "__zattr__" contains user
+Within a root directory, a file called "attrs" contains user
 metadata associated with the array, i.e., user attributes. The format
 of this file is JSON.
 
@@ -60,11 +65,12 @@ For example::
     >>> import zarr
     >>> z = zarr.open('example.zarr', mode='w', shape=(1000000, 1000),
     ...               chunks=(10000, 100), dtype='i4', fill_value=42,
-    ...               cname='lz4', clevel=3, shuffle=1)
+    ...               compression='blosc', compression_opts=dict(cname='lz4',
+    ...               clevel=3, shuffle=1))
     >>> z.attrs['foo'] = 42
     >>> z.attrs['bar'] = 4.2
     >>> z.attrs['baz'] = 'quux'
-    >>> print(open('example.zarr/__zattr__').read())
+    >>> print(open('example.zarr/attrs').read())
     {
         "bar": 4.2,
         "baz": "quux",
@@ -74,11 +80,10 @@ For example::
 Array data
 ----------
 
-Within a root directory, a sub-directory called "__zdata__" contains
-the array data. The array data is divided into chunks, each of which
+The array data is divided into chunks, each of which
 is compressed using the `blosc meta-compression library
 <https://github.com/blosc/c-blosc>`_. Each chunk is stored in a
-separate file.
+separate file within the root directory.
 
 The chunk files are named according to the chunk indices. E.g., for a
 2-dimensional array with shape (100, 100) and chunk shape (10, 10)
@@ -115,10 +120,11 @@ For example::
     >>> import zarr
     >>> z = zarr.open('example.zarr', mode='w', shape=(1000000, 1000),
     ...               chunks=(10000, 100), dtype='i4', fill_value=42,
-    ...               cname='lz4', clevel=3, shuffle=1)
+    ...               compression='blosc', compression_opts=dict(cname='lz4',
+    ...               clevel=3, shuffle=1))
     >>> import os
-    >>> os.listdir('example.zarr/__zdata__')
-    []
+    >>> os.listdir('example.zarr')
+    ['meta', 'attrs']
     >>> z[:] = 0
-    >>> sorted(os.listdir('example.zarr/__zdata__'))[:5]
+    >>> sorted(os.listdir('example.zarr'))[:5]
     ['0.0', '0.1', '0.2', '0.3', '0.4']

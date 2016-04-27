@@ -10,7 +10,9 @@ from zarr.compat import PY2
 
 
 def decode_metadata(b):
-    meta = json.loads(str(b, 'ascii'))
+    if not PY2:
+        b = str(b, 'ascii')
+    meta = json.loads(b)
     meta = dict(
         shape=tuple(meta['shape']),
         chunks=tuple(meta['chunks']),
@@ -32,7 +34,9 @@ def encode_metadata(meta):
         fill_value=meta['fill_value'],
     )
     s = json.dumps(meta, indent=4, sort_keys=True, ensure_ascii=True)
-    return s.encode('ascii')
+    if not PY2:
+        s = s.encode('ascii')
+    return s
 
 
 def encode_dtype(d):

@@ -18,13 +18,6 @@ from zarr.attrs import Attributes, SynchronizedAttributes
 from zarr.compat import itervalues
 
 
-_repr_shuffle = [
-    '0 (NOSHUFFLE)',
-    '1 (BYTESHUFFLE)',
-    '2 (BITSHUFFLE)',
-]
-
-
 def init_store(store, shape, chunks, dtype=None, compression='blosc',
                compression_opts=None, fill_value=None, overwrite=False):
     """Initialise an array store with the given configuration."""
@@ -347,10 +340,12 @@ class Array(object):
         r += ', chunks=%s' % str(self.chunks)
         r += ')'
         r += '\n  compression: %s' % self.compression
+        r += '; compression_opts: %s' % str(self.compression_opts)
         r += '\n  nbytes: %s' % human_readable_size(self.nbytes)
-        if self.cbytes > 0:
-            r += '; cbytes: %s' % human_readable_size(self.cbytes)
-            r += '; ratio: %.1f' % (self.nbytes / self.cbytes)
+        if self.nbytes_stored > 0:
+            r += '; nbytes_stored: %s' % human_readable_size(
+                self.nbytes_stored)
+            r += '; ratio: %.1f' % (self.nbytes / self.nbytes_stored)
         n_chunks = reduce(operator.mul, self.cdata_shape)
         r += '; initialized: %s/%s' % (self.initialized, n_chunks)
         r += '\n  store: %s.%s' % (type(self.store).__module__,
