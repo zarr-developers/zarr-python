@@ -285,3 +285,15 @@ def test_append_2d_axis():
     eq(e.dtype, z.dtype)
     eq((10, 10), z.chunks)
     assert_array_equal(e, z[:])
+
+
+def test_create_with_mutable_mapping():
+    x = Array({}, shape=(1000, 1000), chunks=(100, 100))
+    assert_is_instance(x, Array)
+    eq(x.shape, (1000, 1000))
+
+    x[:] = 1
+    x.store.flush()
+
+    y = Array(x.store.data.copy())
+    eq(y.store.meta, x.store.meta)

@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, print_function, division
+
+from collections import MutableMapping
 from functools import reduce  # TODO PY2 compatibility
 import operator
 import itertools
@@ -54,7 +56,7 @@ _repr_shuffle = [
 
 class Array(object):
 
-    def __init__(self, store):
+    def __init__(self, store, **kwargs):
         """Instantiate an array.
 
         Parameters
@@ -63,6 +65,9 @@ class Array(object):
             Array store.
 
         """
+        if isinstance(store, MutableMapping):
+            from .store import ArrayStore
+            store = ArrayStore(data=store, **kwargs)
 
         self.store = store
         self.shape = store.meta['shape']
