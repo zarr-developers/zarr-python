@@ -37,8 +37,7 @@ def init_store(store, shape, chunks, dtype=None, compression='blosc',
     )
 
     # delete any pre-existing items in store
-    for key in list(store.keys()):
-        del store[key]
+    store.clear()
 
     # initialise metadata
     meta = dict(shape=shape, chunks=chunks, dtype=dtype,
