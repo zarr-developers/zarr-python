@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, print_function, division
 import zlib
+import bz2
 
 
 import numpy as np
@@ -107,6 +108,38 @@ class ZlibCompressor(object):
 
 registry['zlib'] = ZlibCompressor
 registry['gzip'] = ZlibCompressor  # alias
+
+
+class BZ2Compressor(object):
+
+    default_level = 1
+
+    def __init__(self, compression_opts):
+        self.level = compression_opts
+
+    @classmethod
+    def normalize_compression_opts(cls, compression_opts):
+        """Convenience function to normalize compression options."""
+        if compression_opts is None:
+            level = cls.default_level
+        else:
+            level = int(compression_opts)
+        if level < 1 or level > 9:
+            raise ValueError('invalid compression level: %s' % level)
+        return level
+
+    # noinspection PyMethodMayBeStatic
+    def decompress(self, cdata, array):
+        data = bz2.decompress(cdata)
+        src = np.frombuffer(data, dtype=array.dtype).reshape(array.shape)
+        np.copyto(array, src)
+
+    def compress(self, array):
+        data = array.tobytes()
+        return bz2.compress(data, self.level)
+
+
+registry['bz2'] = BZ2Compressor
 
 
 def get_compressor_cls(compression):
