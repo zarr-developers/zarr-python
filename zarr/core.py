@@ -16,6 +16,7 @@ from zarr.util import is_total_slice, normalize_array_selection, \
 from zarr.meta import decode_metadata, encode_metadata
 from zarr.attrs import Attributes, SynchronizedAttributes
 from zarr.compat import itervalues
+from zarr.errors import ReadOnlyError
 
 
 def init_store(store, shape, chunks, dtype=None, compression='blosc',
@@ -181,7 +182,7 @@ class Array(object):
 
         # guard conditions
         if self.readonly:
-            raise PermissionError('array is read-only')
+            raise ReadOnlyError('array is read-only')
 
         # normalize selection
         selection = normalize_array_selection(key, self.shape)
@@ -359,7 +360,7 @@ class Array(object):
 
         # guard conditions
         if self.readonly:
-            raise PermissionError('array is read-only')
+            raise ReadOnlyError('array is read-only')
 
         # normalize new shape argument
         old_shape = self.shape
@@ -402,7 +403,7 @@ class Array(object):
 
         # guard conditions
         if self.readonly:
-            raise PermissionError('array is read-only')
+            raise ReadOnlyError('array is read-only')
 
         # ensure data is array-like
         if not hasattr(data, 'shape') or not hasattr(data, 'dtype'):
