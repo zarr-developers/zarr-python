@@ -33,7 +33,7 @@ def init_store(store, shape, chunks, dtype=None, compression='blosc',
     chunks = normalize_chunks(chunks, shape)
     dtype = np.dtype(dtype)
     compressor_cls = get_compressor_cls(compression)
-    compression_opts = compressor_cls.normalize_compression_opts(
+    compression_opts = compressor_cls.normalize_opts(
         compression_opts
     )
 

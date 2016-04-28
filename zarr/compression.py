@@ -31,7 +31,7 @@ class BloscCompressor(object):
         self.shuffle = compression_opts['shuffle']
 
     @classmethod
-    def normalize_compression_opts(cls, compression_opts):
+    def normalize_opts(cls, compression_opts):
         """Convenience function to normalize compression options."""
 
         if compression_opts is None:
@@ -85,7 +85,7 @@ class ZlibCompressor(object):
         self.level = compression_opts
 
     @classmethod
-    def normalize_compression_opts(cls, compression_opts):
+    def normalize_opts(cls, compression_opts):
         """Convenience function to normalize compression options."""
         if compression_opts is None:
             level = cls.default_level
@@ -118,7 +118,7 @@ class BZ2Compressor(object):
         self.level = compression_opts
 
     @classmethod
-    def normalize_compression_opts(cls, compression_opts):
+    def normalize_opts(cls, compression_opts):
         """Convenience function to normalize compression options."""
         if compression_opts is None:
             level = cls.default_level
@@ -156,15 +156,15 @@ else:
         default_filters = None
 
         def __init__(self, compression_opts):
-            # at this point we expect compression_opts to be fully specified and
-            # normalized
+            # at this point we expect compression_opts to be fully specified
+            # and normalized
             self.format = compression_opts['format']
             self.check = compression_opts['check']
             self.preset = compression_opts['preset']
             self.filters = compression_opts['filters']
 
         @classmethod
-        def normalize_compression_opts(cls, compression_opts):
+        def normalize_opts(cls, compression_opts):
             """Convenience function to normalize compression options."""
 
             if compression_opts is None:
@@ -224,6 +224,31 @@ else:
 
 
     registry['lzma'] = LZMACompressor
+
+
+class NoCompressor(object):
+
+    def __init__(self, compression_opts):
+        pass
+
+    @classmethod
+    def normalize_opts(cls, compression_opts):
+        if compression_opts is not None:
+            raise ValueError('no compression options supported')
+        return None
+
+    # noinspection PyMethodMayBeStatic
+    def decompress(self, cdata, array):
+        src = np.frombuffer(cdata, dtype=array.dtype).reshape(array.shape)
+        np.copyto(array, src)
+
+    # noinspection PyMethodMayBeStatic
+    def compress(self, array):
+        data = array.tobytes()
+        return data
+
+
+registry[None] = NoCompressor
 
 
 def get_compressor_cls(compression):
