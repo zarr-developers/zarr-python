@@ -29,7 +29,7 @@ def _create(shape, chunks, dtype, compression, compression_opts, fill_value,
     return z
 
 
-def empty(shape, chunks, dtype=None, compression='blosc', 
+def empty(shape, chunks, dtype=None, compression='blosc',
           compression_opts=None, store=None, synchronizer=None):
     """Create an empty array.
 
@@ -44,7 +44,7 @@ def empty(shape, chunks, dtype=None, compression='blosc',
     compression : string, optional
         Name of primary compression library, e.g., 'blosc', 'zlib'.
     compression_opts : object, optional
-        Options to primary compressor. E.g., for blosc, provide a dictionary 
+        Options to primary compressor. E.g., for blosc, provide a dictionary
         with keys 'cname', 'clevel' and 'shuffle'.
     store : MutableMapping, optional
         Array storage. If not provided, a Python dict will be used, meaning
@@ -58,12 +58,12 @@ def empty(shape, chunks, dtype=None, compression='blosc',
 
     """
 
-    return _create(shape=shape, chunks=chunks, dtype=dtype, 
-                   compression=compression, compression_opts=compression_opts, 
+    return _create(shape=shape, chunks=chunks, dtype=dtype,
+                   compression=compression, compression_opts=compression_opts,
                    fill_value=None, store=store, synchronizer=synchronizer)
 
 
-def zeros(shape, chunks, dtype=None, compression='blosc', 
+def zeros(shape, chunks, dtype=None, compression='blosc',
           compression_opts=None, store=None, synchronizer=None):
     """Create an array, with zero being used as the default value for
     uninitialised portions of the array.
@@ -79,7 +79,7 @@ def zeros(shape, chunks, dtype=None, compression='blosc',
     compression : string, optional
         Name of primary compression library, e.g., 'blosc', 'zlib'.
     compression_opts : object, optional
-        Options to primary compressor. E.g., for blosc, provide a dictionary 
+        Options to primary compressor. E.g., for blosc, provide a dictionary
         with keys 'cname', 'clevel' and 'shuffle'.
     store : MutableMapping, optional
         Array storage. If not provided, a Python dict will be used, meaning
@@ -93,13 +93,13 @@ def zeros(shape, chunks, dtype=None, compression='blosc',
 
     """
 
-    return _create(shape=shape, chunks=chunks, dtype=dtype, 
-                   compression=compression, 
+    return _create(shape=shape, chunks=chunks, dtype=dtype,
+                   compression=compression,
                    compression_opts=compression_opts, fill_value=0,
                    store=store, synchronizer=synchronizer)
 
 
-def ones(shape, chunks, dtype=None, compression='blosc', 
+def ones(shape, chunks, dtype=None, compression='blosc',
          compression_opts=None, store=None, synchronizer=None):
     """Create an array, with one being used as the default value for
     uninitialised portions of the array.
@@ -115,7 +115,7 @@ def ones(shape, chunks, dtype=None, compression='blosc',
     compression : string, optional
         Name of primary compression library, e.g., 'blosc', 'zlib'.
     compression_opts : object, optional
-        Options to primary compressor. E.g., for blosc, provide a dictionary 
+        Options to primary compressor. E.g., for blosc, provide a dictionary
         with keys 'cname', 'clevel' and 'shuffle'.
     store : MutableMapping, optional
         Array storage. If not provided, a Python dict will be used, meaning
@@ -129,12 +129,12 @@ def ones(shape, chunks, dtype=None, compression='blosc',
 
     """
 
-    return _create(shape=shape, chunks=chunks, dtype=dtype, 
-                   compression=compression, compression_opts=compression_opts, 
+    return _create(shape=shape, chunks=chunks, dtype=dtype,
+                   compression=compression, compression_opts=compression_opts,
                    fill_value=1, store=store, synchronizer=synchronizer)
 
 
-def full(shape, chunks, fill_value, dtype=None, compression='blosc', 
+def full(shape, chunks, fill_value, dtype=None, compression='blosc',
          compression_opts=None, store=None, synchronizer=None):
     """Create an array, with `fill_value` being used as the default value for
     uninitialised portions of the array.
@@ -152,7 +152,7 @@ def full(shape, chunks, fill_value, dtype=None, compression='blosc',
     compression : string, optional
         Name of primary compression library, e.g., 'blosc', 'zlib'.
     compression_opts : object, optional
-        Options to primary compressor. E.g., for blosc, provide a dictionary 
+        Options to primary compressor. E.g., for blosc, provide a dictionary
         with keys 'cname', 'clevel' and 'shuffle'.
     store : MutableMapping, optional
         Array storage. If not provided, a Python dict will be used, meaning
@@ -373,9 +373,9 @@ def full_like(z, shape=None, chunks=None, fill_value=None, dtype=None,
     compression_opts = compression_opts if compression_opts is not None else \
         z.compression_opts
     fill_value = fill_value if fill_value is not None else z.fill_value
-    return full(shape, chunks, fill_value, dtype=dtype, compression=compression,
-                compression_opts=compression_opts, store=store,
-                synchronizer=synchronizer)
+    return full(shape, chunks, fill_value, dtype=dtype,
+                compression=compression, compression_opts=compression_opts,
+                store=store, synchronizer=synchronizer)
 
 
 def open_like(z, path, mode='a', shape=None, chunks=None, dtype=None,

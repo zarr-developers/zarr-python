@@ -52,7 +52,7 @@ def _decode_dtype_descr(d):
         # recurse to handle nested structures
         if PY2:
             # under PY2 numpy rejects unicode field names
-            d = [(f.encode('ascii'), _decode_dtype_descr(v)) 
+            d = [(f.encode('ascii'), _decode_dtype_descr(v))
                  for f, v in d]
         else:
             d = [(f, _decode_dtype_descr(v)) for f, v in d]

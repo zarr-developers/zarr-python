@@ -1,7 +1,7 @@
 # from zarr.meta import dumps, loads
-import zarr
-
-from nose.tools import eq_ as eq
+# import zarr
+#
+# from nose.tools import eq_ as eq
 
 
 # def test_simple():

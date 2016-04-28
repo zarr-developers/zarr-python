@@ -49,7 +49,7 @@ def is_total_slice(item, shape):
     if isinstance(item, tuple):
         return all(
             (isinstance(s, slice) and
-            ((s == slice(None)) or (s.stop - s.start == l)))
+                ((s == slice(None)) or (s.stop - s.start == l)))
             for s, l in zip(item, shape)
         )
     return False

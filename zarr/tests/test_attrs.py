@@ -97,5 +97,3 @@ class TestSynchronizedAttributes(TestAttributes):
     def init_attributes(self, store, readonly=False):
         return SynchronizedAttributes(store, ThreadSynchronizer(),
                                       readonly=readonly)
-
-

@@ -1,16 +1,16 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, print_function, division
 
-import json
-import pickle
-
-from nose.tools import eq_ as eq, assert_is_instance
-import numpy as np
-from numpy.testing import assert_array_equal
-
-import zarr
-from zarr import meta
-from zarr.core import Array
+# import json
+# import pickle
+#
+# from nose.tools import eq_ as eq, assert_is_instance
+# import numpy as np
+# from numpy.testing import assert_array_equal
+#
+# import zarr
+# from zarr import meta
+# from zarr.core import Array
 
 
 # def test_arraystore():

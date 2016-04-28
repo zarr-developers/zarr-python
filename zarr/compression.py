@@ -178,7 +178,8 @@ else:
             # normalize format
             if format is None:
                 format = cls.default_format
-            if format not in [lzma.FORMAT_XZ, lzma.FORMAT_ALONE, lzma.FORMAT_RAW]:
+            if format not in [lzma.FORMAT_XZ, lzma.FORMAT_ALONE,
+                              lzma.FORMAT_RAW]:
                 raise ValueError('invalid format: %s' % format)
 
             # normalize check
@@ -221,7 +222,6 @@ else:
             data = array.tobytes()
             return lzma.compress(data, format=self.format, check=self.check,
                                  preset=self.preset, filters=self.filters)
-
 
     registry['lzma'] = LZMACompressor
 
