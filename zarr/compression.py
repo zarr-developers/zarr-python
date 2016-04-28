@@ -2,6 +2,7 @@
 from __future__ import absolute_import, print_function, division
 import zlib
 import bz2
+import lzma
 
 
 import numpy as np
@@ -140,6 +141,84 @@ class BZ2Compressor(object):
 
 
 registry['bz2'] = BZ2Compressor
+
+
+class LZMACompressor(object):
+
+    default_format = lzma.FORMAT_XZ
+    default_check = lzma.CHECK_NONE
+    default_preset = 1
+    default_filters = None
+
+    def __init__(self, compression_opts):
+        # at this point we expect compression_opts to be fully specified and
+        # normalized
+        self.format = compression_opts['format']
+        self.check = compression_opts['check']
+        self.preset = compression_opts['preset']
+        self.filters = compression_opts['filters']
+
+    @classmethod
+    def normalize_compression_opts(cls, compression_opts):
+        """Convenience function to normalize compression options."""
+
+        if compression_opts is None:
+            compression_opts = dict()
+
+        format = compression_opts.get('format', None)
+        check = compression_opts.get('check', None)
+        preset = compression_opts.get('preset', None)
+        filters = compression_opts.get('filters', None)
+
+        # normalize format
+        if format is None:
+            format = cls.default_format
+        if format not in [lzma.FORMAT_XZ, lzma.FORMAT_ALONE, lzma.FORMAT_RAW]:
+            raise ValueError('invalid format: %s' % format)
+
+        # normalize check
+        if check is None:
+            check = cls.default_check
+        if check not in [lzma.CHECK_NONE, lzma.CHECK_CRC32,
+                         lzma.CHECK_CRC64, lzma.CHECK_SHA256]:
+            raise ValueError('invalid check: %s' % check)
+
+        # normalize preset
+        if preset is None:
+            preset = cls.default_preset
+        if preset < 0 or preset > 9:
+            raise ValueError('invalid preset: %s' % preset)
+
+        # handle filters
+        if filters:
+            # cannot specify both preset and filters
+            preset = None
+
+        # construct normalized options
+        compression_opts = dict(
+            format=format, check=check, preset=preset, filters=filters
+        )
+        return compression_opts
+
+    # noinspection PyMethodMayBeStatic
+    def decompress(self, cdata, array):
+        if self.format == lzma.FORMAT_RAW:
+            # filters needed
+            filters = self.filters
+        else:
+            # filters should not be specified
+            filters = None
+        data = lzma.decompress(cdata, format=self.format, filters=filters)
+        src = np.frombuffer(data, dtype=array.dtype).reshape(array.shape)
+        np.copyto(array, src)
+
+    def compress(self, array):
+        data = array.tobytes()
+        return lzma.compress(data, format=self.format, check=self.check,
+                             preset=self.preset, filters=self.filters)
+
+
+registry['lzma'] = LZMACompressor
 
 
 def get_compressor_cls(compression):
