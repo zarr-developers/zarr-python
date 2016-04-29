@@ -2,18 +2,23 @@
 from __future__ import absolute_import, print_function, division
 import json
 import unittest
+from tempfile import NamedTemporaryFile, mkdtemp
+import atexit
+import shutil
 
 
 import numpy as np
 from numpy.testing import assert_array_equal
 from nose.tools import eq_ as eq, assert_is_instance, assert_is_none, \
     assert_raises
+import zict
 
 
 from zarr.core import Array, SynchronizedArray, init_store
-from zarr.sync import ThreadSynchronizer
+from zarr.sync import ThreadSynchronizer, ProcessSynchronizer
 from zarr.compat import text_type
 from zarr.meta import decode_metadata
+from zarr.errors import ReadOnlyError
 
 
 def test_init_store():
@@ -52,13 +57,39 @@ def test_init_store_overwrite():
         init_store(store, shape=1000, chunks=100, overwrite=False)
 
 
+def test_array_init():
+
+    store = dict()  # store not initialised
+    with assert_raises(ValueError):
+        z = Array(store)
+
+
+def test_nbytes_stored():
+
+    store = dict()
+    init_store(store, shape=1000, chunks=100)
+    z = Array(store)
+    eq(sum(len(v) for v in store.values()), z.nbytes_stored)
+    z[:] = 42
+    eq(sum(len(v) for v in store.values()), z.nbytes_stored)
+
+    # custom store, doesn't support size determination
+    with NamedTemporaryFile() as f:
+        store = zict.Zip(f.name, mode='w')
+        init_store(store, shape=1000, chunks=100)
+        z = Array(store)
+        eq(-1, z.nbytes_stored)
+        z[:] = 42
+        eq(-1, z.nbytes_stored)
+
+
 class TestArray(unittest.TestCase):
 
-    def create_array(self, store=None, **kwargs):
+    def create_array(self, store=None, readonly=False, **kwargs):
         if store is None:
             store = dict()
         init_store(store, **kwargs)
-        return Array(store)
+        return Array(store, readonly=readonly)
 
     def test_1d(self):
 
@@ -72,6 +103,7 @@ class TestArray(unittest.TestCase):
         eq(a.nbytes, z.nbytes)
         eq(sum(len(v) for v in z.store.values()), z.nbytes_stored)
         eq(0, z.initialized)
+        eq((11,), z.cdata_shape)
 
         # check empty
         b = z[:]
@@ -88,6 +120,7 @@ class TestArray(unittest.TestCase):
         eq(11, z.initialized)
 
         # check slicing
+        assert_array_equal(a, np.array(z))
         assert_array_equal(a, z[:])
         assert_array_equal(a, z[...])
         # noinspection PyTypeChecker
@@ -149,6 +182,7 @@ class TestArray(unittest.TestCase):
         eq((100, 2), z.chunks)
         eq(sum(len(v) for v in z.store.values()), z.nbytes_stored)
         eq(0, z.initialized)
+        eq((10, 5), z.cdata_shape)
 
         # set data
         z[:] = a
@@ -159,6 +193,7 @@ class TestArray(unittest.TestCase):
         eq(50, z.initialized)
 
         # check slicing
+        assert_array_equal(a, np.array(z))
         assert_array_equal(a, z[:])
         assert_array_equal(a, z[...])
         # noinspection PyTypeChecker
@@ -262,7 +297,7 @@ class TestArray(unittest.TestCase):
 
     def test_append_1d(self):
 
-        a = np.arange(105, dtype='i4')
+        a = np.arange(105)
         z = self.create_array(shape=a.shape, chunks=10, dtype=a.dtype)
         z[:] = a
         eq(a.shape, z.shape)
@@ -270,13 +305,22 @@ class TestArray(unittest.TestCase):
         eq((10,), z.chunks)
         assert_array_equal(a, z[:])
 
-        b = np.arange(105, 205, dtype='i4')
+        b = np.arange(105, 205)
         e = np.append(a, b)
         z.append(b)
         eq(e.shape, z.shape)
         eq(e.dtype, z.dtype)
         eq((10,), z.chunks)
         assert_array_equal(e, z[:])
+
+        # check append handles array-like
+        c = [1, 2, 3]
+        f = np.append(e, c)
+        z.append(c)
+        eq(f.shape, z.shape)
+        eq(f.dtype, z.dtype)
+        eq((10,), z.chunks)
+        assert_array_equal(f, z[:])
 
     def test_append_2d(self):
 
@@ -314,11 +358,35 @@ class TestArray(unittest.TestCase):
         eq((10, 10), z.chunks)
         assert_array_equal(e, z[:])
 
+    def test_readonly(self):
 
-class TestSynchronizedArray(TestArray):
+        z = self.create_array(shape=1000, chunks=100, readonly=True)
+        with assert_raises(ReadOnlyError):
+            z[:] = 42
+        with assert_raises(ReadOnlyError):
+            z.resize(2000)
+        with assert_raises(ReadOnlyError):
+            z.append(np.arange(1000))
 
-    def create_array(self, store=None, **kwargs):
+
+class TestThreadSynchronizedArray(TestArray):
+
+    def create_array(self, store=None, readonly=False, **kwargs):
         if store is None:
             store = dict()
         init_store(store, **kwargs)
-        return SynchronizedArray(store, synchronizer=ThreadSynchronizer())
+        return SynchronizedArray(store, synchronizer=ThreadSynchronizer(),
+                                 readonly=readonly)
+
+
+class TestProcessSynchronizedArray(TestArray):
+
+    def create_array(self, store=None, readonly=False, **kwargs):
+        if store is None:
+            store = dict()
+        init_store(store, **kwargs)
+        sync_path = mkdtemp()
+        atexit.register(shutil.rmtree, sync_path)
+        synchronizer = ProcessSynchronizer(sync_path)
+        return SynchronizedArray(store, synchronizer=synchronizer,
+                                 readonly=readonly)

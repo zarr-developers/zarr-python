@@ -58,11 +58,23 @@ class Array(object):
         Parameters
         ----------
         store : MutableMapping
-            Array store.
+            Array store, already initialised.
         readonly : bool, optional
             True if array should be protected against modification.
 
-        """
+        Examples
+        --------
+        >>> import zarr
+        >>> store = dict()
+        >>> zarr.init_store(store, shape=1000, chunks=100)
+        >>> z = zarr.Array(store)
+        >>> z
+        zarr.core.Array((1000,), float64, chunks=(100,))
+          compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
+          nbytes: 7.8K; nbytes_stored: 249; ratio: 32.1; initialized: 0/10
+          store: builtins.dict
+
+        """  # flake8: noqa
 
         # N.B., expect at this point store is fully initialised with all
         # configuration metadata fully specified and normalised
@@ -352,9 +364,6 @@ class Array(object):
                                    type(self.store).__name__)
         return r
 
-    def __str__(self):
-        return repr(self)
-
     def resize(self, *args):
         """Resize the array."""
 
@@ -441,6 +450,43 @@ class Array(object):
 class SynchronizedArray(Array):
 
     def __init__(self, store, synchronizer, readonly=False):
+        """Instantiate a synchronized array.
+
+        Parameters
+        ----------
+        store : MutableMapping
+            Array store, already initialised.
+        synchronizer : object
+            Array synchronizer.
+        readonly : bool, optional
+            True if array should be protected against modification.
+
+        Examples
+        --------
+        >>> import zarr
+        >>> store = dict()
+        >>> zarr.init_store(store, shape=1000, chunks=100)
+        >>> synchronizer = zarr.ThreadSynchronizer()
+        >>> z = zarr.SynchronizedArray(store, synchronizer)
+        >>> z
+        zarr.core.SynchronizedArray((1000,), float64, chunks=(100,))
+          compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
+          nbytes: 7.8K; nbytes_stored: 249; ratio: 32.1; initialized: 0/10
+          store: builtins.dict
+          synchronizer: zarr.sync.ThreadSynchronizer
+
+        Notes
+        -----
+        Only writing data to the array via the __setitem__() method and
+        modification of user attributes are synchronized. Neither append() nor
+        resize() are synchronized.
+
+        Writing to the array is synchronized at the chunk level. I.e.,
+        the array supports concurrent write operations via the __setitem__()
+        method, but these will only exclude each other if they both require
+        modification of the same chunk.
+
+        """  # flake8: noqa
         super(SynchronizedArray, self).__init__(store, readonly=readonly)
         self.synchronizer = synchronizer
         self.attrs = SynchronizedAttributes(store,
