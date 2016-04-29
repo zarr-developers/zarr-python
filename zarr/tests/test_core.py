@@ -61,7 +61,7 @@ def test_array_init():
 
     store = dict()  # store not initialised
     with assert_raises(ValueError):
-        z = Array(store)
+        Array(store)
 
 
 def test_nbytes_stored():
