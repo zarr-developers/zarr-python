@@ -50,20 +50,20 @@ Usage
 Create an array:
 
 .. code-block::
-     
+
     >>> import numpy as np
     >>> import zarr
     >>> z = zarr.empty(shape=(10000, 1000), dtype='i4', chunks=(1000, 100))
     >>> z
     zarr.core.Array((10000, 1000), int32, chunks=(1000, 100))
       compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
-      nbytes: 38.1M; nbytes_stored: 278; ratio: 143884.9; initialized: 0/100
+      nbytes: 38.1M; nbytes_stored: 300; ratio: 133333.3; initialized: 0/100
       store: builtins.dict
 
 Fill it with some data:
 
 .. code-block::
-     
+
     >>> z[:] = np.arange(10000000, dtype='i4').reshape(10000, 1000)
     >>> z
     zarr.core.Array((10000, 1000), int32, chunks=(1000, 100))
@@ -74,7 +74,7 @@ Fill it with some data:
 Obtain a NumPy array by slicing:
 
 .. code-block::
-     
+
     >>> z[:]
     array([[      0,       1,       2, ...,     997,     998,     999],
            [   1000,    1001,    1002, ...,    1997,    1998,    1999],
@@ -103,7 +103,7 @@ Obtain a NumPy array by slicing:
 Resize the array and add more data:
 
 .. code-block::
-     
+
     >>> z.resize(20000, 1000)
     >>> z
     zarr.core.Array((20000, 1000), int32, chunks=(1000, 100))
@@ -121,7 +121,7 @@ For convenience, an ``append()`` method is also available, which can be used to
 append data to any axis:
 
 .. code-block::
-     
+
     >>> a = np.arange(10000000, dtype='i4').reshape(10000, 1000)
     >>> z = zarr.array(a, chunks=(1000, 100))
     >>> z.append(a+a)

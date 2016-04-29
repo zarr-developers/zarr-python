@@ -25,6 +25,7 @@ JSON. Mandatory fields and allowed values are as follows:
 * ``fill_value`` - scalar value - value to use for uninitialised portions of the array
 * ``compression`` - string - name of the primary compression library used
 * ``compression_opts`` - compression options
+* ``zarr_format`` - integer - specified the array format version
 
 For example::
 
@@ -50,7 +51,8 @@ For example::
         "shape": [
             1000000,
             1000
-        ]
+        ],
+        "zarr_format": 1
     }
 
 User metadata (attributes)
