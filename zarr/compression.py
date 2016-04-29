@@ -144,7 +144,7 @@ registry['bz2'] = BZ2Compressor
 
 try:
     import lzma
-except ImportError:
+except ImportError:  # pragma: no cover
     pass
 else:
 

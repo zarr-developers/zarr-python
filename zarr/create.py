@@ -10,15 +10,47 @@ from zarr.core import Array, SynchronizedArray, init_store
 from zarr.mappings import DirectoryMap
 
 
-def _create(shape, chunks, dtype, compression, compression_opts, fill_value,
-            store, synchronizer):
+def create(shape, chunks, dtype=None, compression='blosc',
+           compression_opts=None, fill_value=None, store=None,
+           synchronizer=None, overwrite=False):
+    """Create an array
+
+    Parameters
+    ----------
+    shape : int or tuple of ints
+        Array shape.
+    chunks : int or tuple of ints
+        Chunk shape.
+    dtype : string or dtype, optional
+        NumPy dtype.
+    compression : string, optional
+        Name of primary compression library, e.g., 'blosc', 'zlib'.
+    compression_opts : object, optional
+        Options to primary compressor. E.g., for blosc, provide a dictionary
+        with keys 'cname', 'clevel' and 'shuffle'.
+    fill_value : object
+        Default value to use for uninitialised portions of the array.
+    store : MutableMapping, optional
+        Array storage. If not provided, a Python dict will be used, meaning
+        array data will be stored in memory.
+    synchronizer : zarr.sync.ArraySynchronizer, optional
+        Array synchronizer.
+    overwrite : bool, optional
+        If True, delete all pre-existing data in `store` before creating the
+        array.
+
+    Returns
+    -------
+    z : zarr.core.Array
+
+    """
 
     # initialise store
     if store is None:
         store = dict()
     init_store(store, shape=shape, chunks=chunks, dtype=dtype,
                compression=compression, compression_opts=compression_opts,
-               fill_value=fill_value, overwrite=False)
+               fill_value=fill_value, overwrite=overwrite)
 
     # instantiate array
     if synchronizer is not None:
@@ -58,9 +90,9 @@ def empty(shape, chunks, dtype=None, compression='blosc',
 
     """
 
-    return _create(shape=shape, chunks=chunks, dtype=dtype,
-                   compression=compression, compression_opts=compression_opts,
-                   fill_value=None, store=store, synchronizer=synchronizer)
+    return create(shape=shape, chunks=chunks, dtype=dtype,
+                  compression=compression, compression_opts=compression_opts,
+                  fill_value=None, store=store, synchronizer=synchronizer)
 
 
 def zeros(shape, chunks, dtype=None, compression='blosc',
@@ -93,10 +125,10 @@ def zeros(shape, chunks, dtype=None, compression='blosc',
 
     """
 
-    return _create(shape=shape, chunks=chunks, dtype=dtype,
-                   compression=compression,
-                   compression_opts=compression_opts, fill_value=0,
-                   store=store, synchronizer=synchronizer)
+    return create(shape=shape, chunks=chunks, dtype=dtype,
+                  compression=compression,
+                  compression_opts=compression_opts, fill_value=0,
+                  store=store, synchronizer=synchronizer)
 
 
 def ones(shape, chunks, dtype=None, compression='blosc',
@@ -129,9 +161,9 @@ def ones(shape, chunks, dtype=None, compression='blosc',
 
     """
 
-    return _create(shape=shape, chunks=chunks, dtype=dtype,
-                   compression=compression, compression_opts=compression_opts,
-                   fill_value=1, store=store, synchronizer=synchronizer)
+    return create(shape=shape, chunks=chunks, dtype=dtype,
+                  compression=compression, compression_opts=compression_opts,
+                  fill_value=1, store=store, synchronizer=synchronizer)
 
 
 def full(shape, chunks, fill_value, dtype=None, compression='blosc',
@@ -166,10 +198,10 @@ def full(shape, chunks, fill_value, dtype=None, compression='blosc',
 
     """
 
-    return _create(shape=shape, chunks=chunks, dtype=dtype,
-                   compression=compression, compression_opts=compression_opts,
-                   fill_value=fill_value, store=store,
-                   synchronizer=synchronizer)
+    return create(shape=shape, chunks=chunks, dtype=dtype,
+                  compression=compression, compression_opts=compression_opts,
+                  fill_value=fill_value, store=store,
+                  synchronizer=synchronizer)
 
 
 def array(data, chunks=None, dtype=None, compression='blosc',
@@ -228,9 +260,9 @@ def array(data, chunks=None, dtype=None, compression='blosc',
             raise ValueError('chunks must be specified')
 
     # instantiate array
-    z = _create(shape=shape, chunks=chunks, dtype=dtype,
-                compression=compression, compression_opts=compression_opts,
-                fill_value=fill_value, store=store, synchronizer=synchronizer)
+    z = create(shape=shape, chunks=chunks, dtype=dtype,
+               compression=compression, compression_opts=compression_opts,
+               fill_value=fill_value, store=store, synchronizer=synchronizer)
 
     # fill with data
     z[:] = data

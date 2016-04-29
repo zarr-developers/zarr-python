@@ -12,6 +12,7 @@ from numpy.testing import assert_array_equal
 from nose.tools import eq_ as eq, assert_is_instance, assert_is_none, \
     assert_raises
 import zict
+from zarr.mappings import DirectoryMap
 
 
 from zarr.core import Array, SynchronizedArray, init_store
@@ -67,6 +68,16 @@ def test_array_init():
 def test_nbytes_stored():
 
     store = dict()
+    init_store(store, shape=1000, chunks=100)
+    z = Array(store)
+    eq(sum(len(v) for v in store.values()), z.nbytes_stored)
+    z[:] = 42
+    eq(sum(len(v) for v in store.values()), z.nbytes_stored)
+
+    # store supporting size determination
+    path = mkdtemp()
+    atexit.register(shutil.rmtree, path)
+    store = DirectoryMap(path)
     init_store(store, shape=1000, chunks=100)
     z = Array(store)
     eq(sum(len(v) for v in store.values()), z.nbytes_stored)
@@ -357,6 +368,14 @@ class TestArray(unittest.TestCase):
         eq(e.dtype, z.dtype)
         eq((10, 10), z.chunks)
         assert_array_equal(e, z[:])
+
+    def test_append_bad_shape(self):
+        a = np.arange(100)
+        z = self.create_array(shape=a.shape, chunks=10, dtype=a.dtype)
+        z[:] = a
+        b = a.reshape(10, 10)
+        with assert_raises(ValueError):
+            z.append(b)
 
     def test_readonly(self):
 
