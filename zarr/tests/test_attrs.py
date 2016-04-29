@@ -2,13 +2,13 @@
 from __future__ import absolute_import, print_function, division
 import json
 import unittest
+from threading import Lock
 
 
 from nose.tools import eq_ as eq, assert_raises
 
 
 from zarr.attrs import Attributes, SynchronizedAttributes
-from zarr.sync import ThreadSynchronizer
 from zarr.compat import binary_type, text_type
 from zarr.errors import ReadOnlyError
 
@@ -95,5 +95,5 @@ class TestAttributes(unittest.TestCase):
 class TestSynchronizedAttributes(TestAttributes):
 
     def init_attributes(self, store, readonly=False):
-        return SynchronizedAttributes(store, ThreadSynchronizer(),
+        return SynchronizedAttributes(store, lock=Lock(),
                                       readonly=readonly)

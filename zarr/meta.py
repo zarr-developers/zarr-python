@@ -6,13 +6,12 @@ import json
 import numpy as np
 
 
-from zarr.compat import PY2
+from zarr.compat import PY2, text_type
 
 
 def decode_metadata(b):
-    if not PY2:
-        b = str(b, 'ascii')
-    meta = json.loads(b)
+    s = text_type(b, 'ascii')
+    meta = json.loads(s)
     meta = dict(
         shape=tuple(meta['shape']),
         chunks=tuple(meta['chunks']),
@@ -34,9 +33,8 @@ def encode_metadata(meta):
         fill_value=meta['fill_value'],
     )
     s = json.dumps(meta, indent=4, sort_keys=True, ensure_ascii=True)
-    if not PY2:
-        s = s.encode('ascii')
-    return s
+    b = s.encode('ascii')
+    return b
 
 
 def encode_dtype(d):

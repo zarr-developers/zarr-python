@@ -443,20 +443,14 @@ class SynchronizedArray(Array):
     def __init__(self, store, synchronizer, readonly=False):
         super(SynchronizedArray, self).__init__(store, readonly=readonly)
         self.synchronizer = synchronizer
-        self.attrs = SynchronizedAttributes(store, synchronizer,
+        self.attrs = SynchronizedAttributes(store,
+                                            lock=synchronizer.attrs_lock,
                                             readonly=readonly)
 
     def _chunk_setitem(self, cidx, key, value):
-        with self.synchronizer.lock_chunk(cidx):
+        ckey = '.'.join(map(str, cidx))
+        with self.synchronizer.chunk_lock(ckey):
             super(SynchronizedArray, self)._chunk_setitem(cidx, key, value)
-
-    def resize(self, *args):
-        with self.synchronizer.lock_array():
-            super(SynchronizedArray, self).resize(*args)
-
-    def append(self, data, axis=0):
-        with self.synchronizer.lock_array():
-            super(SynchronizedArray, self).append(data, axis=axis)
 
     def __repr__(self):
         r = super(SynchronizedArray, self).__repr__()

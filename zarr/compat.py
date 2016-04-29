@@ -7,7 +7,7 @@ import sys
 PY2 = sys.version_info[0] == 2
 
 
-if PY2:
+if PY2:  # pragma: no cover
 
     def itervalues(d, **kw):
         return d.itervalues(**kw)

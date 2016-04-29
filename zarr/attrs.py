@@ -99,19 +99,19 @@ class Attributes(MutableMapping):
 
 class SynchronizedAttributes(Attributes):
 
-    def __init__(self, store, synchronizer, key='attrs', readonly=False):
+    def __init__(self, store, lock, key='attrs', readonly=False):
         super(SynchronizedAttributes, self).__init__(store, key=key,
                                                      readonly=readonly)
-        self.synchronizer = synchronizer
+        self.lock = lock
 
     def __setitem__(self, key, value):
-        with self.synchronizer.lock_attrs():
+        with self.lock:
             super(SynchronizedAttributes, self).__setitem__(key, value)
 
     def __delitem__(self, key):
-        with self.synchronizer.lock_attrs():
+        with self.lock:
             super(SynchronizedAttributes, self).__delitem__(key)
 
     def update(self, *args, **kwargs):
-        with self.synchronizer.lock_attrs():
+        with self.lock:
             super(SynchronizedAttributes, self).update(*args, **kwargs)
