@@ -7,20 +7,63 @@ import os
 
 
 import numpy as np
-from nose.tools import eq_ as eq
+from nose.tools import eq_ as eq, assert_is_none, assert_is_instance, \
+    assert_raises
 from numpy.testing import assert_array_equal
 
 
 from zarr.creation import array, empty, zeros, ones, full, open, empty_like, \
-    zeros_like, ones_like, full_like, open_like
+    zeros_like, ones_like, full_like, open_like, create
+from zarr.sync import ThreadSynchronizer
+from zarr.core import Array, SynchronizedArray, init_store
+from zarr.mappings import DirectoryMap
 
 
 def test_array():
+
+    # with numpy array
     a = np.arange(100)
     z = array(a, chunks=10)
     eq(a.shape, z.shape)
     eq(a.dtype, z.dtype)
     assert_array_equal(a, z[:])
+
+    # with array-like
+    a = list(range(100))
+    z = array(a, chunks=10)
+    eq((100,), z.shape)
+    eq(np.asarray(a).dtype, z.dtype)
+    assert_array_equal(np.asarray(a), z[:])
+
+    # with another zarr array
+    z2 = array(z)
+    eq(z.shape, z2.shape)
+    eq(z.chunks, z2.chunks)
+    eq(z.dtype, z2.dtype)
+    assert_array_equal(z[:], z2[:])
+
+    # with something bcolz-like
+    class MockBcolzArray(object):
+
+        def __init__(self, data, chunklen):
+            self.data = data
+            self.chunklen = chunklen
+
+        def __getattr__(self, item):
+            return getattr(self.data, item)
+
+        def __getitem__(self, item):
+            return self.data[item]
+
+    b = np.arange(1000).reshape(100, 10)
+    c = MockBcolzArray(b, 10)
+    z3 = array(c)
+    eq(c.shape, z3.shape)
+    eq((10, 10), z3.chunks)
+
+    # chunks not specified
+    with assert_raises(ValueError):
+        z = array(np.arange(100))
 
 
 def test_empty():
@@ -51,6 +94,7 @@ def test_full():
 
 
 def test_open():
+
     path = tempfile.mktemp()
     atexit.register(
         lambda: shutil.rmtree(path) if os.path.exists(path) else None
@@ -64,6 +108,31 @@ def test_open():
     eq((100,), z2.shape)
     eq((10,), z2.chunks)
     assert_array_equal(z[:], z2[:])
+
+    # path does not exist
+    path = 'doesnotexist'
+    with assert_raises(ValueError):
+        open(path, mode='r')
+
+    # path exists but store not initialised
+    path = tempfile.mkdtemp()
+    atexit.register(shutil.rmtree, path)
+    with assert_raises(ValueError):
+        open(path, mode='r')
+    with assert_raises(ValueError):
+        open(path, mode='r+')
+
+    # store initialised, mode w-
+    store = DirectoryMap(path)
+    init_store(store, shape=100, chunks=10)
+    with assert_raises(ValueError):
+        open(path, mode='w-')
+    with assert_raises(ValueError):
+        open(path, mode='x')
+
+    # with synchronizer
+    z = open(path, synchronizer=ThreadSynchronizer())
+    assert_is_instance(z, SynchronizedArray)
 
 
 def test_empty_like():
@@ -123,3 +192,34 @@ def test_open_like():
     eq(z.compression, z2.compression)
     eq(z.compression_opts, z2.compression_opts)
     eq(z.fill_value, z2.fill_value)
+
+
+def test_create():
+
+    # defaults
+    z = create(100, 10)
+    assert_is_instance(z, Array)
+    eq((100,), z.shape)
+    eq((10,), z.chunks)
+    eq(np.dtype(None), z.dtype)
+    eq('blosc', z.compression)
+    assert_is_none(z.fill_value)
+
+    # all specified
+    z = create(100, 10, dtype='i4', compression='zlib', compression_opts=1,
+               fill_value=42)
+    assert_is_instance(z, Array)
+    eq((100,), z.shape)
+    eq((10,), z.chunks)
+    eq(np.dtype('i4'), z.dtype)
+    eq('zlib', z.compression)
+    eq(1, z.compression_opts)
+    eq(42, z.fill_value)
+
+    # with synchronizer
+    synchronizer = ThreadSynchronizer()
+    z = create(100, 10, synchronizer=synchronizer)
+    assert_is_instance(z, SynchronizedArray)
+    eq((100,), z.shape)
+    eq((10,), z.chunks)
+    assert synchronizer is z.synchronizer
