@@ -1,3 +1,35 @@
+# -*- coding: utf-8 -*-
+from __future__ import absolute_import, print_function, division
+
+
+from nose.tools import eq_ as eq, assert_is_none
+import numpy as np
+
+
+from zarr.meta import decode_metadata, encode_metadata
+
+
+def test_decode():
+
+    # typical
+    b = b'''{
+        "shape": [100],
+        "chunks": [10],
+        "dtype": "<f8",
+        "compression": "zlib",
+        "compression_opts": 1,
+        "fill_value": null
+        }'''
+    meta = decode_metadata(b)
+    eq((100,), meta['shape'])
+    eq((10,), meta['chunks'])
+    eq(np.dtype('<f8'), meta['dtype'])
+    eq('zlib', meta['compression'])
+    eq(1, meta['compression_opts'])
+    assert_is_none(meta['fill_value'])
+
+
+
 # from zarr.meta import dumps, loads
 # import zarr
 #
