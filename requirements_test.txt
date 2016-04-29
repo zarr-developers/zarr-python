@@ -1,0 +1,8 @@
+tox
+nose
+coverage
+setuptools
+setuptools_scm
+flake8
+heapdict
+zict
