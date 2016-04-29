@@ -1,26 +1,30 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, print_function, division
+import json
 
 
-from nose.tools import eq_ as eq, assert_is_none
+from nose.tools import eq_ as eq, assert_is_none, assert_raises
 import numpy as np
 
 
-from zarr.meta import decode_metadata, encode_metadata
+from zarr.meta import decode_metadata, encode_dtype, decode_dtype
+from zarr.errors import MetadataError
 
 
 def test_decode():
 
     # typical
     b = b'''{
+        "zarr_format": 1,
         "shape": [100],
         "chunks": [10],
         "dtype": "<f8",
         "compression": "zlib",
         "compression_opts": 1,
         "fill_value": null
-        }'''
+    }'''
     meta = decode_metadata(b)
+    eq(1, meta['zarr_format'])
     eq((100,), meta['shape'])
     eq((10,), meta['chunks'])
     eq(np.dtype('<f8'), meta['dtype'])
@@ -28,20 +32,51 @@ def test_decode():
     eq(1, meta['compression_opts'])
     assert_is_none(meta['fill_value'])
 
+    # variations
+    b = b'''{
+        "zarr_format": 1,
+        "shape": [100, 100],
+        "chunks": [10, 10],
+        "dtype": [["a", "i4"], ["b", "S10"]],
+        "compression": "blosc",
+        "compression_opts": {
+            "cname": "lz4",
+            "clevel": 3,
+            "shuffle": 2
+        },
+        "fill_value": 42
+    }'''
+    meta = decode_metadata(b)
+    eq(1, meta['zarr_format'])
+    eq((100, 100), meta['shape'])
+    eq((10, 10), meta['chunks'])
+    # check structured dtype
+    eq(np.dtype([('a', 'i4'), ('b', 'S10')]), meta['dtype'])
+    # check structured compression_opts
+    eq(dict(cname='lz4', clevel=3, shuffle=2), meta['compression_opts'])
+    # check fill value
+    eq(42, meta['fill_value'])
+
+    # unsupported format
+    b = b'''{
+        "zarr_format": 2
+    }'''
+    with assert_raises(MetadataError):
+        decode_metadata(b)
+
+    # missing fields
+    b = b'''{
+        "zarr_format": 1
+    }'''
+    with assert_raises(MetadataError):
+        decode_metadata(b)
 
 
-# from zarr.meta import dumps, loads
-# import zarr
-#
-# from nose.tools import eq_ as eq
+def test_encode_decode_dtype():
 
-
-# def test_simple():
-#     for dt in ['f8', [('a', 'f8')], [('a', 'f8'), ('b', 'i1')]]:
-#         for compression in [{'cname': 'blosclz', 'shuffle': True},
-#                             {'cname': 'zlib', 'clevel': 5},
-#                             {'cname': None}]:
-#             x = zarr.empty(shape=(1000, 1000), chunks=(100, 100), dtype=dt,
-#                             **compression)
-#             meta = x.store.meta
-#             eq(loads(dumps(meta)), meta)
+    for dt in ['f8', [('a', 'f8')], [('a', 'f8'), ('b', 'i1')]]:
+        e = encode_dtype(np.dtype(dt))
+        s = json.dumps(e)  # check JSON serializable
+        o = json.loads(s)
+        d = decode_dtype(o)
+        eq(np.dtype(dt), d)

@@ -71,7 +71,7 @@ class Array(object):
         >>> z
         zarr.core.Array((1000,), float64, chunks=(100,))
           compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
-          nbytes: 7.8K; nbytes_stored: 249; ratio: 32.1; initialized: 0/10
+          nbytes: 7.8K; nbytes_stored: 271; ratio: 29.5; initialized: 0/10
           store: builtins.dict
 
         """  # flake8: noqa
@@ -471,7 +471,7 @@ class SynchronizedArray(Array):
         >>> z
         zarr.core.SynchronizedArray((1000,), float64, chunks=(100,))
           compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
-          nbytes: 7.8K; nbytes_stored: 249; ratio: 32.1; initialized: 0/10
+          nbytes: 7.8K; nbytes_stored: 271; ratio: 29.5; initialized: 0/10
           store: builtins.dict
           synchronizer: zarr.sync.ThreadSynchronizer
 
