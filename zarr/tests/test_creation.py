@@ -11,7 +11,7 @@ from nose.tools import eq_ as eq
 from numpy.testing import assert_array_equal
 
 
-from zarr.create import array, empty, zeros, ones, full, open, empty_like, \
+from zarr.creation import array, empty, zeros, ones, full, open, empty_like, \
     zeros_like, ones_like, full_like, open_like
 
 
