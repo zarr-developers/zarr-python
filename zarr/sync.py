@@ -20,12 +20,24 @@ class ThreadSynchronizer(object):
             lock = self.chunk_locks[ckey]
         return lock
 
+    def __getstate__(self):
+        return dict()
+
+    def __setstate__(self, d):
+        # reinitialise from scratch
+        self.mutex = Lock()
+        self.attrs_lock = Lock()
+        self.chunk_locks = defaultdict(Lock)
+
 
 class ProcessSynchronizer(object):
 
     def __init__(self, path):
         self.path = path
-        self.attrs_lock = fasteners.InterProcessLock(
+
+    @property
+    def attrs_lock(self):
+        return fasteners.InterProcessLock(
             os.path.join(self.path, 'attrs.lock')
         )
 

@@ -489,8 +489,7 @@ class SynchronizedArray(Array):
         """  # flake8: noqa
         super(SynchronizedArray, self).__init__(store, readonly=readonly)
         self.synchronizer = synchronizer
-        self.attrs = SynchronizedAttributes(store,
-                                            lock=synchronizer.attrs_lock,
+        self.attrs = SynchronizedAttributes(store, synchronizer,
                                             readonly=readonly)
 
     def _chunk_setitem(self, cidx, key, value):

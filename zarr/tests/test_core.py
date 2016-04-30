@@ -5,6 +5,7 @@ import unittest
 from tempfile import NamedTemporaryFile, mkdtemp
 import atexit
 import shutil
+import pickle
 
 
 import numpy as np
@@ -386,6 +387,26 @@ class TestArray(unittest.TestCase):
             z.resize(2000)
         with assert_raises(ReadOnlyError):
             z.append(np.arange(1000))
+
+    def test_pickle(self):
+
+        memory_store = dict()
+        path = mkdtemp()
+        atexit.register(shutil.rmtree, path)
+        directory_store = DirectoryMap(path)
+
+        for store in memory_store, directory_store:
+            z = self.create_array(shape=1000, chunks=100, dtype=int,
+                                  store=store)
+            z[:] = np.random.randint(0, 1000, 1000)
+            z2 = pickle.loads(pickle.dumps(z))
+            eq(z.shape, z2.shape)
+            eq(z.chunks, z2.chunks)
+            eq(z.dtype, z2.dtype)
+            eq(z.compression, z2.compression)
+            eq(z.compression_opts, z2.compression_opts)
+            eq(z.fill_value, z2.fill_value)
+            assert_array_equal(z[:], z2[:])
 
 
 class TestThreadSynchronizedArray(TestArray):

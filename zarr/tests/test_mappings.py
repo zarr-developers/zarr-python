@@ -4,6 +4,7 @@ import unittest
 import tempfile
 import atexit
 import shutil
+import pickle
 
 
 from nose.tools import assert_raises, eq_ as eq
@@ -81,3 +82,16 @@ class TestDirectoryMap(MappingTests, unittest.TestCase):
         with tempfile.NamedTemporaryFile() as f:
             with assert_raises(ValueError):
                 DirectoryMap(f.name)
+
+    def test_pickle(self):
+        m = self.create_mapping()
+        m['foo'] = b'bar'
+        m['baz'] = b'quux'
+        m2 = pickle.loads(pickle.dumps(m))
+        eq(len(m), len(m2))
+        eq(m.path, m2.path)
+        eq(b'bar', m2['foo'])
+        eq(b'quux', m2['baz'])
+        assert 'xxx' not in m
+        m2['xxx'] = b'yyy'
+        eq(b'yyy', m['xxx'])

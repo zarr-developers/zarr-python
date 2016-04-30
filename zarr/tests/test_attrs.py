@@ -2,7 +2,9 @@
 from __future__ import absolute_import, print_function, division
 import json
 import unittest
-from threading import Lock
+import atexit
+import shutil
+from tempfile import mkdtemp
 
 
 from nose.tools import eq_ as eq, assert_raises
@@ -11,6 +13,7 @@ from nose.tools import eq_ as eq, assert_raises
 from zarr.attrs import Attributes, SynchronizedAttributes
 from zarr.compat import binary_type, text_type
 from zarr.errors import ReadOnlyError
+from zarr.sync import ThreadSynchronizer, ProcessSynchronizer
 
 
 class TestAttributes(unittest.TestCase):
@@ -70,10 +73,10 @@ class TestAttributes(unittest.TestCase):
         a['baz'] = 42
 
         eq(2, len(a))
-        eq(set(['foo', 'baz']), set(a))
-        eq(set(['foo', 'baz']), set(a.keys()))
-        eq(set(['bar', 42]), set(a.values()))
-        eq(set([('foo', 'bar'), ('baz', 42)]), set(a.items()))
+        eq({'foo', 'baz'}, set(a))
+        eq({'foo', 'baz'}, set(a.keys()))
+        eq({'bar', 42}, set(a.values()))
+        eq({('foo', 'bar'), ('baz', 42)}, set(a.items()))
 
     def test_readonly(self):
 
@@ -92,8 +95,17 @@ class TestAttributes(unittest.TestCase):
             a.put(dict())
 
 
-class TestSynchronizedAttributes(TestAttributes):
+class TestThreadSynchronizedAttributes(TestAttributes):
 
     def init_attributes(self, store, readonly=False):
-        return SynchronizedAttributes(store, lock=Lock(),
-                                      readonly=readonly)
+        synchronizer = ThreadSynchronizer()
+        return SynchronizedAttributes(store, synchronizer, readonly=readonly)
+
+
+class TestProcessSynchronizedAttributes(TestAttributes):
+
+    def init_attributes(self, store, readonly=False):
+        sync_path = mkdtemp()
+        atexit.register(shutil.rmtree, sync_path)
+        synchronizer = ProcessSynchronizer(sync_path)
+        return SynchronizedAttributes(store, synchronizer, readonly=readonly)
