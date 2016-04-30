@@ -5,34 +5,44 @@ from __future__ import absolute_import, print_function, division
 import numpy as np
 
 
+from zarr.compat import integer_types
+
+
 def normalize_shape(shape):
     """Convenience function to normalize the `shape` argument."""
-    if shape is None:
-        raise ValueError('shape expected')
-    try:
-        shape = tuple(int(s) for s in shape)
-    except TypeError:
+
+    # handle 1D convenience form
+    if isinstance(shape, integer_types):
         shape = (int(shape),)
+
+    # normalize
+    shape = tuple(int(s) for s in shape)
     return shape
 
 
 def normalize_chunks(chunks, shape):
     """Convenience function to normalize the `chunks` argument for an array
     with the given `shape`."""
-    if chunks is None:
-        raise ValueError('chunks expected')
-    try:
-        chunks = tuple(int(c) for c in chunks)
-    except TypeError:
+
+    # N.B., expect shape already normalized
+
+    # handle 1D convenience form
+    if isinstance(chunks, integer_types):
         chunks = (int(chunks),)
+
+    # handle bad dimensionality
+    if len(chunks) > len(shape):
+        raise ValueError('too many dimensions in chunks')
+
+    # handle underspecified chunks
     if len(chunks) < len(shape):
         # assume chunks across remaining dimensions
         chunks += shape[len(chunks):]
-    if len(chunks) != len(shape):
-        raise ValueError('chunks and shape not compatible: %r, %r' %
-                         (chunks, shape))
+
     # handle None in chunks
-    chunks = tuple(s if c is None else c for s, c in zip(shape, chunks))
+    chunks = tuple(s if c is None else int(c)
+                   for s, c in zip(shape, chunks))
+
     return chunks
 
 
@@ -42,17 +52,23 @@ def is_total_slice(item, shape):
     given `shape`. Used to optimise __setitem__ operations on the Chunk
     class."""
 
+    # N.B., assume shape is normalized
+
     if item == Ellipsis:
         return True
     if item == slice(None):
         return True
+    if isinstance(item, slice):
+        item = item,
     if isinstance(item, tuple):
         return all(
             (isinstance(s, slice) and
-                ((s == slice(None)) or (s.stop - s.start == l)))
+                ((s == slice(None)) or
+                 ((s.stop - s.start == l) and (s.step in [1, None]))))
             for s, l in zip(item, shape)
         )
-    return False
+    else:
+        raise TypeError('expected slice or tuple of slices, found %r' % item)
 
 
 def normalize_axis_selection(item, l):
@@ -78,12 +94,16 @@ def normalize_axis_selection(item, l):
             stop = l + stop
         if start < 0 or stop < 0:
             raise IndexError('index out of bounds: %s, %s' % (start, stop))
+        if start >= l:
+            raise IndexError('index out of bounds: %s, %s' % (start, stop))
         if stop > l:
             stop = l
+        if stop < start:
+            raise IndexError('index out of bounds: %s, %s' % (start, stop))
         return start, stop
 
     else:
-        raise ValueError('expected integer or slice, found: %r' % item)
+        raise TypeError('expected integer or slice, found: %r' % item)
 
 
 # noinspection PyTypeChecker
@@ -92,8 +112,8 @@ def normalize_array_selection(item, shape):
     the given `shape`."""
 
     # normalize item
-    if isinstance(item, int):
-        item = (item,)
+    if isinstance(item, integer_types):
+        item = (int(item),)
     elif isinstance(item, slice):
         item = (item,)
     elif item == Ellipsis:
@@ -113,7 +133,7 @@ def normalize_array_selection(item, shape):
         return selection
 
     else:
-        raise ValueError('expected indices or slice, found: %r' % item)
+        raise TypeError('expected indices or slice, found: %r' % item)
 
 
 def get_chunk_range(selection, chunks):
@@ -139,7 +159,7 @@ def normalize_resize_args(old_shape, *args):
         raise ValueError('new shape must have same number of dimensions')
 
     # handle None in new_shape
-    new_shape = tuple(s if n is None else n
+    new_shape = tuple(s if n is None else int(n)
                       for s, n in zip(old_shape, new_shape))
 
     return new_shape

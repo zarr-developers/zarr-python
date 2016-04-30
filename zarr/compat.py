@@ -14,6 +14,7 @@ if PY2:  # pragma: no cover
 
     text_type = unicode
     binary_type = str
+    integer_types = (int, long)
 
 else:
 
@@ -22,3 +23,4 @@ else:
 
     text_type = str
     binary_type = bytes
+    integer_types = int,
