@@ -136,7 +136,7 @@ def test_open():
 
 
 def test_empty_like():
-    z = empty(100, 10)
+    z = empty(100, 10, order='F')
     z2 = empty_like(z)
     eq(z.shape, z2.shape)
     eq(z.chunks, z2.chunks)
@@ -144,10 +144,11 @@ def test_empty_like():
     eq(z.compression, z2.compression)
     eq(z.compression_opts, z2.compression_opts)
     eq(z.fill_value, z2.fill_value)
+    eq(z.order, z2.order)
 
 
 def test_zeros_like():
-    z = zeros(100, 10)
+    z = zeros(100, 10, order='F')
     z2 = zeros_like(z)
     eq(z.shape, z2.shape)
     eq(z.chunks, z2.chunks)
@@ -155,10 +156,11 @@ def test_zeros_like():
     eq(z.compression, z2.compression)
     eq(z.compression_opts, z2.compression_opts)
     eq(z.fill_value, z2.fill_value)
+    eq(z.order, z2.order)
 
 
 def test_ones_like():
-    z = ones(100, 10)
+    z = ones(100, 10, order='F')
     z2 = ones_like(z)
     eq(z.shape, z2.shape)
     eq(z.chunks, z2.chunks)
@@ -166,10 +168,11 @@ def test_ones_like():
     eq(z.compression, z2.compression)
     eq(z.compression_opts, z2.compression_opts)
     eq(z.fill_value, z2.fill_value)
+    eq(z.order, z2.order)
 
 
 def test_full_like():
-    z = full(100, 10, fill_value=42)
+    z = full(100, 10, fill_value=42, order='F')
     z2 = full_like(z)
     eq(z.shape, z2.shape)
     eq(z.chunks, z2.chunks)
@@ -177,6 +180,7 @@ def test_full_like():
     eq(z.compression, z2.compression)
     eq(z.compression_opts, z2.compression_opts)
     eq(z.fill_value, z2.fill_value)
+    eq(z.order, z2.order)
 
 
 def test_open_like():
@@ -184,7 +188,7 @@ def test_open_like():
     atexit.register(
         lambda: shutil.rmtree(path) if os.path.exists(path) else None
     )
-    z = full(100, 10, fill_value=42)
+    z = full(100, 10, fill_value=42, order='F')
     z2 = open_like(z, path)
     eq(z.shape, z2.shape)
     eq(z.chunks, z2.chunks)
@@ -192,6 +196,7 @@ def test_open_like():
     eq(z.compression, z2.compression)
     eq(z.compression_opts, z2.compression_opts)
     eq(z.fill_value, z2.fill_value)
+    eq(z.order, z2.order)
 
 
 def test_create():
@@ -207,7 +212,7 @@ def test_create():
 
     # all specified
     z = create(100, 10, dtype='i4', compression='zlib', compression_opts=1,
-               fill_value=42)
+               fill_value=42, order='F')
     assert_is_instance(z, Array)
     eq((100,), z.shape)
     eq((10,), z.chunks)
@@ -215,6 +220,7 @@ def test_create():
     eq('zlib', z.compression)
     eq(1, z.compression_opts)
     eq(42, z.fill_value)
+    eq('F', z.order)
 
     # with synchronizer
     synchronizer = ThreadSynchronizer()

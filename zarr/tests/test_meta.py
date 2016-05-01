@@ -21,7 +21,8 @@ def test_decode():
         "dtype": "<f8",
         "compression": "zlib",
         "compression_opts": 1,
-        "fill_value": null
+        "fill_value": null,
+        "order": "C"
     }'''
     meta = decode_metadata(b)
     eq(1, meta['zarr_format'])
@@ -31,6 +32,7 @@ def test_decode():
     eq('zlib', meta['compression'])
     eq(1, meta['compression_opts'])
     assert_is_none(meta['fill_value'])
+    eq('C', meta['order'])
 
     # variations
     b = b'''{
@@ -44,7 +46,8 @@ def test_decode():
             "clevel": 3,
             "shuffle": 2
         },
-        "fill_value": 42
+        "fill_value": 42,
+        "order": "F"
     }'''
     meta = decode_metadata(b)
     eq(1, meta['zarr_format'])
@@ -56,6 +59,7 @@ def test_decode():
     eq(dict(cname='lz4', clevel=3, shuffle=2), meta['compression_opts'])
     # check fill value
     eq(42, meta['fill_value'])
+    eq('F', meta['order'])
 
     # unsupported format
     b = b'''{

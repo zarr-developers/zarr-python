@@ -25,6 +25,7 @@ def decode_metadata(b):
             compression=meta['compression'],
             compression_opts=meta['compression_opts'],
             fill_value=meta['fill_value'],
+            order=meta['order'],
         )
     except Exception as e:
         raise MetadataError('error decoding metadata: %s' % e)
@@ -41,6 +42,7 @@ def encode_metadata(meta):
         compression=meta['compression'],
         compression_opts=meta['compression_opts'],
         fill_value=meta['fill_value'],
+        order=meta['order'],
     )
     s = json.dumps(meta, indent=4, sort_keys=True, ensure_ascii=True)
     b = s.encode('ascii')

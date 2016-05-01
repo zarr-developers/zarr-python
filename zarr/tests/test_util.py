@@ -7,7 +7,7 @@ from nose.tools import eq_ as eq, assert_raises, assert_true, assert_false
 
 from zarr.util import normalize_shape, normalize_chunks, is_total_slice, \
     normalize_axis_selection, normalize_array_selection, \
-    normalize_resize_args, human_readable_size
+    normalize_resize_args, human_readable_size, normalize_order
 
 
 def test_normalize_shape():
@@ -141,3 +141,12 @@ def test_human_readable_size():
     eq('1.0G', human_readable_size(2**30))
     eq('1.0T', human_readable_size(2**40))
     eq('1.0P', human_readable_size(2**50))
+
+
+def test_normalize_order():
+    eq('F', normalize_order('F'))
+    eq('C', normalize_order('C'))
+    eq('F', normalize_order('f'))
+    eq('C', normalize_order('c'))
+    with assert_raises(ValueError):
+        normalize_order('foo')

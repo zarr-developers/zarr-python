@@ -12,7 +12,7 @@ import numpy as np
 from zarr.compression import get_compressor_cls
 from zarr.util import is_total_slice, normalize_array_selection, \
     get_chunk_range, human_readable_size, normalize_shape, normalize_chunks, \
-    normalize_resize_args
+    normalize_resize_args, normalize_order
 from zarr.meta import decode_metadata, encode_metadata
 from zarr.attrs import Attributes, SynchronizedAttributes
 from zarr.compat import itervalues
@@ -20,7 +20,8 @@ from zarr.errors import ReadOnlyError
 
 
 def init_store(store, shape, chunks, dtype=None, compression='blosc',
-               compression_opts=None, fill_value=None, overwrite=False):
+               compression_opts=None, fill_value=None,
+               order='C', overwrite=False):
     """Initialise an array store with the given configuration."""
 
     # guard conditions
@@ -36,6 +37,7 @@ def init_store(store, shape, chunks, dtype=None, compression='blosc',
     compression_opts = compressor_cls.normalize_opts(
         compression_opts
     )
+    order = normalize_order(order)
 
     # delete any pre-existing items in store
     store.clear()
@@ -43,7 +45,7 @@ def init_store(store, shape, chunks, dtype=None, compression='blosc',
     # initialise metadata
     meta = dict(shape=shape, chunks=chunks, dtype=dtype,
                 compression=compression, compression_opts=compression_opts,
-                fill_value=fill_value)
+                fill_value=fill_value, order=order)
     store['meta'] = encode_metadata(meta)
 
     # initialise attributes
@@ -69,9 +71,9 @@ class Array(object):
         >>> zarr.init_store(store, shape=1000, chunks=100)
         >>> z = zarr.Array(store)
         >>> z
-        zarr.core.Array((1000,), float64, chunks=(100,))
+        zarr.core.Array((1000,), float64, chunks=(100,), order=C)
           compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
-          nbytes: 7.8K; nbytes_stored: 271; ratio: 29.5; initialized: 0/10
+          nbytes: 7.8K; nbytes_stored: 289; ratio: 27.7; initialized: 0/10
           store: builtins.dict
 
         """  # flake8: noqa
@@ -96,6 +98,7 @@ class Array(object):
             self.compression = meta['compression']
             self.compression_opts = meta['compression_opts']
             self.fill_value = meta['fill_value']
+            self.order = meta['order']
             compressor_cls = get_compressor_cls(self.compression)
             self.compressor = compressor_cls(self.compression_opts)
 
@@ -106,7 +109,7 @@ class Array(object):
         meta = dict(shape=self.shape, chunks=self.chunks, dtype=self.dtype,
                     compression=self.compression,
                     compression_opts=self.compression_opts,
-                    fill_value=self.fill_value)
+                    fill_value=self.fill_value, order=self.order)
         self.store['meta'] = encode_metadata(meta)
 
     @property
@@ -156,7 +159,7 @@ class Array(object):
         out_shape = tuple(stop - start for start, stop in selection)
 
         # setup output array
-        out = np.empty(out_shape, dtype=self.dtype)
+        out = np.empty(out_shape, dtype=self.dtype, order=self.order)
 
         # determine indices of chunks overlapping the selection
         chunk_range = get_chunk_range(selection, self.chunks)
@@ -263,17 +266,20 @@ class Array(object):
 
         else:
 
-            if is_total_slice(item, self.chunks) and dest.flags.c_contiguous:
+            if is_total_slice(item, self.chunks) and \
+                    ((self.order == 'C' and dest.flags.c_contiguous) or
+                     (self.order == 'F' and dest.flags.f_contiguous)):
 
                 # optimisation: we want the whole chunk, and the destination is
-                # C contiguous, so we can decompress directly from the chunk
+                # contiguous, so we can decompress directly from the chunk
                 # into the destination array
                 self.compressor.decompress(cdata, dest)
 
             else:
 
                 # decompress chunk
-                chunk = np.empty(self.chunks, dtype=self.dtype)
+                chunk = np.empty(self.chunks, dtype=self.dtype,
+                                 order=self.order)
                 self.compressor.decompress(cdata, chunk)
 
                 # set data in output array
@@ -305,13 +311,17 @@ class Array(object):
             if np.isscalar(value):
 
                 # setup array filled with value
-                chunk = np.empty(self.chunks, dtype=self.dtype)
+                chunk = np.empty(self.chunks, dtype=self.dtype,
+                                 order=self.order)
                 chunk.fill(value)
 
             else:
 
-                # ensure array is C contiguous
-                chunk = np.ascontiguousarray(value, dtype=self.dtype)
+                # ensure array is contiguous
+                if self.order == 'F':
+                    chunk = np.asfortranarray(value, dtype=self.dtype)
+                else:
+                    chunk = np.ascontiguousarray(value, dtype=self.dtype)
 
         else:
             # partially replace the contents of this chunk
@@ -325,14 +335,16 @@ class Array(object):
             except KeyError:
 
                 # chunk not initialized
-                chunk = np.empty(self.chunks, dtype=self.dtype)
+                chunk = np.empty(self.chunks, dtype=self.dtype,
+                                 order=self.order)
                 if self.fill_value is not None:
                     chunk.fill(self.fill_value)
 
             else:
 
                 # decompress chunk
-                chunk = np.empty(self.chunks, dtype=self.dtype)
+                chunk = np.empty(self.chunks, dtype=self.dtype,
+                                 order=self.order)
                 self.compressor.decompress(cdata, chunk)
 
             # modify
@@ -350,6 +362,7 @@ class Array(object):
         r += '%s' % str(self.shape)
         r += ', %s' % str(self.dtype)
         r += ', chunks=%s' % str(self.chunks)
+        r += ', order=%s' % self.order
         r += ')'
         r += '\n  compression: %s' % self.compression
         r += '; compression_opts: %s' % str(self.compression_opts)
@@ -469,9 +482,9 @@ class SynchronizedArray(Array):
         >>> synchronizer = zarr.ThreadSynchronizer()
         >>> z = zarr.SynchronizedArray(store, synchronizer)
         >>> z
-        zarr.core.SynchronizedArray((1000,), float64, chunks=(100,))
+        zarr.core.SynchronizedArray((1000,), float64, chunks=(100,), order=C)
           compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
-          nbytes: 7.8K; nbytes_stored: 271; ratio: 29.5; initialized: 0/10
+          nbytes: 7.8K; nbytes_stored: 289; ratio: 27.7; initialized: 0/10
           store: builtins.dict
           synchronizer: zarr.sync.ThreadSynchronizer
 

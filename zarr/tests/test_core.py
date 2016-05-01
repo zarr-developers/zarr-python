@@ -11,7 +11,7 @@ import pickle
 import numpy as np
 from numpy.testing import assert_array_equal
 from nose.tools import eq_ as eq, assert_is_instance, assert_is_none, \
-    assert_raises
+    assert_raises, assert_true
 import zict
 from zarr.mappings import DirectoryMap
 
@@ -238,6 +238,34 @@ class TestArray(unittest.TestCase):
         assert_array_equal(b[190:310, 3:7], z[190:310, 3:7])
         assert_array_equal(a[310:], z[310:])
         assert_array_equal(a[:, 7:], z[:, 7:])
+
+    def test_array_order(self):
+
+        # 1D
+        a = np.arange(1050)
+        for order in 'C', 'F':
+            z = self.create_array(shape=a.shape, chunks=100, dtype=a.dtype,
+                                  order=order)
+            eq(order, z.order)
+            if order == 'F':
+                assert_true(z[:].flags.f_contiguous)
+            else:
+                assert_true(z[:].flags.c_contiguous)
+            z[:] = a
+            assert_array_equal(a, z[:])
+
+        # 2D
+        a = np.arange(10000).reshape((100, 100))
+        for order in 'C', 'F':
+            z = self.create_array(shape=a.shape, chunks=(10, 10),
+                                  dtype=a.dtype, order=order)
+            eq(order, z.order)
+            if order == 'F':
+                assert_true(z[:].flags.f_contiguous)
+            else:
+                assert_true(z[:].flags.c_contiguous)
+            z[:] = a
+            assert_array_equal(a, z[:])
 
     def test_resize_1d(self):
 

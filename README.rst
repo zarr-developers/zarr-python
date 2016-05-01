@@ -55,9 +55,9 @@ Create an array:
     >>> import zarr
     >>> z = zarr.empty(shape=(10000, 1000), dtype='i4', chunks=(1000, 100))
     >>> z
-    zarr.core.Array((10000, 1000), int32, chunks=(1000, 100))
+    zarr.core.Array((10000, 1000), int32, chunks=(1000, 100), order=C)
       compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
-      nbytes: 38.1M; nbytes_stored: 300; ratio: 133333.3; initialized: 0/100
+      nbytes: 38.1M; nbytes_stored: 318; ratio: 125786.2; initialized: 0/100
       store: builtins.dict
 
 Fill it with some data:
@@ -66,7 +66,7 @@ Fill it with some data:
 
     >>> z[:] = np.arange(10000000, dtype='i4').reshape(10000, 1000)
     >>> z
-    zarr.core.Array((10000, 1000), int32, chunks=(1000, 100))
+    zarr.core.Array((10000, 1000), int32, chunks=(1000, 100), order=C)
       compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
       nbytes: 38.1M; nbytes_stored: 2.0M; ratio: 19.3; initialized: 100/100
       store: builtins.dict
@@ -106,13 +106,13 @@ Resize the array and add more data:
 
     >>> z.resize(20000, 1000)
     >>> z
-    zarr.core.Array((20000, 1000), int32, chunks=(1000, 100))
+    zarr.core.Array((20000, 1000), int32, chunks=(1000, 100), order=C)
       compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
       nbytes: 76.3M; nbytes_stored: 2.0M; ratio: 38.5; initialized: 100/200
       store: builtins.dict
     >>> z[10000:, :] = np.arange(10000000, dtype='i4').reshape(10000, 1000)
     >>> z
-    zarr.core.Array((20000, 1000), int32, chunks=(1000, 100))
+    zarr.core.Array((20000, 1000), int32, chunks=(1000, 100), order=C)
       compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
       nbytes: 76.3M; nbytes_stored: 4.0M; ratio: 19.3; initialized: 200/200
       store: builtins.dict
@@ -126,13 +126,13 @@ append data to any axis:
     >>> z = zarr.array(a, chunks=(1000, 100))
     >>> z.append(a+a)
     >>> z
-    zarr.core.Array((20000, 1000), int32, chunks=(1000, 100))
+    zarr.core.Array((20000, 1000), int32, chunks=(1000, 100), order=C)
       compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
       nbytes: 76.3M; nbytes_stored: 3.6M; ratio: 21.2; initialized: 200/200
       store: builtins.dict
     >>> z.append(np.vstack([a, a]), axis=1)
     >>> z
-    zarr.core.Array((20000, 2000), int32, chunks=(1000, 100))
+    zarr.core.Array((20000, 2000), int32, chunks=(1000, 100), order=C)
       compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
       nbytes: 152.6M; nbytes_stored: 7.6M; ratio: 20.2; initialized: 400/400
       store: builtins.dict
@@ -148,7 +148,7 @@ Create a persistent array (data stored on disk):
     >>> z = zarr.open(path, mode='w', shape=(10000, 1000), dtype='i4', chunks=(1000, 100))
     >>> z[:] = np.arange(10000000, dtype='i4').reshape(10000, 1000)
     >>> z
-    zarr.core.Array((10000, 1000), int32, chunks=(1000, 100))
+    zarr.core.Array((10000, 1000), int32, chunks=(1000, 100), order=C)
       compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
       nbytes: 38.1M; nbytes_stored: 2.0M; ratio: 19.3; initialized: 100/100
       store: zarr.mappings.DirectoryMap

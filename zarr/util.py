@@ -178,3 +178,10 @@ def human_readable_size(size):
         return '%.1fT' % (size / float(2**40))
     else:
         return '%.1fP' % (size / float(2**50))
+
+
+def normalize_order(order):
+    order = str(order).upper()
+    if order not in ['C', 'F']:
+        raise ValueError("order must be either 'C' or 'F', found: %r" % order)
+    return order

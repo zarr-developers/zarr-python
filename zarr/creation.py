@@ -11,7 +11,7 @@ from zarr.mappings import DirectoryMap
 
 
 def create(shape, chunks, dtype=None, compression='blosc',
-           compression_opts=None, fill_value=None, store=None,
+           compression_opts=None, fill_value=None, order='C', store=None,
            synchronizer=None, overwrite=False):
     """Create an array
 
@@ -30,6 +30,8 @@ def create(shape, chunks, dtype=None, compression='blosc',
         with keys 'cname', 'clevel' and 'shuffle'.
     fill_value : object
         Default value to use for uninitialised portions of the array.
+    order : {'C', 'F'}, optional
+        Memory layout to be used within each chunk.
     store : MutableMapping, optional
         Array storage. If not provided, a Python dict will be used, meaning
         array data will be stored in memory.
@@ -50,7 +52,7 @@ def create(shape, chunks, dtype=None, compression='blosc',
         store = dict()
     init_store(store, shape=shape, chunks=chunks, dtype=dtype,
                compression=compression, compression_opts=compression_opts,
-               fill_value=fill_value, overwrite=overwrite)
+               fill_value=fill_value, order=order, overwrite=overwrite)
 
     # instantiate array
     if synchronizer is not None:
@@ -62,7 +64,7 @@ def create(shape, chunks, dtype=None, compression='blosc',
 
 
 def empty(shape, chunks, dtype=None, compression='blosc',
-          compression_opts=None, store=None, synchronizer=None):
+          compression_opts=None, order='C', store=None, synchronizer=None):
     """Create an empty array.
 
     Parameters
@@ -78,6 +80,8 @@ def empty(shape, chunks, dtype=None, compression='blosc',
     compression_opts : object, optional
         Options to primary compressor. E.g., for blosc, provide a dictionary
         with keys 'cname', 'clevel' and 'shuffle'.
+    order : {'C', 'F'}, optional
+        Memory layout to be used within each chunk.
     store : MutableMapping, optional
         Array storage. If not provided, a Python dict will be used, meaning
         array data will be stored in memory.
@@ -92,11 +96,12 @@ def empty(shape, chunks, dtype=None, compression='blosc',
 
     return create(shape=shape, chunks=chunks, dtype=dtype,
                   compression=compression, compression_opts=compression_opts,
-                  fill_value=None, store=store, synchronizer=synchronizer)
+                  fill_value=None, order=order, store=store,
+                  synchronizer=synchronizer)
 
 
 def zeros(shape, chunks, dtype=None, compression='blosc',
-          compression_opts=None, store=None, synchronizer=None):
+          compression_opts=None, order='C', store=None, synchronizer=None):
     """Create an array, with zero being used as the default value for
     uninitialised portions of the array.
 
@@ -113,6 +118,8 @@ def zeros(shape, chunks, dtype=None, compression='blosc',
     compression_opts : object, optional
         Options to primary compressor. E.g., for blosc, provide a dictionary
         with keys 'cname', 'clevel' and 'shuffle'.
+    order : {'C', 'F'}, optional
+        Memory layout to be used within each chunk.
     store : MutableMapping, optional
         Array storage. If not provided, a Python dict will be used, meaning
         array data will be stored in memory.
@@ -127,12 +134,12 @@ def zeros(shape, chunks, dtype=None, compression='blosc',
 
     return create(shape=shape, chunks=chunks, dtype=dtype,
                   compression=compression,
-                  compression_opts=compression_opts, fill_value=0,
+                  compression_opts=compression_opts, fill_value=0, order=order,
                   store=store, synchronizer=synchronizer)
 
 
 def ones(shape, chunks, dtype=None, compression='blosc',
-         compression_opts=None, store=None, synchronizer=None):
+         compression_opts=None, order='C', store=None, synchronizer=None):
     """Create an array, with one being used as the default value for
     uninitialised portions of the array.
 
@@ -149,6 +156,8 @@ def ones(shape, chunks, dtype=None, compression='blosc',
     compression_opts : object, optional
         Options to primary compressor. E.g., for blosc, provide a dictionary
         with keys 'cname', 'clevel' and 'shuffle'.
+    order : {'C', 'F'}, optional
+        Memory layout to be used within each chunk.
     store : MutableMapping, optional
         Array storage. If not provided, a Python dict will be used, meaning
         array data will be stored in memory.
@@ -163,11 +172,12 @@ def ones(shape, chunks, dtype=None, compression='blosc',
 
     return create(shape=shape, chunks=chunks, dtype=dtype,
                   compression=compression, compression_opts=compression_opts,
-                  fill_value=1, store=store, synchronizer=synchronizer)
+                  fill_value=1, order=order, store=store,
+                  synchronizer=synchronizer)
 
 
 def full(shape, chunks, fill_value, dtype=None, compression='blosc',
-         compression_opts=None, store=None, synchronizer=None):
+         compression_opts=None, order='C', store=None, synchronizer=None):
     """Create an array, with `fill_value` being used as the default value for
     uninitialised portions of the array.
 
@@ -186,6 +196,8 @@ def full(shape, chunks, fill_value, dtype=None, compression='blosc',
     compression_opts : object, optional
         Options to primary compressor. E.g., for blosc, provide a dictionary
         with keys 'cname', 'clevel' and 'shuffle'.
+    order : {'C', 'F'}, optional
+        Memory layout to be used within each chunk.
     store : MutableMapping, optional
         Array storage. If not provided, a Python dict will be used, meaning
         array data will be stored in memory.
@@ -200,12 +212,12 @@ def full(shape, chunks, fill_value, dtype=None, compression='blosc',
 
     return create(shape=shape, chunks=chunks, dtype=dtype,
                   compression=compression, compression_opts=compression_opts,
-                  fill_value=fill_value, store=store,
+                  fill_value=fill_value, order=order, store=store,
                   synchronizer=synchronizer)
 
 
 def array(data, chunks=None, dtype=None, compression='blosc',
-          compression_opts=None, fill_value=None, store=None,
+          compression_opts=None, fill_value=None, order='C', store=None,
           synchronizer=None):
     """Create an array filled with `data`.
 
@@ -224,6 +236,8 @@ def array(data, chunks=None, dtype=None, compression='blosc',
         with keys 'cname', 'clevel' and 'shuffle'.
     fill_value : object
         Default value to use for uninitialised portions of the array.
+    order : {'C', 'F'}, optional
+        Memory layout to be used within each chunk.
     store : MutableMapping, optional
         Array storage. If not provided, a Python dict will be used, meaning
         array data will be stored in memory.
@@ -262,7 +276,8 @@ def array(data, chunks=None, dtype=None, compression='blosc',
     # instantiate array
     z = create(shape=shape, chunks=chunks, dtype=dtype,
                compression=compression, compression_opts=compression_opts,
-               fill_value=fill_value, store=store, synchronizer=synchronizer)
+               fill_value=fill_value, order=order, store=store,
+               synchronizer=synchronizer)
 
     # fill with data
     z[:] = data
@@ -272,7 +287,7 @@ def array(data, chunks=None, dtype=None, compression='blosc',
 
 # noinspection PyShadowingBuiltins
 def open(path, mode='a', shape=None, chunks=None, dtype=None,
-         compression='blosc', compression_opts=None, fill_value=0,
+         compression='blosc', compression_opts=None, fill_value=0, order='C',
          synchronizer=None):
     """Open an array stored in a directory on the file system.
 
@@ -298,6 +313,8 @@ def open(path, mode='a', shape=None, chunks=None, dtype=None,
         with keys 'cname', 'clevel' and 'shuffle'.
     fill_value : object
         Default value to use for uninitialised portions of the array.
+    order : {'C', 'F'}, optional
+        Memory layout to be used within each chunk.
     synchronizer : zarr.sync.ArraySynchronizer, optional
         Array synchronizer.
 
@@ -334,7 +351,7 @@ def open(path, mode='a', shape=None, chunks=None, dtype=None,
     elif mode == 'w' or (mode in ['a', 'w-', 'x'] and not exists):
         init_store(store, shape=shape, chunks=chunks, dtype=dtype,
                    compression=compression, compression_opts=compression_opts,
-                   fill_value=fill_value, overwrite=True)
+                   fill_value=fill_value, order=order, overwrite=True)
 
     # determine readonly status
     readonly = mode == 'r'
@@ -349,7 +366,8 @@ def open(path, mode='a', shape=None, chunks=None, dtype=None,
 
 
 def empty_like(z, shape=None, chunks=None, dtype=None, compression='blosc',
-               compression_opts=None, store=None, synchronizer=None):
+               compression_opts=None, order=None, store=None,
+               synchronizer=None):
     """Create an empty array like 'z'."""
 
     shape = shape if shape is not None else z.shape
@@ -358,13 +376,15 @@ def empty_like(z, shape=None, chunks=None, dtype=None, compression='blosc',
     compression = compression if compression is not None else z.compression
     compression_opts = compression_opts if compression_opts is not None else \
         z.compression_opts
+    order = order if order is not None else z.order
     return empty(shape, chunks, dtype=dtype, compression=compression,
-                 compression_opts=compression_opts,
+                 compression_opts=compression_opts, order=order,
                  store=store, synchronizer=synchronizer)
 
 
 def zeros_like(z, shape=None, chunks=None, dtype=None, compression='blosc',
-               compression_opts=None, store=None, synchronizer=None):
+               compression_opts=None, order=None, store=None,
+               synchronizer=None):
     """Create an array of zeros like 'z'."""
 
     shape = shape if shape is not None else z.shape
@@ -373,13 +393,15 @@ def zeros_like(z, shape=None, chunks=None, dtype=None, compression='blosc',
     compression = compression if compression is not None else z.compression
     compression_opts = compression_opts if compression_opts is not None else \
         z.compression_opts
+    order = order if order is not None else z.order
     return zeros(shape, chunks, dtype=dtype, compression=compression,
-                 compression_opts=compression_opts,
+                 compression_opts=compression_opts, order=order,
                  store=store, synchronizer=synchronizer)
 
 
 def ones_like(z, shape=None, chunks=None, dtype=None, compression='blosc',
-              compression_opts=None, store=None, synchronizer=None):
+              compression_opts=None, order=None, store=None,
+              synchronizer=None):
     """Create an array of ones like 'z'."""
 
     shape = shape if shape is not None else z.shape
@@ -388,13 +410,14 @@ def ones_like(z, shape=None, chunks=None, dtype=None, compression='blosc',
     compression = compression if compression is not None else z.compression
     compression_opts = compression_opts if compression_opts is not None else \
         z.compression_opts
+    order = order if order is not None else z.order
     return ones(shape, chunks, dtype=dtype, compression=compression,
-                compression_opts=compression_opts,
+                compression_opts=compression_opts, order=order,
                 store=store, synchronizer=synchronizer)
 
 
 def full_like(z, shape=None, chunks=None, fill_value=None, dtype=None,
-              compression='blosc', compression_opts=None,
+              compression='blosc', compression_opts=None, order=None,
               store=None, synchronizer=None):
     """Create a filled array like 'z'."""
 
@@ -405,14 +428,15 @@ def full_like(z, shape=None, chunks=None, fill_value=None, dtype=None,
     compression_opts = compression_opts if compression_opts is not None else \
         z.compression_opts
     fill_value = fill_value if fill_value is not None else z.fill_value
+    order = order if order is not None else z.order
     return full(shape, chunks, fill_value, dtype=dtype,
                 compression=compression, compression_opts=compression_opts,
-                store=store, synchronizer=synchronizer)
+                order=order, store=store, synchronizer=synchronizer)
 
 
 def open_like(z, path, mode='a', shape=None, chunks=None, dtype=None,
               compression='blosc', compression_opts=None, fill_value=None,
-              synchronizer=None):
+              order=None, synchronizer=None):
     """Open a persistent array like 'z'."""
 
     shape = shape if shape is not None else z.shape
@@ -422,6 +446,7 @@ def open_like(z, path, mode='a', shape=None, chunks=None, dtype=None,
     compression_opts = compression_opts if compression_opts is not None else \
         z.compression_opts
     fill_value = fill_value if fill_value is not None else z.fill_value
+    order = order if order is not None else z.order
     return open(path, mode=mode, shape=shape, chunks=chunks, dtype=dtype,
                 compression=compression, compression_opts=compression_opts,
-                fill_value=fill_value, synchronizer=synchronizer)
+                fill_value=fill_value, order=order, synchronizer=synchronizer)

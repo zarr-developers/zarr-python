@@ -48,6 +48,7 @@ For example::
         },
         "dtype": "<i4",
         "fill_value": 42,
+        "order": "C",
         "shape": [
             1000000,
             1000
