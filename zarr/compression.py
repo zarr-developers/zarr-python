@@ -15,7 +15,7 @@ registry = dict()
 
 try:
     from zarr import blosc
-except ImportError:
+except ImportError:  # pragma: no cover
     pass
 else:
 
@@ -77,7 +77,6 @@ else:
 
         def compress(self, array):
             return blosc.compress(array, self.cname, self.clevel, self.shuffle)
-
 
     registry['blosc'] = BloscCompressor
 

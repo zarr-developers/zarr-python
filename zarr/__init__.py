@@ -12,7 +12,7 @@ from zarr.creation import create, array, empty, zeros, ones, full, open, \
 
 try:
     from zarr import blosc
-except ImportError:
+except ImportError:  # pragma: no cover
     pass
 else:
     ncores = multiprocessing.cpu_count()
