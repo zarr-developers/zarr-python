@@ -13,6 +13,13 @@ chunked, compressed, N-dimensional arrays.
 * Documentation: http://zarr.readthedocs.io/
 * Download: https://pypi.python.org/pypi/zarr
 
+Status
+------
+
+Zarr is a very young project. We hope you find it useful, but proceed with
+caution and test carefully. Please report any bugs via the `GitHub issue
+tracker <https://github.com/alimanfoo/zarr/issues>`_.
+
 Installation
 ------------
 
