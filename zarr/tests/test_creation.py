@@ -136,7 +136,9 @@ def test_open():
 
 
 def test_empty_like():
-    z = empty(100, 10, order='F')
+    # zarr array
+    z = empty(100, 10, dtype='f4', compression='zlib',
+              compression_opts=5, order='F')
     z2 = empty_like(z)
     eq(z.shape, z2.shape)
     eq(z.chunks, z2.chunks)
@@ -145,10 +147,22 @@ def test_empty_like():
     eq(z.compression_opts, z2.compression_opts)
     eq(z.fill_value, z2.fill_value)
     eq(z.order, z2.order)
+    # numpy array
+    a = np.empty(100, dtype='f4')
+    z3 = empty_like(a, chunks=10)
+    eq(a.shape, z3.shape)
+    eq((10,), z3.chunks)
+    eq(a.dtype, z3.dtype)
+    assert_is_none(z3.fill_value)
+    with assert_raises(ValueError):
+        # chunks missing
+        empty_like(a)
 
 
 def test_zeros_like():
-    z = zeros(100, 10, order='F')
+    # zarr array
+    z = zeros(100, 10, dtype='f4', compression='zlib',
+              compression_opts=5, order='F')
     z2 = zeros_like(z)
     eq(z.shape, z2.shape)
     eq(z.chunks, z2.chunks)
@@ -157,10 +171,22 @@ def test_zeros_like():
     eq(z.compression_opts, z2.compression_opts)
     eq(z.fill_value, z2.fill_value)
     eq(z.order, z2.order)
+    # numpy array
+    a = np.empty(100, dtype='f4')
+    z3 = zeros_like(a, chunks=10)
+    eq(a.shape, z3.shape)
+    eq((10,), z3.chunks)
+    eq(a.dtype, z3.dtype)
+    eq(0, z3.fill_value)
+    with assert_raises(ValueError):
+        # chunks missing
+        zeros_like(a)
 
 
 def test_ones_like():
-    z = ones(100, 10, order='F')
+    # zarr array
+    z = ones(100, 10, dtype='f4', compression='zlib',
+             compression_opts=5, order='F')
     z2 = ones_like(z)
     eq(z.shape, z2.shape)
     eq(z.chunks, z2.chunks)
@@ -169,10 +195,21 @@ def test_ones_like():
     eq(z.compression_opts, z2.compression_opts)
     eq(z.fill_value, z2.fill_value)
     eq(z.order, z2.order)
+    # numpy array
+    a = np.empty(100, dtype='f4')
+    z3 = ones_like(a, chunks=10)
+    eq(a.shape, z3.shape)
+    eq((10,), z3.chunks)
+    eq(a.dtype, z3.dtype)
+    eq(1, z3.fill_value)
+    with assert_raises(ValueError):
+        # chunks missing
+        ones_like(a)
 
 
 def test_full_like():
-    z = full(100, 10, fill_value=42, order='F')
+    z = full(100, 10, dtype='f4', compression='zlib',
+             compression_opts=5, fill_value=42, order='F')
     z2 = full_like(z)
     eq(z.shape, z2.shape)
     eq(z.chunks, z2.chunks)
@@ -181,14 +218,27 @@ def test_full_like():
     eq(z.compression_opts, z2.compression_opts)
     eq(z.fill_value, z2.fill_value)
     eq(z.order, z2.order)
+    # numpy array
+    a = np.empty(100, dtype='f4')
+    z3 = full_like(a, chunks=10, fill_value=42)
+    eq(a.shape, z3.shape)
+    eq((10,), z3.chunks)
+    eq(a.dtype, z3.dtype)
+    eq(42, z3.fill_value)
+    with assert_raises(ValueError):
+        # chunks missing
+        full_like(a)
+    with assert_raises(ValueError):
+        # fill_value missing
+        full_like(a, chunks=10)
 
 
 def test_open_like():
+    # zarr array
     path = tempfile.mktemp()
-    atexit.register(
-        lambda: shutil.rmtree(path) if os.path.exists(path) else None
-    )
-    z = full(100, 10, fill_value=42, order='F')
+    atexit.register(shutil.rmtree, path)
+    z = full(100, 10, dtype='f4', compression='zlib',
+             compression_opts=5, fill_value=42, order='F')
     z2 = open_like(z, path)
     eq(z.shape, z2.shape)
     eq(z.chunks, z2.chunks)
@@ -197,6 +247,18 @@ def test_open_like():
     eq(z.compression_opts, z2.compression_opts)
     eq(z.fill_value, z2.fill_value)
     eq(z.order, z2.order)
+    # numpy array
+    path = tempfile.mktemp()
+    atexit.register(shutil.rmtree, path)
+    a = np.empty(100, dtype='f4')
+    z3 = open_like(a, path, chunks=10)
+    eq(a.shape, z3.shape)
+    eq((10,), z3.chunks)
+    eq(a.dtype, z3.dtype)
+    assert_is_none(z3.fill_value)
+    with assert_raises(ValueError):
+        # chunks missing
+        open_like(a, path)
 
 
 def test_create():

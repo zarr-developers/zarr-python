@@ -365,88 +365,100 @@ def open(path, mode='a', shape=None, chunks=None, dtype=None,
     return z
 
 
-def empty_like(z, shape=None, chunks=None, dtype=None, compression='blosc',
+def _like_args(a, shape, chunks, dtype, compression, compression_opts, order):
+    if shape is None:
+        shape = a.shape
+    if chunks is None:
+        try:
+            chunks = a.chunks
+        except AttributeError:
+            raise ValueError('chunks must be specified')
+    if dtype is None:
+        dtype = a.dtype
+    if compression is None:
+        try:
+            compression = a.compression
+        except AttributeError:
+            compression = 'blosc'
+    if compression_opts is None:
+        try:
+            compression_opts = a.compression_opts
+        except AttributeError:
+            pass
+    if order is None:
+        try:
+            order = a.order
+        except AttributeError:
+            order = 'C'
+    return shape, chunks, dtype, compression, compression_opts, order
+
+
+def empty_like(a, shape=None, chunks=None, dtype=None, compression=None,
                compression_opts=None, order=None, store=None,
                synchronizer=None):
-    """Create an empty array like 'z'."""
-
-    shape = shape if shape is not None else z.shape
-    chunks = chunks if chunks is not None else z.chunks
-    dtype = dtype if dtype is not None else z.dtype
-    compression = compression if compression is not None else z.compression
-    compression_opts = compression_opts if compression_opts is not None else \
-        z.compression_opts
-    order = order if order is not None else z.order
+    """Create an empty array like 'a'."""
+    shape, chunks, dtype, compression, compression_opts, order = \
+        _like_args(a, shape, chunks, dtype, compression, compression_opts,
+                   order)
     return empty(shape, chunks, dtype=dtype, compression=compression,
                  compression_opts=compression_opts, order=order,
                  store=store, synchronizer=synchronizer)
 
 
-def zeros_like(z, shape=None, chunks=None, dtype=None, compression='blosc',
+def zeros_like(a, shape=None, chunks=None, dtype=None, compression=None,
                compression_opts=None, order=None, store=None,
                synchronizer=None):
-    """Create an array of zeros like 'z'."""
-
-    shape = shape if shape is not None else z.shape
-    chunks = chunks if chunks is not None else z.chunks
-    dtype = dtype if dtype is not None else z.dtype
-    compression = compression if compression is not None else z.compression
-    compression_opts = compression_opts if compression_opts is not None else \
-        z.compression_opts
-    order = order if order is not None else z.order
+    """Create an array of zeros like 'a'."""
+    shape, chunks, dtype, compression, compression_opts, order = \
+        _like_args(a, shape, chunks, dtype, compression, compression_opts,
+                   order)
     return zeros(shape, chunks, dtype=dtype, compression=compression,
                  compression_opts=compression_opts, order=order,
                  store=store, synchronizer=synchronizer)
 
 
-def ones_like(z, shape=None, chunks=None, dtype=None, compression='blosc',
+def ones_like(a, shape=None, chunks=None, dtype=None, compression=None,
               compression_opts=None, order=None, store=None,
               synchronizer=None):
-    """Create an array of ones like 'z'."""
-
-    shape = shape if shape is not None else z.shape
-    chunks = chunks if chunks is not None else z.chunks
-    dtype = dtype if dtype is not None else z.dtype
-    compression = compression if compression is not None else z.compression
-    compression_opts = compression_opts if compression_opts is not None else \
-        z.compression_opts
-    order = order if order is not None else z.order
+    """Create an array of ones like 'a'."""
+    shape, chunks, dtype, compression, compression_opts, order = \
+        _like_args(a, shape, chunks, dtype, compression, compression_opts,
+                   order)
     return ones(shape, chunks, dtype=dtype, compression=compression,
                 compression_opts=compression_opts, order=order,
                 store=store, synchronizer=synchronizer)
 
 
-def full_like(z, shape=None, chunks=None, fill_value=None, dtype=None,
-              compression='blosc', compression_opts=None, order=None,
+def full_like(a, shape=None, chunks=None, fill_value=None, dtype=None,
+              compression=None, compression_opts=None, order=None,
               store=None, synchronizer=None):
-    """Create a filled array like 'z'."""
-
-    shape = shape if shape is not None else z.shape
-    chunks = chunks if chunks is not None else z.chunks
-    dtype = dtype if dtype is not None else z.dtype
-    compression = compression if compression is not None else z.compression
-    compression_opts = compression_opts if compression_opts is not None else \
-        z.compression_opts
-    fill_value = fill_value if fill_value is not None else z.fill_value
-    order = order if order is not None else z.order
+    """Create a filled array like 'a'."""
+    shape, chunks, dtype, compression, compression_opts, order = \
+        _like_args(a, shape, chunks, dtype, compression, compression_opts,
+                   order)
+    if fill_value is None:
+        try:
+            fill_value = a.fill_value
+        except AttributeError:
+            raise ValueError('fill_value must be specified')
     return full(shape, chunks, fill_value, dtype=dtype,
                 compression=compression, compression_opts=compression_opts,
                 order=order, store=store, synchronizer=synchronizer)
 
 
-def open_like(z, path, mode='a', shape=None, chunks=None, dtype=None,
-              compression='blosc', compression_opts=None, fill_value=None,
+def open_like(a, path, mode='a', shape=None, chunks=None, dtype=None,
+              compression=None, compression_opts=None, fill_value=None,
               order=None, synchronizer=None):
-    """Open a persistent array like 'z'."""
-
-    shape = shape if shape is not None else z.shape
-    chunks = chunks if chunks is not None else z.chunks
-    dtype = dtype if dtype is not None else z.dtype
-    compression = compression if compression is not None else z.compression
-    compression_opts = compression_opts if compression_opts is not None else \
-        z.compression_opts
-    fill_value = fill_value if fill_value is not None else z.fill_value
-    order = order if order is not None else z.order
+    """Open a persistent array like 'a'."""
+    shape, chunks, dtype, compression, compression_opts, order = \
+        _like_args(a, shape, chunks, dtype, compression, compression_opts,
+                   order)
+    if fill_value is None:
+        try:
+            fill_value = a.fill_value
+        except AttributeError:
+            # leave empty
+            pass
     return open(path, mode=mode, shape=shape, chunks=chunks, dtype=dtype,
                 compression=compression, compression_opts=compression_opts,
                 fill_value=fill_value, order=order, synchronizer=synchronizer)
