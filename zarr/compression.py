@@ -7,74 +7,79 @@ import bz2
 import numpy as np
 
 
-from zarr import blosc
 from zarr.compat import text_type
 
 
 registry = dict()
 
 
-class BloscCompressor(object):
+try:
+    from zarr import blosc
+except ImportError:
+    pass
+else:
 
-    default_cname = 'blosclz'
-    default_clevel = 5
-    default_shuffle = 1
+    class BloscCompressor(object):
 
-    def __init__(self, compression_opts):
-        # at this point we expect compression_opts to be fully specified and
-        # normalized
-        cname = compression_opts['cname']
-        if isinstance(cname, text_type):
-            cname = cname.encode('ascii')
-        self.cname = cname
-        self.clevel = compression_opts['clevel']
-        self.shuffle = compression_opts['shuffle']
+        default_cname = 'blosclz'
+        default_clevel = 5
+        default_shuffle = 1
 
-    @classmethod
-    def normalize_opts(cls, compression_opts):
-        """Convenience function to normalize compression options."""
+        def __init__(self, compression_opts):
+            # at this point we expect compression_opts to be fully specified
+            # and normalized
+            cname = compression_opts['cname']
+            if isinstance(cname, text_type):
+                cname = cname.encode('ascii')
+            self.cname = cname
+            self.clevel = compression_opts['clevel']
+            self.shuffle = compression_opts['shuffle']
 
-        if compression_opts is None:
-            compression_opts = dict()
-        cname = compression_opts.get('cname', None)
-        clevel = compression_opts.get('clevel', None)
-        shuffle = compression_opts.get('shuffle', None)
+        @classmethod
+        def normalize_opts(cls, compression_opts):
+            """Convenience function to normalize compression options."""
 
-        # determine internal compression library
-        cname = cname if cname is not None else cls.default_cname
+            if compression_opts is None:
+                compression_opts = dict()
+            cname = compression_opts.get('cname', None)
+            clevel = compression_opts.get('clevel', None)
+            shuffle = compression_opts.get('shuffle', None)
 
-        # check internal compressor is available
-        if blosc.compname_to_compcode(cname) < 0:
-            raise ValueError('blosc internal compressor not available: %s' %
-                             cname)
+            # determine internal compression library
+            cname = cname if cname is not None else cls.default_cname
 
-        # determine compression level
-        clevel = clevel if clevel is not None else cls.default_clevel
-        clevel = int(clevel)
-        if clevel < 0 or clevel > 9:
-            raise ValueError('invalid compression level: %s' % clevel)
+            # check internal compressor is available
+            if blosc.compname_to_compcode(cname) < 0:
+                raise ValueError('blosc internal compressor not available: %s'
+                                 % cname)
 
-        # determine shuffle filter
-        shuffle = shuffle if shuffle is not None else cls.default_shuffle
-        shuffle = int(shuffle)
-        if shuffle not in [0, 1, 2]:
-            raise ValueError('invalid shuffle: %s' % shuffle)
+            # determine compression level
+            clevel = clevel if clevel is not None else cls.default_clevel
+            clevel = int(clevel)
+            if clevel < 0 or clevel > 9:
+                raise ValueError('invalid compression level: %s' % clevel)
 
-        # construct normalised options
-        compression_opts = dict(
-            cname=cname, clevel=clevel, shuffle=shuffle
-        )
-        return compression_opts
+            # determine shuffle filter
+            shuffle = shuffle if shuffle is not None else cls.default_shuffle
+            shuffle = int(shuffle)
+            if shuffle not in [0, 1, 2]:
+                raise ValueError('invalid shuffle: %s' % shuffle)
 
-    # noinspection PyMethodMayBeStatic
-    def decompress(self, cdata, array):
-        blosc.decompress(cdata, array)
+            # construct normalised options
+            compression_opts = dict(
+                cname=cname, clevel=clevel, shuffle=shuffle
+            )
+            return compression_opts
 
-    def compress(self, array):
-        return blosc.compress(array, self.cname, self.clevel, self.shuffle)
+        # noinspection PyMethodMayBeStatic
+        def decompress(self, cdata, array):
+            blosc.decompress(cdata, array)
+
+        def compress(self, array):
+            return blosc.compress(array, self.cname, self.clevel, self.shuffle)
 
 
-registry['blosc'] = BloscCompressor
+    registry['blosc'] = BloscCompressor
 
 
 class ZlibCompressor(object):
