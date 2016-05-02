@@ -11,7 +11,7 @@ import pickle
 import numpy as np
 from numpy.testing import assert_array_equal
 from nose.tools import eq_ as eq, assert_is_instance, assert_is_none, \
-    assert_raises, assert_true
+    assert_raises, assert_true, assert_false
 import zict
 from zarr.mappings import DirectoryMap
 
@@ -122,6 +122,10 @@ class TestArray(unittest.TestCase):
         assert_is_instance(b, np.ndarray)
         eq(a.shape, b.shape)
         eq(a.dtype, b.dtype)
+
+        # check attributes
+        z.attrs['foo'] = 'bar'
+        eq('bar', z.attrs['foo'])
 
         # set data
         z[:] = a
@@ -408,7 +412,11 @@ class TestArray(unittest.TestCase):
 
     def test_readonly(self):
 
+        z = self.create_array(shape=1000, chunks=100)
+        assert_false(z.readonly)
+
         z = self.create_array(shape=1000, chunks=100, readonly=True)
+        assert_true(z.readonly)
         with assert_raises(ReadOnlyError):
             z[:] = 42
         with assert_raises(ReadOnlyError):

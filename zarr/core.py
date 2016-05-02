@@ -53,36 +53,61 @@ def init_store(store, shape, chunks, dtype=None, compression='blosc',
 
 
 class Array(object):
+    """Instantiate an array from an existing store.
+
+    Parameters
+    ----------
+    store : MutableMapping
+        Array store, already initialised.
+    readonly : bool, optional
+        True if array should be protected against modification.
+
+    Attributes
+    ----------
+    store
+    readonly
+    shape
+    chunks
+    dtype
+    compression
+    compression_opts
+    fill_value
+    order
+    size
+    itemsize
+    nbytes
+    nbytes_stored
+    initialized
+    cdata_shape
+
+    Methods
+    -------
+    __getitem__
+    __setitem__
+    resize
+    append
+
+    Examples
+    --------
+    >>> import zarr
+    >>> store = dict()
+    >>> zarr.init_store(store, shape=1000, chunks=100)
+    >>> z = zarr.Array(store)
+    >>> z
+    zarr.core.Array((1000,), float64, chunks=(100,), order=C)
+      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
+      nbytes: 7.8K; nbytes_stored: 289; ratio: 27.7; initialized: 0/10
+      store: builtins.dict
+
+    """  # flake8: noqa
 
     def __init__(self, store, readonly=False):
-        """Instantiate an array from an existing store.
-
-        Parameters
-        ----------
-        store : MutableMapping
-            Array store, already initialised.
-        readonly : bool, optional
-            True if array should be protected against modification.
-
-        Examples
-        --------
-        >>> import zarr
-        >>> store = dict()
-        >>> zarr.init_store(store, shape=1000, chunks=100)
-        >>> z = zarr.Array(store)
-        >>> z
-        zarr.core.Array((1000,), float64, chunks=(100,), order=C)
-          compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
-          nbytes: 7.8K; nbytes_stored: 289; ratio: 27.7; initialized: 0/10
-          store: builtins.dict
-
-        """  # flake8: noqa
-
         # N.B., expect at this point store is fully initialised with all
         # configuration metadata fully specified and normalised
 
-        self.store = store
-        self.readonly = readonly
+        #: store docstring
+        self._store = store  #: inline docstring
+        self._readonly = readonly
 
         # initialise metadata
         try:
@@ -91,37 +116,90 @@ class Array(object):
             raise ValueError('store has no metadata')
         else:
             meta = decode_metadata(meta_bytes)
-            self.meta = meta
-            self.shape = meta['shape']
-            self.chunks = meta['chunks']
-            self.dtype = meta['dtype']
-            self.compression = meta['compression']
-            self.compression_opts = meta['compression_opts']
-            self.fill_value = meta['fill_value']
-            self.order = meta['order']
-            compressor_cls = get_compressor_cls(self.compression)
-            self.compressor = compressor_cls(self.compression_opts)
+            self._meta = meta
+            self._shape = meta['shape']
+            self._chunks = meta['chunks']
+            self._dtype = meta['dtype']
+            self._compression = meta['compression']
+            self._compression_opts = meta['compression_opts']
+            self._fill_value = meta['fill_value']
+            self._order = meta['order']
+            compressor_cls = get_compressor_cls(self._compression)
+            self._compressor = compressor_cls(self._compression_opts)
 
         # initialise attributes
-        self.attrs = Attributes(store, readonly=readonly)
+        self._attrs = Attributes(store, readonly=readonly)
 
     def flush_metadata(self):
-        meta = dict(shape=self.shape, chunks=self.chunks, dtype=self.dtype,
-                    compression=self.compression,
-                    compression_opts=self.compression_opts,
-                    fill_value=self.fill_value, order=self.order)
-        self.store['meta'] = encode_metadata(meta)
+        meta = dict(shape=self._shape, chunks=self._chunks, dtype=self._dtype,
+                    compression=self._compression,
+                    compression_opts=self._compression_opts,
+                    fill_value=self._fill_value, order=self._order)
+        self._store['meta'] = encode_metadata(meta)
+
+    @property
+    def store(self):
+        """@@TODO"""
+        return self._store
+
+    @property
+    def readonly(self):
+        """@@TODO"""
+        return self._readonly
+
+    @property
+    def shape(self):
+        """@@TODO"""
+        return self._shape
+
+    @property
+    def chunks(self):
+        """@@TODO"""
+        return self._chunks
+
+    @property
+    def dtype(self):
+        """@@TODO"""
+        return self._dtype
+
+    @property
+    def compression(self):
+        """@@TODO"""
+        return self._compression
+
+    @property
+    def compression_opts(self):
+        """@@TODO"""
+        return self._compression_opts
+
+    @property
+    def fill_value(self):
+        """@@TODO"""
+        return self._fill_value
+
+    @property
+    def order(self):
+        """@@TODO"""
+        return self._order
+
+    @property
+    def attrs(self):
+        """@@TODO"""
+        return self._attrs
 
     @property
     def size(self):
-        return reduce(operator.mul, self.shape)
+        """Total number of elements in the array."""
+        return reduce(operator.mul, self._shape)
 
     @property
     def itemsize(self):
-        return self.dtype.itemsize
+        """@@TODO"""
+        return self._dtype.itemsize
 
     @property
     def nbytes(self):
+        """@@TODO"""
         return self.size * self.itemsize
 
     @property
@@ -129,12 +207,12 @@ class Array(object):
         """The total number of stored bytes of data for the array. N.B.,
         this will include configuration metadata and user attributes encoded
         as JSON."""
-        if hasattr(self.store, 'size'):
+        if hasattr(self._store, 'size'):
             # pass through
-            return self.store.size
-        elif isinstance(self.store, dict):
+            return self._store.size
+        elif isinstance(self._store, dict):
             # cheap to compute by summing length of values
-            return sum(len(v) for v in itervalues(self.store))
+            return sum(len(v) for v in itervalues(self._store))
         else:
             return -1
 
@@ -142,44 +220,47 @@ class Array(object):
     def initialized(self):
         """The number of chunks that have been initialized."""
         # N.B., expect 'meta' and 'attrs' keys in store also, so subtract 2
-        return len(self.store) - 2
+        return len(self._store) - 2
 
     @property
     def cdata_shape(self):
+        """@@TODO"""
         return tuple(
-            int(np.ceil(s / c)) for s, c in zip(self.shape, self.chunks)
+            int(np.ceil(s / c)) for s, c in zip(self._shape, self._chunks)
         )
 
     def __getitem__(self, item):
+        """@@TODO"""
 
         # normalize selection
-        selection = normalize_array_selection(item, self.shape)
+        selection = normalize_array_selection(item, self._shape)
 
         # determine output array shape
         out_shape = tuple(stop - start for start, stop in selection)
 
         # setup output array
-        out = np.empty(out_shape, dtype=self.dtype, order=self.order)
+        out = np.empty(out_shape, dtype=self._dtype, order=self._order)
 
         # determine indices of chunks overlapping the selection
-        chunk_range = get_chunk_range(selection, self.chunks)
+        chunk_range = get_chunk_range(selection, self._chunks)
 
         # iterate over chunks in range
         for cidx in itertools.product(*chunk_range):
 
             # determine chunk offset
-            offset = [i * c for i, c in zip(cidx, self.chunks)]
+            offset = [i * c for i, c in zip(cidx, self._chunks)]
 
             # determine region within output array
             out_selection = tuple(
                 slice(max(0, o - start), min(o + c - start, stop - start))
-                for (start, stop), o, c, in zip(selection, offset, self.chunks)
+                for (start, stop), o, c, in zip(selection, offset,
+                                                self._chunks)
             )
 
             # determine region within chunk
             chunk_selection = tuple(
                 slice(max(0, start - o), min(c, stop - o))
-                for (start, stop), o, c in zip(selection, offset, self.chunks)
+                for (start, stop), o, c in zip(selection, offset, self._chunks)
             )
 
             # obtain the destination array as a view of the output array
@@ -194,27 +275,28 @@ class Array(object):
         return self[:]
 
     def __setitem__(self, key, value):
+        """@@TODO"""
 
         # guard conditions
-        if self.readonly:
+        if self._readonly:
             raise ReadOnlyError('array is read-only')
 
         # normalize selection
-        selection = normalize_array_selection(key, self.shape)
+        selection = normalize_array_selection(key, self._shape)
 
         # determine indices of chunks overlapping the selection
-        chunk_range = get_chunk_range(selection, self.chunks)
+        chunk_range = get_chunk_range(selection, self._chunks)
 
         # iterate over chunks in range
         for cidx in itertools.product(*chunk_range):
 
             # determine chunk offset
-            offset = [i * c for i, c in zip(cidx, self.chunks)]
+            offset = [i * c for i, c in zip(cidx, self._chunks)]
 
             # determine required index range within chunk
             chunk_selection = tuple(
                 slice(max(0, start - o), min(c, stop - o))
-                for (start, stop), o, c in zip(selection, offset, self.chunks)
+                for (start, stop), o, c in zip(selection, offset, self._chunks)
             )
 
             if np.isscalar(value):
@@ -229,7 +311,7 @@ class Array(object):
                 value_selection = tuple(
                     slice(max(0, o - start), min(o + c - start, stop - start))
                     for (start, stop), o, c, in zip(selection, offset,
-                                                    self.chunks)
+                                                    self._chunks)
                 )
 
                 # put data
@@ -256,31 +338,31 @@ class Array(object):
 
             # obtain compressed data for chunk
             ckey = '.'.join(map(str, cidx))
-            cdata = self.store[ckey]
+            cdata = self._store[ckey]
 
         except KeyError:
 
             # chunk not initialized
-            if self.fill_value is not None:
-                dest.fill(self.fill_value)
+            if self._fill_value is not None:
+                dest.fill(self._fill_value)
 
         else:
 
-            if is_total_slice(item, self.chunks) and \
-                    ((self.order == 'C' and dest.flags.c_contiguous) or
-                     (self.order == 'F' and dest.flags.f_contiguous)):
+            if is_total_slice(item, self._chunks) and \
+                    ((self._order == 'C' and dest.flags.c_contiguous) or
+                     (self._order == 'F' and dest.flags.f_contiguous)):
 
                 # optimisation: we want the whole chunk, and the destination is
                 # contiguous, so we can decompress directly from the chunk
                 # into the destination array
-                self.compressor.decompress(cdata, dest)
+                self._compressor.decompress(cdata, dest)
 
             else:
 
                 # decompress chunk
-                chunk = np.empty(self.chunks, dtype=self.dtype,
-                                 order=self.order)
-                self.compressor.decompress(cdata, chunk)
+                chunk = np.empty(self._chunks, dtype=self._dtype,
+                                 order=self._order)
+                self._compressor.decompress(cdata, chunk)
 
                 # set data in output array
                 # (split into two lines for profiling)
@@ -303,7 +385,7 @@ class Array(object):
 
         # override this in sub-classes, e.g., if need to use a lock
 
-        if is_total_slice(key, self.chunks):
+        if is_total_slice(key, self._chunks):
 
             # optimisation: we are completely replacing the chunk, so no need
             # to access the existing chunk data
@@ -311,17 +393,17 @@ class Array(object):
             if np.isscalar(value):
 
                 # setup array filled with value
-                chunk = np.empty(self.chunks, dtype=self.dtype,
-                                 order=self.order)
+                chunk = np.empty(self._chunks, dtype=self._dtype,
+                                 order=self._order)
                 chunk.fill(value)
 
             else:
 
                 # ensure array is contiguous
-                if self.order == 'F':
-                    chunk = np.asfortranarray(value, dtype=self.dtype)
+                if self._order == 'F':
+                    chunk = np.asfortranarray(value, dtype=self._dtype)
                 else:
-                    chunk = np.ascontiguousarray(value, dtype=self.dtype)
+                    chunk = np.ascontiguousarray(value, dtype=self._dtype)
 
         else:
             # partially replace the contents of this chunk
@@ -330,42 +412,42 @@ class Array(object):
 
                 # obtain compressed data for chunk
                 ckey = '.'.join(map(str, cidx))
-                cdata = self.store[ckey]
+                cdata = self._store[ckey]
 
             except KeyError:
 
                 # chunk not initialized
-                chunk = np.empty(self.chunks, dtype=self.dtype,
-                                 order=self.order)
-                if self.fill_value is not None:
-                    chunk.fill(self.fill_value)
+                chunk = np.empty(self._chunks, dtype=self._dtype,
+                                 order=self._order)
+                if self._fill_value is not None:
+                    chunk.fill(self._fill_value)
 
             else:
 
                 # decompress chunk
-                chunk = np.empty(self.chunks, dtype=self.dtype,
-                                 order=self.order)
-                self.compressor.decompress(cdata, chunk)
+                chunk = np.empty(self._chunks, dtype=self._dtype,
+                                 order=self._order)
+                self._compressor.decompress(cdata, chunk)
 
             # modify
             chunk[key] = value
 
         # compress
-        cdata = self.compressor.compress(chunk)
+        cdata = self._compressor.compress(chunk)
 
         # store
         ckey = '.'.join(map(str, cidx))
-        self.store[ckey] = cdata
+        self._store[ckey] = cdata
 
     def __repr__(self):
         r = '%s.%s(' % (type(self).__module__, type(self).__name__)
-        r += '%s' % str(self.shape)
-        r += ', %s' % str(self.dtype)
-        r += ', chunks=%s' % str(self.chunks)
-        r += ', order=%s' % self.order
+        r += '%s' % str(self._shape)
+        r += ', %s' % str(self._dtype)
+        r += ', chunks=%s' % str(self._chunks)
+        r += ', order=%s' % self._order
         r += ')'
-        r += '\n  compression: %s' % self.compression
-        r += '; compression_opts: %s' % str(self.compression_opts)
+        r += '\n  compression: %s' % self._compression
+        r += '; compression_opts: %s' % str(self._compression_opts)
         r += '\n  nbytes: %s' % human_readable_size(self.nbytes)
         if self.nbytes_stored > 0:
             r += '; nbytes_stored: %s' % human_readable_size(
@@ -373,37 +455,37 @@ class Array(object):
             r += '; ratio: %.1f' % (self.nbytes / self.nbytes_stored)
         n_chunks = reduce(operator.mul, self.cdata_shape)
         r += '; initialized: %s/%s' % (self.initialized, n_chunks)
-        r += '\n  store: %s.%s' % (type(self.store).__module__,
-                                   type(self.store).__name__)
+        r += '\n  store: %s.%s' % (type(self._store).__module__,
+                                   type(self._store).__name__)
         return r
 
     def resize(self, *args):
         """Resize the array."""
 
         # guard conditions
-        if self.readonly:
+        if self._readonly:
             raise ReadOnlyError('array is read-only')
 
         # normalize new shape argument
-        old_shape = self.shape
+        old_shape = self._shape
         new_shape = normalize_resize_args(old_shape, *args)
 
         # determine the new number and arrangement of chunks
-        chunks = self.chunks
+        chunks = self._chunks
         new_cdata_shape = tuple(int(np.ceil(s / c))
                                 for s, c in zip(new_shape, chunks))
 
         # remove any chunks not within range
-        for key in list(self.store):
+        for key in list(self._store):
             if key not in ['meta', 'attrs']:
                 cidx = map(int, key.split('.'))
                 if all(i < c for i, c in zip(cidx, new_cdata_shape)):
                     pass  # keep the chunk
                 else:
-                    del self.store[key]
+                    del self._store[key]
 
         # update metadata
-        self.shape = new_shape
+        self._shape = new_shape
         self.flush_metadata()
 
     def append(self, data, axis=0):
@@ -424,7 +506,7 @@ class Array(object):
         """
 
         # guard conditions
-        if self.readonly:
+        if self._readonly:
             raise ReadOnlyError('array is read-only')
 
         # ensure data is array-like
@@ -432,7 +514,7 @@ class Array(object):
             data = np.asanyarray(data)
 
         # ensure shapes are compatible for non-append dimensions
-        self_shape_preserved = tuple(s for i, s in enumerate(self.shape)
+        self_shape_preserved = tuple(s for i, s in enumerate(self._shape)
                                      if i != axis)
         data_shape_preserved = tuple(s for i, s in enumerate(data.shape)
                                      if i != axis)
@@ -440,12 +522,12 @@ class Array(object):
             raise ValueError('shapes not compatible')
 
         # remember old shape
-        old_shape = self.shape
+        old_shape = self._shape
 
         # determine new shape
         new_shape = tuple(
-            self.shape[i] if i != axis else self.shape[i] + data.shape[i]
-            for i in range(len(self.shape))
+            self._shape[i] if i != axis else self._shape[i] + data.shape[i]
+            for i in range(len(self._shape))
         )
 
         # resize
@@ -455,7 +537,7 @@ class Array(object):
         # noinspection PyTypeChecker
         append_selection = tuple(
             slice(None) if i != axis else slice(old_shape[i], new_shape[i])
-            for i in range(len(self.shape))
+            for i in range(len(self._shape))
         )
         self[append_selection] = data
 
@@ -502,8 +584,8 @@ class SynchronizedArray(Array):
         """  # flake8: noqa
         super(SynchronizedArray, self).__init__(store, readonly=readonly)
         self.synchronizer = synchronizer
-        self.attrs = SynchronizedAttributes(store, synchronizer,
-                                            readonly=readonly)
+        self._attrs = SynchronizedAttributes(store, synchronizer,
+                                             readonly=readonly)
 
     def _chunk_setitem(self, cidx, key, value):
         ckey = '.'.join(map(str, cidx))

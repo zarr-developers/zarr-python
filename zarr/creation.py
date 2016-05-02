@@ -13,7 +13,7 @@ from zarr.mappings import DirectoryMap
 def create(shape, chunks, dtype=None, compression='blosc',
            compression_opts=None, fill_value=None, order='C', store=None,
            synchronizer=None, overwrite=False):
-    """Create an array
+    """Create an array.
 
     Parameters
     ----------
@@ -24,7 +24,8 @@ def create(shape, chunks, dtype=None, compression='blosc',
     dtype : string or dtype, optional
         NumPy dtype.
     compression : string, optional
-        Name of primary compression library, e.g., 'blosc', 'zlib'.
+        Name of primary compression library, e.g., 'blosc', 'zlib', 'bz2',
+        'lzma'.
     compression_opts : object, optional
         Options to primary compressor. E.g., for blosc, provide a dictionary
         with keys 'cname', 'clevel' and 'shuffle'.
@@ -45,7 +46,20 @@ def create(shape, chunks, dtype=None, compression='blosc',
     -------
     z : zarr.core.Array
 
-    """
+    Examples
+    --------
+
+    Create an array with default settings::
+
+        >>> import zarr
+        >>> z = zarr.create((10000, 10000), chunks=(1000, 1000))
+        >>> z
+        zarr.core.Array((10000, 10000), float64, chunks=(1000, 1000), order=C)
+          compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
+          nbytes: 762.9M; nbytes_stored: 320; ratio: 2500000.0; initialized: 0/100
+          store: builtins.dict
+
+    """  # flake8: noqa
 
     # initialise store
     if store is None:
@@ -67,33 +81,15 @@ def empty(shape, chunks, dtype=None, compression='blosc',
           compression_opts=None, order='C', store=None, synchronizer=None):
     """Create an empty array.
 
-    Parameters
-    ----------
-    shape : int or tuple of ints
-        Array shape.
-    chunks : int or tuple of ints
-        Chunk shape.
-    dtype : string or dtype, optional
-        NumPy dtype.
-    compression : string, optional
-        Name of primary compression library, e.g., 'blosc', 'zlib'.
-    compression_opts : object, optional
-        Options to primary compressor. E.g., for blosc, provide a dictionary
-        with keys 'cname', 'clevel' and 'shuffle'.
-    order : {'C', 'F'}, optional
-        Memory layout to be used within each chunk.
-    store : MutableMapping, optional
-        Array storage. If not provided, a Python dict will be used, meaning
-        array data will be stored in memory.
-    synchronizer : zarr.sync.ArraySynchronizer, optional
-        Array synchronizer.
+    For parameter definitions see :func:`zarr.creation.create`.
 
-    Returns
-    -------
-    z : zarr.core.Array
+    Notes
+    -----
+    The contents of an empty Zarr array are not defined. On attempting to
+    retrieve data from an empty Zarr array, any values may be returned,
+    and these are not guaranteed to be stable from one access to the next.
 
     """
-
     return create(shape=shape, chunks=chunks, dtype=dtype,
                   compression=compression, compression_opts=compression_opts,
                   fill_value=None, order=order, store=store,
@@ -105,32 +101,22 @@ def zeros(shape, chunks, dtype=None, compression='blosc',
     """Create an array, with zero being used as the default value for
     uninitialised portions of the array.
 
-    Parameters
-    ----------
-    shape : int or tuple of ints
-        Array shape.
-    chunks : int or tuple of ints
-        Chunk shape.
-    dtype : string or dtype, optional
-        NumPy dtype.
-    compression : string, optional
-        Name of primary compression library, e.g., 'blosc', 'zlib'.
-    compression_opts : object, optional
-        Options to primary compressor. E.g., for blosc, provide a dictionary
-        with keys 'cname', 'clevel' and 'shuffle'.
-    order : {'C', 'F'}, optional
-        Memory layout to be used within each chunk.
-    store : MutableMapping, optional
-        Array storage. If not provided, a Python dict will be used, meaning
-        array data will be stored in memory.
-    synchronizer : zarr.sync.ArraySynchronizer, optional
-        Array synchronizer.
+    For parameter definitions see :func:`zarr.creation.create`.
 
-    Returns
-    -------
-    z : zarr.core.Array
+    Examples
+    --------
+    >>> import zarr
+    >>> z = zarr.zeros((10000, 10000), chunks=(1000, 1000))
+    >>> z
+    zarr.core.Array((10000, 10000), float64, chunks=(1000, 1000), order=C)
+      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
+      nbytes: 762.9M; nbytes_stored: 317; ratio: 2523659.3; initialized: 0/100
+      store: builtins.dict
+    >>> z[:2, :2]
+    array([[ 0.,  0.],
+           [ 0.,  0.]])
 
-    """
+    """  # flake8: noqa
 
     return create(shape=shape, chunks=chunks, dtype=dtype,
                   compression=compression,
@@ -143,32 +129,22 @@ def ones(shape, chunks, dtype=None, compression='blosc',
     """Create an array, with one being used as the default value for
     uninitialised portions of the array.
 
-    Parameters
-    ----------
-    shape : int or tuple of ints
-        Array shape.
-    chunks : int or tuple of ints
-        Chunk shape.
-    dtype : string or dtype, optional
-        NumPy dtype.
-    compression : string, optional
-        Name of primary compression library, e.g., 'blosc', 'zlib'.
-    compression_opts : object, optional
-        Options to primary compressor. E.g., for blosc, provide a dictionary
-        with keys 'cname', 'clevel' and 'shuffle'.
-    order : {'C', 'F'}, optional
-        Memory layout to be used within each chunk.
-    store : MutableMapping, optional
-        Array storage. If not provided, a Python dict will be used, meaning
-        array data will be stored in memory.
-    synchronizer : zarr.sync.ArraySynchronizer, optional
-        Array synchronizer.
+    For parameter definitions see :func:`zarr.creation.create`.
 
-    Returns
-    -------
-    z : zarr.core.Array
+    Examples
+    --------
+    >>> import zarr
+    >>> z = zarr.ones((10000, 10000), chunks=(1000, 1000))
+    >>> z
+    zarr.core.Array((10000, 10000), float64, chunks=(1000, 1000), order=C)
+      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
+      nbytes: 762.9M; nbytes_stored: 317; ratio: 2523659.3; initialized: 0/100
+      store: builtins.dict
+    >>> z[:2, :2]
+    array([[ 1.,  1.],
+           [ 1.,  1.]])
 
-    """
+    """  # flake8: noqa
 
     return create(shape=shape, chunks=chunks, dtype=dtype,
                   compression=compression, compression_opts=compression_opts,
@@ -181,34 +157,22 @@ def full(shape, chunks, fill_value, dtype=None, compression='blosc',
     """Create an array, with `fill_value` being used as the default value for
     uninitialised portions of the array.
 
-    Parameters
-    ----------
-    shape : int or tuple of ints
-        Array shape.
-    chunks : int or tuple of ints
-        Chunk shape.
-    fill_value : object
-        Default value to use for uninitialised portions of the array.
-    dtype : string or dtype, optional
-        NumPy dtype.
-    compression : string, optional
-        Name of primary compression library, e.g., 'blosc', 'zlib'.
-    compression_opts : object, optional
-        Options to primary compressor. E.g., for blosc, provide a dictionary
-        with keys 'cname', 'clevel' and 'shuffle'.
-    order : {'C', 'F'}, optional
-        Memory layout to be used within each chunk.
-    store : MutableMapping, optional
-        Array storage. If not provided, a Python dict will be used, meaning
-        array data will be stored in memory.
-    synchronizer : zarr.sync.ArraySynchronizer, optional
-        Array synchronizer.
+    For parameter definitions see :func:`zarr.creation.create`.
 
-    Returns
-    -------
-    z : zarr.core.Array
+    Examples
+    --------
+    >>> import zarr
+    >>> z = zarr.full((10000, 10000), chunks=(1000, 1000), fill_value=42)
+    >>> z
+    zarr.core.Array((10000, 10000), float64, chunks=(1000, 1000), order=C)
+      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
+      nbytes: 762.9M; nbytes_stored: 318; ratio: 2515723.3; initialized: 0/100
+      store: builtins.dict
+    >>> z[:2, :2]
+    array([[ 42.,  42.],
+           [ 42.,  42.]])
 
-    """
+    """  # flake8: noqa
 
     return create(shape=shape, chunks=chunks, dtype=dtype,
                   compression=compression, compression_opts=compression_opts,
@@ -221,34 +185,22 @@ def array(data, chunks=None, dtype=None, compression='blosc',
           synchronizer=None):
     """Create an array filled with `data`.
 
-    Parameters
-    ----------
-    data : array_like
-        Data to store.
-    chunks : int or tuple of ints
-        Chunk shape.
-    dtype : string or dtype, optional
-        NumPy dtype.
-    compression : string, optional
-        Name of primary compression library, e.g., 'blosc', 'zlib'.
-    compression_opts : object, optional
-        Options to primary compressor. E.g., for blosc, provide a dictionary
-        with keys 'cname', 'clevel' and 'shuffle'.
-    fill_value : object
-        Default value to use for uninitialised portions of the array.
-    order : {'C', 'F'}, optional
-        Memory layout to be used within each chunk.
-    store : MutableMapping, optional
-        Array storage. If not provided, a Python dict will be used, meaning
-        array data will be stored in memory.
-    synchronizer : zarr.sync.ArraySynchronizer, optional
-        Array synchronizer.
+    The `data` argument should be a NumPy array or array-like object. For
+    other parameter definitions see :func:`zarr.creation.create`.
 
-    Returns
-    -------
-    z : zarr.core.Array
+    Examples
+    --------
+    >>> import numpy as np
+    >>> import zarr
+    >>> a = np.arange(100000000).reshape(10000, 10000)
+    >>> z = zarr.array(a, chunks=(1000, 1000))
+    >>> z
+    zarr.core.Array((10000, 10000), int64, chunks=(1000, 1000), order=C)
+      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
+      nbytes: 762.9M; nbytes_stored: 16.8M; ratio: 45.5; initialized: 100/100
+      store: builtins.dict
 
-    """
+    """  # flake8: noqa
 
     # ensure data is array-like
     if not hasattr(data, 'shape') or not hasattr(data, 'dtype'):
@@ -307,7 +259,8 @@ def open(path, mode='a', shape=None, chunks=None, dtype=None,
     dtype : string or dtype, optional
         NumPy dtype.
     compression : string, optional
-        Name of primary compression library, e.g., 'blosc', 'zlib'.
+        Name of primary compression library, e.g., 'blosc', 'zlib', 'bz2',
+        'lzma'.
     compression_opts : object, optional
         Options to primary compressor. E.g., for blosc, provide a dictionary
         with keys 'cname', 'clevel' and 'shuffle'.
@@ -322,7 +275,28 @@ def open(path, mode='a', shape=None, chunks=None, dtype=None,
     -------
     z : zarr.core.Array
 
-    """
+    Examples
+    --------
+    >>> import numpy as np
+    >>> import zarr
+    >>> z1 = zarr.open('example.zarr', mode='w', shape=(10000, 10000),
+    ...                chunks=(1000, 1000), fill_value=0)
+    >>> z1[:] = np.arange(100000000).reshape(10000, 10000)
+    >>> z1
+    zarr.core.Array((10000, 10000), float64, chunks=(1000, 1000), order=C)
+      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
+      nbytes: 762.9M; nbytes_stored: 24.6M; ratio: 31.0; initialized: 100/100
+      store: zarr.mappings.DirectoryMap
+    >>> z2 = zarr.open('example.zarr', mode='r')
+    >>> z2
+    zarr.core.Array((10000, 10000), float64, chunks=(1000, 1000), order=C)
+      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
+      nbytes: 762.9M; nbytes_stored: 24.6M; ratio: 31.0; initialized: 100/100
+      store: zarr.mappings.DirectoryMap
+    >>> np.all(z1[:] == z2[:])
+    True
+
+    """  # flake8: noqa
 
     # use same mode semantics as h5py, although N.B., here `path` is a
     # directory:
@@ -396,7 +370,7 @@ def _like_args(a, shape, chunks, dtype, compression, compression_opts, order):
 def empty_like(a, shape=None, chunks=None, dtype=None, compression=None,
                compression_opts=None, order=None, store=None,
                synchronizer=None):
-    """Create an empty array like 'a'."""
+    """Create an empty array like `a`."""
     shape, chunks, dtype, compression, compression_opts, order = \
         _like_args(a, shape, chunks, dtype, compression, compression_opts,
                    order)
@@ -408,7 +382,7 @@ def empty_like(a, shape=None, chunks=None, dtype=None, compression=None,
 def zeros_like(a, shape=None, chunks=None, dtype=None, compression=None,
                compression_opts=None, order=None, store=None,
                synchronizer=None):
-    """Create an array of zeros like 'a'."""
+    """Create an array of zeros like `a`."""
     shape, chunks, dtype, compression, compression_opts, order = \
         _like_args(a, shape, chunks, dtype, compression, compression_opts,
                    order)
@@ -420,7 +394,7 @@ def zeros_like(a, shape=None, chunks=None, dtype=None, compression=None,
 def ones_like(a, shape=None, chunks=None, dtype=None, compression=None,
               compression_opts=None, order=None, store=None,
               synchronizer=None):
-    """Create an array of ones like 'a'."""
+    """Create an array of ones like `a`."""
     shape, chunks, dtype, compression, compression_opts, order = \
         _like_args(a, shape, chunks, dtype, compression, compression_opts,
                    order)
@@ -432,7 +406,7 @@ def ones_like(a, shape=None, chunks=None, dtype=None, compression=None,
 def full_like(a, shape=None, chunks=None, fill_value=None, dtype=None,
               compression=None, compression_opts=None, order=None,
               store=None, synchronizer=None):
-    """Create a filled array like 'a'."""
+    """Create a filled array like `a`."""
     shape, chunks, dtype, compression, compression_opts, order = \
         _like_args(a, shape, chunks, dtype, compression, compression_opts,
                    order)
@@ -449,7 +423,7 @@ def full_like(a, shape=None, chunks=None, fill_value=None, dtype=None,
 def open_like(a, path, mode='a', shape=None, chunks=None, dtype=None,
               compression=None, compression_opts=None, fill_value=None,
               order=None, synchronizer=None):
-    """Open a persistent array like 'a'."""
+    """Open a persistent array like `a`."""
     shape, chunks, dtype, compression, compression_opts, order = \
         _like_args(a, shape, chunks, dtype, compression, compression_opts,
                    order)
