@@ -8,7 +8,7 @@ from numpy.testing import assert_array_equal
 from nose.tools import eq_ as eq, assert_raises
 
 
-from zarr.compression import get_compressor_cls
+from zarr.compressors import get_compressor_cls
 
 
 class CompressorTests(object):

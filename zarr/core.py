@@ -9,7 +9,7 @@ import json
 import numpy as np
 
 
-from zarr.compression import get_compressor_cls
+from zarr.compressors import get_compressor_cls
 from zarr.util import is_total_slice, normalize_array_selection, \
     get_chunk_range, human_readable_size, normalize_shape, normalize_chunks, \
     normalize_resize_args, normalize_order
@@ -19,12 +19,70 @@ from zarr.compat import itervalues
 from zarr.errors import ReadOnlyError
 
 
-def init_store(store, shape, chunks, dtype=None, compression='blosc',
+def init_store(store, shape, chunks, dtype=None, compression='default',
                compression_opts=None, fill_value=None,
                order='C', overwrite=False):
     """Initialise an array store with the given configuration.
 
-    TODO doc me
+    Parameters
+    ----------
+    store : MutableMapping
+        A mapping that supports string keys and byte sequence values.
+    shape : int or tuple of ints
+        Array shape.
+    chunks : int or tuple of ints
+        Chunk shape.
+    dtype : string or dtype, optional
+        NumPy dtype.
+    compression : string, optional
+        Name of primary compression library, e.g., 'blosc', 'zlib', 'bz2',
+        'lzma'.
+    compression_opts : object, optional
+        Options to primary compressor. E.g., for blosc, provide a dictionary
+        with keys 'cname', 'clevel' and 'shuffle'.
+    fill_value : object
+        Default value to use for uninitialised portions of the array.
+    order : {'C', 'F'}, optional
+        Memory layout to be used within each chunk.
+    overwrite : bool, optional
+        If True, erase all data in `store` prior to initialisation.
+
+    Examples
+    --------
+    >>> import zarr
+    >>> store = dict()
+    >>> zarr.init_store(store, shape=(10000, 10000), chunks=(1000, 1000))
+    >>> sorted(store.keys())
+    ['attrs', 'meta']
+    >>> print(str(store['meta'], 'ascii'))
+    {
+        "chunks": [
+            1000,
+            1000
+        ],
+        "compression": "blosc",
+        "compression_opts": {
+            "clevel": 5,
+            "cname": "blosclz",
+            "shuffle": 1
+        },
+        "dtype": "<f8",
+        "fill_value": null,
+        "order": "C",
+        "shape": [
+            10000,
+            10000
+        ],
+        "zarr_format": 1
+    }
+    >>> print(str(store['attrs'], 'ascii'))
+    {}
+
+    Notes
+    -----
+    The initialisation process involves normalising all array metadata,
+    encoding as JSON and storing under the 'meta' key. User attributes are also
+    initialised and stored as JSON under the 'attrs' key.
 
     """
 
@@ -38,6 +96,7 @@ def init_store(store, shape, chunks, dtype=None, compression='blosc',
     chunks = normalize_chunks(chunks, shape)
     dtype = np.dtype(dtype)
     compressor_cls = get_compressor_cls(compression)
+    compression = compressor_cls.canonical_name
     compression_opts = compressor_cls.normalize_opts(
         compression_opts
     )
@@ -57,7 +116,7 @@ def init_store(store, shape, chunks, dtype=None, compression='blosc',
 
 
 class Array(object):
-    """Instantiate an array from an existing store.
+    """Instantiate an array from an initialised store.
 
     Parameters
     ----------
@@ -95,12 +154,12 @@ class Array(object):
     --------
     >>> import zarr
     >>> store = dict()
-    >>> zarr.init_store(store, shape=1000, chunks=100)
+    >>> zarr.init_store(store, shape=(10000, 10000), chunks=(1000, 1000))
     >>> z = zarr.Array(store)
     >>> z
-    zarr.core.Array((1000,), float64, chunks=(100,), order=C)
+    zarr.core.Array((10000, 10000), float64, chunks=(1000, 1000), order=C)
       compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
-      nbytes: 7.8K; nbytes_stored: 289; ratio: 27.7; initialized: 0/10
+      nbytes: 762.9M; nbytes_stored: 320; ratio: 2500000.0; initialized: 0/100
       store: builtins.dict
 
     """  # flake8: noqa
@@ -631,11 +690,39 @@ class Array(object):
         return r
 
     def resize(self, *args):
-        """Resize the array.
+        """Change the shape of the array by growing or shrinking one or more
+        dimensions.
 
-        TODO doc me
+        Examples
+        --------
+        >>> import zarr
+        >>> z = zarr.zeros(shape=(10000, 10000), chunks=(1000, 1000))
+        >>> z
+        zarr.core.Array((10000, 10000), float64, chunks=(1000, 1000), order=C)
+          compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
+          nbytes: 762.9M; nbytes_stored: 317; ratio: 2523659.3; initialized: 0/100
+          store: builtins.dict
+        >>> z.resize(20000, 10000)
+        >>> z
+        zarr.core.Array((20000, 10000), float64, chunks=(1000, 1000), order=C)
+          compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
+          nbytes: 1.5G; nbytes_stored: 317; ratio: 5047318.6; initialized: 0/200
+          store: builtins.dict
+        >>> z.resize(30000, 1000)
+        >>> z
+        zarr.core.Array((30000, 1000), float64, chunks=(1000, 1000), order=C)
+          compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
+          nbytes: 228.9M; nbytes_stored: 316; ratio: 759493.7; initialized: 0/30
+          store: builtins.dict
 
-        """
+        Notes
+        -----
+        When resizing an array, the data are not rearranged in any way.
+
+        If one or more dimensions are shrunk, any chunks falling outside the
+        new array shape will be deleted from the underlying store.
+
+        """  # flake8: noqa
 
         # guard conditions
         if self._readonly:
@@ -680,7 +767,27 @@ class Array(object):
 
         Examples
         --------
-        TODO
+        >>> import numpy as np
+        >>> import zarr
+        >>> a = np.arange(10000000, dtype='i4').reshape(10000, 1000)
+        >>> z = zarr.array(a, chunks=(1000, 100))
+        >>> z
+        zarr.core.Array((10000, 1000), int32, chunks=(1000, 100), order=C)
+          compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
+          nbytes: 38.1M; nbytes_stored: 2.0M; ratio: 19.3; initialized: 100/100
+          store: builtins.dict
+        >>> z.append(a+a)
+        >>> z
+        zarr.core.Array((20000, 1000), int32, chunks=(1000, 100), order=C)
+          compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
+          nbytes: 76.3M; nbytes_stored: 3.6M; ratio: 21.2; initialized: 200/200
+          store: builtins.dict
+        >>> z.append(np.vstack([a, a]), axis=1)
+        >>> z
+        zarr.core.Array((20000, 2000), int32, chunks=(1000, 100), order=C)
+          compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
+          nbytes: 152.6M; nbytes_stored: 7.6M; ratio: 20.2; initialized: 400/400
+          store: builtins.dict
 
         """
 

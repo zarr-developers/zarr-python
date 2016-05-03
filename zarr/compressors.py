@@ -13,6 +13,41 @@ from zarr.compat import text_type
 registry = dict()
 
 
+class ZlibCompressor(object):
+
+    canonical_name = 'zlib'
+    default_level = 1
+
+    def __init__(self, compression_opts):
+        self.level = compression_opts
+
+    @classmethod
+    def normalize_opts(cls, compression_opts):
+        """Convenience function to normalize compression options."""
+        if compression_opts is None:
+            level = cls.default_level
+        else:
+            level = int(compression_opts)
+        if level < 0 or level > 9:
+            raise ValueError('invalid compression level: %s' % level)
+        return level
+
+    # noinspection PyMethodMayBeStatic
+    def decompress(self, cdata, array):
+        data = zlib.decompress(cdata)
+        src = np.frombuffer(data, dtype=array.dtype).reshape(array.shape)
+        np.copyto(array, src)
+
+    def compress(self, array):
+        data = array.tobytes()
+        return zlib.compress(data, self.level)
+
+
+registry[ZlibCompressor.canonical_name] = ZlibCompressor
+registry['gzip'] = ZlibCompressor  # alias
+default_compression = ZlibCompressor.canonical_name
+
+
 try:
     from zarr import blosc
 except ImportError:  # pragma: no cover
@@ -21,6 +56,7 @@ else:
 
     class BloscCompressor(object):
 
+        canonical_name = 'blosc'
         default_cname = 'blosclz'
         default_clevel = 5
         default_shuffle = 1
@@ -78,44 +114,13 @@ else:
         def compress(self, array):
             return blosc.compress(array, self.cname, self.clevel, self.shuffle)
 
-    registry['blosc'] = BloscCompressor
-
-
-class ZlibCompressor(object):
-
-    default_level = 1
-
-    def __init__(self, compression_opts):
-        self.level = compression_opts
-
-    @classmethod
-    def normalize_opts(cls, compression_opts):
-        """Convenience function to normalize compression options."""
-        if compression_opts is None:
-            level = cls.default_level
-        else:
-            level = int(compression_opts)
-        if level < 0 or level > 9:
-            raise ValueError('invalid compression level: %s' % level)
-        return level
-
-    # noinspection PyMethodMayBeStatic
-    def decompress(self, cdata, array):
-        data = zlib.decompress(cdata)
-        src = np.frombuffer(data, dtype=array.dtype).reshape(array.shape)
-        np.copyto(array, src)
-
-    def compress(self, array):
-        data = array.tobytes()
-        return zlib.compress(data, self.level)
-
-
-registry['zlib'] = ZlibCompressor
-registry['gzip'] = ZlibCompressor  # alias
+    registry[BloscCompressor.canonical_name] = BloscCompressor
+    default_compression = BloscCompressor.canonical_name
 
 
 class BZ2Compressor(object):
 
+    canonical_name = 'bz2'
     default_level = 1
 
     def __init__(self, compression_opts):
@@ -143,7 +148,7 @@ class BZ2Compressor(object):
         return bz2.compress(data, self.level)
 
 
-registry['bz2'] = BZ2Compressor
+registry[BZ2Compressor.canonical_name] = BZ2Compressor
 
 
 try:
@@ -154,6 +159,7 @@ else:
 
     class LZMACompressor(object):
 
+        canonical_name = 'lzma'
         default_format = lzma.FORMAT_XZ
         default_check = lzma.CHECK_NONE
         default_preset = 1
@@ -227,10 +233,12 @@ else:
             return lzma.compress(data, format=self.format, check=self.check,
                                  preset=self.preset, filters=self.filters)
 
-    registry['lzma'] = LZMACompressor
+    registry[LZMACompressor.canonical_name] = LZMACompressor
 
 
 class NoCompressor(object):
+
+    canonical_name = None
 
     def __init__(self, compression_opts):
         pass
@@ -252,10 +260,12 @@ class NoCompressor(object):
         return data
 
 
-registry[None] = NoCompressor
+registry[NoCompressor.canonical_name] = NoCompressor
 
 
 def get_compressor_cls(compression):
+    if compression == 'default':
+        compression = default_compression
     try:
         return registry[compression]
     except KeyError:

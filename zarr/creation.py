@@ -10,7 +10,7 @@ from zarr.core import Array, SynchronizedArray, init_store
 from zarr.mappings import DirectoryMap
 
 
-def create(shape, chunks, dtype=None, compression='blosc',
+def create(shape, chunks, dtype=None, compression='default',
            compression_opts=None, fill_value=None, order='C', store=None,
            synchronizer=None, overwrite=False):
     """Create an array.
@@ -77,7 +77,7 @@ def create(shape, chunks, dtype=None, compression='blosc',
     return z
 
 
-def empty(shape, chunks, dtype=None, compression='blosc',
+def empty(shape, chunks, dtype=None, compression='default',
           compression_opts=None, order='C', store=None, synchronizer=None):
     """Create an empty array.
 
@@ -96,7 +96,7 @@ def empty(shape, chunks, dtype=None, compression='blosc',
                   synchronizer=synchronizer)
 
 
-def zeros(shape, chunks, dtype=None, compression='blosc',
+def zeros(shape, chunks, dtype=None, compression='default',
           compression_opts=None, order='C', store=None, synchronizer=None):
     """Create an array, with zero being used as the default value for
     uninitialised portions of the array.
@@ -124,7 +124,7 @@ def zeros(shape, chunks, dtype=None, compression='blosc',
                   store=store, synchronizer=synchronizer)
 
 
-def ones(shape, chunks, dtype=None, compression='blosc',
+def ones(shape, chunks, dtype=None, compression='default',
          compression_opts=None, order='C', store=None, synchronizer=None):
     """Create an array, with one being used as the default value for
     uninitialised portions of the array.
@@ -152,7 +152,7 @@ def ones(shape, chunks, dtype=None, compression='blosc',
                   synchronizer=synchronizer)
 
 
-def full(shape, chunks, fill_value, dtype=None, compression='blosc',
+def full(shape, chunks, fill_value, dtype=None, compression='default',
          compression_opts=None, order='C', store=None, synchronizer=None):
     """Create an array, with `fill_value` being used as the default value for
     uninitialised portions of the array.
@@ -180,7 +180,7 @@ def full(shape, chunks, fill_value, dtype=None, compression='blosc',
                   synchronizer=synchronizer)
 
 
-def array(data, chunks=None, dtype=None, compression='blosc',
+def array(data, chunks=None, dtype=None, compression='default',
           compression_opts=None, fill_value=None, order='C', store=None,
           synchronizer=None):
     """Create an array filled with `data`.
@@ -239,7 +239,7 @@ def array(data, chunks=None, dtype=None, compression='blosc',
 
 # noinspection PyShadowingBuiltins
 def open(path, mode='a', shape=None, chunks=None, dtype=None,
-         compression='blosc', compression_opts=None, fill_value=0, order='C',
+         compression='default', compression_opts=None, fill_value=0, order='C',
          synchronizer=None):
     """Open an array stored in a directory on the file system.
 
@@ -295,6 +295,11 @@ def open(path, mode='a', shape=None, chunks=None, dtype=None,
       store: zarr.mappings.DirectoryMap
     >>> np.all(z1[:] == z2[:])
     True
+
+    Notes
+    -----
+    There is no need to close an array. Data are automatically flushed to the
+    file system.
 
     """  # flake8: noqa
 

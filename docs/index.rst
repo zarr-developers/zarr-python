@@ -16,8 +16,8 @@ chunked, compressed, N-dimensional arrays.
 Status
 ------
 
-Zarr is a very young project. We hope you find it useful, but proceed with
-caution and test carefully. Please report any bugs via the `GitHub issue
+Zarr is still in an early, experimental phase of development. Feedback and bug
+reports are very welcome, please get in touch via the `GitHub issue
 tracker <https://github.com/alimanfoo/zarr/issues>`_.
 
 Installation
