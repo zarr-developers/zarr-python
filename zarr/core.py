@@ -678,17 +678,17 @@ class Array(object):
           compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
           nbytes: 38.1M; nbytes_stored: 2.0M; ratio: 19.3; initialized: 100/100
           store: builtins.dict
-        >>> z.append(a+a)
+        >>> z.append(a)
         >>> z
         zarr.core.Array((20000, 1000), int32, chunks=(1000, 100), order=C)
           compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
-          nbytes: 76.3M; nbytes_stored: 3.6M; ratio: 21.2; initialized: 200/200
+          nbytes: 76.3M; nbytes_stored: 4.0M; ratio: 19.3; initialized: 200/200
           store: builtins.dict
         >>> z.append(np.vstack([a, a]), axis=1)
         >>> z
         zarr.core.Array((20000, 2000), int32, chunks=(1000, 100), order=C)
           compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
-          nbytes: 152.6M; nbytes_stored: 7.6M; ratio: 20.2; initialized: 400/400
+          nbytes: 152.6M; nbytes_stored: 7.9M; ratio: 19.3; initialized: 400/400
           store: builtins.dict
 
         """

@@ -73,7 +73,44 @@ the requested region into a NumPy array, e.g.::
 Resizing and appending
 ----------------------
 
-@@TODO
+A Zarr array can be resized, which means that any of its dimensions can be
+increased or decreased in length. For example::
+
+    >>> z = zarr.zeros(shape=(10000, 10000), chunks=(1000, 1000))
+    >>> z[:] = 42
+    >>> z.resize(20000, 10000)
+    >>> z
+    zarr.core.Array((20000, 10000), float64, chunks=(1000, 1000), order=C)
+      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
+      nbytes: 1.5G; nbytes_stored: 5.9M; ratio: 259.9; initialized: 100/200
+      store: builtins.dict
+
+Note that when an array is resized, the underlying data are not rearranged in
+any way. If one or more dimensions are shrunk, any chunks falling outside the
+new array shape will be deleted from the underlying store.
+
+For convenience, Zarr arrays also provide an ``append()`` method, which can be
+used to append data to any axis. E.g.::
+
+    >>> a = np.arange(10000000, dtype='i4').reshape(10000, 1000)
+    >>> z = zarr.array(a, chunks=(1000, 100))
+    >>> z
+    zarr.core.Array((10000, 1000), int32, chunks=(1000, 100), order=C)
+      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
+      nbytes: 38.1M; nbytes_stored: 2.0M; ratio: 19.3; initialized: 100/100
+      store: builtins.dict
+    >>> z.append(a)
+    >>> z
+    zarr.core.Array((20000, 1000), int32, chunks=(1000, 100), order=C)
+      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
+      nbytes: 76.3M; nbytes_stored: 4.0M; ratio: 19.3; initialized: 200/200
+      store: builtins.dict
+    >>> z.append(np.vstack([a, a]), axis=1)
+    >>> z
+    zarr.core.Array((20000, 2000), int32, chunks=(1000, 100), order=C)
+      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
+      nbytes: 152.6M; nbytes_stored: 7.9M; ratio: 19.3; initialized: 400/400
+      store: builtins.dict
 
 Persistent arrays
 -----------------
