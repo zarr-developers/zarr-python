@@ -81,7 +81,7 @@ def normalize_axis_selection(item, l):
             item = l + item
         if item > (l - 1) or item < 0:
             raise IndexError('index out of bounds: %s' % item)
-        return item, item + 1
+        return item
 
     elif isinstance(item, slice):
         if item.step is not None and item.step != 1:
@@ -100,7 +100,7 @@ def normalize_axis_selection(item, l):
             stop = l
         if stop < start:
             raise IndexError('index out of bounds: %s, %s' % (start, stop))
-        return start, stop
+        return slice(start, stop)
 
     else:
         raise TypeError('expected integer or slice, found: %r' % item)
@@ -128,7 +128,7 @@ def normalize_array_selection(item, shape):
 
         # fill out selection if not completely specified
         if len(selection) < len(shape):
-            selection += tuple((0, l) for l in shape[len(selection):])
+            selection += tuple(slice(0, l) for l in shape[len(selection):])
 
         return selection
 
@@ -139,8 +139,10 @@ def normalize_array_selection(item, shape):
 def get_chunk_range(selection, chunks):
     """Convenience function to get a range over all chunk indices,
     for iterating over chunks."""
-    chunk_range = [range(start//l, int(np.ceil(stop/l)))
-                   for (start, stop), l in zip(selection, chunks)]
+    chunk_range = [range(s.start//l, int(np.ceil(s.stop/l)))
+                   if isinstance(s, slice)
+                   else range(s//l, (s//l)+1)
+                   for s, l in zip(selection, chunks)]
     return chunk_range
 
 

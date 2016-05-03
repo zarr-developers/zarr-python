@@ -103,7 +103,7 @@ class TestArray(unittest.TestCase):
         init_store(store, **kwargs)
         return Array(store, readonly=readonly)
 
-    def test_1d(self):
+    def test_array_1d(self):
 
         a = np.arange(1050)
         z = self.create_array(shape=a.shape, chunks=100, dtype=a.dtype)
@@ -148,6 +148,9 @@ class TestArray(unittest.TestCase):
         assert_array_equal(a[:110], z[:110])
         assert_array_equal(a[190:310], z[190:310])
         assert_array_equal(a[-110:], z[-110:])
+        # single item
+        eq(a[0], z[0])
+        eq(a[-1], z[-1])
 
         # check partial assignment
         b = np.arange(1e5, 2e5)
@@ -233,6 +236,11 @@ class TestArray(unittest.TestCase):
         assert_array_equal(a[:110, :3], z[:110, :3])
         assert_array_equal(a[190:310, 3:7], z[190:310, 3:7])
         assert_array_equal(a[-110:, -3:], z[-110:, -3:])
+        # single item
+        assert_array_equal(a[0], z[0])
+        assert_array_equal(a[-1], z[-1])
+        eq(a[0, 0], z[0, 0])
+        eq(a[-1, -1], z[-1, -1])
 
         # check partial assignment
         b = np.arange(10000, 20000).reshape((1000, 10))
@@ -242,6 +250,47 @@ class TestArray(unittest.TestCase):
         assert_array_equal(b[190:310, 3:7], z[190:310, 3:7])
         assert_array_equal(a[310:], z[310:])
         assert_array_equal(a[:, 7:], z[:, 7:])
+
+    def test_array_2d_partial(self):
+
+        z = self.create_array(shape=(1000, 10), chunks=(100, 2), dtype='i4',
+                              fill_value=0)
+
+        # check partial assignment, single row
+        c = np.arange(z.shape[1])
+        z[0, :] = c
+        with assert_raises(ValueError):
+            # N.B., NumPy allows this, but we'll be strict for now
+            z[2:3] = c
+        with assert_raises(ValueError):
+            # N.B., NumPy allows this, but we'll be strict for now
+            z[-1:] = c
+        z[2:3] = c[None, :]
+        z[-1:] = c[None, :]
+        assert_array_equal(c, z[0, :])
+        assert_array_equal(c, z[2, :])
+        assert_array_equal(c, z[-1, :])
+
+        # check partial assignment, single column
+        d = np.arange(z.shape[0])
+        z[:, 0] = d
+        with assert_raises(ValueError):
+            z[:, 2:3] = d
+        with assert_raises(ValueError):
+            z[:, -1:] = d
+        z[:, 2:3] = d[:, None]
+        z[:, -1:] = d[:, None]
+        assert_array_equal(d, z[:, 0])
+        assert_array_equal(d, z[:, 2])
+        assert_array_equal(d, z[:, -1])
+
+        # check single item assignment
+        z[0, 0] = -1
+        z[2, 2] = -1
+        z[-1, -1] = -1
+        eq(-1, z[0, 0])
+        eq(-1, z[2, 2])
+        eq(-1, z[-1, -1])
 
     def test_array_order(self):
 
