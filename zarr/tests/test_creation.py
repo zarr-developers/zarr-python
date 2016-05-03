@@ -16,7 +16,7 @@ from zarr.creation import array, empty, zeros, ones, full, open, empty_like, \
     zeros_like, ones_like, full_like, open_like, create
 from zarr.sync import ThreadSynchronizer
 from zarr.core import Array, SynchronizedArray, init_store
-from zarr.mappings import DirectoryMap
+from zarr.storage import DirectoryStore
 
 
 def test_array():
@@ -123,7 +123,7 @@ def test_open():
         open(path, mode='r+')
 
     # store initialised, mode w-
-    store = DirectoryMap(path)
+    store = DirectoryStore(path)
     init_store(store, shape=100, chunks=10)
     with assert_raises(ValueError):
         open(path, mode='w-')

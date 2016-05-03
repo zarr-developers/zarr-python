@@ -13,7 +13,7 @@ from numpy.testing import assert_array_equal
 from nose.tools import eq_ as eq, assert_is_instance, assert_is_none, \
     assert_raises, assert_true, assert_false
 import zict
-from zarr.mappings import DirectoryMap
+from zarr.storage import DirectoryStore
 
 
 from zarr.core import Array, SynchronizedArray, init_store
@@ -78,7 +78,7 @@ def test_nbytes_stored():
     # store supporting size determination
     path = mkdtemp()
     atexit.register(shutil.rmtree, path)
-    store = DirectoryMap(path)
+    store = DirectoryStore(path)
     init_store(store, shape=1000, chunks=100)
     z = Array(store)
     eq(sum(len(v) for v in store.values()), z.nbytes_stored)
@@ -478,7 +478,7 @@ class TestArray(unittest.TestCase):
         memory_store = dict()
         path = mkdtemp()
         atexit.register(shutil.rmtree, path)
-        directory_store = DirectoryMap(path)
+        directory_store = DirectoryStore(path)
 
         for store in memory_store, directory_store:
             z = self.create_array(shape=1000, chunks=100, dtype=int,

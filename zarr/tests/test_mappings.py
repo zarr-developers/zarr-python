@@ -10,7 +10,7 @@ import pickle
 from nose.tools import assert_raises, eq_ as eq
 
 
-from zarr.mappings import DirectoryMap
+from zarr.storage import DirectoryStore
 
 
 class MappingTests(object):
@@ -65,7 +65,7 @@ class TestDirectoryMap(MappingTests, unittest.TestCase):
     def create_mapping(self, **kwargs):
         path = tempfile.mkdtemp()
         atexit.register(shutil.rmtree, path)
-        m = DirectoryMap(path, **kwargs)
+        m = DirectoryStore(path, **kwargs)
         return m
 
     def test_size(self):
@@ -78,10 +78,10 @@ class TestDirectoryMap(MappingTests, unittest.TestCase):
 
     def test_path(self):
         with assert_raises(ValueError):
-            DirectoryMap('doesnotexist')
+            DirectoryStore('doesnotexist')
         with tempfile.NamedTemporaryFile() as f:
             with assert_raises(ValueError):
-                DirectoryMap(f.name)
+                DirectoryStore(f.name)
 
     def test_pickle(self):
         m = self.create_mapping()

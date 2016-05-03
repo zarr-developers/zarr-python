@@ -7,3 +7,4 @@ API reference
     api/creation
     api/core
     api/compressors
+    api/storage

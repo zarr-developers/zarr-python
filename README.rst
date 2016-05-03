@@ -151,7 +151,7 @@ Create a persistent array (data stored on disk):
     zarr.core.Array((10000, 1000), int32, chunks=(1000, 100), order=C)
       compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
       nbytes: 38.1M; nbytes_stored: 2.0M; ratio: 19.3; initialized: 100/100
-      store: zarr.mappings.DirectoryMap
+      store: zarr.storage.DirectoryStore
 
 There is no need to close a persistent array. Data are automatically flushed
 to disk.

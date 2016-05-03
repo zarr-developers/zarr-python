@@ -5,19 +5,71 @@ import os
 import tempfile
 
 
-class DirectoryMap(MutableMapping):
+class DirectoryStore(MutableMapping):
     """Mutable Mapping interface to a directory. Keys must be strings,
     values must be bytes.
 
     Parameters
     ----------
     path : string
+        Location of directory.
 
-    """
+    Examples
+    --------
+    >>> import zarr
+    >>> store = zarr.DirectoryStore('example.zarr')
+    >>> zarr.init_store(store, shape=(10000, 10000), chunks=(1000, 1000),
+    ...                 fill_value=0, overwrite=True)
+    >>> import os
+    >>> sorted(os.listdir('example.zarr'))
+    ['attrs', 'meta']
+    >>> print(open('example.zarr/meta').read())
+    {
+        "chunks": [
+            1000,
+            1000
+        ],
+        "compression": "blosc",
+        "compression_opts": {
+            "clevel": 5,
+            "cname": "blosclz",
+            "shuffle": 1
+        },
+        "dtype": "<f8",
+        "fill_value": 0,
+        "order": "C",
+        "shape": [
+            10000,
+            10000
+        ],
+        "zarr_format": 1
+    }
+    >>> print(open('example.zarr/attrs').read())
+    {}
+    >>> z = zarr.Array(store)
+    >>> z
+    zarr.core.Array((10000, 10000), float64, chunks=(1000, 1000), order=C)
+      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
+      nbytes: 762.9M; nbytes_stored: 317; ratio: 2523659.3; initialized: 0/100
+      store: zarr.storage.DirectoryStore
+    >>> z[:] = 1
+    >>> len(os.listdir('example.zarr'))
+    102
+    >>> sorted(os.listdir('example.zarr'))[0:5]
+    ['0.0', '0.1', '0.2', '0.3', '0.4']
+    >>> print(open('example.zarr/0.0', 'rb').read(10))
+    b'\\x02\\x01\\x01\\x08\\x00\\x12z\\x00\\x00\\x80'
+
+    See Also
+    --------
+    zarr.creation.open
+
+    """  # flake8: noqa
 
     def __init__(self, path):
 
         # guard conditions
+        path = os.path.abspath(path)
         if not os.path.exists(path):
             raise ValueError('path does not exist')
         elif not os.path.isdir(path):

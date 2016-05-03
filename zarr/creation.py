@@ -7,7 +7,7 @@ import numpy as np
 
 
 from zarr.core import Array, SynchronizedArray, init_store
-from zarr.mappings import DirectoryMap
+from zarr.storage import DirectoryStore
 
 
 def create(shape, chunks, dtype=None, compression='default',
@@ -286,13 +286,13 @@ def open(path, mode='a', shape=None, chunks=None, dtype=None,
     zarr.core.Array((10000, 10000), float64, chunks=(1000, 1000), order=C)
       compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
       nbytes: 762.9M; nbytes_stored: 24.6M; ratio: 31.0; initialized: 100/100
-      store: zarr.mappings.DirectoryMap
+      store: zarr.storage.DirectoryStore
     >>> z2 = zarr.open('example.zarr', mode='r')
     >>> z2
     zarr.core.Array((10000, 10000), float64, chunks=(1000, 1000), order=C)
       compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
       nbytes: 762.9M; nbytes_stored: 24.6M; ratio: 31.0; initialized: 100/100
-      store: zarr.mappings.DirectoryMap
+      store: zarr.storage.DirectoryStore
     >>> np.all(z1[:] == z2[:])
     True
 
@@ -319,7 +319,7 @@ def open(path, mode='a', shape=None, chunks=None, dtype=None,
             raise ValueError('path does not exist: %r' % path)
 
     # setup store
-    store = DirectoryMap(path)
+    store = DirectoryStore(path)
     exists = 'meta' in store  # use metadata key as indicator of existence
 
     # ensure store is initialized
