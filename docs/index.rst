@@ -13,6 +13,19 @@ chunked, compressed, N-dimensional arrays.
 * Documentation: http://zarr.readthedocs.io/
 * Download: https://pypi.python.org/pypi/zarr
 
+Design goals
+------------
+
+Development of Zarr has been primarily motivated by the following design goals:
+
+* Chunking in multiple dimensions
+* Resize any dimension
+* Concurrent reads
+* Concurrent writes
+* Release the GIL during compression and decompression
+
+@@TODO rewrite the above as prose
+
 Status
 ------
 
@@ -43,7 +56,12 @@ Contents
 
     tutorial
     api
+    spec
 
+Acknowledgments
+---------------
+
+@@TODO
 
 Indices and tables
 ------------------
@@ -51,4 +69,3 @@ Indices and tables
 * :ref:`genindex`
 * :ref:`modindex`
 * :ref:`search`
-

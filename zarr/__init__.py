@@ -10,6 +10,7 @@ from zarr.creation import create, array, empty, zeros, ones, full, open, \
 from zarr.storage import init_store, DirectoryStore
 from zarr.core import Array, SynchronizedArray
 from zarr.sync import ThreadSynchronizer, ProcessSynchronizer
+from zarr.version import version as __version__
 
 
 try:
