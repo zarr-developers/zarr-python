@@ -70,6 +70,45 @@ the requested region into a NumPy array, e.g.::
            [9998,   42,   42, ...,   42,   42,   42],
            [9999,   42,   42, ...,   42,   42,   42]], dtype=int32)
 
+Persistent arrays
+-----------------
+
+In the examples above, data for each chunk of the array was stored in
+memory. Zarr arrays can also be stored on a file system, enabling
+persistence of data between sessions. For example::
+
+    >>> z1 = zarr.open('example.zarr', mode='w', shape=(10000, 10000),
+    ...                chunks=(1000, 1000), dtype='i4', fill_value=0)
+    >>> z1
+    zarr.core.Array((10000, 10000), int32, chunks=(1000, 1000), order=C)
+      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
+      nbytes: 381.5M; nbytes_stored: 317; ratio: 1261829.7; initialized: 0/100
+      store: zarr.storage.DirectoryStore
+
+The array above will store its configuration metadata and all compressed chunk
+data in a directory called 'example.zarr' relative to the current working
+directory. The :func:`zarr.creation.open` function provides a convenient way
+to create new persistent arrays or open existing arrays. Note that there is no
+need to close an array, and data are automatically flushed to disk.
+
+Persistent arrays support the same interface for reading and writing data,
+e.g.::
+
+    >>> z1[:] = 42
+    >>> z1[0, :] = np.arange(10000)
+    >>> z1[:, 0] = np.arange(10000)
+
+Check that the data have been written and can be read again::
+
+    >>> z2 = zarr.open('example.zarr', mode='r')
+    >>> z2
+    zarr.core.Array((10000, 10000), int32, chunks=(1000, 1000), order=C)
+      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
+      nbytes: 381.5M; nbytes_stored: 2.3M; ratio: 163.8; initialized: 100/100
+      store: zarr.storage.DirectoryStore
+    >>> np.all(z1[:] == z2[:])
+    True
+
 Resizing and appending
 ----------------------
 
@@ -112,49 +151,64 @@ used to append data to any axis. E.g.::
       nbytes: 152.6M; nbytes_stored: 7.9M; ratio: 19.3; initialized: 400/400
       store: builtins.dict
 
-Persistent arrays
------------------
-
-In the examples above, data for each chunk of the array was stored in
-memory. Zarr arrays can also be stored on a file system, enabling
-persistence of data between sessions. For example::
-
-    >>> z1 = zarr.open('example.zarr', mode='w', shape=(10000, 10000),
-    ...                chunks=(1000, 1000), dtype='i4', fill_value=0)
-    >>> z1
-    zarr.core.Array((10000, 10000), int32, chunks=(1000, 1000), order=C)
-      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
-      nbytes: 381.5M; nbytes_stored: 317; ratio: 1261829.7; initialized: 0/100
-      store: zarr.storage.DirectoryStore
-
-The array above will store its configuration metadata and all compressed chunk
-data in a directory called 'example.zarr' relative to the current working
-directory. The :func:`zarr.creation.open` function provides a convenient way
-to create new persistent arrays or open existing arrays. Note that there is no
-need to close an array, and data are automatically flushed to disk.
-
-Persistent arrays support the same interface for reading and writing data,
-e.g.::
-
-    >>> z1[:] = 42
-    >>> z1[0, :] = np.arange(10000)
-    >>> z1[:, 0] = np.arange(10000)
-
-Check that the data have been written and can be read again::
-
-    >>> z2 = zarr.open('example.zarr', mode='r')
-    >>> z2
-    zarr.core.Array((10000, 10000), int32, chunks=(1000, 1000), order=C)
-      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
-      nbytes: 381.5M; nbytes_stored: 2.3M; ratio: 163.8; initialized: 100/100
-      store: zarr.storage.DirectoryStore
-    >>> np.all(z1[:] == z2[:])
-    True
-
 Compression
 -----------
 
-@@TODO discuss available compressors
+By default, Zarr uses the blosc compression library to compress each chunk of
+an array. Blosc is extremely fast and can be configured in a variety of ways
+to improve the compression ratio for different types of data. Blosc is in fact
+a "meta-compressor", which means that it can used a number of different
+compression algorithms internally to compress the data. Blosc also provides
+highly optimised implementations of byte and bit shuffle filters, which can
+significantly improve compression ratios in some settings.
+
+Options for the blosc compressor can be controlled via the ``compression_opts``
+keyword argument accepted by all array creation functions. For example::
+
+    >>> z = zarr.array(np.arange(100000000, dtype='i4').reshape(10000, 10000),
+    ...                chunks=(1000, 1000), compression='blosc',
+    ...                compression_opts=dict(cname='lz4', clevel=3, shuffle=2))
+    >>> z
+    zarr.core.Array((10000, 10000), int32, chunks=(1000, 1000), order=C)
+      compression: blosc; compression_opts: {'clevel': 3, 'cname': 'lz4', 'shuffle': 2}
+      nbytes: 381.5M; nbytes_stored: 17.6M; ratio: 21.7; initialized: 100/100
+      store: builtins.dict
+
+The array above will use blosc as the primary compressor, using the LZ4
+algorithm (compression level 3) internally within blosc, and with the
+bitshuffle filter applied.
+
+In addition to blosc, other compression libraries can also be used. Zarr comes
+with support for zlib, BZ2 and LZMA compression, via the Python standard
+library. For example, here is an array using zlib compression, level 1::
+
+    >>> z = zarr.array(np.arange(100000000, dtype='i4').reshape(10000, 10000),
+    ...                chunks=(1000, 1000), compression='zlib',
+    ...                compression_opts=1)
+    >>> z
+    zarr.core.Array((10000, 10000), int32, chunks=(1000, 1000), order=C)
+      compression: zlib; compression_opts: 1
+      nbytes: 381.5M; nbytes_stored: 132.2M; ratio: 2.9; initialized: 100/100
+      store: builtins.dict
+
+Here is an example using LZMA with a custom filter pipeline including the
+delta filter::
+
+    >>> import lzma
+    >>> filters = [dict(id=lzma.FILTER_DELTA, dist=8),
+    ...            dict(id=lzma.FILTER_LZMA2, preset=1)]
+    >>> z = zarr.array(np.arange(100000000, dtype='i4').reshape(10000, 10000),
+    ...                chunks=(1000, 1000), compression='lzma',
+    ...                compression_opts=dict(filters=filters))
+    >>> z
+    zarr.core.Array((10000, 10000), int32, chunks=(1000, 1000), order=C)
+      compression: lzma; compression_opts: {'preset': None, 'filters': [{'dist': 8, 'id': 3}, {'preset': 1, 'id': 33}], 'check': 0, 'format': 1}
+      nbytes: 381.5M; nbytes_stored: 231.9K; ratio: 1684.1; initialized: 100/100
+      store: builtins.dict
+
+Which compression library is the best choice will depend on the data and on the
+requirements for speed of compression, speed of decompression and
+compression ratio.
 
 Parallel computing
 ------------------
