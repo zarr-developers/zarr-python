@@ -14,11 +14,20 @@ registry = dict()
 
 
 class ZlibCompressor(object):
+    """Provides compression using zlib via the Python standard library.
+
+    Parameters
+    ----------
+    compression_opts : int
+        An integer between 0 and 9 inclusive specifying the compression level.
+
+    """
 
     canonical_name = 'zlib'
     default_level = 1
 
     def __init__(self, compression_opts):
+        # at this point we expect compression_opts to be fully normalized
         self.level = compression_opts
 
     @classmethod
@@ -55,6 +64,20 @@ except ImportError:  # pragma: no cover
 else:
 
     class BloscCompressor(object):
+        """Provides compression using the blosc meta-compressor.
+
+        Parameters
+        ----------
+        compression_opts : dict
+            A dictionary with keys 'cname', 'clevel' and 'shuffle'. The value
+            of the 'cname' key should be a string naming one of the compression
+            algorithms available within blosc, e.g., 'blosclz', 'lz4', 'zlib'
+            or 'snappy'. The value of the 'clevel' key should be an integer
+            between 0 and 9 specifying the compression level. The value of the
+            'shuffle' key should be 0 (no shuffle), 1 (byte shuffle) or 2 (bit
+            shuffle).
+
+        """
 
         canonical_name = 'blosc'
         default_cname = 'blosclz'
@@ -62,8 +85,7 @@ else:
         default_shuffle = 1
 
         def __init__(self, compression_opts):
-            # at this point we expect compression_opts to be fully specified
-            # and normalized
+            # at this point we expect compression_opts to be fully normalized
             cname = compression_opts['cname']
             if isinstance(cname, text_type):
                 cname = cname.encode('ascii')
@@ -119,11 +141,20 @@ else:
 
 
 class BZ2Compressor(object):
+    """Provides compression using BZ2 via the Python standard library.
+
+    Parameters
+    ----------
+    compression_opts : int
+        An integer between 1 and 9 inclusive specifying the compression level.
+
+    """
 
     canonical_name = 'bz2'
     default_level = 1
 
     def __init__(self, compression_opts):
+        # at this point we expect compression_opts to be fully normalized
         self.level = compression_opts
 
     @classmethod
@@ -158,6 +189,23 @@ except ImportError:  # pragma: no cover
 else:
 
     class LZMACompressor(object):
+        """Provides compression using lzma via the Python standard library
+        (only available under Python 3).
+
+        Parameters
+        ----------
+        compression_opts : dict
+            A dictionary with keys 'format', 'check', 'preset' and 'filters'.
+            The value of the 'format' key should be an integer specifying one
+            of the lzma format codes, e.g., ``lzma.FORMAT_XZ``. The value of
+            the 'check' key should be an integer specifying one of the lzma
+            check codes, e.g., ``lzma.CHECK_NONE``. The value of the 'preset'
+            key should be an integer between 0 and 9 inclusive, specifying the
+            compression level. The value of the 'filters' key should be a list
+            of dictionaries specifying compression filters. If filters are
+            provided, 'preset' must be None.
+
+        """
 
         canonical_name = 'lzma'
         default_format = lzma.FORMAT_XZ
@@ -166,8 +214,7 @@ else:
         default_filters = None
 
         def __init__(self, compression_opts):
-            # at this point we expect compression_opts to be fully specified
-            # and normalized
+            # at this point we expect compression_opts to be fully normalized
             self.format = compression_opts['format']
             self.check = compression_opts['check']
             self.preset = compression_opts['preset']
@@ -237,6 +284,7 @@ else:
 
 
 class NoCompressor(object):
+    """No compression, i.e., pass bytes through."""
 
     canonical_name = None
 
