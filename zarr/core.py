@@ -22,7 +22,11 @@ from zarr.errors import ReadOnlyError
 def init_store(store, shape, chunks, dtype=None, compression='blosc',
                compression_opts=None, fill_value=None,
                order='C', overwrite=False):
-    """Initialise an array store with the given configuration."""
+    """Initialise an array store with the given configuration.
+
+    TODO doc me
+
+    """
 
     # guard conditions
     empty = len(store) == 0
@@ -500,8 +504,6 @@ class Array(object):
 
         """
 
-        # override this in sub-classes, e.g., if need to use a lock
-
         try:
 
             # obtain compressed data for chunk
@@ -553,8 +555,6 @@ class Array(object):
             Value to set.
 
         """
-
-        # override this in sub-classes, e.g., if need to use a lock
 
         if is_total_slice(key, self._chunks):
 
@@ -631,7 +631,11 @@ class Array(object):
         return r
 
     def resize(self, *args):
-        """Resize the array."""
+        """Resize the array.
+
+        TODO doc me
+
+        """
 
         # guard conditions
         if self._readonly:
@@ -674,6 +678,10 @@ class Array(object):
         The size of all dimensions other than `axis` must match between this
         array and `data`.
 
+        Examples
+        --------
+        TODO
+
         """
 
         # guard conditions
@@ -714,45 +722,45 @@ class Array(object):
 
 
 class SynchronizedArray(Array):
+    """Instantiate a synchronized array.
+
+    Parameters
+    ----------
+    store : MutableMapping
+        Array store, already initialised.
+    synchronizer : object
+        Array synchronizer.
+    readonly : bool, optional
+        True if array should be protected against modification.
+
+    Examples
+    --------
+    >>> import zarr
+    >>> store = dict()
+    >>> zarr.init_store(store, shape=1000, chunks=100)
+    >>> synchronizer = zarr.ThreadSynchronizer()
+    >>> z = zarr.SynchronizedArray(store, synchronizer)
+    >>> z
+    zarr.core.SynchronizedArray((1000,), float64, chunks=(100,), order=C)
+      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
+      nbytes: 7.8K; nbytes_stored: 289; ratio: 27.7; initialized: 0/10
+      store: builtins.dict
+      synchronizer: zarr.sync.ThreadSynchronizer
+
+    Notes
+    -----
+    Only writing data to the array via the __setitem__() method and
+    modification of user attributes are synchronized. Neither append() nor
+    resize() are synchronized.
+
+    Writing to the array is synchronized at the chunk level. I.e.,
+    the array supports concurrent write operations via the __setitem__()
+    method, but these will only exclude each other if they both require
+    modification of the same chunk.
+
+    """  # flake8: noqa
 
     def __init__(self, store, synchronizer, readonly=False):
-        """Instantiate a synchronized array.
-
-        Parameters
-        ----------
-        store : MutableMapping
-            Array store, already initialised.
-        synchronizer : object
-            Array synchronizer.
-        readonly : bool, optional
-            True if array should be protected against modification.
-
-        Examples
-        --------
-        >>> import zarr
-        >>> store = dict()
-        >>> zarr.init_store(store, shape=1000, chunks=100)
-        >>> synchronizer = zarr.ThreadSynchronizer()
-        >>> z = zarr.SynchronizedArray(store, synchronizer)
-        >>> z
-        zarr.core.SynchronizedArray((1000,), float64, chunks=(100,), order=C)
-          compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
-          nbytes: 7.8K; nbytes_stored: 289; ratio: 27.7; initialized: 0/10
-          store: builtins.dict
-          synchronizer: zarr.sync.ThreadSynchronizer
-
-        Notes
-        -----
-        Only writing data to the array via the __setitem__() method and
-        modification of user attributes are synchronized. Neither append() nor
-        resize() are synchronized.
-
-        Writing to the array is synchronized at the chunk level. I.e.,
-        the array supports concurrent write operations via the __setitem__()
-        method, but these will only exclude each other if they both require
-        modification of the same chunk.
-
-        """  # flake8: noqa
         super(SynchronizedArray, self).__init__(store, readonly=readonly)
         self.synchronizer = synchronizer
         self._attrs = SynchronizedAttributes(store, synchronizer,
