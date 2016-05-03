@@ -753,8 +753,7 @@ class SynchronizedArray(Array):
     zarr.core.SynchronizedArray((1000,), float64, chunks=(100,), order=C)
       compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
       nbytes: 7.8K; nbytes_stored: 289; ratio: 27.7; initialized: 0/10
-      store: builtins.dict
-      synchronizer: zarr.sync.ThreadSynchronizer
+      store: builtins.dict; synchronizer: zarr.sync.ThreadSynchronizer
 
     Notes
     -----
@@ -782,7 +781,7 @@ class SynchronizedArray(Array):
 
     def __repr__(self):
         r = super(SynchronizedArray, self).__repr__()
-        r += ('\n  synchronizer: %s.%s' %
+        r += ('; synchronizer: %s.%s' %
               (type(self.synchronizer).__module__,
                type(self.synchronizer).__name__))
         return r

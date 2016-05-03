@@ -3,7 +3,7 @@ Tutorial
 
 Zarr provides classes and functions for working with N-dimensional
 arrays that behave like NumPy arrays but whose data is divided into
-chunks and compressed. If you are already familiar with HDF5 then Zarr
+chunks and compressed. If you are already familiar with HDF5 datasets then Zarr
 provides similar functionality, but with some additional flexibility.
 
 Creating an array
@@ -154,15 +154,16 @@ used to append data to any axis. E.g.::
 Compression
 -----------
 
-By default, Zarr uses the blosc compression library to compress each chunk of
+By default, Zarr uses the `Blosc <http://www.blosc.org/>`_ compression
+library to compress each chunk of
 an array. Blosc is extremely fast and can be configured in a variety of ways
 to improve the compression ratio for different types of data. Blosc is in fact
 a "meta-compressor", which means that it can used a number of different
 compression algorithms internally to compress the data. Blosc also provides
 highly optimised implementations of byte and bit shuffle filters, which can
-significantly improve compression ratios in some settings.
+significantly improve compression ratios for some data.
 
-Options for the blosc compressor can be controlled via the ``compression_opts``
+Options for the Blosc compressor can be controlled via the ``compression_opts``
 keyword argument accepted by all array creation functions. For example::
 
     >>> z = zarr.array(np.arange(100000000, dtype='i4').reshape(10000, 10000),
@@ -174,11 +175,11 @@ keyword argument accepted by all array creation functions. For example::
       nbytes: 381.5M; nbytes_stored: 17.6M; ratio: 21.7; initialized: 100/100
       store: builtins.dict
 
-The array above will use blosc as the primary compressor, using the LZ4
+The array above will use Blosc as the primary compressor, using the LZ4
 algorithm (compression level 3) internally within blosc, and with the
 bitshuffle filter applied.
 
-In addition to blosc, other compression libraries can also be used. Zarr comes
+In addition to Blosc, other compression libraries can also be used. Zarr comes
 with support for zlib, BZ2 and LZMA compression, via the Python standard
 library. For example, here is an array using zlib compression, level 1::
 
@@ -206,29 +207,229 @@ delta filter::
       nbytes: 381.5M; nbytes_stored: 231.9K; ratio: 1684.1; initialized: 100/100
       store: builtins.dict
 
-Which compression library is the best choice will depend on the data and on the
-requirements for speed of compression, speed of decompression and
+The best choice of compression library and options will depend on the data
+and on the requirements for speed of compression, speed of decompression and
 compression ratio.
 
 Parallel computing
 ------------------
 
-@@TODO discuss synchronization
+Zarr arrays can be used as either the source or sink for data in parallel
+computations. Both multi-threaded and multi-process parallelism are
+supported. The Python global interpreter lock (GIL) is released for both
+compression and decompression operations, so Zarr will not block other Python
+threads from running.
 
-@@TODO use_context blosc with dask
+Synchronization
+~~~~~~~~~~~~~~~
+
+A Zarr array can be read concurrently by multiple threads or processes.
+No synchronization (i.e., locking) is required for concurrent reads.
+
+A Zarr array can also be written to concurrently by multiple threads or
+processes. Some synchronization may be required, depending on the way the
+data is being written.
+
+If each worker in a parallel computation is writing to a separate region of
+the array, and if region boundaries are perfectly aligned with chunk
+boundaries, then no synchronization is required. However, if region and
+chunk boundaries are not perfectly aligned, then synchronization is required
+to avoid two workers attempting to modify the same chunk at the same time.
+
+To give a simple example, consider a 1-dimensional array of length 60, ``z``,
+divided into three chunks of 20 elements each. If three workers are running
+and each attempts to write to a 20 element region (i.e., ``z[0:20]``,
+``z[20:40]`` and ``z[40:60]``) then each worker will be writing to a
+separate chunk and no synchronization is required. However, if two workers
+are running and each attempts to write to a 30 element region (i.e.,
+``z[0:30]`` and ``z[30:60]``) then it is possible both workers will attempt
+to modify the middle chunk at the same time, and synchronization is required
+to prevent data loss.
+
+Zarr provides support for chunk-level synchronization. E.g., create an array
+with thread synchronization::
+
+    >>> z = zarr.zeros((10000, 10000), chunks=(1000, 1000), dtype='i4',
+    ...                 synchronizer=zarr.ThreadSynchronizer())
+    >>> z
+    zarr.core.SynchronizedArray((10000, 10000), int32, chunks=(1000, 1000), order=C)
+      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
+      nbytes: 381.5M; nbytes_stored: 317; ratio: 1261829.7; initialized: 0/100
+      store: builtins.dict; synchronizer: zarr.sync.ThreadSynchronizer
+
+This array is safe to use as either data source or sink within a multi-threaded
+program.
+
+Zarr also provides support for process synchronization via file locking,
+provided that all processes have access to a shared file system. E.g.::
+
+    >>> synchronizer = zarr.ProcessSynchronizer('example.zarr')
+    >>> z = zarr.open('example.zarr', mode='w', shape=(10000, 10000),
+    ...               chunks=(1000, 1000), dtype='i4',
+    ...               synchronizer=synchronizer)
+    >>> z
+    zarr.core.SynchronizedArray((10000, 10000), int32, chunks=(1000, 1000), order=C)
+      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
+      nbytes: 381.5M; nbytes_stored: 317; ratio: 1261829.7; initialized: 0/100
+      store: zarr.storage.DirectoryStore; synchronizer: zarr.sync.ProcessSynchronizer
+
+This array is safe to read or write from multiple processes.
+
+Configuring Blosc
+~~~~~~~~~~~~~~~~~
+
+If using a Zarr array with Blosc compression within a multi-threaded
+computation, it is advisable to change the way that Blosc manages its own
+internal threads. This can be done as follows::
+
+    >>> from zarr import blosc
+    >>> blosc.use_context(True)
+    <zarr.blosc.use_context object at ...>
+
+When Blosc is set in contextual mode, any number of worker threads in the
+calling application can perform compression and decompression in parallel.
+The call to ``blosc.use_context(True)`` also supports the context manager
+protocol, so you can conveniently switch Blosc to contextual mode for specific
+sections of a program or interactive session, then automatically switch back
+to the default non-contextual mode afterwards. Non-contextual mode is better
+if the calling application is single-threaded, because it allows Blosc to
+use multiple threads internally.
 
 User attributes
 ---------------
 
-@@TODO
+Zarr arrays also support custom key/value attributes, which can be useful
+for associating an array with application-specific metadata. For example::
+
+    >>> z = zarr.zeros((10000, 10000), chunks=(1000, 1000), dtype='i4')
+    >>> z.attrs['foo'] = 'bar'
+    >>> z.attrs['baz'] = 42
+    >>> sorted(z.attrs)
+    ['baz', 'foo']
+    >>> 'foo' in z.attrs
+    True
+    >>> z.attrs['foo']
+    'bar'
+    >>> z.attrs['baz']
+    42
+
+Internally Zarr uses JSON to store array attributes, so attribute values
+must be JSON serializable.
 
 Tips and tricks
 ---------------
 
-@@TODO copying an array via __setitem__
+Copying large arrays
+~~~~~~~~~~~~~~~~~~~~
 
-@@TODO changing the order to improve compression ratio
+Data can be copied between large arrays without consuming much memory, e.g.::
 
-@@TODO using other storage, e.g., ZipFile via zict
+    >>> z1 = zarr.empty((10000, 10000), chunks=(1000, 1000), dtype='i4')
+    >>> z1[:] = 42
+    >>> z2 = zarr.empty_like(z1)
+    >>> z2[:] = z1
 
-@@TODO tips on chunk shape and size
+Internally the example above works chunk-by-chunk, loading only the data
+required to fill each chunk. The source of the data (``z1``) could equally
+be an h5py Dataset.
+
+Changing memory layout
+~~~~~~~~~~~~~~~~~~~~~~
+
+The order of bytes within each chunk of an array can be changed via the
+``order`` keyword argument, to use either C or Fortran layout. For
+multi-dimensional arrays, these two layouts may provide different compression
+ratios, depending on the correlation structure within the data. E.g.::
+
+    >>> a = np.arange(100000000, dtype='i4').reshape(10000, 10000).T
+    >>> zarr.array(a, chunks=(1000, 1000))
+    zarr.core.Array((10000, 10000), int32, chunks=(1000, 1000), order=C)
+      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
+      nbytes: 381.5M; nbytes_stored: 26.1M; ratio: 14.6; initialized: 100/100
+      store: builtins.dict
+    >>> zarr.array(a, chunks=(1000, 1000), order='F')
+    zarr.core.Array((10000, 10000), int32, chunks=(1000, 1000), order=F)
+      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
+      nbytes: 381.5M; nbytes_stored: 10.0M; ratio: 38.0; initialized: 100/100
+      store: builtins.dict
+
+In the above example, Fortran order gives a better compression ratio. This
+is an artifical example but illustrates the general point that changing the
+order of bytes within chunks of an array may improve the compression ratio,
+depending on the structure of the data, the compression algorithm used, and
+which compression filters (e.g., byte shuffle) have been applied.
+
+Storage alternatives
+~~~~~~~~~~~~~~~~~~~~
+
+Zarr can use any object that implements the ``MutableMapping`` interface as
+the store for an array. Here is an example storing an array directly into a
+Zip file via the `zict <https://github.com/mrocklin/zict>`_ package::
+
+    >>> import zict
+    >>> import os
+    >>> store = zict.Zip('example.zip', mode='w')
+    >>> zarr.init_store(store, shape=(1000, 1000), chunks=(100, 100),
+    ...                 dtype='i4', fill_value=0)
+    >>> len(store)
+    2
+    >>> sorted(store)
+    ['attrs', 'meta']
+    >>> os.path.getsize('example.zip')
+    382
+    >>> z = zarr.Array(store)
+    >>> z[:] = 42
+    >>> z
+    zarr.core.Array((1000, 1000), int32, chunks=(100, 100), order=C)
+      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
+      nbytes: 3.8M; initialized: 100/100
+      store: zict.zip.Zip
+    >>> len(store)
+    102
+    >>> sorted(store)[:5]
+    ['0.0', '0.1', '0.2', '0.3', '0.4']
+    >>> os.path.getsize('example.zip')
+    29782
+    >>> z[:]
+    array([[42, 42, 42, ..., 42, 42, 42],
+           [42, 42, 42, ..., 42, 42, 42],
+           [42, 42, 42, ..., 42, 42, 42],
+           ...,
+           [42, 42, 42, ..., 42, 42, 42],
+           [42, 42, 42, ..., 42, 42, 42],
+           [42, 42, 42, ..., 42, 42, 42]], dtype=int32)
+
+Note that there are some restrictions on how Zip files can be used, because
+items within a Zip file cannot be updated in place. This means that data in
+the array should only be written once and write operations should be
+aligned with chunk boundaries.
+
+Chunk size and shape
+~~~~~~~~~~~~~~~~~~~~
+
+In general, chunks of at least 1 megabyte (1M) seem to provide the best
+performance, at least when using the Blosc compression library.
+
+The optimal chunk shape will depend on how you want to access the data. E.g.,
+for a 2-dimensional array, if you only ever take slices along the first
+dimension, then chunk across the second dimenson. If you know you want to
+chunk across an entire dimension you can use ``None`` within the ``chunks``
+argument, e.g.::
+
+    >>> z1 = zarr.zeros((10000, 10000), chunks=(100, None), dtype='i4')
+    >>> z1.chunks
+    (100, 10000)
+
+Alternatively, if you only ever take slices along the second dimension, then
+chunk across the first dimension, e.g.::
+
+    >>> z2 = zarr.zeros((10000, 10000), chunks=(None, 100), dtype='i4')
+    >>> z2.chunks
+    (10000, 100)
+
+If you require reasonable performance for both access patterns then you need
+to find a compromise, e.g.::
+
+    >>> z3 = zarr.zeros((10000, 10000), chunks=(1000, 1000), dtype='i4')
+    >>> z3.chunks
+    (1000, 1000)

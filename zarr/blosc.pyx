@@ -103,7 +103,8 @@ def decompress(bytes cdata, ndarray array):
             ret = blosc_decompress_ctx(source, dest, nbytes, 1)
 
     else:
-        ret = blosc_decompress(source, dest, nbytes)
+        with nogil:
+            ret = blosc_decompress(source, dest, nbytes)
 
     # handle errors
     if ret <= 0:
@@ -158,8 +159,9 @@ def compress(ndarray array, char* cname, int clevel, int shuffle):
         compressor_set = blosc_set_compressor(cname)
         if compressor_set < 0:
             raise ValueError('compressor not supported: %r' % cname)
-        cbytes = blosc_compress(clevel, shuffle, itemsize, nbytes, source,
-                                dest, nbytes + BLOSC_MAX_OVERHEAD)
+        with nogil:
+            cbytes = blosc_compress(clevel, shuffle, itemsize, nbytes, source,
+                                    dest, nbytes + BLOSC_MAX_OVERHEAD)
 
     # check compression was successful
     if cbytes <= 0:

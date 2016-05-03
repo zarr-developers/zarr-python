@@ -68,3 +68,4 @@ zarr/version.py
 # test data
 *.zarr
 *~
+*.zip
