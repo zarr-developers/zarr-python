@@ -5,12 +5,52 @@ import tempfile
 import atexit
 import shutil
 import pickle
+import json
 
 
-from nose.tools import assert_raises, eq_ as eq
+import numpy as np
+from nose.tools import assert_raises, eq_ as eq, assert_is_none
 
 
-from zarr.storage import DirectoryStore
+from zarr.storage import DirectoryStore, init_store
+from zarr.meta import decode_metadata
+from zarr.compat import text_type
+
+
+def test_init_store():
+
+    store = dict()
+    init_store(store, shape=1000, chunks=100)
+
+    # check metadata
+    assert 'meta' in store
+    meta = decode_metadata(store['meta'])
+    eq((1000,), meta['shape'])
+    eq((100,), meta['chunks'])
+    eq(np.dtype(None), meta['dtype'])
+    eq('blosc', meta['compression'])
+    assert 'compression_opts' in meta
+    assert_is_none(meta['fill_value'])
+
+    # check attributes
+    assert 'attrs' in store
+    eq(dict(), json.loads(text_type(store['attrs'], 'ascii')))
+
+
+def test_init_store_overwrite():
+
+    store = dict(shape=(2000,), chunks=(200,))
+
+    # overwrite
+    init_store(store, shape=1000, chunks=100, overwrite=True)
+    assert 'meta' in store
+    meta = decode_metadata(store['meta'])
+    eq((1000,), meta['shape'])
+    eq((100,), meta['chunks'])
+
+    # don't overwrite
+    with assert_raises(ValueError):
+        init_store(store, shape=1000, chunks=100, overwrite=False)
 
 
 class MappingTests(object):

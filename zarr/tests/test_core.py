@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, print_function, division
-import json
 import unittest
 from tempfile import NamedTemporaryFile, mkdtemp
 import atexit
@@ -10,53 +9,15 @@ import pickle
 
 import numpy as np
 from numpy.testing import assert_array_equal
-from nose.tools import eq_ as eq, assert_is_instance, assert_is_none, \
+from nose.tools import eq_ as eq, assert_is_instance, \
     assert_raises, assert_true, assert_false
 import zict
-from zarr.storage import DirectoryStore
+from zarr.storage import DirectoryStore, init_store
 
 
-from zarr.core import Array, SynchronizedArray, init_store
+from zarr.core import Array, SynchronizedArray
 from zarr.sync import ThreadSynchronizer, ProcessSynchronizer
-from zarr.compat import text_type
-from zarr.meta import decode_metadata
 from zarr.errors import ReadOnlyError
-
-
-def test_init_store():
-
-    store = dict()
-    init_store(store, shape=1000, chunks=100)
-
-    # check metadata
-    assert 'meta' in store
-    meta = decode_metadata(store['meta'])
-    eq((1000,), meta['shape'])
-    eq((100,), meta['chunks'])
-    eq(np.dtype(None), meta['dtype'])
-    eq('blosc', meta['compression'])
-    assert 'compression_opts' in meta
-    assert_is_none(meta['fill_value'])
-
-    # check attributes
-    assert 'attrs' in store
-    eq(dict(), json.loads(text_type(store['attrs'], 'ascii')))
-
-
-def test_init_store_overwrite():
-
-    store = dict(shape=(2000,), chunks=(200,))
-
-    # overwrite
-    init_store(store, shape=1000, chunks=100, overwrite=True)
-    assert 'meta' in store
-    meta = decode_metadata(store['meta'])
-    eq((1000,), meta['shape'])
-    eq((100,), meta['chunks'])
-
-    # don't overwrite
-    with assert_raises(ValueError):
-        init_store(store, shape=1000, chunks=100, overwrite=False)
 
 
 def test_array_init():

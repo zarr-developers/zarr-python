@@ -2,6 +2,8 @@ Compressors (``zarr.compressors``)
 ==================================
 .. module:: zarr.compressors
 
+TODO note about registering additional compressors
+
 .. autoclass:: BloscCompressor
 
 .. autoclass:: ZlibCompressor

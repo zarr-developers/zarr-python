@@ -7,9 +7,9 @@ import atexit
 
 from zarr.creation import create, array, empty, zeros, ones, full, open, \
     empty_like, zeros_like, ones_like, full_like, open_like
-from zarr.core import Array, SynchronizedArray, init_store
+from zarr.storage import init_store, DirectoryStore
+from zarr.core import Array, SynchronizedArray
 from zarr.sync import ThreadSynchronizer, ProcessSynchronizer
-from zarr.storage import DirectoryStore
 
 
 try:

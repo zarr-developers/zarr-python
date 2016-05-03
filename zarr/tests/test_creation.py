@@ -15,8 +15,8 @@ from numpy.testing import assert_array_equal
 from zarr.creation import array, empty, zeros, ones, full, open, empty_like, \
     zeros_like, ones_like, full_like, open_like, create
 from zarr.sync import ThreadSynchronizer
-from zarr.core import Array, SynchronizedArray, init_store
-from zarr.storage import DirectoryStore
+from zarr.core import Array, SynchronizedArray
+from zarr.storage import DirectoryStore, init_store
 
 
 def test_array():

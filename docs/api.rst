@@ -6,5 +6,6 @@ API reference
 
     api/creation
     api/core
-    api/compressors
     api/storage
+    api/compressors
+    api/sync

@@ -3,6 +3,111 @@ from __future__ import absolute_import, print_function, division
 from collections import MutableMapping
 import os
 import tempfile
+import json
+
+
+import numpy as np
+
+
+from zarr.util import normalize_shape, normalize_chunks, normalize_order
+from zarr.compressors import get_compressor_cls
+from zarr.meta import encode_metadata
+
+
+def init_store(store, shape, chunks, dtype=None, compression='default',
+               compression_opts=None, fill_value=None,
+               order='C', overwrite=False):
+    """Initialise an array store with the given configuration.
+
+    Parameters
+    ----------
+    store : MutableMapping
+        A mapping that supports string keys and byte sequence values.
+    shape : int or tuple of ints
+        Array shape.
+    chunks : int or tuple of ints
+        Chunk shape.
+    dtype : string or dtype, optional
+        NumPy dtype.
+    compression : string, optional
+        Name of primary compression library, e.g., 'blosc', 'zlib', 'bz2',
+        'lzma'.
+    compression_opts : object, optional
+        Options to primary compressor. E.g., for blosc, provide a dictionary
+        with keys 'cname', 'clevel' and 'shuffle'.
+    fill_value : object
+        Default value to use for uninitialised portions of the array.
+    order : {'C', 'F'}, optional
+        Memory layout to be used within each chunk.
+    overwrite : bool, optional
+        If True, erase all data in `store` prior to initialisation.
+
+    Examples
+    --------
+    >>> import zarr
+    >>> store = dict()
+    >>> zarr.init_store(store, shape=(10000, 10000), chunks=(1000, 1000))
+    >>> sorted(store.keys())
+    ['attrs', 'meta']
+    >>> print(str(store['meta'], 'ascii'))
+    {
+        "chunks": [
+            1000,
+            1000
+        ],
+        "compression": "blosc",
+        "compression_opts": {
+            "clevel": 5,
+            "cname": "blosclz",
+            "shuffle": 1
+        },
+        "dtype": "<f8",
+        "fill_value": null,
+        "order": "C",
+        "shape": [
+            10000,
+            10000
+        ],
+        "zarr_format": 1
+    }
+    >>> print(str(store['attrs'], 'ascii'))
+    {}
+
+    Notes
+    -----
+    The initialisation process involves normalising all array metadata,
+    encoding as JSON and storing under the 'meta' key. User attributes are also
+    initialised and stored as JSON under the 'attrs' key.
+
+    """
+
+    # guard conditions
+    empty = len(store) == 0
+    if not empty and not overwrite:
+        raise ValueError('store is not empty')
+
+    # normalise metadata
+    shape = normalize_shape(shape)
+    chunks = normalize_chunks(chunks, shape)
+    dtype = np.dtype(dtype)
+    compressor_cls = get_compressor_cls(compression)
+    compression = compressor_cls.canonical_name
+    compression_opts = compressor_cls.normalize_opts(
+        compression_opts
+    )
+    order = normalize_order(order)
+
+    # delete any pre-existing items in store
+    store.clear()
+
+    # initialise metadata
+    meta = dict(shape=shape, chunks=chunks, dtype=dtype,
+                compression=compression, compression_opts=compression_opts,
+                fill_value=fill_value, order=order)
+    store['meta'] = encode_metadata(meta)
+
+    # initialise attributes
+    store['attrs'] = json.dumps(dict()).encode('ascii')
 
 
 class DirectoryStore(MutableMapping):

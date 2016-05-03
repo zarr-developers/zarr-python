@@ -6,8 +6,8 @@ import os
 import numpy as np
 
 
-from zarr.core import Array, SynchronizedArray, init_store
-from zarr.storage import DirectoryStore
+from zarr.core import Array, SynchronizedArray
+from zarr.storage import DirectoryStore, init_store
 
 
 def create(shape, chunks, dtype=None, compression='default',

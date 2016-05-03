@@ -1,8 +1,6 @@
-Array classes and core functions (``zarr.core``)
-================================================
+Array classes (``zarr.core``)
+=============================
 .. module:: zarr.core
-
-.. autofunction:: init_store
 
 .. autoclass:: Array
 
@@ -12,4 +10,3 @@ Array classes and core functions (``zarr.core``)
     .. automethod:: append
 
 .. autoclass:: SynchronizedArray
-
