@@ -34,27 +34,27 @@ JSON and stored as the value of the 'meta' key within an array store.
 The metadata resource is a JSON object. The following keys MUST be present
 within the object:
 
-'zarr_format'
+zarr_format
     An integer defining the version of the storage specification to which the
     array store adheres.
-'shape'
+shape
     A list of integers defining the length of each dimension of the array.
-'chunks'
+chunks
     A list of integers defining the length of each dimension of a chunk of the
     array. Note that all chunks within a Zarr array have the same shape.
-'dtype'
+dtype
     A string or list defining a valid data type for the array. See also
     the subsection below on data type encoding.
-'compression'
+compression
     A string identifying the primary compression library used to compress
     each chunk of the array.
-'compression_opts'
+compression_opts
     An integer, string or dictionary providing options to the primary
     compression library.
-'fill_value'
+fill_value
     A scalar value providing the default value to use for uninitialized
     portions of the array.
-'order'
+order
     Either 'C' or 'F', defining the layout of bytes within each chunk of the
     array.
 
