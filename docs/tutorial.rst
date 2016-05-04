@@ -380,6 +380,12 @@ Zip file via the `zict <https://github.com/mrocklin/zict>`_ package::
     382
     >>> z = zarr.Array(store)
     >>> z[:] = 42
+    >>> store.close()  # only required for zict.Zip
+
+Check that data have been written::  
+
+    >>> store = zict.Zip('example.zip', mode='r')
+    >>> z = zarr.Array(store)
     >>> z
     zarr.core.Array((1000, 1000), int32, chunks=(100, 100), order=C)
       compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
@@ -390,7 +396,7 @@ Zip file via the `zict <https://github.com/mrocklin/zict>`_ package::
     >>> sorted(store)[:5]
     ['0.0', '0.1', '0.2', '0.3', '0.4']
     >>> os.path.getsize('example.zip')
-    29782
+    34805
     >>> z[:]
     array([[42, 42, 42, ..., 42, 42, 42],
            [42, 42, 42, ..., 42, 42, 42],
