@@ -1,5 +1,5 @@
-Array classes (``zarr.core``)
-=============================
+The Array class (``zarr.core``)
+===============================
 .. module:: zarr.core
 
 .. autoclass:: Array
@@ -8,5 +8,3 @@ Array classes (``zarr.core``)
     .. automethod:: __setitem__
     .. automethod:: resize
     .. automethod:: append
-
-.. autoclass:: SynchronizedArray

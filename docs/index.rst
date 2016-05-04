@@ -12,19 +12,27 @@ chunked, compressed, N-dimensional arrays.
 * Source: https://github.com/alimanfoo/zarr
 * Documentation: http://zarr.readthedocs.io/
 * Download: https://pypi.python.org/pypi/zarr
+* Release notes: https://github.com/alimanfoo/zarr/releases
 
-Design goals
-------------
+Motivation
+----------
 
-Development of Zarr has been primarily motivated by the following design goals:
+Zarr is motivated by the desire to work interactively with
+multi-dimensional scientific datasets too large to fit into memory on
+commodity desktop or laptop computers. Interactive data analysis
+requires fast array storage, because an interactive session may
+involve creation and manipulation of many intermediate data
+structures. Faster storage provides more freedom to explore a rich and
+complex dataset in a variety of different ways. The Blosc compression
+library provides extremely fast multi-threaded compression and
+decompression, and so a primary motivation for Zarr was to bring
+together Blosc with multi-dimensional arrays in a convenient way.
 
-* Chunking in multiple dimensions
-* Resize any dimension
-* Concurrent reads
-* Concurrent writes
-* Release the GIL during compression and decompression
-
-@@TODO rewrite the above as prose
+A second motivation is to provide array storage that is convenient and
+well-suited to use in parallel computations. This means supporting
+concurrent data access from multiple threads or processes, without
+unnecessary locking or exclusion, to maximise the possibility for work
+to be carried out in parallel.
 
 Status
 ------
@@ -61,7 +69,13 @@ Contents
 Acknowledgments
 ---------------
 
-@@TODO
+Zarr bundles the `c-blosc <https://github.com/Blosc/c-blosc>`_
+library and uses it as the default compressor.
+
+Zarr is inspired by and borrows code from `bcolz <http://bcolz.blosc.org/>`_.
+
+Development of this package is supported by the
+`MRC Centre for Genomics and Global Health <http://www.cggh.org>`_.
 
 Indices and tables
 ------------------

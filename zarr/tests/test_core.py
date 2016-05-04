@@ -15,8 +15,7 @@ import zict
 from zarr.storage import DirectoryStore, init_store
 
 
-from zarr.core import Array, SynchronizedArray
-from zarr.sync import ThreadSynchronizer, ProcessSynchronizer
+from zarr.core import Array
 from zarr.errors import ReadOnlyError
 
 
@@ -453,26 +452,3 @@ class TestArray(unittest.TestCase):
             eq(z.compression_opts, z2.compression_opts)
             eq(z.fill_value, z2.fill_value)
             assert_array_equal(z[:], z2[:])
-
-
-class TestThreadSynchronizedArray(TestArray):
-
-    def create_array(self, store=None, readonly=False, **kwargs):
-        if store is None:
-            store = dict()
-        init_store(store, **kwargs)
-        return SynchronizedArray(store, synchronizer=ThreadSynchronizer(),
-                                 readonly=readonly)
-
-
-class TestProcessSynchronizedArray(TestArray):
-
-    def create_array(self, store=None, readonly=False, **kwargs):
-        if store is None:
-            store = dict()
-        init_store(store, **kwargs)
-        sync_path = mkdtemp()
-        atexit.register(shutil.rmtree, sync_path)
-        synchronizer = ProcessSynchronizer(sync_path)
-        return SynchronizedArray(store, synchronizer=synchronizer,
-                                 readonly=readonly)

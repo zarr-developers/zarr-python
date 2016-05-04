@@ -6,7 +6,8 @@ import os
 import numpy as np
 
 
-from zarr.core import Array, SynchronizedArray
+from zarr.core import Array
+from zarr.sync import SynchronizedArray
 from zarr.storage import DirectoryStore, init_store
 
 

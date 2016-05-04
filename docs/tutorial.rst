@@ -3,8 +3,9 @@ Tutorial
 
 Zarr provides classes and functions for working with N-dimensional
 arrays that behave like NumPy arrays but whose data is divided into
-chunks and compressed. If you are already familiar with HDF5 datasets then Zarr
-provides similar functionality, but with some additional flexibility.
+chunks and compressed. If you are already familiar with HDF5 datasets
+then Zarr arrays provide similar functionality, but with some
+additional flexibility.
 
 Creating an array
 -----------------
@@ -196,15 +197,15 @@ Here is an example using LZMA with a custom filter pipeline including the
 delta filter::
 
     >>> import lzma
-    >>> filters = [dict(id=lzma.FILTER_DELTA, dist=8),
+    >>> filters = [dict(id=lzma.FILTER_DELTA, dist=4),
     ...            dict(id=lzma.FILTER_LZMA2, preset=1)]
     >>> z = zarr.array(np.arange(100000000, dtype='i4').reshape(10000, 10000),
     ...                chunks=(1000, 1000), compression='lzma',
     ...                compression_opts=dict(filters=filters))
     >>> z
     zarr.core.Array((10000, 10000), int32, chunks=(1000, 1000), order=C)
-      compression: lzma; compression_opts: {'preset': None, 'filters': [{'dist': 8, 'id': 3}, {'preset': 1, 'id': 33}], 'check': 0, 'format': 1}
-      nbytes: 381.5M; nbytes_stored: 231.9K; ratio: 1684.1; initialized: 100/100
+      compression: lzma; compression_opts: {'preset': None, 'filters': [{'dist': 4, 'id': 3}, {'preset': 1, 'id': 33}], 'check': 0, 'format': 1}
+      nbytes: 381.5M; nbytes_stored: 248.1K; ratio: 1574.7; initialized: 100/100
       store: builtins.dict
 
 The best choice of compression library and options will depend on the data
@@ -252,7 +253,7 @@ with thread synchronization::
     >>> z = zarr.zeros((10000, 10000), chunks=(1000, 1000), dtype='i4',
     ...                 synchronizer=zarr.ThreadSynchronizer())
     >>> z
-    zarr.core.SynchronizedArray((10000, 10000), int32, chunks=(1000, 1000), order=C)
+    zarr.sync.SynchronizedArray((10000, 10000), int32, chunks=(1000, 1000), order=C)
       compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
       nbytes: 381.5M; nbytes_stored: 317; ratio: 1261829.7; initialized: 0/100
       store: builtins.dict; synchronizer: zarr.sync.ThreadSynchronizer
@@ -268,7 +269,7 @@ provided that all processes have access to a shared file system. E.g.::
     ...               chunks=(1000, 1000), dtype='i4',
     ...               synchronizer=synchronizer)
     >>> z
-    zarr.core.SynchronizedArray((10000, 10000), int32, chunks=(1000, 1000), order=C)
+    zarr.sync.SynchronizedArray((10000, 10000), int32, chunks=(1000, 1000), order=C)
       compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
       nbytes: 381.5M; nbytes_stored: 317; ratio: 1261829.7; initialized: 0/100
       store: zarr.storage.DirectoryStore; synchronizer: zarr.sync.ProcessSynchronizer

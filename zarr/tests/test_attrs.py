@@ -2,18 +2,14 @@
 from __future__ import absolute_import, print_function, division
 import json
 import unittest
-import atexit
-import shutil
-from tempfile import mkdtemp
 
 
 from nose.tools import eq_ as eq, assert_raises
 
 
-from zarr.attrs import Attributes, SynchronizedAttributes
+from zarr.attrs import Attributes
 from zarr.compat import binary_type, text_type
 from zarr.errors import ReadOnlyError
-from zarr.sync import ThreadSynchronizer, ProcessSynchronizer
 
 
 class TestAttributes(unittest.TestCase):
@@ -93,19 +89,3 @@ class TestAttributes(unittest.TestCase):
             a.update(foo='quux')
         with assert_raises(ReadOnlyError):
             a.put(dict())
-
-
-class TestThreadSynchronizedAttributes(TestAttributes):
-
-    def init_attributes(self, store, readonly=False):
-        synchronizer = ThreadSynchronizer()
-        return SynchronizedAttributes(store, synchronizer, readonly=readonly)
-
-
-class TestProcessSynchronizedAttributes(TestAttributes):
-
-    def init_attributes(self, store, readonly=False):
-        sync_path = mkdtemp()
-        atexit.register(shutil.rmtree, sync_path)
-        synchronizer = ProcessSynchronizer(sync_path)
-        return SynchronizedAttributes(store, synchronizer, readonly=readonly)
