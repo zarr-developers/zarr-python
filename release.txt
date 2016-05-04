@@ -1,5 +1,4 @@
-nosetests -v
-python -m doctest README.rst -o NORMALIZE_WHITESPACE
+tox
 # version=x.x.x
 echo $version
 git tag -a v$version -m v$version
