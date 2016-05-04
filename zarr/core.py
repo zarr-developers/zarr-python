@@ -201,6 +201,12 @@ class Array(object):
             int(np.ceil(s / c)) for s, c in zip(self._shape, self._chunks)
         )
 
+    def __array__(self):
+        return self[:]
+
+    def __len__(self):
+        return self.shape[0]
+
     def __getitem__(self, item):
         """Retrieve data for some portion of the array. Most NumPy-style
         slicing operations are supported.
@@ -326,9 +332,6 @@ class Array(object):
             return out
         else:
             return out[()]
-
-    def __array__(self):
-        return self[:]
 
     def __setitem__(self, key, value):
         """Modify data for some portion of the array.

@@ -69,6 +69,7 @@ class TestArray(unittest.TestCase):
         z = self.create_array(shape=a.shape, chunks=100, dtype=a.dtype)
 
         # check properties
+        eq(len(a), len(z))
         eq(a.shape, z.shape)
         eq(a.dtype, z.dtype)
         eq((100,), z.chunks)
@@ -156,6 +157,7 @@ class TestArray(unittest.TestCase):
         z = self.create_array(shape=a.shape, chunks=(100, 2), dtype=a.dtype)
 
         # check properties
+        eq(len(a), len(z))
         eq(a.shape, z.shape)
         eq(a.dtype, z.dtype)
         eq((100, 2), z.chunks)
