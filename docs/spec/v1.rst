@@ -56,7 +56,8 @@ fill_value
     portions of the array.
 order
     Either 'C' or 'F', defining the layout of bytes within each chunk of the
-    array.
+    array. 'C' means row-major order, i.e., the last dimension varies fastest;
+    'F' means column-major order, i.e., the first dimension varies fastest.
 
 Other keys MAY be present within the metadata object however they MUST NOT
 alter the interpretation of the required fields defined above.
@@ -122,12 +123,15 @@ produces a sequence of bytes that begins with a 16-byte header followed by
 compressed data.
 
 The compressed sequence of bytes for each chunk is stored under a key
-formed from the index of the chunk within the grid of chunks representing
-the array. For example, given an array with shape (10000, 10000) and chunk
-shape (1000, 1000) there will be 100 chunks laid out in a 10 by 10 grid.
-To form a string key for the chunk, the indices are converted to a string with
-the period character ('.') separating each index. E.g., the first chunk is
-stored under the key '0.0'.
+formed from the index of the chunk within the grid of chunks
+representing the array. To form a string key for a chunk, the indices
+are converted to strings and concatenated with the period character
+('.') separating each index. For example, given an array with shape
+(10000, 10000) and chunk shape (1000, 1000) there will be 100 chunks
+laid out in a 10 by 10 grid. The chunk with indices (0, 0) provides
+data for rows 0-1000 and columns 0-1000 and is stored under the key
+'0.0'; the chunk with indices (2, 4) provides data for rows 2000-3000
+and columns 4000-5000 and is stored under the key '2.4'; etc.
 
 There is no need for all chunks to be present within an array store. If a
 chunk is not present then it is considered to be in an uninitialized state.
