@@ -380,7 +380,7 @@ Zip file via the `zict <https://github.com/mrocklin/zict>`_ package::
     382
     >>> z = zarr.Array(store)
     >>> z[:] = 42
-    >>> store.close()  # only required for zict.Zip
+    >>> store.flush()  # only required for zict.Zip
 
 Check that data have been written::  
 
