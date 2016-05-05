@@ -119,6 +119,12 @@ class SynchronizedArray(Array):
                type(self.synchronizer).__name__))
         return r
 
+    def __getstate__(self):
+        return self._store, self.synchronizer, self._readonly
+
+    def __setstate__(self, state):
+        self.__init__(*state)
+
 
 class SynchronizedAttributes(Attributes):
 

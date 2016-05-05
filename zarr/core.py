@@ -594,6 +594,12 @@ class Array(object):
                                    type(self._store).__name__)
         return r
 
+    def __getstate__(self):
+        return self._store, self._readonly
+
+    def __setstate__(self, state):
+        self.__init__(*state)
+
     def resize(self, *args):
         """Change the shape of the array by growing or shrinking one or more
         dimensions.
