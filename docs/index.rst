@@ -44,13 +44,20 @@ tracker <https://github.com/alimanfoo/zarr/issues>`_.
 Installation
 ------------
 
-N.B., currently Zarr requires that Numpy and Cython are both pre-installed.
+N.B., installation of Zarr with the Blosc extension requires that Numpy and
+Cython are both already installed, e.g.::
 
-Install from PyPI::
+    $ pip install cython numpy
+
+If Cython is missing, the Blosc extension will not be
+compiled. In this case Zarr can still be installed, but only ``zlib``,
+``bz2`` and ``lzma`` (Python 3) compression will be available.
+
+Install Zarr from PyPI::
 
     $ pip install zarr
 
-Install from GitHub::
+Install Zarr from GitHub::
 
     $ git clone --recursive https://github.com/alimanfoo/zarr.git
     $ cd zarr

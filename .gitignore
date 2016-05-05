@@ -59,9 +59,6 @@ target/
 # PyCharm
 .idea
 
-# don't include cython generated C code (for now)
-zarr/*.c
-
 # setuptools-scm
 zarr/version.py
 
