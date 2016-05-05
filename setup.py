@@ -14,7 +14,7 @@ try:
     import numpy as np
 except ImportError:
     # Keep it simple, require that NumPy is already installed.
-    print('[zarr] NumPy not found. Please install NumPy then try again.')
+    print('[zarr] ERROR NumPy not found. Please install NumPy then try again.')
     print('[zarr] E.g., try: pip install numpy')
     sys,exit(1)
 
