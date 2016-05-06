@@ -38,6 +38,7 @@ class Array(object):
     compression_opts
     fill_value
     order
+    attrs
     size
     itemsize
     nbytes
@@ -154,7 +155,8 @@ class Array(object):
 
     @property
     def attrs(self):
-        """A MutableMapping containing user-defined attributes."""
+        """A MutableMapping containing user-defined attributes. Note that
+        attribute values must be JSON serializable."""
         return self._attrs
 
     @property
