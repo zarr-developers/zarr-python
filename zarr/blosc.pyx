@@ -168,9 +168,6 @@ def compress(ndarray array, char* cname, int clevel, int shuffle):
         raise RuntimeError('error during blosc compression: %d' % cbytes)
 
     # store as bytes
-    # N.B., at this point a copy of the compressed bytes is made, and in
-    # benchmarks this can account for ~20% of compression time. Is there
-    # any way to avoid making a copy?
     cdata = PyBytes_FromStringAndSize(dest, cbytes)
 
     # release memory
