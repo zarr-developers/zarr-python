@@ -177,6 +177,9 @@ def compress(ndarray array, char* cname, int clevel, int shuffle):
     # store as bytes
     cdata_bytes = ctypes.string_at(<uintptr_t> cdata, cbytes)
 
+    # free memory
+    free(cdata)
+
     return cdata_bytes
 
 
