@@ -38,29 +38,35 @@ class CompressorTests(object):
         self._test_compress_decompress()
 
 
-class TestBloscCompressor(unittest.TestCase, CompressorTests):
+try:
+    from zarr import blosc  # flake8: noqa
+except ImportError:
+    print('Blosc not available, skipping Blosc compressor tests')
+else:
 
-    compression = 'blosc'
+    class TestBloscCompressor(unittest.TestCase, CompressorTests):
 
-    def test_normalize_opts(self):
-        cls = get_compressor_cls(self.compression)
+        compression = 'blosc'
 
-        # test defaults
-        opts = cls.normalize_opts(None)
-        default_opts = dict(
-            cname=cls.default_cname,
-            clevel=cls.default_clevel,
-            shuffle=cls.default_shuffle
-        )
-        eq(default_opts, opts)
+        def test_normalize_opts(self):
+            cls = get_compressor_cls(self.compression)
 
-        # test invalid args
-        with assert_raises(ValueError):
-            cls.normalize_opts(dict(cname='foo'))
-        with assert_raises(ValueError):
-            cls.normalize_opts(dict(clevel=10))
-        with assert_raises(ValueError):
-            cls.normalize_opts(dict(shuffle=3))
+            # test defaults
+            opts = cls.normalize_opts(None)
+            default_opts = dict(
+                cname=cls.default_cname,
+                clevel=cls.default_clevel,
+                shuffle=cls.default_shuffle
+            )
+            eq(default_opts, opts)
+
+            # test invalid args
+            with assert_raises(ValueError):
+                cls.normalize_opts(dict(cname='foo'))
+            with assert_raises(ValueError):
+                cls.normalize_opts(dict(clevel=10))
+            with assert_raises(ValueError):
+                cls.normalize_opts(dict(shuffle=3))
 
 
 class TestZlibCompressor(unittest.TestCase, CompressorTests):
@@ -98,7 +104,7 @@ class TestBZ2Compressor(unittest.TestCase, CompressorTests):
 try:
     import lzma
 except ImportError:
-    pass
+    print('LZMA not available, skipping LZMA compressor tests')
 else:
 
     class TestLZMACompressor(unittest.TestCase, CompressorTests):

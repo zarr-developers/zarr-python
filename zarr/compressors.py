@@ -15,11 +15,18 @@ registry = dict()
 
 class ZlibCompressor(object):
     """Provides compression using zlib via the Python standard library.
+    Registered under the name 'zlib'.
 
     Parameters
     ----------
     compression_opts : int
         An integer between 0 and 9 inclusive specifying the compression level.
+
+    Examples
+    --------
+    >>> import zarr
+    >>> z = zarr.zeros((10000, 10000), chunks=(1000, 1000), dtype='i4',
+    ...                compression='zlib', compression_opts=1)
 
     """
 
@@ -64,7 +71,8 @@ except ImportError:  # pragma: no cover
 else:
 
     class BloscCompressor(object):
-        """Provides compression using the blosc meta-compressor.
+        """Provides compression using the blosc meta-compressor. Registered
+        under the name 'blosc'.
 
         Parameters
         ----------
@@ -77,7 +85,14 @@ else:
             'shuffle' key should be 0 (no shuffle), 1 (byte shuffle) or 2 (bit
             shuffle).
 
-        """
+        Examples
+        --------
+        >>> import zarr
+        >>> z = zarr.zeros((10000, 10000), chunks=(1000, 1000), dtype='i4',
+        ...                compression='blosc',
+        ...                compression_opts=dict(cname='lz4', clevel=3, shuffle=2))
+
+        """  # flake8: noqa
 
         canonical_name = 'blosc'
         default_cname = 'blosclz'
@@ -142,12 +157,18 @@ else:
 
 class BZ2Compressor(object):
     """Provides compression using BZ2 via the Python standard library.
+    Registered under the name 'bz2'.
 
     Parameters
     ----------
     compression_opts : int
         An integer between 1 and 9 inclusive specifying the compression level.
 
+    Examples
+    --------
+    >>> import zarr
+    >>> z = zarr.zeros((10000, 10000), chunks=(1000, 1000), dtype='i4',
+    ...                compression='bz2', compression_opts=1)
     """
 
     canonical_name = 'bz2'
@@ -190,7 +211,7 @@ else:
 
     class LZMACompressor(object):
         """Provides compression using lzma via the Python standard library
-        (only available under Python 3).
+        (only available under Python 3). Registered under the name 'lzma'.
 
         Parameters
         ----------
@@ -204,6 +225,24 @@ else:
             compression level. The value of the 'filters' key should be a list
             of dictionaries specifying compression filters. If filters are
             provided, 'preset' must be None.
+
+        Examples
+        --------
+        Simple usage::
+
+            >>> import zarr
+            >>> z = zarr.zeros((10000, 10000), chunks=(1000, 1000), dtype='i4',
+            ...                compression='lzma',
+            ...                compression_opts=dict(preset=1))
+
+        Custom filter pipeline::
+
+            >>> import lzma
+            >>> filters = [dict(id=lzma.FILTER_DELTA, dist=4),
+            ...            dict(id=lzma.FILTER_LZMA2, preset=1)]
+            >>> z = zarr.zeros((10000, 10000), chunks=(1000, 1000), dtype='i4',
+            ...                compression='lzma',
+            ...                compression_opts=dict(filters=filters))
 
         """
 
@@ -284,7 +323,16 @@ else:
 
 
 class NoCompressor(object):
-    """No compression, i.e., pass bytes through."""
+    """No compression, i.e., pass bytes through. Registered under the
+    ``None`` value.
+
+    Examples
+    --------
+    >>> import zarr
+    >>> z = zarr.zeros((10000, 10000), chunks=(1000, 1000), dtype='i4',
+    ...                compression=None)
+
+    """
 
     canonical_name = None
 

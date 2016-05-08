@@ -4,8 +4,8 @@
 # cython: linetrace=False
 # cython: binding=False
 from __future__ import absolute_import, print_function, division
-import sys
 import ctypes
+import threading
 
 
 from numpy cimport ndarray
@@ -67,7 +67,10 @@ def compname_to_compcode(cname):
 
 
 def set_nthreads(int nthreads):
-    blosc_set_nthreads(nthreads)
+    """Set the number of threads that Blosc uses internally for compression
+    and decompression.
+    ."""
+    return blosc_set_nthreads(nthreads)
 
 
 def decompress(bytes cdata, ndarray array):
@@ -98,13 +101,13 @@ def decompress(bytes cdata, ndarray array):
     nbytes = array.nbytes
 
     # perform decompression
-    if _use_context:
-        with nogil:
-            ret = blosc_decompress_ctx(source, dest, nbytes, 1)
-
-    else:
+    if _get_use_threads():
+        # allow blosc to use threads internally
         with nogil:
             ret = blosc_decompress(source, dest, nbytes)
+    else:
+        with nogil:
+            ret = blosc_decompress_ctx(source, dest, nbytes, 1)
 
     # handle errors
     if ret <= 0:
@@ -148,20 +151,21 @@ def compress(ndarray array, char* cname, int clevel, int shuffle):
     dest = <char *> malloc(nbytes + BLOSC_MAX_OVERHEAD)
 
     # perform compression
-    if _use_context:
-        with nogil:
-            cbytes = blosc_compress_ctx(clevel, shuffle, itemsize, nbytes,
-                                        source, dest,
-                                        nbytes + BLOSC_MAX_OVERHEAD, cname,
-                                        0, 1)
-
-    else:
+    if _get_use_threads():
+        # allow blosc to use threads internally
         compressor_set = blosc_set_compressor(cname)
         if compressor_set < 0:
             raise ValueError('compressor not supported: %r' % cname)
         with nogil:
             cbytes = blosc_compress(clevel, shuffle, itemsize, nbytes, source,
                                     dest, nbytes + BLOSC_MAX_OVERHEAD)
+
+    else:
+        with nogil:
+            cbytes = blosc_compress_ctx(clevel, shuffle, itemsize, nbytes,
+                                        source, dest,
+                                        nbytes + BLOSC_MAX_OVERHEAD, cname,
+                                        0, 1)
 
     # check compression was successful
     if cbytes <= 0:
@@ -176,20 +180,28 @@ def compress(ndarray array, char* cname, int clevel, int shuffle):
     return cdata_bytes
 
 
-_use_context = False
+# set the value of this variable to True or False to override the
+# default adaptive behaviour
+use_threads = None
 
 
-# noinspection PyPep8Naming
-class use_context(object):
+def _get_use_threads():
+    global use_threads
 
-    def __init__(self, use_context=True):
-        global _use_context
-        self.old_use_context = _use_context
-        _use_context = use_context
+    if use_threads in [True, False]:
+        # user has manually overridden the default behaviour
+        _use_threads = use_threads
 
-    def __enter__(self):
-        return
+    else:
+        # adaptive behaviour: allow blosc to use threads if it is being
+        # called from the main Python thread, inferring that it is being run
+        # from within a single-threaded program; otherwise do not allow
+        # blosc to use threads, inferring it is being run from within a
+        # multi-threaded program
+        if hasattr(threading, 'main_thread'):
+            _use_threads = (threading.main_thread() ==
+                            threading.current_thread())
+        else:
+            _use_threads = threading.current_thread().name == 'MainThread'
 
-    def __exit__(self, *args, **kwargs):
-        global _use_context
-        _use_context = self.old_use_context
+    return _use_threads
