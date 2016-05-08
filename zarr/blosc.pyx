@@ -136,7 +136,7 @@ def compress(ndarray array, char* cname, int clevel, int shuffle):
         char *source
         char *dest
         size_t nbytes, cbytes, itemsize
-        bytes cdata_bytes
+        bytes cdata
 
     # obtain reference to underlying buffer
     source = array.data
@@ -168,12 +168,15 @@ def compress(ndarray array, char* cname, int clevel, int shuffle):
         raise RuntimeError('error during blosc compression: %d' % cbytes)
 
     # store as bytes
-    cdata_bytes = PyBytes_FromStringAndSize(dest, cbytes)
+    # N.B., at this point a copy of the compressed bytes is made, and in
+    # benchmarks this can account for ~20% of compression time. Is there
+    # any way to avoid making a copy?
+    cdata = PyBytes_FromStringAndSize(dest, cbytes)
 
     # release memory
     PyMem_Free(dest)
 
-    return cdata_bytes
+    return cdata
 
 
 # set the value of this variable to True or False to override the
