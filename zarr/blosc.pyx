@@ -4,15 +4,12 @@
 # cython: linetrace=False
 # cython: binding=False
 from __future__ import absolute_import, print_function, division
-import ctypes
 import threading
 
 
 from numpy cimport ndarray
-# noinspection PyUnresolvedReferences
-from libc.stdint cimport uintptr_t
-# noinspection PyUnresolvedReferences
-from .definitions cimport malloc, realloc, free, PyBytes_AsString
+from cpython.bytes cimport PyBytes_AsString, PyBytes_FromStringAndSize
+from cpython.mem cimport PyMem_Malloc, PyMem_Free
 
 
 from zarr.compat import PY2, text_type
@@ -138,7 +135,6 @@ def compress(ndarray array, char* cname, int clevel, int shuffle):
     cdef:
         char *source
         char *dest
-        char *cdata
         size_t nbytes, cbytes, itemsize
         bytes cdata_bytes
 
@@ -148,7 +144,7 @@ def compress(ndarray array, char* cname, int clevel, int shuffle):
     # allocate memory for compressed data
     nbytes = array.nbytes
     itemsize = array.dtype.itemsize
-    dest = <char *> malloc(nbytes + BLOSC_MAX_OVERHEAD)
+    dest = <char *> PyMem_Malloc(nbytes + BLOSC_MAX_OVERHEAD)
 
     # perform compression
     if _get_use_threads():
@@ -171,14 +167,11 @@ def compress(ndarray array, char* cname, int clevel, int shuffle):
     if cbytes <= 0:
         raise RuntimeError('error during blosc compression: %d' % cbytes)
 
-    # free the unused memory
-    cdata = <char *> realloc(dest, cbytes)
-
     # store as bytes
-    cdata_bytes = ctypes.string_at(<uintptr_t> cdata, cbytes)
+    cdata_bytes = PyBytes_FromStringAndSize(dest, cbytes)
 
-    # free memory
-    free(cdata)
+    # release memory
+    PyMem_Free(dest)
 
     return cdata_bytes
 
