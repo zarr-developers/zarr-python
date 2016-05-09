@@ -45,6 +45,7 @@ def blosc_extension():
     include_dirs += [os.path.join('c-blosc', 'blosc')]
     include_dirs += glob('c-blosc/internal-complibs/*')
     define_macros += [('HAVE_LZ4', 1), ('HAVE_SNAPPY', 1), ('HAVE_ZLIB', 1)]
+    define_macros += [('CYTHON_TRACE', '1')]
     include_dirs.append(np.get_include())
 
     # determine CPU support for SSE2 and AVX2
