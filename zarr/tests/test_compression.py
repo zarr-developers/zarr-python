@@ -27,7 +27,7 @@ class CompressorTests(object):
         comp = self.init_compressor(compression_opts)
         a = np.arange(1000, dtype='i4')
         cdata = comp.compress(a)
-        assert isinstance(cdata, bytes)
+        assert isinstance(cdata, (bytes, bytearray))
         assert len(cdata) <= a.nbytes
 
         b = np.empty_like(a)
