@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 # cython: embedsignature=True
-# cython: profile=True
-# cython: linetrace=True
-# cython: binding=True
+# cython: profile=False
+# cython: linetrace=False
+# cython: binding=False
 from __future__ import absolute_import, print_function, division
 import threading
 
