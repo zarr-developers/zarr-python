@@ -192,10 +192,7 @@ class DirectoryStore(MutableMapping):
             return f.read()
 
     def __setitem__(self, key, value):
-
-        # guard conditions
-        if not isinstance(value, (bytes, bytearray)):
-            raise ValueError('value must be of type bytes or bytearray')
+        # accept any value that can be written to a file
 
         # write to temporary file
         with tempfile.NamedTemporaryFile(mode='wb', delete=False,

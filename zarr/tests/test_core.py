@@ -45,14 +45,14 @@ def test_nbytes_stored():
     z[:] = 42
     eq(sum(len(v) for v in store.values()), z.nbytes_stored)
 
-    # custom store, doesn't support size determination
-    with NamedTemporaryFile() as f:
-        store = zict.Zip(f.name, mode='w')
-        init_store(store, shape=1000, chunks=100)
-        z = Array(store)
-        eq(-1, z.nbytes_stored)
-        z[:] = 42
-        eq(-1, z.nbytes_stored)
+    # # custom store, doesn't support size determination
+    # with NamedTemporaryFile() as f:
+    #     store = zict.Zip(f.name, mode='w')
+    #     init_store(store, shape=1000, chunks=100)
+    #     z = Array(store)
+    #     eq(-1, z.nbytes_stored)
+    #     z[:] = 42
+    #     eq(-1, z.nbytes_stored)
 
 
 class TestArray(unittest.TestCase):

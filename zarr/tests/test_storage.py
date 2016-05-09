@@ -6,6 +6,7 @@ import atexit
 import shutil
 import pickle
 import json
+import array
 
 
 import numpy as np
@@ -70,9 +71,14 @@ class MappingTests(object):
             m['foo']
         with assert_raises(KeyError):
             del m['foo']
-        with assert_raises(ValueError):
-            # non-bytes value
+        with assert_raises(TypeError):
+            # non-writeable value
             m['foo'] = 42
+        # alternative values
+        m['foo'] = bytearray(b'bar')
+        eq(b'bar', m['foo'])
+        m['foo'] = array.array('B', b'bar')
+        eq(b'bar', m['foo'])
 
     def test_update(self):
         m = self.create_mapping()
