@@ -324,7 +324,7 @@ else:
 
 class NoCompressor(object):
     """No compression, i.e., pass bytes through. Registered under the
-    ``None`` value.
+    name 'none'.
 
     Examples
     --------
@@ -334,7 +334,7 @@ class NoCompressor(object):
 
     """
 
-    canonical_name = None
+    canonical_name = 'none'
 
     def __init__(self, compression_opts):
         pass
@@ -357,6 +357,7 @@ class NoCompressor(object):
 
 
 registry[NoCompressor.canonical_name] = NoCompressor
+registry[None] = NoCompressor  # alias
 
 
 def get_compressor_cls(compression):
@@ -365,4 +366,4 @@ def get_compressor_cls(compression):
     try:
         return registry[compression]
     except KeyError:
-        raise ValueError('compressor not available: %s' % compression)
+        raise ValueError('compressor not available: %r' % compression)

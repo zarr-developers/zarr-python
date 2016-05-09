@@ -147,7 +147,7 @@ else:
 
 class TestNoCompressor(unittest.TestCase, CompressorTests):
 
-    compression = None
+    compression = 'none'
 
     def test_normalize_opts(self):
         cls = get_compressor_cls(self.compression)
