@@ -21,7 +21,7 @@ Highlights
 * Store arrays in memory, on disk, inside a Zip file, on S3, ... pretty much anywhere you like.
 * Read an array concurrently from multiple threads or processes.
 * Write to an array concurrently from multiple threads or processes.
-    
+
 Status
 ------
 
@@ -31,10 +31,6 @@ tracker <https://github.com/alimanfoo/zarr/issues>`_.
 
 Installation
 ------------
-
-N.B., installation of Zarr requires that Numpy is already installed, e.g.::
-
-    $ pip install numpy
 
 Install Zarr from PyPI::
 
