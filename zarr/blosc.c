@@ -646,6 +646,9 @@ static int __Pyx_ParseOptionalKeywords(PyObject *kwds, PyObject **argnames[],\
     PyObject *kwds2, PyObject *values[], Py_ssize_t num_pos_args,\
     const char* function_name);
 
+/* ExtTypeTest.proto */
+static CYTHON_INLINE int __Pyx_TypeTest(PyObject *obj, PyTypeObject *type);
+
 /* PyThreadStateGet.proto */
 #if CYTHON_COMPILING_IN_CPYTHON
 #define __Pyx_PyThreadState_declare  PyThreadState *__pyx_tstate;
@@ -987,6 +990,7 @@ static const char __pyx_k_use_threads[] = "use_threads";
 static const char __pyx_k_zarr_compat[] = "zarr.compat";
 static const char __pyx_k_RuntimeError[] = "RuntimeError";
 static const char __pyx_k_set_nthreads[] = "set_nthreads";
+static const char __pyx_k_source_array[] = "source_array";
 static const char __pyx_k_source_buffer[] = "source_buffer";
 static const char __pyx_k_use_threads_2[] = "_use_threads";
 static const char __pyx_k_compressor_set[] = "compressor_set";
@@ -994,6 +998,7 @@ static const char __pyx_k_current_thread[] = "current_thread";
 static const char __pyx_k_get_use_threads[] = "_get_use_threads";
 static const char __pyx_k_char_array_template[] = "char_array_template";
 static const char __pyx_k_compname_to_compcode[] = "compname_to_compcode";
+static const char __pyx_k_release_source_buffer[] = "release_source_buffer";
 static const char __pyx_k_compressor_not_supported_r[] = "compressor not supported: %r";
 static const char __pyx_k_home_aliman_code_github_alimanf[] = "/home/aliman/code/github/alimanfoo/zarr/zarr/blosc.pyx";
 static const char __pyx_k_error_during_blosc_compression_d[] = "error during blosc compression: %d";
@@ -1034,10 +1039,12 @@ static PyObject *__pyx_n_s_main_thread;
 static PyObject *__pyx_n_s_name;
 static PyObject *__pyx_n_s_nbytes;
 static PyObject *__pyx_n_s_nthreads;
+static PyObject *__pyx_n_s_release_source_buffer;
 static PyObject *__pyx_n_s_ret;
 static PyObject *__pyx_n_s_set_nthreads;
 static PyObject *__pyx_n_s_shuffle;
 static PyObject *__pyx_n_s_source;
+static PyObject *__pyx_n_s_source_array;
 static PyObject *__pyx_n_s_source_buffer;
 static PyObject *__pyx_n_s_source_ptr;
 static PyObject *__pyx_n_s_test;
@@ -1618,46 +1625,125 @@ static PyObject *__pyx_pf_4zarr_5blosc_10decompress(CYTHON_UNUSED PyObject *__py
   char *__pyx_v_source_ptr;
   char *__pyx_v_dest_ptr;
   Py_buffer __pyx_v_source_buffer;
+  arrayobject *__pyx_v_source_array = 0;
   Py_buffer __pyx_v_dest_buffer;
   size_t __pyx_v_nbytes;
+  int __pyx_v_release_source_buffer;
   PyObject *__pyx_r = NULL;
   __Pyx_RefNannyDeclarations
   int __pyx_t_1;
-  Py_ssize_t __pyx_t_2;
-  PyObject *__pyx_t_3 = NULL;
-  PyObject *__pyx_t_4 = NULL;
-  PyObject *__pyx_t_5 = NULL;
-  int __pyx_t_6;
+  PyObject *__pyx_t_2 = NULL;
+  int __pyx_t_3;
+  int __pyx_t_4;
+  int __pyx_t_5;
+  Py_ssize_t __pyx_t_6;
+  PyObject *__pyx_t_7 = NULL;
+  PyObject *__pyx_t_8 = NULL;
   __Pyx_RefNannySetupContext("decompress", 0);
 
-  /* "zarr/blosc.pyx":100
+  /* "zarr/blosc.pyx":101
  * 
  *     # setup source buffer
- *     PyObject_GetBuffer(source, &source_buffer, PyBUF_ANY_CONTIGUOUS)             # <<<<<<<<<<<<<<
- *     source_ptr = <char *> source_buffer.buf
+ *     if PY2 and isinstance(source, array.array):             # <<<<<<<<<<<<<<
+ *         # workaround fact that array.array does not support new-style buffer
+ *         # interface in PY2
+ */
+  __pyx_t_2 = __Pyx_GetModuleGlobalName(__pyx_n_s_PY2); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 101, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_2);
+  __pyx_t_3 = __Pyx_PyObject_IsTrue(__pyx_t_2); if (unlikely(__pyx_t_3 < 0)) __PYX_ERR(0, 101, __pyx_L1_error)
+  __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
+  if (__pyx_t_3) {
+  } else {
+    __pyx_t_1 = __pyx_t_3;
+    goto __pyx_L4_bool_binop_done;
+  }
+  __pyx_t_3 = __Pyx_TypeCheck(__pyx_v_source, __pyx_ptype_7cpython_5array_array); 
+  __pyx_t_4 = (__pyx_t_3 != 0);
+  __pyx_t_1 = __pyx_t_4;
+  __pyx_L4_bool_binop_done:;
+  if (__pyx_t_1) {
+
+    /* "zarr/blosc.pyx":104
+ *         # workaround fact that array.array does not support new-style buffer
+ *         # interface in PY2
+ *         release_source_buffer = False             # <<<<<<<<<<<<<<
+ *         source_array = source
+ *         source_ptr = <char *> source_array.data.as_voidptr
+ */
+    __pyx_v_release_source_buffer = 0;
+
+    /* "zarr/blosc.pyx":105
+ *         # interface in PY2
+ *         release_source_buffer = False
+ *         source_array = source             # <<<<<<<<<<<<<<
+ *         source_ptr = <char *> source_array.data.as_voidptr
+ *     else:
+ */
+    if (!(likely(((__pyx_v_source) == Py_None) || likely(__Pyx_TypeTest(__pyx_v_source, __pyx_ptype_7cpython_5array_array))))) __PYX_ERR(0, 105, __pyx_L1_error)
+    __pyx_t_2 = __pyx_v_source;
+    __Pyx_INCREF(__pyx_t_2);
+    __pyx_v_source_array = ((arrayobject *)__pyx_t_2);
+    __pyx_t_2 = 0;
+
+    /* "zarr/blosc.pyx":106
+ *         release_source_buffer = False
+ *         source_array = source
+ *         source_ptr = <char *> source_array.data.as_voidptr             # <<<<<<<<<<<<<<
+ *     else:
+ *         release_source_buffer = True
+ */
+    __pyx_v_source_ptr = ((char *)__pyx_v_source_array->data.as_voidptr);
+
+    /* "zarr/blosc.pyx":101
+ * 
+ *     # setup source buffer
+ *     if PY2 and isinstance(source, array.array):             # <<<<<<<<<<<<<<
+ *         # workaround fact that array.array does not support new-style buffer
+ *         # interface in PY2
+ */
+    goto __pyx_L3;
+  }
+
+  /* "zarr/blosc.pyx":108
+ *         source_ptr = <char *> source_array.data.as_voidptr
+ *     else:
+ *         release_source_buffer = True             # <<<<<<<<<<<<<<
+ *         PyObject_GetBuffer(source, &source_buffer, PyBUF_ANY_CONTIGUOUS)
+ *         source_ptr = <char *> source_buffer.buf
+ */
+  /*else*/ {
+    __pyx_v_release_source_buffer = 1;
+
+    /* "zarr/blosc.pyx":109
+ *     else:
+ *         release_source_buffer = True
+ *         PyObject_GetBuffer(source, &source_buffer, PyBUF_ANY_CONTIGUOUS)             # <<<<<<<<<<<<<<
+ *         source_ptr = <char *> source_buffer.buf
  * 
  */
-  __pyx_t_1 = PyObject_GetBuffer(__pyx_v_source, (&__pyx_v_source_buffer), PyBUF_ANY_CONTIGUOUS); if (unlikely(__pyx_t_1 == -1)) __PYX_ERR(0, 100, __pyx_L1_error)
+    __pyx_t_5 = PyObject_GetBuffer(__pyx_v_source, (&__pyx_v_source_buffer), PyBUF_ANY_CONTIGUOUS); if (unlikely(__pyx_t_5 == -1)) __PYX_ERR(0, 109, __pyx_L1_error)
 
-  /* "zarr/blosc.pyx":101
- *     # setup source buffer
- *     PyObject_GetBuffer(source, &source_buffer, PyBUF_ANY_CONTIGUOUS)
- *     source_ptr = <char *> source_buffer.buf             # <<<<<<<<<<<<<<
+    /* "zarr/blosc.pyx":110
+ *         release_source_buffer = True
+ *         PyObject_GetBuffer(source, &source_buffer, PyBUF_ANY_CONTIGUOUS)
+ *         source_ptr = <char *> source_buffer.buf             # <<<<<<<<<<<<<<
  * 
  *     # setup destination buffer
  */
-  __pyx_v_source_ptr = ((char *)__pyx_v_source_buffer.buf);
+    __pyx_v_source_ptr = ((char *)__pyx_v_source_buffer.buf);
+  }
+  __pyx_L3:;
 
-  /* "zarr/blosc.pyx":104
+  /* "zarr/blosc.pyx":113
  * 
  *     # setup destination buffer
  *     PyObject_GetBuffer(dest, &dest_buffer,             # <<<<<<<<<<<<<<
  *                        PyBUF_ANY_CONTIGUOUS | PyBUF_WRITEABLE)
  *     dest_ptr = <char *> dest_buffer.buf
  */
-  __pyx_t_1 = PyObject_GetBuffer(__pyx_v_dest, (&__pyx_v_dest_buffer), (PyBUF_ANY_CONTIGUOUS | PyBUF_WRITEABLE)); if (unlikely(__pyx_t_1 == -1)) __PYX_ERR(0, 104, __pyx_L1_error)
+  __pyx_t_5 = PyObject_GetBuffer(__pyx_v_dest, (&__pyx_v_dest_buffer), (PyBUF_ANY_CONTIGUOUS | PyBUF_WRITEABLE)); if (unlikely(__pyx_t_5 == -1)) __PYX_ERR(0, 113, __pyx_L1_error)
 
-  /* "zarr/blosc.pyx":106
+  /* "zarr/blosc.pyx":115
  *     PyObject_GetBuffer(dest, &dest_buffer,
  *                        PyBUF_ANY_CONTIGUOUS | PyBUF_WRITEABLE)
  *     dest_ptr = <char *> dest_buffer.buf             # <<<<<<<<<<<<<<
@@ -1666,48 +1752,48 @@ static PyObject *__pyx_pf_4zarr_5blosc_10decompress(CYTHON_UNUSED PyObject *__py
  */
   __pyx_v_dest_ptr = ((char *)__pyx_v_dest_buffer.buf);
 
-  /* "zarr/blosc.pyx":107
+  /* "zarr/blosc.pyx":116
  *                        PyBUF_ANY_CONTIGUOUS | PyBUF_WRITEABLE)
  *     dest_ptr = <char *> dest_buffer.buf
  *     nbytes = dest_buffer.len             # <<<<<<<<<<<<<<
  * 
  *     # perform decompression
  */
-  __pyx_t_2 = __pyx_v_dest_buffer.len;
-  __pyx_v_nbytes = __pyx_t_2;
+  __pyx_t_6 = __pyx_v_dest_buffer.len;
+  __pyx_v_nbytes = __pyx_t_6;
 
-  /* "zarr/blosc.pyx":110
+  /* "zarr/blosc.pyx":119
  * 
  *     # perform decompression
  *     if _get_use_threads():             # <<<<<<<<<<<<<<
  *         # allow blosc to use threads internally
  *         with nogil:
  */
-  __pyx_t_4 = __Pyx_GetModuleGlobalName(__pyx_n_s_get_use_threads); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 110, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_4);
-  __pyx_t_5 = NULL;
-  if (CYTHON_COMPILING_IN_CPYTHON && unlikely(PyMethod_Check(__pyx_t_4))) {
-    __pyx_t_5 = PyMethod_GET_SELF(__pyx_t_4);
-    if (likely(__pyx_t_5)) {
-      PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_4);
-      __Pyx_INCREF(__pyx_t_5);
+  __pyx_t_7 = __Pyx_GetModuleGlobalName(__pyx_n_s_get_use_threads); if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 119, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_7);
+  __pyx_t_8 = NULL;
+  if (CYTHON_COMPILING_IN_CPYTHON && unlikely(PyMethod_Check(__pyx_t_7))) {
+    __pyx_t_8 = PyMethod_GET_SELF(__pyx_t_7);
+    if (likely(__pyx_t_8)) {
+      PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_7);
+      __Pyx_INCREF(__pyx_t_8);
       __Pyx_INCREF(function);
-      __Pyx_DECREF_SET(__pyx_t_4, function);
+      __Pyx_DECREF_SET(__pyx_t_7, function);
     }
   }
-  if (__pyx_t_5) {
-    __pyx_t_3 = __Pyx_PyObject_CallOneArg(__pyx_t_4, __pyx_t_5); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 110, __pyx_L1_error)
-    __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
+  if (__pyx_t_8) {
+    __pyx_t_2 = __Pyx_PyObject_CallOneArg(__pyx_t_7, __pyx_t_8); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 119, __pyx_L1_error)
+    __Pyx_DECREF(__pyx_t_8); __pyx_t_8 = 0;
   } else {
-    __pyx_t_3 = __Pyx_PyObject_CallNoArg(__pyx_t_4); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 110, __pyx_L1_error)
+    __pyx_t_2 = __Pyx_PyObject_CallNoArg(__pyx_t_7); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 119, __pyx_L1_error)
   }
-  __Pyx_GOTREF(__pyx_t_3);
-  __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
-  __pyx_t_6 = __Pyx_PyObject_IsTrue(__pyx_t_3); if (unlikely(__pyx_t_6 < 0)) __PYX_ERR(0, 110, __pyx_L1_error)
-  __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
-  if (__pyx_t_6) {
+  __Pyx_GOTREF(__pyx_t_2);
+  __Pyx_DECREF(__pyx_t_7); __pyx_t_7 = 0;
+  __pyx_t_1 = __Pyx_PyObject_IsTrue(__pyx_t_2); if (unlikely(__pyx_t_1 < 0)) __PYX_ERR(0, 119, __pyx_L1_error)
+  __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
+  if (__pyx_t_1) {
 
-    /* "zarr/blosc.pyx":112
+    /* "zarr/blosc.pyx":121
  *     if _get_use_threads():
  *         # allow blosc to use threads internally
  *         with nogil:             # <<<<<<<<<<<<<<
@@ -1721,7 +1807,7 @@ static PyObject *__pyx_pf_4zarr_5blosc_10decompress(CYTHON_UNUSED PyObject *__py
         #endif
         /*try:*/ {
 
-          /* "zarr/blosc.pyx":113
+          /* "zarr/blosc.pyx":122
  *         # allow blosc to use threads internally
  *         with nogil:
  *             ret = blosc_decompress(source_ptr, dest_ptr, nbytes)             # <<<<<<<<<<<<<<
@@ -1731,7 +1817,7 @@ static PyObject *__pyx_pf_4zarr_5blosc_10decompress(CYTHON_UNUSED PyObject *__py
           __pyx_v_ret = blosc_decompress(__pyx_v_source_ptr, __pyx_v_dest_ptr, __pyx_v_nbytes);
         }
 
-        /* "zarr/blosc.pyx":112
+        /* "zarr/blosc.pyx":121
  *     if _get_use_threads():
  *         # allow blosc to use threads internally
  *         with nogil:             # <<<<<<<<<<<<<<
@@ -1743,23 +1829,23 @@ static PyObject *__pyx_pf_4zarr_5blosc_10decompress(CYTHON_UNUSED PyObject *__py
             #ifdef WITH_THREAD
             Py_BLOCK_THREADS
             #endif
-            goto __pyx_L6;
+            goto __pyx_L9;
           }
-          __pyx_L6:;
+          __pyx_L9:;
         }
     }
 
-    /* "zarr/blosc.pyx":110
+    /* "zarr/blosc.pyx":119
  * 
  *     # perform decompression
  *     if _get_use_threads():             # <<<<<<<<<<<<<<
  *         # allow blosc to use threads internally
  *         with nogil:
  */
-    goto __pyx_L3;
+    goto __pyx_L6;
   }
 
-  /* "zarr/blosc.pyx":115
+  /* "zarr/blosc.pyx":124
  *             ret = blosc_decompress(source_ptr, dest_ptr, nbytes)
  *     else:
  *         with nogil:             # <<<<<<<<<<<<<<
@@ -1774,7 +1860,7 @@ static PyObject *__pyx_pf_4zarr_5blosc_10decompress(CYTHON_UNUSED PyObject *__py
         #endif
         /*try:*/ {
 
-          /* "zarr/blosc.pyx":116
+          /* "zarr/blosc.pyx":125
  *     else:
  *         with nogil:
  *             ret = blosc_decompress_ctx(source_ptr, dest_ptr, nbytes, 1)             # <<<<<<<<<<<<<<
@@ -1784,7 +1870,7 @@ static PyObject *__pyx_pf_4zarr_5blosc_10decompress(CYTHON_UNUSED PyObject *__py
           __pyx_v_ret = blosc_decompress_ctx(__pyx_v_source_ptr, __pyx_v_dest_ptr, __pyx_v_nbytes, 1);
         }
 
-        /* "zarr/blosc.pyx":115
+        /* "zarr/blosc.pyx":124
  *             ret = blosc_decompress(source_ptr, dest_ptr, nbytes)
  *     else:
  *         with nogil:             # <<<<<<<<<<<<<<
@@ -1796,67 +1882,86 @@ static PyObject *__pyx_pf_4zarr_5blosc_10decompress(CYTHON_UNUSED PyObject *__py
             #ifdef WITH_THREAD
             Py_BLOCK_THREADS
             #endif
-            goto __pyx_L9;
+            goto __pyx_L12;
           }
-          __pyx_L9:;
+          __pyx_L12:;
         }
     }
   }
-  __pyx_L3:;
+  __pyx_L6:;
 
-  /* "zarr/blosc.pyx":119
+  /* "zarr/blosc.pyx":128
  * 
  *     # release buffers
- *     PyBuffer_Release(&source_buffer)             # <<<<<<<<<<<<<<
+ *     if release_source_buffer:             # <<<<<<<<<<<<<<
+ *         PyBuffer_Release(&source_buffer)
+ *     PyBuffer_Release(&dest_buffer)
+ */
+  __pyx_t_1 = (__pyx_v_release_source_buffer != 0);
+  if (__pyx_t_1) {
+
+    /* "zarr/blosc.pyx":129
+ *     # release buffers
+ *     if release_source_buffer:
+ *         PyBuffer_Release(&source_buffer)             # <<<<<<<<<<<<<<
  *     PyBuffer_Release(&dest_buffer)
  * 
  */
-  PyBuffer_Release((&__pyx_v_source_buffer));
+    PyBuffer_Release((&__pyx_v_source_buffer));
 
-  /* "zarr/blosc.pyx":120
+    /* "zarr/blosc.pyx":128
+ * 
  *     # release buffers
- *     PyBuffer_Release(&source_buffer)
+ *     if release_source_buffer:             # <<<<<<<<<<<<<<
+ *         PyBuffer_Release(&source_buffer)
+ *     PyBuffer_Release(&dest_buffer)
+ */
+  }
+
+  /* "zarr/blosc.pyx":130
+ *     if release_source_buffer:
+ *         PyBuffer_Release(&source_buffer)
  *     PyBuffer_Release(&dest_buffer)             # <<<<<<<<<<<<<<
  * 
  *     # handle errors
  */
   PyBuffer_Release((&__pyx_v_dest_buffer));
 
-  /* "zarr/blosc.pyx":123
+  /* "zarr/blosc.pyx":133
  * 
  *     # handle errors
  *     if ret <= 0:             # <<<<<<<<<<<<<<
  *         raise RuntimeError('error during blosc decompression: %d' % ret)
  * 
  */
-  __pyx_t_6 = ((__pyx_v_ret <= 0) != 0);
-  if (__pyx_t_6) {
+  __pyx_t_1 = ((__pyx_v_ret <= 0) != 0);
+  if (__pyx_t_1) {
 
-    /* "zarr/blosc.pyx":124
+    /* "zarr/blosc.pyx":134
  *     # handle errors
  *     if ret <= 0:
  *         raise RuntimeError('error during blosc decompression: %d' % ret)             # <<<<<<<<<<<<<<
  * 
  * 
  */
-    __pyx_t_3 = __Pyx_PyInt_From_int(__pyx_v_ret); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 124, __pyx_L1_error)
-    __Pyx_GOTREF(__pyx_t_3);
-    __pyx_t_4 = __Pyx_PyString_Format(__pyx_kp_s_error_during_blosc_decompression, __pyx_t_3); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 124, __pyx_L1_error)
-    __Pyx_GOTREF(__pyx_t_4);
-    __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
-    __pyx_t_3 = PyTuple_New(1); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 124, __pyx_L1_error)
-    __Pyx_GOTREF(__pyx_t_3);
-    __Pyx_GIVEREF(__pyx_t_4);
-    PyTuple_SET_ITEM(__pyx_t_3, 0, __pyx_t_4);
-    __pyx_t_4 = 0;
-    __pyx_t_4 = __Pyx_PyObject_Call(__pyx_builtin_RuntimeError, __pyx_t_3, NULL); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 124, __pyx_L1_error)
-    __Pyx_GOTREF(__pyx_t_4);
-    __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
-    __Pyx_Raise(__pyx_t_4, 0, 0, 0);
-    __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
-    __PYX_ERR(0, 124, __pyx_L1_error)
+    __pyx_t_2 = __Pyx_PyInt_From_int(__pyx_v_ret); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 134, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_2);
+    __pyx_t_7 = __Pyx_PyString_Format(__pyx_kp_s_error_during_blosc_decompression, __pyx_t_2); if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 134, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_7);
+    __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
+    __pyx_t_2 = PyTuple_New(1); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 134, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_2);
+    __Pyx_GIVEREF(__pyx_t_7);
+    PyTuple_SET_ITEM(__pyx_t_2, 0, __pyx_t_7);
+    __pyx_t_7 = 0;
+    __pyx_t_7 = __Pyx_PyObject_Call(__pyx_builtin_RuntimeError, __pyx_t_2, NULL); if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 134, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_7);
+    __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
+    __Pyx_Raise(__pyx_t_7, 0, 0, 0);
+    __Pyx_DECREF(__pyx_t_7); __pyx_t_7 = 0;
+    __PYX_ERR(0, 134, __pyx_L1_error)
 
-    /* "zarr/blosc.pyx":123
+    /* "zarr/blosc.pyx":133
  * 
  *     # handle errors
  *     if ret <= 0:             # <<<<<<<<<<<<<<
@@ -1877,18 +1982,19 @@ static PyObject *__pyx_pf_4zarr_5blosc_10decompress(CYTHON_UNUSED PyObject *__py
   __pyx_r = Py_None; __Pyx_INCREF(Py_None);
   goto __pyx_L0;
   __pyx_L1_error:;
-  __Pyx_XDECREF(__pyx_t_3);
-  __Pyx_XDECREF(__pyx_t_4);
-  __Pyx_XDECREF(__pyx_t_5);
+  __Pyx_XDECREF(__pyx_t_2);
+  __Pyx_XDECREF(__pyx_t_7);
+  __Pyx_XDECREF(__pyx_t_8);
   __Pyx_AddTraceback("zarr.blosc.decompress", __pyx_clineno, __pyx_lineno, __pyx_filename);
   __pyx_r = NULL;
   __pyx_L0:;
+  __Pyx_XDECREF((PyObject *)__pyx_v_source_array);
   __Pyx_XGIVEREF(__pyx_r);
   __Pyx_RefNannyFinishContext();
   return __pyx_r;
 }
 
-/* "zarr/blosc.pyx":127
+/* "zarr/blosc.pyx":137
  * 
  * 
  * def compress(source, char* cname, int clevel, int shuffle):             # <<<<<<<<<<<<<<
@@ -1930,21 +2036,21 @@ static PyObject *__pyx_pw_4zarr_5blosc_13compress(PyObject *__pyx_self, PyObject
         case  1:
         if (likely((values[1] = PyDict_GetItem(__pyx_kwds, __pyx_n_s_cname)) != 0)) kw_args--;
         else {
-          __Pyx_RaiseArgtupleInvalid("compress", 1, 4, 4, 1); __PYX_ERR(0, 127, __pyx_L3_error)
+          __Pyx_RaiseArgtupleInvalid("compress", 1, 4, 4, 1); __PYX_ERR(0, 137, __pyx_L3_error)
         }
         case  2:
         if (likely((values[2] = PyDict_GetItem(__pyx_kwds, __pyx_n_s_clevel)) != 0)) kw_args--;
         else {
-          __Pyx_RaiseArgtupleInvalid("compress", 1, 4, 4, 2); __PYX_ERR(0, 127, __pyx_L3_error)
+          __Pyx_RaiseArgtupleInvalid("compress", 1, 4, 4, 2); __PYX_ERR(0, 137, __pyx_L3_error)
         }
         case  3:
         if (likely((values[3] = PyDict_GetItem(__pyx_kwds, __pyx_n_s_shuffle)) != 0)) kw_args--;
         else {
-          __Pyx_RaiseArgtupleInvalid("compress", 1, 4, 4, 3); __PYX_ERR(0, 127, __pyx_L3_error)
+          __Pyx_RaiseArgtupleInvalid("compress", 1, 4, 4, 3); __PYX_ERR(0, 137, __pyx_L3_error)
         }
       }
       if (unlikely(kw_args > 0)) {
-        if (unlikely(__Pyx_ParseOptionalKeywords(__pyx_kwds, __pyx_pyargnames, 0, values, pos_args, "compress") < 0)) __PYX_ERR(0, 127, __pyx_L3_error)
+        if (unlikely(__Pyx_ParseOptionalKeywords(__pyx_kwds, __pyx_pyargnames, 0, values, pos_args, "compress") < 0)) __PYX_ERR(0, 137, __pyx_L3_error)
       }
     } else if (PyTuple_GET_SIZE(__pyx_args) != 4) {
       goto __pyx_L5_argtuple_error;
@@ -1955,13 +2061,13 @@ static PyObject *__pyx_pw_4zarr_5blosc_13compress(PyObject *__pyx_self, PyObject
       values[3] = PyTuple_GET_ITEM(__pyx_args, 3);
     }
     __pyx_v_source = values[0];
-    __pyx_v_cname = __Pyx_PyObject_AsString(values[1]); if (unlikely((!__pyx_v_cname) && PyErr_Occurred())) __PYX_ERR(0, 127, __pyx_L3_error)
-    __pyx_v_clevel = __Pyx_PyInt_As_int(values[2]); if (unlikely((__pyx_v_clevel == (int)-1) && PyErr_Occurred())) __PYX_ERR(0, 127, __pyx_L3_error)
-    __pyx_v_shuffle = __Pyx_PyInt_As_int(values[3]); if (unlikely((__pyx_v_shuffle == (int)-1) && PyErr_Occurred())) __PYX_ERR(0, 127, __pyx_L3_error)
+    __pyx_v_cname = __Pyx_PyObject_AsString(values[1]); if (unlikely((!__pyx_v_cname) && PyErr_Occurred())) __PYX_ERR(0, 137, __pyx_L3_error)
+    __pyx_v_clevel = __Pyx_PyInt_As_int(values[2]); if (unlikely((__pyx_v_clevel == (int)-1) && PyErr_Occurred())) __PYX_ERR(0, 137, __pyx_L3_error)
+    __pyx_v_shuffle = __Pyx_PyInt_As_int(values[3]); if (unlikely((__pyx_v_shuffle == (int)-1) && PyErr_Occurred())) __PYX_ERR(0, 137, __pyx_L3_error)
   }
   goto __pyx_L4_argument_unpacking_done;
   __pyx_L5_argtuple_error:;
-  __Pyx_RaiseArgtupleInvalid("compress", 1, 4, 4, PyTuple_GET_SIZE(__pyx_args)); __PYX_ERR(0, 127, __pyx_L3_error)
+  __Pyx_RaiseArgtupleInvalid("compress", 1, 4, 4, PyTuple_GET_SIZE(__pyx_args)); __PYX_ERR(0, 137, __pyx_L3_error)
   __pyx_L3_error:;
   __Pyx_AddTraceback("zarr.blosc.compress", __pyx_clineno, __pyx_lineno, __pyx_filename);
   __Pyx_RefNannyFinishContext();
@@ -1994,16 +2100,16 @@ static PyObject *__pyx_pf_4zarr_5blosc_12compress(CYTHON_UNUSED PyObject *__pyx_
   int __pyx_t_6;
   __Pyx_RefNannySetupContext("compress", 0);
 
-  /* "zarr/blosc.pyx":153
+  /* "zarr/blosc.pyx":163
  *         Py_buffer source_buffer
  *         size_t nbytes, cbytes, itemsize
  *         array.array char_array_template = array.array('b', [])             # <<<<<<<<<<<<<<
  *         array.array dest
  * 
  */
-  __pyx_t_1 = PyList_New(0); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 153, __pyx_L1_error)
+  __pyx_t_1 = PyList_New(0); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 163, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_1);
-  __pyx_t_2 = PyTuple_New(2); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 153, __pyx_L1_error)
+  __pyx_t_2 = PyTuple_New(2); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 163, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_2);
   __Pyx_INCREF(__pyx_n_s_b);
   __Pyx_GIVEREF(__pyx_n_s_b);
@@ -2011,22 +2117,22 @@ static PyObject *__pyx_pf_4zarr_5blosc_12compress(CYTHON_UNUSED PyObject *__pyx_
   __Pyx_GIVEREF(__pyx_t_1);
   PyTuple_SET_ITEM(__pyx_t_2, 1, __pyx_t_1);
   __pyx_t_1 = 0;
-  __pyx_t_1 = __Pyx_PyObject_Call(((PyObject *)__pyx_ptype_7cpython_5array_array), __pyx_t_2, NULL); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 153, __pyx_L1_error)
+  __pyx_t_1 = __Pyx_PyObject_Call(((PyObject *)__pyx_ptype_7cpython_5array_array), __pyx_t_2, NULL); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 163, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_1);
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
   __pyx_v_char_array_template = ((arrayobject *)__pyx_t_1);
   __pyx_t_1 = 0;
 
-  /* "zarr/blosc.pyx":157
+  /* "zarr/blosc.pyx":167
  * 
  *     # setup source buffer
  *     PyObject_GetBuffer(source, &source_buffer, PyBUF_ANY_CONTIGUOUS)             # <<<<<<<<<<<<<<
  *     source_ptr = <char *> source_buffer.buf
  * 
  */
-  __pyx_t_3 = PyObject_GetBuffer(__pyx_v_source, (&__pyx_v_source_buffer), PyBUF_ANY_CONTIGUOUS); if (unlikely(__pyx_t_3 == -1)) __PYX_ERR(0, 157, __pyx_L1_error)
+  __pyx_t_3 = PyObject_GetBuffer(__pyx_v_source, (&__pyx_v_source_buffer), PyBUF_ANY_CONTIGUOUS); if (unlikely(__pyx_t_3 == -1)) __PYX_ERR(0, 167, __pyx_L1_error)
 
-  /* "zarr/blosc.pyx":158
+  /* "zarr/blosc.pyx":168
  *     # setup source buffer
  *     PyObject_GetBuffer(source, &source_buffer, PyBUF_ANY_CONTIGUOUS)
  *     source_ptr = <char *> source_buffer.buf             # <<<<<<<<<<<<<<
@@ -2035,7 +2141,7 @@ static PyObject *__pyx_pf_4zarr_5blosc_12compress(CYTHON_UNUSED PyObject *__pyx_
  */
   __pyx_v_source_ptr = ((char *)__pyx_v_source_buffer.buf);
 
-  /* "zarr/blosc.pyx":161
+  /* "zarr/blosc.pyx":171
  * 
  *     # setup destination
  *     nbytes = source_buffer.len             # <<<<<<<<<<<<<<
@@ -2045,7 +2151,7 @@ static PyObject *__pyx_pf_4zarr_5blosc_12compress(CYTHON_UNUSED PyObject *__pyx_
   __pyx_t_4 = __pyx_v_source_buffer.len;
   __pyx_v_nbytes = __pyx_t_4;
 
-  /* "zarr/blosc.pyx":162
+  /* "zarr/blosc.pyx":172
  *     # setup destination
  *     nbytes = source_buffer.len
  *     itemsize = source_buffer.itemsize             # <<<<<<<<<<<<<<
@@ -2055,19 +2161,19 @@ static PyObject *__pyx_pf_4zarr_5blosc_12compress(CYTHON_UNUSED PyObject *__pyx_
   __pyx_t_4 = __pyx_v_source_buffer.itemsize;
   __pyx_v_itemsize = __pyx_t_4;
 
-  /* "zarr/blosc.pyx":163
+  /* "zarr/blosc.pyx":173
  *     nbytes = source_buffer.len
  *     itemsize = source_buffer.itemsize
  *     dest = array.clone(char_array_template, nbytes + BLOSC_MAX_OVERHEAD,             # <<<<<<<<<<<<<<
  *                        zero=False)
  *     dest_ptr = <char *> dest.data.as_voidptr
  */
-  __pyx_t_1 = ((PyObject *)__pyx_f_7cpython_5array_clone(__pyx_v_char_array_template, (__pyx_v_nbytes + BLOSC_MAX_OVERHEAD), 0)); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 163, __pyx_L1_error)
+  __pyx_t_1 = ((PyObject *)__pyx_f_7cpython_5array_clone(__pyx_v_char_array_template, (__pyx_v_nbytes + BLOSC_MAX_OVERHEAD), 0)); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 173, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_1);
   __pyx_v_dest = ((arrayobject *)__pyx_t_1);
   __pyx_t_1 = 0;
 
-  /* "zarr/blosc.pyx":165
+  /* "zarr/blosc.pyx":175
  *     dest = array.clone(char_array_template, nbytes + BLOSC_MAX_OVERHEAD,
  *                        zero=False)
  *     dest_ptr = <char *> dest.data.as_voidptr             # <<<<<<<<<<<<<<
@@ -2076,14 +2182,14 @@ static PyObject *__pyx_pf_4zarr_5blosc_12compress(CYTHON_UNUSED PyObject *__pyx_
  */
   __pyx_v_dest_ptr = ((char *)__pyx_v_dest->data.as_voidptr);
 
-  /* "zarr/blosc.pyx":168
+  /* "zarr/blosc.pyx":178
  * 
  *     # perform compression
  *     if _get_use_threads():             # <<<<<<<<<<<<<<
  *         # allow blosc to use threads internally
  *         compressor_set = blosc_set_compressor(cname)
  */
-  __pyx_t_2 = __Pyx_GetModuleGlobalName(__pyx_n_s_get_use_threads); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 168, __pyx_L1_error)
+  __pyx_t_2 = __Pyx_GetModuleGlobalName(__pyx_n_s_get_use_threads); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 178, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_2);
   __pyx_t_5 = NULL;
   if (CYTHON_COMPILING_IN_CPYTHON && unlikely(PyMethod_Check(__pyx_t_2))) {
@@ -2096,18 +2202,18 @@ static PyObject *__pyx_pf_4zarr_5blosc_12compress(CYTHON_UNUSED PyObject *__pyx_
     }
   }
   if (__pyx_t_5) {
-    __pyx_t_1 = __Pyx_PyObject_CallOneArg(__pyx_t_2, __pyx_t_5); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 168, __pyx_L1_error)
+    __pyx_t_1 = __Pyx_PyObject_CallOneArg(__pyx_t_2, __pyx_t_5); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 178, __pyx_L1_error)
     __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
   } else {
-    __pyx_t_1 = __Pyx_PyObject_CallNoArg(__pyx_t_2); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 168, __pyx_L1_error)
+    __pyx_t_1 = __Pyx_PyObject_CallNoArg(__pyx_t_2); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 178, __pyx_L1_error)
   }
   __Pyx_GOTREF(__pyx_t_1);
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
-  __pyx_t_6 = __Pyx_PyObject_IsTrue(__pyx_t_1); if (unlikely(__pyx_t_6 < 0)) __PYX_ERR(0, 168, __pyx_L1_error)
+  __pyx_t_6 = __Pyx_PyObject_IsTrue(__pyx_t_1); if (unlikely(__pyx_t_6 < 0)) __PYX_ERR(0, 178, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
   if (__pyx_t_6) {
 
-    /* "zarr/blosc.pyx":170
+    /* "zarr/blosc.pyx":180
  *     if _get_use_threads():
  *         # allow blosc to use threads internally
  *         compressor_set = blosc_set_compressor(cname)             # <<<<<<<<<<<<<<
@@ -2116,7 +2222,7 @@ static PyObject *__pyx_pf_4zarr_5blosc_12compress(CYTHON_UNUSED PyObject *__pyx_
  */
     __pyx_v_compressor_set = blosc_set_compressor(__pyx_v_cname);
 
-    /* "zarr/blosc.pyx":171
+    /* "zarr/blosc.pyx":181
  *         # allow blosc to use threads internally
  *         compressor_set = blosc_set_compressor(cname)
  *         if compressor_set < 0:             # <<<<<<<<<<<<<<
@@ -2126,31 +2232,31 @@ static PyObject *__pyx_pf_4zarr_5blosc_12compress(CYTHON_UNUSED PyObject *__pyx_
     __pyx_t_6 = ((__pyx_v_compressor_set < 0) != 0);
     if (__pyx_t_6) {
 
-      /* "zarr/blosc.pyx":172
+      /* "zarr/blosc.pyx":182
  *         compressor_set = blosc_set_compressor(cname)
  *         if compressor_set < 0:
  *             raise ValueError('compressor not supported: %r' % cname)             # <<<<<<<<<<<<<<
  *         with nogil:
  *             cbytes = blosc_compress(clevel, shuffle, itemsize, nbytes,
  */
-      __pyx_t_1 = __Pyx_PyBytes_FromString(__pyx_v_cname); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 172, __pyx_L1_error)
+      __pyx_t_1 = __Pyx_PyBytes_FromString(__pyx_v_cname); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 182, __pyx_L1_error)
       __Pyx_GOTREF(__pyx_t_1);
-      __pyx_t_2 = __Pyx_PyString_Format(__pyx_kp_s_compressor_not_supported_r, __pyx_t_1); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 172, __pyx_L1_error)
+      __pyx_t_2 = __Pyx_PyString_Format(__pyx_kp_s_compressor_not_supported_r, __pyx_t_1); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 182, __pyx_L1_error)
       __Pyx_GOTREF(__pyx_t_2);
       __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
-      __pyx_t_1 = PyTuple_New(1); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 172, __pyx_L1_error)
+      __pyx_t_1 = PyTuple_New(1); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 182, __pyx_L1_error)
       __Pyx_GOTREF(__pyx_t_1);
       __Pyx_GIVEREF(__pyx_t_2);
       PyTuple_SET_ITEM(__pyx_t_1, 0, __pyx_t_2);
       __pyx_t_2 = 0;
-      __pyx_t_2 = __Pyx_PyObject_Call(__pyx_builtin_ValueError, __pyx_t_1, NULL); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 172, __pyx_L1_error)
+      __pyx_t_2 = __Pyx_PyObject_Call(__pyx_builtin_ValueError, __pyx_t_1, NULL); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 182, __pyx_L1_error)
       __Pyx_GOTREF(__pyx_t_2);
       __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
       __Pyx_Raise(__pyx_t_2, 0, 0, 0);
       __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
-      __PYX_ERR(0, 172, __pyx_L1_error)
+      __PYX_ERR(0, 182, __pyx_L1_error)
 
-      /* "zarr/blosc.pyx":171
+      /* "zarr/blosc.pyx":181
  *         # allow blosc to use threads internally
  *         compressor_set = blosc_set_compressor(cname)
  *         if compressor_set < 0:             # <<<<<<<<<<<<<<
@@ -2159,7 +2265,7 @@ static PyObject *__pyx_pf_4zarr_5blosc_12compress(CYTHON_UNUSED PyObject *__pyx_
  */
     }
 
-    /* "zarr/blosc.pyx":173
+    /* "zarr/blosc.pyx":183
  *         if compressor_set < 0:
  *             raise ValueError('compressor not supported: %r' % cname)
  *         with nogil:             # <<<<<<<<<<<<<<
@@ -2173,7 +2279,7 @@ static PyObject *__pyx_pf_4zarr_5blosc_12compress(CYTHON_UNUSED PyObject *__pyx_
         #endif
         /*try:*/ {
 
-          /* "zarr/blosc.pyx":174
+          /* "zarr/blosc.pyx":184
  *             raise ValueError('compressor not supported: %r' % cname)
  *         with nogil:
  *             cbytes = blosc_compress(clevel, shuffle, itemsize, nbytes,             # <<<<<<<<<<<<<<
@@ -2183,7 +2289,7 @@ static PyObject *__pyx_pf_4zarr_5blosc_12compress(CYTHON_UNUSED PyObject *__pyx_
           __pyx_v_cbytes = blosc_compress(__pyx_v_clevel, __pyx_v_shuffle, __pyx_v_itemsize, __pyx_v_nbytes, __pyx_v_source_ptr, __pyx_v_dest_ptr, (__pyx_v_nbytes + BLOSC_MAX_OVERHEAD));
         }
 
-        /* "zarr/blosc.pyx":173
+        /* "zarr/blosc.pyx":183
  *         if compressor_set < 0:
  *             raise ValueError('compressor not supported: %r' % cname)
  *         with nogil:             # <<<<<<<<<<<<<<
@@ -2201,7 +2307,7 @@ static PyObject *__pyx_pf_4zarr_5blosc_12compress(CYTHON_UNUSED PyObject *__pyx_
         }
     }
 
-    /* "zarr/blosc.pyx":168
+    /* "zarr/blosc.pyx":178
  * 
  *     # perform compression
  *     if _get_use_threads():             # <<<<<<<<<<<<<<
@@ -2211,7 +2317,7 @@ static PyObject *__pyx_pf_4zarr_5blosc_12compress(CYTHON_UNUSED PyObject *__pyx_
     goto __pyx_L3;
   }
 
-  /* "zarr/blosc.pyx":179
+  /* "zarr/blosc.pyx":189
  * 
  *     else:
  *         with nogil:             # <<<<<<<<<<<<<<
@@ -2226,7 +2332,7 @@ static PyObject *__pyx_pf_4zarr_5blosc_12compress(CYTHON_UNUSED PyObject *__pyx_
         #endif
         /*try:*/ {
 
-          /* "zarr/blosc.pyx":180
+          /* "zarr/blosc.pyx":190
  *     else:
  *         with nogil:
  *             cbytes = blosc_compress_ctx(clevel, shuffle, itemsize, nbytes,             # <<<<<<<<<<<<<<
@@ -2236,7 +2342,7 @@ static PyObject *__pyx_pf_4zarr_5blosc_12compress(CYTHON_UNUSED PyObject *__pyx_
           __pyx_v_cbytes = blosc_compress_ctx(__pyx_v_clevel, __pyx_v_shuffle, __pyx_v_itemsize, __pyx_v_nbytes, __pyx_v_source_ptr, __pyx_v_dest_ptr, (__pyx_v_nbytes + BLOSC_MAX_OVERHEAD), __pyx_v_cname, 0, 1);
         }
 
-        /* "zarr/blosc.pyx":179
+        /* "zarr/blosc.pyx":189
  * 
  *     else:
  *         with nogil:             # <<<<<<<<<<<<<<
@@ -2256,7 +2362,7 @@ static PyObject *__pyx_pf_4zarr_5blosc_12compress(CYTHON_UNUSED PyObject *__pyx_
   }
   __pyx_L3:;
 
-  /* "zarr/blosc.pyx":186
+  /* "zarr/blosc.pyx":196
  * 
  *     # release source buffer
  *     PyBuffer_Release(&source_buffer)             # <<<<<<<<<<<<<<
@@ -2265,7 +2371,7 @@ static PyObject *__pyx_pf_4zarr_5blosc_12compress(CYTHON_UNUSED PyObject *__pyx_
  */
   PyBuffer_Release((&__pyx_v_source_buffer));
 
-  /* "zarr/blosc.pyx":189
+  /* "zarr/blosc.pyx":199
  * 
  *     # check compression was successful
  *     if cbytes <= 0:             # <<<<<<<<<<<<<<
@@ -2275,31 +2381,31 @@ static PyObject *__pyx_pf_4zarr_5blosc_12compress(CYTHON_UNUSED PyObject *__pyx_
   __pyx_t_6 = ((__pyx_v_cbytes <= 0) != 0);
   if (__pyx_t_6) {
 
-    /* "zarr/blosc.pyx":190
+    /* "zarr/blosc.pyx":200
  *     # check compression was successful
  *     if cbytes <= 0:
  *         raise RuntimeError('error during blosc compression: %d' % cbytes)             # <<<<<<<<<<<<<<
  * 
  *     # resize after compression
  */
-    __pyx_t_2 = __Pyx_PyInt_FromSize_t(__pyx_v_cbytes); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 190, __pyx_L1_error)
+    __pyx_t_2 = __Pyx_PyInt_FromSize_t(__pyx_v_cbytes); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 200, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_2);
-    __pyx_t_1 = __Pyx_PyString_Format(__pyx_kp_s_error_during_blosc_compression_d, __pyx_t_2); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 190, __pyx_L1_error)
+    __pyx_t_1 = __Pyx_PyString_Format(__pyx_kp_s_error_during_blosc_compression_d, __pyx_t_2); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 200, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_1);
     __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
-    __pyx_t_2 = PyTuple_New(1); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 190, __pyx_L1_error)
+    __pyx_t_2 = PyTuple_New(1); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 200, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_2);
     __Pyx_GIVEREF(__pyx_t_1);
     PyTuple_SET_ITEM(__pyx_t_2, 0, __pyx_t_1);
     __pyx_t_1 = 0;
-    __pyx_t_1 = __Pyx_PyObject_Call(__pyx_builtin_RuntimeError, __pyx_t_2, NULL); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 190, __pyx_L1_error)
+    __pyx_t_1 = __Pyx_PyObject_Call(__pyx_builtin_RuntimeError, __pyx_t_2, NULL); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 200, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_1);
     __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
     __Pyx_Raise(__pyx_t_1, 0, 0, 0);
     __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
-    __PYX_ERR(0, 190, __pyx_L1_error)
+    __PYX_ERR(0, 200, __pyx_L1_error)
 
-    /* "zarr/blosc.pyx":189
+    /* "zarr/blosc.pyx":199
  * 
  *     # check compression was successful
  *     if cbytes <= 0:             # <<<<<<<<<<<<<<
@@ -2308,16 +2414,16 @@ static PyObject *__pyx_pf_4zarr_5blosc_12compress(CYTHON_UNUSED PyObject *__pyx_
  */
   }
 
-  /* "zarr/blosc.pyx":193
+  /* "zarr/blosc.pyx":203
  * 
  *     # resize after compression
  *     array.resize(dest, cbytes)             # <<<<<<<<<<<<<<
  * 
  *     return dest
  */
-  __pyx_t_3 = resize(__pyx_v_dest, __pyx_v_cbytes); if (unlikely(__pyx_t_3 == -1)) __PYX_ERR(0, 193, __pyx_L1_error)
+  __pyx_t_3 = resize(__pyx_v_dest, __pyx_v_cbytes); if (unlikely(__pyx_t_3 == -1)) __PYX_ERR(0, 203, __pyx_L1_error)
 
-  /* "zarr/blosc.pyx":195
+  /* "zarr/blosc.pyx":205
  *     array.resize(dest, cbytes)
  * 
  *     return dest             # <<<<<<<<<<<<<<
@@ -2329,7 +2435,7 @@ static PyObject *__pyx_pf_4zarr_5blosc_12compress(CYTHON_UNUSED PyObject *__pyx_
   __pyx_r = ((PyObject *)__pyx_v_dest);
   goto __pyx_L0;
 
-  /* "zarr/blosc.pyx":127
+  /* "zarr/blosc.pyx":137
  * 
  * 
  * def compress(source, char* cname, int clevel, int shuffle):             # <<<<<<<<<<<<<<
@@ -2352,7 +2458,7 @@ static PyObject *__pyx_pf_4zarr_5blosc_12compress(CYTHON_UNUSED PyObject *__pyx_
   return __pyx_r;
 }
 
-/* "zarr/blosc.pyx":203
+/* "zarr/blosc.pyx":213
  * 
  * 
  * def _get_use_threads():             # <<<<<<<<<<<<<<
@@ -2387,25 +2493,25 @@ static PyObject *__pyx_pf_4zarr_5blosc_14_get_use_threads(CYTHON_UNUSED PyObject
   PyObject *__pyx_t_6 = NULL;
   __Pyx_RefNannySetupContext("_get_use_threads", 0);
 
-  /* "zarr/blosc.pyx":206
+  /* "zarr/blosc.pyx":216
  *     global use_threads
  * 
  *     if use_threads in [True, False]:             # <<<<<<<<<<<<<<
  *         # user has manually overridden the default behaviour
  *         _use_threads = use_threads
  */
-  __pyx_t_1 = __Pyx_GetModuleGlobalName(__pyx_n_s_use_threads); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 206, __pyx_L1_error)
+  __pyx_t_1 = __Pyx_GetModuleGlobalName(__pyx_n_s_use_threads); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 216, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_1);
-  __pyx_t_3 = PyObject_RichCompare(__pyx_t_1, Py_True, Py_EQ); __Pyx_XGOTREF(__pyx_t_3); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 206, __pyx_L1_error)
-  __pyx_t_4 = __Pyx_PyObject_IsTrue(__pyx_t_3); if (unlikely(__pyx_t_4 < 0)) __PYX_ERR(0, 206, __pyx_L1_error)
+  __pyx_t_3 = PyObject_RichCompare(__pyx_t_1, Py_True, Py_EQ); __Pyx_XGOTREF(__pyx_t_3); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 216, __pyx_L1_error)
+  __pyx_t_4 = __Pyx_PyObject_IsTrue(__pyx_t_3); if (unlikely(__pyx_t_4 < 0)) __PYX_ERR(0, 216, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
   if (!__pyx_t_4) {
   } else {
     __pyx_t_2 = __pyx_t_4;
     goto __pyx_L4_bool_binop_done;
   }
-  __pyx_t_3 = PyObject_RichCompare(__pyx_t_1, Py_False, Py_EQ); __Pyx_XGOTREF(__pyx_t_3); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 206, __pyx_L1_error)
-  __pyx_t_4 = __Pyx_PyObject_IsTrue(__pyx_t_3); if (unlikely(__pyx_t_4 < 0)) __PYX_ERR(0, 206, __pyx_L1_error)
+  __pyx_t_3 = PyObject_RichCompare(__pyx_t_1, Py_False, Py_EQ); __Pyx_XGOTREF(__pyx_t_3); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 216, __pyx_L1_error)
+  __pyx_t_4 = __Pyx_PyObject_IsTrue(__pyx_t_3); if (unlikely(__pyx_t_4 < 0)) __PYX_ERR(0, 216, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
   __pyx_t_2 = __pyx_t_4;
   __pyx_L4_bool_binop_done:;
@@ -2413,19 +2519,19 @@ static PyObject *__pyx_pf_4zarr_5blosc_14_get_use_threads(CYTHON_UNUSED PyObject
   __pyx_t_4 = (__pyx_t_2 != 0);
   if (__pyx_t_4) {
 
-    /* "zarr/blosc.pyx":208
+    /* "zarr/blosc.pyx":218
  *     if use_threads in [True, False]:
  *         # user has manually overridden the default behaviour
  *         _use_threads = use_threads             # <<<<<<<<<<<<<<
  * 
  *     else:
  */
-    __pyx_t_1 = __Pyx_GetModuleGlobalName(__pyx_n_s_use_threads); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 208, __pyx_L1_error)
+    __pyx_t_1 = __Pyx_GetModuleGlobalName(__pyx_n_s_use_threads); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 218, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_1);
     __pyx_v__use_threads = __pyx_t_1;
     __pyx_t_1 = 0;
 
-    /* "zarr/blosc.pyx":206
+    /* "zarr/blosc.pyx":216
  *     global use_threads
  * 
  *     if use_threads in [True, False]:             # <<<<<<<<<<<<<<
@@ -2435,7 +2541,7 @@ static PyObject *__pyx_pf_4zarr_5blosc_14_get_use_threads(CYTHON_UNUSED PyObject
     goto __pyx_L3;
   }
 
-  /* "zarr/blosc.pyx":216
+  /* "zarr/blosc.pyx":226
  *         # blosc to use threads, inferring it is being run from within a
  *         # multi-threaded program
  *         if hasattr(threading, 'main_thread'):             # <<<<<<<<<<<<<<
@@ -2443,23 +2549,23 @@ static PyObject *__pyx_pf_4zarr_5blosc_14_get_use_threads(CYTHON_UNUSED PyObject
  *                             threading.current_thread())
  */
   /*else*/ {
-    __pyx_t_1 = __Pyx_GetModuleGlobalName(__pyx_n_s_threading); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 216, __pyx_L1_error)
+    __pyx_t_1 = __Pyx_GetModuleGlobalName(__pyx_n_s_threading); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 226, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_1);
-    __pyx_t_4 = PyObject_HasAttr(__pyx_t_1, __pyx_n_s_main_thread); if (unlikely(__pyx_t_4 == -1)) __PYX_ERR(0, 216, __pyx_L1_error)
+    __pyx_t_4 = PyObject_HasAttr(__pyx_t_1, __pyx_n_s_main_thread); if (unlikely(__pyx_t_4 == -1)) __PYX_ERR(0, 226, __pyx_L1_error)
     __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
     __pyx_t_2 = (__pyx_t_4 != 0);
     if (__pyx_t_2) {
 
-      /* "zarr/blosc.pyx":217
+      /* "zarr/blosc.pyx":227
  *         # multi-threaded program
  *         if hasattr(threading, 'main_thread'):
  *             _use_threads = (threading.main_thread() ==             # <<<<<<<<<<<<<<
  *                             threading.current_thread())
  *         else:
  */
-      __pyx_t_3 = __Pyx_GetModuleGlobalName(__pyx_n_s_threading); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 217, __pyx_L1_error)
+      __pyx_t_3 = __Pyx_GetModuleGlobalName(__pyx_n_s_threading); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 227, __pyx_L1_error)
       __Pyx_GOTREF(__pyx_t_3);
-      __pyx_t_5 = __Pyx_PyObject_GetAttrStr(__pyx_t_3, __pyx_n_s_main_thread); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 217, __pyx_L1_error)
+      __pyx_t_5 = __Pyx_PyObject_GetAttrStr(__pyx_t_3, __pyx_n_s_main_thread); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 227, __pyx_L1_error)
       __Pyx_GOTREF(__pyx_t_5);
       __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
       __pyx_t_3 = NULL;
@@ -2473,24 +2579,24 @@ static PyObject *__pyx_pf_4zarr_5blosc_14_get_use_threads(CYTHON_UNUSED PyObject
         }
       }
       if (__pyx_t_3) {
-        __pyx_t_1 = __Pyx_PyObject_CallOneArg(__pyx_t_5, __pyx_t_3); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 217, __pyx_L1_error)
+        __pyx_t_1 = __Pyx_PyObject_CallOneArg(__pyx_t_5, __pyx_t_3); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 227, __pyx_L1_error)
         __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
       } else {
-        __pyx_t_1 = __Pyx_PyObject_CallNoArg(__pyx_t_5); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 217, __pyx_L1_error)
+        __pyx_t_1 = __Pyx_PyObject_CallNoArg(__pyx_t_5); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 227, __pyx_L1_error)
       }
       __Pyx_GOTREF(__pyx_t_1);
       __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
 
-      /* "zarr/blosc.pyx":218
+      /* "zarr/blosc.pyx":228
  *         if hasattr(threading, 'main_thread'):
  *             _use_threads = (threading.main_thread() ==
  *                             threading.current_thread())             # <<<<<<<<<<<<<<
  *         else:
  *             _use_threads = threading.current_thread().name == 'MainThread'
  */
-      __pyx_t_3 = __Pyx_GetModuleGlobalName(__pyx_n_s_threading); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 218, __pyx_L1_error)
+      __pyx_t_3 = __Pyx_GetModuleGlobalName(__pyx_n_s_threading); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 228, __pyx_L1_error)
       __Pyx_GOTREF(__pyx_t_3);
-      __pyx_t_6 = __Pyx_PyObject_GetAttrStr(__pyx_t_3, __pyx_n_s_current_thread); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 218, __pyx_L1_error)
+      __pyx_t_6 = __Pyx_PyObject_GetAttrStr(__pyx_t_3, __pyx_n_s_current_thread); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 228, __pyx_L1_error)
       __Pyx_GOTREF(__pyx_t_6);
       __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
       __pyx_t_3 = NULL;
@@ -2504,20 +2610,20 @@ static PyObject *__pyx_pf_4zarr_5blosc_14_get_use_threads(CYTHON_UNUSED PyObject
         }
       }
       if (__pyx_t_3) {
-        __pyx_t_5 = __Pyx_PyObject_CallOneArg(__pyx_t_6, __pyx_t_3); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 218, __pyx_L1_error)
+        __pyx_t_5 = __Pyx_PyObject_CallOneArg(__pyx_t_6, __pyx_t_3); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 228, __pyx_L1_error)
         __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
       } else {
-        __pyx_t_5 = __Pyx_PyObject_CallNoArg(__pyx_t_6); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 218, __pyx_L1_error)
+        __pyx_t_5 = __Pyx_PyObject_CallNoArg(__pyx_t_6); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 228, __pyx_L1_error)
       }
       __Pyx_GOTREF(__pyx_t_5);
       __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
-      __pyx_t_6 = PyObject_RichCompare(__pyx_t_1, __pyx_t_5, Py_EQ); __Pyx_XGOTREF(__pyx_t_6); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 217, __pyx_L1_error)
+      __pyx_t_6 = PyObject_RichCompare(__pyx_t_1, __pyx_t_5, Py_EQ); __Pyx_XGOTREF(__pyx_t_6); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 227, __pyx_L1_error)
       __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
       __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
       __pyx_v__use_threads = __pyx_t_6;
       __pyx_t_6 = 0;
 
-      /* "zarr/blosc.pyx":216
+      /* "zarr/blosc.pyx":226
  *         # blosc to use threads, inferring it is being run from within a
  *         # multi-threaded program
  *         if hasattr(threading, 'main_thread'):             # <<<<<<<<<<<<<<
@@ -2527,7 +2633,7 @@ static PyObject *__pyx_pf_4zarr_5blosc_14_get_use_threads(CYTHON_UNUSED PyObject
       goto __pyx_L6;
     }
 
-    /* "zarr/blosc.pyx":220
+    /* "zarr/blosc.pyx":230
  *                             threading.current_thread())
  *         else:
  *             _use_threads = threading.current_thread().name == 'MainThread'             # <<<<<<<<<<<<<<
@@ -2535,9 +2641,9 @@ static PyObject *__pyx_pf_4zarr_5blosc_14_get_use_threads(CYTHON_UNUSED PyObject
  *     return _use_threads
  */
     /*else*/ {
-      __pyx_t_5 = __Pyx_GetModuleGlobalName(__pyx_n_s_threading); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 220, __pyx_L1_error)
+      __pyx_t_5 = __Pyx_GetModuleGlobalName(__pyx_n_s_threading); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 230, __pyx_L1_error)
       __Pyx_GOTREF(__pyx_t_5);
-      __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_t_5, __pyx_n_s_current_thread); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 220, __pyx_L1_error)
+      __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_t_5, __pyx_n_s_current_thread); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 230, __pyx_L1_error)
       __Pyx_GOTREF(__pyx_t_1);
       __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
       __pyx_t_5 = NULL;
@@ -2551,17 +2657,17 @@ static PyObject *__pyx_pf_4zarr_5blosc_14_get_use_threads(CYTHON_UNUSED PyObject
         }
       }
       if (__pyx_t_5) {
-        __pyx_t_6 = __Pyx_PyObject_CallOneArg(__pyx_t_1, __pyx_t_5); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 220, __pyx_L1_error)
+        __pyx_t_6 = __Pyx_PyObject_CallOneArg(__pyx_t_1, __pyx_t_5); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 230, __pyx_L1_error)
         __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
       } else {
-        __pyx_t_6 = __Pyx_PyObject_CallNoArg(__pyx_t_1); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 220, __pyx_L1_error)
+        __pyx_t_6 = __Pyx_PyObject_CallNoArg(__pyx_t_1); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 230, __pyx_L1_error)
       }
       __Pyx_GOTREF(__pyx_t_6);
       __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
-      __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_t_6, __pyx_n_s_name); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 220, __pyx_L1_error)
+      __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_t_6, __pyx_n_s_name); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 230, __pyx_L1_error)
       __Pyx_GOTREF(__pyx_t_1);
       __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
-      __pyx_t_6 = PyObject_RichCompare(__pyx_t_1, __pyx_n_s_MainThread, Py_EQ); __Pyx_XGOTREF(__pyx_t_6); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 220, __pyx_L1_error)
+      __pyx_t_6 = PyObject_RichCompare(__pyx_t_1, __pyx_n_s_MainThread, Py_EQ); __Pyx_XGOTREF(__pyx_t_6); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 230, __pyx_L1_error)
       __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
       __pyx_v__use_threads = __pyx_t_6;
       __pyx_t_6 = 0;
@@ -2570,7 +2676,7 @@ static PyObject *__pyx_pf_4zarr_5blosc_14_get_use_threads(CYTHON_UNUSED PyObject
   }
   __pyx_L3:;
 
-  /* "zarr/blosc.pyx":222
+  /* "zarr/blosc.pyx":232
  *             _use_threads = threading.current_thread().name == 'MainThread'
  * 
  *     return _use_threads             # <<<<<<<<<<<<<<
@@ -2580,7 +2686,7 @@ static PyObject *__pyx_pf_4zarr_5blosc_14_get_use_threads(CYTHON_UNUSED PyObject
   __pyx_r = __pyx_v__use_threads;
   goto __pyx_L0;
 
-  /* "zarr/blosc.pyx":203
+  /* "zarr/blosc.pyx":213
  * 
  * 
  * def _get_use_threads():             # <<<<<<<<<<<<<<
@@ -3296,10 +3402,12 @@ static __Pyx_StringTabEntry __pyx_string_tab[] = {
   {&__pyx_n_s_name, __pyx_k_name, sizeof(__pyx_k_name), 0, 0, 1, 1},
   {&__pyx_n_s_nbytes, __pyx_k_nbytes, sizeof(__pyx_k_nbytes), 0, 0, 1, 1},
   {&__pyx_n_s_nthreads, __pyx_k_nthreads, sizeof(__pyx_k_nthreads), 0, 0, 1, 1},
+  {&__pyx_n_s_release_source_buffer, __pyx_k_release_source_buffer, sizeof(__pyx_k_release_source_buffer), 0, 0, 1, 1},
   {&__pyx_n_s_ret, __pyx_k_ret, sizeof(__pyx_k_ret), 0, 0, 1, 1},
   {&__pyx_n_s_set_nthreads, __pyx_k_set_nthreads, sizeof(__pyx_k_set_nthreads), 0, 0, 1, 1},
   {&__pyx_n_s_shuffle, __pyx_k_shuffle, sizeof(__pyx_k_shuffle), 0, 0, 1, 1},
   {&__pyx_n_s_source, __pyx_k_source, sizeof(__pyx_k_source), 0, 0, 1, 1},
+  {&__pyx_n_s_source_array, __pyx_k_source_array, sizeof(__pyx_k_source_array), 0, 0, 1, 1},
   {&__pyx_n_s_source_buffer, __pyx_k_source_buffer, sizeof(__pyx_k_source_buffer), 0, 0, 1, 1},
   {&__pyx_n_s_source_ptr, __pyx_k_source_ptr, sizeof(__pyx_k_source_ptr), 0, 0, 1, 1},
   {&__pyx_n_s_test, __pyx_k_test, sizeof(__pyx_k_test), 0, 0, 1, 1},
@@ -3315,8 +3423,8 @@ static __Pyx_StringTabEntry __pyx_string_tab[] = {
   {0, 0, 0, 0, 0, 0, 0}
 };
 static int __Pyx_InitCachedBuiltins(void) {
-  __pyx_builtin_RuntimeError = __Pyx_GetBuiltinName(__pyx_n_s_RuntimeError); if (!__pyx_builtin_RuntimeError) __PYX_ERR(0, 124, __pyx_L1_error)
-  __pyx_builtin_ValueError = __Pyx_GetBuiltinName(__pyx_n_s_ValueError); if (!__pyx_builtin_ValueError) __PYX_ERR(0, 172, __pyx_L1_error)
+  __pyx_builtin_RuntimeError = __Pyx_GetBuiltinName(__pyx_n_s_RuntimeError); if (!__pyx_builtin_RuntimeError) __PYX_ERR(0, 134, __pyx_L1_error)
+  __pyx_builtin_ValueError = __Pyx_GetBuiltinName(__pyx_n_s_ValueError); if (!__pyx_builtin_ValueError) __PYX_ERR(0, 182, __pyx_L1_error)
   __pyx_builtin_MemoryError = __Pyx_GetBuiltinName(__pyx_n_s_MemoryError); if (!__pyx_builtin_MemoryError) __PYX_ERR(1, 107, __pyx_L1_error)
   return 0;
   __pyx_L1_error:;
@@ -3399,34 +3507,34 @@ static int __Pyx_InitCachedConstants(void) {
  *     """Decompress data.
  * 
  */
-  __pyx_tuple__10 = PyTuple_Pack(8, __pyx_n_s_source, __pyx_n_s_dest, __pyx_n_s_ret, __pyx_n_s_source_ptr, __pyx_n_s_dest_ptr, __pyx_n_s_source_buffer, __pyx_n_s_dest_buffer, __pyx_n_s_nbytes); if (unlikely(!__pyx_tuple__10)) __PYX_ERR(0, 75, __pyx_L1_error)
+  __pyx_tuple__10 = PyTuple_Pack(10, __pyx_n_s_source, __pyx_n_s_dest, __pyx_n_s_ret, __pyx_n_s_source_ptr, __pyx_n_s_dest_ptr, __pyx_n_s_source_buffer, __pyx_n_s_source_array, __pyx_n_s_dest_buffer, __pyx_n_s_nbytes, __pyx_n_s_release_source_buffer); if (unlikely(!__pyx_tuple__10)) __PYX_ERR(0, 75, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_tuple__10);
   __Pyx_GIVEREF(__pyx_tuple__10);
-  __pyx_codeobj__11 = (PyObject*)__Pyx_PyCode_New(2, 0, 8, 0, 0, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__10, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_home_aliman_code_github_alimanf, __pyx_n_s_decompress, 75, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__11)) __PYX_ERR(0, 75, __pyx_L1_error)
+  __pyx_codeobj__11 = (PyObject*)__Pyx_PyCode_New(2, 0, 10, 0, 0, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__10, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_home_aliman_code_github_alimanf, __pyx_n_s_decompress, 75, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__11)) __PYX_ERR(0, 75, __pyx_L1_error)
 
-  /* "zarr/blosc.pyx":127
+  /* "zarr/blosc.pyx":137
  * 
  * 
  * def compress(source, char* cname, int clevel, int shuffle):             # <<<<<<<<<<<<<<
  *     """Compress data in a numpy array.
  * 
  */
-  __pyx_tuple__12 = PyTuple_Pack(13, __pyx_n_s_source, __pyx_n_s_cname, __pyx_n_s_clevel, __pyx_n_s_shuffle, __pyx_n_s_source_ptr, __pyx_n_s_dest_ptr, __pyx_n_s_source_buffer, __pyx_n_s_nbytes, __pyx_n_s_cbytes, __pyx_n_s_itemsize, __pyx_n_s_char_array_template, __pyx_n_s_dest, __pyx_n_s_compressor_set); if (unlikely(!__pyx_tuple__12)) __PYX_ERR(0, 127, __pyx_L1_error)
+  __pyx_tuple__12 = PyTuple_Pack(13, __pyx_n_s_source, __pyx_n_s_cname, __pyx_n_s_clevel, __pyx_n_s_shuffle, __pyx_n_s_source_ptr, __pyx_n_s_dest_ptr, __pyx_n_s_source_buffer, __pyx_n_s_nbytes, __pyx_n_s_cbytes, __pyx_n_s_itemsize, __pyx_n_s_char_array_template, __pyx_n_s_dest, __pyx_n_s_compressor_set); if (unlikely(!__pyx_tuple__12)) __PYX_ERR(0, 137, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_tuple__12);
   __Pyx_GIVEREF(__pyx_tuple__12);
-  __pyx_codeobj__13 = (PyObject*)__Pyx_PyCode_New(4, 0, 13, 0, 0, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__12, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_home_aliman_code_github_alimanf, __pyx_n_s_compress, 127, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__13)) __PYX_ERR(0, 127, __pyx_L1_error)
+  __pyx_codeobj__13 = (PyObject*)__Pyx_PyCode_New(4, 0, 13, 0, 0, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__12, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_home_aliman_code_github_alimanf, __pyx_n_s_compress, 137, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__13)) __PYX_ERR(0, 137, __pyx_L1_error)
 
-  /* "zarr/blosc.pyx":203
+  /* "zarr/blosc.pyx":213
  * 
  * 
  * def _get_use_threads():             # <<<<<<<<<<<<<<
  *     global use_threads
  * 
  */
-  __pyx_tuple__14 = PyTuple_Pack(1, __pyx_n_s_use_threads_2); if (unlikely(!__pyx_tuple__14)) __PYX_ERR(0, 203, __pyx_L1_error)
+  __pyx_tuple__14 = PyTuple_Pack(1, __pyx_n_s_use_threads_2); if (unlikely(!__pyx_tuple__14)) __PYX_ERR(0, 213, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_tuple__14);
   __Pyx_GIVEREF(__pyx_tuple__14);
-  __pyx_codeobj__15 = (PyObject*)__Pyx_PyCode_New(0, 0, 1, 0, 0, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__14, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_home_aliman_code_github_alimanf, __pyx_n_s_get_use_threads, 203, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__15)) __PYX_ERR(0, 203, __pyx_L1_error)
+  __pyx_codeobj__15 = (PyObject*)__Pyx_PyCode_New(0, 0, 1, 0, 0, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__14, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_home_aliman_code_github_alimanf, __pyx_n_s_get_use_threads, 213, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__15)) __PYX_ERR(0, 213, __pyx_L1_error)
   __Pyx_RefNannyFinishContext();
   return 0;
   __pyx_L1_error:;
@@ -3668,37 +3776,37 @@ PyMODINIT_FUNC PyInit_blosc(void)
   if (PyDict_SetItem(__pyx_d, __pyx_n_s_decompress, __pyx_t_2) < 0) __PYX_ERR(0, 75, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
 
-  /* "zarr/blosc.pyx":127
+  /* "zarr/blosc.pyx":137
  * 
  * 
  * def compress(source, char* cname, int clevel, int shuffle):             # <<<<<<<<<<<<<<
  *     """Compress data in a numpy array.
  * 
  */
-  __pyx_t_2 = PyCFunction_NewEx(&__pyx_mdef_4zarr_5blosc_13compress, NULL, __pyx_n_s_zarr_blosc); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 127, __pyx_L1_error)
+  __pyx_t_2 = PyCFunction_NewEx(&__pyx_mdef_4zarr_5blosc_13compress, NULL, __pyx_n_s_zarr_blosc); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 137, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_2);
-  if (PyDict_SetItem(__pyx_d, __pyx_n_s_compress, __pyx_t_2) < 0) __PYX_ERR(0, 127, __pyx_L1_error)
+  if (PyDict_SetItem(__pyx_d, __pyx_n_s_compress, __pyx_t_2) < 0) __PYX_ERR(0, 137, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
 
-  /* "zarr/blosc.pyx":200
+  /* "zarr/blosc.pyx":210
  * # set the value of this variable to True or False to override the
  * # default adaptive behaviour
  * use_threads = None             # <<<<<<<<<<<<<<
  * 
  * 
  */
-  if (PyDict_SetItem(__pyx_d, __pyx_n_s_use_threads, Py_None) < 0) __PYX_ERR(0, 200, __pyx_L1_error)
+  if (PyDict_SetItem(__pyx_d, __pyx_n_s_use_threads, Py_None) < 0) __PYX_ERR(0, 210, __pyx_L1_error)
 
-  /* "zarr/blosc.pyx":203
+  /* "zarr/blosc.pyx":213
  * 
  * 
  * def _get_use_threads():             # <<<<<<<<<<<<<<
  *     global use_threads
  * 
  */
-  __pyx_t_2 = PyCFunction_NewEx(&__pyx_mdef_4zarr_5blosc_15_get_use_threads, NULL, __pyx_n_s_zarr_blosc); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 203, __pyx_L1_error)
+  __pyx_t_2 = PyCFunction_NewEx(&__pyx_mdef_4zarr_5blosc_15_get_use_threads, NULL, __pyx_n_s_zarr_blosc); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 213, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_2);
-  if (PyDict_SetItem(__pyx_d, __pyx_n_s_get_use_threads, __pyx_t_2) < 0) __PYX_ERR(0, 203, __pyx_L1_error)
+  if (PyDict_SetItem(__pyx_d, __pyx_n_s_get_use_threads, __pyx_t_2) < 0) __PYX_ERR(0, 213, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
 
   /* "zarr/blosc.pyx":1
@@ -4023,6 +4131,19 @@ invalid_keyword:
     #endif
 bad:
     return -1;
+}
+
+/* ExtTypeTest */
+      static CYTHON_INLINE int __Pyx_TypeTest(PyObject *obj, PyTypeObject *type) {
+    if (unlikely(!type)) {
+        PyErr_SetString(PyExc_SystemError, "Missing type object");
+        return 0;
+    }
+    if (likely(PyObject_TypeCheck(obj, type)))
+        return 1;
+    PyErr_Format(PyExc_TypeError, "Cannot convert %.200s to %.200s",
+                 Py_TYPE(obj)->tp_name, type->tp_name);
+    return 0;
 }
 
 /* PyErrFetchRestore */

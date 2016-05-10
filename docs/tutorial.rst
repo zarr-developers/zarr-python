@@ -355,16 +355,17 @@ Here is an example storing an array directly into a Zip file via the
     >>> import zict
     >>> import os
     >>> store = zict.Zip('example.zip', mode='w')
-    >>> z = zarr.zeros((1000, 1000), chunks=(100, 100), dtype='i4', store=store)
+    >>> z = zarr.zeros((1000, 1000), chunks=(100, 100), dtype='i4',
+    ...                compression='zlib', compression_opts=1, store=store)
     >>> z
     zarr.core.Array((1000, 1000), int32, chunks=(100, 100), order=C)
-      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
+      compression: zlib; compression_opts: 1
       nbytes: 3.8M; initialized: 0/100
       store: zict.zip.Zip
     >>> z[:] = 42
     >>> store.flush()  # only required for zict.Zip
     >>> os.path.getsize('example.zip')
-    34805
+    30828
 
 Re-open and check that data have been written::
 
@@ -372,7 +373,7 @@ Re-open and check that data have been written::
     >>> z = zarr.Array(store)
     >>> z
     zarr.core.Array((1000, 1000), int32, chunks=(100, 100), order=C)
-      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
+      compression: zlib; compression_opts: 1
       nbytes: 3.8M; initialized: 100/100
       store: zict.zip.Zip
     >>> z[:]

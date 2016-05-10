@@ -93,12 +93,21 @@ def decompress(source, dest):
         char *source_ptr
         char *dest_ptr
         Py_buffer source_buffer
+        array.array source_array
         Py_buffer dest_buffer
         size_t nbytes
 
     # setup source buffer
-    PyObject_GetBuffer(source, &source_buffer, PyBUF_ANY_CONTIGUOUS)
-    source_ptr = <char *> source_buffer.buf
+    if PY2 and isinstance(source, array.array):
+        # workaround fact that array.array does not support new-style buffer
+        # interface in PY2
+        release_source_buffer = False
+        source_array = source
+        source_ptr = <char *> source_array.data.as_voidptr
+    else:
+        release_source_buffer = True
+        PyObject_GetBuffer(source, &source_buffer, PyBUF_ANY_CONTIGUOUS)
+        source_ptr = <char *> source_buffer.buf
 
     # setup destination buffer
     PyObject_GetBuffer(dest, &dest_buffer,
@@ -116,7 +125,8 @@ def decompress(source, dest):
             ret = blosc_decompress_ctx(source_ptr, dest_ptr, nbytes, 1)
 
     # release buffers
-    PyBuffer_Release(&source_buffer)
+    if release_source_buffer:
+        PyBuffer_Release(&source_buffer)
     PyBuffer_Release(&dest_buffer)
 
     # handle errors
