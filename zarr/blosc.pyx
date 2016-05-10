@@ -1,23 +1,17 @@
 # -*- coding: utf-8 -*-
 # cython: embedsignature=True
-# cython: profile=True
-# cython: linetrace=True
-# cython: binding=True
+# cython: profile=False
+# cython: linetrace=False
+# cython: binding=False
 from __future__ import absolute_import, print_function, division
 import threading
 
 
-from numpy cimport ndarray
-from cpython.ref cimport PyObject
+# noinspection PyUnresolvedReferences
 from cpython cimport array
 import array
 from cpython.buffer cimport PyObject_GetBuffer, PyBuffer_Release, \
-    PyBUF_ANY_CONTIGUOUS
-
-
-cdef extern from "Python.h":
-    int PyByteArray_Resize(PyObject *bytearray, Py_ssize_t len)
-    PyObject* PyByteArray_FromObject(PyObject *o)
+    PyBUF_ANY_CONTIGUOUS, PyBUF_WRITEABLE
 
 
 from zarr.compat import PY2, text_type
@@ -83,9 +77,9 @@ def decompress(source, dest):
 
     Parameters
     ----------
-    source : object
+    source : bytes-like
         Compressed data, including blosc header.
-    dest : object
+    dest : array-like
         Object to decompress into.
 
     Notes
@@ -102,10 +96,13 @@ def decompress(source, dest):
         Py_buffer dest_buffer
         size_t nbytes
 
-    # setup buffers
+    # setup source buffer
     PyObject_GetBuffer(source, &source_buffer, PyBUF_ANY_CONTIGUOUS)
     source_ptr = <char *> source_buffer.buf
-    PyObject_GetBuffer(dest, &dest_buffer, PyBUF_ANY_CONTIGUOUS)
+
+    # setup destination buffer
+    PyObject_GetBuffer(dest, &dest_buffer,
+                       PyBUF_ANY_CONTIGUOUS | PyBUF_WRITEABLE)
     dest_ptr = <char *> dest_buffer.buf
     nbytes = dest_buffer.len
 
@@ -132,8 +129,8 @@ def compress(source, char* cname, int clevel, int shuffle):
 
     Parameters
     ----------
-    array : ndarray
-        Numpy array containing data to be compressed.
+    source : array-like
+        Data to be compressed.
     cname : bytes
         Name of compression library to use.
     clevel : int
@@ -143,7 +140,7 @@ def compress(source, char* cname, int clevel, int shuffle):
 
     Returns
     -------
-    cdata : bytes
+    dest : bytes-like
         Compressed data.
 
     """

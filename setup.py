@@ -11,15 +11,6 @@ from distutils.errors import CCompilerError, DistutilsExecError, \
 
 
 try:
-    import numpy as np
-except ImportError:
-    # Keep it simple, require that NumPy is already installed.
-    print('[zarr] ERROR NumPy not found. Please install NumPy then try again.')
-    print('[zarr] See also: http://docs.scipy.org/doc/numpy/user/install.html')
-    sys,exit(1)
-
-
-try:
     from Cython.Build import cythonize
 except ImportError:
     have_cython = False
@@ -46,7 +37,6 @@ def blosc_extension():
     include_dirs += glob('c-blosc/internal-complibs/*')
     define_macros += [('HAVE_LZ4', 1), ('HAVE_SNAPPY', 1), ('HAVE_ZLIB', 1)]
     # define_macros += [('CYTHON_TRACE', '1')]
-    include_dirs.append(np.get_include())
 
     # determine CPU support for SSE2 and AVX2
     cpu_info = cpuinfo.get_cpu_info()
