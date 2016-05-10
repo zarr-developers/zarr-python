@@ -112,7 +112,7 @@ def init_store(store, shape, chunks, dtype=None, compression='default',
 
 class DirectoryStore(MutableMapping):
     """Mutable Mapping interface to a directory. Keys must be strings,
-    values must be bytes.
+    values must be bytes-like objects.
 
     Parameters
     ----------

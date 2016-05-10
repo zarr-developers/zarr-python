@@ -1,9 +1,9 @@
 Zarr storage specification version 1
 ====================================
 
-This document provides a technical specification of the format used
-for storing a Zarr array. The key words "MUST", "MUST NOT",
-"REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT",
+This document provides a technical specification of the protocol and
+format used for storing a Zarr array. The key words "MUST", "MUST
+NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT",
 "RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be
 interpreted as described in `RFC 2119
 <https://www.ietf.org/rfc/rfc2119.txt>`_.
@@ -185,8 +185,8 @@ Initialize the store::
     ...                 dtype='i4', fill_value=42, compression='zlib',
     ...                 compression_opts=1, overwrite=True)
 
-No chunks are initialized yet, so only the 'meta' and 'attrs' keys are
-present::
+No chunks are initialized yet, so only the 'meta' and 'attrs' keys
+have been set::
 
     >>> import os
     >>> sorted(os.listdir('example.zarr'))
