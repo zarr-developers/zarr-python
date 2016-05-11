@@ -149,7 +149,7 @@ was uniformly filled with the value of the 'fill_value' field in the
 array metadata. If the 'fill_value' field is ``null`` then the
 contents of the chunk are undefined.
 
-Note that all chunks in array have the same shape. If the length of
+Note that all chunks in an array have the same shape. If the length of
 any array dimension is not exactly divisible by the length of the
 corresponding chunk dimension then some chunks will overhang the edge
 of the array. The contents of any chunk region falling outside the
