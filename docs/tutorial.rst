@@ -1,3 +1,5 @@
+.. _tutorial:
+
 Tutorial
 ========
 
@@ -6,6 +8,8 @@ arrays that behave like NumPy arrays but whose data is divided into
 chunks and compressed. If you are already familiar with HDF5 datasets
 then Zarr arrays provide similar functionality, but with some
 additional flexibility.
+
+.. _tutorial_create:
 
 Creating an array
 -----------------
@@ -28,6 +32,8 @@ The code above creates a 2-dimensional array of 32-bit integers with
 For a complete list of array creation routines see the
 :mod:`zarr.creation` module documentation.
 
+.. _tutorial_array:
+     
 Reading and writing data
 ------------------------
 
@@ -73,6 +79,8 @@ the requested region into a NumPy array, e.g.::
            [9998,   42,   42, ...,   42,   42,   42],
            [9999,   42,   42, ...,   42,   42,   42]], dtype=int32)
 
+.. _tutorial_persist:
+	   
 Persistent arrays
 -----------------
 
@@ -113,6 +121,8 @@ Check that the data have been written and can be read again::
       store: zarr.storage.DirectoryStore
     >>> np.all(z1[:] == z2[:])
     True
+
+.. _tutorial_resize:    
 
 Resizing and appending
 ----------------------
@@ -157,6 +167,8 @@ which can be used to append data to any axis. E.g.::
       nbytes: 152.6M; nbytes_stored: 7.9M; ratio: 19.3; initialized: 400/400
       store: builtins.dict
 
+.. _tutorial_compress:
+      
 Compression
 -----------
 
@@ -215,6 +227,8 @@ the delta filter::
       compression: lzma; compression_opts: {'preset': None, 'filters': [{'dist': 4, 'id': 3}, {'preset': 1, 'id': 33}], 'check': 0, 'format': 1}
       nbytes: 381.5M; nbytes_stored: 248.1K; ratio: 1574.7; initialized: 100/100
       store: builtins.dict
+
+.. _tutorial_sync:
 
 Parallel computing and synchronization
 --------------------------------------
@@ -277,6 +291,8 @@ provided that all processes have access to a shared file system. E.g.::
 
 This array is safe to read or write from multiple processes.
 
+.. _tutorial_attrs:
+
 User attributes
 ---------------
 
@@ -298,8 +314,12 @@ for associating an array with application-specific metadata. For example::
 Internally Zarr uses JSON to store array attributes, so attribute values
 must be JSON serializable.
 
+.. _tutorial_tips:
+
 Tips and tricks
 ---------------
+
+.. _tutorial_tips_copy:
 
 Copying large arrays
 ~~~~~~~~~~~~~~~~~~~~
@@ -315,6 +335,8 @@ e.g.::
 Internally the example above works chunk-by-chunk, extracting only the
 data from ``z1`` required to fill each chunk in ``z2``. The source of
 the data (``z1``) could equally be an h5py Dataset.
+
+.. _tutorial_tips_order:
 
 Changing memory layout
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -342,6 +364,8 @@ is an artifical example but illustrates the general point that changing the
 order of bytes within chunks of an array may improve the compression ratio,
 depending on the structure of the data, the compression algorithm used, and
 which compression filters (e.g., byte shuffle) have been applied.
+
+.. _tutorial_tips_storage:
 
 Storage alternatives
 ~~~~~~~~~~~~~~~~~~~~
@@ -390,6 +414,8 @@ because items within a Zip file cannot be updated in place. This means
 that data in the array should only be written once and write
 operations should be aligned with chunk boundaries.
 
+.. _tutorial_tips_chunks:
+
 Chunk size and shape
 ~~~~~~~~~~~~~~~~~~~~
 
@@ -420,6 +446,8 @@ to find a compromise, e.g.::
     >>> z3.chunks
     (1000, 1000)
 
+.. _tutorial_tips_blosc:
+    
 Configuring Blosc
 ~~~~~~~~~~~~~~~~~
 
@@ -441,5 +469,3 @@ behaviour, set the value of the ``blosc.use_threads`` variable to
 ``True`` (Blosc always uses multiple internal threads) or ``False``
 (Blosc always runs in single-threaded contextual mode). To re-enable
 automatic switching, set ``blosc.use_threads`` to ``None``.
-
-

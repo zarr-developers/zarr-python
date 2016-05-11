@@ -56,6 +56,7 @@ Contents
     tutorial
     api
     spec
+    release
 
 Acknowledgments
 ---------------

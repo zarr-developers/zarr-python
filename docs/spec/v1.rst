@@ -1,3 +1,5 @@
+.. _spec_v1:
+
 Zarr storage specification version 1
 ====================================
 
