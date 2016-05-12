@@ -1,13 +1,13 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, print_function, division
-import zlib
-import bz2
 
+import bz2
+import zlib
 
 import numpy as np
 
-
-from zarr.compat import text_type
+from .compat import text_type
+from .util import ensure_bytes
 
 
 registry = dict()
@@ -122,7 +122,7 @@ else:
             cname = cname if cname is not None else cls.default_cname
 
             # check internal compressor is available
-            if blosc.compname_to_compcode(cname) < 0:
+            if blosc.compname_to_compcode(ensure_bytes(cname)) < 0:
                 raise ValueError('blosc internal compressor not available: %s'
                                  % cname)
 
