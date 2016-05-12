@@ -4,13 +4,8 @@
 Zarr
 ====
 
-Zarr is a Python package providing a minimal implementation of
-chunked, compressed, N-dimensional arrays.
-
-* Source: https://github.com/alimanfoo/zarr
-* Documentation: http://zarr.readthedocs.io/
-* Download: https://pypi.python.org/pypi/zarr
-* Release notes: https://github.com/alimanfoo/zarr/releases
+Zarr is a Python package providing an implementation of chunked,
+compressed, N-dimensional arrays.
 
 Highlights
 ----------
