@@ -13,7 +13,7 @@ Highlights
 * Create N-dimensional arrays with any NumPy dtype.
 * Chunk arrays along any dimension.
 * Compress chunks using the fast Blosc_ meta-compressor or alternatively using zlib, BZ2 or LZMA.
-* Store arrays in memory, on disk, inside a Zip file, on S3, ... pretty much anywhere you like.
+* Store arrays in memory, on disk, inside a Zip file, on S3, ...
 * Read an array concurrently from multiple threads or processes.
 * Write to an array concurrently from multiple threads or processes.
 
