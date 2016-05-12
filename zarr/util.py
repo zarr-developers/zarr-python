@@ -187,10 +187,3 @@ def normalize_order(order):
     if order not in ['C', 'F']:
         raise ValueError("order must be either 'C' or 'F', found: %r" % order)
     return order
-
-
-def ensure_bytes(s):
-    if hasattr(s, 'encode'):
-        return s.encode()
-    else:
-        return s
