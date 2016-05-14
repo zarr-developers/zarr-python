@@ -194,6 +194,9 @@ class DirectoryStore(MutableMapping):
     def __setitem__(self, key, value):
         # accept any value that can be written to a file
 
+        # destination path for key
+        dest_path = os.path.join(self.path, key)
+
         # write to temporary file
         with tempfile.NamedTemporaryFile(mode='wb', delete=False,
                                          dir=self.path,
@@ -203,7 +206,9 @@ class DirectoryStore(MutableMapping):
             temp_path = f.name
 
         # move temporary file into place
-        os.rename(temp_path, os.path.join(self.path, key))
+        if os.path.exists(dest_path):
+            os.remove(dest_path)
+        os.rename(temp_path, dest_path)
 
     def __delitem__(self, key):
 

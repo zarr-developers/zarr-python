@@ -46,16 +46,13 @@ def test_nbytes_stored():
     eq(sum(len(v) for v in store.values()), z.nbytes_stored)
 
     # custom store, doesn't support size determination
-    with NamedTemporaryFile() as f:
-        store = zict.Zip(f.name, mode='w')
-        # N.B., use zlib for now as blosc extension currently not compatible
-        # with zict,Zip
-        init_store(store, shape=1000, chunks=100, compression='zlib',
-                   compression_opts=1)
-        z = Array(store)
-        eq(-1, z.nbytes_stored)
-        z[:] = 42
-        eq(-1, z.nbytes_stored)
+    store = zict.Zip('test.zip', mode='w')
+    init_store(store, shape=1000, chunks=100, compression='zlib',
+               compression_opts=1)
+    z = Array(store)
+    eq(-1, z.nbytes_stored)
+    z[:] = 42
+    eq(-1, z.nbytes_stored)
 
 
 class TestArray(unittest.TestCase):
