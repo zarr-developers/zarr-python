@@ -53,7 +53,7 @@ test_script:
   # is set dynamically. This unfortunately mean that conda build --output
   # doesn't really work.
   #
-    - "%CMD_IN_ENV% conda install --yes --quiet cython setuptools_scm nose"
+    - "%CMD_IN_ENV% conda install --yes --quiet cython numpy setuptools_scm nose"
     - "%CMD_IN_ENV% python -m pip install zict heapdict fasteners"
 
   # Build the compiled extension and run the project tests
