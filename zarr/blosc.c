@@ -18,17 +18,17 @@
             ]
         ],
         "depends": [
-            "c-blosc/blosc/blosc.h"
+            "c-blosc\\blosc\\blosc.h"
         ],
         "extra_compile_args": [
             "-DSHUFFLE_SSE2_ENABLED",
             "-msse2"
         ],
         "include_dirs": [
-            "c-blosc/blosc",
-            "c-blosc/internal-complibs/snappy-1.1.1",
-            "c-blosc/internal-complibs/lz4-1.7.2",
-            "c-blosc/internal-complibs/zlib-1.2.8"
+            "c-blosc\\blosc",
+            "c-blosc/internal-complibs\\lz4-1.7.2",
+            "c-blosc/internal-complibs\\snappy-1.1.1",
+            "c-blosc/internal-complibs\\zlib-1.2.8"
         ]
     }
 }
@@ -513,7 +513,7 @@ static const char *__pyx_filename;
 
 
 static const char *__pyx_f[] = {
-  "zarr/blosc.pyx",
+  "zarr\\blosc.pyx",
   "array.pxd",
   "type.pxd",
   "bool.pxd",
@@ -1000,9 +1000,10 @@ static const char __pyx_k_char_array_template[] = "char_array_template";
 static const char __pyx_k_compname_to_compcode[] = "compname_to_compcode";
 static const char __pyx_k_release_source_buffer[] = "release_source_buffer";
 static const char __pyx_k_compressor_not_supported_r[] = "compressor not supported: %r";
-static const char __pyx_k_home_aliman_code_github_alimanf[] = "/home/aliman/code/github/alimanfoo/zarr/zarr/blosc.pyx";
+static const char __pyx_k_C_Users_aliman_Documents_GitHub[] = "C:\\Users\\aliman\\Documents\\GitHub\\zarr\\zarr\\blosc.pyx";
 static const char __pyx_k_error_during_blosc_compression_d[] = "error during blosc compression: %d";
 static const char __pyx_k_error_during_blosc_decompression[] = "error during blosc decompression: %d";
+static PyObject *__pyx_kp_s_C_Users_aliman_Documents_GitHub;
 static PyObject *__pyx_n_s_MainThread;
 static PyObject *__pyx_n_s_MemoryError;
 static PyObject *__pyx_n_s_PY2;
@@ -1030,7 +1031,6 @@ static PyObject *__pyx_n_s_encode;
 static PyObject *__pyx_kp_s_error_during_blosc_compression_d;
 static PyObject *__pyx_kp_s_error_during_blosc_decompression;
 static PyObject *__pyx_n_s_get_use_threads;
-static PyObject *__pyx_kp_s_home_aliman_code_github_alimanf;
 static PyObject *__pyx_n_s_import;
 static PyObject *__pyx_n_s_init;
 static PyObject *__pyx_n_s_itemsize;
@@ -3366,6 +3366,7 @@ static struct PyModuleDef __pyx_moduledef = {
 #endif
 
 static __Pyx_StringTabEntry __pyx_string_tab[] = {
+  {&__pyx_kp_s_C_Users_aliman_Documents_GitHub, __pyx_k_C_Users_aliman_Documents_GitHub, sizeof(__pyx_k_C_Users_aliman_Documents_GitHub), 0, 0, 1, 0},
   {&__pyx_n_s_MainThread, __pyx_k_MainThread, sizeof(__pyx_k_MainThread), 0, 0, 1, 1},
   {&__pyx_n_s_MemoryError, __pyx_k_MemoryError, sizeof(__pyx_k_MemoryError), 0, 0, 1, 1},
   {&__pyx_n_s_PY2, __pyx_k_PY2, sizeof(__pyx_k_PY2), 0, 0, 1, 1},
@@ -3393,7 +3394,6 @@ static __Pyx_StringTabEntry __pyx_string_tab[] = {
   {&__pyx_kp_s_error_during_blosc_compression_d, __pyx_k_error_during_blosc_compression_d, sizeof(__pyx_k_error_during_blosc_compression_d), 0, 0, 1, 0},
   {&__pyx_kp_s_error_during_blosc_decompression, __pyx_k_error_during_blosc_decompression, sizeof(__pyx_k_error_during_blosc_decompression), 0, 0, 1, 0},
   {&__pyx_n_s_get_use_threads, __pyx_k_get_use_threads, sizeof(__pyx_k_get_use_threads), 0, 0, 1, 1},
-  {&__pyx_kp_s_home_aliman_code_github_alimanf, __pyx_k_home_aliman_code_github_alimanf, sizeof(__pyx_k_home_aliman_code_github_alimanf), 0, 0, 1, 0},
   {&__pyx_n_s_import, __pyx_k_import, sizeof(__pyx_k_import), 0, 0, 1, 1},
   {&__pyx_n_s_init, __pyx_k_init, sizeof(__pyx_k_init), 0, 0, 1, 1},
   {&__pyx_n_s_itemsize, __pyx_k_itemsize, sizeof(__pyx_k_itemsize), 0, 0, 1, 1},
@@ -3456,7 +3456,7 @@ static int __Pyx_InitCachedConstants(void) {
   __pyx_tuple__2 = PyTuple_Pack(2, __pyx_n_s_ver_str, __pyx_n_s_ver_date); if (unlikely(!__pyx_tuple__2)) __PYX_ERR(0, 43, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_tuple__2);
   __Pyx_GIVEREF(__pyx_tuple__2);
-  __pyx_codeobj__3 = (PyObject*)__Pyx_PyCode_New(0, 0, 2, 0, 0, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__2, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_home_aliman_code_github_alimanf, __pyx_n_s_version, 43, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__3)) __PYX_ERR(0, 43, __pyx_L1_error)
+  __pyx_codeobj__3 = (PyObject*)__Pyx_PyCode_New(0, 0, 2, 0, 0, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__2, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_C_Users_aliman_Documents_GitHub, __pyx_n_s_version, 43, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__3)) __PYX_ERR(0, 43, __pyx_L1_error)
 
   /* "zarr/blosc.pyx":54
  * 
@@ -3465,7 +3465,7 @@ static int __Pyx_InitCachedConstants(void) {
  *     blosc_init()
  * 
  */
-  __pyx_codeobj__4 = (PyObject*)__Pyx_PyCode_New(0, 0, 0, 0, 0, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_home_aliman_code_github_alimanf, __pyx_n_s_init, 54, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__4)) __PYX_ERR(0, 54, __pyx_L1_error)
+  __pyx_codeobj__4 = (PyObject*)__Pyx_PyCode_New(0, 0, 0, 0, 0, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_C_Users_aliman_Documents_GitHub, __pyx_n_s_init, 54, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__4)) __PYX_ERR(0, 54, __pyx_L1_error)
 
   /* "zarr/blosc.pyx":58
  * 
@@ -3474,7 +3474,7 @@ static int __Pyx_InitCachedConstants(void) {
  *     blosc_destroy()
  * 
  */
-  __pyx_codeobj__5 = (PyObject*)__Pyx_PyCode_New(0, 0, 0, 0, 0, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_home_aliman_code_github_alimanf, __pyx_n_s_destroy, 58, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__5)) __PYX_ERR(0, 58, __pyx_L1_error)
+  __pyx_codeobj__5 = (PyObject*)__Pyx_PyCode_New(0, 0, 0, 0, 0, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_C_Users_aliman_Documents_GitHub, __pyx_n_s_destroy, 58, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__5)) __PYX_ERR(0, 58, __pyx_L1_error)
 
   /* "zarr/blosc.pyx":62
  * 
@@ -3486,7 +3486,7 @@ static int __Pyx_InitCachedConstants(void) {
   __pyx_tuple__6 = PyTuple_Pack(1, __pyx_n_s_cname); if (unlikely(!__pyx_tuple__6)) __PYX_ERR(0, 62, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_tuple__6);
   __Pyx_GIVEREF(__pyx_tuple__6);
-  __pyx_codeobj__7 = (PyObject*)__Pyx_PyCode_New(1, 0, 1, 0, 0, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__6, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_home_aliman_code_github_alimanf, __pyx_n_s_compname_to_compcode, 62, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__7)) __PYX_ERR(0, 62, __pyx_L1_error)
+  __pyx_codeobj__7 = (PyObject*)__Pyx_PyCode_New(1, 0, 1, 0, 0, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__6, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_C_Users_aliman_Documents_GitHub, __pyx_n_s_compname_to_compcode, 62, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__7)) __PYX_ERR(0, 62, __pyx_L1_error)
 
   /* "zarr/blosc.pyx":68
  * 
@@ -3498,7 +3498,7 @@ static int __Pyx_InitCachedConstants(void) {
   __pyx_tuple__8 = PyTuple_Pack(2, __pyx_n_s_nthreads, __pyx_n_s_nthreads); if (unlikely(!__pyx_tuple__8)) __PYX_ERR(0, 68, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_tuple__8);
   __Pyx_GIVEREF(__pyx_tuple__8);
-  __pyx_codeobj__9 = (PyObject*)__Pyx_PyCode_New(1, 0, 2, 0, 0, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__8, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_home_aliman_code_github_alimanf, __pyx_n_s_set_nthreads, 68, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__9)) __PYX_ERR(0, 68, __pyx_L1_error)
+  __pyx_codeobj__9 = (PyObject*)__Pyx_PyCode_New(1, 0, 2, 0, 0, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__8, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_C_Users_aliman_Documents_GitHub, __pyx_n_s_set_nthreads, 68, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__9)) __PYX_ERR(0, 68, __pyx_L1_error)
 
   /* "zarr/blosc.pyx":75
  * 
@@ -3510,7 +3510,7 @@ static int __Pyx_InitCachedConstants(void) {
   __pyx_tuple__10 = PyTuple_Pack(10, __pyx_n_s_source, __pyx_n_s_dest, __pyx_n_s_ret, __pyx_n_s_source_ptr, __pyx_n_s_dest_ptr, __pyx_n_s_source_buffer, __pyx_n_s_source_array, __pyx_n_s_dest_buffer, __pyx_n_s_nbytes, __pyx_n_s_release_source_buffer); if (unlikely(!__pyx_tuple__10)) __PYX_ERR(0, 75, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_tuple__10);
   __Pyx_GIVEREF(__pyx_tuple__10);
-  __pyx_codeobj__11 = (PyObject*)__Pyx_PyCode_New(2, 0, 10, 0, 0, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__10, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_home_aliman_code_github_alimanf, __pyx_n_s_decompress, 75, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__11)) __PYX_ERR(0, 75, __pyx_L1_error)
+  __pyx_codeobj__11 = (PyObject*)__Pyx_PyCode_New(2, 0, 10, 0, 0, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__10, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_C_Users_aliman_Documents_GitHub, __pyx_n_s_decompress, 75, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__11)) __PYX_ERR(0, 75, __pyx_L1_error)
 
   /* "zarr/blosc.pyx":137
  * 
@@ -3522,7 +3522,7 @@ static int __Pyx_InitCachedConstants(void) {
   __pyx_tuple__12 = PyTuple_Pack(13, __pyx_n_s_source, __pyx_n_s_cname, __pyx_n_s_clevel, __pyx_n_s_shuffle, __pyx_n_s_source_ptr, __pyx_n_s_dest_ptr, __pyx_n_s_source_buffer, __pyx_n_s_nbytes, __pyx_n_s_cbytes, __pyx_n_s_itemsize, __pyx_n_s_char_array_template, __pyx_n_s_dest, __pyx_n_s_compressor_set); if (unlikely(!__pyx_tuple__12)) __PYX_ERR(0, 137, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_tuple__12);
   __Pyx_GIVEREF(__pyx_tuple__12);
-  __pyx_codeobj__13 = (PyObject*)__Pyx_PyCode_New(4, 0, 13, 0, 0, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__12, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_home_aliman_code_github_alimanf, __pyx_n_s_compress, 137, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__13)) __PYX_ERR(0, 137, __pyx_L1_error)
+  __pyx_codeobj__13 = (PyObject*)__Pyx_PyCode_New(4, 0, 13, 0, 0, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__12, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_C_Users_aliman_Documents_GitHub, __pyx_n_s_compress, 137, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__13)) __PYX_ERR(0, 137, __pyx_L1_error)
 
   /* "zarr/blosc.pyx":213
  * 
@@ -3534,7 +3534,7 @@ static int __Pyx_InitCachedConstants(void) {
   __pyx_tuple__14 = PyTuple_Pack(1, __pyx_n_s_use_threads_2); if (unlikely(!__pyx_tuple__14)) __PYX_ERR(0, 213, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_tuple__14);
   __Pyx_GIVEREF(__pyx_tuple__14);
-  __pyx_codeobj__15 = (PyObject*)__Pyx_PyCode_New(0, 0, 1, 0, 0, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__14, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_home_aliman_code_github_alimanf, __pyx_n_s_get_use_threads, 213, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__15)) __PYX_ERR(0, 213, __pyx_L1_error)
+  __pyx_codeobj__15 = (PyObject*)__Pyx_PyCode_New(0, 0, 1, 0, 0, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__14, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_C_Users_aliman_Documents_GitHub, __pyx_n_s_get_use_threads, 213, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__15)) __PYX_ERR(0, 213, __pyx_L1_error)
   __Pyx_RefNannyFinishContext();
   return 0;
   __pyx_L1_error:;

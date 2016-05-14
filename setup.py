@@ -45,15 +45,21 @@ def blosc_extension():
     if 'sse2' in cpu_info['flags']:
         print('[zarr] SSE2 detected')
         extra_compile_args.append('-DSHUFFLE_SSE2_ENABLED')
-        extra_compile_args.append('-msse2')
         blosc_sources += [f for f in glob('c-blosc/blosc/*.c') if 'sse2' in f]
+        if os.name == 'posix':
+            extra_compile_args.append('-msse2')
+        elif os.name == 'nt':
+            define_macros += [('__SSE2__', 1)]
 
     # AVX2
     if 'avx2' in cpu_info['flags']:
         print('[zarr] AVX2 detected')
         extra_compile_args.append('-DSHUFFLE_AVX2_ENABLED')
-        extra_compile_args.append('-mavx2')
         blosc_sources += [f for f in glob('c-blosc/blosc/*.c') if 'avx2' in f]
+        if os.name == 'posix':
+            extra_compile_args.append('-mavx2')
+        elif os.name == 'nt':
+            define_macros += [('__AVX2__', 1)]
 
     if have_cython:
         sources = ['zarr/blosc.pyx']
@@ -93,13 +99,15 @@ class ve_build_ext(build_ext):
     def run(self):
         try:
             build_ext.run(self)
-        except DistutilsPlatformError:
+        except DistutilsPlatformError as e:
+            print('[zarr] ERROR', e, file=sys.stderr)
             raise BuildFailed()
 
     def build_extension(self, ext):
         try:
             build_ext.build_extension(self, ext)
-        except ext_errors:
+        except ext_errors as e:
+            print('[zarr] ERROR', e, file=sys.stderr)
             raise BuildFailed()
 
 
@@ -166,13 +174,14 @@ def run_setup(with_extensions):
 
 if __name__ == '__main__':
     is_pypy = hasattr(sys, 'pypy_translation_info')
-    is_posix = os.name == 'posix'
 
     try:
-        run_setup(is_posix and not is_pypy)
+        run_setup(not is_pypy)
     except BuildFailed:
-        print('[zarr]' + ('*' * 75))
-        print('[zarr] WARNING compilation of the Blosc C extension failed.')
-        print('[zarr] Retrying installation without C extensions...')
-        print('[zarr]' + ('*' * 75))
+        print('[zarr]' + ('*' * 75), file=sys.stderr)
+        print('[zarr] WARNING compilation of the Blosc C extension failed.',
+              file=sys.stderr)
+        print('[zarr] Retrying installation without C extensions...',
+              file=sys.stderr)
+        print('[zarr]' + ('*' * 75), file=sys.stderr)
         run_setup(False)
