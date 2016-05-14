@@ -225,11 +225,11 @@ class Array(object):
 
             >>> import zarr
             >>> import numpy as np
-            >>> z = zarr.array(np.arange(100000000), chunks=1000000)
+            >>> z = zarr.array(np.arange(100000000), chunks=1000000, dtype='i4')
             >>> z
-            zarr.core.Array((100000000,), int64, chunks=(1000000,), order=C)
+            zarr.core.Array((100000000,), int32, chunks=(1000000,), order=C)
               compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
-              nbytes: 762.9M; nbytes_stored: 13.5M; ratio: 56.6; initialized: 100/100
+              nbytes: 381.5M; nbytes_stored: 6.8M; ratio: 56.0; initialized: 100/100
               store: builtins.dict
 
         Take some slices::
@@ -250,11 +250,11 @@ class Array(object):
             >>> import zarr
             >>> import numpy as np
             >>> z = zarr.array(np.arange(100000000).reshape(10000, 10000),
-            ...                chunks=(1000, 1000))
+            ...                chunks=(1000, 1000), dtype='i4')
             >>> z
-            zarr.core.Array((10000, 10000), int64, chunks=(1000, 1000), order=C)
+            zarr.core.Array((10000, 10000), int32, chunks=(1000, 1000), order=C)
               compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
-              nbytes: 762.9M; nbytes_stored: 16.8M; ratio: 45.5; initialized: 100/100
+              nbytes: 381.5M; nbytes_stored: 10.0M; ratio: 38.0; initialized: 100/100
               store: builtins.dict
 
         Take some slices::
