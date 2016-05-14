@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, print_function, division
 import unittest
-from tempfile import NamedTemporaryFile, mkdtemp
+from tempfile import mkdtemp
 import atexit
 import shutil
 import pickle
