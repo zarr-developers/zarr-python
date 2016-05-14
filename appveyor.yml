@@ -40,6 +40,7 @@ install:
   # as well as pip, conda-build, and the binstar CLI
   - powershell .\\appveyor\\install.ps1
   - "SET PATH=%PYTHON%;%PYTHON%\\Scripts;%PATH%"
+  - git submodule update --init --recursive
 
 build: false
 
