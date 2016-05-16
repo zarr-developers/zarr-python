@@ -1,5 +1,11 @@
 environment:
 
+  global:
+    # SDK v7.0 MSVC Express 2008's SetEnv.cmd script will fail if the
+    # /E:ON and /V:ON options are not enabled in the batch script intepreter
+    # See: http://stackoverflow.com/a/13751649/163740
+    CMD_IN_ENV: "cmd /E:ON /V:ON /C .\\build.cmd"
+
   matrix:
 
     - PYTHON: "C:\\Python27"
@@ -20,11 +26,11 @@ install:
 build: off
 
 test_script:
-  - "build.cmd %PYTHON%\\python.exe setup.py build_ext --inplace"
-  - "build.cmd %PYTHON%\\python.exe -m nose -v"
+  - "%CMD_IN_ENV% python setup.py build_ext --inplace"
+  - "%CMD_IN_ENV% python -m nose -v"
 
 after_test:
-  - "build.cmd %PYTHON%\\python.exe setup.py bdist_wheel"
+  - "%CMD_IN_ENV% python setup.py bdist_wheel"
 
 artifacts:
   - path: dist\*
