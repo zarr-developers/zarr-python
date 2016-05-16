@@ -61,6 +61,9 @@ def blosc_extension():
         elif os.name == 'nt':
             define_macros += [('__AVX2__', 1)]
 
+    if os.name == 'nt':
+        extra_compile_args.append('-Dinline=__inline')
+
     if have_cython:
         sources = ['zarr/blosc.pyx']
     else:
