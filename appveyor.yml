@@ -17,10 +17,10 @@ install:
   - "%PYTHON%\\python.exe -m pip install -rrequirements.txt"
   - git submodule update --init --recursive
 
-build:
-  - "build.cmd %PYTHON%\\python.exe setup.py build_ext --inplace"
+build: off
 
 test_script:
+  - "build.cmd %PYTHON%\\python.exe setup.py build_ext --inplace"
   - "build.cmd %PYTHON%\\python.exe -m nose -v"
 
 after_test:
