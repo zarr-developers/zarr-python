@@ -12,15 +12,15 @@ environment:
     - PYTHON: "C:\\Python35-x64"
 
 install:
-  # We need wheel installed to build wheels
   - "%PYTHON%\\python.exe -m pip install wheel"
   - "%PYTHON%\\python.exe -m pip install -rrequirements_test.txt"
   - "%PYTHON%\\python.exe -m pip install -rrequirements.txt"
+  - git submodule update --init --recursive
 
-build: off
+build:
+  - "build.cmd %PYTHON%\\python.exe setup.py build_ext --inplace"
 
 test_script:
-  - "build.cmd %PYTHON%\\python.exe setup.py build_ext --inplace"
   - "build.cmd %PYTHON%\\python.exe -m nose -v"
 
 after_test:
