@@ -31,16 +31,22 @@ Install Zarr from PyPI::
 
     $ pip install zarr
 
-Install Zarr from GitHub::
+Please note that Zarr includes a C extension providing integration
+with the Blosc library. Pre-compiled binaries are available for Linux
+and Windows platforms and will be installed automatically via pip if
+available. However, if you have a newer CPU that supports the AVX2
+instruction set (e.g., Intel Haswell, Broadwell or Skylake) then
+compiling from source is preferable, as the Blosc library includes
+some optimisations for those architectures::
+
+    $ pip install --no-binary=:all: zarr%
+ 
+To work with Zarr source code in development, install from GitHub::
 
     $ git clone --recursive https://github.com/alimanfoo/zarr.git
     $ cd zarr
     $ python setup.py install
 
-N.B., on posix systems Zarr will attempt to build the Blosc C extension.
-Zarr will fall back to a pure Python installation on other platforms or if
-the C extension fails to build for any reason, which means that 'blosc'
-compression will not be available.
 
 Contents
 --------
