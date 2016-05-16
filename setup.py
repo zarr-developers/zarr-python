@@ -10,6 +10,9 @@ from distutils.errors import CCompilerError, DistutilsExecError, \
     DistutilsPlatformError
 
 
+PY2 = sys.version_info[0] == 2
+
+
 try:
     from Cython.Build import cythonize
 except ImportError:
@@ -63,7 +66,7 @@ def blosc_extension():
 
     # workaround lack of support for "inline" in MSVC when building for Python
     # 2.7 64-bit
-    if os.name == 'nt':
+    if PY2 and os.name == 'nt':
         extra_compile_args.append('-Dinline=__inline')
 
     if have_cython:

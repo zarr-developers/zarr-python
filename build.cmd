@@ -32,7 +32,7 @@ IF %MAJOR_PYTHON_VERSION% == "2" (
     EXIT 1
 )
 
-IF "%PYTHON_ARCH%"=="64" (
+IF "%DISTUTILS_USE_SDK%"=="1" (
     ECHO Configuring Windows SDK %WINDOWS_SDK_VERSION% for Python %MAJOR_PYTHON_VERSION% on a 64 bit architecture
     SET DISTUTILS_USE_SDK=1
     SET MSSdk=1
@@ -41,7 +41,7 @@ IF "%PYTHON_ARCH%"=="64" (
     ECHO Executing: %COMMAND_TO_RUN%
     call %COMMAND_TO_RUN% || EXIT 1
 ) ELSE (
-    ECHO Using default MSVC build environment for 32 bit architecture
+    ECHO Using default MSVC build environment
     ECHO Executing: %COMMAND_TO_RUN%
     call %COMMAND_TO_RUN% || EXIT 1
 )
