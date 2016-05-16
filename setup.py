@@ -61,6 +61,8 @@ def blosc_extension():
         elif os.name == 'nt':
             define_macros += [('__AVX2__', 1)]
 
+    # workaround lack of support for "inline" in MSVC when building for Python
+    # 2.7 64-bit
     if os.name == 'nt':
         extra_compile_args.append('-Dinline=__inline')
 
