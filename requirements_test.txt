@@ -1,5 +1,6 @@
 setuptools
 setuptools_scm
+cython
 tox
 nose
 coverage
