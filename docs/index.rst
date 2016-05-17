@@ -20,7 +20,7 @@ Highlights
 Status
 ------
 
-Zarr is still in an early, experimental phase of development. Feedback and bug
+Zarr is still in an early phase of development. Feedback and bug
 reports are very welcome, please get in touch via the `GitHub issue
 tracker <https://github.com/alimanfoo/zarr/issues>`_.
 
