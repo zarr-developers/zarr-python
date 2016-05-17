@@ -99,6 +99,13 @@ A bug has been fixed within the ``__getitem__`` and ``__setitem__``
 machinery for slicing arrays, to properly handle getting and setting
 partial slices.
 
+Acknowledgments
+~~~~~~~~~~~~~~~
+
+Thanks to Matthew Rocklin (mrocklin_), Stephan Hoyer (shoyer_),
+Francesc Alted (FrancescAlted_), Anthony Scopatz (scopatz_) and Martin
+Durant (martindurant_) for contributions and comments.
+
 .. _release_0.4.0:
 
 0.4.0
@@ -115,3 +122,8 @@ See `v0.4.0 release notes on GitHub
 See `v0.3.0 release notes on GitHub
 <https://github.com/alimanfoo/zarr/releases/tag/v0.3.0>`_.
 
+.. _mrocklin: https://github.com/mrocklin
+.. _shoyer: https://github.com/shoyer
+.. _scopatz: https://github.com/scopatz
+.. _martindurant: https://github.com/martindurant
+.. _FrancescAlted: https://github.com/FrancescAlted
