@@ -39,7 +39,7 @@ instruction set (e.g., Intel Haswell, Broadwell or Skylake) then
 compiling from source is preferable, as the Blosc library includes
 some optimisations for those architectures::
 
-    $ pip install --no-binary=:all: zarr%
+    $ pip install --no-binary=:all: zarr
  
 To work with Zarr source code in development, install from GitHub::
 
