@@ -1,74 +1,85 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, print_function, division
-
-
 import json
-import os
-from threading import Lock
-import fasteners
+from collections import MutableMapping
 
 
-class PersistentAttributes(object):
+from zarr.compat import text_type
+from zarr.errors import ReadOnlyError
 
-    def __init__(self, path, mode):
-        self._path = path
-        self._mode = mode
+
+class Attributes(MutableMapping):
+
+    def __init__(self, store, key='attrs', readonly=False):
+        if key not in store:
+            store[key] = json.dumps(dict()).encode('ascii')
+        self.store = store
+        self.key = key
+        self.readonly = readonly
+
+    def __contains__(self, x):
+        return x in self.asdict()
 
     def __getitem__(self, item):
+        return self.asdict()[item]
 
-        if not os.path.exists(self._path):
-            raise KeyError(item)
+    def put(self, d):
 
-        with open(self._path, mode='r') as f:
-            return json.load(f)[item]
+        # guard conditions
+        if self.readonly:
+            raise ReadOnlyError('attributes are read-only')
+
+        s = json.dumps(d, indent=4, sort_keys=True, ensure_ascii=True)
+        self.store[self.key] = s.encode('ascii')
 
     def __setitem__(self, key, value):
 
-        # handle read-only state
-        if self._mode == 'r':
-            raise ValueError('array is read-only')
+        # guard conditions
+        if self.readonly:
+            raise ReadOnlyError('attributes are read-only')
 
         # load existing data
-        if not os.path.exists(self._path):
-            d = dict()
-        else:
-            with open(self._path, mode='r') as f:
-                d = json.load(f)
+        d = self.asdict()
 
         # set key value
         d[key] = value
 
-        # write modified data
-        with open(self._path, mode='w') as f:
-            json.dump(d, f, indent=4, sort_keys=True)
+        # put modified data
+        self.put(d)
 
     def __delitem__(self, key):
 
-        # handle read-only state
-        if self._mode == 'r':
-            raise ValueError('array is read-only')
+        # guard conditions
+        if self.readonly:
+            raise ReadOnlyError('mapping is read-only')
 
         # load existing data
-        if not os.path.exists(self._path):
-            d = dict()
-        else:
-            with open(self._path, mode='r') as f:
-                d = json.load(f)
+        d = self.asdict()
 
         # delete key value
         del d[key]
 
-        # write modified data
-        with open(self._path, mode='w') as f:
-            json.dump(d, f, indent=4, sort_keys=True)
+        # put modified data
+        self.put(d)
 
     def asdict(self):
-        if not os.path.exists(self._path):
-            d = dict()
-        else:
-            with open(self._path, mode='r') as f:
-                d = json.load(f)
-        return d
+        return json.loads(text_type(self.store[self.key], 'ascii'))
+
+    def update(self, *args, **kwargs):
+        # override to provide update in a single write
+
+        # guard conditions
+        if self.readonly:
+            raise ReadOnlyError('mapping is read-only')
+
+        # load existing data
+        d = self.asdict()
+
+        # update
+        d.update(*args, **kwargs)
+
+        # put modified data
+        self.put(d)
 
     def __iter__(self):
         return iter(self.asdict())
@@ -84,33 +95,3 @@ class PersistentAttributes(object):
 
     def items(self):
         return self.asdict().items()
-
-
-class SynchronizedPersistentAttributes(PersistentAttributes):
-
-    def __init__(self, path, mode):
-        super(SynchronizedPersistentAttributes, self).__init__(path, mode)
-        lock_path = self._path + '.lock'
-        self._thread_lock = Lock()
-        self._file_lock = fasteners.InterProcessLock(lock_path)
-
-    def __getitem__(self, item):
-        with self._thread_lock:
-            with self._file_lock:
-                v = super(SynchronizedPersistentAttributes, self).__getitem__(item)
-                return v
-
-    def __setitem__(self, key, value):
-        with self._thread_lock:
-            with self._file_lock:
-                super(SynchronizedPersistentAttributes, self).__setitem__(key, value)
-
-    def __delitem__(self, key):
-        with self._thread_lock:
-            with self._file_lock:
-                super(SynchronizedPersistentAttributes, self).__delitem__(key)
-
-    def asdict(self):
-        with self._thread_lock:
-            with self._file_lock:
-                return super(SynchronizedPersistentAttributes, self).asdict()

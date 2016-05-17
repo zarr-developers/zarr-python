@@ -1,9 +1,8 @@
-nosetests -v
-python -m doctest README.rst -o NORMALIZE_WHITESPACE
+python setup.py build_ext --inplace
+tox
 # version=x.x.x
 echo $version
 git tag -a v$version -m v$version
 git push --tags
-python setup.py build_ext --inplace
 python setup.py register sdist
 twine upload dist/zarr-${version}.tar.gz

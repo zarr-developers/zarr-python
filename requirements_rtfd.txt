@@ -1,0 +1,7 @@
+setuptools
+setuptools_scm
+sphinx
+numpydoc
+mock
+numpy
+cython

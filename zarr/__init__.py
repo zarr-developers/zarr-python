@@ -1,21 +1,26 @@
 # -*- coding: utf-8 -*-
+# flake8: noqa
 from __future__ import absolute_import, print_function, division
-
-
-import atexit
 import multiprocessing
+import atexit
 
 
-from zarr.create import empty, zeros, ones, full, array, open, empty_like, \
-    zeros_like, ones_like, full_like, open_like
-from zarr.ext import blosc_version, init as _init, destroy as _destroy, \
-    set_blosc_options
-from zarr import defaults
-from zarr import constants
+from zarr.creation import create, array, empty, zeros, ones, full, open, \
+    empty_like, zeros_like, ones_like, full_like, open_like
+from zarr.storage import init_store, DirectoryStore
+from zarr.core import Array
+from zarr.sync import ThreadSynchronizer, ProcessSynchronizer, \
+    SynchronizedArray
 from zarr.version import version as __version__
 
 
-ncores = multiprocessing.cpu_count()
-_init()
-set_blosc_options(use_context=False, nthreads=ncores)
-atexit.register(_destroy)
+try:
+    from zarr import blosc
+except ImportError:  # pragma: no cover
+    pass
+else:
+    ncores = multiprocessing.cpu_count()
+    blosc.init()
+    # diminishing returns beyond 4 threads?
+    blosc.set_nthreads(min(4, ncores))
+    atexit.register(blosc.destroy)

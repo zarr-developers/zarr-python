@@ -1,0 +1,264 @@
+.. _spec_v1:
+
+Zarr storage specification version 1
+====================================
+
+This document provides a technical specification of the protocol and
+format used for storing a Zarr array. The key words "MUST", "MUST
+NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT",
+"RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be
+interpreted as described in `RFC 2119
+<https://www.ietf.org/rfc/rfc2119.txt>`_.
+
+Storage
+-------
+
+A Zarr array can be stored in any storage system that provides a
+key/value interface, where a key is an ASCII string and a value is an
+arbitrary sequence of bytes, and the supported operations are read
+(get the sequence of bytes associated with a given key), write (set
+the sequence of bytes associated with a given key) and delete (remove
+a key/value pair).
+
+For example, a directory in a file system can provide this interface,
+where keys are file names, values are file contents, and files can be
+read, written or deleted. Equally, an S3 bucket can provide this
+interface, where keys are resource names, values are resource
+contents, and resources can be read, written or deleted via HTTP.
+
+Below an "array store" refers to any system implementing this
+interface.
+
+Metadata
+--------
+
+Each array requires essential configuration metadata to be stored,
+enabling correct interpretation of the stored data. This metadata is
+encoded using JSON and stored as the value of the 'meta' key within an
+array store.
+
+The metadata resource is a JSON object. The following keys MUST be
+present within the object:
+
+zarr_format
+    An integer defining the version of the storage specification to which the
+    array store adheres.
+shape
+    A list of integers defining the length of each dimension of the array.
+chunks
+    A list of integers defining the length of each dimension of a chunk of the
+    array. Note that all chunks within a Zarr array have the same shape.
+dtype
+    A string or list defining a valid data type for the array. See also
+    the subsection below on data type encoding.
+compression
+    A string identifying the primary compression library used to compress
+    each chunk of the array.
+compression_opts
+    An integer, string or dictionary providing options to the primary
+    compression library.
+fill_value
+    A scalar value providing the default value to use for uninitialized
+    portions of the array.
+order
+    Either 'C' or 'F', defining the layout of bytes within each chunk of the
+    array. 'C' means row-major order, i.e., the last dimension varies fastest;
+    'F' means column-major order, i.e., the first dimension varies fastest.
+
+Other keys MAY be present within the metadata object however they MUST
+NOT alter the interpretation of the required fields defined above.
+
+For example, the JSON object below defines a 2-dimensional array of
+64-bit little-endian floating point numbers with 10000 rows and 10000
+columns, divided into chunks of 1000 rows and 1000 columns (so there
+will be 100 chunks in total arranged in a 10 by 10 grid). Within each
+chunk the data are laid out in C contiguous order, and each chunk is
+compressed using the Blosc compression library::
+
+    {
+        "chunks": [
+            1000,
+            1000
+        ],
+        "compression": "blosc",
+        "compression_opts": {
+            "clevel": 5,
+            "cname": "lz4",
+            "shuffle": 1
+        },
+        "dtype": "<f8",
+        "fill_value": null,
+        "order": "C",
+        "shape": [
+            10000,
+            10000
+        ],
+        "zarr_format": 1
+    }
+
+Data type encoding
+~~~~~~~~~~~~~~~~~~
+
+Simple data types are encoded within the array metadata resource as a
+string, following the `NumPy array protocol type string (typestr)
+format
+<http://docs.scipy.org/doc/numpy/reference/arrays.interface.html>`_. The
+format consists of 3 parts: a character describing the byteorder of
+the data (``<``: little-endian, ``>``: big-endian, ``|``:
+not-relevant), a character code giving the basic type of the array,
+and an integer providing the number of bytes the type uses. The byte
+order MUST be specified. E.g., ``"<f8"``, ``">i4"``, ``"|b1"`` and
+``"|S12"`` are valid data types.
+
+Structure data types (i.e., with multiple named fields) are encoded as
+a list of two-element lists, following `NumPy array protocol type
+descriptions (descr)
+<http://docs.scipy.org/doc/numpy/reference/arrays.interface.html#>`_.
+For example, the JSON list ``[["r", "|u1"], ["g", "|u1"], ["b",
+"|u1"]]`` defines a data type composed of three single-byte unsigned
+integers labelled 'r', 'g' and 'b'.
+
+Chunks
+------
+
+Each chunk of the array is compressed by passing the raw bytes for the
+chunk through the primary compression library to obtain a new sequence
+of bytes comprising the compressed chunk data. No header is added to
+the compressed bytes or any other modification made. The internal
+structure of the compressed bytes will depend on which primary
+compressor was used. For example, the `Blosc compressor
+<https://github.com/Blosc/c-blosc/blob/master/README_HEADER.rst>`_
+produces a sequence of bytes that begins with a 16-byte header
+followed by compressed data.
+
+The compressed sequence of bytes for each chunk is stored under a key
+formed from the index of the chunk within the grid of chunks
+representing the array. To form a string key for a chunk, the indices
+are converted to strings and concatenated with the period character
+('.') separating each index. For example, given an array with shape
+(10000, 10000) and chunk shape (1000, 1000) there will be 100 chunks
+laid out in a 10 by 10 grid. The chunk with indices (0, 0) provides
+data for rows 0-1000 and columns 0-1000 and is stored under the key
+'0.0'; the chunk with indices (2, 4) provides data for rows 2000-3000
+and columns 4000-5000 and is stored under the key '2.4'; etc.
+
+There is no need for all chunks to be present within an array
+store. If a chunk is not present then it is considered to be in an
+uninitialized state.  An unitialized chunk MUST be treated as if it
+was uniformly filled with the value of the 'fill_value' field in the
+array metadata. If the 'fill_value' field is ``null`` then the
+contents of the chunk are undefined.
+
+Note that all chunks in an array have the same shape. If the length of
+any array dimension is not exactly divisible by the length of the
+corresponding chunk dimension then some chunks will overhang the edge
+of the array. The contents of any chunk region falling outside the
+array are undefined.
+
+Attributes
+----------
+
+Each array can also be associated with custom attributes, which are
+simple key/value items with application-specific meaning. Custom
+attributes are encoded as a JSON object and stored under the 'attrs'
+key within an array store. Even if the attributes are empty, the
+'attrs' key MUST be present within an array store.
+
+For example, the JSON object below encodes three attributes named
+'foo', 'bar' and 'baz'::
+
+    {
+        "foo": 42,
+        "bar": "apples",
+        "baz": [1, 2, 3, 4]
+    }
+
+Example
+-------
+
+Below is an example of storing a Zarr array, using a directory on the
+local file system as storage.
+
+Initialize the store::
+
+    >>> import zarr
+    >>> store = zarr.DirectoryStore('example.zarr')
+    >>> zarr.init_store(store, shape=(20, 20), chunks=(10, 10),
+    ...                 dtype='i4', fill_value=42, compression='zlib',
+    ...                 compression_opts=1, overwrite=True)
+
+No chunks are initialized yet, so only the 'meta' and 'attrs' keys
+have been set::
+
+    >>> import os
+    >>> sorted(os.listdir('example.zarr'))
+    ['attrs', 'meta']
+
+Inspect the array metadata::
+
+    >>> print(open('example.zarr/meta').read())
+    {
+        "chunks": [
+            10,
+            10
+        ],
+        "compression": "zlib",
+        "compression_opts": 1,
+        "dtype": "<i4",
+        "fill_value": 42,
+        "order": "C",
+        "shape": [
+            20,
+            20
+        ],
+        "zarr_format": 1
+    }
+
+Inspect the array attributes::
+
+    >>> print(open('example.zarr/attrs').read())
+    {}
+
+Set some data::
+
+    >>> z = zarr.Array(store)
+    >>> z[0:10, 0:10] = 1
+    >>> sorted(os.listdir('example.zarr'))
+    ['0.0', 'attrs', 'meta']
+
+Set some more data::
+
+    >>> z[0:10, 10:20] = 2
+    >>> z[10:20, :] = 3
+    >>> sorted(os.listdir('example.zarr'))
+    ['0.0', '0.1', '1.0', '1.1', 'attrs', 'meta']
+
+Manually decompress a single chunk for illustration::
+
+    >>> import zlib
+    >>> b = zlib.decompress(open('example.zarr/0.0', 'rb').read())
+    >>> import numpy as np
+    >>> a = np.frombuffer(b, dtype='<i4')
+    >>> a
+    array([1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+           1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+           1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+           1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+           1, 1, 1, 1, 1, 1, 1, 1], dtype=int32)
+
+Modify the array attributes::
+
+    >>> z.attrs['foo'] = 42
+    >>> z.attrs['bar'] = 'apples'
+    >>> z.attrs['baz'] = [1, 2, 3, 4]
+    >>> print(open('example.zarr/attrs').read())
+    {
+        "bar": "apples",
+        "baz": [
+            1,
+            2,
+            3,
+            4
+        ],
+        "foo": 42
+    }

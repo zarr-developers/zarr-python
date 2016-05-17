@@ -1,0 +1,161 @@
+zarr.core.Array((200000000,), uint16, chunks=(1000000,), order=C)
+  compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 2}
+  nbytes: 381.5M; nbytes_stored: 294; ratio: 1360544.2; initialized: 0/200
+  store: builtins.dict
+*******************************************************************************
+[0.27119584499996563, 0.2855067059999783, 0.2887747180002407, 0.3058794240005227, 0.3139041080003153, 0.3021271820007314, 0.31543190899992624, 0.31403100900024583, 0.3272544129995367, 0.31834129100025166]
+0.27119584499996563
+zarr.core.Array((200000000,), uint16, chunks=(1000000,), order=C)
+  compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 2}
+  nbytes: 381.5M; nbytes_stored: 314.1M; ratio: 1.2; initialized: 200/200
+  store: builtins.dict
+Timer unit: 1e-06 s
+
+Total time: 0.297223 s
+File: /home/aliman/code/github/alimanfoo/zarr/zarr/blosc.pyx
+Function: compress at line 137
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+   137                                           def compress(source, char* cname, int clevel, int shuffle):
+   138                                               """Compress data in a numpy array.
+   139                                           
+   140                                               Parameters
+   141                                               ----------
+   142                                               source : array-like
+   143                                                   Data to be compressed.
+   144                                               cname : bytes
+   145                                                   Name of compression library to use.
+   146                                               clevel : int
+   147                                                   Compression level.
+   148                                               shuffle : int
+   149                                                   Shuffle filter.
+   150                                           
+   151                                               Returns
+   152                                               -------
+   153                                               dest : bytes-like
+   154                                                   Compressed data.
+   155                                           
+   156                                               """
+   157                                           
+   158                                               cdef:
+   159                                                   char *source_ptr
+   160                                                   char *dest_ptr
+   161                                                   Py_buffer source_buffer
+   162                                                   size_t nbytes, cbytes, itemsize
+   163       200          506      2.5      0.2          array.array char_array_template = array.array('b', [])
+   164                                                   array.array dest
+   165                                           
+   166                                               # setup source buffer
+   167       200          458      2.3      0.2      PyObject_GetBuffer(source, &source_buffer, PyBUF_ANY_CONTIGUOUS)
+   168       200          119      0.6      0.0      source_ptr = <char *> source_buffer.buf
+   169                                           
+   170                                               # setup destination
+   171       200          239      1.2      0.1      nbytes = source_buffer.len
+   172       200          103      0.5      0.0      itemsize = source_buffer.itemsize
+   173       200         2286     11.4      0.8      dest = array.clone(char_array_template, nbytes + BLOSC_MAX_OVERHEAD,
+   174                                                                  zero=False)
+   175       200          129      0.6      0.0      dest_ptr = <char *> dest.data.as_voidptr
+   176                                           
+   177                                               # perform compression
+   178       200         1734      8.7      0.6      if _get_use_threads():
+   179                                                   # allow blosc to use threads internally
+   180       200          167      0.8      0.1          compressor_set = blosc_set_compressor(cname)
+   181       200           94      0.5      0.0          if compressor_set < 0:
+   182                                                       raise ValueError('compressor not supported: %r' % cname)
+   183       200       288570   1442.8     97.1          with nogil:
+   184                                                       cbytes = blosc_compress(clevel, shuffle, itemsize, nbytes,
+   185                                                                               source_ptr, dest_ptr,
+   186                                                                               nbytes + BLOSC_MAX_OVERHEAD)
+   187                                           
+   188                                               else:
+   189                                                   with nogil:
+   190                                                       cbytes = blosc_compress_ctx(clevel, shuffle, itemsize, nbytes,
+   191                                                                                   source_ptr, dest_ptr,
+   192                                                                                   nbytes + BLOSC_MAX_OVERHEAD, cname,
+   193                                                                                   0, 1)
+   194                                           
+   195                                               # release source buffer
+   196       200          616      3.1      0.2      PyBuffer_Release(&source_buffer)
+   197                                           
+   198                                               # check compression was successful
+   199       200          120      0.6      0.0      if cbytes <= 0:
+   200                                                   raise RuntimeError('error during blosc compression: %d' % cbytes)
+   201                                           
+   202                                               # resize after compression
+   203       200         1896      9.5      0.6      array.resize(dest, cbytes)
+   204                                           
+   205       200          186      0.9      0.1      return dest
+
+*******************************************************************************
+[0.24293352799941204, 0.2324290420001489, 0.24935673900017719, 0.25716222699975333, 0.24246313799994823, 0.23272456500035332, 0.2636815870000646, 0.2576046349995522, 0.2781278639995435, 0.23824110699933954]
+0.2324290420001489
+Timer unit: 1e-06 s
+
+Total time: 0.240178 s
+File: /home/aliman/code/github/alimanfoo/zarr/zarr/blosc.pyx
+Function: decompress at line 75
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+    75                                           def decompress(source, dest):
+    76                                               """Decompress data.
+    77                                           
+    78                                               Parameters
+    79                                               ----------
+    80                                               source : bytes-like
+    81                                                   Compressed data, including blosc header.
+    82                                               dest : array-like
+    83                                                   Object to decompress into.
+    84                                           
+    85                                               Notes
+    86                                               -----
+    87                                               Assumes that the size of the destination buffer is correct for the size of
+    88                                               the uncompressed data.
+    89                                           
+    90                                               """
+    91                                               cdef:
+    92                                                   int ret
+    93                                                   char *source_ptr
+    94                                                   char *dest_ptr
+    95                                                   Py_buffer source_buffer
+    96                                                   array.array source_array
+    97                                                   Py_buffer dest_buffer
+    98                                                   size_t nbytes
+    99                                           
+   100                                               # setup source buffer
+   101       200          573      2.9      0.2      if PY2 and isinstance(source, array.array):
+   102                                                   # workaround fact that array.array does not support new-style buffer
+   103                                                   # interface in PY2
+   104                                                   release_source_buffer = False
+   105                                                   source_array = source
+   106                                                   source_ptr = <char *> source_array.data.as_voidptr
+   107                                               else:
+   108       200          112      0.6      0.0          release_source_buffer = True
+   109       200          144      0.7      0.1          PyObject_GetBuffer(source, &source_buffer, PyBUF_ANY_CONTIGUOUS)
+   110       200           98      0.5      0.0          source_ptr = <char *> source_buffer.buf
+   111                                           
+   112                                               # setup destination buffer
+   113       200          552      2.8      0.2      PyObject_GetBuffer(dest, &dest_buffer,
+   114                                                                  PyBUF_ANY_CONTIGUOUS | PyBUF_WRITEABLE)
+   115       200          100      0.5      0.0      dest_ptr = <char *> dest_buffer.buf
+   116       200           84      0.4      0.0      nbytes = dest_buffer.len
+   117                                           
+   118                                               # perform decompression
+   119       200         1856      9.3      0.8      if _get_use_threads():
+   120                                                   # allow blosc to use threads internally
+   121       200       235286   1176.4     98.0          with nogil:
+   122                                                       ret = blosc_decompress(source_ptr, dest_ptr, nbytes)
+   123                                               else:
+   124                                                   with nogil:
+   125                                                       ret = blosc_decompress_ctx(source_ptr, dest_ptr, nbytes, 1)
+   126                                           
+   127                                               # release buffers
+   128       200          754      3.8      0.3      if release_source_buffer:
+   129       200          326      1.6      0.1          PyBuffer_Release(&source_buffer)
+   130       200          165      0.8      0.1      PyBuffer_Release(&dest_buffer)
+   131                                           
+   132                                               # handle errors
+   133       200          128      0.6      0.1      if ret <= 0:
+   134                                                   raise RuntimeError('error during blosc decompression: %d' % ret)
+
