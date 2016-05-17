@@ -38,11 +38,10 @@ Install Zarr from PyPI::
 
 Zarr includes a C extension providing integration with the Blosc_
 library. Pre-compiled binaries are available for Windows platforms and
-will be installed automatically via pip if available. However, if you
-have a newer CPU that supports the AVX2 instruction set (e.g., Intel
-Haswell, Broadwell or Skylake) then compiling from source is
-preferable, as the Blosc library includes some optimisations for those
-architectures::
+will be installed automatically via pip. However, if you have a newer
+CPU that supports the AVX2 instruction set (e.g., Intel Haswell,
+Broadwell or Skylake) then compiling from source is preferable, as the
+Blosc library includes some optimisations for those architectures::
 
     $ pip install --no-binary=:all: zarr
  
