@@ -27,6 +27,11 @@ tracker <https://github.com/alimanfoo/zarr/issues>`_.
 Installation
 ------------
 
+Zarr depends on NumPy. It is generally best to `install NumPy
+<http://docs.scipy.org/doc/numpy/user/install.html>`_ first using
+whatever method is most appropriate for you operating system and
+Python distribution.
+
 Install Zarr from PyPI::
 
     $ pip install zarr
@@ -47,7 +52,12 @@ To work with Zarr source code in development, install from GitHub::
     $ cd zarr
     $ python setup.py install
 
+To verify that Zarr has been fully installed (including the Blosc
+extension) you can run the test suite::
 
+    $ pip install nose zict heapdict
+    $ python -m nose -v zarr
+  
 Contents
 --------
 
