@@ -62,12 +62,6 @@ dependency. Manual installation of NumPy prior to installing Zarr is
 still recommended, however, as the automatic installation of NumPy may
 fail or be sub-optimal on some platforms.
 
-The :mod:`zarr.blosc` Cython extension is now optional and compilation
-will only be attempted on posix systems; other systems will fall back
-to a pure-Python installation (`#25
-<https://github.com/alimanfoo/zarr/issues/25>`_). On these systems
-only 'zlib', 'bz2' and 'lzma' compression will be available.
-
 Some optimizations have been made within the :mod:`zarr.blosc`
 extension to avoid unnecessary memory copies, giving a ~10-20%
 performance improvement for multi-threaded compression operations.
