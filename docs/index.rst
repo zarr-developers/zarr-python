@@ -27,17 +27,21 @@ tracker <https://github.com/alimanfoo/zarr/issues>`_.
 Installation
 ------------
 
-Install Zarr from PyPI::
+Install from PyPI::
 
     $ pip install zarr
 
+Alternatively, install via conda::
+
+    $ conda install -c conda-forge zarr
+  
 Please note that Zarr includes a C extension providing integration
-with the Blosc library. Pre-compiled binaries are available for
-Windows platforms and will be installed automatically via pip if
-available. However, if you have a newer CPU that supports the AVX2
-instruction set (e.g., Intel Haswell, Broadwell or Skylake) then
-compiling from source is preferable, as the Blosc library includes
-some optimisations for those architectures::
+with the Blosc library. Installing via conda or installing on Windows
+via pip will install a pre-compiled binary distribution. However, if
+you have a newer CPU that supports the AVX2 instruction set (e.g.,
+Intel Haswell, Broadwell or Skylake) then compiling from source is
+preferable, as the Blosc library includes some optimisations for those
+architectures::
 
     $ pip install --no-binary=:all: zarr
  
