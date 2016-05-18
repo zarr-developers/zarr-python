@@ -21,9 +21,9 @@ example::
     >>> z = zarr.zeros((10000, 10000), chunks=(1000, 1000), dtype='i4')
     >>> z
     zarr.core.Array((10000, 10000), int32, chunks=(1000, 1000), order=C)
-    compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
-    nbytes: 381.5M; nbytes_stored: 317; ratio: 1261829.7; initialized: 0/100
-    store: builtins.dict
+      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
+      nbytes: 381.5M; nbytes_stored: 317; ratio: 1261829.7; initialized: 0/100
+      store: builtins.dict
 
 The code above creates a 2-dimensional array of 32-bit integers with
 10000 rows and 10000 columns, divided into chunks where each chunk has
