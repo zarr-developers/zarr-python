@@ -22,9 +22,10 @@ a key/value pair).
 
 For example, a directory in a file system can provide this interface,
 where keys are file names, values are file contents, and files can be
-read, written or deleted. Equally, an S3 bucket can provide this
-interface, where keys are resource names, values are resource
-contents, and resources can be read, written or deleted via HTTP.
+read, written or deleted via the operating system. Equally, an S3
+bucket can provide this interface, where keys are resource names,
+values are resource contents, and resources can be read, written or
+deleted via HTTP.
 
 Below an "array store" refers to any system implementing this
 interface.
