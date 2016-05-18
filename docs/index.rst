@@ -20,29 +20,34 @@ Highlights
 Status
 ------
 
-Zarr is still in an early, experimental phase of development. Feedback and bug
+Zarr is still in an early phase of development. Feedback and bug
 reports are very welcome, please get in touch via the `GitHub issue
 tracker <https://github.com/alimanfoo/zarr/issues>`_.
 
 Installation
 ------------
 
-Install from PyPI::
+Zarr depends on NumPy. It is generally best to `install NumPy
+<http://docs.scipy.org/doc/numpy/user/install.html>`_ first using
+whatever method is most appropriate for you operating system and
+Python distribution.
+
+Install Zarr from PyPI::
 
     $ pip install zarr
 
-Alternatively, install via conda::
+Alternatively, install Zarr via conda::
 
     $ conda install -c conda-forge zarr
   
-Please note that Zarr includes a C extension providing integration
-with the Blosc library. Installing via conda or installing on Windows
-via pip will install a pre-compiled binary distribution. However, if
-you have a newer CPU that supports the AVX2 instruction set (e.g.,
-Intel Haswell, Broadwell or Skylake) then compiling from source is
-preferable, as the Blosc library includes some optimisations for those
-architectures::
-
+Zarr includes a C extension providing integration with the Blosc_
+library. Installing on any operating system via conda or installing on
+Windows via pip will install a pre-compiled binary
+distribution. However, if you have a newer CPU that supports the AVX2
+instruction set (e.g., Intel Haswell, Broadwell or Skylake) then
+compiling from source is preferable as the Blosc library includes some
+optimisations for AVX2::
+  
     $ pip install --no-binary=:all: zarr
  
 To work with Zarr source code in development, install from GitHub::
@@ -51,7 +56,12 @@ To work with Zarr source code in development, install from GitHub::
     $ cd zarr
     $ python setup.py install
 
+To verify that Zarr has been fully installed (including the Blosc
+extension) run the test suite::
 
+    $ pip install nose zict heapdict
+    $ python -m nose -v zarr
+  
 Contents
 --------
 

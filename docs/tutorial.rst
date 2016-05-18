@@ -414,6 +414,13 @@ because items within a Zip file cannot be updated in place. This means
 that data in the array should only be written once and write
 operations should be aligned with chunk boundaries.
 
+The Dask project has implementations of the ``MutableMapping``
+interface for distributed storage systems, see the `S3Map
+<http://s3fs.readthedocs.io/en/latest/api.html#s3fs.mapping.S3Map>`_
+and `HDFSMap
+<https://github.com/dask/hdfs3/blob/master/hdfs3/mapping.py>`_
+classes.
+
 .. _tutorial_tips_chunks:
 
 Chunk size and shape
