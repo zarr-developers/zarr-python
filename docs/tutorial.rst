@@ -467,12 +467,12 @@ Configuring Blosc
 
 The Blosc compressor is able to use multiple threads internally to
 accelerate compression and decompression. By default, Zarr allows
-Blosc to use up to 4 internal threads. The number of Blosc threads can
-be changed, e.g.::
+Blosc to use up to 8 internal threads. The number of Blosc threads can
+be changed to increase or decrease this number, e.g.::
 
     >>> from zarr import blosc
     >>> blosc.set_nthreads(2)
-    4
+    8
 
 When a Zarr array is being used within a multi-threaded program, Zarr
 automatically switches to using Blosc in a single-threaded
