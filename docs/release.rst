@@ -11,6 +11,8 @@ Release notes
   section on :ref:`tutorial_compression` for an example.
 * When using the Blosc compressor, the default internal compression library
   is now 'lz4'.
+* The default number of internal threads for the Blosc compressor has been
+  increased to a maximum of 8 (previously 4).
 
 .. _release_1.0.0:
 
