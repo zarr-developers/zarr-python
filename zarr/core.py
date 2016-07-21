@@ -61,8 +61,8 @@ class Array(object):
     >>> z = zarr.Array(store)
     >>> z
     zarr.core.Array((10000, 10000), float64, chunks=(1000, 1000), order=C)
-      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
-      nbytes: 762.9M; nbytes_stored: 320; ratio: 2500000.0; initialized: 0/100
+      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
+      nbytes: 762.9M; nbytes_stored: 316; ratio: 2531645.6; initialized: 0/100
       store: builtins.dict
 
     """  # flake8: noqa
@@ -228,8 +228,8 @@ class Array(object):
             >>> z = zarr.array(np.arange(100000000), chunks=1000000, dtype='i4')
             >>> z
             zarr.core.Array((100000000,), int32, chunks=(1000000,), order=C)
-              compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
-              nbytes: 381.5M; nbytes_stored: 6.8M; ratio: 56.0; initialized: 100/100
+              compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
+              nbytes: 381.5M; nbytes_stored: 6.7M; ratio: 56.8; initialized: 100/100
               store: builtins.dict
 
         Take some slices::
@@ -253,8 +253,8 @@ class Array(object):
             ...                chunks=(1000, 1000), dtype='i4')
             >>> z
             zarr.core.Array((10000, 10000), int32, chunks=(1000, 1000), order=C)
-              compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
-              nbytes: 381.5M; nbytes_stored: 10.0M; ratio: 38.0; initialized: 100/100
+              compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
+              nbytes: 381.5M; nbytes_stored: 9.5M; ratio: 40.1; initialized: 100/100
               store: builtins.dict
 
         Take some slices::
@@ -347,8 +347,8 @@ class Array(object):
             >>> z = zarr.zeros(100000000, chunks=1000000, dtype='i4')
             >>> z
             zarr.core.Array((100000000,), int32, chunks=(1000000,), order=C)
-              compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
-              nbytes: 381.5M; nbytes_stored: 295; ratio: 1355932.2; initialized: 0/100
+              compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
+              nbytes: 381.5M; nbytes_stored: 291; ratio: 1374570.4; initialized: 0/100
               store: builtins.dict
 
         Set all array elements to the same scalar value::
@@ -369,8 +369,8 @@ class Array(object):
             >>> z = zarr.zeros((10000, 10000), chunks=(1000, 1000), dtype='i4')
             >>> z
             zarr.core.Array((10000, 10000), int32, chunks=(1000, 1000), order=C)
-              compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
-              nbytes: 381.5M; nbytes_stored: 317; ratio: 1261829.7; initialized: 0/100
+              compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
+              nbytes: 381.5M; nbytes_stored: 313; ratio: 1277955.3; initialized: 0/100
               store: builtins.dict
 
         Set all array elements to the same scalar value::
@@ -612,20 +612,20 @@ class Array(object):
         >>> z = zarr.zeros(shape=(10000, 10000), chunks=(1000, 1000))
         >>> z
         zarr.core.Array((10000, 10000), float64, chunks=(1000, 1000), order=C)
-          compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
-          nbytes: 762.9M; nbytes_stored: 317; ratio: 2523659.3; initialized: 0/100
+          compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
+          nbytes: 762.9M; nbytes_stored: 313; ratio: 2555910.5; initialized: 0/100
           store: builtins.dict
         >>> z.resize(20000, 10000)
         >>> z
         zarr.core.Array((20000, 10000), float64, chunks=(1000, 1000), order=C)
-          compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
-          nbytes: 1.5G; nbytes_stored: 317; ratio: 5047318.6; initialized: 0/200
+          compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
+          nbytes: 1.5G; nbytes_stored: 313; ratio: 5111821.1; initialized: 0/200
           store: builtins.dict
         >>> z.resize(30000, 1000)
         >>> z
         zarr.core.Array((30000, 1000), float64, chunks=(1000, 1000), order=C)
-          compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
-          nbytes: 228.9M; nbytes_stored: 316; ratio: 759493.7; initialized: 0/30
+          compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
+          nbytes: 228.9M; nbytes_stored: 312; ratio: 769230.8; initialized: 0/30
           store: builtins.dict
 
         Notes
@@ -686,20 +686,20 @@ class Array(object):
         >>> z = zarr.array(a, chunks=(1000, 100))
         >>> z
         zarr.core.Array((10000, 1000), int32, chunks=(1000, 100), order=C)
-          compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
-          nbytes: 38.1M; nbytes_stored: 2.0M; ratio: 19.3; initialized: 100/100
+          compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
+          nbytes: 38.1M; nbytes_stored: 1.9M; ratio: 20.0; initialized: 100/100
           store: builtins.dict
         >>> z.append(a)
         >>> z
         zarr.core.Array((20000, 1000), int32, chunks=(1000, 100), order=C)
-          compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
-          nbytes: 76.3M; nbytes_stored: 4.0M; ratio: 19.3; initialized: 200/200
+          compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
+          nbytes: 76.3M; nbytes_stored: 3.8M; ratio: 20.0; initialized: 200/200
           store: builtins.dict
         >>> z.append(np.vstack([a, a]), axis=1)
         >>> z
         zarr.core.Array((20000, 2000), int32, chunks=(1000, 100), order=C)
-          compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
-          nbytes: 152.6M; nbytes_stored: 7.9M; ratio: 19.3; initialized: 400/400
+          compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
+          nbytes: 152.6M; nbytes_stored: 7.6M; ratio: 20.0; initialized: 400/400
           store: builtins.dict
 
         """

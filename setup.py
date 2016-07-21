@@ -36,9 +36,19 @@ def blosc_extension():
     blosc_sources += glob('c-blosc/internal-complibs/lz4*/*.c')
     blosc_sources += glob('c-blosc/internal-complibs/snappy*/*.cc')
     blosc_sources += glob('c-blosc/internal-complibs/zlib*/*.c')
+    blosc_sources += glob('c-blosc/internal-complibs/zstd*/common/*.c')
+    blosc_sources += glob('c-blosc/internal-complibs/zstd*/compress/*.c')
+    blosc_sources += glob('c-blosc/internal-complibs/zstd*/decompress/*.c')
+    blosc_sources += glob('c-blosc/internal-complibs/zstd*/dictBuilder/*.c')
     include_dirs += [os.path.join('c-blosc', 'blosc')]
-    include_dirs += glob('c-blosc/internal-complibs/*')
-    define_macros += [('HAVE_LZ4', 1), ('HAVE_SNAPPY', 1), ('HAVE_ZLIB', 1)]
+    include_dirs += [d for d in glob('c-blosc/internal-complibs/*')
+                     if os.path.isdir(d)]
+    include_dirs += [d for d in glob('c-blosc/internal-complibs/*/*')
+                     if os.path.isdir(d)]
+    define_macros += [('HAVE_LZ4', 1),
+                      ('HAVE_SNAPPY', 1),
+                      ('HAVE_ZLIB', 1),
+                      ('HAVE_ZSTD', 1)]
     # define_macros += [('CYTHON_TRACE', '1')]
 
     # determine CPU support for SSE2 and AVX2

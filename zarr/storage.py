@@ -58,7 +58,7 @@ def init_store(store, shape, chunks, dtype=None, compression='default',
         "compression": "blosc",
         "compression_opts": {
             "clevel": 5,
-            "cname": "blosclz",
+            "cname": "lz4",
             "shuffle": 1
         },
         "dtype": "<f8",
@@ -137,7 +137,7 @@ class DirectoryStore(MutableMapping):
         "compression": "blosc",
         "compression_opts": {
             "clevel": 5,
-            "cname": "blosclz",
+            "cname": "lz4",
             "shuffle": 1
         },
         "dtype": "<f8",
@@ -154,8 +154,8 @@ class DirectoryStore(MutableMapping):
     >>> z = zarr.Array(store)
     >>> z
     zarr.core.Array((10000, 10000), float64, chunks=(1000, 1000), order=C)
-      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
-      nbytes: 762.9M; nbytes_stored: 317; ratio: 2523659.3; initialized: 0/100
+      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
+      nbytes: 762.9M; nbytes_stored: 313; ratio: 2555910.5; initialized: 0/100
       store: zarr.storage.DirectoryStore
     >>> z[:] = 1
     >>> len(os.listdir('example.zarr'))
@@ -163,7 +163,7 @@ class DirectoryStore(MutableMapping):
     >>> sorted(os.listdir('example.zarr'))[0:5]
     ['0.0', '0.1', '0.2', '0.3', '0.4']
     >>> print(open('example.zarr/0.0', 'rb').read(10))
-    b'\\x02\\x01\\x01\\x08\\x00\\x12z\\x00\\x00\\x80'
+    b'\\x02\\x01!\\x08\\x00\\x12z\\x00\\x00\\x80'
 
     See Also
     --------

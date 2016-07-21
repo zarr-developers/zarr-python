@@ -95,7 +95,7 @@ else:
         """  # flake8: noqa
 
         canonical_name = 'blosc'
-        default_cname = 'blosclz'
+        default_cname = 'lz4'
         default_clevel = 5
         default_shuffle = 1
 
