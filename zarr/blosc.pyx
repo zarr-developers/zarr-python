@@ -25,8 +25,10 @@ cdef extern from "blosc.h":
 
     void blosc_init()
     void blosc_destroy()
+    int blosc_get_nthreads()
     int blosc_set_nthreads(int nthreads)
     int blosc_set_compressor(const char *compname)
+    char* blosc_list_compressors()
     int blosc_compress(int clevel, int doshuffle, size_t typesize,
                        size_t nbytes, void *src, void *dest,
                        size_t destsize) nogil
@@ -63,6 +65,17 @@ def compname_to_compcode(cname):
     if isinstance(cname, text_type):
         cname = cname.encode('ascii')
     return blosc_compname_to_compcode(cname)
+
+
+def list_compressors():
+    return text_type(blosc_list_compressors(), 'ascii').split(',')
+
+
+def get_nthreads():
+    """Get the number of threads that Blosc uses internally for compression
+    and decompression.
+    ."""
+    return blosc_get_nthreads()
 
 
 def set_nthreads(int nthreads):

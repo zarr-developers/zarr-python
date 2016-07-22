@@ -21,8 +21,8 @@ example::
     >>> z = zarr.zeros((10000, 10000), chunks=(1000, 1000), dtype='i4')
     >>> z
     zarr.core.Array((10000, 10000), int32, chunks=(1000, 1000), order=C)
-      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
-      nbytes: 381.5M; nbytes_stored: 317; ratio: 1261829.7; initialized: 0/100
+      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
+      nbytes: 381.5M; nbytes_stored: 313; ratio: 1277955.3; initialized: 0/100
       store: builtins.dict
 
 The code above creates a 2-dimensional array of 32-bit integers with
@@ -44,7 +44,7 @@ scalar value::
     >>> z[:] = 42
     >>> z
     zarr.core.Array((10000, 10000), int32, chunks=(1000, 1000), order=C)
-      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
+      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
       nbytes: 381.5M; nbytes_stored: 2.2M; ratio: 170.4; initialized: 100/100
       store: builtins.dict
 
@@ -92,8 +92,8 @@ enabling persistence of data between sessions. For example::
     ...                chunks=(1000, 1000), dtype='i4', fill_value=0)
     >>> z1
     zarr.core.Array((10000, 10000), int32, chunks=(1000, 1000), order=C)
-      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
-      nbytes: 381.5M; nbytes_stored: 317; ratio: 1261829.7; initialized: 0/100
+      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
+      nbytes: 381.5M; nbytes_stored: 313; ratio: 1277955.3; initialized: 0/100
       store: zarr.storage.DirectoryStore
 
 The array above will store its configuration metadata and all
@@ -116,8 +116,8 @@ Check that the data have been written and can be read again::
     >>> z2 = zarr.open('example.zarr', mode='r')
     >>> z2
     zarr.core.Array((10000, 10000), int32, chunks=(1000, 1000), order=C)
-      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
-      nbytes: 381.5M; nbytes_stored: 2.3M; ratio: 163.8; initialized: 100/100
+      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
+      nbytes: 381.5M; nbytes_stored: 2.3M; ratio: 163.9; initialized: 100/100
       store: zarr.storage.DirectoryStore
     >>> np.all(z1[:] == z2[:])
     True
@@ -135,8 +135,8 @@ can be increased or decreased in length. For example::
     >>> z.resize(20000, 10000)
     >>> z
     zarr.core.Array((20000, 10000), float64, chunks=(1000, 1000), order=C)
-      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
-      nbytes: 1.5G; nbytes_stored: 5.9M; ratio: 259.9; initialized: 100/200
+      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
+      nbytes: 1.5G; nbytes_stored: 5.7M; ratio: 268.5; initialized: 100/200
       store: builtins.dict
 
 Note that when an array is resized, the underlying data are not
@@ -151,20 +151,20 @@ which can be used to append data to any axis. E.g.::
     >>> z = zarr.array(a, chunks=(1000, 100))
     >>> z
     zarr.core.Array((10000, 1000), int32, chunks=(1000, 100), order=C)
-      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
-      nbytes: 38.1M; nbytes_stored: 2.0M; ratio: 19.3; initialized: 100/100
+      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
+      nbytes: 38.1M; nbytes_stored: 1.9M; ratio: 20.0; initialized: 100/100
       store: builtins.dict
     >>> z.append(a)
     >>> z
     zarr.core.Array((20000, 1000), int32, chunks=(1000, 100), order=C)
-      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
-      nbytes: 76.3M; nbytes_stored: 4.0M; ratio: 19.3; initialized: 200/200
+      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
+      nbytes: 76.3M; nbytes_stored: 3.8M; ratio: 20.0; initialized: 200/200
       store: builtins.dict
     >>> z.append(np.vstack([a, a]), axis=1)
     >>> z
     zarr.core.Array((20000, 2000), int32, chunks=(1000, 100), order=C)
-      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
-      nbytes: 152.6M; nbytes_stored: 7.9M; ratio: 19.3; initialized: 400/400
+      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
+      nbytes: 152.6M; nbytes_stored: 7.6M; ratio: 20.0; initialized: 400/400
       store: builtins.dict
 
 .. _tutorial_compress:
@@ -188,16 +188,23 @@ functions. For example::
 
     >>> z = zarr.array(np.arange(100000000, dtype='i4').reshape(10000, 10000),
     ...                chunks=(1000, 1000), compression='blosc',
-    ...                compression_opts=dict(cname='lz4', clevel=3, shuffle=2))
+    ...                compression_opts=dict(cname='zstd', clevel=3, shuffle=2))
     >>> z
     zarr.core.Array((10000, 10000), int32, chunks=(1000, 1000), order=C)
-      compression: blosc; compression_opts: {'clevel': 3, 'cname': 'lz4', 'shuffle': 2}
-      nbytes: 381.5M; nbytes_stored: 17.6M; ratio: 21.7; initialized: 100/100
+      compression: blosc; compression_opts: {'clevel': 3, 'cname': 'zstd', 'shuffle': 2}
+      nbytes: 381.5M; nbytes_stored: 3.1M; ratio: 121.1; initialized: 100/100
       store: builtins.dict
 
 The array above will use Blosc as the primary compressor, using the
-LZ4 algorithm (compression level 3) internally within Blosc, and with
+Zstandard algorithm (compression level 3) internally within Blosc, and with
 the bitshuffle filter applied.
+
+A list of the internal compression libraries available within Blosc can be
+obtained via::
+
+    >>> from zarr import blosc
+    >>> blosc.list_compressors()
+    ['blosclz', 'lz4', 'lz4hc', 'snappy', 'zlib', 'zstd']
 
 In addition to Blosc, other compression libraries can also be
 used. Zarr comes with support for zlib, BZ2 and LZMA compression, via
@@ -270,8 +277,8 @@ array with thread synchronization::
     ...                 synchronizer=zarr.ThreadSynchronizer())
     >>> z
     zarr.sync.SynchronizedArray((10000, 10000), int32, chunks=(1000, 1000), order=C)
-      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
-      nbytes: 381.5M; nbytes_stored: 317; ratio: 1261829.7; initialized: 0/100
+      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
+      nbytes: 381.5M; nbytes_stored: 313; ratio: 1277955.3; initialized: 0/100
       store: builtins.dict; synchronizer: zarr.sync.ThreadSynchronizer
 
 This array is safe to read or write within a multi-threaded program.
@@ -285,8 +292,8 @@ provided that all processes have access to a shared file system. E.g.::
     ...               synchronizer=synchronizer)
     >>> z
     zarr.sync.SynchronizedArray((10000, 10000), int32, chunks=(1000, 1000), order=C)
-      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
-      nbytes: 381.5M; nbytes_stored: 317; ratio: 1261829.7; initialized: 0/100
+      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
+      nbytes: 381.5M; nbytes_stored: 313; ratio: 1277955.3; initialized: 0/100
       store: zarr.storage.DirectoryStore; synchronizer: zarr.sync.ProcessSynchronizer
 
 This array is safe to read or write from multiple processes.
@@ -350,13 +357,13 @@ data. E.g.::
     >>> a = np.arange(100000000, dtype='i4').reshape(10000, 10000).T
     >>> zarr.array(a, chunks=(1000, 1000))
     zarr.core.Array((10000, 10000), int32, chunks=(1000, 1000), order=C)
-      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
-      nbytes: 381.5M; nbytes_stored: 26.1M; ratio: 14.6; initialized: 100/100
+      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
+      nbytes: 381.5M; nbytes_stored: 26.3M; ratio: 14.5; initialized: 100/100
       store: builtins.dict
     >>> zarr.array(a, chunks=(1000, 1000), order='F')
     zarr.core.Array((10000, 10000), int32, chunks=(1000, 1000), order=F)
-      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'blosclz', 'shuffle': 1}
-      nbytes: 381.5M; nbytes_stored: 10.0M; ratio: 38.0; initialized: 100/100
+      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
+      nbytes: 381.5M; nbytes_stored: 9.5M; ratio: 40.1; initialized: 100/100
       store: builtins.dict
 
 In the above example, Fortran order gives a better compression ratio. This
@@ -460,12 +467,12 @@ Configuring Blosc
 
 The Blosc compressor is able to use multiple threads internally to
 accelerate compression and decompression. By default, Zarr allows
-Blosc to use up to 4 internal threads. The number of Blosc threads can
-be changed, e.g.::
+Blosc to use up to 8 internal threads. The number of Blosc threads can
+be changed to increase or decrease this number, e.g.::
 
     >>> from zarr import blosc
     >>> blosc.set_nthreads(2)
-    4
+    8
 
 When a Zarr array is being used within a multi-threaded program, Zarr
 automatically switches to using Blosc in a single-threaded

@@ -21,6 +21,5 @@ except ImportError:  # pragma: no cover
 else:
     ncores = multiprocessing.cpu_count()
     blosc.init()
-    # diminishing returns beyond 4 threads?
-    blosc.set_nthreads(min(4, ncores))
+    blosc.set_nthreads(min(8, ncores))
     atexit.register(blosc.destroy)

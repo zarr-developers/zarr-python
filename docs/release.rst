@@ -1,6 +1,21 @@
 Release notes
 =============
 
+.. _release_1.1.0:
+
+1.1.0
+-----
+
+* The bundled Blosc library has been upgraded to version 1.10.0. The 'zstd'
+  internal compression library is now available within Blosc. See the tutorial
+  section on :ref:`tutorial_compression` for an example.
+* When using the Blosc compressor, the default internal compression library
+  is now 'lz4'.
+* The default number of internal threads for the Blosc compressor has been
+  increased to a maximum of 8 (previously 4).
+* Added convenience functions :func:`zarr.blosc.list_compressors` and
+  :func:`zarr.blosc.get_nthreads`.
+
 .. _release_1.0.0:
 
 1.0.0
