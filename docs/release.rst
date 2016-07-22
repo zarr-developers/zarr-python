@@ -13,6 +13,8 @@ Release notes
   is now 'lz4'.
 * The default number of internal threads for the Blosc compressor has been
   increased to a maximum of 8 (previously 4).
+* Added convenience functions :func:`zarr.blosc.list_compressors` and
+  :func:`zarr.blosc.get_nthreads`.
 
 .. _release_1.0.0:
 
