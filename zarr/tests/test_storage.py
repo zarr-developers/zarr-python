@@ -123,8 +123,12 @@ class TestDirectoryMap(MappingTests, unittest.TestCase):
         eq(7, m.size)
 
     def test_path(self):
+
+        # test behaviour with path that does not exist
         with assert_raises(ValueError):
-            DirectoryStore('doesnotexist')
+            DirectoryStore('doesnotexist', readonly=True)
+
+        # test behaviour with file path
         with tempfile.NamedTemporaryFile() as f:
             with assert_raises(ValueError):
                 DirectoryStore(f.name)
