@@ -84,6 +84,14 @@ class Group(object):
             elif check_group(store):
                 yield key, Group(store, readonly=self.readonly)
 
+    def groups(self):
+        # TODO
+        pass
+
+    def arrays(self):
+        # TODO
+        pass
+
     def create_group(self, name):
 
         # handle compound request
@@ -179,6 +187,7 @@ class Group(object):
 
 
 def group(store=None, readonly=False):
+    """TODO"""
     if store is None:
         store = MemoryStore(readonly=readonly)
     init_group(store)
@@ -186,6 +195,7 @@ def group(store=None, readonly=False):
 
 
 def open_group(path, mode='a'):
+    """TODO"""
 
     # ensure directory exists
     if not os.path.exists(path):
