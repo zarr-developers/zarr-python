@@ -8,7 +8,7 @@ import numpy as np
 
 from zarr.core import Array
 from zarr.sync import SynchronizedArray
-from zarr.storage import DirectoryStore, init_store
+from zarr.storage import DirectoryStore, init_array, check_array, check_group
 
 
 def create(shape, chunks, dtype=None, compression='default',
@@ -65,7 +65,7 @@ def create(shape, chunks, dtype=None, compression='default',
     # initialise store
     if store is None:
         store = dict()
-    init_store(store, shape=shape, chunks=chunks, dtype=dtype,
+    init_array(store, shape=shape, chunks=chunks, dtype=dtype,
                compression=compression, compression_opts=compression_opts,
                fill_value=fill_value, order=order, overwrite=overwrite)
 
@@ -321,7 +321,12 @@ def open(path, mode='a', shape=None, chunks=None, dtype=None,
 
     # setup store
     store = DirectoryStore(path)
-    exists = 'meta' in store  # use metadata key as indicator of existence
+
+    # store can either hold array or group, not both
+    if check_group(store):
+        raise ValueError('path contains group')
+
+    exists = check_array(store)
 
     # ensure store is initialized
     if mode in ['r', 'r+'] and not exists:
@@ -329,7 +334,7 @@ def open(path, mode='a', shape=None, chunks=None, dtype=None,
     elif mode in ['w-', 'x'] and exists:
         raise ValueError('array exists')
     elif mode == 'w' or (mode in ['a', 'w-', 'x'] and not exists):
-        init_store(store, shape=shape, chunks=chunks, dtype=dtype,
+        init_array(store, shape=shape, chunks=chunks, dtype=dtype,
                    compression=compression, compression_opts=compression_opts,
                    fill_value=fill_value, order=order, overwrite=True)
 

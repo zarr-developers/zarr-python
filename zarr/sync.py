@@ -79,7 +79,7 @@ class SynchronizedArray(Array):
     --------
     >>> import zarr
     >>> store = dict()
-    >>> zarr.init_store(store, shape=1000, chunks=100)
+    >>> zarr.init_array(store, shape=1000, chunks=100)
     >>> synchronizer = zarr.ThreadSynchronizer()
     >>> z = zarr.SynchronizedArray(store, synchronizer)
     >>> z

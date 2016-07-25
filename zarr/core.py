@@ -57,7 +57,7 @@ class Array(object):
     --------
     >>> import zarr
     >>> store = dict()
-    >>> zarr.init_store(store, shape=(10000, 10000), chunks=(1000, 1000))
+    >>> zarr.init_array(store, shape=(10000, 10000), chunks=(1000, 1000))
     >>> z = zarr.Array(store)
     >>> z
     zarr.core.Array((10000, 10000), float64, chunks=(1000, 1000), order=C)
@@ -71,8 +71,7 @@ class Array(object):
         # N.B., expect at this point store is fully initialised with all
         # configuration metadata fully specified and normalised
 
-        #: store docstring
-        self._store = store  #: inline docstring
+        self._store = store
         self._readonly = readonly
 
         # initialise metadata

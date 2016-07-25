@@ -12,7 +12,7 @@ from numpy.testing import assert_array_equal
 from nose.tools import eq_ as eq, assert_is_instance, \
     assert_raises, assert_true, assert_false
 import zict
-from zarr.storage import DirectoryStore, init_store
+from zarr.storage import DirectoryStore, init_array
 
 
 from zarr.core import Array
@@ -29,7 +29,7 @@ def test_array_init():
 def test_nbytes_stored():
 
     store = dict()
-    init_store(store, shape=1000, chunks=100)
+    init_array(store, shape=1000, chunks=100)
     z = Array(store)
     eq(sum(len(v) for v in store.values()), z.nbytes_stored)
     z[:] = 42
@@ -39,7 +39,7 @@ def test_nbytes_stored():
     path = mkdtemp()
     atexit.register(shutil.rmtree, path)
     store = DirectoryStore(path)
-    init_store(store, shape=1000, chunks=100)
+    init_array(store, shape=1000, chunks=100)
     z = Array(store)
     eq(sum(len(v) for v in store.values()), z.nbytes_stored)
     z[:] = 42
@@ -47,7 +47,7 @@ def test_nbytes_stored():
 
     # custom store, doesn't support size determination
     store = zict.Zip('test.zip', mode='w')
-    init_store(store, shape=1000, chunks=100, compression='zlib',
+    init_array(store, shape=1000, chunks=100, compression='zlib',
                compression_opts=1)
     z = Array(store)
     eq(-1, z.nbytes_stored)
@@ -60,7 +60,7 @@ class TestArray(unittest.TestCase):
     def create_array(self, store=None, readonly=False, **kwargs):
         if store is None:
             store = dict()
-        init_store(store, **kwargs)
+        init_array(store, **kwargs)
         return Array(store, readonly=readonly)
 
     def test_array_1d(self):

@@ -4,6 +4,7 @@ from collections import MutableMapping
 import os
 import tempfile
 import json
+import shutil
 
 
 import numpy as np
@@ -12,9 +13,10 @@ import numpy as np
 from zarr.util import normalize_shape, normalize_chunks, normalize_order
 from zarr.compressors import get_compressor_cls
 from zarr.meta import encode_metadata
+from zarr.errors import ReadOnlyError
 
 
-def init_store(store, shape, chunks, dtype=None, compression='default',
+def init_array(store, shape, chunks, dtype=None, compression='default',
                compression_opts=None, fill_value=None,
                order='C', overwrite=False):
     """Initialise an array store with the given configuration.
@@ -46,7 +48,7 @@ def init_store(store, shape, chunks, dtype=None, compression='default',
     --------
     >>> import zarr
     >>> store = dict()
-    >>> zarr.init_store(store, shape=(10000, 10000), chunks=(1000, 1000))
+    >>> zarr.init_array(store, shape=(10000, 10000), chunks=(1000, 1000))
     >>> sorted(store.keys())
     ['attrs', 'meta']
     >>> print(str(store['meta'], 'ascii'))
@@ -110,7 +112,149 @@ def init_store(store, shape, chunks, dtype=None, compression='default',
     store['attrs'] = json.dumps(dict()).encode('ascii')
 
 
-class DirectoryStore(MutableMapping):
+# backwards compatibility
+init_store = init_array
+
+
+def init_group(store, overwrite=False):
+    """Initialise a group store.
+
+    Parameters
+    ----------
+    store : MutableMapping
+        A mapping that supports string keys and byte sequence values.
+    overwrite : bool, optional
+        If True, erase all data in `store` prior to initialisation.
+
+    """
+
+    # guard conditions
+    empty = len(store) == 0
+    if not empty and not overwrite:
+        raise ValueError('store is not empty')
+
+    # delete any pre-existing items in store
+    store.clear()
+
+    # initialise attributes
+    store['attrs'] = json.dumps(dict()).encode('ascii')
+
+
+def check_array(store):
+    return 'meta' in store
+
+
+def check_group(store):
+    return 'meta' not in store and 'attrs' in store
+
+
+class HierarchicalStore(object):
+    """Abstract base class for hierarchical storage."""
+
+    def create_store(self, name):
+        raise NotImplementedError()
+
+    def get_store(self, name):
+        raise NotImplementedError()
+
+    def require_store(self, name):
+        raise NotImplementedError()
+
+    def has_store(self, name):
+        raise NotImplementedError()
+
+    def del_store(self, name):
+        raise NotImplementedError()
+
+    def stores(self):
+        raise NotImplementedError()
+
+
+class MemoryStore(MutableMapping, HierarchicalStore):
+    """TODO"""
+
+    def __init__(self, readonly=False):
+        self.container = dict()
+        self.readonly = readonly
+
+    def __getitem__(self, key):
+        return self.container.__getitem__(key)
+
+    def __setitem__(self, key, value):
+        if self.readonly:
+            raise ReadOnlyError('storage is read-only')
+        self.container.__setitem__(key, value)
+
+    def __delitem__(self, key):
+        if self.readonly:
+            raise ReadOnlyError('storage is read-only')
+        self.container.__delitem__(key)
+
+    def __contains__(self, key):
+        return self.container.__contains__(key)
+
+    def __iter__(self):
+        return self.container.__iter__()
+
+    def __len__(self):
+        return self.container.__len__()
+
+    def keys(self):
+        return self.container.keys()
+
+    def values(self):
+        return self.container.values()
+
+    def items(self):
+        return self.container.items()
+
+    def create_store(self, name):
+        if self.readonly:
+            raise ReadOnlyError('storage is read-only')
+        if name in self.container:
+            raise KeyError(name)
+        store = MemoryStore()
+        self.container[name] = store
+        return store
+
+    def has_store(self, name):
+        if name in self.container:
+            v = self.container[name]
+            return isinstance(v, MutableMapping)
+        raise False
+
+    def get_store(self, name):
+        v = self.container[name]
+        if isinstance(v, MutableMapping):
+            return v
+        else:
+            raise KeyError(name)
+
+    def require_store(self, name):
+        if name in self.container:
+            return self.get_store(name)
+        else:
+            return self.create_store(name)
+
+    def del_store(self, name):
+        if self.readonly:
+            raise ReadOnlyError('storage is read-only')
+        self.get_store(name)  # will raise KeyError if store not found
+        del self.container[name]
+
+    def stores(self):
+        return ((n, v) for (n, v) in self.items()
+                if isinstance(v, MutableMapping))
+
+    @property
+    def size(self):
+        """Total size of all values in number of bytes."""
+        # TODO need to ensure values are bytes for this to work properly?
+        return sum(len(v) for v in self.values()
+                   if not isinstance(v, MutableMapping))
+
+
+class DirectoryStore(MutableMapping, HierarchicalStore):
     """Mutable Mapping interface to a directory. Keys must be strings,
     values must be bytes-like objects.
 
@@ -123,7 +267,7 @@ class DirectoryStore(MutableMapping):
     --------
     >>> import zarr
     >>> store = zarr.DirectoryStore('example.zarr')
-    >>> zarr.init_store(store, shape=(10000, 10000), chunks=(1000, 1000),
+    >>> zarr.init_array(store, shape=(10000, 10000), chunks=(1000, 1000),
     ...                 fill_value=0, overwrite=True)
     >>> import os
     >>> sorted(os.listdir('example.zarr'))
@@ -171,16 +315,20 @@ class DirectoryStore(MutableMapping):
 
     """  # flake8: noqa
 
-    def __init__(self, path):
+    def __init__(self, path, readonly=False):
 
         # guard conditions
         path = os.path.abspath(path)
         if not os.path.exists(path):
-            raise ValueError('path does not exist')
+            if readonly:
+                raise ValueError('path does not exist')
+            else:
+                os.makedirs(path)
         elif not os.path.isdir(path):
-            raise ValueError('path is not a directory')
+            raise ValueError('path exists but is not a directory')
 
         self.path = path
+        self.readonly = readonly
 
     def __getitem__(self, key):
 
@@ -188,14 +336,28 @@ class DirectoryStore(MutableMapping):
         if key not in self:
             raise KeyError(key)
 
-        with open(os.path.join(self.path, key), 'rb') as f:
-            return f.read()
+        # item path
+        path = self.abspath(key)
+
+        # deal with sub-directories
+        if os.path.isdir(path):
+            return DirectoryStore(path, readonly=self.readonly)
+        else:
+            with open(path, 'rb') as f:
+                return f.read()
 
     def __setitem__(self, key, value):
         # accept any value that can be written to a file
 
+        if self.readonly:
+            raise ReadOnlyError('storage is read-only')
+
         # destination path for key
-        dest_path = os.path.join(self.path, key)
+        path = self.abspath(key)
+
+        # deal with sub-directories
+        if os.path.isdir(path):
+            raise ValueError('key refers to sub-directory: %s' % key)
 
         # write to temporary file
         with tempfile.NamedTemporaryFile(mode='wb', delete=False,
@@ -206,25 +368,34 @@ class DirectoryStore(MutableMapping):
             temp_path = f.name
 
         # move temporary file into place
-        if os.path.exists(dest_path):
-            os.remove(dest_path)
-        os.rename(temp_path, dest_path)
+        if os.path.exists(path):
+            os.remove(path)
+        os.rename(temp_path, path)
 
     def __delitem__(self, key):
+
+        if self.readonly:
+            raise ReadOnlyError('store is read-only')
 
         # guard conditions
         if key not in self:
             raise KeyError(key)
 
-        os.remove(os.path.join(self.path, key))
+        path = self.abspath(key)
+
+        # deal with sub-directories
+        if os.path.isdir(path):
+            shutil.rmtree(path)
+        else:
+            os.remove(path)
 
     def __contains__(self, key):
-        return os.path.isfile(os.path.join(self.path, key))
+        path = self.abspath(key)
+        return os.path.exists(path)
 
     def keys(self):
         for key in os.listdir(self.path):
-            if os.path.isfile(os.path.join(self.path, key)):
-                yield key
+            yield key
 
     def __iter__(self):
         return self.keys()
@@ -232,8 +403,55 @@ class DirectoryStore(MutableMapping):
     def __len__(self):
         return sum(1 for _ in self.keys())
 
+    def abspath(self, name):
+        if any(sep in name for sep in '/\\'):
+            raise ValueError('invalid name: %s' % name)
+        return os.path.join(self.path, name)
+
+    def has_store(self, name):
+        path = self.abspath(name)
+        return os.path.isdir(path)
+
+    def require_store(self, name):
+        path = self.abspath(name)
+        if os.path.exists(path):
+            return self.get_store(name)
+        else:
+            return self.create_store(name)
+
+    def get_store(self, name):
+        path = self.abspath(name)
+        if not os.path.isdir(path):
+            raise KeyError(name)
+        return DirectoryStore(path, readonly=self.readonly)
+
+    def create_store(self, name):
+        if self.readonly:
+            raise ReadOnlyError('store is read-only')
+        path = self.abspath(name)
+        if os.path.exists(path):
+            raise KeyError(name)
+        os.mkdir(path)
+        return DirectoryStore(path, readonly=self.readonly)
+
+    def del_store(self, name):
+        if self.readonly:
+            raise ReadOnlyError('store is read-only')
+        path = self.abspath(name)
+        if not os.path.isdir(path):
+            raise KeyError(name)
+        shutil.rmtree(path)
+
+    def stores(self):
+        for key in self.keys():
+            path = self.abspath(key)
+            if os.path.isdir(path):
+                yield key, DirectoryStore(path, readonly=self.readonly)
+
     @property
     def size(self):
         """Total size of all values in number of bytes."""
-        return sum(os.path.getsize(os.path.join(self.path, key))
-                   for key in self.keys())
+        paths = (os.path.join(self.path, key) for key in self.keys())
+        return sum(os.path.getsize(path)
+                   for path in paths
+                   if os.path.isfile(path))
