@@ -179,9 +179,9 @@ class Array(object):
         """The total number of stored bytes of data for the array. This
         includes storage required for configuration metadata and user
         attributes encoded as JSON."""
-        if hasattr(self._store, 'size'):
+        if hasattr(self._store, 'nbytes_stored'):
             # pass through
-            return self._store.size
+            return self._store.nbytes_stored
         elif isinstance(self._store, dict):
             # cheap to compute by summing length of values
             return sum(len(v) for v in itervalues(self._store))

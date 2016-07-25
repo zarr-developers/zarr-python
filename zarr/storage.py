@@ -5,6 +5,7 @@ import os
 import tempfile
 import json
 import shutil
+import io
 
 
 import numpy as np
@@ -14,6 +15,7 @@ from zarr.util import normalize_shape, normalize_chunks, normalize_order
 from zarr.compressors import get_compressor_cls
 from zarr.meta import encode_metadata
 from zarr.errors import ReadOnlyError
+from zarr.compat import PY2, binary_type
 
 
 def init_array(store, shape, chunks, dtype=None, compression='default',
@@ -167,6 +169,18 @@ class HierarchicalStore(object):
         raise NotImplementedError()
 
 
+def ensure_bytes(s):
+    if isinstance(s, binary_type):
+        return s
+    if hasattr(s, 'encode'):
+        return s.encode()
+    if hasattr(s, 'tobytes'):
+        return s.tobytes()
+    if PY2 and hasattr(s, 'tostring'):
+        return s.tostring()
+    return io.BytesIO(s).getvalue()
+
+
 class MemoryStore(MutableMapping, HierarchicalStore):
     """TODO"""
 
@@ -180,6 +194,7 @@ class MemoryStore(MutableMapping, HierarchicalStore):
     def __setitem__(self, key, value):
         if self.readonly:
             raise ReadOnlyError('storage is read-only')
+        value = ensure_bytes(value)
         self.container.__setitem__(key, value)
 
     def __delitem__(self, key):
@@ -244,7 +259,7 @@ class MemoryStore(MutableMapping, HierarchicalStore):
                 if isinstance(v, MutableMapping))
 
     @property
-    def size(self):
+    def nbytes_stored(self):
         """Total size of all values in number of bytes."""
         # TODO need to ensure values are bytes for this to work properly?
         return sum(len(v) for v in self.values()
@@ -446,7 +461,7 @@ class DirectoryStore(MutableMapping, HierarchicalStore):
                 yield key, DirectoryStore(path, readonly=self.readonly)
 
     @property
-    def size(self):
+    def nbytes_stored(self):
         """Total size of all values in number of bytes."""
         paths = (os.path.join(self.path, key) for key in self.keys())
         return sum(os.path.getsize(path)

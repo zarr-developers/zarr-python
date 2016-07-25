@@ -13,15 +13,15 @@ import numpy as np
 from nose.tools import assert_raises, eq_ as eq, assert_is_none
 
 
-from zarr.storage import DirectoryStore, init_store
+from zarr.storage import DirectoryStore, MemoryStore, init_array
 from zarr.meta import decode_metadata
 from zarr.compat import text_type
 
 
-def test_init_store():
+def test_init_array():
 
     store = dict()
-    init_store(store, shape=1000, chunks=100)
+    init_array(store, shape=1000, chunks=100)
 
     # check metadata
     assert 'meta' in store
@@ -38,12 +38,12 @@ def test_init_store():
     eq(dict(), json.loads(text_type(store['attrs'], 'ascii')))
 
 
-def test_init_store_overwrite():
+def test_init_array_overwrite():
 
     store = dict(shape=(2000,), chunks=(200,))
 
     # overwrite
-    init_store(store, shape=1000, chunks=100, overwrite=True)
+    init_array(store, shape=1000, chunks=100, overwrite=True)
     assert 'meta' in store
     meta = decode_metadata(store['meta'])
     eq((1000,), meta['shape'])
@@ -51,76 +51,97 @@ def test_init_store_overwrite():
 
     # don't overwrite
     with assert_raises(ValueError):
-        init_store(store, shape=1000, chunks=100, overwrite=False)
+        init_array(store, shape=1000, chunks=100, overwrite=False)
 
 
-class MappingTests(object):
+class StoreTests(object):
 
-    def create_mapping(self, **kwargs):
+    def create_store(self, **kwargs):
         pass
 
     def test_get_set_del_contains(self):
-        m = self.create_mapping()
-        assert 'foo' not in m
-        m['foo'] = b'bar'
-        assert 'foo' in m
-        eq(b'bar', m['foo'])
-        del m['foo']
-        assert 'foo' not in m
+        store = self.create_store()
+        assert 'foo' not in store
+        store['foo'] = b'bar'
+        assert 'foo' in store
+        eq(b'bar', store['foo'])
+        del store['foo']
+        assert 'foo' not in store
         with assert_raises(KeyError):
-            m['foo']
+            store['foo']
         with assert_raises(KeyError):
-            del m['foo']
+            del store['foo']
         with assert_raises(TypeError):
             # non-writeable value
-            m['foo'] = 42
+            store['foo'] = 42
         # alternative values
-        m['foo'] = bytearray(b'bar')
-        eq(b'bar', m['foo'])
-        m['foo'] = array.array('B', b'bar')
-        eq(b'bar', m['foo'])
+        store['foo'] = bytearray(b'bar')
+        eq(b'bar', store['foo'])
+        store['foo'] = array.array('B', b'bar')
+        eq(b'bar', store['foo'])
 
     def test_update(self):
-        m = self.create_mapping()
-        assert 'foo' not in m
-        assert 'baz' not in m
-        m.update(foo=b'bar', baz=b'quux')
-        eq(b'bar', m['foo'])
-        eq(b'quux', m['baz'])
+        store = self.create_store()
+        assert 'foo' not in store
+        assert 'baz' not in store
+        store.update(foo=b'bar', baz=b'quux')
+        eq(b'bar', store['foo'])
+        eq(b'quux', store['baz'])
 
     def test_iterators(self):
-        m = self.create_mapping()
-        eq(0, len(m))
-        eq(set(), set(m))
-        eq(set(), set(m.keys()))
-        eq(set(), set(m.values()))
-        eq(set(), set(m.items()))
+        store = self.create_store()
+        eq(0, len(store))
+        eq(set(), set(store))
+        eq(set(), set(store.keys()))
+        eq(set(), set(store.values()))
+        eq(set(), set(store.items()))
 
-        m['foo'] = b'bar'
-        m['baz'] = b'quux'
+        store['foo'] = b'bar'
+        store['baz'] = b'quux'
 
-        eq(2, len(m))
-        eq(set(['foo', 'baz']), set(m))
-        eq(set(['foo', 'baz']), set(m.keys()))
-        eq(set([b'bar', b'quux']), set(m.values()))
-        eq(set([('foo', b'bar'), ('baz', b'quux')]), set(m.items()))
+        eq(2, len(store))
+        eq(set(['foo', 'baz']), set(store))
+        eq(set(['foo', 'baz']), set(store.keys()))
+        eq(set([b'bar', b'quux']), set(store.values()))
+        eq(set([('foo', b'bar'), ('baz', b'quux')]), set(store.items()))
+
+    def test_nbytes_stored(self):
+        store = self.create_store()
+        if hasattr(store, 'nbytes_stored'):
+            eq(0, store.nbytes_stored)
+            store['foo'] = b'bar'
+            eq(3, store.nbytes_stored)
+            store['baz'] = b'quux'
+            eq(7, store.nbytes_stored)
+
+    def test_pickle(self):
+        store = self.create_store()
+        store['foo'] = b'bar'
+        store['baz'] = b'quux'
+        store2 = pickle.loads(pickle.dumps(store))
+        eq(len(store), len(store2))
+        eq(b'bar', store2['foo'])
+        eq(b'quux', store2['baz'])
+        eq(list(store.keys()), list(store2.keys()))
+        for k in dir(store):
+            v = getattr(store, k)
+            if not callable(v):
+                eq(v, getattr(store2, k))
 
 
-class TestDirectoryMap(MappingTests, unittest.TestCase):
+class TestMemoryStore(StoreTests, unittest.TestCase):
 
-    def create_mapping(self, **kwargs):
+    def create_store(self, **kwargs):
+        return MemoryStore(**kwargs)
+
+
+class TestDirectoryStore(StoreTests, unittest.TestCase):
+
+    def create_store(self, **kwargs):
         path = tempfile.mkdtemp()
         atexit.register(shutil.rmtree, path)
-        m = DirectoryStore(path, **kwargs)
-        return m
-
-    def test_size(self):
-        m = self.create_mapping()
-        eq(0, m.size)
-        m['foo'] = b'bar'
-        eq(3, m.size)
-        m['baz'] = b'quux'
-        eq(7, m.size)
+        store = DirectoryStore(path, **kwargs)
+        return store
 
     def test_path(self):
 
@@ -133,15 +154,14 @@ class TestDirectoryMap(MappingTests, unittest.TestCase):
             with assert_raises(ValueError):
                 DirectoryStore(f.name)
 
-    def test_pickle(self):
-        m = self.create_mapping()
-        m['foo'] = b'bar'
-        m['baz'] = b'quux'
-        m2 = pickle.loads(pickle.dumps(m))
-        eq(len(m), len(m2))
-        eq(m.path, m2.path)
-        eq(b'bar', m2['foo'])
-        eq(b'quux', m2['baz'])
-        assert 'xxx' not in m
-        m2['xxx'] = b'yyy'
-        eq(b'yyy', m['xxx'])
+    def test_pickle_ext(self):
+        store = self.create_store()
+        store2 = pickle.loads(pickle.dumps(store))
+
+        # check path is preserved
+        eq(store.path, store2.path)
+
+        # check point to same underlying directory
+        assert 'xxx' not in store
+        store2['xxx'] = b'yyy'
+        eq(b'yyy', store['xxx'])
