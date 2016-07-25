@@ -321,6 +321,80 @@ for associating an array with application-specific metadata. For example::
 Internally Zarr uses JSON to store array attributes, so attribute values
 must be JSON serializable.
 
+.. _tutorial_groups:
+
+Groups
+------
+
+Zarr supports hierarchical organization of arrays via groups. As with arrays,
+groups can be stored in memory, on disk, or via other storage systems that
+support a similar interface.
+
+To create a group, use the :func:`zarr.hierarchy.group` function::
+
+    >>> root_group = zarr.group()
+    >>> root_group
+    Group(0)
+      store: zarr.storage.MemoryStore
+
+Groups have a similar API to the Group class from `h5py <http://TODO>`_.
+For example, groups can contain other groups::
+
+    >>> foo_group = root_group.create_group('foo')
+    >>> bar_group = foo_group.create_group('bar')
+
+Groups can also contain arrays, also known as "datasets" in HDF5 terminology.
+For compatibility with h5py, Zarr groups implement the
+:func:`zarr.hierarchy.Group.create_dataset` method, e.g.::
+
+    >>> z = bar_group.create_dataset('baz', shape=(10000, 10000),
+    ...                              chunks=(1000, 1000), dtype='i4',
+    ...                              fill_value=0)
+    >>> z
+    zarr.core.Array((10000, 10000), int32, chunks=(1000, 1000), order=C)
+      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
+      nbytes: 381.5M; nbytes_stored: 313; ratio: 1277955.3; initialized: 0/100
+      store: zarr.storage.MemoryStore
+
+Members of a group can be accessed via the suffix notation, e.g.::
+
+    >>> root_group['foo']
+    Group(foo, 1)
+      groups: 1; bar
+      store: zarr.storage.MemoryStore
+
+The '/' character can be used to access multiple levels of the hierarchy,
+e.g.::
+
+    >>> root_group['foo/bar']
+    Group(bar, 1)
+      arrays: 1; baz
+      store: zarr.storage.MemoryStore
+    >>> root_group['foo/bar/baz']
+    zarr.core.Array((10000, 10000), int32, chunks=(1000, 1000), order=C)
+      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
+      nbytes: 381.5M; nbytes_stored: 313; ratio: 1277955.3; initialized: 0/100
+      store: zarr.storage.MemoryStore
+
+The :func:`zarr.hierarchy.open_group` provides a convenient way to create or
+re-open a group stored in a directory on the file-system, with sub-groups
+stored in sub-directories, e.g.::
+
+    >>> persistent_group = zarr.open_group('example', mode='w')
+    >>> persistent_group
+    Group(0)
+      store: zarr.storage.DirectoryStore
+    >>> z = persistent_group.create_dataset('ds1', shape=(10000, 10000),
+    ...                                     chunks=(1000, 1000), dtype='i4',
+    ...                                     fill_value=0)
+    >>> z
+    zarr.core.Array((10000, 10000), int32, chunks=(1000, 1000), order=C)
+      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
+      nbytes: 381.5M; nbytes_stored: 313; ratio: 1277955.3; initialized: 0/100
+      store: zarr.storage.DirectoryStore
+
+For more information on groups see the :mod:`zarr.hierarchy` API docs.
+
 .. _tutorial_tips:
 
 Tips and tricks

@@ -66,3 +66,5 @@ zarr/version.py
 *.zarr
 *~
 *.zip
+example
+

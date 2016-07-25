@@ -6,6 +6,7 @@ API reference
 
     api/creation
     api/core
+    api/hierarchy
     api/storage
     api/compressors
     api/sync

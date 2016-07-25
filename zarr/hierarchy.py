@@ -13,10 +13,11 @@ from zarr.creation import array, create
 class Group(object):
     """TODO"""
 
-    def __init__(self, store, readonly=False):
+    def __init__(self, store, readonly=False, name=None):
 
         self._store = store
         self._readonly = readonly
+        self._name = name
 
         # initialise attributes
         self._attrs = Attributes(store, readonly=readonly)
@@ -32,6 +33,11 @@ class Group(object):
         return self._readonly
 
     @property
+    def name(self):
+        """TODO"""
+        return self._name
+
+    @property
     def attrs(self):
         """TODO"""
         return self._attrs
@@ -43,8 +49,28 @@ class Group(object):
         return sum(1 for _ in self.keys())
 
     def __repr__(self):
-        # TODO something better
-        return 'Group(%s)' % len(self)
+        r = 'Group('
+        if self.name:
+            r += self.name + ', '
+        r += str(len(self))
+        r += ')'
+        array_keys = list(self.array_keys())
+        if array_keys:
+            arrays_line = '\n  arrays: %s; %s' % \
+                (len(array_keys), ', '.join(array_keys))
+            if len(arrays_line) > 80:
+                arrays_line = arrays_line[:77] + '...'
+            r += arrays_line
+        group_keys = list(self.group_keys())
+        if group_keys:
+            groups_line = '\n  groups: %s; %s' % \
+                (len(group_keys), ', '.join(group_keys))
+            if len(groups_line) > 80:
+                groups_line = groups_line[:77] + '...'
+            r += groups_line
+        r += '\n  store: %s.%s' % (type(self._store).__module__,
+                                   type(self._store).__name__)
+        return r
 
     def __contains__(self, key):
         # TODO
@@ -60,7 +86,7 @@ class Group(object):
         if check_array(store):
             return Array(store, readonly=self.readonly)
         elif check_group(store):
-            return Group(store, readonly=self.readonly)
+            return Group(store, readonly=self.readonly, name=names[-1])
         else:
             raise KeyError(key)
 
@@ -84,13 +110,26 @@ class Group(object):
             elif check_group(store):
                 yield key, Group(store, readonly=self.readonly)
 
+    def group_keys(self):
+        for key, store in self.store.stores():
+            if check_group(store):
+                yield key
+
     def groups(self):
-        # TODO
-        pass
+        for key, store in self.store.stores():
+            if check_group(store):
+                yield key, Group(store, readonly=self.readonly)
+
+    def array_keys(self):
+        for key, store in self.store.stores():
+            if check_array(store):
+                yield key
 
     def arrays(self):
-        # TODO
-        pass
+        for key, store in self.store.stores():
+            if check_array(store):
+                # TODO what about synchronizer?
+                yield key, Array(store, readonly=self.readonly)
 
     def create_group(self, name):
 
@@ -112,7 +151,7 @@ class Group(object):
 
         # create final group (must not exist)
         store = store.create_store(names[-1])
-        return Group(store, readonly=self.readonly)
+        return Group(store, readonly=self.readonly, name=names[-1])
 
     def require_group(self, name):
 
@@ -132,7 +171,7 @@ class Group(object):
             else:
                 init_group(store)
 
-        return Group(store, readonly=self.readonly)
+        return Group(store, readonly=self.readonly, name=names[-1])
 
     def create_dataset(self, name, data=None, shape=None, chunks=None,
                        dtype=None, compression='default',
