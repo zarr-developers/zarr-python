@@ -128,16 +128,13 @@ def init_group(store, overwrite=False):
 
     """
 
-    # guard conditions
-    empty = len(store) == 0
-    if not empty and not overwrite:
-        raise ValueError('store is not empty')
-
     # delete any pre-existing items in store
-    store.clear()
+    if overwrite:
+        store.clear()
 
     # initialise attributes
-    store['attrs'] = json.dumps(dict()).encode('ascii')
+    if 'attrs' not in store:
+        store['attrs'] = json.dumps(dict()).encode('ascii')
 
 
 def check_array(store):

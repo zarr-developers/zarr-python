@@ -209,8 +209,10 @@ def open_group(path, mode='a'):
     elif mode in ['w-', 'x'] and exists:
         raise ValueError('group exists')
     elif (mode == 'w' or
-          (mode in ['a', 'w-', 'x'] and not exists)):
+          (mode in ['w-', 'x'] and not exists)):
         init_group(store, overwrite=True)
+    elif mode == 'a':
+        init_group(store, overwrite=False)
 
     # determine readonly status
     readonly = mode == 'r'
