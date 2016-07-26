@@ -454,33 +454,35 @@ Storage alternatives
 Zarr can use any object that implements the ``MutableMapping`` interface as
 the store for an array.
 
-Here is an example storing an array directly into a Zip file via the
-`zict <https://github.com/mrocklin/zict>`_ package::
+Here is an example storing an array directly into a Zip file::
 
-    >>> import zict
-    >>> import os
-    >>> store = zict.Zip('example.zip', mode='w')
+    >>> store = zarr.ZipStore('example.zip', mode='w')
     >>> z = zarr.zeros((1000, 1000), chunks=(100, 100), dtype='i4',
     ...                compression='zlib', compression_opts=1, store=store)
     >>> z
     zarr.core.Array((1000, 1000), int32, chunks=(100, 100), order=C)
       compression: zlib; compression_opts: 1
-      nbytes: 3.8M; initialized: 0/100
-      store: zict.zip.Zip
+      nbytes: 3.8M; nbytes_stored: 236; ratio: 16949.2; initialized: 0/100
+      store: zarr.storage.ZipStore
     >>> z[:] = 42
-    >>> store.flush()  # only required for zict.Zip
+    >>> z
+    zarr.core.Array((1000, 1000), int32, chunks=(100, 100), order=C)
+      compression: zlib; compression_opts: 1
+      nbytes: 3.8M; nbytes_stored: 21.9K; ratio: 178.3; initialized: 100/100
+      store: zarr.storage.ZipStore
+    >>> import os
     >>> os.path.getsize('example.zip')
     30828
 
 Re-open and check that data have been written::
 
-    >>> store = zict.Zip('example.zip', mode='r')
+    >>> store = zarr.ZipStore('example.zip', mode='r')
     >>> z = zarr.Array(store)
     >>> z
     zarr.core.Array((1000, 1000), int32, chunks=(100, 100), order=C)
       compression: zlib; compression_opts: 1
-      nbytes: 3.8M; initialized: 100/100
-      store: zict.zip.Zip
+      nbytes: 3.8M; nbytes_stored: 21.9K; ratio: 178.3; initialized: 100/100
+      store: zarr.storage.ZipStore
     >>> z[:]
     array([[42, 42, 42, ..., 42, 42, 42],
            [42, 42, 42, ..., 42, 42, 42],

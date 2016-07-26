@@ -535,10 +535,10 @@ static const char *__pyx_filename;
 
 static const char *__pyx_f[] = {
   "zarr/blosc.pyx",
-  ".tox/py35/lib/python3.5/site-packages/Cython/Includes/cpython/array.pxd",
-  ".tox/py35/lib/python3.5/site-packages/Cython/Includes/cpython/type.pxd",
-  ".tox/py35/lib/python3.5/site-packages/Cython/Includes/cpython/bool.pxd",
-  ".tox/py35/lib/python3.5/site-packages/Cython/Includes/cpython/complex.pxd",
+  ".tox/py34/lib/python3.4/site-packages/Cython/Includes/cpython/array.pxd",
+  ".tox/py34/lib/python3.4/site-packages/Cython/Includes/cpython/type.pxd",
+  ".tox/py34/lib/python3.4/site-packages/Cython/Includes/cpython/bool.pxd",
+  ".tox/py34/lib/python3.4/site-packages/Cython/Includes/cpython/complex.pxd",
 };
 
 /*--- Type declarations ---*/

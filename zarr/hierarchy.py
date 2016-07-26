@@ -150,7 +150,14 @@ class Group(object):
                 init_group(store)
 
         # create final group (must not exist)
-        store = store.create_store(names[-1])
+        store = store.require_store(names[-1])
+        if check_array(store):
+            raise KeyError(name)
+        elif check_group(store):
+            raise KeyError(name)
+        else:
+            init_group(store)
+
         return Group(store, readonly=self.readonly, name=names[-1])
 
     def require_group(self, name):
@@ -195,7 +202,11 @@ class Group(object):
                 init_group(store)
 
         # create store to hold the new array (must not exist)
-        store = store.create_store(names[-1])
+        store = store.require_store(names[-1])
+        if check_array(store):
+            raise KeyError(name)
+        elif check_group(store):
+            raise KeyError(name)
 
         # compatibility with h5py
         fill_value = kwargs.get('fillvalue', fill_value)
@@ -228,7 +239,7 @@ class Group(object):
 def group(store=None, readonly=False):
     """TODO"""
     if store is None:
-        store = MemoryStore(readonly=readonly)
+        store = MemoryStore()
     init_group(store)
     return Group(store, readonly=readonly)
 

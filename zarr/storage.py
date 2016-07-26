@@ -151,19 +151,10 @@ def check_group(store):
 class HierarchicalStore(object):
     """Abstract base class for hierarchical storage."""
 
-    def create_store(self, name):
-        raise NotImplementedError
-
     def get_store(self, name):
         raise NotImplementedError
 
     def require_store(self, name):
-        raise NotImplementedError
-
-    def has_store(self, name):
-        raise NotImplementedError
-
-    def del_store(self, name):
         raise NotImplementedError
 
     def stores(self):
@@ -185,22 +176,17 @@ def ensure_bytes(s):
 class MemoryStore(MutableMapping, HierarchicalStore):
     """TODO"""
 
-    def __init__(self, readonly=False):
+    def __init__(self):
         self.container = dict()
-        self.readonly = readonly
 
     def __getitem__(self, key):
         return self.container.__getitem__(key)
 
     def __setitem__(self, key, value):
-        if self.readonly:
-            raise ReadOnlyError('storage is read-only')
         value = ensure_bytes(value)
         self.container.__setitem__(key, value)
 
     def __delitem__(self, key):
-        if self.readonly:
-            raise ReadOnlyError('storage is read-only')
         self.container.__delitem__(key)
 
     def __contains__(self, key):
@@ -221,21 +207,6 @@ class MemoryStore(MutableMapping, HierarchicalStore):
     def items(self):
         return self.container.items()
 
-    def create_store(self, name):
-        if self.readonly:
-            raise ReadOnlyError('storage is read-only')
-        if name in self.container:
-            raise KeyError(name)
-        store = MemoryStore()
-        self.container[name] = store
-        return store
-
-    def has_store(self, name):
-        if name in self.container:
-            v = self.container[name]
-            return isinstance(v, MutableMapping)
-        raise False
-
     def get_store(self, name):
         v = self.container[name]
         if isinstance(v, MutableMapping):
@@ -247,13 +218,9 @@ class MemoryStore(MutableMapping, HierarchicalStore):
         if name in self.container:
             return self.get_store(name)
         else:
-            return self.create_store(name)
-
-    def del_store(self, name):
-        if self.readonly:
-            raise ReadOnlyError('storage is read-only')
-        self.get_store(name)  # will raise KeyError if store not found
-        del self.container[name]
+            store = MemoryStore()
+            self.container[name] = store
+            return store
 
     def stores(self):
         return ((n, v) for (n, v) in self.items()
@@ -328,42 +295,37 @@ class DirectoryStore(MutableMapping, HierarchicalStore):
 
     """  # flake8: noqa
 
-    def __init__(self, path, readonly=False):
+    def __init__(self, path):
 
         # guard conditions
         path = os.path.abspath(path)
         if not os.path.exists(path):
-            if readonly:
-                raise ValueError('path does not exist')
-            else:
-                os.makedirs(path)
-        elif not os.path.isdir(path):
+            os.makedirs(path)
+        if os.path.exists and not os.path.isdir(path):
             raise ValueError('path exists but is not a directory')
 
         self.path = path
-        self.readonly = readonly
+
+    def abspath(self, name):
+        if any(sep in name for sep in '/\\'):
+            raise ValueError('invalid name: %s' % name)
+        return os.path.join(self.path, name)
 
     def __getitem__(self, key):
-
-        # guard conditions
-        if key not in self:
-            raise KeyError(key)
 
         # item path
         path = self.abspath(key)
 
-        # deal with sub-directories
-        if os.path.isdir(path):
-            return DirectoryStore(path, readonly=self.readonly)
+        if not os.path.exists(path):
+            raise KeyError(key)
+        elif os.path.isdir(path):
+            return DirectoryStore(path)
         else:
             with open(path, 'rb') as f:
                 return f.read()
 
     def __setitem__(self, key, value):
         # accept any value that can be written to a file
-
-        if self.readonly:
-            raise ReadOnlyError('storage is read-only')
 
         # destination path for key
         path = self.abspath(key)
@@ -386,18 +348,10 @@ class DirectoryStore(MutableMapping, HierarchicalStore):
         os.rename(temp_path, path)
 
     def __delitem__(self, key):
-
-        if self.readonly:
-            raise ReadOnlyError('store is read-only')
-
-        # guard conditions
-        if key not in self:
-            raise KeyError(key)
-
         path = self.abspath(key)
-
-        # deal with sub-directories
-        if os.path.isdir(path):
+        if not os.path.exists(path):
+            raise KeyError(key)
+        elif os.path.isdir(path):
             shutil.rmtree(path)
         else:
             os.remove(path)
@@ -416,50 +370,21 @@ class DirectoryStore(MutableMapping, HierarchicalStore):
     def __len__(self):
         return sum(1 for _ in self.keys())
 
-    def abspath(self, name):
-        if any(sep in name for sep in '/\\'):
-            raise ValueError('invalid name: %s' % name)
-        return os.path.join(self.path, name)
-
-    def has_store(self, name):
-        path = self.abspath(name)
-        return os.path.isdir(path)
-
-    def require_store(self, name):
-        path = self.abspath(name)
-        if os.path.exists(path):
-            return self.get_store(name)
-        else:
-            return self.create_store(name)
-
     def get_store(self, name):
         path = self.abspath(name)
         if not os.path.isdir(path):
             raise KeyError(name)
-        return DirectoryStore(path, readonly=self.readonly)
+        return DirectoryStore(path)
 
-    def create_store(self, name):
-        if self.readonly:
-            raise ReadOnlyError('store is read-only')
+    def require_store(self, name):
         path = self.abspath(name)
-        if os.path.exists(path):
-            raise KeyError(name)
-        os.mkdir(path)
-        return DirectoryStore(path, readonly=self.readonly)
-
-    def del_store(self, name):
-        if self.readonly:
-            raise ReadOnlyError('store is read-only')
-        path = self.abspath(name)
-        if not os.path.isdir(path):
-            raise KeyError(name)
-        shutil.rmtree(path)
+        return DirectoryStore(path)
 
     def stores(self):
         for key in self.keys():
             path = self.abspath(key)
             if os.path.isdir(path):
-                yield key, DirectoryStore(path, readonly=self.readonly)
+                yield key, DirectoryStore(path)
 
     @property
     def nbytes_stored(self):
@@ -470,45 +395,41 @@ class DirectoryStore(MutableMapping, HierarchicalStore):
                    if os.path.isfile(path))
 
 
+# noinspection PyPep8Naming
 class ZipStore(MutableMapping, HierarchicalStore):
     """TODO"""
 
-    def __init__(self, path, arcpath, readonly=False,
-                 compression=zipfile.ZIP_STORED, allowZip64=True):
+    def __init__(self, path, arcpath=None, compression=zipfile.ZIP_STORED,
+                 allowZip64=True, mode='a'):
 
         # guard conditions
         path = os.path.abspath(path)
-        exists = os.path.exists(path)
-        is_zip = zipfile.is_zipfile(path)
-        if readonly:
-            if not exists:
-                raise ValueError('path does not exist: %s' % path)
-            elif not is_zip:
-                raise ValueError('path is not a zip file: %s' % path)
-        else:
-            if exists and not is_zip:
-                raise ValueError('path is not a zip file: %s' % path)
-
+        # ensure zip file exists
+        with zipfile.ZipFile(path, mode=mode):
+            pass
         self.path = path
 
-        # TODO sanitize/normalize arcpath, maybe not needed?
-        arcpath = os.path.normpath(os.path.splitdrive(arcpath)[1])
-        while arcpath[0] in (os.sep, os.altsep):
-            arcpath= arcpath[1:]
-        while arcpath[-1] in (os.sep, os.altsep):
-            arcpath= arcpath[:-1]
-        if os.sep != "/" and os.sep in arcpath:
-            arcpath = arcpath.replace(os.sep, "/")
+        # sanitize/normalize arcpath, maybe not needed?
+        if arcpath:
+            arcpath = os.path.normpath(os.path.splitdrive(arcpath)[1])
+            while arcpath[0] in (os.sep, os.altsep):
+                arcpath= arcpath[1:]
+            while arcpath[-1] in (os.sep, os.altsep):
+                arcpath= arcpath[:-1]
+            if os.sep != "/" and os.sep in arcpath:
+                arcpath = arcpath.replace(os.sep, "/")
         self.arcpath = arcpath
 
-        self.readonly = readonly
         self.compression = compression
         self.allowZip64 = allowZip64
 
     def arcname(self, key):
         if any(sep in key for sep in '/\\'):
             raise ValueError('invalid key: %s' % key)
-        return '/'.join([self.arcpath, key])
+        if self.arcpath:
+            return '/'.join([self.arcpath, key])
+        else:
+            return key
 
     def __getitem__(self, key):
         arcname = self.arcname(key)
@@ -519,11 +440,11 @@ class ZipStore(MutableMapping, HierarchicalStore):
     def __setitem__(self, key, value):
         # accept any value that can be written to a zip file
 
-        if self.readonly:
-            raise ReadOnlyError('storage is read-only')
-
         # destination path for key
         arcname = self.arcname(key)
+
+        # ensure bytes
+        value = ensure_bytes(value)
 
         # write to archive
         with zipfile.ZipFile(self.path, mode='a',
@@ -534,12 +455,49 @@ class ZipStore(MutableMapping, HierarchicalStore):
     def __delitem__(self, key):
         raise NotImplementedError
 
-    def keys(self):
-        prefix = self.arcpath + '/'
+    def keyset(self):
+        if self.arcpath:
+            prefix = self.arcpath + '/'
+        else:
+            prefix = ''
+        keyset = set()
         with zipfile.ZipFile(self.path) as zf:
             for name in zf.namelist():
                 if name.startswith(prefix) and len(name) > len(prefix):
-                    yield name[len(prefix):].split('/')[0]
+                    suffix = name[len(prefix):]
+                    key = suffix.split('/')[0]
+                    keyset.add(key)
+        return keyset
+
+    def keys(self):
+        for k in self.keyset():
+            yield k
+
+    def store_keyset(self):
+        if self.arcpath:
+            prefix = self.arcpath + '/'
+        else:
+            prefix = ''
+        store_keyset = set()
+        with zipfile.ZipFile(self.path) as zf:
+            for name in zf.namelist():
+                if name.startswith(prefix) and len(name) > len(prefix):
+                    suffix = name[len(prefix):]
+                    if '/' in suffix:
+                        key = suffix.split('/')[0]
+                        store_keyset.add(key)
+        return store_keyset
+
+    def stores(self):
+        if self.arcpath:
+            prefix = self.arcpath + '/'
+        else:
+            prefix = ''
+        for k in self.store_keyset():
+            yield k, ZipStore(self.path,
+                              arcpath=prefix+k,
+                              compression=self.compression,
+                              allowZip64=self.allowZip64)
 
     def __iter__(self):
         return self.keys()
@@ -548,23 +506,7 @@ class ZipStore(MutableMapping, HierarchicalStore):
         return sum(1 for _ in self.keys())
 
     def __contains__(self, key):
-        return any(k == key for k in self.keys())
-
-    def has_store(self, key):
-        arcname = self.arcname(key)
-        prefix = arcname + '/'
-        with zipfile.ZipFile(self.path) as zf:
-            try:
-                zf.getinfo(arcname)
-            except KeyError:
-                pass
-            else:
-                # key refers to file in archive
-                return False
-            for name in zf.namelist():
-                if name.startswith(prefix) and len(name) > len(prefix):
-                    return True
-        return False
+        return key in self.keyset()
 
     def get_store(self, key):
         arcname = self.arcname(key)
@@ -580,33 +522,26 @@ class ZipStore(MutableMapping, HierarchicalStore):
                 raise KeyError(key)
 
         return ZipStore(self.path, arcpath=arcname,
-                        readonly=self.readonly,
                         compression=self.compression,
                         allowZip64=self.allowZip64)
 
-    def create_store(self, key):
+    def require_store(self, key):
         # can't really create directories in a zip file
         return self.get_store(key)
-
-    def require_store(self, key):
-        return self.get_store(key)
-
-    def del_store(self, key):
-        raise NotImplementedError
-
-    def stores(self):
-        # TODO
-        for key in self.keys():
-            path = self.abspath(key)
-            if os.path.isdir(path):
-                yield key, DirectoryStore(path, readonly=self.readonly)
-
 
     @property
     def nbytes_stored(self):
         """Total size of all values in number of bytes."""
-        # TODO
-        paths = (os.path.join(self.path, key) for key in self.keys())
-        return sum(os.path.getsize(path)
-                   for path in paths
-                   if os.path.isfile(path))
+        n = 0
+        if self.arcpath:
+            prefix = self.arcpath + '/'
+        else:
+            prefix = ''
+        with zipfile.ZipFile(self.path) as zf:
+            for name in zf.namelist():
+                if name.startswith(prefix) and len(name) > len(prefix):
+                    suffix = name[len(prefix):]
+                    if '/' not in suffix:
+                        info = zf.getinfo(name)
+                        n += info.compress_size
+        return n

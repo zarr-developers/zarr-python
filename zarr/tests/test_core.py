@@ -5,14 +5,14 @@ from tempfile import mkdtemp
 import atexit
 import shutil
 import pickle
+import os
 
 
 import numpy as np
 from numpy.testing import assert_array_equal
 from nose.tools import eq_ as eq, assert_is_instance, \
     assert_raises, assert_true, assert_false
-import zict
-from zarr.storage import DirectoryStore, init_array
+from zarr.storage import DirectoryStore, ZipStore, init_array
 
 
 from zarr.core import Array
@@ -35,24 +35,26 @@ def test_nbytes_stored():
     z[:] = 42
     eq(sum(len(v) for v in store.values()), z.nbytes_stored)
 
-    # store supporting size determination
+    # DirectoryStore
     path = mkdtemp()
     atexit.register(shutil.rmtree, path)
     store = DirectoryStore(path)
-    init_array(store, shape=1000, chunks=100)
+    init_array(store, shape=1000, chunks=100, compression='zlib',
+               compression_opts=1, fill_value=0)
     z = Array(store)
     eq(sum(len(v) for v in store.values()), z.nbytes_stored)
     z[:] = 42
     eq(sum(len(v) for v in store.values()), z.nbytes_stored)
 
-    # custom store, doesn't support size determination
-    store = zict.Zip('test.zip', mode='w')
+    # ZipStore
+    if os.path.exists('test.zip'):
+        os.remove('test.zip')
+    store = ZipStore('test.zip', arcpath='array1')
     init_array(store, shape=1000, chunks=100, compression='zlib',
-               compression_opts=1)
-    z = Array(store)
-    eq(-1, z.nbytes_stored)
-    z[:] = 42
-    eq(-1, z.nbytes_stored)
+               compression_opts=1, fill_value=0)
+    zz = Array(store)
+    zz[:] = 42
+    eq(z.nbytes_stored, zz.nbytes_stored)
 
 
 class TestArray(unittest.TestCase):
