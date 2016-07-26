@@ -6,6 +6,7 @@ import tempfile
 import json
 import shutil
 import io
+import zipfile
 
 
 import numpy as np
@@ -151,22 +152,22 @@ class HierarchicalStore(object):
     """Abstract base class for hierarchical storage."""
 
     def create_store(self, name):
-        raise NotImplementedError()
+        raise NotImplementedError
 
     def get_store(self, name):
-        raise NotImplementedError()
+        raise NotImplementedError
 
     def require_store(self, name):
-        raise NotImplementedError()
+        raise NotImplementedError
 
     def has_store(self, name):
-        raise NotImplementedError()
+        raise NotImplementedError
 
     def del_store(self, name):
-        raise NotImplementedError()
+        raise NotImplementedError
 
     def stores(self):
-        raise NotImplementedError()
+        raise NotImplementedError
 
 
 def ensure_bytes(s):
@@ -463,6 +464,148 @@ class DirectoryStore(MutableMapping, HierarchicalStore):
     @property
     def nbytes_stored(self):
         """Total size of all values in number of bytes."""
+        paths = (os.path.join(self.path, key) for key in self.keys())
+        return sum(os.path.getsize(path)
+                   for path in paths
+                   if os.path.isfile(path))
+
+
+class ZipStore(MutableMapping, HierarchicalStore):
+    """TODO"""
+
+    def __init__(self, path, arcpath, readonly=False,
+                 compression=zipfile.ZIP_STORED, allowZip64=True):
+
+        # guard conditions
+        path = os.path.abspath(path)
+        exists = os.path.exists(path)
+        is_zip = zipfile.is_zipfile(path)
+        if readonly:
+            if not exists:
+                raise ValueError('path does not exist: %s' % path)
+            elif not is_zip:
+                raise ValueError('path is not a zip file: %s' % path)
+        else:
+            if exists and not is_zip:
+                raise ValueError('path is not a zip file: %s' % path)
+
+        self.path = path
+
+        # TODO sanitize/normalize arcpath, maybe not needed?
+        arcpath = os.path.normpath(os.path.splitdrive(arcpath)[1])
+        while arcpath[0] in (os.sep, os.altsep):
+            arcpath= arcpath[1:]
+        while arcpath[-1] in (os.sep, os.altsep):
+            arcpath= arcpath[:-1]
+        if os.sep != "/" and os.sep in arcpath:
+            arcpath = arcpath.replace(os.sep, "/")
+        self.arcpath = arcpath
+
+        self.readonly = readonly
+        self.compression = compression
+        self.allowZip64 = allowZip64
+
+    def arcname(self, key):
+        if any(sep in key for sep in '/\\'):
+            raise ValueError('invalid key: %s' % key)
+        return '/'.join([self.arcpath, key])
+
+    def __getitem__(self, key):
+        arcname = self.arcname(key)
+        with zipfile.ZipFile(self.path) as zf:
+            with zf.open(arcname) as f:  # will raise KeyError
+                return f.read()
+
+    def __setitem__(self, key, value):
+        # accept any value that can be written to a zip file
+
+        if self.readonly:
+            raise ReadOnlyError('storage is read-only')
+
+        # destination path for key
+        arcname = self.arcname(key)
+
+        # write to archive
+        with zipfile.ZipFile(self.path, mode='a',
+                             compression=self.compression,
+                             allowZip64=self.allowZip64) as zf:
+            zf.writestr(arcname, value)
+
+    def __delitem__(self, key):
+        raise NotImplementedError
+
+    def keys(self):
+        prefix = self.arcpath + '/'
+        with zipfile.ZipFile(self.path) as zf:
+            for name in zf.namelist():
+                if name.startswith(prefix) and len(name) > len(prefix):
+                    yield name[len(prefix):].split('/')[0]
+
+    def __iter__(self):
+        return self.keys()
+
+    def __len__(self):
+        return sum(1 for _ in self.keys())
+
+    def __contains__(self, key):
+        return any(k == key for k in self.keys())
+
+    def has_store(self, key):
+        arcname = self.arcname(key)
+        prefix = arcname + '/'
+        with zipfile.ZipFile(self.path) as zf:
+            try:
+                zf.getinfo(arcname)
+            except KeyError:
+                pass
+            else:
+                # key refers to file in archive
+                return False
+            for name in zf.namelist():
+                if name.startswith(prefix) and len(name) > len(prefix):
+                    return True
+        return False
+
+    def get_store(self, key):
+        arcname = self.arcname(key)
+
+        # guard condition
+        with zipfile.ZipFile(self.path) as zf:
+            try:
+                zf.getinfo(arcname)
+            except KeyError:
+                pass
+            else:
+                # key refers to file in archive
+                raise KeyError(key)
+
+        return ZipStore(self.path, arcpath=arcname,
+                        readonly=self.readonly,
+                        compression=self.compression,
+                        allowZip64=self.allowZip64)
+
+    def create_store(self, key):
+        # can't really create directories in a zip file
+        return self.get_store(key)
+
+    def require_store(self, key):
+        return self.get_store(key)
+
+    def del_store(self, key):
+        raise NotImplementedError
+
+    def stores(self):
+        # TODO
+        for key in self.keys():
+            path = self.abspath(key)
+            if os.path.isdir(path):
+                yield key, DirectoryStore(path, readonly=self.readonly)
+
+
+    @property
+    def nbytes_stored(self):
+        """Total size of all values in number of bytes."""
+        # TODO
         paths = (os.path.join(self.path, key) for key in self.keys())
         return sum(os.path.getsize(path)
                    for path in paths
