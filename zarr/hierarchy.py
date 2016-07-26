@@ -11,7 +11,53 @@ from zarr.creation import array, create
 
 
 class Group(object):
-    """TODO"""
+    """Instantiate a group from an initialised store.
+
+    Parameters
+    ----------
+    store : HierarchicalStore
+        Group store, already initialised.
+    readonly : bool, optional
+        True if group should be protected against modification.
+    name : string, optional
+        Group name.
+
+    Attributes
+    ----------
+    store
+    readonly
+    name
+    attrs
+
+    Methods
+    -------
+    __iter__
+    __len__
+    __contains__
+    __getitem__
+    keys
+    values
+    items
+    group_keys
+    groups
+    array_keys
+    arrays
+    create_group
+    require_group
+    create_dataset
+    require_dataset
+    empty
+    zeros
+    ones
+    full
+    array
+    empty_like
+    zeros_like
+    ones_like
+    full_like
+    copy
+
+    """
 
     def __init__(self, store, readonly=False, name=None):
 
@@ -49,7 +95,7 @@ class Group(object):
         return sum(1 for _ in self.keys())
 
     def __repr__(self):
-        r = 'Group('
+        r = '%s.%s(' % (type(self).__module__, type(self).__name__)
         if self.name:
             r += self.name + ', '
         r += str(len(self))
@@ -79,14 +125,25 @@ class Group(object):
     def __getitem__(self, key):
         names = [s for s in key.split('/') if s]
         if not names:
-            raise ValueError(key)
+            raise KeyError(key)
+
+        # recursively get store
         store = self.store
         for name in names:
             store = store.get_store(name)
+
+        # determine absolute name
+        if self.name:
+            absname = self.name + '/'
+        else:
+            absname = ''
+        absname += '/'.join(names)
+
         if check_array(store):
-            return Array(store, readonly=self.readonly)
+            return Array(store, readonly=self.readonly, name=absname)
         elif check_group(store):
-            return Group(store, readonly=self.readonly, name=names[-1])
+            # create group
+            return Group(store, readonly=self.readonly, name=absname)
         else:
             raise KeyError(key)
 
@@ -131,14 +188,14 @@ class Group(object):
                 # TODO what about synchronizer?
                 yield key, Array(store, readonly=self.readonly)
 
-    def create_group(self, name):
+    def _require_store(self, name):
 
         # handle compound request
         names = [s for s in name.split('/') if s]
         if not names:
-            raise ValueError(name)
+            raise KeyError(name)
 
-        # create intermediate groups
+        # create intermediate stores as groups
         store = self.store
         for name in names[:-1]:
             store = store.require_store(name)
@@ -149,8 +206,24 @@ class Group(object):
             else:
                 init_group(store)
 
-        # create final group (must not exist)
+        # create final store
         store = store.require_store(names[-1])
+
+        # determine absolute name
+        if self.name:
+            absname = self.name + '/'
+        else:
+            absname = ''
+        absname += '/'.join(names)
+
+        return store, absname
+
+    def create_group(self, name):
+
+        # obtain store
+        store, absname = self._require_store(name)
+
+        # initialise group
         if check_array(store):
             raise KeyError(name)
         elif check_group(store):
@@ -158,51 +231,32 @@ class Group(object):
         else:
             init_group(store)
 
-        return Group(store, readonly=self.readonly, name=names[-1])
+        return Group(store, readonly=self.readonly, name=absname)
 
     def require_group(self, name):
 
-        # handle compound request
-        names = [s for s in name.split('/') if s]
-        if not names:
-            raise ValueError(name)
+        # obtain store
+        store, absname = self._require_store(name)
 
-        # create groups
-        store = self.store
-        for name in names:
-            store = store.require_store(name)
-            if check_array(store):
-                raise KeyError(name)  # TODO better error?
-            elif check_group(store):
-                pass
-            else:
-                init_group(store)
+        # initialise group
+        if check_array(store):
+            raise KeyError(name)
+        elif check_group(store):
+            pass
+        else:
+            init_group(store)
 
-        return Group(store, readonly=self.readonly, name=names[-1])
+        return Group(store, readonly=self.readonly, name=absname)
 
     def create_dataset(self, name, data=None, shape=None, chunks=None,
                        dtype=None, compression='default',
                        compression_opts=None, fill_value=None, order='C',
                        synchronizer=None, **kwargs):
 
-        # handle compound request
-        names = [s for s in name.split('/') if s]
-        if not names:
-            raise ValueError(name)
+        # obtain store
+        store, absname = self._require_store(name)
 
-        # create intermediate groups
-        store = self.store
-        for name in names[:-1]:
-            store = store.require_store(name)
-            if check_array(store):
-                raise KeyError(name)  # TODO better error?
-            elif check_group(store):
-                pass
-            else:
-                init_group(store)
-
-        # create store to hold the new array (must not exist)
-        store = store.require_store(names[-1])
+        # guard conditions
         if check_array(store):
             raise KeyError(name)
         elif check_group(store):
@@ -211,27 +265,64 @@ class Group(object):
         # compatibility with h5py
         fill_value = kwargs.get('fillvalue', fill_value)
 
-        if name in self:
-            raise KeyError(name)
-
         if data is not None:
             a = array(data, chunks=chunks, dtype=dtype,
                       compression=compression,
                       compression_opts=compression_opts,
                       fill_value=fill_value, order=order,
-                      synchronizer=synchronizer, store=store)
+                      synchronizer=synchronizer, store=store, name=absname)
 
         else:
             a = create(shape=shape, chunks=chunks, dtype=dtype,
                        compression=compression,
                        compression_opts=compression_opts,
                        fill_value=fill_value, order=order,
-                       synchronizer=synchronizer, store=store)
+                       synchronizer=synchronizer, store=store, name=absname)
 
         return a
 
     def require_dataset(self, name, shape=None, dtype=None,
                         exact=False, **kwargs):
+        # TODO
+        pass
+
+    def empty(self, name, **kwargs):
+        # TODO
+        pass
+
+    def zeros(self, name, **kwargs):
+        # TODO
+        pass
+
+    def ones(self, name, **kwargs):
+        # TODO
+        pass
+
+    def full(self, name, **kwargs):
+        # TODO
+        pass
+
+    def array(self, name, data, **kwargs):
+        # TODO
+        pass
+
+    def empty_like(self, name, data, **kwargs):
+        # TODO
+        pass
+
+    def zeros_like(self, name, data, **kwargs):
+        # TODO
+        pass
+
+    def ones_like(self, name, data, **kwargs):
+        # TODO
+        pass
+
+    def full_like(self, name, data, **kwargs):
+        # TODO
+        pass
+
+    def copy(self, source, dest, name, shallow=False):
         # TODO
         pass
 

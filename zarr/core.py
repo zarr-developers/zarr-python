@@ -30,6 +30,7 @@ class Array(object):
     Attributes
     ----------
     store
+    name
     readonly
     shape
     chunks
@@ -67,11 +68,12 @@ class Array(object):
 
     """  # flake8: noqa
 
-    def __init__(self, store, readonly=False):
+    def __init__(self, store, name=None, readonly=False):
         # N.B., expect at this point store is fully initialised with all
         # configuration metadata fully specified and normalised
 
         self._store = store
+        self._name = name
         self._readonly = readonly
 
         # initialise metadata
@@ -106,6 +108,11 @@ class Array(object):
     def store(self):
         """A MutableMapping providing the underlying storage for the array."""
         return self._store
+
+    @property
+    def name(self):
+        """TODO"""
+        return self._name
 
     @property
     def readonly(self):
@@ -577,10 +584,12 @@ class Array(object):
 
     def __repr__(self):
         r = '%s.%s(' % (type(self).__module__, type(self).__name__)
-        r += '%s' % str(self._shape)
-        r += ', %s' % str(self._dtype)
-        r += ', chunks=%s' % str(self._chunks)
-        r += ', order=%s' % self._order
+        if self._name:
+            r += '%s, ' % self._name
+        r += '%s, ' % str(self._shape)
+        r += '%s, ' % str(self._dtype)
+        r += 'chunks=%s, ' % str(self._chunks)
+        r += 'order=%s' % self._order
         r += ')'
         r += '\n  compression: %s' % self._compression
         r += '; compression_opts: %s' % str(self._compression_opts)

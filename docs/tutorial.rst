@@ -334,7 +334,7 @@ To create a group, use the :func:`zarr.hierarchy.group` function::
 
     >>> root_group = zarr.group()
     >>> root_group
-    Group(0)
+    zarr.hierarchy.Group(0)
       store: zarr.storage.MemoryStore
 
 Groups have a similar API to the Group class from `h5py <http://TODO>`_.
@@ -351,7 +351,7 @@ For compatibility with h5py, Zarr groups implement the
     ...                              chunks=(1000, 1000), dtype='i4',
     ...                              fill_value=0)
     >>> z
-    zarr.core.Array((10000, 10000), int32, chunks=(1000, 1000), order=C)
+    zarr.core.Array(foo/bar/baz, (10000, 10000), int32, chunks=(1000, 1000), order=C)
       compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
       nbytes: 381.5M; nbytes_stored: 313; ratio: 1277955.3; initialized: 0/100
       store: zarr.storage.MemoryStore
@@ -359,7 +359,7 @@ For compatibility with h5py, Zarr groups implement the
 Members of a group can be accessed via the suffix notation, e.g.::
 
     >>> root_group['foo']
-    Group(foo, 1)
+    zarr.hierarchy.Group(foo, 1)
       groups: 1; bar
       store: zarr.storage.MemoryStore
 
@@ -367,11 +367,11 @@ The '/' character can be used to access multiple levels of the hierarchy,
 e.g.::
 
     >>> root_group['foo/bar']
-    Group(bar, 1)
+    zarr.hierarchy.Group(foo/bar, 1)
       arrays: 1; baz
       store: zarr.storage.MemoryStore
     >>> root_group['foo/bar/baz']
-    zarr.core.Array((10000, 10000), int32, chunks=(1000, 1000), order=C)
+    zarr.core.Array(foo/bar/baz, (10000, 10000), int32, chunks=(1000, 1000), order=C)
       compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
       nbytes: 381.5M; nbytes_stored: 313; ratio: 1277955.3; initialized: 0/100
       store: zarr.storage.MemoryStore
@@ -382,13 +382,13 @@ stored in sub-directories, e.g.::
 
     >>> persistent_group = zarr.open_group('example', mode='w')
     >>> persistent_group
-    Group(0)
+    zarr.hierarchy.Group(0)
       store: zarr.storage.DirectoryStore
-    >>> z = persistent_group.create_dataset('ds1', shape=(10000, 10000),
+    >>> z = persistent_group.create_dataset('foo/bar/baz', shape=(10000, 10000),
     ...                                     chunks=(1000, 1000), dtype='i4',
     ...                                     fill_value=0)
     >>> z
-    zarr.core.Array((10000, 10000), int32, chunks=(1000, 1000), order=C)
+    zarr.core.Array(foo/bar/baz, (10000, 10000), int32, chunks=(1000, 1000), order=C)
       compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
       nbytes: 381.5M; nbytes_stored: 313; ratio: 1277955.3; initialized: 0/100
       store: zarr.storage.DirectoryStore

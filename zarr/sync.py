@@ -101,8 +101,9 @@ class SynchronizedArray(Array):
 
     """  # flake8: noqa
 
-    def __init__(self, store, synchronizer, readonly=False):
-        super(SynchronizedArray, self).__init__(store, readonly=readonly)
+    def __init__(self, store, synchronizer, readonly=False, name=None):
+        super(SynchronizedArray, self).__init__(store, readonly=readonly,
+                                                name=name)
         self.synchronizer = synchronizer
         self._attrs = SynchronizedAttributes(store, synchronizer,
                                              readonly=readonly)
