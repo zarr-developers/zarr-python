@@ -65,6 +65,10 @@ class Group(object):
         self._readonly = readonly
         self._name = name
 
+        # guard conditions
+        if check_array(store):
+            raise ValueError('store already contains an array')
+
         # initialise attributes
         self._attrs = Attributes(store, readonly=readonly)
 
@@ -87,6 +91,16 @@ class Group(object):
     def attrs(self):
         """TODO"""
         return self._attrs
+
+    def __eq__(self, other):
+        return (
+            isinstance(other, Group) and
+            self.store == other.store and
+            self.readonly == other.readonly and
+            self.name == other.name
+            # N.B., no need to compare attributes, should be covered by
+            # store comparison
+        )
 
     def __iter__(self):
         return self.keys()

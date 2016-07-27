@@ -19,51 +19,49 @@ from zarr.core import Array
 from zarr.errors import ReadOnlyError
 
 
-def test_array_init():
-
-    store = dict()  # store not initialised
-    with assert_raises(ValueError):
-        Array(store)
-
-
-def test_nbytes_stored():
-
-    store = dict()
-    init_array(store, shape=1000, chunks=100)
-    z = Array(store)
-    eq(sum(len(v) for v in store.values()), z.nbytes_stored)
-    z[:] = 42
-    eq(sum(len(v) for v in store.values()), z.nbytes_stored)
-
-    # DirectoryStore
-    path = mkdtemp()
-    atexit.register(shutil.rmtree, path)
-    store = DirectoryStore(path)
-    init_array(store, shape=1000, chunks=100, compression='zlib',
-               compression_opts=1, fill_value=0)
-    z = Array(store)
-    eq(sum(len(v) for v in store.values()), z.nbytes_stored)
-    z[:] = 42
-    eq(sum(len(v) for v in store.values()), z.nbytes_stored)
-
-    # ZipStore
-    if os.path.exists('test.zip'):
-        os.remove('test.zip')
-    store = ZipStore('test.zip', arcpath='array1')
-    init_array(store, shape=1000, chunks=100, compression='zlib',
-               compression_opts=1, fill_value=0)
-    zz = Array(store)
-    zz[:] = 42
-    eq(z.nbytes_stored, zz.nbytes_stored)
-
-
 class TestArray(unittest.TestCase):
 
-    def create_array(self, store=None, readonly=False, **kwargs):
+    def test_array_init(self):
+        store = dict()  # store not initialised
+        with assert_raises(ValueError):
+            Array(store)
+
+    @staticmethod
+    def create_array(store=None, readonly=False, **kwargs):
         if store is None:
             store = dict()
         init_array(store, **kwargs)
         return Array(store, readonly=readonly)
+
+    def test_nbytes_stored(self):
+
+        store = dict()
+        z = self.create_array(store=store, shape=1000, chunks=100)
+        eq(sum(len(v) for v in store.values()), z.nbytes_stored)
+        z[:] = 42
+        eq(sum(len(v) for v in store.values()), z.nbytes_stored)
+
+        # DirectoryStore
+        path = mkdtemp()
+        atexit.register(shutil.rmtree, path)
+        store = DirectoryStore(path)
+        z = self.create_array(store=store, shape=1000, chunks=100,
+                              compression='zlib', compression_opts=1,
+                              fill_value=0)
+        eq(sum(len(v) for v in store.values()), z.nbytes_stored)
+        z[:] = 42
+        eq(sum(len(v) for v in store.values()), z.nbytes_stored)
+
+        # ZipStore
+        if os.path.exists('test.zip'):
+            os.remove('test.zip')
+        store = ZipStore('test.zip', arcpath='foo/bar')
+        z = self.create_array(store=store, shape=1000, chunks=100,
+                              compression='zlib', compression_opts=1,
+                              fill_value=0)
+        zz = Array(store)
+        zz[:] = 42
+        eq(z.nbytes_stored, zz.nbytes_stored)
 
     def test_array_1d(self):
 

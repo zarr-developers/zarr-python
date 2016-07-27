@@ -198,6 +198,12 @@ class MemoryStore(MutableMapping, HierarchicalStore):
     def __len__(self):
         return self.container.__len__()
 
+    def __eq__(self, other):
+        return (
+            isinstance(other, MemoryStore) and
+            self.container is other.container
+        )
+
     def keys(self):
         return self.container.keys()
 
@@ -360,6 +366,12 @@ class DirectoryStore(MutableMapping, HierarchicalStore):
         path = self.abspath(key)
         return os.path.exists(path)
 
+    def __eq__(self, other):
+        return (
+            isinstance(other, DirectoryStore) and
+            self.path == other.path
+        )
+
     def keys(self):
         for key in os.listdir(self.path):
             yield key
@@ -454,6 +466,15 @@ class ZipStore(MutableMapping, HierarchicalStore):
 
     def __delitem__(self, key):
         raise NotImplementedError
+
+    def __eq__(self, other):
+        return (
+            isinstance(other, ZipStore) and
+            self.path == other.path and
+            self.arcpath == other.arcpath and
+            self.compression == other.compression and
+            self.allowZip64 == other.allowZip64
+        )
 
     def keyset(self):
         if self.arcpath:

@@ -209,6 +209,16 @@ class Array(object):
             int(np.ceil(s / c)) for s, c in zip(self._shape, self._chunks)
         )
 
+    def __eq__(self, other):
+        return (
+            isinstance(other, Array) and
+            self.store == other.store and
+            self.readonly == other.readonly and
+            self.name == other.name
+            # N.B., no need to compare other properties, should be covered by
+            # store comparison
+        )
+
     def __array__(self):
         return self[:]
 
