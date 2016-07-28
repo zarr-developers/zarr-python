@@ -11,6 +11,8 @@ import numpy as np
 from zarr.compressors import get_compressor_cls
 from zarr.util import is_total_slice, normalize_array_selection, \
     get_chunk_range, human_readable_size, normalize_resize_args
+from zarr.storage import normalize_prefix, normalize_key, array_meta_key, \
+    array_attrs_key, ls
 from zarr.meta import decode_metadata, encode_metadata
 from zarr.attrs import Attributes
 from zarr.compat import itervalues
@@ -73,12 +75,13 @@ class Array(object):
         # configuration metadata fully specified and normalised
 
         self._store = store
-        self._name = name
+        self._prefix = normalize_prefix(name)
         self._readonly = readonly
 
         # initialise metadata
+        meta_key = array_meta_key(self._prefix)
         try:
-            meta_bytes = store['meta']
+            meta_bytes = store[meta_key]
         except KeyError:
             raise ValueError('store has no metadata')
         else:
@@ -95,14 +98,16 @@ class Array(object):
             self._compressor = compressor_cls(self._compression_opts)
 
         # initialise attributes
-        self._attrs = Attributes(store, readonly=readonly)
+        attrs_key = array_attrs_key(self._prefix)
+        self._attrs = Attributes(store, key=attrs_key, readonly=readonly)
 
     def flush_metadata(self):
         meta = dict(shape=self._shape, chunks=self._chunks, dtype=self._dtype,
                     compression=self._compression,
                     compression_opts=self._compression_opts,
                     fill_value=self._fill_value, order=self._order)
-        self._store['meta'] = encode_metadata(meta)
+        meta_key = array_meta_key(self._prefix)
+        self._store[meta_key] = encode_metadata(meta)
 
     @property
     def store(self):
@@ -112,7 +117,10 @@ class Array(object):
     @property
     def name(self):
         """TODO"""
-        return self._name
+        if self._prefix:
+            # follow h5py convention: add leading slash, remove trailing slash
+            return '/' + self._prefix[:-1]
+        return None
 
     @property
     def readonly(self):
@@ -186,20 +194,32 @@ class Array(object):
         """The total number of stored bytes of data for the array. This
         includes storage required for configuration metadata and user
         attributes encoded as JSON."""
-        if hasattr(self._store, 'nbytes_stored'):
+        if hasattr(self._store, 'getsize'):
             # pass through
-            return self._store.nbytes_stored
+            return self._store.getsize(self._prefix)
         elif isinstance(self._store, dict):
             # cheap to compute by summing length of values
-            return sum(len(v) for v in itervalues(self._store))
+            size = 0
+            for child in ls(self._store, self._prefix):
+                key = self._prefix + child
+                try:
+                    size += len(self._store[key])
+                except KeyError:
+                    pass
+            return size
         else:
             return -1
 
     @property
     def initialized(self):
         """The number of chunks that have been initialized with some data."""
+        n = 0
+        for child in ls(self._store, self._prefix):
+            key = self._prefix + child
+            if key in self._store:
+                n += 1
         # N.B., expect 'meta' and 'attrs' keys in store also, so subtract 2
-        return len(self._store) - 2
+        return n - 2
 
     @property
     def cdata_shape(self):
@@ -489,7 +509,7 @@ class Array(object):
         try:
 
             # obtain compressed data for chunk
-            ckey = '.'.join(map(str, cidx))
+            ckey = self._prefix + '.'.join(map(str, cidx))
             cdata = self._store[ckey]
 
         except KeyError:
@@ -564,7 +584,7 @@ class Array(object):
             try:
 
                 # obtain compressed data for chunk
-                ckey = '.'.join(map(str, cidx))
+                ckey = self._prefix + '.'.join(map(str, cidx))
                 cdata = self._store[ckey]
 
             except KeyError:
@@ -594,15 +614,15 @@ class Array(object):
 
     def __repr__(self):
         r = '%s.%s(' % (type(self).__module__, type(self).__name__)
-        if self._name:
-            r += '%s, ' % self._name
-        r += '%s, ' % str(self._shape)
-        r += '%s, ' % str(self._dtype)
-        r += 'chunks=%s, ' % str(self._chunks)
-        r += 'order=%s' % self._order
+        if self.name:
+            r += '%s, ' % self.name
+        r += '%s, ' % str(self.shape)
+        r += '%s, ' % str(self.dtype)
+        r += 'chunks=%s, ' % str(self.chunks)
+        r += 'order=%s' % self.order
         r += ')'
-        r += '\n  compression: %s' % self._compression
-        r += '; compression_opts: %s' % str(self._compression_opts)
+        r += '\n  compression: %s' % self.compression
+        r += '; compression_opts: %s' % str(self.compression_opts)
         r += '\n  nbytes: %s' % human_readable_size(self.nbytes)
         if self.nbytes_stored > 0:
             r += '; nbytes_stored: %s' % human_readable_size(
@@ -610,12 +630,12 @@ class Array(object):
             r += '; ratio: %.1f' % (self.nbytes / self.nbytes_stored)
         n_chunks = reduce(operator.mul, self.cdata_shape)
         r += '; initialized: %s/%s' % (self.initialized, n_chunks)
-        r += '\n  store: %s.%s' % (type(self._store).__module__,
-                                   type(self._store).__name__)
+        r += '\n  store: %s.%s' % (type(self.store).__module__,
+                                   type(self.store).__name__)
         return r
 
     def __getstate__(self):
-        return self._store, self._readonly
+        return self._store, self._prefix, self._readonly
 
     def __setstate__(self, state):
         self.__init__(*state)

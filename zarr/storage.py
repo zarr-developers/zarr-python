@@ -6,6 +6,7 @@ import tempfile
 import json
 import io
 import zipfile
+import shutil
 
 
 import numpy as np
@@ -17,28 +18,27 @@ from zarr.meta import encode_metadata
 from zarr.compat import PY2, binary_type
 
 
-def normalize_prefix(prefix):
-    """TODO"""
-    
-    # map None to empty string
-    if prefix is None:
-        return ''
+def normalize_key(key):
+
+    # key must be something
+    if not key:
+        raise KeyError(key)
 
     # convert back slash to forward slash
-    prefix = prefix.replace('\\', '/')
+    key = key.replace('\\', '/')
 
     # remove leading slashes
-    while prefix[0] == '/':
-        prefix = prefix[1:]
+    while key[0] == '/':
+        key = key[1:]
 
     # remove trailing slashes
-    while prefix[-1] == '/':
-        prefix = prefix[:-1]
+    while key[-1] == '/':
+        key = key[:-1]
 
     # collapse any repeated slashes
     previous_char = None
     normed = ''
-    for char in prefix:
+    for char in key:
         if previous_char != '/':
             normed += char
         previous_char = char
@@ -46,13 +46,29 @@ def normalize_prefix(prefix):
     # don't allow path segments with just '.' or '..'
     segments = normed.split('/')
     if any(s in {'.', '..'} for s in segments):
-        raise ValueError("prefix containing '.' or '..' not allowed")
-    prefix = '/'.join(segments)
+        raise ValueError("key containing '.' or '..' as path segment not "
+                         "allowed")
+    key = '/'.join(segments)
 
     # check there's something left
-    if prefix:
-        # add one trailing slash
-        prefix += '/'
+    if not key:
+        raise KeyError(key)
+
+    return key
+
+
+def normalize_prefix(prefix):
+    """TODO"""
+    
+    # normalise None or empty prefix
+    if not prefix:
+        return ''
+
+    # normalise slashes etc.
+    prefix = normalize_key(prefix)
+
+    # add one trailing slash
+    prefix += '/'
 
     return prefix
 
@@ -103,19 +119,23 @@ def rm(store, prefix=None):
                 del store[key]
 
 
+def _ls_from_keys(store, prefix=None):
+    children = set()
+    for key in store.keys():
+        if key.startswith(prefix) and len(key) > len(prefix):
+            suffix = key[len(prefix):]
+            child = suffix.split('/')[0]
+            children.add(child)
+    return sorted(children)
+
+
 def ls(store, prefix=None):
     """TODO"""
     prefix = normalize_prefix(prefix)
     if hasattr(store, 'ls'):
         return store.ls(prefix)
     else:
-        children = set()
-        for key in store.keys():
-            if key.startswith(prefix) and len(key) > len(prefix):
-                suffix = key[len(prefix):]
-                child = suffix.split('/')[0]
-                children.add(child)
-        return children
+        return _ls_from_keys(store, prefix)
 
 
 def init_array(store, shape, chunks, dtype=None, compression='default',
@@ -267,6 +287,12 @@ def ensure_bytes(s):
     return io.BytesIO(s).getvalue()
 
 
+class DictStore(MutableMapping):
+    """TODO"""
+    # TODO
+    pass
+
+
 class DirectoryStore(MutableMapping):
     """Mutable Mapping interface to a directory. Keys must be strings,
     values must be bytes-like objects.
@@ -279,52 +305,29 @@ class DirectoryStore(MutableMapping):
     Examples
     --------
     >>> import zarr
-    >>> store = zarr.DirectoryStore('example.zarr')
-    >>> zarr.init_array(store, shape=(10000, 10000), chunks=(1000, 1000),
-    ...                 fill_value=0, overwrite=True)
+    >>> store = zarr.DirectoryStore('example')
+    >>> store['foo'] = b'bar'
+    >>> store['foo']
+    b'bar'
+    >>> open('example/foo').read()
+    b'bar'
+    >>> store['a/b/c'] = b'xxx'
+    >>> store['a/b/c']
+    b'xxx'
+    >>> open('example/a/b/c').read()
+    b'xxx'
+    >>> sorted(store.keys())
+    ['foo', 'a/b/c']
+    >>> store.ls()
+    ['a', 'foo']
+    >>> store.ls('a/b')
+    ['c']
+    >>> store.rm('a')
+    >>> sorted(store.keys())
+    ['foo']
     >>> import os
-    >>> sorted(os.listdir('example.zarr'))
-    ['attrs', 'meta']
-    >>> print(open('example.zarr/meta').read())
-    {
-        "chunks": [
-            1000,
-            1000
-        ],
-        "compression": "blosc",
-        "compression_opts": {
-            "clevel": 5,
-            "cname": "lz4",
-            "shuffle": 1
-        },
-        "dtype": "<f8",
-        "fill_value": 0,
-        "order": "C",
-        "shape": [
-            10000,
-            10000
-        ],
-        "zarr_format": 1
-    }
-    >>> print(open('example.zarr/attrs').read())
-    {}
-    >>> z = zarr.Array(store)
-    >>> z
-    zarr.core.Array((10000, 10000), float64, chunks=(1000, 1000), order=C)
-      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
-      nbytes: 762.9M; nbytes_stored: 313; ratio: 2555910.5; initialized: 0/100
-      store: zarr.storage.DirectoryStore
-    >>> z[:] = 1
-    >>> len(os.listdir('example.zarr'))
-    102
-    >>> sorted(os.listdir('example.zarr'))[0:5]
-    ['0.0', '0.1', '0.2', '0.3', '0.4']
-    >>> print(open('example.zarr/0.0', 'rb').read(10))
-    b'\\x02\\x01!\\x08\\x00\\x12z\\x00\\x00\\x80'
-
-    See Also
-    --------
-    zarr.creation.open
+    >>> os.path.exists('example/a')
+    False
 
     """  # flake8: noqa
 
@@ -337,12 +340,8 @@ class DirectoryStore(MutableMapping):
 
         self.path = path
 
-    def abspath(self, name):
-        if any(sep in name for sep in '/\\'):
-            raise ValueError('invalid name: %s' % name)
-        return os.path.join(self.path, name)
-
     def __getitem__(self, key):
+        key = normalize_key(key)
         path = os.path.join(self.path, key)
         if os.path.isfile(path):
             with open(path, 'rb') as f:
@@ -351,13 +350,15 @@ class DirectoryStore(MutableMapping):
             raise KeyError(key)
 
     def __setitem__(self, key, value):
-        # accept any value that can be written to a file
+
+        # setup
+        key = normalize_key(key)
 
         # destination path for key
         path = os.path.join(self.path, key)
 
         # guard conditions
-        if os.path.isdir(path):
+        if os.path.exists(path) and not os.path.isfile(path):
             raise KeyError(key)
 
         # ensure containing directory exists
@@ -379,6 +380,7 @@ class DirectoryStore(MutableMapping):
         os.rename(temp_path, path)
 
     def __delitem__(self, key):
+        key = normalize_key(key)
         path = os.path.join(self.path, key)
         if os.path.isfile(path):
             os.remove(path)
@@ -386,6 +388,7 @@ class DirectoryStore(MutableMapping):
             raise KeyError(key)
 
     def __contains__(self, key):
+        key = normalize_key(key)
         path = os.path.join(self.path, key)
         return os.path.isfile(path)
 
@@ -412,71 +415,54 @@ class DirectoryStore(MutableMapping):
     def __len__(self):
         return sum(1 for _ in self.keys())
 
-    @property
-    def nbytes_stored(self):
-        """Total size of all values in number of bytes."""
-        paths = (os.path.join(self.path, key) for key in self.keys())
-        return sum(os.path.getsize(path)
-                   for path in paths
-                   if os.path.isfile(path))
+    def ls(self, prefix):
+        path = os.path.join(self.path, normalize_prefix(prefix))
+        return sorted(os.listdir(path))
+
+    def rm(self, prefix):
+        path = os.path.join(self.path, normalize_prefix(prefix))
+        if os.path.isdir(path):
+            shutil.rmtree(path)
+
+    def getsize(self, prefix):
+        children = self.ls(prefix)
+        size = 0
+        for child in children:
+            path = os.path.join(self.path, child)
+            if os.path.isfile(path):
+                size += os.path.getsize(path)
+        return size
 
 
 # noinspection PyPep8Naming
-class ZipStore(MutableMapping, HierarchicalStore):
+class ZipStore(MutableMapping):
     """TODO"""
 
-    def __init__(self, path, arcpath=None, compression=zipfile.ZIP_STORED,
+    def __init__(self, path, compression=zipfile.ZIP_STORED,
                  allowZip64=True, mode='a'):
 
-        # guard conditions
-        path = os.path.abspath(path)
         # ensure zip file exists
+        path = os.path.abspath(path)
         with zipfile.ZipFile(path, mode=mode):
             pass
+
         self.path = path
-
-        # sanitize/normalize arcpath, maybe not needed?
-        if arcpath:
-            arcpath = os.path.normpath(os.path.splitdrive(arcpath)[1])
-            while arcpath[0] in (os.sep, os.altsep):
-                arcpath= arcpath[1:]
-            while arcpath[-1] in (os.sep, os.altsep):
-                arcpath= arcpath[:-1]
-            if os.sep != "/" and os.sep in arcpath:
-                arcpath = arcpath.replace(os.sep, "/")
-        self.arcpath = arcpath
-
         self.compression = compression
         self.allowZip64 = allowZip64
 
-    def arcname(self, key):
-        if any(sep in key for sep in '/\\'):
-            raise ValueError('invalid key: %s' % key)
-        if self.arcpath:
-            return '/'.join([self.arcpath, key])
-        else:
-            return key
-
     def __getitem__(self, key):
-        arcname = self.arcname(key)
+        key = normalize_key(key)
         with zipfile.ZipFile(self.path) as zf:
-            with zf.open(arcname) as f:  # will raise KeyError
+            with zf.open(key) as f:  # will raise KeyError
                 return f.read()
 
     def __setitem__(self, key, value):
-        # accept any value that can be written to a zip file
-
-        # destination path for key
-        arcname = self.arcname(key)
-
-        # ensure bytes
+        key = normalize_key(key)
         value = ensure_bytes(value)
-
-        # write to archive
         with zipfile.ZipFile(self.path, mode='a',
                              compression=self.compression,
                              allowZip64=self.allowZip64) as zf:
-            zf.writestr(arcname, value)
+            zf.writestr(key, value)
 
     def __delitem__(self, key):
         raise NotImplementedError
@@ -485,54 +471,18 @@ class ZipStore(MutableMapping, HierarchicalStore):
         return (
             isinstance(other, ZipStore) and
             self.path == other.path and
-            self.arcpath == other.arcpath and
             self.compression == other.compression and
             self.allowZip64 == other.allowZip64
         )
 
-    def keyset(self):
-        if self.arcpath:
-            prefix = self.arcpath + '/'
-        else:
-            prefix = ''
-        keyset = set()
+    def keylist(self):
         with zipfile.ZipFile(self.path) as zf:
-            for name in zf.namelist():
-                if name.startswith(prefix) and len(name) > len(prefix):
-                    suffix = name[len(prefix):]
-                    key = suffix.split('/')[0]
-                    keyset.add(key)
-        return keyset
+            keylist = sorted(zf.namelist())
+        return keylist
 
     def keys(self):
-        for k in self.keyset():
-            yield k
-
-    def store_keyset(self):
-        if self.arcpath:
-            prefix = self.arcpath + '/'
-        else:
-            prefix = ''
-        store_keyset = set()
-        with zipfile.ZipFile(self.path) as zf:
-            for name in zf.namelist():
-                if name.startswith(prefix) and len(name) > len(prefix):
-                    suffix = name[len(prefix):]
-                    if '/' in suffix:
-                        key = suffix.split('/')[0]
-                        store_keyset.add(key)
-        return store_keyset
-
-    def stores(self):
-        if self.arcpath:
-            prefix = self.arcpath + '/'
-        else:
-            prefix = ''
-        for k in self.store_keyset():
-            yield k, ZipStore(self.path,
-                              arcpath=prefix+k,
-                              compression=self.compression,
-                              allowZip64=self.allowZip64)
+        for key in self.keylist():
+            yield key
 
     def __iter__(self):
         return self.keys()
@@ -541,42 +491,33 @@ class ZipStore(MutableMapping, HierarchicalStore):
         return sum(1 for _ in self.keys())
 
     def __contains__(self, key):
-        return key in self.keyset()
-
-    def get_store(self, key):
-        arcname = self.arcname(key)
-
-        # guard condition
+        key = normalize_key(key)
         with zipfile.ZipFile(self.path) as zf:
             try:
-                zf.getinfo(arcname)
+                zf.getinfo(key)
             except KeyError:
-                pass
+                return False
             else:
-                # key refers to file in archive
-                raise KeyError(key)
+                return True
 
-        return ZipStore(self.path, arcpath=arcname,
-                        compression=self.compression,
-                        allowZip64=self.allowZip64)
+    def ls(self, prefix):
+        prefix = normalize_prefix(prefix)
+        return _ls_from_keys(self, prefix)
 
-    def require_store(self, key):
-        # can't really create directories in a zip file
-        return self.get_store(key)
+    def rm(self, prefix):
+        raise NotImplementedError
 
-    @property
-    def nbytes_stored(self):
-        """Total size of all values in number of bytes."""
-        n = 0
-        if self.arcpath:
-            prefix = self.arcpath + '/'
-        else:
-            prefix = ''
+    def getsize(self, prefix):
+        prefix = normalize_prefix(prefix)
+        children = self.ls(prefix)
+        size = 0
         with zipfile.ZipFile(self.path) as zf:
-            for name in zf.namelist():
-                if name.startswith(prefix) and len(name) > len(prefix):
-                    suffix = name[len(prefix):]
-                    if '/' not in suffix:
-                        info = zf.getinfo(name)
-                        n += info.compress_size
-        return n
+            for child in children:
+                name = prefix + child
+                try:
+                    info = zf.getinfo(name)
+                except KeyError:
+                    pass
+                else:
+                    size += info.compress_size
+        return size

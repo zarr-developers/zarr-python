@@ -6,7 +6,7 @@ import os
 from zarr.attrs import Attributes
 from zarr.core import Array
 from zarr.storage import contains_array, contains_group, init_group, \
-    DirectoryStore, normalize_name, join_names
+    DirectoryStore, normalize_prefix, ls, group_attrs_key
 from zarr.creation import array, create
 
 
@@ -62,15 +62,15 @@ class Group(object):
     def __init__(self, store, name=None, readonly=False):
 
         self._store = store
-        self._name = normalize_name(name)
+        self._prefix = normalize_prefix(name)
         self._readonly = readonly
 
         # guard conditions
-        if contains_array(store, key=self._name):
+        if contains_array(store, prefix=self._prefix):
             raise ValueError('store contains an array')
 
         # setup attributes
-        attrs_key = join_names(self._name, 'attrs')
+        attrs_key = group_attrs_key(self._prefix)
         self._attrs = Attributes(store, key=attrs_key, readonly=readonly)
 
     @property
@@ -86,7 +86,10 @@ class Group(object):
     @property
     def name(self):
         """TODO"""
-        return self._name
+        if self._prefix:
+            # follow h5py convention: add leading slash, remove trailing slash
+            return '/' + self._prefix[:-1]
+        return '/'
 
     @property
     def attrs(self):
@@ -111,8 +114,7 @@ class Group(object):
 
     def __repr__(self):
         r = '%s.%s(' % (type(self).__module__, type(self).__name__)
-        if self.name:
-            r += self.name + ', '
+        r += self.name + ', '
         r += str(len(self))
         r += ')'
         array_keys = list(self.array_keys())
@@ -138,6 +140,8 @@ class Group(object):
         pass
 
     def __getitem__(self, key):
+        # TODO recode to use prefix
+
         names = [s for s in key.split('/') if s]
         if not names:
             raise KeyError(key)
@@ -167,14 +171,17 @@ class Group(object):
         raise NotImplementedError()
 
     def keys(self):
+        # TODO recode to use prefix
         for key, store in self.store.stores():
             if contains_array(store) or contains_group(store):
                 yield key
 
     def values(self):
+        # TODO recode to use prefix
         return (v for k, v in self.items())
 
     def items(self):
+        # TODO recode to use prefix
         for key, store in self.store.stores():
             if contains_array(store):
                 # TODO what about synchronizer?
@@ -183,27 +190,32 @@ class Group(object):
                 yield key, Group(store, readonly=self.readonly)
 
     def group_keys(self):
+        # TODO recode to use prefix
         for key, store in self.store.stores():
             if contains_group(store):
                 yield key
 
     def groups(self):
+        # TODO recode to use prefix
         for key, store in self.store.stores():
             if contains_group(store):
                 yield key, Group(store, readonly=self.readonly)
 
     def array_keys(self):
+        # TODO recode to use prefix
         for key, store in self.store.stores():
             if contains_array(store):
                 yield key
 
     def arrays(self):
+        # TODO recode to use prefix
         for key, store in self.store.stores():
             if contains_array(store):
                 # TODO what about synchronizer?
                 yield key, Array(store, readonly=self.readonly)
 
     def _require_store(self, name):
+        # TODO recode to use prefix
 
         # handle compound request
         names = [s for s in name.split('/') if s]
@@ -234,6 +246,7 @@ class Group(object):
         return store, absname
 
     def create_group(self, name):
+        # TODO recode to use prefix
 
         # obtain store
         store, absname = self._require_store(name)
@@ -249,6 +262,7 @@ class Group(object):
         return Group(store, readonly=self.readonly, name=absname)
 
     def require_group(self, name):
+        # TODO recode to use prefix
 
         # obtain store
         store, absname = self._require_store(name)
@@ -267,6 +281,7 @@ class Group(object):
                        dtype=None, compression='default',
                        compression_opts=None, fill_value=None, order='C',
                        synchronizer=None, **kwargs):
+        # TODO recode to use prefix
 
         # obtain store
         store, absname = self._require_store(name)
@@ -345,13 +360,15 @@ class Group(object):
 def group(store=None, readonly=False):
     """TODO"""
     if store is None:
-        store = MemoryStore()
+        store = DictStore()
     init_group(store)
     return Group(store, readonly=readonly)
 
 
 def open_group(path, mode='a'):
     """TODO"""
+
+    # TODO recode to use prefix
 
     # ensure directory exists
     if not os.path.exists(path):
