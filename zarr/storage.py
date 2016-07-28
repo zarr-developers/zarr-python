@@ -4,7 +4,6 @@ from collections import MutableMapping
 import os
 import tempfile
 import json
-import shutil
 import io
 import zipfile
 
@@ -15,13 +14,113 @@ import numpy as np
 from zarr.util import normalize_shape, normalize_chunks, normalize_order
 from zarr.compressors import get_compressor_cls
 from zarr.meta import encode_metadata
-from zarr.errors import ReadOnlyError
 from zarr.compat import PY2, binary_type
+
+
+def normalize_prefix(prefix):
+    """TODO"""
+    
+    # map None to empty string
+    if prefix is None:
+        return ''
+
+    # convert back slash to forward slash
+    prefix = prefix.replace('\\', '/')
+
+    # remove leading slashes
+    while prefix[0] == '/':
+        prefix = prefix[1:]
+
+    # remove trailing slashes
+    while prefix[-1] == '/':
+        prefix = prefix[:-1]
+
+    # collapse any repeated slashes
+    previous_char = None
+    normed = ''
+    for char in prefix:
+        if previous_char != '/':
+            normed += char
+        previous_char = char
+
+    # don't allow path segments with just '.' or '..'
+    segments = normed.split('/')
+    if any(s in {'.', '..'} for s in segments):
+        raise ValueError("prefix containing '.' or '..' not allowed")
+    prefix = '/'.join(segments)
+
+    # check there's something left
+    if prefix:
+        # add one trailing slash
+        prefix += '/'
+
+    return prefix
+
+
+def array_meta_key(prefix=None):
+    prefix = normalize_prefix(prefix)
+    return prefix + 'meta'
+
+
+def array_attrs_key(prefix=None):
+    prefix = normalize_prefix(prefix)
+    return prefix + 'attrs'
+
+
+def group_attrs_key(prefix=None):
+    prefix = normalize_prefix(prefix)
+    return prefix + '.grpattrs'
+
+
+def contains_array(store, prefix=None):
+    """TODO"""
+
+    # TODO review this, how to tell if a store contains an array?
+    # currently we use the presence of an array metadata key as an indicator
+    # that the store contains an array
+
+    return array_meta_key(prefix) in store
+
+
+def contains_group(store, prefix=None):
+    """TODO"""
+
+    # TODO review this, how to tell if a store contains a group?
+    # currently we use the presence of a group attributes key as an indicator
+    # that the store contains a group
+
+    return group_attrs_key(prefix) in store
+
+
+def rm(store, prefix=None):
+    """TODO"""
+    prefix = normalize_prefix(prefix)
+    if hasattr(store, 'rm'):
+        store.rm(prefix)
+    else:
+        for key in set(store.keys()):
+            if key.startswith(prefix):
+                del store[key]
+
+
+def ls(store, prefix=None):
+    """TODO"""
+    prefix = normalize_prefix(prefix)
+    if hasattr(store, 'ls'):
+        return store.ls(prefix)
+    else:
+        children = set()
+        for key in store.keys():
+            if key.startswith(prefix) and len(key) > len(prefix):
+                suffix = key[len(prefix):]
+                child = suffix.split('/')[0]
+                children.add(child)
+        return children
 
 
 def init_array(store, shape, chunks, dtype=None, compression='default',
                compression_opts=None, fill_value=None,
-               order='C', overwrite=False):
+               order='C', overwrite=False, prefix=None):
     """Initialise an array store with the given configuration.
 
     Parameters
@@ -46,12 +145,14 @@ def init_array(store, shape, chunks, dtype=None, compression='default',
         Memory layout to be used within each chunk.
     overwrite : bool, optional
         If True, erase all data in `store` prior to initialisation.
+    prefix : string, optional
+        Prefix under which array is stored.
 
     Examples
     --------
-    >>> import zarr
+    >>> from zarr.storage import init_array
     >>> store = dict()
-    >>> zarr.init_array(store, shape=(10000, 10000), chunks=(1000, 1000))
+    >>> init_array(store, shape=(10000, 10000), chunks=(1000, 1000))
     >>> sorted(store.keys())
     ['attrs', 'meta']
     >>> print(str(store['meta'], 'ascii'))
@@ -77,6 +178,10 @@ def init_array(store, shape, chunks, dtype=None, compression='default',
     }
     >>> print(str(store['attrs'], 'ascii'))
     {}
+    >>> init_array(store, shape=100000000, chunks=1000000, dtype='i1', 
+    ...            prefix='foo/bar')
+    >>> sorted(store.keys())
+    >>> print(str(store['foo/bar/meta'], 'ascii'))
 
     Notes
     -----
@@ -87,9 +192,13 @@ def init_array(store, shape, chunks, dtype=None, compression='default',
     """
 
     # guard conditions
-    empty = len(store) == 0
-    if not empty and not overwrite:
-        raise ValueError('store is not empty')
+    if overwrite:
+        # attempt to delete any pre-existing items in store
+        rm(store, prefix)
+    elif contains_array(store, prefix):
+        raise ValueError('store contains an array')
+    elif contains_group(store, prefix):
+        raise ValueError('store contains a group')
 
     # normalise metadata
     shape = normalize_shape(shape)
@@ -102,24 +211,23 @@ def init_array(store, shape, chunks, dtype=None, compression='default',
     )
     order = normalize_order(order)
 
-    # delete any pre-existing items in store
-    store.clear()
-
     # initialise metadata
     meta = dict(shape=shape, chunks=chunks, dtype=dtype,
                 compression=compression, compression_opts=compression_opts,
                 fill_value=fill_value, order=order)
-    store['meta'] = encode_metadata(meta)
+    meta_key = array_meta_key(prefix)
+    store[meta_key] = encode_metadata(meta)
 
     # initialise attributes
-    store['attrs'] = json.dumps(dict()).encode('ascii')
+    attrs_key = array_attrs_key(prefix)
+    store[attrs_key] = json.dumps(dict()).encode('ascii')
 
 
 # backwards compatibility
 init_store = init_array
 
 
-def init_group(store, overwrite=False):
+def init_group(store, overwrite=False, prefix=None):
     """Initialise a group store.
 
     Parameters
@@ -128,37 +236,23 @@ def init_group(store, overwrite=False):
         A mapping that supports string keys and byte sequence values.
     overwrite : bool, optional
         If True, erase all data in `store` prior to initialisation.
+    prefix : string, optional
+        Prefix under which the group is stored.
 
     """
 
-    # delete any pre-existing items in store
+    # guard conditions
     if overwrite:
-        store.clear()
+        # attempt to delete any pre-existing items in store
+        rm(store, prefix)
+    elif contains_array(store, prefix):
+        raise ValueError('store contains an array')
+    elif contains_group(store, prefix):
+        raise ValueError('store contains a group')
 
     # initialise attributes
-    if 'attrs' not in store:
-        store['attrs'] = json.dumps(dict()).encode('ascii')
-
-
-def check_array(store):
-    return 'meta' in store
-
-
-def check_group(store):
-    return 'meta' not in store and 'attrs' in store
-
-
-class HierarchicalStore(object):
-    """Abstract base class for hierarchical storage."""
-
-    def get_store(self, name):
-        raise NotImplementedError
-
-    def require_store(self, name):
-        raise NotImplementedError
-
-    def stores(self):
-        raise NotImplementedError
+    attrs_key = group_attrs_key(prefix)
+    store[attrs_key] = json.dumps(dict()).encode('ascii')
 
 
 def ensure_bytes(s):
@@ -173,74 +267,7 @@ def ensure_bytes(s):
     return io.BytesIO(s).getvalue()
 
 
-class MemoryStore(MutableMapping, HierarchicalStore):
-    """TODO"""
-
-    def __init__(self):
-        self.container = dict()
-
-    def __getitem__(self, key):
-        return self.container.__getitem__(key)
-
-    def __setitem__(self, key, value):
-        value = ensure_bytes(value)
-        self.container.__setitem__(key, value)
-
-    def __delitem__(self, key):
-        self.container.__delitem__(key)
-
-    def __contains__(self, key):
-        return self.container.__contains__(key)
-
-    def __iter__(self):
-        return self.container.__iter__()
-
-    def __len__(self):
-        return self.container.__len__()
-
-    def __eq__(self, other):
-        return (
-            isinstance(other, MemoryStore) and
-            self.container is other.container
-        )
-
-    def keys(self):
-        return self.container.keys()
-
-    def values(self):
-        return self.container.values()
-
-    def items(self):
-        return self.container.items()
-
-    def get_store(self, name):
-        v = self.container[name]
-        if isinstance(v, MutableMapping):
-            return v
-        else:
-            raise KeyError(name)
-
-    def require_store(self, name):
-        if name in self.container:
-            return self.get_store(name)
-        else:
-            store = MemoryStore()
-            self.container[name] = store
-            return store
-
-    def stores(self):
-        return ((n, v) for (n, v) in self.items()
-                if isinstance(v, MutableMapping))
-
-    @property
-    def nbytes_stored(self):
-        """Total size of all values in number of bytes."""
-        # TODO need to ensure values are bytes for this to work properly?
-        return sum(len(v) for v in self.values()
-                   if not isinstance(v, MutableMapping))
-
-
-class DirectoryStore(MutableMapping, HierarchicalStore):
+class DirectoryStore(MutableMapping):
     """Mutable Mapping interface to a directory. Keys must be strings,
     values must be bytes-like objects.
 
@@ -305,8 +332,6 @@ class DirectoryStore(MutableMapping, HierarchicalStore):
 
         # guard conditions
         path = os.path.abspath(path)
-        if not os.path.exists(path):
-            os.makedirs(path)
         if os.path.exists and not os.path.isdir(path):
             raise ValueError('path exists but is not a directory')
 
@@ -318,32 +343,32 @@ class DirectoryStore(MutableMapping, HierarchicalStore):
         return os.path.join(self.path, name)
 
     def __getitem__(self, key):
-
-        # item path
-        path = self.abspath(key)
-
-        if not os.path.exists(path):
-            raise KeyError(key)
-        elif os.path.isdir(path):
-            return DirectoryStore(path)
-        else:
+        path = os.path.join(self.path, key)
+        if os.path.isfile(path):
             with open(path, 'rb') as f:
                 return f.read()
+        else:
+            raise KeyError(key)
 
     def __setitem__(self, key, value):
         # accept any value that can be written to a file
 
         # destination path for key
-        path = self.abspath(key)
+        path = os.path.join(self.path, key)
 
-        # deal with sub-directories
+        # guard conditions
         if os.path.isdir(path):
-            raise ValueError('key refers to sub-directory: %s' % key)
+            raise KeyError(key)
+
+        # ensure containing directory exists
+        dirname, filename = os.path.split(path)
+        if not os.path.exists(dirname):
+            os.makedirs(dirname)
 
         # write to temporary file
         with tempfile.NamedTemporaryFile(mode='wb', delete=False,
-                                         dir=self.path,
-                                         prefix=key + '.',
+                                         dir=dirname,
+                                         prefix=filename + '.',
                                          suffix='.partial') as f:
             f.write(value)
             temp_path = f.name
@@ -354,17 +379,15 @@ class DirectoryStore(MutableMapping, HierarchicalStore):
         os.rename(temp_path, path)
 
     def __delitem__(self, key):
-        path = self.abspath(key)
-        if not os.path.exists(path):
-            raise KeyError(key)
-        elif os.path.isdir(path):
-            shutil.rmtree(path)
-        else:
+        path = os.path.join(self.path, key)
+        if os.path.isfile(path):
             os.remove(path)
+        else:
+            raise KeyError(key)
 
     def __contains__(self, key):
-        path = self.abspath(key)
-        return os.path.exists(path)
+        path = os.path.join(self.path, key)
+        return os.path.isfile(path)
 
     def __eq__(self, other):
         return (
@@ -373,30 +396,21 @@ class DirectoryStore(MutableMapping, HierarchicalStore):
         )
 
     def keys(self):
-        for key in os.listdir(self.path):
-            yield key
+        dirnames = [self.path]
+        while dirnames:
+            dirname = dirnames.pop()
+            for name in os.listdir(dirname):
+                path = os.path.join(dirname, name)
+                if os.path.isfile(path):
+                    yield path
+                elif os.path.isdir(path):
+                    dirnames.append(path)
 
     def __iter__(self):
         return self.keys()
 
     def __len__(self):
         return sum(1 for _ in self.keys())
-
-    def get_store(self, name):
-        path = self.abspath(name)
-        if not os.path.isdir(path):
-            raise KeyError(name)
-        return DirectoryStore(path)
-
-    def require_store(self, name):
-        path = self.abspath(name)
-        return DirectoryStore(path)
-
-    def stores(self):
-        for key in self.keys():
-            path = self.abspath(key)
-            if os.path.isdir(path):
-                yield key, DirectoryStore(path)
 
     @property
     def nbytes_stored(self):

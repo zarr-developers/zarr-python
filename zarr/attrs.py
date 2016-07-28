@@ -11,8 +11,6 @@ from zarr.errors import ReadOnlyError
 class Attributes(MutableMapping):
 
     def __init__(self, store, key='attrs', readonly=False):
-        if key not in store:
-            store[key] = json.dumps(dict()).encode('ascii')
         self.store = store
         self.key = key
         self.readonly = readonly
@@ -51,7 +49,7 @@ class Attributes(MutableMapping):
 
         # guard conditions
         if self.readonly:
-            raise ReadOnlyError('mapping is read-only')
+            raise ReadOnlyError('attributes are read-only')
 
         # load existing data
         d = self.asdict()
@@ -63,7 +61,10 @@ class Attributes(MutableMapping):
         self.put(d)
 
     def asdict(self):
-        return json.loads(text_type(self.store[self.key], 'ascii'))
+        if self.key in self.store:
+            return json.loads(text_type(self.store[self.key], 'ascii'))
+        else:
+            return dict()
 
     def update(self, *args, **kwargs):
         # override to provide update in a single write

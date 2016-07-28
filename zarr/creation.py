@@ -8,7 +8,7 @@ import numpy as np
 
 from zarr.core import Array
 from zarr.sync import SynchronizedArray
-from zarr.storage import DirectoryStore, init_array, check_array, check_group
+from zarr.storage import DirectoryStore, init_array, contains_array, contains_group
 
 
 def create(shape, chunks, dtype=None, compression='default',
@@ -331,10 +331,10 @@ def open(path, mode='a', shape=None, chunks=None, dtype=None,
     store = DirectoryStore(path)
 
     # store can either hold array or group, not both
-    if check_group(store):
+    if contains_group(store):
         raise ValueError('path contains group')
 
-    exists = check_array(store)
+    exists = contains_array(store)
 
     # ensure store is initialized
     if mode in ['r', 'r+'] and not exists:

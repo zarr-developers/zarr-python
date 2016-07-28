@@ -187,3 +187,34 @@ def normalize_order(order):
     if order not in ['C', 'F']:
         raise ValueError("order must be either 'C' or 'F', found: %r" % order)
     return order
+
+
+def normalize_name(name):
+    # None is None
+    if name is None:
+        return None
+    # convert back slash to forward slash
+    name = name.replace('\\', '/')
+    # ensure only one leading slash
+    while name[0] == '/':
+        name = name[1:]
+    name = '/' + name
+    # remove any trailing slashes
+    while name[-1] == '/':
+        name = name[:-1]
+    # collapse any repeated slashes
+    previous_char = None
+    normed = ''
+    for char in name:
+        if previous_char != '/':
+            normed += char
+        previous_char = char
+    return normed
+
+
+def join_names(*names):
+    # exclude any names that are empty or None as given
+    names = [normalize_name(n) for n in names if n]
+    # exclude any names that are empty after normalisation
+    names = [n for n in names if n]
+    return ''.join(names)

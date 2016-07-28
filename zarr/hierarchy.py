@@ -5,8 +5,8 @@ import os
 
 from zarr.attrs import Attributes
 from zarr.core import Array
-from zarr.storage import check_array, check_group, init_group, MemoryStore, \
-    DirectoryStore
+from zarr.storage import contains_array, contains_group, init_group, \
+    DirectoryStore, normalize_name, join_names
 from zarr.creation import array, create
 
 
@@ -59,18 +59,19 @@ class Group(object):
 
     """
 
-    def __init__(self, store, readonly=False, name=None):
+    def __init__(self, store, name=None, readonly=False):
 
         self._store = store
+        self._name = normalize_name(name)
         self._readonly = readonly
-        self._name = name
 
         # guard conditions
-        if check_array(store):
-            raise ValueError('store already contains an array')
+        if contains_array(store, key=self._name):
+            raise ValueError('store contains an array')
 
-        # initialise attributes
-        self._attrs = Attributes(store, readonly=readonly)
+        # setup attributes
+        attrs_key = join_names(self._name, 'attrs')
+        self._attrs = Attributes(store, key=attrs_key, readonly=readonly)
 
     @property
     def store(self):
@@ -153,9 +154,9 @@ class Group(object):
             absname = ''
         absname += '/'.join(names)
 
-        if check_array(store):
+        if contains_array(store):
             return Array(store, readonly=self.readonly, name=absname)
-        elif check_group(store):
+        elif contains_group(store):
             # create group
             return Group(store, readonly=self.readonly, name=absname)
         else:
@@ -167,7 +168,7 @@ class Group(object):
 
     def keys(self):
         for key, store in self.store.stores():
-            if check_array(store) or check_group(store):
+            if contains_array(store) or contains_group(store):
                 yield key
 
     def values(self):
@@ -175,30 +176,30 @@ class Group(object):
 
     def items(self):
         for key, store in self.store.stores():
-            if check_array(store):
+            if contains_array(store):
                 # TODO what about synchronizer?
                 yield key, Array(store, readonly=self.readonly)
-            elif check_group(store):
+            elif contains_group(store):
                 yield key, Group(store, readonly=self.readonly)
 
     def group_keys(self):
         for key, store in self.store.stores():
-            if check_group(store):
+            if contains_group(store):
                 yield key
 
     def groups(self):
         for key, store in self.store.stores():
-            if check_group(store):
+            if contains_group(store):
                 yield key, Group(store, readonly=self.readonly)
 
     def array_keys(self):
         for key, store in self.store.stores():
-            if check_array(store):
+            if contains_array(store):
                 yield key
 
     def arrays(self):
         for key, store in self.store.stores():
-            if check_array(store):
+            if contains_array(store):
                 # TODO what about synchronizer?
                 yield key, Array(store, readonly=self.readonly)
 
@@ -213,9 +214,9 @@ class Group(object):
         store = self.store
         for name in names[:-1]:
             store = store.require_store(name)
-            if check_array(store):
+            if contains_array(store):
                 raise KeyError(name)  # TODO better error?
-            elif check_group(store):
+            elif contains_group(store):
                 pass
             else:
                 init_group(store)
@@ -238,9 +239,9 @@ class Group(object):
         store, absname = self._require_store(name)
 
         # initialise group
-        if check_array(store):
+        if contains_array(store):
             raise KeyError(name)
-        elif check_group(store):
+        elif contains_group(store):
             raise KeyError(name)
         else:
             init_group(store)
@@ -253,9 +254,9 @@ class Group(object):
         store, absname = self._require_store(name)
 
         # initialise group
-        if check_array(store):
+        if contains_array(store):
             raise KeyError(name)
-        elif check_group(store):
+        elif contains_group(store):
             pass
         else:
             init_group(store)
@@ -271,9 +272,9 @@ class Group(object):
         store, absname = self._require_store(name)
 
         # guard conditions
-        if check_array(store):
+        if contains_array(store):
             raise KeyError(name)
-        elif check_group(store):
+        elif contains_group(store):
             raise KeyError(name)
 
         # compatibility with h5py
@@ -363,10 +364,10 @@ def open_group(path, mode='a'):
     store = DirectoryStore(path)
 
     # store can either hold array or group, not both
-    if check_array(store):
+    if contains_array(store):
         raise ValueError('path contains array')
 
-    exists = check_group(store)
+    exists = contains_group(store)
 
     # ensure store is initialized
     if mode in ['r', 'r+'] and not exists:
