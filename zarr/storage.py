@@ -108,11 +108,11 @@ def contains_group(store, prefix=None):
     return group_attrs_key(prefix) in store
 
 
-def rm(store, prefix=None):
+def rmdir(store, prefix=None):
     """TODO"""
     prefix = normalize_prefix(prefix)
-    if hasattr(store, 'rm'):
-        store.rm(prefix)
+    if hasattr(store, 'rmdir'):
+        store.rmdir(prefix)
     else:
         for key in set(store.keys()):
             if key.startswith(prefix):
@@ -214,7 +214,7 @@ def init_array(store, shape, chunks, dtype=None, compression='default',
     # guard conditions
     if overwrite:
         # attempt to delete any pre-existing items in store
-        rm(store, prefix)
+        rmdir(store, prefix)
     elif contains_array(store, prefix):
         raise ValueError('store contains an array')
     elif contains_group(store, prefix):
@@ -264,7 +264,7 @@ def init_group(store, overwrite=False, prefix=None):
     # guard conditions
     if overwrite:
         # attempt to delete any pre-existing items in store
-        rm(store, prefix)
+        rmdir(store, prefix)
     elif contains_array(store, prefix):
         raise ValueError('store contains an array')
     elif contains_group(store, prefix):
@@ -322,7 +322,7 @@ class DirectoryStore(MutableMapping):
     ['a', 'foo']
     >>> store.listdir('a/b')
     ['c']
-    >>> store.rm('a')
+    >>> store.rmdir('a')
     >>> sorted(store.keys())
     ['foo']
     >>> import os
@@ -419,7 +419,7 @@ class DirectoryStore(MutableMapping):
         path = os.path.join(self.path, normalize_prefix(prefix))
         return sorted(os.listdir(path))
 
-    def rm(self, prefix):
+    def rmdir(self, prefix):
         path = os.path.join(self.path, normalize_prefix(prefix))
         if os.path.isdir(path):
             shutil.rmtree(path)
@@ -504,7 +504,7 @@ class ZipStore(MutableMapping):
         prefix = normalize_prefix(prefix)
         return _listdir_from_keys(self, prefix)
 
-    def rm(self, prefix):
+    def rmdir(self, prefix):
         raise NotImplementedError
 
     def getsize(self, prefix):
