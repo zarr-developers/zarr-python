@@ -39,7 +39,9 @@ def normalize_key(key):
     previous_char = None
     normed = ''
     for char in key:
-        if previous_char != '/':
+        if char != '/':
+            normed += char
+        elif previous_char != '/':
             normed += char
         previous_char = char
 
@@ -108,15 +110,21 @@ def contains_group(store, prefix=None):
     return group_attrs_key(prefix) in store
 
 
+def _rmdir_from_keys(store, prefix=None):
+    for key in set(store.keys()):
+        if key.startswith(prefix):
+            del store[key]
+
+
 def rmdir(store, prefix=None):
     """TODO"""
     prefix = normalize_prefix(prefix)
     if hasattr(store, 'rmdir'):
+        # pass through
         store.rmdir(prefix)
     else:
-        for key in set(store.keys()):
-            if key.startswith(prefix):
-                del store[key]
+        # slow version, delete one key at a time
+        _rmdir_from_keys(store, prefix)
 
 
 def _listdir_from_keys(store, prefix=None):
@@ -133,8 +141,10 @@ def listdir(store, prefix=None):
     """TODO"""
     prefix = normalize_prefix(prefix)
     if hasattr(store, 'listdir'):
+        # pass through
         return store.listdir(prefix)
     else:
+        # slow version, iterate through all keys
         return _listdir_from_keys(store, prefix)
 
 
@@ -287,10 +297,153 @@ def ensure_bytes(s):
     return io.BytesIO(s).getvalue()
 
 
+def _dict_store_keys(d, prefix='', cls=dict):
+    for k in d.keys():
+        v = d[k]
+        if isinstance(v, cls):
+            for sk in _dict_store_keys(v, prefix + k + '/', cls):
+                yield sk
+        else:
+            yield prefix + k
+
+
 class DictStore(MutableMapping):
-    """TODO"""
-    # TODO
-    pass
+    """Extended mutable mapping interface to a hierarchy of dicts.
+
+    Examples
+    --------
+    >>> import zarr
+    >>> store = zarr.DictStore('example')
+    >>> store['foo'] = b'bar'
+    >>> store['foo']
+    b'bar'
+    >>> store['a/b/c'] = b'xxx'
+    >>> store['a/b/c']
+    b'xxx'
+    >>> sorted(store.keys())
+    ['foo', 'a/b/c']
+    >>> store.listdir()
+    ['a', 'foo']
+    >>> store.listdir('a/b')
+    ['c']
+    >>> store.rmdir('a')
+    >>> sorted(store.keys())
+    ['foo']
+
+    """  # flake8: noqa
+
+    def __init__(self, cls=dict):
+        self.root = cls()
+        self.cls = cls
+
+    def __getitem__(self, key):
+        key = normalize_key(key)
+        c = self.root
+        for k in key.split('/'):
+            c = c[k]
+        if isinstance(c, self.cls):
+            raise KeyError(key)
+        return c
+
+    def __setitem__(self, key, value):
+        key = normalize_key(key)
+        c = self.root
+        keys = key.split('/')
+
+        # ensure intermediate containers
+        for k in keys[:-1]:
+            try:
+                c = c[k]
+                if not isinstance(c, self.cls):
+                    raise KeyError(key)
+            except KeyError:
+                c[k] = self.cls()
+                c = c[k]
+
+        # set final value
+        c[keys[-1]] = value
+
+    def __delitem__(self, key):
+        key = normalize_key(key)
+        c = self.root
+        keys = key.split('/')
+
+        # obtain final container
+        for k in keys[:-1]:
+            c = c[k]
+
+        # delete item
+        del c[keys[-1]]
+
+    def __contains__(self, key):
+        key = normalize_key(key)
+        keys = key.split('/')
+        c = self.root
+        for k in keys:
+            try:
+                c = c[k]
+            except KeyError:
+                return False
+        return not isinstance(c, self.cls)
+
+    def __eq__(self, other):
+        return (
+            isinstance(other, DictStore) and
+            self.root == other.root and
+            self.cls == other.cls
+        )
+
+    def keys(self):
+        for k in _dict_store_keys(self.root, cls=self.cls):
+            yield k
+
+    def __iter__(self):
+        return self.keys()
+
+    def __len__(self):
+        return sum(1 for _ in self.keys())
+
+    def listdir(self, prefix=None):
+        prefix = normalize_prefix(prefix)
+        c = self.root
+        if prefix:
+            # remove trailing slash
+            prefix = prefix[:-1]
+            # split prefix and find container
+            for k in prefix.split('/'):
+                c = c[k]
+        return sorted(c.keys())
+
+    def rmdir(self, prefix=None):
+        prefix = normalize_prefix(prefix)
+        c = self.root
+        if prefix:
+            # remove trailing slash
+            prefix = prefix[:-1]
+            # split prefix and find container
+            keys = prefix.split('/')
+            for k in keys[:-1]:
+                c = c[k]
+            # remove final key
+            del c[keys[-1]]
+
+    def getsize(self, prefix=None):
+        prefix = normalize_prefix(prefix)
+        c = self.root
+        if prefix:
+            # remove trailing slash
+            prefix = prefix[:-1]
+            # split prefix and find container
+            for k in prefix.split('/'):
+                c = c[k]
+        size = 0
+        for k, v in c.items():
+            if not isinstance(v, self.cls):
+                try:
+                    size += len(v)
+                except TypeError:
+                    return -1
+        return size
 
 
 class DirectoryStore(MutableMapping):
@@ -415,20 +568,27 @@ class DirectoryStore(MutableMapping):
     def __len__(self):
         return sum(1 for _ in self.keys())
 
-    def listdir(self, prefix):
-        path = os.path.join(self.path, normalize_prefix(prefix))
+    def listdir(self, prefix=None):
+        path = self.path
+        prefix = normalize_prefix(prefix)
+        if prefix:
+            path = os.path.join(path, prefix)
         return sorted(os.listdir(path))
 
-    def rmdir(self, prefix):
-        path = os.path.join(self.path, normalize_prefix(prefix))
+    def rmdir(self, prefix=None):
+        path = self.path
+        prefix = normalize_prefix(prefix)
+        if prefix:
+            path = os.path.join(path, prefix)
         if os.path.isdir(path):
             shutil.rmtree(path)
 
-    def getsize(self, prefix):
+    def getsize(self, prefix=None):
+        prefix = normalize_prefix(prefix)
         children = self.listdir(prefix)
         size = 0
         for child in children:
-            path = os.path.join(self.path, child)
+            path = os.path.join(self.path, prefix, child)
             if os.path.isfile(path):
                 size += os.path.getsize(path)
         return size
@@ -500,14 +660,14 @@ class ZipStore(MutableMapping):
             else:
                 return True
 
-    def listdir(self, prefix):
+    def listdir(self, prefix=None):
         prefix = normalize_prefix(prefix)
         return _listdir_from_keys(self, prefix)
 
-    def rmdir(self, prefix):
+    def rmdir(self, prefix=None):
         raise NotImplementedError
 
-    def getsize(self, prefix):
+    def getsize(self, prefix=None):
         prefix = normalize_prefix(prefix)
         children = self.listdir(prefix)
         size = 0

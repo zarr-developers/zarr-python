@@ -6,7 +6,7 @@ import os
 from zarr.attrs import Attributes
 from zarr.core import Array
 from zarr.storage import contains_array, contains_group, init_group, \
-    DirectoryStore, normalize_prefix, ls, group_attrs_key
+    DictStore, DirectoryStore, normalize_prefix, listdir, group_attrs_key
 from zarr.creation import array, create
 
 

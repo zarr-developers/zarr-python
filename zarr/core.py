@@ -12,7 +12,7 @@ from zarr.compressors import get_compressor_cls
 from zarr.util import is_total_slice, normalize_array_selection, \
     get_chunk_range, human_readable_size, normalize_resize_args
 from zarr.storage import normalize_prefix, normalize_key, array_meta_key, \
-    array_attrs_key, ls
+    array_attrs_key, listdir
 from zarr.meta import decode_metadata, encode_metadata
 from zarr.attrs import Attributes
 from zarr.compat import itervalues
@@ -214,7 +214,7 @@ class Array(object):
     def initialized(self):
         """The number of chunks that have been initialized with some data."""
         n = 0
-        for child in ls(self._store, self._prefix):
+        for child in listdir(self._store, self._prefix):
             key = self._prefix + child
             if key in self._store:
                 n += 1
