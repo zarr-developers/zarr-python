@@ -119,7 +119,7 @@ def rm(store, prefix=None):
                 del store[key]
 
 
-def _ls_from_keys(store, prefix=None):
+def _listdir_from_keys(store, prefix=None):
     children = set()
     for key in store.keys():
         if key.startswith(prefix) and len(key) > len(prefix):
@@ -129,13 +129,13 @@ def _ls_from_keys(store, prefix=None):
     return sorted(children)
 
 
-def ls(store, prefix=None):
+def listdir(store, prefix=None):
     """TODO"""
     prefix = normalize_prefix(prefix)
-    if hasattr(store, 'ls'):
-        return store.ls(prefix)
+    if hasattr(store, 'listdir'):
+        return store.listdir(prefix)
     else:
-        return _ls_from_keys(store, prefix)
+        return _listdir_from_keys(store, prefix)
 
 
 def init_array(store, shape, chunks, dtype=None, compression='default',
@@ -318,9 +318,9 @@ class DirectoryStore(MutableMapping):
     b'xxx'
     >>> sorted(store.keys())
     ['foo', 'a/b/c']
-    >>> store.ls()
+    >>> store.listdir()
     ['a', 'foo']
-    >>> store.ls('a/b')
+    >>> store.listdir('a/b')
     ['c']
     >>> store.rm('a')
     >>> sorted(store.keys())
@@ -415,7 +415,7 @@ class DirectoryStore(MutableMapping):
     def __len__(self):
         return sum(1 for _ in self.keys())
 
-    def ls(self, prefix):
+    def listdir(self, prefix):
         path = os.path.join(self.path, normalize_prefix(prefix))
         return sorted(os.listdir(path))
 
@@ -425,7 +425,7 @@ class DirectoryStore(MutableMapping):
             shutil.rmtree(path)
 
     def getsize(self, prefix):
-        children = self.ls(prefix)
+        children = self.listdir(prefix)
         size = 0
         for child in children:
             path = os.path.join(self.path, child)
@@ -500,16 +500,16 @@ class ZipStore(MutableMapping):
             else:
                 return True
 
-    def ls(self, prefix):
+    def listdir(self, prefix):
         prefix = normalize_prefix(prefix)
-        return _ls_from_keys(self, prefix)
+        return _listdir_from_keys(self, prefix)
 
     def rm(self, prefix):
         raise NotImplementedError
 
     def getsize(self, prefix):
         prefix = normalize_prefix(prefix)
-        children = self.ls(prefix)
+        children = self.listdir(prefix)
         size = 0
         with zipfile.ZipFile(self.path) as zf:
             for child in children:
