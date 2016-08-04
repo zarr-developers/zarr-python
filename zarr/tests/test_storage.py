@@ -166,15 +166,16 @@ class StoreTests(object):
         eq(set(), set(store.values()))
         eq(set(), set(store.items()))
 
-        store['a'] = b'xxx'
-        store['b'] = b'yyy'
-        store['c/d'] = b'zzz'
+        store['a'] = b'aaa'
+        store['b'] = b'bbb'
+        store['c/d'] = b'ddd'
+        store['c/e/f'] = b'fff'
 
-        eq(3, len(store))
-        eq({'a', 'b', 'c/d'}, set(store))
-        eq({'a', 'b', 'c/d'}, set(store.keys()))
-        eq({b'xxx', b'yyy', b'zzz'}, set(store.values()))
-        eq({('a', b'xxx'), ('b', b'yyy'), ('c/d', b'zzz')},
+        eq(4, len(store))
+        eq({'a', 'b', 'c/d', 'c/e/f'}, set(store))
+        eq({'a', 'b', 'c/d', 'c/e/f'}, set(store.keys()))
+        eq({b'aaa', b'bbb', b'ddd', b'fff'}, set(store.values()))
+        eq({('a', b'aaa'), ('b', b'bbb'), ('c/d', b'ddd'), ('c/e/f', b'fff')},
            set(store.items()))
 
     def test_nbytes_stored(self):
