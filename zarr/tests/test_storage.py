@@ -14,8 +14,9 @@ import numpy as np
 from nose.tools import assert_raises, eq_ as eq, assert_is_none
 
 
-from zarr.storage import DirectoryStore, DictStore, ZipStore, init_array
-from zarr.meta import decode_metadata
+from zarr.storage import DirectoryStore, DictStore, ZipStore, init_array, \
+    listdir, rmdir
+from zarr.meta import decode_metadata, encode_metadata
 from zarr.compat import text_type
 
 
@@ -41,18 +42,81 @@ def test_init_array():
 
 def test_init_array_overwrite():
 
-    store = dict(shape=(2000,), chunks=(200,))
+    store = dict()
+    store['meta'] = encode_metadata(dict(shape=(2000,),
+                                         chunks=(200,),
+                                         dtype=np.dtype('u1'),
+                                         compression='zlib',
+                                         compression_opts=1,
+                                         fill_value=0,
+                                         order='F'))
 
     # overwrite
-    init_array(store, shape=1000, chunks=100, overwrite=True)
+    init_array(store, shape=1000, chunks=100, dtype='i4', overwrite=True)
     assert 'meta' in store
     meta = decode_metadata(store['meta'])
     eq((1000,), meta['shape'])
     eq((100,), meta['chunks'])
+    eq(np.dtype('i4'), meta['dtype'])
 
     # don't overwrite
     with assert_raises(ValueError):
         init_array(store, shape=1000, chunks=100, overwrite=False)
+
+
+def test_init_array_prefix():
+
+    store = dict()
+    init_array(store, shape=1000, chunks=100, prefix='foo/bar')
+
+    # check metadata
+    assert 'foo/bar/meta' in store
+    meta = decode_metadata(store['foo/bar/meta'])
+    eq((1000,), meta['shape'])
+    eq((100,), meta['chunks'])
+    eq(np.dtype(None), meta['dtype'])
+    eq('blosc', meta['compression'])
+    assert 'compression_opts' in meta
+    assert_is_none(meta['fill_value'])
+
+    # check attributes
+    assert 'foo/bar/attrs' in store
+    eq(dict(), json.loads(text_type(store['foo/bar/attrs'], 'ascii')))
+
+
+def test_init_array_overwrite_prefix():
+
+    store = dict()
+    meta = dict(shape=(2000,),
+                chunks=(200,),
+                dtype=np.dtype('u1'),
+                compression='zlib',
+                compression_opts=1,
+                fill_value=0,
+                order='F')
+    store['meta'] = encode_metadata(meta)
+    store['foo/bar/meta'] = encode_metadata(meta)
+
+    # overwrite
+    init_array(store, shape=1000, chunks=100, dtype='i4', overwrite=True,
+               prefix='foo/bar')
+    assert 'meta' in store
+    assert 'foo/bar/meta' in store
+    # should have been overwritten
+    meta = decode_metadata(store['foo/bar/meta'])
+    eq((1000,), meta['shape'])
+    eq((100,), meta['chunks'])
+    eq(np.dtype('i4'), meta['dtype'])
+    # should have been left untouched
+    meta = decode_metadata(store['meta'])
+    eq((2000,), meta['shape'])
+    eq((200,), meta['chunks'])
+    eq(np.dtype('u1'), meta['dtype'])
+
+    # don't overwrite
+    with assert_raises(ValueError):
+        init_array(store, shape=1000, chunks=100, overwrite=False,
+                   prefix='foo/bar')
 
 
 class StoreTests(object):
@@ -102,14 +166,16 @@ class StoreTests(object):
         eq(set(), set(store.values()))
         eq(set(), set(store.items()))
 
-        store['foo'] = b'bar'
-        store['baz'] = b'quux'
+        store['a'] = b'xxx'
+        store['b'] = b'yyy'
+        store['c/d'] = b'zzz'
 
-        eq(2, len(store))
-        eq(set(['foo', 'baz']), set(store))
-        eq(set(['foo', 'baz']), set(store.keys()))
-        eq(set([b'bar', b'quux']), set(store.values()))
-        eq(set([('foo', b'bar'), ('baz', b'quux')]), set(store.items()))
+        eq(3, len(store))
+        eq({'a', 'b', 'c/d'}, set(store))
+        eq({'a', 'b', 'c/d'}, set(store.keys()))
+        eq({b'xxx', b'yyy', b'zzz'}, set(store.values()))
+        eq({('a', b'xxx'), ('b', b'yyy'), ('c/d', b'zzz')},
+           set(store.items()))
 
     def test_nbytes_stored(self):
         store = self.create_store()
@@ -134,6 +200,41 @@ class StoreTests(object):
             if not callable(v):
                 eq(v, getattr(store2, k))
 
+    def test_listdir_rmdir(self):
+        # setup
+        store = self.create_store()
+        store['a'] = b'aaa'
+        store['b'] = b'bbb'
+        store['c/d'] = b'ddd'
+        store['c/e/f'] = b'fff'
+
+        # test listdir
+        eq({'a', 'b', 'c'}, set(listdir(store)))
+        eq({'d', 'e'}, set(listdir(store, 'c')))
+        eq({'f'}, set(listdir(store, 'c/e')))
+        assert 'a' in store
+        assert 'b' in store
+        assert 'c' not in store
+        assert 'c/d' in store
+        assert 'c/e' not in store
+        assert 'c/e/f' in store
+
+        # test rmdir
+        try:
+            rmdir(store, 'c/e')
+            assert 'c/d' in store
+            assert 'c/e/f' not in store
+            eq({'d'}, set(listdir(store, 'c')))
+            rmdir(store, 'c')
+            assert 'c/d' not in store
+            eq({'a', 'b'}, set(listdir(store)))
+            rmdir(store)
+            assert 'a' not in store
+            assert 'b' not in store
+            eq([], listdir(store))
+        except NotImplementedError:
+            pass
+
 
 class TestGenericStore(StoreTests, unittest.TestCase):
 
@@ -147,11 +248,16 @@ class TestDictStore(StoreTests, unittest.TestCase):
         return DictStore()
 
 
+def rmtree_if_exists(path, rmtree=shutil.rmtree, isdir=os.path.isdir):
+    if isdir(path):
+        rmtree(path)
+
+
 class TestDirectoryStore(StoreTests, unittest.TestCase):
 
     def create_store(self):
         path = tempfile.mkdtemp()
-        atexit.register(shutil.rmtree, path)
+        atexit.register(rmtree_if_exists, path)
         store = DirectoryStore(path)
         return store
 

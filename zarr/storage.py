@@ -426,6 +426,9 @@ class DictStore(MutableMapping):
                 c = c[k]
             # remove final key
             del c[keys[-1]]
+        else:
+            # clear out root
+            self.root = self.cls()
 
     def getsize(self, prefix=None):
         prefix = normalize_prefix(prefix)
@@ -573,7 +576,10 @@ class DirectoryStore(MutableMapping):
         prefix = normalize_prefix(prefix)
         if prefix:
             path = os.path.join(path, prefix)
-        return sorted(os.listdir(path))
+        if os.path.isdir(path):
+            return sorted(os.listdir(path))
+        else:
+            return []
 
     def rmdir(self, prefix=None):
         path = self.path
