@@ -14,7 +14,7 @@ import numpy as np
 from nose.tools import assert_raises, eq_ as eq, assert_is_none
 
 
-from zarr.storage import DirectoryStore, MemoryStore, ZipStore, init_array
+from zarr.storage import DirectoryStore, DictStore, ZipStore, init_array
 from zarr.meta import decode_metadata
 from zarr.compat import text_type
 
@@ -78,15 +78,13 @@ class StoreTests(object):
         except NotImplementedError:
             pass
 
-        # check writeable values
-        with assert_raises(TypeError):
-            # non-writeable value
-            store['foo'] = 42
-        # alternative values
+    def test_writeable_values(self):
+        store = self.create_store()
+        # store should accept anything that implements buffer interface
+        store['foo'] = b'bar'
         store['foo'] = bytearray(b'bar')
-        eq(b'bar', store['foo'])
         store['foo'] = array.array('B', b'bar')
-        eq(b'bar', store['foo'])
+        store['foo'] = np.frombuffer(b'bar', dtype='u1')
 
     def test_update(self):
         store = self.create_store()
@@ -137,10 +135,16 @@ class StoreTests(object):
                 eq(v, getattr(store2, k))
 
 
-class TestMemoryStore(StoreTests, unittest.TestCase):
+class TestGenericStore(StoreTests, unittest.TestCase):
 
     def create_store(self):
-        return MemoryStore()
+        return dict()
+
+
+class TestDictStore(StoreTests, unittest.TestCase):
+
+    def create_store(self):
+        return DictStore()
 
 
 class TestDirectoryStore(StoreTests, unittest.TestCase):
@@ -154,10 +158,14 @@ class TestDirectoryStore(StoreTests, unittest.TestCase):
     def test_path(self):
 
         # test behaviour with path that does not exist
-        if os.path.exists('doesnotexist'):
-            shutil.rmtree('doesnotexist')
-        DirectoryStore('doesnotexist')
-        assert os.path.isdir('doesnotexist')
+        path = 'doesnotexist'
+        if os.path.exists(path):
+            shutil.rmtree(path)
+        store = DirectoryStore(path)
+        # should only be created on demand
+        assert not os.path.exists(path)
+        store['foo'] = b'bar'
+        assert os.path.isdir(path)
 
         # test behaviour with file path
         with tempfile.NamedTemporaryFile() as f:
@@ -183,13 +191,4 @@ class TestZipStore(StoreTests, unittest.TestCase):
         path = tempfile.mktemp(suffix='.zip')
         atexit.register(os.remove, path)
         store = ZipStore(path)
-        return store
-
-
-class TestZipStoreMulti(StoreTests, unittest.TestCase):
-
-    def create_store(self):
-        path = tempfile.mktemp(suffix='.zip')
-        atexit.register(os.remove, path)
-        store = ZipStore(path, arcpath='foo/bar')
         return store

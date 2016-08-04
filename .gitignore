@@ -67,4 +67,4 @@ zarr/version.py
 *~
 *.zip
 example
-
+doesnotexist

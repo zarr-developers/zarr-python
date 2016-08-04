@@ -488,7 +488,7 @@ class DirectoryStore(MutableMapping):
 
         # guard conditions
         path = os.path.abspath(path)
-        if os.path.exists and not os.path.isdir(path):
+        if os.path.exists(path) and not os.path.isdir(path):
             raise ValueError('path exists but is not a directory')
 
         self.path = path
@@ -552,15 +552,15 @@ class DirectoryStore(MutableMapping):
         )
 
     def keys(self):
-        dirnames = [self.path]
-        while dirnames:
-            dirname = dirnames.pop()
+        todo = [(self.path, '')]
+        while todo:
+            dirname, prefix = todo.pop()
             for name in os.listdir(dirname):
                 path = os.path.join(dirname, name)
                 if os.path.isfile(path):
-                    yield path
+                    yield prefix + name
                 elif os.path.isdir(path):
-                    dirnames.append(path)
+                    todo.append((path, prefix + name + '/'))
 
     def __iter__(self):
         return self.keys()
