@@ -15,6 +15,7 @@ if PY2:  # pragma: no cover
     text_type = unicode
     binary_type = str
     integer_types = (int, long)
+    reduce = reduce
 
 else:
 
@@ -24,3 +25,4 @@ else:
     text_type = str
     binary_type = bytes
     integer_types = int,
+    from functools import reduce
