@@ -4,130 +4,76 @@ from collections import MutableMapping
 import os
 import tempfile
 import json
-import io
 import zipfile
 import shutil
+import operator
 
 
 import numpy as np
 
 
-from zarr.util import normalize_shape, normalize_chunks, normalize_order
+from zarr.util import normalize_shape, normalize_chunks, normalize_order, \
+    normalize_storage_path
 from zarr.compressors import get_compressor_cls
-from zarr.meta import encode_metadata
-from zarr.compat import PY2, binary_type
+from zarr.meta import encode_array_metadata, encode_group_metadata
+from zarr.compat import PY2, binary_type, reduce
 
 
-def normalize_key(key):
-
-    # key must be something
-    if not key:
-        raise KeyError(key)
-
-    # convert back slash to forward slash
-    key = key.replace('\\', '/')
-
-    # remove leading slashes
-    while key[0] == '/':
-        key = key[1:]
-
-    # remove trailing slashes
-    while key[-1] == '/':
-        key = key[:-1]
-
-    # collapse any repeated slashes
-    previous_char = None
-    normed = ''
-    for char in key:
-        if char != '/':
-            normed += char
-        elif previous_char != '/':
-            normed += char
-        previous_char = char
-
-    # don't allow path segments with just '.' or '..'
-    segments = normed.split('/')
-    if any(s in {'.', '..'} for s in segments):
-        raise ValueError("key containing '.' or '..' as path segment not "
-                         "allowed")
-    key = '/'.join(segments)
-
-    # check there's something left
-    if not key:
-        raise KeyError(key)
-
-    return key
+array_meta_key = '.zarray'
+group_meta_key = '.zgroup'
+attrs_key = '.zattrs'
 
 
-def normalize_prefix(prefix):
-    """TODO"""
-    
-    # normalise None or empty prefix
-    if not prefix:
-        return ''
-
-    # normalise slashes etc.
-    prefix = normalize_key(prefix)
-
-    # add one trailing slash
-    prefix += '/'
-
+def _path_to_prefix(path):
+    # assume path already normalized
+    if path:
+        prefix = path + '/'
+    else:
+        prefix = ''
     return prefix
+    
+
+def contains_array(store, path=None):
+    """TODO doc me"""
+    path = normalize_storage_path(path)
+    prefix = _path_to_prefix(path)
+    key = prefix + array_meta_key
+    return key in store
 
 
-def array_meta_key(prefix=None):
-    prefix = normalize_prefix(prefix)
-    return prefix + 'meta'
-
-
-def array_attrs_key(prefix=None):
-    prefix = normalize_prefix(prefix)
-    return prefix + 'attrs'
-
-
-def group_attrs_key(prefix=None):
-    prefix = normalize_prefix(prefix)
-    return prefix + '.grpattrs'
-
-
-def contains_array(store, prefix=None):
+def contains_group(store, path=None):
     """TODO"""
-
-    # TODO review this, how to tell if a store contains an array?
-    # currently we use the presence of an array metadata key as an indicator
-    # that the store contains an array
-
-    return array_meta_key(prefix) in store
+    path = normalize_storage_path(path)
+    prefix = _path_to_prefix(path)
+    key = prefix + group_meta_key
+    return key in store
 
 
-def contains_group(store, prefix=None):
-    """TODO"""
-
-    # TODO review this, how to tell if a store contains a group?
-    # currently we use the presence of a group attributes key as an indicator
-    # that the store contains a group
-
-    return group_attrs_key(prefix) in store
-
-
-def _rmdir_from_keys(store, prefix=None):
+def _rmdir_from_keys(store, path=None):
+    # TODO review, esp. with None prefix
+    # assume path already normalized
+    prefix = _path_to_prefix(path)
     for key in set(store.keys()):
         if key.startswith(prefix):
             del store[key]
 
 
-def rmdir(store, prefix=None):
+def rmdir(store, path=None):
     """TODO"""
-    prefix = normalize_prefix(prefix)
+    # TODO review
+    path = normalize_storage_path(path)
     if hasattr(store, 'rmdir'):
         # pass through
-        store.rmdir(prefix)
+        store.rmdir(path)
     else:
         # slow version, delete one key at a time
-        _rmdir_from_keys(store, prefix)
+        _rmdir_from_keys(store, path)
 
 
-def _listdir_from_keys(store, prefix=None):
+def _listdir_from_keys(store, path=None):
+    # TODO review, esp. with None prefix
+    # assume path already normalized
+    prefix = _path_to_prefix(path)
     children = set()
     for key in store.keys():
         if key.startswith(prefix) and len(key) > len(prefix):
@@ -137,21 +83,22 @@ def _listdir_from_keys(store, prefix=None):
     return sorted(children)
 
 
-def listdir(store, prefix=None):
+def listdir(store, path=None):
     """TODO"""
-    prefix = normalize_prefix(prefix)
+    # TODO review
+    path = normalize_storage_path(path)
     if hasattr(store, 'listdir'):
         # pass through
-        return store.listdir(prefix)
+        return store.listdir(path)
     else:
         # slow version, iterate through all keys
-        return _listdir_from_keys(store, prefix)
+        return _listdir_from_keys(store, path)
 
 
 def init_array(store, shape, chunks, dtype=None, compression='default',
                compression_opts=None, fill_value=None,
-               order='C', overwrite=False, prefix=None):
-    """Initialise an array store with the given configuration.
+               order='C', overwrite=False, path=None):
+    """initialize an array store with the given configuration.
 
     Parameters
     ----------
@@ -170,67 +117,83 @@ def init_array(store, shape, chunks, dtype=None, compression='default',
         Options to primary compressor. E.g., for blosc, provide a dictionary
         with keys 'cname', 'clevel' and 'shuffle'.
     fill_value : object
-        Default value to use for uninitialised portions of the array.
+        Default value to use for uninitialized portions of the array.
     order : {'C', 'F'}, optional
         Memory layout to be used within each chunk.
     overwrite : bool, optional
         If True, erase all data in `store` prior to initialisation.
-    prefix : string, optional
-        Prefix under which array is stored.
+    path : string, optional
+        Path under which array is stored.
 
     Examples
     --------
-    >>> from zarr.storage import init_array
-    >>> store = dict()
-    >>> init_array(store, shape=(10000, 10000), chunks=(1000, 1000))
-    >>> sorted(store.keys())
-    ['attrs', 'meta']
-    >>> print(str(store['meta'], 'ascii'))
-    {
-        "chunks": [
-            1000,
-            1000
-        ],
-        "compression": "blosc",
-        "compression_opts": {
-            "clevel": 5,
-            "cname": "lz4",
-            "shuffle": 1
-        },
-        "dtype": "<f8",
-        "fill_value": null,
-        "order": "C",
-        "shape": [
-            10000,
-            10000
-        ],
-        "zarr_format": 1
-    }
-    >>> print(str(store['attrs'], 'ascii'))
-    {}
-    >>> init_array(store, shape=100000000, chunks=1000000, dtype='i1', 
-    ...            prefix='foo/bar')
-    >>> sorted(store.keys())
-    >>> print(str(store['foo/bar/meta'], 'ascii'))
+    Initialize an array store::
+
+        >>> from zarr.storage import init_array
+        >>> store = dict()
+        >>> init_array(store, shape=(10000, 10000), chunks=(1000, 1000))
+        >>> sorted(store.keys())
+        ['.zattrs', '.zarray']
+
+    Array metadata is stored as JSON::
+
+        >>> print(str(store['.zarray'], 'ascii'))
+        {
+            "chunks": [
+                1000,
+                1000
+            ],
+            "compression": "blosc",
+            "compression_opts": {
+                "clevel": 5,
+                "cname": "lz4",
+                "shuffle": 1
+            },
+            "dtype": "<f8",
+            "fill_value": null,
+            "order": "C",
+            "shape": [
+                10000,
+                10000
+            ],
+            "zarr_format": 1
+        }
+
+    User-defined attributes are also stored as JSON, initially empty::
+
+        >>> print(str(store['.zattrs'], 'ascii'))
+        {}
+
+    initialize an array using a storage path::
+
+        >>> init_array(store, shape=100000000, chunks=1000000, dtype='i1',
+        ...            path='foo/bar')
+        >>> sorted(store.keys())
+        TODO
+        >>> print(str(store['foo/bar/.zarray'], 'ascii'))
+        TODO
 
     Notes
     -----
     The initialisation process involves normalising all array metadata,
-    encoding as JSON and storing under the 'meta' key. User attributes are also
-    initialised and stored as JSON under the 'attrs' key.
+    encoding as JSON and storing under the '.zarray' key. User attributes are 
+    also initialized and stored as JSON under the '.zattrs' key.
 
     """
 
+    # normalize path
+    path = normalize_storage_path(path)
+    
     # guard conditions
     if overwrite:
         # attempt to delete any pre-existing items in store
-        rmdir(store, prefix)
-    elif contains_array(store, prefix):
+        rmdir(store, path)
+    elif contains_array(store, path):
         raise ValueError('store contains an array')
-    elif contains_group(store, prefix):
+    elif contains_group(store, path):
         raise ValueError('store contains a group')
 
-    # normalise metadata
+    # normalize metadata
     shape = normalize_shape(shape)
     chunks = normalize_chunks(chunks, shape)
     dtype = np.dtype(dtype)
@@ -241,24 +204,24 @@ def init_array(store, shape, chunks, dtype=None, compression='default',
     )
     order = normalize_order(order)
 
-    # initialise metadata
+    # initialize metadata
     meta = dict(shape=shape, chunks=chunks, dtype=dtype,
                 compression=compression, compression_opts=compression_opts,
                 fill_value=fill_value, order=order)
-    meta_key = array_meta_key(prefix)
-    store[meta_key] = encode_metadata(meta)
+    key = _path_to_prefix(path) + array_meta_key
+    store[key] = encode_array_metadata(meta)
 
-    # initialise attributes
-    attrs_key = array_attrs_key(prefix)
-    store[attrs_key] = json.dumps(dict()).encode('ascii')
+    # initialize attributes
+    key = _path_to_prefix(path) + attrs_key
+    store[key] = json.dumps(dict()).encode('ascii')
 
 
 # backwards compatibility
 init_store = init_array
 
 
-def init_group(store, overwrite=False, prefix=None):
-    """Initialise a group store.
+def init_group(store, overwrite=False, path=None):
+    """initialize a group store.
 
     Parameters
     ----------
@@ -266,23 +229,33 @@ def init_group(store, overwrite=False, prefix=None):
         A mapping that supports string keys and byte sequence values.
     overwrite : bool, optional
         If True, erase all data in `store` prior to initialisation.
-    prefix : string, optional
-        Prefix under which the group is stored.
+    path : string, optional
+        Path under which array is stored.
 
     """
 
+    # normalize path
+    path = normalize_storage_path(path)
+    
     # guard conditions
     if overwrite:
         # attempt to delete any pre-existing items in store
-        rmdir(store, prefix)
-    elif contains_array(store, prefix):
+        rmdir(store, path)
+    elif contains_array(store, path):
         raise ValueError('store contains an array')
-    elif contains_group(store, prefix):
+    elif contains_group(store, path):
         raise ValueError('store contains a group')
 
-    # initialise attributes
-    attrs_key = group_attrs_key(prefix)
-    store[attrs_key] = json.dumps(dict()).encode('ascii')
+    # initialize metadata
+    # N.B., currently no metadata properties are needed, however there may
+    # be in future
+    meta = dict()
+    key = _path_to_prefix(path) + group_meta_key
+    store[key] = encode_group_metadata(meta)
+
+    # initialize attributes
+    key = _path_to_prefix(path) + attrs_key
+    store[key] = json.dumps(dict()).encode('ascii')
 
 
 def ensure_bytes(s):
@@ -294,7 +267,7 @@ def ensure_bytes(s):
         return s.tobytes()
     if PY2 and hasattr(s, 'tostring'):
         return s.tostring()
-    return io.BytesIO(s).getvalue()
+    return memoryview(s).tobytes()
 
 
 def _dict_store_keys(d, prefix='', cls=dict):
@@ -305,6 +278,17 @@ def _dict_store_keys(d, prefix='', cls=dict):
                 yield sk
         else:
             yield prefix + k
+
+
+def _getbuffersize(v):
+    from array import array as _stdlib_array
+    if PY2 and isinstance(v, _stdlib_array):
+        # special case array.array because does not support buffer
+        # interface in PY2
+        return v.buffer_info()[1] * v.itemsize
+    else:
+        v = memoryview(v)
+        return reduce(operator.mul, v.shape) * v.itemsize
 
 
 class DictStore(MutableMapping):
@@ -337,7 +321,6 @@ class DictStore(MutableMapping):
         self.cls = cls
 
     def __getitem__(self, key):
-        key = normalize_key(key)
         c = self.root
         for k in key.split('/'):
             c = c[k]
@@ -346,7 +329,6 @@ class DictStore(MutableMapping):
         return c
 
     def __setitem__(self, key, value):
-        key = normalize_key(key)
         c = self.root
         keys = key.split('/')
 
@@ -364,7 +346,6 @@ class DictStore(MutableMapping):
         c[keys[-1]] = value
 
     def __delitem__(self, key):
-        key = normalize_key(key)
         c = self.root
         keys = key.split('/')
 
@@ -376,7 +357,6 @@ class DictStore(MutableMapping):
         del c[keys[-1]]
 
     def __contains__(self, key):
-        key = normalize_key(key)
         keys = key.split('/')
         c = self.root
         for k in keys:
@@ -403,50 +383,55 @@ class DictStore(MutableMapping):
     def __len__(self):
         return sum(1 for _ in self.keys())
 
-    def listdir(self, prefix=None):
-        prefix = normalize_prefix(prefix)
+    def listdir(self, path=None):
+        path = normalize_storage_path(path)
         c = self.root
-        if prefix:
-            # remove trailing slash
-            prefix = prefix[:-1]
-            # split prefix and find container
-            for k in prefix.split('/'):
+        if path:
+            # split path and find container
+            for k in path.split('/'):
                 c = c[k]
         return sorted(c.keys())
 
-    def rmdir(self, prefix=None):
-        prefix = normalize_prefix(prefix)
+    def rmdir(self, path=None):
+        path = normalize_storage_path(path)
         c = self.root
-        if prefix:
-            # remove trailing slash
-            prefix = prefix[:-1]
-            # split prefix and find container
-            keys = prefix.split('/')
-            for k in keys[:-1]:
+        if path:
+            # split path and find container
+            segments = path.split('/')
+            for k in segments[:-1]:
                 c = c[k]
             # remove final key
-            del c[keys[-1]]
+            del c[segments[-1]]
         else:
             # clear out root
             self.root = self.cls()
 
-    def getsize(self, prefix=None):
-        prefix = normalize_prefix(prefix)
+    def getsize(self, path=None):
+        path = normalize_storage_path(path)
         c = self.root
-        if prefix:
-            # remove trailing slash
-            prefix = prefix[:-1]
-            # split prefix and find container
-            for k in prefix.split('/'):
-                c = c[k]
-        size = 0
-        for k, v in c.items():
-            if not isinstance(v, self.cls):
-                try:
-                    size += len(v)
-                except TypeError:
-                    return -1
-        return size
+        if path:
+            # split path and find value
+            segments = path.split('/')
+            try:
+                for k in segments:
+                    c = c[k]
+            except KeyError:
+                raise ValueError('path not found: %r' % path)
+        if isinstance(c, self.cls):
+            # total size for directory
+            size = 0
+            for v in c.values():
+                if not isinstance(v, self.cls):
+                    try:
+                        size += _getbuffersize(v)
+                    except TypeError:
+                        return -1
+            return size
+        else:
+            try:
+                return _getbuffersize(c)
+            except TypeError:
+                return -1
 
 
 class DirectoryStore(MutableMapping):
@@ -497,56 +482,50 @@ class DirectoryStore(MutableMapping):
         self.path = path
 
     def __getitem__(self, key):
-        key = normalize_key(key)
-        path = os.path.join(self.path, key)
-        if os.path.isfile(path):
-            with open(path, 'rb') as f:
+        filepath = os.path.join(self.path, key)
+        if os.path.isfile(filepath):
+            with open(filepath, 'rb') as f:
                 return f.read()
         else:
             raise KeyError(key)
 
     def __setitem__(self, key, value):
 
-        # setup
-        key = normalize_key(key)
-
         # destination path for key
-        path = os.path.join(self.path, key)
+        file_path = os.path.join(self.path, key)
 
         # guard conditions
-        if os.path.exists(path) and not os.path.isfile(path):
+        if os.path.exists(file_path) and not os.path.isfile(file_path):
             raise KeyError(key)
 
         # ensure containing directory exists
-        dirname, filename = os.path.split(path)
-        if not os.path.exists(dirname):
-            os.makedirs(dirname)
+        dir_path, file_name = os.path.split(file_path)
+        if not os.path.exists(dir_path):
+            os.makedirs(dir_path)
 
         # write to temporary file
         with tempfile.NamedTemporaryFile(mode='wb', delete=False,
-                                         dir=dirname,
-                                         prefix=filename + '.',
+                                         dir=dir_path,
+                                         prefix=file_name + '.',
                                          suffix='.partial') as f:
             f.write(value)
             temp_path = f.name
 
         # move temporary file into place
-        if os.path.exists(path):
-            os.remove(path)
-        os.rename(temp_path, path)
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        os.rename(temp_path, file_path)
 
     def __delitem__(self, key):
-        key = normalize_key(key)
-        path = os.path.join(self.path, key)
-        if os.path.isfile(path):
-            os.remove(path)
+        file_path = os.path.join(self.path, key)
+        if os.path.isfile(file_path):
+            os.remove(file_path)
         else:
             raise KeyError(key)
 
     def __contains__(self, key):
-        key = normalize_key(key)
-        path = os.path.join(self.path, key)
-        return os.path.isfile(path)
+        file_path = os.path.join(self.path, key)
+        return os.path.isfile(file_path)
 
     def __eq__(self, other):
         return (
@@ -557,9 +536,9 @@ class DirectoryStore(MutableMapping):
     def keys(self):
         todo = [(self.path, '')]
         while todo:
-            dirname, prefix = todo.pop()
-            for name in os.listdir(dirname):
-                path = os.path.join(dirname, name)
+            dir_name, prefix = todo.pop()
+            for name in os.listdir(dir_name):
+                path = os.path.join(dir_name, name)
                 if os.path.isfile(path):
                     yield prefix + name
                 elif os.path.isdir(path):
@@ -571,33 +550,41 @@ class DirectoryStore(MutableMapping):
     def __len__(self):
         return sum(1 for _ in self.keys())
 
-    def listdir(self, prefix=None):
-        path = self.path
-        prefix = normalize_prefix(prefix)
-        if prefix:
-            path = os.path.join(path, prefix)
-        if os.path.isdir(path):
-            return sorted(os.listdir(path))
+    def listdir(self, path=None):
+        store_path = normalize_storage_path(path)
+        dir_path = self.path
+        if store_path:
+            dir_path = os.path.join(dir_path, store_path)
+        if os.path.isdir(dir_path):
+            return sorted(os.listdir(dir_path))
         else:
             return []
 
-    def rmdir(self, prefix=None):
-        path = self.path
-        prefix = normalize_prefix(prefix)
-        if prefix:
-            path = os.path.join(path, prefix)
-        if os.path.isdir(path):
-            shutil.rmtree(path)
+    def rmdir(self, path=None):
+        store_path = normalize_storage_path(path)
+        dir_path = self.path
+        if store_path:
+            dir_path = os.path.join(dir_path, store_path)
+        if os.path.isdir(dir_path):
+            shutil.rmtree(dir_path)
 
-    def getsize(self, prefix=None):
-        prefix = normalize_prefix(prefix)
-        children = self.listdir(prefix)
-        size = 0
-        for child in children:
-            path = os.path.join(self.path, prefix, child)
-            if os.path.isfile(path):
-                size += os.path.getsize(path)
-        return size
+    def getsize(self, path=None):
+        store_path = normalize_storage_path(path)
+        fs_path = self.path
+        if store_path:
+            fs_path = os.path.join(fs_path, store_path)
+        if os.path.isfile(fs_path):
+            return os.path.getsize(fs_path)
+        elif os.path.isdir(fs_path):
+            children = os.listdir(fs_path)
+            size = 0
+            for child in children:
+                child_fs_path = os.path.join(fs_path, child)
+                if os.path.isfile(child_fs_path):
+                    size += os.path.getsize(child_fs_path)
+            return size
+        else:
+            raise ValueError('path not found: %r' % path)
 
 
 # noinspection PyPep8Naming
@@ -617,13 +604,11 @@ class ZipStore(MutableMapping):
         self.allowZip64 = allowZip64
 
     def __getitem__(self, key):
-        key = normalize_key(key)
         with zipfile.ZipFile(self.path) as zf:
             with zf.open(key) as f:  # will raise KeyError
                 return f.read()
 
     def __setitem__(self, key, value):
-        key = normalize_key(key)
         value = ensure_bytes(value)
         with zipfile.ZipFile(self.path, mode='a',
                              compression=self.compression,
@@ -657,7 +642,6 @@ class ZipStore(MutableMapping):
         return sum(1 for _ in self.keys())
 
     def __contains__(self, key):
-        key = normalize_key(key)
         with zipfile.ZipFile(self.path) as zf:
             try:
                 zf.getinfo(key)
@@ -666,24 +650,34 @@ class ZipStore(MutableMapping):
             else:
                 return True
 
-    def listdir(self, prefix=None):
-        prefix = normalize_prefix(prefix)
-        return _listdir_from_keys(self, prefix)
+    def listdir(self, path=None):
+        path = normalize_storage_path(path)
+        return _listdir_from_keys(self, path)
 
-    def rmdir(self, prefix=None):
-        raise NotImplementedError
-
-    def getsize(self, prefix=None):
-        prefix = normalize_prefix(prefix)
-        children = self.listdir(prefix)
-        size = 0
+    def getsize(self, path=None):
+        path = normalize_storage_path(path)
+        children = self.listdir(path)
         with zipfile.ZipFile(self.path) as zf:
-            for child in children:
-                name = prefix + child
+            if children:
+                size = 0
+                with zipfile.ZipFile(self.path) as zf:
+                    for child in children:
+                        if path:
+                            name = path + '/' + child
+                        else:
+                            name = child
+                        try:
+                            info = zf.getinfo(name)
+                        except KeyError:
+                            pass
+                        else:
+                            size += info.compress_size
+                return size
+            elif path:
                 try:
-                    info = zf.getinfo(name)
+                    info = zf.getinfo(path)
+                    return info.compress_size
                 except KeyError:
-                    pass
-                else:
-                    size += info.compress_size
-        return size
+                    raise ValueError('path not found: %r' % path)
+            else:
+                return 0
