@@ -50,7 +50,6 @@ def contains_group(store, path=None):
 
 
 def _rmdir_from_keys(store, path=None):
-    # TODO review, esp. with None prefix
     # assume path already normalized
     prefix = _path_to_prefix(path)
     for key in set(store.keys()):
@@ -59,8 +58,7 @@ def _rmdir_from_keys(store, path=None):
 
 
 def rmdir(store, path=None):
-    """TODO"""
-    # TODO review
+    """TODO doc me"""
     path = normalize_storage_path(path)
     if hasattr(store, 'rmdir'):
         # pass through
@@ -71,7 +69,6 @@ def rmdir(store, path=None):
 
 
 def _listdir_from_keys(store, path=None):
-    # TODO review, esp. with None prefix
     # assume path already normalized
     prefix = _path_to_prefix(path)
     children = set()
@@ -84,8 +81,7 @@ def _listdir_from_keys(store, path=None):
 
 
 def listdir(store, path=None):
-    """TODO"""
-    # TODO review
+    """TODO doc me"""
     path = normalize_storage_path(path)
     if hasattr(store, 'listdir'):
         # pass through

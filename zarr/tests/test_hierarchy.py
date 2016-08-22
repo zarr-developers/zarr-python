@@ -18,6 +18,7 @@ from zarr.storage import DictStore, DirectoryStore, ZipStore, init_group, \
 from zarr.core import Array
 from zarr.hierarchy import Group
 from zarr.attrs import Attributes
+from zarr.errors import ReadOnlyError
 
 
 # noinspection PyStatementEffect
@@ -187,6 +188,45 @@ class TestGroup(unittest.TestCase):
         eq('/bar', d3.name)
         assert_is(store, d3.store)
 
+    def test_create_errors(self):
+        store = self.create_store()
+        init_group(store)
+
+        # array obstructs group, array
+        g = Group(store=store)
+        g.create_dataset('foo', shape=100, chunks=10)
+        with assert_raises(KeyError):
+            g.create_group('foo/bar')
+        with assert_raises(KeyError):
+            g.require_group('foo/bar')
+        with assert_raises(KeyError):
+            g.create_dataset('foo/bar', shape=100, chunks=10)
+
+        # array obstructs group, array
+        g.create_dataset('a/b', shape=100, chunks=10)
+        with assert_raises(KeyError):
+            g.create_group('a/b')
+        with assert_raises(KeyError):
+            g.require_group('a/b')
+        with assert_raises(KeyError):
+            g.create_dataset('a/b', shape=100, chunks=10)
+
+        # group obstructs array
+        g.create_group('c/d')
+        with assert_raises(KeyError):
+            g.create_dataset('c', shape=100, chunks=10)
+        with assert_raises(KeyError):
+            g.create_dataset('c/d', shape=100, chunks=10)
+
+        # read-only
+        g = Group(store=store, readonly=True)
+        with assert_raises(ReadOnlyError):
+            g.create_group('zzz')
+        with assert_raises(ReadOnlyError):
+            g.require_group('zzz')
+        with assert_raises(ReadOnlyError):
+            g.create_dataset('zzz', shape=100, chunks=10)
+
     def test_getitem_contains_iterators(self):
         # setup
         store = self.create_store()
@@ -243,10 +283,58 @@ class TestGroup(unittest.TestCase):
         eq(1, len(g1['a']))
         eq(1, len(g1['a/b']))
 
-        # test keys()
-        eq(['a', 'foo'], sorted(g1.keys()))
-        eq(['bar', 'baz'], sorted(g1['foo'].keys()))
+        # test __iter__, keys()
+        # currently assumes sorted by key
+
+        eq(['a', 'foo'], list(g1))
+        eq(['a', 'foo'], list(g1.keys()))
+        eq(['bar', 'baz'], list(g1['foo']))
+        eq(['bar', 'baz'], list(g1['foo'].keys()))
+        eq([], sorted(g1['foo/bar']))
         eq([], sorted(g1['foo/bar'].keys()))
+
+        # test items(), values()
+        # currently assumes sorted by key
+
+        items = list(g1.items())
+        values = list(g1.values())
+        eq('a', items[0][0])
+        eq(g1['a'], items[0][1])
+        eq(g1['a'], values[0])
+        eq('foo', items[1][0])
+        eq(g1['foo'], items[1][1])
+        eq(g1['foo'], values[1])
+
+        items = list(g1['foo'].items())
+        values = list(g1['foo'].values())
+        eq('bar', items[0][0])
+        eq(g1['foo']['bar'], items[0][1])
+        eq(g1['foo']['bar'], values[0])
+        eq('baz', items[1][0])
+        eq(g1['foo']['baz'], items[1][1])
+        eq(g1['foo']['baz'], values[1])
+
+        # test array_keys(), arrays(), group_keys(), groups()
+        # currently assumes sorted by key
+
+        eq(['a', 'foo'], list(g1.group_keys()))
+        groups = list(g1.groups())
+        arrays = list(g1.arrays())
+        eq('a', groups[0][0])
+        eq(g1['a'], groups[0][1])
+        eq('foo', groups[1][0])
+        eq(g1['foo'], groups[1][1])
+        eq([], list(g1.array_keys()))
+        eq([], arrays)
+
+        eq(['bar'], list(g1['foo'].group_keys()))
+        eq(['baz'], list(g1['foo'].array_keys()))
+        groups = list(g1['foo'].groups())
+        arrays = list(g1['foo'].arrays())
+        eq('bar', groups[0][0])
+        eq(g1['foo']['bar'], groups[0][1])
+        eq('baz', arrays[0][0])
+        eq(g1['foo']['baz'], arrays[0][1])
 
     def test_empty_getitem_contains_iterators(self):
         # setup
@@ -255,6 +343,7 @@ class TestGroup(unittest.TestCase):
         g = Group(store=store)
 
         # test
+        eq([], list(g))
         eq([], list(g.keys()))
         eq(0, len(g))
         assert 'foo' not in g
@@ -263,9 +352,32 @@ class TestGroup(unittest.TestCase):
         store = self.create_store()
         init_group(store)
         g = Group(store=store)
-        expect = 'zarr.hierarchy.Group(/, 0)\n  store: builtins.dict'
+        store_class = '%s.%s' % (dict.__module__, dict.__name__)
+        expect = 'zarr.hierarchy.Group(/, 0)\n  store: %s' % store_class
         actual = repr(g)
         eq(expect, actual)
+        g.create_group('foo')
+        g.create_group('bar')
+        g.create_group('y'*80)
+        g.create_dataset('baz', shape=100, chunks=10)
+        g.create_dataset('quux', shape=100, chunks=10)
+        g.create_dataset('z'*80, shape=100, chunks=10)
+        expect = \
+            'zarr.hierarchy.Group(/, 6)\n' \
+            '  arrays: 3; baz, quux, ' \
+            'zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz...\n' \
+            '  groups: 3; bar, foo, ' \
+            'yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy...\n' \
+            '  store: %s' % store_class
+        actual = repr(g)
+        eq(expect, actual)
+
+    def test_setitem(self):
+        store = self.create_store()
+        init_group(store)
+        g = Group(store=store)
+        with assert_raises(NotImplementedError):
+            g['foo'] = 'bar'
 
 
 class TestGroupDictStore(TestGroup):

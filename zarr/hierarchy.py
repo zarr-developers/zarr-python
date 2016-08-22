@@ -87,7 +87,8 @@ class Group(object):
             self._meta = meta
 
         # setup attributes
-        self._attrs = Attributes(store, key=self.attrs_key, readonly=readonly)
+        akey = self._key_prefix + attrs_key
+        self._attrs = Attributes(store, key=akey, readonly=readonly)
 
     @property
     def store(self):
@@ -98,22 +99,6 @@ class Group(object):
     def path(self):
         """TODO doc me"""
         return self._path
-
-    @property
-    def meta_key(self):
-        """TODO doc me"""
-        if self.path:
-            return self.path + '/' + group_meta_key
-        else:
-            return group_meta_key
-
-    @property
-    def attrs_key(self):
-        """TODO doc me"""
-        if self.path:
-            return self.path + '/' + attrs_key
-        else:
-            return attrs_key
 
     @property
     def readonly(self):
@@ -209,7 +194,7 @@ class Group(object):
         raise NotImplementedError()
 
     def keys(self):
-        for key in listdir(self.store, self.path):
+        for key in sorted(listdir(self.store, self.path)):
             path = self.path + '/' + key
             if (contains_array(self.store, path) or
                     contains_group(self.store, path)):
@@ -219,7 +204,7 @@ class Group(object):
         return (v for _, v in self.items())
 
     def items(self):
-        for key in listdir(self.store, self.path):
+        for key in sorted(listdir(self.store, self.path)):
             path = self.path + '/' + key
             if contains_array(self.store, path):
                 yield key, Array(self.store, path=path, readonly=self.readonly)
@@ -227,25 +212,25 @@ class Group(object):
                 yield key, Group(self.store, path=path, readonly=self.readonly)
 
     def group_keys(self):
-        for key in listdir(self.store, self.path):
+        for key in sorted(listdir(self.store, self.path)):
             path = self.path + '/' + key
             if contains_group(self.store, path):
                 yield key
 
     def groups(self):
-        for key in listdir(self.store, self.path):
+        for key in sorted(listdir(self.store, self.path)):
             path = self.path + '/' + key
             if contains_group(self.store, path):
                 yield key, Group(self.store, path=path, readonly=self.readonly)
 
     def array_keys(self):
-        for key in listdir(self.store, self.path):
+        for key in sorted(listdir(self.store, self.path)):
             path = self.path + '/' + key
             if contains_array(self.store, path):
                 yield key
 
     def arrays(self):
-        for key in listdir(self.store, self.path):
+        for key in sorted(listdir(self.store, self.path)):
             path = self.path + '/' + key
             if contains_array(self.store, path):
                 yield key, Array(self.store, path=path, readonly=self.readonly)
@@ -308,7 +293,7 @@ class Group(object):
             elif not contains_group(self.store, p):
                 init_group(self.store, path=p)
 
-        # create terminal group
+        # create array
         if contains_array(self.store, path):
             raise KeyError(name)
         if contains_group(self.store, path):
