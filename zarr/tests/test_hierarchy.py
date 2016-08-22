@@ -187,22 +187,27 @@ class TestGroup(unittest.TestCase):
         eq('/bar', d3.name)
         assert_is(store, d3.store)
 
-    def test_getitem_contains(self):
+    def test_getitem_contains_iterators(self):
         # setup
         store = self.create_store()
         init_group(store)
         g1 = Group(store=store)
         g2 = g1.create_group('foo/bar')
-        d1 = g1.create_dataset('a/b/c', shape=1000, chunks=100)
+        d1 = g2.create_dataset('/a/b/c', shape=1000, chunks=100)
         d1[:] = np.arange(1000)
+        d2 = g1.create_dataset('foo/baz', shape=3000, chunks=300)
+        d2[:] = np.arange(3000)
 
         # test __getitem__
         assert_is_instance(g1['foo'], Group)
         assert_is_instance(g1['foo']['bar'], Group)
         assert_is_instance(g1['foo/bar'], Group)
         assert_is_instance(g1['/foo/bar/'], Group)
+        assert_is_instance(g1['foo/baz'], Array)
         eq(g2, g1['foo/bar'])
         eq(g1['foo']['bar'], g1['foo/bar'])
+        eq(d2, g1['foo/baz'])
+        assert_array_equal(d2[:], g1['foo/baz'])
         assert_is_instance(g1['a'], Group)
         assert_is_instance(g1['a']['b'], Group)
         assert_is_instance(g1['a/b'], Group)
@@ -215,6 +220,7 @@ class TestGroup(unittest.TestCase):
         # test __contains__
         assert 'foo' in g1
         assert 'foo/bar' in g1
+        assert 'foo/baz' in g1
         assert 'bar' in g1['foo']
         assert 'a' in g1
         assert 'a/b' in g1
@@ -222,6 +228,7 @@ class TestGroup(unittest.TestCase):
         assert 'baz' not in g1
         assert 'a/b/c/d' not in g1
         assert 'a/z' not in g1
+        assert 'quux' not in g1['foo']
 
         # test key errors
         with assert_raises(KeyError):
@@ -229,12 +236,51 @@ class TestGroup(unittest.TestCase):
         with assert_raises(KeyError):
             g1['x/y/z']
 
+        # test __len__
+        eq(2, len(g1))
+        eq(2, len(g1['foo']))
+        eq(0, len(g1['foo/bar']))
+        eq(1, len(g1['a']))
+        eq(1, len(g1['a/b']))
+
+        # test keys()
+        eq(['a', 'foo'], sorted(g1.keys()))
+        eq(['bar', 'baz'], sorted(g1['foo'].keys()))
+        eq([], sorted(g1['foo/bar'].keys()))
+
+    def test_empty_getitem_contains_iterators(self):
+        # setup
+        store = self.create_store()
+        init_group(store)
+        g = Group(store=store)
+
+        # test
+        eq([], list(g.keys()))
+        eq(0, len(g))
+        assert 'foo' not in g
+
+    def test_group_repr(self):
+        store = self.create_store()
+        init_group(store)
+        g = Group(store=store)
+        expect = 'zarr.hierarchy.Group(/, 0)\n  store: builtins.dict'
+        actual = repr(g)
+        eq(expect, actual)
+
 
 class TestGroupDictStore(TestGroup):
 
     @staticmethod
     def create_store():
         return DictStore()
+
+    def test_group_repr(self):
+        store = self.create_store()
+        init_group(store)
+        g = Group(store=store)
+        expect = 'zarr.hierarchy.Group(/, 0)\n  store: zarr.storage.DictStore'
+        actual = repr(g)
+        eq(expect, actual)
 
 
 def rmtree_if_exists(path, rmtree=shutil.rmtree, isdir=os.path.isdir):
@@ -251,6 +297,15 @@ class TestGroupDirectoryStore(TestGroup):
         store = DirectoryStore(path)
         return store
 
+    def test_group_repr(self):
+        store = self.create_store()
+        init_group(store)
+        g = Group(store=store)
+        expect = 'zarr.hierarchy.Group(/, 0)\n' \
+                 '  store: zarr.storage.DirectoryStore'
+        actual = repr(g)
+        eq(expect, actual)
+
 
 class TestGroupZipStore(TestGroup):
 
@@ -260,3 +315,12 @@ class TestGroupZipStore(TestGroup):
         atexit.register(os.remove, path)
         store = ZipStore(path)
         return store
+
+    def test_group_repr(self):
+        store = self.create_store()
+        init_group(store)
+        g = Group(store=store)
+        expect = 'zarr.hierarchy.Group(/, 0)\n' \
+                 '  store: zarr.storage.ZipStore'
+        actual = repr(g)
+        eq(expect, actual)

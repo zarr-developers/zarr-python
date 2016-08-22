@@ -340,7 +340,10 @@ class DictStore(MutableMapping):
     def __getitem__(self, key):
         c = self.root
         for k in key.split('/'):
-            c = c[k]
+            if isinstance(c, self.cls):
+                c = c[k]
+            else:
+                raise KeyError(key)
         if isinstance(c, self.cls):
             raise KeyError(key)
         return c
@@ -351,16 +354,20 @@ class DictStore(MutableMapping):
 
         # ensure intermediate containers
         for k in keys[:-1]:
-            try:
-                c = c[k]
-                if not isinstance(c, self.cls):
-                    raise KeyError(key)
-            except KeyError:
-                c[k] = self.cls()
-                c = c[k]
+            if isinstance(c, self.cls):
+                try:
+                    c = c[k]
+                except KeyError:
+                    c[k] = self.cls()
+                    c = c[k]
+            else:
+                raise KeyError(key)
 
-        # set final value
-        c[keys[-1]] = value
+        if isinstance(c, self.cls):
+            # set final value
+            c[keys[-1]] = value
+        else:
+            raise KeyError(key)
 
     def __delitem__(self, key):
         c = self.root
@@ -368,18 +375,27 @@ class DictStore(MutableMapping):
 
         # obtain final container
         for k in keys[:-1]:
-            c = c[k]
+            if isinstance(c, self.cls):
+                c = c[k]
+            else:
+                raise KeyError(key)
 
-        # delete item
-        del c[keys[-1]]
+        if isinstance(c, self.cls):
+            # delete item
+            del c[keys[-1]]
+        else:
+            raise KeyError(key)
 
     def __contains__(self, key):
         keys = key.split('/')
         c = self.root
         for k in keys:
-            try:
-                c = c[k]
-            except KeyError:
+            if isinstance(c, self.cls):
+                try:
+                    c = c[k]
+                except KeyError:
+                    return False
+            else:
                 return False
         return not isinstance(c, self.cls)
 
