@@ -7,6 +7,7 @@ from nose.tools import eq_ as eq, assert_is_none, assert_raises
 import numpy as np
 
 
+from zarr.compat import PY2
 from zarr.meta import decode_array_metadata, encode_dtype, decode_dtype, \
     ZARR_FORMAT
 from zarr.errors import MetadataError
@@ -15,7 +16,7 @@ from zarr.errors import MetadataError
 def test_decode_array():
 
     # typical
-    b = b'''{
+    b = '''{
         "zarr_format": %s,
         "shape": [100],
         "chunks": [10],
@@ -24,7 +25,9 @@ def test_decode_array():
         "compression_opts": 1,
         "fill_value": null,
         "order": "C"
-    }''' % str(ZARR_FORMAT).encode('ascii')
+    }''' % ZARR_FORMAT
+    if not PY2:
+        b = b.encode('ascii')
     meta = decode_array_metadata(b)
     eq(ZARR_FORMAT, meta['zarr_format'])
     eq((100,), meta['shape'])
@@ -36,7 +39,7 @@ def test_decode_array():
     eq('C', meta['order'])
 
     # variations
-    b = b'''{
+    b = '''{
         "zarr_format": %s,
         "shape": [100, 100],
         "chunks": [10, 10],
@@ -49,7 +52,9 @@ def test_decode_array():
         },
         "fill_value": 42,
         "order": "F"
-    }''' % str(ZARR_FORMAT).encode('ascii')
+    }''' % ZARR_FORMAT
+    if not PY2:
+        b = b.encode('ascii')
     meta = decode_array_metadata(b)
     eq(ZARR_FORMAT, meta['zarr_format'])
     eq((100, 100), meta['shape'])
@@ -63,7 +68,7 @@ def test_decode_array():
     eq('F', meta['order'])
 
     # unsupported format
-    b = b'''{
+    b = '''{
         "zarr_format": %s,
         "shape": [100],
         "chunks": [10],
@@ -72,14 +77,18 @@ def test_decode_array():
         "compression_opts": 1,
         "fill_value": null,
         "order": "C"
-    }''' % str(ZARR_FORMAT - 1).encode('ascii')
+    }''' % (ZARR_FORMAT - 1)
+    if not PY2:
+        b = b.encode('ascii')
     with assert_raises(MetadataError):
         decode_array_metadata(b)
 
     # missing fields
-    b = b'''{
+    b = '''{
         "zarr_format": %s
-    }''' % str(ZARR_FORMAT).encode('ascii')
+    }''' % ZARR_FORMAT
+    if not PY2:
+        b = b.encode('ascii')
     with assert_raises(MetadataError):
         decode_array_metadata(b)
 

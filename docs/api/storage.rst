@@ -9,6 +9,6 @@ can be used as a Zarr array store.
 .. autofunction:: init_array
 .. autofunction:: init_group
 
-.. autoclass:: MemoryStore
+.. autoclass:: DictStore
 .. autoclass:: DirectoryStore
 .. autoclass:: ZipStore
