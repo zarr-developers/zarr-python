@@ -381,11 +381,11 @@ class Group(object):
         pass
 
 
-def group(store=None, readonly=False):
+def group(store=None, readonly=False, overwrite=False):
     """TODO doc me"""
     if store is None:
         store = DictStore()
-    init_group(store)
+    init_group(store, overwrite=overwrite)
     return Group(store, readonly=readonly)
 
 
