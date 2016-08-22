@@ -189,32 +189,42 @@ def normalize_order(order):
     return order
 
 
-def normalize_name(name):
-    # None is None
-    if name is None:
-        return None
-    # convert back slash to forward slash
-    name = name.replace('\\', '/')
-    # ensure only one leading slash
-    while name[0] == '/':
-        name = name[1:]
-    name = '/' + name
-    # remove any trailing slashes
-    while name[-1] == '/':
-        name = name[:-1]
-    # collapse any repeated slashes
-    previous_char = None
-    normed = ''
-    for char in name:
-        if previous_char != '/':
-            normed += char
-        previous_char = char
-    return normed
+def normalize_storage_path(path):
+    if path:
 
+        # convert backslash to forward slash
+        path = path.replace('\\', '/')
 
-def join_names(*names):
-    # exclude any names that are empty or None as given
-    names = [normalize_name(n) for n in names if n]
-    # exclude any names that are empty after normalisation
-    names = [n for n in names if n]
-    return ''.join(names)
+        # ensure no leading slash
+        while path[0] == '/':
+            path = path[1:]
+            if not path:
+                break
+
+        # ensure no trailing slash
+        if path:
+            while path[-1] == '/':
+                path = path[:-1]
+                if not path:
+                    break
+
+        # collapse any repeated slashes
+        previous_char = None
+        collapsed = ''
+        for char in path:
+            if char == '/' and previous_char == '/':
+                pass
+            else:
+                collapsed += char
+            previous_char = char
+        path = collapsed
+
+        # don't allow path segments with just '.' or '..'
+        segments = path.split('/')
+        if any([s in {'.', '..'} for s in segments]):
+            raise ValueError("path containing '.' or '..' segment not allowed")
+
+    else:
+        path = ''
+
+    return path

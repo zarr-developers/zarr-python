@@ -8,12 +8,12 @@ import os
 
 
 from nose.tools import assert_raises, eq_ as eq, assert_is, assert_true, \
-    assert_is_instance
+    assert_is_instance, assert_is_none, assert_false
 import numpy as np
 from numpy.testing import assert_array_equal
 
 
-from zarr.storage import MemoryStore, DirectoryStore, ZipStore, init_group, \
+from zarr.storage import DictStore, DirectoryStore, ZipStore, init_group, \
     init_array
 from zarr.core import Array
 from zarr.hierarchy import Group
@@ -23,47 +23,85 @@ from zarr.attrs import Attributes
 # noinspection PyStatementEffect
 class TestGroup(unittest.TestCase):
 
-    def test_group_init(self):
-        store = MemoryStore()  # store not initialised
+    @staticmethod
+    def create_store():
+        """
+        :rtype: MutableMapping
+        """
+        # override in sub-classes
+        return dict()
+
+    def test_group_init_1(self):
+        store = self.create_store()
+        init_group(store)
+        g = Group(store)
+        assert_is(store, g.store)
+        assert_false(g.readonly)
+        eq('', g.path)
+        eq('/', g.name)
+        assert_is_instance(g.attrs, Attributes)
+
+    def test_group_init_2(self):
+        store = self.create_store()
+        init_group(store, path='/foo/bar/')
+        g = Group(store, path='/foo/bar/', readonly=True)
+        assert_is(store, g.store)
+        assert_true(g.readonly)
+        eq('foo/bar', g.path)
+        eq('/foo/bar', g.name)
+        assert_is_instance(g.attrs, Attributes)
+
+    def test_group_init_errors_1(self):
+        store = self.create_store()
+        with assert_raises(ValueError):
+            Group(store)
+
+    def test_group_init_errors_2(self):
+        store = self.create_store()
         init_array(store, shape=1000, chunks=100)
         with assert_raises(ValueError):
             Group(store)
 
-    @staticmethod
-    def create_group(store=None, readonly=False, name=None, **kwargs):
-        if store is None:
-            store = MemoryStore()
-        init_group(store, **kwargs)
-        return Group(store, readonly=readonly, name=name)
-
-    def test_properties(self):
-        store = MemoryStore()
-        group = self.create_group(store=store, readonly=True, name='foo')
-        assert_is(store, group.store)
-        assert_true(group.readonly)
-        eq('foo', group.name)
-        assert_is_instance(group.attrs, Attributes)
-
     def test_create_group(self):
-        g1 = self.create_group()
+        store = self.create_store()
+        init_group(store)
+        g1 = Group(store=store)
+
+        # check root group
+        eq('', g1.path)
+        eq('/', g1.name)
+
+        # create level 1 child group
         g2 = g1.create_group('foo')
         assert_is_instance(g2, Group)
-        eq('foo', g2.name)
+        eq('foo', g2.path)
+        eq('/foo', g2.name)
+
+        # create level 2 child group
         g3 = g2.create_group('bar')
         assert_is_instance(g3, Group)
-        eq('foo/bar', g3.name)
+        eq('foo/bar', g3.path)
+        eq('/foo/bar', g3.name)
+
+        # create level 3 child group
         g4 = g1.create_group('foo/bar/baz')
         assert_is_instance(g4, Group)
-        eq('foo/bar/baz', g4.name)
-        g5 = g1.create_group('/a/b/c/')
+        eq('foo/bar/baz', g4.path)
+        eq('/foo/bar/baz', g4.name)
+
+        # create level 3 group via root
+        g5 = g4.create_group('/a/b/c/')
         assert_is_instance(g5, Group)
-        eq('a/b/c', g5.name)
+        eq('a/b/c', g5.path)
+        eq('/a/b/c', g5.name)
 
         # test bad keys
         with assert_raises(KeyError):
             g1.create_group('foo')  # already exists
         with assert_raises(KeyError):
             g1.create_group('a/b/c')  # already exists
+        with assert_raises(KeyError):
+            g4.create_group('/a/b/c')  # already exists
         with assert_raises(KeyError):
             g1.create_group('')
         with assert_raises(KeyError):
@@ -72,54 +110,54 @@ class TestGroup(unittest.TestCase):
             g1.create_group('//')
 
     def test_require_group(self):
-        g1 = self.create_group()
+        store = self.create_store()
+        init_group(store)
+        g1 = Group(store=store)
 
         # test creation
         g2 = g1.require_group('foo')
         assert_is_instance(g2, Group)
-        eq('foo', g2.name)
+        eq('foo', g2.path)
         g3 = g2.require_group('bar')
         assert_is_instance(g3, Group)
-        eq('foo/bar', g3.name)
+        eq('foo/bar', g3.path)
         g4 = g1.require_group('foo/bar/baz')
         assert_is_instance(g4, Group)
-        eq('foo/bar/baz', g4.name)
-        g5 = g1.require_group('/a/b/c/')
+        eq('foo/bar/baz', g4.path)
+        g5 = g4.require_group('/a/b/c/')
         assert_is_instance(g5, Group)
-        eq('a/b/c', g5.name)
+        eq('a/b/c', g5.path)
 
         # test when already created
         g2a = g1.require_group('foo')
         eq(g2, g2a)
-        eq(g2.store, g2a.store)
+        assert_is(g2.store, g2a.store)
         g3a = g2a.require_group('bar')
         eq(g3, g3a)
-        eq(g3.store, g3a.store)
+        assert_is(g3.store, g3a.store)
         g4a = g1.require_group('foo/bar/baz')
         eq(g4, g4a)
-        eq(g4.store, g4a.store)
-        g5a = g1.require_group('/a/b/c/')
+        assert_is(g4.store, g4a.store)
+        g5a = g4a.require_group('/a/b/c/')
         eq(g5, g5a)
-        eq(g5.store, g5a.store)
+        assert_is(g5.store, g5a.store)
 
-        with assert_raises(KeyError):
-            g1.create_group('')
-        with assert_raises(KeyError):
-            g1.create_group('/')
-        with assert_raises(KeyError):
-            g1.create_group('//')
-
+        # test path normalization
         eq(g1.require_group('quux'), g1.require_group('/quux/'))
 
     def test_create_dataset(self):
-        g = self.create_group()
+        store = self.create_store()
+        init_group(store)
+        g = Group(store=store)
 
         # create as immediate child
         d1 = g.create_dataset('foo', shape=1000, chunks=100)
         assert_is_instance(d1, Array)
         eq((1000,), d1.shape)
         eq((100,), d1.chunks)
-        eq('foo', d1.name)
+        eq('foo', d1.path)
+        eq('/foo', d1.name)
+        assert_is(store, d1.store)
 
         # create as descendant
         d2 = g.create_dataset('/a/b/c/', shape=2000, chunks=200, dtype='i1',
@@ -128,12 +166,14 @@ class TestGroup(unittest.TestCase):
         assert_is_instance(d2, Array)
         eq((2000,), d2.shape)
         eq((200,), d2.chunks)
-        eq('a/b/c', d2.name)
         eq(np.dtype('i1'), d2.dtype)
         eq('zlib', d2.compression)
         eq(9, d2.compression_opts)
         eq(42, d2.fill_value)
         eq('F', d2.order)
+        eq('a/b/c', d2.path)
+        eq('/a/b/c', d2.name)
+        assert_is(store, d2.store)
 
         # create with data
         data = np.arange(3000, dtype='u2')
@@ -141,18 +181,22 @@ class TestGroup(unittest.TestCase):
         assert_is_instance(d3, Array)
         eq((3000,), d3.shape)
         eq((300,), d3.chunks)
-        eq('bar', d3.name)
         eq(np.dtype('u2'), d3.dtype)
         assert_array_equal(data, d3[:])
+        eq('bar', d3.path)
+        eq('/bar', d3.name)
+        assert_is(store, d3.store)
 
-    def test_getitem(self):
+    def test_getitem_contains(self):
         # setup
-        g1 = self.create_group()
+        store = self.create_store()
+        init_group(store)
+        g1 = Group(store=store)
         g2 = g1.create_group('foo/bar')
         d1 = g1.create_dataset('a/b/c', shape=1000, chunks=100)
         d1[:] = np.arange(1000)
 
-        # test
+        # test __getitem__
         assert_is_instance(g1['foo'], Group)
         assert_is_instance(g1['foo']['bar'], Group)
         assert_is_instance(g1['foo/bar'], Group)
@@ -168,38 +212,51 @@ class TestGroup(unittest.TestCase):
         eq(g1['a']['b']['c'], g1['a/b/c'])
         assert_array_equal(d1[:], g1['a/b/c'][:])
 
+        # test __contains__
+        assert 'foo' in g1
+        assert 'foo/bar' in g1
+        assert 'bar' in g1['foo']
+        assert 'a' in g1
+        assert 'a/b' in g1
+        assert 'a/b/c' in g1
+        assert 'baz' not in g1
+        assert 'a/b/c/d' not in g1
+        assert 'a/z' not in g1
+
         # test key errors
         with assert_raises(KeyError):
             g1['baz']
         with assert_raises(KeyError):
             g1['x/y/z']
-        with assert_raises(KeyError):
-            g1['']
-        with assert_raises(KeyError):
-            g1['/']
-        with assert_raises(KeyError):
-            g1['//']
+
+
+class TestGroupDictStore(TestGroup):
+
+    @staticmethod
+    def create_store():
+        return DictStore()
+
+
+def rmtree_if_exists(path, rmtree=shutil.rmtree, isdir=os.path.isdir):
+    if isdir(path):
+        rmtree(path)
 
 
 class TestGroupDirectoryStore(TestGroup):
 
     @staticmethod
-    def create_group(store=None, readonly=False, name=None, **kwargs):
-        if store is None:
-            path = tempfile.mkdtemp()
-            atexit.register(shutil.rmtree, path)
-            store = DirectoryStore(path)
-        init_group(store, **kwargs)
-        return Group(store, readonly=readonly, name=name)
+    def create_store():
+        path = tempfile.mkdtemp()
+        atexit.register(rmtree_if_exists, path)
+        store = DirectoryStore(path)
+        return store
 
 
 class TestGroupZipStore(TestGroup):
 
     @staticmethod
-    def create_group(store=None, readonly=False, name=None, **kwargs):
-        if store is None:
-            path = tempfile.mktemp(suffix='.zip')
-            atexit.register(os.remove, path)
-            store = ZipStore(path, arcpath='foo/bar')
-        init_group(store, **kwargs)
-        return Group(store, readonly=readonly, name=name)
+    def create_store():
+        path = tempfile.mktemp(suffix='.zip')
+        atexit.register(os.remove, path)
+        store = ZipStore(path)
+        return store

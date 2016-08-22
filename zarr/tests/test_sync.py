@@ -2,6 +2,7 @@
 from __future__ import absolute_import, print_function, division
 from tempfile import mkdtemp
 import atexit
+import json
 import shutil
 
 
@@ -15,17 +16,23 @@ from zarr.storage import init_array
 class TestThreadSynchronizedAttributes(TestAttributes):
 
     def init_attributes(self, store, readonly=False):
+        key = 'attrs'
+        store[key] = json.dumps(dict()).encode('ascii')
         synchronizer = ThreadSynchronizer()
-        return SynchronizedAttributes(store, synchronizer, readonly=readonly)
+        return SynchronizedAttributes(store, synchronizer, key=key,
+                                      readonly=readonly)
 
 
 class TestProcessSynchronizedAttributes(TestAttributes):
 
     def init_attributes(self, store, readonly=False):
+        key = 'attrs'
+        store[key] = json.dumps(dict()).encode('ascii')
         sync_path = mkdtemp()
         atexit.register(shutil.rmtree, sync_path)
         synchronizer = ProcessSynchronizer(sync_path)
-        return SynchronizedAttributes(store, synchronizer, readonly=readonly)
+        return SynchronizedAttributes(store, synchronizer, key=key,
+                                      readonly=readonly)
 
 
 class TestThreadSynchronizedArray(TestArray):

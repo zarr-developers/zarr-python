@@ -55,7 +55,7 @@ class TestArray(unittest.TestCase):
         # ZipStore
         if os.path.exists('test.zip'):
             os.remove('test.zip')
-        store = ZipStore('test.zip', arcpath='foo/bar')
+        store = ZipStore('test.zip')
         z = self.create_array(store=store, shape=1000, chunks=100,
                               compression='zlib', compression_opts=1,
                               fill_value=0)

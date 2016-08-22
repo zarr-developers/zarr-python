@@ -15,7 +15,9 @@ from zarr.errors import ReadOnlyError
 class TestAttributes(unittest.TestCase):
 
     def init_attributes(self, store, readonly=False):
-        return Attributes(store, readonly=readonly)
+        key = 'attrs'
+        store[key] = json.dumps(dict()).encode('ascii')
+        return Attributes(store, key=key, readonly=readonly)
 
     def test_storage(self):
 
@@ -75,10 +77,9 @@ class TestAttributes(unittest.TestCase):
         eq({('foo', 'bar'), ('baz', 42)}, set(a.items()))
 
     def test_readonly(self):
-
         store = dict()
-        store['attrs'] = json.dumps(dict(foo='bar', baz=42)).encode('ascii')
         a = self.init_attributes(store, readonly=True)
+        store['attrs'] = json.dumps(dict(foo='bar', baz=42)).encode('ascii')
         eq(a['foo'], 'bar')
         eq(a['baz'], 42)
         with assert_raises(ReadOnlyError):

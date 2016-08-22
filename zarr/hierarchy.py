@@ -6,8 +6,11 @@ import os
 from zarr.attrs import Attributes
 from zarr.core import Array
 from zarr.storage import contains_array, contains_group, init_group, \
-    DictStore, DirectoryStore, normalize_prefix, listdir, group_attrs_key
+    DictStore, DirectoryStore, group_meta_key, attrs_key, listdir
 from zarr.creation import array, create
+from zarr.util import normalize_storage_path
+from zarr.errors import ReadOnlyError
+from zarr.meta import decode_group_metadata
 
 
 class Group(object):
@@ -19,7 +22,7 @@ class Group(object):
         Group store, already initialised.
     readonly : bool, optional
         True if group should be protected against modification.
-    name : string, optional
+    path : string, optional
         Group name.
 
     Attributes
@@ -59,24 +62,58 @@ class Group(object):
 
     """
 
-    def __init__(self, store, name=None, readonly=False):
+    def __init__(self, store, path=None, readonly=False):
 
         self._store = store
-        self._prefix = normalize_prefix(name)
+        self._path = normalize_storage_path(path)
+        if self._path:
+            self._key_prefix = self._path + '/'
+        else:
+            self._key_prefix = ''
         self._readonly = readonly
 
         # guard conditions
-        if contains_array(store, prefix=self._prefix):
+        if contains_array(store, path=self._path):
             raise ValueError('store contains an array')
 
+        # initialise metadata
+        try:
+            mkey = self._key_prefix + group_meta_key
+            meta_bytes = store[mkey]
+        except KeyError:
+            raise ValueError('store has no metadata')
+        else:
+            meta = decode_group_metadata(meta_bytes)
+            self._meta = meta
+
         # setup attributes
-        attrs_key = group_attrs_key(self._prefix)
-        self._attrs = Attributes(store, key=attrs_key, readonly=readonly)
+        self._attrs = Attributes(store, key=self.attrs_key, readonly=readonly)
 
     @property
     def store(self):
         """TODO"""
         return self._store
+
+    @property
+    def path(self):
+        """TODO doc me"""
+        return self._path
+
+    @property
+    def meta_key(self):
+        """TODO doc me"""
+        if self.path:
+            return self.path + '/' + group_meta_key
+        else:
+            return group_meta_key
+
+    @property
+    def attrs_key(self):
+        """TODO doc me"""
+        if self.path:
+            return self.path + '/' + attrs_key
+        else:
+            return attrs_key
 
     @property
     def readonly(self):
@@ -85,10 +122,13 @@ class Group(object):
 
     @property
     def name(self):
-        """TODO"""
-        if self._prefix:
-            # follow h5py convention: add leading slash, remove trailing slash
-            return '/' + self._prefix[:-1]
+        """TODO doc me"""
+        if self.path:
+            # follow h5py convention: add leading slash
+            name = self.path
+            if name[0] != '/':
+                name = '/' + name
+            return name
         return '/'
 
     @property
@@ -101,7 +141,7 @@ class Group(object):
             isinstance(other, Group) and
             self.store == other.store and
             self.readonly == other.readonly and
-            self.name == other.name
+            self.path == other.path
             # N.B., no need to compare attributes, should be covered by
             # store comparison
         )
@@ -135,161 +175,143 @@ class Group(object):
                                    type(self._store).__name__)
         return r
 
-    def __contains__(self, key):
-        # TODO
-        pass
-
-    def __getitem__(self, key):
-        # TODO recode to use prefix
-
-        names = [s for s in key.split('/') if s]
-        if not names:
-            raise KeyError(key)
-
-        # recursively get store
-        store = self.store
-        for name in names:
-            store = store.get_store(name)
-
-        # determine absolute name
-        if self.name:
-            absname = self.name + '/'
+    def _item_path(self, item):
+        if item and item[0] == '/':
+            # absolute path
+            path = normalize_storage_path(item)
         else:
-            absname = ''
-        absname += '/'.join(names)
+            # relative path
+            path = normalize_storage_path(item)
+            if self.path:
+                path = self.path + '/' + path
+        return path
 
-        if contains_array(store):
-            return Array(store, readonly=self.readonly, name=absname)
-        elif contains_group(store):
-            # create group
-            return Group(store, readonly=self.readonly, name=absname)
+    def __contains__(self, item):
+        path = self._item_path(item)
+        if contains_array(self.store, path):
+            return True
+        elif contains_group(self.store, path):
+            return True
         else:
-            raise KeyError(key)
+            return False
+
+    def __getitem__(self, item):
+        path = self._item_path(item)
+        if contains_array(self.store, path):
+            return Array(self.store, readonly=self.readonly, path=path)
+        elif contains_group(self.store, path):
+            return Group(self.store, readonly=self.readonly, path=path)
+        else:
+            raise KeyError(item)
 
     def __setitem__(self, key, value):
         # don't implement this for now
         raise NotImplementedError()
 
     def keys(self):
-        # TODO recode to use prefix
-        for key, store in self.store.stores():
-            if contains_array(store) or contains_group(store):
+        for key in listdir(self.store, self.path):
+            path = self.path + '/' + key
+            if (contains_array(self.store, path) or
+                    contains_group(self.store, path)):
                 yield key
 
     def values(self):
-        # TODO recode to use prefix
-        return (v for k, v in self.items())
+        return (v for _, v in self.items())
 
     def items(self):
-        # TODO recode to use prefix
-        for key, store in self.store.stores():
-            if contains_array(store):
-                # TODO what about synchronizer?
-                yield key, Array(store, readonly=self.readonly)
-            elif contains_group(store):
-                yield key, Group(store, readonly=self.readonly)
+        for key in listdir(self.store, self.path):
+            path = self.path + '/' + key
+            if contains_array(self.store, path):
+                yield key, Array(self.store, path=path, readonly=self.readonly)
+            elif contains_group(self.store, path):
+                yield key, Group(self.store, path=path, readonly=self.readonly)
 
     def group_keys(self):
-        # TODO recode to use prefix
-        for key, store in self.store.stores():
-            if contains_group(store):
+        for key in listdir(self.store, self.path):
+            path = self.path + '/' + key
+            if contains_group(self.store, path):
                 yield key
 
     def groups(self):
-        # TODO recode to use prefix
-        for key, store in self.store.stores():
-            if contains_group(store):
-                yield key, Group(store, readonly=self.readonly)
+        for key in listdir(self.store, self.path):
+            path = self.path + '/' + key
+            if contains_group(self.store, path):
+                yield key, Group(self.store, path=path, readonly=self.readonly)
 
     def array_keys(self):
-        # TODO recode to use prefix
-        for key, store in self.store.stores():
-            if contains_array(store):
+        for key in listdir(self.store, self.path):
+            path = self.path + '/' + key
+            if contains_array(self.store, path):
                 yield key
 
     def arrays(self):
-        # TODO recode to use prefix
-        for key, store in self.store.stores():
-            if contains_array(store):
-                # TODO what about synchronizer?
-                yield key, Array(store, readonly=self.readonly)
-
-    def _require_store(self, name):
-        # TODO recode to use prefix
-
-        # handle compound request
-        names = [s for s in name.split('/') if s]
-        if not names:
-            raise KeyError(name)
-
-        # create intermediate stores as groups
-        store = self.store
-        for name in names[:-1]:
-            store = store.require_store(name)
-            if contains_array(store):
-                raise KeyError(name)  # TODO better error?
-            elif contains_group(store):
-                pass
-            else:
-                init_group(store)
-
-        # create final store
-        store = store.require_store(names[-1])
-
-        # determine absolute name
-        if self.name:
-            absname = self.name + '/'
-        else:
-            absname = ''
-        absname += '/'.join(names)
-
-        return store, absname
+        for key in listdir(self.store, self.path):
+            path = self.path + '/' + key
+            if contains_array(self.store, path):
+                yield key, Array(self.store, path=path, readonly=self.readonly)
 
     def create_group(self, name):
-        # TODO recode to use prefix
+        if self.readonly:
+            raise ReadOnlyError('group is read-only')
 
-        # obtain store
-        store, absname = self._require_store(name)
+        path = self._item_path(name)
 
-        # initialise group
-        if contains_array(store):
+        # require intermediate groups
+        segments = path.split('/')
+        for i in range(len(segments)):
+            p = '/'.join(segments[:i])
+            if contains_array(self.store, p):
+                raise KeyError(name)
+            elif not contains_group(self.store, p):
+                init_group(self.store, path=p)
+
+        # create terminal group
+        if contains_array(self.store, path):
             raise KeyError(name)
-        elif contains_group(store):
+        if contains_group(self.store, path):
             raise KeyError(name)
         else:
-            init_group(store)
-
-        return Group(store, readonly=self.readonly, name=absname)
+            init_group(self.store, path=path)
+            return Group(self.store, path=path, readonly=self.readonly)
 
     def require_group(self, name):
-        # TODO recode to use prefix
+        path = self._item_path(name)
 
-        # obtain store
-        store, absname = self._require_store(name)
+        # require all intermediate groups
+        segments = path.split('/')
+        for i in range(len(segments) + 1):
+            p = '/'.join(segments[:i])
+            if contains_array(self.store, p):
+                raise KeyError(name)
+            elif not contains_group(self.store, p):
+                if self.readonly:
+                    raise ReadOnlyError('group is read-only')
+                init_group(self.store, path=p)
 
-        # initialise group
-        if contains_array(store):
-            raise KeyError(name)
-        elif contains_group(store):
-            pass
-        else:
-            init_group(store)
-
-        return Group(store, readonly=self.readonly, name=absname)
+        return Group(self.store, path=path, readonly=self.readonly)
 
     def create_dataset(self, name, data=None, shape=None, chunks=None,
                        dtype=None, compression='default',
                        compression_opts=None, fill_value=None, order='C',
                        synchronizer=None, **kwargs):
-        # TODO recode to use prefix
+        if self.readonly:
+            raise ReadOnlyError('group is read-only')
 
-        # obtain store
-        store, absname = self._require_store(name)
+        path = self._item_path(name)
 
-        # guard conditions
-        if contains_array(store):
+        # require intermediate groups
+        segments = path.split('/')
+        for i in range(len(segments)):
+            p = '/'.join(segments[:i])
+            if contains_array(self.store, p):
+                raise KeyError(name)
+            elif not contains_group(self.store, p):
+                init_group(self.store, path=p)
+
+        # create terminal group
+        if contains_array(self.store, path):
             raise KeyError(name)
-        elif contains_group(store):
+        if contains_group(self.store, path):
             raise KeyError(name)
 
         # compatibility with h5py
@@ -300,14 +322,16 @@ class Group(object):
                       compression=compression,
                       compression_opts=compression_opts,
                       fill_value=fill_value, order=order,
-                      synchronizer=synchronizer, store=store, name=absname)
+                      synchronizer=synchronizer, store=self.store,
+                      path=path)
 
         else:
             a = create(shape=shape, chunks=chunks, dtype=dtype,
                        compression=compression,
                        compression_opts=compression_opts,
                        fill_value=fill_value, order=order,
-                       synchronizer=synchronizer, store=store, name=absname)
+                       synchronizer=synchronizer, store=self.store,
+                       path=path)
 
         return a
 
@@ -358,7 +382,7 @@ class Group(object):
 
 
 def group(store=None, readonly=False):
-    """TODO"""
+    """TODO doc me"""
     if store is None:
         store = DictStore()
     init_group(store)
@@ -366,7 +390,7 @@ def group(store=None, readonly=False):
 
 
 def open_group(path, mode='a'):
-    """TODO"""
+    """TODO doc me"""
 
     # TODO recode to use prefix
 

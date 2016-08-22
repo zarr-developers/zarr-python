@@ -10,6 +10,7 @@ import fasteners
 
 from zarr.core import Array
 from zarr.attrs import Attributes
+from zarr.storage import attrs_key
 
 
 class ThreadSynchronizer(object):
@@ -74,6 +75,8 @@ class SynchronizedArray(Array):
         Array synchronizer.
     readonly : bool, optional
         True if array should be protected against modification.
+    path : string, optional
+        Path under which array is stored.
 
     Examples
     --------
@@ -101,15 +104,16 @@ class SynchronizedArray(Array):
 
     """  # flake8: noqa
 
-    def __init__(self, store, synchronizer, readonly=False, name=None):
+    def __init__(self, store, synchronizer, readonly=False, path=None):
         super(SynchronizedArray, self).__init__(store, readonly=readonly,
-                                                name=name)
+                                                path=path)
         self.synchronizer = synchronizer
-        self._attrs = SynchronizedAttributes(store, synchronizer,
+        akey = self._key_prefix + attrs_key
+        self._attrs = SynchronizedAttributes(store, synchronizer, key=akey,
                                              readonly=readonly)
 
     def _chunk_setitem(self, cidx, key, value):
-        ckey = '.'.join(map(str, cidx))
+        ckey = self._ckey(cidx)
         with self.synchronizer.chunk_lock(ckey):
             super(SynchronizedArray, self)._chunk_setitem(cidx, key, value)
 

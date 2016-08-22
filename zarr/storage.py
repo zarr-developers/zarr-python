@@ -42,7 +42,7 @@ def contains_array(store, path=None):
 
 
 def contains_group(store, path=None):
-    """TODO"""
+    """TODO doc me"""
     path = normalize_storage_path(path)
     prefix = _path_to_prefix(path)
     key = prefix + group_meta_key
@@ -103,7 +103,7 @@ def init_array(store, shape, chunks, dtype=None, compression='default',
     Parameters
     ----------
     store : MutableMapping
-        A mapping that supports string keys and byte sequence values.
+        A mapping that supports string keys and bytes-like values.
     shape : int or tuple of ints
         Array shape.
     chunks : int or tuple of ints
@@ -133,7 +133,7 @@ def init_array(store, shape, chunks, dtype=None, compression='default',
         >>> store = dict()
         >>> init_array(store, shape=(10000, 10000), chunks=(1000, 1000))
         >>> sorted(store.keys())
-        ['.zattrs', '.zarray']
+        ['.zarray', '.zattrs']
 
     Array metadata is stored as JSON::
 
@@ -156,7 +156,7 @@ def init_array(store, shape, chunks, dtype=None, compression='default',
                 10000,
                 10000
             ],
-            "zarr_format": 1
+            "zarr_format": 2
         }
 
     User-defined attributes are also stored as JSON, initially empty::
@@ -164,14 +164,31 @@ def init_array(store, shape, chunks, dtype=None, compression='default',
         >>> print(str(store['.zattrs'], 'ascii'))
         {}
 
-    initialize an array using a storage path::
+    Initialize an array using a storage path::
 
         >>> init_array(store, shape=100000000, chunks=1000000, dtype='i1',
         ...            path='foo/bar')
         >>> sorted(store.keys())
-        TODO
+        ['.zarray', '.zattrs', 'foo/bar/.zarray', 'foo/bar/.zattrs']
         >>> print(str(store['foo/bar/.zarray'], 'ascii'))
-        TODO
+        {
+            "chunks": [
+                1000000
+            ],
+            "compression": "blosc",
+            "compression_opts": {
+                "clevel": 5,
+                "cname": "lz4",
+                "shuffle": 1
+            },
+            "dtype": "|i1",
+            "fill_value": null,
+            "order": "C",
+            "shape": [
+                100000000
+            ],
+            "zarr_format": 2
+        }
 
     Notes
     -----
@@ -280,7 +297,7 @@ def _dict_store_keys(d, prefix='', cls=dict):
             yield prefix + k
 
 
-def _getbuffersize(v):
+def buffersize(v):
     from array import array as _stdlib_array
     if PY2 and isinstance(v, _stdlib_array):
         # special case array.array because does not support buffer
@@ -297,7 +314,7 @@ class DictStore(MutableMapping):
     Examples
     --------
     >>> import zarr
-    >>> store = zarr.DictStore('example')
+    >>> store = zarr.DictStore()
     >>> store['foo'] = b'bar'
     >>> store['foo']
     b'bar'
@@ -305,7 +322,7 @@ class DictStore(MutableMapping):
     >>> store['a/b/c']
     b'xxx'
     >>> sorted(store.keys())
-    ['foo', 'a/b/c']
+    ['a/b/c', 'foo']
     >>> store.listdir()
     ['a', 'foo']
     >>> store.listdir('a/b')
@@ -423,13 +440,13 @@ class DictStore(MutableMapping):
             for v in c.values():
                 if not isinstance(v, self.cls):
                     try:
-                        size += _getbuffersize(v)
+                        size += buffersize(v)
                     except TypeError:
                         return -1
             return size
         else:
             try:
-                return _getbuffersize(c)
+                return buffersize(c)
             except TypeError:
                 return -1
 
@@ -450,15 +467,15 @@ class DirectoryStore(MutableMapping):
     >>> store['foo'] = b'bar'
     >>> store['foo']
     b'bar'
-    >>> open('example/foo').read()
+    >>> open('example/foo', 'rb').read()
     b'bar'
     >>> store['a/b/c'] = b'xxx'
     >>> store['a/b/c']
     b'xxx'
-    >>> open('example/a/b/c').read()
+    >>> open('example/a/b/c', 'rb').read()
     b'xxx'
     >>> sorted(store.keys())
-    ['foo', 'a/b/c']
+    ['a/b/c', 'foo']
     >>> store.listdir()
     ['a', 'foo']
     >>> store.listdir('a/b')
