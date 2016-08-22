@@ -7,15 +7,16 @@ from nose.tools import eq_ as eq, assert_is_none, assert_raises
 import numpy as np
 
 
-from zarr.meta import decode_metadata, encode_dtype, decode_dtype
+from zarr.meta import decode_array_metadata, encode_dtype, decode_dtype, \
+    ZARR_FORMAT
 from zarr.errors import MetadataError
 
 
-def test_decode():
+def test_decode_array():
 
     # typical
     b = b'''{
-        "zarr_format": 1,
+        "zarr_format": %s,
         "shape": [100],
         "chunks": [10],
         "dtype": "<f8",
@@ -23,9 +24,9 @@ def test_decode():
         "compression_opts": 1,
         "fill_value": null,
         "order": "C"
-    }'''
-    meta = decode_metadata(b)
-    eq(1, meta['zarr_format'])
+    }''' % str(ZARR_FORMAT).encode('ascii')
+    meta = decode_array_metadata(b)
+    eq(ZARR_FORMAT, meta['zarr_format'])
     eq((100,), meta['shape'])
     eq((10,), meta['chunks'])
     eq(np.dtype('<f8'), meta['dtype'])
@@ -36,7 +37,7 @@ def test_decode():
 
     # variations
     b = b'''{
-        "zarr_format": 1,
+        "zarr_format": %s,
         "shape": [100, 100],
         "chunks": [10, 10],
         "dtype": [["a", "i4"], ["b", "S10"]],
@@ -48,9 +49,9 @@ def test_decode():
         },
         "fill_value": 42,
         "order": "F"
-    }'''
-    meta = decode_metadata(b)
-    eq(1, meta['zarr_format'])
+    }''' % str(ZARR_FORMAT).encode('ascii')
+    meta = decode_array_metadata(b)
+    eq(ZARR_FORMAT, meta['zarr_format'])
     eq((100, 100), meta['shape'])
     eq((10, 10), meta['chunks'])
     # check structured dtype
@@ -63,17 +64,24 @@ def test_decode():
 
     # unsupported format
     b = b'''{
-        "zarr_format": 2
-    }'''
+        "zarr_format": %s,
+        "shape": [100],
+        "chunks": [10],
+        "dtype": "<f8",
+        "compression": "zlib",
+        "compression_opts": 1,
+        "fill_value": null,
+        "order": "C"
+    }''' % str(ZARR_FORMAT - 1).encode('ascii')
     with assert_raises(MetadataError):
-        decode_metadata(b)
+        decode_array_metadata(b)
 
     # missing fields
     b = b'''{
-        "zarr_format": 1
-    }'''
+        "zarr_format": %s
+    }''' % str(ZARR_FORMAT).encode('ascii')
     with assert_raises(MetadataError):
-        decode_metadata(b)
+        decode_array_metadata(b)
 
 
 def test_encode_decode_dtype():
