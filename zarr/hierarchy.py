@@ -1,14 +1,17 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, print_function, division
-import os
+
+
+import numpy as np
 
 
 from zarr.attrs import Attributes
 from zarr.core import Array
 from zarr.storage import contains_array, contains_group, init_group, \
     DictStore, DirectoryStore, group_meta_key, attrs_key, listdir
-from zarr.creation import array, create
-from zarr.util import normalize_storage_path
+from zarr.creation import array, create, empty, zeros, ones, full, \
+    empty_like, zeros_like, ones_like, full_like
+from zarr.util import normalize_storage_path, normalize_shape
 from zarr.errors import ReadOnlyError
 from zarr.meta import decode_group_metadata
 
@@ -236,6 +239,8 @@ class Group(object):
                 yield key, Array(self.store, path=path, readonly=self.readonly)
 
     def create_group(self, name):
+        """TODO doc me"""
+
         if self.readonly:
             raise ReadOnlyError('group is read-only')
 
@@ -259,7 +264,13 @@ class Group(object):
             init_group(self.store, path=path)
             return Group(self.store, path=path, readonly=self.readonly)
 
+    def create_groups(self, *names):
+        """TODO doc me"""
+        return tuple(self.create_group(name) for name in names)
+
     def require_group(self, name):
+        """TODO doc me"""
+
         path = self._item_path(name)
 
         # require all intermediate groups
@@ -275,25 +286,32 @@ class Group(object):
 
         return Group(self.store, path=path, readonly=self.readonly)
 
-    def create_dataset(self, name, data=None, shape=None, chunks=None,
-                       dtype=None, compression='default',
-                       compression_opts=None, fill_value=None, order='C',
-                       synchronizer=None, **kwargs):
-        if self.readonly:
-            raise ReadOnlyError('group is read-only')
+    def require_groups(self, *names):
+        """TODO doc me"""
+        return tuple(self.require_group(name) for name in names)
 
-        path = self._item_path(name)
-
-        # require intermediate groups
+    def _require_parent_group(self, path):
         segments = path.split('/')
         for i in range(len(segments)):
             p = '/'.join(segments[:i])
             if contains_array(self.store, p):
-                raise KeyError(name)
+                raise KeyError(path)
             elif not contains_group(self.store, p):
                 init_group(self.store, path=p)
 
-        # create array
+    def create_dataset(self, name, data=None, shape=None, chunks=None,
+                       dtype=None, compression='default',
+                       compression_opts=None, fill_value=None, order='C',
+                       synchronizer=None, **kwargs):
+        """TODO doc me"""
+
+        # setup
+        if self.readonly:
+            raise ReadOnlyError('group is read-only')
+        path = self._item_path(name)
+        self._require_parent_group(path)
+
+        # guard conditions
         if contains_array(self.store, path):
             raise KeyError(name)
         if contains_group(self.store, path):
@@ -320,91 +338,220 @@ class Group(object):
 
         return a
 
-    def require_dataset(self, name, shape=None, dtype=None,
-                        exact=False, **kwargs):
-        # TODO
-        pass
+    def require_dataset(self, name, shape, dtype=None, exact=False, **kwargs):
+        """TODO doc me"""
+
+        path = self._item_path(name)
+
+        if contains_array(self.store, path):
+            a = Array(self.store, path=path, readonly=self.readonly)
+            shape = normalize_shape(shape)
+            if shape != a.shape:
+                raise TypeError('shapes do not match')
+            dtype = np.dtype(dtype)
+            if exact:
+                if dtype != a.dtype:
+                    raise TypeError('dtypes do not match exactly')
+            else:
+                if not np.can_cast(dtype, a.dtype):
+                    raise TypeError('dtypes cannot be safely cast')
+            return a
+
+        else:
+            return self.create_dataset(name, shape=shape, dtype=dtype,
+                                       **kwargs)
+
+    def create(self, name, **kwargs):
+        if self.readonly:
+            raise ReadOnlyError('group is read-only')
+        path = self._item_path(name)
+        self._require_parent_group(path)
+        return create(store=self.store, path=path, **kwargs)
 
     def empty(self, name, **kwargs):
-        # TODO
-        pass
+        if self.readonly:
+            raise ReadOnlyError('group is read-only')
+        path = self._item_path(name)
+        self._require_parent_group(path)
+        return empty(store=self.store, path=path, **kwargs)
 
     def zeros(self, name, **kwargs):
-        # TODO
-        pass
+        if self.readonly:
+            raise ReadOnlyError('group is read-only')
+        path = self._item_path(name)
+        self._require_parent_group(path)
+        return zeros(store=self.store, path=path, **kwargs)
 
     def ones(self, name, **kwargs):
-        # TODO
-        pass
+        if self.readonly:
+            raise ReadOnlyError('group is read-only')
+        path = self._item_path(name)
+        self._require_parent_group(path)
+        return ones(store=self.store, path=path, **kwargs)
 
     def full(self, name, **kwargs):
-        # TODO
-        pass
+        if self.readonly:
+            raise ReadOnlyError('group is read-only')
+        path = self._item_path(name)
+        self._require_parent_group(path)
+        return full(store=self.store, path=path, **kwargs)
 
     def array(self, name, data, **kwargs):
-        # TODO
-        pass
+        if self.readonly:
+            raise ReadOnlyError('group is read-only')
+        path = self._item_path(name)
+        self._require_parent_group(path)
+        return array(data, store=self.store, path=path, **kwargs)
 
     def empty_like(self, name, data, **kwargs):
-        # TODO
-        pass
+        if self.readonly:
+            raise ReadOnlyError('group is read-only')
+        path = self._item_path(name)
+        self._require_parent_group(path)
+        return empty_like(data, store=self.store, path=path, **kwargs)
 
     def zeros_like(self, name, data, **kwargs):
-        # TODO
-        pass
+        if self.readonly:
+            raise ReadOnlyError('group is read-only')
+        path = self._item_path(name)
+        self._require_parent_group(path)
+        return zeros_like(data, store=self.store, path=path, **kwargs)
 
     def ones_like(self, name, data, **kwargs):
-        # TODO
-        pass
+        if self.readonly:
+            raise ReadOnlyError('group is read-only')
+        path = self._item_path(name)
+        self._require_parent_group(path)
+        return ones_like(data, store=self.store, path=path, **kwargs)
 
     def full_like(self, name, data, **kwargs):
-        # TODO
-        pass
+        if self.readonly:
+            raise ReadOnlyError('group is read-only')
+        path = self._item_path(name)
+        self._require_parent_group(path)
+        return full_like(data, store=self.store, path=path, **kwargs)
 
-    def copy(self, source, dest, name, shallow=False):
-        # TODO
-        pass
+    # def copy(self, source, dest, name, shallow=False):
+    #     # TODO
+    #     pass
 
 
-def group(store=None, readonly=False, overwrite=False):
-    """TODO doc me"""
+def group(store=None, overwrite=False):
+    """Create a group.
+
+    Parameters
+    ----------
+    store : MutableMapping, optional
+        Group storage. If not provided, a DictStore will be used, meaning
+        that data will be stored in memory.
+    overwrite : bool, optional
+        If True, delete any pre-existing data in `store` at `path` before
+        creating the group.
+
+    Returns
+    -------
+    g : zarr.hierarchy.Group
+
+    Examples
+    --------
+
+    Create a group in memory::
+
+        >>> import zarr
+        >>> g = zarr.group()
+        >>> g
+        zarr.hierarchy.Group(/, 0)
+          store: zarr.storage.DictStore
+
+    Create a group with a different store::
+
+        >>> store = zarr.DirectoryStore('example')
+        >>> g = zarr.group(store=store, overwrite=True)
+        >>> g
+        zarr.hierarchy.Group(/, 0)
+          store: zarr.storage.DirectoryStore
+
+    """
+
+    # ensure store
     if store is None:
         store = DictStore()
-    init_group(store, overwrite=overwrite)
-    return Group(store, readonly=readonly)
+
+    # require group
+    if overwrite:
+        init_group(store, overwrite=True)
+    elif contains_array(store):
+        raise ValueError('store contains an array')
+    elif not contains_group(store):
+        init_group(store)
+
+    return Group(store, readonly=False)
 
 
 def open_group(path, mode='a'):
-    """TODO doc me"""
+    """Open a group stored in a directory on the file system.
 
-    # TODO recode to use prefix
+    Parameters
+    ----------
+    path : string
+        Path to directory in file system in which to store the group.
+    mode : {'r', 'r+', 'a', 'w', 'w-'}
+        Persistence mode: 'r' means readonly (must exist); 'r+' means
+        read/write (must exist); 'a' means read/write (create if doesn't
+        exist); 'w' means create (overwrite if exists); 'w-' means create
+        (fail if exists).
 
-    # ensure directory exists
-    if not os.path.exists(path):
-        if mode in ['w', 'w-', 'x', 'a']:
-            os.makedirs(path)
-        elif mode in ['r', 'r+']:
-            raise ValueError('path does not exist: %r' % path)
+    Returns
+    -------
+    g : zarr.hierarchy.Group
+
+    Examples
+    --------
+    >>> import zarr
+    >>> root = zarr.open_group('example', mode='w')
+    >>> foo = root.create_group('foo')
+    >>> bar = root.create_group('bar')
+    >>> root
+    zarr.hierarchy.Group(/, 2)
+      groups: 2; bar, foo
+      store: zarr.storage.DirectoryStore
+    >>> root2 = zarr.open_group('example', mode='a')
+    >>> root2
+    zarr.hierarchy.Group(/, 2)
+      groups: 2; bar, foo
+      store: zarr.storage.DirectoryStore
+    >>> root == root2
+    True
+
+    """
 
     # setup store
     store = DirectoryStore(path)
 
-    # store can either hold array or group, not both
-    if contains_array(store):
-        raise ValueError('path contains array')
-
-    exists = contains_group(store)
-
     # ensure store is initialized
-    if mode in ['r', 'r+'] and not exists:
-        raise ValueError('group does not exist')
-    elif mode in ['w-', 'x'] and exists:
-        raise ValueError('group exists')
-    elif (mode == 'w' or
-          (mode in ['w-', 'x'] and not exists)):
+
+    if mode in ['r', 'r+']:
+        if contains_array(store):
+            raise ValueError('store contains array')
+        elif not contains_group(store):
+            raise ValueError('group does not exist')
+
+    elif mode == 'w':
         init_group(store, overwrite=True)
+
     elif mode == 'a':
-        init_group(store, overwrite=False)
+        if contains_array(store):
+            raise ValueError('store contains array')
+        elif not contains_group(store):
+            init_group(store)
+
+    elif mode in ['w-', 'x']:
+        if contains_array(store):
+            raise ValueError('store contains array')
+        elif contains_group(store):
+            raise ValueError('store contains group')
+        else:
+            init_group(store)
 
     # determine readonly status
     readonly = mode == 'r'

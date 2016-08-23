@@ -83,7 +83,7 @@ def create(shape, chunks, dtype=None, compression='default',
 
 def empty(shape, chunks, dtype=None, compression='default',
           compression_opts=None, order='C', store=None, synchronizer=None,
-          path=None):
+          path=None, overwrite=False):
     """Create an empty array.
 
     For parameter definitions see :func:`zarr.creation.create`.
@@ -98,12 +98,12 @@ def empty(shape, chunks, dtype=None, compression='default',
     return create(shape=shape, chunks=chunks, dtype=dtype,
                   compression=compression, compression_opts=compression_opts,
                   fill_value=None, order=order, store=store,
-                  synchronizer=synchronizer, path=path)
+                  synchronizer=synchronizer, path=path, overwrite=overwrite)
 
 
 def zeros(shape, chunks, dtype=None, compression='default',
           compression_opts=None, order='C', store=None, synchronizer=None,
-          path=None):
+          path=None, overwrite=False):
     """Create an array, with zero being used as the default value for
     uninitialised portions of the array.
 
@@ -127,12 +127,13 @@ def zeros(shape, chunks, dtype=None, compression='default',
     return create(shape=shape, chunks=chunks, dtype=dtype,
                   compression=compression,
                   compression_opts=compression_opts, fill_value=0, order=order,
-                  store=store, synchronizer=synchronizer, path=path)
+                  store=store, synchronizer=synchronizer, path=path,
+                  overwrite=overwrite)
 
 
 def ones(shape, chunks, dtype=None, compression='default',
          compression_opts=None, order='C', store=None, synchronizer=None,
-         path=None):
+         path=None, overwrite=False):
     """Create an array, with one being used as the default value for
     uninitialised portions of the array.
 
@@ -156,12 +157,12 @@ def ones(shape, chunks, dtype=None, compression='default',
     return create(shape=shape, chunks=chunks, dtype=dtype,
                   compression=compression, compression_opts=compression_opts,
                   fill_value=1, order=order, store=store,
-                  synchronizer=synchronizer, path=path)
+                  synchronizer=synchronizer, path=path, overwrite=overwrite)
 
 
 def full(shape, chunks, fill_value, dtype=None, compression='default',
          compression_opts=None, order='C', store=None, synchronizer=None,
-         path=None):
+         path=None, overwrite=False):
     """Create an array, with `fill_value` being used as the default value for
     uninitialised portions of the array.
 
@@ -185,12 +186,12 @@ def full(shape, chunks, fill_value, dtype=None, compression='default',
     return create(shape=shape, chunks=chunks, dtype=dtype,
                   compression=compression, compression_opts=compression_opts,
                   fill_value=fill_value, order=order, store=store,
-                  synchronizer=synchronizer, path=path)
+                  synchronizer=synchronizer, path=path, overwrite=overwrite)
 
 
 def array(data, chunks=None, dtype=None, compression='default',
           compression_opts=None, fill_value=None, order='C', store=None,
-          synchronizer=None, path=None):
+          synchronizer=None, path=None, overwrite=False):
     """Create an array filled with `data`.
 
     The `data` argument should be a NumPy array or array-like object. For
@@ -237,7 +238,7 @@ def array(data, chunks=None, dtype=None, compression='default',
     z = create(shape=shape, chunks=chunks, dtype=dtype,
                compression=compression, compression_opts=compression_opts,
                fill_value=fill_value, order=order, store=store,
-               synchronizer=synchronizer, path=path)
+               synchronizer=synchronizer, path=path, overwrite=overwrite)
 
     # fill with data
     z[:] = data
@@ -246,9 +247,9 @@ def array(data, chunks=None, dtype=None, compression='default',
 
 
 # noinspection PyShadowingBuiltins
-def open(path, mode='a', shape=None, chunks=None, dtype=None,
-         compression='default', compression_opts=None, fill_value=0, order='C',
-         synchronizer=None):
+def open_array(path, mode='a', shape=None, chunks=None, dtype=None,
+               compression='default', compression_opts=None, fill_value=0,
+               order='C', synchronizer=None):
     """Open an array stored in a directory on the file system.
 
     Parameters
@@ -357,6 +358,10 @@ def open(path, mode='a', shape=None, chunks=None, dtype=None,
     return z
 
 
+# backwards compatibility
+open = open_array
+
+
 def _like_args(a, shape, chunks, dtype, compression, compression_opts, order):
     if shape is None:
         shape = a.shape
@@ -387,43 +392,46 @@ def _like_args(a, shape, chunks, dtype, compression, compression_opts, order):
 
 def empty_like(a, shape=None, chunks=None, dtype=None, compression=None,
                compression_opts=None, order=None, store=None,
-               synchronizer=None, path=None):
+               synchronizer=None, path=None, overwrite=False):
     """Create an empty array like `a`."""
     shape, chunks, dtype, compression, compression_opts, order = \
         _like_args(a, shape, chunks, dtype, compression, compression_opts,
                    order)
     return empty(shape, chunks, dtype=dtype, compression=compression,
                  compression_opts=compression_opts, order=order,
-                 store=store, synchronizer=synchronizer, path=path)
+                 store=store, synchronizer=synchronizer, path=path,
+                 overwrite=overwrite)
 
 
 def zeros_like(a, shape=None, chunks=None, dtype=None, compression=None,
                compression_opts=None, order=None, store=None,
-               synchronizer=None, path=None):
+               synchronizer=None, path=None, overwrite=False):
     """Create an array of zeros like `a`."""
     shape, chunks, dtype, compression, compression_opts, order = \
         _like_args(a, shape, chunks, dtype, compression, compression_opts,
                    order)
     return zeros(shape, chunks, dtype=dtype, compression=compression,
                  compression_opts=compression_opts, order=order,
-                 store=store, synchronizer=synchronizer, path=path)
+                 store=store, synchronizer=synchronizer, path=path,
+                 overwrite=overwrite)
 
 
 def ones_like(a, shape=None, chunks=None, dtype=None, compression=None,
               compression_opts=None, order=None, store=None,
-              synchronizer=None, path=None):
+              synchronizer=None, path=None, overwrite=False):
     """Create an array of ones like `a`."""
     shape, chunks, dtype, compression, compression_opts, order = \
         _like_args(a, shape, chunks, dtype, compression, compression_opts,
                    order)
     return ones(shape, chunks, dtype=dtype, compression=compression,
                 compression_opts=compression_opts, order=order,
-                store=store, synchronizer=synchronizer, path=path)
+                store=store, synchronizer=synchronizer, path=path,
+                overwrite=overwrite)
 
 
 def full_like(a, shape=None, chunks=None, fill_value=None, dtype=None,
               compression=None, compression_opts=None, order=None,
-              store=None, synchronizer=None, path=None):
+              store=None, synchronizer=None, path=None, overwrite=False):
     """Create a filled array like `a`."""
     shape, chunks, dtype, compression, compression_opts, order = \
         _like_args(a, shape, chunks, dtype, compression, compression_opts,
@@ -435,7 +443,8 @@ def full_like(a, shape=None, chunks=None, fill_value=None, dtype=None,
             raise ValueError('fill_value must be specified')
     return full(shape, chunks, fill_value, dtype=dtype,
                 compression=compression, compression_opts=compression_opts,
-                order=order, store=store, synchronizer=synchronizer, path=path)
+                order=order, store=store, synchronizer=synchronizer,
+                path=path, overwrite=overwrite)
 
 
 def open_like(a, path, mode='a', shape=None, chunks=None, dtype=None,
@@ -451,7 +460,8 @@ def open_like(a, path, mode='a', shape=None, chunks=None, dtype=None,
         except AttributeError:
             # leave empty
             pass
-    return open(path, mode=mode, shape=shape, chunks=chunks, dtype=dtype,
-                compression=compression, compression_opts=compression_opts,
-                fill_value=fill_value, order=order,
-                synchronizer=synchronizer)
+    return open_array(path, mode=mode, shape=shape, chunks=chunks, dtype=dtype,
+                      compression=compression,
+                      compression_opts=compression_opts,
+                      fill_value=fill_value, order=order,
+                      synchronizer=synchronizer)

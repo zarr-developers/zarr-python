@@ -8,7 +8,7 @@ import os
 
 
 from nose.tools import assert_raises, eq_ as eq, assert_is, assert_true, \
-    assert_is_instance, assert_is_none, assert_false
+    assert_is_instance, assert_false, assert_is_none
 import numpy as np
 from numpy.testing import assert_array_equal
 
@@ -16,9 +16,10 @@ from numpy.testing import assert_array_equal
 from zarr.storage import DictStore, DirectoryStore, ZipStore, init_group, \
     init_array
 from zarr.core import Array
-from zarr.hierarchy import Group
+from zarr.hierarchy import Group, group, open_group
 from zarr.attrs import Attributes
 from zarr.errors import ReadOnlyError
+from zarr.creation import open_array
 
 
 # noinspection PyStatementEffect
@@ -110,6 +111,13 @@ class TestGroup(unittest.TestCase):
         with assert_raises(KeyError):
             g1.create_group('//')
 
+        # multi
+        g6, g7 = g1.create_groups('y', 'z')
+        assert_is_instance(g6, Group)
+        eq(g6.path, 'y')
+        assert_is_instance(g7, Group)
+        eq(g7.path, 'z')
+
     def test_require_group(self):
         store = self.create_store()
         init_group(store)
@@ -145,6 +153,13 @@ class TestGroup(unittest.TestCase):
 
         # test path normalization
         eq(g1.require_group('quux'), g1.require_group('/quux/'))
+
+        # multi
+        g6, g7 = g1.require_groups('y', 'z')
+        assert_is_instance(g6, Group)
+        eq(g6.path, 'y')
+        assert_is_instance(g7, Group)
+        eq(g7.path, 'z')
 
     def test_create_dataset(self):
         store = self.create_store()
@@ -188,6 +203,52 @@ class TestGroup(unittest.TestCase):
         eq('/bar', d3.name)
         assert_is(store, d3.store)
 
+    def test_require_dataset(self):
+        store = self.create_store()
+        init_group(store)
+        g = Group(store=store)
+
+        # create
+        d1 = g.require_dataset('foo', shape=1000, chunks=100, dtype='f4')
+        d1[:] = np.arange(1000)
+        assert_is_instance(d1, Array)
+        eq((1000,), d1.shape)
+        eq((100,), d1.chunks)
+        eq(np.dtype('f4'), d1.dtype)
+        eq('foo', d1.path)
+        eq('/foo', d1.name)
+        assert_is(store, d1.store)
+        assert_array_equal(np.arange(1000), d1[:])
+
+        # require
+        d2 = g.require_dataset('foo', shape=1000, chunks=100, dtype='f4')
+        assert_is_instance(d2, Array)
+        eq((1000,), d2.shape)
+        eq((100,), d2.chunks)
+        eq(np.dtype('f4'), d2.dtype)
+        eq('foo', d2.path)
+        eq('/foo', d2.name)
+        assert_is(store, d2.store)
+        assert_array_equal(np.arange(1000), d2[:])
+        eq(d1, d2)
+
+        # bad shape - use TypeError for h5py compatibility
+        with assert_raises(TypeError):
+            g.require_dataset('foo', shape=2000, chunks=100, dtype='f4')
+
+        # dtype matching
+        # can cast
+        d3 = g.require_dataset('foo', shape=1000, chunks=100, dtype='i2')
+        eq(np.dtype('f4'), d3.dtype)
+        eq(d1, d3)
+        with assert_raises(TypeError):
+            # cannot cast
+            g.require_dataset('foo', shape=1000, chunks=100, dtype='i4')
+        with assert_raises(TypeError):
+            # can cast but not exact match
+            g.require_dataset('foo', shape=1000, chunks=100, dtype='i2',
+                              exact=True)
+
     def test_create_errors(self):
         store = self.create_store()
         init_group(store)
@@ -201,6 +262,8 @@ class TestGroup(unittest.TestCase):
             g.require_group('foo/bar')
         with assert_raises(KeyError):
             g.create_dataset('foo/bar', shape=100, chunks=10)
+        with assert_raises(KeyError):
+            g.require_dataset('foo/bar', shape=100, chunks=10)
 
         # array obstructs group, array
         g.create_dataset('a/b', shape=100, chunks=10)
@@ -216,7 +279,11 @@ class TestGroup(unittest.TestCase):
         with assert_raises(KeyError):
             g.create_dataset('c', shape=100, chunks=10)
         with assert_raises(KeyError):
+            g.require_dataset('c', shape=100, chunks=10)
+        with assert_raises(KeyError):
             g.create_dataset('c/d', shape=100, chunks=10)
+        with assert_raises(KeyError):
+            g.require_dataset('c/d', shape=100, chunks=10)
 
         # read-only
         g = Group(store=store, readonly=True)
@@ -226,6 +293,8 @@ class TestGroup(unittest.TestCase):
             g.require_group('zzz')
         with assert_raises(ReadOnlyError):
             g.create_dataset('zzz', shape=100, chunks=10)
+        with assert_raises(ReadOnlyError):
+            g.require_dataset('zzz', shape=100, chunks=10)
 
     def test_getitem_contains_iterators(self):
         # setup
@@ -379,6 +448,67 @@ class TestGroup(unittest.TestCase):
         with assert_raises(NotImplementedError):
             g['foo'] = 'bar'
 
+    def test_array_creation(self):
+        store = self.create_store()
+        init_group(store)
+        grp = Group(store=store)
+
+        a = grp.create('a', shape=100, chunks=10)
+        assert_is_instance(a, Array)
+        b = grp.empty('b', shape=100, chunks=10)
+        assert_is_instance(b, Array)
+        assert_is_none(b.fill_value)
+        c = grp.zeros('c', shape=100, chunks=10)
+        assert_is_instance(c, Array)
+        eq(0, c.fill_value)
+        d = grp.ones('d', shape=100, chunks=10)
+        assert_is_instance(d, Array)
+        eq(1, d.fill_value)
+        e = grp.full('e', shape=100, chunks=10, fill_value=42)
+        assert_is_instance(e, Array)
+        eq(42, e.fill_value)
+
+        f = grp.empty_like('f', a)
+        assert_is_instance(f, Array)
+        assert_is_none(f.fill_value)
+        g = grp.zeros_like('g', a)
+        assert_is_instance(g, Array)
+        eq(0, g.fill_value)
+        h = grp.ones_like('h', a)
+        assert_is_instance(h, Array)
+        eq(1, h.fill_value)
+        i = grp.full_like('i', e)
+        assert_is_instance(i, Array)
+        eq(42, i.fill_value)
+
+        j = grp.array('j', data=np.arange(100), chunks=10)
+        assert_is_instance(j, Array)
+        assert_array_equal(np.arange(100), j[:])
+
+        grp = Group(store=store, readonly=True)
+        with assert_raises(ReadOnlyError):
+            grp.create('aa', shape=100, chunks=10)
+        with assert_raises(ReadOnlyError):
+            grp.empty('aa', shape=100, chunks=10)
+        with assert_raises(ReadOnlyError):
+            grp.zeros('aa', shape=100, chunks=10)
+        with assert_raises(ReadOnlyError):
+            grp.ones('aa', shape=100, chunks=10)
+        with assert_raises(ReadOnlyError):
+            grp.full('aa', shape=100, chunks=10, fill_value=42)
+        with assert_raises(ReadOnlyError):
+            grp.array('aa', data=np.arange(100), chunks=10)
+        with assert_raises(ReadOnlyError):
+            grp.create('aa', shape=100, chunks=10)
+        with assert_raises(ReadOnlyError):
+            grp.empty_like('aa', a)
+        with assert_raises(ReadOnlyError):
+            grp.zeros_like('aa', a)
+        with assert_raises(ReadOnlyError):
+            grp.ones_like('aa', a)
+        with assert_raises(ReadOnlyError):
+            grp.full_like('aa', a)
+
 
 class TestGroupDictStore(TestGroup):
 
@@ -436,3 +566,83 @@ class TestGroupZipStore(TestGroup):
                  '  store: zarr.storage.ZipStore'
         actual = repr(g)
         eq(expect, actual)
+
+
+def test_group():
+    # test the group() convenience function
+
+    # basic usage
+    g = group()
+    assert_is_instance(g, Group)
+    eq('', g.path)
+    eq('/', g.name)
+
+    # usage with custom store
+    store = dict()
+    g = group(store=store)
+    assert_is_instance(g, Group)
+    assert_is(store, g.store)
+
+    # overwrite behaviour
+    store = dict()
+    init_array(store, shape=100, chunks=10)
+    with assert_raises(ValueError):
+        group(store)
+    g = group(store, overwrite=True)
+    assert_is_instance(g, Group)
+    assert_is(store, g.store)
+
+
+def test_open_group():
+    # test the open_group() convenience function
+
+    # mode == 'w'
+    g = open_group('example', mode='w')
+    assert_is_instance(g, Group)
+    assert_is_instance(g.store, DirectoryStore)
+    eq(0, len(g))
+    g.create_groups('foo', 'bar')
+    eq(2, len(g))
+
+    # mode in 'r', 'r+'
+    open_array('example_array', shape=100, chunks=10, mode='w')
+    for mode in 'r', 'r+':
+        with assert_raises(ValueError):
+            open_group('doesnotexist', mode=mode)
+        with assert_raises(ValueError):
+            open_group('example_array', mode=mode)
+    g = open_group('example', mode='r')
+    assert_is_instance(g, Group)
+    eq(2, len(g))
+    with assert_raises(ReadOnlyError):
+        g.create_group('baz')
+    g = open_group('example', mode='r+')
+    assert_is_instance(g, Group)
+    eq(2, len(g))
+    g.create_groups('baz', 'quux')
+    eq(4, len(g))
+
+    # mode == 'a'
+    shutil.rmtree('example')
+    g = open_group('example', mode='a')
+    assert_is_instance(g, Group)
+    assert_is_instance(g.store, DirectoryStore)
+    eq(0, len(g))
+    g.create_groups('foo', 'bar')
+    eq(2, len(g))
+    with assert_raises(ValueError):
+        open_group('example_array', mode='a')
+
+    # mode in 'w-', 'x'
+    for mode in 'w-', 'x':
+        shutil.rmtree('example')
+        g = open_group('example', mode=mode)
+        assert_is_instance(g, Group)
+        assert_is_instance(g.store, DirectoryStore)
+        eq(0, len(g))
+        g.create_groups('foo', 'bar')
+        eq(2, len(g))
+        with assert_raises(ValueError):
+            open_group('example', mode=mode)
+        with assert_raises(ValueError):
+            open_group('example_array', mode=mode)

@@ -430,7 +430,11 @@ class DictStore(MutableMapping):
             for k in segments[:-1]:
                 c = c[k]
             # remove final key
-            del c[segments[-1]]
+            try:
+                del c[segments[-1]]
+            except KeyError:
+                # does not exist
+                pass
         else:
             # clear out root
             self.root = self.cls()
@@ -475,16 +479,16 @@ class DirectoryStore(MutableMapping):
     Examples
     --------
     >>> import zarr
-    >>> store = zarr.DirectoryStore('example')
+    >>> store = zarr.DirectoryStore('example_store')
     >>> store['foo'] = b'bar'
     >>> store['foo']
     b'bar'
-    >>> open('example/foo', 'rb').read()
+    >>> open('example_store/foo', 'rb').read()
     b'bar'
     >>> store['a/b/c'] = b'xxx'
     >>> store['a/b/c']
     b'xxx'
-    >>> open('example/a/b/c', 'rb').read()
+    >>> open('example_store/a/b/c', 'rb').read()
     b'xxx'
     >>> sorted(store.keys())
     ['a/b/c', 'foo']
@@ -496,7 +500,7 @@ class DirectoryStore(MutableMapping):
     >>> sorted(store.keys())
     ['foo']
     >>> import os
-    >>> os.path.exists('example/a')
+    >>> os.path.exists('example_store/a')
     False
 
     """  # flake8: noqa
@@ -523,9 +527,9 @@ class DirectoryStore(MutableMapping):
         # destination path for key
         file_path = os.path.join(self.path, key)
 
-        # guard conditions
-        if os.path.exists(file_path) and not os.path.isfile(file_path):
-            raise KeyError(key)
+        # ensure there is no directory in the way
+        if os.path.isdir(file_path):
+            shutil.rmtree(file_path)
 
         # ensure containing directory exists
         dir_path, file_name = os.path.split(file_path)
@@ -546,9 +550,13 @@ class DirectoryStore(MutableMapping):
         os.rename(temp_path, file_path)
 
     def __delitem__(self, key):
-        file_path = os.path.join(self.path, key)
-        if os.path.isfile(file_path):
-            os.remove(file_path)
+        path = os.path.join(self.path, key)
+        if os.path.isfile(path):
+            os.remove(path)
+        elif os.path.isdir(path):
+            # include support for deleting directories, even though strictly
+            # speaking these do not exist as keys in the store
+            shutil.rmtree(path)
         else:
             raise KeyError(key)
 
