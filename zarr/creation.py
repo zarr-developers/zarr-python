@@ -321,6 +321,7 @@ def open_array(path, mode='a', shape=None, chunks=None, dtype=None,
     # a : read/write if exists, create otherwise (default)
 
     # ensure directory exists
+    # TODO is this needed any more? DirectoryStore creates directory on demand
     if not os.path.exists(path):
         if mode in ['w', 'w-', 'x', 'a']:
             os.makedirs(path)
