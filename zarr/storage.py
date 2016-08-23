@@ -274,11 +274,9 @@ def init_group(store, overwrite=False, path=None):
 def ensure_bytes(s):
     if isinstance(s, binary_type):
         return s
-    if hasattr(s, 'encode'):
-        return s.encode()
     if hasattr(s, 'tobytes'):
         return s.tobytes()
-    if PY2 and hasattr(s, 'tostring'):
+    if PY2 and hasattr(s, 'tostring'):  # pragma: no cover
         return s.tostring()
     return memoryview(s).tobytes()
 
@@ -295,7 +293,7 @@ def _dict_store_keys(d, prefix='', cls=dict):
 
 def buffersize(v):
     from array import array as _stdlib_array
-    if PY2 and isinstance(v, _stdlib_array):
+    if PY2 and isinstance(v, _stdlib_array):  # pragma: no cover
         # special case array.array because does not support buffer
         # interface in PY2
         return v.buffer_info()[1] * v.itemsize
@@ -533,8 +531,13 @@ class DirectoryStore(MutableMapping):
 
         # ensure containing directory exists
         dir_path, file_name = os.path.split(file_path)
+        if os.path.isfile(dir_path):
+            raise KeyError(key)
         if not os.path.exists(dir_path):
-            os.makedirs(dir_path)
+            try:
+                os.makedirs(dir_path)
+            except NotADirectoryError:
+                raise KeyError(key)
 
         # write to temporary file
         with tempfile.NamedTemporaryFile(mode='wb', delete=False,

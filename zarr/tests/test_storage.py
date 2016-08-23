@@ -146,12 +146,22 @@ class StoreTests(object):
         assert 'c/' not in store
         assert 'c/e' not in store
         assert 'c/e/' not in store
+        assert 'c/d/x' not in store
+
+        # check __getitem__
+        with assert_raises(KeyError):
+            store['c']
+        with assert_raises(KeyError):
+            store['c/e']
+        with assert_raises(KeyError):
+            store['c/d/x']
 
         # test listdir (optional)
         if hasattr(store, 'listdir'):
             eq({'a', 'b', 'c'}, set(store.listdir()))
             eq({'d', 'e'}, set(store.listdir('c')))
             eq({'f', 'g'}, set(store.listdir('c/e')))
+        # TODO further listdir tests
 
         # test getsize (optional)
         if hasattr(store, 'getsize'):
@@ -163,6 +173,7 @@ class StoreTests(object):
             eq(6, store.getsize('c/e'))
             eq(3, store.getsize('c/e/f'))
             eq(3, store.getsize('c/e/g'))
+        # TODO further getsize tests
 
         # test rmdir (optional)
         if hasattr(store, 'rmdir'):
@@ -339,7 +350,7 @@ class StoreTests(object):
                  order='F')
         )
 
-        # don't overwrite (default)
+        # don't overwrite array (default)
         with assert_raises(ValueError):
             init_group(store)
 
@@ -353,6 +364,10 @@ class StoreTests(object):
             assert group_meta_key in store
             meta = decode_group_metadata(store[group_meta_key])
             eq(ZARR_FORMAT, meta['zarr_format'])
+
+        # don't overwrite group
+        with assert_raises(ValueError):
+            init_group(store)
 
     def test_init_group_overwrite_path(self):
         # setup
@@ -398,10 +413,51 @@ class TestMappingStore(StoreTests, unittest.TestCase):
         return dict()
 
 
+def setdel_hierarchy_checks(store):
+    # these tests are for stores that are aware of hierarchy levels; this
+    # behaviour is not stricly required by Zarr but these tests are included
+    # to define behaviour of DictStore and DirectoryStore classes
+
+    # check __setitem__ and __delitem__ blocked by leaf
+
+    store['a/b'] = b'aaa'
+    with assert_raises(KeyError):
+        store['a/b/c'] = b'xxx'
+    with assert_raises(KeyError):
+        del store['a/b/c']
+
+    store['d'] = b'ddd'
+    with assert_raises(KeyError):
+        store['d/e/f'] = b'xxx'
+    with assert_raises(KeyError):
+        del store['d/e/f']
+
+    # test __setitem__ overwrite level
+    store['x/y/z'] = b'xxx'
+    store['x/y'] = b'yyy'
+    eq(b'yyy', store['x/y'])
+    assert 'x/y/z' not in store
+    store['x'] = b'zzz'
+    eq(b'zzz', store['x'])
+    assert 'x/y' not in store
+
+    # test __delitem__ overwrite level
+    store['r/s/t'] = b'xxx'
+    del store['r/s']
+    assert 'r/s/t' not in store
+    store['r/s'] = b'xxx'
+    del store['r']
+    assert 'r/s' not in store
+
+
 class TestDictStore(StoreTests, unittest.TestCase):
 
     def create_store(self):
         return DictStore()
+
+    def test_setdel(self):
+        store = self.create_store()
+        setdel_hierarchy_checks(store)
 
 
 def rmtree_if_exists(path, rmtree=shutil.rmtree, isdir=os.path.isdir):
@@ -445,6 +501,10 @@ class TestDirectoryStore(StoreTests, unittest.TestCase):
         assert 'xxx' not in store
         store2['xxx'] = b'yyy'
         eq(b'yyy', store['xxx'])
+
+    def test_setdel(self):
+        store = self.create_store()
+        setdel_hierarchy_checks(store)
 
 
 class TestZipStore(StoreTests, unittest.TestCase):
