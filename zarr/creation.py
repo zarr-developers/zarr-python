@@ -320,32 +320,41 @@ def open_array(path, mode='a', shape=None, chunks=None, dtype=None,
     # w- or x : create, fail if exists
     # a : read/write if exists, create otherwise (default)
 
-    # ensure directory exists
-    # TODO is this needed any more? DirectoryStore creates directory on demand
-    if not os.path.exists(path):
-        if mode in ['w', 'w-', 'x', 'a']:
-            os.makedirs(path)
-        elif mode in ['r', 'r+']:
-            raise ValueError('path does not exist: %r' % path)
-
     # setup store
     store = DirectoryStore(path)
 
-    # store can either hold array or group, not both
-    if contains_group(store):
-        raise ValueError('path contains group')
-
-    exists = contains_array(store)
-
     # ensure store is initialized
-    if mode in ['r', 'r+'] and not exists:
-        raise ValueError('array does not exist')
-    elif mode in ['w-', 'x'] and exists:
-        raise ValueError('array exists')
-    elif mode == 'w' or (mode in ['a', 'w-', 'x'] and not exists):
+
+    if mode in ['r', 'r+']:
+        if contains_group(store):
+            raise ValueError('store contains group')
+        elif not contains_array(store):
+            raise ValueError('array does not exist')
+
+    elif mode == 'w':
         init_array(store, shape=shape, chunks=chunks, dtype=dtype,
                    compression=compression, compression_opts=compression_opts,
                    fill_value=fill_value, order=order, overwrite=True)
+
+    elif mode == 'a':
+        if contains_group(store):
+            raise ValueError('store contains group')
+        elif not contains_array(store):
+            init_array(store, shape=shape, chunks=chunks, dtype=dtype,
+                       compression=compression,
+                       compression_opts=compression_opts,
+                       fill_value=fill_value, order=order)
+
+    elif mode in ['w-', 'x']:
+        if contains_group(store):
+            raise ValueError('store contains group')
+        elif contains_array(store):
+            raise ValueError('store contains array')
+        else:
+            init_array(store, shape=shape, chunks=chunks, dtype=dtype,
+                       compression=compression,
+                       compression_opts=compression_opts,
+                       fill_value=fill_value, order=order)
 
     # determine readonly status
     readonly = mode == 'r'

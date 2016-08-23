@@ -596,8 +596,10 @@ def test_group():
 def test_open_group():
     # test the open_group() convenience function
 
+    path = 'example'
+    
     # mode == 'w'
-    g = open_group('example', mode='w')
+    g = open_group(path, mode='w')
     assert_is_instance(g, Group)
     assert_is_instance(g.store, DirectoryStore)
     eq(0, len(g))
@@ -611,20 +613,20 @@ def test_open_group():
             open_group('doesnotexist', mode=mode)
         with assert_raises(ValueError):
             open_group('example_array', mode=mode)
-    g = open_group('example', mode='r')
+    g = open_group(path, mode='r')
     assert_is_instance(g, Group)
     eq(2, len(g))
     with assert_raises(ReadOnlyError):
         g.create_group('baz')
-    g = open_group('example', mode='r+')
+    g = open_group(path, mode='r+')
     assert_is_instance(g, Group)
     eq(2, len(g))
     g.create_groups('baz', 'quux')
     eq(4, len(g))
 
     # mode == 'a'
-    shutil.rmtree('example')
-    g = open_group('example', mode='a')
+    shutil.rmtree(path)
+    g = open_group(path, mode='a')
     assert_is_instance(g, Group)
     assert_is_instance(g.store, DirectoryStore)
     eq(0, len(g))
@@ -635,14 +637,14 @@ def test_open_group():
 
     # mode in 'w-', 'x'
     for mode in 'w-', 'x':
-        shutil.rmtree('example')
-        g = open_group('example', mode=mode)
+        shutil.rmtree(path)
+        g = open_group(path, mode=mode)
         assert_is_instance(g, Group)
         assert_is_instance(g.store, DirectoryStore)
         eq(0, len(g))
         g.create_groups('foo', 'bar')
         eq(2, len(g))
         with assert_raises(ValueError):
-            open_group('example', mode=mode)
+            open_group(path, mode=mode)
         with assert_raises(ValueError):
             open_group('example_array', mode=mode)

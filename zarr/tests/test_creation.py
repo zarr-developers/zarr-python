@@ -12,11 +12,13 @@ from nose.tools import eq_ as eq, assert_is_none, assert_is_instance, \
 from numpy.testing import assert_array_equal
 
 
-from zarr.creation import array, empty, zeros, ones, full, open, empty_like, \
-    zeros_like, ones_like, full_like, open_like, create
+from zarr.creation import array, empty, zeros, ones, full, open_array, \
+    empty_like, zeros_like, ones_like, full_like, open_like, create
 from zarr.sync import ThreadSynchronizer, SynchronizedArray
 from zarr.core import Array
 from zarr.storage import DirectoryStore, init_array
+from zarr.hierarchy import open_group
+from zarr.errors import ReadOnlyError
 
 
 def test_array():
@@ -93,45 +95,72 @@ def test_full():
     assert_array_equal(np.full(100, fill_value=42, dtype='i4'), z[:])
 
 
-def test_open():
+def test_open_array():
 
-    path = tempfile.mktemp()
-    atexit.register(
-        lambda: shutil.rmtree(path) if os.path.exists(path) else None
-    )
-    z = open(path, mode='w', shape=100, chunks=10, dtype='i4')
+    path = 'example'
+
+    # mode == 'w'
+    z = open_array(path, mode='w', shape=100, chunks=10)
     z[:] = 42
+    assert_is_instance(z, Array)
+    assert_is_instance(z.store, DirectoryStore)
     eq((100,), z.shape)
     eq((10,), z.chunks)
-    assert_array_equal(np.full(100, fill_value=42, dtype='i4'), z[:])
-    z2 = open(path, mode='r')
-    eq((100,), z2.shape)
-    eq((10,), z2.chunks)
-    assert_array_equal(z[:], z2[:])
+    assert_array_equal(np.full(100, fill_value=42), z[:])
 
-    # path does not exist
-    path = 'doesnotexist'
-    with assert_raises(ValueError):
-        open(path, mode='r')
+    # mode in 'r', 'r+'
+    open_group('example_group', mode='w')
+    for mode in 'r', 'r+':
+        with assert_raises(ValueError):
+            open_array('doesnotexist', mode=mode)
+        with assert_raises(ValueError):
+            open_array('example_group', mode=mode)
+    z = open_array(path, mode='r')
+    assert_is_instance(z, Array)
+    assert_is_instance(z.store, DirectoryStore)
+    eq((100,), z.shape)
+    eq((10,), z.chunks)
+    assert_array_equal(np.full(100, fill_value=42), z[:])
+    with assert_raises(ReadOnlyError):
+        z[:] = 43
+    z = open_array(path, mode='r+')
+    assert_is_instance(z, Array)
+    assert_is_instance(z.store, DirectoryStore)
+    eq((100,), z.shape)
+    eq((10,), z.chunks)
+    assert_array_equal(np.full(100, fill_value=42), z[:])
+    z[:] = 43
+    assert_array_equal(np.full(100, fill_value=43), z[:])
 
-    # path exists but store not initialised
-    path = tempfile.mkdtemp()
-    atexit.register(shutil.rmtree, path)
+    # mode == 'a'
+    shutil.rmtree(path)
+    z = open_array(path, mode='a', shape=100, chunks=10)
+    z[:] = 42
+    assert_is_instance(z, Array)
+    assert_is_instance(z.store, DirectoryStore)
+    eq((100,), z.shape)
+    eq((10,), z.chunks)
+    assert_array_equal(np.full(100, fill_value=42), z[:])
     with assert_raises(ValueError):
-        open(path, mode='r')
-    with assert_raises(ValueError):
-        open(path, mode='r+')
+        open_array('example_group', mode='a')
 
-    # store initialised, mode w-
-    store = DirectoryStore(path)
-    init_array(store, shape=100, chunks=10)
-    with assert_raises(ValueError):
-        open(path, mode='w-')
-    with assert_raises(ValueError):
-        open(path, mode='x')
+    # mode in 'w-', 'x'
+    for mode in 'w-', 'x':
+        shutil.rmtree(path)
+        z = open_array(path, mode=mode, shape=100, chunks=10)
+        z[:] = 42
+        assert_is_instance(z, Array)
+        assert_is_instance(z.store, DirectoryStore)
+        eq((100,), z.shape)
+        eq((10,), z.chunks)
+        assert_array_equal(np.full(100, fill_value=42), z[:])
+        with assert_raises(ValueError):
+            open_array(path, mode=mode)
+        with assert_raises(ValueError):
+            open_array('example_group', mode=mode)
 
     # with synchronizer
-    z = open(path, synchronizer=ThreadSynchronizer())
+    z = open_array(path, synchronizer=ThreadSynchronizer())
     assert_is_instance(z, SynchronizedArray)
 
 

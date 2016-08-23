@@ -37,22 +37,29 @@ class TestProcessSynchronizedAttributes(TestAttributes):
 
 class TestThreadSynchronizedArray(TestArray):
 
-    def create_array(self, store=None, readonly=False, **kwargs):
+    def create_array(self, store=None, path=None, readonly=False, **kwargs):
         if store is None:
             store = dict()
-        init_array(store, **kwargs)
-        return SynchronizedArray(store, synchronizer=ThreadSynchronizer(),
+        init_array(store, path=path, **kwargs)
+        return SynchronizedArray(store,
+                                 path=path, synchronizer=ThreadSynchronizer(),
                                  readonly=readonly)
+
+    def test_repr(self):
+        pass
 
 
 class TestProcessSynchronizedArray(TestArray):
 
-    def create_array(self, store=None, readonly=False, **kwargs):
+    def create_array(self, store=None, path=None, readonly=False, **kwargs):
         if store is None:
             store = dict()
-        init_array(store, **kwargs)
+        init_array(store, path=path, **kwargs)
         sync_path = mkdtemp()
         atexit.register(shutil.rmtree, sync_path)
         synchronizer = ProcessSynchronizer(sync_path)
-        return SynchronizedArray(store, synchronizer=synchronizer,
+        return SynchronizedArray(store, path=path, synchronizer=synchronizer,
                                  readonly=readonly)
+
+    def test_repr(self):
+        pass

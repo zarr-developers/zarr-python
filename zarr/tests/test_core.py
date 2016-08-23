@@ -6,13 +6,14 @@ import atexit
 import shutil
 import pickle
 import os
+from collections import OrderedDict
 
 
 import numpy as np
 from numpy.testing import assert_array_equal
 from nose.tools import eq_ as eq, assert_is_instance, \
-    assert_raises, assert_true, assert_false
-from zarr.storage import DirectoryStore, ZipStore, init_array
+    assert_raises, assert_true, assert_false, assert_is, assert_is_none
+from zarr.storage import DirectoryStore, ZipStore, init_array, init_group
 
 
 from zarr.core import Array
@@ -22,44 +23,99 @@ from zarr.errors import ReadOnlyError
 class TestArray(unittest.TestCase):
 
     def test_array_init(self):
-        store = dict()  # store not initialised
+
+        # normal initialization
+        store = dict()
+        init_array(store, shape=100, chunks=10)
+        a = Array(store)
+        assert_is_instance(a, Array)
+        eq((100,), a.shape)
+        eq((10,), a.chunks)
+        eq('', a.path)
+        assert_is_none(a.name)
+        assert_is(store, a.store)
+
+        # initialize at path
+        store = dict()
+        init_array(store, shape=100, chunks=10, path='foo/bar')
+        a = Array(store, path='foo/bar')
+        assert_is_instance(a, Array)
+        eq((100,), a.shape)
+        eq((10,), a.chunks)
+        eq('foo/bar', a.path)
+        eq('/foo/bar', a.name)
+        assert_is(store, a.store)
+
+        # store not initialized
+        store = dict()
         with assert_raises(ValueError):
             Array(store)
 
+        # group is in the way
+        store = dict()
+        init_group(store, path='baz')
+        with assert_raises(ValueError):
+            Array(store, path='baz')
+
     @staticmethod
-    def create_array(store=None, readonly=False, **kwargs):
+    def create_array(store=None, path=None, readonly=False, **kwargs):
         if store is None:
             store = dict()
-        init_array(store, **kwargs)
-        return Array(store, readonly=readonly)
+        init_array(store, path=path, **kwargs)
+        return Array(store, path=path, readonly=readonly)
 
     def test_nbytes_stored(self):
 
+        # custom store, does not implement getsize()
+        class CustomMapping(object):
+            def __init__(self):
+                self.inner = dict()
+
+            def __getitem__(self, item):
+                return self.inner[item]
+
+            def __setitem__(self, item, value):
+                self.inner[item] = value
+
+            def __contains__(self, item):
+                return item in self.inner
+
+        store = CustomMapping()
+        z = self.create_array(store=store, shape=1000, chunks=100)
+        eq(-1, z.nbytes_stored)
+        z[:] = 42
+        eq(-1, z.nbytes_stored)
+
+        # dict as store
         store = dict()
         z = self.create_array(store=store, shape=1000, chunks=100)
         eq(sum(len(v) for v in store.values()), z.nbytes_stored)
         z[:] = 42
         eq(sum(len(v) for v in store.values()), z.nbytes_stored)
+        # mess with store
+        store['foo'] = list(range(10))
+        eq(-1, z.nbytes_stored)
+
+        # for comparison
+        z = self.create_array(store=dict(), shape=1000, chunks=100,
+                              compression='zlib', compression_opts=1)
+        z[:] = 42
 
         # DirectoryStore
         path = mkdtemp()
         atexit.register(shutil.rmtree, path)
         store = DirectoryStore(path)
-        z = self.create_array(store=store, shape=1000, chunks=100,
-                              compression='zlib', compression_opts=1,
-                              fill_value=0)
-        eq(sum(len(v) for v in store.values()), z.nbytes_stored)
-        z[:] = 42
-        eq(sum(len(v) for v in store.values()), z.nbytes_stored)
+        zz = self.create_array(store=store, shape=1000, chunks=100,
+                               compression='zlib', compression_opts=1)
+        zz[:] = 42
+        eq(z.nbytes_stored, zz.nbytes_stored)
 
         # ZipStore
         if os.path.exists('test.zip'):
             os.remove('test.zip')
         store = ZipStore('test.zip')
-        z = self.create_array(store=store, shape=1000, chunks=100,
-                              compression='zlib', compression_opts=1,
-                              fill_value=0)
-        zz = Array(store)
+        zz = self.create_array(store=store, shape=1000, chunks=100,
+                               compression='zlib', compression_opts=1)
         zz[:] = 42
         eq(z.nbytes_stored, zz.nbytes_stored)
 
@@ -454,3 +510,30 @@ class TestArray(unittest.TestCase):
             eq(z.compression_opts, z2.compression_opts)
             eq(z.fill_value, z2.fill_value)
             assert_array_equal(z[:], z2[:])
+
+    def test_repr(self):
+
+        # no path
+        z = self.create_array(shape=100, chunks=10, dtype='f4',
+                              compression='zlib', compression_opts=1)
+        expect = """zarr.core.Array((100,), float32, chunks=(10,), order=C)
+  compression: zlib; compression_opts: 1
+  nbytes: 400; nbytes_stored: 210; ratio: 1.9; initialized: 0/10
+  store: builtins.dict
+"""
+        actual = repr(z)
+        for l1, l2 in zip(expect.split('\n'), actual.split('\n')):
+            eq(l1, l2)
+
+        # with path
+        z = self.create_array(path='foo/bar', shape=100, chunks=10, dtype='f4',
+                              compression='zlib', compression_opts=1)
+        # flake8: noqa
+        expect = """zarr.core.Array(/foo/bar, (100,), float32, chunks=(10,), order=C)
+  compression: zlib; compression_opts: 1
+  nbytes: 400; nbytes_stored: 210; ratio: 1.9; initialized: 0/10
+  store: builtins.dict
+"""
+        actual = repr(z)
+        for l1, l2 in zip(expect.split('\n'), actual.split('\n')):
+            eq(l1, l2)

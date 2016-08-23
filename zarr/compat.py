@@ -9,18 +9,12 @@ PY2 = sys.version_info[0] == 2
 
 if PY2:  # pragma: no cover
 
-    def itervalues(d, **kw):
-        return d.itervalues(**kw)
-
     text_type = unicode
     binary_type = str
     integer_types = (int, long)
     reduce = reduce
 
 else:
-
-    def itervalues(d, **kw):
-        return iter(d.values(**kw))
 
     text_type = str
     binary_type = bytes

@@ -82,10 +82,6 @@ class Array(object):
             self._key_prefix = ''
         self._readonly = readonly
 
-        # guard conditions
-        if contains_group(store, path=self._path):
-            raise ValueError('store contains a group')
-
         # initialise metadata
         try:
             mkey = self._key_prefix + array_meta_key
