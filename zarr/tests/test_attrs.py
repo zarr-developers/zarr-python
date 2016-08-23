@@ -15,22 +15,20 @@ from zarr.errors import ReadOnlyError
 class TestAttributes(unittest.TestCase):
 
     def init_attributes(self, store, readonly=False):
-        key = 'attrs'
-        store[key] = json.dumps(dict()).encode('ascii')
-        return Attributes(store, key=key, readonly=readonly)
+        return Attributes(store, key='attrs', readonly=readonly)
 
     def test_storage(self):
 
         store = dict()
-        a = self.init_attributes(store)
-        assert 'attrs' in store
-        assert isinstance(store['attrs'], binary_type)
-        d = json.loads(text_type(store['attrs'], 'ascii'))
-        eq(dict(), d)
+        a = Attributes(store=store, key='attrs')
+        assert 'foo' not in a
+        assert 'bar' not in a
+        eq(dict(), a.asdict())
 
         a['foo'] = 'bar'
         a['baz'] = 42
-
+        assert 'attrs' in store
+        assert isinstance(store['attrs'], binary_type)
         d = json.loads(text_type(store['attrs'], 'ascii'))
         eq(dict(foo='bar', baz=42), d)
 

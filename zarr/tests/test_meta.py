@@ -9,7 +9,7 @@ import numpy as np
 
 from zarr.compat import PY2
 from zarr.meta import decode_array_metadata, encode_dtype, decode_dtype, \
-    ZARR_FORMAT
+    ZARR_FORMAT, decode_group_metadata
 from zarr.errors import MetadataError
 
 
@@ -101,3 +101,24 @@ def test_encode_decode_dtype():
         o = json.loads(s)
         d = decode_dtype(o)
         eq(np.dtype(dt), d)
+
+
+def test_decode_group():
+
+    # typical
+    b = '''{
+        "zarr_format": %s
+    }''' % ZARR_FORMAT
+    if not PY2:
+        b = b.encode('ascii')
+    meta = decode_group_metadata(b)
+    eq(ZARR_FORMAT, meta['zarr_format'])
+
+    # unsupported format
+    b = '''{
+        "zarr_format": %s
+    }''' % (ZARR_FORMAT - 1)
+    if not PY2:
+        b = b.encode('ascii')
+    with assert_raises(MetadataError):
+        decode_group_metadata(b)

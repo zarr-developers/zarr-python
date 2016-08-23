@@ -83,14 +83,10 @@ def decode_group_metadata(b):
     zarr_format = meta.get('zarr_format', None)
     if zarr_format != ZARR_FORMAT:
         raise MetadataError('unsupported zarr format: %s' % zarr_format)
-    try:
-        meta = dict(
-            zarr_format=meta['zarr_format'],
-        )
-    except Exception as e:
-        raise MetadataError('error decoding metadata: %s' % e)
-    else:
-        return meta
+    meta = dict(
+        zarr_format=ZARR_FORMAT,
+    )
+    return meta
 
 
 def encode_group_metadata(meta=None):
