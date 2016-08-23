@@ -334,10 +334,10 @@ To create a group, use the :func:`zarr.hierarchy.group` function::
 
     >>> root_group = zarr.group()
     >>> root_group
-    zarr.hierarchy.Group(0)
-      store: zarr.storage.MemoryStore
+    zarr.hierarchy.Group(/, 0)
+      store: zarr.storage.DictStore
 
-Groups have a similar API to the Group class from `h5py <http://TODO>`_.
+Groups have a similar API to the Group class from `h5py <http://www.h5py.org/>`_.
 For example, groups can contain other groups::
 
     >>> foo_group = root_group.create_group('foo')
@@ -351,30 +351,30 @@ For compatibility with h5py, Zarr groups implement the
     ...                              chunks=(1000, 1000), dtype='i4',
     ...                              fill_value=0)
     >>> z
-    zarr.core.Array(foo/bar/baz, (10000, 10000), int32, chunks=(1000, 1000), order=C)
+    zarr.core.Array(/foo/bar/baz, (10000, 10000), int32, chunks=(1000, 1000), order=C)
       compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
       nbytes: 381.5M; nbytes_stored: 313; ratio: 1277955.3; initialized: 0/100
-      store: zarr.storage.MemoryStore
+      store: zarr.storage.DictStore
 
 Members of a group can be accessed via the suffix notation, e.g.::
 
     >>> root_group['foo']
-    zarr.hierarchy.Group(foo, 1)
+    zarr.hierarchy.Group(/foo, 1)
       groups: 1; bar
-      store: zarr.storage.MemoryStore
+      store: zarr.storage.DictStore
 
 The '/' character can be used to access multiple levels of the hierarchy,
 e.g.::
 
     >>> root_group['foo/bar']
-    zarr.hierarchy.Group(foo/bar, 1)
+    zarr.hierarchy.Group(/foo/bar, 1)
       arrays: 1; baz
-      store: zarr.storage.MemoryStore
+      store: zarr.storage.DictStore
     >>> root_group['foo/bar/baz']
-    zarr.core.Array(foo/bar/baz, (10000, 10000), int32, chunks=(1000, 1000), order=C)
+    zarr.core.Array(/foo/bar/baz, (10000, 10000), int32, chunks=(1000, 1000), order=C)
       compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
       nbytes: 381.5M; nbytes_stored: 313; ratio: 1277955.3; initialized: 0/100
-      store: zarr.storage.MemoryStore
+      store: zarr.storage.DictStore
 
 The :func:`zarr.hierarchy.open_group` provides a convenient way to create or
 re-open a group stored in a directory on the file-system, with sub-groups
@@ -382,13 +382,13 @@ stored in sub-directories, e.g.::
 
     >>> persistent_group = zarr.open_group('example', mode='w')
     >>> persistent_group
-    zarr.hierarchy.Group(0)
+    zarr.hierarchy.Group(/, 0)
       store: zarr.storage.DirectoryStore
     >>> z = persistent_group.create_dataset('foo/bar/baz', shape=(10000, 10000),
     ...                                     chunks=(1000, 1000), dtype='i4',
     ...                                     fill_value=0)
     >>> z
-    zarr.core.Array(foo/bar/baz, (10000, 10000), int32, chunks=(1000, 1000), order=C)
+    zarr.core.Array(/foo/bar/baz, (10000, 10000), int32, chunks=(1000, 1000), order=C)
       compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
       nbytes: 381.5M; nbytes_stored: 313; ratio: 1277955.3; initialized: 0/100
       store: zarr.storage.DirectoryStore
@@ -472,7 +472,7 @@ Here is an example storing an array directly into a Zip file::
       store: zarr.storage.ZipStore
     >>> import os
     >>> os.path.getsize('example.zip')
-    30828
+    30838
 
 Re-open and check that data have been written::
 
