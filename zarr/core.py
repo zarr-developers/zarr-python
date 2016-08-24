@@ -11,11 +11,13 @@ from zarr.compressors import get_compressor_cls
 from zarr.util import is_total_slice, normalize_array_selection, \
     get_chunk_range, human_readable_size, normalize_resize_args, \
     normalize_storage_path
-from zarr.storage import array_meta_key, attrs_key, listdir, getsize
+from zarr.storage import array_meta_key, attrs_key, listdir, getsize, \
+    buffersize
 from zarr.meta import decode_array_metadata, encode_array_metadata
 from zarr.attrs import Attributes
 from zarr.errors import ReadOnlyError
 from zarr.compat import reduce
+from zarr.filters import get_filters
 
 
 class Array(object):
@@ -50,6 +52,7 @@ class Array(object):
     fill_value
     order
     synchronizer
+    filters
     attrs
     size
     itemsize
@@ -103,6 +106,8 @@ class Array(object):
             self._order = meta['order']
             compressor_cls = get_compressor_cls(self._compression)
             self._compressor = compressor_cls(self._compression_opts)
+            self._filters = get_filters(meta['filters'])
+            # TODO validate filter dtypes
 
         # initialize attributes
         akey = self._key_prefix + attrs_key
@@ -113,7 +118,8 @@ class Array(object):
         meta = dict(shape=self._shape, chunks=self._chunks, dtype=self._dtype,
                     compression=self._compression,
                     compression_opts=self._compression_opts,
-                    fill_value=self._fill_value, order=self._order)
+                    fill_value=self._fill_value, order=self._order,
+                    filters=self._filters)
         mkey = self._key_prefix + array_meta_key
         self._store[mkey] = encode_array_metadata(meta)
 
@@ -179,6 +185,11 @@ class Array(object):
         return self._compression_opts
 
     @property
+    def compressor(self):
+        """TODO doc me"""
+        return self._compressor
+
+    @property
     def fill_value(self):
         """A value used for uninitialized portions of the array."""
         return self._fill_value
@@ -193,6 +204,10 @@ class Array(object):
     def synchronizer(self):
         """TODO doc me"""
         return self._synchronizer
+
+    def filters(self):
+        """TODO doc me"""
+        return self._filters
 
     @property
     def attrs(self):
@@ -400,7 +415,7 @@ class Array(object):
             >>> z
             zarr.core.Array((100000000,), int32, chunks=(1000000,), order=C)
               compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
-              nbytes: 381.5M; nbytes_stored: 291; ratio: 1374570.4; initialized: 0/100
+              nbytes: 381.5M; nbytes_stored: 312; ratio: 1282051.3; initialized: 0/100
               store: builtins.dict
 
         Set all array elements to the same scalar value::
@@ -422,7 +437,7 @@ class Array(object):
             >>> z
             zarr.core.Array((10000, 10000), int32, chunks=(1000, 1000), order=C)
               compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
-              nbytes: 381.5M; nbytes_stored: 313; ratio: 1277955.3; initialized: 0/100
+              nbytes: 381.5M; nbytes_stored: 334; ratio: 1197604.8; initialized: 0/100
               store: builtins.dict
 
         Set all array elements to the same scalar value::
@@ -537,20 +552,19 @@ class Array(object):
         else:
 
             if is_total_slice(item, self._chunks) and \
+                    not self._filters and \
                     ((self._order == 'C' and dest.flags.c_contiguous) or
                      (self._order == 'F' and dest.flags.f_contiguous)):
 
-                # optimisation: we want the whole chunk, and the destination is
+                # optimization: we want the whole chunk, and the destination is
                 # contiguous, so we can decompress directly from the chunk
                 # into the destination array
                 self._compressor.decompress(cdata, dest)
 
             else:
 
-                # decompress chunk
-                chunk = np.empty(self._chunks, dtype=self._dtype,
-                                 order=self._order)
-                self._compressor.decompress(cdata, chunk)
+                # decode chunk
+                chunk = self._decode_chunk(cdata)
 
                 # set data in output array
                 # (split into two lines for profiling)
@@ -589,8 +603,9 @@ class Array(object):
         ckey = self._chunk_key(cidx)
 
         if is_total_slice(key, self._chunks):
+            # totally replace chunk
 
-            # optimisation: we are completely replacing the chunk, so no need
+            # optimization: we are completely replacing the chunk, so no need
             # to access the existing chunk data
 
             if np.isscalar(value):
@@ -626,22 +641,48 @@ class Array(object):
 
             else:
 
-                # decompress chunk
-                chunk = np.empty(self._chunks, dtype=self._dtype,
-                                 order=self._order)
-                self._compressor.decompress(cdata, chunk)
+                # decode chunk
+                chunk = self._decode_chunk(cdata)
 
             # modify
             chunk[key] = value
 
-        # compress
-        cdata = self._compressor.compress(chunk)
+        # encode chunk
+        cdata = self._encode_chunk(chunk)
 
         # store
         self._chunk_store[ckey] = cdata
 
     def _chunk_key(self, cidx):
         return self._key_prefix + '.'.join(map(str, cidx))
+
+    def _decode_chunk(self, cdata):
+
+        # decompress
+        chunk = self._compressor.decompress(cdata)
+
+        # apply filters
+        if self._filters:
+            for f in self._filters[::-1]:
+                chunk = f.decode(chunk)
+
+        # view and reshape
+        chunk = np.frombuffer(chunk, self.dtype)
+        chunk = chunk.reshape(self._chunks, order=self._order)
+
+        return chunk
+
+    def _encode_chunk(self, chunk):
+
+        # apply filters
+        if self._filters:
+            for f in self._filters:
+                chunk = f.encode(chunk)
+
+        # compress
+        cdata = self._compressor.compress(chunk)
+
+        return cdata
 
     def __repr__(self):
         r = '%s.%s(' % (type(self).__module__, type(self).__name__)
@@ -706,19 +747,19 @@ class Array(object):
         >>> z
         zarr.core.Array((10000, 10000), float64, chunks=(1000, 1000), order=C)
           compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
-          nbytes: 762.9M; nbytes_stored: 313; ratio: 2555910.5; initialized: 0/100
+          nbytes: 762.9M; nbytes_stored: 334; ratio: 2395209.6; initialized: 0/100
           store: builtins.dict
         >>> z.resize(20000, 10000)
         >>> z
         zarr.core.Array((20000, 10000), float64, chunks=(1000, 1000), order=C)
           compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
-          nbytes: 1.5G; nbytes_stored: 313; ratio: 5111821.1; initialized: 0/200
+          nbytes: 1.5G; nbytes_stored: 334; ratio: 4790419.2; initialized: 0/200
           store: builtins.dict
         >>> z.resize(30000, 1000)
         >>> z
         zarr.core.Array((30000, 1000), float64, chunks=(1000, 1000), order=C)
           compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
-          nbytes: 228.9M; nbytes_stored: 312; ratio: 769230.8; initialized: 0/30
+          nbytes: 228.9M; nbytes_stored: 333; ratio: 720720.7; initialized: 0/30
           store: builtins.dict
 
         Notes

@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, print_function, division
 import unittest
-import array
 
 
 import numpy as np
@@ -10,6 +9,7 @@ from nose.tools import eq_ as eq, assert_raises
 
 
 from zarr.compressors import get_compressor_cls
+from zarr.util import buffersize
 
 
 class CompressorTests(object):
@@ -28,8 +28,8 @@ class CompressorTests(object):
         comp = self.init_compressor(compression_opts)
         a = np.arange(1000, dtype='i4')
         cdata = comp.compress(a)
-        assert isinstance(cdata, (bytes, bytearray, array.array))
-        assert len(cdata) <= a.nbytes
+        cbytes = buffersize(cdata)
+        assert cbytes <= a.nbytes
 
         b = np.empty_like(a)
         comp.decompress(cdata, b)

@@ -69,6 +69,8 @@ order
     Either "C" or "F", defining the layout of bytes within each chunk of the
     array. "C" means row-major order, i.e., the last dimension varies fastest;
     "F" means column-major order, i.e., the first dimension varies fastest.
+filters
+    TODO
 
 Other keys MUST NOT be present within the metadata object.
 
@@ -92,6 +94,9 @@ library::
         },
         "dtype": "<f8",
         "fill_value": null,
+        "filters": [
+            {"name": "delta", "enc_dtype": "<f4", "dec_dtype": "<f8"}
+        ],
         "order": "C",
         "shape": [
             10000,
@@ -175,6 +180,11 @@ Note that all chunks in an array have the same shape. If the length of any
 array dimension is not exactly divisible by the length of the corresponding 
 chunk dimension then some chunks will overhang the edge of the array. The 
 contents of any chunk region falling outside the array are undefined.
+
+Filters
+~~~~~~~
+
+TODO
 
 Hierarchies
 -----------
@@ -301,6 +311,7 @@ Inspect the array metadata::
         "compression_opts": 1,
         "dtype": "<i4",
         "fill_value": 42,
+        "filters": null,
         "order": "C",
         "shape": [
             20,
@@ -455,3 +466,4 @@ Changes in version 2
   key
 * Custom attributes are now stored under the ".zattrs" key instead of the
   "attrs" key
+* TODO filters

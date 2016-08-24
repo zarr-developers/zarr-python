@@ -9,6 +9,8 @@ from nose.tools import eq_ as eq
 
 
 from zarr.filters import DeltaFilter, ScaleOffsetFilter
+from zarr.creation import array
+from zarr.compat import PY2
 
 
 class TestDeltaFilter(unittest.TestCase):
@@ -17,17 +19,17 @@ class TestDeltaFilter(unittest.TestCase):
         enc_dtype = 'u1'
         dec_dtype = 'f8'
         f = DeltaFilter(enc_dtype=enc_dtype, dec_dtype=dec_dtype)
-        arr = np.arange(10, dtype=dec_dtype)
+        data = np.arange(10, dtype=dec_dtype)
 
         # test encoding
         expect_enc = np.array([0] + ([1] * 9), dtype=enc_dtype)
-        enc = f.encode(arr)
+        enc = f.encode(data)
         assert_array_equal(expect_enc, enc)
         eq(np.dtype(enc_dtype), enc.dtype)
 
         # test decoding
         dec = f.decode(enc)
-        assert_array_equal(arr, dec)
+        assert_array_equal(data, dec)
         eq(np.dtype(dec_dtype), dec.dtype)
 
 
@@ -38,15 +40,78 @@ class TestScaleOffsetFilter(unittest.TestCase):
         dec_dtype = 'f8'
         f = ScaleOffsetFilter(scale=10, offset=1000, enc_dtype=enc_dtype,
                               dec_dtype=dec_dtype)
-        arr = 1000 + np.arange(0, 100, 10, dtype=dec_dtype)
+        data = 1000 + np.arange(0, 100, 10, dtype=dec_dtype)
 
         # test encoding
         expected_enc = np.arange(10, dtype=enc_dtype)
-        enc = f.encode(arr)
+        enc = f.encode(data)
         assert_array_equal(expected_enc, enc)
         eq(np.dtype(enc_dtype), enc.dtype)
 
         # test decoding
         dec = f.decode(enc)
-        assert_array_equal(arr, dec)
+        assert_array_equal(data, dec)
         eq(np.dtype(dec_dtype), dec.dtype)
+
+
+compression_configs = [
+    ('none', None),
+    ('zlib', None),
+    ('bz2', None),
+    ('blosc', None)
+]
+if not PY2:
+    compression_configs.append(('lzma', None))
+
+
+def test_array_with_filters_1():
+
+    # setup
+    enc_dtype = 'u1'
+    dec_dtype = 'f8'
+    filters = [DeltaFilter(enc_dtype=enc_dtype, dec_dtype=dec_dtype)]
+    data = np.arange(100, dtype=dec_dtype)
+
+    for compression, compression_opts in compression_configs:
+        print(compression, compression_opts)
+
+        a = array(data, chunks=10, compression=compression,
+                  compression_opts=compression_opts, filters=filters)
+
+        # check round-trip
+        assert_array_equal(data, a[:])
+
+        # check chunks
+        for i in range(10):
+            cdata = a.store[str(i)]
+            actual = np.frombuffer(a.compressor.decompress(cdata),
+                                   dtype=enc_dtype)
+            expect = np.array([i * 10] + ([1] * 9), dtype=enc_dtype)
+            assert_array_equal(expect, actual)
+
+
+def test_array_with_filters_2():
+
+    # setup
+    enc_dtype = 'u1'
+    dec_dtype = 'f8'
+    filters = [ScaleOffsetFilter(scale=10, offset=1000, enc_dtype=enc_dtype,
+                                 dec_dtype=dec_dtype)]
+    data = 1000 + np.arange(0, 100, 10, dtype=dec_dtype)
+
+    for compression, compression_opts in compression_configs:
+        print(compression, compression_opts)
+
+        a = array(data, chunks=5, compression=compression,
+                  compression_opts=compression_opts, filters=filters)
+
+        # check round-trip
+        assert_array_equal(data, a[:])
+
+        # check chunks
+        for i in range(2):
+            cdata = a.store[str(i)]
+            actual = np.frombuffer(a.compressor.decompress(cdata),
+                                   dtype=enc_dtype)
+            expect = np.arange(i*5, (i*5)+5, 1, dtype=enc_dtype)
+            assert_array_equal(expect, actual)

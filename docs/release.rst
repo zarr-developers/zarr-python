@@ -16,6 +16,11 @@ API docs for more information.
 To accommodate support for hierarchies the Zarr format has been modified. See
 the :ref:`spec_v2` for more information.
 
+Filters
+~~~~~~~
+
+TODO
+
 Other changes
 ~~~~~~~~~~~~~
 

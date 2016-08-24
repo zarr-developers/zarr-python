@@ -49,13 +49,17 @@ class ZlibCompressor(object):
         return level
 
     # noinspection PyMethodMayBeStatic
-    def decompress(self, cdata, array):
+    def decompress(self, cdata, dest=None):
         data = zlib.decompress(cdata)
-        src = np.frombuffer(data, dtype=array.dtype).reshape(array.shape)
-        np.copyto(array, src)
+        if dest is None:
+            dest = np.frombuffer(data, dtype='u1')
+        else:
+            src = np.frombuffer(data, dtype=dest.dtype).reshape(dest.shape)
+            np.copyto(dest, src)
+        return dest
 
     def compress(self, array):
-        data = array.tobytes()
+        data = memoryview(array).tobytes()
         return zlib.compress(data, self.level)
 
 
@@ -145,8 +149,8 @@ else:
             return compression_opts
 
         # noinspection PyMethodMayBeStatic
-        def decompress(self, cdata, array):
-            blosc.decompress(cdata, array)
+        def decompress(self, cdata, dest=None):
+            return blosc.decompress(cdata, dest)
 
         def compress(self, array):
             return blosc.compress(array, self.cname, self.clevel, self.shuffle)
@@ -190,13 +194,17 @@ class BZ2Compressor(object):
         return level
 
     # noinspection PyMethodMayBeStatic
-    def decompress(self, cdata, array):
+    def decompress(self, cdata, dest=None):
         data = bz2.decompress(cdata)
-        src = np.frombuffer(data, dtype=array.dtype).reshape(array.shape)
-        np.copyto(array, src)
+        if dest is None:
+            dest = np.frombuffer(data, dtype='u1')
+        else:
+            src = np.frombuffer(data, dtype=dest.dtype).reshape(dest.shape)
+            np.copyto(dest, src)
+        return dest
 
     def compress(self, array):
-        data = array.tobytes()
+        data = memoryview(array).tobytes()
         return bz2.compress(data, self.level)
 
 
@@ -303,7 +311,7 @@ else:
             return compression_opts
 
         # noinspection PyMethodMayBeStatic
-        def decompress(self, cdata, array):
+        def decompress(self, cdata, dest=None):
             if self.format == lzma.FORMAT_RAW:
                 # filters needed
                 filters = self.filters
@@ -311,11 +319,15 @@ else:
                 # filters should not be specified
                 filters = None
             data = lzma.decompress(cdata, format=self.format, filters=filters)
-            src = np.frombuffer(data, dtype=array.dtype).reshape(array.shape)
-            np.copyto(array, src)
+            if dest is None:
+                dest = np.frombuffer(data, dtype='u1')
+            else:
+                src = np.frombuffer(data, dtype=dest.dtype).reshape(dest.shape)
+                np.copyto(dest, src)
+            return dest
 
         def compress(self, array):
-            data = array.tobytes()
+            data = memoryview(array).tobytes()
             return lzma.compress(data, format=self.format, check=self.check,
                                  preset=self.preset, filters=self.filters)
 
@@ -346,14 +358,18 @@ class NoCompressor(object):
         return None
 
     # noinspection PyMethodMayBeStatic
-    def decompress(self, cdata, array):
-        src = np.frombuffer(cdata, dtype=array.dtype).reshape(array.shape)
-        np.copyto(array, src)
+    def decompress(self, cdata, dest=None):
+        if dest is None:
+            dest = np.frombuffer(cdata, dtype='u1')
+        else:
+            src = np.frombuffer(cdata, dtype=dest.dtype).reshape(dest.shape)
+            np.copyto(dest, src)
+        return dest
 
     # noinspection PyMethodMayBeStatic
     def compress(self, array):
-        data = array.tobytes()
-        return data
+        # no-op
+        return array
 
 
 registry[NoCompressor.canonical_name] = NoCompressor
