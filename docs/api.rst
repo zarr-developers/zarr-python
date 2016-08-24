@@ -9,4 +9,5 @@ API reference
     api/hierarchy
     api/storage
     api/compressors
+    api/filters
     api/sync

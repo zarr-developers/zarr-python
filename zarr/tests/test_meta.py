@@ -11,6 +11,7 @@ from zarr.compat import binary_type, text_type
 from zarr.meta import decode_array_metadata, encode_dtype, decode_dtype, \
     ZARR_FORMAT, decode_group_metadata, encode_array_metadata
 from zarr.errors import MetadataError
+from zarr.filters import DeltaFilter
 
 
 def assert_json_eq(expect, actual):  # pragma: no cover
@@ -32,6 +33,7 @@ def test_encode_decode_array_1():
         compression='zlib',
         compression_opts=1,
         fill_value=None,
+        filters=None,
         order='C'
     )
 
@@ -41,6 +43,7 @@ def test_encode_decode_array_1():
         "compression_opts": 1,
         "dtype": "<f8",
         "fill_value": null,
+        "filters": null,
         "order": "C",
         "shape": [100],
         "zarr_format": %s
@@ -60,6 +63,7 @@ def test_encode_decode_array_1():
     eq(meta['compression_opts'], meta_dec['compression_opts'])
     eq(meta['order'], meta_dec['order'])
     assert_is_none(meta_dec['fill_value'])
+    assert_is_none(meta_dec['filters'])
 
 
 def test_encode_decode_array_2():
@@ -72,7 +76,8 @@ def test_encode_decode_array_2():
         compression='blosc',
         compression_opts=dict(cname='lz4', clevel=3, shuffle=2),
         fill_value=42,
-        order='F'
+        order='F',
+        filter=[DeltaFilter(enc_dtype='u2', dec_dtype='V14')]
     )
 
     meta_json = '''{
@@ -85,6 +90,9 @@ def test_encode_decode_array_2():
         },
         "dtype": [["a", "<i4"], ["b", "|S10"]],
         "fill_value": 42,
+        "filters": [
+            {"name": "delta", "enc_dtype": "u2", "dec_dtype": "V14"}
+        ],
         "order": "F",
         "shape": [100, 100],
         "zarr_format": %s
@@ -104,6 +112,7 @@ def test_encode_decode_array_2():
     eq(meta['compression_opts'], meta_dec['compression_opts'])
     eq(meta['order'], meta_dec['order'])
     eq(meta['fill_value'], meta_dec['fill_value'])
+    eq(meta['filters'], meta_dec['filters'])
 
 
 def test_encode_decode_array_fill_values():

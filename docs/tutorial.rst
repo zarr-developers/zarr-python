@@ -22,7 +22,7 @@ example::
     >>> z
     zarr.core.Array((10000, 10000), int32, chunks=(1000, 1000), order=C)
       compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
-      nbytes: 381.5M; nbytes_stored: 313; ratio: 1277955.3; initialized: 0/100
+      nbytes: 381.5M; nbytes_stored: 334; ratio: 1197604.8; initialized: 0/100
       store: builtins.dict
 
 The code above creates a 2-dimensional array of 32-bit integers with
@@ -93,7 +93,7 @@ enabling persistence of data between sessions. For example::
     >>> z1
     zarr.core.Array((10000, 10000), int32, chunks=(1000, 1000), order=C)
       compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
-      nbytes: 381.5M; nbytes_stored: 313; ratio: 1277955.3; initialized: 0/100
+      nbytes: 381.5M; nbytes_stored: 334; ratio: 1197604.8; initialized: 0/100
       store: zarr.storage.DirectoryStore
 
 The array above will store its configuration metadata and all
@@ -232,10 +232,15 @@ the delta filter::
     >>> z
     zarr.core.Array((10000, 10000), int32, chunks=(1000, 1000), order=C)
       compression: lzma; compression_opts: {'preset': None, 'filters': [{'dist': 4, 'id': 3}, {'preset': 1, 'id': 33}], 'check': 0, 'format': 1}
-      nbytes: 381.5M; nbytes_stored: 248.1K; ratio: 1574.7; initialized: 100/100
+      nbytes: 381.5M; nbytes_stored: 248.1K; ratio: 1574.5; initialized: 100/100
       store: builtins.dict
 
 .. _tutorial_sync:
+
+Filters
+-------
+
+TODO
 
 Parallel computing and synchronization
 --------------------------------------
@@ -278,7 +283,7 @@ array with thread synchronization::
     >>> z
     zarr.core.Array((10000, 10000), int32, chunks=(1000, 1000), order=C)
       compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
-      nbytes: 381.5M; nbytes_stored: 313; ratio: 1277955.3; initialized: 0/100
+      nbytes: 381.5M; nbytes_stored: 334; ratio: 1197604.8; initialized: 0/100
       store: builtins.dict
       synchronizer: zarr.sync.ThreadSynchronizer
 
@@ -294,7 +299,7 @@ provided that all processes have access to a shared file system. E.g.::
     >>> z
     zarr.core.Array((10000, 10000), int32, chunks=(1000, 1000), order=C)
       compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
-      nbytes: 381.5M; nbytes_stored: 313; ratio: 1277955.3; initialized: 0/100
+      nbytes: 381.5M; nbytes_stored: 334; ratio: 1197604.8; initialized: 0/100
       store: zarr.storage.DirectoryStore
       synchronizer: zarr.sync.ProcessSynchronizer
 
@@ -355,7 +360,7 @@ For compatibility with h5py, Zarr groups implement the
     >>> z
     zarr.core.Array(/foo/bar/baz, (10000, 10000), int32, chunks=(1000, 1000), order=C)
       compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
-      nbytes: 381.5M; nbytes_stored: 313; ratio: 1277955.3; initialized: 0/100
+      nbytes: 381.5M; nbytes_stored: 334; ratio: 1197604.8; initialized: 0/100
       store: zarr.storage.DictStore
 
 Members of a group can be accessed via the suffix notation, e.g.::
@@ -375,7 +380,7 @@ e.g.::
     >>> root_group['foo/bar/baz']
     zarr.core.Array(/foo/bar/baz, (10000, 10000), int32, chunks=(1000, 1000), order=C)
       compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
-      nbytes: 381.5M; nbytes_stored: 313; ratio: 1277955.3; initialized: 0/100
+      nbytes: 381.5M; nbytes_stored: 334; ratio: 1197604.8; initialized: 0/100
       store: zarr.storage.DictStore
 
 The :func:`zarr.hierarchy.open_group` provides a convenient way to create or
@@ -392,7 +397,7 @@ stored in sub-directories, e.g.::
     >>> z
     zarr.core.Array(/foo/bar/baz, (10000, 10000), int32, chunks=(1000, 1000), order=C)
       compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
-      nbytes: 381.5M; nbytes_stored: 313; ratio: 1277955.3; initialized: 0/100
+      nbytes: 381.5M; nbytes_stored: 334; ratio: 1197604.8; initialized: 0/100
       store: zarr.storage.DirectoryStore
 
 For more information on groups see the :mod:`zarr.hierarchy` API docs.
@@ -464,17 +469,17 @@ Here is an example storing an array directly into a Zip file::
     >>> z
     zarr.core.Array((1000, 1000), int32, chunks=(100, 100), order=C)
       compression: zlib; compression_opts: 1
-      nbytes: 3.8M; nbytes_stored: 236; ratio: 16949.2; initialized: 0/100
+      nbytes: 3.8M; nbytes_stored: 257; ratio: 15564.2; initialized: 0/100
       store: zarr.storage.ZipStore
     >>> z[:] = 42
     >>> z
     zarr.core.Array((1000, 1000), int32, chunks=(100, 100), order=C)
       compression: zlib; compression_opts: 1
-      nbytes: 3.8M; nbytes_stored: 21.9K; ratio: 178.3; initialized: 100/100
+      nbytes: 3.8M; nbytes_stored: 21.9K; ratio: 178.1; initialized: 100/100
       store: zarr.storage.ZipStore
     >>> import os
     >>> os.path.getsize('example.zip')
-    30838
+    30859
 
 Re-open and check that data have been written::
 
@@ -483,7 +488,7 @@ Re-open and check that data have been written::
     >>> z
     zarr.core.Array((1000, 1000), int32, chunks=(100, 100), order=C)
       compression: zlib; compression_opts: 1
-      nbytes: 3.8M; nbytes_stored: 21.9K; ratio: 178.3; initialized: 100/100
+      nbytes: 3.8M; nbytes_stored: 21.9K; ratio: 178.1; initialized: 100/100
       store: zarr.storage.ZipStore
     >>> z[:]
     array([[42, 42, 42, ..., 42, 42, 42],

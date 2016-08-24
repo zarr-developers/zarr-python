@@ -6,17 +6,16 @@ import tempfile
 import json
 import zipfile
 import shutil
-import operator
 
 
 import numpy as np
 
 
 from zarr.util import normalize_shape, normalize_chunks, normalize_order, \
-    normalize_storage_path
+    normalize_storage_path, buffersize
 from zarr.compressors import get_compressor_cls
 from zarr.meta import encode_array_metadata, encode_group_metadata
-from zarr.compat import PY2, binary_type, reduce
+from zarr.compat import PY2, binary_type
 
 
 array_meta_key = '.zarray'
@@ -116,9 +115,10 @@ def getsize(store, path=None):
         return -1
 
 
-def init_array(store, shape, chunks=None, dtype=None, compression='default',
-               compression_opts=None, fill_value=None, order='C',
-               overwrite=False, path=None, chunk_store=None):
+def init_array(store, shape, chunks, dtype=None, compression='default',
+               compression_opts=None, fill_value=None,
+               order='C', overwrite=False, path=None,
+               chunk_store=None, filters=None):
     """initialize an array store with the given configuration.
 
     Parameters
@@ -148,6 +148,8 @@ def init_array(store, shape, chunks=None, dtype=None, compression='default',
     chunk_store : MutableMapping, optional
         Separate storage for chunks. If not provided, `store` will be used
         for storage of both chunks and metadata.
+    filters : sequence, optional
+        Sequence of filters to use to encode chunk data prior to compression.
 
     Examples
     --------
@@ -175,6 +177,7 @@ def init_array(store, shape, chunks=None, dtype=None, compression='default',
             },
             "dtype": "<f8",
             "fill_value": null,
+            "filters": null,
             "order": "C",
             "shape": [
                 10000,
@@ -207,6 +210,7 @@ def init_array(store, shape, chunks=None, dtype=None, compression='default',
             },
             "dtype": "|i1",
             "fill_value": null,
+            "filters": null,
             "order": "C",
             "shape": [
                 100000000
@@ -250,7 +254,7 @@ def init_array(store, shape, chunks=None, dtype=None, compression='default',
     # initialize metadata
     meta = dict(shape=shape, chunks=chunks, dtype=dtype,
                 compression=compression, compression_opts=compression_opts,
-                fill_value=fill_value, order=order)
+                fill_value=fill_value, order=order, filters=filters)
     key = _path_to_prefix(path) + array_meta_key
     store[key] = encode_array_metadata(meta)
 
@@ -324,17 +328,6 @@ def _dict_store_keys(d, prefix='', cls=dict):
                 yield sk
         else:
             yield prefix + k
-
-
-def buffersize(v):
-    from array import array as _stdlib_array
-    if PY2 and isinstance(v, _stdlib_array):  # pragma: no cover
-        # special case array.array because does not support buffer
-        # interface in PY2
-        return v.buffer_info()[1] * v.itemsize
-    else:
-        v = memoryview(v)
-        return reduce(operator.mul, v.shape) * v.itemsize
 
 
 class DictStore(MutableMapping):

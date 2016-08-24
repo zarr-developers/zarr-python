@@ -16,8 +16,8 @@ class DeltaFilter(object):
     canonical_name = 'delta'
 
     def __init__(self, enc_dtype, dec_dtype):
-        self.enc_dtype = enc_dtype
-        self.dec_dtype = dec_dtype
+        self.enc_dtype = np.dtype(enc_dtype)
+        self.dec_dtype = np.dtype(dec_dtype)
 
     def encode(self, arr):
         # ensure 1D array
@@ -63,8 +63,8 @@ class ScaleOffsetFilter(object):
     def __init__(self, offset, scale, enc_dtype, dec_dtype):
         self.offset = offset
         self.scale = scale
-        self.enc_dtype = enc_dtype
-        self.dec_dtype = dec_dtype
+        self.enc_dtype = np.dtype(enc_dtype)
+        self.dec_dtype = np.dtype(dec_dtype)
 
     def encode(self, arr):
         # ensure 1D array
@@ -100,3 +100,20 @@ class ScaleOffsetFilter(object):
 
 
 filter_registry[ScaleOffsetFilter.canonical_name] = ScaleOffsetFilter
+
+
+# TODO DigitizeFilter
+
+
+def get_filters(configs):
+    if not configs:
+        return None
+    else:
+        filters = list()
+        for config in configs:
+            name = config['name']
+            cls = filter_registry[name]
+            f = cls.from_config(config)
+            filters.append(f)
+            # TODO error handling
+        return filters

@@ -40,6 +40,8 @@ cdef extern from "blosc.h":
 				           size_t blocksize, int numinternalthreads) nogil
     int blosc_decompress_ctx(const void *src, void *dest, size_t destsize,
                              int numinternalthreads) nogil
+    void blosc_cbuffer_sizes(const void *cbuffer, size_t *nbytes,
+                             size_t *cbytes, size_t *blocksize)
 
 
 def version():
@@ -85,20 +87,15 @@ def set_nthreads(int nthreads):
     return blosc_set_nthreads(nthreads)
 
 
-def decompress(source, dest):
+def decompress(source, dest=None):
     """Decompress data.
 
     Parameters
     ----------
     source : bytes-like
         Compressed data, including blosc header.
-    dest : array-like
+    dest : array-like, optional
         Object to decompress into.
-
-    Notes
-    -----
-    Assumes that the size of the destination buffer is correct for the size of
-    the uncompressed data.
 
     """
     cdef:
@@ -108,7 +105,9 @@ def decompress(source, dest):
         Py_buffer source_buffer
         array.array source_array
         Py_buffer dest_buffer
-        size_t nbytes
+        size_t nbytes, cbytes, blocksize
+        array.array char_array_template = array.array('b', [])
+        array.array dest_array
 
     # setup source buffer
     if PY2 and isinstance(source, array.array):
@@ -122,11 +121,30 @@ def decompress(source, dest):
         PyObject_GetBuffer(source, &source_buffer, PyBUF_ANY_CONTIGUOUS)
         source_ptr = <char *> source_buffer.buf
 
+    # determine buffer size
+    blosc_cbuffer_sizes(source_ptr, &nbytes, &cbytes, &blocksize)
+
     # setup destination buffer
-    PyObject_GetBuffer(dest, &dest_buffer,
-                       PyBUF_ANY_CONTIGUOUS | PyBUF_WRITEABLE)
-    dest_ptr = <char *> dest_buffer.buf
-    nbytes = dest_buffer.len
+    if dest is None:
+        # allocate memory
+        dest = array.clone(char_array_template, nbytes, zero=False)
+    if PY2 and isinstance(dest, array.array):
+        # workaround fact that array.array does not support new-style buffer
+        # interface in PY2
+        release_dest_buffer = False
+        dest_array = dest
+        dest_ptr = <char *> dest_array.data.as_voidptr
+        dest_nbytes = dest_array.buffer_info()[1] * dest_array.itemsize
+    else:
+        release_dest_buffer = True
+        PyObject_GetBuffer(dest, &dest_buffer, PyBUF_ANY_CONTIGUOUS)
+        dest_ptr = <char *> dest_buffer.buf
+        dest_nbytes = dest_buffer.len
+
+    # guard condition
+    if dest_nbytes != nbytes:
+        raise ValueError('destination buffer has wrong size; expected %s, '
+                         'got %s; \n%r' % (nbytes, dest_nbytes, dest))
 
     # perform decompression
     if _get_use_threads():
@@ -140,11 +158,14 @@ def decompress(source, dest):
     # release buffers
     if release_source_buffer:
         PyBuffer_Release(&source_buffer)
-    PyBuffer_Release(&dest_buffer)
+    if release_dest_buffer:
+        PyBuffer_Release(&dest_buffer)
 
     # handle errors
     if ret <= 0:
         raise RuntimeError('error during blosc decompression: %d' % ret)
+
+    return dest
 
 
 def compress(source, char* cname, int clevel, int shuffle):

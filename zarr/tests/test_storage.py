@@ -248,7 +248,8 @@ class StoreTests(object):
                  compression='zlib',
                  compression_opts=1,
                  fill_value=0,
-                 order='F')
+                 order='F',
+                 filters=None)
         )
 
         # don't overwrite (default)
@@ -301,7 +302,8 @@ class StoreTests(object):
                     compression='zlib',
                     compression_opts=1,
                     fill_value=0,
-                    order='F')
+                    order='F',
+                    filters=None)
         store[array_meta_key] = encode_array_metadata(meta)
         store[path + '/' + array_meta_key] = encode_array_metadata(meta)
 
@@ -415,7 +417,8 @@ class StoreTests(object):
                  compression='zlib',
                  compression_opts=1,
                  fill_value=0,
-                 order='F')
+                 order='F',
+                 filters=None)
         )
 
         # don't overwrite array (default)
@@ -447,7 +450,8 @@ class StoreTests(object):
                     compression='zlib',
                     compression_opts=1,
                     fill_value=0,
-                    order='F')
+                    order='F',
+                    filters=None)
         store[array_meta_key] = encode_array_metadata(meta)
         store[path + '/' + array_meta_key] = encode_array_metadata(meta)
 
@@ -590,7 +594,7 @@ class TestDirectoryStore(StoreTests, unittest.TestCase):
     def test_filesystem_path(self):
 
         # test behaviour with path that does not exist
-        path = 'doesnotexist'
+        path = 'example'
         if os.path.exists(path):
             shutil.rmtree(path)
         store = DirectoryStore(path)

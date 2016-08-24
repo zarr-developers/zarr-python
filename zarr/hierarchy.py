@@ -285,7 +285,7 @@ class Group(Mapping):
         >>> g1['foo/bar/baz']
         zarr.core.Array(/foo/bar/baz, (100,), float64, chunks=(10,), order=C)
           compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
-          nbytes: 800; nbytes_stored: 283; ratio: 2.8; initialized: 0/10
+          nbytes: 800; nbytes_stored: 304; ratio: 2.6; initialized: 0/10
           store: zarr.storage.DictStore
 
         """  # flake8: noqa
@@ -557,7 +557,7 @@ class Group(Mapping):
         >>> d1
         zarr.core.Array(/foo, (10000, 10000), float64, chunks=(1000, 1000), order=C)
           compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
-          nbytes: 762.9M; nbytes_stored: 316; ratio: 2531645.6; initialized: 0/100
+          nbytes: 762.9M; nbytes_stored: 337; ratio: 2373887.2; initialized: 0/100
           store: zarr.storage.DictStore
 
         """  # flake8: noqa
