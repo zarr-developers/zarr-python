@@ -169,7 +169,7 @@ keys like 'foo/bar/0.0', 'foo/bar/0.1', etc.
 To ensure consistent behaviour across different storage systems, logical paths 
 MUST be normalized as follows:
 
-* Replace all backward slash characters ('\') with forward slash characters 
+* Replace all backward slash characters ('\\') with forward slash characters
   ('/') 
 * Strip any leading '/' characters 
 * Strip any trailing '/' characters 
@@ -180,8 +180,8 @@ The key prefix is then obtained by appending a single '/' character to the
 normalized logical path.
 
 After normalization, if splitting a logical path by the '/' character results 
-in any path segment equal to the string '.' or the string '..', an error MUST 
-be raised.
+in any path segment equal to the string '.' or the string '..' then an error
+MUST be raised.
 
 N.B., how the underlying array store processes requests to store values under 
 keys containing the '/' character is entirely up to the store implementation 
@@ -202,7 +202,12 @@ if the 'foo/bar/.zgroup' key exists in the store.
 If the user requests a group to be created under some logical path, then groups 
 MUST also be created at all ancestor paths. E.g., if the user requests group 
 creation at path 'foo/bar' then groups MUST be created at path 'foo' and the 
-root of the store.
+root of the store, if they don't already exist.
+
+If the user requests an array to be created under some logical path, then
+groups MUST also be created at all ancestor paths. E.g., if the user requests
+array creation at path 'foo/bar/baz' then groups must be created at path
+'foo/bar', path 'foo', and the root of the store, if they don't already exist.
 
 The group metadata resource is a JSON object. The following keys MUST be present
 within the object:
