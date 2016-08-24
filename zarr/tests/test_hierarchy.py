@@ -626,7 +626,7 @@ def test_open_group():
     # test the open_group() convenience function
 
     path = 'example'
-    
+
     # mode == 'w'
     g = open_group(path, mode='w')
     assert_is_instance(g, Group)

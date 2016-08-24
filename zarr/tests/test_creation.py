@@ -3,7 +3,6 @@ from __future__ import absolute_import, print_function, division
 import tempfile
 import shutil
 import atexit
-import os
 
 
 import numpy as np
@@ -16,7 +15,7 @@ from zarr.creation import array, empty, zeros, ones, full, open_array, \
     empty_like, zeros_like, ones_like, full_like, open_like, create
 from zarr.sync import ThreadSynchronizer, SynchronizedArray
 from zarr.core import Array
-from zarr.storage import DirectoryStore, init_array
+from zarr.storage import DirectoryStore
 from zarr.hierarchy import open_group
 from zarr.errors import ReadOnlyError
 

@@ -10,6 +10,11 @@ NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT",
 interpreted as described in `RFC 2119
 <https://www.ietf.org/rfc/rfc2119.txt>`_.
 
+Status
+------
+
+This specification is deprecated. See :ref:`spec` for the latest version.
+
 Storage
 -------
 
