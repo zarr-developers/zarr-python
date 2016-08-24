@@ -16,9 +16,21 @@ from zarr.storage import DirectoryStore, ZipStore, init_array, init_group, \
     buffersize
 
 
+from zarr.storage import DirectoryStore, ZipStore, init_array, init_group
 from zarr.core import Array
 from zarr.errors import ReadOnlyError
 from zarr.compat import PY2
+from zarr.util import buffersize
+
+
+compression_configs = [
+    ('none', None),
+    ('zlib', None),
+    ('bz2', None),
+    ('blosc', None)
+]
+if not PY2:
+    compression_configs.append(('lzma', None))
 
 
 class TestArray(unittest.TestCase):
@@ -138,230 +150,254 @@ class TestArray(unittest.TestCase):
         eq(z.nbytes_stored, zz.nbytes_stored)
 
     def test_array_1d(self):
-
-        a = np.arange(1050)
-        z = self.create_array(shape=a.shape, chunks=100, dtype=a.dtype)
-
-        # check properties
-        eq(len(a), len(z))
-        eq(a.shape, z.shape)
-        eq(a.dtype, z.dtype)
-        eq((100,), z.chunks)
-        eq(a.nbytes, z.nbytes)
-        eq(sum(len(v) for v in z.store.values()), z.nbytes_stored)
-        eq(0, z.initialized)
-        eq((11,), z.cdata_shape)
-
-        # check empty
-        b = z[:]
-        assert_is_instance(b, np.ndarray)
-        eq(a.shape, b.shape)
-        eq(a.dtype, b.dtype)
-
-        # check attributes
-        z.attrs['foo'] = 'bar'
-        eq('bar', z.attrs['foo'])
-
-        # set data
-        z[:] = a
-
-        # check properties
-        eq(a.nbytes, z.nbytes)
-        expect_nbytes_stored = sum(buffersize(v) for v in z.store.values())
-        if z.store != z.chunk_store:
-            expect_nbytes_stored += sum(buffersize(v) for v in
-                                        z.chunk_store.values())
-        eq(expect_nbytes_stored, z.nbytes_stored)
-        eq(11, z.initialized)
-
-        # check slicing
-        assert_array_equal(a, np.array(z))
-        assert_array_equal(a, z[:])
-        assert_array_equal(a, z[...])
-        # noinspection PyTypeChecker
-        assert_array_equal(a, z[slice(None)])
-        assert_array_equal(a[:10], z[:10])
-        assert_array_equal(a[10:20], z[10:20])
-        assert_array_equal(a[-10:], z[-10:])
-        # ...across chunk boundaries...
-        assert_array_equal(a[:110], z[:110])
-        assert_array_equal(a[190:310], z[190:310])
-        assert_array_equal(a[-110:], z[-110:])
-        # single item
-        eq(a[0], z[0])
-        eq(a[-1], z[-1])
-
-        # check partial assignment
-        b = np.arange(1e5, 2e5)
-        z[190:310] = b[190:310]
-        assert_array_equal(a[:190], z[:190])
-        assert_array_equal(b[190:310], z[190:310])
-        assert_array_equal(a[310:], z[310:])
-
-    def test_array_1d_fill_value(self):
-
-        for fill_value in -1, 0, 1, 10:
+        for compression, compression_opts in compression_configs:
+            print(compression, compression_opts)
 
             a = np.arange(1050)
-            f = np.empty_like(a)
-            f.fill(fill_value)
             z = self.create_array(shape=a.shape, chunks=100, dtype=a.dtype,
-                                  fill_value=fill_value)
-            z[190:310] = a[190:310]
+                                  compression=compression,
+                                  compression_opts=compression_opts)
 
-            assert_array_equal(f[:190], z[:190])
+            # check properties
+            eq(len(a), len(z))
+            eq(a.shape, z.shape)
+            eq(a.dtype, z.dtype)
+            eq((100,), z.chunks)
+            eq(a.nbytes, z.nbytes)
+            eq(sum(len(v) for v in z.store.values()), z.nbytes_stored)
+            eq(0, z.initialized)
+            eq((11,), z.cdata_shape)
+
+            # check empty
+            b = z[:]
+            assert_is_instance(b, np.ndarray)
+            eq(a.shape, b.shape)
+            eq(a.dtype, b.dtype)
+
+            # check attributes
+            z.attrs['foo'] = 'bar'
+            eq('bar', z.attrs['foo'])
+
+            # set data
+            z[:] = a
+
+            # check properties
+            eq(a.nbytes, z.nbytes)
+            expect_nbytes_stored = sum(buffersize(v) for v in z.store.values())
+            if z.store != z.chunk_store:
+                expect_nbytes_stored += sum(buffersize(v) for v in
+                                            z.chunk_store.values())
+            eq(expect_nbytes_stored, z.nbytes_stored)
+            eq(11, z.initialized)
+
+            # check slicing
+            assert_array_equal(a, np.array(z))
+            assert_array_equal(a, z[:])
+            assert_array_equal(a, z[...])
+            # noinspection PyTypeChecker
+            assert_array_equal(a, z[slice(None)])
+            assert_array_equal(a[:10], z[:10])
+            assert_array_equal(a[10:20], z[10:20])
+            assert_array_equal(a[-10:], z[-10:])
+            # ...across chunk boundaries...
+            assert_array_equal(a[:110], z[:110])
             assert_array_equal(a[190:310], z[190:310])
-            assert_array_equal(f[310:], z[310:])
+            assert_array_equal(a[-110:], z[-110:])
+            # single item
+            eq(a[0], z[0])
+            eq(a[-1], z[-1])
+
+            # check partial assignment
+            b = np.arange(1e5, 2e5)
+            z[190:310] = b[190:310]
+            assert_array_equal(a[:190], z[:190])
+            assert_array_equal(b[190:310], z[190:310])
+            assert_array_equal(a[310:], z[310:])
+
+    def test_array_1d_fill_value(self):
+        for compression, compression_opts in compression_configs:
+            print(compression, compression_opts)
+
+            for fill_value in -1, 0, 1, 10:
+
+                a = np.arange(1050)
+                f = np.empty_like(a)
+                f.fill(fill_value)
+                z = self.create_array(shape=a.shape, chunks=100, dtype=a.dtype,
+                                      fill_value=fill_value,
+                                      compression=compression,
+                                      compression_opts=compression_opts)
+                z[190:310] = a[190:310]
+
+                assert_array_equal(f[:190], z[:190])
+                assert_array_equal(a[190:310], z[190:310])
+                assert_array_equal(f[310:], z[310:])
 
     def test_array_1d_set_scalar(self):
+        for compression, compression_opts in compression_configs:
+            print(compression, compression_opts)
 
-        # setup
-        a = np.empty(100)
-        z = self.create_array(shape=a.shape, chunks=10, dtype=a.dtype)
-        z[:] = a
-        assert_array_equal(a, z[:])
+            # setup
+            a = np.empty(100)
+            z = self.create_array(shape=a.shape, chunks=10, dtype=a.dtype,
+                                  compression=compression,
+                                  compression_opts=compression_opts)
+            z[:] = a
+            assert_array_equal(a, z[:])
 
-        for value in -1, 0, 1, 10:
-            a[15:35] = value
-            z[15:35] = value
-            assert_array_equal(a, z[:])
-            a[:] = value
-            z[:] = value
-            assert_array_equal(a, z[:])
+            for value in -1, 0, 1, 10:
+                a[15:35] = value
+                z[15:35] = value
+                assert_array_equal(a, z[:])
+                a[:] = value
+                z[:] = value
+                assert_array_equal(a, z[:])
 
     def test_array_2d(self):
+        for compression, compression_opts in compression_configs:
+            print(compression, compression_opts)
 
-        a = np.arange(10000).reshape((1000, 10))
-        z = self.create_array(shape=a.shape, chunks=(100, 2), dtype=a.dtype)
+            a = np.arange(10000).reshape((1000, 10))
+            z = self.create_array(shape=a.shape, chunks=(100, 2),
+                                  dtype=a.dtype, compression=compression,
+                                  compression_opts=compression_opts)
 
-        # check properties
-        eq(len(a), len(z))
-        eq(a.shape, z.shape)
-        eq(a.dtype, z.dtype)
-        eq((100, 2), z.chunks)
-        eq(sum(len(v) for v in z.store.values()), z.nbytes_stored)
-        eq(0, z.initialized)
-        eq((10, 5), z.cdata_shape)
+            # check properties
+            eq(len(a), len(z))
+            eq(a.shape, z.shape)
+            eq(a.dtype, z.dtype)
+            eq((100, 2), z.chunks)
+            eq(sum(len(v) for v in z.store.values()), z.nbytes_stored)
+            eq(0, z.initialized)
+            eq((10, 5), z.cdata_shape)
 
-        # set data
-        z[:] = a
+            # set data
+            z[:] = a
 
-        # check properties
-        eq(a.nbytes, z.nbytes)
-        expect_nbytes_stored = sum(buffersize(v) for v in z.store.values())
-        if z.store != z.chunk_store:
-            expect_nbytes_stored += sum(buffersize(v) for v in
-                                        z.chunk_store.values())
-        eq(50, z.initialized)
+            # check properties
+            eq(a.nbytes, z.nbytes)
+            expect_nbytes_stored = sum(buffersize(v) for v in z.store.values())
+            if z.store != z.chunk_store:
+                expect_nbytes_stored += sum(buffersize(v) for v in
+                                            z.chunk_store.values())
+            eq(50, z.initialized)
 
-        # check slicing
-        assert_array_equal(a, np.array(z))
-        assert_array_equal(a, z[:])
-        assert_array_equal(a, z[...])
-        # noinspection PyTypeChecker
-        assert_array_equal(a, z[slice(None)])
-        assert_array_equal(a[:10], z[:10])
-        assert_array_equal(a[10:20], z[10:20])
-        assert_array_equal(a[-10:], z[-10:])
-        assert_array_equal(a[:, :2], z[:, :2])
-        assert_array_equal(a[:, 2:4], z[:, 2:4])
-        assert_array_equal(a[:, -2:], z[:, -2:])
-        assert_array_equal(a[:10, :2], z[:10, :2])
-        assert_array_equal(a[10:20, 2:4], z[10:20, 2:4])
-        assert_array_equal(a[-10:, -2:], z[-10:, -2:])
-        # ...across chunk boundaries...
-        assert_array_equal(a[:110], z[:110])
-        assert_array_equal(a[190:310], z[190:310])
-        assert_array_equal(a[-110:], z[-110:])
-        assert_array_equal(a[:, :3], z[:, :3])
-        assert_array_equal(a[:, 3:7], z[:, 3:7])
-        assert_array_equal(a[:, -3:], z[:, -3:])
-        assert_array_equal(a[:110, :3], z[:110, :3])
-        assert_array_equal(a[190:310, 3:7], z[190:310, 3:7])
-        assert_array_equal(a[-110:, -3:], z[-110:, -3:])
-        # single item
-        assert_array_equal(a[0], z[0])
-        assert_array_equal(a[-1], z[-1])
-        eq(a[0, 0], z[0, 0])
-        eq(a[-1, -1], z[-1, -1])
+            # check slicing
+            assert_array_equal(a, np.array(z))
+            assert_array_equal(a, z[:])
+            assert_array_equal(a, z[...])
+            # noinspection PyTypeChecker
+            assert_array_equal(a, z[slice(None)])
+            assert_array_equal(a[:10], z[:10])
+            assert_array_equal(a[10:20], z[10:20])
+            assert_array_equal(a[-10:], z[-10:])
+            assert_array_equal(a[:, :2], z[:, :2])
+            assert_array_equal(a[:, 2:4], z[:, 2:4])
+            assert_array_equal(a[:, -2:], z[:, -2:])
+            assert_array_equal(a[:10, :2], z[:10, :2])
+            assert_array_equal(a[10:20, 2:4], z[10:20, 2:4])
+            assert_array_equal(a[-10:, -2:], z[-10:, -2:])
+            # ...across chunk boundaries...
+            assert_array_equal(a[:110], z[:110])
+            assert_array_equal(a[190:310], z[190:310])
+            assert_array_equal(a[-110:], z[-110:])
+            assert_array_equal(a[:, :3], z[:, :3])
+            assert_array_equal(a[:, 3:7], z[:, 3:7])
+            assert_array_equal(a[:, -3:], z[:, -3:])
+            assert_array_equal(a[:110, :3], z[:110, :3])
+            assert_array_equal(a[190:310, 3:7], z[190:310, 3:7])
+            assert_array_equal(a[-110:, -3:], z[-110:, -3:])
+            # single item
+            assert_array_equal(a[0], z[0])
+            assert_array_equal(a[-1], z[-1])
+            eq(a[0, 0], z[0, 0])
+            eq(a[-1, -1], z[-1, -1])
 
-        # check partial assignment
-        b = np.arange(10000, 20000).reshape((1000, 10))
-        z[190:310, 3:7] = b[190:310, 3:7]
-        assert_array_equal(a[:190], z[:190])
-        assert_array_equal(a[:, :3], z[:, :3])
-        assert_array_equal(b[190:310, 3:7], z[190:310, 3:7])
-        assert_array_equal(a[310:], z[310:])
-        assert_array_equal(a[:, 7:], z[:, 7:])
+            # check partial assignment
+            b = np.arange(10000, 20000).reshape((1000, 10))
+            z[190:310, 3:7] = b[190:310, 3:7]
+            assert_array_equal(a[:190], z[:190])
+            assert_array_equal(a[:, :3], z[:, :3])
+            assert_array_equal(b[190:310, 3:7], z[190:310, 3:7])
+            assert_array_equal(a[310:], z[310:])
+            assert_array_equal(a[:, 7:], z[:, 7:])
 
     def test_array_2d_partial(self):
+        for compression, compression_opts in compression_configs:
+            print(compression, compression_opts)
 
-        z = self.create_array(shape=(1000, 10), chunks=(100, 2), dtype='i4',
-                              fill_value=0)
+            z = self.create_array(shape=(1000, 10), chunks=(100, 2), dtype='i4',
+                                  fill_value=0, compression=compression,
+                                  compression_opts=compression_opts)
 
-        # check partial assignment, single row
-        c = np.arange(z.shape[1])
-        z[0, :] = c
-        with assert_raises(ValueError):
-            # N.B., NumPy allows this, but we'll be strict for now
-            z[2:3] = c
-        with assert_raises(ValueError):
-            # N.B., NumPy allows this, but we'll be strict for now
-            z[-1:] = c
-        z[2:3] = c[None, :]
-        z[-1:] = c[None, :]
-        assert_array_equal(c, z[0, :])
-        assert_array_equal(c, z[2, :])
-        assert_array_equal(c, z[-1, :])
+            # check partial assignment, single row
+            c = np.arange(z.shape[1])
+            z[0, :] = c
+            with assert_raises(ValueError):
+                # N.B., NumPy allows this, but we'll be strict for now
+                z[2:3] = c
+            with assert_raises(ValueError):
+                # N.B., NumPy allows this, but we'll be strict for now
+                z[-1:] = c
+            z[2:3] = c[None, :]
+            z[-1:] = c[None, :]
+            assert_array_equal(c, z[0, :])
+            assert_array_equal(c, z[2, :])
+            assert_array_equal(c, z[-1, :])
 
-        # check partial assignment, single column
-        d = np.arange(z.shape[0])
-        z[:, 0] = d
-        with assert_raises(ValueError):
-            z[:, 2:3] = d
-        with assert_raises(ValueError):
-            z[:, -1:] = d
-        z[:, 2:3] = d[:, None]
-        z[:, -1:] = d[:, None]
-        assert_array_equal(d, z[:, 0])
-        assert_array_equal(d, z[:, 2])
-        assert_array_equal(d, z[:, -1])
+            # check partial assignment, single column
+            d = np.arange(z.shape[0])
+            z[:, 0] = d
+            with assert_raises(ValueError):
+                z[:, 2:3] = d
+            with assert_raises(ValueError):
+                z[:, -1:] = d
+            z[:, 2:3] = d[:, None]
+            z[:, -1:] = d[:, None]
+            assert_array_equal(d, z[:, 0])
+            assert_array_equal(d, z[:, 2])
+            assert_array_equal(d, z[:, -1])
 
-        # check single item assignment
-        z[0, 0] = -1
-        z[2, 2] = -1
-        z[-1, -1] = -1
-        eq(-1, z[0, 0])
-        eq(-1, z[2, 2])
-        eq(-1, z[-1, -1])
+            # check single item assignment
+            z[0, 0] = -1
+            z[2, 2] = -1
+            z[-1, -1] = -1
+            eq(-1, z[0, 0])
+            eq(-1, z[2, 2])
+            eq(-1, z[-1, -1])
 
     def test_array_order(self):
+        for compression, compression_opts in compression_configs:
+            print(compression, compression_opts)
 
-        # 1D
-        a = np.arange(1050)
-        for order in 'C', 'F':
-            z = self.create_array(shape=a.shape, chunks=100, dtype=a.dtype,
-                                  order=order)
-            eq(order, z.order)
-            if order == 'F':
-                assert_true(z[:].flags.f_contiguous)
-            else:
-                assert_true(z[:].flags.c_contiguous)
-            z[:] = a
-            assert_array_equal(a, z[:])
+            # 1D
+            a = np.arange(1050)
+            for order in 'C', 'F':
+                z = self.create_array(shape=a.shape, chunks=100, dtype=a.dtype,
+                                      order=order, compression=compression,
+                                      compression_opts=compression_opts)
+                eq(order, z.order)
+                if order == 'F':
+                    assert_true(z[:].flags.f_contiguous)
+                else:
+                    assert_true(z[:].flags.c_contiguous)
+                z[:] = a
+                assert_array_equal(a, z[:])
 
-        # 2D
-        a = np.arange(10000).reshape((100, 100))
-        for order in 'C', 'F':
-            z = self.create_array(shape=a.shape, chunks=(10, 10),
-                                  dtype=a.dtype, order=order)
-            eq(order, z.order)
-            if order == 'F':
-                assert_true(z[:].flags.f_contiguous)
-            else:
-                assert_true(z[:].flags.c_contiguous)
-            z[:] = a
-            assert_array_equal(a, z[:])
+            # 2D
+            a = np.arange(10000).reshape((100, 100))
+            for order in 'C', 'F':
+                z = self.create_array(shape=a.shape, chunks=(10, 10),
+                                      dtype=a.dtype, order=order,
+                                      compression=compression,
+                                      compression_opts=compression_opts)
+                eq(order, z.order)
+                if order == 'F':
+                    assert_true(z[:].flags.f_contiguous)
+                else:
+                    assert_true(z[:].flags.c_contiguous)
+                z[:] = a
+                assert_array_equal(a, z[:])
 
     def test_resize_1d(self):
 

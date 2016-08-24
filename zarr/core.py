@@ -643,6 +643,8 @@ class Array(object):
 
                 # decode chunk
                 chunk = self._decode_chunk(cdata)
+                if not chunk.flags.writeable:
+                    chunk = chunk.copy()
 
             # modify
             chunk[key] = value
@@ -667,7 +669,10 @@ class Array(object):
                 chunk = f.decode(chunk)
 
         # view and reshape
-        chunk = np.frombuffer(chunk, self.dtype)
+        if isinstance(chunk, np.ndarray):
+            chunk = chunk.view(self._dtype)
+        else:
+            chunk = np.frombuffer(chunk, self._dtype)
         chunk = chunk.reshape(self._chunks, order=self._order)
 
         return chunk
