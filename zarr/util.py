@@ -49,7 +49,7 @@ def normalize_chunks(chunks, shape):
 # noinspection PyTypeChecker
 def is_total_slice(item, shape):
     """Determine whether `item` specifies a complete slice of array with the
-    given `shape`. Used to optimise __setitem__ operations on the Chunk
+    given `shape`. Used to optimize __setitem__ operations on the Chunk
     class."""
 
     # N.B., assume shape is normalized

@@ -193,7 +193,7 @@ file system).
 Groups
 ~~~~~~
 
-Arrays can be organised into groups which can also contain other groups. A 
+Arrays can be organized into groups which can also contain other groups. A
 group is created by storing group metadata under the '.zgroup' key under some 
 logical path. E.g., a group exists at the root of an array store if the 
 '.zgroup' key exists in the store, and a group exists at logical path 'foo/bar' 

@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, print_function, division
-from functools import reduce  # TODO PY2 compatibility
 import operator
 import itertools
 
@@ -17,21 +16,25 @@ from zarr.storage import array_meta_key, attrs_key, listdir, contains_group, \
 from zarr.meta import decode_array_metadata, encode_array_metadata
 from zarr.attrs import Attributes
 from zarr.errors import ReadOnlyError
+from zarr.compat import reduce
 
 
 class Array(object):
-    """Instantiate an array from an initialised store.
+    """Instantiate an array from an initialized store.
 
     Parameters
     ----------
     store : MutableMapping
-        Array store, already initialised.
+        Array store, already initialized.
+    path : string, optional
+        Storage path.
     readonly : bool, optional
         True if array should be protected against modification.
 
     Attributes
     ----------
     store
+    path
     name
     readonly
     shape
@@ -56,23 +59,11 @@ class Array(object):
     resize
     append
 
-    Examples
-    --------
-    >>> import zarr
-    >>> store = dict()
-    >>> zarr.init_array(store, shape=(10000, 10000), chunks=(1000, 1000))
-    >>> z = zarr.Array(store)
-    >>> z
-    zarr.core.Array((10000, 10000), float64, chunks=(1000, 1000), order=C)
-      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
-      nbytes: 762.9M; nbytes_stored: 316; ratio: 2531645.6; initialized: 0/100
-      store: builtins.dict
-
     """  # flake8: noqa
 
     def __init__(self, store, path=None, readonly=False):
-        # N.B., expect at this point store is fully initialised with all
-        # configuration metadata fully specified and normalised
+        # N.B., expect at this point store is fully initialized with all
+        # configuration metadata fully specified and normalized
 
         self._store = store
         self._path = normalize_storage_path(path)
@@ -82,7 +73,7 @@ class Array(object):
             self._key_prefix = ''
         self._readonly = readonly
 
-        # initialise metadata
+        # initialize metadata
         try:
             mkey = self._key_prefix + array_meta_key
             meta_bytes = store[mkey]
@@ -101,7 +92,7 @@ class Array(object):
             compressor_cls = get_compressor_cls(self._compression)
             self._compressor = compressor_cls(self._compression_opts)
 
-        # initialise attributes
+        # initialize attributes
         akey = self._key_prefix + attrs_key
         self._attrs = Attributes(store, key=akey, readonly=readonly)
 
@@ -120,12 +111,12 @@ class Array(object):
 
     @property
     def path(self):
-        """TODO doc me"""
+        """Storage path."""
         return self._path
 
     @property
     def name(self):
-        """TODO doc me"""
+        """Array name following h5py convention."""
         if self.path:
             # follow h5py convention: add leading slash
             name = self.path
@@ -136,7 +127,7 @@ class Array(object):
 
     @property
     def readonly(self):
-        """A boolean, True if write operations are not permitted."""
+        """A boolean, True if modification operations are not permitted."""
         return self._readonly
 
     @property

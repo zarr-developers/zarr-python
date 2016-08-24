@@ -30,7 +30,7 @@ class ThreadSynchronizer(object):
         return dict()
 
     def __setstate__(self, d):
-        # reinitialise from scratch
+        # reinitialize from scratch
         self.mutex = Lock()
         self.attrs_lock = Lock()
         self.chunk_locks = defaultdict(Lock)
@@ -70,7 +70,7 @@ class SynchronizedArray(Array):
     Parameters
     ----------
     store : MutableMapping
-        Array store, already initialised.
+        Array store, already initialized.
     synchronizer : object
         Array synchronizer.
     readonly : bool, optional

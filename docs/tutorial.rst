@@ -178,7 +178,7 @@ and can be configured in a variety of ways to improve the compression
 ratio for different types of data. Blosc is in fact a
 "meta-compressor", which means that it can used a number of different
 compression algorithms internally to compress the data. Blosc also
-provides highly optimised implementations of byte and bit shuffle
+provides highly optimized implementations of byte and bit shuffle
 filters, which can significantly improve compression ratios for some
 data.
 

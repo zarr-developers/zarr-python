@@ -1,6 +1,21 @@
 Release notes
 =============
 
+.. _release_2.0.0:
+
+2.0.0
+-----
+
+Hierarchies
+~~~~~~~~~~~
+
+Support has been added for organizing arrays into hierarchies via groups. See
+the tutorial section on :ref:`tutorial_groups` and the :mod:`zarr.hierarchy`
+API docs for more information.
+
+To accommodate support for hierarchies the Zarr format has been modified. See
+the :ref:`spec_v2` for more information.
+
 .. _release_1.1.0:
 
 1.1.0

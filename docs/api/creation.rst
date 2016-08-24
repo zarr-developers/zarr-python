@@ -7,7 +7,7 @@ Array creation (``zarr.creation``)
 .. autofunction:: ones
 .. autofunction:: full
 .. autofunction:: array
-.. autofunction:: open
+.. autofunction:: open_array
 .. autofunction:: empty_like
 .. autofunction:: zeros_like
 .. autofunction:: ones_like

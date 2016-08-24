@@ -34,7 +34,7 @@ def _path_to_prefix(path):
     
 
 def contains_array(store, path=None):
-    """TODO doc me"""
+    """Return True if the store contains an array at the given logical path."""
     path = normalize_storage_path(path)
     prefix = _path_to_prefix(path)
     key = prefix + array_meta_key
@@ -42,7 +42,7 @@ def contains_array(store, path=None):
 
 
 def contains_group(store, path=None):
-    """TODO doc me"""
+    """Return True if the store contains a group at the given logical path."""
     path = normalize_storage_path(path)
     prefix = _path_to_prefix(path)
     key = prefix + group_meta_key
@@ -58,7 +58,7 @@ def _rmdir_from_keys(store, path=None):
 
 
 def rmdir(store, path=None):
-    """TODO doc me"""
+    """Remove all items under the given path."""
     path = normalize_storage_path(path)
     if hasattr(store, 'rmdir'):
         # pass through
@@ -81,7 +81,7 @@ def _listdir_from_keys(store, path=None):
 
 
 def listdir(store, path=None):
-    """TODO doc me"""
+    """Obtain a directory listing for the given path."""
     path = normalize_storage_path(path)
     if hasattr(store, 'listdir'):
         # pass through
@@ -577,15 +577,15 @@ class DirectoryStore(MutableMapping):
         )
 
     def keys(self):
-        todo = [(self.path, '')]
-        while todo:
-            dir_name, prefix = todo.pop()
+        directories = [(self.path, '')]
+        while directories:
+            dir_name, prefix = directories.pop()
             for name in os.listdir(dir_name):
                 path = os.path.join(dir_name, name)
                 if os.path.isfile(path):
                     yield prefix + name
                 elif os.path.isdir(path):
-                    todo.append((path, prefix + name + '/'))
+                    directories.append((path, prefix + name + '/'))
 
     def __iter__(self):
         return self.keys()

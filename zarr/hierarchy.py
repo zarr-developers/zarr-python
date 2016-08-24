@@ -17,30 +17,32 @@ from zarr.meta import decode_group_metadata
 
 
 class Group(object):
-    """Instantiate a group from an initialised store.
+    """Instantiate a group from an initialized store.
 
     Parameters
     ----------
     store : HierarchicalStore
-        Group store, already initialised.
+        Group store, already initialized.
+    path : string, optional
+        Storage path.
     readonly : bool, optional
         True if group should be protected against modification.
-    path : string, optional
-        Group name.
 
     Attributes
     ----------
     store
-    readonly
+    path
     name
+    readonly
     attrs
 
     Methods
     -------
-    __iter__
     __len__
     __contains__
     __getitem__
+    __setitem__
+    __iter__
     keys
     values
     items
@@ -50,8 +52,11 @@ class Group(object):
     arrays
     create_group
     require_group
+    create_groups
+    require_groups
     create_dataset
     require_dataset
+    create
     empty
     zeros
     ones
@@ -61,7 +66,6 @@ class Group(object):
     zeros_like
     ones_like
     full_like
-    copy
 
     """
 
@@ -79,7 +83,7 @@ class Group(object):
         if contains_array(store, path=self._path):
             raise ValueError('store contains an array')
 
-        # initialise metadata
+        # initialize metadata
         try:
             mkey = self._key_prefix + group_meta_key
             meta_bytes = store[mkey]
@@ -95,22 +99,22 @@ class Group(object):
 
     @property
     def store(self):
-        """TODO"""
+        """A MutableMapping providing the underlying storage for the group."""
         return self._store
 
     @property
     def path(self):
-        """TODO doc me"""
+        """Storage path."""
         return self._path
 
     @property
     def readonly(self):
-        """TODO"""
+        """A boolean, True if modification operations are not permitted."""
         return self._readonly
 
     @property
     def name(self):
-        """TODO doc me"""
+        """Group name following h5py convention."""
         if self.path:
             # follow h5py convention: add leading slash
             name = self.path
@@ -121,7 +125,8 @@ class Group(object):
 
     @property
     def attrs(self):
-        """TODO"""
+        """A MutableMapping containing user-defined attributes. Note that
+        attribute values must be JSON serializable."""
         return self._attrs
 
     def __eq__(self, other):
@@ -135,9 +140,28 @@ class Group(object):
         )
 
     def __iter__(self):
+        """Return an iterator over group member names.
+
+        Examples
+        --------
+        >>> import zarr
+        >>> g1 = zarr.group()
+        >>> g2 = g1.create_group('foo')
+        >>> g3 = g1.create_group('bar')
+        >>> d1 = g1.create_dataset('baz', shape=100, chunks=10)
+        >>> d2 = g1.create_dataset('quux', shape=200, chunks=20)
+        >>> for name in g1:
+        ...     print(name)
+        bar
+        baz
+        foo
+        quux
+
+        """
         return self.keys()
 
     def __len__(self):
+        """Number of members."""
         return sum(1 for _ in self.keys())
 
     def __repr__(self):
@@ -175,6 +199,22 @@ class Group(object):
         return path
 
     def __contains__(self, item):
+        """Test for group membership.
+
+        Examples
+        --------
+        >>> import zarr
+        >>> g1 = zarr.group()
+        >>> g2 = g1.create_group('foo')
+        >>> d1 = g1.create_dataset('bar', shape=100, chunks=10)
+        >>> 'foo' in g1
+        True
+        >>> 'bar' in g1
+        True
+        >>> 'baz' in g1
+        False
+
+        """
         path = self._item_path(item)
         if contains_array(self.store, path):
             return True
@@ -184,6 +224,33 @@ class Group(object):
             return False
 
     def __getitem__(self, item):
+        """Obtain a group member.
+
+        Parameters
+        ----------
+        item : string
+            Member name or path.
+
+        Examples
+        --------
+        >>> import zarr
+        >>> g1 = zarr.group()
+        >>> d1 = g1.create_dataset('foo/bar/baz', shape=100, chunks=10)
+        >>> g1['foo']
+        zarr.hierarchy.Group(/foo, 1)
+          groups: 1; bar
+          store: zarr.storage.DictStore
+        >>> g1['foo/bar']
+        zarr.hierarchy.Group(/foo/bar, 1)
+          arrays: 1; baz
+          store: zarr.storage.DictStore
+        >>> g1['foo/bar/baz']
+        zarr.core.Array(/foo/bar/baz, (100,), float64, chunks=(10,), order=C)
+          compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
+          nbytes: 800; nbytes_stored: 283; ratio: 2.8; initialized: 0/10
+          store: zarr.storage.DictStore
+
+        """  # flake8: noqa
         path = self._item_path(item)
         if contains_array(self.store, path):
             return Array(self.store, readonly=self.readonly, path=path)
@@ -193,10 +260,24 @@ class Group(object):
             raise KeyError(item)
 
     def __setitem__(self, key, value):
-        # don't implement this for now
+        """Not implemented."""
         raise NotImplementedError()
 
     def keys(self):
+        """Return an iterator over member names.
+
+        Examples
+        --------
+        >>> import zarr
+        >>> g1 = zarr.group()
+        >>> g2 = g1.create_group('foo')
+        >>> g3 = g1.create_group('bar')
+        >>> d1 = g1.create_dataset('baz', shape=100, chunks=10)
+        >>> d2 = g1.create_dataset('quux', shape=200, chunks=20)
+        >>> sorted(g1.keys())
+        ['bar', 'baz', 'foo', 'quux']
+
+        """
         for key in sorted(listdir(self.store, self.path)):
             path = self.path + '/' + key
             if (contains_array(self.store, path) or
@@ -204,9 +285,45 @@ class Group(object):
                 yield key
 
     def values(self):
+        """Return an iterator over members.
+
+        Examples
+        --------
+        >>> import zarr
+        >>> g1 = zarr.group()
+        >>> g2 = g1.create_group('foo')
+        >>> g3 = g1.create_group('bar')
+        >>> d1 = g1.create_dataset('baz', shape=100, chunks=10)
+        >>> d2 = g1.create_dataset('quux', shape=200, chunks=20)
+        >>> for v in g1.values():
+        ...     print(type(v), v.path)
+        <class 'zarr.hierarchy.Group'> bar
+        <class 'zarr.core.Array'> baz
+        <class 'zarr.hierarchy.Group'> foo
+        <class 'zarr.core.Array'> quux
+
+        """
         return (v for _, v in self.items())
 
     def items(self):
+        """Return an iterator over (name, value) pairs for all members.
+
+        Examples
+        --------
+        >>> import zarr
+        >>> g1 = zarr.group()
+        >>> g2 = g1.create_group('foo')
+        >>> g3 = g1.create_group('bar')
+        >>> d1 = g1.create_dataset('baz', shape=100, chunks=10)
+        >>> d2 = g1.create_dataset('quux', shape=200, chunks=20)
+        >>> for n, v in g1.items():
+        ...     print(n, type(v))
+        bar <class 'zarr.hierarchy.Group'>
+        baz <class 'zarr.core.Array'>
+        foo <class 'zarr.hierarchy.Group'>
+        quux <class 'zarr.core.Array'>
+
+        """
         for key in sorted(listdir(self.store, self.path)):
             path = self.path + '/' + key
             if contains_array(self.store, path):
@@ -215,31 +332,110 @@ class Group(object):
                 yield key, Group(self.store, path=path, readonly=self.readonly)
 
     def group_keys(self):
+        """Return an iterator over member names for groups only.
+
+        Examples
+        --------
+        >>> import zarr
+        >>> g1 = zarr.group()
+        >>> g2 = g1.create_group('foo')
+        >>> g3 = g1.create_group('bar')
+        >>> d1 = g1.create_dataset('baz', shape=100, chunks=10)
+        >>> d2 = g1.create_dataset('quux', shape=200, chunks=20)
+        >>> sorted(g1.group_keys())
+        ['bar', 'foo']
+
+        """
         for key in sorted(listdir(self.store, self.path)):
             path = self.path + '/' + key
             if contains_group(self.store, path):
                 yield key
 
     def groups(self):
+        """Return an iterator over (name, value) pairs for groups only.
+
+        Examples
+        --------
+        >>> import zarr
+        >>> g1 = zarr.group()
+        >>> g2 = g1.create_group('foo')
+        >>> g3 = g1.create_group('bar')
+        >>> d1 = g1.create_dataset('baz', shape=100, chunks=10)
+        >>> d2 = g1.create_dataset('quux', shape=200, chunks=20)
+        >>> for n, v in g1.groups():
+        ...     print(n, type(v))
+        bar <class 'zarr.hierarchy.Group'>
+        foo <class 'zarr.hierarchy.Group'>
+
+        """
         for key in sorted(listdir(self.store, self.path)):
             path = self.path + '/' + key
             if contains_group(self.store, path):
                 yield key, Group(self.store, path=path, readonly=self.readonly)
 
     def array_keys(self):
+        """Return an iterator over member names for arrays only.
+
+        Examples
+        --------
+        >>> import zarr
+        >>> g1 = zarr.group()
+        >>> g2 = g1.create_group('foo')
+        >>> g3 = g1.create_group('bar')
+        >>> d1 = g1.create_dataset('baz', shape=100, chunks=10)
+        >>> d2 = g1.create_dataset('quux', shape=200, chunks=20)
+        >>> sorted(g1.array_keys())
+        ['baz', 'quux']
+
+        """
         for key in sorted(listdir(self.store, self.path)):
             path = self.path + '/' + key
             if contains_array(self.store, path):
                 yield key
 
     def arrays(self):
+        """Return an iterator over (name, value) pairs for arrays only.
+
+        Examples
+        --------
+        >>> import zarr
+        >>> g1 = zarr.group()
+        >>> g2 = g1.create_group('foo')
+        >>> g3 = g1.create_group('bar')
+        >>> d1 = g1.create_dataset('baz', shape=100, chunks=10)
+        >>> d2 = g1.create_dataset('quux', shape=200, chunks=20)
+        >>> for n, v in g1.arrays():
+        ...     print(n, type(v))
+        baz <class 'zarr.core.Array'>
+        quux <class 'zarr.core.Array'>
+
+        """
         for key in sorted(listdir(self.store, self.path)):
             path = self.path + '/' + key
             if contains_array(self.store, path):
                 yield key, Array(self.store, path=path, readonly=self.readonly)
 
     def create_group(self, name):
-        """TODO doc me"""
+        """Create a sub-group.
+
+        Parameters
+        ----------
+        name : string
+            Group name.
+
+        Returns
+        -------
+        g : zarr.hierarchy.Group
+
+        Examples
+        --------
+        >>> import zarr
+        >>> g1 = zarr.group()
+        >>> g2 = g1.create_group('foo')
+        >>> g3 = g1.create_group('bar')
+        >>> g4 = g1.create_group('baz/quux')
+
+        """
 
         if self.readonly:
             raise ReadOnlyError('group is read-only')
@@ -265,11 +461,31 @@ class Group(object):
             return Group(self.store, path=path, readonly=self.readonly)
 
     def create_groups(self, *names):
-        """TODO doc me"""
+        """Convenience method to create multiple groups in a single call."""
         return tuple(self.create_group(name) for name in names)
 
     def require_group(self, name):
-        """TODO doc me"""
+        """Obtain a sub-group, creating one if it doesn't exist.
+
+        Parameters
+        ----------
+        name : string
+            Group name.
+
+        Returns
+        -------
+        g : zarr.hierarchy.Group
+
+        Examples
+        --------
+        >>> import zarr
+        >>> g1 = zarr.group()
+        >>> g2 = g1.require_group('foo')
+        >>> g3 = g1.require_group('foo')
+        >>> g2 == g3
+        True
+
+        """
 
         path = self._item_path(name)
 
@@ -287,7 +503,7 @@ class Group(object):
         return Group(self.store, path=path, readonly=self.readonly)
 
     def require_groups(self, *names):
-        """TODO doc me"""
+        """Convenience method to require multiple groups in a single call."""
         return tuple(self.require_group(name) for name in names)
 
     def _require_parent_group(self, path):
@@ -303,7 +519,50 @@ class Group(object):
                        dtype=None, compression='default',
                        compression_opts=None, fill_value=None, order='C',
                        synchronizer=None, **kwargs):
-        """TODO doc me"""
+        """Create an array.
+
+        Parameters
+        ----------
+        name : string
+            Array name.
+        data : array_like, optional
+            Initial data.
+        shape : int or tuple of ints
+            Array shape.
+        chunks : int or tuple of ints
+            Chunk shape.
+        dtype : string or dtype, optional
+            NumPy dtype.
+        compression : string, optional
+            Name of primary compression library, e.g., 'blosc', 'zlib', 'bz2',
+            'lzma'.
+        compression_opts : object, optional
+            Options to primary compressor. E.g., for blosc, provide a dictionary
+            with keys 'cname', 'clevel' and 'shuffle'.
+        fill_value : object
+            Default value to use for uninitialized portions of the array.
+        order : {'C', 'F'}, optional
+            Memory layout to be used within each chunk.
+        synchronizer : zarr.sync.ArraySynchronizer, optional
+            Array synchronizer.
+
+        Returns
+        -------
+        a : zarr.core.Array
+
+        Examples
+        --------
+        >>> import zarr
+        >>> g1 = zarr.group()
+        >>> d1 = g1.create_dataset('foo', shape=(10000, 10000),
+        ...                        chunks=(1000, 1000))
+        >>> d1
+        zarr.core.Array(/foo, (10000, 10000), float64, chunks=(1000, 1000), order=C)
+          compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
+          nbytes: 762.9M; nbytes_stored: 316; ratio: 2531645.6; initialized: 0/100
+          store: zarr.storage.DictStore
+
+        """  # flake8: noqa
 
         # setup
         if self.readonly:
@@ -339,7 +598,22 @@ class Group(object):
         return a
 
     def require_dataset(self, name, shape, dtype=None, exact=False, **kwargs):
-        """TODO doc me"""
+        """Obtain an array, creating if it doesn't exist. Other `kwargs` are
+        as per :func:`zarr.hierarchy.Group.create_dataset`.
+
+        Parameters
+        ----------
+        name : string
+            Array name.
+        shape : int or tuple of ints
+            Array shape.
+        dtype : string or dtype, optional
+            NumPy dtype.
+        exact : bool, optional
+            If True, require `dtype` to match exactly. If false, require
+            `dtype` can be cast from array dtype.
+
+        """
 
         path = self._item_path(name)
 
@@ -362,6 +636,8 @@ class Group(object):
                                        **kwargs)
 
     def create(self, name, **kwargs):
+        """Create an array. Keyword arguments as per
+        :func:`zarr.creation.create`."""
         if self.readonly:
             raise ReadOnlyError('group is read-only')
         path = self._item_path(name)
@@ -369,6 +645,8 @@ class Group(object):
         return create(store=self.store, path=path, **kwargs)
 
     def empty(self, name, **kwargs):
+        """Create an array. Keyword arguments as per
+        :func:`zarr.creation.empty`."""
         if self.readonly:
             raise ReadOnlyError('group is read-only')
         path = self._item_path(name)
@@ -376,6 +654,8 @@ class Group(object):
         return empty(store=self.store, path=path, **kwargs)
 
     def zeros(self, name, **kwargs):
+        """Create an array. Keyword arguments as per
+        :func:`zarr.creation.zeros`."""
         if self.readonly:
             raise ReadOnlyError('group is read-only')
         path = self._item_path(name)
@@ -383,6 +663,8 @@ class Group(object):
         return zeros(store=self.store, path=path, **kwargs)
 
     def ones(self, name, **kwargs):
+        """Create an array. Keyword arguments as per
+        :func:`zarr.creation.ones`."""
         if self.readonly:
             raise ReadOnlyError('group is read-only')
         path = self._item_path(name)
@@ -390,6 +672,8 @@ class Group(object):
         return ones(store=self.store, path=path, **kwargs)
 
     def full(self, name, **kwargs):
+        """Create an array. Keyword arguments as per
+        :func:`zarr.creation.full`."""
         if self.readonly:
             raise ReadOnlyError('group is read-only')
         path = self._item_path(name)
@@ -397,6 +681,8 @@ class Group(object):
         return full(store=self.store, path=path, **kwargs)
 
     def array(self, name, data, **kwargs):
+        """Create an array. Keyword arguments as per
+        :func:`zarr.creation.array`."""
         if self.readonly:
             raise ReadOnlyError('group is read-only')
         path = self._item_path(name)
@@ -404,6 +690,8 @@ class Group(object):
         return array(data, store=self.store, path=path, **kwargs)
 
     def empty_like(self, name, data, **kwargs):
+        """Create an array. Keyword arguments as per
+        :func:`zarr.creation.empty_like`."""
         if self.readonly:
             raise ReadOnlyError('group is read-only')
         path = self._item_path(name)
@@ -411,6 +699,8 @@ class Group(object):
         return empty_like(data, store=self.store, path=path, **kwargs)
 
     def zeros_like(self, name, data, **kwargs):
+        """Create an array. Keyword arguments as per
+        :func:`zarr.creation.zeros_like`."""
         if self.readonly:
             raise ReadOnlyError('group is read-only')
         path = self._item_path(name)
@@ -418,6 +708,8 @@ class Group(object):
         return zeros_like(data, store=self.store, path=path, **kwargs)
 
     def ones_like(self, name, data, **kwargs):
+        """Create an array. Keyword arguments as per
+        :func:`zarr.creation.ones_like`."""
         if self.readonly:
             raise ReadOnlyError('group is read-only')
         path = self._item_path(name)
@@ -425,15 +717,13 @@ class Group(object):
         return ones_like(data, store=self.store, path=path, **kwargs)
 
     def full_like(self, name, data, **kwargs):
+        """Create an array. Keyword arguments as per
+        :func:`zarr.creation.full_like`."""
         if self.readonly:
             raise ReadOnlyError('group is read-only')
         path = self._item_path(name)
         self._require_parent_group(path)
         return full_like(data, store=self.store, path=path, **kwargs)
-
-    # def copy(self, source, dest, name, shallow=False):
-    #     # TODO
-    #     pass
 
 
 def group(store=None, overwrite=False):
@@ -489,7 +779,8 @@ def group(store=None, overwrite=False):
 
 
 def open_group(path, mode='a'):
-    """Open a group stored in a directory on the file system.
+    """Convenience function to instantiate a group stored in a directory on
+    the file system.
 
     Parameters
     ----------

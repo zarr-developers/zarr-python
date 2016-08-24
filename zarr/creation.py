@@ -31,7 +31,7 @@ def create(shape, chunks, dtype=None, compression='default',
         Options to primary compressor. E.g., for blosc, provide a dictionary
         with keys 'cname', 'clevel' and 'shuffle'.
     fill_value : object
-        Default value to use for uninitialised portions of the array.
+        Default value to use for uninitialized portions of the array.
     order : {'C', 'F'}, optional
         Memory layout to be used within each chunk.
     store : MutableMapping, optional
@@ -64,7 +64,7 @@ def create(shape, chunks, dtype=None, compression='default',
 
     """  # flake8: noqa
 
-    # initialise store
+    # initialize store
     if store is None:
         store = dict()
     init_array(store, shape=shape, chunks=chunks, dtype=dtype,
@@ -105,7 +105,7 @@ def zeros(shape, chunks, dtype=None, compression='default',
           compression_opts=None, order='C', store=None, synchronizer=None,
           path=None, overwrite=False):
     """Create an array, with zero being used as the default value for
-    uninitialised portions of the array.
+    uninitialized portions of the array.
 
     For parameter definitions see :func:`zarr.creation.create`.
 
@@ -135,7 +135,7 @@ def ones(shape, chunks, dtype=None, compression='default',
          compression_opts=None, order='C', store=None, synchronizer=None,
          path=None, overwrite=False):
     """Create an array, with one being used as the default value for
-    uninitialised portions of the array.
+    uninitialized portions of the array.
 
     For parameter definitions see :func:`zarr.creation.create`.
 
@@ -164,7 +164,7 @@ def full(shape, chunks, fill_value, dtype=None, compression='default',
          compression_opts=None, order='C', store=None, synchronizer=None,
          path=None, overwrite=False):
     """Create an array, with `fill_value` being used as the default value for
-    uninitialised portions of the array.
+    uninitialized portions of the array.
 
     For parameter definitions see :func:`zarr.creation.create`.
 
@@ -246,11 +246,11 @@ def array(data, chunks=None, dtype=None, compression='default',
     return z
 
 
-# noinspection PyShadowingBuiltins
 def open_array(path, mode='a', shape=None, chunks=None, dtype=None,
                compression='default', compression_opts=None, fill_value=0,
                order='C', synchronizer=None):
-    """Open an array stored in a directory on the file system.
+    """Convenience function to instantiate an array stored in a
+    directory on the file system.
 
     Parameters
     ----------
@@ -274,7 +274,7 @@ def open_array(path, mode='a', shape=None, chunks=None, dtype=None,
         Options to primary compressor. E.g., for blosc, provide a dictionary
         with keys 'cname', 'clevel' and 'shuffle'.
     fill_value : object
-        Default value to use for uninitialised portions of the array.
+        Default value to use for uninitialized portions of the array.
     order : {'C', 'F'}, optional
         Memory layout to be used within each chunk.
     synchronizer : zarr.sync.ArraySynchronizer, optional
@@ -288,15 +288,15 @@ def open_array(path, mode='a', shape=None, chunks=None, dtype=None,
     --------
     >>> import numpy as np
     >>> import zarr
-    >>> z1 = zarr.open('example.zarr', mode='w', shape=(10000, 10000),
-    ...                chunks=(1000, 1000), fill_value=0)
+    >>> z1 = zarr.open_array('example.zarr', mode='w', shape=(10000, 10000),
+    ...                      chunks=(1000, 1000), fill_value=0)
     >>> z1[:] = np.arange(100000000).reshape(10000, 10000)
     >>> z1
     zarr.core.Array((10000, 10000), float64, chunks=(1000, 1000), order=C)
       compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
       nbytes: 762.9M; nbytes_stored: 24.8M; ratio: 30.8; initialized: 100/100
       store: zarr.storage.DirectoryStore
-    >>> z2 = zarr.open('example.zarr', mode='r')
+    >>> z2 = zarr.open_array('example.zarr', mode='r')
     >>> z2
     zarr.core.Array((10000, 10000), float64, chunks=(1000, 1000), order=C)
       compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
