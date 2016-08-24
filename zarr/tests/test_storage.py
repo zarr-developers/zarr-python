@@ -156,13 +156,6 @@ class StoreTests(object):
         with assert_raises(KeyError):
             store['c/d/x']
 
-        # test listdir (optional)
-        if hasattr(store, 'listdir'):
-            eq({'a', 'b', 'c'}, set(store.listdir()))
-            eq({'d', 'e'}, set(store.listdir('c')))
-            eq({'f', 'g'}, set(store.listdir('c/e')))
-        # TODO further listdir tests
-
         # test getsize (optional)
         if hasattr(store, 'getsize'):
             eq(6, store.getsize())
@@ -173,7 +166,32 @@ class StoreTests(object):
             eq(6, store.getsize('c/e'))
             eq(3, store.getsize('c/e/f'))
             eq(3, store.getsize('c/e/g'))
-        # TODO further getsize tests
+            with assert_raises(ValueError):
+                store.getsize('x')
+            with assert_raises(ValueError):
+                store.getsize('a/x')
+            with assert_raises(ValueError):
+                store.getsize('c/x')
+            with assert_raises(ValueError):
+                store.getsize('c/x/y')
+            with assert_raises(ValueError):
+                store.getsize('c/d/y')
+            with assert_raises(ValueError):
+                store.getsize('c/d/y/z')
+
+        # test listdir (optional)
+        if hasattr(store, 'listdir'):
+            eq({'a', 'b', 'c'}, set(store.listdir()))
+            eq({'d', 'e'}, set(store.listdir('c')))
+            eq({'f', 'g'}, set(store.listdir('c/e')))
+            # no exception raised if path does not exist or is leaf
+            eq([], store.listdir('x'))
+            eq([], store.listdir('a/x'))
+            eq([], store.listdir('c/x'))
+            eq([], store.listdir('c/x/y'))
+            eq([], store.listdir('c/d/y'))
+            eq([], store.listdir('c/d/y/z'))
+            eq([], store.listdir('c/e/f'))
 
         # test rmdir (optional)
         if hasattr(store, 'rmdir'):
@@ -186,6 +204,20 @@ class StoreTests(object):
             store.rmdir()
             assert 'a' not in store
             assert 'b' not in store
+            store['a'] = b'aaa'
+            store['c/d'] = b'ddd'
+            store['c/e/f'] = b'fff'
+            # no exceptions raised if path does not exist or is leaf
+            store.rmdir('x')
+            store.rmdir('a/x')
+            store.rmdir('c/x')
+            store.rmdir('c/x/y')
+            store.rmdir('c/d/y')
+            store.rmdir('c/d/y/z')
+            store.rmdir('c/e/f')
+            assert 'a' in store
+            assert 'c/d' in store
+            assert 'c/e/f' in store
 
     def test_init_array(self):
         store = self.create_store()
@@ -458,6 +490,14 @@ class TestDictStore(StoreTests, unittest.TestCase):
     def test_setdel(self):
         store = self.create_store()
         setdel_hierarchy_checks(store)
+
+    def test_getsize_ext(self):
+        store = self.create_store()
+        store['a'] = list(range(10))
+        store['b/c'] = list(range(10))
+        eq(-1, store.getsize())
+        eq(-1, store.getsize('a'))
+        eq(-1, store.getsize('b'))
 
 
 def rmtree_if_exists(path, rmtree=shutil.rmtree, isdir=os.path.isdir):

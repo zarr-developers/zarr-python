@@ -331,67 +331,64 @@ class DictStore(MutableMapping):
         self.root = cls()
         self.cls = cls
 
-    def __getitem__(self, key):
-        c = self.root
-        for k in key.split('/'):
-            if isinstance(c, self.cls):
-                c = c[k]
+    def _get_parent(self, item):
+        parent = self.root
+        # split the item
+        segments = item.split('/')
+        # find the parent container
+        for k in segments[:-1]:
+            parent = parent[k]
+            if not isinstance(parent, self.cls):
+                raise KeyError(item)
+        return parent, segments[-1]
+
+    def _require_parent(self, item):
+        parent = self.root
+        # split the item
+        segments = item.split('/')
+        # require the parent container
+        for k in segments[:-1]:
+            try:
+                parent = parent[k]
+            except KeyError:
+                parent[k] = self.cls()
+                parent = parent[k]
             else:
-                raise KeyError(key)
-        if isinstance(c, self.cls):
-            raise KeyError(key)
-        return c
+                if not isinstance(parent, self.cls):
+                    raise KeyError(item)
+        return parent, segments[-1]
 
-    def __setitem__(self, key, value):
-        c = self.root
-        keys = key.split('/')
-
-        # ensure intermediate containers
-        for k in keys[:-1]:
-            if isinstance(c, self.cls):
-                try:
-                    c = c[k]
-                except KeyError:
-                    c[k] = self.cls()
-                    c = c[k]
-            else:
-                raise KeyError(key)
-
-        if isinstance(c, self.cls):
-            # set final value
-            c[keys[-1]] = value
+    def __getitem__(self, item):
+        parent, key = self._get_parent(item)
+        try:
+            value = parent[key]
+        except KeyError:
+            raise KeyError(item)
         else:
-            raise KeyError(key)
-
-    def __delitem__(self, key):
-        c = self.root
-        keys = key.split('/')
-
-        # obtain final container
-        for k in keys[:-1]:
-            if isinstance(c, self.cls):
-                c = c[k]
+            if isinstance(value, self.cls):
+                raise KeyError(item)
             else:
-                raise KeyError(key)
+                return value
 
-        if isinstance(c, self.cls):
-            # delete item
-            del c[keys[-1]]
+    def __setitem__(self, item, value):
+        parent, key = self._require_parent(item)
+        parent[key] = value
+
+    def __delitem__(self, item):
+        parent, key = self._get_parent(item)
+        try:
+            del parent[key]
+        except KeyError:
+            raise KeyError(item)
+
+    def __contains__(self, item):
+        try:
+            parent, key = self._get_parent(item)
+            value = parent[key]
+        except KeyError:
+            return False
         else:
-            raise KeyError(key)
-
-    def __contains__(self, key):
-        keys = key.split('/')
-        c = self.root
-        for k in keys:
-            if isinstance(c, self.cls):
-                try:
-                    c = c[k]
-                except KeyError:
-                    return False
-            else:
-                return False
-        return not isinstance(c, self.cls)
+            return not isinstance(value, self.cls)
 
     def __eq__(self, other):
         return (
@@ -412,46 +409,52 @@ class DictStore(MutableMapping):
 
     def listdir(self, path=None):
         path = normalize_storage_path(path)
-        c = self.root
         if path:
-            # split path and find container
-            for k in path.split('/'):
-                c = c[k]
-        return sorted(c.keys())
+            try:
+                parent, key = self._get_parent(path)
+                value = parent[key]
+            except KeyError:
+                return []
+        else:
+            value = self.root
+        if isinstance(value, self.cls):
+            return sorted(value.keys())
+        else:
+            return []
 
     def rmdir(self, path=None):
         path = normalize_storage_path(path)
-        c = self.root
         if path:
-            # split path and find container
-            segments = path.split('/')
-            for k in segments[:-1]:
-                c = c[k]
-            # remove final key
             try:
-                del c[segments[-1]]
+                parent, key = self._get_parent(path)
+                value = parent[key]
             except KeyError:
-                # does not exist
-                pass
+                return
+            else:
+                if isinstance(value, self.cls):
+                    del parent[key]
         else:
             # clear out root
             self.root = self.cls()
 
     def getsize(self, path=None):
         path = normalize_storage_path(path)
-        c = self.root
+
+        # obtain value to return size of
         if path:
-            # split path and find value
-            segments = path.split('/')
             try:
-                for k in segments:
-                    c = c[k]
+                parent, key = self._get_parent(path)
+                value = parent[key]
             except KeyError:
                 raise ValueError('path not found: %r' % path)
-        if isinstance(c, self.cls):
+        else:
+            value = self.root
+
+        # obtain size of value
+        if isinstance(value, self.cls):
             # total size for directory
             size = 0
-            for v in c.values():
+            for v in value.values():
                 if not isinstance(v, self.cls):
                     try:
                         size += buffersize(v)
@@ -460,7 +463,7 @@ class DictStore(MutableMapping):
             return size
         else:
             try:
-                return buffersize(c)
+                return buffersize(value)
             except TypeError:
                 return -1
 
