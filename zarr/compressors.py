@@ -360,7 +360,7 @@ class NoCompressor(object):
     # noinspection PyMethodMayBeStatic
     def decompress(self, cdata, dest=None):
         if dest is None:
-            dest = np.frombuffer(cdata, dtype='u1')
+            dest = cdata
         else:
             src = np.frombuffer(cdata, dtype=dest.dtype).reshape(dest.shape)
             np.copyto(dest, src)
