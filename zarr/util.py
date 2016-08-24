@@ -196,17 +196,12 @@ def normalize_storage_path(path):
         path = path.replace('\\', '/')
 
         # ensure no leading slash
-        while path[0] == '/':
+        while len(path) > 0 and path[0] == '/':
             path = path[1:]
-            if not path:
-                break
 
         # ensure no trailing slash
-        if path:
-            while path[-1] == '/':
-                path = path[:-1]
-                if not path:
-                    break
+        while len(path) > 0 and path[-1] == '/':
+            path = path[:-1]
 
         # collapse any repeated slashes
         previous_char = None

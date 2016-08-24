@@ -6,7 +6,6 @@ import atexit
 import shutil
 import pickle
 import os
-from collections import OrderedDict
 
 
 import numpy as np
@@ -18,6 +17,7 @@ from zarr.storage import DirectoryStore, ZipStore, init_array, init_group
 
 from zarr.core import Array
 from zarr.errors import ReadOnlyError
+from zarr.compat import PY2
 
 
 class TestArray(unittest.TestCase):
@@ -512,28 +512,29 @@ class TestArray(unittest.TestCase):
             assert_array_equal(z[:], z2[:])
 
     def test_repr(self):
+        if not PY2:
 
-        # no path
-        z = self.create_array(shape=100, chunks=10, dtype='f4',
-                              compression='zlib', compression_opts=1)
-        expect = """zarr.core.Array((100,), float32, chunks=(10,), order=C)
+            # no path
+            z = self.create_array(shape=100, chunks=10, dtype='f4',
+                                  compression='zlib', compression_opts=1)
+            expect = """zarr.core.Array((100,), float32, chunks=(10,), order=C)
   compression: zlib; compression_opts: 1
   nbytes: 400; nbytes_stored: 210; ratio: 1.9; initialized: 0/10
   store: builtins.dict
 """
-        actual = repr(z)
-        for l1, l2 in zip(expect.split('\n'), actual.split('\n')):
-            eq(l1, l2)
+            actual = repr(z)
+            for l1, l2 in zip(expect.split('\n'), actual.split('\n')):
+                eq(l1, l2)
 
-        # with path
-        z = self.create_array(path='foo/bar', shape=100, chunks=10, dtype='f4',
-                              compression='zlib', compression_opts=1)
-        # flake8: noqa
-        expect = """zarr.core.Array(/foo/bar, (100,), float32, chunks=(10,), order=C)
+            # with path
+            z = self.create_array(path='foo/bar', shape=100, chunks=10, dtype='f4',
+                                  compression='zlib', compression_opts=1)
+            # flake8: noqa
+            expect = """zarr.core.Array(/foo/bar, (100,), float32, chunks=(10,), order=C)
   compression: zlib; compression_opts: 1
   nbytes: 400; nbytes_stored: 210; ratio: 1.9; initialized: 0/10
   store: builtins.dict
 """
-        actual = repr(z)
-        for l1, l2 in zip(expect.split('\n'), actual.split('\n')):
-            eq(l1, l2)
+            actual = repr(z)
+            for l1, l2 in zip(expect.split('\n'), actual.split('\n')):
+                eq(l1, l2)

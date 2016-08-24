@@ -509,6 +509,35 @@ class TestGroup(unittest.TestCase):
         with assert_raises(ReadOnlyError):
             grp.full_like('aa', a)
 
+    def test_paths(self):
+        store = self.create_store()
+        init_group(store)
+        g1 = Group(store=store)
+        g2 = g1.create_group('foo/bar')
+
+        eq(g1, g1['/'])
+        eq(g1, g1['//'])
+        eq(g1, g1['///'])
+        eq(g1, g2['/'])
+        eq(g1, g2['//'])
+        eq(g1, g2['///'])
+        eq(g2, g1['foo/bar'])
+        eq(g2, g1['/foo/bar'])
+        eq(g2, g1['foo/bar/'])
+        eq(g2, g1['//foo/bar'])
+        eq(g2, g1['//foo//bar//'])
+        eq(g2, g1['///foo///bar///'])
+        eq(g2, g2['/foo/bar'])
+
+        with assert_raises(ValueError):
+            g1['']
+            g1['.']
+            g1['..']
+            g1['foo/.']
+            g1['foo/..']
+            g1['foo/./bar']
+            g1['foo/../bar']
+
 
 class TestGroupDictStore(TestGroup):
 

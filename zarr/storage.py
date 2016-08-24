@@ -539,7 +539,7 @@ class DirectoryStore(MutableMapping):
         if not os.path.exists(dir_path):
             try:
                 os.makedirs(dir_path)
-            except NotADirectoryError:
+            except Exception:
                 raise KeyError(key)
 
         # write to temporary file
