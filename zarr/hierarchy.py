@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, print_function, division
 from collections import Mapping
+from warnings import warn
 
 
 import numpy as np
@@ -505,8 +506,16 @@ class Group(Mapping):
         if contains_group(self.store, path):
             raise KeyError(name)
 
-        # compatibility with h5py
-        fill_value = kwargs.get('fillvalue', fill_value)
+        # N.B., additional kwargs are included in method signature to
+        # improve compatibility for users familiar with h5py and adapting
+        # code that previously used h5py. These keyword arguments are
+        # ignored here but we raise a warning to let the user know.
+        for k in kwargs:
+            if k == 'fillvalue':
+                warn("ignoring keyword argument %r; please use 'fill_value' "
+                     "instead" % k)
+            else:
+                warn('ignoring keyword argument %r' % k)
 
         if data is not None:
             a = array(data, chunks=chunks, dtype=dtype,
