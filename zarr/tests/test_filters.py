@@ -11,6 +11,7 @@ from nose.tools import eq_ as eq
 from zarr.filters import DeltaFilter, ScaleOffsetFilter
 from zarr.creation import array
 from zarr.compat import PY2
+from zarr.compressors import get_compressor_cls
 
 
 class TestDeltaFilter(unittest.TestCase):
@@ -115,3 +116,26 @@ def test_array_with_filters_2():
                                    dtype=enc_dtype)
             expect = np.arange(i*5, (i*5)+5, 1, dtype=enc_dtype)
             assert_array_equal(expect, actual)
+
+
+def test_compressor_as_filter_1():
+    for compression, compression_opts in compression_configs:
+
+        # setup compressor
+        compressor_cls = get_compressor_cls(compression)
+        compression_opts = compressor_cls.normalize_opts(compression_opts)
+        compressor = compressor_cls(compression_opts)
+
+        # setup filters
+        enc_dtype = 'u1'
+        dec_dtype = 'f8'
+        filters = [
+            DeltaFilter(enc_dtype=enc_dtype, dec_dtype=dec_dtype),
+            compressor
+        ]
+
+        # setup data and arrays
+        data = np.arange(100, dtype=dec_dtype)
+        a1 = array(data, chunks=10, compression=compression,
+                   compression_opts=compression_opts, filters=filters)
+        # TODO finish

@@ -12,15 +12,13 @@ import numpy as np
 from numpy.testing import assert_array_equal
 from nose.tools import eq_ as eq, assert_is_instance, \
     assert_raises, assert_true, assert_false, assert_is, assert_is_none
-from zarr.storage import DirectoryStore, ZipStore, init_array, init_group, \
-    buffersize
 
 
 from zarr.storage import DirectoryStore, ZipStore, init_array, init_group
 from zarr.core import Array
 from zarr.errors import ReadOnlyError
 from zarr.compat import PY2
-from zarr.util import buffersize
+from zarr.util import buffer_size
 
 
 compression_configs = [
@@ -111,15 +109,15 @@ class TestArray(unittest.TestCase):
         # dict as store
         store = dict()
         z = self.create_array(store=store, shape=1000, chunks=100)
-        expect_nbytes_stored = sum(buffersize(v) for v in z.store.values())
+        expect_nbytes_stored = sum(buffer_size(v) for v in z.store.values())
         if z.store != z.chunk_store:
-            expect_nbytes_stored += sum(buffersize(v) for v in
+            expect_nbytes_stored += sum(buffer_size(v) for v in
                                         z.chunk_store.values())
         eq(expect_nbytes_stored, z.nbytes_stored)
         z[:] = 42
-        expect_nbytes_stored = sum(buffersize(v) for v in z.store.values())
+        expect_nbytes_stored = sum(buffer_size(v) for v in z.store.values())
         if z.store != z.chunk_store:
-            expect_nbytes_stored += sum(buffersize(v) for v in
+            expect_nbytes_stored += sum(buffer_size(v) for v in
                                         z.chunk_store.values())
         eq(expect_nbytes_stored, z.nbytes_stored)
         # mess with store
@@ -183,9 +181,9 @@ class TestArray(unittest.TestCase):
 
             # check properties
             eq(a.nbytes, z.nbytes)
-            expect_nbytes_stored = sum(buffersize(v) for v in z.store.values())
+            expect_nbytes_stored = sum(buffer_size(v) for v in z.store.values())
             if z.store != z.chunk_store:
-                expect_nbytes_stored += sum(buffersize(v) for v in
+                expect_nbytes_stored += sum(buffer_size(v) for v in
                                             z.chunk_store.values())
             eq(expect_nbytes_stored, z.nbytes_stored)
             eq(11, z.initialized)
@@ -276,9 +274,9 @@ class TestArray(unittest.TestCase):
 
             # check properties
             eq(a.nbytes, z.nbytes)
-            expect_nbytes_stored = sum(buffersize(v) for v in z.store.values())
+            expect_nbytes_stored = sum(buffer_size(v) for v in z.store.values())
             if z.store != z.chunk_store:
-                expect_nbytes_stored += sum(buffersize(v) for v in
+                expect_nbytes_stored += sum(buffer_size(v) for v in
                                             z.chunk_store.values())
             eq(50, z.initialized)
 
@@ -397,7 +395,8 @@ class TestArray(unittest.TestCase):
                 else:
                     assert_true(z[:].flags.c_contiguous)
                 z[:] = a
-                assert_array_equal(a, z[:])
+                actual = z[:]
+                assert_array_equal(a, actual)
 
     def test_resize_1d(self):
 

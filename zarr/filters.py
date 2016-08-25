@@ -13,7 +13,7 @@ filter_registry = dict()
 
 class DeltaFilter(object):
 
-    canonical_name = 'delta'
+    filter_name = 'delta'
 
     def __init__(self, enc_dtype, dec_dtype):
         self.enc_dtype = np.dtype(enc_dtype)
@@ -39,26 +39,26 @@ class DeltaFilter(object):
         np.cumsum(enc, out=dec)
         return dec
 
-    def get_config(self):
+    def get_filter_config(self):
         config = dict()
-        config['name'] = self.canonical_name
+        config['name'] = self.filter_name
         config['enc_dtype'] = encode_dtype(self.enc_dtype)
         config['dec_dtype'] = encode_dtype(self.dec_dtype)
         return config
 
     @classmethod
-    def from_config(cls, config):
+    def from_filter_config(cls, config):
         enc_dtype = decode_dtype(config['enc_dtype'])
         dec_dtype = decode_dtype(config['dec_dtype'])
         return cls(enc_dtype=enc_dtype, dec_dtype=dec_dtype)
 
 
-filter_registry[DeltaFilter.canonical_name] = DeltaFilter
+filter_registry[DeltaFilter.filter_name] = DeltaFilter
 
 
 class ScaleOffsetFilter(object):
 
-    canonical_name = 'scaleoffset'
+    filter_name = 'scaleoffset'
 
     def __init__(self, offset, scale, enc_dtype, dec_dtype):
         self.offset = offset
@@ -80,9 +80,9 @@ class ScaleOffsetFilter(object):
         dec = ((enc * self.scale) + self.offset).astype(self.dec_dtype)
         return dec
 
-    def get_config(self):
+    def get_filter_config(self):
         config = dict()
-        config['name'] = self.canonical_name
+        config['name'] = self.filter_name
         config['enc_dtype'] = encode_dtype(self.enc_dtype)
         config['dec_dtype'] = encode_dtype(self.dec_dtype)
         config['scale'] = self.scale
@@ -90,7 +90,7 @@ class ScaleOffsetFilter(object):
         return config
 
     @classmethod
-    def from_config(cls, config):
+    def from_filter_config(cls, config):
         enc_dtype = decode_dtype(config['enc_dtype'])
         dec_dtype = decode_dtype(config['dec_dtype'])
         scale = config['scale']
@@ -99,7 +99,7 @@ class ScaleOffsetFilter(object):
                    offset=offset)
 
 
-filter_registry[ScaleOffsetFilter.canonical_name] = ScaleOffsetFilter
+filter_registry[ScaleOffsetFilter.filter_name] = ScaleOffsetFilter
 
 
 # TODO DigitizeFilter
@@ -113,7 +113,7 @@ def get_filters(configs):
         for config in configs:
             name = config['name']
             cls = filter_registry[name]
-            f = cls.from_config(config)
+            f = cls.from_filter_config(config)
             filters.append(f)
             # TODO error handling
         return filters

@@ -11,8 +11,7 @@ from zarr.compressors import get_compressor_cls
 from zarr.util import is_total_slice, normalize_array_selection, \
     get_chunk_range, human_readable_size, normalize_resize_args, \
     normalize_storage_path
-from zarr.storage import array_meta_key, attrs_key, listdir, getsize, \
-    buffersize
+from zarr.storage import array_meta_key, attrs_key, listdir, getsize
 from zarr.meta import decode_array_metadata, encode_array_metadata
 from zarr.attrs import Attributes
 from zarr.errors import ReadOnlyError
@@ -644,7 +643,7 @@ class Array(object):
                 # decode chunk
                 chunk = self._decode_chunk(cdata)
                 if not chunk.flags.writeable:
-                    chunk = chunk.copy()
+                    chunk = chunk.copy(order='K')
 
             # modify
             chunk[key] = value
@@ -668,11 +667,13 @@ class Array(object):
             for f in self._filters[::-1]:
                 chunk = f.decode(chunk)
 
-        # view and reshape
+        # view as correct dtype
         if isinstance(chunk, np.ndarray):
             chunk = chunk.view(self._dtype)
         else:
             chunk = np.frombuffer(chunk, self._dtype)
+
+        # reshape
         chunk = chunk.reshape(self._chunks, order=self._order)
 
         return chunk

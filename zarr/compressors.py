@@ -2,6 +2,7 @@
 from __future__ import absolute_import, print_function, division
 import zlib
 import bz2
+import array
 
 
 import numpy as np
@@ -50,17 +51,65 @@ class ZlibCompressor(object):
 
     # noinspection PyMethodMayBeStatic
     def decompress(self, cdata, dest=None):
+        """Decompression.
+
+        Parameters
+        ----------
+        cdata : bytes-like
+            Compressed data. Can be any object supporting buffer protocol.
+        dest : ndarray, optional
+            Destination for decompressed data.
+
+        Returns
+        -------
+        dest : bytes
+            Decompressed data.
+
+        """
         data = zlib.decompress(cdata)
         if dest is None:
-            dest = np.frombuffer(data, dtype='u1')
+            dest = data
         else:
             src = np.frombuffer(data, dtype=dest.dtype).reshape(dest.shape)
             np.copyto(dest, src)
         return dest
 
-    def compress(self, array):
-        data = memoryview(array).tobytes()
+    def compress(self, data):
+        """Compression.
+
+        Parameters
+        ----------
+        data : bytes-like
+            Data to be compressed. Can be any object supporting the buffer
+            protocol.
+
+        Returns
+        -------
+        cdata : bytes
+            Compressed data.
+
+        """
+        # if numpy array, can only handle C contiguous directly
+        if isinstance(data, np.ndarray) and not data.flags.c_contiguous:
+            data = data.tobytes(order='F')
         return zlib.compress(data, self.level)
+
+    # enable usage as a filter
+
+    filter_name = canonical_name
+    encode = compress
+    decode = decompress
+
+    def get_filter_config(self):
+        config = dict()
+        config['name'] = self.filter_name
+        config['level'] = self.level
+        return config
+
+    @classmethod
+    def from_filter_config(cls, config):
+        level = config['level']
+        return cls(level)
 
 
 registry[ZlibCompressor.canonical_name] = ZlibCompressor
@@ -150,10 +199,44 @@ else:
 
         # noinspection PyMethodMayBeStatic
         def decompress(self, cdata, dest=None):
+            """Decompression.
+
+            Parameters
+            ----------
+            cdata : bytes-like
+                Compressed data. Can be any object supporting buffer protocol.
+            dest : array-like, optional
+                Destination for decompressed data. Can be any object
+                exposing a writeable buffer.
+
+            Returns
+            -------
+            dest : array-like
+                Decompressed data.
+
+            """
             return blosc.decompress(cdata, dest)
 
-        def compress(self, array):
-            return blosc.compress(array, self.cname, self.clevel, self.shuffle)
+        def compress(self, data):
+            return blosc.compress(data, self.cname, self.clevel, self.shuffle)
+
+        # enable usage as a filter
+
+        filter_name = canonical_name
+        encode = compress
+        decode = decompress
+
+        def get_filter_config(self):
+            config = dict()
+            config['name'] = self.filter_name
+            config['cname'] = self.cname
+            config['clevel'] = self.clevel
+            config['shuffle'] = self.shuffle
+            return config
+
+        @classmethod
+        def from_filter_config(cls, config):
+            return cls(config)
 
     registry[BloscCompressor.canonical_name] = BloscCompressor
     default_compression = BloscCompressor.canonical_name
@@ -195,17 +278,59 @@ class BZ2Compressor(object):
 
     # noinspection PyMethodMayBeStatic
     def decompress(self, cdata, dest=None):
+        """Decompression.
+
+        Parameters
+        ----------
+        cdata : bytes-like
+            Compressed data. Can be any object supporting buffer protocol.
+        dest : ndarray, optional
+            Destination for decompressed data.
+
+        Returns
+        -------
+        dest : bytes
+            Decompressed data.
+
+        """
+
+        # BZ2 cannot handle ndarray
+        if not isinstance(cdata, array.array):
+            cdata = memoryview(cdata)
+
+        # do decompression
         data = bz2.decompress(cdata)
+
+        # handle destination
         if dest is None:
-            dest = np.frombuffer(data, dtype='u1')
+            dest = data
         else:
-            src = np.frombuffer(data, dtype=dest.dtype).reshape(dest.shape)
-            np.copyto(dest, src)
+            arr = np.frombuffer(data, dtype=dest.dtype).reshape(dest.shape)
+            np.copyto(dest, arr)
+
         return dest
 
-    def compress(self, array):
-        data = memoryview(array).tobytes()
+    def compress(self, data):
+        if isinstance(data, np.ndarray) and not data.flags.c_contiguous:
+            data = data.tobytes(order='F')
         return bz2.compress(data, self.level)
+
+    # enable usage as a filter
+
+    filter_name = canonical_name
+    encode = compress
+    decode = decompress
+
+    def get_filter_config(self):
+        config = dict()
+        config['name'] = self.filter_name
+        config['level'] = self.level
+        return config
+
+    @classmethod
+    def from_filter_config(cls, config):
+        level = config['level']
+        return cls(level)
 
 
 registry[BZ2Compressor.canonical_name] = BZ2Compressor
@@ -312,24 +437,66 @@ else:
 
         # noinspection PyMethodMayBeStatic
         def decompress(self, cdata, dest=None):
+            """Decompression.
+
+            Parameters
+            ----------
+            cdata : bytes-like
+                Compressed data. Can be any object supporting buffer protocol.
+            dest : ndarray, optional
+                Destination for decompressed data.
+
+            Returns
+            -------
+            dest : bytes
+                Decompressed data.
+
+            """
+
+            # setup filters
             if self.format == lzma.FORMAT_RAW:
                 # filters needed
                 filters = self.filters
             else:
                 # filters should not be specified
                 filters = None
+
+            # do decompression
             data = lzma.decompress(cdata, format=self.format, filters=filters)
+
+            # handle destination
             if dest is None:
-                dest = np.frombuffer(data, dtype='u1')
+                dest = data
             else:
-                src = np.frombuffer(data, dtype=dest.dtype).reshape(dest.shape)
-                np.copyto(dest, src)
+                arr = np.frombuffer(data, dtype=dest.dtype).reshape(dest.shape)
+                np.copyto(dest, arr)
+
             return dest
 
-        def compress(self, array):
-            data = memoryview(array).tobytes()
+        def compress(self, data):
+            if isinstance(data, np.ndarray) and not data.flags.c_contiguous:
+                data = data.tobytes(order='F')
             return lzma.compress(data, format=self.format, check=self.check,
                                  preset=self.preset, filters=self.filters)
+
+        # enable usage as a filter
+
+        filter_name = canonical_name
+        encode = compress
+        decode = decompress
+
+        def get_filter_config(self):
+            config = dict()
+            config['name'] = self.filter_name
+            config['format'] = self.format
+            config['check'] = self.check
+            config['preset'] = self.preset
+            config['filters'] = self.filters
+            return config
+
+        @classmethod
+        def from_filter_config(cls, config):
+            return cls(config)
 
     registry[LZMACompressor.canonical_name] = LZMACompressor
 
@@ -359,17 +526,36 @@ class NoCompressor(object):
 
     # noinspection PyMethodMayBeStatic
     def decompress(self, cdata, dest=None):
+        """Decompression.
+
+        Parameters
+        ----------
+        cdata : bytes-like
+            Compressed data. Can be any object supporting buffer protocol.
+        dest : ndarray, optional
+            Destination for decompressed data.
+
+        Returns
+        -------
+        dest : bytes
+            Decompressed data.
+
+        Notes
+        -----
+        This is a no-op. If `dest` is None, returns `cdata`. Otherwise,
+        copies `cdata` to `dest`.`
+
+        """
         if dest is None:
             dest = cdata
         else:
-            src = np.frombuffer(cdata, dtype=dest.dtype).reshape(dest.shape)
-            np.copyto(dest, src)
+            arr = np.frombuffer(cdata, dtype=dest.dtype).reshape(dest.shape)
+            np.copyto(dest, arr)
         return dest
 
     # noinspection PyMethodMayBeStatic
-    def compress(self, array):
-        # no-op
-        return array
+    def compress(self, data):
+        return data
 
 
 registry[NoCompressor.canonical_name] = NoCompressor
