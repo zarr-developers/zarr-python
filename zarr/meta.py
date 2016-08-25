@@ -86,7 +86,7 @@ def encode_filters(filters):
     if not filters:
         return None
     else:
-        return [f.get_config() for f in filters]
+        return [f.get_filter_config() for f in filters]
 
 
 def decode_group_metadata(s):

@@ -281,7 +281,7 @@ def normalize_storage_path(path):
     return path
 
 
-def buffersize(v):
+def buffer_size(v):
     from array import array as _stdlib_array
     if PY2 and isinstance(v, _stdlib_array):  # pragma: no cover
         # special case array.array because does not support buffer
@@ -290,3 +290,11 @@ def buffersize(v):
     else:
         v = memoryview(v)
         return reduce(operator.mul, v.shape) * v.itemsize
+
+
+def buffer_tobytes(v):
+    from array import array as _stdlib_array
+    if PY2 and isinstance(v, _stdlib_array):  # pragma: no cover
+        return v.tobytes()
+    else:
+        return memoryview(v).tobytes()

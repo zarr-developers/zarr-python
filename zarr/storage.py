@@ -12,7 +12,7 @@ import numpy as np
 
 
 from zarr.util import normalize_shape, normalize_chunks, normalize_order, \
-    normalize_storage_path, buffersize
+    normalize_storage_path, buffer_size
 from zarr.compressors import get_compressor_cls
 from zarr.meta import encode_array_metadata, encode_group_metadata
 from zarr.compat import PY2, binary_type
@@ -485,13 +485,13 @@ class DictStore(MutableMapping):
             for v in value.values():
                 if not isinstance(v, self.cls):
                     try:
-                        size += buffersize(v)
+                        size += buffer_size(v)
                     except TypeError:
                         return -1
             return size
         else:
             try:
-                return buffersize(value)
+                return buffer_size(value)
             except TypeError:
                 return -1
 

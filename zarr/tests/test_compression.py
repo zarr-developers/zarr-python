@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, print_function, division
 import unittest
+import array
 
 
 import numpy as np
@@ -9,7 +10,7 @@ from nose.tools import eq_ as eq, assert_raises
 
 
 from zarr.compressors import get_compressor_cls
-from zarr.util import buffersize
+from zarr.util import buffer_size, buffer_tobytes
 
 
 class CompressorTests(object):
@@ -26,14 +27,54 @@ class CompressorTests(object):
     def _test_compress_decompress(self, compression_opts=None):
 
         comp = self.init_compressor(compression_opts)
-        a = np.arange(1000, dtype='i4')
-        cdata = comp.compress(a)
-        cbytes = buffersize(cdata)
-        assert cbytes <= a.nbytes
+        arr = np.arange(1000, dtype='i1')
 
-        b = np.empty_like(a)
-        comp.decompress(cdata, b)
-        assert_array_equal(a, b)
+        # compression should be able to compress data from any object
+        # exporting the buffer protocol, as well as array.array in PY2
+
+        # test compression of numpy array
+        cdata_first = comp.compress(arr)
+        cbytes = buffer_size(cdata_first)
+        assert cbytes <= arr.nbytes
+        cdata_bytes = buffer_tobytes(cdata_first)
+
+        # N.B., watch out below with blosc compressor, if the itemsize of
+        # the source buffer is different then the results of compression
+        # will be different. Hence testing on all data with itemsize 1.
+
+        # test compression of raw bytes
+        data = arr.tobytes()
+        cdata = comp.compress(data)
+        actual = buffer_tobytes(cdata)
+        eq(cdata_bytes, actual)
+
+        # test compression of array.array
+        data = array.array('b', arr.tobytes())
+        cdata = comp.compress(data)
+        actual = buffer_tobytes(cdata)
+        eq(cdata_bytes, actual)
+
+        # decompression should be able to compress data from any object
+        # exporting the buffer protocol, as well as array.array in PY2
+
+        # test decompression of raw bytes
+        data = comp.decompress(cdata_bytes)
+        assert_array_equal(arr, np.frombuffer(data, dtype=arr.dtype))
+
+        # test decompression of array.array
+        cdata = array.array('b', cdata_bytes)
+        data = comp.decompress(cdata)
+        assert_array_equal(arr, np.frombuffer(data, dtype=arr.dtype))
+
+        # test decompression of numpy array
+        cdata = np.frombuffer(cdata_bytes, dtype='u1')
+        data = comp.decompress(cdata)
+        assert_array_equal(arr, np.frombuffer(data, dtype=arr.dtype))
+
+        # test decompression into destination
+        dest = np.empty_like(arr)
+        comp.decompress(cdata_bytes, dest)
+        assert_array_equal(arr, dest)
 
     def test_compress_decompress_default(self):
         self._test_compress_decompress()
