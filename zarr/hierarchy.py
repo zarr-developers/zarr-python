@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, print_function, division
+from collections import Mapping
 
 
 import numpy as np
@@ -16,7 +17,7 @@ from zarr.errors import ReadOnlyError
 from zarr.meta import decode_group_metadata
 
 
-class Group(object):
+class Group(Mapping):
     """Instantiate a group from an initialized store.
 
     Parameters
@@ -158,11 +159,15 @@ class Group(object):
         quux
 
         """
-        return self.keys()
+        for key in sorted(listdir(self.store, self.path)):
+            path = self.path + '/' + key
+            if (contains_array(self.store, path) or
+                    contains_group(self.store, path)):
+                yield key
 
     def __len__(self):
         """Number of members."""
-        return sum(1 for _ in self.keys())
+        return sum(1 for _ in self)
 
     def __repr__(self):
         r = '%s.%s(' % (type(self).__module__, type(self).__name__)
@@ -216,12 +221,8 @@ class Group(object):
 
         """
         path = self._item_path(item)
-        if contains_array(self.store, path):
-            return True
-        elif contains_group(self.store, path):
-            return True
-        else:
-            return False
+        return contains_array(self.store, path) or \
+            contains_group(self.store, path)
 
     def __getitem__(self, item):
         """Obtain a group member.
@@ -258,78 +259,6 @@ class Group(object):
             return Group(self.store, readonly=self.readonly, path=path)
         else:
             raise KeyError(item)
-
-    def __setitem__(self, key, value):
-        """Not implemented."""
-        raise NotImplementedError()
-
-    def keys(self):
-        """Return an iterator over member names.
-
-        Examples
-        --------
-        >>> import zarr
-        >>> g1 = zarr.group()
-        >>> g2 = g1.create_group('foo')
-        >>> g3 = g1.create_group('bar')
-        >>> d1 = g1.create_dataset('baz', shape=100, chunks=10)
-        >>> d2 = g1.create_dataset('quux', shape=200, chunks=20)
-        >>> sorted(g1.keys())
-        ['bar', 'baz', 'foo', 'quux']
-
-        """
-        for key in sorted(listdir(self.store, self.path)):
-            path = self.path + '/' + key
-            if (contains_array(self.store, path) or
-                    contains_group(self.store, path)):
-                yield key
-
-    def values(self):
-        """Return an iterator over members.
-
-        Examples
-        --------
-        >>> import zarr
-        >>> g1 = zarr.group()
-        >>> g2 = g1.create_group('foo')
-        >>> g3 = g1.create_group('bar')
-        >>> d1 = g1.create_dataset('baz', shape=100, chunks=10)
-        >>> d2 = g1.create_dataset('quux', shape=200, chunks=20)
-        >>> for v in g1.values():
-        ...     print(type(v), v.path)
-        <class 'zarr.hierarchy.Group'> bar
-        <class 'zarr.core.Array'> baz
-        <class 'zarr.hierarchy.Group'> foo
-        <class 'zarr.core.Array'> quux
-
-        """
-        return (v for _, v in self.items())
-
-    def items(self):
-        """Return an iterator over (name, value) pairs for all members.
-
-        Examples
-        --------
-        >>> import zarr
-        >>> g1 = zarr.group()
-        >>> g2 = g1.create_group('foo')
-        >>> g3 = g1.create_group('bar')
-        >>> d1 = g1.create_dataset('baz', shape=100, chunks=10)
-        >>> d2 = g1.create_dataset('quux', shape=200, chunks=20)
-        >>> for n, v in g1.items():
-        ...     print(n, type(v))
-        bar <class 'zarr.hierarchy.Group'>
-        baz <class 'zarr.core.Array'>
-        foo <class 'zarr.hierarchy.Group'>
-        quux <class 'zarr.core.Array'>
-
-        """
-        for key in sorted(listdir(self.store, self.path)):
-            path = self.path + '/' + key
-            if contains_array(self.store, path):
-                yield key, Array(self.store, path=path, readonly=self.readonly)
-            elif contains_group(self.store, path):
-                yield key, Group(self.store, path=path, readonly=self.readonly)
 
     def group_keys(self):
         """Return an iterator over member names for groups only.

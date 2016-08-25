@@ -445,7 +445,7 @@ class TestGroup(unittest.TestCase):
         store = self.create_store()
         init_group(store)
         g = Group(store=store)
-        with assert_raises(NotImplementedError):
+        with assert_raises(TypeError):
             g['foo'] = 'bar'
 
     def test_array_creation(self):
