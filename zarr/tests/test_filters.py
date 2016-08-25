@@ -12,6 +12,7 @@ from zarr.filters import DeltaFilter, ScaleOffsetFilter
 from zarr.creation import array
 from zarr.compat import PY2
 from zarr.compressors import get_compressor_cls
+from zarr.util import buffer_tobytes
 
 
 class TestDeltaFilter(unittest.TestCase):
@@ -136,6 +137,16 @@ def test_compressor_as_filter_1():
 
         # setup data and arrays
         data = np.arange(100, dtype=dec_dtype)
-        a1 = array(data, chunks=10, compression=compression,
-                   compression_opts=compression_opts, filters=filters)
-        # TODO finish
+        a1 = array(data, chunks=10, compression=None, filters=filters)
+        a2 = array(data, chunks=10, compression=compression,
+                   compression_opts=compression_opts, filters=filters[:1])
+
+        # check storage
+        for i in range(10):
+            x = buffer_tobytes(a1.store[str(i)])
+            y = buffer_tobytes(a2.store[str(i)])
+            eq(x, y)
+
+        # check data
+        assert_array_equal(data, a1[:])
+        assert_array_equal(a1[:], a2[:])

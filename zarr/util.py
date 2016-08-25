@@ -295,6 +295,6 @@ def buffer_size(v):
 def buffer_tobytes(v):
     from array import array as _stdlib_array
     if PY2 and isinstance(v, _stdlib_array):  # pragma: no cover
-        return v.tobytes()
+        return v.tostring()
     else:
         return memoryview(v).tobytes()

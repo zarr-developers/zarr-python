@@ -229,7 +229,7 @@ else:
         def get_filter_config(self):
             config = dict()
             config['name'] = self.filter_name
-            config['cname'] = self.cname
+            config['cname'] = text_type(self.cname, 'ascii')
             config['clevel'] = self.clevel
             config['shuffle'] = self.shuffle
             return config
@@ -556,6 +556,21 @@ class NoCompressor(object):
     # noinspection PyMethodMayBeStatic
     def compress(self, data):
         return data
+
+    # enable usage as a filter
+
+    filter_name = canonical_name
+    encode = compress
+    decode = decompress
+
+    def get_filter_config(self):
+        config = dict()
+        config['name'] = self.filter_name
+        return config
+
+    @classmethod
+    def from_filter_config(cls, config):
+        return cls(config)
 
 
 registry[NoCompressor.canonical_name] = NoCompressor

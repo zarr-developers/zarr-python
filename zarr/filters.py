@@ -6,6 +6,7 @@ import numpy as np
 
 
 from zarr.meta import encode_dtype, decode_dtype
+from zarr.compressors import registry as compressor_registry
 
 
 filter_registry = dict()
@@ -103,6 +104,12 @@ filter_registry[ScaleOffsetFilter.filter_name] = ScaleOffsetFilter
 
 
 # TODO DigitizeFilter
+
+
+# add in compressors as filters
+for cls in compressor_registry.values():
+    if hasattr(cls, 'filter_name'):
+        filter_registry[cls.filter_name] = cls
 
 
 def get_filters(configs):
