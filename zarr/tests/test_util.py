@@ -2,12 +2,13 @@
 from __future__ import absolute_import, print_function, division
 
 
-from nose.tools import eq_ as eq, assert_raises, assert_true, assert_false
+from nose.tools import eq_ as eq, assert_raises, assert_true, assert_false, \
+    assert_is_instance
 
 
 from zarr.util import normalize_shape, normalize_chunks, is_total_slice, \
     normalize_axis_selection, normalize_array_selection, \
-    normalize_resize_args, human_readable_size, normalize_order
+    normalize_resize_args, human_readable_size, normalize_order, guess_chunks
 
 
 def test_normalize_shape():
@@ -21,18 +22,20 @@ def test_normalize_shape():
 
 
 def test_normalize_chunks():
-    eq((10,), normalize_chunks((10,), (100,)))
-    eq((10,), normalize_chunks([10], (100,)))
-    eq((10,), normalize_chunks(10, (100,)))
-    eq((10, 10), normalize_chunks((10, 10), (100, 10)))
-    eq((10, 10), normalize_chunks(10, (100, 10)))
-    eq((10, 10), normalize_chunks((10, None), (100, 10)))
-    with assert_raises(TypeError):
-        normalize_chunks(None, (100,))
+    eq((10,), normalize_chunks((10,), (100,), 1))
+    eq((10,), normalize_chunks([10], (100,), 1))
+    eq((10,), normalize_chunks(10, (100,), 1))
+    eq((10, 10), normalize_chunks((10, 10), (100, 10), 1))
+    eq((10, 10), normalize_chunks(10, (100, 10), 1))
+    eq((10, 10), normalize_chunks((10, None), (100, 10), 1))
     with assert_raises(ValueError):
-        normalize_chunks('foo', (100,))
+        normalize_chunks('foo', (100,), 1)
     with assert_raises(ValueError):
-        normalize_chunks((100, 10), (100,))
+        normalize_chunks((100, 10), (100,), 1)
+
+    # test auto-chunking
+    chunks = normalize_chunks(None, (100,), 1)
+    eq((100,), chunks)
 
 
 def test_is_total_slice():
@@ -160,3 +163,28 @@ def test_normalize_order():
     eq('C', normalize_order('c'))
     with assert_raises(ValueError):
         normalize_order('foo')
+
+
+def test_guess_chunks():
+    shapes = (
+        (100,),
+        (100, 100),
+        (1000000,),
+        (10000, 10000),
+        (10000000, 1000),
+        (1000, 10000000),
+        (10000000, 1000, 2),
+        (1000, 10000000, 2),
+        (10000, 10000, 10000),
+        (100000, 100000, 100000),
+    )
+    for shape in shapes:
+        chunks = guess_chunks(shape, 1)
+        assert_is_instance(chunks, tuple)
+        eq(len(chunks), len(shape))
+        assert all([c <= s for c, s in zip(chunks, shape)])
+
+    # ludicrous itemsize
+    chunks = guess_chunks((1000000,), 40000000)
+    assert_is_instance(chunks, tuple)
+    eq((1,), chunks)

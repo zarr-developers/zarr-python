@@ -487,8 +487,9 @@ class Group(Mapping):
             Initial data.
         shape : int or tuple of ints
             Array shape.
-        chunks : int or tuple of ints
-            Chunk shape.
+        chunks : int or tuple of ints, optional
+            Chunk shape. If not provided, will be guessed from `shape` and
+            `dtype`.
         dtype : string or dtype, optional
             NumPy dtype.
         compression : string, optional
@@ -642,7 +643,7 @@ class Group(Mapping):
         return ones(store=self._store, path=path,
                     chunk_store=self._chunk_store, **kwargs)
 
-    def full(self, name, **kwargs):
+    def full(self, name, fill_value, **kwargs):
         """Create an array. Keyword arguments as per
         :func:`zarr.creation.full`."""
         if self._readonly:
@@ -650,7 +651,8 @@ class Group(Mapping):
         path = self._item_path(name)
         self._require_parent_group(path)
         return full(store=self._store, path=path,
-                    chunk_store=self._chunk_store, **kwargs)
+                    chunk_store=self._chunk_store,
+                    fill_value=fill_value, **kwargs)
 
     def array(self, name, data, **kwargs):
         """Create an array. Keyword arguments as per

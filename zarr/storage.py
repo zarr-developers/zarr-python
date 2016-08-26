@@ -116,9 +116,9 @@ def getsize(store, path=None):
         return -1
 
 
-def init_array(store, shape, chunks, dtype=None, compression='default',
-               compression_opts=None, fill_value=None,
-               order='C', overwrite=False, path=None, chunk_store=None):
+def init_array(store, shape, chunks=None, dtype=None, compression='default',
+               compression_opts=None, fill_value=None, order='C',
+               overwrite=False, path=None, chunk_store=None):
     """initialize an array store with the given configuration.
 
     Parameters
@@ -127,8 +127,8 @@ def init_array(store, shape, chunks, dtype=None, compression='default',
         A mapping that supports string keys and bytes-like values.
     shape : int or tuple of ints
         Array shape.
-    chunks : int or tuple of ints
-        Chunk shape.
+    chunks : int or tuple of ints, optional
+        Chunk shape. If not provided, will be guessed from `shape` and `dtype`.
     dtype : string or dtype, optional
         NumPy dtype.
     compression : string, optional
@@ -238,8 +238,8 @@ def init_array(store, shape, chunks, dtype=None, compression='default',
 
     # normalize metadata
     shape = normalize_shape(shape)
-    chunks = normalize_chunks(chunks, shape)
     dtype = np.dtype(dtype)
+    chunks = normalize_chunks(chunks, shape, dtype.itemsize)
     compressor_cls = get_compressor_cls(compression)
     compression = compressor_cls.canonical_name
     compression_opts = compressor_cls.normalize_opts(
