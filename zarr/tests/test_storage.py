@@ -15,7 +15,7 @@ from nose.tools import assert_raises, eq_ as eq, assert_is_none
 
 
 from zarr.storage import init_array, array_meta_key, attrs_key, DictStore, \
-    DirectoryStore, ZipStore, init_group, group_meta_key
+    DirectoryStore, ZipStore, init_group, group_meta_key, getsize
 from zarr.meta import decode_array_metadata, encode_array_metadata, \
     ZARR_FORMAT, decode_group_metadata, encode_group_metadata
 from zarr.compat import text_type
@@ -25,9 +25,9 @@ from zarr.compressors import default_compression
 class StoreTests(object):
     """Abstract store tests."""
 
-    def create_store(self, **kwargs):
-        # override in sub-class
-        pass
+    # def create_store(self, **kwargs):
+    #     # implement in sub-class
+    #     pass
 
     def test_get_set_del_contains(self):
         store = self.create_store()
@@ -356,6 +356,42 @@ class StoreTests(object):
             eq((100,), meta['chunks'])
             eq(np.dtype('i4'), meta['dtype'])
 
+    def test_init_array_overwrite_chunk_store(self):
+        # setup
+        store = self.create_store()
+        chunk_store = self.create_store()
+        store[array_meta_key] = encode_array_metadata(
+            dict(shape=(2000,),
+                 chunks=(200,),
+                 dtype=np.dtype('u1'),
+                 compression='zlib',
+                 compression_opts=1,
+                 fill_value=0,
+                 order='F')
+        )
+        chunk_store['0'] = b'aaa'
+        chunk_store['1'] = b'bbb'
+
+        # don't overwrite (default)
+        with assert_raises(ValueError):
+            init_array(store, shape=1000, chunks=100, chunk_store=chunk_store)
+
+        # do overwrite
+        try:
+            init_array(store, shape=1000, chunks=100, dtype='i4',
+                       overwrite=True, chunk_store=chunk_store)
+        except NotImplementedError:
+            pass
+        else:
+            assert array_meta_key in store
+            meta = decode_array_metadata(store[array_meta_key])
+            eq(ZARR_FORMAT, meta['zarr_format'])
+            eq((1000,), meta['shape'])
+            eq((100,), meta['chunks'])
+            eq(np.dtype('i4'), meta['dtype'])
+            assert '0' not in chunk_store
+            assert '1' not in chunk_store
+
     def test_init_group(self):
         store = self.create_store()
         init_group(store)
@@ -438,6 +474,43 @@ class StoreTests(object):
             eq((200,), meta['chunks'])
             eq(np.dtype('u1'), meta['dtype'])
 
+    def test_init_group_overwrite_chunk_store(self):
+        # setup
+        store = self.create_store()
+        chunk_store = self.create_store()
+        store[array_meta_key] = encode_array_metadata(
+            dict(shape=(2000,),
+                 chunks=(200,),
+                 dtype=np.dtype('u1'),
+                 compression='zlib',
+                 compression_opts=1,
+                 fill_value=0,
+                 order='F')
+        )
+        chunk_store['foo'] = b'bar'
+        chunk_store['baz'] = b'quux'
+
+        # don't overwrite array (default)
+        with assert_raises(ValueError):
+            init_group(store, chunk_store=chunk_store)
+
+        # do overwrite
+        try:
+            init_group(store, overwrite=True, chunk_store=chunk_store)
+        except NotImplementedError:
+            pass
+        else:
+            assert array_meta_key not in store
+            assert group_meta_key in store
+            meta = decode_group_metadata(store[group_meta_key])
+            eq(ZARR_FORMAT, meta['zarr_format'])
+            assert 'foo' not in chunk_store
+            assert 'baz' not in chunk_store
+
+        # don't overwrite group
+        with assert_raises(ValueError):
+            init_group(store)
+
 
 class TestMappingStore(StoreTests, unittest.TestCase):
 
@@ -500,16 +573,17 @@ class TestDictStore(StoreTests, unittest.TestCase):
         eq(-1, store.getsize('b'))
 
 
-def rmtree_if_exists(path, rmtree=shutil.rmtree, isdir=os.path.isdir):
-    if isdir(path):
-        rmtree(path)
+def rmtree(p, f=shutil.rmtree, g=os.path.isdir):  # pragma: no cover
+    """Version of rmtree that will work atexit and only remove if directory."""
+    if g(p):
+        f(p)
 
 
 class TestDirectoryStore(StoreTests, unittest.TestCase):
 
     def create_store(self):
         path = tempfile.mkdtemp()
-        atexit.register(rmtree_if_exists, path)
+        atexit.register(rmtree, path)
         store = DirectoryStore(path)
         return store
 
@@ -554,3 +628,12 @@ class TestZipStore(StoreTests, unittest.TestCase):
         atexit.register(os.remove, path)
         store = ZipStore(path)
         return store
+
+
+def test_getsize():
+    store = dict()
+    store['foo'] = b'aaa'
+    store['bar'] = b'bbbb'
+    store['baz/quux'] = b'ccccc'
+    eq(7, getsize(store))
+    eq(5, getsize(store, 'baz'))

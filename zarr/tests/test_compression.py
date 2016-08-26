@@ -41,7 +41,7 @@ class CompressorTests(object):
 
 try:
     from zarr import blosc  # flake8: noqa
-except ImportError:
+except ImportError:  # pragma: no cover
     print('Blosc not available, skipping Blosc compressor tests')
 else:
 
@@ -104,7 +104,7 @@ class TestBZ2Compressor(unittest.TestCase, CompressorTests):
 
 try:
     import lzma
-except ImportError:
+except ImportError:  # pragma: no cover
     print('LZMA not available, skipping LZMA compressor tests')
 else:
 

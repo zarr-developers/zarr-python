@@ -12,7 +12,8 @@ import numpy as np
 from numpy.testing import assert_array_equal
 from nose.tools import eq_ as eq, assert_is_instance, \
     assert_raises, assert_true, assert_false, assert_is, assert_is_none
-from zarr.storage import DirectoryStore, ZipStore, init_array, init_group
+from zarr.storage import DirectoryStore, ZipStore, init_array, init_group, \
+    buffersize
 
 
 from zarr.core import Array
@@ -58,11 +59,12 @@ class TestArray(unittest.TestCase):
             Array(store, path='baz')
 
     @staticmethod
-    def create_array(store=None, path=None, readonly=False, **kwargs):
+    def create_array(store=None, readonly=False, chunk_store=None, **kwargs):
         if store is None:
             store = dict()
-        init_array(store, path=path, **kwargs)
-        return Array(store, path=path, readonly=readonly)
+        init_array(store, path=None, chunk_store=chunk_store, **kwargs)
+        return Array(store, path=None, readonly=readonly,
+                     chunk_store=chunk_store)
 
     def test_nbytes_stored(self):
 
@@ -86,14 +88,30 @@ class TestArray(unittest.TestCase):
         z[:] = 42
         eq(-1, z.nbytes_stored)
 
+        store = dict()
+        chunk_store = CustomMapping()
+        z = self.create_array(store=store, chunk_store=chunk_store,
+                              shape=1000, chunks=100)
+        eq(-1, z.nbytes_stored)
+        z[:] = 42
+        eq(-1, z.nbytes_stored)
+
         # dict as store
         store = dict()
         z = self.create_array(store=store, shape=1000, chunks=100)
-        eq(sum(len(v) for v in store.values()), z.nbytes_stored)
+        expect_nbytes_stored = sum(buffersize(v) for v in z.store.values())
+        if z.store != z.chunk_store:
+            expect_nbytes_stored += sum(buffersize(v) for v in
+                                        z.chunk_store.values())
+        eq(expect_nbytes_stored, z.nbytes_stored)
         z[:] = 42
-        eq(sum(len(v) for v in store.values()), z.nbytes_stored)
+        expect_nbytes_stored = sum(buffersize(v) for v in z.store.values())
+        if z.store != z.chunk_store:
+            expect_nbytes_stored += sum(buffersize(v) for v in
+                                        z.chunk_store.values())
+        eq(expect_nbytes_stored, z.nbytes_stored)
         # mess with store
-        store['foo'] = list(range(10))
+        store[z._key_prefix + 'foo'] = list(range(10))
         eq(-1, z.nbytes_stored)
 
         # for comparison
@@ -149,7 +167,11 @@ class TestArray(unittest.TestCase):
 
         # check properties
         eq(a.nbytes, z.nbytes)
-        eq(sum(len(v) for v in z.store.values()), z.nbytes_stored)
+        expect_nbytes_stored = sum(buffersize(v) for v in z.store.values())
+        if z.store != z.chunk_store:
+            expect_nbytes_stored += sum(buffersize(v) for v in
+                                        z.chunk_store.values())
+        eq(expect_nbytes_stored, z.nbytes_stored)
         eq(11, z.initialized)
 
         # check slicing
@@ -226,7 +248,10 @@ class TestArray(unittest.TestCase):
 
         # check properties
         eq(a.nbytes, z.nbytes)
-        eq(sum(len(v) for v in z.store.values()), z.nbytes_stored)
+        expect_nbytes_stored = sum(buffersize(v) for v in z.store.values())
+        if z.store != z.chunk_store:
+            expect_nbytes_stored += sum(buffersize(v) for v in
+                                        z.chunk_store.values())
         eq(50, z.initialized)
 
         # check slicing
@@ -514,7 +539,6 @@ class TestArray(unittest.TestCase):
     def test_repr(self):
         if not PY2:
 
-            # no path
             z = self.create_array(shape=100, chunks=10, dtype='f4',
                                   compression='zlib', compression_opts=1)
             expect = """zarr.core.Array((100,), float32, chunks=(10,), order=C)
@@ -526,14 +550,57 @@ class TestArray(unittest.TestCase):
             for l1, l2 in zip(expect.split('\n'), actual.split('\n')):
                 eq(l1, l2)
 
-            # with path
-            z = self.create_array(path='foo/bar', shape=100, chunks=10, dtype='f4',
+
+class TestArrayWithPath(TestArray):
+
+    @staticmethod
+    def create_array(store=None, readonly=False, chunk_store=None, **kwargs):
+        if store is None:
+            store = dict()
+        init_array(store, path='foo/bar', chunk_store=chunk_store, **kwargs)
+        return Array(store, path='foo/bar', readonly=readonly,
+                     chunk_store=chunk_store)
+
+    def test_repr(self):
+        if not PY2:
+
+            z = self.create_array(shape=100, chunks=10, dtype='f4',
                                   compression='zlib', compression_opts=1)
             # flake8: noqa
             expect = """zarr.core.Array(/foo/bar, (100,), float32, chunks=(10,), order=C)
   compression: zlib; compression_opts: 1
   nbytes: 400; nbytes_stored: 210; ratio: 1.9; initialized: 0/10
   store: builtins.dict
+"""
+            actual = repr(z)
+            for l1, l2 in zip(expect.split('\n'), actual.split('\n')):
+                eq(l1, l2)
+
+
+class TestArrayWithChunkStore(TestArray):
+
+    @staticmethod
+    def create_array(store=None, readonly=False, chunk_store=None, **kwargs):
+        if store is None:
+            store = dict()
+        if chunk_store is None:
+            # separate chunk store
+            chunk_store = dict()
+        init_array(store, path='foo/bar', chunk_store=chunk_store, **kwargs)
+        return Array(store, path='foo/bar', readonly=readonly,
+                     chunk_store=chunk_store)
+
+    def test_repr(self):
+        if not PY2:
+
+            z = self.create_array(shape=100, chunks=10, dtype='f4',
+                                  compression='zlib', compression_opts=1)
+            # flake8: noqa
+            expect = """zarr.core.Array(/foo/bar, (100,), float32, chunks=(10,), order=C)
+  compression: zlib; compression_opts: 1
+  nbytes: 400; nbytes_stored: 210; ratio: 1.9; initialized: 0/10
+  store: builtins.dict
+  chunk_store: builtins.dict
 """
             actual = repr(z)
             for l1, l2 in zip(expect.split('\n'), actual.split('\n')):

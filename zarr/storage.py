@@ -89,11 +89,36 @@ def listdir(store, path=None):
     else:
         # slow version, iterate through all keys
         return _listdir_from_keys(store, path)
+    
+    
+def getsize(store, path=None):
+    """Compute size of stored items for a given path."""
+    path = normalize_storage_path(path)
+    if hasattr(store, 'getsize'):
+        # pass through
+        return store.getsize(path)
+    elif isinstance(store, dict):
+        # compute from size of values
+        prefix = _path_to_prefix(path)
+        size = 0
+        for k in listdir(store, path):
+            try:
+                v = store[prefix + k]
+            except KeyError:
+                pass
+            else:
+                try:
+                    size += buffersize(v)
+                except TypeError:
+                    return -1
+        return size
+    else:
+        return -1
 
 
 def init_array(store, shape, chunks, dtype=None, compression='default',
                compression_opts=None, fill_value=None,
-               order='C', overwrite=False, path=None):
+               order='C', overwrite=False, path=None, chunk_store=None):
     """initialize an array store with the given configuration.
 
     Parameters
@@ -120,6 +145,9 @@ def init_array(store, shape, chunks, dtype=None, compression='default',
         If True, erase all data in `store` prior to initialisation.
     path : string, optional
         Path under which array is stored.
+    chunk_store : MutableMapping, optional
+        Separate storage for chunks. If not provided, `store` will be used
+        for storage of both chunks and metadata.
 
     Examples
     --------
@@ -201,6 +229,8 @@ def init_array(store, shape, chunks, dtype=None, compression='default',
     if overwrite:
         # attempt to delete any pre-existing items in store
         rmdir(store, path)
+        if chunk_store is not None and chunk_store != store:
+            rmdir(chunk_store, path)
     elif contains_array(store, path):
         raise ValueError('store contains an array')
     elif contains_group(store, path):
@@ -233,7 +263,7 @@ def init_array(store, shape, chunks, dtype=None, compression='default',
 init_store = init_array
 
 
-def init_group(store, overwrite=False, path=None):
+def init_group(store, overwrite=False, path=None, chunk_store=None):
     """initialize a group store.
 
     Parameters
@@ -244,6 +274,9 @@ def init_group(store, overwrite=False, path=None):
         If True, erase all data in `store` prior to initialisation.
     path : string, optional
         Path under which array is stored.
+    chunk_store : MutableMapping, optional
+        Separate storage for chunks. If not provided, `store` will be used
+        for storage of both chunks and metadata.
 
     """
 
@@ -254,6 +287,8 @@ def init_group(store, overwrite=False, path=None):
     if overwrite:
         # attempt to delete any pre-existing items in store
         rmdir(store, path)
+        if chunk_store is not None and chunk_store != store:
+            rmdir(chunk_store, path)
     elif contains_array(store, path):
         raise ValueError('store contains an array')
     elif contains_group(store, path):

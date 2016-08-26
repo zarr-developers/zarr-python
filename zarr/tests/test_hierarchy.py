@@ -5,6 +5,7 @@ import tempfile
 import atexit
 import shutil
 import os
+import pickle
 
 
 from nose.tools import assert_raises, eq_ as eq, assert_is, assert_true, \
@@ -14,12 +15,13 @@ from numpy.testing import assert_array_equal
 
 
 from zarr.storage import DictStore, DirectoryStore, ZipStore, init_group, \
-    init_array
+    init_array, attrs_key, array_meta_key, group_meta_key
 from zarr.core import Array
 from zarr.hierarchy import Group, group, open_group
 from zarr.attrs import Attributes
 from zarr.errors import ReadOnlyError
 from zarr.creation import open_array
+from zarr.compat import PY2
 
 
 # noinspection PyStatementEffect
@@ -27,16 +29,13 @@ class TestGroup(unittest.TestCase):
 
     @staticmethod
     def create_store():
-        """
-        :rtype: MutableMapping
-        """
         # override in sub-classes
-        return dict()
+        return dict(), None
 
     def test_group_init_1(self):
-        store = self.create_store()
-        init_group(store)
-        g = Group(store)
+        store, chunk_store = self.create_store()
+        init_group(store, chunk_store=chunk_store)
+        g = Group(store, chunk_store=chunk_store)
         assert_is(store, g.store)
         assert_false(g.readonly)
         eq('', g.path)
@@ -44,9 +43,10 @@ class TestGroup(unittest.TestCase):
         assert_is_instance(g.attrs, Attributes)
 
     def test_group_init_2(self):
-        store = self.create_store()
-        init_group(store, path='/foo/bar/')
-        g = Group(store, path='/foo/bar/', readonly=True)
+        store, chunk_store = self.create_store()
+        init_group(store, path='/foo/bar/', chunk_store=chunk_store)
+        g = Group(store, path='/foo/bar/', readonly=True,
+                  chunk_store=chunk_store)
         assert_is(store, g.store)
         assert_true(g.readonly)
         eq('foo/bar', g.path)
@@ -54,20 +54,20 @@ class TestGroup(unittest.TestCase):
         assert_is_instance(g.attrs, Attributes)
 
     def test_group_init_errors_1(self):
-        store = self.create_store()
+        store, chunk_store = self.create_store()
         with assert_raises(ValueError):
-            Group(store)
+            Group(store, chunk_store=chunk_store)
 
     def test_group_init_errors_2(self):
-        store = self.create_store()
-        init_array(store, shape=1000, chunks=100)
+        store, chunk_store = self.create_store()
+        init_array(store, shape=1000, chunks=100, chunk_store=chunk_store)
         with assert_raises(ValueError):
-            Group(store)
+            Group(store, chunk_store=chunk_store)
 
     def test_create_group(self):
-        store = self.create_store()
-        init_group(store)
-        g1 = Group(store=store)
+        store, chunk_store = self.create_store()
+        init_group(store, chunk_store=chunk_store)
+        g1 = Group(store=store, chunk_store=chunk_store)
 
         # check root group
         eq('', g1.path)
@@ -119,9 +119,9 @@ class TestGroup(unittest.TestCase):
         eq(g7.path, 'z')
 
     def test_require_group(self):
-        store = self.create_store()
-        init_group(store)
-        g1 = Group(store=store)
+        store, chunk_store = self.create_store()
+        init_group(store, chunk_store=chunk_store)
+        g1 = Group(store=store, chunk_store=chunk_store)
 
         # test creation
         g2 = g1.require_group('foo')
@@ -162,9 +162,9 @@ class TestGroup(unittest.TestCase):
         eq(g7.path, 'z')
 
     def test_create_dataset(self):
-        store = self.create_store()
-        init_group(store)
-        g = Group(store=store)
+        store, chunk_store = self.create_store()
+        init_group(store, chunk_store=chunk_store)
+        g = Group(store=store, chunk_store=chunk_store)
 
         # create as immediate child
         d1 = g.create_dataset('foo', shape=1000, chunks=100)
@@ -204,9 +204,9 @@ class TestGroup(unittest.TestCase):
         assert_is(store, d3.store)
 
     def test_require_dataset(self):
-        store = self.create_store()
-        init_group(store)
-        g = Group(store=store)
+        store, chunk_store = self.create_store()
+        init_group(store, chunk_store=chunk_store)
+        g = Group(store=store, chunk_store=chunk_store)
 
         # create
         d1 = g.require_dataset('foo', shape=1000, chunks=100, dtype='f4')
@@ -250,11 +250,11 @@ class TestGroup(unittest.TestCase):
                               exact=True)
 
     def test_create_errors(self):
-        store = self.create_store()
-        init_group(store)
+        store, chunk_store = self.create_store()
+        init_group(store, chunk_store=chunk_store)
 
         # array obstructs group, array
-        g = Group(store=store)
+        g = Group(store=store, chunk_store=chunk_store)
         g.create_dataset('foo', shape=100, chunks=10)
         with assert_raises(KeyError):
             g.create_group('foo/bar')
@@ -292,7 +292,7 @@ class TestGroup(unittest.TestCase):
         assert not hasattr(d, 'shuffle')
 
         # read-only
-        g = Group(store=store, readonly=True)
+        g = Group(store=store, readonly=True, chunk_store=chunk_store)
         with assert_raises(ReadOnlyError):
             g.create_group('zzz')
         with assert_raises(ReadOnlyError):
@@ -304,9 +304,9 @@ class TestGroup(unittest.TestCase):
 
     def test_getitem_contains_iterators(self):
         # setup
-        store = self.create_store()
-        init_group(store)
-        g1 = Group(store=store)
+        store, chunk_store = self.create_store()
+        init_group(store, chunk_store=chunk_store)
+        g1 = Group(store=store, chunk_store=chunk_store)
         g2 = g1.create_group('foo/bar')
         d1 = g2.create_dataset('/a/b/c', shape=1000, chunks=100)
         d1[:] = np.arange(1000)
@@ -413,9 +413,9 @@ class TestGroup(unittest.TestCase):
 
     def test_empty_getitem_contains_iterators(self):
         # setup
-        store = self.create_store()
-        init_group(store)
-        g = Group(store=store)
+        store, chunk_store = self.create_store()
+        init_group(store, chunk_store=chunk_store)
+        g = Group(store=store, chunk_store=chunk_store)
 
         # test
         eq([], list(g))
@@ -424,9 +424,9 @@ class TestGroup(unittest.TestCase):
         assert 'foo' not in g
 
     def test_group_repr(self):
-        store = self.create_store()
-        init_group(store)
-        g = Group(store=store)
+        store, chunk_store = self.create_store()
+        init_group(store, chunk_store=chunk_store)
+        g = Group(store=store, chunk_store=chunk_store)
         store_class = '%s.%s' % (dict.__module__, dict.__name__)
         expect = 'zarr.hierarchy.Group(/, 0)\n  store: %s' % store_class
         actual = repr(g)
@@ -448,16 +448,16 @@ class TestGroup(unittest.TestCase):
         eq(expect, actual)
 
     def test_setitem(self):
-        store = self.create_store()
-        init_group(store)
-        g = Group(store=store)
+        store, chunk_store = self.create_store()
+        init_group(store, chunk_store=chunk_store)
+        g = Group(store=store, chunk_store=chunk_store)
         with assert_raises(TypeError):
             g['foo'] = 'bar'
 
     def test_array_creation(self):
-        store = self.create_store()
-        init_group(store)
-        grp = Group(store=store)
+        store, chunk_store = self.create_store()
+        init_group(store, chunk_store=chunk_store)
+        grp = Group(store=store, chunk_store=chunk_store)
 
         a = grp.create('a', shape=100, chunks=10)
         assert_is_instance(a, Array)
@@ -491,7 +491,7 @@ class TestGroup(unittest.TestCase):
         assert_is_instance(j, Array)
         assert_array_equal(np.arange(100), j[:])
 
-        grp = Group(store=store, readonly=True)
+        grp = Group(store=store, readonly=True, chunk_store=chunk_store)
         with assert_raises(ReadOnlyError):
             grp.create('aa', shape=100, chunks=10)
         with assert_raises(ReadOnlyError):
@@ -516,9 +516,9 @@ class TestGroup(unittest.TestCase):
             grp.full_like('aa', a)
 
     def test_paths(self):
-        store = self.create_store()
-        init_group(store)
-        g1 = Group(store=store)
+        store, chunk_store = self.create_store()
+        init_group(store, chunk_store=chunk_store)
+        g1 = Group(store=store, chunk_store=chunk_store)
         g2 = g1.create_group('foo/bar')
 
         eq(g1, g1['/'])
@@ -536,70 +536,140 @@ class TestGroup(unittest.TestCase):
         eq(g2, g2['/foo/bar'])
 
         with assert_raises(ValueError):
-            g1['']
             g1['.']
+        with assert_raises(ValueError):
             g1['..']
+        with assert_raises(ValueError):
             g1['foo/.']
+        with assert_raises(ValueError):
             g1['foo/..']
+        with assert_raises(ValueError):
             g1['foo/./bar']
+        with assert_raises(ValueError):
             g1['foo/../bar']
 
+    def test_pickle(self):
+        # setup
+        store, chunk_store = self.create_store()
+        init_group(store, chunk_store=chunk_store)
+        g = Group(store=store, chunk_store=chunk_store)
+        d = g.create_dataset('foo/bar', shape=100, chunks=10)
+        d[:] = np.arange(100)
 
-class TestGroupDictStore(TestGroup):
+        # pickle round trip
+        g2 = pickle.loads(pickle.dumps(g))
+        eq(g.path, g2.path)
+        eq(g.name, g2.name)
+        eq(len(g), len(g2))
+        eq(list(g), list(g2))
+        eq(g['foo'], g2['foo'])
+        eq(g['foo/bar'], g2['foo/bar'])
+
+
+class TestGroupWithDictStore(TestGroup):
 
     @staticmethod
     def create_store():
-        return DictStore()
+        return DictStore(), None
 
     def test_group_repr(self):
-        store = self.create_store()
-        init_group(store)
-        g = Group(store=store)
+        store, chunk_store = self.create_store()
+        init_group(store, chunk_store=chunk_store)
+        g = Group(store=store, chunk_store=chunk_store)
         expect = 'zarr.hierarchy.Group(/, 0)\n  store: zarr.storage.DictStore'
         actual = repr(g)
-        eq(expect, actual)
+        for l1, l2 in zip(expect.split('\n'), actual.split('\n')):
+            eq(l1, l2)
 
 
-def rmtree_if_exists(path, rmtree=shutil.rmtree, isdir=os.path.isdir):
-    if isdir(path):
-        rmtree(path)
+def rmtree(p, f=shutil.rmtree, g=os.path.isdir):  # pragma: no cover
+    """Version of rmtree that will work atexit and only remove if directory."""
+    if g(p):
+        f(p)
 
 
-class TestGroupDirectoryStore(TestGroup):
+class TestGroupWithDirectoryStore(TestGroup):
 
     @staticmethod
     def create_store():
         path = tempfile.mkdtemp()
-        atexit.register(rmtree_if_exists, path)
+        atexit.register(rmtree, path)
         store = DirectoryStore(path)
-        return store
+        return store, None
 
     def test_group_repr(self):
-        store = self.create_store()
-        init_group(store)
-        g = Group(store=store)
+        store, chunk_store = self.create_store()
+        init_group(store, chunk_store=chunk_store)
+        g = Group(store=store, chunk_store=chunk_store)
         expect = 'zarr.hierarchy.Group(/, 0)\n' \
                  '  store: zarr.storage.DirectoryStore'
         actual = repr(g)
-        eq(expect, actual)
+        for l1, l2 in zip(expect.split('\n'), actual.split('\n')):
+            eq(l1, l2)
 
 
-class TestGroupZipStore(TestGroup):
+class TestGroupWithZipStore(TestGroup):
 
     @staticmethod
     def create_store():
         path = tempfile.mktemp(suffix='.zip')
         atexit.register(os.remove, path)
         store = ZipStore(path)
-        return store
+        return store, None
 
     def test_group_repr(self):
-        store = self.create_store()
-        init_group(store)
-        g = Group(store=store)
+        store, chunk_store = self.create_store()
+        init_group(store, chunk_store=chunk_store)
+        g = Group(store=store, chunk_store=chunk_store)
         expect = 'zarr.hierarchy.Group(/, 0)\n' \
                  '  store: zarr.storage.ZipStore'
         actual = repr(g)
+        for l1, l2 in zip(expect.split('\n'), actual.split('\n')):
+            eq(l1, l2)
+
+
+class TestGroupWithChunkStore(TestGroup):
+
+    @staticmethod
+    def create_store():
+        return dict(), dict()
+
+    def test_group_repr(self):
+        if not PY2:
+            store, chunk_store = self.create_store()
+            init_group(store, chunk_store=chunk_store)
+            g = Group(store=store, chunk_store=chunk_store)
+            expect = 'zarr.hierarchy.Group(/, 0)\n' \
+                     '  store: builtins.dict\n' \
+                     '  chunk_store: builtins.dict'
+            actual = repr(g)
+            for l1, l2 in zip(expect.split('\n'), actual.split('\n')):
+                eq(l1, l2)
+
+    def test_chunk_store(self):
+        # setup
+        store, chunk_store = self.create_store()
+        init_group(store=store, chunk_store=chunk_store, overwrite=True)
+        g = Group(store=store, chunk_store=chunk_store)
+
+        # check attributes
+        assert_is(store, g.store)
+        assert_is(chunk_store, g.chunk_store)
+
+        # create array
+        a = g.zeros('foo', shape=100, chunks=10)
+        assert_is(store, a.store)
+        assert_is(chunk_store, a.chunk_store)
+        a[:] = np.arange(100)
+        assert_array_equal(np.arange(100), a[:])
+
+        # check store keys
+        expect = sorted([attrs_key, group_meta_key, 'foo/' + attrs_key,
+                         'foo/' + array_meta_key])
+        actual = sorted(store.keys())
+        eq(expect, actual)
+        expect = ['foo/' + str(i) for i in range(10)]
+        actual = sorted(chunk_store.keys())
         eq(expect, actual)
 
 

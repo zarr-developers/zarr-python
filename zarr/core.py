@@ -11,8 +11,7 @@ from zarr.compressors import get_compressor_cls
 from zarr.util import is_total_slice, normalize_array_selection, \
     get_chunk_range, human_readable_size, normalize_resize_args, \
     normalize_storage_path
-from zarr.storage import array_meta_key, attrs_key, listdir, contains_group, \
-    buffersize
+from zarr.storage import array_meta_key, attrs_key, listdir, getsize
 from zarr.meta import decode_array_metadata, encode_array_metadata
 from zarr.attrs import Attributes
 from zarr.errors import ReadOnlyError
@@ -30,6 +29,9 @@ class Array(object):
         Storage path.
     readonly : bool, optional
         True if array should be protected against modification.
+    chunk_store : MutableMapping, optional
+        Separate storage for chunks. If not provided, `store` will be used
+        for storage of both chunks and metadata.
 
     Attributes
     ----------
@@ -37,6 +39,7 @@ class Array(object):
     path
     name
     readonly
+    chunk_store
     shape
     chunks
     dtype
@@ -61,7 +64,7 @@ class Array(object):
 
     """  # flake8: noqa
 
-    def __init__(self, store, path=None, readonly=False):
+    def __init__(self, store, path=None, readonly=False, chunk_store=None):
         # N.B., expect at this point store is fully initialized with all
         # configuration metadata fully specified and normalized
 
@@ -72,6 +75,10 @@ class Array(object):
         else:
             self._key_prefix = ''
         self._readonly = readonly
+        if chunk_store is None:
+            self._chunk_store = store
+        else:
+            self._chunk_store = chunk_store
 
         # initialize metadata
         try:
@@ -129,6 +136,12 @@ class Array(object):
     def readonly(self):
         """A boolean, True if modification operations are not permitted."""
         return self._readonly
+
+    @property
+    def chunk_store(self):
+        """A MutableMapping providing the underlying storage for array
+        chunks."""
+        return self._chunk_store
 
     @property
     def shape(self):
@@ -196,29 +209,22 @@ class Array(object):
     def nbytes_stored(self):
         """The total number of stored bytes of data for the array. This
         includes storage required for configuration metadata and user
-        attributes encoded as JSON."""
-        if hasattr(self._store, 'getsize'):
-            # pass through
-            return self._store.getsize(self._path)
-        elif isinstance(self._store, dict):
-            # compute from size of values
-            size = 0
-            for k in listdir(self._store, self._path):
-                v = self._store[self._key_prefix + k]
-                try:
-                    size += buffersize(v)
-                except TypeError:
-                    return -1
-            return size
+        attributes."""
+        m = getsize(self._store, self._path)
+        if self._store == self._chunk_store:
+            return m
         else:
-            return -1
+            n = getsize(self._chunk_store, self._path)
+            if m < 0 or n < 0:
+                return -1
+            else:
+                return m + n
 
     @property
     def initialized(self):
         """The number of chunks that have been initialized with some data."""
-        n = sum(1 for _ in listdir(self._store, self._path))
-        # N.B., expect meta and attrs keys in store also, so subtract 2
-        return n - 2
+        return sum(1 for k in listdir(self._chunk_store, self._path)
+                   if k not in [array_meta_key, attrs_key])
 
     @property
     def cdata_shape(self):
@@ -509,7 +515,7 @@ class Array(object):
 
             # obtain compressed data for chunk
             ckey = self._ckey(cidx)
-            cdata = self._store[ckey]
+            cdata = self._chunk_store[ckey]
 
         except KeyError:
 
@@ -584,7 +590,7 @@ class Array(object):
 
                 # obtain compressed data for chunk
                 ckey = self._ckey(cidx)
-                cdata = self._store[ckey]
+                cdata = self._chunk_store[ckey]
 
             except KeyError:
 
@@ -609,7 +615,7 @@ class Array(object):
 
         # store
         ckey = self._ckey(cidx)
-        self._store[ckey] = cdata
+        self._chunk_store[ckey] = cdata
 
     def _ckey(self, cidx):
         return self._key_prefix + '.'.join(map(str, cidx))
@@ -634,10 +640,14 @@ class Array(object):
         r += '; initialized: %s/%s' % (self.initialized, n_chunks)
         r += '\n  store: %s.%s' % (type(self.store).__module__,
                                    type(self.store).__name__)
+        if self._store != self._chunk_store:
+            r += '\n  chunk_store: %s.%s' % \
+                 (type(self._chunk_store).__module__,
+                  type(self._chunk_store).__name__)
         return r
 
     def __getstate__(self):
-        return self._store, self._path, self._readonly
+        return self._store, self._path, self._readonly, self._chunk_store
 
     def __setstate__(self, state):
         self.__init__(*state)
@@ -691,13 +701,13 @@ class Array(object):
                                 for s, c in zip(new_shape, chunks))
 
         # remove any chunks not within range
-        for key in list(self._store):
+        for key in listdir(self._chunk_store, self._path):
             if key not in [array_meta_key, attrs_key]:
                 cidx = map(int, key.split('.'))
                 if all(i < c for i, c in zip(cidx, new_cdata_shape)):
                     pass  # keep the chunk
                 else:
-                    del self._store[key]
+                    del self._chunk_store[self._key_prefix + key]
 
         # update metadata
         self._shape = new_shape

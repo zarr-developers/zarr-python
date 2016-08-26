@@ -104,9 +104,11 @@ class SynchronizedArray(Array):
 
     """  # flake8: noqa
 
-    def __init__(self, store, synchronizer, readonly=False, path=None):
+    def __init__(self, store, synchronizer, readonly=False, path=None,
+                 chunk_store=None):
         super(SynchronizedArray, self).__init__(store, readonly=readonly,
-                                                path=path)
+                                                path=path,
+                                                chunk_store=chunk_store)
         self.synchronizer = synchronizer
         akey = self._key_prefix + attrs_key
         self._attrs = SynchronizedAttributes(store, synchronizer, key=akey,
@@ -125,7 +127,8 @@ class SynchronizedArray(Array):
         return r
 
     def __getstate__(self):
-        return self._store, self.synchronizer, self._readonly
+        return self._store, self.synchronizer, self._readonly, self._path, \
+               self._chunk_store
 
     def __setstate__(self, state):
         self.__init__(*state)

@@ -29,6 +29,9 @@ class Group(Mapping):
         Storage path.
     readonly : bool, optional
         True if group should be protected against modification.
+    chunk_store : MutableMapping, optional
+        Separate storage for chunks. If not provided, `store` will be used 
+        for storage of both chunks and metadata.
 
     Attributes
     ----------
@@ -36,6 +39,7 @@ class Group(Mapping):
     path
     name
     readonly
+    chunk_store
     attrs
 
     Methods
@@ -67,7 +71,7 @@ class Group(Mapping):
 
     """
 
-    def __init__(self, store, path=None, readonly=False):
+    def __init__(self, store, path=None, readonly=False, chunk_store=None):
 
         self._store = store
         self._path = normalize_storage_path(path)
@@ -76,6 +80,10 @@ class Group(Mapping):
         else:
             self._key_prefix = ''
         self._readonly = readonly
+        if chunk_store is None:
+            self._chunk_store = store
+        else:
+            self._chunk_store = chunk_store
 
         # guard conditions
         if contains_array(store, path=self._path):
@@ -106,20 +114,26 @@ class Group(Mapping):
         return self._path
 
     @property
+    def name(self):
+        """Group name following h5py convention."""
+        if self._path:
+            # follow h5py convention: add leading slash
+            name = self._path
+            if name[0] != '/':
+                name = '/' + name
+            return name
+        return '/'
+
+    @property
     def readonly(self):
         """A boolean, True if modification operations are not permitted."""
         return self._readonly
 
     @property
-    def name(self):
-        """Group name following h5py convention."""
-        if self.path:
-            # follow h5py convention: add leading slash
-            name = self.path
-            if name[0] != '/':
-                name = '/' + name
-            return name
-        return '/'
+    def chunk_store(self):
+        """A MutableMapping providing the underlying storage for array 
+        chunks."""
+        return self._chunk_store
 
     @property
     def attrs(self):
@@ -130,9 +144,9 @@ class Group(Mapping):
     def __eq__(self, other):
         return (
             isinstance(other, Group) and
-            self.store == other.store and
-            self.readonly == other.readonly and
-            self.path == other.path
+            self._store == other.store and
+            self._readonly == other.readonly and
+            self._path == other.path
             # N.B., no need to compare attributes, should be covered by
             # store comparison
         )
@@ -156,10 +170,10 @@ class Group(Mapping):
         quux
 
         """
-        for key in sorted(listdir(self.store, self.path)):
-            path = self.path + '/' + key
-            if (contains_array(self.store, path) or
-                    contains_group(self.store, path)):
+        for key in sorted(listdir(self._store, self._path)):
+            path = self._key_prefix + key
+            if (contains_array(self._store, path) or
+                    contains_group(self._store, path)):
                 yield key
 
     def __len__(self):
@@ -187,7 +201,17 @@ class Group(Mapping):
             r += groups_line
         r += '\n  store: %s.%s' % (type(self._store).__module__,
                                    type(self._store).__name__)
+        if self._store != self._chunk_store:
+            r += '\n  chunk_store: %s.%s' % \
+                 (type(self._chunk_store).__module__,
+                  type(self._chunk_store).__name__)
         return r
+
+    def __getstate__(self):
+        return self._store, self._path, self._readonly, self._chunk_store
+
+    def __setstate__(self, state):
+        self.__init__(*state)
 
     def _item_path(self, item):
         if item and item[0] == '/':
@@ -196,8 +220,8 @@ class Group(Mapping):
         else:
             # relative path
             path = normalize_storage_path(item)
-            if self.path:
-                path = self.path + '/' + path
+            if self._path:
+                path = self._key_prefix + path
         return path
 
     def __contains__(self, item):
@@ -218,8 +242,8 @@ class Group(Mapping):
 
         """
         path = self._item_path(item)
-        return contains_array(self.store, path) or \
-            contains_group(self.store, path)
+        return contains_array(self._store, path) or \
+            contains_group(self._store, path)
 
     def __getitem__(self, item):
         """Obtain a group member.
@@ -250,10 +274,12 @@ class Group(Mapping):
 
         """  # flake8: noqa
         path = self._item_path(item)
-        if contains_array(self.store, path):
-            return Array(self.store, readonly=self.readonly, path=path)
-        elif contains_group(self.store, path):
-            return Group(self.store, readonly=self.readonly, path=path)
+        if contains_array(self._store, path):
+            return Array(self._store, readonly=self._readonly, path=path, 
+                         chunk_store=self._chunk_store)
+        elif contains_group(self._store, path):
+            return Group(self._store, readonly=self._readonly, path=path, 
+                         chunk_store=self._chunk_store)
         else:
             raise KeyError(item)
 
@@ -272,9 +298,9 @@ class Group(Mapping):
         ['bar', 'foo']
 
         """
-        for key in sorted(listdir(self.store, self.path)):
-            path = self.path + '/' + key
-            if contains_group(self.store, path):
+        for key in sorted(listdir(self._store, self._path)):
+            path = self._key_prefix + key
+            if contains_group(self._store, path):
                 yield key
 
     def groups(self):
@@ -294,10 +320,12 @@ class Group(Mapping):
         foo <class 'zarr.hierarchy.Group'>
 
         """
-        for key in sorted(listdir(self.store, self.path)):
-            path = self.path + '/' + key
-            if contains_group(self.store, path):
-                yield key, Group(self.store, path=path, readonly=self.readonly)
+        for key in sorted(listdir(self._store, self._path)):
+            path = self._key_prefix + key
+            if contains_group(self._store, path):
+                yield key, Group(self._store, path=path,
+                                 readonly=self._readonly,
+                                 chunk_store=self._chunk_store)
 
     def array_keys(self):
         """Return an iterator over member names for arrays only.
@@ -314,9 +342,9 @@ class Group(Mapping):
         ['baz', 'quux']
 
         """
-        for key in sorted(listdir(self.store, self.path)):
-            path = self.path + '/' + key
-            if contains_array(self.store, path):
+        for key in sorted(listdir(self._store, self._path)):
+            path = self._key_prefix + key
+            if contains_array(self._store, path):
                 yield key
 
     def arrays(self):
@@ -336,10 +364,12 @@ class Group(Mapping):
         quux <class 'zarr.core.Array'>
 
         """
-        for key in sorted(listdir(self.store, self.path)):
-            path = self.path + '/' + key
-            if contains_array(self.store, path):
-                yield key, Array(self.store, path=path, readonly=self.readonly)
+        for key in sorted(listdir(self._store, self._path)):
+            path = self._key_prefix + key
+            if contains_array(self._store, path):
+                yield key, Array(self._store, path=path,
+                                 readonly=self._readonly,
+                                 chunk_store=self._chunk_store)
 
     def create_group(self, name):
         """Create a sub-group.
@@ -363,7 +393,7 @@ class Group(Mapping):
 
         """
 
-        if self.readonly:
+        if self._readonly:
             raise ReadOnlyError('group is read-only')
 
         path = self._item_path(name)
@@ -372,19 +402,20 @@ class Group(Mapping):
         segments = path.split('/')
         for i in range(len(segments)):
             p = '/'.join(segments[:i])
-            if contains_array(self.store, p):
+            if contains_array(self._store, p):
                 raise KeyError(name)
-            elif not contains_group(self.store, p):
-                init_group(self.store, path=p)
+            elif not contains_group(self._store, p):
+                init_group(self._store, path=p, chunk_store=self._chunk_store)
 
         # create terminal group
-        if contains_array(self.store, path):
+        if contains_array(self._store, path):
             raise KeyError(name)
-        if contains_group(self.store, path):
+        if contains_group(self._store, path):
             raise KeyError(name)
         else:
-            init_group(self.store, path=path)
-            return Group(self.store, path=path, readonly=self.readonly)
+            init_group(self._store, path=path, chunk_store=self._chunk_store)
+            return Group(self._store, path=path, readonly=self._readonly,
+                         chunk_store=self._chunk_store)
 
     def create_groups(self, *names):
         """Convenience method to create multiple groups in a single call."""
@@ -419,14 +450,15 @@ class Group(Mapping):
         segments = path.split('/')
         for i in range(len(segments) + 1):
             p = '/'.join(segments[:i])
-            if contains_array(self.store, p):
+            if contains_array(self._store, p):
                 raise KeyError(name)
-            elif not contains_group(self.store, p):
-                if self.readonly:
+            elif not contains_group(self._store, p):
+                if self._readonly:
                     raise ReadOnlyError('group is read-only')
-                init_group(self.store, path=p)
+                init_group(self._store, path=p, chunk_store=self._chunk_store)
 
-        return Group(self.store, path=path, readonly=self.readonly)
+        return Group(self._store, path=path, readonly=self._readonly,
+                     chunk_store=self._chunk_store)
 
     def require_groups(self, *names):
         """Convenience method to require multiple groups in a single call."""
@@ -436,10 +468,10 @@ class Group(Mapping):
         segments = path.split('/')
         for i in range(len(segments)):
             p = '/'.join(segments[:i])
-            if contains_array(self.store, p):
+            if contains_array(self._store, p):
                 raise KeyError(path)
-            elif not contains_group(self.store, p):
-                init_group(self.store, path=p)
+            elif not contains_group(self._store, p):
+                init_group(self._store, path=p, chunk_store=self._chunk_store)
 
     def create_dataset(self, name, data=None, shape=None, chunks=None,
                        dtype=None, compression='default',
@@ -491,15 +523,15 @@ class Group(Mapping):
         """  # flake8: noqa
 
         # setup
-        if self.readonly:
+        if self._readonly:
             raise ReadOnlyError('group is read-only')
         path = self._item_path(name)
         self._require_parent_group(path)
 
         # guard conditions
-        if contains_array(self.store, path):
+        if contains_array(self._store, path):
             raise KeyError(name)
-        if contains_group(self.store, path):
+        if contains_group(self._store, path):
             raise KeyError(name)
 
         # N.B., additional kwargs are included in method signature to
@@ -518,16 +550,16 @@ class Group(Mapping):
                       compression=compression,
                       compression_opts=compression_opts,
                       fill_value=fill_value, order=order,
-                      synchronizer=synchronizer, store=self.store,
-                      path=path)
+                      synchronizer=synchronizer, store=self._store,
+                      path=path, chunk_store=self._chunk_store)
 
         else:
             a = create(shape=shape, chunks=chunks, dtype=dtype,
                        compression=compression,
                        compression_opts=compression_opts,
                        fill_value=fill_value, order=order,
-                       synchronizer=synchronizer, store=self.store,
-                       path=path)
+                       synchronizer=synchronizer, store=self._store,
+                       path=path, chunk_store=self._chunk_store)
 
         return a
 
@@ -551,8 +583,9 @@ class Group(Mapping):
 
         path = self._item_path(name)
 
-        if contains_array(self.store, path):
-            a = Array(self.store, path=path, readonly=self.readonly)
+        if contains_array(self._store, path):
+            a = Array(self._store, path=path, readonly=self._readonly,
+                      chunk_store=self._chunk_store)
             shape = normalize_shape(shape)
             if shape != a.shape:
                 raise TypeError('shapes do not match')
@@ -572,95 +605,105 @@ class Group(Mapping):
     def create(self, name, **kwargs):
         """Create an array. Keyword arguments as per
         :func:`zarr.creation.create`."""
-        if self.readonly:
+        if self._readonly:
             raise ReadOnlyError('group is read-only')
         path = self._item_path(name)
         self._require_parent_group(path)
-        return create(store=self.store, path=path, **kwargs)
+        return create(store=self._store, path=path,
+                      chunk_store=self._chunk_store, **kwargs)
 
     def empty(self, name, **kwargs):
         """Create an array. Keyword arguments as per
         :func:`zarr.creation.empty`."""
-        if self.readonly:
+        if self._readonly:
             raise ReadOnlyError('group is read-only')
         path = self._item_path(name)
         self._require_parent_group(path)
-        return empty(store=self.store, path=path, **kwargs)
+        return empty(store=self._store, path=path,
+                     chunk_store=self._chunk_store, **kwargs)
 
     def zeros(self, name, **kwargs):
         """Create an array. Keyword arguments as per
         :func:`zarr.creation.zeros`."""
-        if self.readonly:
+        if self._readonly:
             raise ReadOnlyError('group is read-only')
         path = self._item_path(name)
         self._require_parent_group(path)
-        return zeros(store=self.store, path=path, **kwargs)
+        return zeros(store=self._store, path=path,
+                     chunk_store=self._chunk_store, **kwargs)
 
     def ones(self, name, **kwargs):
         """Create an array. Keyword arguments as per
         :func:`zarr.creation.ones`."""
-        if self.readonly:
+        if self._readonly:
             raise ReadOnlyError('group is read-only')
         path = self._item_path(name)
         self._require_parent_group(path)
-        return ones(store=self.store, path=path, **kwargs)
+        return ones(store=self._store, path=path,
+                    chunk_store=self._chunk_store, **kwargs)
 
     def full(self, name, **kwargs):
         """Create an array. Keyword arguments as per
         :func:`zarr.creation.full`."""
-        if self.readonly:
+        if self._readonly:
             raise ReadOnlyError('group is read-only')
         path = self._item_path(name)
         self._require_parent_group(path)
-        return full(store=self.store, path=path, **kwargs)
+        return full(store=self._store, path=path,
+                    chunk_store=self._chunk_store, **kwargs)
 
     def array(self, name, data, **kwargs):
         """Create an array. Keyword arguments as per
         :func:`zarr.creation.array`."""
-        if self.readonly:
+        if self._readonly:
             raise ReadOnlyError('group is read-only')
         path = self._item_path(name)
         self._require_parent_group(path)
-        return array(data, store=self.store, path=path, **kwargs)
+        return array(data, store=self._store, path=path,
+                     chunk_store=self._chunk_store, **kwargs)
 
     def empty_like(self, name, data, **kwargs):
         """Create an array. Keyword arguments as per
         :func:`zarr.creation.empty_like`."""
-        if self.readonly:
+        if self._readonly:
             raise ReadOnlyError('group is read-only')
         path = self._item_path(name)
         self._require_parent_group(path)
-        return empty_like(data, store=self.store, path=path, **kwargs)
+        return empty_like(data, store=self._store, path=path,
+                          chunk_store=self._chunk_store, **kwargs)
 
     def zeros_like(self, name, data, **kwargs):
         """Create an array. Keyword arguments as per
         :func:`zarr.creation.zeros_like`."""
-        if self.readonly:
+        if self._readonly:
             raise ReadOnlyError('group is read-only')
         path = self._item_path(name)
         self._require_parent_group(path)
-        return zeros_like(data, store=self.store, path=path, **kwargs)
+        return zeros_like(data, store=self._store, path=path,
+                          chunk_store=self._chunk_store, **kwargs)
 
     def ones_like(self, name, data, **kwargs):
         """Create an array. Keyword arguments as per
         :func:`zarr.creation.ones_like`."""
-        if self.readonly:
+        if self._readonly:
             raise ReadOnlyError('group is read-only')
         path = self._item_path(name)
         self._require_parent_group(path)
-        return ones_like(data, store=self.store, path=path, **kwargs)
+        return ones_like(data, store=self._store, path=path,
+                         chunk_store=self._chunk_store, **kwargs)
 
     def full_like(self, name, data, **kwargs):
         """Create an array. Keyword arguments as per
         :func:`zarr.creation.full_like`."""
-        if self.readonly:
+        if self._readonly:
             raise ReadOnlyError('group is read-only')
         path = self._item_path(name)
         self._require_parent_group(path)
-        return full_like(data, store=self.store, path=path, **kwargs)
+        return full_like(data, store=self._store, path=path,
+                         chunk_store=self._chunk_store, **kwargs)
 
 
-def group(store=None, overwrite=False):
+def group(store=None, overwrite=False, chunk_store=None):
     """Create a group.
 
     Parameters
@@ -671,6 +714,9 @@ def group(store=None, overwrite=False):
     overwrite : bool, optional
         If True, delete any pre-existing data in `store` at `path` before
         creating the group.
+    chunk_store : MutableMapping, optional
+        Separate storage for chunks. If not provided, `store` will be used
+        for storage of both chunks and metadata.
 
     Returns
     -------
@@ -703,13 +749,13 @@ def group(store=None, overwrite=False):
 
     # require group
     if overwrite:
-        init_group(store, overwrite=True)
+        init_group(store, overwrite=True, chunk_store=chunk_store)
     elif contains_array(store):
         raise ValueError('store contains an array')
     elif not contains_group(store):
-        init_group(store)
+        init_group(store, chunk_store=chunk_store)
 
-    return Group(store, readonly=False)
+    return Group(store, readonly=False, chunk_store=chunk_store)
 
 
 def open_group(path, mode='a'):
