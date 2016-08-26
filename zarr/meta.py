@@ -21,14 +21,16 @@ def decode_array_metadata(s):
     if zarr_format != ZARR_FORMAT:
         raise MetadataError('unsupported zarr format: %s' % zarr_format)
     try:
+        dtype = decode_dtype(meta['dtype'])
+        fill_value = decode_fill_value(meta['fill_value'], dtype)
         meta = dict(
             zarr_format=meta['zarr_format'],
             shape=tuple(meta['shape']),
             chunks=tuple(meta['chunks']),
-            dtype=decode_dtype(meta['dtype']),
+            dtype=dtype,
             compression=meta['compression'],
             compression_opts=meta['compression_opts'],
-            fill_value=meta['fill_value'],
+            fill_value=fill_value,
             order=meta['order'],
         )
     except Exception as e:
@@ -45,7 +47,7 @@ def encode_array_metadata(meta):
         dtype=encode_dtype(meta['dtype']),
         compression=meta['compression'],
         compression_opts=meta['compression_opts'],
-        fill_value=meta['fill_value'],
+        fill_value=encode_fill_value(meta['fill_value']),
         order=meta['order'],
     )
     s = json.dumps(meta, indent=4, sort_keys=True, ensure_ascii=True)
@@ -98,3 +100,22 @@ def encode_group_metadata(meta=None):
     s = json.dumps(meta, indent=4, sort_keys=True, ensure_ascii=True)
     b = s.encode('ascii')
     return b
+
+
+def decode_fill_value(v, dtype):
+    if v == 'NaN' and dtype.kind == 'f':
+        return np.nan
+    else:
+        return v
+
+
+def encode_fill_value(v):
+    try:
+        isnan = np.isnan(v)
+    except TypeError:
+        return v
+    else:
+        if isnan:
+            return 'NaN'
+        else:
+            return v

@@ -40,7 +40,7 @@ Metadata
 
 Each array requires essential configuration metadata to be stored, enabling 
 correct interpretation of the stored data. This metadata is encoded using JSON 
-and stored as the value of the '.zarray' key within an array store.
+and stored as the value of the ".zarray" key within an array store.
 
 The metadata resource is a JSON object. The following keys MUST be present 
 within the object:
@@ -66,9 +66,9 @@ fill_value
     A scalar value providing the default value to use for uninitialized
     portions of the array.
 order
-    Either 'C' or 'F', defining the layout of bytes within each chunk of the
-    array. 'C' means row-major order, i.e., the last dimension varies fastest;
-    'F' means column-major order, i.e., the first dimension varies fastest.
+    Either "C" or "F", defining the layout of bytes within each chunk of the
+    array. "C" means row-major order, i.e., the last dimension varies fastest;
+    "F" means column-major order, i.e., the first dimension varies fastest.
 
 Other keys MUST NOT be present within the metadata object.
 
@@ -116,8 +116,17 @@ Structured data types (i.e., with multiple named fields) are encoded as a list
 of two-element lists, following `NumPy array protocol type descriptions (descr) 
 <http://docs.scipy.org/doc/numpy/reference/arrays.interface.html#>`_. For 
 example, the JSON list ``[["r", "|u1"], ["g", "|u1"], ["b", "|u1"]]`` defines a 
-data type composed of three single-byte unsigned integers labelled 'r', 'g' and 
-'b'.
+data type composed of three single-byte unsigned integers labelled "r", "g" and
+"b".
+
+Fill value encoding
+~~~~~~~~~~~~~~~~~~~
+
+Not a Number (NaN) must be encoded as the JSON string "NaN" if used as the
+value of the "fill_value" field.
+
+When decoding the "fill_value" field, the JSON string "NaN" should be decoded
+as Not a Number (NaN) if the dtype basic type is floating point ("f").
 
 Chunks
 ~~~~~~
@@ -134,17 +143,17 @@ compressed data.
 The compressed sequence of bytes for each chunk is stored under a key formed 
 from the index of the chunk within the grid of chunks representing the array. 
 To form a string key for a chunk, the indices are converted to strings and 
-concatenated with the period character ('.') separating each index. For 
+concatenated with the period character (".") separating each index. For
 example, given an array with shape (10000, 10000) and chunk shape (1000, 1000) 
 there will be 100 chunks laid out in a 10 by 10 grid. The chunk with indices 
 (0, 0) provides data for rows 0-1000 and columns 0-1000 and is stored under the 
-key '0.0'; the chunk with indices (2, 4) provides data for rows 2000-3000 and 
-columns 4000-5000 and is stored under the key '2.4'; etc.
+key "0.0"; the chunk with indices (2, 4) provides data for rows 2000-3000 and
+columns 4000-5000 and is stored under the key "2.4"; etc.
 
 There is no need for all chunks to be present within an array store. If a chunk 
 is not present then it is considered to be in an uninitialized state.  An 
 unitialized chunk MUST be treated as if it was uniformly filled with the value 
-of the 'fill_value' field in the array metadata. If the 'fill_value' field is 
+of the "fill_value" field in the array metadata. If the "fill_value" field is
 ``null`` then the contents of the chunk are undefined.
 
 Note that all chunks in an array have the same shape. If the length of any 
@@ -161,30 +170,30 @@ Logical storage paths
 Multiple arrays can be stored in the same array store by associating each array 
 with a different logical path. A logical path is simply an ASCII string. The 
 logical path is used to form a prefix for keys used by the array. For example, 
-if an array is stored at logical path 'foo/bar' then the array metadata will be 
-stored under the key 'foo/bar/.zarray', the user-defined attributes will be 
-stored under the key 'foo/bar/.zattrs', and the chunks will be stored under 
-keys like 'foo/bar/0.0', 'foo/bar/0.1', etc.
+if an array is stored at logical path "foo/bar" then the array metadata will be
+stored under the key "foo/bar/.zarray", the user-defined attributes will be
+stored under the key "foo/bar/.zattrs", and the chunks will be stored under
+keys like "foo/bar/0.0", "foo/bar/0.1", etc.
 
 To ensure consistent behaviour across different storage systems, logical paths 
 MUST be normalized as follows:
 
-* Replace all backward slash characters ('\\') with forward slash characters
-  ('/') 
-* Strip any leading '/' characters 
-* Strip any trailing '/' characters 
-* Collapse any sequence of more than one '/' character into a single '/' 
+* Replace all backward slash characters ("\\") with forward slash characters
+  ("/")
+* Strip any leading "/" characters
+* Strip any trailing "/" characters
+* Collapse any sequence of more than one "/" character into a single "/"
   character
 
-The key prefix is then obtained by appending a single '/' character to the 
+The key prefix is then obtained by appending a single "/" character to the
 normalized logical path.
 
-After normalization, if splitting a logical path by the '/' character results 
-in any path segment equal to the string '.' or the string '..' then an error
+After normalization, if splitting a logical path by the "/" character results
+in any path segment equal to the string "." or the string ".." then an error
 MUST be raised.
 
 N.B., how the underlying array store processes requests to store values under 
-keys containing the '/' character is entirely up to the store implementation 
+keys containing the "/" character is entirely up to the store implementation
 and is not constrained by this specification. E.g., an array store could simply 
 treat all keys as opaque ASCII strings; equally, an array store could map 
 logical paths onto some kind of hierarchical storage (e.g., directories on a 
@@ -194,20 +203,20 @@ Groups
 ~~~~~~
 
 Arrays can be organized into groups which can also contain other groups. A
-group is created by storing group metadata under the '.zgroup' key under some 
+group is created by storing group metadata under the ".zgroup" key under some
 logical path. E.g., a group exists at the root of an array store if the 
-'.zgroup' key exists in the store, and a group exists at logical path 'foo/bar' 
-if the 'foo/bar/.zgroup' key exists in the store.
+".zgroup" key exists in the store, and a group exists at logical path "foo/bar"
+if the "foo/bar/.zgroup" key exists in the store.
 
 If the user requests a group to be created under some logical path, then groups 
 MUST also be created at all ancestor paths. E.g., if the user requests group 
-creation at path 'foo/bar' then groups MUST be created at path 'foo' and the 
+creation at path "foo/bar" then groups MUST be created at path "foo" and the
 root of the store, if they don't already exist.
 
 If the user requests an array to be created under some logical path, then
 groups MUST also be created at all ancestor paths. E.g., if the user requests
-array creation at path 'foo/bar/baz' then groups must be created at path
-'foo/bar', path 'foo', and the root of the store, if they don't already exist.
+array creation at path "foo/bar/baz" then groups must be created at path
+"foo/bar", path "foo", and the root of the store, if they don't already exist.
 
 The group metadata resource is a JSON object. The following keys MUST be present
 within the object:
@@ -220,20 +229,20 @@ Other keys MUST NOT be present within the metadata object.
 
 The members of a group are arrays and groups stored under logical paths that 
 are direct children of the parent group's logical path. E.g., if a groups exist 
-under the logical paths 'foo' and 'foo/bar' and an array exists at logical path 
-'foo/baz' then the members of the group at path 'foo' are the group at path 
-'foo/bar' and the array at path 'foo/baz'.
+under the logical paths "foo" and "foo/bar" and an array exists at logical path
+"foo/baz" then the members of the group at path "foo" are the group at path
+"foo/bar" and the array at path "foo/baz".
 
 Attributes
 ----------
 
 An array or group can be associated with custom attributes, which are simple 
 key/value items with application-specific meaning. Custom attributes are 
-encoded as a JSON object and stored under the '.zattrs' key within an array 
+encoded as a JSON object and stored under the ".zattrs" key within an array
 store.
 
 For example, the JSON object below encodes three attributes named
-'foo', 'bar' and 'baz'::
+"foo", "bar" and "baz"::
 
     {
         "foo": 42,
@@ -258,7 +267,7 @@ Create an array::
     ...                 fill_value=42, compression='zlib', compression_opts=1,
     ...                 store=store, overwrite=True)
 
-No chunks are initialized yet, so only the '.zarray' and '.zattrs' keys
+No chunks are initialized yet, so only the ".zarray" and ".zattrs" keys
 have been set in the store::
 
     >>> import os
@@ -427,7 +436,7 @@ Changes in version 2
 
 * Added support for storing multiple arrays in the same store and organising
   arrays into hierarchies using groups.
-* Array metadata is now stored under the '.zarray' key instead of the 'meta'
+* Array metadata is now stored under the ".zarray" key instead of the "meta"
   key
-* Custom attributes are now stored under the '.zattrs' key instead of the
-  'attrs' key
+* Custom attributes are now stored under the ".zattrs" key instead of the
+  "attrs" key

@@ -93,6 +93,14 @@ def test_full():
     eq((10,), z.chunks)
     assert_array_equal(np.full(100, fill_value=42, dtype='i4'), z[:])
 
+    # nan
+    z = full(100, chunks=10, fill_value=np.nan, dtype='f8')
+    assert np.all(np.isnan(z[:]))
+
+    # "NaN"
+    z = full(100, chunks=10, fill_value='NaN', dtype='U3')
+    assert np.all(z[:] == 'NaN')
+
 
 def test_open_array():
 

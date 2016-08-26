@@ -118,8 +118,22 @@ def test_encode_decode_array_nan_fill_value():
         order='C'
     )
 
-    # test fill value round trip
+    meta_json = '''{
+        "chunks": [10],
+        "compression": "zlib",
+        "compression_opts": 1,
+        "dtype": "<f8",
+        "fill_value": "NaN",
+        "order": "C",
+        "shape": [100],
+        "zarr_format": %s
+    }''' % ZARR_FORMAT
+
+    # test encoding
     meta_enc = encode_array_metadata(meta)
+    assert_json_eq(meta_json, meta_enc)
+
+    # test decoding
     meta_dec = decode_array_metadata(meta_enc)
     actual = meta_dec['fill_value']
     assert np.isnan(actual)
