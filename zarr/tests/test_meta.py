@@ -1,17 +1,26 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, print_function, division
 import json
-import math
 
 
-from nose.tools import eq_ as eq, assert_is_none, assert_raises, assert_is
+from nose.tools import eq_ as eq, assert_is_none, assert_raises
 import numpy as np
 
 
-from zarr.compat import PY2
+from zarr.compat import binary_type, text_type
 from zarr.meta import decode_array_metadata, encode_dtype, decode_dtype, \
     ZARR_FORMAT, decode_group_metadata, encode_array_metadata
 from zarr.errors import MetadataError
+
+
+def assert_json_eq(expect, actual):  # pragma: no cover
+    if isinstance(expect, binary_type):
+        expect = text_type(expect, 'ascii')
+    if isinstance(actual, binary_type):
+        actual = text_type(actual, 'ascii')
+    ej = json.loads(expect)
+    aj = json.loads(actual)
+    eq(ej, aj)
 
 
 def test_encode_decode_array_1():
@@ -26,29 +35,23 @@ def test_encode_decode_array_1():
         order='C'
     )
 
-    meta_bytes = '''{
-    "chunks": [
-        10
-    ],
-    "compression": "zlib",
-    "compression_opts": 1,
-    "dtype": "<f8",
-    "fill_value": null,
-    "order": "C",
-    "shape": [
-        100
-    ],
-    "zarr_format": %s
-}''' % ZARR_FORMAT
-    if not PY2:
-        meta_bytes = meta_bytes.encode('ascii')
+    meta_json = '''{
+        "chunks": [10],
+        "compression": "zlib",
+        "compression_opts": 1,
+        "dtype": "<f8",
+        "fill_value": null,
+        "order": "C",
+        "shape": [100],
+        "zarr_format": %s
+    }''' % ZARR_FORMAT
 
     # test encoding
     meta_enc = encode_array_metadata(meta)
-    eq(meta_bytes, meta_enc)
+    assert_json_eq(meta_json, meta_enc)
 
     # test decoding
-    meta_dec = decode_array_metadata(meta_bytes)
+    meta_dec = decode_array_metadata(meta_enc)
     eq(ZARR_FORMAT, meta_dec['zarr_format'])
     eq(meta['shape'], meta_dec['shape'])
     eq(meta['chunks'], meta_dec['chunks'])
@@ -72,44 +75,27 @@ def test_encode_decode_array_2():
         order='F'
     )
 
-    meta_bytes = '''{
-    "chunks": [
-        10,
-        10
-    ],
-    "compression": "blosc",
-    "compression_opts": {
-        "clevel": 3,
-        "cname": "lz4",
-        "shuffle": 2
-    },
-    "dtype": [
-        [
-            "a",
-            "<i4"
-        ],
-        [
-            "b",
-            "|S10"
-        ]
-    ],
-    "fill_value": 42,
-    "order": "F",
-    "shape": [
-        100,
-        100
-    ],
-    "zarr_format": %s
-}''' % ZARR_FORMAT
-    if not PY2:
-        meta_bytes = meta_bytes.encode('ascii')
+    meta_json = '''{
+        "chunks": [10, 10],
+        "compression": "blosc",
+        "compression_opts": {
+            "clevel": 3,
+            "cname": "lz4",
+            "shuffle": 2
+        },
+        "dtype": [["a", "<i4"], ["b", "|S10"]],
+        "fill_value": 42,
+        "order": "F",
+        "shape": [100, 100],
+        "zarr_format": %s
+    }''' % ZARR_FORMAT
 
     # test encoding
     meta_enc = encode_array_metadata(meta)
-    eq(meta_bytes, meta_enc)
+    assert_json_eq(meta_json, meta_enc)
 
     # test decoding
-    meta_dec = decode_array_metadata(meta_bytes)
+    meta_dec = decode_array_metadata(meta_enc)
     eq(ZARR_FORMAT, meta_dec['zarr_format'])
     eq(meta['shape'], meta_dec['shape'])
     eq(meta['chunks'], meta_dec['chunks'])
@@ -122,31 +108,27 @@ def test_encode_decode_array_2():
 
 def test_encode_decode_array_nan_fill_value():
 
-    for fill in math.nan, np.nan:
+    meta = dict(
+        shape=(100,),
+        chunks=(10,),
+        dtype=np.dtype('f8'),
+        compression='zlib',
+        compression_opts=1,
+        fill_value=np.nan,
+        order='C'
+    )
 
-        meta = dict(
-            shape=(100,),
-            chunks=(10,),
-            dtype=np.dtype('f8'),
-            compression='zlib',
-            compression_opts=1,
-            fill_value=fill,
-            order='C'
-        )
-
-        # test fill value round trip
-        meta_enc = encode_array_metadata(meta)
-        meta_dec = decode_array_metadata(meta_enc)
-        actual = meta_dec['fill_value']
-        print(repr(actual))
-        print(type(actual))
-        assert np.isnan(actual)
+    # test fill value round trip
+    meta_enc = encode_array_metadata(meta)
+    meta_dec = decode_array_metadata(meta_enc)
+    actual = meta_dec['fill_value']
+    assert np.isnan(actual)
 
 
 def test_decode_array_unsupported_format():
 
     # unsupported format
-    meta_bytes = '''{
+    meta_json = '''{
         "zarr_format": %s,
         "shape": [100],
         "chunks": [10],
@@ -156,22 +138,18 @@ def test_decode_array_unsupported_format():
         "fill_value": null,
         "order": "C"
     }''' % (ZARR_FORMAT - 1)
-    if not PY2:
-        meta_bytes = meta_bytes.encode('ascii')
     with assert_raises(MetadataError):
-        decode_array_metadata(meta_bytes)
+        decode_array_metadata(meta_json)
 
 
 def test_decode_array_missing_fields():
 
     # missing fields
-    meta_bytes = '''{
+    meta_json = '''{
         "zarr_format": %s
     }''' % ZARR_FORMAT
-    if not PY2:
-        meta_bytes = meta_bytes.encode('ascii')
     with assert_raises(MetadataError):
-        decode_array_metadata(meta_bytes)
+        decode_array_metadata(meta_json)
 
 
 def test_encode_decode_dtype():
@@ -190,8 +168,6 @@ def test_decode_group():
     b = '''{
         "zarr_format": %s
     }''' % ZARR_FORMAT
-    if not PY2:
-        b = b.encode('ascii')
     meta = decode_group_metadata(b)
     eq(ZARR_FORMAT, meta['zarr_format'])
 
@@ -199,7 +175,5 @@ def test_decode_group():
     b = '''{
         "zarr_format": %s
     }''' % (ZARR_FORMAT - 1)
-    if not PY2:
-        b = b.encode('ascii')
     with assert_raises(MetadataError):
         decode_group_metadata(b)

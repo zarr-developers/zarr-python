@@ -6,15 +6,16 @@ import json
 import numpy as np
 
 
-from zarr.compat import PY2, text_type
+from zarr.compat import PY2, text_type, binary_type
 from zarr.errors import MetadataError
 
 
 ZARR_FORMAT = 2
 
 
-def decode_array_metadata(b):
-    s = text_type(b, 'ascii')
+def decode_array_metadata(s):
+    if isinstance(s, binary_type):
+        s = text_type(s, 'ascii')
     meta = json.loads(s)
     zarr_format = meta.get('zarr_format', None)
     if zarr_format != ZARR_FORMAT:
@@ -77,8 +78,9 @@ def decode_dtype(d):
     return np.dtype(d)
 
 
-def decode_group_metadata(b):
-    s = text_type(b, 'ascii')
+def decode_group_metadata(s):
+    if isinstance(s, binary_type):
+        s = text_type(s, 'ascii')
     meta = json.loads(s)
     zarr_format = meta.get('zarr_format', None)
     if zarr_format != ZARR_FORMAT:
