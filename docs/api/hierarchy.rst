@@ -8,13 +8,9 @@ Groups (``zarr.hierarchy``)
 .. autoclass:: Group
 
     .. automethod:: __len__
+    .. automethod:: __iter__
     .. automethod:: __contains__
     .. automethod:: __getitem__
-    .. automethod:: __setitem__
-    .. automethod:: __iter__
-    .. automethod:: keys
-    .. automethod:: values
-    .. automethod:: items
     .. automethod:: group_keys
     .. automethod:: groups
     .. automethod:: array_keys

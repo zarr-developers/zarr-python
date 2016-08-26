@@ -285,6 +285,12 @@ class TestGroup(unittest.TestCase):
         with assert_raises(KeyError):
             g.require_dataset('c/d', shape=100, chunks=10)
 
+        # h5py compatibility - accept but ingore some keyword args
+        d = g.create_dataset('x', shape=100, chunks=10, fillvalue=1)
+        assert_is_none(d.fill_value)
+        d = g.create_dataset('y', shape=100, chunks=10, shuffle=True)
+        assert not hasattr(d, 'shuffle')
+
         # read-only
         g = Group(store=store, readonly=True)
         with assert_raises(ReadOnlyError):
