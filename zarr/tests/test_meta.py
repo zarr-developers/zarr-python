@@ -106,37 +106,45 @@ def test_encode_decode_array_2():
     eq(meta['fill_value'], meta_dec['fill_value'])
 
 
-def test_encode_decode_array_nan_fill_value():
+def test_encode_decode_array_fill_values():
 
-    meta = dict(
-        shape=(100,),
-        chunks=(10,),
-        dtype=np.dtype('f8'),
-        compression='zlib',
-        compression_opts=1,
-        fill_value=np.nan,
-        order='C'
+    fills = (
+        (np.nan, "NaN", np.isnan),
+        (np.NINF, "-Infinity", np.isneginf),
+        (np.PINF, "Infinity", np.isposinf),
     )
 
-    meta_json = '''{
-        "chunks": [10],
-        "compression": "zlib",
-        "compression_opts": 1,
-        "dtype": "<f8",
-        "fill_value": "NaN",
-        "order": "C",
-        "shape": [100],
-        "zarr_format": %s
-    }''' % ZARR_FORMAT
+    for v, s, f in fills:
 
-    # test encoding
-    meta_enc = encode_array_metadata(meta)
-    assert_json_eq(meta_json, meta_enc)
+        meta = dict(
+            shape=(100,),
+            chunks=(10,),
+            dtype=np.dtype('f8'),
+            compression='zlib',
+            compression_opts=1,
+            fill_value=v,
+            order='C'
+        )
 
-    # test decoding
-    meta_dec = decode_array_metadata(meta_enc)
-    actual = meta_dec['fill_value']
-    assert np.isnan(actual)
+        meta_json = '''{
+            "chunks": [10],
+            "compression": "zlib",
+            "compression_opts": 1,
+            "dtype": "<f8",
+            "fill_value": "%s",
+            "order": "C",
+            "shape": [100],
+            "zarr_format": %s
+        }''' % (s, ZARR_FORMAT)
+
+        # test encoding
+        meta_enc = encode_array_metadata(meta)
+        assert_json_eq(meta_json, meta_enc)
+
+        # test decoding
+        meta_dec = decode_array_metadata(meta_enc)
+        actual = meta_dec['fill_value']
+        assert f(actual)
 
 
 def test_decode_array_unsupported_format():

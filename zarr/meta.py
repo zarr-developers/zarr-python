@@ -102,20 +102,36 @@ def encode_group_metadata(meta=None):
     return b
 
 
+FLOAT_FILLS = {
+    'NaN': np.nan,
+    'Infinity': np.PINF,
+    '-Infinity': np.NINF
+}
+
+
 def decode_fill_value(v, dtype):
-    if v == 'NaN' and dtype.kind == 'f':
-        return np.nan
+    if dtype.kind == 'f':
+        if v == 'NaN':
+            return np.nan
+        elif v == 'Infinity':
+            return np.PINF
+        elif v == '-Infinity':
+            return np.NINF
+        else:
+            return v
     else:
         return v
 
 
 def encode_fill_value(v):
     try:
-        isnan = np.isnan(v)
-    except TypeError:
-        return v
-    else:
-        if isnan:
+        if np.isnan(v):
             return 'NaN'
+        elif np.isposinf(v):
+            return 'Infinity'
+        elif np.isneginf(v):
+            return '-Infinity'
         else:
             return v
+    except TypeError:
+        return v
