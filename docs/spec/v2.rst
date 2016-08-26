@@ -122,10 +122,10 @@ data type composed of three single-byte unsigned integers labelled "r", "g" and
 Fill value encoding
 ~~~~~~~~~~~~~~~~~~~
 
-Not a Number (NaN) must be encoded as the JSON string "NaN" if used as the
+Not a Number (NaN) MUST be encoded as the JSON string "NaN" if used as the
 value of the "fill_value" field.
 
-When decoding the "fill_value" field, the JSON string "NaN" should be decoded
+When decoding the "fill_value" field, the JSON string "NaN" MUST be decoded
 as Not a Number (NaN) if the dtype basic type is floating point ("f").
 
 Chunks
