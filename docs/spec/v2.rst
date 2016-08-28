@@ -243,7 +243,7 @@ zarr_format
 Other keys MUST NOT be present within the metadata object.
 
 The members of a group are arrays and groups stored under logical paths that 
-are direct children of the parent group's logical path. E.g., if a groups exist 
+are direct children of the parent group's logical path. E.g., if groups exist
 under the logical paths "foo" and "foo/bar" and an array exists at logical path
 "foo/baz" then the members of the group at path "foo" are the group at path
 "foo/bar" and the array at path "foo/baz".
