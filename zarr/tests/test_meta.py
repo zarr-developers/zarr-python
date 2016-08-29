@@ -69,6 +69,7 @@ def test_encode_decode_array_1():
 def test_encode_decode_array_2():
 
     # some variations
+    df = DeltaFilter(enc_dtype='u2', dec_dtype='V14')
     meta = dict(
         shape=(100, 100),
         chunks=(10, 10),
@@ -77,7 +78,7 @@ def test_encode_decode_array_2():
         compression_opts=dict(cname='lz4', clevel=3, shuffle=2),
         fill_value=42,
         order='F',
-        filter=[DeltaFilter(enc_dtype='u2', dec_dtype='V14')]
+        filters=[df]
     )
 
     meta_json = '''{
@@ -91,7 +92,7 @@ def test_encode_decode_array_2():
         "dtype": [["a", "<i4"], ["b", "|S10"]],
         "fill_value": 42,
         "filters": [
-            {"name": "delta", "enc_dtype": "u2", "dec_dtype": "V14"}
+            {"name": "delta", "enc_dtype": "<u2", "dec_dtype": "|V14"}
         ],
         "order": "F",
         "shape": [100, 100],
@@ -112,7 +113,7 @@ def test_encode_decode_array_2():
     eq(meta['compression_opts'], meta_dec['compression_opts'])
     eq(meta['order'], meta_dec['order'])
     eq(meta['fill_value'], meta_dec['fill_value'])
-    eq(meta['filters'], meta_dec['filters'])
+    eq([df.get_filter_config()], meta_dec['filters'])
 
 
 def test_encode_decode_array_fill_values():
@@ -132,6 +133,7 @@ def test_encode_decode_array_fill_values():
             compression='zlib',
             compression_opts=1,
             fill_value=v,
+            filters=None,
             order='C'
         )
 
@@ -141,6 +143,7 @@ def test_encode_decode_array_fill_values():
             "compression_opts": 1,
             "dtype": "<f8",
             "fill_value": "%s",
+            "filters": null,
             "order": "C",
             "shape": [100],
             "zarr_format": %s

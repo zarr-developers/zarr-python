@@ -604,7 +604,7 @@ class TestArrayWithPath(TestArray):
             # flake8: noqa
             expect = """zarr.core.Array(/foo/bar, (100,), float32, chunks=(10,), order=C)
   compression: zlib; compression_opts: 1
-  nbytes: 400; nbytes_stored: 210; ratio: 1.9; initialized: 0/10
+  nbytes: 400; nbytes_stored: 231; ratio: 1.7; initialized: 0/10
   store: builtins.dict
 """
             actual = repr(z)

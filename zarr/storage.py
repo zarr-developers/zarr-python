@@ -107,7 +107,7 @@ def getsize(store, path=None):
                 pass
             else:
                 try:
-                    size += buffersize(v)
+                    size += buffer_size(v)
                 except TypeError:
                     return -1
         return size
