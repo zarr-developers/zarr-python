@@ -369,6 +369,7 @@ class StoreTests(object):
                  compression='zlib',
                  compression_opts=1,
                  fill_value=0,
+                 filters=None,
                  order='F')
         )
         chunk_store['0'] = b'aaa'
@@ -489,6 +490,7 @@ class StoreTests(object):
                  compression='zlib',
                  compression_opts=1,
                  fill_value=0,
+                 filters=None,
                  order='F')
         )
         chunk_store['foo'] = b'bar'
