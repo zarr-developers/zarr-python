@@ -14,7 +14,7 @@ from numpy.testing import assert_array_equal
 from zarr.creation import array, empty, zeros, ones, full, open_array, \
     empty_like, zeros_like, ones_like, full_like, open_like, create
 from zarr.sync import ThreadSynchronizer
-from zarr.core import Array, SynchronizedArray
+from zarr.core import Array
 from zarr.storage import DirectoryStore
 from zarr.hierarchy import open_group
 from zarr.errors import ReadOnlyError
@@ -168,7 +168,7 @@ def test_open_array():
 
     # with synchronizer
     z = open_array(path, synchronizer=ThreadSynchronizer())
-    assert_is_instance(z, SynchronizedArray)
+    assert_is_instance(z, Array)
 
 
 def test_empty_like():
@@ -309,7 +309,7 @@ def test_create():
     # with synchronizer
     synchronizer = ThreadSynchronizer()
     z = create(100, chunks=10, synchronizer=synchronizer)
-    assert_is_instance(z, SynchronizedArray)
+    assert_is_instance(z, Array)
     eq((100,), z.shape)
     eq((10,), z.chunks)
     assert synchronizer is z.synchronizer

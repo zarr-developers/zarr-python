@@ -13,7 +13,7 @@ from zarr.util import is_total_slice, normalize_array_selection, \
     normalize_storage_path
 from zarr.storage import array_meta_key, attrs_key, listdir, getsize
 from zarr.meta import decode_array_metadata, encode_array_metadata
-from zarr.attrs import Attributes, SynchronizedAttributes
+from zarr.attrs import Attributes
 from zarr.errors import ReadOnlyError
 from zarr.compat import reduce
 
@@ -32,6 +32,8 @@ class Array(object):
     chunk_store : MutableMapping, optional
         Separate storage for chunks. If not provided, `store` will be used
         for storage of both chunks and metadata.
+    synchronizer : object, optional
+        Array synchronizer.
 
     Attributes
     ----------
@@ -47,6 +49,7 @@ class Array(object):
     compression_opts
     fill_value
     order
+    synchronizer
     attrs
     size
     itemsize
@@ -64,7 +67,8 @@ class Array(object):
 
     """  # flake8: noqa
 
-    def __init__(self, store, path=None, readonly=False, chunk_store=None):
+    def __init__(self, store, path=None, readonly=False, chunk_store=None,
+                 synchronizer=None):
         # N.B., expect at this point store is fully initialized with all
         # configuration metadata fully specified and normalized
 
@@ -79,6 +83,7 @@ class Array(object):
             self._chunk_store = store
         else:
             self._chunk_store = chunk_store
+        self._synchronizer = synchronizer
 
         # initialize metadata
         try:
@@ -101,9 +106,10 @@ class Array(object):
 
         # initialize attributes
         akey = self._key_prefix + attrs_key
-        self._attrs = Attributes(store, key=akey, readonly=readonly)
+        self._attrs = Attributes(store, key=akey, readonly=readonly,
+                                 synchronizer=synchronizer)
 
-    def flush_metadata(self):
+    def _flush_metadata(self):
         meta = dict(shape=self._shape, chunks=self._chunks, dtype=self._dtype,
                     compression=self._compression,
                     compression_opts=self._compression_opts,
@@ -182,6 +188,11 @@ class Array(object):
         """A string indicating the order in which bytes are arranged within
         chunks of the array."""
         return self._order
+
+    @property
+    def synchronizer(self):
+        """TODO doc me"""
+        return self._synchronizer
 
     @property
     def attrs(self):
@@ -563,6 +574,20 @@ class Array(object):
 
         """
 
+        # synchronization
+        if self._synchronizer is None:
+            self._chunk_setitem_nosync(cidx, key, value)
+        else:
+            # synchronize on the chunk
+            ckey = self._chunk_key(cidx)
+            with self._synchronizer[ckey]:
+                self._chunk_setitem_nosync(cidx, key, value)
+
+    def _chunk_setitem_nosync(self, cidx, key, value):
+
+        # obtain key for chunk storage
+        ckey = self._chunk_key(cidx)
+
         if is_total_slice(key, self._chunks):
 
             # optimisation: we are completely replacing the chunk, so no need
@@ -589,7 +614,6 @@ class Array(object):
             try:
 
                 # obtain compressed data for chunk
-                ckey = self._chunk_key(cidx)
                 cdata = self._chunk_store[ckey]
 
             except KeyError:
@@ -614,7 +638,6 @@ class Array(object):
         cdata = self._compressor.compress(chunk)
 
         # store
-        ckey = self._chunk_key(cidx)
         self._chunk_store[ckey] = cdata
 
     def _chunk_key(self, cidx):
@@ -644,13 +667,33 @@ class Array(object):
             r += '\n  chunk_store: %s.%s' % \
                  (type(self._chunk_store).__module__,
                   type(self._chunk_store).__name__)
+        if self._synchronizer is not None:
+            r += ('\n  synchronizer: %s.%s' %
+                  (type(self._synchronizer).__module__,
+                   type(self._synchronizer).__name__))
         return r
 
     def __getstate__(self):
-        return self._store, self._path, self._readonly, self._chunk_store
+        return self._store, self._path, self._readonly, self._chunk_store, \
+               self._synchronizer
 
     def __setstate__(self, state):
         self.__init__(*state)
+
+    def _write_op(self, f, *args, **kwargs):
+
+        # guard condition
+        if self._readonly:
+            raise ReadOnlyError('array is read-only')
+
+        # synchronization
+        if self._synchronizer is None:
+            return f(*args, **kwargs)
+        else:
+            # synchronize on the array
+            mkey = self._key_prefix + array_meta_key
+            with self._synchronizer[mkey]:
+                return f(*args, **kwargs)
 
     def resize(self, *args):
         """Change the shape of the array by growing or shrinking one or more
@@ -687,16 +730,9 @@ class Array(object):
 
         """  # flake8: noqa
 
-        # guard conditions
-        if self._readonly:
-            raise ReadOnlyError('array is read-only')
+        return self._write_op(self._resize_nosync, *args)
 
-        self._resize(*args)
-
-    def _resize(self, *args):
-
-        # N.B., private implementation to avoid need for re-entrant lock on
-        # SynchronizedArray.append().
+    def _resize_nosync(self, *args):
 
         # normalize new shape argument
         old_shape = self._shape
@@ -718,7 +754,7 @@ class Array(object):
 
         # update metadata
         self._shape = new_shape
-        self.flush_metadata()
+        self._flush_metadata()
 
     def append(self, data, axis=0):
         """Append `data` to `axis`.
@@ -760,10 +796,9 @@ class Array(object):
           store: builtins.dict
 
         """
+        return self._write_op(self._append_nosync, data, axis=axis)
 
-        # guard conditions
-        if self._readonly:
-            raise ReadOnlyError('array is read-only')
+    def _append_nosync(self, data, axis=0):
 
         # ensure data is array-like
         if not hasattr(data, 'shape') or not hasattr(data, 'dtype'):
@@ -787,7 +822,7 @@ class Array(object):
         )
 
         # resize
-        self._resize(new_shape)
+        self._resize_nosync(new_shape)
 
         # store data
         # noinspection PyTypeChecker
@@ -796,88 +831,3 @@ class Array(object):
             for i in range(len(self._shape))
         )
         self[append_selection] = data
-
-
-class SynchronizedArray(Array):
-    """Instantiate a synchronized array.
-
-    Parameters
-    ----------
-    store : MutableMapping
-        Array store, already initialized.
-    synchronizer : object
-        Array synchronizer.
-    readonly : bool, optional
-        True if array should be protected against modification.
-    path : string, optional
-        Path under which array is stored.
-    chunk_store : MutableMapping, optional
-        Separate storage for chunks. If not provided, `store` will be used
-        for storage of both chunks and metadata.
-
-    Examples
-    --------
-    >>> import zarr
-    >>> store = dict()
-    >>> zarr.init_array(store, shape=1000, chunks=100)
-    >>> synchronizer = zarr.ThreadSynchronizer()
-    >>> z = zarr.SynchronizedArray(store, synchronizer)
-    >>> z
-    zarr.core.SynchronizedArray((1000,), float64, chunks=(100,), order=C)
-      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
-      nbytes: 7.8K; nbytes_stored: 285; ratio: 28.1; initialized: 0/10
-      store: builtins.dict; synchronizer: zarr.sync.ThreadSynchronizer
-
-    Notes
-    -----
-    TODO review
-
-    Only writing data to the array via the __setitem__() method and
-    modification of user attributes are synchronized. Neither append() nor
-    resize() are synchronized.
-
-    Writing to the array is synchronized at the chunk level. I.e.,
-    the array supports concurrent write operations via the __setitem__()
-    method, but these will only exclude each other if they both require
-    modification of the same chunk.
-
-    """  # flake8: noqa
-
-    def __init__(self, store, synchronizer, readonly=False, path=None,
-                 chunk_store=None):
-        super(SynchronizedArray, self).__init__(store, readonly=readonly,
-                                                path=path,
-                                                chunk_store=chunk_store)
-        self._synchronizer = synchronizer
-        akey = self._key_prefix + attrs_key
-        self._attrs = SynchronizedAttributes(store, synchronizer, key=akey,
-                                             readonly=readonly)
-
-    def __repr__(self):
-        r = super(SynchronizedArray, self).__repr__()
-        r += ('\n  synchronizer: %s.%s' %
-              (type(self._synchronizer).__module__,
-               type(self._synchronizer).__name__))
-        return r
-
-    def __getstate__(self):
-        return self._store, self._synchronizer, self._readonly, self._path, \
-               self._chunk_store
-
-    def __setstate__(self, state):
-        self.__init__(*state)
-
-    def _chunk_setitem(self, cidx, key, value):
-        ckey = self._chunk_key(cidx)
-        with self._synchronizer[ckey]:
-            super(SynchronizedArray, self)._chunk_setitem(cidx, key, value)
-
-    def resize(self, *args):
-        mkey = self._key_prefix + array_meta_key
-        with self._synchronizer[mkey]:
-            super(SynchronizedArray, self).resize(*args)
-
-    def append(self, *args, **kwargs):
-        mkey = self._key_prefix + array_meta_key
-        with self._synchronizer[mkey]:
-            super(SynchronizedArray, self).append(*args, **kwargs)

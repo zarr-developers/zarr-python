@@ -58,12 +58,12 @@ class TestArray(unittest.TestCase):
         with assert_raises(ValueError):
             Array(store, path='baz')
 
-    @staticmethod
-    def create_array(store=None, readonly=False, chunk_store=None, **kwargs):
+    def create_array(self, store=None, path=None, readonly=False,
+                     chunk_store=None, **kwargs):
         if store is None:
             store = dict()
-        init_array(store, path=None, chunk_store=chunk_store, **kwargs)
-        return Array(store, path=None, readonly=readonly,
+        init_array(store, path=path, chunk_store=chunk_store, **kwargs)
+        return Array(store, path=path, readonly=readonly,
                      chunk_store=chunk_store)
 
     def test_nbytes_stored(self):

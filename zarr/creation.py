@@ -5,7 +5,7 @@ from __future__ import absolute_import, print_function, division
 import numpy as np
 
 
-from zarr.core import Array, SynchronizedArray
+from zarr.core import Array
 from zarr.storage import DirectoryStore, init_array, contains_array, \
     contains_group
 
@@ -36,7 +36,7 @@ def create(shape, chunks=None, dtype=None, compression='default',
     store : MutableMapping, optional
         Array storage. If not provided, a Python dict will be used, meaning
         array data will be stored in memory.
-    synchronizer : zarr.sync.ArraySynchronizer, optional
+    synchronizer : object, optional
         Array synchronizer.
     overwrite : bool, optional
         If True, delete all pre-existing data in `store` before creating the
@@ -69,17 +69,16 @@ def create(shape, chunks=None, dtype=None, compression='default',
     # initialize store
     if store is None:
         store = dict()
+
+    # initialize array metadata
     init_array(store, shape=shape, chunks=chunks, dtype=dtype,
                compression=compression, compression_opts=compression_opts,
                fill_value=fill_value, order=order, overwrite=overwrite,
                path=path, chunk_store=chunk_store)
 
     # instantiate array
-    if synchronizer is not None:
-        z = SynchronizedArray(store, synchronizer, path=path,
-                              chunk_store=chunk_store)
-    else:
-        z = Array(store, path=path, chunk_store=chunk_store)
+    z = Array(store, path=path, chunk_store=chunk_store,
+              synchronizer=synchronizer)
 
     return z
 
@@ -284,7 +283,7 @@ def open_array(path, mode='a', shape=None, chunks=None, dtype=None,
         Default value to use for uninitialized portions of the array.
     order : {'C', 'F'}, optional
         Memory layout to be used within each chunk.
-    synchronizer : zarr.sync.ArraySynchronizer, optional
+    synchronizer : object, optional
         Array synchronizer.
 
     Returns
@@ -366,11 +365,8 @@ def open_array(path, mode='a', shape=None, chunks=None, dtype=None,
     # determine readonly status
     readonly = mode == 'r'
 
-    # handle optional synchronizer
-    if synchronizer is not None:
-        z = SynchronizedArray(store, synchronizer, readonly=readonly)
-    else:
-        z = Array(store, readonly=readonly)
+    # instantiate array
+    z = Array(store, readonly=readonly, synchronizer=synchronizer)
 
     return z
 

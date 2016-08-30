@@ -7,7 +7,7 @@ from warnings import warn
 import numpy as np
 
 
-from zarr.attrs import Attributes, SynchronizedAttributes
+from zarr.attrs import Attributes
 from zarr.core import Array
 from zarr.storage import contains_array, contains_group, init_group, \
     DictStore, DirectoryStore, group_meta_key, attrs_key, listdir
@@ -32,6 +32,8 @@ class Group(Mapping):
     chunk_store : MutableMapping, optional
         Separate storage for chunks. If not provided, `store` will be used 
         for storage of both chunks and metadata.
+    synchronizer : object, optional
+        Array synchronizer.
 
     Attributes
     ----------
@@ -40,6 +42,7 @@ class Group(Mapping):
     name
     readonly
     chunk_store
+    synchronizer
     attrs
 
     Methods
@@ -71,7 +74,8 @@ class Group(Mapping):
 
     """
 
-    def __init__(self, store, path=None, readonly=False, chunk_store=None):
+    def __init__(self, store, path=None, readonly=False, chunk_store=None,
+                 synchronizer=None):
 
         self._store = store
         self._path = normalize_storage_path(path)
@@ -84,6 +88,7 @@ class Group(Mapping):
             self._chunk_store = store
         else:
             self._chunk_store = chunk_store
+        self._synchronizer = synchronizer
 
         # guard conditions
         if contains_array(store, path=self._path):
@@ -101,7 +106,8 @@ class Group(Mapping):
 
         # setup attributes
         akey = self._key_prefix + attrs_key
-        self._attrs = Attributes(store, key=akey, readonly=readonly)
+        self._attrs = Attributes(store, key=akey, readonly=readonly,
+                                 synchronizer=synchronizer)
 
     @property
     def store(self):
@@ -134,6 +140,11 @@ class Group(Mapping):
         """A MutableMapping providing the underlying storage for array 
         chunks."""
         return self._chunk_store
+
+    @property
+    def synchronizer(self):
+        """TODO doc me"""
+        return self._synchronizer
 
     @property
     def attrs(self):
@@ -205,10 +216,15 @@ class Group(Mapping):
             r += '\n  chunk_store: %s.%s' % \
                  (type(self._chunk_store).__module__,
                   type(self._chunk_store).__name__)
+        if self._synchronizer is not None:
+            r += ('\n  synchronizer: %s.%s' %
+                  (type(self._synchronizer).__module__,
+                   type(self._synchronizer).__name__))
         return r
 
     def __getstate__(self):
-        return self._store, self._path, self._readonly, self._chunk_store
+        return self._store, self._path, self._readonly, self._chunk_store, \
+               self._synchronizer
 
     def __setstate__(self, state):
         self.__init__(*state)
@@ -276,10 +292,12 @@ class Group(Mapping):
         path = self._item_path(item)
         if contains_array(self._store, path):
             return Array(self._store, readonly=self._readonly, path=path, 
-                         chunk_store=self._chunk_store)
+                         chunk_store=self._chunk_store,
+                         synchronizer=self._synchronizer)
         elif contains_group(self._store, path):
             return Group(self._store, readonly=self._readonly, path=path, 
-                         chunk_store=self._chunk_store)
+                         chunk_store=self._chunk_store,
+                         synchronizer=self._synchronizer)
         else:
             raise KeyError(item)
 
@@ -325,7 +343,8 @@ class Group(Mapping):
             if contains_group(self._store, path):
                 yield key, Group(self._store, path=path,
                                  readonly=self._readonly,
-                                 chunk_store=self._chunk_store)
+                                 chunk_store=self._chunk_store,
+                                 synchronizer=self._synchronizer)
 
     def array_keys(self):
         """Return an iterator over member names for arrays only.
@@ -369,7 +388,22 @@ class Group(Mapping):
             if contains_array(self._store, path):
                 yield key, Array(self._store, path=path,
                                  readonly=self._readonly,
-                                 chunk_store=self._chunk_store)
+                                 chunk_store=self._chunk_store,
+                                 synchronizer=self._synchronizer)
+
+    def _write_op(self, f, *args, **kwargs):
+
+        # guard condition
+        if self._readonly:
+            raise ReadOnlyError('group is read-only')
+
+        # synchronization
+        if self._synchronizer is None:
+            return f(*args, **kwargs)
+        else:
+            # synchronize on the root group
+            with self._synchronizer[group_meta_key]:
+                return f(*args, **kwargs)
 
     def create_group(self, name):
         """Create a sub-group.
@@ -393,8 +427,9 @@ class Group(Mapping):
 
         """
 
-        if self._readonly:
-            raise ReadOnlyError('group is read-only')
+        return self._write_op(self._create_group_nosync, name)
+
+    def _create_group_nosync(self, name):
 
         path = self._item_path(name)
 
@@ -415,7 +450,8 @@ class Group(Mapping):
         else:
             init_group(self._store, path=path, chunk_store=self._chunk_store)
             return Group(self._store, path=path, readonly=self._readonly,
-                         chunk_store=self._chunk_store)
+                         chunk_store=self._chunk_store,
+                         synchronizer=self._synchronizer)
 
     def create_groups(self, *names):
         """Convenience method to create multiple groups in a single call."""
@@ -444,6 +480,10 @@ class Group(Mapping):
 
         """
 
+        return self._write_op(self._require_group_nosync, name)
+
+    def _require_group_nosync(self, name):
+
         path = self._item_path(name)
 
         # require all intermediate groups
@@ -453,12 +493,11 @@ class Group(Mapping):
             if contains_array(self._store, p):
                 raise KeyError(name)
             elif not contains_group(self._store, p):
-                if self._readonly:
-                    raise ReadOnlyError('group is read-only')
                 init_group(self._store, path=p, chunk_store=self._chunk_store)
 
         return Group(self._store, path=path, readonly=self._readonly,
-                     chunk_store=self._chunk_store)
+                     chunk_store=self._chunk_store,
+                     synchronizer=self._synchronizer)
 
     def require_groups(self, *names):
         """Convenience method to require multiple groups in a single call."""
@@ -523,10 +562,6 @@ class Group(Mapping):
 
         """  # flake8: noqa
 
-        # setup
-        if self._readonly:
-            raise ReadOnlyError('group is read-only')
-
         # N.B., additional kwargs are included in method signature to
         # improve compatibility for users familiar with h5py and adapting
         # code that previously used h5py. These keyword arguments are
@@ -538,16 +573,17 @@ class Group(Mapping):
             else:
                 warn('ignoring keyword argument %r' % k)
 
-        self._create_dataset(name, data=data, shape=shape, chunks=chunks,
-                             dtype=dtype, compression=compression,
-                             compression_opts=compression_opts,
-                             fill_value=fill_value, order=order,
-                             synchronizer=synchronizer)
+        return self._write_op(self._create_dataset_nosync, name, data=data,
+                              shape=shape, chunks=chunks, dtype=dtype,
+                              compression=compression,
+                              compression_opts=compression_opts,
+                              fill_value=fill_value, order=order,
+                              synchronizer=synchronizer)
 
-    def _create_dataset(self, name, data=None, shape=None, chunks=None,
-                        dtype=None, compression='default',
-                        compression_opts=None, fill_value=None, order='C',
-                        synchronizer=None):
+    def _create_dataset_nosync(self, name, data=None, shape=None, chunks=None,
+                               dtype=None, compression='default',
+                               compression_opts=None, fill_value=None,
+                               order='C', synchronizer=None):
 
         path = self._item_path(name)
         self._require_parent_group(path)
@@ -557,6 +593,10 @@ class Group(Mapping):
             raise KeyError(name)
         if contains_group(self._store, path):
             raise KeyError(name)
+
+        # determine synchronizer
+        if synchronizer is None:
+            synchronizer = self._synchronizer
 
         if data is not None:
             a = array(data, chunks=chunks, dtype=dtype,
@@ -594,11 +634,18 @@ class Group(Mapping):
 
         """
 
+        return self._write_op(self._require_dataset_nosync, name, shape=shape,
+                              dtype=dtype, exact=exact, **kwargs)
+
+    def _require_dataset_nosync(self, name, shape, dtype=None, exact=False,
+                                **kwargs):
+
         path = self._item_path(name)
 
         if contains_array(self._store, path):
+            synchronizer = kwargs.get('synchronizer', self._synchronizer)
             a = Array(self._store, path=path, readonly=self._readonly,
-                      chunk_store=self._chunk_store)
+                      chunk_store=self._chunk_store, synchronizer=synchronizer)
             shape = normalize_shape(shape)
             if shape != a.shape:
                 raise TypeError('shapes do not match')
@@ -612,58 +659,66 @@ class Group(Mapping):
             return a
 
         else:
-            if self._readonly:
-                raise ReadOnlyError('group is read-only')
-            return self._create_dataset(name, shape=shape, dtype=dtype,
-                                        **kwargs)
+            return self._create_dataset_nosync(name, shape=shape, dtype=dtype,
+                                               **kwargs)
 
     def create(self, name, **kwargs):
         """Create an array. Keyword arguments as per
         :func:`zarr.creation.create`."""
-        if self._readonly:
-            raise ReadOnlyError('group is read-only')
+        return self._write_op(self._create_nosync, name, **kwargs)
+
+    def _create_nosync(self, name, **kwargs):
         path = self._item_path(name)
         self._require_parent_group(path)
+        kwargs.setdefault('synchronizer', self._synchronizer)
         return create(store=self._store, path=path,
                       chunk_store=self._chunk_store, **kwargs)
 
     def empty(self, name, **kwargs):
         """Create an array. Keyword arguments as per
         :func:`zarr.creation.empty`."""
-        if self._readonly:
-            raise ReadOnlyError('group is read-only')
+        return self._write_op(self._empty_nosync, name, **kwargs)
+
+    def _empty_nosync(self, name, **kwargs):
         path = self._item_path(name)
         self._require_parent_group(path)
+        kwargs.setdefault('synchronizer', self._synchronizer)
         return empty(store=self._store, path=path,
                      chunk_store=self._chunk_store, **kwargs)
 
     def zeros(self, name, **kwargs):
         """Create an array. Keyword arguments as per
         :func:`zarr.creation.zeros`."""
-        if self._readonly:
-            raise ReadOnlyError('group is read-only')
+        return self._write_op(self._zeros_nosync, name, **kwargs)
+
+    def _zeros_nosync(self, name, **kwargs):
         path = self._item_path(name)
         self._require_parent_group(path)
+        kwargs.setdefault('synchronizer', self._synchronizer)
         return zeros(store=self._store, path=path,
                      chunk_store=self._chunk_store, **kwargs)
 
     def ones(self, name, **kwargs):
         """Create an array. Keyword arguments as per
         :func:`zarr.creation.ones`."""
-        if self._readonly:
-            raise ReadOnlyError('group is read-only')
+        return self._write_op(self._ones_nosync, name, **kwargs)
+
+    def _ones_nosync(self, name, **kwargs):
         path = self._item_path(name)
         self._require_parent_group(path)
+        kwargs.setdefault('synchronizer', self._synchronizer)
         return ones(store=self._store, path=path,
                     chunk_store=self._chunk_store, **kwargs)
 
     def full(self, name, fill_value, **kwargs):
         """Create an array. Keyword arguments as per
         :func:`zarr.creation.full`."""
-        if self._readonly:
-            raise ReadOnlyError('group is read-only')
+        return self._write_op(self._full_nosync, name, fill_value, **kwargs)
+
+    def _full_nosync(self, name, fill_value, **kwargs):
         path = self._item_path(name)
         self._require_parent_group(path)
+        kwargs.setdefault('synchronizer', self._synchronizer)
         return full(store=self._store, path=path,
                     chunk_store=self._chunk_store,
                     fill_value=fill_value, **kwargs)
@@ -671,55 +726,65 @@ class Group(Mapping):
     def array(self, name, data, **kwargs):
         """Create an array. Keyword arguments as per
         :func:`zarr.creation.array`."""
-        if self._readonly:
-            raise ReadOnlyError('group is read-only')
+        return self._write_op(self._array_nosync, name, data, **kwargs)
+
+    def _array_nosync(self, name, data, **kwargs):
         path = self._item_path(name)
         self._require_parent_group(path)
+        kwargs.setdefault('synchronizer', self._synchronizer)
         return array(data, store=self._store, path=path,
                      chunk_store=self._chunk_store, **kwargs)
 
     def empty_like(self, name, data, **kwargs):
         """Create an array. Keyword arguments as per
         :func:`zarr.creation.empty_like`."""
-        if self._readonly:
-            raise ReadOnlyError('group is read-only')
+        return self._write_op(self._empty_like_nosync, name, data, **kwargs)
+
+    def _empty_like_nosync(self, name, data, **kwargs):
         path = self._item_path(name)
         self._require_parent_group(path)
+        kwargs.setdefault('synchronizer', self._synchronizer)
         return empty_like(data, store=self._store, path=path,
                           chunk_store=self._chunk_store, **kwargs)
 
     def zeros_like(self, name, data, **kwargs):
         """Create an array. Keyword arguments as per
         :func:`zarr.creation.zeros_like`."""
-        if self._readonly:
-            raise ReadOnlyError('group is read-only')
+        return self._write_op(self._zeros_like_nosync, name, data, **kwargs)
+
+    def _zeros_like_nosync(self, name, data, **kwargs):
         path = self._item_path(name)
         self._require_parent_group(path)
+        kwargs.setdefault('synchronizer', self._synchronizer)
         return zeros_like(data, store=self._store, path=path,
                           chunk_store=self._chunk_store, **kwargs)
 
     def ones_like(self, name, data, **kwargs):
         """Create an array. Keyword arguments as per
         :func:`zarr.creation.ones_like`."""
-        if self._readonly:
-            raise ReadOnlyError('group is read-only')
+        return self._write_op(self._ones_like_nosync, name, data, **kwargs)
+
+    def _ones_like_nosync(self, name, data, **kwargs):
         path = self._item_path(name)
         self._require_parent_group(path)
+        kwargs.setdefault('synchronizer', self._synchronizer)
         return ones_like(data, store=self._store, path=path,
                          chunk_store=self._chunk_store, **kwargs)
 
     def full_like(self, name, data, **kwargs):
         """Create an array. Keyword arguments as per
         :func:`zarr.creation.full_like`."""
-        if self._readonly:
-            raise ReadOnlyError('group is read-only')
+        return self._write_op(self._full_like_nosync, name, data, **kwargs)
+
+    def _full_like_nosync(self, name, data, **kwargs):
         path = self._item_path(name)
         self._require_parent_group(path)
+        kwargs.setdefault('synchronizer', self._synchronizer)
         return full_like(data, store=self._store, path=path,
                          chunk_store=self._chunk_store, **kwargs)
 
 
-def group(store=None, overwrite=False, chunk_store=None):
+def group(store=None, overwrite=False, chunk_store=None, synchronizer=None):
     """Create a group.
 
     Parameters
@@ -733,6 +798,8 @@ def group(store=None, overwrite=False, chunk_store=None):
     chunk_store : MutableMapping, optional
         Separate storage for chunks. If not provided, `store` will be used
         for storage of both chunks and metadata.
+    synchronizer : object, optional
+        Array synchronizer.
 
     Returns
     -------
@@ -771,10 +838,11 @@ def group(store=None, overwrite=False, chunk_store=None):
     elif not contains_group(store):
         init_group(store, chunk_store=chunk_store)
 
-    return Group(store, readonly=False, chunk_store=chunk_store)
+    return Group(store, readonly=False, chunk_store=chunk_store,
+                 synchronizer=synchronizer)
 
 
-def open_group(path, mode='a'):
+def open_group(path, mode='a', synchronizer=None):
     """Convenience function to instantiate a group stored in a directory on
     the file system.
 
@@ -787,6 +855,8 @@ def open_group(path, mode='a'):
         read/write (must exist); 'a' means read/write (create if doesn't
         exist); 'w' means create (overwrite if exists); 'w-' means create
         (fail if exists).
+    synchronizer : object, optional
+        Array synchronizer.
 
     Returns
     -------
@@ -843,36 +913,4 @@ def open_group(path, mode='a'):
     # determine readonly status
     readonly = mode == 'r'
 
-    return Group(store, readonly=readonly)
-
-
-class SynchronizedGroup(Group):
-    """TODO doc me"""
-
-    def __init__(self, store, synchronizer, path=None, readonly=False,
-                 chunk_store=None):
-        super(SynchronizedGroup, self).__init__(store, path=path,
-                                                readonly=readonly,
-                                                chunk_store=chunk_store)
-        self._synchronizer = synchronizer
-        akey = self._key_prefix + attrs_key
-        self._attrs = SynchronizedAttributes(store, synchronizer, key=akey,
-                                             readonly=readonly)
-
-    def __repr__(self):
-        r = super(SynchronizedGroup, self).__repr__()
-        r += ('\n  synchronizer: %s.%s' %
-              (type(self._synchronizer).__module__,
-               type(self._synchronizer).__name__))
-        return r
-
-    def __getstate__(self):
-        return self._store, self._synchronizer, self._path, self._readonly, \
-               self._chunk_store
-
-    def __setstate__(self, state):
-        self.__init__(*state)
-
-    def __getitem__(self, item):
-        # TODO
-        pass
+    return Group(store, readonly=readonly, synchronizer=synchronizer)
