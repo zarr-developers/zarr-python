@@ -5,63 +5,137 @@ from tempfile import mkdtemp
 import atexit
 import shutil
 import pickle
+import os
 
 
 import numpy as np
 from numpy.testing import assert_array_equal
 from nose.tools import eq_ as eq, assert_is_instance, \
-    assert_raises, assert_true, assert_false
-import zict
-from zarr.storage import DirectoryStore, init_store
+    assert_raises, assert_true, assert_false, assert_is, assert_is_none
+from zarr.storage import DirectoryStore, ZipStore, init_array, init_group, \
+    buffersize
 
 
 from zarr.core import Array
 from zarr.errors import ReadOnlyError
-
-
-def test_array_init():
-
-    store = dict()  # store not initialised
-    with assert_raises(ValueError):
-        Array(store)
-
-
-def test_nbytes_stored():
-
-    store = dict()
-    init_store(store, shape=1000, chunks=100)
-    z = Array(store)
-    eq(sum(len(v) for v in store.values()), z.nbytes_stored)
-    z[:] = 42
-    eq(sum(len(v) for v in store.values()), z.nbytes_stored)
-
-    # store supporting size determination
-    path = mkdtemp()
-    atexit.register(shutil.rmtree, path)
-    store = DirectoryStore(path)
-    init_store(store, shape=1000, chunks=100)
-    z = Array(store)
-    eq(sum(len(v) for v in store.values()), z.nbytes_stored)
-    z[:] = 42
-    eq(sum(len(v) for v in store.values()), z.nbytes_stored)
-
-    # custom store, doesn't support size determination
-    store = zict.Zip('test.zip', mode='w')
-    init_store(store, shape=1000, chunks=100, compression='zlib',
-               compression_opts=1)
-    z = Array(store)
-    eq(-1, z.nbytes_stored)
-    z[:] = 42
-    eq(-1, z.nbytes_stored)
+from zarr.compat import PY2
 
 
 class TestArray(unittest.TestCase):
 
-    def create_array(self, store=None, readonly=False, **kwargs):
+    def test_array_init(self):
+
+        # normal initialization
+        store = dict()
+        init_array(store, shape=100, chunks=10)
+        a = Array(store)
+        assert_is_instance(a, Array)
+        eq((100,), a.shape)
+        eq((10,), a.chunks)
+        eq('', a.path)
+        assert_is_none(a.name)
+        assert_is(store, a.store)
+
+        # initialize at path
+        store = dict()
+        init_array(store, shape=100, chunks=10, path='foo/bar')
+        a = Array(store, path='foo/bar')
+        assert_is_instance(a, Array)
+        eq((100,), a.shape)
+        eq((10,), a.chunks)
+        eq('foo/bar', a.path)
+        eq('/foo/bar', a.name)
+        assert_is(store, a.store)
+
+        # store not initialized
+        store = dict()
+        with assert_raises(ValueError):
+            Array(store)
+
+        # group is in the way
+        store = dict()
+        init_group(store, path='baz')
+        with assert_raises(ValueError):
+            Array(store, path='baz')
+
+    def create_array(self, store=None, path=None, read_only=False,
+                     chunk_store=None, **kwargs):
         if store is None:
             store = dict()
-        init_store(store, **kwargs)
-        return Array(store, readonly=readonly)
+        init_array(store, path=path, chunk_store=chunk_store, **kwargs)
+        return Array(store, path=path, read_only=read_only,
+                     chunk_store=chunk_store)
+
+    def test_nbytes_stored(self):
+
+        # custom store, does not implement getsize()
+        class CustomMapping(object):
+            def __init__(self):
+                self.inner = dict()
+
+            def __getitem__(self, item):
+                return self.inner[item]
+
+            def __setitem__(self, item, value):
+                self.inner[item] = value
+
+            def __contains__(self, item):
+                return item in self.inner
+
+        store = CustomMapping()
+        z = self.create_array(store=store, shape=1000, chunks=100)
+        eq(-1, z.nbytes_stored)
+        z[:] = 42
+        eq(-1, z.nbytes_stored)
+
+        store = dict()
+        chunk_store = CustomMapping()
+        z = self.create_array(store=store, chunk_store=chunk_store,
+                              shape=1000, chunks=100)
+        eq(-1, z.nbytes_stored)
+        z[:] = 42
+        eq(-1, z.nbytes_stored)
+
+        # dict as store
+        store = dict()
+        z = self.create_array(store=store, shape=1000, chunks=100)
+        expect_nbytes_stored = sum(buffersize(v) for v in z.store.values())
+        if z.store != z.chunk_store:
+            expect_nbytes_stored += sum(buffersize(v) for v in
+                                        z.chunk_store.values())
+        eq(expect_nbytes_stored, z.nbytes_stored)
+        z[:] = 42
+        expect_nbytes_stored = sum(buffersize(v) for v in z.store.values())
+        if z.store != z.chunk_store:
+            expect_nbytes_stored += sum(buffersize(v) for v in
+                                        z.chunk_store.values())
+        eq(expect_nbytes_stored, z.nbytes_stored)
+        # mess with store
+        store[z._key_prefix + 'foo'] = list(range(10))
+        eq(-1, z.nbytes_stored)
+
+        # for comparison
+        z = self.create_array(store=dict(), shape=1000, chunks=100,
+                              compression='zlib', compression_opts=1)
+        z[:] = 42
+
+        # DirectoryStore
+        path = mkdtemp()
+        atexit.register(shutil.rmtree, path)
+        store = DirectoryStore(path)
+        zz = self.create_array(store=store, shape=1000, chunks=100,
+                               compression='zlib', compression_opts=1)
+        zz[:] = 42
+        eq(z.nbytes_stored, zz.nbytes_stored)
+
+        # ZipStore
+        if os.path.exists('test.zip'):
+            os.remove('test.zip')
+        store = ZipStore('test.zip')
+        zz = self.create_array(store=store, shape=1000, chunks=100,
+                               compression='zlib', compression_opts=1)
+        zz[:] = 42
+        eq(z.nbytes_stored, zz.nbytes_stored)
 
     def test_array_1d(self):
 
@@ -93,7 +167,11 @@ class TestArray(unittest.TestCase):
 
         # check properties
         eq(a.nbytes, z.nbytes)
-        eq(sum(len(v) for v in z.store.values()), z.nbytes_stored)
+        expect_nbytes_stored = sum(buffersize(v) for v in z.store.values())
+        if z.store != z.chunk_store:
+            expect_nbytes_stored += sum(buffersize(v) for v in
+                                        z.chunk_store.values())
+        eq(expect_nbytes_stored, z.nbytes_stored)
         eq(11, z.initialized)
 
         # check slicing
@@ -170,7 +248,10 @@ class TestArray(unittest.TestCase):
 
         # check properties
         eq(a.nbytes, z.nbytes)
-        eq(sum(len(v) for v in z.store.values()), z.nbytes_stored)
+        expect_nbytes_stored = sum(buffersize(v) for v in z.store.values())
+        if z.store != z.chunk_store:
+            expect_nbytes_stored += sum(buffersize(v) for v in
+                                        z.chunk_store.values())
         eq(50, z.initialized)
 
         # check slicing
@@ -421,13 +502,13 @@ class TestArray(unittest.TestCase):
         with assert_raises(ValueError):
             z.append(b)
 
-    def test_readonly(self):
+    def test_read_only(self):
 
         z = self.create_array(shape=1000, chunks=100)
-        assert_false(z.readonly)
+        assert_false(z.read_only)
 
-        z = self.create_array(shape=1000, chunks=100, readonly=True)
-        assert_true(z.readonly)
+        z = self.create_array(shape=1000, chunks=100, read_only=True)
+        assert_true(z.read_only)
         with assert_raises(ReadOnlyError):
             z[:] = 42
         with assert_raises(ReadOnlyError):
@@ -454,3 +535,73 @@ class TestArray(unittest.TestCase):
             eq(z.compression_opts, z2.compression_opts)
             eq(z.fill_value, z2.fill_value)
             assert_array_equal(z[:], z2[:])
+
+    def test_repr(self):
+        if not PY2:
+
+            z = self.create_array(shape=100, chunks=10, dtype='f4',
+                                  compression='zlib', compression_opts=1)
+            expect = """zarr.core.Array((100,), float32, chunks=(10,), order=C)
+  compression: zlib; compression_opts: 1
+  nbytes: 400; nbytes_stored: 210; ratio: 1.9; initialized: 0/10
+  store: builtins.dict
+"""
+            actual = repr(z)
+            for l1, l2 in zip(expect.split('\n'), actual.split('\n')):
+                eq(l1, l2)
+
+
+class TestArrayWithPath(TestArray):
+
+    @staticmethod
+    def create_array(store=None, read_only=False, chunk_store=None, **kwargs):
+        if store is None:
+            store = dict()
+        init_array(store, path='foo/bar', chunk_store=chunk_store, **kwargs)
+        return Array(store, path='foo/bar', read_only=read_only,
+                     chunk_store=chunk_store)
+
+    def test_repr(self):
+        if not PY2:
+
+            z = self.create_array(shape=100, chunks=10, dtype='f4',
+                                  compression='zlib', compression_opts=1)
+            # flake8: noqa
+            expect = """zarr.core.Array(/foo/bar, (100,), float32, chunks=(10,), order=C)
+  compression: zlib; compression_opts: 1
+  nbytes: 400; nbytes_stored: 210; ratio: 1.9; initialized: 0/10
+  store: builtins.dict
+"""
+            actual = repr(z)
+            for l1, l2 in zip(expect.split('\n'), actual.split('\n')):
+                eq(l1, l2)
+
+
+class TestArrayWithChunkStore(TestArray):
+
+    @staticmethod
+    def create_array(store=None, read_only=False, chunk_store=None, **kwargs):
+        if store is None:
+            store = dict()
+        if chunk_store is None:
+            # separate chunk store
+            chunk_store = dict()
+        init_array(store, path='foo/bar', chunk_store=chunk_store, **kwargs)
+        return Array(store, path='foo/bar', read_only=read_only,
+                     chunk_store=chunk_store)
+
+    def test_repr(self):
+        if not PY2:
+
+            z = self.create_array(shape=100, chunks=10, dtype='f4',
+                                  compression='zlib', compression_opts=1)
+            # flake8: noqa
+            expect = """zarr.core.Array(/foo/bar, (100,), float32, chunks=(10,), order=C)
+  compression: zlib; compression_opts: 1
+  nbytes: 400; nbytes_stored: 210; ratio: 1.9; initialized: 0/10
+  store: builtins.dict
+  chunk_store: builtins.dict
+"""
+            actual = repr(z)
+            for l1, l2 in zip(expect.split('\n'), actual.split('\n')):
+                eq(l1, l2)

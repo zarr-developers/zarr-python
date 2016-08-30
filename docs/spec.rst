@@ -1,3 +1,5 @@
+.. _spec:
+
 Specifications
 ==============
 
@@ -5,3 +7,4 @@ Specifications
     :maxdepth: 3
 
     spec/v1
+    spec/v2

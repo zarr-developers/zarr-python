@@ -14,21 +14,21 @@ from zarr.errors import ReadOnlyError
 
 class TestAttributes(unittest.TestCase):
 
-    def init_attributes(self, store, readonly=False):
-        return Attributes(store, readonly=readonly)
+    def init_attributes(self, store, read_only=False):
+        return Attributes(store, key='attrs', read_only=read_only)
 
     def test_storage(self):
 
         store = dict()
-        a = self.init_attributes(store)
-        assert 'attrs' in store
-        assert isinstance(store['attrs'], binary_type)
-        d = json.loads(text_type(store['attrs'], 'ascii'))
-        eq(dict(), d)
+        a = Attributes(store=store, key='attrs')
+        assert 'foo' not in a
+        assert 'bar' not in a
+        eq(dict(), a.asdict())
 
         a['foo'] = 'bar'
         a['baz'] = 42
-
+        assert 'attrs' in store
+        assert isinstance(store['attrs'], binary_type)
         d = json.loads(text_type(store['attrs'], 'ascii'))
         eq(dict(foo='bar', baz=42), d)
 
@@ -74,11 +74,10 @@ class TestAttributes(unittest.TestCase):
         eq({'bar', 42}, set(a.values()))
         eq({('foo', 'bar'), ('baz', 42)}, set(a.items()))
 
-    def test_readonly(self):
-
+    def test_read_only(self):
         store = dict()
+        a = self.init_attributes(store, read_only=True)
         store['attrs'] = json.dumps(dict(foo='bar', baz=42)).encode('ascii')
-        a = self.init_attributes(store, readonly=True)
         eq(a['foo'], 'bar')
         eq(a['baz'], 42)
         with assert_raises(ReadOnlyError):
@@ -87,5 +86,3 @@ class TestAttributes(unittest.TestCase):
             del a['foo']
         with assert_raises(ReadOnlyError):
             a.update(foo='quux')
-        with assert_raises(ReadOnlyError):
-            a.put(dict())

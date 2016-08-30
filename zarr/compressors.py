@@ -138,7 +138,7 @@ else:
             if shuffle not in [0, 1, 2]:
                 raise ValueError('invalid shuffle: %s' % shuffle)
 
-            # construct normalised options
+            # construct normalized options
             compression_opts = dict(
                 cname=cname, clevel=clevel, shuffle=shuffle
             )

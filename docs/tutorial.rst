@@ -178,7 +178,7 @@ and can be configured in a variety of ways to improve the compression
 ratio for different types of data. Blosc is in fact a
 "meta-compressor", which means that it can used a number of different
 compression algorithms internally to compress the data. Blosc also
-provides highly optimised implementations of byte and bit shuffle
+provides highly optimized implementations of byte and bit shuffle
 filters, which can significantly improve compression ratios for some
 data.
 
@@ -276,10 +276,11 @@ array with thread synchronization::
     >>> z = zarr.zeros((10000, 10000), chunks=(1000, 1000), dtype='i4',
     ...                 synchronizer=zarr.ThreadSynchronizer())
     >>> z
-    zarr.sync.SynchronizedArray((10000, 10000), int32, chunks=(1000, 1000), order=C)
+    zarr.core.Array((10000, 10000), int32, chunks=(1000, 1000), order=C)
       compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
       nbytes: 381.5M; nbytes_stored: 313; ratio: 1277955.3; initialized: 0/100
-      store: builtins.dict; synchronizer: zarr.sync.ThreadSynchronizer
+      store: builtins.dict
+      synchronizer: zarr.sync.ThreadSynchronizer
 
 This array is safe to read or write within a multi-threaded program.
 
@@ -291,10 +292,11 @@ provided that all processes have access to a shared file system. E.g.::
     ...               chunks=(1000, 1000), dtype='i4',
     ...               synchronizer=synchronizer)
     >>> z
-    zarr.sync.SynchronizedArray((10000, 10000), int32, chunks=(1000, 1000), order=C)
+    zarr.core.Array((10000, 10000), int32, chunks=(1000, 1000), order=C)
       compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
       nbytes: 381.5M; nbytes_stored: 313; ratio: 1277955.3; initialized: 0/100
-      store: zarr.storage.DirectoryStore; synchronizer: zarr.sync.ProcessSynchronizer
+      store: zarr.storage.DirectoryStore
+      synchronizer: zarr.sync.ProcessSynchronizer
 
 This array is safe to read or write from multiple processes.
 
@@ -320,6 +322,80 @@ for associating an array with application-specific metadata. For example::
 
 Internally Zarr uses JSON to store array attributes, so attribute values
 must be JSON serializable.
+
+.. _tutorial_groups:
+
+Groups
+------
+
+Zarr supports hierarchical organization of arrays via groups. As with arrays,
+groups can be stored in memory, on disk, or via other storage systems that
+support a similar interface.
+
+To create a group, use the :func:`zarr.hierarchy.group` function::
+
+    >>> root_group = zarr.group()
+    >>> root_group
+    zarr.hierarchy.Group(/, 0)
+      store: zarr.storage.DictStore
+
+Groups have a similar API to the Group class from `h5py <http://www.h5py.org/>`_.
+For example, groups can contain other groups::
+
+    >>> foo_group = root_group.create_group('foo')
+    >>> bar_group = foo_group.create_group('bar')
+
+Groups can also contain arrays, also known as "datasets" in HDF5 terminology.
+For compatibility with h5py, Zarr groups implement the
+:func:`zarr.hierarchy.Group.create_dataset` method, e.g.::
+
+    >>> z = bar_group.create_dataset('baz', shape=(10000, 10000),
+    ...                              chunks=(1000, 1000), dtype='i4',
+    ...                              fill_value=0)
+    >>> z
+    zarr.core.Array(/foo/bar/baz, (10000, 10000), int32, chunks=(1000, 1000), order=C)
+      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
+      nbytes: 381.5M; nbytes_stored: 313; ratio: 1277955.3; initialized: 0/100
+      store: zarr.storage.DictStore
+
+Members of a group can be accessed via the suffix notation, e.g.::
+
+    >>> root_group['foo']
+    zarr.hierarchy.Group(/foo, 1)
+      groups: 1; bar
+      store: zarr.storage.DictStore
+
+The '/' character can be used to access multiple levels of the hierarchy,
+e.g.::
+
+    >>> root_group['foo/bar']
+    zarr.hierarchy.Group(/foo/bar, 1)
+      arrays: 1; baz
+      store: zarr.storage.DictStore
+    >>> root_group['foo/bar/baz']
+    zarr.core.Array(/foo/bar/baz, (10000, 10000), int32, chunks=(1000, 1000), order=C)
+      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
+      nbytes: 381.5M; nbytes_stored: 313; ratio: 1277955.3; initialized: 0/100
+      store: zarr.storage.DictStore
+
+The :func:`zarr.hierarchy.open_group` provides a convenient way to create or
+re-open a group stored in a directory on the file-system, with sub-groups
+stored in sub-directories, e.g.::
+
+    >>> persistent_group = zarr.open_group('example', mode='w')
+    >>> persistent_group
+    zarr.hierarchy.Group(/, 0)
+      store: zarr.storage.DirectoryStore
+    >>> z = persistent_group.create_dataset('foo/bar/baz', shape=(10000, 10000),
+    ...                                     chunks=(1000, 1000), dtype='i4',
+    ...                                     fill_value=0)
+    >>> z
+    zarr.core.Array(/foo/bar/baz, (10000, 10000), int32, chunks=(1000, 1000), order=C)
+      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
+      nbytes: 381.5M; nbytes_stored: 313; ratio: 1277955.3; initialized: 0/100
+      store: zarr.storage.DirectoryStore
+
+For more information on groups see the :mod:`zarr.hierarchy` API docs.
 
 .. _tutorial_tips:
 
@@ -380,33 +456,35 @@ Storage alternatives
 Zarr can use any object that implements the ``MutableMapping`` interface as
 the store for an array.
 
-Here is an example storing an array directly into a Zip file via the
-`zict <https://github.com/mrocklin/zict>`_ package::
+Here is an example storing an array directly into a Zip file::
 
-    >>> import zict
-    >>> import os
-    >>> store = zict.Zip('example.zip', mode='w')
+    >>> store = zarr.ZipStore('example.zip', mode='w')
     >>> z = zarr.zeros((1000, 1000), chunks=(100, 100), dtype='i4',
     ...                compression='zlib', compression_opts=1, store=store)
     >>> z
     zarr.core.Array((1000, 1000), int32, chunks=(100, 100), order=C)
       compression: zlib; compression_opts: 1
-      nbytes: 3.8M; initialized: 0/100
-      store: zict.zip.Zip
+      nbytes: 3.8M; nbytes_stored: 236; ratio: 16949.2; initialized: 0/100
+      store: zarr.storage.ZipStore
     >>> z[:] = 42
-    >>> store.flush()  # only required for zict.Zip
+    >>> z
+    zarr.core.Array((1000, 1000), int32, chunks=(100, 100), order=C)
+      compression: zlib; compression_opts: 1
+      nbytes: 3.8M; nbytes_stored: 21.9K; ratio: 178.3; initialized: 100/100
+      store: zarr.storage.ZipStore
+    >>> import os
     >>> os.path.getsize('example.zip')
-    30828
+    30838
 
 Re-open and check that data have been written::
 
-    >>> store = zict.Zip('example.zip', mode='r')
+    >>> store = zarr.ZipStore('example.zip', mode='r')
     >>> z = zarr.Array(store)
     >>> z
     zarr.core.Array((1000, 1000), int32, chunks=(100, 100), order=C)
       compression: zlib; compression_opts: 1
-      nbytes: 3.8M; initialized: 100/100
-      store: zict.zip.Zip
+      nbytes: 3.8M; nbytes_stored: 21.9K; ratio: 178.3; initialized: 100/100
+      store: zarr.storage.ZipStore
     >>> z[:]
     array([[42, 42, 42, ..., 42, 42, 42],
            [42, 42, 42, ..., 42, 42, 42],

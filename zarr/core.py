@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, print_function, division
-from functools import reduce  # TODO PY2 compatibility
 import operator
 import itertools
 
@@ -10,27 +9,39 @@ import numpy as np
 
 from zarr.compressors import get_compressor_cls
 from zarr.util import is_total_slice, normalize_array_selection, \
-    get_chunk_range, human_readable_size, normalize_resize_args
-from zarr.meta import decode_metadata, encode_metadata
+    get_chunk_range, human_readable_size, normalize_resize_args, \
+    normalize_storage_path
+from zarr.storage import array_meta_key, attrs_key, listdir, getsize
+from zarr.meta import decode_array_metadata, encode_array_metadata
 from zarr.attrs import Attributes
-from zarr.compat import itervalues
 from zarr.errors import ReadOnlyError
+from zarr.compat import reduce
 
 
 class Array(object):
-    """Instantiate an array from an initialised store.
+    """Instantiate an array from an initialized store.
 
     Parameters
     ----------
     store : MutableMapping
-        Array store, already initialised.
-    readonly : bool, optional
+        Array store, already initialized.
+    path : string, optional
+        Storage path.
+    read_only : bool, optional
         True if array should be protected against modification.
+    chunk_store : MutableMapping, optional
+        Separate storage for chunks. If not provided, `store` will be used
+        for storage of both chunks and metadata.
+    synchronizer : object, optional
+        Array synchronizer.
 
     Attributes
     ----------
     store
-    readonly
+    path
+    name
+    read_only
+    chunk_store
     shape
     chunks
     dtype
@@ -38,6 +49,7 @@ class Array(object):
     compression_opts
     fill_value
     order
+    synchronizer
     attrs
     size
     itemsize
@@ -53,35 +65,34 @@ class Array(object):
     resize
     append
 
-    Examples
-    --------
-    >>> import zarr
-    >>> store = dict()
-    >>> zarr.init_store(store, shape=(10000, 10000), chunks=(1000, 1000))
-    >>> z = zarr.Array(store)
-    >>> z
-    zarr.core.Array((10000, 10000), float64, chunks=(1000, 1000), order=C)
-      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
-      nbytes: 762.9M; nbytes_stored: 316; ratio: 2531645.6; initialized: 0/100
-      store: builtins.dict
-
     """  # flake8: noqa
 
-    def __init__(self, store, readonly=False):
-        # N.B., expect at this point store is fully initialised with all
-        # configuration metadata fully specified and normalised
+    def __init__(self, store, path=None, read_only=False, chunk_store=None,
+                 synchronizer=None):
+        # N.B., expect at this point store is fully initialized with all
+        # configuration metadata fully specified and normalized
 
-        #: store docstring
-        self._store = store  #: inline docstring
-        self._readonly = readonly
+        self._store = store
+        self._path = normalize_storage_path(path)
+        if self._path:
+            self._key_prefix = self._path + '/'
+        else:
+            self._key_prefix = ''
+        self._read_only = read_only
+        if chunk_store is None:
+            self._chunk_store = store
+        else:
+            self._chunk_store = chunk_store
+        self._synchronizer = synchronizer
 
-        # initialise metadata
+        # initialize metadata
         try:
-            meta_bytes = store['meta']
+            mkey = self._key_prefix + array_meta_key
+            meta_bytes = store[mkey]
         except KeyError:
             raise ValueError('store has no metadata')
         else:
-            meta = decode_metadata(meta_bytes)
+            meta = decode_array_metadata(meta_bytes)
             self._meta = meta
             self._shape = meta['shape']
             self._chunks = meta['chunks']
@@ -93,15 +104,18 @@ class Array(object):
             compressor_cls = get_compressor_cls(self._compression)
             self._compressor = compressor_cls(self._compression_opts)
 
-        # initialise attributes
-        self._attrs = Attributes(store, readonly=readonly)
+        # initialize attributes
+        akey = self._key_prefix + attrs_key
+        self._attrs = Attributes(store, key=akey, read_only=read_only,
+                                 synchronizer=synchronizer)
 
-    def flush_metadata(self):
+    def _flush_metadata(self):
         meta = dict(shape=self._shape, chunks=self._chunks, dtype=self._dtype,
                     compression=self._compression,
                     compression_opts=self._compression_opts,
                     fill_value=self._fill_value, order=self._order)
-        self._store['meta'] = encode_metadata(meta)
+        mkey = self._key_prefix + array_meta_key
+        self._store[mkey] = encode_array_metadata(meta)
 
     @property
     def store(self):
@@ -109,9 +123,31 @@ class Array(object):
         return self._store
 
     @property
-    def readonly(self):
-        """A boolean, True if write operations are not permitted."""
-        return self._readonly
+    def path(self):
+        """Storage path."""
+        return self._path
+
+    @property
+    def name(self):
+        """Array name following h5py convention."""
+        if self.path:
+            # follow h5py convention: add leading slash
+            name = self.path
+            if name[0] != '/':
+                name = '/' + name
+            return name
+        return None
+
+    @property
+    def read_only(self):
+        """A boolean, True if modification operations are not permitted."""
+        return self._read_only
+
+    @property
+    def chunk_store(self):
+        """A MutableMapping providing the underlying storage for array
+        chunks."""
+        return self._chunk_store
 
     @property
     def shape(self):
@@ -154,6 +190,11 @@ class Array(object):
         return self._order
 
     @property
+    def synchronizer(self):
+        """TODO doc me"""
+        return self._synchronizer
+
+    @property
     def attrs(self):
         """A MutableMapping containing user-defined attributes. Note that
         attribute values must be JSON serializable."""
@@ -179,21 +220,22 @@ class Array(object):
     def nbytes_stored(self):
         """The total number of stored bytes of data for the array. This
         includes storage required for configuration metadata and user
-        attributes encoded as JSON."""
-        if hasattr(self._store, 'size'):
-            # pass through
-            return self._store.size
-        elif isinstance(self._store, dict):
-            # cheap to compute by summing length of values
-            return sum(len(v) for v in itervalues(self._store))
+        attributes."""
+        m = getsize(self._store, self._path)
+        if self._store == self._chunk_store:
+            return m
         else:
-            return -1
+            n = getsize(self._chunk_store, self._path)
+            if m < 0 or n < 0:
+                return -1
+            else:
+                return m + n
 
     @property
     def initialized(self):
         """The number of chunks that have been initialized with some data."""
-        # N.B., expect 'meta' and 'attrs' keys in store also, so subtract 2
-        return len(self._store) - 2
+        return sum(1 for k in listdir(self._chunk_store, self._path)
+                   if k not in [array_meta_key, attrs_key])
 
     @property
     def cdata_shape(self):
@@ -201,6 +243,16 @@ class Array(object):
         dimension of the array."""
         return tuple(
             int(np.ceil(s / c)) for s, c in zip(self._shape, self._chunks)
+        )
+
+    def __eq__(self, other):
+        return (
+            isinstance(other, Array) and
+            self.store == other.store and
+            self.read_only == other.read_only and
+            self.path == other.path
+            # N.B., no need to compare other properties, should be covered by
+            # store comparison
         )
 
     def __array__(self):
@@ -401,7 +453,7 @@ class Array(object):
         """
 
         # guard conditions
-        if self._readonly:
+        if self._read_only:
             raise ReadOnlyError('array is read-only')
 
         # normalize selection
@@ -473,8 +525,8 @@ class Array(object):
         try:
 
             # obtain compressed data for chunk
-            ckey = '.'.join(map(str, cidx))
-            cdata = self._store[ckey]
+            ckey = self._chunk_key(cidx)
+            cdata = self._chunk_store[ckey]
 
         except KeyError:
 
@@ -522,6 +574,20 @@ class Array(object):
 
         """
 
+        # synchronization
+        if self._synchronizer is None:
+            self._chunk_setitem_nosync(cidx, key, value)
+        else:
+            # synchronize on the chunk
+            ckey = self._chunk_key(cidx)
+            with self._synchronizer[ckey]:
+                self._chunk_setitem_nosync(cidx, key, value)
+
+    def _chunk_setitem_nosync(self, cidx, key, value):
+
+        # obtain key for chunk storage
+        ckey = self._chunk_key(cidx)
+
         if is_total_slice(key, self._chunks):
 
             # optimisation: we are completely replacing the chunk, so no need
@@ -548,8 +614,7 @@ class Array(object):
             try:
 
                 # obtain compressed data for chunk
-                ckey = '.'.join(map(str, cidx))
-                cdata = self._store[ckey]
+                cdata = self._chunk_store[ckey]
 
             except KeyError:
 
@@ -573,18 +638,22 @@ class Array(object):
         cdata = self._compressor.compress(chunk)
 
         # store
-        ckey = '.'.join(map(str, cidx))
-        self._store[ckey] = cdata
+        self._chunk_store[ckey] = cdata
+
+    def _chunk_key(self, cidx):
+        return self._key_prefix + '.'.join(map(str, cidx))
 
     def __repr__(self):
         r = '%s.%s(' % (type(self).__module__, type(self).__name__)
-        r += '%s' % str(self._shape)
-        r += ', %s' % str(self._dtype)
-        r += ', chunks=%s' % str(self._chunks)
-        r += ', order=%s' % self._order
+        if self.name:
+            r += '%s, ' % self.name
+        r += '%s, ' % str(self.shape)
+        r += '%s, ' % str(self.dtype)
+        r += 'chunks=%s, ' % str(self.chunks)
+        r += 'order=%s' % self.order
         r += ')'
-        r += '\n  compression: %s' % self._compression
-        r += '; compression_opts: %s' % str(self._compression_opts)
+        r += '\n  compression: %s' % self.compression
+        r += '; compression_opts: %s' % str(self.compression_opts)
         r += '\n  nbytes: %s' % human_readable_size(self.nbytes)
         if self.nbytes_stored > 0:
             r += '; nbytes_stored: %s' % human_readable_size(
@@ -592,15 +661,39 @@ class Array(object):
             r += '; ratio: %.1f' % (self.nbytes / self.nbytes_stored)
         n_chunks = reduce(operator.mul, self.cdata_shape)
         r += '; initialized: %s/%s' % (self.initialized, n_chunks)
-        r += '\n  store: %s.%s' % (type(self._store).__module__,
-                                   type(self._store).__name__)
+        r += '\n  store: %s.%s' % (type(self.store).__module__,
+                                   type(self.store).__name__)
+        if self._store != self._chunk_store:
+            r += '\n  chunk_store: %s.%s' % \
+                 (type(self._chunk_store).__module__,
+                  type(self._chunk_store).__name__)
+        if self._synchronizer is not None:
+            r += ('\n  synchronizer: %s.%s' %
+                  (type(self._synchronizer).__module__,
+                   type(self._synchronizer).__name__))
         return r
 
     def __getstate__(self):
-        return self._store, self._readonly
+        return self._store, self._path, self._read_only, self._chunk_store, \
+               self._synchronizer
 
     def __setstate__(self, state):
         self.__init__(*state)
+
+    def _write_op(self, f, *args, **kwargs):
+
+        # guard condition
+        if self._read_only:
+            raise ReadOnlyError('array is read-only')
+
+        # synchronization
+        if self._synchronizer is None:
+            return f(*args, **kwargs)
+        else:
+            # synchronize on the array
+            mkey = self._key_prefix + array_meta_key
+            with self._synchronizer[mkey]:
+                return f(*args, **kwargs)
 
     def resize(self, *args):
         """Change the shape of the array by growing or shrinking one or more
@@ -637,9 +730,9 @@ class Array(object):
 
         """  # flake8: noqa
 
-        # guard conditions
-        if self._readonly:
-            raise ReadOnlyError('array is read-only')
+        return self._write_op(self._resize_nosync, *args)
+
+    def _resize_nosync(self, *args):
 
         # normalize new shape argument
         old_shape = self._shape
@@ -651,17 +744,17 @@ class Array(object):
                                 for s, c in zip(new_shape, chunks))
 
         # remove any chunks not within range
-        for key in list(self._store):
-            if key not in ['meta', 'attrs']:
+        for key in listdir(self._chunk_store, self._path):
+            if key not in [array_meta_key, attrs_key]:
                 cidx = map(int, key.split('.'))
                 if all(i < c for i, c in zip(cidx, new_cdata_shape)):
                     pass  # keep the chunk
                 else:
-                    del self._store[key]
+                    del self._chunk_store[self._key_prefix + key]
 
         # update metadata
         self._shape = new_shape
-        self.flush_metadata()
+        self._flush_metadata()
 
     def append(self, data, axis=0):
         """Append `data` to `axis`.
@@ -703,10 +796,9 @@ class Array(object):
           store: builtins.dict
 
         """
+        return self._write_op(self._append_nosync, data, axis=axis)
 
-        # guard conditions
-        if self._readonly:
-            raise ReadOnlyError('array is read-only')
+    def _append_nosync(self, data, axis=0):
 
         # ensure data is array-like
         if not hasattr(data, 'shape') or not hasattr(data, 'dtype'):
@@ -730,7 +822,7 @@ class Array(object):
         )
 
         # resize
-        self.resize(new_shape)
+        self._resize_nosync(new_shape)
 
         # store data
         # noinspection PyTypeChecker

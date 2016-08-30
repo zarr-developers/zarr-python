@@ -1,27 +1,26 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, print_function, division
-import os
 
 
 import numpy as np
 
 
 from zarr.core import Array
-from zarr.sync import SynchronizedArray
-from zarr.storage import DirectoryStore, init_store
+from zarr.storage import DirectoryStore, init_array, contains_array, \
+    contains_group
 
 
-def create(shape, chunks, dtype=None, compression='default',
+def create(shape, chunks=None, dtype=None, compression='default',
            compression_opts=None, fill_value=None, order='C', store=None,
-           synchronizer=None, overwrite=False):
+           synchronizer=None, overwrite=False, path=None, chunk_store=None):
     """Create an array.
 
     Parameters
     ----------
     shape : int or tuple of ints
         Array shape.
-    chunks : int or tuple of ints
-        Chunk shape.
+    chunks : int or tuple of ints, optional
+        Chunk shape. If not provided, will be guessed from `shape` and `dtype`.
     dtype : string or dtype, optional
         NumPy dtype.
     compression : string, optional
@@ -31,17 +30,22 @@ def create(shape, chunks, dtype=None, compression='default',
         Options to primary compressor. E.g., for blosc, provide a dictionary
         with keys 'cname', 'clevel' and 'shuffle'.
     fill_value : object
-        Default value to use for uninitialised portions of the array.
+        Default value to use for uninitialized portions of the array.
     order : {'C', 'F'}, optional
         Memory layout to be used within each chunk.
     store : MutableMapping, optional
         Array storage. If not provided, a Python dict will be used, meaning
         array data will be stored in memory.
-    synchronizer : zarr.sync.ArraySynchronizer, optional
+    synchronizer : object, optional
         Array synchronizer.
     overwrite : bool, optional
         If True, delete all pre-existing data in `store` before creating the
         array.
+    path : string, optional
+        Path under which array is stored.
+    chunk_store : MutableMapping, optional
+        Separate storage for chunks. If not provided, `store` will be used
+        for storage of both chunks and metadata.
 
     Returns
     -------
@@ -62,24 +66,26 @@ def create(shape, chunks, dtype=None, compression='default',
 
     """  # flake8: noqa
 
-    # initialise store
+    # initialize store
     if store is None:
         store = dict()
-    init_store(store, shape=shape, chunks=chunks, dtype=dtype,
+
+    # initialize array metadata
+    init_array(store, shape=shape, chunks=chunks, dtype=dtype,
                compression=compression, compression_opts=compression_opts,
-               fill_value=fill_value, order=order, overwrite=overwrite)
+               fill_value=fill_value, order=order, overwrite=overwrite,
+               path=path, chunk_store=chunk_store)
 
     # instantiate array
-    if synchronizer is not None:
-        z = SynchronizedArray(store, synchronizer)
-    else:
-        z = Array(store)
+    z = Array(store, path=path, chunk_store=chunk_store,
+              synchronizer=synchronizer)
 
     return z
 
 
-def empty(shape, chunks, dtype=None, compression='default',
-          compression_opts=None, order='C', store=None, synchronizer=None):
+def empty(shape, chunks=None, dtype=None, compression='default',
+          compression_opts=None, order='C', store=None, synchronizer=None,
+          path=None, overwrite=False, chunk_store=None):
     """Create an empty array.
 
     For parameter definitions see :func:`zarr.creation.create`.
@@ -94,13 +100,15 @@ def empty(shape, chunks, dtype=None, compression='default',
     return create(shape=shape, chunks=chunks, dtype=dtype,
                   compression=compression, compression_opts=compression_opts,
                   fill_value=None, order=order, store=store,
-                  synchronizer=synchronizer)
+                  synchronizer=synchronizer, path=path, overwrite=overwrite,
+                  chunk_store=chunk_store)
 
 
-def zeros(shape, chunks, dtype=None, compression='default',
-          compression_opts=None, order='C', store=None, synchronizer=None):
+def zeros(shape, chunks=None, dtype=None, compression='default',
+          compression_opts=None, order='C', store=None, synchronizer=None,
+          path=None, overwrite=False, chunk_store=None):
     """Create an array, with zero being used as the default value for
-    uninitialised portions of the array.
+    uninitialized portions of the array.
 
     For parameter definitions see :func:`zarr.creation.create`.
 
@@ -122,13 +130,15 @@ def zeros(shape, chunks, dtype=None, compression='default',
     return create(shape=shape, chunks=chunks, dtype=dtype,
                   compression=compression,
                   compression_opts=compression_opts, fill_value=0, order=order,
-                  store=store, synchronizer=synchronizer)
+                  store=store, synchronizer=synchronizer, path=path,
+                  overwrite=overwrite, chunk_store=chunk_store)
 
 
-def ones(shape, chunks, dtype=None, compression='default',
-         compression_opts=None, order='C', store=None, synchronizer=None):
+def ones(shape, chunks=None, dtype=None, compression='default',
+         compression_opts=None, order='C', store=None, synchronizer=None,
+         path=None, overwrite=False, chunk_store=None):
     """Create an array, with one being used as the default value for
-    uninitialised portions of the array.
+    uninitialized portions of the array.
 
     For parameter definitions see :func:`zarr.creation.create`.
 
@@ -150,13 +160,15 @@ def ones(shape, chunks, dtype=None, compression='default',
     return create(shape=shape, chunks=chunks, dtype=dtype,
                   compression=compression, compression_opts=compression_opts,
                   fill_value=1, order=order, store=store,
-                  synchronizer=synchronizer)
+                  synchronizer=synchronizer, path=path, overwrite=overwrite,
+                  chunk_store=chunk_store)
 
 
-def full(shape, chunks, fill_value, dtype=None, compression='default',
-         compression_opts=None, order='C', store=None, synchronizer=None):
+def full(shape, fill_value, chunks=None, dtype=None, compression='default',
+         compression_opts=None, order='C', store=None, synchronizer=None,
+         path=None, overwrite=False, chunk_store=None):
     """Create an array, with `fill_value` being used as the default value for
-    uninitialised portions of the array.
+    uninitialized portions of the array.
 
     For parameter definitions see :func:`zarr.creation.create`.
 
@@ -178,12 +190,13 @@ def full(shape, chunks, fill_value, dtype=None, compression='default',
     return create(shape=shape, chunks=chunks, dtype=dtype,
                   compression=compression, compression_opts=compression_opts,
                   fill_value=fill_value, order=order, store=store,
-                  synchronizer=synchronizer)
+                  synchronizer=synchronizer, path=path, overwrite=overwrite,
+                  chunk_store=chunk_store)
 
 
 def array(data, chunks=None, dtype=None, compression='default',
           compression_opts=None, fill_value=None, order='C', store=None,
-          synchronizer=None):
+          synchronizer=None, path=None, overwrite=False, chunk_store=None):
     """Create an array filled with `data`.
 
     The `data` argument should be a NumPy array or array-like object. For
@@ -230,7 +243,8 @@ def array(data, chunks=None, dtype=None, compression='default',
     z = create(shape=shape, chunks=chunks, dtype=dtype,
                compression=compression, compression_opts=compression_opts,
                fill_value=fill_value, order=order, store=store,
-               synchronizer=synchronizer)
+               synchronizer=synchronizer, path=path, overwrite=overwrite,
+               chunk_store=chunk_store)
 
     # fill with data
     z[:] = data
@@ -238,25 +252,25 @@ def array(data, chunks=None, dtype=None, compression='default',
     return z
 
 
-# noinspection PyShadowingBuiltins
-def open(path, mode='a', shape=None, chunks=None, dtype=None,
-         compression='default', compression_opts=None, fill_value=0, order='C',
-         synchronizer=None):
-    """Open an array stored in a directory on the file system.
+def open_array(path, mode='a', shape=None, chunks=None, dtype=None,
+               compression='default', compression_opts=None, fill_value=0,
+               order='C', synchronizer=None):
+    """Convenience function to instantiate an array stored in a
+    directory on the file system.
 
     Parameters
     ----------
     path : string
-        Path to directory in which to store the array.
+        Path to directory in file system in which to store the array.
     mode : {'r', 'r+', 'a', 'w', 'w-'}
-        Persistence mode: 'r' means readonly (must exist); 'r+' means
+        Persistence mode: 'r' means read only (must exist); 'r+' means
         read/write (must exist); 'a' means read/write (create if doesn't
         exist); 'w' means create (overwrite if exists); 'w-' means create
         (fail if exists).
     shape : int or tuple of ints
         Array shape.
-    chunks : int or tuple of ints
-        Chunk shape.
+    chunks : int or tuple of ints, optional
+        Chunk shape. If not provided, will be guessed from `shape` and `dtype`.
     dtype : string or dtype, optional
         NumPy dtype.
     compression : string, optional
@@ -266,10 +280,10 @@ def open(path, mode='a', shape=None, chunks=None, dtype=None,
         Options to primary compressor. E.g., for blosc, provide a dictionary
         with keys 'cname', 'clevel' and 'shuffle'.
     fill_value : object
-        Default value to use for uninitialised portions of the array.
+        Default value to use for uninitialized portions of the array.
     order : {'C', 'F'}, optional
         Memory layout to be used within each chunk.
-    synchronizer : zarr.sync.ArraySynchronizer, optional
+    synchronizer : object, optional
         Array synchronizer.
 
     Returns
@@ -280,15 +294,15 @@ def open(path, mode='a', shape=None, chunks=None, dtype=None,
     --------
     >>> import numpy as np
     >>> import zarr
-    >>> z1 = zarr.open('example.zarr', mode='w', shape=(10000, 10000),
-    ...                chunks=(1000, 1000), fill_value=0)
+    >>> z1 = zarr.open_array('example.zarr', mode='w', shape=(10000, 10000),
+    ...                      chunks=(1000, 1000), fill_value=0)
     >>> z1[:] = np.arange(100000000).reshape(10000, 10000)
     >>> z1
     zarr.core.Array((10000, 10000), float64, chunks=(1000, 1000), order=C)
       compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
       nbytes: 762.9M; nbytes_stored: 24.8M; ratio: 30.8; initialized: 100/100
       store: zarr.storage.DirectoryStore
-    >>> z2 = zarr.open('example.zarr', mode='r')
+    >>> z2 = zarr.open_array('example.zarr', mode='r')
     >>> z2
     zarr.core.Array((10000, 10000), float64, chunks=(1000, 1000), order=C)
       compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
@@ -306,43 +320,59 @@ def open(path, mode='a', shape=None, chunks=None, dtype=None,
 
     # use same mode semantics as h5py, although N.B., here `path` is a
     # directory:
-    # r : readonly, must exist
+    # r : read only, must exist
     # r+ : read/write, must exist
     # w : create, delete if exists
     # w- or x : create, fail if exists
     # a : read/write if exists, create otherwise (default)
 
-    # ensure directory exists
-    if not os.path.exists(path):
-        if mode in ['w', 'w-', 'x', 'a']:
-            os.makedirs(path)
-        elif mode in ['r', 'r+']:
-            raise ValueError('path does not exist: %r' % path)
-
     # setup store
     store = DirectoryStore(path)
-    exists = 'meta' in store  # use metadata key as indicator of existence
 
     # ensure store is initialized
-    if mode in ['r', 'r+'] and not exists:
-        raise ValueError('array does not exist')
-    elif mode in ['w-', 'x'] and exists:
-        raise ValueError('array exists')
-    elif mode == 'w' or (mode in ['a', 'w-', 'x'] and not exists):
-        init_store(store, shape=shape, chunks=chunks, dtype=dtype,
+
+    if mode in ['r', 'r+']:
+        if contains_group(store):
+            raise ValueError('store contains group')
+        elif not contains_array(store):
+            raise ValueError('array does not exist')
+
+    elif mode == 'w':
+        init_array(store, shape=shape, chunks=chunks, dtype=dtype,
                    compression=compression, compression_opts=compression_opts,
                    fill_value=fill_value, order=order, overwrite=True)
 
-    # determine readonly status
-    readonly = mode == 'r'
+    elif mode == 'a':
+        if contains_group(store):
+            raise ValueError('store contains group')
+        elif not contains_array(store):
+            init_array(store, shape=shape, chunks=chunks, dtype=dtype,
+                       compression=compression,
+                       compression_opts=compression_opts,
+                       fill_value=fill_value, order=order)
 
-    # handle optional synchronizer
-    if synchronizer is not None:
-        z = SynchronizedArray(store, synchronizer, readonly=readonly)
-    else:
-        z = Array(store, readonly=readonly)
+    elif mode in ['w-', 'x']:
+        if contains_group(store):
+            raise ValueError('store contains group')
+        elif contains_array(store):
+            raise ValueError('store contains array')
+        else:
+            init_array(store, shape=shape, chunks=chunks, dtype=dtype,
+                       compression=compression,
+                       compression_opts=compression_opts,
+                       fill_value=fill_value, order=order)
+
+    # determine read only status
+    read_only = mode == 'r'
+
+    # instantiate array
+    z = Array(store, read_only=read_only, synchronizer=synchronizer)
 
     return z
+
+
+# backwards compatibility
+open = open_array
 
 
 def _like_args(a, shape, chunks, dtype, compression, compression_opts, order):
@@ -352,7 +382,8 @@ def _like_args(a, shape, chunks, dtype, compression, compression_opts, order):
         try:
             chunks = a.chunks
         except AttributeError:
-            raise ValueError('chunks must be specified')
+            # use auto-chunking
+            pass
     if dtype is None:
         dtype = a.dtype
     if compression is None:
@@ -375,43 +406,49 @@ def _like_args(a, shape, chunks, dtype, compression, compression_opts, order):
 
 def empty_like(a, shape=None, chunks=None, dtype=None, compression=None,
                compression_opts=None, order=None, store=None,
-               synchronizer=None):
+               synchronizer=None, path=None, overwrite=False,
+               chunk_store=None):
     """Create an empty array like `a`."""
     shape, chunks, dtype, compression, compression_opts, order = \
         _like_args(a, shape, chunks, dtype, compression, compression_opts,
                    order)
-    return empty(shape, chunks, dtype=dtype, compression=compression,
+    return empty(shape, chunks=chunks, dtype=dtype, compression=compression,
                  compression_opts=compression_opts, order=order,
-                 store=store, synchronizer=synchronizer)
+                 store=store, synchronizer=synchronizer, path=path,
+                 overwrite=overwrite, chunk_store=chunk_store)
 
 
 def zeros_like(a, shape=None, chunks=None, dtype=None, compression=None,
                compression_opts=None, order=None, store=None,
-               synchronizer=None):
+               synchronizer=None, path=None, overwrite=False,
+               chunk_store=None):
     """Create an array of zeros like `a`."""
     shape, chunks, dtype, compression, compression_opts, order = \
         _like_args(a, shape, chunks, dtype, compression, compression_opts,
                    order)
-    return zeros(shape, chunks, dtype=dtype, compression=compression,
+    return zeros(shape, chunks=chunks, dtype=dtype, compression=compression,
                  compression_opts=compression_opts, order=order,
-                 store=store, synchronizer=synchronizer)
+                 store=store, synchronizer=synchronizer, path=path,
+                 overwrite=overwrite, chunk_store=chunk_store)
 
 
 def ones_like(a, shape=None, chunks=None, dtype=None, compression=None,
               compression_opts=None, order=None, store=None,
-              synchronizer=None):
+              synchronizer=None, path=None, overwrite=False, chunk_store=None):
     """Create an array of ones like `a`."""
     shape, chunks, dtype, compression, compression_opts, order = \
         _like_args(a, shape, chunks, dtype, compression, compression_opts,
                    order)
-    return ones(shape, chunks, dtype=dtype, compression=compression,
+    return ones(shape, chunks=chunks, dtype=dtype, compression=compression,
                 compression_opts=compression_opts, order=order,
-                store=store, synchronizer=synchronizer)
+                store=store, synchronizer=synchronizer, path=path,
+                overwrite=overwrite, chunk_store=chunk_store)
 
 
 def full_like(a, shape=None, chunks=None, fill_value=None, dtype=None,
               compression=None, compression_opts=None, order=None,
-              store=None, synchronizer=None):
+              store=None, synchronizer=None, path=None, overwrite=False,
+              chunk_store=None):
     """Create a filled array like `a`."""
     shape, chunks, dtype, compression, compression_opts, order = \
         _like_args(a, shape, chunks, dtype, compression, compression_opts,
@@ -421,9 +458,10 @@ def full_like(a, shape=None, chunks=None, fill_value=None, dtype=None,
             fill_value = a.fill_value
         except AttributeError:
             raise ValueError('fill_value must be specified')
-    return full(shape, chunks, fill_value, dtype=dtype,
+    return full(shape, chunks=chunks, fill_value=fill_value, dtype=dtype,
                 compression=compression, compression_opts=compression_opts,
-                order=order, store=store, synchronizer=synchronizer)
+                order=order, store=store, synchronizer=synchronizer,
+                path=path, overwrite=overwrite, chunk_store=chunk_store)
 
 
 def open_like(a, path, mode='a', shape=None, chunks=None, dtype=None,
@@ -439,6 +477,8 @@ def open_like(a, path, mode='a', shape=None, chunks=None, dtype=None,
         except AttributeError:
             # leave empty
             pass
-    return open(path, mode=mode, shape=shape, chunks=chunks, dtype=dtype,
-                compression=compression, compression_opts=compression_opts,
-                fill_value=fill_value, order=order, synchronizer=synchronizer)
+    return open_array(path, mode=mode, shape=shape, chunks=chunks, dtype=dtype,
+                      compression=compression,
+                      compression_opts=compression_opts,
+                      fill_value=fill_value, order=order,
+                      synchronizer=synchronizer)

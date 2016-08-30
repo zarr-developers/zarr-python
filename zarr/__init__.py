@@ -5,12 +5,13 @@ import multiprocessing
 import atexit
 
 
-from zarr.creation import create, array, empty, zeros, ones, full, open, \
-    empty_like, zeros_like, ones_like, full_like, open_like
-from zarr.storage import init_store, DirectoryStore
 from zarr.core import Array
-from zarr.sync import ThreadSynchronizer, ProcessSynchronizer, \
-    SynchronizedArray
+from zarr.creation import create, array, empty, zeros, ones, full, open, \
+    empty_like, zeros_like, ones_like, full_like, open_like, open_array
+from zarr.storage import DictStore, DirectoryStore, ZipStore, init_array, \
+    init_group, init_store
+from zarr.hierarchy import group, open_group, Group
+from zarr.sync import ThreadSynchronizer, ProcessSynchronizer
 from zarr.version import version as __version__
 
 

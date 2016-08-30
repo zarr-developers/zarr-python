@@ -10,12 +10,12 @@ from zarr.errors import ReadOnlyError
 
 class Attributes(MutableMapping):
 
-    def __init__(self, store, key='attrs', readonly=False):
-        if key not in store:
-            store[key] = json.dumps(dict()).encode('ascii')
+    def __init__(self, store, key='.zattrs', read_only=False,
+                 synchronizer=None):
         self.store = store
         self.key = key
-        self.readonly = readonly
+        self.read_only = read_only
+        self.synchronizer = synchronizer
 
     def __contains__(self, x):
         return x in self.asdict()
@@ -23,35 +23,41 @@ class Attributes(MutableMapping):
     def __getitem__(self, item):
         return self.asdict()[item]
 
-    def put(self, d):
-
-        # guard conditions
-        if self.readonly:
-            raise ReadOnlyError('attributes are read-only')
-
+    def _put(self, d):
         s = json.dumps(d, indent=4, sort_keys=True, ensure_ascii=True)
         self.store[self.key] = s.encode('ascii')
 
-    def __setitem__(self, key, value):
+    def _write_op(self, f, *args, **kwargs):
 
-        # guard conditions
-        if self.readonly:
+        # guard condition
+        if self.read_only:
             raise ReadOnlyError('attributes are read-only')
+
+        # synchronization
+        if self.synchronizer is None:
+            return f(*args, **kwargs)
+        else:
+            with self.synchronizer[self.key]:
+                return f(*args, **kwargs)
+
+    def __setitem__(self, item, value):
+        self._write_op(self._setitem_nosync, item, value)
+
+    def _setitem_nosync(self, item, value):
 
         # load existing data
         d = self.asdict()
 
         # set key value
-        d[key] = value
+        d[item] = value
 
-        # put modified data
-        self.put(d)
+        # _put modified data
+        self._put(d)
 
-    def __delitem__(self, key):
+    def __delitem__(self, item):
+        self._write_op(self._delitem_nosync, item)
 
-        # guard conditions
-        if self.readonly:
-            raise ReadOnlyError('mapping is read-only')
+    def _delitem_nosync(self, key):
 
         # load existing data
         d = self.asdict()
@@ -59,18 +65,20 @@ class Attributes(MutableMapping):
         # delete key value
         del d[key]
 
-        # put modified data
-        self.put(d)
+        # _put modified data
+        self._put(d)
 
     def asdict(self):
-        return json.loads(text_type(self.store[self.key], 'ascii'))
+        if self.key in self.store:
+            return json.loads(text_type(self.store[self.key], 'ascii'))
+        else:
+            return dict()
 
     def update(self, *args, **kwargs):
         # override to provide update in a single write
+        self._write_op(self._update_nosync, *args, **kwargs)
 
-        # guard conditions
-        if self.readonly:
-            raise ReadOnlyError('mapping is read-only')
+    def _update_nosync(self, *args, **kwargs):
 
         # load existing data
         d = self.asdict()
@@ -78,20 +86,11 @@ class Attributes(MutableMapping):
         # update
         d.update(*args, **kwargs)
 
-        # put modified data
-        self.put(d)
+        # _put modified data
+        self._put(d)
 
     def __iter__(self):
         return iter(self.asdict())
 
     def __len__(self):
         return len(self.asdict())
-
-    def keys(self):
-        return self.asdict().keys()
-
-    def values(self):
-        return self.asdict().values()
-
-    def items(self):
-        return self.asdict().items()

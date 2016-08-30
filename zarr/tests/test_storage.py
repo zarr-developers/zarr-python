@@ -3,141 +3,637 @@ from __future__ import absolute_import, print_function, division
 import unittest
 import tempfile
 import atexit
-import shutil
 import pickle
 import json
 import array
+import shutil
+import os
 
 
 import numpy as np
 from nose.tools import assert_raises, eq_ as eq, assert_is_none
 
 
-from zarr.storage import DirectoryStore, init_store
-from zarr.meta import decode_metadata
+from zarr.storage import init_array, array_meta_key, attrs_key, DictStore, \
+    DirectoryStore, ZipStore, init_group, group_meta_key, getsize
+from zarr.meta import decode_array_metadata, encode_array_metadata, \
+    ZARR_FORMAT, decode_group_metadata, encode_group_metadata
 from zarr.compat import text_type
+from zarr.compressors import default_compression
 
 
-def test_init_store():
+class StoreTests(object):
+    """Abstract store tests."""
 
-    store = dict()
-    init_store(store, shape=1000, chunks=100)
-
-    # check metadata
-    assert 'meta' in store
-    meta = decode_metadata(store['meta'])
-    eq((1000,), meta['shape'])
-    eq((100,), meta['chunks'])
-    eq(np.dtype(None), meta['dtype'])
-    eq('blosc', meta['compression'])
-    assert 'compression_opts' in meta
-    assert_is_none(meta['fill_value'])
-
-    # check attributes
-    assert 'attrs' in store
-    eq(dict(), json.loads(text_type(store['attrs'], 'ascii')))
-
-
-def test_init_store_overwrite():
-
-    store = dict(shape=(2000,), chunks=(200,))
-
-    # overwrite
-    init_store(store, shape=1000, chunks=100, overwrite=True)
-    assert 'meta' in store
-    meta = decode_metadata(store['meta'])
-    eq((1000,), meta['shape'])
-    eq((100,), meta['chunks'])
-
-    # don't overwrite
-    with assert_raises(ValueError):
-        init_store(store, shape=1000, chunks=100, overwrite=False)
-
-
-class MappingTests(object):
-
-    def create_mapping(self, **kwargs):
-        pass
+    # def create_store(self, **kwargs):
+    #     # implement in sub-class
+    #     pass
 
     def test_get_set_del_contains(self):
-        m = self.create_mapping()
-        assert 'foo' not in m
-        m['foo'] = b'bar'
-        assert 'foo' in m
-        eq(b'bar', m['foo'])
-        del m['foo']
-        assert 'foo' not in m
+        store = self.create_store()
+
+        # test __contains__, __getitem__, __setitem__
+        assert 'foo' not in store
         with assert_raises(KeyError):
-            m['foo']
-        with assert_raises(KeyError):
-            del m['foo']
-        with assert_raises(TypeError):
-            # non-writeable value
-            m['foo'] = 42
-        # alternative values
-        m['foo'] = bytearray(b'bar')
-        eq(b'bar', m['foo'])
-        m['foo'] = array.array('B', b'bar')
-        eq(b'bar', m['foo'])
+            store['foo']
+        store['foo'] = b'bar'
+        assert 'foo' in store
+        eq(b'bar', store['foo'])
+
+        # test __delitem__ (optional)
+        try:
+            del store['foo']
+        except NotImplementedError:
+            pass
+        else:
+            assert 'foo' not in store
+            with assert_raises(KeyError):
+                store['foo']
+            with assert_raises(KeyError):
+                del store['foo']
+
+    def test_writeable_values(self):
+        store = self.create_store()
+
+        # __setitem__ should accept any value that implements buffer interface
+        store['foo'] = b'bar'
+        store['foo'] = bytearray(b'bar')
+        store['foo'] = array.array('B', b'bar')
+        store['foo'] = np.frombuffer(b'bar', dtype='u1')
 
     def test_update(self):
-        m = self.create_mapping()
-        assert 'foo' not in m
-        assert 'baz' not in m
-        m.update(foo=b'bar', baz=b'quux')
-        eq(b'bar', m['foo'])
-        eq(b'quux', m['baz'])
+        store = self.create_store()
+        assert 'foo' not in store
+        assert 'baz' not in store
+        store.update(foo=b'bar', baz=b'quux')
+        eq(b'bar', store['foo'])
+        eq(b'quux', store['baz'])
 
     def test_iterators(self):
-        m = self.create_mapping()
-        eq(0, len(m))
-        eq(set(), set(m))
-        eq(set(), set(m.keys()))
-        eq(set(), set(m.values()))
-        eq(set(), set(m.items()))
+        store = self.create_store()
 
-        m['foo'] = b'bar'
-        m['baz'] = b'quux'
+        # test iterator methods on empty store
+        eq(0, len(store))
+        eq(set(), set(store))
+        eq(set(), set(store.keys()))
+        eq(set(), set(store.values()))
+        eq(set(), set(store.items()))
 
-        eq(2, len(m))
-        eq(set(['foo', 'baz']), set(m))
-        eq(set(['foo', 'baz']), set(m.keys()))
-        eq(set([b'bar', b'quux']), set(m.values()))
-        eq(set([('foo', b'bar'), ('baz', b'quux')]), set(m.items()))
+        # setup some values
+        store['a'] = b'aaa'
+        store['b'] = b'bbb'
+        store['c/d'] = b'ddd'
+        store['c/e/f'] = b'fff'
 
+        # test iterators on store with data
+        eq(4, len(store))
+        eq({'a', 'b', 'c/d', 'c/e/f'}, set(store))
+        eq({'a', 'b', 'c/d', 'c/e/f'}, set(store.keys()))
+        eq({b'aaa', b'bbb', b'ddd', b'fff'}, set(store.values()))
+        eq({('a', b'aaa'), ('b', b'bbb'), ('c/d', b'ddd'), ('c/e/f', b'fff')},
+           set(store.items()))
 
-class TestDirectoryMap(MappingTests, unittest.TestCase):
+    def test_pickle(self):
+        store = self.create_store()
+        store['foo'] = b'bar'
+        store['baz'] = b'quux'
+        store2 = pickle.loads(pickle.dumps(store))
+        eq(len(store), len(store2))
+        eq(b'bar', store2['foo'])
+        eq(b'quux', store2['baz'])
+        eq(sorted(store.keys()), sorted(store2.keys()))
+        for k in dir(store):
+            v = getattr(store, k)
+            if not callable(v):
+                eq(v, getattr(store2, k))
 
-    def create_mapping(self, **kwargs):
-        path = tempfile.mkdtemp()
-        atexit.register(shutil.rmtree, path)
-        m = DirectoryStore(path, **kwargs)
-        return m
+    def test_getsize(self):
+        store = self.create_store()
+        if hasattr(store, 'getsize'):
+            eq(0, store.getsize())
+            store['foo'] = b'x'
+            eq(1, store.getsize())
+            eq(1, store.getsize('foo'))
+            store['bar'] = b'yy'
+            eq(3, store.getsize())
+            eq(2, store.getsize('bar'))
+            store['baz'] = bytearray(b'zzz')
+            eq(6, store.getsize())
+            eq(3, store.getsize('baz'))
+            store['quux'] = array.array('B', b'zzzz')
+            eq(10, store.getsize())
+            eq(4, store.getsize('quux'))
+            store['spong'] = np.frombuffer(b'zzzzz', dtype='u1')
+            eq(15, store.getsize())
+            eq(5, store.getsize('spong'))
 
-    def test_size(self):
-        m = self.create_mapping()
-        eq(0, m.size)
-        m['foo'] = b'bar'
-        eq(3, m.size)
-        m['baz'] = b'quux'
-        eq(7, m.size)
+    def test_hierarchy(self):
+        # setup
+        store = self.create_store()
+        store['a'] = b'aaa'
+        store['b'] = b'bbb'
+        store['c/d'] = b'ddd'
+        store['c/e/f'] = b'fff'
+        store['c/e/g'] = b'ggg'
 
-    def test_path(self):
+        # check keys
+        assert 'a' in store
+        assert 'b' in store
+        assert 'c/d' in store
+        assert 'c/e/f' in store
+        assert 'c/e/g' in store
+        assert 'c' not in store
+        assert 'c/' not in store
+        assert 'c/e' not in store
+        assert 'c/e/' not in store
+        assert 'c/d/x' not in store
+
+        # check __getitem__
+        with assert_raises(KeyError):
+            store['c']
+        with assert_raises(KeyError):
+            store['c/e']
+        with assert_raises(KeyError):
+            store['c/d/x']
+
+        # test getsize (optional)
+        if hasattr(store, 'getsize'):
+            eq(6, store.getsize())
+            eq(3, store.getsize('a'))
+            eq(3, store.getsize('b'))
+            eq(3, store.getsize('c'))
+            eq(3, store.getsize('c/d'))
+            eq(6, store.getsize('c/e'))
+            eq(3, store.getsize('c/e/f'))
+            eq(3, store.getsize('c/e/g'))
+            with assert_raises(ValueError):
+                store.getsize('x')
+            with assert_raises(ValueError):
+                store.getsize('a/x')
+            with assert_raises(ValueError):
+                store.getsize('c/x')
+            with assert_raises(ValueError):
+                store.getsize('c/x/y')
+            with assert_raises(ValueError):
+                store.getsize('c/d/y')
+            with assert_raises(ValueError):
+                store.getsize('c/d/y/z')
+
+        # test listdir (optional)
+        if hasattr(store, 'listdir'):
+            eq({'a', 'b', 'c'}, set(store.listdir()))
+            eq({'d', 'e'}, set(store.listdir('c')))
+            eq({'f', 'g'}, set(store.listdir('c/e')))
+            # no exception raised if path does not exist or is leaf
+            eq([], store.listdir('x'))
+            eq([], store.listdir('a/x'))
+            eq([], store.listdir('c/x'))
+            eq([], store.listdir('c/x/y'))
+            eq([], store.listdir('c/d/y'))
+            eq([], store.listdir('c/d/y/z'))
+            eq([], store.listdir('c/e/f'))
+
+        # test rmdir (optional)
+        if hasattr(store, 'rmdir'):
+            store.rmdir('c/e')
+            assert 'c/d' in store
+            assert 'c/e/f' not in store
+            assert 'c/e/g' not in store
+            store.rmdir('c')
+            assert 'c/d' not in store
+            store.rmdir()
+            assert 'a' not in store
+            assert 'b' not in store
+            store['a'] = b'aaa'
+            store['c/d'] = b'ddd'
+            store['c/e/f'] = b'fff'
+            # no exceptions raised if path does not exist or is leaf
+            store.rmdir('x')
+            store.rmdir('a/x')
+            store.rmdir('c/x')
+            store.rmdir('c/x/y')
+            store.rmdir('c/d/y')
+            store.rmdir('c/d/y/z')
+            store.rmdir('c/e/f')
+            assert 'a' in store
+            assert 'c/d' in store
+            assert 'c/e/f' in store
+
+    def test_init_array(self):
+        store = self.create_store()
+        init_array(store, shape=1000, chunks=100)
+
+        # check metadata
+        assert array_meta_key in store
+        meta = decode_array_metadata(store[array_meta_key])
+        eq(ZARR_FORMAT, meta['zarr_format'])
+        eq((1000,), meta['shape'])
+        eq((100,), meta['chunks'])
+        eq(np.dtype(None), meta['dtype'])
+        eq(default_compression, meta['compression'])
+        assert 'compression_opts' in meta
+        assert_is_none(meta['fill_value'])
+
+        # check attributes
+        assert attrs_key in store
+        eq(dict(), json.loads(text_type(store[attrs_key], 'ascii')))
+
+    def test_init_array_overwrite(self):
+        # setup
+        store = self.create_store()
+        store[array_meta_key] = encode_array_metadata(
+            dict(shape=(2000,),
+                 chunks=(200,),
+                 dtype=np.dtype('u1'),
+                 compression='zlib',
+                 compression_opts=1,
+                 fill_value=0,
+                 order='F')
+        )
+
+        # don't overwrite (default)
         with assert_raises(ValueError):
-            DirectoryStore('doesnotexist')
+            init_array(store, shape=1000, chunks=100)
+
+        # do overwrite
+        try:
+            init_array(store, shape=1000, chunks=100, dtype='i4',
+                       overwrite=True)
+        except NotImplementedError:
+            pass
+        else:
+            assert array_meta_key in store
+            meta = decode_array_metadata(store[array_meta_key])
+            eq(ZARR_FORMAT, meta['zarr_format'])
+            eq((1000,), meta['shape'])
+            eq((100,), meta['chunks'])
+            eq(np.dtype('i4'), meta['dtype'])
+
+    def test_init_array_path(self):
+        path = 'foo/bar'
+        store = self.create_store()
+        init_array(store, shape=1000, chunks=100, path=path)
+
+        # check metadata
+        key = path + '/' + array_meta_key
+        assert key in store
+        meta = decode_array_metadata(store[key])
+        eq(ZARR_FORMAT, meta['zarr_format'])
+        eq((1000,), meta['shape'])
+        eq((100,), meta['chunks'])
+        eq(np.dtype(None), meta['dtype'])
+        eq(default_compression, meta['compression'])
+        assert 'compression_opts' in meta
+        assert_is_none(meta['fill_value'])
+
+        # check attributes
+        key = path + '/' + attrs_key
+        assert key in store
+        eq(dict(), json.loads(text_type(store[key], 'ascii')))
+
+    def test_init_array_overwrite_path(self):
+        # setup
+        path = 'foo/bar'
+        store = self.create_store()
+        meta = dict(shape=(2000,),
+                    chunks=(200,),
+                    dtype=np.dtype('u1'),
+                    compression='zlib',
+                    compression_opts=1,
+                    fill_value=0,
+                    order='F')
+        store[array_meta_key] = encode_array_metadata(meta)
+        store[path + '/' + array_meta_key] = encode_array_metadata(meta)
+
+        # don't overwrite
+        with assert_raises(ValueError):
+            init_array(store, shape=1000, chunks=100, path=path)
+
+        # do overwrite
+        try:
+            init_array(store, shape=1000, chunks=100, dtype='i4', path=path,
+                       overwrite=True)
+        except NotImplementedError:
+            pass
+        else:
+            assert array_meta_key in store
+            assert (path + '/' + array_meta_key) in store
+            # should have been overwritten
+            meta = decode_array_metadata(store[path + '/' + array_meta_key])
+            eq(ZARR_FORMAT, meta['zarr_format'])
+            eq((1000,), meta['shape'])
+            eq((100,), meta['chunks'])
+            eq(np.dtype('i4'), meta['dtype'])
+            # should have been left untouched
+            meta = decode_array_metadata(store[array_meta_key])
+            eq(ZARR_FORMAT, meta['zarr_format'])
+            eq((2000,), meta['shape'])
+            eq((200,), meta['chunks'])
+            eq(np.dtype('u1'), meta['dtype'])
+
+    def test_init_array_overwrite_group(self):
+        # setup
+        path = 'foo/bar'
+        store = self.create_store()
+        store[path + '/' + group_meta_key] = encode_group_metadata()
+
+        # don't overwrite
+        with assert_raises(ValueError):
+            init_array(store, shape=1000, chunks=100, path=path)
+
+        # do overwrite
+        try:
+            init_array(store, shape=1000, chunks=100, dtype='i4', path=path,
+                       overwrite=True)
+        except NotImplementedError:
+            pass
+        else:
+            assert (path + '/' + group_meta_key) not in store
+            assert (path + '/' + array_meta_key) in store
+            meta = decode_array_metadata(store[path + '/' + array_meta_key])
+            eq(ZARR_FORMAT, meta['zarr_format'])
+            eq((1000,), meta['shape'])
+            eq((100,), meta['chunks'])
+            eq(np.dtype('i4'), meta['dtype'])
+
+    def test_init_array_overwrite_chunk_store(self):
+        # setup
+        store = self.create_store()
+        chunk_store = self.create_store()
+        store[array_meta_key] = encode_array_metadata(
+            dict(shape=(2000,),
+                 chunks=(200,),
+                 dtype=np.dtype('u1'),
+                 compression='zlib',
+                 compression_opts=1,
+                 fill_value=0,
+                 order='F')
+        )
+        chunk_store['0'] = b'aaa'
+        chunk_store['1'] = b'bbb'
+
+        # don't overwrite (default)
+        with assert_raises(ValueError):
+            init_array(store, shape=1000, chunks=100, chunk_store=chunk_store)
+
+        # do overwrite
+        try:
+            init_array(store, shape=1000, chunks=100, dtype='i4',
+                       overwrite=True, chunk_store=chunk_store)
+        except NotImplementedError:
+            pass
+        else:
+            assert array_meta_key in store
+            meta = decode_array_metadata(store[array_meta_key])
+            eq(ZARR_FORMAT, meta['zarr_format'])
+            eq((1000,), meta['shape'])
+            eq((100,), meta['chunks'])
+            eq(np.dtype('i4'), meta['dtype'])
+            assert '0' not in chunk_store
+            assert '1' not in chunk_store
+
+    def test_init_group(self):
+        store = self.create_store()
+        init_group(store)
+
+        # check metadata
+        assert group_meta_key in store
+        meta = decode_group_metadata(store[group_meta_key])
+        eq(ZARR_FORMAT, meta['zarr_format'])
+
+        # check attributes
+        assert attrs_key in store
+        eq(dict(), json.loads(text_type(store[attrs_key], 'ascii')))
+
+    def test_init_group_overwrite(self):
+        # setup
+        store = self.create_store()
+        store[array_meta_key] = encode_array_metadata(
+            dict(shape=(2000,),
+                 chunks=(200,),
+                 dtype=np.dtype('u1'),
+                 compression='zlib',
+                 compression_opts=1,
+                 fill_value=0,
+                 order='F')
+        )
+
+        # don't overwrite array (default)
+        with assert_raises(ValueError):
+            init_group(store)
+
+        # do overwrite
+        try:
+            init_group(store, overwrite=True)
+        except NotImplementedError:
+            pass
+        else:
+            assert array_meta_key not in store
+            assert group_meta_key in store
+            meta = decode_group_metadata(store[group_meta_key])
+            eq(ZARR_FORMAT, meta['zarr_format'])
+
+        # don't overwrite group
+        with assert_raises(ValueError):
+            init_group(store)
+
+    def test_init_group_overwrite_path(self):
+        # setup
+        path = 'foo/bar'
+        store = self.create_store()
+        meta = dict(shape=(2000,),
+                    chunks=(200,),
+                    dtype=np.dtype('u1'),
+                    compression='zlib',
+                    compression_opts=1,
+                    fill_value=0,
+                    order='F')
+        store[array_meta_key] = encode_array_metadata(meta)
+        store[path + '/' + array_meta_key] = encode_array_metadata(meta)
+
+        # don't overwrite
+        with assert_raises(ValueError):
+            init_group(store, path=path)
+
+        # do overwrite
+        try:
+            init_group(store, overwrite=True, path=path)
+        except NotImplementedError:
+            pass
+        else:
+            assert array_meta_key in store
+            assert (path + '/' + array_meta_key) not in store
+            assert (path + '/' + group_meta_key) in store
+            # should have been overwritten
+            meta = decode_group_metadata(store[path + '/' + group_meta_key])
+            eq(ZARR_FORMAT, meta['zarr_format'])
+            # should have been left untouched
+            meta = decode_array_metadata(store[array_meta_key])
+            eq(ZARR_FORMAT, meta['zarr_format'])
+            eq((2000,), meta['shape'])
+            eq((200,), meta['chunks'])
+            eq(np.dtype('u1'), meta['dtype'])
+
+    def test_init_group_overwrite_chunk_store(self):
+        # setup
+        store = self.create_store()
+        chunk_store = self.create_store()
+        store[array_meta_key] = encode_array_metadata(
+            dict(shape=(2000,),
+                 chunks=(200,),
+                 dtype=np.dtype('u1'),
+                 compression='zlib',
+                 compression_opts=1,
+                 fill_value=0,
+                 order='F')
+        )
+        chunk_store['foo'] = b'bar'
+        chunk_store['baz'] = b'quux'
+
+        # don't overwrite array (default)
+        with assert_raises(ValueError):
+            init_group(store, chunk_store=chunk_store)
+
+        # do overwrite
+        try:
+            init_group(store, overwrite=True, chunk_store=chunk_store)
+        except NotImplementedError:
+            pass
+        else:
+            assert array_meta_key not in store
+            assert group_meta_key in store
+            meta = decode_group_metadata(store[group_meta_key])
+            eq(ZARR_FORMAT, meta['zarr_format'])
+            assert 'foo' not in chunk_store
+            assert 'baz' not in chunk_store
+
+        # don't overwrite group
+        with assert_raises(ValueError):
+            init_group(store)
+
+
+class TestMappingStore(StoreTests, unittest.TestCase):
+
+    def create_store(self):
+        return dict()
+
+
+def setdel_hierarchy_checks(store):
+    # these tests are for stores that are aware of hierarchy levels; this
+    # behaviour is not stricly required by Zarr but these tests are included
+    # to define behaviour of DictStore and DirectoryStore classes
+
+    # check __setitem__ and __delitem__ blocked by leaf
+
+    store['a/b'] = b'aaa'
+    with assert_raises(KeyError):
+        store['a/b/c'] = b'xxx'
+    with assert_raises(KeyError):
+        del store['a/b/c']
+
+    store['d'] = b'ddd'
+    with assert_raises(KeyError):
+        store['d/e/f'] = b'xxx'
+    with assert_raises(KeyError):
+        del store['d/e/f']
+
+    # test __setitem__ overwrite level
+    store['x/y/z'] = b'xxx'
+    store['x/y'] = b'yyy'
+    eq(b'yyy', store['x/y'])
+    assert 'x/y/z' not in store
+    store['x'] = b'zzz'
+    eq(b'zzz', store['x'])
+    assert 'x/y' not in store
+
+    # test __delitem__ overwrite level
+    store['r/s/t'] = b'xxx'
+    del store['r/s']
+    assert 'r/s/t' not in store
+    store['r/s'] = b'xxx'
+    del store['r']
+    assert 'r/s' not in store
+
+
+class TestDictStore(StoreTests, unittest.TestCase):
+
+    def create_store(self):
+        return DictStore()
+
+    def test_setdel(self):
+        store = self.create_store()
+        setdel_hierarchy_checks(store)
+
+    def test_getsize_ext(self):
+        store = self.create_store()
+        store['a'] = list(range(10))
+        store['b/c'] = list(range(10))
+        eq(-1, store.getsize())
+        eq(-1, store.getsize('a'))
+        eq(-1, store.getsize('b'))
+
+
+def rmtree(p, f=shutil.rmtree, g=os.path.isdir):  # pragma: no cover
+    """Version of rmtree that will work atexit and only remove if directory."""
+    if g(p):
+        f(p)
+
+
+class TestDirectoryStore(StoreTests, unittest.TestCase):
+
+    def create_store(self):
+        path = tempfile.mkdtemp()
+        atexit.register(rmtree, path)
+        store = DirectoryStore(path)
+        return store
+
+    def test_filesystem_path(self):
+
+        # test behaviour with path that does not exist
+        path = 'doesnotexist'
+        if os.path.exists(path):
+            shutil.rmtree(path)
+        store = DirectoryStore(path)
+        # should only be created on demand
+        assert not os.path.exists(path)
+        store['foo'] = b'bar'
+        assert os.path.isdir(path)
+
+        # test behaviour with file path
         with tempfile.NamedTemporaryFile() as f:
             with assert_raises(ValueError):
                 DirectoryStore(f.name)
 
-    def test_pickle(self):
-        m = self.create_mapping()
-        m['foo'] = b'bar'
-        m['baz'] = b'quux'
-        m2 = pickle.loads(pickle.dumps(m))
-        eq(len(m), len(m2))
-        eq(m.path, m2.path)
-        eq(b'bar', m2['foo'])
-        eq(b'quux', m2['baz'])
-        assert 'xxx' not in m
-        m2['xxx'] = b'yyy'
-        eq(b'yyy', m['xxx'])
+    def test_pickle_ext(self):
+        store = self.create_store()
+        store2 = pickle.loads(pickle.dumps(store))
+
+        # check path is preserved
+        eq(store.path, store2.path)
+
+        # check point to same underlying directory
+        assert 'xxx' not in store
+        store2['xxx'] = b'yyy'
+        eq(b'yyy', store['xxx'])
+
+    def test_setdel(self):
+        store = self.create_store()
+        setdel_hierarchy_checks(store)
+
+
+class TestZipStore(StoreTests, unittest.TestCase):
+
+    def create_store(self):
+        path = tempfile.mktemp(suffix='.zip')
+        atexit.register(os.remove, path)
+        store = ZipStore(path)
+        return store
+
+
+def test_getsize():
+    store = dict()
+    store['foo'] = b'aaa'
+    store['bar'] = b'bbbb'
+    store['baz/quux'] = b'ccccc'
+    eq(7, getsize(store))
+    eq(5, getsize(store, 'baz'))
