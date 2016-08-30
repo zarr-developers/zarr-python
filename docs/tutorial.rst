@@ -276,10 +276,11 @@ array with thread synchronization::
     >>> z = zarr.zeros((10000, 10000), chunks=(1000, 1000), dtype='i4',
     ...                 synchronizer=zarr.ThreadSynchronizer())
     >>> z
-    zarr.sync.SynchronizedArray((10000, 10000), int32, chunks=(1000, 1000), order=C)
+    zarr.core.Array((10000, 10000), int32, chunks=(1000, 1000), order=C)
       compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
       nbytes: 381.5M; nbytes_stored: 313; ratio: 1277955.3; initialized: 0/100
-      store: builtins.dict; synchronizer: zarr.sync.ThreadSynchronizer
+      store: builtins.dict
+      synchronizer: zarr.sync.ThreadSynchronizer
 
 This array is safe to read or write within a multi-threaded program.
 
@@ -291,10 +292,11 @@ provided that all processes have access to a shared file system. E.g.::
     ...               chunks=(1000, 1000), dtype='i4',
     ...               synchronizer=synchronizer)
     >>> z
-    zarr.sync.SynchronizedArray((10000, 10000), int32, chunks=(1000, 1000), order=C)
+    zarr.core.Array((10000, 10000), int32, chunks=(1000, 1000), order=C)
       compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
       nbytes: 381.5M; nbytes_stored: 313; ratio: 1277955.3; initialized: 0/100
-      store: zarr.storage.DirectoryStore; synchronizer: zarr.sync.ProcessSynchronizer
+      store: zarr.storage.DirectoryStore
+      synchronizer: zarr.sync.ProcessSynchronizer
 
 This array is safe to read or write from multiple processes.
 

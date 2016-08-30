@@ -27,7 +27,7 @@ class Group(Mapping):
         Group store, already initialized.
     path : string, optional
         Storage path.
-    readonly : bool, optional
+    read_only : bool, optional
         True if group should be protected against modification.
     chunk_store : MutableMapping, optional
         Separate storage for chunks. If not provided, `store` will be used 
@@ -40,7 +40,7 @@ class Group(Mapping):
     store
     path
     name
-    readonly
+    read_only
     chunk_store
     synchronizer
     attrs
@@ -74,7 +74,7 @@ class Group(Mapping):
 
     """
 
-    def __init__(self, store, path=None, readonly=False, chunk_store=None,
+    def __init__(self, store, path=None, read_only=False, chunk_store=None,
                  synchronizer=None):
 
         self._store = store
@@ -83,7 +83,7 @@ class Group(Mapping):
             self._key_prefix = self._path + '/'
         else:
             self._key_prefix = ''
-        self._readonly = readonly
+        self._read_only = read_only
         if chunk_store is None:
             self._chunk_store = store
         else:
@@ -106,7 +106,7 @@ class Group(Mapping):
 
         # setup attributes
         akey = self._key_prefix + attrs_key
-        self._attrs = Attributes(store, key=akey, readonly=readonly,
+        self._attrs = Attributes(store, key=akey, read_only=read_only,
                                  synchronizer=synchronizer)
 
     @property
@@ -131,9 +131,9 @@ class Group(Mapping):
         return '/'
 
     @property
-    def readonly(self):
+    def read_only(self):
         """A boolean, True if modification operations are not permitted."""
-        return self._readonly
+        return self._read_only
 
     @property
     def chunk_store(self):
@@ -156,7 +156,7 @@ class Group(Mapping):
         return (
             isinstance(other, Group) and
             self._store == other.store and
-            self._readonly == other.readonly and
+            self._read_only == other.read_only and
             self._path == other.path
             # N.B., no need to compare attributes, should be covered by
             # store comparison
@@ -223,7 +223,7 @@ class Group(Mapping):
         return r
 
     def __getstate__(self):
-        return self._store, self._path, self._readonly, self._chunk_store, \
+        return self._store, self._path, self._read_only, self._chunk_store, \
                self._synchronizer
 
     def __setstate__(self, state):
@@ -291,11 +291,11 @@ class Group(Mapping):
         """  # flake8: noqa
         path = self._item_path(item)
         if contains_array(self._store, path):
-            return Array(self._store, readonly=self._readonly, path=path, 
+            return Array(self._store, read_only=self._read_only, path=path,
                          chunk_store=self._chunk_store,
                          synchronizer=self._synchronizer)
         elif contains_group(self._store, path):
-            return Group(self._store, readonly=self._readonly, path=path, 
+            return Group(self._store, read_only=self._read_only, path=path,
                          chunk_store=self._chunk_store,
                          synchronizer=self._synchronizer)
         else:
@@ -342,7 +342,7 @@ class Group(Mapping):
             path = self._key_prefix + key
             if contains_group(self._store, path):
                 yield key, Group(self._store, path=path,
-                                 readonly=self._readonly,
+                                 read_only=self._read_only,
                                  chunk_store=self._chunk_store,
                                  synchronizer=self._synchronizer)
 
@@ -387,14 +387,14 @@ class Group(Mapping):
             path = self._key_prefix + key
             if contains_array(self._store, path):
                 yield key, Array(self._store, path=path,
-                                 readonly=self._readonly,
+                                 read_only=self._read_only,
                                  chunk_store=self._chunk_store,
                                  synchronizer=self._synchronizer)
 
     def _write_op(self, f, *args, **kwargs):
 
         # guard condition
-        if self._readonly:
+        if self._read_only:
             raise ReadOnlyError('group is read-only')
 
         # synchronization
@@ -449,7 +449,7 @@ class Group(Mapping):
             raise KeyError(name)
         else:
             init_group(self._store, path=path, chunk_store=self._chunk_store)
-            return Group(self._store, path=path, readonly=self._readonly,
+            return Group(self._store, path=path, read_only=self._read_only,
                          chunk_store=self._chunk_store,
                          synchronizer=self._synchronizer)
 
@@ -495,7 +495,7 @@ class Group(Mapping):
             elif not contains_group(self._store, p):
                 init_group(self._store, path=p, chunk_store=self._chunk_store)
 
-        return Group(self._store, path=path, readonly=self._readonly,
+        return Group(self._store, path=path, read_only=self._read_only,
                      chunk_store=self._chunk_store,
                      synchronizer=self._synchronizer)
 
@@ -644,7 +644,7 @@ class Group(Mapping):
 
         if contains_array(self._store, path):
             synchronizer = kwargs.get('synchronizer', self._synchronizer)
-            a = Array(self._store, path=path, readonly=self._readonly,
+            a = Array(self._store, path=path, read_only=self._read_only,
                       chunk_store=self._chunk_store, synchronizer=synchronizer)
             shape = normalize_shape(shape)
             if shape != a.shape:
@@ -838,7 +838,7 @@ def group(store=None, overwrite=False, chunk_store=None, synchronizer=None):
     elif not contains_group(store):
         init_group(store, chunk_store=chunk_store)
 
-    return Group(store, readonly=False, chunk_store=chunk_store,
+    return Group(store, read_only=False, chunk_store=chunk_store,
                  synchronizer=synchronizer)
 
 
@@ -851,7 +851,7 @@ def open_group(path, mode='a', synchronizer=None):
     path : string
         Path to directory in file system in which to store the group.
     mode : {'r', 'r+', 'a', 'w', 'w-'}
-        Persistence mode: 'r' means readonly (must exist); 'r+' means
+        Persistence mode: 'r' means read only (must exist); 'r+' means
         read/write (must exist); 'a' means read/write (create if doesn't
         exist); 'w' means create (overwrite if exists); 'w-' means create
         (fail if exists).
@@ -910,7 +910,7 @@ def open_group(path, mode='a', synchronizer=None):
         else:
             init_group(store)
 
-    # determine readonly status
-    readonly = mode == 'r'
+    # determine read only status
+    read_only = mode == 'r'
 
-    return Group(store, readonly=readonly, synchronizer=synchronizer)
+    return Group(store, read_only=read_only, synchronizer=synchronizer)

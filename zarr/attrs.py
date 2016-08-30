@@ -10,11 +10,11 @@ from zarr.errors import ReadOnlyError
 
 class Attributes(MutableMapping):
 
-    def __init__(self, store, key='.zattrs', readonly=False,
+    def __init__(self, store, key='.zattrs', read_only=False,
                  synchronizer=None):
         self.store = store
         self.key = key
-        self.readonly = readonly
+        self.read_only = read_only
         self.synchronizer = synchronizer
 
     def __contains__(self, x):
@@ -30,7 +30,7 @@ class Attributes(MutableMapping):
     def _write_op(self, f, *args, **kwargs):
 
         # guard condition
-        if self.readonly:
+        if self.read_only:
             raise ReadOnlyError('attributes are read-only')
 
         # synchronization

@@ -263,7 +263,7 @@ def open_array(path, mode='a', shape=None, chunks=None, dtype=None,
     path : string
         Path to directory in file system in which to store the array.
     mode : {'r', 'r+', 'a', 'w', 'w-'}
-        Persistence mode: 'r' means readonly (must exist); 'r+' means
+        Persistence mode: 'r' means read only (must exist); 'r+' means
         read/write (must exist); 'a' means read/write (create if doesn't
         exist); 'w' means create (overwrite if exists); 'w-' means create
         (fail if exists).
@@ -320,7 +320,7 @@ def open_array(path, mode='a', shape=None, chunks=None, dtype=None,
 
     # use same mode semantics as h5py, although N.B., here `path` is a
     # directory:
-    # r : readonly, must exist
+    # r : read only, must exist
     # r+ : read/write, must exist
     # w : create, delete if exists
     # w- or x : create, fail if exists
@@ -362,11 +362,11 @@ def open_array(path, mode='a', shape=None, chunks=None, dtype=None,
                        compression_opts=compression_opts,
                        fill_value=fill_value, order=order)
 
-    # determine readonly status
-    readonly = mode == 'r'
+    # determine read only status
+    read_only = mode == 'r'
 
     # instantiate array
-    z = Array(store, readonly=readonly, synchronizer=synchronizer)
+    z = Array(store, read_only=read_only, synchronizer=synchronizer)
 
     return z
 

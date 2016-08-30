@@ -4,4 +4,3 @@ Synchronization (``zarr.sync``)
 
 .. autoclass:: ThreadSynchronizer
 .. autoclass:: ProcessSynchronizer
-.. autoclass:: SynchronizedArray

@@ -27,7 +27,7 @@ class Array(object):
         Array store, already initialized.
     path : string, optional
         Storage path.
-    readonly : bool, optional
+    read_only : bool, optional
         True if array should be protected against modification.
     chunk_store : MutableMapping, optional
         Separate storage for chunks. If not provided, `store` will be used
@@ -40,7 +40,7 @@ class Array(object):
     store
     path
     name
-    readonly
+    read_only
     chunk_store
     shape
     chunks
@@ -67,7 +67,7 @@ class Array(object):
 
     """  # flake8: noqa
 
-    def __init__(self, store, path=None, readonly=False, chunk_store=None,
+    def __init__(self, store, path=None, read_only=False, chunk_store=None,
                  synchronizer=None):
         # N.B., expect at this point store is fully initialized with all
         # configuration metadata fully specified and normalized
@@ -78,7 +78,7 @@ class Array(object):
             self._key_prefix = self._path + '/'
         else:
             self._key_prefix = ''
-        self._readonly = readonly
+        self._read_only = read_only
         if chunk_store is None:
             self._chunk_store = store
         else:
@@ -106,7 +106,7 @@ class Array(object):
 
         # initialize attributes
         akey = self._key_prefix + attrs_key
-        self._attrs = Attributes(store, key=akey, readonly=readonly,
+        self._attrs = Attributes(store, key=akey, read_only=read_only,
                                  synchronizer=synchronizer)
 
     def _flush_metadata(self):
@@ -139,9 +139,9 @@ class Array(object):
         return None
 
     @property
-    def readonly(self):
+    def read_only(self):
         """A boolean, True if modification operations are not permitted."""
-        return self._readonly
+        return self._read_only
 
     @property
     def chunk_store(self):
@@ -249,7 +249,7 @@ class Array(object):
         return (
             isinstance(other, Array) and
             self.store == other.store and
-            self.readonly == other.readonly and
+            self.read_only == other.read_only and
             self.path == other.path
             # N.B., no need to compare other properties, should be covered by
             # store comparison
@@ -453,7 +453,7 @@ class Array(object):
         """
 
         # guard conditions
-        if self._readonly:
+        if self._read_only:
             raise ReadOnlyError('array is read-only')
 
         # normalize selection
@@ -674,7 +674,7 @@ class Array(object):
         return r
 
     def __getstate__(self):
-        return self._store, self._path, self._readonly, self._chunk_store, \
+        return self._store, self._path, self._read_only, self._chunk_store, \
                self._synchronizer
 
     def __setstate__(self, state):
@@ -683,7 +683,7 @@ class Array(object):
     def _write_op(self, f, *args, **kwargs):
 
         # guard condition
-        if self._readonly:
+        if self._read_only:
             raise ReadOnlyError('array is read-only')
 
         # synchronization

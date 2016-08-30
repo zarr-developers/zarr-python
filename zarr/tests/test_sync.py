@@ -20,35 +20,35 @@ from zarr.compat import PY2
 
 class TestThreadSynchronizedAttributes(TestAttributes):
 
-    def init_attributes(self, store, readonly=False):
+    def init_attributes(self, store, read_only=False):
         key = 'attrs'
         store[key] = json.dumps(dict()).encode('ascii')
         synchronizer = ThreadSynchronizer()
         return Attributes(store, synchronizer=synchronizer, key=key,
-                          readonly=readonly)
+                          read_only=read_only)
 
 
 class TestProcessSynchronizedAttributes(TestAttributes):
 
-    def init_attributes(self, store, readonly=False):
+    def init_attributes(self, store, read_only=False):
         key = 'attrs'
         store[key] = json.dumps(dict()).encode('ascii')
         sync_path = mkdtemp()
         atexit.register(shutil.rmtree, sync_path)
         synchronizer = ProcessSynchronizer(sync_path)
         return Attributes(store, synchronizer=synchronizer, key=key,
-                          readonly=readonly)
+                          read_only=read_only)
 
 
 class TestThreadSynchronizedArray(TestArray):
 
-    def create_array(self, store=None, path=None, readonly=False,
+    def create_array(self, store=None, path=None, read_only=False,
                      chunk_store=None, **kwargs):
         if store is None:
             store = dict()
         init_array(store, path=path, chunk_store=chunk_store, **kwargs)
         return Array(store, path=path, synchronizer=ThreadSynchronizer(),
-                     readonly=readonly, chunk_store=chunk_store)
+                     read_only=read_only, chunk_store=chunk_store)
 
     def test_repr(self):
         if not PY2:
@@ -69,7 +69,7 @@ class TestThreadSynchronizedArray(TestArray):
 
 class TestProcessSynchronizedArray(TestArray):
 
-    def create_array(self, store=None, path=None, readonly=False,
+    def create_array(self, store=None, path=None, read_only=False,
                      chunk_store=None, **kwargs):
         if store is None:
             store = dict()
@@ -78,7 +78,7 @@ class TestProcessSynchronizedArray(TestArray):
         atexit.register(shutil.rmtree, sync_path)
         synchronizer = ProcessSynchronizer(sync_path)
         return Array(store, path=path, synchronizer=synchronizer,
-                     readonly=readonly, chunk_store=chunk_store)
+                     read_only=read_only, chunk_store=chunk_store)
 
     def test_repr(self):
         if not PY2:

@@ -58,12 +58,12 @@ class TestArray(unittest.TestCase):
         with assert_raises(ValueError):
             Array(store, path='baz')
 
-    def create_array(self, store=None, path=None, readonly=False,
+    def create_array(self, store=None, path=None, read_only=False,
                      chunk_store=None, **kwargs):
         if store is None:
             store = dict()
         init_array(store, path=path, chunk_store=chunk_store, **kwargs)
-        return Array(store, path=path, readonly=readonly,
+        return Array(store, path=path, read_only=read_only,
                      chunk_store=chunk_store)
 
     def test_nbytes_stored(self):
@@ -502,13 +502,13 @@ class TestArray(unittest.TestCase):
         with assert_raises(ValueError):
             z.append(b)
 
-    def test_readonly(self):
+    def test_read_only(self):
 
         z = self.create_array(shape=1000, chunks=100)
-        assert_false(z.readonly)
+        assert_false(z.read_only)
 
-        z = self.create_array(shape=1000, chunks=100, readonly=True)
-        assert_true(z.readonly)
+        z = self.create_array(shape=1000, chunks=100, read_only=True)
+        assert_true(z.read_only)
         with assert_raises(ReadOnlyError):
             z[:] = 42
         with assert_raises(ReadOnlyError):
@@ -554,11 +554,11 @@ class TestArray(unittest.TestCase):
 class TestArrayWithPath(TestArray):
 
     @staticmethod
-    def create_array(store=None, readonly=False, chunk_store=None, **kwargs):
+    def create_array(store=None, read_only=False, chunk_store=None, **kwargs):
         if store is None:
             store = dict()
         init_array(store, path='foo/bar', chunk_store=chunk_store, **kwargs)
-        return Array(store, path='foo/bar', readonly=readonly,
+        return Array(store, path='foo/bar', read_only=read_only,
                      chunk_store=chunk_store)
 
     def test_repr(self):
@@ -580,14 +580,14 @@ class TestArrayWithPath(TestArray):
 class TestArrayWithChunkStore(TestArray):
 
     @staticmethod
-    def create_array(store=None, readonly=False, chunk_store=None, **kwargs):
+    def create_array(store=None, read_only=False, chunk_store=None, **kwargs):
         if store is None:
             store = dict()
         if chunk_store is None:
             # separate chunk store
             chunk_store = dict()
         init_array(store, path='foo/bar', chunk_store=chunk_store, **kwargs)
-        return Array(store, path='foo/bar', readonly=readonly,
+        return Array(store, path='foo/bar', read_only=read_only,
                      chunk_store=chunk_store)
 
     def test_repr(self):
