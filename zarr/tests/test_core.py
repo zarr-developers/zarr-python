@@ -19,6 +19,7 @@ from zarr.core import Array
 from zarr.errors import ReadOnlyError
 from zarr.compat import PY2
 from zarr.util import buffer_size
+from zarr.filters import DeltaFilter, ScaleOffsetFilter, QuantizeFilter
 
 
 compression_configs = [
@@ -236,7 +237,7 @@ class TestArray(unittest.TestCase):
             print(compression, compression_opts)
 
             # setup
-            a = np.empty(100)
+            a = np.zeros(100)
             z = self.create_array(shape=a.shape, chunks=10, dtype=a.dtype,
                                   compression=compression,
                                   compression_opts=compression_opts)
@@ -244,6 +245,7 @@ class TestArray(unittest.TestCase):
             assert_array_equal(a, z[:])
 
             for value in -1, 0, 1, 10:
+                print(value)
                 a[15:35] = value
                 z[15:35] = value
                 assert_array_equal(a, z[:])
@@ -642,4 +644,38 @@ class TestArrayWithChunkStore(TestArray):
                 eq(l1, l2)
 
 
-# TODO test array with filters
+class TestArrayWithFilters(TestArray):
+
+    @staticmethod
+    def create_array(store=None, read_only=False, chunk_store=None, **kwargs):
+        if store is None:
+            store = dict()
+        if chunk_store is None:
+            chunk_store = store
+        dtype = kwargs.get('dtype', None)
+        filters = [
+            DeltaFilter(enc_dtype=dtype, dec_dtype=dtype),
+            ScaleOffsetFilter(enc_dtype=dtype, dec_dtype=dtype, scale=1,
+                              offset=0),
+        ]
+        kwargs.setdefault('filters', filters)
+        init_array(store, chunk_store=chunk_store, **kwargs)
+        return Array(store, read_only=read_only,
+                     chunk_store=chunk_store)
+
+    def test_repr(self):
+        if not PY2:
+
+            z = self.create_array(shape=100, chunks=10, dtype='f4',
+                                  compression='zlib', compression_opts=1)
+            # flake8: noqa
+            expect = """zarr.core.Array((100,), float32, chunks=(10,), order=C)
+  compression: zlib; compression_opts: 1
+  nbytes: 400; nbytes_stored: 514; ratio: 0.8; initialized: 0/10
+  filters: delta, scaleoffset
+  store: builtins.dict
+  chunk_store: builtins.dict
+"""
+            actual = repr(z)
+            for l1, l2 in zip(expect.split('\n'), actual.split('\n')):
+                eq(l1, l2)
