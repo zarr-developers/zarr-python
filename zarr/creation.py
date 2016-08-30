@@ -393,27 +393,26 @@ def _like_args(a, shape, chunks, dtype, compression, compression_opts,
             # use auto-chunking
             pass
     if dtype is None:
-        dtype = a.dtype
-    if compression is None:
         try:
-            compression = a.compression
-        except AttributeError:
-            compression = 'blosc'
-    if compression_opts is None:
-        try:
-            compression_opts = a.compression_opts
+            dtype = a.dtype
         except AttributeError:
             pass
+    if compression is None:
+        if isinstance(a, Array):
+            compression = a.compression
+        else:
+            compression = 'default'
+    if compression_opts is None:
+        if isinstance(a, Array):
+            compression_opts = a.compression_opts
     if order is None:
-        try:
+        if isinstance(a, Array):
             order = a.order
-        except AttributeError:
+        else:
             order = 'C'
     if filters is None:
-        try:
+        if isinstance(a, Array):
             filters = a.filters
-        except AttributeError:
-            filters = None
     return shape, chunks, dtype, compression, compression_opts, order, filters
 
 

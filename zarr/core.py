@@ -204,6 +204,7 @@ class Array(object):
         """TODO doc me"""
         return self._synchronizer
 
+    @property
     def filters(self):
         """TODO doc me"""
         return self._filters

@@ -190,6 +190,10 @@ def test_empty_like():
     eq((100,), z3.chunks)
     eq(a.dtype, z3.dtype)
     assert_is_none(z3.fill_value)
+    # something slightly silly
+    a = [0] * 100
+    z3 = empty_like(a, shape=200)
+    eq((200,), z3.shape)
 
 
 def test_zeros_like():
