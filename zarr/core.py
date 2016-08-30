@@ -823,7 +823,7 @@ class SynchronizedArray(Array):
     >>> synchronizer = zarr.ThreadSynchronizer()
     >>> z = zarr.SynchronizedArray(store, synchronizer)
     >>> z
-    zarr.sync.SynchronizedArray((1000,), float64, chunks=(100,), order=C)
+    zarr.core.SynchronizedArray((1000,), float64, chunks=(100,), order=C)
       compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
       nbytes: 7.8K; nbytes_stored: 285; ratio: 28.1; initialized: 0/10
       store: builtins.dict; synchronizer: zarr.sync.ThreadSynchronizer

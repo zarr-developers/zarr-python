@@ -1,14 +1,13 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, print_function, division
-import os
 
 
 import numpy as np
 
 
-from zarr.core import Array
-from zarr.sync import SynchronizedArray
-from zarr.storage import DirectoryStore, init_array, contains_array, contains_group
+from zarr.core import Array, SynchronizedArray
+from zarr.storage import DirectoryStore, init_array, contains_array, \
+    contains_group
 
 
 def create(shape, chunks=None, dtype=None, compression='default',

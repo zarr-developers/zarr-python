@@ -13,8 +13,8 @@ from numpy.testing import assert_array_equal
 
 from zarr.creation import array, empty, zeros, ones, full, open_array, \
     empty_like, zeros_like, ones_like, full_like, open_like, create
-from zarr.sync import ThreadSynchronizer, SynchronizedArray
-from zarr.core import Array
+from zarr.sync import ThreadSynchronizer
+from zarr.core import Array, SynchronizedArray
 from zarr.storage import DirectoryStore
 from zarr.hierarchy import open_group
 from zarr.errors import ReadOnlyError
