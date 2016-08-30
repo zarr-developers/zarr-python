@@ -13,6 +13,7 @@ from zarr.storage import DictStore, DirectoryStore, ZipStore, init_array, \
 from zarr.hierarchy import group, open_group, Group
 from zarr.sync import ThreadSynchronizer, ProcessSynchronizer
 from zarr.version import version as __version__
+from zarr.filters import DeltaFilter, ScaleOffsetFilter, QuantizeFilter
 
 
 try:

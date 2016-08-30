@@ -6,3 +6,4 @@ TODO
 
 .. autoclass:: DeltaFilter
 .. autoclass:: ScaleOffsetFilter
+.. autoclass:: QuantizeFilter

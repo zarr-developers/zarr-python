@@ -709,6 +709,9 @@ class Array(object):
             r += '; ratio: %.1f' % (self.nbytes / self.nbytes_stored)
         n_chunks = reduce(operator.mul, self.cdata_shape)
         r += '; initialized: %s/%s' % (self.initialized, n_chunks)
+        if self._filters:
+            r += '\n  filters: %s' % ', '.join([f.filter_name for f in
+                                                self._filters])
         r += '\n  store: %s.%s' % (type(self.store).__module__,
                                    type(self.store).__name__)
         if self._store != self._chunk_store:

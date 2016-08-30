@@ -660,7 +660,7 @@ class DirectoryStore(MutableMapping):
 
 # noinspection PyPep8Naming
 class ZipStore(MutableMapping):
-    """TODO"""
+    """TODO doc me"""
 
     def __init__(self, path, compression=zipfile.ZIP_STORED,
                  allowZip64=True, mode='a'):
