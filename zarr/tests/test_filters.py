@@ -4,11 +4,12 @@ import unittest
 
 
 import numpy as np
-from numpy.testing import assert_array_equal
+from numpy.testing import assert_array_equal, assert_allclose, \
+    assert_array_almost_equal
 from nose.tools import eq_ as eq
 
 
-from zarr.filters import DeltaFilter, ScaleOffsetFilter
+from zarr.filters import DeltaFilter, ScaleOffsetFilter, QuantizeFilter
 from zarr.creation import array
 from zarr.compat import PY2
 from zarr.compressors import get_compressor_cls
@@ -54,6 +55,27 @@ class TestScaleOffsetFilter(unittest.TestCase):
         dec = f.decode(enc)
         assert_array_equal(data, dec)
         eq(np.dtype(dec_dtype), dec.dtype)
+
+
+class TestQuantizeFilter(unittest.TestCase):
+
+    def test_encode_decode(self):
+        dtype = 'f8'
+        data = np.linspace(0, 1, 34, dtype=dtype)
+
+        for digits in range(5):
+            f = QuantizeFilter(digits=digits, dtype=dtype)
+
+            # test encoding
+            enc = f.encode(data)
+            eq(np.dtype(dtype), enc.dtype)
+            assert_array_almost_equal(data, enc, decimal=digits)
+
+            # test decoding
+            dec = f.decode(enc)
+            # should be no-op
+            assert_array_equal(enc, dec)
+            eq(np.dtype(dtype), dec.dtype)
 
 
 compression_configs = [
@@ -116,6 +138,33 @@ def test_array_with_filters_2():
             actual = np.frombuffer(a.compressor.decompress(cdata),
                                    dtype=enc_dtype)
             expect = np.arange(i*5, (i*5)+5, 1, dtype=enc_dtype)
+            assert_array_equal(expect, actual)
+
+
+def test_array_with_filters_3():
+
+    # setup
+    dtype = 'f8'
+    digits = 3
+    qf = QuantizeFilter(digits=digits, dtype=dtype)
+    filters = [qf]
+    data = np.linspace(0, 1, 34, dtype=dtype)
+
+    for compression, compression_opts in compression_configs:
+        print(compression, compression_opts)
+
+        a = array(data, chunks=5, compression=compression,
+                  compression_opts=compression_opts, filters=filters)
+
+        # check round-trip
+        assert_array_almost_equal(data, a[:], decimal=digits)
+
+        # check chunks
+        for i in range(6):
+            cdata = a.store[str(i)]
+            actual = np.frombuffer(a.compressor.decompress(cdata),
+                                   dtype=dtype)
+            expect = qf.encode(data[i*5:(i*5)+5])
             assert_array_equal(expect, actual)
 
 

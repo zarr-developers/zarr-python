@@ -240,7 +240,33 @@ the delta filter::
 Filters
 -------
 
-TODO
+In some cases, compression can be improved by transforming the data in some
+way. For example, if nearby values tend to be correlated, then shuffling the
+bytes within each numerical value or storing the difference between adjacent
+values may increase compression ratio. Some compressors provide built-in
+filters that apply transformations to the data prior to compression. For
+example, the Blosc compressor has highly optimized built-in implementations of
+byte- and bit-shuffle filters, and the LZMA compressor has a built-in
+implementation of a delta filter. However, to provide some additional
+flexibility for implementing and using filters in combination with different
+compressors, Zarr also provides a mechanism for configuring filters outside of
+the primary compressor.
+
+Here is an example using the Zarr delta filter with the Blosc compressor:
+
+    >>> filters = [zarr.DeltaFilter(dec_dtype='i4', enc_dtype='i4')]
+    >>> z = zarr.array(np.arange(100000000, dtype='i4').reshape(10000, 10000),
+    ...                chunks=(1000, 1000), filters=filters, compression='blosc',
+    ...                compression_opts=dict(cname='lz4', clevel=5, shuffle=0))
+    >>> z
+    zarr.core.Array((10000, 10000), int32, chunks=(1000, 1000), order=C)
+      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 0}
+      nbytes: 381.5M; nbytes_stored: 3.4M; ratio: 112.8; initialized: 100/100
+      filters: delta
+      store: builtins.dict
+
+Zarr comes with implementations of delta, scale-offset and quantize filters.
+For more information see the :mod:`zarr.filters` API docs.
 
 Parallel computing and synchronization
 --------------------------------------

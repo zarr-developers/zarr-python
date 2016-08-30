@@ -640,3 +640,6 @@ class TestArrayWithChunkStore(TestArray):
             actual = repr(z)
             for l1, l2 in zip(expect.split('\n'), actual.split('\n')):
                 eq(l1, l2)
+
+
+# TODO test array with filters

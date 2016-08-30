@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, print_function, division
+import math
 
 
 import numpy as np
@@ -20,9 +21,9 @@ class DeltaFilter(object):
         self.enc_dtype = np.dtype(enc_dtype)
         self.dec_dtype = np.dtype(dec_dtype)
 
-    def encode(self, arr):
-        # ensure 1D array
-        arr = np.asarray(arr).reshape(-1)
+    def encode(self, buf):
+        # interpret buffer as array
+        arr = np.frombuffer(buf, dtype=self.dec_dtype)
         # setup encoded output
         enc = np.empty_like(arr, dtype=self.enc_dtype)
         # set first element
@@ -67,9 +68,9 @@ class ScaleOffsetFilter(object):
         self.enc_dtype = np.dtype(enc_dtype)
         self.dec_dtype = np.dtype(dec_dtype)
 
-    def encode(self, arr):
-        # ensure 1D array
-        arr = np.asarray(arr).reshape(-1)
+    def encode(self, buf):
+        # interpret buffer as array
+        arr = np.frombuffer(buf, dtype=self.dec_dtype)
         # compute scale offset
         enc = ((arr - self.offset) / self.scale).astype(self.enc_dtype)
         return enc
@@ -103,7 +104,48 @@ class ScaleOffsetFilter(object):
 filter_registry[ScaleOffsetFilter.filter_name] = ScaleOffsetFilter
 
 
-# TODO DigitizeFilter
+class QuantizeFilter(object):
+
+    filter_name = 'quantize'
+
+    def __init__(self, digits, dtype):
+        self.digits = digits
+        self.dtype = np.dtype(dtype)
+
+    def encode(self, buf):
+        # interpret buffer as array
+        arr = np.frombuffer(buf, dtype=self.dtype)
+        # apply encoding
+        precision = 10. ** -self.digits
+        exp = math.log(precision, 10)
+        if exp < 0:
+            exp = int(math.floor(exp))
+        else:
+            exp = int(math.ceil(exp))
+        bits = math.ceil(math.log(10. ** -exp, 2))
+        scale = 2. ** bits
+        enc = np.around(scale * arr) / scale
+        return enc
+
+    def decode(self, buf):
+        # filter is lossy, decoding is no-op
+        return buf
+
+    def get_filter_config(self):
+        config = dict()
+        config['name'] = self.filter_name
+        config['digits'] = self.digits
+        config['dtype'] = encode_dtype(self.dtype)
+        return config
+
+    @classmethod
+    def from_filter_config(cls, config):
+        dtype = decode_dtype(config['dtype'])
+        digits = config['digits']
+        return cls(digits=digits, dtype=dtype)
+
+
+filter_registry[QuantizeFilter.filter_name] = QuantizeFilter
 
 
 # add in compressors as filters
