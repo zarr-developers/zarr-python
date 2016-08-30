@@ -848,20 +848,20 @@ class SynchronizedArray(Array):
         super(SynchronizedArray, self).__init__(store, readonly=readonly,
                                                 path=path,
                                                 chunk_store=chunk_store)
-        self.synchronizer = synchronizer
+        self._synchronizer = synchronizer
         akey = self._key_prefix + attrs_key
         self._attrs = SynchronizedAttributes(store, synchronizer, key=akey,
                                              readonly=readonly)
 
     def __repr__(self):
         r = super(SynchronizedArray, self).__repr__()
-        r += ('; synchronizer: %s.%s' %
-              (type(self.synchronizer).__module__,
-               type(self.synchronizer).__name__))
+        r += ('\n  synchronizer: %s.%s' %
+              (type(self._synchronizer).__module__,
+               type(self._synchronizer).__name__))
         return r
 
     def __getstate__(self):
-        return self._store, self.synchronizer, self._readonly, self._path, \
+        return self._store, self._synchronizer, self._readonly, self._path, \
                self._chunk_store
 
     def __setstate__(self, state):
@@ -869,15 +869,15 @@ class SynchronizedArray(Array):
 
     def _chunk_setitem(self, cidx, key, value):
         ckey = self._chunk_key(cidx)
-        with self.synchronizer[ckey]:
+        with self._synchronizer[ckey]:
             super(SynchronizedArray, self)._chunk_setitem(cidx, key, value)
 
     def resize(self, *args):
         mkey = self._key_prefix + array_meta_key
-        with self.synchronizer[mkey]:
+        with self._synchronizer[mkey]:
             super(SynchronizedArray, self).resize(*args)
 
     def append(self, *args, **kwargs):
         mkey = self._key_prefix + array_meta_key
-        with self.synchronizer[mkey]:
+        with self._synchronizer[mkey]:
             super(SynchronizedArray, self).append(*args, **kwargs)

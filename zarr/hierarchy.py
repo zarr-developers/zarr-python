@@ -7,7 +7,7 @@ from warnings import warn
 import numpy as np
 
 
-from zarr.attrs import Attributes
+from zarr.attrs import Attributes, SynchronizedAttributes
 from zarr.core import Array
 from zarr.storage import contains_array, contains_group, init_group, \
     DictStore, DirectoryStore, group_meta_key, attrs_key, listdir
@@ -526,14 +526,6 @@ class Group(Mapping):
         # setup
         if self._readonly:
             raise ReadOnlyError('group is read-only')
-        path = self._item_path(name)
-        self._require_parent_group(path)
-
-        # guard conditions
-        if contains_array(self._store, path):
-            raise KeyError(name)
-        if contains_group(self._store, path):
-            raise KeyError(name)
 
         # N.B., additional kwargs are included in method signature to
         # improve compatibility for users familiar with h5py and adapting
@@ -545,6 +537,26 @@ class Group(Mapping):
                      "instead" % k)
             else:
                 warn('ignoring keyword argument %r' % k)
+
+        self._create_dataset(name, data=data, shape=shape, chunks=chunks,
+                             dtype=dtype, compression=compression,
+                             compression_opts=compression_opts,
+                             fill_value=fill_value, order=order,
+                             synchronizer=synchronizer)
+
+    def _create_dataset(self, name, data=None, shape=None, chunks=None,
+                        dtype=None, compression='default',
+                        compression_opts=None, fill_value=None, order='C',
+                        synchronizer=None):
+
+        path = self._item_path(name)
+        self._require_parent_group(path)
+
+        # guard conditions
+        if contains_array(self._store, path):
+            raise KeyError(name)
+        if contains_group(self._store, path):
+            raise KeyError(name)
 
         if data is not None:
             a = array(data, chunks=chunks, dtype=dtype,
@@ -600,8 +612,10 @@ class Group(Mapping):
             return a
 
         else:
-            return self.create_dataset(name, shape=shape, dtype=dtype,
-                                       **kwargs)
+            if self._readonly:
+                raise ReadOnlyError('group is read-only')
+            return self._create_dataset(name, shape=shape, dtype=dtype,
+                                        **kwargs)
 
     def create(self, name, **kwargs):
         """Create an array. Keyword arguments as per
@@ -830,3 +844,35 @@ def open_group(path, mode='a'):
     readonly = mode == 'r'
 
     return Group(store, readonly=readonly)
+
+
+class SynchronizedGroup(Group):
+    """TODO doc me"""
+
+    def __init__(self, store, synchronizer, path=None, readonly=False,
+                 chunk_store=None):
+        super(SynchronizedGroup, self).__init__(store, path=path,
+                                                readonly=readonly,
+                                                chunk_store=chunk_store)
+        self._synchronizer = synchronizer
+        akey = self._key_prefix + attrs_key
+        self._attrs = SynchronizedAttributes(store, synchronizer, key=akey,
+                                             readonly=readonly)
+
+    def __repr__(self):
+        r = super(SynchronizedGroup, self).__repr__()
+        r += ('\n  synchronizer: %s.%s' %
+              (type(self._synchronizer).__module__,
+               type(self._synchronizer).__name__))
+        return r
+
+    def __getstate__(self):
+        return self._store, self._synchronizer, self._path, self._readonly, \
+               self._chunk_store
+
+    def __setstate__(self, state):
+        self.__init__(*state)
+
+    def __getitem__(self, item):
+        # TODO
+        pass
