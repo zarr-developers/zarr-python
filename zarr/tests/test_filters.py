@@ -60,22 +60,24 @@ class TestScaleOffsetFilter(unittest.TestCase):
 class TestQuantizeFilter(unittest.TestCase):
 
     def test_encode_decode(self):
-        dtype = 'f8'
-        data = np.linspace(0, 1, 34, dtype=dtype)
+        dec_dtype = 'f8'
+        enc_dtype = 'f4'
+        data = np.linspace(0, 1, 34, dtype=dec_dtype)
 
         for digits in range(5):
-            f = QuantizeFilter(digits=digits, dtype=dtype)
+            f = QuantizeFilter(digits=digits, dec_dtype=dec_dtype,
+                               enc_dtype=enc_dtype)
 
             # test encoding
             enc = f.encode(data)
-            eq(np.dtype(dtype), enc.dtype)
+            eq(np.dtype(enc_dtype), enc.dtype)
             assert_array_almost_equal(data, enc, decimal=digits)
 
             # test decoding
             dec = f.decode(enc)
             # should be no-op
             assert_array_equal(enc, dec)
-            eq(np.dtype(dtype), dec.dtype)
+            eq(np.dtype(dec_dtype), dec.dtype)
 
 
 compression_configs = [
@@ -146,7 +148,7 @@ def test_array_with_filters_3():
     # setup
     dtype = 'f8'
     digits = 3
-    qf = QuantizeFilter(digits=digits, dtype=dtype)
+    qf = QuantizeFilter(digits=digits, dec_dtype=dtype)
     filters = [qf]
     data = np.linspace(0, 1, 34, dtype=dtype)
 

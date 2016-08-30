@@ -13,17 +13,28 @@ from zarr.compressors import registry as compressor_registry
 filter_registry = dict()
 
 
+def _ndarray_from_buffer(buf, dtype):
+    if isinstance(buf, np.ndarray):
+        arr = buf.reshape(-1, order='A')
+    else:
+        arr = np.frombuffer(buf, dtype=dtype)
+    return arr
+
+
 class DeltaFilter(object):
 
     filter_name = 'delta'
 
-    def __init__(self, enc_dtype, dec_dtype):
-        self.enc_dtype = np.dtype(enc_dtype)
+    def __init__(self, dec_dtype, enc_dtype=None):
         self.dec_dtype = np.dtype(dec_dtype)
+        if enc_dtype is None:
+            self.enc_dtype = self.dec_dtype
+        else:
+            self.enc_dtype = np.dtype(enc_dtype)
 
     def encode(self, buf):
-        # interpret buffer as array
-        arr = np.frombuffer(buf, dtype=self.dec_dtype)
+        # interpret buffer as 1D array
+        arr = _ndarray_from_buffer(buf, self.dec_dtype)
         # setup encoded output
         enc = np.empty_like(arr, dtype=self.enc_dtype)
         # set first element
@@ -33,8 +44,8 @@ class DeltaFilter(object):
         return enc
 
     def decode(self, buf):
-        # interpret buffer as array
-        enc = np.frombuffer(buf, dtype=self.enc_dtype)
+        # interpret buffer as 1D array
+        enc = _ndarray_from_buffer(buf, self.enc_dtype)
         # setup decoded output
         dec = np.empty_like(enc, dtype=self.dec_dtype)
         # decode differences
@@ -62,24 +73,31 @@ class ScaleOffsetFilter(object):
 
     filter_name = 'scaleoffset'
 
-    def __init__(self, offset, scale, enc_dtype, dec_dtype):
+    def __init__(self, offset, scale, dec_dtype, enc_dtype=None):
         self.offset = offset
         self.scale = scale
-        self.enc_dtype = np.dtype(enc_dtype)
         self.dec_dtype = np.dtype(dec_dtype)
+        if enc_dtype is None:
+            self.enc_dtype = self.dec_dtype
+        else:
+            self.enc_dtype = np.dtype(enc_dtype)
 
     def encode(self, buf):
-        # interpret buffer as array
-        arr = np.frombuffer(buf, dtype=self.dec_dtype)
+        # interpret buffer as 1D array
+        arr = _ndarray_from_buffer(buf, self.dec_dtype)
         # compute scale offset
-        enc = ((arr - self.offset) / self.scale).astype(self.enc_dtype)
+        enc = (arr - self.offset) / self.scale
+        # cast dtype
+        enc = enc.astype(self.enc_dtype, copy=False)
         return enc
 
     def decode(self, buf):
-        # interpret buffer as array
-        enc = np.frombuffer(buf, dtype=self.enc_dtype)
+        # interpret buffer as 1D array
+        enc = _ndarray_from_buffer(buf, self.enc_dtype)
         # decode scale offset
-        dec = ((enc * self.scale) + self.offset).astype(self.dec_dtype)
+        dec = (enc * self.scale) + self.offset
+        # cast dtype
+        dec = dec.astype(self.dec_dtype, copy=False)
         return dec
 
     def get_filter_config(self):
@@ -108,13 +126,17 @@ class QuantizeFilter(object):
 
     filter_name = 'quantize'
 
-    def __init__(self, digits, dtype):
+    def __init__(self, digits, dec_dtype, enc_dtype=None):
         self.digits = digits
-        self.dtype = np.dtype(dtype)
+        self.dec_dtype = np.dtype(dec_dtype)
+        if enc_dtype is None:
+            self.enc_dtype = self.dec_dtype
+        else:
+            self.enc_dtype = np.dtype(enc_dtype)
 
     def encode(self, buf):
-        # interpret buffer as array
-        arr = np.frombuffer(buf, dtype=self.dtype)
+        # interpret buffer as 1D array
+        arr = _ndarray_from_buffer(buf, self.dec_dtype)
         # apply encoding
         precision = 10. ** -self.digits
         exp = math.log(precision, 10)
@@ -125,24 +147,29 @@ class QuantizeFilter(object):
         bits = math.ceil(math.log(10. ** -exp, 2))
         scale = 2. ** bits
         enc = np.around(scale * arr) / scale
+        # cast dtype
+        enc = enc.astype(self.enc_dtype, copy=False)
         return enc
 
     def decode(self, buf):
         # filter is lossy, decoding is no-op
-        return buf
+        enc = _ndarray_from_buffer(buf, self.enc_dtype)
+        return enc.astype(self.dec_dtype, copy=False)
 
     def get_filter_config(self):
         config = dict()
         config['name'] = self.filter_name
         config['digits'] = self.digits
-        config['dtype'] = encode_dtype(self.dtype)
+        config['dec_dtype'] = encode_dtype(self.dec_dtype)
+        config['enc_dtype'] = encode_dtype(self.enc_dtype)
         return config
 
     @classmethod
     def from_filter_config(cls, config):
-        dtype = decode_dtype(config['dtype'])
+        dec_dtype = decode_dtype(config['dec_dtype'])
+        enc_dtype = decode_dtype(config['enc_dtype'])
         digits = config['digits']
-        return cls(digits=digits, dtype=dtype)
+        return cls(digits=digits, dec_dtype=dec_dtype, enc_dtype=enc_dtype)
 
 
 filter_registry[QuantizeFilter.filter_name] = QuantizeFilter
