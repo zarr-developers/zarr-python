@@ -86,5 +86,3 @@ class TestAttributes(unittest.TestCase):
             del a['foo']
         with assert_raises(ReadOnlyError):
             a.update(foo='quux')
-        with assert_raises(ReadOnlyError):
-            a.put(dict())

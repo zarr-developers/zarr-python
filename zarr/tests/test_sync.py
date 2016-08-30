@@ -8,8 +8,9 @@ import shutil
 
 from zarr.tests.test_attrs import TestAttributes
 from zarr.tests.test_core import TestArray
-from zarr.sync import ThreadSynchronizer, ProcessSynchronizer, \
-    SynchronizedArray, SynchronizedAttributes
+from zarr.sync import ThreadSynchronizer, ProcessSynchronizer
+from zarr.core import SynchronizedArray
+from zarr.attrs import SynchronizedAttributes
 from zarr.storage import init_array
 
 

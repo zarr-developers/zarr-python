@@ -10,7 +10,7 @@ from zarr.errors import ReadOnlyError
 
 class Attributes(MutableMapping):
 
-    def __init__(self, store, key='attrs', readonly=False):
+    def __init__(self, store, key='.zattrs', readonly=False):
         self.store = store
         self.key = key
         self.readonly = readonly
@@ -21,12 +21,7 @@ class Attributes(MutableMapping):
     def __getitem__(self, item):
         return self.asdict()[item]
 
-    def put(self, d):
-
-        # guard conditions
-        if self.readonly:
-            raise ReadOnlyError('attributes are read-only')
-
+    def _put(self, d):
         s = json.dumps(d, indent=4, sort_keys=True, ensure_ascii=True)
         self.store[self.key] = s.encode('ascii')
 
@@ -42,8 +37,8 @@ class Attributes(MutableMapping):
         # set key value
         d[key] = value
 
-        # put modified data
-        self.put(d)
+        # _put modified data
+        self._put(d)
 
     def __delitem__(self, key):
 
@@ -57,8 +52,8 @@ class Attributes(MutableMapping):
         # delete key value
         del d[key]
 
-        # put modified data
-        self.put(d)
+        # _put modified data
+        self._put(d)
 
     def asdict(self):
         if self.key in self.store:
@@ -79,8 +74,8 @@ class Attributes(MutableMapping):
         # update
         d.update(*args, **kwargs)
 
-        # put modified data
-        self.put(d)
+        # _put modified data
+        self._put(d)
 
     def __iter__(self):
         return iter(self.asdict())
@@ -96,3 +91,23 @@ class Attributes(MutableMapping):
 
     def items(self):
         return self.asdict().items()
+
+
+class SynchronizedAttributes(Attributes):
+
+    def __init__(self, store, synchronizer, key='.zattrs', readonly=False):
+        super(SynchronizedAttributes, self).__init__(store, key=key,
+                                                     readonly=readonly)
+        self.synchronizer = synchronizer
+
+    def __setitem__(self, key, value):
+        with self.synchronizer[self.key]:
+            super(SynchronizedAttributes, self).__setitem__(key, value)
+
+    def __delitem__(self, key):
+        with self.synchronizer[self.key]:
+            super(SynchronizedAttributes, self).__delitem__(key)
+
+    def update(self, *args, **kwargs):
+        with self.synchronizer[self.key]:
+            super(SynchronizedAttributes, self).update(*args, **kwargs)
