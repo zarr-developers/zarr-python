@@ -37,6 +37,9 @@ class DeltaFilter(object):
     If `astype` is an integer data type, please ensure that it is
     sufficiently large to store encoded values. No checks are made and data
     may become corrupted due to integer overflow if `astype` is too small.
+    Note also that the encoded data for each chunk includes the absolute
+    value of the first element in the chunk, and so the encoded data type in
+    general needs to be large enough to store absolute values from the array.
 
     Examples
     --------

@@ -290,17 +290,16 @@ def test_compressor_as_filter():
         compressor = compressor_cls(compression_opts)
 
         # setup filters
-        astype = 'u1'
         dtype = 'i8'
         filters = [
-            DeltaFilter(astype=astype, dtype=dtype),
+            DeltaFilter(dtype=dtype),
             compressor
         ]
 
         # setup data and arrays
-        data = np.arange(100, dtype=dtype)
-        a1 = array(data, chunks=10, compression=None, filters=filters)
-        a2 = array(data, chunks=10, compression=compression,
+        data = np.arange(10000, dtype=dtype)
+        a1 = array(data, chunks=1000, compression=None, filters=filters)
+        a2 = array(data, chunks=1000, compression=compression,
                    compression_opts=compression_opts, filters=filters[:1])
 
         # check storage
