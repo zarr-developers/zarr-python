@@ -21,6 +21,7 @@ compressors = [
     BZ2(),
     Blosc(),
 ]
+
 if not PY2:
     from zarr.codecs import LZMA
     compressors.append(LZMA())

@@ -236,6 +236,8 @@ the delta filter::
 
 To disable compression, set ``compressor=None`` when creating an array.
 
+To disable compression, set ``compression=None`` when creating an array.
+
 .. _tutorial_sync:
 
 Filters
