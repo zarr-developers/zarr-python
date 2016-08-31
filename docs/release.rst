@@ -16,7 +16,9 @@ API docs for more information.
 Filters
 ~~~~~~~
 
-TODO
+Support has been added for configuring filters to preprocess chunk data prior 
+to compression. See the tutorial section on :ref:`tutorial_filters` and the 
+:mod:`zarr.filters` API docs for more information.
 
 Other changes
 ~~~~~~~~~~~~~

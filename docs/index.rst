@@ -17,6 +17,7 @@ Highlights
 * Read an array concurrently from multiple threads or processes.
 * Write to an array concurrently from multiple threads or processes.
 * Organize arrays into hierarchies via groups.
+* Use filters to preprocess data and improve compression.
 
 Status
 ------

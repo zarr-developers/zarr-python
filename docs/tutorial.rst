@@ -238,7 +238,7 @@ To disable compression, set ``compressor=None`` when creating an array.
 
 To disable compression, set ``compression=None`` when creating an array.
 
-.. _tutorial_sync:
+.. _tutorial_filters:
 
 Filters
 -------
@@ -271,6 +271,8 @@ Here is an example using the Zarr delta filter with the Blosc compressor:
 Zarr comes with implementations of delta, scale-offset, quantize, packbits and
 categorize filters. It is also relatively straightforward to implement custom
 filters. For more information see the :mod:`zarr.filters` API docs.
+
+.. _tutorial_sync:
 
 Parallel computing and synchronization
 --------------------------------------
