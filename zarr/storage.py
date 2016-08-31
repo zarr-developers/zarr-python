@@ -769,3 +769,32 @@ class ZipStore(MutableMapping):
                     raise ValueError('path not found: %r' % path)
             else:
                 return 0
+
+
+def migrate_1to2(store):
+    """Migrate array metadata in `store` from Zarr format version 1 to
+    version 2.
+
+    Parameters
+    ----------
+    store : MutableMapping
+        Store to be migrated.
+
+    Notes
+    -----
+    Version 1 did not support hierarchies, so this migration function will
+    look for a single array in `store` and migrate the array metadata to
+    version 2.
+
+    """
+
+    # migrate metadata
+    from zarr import meta_v1
+    meta = meta_v1.decode_metadata(store['meta'])
+    del store['meta']
+    meta['filters'] = None
+    store[array_meta_key] = encode_array_metadata(meta)
+
+    # migrate user attributes
+    store[attrs_key] = store['attrs']
+    del store['attrs']

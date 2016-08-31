@@ -15,7 +15,7 @@ from nose.tools import assert_raises, eq_ as eq, assert_is_none
 
 
 from zarr.storage import init_array, array_meta_key, attrs_key, DictStore, \
-    DirectoryStore, ZipStore, init_group, group_meta_key, getsize
+    DirectoryStore, ZipStore, init_group, group_meta_key, getsize, migrate_1to2
 from zarr.meta import decode_array_metadata, encode_array_metadata, \
     ZARR_FORMAT, decode_group_metadata, encode_group_metadata
 from zarr.compat import text_type
@@ -642,3 +642,42 @@ def test_getsize():
     store['baz/quux'] = b'ccccc'
     eq(7, getsize(store))
     eq(5, getsize(store, 'baz'))
+
+
+def test_migrate_1to2():
+    from zarr import meta_v1
+
+    # N.B., version 1 did not support hierarchies, so we only have to be
+    # concerned about migrating a single array at the root of the store
+
+    # setup
+    store = dict()
+    meta = dict(
+        shape=(100,),
+        chunks=(10,),
+        dtype=np.dtype('f4'),
+        compression='zlib',
+        compression_opts=1,
+        fill_value=None,
+        order='C'
+    )
+    meta_json = meta_v1.encode_metadata(meta)
+    store['meta'] = meta_json
+    store['attrs'] = json.dumps(dict()).encode('ascii')
+
+    # run migration
+    migrate_1to2(store)
+
+    # check results
+    assert 'meta' not in store
+    assert '.zarray' in store
+    assert 'attrs' not in store
+    assert '.zattrs' in store
+    meta_migrated = decode_array_metadata(store['.zarray'])
+    eq(2, meta_migrated['zarr_format'])
+    # preserved fields
+    for f in 'shape', 'chunks', 'dtype', 'compression', 'compression_opts', \
+             'fill_value', 'order':
+        eq(meta[f], meta_migrated[f])
+    # TODO migrate should have added empty filters field
+    # assert_is_none(meta_migrated['filters'])
