@@ -12,3 +12,5 @@ can be used as a Zarr array store.
 .. autoclass:: DictStore
 .. autoclass:: DirectoryStore
 .. autoclass:: ZipStore
+
+.. autofunction:: migrate_1to2
