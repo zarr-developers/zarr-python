@@ -187,22 +187,6 @@ else:
             self._test_compress_decompress(opts)
 
 
-class TestNoCompressor(unittest.TestCase, CompressorTests):
-
-    compression = 'none'
-
-    def test_normalize_opts(self):
-        cls = get_compressor_cls(self.compression)
-
-        # test defaults
-        opts = cls.normalize_opts(None)
-        eq(None, opts)
-
-        # test invalid args
-        with assert_raises(ValueError):
-            cls.normalize_opts(9)
-
-
 def test_get_compressor_cls():
     # expect ValueError, more friendly
     with assert_raises(ValueError):

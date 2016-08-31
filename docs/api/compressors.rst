@@ -18,6 +18,3 @@ code of this module for details.
 .. autoclass:: BZ2Compressor
 
 .. autoclass:: LZMACompressor
-
-.. autoclass:: NoCompressor
-

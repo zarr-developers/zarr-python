@@ -96,19 +96,27 @@ class Array(object):
         except KeyError:
             raise ValueError('store has no metadata')
         else:
+
+            # decode and store metadata
             meta = decode_array_metadata(meta_bytes)
             self._meta = meta
             self._shape = meta['shape']
             self._chunks = meta['chunks']
             self._dtype = meta['dtype']
-            self._compression = meta['compression']
-            self._compression_opts = meta['compression_opts']
             self._fill_value = meta['fill_value']
             self._order = meta['order']
-            compressor_cls = get_compressor_cls(self._compression)
-            self._compressor = compressor_cls(self._compression_opts)
             self._filters = get_filters(meta['filters'])
             self._is_view = False
+            self._compression = meta['compression']
+
+            # setup compressor
+            if self._compression is None:
+                self._compressor = None
+                self._compression_opts = None
+            else:
+                self._compression_opts = meta['compression_opts']
+                compressor_cls = get_compressor_cls(self._compression)
+                self._compressor = compressor_cls(self._compression_opts)
 
         # initialize attributes
         akey = self._key_prefix + attrs_key
@@ -569,7 +577,12 @@ class Array(object):
                 # optimization: we want the whole chunk, and the destination is
                 # contiguous, so we can decompress directly from the chunk
                 # into the destination array
-                self._compressor.decompress(cdata, dest)
+                if self._compressor:
+                    self._compressor.decompress(cdata, dest)
+                else:
+                    arr = np.frombuffer(cdata, dtype=self._dtype)
+                    arr = arr.reshape(self._chunks, order=self._order)
+                    np.copyto(dest, arr)
 
             else:
 
@@ -671,7 +684,10 @@ class Array(object):
     def _decode_chunk(self, cdata):
 
         # decompress
-        chunk = self._compressor.decompress(cdata)
+        if self._compressor:
+            chunk = self._compressor.decompress(cdata)
+        else:
+            chunk = cdata
 
         # apply filters
         if self._filters:
@@ -697,7 +713,10 @@ class Array(object):
                 chunk = f.encode(chunk)
 
         # compress
-        cdata = self._compressor.compress(chunk)
+        if self._compressor:
+            cdata = self._compressor.compress(chunk)
+        else:
+            cdata = chunk
 
         return cdata
 
@@ -711,12 +730,14 @@ class Array(object):
         r += 'order=%s' % self.order
         r += ')'
         r += '\n  compression: %s' % self.compression
-        r += '; compression_opts: %s' % str(self.compression_opts)
+        if self.compression:
+            r += '; compression_opts: %s' % str(self.compression_opts)
         r += '\n  nbytes: %s' % human_readable_size(self.nbytes)
-        if self.nbytes_stored > 0:
-            r += '; nbytes_stored: %s' % human_readable_size(
-                self.nbytes_stored)
-            r += '; ratio: %.1f' % (self.nbytes / self.nbytes_stored)
+        if self.compression:
+            if self.nbytes_stored > 0:
+                r += '; nbytes_stored: %s' % human_readable_size(
+                    self.nbytes_stored)
+                r += '; ratio: %.1f' % (self.nbytes / self.nbytes_stored)
         n_chunks = reduce(operator.mul, self.cdata_shape)
         r += '; initialized: %s/%s' % (self.initialized, n_chunks)
         if self._filters:

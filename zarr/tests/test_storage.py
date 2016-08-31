@@ -395,6 +395,14 @@ class StoreTests(object):
             assert '0' not in chunk_store
             assert '1' not in chunk_store
 
+    def test_init_array_compat(self):
+        store = self.create_store()
+        init_array(store, shape=1000, chunks=100, compression='none',
+                   compression_opts='foo')
+        meta = decode_array_metadata(store[array_meta_key])
+        assert_is_none(meta['compression'])
+        assert_is_none(meta['compression_opts'])
+
     def test_init_group(self):
         store = self.create_store()
         init_group(store)

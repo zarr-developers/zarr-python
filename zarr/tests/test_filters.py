@@ -140,8 +140,9 @@ class TestCategoryFilter(unittest.TestCase):
             # bad labels
             CategoryFilter(dtype='S2', labels=[1, 2])
 
+
 compression_configs = [
-    ('none', None),
+    (None, None),
     ('zlib', None),
     ('bz2', None),
     ('blosc', None)
@@ -170,8 +171,11 @@ def test_array_with_delta_filter():
         # check chunks
         for i in range(10):
             cdata = a.store[str(i)]
-            actual = np.frombuffer(a.compressor.decompress(cdata),
-                                   dtype=astype)
+            if a.compressor:
+                chunk = a.compressor.decompress(cdata)
+            else:
+                chunk = cdata
+            actual = np.frombuffer(chunk, dtype=astype)
             expect = np.array([i * 10] + ([1] * 9), dtype=astype)
             assert_array_equal(expect, actual)
 
@@ -198,8 +202,11 @@ def test_array_with_scaleoffset_filter():
         # check chunks
         for i in range(6):
             cdata = a.store[str(i)]
-            actual = np.frombuffer(a.compressor.decompress(cdata),
-                                   dtype=astype)
+            if a.compressor:
+                chunk = a.compressor.decompress(cdata)
+            else:
+                chunk = cdata
+            actual = np.frombuffer(chunk, dtype=astype)
             expect = flt.encode(data[i*5:(i*5)+5])
             assert_array_equal(expect, actual)
 
@@ -225,8 +232,11 @@ def test_array_with_quantize_filter():
         # check chunks
         for i in range(6):
             cdata = a.store[str(i)]
-            actual = np.frombuffer(a.compressor.decompress(cdata),
-                                   dtype=dtype)
+            if a.compressor:
+                chunk = a.compressor.decompress(cdata)
+            else:
+                chunk = cdata
+            actual = np.frombuffer(chunk, dtype=dtype)
             expect = flt.encode(data[i*5:(i*5)+5])
             assert_array_equal(expect, actual)
 
@@ -250,8 +260,11 @@ def test_array_with_packbits_filter():
         # check chunks
         for i in range(20):
             cdata = a.store[str(i)]
-            actual = np.frombuffer(a.compressor.decompress(cdata),
-                                   dtype='u1')
+            if a.compressor:
+                chunk = a.compressor.decompress(cdata)
+            else:
+                chunk = cdata
+            actual = np.frombuffer(chunk, dtype='u1')
             expect = flt.encode(data[i*5:(i*5)+5])
             assert_array_equal(expect, actual)
 
@@ -275,14 +288,20 @@ def test_array_with_category_filter():
         # check chunks
         for i in range(20):
             cdata = a.store[str(i)]
-            actual = np.frombuffer(a.compressor.decompress(cdata),
-                                   dtype='u1')
+            if a.compressor:
+                chunk = a.compressor.decompress(cdata)
+            else:
+                chunk = cdata
+            actual = np.frombuffer(chunk, dtype='u1')
             expect = flt.encode(data[i*5:(i*5)+5])
             assert_array_equal(expect, actual)
 
 
 def test_compressor_as_filter():
     for compression, compression_opts in compression_configs:
+        if compression is None:
+            # skip
+            continue
 
         # setup compressor
         compressor_cls = get_compressor_cls(compression)

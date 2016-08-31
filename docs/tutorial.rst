@@ -235,6 +235,8 @@ the delta filter::
       nbytes: 381.5M; nbytes_stored: 248.1K; ratio: 1574.5; initialized: 100/100
       store: builtins.dict
 
+To disable compression, set ``compression=None`` when creating an array.
+
 .. _tutorial_sync:
 
 Filters

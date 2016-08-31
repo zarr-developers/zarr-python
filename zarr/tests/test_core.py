@@ -23,7 +23,7 @@ from zarr.filters import DeltaFilter, FixedScaleOffsetFilter
 
 
 compression_configs = [
-    ('none', None),
+    (None, None),
     ('zlib', None),
     ('bz2', None),
     ('blosc', None)

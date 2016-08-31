@@ -244,12 +244,22 @@ def init_array(store, shape, chunks, dtype=None, compression='default',
     shape = normalize_shape(shape)
     dtype = np.dtype(dtype)
     chunks = normalize_chunks(chunks, shape, dtype.itemsize)
-    compressor_cls = get_compressor_cls(compression)
-    compression = compressor_cls.canonical_name
-    compression_opts = compressor_cls.normalize_opts(
-        compression_opts
-    )
     order = normalize_order(order)
+
+    # normalize compression
+    if compression and compression.lower() == 'none':
+        # backwards compatibility
+        compression = None
+
+    # normalize compression_opts
+    if compression is None:
+        compression_opts = None
+    else:
+        compressor_cls = get_compressor_cls(compression)
+        compression = compressor_cls.canonical_name
+        compression_opts = compressor_cls.normalize_opts(
+            compression_opts
+        )
 
     # initialize metadata
     meta = dict(shape=shape, chunks=chunks, dtype=dtype,
