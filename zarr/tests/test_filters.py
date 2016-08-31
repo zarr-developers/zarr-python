@@ -21,7 +21,7 @@ class TestDeltaFilter(unittest.TestCase):
     def test_encode_decode(self):
         enc_dtype = 'u1'
         dec_dtype = 'f8'
-        f = DeltaFilter(enc_dtype=enc_dtype, dec_dtype=dec_dtype)
+        f = DeltaFilter(astype=enc_dtype, dtype=dec_dtype)
         data = np.arange(10, dtype=dec_dtype)
 
         # test encoding
@@ -65,8 +65,8 @@ class TestQuantizeFilter(unittest.TestCase):
         data = np.linspace(0, 1, 34, dtype=dec_dtype)
 
         for digits in range(5):
-            f = QuantizeFilter(digits=digits, dec_dtype=dec_dtype,
-                               enc_dtype=enc_dtype)
+            f = QuantizeFilter(digits=digits, dtype=dec_dtype,
+                               astype=enc_dtype)
 
             # test encoding
             enc = f.encode(data)
@@ -95,7 +95,7 @@ def test_array_with_filters_1():
     # setup
     enc_dtype = 'u1'
     dec_dtype = 'f8'
-    filters = [DeltaFilter(enc_dtype=enc_dtype, dec_dtype=dec_dtype)]
+    filters = [DeltaFilter(astype=enc_dtype, dtype=dec_dtype)]
     data = np.arange(100, dtype=dec_dtype)
 
     for compression, compression_opts in compression_configs:
@@ -148,7 +148,7 @@ def test_array_with_filters_3():
     # setup
     dtype = 'f8'
     digits = 3
-    qf = QuantizeFilter(digits=digits, dec_dtype=dtype)
+    qf = QuantizeFilter(digits=digits, dtype=dtype)
     filters = [qf]
     data = np.linspace(0, 1, 34, dtype=dtype)
 
@@ -182,7 +182,7 @@ def test_compressor_as_filter_1():
         enc_dtype = 'u1'
         dec_dtype = 'f8'
         filters = [
-            DeltaFilter(enc_dtype=enc_dtype, dec_dtype=dec_dtype),
+            DeltaFilter(astype=enc_dtype, dtype=dec_dtype),
             compressor
         ]
 

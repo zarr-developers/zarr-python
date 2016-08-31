@@ -69,7 +69,7 @@ def test_encode_decode_array_1():
 def test_encode_decode_array_2():
 
     # some variations
-    df = DeltaFilter(enc_dtype='u2', dec_dtype='V14')
+    df = DeltaFilter(astype='u2', dtype='V14')
     meta = dict(
         shape=(100, 100),
         chunks=(10, 10),

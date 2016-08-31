@@ -654,7 +654,7 @@ class TestArrayWithFilters(TestArray):
             chunk_store = store
         dtype = kwargs.get('dtype', None)
         filters = [
-            DeltaFilter(enc_dtype=dtype, dec_dtype=dtype),
+            DeltaFilter(astype=dtype, dtype=dtype),
             ScaleOffsetFilter(enc_dtype=dtype, dec_dtype=dtype, scale=1,
                               offset=0),
         ]
