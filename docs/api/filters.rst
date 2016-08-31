@@ -2,8 +2,8 @@ Filters (``zarr.filters``)
 ==========================
 .. module:: zarr.filters
 
-TODO
-
 .. autoclass:: DeltaFilter
-.. autoclass:: ScaleOffsetFilter
+.. autoclass:: FixedScaleOffsetFilter
 .. autoclass:: QuantizeFilter
+.. autoclass:: PackBitsFilter
+.. autoclass:: CategoryFilter

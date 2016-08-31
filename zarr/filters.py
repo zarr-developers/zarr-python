@@ -8,6 +8,7 @@ import numpy as np
 
 from zarr.meta import encode_dtype, decode_dtype
 from zarr.compressors import registry as compressor_registry
+from zarr.compat import text_type, binary_type
 
 
 filter_registry = dict()
@@ -30,6 +31,12 @@ class DeltaFilter(object):
         Data type to use for decoded data.
     astype : dtype, optional
         Data type to use for encoded data.
+
+    Notes
+    -----
+    If `astype` is an integer data type, please ensure that it is
+    sufficiently large to store encoded values. No checks are made and data
+    may become corrupted due to integer overflow if `astype` is too small.
 
     Examples
     --------
@@ -86,7 +93,7 @@ class DeltaFilter(object):
     def from_filter_config(cls, config):
         dtype = decode_dtype(config['dtype'])
         astype = decode_dtype(config['astype'])
-        return cls(dtype=dtype, asdtype=astype)
+        return cls(dtype=dtype, astype=astype)
 
 
 filter_registry[DeltaFilter.filter_name] = DeltaFilter
@@ -108,6 +115,12 @@ class FixedScaleOffsetFilter(object):
         Data type to use for decoded data.
     astype : dtype, optional
         Data type to use for encoded data.
+
+    Notes
+    -----
+    If `astype` is an integer data type, please ensure that it is
+    sufficiently large to store encoded values. No checks are made and data
+    may become corrupted due to integer overflow if `astype` is too small.
 
     Examples
     --------
@@ -248,6 +261,8 @@ class QuantizeFilter(object):
             self.astype = self.dtype
         else:
             self.astype = np.dtype(astype)
+        if self.dtype.kind != 'f' or self.astype.kind != 'f':
+            raise ValueError('only floating point data types are supported')
 
     def encode(self, buf):
         # interpret buffer as 1D array
@@ -324,11 +339,17 @@ class PackBitsFilter(object):
         arr = _ndarray_from_buffer(buf, bool)
         # determine size of packed data
         n = arr.size
-        n_bytes_packed = (n // 8) + 1
-        n_bits_padded = n % 8
+        n_bytes_packed = (n // 8)
+        n_bits_leftover = n % 8
+        if n_bits_leftover > 0:
+            n_bytes_packed += 1
         # setup output
         enc = np.empty(n_bytes_packed + 1, dtype='u1')
         # remember how many bits were padded
+        if n_bits_leftover:
+            n_bits_padded = 8 - n_bits_leftover
+        else:
+            n_bits_padded = 0
         enc[0] = n_bits_padded
         # apply encoding
         enc[1:] = np.packbits(arr)
@@ -342,7 +363,8 @@ class PackBitsFilter(object):
         # apply decoding
         dec = np.unpackbits(enc[1:])
         # remove padded bits
-        dec = dec[:-n_bits_padded]
+        if n_bits_padded:
+            dec = dec[:-n_bits_padded]
         # view as boolean array
         dec = dec.view(bool)
         return dec
@@ -358,6 +380,94 @@ class PackBitsFilter(object):
 
 
 filter_registry[PackBitsFilter.filter_name] = PackBitsFilter
+
+
+def _ensure_bytes(l):
+    if isinstance(l, binary_type):
+        return l
+    elif isinstance(l, text_type):
+        return l.encode('ascii')
+    else:
+        raise ValueError('expected bytes, found %r' % l)
+
+
+class CategoryFilter(object):
+    """Filter encoding categorical string data as integers.
+
+    Parameters
+    ----------
+    labels : sequence of strings
+        Category labels.
+    dtype : dtype
+        Data type to use for decoded data.
+    astype : dtype, optional
+        Data type to use for encoded data.
+
+    Examples
+    --------
+    >>> import zarr
+    >>> import numpy as np
+    >>> x = np.array([b'male', b'female', b'female', b'male', b'unexpected'])
+    >>> x
+    array([b'male', b'female', b'female', b'male', b'unexpected'],
+          dtype='|S10')
+    >>> f = zarr.CategoryFilter(labels=[b'female', b'male'], dtype=x.dtype)
+    >>> y = f.encode(x)
+    >>> y
+    array([2, 1, 1, 2, 0], dtype=uint8)
+    >>> z = f.decode(y)
+    >>> z
+    array([b'male', b'female', b'female', b'male', b''],
+          dtype='|S10')
+
+    """
+
+    filter_name = 'category'
+
+    def __init__(self, labels, dtype, astype='u1'):
+        self.labels = [_ensure_bytes(l) for l in labels]
+        self.dtype = np.dtype(dtype)
+        if self.dtype.kind != 'S':
+            raise ValueError('only string data types are supported')
+        self.astype = np.dtype(astype)
+
+    def encode(self, buf):
+        # view input as ndarray
+        arr = _ndarray_from_buffer(buf, self.dtype)
+        # setup output array
+        enc = np.zeros_like(arr, dtype=self.astype)
+        # apply encoding, reserving 0 for values not specified in labels
+        for i, l in enumerate(self.labels):
+            enc[arr == l] = i + 1
+        return enc
+
+    def decode(self, buf):
+        # view encoded data as ndarray
+        enc = _ndarray_from_buffer(buf, self.astype)
+        # setup output
+        dec = np.zeros_like(enc, dtype=self.dtype)
+        # apply decoding
+        for i, l in enumerate(self.labels):
+            dec[enc == (i + 1)] = l
+        return dec
+
+    def get_filter_config(self):
+        config = dict()
+        config['name'] = self.filter_name
+        config['labels'] = [text_type(l, 'ascii') for l in self.labels]
+        config['dtype'] = encode_dtype(self.dtype)
+        config['astype'] = encode_dtype(self.astype)
+        return config
+
+    @classmethod
+    def from_filter_config(cls, config):
+        dtype = decode_dtype(config['dtype'])
+        astype = decode_dtype(config['astype'])
+        labels = config['labels']
+        return cls(labels=labels, dtype=dtype, astype=astype)
+
+
+filter_registry[CategoryFilter.filter_name] = CategoryFilter
 
 
 # add in compressors as filters
