@@ -64,13 +64,15 @@ compression_opts
     compression library.
 fill_value
     A scalar value providing the default value to use for uninitialized
-    portions of the array.
+    portions of the array, or ``null`` if no fill_value is to be used.
 order
     Either "C" or "F", defining the layout of bytes within each chunk of the
     array. "C" means row-major order, i.e., the last dimension varies fastest;
     "F" means column-major order, i.e., the first dimension varies fastest.
 filters
-    TODO
+    A list of JSON objects providing filter configurations, or ``null`` if no
+    filters are to be applied. Each filter configuration object MUST contain a
+    ``"name"`` key identifying the filter to be used.
 
 Other keys MUST NOT be present within the metadata object.
 
@@ -78,8 +80,8 @@ For example, the JSON object below defines a 2-dimensional array of 64-bit
 little-endian floating point numbers with 10000 rows and 10000 columns, divided 
 into chunks of 1000 rows and 1000 columns (so there will be 100 chunks in total 
 arranged in a 10 by 10 grid). Within each chunk the data are laid out in C 
-contiguous order, and each chunk is compressed using the Blosc compression 
-library::
+contiguous order. Each chunk is encoded using a delta filter and compressed
+using the Blosc compression library prior to storage::
 
     {
         "chunks": [
@@ -93,9 +95,9 @@ library::
             "shuffle": 1
         },
         "dtype": "<f8",
-        "fill_value": null,
+        "fill_value": "NaN",
         "filters": [
-            {"name": "delta", "enc_dtype": "<f4", "dec_dtype": "<f8"}
+            {"name": "delta", "dtype": "<f8", "astype": "<f4"}
         ],
         "order": "C",
         "shape": [
@@ -147,7 +149,6 @@ Positive Infinity  ``"Infinity"``
 Negative Infinity  ``"-Infinity"``
 =================  ===============
 
-
 Chunks
 ~~~~~~
 
@@ -184,7 +185,12 @@ contents of any chunk region falling outside the array are undefined.
 Filters
 ~~~~~~~
 
-TODO
+Optionally a sequence of one or more filters can be used to transform chunk
+data prior to compression. When storing data, filters are applied in the order
+specified in array metadata to encode data, then the encoded data are passed to
+the primary compressor. When retrieving data, stored chunk data are
+decompressed by the primary compressor then decoded using filters in the
+reverse order.
 
 Hierarchies
 -----------
@@ -463,7 +469,8 @@ Changes in version 2
 * Added support for storing multiple arrays in the same store and organising
   arrays into hierarchies using groups.
 * Array metadata is now stored under the ".zarray" key instead of the "meta"
-  key
+  key.
 * Custom attributes are now stored under the ".zattrs" key instead of the
-  "attrs" key
-* TODO filters
+  "attrs" key.
+* Added support for filters.
+* Changed encoding of "fill_value" field within array metadata.
