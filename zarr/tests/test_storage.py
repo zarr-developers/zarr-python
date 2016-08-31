@@ -673,7 +673,7 @@ def test_migrate_1to2():
     assert '.zarray' in store
     assert 'attrs' not in store
     assert '.zattrs' in store
-    meta_migrated = decode_array_metadata(store['.zarray'])
+    meta_migrated = decode_array_metadata(store[array_meta_key])
     eq(2, meta_migrated['zarr_format'])
     # preserved fields
     for f in 'shape', 'chunks', 'dtype', 'compression', 'compression_opts', \
@@ -681,3 +681,14 @@ def test_migrate_1to2():
         eq(meta[f], meta_migrated[f])
     # migrate should have added empty filters field
     assert_is_none(meta_migrated['filters'])
+
+    # check 'none' compression is migrated to None (null in JSON)
+    store = dict()
+    meta['compression'] = 'none'
+    meta_json = meta_v1.encode_metadata(meta)
+    store['meta'] = meta_json
+    store['attrs'] = json.dumps(dict()).encode('ascii')
+    migrate_1to2(store)
+    meta_migrated = decode_array_metadata(store[array_meta_key])
+    assert_is_none(meta_migrated['compression'])
+    assert_is_none(meta_migrated['compression_opts'])

@@ -793,6 +793,9 @@ def migrate_1to2(store):
     meta = meta_v1.decode_metadata(store['meta'])
     del store['meta']
     meta['filters'] = None
+    if meta['compression'] and meta['compression'].lower() == 'none':
+        meta['compression'] = None
+        meta['compression_opts'] = None
     store[array_meta_key] = encode_array_metadata(meta)
 
     # migrate user attributes
