@@ -679,5 +679,5 @@ def test_migrate_1to2():
     for f in 'shape', 'chunks', 'dtype', 'compression', 'compression_opts', \
              'fill_value', 'order':
         eq(meta[f], meta_migrated[f])
-    # TODO migrate should have added empty filters field
-    # assert_is_none(meta_migrated['filters'])
+    # migrate should have added empty filters field
+    assert_is_none(meta_migrated['filters'])
