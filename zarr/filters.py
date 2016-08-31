@@ -42,14 +42,14 @@ class DeltaFilter(object):
     --------
     >>> import zarr
     >>> import numpy as np
-    >>> x = np.arange(100, 120, 2, dtype='f8')
-    >>> f = zarr.DeltaFilter(dtype='f8', astype='i1')
+    >>> x = np.arange(100, 120, 2, dtype='i8')
+    >>> f = zarr.DeltaFilter(dtype='i8', astype='i1')
     >>> y = f.encode(x)
     >>> y
     array([100,   2,   2,   2,   2,   2,   2,   2,   2,   2], dtype=int8)
     >>> z = f.decode(y)
     >>> z
-    array([ 100.,  102.,  104.,  106.,  108.,  110.,  112.,  114.,  116.,  118.])
+    array([100, 102, 104, 106, 108, 110, 112, 114, 116, 118])
 
     """  # flake8: noqa
 
