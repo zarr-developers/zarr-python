@@ -16,6 +16,11 @@ API docs for more information.
 To accommodate support for hierarchies the Zarr format has been modified. See
 the :ref:`spec_v2` for more information.
 
+Other changes
+~~~~~~~~~~~~~
+
+* The bundled Blosc library has been upgraded to version 1.10.2.
+
 .. _release_1.1.0:
 
 1.1.0
