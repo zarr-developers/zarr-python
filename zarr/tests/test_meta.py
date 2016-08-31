@@ -92,7 +92,7 @@ def test_encode_decode_array_2():
         "dtype": [["a", "<i4"], ["b", "|S10"]],
         "fill_value": 42,
         "filters": [
-            {"name": "delta", "enc_dtype": "<u2", "dec_dtype": "|V14"}
+            {"name": "delta", "astype": "<u2", "dtype": "|V14"}
         ],
         "order": "F",
         "shape": [100, 100],

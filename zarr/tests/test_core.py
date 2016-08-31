@@ -19,7 +19,7 @@ from zarr.core import Array
 from zarr.errors import ReadOnlyError
 from zarr.compat import PY2
 from zarr.util import buffer_size
-from zarr.filters import DeltaFilter, ScaleOffsetFilter, QuantizeFilter
+from zarr.filters import DeltaFilter, FixedScaleOffsetFilter
 
 
 compression_configs = [
@@ -654,9 +654,8 @@ class TestArrayWithFilters(TestArray):
             chunk_store = store
         dtype = kwargs.get('dtype', None)
         filters = [
-            DeltaFilter(astype=dtype, dtype=dtype),
-            ScaleOffsetFilter(enc_dtype=dtype, dec_dtype=dtype, scale=1,
-                              offset=0),
+            DeltaFilter(dtype=dtype),
+            FixedScaleOffsetFilter(dtype=dtype, scale=1, offset=0),
         ]
         kwargs.setdefault('filters', filters)
         init_array(store, chunk_store=chunk_store, **kwargs)
@@ -671,8 +670,8 @@ class TestArrayWithFilters(TestArray):
             # flake8: noqa
             expect = """zarr.core.Array((100,), float32, chunks=(10,), order=C)
   compression: zlib; compression_opts: 1
-  nbytes: 400; nbytes_stored: 514; ratio: 0.8; initialized: 0/10
-  filters: delta, scaleoffset
+  nbytes: 400; nbytes_stored: 505; ratio: 0.8; initialized: 0/10
+  filters: delta, fixedscaleoffset
   store: builtins.dict
   chunk_store: builtins.dict
 """
