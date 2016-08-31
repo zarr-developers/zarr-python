@@ -254,14 +254,14 @@ the primary compressor.
 
 Here is an example using the Zarr delta filter with the Blosc compressor:
 
-    >>> filters = [zarr.DeltaFilter(dtype='i4', astype='u1')]
+    >>> filters = [zarr.DeltaFilter(dtype='i4')]
     >>> z = zarr.array(np.arange(100000000, dtype='i4').reshape(10000, 10000),
     ...                chunks=(1000, 1000), filters=filters, compression='blosc',
-    ...                compression_opts=dict(cname='zstd', clevel=1, shuffle=0))
+    ...                compression_opts=dict(cname='zstd', clevel=1, shuffle=1))
     >>> z
     zarr.core.Array((10000, 10000), int32, chunks=(1000, 1000), order=C)
-      compression: blosc; compression_opts: {'clevel': 1, 'cname': 'zstd', 'shuffle': 0}
-      nbytes: 381.5M; nbytes_stored: 34.8K; ratio: 11221.5; initialized: 100/100
+      compression: blosc; compression_opts: {'clevel': 1, 'cname': 'zstd', 'shuffle': 1}
+      nbytes: 381.5M; nbytes_stored: 381.9K; ratio: 1022.9; initialized: 100/100
       filters: delta
       store: builtins.dict
 
