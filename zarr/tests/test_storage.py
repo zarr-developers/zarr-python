@@ -19,15 +19,16 @@ from zarr.storage import init_array, array_meta_key, attrs_key, DictStore, \
 from zarr.meta import decode_array_metadata, encode_array_metadata, \
     ZARR_FORMAT, decode_group_metadata, encode_group_metadata
 from zarr.compat import text_type
-from zarr.compressors import default_compression
+from zarr.storage import default_compression
+from zarr.codecs import ZlibCompressor
 
 
 class StoreTests(object):
     """Abstract store tests."""
 
-    # def create_store(self, **kwargs):
-    #     # implement in sub-class
-    #     pass
+    def create_store(self, **kwargs):
+        # implement in sub-class
+        raise NotImplementedError
 
     def test_get_set_del_contains(self):
         store = self.create_store()
@@ -230,8 +231,7 @@ class StoreTests(object):
         eq((1000,), meta['shape'])
         eq((100,), meta['chunks'])
         eq(np.dtype(None), meta['dtype'])
-        eq(default_compression, meta['compression'])
-        assert 'compression_opts' in meta
+        eq(default_compression, meta['compression']['id'])
         assert_is_none(meta['fill_value'])
 
         # check attributes
@@ -245,8 +245,7 @@ class StoreTests(object):
             dict(shape=(2000,),
                  chunks=(200,),
                  dtype=np.dtype('u1'),
-                 compression='zlib',
-                 compression_opts=1,
+                 compression=ZlibCompressor(1).get_config(),
                  fill_value=0,
                  order='F',
                  filters=None)
@@ -283,8 +282,7 @@ class StoreTests(object):
         eq((1000,), meta['shape'])
         eq((100,), meta['chunks'])
         eq(np.dtype(None), meta['dtype'])
-        eq(default_compression, meta['compression'])
-        assert 'compression_opts' in meta
+        eq(default_compression, meta['compression']['id'])
         assert_is_none(meta['fill_value'])
 
         # check attributes
@@ -299,8 +297,7 @@ class StoreTests(object):
         meta = dict(shape=(2000,),
                     chunks=(200,),
                     dtype=np.dtype('u1'),
-                    compression='zlib',
-                    compression_opts=1,
+                    compression=ZlibCompressor(1).get_config(),
                     fill_value=0,
                     order='F',
                     filters=None)
@@ -401,7 +398,6 @@ class StoreTests(object):
                    compression_opts='foo')
         meta = decode_array_metadata(store[array_meta_key])
         assert_is_none(meta['compression'])
-        assert_is_none(meta['compression_opts'])
 
     def test_init_group(self):
         store = self.create_store()

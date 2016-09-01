@@ -56,11 +56,10 @@ class TestThreadSynchronizedArray(TestArray):
             z = self.create_array(shape=100, chunks=10, dtype='f4',
                                   compression='zlib', compression_opts=1)
             # flake8: noqa
-            expect = """zarr.core.Array((100,), float32, chunks=(10,), order=C)
-  compression: zlib; compression_opts: 1
-  nbytes: 400; nbytes_stored: 231; ratio: 1.7; initialized: 0/10
-  store: builtins.dict
-  synchronizer: zarr.sync.ThreadSynchronizer
+            expect = """Array((100,), float32, chunks=(10,), order=C)
+  nbytes: 400; nbytes_stored: 246; ratio: 1.6; initialized: 0/10
+  compressor: ZlibCompressor(level=1)
+  store: dict; synchronizer: ThreadSynchronizer
 """
             actual = repr(z)
             for l1, l2 in zip(expect.split('\n'), actual.split('\n')):
@@ -86,11 +85,10 @@ class TestProcessSynchronizedArray(TestArray):
             z = self.create_array(shape=100, chunks=10, dtype='f4',
                                   compression='zlib', compression_opts=1)
             # flake8: noqa
-            expect = """zarr.core.Array((100,), float32, chunks=(10,), order=C)
-  compression: zlib; compression_opts: 1
-  nbytes: 400; nbytes_stored: 231; ratio: 1.7; initialized: 0/10
-  store: builtins.dict
-  synchronizer: zarr.sync.ProcessSynchronizer
+            expect = """Array((100,), float32, chunks=(10,), order=C)
+  nbytes: 400; nbytes_stored: 246; ratio: 1.6; initialized: 0/10
+  compressor: ZlibCompressor(level=1)
+  store: dict; synchronizer: ProcessSynchronizer
 """
             actual = repr(z)
             for l1, l2 in zip(expect.split('\n'), actual.split('\n')):
