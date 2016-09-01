@@ -10,12 +10,14 @@ import numpy as np
 from zarr.attrs import Attributes
 from zarr.core import Array
 from zarr.storage import contains_array, contains_group, init_group, \
-    DictStore, DirectoryStore, group_meta_key, attrs_key, listdir
+    DictStore, DirectoryStore, group_meta_key, attrs_key, listdir, \
+    default_compressor
 from zarr.creation import array, create, empty, zeros, ones, full, \
     empty_like, zeros_like, ones_like, full_like
 from zarr.util import normalize_storage_path, normalize_shape
 from zarr.errors import PermissionError
 from zarr.meta import decode_group_metadata
+from zarr.codecs import codec_registry
 
 
 class Group(Mapping):
@@ -286,7 +288,7 @@ class Group(Mapping):
           store: DictStore
         >>> g1['foo/bar/baz']
         Array(/foo/bar/baz, (100,), float64, chunks=(10,), order=C)
-          nbytes: 800; nbytes_stored: 294; ratio: 2.7; initialized: 0/10
+          nbytes: 800; nbytes_stored: 293; ratio: 2.7; initialized: 0/10
           compressor: BloscCompressor(cname='lz4', clevel=5, shuffle=1)
           store: DictStore
 
@@ -558,7 +560,7 @@ class Group(Mapping):
         ...                        chunks=(1000, 1000))
         >>> d1
         Array(/foo, (10000, 10000), float64, chunks=(1000, 1000), order=C)
-          nbytes: 762.9M; nbytes_stored: 327; ratio: 2446483.2; initialized: 0/100
+          nbytes: 762.9M; nbytes_stored: 326; ratio: 2453987.7; initialized: 0/100
           compressor: BloscCompressor(cname='lz4', clevel=5, shuffle=1)
           store: DictStore
 
@@ -600,21 +602,41 @@ class Group(Mapping):
         if synchronizer is None:
             synchronizer = self._synchronizer
 
+        # adapt compression arguments from h5py style
+        if compression in [None, 'none']:
+            compressor = None
+        elif compression == 'default':
+            compressor = default_compressor
+        elif isinstance(compression, str):
+            codec_cls = codec_registry[compression]
+            if isinstance(compression_opts, dict):
+                compressor = codec_cls(**compression_opts)
+            elif isinstance(compression_opts, (list, tuple)):
+                compressor = codec_cls(*compression_opts)
+            elif compression_opts is None:
+                compressor = codec_cls()
+            else:
+                # assume single argument, e.g., int
+                compressor = codec_cls(compression_opts)
+        elif hasattr(compression, 'get_config'):
+            compressor = compression
+        else:
+            raise ValueError('bad value for compression: %r' % compression)
+
+        # create array
         if data is not None:
             a = array(data, chunks=chunks, dtype=dtype,
-                      compression=compression,
-                      compression_opts=compression_opts,
-                      fill_value=fill_value, order=order,
-                      synchronizer=synchronizer, store=self._store,
-                      path=path, chunk_store=self._chunk_store)
+                      compressor=compressor, fill_value=fill_value,
+                      order=order, synchronizer=synchronizer,
+                      store=self._store, path=path,
+                      chunk_store=self._chunk_store)
 
         else:
             a = create(shape=shape, chunks=chunks, dtype=dtype,
-                       compression=compression,
-                       compression_opts=compression_opts,
-                       fill_value=fill_value, order=order,
-                       synchronizer=synchronizer, store=self._store,
-                       path=path, chunk_store=self._chunk_store)
+                       compressor=compressor, fill_value=fill_value,
+                       order=order, synchronizer=synchronizer,
+                       store=self._store, path=path,
+                       chunk_store=self._chunk_store)
 
         return a
 

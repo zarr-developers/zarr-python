@@ -19,17 +19,19 @@ from zarr.core import Array
 from zarr.errors import PermissionError
 from zarr.compat import PY2
 from zarr.util import buffer_size
-from zarr.codecs import DeltaFilter, FixedScaleOffsetFilter
+from zarr.codecs import DeltaFilter, FixedScaleOffsetFilter, ZlibCompressor,\
+    BloscCompressor, BZ2Compressor
 
 
-compression_setups = [
-    (None, None),
-    ('zlib', {}),
-    ('bz2', {}),
-    ('blosc', {})
+compressors = [
+    None,
+    ZlibCompressor(),
+    BZ2Compressor(),
+    BloscCompressor(),
 ]
 if not PY2:
-    compression_setups.append(('lzma', {}))
+    from zarr.codecs import LZMACompressor
+    compressors.append(LZMACompressor())
 
 
 class TestArray(unittest.TestCase):
@@ -127,7 +129,7 @@ class TestArray(unittest.TestCase):
 
         # for comparison
         z = self.create_array(store=dict(), shape=1000, chunks=100,
-                              compression='zlib', compression_opts=1)
+                              compressor=ZlibCompressor(1))
         z[:] = 42
 
         # DirectoryStore
@@ -135,7 +137,7 @@ class TestArray(unittest.TestCase):
         atexit.register(shutil.rmtree, path)
         store = DirectoryStore(path)
         zz = self.create_array(store=store, shape=1000, chunks=100,
-                               compression='zlib', compression_opts=1)
+                               compressor=ZlibCompressor(1))
         zz[:] = 42
         eq(z.nbytes_stored, zz.nbytes_stored)
 
@@ -144,18 +146,17 @@ class TestArray(unittest.TestCase):
             os.remove('test.zip')
         store = ZipStore('test.zip')
         zz = self.create_array(store=store, shape=1000, chunks=100,
-                               compression='zlib', compression_opts=1)
+                               compressor=ZlibCompressor(1))
         zz[:] = 42
         eq(z.nbytes_stored, zz.nbytes_stored)
 
     def test_array_1d(self):
-        for compression, compression_opts in compression_setups:
-            print(compression, compression_opts)
+        for compressor in compressors:
+            print(repr(compressor))
 
             a = np.arange(1050)
             z = self.create_array(shape=a.shape, chunks=100, dtype=a.dtype,
-                                  compression=compression,
-                                  compression_opts=compression_opts)
+                                  compressor=compressor)
 
             # check properties
             eq(len(a), len(z))
@@ -214,8 +215,8 @@ class TestArray(unittest.TestCase):
             assert_array_equal(a[310:], z[310:])
 
     def test_array_1d_fill_value(self):
-        for compression, compression_opts in compression_setups:
-            print(compression, compression_opts)
+        for compressor in compressors:
+            print(repr(compressor))
 
             for fill_value in -1, 0, 1, 10:
 
@@ -224,8 +225,7 @@ class TestArray(unittest.TestCase):
                 f.fill(fill_value)
                 z = self.create_array(shape=a.shape, chunks=100, dtype=a.dtype,
                                       fill_value=fill_value,
-                                      compression=compression,
-                                      compression_opts=compression_opts)
+                                      compressor=compressor)
                 z[190:310] = a[190:310]
 
                 assert_array_equal(f[:190], z[:190])
@@ -233,14 +233,13 @@ class TestArray(unittest.TestCase):
                 assert_array_equal(f[310:], z[310:])
 
     def test_array_1d_set_scalar(self):
-        for compression, compression_opts in compression_setups:
-            print(compression, compression_opts)
+        for compressor in compressors:
+            print(repr(compressor))
 
             # setup
             a = np.zeros(100)
             z = self.create_array(shape=a.shape, chunks=10, dtype=a.dtype,
-                                  compression=compression,
-                                  compression_opts=compression_opts)
+                                  compressor=compressor)
             z[:] = a
             assert_array_equal(a, z[:])
 
@@ -254,13 +253,12 @@ class TestArray(unittest.TestCase):
                 assert_array_equal(a, z[:])
 
     def test_array_2d(self):
-        for compression, compression_opts in compression_setups:
-            print(compression, compression_opts)
+        for compressor in compressors:
+            print(repr(compressor))
 
             a = np.arange(10000).reshape((1000, 10))
             z = self.create_array(shape=a.shape, chunks=(100, 2),
-                                  dtype=a.dtype, compression=compression,
-                                  compression_opts=compression_opts)
+                                  dtype=a.dtype, compressor=compressor)
 
             # check properties
             eq(len(a), len(z))
@@ -323,12 +321,11 @@ class TestArray(unittest.TestCase):
             assert_array_equal(a[:, 7:], z[:, 7:])
 
     def test_array_2d_partial(self):
-        for compression, compression_opts in compression_setups:
-            print(compression, compression_opts)
+        for compressor in compressors:
+            print(repr(compressor))
 
             z = self.create_array(shape=(1000, 10), chunks=(100, 2), dtype='i4',
-                                  fill_value=0, compression=compression,
-                                  compression_opts=compression_opts)
+                                  fill_value=0, compressor=compressor)
 
             # check partial assignment, single row
             c = np.arange(z.shape[1])
@@ -367,15 +364,14 @@ class TestArray(unittest.TestCase):
             eq(-1, z[-1, -1])
 
     def test_array_order(self):
-        for compression, compression_opts in compression_setups:
-            print(compression, compression_opts)
+        for compressor in compressors:
+            print(repr(compressor))
 
             # 1D
             a = np.arange(1050)
             for order in 'C', 'F':
                 z = self.create_array(shape=a.shape, chunks=100, dtype=a.dtype,
-                                      order=order, compression=compression,
-                                      compression_opts=compression_opts)
+                                      order=order, compressor=compressor)
                 eq(order, z.order)
                 if order == 'F':
                     assert_true(z[:].flags.f_contiguous)
@@ -389,8 +385,7 @@ class TestArray(unittest.TestCase):
             for order in 'C', 'F':
                 z = self.create_array(shape=a.shape, chunks=(10, 10),
                                       dtype=a.dtype, order=order,
-                                      compression=compression,
-                                      compression_opts=compression_opts)
+                                      compressor=compressor)
                 eq(order, z.order)
                 if order == 'F':
                     assert_true(z[:].flags.f_contiguous)
@@ -576,9 +571,9 @@ class TestArray(unittest.TestCase):
         if not PY2:
 
             z = self.create_array(shape=100, chunks=10, dtype='f4',
-                                  compression='zlib', compression_opts=1)
+                                  compressor=ZlibCompressor(1))
             expect = """Array((100,), float32, chunks=(10,), order=C)
-  nbytes: 400; nbytes_stored: 246; ratio: 1.6; initialized: 0/10
+  nbytes: 400; nbytes_stored: 245; ratio: 1.6; initialized: 0/10
   compressor: ZlibCompressor(level=1)
   store: dict
 """
@@ -601,10 +596,10 @@ class TestArrayWithPath(TestArray):
         if not PY2:
 
             z = self.create_array(shape=100, chunks=10, dtype='f4',
-                                  compression='zlib', compression_opts=1)
+                                  compressor=ZlibCompressor(1))
             # flake8: noqa
             expect = """Array(/foo/bar, (100,), float32, chunks=(10,), order=C)
-  nbytes: 400; nbytes_stored: 246; ratio: 1.6; initialized: 0/10
+  nbytes: 400; nbytes_stored: 245; ratio: 1.6; initialized: 0/10
   compressor: ZlibCompressor(level=1)
   store: dict
 """
@@ -630,10 +625,10 @@ class TestArrayWithChunkStore(TestArray):
         if not PY2:
 
             z = self.create_array(shape=100, chunks=10, dtype='f4',
-                                  compression='zlib', compression_opts=1)
+                                  compressor=ZlibCompressor(1))
             # flake8: noqa
             expect = """Array(/foo/bar, (100,), float32, chunks=(10,), order=C)
-  nbytes: 400; nbytes_stored: 246; ratio: 1.6; initialized: 0/10
+  nbytes: 400; nbytes_stored: 245; ratio: 1.6; initialized: 0/10
   compressor: ZlibCompressor(level=1)
   store: dict; chunk_store: dict
 """
@@ -664,10 +659,10 @@ class TestArrayWithFilters(TestArray):
         if not PY2:
 
             z = self.create_array(shape=100, chunks=10, dtype='f4',
-                                  compression='zlib', compression_opts=1)
+                                  compressor=ZlibCompressor(1))
             # flake8: noqa
             expect = """Array((100,), float32, chunks=(10,), order=C)
-  nbytes: 400; nbytes_stored: 516; ratio: 0.8; initialized: 0/10
+  nbytes: 400; nbytes_stored: 515; ratio: 0.8; initialized: 0/10
   compressor: ZlibCompressor(level=1)
   filters: DeltaFilter, FixedScaleOffsetFilter
   store: dict

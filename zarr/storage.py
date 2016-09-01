@@ -23,9 +23,10 @@ group_meta_key = '.zgroup'
 attrs_key = '.zattrs'
 try:
     from zarr.codecs import BloscCompressor
-    default_compression = 'blosc'
+    default_compressor = BloscCompressor()
 except ImportError:
-    default_compression = 'zlib'
+    from zarr.codecs import ZlibCompressor
+    default_compressor = ZlibCompressor()
 
 
 def _path_to_prefix(path):
@@ -120,9 +121,8 @@ def getsize(store, path=None):
         return -1
 
 
-def init_array(store, shape, chunks, dtype=None, compression='default',
-               compression_opts=None, fill_value=None,
-               order='C', overwrite=False, path=None,
+def init_array(store, shape, chunks, dtype=None, compressor='default',
+               fill_value=None, order='C', overwrite=False, path=None,
                chunk_store=None, filters=None):
     """initialize an array store with the given configuration.
 
@@ -136,12 +136,8 @@ def init_array(store, shape, chunks, dtype=None, compression='default',
         Chunk shape. If not provided, will be guessed from `shape` and `dtype`.
     dtype : string or dtype, optional
         NumPy dtype.
-    compression : string, optional
-        Name of primary compression library, e.g., 'blosc', 'zlib', 'bz2',
-        'lzma'.
-    compression_opts : object, optional
-        Options to primary compressor. E.g., for blosc, provide a dictionary
-        with keys 'cname', 'clevel' and 'shuffle'.
+    compressor : Codec, optional
+        Primary compressor.
     fill_value : object
         Default value to use for uninitialized portions of the array.
     order : {'C', 'F'}, optional
@@ -174,7 +170,7 @@ def init_array(store, shape, chunks, dtype=None, compression='default',
                 1000,
                 1000
             ],
-            "compression": {
+            "compressor": {
                 "clevel": 5,
                 "cname": "lz4",
                 "id": "blosc",
@@ -207,7 +203,7 @@ def init_array(store, shape, chunks, dtype=None, compression='default',
             "chunks": [
                 1000000
             ],
-            "compression": {
+            "compressor": {
                 "clevel": 5,
                 "cname": "lz4",
                 "id": "blosc",
@@ -251,34 +247,29 @@ def init_array(store, shape, chunks, dtype=None, compression='default',
     chunks = normalize_chunks(chunks, shape, dtype.itemsize)
     order = normalize_order(order)
 
-    # normalize compression
-    if compression and compression.lower() == 'none':
-        # backwards compatibility
-        compression = None
-    elif compression == 'default':
-        compression = default_compression
-
-    # obtain compression config
-    if compression:
-        codec_cls = codec_registry[compression]
-        if isinstance(compression_opts, dict):
-            codec = codec_cls(**compression_opts)
-        elif isinstance(compression_opts, (list, tuple)):
-            codec = codec_cls(*compression_opts)
-        elif compression_opts is None:
-            codec = codec_cls()
-        else:
-            codec = codec_cls(compression_opts)
-        compression = codec.get_config()
+    # normalize compressor
+    if compressor == 'none':
+        compressor = None
+    elif compressor == 'default':
+        compressor = default_compressor
+    elif isinstance(compressor, str):
+        codec_cls = codec_registry[compressor]
+        compressor = codec_cls()
+    if compressor:
+        compressor_config = compressor.get_config()
+    else:
+        compressor_config = None
 
     # obtain filters config
     if filters:
-        filters = [f.get_config() for f in filters]
+        filters_config = [f.get_config() for f in filters]
+    else:
+        filters_config = None
 
     # initialize metadata
     meta = dict(shape=shape, chunks=chunks, dtype=dtype,
-                compression=compression, fill_value=fill_value,
-                order=order, filters=filters)
+                compressor=compressor_config, fill_value=fill_value,
+                order=order, filters=filters_config)
     key = _path_to_prefix(path) + array_meta_key
     store[key] = encode_array_metadata(meta)
 

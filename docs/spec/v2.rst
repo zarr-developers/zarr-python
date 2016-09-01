@@ -295,7 +295,7 @@ Create an array::
     >>> import zarr
     >>> store = zarr.DirectoryStore('example')
     >>> a = zarr.create(shape=(20, 20), chunks=(10, 10), dtype='i4',
-    ...                 fill_value=42, compression='zlib', compression_opts=1,
+    ...                 fill_value=42, compressor=zarr.ZlibCompressor(level=1),
     ...                 store=store, overwrite=True)
 
 No chunks are initialized yet, so only the ".zarray" and ".zattrs" keys
@@ -313,8 +313,10 @@ Inspect the array metadata::
             10,
             10
         ],
-        "compression": "zlib",
-        "compression_opts": 1,
+        "compressor": {
+            "id": "zlib",
+            "level": 1
+        },
         "dtype": "<i4",
         "fill_value": 42,
         "filters": null,
@@ -474,3 +476,5 @@ Changes in version 2
   "attrs" key.
 * Added support for filters.
 * Changed encoding of "fill_value" field within array metadata.
+* Changed encoding of compressor information within array metadata to be
+  consistent with representation of filter information.

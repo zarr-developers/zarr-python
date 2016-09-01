@@ -18,6 +18,7 @@ from zarr.core import Array
 from zarr.storage import DirectoryStore
 from zarr.hierarchy import open_group
 from zarr.errors import PermissionError
+from zarr.codecs import ZlibCompressor
 
 
 def test_array():
@@ -173,8 +174,8 @@ def test_open_array():
 
 def test_empty_like():
     # zarr array
-    z = empty(100, chunks=10, dtype='f4', compression='zlib',
-              compression_opts=5, order='F')
+    z = empty(100, chunks=10, dtype='f4', compressor=ZlibCompressor(5),
+              order='F')
     z2 = empty_like(z)
     eq(z.shape, z2.shape)
     eq(z.chunks, z2.chunks)
@@ -197,8 +198,8 @@ def test_empty_like():
 
 def test_zeros_like():
     # zarr array
-    z = zeros(100, chunks=10, dtype='f4', compression='zlib',
-              compression_opts=5, order='F')
+    z = zeros(100, chunks=10, dtype='f4', compressor=ZlibCompressor(5),
+              order='F')
     z2 = zeros_like(z)
     eq(z.shape, z2.shape)
     eq(z.chunks, z2.chunks)
@@ -217,8 +218,8 @@ def test_zeros_like():
 
 def test_ones_like():
     # zarr array
-    z = ones(100, chunks=10, dtype='f4', compression='zlib',
-             compression_opts=5, order='F')
+    z = ones(100, chunks=10, dtype='f4', compressor=ZlibCompressor(5),
+             order='F')
     z2 = ones_like(z)
     eq(z.shape, z2.shape)
     eq(z.chunks, z2.chunks)
@@ -236,8 +237,8 @@ def test_ones_like():
 
 
 def test_full_like():
-    z = full(100, chunks=10, dtype='f4', compression='zlib',
-             compression_opts=5, fill_value=42, order='F')
+    z = full(100, chunks=10, dtype='f4', compressor=ZlibCompressor(5),
+             fill_value=42, order='F')
     z2 = full_like(z)
     eq(z.shape, z2.shape)
     eq(z.chunks, z2.chunks)
@@ -261,8 +262,8 @@ def test_open_like():
     # zarr array
     path = tempfile.mktemp()
     atexit.register(shutil.rmtree, path)
-    z = full(100, chunks=10, dtype='f4', compression='zlib',
-             compression_opts=5, fill_value=42, order='F')
+    z = full(100, chunks=10, dtype='f4', compressor=ZlibCompressor(5),
+             fill_value=42, order='F')
     z2 = open_like(z, path)
     eq(z.shape, z2.shape)
     eq(z.chunks, z2.chunks)
@@ -293,8 +294,7 @@ def test_create():
     assert_is_none(z.fill_value)
 
     # all specified
-    z = create(100, chunks=10, dtype='i4', compression='zlib',
-               compression_opts=1,
+    z = create(100, chunks=10, dtype='i4', compressor=ZlibCompressor(1),
                fill_value=42, order='F')
     assert_is_instance(z, Array)
     eq((100,), z.shape)

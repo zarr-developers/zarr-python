@@ -107,7 +107,7 @@ class Array(object):
             self._is_view = False
 
             # setup compressor
-            config = meta['compression']
+            config = meta['compressor']
             if config is None:
                 self._compressor = None
             else:
@@ -128,16 +128,16 @@ class Array(object):
         if self._is_view:
             raise PermissionError('operation not permitted for views')
         if self._compressor:
-            compression = self._compressor.get_config()
+            compressor_config = self._compressor.get_config()
         else:
-            compression = None
+            compressor_config = None
         if self._filters:
-            filters = [f.get_config() for f in self._filters]
+            filters_config = [f.get_config() for f in self._filters]
         else:
-            filters = None
+            filters_config = None
         meta = dict(shape=self._shape, chunks=self._chunks, dtype=self._dtype,
-                    compression=compression, fill_value=self._fill_value,
-                    order=self._order, filters=filters)
+                    compressor=compressor_config, fill_value=self._fill_value,
+                    order=self._order, filters=filters_config)
         mkey = self._key_prefix + array_meta_key
         self._store[mkey] = encode_array_metadata(meta)
 
@@ -427,7 +427,7 @@ class Array(object):
             >>> z = zarr.zeros(100000000, chunks=1000000, dtype='i4')
             >>> z
             Array((100000000,), int32, chunks=(1000000,), order=C)
-              nbytes: 381.5M; nbytes_stored: 302; ratio: 1324503.3; initialized: 0/100
+              nbytes: 381.5M; nbytes_stored: 301; ratio: 1328903.7; initialized: 0/100
               compressor: BloscCompressor(cname='lz4', clevel=5, shuffle=1)
               store: dict
 
@@ -449,7 +449,7 @@ class Array(object):
             >>> z = zarr.zeros((10000, 10000), chunks=(1000, 1000), dtype='i4')
             >>> z
             Array((10000, 10000), int32, chunks=(1000, 1000), order=C)
-              nbytes: 381.5M; nbytes_stored: 324; ratio: 1234567.9; initialized: 0/100
+              nbytes: 381.5M; nbytes_stored: 323; ratio: 1238390.1; initialized: 0/100
               compressor: BloscCompressor(cname='lz4', clevel=5, shuffle=1)
               store: dict
 
@@ -786,19 +786,19 @@ class Array(object):
         >>> z = zarr.zeros(shape=(10000, 10000), chunks=(1000, 1000))
         >>> z
         Array((10000, 10000), float64, chunks=(1000, 1000), order=C)
-          nbytes: 762.9M; nbytes_stored: 324; ratio: 2469135.8; initialized: 0/100
+          nbytes: 762.9M; nbytes_stored: 323; ratio: 2476780.2; initialized: 0/100
           compressor: BloscCompressor(cname='lz4', clevel=5, shuffle=1)
           store: dict
         >>> z.resize(20000, 10000)
         >>> z
         Array((20000, 10000), float64, chunks=(1000, 1000), order=C)
-          nbytes: 1.5G; nbytes_stored: 324; ratio: 4938271.6; initialized: 0/200
+          nbytes: 1.5G; nbytes_stored: 323; ratio: 4953560.4; initialized: 0/200
           compressor: BloscCompressor(cname='lz4', clevel=5, shuffle=1)
           store: dict
         >>> z.resize(30000, 1000)
         >>> z
         Array((30000, 1000), float64, chunks=(1000, 1000), order=C)
-          nbytes: 228.9M; nbytes_stored: 323; ratio: 743034.1; initialized: 0/30
+          nbytes: 228.9M; nbytes_stored: 322; ratio: 745341.6; initialized: 0/30
           compressor: BloscCompressor(cname='lz4', clevel=5, shuffle=1)
           store: dict
 
@@ -955,8 +955,7 @@ class Array(object):
             >>> filters = [zarr.CategorizeFilter(labels=labels,
             ...                                  dtype=data.dtype,
             ...                                  astype='u1')]
-            >>> a = zarr.array(data, chunks=1000, compression=None,
-            ...                filters=filters)
+            >>> a = zarr.array(data, chunks=1000, filters=filters)
             >>> a[:]
             array([b'female', b'male', b'female', ..., b'male', b'male', b'female'],
                   dtype='|S6')
@@ -980,7 +979,7 @@ class Array(object):
         View as a different dtype with the same itemsize:
 
             >>> data = np.random.randint(0, 2, size=10000, dtype='u1')
-            >>> a = zarr.array(data, chunks=1000, compression='zlib')
+            >>> a = zarr.array(data, chunks=1000)
             >>> a[:]
             array([0, 0, 1, ..., 1, 0, 0], dtype=uint8)
             >>> v = a.view(dtype=bool)
@@ -994,7 +993,7 @@ class Array(object):
         data is interpreted correctly:
 
             >>> data = np.arange(10000, dtype='u2')
-            >>> a = zarr.array(data, chunks=1000, compression=None)
+            >>> a = zarr.array(data, chunks=1000)
             >>> a[:10]
             array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9], dtype=uint16)
             >>> v = a.view(dtype='u1', shape=20000, chunks=2000)

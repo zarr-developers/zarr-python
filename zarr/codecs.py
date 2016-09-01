@@ -148,7 +148,7 @@ class ZlibCompressor(Codec):
 
     codec_id = 'zlib'
 
-    def __init__(self, level=-1):
+    def __init__(self, level=1):
         self.level = level
 
     def encode(self, buf):
@@ -196,7 +196,7 @@ class BZ2Compressor(Codec):
 
     codec_id = 'bz2'
 
-    def __init__(self, level=9):
+    def __init__(self, level=1):
         self.level = level
 
     def encode(self, buf):

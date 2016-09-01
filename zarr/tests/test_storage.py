@@ -19,7 +19,7 @@ from zarr.storage import init_array, array_meta_key, attrs_key, DictStore, \
 from zarr.meta import decode_array_metadata, encode_array_metadata, \
     ZARR_FORMAT, decode_group_metadata, encode_group_metadata
 from zarr.compat import text_type
-from zarr.storage import default_compression
+from zarr.storage import default_compressor
 from zarr.codecs import ZlibCompressor
 
 
@@ -231,7 +231,7 @@ class StoreTests(object):
         eq((1000,), meta['shape'])
         eq((100,), meta['chunks'])
         eq(np.dtype(None), meta['dtype'])
-        eq(default_compression, meta['compression']['id'])
+        eq(default_compressor.get_config(), meta['compressor'])
         assert_is_none(meta['fill_value'])
 
         # check attributes
@@ -245,7 +245,7 @@ class StoreTests(object):
             dict(shape=(2000,),
                  chunks=(200,),
                  dtype=np.dtype('u1'),
-                 compression=ZlibCompressor(1).get_config(),
+                 compressor=ZlibCompressor(1).get_config(),
                  fill_value=0,
                  order='F',
                  filters=None)
@@ -282,7 +282,7 @@ class StoreTests(object):
         eq((1000,), meta['shape'])
         eq((100,), meta['chunks'])
         eq(np.dtype(None), meta['dtype'])
-        eq(default_compression, meta['compression']['id'])
+        eq(default_compressor.get_config(), meta['compressor'])
         assert_is_none(meta['fill_value'])
 
         # check attributes
@@ -297,7 +297,7 @@ class StoreTests(object):
         meta = dict(shape=(2000,),
                     chunks=(200,),
                     dtype=np.dtype('u1'),
-                    compression=ZlibCompressor(1).get_config(),
+                    compressor=ZlibCompressor(1).get_config(),
                     fill_value=0,
                     order='F',
                     filters=None)
@@ -363,8 +363,7 @@ class StoreTests(object):
             dict(shape=(2000,),
                  chunks=(200,),
                  dtype=np.dtype('u1'),
-                 compression='zlib',
-                 compression_opts=1,
+                 compressor=None,
                  fill_value=0,
                  filters=None,
                  order='F')
@@ -394,10 +393,9 @@ class StoreTests(object):
 
     def test_init_array_compat(self):
         store = self.create_store()
-        init_array(store, shape=1000, chunks=100, compression='none',
-                   compression_opts='foo')
+        init_array(store, shape=1000, chunks=100, compressor='none')
         meta = decode_array_metadata(store[array_meta_key])
-        assert_is_none(meta['compression'])
+        assert_is_none(meta['compressor'])
 
     def test_init_group(self):
         store = self.create_store()
@@ -419,8 +417,7 @@ class StoreTests(object):
             dict(shape=(2000,),
                  chunks=(200,),
                  dtype=np.dtype('u1'),
-                 compression='zlib',
-                 compression_opts=1,
+                 compressor=None,
                  fill_value=0,
                  order='F',
                  filters=None)
@@ -452,8 +449,7 @@ class StoreTests(object):
         meta = dict(shape=(2000,),
                     chunks=(200,),
                     dtype=np.dtype('u1'),
-                    compression='zlib',
-                    compression_opts=1,
+                    compressor=None,
                     fill_value=0,
                     order='F',
                     filters=None)
@@ -491,8 +487,7 @@ class StoreTests(object):
             dict(shape=(2000,),
                  chunks=(200,),
                  dtype=np.dtype('u1'),
-                 compression='zlib',
-                 compression_opts=1,
+                 compressor=None,
                  fill_value=0,
                  filters=None,
                  order='F')

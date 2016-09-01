@@ -8,20 +8,22 @@ from nose.tools import eq_ as eq
 
 
 from zarr.codecs import DeltaFilter, FixedScaleOffsetFilter, \
-    QuantizeFilter, PackBitsFilter, CategorizeFilter, codec_registry
+    QuantizeFilter, PackBitsFilter, CategorizeFilter, codec_registry, \
+    ZlibCompressor, BloscCompressor, BZ2Compressor
 from zarr.creation import array
 from zarr.compat import PY2
 from zarr.util import buffer_tobytes
 
 
-compression_setups = [
-    (None, None),
-    ('zlib', {}),
-    ('bz2', {}),
-    ('blosc', {})
+compressors = [
+    None,
+    ZlibCompressor(),
+    BZ2Compressor(),
+    BloscCompressor(),
 ]
 if not PY2:
-    compression_setups.append(('lzma', {}))
+    from zarr.codecs import LZMACompressor
+    compressors.append(LZMACompressor())
 
 
 def test_array_with_delta_filter():
@@ -32,11 +34,10 @@ def test_array_with_delta_filter():
     filters = [DeltaFilter(astype=astype, dtype=dtype)]
     data = np.arange(100, dtype=dtype)
 
-    for compression, compression_opts in compression_setups:
-        print(compression, compression_opts)
+    for compressor in compressors:
+        print(repr(compressor))
 
-        a = array(data, chunks=10, compression=compression,
-                  compression_opts=compression_opts, filters=filters)
+        a = array(data, chunks=10, compressor=compressor, filters=filters)
 
         # check round-trip
         assert_array_equal(data, a[:])
@@ -44,8 +45,8 @@ def test_array_with_delta_filter():
         # check chunks
         for i in range(10):
             cdata = a.store[str(i)]
-            if a.compressor:
-                chunk = a.compressor.decode(cdata)
+            if compressor:
+                chunk = compressor.decode(cdata)
             else:
                 chunk = cdata
             actual = np.frombuffer(chunk, dtype=astype)
@@ -63,11 +64,10 @@ def test_array_with_scaleoffset_filter():
     filters = [flt]
     data = np.linspace(1000, 1001, 34, dtype='f8')
 
-    for compression, compression_opts in compression_setups:
-        print(compression, compression_opts)
+    for compressor in compressors:
+        print(repr(compressor))
 
-        a = array(data, chunks=5, compression=compression,
-                  compression_opts=compression_opts, filters=filters)
+        a = array(data, chunks=5, compressor=compressor, filters=filters)
 
         # check round-trip
         assert_array_almost_equal(data, a[:], decimal=1)
@@ -75,8 +75,8 @@ def test_array_with_scaleoffset_filter():
         # check chunks
         for i in range(6):
             cdata = a.store[str(i)]
-            if a.compressor:
-                chunk = a.compressor.decode(cdata)
+            if compressor:
+                chunk = compressor.decode(cdata)
             else:
                 chunk = cdata
             actual = np.frombuffer(chunk, dtype=astype)
@@ -93,11 +93,10 @@ def test_array_with_quantize_filter():
     filters = [flt]
     data = np.linspace(0, 1, 34, dtype=dtype)
 
-    for compression, compression_opts in compression_setups:
-        print(compression, compression_opts)
+    for compressor in compressors:
+        print(repr(compressor))
 
-        a = array(data, chunks=5, compression=compression,
-                  compression_opts=compression_opts, filters=filters)
+        a = array(data, chunks=5, compressor=compressor, filters=filters)
 
         # check round-trip
         assert_array_almost_equal(data, a[:], decimal=digits)
@@ -105,8 +104,8 @@ def test_array_with_quantize_filter():
         # check chunks
         for i in range(6):
             cdata = a.store[str(i)]
-            if a.compressor:
-                chunk = a.compressor.decode(cdata)
+            if compressor:
+                chunk = compressor.decode(cdata)
             else:
                 chunk = cdata
             actual = np.frombuffer(chunk, dtype=dtype)
@@ -121,11 +120,10 @@ def test_array_with_packbits_filter():
     filters = [flt]
     data = np.random.randint(0, 2, size=100, dtype=bool)
 
-    for compression, compression_opts in compression_setups:
-        print(compression, compression_opts)
+    for compressor in compressors:
+        print(repr(compressor))
 
-        a = array(data, chunks=5, compression=compression,
-                  compression_opts=compression_opts, filters=filters)
+        a = array(data, chunks=5, compressor=compressor, filters=filters)
 
         # check round-trip
         assert_array_equal(data, a[:])
@@ -133,8 +131,8 @@ def test_array_with_packbits_filter():
         # check chunks
         for i in range(20):
             cdata = a.store[str(i)]
-            if a.compressor:
-                chunk = a.compressor.decode(cdata)
+            if compressor:
+                chunk = compressor.decode(cdata)
             else:
                 chunk = cdata
             actual = np.frombuffer(chunk, dtype='u1')
@@ -149,11 +147,10 @@ def test_array_with_categorize_filter():
     flt = CategorizeFilter(dtype=data.dtype, labels=['foo', 'bar', 'baz'])
     filters = [flt]
 
-    for compression, compression_opts in compression_setups:
-        print(compression, compression_opts)
+    for compressor in compressors:
+        print(repr(compressor))
 
-        a = array(data, chunks=5, compression=compression,
-                  compression_opts=compression_opts, filters=filters)
+        a = array(data, chunks=5, compressor=compressor, filters=filters)
 
         # check round-trip
         assert_array_equal(data, a[:])
@@ -171,14 +168,11 @@ def test_array_with_categorize_filter():
 
 
 def test_compressor_as_filter():
-    for compression, compression_opts in compression_setups:
-        if compression is None:
+    for compressor in compressors:
+        if compressor is None:
             # skip
             continue
-
-        # setup compressor
-        compressor_cls = codec_registry[compression]
-        compressor = compressor_cls(**compression_opts)
+        print(repr(compressor))
 
         # setup filters
         dtype = 'i8'
@@ -189,9 +183,9 @@ def test_compressor_as_filter():
 
         # setup data and arrays
         data = np.arange(10000, dtype=dtype)
-        a1 = array(data, chunks=1000, compression=None, filters=filters)
-        a2 = array(data, chunks=1000, compression=compression,
-                   compression_opts=compression_opts, filters=filters[:1])
+        a1 = array(data, chunks=1000, compressor=None, filters=filters)
+        a2 = array(data, chunks=1000, compressor=compressor,
+                   filters=filters[:1])
 
         # check storage
         for i in range(10):

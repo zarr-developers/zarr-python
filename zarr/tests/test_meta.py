@@ -30,7 +30,7 @@ def test_encode_decode_array_1():
         shape=(100,),
         chunks=(10,),
         dtype=np.dtype('f8'),
-        compression=ZlibCompressor(1).get_config(),
+        compressor=ZlibCompressor(1).get_config(),
         fill_value=None,
         filters=None,
         order='C'
@@ -38,7 +38,7 @@ def test_encode_decode_array_1():
 
     meta_json = '''{
         "chunks": [10],
-        "compression": {"id": "zlib", "level": 1},
+        "compressor": {"id": "zlib", "level": 1},
         "dtype": "<f8",
         "fill_value": null,
         "filters": null,
@@ -57,7 +57,7 @@ def test_encode_decode_array_1():
     eq(meta['shape'], meta_dec['shape'])
     eq(meta['chunks'], meta_dec['chunks'])
     eq(meta['dtype'], meta_dec['dtype'])
-    eq(meta['compression'], meta_dec['compression'])
+    eq(meta['compressor'], meta_dec['compressor'])
     eq(meta['order'], meta_dec['order'])
     assert_is_none(meta_dec['fill_value'])
     assert_is_none(meta_dec['filters'])
@@ -72,7 +72,7 @@ def test_encode_decode_array_2():
         shape=(100, 100),
         chunks=(10, 10),
         dtype=np.dtype([('a', 'i4'), ('b', 'S10')]),
-        compression=compressor.get_config(),
+        compressor=compressor.get_config(),
         fill_value=42,
         order='F',
         filters=[df.get_config()]
@@ -80,7 +80,7 @@ def test_encode_decode_array_2():
 
     meta_json = '''{
         "chunks": [10, 10],
-        "compression": {
+        "compressor": {
             "id": "blosc",
             "clevel": 3,
             "cname": "lz4",
@@ -106,7 +106,7 @@ def test_encode_decode_array_2():
     eq(meta['shape'], meta_dec['shape'])
     eq(meta['chunks'], meta_dec['chunks'])
     eq(meta['dtype'], meta_dec['dtype'])
-    eq(meta['compression'], meta_dec['compression'])
+    eq(meta['compressor'], meta_dec['compressor'])
     eq(meta['order'], meta_dec['order'])
     eq(meta['fill_value'], meta_dec['fill_value'])
     eq([df.get_config()], meta_dec['filters'])
@@ -126,7 +126,7 @@ def test_encode_decode_array_fill_values():
             shape=(100,),
             chunks=(10,),
             dtype=np.dtype('f8'),
-            compression=ZlibCompressor(1).get_config(),
+            compressor=ZlibCompressor(1).get_config(),
             fill_value=v,
             filters=None,
             order='C'
@@ -134,7 +134,7 @@ def test_encode_decode_array_fill_values():
 
         meta_json = '''{
             "chunks": [10],
-            "compression": {"id": "zlib", "level": 1},
+            "compressor": {"id": "zlib", "level": 1},
             "dtype": "<f8",
             "fill_value": "%s",
             "filters": null,
@@ -161,7 +161,7 @@ def test_decode_array_unsupported_format():
         "shape": [100],
         "chunks": [10],
         "dtype": "<f8",
-        "compression": {"id": "zlib", "level": 1},
+        "compressor": {"id": "zlib", "level": 1},
         "fill_value": null,
         "order": "C"
     }''' % (ZARR_FORMAT - 1)
