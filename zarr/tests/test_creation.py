@@ -17,7 +17,7 @@ from zarr.sync import ThreadSynchronizer
 from zarr.core import Array
 from zarr.storage import DirectoryStore
 from zarr.hierarchy import open_group
-from zarr.errors import ReadOnlyError
+from zarr.errors import PermissionError
 
 
 def test_array():
@@ -128,7 +128,7 @@ def test_open_array():
     eq((100,), z.shape)
     eq((10,), z.chunks)
     assert_array_equal(np.full(100, fill_value=42), z[:])
-    with assert_raises(ReadOnlyError):
+    with assert_raises(PermissionError):
         z[:] = 43
     z = open_array(path, mode='r+')
     assert_is_instance(z, Array)

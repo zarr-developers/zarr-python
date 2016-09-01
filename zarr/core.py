@@ -10,11 +10,11 @@ import numpy as np
 from zarr.compressors import get_compressor_cls
 from zarr.util import is_total_slice, normalize_array_selection, \
     get_chunk_range, human_readable_size, normalize_resize_args, \
-    normalize_storage_path
+    normalize_storage_path, normalize_shape, normalize_chunks
 from zarr.storage import array_meta_key, attrs_key, listdir, getsize
 from zarr.meta import decode_array_metadata, encode_array_metadata
 from zarr.attrs import Attributes
-from zarr.errors import ReadOnlyError
+from zarr.errors import PermissionError
 from zarr.compat import reduce
 from zarr.filters import get_filters
 
@@ -59,6 +59,7 @@ class Array(object):
     nbytes_stored
     initialized
     cdata_shape
+    is_view
 
     Methods
     -------
@@ -66,6 +67,7 @@ class Array(object):
     __setitem__
     resize
     append
+    view
 
     """  # flake8: noqa
 
@@ -106,7 +108,7 @@ class Array(object):
             compressor_cls = get_compressor_cls(self._compression)
             self._compressor = compressor_cls(self._compression_opts)
             self._filters = get_filters(meta['filters'])
-            # TODO validate filter dtypes
+            self._is_view = False
 
         # initialize attributes
         akey = self._key_prefix + attrs_key
@@ -114,6 +116,8 @@ class Array(object):
                                  synchronizer=synchronizer)
 
     def _flush_metadata(self):
+        if self._is_view:
+            raise PermissionError('operation not permitted for views')
         meta = dict(shape=self._shape, chunks=self._chunks, dtype=self._dtype,
                     compression=self._compression,
                     compression_opts=self._compression_opts,
@@ -260,12 +264,18 @@ class Array(object):
             int(np.ceil(s / c)) for s, c in zip(self._shape, self._chunks)
         )
 
+    @property
+    def is_view(self):
+        """A boolean, True if this array is a view on another array."""
+        return self._is_view
+
     def __eq__(self, other):
         return (
             isinstance(other, Array) and
             self.store == other.store and
             self.read_only == other.read_only and
-            self.path == other.path
+            self.path == other.path and
+            not self._is_view
             # N.B., no need to compare other properties, should be covered by
             # store comparison
         )
@@ -469,7 +479,7 @@ class Array(object):
 
         # guard conditions
         if self._read_only:
-            raise ReadOnlyError('array is read-only')
+            raise PermissionError('array is read-only')
 
         # normalize selection
         selection = normalize_array_selection(key, self._shape)
@@ -735,7 +745,7 @@ class Array(object):
 
         # guard condition
         if self._read_only:
-            raise ReadOnlyError('array is read-only')
+            raise PermissionError('array is read-only')
 
         # synchronization
         if self._synchronizer is None:
@@ -789,6 +799,10 @@ class Array(object):
         old_shape = self._shape
         new_shape = normalize_resize_args(old_shape, *args)
 
+        # update metadata
+        self._shape = new_shape
+        self._flush_metadata()
+
         # determine the new number and arrangement of chunks
         chunks = self._chunks
         new_cdata_shape = tuple(int(np.ceil(s / c))
@@ -802,10 +816,6 @@ class Array(object):
                     pass  # keep the chunk
                 else:
                     del self._chunk_store[self._key_prefix + key]
-
-        # update metadata
-        self._shape = new_shape
-        self._flush_metadata()
 
     def append(self, data, axis=0):
         """Append `data` to `axis`.
@@ -882,3 +892,177 @@ class Array(object):
             for i in range(len(self._shape))
         )
         self[append_selection] = data
+
+    def view(self, shape=None, chunks=None, dtype=None,
+             fill_value=None, filters=None, read_only=None,
+             synchronizer=None):
+        """Return an array sharing the same data.
+
+        Parameters
+        ----------
+        shape : int or tuple of ints
+            Array shape.
+        chunks : int or tuple of ints, optional
+            Chunk shape.
+        dtype : string or dtype, optional
+            NumPy dtype.
+        fill_value : object
+            Default value to use for uninitialized portions of the array.
+        filters : sequence, optional
+            Sequence of filters to use to encode chunk data prior to
+            compression.
+        read_only : bool, optional
+            True if array should be protected against modification.
+        synchronizer : object, optional
+            Array synchronizer.
+
+        Notes
+        -----
+        WARNING: This is an experimental feature and should be used with care.
+        There are plenty of ways to generate errors and/or cause data
+        corruption.
+
+        Examples
+        --------
+
+        Bypass filters:
+
+            >>> import zarr
+            >>> import numpy as np
+            >>> np.random.seed(42)
+            >>> labels = [b'female', b'male']
+            >>> data = np.random.choice(labels, size=10000)
+            >>> filters = [zarr.CategoryFilter(labels=labels,
+            ...                                dtype=data.dtype,
+            ...                                astype='u1')]
+            >>> a = zarr.array(data, chunks=1000, compression=None,
+            ...                filters=filters)
+            >>> a
+            zarr.core.Array((10000,), |S6, chunks=(1000,), order=C)
+              compression: none; compression_opts: None
+              nbytes: 58.6K; nbytes_stored: 10.2K; ratio: 5.7; initialized: 10/10
+              filters: category
+              store: builtins.dict
+            >>> a[:]
+            array([b'female', b'male', b'female', ..., b'male', b'male', b'female'],
+                  dtype='|S6')
+            >>> v = a.view(dtype='u1', filters=[])
+            >>> v
+            zarr.core.Array((10000,), uint8, chunks=(1000,), order=C)
+              compression: none; compression_opts: None
+              nbytes: 9.8K; nbytes_stored: 10.2K; ratio: 1.0; initialized: 10/10
+              store: builtins.dict
+            >>> v.is_view
+            True
+            >>> v[:]
+            array([1, 2, 1, ..., 2, 2, 1], dtype=uint8)
+
+        Views can be used to modify data:
+
+            >>> x = v[:]
+            >>> x.sort()
+            >>> v[:] = x
+            >>> v[:]
+            array([1, 1, 1, ..., 2, 2, 2], dtype=uint8)
+            >>> a[:]
+            array([b'female', b'female', b'female', ..., b'male', b'male', b'male'],
+                  dtype='|S6')
+
+        View as a different dtype with the same itemsize:
+
+            >>> data = np.random.randint(0, 2, size=10000, dtype='u1')
+            >>> a = zarr.array(data, chunks=1000, compression='zlib')
+            >>> a
+            zarr.core.Array((10000,), uint8, chunks=(1000,), order=C)
+              compression: zlib; compression_opts: 1
+              nbytes: 9.8K; nbytes_stored: 2.7K; ratio: 3.6; initialized: 10/10
+              store: builtins.dict
+            >>> a[:]
+            array([0, 0, 1, ..., 1, 0, 0], dtype=uint8)
+            >>> v = a.view(dtype=bool)
+            >>> v
+            zarr.core.Array((10000,), bool, chunks=(1000,), order=C)
+              compression: zlib; compression_opts: 1
+              nbytes: 9.8K; nbytes_stored: 2.7K; ratio: 3.6; initialized: 10/10
+              store: builtins.dict
+            >>> v[:]
+            array([False, False,  True, ...,  True, False, False], dtype=bool)
+            >>> np.all(a[:].view(dtype=bool) == v[:])
+            True
+
+        An array can be viewed with a dtype with a different itemsize, however
+        some care is needed to adjust the shape and chunk shape so that chunk
+        data is interpreted correctly:
+
+            >>> data = np.arange(10000, dtype='u2')
+            >>> a = zarr.array(data, chunks=1000, compression=None)
+            >>> a
+            zarr.core.Array((10000,), uint16, chunks=(1000,), order=C)
+              compression: none; compression_opts: None
+              nbytes: 19.5K; nbytes_stored: 19.8K; ratio: 1.0; initialized: 10/10
+              store: builtins.dict
+            >>> a[:10]
+            array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9], dtype=uint16)
+            >>> v = a.view(dtype='u1', shape=20000, chunks=2000)
+            >>> v
+            zarr.core.Array((20000,), uint8, chunks=(2000,), order=C)
+              compression: none; compression_opts: None
+              nbytes: 19.5K; nbytes_stored: 19.8K; ratio: 1.0; initialized: 10/10
+              store: builtins.dict
+            >>> v[:10]
+            array([0, 0, 1, 0, 2, 0, 3, 0, 4, 0], dtype=uint8)
+            >>> np.all(a[:].view('u1') == v[:])
+            True
+
+        Change fill value for uninitialized chunks:
+
+            >>> a = zarr.full(10000, chunks=1000, fill_value=-1, dtype='i1')
+            >>> a[:]
+            array([-1, -1, -1, ..., -1, -1, -1], dtype=int8)
+            >>> v = a.view(fill_value=42)
+            >>> v[:]
+            array([42, 42, 42, ..., 42, 42, 42], dtype=int8)
+
+        Note that resizing or appending to views is not permitted:
+
+            >>> a = zarr.empty(10000)
+            >>> v = a.view()
+            >>> try:
+            ...     v.resize(20000)
+            ... except PermissionError as e:
+            ...     print(e)
+            operation not permitted for views
+
+        """  # flake8: noqa
+
+        store = self._store
+        chunk_store = self._chunk_store
+        path = self._path
+        if read_only is None:
+            read_only = self._read_only
+        if synchronizer is None:
+            synchronizer = self._synchronizer
+        a = Array(store=store, path=path, chunk_store=chunk_store,
+                  read_only=read_only, synchronizer=synchronizer)
+        a._is_view = True
+
+        # allow override of some properties
+        if dtype is None:
+            dtype = self._dtype
+        else:
+            dtype = np.dtype(dtype)
+            a._dtype = dtype
+        if shape is None:
+            shape = self._shape
+        else:
+            shape = normalize_shape(shape)
+            a._shape = shape
+        if chunks is not None:
+            chunks = normalize_chunks(chunks, shape, dtype.itemsize)
+            a._chunks = chunks
+        if fill_value is not None:
+            a._fill_value = fill_value
+        if filters is not None:
+            a._filters = filters
+
+        return a

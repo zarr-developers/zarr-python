@@ -14,7 +14,7 @@ from zarr.storage import contains_array, contains_group, init_group, \
 from zarr.creation import array, create, empty, zeros, ones, full, \
     empty_like, zeros_like, ones_like, full_like
 from zarr.util import normalize_storage_path, normalize_shape
-from zarr.errors import ReadOnlyError
+from zarr.errors import PermissionError
 from zarr.meta import decode_group_metadata
 
 
@@ -395,7 +395,7 @@ class Group(Mapping):
 
         # guard condition
         if self._read_only:
-            raise ReadOnlyError('group is read-only')
+            raise PermissionError('group is read-only')
 
         # synchronization
         if self._synchronizer is None:

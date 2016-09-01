@@ -19,7 +19,7 @@ from zarr.storage import DictStore, DirectoryStore, ZipStore, init_group, \
 from zarr.core import Array
 from zarr.hierarchy import Group, group, open_group
 from zarr.attrs import Attributes
-from zarr.errors import ReadOnlyError
+from zarr.errors import PermissionError
 from zarr.creation import open_array
 from zarr.compat import PY2
 from zarr.sync import ThreadSynchronizer, ProcessSynchronizer
@@ -294,13 +294,13 @@ class TestGroup(unittest.TestCase):
 
         # read-only
         g = self.create_group(read_only=True)
-        with assert_raises(ReadOnlyError):
+        with assert_raises(PermissionError):
             g.create_group('zzz')
-        with assert_raises(ReadOnlyError):
+        with assert_raises(PermissionError):
             g.require_group('zzz')
-        with assert_raises(ReadOnlyError):
+        with assert_raises(PermissionError):
             g.create_dataset('zzz', shape=100, chunks=10)
-        with assert_raises(ReadOnlyError):
+        with assert_raises(PermissionError):
             g.require_dataset('zzz', shape=100, chunks=10)
 
     def test_getitem_contains_iterators(self):
@@ -483,27 +483,27 @@ class TestGroup(unittest.TestCase):
         assert_array_equal(np.arange(100), j[:])
 
         grp = self.create_group(read_only=True)
-        with assert_raises(ReadOnlyError):
+        with assert_raises(PermissionError):
             grp.create('aa', shape=100, chunks=10)
-        with assert_raises(ReadOnlyError):
+        with assert_raises(PermissionError):
             grp.empty('aa', shape=100, chunks=10)
-        with assert_raises(ReadOnlyError):
+        with assert_raises(PermissionError):
             grp.zeros('aa', shape=100, chunks=10)
-        with assert_raises(ReadOnlyError):
+        with assert_raises(PermissionError):
             grp.ones('aa', shape=100, chunks=10)
-        with assert_raises(ReadOnlyError):
+        with assert_raises(PermissionError):
             grp.full('aa', shape=100, chunks=10, fill_value=42)
-        with assert_raises(ReadOnlyError):
+        with assert_raises(PermissionError):
             grp.array('aa', data=np.arange(100), chunks=10)
-        with assert_raises(ReadOnlyError):
+        with assert_raises(PermissionError):
             grp.create('aa', shape=100, chunks=10)
-        with assert_raises(ReadOnlyError):
+        with assert_raises(PermissionError):
             grp.empty_like('aa', a)
-        with assert_raises(ReadOnlyError):
+        with assert_raises(PermissionError):
             grp.zeros_like('aa', a)
-        with assert_raises(ReadOnlyError):
+        with assert_raises(PermissionError):
             grp.ones_like('aa', a)
-        with assert_raises(ReadOnlyError):
+        with assert_raises(PermissionError):
             grp.full_like('aa', a)
 
     def test_paths(self):
@@ -755,7 +755,7 @@ def test_open_group():
     g = open_group(path, mode='r')
     assert_is_instance(g, Group)
     eq(2, len(g))
-    with assert_raises(ReadOnlyError):
+    with assert_raises(PermissionError):
         g.create_group('baz')
     g = open_group(path, mode='r+')
     assert_is_instance(g, Group)

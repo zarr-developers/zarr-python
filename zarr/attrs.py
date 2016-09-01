@@ -5,7 +5,7 @@ from collections import MutableMapping
 
 
 from zarr.compat import text_type
-from zarr.errors import ReadOnlyError
+from zarr.errors import PermissionError
 
 
 class Attributes(MutableMapping):
@@ -31,7 +31,7 @@ class Attributes(MutableMapping):
 
         # guard condition
         if self.read_only:
-            raise ReadOnlyError('attributes are read-only')
+            raise PermissionError('attributes are read-only')
 
         # synchronization
         if self.synchronizer is None:

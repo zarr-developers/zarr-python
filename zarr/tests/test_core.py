@@ -16,7 +16,7 @@ from nose.tools import eq_ as eq, assert_is_instance, \
 
 from zarr.storage import DirectoryStore, ZipStore, init_array, init_group
 from zarr.core import Array
-from zarr.errors import ReadOnlyError
+from zarr.errors import PermissionError
 from zarr.compat import PY2
 from zarr.util import buffer_size
 from zarr.filters import DeltaFilter, FixedScaleOffsetFilter
@@ -546,11 +546,11 @@ class TestArray(unittest.TestCase):
 
         z = self.create_array(shape=1000, chunks=100, read_only=True)
         assert_true(z.read_only)
-        with assert_raises(ReadOnlyError):
+        with assert_raises(PermissionError):
             z[:] = 42
-        with assert_raises(ReadOnlyError):
+        with assert_raises(PermissionError):
             z.resize(2000)
-        with assert_raises(ReadOnlyError):
+        with assert_raises(PermissionError):
             z.append(np.arange(1000))
 
     def test_pickle(self):
