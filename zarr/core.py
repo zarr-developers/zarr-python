@@ -937,21 +937,10 @@ class Array(object):
             ...                                astype='u1')]
             >>> a = zarr.array(data, chunks=1000, compression=None,
             ...                filters=filters)
-            >>> a
-            zarr.core.Array((10000,), |S6, chunks=(1000,), order=C)
-              compression: none; compression_opts: None
-              nbytes: 58.6K; nbytes_stored: 10.2K; ratio: 5.7; initialized: 10/10
-              filters: category
-              store: builtins.dict
             >>> a[:]
             array([b'female', b'male', b'female', ..., b'male', b'male', b'female'],
                   dtype='|S6')
             >>> v = a.view(dtype='u1', filters=[])
-            >>> v
-            zarr.core.Array((10000,), uint8, chunks=(1000,), order=C)
-              compression: none; compression_opts: None
-              nbytes: 9.8K; nbytes_stored: 10.2K; ratio: 1.0; initialized: 10/10
-              store: builtins.dict
             >>> v.is_view
             True
             >>> v[:]
@@ -972,19 +961,9 @@ class Array(object):
 
             >>> data = np.random.randint(0, 2, size=10000, dtype='u1')
             >>> a = zarr.array(data, chunks=1000, compression='zlib')
-            >>> a
-            zarr.core.Array((10000,), uint8, chunks=(1000,), order=C)
-              compression: zlib; compression_opts: 1
-              nbytes: 9.8K; nbytes_stored: 2.7K; ratio: 3.6; initialized: 10/10
-              store: builtins.dict
             >>> a[:]
             array([0, 0, 1, ..., 1, 0, 0], dtype=uint8)
             >>> v = a.view(dtype=bool)
-            >>> v
-            zarr.core.Array((10000,), bool, chunks=(1000,), order=C)
-              compression: zlib; compression_opts: 1
-              nbytes: 9.8K; nbytes_stored: 2.7K; ratio: 3.6; initialized: 10/10
-              store: builtins.dict
             >>> v[:]
             array([False, False,  True, ...,  True, False, False], dtype=bool)
             >>> np.all(a[:].view(dtype=bool) == v[:])
@@ -996,19 +975,9 @@ class Array(object):
 
             >>> data = np.arange(10000, dtype='u2')
             >>> a = zarr.array(data, chunks=1000, compression=None)
-            >>> a
-            zarr.core.Array((10000,), uint16, chunks=(1000,), order=C)
-              compression: none; compression_opts: None
-              nbytes: 19.5K; nbytes_stored: 19.8K; ratio: 1.0; initialized: 10/10
-              store: builtins.dict
             >>> a[:10]
             array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9], dtype=uint16)
             >>> v = a.view(dtype='u1', shape=20000, chunks=2000)
-            >>> v
-            zarr.core.Array((20000,), uint8, chunks=(2000,), order=C)
-              compression: none; compression_opts: None
-              nbytes: 19.5K; nbytes_stored: 19.8K; ratio: 1.0; initialized: 10/10
-              store: builtins.dict
             >>> v[:10]
             array([0, 0, 1, 0, 2, 0, 3, 0, 4, 0], dtype=uint8)
             >>> np.all(a[:].view('u1') == v[:])
