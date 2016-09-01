@@ -10,7 +10,7 @@ from numpy.testing import assert_array_equal, assert_array_almost_equal
 from nose.tools import eq_ as eq
 
 
-from zarr.codecs import registry
+from zarr.codecs import codec_registry
 from zarr.util import buffer_tobytes
 
 
@@ -20,7 +20,7 @@ class CodecTests(object):
     name = None
 
     def init_codec(self, **kwargs):
-        codec_cls = registry[self.name]
+        codec_cls = codec_registry[self.name]
         codec = codec_cls(**kwargs)
         return codec
 

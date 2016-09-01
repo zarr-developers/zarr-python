@@ -62,10 +62,10 @@ def create(shape, chunks=None, dtype=None, compression='default',
         >>> import zarr
         >>> z = zarr.create((10000, 10000), chunks=(1000, 1000))
         >>> z
-        zarr.core.Array((10000, 10000), float64, chunks=(1000, 1000), order=C)
-          compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
-          nbytes: 762.9M; nbytes_stored: 337; ratio: 2373887.2; initialized: 0/100
-          store: builtins.dict
+        Array((10000, 10000), float64, chunks=(1000, 1000), order=C)
+          nbytes: 762.9M; nbytes_stored: 327; ratio: 2446483.2; initialized: 0/100
+          compressor: BloscCompressor(cname='lz4', clevel=5, shuffle=1)
+          store: dict
 
     """  # flake8: noqa
 
@@ -120,10 +120,10 @@ def zeros(shape, chunks=None, dtype=None, compression='default',
     >>> import zarr
     >>> z = zarr.zeros((10000, 10000), chunks=(1000, 1000))
     >>> z
-    zarr.core.Array((10000, 10000), float64, chunks=(1000, 1000), order=C)
-      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
-      nbytes: 762.9M; nbytes_stored: 334; ratio: 2395209.6; initialized: 0/100
-      store: builtins.dict
+    Array((10000, 10000), float64, chunks=(1000, 1000), order=C)
+      nbytes: 762.9M; nbytes_stored: 324; ratio: 2469135.8; initialized: 0/100
+      compressor: BloscCompressor(cname='lz4', clevel=5, shuffle=1)
+      store: dict
     >>> z[:2, :2]
     array([[ 0.,  0.],
            [ 0.,  0.]])
@@ -150,10 +150,10 @@ def ones(shape, chunks=None, dtype=None, compression='default',
     >>> import zarr
     >>> z = zarr.ones((10000, 10000), chunks=(1000, 1000))
     >>> z
-    zarr.core.Array((10000, 10000), float64, chunks=(1000, 1000), order=C)
-      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
-      nbytes: 762.9M; nbytes_stored: 334; ratio: 2395209.6; initialized: 0/100
-      store: builtins.dict
+    Array((10000, 10000), float64, chunks=(1000, 1000), order=C)
+      nbytes: 762.9M; nbytes_stored: 324; ratio: 2469135.8; initialized: 0/100
+      compressor: BloscCompressor(cname='lz4', clevel=5, shuffle=1)
+      store: dict
     >>> z[:2, :2]
     array([[ 1.,  1.],
            [ 1.,  1.]])
@@ -180,10 +180,10 @@ def full(shape, fill_value, chunks=None, dtype=None, compression='default',
     >>> import zarr
     >>> z = zarr.full((10000, 10000), chunks=(1000, 1000), fill_value=42)
     >>> z
-    zarr.core.Array((10000, 10000), float64, chunks=(1000, 1000), order=C)
-      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
-      nbytes: 762.9M; nbytes_stored: 335; ratio: 2388059.7; initialized: 0/100
-      store: builtins.dict
+    Array((10000, 10000), float64, chunks=(1000, 1000), order=C)
+      nbytes: 762.9M; nbytes_stored: 325; ratio: 2461538.5; initialized: 0/100
+      compressor: BloscCompressor(cname='lz4', clevel=5, shuffle=1)
+      store: dict
     >>> z[:2, :2]
     array([[ 42.,  42.],
            [ 42.,  42.]])
@@ -213,10 +213,10 @@ def array(data, chunks=None, dtype=None, compression='default',
     >>> a = np.arange(100000000).reshape(10000, 10000)
     >>> z = zarr.array(a, chunks=(1000, 1000))
     >>> z
-    zarr.core.Array((10000, 10000), int64, chunks=(1000, 1000), order=C)
-      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
+    Array((10000, 10000), int64, chunks=(1000, 1000), order=C)
       nbytes: 762.9M; nbytes_stored: 17.1M; ratio: 44.7; initialized: 100/100
-      store: builtins.dict
+      compressor: BloscCompressor(cname='lz4', clevel=5, shuffle=1)
+      store: dict
 
     """  # flake8: noqa
 
@@ -304,16 +304,16 @@ def open_array(path, mode='a', shape=None, chunks=None, dtype=None,
     ...                      chunks=(1000, 1000), fill_value=0)
     >>> z1[:] = np.arange(100000000).reshape(10000, 10000)
     >>> z1
-    zarr.core.Array((10000, 10000), float64, chunks=(1000, 1000), order=C)
-      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
+    Array((10000, 10000), float64, chunks=(1000, 1000), order=C)
       nbytes: 762.9M; nbytes_stored: 24.8M; ratio: 30.8; initialized: 100/100
-      store: zarr.storage.DirectoryStore
+      compressor: BloscCompressor(cname='lz4', clevel=5, shuffle=1)
+      store: DirectoryStore
     >>> z2 = zarr.open_array('example.zarr', mode='r')
     >>> z2
-    zarr.core.Array((10000, 10000), float64, chunks=(1000, 1000), order=C)
-      compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
+    Array((10000, 10000), float64, chunks=(1000, 1000), order=C)
       nbytes: 762.9M; nbytes_stored: 24.8M; ratio: 30.8; initialized: 100/100
-      store: zarr.storage.DirectoryStore
+      compressor: BloscCompressor(cname='lz4', clevel=5, shuffle=1)
+      store: DirectoryStore
     >>> np.all(z1[:] == z2[:])
     True
 
@@ -399,12 +399,16 @@ def _like_args(a, shape, chunks, dtype, compression, compression_opts,
             pass
     if compression is None:
         if isinstance(a, Array):
-            compression = a.compression
+            if a.compressor is None:
+                compression = None
+                compression_opts = None
+            else:
+                config = a.compressor.get_config()
+                compression = config.pop('id')
+                if compression_opts is None:
+                    compression_opts = config
         else:
             compression = 'default'
-    if compression_opts is None:
-        if isinstance(a, Array):
-            compression_opts = a.compression_opts
     if order is None:
         if isinstance(a, Array):
             order = a.order

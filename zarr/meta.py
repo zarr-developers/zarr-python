@@ -29,7 +29,6 @@ def decode_array_metadata(s):
             chunks=tuple(meta['chunks']),
             dtype=dtype,
             compression=meta['compression'],
-            compression_opts=meta['compression_opts'],
             fill_value=fill_value,
             order=meta['order'],
             filters=meta['filters'],
@@ -47,10 +46,9 @@ def encode_array_metadata(meta):
         chunks=meta['chunks'],
         dtype=encode_dtype(meta['dtype']),
         compression=meta['compression'],
-        compression_opts=meta['compression_opts'],
         fill_value=encode_fill_value(meta['fill_value']),
         order=meta['order'],
-        filters=encode_filters(meta['filters']),
+        filters=meta['filters'],
     )
     s = json.dumps(meta, indent=4, sort_keys=True, ensure_ascii=True)
     b = s.encode('ascii')
@@ -80,13 +78,6 @@ def _decode_dtype_descr(d):
 def decode_dtype(d):
     d = _decode_dtype_descr(d)
     return np.dtype(d)
-
-
-def encode_filters(filters):
-    if not filters:
-        return None
-    else:
-        return [f.get_filter_config() for f in filters]
 
 
 def decode_group_metadata(s):

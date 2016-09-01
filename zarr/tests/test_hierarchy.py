@@ -188,8 +188,8 @@ class TestGroup(unittest.TestCase):
         eq((2000,), d2.shape)
         eq((200,), d2.chunks)
         eq(np.dtype('i1'), d2.dtype)
-        eq('zlib', d2.compression)
-        eq(9, d2.compression_opts)
+        eq('zlib', d2.compressor.codec_id)
+        eq(9, d2.compressor.level)
         eq(42, d2.fill_value)
         eq('F', d2.order)
         eq('a/b/c', d2.path)
@@ -422,8 +422,7 @@ class TestGroup(unittest.TestCase):
 
     def test_group_repr(self):
         g = self.create_group()
-        store_class = '%s.%s' % (dict.__module__, dict.__name__)
-        expect = 'zarr.hierarchy.Group(/, 0)\n  store: %s' % store_class
+        expect = 'Group(/, 0)\n  store: dict'
         actual = repr(g)
         eq(expect, actual)
         g.create_group('foo')
@@ -433,12 +432,12 @@ class TestGroup(unittest.TestCase):
         g.create_dataset('quux', shape=100, chunks=10)
         g.create_dataset('z'*80, shape=100, chunks=10)
         expect = \
-            'zarr.hierarchy.Group(/, 6)\n' \
+            'Group(/, 6)\n' \
             '  arrays: 3; baz, quux, ' \
             'zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz...\n' \
             '  groups: 3; bar, foo, ' \
             'yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy...\n' \
-            '  store: %s' % store_class
+            '  store: dict'
         actual = repr(g)
         eq(expect, actual)
 
@@ -561,7 +560,7 @@ class TestGroupWithDictStore(TestGroup):
 
     def test_group_repr(self):
         g = self.create_group()
-        expect = 'zarr.hierarchy.Group(/, 0)\n  store: zarr.storage.DictStore'
+        expect = 'Group(/, 0)\n  store: DictStore'
         actual = repr(g)
         for l1, l2 in zip(expect.split('\n'), actual.split('\n')):
             eq(l1, l2)
@@ -584,8 +583,8 @@ class TestGroupWithDirectoryStore(TestGroup):
 
     def test_group_repr(self):
         g = self.create_group()
-        expect = 'zarr.hierarchy.Group(/, 0)\n' \
-                 '  store: zarr.storage.DirectoryStore'
+        expect = 'Group(/, 0)\n' \
+                 '  store: DirectoryStore'
         actual = repr(g)
         for l1, l2 in zip(expect.split('\n'), actual.split('\n')):
             eq(l1, l2)
@@ -602,8 +601,8 @@ class TestGroupWithZipStore(TestGroup):
 
     def test_group_repr(self):
         g = self.create_group()
-        expect = 'zarr.hierarchy.Group(/, 0)\n' \
-                 '  store: zarr.storage.ZipStore'
+        expect = 'Group(/, 0)\n' \
+                 '  store: ZipStore'
         actual = repr(g)
         for l1, l2 in zip(expect.split('\n'), actual.split('\n')):
             eq(l1, l2)
@@ -618,9 +617,8 @@ class TestGroupWithChunkStore(TestGroup):
     def test_group_repr(self):
         if not PY2:
             g = self.create_group()
-            expect = 'zarr.hierarchy.Group(/, 0)\n' \
-                     '  store: builtins.dict\n' \
-                     '  chunk_store: builtins.dict'
+            expect = 'Group(/, 0)\n' \
+                     '  store: dict; chunk_store: dict'
             actual = repr(g)
             for l1, l2 in zip(expect.split('\n'), actual.split('\n')):
                 eq(l1, l2)
@@ -666,9 +664,8 @@ class TestGroupWithThreadSynchronizer(TestGroup):
     def test_group_repr(self):
         if not PY2:
             g = self.create_group()
-            expect = 'zarr.hierarchy.Group(/, 0)\n' \
-                     '  store: builtins.dict\n' \
-                     '  synchronizer: zarr.sync.ThreadSynchronizer'
+            expect = 'Group(/, 0)\n' \
+                     '  store: dict; synchronizer: ThreadSynchronizer'
             actual = repr(g)
             for l1, l2 in zip(expect.split('\n'), actual.split('\n')):
                 eq(l1, l2)
@@ -695,9 +692,8 @@ class TestGroupWithProcessSynchronizer(TestGroup):
     def test_group_repr(self):
         if not PY2:
             g = self.create_group()
-            expect = 'zarr.hierarchy.Group(/, 0)\n' \
-                     '  store: builtins.dict\n' \
-                     '  synchronizer: zarr.sync.ProcessSynchronizer'
+            expect = 'Group(/, 0)\n' \
+                     '  store: dict; synchronizer: ProcessSynchronizer'
             actual = repr(g)
             for l1, l2 in zip(expect.split('\n'), actual.split('\n')):
                 eq(l1, l2)

@@ -19,17 +19,17 @@ from zarr.core import Array
 from zarr.errors import PermissionError
 from zarr.compat import PY2
 from zarr.util import buffer_size
-from zarr.filters import DeltaFilter, FixedScaleOffsetFilter
+from zarr.codecs import DeltaFilter, FixedScaleOffsetFilter
 
 
-compression_configs = [
+compression_setups = [
     (None, None),
-    ('zlib', None),
-    ('bz2', None),
-    ('blosc', None)
+    ('zlib', {}),
+    ('bz2', {}),
+    ('blosc', {})
 ]
 if not PY2:
-    compression_configs.append(('lzma', None))
+    compression_setups.append(('lzma', {}))
 
 
 class TestArray(unittest.TestCase):
@@ -149,7 +149,7 @@ class TestArray(unittest.TestCase):
         eq(z.nbytes_stored, zz.nbytes_stored)
 
     def test_array_1d(self):
-        for compression, compression_opts in compression_configs:
+        for compression, compression_opts in compression_setups:
             print(compression, compression_opts)
 
             a = np.arange(1050)
@@ -214,7 +214,7 @@ class TestArray(unittest.TestCase):
             assert_array_equal(a[310:], z[310:])
 
     def test_array_1d_fill_value(self):
-        for compression, compression_opts in compression_configs:
+        for compression, compression_opts in compression_setups:
             print(compression, compression_opts)
 
             for fill_value in -1, 0, 1, 10:
@@ -233,7 +233,7 @@ class TestArray(unittest.TestCase):
                 assert_array_equal(f[310:], z[310:])
 
     def test_array_1d_set_scalar(self):
-        for compression, compression_opts in compression_configs:
+        for compression, compression_opts in compression_setups:
             print(compression, compression_opts)
 
             # setup
@@ -254,7 +254,7 @@ class TestArray(unittest.TestCase):
                 assert_array_equal(a, z[:])
 
     def test_array_2d(self):
-        for compression, compression_opts in compression_configs:
+        for compression, compression_opts in compression_setups:
             print(compression, compression_opts)
 
             a = np.arange(10000).reshape((1000, 10))
@@ -323,7 +323,7 @@ class TestArray(unittest.TestCase):
             assert_array_equal(a[:, 7:], z[:, 7:])
 
     def test_array_2d_partial(self):
-        for compression, compression_opts in compression_configs:
+        for compression, compression_opts in compression_setups:
             print(compression, compression_opts)
 
             z = self.create_array(shape=(1000, 10), chunks=(100, 2), dtype='i4',
@@ -367,7 +367,7 @@ class TestArray(unittest.TestCase):
             eq(-1, z[-1, -1])
 
     def test_array_order(self):
-        for compression, compression_opts in compression_configs:
+        for compression, compression_opts in compression_setups:
             print(compression, compression_opts)
 
             # 1D
@@ -568,8 +568,7 @@ class TestArray(unittest.TestCase):
             eq(z.shape, z2.shape)
             eq(z.chunks, z2.chunks)
             eq(z.dtype, z2.dtype)
-            eq(z.compression, z2.compression)
-            eq(z.compression_opts, z2.compression_opts)
+            eq(z.compressor.get_config(), z2.compressor.get_config())
             eq(z.fill_value, z2.fill_value)
             assert_array_equal(z[:], z2[:])
 
@@ -578,10 +577,10 @@ class TestArray(unittest.TestCase):
 
             z = self.create_array(shape=100, chunks=10, dtype='f4',
                                   compression='zlib', compression_opts=1)
-            expect = """zarr.core.Array((100,), float32, chunks=(10,), order=C)
-  compression: zlib; compression_opts: 1
-  nbytes: 400; nbytes_stored: 231; ratio: 1.7; initialized: 0/10
-  store: builtins.dict
+            expect = """Array((100,), float32, chunks=(10,), order=C)
+  nbytes: 400; nbytes_stored: 246; ratio: 1.6; initialized: 0/10
+  compressor: ZlibCompressor(level=1)
+  store: dict
 """
             actual = repr(z)
             for l1, l2 in zip(expect.split('\n'), actual.split('\n')):
@@ -604,10 +603,10 @@ class TestArrayWithPath(TestArray):
             z = self.create_array(shape=100, chunks=10, dtype='f4',
                                   compression='zlib', compression_opts=1)
             # flake8: noqa
-            expect = """zarr.core.Array(/foo/bar, (100,), float32, chunks=(10,), order=C)
-  compression: zlib; compression_opts: 1
-  nbytes: 400; nbytes_stored: 231; ratio: 1.7; initialized: 0/10
-  store: builtins.dict
+            expect = """Array(/foo/bar, (100,), float32, chunks=(10,), order=C)
+  nbytes: 400; nbytes_stored: 246; ratio: 1.6; initialized: 0/10
+  compressor: ZlibCompressor(level=1)
+  store: dict
 """
             actual = repr(z)
             for l1, l2 in zip(expect.split('\n'), actual.split('\n')):
@@ -633,11 +632,10 @@ class TestArrayWithChunkStore(TestArray):
             z = self.create_array(shape=100, chunks=10, dtype='f4',
                                   compression='zlib', compression_opts=1)
             # flake8: noqa
-            expect = """zarr.core.Array(/foo/bar, (100,), float32, chunks=(10,), order=C)
-  compression: zlib; compression_opts: 1
-  nbytes: 400; nbytes_stored: 231; ratio: 1.7; initialized: 0/10
-  store: builtins.dict
-  chunk_store: builtins.dict
+            expect = """Array(/foo/bar, (100,), float32, chunks=(10,), order=C)
+  nbytes: 400; nbytes_stored: 246; ratio: 1.6; initialized: 0/10
+  compressor: ZlibCompressor(level=1)
+  store: dict; chunk_store: dict
 """
             actual = repr(z)
             for l1, l2 in zip(expect.split('\n'), actual.split('\n')):
@@ -668,12 +666,11 @@ class TestArrayWithFilters(TestArray):
             z = self.create_array(shape=100, chunks=10, dtype='f4',
                                   compression='zlib', compression_opts=1)
             # flake8: noqa
-            expect = """zarr.core.Array((100,), float32, chunks=(10,), order=C)
-  compression: zlib; compression_opts: 1
-  nbytes: 400; nbytes_stored: 505; ratio: 0.8; initialized: 0/10
-  filters: delta, fixedscaleoffset
-  store: builtins.dict
-  chunk_store: builtins.dict
+            expect = """Array((100,), float32, chunks=(10,), order=C)
+  nbytes: 400; nbytes_stored: 516; ratio: 0.8; initialized: 0/10
+  compressor: ZlibCompressor(level=1)
+  filters: DeltaFilter, FixedScaleOffsetFilter
+  store: dict
 """
             actual = repr(z)
             for l1, l2 in zip(expect.split('\n'), actual.split('\n')):

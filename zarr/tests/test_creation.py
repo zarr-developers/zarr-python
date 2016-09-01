@@ -179,8 +179,7 @@ def test_empty_like():
     eq(z.shape, z2.shape)
     eq(z.chunks, z2.chunks)
     eq(z.dtype, z2.dtype)
-    eq(z.compression, z2.compression)
-    eq(z.compression_opts, z2.compression_opts)
+    eq(z.compressor.get_config(), z2.compressor.get_config())
     eq(z.fill_value, z2.fill_value)
     eq(z.order, z2.order)
     # numpy array
@@ -204,8 +203,7 @@ def test_zeros_like():
     eq(z.shape, z2.shape)
     eq(z.chunks, z2.chunks)
     eq(z.dtype, z2.dtype)
-    eq(z.compression, z2.compression)
-    eq(z.compression_opts, z2.compression_opts)
+    eq(z.compressor.get_config(), z2.compressor.get_config())
     eq(z.fill_value, z2.fill_value)
     eq(z.order, z2.order)
     # numpy array
@@ -225,8 +223,7 @@ def test_ones_like():
     eq(z.shape, z2.shape)
     eq(z.chunks, z2.chunks)
     eq(z.dtype, z2.dtype)
-    eq(z.compression, z2.compression)
-    eq(z.compression_opts, z2.compression_opts)
+    eq(z.compressor.get_config(), z2.compressor.get_config())
     eq(z.fill_value, z2.fill_value)
     eq(z.order, z2.order)
     # numpy array
@@ -245,8 +242,7 @@ def test_full_like():
     eq(z.shape, z2.shape)
     eq(z.chunks, z2.chunks)
     eq(z.dtype, z2.dtype)
-    eq(z.compression, z2.compression)
-    eq(z.compression_opts, z2.compression_opts)
+    eq(z.compressor.get_config(), z2.compressor.get_config())
     eq(z.fill_value, z2.fill_value)
     eq(z.order, z2.order)
     # numpy array
@@ -271,8 +267,7 @@ def test_open_like():
     eq(z.shape, z2.shape)
     eq(z.chunks, z2.chunks)
     eq(z.dtype, z2.dtype)
-    eq(z.compression, z2.compression)
-    eq(z.compression_opts, z2.compression_opts)
+    eq(z.compressor.get_config(), z2.compressor.get_config())
     eq(z.fill_value, z2.fill_value)
     eq(z.order, z2.order)
     # numpy array
@@ -294,7 +289,7 @@ def test_create():
     eq((100,), z.shape)
     eq((100,), z.chunks)  # auto-chunks
     eq(np.dtype(None), z.dtype)
-    eq('blosc', z.compression)
+    eq('blosc', z.compressor.codec_id)
     assert_is_none(z.fill_value)
 
     # all specified
@@ -305,8 +300,8 @@ def test_create():
     eq((100,), z.shape)
     eq((10,), z.chunks)
     eq(np.dtype('i4'), z.dtype)
-    eq('zlib', z.compression)
-    eq(1, z.compression_opts)
+    eq('zlib', z.compressor.codec_id)
+    eq(1, z.compressor.level)
     eq(42, z.fill_value)
     eq('F', z.order)
 

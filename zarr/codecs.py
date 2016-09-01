@@ -4,6 +4,8 @@ import zlib
 import bz2
 import array
 import math
+import multiprocessing
+import atexit
 
 
 import numpy as np
@@ -13,7 +15,7 @@ from zarr.compat import text_type, binary_type
 from zarr.meta import encode_dtype, decode_dtype
 
 
-registry = dict()
+codec_registry = dict()
 
 
 def get_codec(config):
@@ -29,10 +31,10 @@ def get_codec(config):
     codec : Codec
 
     """
-    name = config.pop('name', None)
-    cls = registry.get(name, None)
+    codec_id = config.pop('id', None)
+    cls = codec_registry.get(codec_id, None)
     if cls is None:
-        raise ValueError('codec not available: %r' % name)
+        raise ValueError('codec not available: %r' % codec_id)
     return cls.from_config(config)
 
 
@@ -40,7 +42,7 @@ class Codec(object):
     """Codec abstract base class."""
 
     # override in sub-class
-    name = None
+    id = None
 
     def encode(self, buf):
         """Encode data in `buf`.
@@ -144,7 +146,7 @@ class ZlibCompressor(Codec):
 
     """
 
-    name = 'zlib'
+    codec_id = 'zlib'
 
     def __init__(self, level=-1):
         self.level = level
@@ -169,13 +171,17 @@ class ZlibCompressor(Codec):
 
     def get_config(self):
         config = dict()
-        config['name'] = self.name
+        config['id'] = self.codec_id
         config['level'] = self.level
         return config
 
+    def __repr__(self):
+        r = '%s(level=%s)' % (type(self).__name__, self.level)
+        return r
 
-registry[ZlibCompressor.name] = ZlibCompressor
-registry['gzip'] = ZlibCompressor  # alias
+
+codec_registry[ZlibCompressor.codec_id] = ZlibCompressor
+codec_registry['gzip'] = ZlibCompressor  # alias
 
 
 class BZ2Compressor(Codec):
@@ -188,7 +194,7 @@ class BZ2Compressor(Codec):
 
     """
 
-    name = 'bz2'
+    codec_id = 'bz2'
 
     def __init__(self, level=9):
         self.level = level
@@ -218,12 +224,16 @@ class BZ2Compressor(Codec):
 
     def get_config(self):
         config = dict()
-        config['name'] = self.name
+        config['id'] = self.codec_id
         config['level'] = self.level
         return config
 
+    def __repr__(self):
+        r = '%s(level=%s)' % (type(self).__name__, self.level)
+        return r
 
-registry[BZ2Compressor.name] = BZ2Compressor
+
+codec_registry[BZ2Compressor.codec_id] = BZ2Compressor
 
 
 try:
@@ -252,7 +262,7 @@ else:
 
         """
 
-        name = 'lzma'
+        codec_id = 'lzma'
 
         def __init__(self, format=lzma.FORMAT_XZ, check=-1, preset=None,
                      filters=None):
@@ -289,14 +299,20 @@ else:
 
         def get_config(self):
             config = dict()
-            config['name'] = self.name
+            config['id'] = self.codec_id
             config['format'] = self.format
             config['check'] = self.check
             config['preset'] = self.preset
             config['filters'] = self.filters
             return config
 
-    registry[LZMACompressor.name] = LZMACompressor
+        def __repr__(self):
+            r = '%s(format=%r, check=%r, preset=%r, filters=%r)' % \
+                (type(self).__name__, self.format, self.check, self.preset,
+                 self.filters)
+            return r
+
+    codec_registry[LZMACompressor.codec_id] = LZMACompressor
 
 try:
     from zarr import blosc
@@ -319,7 +335,7 @@ else:
 
         """
 
-        name = 'blosc'
+        codec_id = 'blosc'
 
         def __init__(self, cname='lz4', clevel=5, shuffle=1):
             if isinstance(cname, text_type):
@@ -336,13 +352,25 @@ else:
 
         def get_config(self):
             config = dict()
-            config['name'] = self.name
+            config['id'] = self.codec_id
             config['cname'] = text_type(self.cname, 'ascii')
             config['clevel'] = self.clevel
             config['shuffle'] = self.shuffle
             return config
 
-    registry[BloscCompressor.name] = BloscCompressor
+        def __repr__(self):
+            r = '%s(cname=%r, clevel=%r, shuffle=%r)' % \
+                (type(self).__name__, text_type(self.cname, 'ascii'),
+                 self.clevel, self.shuffle)
+            return r
+
+    codec_registry[BloscCompressor.codec_id] = BloscCompressor
+
+    # initialize blosc
+    ncores = multiprocessing.cpu_count()
+    blosc.init()
+    blosc.set_nthreads(min(8, ncores))
+    atexit.register(blosc.destroy)
 
 
 def _ndarray_from_buffer(buf, dtype):
@@ -387,7 +415,7 @@ class DeltaFilter(Codec):
 
     """  # flake8: noqa
 
-    name = 'delta'
+    codec_id = 'delta'
 
     def __init__(self, dtype, astype=None):
         self.dtype = np.dtype(dtype)
@@ -437,7 +465,7 @@ class DeltaFilter(Codec):
 
     def get_config(self):
         config = dict()
-        config['name'] = self.name
+        config['id'] = self.codec_id
         config['dtype'] = encode_dtype(self.dtype)
         config['astype'] = encode_dtype(self.astype)
         return config
@@ -448,8 +476,15 @@ class DeltaFilter(Codec):
         astype = decode_dtype(config['astype'])
         return cls(dtype=dtype, astype=astype)
 
+    def __repr__(self):
+        r = '%s(dtype=%s' % (type(self).__name__, self.dtype)
+        if self.astype != self.dtype:
+            r += ', astype=%s' % self.astype
+        r += ')'
+        return r
 
-registry[DeltaFilter.name] = DeltaFilter
+
+codec_registry[DeltaFilter.codec_id] = DeltaFilter
 
 
 class FixedScaleOffsetFilter(Codec):
@@ -514,7 +549,7 @@ class FixedScaleOffsetFilter(Codec):
 
     """  # flake8: noqa
 
-    name = 'fixedscaleoffset'
+    codec_id = 'fixedscaleoffset'
 
     def __init__(self, offset, scale, dtype, astype=None):
         self.offset = offset
@@ -557,7 +592,7 @@ class FixedScaleOffsetFilter(Codec):
 
     def get_config(self):
         config = dict()
-        config['name'] = self.name
+        config['id'] = self.codec_id
         config['astype'] = encode_dtype(self.astype)
         config['dtype'] = encode_dtype(self.dtype)
         config['scale'] = self.scale
@@ -573,8 +608,15 @@ class FixedScaleOffsetFilter(Codec):
         return cls(astype=astype, dtype=dtype, scale=scale,
                    offset=offset)
 
+    def __repr__(self):
+        r = '%s(scale=%s, offset=%s, dtype=%s' % \
+            (type(self).__name__, self.scale, self.offset, self.dtype)
+        if self.astype != self.dtype:
+            r += ', astype=%s' % self.astype
+        r += ')'
+        return r
 
-registry[FixedScaleOffsetFilter.name] = FixedScaleOffsetFilter
+codec_registry[FixedScaleOffsetFilter.codec_id] = FixedScaleOffsetFilter
 
 
 class QuantizeFilter(Codec):
@@ -615,7 +657,7 @@ class QuantizeFilter(Codec):
 
     """
 
-    name = 'quantize'
+    codec_id = 'quantize'
 
     def __init__(self, digits, dtype, astype=None):
         self.digits = digits
@@ -656,7 +698,7 @@ class QuantizeFilter(Codec):
 
     def get_config(self):
         config = dict()
-        config['name'] = self.filter_name
+        config['id'] = self.codec_id
         config['digits'] = self.digits
         config['dtype'] = encode_dtype(self.dtype)
         config['astype'] = encode_dtype(self.astype)
@@ -669,8 +711,16 @@ class QuantizeFilter(Codec):
         digits = config['digits']
         return cls(digits=digits, dtype=dtype, astype=astype)
 
+    def __repr__(self):
+        r = '%s(digits=%s, dtype=%s' % \
+            (type(self).__name__, self.digits, self.dtype)
+        if self.astype != self.dtype:
+            r += ', astype=%s' % self.astype
+        r += ')'
+        return r
 
-registry[QuantizeFilter.name] = QuantizeFilter
+
+codec_registry[QuantizeFilter.codec_id] = QuantizeFilter
 
 
 class PackBitsFilter(Codec):
@@ -696,7 +746,7 @@ class PackBitsFilter(Codec):
 
     """
 
-    name = 'packbits'
+    codec_id = 'packbits'
 
     def __init__(self):
         pass
@@ -751,15 +801,19 @@ class PackBitsFilter(Codec):
 
     def get_config(self):
         config = dict()
-        config['name'] = self.name
+        config['id'] = self.codec_id
         return config
 
     @classmethod
     def from_config(cls, config):
         return cls()
 
+    def __repr__(self):
+        r = '%s()' % type(self).__name__
+        return r
 
-registry[PackBitsFilter.name] = PackBitsFilter
+
+codec_registry[PackBitsFilter.codec_id] = PackBitsFilter
 
 
 def _ensure_bytes(l):
@@ -791,7 +845,7 @@ class CategorizeFilter(Codec):
     >>> x
     array([b'male', b'female', b'female', b'male', b'unexpected'],
           dtype='|S10')
-    >>> f = zarr.CategoryFilter(labels=[b'female', b'male'], dtype=x.dtype)
+    >>> f = zarr.CategorizeFilter(labels=[b'female', b'male'], dtype=x.dtype)
     >>> y = f.encode(x)
     >>> y
     array([2, 1, 1, 2, 0], dtype=uint8)
@@ -802,7 +856,7 @@ class CategorizeFilter(Codec):
 
     """
 
-    name = 'categorize'
+    codec_id = 'categorize'
 
     def __init__(self, labels, dtype, astype='u1'):
         self.labels = [_ensure_bytes(l) for l in labels]
@@ -845,7 +899,7 @@ class CategorizeFilter(Codec):
 
     def get_config(self):
         config = dict()
-        config['name'] = self.name
+        config['id'] = self.codec_id
         config['labels'] = [text_type(l, 'ascii') for l in self.labels]
         config['dtype'] = encode_dtype(self.dtype)
         config['astype'] = encode_dtype(self.astype)
@@ -858,5 +912,15 @@ class CategorizeFilter(Codec):
         labels = config['labels']
         return cls(labels=labels, dtype=dtype, astype=astype)
 
+    def __repr__(self):
+        r = '%s(dtype=%s, astype=%s, labels=%r)' % \
+            (type(self).__name__, self.dtype, self.astype, self.labels)
+        return r
 
-registry[CategorizeFilter.name] = CategorizeFilter
+
+codec_registry[CategorizeFilter.codec_id] = CategorizeFilter
+
+
+__all__ = ['get_codec', 'codec_registry']
+for _cls in codec_registry.values():
+    __all__.append(_cls.__name__)

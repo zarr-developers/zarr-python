@@ -13,14 +13,19 @@ import numpy as np
 
 from zarr.util import normalize_shape, normalize_chunks, normalize_order, \
     normalize_storage_path, buffer_size
-from zarr.compressors import get_compressor_cls
 from zarr.meta import encode_array_metadata, encode_group_metadata
 from zarr.compat import PY2, binary_type
+from zarr.codecs import codec_registry
 
 
 array_meta_key = '.zarray'
 group_meta_key = '.zgroup'
 attrs_key = '.zattrs'
+try:
+    from zarr.codecs import BloscCompressor
+    default_compression = 'blosc'
+except ImportError:
+    default_compression = 'zlib'
 
 
 def _path_to_prefix(path):
@@ -169,10 +174,10 @@ def init_array(store, shape, chunks, dtype=None, compression='default',
                 1000,
                 1000
             ],
-            "compression": "blosc",
-            "compression_opts": {
+            "compression": {
                 "clevel": 5,
                 "cname": "lz4",
+                "id": "blosc",
                 "shuffle": 1
             },
             "dtype": "<f8",
@@ -202,10 +207,10 @@ def init_array(store, shape, chunks, dtype=None, compression='default',
             "chunks": [
                 1000000
             ],
-            "compression": "blosc",
-            "compression_opts": {
+            "compression": {
                 "clevel": 5,
                 "cname": "lz4",
+                "id": "blosc",
                 "shuffle": 1
             },
             "dtype": "|i1",
@@ -250,21 +255,30 @@ def init_array(store, shape, chunks, dtype=None, compression='default',
     if compression and compression.lower() == 'none':
         # backwards compatibility
         compression = None
+    elif compression == 'default':
+        compression = default_compression
 
-    # normalize compression_opts
-    if compression is None:
-        compression_opts = None
-    else:
-        compressor_cls = get_compressor_cls(compression)
-        compression = compressor_cls.canonical_name
-        compression_opts = compressor_cls.normalize_opts(
-            compression_opts
-        )
+    # obtain compression config
+    if compression:
+        codec_cls = codec_registry[compression]
+        if isinstance(compression_opts, dict):
+            codec = codec_cls(**compression_opts)
+        elif isinstance(compression_opts, (list, tuple)):
+            codec = codec_cls(*compression_opts)
+        elif compression_opts is None:
+            codec = codec_cls()
+        else:
+            codec = codec_cls(compression_opts)
+        compression = codec.get_config()
+
+    # obtain filters config
+    if filters:
+        filters = [f.get_config() for f in filters]
 
     # initialize metadata
     meta = dict(shape=shape, chunks=chunks, dtype=dtype,
-                compression=compression, compression_opts=compression_opts,
-                fill_value=fill_value, order=order, filters=filters)
+                compression=compression, fill_value=fill_value,
+                order=order, filters=filters)
     key = _path_to_prefix(path) + array_meta_key
     store[key] = encode_array_metadata(meta)
 

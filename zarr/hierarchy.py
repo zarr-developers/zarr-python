@@ -192,10 +192,14 @@ class Group(Mapping):
         return sum(1 for _ in self)
 
     def __repr__(self):
-        r = '%s.%s(' % (type(self).__module__, type(self).__name__)
+
+        # main line
+        r = '%s(' % type(self).__name__
         r += self.name + ', '
         r += str(len(self))
         r += ')'
+
+        # members
         array_keys = list(self.array_keys())
         if array_keys:
             arrays_line = '\n  arrays: %s; %s' % \
@@ -210,16 +214,14 @@ class Group(Mapping):
             if len(groups_line) > 80:
                 groups_line = groups_line[:77] + '...'
             r += groups_line
-        r += '\n  store: %s.%s' % (type(self._store).__module__,
-                                   type(self._store).__name__)
-        if self._store != self._chunk_store:
-            r += '\n  chunk_store: %s.%s' % \
-                 (type(self._chunk_store).__module__,
-                  type(self._chunk_store).__name__)
-        if self._synchronizer is not None:
-            r += ('\n  synchronizer: %s.%s' %
-                  (type(self._synchronizer).__module__,
-                   type(self._synchronizer).__name__))
+
+        # storage and synchronizer classes
+        r += '\n  store: %s' % type(self.store).__name__
+        if self.store != self.chunk_store:
+            r += '; chunk_store: %s' % type(self.chunk_store).__name__
+        if self.synchronizer is not None:
+            r += '; synchronizer: %s' % type(self.synchronizer).__name__
+
         return r
 
     def __getstate__(self):
@@ -275,18 +277,18 @@ class Group(Mapping):
         >>> g1 = zarr.group()
         >>> d1 = g1.create_dataset('foo/bar/baz', shape=100, chunks=10)
         >>> g1['foo']
-        zarr.hierarchy.Group(/foo, 1)
+        Group(/foo, 1)
           groups: 1; bar
-          store: zarr.storage.DictStore
+          store: DictStore
         >>> g1['foo/bar']
-        zarr.hierarchy.Group(/foo/bar, 1)
+        Group(/foo/bar, 1)
           arrays: 1; baz
-          store: zarr.storage.DictStore
+          store: DictStore
         >>> g1['foo/bar/baz']
-        zarr.core.Array(/foo/bar/baz, (100,), float64, chunks=(10,), order=C)
-          compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
-          nbytes: 800; nbytes_stored: 304; ratio: 2.6; initialized: 0/10
-          store: zarr.storage.DictStore
+        Array(/foo/bar/baz, (100,), float64, chunks=(10,), order=C)
+          nbytes: 800; nbytes_stored: 294; ratio: 2.7; initialized: 0/10
+          compressor: BloscCompressor(cname='lz4', clevel=5, shuffle=1)
+          store: DictStore
 
         """  # flake8: noqa
         path = self._item_path(item)
@@ -555,10 +557,10 @@ class Group(Mapping):
         >>> d1 = g1.create_dataset('foo', shape=(10000, 10000),
         ...                        chunks=(1000, 1000))
         >>> d1
-        zarr.core.Array(/foo, (10000, 10000), float64, chunks=(1000, 1000), order=C)
-          compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
-          nbytes: 762.9M; nbytes_stored: 337; ratio: 2373887.2; initialized: 0/100
-          store: zarr.storage.DictStore
+        Array(/foo, (10000, 10000), float64, chunks=(1000, 1000), order=C)
+          nbytes: 762.9M; nbytes_stored: 327; ratio: 2446483.2; initialized: 0/100
+          compressor: BloscCompressor(cname='lz4', clevel=5, shuffle=1)
+          store: DictStore
 
         """  # flake8: noqa
 
@@ -813,16 +815,16 @@ def group(store=None, overwrite=False, chunk_store=None, synchronizer=None):
         >>> import zarr
         >>> g = zarr.group()
         >>> g
-        zarr.hierarchy.Group(/, 0)
-          store: zarr.storage.DictStore
+        Group(/, 0)
+          store: DictStore
 
     Create a group with a different store::
 
         >>> store = zarr.DirectoryStore('example')
         >>> g = zarr.group(store=store, overwrite=True)
         >>> g
-        zarr.hierarchy.Group(/, 0)
-          store: zarr.storage.DirectoryStore
+        Group(/, 0)
+          store: DirectoryStore
 
     """
 
@@ -869,14 +871,14 @@ def open_group(path, mode='a', synchronizer=None):
     >>> foo = root.create_group('foo')
     >>> bar = root.create_group('bar')
     >>> root
-    zarr.hierarchy.Group(/, 2)
+    Group(/, 2)
       groups: 2; bar, foo
-      store: zarr.storage.DirectoryStore
+      store: DirectoryStore
     >>> root2 = zarr.open_group('example', mode='a')
     >>> root2
-    zarr.hierarchy.Group(/, 2)
+    Group(/, 2)
       groups: 2; bar, foo
-      store: zarr.storage.DirectoryStore
+      store: DirectoryStore
     >>> root == root2
     True
 
