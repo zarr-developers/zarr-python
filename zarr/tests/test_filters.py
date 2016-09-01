@@ -8,7 +8,7 @@ from nose.tools import eq_ as eq
 
 
 from zarr.codecs import DeltaFilter, FixedScaleOffsetFilter, \
-    QuantizeFilter, PackBitsFilter, CategorizeFilter, codec_registry, \
+    QuantizeFilter, PackBitsFilter, CategorizeFilter, \
     ZlibCompressor, BloscCompressor, BZ2Compressor
 from zarr.creation import array
 from zarr.compat import PY2

@@ -206,7 +206,7 @@ else:
 
 
 try:
-    from zarr import blosc
+    from zarr import blosc  # flake8: noqa
 except ImportError:  # pragma: no cover
     pass
 else:
