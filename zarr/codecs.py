@@ -1,17 +1,348 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, print_function, division
+import zlib
+import bz2
+import array
 import math
 
 
 import numpy as np
 
 
-from zarr.meta import encode_dtype, decode_dtype
-from zarr.compressors import registry as compressor_registry
 from zarr.compat import text_type, binary_type
+from zarr.meta import encode_dtype, decode_dtype
 
 
-filter_registry = dict()
+registry = dict()
+
+
+def get_codec(config):
+    """Obtain a codec for the given configuration.
+
+    Parameters
+    ----------
+    config : dict-like
+        Configuration object.
+
+    Returns
+    -------
+    codec : Codec
+
+    """
+    name = config.pop('name', None)
+    cls = registry.get(name, None)
+    if cls is None:
+        raise ValueError('codec not available: %r' % name)
+    return cls.from_config(config)
+
+
+class Codec(object):
+    """Codec abstract base class."""
+
+    # override in sub-class
+    name = None
+
+    def encode(self, buf):
+        """Encode data in `buf`.
+
+        Parameters
+        ----------
+        buf : buffer-like
+            Data to be encoded. May be any object supporting the new-style
+            buffer protocol or `array.array`.
+
+        Returns
+        -------
+        enc : buffer-like
+            Encoded data. May be any object supporting the new-style buffer
+            protocol or `array.array`.
+
+        """
+        # override in sub-class
+        raise NotImplementedError
+
+    def decode(self, buf, out=None):
+        """Decode data in `buf`.
+
+        Parameters
+        ----------
+        buf : buffer-like
+            Encoded data. May be any object supporting the new-style buffer
+            protocol or `array.array`.
+        out : buffer-like, optional
+            Buffer to store decoded data.
+
+        Returns
+        -------
+        out : buffer-like
+            Decoded data. May be any object supporting the new-style buffer
+            protocol or `array.array`.
+
+        """
+        # override in sub-class
+        raise NotImplementedError
+
+    def get_config(self):
+        """Return a dictionary holding configuration parameters for this
+        codec. All values must be compatible with JSON encoding."""
+        # override in sub-class
+        raise NotImplementedError
+
+    @classmethod
+    def from_config(cls, config):
+        """Instantiate from a configuration object."""
+        # override if need special decoding of config values
+        return cls(**config)
+
+
+def _buffer_copy(buf, out=None):
+
+    if out is None:
+        # no-op
+        return buf
+
+    # handle ndarray destination
+    if isinstance(out, np.ndarray):
+
+        # view source as destination dtype
+        if isinstance(buf, np.ndarray):
+            buf = buf.view(dtype=out.dtype).reshape(-1, order='A')
+        else:
+            buf = np.frombuffer(buf, dtype=out.dtype)
+
+        # ensure shapes are compatible
+        if buf.shape != out.shape:
+            if out.flags.f_contiguous:
+                order = 'F'
+            else:
+                order = 'C'
+            buf = buf.reshape(out.shape, order=order)
+
+        # copy via numpy
+        np.copyto(out, buf)
+
+    # handle generic buffer destination
+    else:
+
+        # ensure source is 1D
+        if isinstance(buf, np.ndarray) and buf.ndim > 1:
+            buf = buf.reshape(-1, order='A')
+
+        # assume dest is compatible, try to copy via memoryview
+        memoryview(out)[:] = buf
+
+    return out
+
+
+class ZlibCompressor(Codec):
+    """Provides compression using zlib via the Python standard library.
+
+    Parameters
+    ----------
+    level : int
+        Compression level.
+
+    """
+
+    name = 'zlib'
+
+    def __init__(self, level=-1):
+        self.level = level
+
+    def encode(self, buf):
+
+        # if numpy array, can only handle C contiguous directly
+        if isinstance(buf, np.ndarray) and not buf.flags.c_contiguous:
+            buf = buf.tobytes(order='A')
+
+        # do compression
+        return zlib.compress(buf, self.level)
+
+    # noinspection PyMethodMayBeStatic
+    def decode(self, buf, out=None):
+
+        # do decompression
+        dec = zlib.decompress(buf)
+
+        # handle destination
+        return _buffer_copy(dec, out)
+
+    def get_config(self):
+        config = dict()
+        config['name'] = self.name
+        config['level'] = self.level
+        return config
+
+
+registry[ZlibCompressor.name] = ZlibCompressor
+registry['gzip'] = ZlibCompressor  # alias
+
+
+class BZ2Compressor(Codec):
+    """Provides compression using bzip2 via the Python standard library.
+
+    Parameters
+    ----------
+    level : int
+        Compression level.
+
+    """
+
+    name = 'bz2'
+
+    def __init__(self, level=9):
+        self.level = level
+
+    def encode(self, buf):
+
+        # if numpy array, can only handle C contiguous directly
+        if isinstance(buf, np.ndarray) and not buf.flags.c_contiguous:
+            buf = buf.tobytes(order='A')
+
+        # do compression
+        return bz2.compress(buf, self.level)
+
+    # noinspection PyMethodMayBeStatic
+    def decode(self, buf, out=None):
+
+        # BZ2 cannot handle ndarray directly at all, coerce everything to
+        # memoryview
+        if not isinstance(buf, array.array):
+            buf = memoryview(buf)
+
+        # do decompression
+        dec = bz2.decompress(buf)
+
+        # handle destination
+        return _buffer_copy(dec, out)
+
+    def get_config(self):
+        config = dict()
+        config['name'] = self.name
+        config['level'] = self.level
+        return config
+
+
+registry[BZ2Compressor.name] = BZ2Compressor
+
+
+try:
+    import lzma
+except ImportError:  # pragma: no cover
+    pass
+else:
+
+    # noinspection PyShadowingBuiltins
+    class LZMACompressor(Codec):
+        """Provides compression using lzma via the Python standard library
+        (only available under Python 3).
+
+        Parameters
+        ----------
+        format : integer, optional
+            One of the lzma format codes, e.g., ``lzma.FORMAT_XZ``.
+        check : integer, optional
+            One of the lzma check codes, e.g., ``lzma.CHECK_NONE``.
+        preset : integer, optional
+            An integer between 0 and 9 inclusive, specifying the compression
+            level.
+        filters : list, optional
+            A list of dictionaries specifying compression filters. If
+            filters are provided, 'preset' must be None.
+
+        """
+
+        name = 'lzma'
+
+        def __init__(self, format=lzma.FORMAT_XZ, check=-1, preset=None,
+                     filters=None):
+            self.format = format
+            self.check = check
+            self.preset = preset
+            self.filters = filters
+
+        def encode(self, buf):
+
+            # if numpy array, can only handle C contiguous directly
+            if isinstance(buf, np.ndarray) and not buf.flags.c_contiguous:
+                buf = buf.tobytes(order='A')
+
+            # do compression
+            return lzma.compress(buf, format=self.format, check=self.check,
+                                 preset=self.preset, filters=self.filters)
+
+        def decode(self, buf, out=None):
+
+            # setup filters
+            if self.format == lzma.FORMAT_RAW:
+                # filters needed
+                filters = self.filters
+            else:
+                # filters should not be specified
+                filters = None
+
+            # do decompression
+            dec = lzma.decompress(buf, format=self.format, filters=filters)
+
+            # handle destination
+            return _buffer_copy(dec, out)
+
+        def get_config(self):
+            config = dict()
+            config['name'] = self.name
+            config['format'] = self.format
+            config['check'] = self.check
+            config['preset'] = self.preset
+            config['filters'] = self.filters
+            return config
+
+    registry[LZMACompressor.name] = LZMACompressor
+
+try:
+    from zarr import blosc
+except ImportError:  # pragma: no cover
+    pass
+else:
+
+    class BloscCompressor(Codec):
+        """Provides compression using the blosc meta-compressor.
+
+        Parameters
+        ----------
+        cname : string, optional
+            A string naming one of the compression algorithms available
+            within blosc, e.g., 'blosclz', 'lz4', 'zlib' or 'snappy'.
+        clevel : integer, optional
+            An integer between 0 and 9 specifying the compression level.
+        shuffle : integer, optional
+            Either 0 (no shuffle), 1 (byte shuffle) or 2 (bit shuffle).
+
+        """
+
+        name = 'blosc'
+
+        def __init__(self, cname='lz4', clevel=5, shuffle=1):
+            if isinstance(cname, text_type):
+                cname = cname.encode('ascii')
+            self.cname = cname
+            self.clevel = clevel
+            self.shuffle = shuffle
+
+        def encode(self, buf):
+            return blosc.compress(buf, self.cname, self.clevel, self.shuffle)
+
+        def decode(self, buf, out=None):
+            return blosc.decompress(buf, out)
+
+        def get_config(self):
+            config = dict()
+            config['name'] = self.name
+            config['cname'] = text_type(self.cname, 'ascii')
+            config['clevel'] = self.clevel
+            config['shuffle'] = self.shuffle
+            return config
+
+    registry[BloscCompressor.name] = BloscCompressor
 
 
 def _ndarray_from_buffer(buf, dtype):
@@ -22,7 +353,7 @@ def _ndarray_from_buffer(buf, dtype):
     return arr
 
 
-class DeltaFilter(object):
+class DeltaFilter(Codec):
     """Filter to encode data as the difference between adjacent values.
 
     Parameters
@@ -56,7 +387,7 @@ class DeltaFilter(object):
 
     """  # flake8: noqa
 
-    filter_name = 'delta'
+    name = 'delta'
 
     def __init__(self, dtype, astype=None):
         self.dtype = np.dtype(dtype)
@@ -66,43 +397,62 @@ class DeltaFilter(object):
             self.astype = np.dtype(astype)
 
     def encode(self, buf):
+
         # view input data as 1D array
         arr = _ndarray_from_buffer(buf, self.dtype)
+
         # setup encoded output
         enc = np.empty_like(arr, dtype=self.astype)
+
         # set first element
         enc[0] = arr[0]
+
         # compute differences
         enc[1:] = np.diff(arr)
+
         return enc
 
-    def decode(self, buf):
+    def decode(self, buf, out=None):
+
         # view encoded data as 1D array
         enc = _ndarray_from_buffer(buf, self.astype)
+
         # setup decoded output
-        dec = np.empty_like(enc, dtype=self.dtype)
+        if isinstance(out, np.ndarray):
+            # optimization, can decode directly to out
+            dec = out.reshape(-1, order='A')
+            copy_needed = False
+        else:
+            dec = np.empty_like(enc, dtype=self.dtype)
+            copy_needed = True
+
         # decode differences
         np.cumsum(enc, out=dec)
-        return dec
 
-    def get_filter_config(self):
+        # handle output
+        if copy_needed:
+            out = _buffer_copy(dec, out)
+
+        return out
+
+    def get_config(self):
         config = dict()
-        config['name'] = self.filter_name
+        config['name'] = self.name
         config['dtype'] = encode_dtype(self.dtype)
         config['astype'] = encode_dtype(self.astype)
         return config
 
     @classmethod
-    def from_filter_config(cls, config):
+    def from_config(cls, config):
         dtype = decode_dtype(config['dtype'])
         astype = decode_dtype(config['astype'])
         return cls(dtype=dtype, astype=astype)
 
 
-filter_registry[DeltaFilter.filter_name] = DeltaFilter
+registry[DeltaFilter.name] = DeltaFilter
 
 
-class FixedScaleOffsetFilter(object):
+class FixedScaleOffsetFilter(Codec):
     """Simplified version of the scale-offset filter available in HDF5.
     Applies the transformation `(x - offset) * scale` to all chunks. Results
     are rounded to the nearest integer but are not packed according to the
@@ -164,7 +514,7 @@ class FixedScaleOffsetFilter(object):
 
     """  # flake8: noqa
 
-    filter_name = 'fixedscaleoffset'
+    name = 'fixedscaleoffset'
 
     def __init__(self, offset, scale, dtype, astype=None):
         self.offset = offset
@@ -176,28 +526,38 @@ class FixedScaleOffsetFilter(object):
             self.astype = np.dtype(astype)
 
     def encode(self, buf):
+
         # interpret buffer as 1D array
         arr = _ndarray_from_buffer(buf, self.dtype)
+
         # compute scale offset
         enc = (arr - self.offset) * self.scale
+
         # round to nearest integer
         enc = np.around(enc)
+
         # convert dtype
         enc = enc.astype(self.astype, copy=False)
+
         return enc
 
-    def decode(self, buf):
+    def decode(self, buf, out=None):
+
         # interpret buffer as 1D array
         enc = _ndarray_from_buffer(buf, self.astype)
+
         # decode scale offset
         dec = (enc / self.scale) + self.offset
+
         # convert dtype
         dec = dec.astype(self.dtype, copy=False)
-        return dec
 
-    def get_filter_config(self):
+        # handle output
+        return _buffer_copy(dec, out)
+
+    def get_config(self):
         config = dict()
-        config['name'] = self.filter_name
+        config['name'] = self.name
         config['astype'] = encode_dtype(self.astype)
         config['dtype'] = encode_dtype(self.dtype)
         config['scale'] = self.scale
@@ -205,7 +565,7 @@ class FixedScaleOffsetFilter(object):
         return config
 
     @classmethod
-    def from_filter_config(cls, config):
+    def from_config(cls, config):
         astype = decode_dtype(config['astype'])
         dtype = decode_dtype(config['dtype'])
         scale = config['scale']
@@ -214,10 +574,10 @@ class FixedScaleOffsetFilter(object):
                    offset=offset)
 
 
-filter_registry[FixedScaleOffsetFilter.filter_name] = FixedScaleOffsetFilter
+registry[FixedScaleOffsetFilter.name] = FixedScaleOffsetFilter
 
 
-class QuantizeFilter(object):
+class QuantizeFilter(Codec):
     """Lossy filter to reduce the precision of floating point data.
 
     Parameters
@@ -255,7 +615,7 @@ class QuantizeFilter(object):
 
     """
 
-    filter_name = 'quantize'
+    name = 'quantize'
 
     def __init__(self, digits, dtype, astype=None):
         self.digits = digits
@@ -268,8 +628,10 @@ class QuantizeFilter(object):
             raise ValueError('only floating point data types are supported')
 
     def encode(self, buf):
+
         # interpret buffer as 1D array
         arr = _ndarray_from_buffer(buf, self.dtype)
+
         # apply scaling
         precision = 10. ** -self.digits
         exp = math.log(precision, 10)
@@ -280,16 +642,19 @@ class QuantizeFilter(object):
         bits = math.ceil(math.log(10. ** -exp, 2))
         scale = 2. ** bits
         enc = np.around(scale * arr) / scale
+
         # cast dtype
         enc = enc.astype(self.astype, copy=False)
+
         return enc
 
-    def decode(self, buf):
+    def decode(self, buf, out=None):
         # filter is lossy, decoding is no-op
-        enc = _ndarray_from_buffer(buf, self.astype)
-        return enc.astype(self.dtype, copy=False)
+        dec = _ndarray_from_buffer(buf, self.astype)
+        dec = dec.astype(self.dtype, copy=False)
+        return _buffer_copy(dec, out)
 
-    def get_filter_config(self):
+    def get_config(self):
         config = dict()
         config['name'] = self.filter_name
         config['digits'] = self.digits
@@ -298,18 +663,17 @@ class QuantizeFilter(object):
         return config
 
     @classmethod
-    def from_filter_config(cls, config):
+    def from_config(cls, config):
         dtype = decode_dtype(config['dtype'])
         astype = decode_dtype(config['astype'])
         digits = config['digits']
         return cls(digits=digits, dtype=dtype, astype=astype)
 
 
-filter_registry[QuantizeFilter.filter_name] = QuantizeFilter
+registry[QuantizeFilter.name] = QuantizeFilter
 
 
-# noinspection PyMethodMayBeStatic
-class PackBitsFilter(object):
+class PackBitsFilter(Codec):
     """Filter to pack elements of a boolean array into bits in a uint8 array.
 
     Examples
@@ -332,57 +696,70 @@ class PackBitsFilter(object):
 
     """
 
-    filter_name = 'packbits'
+    name = 'packbits'
 
     def __init__(self):
         pass
 
     def encode(self, buf):
+
         # view input as ndarray
         arr = _ndarray_from_buffer(buf, bool)
+
         # determine size of packed data
         n = arr.size
         n_bytes_packed = (n // 8)
         n_bits_leftover = n % 8
         if n_bits_leftover > 0:
             n_bytes_packed += 1
+
         # setup output
         enc = np.empty(n_bytes_packed + 1, dtype='u1')
-        # remember how many bits were padded
+
+        # store how many bits were padded
         if n_bits_leftover:
             n_bits_padded = 8 - n_bits_leftover
         else:
             n_bits_padded = 0
         enc[0] = n_bits_padded
+
         # apply encoding
         enc[1:] = np.packbits(arr)
+
         return enc
 
-    def decode(self, buf):
+    def decode(self, buf, out=None):
+
         # view encoded data as ndarray
         enc = _ndarray_from_buffer(buf, 'u1')
+
         # find out how many bits were padded
         n_bits_padded = int(enc[0])
+
         # apply decoding
         dec = np.unpackbits(enc[1:])
+
         # remove padded bits
         if n_bits_padded:
             dec = dec[:-n_bits_padded]
+
         # view as boolean array
         dec = dec.view(bool)
-        return dec
 
-    def get_filter_config(self):
+        # handle destination
+        return _buffer_copy(dec, out)
+
+    def get_config(self):
         config = dict()
-        config['name'] = self.filter_name
+        config['name'] = self.name
         return config
 
     @classmethod
-    def from_filter_config(cls, config):
+    def from_config(cls, config):
         return cls()
 
 
-filter_registry[PackBitsFilter.filter_name] = PackBitsFilter
+registry[PackBitsFilter.name] = PackBitsFilter
 
 
 def _ensure_bytes(l):
@@ -394,7 +771,7 @@ def _ensure_bytes(l):
         raise ValueError('expected bytes, found %r' % l)
 
 
-class CategoryFilter(object):
+class CategorizeFilter(Codec):
     """Filter encoding categorical string data as integers.
 
     Parameters
@@ -425,7 +802,7 @@ class CategoryFilter(object):
 
     """
 
-    filter_name = 'category'
+    name = 'categorize'
 
     def __init__(self, labels, dtype, astype='u1'):
         self.labels = [_ensure_bytes(l) for l in labels]
@@ -435,59 +812,51 @@ class CategoryFilter(object):
         self.astype = np.dtype(astype)
 
     def encode(self, buf):
+
         # view input as ndarray
         arr = _ndarray_from_buffer(buf, self.dtype)
+
         # setup output array
         enc = np.zeros_like(arr, dtype=self.astype)
+
         # apply encoding, reserving 0 for values not specified in labels
         for i, l in enumerate(self.labels):
             enc[arr == l] = i + 1
+
         return enc
 
-    def decode(self, buf):
+    def decode(self, buf, out=None):
+
         # view encoded data as ndarray
         enc = _ndarray_from_buffer(buf, self.astype)
+
         # setup output
-        dec = np.zeros_like(enc, dtype=self.dtype)
+        if isinstance(out, np.ndarray):
+            # optimization, decode directly to output
+            dec = out.reshape(-1, order='A')
+        else:
+            dec = np.zeros_like(enc, dtype=self.dtype)
+
         # apply decoding
         for i, l in enumerate(self.labels):
             dec[enc == (i + 1)] = l
+
         return dec
 
-    def get_filter_config(self):
+    def get_config(self):
         config = dict()
-        config['name'] = self.filter_name
+        config['name'] = self.name
         config['labels'] = [text_type(l, 'ascii') for l in self.labels]
         config['dtype'] = encode_dtype(self.dtype)
         config['astype'] = encode_dtype(self.astype)
         return config
 
     @classmethod
-    def from_filter_config(cls, config):
+    def from_config(cls, config):
         dtype = decode_dtype(config['dtype'])
         astype = decode_dtype(config['astype'])
         labels = config['labels']
         return cls(labels=labels, dtype=dtype, astype=astype)
 
 
-filter_registry[CategoryFilter.filter_name] = CategoryFilter
-
-
-# add in compressors as filters
-for cls in compressor_registry.values():
-    if hasattr(cls, 'filter_name'):
-        filter_registry[cls.filter_name] = cls
-
-
-def get_filters(configs):
-    if not configs:
-        return None
-    else:
-        filters = list()
-        for config in configs:
-            name = config['name']
-            cls = filter_registry[name]
-            f = cls.from_filter_config(config)
-            filters.append(f)
-            # TODO error handling
-        return filters
+registry[CategorizeFilter.name] = CategorizeFilter
