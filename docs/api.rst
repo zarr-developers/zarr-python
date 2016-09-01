@@ -8,6 +8,5 @@ API reference
     api/core
     api/hierarchy
     api/storage
-    api/compressors
-    api/filters
+    api/codecs
     api/sync
