@@ -237,7 +237,7 @@ def array(data, **kwargs):
     >>> z = zarr.array(a, chunks=(1000, 1000))
     >>> z
     Array((10000, 10000), int64, chunks=(1000, 1000), order=C)
-      nbytes: 762.9M; nbytes_stored: 17.1M; ratio: 44.7; initialized: 100/100
+      nbytes: 762.9M; nbytes_stored: 15.2M; ratio: 50.2; initialized: 100/100
       compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
       store: dict
 
@@ -320,13 +320,13 @@ def open_array(path, mode='a', shape=None, chunks=None, dtype=None,
     >>> z1[:] = np.arange(100000000).reshape(10000, 10000)
     >>> z1
     Array((10000, 10000), float64, chunks=(1000, 1000), order=C)
-      nbytes: 762.9M; nbytes_stored: 24.8M; ratio: 30.8; initialized: 100/100
+      nbytes: 762.9M; nbytes_stored: 23.0M; ratio: 33.2; initialized: 100/100
       compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
       store: DirectoryStore
     >>> z2 = zarr.open_array('example.zarr', mode='r')
     >>> z2
     Array((10000, 10000), float64, chunks=(1000, 1000), order=C)
-      nbytes: 762.9M; nbytes_stored: 24.8M; ratio: 30.8; initialized: 100/100
+      nbytes: 762.9M; nbytes_stored: 23.0M; ratio: 33.2; initialized: 100/100
       compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
       store: DirectoryStore
     >>> np.all(z1[:] == z2[:])

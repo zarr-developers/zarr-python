@@ -44,7 +44,7 @@ scalar value::
     >>> z[:] = 42
     >>> z
     Array((10000, 10000), int32, chunks=(1000, 1000), order=C)
-      nbytes: 381.5M; nbytes_stored: 2.2M; ratio: 170.4; initialized: 100/100
+      nbytes: 381.5M; nbytes_stored: 1.8M; ratio: 215.1; initialized: 100/100
       compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
       store: dict
 
@@ -116,7 +116,7 @@ Check that the data have been written and can be read again::
     >>> z2 = zarr.open('example.zarr', mode='r')
     >>> z2
     Array((10000, 10000), int32, chunks=(1000, 1000), order=C)
-      nbytes: 381.5M; nbytes_stored: 2.3M; ratio: 163.9; initialized: 100/100
+      nbytes: 381.5M; nbytes_stored: 1.9M; ratio: 204.5; initialized: 100/100
       compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
       store: DirectoryStore
     >>> np.all(z1[:] == z2[:])
@@ -135,7 +135,7 @@ can be increased or decreased in length. For example::
     >>> z.resize(20000, 10000)
     >>> z
     Array((20000, 10000), float64, chunks=(1000, 1000), order=C)
-      nbytes: 1.5G; nbytes_stored: 5.7M; ratio: 268.5; initialized: 100/200
+      nbytes: 1.5G; nbytes_stored: 3.6M; ratio: 422.3; initialized: 100/200
       compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
       store: dict
 
@@ -151,19 +151,19 @@ which can be used to append data to any axis. E.g.::
     >>> z = zarr.array(a, chunks=(1000, 100))
     >>> z
     Array((10000, 1000), int32, chunks=(1000, 100), order=C)
-      nbytes: 38.1M; nbytes_stored: 1.9M; ratio: 20.0; initialized: 100/100
+      nbytes: 38.1M; nbytes_stored: 1.9M; ratio: 20.3; initialized: 100/100
       compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
       store: dict
     >>> z.append(a)
     >>> z
     Array((20000, 1000), int32, chunks=(1000, 100), order=C)
-      nbytes: 76.3M; nbytes_stored: 3.8M; ratio: 20.0; initialized: 200/200
+      nbytes: 76.3M; nbytes_stored: 3.8M; ratio: 20.3; initialized: 200/200
       compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
       store: dict
     >>> z.append(np.vstack([a, a]), axis=1)
     >>> z
     Array((20000, 2000), int32, chunks=(1000, 100), order=C)
-      nbytes: 152.6M; nbytes_stored: 7.6M; ratio: 20.0; initialized: 400/400
+      nbytes: 152.6M; nbytes_stored: 7.5M; ratio: 20.3; initialized: 400/400
       compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
       store: dict
 
@@ -190,7 +190,7 @@ accepted by all array creation functions. For example::
     ...                compressor=zarr.Blosc(cname='zstd', clevel=3, shuffle=2))
     >>> z
     Array((10000, 10000), int32, chunks=(1000, 1000), order=C)
-      nbytes: 381.5M; nbytes_stored: 3.1M; ratio: 121.1; initialized: 100/100
+      nbytes: 381.5M; nbytes_stored: 4.4M; ratio: 87.6; initialized: 100/100
       compressor: Blosc(cname='zstd', clevel=3, shuffle=2)
       store: dict
 
@@ -261,7 +261,7 @@ Here is an example using the Zarr delta filter with the Blosc compressor:
     ...                chunks=(1000, 1000), filters=filters, compressor=compressor)
     >>> z
     Array((10000, 10000), int32, chunks=(1000, 1000), order=C)
-      nbytes: 381.5M; nbytes_stored: 381.9K; ratio: 1022.9; initialized: 100/100
+      nbytes: 381.5M; nbytes_stored: 633.4K; ratio: 616.7; initialized: 100/100
       filters: Delta(dtype=int32)
       compressor: Blosc(cname='zstd', clevel=1, shuffle=1)
       store: dict
@@ -480,7 +480,7 @@ data. E.g.::
       store: dict
     >>> zarr.array(a, chunks=(1000, 1000), order='F')
     Array((10000, 10000), int32, chunks=(1000, 1000), order=F)
-      nbytes: 381.5M; nbytes_stored: 9.5M; ratio: 40.1; initialized: 100/100
+      nbytes: 381.5M; nbytes_stored: 9.2M; ratio: 41.6; initialized: 100/100
       compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
       store: dict
 
@@ -510,12 +510,12 @@ Here is an example storing an array directly into a Zip file::
     >>> z[:] = 42
     >>> z
     Array((1000, 1000), int32, chunks=(100, 100), order=C)
-      nbytes: 3.8M; nbytes_stored: 25.7K; ratio: 152.0; initialized: 100/100
+      nbytes: 3.8M; nbytes_stored: 21.8K; ratio: 179.2; initialized: 100/100
       compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
       store: ZipStore
     >>> import os
     >>> os.path.getsize('example.zip')
-    34721
+    30721
 
 Re-open and check that data have been written::
 
@@ -523,7 +523,7 @@ Re-open and check that data have been written::
     >>> z = zarr.Array(store)
     >>> z
     Array((1000, 1000), int32, chunks=(100, 100), order=C)
-      nbytes: 3.8M; nbytes_stored: 25.7K; ratio: 152.0; initialized: 100/100
+      nbytes: 3.8M; nbytes_stored: 21.8K; ratio: 179.2; initialized: 100/100
       compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
       store: ZipStore
     >>> z[:]
