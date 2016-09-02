@@ -21,7 +21,13 @@ cdef extern from "blosc.h":
     cdef enum:
         BLOSC_MAX_OVERHEAD,
         BLOSC_VERSION_STRING,
-        BLOSC_VERSION_DATE
+        BLOSC_VERSION_DATE,
+        BLOSC_NOSHUFFLE,
+        BLOSC_SHUFFLE,
+        BLOSC_BITSHUFFLE,
+        BLOSC_MAX_BUFFERSIZE,
+        BLOSC_MAX_THREADS,
+        BLOSC_MAX_TYPESIZE
 
     void blosc_init()
     void blosc_destroy()
@@ -44,15 +50,23 @@ cdef extern from "blosc.h":
                              size_t *cbytes, size_t *blocksize)
 
 
-def version():
-    """Return the version of blosc that zarr was compiled with."""
+MAX_OVERHEAD = BLOSC_MAX_OVERHEAD
+MAX_BUFFERSIZE = BLOSC_MAX_BUFFERSIZE
+MAX_THREADS = BLOSC_MAX_THREADS
+MAX_TYPESIZE = BLOSC_MAX_TYPESIZE
+VERSION_STRING = <char *> BLOSC_VERSION_STRING
+VERSION_DATE = <char *> BLOSC_VERSION_DATE
+if not PY2:
+    VERSION_STRING = VERSION_STRING.decode()
+    VERSION_DATE = VERSION_DATE.decode()
+__version__ = VERSION_STRING
+NOSHUFFLE = BLOSC_NOSHUFFLE
+SHUFFLE = BLOSC_SHUFFLE
+BITSHUFFLE = BLOSC_BITSHUFFLE
 
-    ver_str = <char *> BLOSC_VERSION_STRING
-    ver_date = <char *> BLOSC_VERSION_DATE
-    if not PY2:
-        ver_str = ver_str.decode()
-        ver_date = ver_date.decode()
-    return ver_str, ver_date
+
+def version():
+    return VERSION_STRING, VERSION_DATE
 
 
 def init():

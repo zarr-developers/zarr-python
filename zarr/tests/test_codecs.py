@@ -14,6 +14,7 @@ from nose.tools import eq_ as eq
 from zarr.codecs import codec_registry, get_codec
 from zarr.util import buffer_tobytes
 from zarr.compat import PY2
+from zarr import blosc
 
 
 class CodecTests(object):
@@ -235,11 +236,11 @@ class TestBlosc(CodecTests, unittest.TestCase):
         dict(),
         dict(clevel=0),
         dict(cname='lz4'),
-        dict(cname='lz4', clevel=1, shuffle=0),
-        dict(cname='lz4', clevel=1, shuffle=1),
-        dict(cname='lz4', clevel=1, shuffle=2),
-        dict(cname='zlib', clevel=1, shuffle=2),
-        dict(cname='zstd', clevel=1, shuffle=2),
+        dict(cname='lz4', clevel=1, shuffle=blosc.NOSHUFFLE),
+        dict(cname='lz4', clevel=1, shuffle=blosc.SHUFFLE),
+        dict(cname='lz4', clevel=1, shuffle=blosc.BITSHUFFLE),
+        dict(cname='zlib', clevel=1, shuffle=0),
+        dict(cname='zstd', clevel=1, shuffle=1),
         dict(cname='blosclz', clevel=1, shuffle=2),
         dict(cname='snappy', clevel=1, shuffle=2),
     ]
