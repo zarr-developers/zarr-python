@@ -247,16 +247,18 @@ def init_array(store, shape, chunks, dtype=None, compressor='default',
     chunks = normalize_chunks(chunks, shape, dtype.itemsize)
     order = normalize_order(order)
 
-    # normalize compressor
+    # obtain compressor config
     if compressor == 'none':
+        # compatibility
         compressor = None
     elif compressor == 'default':
         compressor = default_compressor
-    elif isinstance(compressor, str):
-        codec_cls = codec_registry[compressor]
-        compressor = codec_cls()
     if compressor:
-        compressor_config = compressor.get_config()
+        try:
+            compressor_config = compressor.get_config()
+        except AttributeError:
+            raise ValueError('bad compressor argument; expected Codec object, '
+                             'found %r' % compressor)
     else:
         compressor_config = None
 

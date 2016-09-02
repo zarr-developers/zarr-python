@@ -325,7 +325,7 @@ provided that all processes have access to a shared file system. E.g.::
     ...                     synchronizer=synchronizer)
     >>> z
     Array((10000, 10000), int32, chunks=(1000, 1000), order=C)
-      nbytes: 381.5M; nbytes_stored: 323; ratio: 1238390.1; initialized: 0/100
+      nbytes: 381.5M; nbytes_stored: 326; ratio: 1226993.9; initialized: 0/100
       compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
       store: DirectoryStore; synchronizer: ProcessSynchronizer
 

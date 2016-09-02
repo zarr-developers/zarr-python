@@ -309,6 +309,19 @@ def test_create():
     eq((10,), z.chunks)
     assert synchronizer is z.synchronizer
 
-    # allow string as compressor arg
-    z = create(100, chunks=10, compressor='zlib')
+    # don't allow string as compressor arg
+    with assert_raises(ValueError):
+        create(100, chunks=10, compressor='zlib')
+
+    # compatibility
+
+    z = create(100, compression='zlib', compression_opts=9)
     eq('zlib', z.compressor.codec_id)
+    eq(9, z.compressor.level)
+
+    z = create(100, compression='default')
+    eq('blosc', z.compressor.codec_id)
+
+    # errors
+    with assert_raises(ValueError):
+        create(100, compression=1)

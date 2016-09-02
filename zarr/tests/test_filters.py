@@ -59,8 +59,7 @@ def test_array_with_scaleoffset_filter():
     # setup
     astype = 'u1'
     dtype = 'f8'
-    flt = FixedScaleOffset(scale=10, offset=1000, astype=astype,
-                                 dtype=dtype)
+    flt = FixedScaleOffset(scale=10, offset=1000, astype=astype, dtype=dtype)
     filters = [flt]
     data = np.linspace(1000, 1001, 34, dtype='f8')
 

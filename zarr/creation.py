@@ -116,7 +116,7 @@ def _handle_kwargs(compressor, fill_value, kwargs):
                 # assume single argument, e.g., int
                 compressor = codec_cls(compression_opts)
 
-        # be lenient here
+        # be lenient here if user gives compressor as 'compression'
         elif hasattr(compression, 'get_config'):
             compressor = compression
 
