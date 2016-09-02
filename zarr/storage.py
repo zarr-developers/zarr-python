@@ -792,10 +792,27 @@ def migrate_1to2(store):
     from zarr import meta_v1
     meta = meta_v1.decode_metadata(store['meta'])
     del store['meta']
+
+    # add empty filters
     meta['filters'] = None
-    if meta['compression'] and meta['compression'].lower() == 'none':
-        meta['compression'] = None
-        meta['compression_opts'] = None
+
+    # migration compression metadata
+    compression = meta['compression']
+    if compression is None or compression == 'none':
+        compressor_config = None
+    else:
+        compression_opts = meta['compression_opts']
+        codec_cls = codec_registry[compression]
+        if isinstance(compression_opts, dict):
+            compressor = codec_cls(**compression_opts)
+        else:
+            compressor = codec_cls(compression_opts)
+        compressor_config = compressor.get_config()
+    meta['compressor'] = compressor_config
+    del meta['compression']
+    del meta['compression_opts']
+
+    # store migrated metadata
     store[array_meta_key] = encode_array_metadata(meta)
 
     # migrate user attributes

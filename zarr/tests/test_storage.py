@@ -20,7 +20,7 @@ from zarr.meta import decode_array_metadata, encode_array_metadata, \
     ZARR_FORMAT, decode_group_metadata, encode_group_metadata
 from zarr.compat import text_type
 from zarr.storage import default_compressor
-from zarr.codecs import Zlib
+from zarr.codecs import Zlib, Blosc
 
 
 class StoreTests(object):
@@ -670,17 +670,37 @@ def test_migrate_1to2():
 
     # check results
     assert 'meta' not in store
-    assert '.zarray' in store
+    assert array_meta_key in store
     assert 'attrs' not in store
-    assert '.zattrs' in store
+    assert attrs_key in store
     meta_migrated = decode_array_metadata(store[array_meta_key])
     eq(2, meta_migrated['zarr_format'])
+
     # preserved fields
-    for f in 'shape', 'chunks', 'dtype', 'compression', 'compression_opts', \
-             'fill_value', 'order':
+    for f in 'shape', 'chunks', 'dtype', 'fill_value', 'order':
         eq(meta[f], meta_migrated[f])
+
     # migrate should have added empty filters field
     assert_is_none(meta_migrated['filters'])
+
+    # check compression and compression_opts migrated to compressor
+    assert 'compression' not in meta_migrated
+    assert 'compression_opts' not in meta_migrated
+    eq(meta_migrated['compressor'], Zlib(1).get_config())
+
+    # check dict compression_opts
+    store = dict()
+    meta['compression'] = 'blosc'
+    meta['compression_opts'] = dict(cname='lz4', clevel=5, shuffle=1)
+    meta_json = meta_v1.encode_metadata(meta)
+    store['meta'] = meta_json
+    store['attrs'] = json.dumps(dict()).encode('ascii')
+    migrate_1to2(store)
+    meta_migrated = decode_array_metadata(store[array_meta_key])
+    assert 'compression' not in meta_migrated
+    assert 'compression_opts' not in meta_migrated
+    eq(meta_migrated['compressor'],
+       Blosc(cname='lz4', clevel=5, shuffle=1).get_config())
 
     # check 'none' compression is migrated to None (null in JSON)
     store = dict()
@@ -690,5 +710,6 @@ def test_migrate_1to2():
     store['attrs'] = json.dumps(dict()).encode('ascii')
     migrate_1to2(store)
     meta_migrated = decode_array_metadata(store[array_meta_key])
-    assert_is_none(meta_migrated['compression'])
-    assert_is_none(meta_migrated['compression_opts'])
+    assert 'compression' not in meta_migrated
+    assert 'compression_opts' not in meta_migrated
+    assert_is_none(meta_migrated['compressor'])

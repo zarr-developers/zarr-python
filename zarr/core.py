@@ -729,11 +729,10 @@ class Array(object):
 
         # storage size info
         r += '\n  nbytes: %s' % human_readable_size(self.nbytes)
-        if self.compression:
-            if self.nbytes_stored > 0:
-                r += '; nbytes_stored: %s' % human_readable_size(
-                    self.nbytes_stored)
-                r += '; ratio: %.1f' % (self.nbytes / self.nbytes_stored)
+        if self.nbytes_stored > 0:
+            r += '; nbytes_stored: %s' % human_readable_size(
+                self.nbytes_stored)
+            r += '; ratio: %.1f' % (self.nbytes / self.nbytes_stored)
         n_chunks = reduce(operator.mul, self.cdata_shape)
         r += '; initialized: %s/%s' % (self.initialized, n_chunks)
 
