@@ -20,13 +20,13 @@ from zarr.meta import decode_array_metadata, encode_array_metadata, \
     ZARR_FORMAT, decode_group_metadata, encode_group_metadata
 from zarr.compat import text_type
 from zarr.storage import default_compressor
-from zarr.codecs import ZlibCompressor
+from zarr.codecs import Zlib
 
 
 class StoreTests(object):
     """Abstract store tests."""
 
-    def create_store(self, **kwargs):
+    def create_store(self, **kwargs):  # pragma: no cover
         # implement in sub-class
         raise NotImplementedError
 
@@ -245,7 +245,7 @@ class StoreTests(object):
             dict(shape=(2000,),
                  chunks=(200,),
                  dtype=np.dtype('u1'),
-                 compressor=ZlibCompressor(1).get_config(),
+                 compressor=Zlib(1).get_config(),
                  fill_value=0,
                  order='F',
                  filters=None)
@@ -297,7 +297,7 @@ class StoreTests(object):
         meta = dict(shape=(2000,),
                     chunks=(200,),
                     dtype=np.dtype('u1'),
-                    compressor=ZlibCompressor(1).get_config(),
+                    compressor=Zlib(1).get_config(),
                     fill_value=0,
                     order='F',
                     filters=None)

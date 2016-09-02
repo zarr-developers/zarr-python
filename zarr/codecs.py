@@ -38,7 +38,7 @@ def get_codec(config):
     return cls.from_config(config)
 
 
-class Codec(object):
+class Codec(object):  # pragma: no cover
     """Codec abstract base class."""
 
     # override in sub-class
@@ -126,17 +126,23 @@ def _buffer_copy(buf, out=None):
     # handle generic buffer destination
     else:
 
-        # ensure source is 1D
-        if isinstance(buf, np.ndarray) and buf.ndim > 1:
-            buf = buf.reshape(-1, order='A')
+        # obtain memoryview of destination
+        dest = memoryview(out)
 
-        # assume dest is compatible, try to copy via memoryview
-        memoryview(out)[:] = buf
+        # ensure source is 1D
+        if isinstance(buf, np.ndarray):
+            buf = buf.reshape(-1, order='A')
+            # try to match itemsize
+            dtype = 'u%s' % dest.itemsize
+            buf = buf.view(dtype=dtype)
+
+        # try to copy via memoryview
+        dest[:] = buf
 
     return out
 
 
-class ZlibCompressor(Codec):
+class Zlib(Codec):
     """Provides compression using zlib via the Python standard library.
 
     Parameters
@@ -180,11 +186,11 @@ class ZlibCompressor(Codec):
         return r
 
 
-codec_registry[ZlibCompressor.codec_id] = ZlibCompressor
-codec_registry['gzip'] = ZlibCompressor  # alias
+codec_registry[Zlib.codec_id] = Zlib
+codec_registry['gzip'] = Zlib  # alias
 
 
-class BZ2Compressor(Codec):
+class BZ2(Codec):
     """Provides compression using bzip2 via the Python standard library.
 
     Parameters
@@ -233,7 +239,7 @@ class BZ2Compressor(Codec):
         return r
 
 
-codec_registry[BZ2Compressor.codec_id] = BZ2Compressor
+codec_registry[BZ2.codec_id] = BZ2
 
 
 try:
@@ -243,7 +249,7 @@ except ImportError:  # pragma: no cover
 else:
 
     # noinspection PyShadowingBuiltins
-    class LZMACompressor(Codec):
+    class LZMA(Codec):
         """Provides compression using lzma via the Python standard library
         (only available under Python 3).
 
@@ -312,7 +318,7 @@ else:
                  self.filters)
             return r
 
-    codec_registry[LZMACompressor.codec_id] = LZMACompressor
+    codec_registry[LZMA.codec_id] = LZMA
 
 try:
     from zarr import blosc
@@ -320,7 +326,7 @@ except ImportError:  # pragma: no cover
     pass
 else:
 
-    class BloscCompressor(Codec):
+    class Blosc(Codec):
         """Provides compression using the blosc meta-compressor.
 
         Parameters
@@ -364,7 +370,7 @@ else:
                  self.clevel, self.shuffle)
             return r
 
-    codec_registry[BloscCompressor.codec_id] = BloscCompressor
+    codec_registry[Blosc.codec_id] = Blosc
 
     # initialize blosc
     ncores = multiprocessing.cpu_count()
@@ -381,7 +387,7 @@ def _ndarray_from_buffer(buf, dtype):
     return arr
 
 
-class DeltaFilter(Codec):
+class Delta(Codec):
     """Filter to encode data as the difference between adjacent values.
 
     Parameters
@@ -405,7 +411,7 @@ class DeltaFilter(Codec):
     >>> import zarr
     >>> import numpy as np
     >>> x = np.arange(100, 120, 2, dtype='i8')
-    >>> f = zarr.DeltaFilter(dtype='i8', astype='i1')
+    >>> f = zarr.Delta(dtype='i8', astype='i1')
     >>> y = f.encode(x)
     >>> y
     array([100,   2,   2,   2,   2,   2,   2,   2,   2,   2], dtype=int8)
@@ -484,10 +490,10 @@ class DeltaFilter(Codec):
         return r
 
 
-codec_registry[DeltaFilter.codec_id] = DeltaFilter
+codec_registry[Delta.codec_id] = Delta
 
 
-class FixedScaleOffsetFilter(Codec):
+class FixedScaleOffset(Codec):
     """Simplified version of the scale-offset filter available in HDF5.
     Applies the transformation `(x - offset) * scale` to all chunks. Results
     are rounded to the nearest integer but are not packed according to the
@@ -519,8 +525,7 @@ class FixedScaleOffsetFilter(Codec):
     array([ 1000.        ,  1000.11111111,  1000.22222222,  1000.33333333,
             1000.44444444,  1000.55555556,  1000.66666667,  1000.77777778,
             1000.88888889,  1001.        ])
-    >>> f1 = zarr.FixedScaleOffsetFilter(offset=1000, scale=10, dtype='f8',
-    ...                                  astype='u1')
+    >>> f1 = zarr.FixedScaleOffset(offset=1000, scale=10, dtype='f8', astype='u1')
     >>> y1 = f1.encode(x)
     >>> y1
     array([ 0,  1,  2,  3,  4,  6,  7,  8,  9, 10], dtype=uint8)
@@ -528,8 +533,7 @@ class FixedScaleOffsetFilter(Codec):
     >>> z1
     array([ 1000. ,  1000.1,  1000.2,  1000.3,  1000.4,  1000.6,  1000.7,
             1000.8,  1000.9,  1001. ])
-    >>> f2 = zarr.FixedScaleOffsetFilter(offset=1000, scale=10**2, dtype='f8',
-    ...                                  astype='u1')
+    >>> f2 = zarr.FixedScaleOffset(offset=1000, scale=10**2, dtype='f8', astype='u1')
     >>> y2 = f2.encode(x)
     >>> y2
     array([  0,  11,  22,  33,  44,  56,  67,  78,  89, 100], dtype=uint8)
@@ -537,8 +541,7 @@ class FixedScaleOffsetFilter(Codec):
     >>> z2
     array([ 1000.  ,  1000.11,  1000.22,  1000.33,  1000.44,  1000.56,
             1000.67,  1000.78,  1000.89,  1001.  ])
-    >>> f3 = zarr.FixedScaleOffsetFilter(offset=1000, scale=10**3, dtype='f8',
-    ...                                  astype='u2')
+    >>> f3 = zarr.FixedScaleOffset(offset=1000, scale=10**3, dtype='f8', astype='u2')
     >>> y3 = f3.encode(x)
     >>> y3
     array([   0,  111,  222,  333,  444,  556,  667,  778,  889, 1000], dtype=uint16)
@@ -616,10 +619,10 @@ class FixedScaleOffsetFilter(Codec):
         r += ')'
         return r
 
-codec_registry[FixedScaleOffsetFilter.codec_id] = FixedScaleOffsetFilter
+codec_registry[FixedScaleOffset.codec_id] = FixedScaleOffset
 
 
-class QuantizeFilter(Codec):
+class Quantize(Codec):
     """Lossy filter to reduce the precision of floating point data.
 
     Parameters
@@ -639,17 +642,17 @@ class QuantizeFilter(Codec):
     >>> x
     array([ 0.        ,  0.11111111,  0.22222222,  0.33333333,  0.44444444,
             0.55555556,  0.66666667,  0.77777778,  0.88888889,  1.        ])
-    >>> f1 = zarr.QuantizeFilter(digits=1, dtype='f8')
+    >>> f1 = zarr.Quantize(digits=1, dtype='f8')
     >>> y1 = f1.encode(x)
     >>> y1
     array([ 0.    ,  0.125 ,  0.25  ,  0.3125,  0.4375,  0.5625,  0.6875,
             0.75  ,  0.875 ,  1.    ])
-    >>> f2 = zarr.QuantizeFilter(digits=2, dtype='f8')
+    >>> f2 = zarr.Quantize(digits=2, dtype='f8')
     >>> y2 = f2.encode(x)
     >>> y2
     array([ 0.       ,  0.109375 ,  0.21875  ,  0.3359375,  0.4453125,
             0.5546875,  0.6640625,  0.78125  ,  0.890625 ,  1.       ])
-    >>> f3 = zarr.QuantizeFilter(digits=3, dtype='f8')
+    >>> f3 = zarr.Quantize(digits=3, dtype='f8')
     >>> y3 = f3.encode(x)
     >>> y3
     array([ 0.        ,  0.11132812,  0.22265625,  0.33300781,  0.44433594,
@@ -720,17 +723,17 @@ class QuantizeFilter(Codec):
         return r
 
 
-codec_registry[QuantizeFilter.codec_id] = QuantizeFilter
+codec_registry[Quantize.codec_id] = Quantize
 
 
-class PackBitsFilter(Codec):
+class PackBits(Codec):
     """Filter to pack elements of a boolean array into bits in a uint8 array.
 
     Examples
     --------
     >>> import zarr
     >>> import numpy as np
-    >>> f = zarr.PackBitsFilter()
+    >>> f = zarr.PackBits()
     >>> x = np.array([True, False, False, True], dtype=bool)
     >>> y = f.encode(x)
     >>> y
@@ -813,7 +816,7 @@ class PackBitsFilter(Codec):
         return r
 
 
-codec_registry[PackBitsFilter.codec_id] = PackBitsFilter
+codec_registry[PackBits.codec_id] = PackBits
 
 
 def _ensure_bytes(l):
@@ -825,7 +828,7 @@ def _ensure_bytes(l):
         raise ValueError('expected bytes, found %r' % l)
 
 
-class CategorizeFilter(Codec):
+class Categorize(Codec):
     """Filter encoding categorical string data as integers.
 
     Parameters
@@ -845,7 +848,7 @@ class CategorizeFilter(Codec):
     >>> x
     array([b'male', b'female', b'female', b'male', b'unexpected'],
           dtype='|S10')
-    >>> f = zarr.CategorizeFilter(labels=[b'female', b'male'], dtype=x.dtype)
+    >>> f = zarr.Categorize(labels=[b'female', b'male'], dtype=x.dtype)
     >>> y = f.encode(x)
     >>> y
     array([2, 1, 1, 2, 0], dtype=uint8)
@@ -888,12 +891,18 @@ class CategorizeFilter(Codec):
         if isinstance(out, np.ndarray):
             # optimization, decode directly to output
             dec = out.reshape(-1, order='A')
+            copy_needed = False
         else:
             dec = np.zeros_like(enc, dtype=self.dtype)
+            copy_needed = True
 
         # apply decoding
         for i, l in enumerate(self.labels):
             dec[enc == (i + 1)] = l
+
+        # handle output
+        if copy_needed:
+            dec = _buffer_copy(dec, out)
 
         return dec
 
@@ -918,7 +927,7 @@ class CategorizeFilter(Codec):
         return r
 
 
-codec_registry[CategorizeFilter.codec_id] = CategorizeFilter
+codec_registry[Categorize.codec_id] = Categorize
 
 
 __all__ = ['get_codec', 'codec_registry']

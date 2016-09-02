@@ -9,12 +9,19 @@ is to implement a class that provides the same interface as the classes listed
 below, and then to add the class to the ``codec_registry``. See the source
 code of this module for details.
 
-.. autoclass:: BloscCompressor
-.. autoclass:: ZlibCompressor
-.. autoclass:: BZ2Compressor
-.. autoclass:: LZMACompressor
-.. autoclass:: DeltaFilter
-.. autoclass:: FixedScaleOffsetFilter
-.. autoclass:: QuantizeFilter
-.. autoclass:: PackBitsFilter
-.. autoclass:: CategorizeFilter
+.. autoclass:: Codec
+
+    .. automethod:: encode
+    .. automethod:: decode
+    .. automethod:: get_config
+    .. automethod:: from_config
+
+.. autoclass:: Blosc
+.. autoclass:: Zlib
+.. autoclass:: BZ2
+.. autoclass:: LZMA
+.. autoclass:: Delta
+.. autoclass:: FixedScaleOffset
+.. autoclass:: Quantize
+.. autoclass:: PackBits
+.. autoclass:: Categorize

@@ -295,7 +295,7 @@ Create an array::
     >>> import zarr
     >>> store = zarr.DirectoryStore('example')
     >>> a = zarr.create(shape=(20, 20), chunks=(10, 10), dtype='i4',
-    ...                 fill_value=42, compressor=zarr.ZlibCompressor(level=1),
+    ...                 fill_value=42, compressor=zarr.Zlib(level=1),
     ...                 store=store, overwrite=True)
 
 No chunks are initialized yet, so only the ".zarray" and ".zattrs" keys

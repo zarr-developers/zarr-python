@@ -294,7 +294,9 @@ def buffer_size(v):
 
 def buffer_tobytes(v):
     from array import array as _stdlib_array
-    if PY2 and isinstance(v, _stdlib_array):  # pragma: no cover
+    if isinstance(v, np.ndarray):
+        return v.tobytes(order='A')
+    elif PY2 and isinstance(v, _stdlib_array):  # pragma: no cover
         return v.tostring()
     else:
         return memoryview(v).tobytes()

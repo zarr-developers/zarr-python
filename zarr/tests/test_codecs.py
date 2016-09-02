@@ -6,21 +6,22 @@ import array
 
 
 import numpy as np
-from numpy.testing import assert_array_equal, assert_array_almost_equal
+from numpy.testing import assert_array_equal, assert_array_almost_equal, \
+    assert_raises
 from nose.tools import eq_ as eq
 
 
-from zarr.codecs import codec_registry
+from zarr.codecs import codec_registry, get_codec
 from zarr.util import buffer_tobytes
 
 
 class CodecTests(object):
 
     # override in sub-class
-    name = None
+    codec_id = None
 
     def init_codec(self, **kwargs):
-        codec_cls = codec_registry[self.name]
+        codec_cls = codec_registry[self.codec_id]
         codec = codec_cls(**kwargs)
         return codec
 
@@ -38,18 +39,22 @@ class CodecTests(object):
         enc_bytes = buffer_tobytes(enc)
 
         # test encoding of raw bytes
-        buf = arr.tobytes()
+        buf = arr.tobytes(order='A')
         enc = codec.encode(buf)
         actual = buffer_tobytes(enc)
         eq(enc_bytes, actual)
 
         # test encoding of array.array
-        buf = array.array('b', arr.tobytes())
+        buf = array.array('b', arr.tobytes(order='A'))
         enc = codec.encode(buf)
         actual = buffer_tobytes(enc)
         eq(enc_bytes, actual)
 
     def _test_decode_lossless(self, arr, **kwargs):
+        if arr.flags.f_contiguous:
+            order = 'F'
+        else:
+            order = 'C'
 
         # setup
         codec = self.init_codec(**kwargs)
@@ -64,24 +69,41 @@ class CodecTests(object):
         # test decoding of raw bytes
         buf = enc_bytes
         dec = codec.decode(buf)
-        assert_array_equal(arr, np.frombuffer(dec, dtype=arr.dtype))
+        dec = np.frombuffer(dec, dtype=arr.dtype).reshape(arr.shape,
+                                                          order=order)
+        assert_array_equal(arr, dec)
 
         # test decoding of array.array
         buf = array.array('b', enc_bytes)
         dec = codec.decode(buf)
-        assert_array_equal(arr, np.frombuffer(dec, dtype=arr.dtype))
+        dec = np.frombuffer(dec, dtype=arr.dtype).reshape(arr.shape,
+                                                          order=order)
+        assert_array_equal(arr, dec)
 
         # test decoding of numpy array
         buf = np.frombuffer(enc_bytes, dtype='u1')
         dec = codec.decode(buf)
-        assert_array_equal(arr, np.frombuffer(dec, dtype=arr.dtype))
+        dec = np.frombuffer(dec, dtype=arr.dtype).reshape(arr.shape,
+                                                          order=order)
+        assert_array_equal(arr, dec)
 
-        # test decoding into output
+        # test decoding into numpy array
         out = np.empty_like(arr)
         codec.decode(enc_bytes, out=out)
         assert_array_equal(arr, out)
 
+        # test decoding into bytearray
+        out = bytearray(arr.nbytes)
+        codec.decode(enc_bytes, out=out)
+        expect = arr.tobytes(order='A')
+        print(expect[:10], out[:10])
+        eq(expect, out)
+
     def _test_decode_lossy(self, arr, decimal, **kwargs):
+        if arr.flags.f_contiguous:
+            order = 'F'
+        else:
+            order = 'C'
 
         # setup
         codec = self.init_codec(**kwargs)
@@ -96,37 +118,49 @@ class CodecTests(object):
         # test decoding of raw bytes
         buf = enc_bytes
         dec = codec.decode(buf)
-        assert_array_almost_equal(arr, np.frombuffer(dec, dtype=arr.dtype),
-                                  decimal=decimal)
+        dec = np.frombuffer(dec, dtype=arr.dtype).reshape(arr.shape,
+                                                          order=order)
+        assert_array_almost_equal(arr, dec, decimal=decimal)
 
         # test decoding of array.array
         buf = array.array('b', enc_bytes)
         dec = codec.decode(buf)
-        assert_array_almost_equal(arr, np.frombuffer(dec, dtype=arr.dtype),
-                                  decimal=decimal)
+        dec = np.frombuffer(dec, dtype=arr.dtype).reshape(arr.shape,
+                                                          order=order)
+        assert_array_almost_equal(arr, dec, decimal=decimal)
 
         # test decoding of numpy array
         buf = np.frombuffer(enc_bytes, dtype='u1')
         dec = codec.decode(buf)
-        assert_array_almost_equal(arr, np.frombuffer(dec, dtype=arr.dtype),
-                                  decimal=decimal)
+        dec = np.frombuffer(dec, dtype=arr.dtype).reshape(arr.shape,
+                                                          order=order)
+        assert_array_almost_equal(arr, dec, decimal=decimal)
 
-        # test decoding into output
+        # test decoding into numpy array
         out = np.empty_like(arr)
         codec.decode(enc_bytes, out=out)
         assert_array_almost_equal(arr, out, decimal=decimal)
 
+        # test decoding into bytearray
+        out = bytearray(arr.nbytes)
+        codec.decode(enc_bytes, out=out)
+        out = np.frombuffer(out, dtype=arr.dtype).reshape(arr.shape,
+                                                          order=order)
+        assert_array_almost_equal(arr, out, decimal=decimal)
 
-class TestZlibCompressor(CodecTests, unittest.TestCase):
+test_arrays = [
+    np.arange(1000, dtype='i4'),
+    np.linspace(1000, 1001, 1000, dtype='f8'),
+    np.random.normal(loc=1000, scale=1, size=(100, 10)),
+    np.random.randint(0, 2, size=1000, dtype=bool).reshape(100, 10, order='F'),
+    np.random.choice([b'a', b'bb', b'ccc'], size=1000).reshape(10, 10, 10)
+]
 
-    name = 'zlib'
-    arrs = [
-        np.arange(1000, dtype='i4'),
-        np.linspace(0, 1, 1000, dtype='f8'),
-        np.random.randint(0, 2, size=1000, dtype=bool),
-        np.random.normal(size=1000),
-        np.random.choice([b'foo', b'bar', b'baz'], size=1000)
-    ]
+
+class TestZlib(CodecTests, unittest.TestCase):
+
+    codec_id = 'zlib'
+
     configs = [
         dict(),
         dict(level=-1),
@@ -137,24 +171,18 @@ class TestZlibCompressor(CodecTests, unittest.TestCase):
     ]
 
     def test_encode(self):
-        for arr, config in itertools.product(self.arrs, self.configs):
+        for arr, config in itertools.product(test_arrays, self.configs):
             self._test_encode(arr, **config)
 
     def test_decode(self):
-        for arr, config in itertools.product(self.arrs, self.configs):
+        for arr, config in itertools.product(test_arrays, self.configs):
             self._test_decode_lossless(arr, **config)
 
 
-class TestBZ2Compressor(CodecTests, unittest.TestCase):
+class TestBZ2(CodecTests, unittest.TestCase):
 
-    name = 'bz2'
-    arrs = [
-        np.arange(1000, dtype='i4'),
-        np.linspace(0, 1, 1000, dtype='f8'),
-        np.random.randint(0, 2, size=1000, dtype=bool),
-        np.random.normal(size=1000),
-        np.random.choice([b'foo', b'bar', b'baz'], size=1000)
-    ]
+    codec_id = 'bz2'
+
     configs = [
         dict(),
         dict(level=1),
@@ -163,11 +191,13 @@ class TestBZ2Compressor(CodecTests, unittest.TestCase):
     ]
 
     def test_encode(self):
-        for arr, config in itertools.product(self.arrs, self.configs):
+        for arr, config in itertools.product(test_arrays, self.configs):
+            print('encode', config, arr[:5])
             self._test_encode(arr, **config)
 
     def test_decode(self):
-        for arr, config in itertools.product(self.arrs, self.configs):
+        for arr, config in itertools.product(test_arrays, self.configs):
+            print('decode', config, arr[:5])
             self._test_decode_lossless(arr, **config)
 
 
@@ -177,16 +207,10 @@ except ImportError:  # pragma: no cover
     pass
 else:
 
-    class TestLZMACompressor(CodecTests, unittest.TestCase):
+    class TestLZMA(CodecTests, unittest.TestCase):
 
-        name = 'lzma'
-        arrs = [
-            np.arange(1000, dtype='i4'),
-            np.linspace(0, 1, 1000, dtype='f8'),
-            np.random.randint(0, 2, size=1000, dtype=bool),
-            np.random.normal(size=1000),
-            np.random.choice([b'foo', b'bar', b'baz'], size=1000)
-        ]
+        codec_id = 'lzma'
+
         configs = [
             dict(),
             dict(preset=1),
@@ -197,79 +221,60 @@ else:
         ]
 
         def test_encode(self):
-            for arr, config in itertools.product(self.arrs, self.configs):
+            for arr, config in itertools.product(test_arrays, self.configs):
                 self._test_encode(arr, **config)
 
         def test_decode(self):
-            for arr, config in itertools.product(self.arrs, self.configs):
+            for arr, config in itertools.product(test_arrays, self.configs):
                 self._test_decode_lossless(arr, **config)
 
 
-try:
-    from zarr import blosc  # flake8: noqa
-except ImportError:  # pragma: no cover
-    pass
-else:
+class TestBlosc(CodecTests, unittest.TestCase):
 
-    class TestBloscCompressor(CodecTests, unittest.TestCase):
+    codec_id = 'blosc'
 
-        name = 'blosc'
-
-        arrs = [
-            np.arange(1000, dtype='i4'),
-            np.linspace(0, 1, 1000, dtype='f8'),
-            np.random.randint(0, 2, size=1000, dtype=bool),
-            np.random.normal(size=1000),
-            np.random.choice([b'a', b'b', b'c'], size=1000)
-        ]
-        configs = [
-            dict(),
-            dict(clevel=0),
-            dict(cname='lz4'),
-            dict(cname='lz4', clevel=1, shuffle=0),
-            dict(cname='lz4', clevel=1, shuffle=1),
-            dict(cname='lz4', clevel=1, shuffle=2),
-            dict(cname='zlib', clevel=1, shuffle=2),
-            dict(cname='zstd', clevel=1, shuffle=2),
-            dict(cname='blosclz', clevel=1, shuffle=2),
-            dict(cname='snappy', clevel=1, shuffle=2),
-        ]
-
-        def test_encode(self):
-
-            # N.B., watch out here with blosc compressor, if the itemsize of
-            # the source buffer is different then the results of compression
-            # may be different.
-
-            for arr, config in itertools.product(self.arrs, self.configs):
-                if arr.dtype.itemsize == 1:
-                    self._test_encode(arr, **config)
-
-        def test_decode(self):
-            for arr, config in itertools.product(self.arrs, self.configs):
-                self._test_decode_lossless(arr, **config)
-
-
-class TestDeltaFilter(CodecTests, unittest.TestCase):
-
-    name = 'delta'
-
-    arrs = [
-        np.arange(1000, dtype='i4'),
-        np.linspace(0, 1, 1000, dtype='f8'),
-        np.random.randint(-10, 10, size=1000, dtype='i1'),
-        np.random.normal(size=1000),
+    configs = [
+        dict(),
+        dict(clevel=0),
+        dict(cname='lz4'),
+        dict(cname='lz4', clevel=1, shuffle=0),
+        dict(cname='lz4', clevel=1, shuffle=1),
+        dict(cname='lz4', clevel=1, shuffle=2),
+        dict(cname='zlib', clevel=1, shuffle=2),
+        dict(cname='zstd', clevel=1, shuffle=2),
+        dict(cname='blosclz', clevel=1, shuffle=2),
+        dict(cname='snappy', clevel=1, shuffle=2),
     ]
 
     def test_encode(self):
-        for arr in self.arrs:
-            self._test_encode(arr, dtype=arr.dtype)
+
+        # N.B., watch out here with blosc compressor, if the itemsize of
+        # the source buffer is different then the results of compression
+        # may be different.
+
+        for arr, config in itertools.product(test_arrays, self.configs):
+            if arr.dtype.itemsize == 1:
+                self._test_encode(arr, **config)
 
     def test_decode(self):
-        for arr in self.arrs:
+        for arr, config in itertools.product(test_arrays, self.configs):
+            self._test_decode_lossless(arr, **config)
+
+
+class TestDelta(CodecTests, unittest.TestCase):
+
+    codec_id = 'delta'
+
+    def test_encode(self):
+        for arr in test_arrays:
+            if arr.dtype.kind in {'f', 'i', 'u'}:
+                self._test_encode(arr, dtype=arr.dtype)
+
+    def test_decode(self):
+        for arr in test_arrays:
             if arr.dtype.kind == 'f':
                 self._test_decode_lossy(arr, decimal=10, dtype=arr.dtype)
-            else:
+            elif arr.dtype.kind in {'i', 'u'}:
                 self._test_decode_lossless(arr, dtype=arr.dtype)
 
     def test_encode_output(self):
@@ -283,14 +288,18 @@ class TestDeltaFilter(CodecTests, unittest.TestCase):
         eq(np.dtype(astype), actual.dtype)
 
 
-class TestFixedScaleOffsetFilter(CodecTests, unittest.TestCase):
+class TestFixedScaleOffset(CodecTests, unittest.TestCase):
 
-    name = 'fixedscaleoffset'
+    codec_id = 'fixedscaleoffset'
 
     arrs = [
         np.linspace(1000, 1001, 1000, dtype='f8'),
         np.random.normal(loc=1000, scale=1, size=1000).astype('f8'),
+        np.linspace(1000, 1001, 1000, dtype='f8').reshape(100, 10),
+        np.linspace(1000, 1001, 1000, dtype='f8').reshape(100, 10, order='F'),
+        np.linspace(1000, 1001, 1000, dtype='f8').reshape(10, 10, 10),
     ]
+
     configs = [
         dict(offset=1000, scale=10, dtype='f8', astype='i1'),
         dict(offset=1000, scale=10**2, dtype='f8', astype='i2'),
@@ -305,7 +314,6 @@ class TestFixedScaleOffsetFilter(CodecTests, unittest.TestCase):
     def test_decode(self):
         for arr, config in itertools.product(self.arrs, self.configs):
             decimal = int(np.log10(config['scale']))
-            print(config, decimal, arr[:5])
             self._test_decode_lossy(arr, decimal=decimal, **config)
 
     def test_encode_output(self):
@@ -320,14 +328,18 @@ class TestFixedScaleOffsetFilter(CodecTests, unittest.TestCase):
         eq(np.dtype(astype), actual.dtype)
 
 
-class TestQuantizeFilter(CodecTests, unittest.TestCase):
+class TestQuantize(CodecTests, unittest.TestCase):
 
-    name = 'quantize'
+    codec_id = 'quantize'
 
     arrs = [
         np.linspace(0, 1, 1000, dtype='f8'),
         np.random.normal(loc=0, scale=1, size=1000).astype('f8'),
+        np.linspace(0, 1, 1000, dtype='f8').reshape(100, 10),
+        np.linspace(0, 1, 1000, dtype='f8').reshape(100, 10, order='F'),
+        np.linspace(0, 1, 1000, dtype='f8').reshape(10, 10, 10),
     ]
+
     configs = [
         dict(digits=1, dtype='f8', astype='f2'),
         dict(digits=6, dtype='f8', astype='f4'),
@@ -345,9 +357,9 @@ class TestQuantizeFilter(CodecTests, unittest.TestCase):
             self._test_decode_lossy(arr, decimal=decimal, **config)
 
 
-class TestPackBitsFilter(CodecTests, unittest.TestCase):
+class TestPackBits(CodecTests, unittest.TestCase):
 
-    name = 'packbits'
+    codec_id = 'packbits'
 
     arr = np.random.randint(0, 2, size=1000, dtype=bool)
 
@@ -362,19 +374,26 @@ class TestPackBitsFilter(CodecTests, unittest.TestCase):
             self._test_decode_lossless(arr)
 
 
-class TestCategorizeFilter(CodecTests, unittest.TestCase):
+class TestCategorize(CodecTests, unittest.TestCase):
 
-    name = 'categorize'
+    codec_id = 'categorize'
     labels = [b'foo', b'bar', b'baz', b'quux']
-    arr = np.random.choice(labels, size=1000)
+    arrs = [
+        np.random.choice(labels, size=1000),
+        np.random.choice(labels, size=(100, 10)),
+        np.random.choice(labels, size=(10, 10, 10)),
+        np.random.choice(labels, size=1000).reshape(100, 10, order='F'),
+    ]
 
     def test_encode(self):
-        self._test_encode(self.arr, labels=self.labels,
-                          dtype=self.arr.dtype, astype='u1')
+        for arr in self.arrs:
+            self._test_encode(arr, labels=self.labels, dtype=arr.dtype,
+                              astype='u1')
 
     def test_decode(self):
-        self._test_decode_lossless(self.arr, labels=self.labels,
-                                   dtype=self.arr.dtype, astype='u1')
+        for arr in self.arrs:
+            self._test_decode_lossless(arr, labels=self.labels,
+                                       dtype=arr.dtype, astype='u1')
 
     def test_encode_output(self):
         labels = ['foo', 'bar', 'baz']
@@ -393,3 +412,9 @@ class TestCategorizeFilter(CodecTests, unittest.TestCase):
         expect[expect == b'quux'] = b''
         assert_array_equal(expect, dec)
         eq(arr.dtype, dec.dtype)
+
+
+def test_get_codec():
+
+    with assert_raises(ValueError):
+        get_codec({'id': 'foo'})

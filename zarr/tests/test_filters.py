@@ -7,9 +7,9 @@ from numpy.testing import assert_array_equal, assert_array_almost_equal
 from nose.tools import eq_ as eq
 
 
-from zarr.codecs import DeltaFilter, FixedScaleOffsetFilter, \
-    QuantizeFilter, PackBitsFilter, CategorizeFilter, \
-    ZlibCompressor, BloscCompressor, BZ2Compressor
+from zarr.codecs import Delta, FixedScaleOffset, \
+    Quantize, PackBits, Categorize, \
+    Zlib, Blosc, BZ2
 from zarr.creation import array
 from zarr.compat import PY2
 from zarr.util import buffer_tobytes
@@ -17,13 +17,13 @@ from zarr.util import buffer_tobytes
 
 compressors = [
     None,
-    ZlibCompressor(),
-    BZ2Compressor(),
-    BloscCompressor(),
+    Zlib(),
+    BZ2(),
+    Blosc(),
 ]
 if not PY2:
-    from zarr.codecs import LZMACompressor
-    compressors.append(LZMACompressor())
+    from zarr.codecs import LZMA
+    compressors.append(LZMA())
 
 
 def test_array_with_delta_filter():
@@ -31,7 +31,7 @@ def test_array_with_delta_filter():
     # setup
     astype = 'u1'
     dtype = 'i8'
-    filters = [DeltaFilter(astype=astype, dtype=dtype)]
+    filters = [Delta(astype=astype, dtype=dtype)]
     data = np.arange(100, dtype=dtype)
 
     for compressor in compressors:
@@ -59,7 +59,7 @@ def test_array_with_scaleoffset_filter():
     # setup
     astype = 'u1'
     dtype = 'f8'
-    flt = FixedScaleOffsetFilter(scale=10, offset=1000, astype=astype,
+    flt = FixedScaleOffset(scale=10, offset=1000, astype=astype,
                                  dtype=dtype)
     filters = [flt]
     data = np.linspace(1000, 1001, 34, dtype='f8')
@@ -89,7 +89,7 @@ def test_array_with_quantize_filter():
     # setup
     dtype = 'f8'
     digits = 3
-    flt = QuantizeFilter(digits=digits, dtype=dtype)
+    flt = Quantize(digits=digits, dtype=dtype)
     filters = [flt]
     data = np.linspace(0, 1, 34, dtype=dtype)
 
@@ -116,7 +116,7 @@ def test_array_with_quantize_filter():
 def test_array_with_packbits_filter():
 
     # setup
-    flt = PackBitsFilter()
+    flt = PackBits()
     filters = [flt]
     data = np.random.randint(0, 2, size=100, dtype=bool)
 
@@ -144,7 +144,7 @@ def test_array_with_categorize_filter():
 
     # setup
     data = np.random.choice([b'foo', b'bar', b'baz'], size=100)
-    flt = CategorizeFilter(dtype=data.dtype, labels=['foo', 'bar', 'baz'])
+    flt = Categorize(dtype=data.dtype, labels=['foo', 'bar', 'baz'])
     filters = [flt]
 
     for compressor in compressors:
@@ -177,7 +177,7 @@ def test_compressor_as_filter():
         # setup filters
         dtype = 'i8'
         filters = [
-            DeltaFilter(dtype=dtype),
+            Delta(dtype=dtype),
             compressor
         ]
 

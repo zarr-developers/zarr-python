@@ -22,11 +22,11 @@ array_meta_key = '.zarray'
 group_meta_key = '.zgroup'
 attrs_key = '.zattrs'
 try:
-    from zarr.codecs import BloscCompressor
-    default_compressor = BloscCompressor()
-except ImportError:
-    from zarr.codecs import ZlibCompressor
-    default_compressor = ZlibCompressor()
+    from zarr.codecs import Blosc
+    default_compressor = Blosc()
+except ImportError:  # pragma: no cover
+    from zarr.codecs import Zlib
+    default_compressor = Zlib()
 
 
 def _path_to_prefix(path):

@@ -11,7 +11,7 @@ from zarr.compat import binary_type, text_type
 from zarr.meta import decode_array_metadata, encode_dtype, decode_dtype, \
     ZARR_FORMAT, decode_group_metadata, encode_array_metadata
 from zarr.errors import MetadataError
-from zarr.codecs import DeltaFilter, ZlibCompressor, BloscCompressor
+from zarr.codecs import Delta, Zlib, Blosc
 
 
 def assert_json_eq(expect, actual):  # pragma: no cover
@@ -30,7 +30,7 @@ def test_encode_decode_array_1():
         shape=(100,),
         chunks=(10,),
         dtype=np.dtype('f8'),
-        compressor=ZlibCompressor(1).get_config(),
+        compressor=Zlib(1).get_config(),
         fill_value=None,
         filters=None,
         order='C'
@@ -66,8 +66,8 @@ def test_encode_decode_array_1():
 def test_encode_decode_array_2():
 
     # some variations
-    df = DeltaFilter(astype='u2', dtype='V14')
-    compressor = BloscCompressor(cname='lz4', clevel=3, shuffle=2)
+    df = Delta(astype='u2', dtype='V14')
+    compressor = Blosc(cname='lz4', clevel=3, shuffle=2)
     meta = dict(
         shape=(100, 100),
         chunks=(10, 10),
@@ -126,7 +126,7 @@ def test_encode_decode_array_fill_values():
             shape=(100,),
             chunks=(10,),
             dtype=np.dtype('f8'),
-            compressor=ZlibCompressor(1).get_config(),
+            compressor=Zlib(1).get_config(),
             fill_value=v,
             filters=None,
             order='C'

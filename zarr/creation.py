@@ -59,7 +59,7 @@ def create(shape, chunks=None, dtype=None, compressor='default',
         >>> z
         Array((10000, 10000), float64, chunks=(1000, 1000), order=C)
           nbytes: 762.9M; nbytes_stored: 326; ratio: 2453987.7; initialized: 0/100
-          compressor: BloscCompressor(cname='lz4', clevel=5, shuffle=1)
+          compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
           store: dict
 
     """  # flake8: noqa
@@ -117,7 +117,7 @@ def zeros(shape, chunks=None, dtype=None, compressor='default',
     >>> z
     Array((10000, 10000), float64, chunks=(1000, 1000), order=C)
       nbytes: 762.9M; nbytes_stored: 323; ratio: 2476780.2; initialized: 0/100
-      compressor: BloscCompressor(cname='lz4', clevel=5, shuffle=1)
+      compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
       store: dict
     >>> z[:2, :2]
     array([[ 0.,  0.],
@@ -146,7 +146,7 @@ def ones(shape, chunks=None, dtype=None, compressor='default',
     >>> z
     Array((10000, 10000), float64, chunks=(1000, 1000), order=C)
       nbytes: 762.9M; nbytes_stored: 323; ratio: 2476780.2; initialized: 0/100
-      compressor: BloscCompressor(cname='lz4', clevel=5, shuffle=1)
+      compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
       store: dict
     >>> z[:2, :2]
     array([[ 1.,  1.],
@@ -176,7 +176,7 @@ def full(shape, fill_value, chunks=None, dtype=None, compressor='default',
     >>> z
     Array((10000, 10000), float64, chunks=(1000, 1000), order=C)
       nbytes: 762.9M; nbytes_stored: 324; ratio: 2469135.8; initialized: 0/100
-      compressor: BloscCompressor(cname='lz4', clevel=5, shuffle=1)
+      compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
       store: dict
     >>> z[:2, :2]
     array([[ 42.,  42.],
@@ -208,7 +208,7 @@ def array(data, chunks=None, dtype=None, compressor='default',
     >>> z
     Array((10000, 10000), int64, chunks=(1000, 1000), order=C)
       nbytes: 762.9M; nbytes_stored: 17.1M; ratio: 44.7; initialized: 100/100
-      compressor: BloscCompressor(cname='lz4', clevel=5, shuffle=1)
+      compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
       store: dict
 
     """  # flake8: noqa
@@ -294,13 +294,13 @@ def open_array(path, mode='a', shape=None, chunks=None, dtype=None,
     >>> z1
     Array((10000, 10000), float64, chunks=(1000, 1000), order=C)
       nbytes: 762.9M; nbytes_stored: 24.8M; ratio: 30.8; initialized: 100/100
-      compressor: BloscCompressor(cname='lz4', clevel=5, shuffle=1)
+      compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
       store: DirectoryStore
     >>> z2 = zarr.open_array('example.zarr', mode='r')
     >>> z2
     Array((10000, 10000), float64, chunks=(1000, 1000), order=C)
       nbytes: 762.9M; nbytes_stored: 24.8M; ratio: 30.8; initialized: 100/100
-      compressor: BloscCompressor(cname='lz4', clevel=5, shuffle=1)
+      compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
       store: DirectoryStore
     >>> np.all(z1[:] == z2[:])
     True

@@ -309,7 +309,7 @@ class Array(object):
             >>> z
             Array((100000000,), int32, chunks=(1000000,), order=C)
               nbytes: 381.5M; nbytes_stored: 6.7M; ratio: 56.8; initialized: 100/100
-              compressor: BloscCompressor(cname='lz4', clevel=5, shuffle=1)
+              compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
               store: dict
 
         Take some slices::
@@ -334,7 +334,7 @@ class Array(object):
             >>> z
             Array((10000, 10000), int32, chunks=(1000, 1000), order=C)
               nbytes: 381.5M; nbytes_stored: 9.5M; ratio: 40.1; initialized: 100/100
-              compressor: BloscCompressor(cname='lz4', clevel=5, shuffle=1)
+              compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
               store: dict
 
         Take some slices::
@@ -428,7 +428,7 @@ class Array(object):
             >>> z
             Array((100000000,), int32, chunks=(1000000,), order=C)
               nbytes: 381.5M; nbytes_stored: 301; ratio: 1328903.7; initialized: 0/100
-              compressor: BloscCompressor(cname='lz4', clevel=5, shuffle=1)
+              compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
               store: dict
 
         Set all array elements to the same scalar value::
@@ -450,7 +450,7 @@ class Array(object):
             >>> z
             Array((10000, 10000), int32, chunks=(1000, 1000), order=C)
               nbytes: 381.5M; nbytes_stored: 323; ratio: 1238390.1; initialized: 0/100
-              compressor: BloscCompressor(cname='lz4', clevel=5, shuffle=1)
+              compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
               store: dict
 
         Set all array elements to the same scalar value::
@@ -736,14 +736,17 @@ class Array(object):
         n_chunks = reduce(operator.mul, self.cdata_shape)
         r += '; initialized: %s/%s' % (self.initialized, n_chunks)
 
+        # filters
+        if self.filters:
+            # first line
+            r += '\n  filters: %r' % self.filters[0]
+            # subsequent lines
+            for f in self.filters[1:]:
+                r += '\n           %r' % f
+
         # compressor
         if self.compressor:
             r += '\n  compressor: %r' % self.compressor
-
-        # filters
-        if self.filters:
-            r += '\n  filters: %s' % ', '.join([type(f).__name__ for f in
-                                                self._filters])
 
         # storage and synchronizer classes
         r += '\n  store: %s' % type(self.store).__name__
@@ -787,19 +790,19 @@ class Array(object):
         >>> z
         Array((10000, 10000), float64, chunks=(1000, 1000), order=C)
           nbytes: 762.9M; nbytes_stored: 323; ratio: 2476780.2; initialized: 0/100
-          compressor: BloscCompressor(cname='lz4', clevel=5, shuffle=1)
+          compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
           store: dict
         >>> z.resize(20000, 10000)
         >>> z
         Array((20000, 10000), float64, chunks=(1000, 1000), order=C)
           nbytes: 1.5G; nbytes_stored: 323; ratio: 4953560.4; initialized: 0/200
-          compressor: BloscCompressor(cname='lz4', clevel=5, shuffle=1)
+          compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
           store: dict
         >>> z.resize(30000, 1000)
         >>> z
         Array((30000, 1000), float64, chunks=(1000, 1000), order=C)
           nbytes: 228.9M; nbytes_stored: 322; ratio: 745341.6; initialized: 0/30
-          compressor: BloscCompressor(cname='lz4', clevel=5, shuffle=1)
+          compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
           store: dict
 
         Notes
@@ -861,19 +864,19 @@ class Array(object):
         >>> z
         Array((10000, 1000), int32, chunks=(1000, 100), order=C)
           nbytes: 38.1M; nbytes_stored: 1.9M; ratio: 20.0; initialized: 100/100
-          compressor: BloscCompressor(cname='lz4', clevel=5, shuffle=1)
+          compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
           store: dict
         >>> z.append(a)
         >>> z
         Array((20000, 1000), int32, chunks=(1000, 100), order=C)
           nbytes: 76.3M; nbytes_stored: 3.8M; ratio: 20.0; initialized: 200/200
-          compressor: BloscCompressor(cname='lz4', clevel=5, shuffle=1)
+          compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
           store: dict
         >>> z.append(np.vstack([a, a]), axis=1)
         >>> z
         Array((20000, 2000), int32, chunks=(1000, 100), order=C)
           nbytes: 152.6M; nbytes_stored: 7.6M; ratio: 20.0; initialized: 400/400
-          compressor: BloscCompressor(cname='lz4', clevel=5, shuffle=1)
+          compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
           store: dict
 
         """
@@ -952,7 +955,7 @@ class Array(object):
             >>> np.random.seed(42)
             >>> labels = [b'female', b'male']
             >>> data = np.random.choice(labels, size=10000)
-            >>> filters = [zarr.CategorizeFilter(labels=labels,
+            >>> filters = [zarr.Categorize(labels=labels,
             ...                                  dtype=data.dtype,
             ...                                  astype='u1')]
             >>> a = zarr.array(data, chunks=1000, filters=filters)
