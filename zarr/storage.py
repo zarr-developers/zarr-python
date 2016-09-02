@@ -16,6 +16,7 @@ from zarr.util import normalize_shape, normalize_chunks, normalize_order, \
 from zarr.meta import encode_array_metadata, encode_group_metadata
 from zarr.compat import PY2, binary_type
 from zarr.codecs import codec_registry
+from zarr.errors import PermissionError
 
 
 array_meta_key = '.zarray'
@@ -734,13 +735,10 @@ class ZipStore(MutableMapping):
                 return f.read()
 
     def __setitem__(self, key, value):
+        if self.mode == 'r':
+            raise PermissionError('mapping is read-only')
         value = ensure_bytes(value)
-        if self.mode in {'w', 'a', 'x'}:
-            mode = 'a'
-        else:
-            # let zipfile raise an error when trying to write
-            mode = 'r'
-        with zipfile.ZipFile(self.path, mode=mode,
+        with zipfile.ZipFile(self.path, mode='a',
                              compression=self.compression,
                              allowZip64=self.allowZip64) as zf:
             zf.writestr(key, value)

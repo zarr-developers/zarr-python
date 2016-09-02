@@ -21,6 +21,7 @@ from zarr.meta import decode_array_metadata, encode_array_metadata, \
 from zarr.compat import text_type
 from zarr.storage import default_compressor
 from zarr.codecs import Zlib, Blosc
+from zarr.errors import PermissionError
 
 
 class StoreTests(object):
@@ -633,6 +634,13 @@ class TestZipStore(StoreTests, unittest.TestCase):
         atexit.register(os.remove, path)
         store = ZipStore(path)
         return store
+
+    def test_mode(self):
+        store = ZipStore('example.zip', mode='w')
+        store['foo'] = b'bar'
+        store = ZipStore('example.zip', mode='r')
+        with assert_raises(PermissionError):
+            store['foo'] = b'bar'
 
 
 def test_getsize():
