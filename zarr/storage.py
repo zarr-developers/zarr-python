@@ -677,7 +677,43 @@ class DirectoryStore(MutableMapping):
 
 # noinspection PyPep8Naming
 class ZipStore(MutableMapping):
-    """TODO doc me"""
+    """Mutable Mapping interface to a Zip file. Keys must be strings,
+    values must be bytes-like objects.
+
+    Parameters
+    ----------
+    path : string
+        Location of file.
+    compression : integer, optional
+        Compression method to use when writing to the archive.
+    allowZip64 : bool, optional
+        If True (the default) will create ZIP files that use the ZIP64
+        extensions when the zipfile is larger than 2 GiB. If False
+        will raise an exception when the ZIP file would require ZIP64
+        extensions.
+    mode : string, optional
+        One of 'r' to read an existing file, 'w' to truncate and write a new
+        file, 'a' to append to an existing file, or 'x' to exclusively create
+        and write a new file.
+
+    Examples
+    --------
+    >>> import zarr
+    >>> store = zarr.ZipStore('example.zip', mode='w')
+    >>> store['foo'] = b'bar'
+    >>> store['foo']
+    b'bar'
+    >>> store['a/b/c'] = b'xxx'
+    >>> store['a/b/c']
+    b'xxx'
+    >>> sorted(store.keys())
+    ['a/b/c', 'foo']
+    >>> import zipfile
+    >>> zf = zipfile.ZipFile('example.zip', mode='r')
+    >>> sorted(zf.namelist())
+    ['a/b/c', 'foo']
+
+    """
 
     def __init__(self, path, compression=zipfile.ZIP_STORED,
                  allowZip64=True, mode='a'):
@@ -690,6 +726,7 @@ class ZipStore(MutableMapping):
         self.path = path
         self.compression = compression
         self.allowZip64 = allowZip64
+        self.mode = mode
 
     def __getitem__(self, key):
         with zipfile.ZipFile(self.path) as zf:
@@ -698,7 +735,12 @@ class ZipStore(MutableMapping):
 
     def __setitem__(self, key, value):
         value = ensure_bytes(value)
-        with zipfile.ZipFile(self.path, mode='a',
+        if self.mode in {'w', 'a', 'x'}:
+            mode = 'a'
+        else:
+            # let zipfile raise an error when trying to write
+            mode = 'r'
+        with zipfile.ZipFile(self.path, mode=mode,
                              compression=self.compression,
                              allowZip64=self.allowZip64) as zf:
             zf.writestr(key, value)
