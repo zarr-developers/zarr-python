@@ -142,7 +142,7 @@ class Group(Mapping):
 
     @property
     def synchronizer(self):
-        """TODO doc me"""
+        """Object used to synchronize write access to groups and arrays."""
         return self._synchronizer
 
     @property
