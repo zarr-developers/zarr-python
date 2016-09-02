@@ -9,7 +9,7 @@ from nose.tools import eq_ as eq, assert_raises
 
 from zarr.attrs import Attributes
 from zarr.compat import binary_type, text_type
-from zarr.errors import ReadOnlyError
+from zarr.errors import PermissionError
 
 
 class TestAttributes(unittest.TestCase):
@@ -80,9 +80,9 @@ class TestAttributes(unittest.TestCase):
         store['attrs'] = json.dumps(dict(foo='bar', baz=42)).encode('ascii')
         eq(a['foo'], 'bar')
         eq(a['baz'], 42)
-        with assert_raises(ReadOnlyError):
+        with assert_raises(PermissionError):
             a['foo'] = 'quux'
-        with assert_raises(ReadOnlyError):
+        with assert_raises(PermissionError):
             del a['foo']
-        with assert_raises(ReadOnlyError):
+        with assert_raises(PermissionError):
             a.update(foo='quux')

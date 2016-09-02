@@ -19,10 +19,11 @@ from zarr.storage import DictStore, DirectoryStore, ZipStore, init_group, \
 from zarr.core import Array
 from zarr.hierarchy import Group, group, open_group
 from zarr.attrs import Attributes
-from zarr.errors import ReadOnlyError
+from zarr.errors import PermissionError
 from zarr.creation import open_array
 from zarr.compat import PY2
 from zarr.sync import ThreadSynchronizer, ProcessSynchronizer
+from zarr.codecs import Zlib
 
 
 # noinspection PyStatementEffect
@@ -188,8 +189,8 @@ class TestGroup(unittest.TestCase):
         eq((2000,), d2.shape)
         eq((200,), d2.chunks)
         eq(np.dtype('i1'), d2.dtype)
-        eq('zlib', d2.compression)
-        eq(9, d2.compression_opts)
+        eq('zlib', d2.compressor.codec_id)
+        eq(9, d2.compressor.level)
         eq(42, d2.fill_value)
         eq('F', d2.order)
         eq('a/b/c', d2.path)
@@ -207,6 +208,43 @@ class TestGroup(unittest.TestCase):
         eq('bar', d3.path)
         eq('/bar', d3.name)
         assert_is(g.store, d3.store)
+
+        # compression arguments handling follows...
+
+        # compression_opts as dict
+        d = g.create_dataset('aaa', shape=1000, dtype='u1',
+                             compression='blosc',
+                             compression_opts=dict(cname='zstd', clevel=1,
+                                                   shuffle=2))
+        eq(d.compressor.codec_id, 'blosc')
+        eq(b'zstd', d.compressor.cname)
+        eq(1, d.compressor.clevel)
+        eq(2, d.compressor.shuffle)
+
+        # compression_opts as sequence
+        d = g.create_dataset('bbb', shape=1000, dtype='u1',
+                             compression='blosc',
+                             compression_opts=('zstd', 1, 2))
+        eq(d.compressor.codec_id, 'blosc')
+        eq(b'zstd', d.compressor.cname)
+        eq(1, d.compressor.clevel)
+        eq(2, d.compressor.shuffle)
+
+        # None compression_opts
+        d = g.create_dataset('ccc', shape=1000, dtype='u1',
+                             compression='zlib')
+        eq(d.compressor.codec_id, 'zlib')
+        eq(1, d.compressor.level)
+
+        # None compression
+        d = g.create_dataset('ddd', shape=1000, dtype='u1', compression=None)
+        assert_is_none(d.compressor)
+
+        # compressor as compression
+        d = g.create_dataset('eee', shape=1000, dtype='u1',
+                             compression=Zlib(1))
+        eq(d.compressor.codec_id, 'zlib')
+        eq(1, d.compressor.level)
 
     def test_require_dataset(self):
         g = self.create_group()
@@ -286,21 +324,22 @@ class TestGroup(unittest.TestCase):
         with assert_raises(KeyError):
             g.require_dataset('c/d', shape=100, chunks=10)
 
-        # h5py compatibility - accept but ingore some keyword args
-        d = g.create_dataset('x', shape=100, chunks=10, fillvalue=1)
-        assert_is_none(d.fill_value)
+        # h5py compatibility
+        d = g.create_dataset('x', shape=100, chunks=10, fillvalue=42)
+        eq(42, d.fill_value)
+        # ignore 'shuffle'
         d = g.create_dataset('y', shape=100, chunks=10, shuffle=True)
         assert not hasattr(d, 'shuffle')
 
         # read-only
         g = self.create_group(read_only=True)
-        with assert_raises(ReadOnlyError):
+        with assert_raises(PermissionError):
             g.create_group('zzz')
-        with assert_raises(ReadOnlyError):
+        with assert_raises(PermissionError):
             g.require_group('zzz')
-        with assert_raises(ReadOnlyError):
+        with assert_raises(PermissionError):
             g.create_dataset('zzz', shape=100, chunks=10)
-        with assert_raises(ReadOnlyError):
+        with assert_raises(PermissionError):
             g.require_dataset('zzz', shape=100, chunks=10)
 
     def test_getitem_contains_iterators(self):
@@ -422,8 +461,7 @@ class TestGroup(unittest.TestCase):
 
     def test_group_repr(self):
         g = self.create_group()
-        store_class = '%s.%s' % (dict.__module__, dict.__name__)
-        expect = 'zarr.hierarchy.Group(/, 0)\n  store: %s' % store_class
+        expect = 'Group(/, 0)\n  store: dict'
         actual = repr(g)
         eq(expect, actual)
         g.create_group('foo')
@@ -433,12 +471,12 @@ class TestGroup(unittest.TestCase):
         g.create_dataset('quux', shape=100, chunks=10)
         g.create_dataset('z'*80, shape=100, chunks=10)
         expect = \
-            'zarr.hierarchy.Group(/, 6)\n' \
+            'Group(/, 6)\n' \
             '  arrays: 3; baz, quux, ' \
             'zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz...\n' \
             '  groups: 3; bar, foo, ' \
             'yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy...\n' \
-            '  store: %s' % store_class
+            '  store: dict'
         actual = repr(g)
         eq(expect, actual)
 
@@ -483,27 +521,27 @@ class TestGroup(unittest.TestCase):
         assert_array_equal(np.arange(100), j[:])
 
         grp = self.create_group(read_only=True)
-        with assert_raises(ReadOnlyError):
+        with assert_raises(PermissionError):
             grp.create('aa', shape=100, chunks=10)
-        with assert_raises(ReadOnlyError):
+        with assert_raises(PermissionError):
             grp.empty('aa', shape=100, chunks=10)
-        with assert_raises(ReadOnlyError):
+        with assert_raises(PermissionError):
             grp.zeros('aa', shape=100, chunks=10)
-        with assert_raises(ReadOnlyError):
+        with assert_raises(PermissionError):
             grp.ones('aa', shape=100, chunks=10)
-        with assert_raises(ReadOnlyError):
+        with assert_raises(PermissionError):
             grp.full('aa', shape=100, chunks=10, fill_value=42)
-        with assert_raises(ReadOnlyError):
+        with assert_raises(PermissionError):
             grp.array('aa', data=np.arange(100), chunks=10)
-        with assert_raises(ReadOnlyError):
+        with assert_raises(PermissionError):
             grp.create('aa', shape=100, chunks=10)
-        with assert_raises(ReadOnlyError):
+        with assert_raises(PermissionError):
             grp.empty_like('aa', a)
-        with assert_raises(ReadOnlyError):
+        with assert_raises(PermissionError):
             grp.zeros_like('aa', a)
-        with assert_raises(ReadOnlyError):
+        with assert_raises(PermissionError):
             grp.ones_like('aa', a)
-        with assert_raises(ReadOnlyError):
+        with assert_raises(PermissionError):
             grp.full_like('aa', a)
 
     def test_paths(self):
@@ -561,7 +599,7 @@ class TestGroupWithDictStore(TestGroup):
 
     def test_group_repr(self):
         g = self.create_group()
-        expect = 'zarr.hierarchy.Group(/, 0)\n  store: zarr.storage.DictStore'
+        expect = 'Group(/, 0)\n  store: DictStore'
         actual = repr(g)
         for l1, l2 in zip(expect.split('\n'), actual.split('\n')):
             eq(l1, l2)
@@ -584,8 +622,8 @@ class TestGroupWithDirectoryStore(TestGroup):
 
     def test_group_repr(self):
         g = self.create_group()
-        expect = 'zarr.hierarchy.Group(/, 0)\n' \
-                 '  store: zarr.storage.DirectoryStore'
+        expect = 'Group(/, 0)\n' \
+                 '  store: DirectoryStore'
         actual = repr(g)
         for l1, l2 in zip(expect.split('\n'), actual.split('\n')):
             eq(l1, l2)
@@ -602,8 +640,8 @@ class TestGroupWithZipStore(TestGroup):
 
     def test_group_repr(self):
         g = self.create_group()
-        expect = 'zarr.hierarchy.Group(/, 0)\n' \
-                 '  store: zarr.storage.ZipStore'
+        expect = 'Group(/, 0)\n' \
+                 '  store: ZipStore'
         actual = repr(g)
         for l1, l2 in zip(expect.split('\n'), actual.split('\n')):
             eq(l1, l2)
@@ -618,9 +656,8 @@ class TestGroupWithChunkStore(TestGroup):
     def test_group_repr(self):
         if not PY2:
             g = self.create_group()
-            expect = 'zarr.hierarchy.Group(/, 0)\n' \
-                     '  store: builtins.dict\n' \
-                     '  chunk_store: builtins.dict'
+            expect = 'Group(/, 0)\n' \
+                     '  store: dict; chunk_store: dict'
             actual = repr(g)
             for l1, l2 in zip(expect.split('\n'), actual.split('\n')):
                 eq(l1, l2)
@@ -666,9 +703,8 @@ class TestGroupWithThreadSynchronizer(TestGroup):
     def test_group_repr(self):
         if not PY2:
             g = self.create_group()
-            expect = 'zarr.hierarchy.Group(/, 0)\n' \
-                     '  store: builtins.dict\n' \
-                     '  synchronizer: zarr.sync.ThreadSynchronizer'
+            expect = 'Group(/, 0)\n' \
+                     '  store: dict; synchronizer: ThreadSynchronizer'
             actual = repr(g)
             for l1, l2 in zip(expect.split('\n'), actual.split('\n')):
                 eq(l1, l2)
@@ -695,9 +731,8 @@ class TestGroupWithProcessSynchronizer(TestGroup):
     def test_group_repr(self):
         if not PY2:
             g = self.create_group()
-            expect = 'zarr.hierarchy.Group(/, 0)\n' \
-                     '  store: builtins.dict\n' \
-                     '  synchronizer: zarr.sync.ProcessSynchronizer'
+            expect = 'Group(/, 0)\n' \
+                     '  store: dict; synchronizer: ProcessSynchronizer'
             actual = repr(g)
             for l1, l2 in zip(expect.split('\n'), actual.split('\n')):
                 eq(l1, l2)
@@ -755,7 +790,7 @@ def test_open_group():
     g = open_group(path, mode='r')
     assert_is_instance(g, Group)
     eq(2, len(g))
-    with assert_raises(ReadOnlyError):
+    with assert_raises(PermissionError):
         g.create_group('baz')
     g = open_group(path, mode='r+')
     assert_is_instance(g, Group)

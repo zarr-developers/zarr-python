@@ -16,6 +16,7 @@ from zarr.core import Array
 from zarr.attrs import Attributes
 from zarr.storage import init_array
 from zarr.compat import PY2
+from zarr.codecs import Zlib
 
 
 class TestThreadSynchronizedAttributes(TestAttributes):
@@ -54,13 +55,12 @@ class TestThreadSynchronizedArray(TestArray):
         if not PY2:
 
             z = self.create_array(shape=100, chunks=10, dtype='f4',
-                                  compression='zlib', compression_opts=1)
+                                  compressor=Zlib(1))
             # flake8: noqa
-            expect = """zarr.core.Array((100,), float32, chunks=(10,), order=C)
-  compression: zlib; compression_opts: 1
-  nbytes: 400; nbytes_stored: 210; ratio: 1.9; initialized: 0/10
-  store: builtins.dict
-  synchronizer: zarr.sync.ThreadSynchronizer
+            expect = """Array((100,), float32, chunks=(10,), order=C)
+  nbytes: 400; nbytes_stored: 245; ratio: 1.6; initialized: 0/10
+  compressor: Zlib(level=1)
+  store: dict; synchronizer: ThreadSynchronizer
 """
             actual = repr(z)
             for l1, l2 in zip(expect.split('\n'), actual.split('\n')):
@@ -84,17 +84,13 @@ class TestProcessSynchronizedArray(TestArray):
         if not PY2:
 
             z = self.create_array(shape=100, chunks=10, dtype='f4',
-                                  compression='zlib', compression_opts=1)
+                                  compressor=Zlib(1))
             # flake8: noqa
-            expect = """zarr.core.Array((100,), float32, chunks=(10,), order=C)
-  compression: zlib; compression_opts: 1
-  nbytes: 400; nbytes_stored: 210; ratio: 1.9; initialized: 0/10
-  store: builtins.dict
-  synchronizer: zarr.sync.ProcessSynchronizer
+            expect = """Array((100,), float32, chunks=(10,), order=C)
+  nbytes: 400; nbytes_stored: 245; ratio: 1.6; initialized: 0/10
+  compressor: Zlib(level=1)
+  store: dict; synchronizer: ProcessSynchronizer
 """
             actual = repr(z)
             for l1, l2 in zip(expect.split('\n'), actual.split('\n')):
                 eq(l1, l2)
-
-
-# TODO group tests with synchronizer

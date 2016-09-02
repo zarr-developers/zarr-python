@@ -8,3 +8,4 @@ The Array class (``zarr.core``)
     .. automethod:: __setitem__
     .. automethod:: resize
     .. automethod:: append
+    .. automethod:: view

@@ -11,6 +11,7 @@ from zarr.compat import binary_type, text_type
 from zarr.meta import decode_array_metadata, encode_dtype, decode_dtype, \
     ZARR_FORMAT, decode_group_metadata, encode_array_metadata
 from zarr.errors import MetadataError
+from zarr.codecs import Delta, Zlib, Blosc
 
 
 def assert_json_eq(expect, actual):  # pragma: no cover
@@ -29,18 +30,18 @@ def test_encode_decode_array_1():
         shape=(100,),
         chunks=(10,),
         dtype=np.dtype('f8'),
-        compression='zlib',
-        compression_opts=1,
+        compressor=Zlib(1).get_config(),
         fill_value=None,
+        filters=None,
         order='C'
     )
 
     meta_json = '''{
         "chunks": [10],
-        "compression": "zlib",
-        "compression_opts": 1,
+        "compressor": {"id": "zlib", "level": 1},
         "dtype": "<f8",
         "fill_value": null,
+        "filters": null,
         "order": "C",
         "shape": [100],
         "zarr_format": %s
@@ -56,35 +57,40 @@ def test_encode_decode_array_1():
     eq(meta['shape'], meta_dec['shape'])
     eq(meta['chunks'], meta_dec['chunks'])
     eq(meta['dtype'], meta_dec['dtype'])
-    eq(meta['compression'], meta_dec['compression'])
-    eq(meta['compression_opts'], meta_dec['compression_opts'])
+    eq(meta['compressor'], meta_dec['compressor'])
     eq(meta['order'], meta_dec['order'])
     assert_is_none(meta_dec['fill_value'])
+    assert_is_none(meta_dec['filters'])
 
 
 def test_encode_decode_array_2():
 
     # some variations
+    df = Delta(astype='u2', dtype='V14')
+    compressor = Blosc(cname='lz4', clevel=3, shuffle=2)
     meta = dict(
         shape=(100, 100),
         chunks=(10, 10),
         dtype=np.dtype([('a', 'i4'), ('b', 'S10')]),
-        compression='blosc',
-        compression_opts=dict(cname='lz4', clevel=3, shuffle=2),
+        compressor=compressor.get_config(),
         fill_value=42,
-        order='F'
+        order='F',
+        filters=[df.get_config()]
     )
 
     meta_json = '''{
         "chunks": [10, 10],
-        "compression": "blosc",
-        "compression_opts": {
+        "compressor": {
+            "id": "blosc",
             "clevel": 3,
             "cname": "lz4",
             "shuffle": 2
         },
         "dtype": [["a", "<i4"], ["b", "|S10"]],
         "fill_value": 42,
+        "filters": [
+            {"id": "delta", "astype": "<u2", "dtype": "|V14"}
+        ],
         "order": "F",
         "shape": [100, 100],
         "zarr_format": %s
@@ -100,10 +106,10 @@ def test_encode_decode_array_2():
     eq(meta['shape'], meta_dec['shape'])
     eq(meta['chunks'], meta_dec['chunks'])
     eq(meta['dtype'], meta_dec['dtype'])
-    eq(meta['compression'], meta_dec['compression'])
-    eq(meta['compression_opts'], meta_dec['compression_opts'])
+    eq(meta['compressor'], meta_dec['compressor'])
     eq(meta['order'], meta_dec['order'])
     eq(meta['fill_value'], meta_dec['fill_value'])
+    eq([df.get_config()], meta_dec['filters'])
 
 
 def test_encode_decode_array_fill_values():
@@ -120,18 +126,18 @@ def test_encode_decode_array_fill_values():
             shape=(100,),
             chunks=(10,),
             dtype=np.dtype('f8'),
-            compression='zlib',
-            compression_opts=1,
+            compressor=Zlib(1).get_config(),
             fill_value=v,
+            filters=None,
             order='C'
         )
 
         meta_json = '''{
             "chunks": [10],
-            "compression": "zlib",
-            "compression_opts": 1,
+            "compressor": {"id": "zlib", "level": 1},
             "dtype": "<f8",
             "fill_value": "%s",
+            "filters": null,
             "order": "C",
             "shape": [100],
             "zarr_format": %s
@@ -155,8 +161,7 @@ def test_decode_array_unsupported_format():
         "shape": [100],
         "chunks": [10],
         "dtype": "<f8",
-        "compression": "zlib",
-        "compression_opts": 1,
+        "compressor": {"id": "zlib", "level": 1},
         "fill_value": null,
         "order": "C"
     }''' % (ZARR_FORMAT - 1)

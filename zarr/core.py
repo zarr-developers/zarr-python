@@ -7,15 +7,15 @@ import itertools
 import numpy as np
 
 
-from zarr.compressors import get_compressor_cls
 from zarr.util import is_total_slice, normalize_array_selection, \
     get_chunk_range, human_readable_size, normalize_resize_args, \
-    normalize_storage_path
+    normalize_storage_path, normalize_shape, normalize_chunks
 from zarr.storage import array_meta_key, attrs_key, listdir, getsize
 from zarr.meta import decode_array_metadata, encode_array_metadata
 from zarr.attrs import Attributes
-from zarr.errors import ReadOnlyError
+from zarr.errors import PermissionError
 from zarr.compat import reduce
+from zarr.codecs import get_codec
 
 
 class Array(object):
@@ -50,6 +50,7 @@ class Array(object):
     fill_value
     order
     synchronizer
+    filters
     attrs
     size
     itemsize
@@ -57,6 +58,7 @@ class Array(object):
     nbytes_stored
     initialized
     cdata_shape
+    is_view
 
     Methods
     -------
@@ -64,6 +66,7 @@ class Array(object):
     __setitem__
     resize
     append
+    view
 
     """  # flake8: noqa
 
@@ -92,17 +95,29 @@ class Array(object):
         except KeyError:
             raise ValueError('store has no metadata')
         else:
+
+            # decode and store metadata
             meta = decode_array_metadata(meta_bytes)
             self._meta = meta
             self._shape = meta['shape']
             self._chunks = meta['chunks']
             self._dtype = meta['dtype']
-            self._compression = meta['compression']
-            self._compression_opts = meta['compression_opts']
             self._fill_value = meta['fill_value']
             self._order = meta['order']
-            compressor_cls = get_compressor_cls(self._compression)
-            self._compressor = compressor_cls(self._compression_opts)
+            self._is_view = False
+
+            # setup compressor
+            config = meta['compressor']
+            if config is None:
+                self._compressor = None
+            else:
+                self._compressor = get_codec(config)
+
+            # setup filters
+            filters = meta['filters']
+            if filters:
+                filters = [get_codec(f) for f in filters]
+            self._filters = filters
 
         # initialize attributes
         akey = self._key_prefix + attrs_key
@@ -110,10 +125,19 @@ class Array(object):
                                  synchronizer=synchronizer)
 
     def _flush_metadata(self):
+        if self._is_view:
+            raise PermissionError('operation not permitted for views')
+        if self._compressor:
+            compressor_config = self._compressor.get_config()
+        else:
+            compressor_config = None
+        if self._filters:
+            filters_config = [f.get_config() for f in self._filters]
+        else:
+            filters_config = None
         meta = dict(shape=self._shape, chunks=self._chunks, dtype=self._dtype,
-                    compression=self._compression,
-                    compression_opts=self._compression_opts,
-                    fill_value=self._fill_value, order=self._order)
+                    compressor=compressor_config, fill_value=self._fill_value,
+                    order=self._order, filters=filters_config)
         mkey = self._key_prefix + array_meta_key
         self._store[mkey] = encode_array_metadata(meta)
 
@@ -167,16 +191,9 @@ class Array(object):
         return self._dtype
 
     @property
-    def compression(self):
-        """A string naming the primary compression algorithm used to
-        compress chunks of the array."""
-        return self._compression
-
-    @property
-    def compression_opts(self):
-        """Parameters controlling the behaviour of the primary compression
-        algorithm."""
-        return self._compression_opts
+    def compressor(self):
+        """Primary compression codec."""
+        return self._compressor
 
     @property
     def fill_value(self):
@@ -191,8 +208,13 @@ class Array(object):
 
     @property
     def synchronizer(self):
-        """TODO doc me"""
+        """Object used to synchronize write access to the array."""
         return self._synchronizer
+
+    @property
+    def filters(self):
+        """One or more codecs used to transform data prior to compression."""
+        return self._filters
 
     @property
     def attrs(self):
@@ -245,12 +267,18 @@ class Array(object):
             int(np.ceil(s / c)) for s, c in zip(self._shape, self._chunks)
         )
 
+    @property
+    def is_view(self):
+        """A boolean, True if this array is a view on another array."""
+        return self._is_view
+
     def __eq__(self, other):
         return (
             isinstance(other, Array) and
             self.store == other.store and
             self.read_only == other.read_only and
-            self.path == other.path
+            self.path == other.path and
+            not self._is_view
             # N.B., no need to compare other properties, should be covered by
             # store comparison
         )
@@ -279,10 +307,10 @@ class Array(object):
             >>> import numpy as np
             >>> z = zarr.array(np.arange(100000000), chunks=1000000, dtype='i4')
             >>> z
-            zarr.core.Array((100000000,), int32, chunks=(1000000,), order=C)
-              compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
-              nbytes: 381.5M; nbytes_stored: 6.7M; ratio: 56.8; initialized: 100/100
-              store: builtins.dict
+            Array((100000000,), int32, chunks=(1000000,), order=C)
+              nbytes: 381.5M; nbytes_stored: 6.4M; ratio: 59.9; initialized: 100/100
+              compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
+              store: dict
 
         Take some slices::
 
@@ -304,10 +332,10 @@ class Array(object):
             >>> z = zarr.array(np.arange(100000000).reshape(10000, 10000),
             ...                chunks=(1000, 1000), dtype='i4')
             >>> z
-            zarr.core.Array((10000, 10000), int32, chunks=(1000, 1000), order=C)
-              compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
-              nbytes: 381.5M; nbytes_stored: 9.5M; ratio: 40.1; initialized: 100/100
-              store: builtins.dict
+            Array((10000, 10000), int32, chunks=(1000, 1000), order=C)
+              nbytes: 381.5M; nbytes_stored: 9.2M; ratio: 41.6; initialized: 100/100
+              compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
+              store: dict
 
         Take some slices::
 
@@ -398,10 +426,10 @@ class Array(object):
             >>> import zarr
             >>> z = zarr.zeros(100000000, chunks=1000000, dtype='i4')
             >>> z
-            zarr.core.Array((100000000,), int32, chunks=(1000000,), order=C)
-              compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
-              nbytes: 381.5M; nbytes_stored: 291; ratio: 1374570.4; initialized: 0/100
-              store: builtins.dict
+            Array((100000000,), int32, chunks=(1000000,), order=C)
+              nbytes: 381.5M; nbytes_stored: 301; ratio: 1328903.7; initialized: 0/100
+              compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
+              store: dict
 
         Set all array elements to the same scalar value::
 
@@ -420,10 +448,10 @@ class Array(object):
 
             >>> z = zarr.zeros((10000, 10000), chunks=(1000, 1000), dtype='i4')
             >>> z
-            zarr.core.Array((10000, 10000), int32, chunks=(1000, 1000), order=C)
-              compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
-              nbytes: 381.5M; nbytes_stored: 313; ratio: 1277955.3; initialized: 0/100
-              store: builtins.dict
+            Array((10000, 10000), int32, chunks=(1000, 1000), order=C)
+              nbytes: 381.5M; nbytes_stored: 323; ratio: 1238390.1; initialized: 0/100
+              compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
+              store: dict
 
         Set all array elements to the same scalar value::
 
@@ -454,7 +482,7 @@ class Array(object):
 
         # guard conditions
         if self._read_only:
-            raise ReadOnlyError('array is read-only')
+            raise PermissionError('array is read-only')
 
         # normalize selection
         selection = normalize_array_selection(key, self._shape)
@@ -537,20 +565,24 @@ class Array(object):
         else:
 
             if is_total_slice(item, self._chunks) and \
+                    not self._filters and \
                     ((self._order == 'C' and dest.flags.c_contiguous) or
                      (self._order == 'F' and dest.flags.f_contiguous)):
 
-                # optimisation: we want the whole chunk, and the destination is
+                # optimization: we want the whole chunk, and the destination is
                 # contiguous, so we can decompress directly from the chunk
                 # into the destination array
-                self._compressor.decompress(cdata, dest)
+                if self._compressor:
+                    self._compressor.decode(cdata, dest)
+                else:
+                    arr = np.frombuffer(cdata, dtype=self._dtype)
+                    arr = arr.reshape(self._chunks, order=self._order)
+                    np.copyto(dest, arr)
 
             else:
 
-                # decompress chunk
-                chunk = np.empty(self._chunks, dtype=self._dtype,
-                                 order=self._order)
-                self._compressor.decompress(cdata, chunk)
+                # decode chunk
+                chunk = self._decode_chunk(cdata)
 
                 # set data in output array
                 # (split into two lines for profiling)
@@ -589,8 +621,9 @@ class Array(object):
         ckey = self._chunk_key(cidx)
 
         if is_total_slice(key, self._chunks):
+            # totally replace chunk
 
-            # optimisation: we are completely replacing the chunk, so no need
+            # optimization: we are completely replacing the chunk, so no need
             # to access the existing chunk data
 
             if np.isscalar(value):
@@ -626,16 +659,16 @@ class Array(object):
 
             else:
 
-                # decompress chunk
-                chunk = np.empty(self._chunks, dtype=self._dtype,
-                                 order=self._order)
-                self._compressor.decompress(cdata, chunk)
+                # decode chunk
+                chunk = self._decode_chunk(cdata)
+                if not chunk.flags.writeable:
+                    chunk = chunk.copy(order='K')
 
             # modify
             chunk[key] = value
 
-        # compress
-        cdata = self._compressor.compress(chunk)
+        # encode chunk
+        cdata = self._encode_chunk(chunk)
 
         # store
         self._chunk_store[ckey] = cdata
@@ -643,8 +676,49 @@ class Array(object):
     def _chunk_key(self, cidx):
         return self._key_prefix + '.'.join(map(str, cidx))
 
+    def _decode_chunk(self, cdata):
+
+        # decompress
+        if self._compressor:
+            chunk = self._compressor.decode(cdata)
+        else:
+            chunk = cdata
+
+        # apply filters
+        if self._filters:
+            for f in self._filters[::-1]:
+                chunk = f.decode(chunk)
+
+        # view as correct dtype
+        if isinstance(chunk, np.ndarray):
+            chunk = chunk.view(self._dtype)
+        else:
+            chunk = np.frombuffer(chunk, self._dtype)
+
+        # reshape
+        chunk = chunk.reshape(self._chunks, order=self._order)
+
+        return chunk
+
+    def _encode_chunk(self, chunk):
+
+        # apply filters
+        if self._filters:
+            for f in self._filters:
+                chunk = f.encode(chunk)
+
+        # compress
+        if self._compressor:
+            cdata = self._compressor.encode(chunk)
+        else:
+            cdata = chunk
+
+        return cdata
+
     def __repr__(self):
-        r = '%s.%s(' % (type(self).__module__, type(self).__name__)
+
+        # main line
+        r = '%s(' % type(self).__name__
         if self.name:
             r += '%s, ' % self.name
         r += '%s, ' % str(self.shape)
@@ -652,8 +726,8 @@ class Array(object):
         r += 'chunks=%s, ' % str(self.chunks)
         r += 'order=%s' % self.order
         r += ')'
-        r += '\n  compression: %s' % self.compression
-        r += '; compression_opts: %s' % str(self.compression_opts)
+
+        # storage size info
         r += '\n  nbytes: %s' % human_readable_size(self.nbytes)
         if self.nbytes_stored > 0:
             r += '; nbytes_stored: %s' % human_readable_size(
@@ -661,16 +735,26 @@ class Array(object):
             r += '; ratio: %.1f' % (self.nbytes / self.nbytes_stored)
         n_chunks = reduce(operator.mul, self.cdata_shape)
         r += '; initialized: %s/%s' % (self.initialized, n_chunks)
-        r += '\n  store: %s.%s' % (type(self.store).__module__,
-                                   type(self.store).__name__)
-        if self._store != self._chunk_store:
-            r += '\n  chunk_store: %s.%s' % \
-                 (type(self._chunk_store).__module__,
-                  type(self._chunk_store).__name__)
-        if self._synchronizer is not None:
-            r += ('\n  synchronizer: %s.%s' %
-                  (type(self._synchronizer).__module__,
-                   type(self._synchronizer).__name__))
+
+        # filters
+        if self.filters:
+            # first line
+            r += '\n  filters: %r' % self.filters[0]
+            # subsequent lines
+            for f in self.filters[1:]:
+                r += '\n           %r' % f
+
+        # compressor
+        if self.compressor:
+            r += '\n  compressor: %r' % self.compressor
+
+        # storage and synchronizer classes
+        r += '\n  store: %s' % type(self.store).__name__
+        if self.store != self.chunk_store:
+            r += '; chunk_store: %s' % type(self.chunk_store).__name__
+        if self.synchronizer is not None:
+            r += '; synchronizer: %s' % type(self.synchronizer).__name__
+
         return r
 
     def __getstate__(self):
@@ -684,7 +768,7 @@ class Array(object):
 
         # guard condition
         if self._read_only:
-            raise ReadOnlyError('array is read-only')
+            raise PermissionError('array is read-only')
 
         # synchronization
         if self._synchronizer is None:
@@ -704,22 +788,22 @@ class Array(object):
         >>> import zarr
         >>> z = zarr.zeros(shape=(10000, 10000), chunks=(1000, 1000))
         >>> z
-        zarr.core.Array((10000, 10000), float64, chunks=(1000, 1000), order=C)
-          compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
-          nbytes: 762.9M; nbytes_stored: 313; ratio: 2555910.5; initialized: 0/100
-          store: builtins.dict
+        Array((10000, 10000), float64, chunks=(1000, 1000), order=C)
+          nbytes: 762.9M; nbytes_stored: 323; ratio: 2476780.2; initialized: 0/100
+          compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
+          store: dict
         >>> z.resize(20000, 10000)
         >>> z
-        zarr.core.Array((20000, 10000), float64, chunks=(1000, 1000), order=C)
-          compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
-          nbytes: 1.5G; nbytes_stored: 313; ratio: 5111821.1; initialized: 0/200
-          store: builtins.dict
+        Array((20000, 10000), float64, chunks=(1000, 1000), order=C)
+          nbytes: 1.5G; nbytes_stored: 323; ratio: 4953560.4; initialized: 0/200
+          compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
+          store: dict
         >>> z.resize(30000, 1000)
         >>> z
-        zarr.core.Array((30000, 1000), float64, chunks=(1000, 1000), order=C)
-          compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
-          nbytes: 228.9M; nbytes_stored: 312; ratio: 769230.8; initialized: 0/30
-          store: builtins.dict
+        Array((30000, 1000), float64, chunks=(1000, 1000), order=C)
+          nbytes: 228.9M; nbytes_stored: 322; ratio: 745341.6; initialized: 0/30
+          compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
+          store: dict
 
         Notes
         -----
@@ -738,6 +822,10 @@ class Array(object):
         old_shape = self._shape
         new_shape = normalize_resize_args(old_shape, *args)
 
+        # update metadata
+        self._shape = new_shape
+        self._flush_metadata()
+
         # determine the new number and arrangement of chunks
         chunks = self._chunks
         new_cdata_shape = tuple(int(np.ceil(s / c))
@@ -751,10 +839,6 @@ class Array(object):
                     pass  # keep the chunk
                 else:
                     del self._chunk_store[self._key_prefix + key]
-
-        # update metadata
-        self._shape = new_shape
-        self._flush_metadata()
 
     def append(self, data, axis=0):
         """Append `data` to `axis`.
@@ -778,22 +862,22 @@ class Array(object):
         >>> a = np.arange(10000000, dtype='i4').reshape(10000, 1000)
         >>> z = zarr.array(a, chunks=(1000, 100))
         >>> z
-        zarr.core.Array((10000, 1000), int32, chunks=(1000, 100), order=C)
-          compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
-          nbytes: 38.1M; nbytes_stored: 1.9M; ratio: 20.0; initialized: 100/100
-          store: builtins.dict
+        Array((10000, 1000), int32, chunks=(1000, 100), order=C)
+          nbytes: 38.1M; nbytes_stored: 1.9M; ratio: 20.3; initialized: 100/100
+          compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
+          store: dict
         >>> z.append(a)
         >>> z
-        zarr.core.Array((20000, 1000), int32, chunks=(1000, 100), order=C)
-          compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
-          nbytes: 76.3M; nbytes_stored: 3.8M; ratio: 20.0; initialized: 200/200
-          store: builtins.dict
+        Array((20000, 1000), int32, chunks=(1000, 100), order=C)
+          nbytes: 76.3M; nbytes_stored: 3.8M; ratio: 20.3; initialized: 200/200
+          compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
+          store: dict
         >>> z.append(np.vstack([a, a]), axis=1)
         >>> z
-        zarr.core.Array((20000, 2000), int32, chunks=(1000, 100), order=C)
-          compression: blosc; compression_opts: {'clevel': 5, 'cname': 'lz4', 'shuffle': 1}
-          nbytes: 152.6M; nbytes_stored: 7.6M; ratio: 20.0; initialized: 400/400
-          store: builtins.dict
+        Array((20000, 2000), int32, chunks=(1000, 100), order=C)
+          nbytes: 152.6M; nbytes_stored: 7.5M; ratio: 20.3; initialized: 400/400
+          compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
+          store: dict
 
         """
         return self._write_op(self._append_nosync, data, axis=axis)
@@ -831,3 +915,145 @@ class Array(object):
             for i in range(len(self._shape))
         )
         self[append_selection] = data
+
+    def view(self, shape=None, chunks=None, dtype=None,
+             fill_value=None, filters=None, read_only=None,
+             synchronizer=None):
+        """Return an array sharing the same data.
+
+        Parameters
+        ----------
+        shape : int or tuple of ints
+            Array shape.
+        chunks : int or tuple of ints, optional
+            Chunk shape.
+        dtype : string or dtype, optional
+            NumPy dtype.
+        fill_value : object
+            Default value to use for uninitialized portions of the array.
+        filters : sequence, optional
+            Sequence of filters to use to encode chunk data prior to
+            compression.
+        read_only : bool, optional
+            True if array should be protected against modification.
+        synchronizer : object, optional
+            Array synchronizer.
+
+        Notes
+        -----
+        WARNING: This is an experimental feature and should be used with care.
+        There are plenty of ways to generate errors and/or cause data
+        corruption.
+
+        Examples
+        --------
+
+        Bypass filters:
+
+            >>> import zarr
+            >>> import numpy as np
+            >>> np.random.seed(42)
+            >>> labels = [b'female', b'male']
+            >>> data = np.random.choice(labels, size=10000)
+            >>> filters = [zarr.Categorize(labels=labels,
+            ...                                  dtype=data.dtype,
+            ...                                  astype='u1')]
+            >>> a = zarr.array(data, chunks=1000, filters=filters)
+            >>> a[:]
+            array([b'female', b'male', b'female', ..., b'male', b'male', b'female'],
+                  dtype='|S6')
+            >>> v = a.view(dtype='u1', filters=[])
+            >>> v.is_view
+            True
+            >>> v[:]
+            array([1, 2, 1, ..., 2, 2, 1], dtype=uint8)
+
+        Views can be used to modify data:
+
+            >>> x = v[:]
+            >>> x.sort()
+            >>> v[:] = x
+            >>> v[:]
+            array([1, 1, 1, ..., 2, 2, 2], dtype=uint8)
+            >>> a[:]
+            array([b'female', b'female', b'female', ..., b'male', b'male', b'male'],
+                  dtype='|S6')
+
+        View as a different dtype with the same itemsize:
+
+            >>> data = np.random.randint(0, 2, size=10000, dtype='u1')
+            >>> a = zarr.array(data, chunks=1000)
+            >>> a[:]
+            array([0, 0, 1, ..., 1, 0, 0], dtype=uint8)
+            >>> v = a.view(dtype=bool)
+            >>> v[:]
+            array([False, False,  True, ...,  True, False, False], dtype=bool)
+            >>> np.all(a[:].view(dtype=bool) == v[:])
+            True
+
+        An array can be viewed with a dtype with a different itemsize, however
+        some care is needed to adjust the shape and chunk shape so that chunk
+        data is interpreted correctly:
+
+            >>> data = np.arange(10000, dtype='u2')
+            >>> a = zarr.array(data, chunks=1000)
+            >>> a[:10]
+            array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9], dtype=uint16)
+            >>> v = a.view(dtype='u1', shape=20000, chunks=2000)
+            >>> v[:10]
+            array([0, 0, 1, 0, 2, 0, 3, 0, 4, 0], dtype=uint8)
+            >>> np.all(a[:].view('u1') == v[:])
+            True
+
+        Change fill value for uninitialized chunks:
+
+            >>> a = zarr.full(10000, chunks=1000, fill_value=-1, dtype='i1')
+            >>> a[:]
+            array([-1, -1, -1, ..., -1, -1, -1], dtype=int8)
+            >>> v = a.view(fill_value=42)
+            >>> v[:]
+            array([42, 42, 42, ..., 42, 42, 42], dtype=int8)
+
+        Note that resizing or appending to views is not permitted:
+
+            >>> a = zarr.empty(10000)
+            >>> v = a.view()
+            >>> try:
+            ...     v.resize(20000)
+            ... except PermissionError as e:
+            ...     print(e)
+            operation not permitted for views
+
+        """  # flake8: noqa
+
+        store = self._store
+        chunk_store = self._chunk_store
+        path = self._path
+        if read_only is None:
+            read_only = self._read_only
+        if synchronizer is None:
+            synchronizer = self._synchronizer
+        a = Array(store=store, path=path, chunk_store=chunk_store,
+                  read_only=read_only, synchronizer=synchronizer)
+        a._is_view = True
+
+        # allow override of some properties
+        if dtype is None:
+            dtype = self._dtype
+        else:
+            dtype = np.dtype(dtype)
+            a._dtype = dtype
+        if shape is None:
+            shape = self._shape
+        else:
+            shape = normalize_shape(shape)
+            a._shape = shape
+        if chunks is not None:
+            chunks = normalize_chunks(chunks, shape, dtype.itemsize)
+            a._chunks = chunks
+        if fill_value is not None:
+            a._fill_value = fill_value
+        if filters is not None:
+            a._filters = filters
+
+        return a

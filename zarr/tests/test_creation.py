@@ -17,7 +17,8 @@ from zarr.sync import ThreadSynchronizer
 from zarr.core import Array
 from zarr.storage import DirectoryStore
 from zarr.hierarchy import open_group
-from zarr.errors import ReadOnlyError
+from zarr.errors import PermissionError
+from zarr.codecs import Zlib
 
 
 def test_array():
@@ -61,10 +62,6 @@ def test_array():
     z3 = array(c)
     eq(c.shape, z3.shape)
     eq((10, 10), z3.chunks)
-
-    # chunks not specified
-    with assert_raises(ValueError):
-        z = array(np.arange(100))
 
 
 def test_empty():
@@ -128,7 +125,7 @@ def test_open_array():
     eq((100,), z.shape)
     eq((10,), z.chunks)
     assert_array_equal(np.full(100, fill_value=42), z[:])
-    with assert_raises(ReadOnlyError):
+    with assert_raises(PermissionError):
         z[:] = 43
     z = open_array(path, mode='r+')
     assert_is_instance(z, Array)
@@ -173,14 +170,13 @@ def test_open_array():
 
 def test_empty_like():
     # zarr array
-    z = empty(100, chunks=10, dtype='f4', compression='zlib',
-              compression_opts=5, order='F')
+    z = empty(100, chunks=10, dtype='f4', compressor=Zlib(5),
+              order='F')
     z2 = empty_like(z)
     eq(z.shape, z2.shape)
     eq(z.chunks, z2.chunks)
     eq(z.dtype, z2.dtype)
-    eq(z.compression, z2.compression)
-    eq(z.compression_opts, z2.compression_opts)
+    eq(z.compressor.get_config(), z2.compressor.get_config())
     eq(z.fill_value, z2.fill_value)
     eq(z.order, z2.order)
     # numpy array
@@ -190,18 +186,21 @@ def test_empty_like():
     eq((100,), z3.chunks)
     eq(a.dtype, z3.dtype)
     assert_is_none(z3.fill_value)
+    # something slightly silly
+    a = [0] * 100
+    z3 = empty_like(a, shape=200)
+    eq((200,), z3.shape)
 
 
 def test_zeros_like():
     # zarr array
-    z = zeros(100, chunks=10, dtype='f4', compression='zlib',
-              compression_opts=5, order='F')
+    z = zeros(100, chunks=10, dtype='f4', compressor=Zlib(5),
+              order='F')
     z2 = zeros_like(z)
     eq(z.shape, z2.shape)
     eq(z.chunks, z2.chunks)
     eq(z.dtype, z2.dtype)
-    eq(z.compression, z2.compression)
-    eq(z.compression_opts, z2.compression_opts)
+    eq(z.compressor.get_config(), z2.compressor.get_config())
     eq(z.fill_value, z2.fill_value)
     eq(z.order, z2.order)
     # numpy array
@@ -215,14 +214,13 @@ def test_zeros_like():
 
 def test_ones_like():
     # zarr array
-    z = ones(100, chunks=10, dtype='f4', compression='zlib',
-             compression_opts=5, order='F')
+    z = ones(100, chunks=10, dtype='f4', compressor=Zlib(5),
+             order='F')
     z2 = ones_like(z)
     eq(z.shape, z2.shape)
     eq(z.chunks, z2.chunks)
     eq(z.dtype, z2.dtype)
-    eq(z.compression, z2.compression)
-    eq(z.compression_opts, z2.compression_opts)
+    eq(z.compressor.get_config(), z2.compressor.get_config())
     eq(z.fill_value, z2.fill_value)
     eq(z.order, z2.order)
     # numpy array
@@ -235,14 +233,13 @@ def test_ones_like():
 
 
 def test_full_like():
-    z = full(100, chunks=10, dtype='f4', compression='zlib',
-             compression_opts=5, fill_value=42, order='F')
+    z = full(100, chunks=10, dtype='f4', compressor=Zlib(5),
+             fill_value=42, order='F')
     z2 = full_like(z)
     eq(z.shape, z2.shape)
     eq(z.chunks, z2.chunks)
     eq(z.dtype, z2.dtype)
-    eq(z.compression, z2.compression)
-    eq(z.compression_opts, z2.compression_opts)
+    eq(z.compressor.get_config(), z2.compressor.get_config())
     eq(z.fill_value, z2.fill_value)
     eq(z.order, z2.order)
     # numpy array
@@ -252,7 +249,7 @@ def test_full_like():
     eq((10,), z3.chunks)
     eq(a.dtype, z3.dtype)
     eq(42, z3.fill_value)
-    with assert_raises(ValueError):
+    with assert_raises(TypeError):
         # fill_value missing
         full_like(a, chunks=10)
 
@@ -261,14 +258,13 @@ def test_open_like():
     # zarr array
     path = tempfile.mktemp()
     atexit.register(shutil.rmtree, path)
-    z = full(100, chunks=10, dtype='f4', compression='zlib',
-             compression_opts=5, fill_value=42, order='F')
+    z = full(100, chunks=10, dtype='f4', compressor=Zlib(5),
+             fill_value=42, order='F')
     z2 = open_like(z, path)
     eq(z.shape, z2.shape)
     eq(z.chunks, z2.chunks)
     eq(z.dtype, z2.dtype)
-    eq(z.compression, z2.compression)
-    eq(z.compression_opts, z2.compression_opts)
+    eq(z.compressor.get_config(), z2.compressor.get_config())
     eq(z.fill_value, z2.fill_value)
     eq(z.order, z2.order)
     # numpy array
@@ -290,19 +286,18 @@ def test_create():
     eq((100,), z.shape)
     eq((100,), z.chunks)  # auto-chunks
     eq(np.dtype(None), z.dtype)
-    eq('blosc', z.compression)
+    eq('blosc', z.compressor.codec_id)
     assert_is_none(z.fill_value)
 
     # all specified
-    z = create(100, chunks=10, dtype='i4', compression='zlib',
-               compression_opts=1,
+    z = create(100, chunks=10, dtype='i4', compressor=Zlib(1),
                fill_value=42, order='F')
     assert_is_instance(z, Array)
     eq((100,), z.shape)
     eq((10,), z.chunks)
     eq(np.dtype('i4'), z.dtype)
-    eq('zlib', z.compression)
-    eq(1, z.compression_opts)
+    eq('zlib', z.compressor.codec_id)
+    eq(1, z.compressor.level)
     eq(42, z.fill_value)
     eq('F', z.order)
 
@@ -313,3 +308,20 @@ def test_create():
     eq((100,), z.shape)
     eq((10,), z.chunks)
     assert synchronizer is z.synchronizer
+
+    # don't allow string as compressor arg
+    with assert_raises(ValueError):
+        create(100, chunks=10, compressor='zlib')
+
+    # compatibility
+
+    z = create(100, compression='zlib', compression_opts=9)
+    eq('zlib', z.compressor.codec_id)
+    eq(9, z.compressor.level)
+
+    z = create(100, compression='default')
+    eq('blosc', z.compressor.codec_id)
+
+    # errors
+    with assert_raises(ValueError):
+        create(100, compression=1)

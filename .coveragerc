@@ -1,0 +1,3 @@
+[run]
+omit = zarr/meta_v1.py
+

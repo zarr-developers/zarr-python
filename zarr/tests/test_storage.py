@@ -15,19 +15,21 @@ from nose.tools import assert_raises, eq_ as eq, assert_is_none
 
 
 from zarr.storage import init_array, array_meta_key, attrs_key, DictStore, \
-    DirectoryStore, ZipStore, init_group, group_meta_key, getsize
+    DirectoryStore, ZipStore, init_group, group_meta_key, getsize, migrate_1to2
 from zarr.meta import decode_array_metadata, encode_array_metadata, \
     ZARR_FORMAT, decode_group_metadata, encode_group_metadata
 from zarr.compat import text_type
-from zarr.compressors import default_compression
+from zarr.storage import default_compressor
+from zarr.codecs import Zlib, Blosc
+from zarr.errors import PermissionError
 
 
 class StoreTests(object):
     """Abstract store tests."""
 
-    # def create_store(self, **kwargs):
-    #     # implement in sub-class
-    #     pass
+    def create_store(self, **kwargs):  # pragma: no cover
+        # implement in sub-class
+        raise NotImplementedError
 
     def test_get_set_del_contains(self):
         store = self.create_store()
@@ -230,8 +232,7 @@ class StoreTests(object):
         eq((1000,), meta['shape'])
         eq((100,), meta['chunks'])
         eq(np.dtype(None), meta['dtype'])
-        eq(default_compression, meta['compression'])
-        assert 'compression_opts' in meta
+        eq(default_compressor.get_config(), meta['compressor'])
         assert_is_none(meta['fill_value'])
 
         # check attributes
@@ -245,10 +246,10 @@ class StoreTests(object):
             dict(shape=(2000,),
                  chunks=(200,),
                  dtype=np.dtype('u1'),
-                 compression='zlib',
-                 compression_opts=1,
+                 compressor=Zlib(1).get_config(),
                  fill_value=0,
-                 order='F')
+                 order='F',
+                 filters=None)
         )
 
         # don't overwrite (default)
@@ -282,8 +283,7 @@ class StoreTests(object):
         eq((1000,), meta['shape'])
         eq((100,), meta['chunks'])
         eq(np.dtype(None), meta['dtype'])
-        eq(default_compression, meta['compression'])
-        assert 'compression_opts' in meta
+        eq(default_compressor.get_config(), meta['compressor'])
         assert_is_none(meta['fill_value'])
 
         # check attributes
@@ -298,10 +298,10 @@ class StoreTests(object):
         meta = dict(shape=(2000,),
                     chunks=(200,),
                     dtype=np.dtype('u1'),
-                    compression='zlib',
-                    compression_opts=1,
+                    compressor=Zlib(1).get_config(),
                     fill_value=0,
-                    order='F')
+                    order='F',
+                    filters=None)
         store[array_meta_key] = encode_array_metadata(meta)
         store[path + '/' + array_meta_key] = encode_array_metadata(meta)
 
@@ -364,9 +364,9 @@ class StoreTests(object):
             dict(shape=(2000,),
                  chunks=(200,),
                  dtype=np.dtype('u1'),
-                 compression='zlib',
-                 compression_opts=1,
+                 compressor=None,
                  fill_value=0,
+                 filters=None,
                  order='F')
         )
         chunk_store['0'] = b'aaa'
@@ -392,6 +392,12 @@ class StoreTests(object):
             assert '0' not in chunk_store
             assert '1' not in chunk_store
 
+    def test_init_array_compat(self):
+        store = self.create_store()
+        init_array(store, shape=1000, chunks=100, compressor='none')
+        meta = decode_array_metadata(store[array_meta_key])
+        assert_is_none(meta['compressor'])
+
     def test_init_group(self):
         store = self.create_store()
         init_group(store)
@@ -412,10 +418,10 @@ class StoreTests(object):
             dict(shape=(2000,),
                  chunks=(200,),
                  dtype=np.dtype('u1'),
-                 compression='zlib',
-                 compression_opts=1,
+                 compressor=None,
                  fill_value=0,
-                 order='F')
+                 order='F',
+                 filters=None)
         )
 
         # don't overwrite array (default)
@@ -444,10 +450,10 @@ class StoreTests(object):
         meta = dict(shape=(2000,),
                     chunks=(200,),
                     dtype=np.dtype('u1'),
-                    compression='zlib',
-                    compression_opts=1,
+                    compressor=None,
                     fill_value=0,
-                    order='F')
+                    order='F',
+                    filters=None)
         store[array_meta_key] = encode_array_metadata(meta)
         store[path + '/' + array_meta_key] = encode_array_metadata(meta)
 
@@ -482,9 +488,9 @@ class StoreTests(object):
             dict(shape=(2000,),
                  chunks=(200,),
                  dtype=np.dtype('u1'),
-                 compression='zlib',
-                 compression_opts=1,
+                 compressor=None,
                  fill_value=0,
+                 filters=None,
                  order='F')
         )
         chunk_store['foo'] = b'bar'
@@ -590,7 +596,7 @@ class TestDirectoryStore(StoreTests, unittest.TestCase):
     def test_filesystem_path(self):
 
         # test behaviour with path that does not exist
-        path = 'doesnotexist'
+        path = 'example'
         if os.path.exists(path):
             shutil.rmtree(path)
         store = DirectoryStore(path)
@@ -629,6 +635,13 @@ class TestZipStore(StoreTests, unittest.TestCase):
         store = ZipStore(path)
         return store
 
+    def test_mode(self):
+        store = ZipStore('example.zip', mode='w')
+        store['foo'] = b'bar'
+        store = ZipStore('example.zip', mode='r')
+        with assert_raises(PermissionError):
+            store['foo'] = b'bar'
+
 
 def test_getsize():
     store = dict()
@@ -637,3 +650,74 @@ def test_getsize():
     store['baz/quux'] = b'ccccc'
     eq(7, getsize(store))
     eq(5, getsize(store, 'baz'))
+
+
+def test_migrate_1to2():
+    from zarr import meta_v1
+
+    # N.B., version 1 did not support hierarchies, so we only have to be
+    # concerned about migrating a single array at the root of the store
+
+    # setup
+    store = dict()
+    meta = dict(
+        shape=(100,),
+        chunks=(10,),
+        dtype=np.dtype('f4'),
+        compression='zlib',
+        compression_opts=1,
+        fill_value=None,
+        order='C'
+    )
+    meta_json = meta_v1.encode_metadata(meta)
+    store['meta'] = meta_json
+    store['attrs'] = json.dumps(dict()).encode('ascii')
+
+    # run migration
+    migrate_1to2(store)
+
+    # check results
+    assert 'meta' not in store
+    assert array_meta_key in store
+    assert 'attrs' not in store
+    assert attrs_key in store
+    meta_migrated = decode_array_metadata(store[array_meta_key])
+    eq(2, meta_migrated['zarr_format'])
+
+    # preserved fields
+    for f in 'shape', 'chunks', 'dtype', 'fill_value', 'order':
+        eq(meta[f], meta_migrated[f])
+
+    # migrate should have added empty filters field
+    assert_is_none(meta_migrated['filters'])
+
+    # check compression and compression_opts migrated to compressor
+    assert 'compression' not in meta_migrated
+    assert 'compression_opts' not in meta_migrated
+    eq(meta_migrated['compressor'], Zlib(1).get_config())
+
+    # check dict compression_opts
+    store = dict()
+    meta['compression'] = 'blosc'
+    meta['compression_opts'] = dict(cname='lz4', clevel=5, shuffle=1)
+    meta_json = meta_v1.encode_metadata(meta)
+    store['meta'] = meta_json
+    store['attrs'] = json.dumps(dict()).encode('ascii')
+    migrate_1to2(store)
+    meta_migrated = decode_array_metadata(store[array_meta_key])
+    assert 'compression' not in meta_migrated
+    assert 'compression_opts' not in meta_migrated
+    eq(meta_migrated['compressor'],
+       Blosc(cname='lz4', clevel=5, shuffle=1).get_config())
+
+    # check 'none' compression is migrated to None (null in JSON)
+    store = dict()
+    meta['compression'] = 'none'
+    meta_json = meta_v1.encode_metadata(meta)
+    store['meta'] = meta_json
+    store['attrs'] = json.dumps(dict()).encode('ascii')
+    migrate_1to2(store)
+    meta_migrated = decode_array_metadata(store[array_meta_key])
+    assert 'compression' not in meta_migrated
+    assert 'compression_opts' not in meta_migrated
+    assert_is_none(meta_migrated['compressor'])

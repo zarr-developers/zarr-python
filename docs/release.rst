@@ -13,13 +13,28 @@ Support has been added for organizing arrays into hierarchies via groups. See
 the tutorial section on :ref:`tutorial_groups` and the :mod:`zarr.hierarchy`
 API docs for more information.
 
-To accommodate support for hierarchies the Zarr format has been modified. See
-the :ref:`spec_v2` for more information.
+Filters
+~~~~~~~
+
+Support has been added for configuring filters to preprocess chunk data prior 
+to compression. See the tutorial section on :ref:`tutorial_filters` and the 
+:mod:`zarr.filters` API docs for more information.
 
 Other changes
 ~~~~~~~~~~~~~
 
-* The bundled Blosc library has been upgraded to version 1.10.2.
+To accommodate support for hierarchies and filters, the Zarr metadata format 
+has been modified. See the :ref:`spec_v2` for more information. To migrate an 
+array stored using Zarr version 1.x, use the :func:`zarr.storage.migrate_1to2` 
+function.
+
+The bundled Blosc library has been upgraded to version 1.10.2.
+
+Acknowledgments
+~~~~~~~~~~~~~~~
+
+Thanks to Matthew Rocklin (mrocklin_), Stephan Hoyer (shoyer_) and
+Francesc Alted (FrancescAlted_) for contributions and comments.
 
 .. _release_1.1.0:
 

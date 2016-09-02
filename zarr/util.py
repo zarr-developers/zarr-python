@@ -1,11 +1,12 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, print_function, division
+import operator
 
 
 import numpy as np
 
 
-from zarr.compat import integer_types
+from zarr.compat import integer_types, PY2, reduce
 
 
 def normalize_shape(shape):
@@ -278,3 +279,24 @@ def normalize_storage_path(path):
         path = ''
 
     return path
+
+
+def buffer_size(v):
+    from array import array as _stdlib_array
+    if PY2 and isinstance(v, _stdlib_array):  # pragma: no cover
+        # special case array.array because does not support buffer
+        # interface in PY2
+        return v.buffer_info()[1] * v.itemsize
+    else:
+        v = memoryview(v)
+        return reduce(operator.mul, v.shape) * v.itemsize
+
+
+def buffer_tobytes(v):
+    from array import array as _stdlib_array
+    if isinstance(v, np.ndarray):
+        return v.tobytes(order='A')
+    elif PY2 and isinstance(v, _stdlib_array):  # pragma: no cover
+        return v.tostring()
+    else:
+        return memoryview(v).tobytes()

@@ -5,14 +5,6 @@ from collections import defaultdict
 import os
 
 
-import fasteners
-
-
-from zarr.core import Array
-from zarr.attrs import Attributes
-from zarr.storage import attrs_key
-
-
 class ThreadSynchronizer(object):
     """Provides synchronization using thread locks."""
 
@@ -48,6 +40,7 @@ class ProcessSynchronizer(object):
         self.path = path
 
     def __getitem__(self, item):
+        import fasteners
         lock = fasteners.InterProcessLock(
             os.path.join(self.path, '%s.lock' % item)
         )

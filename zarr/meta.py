@@ -28,10 +28,10 @@ def decode_array_metadata(s):
             shape=tuple(meta['shape']),
             chunks=tuple(meta['chunks']),
             dtype=dtype,
-            compression=meta['compression'],
-            compression_opts=meta['compression_opts'],
+            compressor=meta['compressor'],
             fill_value=fill_value,
             order=meta['order'],
+            filters=meta['filters'],
         )
     except Exception as e:
         raise MetadataError('error decoding metadata: %s' % e)
@@ -45,10 +45,10 @@ def encode_array_metadata(meta):
         shape=meta['shape'],
         chunks=meta['chunks'],
         dtype=encode_dtype(meta['dtype']),
-        compression=meta['compression'],
-        compression_opts=meta['compression_opts'],
+        compressor=meta['compressor'],
         fill_value=encode_fill_value(meta['fill_value']),
         order=meta['order'],
+        filters=meta['filters'],
     )
     s = json.dumps(meta, indent=4, sort_keys=True, ensure_ascii=True)
     b = s.encode('ascii')

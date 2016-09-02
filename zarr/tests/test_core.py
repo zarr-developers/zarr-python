@@ -12,13 +12,15 @@ import numpy as np
 from numpy.testing import assert_array_equal
 from nose.tools import eq_ as eq, assert_is_instance, \
     assert_raises, assert_true, assert_false, assert_is, assert_is_none
-from zarr.storage import DirectoryStore, ZipStore, init_array, init_group, \
-    buffersize
 
 
+from zarr.storage import DirectoryStore, ZipStore, init_array, init_group
 from zarr.core import Array
-from zarr.errors import ReadOnlyError
+from zarr.errors import PermissionError
 from zarr.compat import PY2
+from zarr.util import buffer_size
+from zarr.codecs import Delta, FixedScaleOffset, Zlib,\
+    Blosc, BZ2
 
 
 class TestArray(unittest.TestCase):
@@ -62,6 +64,7 @@ class TestArray(unittest.TestCase):
                      chunk_store=None, **kwargs):
         if store is None:
             store = dict()
+        kwargs.setdefault('compressor', Zlib(level=1))
         init_array(store, path=path, chunk_store=chunk_store, **kwargs)
         return Array(store, path=path, read_only=read_only,
                      chunk_store=chunk_store)
@@ -99,15 +102,15 @@ class TestArray(unittest.TestCase):
         # dict as store
         store = dict()
         z = self.create_array(store=store, shape=1000, chunks=100)
-        expect_nbytes_stored = sum(buffersize(v) for v in z.store.values())
+        expect_nbytes_stored = sum(buffer_size(v) for v in z.store.values())
         if z.store != z.chunk_store:
-            expect_nbytes_stored += sum(buffersize(v) for v in
+            expect_nbytes_stored += sum(buffer_size(v) for v in
                                         z.chunk_store.values())
         eq(expect_nbytes_stored, z.nbytes_stored)
         z[:] = 42
-        expect_nbytes_stored = sum(buffersize(v) for v in z.store.values())
+        expect_nbytes_stored = sum(buffer_size(v) for v in z.store.values())
         if z.store != z.chunk_store:
-            expect_nbytes_stored += sum(buffersize(v) for v in
+            expect_nbytes_stored += sum(buffer_size(v) for v in
                                         z.chunk_store.values())
         eq(expect_nbytes_stored, z.nbytes_stored)
         # mess with store
@@ -116,7 +119,7 @@ class TestArray(unittest.TestCase):
 
         # for comparison
         z = self.create_array(store=dict(), shape=1000, chunks=100,
-                              compression='zlib', compression_opts=1)
+                              compressor=Zlib(1))
         z[:] = 42
 
         # DirectoryStore
@@ -124,7 +127,7 @@ class TestArray(unittest.TestCase):
         atexit.register(shutil.rmtree, path)
         store = DirectoryStore(path)
         zz = self.create_array(store=store, shape=1000, chunks=100,
-                               compression='zlib', compression_opts=1)
+                               compressor=Zlib(1))
         zz[:] = 42
         eq(z.nbytes_stored, zz.nbytes_stored)
 
@@ -133,12 +136,11 @@ class TestArray(unittest.TestCase):
             os.remove('test.zip')
         store = ZipStore('test.zip')
         zz = self.create_array(store=store, shape=1000, chunks=100,
-                               compression='zlib', compression_opts=1)
+                               compressor=Zlib(1))
         zz[:] = 42
         eq(z.nbytes_stored, zz.nbytes_stored)
 
     def test_array_1d(self):
-
         a = np.arange(1050)
         z = self.create_array(shape=a.shape, chunks=100, dtype=a.dtype)
 
@@ -167,9 +169,9 @@ class TestArray(unittest.TestCase):
 
         # check properties
         eq(a.nbytes, z.nbytes)
-        expect_nbytes_stored = sum(buffersize(v) for v in z.store.values())
+        expect_nbytes_stored = sum(buffer_size(v) for v in z.store.values())
         if z.store != z.chunk_store:
-            expect_nbytes_stored += sum(buffersize(v) for v in
+            expect_nbytes_stored += sum(buffer_size(v) for v in
                                         z.chunk_store.values())
         eq(expect_nbytes_stored, z.nbytes_stored)
         eq(11, z.initialized)
@@ -199,7 +201,6 @@ class TestArray(unittest.TestCase):
         assert_array_equal(a[310:], z[310:])
 
     def test_array_1d_fill_value(self):
-
         for fill_value in -1, 0, 1, 10:
 
             a = np.arange(1050)
@@ -214,14 +215,14 @@ class TestArray(unittest.TestCase):
             assert_array_equal(f[310:], z[310:])
 
     def test_array_1d_set_scalar(self):
-
         # setup
-        a = np.empty(100)
+        a = np.zeros(100)
         z = self.create_array(shape=a.shape, chunks=10, dtype=a.dtype)
         z[:] = a
         assert_array_equal(a, z[:])
 
         for value in -1, 0, 1, 10:
+            print(value)
             a[15:35] = value
             z[15:35] = value
             assert_array_equal(a, z[:])
@@ -230,7 +231,6 @@ class TestArray(unittest.TestCase):
             assert_array_equal(a, z[:])
 
     def test_array_2d(self):
-
         a = np.arange(10000).reshape((1000, 10))
         z = self.create_array(shape=a.shape, chunks=(100, 2), dtype=a.dtype)
 
@@ -248,9 +248,9 @@ class TestArray(unittest.TestCase):
 
         # check properties
         eq(a.nbytes, z.nbytes)
-        expect_nbytes_stored = sum(buffersize(v) for v in z.store.values())
+        expect_nbytes_stored = sum(buffer_size(v) for v in z.store.values())
         if z.store != z.chunk_store:
-            expect_nbytes_stored += sum(buffersize(v) for v in
+            expect_nbytes_stored += sum(buffer_size(v) for v in
                                         z.chunk_store.values())
         eq(50, z.initialized)
 
@@ -295,7 +295,6 @@ class TestArray(unittest.TestCase):
         assert_array_equal(a[:, 7:], z[:, 7:])
 
     def test_array_2d_partial(self):
-
         z = self.create_array(shape=(1000, 10), chunks=(100, 2), dtype='i4',
                               fill_value=0)
 
@@ -361,11 +360,13 @@ class TestArray(unittest.TestCase):
             else:
                 assert_true(z[:].flags.c_contiguous)
             z[:] = a
-            assert_array_equal(a, z[:])
+            actual = z[:]
+            assert_array_equal(a, actual)
 
     def test_resize_1d(self):
 
-        z = self.create_array(shape=105, chunks=10, dtype='i4', fill_value=0)
+        z = self.create_array(shape=105, chunks=10, dtype='i4',
+                              fill_value=0)
         a = np.arange(105, dtype='i4')
         z[:] = a
         eq((105,), z.shape)
@@ -509,42 +510,33 @@ class TestArray(unittest.TestCase):
 
         z = self.create_array(shape=1000, chunks=100, read_only=True)
         assert_true(z.read_only)
-        with assert_raises(ReadOnlyError):
+        with assert_raises(PermissionError):
             z[:] = 42
-        with assert_raises(ReadOnlyError):
+        with assert_raises(PermissionError):
             z.resize(2000)
-        with assert_raises(ReadOnlyError):
+        with assert_raises(PermissionError):
             z.append(np.arange(1000))
 
     def test_pickle(self):
 
-        memory_store = dict()
-        path = mkdtemp()
-        atexit.register(shutil.rmtree, path)
-        directory_store = DirectoryStore(path)
-
-        for store in memory_store, directory_store:
-            z = self.create_array(shape=1000, chunks=100, dtype=int,
-                                  store=store)
-            z[:] = np.random.randint(0, 1000, 1000)
-            z2 = pickle.loads(pickle.dumps(z))
-            eq(z.shape, z2.shape)
-            eq(z.chunks, z2.chunks)
-            eq(z.dtype, z2.dtype)
-            eq(z.compression, z2.compression)
-            eq(z.compression_opts, z2.compression_opts)
-            eq(z.fill_value, z2.fill_value)
-            assert_array_equal(z[:], z2[:])
+        z = self.create_array(shape=1000, chunks=100, dtype=int)
+        z[:] = np.random.randint(0, 1000, 1000)
+        z2 = pickle.loads(pickle.dumps(z))
+        eq(z.shape, z2.shape)
+        eq(z.chunks, z2.chunks)
+        eq(z.dtype, z2.dtype)
+        if z.compressor:
+            eq(z.compressor.get_config(), z2.compressor.get_config())
+        eq(z.fill_value, z2.fill_value)
+        assert_array_equal(z[:], z2[:])
 
     def test_repr(self):
         if not PY2:
-
-            z = self.create_array(shape=100, chunks=10, dtype='f4',
-                                  compression='zlib', compression_opts=1)
-            expect = """zarr.core.Array((100,), float32, chunks=(10,), order=C)
-  compression: zlib; compression_opts: 1
-  nbytes: 400; nbytes_stored: 210; ratio: 1.9; initialized: 0/10
-  store: builtins.dict
+            z = self.create_array(shape=100, chunks=10, dtype='f4')
+            expect = """Array((100,), float32, chunks=(10,), order=C)
+  nbytes: 400; nbytes_stored: 245; ratio: 1.6; initialized: 0/10
+  compressor: Zlib(level=1)
+  store: dict
 """
             actual = repr(z)
             for l1, l2 in zip(expect.split('\n'), actual.split('\n')):
@@ -563,14 +555,12 @@ class TestArrayWithPath(TestArray):
 
     def test_repr(self):
         if not PY2:
-
-            z = self.create_array(shape=100, chunks=10, dtype='f4',
-                                  compression='zlib', compression_opts=1)
+            z = self.create_array(shape=100, chunks=10, dtype='f4')
             # flake8: noqa
-            expect = """zarr.core.Array(/foo/bar, (100,), float32, chunks=(10,), order=C)
-  compression: zlib; compression_opts: 1
-  nbytes: 400; nbytes_stored: 210; ratio: 1.9; initialized: 0/10
-  store: builtins.dict
+            expect = """Array(/foo/bar, (100,), float32, chunks=(10,), order=C)
+  nbytes: 400; nbytes_stored: 293; ratio: 1.4; initialized: 0/10
+  compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
+  store: dict
 """
             actual = repr(z)
             for l1, l2 in zip(expect.split('\n'), actual.split('\n')):
@@ -592,15 +582,177 @@ class TestArrayWithChunkStore(TestArray):
 
     def test_repr(self):
         if not PY2:
-
-            z = self.create_array(shape=100, chunks=10, dtype='f4',
-                                  compression='zlib', compression_opts=1)
+            z = self.create_array(shape=100, chunks=10, dtype='f4')
             # flake8: noqa
-            expect = """zarr.core.Array(/foo/bar, (100,), float32, chunks=(10,), order=C)
-  compression: zlib; compression_opts: 1
-  nbytes: 400; nbytes_stored: 210; ratio: 1.9; initialized: 0/10
-  store: builtins.dict
-  chunk_store: builtins.dict
+            expect = """Array(/foo/bar, (100,), float32, chunks=(10,), order=C)
+  nbytes: 400; nbytes_stored: 293; ratio: 1.4; initialized: 0/10
+  compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
+  store: dict; chunk_store: dict
+"""
+            actual = repr(z)
+            for l1, l2 in zip(expect.split('\n'), actual.split('\n')):
+                eq(l1, l2)
+
+
+class TestArrayWithDirectoryStore(TestArray):
+
+    @staticmethod
+    def create_array(store=None, read_only=False, chunk_store=None, **kwargs):
+        if store is None:
+            path = mkdtemp()
+            atexit.register(shutil.rmtree, path)
+            store = DirectoryStore(path)
+            chunk_store = store
+        kwargs.setdefault('compressor', Zlib(1))
+        init_array(store, path='foo/bar', chunk_store=chunk_store, **kwargs)
+        return Array(store, path='foo/bar', read_only=read_only,
+                     chunk_store=chunk_store)
+
+    def test_repr(self):
+        if not PY2:
+            z = self.create_array(shape=100, chunks=10, dtype='f4')
+            # flake8: noqa
+            expect = """Array(/foo/bar, (100,), float32, chunks=(10,), order=C)
+  nbytes: 400; nbytes_stored: 245; ratio: 1.6; initialized: 0/10
+  compressor: Zlib(level=1)
+  store: DirectoryStore
+"""
+            actual = repr(z)
+            for l1, l2 in zip(expect.split('\n'), actual.split('\n')):
+                eq(l1, l2)
+
+
+class TestArrayWithNoCompressor(TestArray):
+
+    def create_array(self, store=None, path=None, read_only=False,
+                     chunk_store=None, **kwargs):
+        if store is None:
+            store = dict()
+        kwargs.setdefault('compressor', None)
+        init_array(store, path=path, chunk_store=chunk_store, **kwargs)
+        return Array(store, path=path, read_only=read_only,
+                     chunk_store=chunk_store)
+
+    def test_repr(self):
+        if not PY2:
+            z = self.create_array(shape=100, chunks=10, dtype='f4')
+            expect = """Array((100,), float32, chunks=(10,), order=C)
+  nbytes: 400; nbytes_stored: 201; ratio: 2.0; initialized: 0/10
+  store: dict
+"""
+            actual = repr(z)
+            for l1, l2 in zip(expect.split('\n'), actual.split('\n')):
+                eq(l1, l2)
+
+
+class TestArrayWithBZ2Compressor(TestArray):
+
+    def create_array(self, store=None, path=None, read_only=False,
+                     chunk_store=None, **kwargs):
+        if store is None:
+            store = dict()
+        compressor = BZ2(level=1)
+        kwargs.setdefault('compressor', compressor)
+        init_array(store, path=path, chunk_store=chunk_store, **kwargs)
+        return Array(store, path=path, read_only=read_only,
+                     chunk_store=chunk_store)
+
+    def test_repr(self):
+        if not PY2:
+            z = self.create_array(shape=100, chunks=10, dtype='f4')
+            expect = """Array((100,), float32, chunks=(10,), order=C)
+  nbytes: 400; nbytes_stored: 244; ratio: 1.6; initialized: 0/10
+  compressor: BZ2(level=1)
+  store: dict
+"""
+            actual = repr(z)
+            for l1, l2 in zip(expect.split('\n'), actual.split('\n')):
+                eq(l1, l2)
+
+
+class TestArrayWithBloscCompressor(TestArray):
+
+    def create_array(self, store=None, path=None, read_only=False,
+                     chunk_store=None, **kwargs):
+        if store is None:
+            store = dict()
+        compressor = Blosc(cname='zstd', clevel=1, shuffle=1)
+        kwargs.setdefault('compressor', compressor)
+        init_array(store, path=path, chunk_store=chunk_store, **kwargs)
+        return Array(store, path=path, read_only=read_only,
+                     chunk_store=chunk_store)
+
+    def test_repr(self):
+        if not PY2:
+            z = self.create_array(shape=100, chunks=10, dtype='f4')
+            expect = """Array((100,), float32, chunks=(10,), order=C)
+  nbytes: 400; nbytes_stored: 294; ratio: 1.4; initialized: 0/10
+  compressor: Blosc(cname='zstd', clevel=1, shuffle=1)
+  store: dict
+"""
+            actual = repr(z)
+            for l1, l2 in zip(expect.split('\n'), actual.split('\n')):
+                eq(l1, l2)
+
+
+if not PY2:
+
+    from zarr.codecs import LZMA
+
+    class TestArrayWithLZMACompressor(TestArray):
+
+        def create_array(self, store=None, path=None, read_only=False,
+                         chunk_store=None, **kwargs):
+            if store is None:
+                store = dict()
+            compressor = LZMA(preset=1)
+            kwargs.setdefault('compressor', compressor)
+            init_array(store, path=path, chunk_store=chunk_store, **kwargs)
+            return Array(store, path=path, read_only=read_only,
+                         chunk_store=chunk_store)
+
+        def test_repr(self):
+            z = self.create_array(shape=100, chunks=10, dtype='f4')
+            expect = """Array((100,), float32, chunks=(10,), order=C)
+  nbytes: 400; nbytes_stored: 313; ratio: 1.3; initialized: 0/10
+  compressor: LZMA(format=1, check=-1, preset=1, filters=None)
+  store: dict
+"""
+            actual = repr(z)
+            for l1, l2 in zip(expect.split('\n'), actual.split('\n')):
+                eq(l1, l2)
+
+
+class TestArrayWithFilters(TestArray):
+
+    @staticmethod
+    def create_array(store=None, read_only=False, chunk_store=None, **kwargs):
+        if store is None:
+            store = dict()
+        if chunk_store is None:
+            chunk_store = store
+        dtype = kwargs.get('dtype', None)
+        filters = [
+            Delta(dtype=dtype),
+            FixedScaleOffset(dtype=dtype, scale=1, offset=0),
+        ]
+        kwargs.setdefault('filters', filters)
+        compressor = Zlib(1)
+        kwargs.setdefault('compressor', compressor)
+        init_array(store, chunk_store=chunk_store, **kwargs)
+        return Array(store, read_only=read_only,
+                     chunk_store=chunk_store)
+
+    def test_repr(self):
+        if not PY2:
+            z = self.create_array(shape=100, chunks=10, dtype='f4')
+            # flake8: noqa
+            expect = """Array((100,), float32, chunks=(10,), order=C)
+  nbytes: 400; nbytes_stored: 515; ratio: 0.8; initialized: 0/10
+  filters: Delta(dtype=float32)
+           FixedScaleOffset(scale=1, offset=0, dtype=float32)
+  compressor: Zlib(level=1)
+  store: dict
 """
             actual = repr(z)
             for l1, l2 in zip(expect.split('\n'), actual.split('\n')):

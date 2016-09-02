@@ -6,22 +6,28 @@ import tempfile
 import json
 import zipfile
 import shutil
-import operator
 
 
 import numpy as np
 
 
 from zarr.util import normalize_shape, normalize_chunks, normalize_order, \
-    normalize_storage_path
-from zarr.compressors import get_compressor_cls
+    normalize_storage_path, buffer_size
 from zarr.meta import encode_array_metadata, encode_group_metadata
-from zarr.compat import PY2, binary_type, reduce
+from zarr.compat import PY2, binary_type
+from zarr.codecs import codec_registry
+from zarr.errors import PermissionError
 
 
 array_meta_key = '.zarray'
 group_meta_key = '.zgroup'
 attrs_key = '.zattrs'
+try:
+    from zarr.codecs import Blosc
+    default_compressor = Blosc()
+except ImportError:  # pragma: no cover
+    from zarr.codecs import Zlib
+    default_compressor = Zlib()
 
 
 def _path_to_prefix(path):
@@ -108,7 +114,7 @@ def getsize(store, path=None):
                 pass
             else:
                 try:
-                    size += buffersize(v)
+                    size += buffer_size(v)
                 except TypeError:
                     return -1
         return size
@@ -116,9 +122,9 @@ def getsize(store, path=None):
         return -1
 
 
-def init_array(store, shape, chunks=None, dtype=None, compression='default',
-               compression_opts=None, fill_value=None, order='C',
-               overwrite=False, path=None, chunk_store=None):
+def init_array(store, shape, chunks, dtype=None, compressor='default',
+               fill_value=None, order='C', overwrite=False, path=None,
+               chunk_store=None, filters=None):
     """initialize an array store with the given configuration.
 
     Parameters
@@ -131,12 +137,8 @@ def init_array(store, shape, chunks=None, dtype=None, compression='default',
         Chunk shape. If not provided, will be guessed from `shape` and `dtype`.
     dtype : string or dtype, optional
         NumPy dtype.
-    compression : string, optional
-        Name of primary compression library, e.g., 'blosc', 'zlib', 'bz2',
-        'lzma'.
-    compression_opts : object, optional
-        Options to primary compressor. E.g., for blosc, provide a dictionary
-        with keys 'cname', 'clevel' and 'shuffle'.
+    compressor : Codec, optional
+        Primary compressor.
     fill_value : object
         Default value to use for uninitialized portions of the array.
     order : {'C', 'F'}, optional
@@ -148,6 +150,8 @@ def init_array(store, shape, chunks=None, dtype=None, compression='default',
     chunk_store : MutableMapping, optional
         Separate storage for chunks. If not provided, `store` will be used
         for storage of both chunks and metadata.
+    filters : sequence, optional
+        Sequence of filters to use to encode chunk data prior to compression.
 
     Examples
     --------
@@ -167,14 +171,15 @@ def init_array(store, shape, chunks=None, dtype=None, compression='default',
                 1000,
                 1000
             ],
-            "compression": "blosc",
-            "compression_opts": {
+            "compressor": {
                 "clevel": 5,
                 "cname": "lz4",
+                "id": "blosc",
                 "shuffle": 1
             },
             "dtype": "<f8",
             "fill_value": null,
+            "filters": null,
             "order": "C",
             "shape": [
                 10000,
@@ -199,14 +204,15 @@ def init_array(store, shape, chunks=None, dtype=None, compression='default',
             "chunks": [
                 1000000
             ],
-            "compression": "blosc",
-            "compression_opts": {
+            "compressor": {
                 "clevel": 5,
                 "cname": "lz4",
+                "id": "blosc",
                 "shuffle": 1
             },
             "dtype": "|i1",
             "fill_value": null,
+            "filters": null,
             "order": "C",
             "shape": [
                 100000000
@@ -240,17 +246,33 @@ def init_array(store, shape, chunks=None, dtype=None, compression='default',
     shape = normalize_shape(shape)
     dtype = np.dtype(dtype)
     chunks = normalize_chunks(chunks, shape, dtype.itemsize)
-    compressor_cls = get_compressor_cls(compression)
-    compression = compressor_cls.canonical_name
-    compression_opts = compressor_cls.normalize_opts(
-        compression_opts
-    )
     order = normalize_order(order)
+
+    # obtain compressor config
+    if compressor == 'none':
+        # compatibility
+        compressor = None
+    elif compressor == 'default':
+        compressor = default_compressor
+    if compressor:
+        try:
+            compressor_config = compressor.get_config()
+        except AttributeError:
+            raise ValueError('bad compressor argument; expected Codec object, '
+                             'found %r' % compressor)
+    else:
+        compressor_config = None
+
+    # obtain filters config
+    if filters:
+        filters_config = [f.get_config() for f in filters]
+    else:
+        filters_config = None
 
     # initialize metadata
     meta = dict(shape=shape, chunks=chunks, dtype=dtype,
-                compression=compression, compression_opts=compression_opts,
-                fill_value=fill_value, order=order)
+                compressor=compressor_config, fill_value=fill_value,
+                order=order, filters=filters_config)
     key = _path_to_prefix(path) + array_meta_key
     store[key] = encode_array_metadata(meta)
 
@@ -324,17 +346,6 @@ def _dict_store_keys(d, prefix='', cls=dict):
                 yield sk
         else:
             yield prefix + k
-
-
-def buffersize(v):
-    from array import array as _stdlib_array
-    if PY2 and isinstance(v, _stdlib_array):  # pragma: no cover
-        # special case array.array because does not support buffer
-        # interface in PY2
-        return v.buffer_info()[1] * v.itemsize
-    else:
-        v = memoryview(v)
-        return reduce(operator.mul, v.shape) * v.itemsize
 
 
 class DictStore(MutableMapping):
@@ -492,13 +503,13 @@ class DictStore(MutableMapping):
             for v in value.values():
                 if not isinstance(v, self.cls):
                     try:
-                        size += buffersize(v)
+                        size += buffer_size(v)
                     except TypeError:
                         return -1
             return size
         else:
             try:
-                return buffersize(value)
+                return buffer_size(value)
             except TypeError:
                 return -1
 
@@ -667,7 +678,43 @@ class DirectoryStore(MutableMapping):
 
 # noinspection PyPep8Naming
 class ZipStore(MutableMapping):
-    """TODO"""
+    """Mutable Mapping interface to a Zip file. Keys must be strings,
+    values must be bytes-like objects.
+
+    Parameters
+    ----------
+    path : string
+        Location of file.
+    compression : integer, optional
+        Compression method to use when writing to the archive.
+    allowZip64 : bool, optional
+        If True (the default) will create ZIP files that use the ZIP64
+        extensions when the zipfile is larger than 2 GiB. If False
+        will raise an exception when the ZIP file would require ZIP64
+        extensions.
+    mode : string, optional
+        One of 'r' to read an existing file, 'w' to truncate and write a new
+        file, 'a' to append to an existing file, or 'x' to exclusively create
+        and write a new file.
+
+    Examples
+    --------
+    >>> import zarr
+    >>> store = zarr.ZipStore('example.zip', mode='w')
+    >>> store['foo'] = b'bar'
+    >>> store['foo']
+    b'bar'
+    >>> store['a/b/c'] = b'xxx'
+    >>> store['a/b/c']
+    b'xxx'
+    >>> sorted(store.keys())
+    ['a/b/c', 'foo']
+    >>> import zipfile
+    >>> zf = zipfile.ZipFile('example.zip', mode='r')
+    >>> sorted(zf.namelist())
+    ['a/b/c', 'foo']
+
+    """
 
     def __init__(self, path, compression=zipfile.ZIP_STORED,
                  allowZip64=True, mode='a'):
@@ -680,6 +727,7 @@ class ZipStore(MutableMapping):
         self.path = path
         self.compression = compression
         self.allowZip64 = allowZip64
+        self.mode = mode
 
     def __getitem__(self, key):
         with zipfile.ZipFile(self.path) as zf:
@@ -687,6 +735,8 @@ class ZipStore(MutableMapping):
                 return f.read()
 
     def __setitem__(self, key, value):
+        if self.mode == 'r':
+            raise PermissionError('mapping is read-only')
         value = ensure_bytes(value)
         with zipfile.ZipFile(self.path, mode='a',
                              compression=self.compression,
@@ -759,3 +809,52 @@ class ZipStore(MutableMapping):
                     raise ValueError('path not found: %r' % path)
             else:
                 return 0
+
+
+def migrate_1to2(store):
+    """Migrate array metadata in `store` from Zarr format version 1 to
+    version 2.
+
+    Parameters
+    ----------
+    store : MutableMapping
+        Store to be migrated.
+
+    Notes
+    -----
+    Version 1 did not support hierarchies, so this migration function will
+    look for a single array in `store` and migrate the array metadata to
+    version 2.
+
+    """
+
+    # migrate metadata
+    from zarr import meta_v1
+    meta = meta_v1.decode_metadata(store['meta'])
+    del store['meta']
+
+    # add empty filters
+    meta['filters'] = None
+
+    # migration compression metadata
+    compression = meta['compression']
+    if compression is None or compression == 'none':
+        compressor_config = None
+    else:
+        compression_opts = meta['compression_opts']
+        codec_cls = codec_registry[compression]
+        if isinstance(compression_opts, dict):
+            compressor = codec_cls(**compression_opts)
+        else:
+            compressor = codec_cls(compression_opts)
+        compressor_config = compressor.get_config()
+    meta['compressor'] = compressor_config
+    del meta['compression']
+    del meta['compression_opts']
+
+    # store migrated metadata
+    store[array_meta_key] = encode_array_metadata(meta)
+
+    # migrate user attributes
+    store[attrs_key] = store['attrs']
+    del store['attrs']

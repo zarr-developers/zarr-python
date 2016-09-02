@@ -4,7 +4,7 @@ Zarr storage specification version 2
 ====================================
 
 This document provides a technical specification of the protocol and format 
-used for storing a Zarr array. The key words "MUST", "MUST NOT", "REQUIRED", 
+used for storing Zarr arrays. The key words "MUST", "MUST NOT", "REQUIRED", 
 "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and 
 "OPTIONAL" in this document are to be interpreted as described in `RFC 2119 
 <https://www.ietf.org/rfc/rfc2119.txt>`_.
@@ -56,19 +56,21 @@ chunks
 dtype
     A string or list defining a valid data type for the array. See also
     the subsection below on data type encoding.
-compression
-    A string identifying the primary compression library used to compress
-    each chunk of the array.
-compression_opts
-    An integer, string or dictionary providing options to the primary
-    compression library.
+compressor
+    A JSON object identifying the primary compression codec and providing 
+    configuration parameters, or ``null`` if no compressor is to be used. 
+    The object MUST contain an ``"id"`` key identifying the codec to be used.
 fill_value
     A scalar value providing the default value to use for uninitialized
-    portions of the array.
+    portions of the array, or ``null`` if no fill_value is to be used.
 order
     Either "C" or "F", defining the layout of bytes within each chunk of the
     array. "C" means row-major order, i.e., the last dimension varies fastest;
     "F" means column-major order, i.e., the first dimension varies fastest.
+filters
+    A list of JSON objects providing codec configurations, or ``null`` if no
+    filters are to be applied. Each codec configuration object MUST contain a
+    ``"id"`` key identifying the codec to be used.
 
 Other keys MUST NOT be present within the metadata object.
 
@@ -76,22 +78,25 @@ For example, the JSON object below defines a 2-dimensional array of 64-bit
 little-endian floating point numbers with 10000 rows and 10000 columns, divided 
 into chunks of 1000 rows and 1000 columns (so there will be 100 chunks in total 
 arranged in a 10 by 10 grid). Within each chunk the data are laid out in C 
-contiguous order, and each chunk is compressed using the Blosc compression 
-library::
+contiguous order. Each chunk is encoded using a delta filter and compressed
+using the Blosc compression library prior to storage::
 
     {
         "chunks": [
             1000,
             1000
         ],
-        "compression": "blosc",
-        "compression_opts": {
-            "clevel": 5,
+        "compressor": {
+            "id": "blosc",
             "cname": "lz4",
+            "clevel": 5,
             "shuffle": 1
         },
         "dtype": "<f8",
-        "fill_value": null,
+        "fill_value": "NaN",
+        "filters": [
+            {"id": "delta", "dtype": "<f8", "astype": "<f4"}
+        ],
         "order": "C",
         "shape": [
             10000,
@@ -142,7 +147,6 @@ Positive Infinity  ``"Infinity"``
 Negative Infinity  ``"-Infinity"``
 =================  ===============
 
-
 Chunks
 ~~~~~~
 
@@ -175,6 +179,16 @@ Note that all chunks in an array have the same shape. If the length of any
 array dimension is not exactly divisible by the length of the corresponding 
 chunk dimension then some chunks will overhang the edge of the array. The 
 contents of any chunk region falling outside the array are undefined.
+
+Filters
+~~~~~~~
+
+Optionally a sequence of one or more filters can be used to transform chunk
+data prior to compression. When storing data, filters are applied in the order
+specified in array metadata to encode data, then the encoded data are passed to
+the primary compressor. When retrieving data, stored chunk data are
+decompressed by the primary compressor then decoded using filters in the
+reverse order.
 
 Hierarchies
 -----------
@@ -279,7 +293,7 @@ Create an array::
     >>> import zarr
     >>> store = zarr.DirectoryStore('example')
     >>> a = zarr.create(shape=(20, 20), chunks=(10, 10), dtype='i4',
-    ...                 fill_value=42, compression='zlib', compression_opts=1,
+    ...                 fill_value=42, compressor=zarr.Zlib(level=1),
     ...                 store=store, overwrite=True)
 
 No chunks are initialized yet, so only the ".zarray" and ".zattrs" keys
@@ -297,10 +311,13 @@ Inspect the array metadata::
             10,
             10
         ],
-        "compression": "zlib",
-        "compression_opts": 1,
+        "compressor": {
+            "id": "zlib",
+            "level": 1
+        },
         "dtype": "<i4",
         "fill_value": 42,
+        "filters": null,
         "order": "C",
         "shape": [
             20,
@@ -452,6 +469,10 @@ Changes in version 2
 * Added support for storing multiple arrays in the same store and organising
   arrays into hierarchies using groups.
 * Array metadata is now stored under the ".zarray" key instead of the "meta"
-  key
+  key.
 * Custom attributes are now stored under the ".zattrs" key instead of the
-  "attrs" key
+  "attrs" key.
+* Added support for filters.
+* Changed encoding of "fill_value" field within array metadata.
+* Changed encoding of compressor information within array metadata to be
+  consistent with representation of filter information.
