@@ -18,7 +18,7 @@ Filters
 
 Support has been added for configuring filters to preprocess chunk data prior 
 to compression. See the tutorial section on :ref:`tutorial_filters` and the 
-:mod:`zarr.filters` API docs for more information.
+:mod:`zarr.codecs` API docs for more information.
 
 Other changes
 ~~~~~~~~~~~~~
@@ -28,7 +28,7 @@ has been modified. See the :ref:`spec_v2` for more information. To migrate an
 array stored using Zarr version 1.x, use the :func:`zarr.storage.migrate_1to2` 
 function.
 
-The bundled Blosc library has been upgraded to version 1.10.2.
+The bundled Blosc library has been upgraded to version 1.11.0.
 
 Acknowledgments
 ~~~~~~~~~~~~~~~
