@@ -270,8 +270,7 @@ else:
 
         codec_id = 'lzma'
 
-        def __init__(self, format=lzma.FORMAT_XZ, check=-1, preset=None,
-                     filters=None):
+        def __init__(self, format=1, check=-1, preset=None, filters=None):
             self.format = format
             self.check = check
             self.preset = preset
