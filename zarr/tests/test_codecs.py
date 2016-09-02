@@ -13,6 +13,7 @@ from nose.tools import eq_ as eq
 
 from zarr.codecs import codec_registry, get_codec
 from zarr.util import buffer_tobytes
+from zarr.compat import PY2
 
 
 class CodecTests(object):
@@ -96,7 +97,6 @@ class CodecTests(object):
         out = bytearray(arr.nbytes)
         codec.decode(enc_bytes, out=out)
         expect = arr.tobytes(order='A')
-        print(expect[:10], out[:10])
         eq(expect, out)
 
     def _test_decode_lossy(self, arr, decimal, **kwargs):
@@ -192,12 +192,10 @@ class TestBZ2(CodecTests, unittest.TestCase):
 
     def test_encode(self):
         for arr, config in itertools.product(test_arrays, self.configs):
-            print('encode', config, arr[:5])
             self._test_encode(arr, **config)
 
     def test_decode(self):
         for arr, config in itertools.product(test_arrays, self.configs):
-            print('decode', config, arr[:5])
             self._test_decode_lossless(arr, **config)
 
 
@@ -287,6 +285,12 @@ class TestDelta(CodecTests, unittest.TestCase):
         assert_array_equal(expect, actual)
         eq(np.dtype(astype), actual.dtype)
 
+    def test_repr(self):
+        codec = self.init_codec(dtype='i8', astype='i4')
+        expect = 'Delta(dtype=int64, astype=int32)'
+        actual = repr(codec)
+        eq(expect, actual)
+
 
 class TestFixedScaleOffset(CodecTests, unittest.TestCase):
 
@@ -327,22 +331,33 @@ class TestFixedScaleOffset(CodecTests, unittest.TestCase):
         assert_array_equal(expect, actual)
         eq(np.dtype(astype), actual.dtype)
 
+    def test_repr(self):
+        dtype = 'f8'
+        astype = 'u1'
+        codec = self.init_codec(scale=10, offset=1000, dtype=dtype,
+                                astype=astype)
+        expect = 'FixedScaleOffset(scale=10, offset=1000, dtype=float64, ' \
+                 'astype=uint8)'
+        actual = repr(codec)
+        eq(expect, actual)
+
 
 class TestQuantize(CodecTests, unittest.TestCase):
 
     codec_id = 'quantize'
 
     arrs = [
-        np.linspace(0, 1, 1000, dtype='f8'),
+        np.linspace(100, 200, 1000, dtype='f8'),
         np.random.normal(loc=0, scale=1, size=1000).astype('f8'),
-        np.linspace(0, 1, 1000, dtype='f8').reshape(100, 10),
-        np.linspace(0, 1, 1000, dtype='f8').reshape(100, 10, order='F'),
-        np.linspace(0, 1, 1000, dtype='f8').reshape(10, 10, 10),
+        np.linspace(100, 200, 1000, dtype='f8').reshape(100, 10),
+        np.linspace(100, 200, 1000, dtype='f8').reshape(100, 10, order='F'),
+        np.linspace(100, 200, 1000, dtype='f8').reshape(10, 10, 10),
     ]
 
     configs = [
+        dict(digits=-1, dtype='f8', astype='f2'),
         dict(digits=1, dtype='f8', astype='f2'),
-        dict(digits=6, dtype='f8', astype='f4'),
+        dict(digits=5, dtype='f8', astype='f4'),
         dict(digits=12, dtype='f8', astype='f8'),
     ]
 
@@ -353,8 +368,19 @@ class TestQuantize(CodecTests, unittest.TestCase):
     def test_decode(self):
         for arr, config in itertools.product(self.arrs, self.configs):
             decimal = config['digits']
-            print(config, decimal, arr[:5])
             self._test_decode_lossy(arr, decimal=decimal, **config)
+
+    def test_errors(self):
+        with assert_raises(ValueError):
+            self.init_codec(digits=-1, dtype='i4')
+
+    def test_repr(self):
+        dtype = 'f8'
+        astype = 'f4'
+        codec = self.init_codec(digits=2, dtype=dtype, astype=astype)
+        expect = 'Quantize(digits=2, dtype=float64, astype=float32)'
+        actual = repr(codec)
+        eq(expect, actual)
 
 
 class TestPackBits(CodecTests, unittest.TestCase):
@@ -373,16 +399,24 @@ class TestPackBits(CodecTests, unittest.TestCase):
             arr = self.arr[:size]
             self._test_decode_lossless(arr)
 
+    def test_repr(self):
+        codec = self.init_codec()
+        expect = 'PackBits()'
+        actual = repr(codec)
+        eq(expect, actual)
+
 
 class TestCategorize(CodecTests, unittest.TestCase):
 
     codec_id = 'categorize'
     labels = [b'foo', b'bar', b'baz', b'quux']
+    labels_u = ['foo', 'bar', 'baz', 'quux']
     arrs = [
         np.random.choice(labels, size=1000),
         np.random.choice(labels, size=(100, 10)),
         np.random.choice(labels, size=(10, 10, 10)),
         np.random.choice(labels, size=1000).reshape(100, 10, order='F'),
+        np.random.choice(labels_u, size=1000),
     ]
 
     def test_encode(self):
@@ -412,6 +446,25 @@ class TestCategorize(CodecTests, unittest.TestCase):
         expect[expect == b'quux'] = b''
         assert_array_equal(expect, dec)
         eq(arr.dtype, dec.dtype)
+
+    def test_repr(self):
+        if not PY2:
+            labels = ['foo', 'bar', 'baz', 'quux', 'spong']
+            dtype = '|S3'
+            astype = 'u1'
+            codec = self.init_codec(labels=labels, dtype=dtype, astype=astype)
+            expect = "Categorize(dtype=|S3, astype=uint8, " \
+                     "labels=[b'foo', b'bar', b'baz', ...])"
+            actual = repr(codec)
+            eq(expect, actual)
+
+    def test_errors(self):
+        with assert_raises(ValueError):
+            self.init_codec(labels=[0, 1, 2], dtype='i8')
+        with assert_raises(ValueError):
+            self.init_codec(labels=['foo', 'bar', 0], dtype='S3')
+        with assert_raises(ValueError):
+            self.init_codec(labels=['foo', 'bar', 0], dtype='U3')
 
 
 def test_get_codec():

@@ -23,6 +23,7 @@ from zarr.errors import PermissionError
 from zarr.creation import open_array
 from zarr.compat import PY2
 from zarr.sync import ThreadSynchronizer, ProcessSynchronizer
+from zarr.codecs import Zlib
 
 
 # noinspection PyStatementEffect
@@ -208,6 +209,43 @@ class TestGroup(unittest.TestCase):
         eq('/bar', d3.name)
         assert_is(g.store, d3.store)
 
+        # compression arguments handling follows...
+
+        # compression_opts as dict
+        d = g.create_dataset('aaa', shape=1000, dtype='u1',
+                             compression='blosc',
+                             compression_opts=dict(cname='zstd', clevel=1,
+                                                   shuffle=2))
+        eq(d.compressor.codec_id, 'blosc')
+        eq(b'zstd', d.compressor.cname)
+        eq(1, d.compressor.clevel)
+        eq(2, d.compressor.shuffle)
+
+        # compression_opts as sequence
+        d = g.create_dataset('bbb', shape=1000, dtype='u1',
+                             compression='blosc',
+                             compression_opts=('zstd', 1, 2))
+        eq(d.compressor.codec_id, 'blosc')
+        eq(b'zstd', d.compressor.cname)
+        eq(1, d.compressor.clevel)
+        eq(2, d.compressor.shuffle)
+
+        # None compression_opts
+        d = g.create_dataset('ccc', shape=1000, dtype='u1',
+                             compression='zlib')
+        eq(d.compressor.codec_id, 'zlib')
+        eq(1, d.compressor.level)
+
+        # None compression
+        d = g.create_dataset('ddd', shape=1000, dtype='u1', compression=None)
+        assert_is_none(d.compressor)
+
+        # compressor as compression
+        d = g.create_dataset('eee', shape=1000, dtype='u1',
+                             compression=Zlib(1))
+        eq(d.compressor.codec_id, 'zlib')
+        eq(1, d.compressor.level)
+
     def test_require_dataset(self):
         g = self.create_group()
 
@@ -286,9 +324,10 @@ class TestGroup(unittest.TestCase):
         with assert_raises(KeyError):
             g.require_dataset('c/d', shape=100, chunks=10)
 
-        # h5py compatibility - accept but ingore some keyword args
-        d = g.create_dataset('x', shape=100, chunks=10, fillvalue=1)
-        assert_is_none(d.fill_value)
+        # h5py compatibility
+        d = g.create_dataset('x', shape=100, chunks=10, fillvalue=42)
+        eq(42, d.fill_value)
+        # ignore 'shuffle'
         d = g.create_dataset('y', shape=100, chunks=10, shuffle=True)
         assert not hasattr(d, 'shuffle')
 

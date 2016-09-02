@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, print_function, division
 from collections import Mapping
-from warnings import warn
 
 
 import numpy as np
@@ -10,14 +9,12 @@ import numpy as np
 from zarr.attrs import Attributes
 from zarr.core import Array
 from zarr.storage import contains_array, contains_group, init_group, \
-    DictStore, DirectoryStore, group_meta_key, attrs_key, listdir, \
-    default_compressor
+    DictStore, DirectoryStore, group_meta_key, attrs_key, listdir
 from zarr.creation import array, create, empty, zeros, ones, full, \
     empty_like, zeros_like, ones_like, full_like
 from zarr.util import normalize_storage_path, normalize_shape
 from zarr.errors import PermissionError
 from zarr.meta import decode_group_metadata
-from zarr.codecs import codec_registry
 
 
 class Group(Mapping):
@@ -517,9 +514,8 @@ class Group(Mapping):
                 init_group(self._store, path=p, chunk_store=self._chunk_store)
 
     def create_dataset(self, name, data=None, shape=None, chunks=None,
-                       dtype=None, compression='default',
-                       compression_opts=None, fill_value=None, order='C',
-                       synchronizer=None, **kwargs):
+                       dtype=None, compressor='default', fill_value=None,
+                       order='C', synchronizer=None, filters=None, **kwargs):
         """Create an array.
 
         Parameters
@@ -535,18 +531,16 @@ class Group(Mapping):
             `dtype`.
         dtype : string or dtype, optional
             NumPy dtype.
-        compression : string, optional
-            Name of primary compression library, e.g., 'blosc', 'zlib', 'bz2',
-            'lzma'.
-        compression_opts : object, optional
-            Options to primary compressor. E.g., for blosc, provide a dictionary
-            with keys 'cname', 'clevel' and 'shuffle'.
+        compressor : Codec, optional
+            Primary compressor.
         fill_value : object
             Default value to use for uninitialized portions of the array.
         order : {'C', 'F'}, optional
             Memory layout to be used within each chunk.
         synchronizer : zarr.sync.ArraySynchronizer, optional
             Array synchronizer.
+        filters : sequence of Codecs, optional
+            Sequence of filters to use to encode chunk data prior to compression.
 
         Returns
         -------
@@ -566,28 +560,16 @@ class Group(Mapping):
 
         """  # flake8: noqa
 
-        # N.B., additional kwargs are included in method signature to
-        # improve compatibility for users familiar with h5py and adapting
-        # code that previously used h5py. These keyword arguments are
-        # ignored here but we issue a warning to let the user know.
-        for k in kwargs:
-            if k == 'fillvalue':
-                warn("ignoring keyword argument %r; please use 'fill_value' "
-                     "instead" % k)
-            else:
-                warn('ignoring keyword argument %r' % k)
-
         return self._write_op(self._create_dataset_nosync, name, data=data,
                               shape=shape, chunks=chunks, dtype=dtype,
-                              compression=compression,
-                              compression_opts=compression_opts,
-                              fill_value=fill_value, order=order,
-                              synchronizer=synchronizer)
+                              compressor=compressor, fill_value=fill_value,
+                              order=order, synchronizer=synchronizer,
+                              filters=filters, **kwargs)
 
     def _create_dataset_nosync(self, name, data=None, shape=None, chunks=None,
-                               dtype=None, compression='default',
-                               compression_opts=None, fill_value=None,
-                               order='C', synchronizer=None):
+                               dtype=None, compressor='default',
+                               fill_value=None, order='C', synchronizer=None,
+                               filters=None, **kwargs):
 
         path = self._item_path(name)
         self._require_parent_group(path)
@@ -602,41 +584,21 @@ class Group(Mapping):
         if synchronizer is None:
             synchronizer = self._synchronizer
 
-        # adapt compression arguments from h5py style
-        if compression in [None, 'none']:
-            compressor = None
-        elif compression == 'default':
-            compressor = default_compressor
-        elif isinstance(compression, str):
-            codec_cls = codec_registry[compression]
-            if isinstance(compression_opts, dict):
-                compressor = codec_cls(**compression_opts)
-            elif isinstance(compression_opts, (list, tuple)):
-                compressor = codec_cls(*compression_opts)
-            elif compression_opts is None:
-                compressor = codec_cls()
-            else:
-                # assume single argument, e.g., int
-                compressor = codec_cls(compression_opts)
-        elif hasattr(compression, 'get_config'):
-            compressor = compression
-        else:
-            raise ValueError('bad value for compression: %r' % compression)
-
         # create array
         if data is not None:
             a = array(data, chunks=chunks, dtype=dtype,
                       compressor=compressor, fill_value=fill_value,
                       order=order, synchronizer=synchronizer,
                       store=self._store, path=path,
-                      chunk_store=self._chunk_store)
+                      chunk_store=self._chunk_store, filters=filters, **kwargs)
 
         else:
             a = create(shape=shape, chunks=chunks, dtype=dtype,
                        compressor=compressor, fill_value=fill_value,
                        order=order, synchronizer=synchronizer,
                        store=self._store, path=path,
-                       chunk_store=self._chunk_store)
+                       chunk_store=self._chunk_store, filters=filters,
+                       **kwargs)
 
         return a
 

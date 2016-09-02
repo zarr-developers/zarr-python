@@ -63,10 +63,6 @@ def test_array():
     eq(c.shape, z3.shape)
     eq((10, 10), z3.chunks)
 
-    # chunks not specified
-    with assert_raises(ValueError):
-        z = array(np.arange(100))
-
 
 def test_empty():
     z = empty(100, chunks=10)
@@ -253,7 +249,7 @@ def test_full_like():
     eq((10,), z3.chunks)
     eq(a.dtype, z3.dtype)
     eq(42, z3.fill_value)
-    with assert_raises(ValueError):
+    with assert_raises(TypeError):
         # fill_value missing
         full_like(a, chunks=10)
 

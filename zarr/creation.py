@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, print_function, division
+from warnings import warn
 
 
 import numpy as np
@@ -7,12 +8,14 @@ import numpy as np
 
 from zarr.core import Array
 from zarr.storage import DirectoryStore, init_array, contains_array, \
-    contains_group
+    contains_group, default_compressor
+from zarr.codecs import codec_registry
 
 
 def create(shape, chunks=None, dtype=None, compressor='default',
            fill_value=None, order='C', store=None, synchronizer=None,
-           overwrite=False, path=None, chunk_store=None, filters=None):
+           overwrite=False, path=None, chunk_store=None, filters=None,
+           **kwargs):
     """Create an array.
 
     Parameters
@@ -68,6 +71,9 @@ def create(shape, chunks=None, dtype=None, compressor='default',
     if store is None:
         store = dict()
 
+    # compatibility
+    compressor, fill_value = _handle_kwargs(compressor, fill_value, kwargs)
+
     # initialize array metadata
     init_array(store, shape=shape, chunks=chunks, dtype=dtype,
                compressor=compressor, fill_value=fill_value, order=order, 
@@ -81,9 +87,56 @@ def create(shape, chunks=None, dtype=None, compressor='default',
     return z
 
 
-def empty(shape, chunks=None, dtype=None, compressor='default',
-          order='C', store=None, synchronizer=None, path=None, 
-          overwrite=False, chunk_store=None, filters=None):
+def _handle_kwargs(compressor, fill_value, kwargs):
+
+    # to be compatible with h5py, as well as backwards-compatible with Zarr
+    # 1.x, accept 'compression' and 'compression_opts' keyword arguments
+
+    if 'compression' in kwargs:
+        compression = kwargs.pop('compression')
+        compression_opts = kwargs.pop('compression_opts', None)
+
+        if compression in {None, 'none'}:
+            compressor = None
+
+        elif compression == 'default':
+            compressor = default_compressor
+
+        elif isinstance(compression, str):
+            codec_cls = codec_registry[compression]
+
+            # handle compression_opts
+            if isinstance(compression_opts, dict):
+                compressor = codec_cls(**compression_opts)
+            elif isinstance(compression_opts, (list, tuple)):
+                compressor = codec_cls(*compression_opts)
+            elif compression_opts is None:
+                compressor = codec_cls()
+            else:
+                # assume single argument, e.g., int
+                compressor = codec_cls(compression_opts)
+
+        # be lenient here
+        elif hasattr(compression, 'get_config'):
+            compressor = compression
+
+        else:
+            raise ValueError('bad value for compression: %r' % compression)
+
+    # handle 'fillvalue'
+    if 'fillvalue' in kwargs:
+        # to be compatible with h5py, accept 'fillvalue' instead of
+        # 'fill_value'
+        fill_value = kwargs.pop('fillvalue')
+
+    # ignore other keyword arguments
+    for k in kwargs:
+        warn('ignoring keyword argument: %r' % k)
+
+    return compressor, fill_value
+
+
+def empty(shape, **kwargs):
     """Create an empty array.
 
     For parameter definitions see :func:`zarr.creation.create`.
@@ -95,16 +148,10 @@ def empty(shape, chunks=None, dtype=None, compressor='default',
     and these are not guaranteed to be stable from one access to the next.
 
     """
-    return create(shape=shape, chunks=chunks, dtype=dtype,
-                  compressor=compressor, fill_value=None, order=order, 
-                  store=store, synchronizer=synchronizer, path=path, 
-                  overwrite=overwrite, chunk_store=chunk_store, 
-                  filters=filters)
+    return create(shape=shape, fill_value=None, **kwargs)
 
 
-def zeros(shape, chunks=None, dtype=None, compressor='default',
-          order='C', store=None, synchronizer=None, path=None,
-          overwrite=False, chunk_store=None, filters=None):
+def zeros(shape, **kwargs):
     """Create an array, with zero being used as the default value for
     uninitialized portions of the array.
 
@@ -125,15 +172,10 @@ def zeros(shape, chunks=None, dtype=None, compressor='default',
 
     """  # flake8: noqa
 
-    return create(shape=shape, chunks=chunks, dtype=dtype,
-                  compressor=compressor, fill_value=0, order=order,
-                  store=store, synchronizer=synchronizer, path=path,
-                  overwrite=overwrite, chunk_store=chunk_store, filters=filters)
+    return create(shape=shape, fill_value=0, **kwargs)
 
 
-def ones(shape, chunks=None, dtype=None, compressor='default',
-         order='C', store=None, synchronizer=None, path=None,
-         overwrite=False, chunk_store=None, filters=None):
+def ones(shape, **kwargs):
     """Create an array, with one being used as the default value for
     uninitialized portions of the array.
 
@@ -154,16 +196,10 @@ def ones(shape, chunks=None, dtype=None, compressor='default',
 
     """  # flake8: noqa
 
-    return create(shape=shape, chunks=chunks, dtype=dtype,
-                  compressor=compressor, fill_value=1, order=order,
-                  store=store, synchronizer=synchronizer, path=path,
-                  overwrite=overwrite, chunk_store=chunk_store,
-                  filters=filters)
+    return create(shape=shape, fill_value=1, **kwargs)
 
 
-def full(shape, fill_value, chunks=None, dtype=None, compressor='default',
-         order='C', store=None, synchronizer=None, path=None,
-         overwrite=False, chunk_store=None, filters=None):
+def full(shape, fill_value, **kwargs):
     """Create an array, with `fill_value` being used as the default value for
     uninitialized portions of the array.
 
@@ -184,16 +220,10 @@ def full(shape, fill_value, chunks=None, dtype=None, compressor='default',
 
     """  # flake8: noqa
 
-    return create(shape=shape, chunks=chunks, dtype=dtype,
-                  compressor=compressor, fill_value=fill_value, order=order,
-                  store=store, synchronizer=synchronizer, path=path,
-                  overwrite=overwrite, chunk_store=chunk_store,
-                  filters=filters)
+    return create(shape=shape, fill_value=fill_value, **kwargs)
 
 
-def array(data, chunks=None, dtype=None, compressor='default',
-          fill_value=None, order='C', store=None, synchronizer=None,
-          path=None, overwrite=False, chunk_store=None, filters=None):
+def array(data, **kwargs):
     """Create an array filled with `data`.
 
     The `data` argument should be a NumPy array or array-like object. For
@@ -218,6 +248,7 @@ def array(data, chunks=None, dtype=None, compressor='default',
         data = np.asanyarray(data)
 
     # setup dtype
+    dtype = kwargs.pop('dtype', None)
     if dtype is None:
         dtype = data.dtype
 
@@ -225,6 +256,7 @@ def array(data, chunks=None, dtype=None, compressor='default',
     shape = data.shape
 
     # setup chunks
+    chunks = kwargs.pop('chunks', None)
     if chunks is None:
         # try to use same chunks as data
         if hasattr(data, 'chunklen'):
@@ -233,14 +265,9 @@ def array(data, chunks=None, dtype=None, compressor='default',
         elif hasattr(data, 'chunks') and len(data.chunks) == len(data.shape):
             # h5py dataset or zarr array
             chunks = data.chunks
-        else:
-            raise ValueError('chunks must be specified')
 
     # instantiate array
-    z = create(shape=shape, chunks=chunks, dtype=dtype,
-               compressor=compressor, fill_value=fill_value, order=order,
-               store=store, synchronizer=synchronizer, path=path,
-               overwrite=overwrite, chunk_store=chunk_store, filters=filters)
+    z = create(shape=shape, chunks=chunks, dtype=dtype, **kwargs)
 
     # fill with data
     z[:] = data
@@ -249,8 +276,8 @@ def array(data, chunks=None, dtype=None, compressor='default',
 
 
 def open_array(path, mode='a', shape=None, chunks=None, dtype=None,
-               compressor='default', fill_value=0, order='C',
-               synchronizer=None, filters=None):
+               compressor='default', fill_value=None, order='C',
+               synchronizer=None, filters=None, **kwargs):
     """Convenience function to instantiate an array stored in a
     directory on the file system.
 
@@ -323,6 +350,9 @@ def open_array(path, mode='a', shape=None, chunks=None, dtype=None,
     # setup store
     store = DirectoryStore(path)
 
+    # compatibility
+    compressor, fill_value = _handle_kwargs(compressor, fill_value, kwargs)
+
     # ensure store is initialized
 
     if mode in ['r', 'r+']:
@@ -367,113 +397,55 @@ def open_array(path, mode='a', shape=None, chunks=None, dtype=None,
 open = open_array
 
 
-def _like_args(a, shape, chunks, dtype, compressor, order, filters):
+def _like_args(a, kwargs):
 
-    # handle shape
-    if shape is None:
-        shape = a.shape
+    if hasattr(a, 'shape'):
+        kwargs.setdefault('shape', a.shape)
 
-    # handle chunks
-    if chunks is None:
-        try:
-            chunks = a.chunks
-        except AttributeError:
-            # use auto-chunking
-            pass
+    if hasattr(a, 'chunks'):
+        kwargs.setdefault('chunks', a.chunks)
 
-    # handle dtype
-    if dtype is None:
-        try:
-            dtype = a.dtype
-        except AttributeError:
-            pass
+    if hasattr(a, 'dtype'):
+        kwargs.setdefault('dtype', a.dtype)
 
-    # handle compressor
-    if compressor is None:
-        if isinstance(a, Array):
-            compressor = a.compressor
-        else:
-            compressor = 'default'
-
-    # handle order
-    if order is None:
-        if isinstance(a, Array):
-            order = a.order
-        else:
-            order = 'C'
-
-    # handle filters
-    if filters is None:
-        if isinstance(a, Array):
-            filters = a.filters
-
-    return shape, chunks, dtype, compressor, order, filters
+    if isinstance(a, Array):
+        kwargs.setdefault('compressor', a.compressor)
+        kwargs.setdefault('order', a.order)
+        kwargs.setdefault('filters', a.filters)
+    else:
+        kwargs.setdefault('compressor', 'default')
+        kwargs.setdefault('order', 'C')
 
 
-def empty_like(a, shape=None, chunks=None, dtype=None, compressor=None,
-               order=None, store=None, synchronizer=None, path=None,
-               overwrite=False, chunk_store=None, filters=None):
+def empty_like(a, **kwargs):
     """Create an empty array like `a`."""
-    shape, chunks, dtype, compressor, order, filters = \
-        _like_args(a, shape, chunks, dtype, compressor, order, filters)
-    return empty(shape, chunks=chunks, dtype=dtype, compressor=compressor,
-                 order=order, store=store, synchronizer=synchronizer,
-                 path=path, overwrite=overwrite, chunk_store=chunk_store,
-                 filters=filters)
+    _like_args(a, kwargs)
+    return empty(**kwargs)
 
 
-def zeros_like(a, shape=None, chunks=None, dtype=None, compressor=None,
-               order=None, store=None, synchronizer=None, path=None,
-               overwrite=False, chunk_store=None, filters=None):
+def zeros_like(a, **kwargs):
     """Create an array of zeros like `a`."""
-    shape, chunks, dtype, compressor, order, filters = \
-        _like_args(a, shape, chunks, dtype, compressor, order, filters)
-    return zeros(shape, chunks=chunks, dtype=dtype, compressor=compressor,
-                 order=order, store=store, synchronizer=synchronizer,
-                 path=path, overwrite=overwrite, chunk_store=chunk_store,
-                 filters=filters)
+    _like_args(a, kwargs)
+    return zeros(**kwargs)
 
 
-def ones_like(a, shape=None, chunks=None, dtype=None, compressor=None,
-              order=None, store=None, synchronizer=None, path=None,
-              overwrite=False, chunk_store=None, filters=None):
+def ones_like(a, **kwargs):
     """Create an array of ones like `a`."""
-    shape, chunks, dtype, compressor, order, filters = \
-        _like_args(a, shape, chunks, dtype, compressor, order, filters)
-    return ones(shape, chunks=chunks, dtype=dtype, compressor=compressor,
-                order=order, store=store, synchronizer=synchronizer, path=path,
-                overwrite=overwrite, chunk_store=chunk_store, filters=filters)
+    _like_args(a, kwargs)
+    return ones(**kwargs)
 
 
-def full_like(a, shape=None, chunks=None, fill_value=None, dtype=None,
-              compressor=None, order=None, store=None, synchronizer=None,
-              path=None, overwrite=False, chunk_store=None, filters=None):
+def full_like(a, **kwargs):
     """Create a filled array like `a`."""
-    shape, chunks, dtype, compressor, order, filters = \
-        _like_args(a, shape, chunks, dtype, compressor, order, filters)
-    if fill_value is None:
-        try:
-            fill_value = a.fill_value
-        except AttributeError:
-            raise ValueError('fill_value must be specified')
-    return full(shape, chunks=chunks, fill_value=fill_value, dtype=dtype,
-                compressor=compressor, order=order, store=store,
-                synchronizer=synchronizer, path=path, overwrite=overwrite,
-                chunk_store=chunk_store, filters=filters)
+    _like_args(a, kwargs)
+    if isinstance(a, Array):
+        kwargs.setdefault('fill_value', a.fill_value)
+    return full(**kwargs)
 
 
-def open_like(a, path, mode='a', shape=None, chunks=None, dtype=None,
-              compressor=None, fill_value=None, order=None,
-              synchronizer=None, filters=None):
+def open_like(a, path, **kwargs):
     """Open a persistent array like `a`."""
-    shape, chunks, dtype, compressor, order, filters = \
-        _like_args(a, shape, chunks, dtype, compressor, order, filters)
-    if fill_value is None:
-        try:
-            fill_value = a.fill_value
-        except AttributeError:
-            # leave empty
-            pass
-    return open_array(path, mode=mode, shape=shape, chunks=chunks, dtype=dtype,
-                      compressor=compressor, fill_value=fill_value,
-                      order=order, synchronizer=synchronizer, filters=filters)
+    _like_args(a, kwargs)
+    if isinstance(a, Array):
+        kwargs.setdefault('fill_value', a.fill_value)
+    return open_array(path, **kwargs)

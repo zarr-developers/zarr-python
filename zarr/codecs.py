@@ -828,6 +828,15 @@ def _ensure_bytes(l):
         raise ValueError('expected bytes, found %r' % l)
 
 
+def _ensure_text(l):
+    if isinstance(l, text_type):
+        return l
+    elif isinstance(l, binary_type):
+        return text_type(l, 'ascii')
+    else:
+        raise ValueError('expected text, found %r' % l)
+
+
 class Categorize(Codec):
     """Filter encoding categorical string data as integers.
 
@@ -862,10 +871,13 @@ class Categorize(Codec):
     codec_id = 'categorize'
 
     def __init__(self, labels, dtype, astype='u1'):
-        self.labels = [_ensure_bytes(l) for l in labels]
         self.dtype = np.dtype(dtype)
-        if self.dtype.kind != 'S':
-            raise ValueError('only string data types are supported')
+        if self.dtype.kind == 'S':
+            self.labels = [_ensure_bytes(l) for l in labels]
+        elif self.dtype.kind == 'U':
+            self.labels = [_ensure_text(l) for l in labels]
+        else:
+            raise ValueError('data type not supported')
         self.astype = np.dtype(astype)
 
     def encode(self, buf):
@@ -909,7 +921,7 @@ class Categorize(Codec):
     def get_config(self):
         config = dict()
         config['id'] = self.codec_id
-        config['labels'] = [text_type(l, 'ascii') for l in self.labels]
+        config['labels'] = [_ensure_text(l) for l in self.labels]
         config['dtype'] = encode_dtype(self.dtype)
         config['astype'] = encode_dtype(self.astype)
         return config
@@ -922,8 +934,12 @@ class Categorize(Codec):
         return cls(labels=labels, dtype=dtype, astype=astype)
 
     def __repr__(self):
-        r = '%s(dtype=%s, astype=%s, labels=%r)' % \
-            (type(self).__name__, self.dtype, self.astype, self.labels)
+        # make sure labels part is not too long
+        labels = repr(self.labels[:3])
+        if len(self.labels) > 3:
+            labels = labels[:-1] + ', ...]'
+        r = '%s(dtype=%s, astype=%s, labels=%s)' % \
+            (type(self).__name__, self.dtype, self.astype, labels)
         return r
 
 
