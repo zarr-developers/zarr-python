@@ -236,8 +236,6 @@ the delta filter::
 
 To disable compression, set ``compressor=None`` when creating an array.
 
-To disable compression, set ``compression=None`` when creating an array.
-
 .. _tutorial_filters:
 
 Filters
@@ -270,7 +268,7 @@ Here is an example using the Zarr delta filter with the Blosc compressor:
 
 Zarr comes with implementations of delta, scale-offset, quantize, packbits and
 categorize filters. It is also relatively straightforward to implement custom
-filters. For more information see the :mod:`zarr.filters` API docs.
+filters. For more information see the :mod:`zarr.codecs` API docs.
 
 .. _tutorial_sync:
 
@@ -582,6 +580,14 @@ to find a compromise, e.g.::
     >>> z3 = zarr.zeros((10000, 10000), chunks=(1000, 1000), dtype='i4')
     >>> z3.chunks
     (1000, 1000)
+
+If you are feeling lazy, you can let Zarr guess a chunk shape for your data,
+although please note that the algorithm for guessing a chunk shape is based on
+simple heuristics and may by far from optimal. E.g.::
+
+    >>> z4 = zarr.zeros((10000, 10000), dtype='i4')
+    >>> z4.chunks
+    (313, 313)
 
 .. _tutorial_tips_blosc:
     

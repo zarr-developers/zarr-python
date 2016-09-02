@@ -4,7 +4,7 @@ Zarr storage specification version 2
 ====================================
 
 This document provides a technical specification of the protocol and format 
-used for storing a Zarr array. The key words "MUST", "MUST NOT", "REQUIRED", 
+used for storing Zarr arrays. The key words "MUST", "MUST NOT", "REQUIRED", 
 "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and 
 "OPTIONAL" in this document are to be interpreted as described in `RFC 2119 
 <https://www.ietf.org/rfc/rfc2119.txt>`_.
@@ -56,12 +56,10 @@ chunks
 dtype
     A string or list defining a valid data type for the array. See also
     the subsection below on data type encoding.
-compression
-    A string identifying the primary compression library used to compress
-    each chunk of the array.
-compression_opts
-    An integer, string or dictionary providing options to the primary
-    compression library.
+compressor
+    A JSON object identifying the primary compression codec and providing 
+    configuration parameters, or ``null`` if no compressor is to be used. 
+    The object MUST contain an ``"id"`` key identifying the codec to be used.
 fill_value
     A scalar value providing the default value to use for uninitialized
     portions of the array, or ``null`` if no fill_value is to be used.
@@ -70,9 +68,9 @@ order
     array. "C" means row-major order, i.e., the last dimension varies fastest;
     "F" means column-major order, i.e., the first dimension varies fastest.
 filters
-    A list of JSON objects providing filter configurations, or ``null`` if no
-    filters are to be applied. Each filter configuration object MUST contain a
-    ``"name"`` key identifying the filter to be used.
+    A list of JSON objects providing codec configurations, or ``null`` if no
+    filters are to be applied. Each codec configuration object MUST contain a
+    ``"id"`` key identifying the codec to be used.
 
 Other keys MUST NOT be present within the metadata object.
 
@@ -88,16 +86,16 @@ using the Blosc compression library prior to storage::
             1000,
             1000
         ],
-        "compression": "blosc",
-        "compression_opts": {
-            "clevel": 5,
+        "compressor": {
+            "id": "blosc",
             "cname": "lz4",
+            "clevel": 5,
             "shuffle": 1
         },
         "dtype": "<f8",
         "fill_value": "NaN",
         "filters": [
-            {"name": "delta", "dtype": "<f8", "astype": "<f4"}
+            {"id": "delta", "dtype": "<f8", "astype": "<f4"}
         ],
         "order": "C",
         "shape": [
