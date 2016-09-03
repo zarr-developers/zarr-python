@@ -1,6 +1,13 @@
 Release notes
 =============
 
+.. _release_2.0.1:
+
+2.0.1
+-----
+
+The bundled Blosc library has been upgraded to version 1.11.1.
+
 .. _release_2.0.0:
 
 2.0.0
