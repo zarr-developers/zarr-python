@@ -2,7 +2,8 @@ Release notes
 =============
 
 * Added ``overwrite`` keyword argument to array and group creation methods
-  on the :class:`zarr.hierarchy.Group` class.
+  on the :class:`zarr.hierarchy.Group` class
+  (`#71 <https://github.com/alimanfoo/zarr/issues/71>`_).
 
 .. _release_2.0.1:
 
