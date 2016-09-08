@@ -238,9 +238,9 @@ def init_array(store, shape, chunks, dtype=None, compressor='default',
         if chunk_store is not None and chunk_store != store:
             rmdir(chunk_store, path)
     elif contains_array(store, path):
-        raise ValueError('store contains an array')
+        raise KeyError('path %r contains an array' % path)
     elif contains_group(store, path):
-        raise ValueError('store contains a group')
+        raise KeyError('path %r contains a group' % path)
 
     # normalize metadata
     shape = normalize_shape(shape)
@@ -312,9 +312,9 @@ def init_group(store, overwrite=False, path=None, chunk_store=None):
         if chunk_store is not None and chunk_store != store:
             rmdir(chunk_store, path)
     elif contains_array(store, path):
-        raise ValueError('store contains an array')
+        raise KeyError('path %r contains an array' % path)
     elif contains_group(store, path):
-        raise ValueError('store contains a group')
+        raise KeyError('path %r contains a group' % path)
 
     # initialize metadata
     # N.B., currently no metadata properties are needed, however there may
@@ -492,7 +492,7 @@ class DictStore(MutableMapping):
                 parent, key = self._get_parent(path)
                 value = parent[key]
             except KeyError:
-                raise ValueError('path not found: %r' % path)
+                raise KeyError('path %r not found' % path)
         else:
             value = self.root
 
@@ -673,7 +673,7 @@ class DirectoryStore(MutableMapping):
                     size += os.path.getsize(child_fs_path)
             return size
         else:
-            raise ValueError('path not found: %r' % path)
+            raise KeyError('path %r not found' % path)
 
 
 # noinspection PyPep8Naming
@@ -806,7 +806,7 @@ class ZipStore(MutableMapping):
                     info = zf.getinfo(path)
                     return info.compress_size
                 except KeyError:
-                    raise ValueError('path not found: %r' % path)
+                    raise KeyError('path %r not found' % path)
             else:
                 return 0
 

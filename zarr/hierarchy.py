@@ -9,7 +9,7 @@ import numpy as np
 from zarr.attrs import Attributes
 from zarr.core import Array
 from zarr.storage import contains_array, contains_group, init_group, \
-    DictStore, DirectoryStore, group_meta_key, attrs_key, listdir
+    DictStore, DirectoryStore, group_meta_key, attrs_key, listdir, rmdir
 from zarr.creation import array, create, empty, zeros, ones, full, \
     empty_like, zeros_like, ones_like, full_like
 from zarr.util import normalize_storage_path, normalize_shape
@@ -406,13 +406,15 @@ class Group(Mapping):
             with self._synchronizer[group_meta_key]:
                 return f(*args, **kwargs)
 
-    def create_group(self, name):
+    def create_group(self, name, overwrite=False):
         """Create a sub-group.
 
         Parameters
         ----------
         name : string
             Group name.
+        overwrite : bool, optional
+            If True, overwrite any existing array with the given name.
 
         Returns
         -------
@@ -428,35 +430,25 @@ class Group(Mapping):
 
         """
 
-        return self._write_op(self._create_group_nosync, name)
+        return self._write_op(self._create_group_nosync, name,
+                              overwrite=overwrite)
 
-    def _create_group_nosync(self, name):
-
+    def _create_group_nosync(self, name, overwrite=False):
         path = self._item_path(name)
 
-        # require intermediate groups
-        segments = path.split('/')
-        for i in range(len(segments)):
-            p = '/'.join(segments[:i])
-            if contains_array(self._store, p):
-                raise KeyError(name)
-            elif not contains_group(self._store, p):
-                init_group(self._store, path=p, chunk_store=self._chunk_store)
+        # create intermediate groups
+        self._require_parent_group(path, overwrite=overwrite)
 
         # create terminal group
-        if contains_array(self._store, path):
-            raise KeyError(name)
-        if contains_group(self._store, path):
-            raise KeyError(name)
-        else:
-            init_group(self._store, path=path, chunk_store=self._chunk_store)
-            return Group(self._store, path=path, read_only=self._read_only,
-                         chunk_store=self._chunk_store,
-                         synchronizer=self._synchronizer)
+        init_group(self._store, path=path, chunk_store=self._chunk_store,
+                   overwrite=overwrite)
+        return Group(self._store, path=path, read_only=self._read_only,
+                     chunk_store=self._chunk_store,
+                     synchronizer=self._synchronizer)
 
-    def create_groups(self, *names):
+    def create_groups(self, *names, **kwargs):
         """Convenience method to create multiple groups in a single call."""
-        return tuple(self.create_group(name) for name in names)
+        return tuple(self.create_group(name, **kwargs) for name in names)
 
     def require_group(self, name):
         """Obtain a sub-group, creating one if it doesn't exist.
@@ -504,18 +496,20 @@ class Group(Mapping):
         """Convenience method to require multiple groups in a single call."""
         return tuple(self.require_group(name) for name in names)
 
-    def _require_parent_group(self, path):
+    def _require_parent_group(self, path, overwrite=False):
         segments = path.split('/')
         for i in range(len(segments)):
             p = '/'.join(segments[:i])
             if contains_array(self._store, p):
-                raise KeyError(path)
+                init_group(self._store, path=p,
+                           chunk_store=self._chunk_store, overwrite=overwrite)
             elif not contains_group(self._store, p):
                 init_group(self._store, path=p, chunk_store=self._chunk_store)
 
     def create_dataset(self, name, data=None, shape=None, chunks=None,
                        dtype=None, compressor='default', fill_value=None,
-                       order='C', synchronizer=None, filters=None, **kwargs):
+                       order='C', synchronizer=None, filters=None,
+                       overwrite=False, **kwargs):
         """Create an array.
 
         Parameters
@@ -540,7 +534,10 @@ class Group(Mapping):
         synchronizer : zarr.sync.ArraySynchronizer, optional
             Array synchronizer.
         filters : sequence of Codecs, optional
-            Sequence of filters to use to encode chunk data prior to compression.
+            Sequence of filters to use to encode chunk data prior to
+            compression.
+        overwrite : bool, optional
+            If True, replace any existing array or group with the given name.
 
         Returns
         -------
@@ -564,21 +561,15 @@ class Group(Mapping):
                               shape=shape, chunks=chunks, dtype=dtype,
                               compressor=compressor, fill_value=fill_value,
                               order=order, synchronizer=synchronizer,
-                              filters=filters, **kwargs)
+                              filters=filters, overwrite=overwrite, **kwargs)
 
     def _create_dataset_nosync(self, name, data=None, shape=None, chunks=None,
                                dtype=None, compressor='default',
                                fill_value=None, order='C', synchronizer=None,
-                               filters=None, **kwargs):
+                               filters=None, overwrite=False, **kwargs):
 
         path = self._item_path(name)
-        self._require_parent_group(path)
-
-        # guard conditions
-        if contains_array(self._store, path):
-            raise KeyError(name)
-        if contains_group(self._store, path):
-            raise KeyError(name)
+        self._require_parent_group(path, overwrite=overwrite)
 
         # determine synchronizer
         if synchronizer is None:
@@ -590,7 +581,8 @@ class Group(Mapping):
                       compressor=compressor, fill_value=fill_value,
                       order=order, synchronizer=synchronizer,
                       store=self._store, path=path,
-                      chunk_store=self._chunk_store, filters=filters, **kwargs)
+                      chunk_store=self._chunk_store, filters=filters,
+                      overwrite=overwrite, **kwargs)
 
         else:
             a = create(shape=shape, chunks=chunks, dtype=dtype,
@@ -598,7 +590,7 @@ class Group(Mapping):
                        order=order, synchronizer=synchronizer,
                        store=self._store, path=path,
                        chunk_store=self._chunk_store, filters=filters,
-                       **kwargs)
+                       overwrite=overwrite, **kwargs)
 
         return a
 
@@ -655,7 +647,8 @@ class Group(Mapping):
 
     def _create_nosync(self, name, **kwargs):
         path = self._item_path(name)
-        self._require_parent_group(path)
+        overwrite = kwargs.get('overwrite', False)
+        self._require_parent_group(path, overwrite=overwrite)
         kwargs.setdefault('synchronizer', self._synchronizer)
         return create(store=self._store, path=path,
                       chunk_store=self._chunk_store, **kwargs)
@@ -667,7 +660,8 @@ class Group(Mapping):
 
     def _empty_nosync(self, name, **kwargs):
         path = self._item_path(name)
-        self._require_parent_group(path)
+        overwrite = kwargs.get('overwrite', False)
+        self._require_parent_group(path, overwrite=overwrite)
         kwargs.setdefault('synchronizer', self._synchronizer)
         return empty(store=self._store, path=path,
                      chunk_store=self._chunk_store, **kwargs)
@@ -679,7 +673,8 @@ class Group(Mapping):
 
     def _zeros_nosync(self, name, **kwargs):
         path = self._item_path(name)
-        self._require_parent_group(path)
+        overwrite = kwargs.get('overwrite', False)
+        self._require_parent_group(path, overwrite=overwrite)
         kwargs.setdefault('synchronizer', self._synchronizer)
         return zeros(store=self._store, path=path,
                      chunk_store=self._chunk_store, **kwargs)
@@ -691,7 +686,8 @@ class Group(Mapping):
 
     def _ones_nosync(self, name, **kwargs):
         path = self._item_path(name)
-        self._require_parent_group(path)
+        overwrite = kwargs.get('overwrite', False)
+        self._require_parent_group(path, overwrite=overwrite)
         kwargs.setdefault('synchronizer', self._synchronizer)
         return ones(store=self._store, path=path,
                     chunk_store=self._chunk_store, **kwargs)
@@ -703,7 +699,8 @@ class Group(Mapping):
 
     def _full_nosync(self, name, fill_value, **kwargs):
         path = self._item_path(name)
-        self._require_parent_group(path)
+        overwrite = kwargs.get('overwrite', False)
+        self._require_parent_group(path, overwrite=overwrite)
         kwargs.setdefault('synchronizer', self._synchronizer)
         return full(store=self._store, path=path,
                     chunk_store=self._chunk_store,
@@ -716,7 +713,8 @@ class Group(Mapping):
 
     def _array_nosync(self, name, data, **kwargs):
         path = self._item_path(name)
-        self._require_parent_group(path)
+        overwrite = kwargs.get('overwrite', False)
+        self._require_parent_group(path, overwrite=overwrite)
         kwargs.setdefault('synchronizer', self._synchronizer)
         return array(data, store=self._store, path=path,
                      chunk_store=self._chunk_store, **kwargs)
@@ -728,7 +726,8 @@ class Group(Mapping):
 
     def _empty_like_nosync(self, name, data, **kwargs):
         path = self._item_path(name)
-        self._require_parent_group(path)
+        overwrite = kwargs.get('overwrite', False)
+        self._require_parent_group(path, overwrite=overwrite)
         kwargs.setdefault('synchronizer', self._synchronizer)
         return empty_like(data, store=self._store, path=path,
                           chunk_store=self._chunk_store, **kwargs)
@@ -740,7 +739,8 @@ class Group(Mapping):
 
     def _zeros_like_nosync(self, name, data, **kwargs):
         path = self._item_path(name)
-        self._require_parent_group(path)
+        overwrite = kwargs.get('overwrite', False)
+        self._require_parent_group(path, overwrite=overwrite)
         kwargs.setdefault('synchronizer', self._synchronizer)
         return zeros_like(data, store=self._store, path=path,
                           chunk_store=self._chunk_store, **kwargs)
@@ -752,7 +752,8 @@ class Group(Mapping):
 
     def _ones_like_nosync(self, name, data, **kwargs):
         path = self._item_path(name)
-        self._require_parent_group(path)
+        overwrite = kwargs.get('overwrite', False)
+        self._require_parent_group(path, overwrite=overwrite)
         kwargs.setdefault('synchronizer', self._synchronizer)
         return ones_like(data, store=self._store, path=path,
                          chunk_store=self._chunk_store, **kwargs)
@@ -764,7 +765,8 @@ class Group(Mapping):
 
     def _full_like_nosync(self, name, data, **kwargs):
         path = self._item_path(name)
-        self._require_parent_group(path)
+        overwrite = kwargs.get('overwrite', False)
+        self._require_parent_group(path, overwrite=overwrite)
         kwargs.setdefault('synchronizer', self._synchronizer)
         return full_like(data, store=self._store, path=path,
                          chunk_store=self._chunk_store, **kwargs)

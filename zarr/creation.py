@@ -38,8 +38,8 @@ def create(shape, chunks=None, dtype=None, compressor='default',
     synchronizer : object, optional
         Array synchronizer.
     overwrite : bool, optional
-        If True, delete all pre-existing data in `store` before creating the
-        array.
+        If True, delete all pre-existing data in `store` at `path` before
+        creating the array.
     path : string, optional
         Path under which array is stored.
     chunk_store : MutableMapping, optional

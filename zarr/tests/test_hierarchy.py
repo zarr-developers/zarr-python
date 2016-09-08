@@ -342,6 +342,31 @@ class TestGroup(unittest.TestCase):
         with assert_raises(PermissionError):
             g.require_dataset('zzz', shape=100, chunks=10)
 
+    def test_create_overwrite(self):
+        try:
+            for method_name in 'create_dataset', 'create', 'empty', 'zeros', \
+                               'ones':
+                g = self.create_group()
+                getattr(g, method_name)('foo', shape=100, chunks=10)
+
+                # overwrite array with array
+                d = getattr(g, method_name)('foo', shape=200, chunks=20,
+                                            overwrite=True)
+                eq((200,), d.shape)
+                # overwrite array with group
+                g2 = g.create_group('foo', overwrite=True)
+                eq(0, len(g2))
+                # overwrite group with array
+                d = getattr(g, method_name)('foo', shape=300, chunks=30,
+                                            overwrite=True)
+                eq((300,), d.shape)
+                # overwrite array with group
+                d = getattr(g, method_name)('foo/bar', shape=400, chunks=40,
+                                            overwrite=True)
+                assert_is_instance(g['foo'], Group)
+        except NotImplementedError:
+            pass
+
     def test_getitem_contains_iterators(self):
         # setup
         g1 = self.create_group()
