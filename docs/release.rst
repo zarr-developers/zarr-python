@@ -1,6 +1,10 @@
 Release notes
 =============
 
+* Added :class:`zarr.storage.TempStore` class for convenience to provide
+  storage via a temporary directory
+  (`#59 <https://github.com/alimanfoo/zarr/issues/59>`_)
+
 .. _release_2.0.1:
 
 2.0.1
