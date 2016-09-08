@@ -1,6 +1,9 @@
 Release notes
 =============
 
+* Group objects now support member deletion via ``del`` statement
+  ('#65 <https://github.com/alimanfoo/zarr/issues/65>'_)
+
 .. _release_2.0.1:
 
 2.0.1

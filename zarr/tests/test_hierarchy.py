@@ -485,6 +485,24 @@ class TestGroup(unittest.TestCase):
         with assert_raises(TypeError):
             g['foo'] = 'bar'
 
+    def test_delitem(self):
+        g = self.create_group()
+        g.create_group('foo')
+        g.create_dataset('bar/baz', shape=100, chunks=10)
+        assert 'foo' in g
+        assert 'bar' in g
+        assert 'bar/baz' in g
+        try:
+            del g['bar']
+            with assert_raises(KeyError):
+                del g['xxx']
+        except NotImplementedError:
+            pass
+        else:
+            assert 'foo' in g
+            assert 'bar' not in g
+            assert 'bar/baz' not in g
+
     def test_array_creation(self):
         grp = self.create_group()
 

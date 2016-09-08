@@ -9,7 +9,7 @@ import numpy as np
 from zarr.attrs import Attributes
 from zarr.core import Array
 from zarr.storage import contains_array, contains_group, init_group, \
-    DictStore, DirectoryStore, group_meta_key, attrs_key, listdir
+    DictStore, DirectoryStore, group_meta_key, attrs_key, listdir, rmdir
 from zarr.creation import array, create, empty, zeros, ones, full, \
     empty_like, zeros_like, ones_like, full_like
 from zarr.util import normalize_storage_path, normalize_shape
@@ -299,6 +299,17 @@ class Group(Mapping):
             return Group(self._store, read_only=self._read_only, path=path,
                          chunk_store=self._chunk_store,
                          synchronizer=self._synchronizer)
+        else:
+            raise KeyError(item)
+
+    def __setitem__(self, item, value):
+        raise TypeError('item assignment not supported')
+
+    def __delitem__(self, item):
+        path = self._item_path(item)
+        if contains_array(self._store, path) or \
+                contains_group(self._store, path):
+            rmdir(self._store, path)
         else:
             raise KeyError(item)
 
