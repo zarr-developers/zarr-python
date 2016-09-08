@@ -1,6 +1,9 @@
 Release notes
 =============
 
+* Fixed performance issues with ``ZipStore`` class 
+  (`#66 <https://github.com/alimanfoo/zarr/issues/27>`_)
+
 .. _release_2.0.1:
 
 2.0.1
