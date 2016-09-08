@@ -316,7 +316,8 @@ class StoreTests(object):
         except NotImplementedError:
             pass
         else:
-            assert array_meta_key in store
+            assert group_meta_key in store
+            assert array_meta_key not in store
             assert (path + '/' + array_meta_key) in store
             # should have been overwritten
             meta = decode_array_metadata(store[path + '/' + array_meta_key])
@@ -324,12 +325,6 @@ class StoreTests(object):
             eq((1000,), meta['shape'])
             eq((100,), meta['chunks'])
             eq(np.dtype('i4'), meta['dtype'])
-            # should have been left untouched
-            meta = decode_array_metadata(store[array_meta_key])
-            eq(ZARR_FORMAT, meta['zarr_format'])
-            eq((2000,), meta['shape'])
-            eq((200,), meta['chunks'])
-            eq(np.dtype('u1'), meta['dtype'])
 
     def test_init_array_overwrite_group(self):
         # setup
@@ -467,18 +462,13 @@ class StoreTests(object):
         except NotImplementedError:
             pass
         else:
-            assert array_meta_key in store
+            assert array_meta_key not in store
+            assert group_meta_key in store
             assert (path + '/' + array_meta_key) not in store
             assert (path + '/' + group_meta_key) in store
             # should have been overwritten
             meta = decode_group_metadata(store[path + '/' + group_meta_key])
             eq(ZARR_FORMAT, meta['zarr_format'])
-            # should have been left untouched
-            meta = decode_array_metadata(store[array_meta_key])
-            eq(ZARR_FORMAT, meta['zarr_format'])
-            eq((2000,), meta['shape'])
-            eq((200,), meta['chunks'])
-            eq(np.dtype('u1'), meta['dtype'])
 
     def test_init_group_overwrite_chunk_store(self):
         # setup

@@ -8,7 +8,7 @@ import numpy as np
 
 from zarr.core import Array
 from zarr.storage import DirectoryStore, init_array, contains_array, \
-    contains_group, default_compressor
+    contains_group, default_compressor, _require_parent_group
 from zarr.codecs import codec_registry
 
 

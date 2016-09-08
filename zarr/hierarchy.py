@@ -436,12 +436,10 @@ class Group(Mapping):
     def _create_group_nosync(self, name, overwrite=False):
         path = self._item_path(name)
 
-        # create intermediate groups
-        self._require_parent_group(path, overwrite=overwrite)
-
         # create terminal group
         init_group(self._store, path=path, chunk_store=self._chunk_store,
                    overwrite=overwrite)
+
         return Group(self._store, path=path, read_only=self._read_only,
                      chunk_store=self._chunk_store,
                      synchronizer=self._synchronizer)
@@ -450,13 +448,15 @@ class Group(Mapping):
         """Convenience method to create multiple groups in a single call."""
         return tuple(self.create_group(name, **kwargs) for name in names)
 
-    def require_group(self, name):
+    def require_group(self, name, overwrite=False):
         """Obtain a sub-group, creating one if it doesn't exist.
 
         Parameters
         ----------
         name : string
             Group name.
+        overwrite : bool, optional
+            Overwrite any existing array with given `name` if present.
 
         Returns
         -------
@@ -473,20 +473,17 @@ class Group(Mapping):
 
         """
 
-        return self._write_op(self._require_group_nosync, name)
+        return self._write_op(self._require_group_nosync, name,
+                              overwrite=overwrite)
 
-    def _require_group_nosync(self, name):
-
+    def _require_group_nosync(self, name, overwrite=False):
         path = self._item_path(name)
 
-        # require all intermediate groups
-        segments = path.split('/')
-        for i in range(len(segments) + 1):
-            p = '/'.join(segments[:i])
-            if contains_array(self._store, p):
-                raise KeyError(name)
-            elif not contains_group(self._store, p):
-                init_group(self._store, path=p, chunk_store=self._chunk_store)
+        # create terminal group if necessary
+        if not contains_group(self._store, path):
+            init_group(store=self._store, path=path,
+                       chunk_store=self._chunk_store,
+                       overwrite=overwrite)
 
         return Group(self._store, path=path, read_only=self._read_only,
                      chunk_store=self._chunk_store,
@@ -495,16 +492,6 @@ class Group(Mapping):
     def require_groups(self, *names):
         """Convenience method to require multiple groups in a single call."""
         return tuple(self.require_group(name) for name in names)
-
-    def _require_parent_group(self, path, overwrite=False):
-        segments = path.split('/')
-        for i in range(len(segments)):
-            p = '/'.join(segments[:i])
-            if contains_array(self._store, p):
-                init_group(self._store, path=p,
-                           chunk_store=self._chunk_store, overwrite=overwrite)
-            elif not contains_group(self._store, p):
-                init_group(self._store, path=p, chunk_store=self._chunk_store)
 
     def create_dataset(self, name, data=None, shape=None, chunks=None,
                        dtype=None, compressor='default', fill_value=None,
@@ -569,7 +556,6 @@ class Group(Mapping):
                                filters=None, overwrite=False, **kwargs):
 
         path = self._item_path(name)
-        self._require_parent_group(path, overwrite=overwrite)
 
         # determine synchronizer
         if synchronizer is None:
@@ -647,8 +633,6 @@ class Group(Mapping):
 
     def _create_nosync(self, name, **kwargs):
         path = self._item_path(name)
-        overwrite = kwargs.get('overwrite', False)
-        self._require_parent_group(path, overwrite=overwrite)
         kwargs.setdefault('synchronizer', self._synchronizer)
         return create(store=self._store, path=path,
                       chunk_store=self._chunk_store, **kwargs)
@@ -660,8 +644,6 @@ class Group(Mapping):
 
     def _empty_nosync(self, name, **kwargs):
         path = self._item_path(name)
-        overwrite = kwargs.get('overwrite', False)
-        self._require_parent_group(path, overwrite=overwrite)
         kwargs.setdefault('synchronizer', self._synchronizer)
         return empty(store=self._store, path=path,
                      chunk_store=self._chunk_store, **kwargs)
@@ -673,8 +655,6 @@ class Group(Mapping):
 
     def _zeros_nosync(self, name, **kwargs):
         path = self._item_path(name)
-        overwrite = kwargs.get('overwrite', False)
-        self._require_parent_group(path, overwrite=overwrite)
         kwargs.setdefault('synchronizer', self._synchronizer)
         return zeros(store=self._store, path=path,
                      chunk_store=self._chunk_store, **kwargs)
@@ -686,8 +666,6 @@ class Group(Mapping):
 
     def _ones_nosync(self, name, **kwargs):
         path = self._item_path(name)
-        overwrite = kwargs.get('overwrite', False)
-        self._require_parent_group(path, overwrite=overwrite)
         kwargs.setdefault('synchronizer', self._synchronizer)
         return ones(store=self._store, path=path,
                     chunk_store=self._chunk_store, **kwargs)
@@ -699,8 +677,6 @@ class Group(Mapping):
 
     def _full_nosync(self, name, fill_value, **kwargs):
         path = self._item_path(name)
-        overwrite = kwargs.get('overwrite', False)
-        self._require_parent_group(path, overwrite=overwrite)
         kwargs.setdefault('synchronizer', self._synchronizer)
         return full(store=self._store, path=path,
                     chunk_store=self._chunk_store,
@@ -713,8 +689,6 @@ class Group(Mapping):
 
     def _array_nosync(self, name, data, **kwargs):
         path = self._item_path(name)
-        overwrite = kwargs.get('overwrite', False)
-        self._require_parent_group(path, overwrite=overwrite)
         kwargs.setdefault('synchronizer', self._synchronizer)
         return array(data, store=self._store, path=path,
                      chunk_store=self._chunk_store, **kwargs)
@@ -726,8 +700,6 @@ class Group(Mapping):
 
     def _empty_like_nosync(self, name, data, **kwargs):
         path = self._item_path(name)
-        overwrite = kwargs.get('overwrite', False)
-        self._require_parent_group(path, overwrite=overwrite)
         kwargs.setdefault('synchronizer', self._synchronizer)
         return empty_like(data, store=self._store, path=path,
                           chunk_store=self._chunk_store, **kwargs)
@@ -739,8 +711,6 @@ class Group(Mapping):
 
     def _zeros_like_nosync(self, name, data, **kwargs):
         path = self._item_path(name)
-        overwrite = kwargs.get('overwrite', False)
-        self._require_parent_group(path, overwrite=overwrite)
         kwargs.setdefault('synchronizer', self._synchronizer)
         return zeros_like(data, store=self._store, path=path,
                           chunk_store=self._chunk_store, **kwargs)
@@ -752,8 +722,6 @@ class Group(Mapping):
 
     def _ones_like_nosync(self, name, data, **kwargs):
         path = self._item_path(name)
-        overwrite = kwargs.get('overwrite', False)
-        self._require_parent_group(path, overwrite=overwrite)
         kwargs.setdefault('synchronizer', self._synchronizer)
         return ones_like(data, store=self._store, path=path,
                          chunk_store=self._chunk_store, **kwargs)
@@ -765,8 +733,6 @@ class Group(Mapping):
 
     def _full_like_nosync(self, name, data, **kwargs):
         path = self._item_path(name)
-        overwrite = kwargs.get('overwrite', False)
-        self._require_parent_group(path, overwrite=overwrite)
         kwargs.setdefault('synchronizer', self._synchronizer)
         return full_like(data, store=self._store, path=path,
                          chunk_store=self._chunk_store, **kwargs)
@@ -819,12 +785,8 @@ def group(store=None, overwrite=False, chunk_store=None, synchronizer=None):
         store = DictStore()
 
     # require group
-    if overwrite:
-        init_group(store, overwrite=True, chunk_store=chunk_store)
-    elif contains_array(store):
-        raise ValueError('store contains an array')
-    elif not contains_group(store):
-        init_group(store, chunk_store=chunk_store)
+    if overwrite or not contains_group(store):
+        init_group(store, overwrite=overwrite, chunk_store=chunk_store)
 
     return Group(store, read_only=False, chunk_store=chunk_store,
                  synchronizer=synchronizer)
@@ -887,7 +849,7 @@ def open_group(path, mode='a', synchronizer=None):
     elif mode == 'a':
         if contains_array(store):
             raise ValueError('store contains array')
-        elif not contains_group(store):
+        if not contains_group(store):
             init_group(store)
 
     elif mode in ['w-', 'x']:

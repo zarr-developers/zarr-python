@@ -785,7 +785,7 @@ def test_group():
     # overwrite behaviour
     store = dict()
     init_array(store, shape=100, chunks=10)
-    with assert_raises(ValueError):
+    with assert_raises(KeyError):
         group(store)
     g = group(store, overwrite=True)
     assert_is_instance(g, Group)

@@ -122,6 +122,19 @@ def getsize(store, path=None):
         return -1
 
 
+def _require_parent_group(path, store, chunk_store, overwrite):
+    path = normalize_storage_path(path)
+    if path:
+        segments = path.split('/')
+        for i in range(len(segments)):
+            p = '/'.join(segments[:i])
+            if contains_array(store, p):
+                _init_group_metadata(store, path=p, chunk_store=chunk_store,
+                                     overwrite=overwrite)
+            elif not contains_group(store, p):
+                _init_group_metadata(store, path=p, chunk_store=chunk_store)
+
+
 def init_array(store, shape, chunks, dtype=None, compressor='default',
                fill_value=None, order='C', overwrite=False, path=None,
                chunk_store=None, filters=None):
@@ -195,11 +208,12 @@ def init_array(store, shape, chunks, dtype=None, compressor='default',
 
     Initialize an array using a storage path::
 
+        >>> store = dict()
         >>> init_array(store, shape=100000000, chunks=1000000, dtype='i1',
-        ...            path='foo/bar')
+        ...            path='foo')
         >>> sorted(store.keys())
-        ['.zarray', '.zattrs', 'foo/bar/.zarray', 'foo/bar/.zattrs']
-        >>> print(str(store['foo/bar/.zarray'], 'ascii'))
+        ['.zattrs', '.zgroup', 'foo/.zarray', 'foo/.zattrs']
+        >>> print(str(store['foo/.zarray'], 'ascii'))
         {
             "chunks": [
                 1000000
@@ -231,6 +245,10 @@ def init_array(store, shape, chunks, dtype=None, compressor='default',
     # normalize path
     path = normalize_storage_path(path)
     
+    # ensure parent group initialized
+    _require_parent_group(path, store=store, chunk_store=chunk_store,
+                          overwrite=overwrite)
+
     # guard conditions
     if overwrite:
         # attempt to delete any pre-existing items in store
@@ -304,7 +322,18 @@ def init_group(store, overwrite=False, path=None, chunk_store=None):
 
     # normalize path
     path = normalize_storage_path(path)
-    
+
+    # ensure parent group initialized
+    _require_parent_group(path, store=store, chunk_store=chunk_store,
+                          overwrite=overwrite)
+
+    # initialise metadata
+    _init_group_metadata(store=store, overwrite=overwrite, path=path,
+                         chunk_store=chunk_store)
+
+
+def _init_group_metadata(store, overwrite=False, path=None, chunk_store=None):
+
     # guard conditions
     if overwrite:
         # attempt to delete any pre-existing items in store
