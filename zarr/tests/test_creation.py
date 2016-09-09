@@ -21,6 +21,34 @@ from zarr.errors import PermissionError
 from zarr.codecs import Zlib
 
 
+# something bcolz-like
+class MockBcolzArray(object):
+
+    def __init__(self, data, chunklen):
+        self.data = data
+        self.chunklen = chunklen
+
+    def __getattr__(self, item):
+        return getattr(self.data, item)
+
+    def __getitem__(self, item):
+        return self.data[item]
+
+
+# something h5py-like
+class MockH5pyDataset(object):
+
+    def __init__(self, data, chunks):
+        self.data = data
+        self.chunks = chunks
+
+    def __getattr__(self, item):
+        return getattr(self.data, item)
+
+    def __getitem__(self, item):
+        return self.data[item]
+
+
 def test_array():
 
     # with numpy array
@@ -44,24 +72,22 @@ def test_array():
     eq(z.dtype, z2.dtype)
     assert_array_equal(z[:], z2[:])
 
-    # with something bcolz-like
-    class MockBcolzArray(object):
-
-        def __init__(self, data, chunklen):
-            self.data = data
-            self.chunklen = chunklen
-
-        def __getattr__(self, item):
-            return getattr(self.data, item)
-
-        def __getitem__(self, item):
-            return self.data[item]
-
     b = np.arange(1000).reshape(100, 10)
     c = MockBcolzArray(b, 10)
     z3 = array(c)
     eq(c.shape, z3.shape)
     eq((10, 10), z3.chunks)
+
+    b = np.arange(1000).reshape(100, 10)
+    c = MockH5pyDataset(b, chunks=(10, 2))
+    z4 = array(c)
+    eq(c.shape, z4.shape)
+    eq((10, 2), z4.chunks)
+
+    c = MockH5pyDataset(b, chunks=None)
+    z5 = array(c)
+    eq(c.shape, z5.shape)
+    assert_is_instance(z5.chunks, tuple)
 
 
 def test_empty():
@@ -174,6 +200,7 @@ def test_open_array():
 
 
 def test_empty_like():
+
     # zarr array
     z = empty(100, chunks=10, dtype='f4', compressor=Zlib(5),
               order='F')
@@ -184,6 +211,7 @@ def test_empty_like():
     eq(z.compressor.get_config(), z2.compressor.get_config())
     eq(z.fill_value, z2.fill_value)
     eq(z.order, z2.order)
+
     # numpy array
     a = np.empty(100, dtype='f4')
     z3 = empty_like(a)
@@ -191,10 +219,26 @@ def test_empty_like():
     eq((100,), z3.chunks)
     eq(a.dtype, z3.dtype)
     assert_is_none(z3.fill_value)
+
     # something slightly silly
     a = [0] * 100
     z3 = empty_like(a, shape=200)
     eq((200,), z3.shape)
+
+    # other array-likes
+    b = np.arange(1000).reshape(100, 10)
+    c = MockBcolzArray(b, 10)
+    z = empty_like(c)
+    eq(b.shape, z.shape)
+    eq((10, 10), z.chunks)
+    c = MockH5pyDataset(b, chunks=(10, 2))
+    z = empty_like(c)
+    eq(b.shape, z.shape)
+    eq((10, 2), z.chunks)
+    c = MockH5pyDataset(b, chunks=None)
+    z = empty_like(c)
+    eq(b.shape, z.shape)
+    assert_is_instance(z.chunks, tuple)
 
 
 def test_zeros_like():

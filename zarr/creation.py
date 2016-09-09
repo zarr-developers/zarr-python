@@ -244,6 +244,26 @@ def full(shape, fill_value, **kwargs):
     return create(shape=shape, fill_value=fill_value, **kwargs)
 
 
+def _get_shape_chunks(a):
+    shape = None
+    chunks = None
+
+    if hasattr(a, 'shape') and \
+            isinstance(a.shape, tuple):
+        shape = a.shape
+
+        if hasattr(a, 'chunks') and \
+                isinstance(a.chunks, tuple) and \
+                (len(a.chunks) == len(a.shape)):
+            chunks = a.chunks
+
+        elif hasattr(a, 'chunklen'):
+            # bcolz carray
+            chunks = (a.chunklen,) + a.shape[1:]
+
+    return shape, chunks
+
+
 def array(data, **kwargs):
     """Create an array filled with `data`.
 
@@ -279,13 +299,7 @@ def array(data, **kwargs):
     # setup chunks
     chunks = kwargs.pop('chunks', None)
     if chunks is None:
-        # try to use same chunks as data
-        if hasattr(data, 'chunklen'):
-            # bcolz carray
-            chunks = (data.chunklen,) + shape[1:]
-        elif hasattr(data, 'chunks') and len(data.chunks) == len(data.shape):
-            # h5py dataset or zarr array
-            chunks = data.chunks
+        _, chunks = _get_shape_chunks(data)
 
     # instantiate array
     z = create(shape=shape, chunks=chunks, dtype=dtype, **kwargs)
@@ -428,11 +442,11 @@ open = open_array
 
 def _like_args(a, kwargs):
 
-    if hasattr(a, 'shape'):
-        kwargs.setdefault('shape', a.shape)
-
-    if hasattr(a, 'chunks'):
-        kwargs.setdefault('chunks', a.chunks)
+    shape, chunks = _get_shape_chunks(a)
+    if shape is not None:
+        kwargs.setdefault('shape', shape)
+    if chunks is not None:
+        kwargs.setdefault('chunks', chunks)
 
     if hasattr(a, 'dtype'):
         kwargs.setdefault('dtype', a.dtype)
