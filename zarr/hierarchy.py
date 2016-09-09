@@ -307,6 +307,9 @@ class Group(Mapping):
         raise TypeError('item assignment not supported')
 
     def __delitem__(self, item):
+        return self._write_op(self._delitem_nosync, item)
+
+    def _delitem_nosync(self, item):
         path = self._item_path(item)
         if contains_array(self._store, path) or \
                 contains_group(self._store, path):
