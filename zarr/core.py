@@ -61,8 +61,9 @@ class Array(object):
     itemsize
     nbytes
     nbytes_stored
-    initialized
     cdata_shape
+    nchunks
+    nchunks_initialized
     is_view
 
     Methods
@@ -264,18 +265,26 @@ class Array(object):
                 return m + n
 
     @property
-    def initialized(self):
-        """The number of chunks that have been initialized with some data."""
-        return sum(1 for k in listdir(self._chunk_store, self._path)
-                   if k not in [array_meta_key, attrs_key])
-
-    @property
     def cdata_shape(self):
         """A tuple of integers describing the number of chunks along each
         dimension of the array."""
         return tuple(
             int(np.ceil(s / c)) for s, c in zip(self._shape, self._chunks)
         )
+
+    @property
+    def nchunks(self):
+        """Total number of chunks."""
+        return reduce(operator.mul, self.cdata_shape)
+
+    @property
+    def nchunks_initialized(self):
+        """The number of chunks that have been initialized with some data."""
+        return sum(1 for k in listdir(self._chunk_store, self._path)
+                   if k not in [array_meta_key, attrs_key])
+
+    # backwards compability
+    initialized = nchunks_initialized
 
     @property
     def is_view(self):
@@ -755,8 +764,8 @@ class Array(object):
             r += '; nbytes_stored: %s' % human_readable_size(
                 self.nbytes_stored)
             r += '; ratio: %.1f' % (self.nbytes / self.nbytes_stored)
-        n_chunks = reduce(operator.mul, self.cdata_shape)
-        r += '; initialized: %s/%s' % (self.initialized, n_chunks)
+        r += '; initialized: %s/%s' % (self.nchunks_initialized,
+                                       self.nchunks)
 
         # filters
         if self.filters:

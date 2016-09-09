@@ -90,7 +90,8 @@ class TestArray(unittest.TestCase):
         eq(a.dtype, z.dtype)
         eq((100,), z.chunks)
         eq(a.nbytes, z.nbytes)
-        eq(0, z.initialized)
+        eq(11, z.nchunks)
+        eq(0, z.nchunks_initialized)
         eq((11,), z.cdata_shape)
 
         # check empty
@@ -108,7 +109,8 @@ class TestArray(unittest.TestCase):
 
         # check properties
         eq(a.nbytes, z.nbytes)
-        eq(11, z.initialized)
+        eq(11, z.nchunks)
+        eq(11, z.nchunks_initialized)
 
         # check slicing
         assert_array_equal(a, np.array(z))
@@ -173,7 +175,7 @@ class TestArray(unittest.TestCase):
         eq(a.shape, z.shape)
         eq(a.dtype, z.dtype)
         eq((100, 2), z.chunks)
-        eq(0, z.initialized)
+        eq(0, z.nchunks_initialized)
         eq((10, 5), z.cdata_shape)
 
         # set data
@@ -181,7 +183,7 @@ class TestArray(unittest.TestCase):
 
         # check properties
         eq(a.nbytes, z.nbytes)
-        eq(50, z.initialized)
+        eq(50, z.nchunks_initialized)
 
         # check slicing
         assert_array_equal(a, np.array(z))
