@@ -13,7 +13,8 @@ from zarr.storage import contains_array, contains_group, init_group, \
 from zarr.creation import array, create, empty, zeros, ones, full, \
     empty_like, zeros_like, ones_like, full_like
 from zarr.util import normalize_storage_path, normalize_shape
-from zarr.errors import PermissionError
+from zarr.errors import PermissionError, err_contains_array, \
+    err_contains_group, err_group_not_found, err_read_only
 from zarr.meta import decode_group_metadata
 
 
@@ -22,10 +23,10 @@ class Group(Mapping):
 
     Parameters
     ----------
-    store : HierarchicalStore
+    store : MutableMapping
         Group store, already initialized.
     path : string, optional
-        Storage path.
+        Group path.
     read_only : bool, optional
         True if group should be protected against modification.
     chunk_store : MutableMapping, optional
@@ -91,14 +92,14 @@ class Group(Mapping):
 
         # guard conditions
         if contains_array(store, path=self._path):
-            raise ValueError('store contains an array')
+            err_contains_array(path)
 
         # initialize metadata
         try:
             mkey = self._key_prefix + group_meta_key
             meta_bytes = store[mkey]
         except KeyError:
-            raise ValueError('store has no metadata')
+            err_group_not_found(path)
         else:
             meta = decode_group_metadata(meta_bytes)
             self._meta = meta
@@ -285,7 +286,7 @@ class Group(Mapping):
           store: DictStore
         >>> g1['foo/bar/baz']
         Array(/foo/bar/baz, (100,), float64, chunks=(10,), order=C)
-          nbytes: 800; nbytes_stored: 293; ratio: 2.7; initialized: 0/10
+          nbytes: 800; nbytes_stored: 290; ratio: 2.8; initialized: 0/10
           compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
           store: DictStore
 
@@ -407,7 +408,7 @@ class Group(Mapping):
 
         # guard condition
         if self._read_only:
-            raise PermissionError('group is read-only')
+            err_read_only()
 
         # synchronization
         if self._synchronizer is None:
@@ -417,13 +418,15 @@ class Group(Mapping):
             with self._synchronizer[group_meta_key]:
                 return f(*args, **kwargs)
 
-    def create_group(self, name):
+    def create_group(self, name, overwrite=False):
         """Create a sub-group.
 
         Parameters
         ----------
         name : string
             Group name.
+        overwrite : bool, optional
+            If True, overwrite any existing array with the given name.
 
         Returns
         -------
@@ -439,43 +442,33 @@ class Group(Mapping):
 
         """
 
-        return self._write_op(self._create_group_nosync, name)
+        return self._write_op(self._create_group_nosync, name,
+                              overwrite=overwrite)
 
-    def _create_group_nosync(self, name):
-
+    def _create_group_nosync(self, name, overwrite=False):
         path = self._item_path(name)
 
-        # require intermediate groups
-        segments = path.split('/')
-        for i in range(len(segments)):
-            p = '/'.join(segments[:i])
-            if contains_array(self._store, p):
-                raise KeyError(name)
-            elif not contains_group(self._store, p):
-                init_group(self._store, path=p, chunk_store=self._chunk_store)
-
         # create terminal group
-        if contains_array(self._store, path):
-            raise KeyError(name)
-        if contains_group(self._store, path):
-            raise KeyError(name)
-        else:
-            init_group(self._store, path=path, chunk_store=self._chunk_store)
-            return Group(self._store, path=path, read_only=self._read_only,
-                         chunk_store=self._chunk_store,
-                         synchronizer=self._synchronizer)
+        init_group(self._store, path=path, chunk_store=self._chunk_store,
+                   overwrite=overwrite)
 
-    def create_groups(self, *names):
+        return Group(self._store, path=path, read_only=self._read_only,
+                     chunk_store=self._chunk_store,
+                     synchronizer=self._synchronizer)
+
+    def create_groups(self, *names, **kwargs):
         """Convenience method to create multiple groups in a single call."""
-        return tuple(self.create_group(name) for name in names)
+        return tuple(self.create_group(name, **kwargs) for name in names)
 
-    def require_group(self, name):
+    def require_group(self, name, overwrite=False):
         """Obtain a sub-group, creating one if it doesn't exist.
 
         Parameters
         ----------
         name : string
             Group name.
+        overwrite : bool, optional
+            Overwrite any existing array with given `name` if present.
 
         Returns
         -------
@@ -492,20 +485,17 @@ class Group(Mapping):
 
         """
 
-        return self._write_op(self._require_group_nosync, name)
+        return self._write_op(self._require_group_nosync, name,
+                              overwrite=overwrite)
 
-    def _require_group_nosync(self, name):
-
+    def _require_group_nosync(self, name, overwrite=False):
         path = self._item_path(name)
 
-        # require all intermediate groups
-        segments = path.split('/')
-        for i in range(len(segments) + 1):
-            p = '/'.join(segments[:i])
-            if contains_array(self._store, p):
-                raise KeyError(name)
-            elif not contains_group(self._store, p):
-                init_group(self._store, path=p, chunk_store=self._chunk_store)
+        # create terminal group if necessary
+        if not contains_group(self._store, path):
+            init_group(store=self._store, path=path,
+                       chunk_store=self._chunk_store,
+                       overwrite=overwrite)
 
         return Group(self._store, path=path, read_only=self._read_only,
                      chunk_store=self._chunk_store,
@@ -515,18 +505,10 @@ class Group(Mapping):
         """Convenience method to require multiple groups in a single call."""
         return tuple(self.require_group(name) for name in names)
 
-    def _require_parent_group(self, path):
-        segments = path.split('/')
-        for i in range(len(segments)):
-            p = '/'.join(segments[:i])
-            if contains_array(self._store, p):
-                raise KeyError(path)
-            elif not contains_group(self._store, p):
-                init_group(self._store, path=p, chunk_store=self._chunk_store)
-
     def create_dataset(self, name, data=None, shape=None, chunks=None,
-                       dtype=None, compressor='default', fill_value=None,
-                       order='C', synchronizer=None, filters=None, **kwargs):
+                       dtype=None, compressor='default', fill_value=0,
+                       order='C', synchronizer=None, filters=None,
+                       overwrite=False, cache_metadata=True, **kwargs):
         """Create an array.
 
         Parameters
@@ -551,7 +533,15 @@ class Group(Mapping):
         synchronizer : zarr.sync.ArraySynchronizer, optional
             Array synchronizer.
         filters : sequence of Codecs, optional
-            Sequence of filters to use to encode chunk data prior to compression.
+            Sequence of filters to use to encode chunk data prior to
+            compression.
+        overwrite : bool, optional
+            If True, replace any existing array or group with the given name.
+        cache_metadata : bool, optional
+            If True, array configuration metadata will be cached for the
+            lifetime of the object. If False, array metadata will be reloaded
+            prior to all data access and modification operations (may incur
+            overhead depending on storage and data access pattern).
 
         Returns
         -------
@@ -565,7 +555,7 @@ class Group(Mapping):
         ...                        chunks=(1000, 1000))
         >>> d1
         Array(/foo, (10000, 10000), float64, chunks=(1000, 1000), order=C)
-          nbytes: 762.9M; nbytes_stored: 326; ratio: 2453987.7; initialized: 0/100
+          nbytes: 762.9M; nbytes_stored: 323; ratio: 2476780.2; initialized: 0/100
           compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
           store: DictStore
 
@@ -575,21 +565,16 @@ class Group(Mapping):
                               shape=shape, chunks=chunks, dtype=dtype,
                               compressor=compressor, fill_value=fill_value,
                               order=order, synchronizer=synchronizer,
-                              filters=filters, **kwargs)
+                              filters=filters, overwrite=overwrite,
+                              cache_metadata=cache_metadata, **kwargs)
 
     def _create_dataset_nosync(self, name, data=None, shape=None, chunks=None,
                                dtype=None, compressor='default',
-                               fill_value=None, order='C', synchronizer=None,
-                               filters=None, **kwargs):
+                               fill_value=0, order='C', synchronizer=None,
+                               filters=None, overwrite=False,
+                               cache_metadata=True, **kwargs):
 
         path = self._item_path(name)
-        self._require_parent_group(path)
-
-        # guard conditions
-        if contains_array(self._store, path):
-            raise KeyError(name)
-        if contains_group(self._store, path):
-            raise KeyError(name)
 
         # determine synchronizer
         if synchronizer is None:
@@ -601,7 +586,9 @@ class Group(Mapping):
                       compressor=compressor, fill_value=fill_value,
                       order=order, synchronizer=synchronizer,
                       store=self._store, path=path,
-                      chunk_store=self._chunk_store, filters=filters, **kwargs)
+                      chunk_store=self._chunk_store, filters=filters,
+                      overwrite=overwrite, cache_metadata=cache_metadata,
+                      **kwargs)
 
         else:
             a = create(shape=shape, chunks=chunks, dtype=dtype,
@@ -609,6 +596,7 @@ class Group(Mapping):
                        order=order, synchronizer=synchronizer,
                        store=self._store, path=path,
                        chunk_store=self._chunk_store, filters=filters,
+                       overwrite=overwrite, cache_metadata=cache_metadata,
                        **kwargs)
 
         return a
@@ -641,8 +629,10 @@ class Group(Mapping):
 
         if contains_array(self._store, path):
             synchronizer = kwargs.get('synchronizer', self._synchronizer)
+            cache_metadata = kwargs.get('cache_metadata', True)
             a = Array(self._store, path=path, read_only=self._read_only,
-                      chunk_store=self._chunk_store, synchronizer=synchronizer)
+                      chunk_store=self._chunk_store,
+                      synchronizer=synchronizer, cache_metadata=cache_metadata)
             shape = normalize_shape(shape)
             if shape != a.shape:
                 raise TypeError('shapes do not match')
@@ -666,7 +656,6 @@ class Group(Mapping):
 
     def _create_nosync(self, name, **kwargs):
         path = self._item_path(name)
-        self._require_parent_group(path)
         kwargs.setdefault('synchronizer', self._synchronizer)
         return create(store=self._store, path=path,
                       chunk_store=self._chunk_store, **kwargs)
@@ -678,7 +667,6 @@ class Group(Mapping):
 
     def _empty_nosync(self, name, **kwargs):
         path = self._item_path(name)
-        self._require_parent_group(path)
         kwargs.setdefault('synchronizer', self._synchronizer)
         return empty(store=self._store, path=path,
                      chunk_store=self._chunk_store, **kwargs)
@@ -690,7 +678,6 @@ class Group(Mapping):
 
     def _zeros_nosync(self, name, **kwargs):
         path = self._item_path(name)
-        self._require_parent_group(path)
         kwargs.setdefault('synchronizer', self._synchronizer)
         return zeros(store=self._store, path=path,
                      chunk_store=self._chunk_store, **kwargs)
@@ -702,7 +689,6 @@ class Group(Mapping):
 
     def _ones_nosync(self, name, **kwargs):
         path = self._item_path(name)
-        self._require_parent_group(path)
         kwargs.setdefault('synchronizer', self._synchronizer)
         return ones(store=self._store, path=path,
                     chunk_store=self._chunk_store, **kwargs)
@@ -714,7 +700,6 @@ class Group(Mapping):
 
     def _full_nosync(self, name, fill_value, **kwargs):
         path = self._item_path(name)
-        self._require_parent_group(path)
         kwargs.setdefault('synchronizer', self._synchronizer)
         return full(store=self._store, path=path,
                     chunk_store=self._chunk_store,
@@ -727,7 +712,6 @@ class Group(Mapping):
 
     def _array_nosync(self, name, data, **kwargs):
         path = self._item_path(name)
-        self._require_parent_group(path)
         kwargs.setdefault('synchronizer', self._synchronizer)
         return array(data, store=self._store, path=path,
                      chunk_store=self._chunk_store, **kwargs)
@@ -739,7 +723,6 @@ class Group(Mapping):
 
     def _empty_like_nosync(self, name, data, **kwargs):
         path = self._item_path(name)
-        self._require_parent_group(path)
         kwargs.setdefault('synchronizer', self._synchronizer)
         return empty_like(data, store=self._store, path=path,
                           chunk_store=self._chunk_store, **kwargs)
@@ -751,7 +734,6 @@ class Group(Mapping):
 
     def _zeros_like_nosync(self, name, data, **kwargs):
         path = self._item_path(name)
-        self._require_parent_group(path)
         kwargs.setdefault('synchronizer', self._synchronizer)
         return zeros_like(data, store=self._store, path=path,
                           chunk_store=self._chunk_store, **kwargs)
@@ -763,7 +745,6 @@ class Group(Mapping):
 
     def _ones_like_nosync(self, name, data, **kwargs):
         path = self._item_path(name)
-        self._require_parent_group(path)
         kwargs.setdefault('synchronizer', self._synchronizer)
         return ones_like(data, store=self._store, path=path,
                          chunk_store=self._chunk_store, **kwargs)
@@ -775,20 +756,28 @@ class Group(Mapping):
 
     def _full_like_nosync(self, name, data, **kwargs):
         path = self._item_path(name)
-        self._require_parent_group(path)
         kwargs.setdefault('synchronizer', self._synchronizer)
         return full_like(data, store=self._store, path=path,
                          chunk_store=self._chunk_store, **kwargs)
 
 
-def group(store=None, overwrite=False, chunk_store=None, synchronizer=None):
+def _handle_store_arg(store):
+    if store is None:
+        return DictStore()
+    elif isinstance(store, str):
+        return DirectoryStore(store)
+    else:
+        return store
+
+
+def group(store=None, overwrite=False, chunk_store=None, synchronizer=None,
+          path=None):
     """Create a group.
 
     Parameters
     ----------
-    store : MutableMapping, optional
-        Group storage. If not provided, a DictStore will be used, meaning
-        that data will be stored in memory.
+    store : MutableMapping or string
+        Store or path to directory in file system.
     overwrite : bool, optional
         If True, delete any pre-existing data in `store` at `path` before
         creating the group.
@@ -797,6 +786,8 @@ def group(store=None, overwrite=False, chunk_store=None, synchronizer=None):
         for storage of both chunks and metadata.
     synchronizer : object, optional
         Array synchronizer.
+    path : string, optional
+        Group path.
 
     Returns
     -------
@@ -823,30 +814,26 @@ def group(store=None, overwrite=False, chunk_store=None, synchronizer=None):
 
     """
 
-    # ensure store
-    if store is None:
-        store = DictStore()
+    # handle polymorphic store arg
+    store = _handle_store_arg(store)
+    path = normalize_storage_path(path)
 
     # require group
-    if overwrite:
-        init_group(store, overwrite=True, chunk_store=chunk_store)
-    elif contains_array(store):
-        raise ValueError('store contains an array')
-    elif not contains_group(store):
-        init_group(store, chunk_store=chunk_store)
+    if overwrite or not contains_group(store):
+        init_group(store, overwrite=overwrite, chunk_store=chunk_store,
+                   path=path)
 
     return Group(store, read_only=False, chunk_store=chunk_store,
-                 synchronizer=synchronizer)
+                 synchronizer=synchronizer, path=path)
 
 
-def open_group(path, mode='a', synchronizer=None):
-    """Convenience function to instantiate a group stored in a directory on
-    the file system.
+def open_group(store=None, mode='a', synchronizer=None, path=None):
+    """Open a group using mode-like semantics.
 
     Parameters
     ----------
-    path : string
-        Path to directory in file system in which to store the group.
+    store : MutableMapping or string
+        Store or path to directory in file system.
     mode : {'r', 'r+', 'a', 'w', 'w-'}
         Persistence mode: 'r' means read only (must exist); 'r+' means
         read/write (must exist); 'a' means read/write (create if doesn't
@@ -854,6 +841,8 @@ def open_group(path, mode='a', synchronizer=None):
         (fail if exists).
     synchronizer : object, optional
         Array synchronizer.
+    path : string, optional
+        Group path.
 
     Returns
     -------
@@ -879,35 +868,37 @@ def open_group(path, mode='a', synchronizer=None):
 
     """
 
-    # setup store
-    store = DirectoryStore(path)
+    # handle polymorphic store arg
+    store = _handle_store_arg(store)
+    path = normalize_storage_path(path)
 
     # ensure store is initialized
 
     if mode in ['r', 'r+']:
-        if contains_array(store):
-            raise ValueError('store contains array')
-        elif not contains_group(store):
-            raise ValueError('group does not exist')
+        if contains_array(store, path=path):
+            err_contains_array(path)
+        elif not contains_group(store, path=path):
+            err_group_not_found(path)
 
     elif mode == 'w':
-        init_group(store, overwrite=True)
+        init_group(store, overwrite=True, path=path)
 
     elif mode == 'a':
-        if contains_array(store):
-            raise ValueError('store contains array')
-        elif not contains_group(store):
-            init_group(store)
+        if contains_array(store, path=path):
+            err_contains_array(path)
+        if not contains_group(store, path=path):
+            init_group(store, path=path)
 
     elif mode in ['w-', 'x']:
-        if contains_array(store):
-            raise ValueError('store contains array')
-        elif contains_group(store):
-            raise ValueError('store contains group')
+        if contains_array(store, path=path):
+            err_contains_array(path)
+        elif contains_group(store, path=path):
+            err_contains_group(path)
         else:
-            init_group(store)
+            init_group(store, path=path)
 
     # determine read only status
     read_only = mode == 'r'
 
-    return Group(store, read_only=read_only, synchronizer=synchronizer)
+    return Group(store, read_only=read_only, synchronizer=synchronizer,
+                 path=path)

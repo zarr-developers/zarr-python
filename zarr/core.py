@@ -13,7 +13,7 @@ from zarr.util import is_total_slice, normalize_array_selection, \
 from zarr.storage import array_meta_key, attrs_key, listdir, getsize
 from zarr.meta import decode_array_metadata, encode_array_metadata
 from zarr.attrs import Attributes
-from zarr.errors import PermissionError
+from zarr.errors import PermissionError, err_read_only, err_array_not_found
 from zarr.compat import reduce
 from zarr.codecs import get_codec
 
@@ -34,6 +34,11 @@ class Array(object):
         for storage of both chunks and metadata.
     synchronizer : object, optional
         Array synchronizer.
+    cache_metadata : bool, optional
+        If True, array configuration metadata will be cached for the
+        lifetime of the object. If False, array metadata will be reloaded
+        prior to all data access and modification operations (may incur
+        overhead depending on storage and data access pattern).
 
     Attributes
     ----------
@@ -56,8 +61,9 @@ class Array(object):
     itemsize
     nbytes
     nbytes_stored
-    initialized
     cdata_shape
+    nchunks
+    nchunks_initialized
     is_view
 
     Methods
@@ -71,7 +77,7 @@ class Array(object):
     """  # flake8: noqa
 
     def __init__(self, store, path=None, read_only=False, chunk_store=None,
-                 synchronizer=None):
+                 synchronizer=None, cache_metadata=True):
         # N.B., expect at this point store is fully initialized with all
         # configuration metadata fully specified and normalized
 
@@ -87,13 +93,23 @@ class Array(object):
         else:
             self._chunk_store = chunk_store
         self._synchronizer = synchronizer
+        self._cache_metadata = cache_metadata
+        self._is_view = False
 
         # initialize metadata
+        self._load_metadata()
+
+        # initialize attributes
+        akey = self._key_prefix + attrs_key
+        self._attrs = Attributes(store, key=akey, read_only=read_only,
+                                 synchronizer=synchronizer)
+
+    def _load_metadata(self):
         try:
             mkey = self._key_prefix + array_meta_key
-            meta_bytes = store[mkey]
+            meta_bytes = self._store[mkey]
         except KeyError:
-            raise ValueError('store has no metadata')
+            err_array_not_found(self._path)
         else:
 
             # decode and store metadata
@@ -104,7 +120,6 @@ class Array(object):
             self._dtype = meta['dtype']
             self._fill_value = meta['fill_value']
             self._order = meta['order']
-            self._is_view = False
 
             # setup compressor
             config = meta['compressor']
@@ -119,14 +134,10 @@ class Array(object):
                 filters = [get_codec(f) for f in filters]
             self._filters = filters
 
-        # initialize attributes
-        akey = self._key_prefix + attrs_key
-        self._attrs = Attributes(store, key=akey, read_only=read_only,
-                                 synchronizer=synchronizer)
-
     def _flush_metadata(self):
         if self._is_view:
-            raise PermissionError('operation not permitted for views')
+            raise PermissionError('not permitted for views')
+
         if self._compressor:
             compressor_config = self._compressor.get_config()
         else:
@@ -254,18 +265,26 @@ class Array(object):
                 return m + n
 
     @property
-    def initialized(self):
-        """The number of chunks that have been initialized with some data."""
-        return sum(1 for k in listdir(self._chunk_store, self._path)
-                   if k not in [array_meta_key, attrs_key])
-
-    @property
     def cdata_shape(self):
         """A tuple of integers describing the number of chunks along each
         dimension of the array."""
         return tuple(
             int(np.ceil(s / c)) for s, c in zip(self._shape, self._chunks)
         )
+
+    @property
+    def nchunks(self):
+        """Total number of chunks."""
+        return reduce(operator.mul, self.cdata_shape)
+
+    @property
+    def nchunks_initialized(self):
+        """The number of chunks that have been initialized with some data."""
+        return sum(1 for k in listdir(self._chunk_store, self._path)
+                   if k not in [array_meta_key, attrs_key])
+
+    # backwards compability
+    initialized = nchunks_initialized
 
     @property
     def is_view(self):
@@ -365,6 +384,10 @@ class Array(object):
                    [99990000, 99990001, 99990002, ..., 99999997, 99999998, 99999999]], dtype=int32)
 
         """  # flake8: noqa
+
+        # refresh metadata
+        if not self._cache_metadata:
+            self._load_metadata()
 
         # normalize selection
         selection = normalize_array_selection(item, self._shape)
@@ -482,7 +505,11 @@ class Array(object):
 
         # guard conditions
         if self._read_only:
-            raise PermissionError('array is read-only')
+            err_read_only()
+
+        # refresh metadata
+        if not self._cache_metadata:
+            self._load_metadata()
 
         # normalize selection
         selection = normalize_array_selection(key, self._shape)
@@ -717,6 +744,10 @@ class Array(object):
 
     def __repr__(self):
 
+        # refresh metadata
+        if not self._cache_metadata:
+            self._load_metadata()
+
         # main line
         r = '%s(' % type(self).__name__
         if self.name:
@@ -733,8 +764,8 @@ class Array(object):
             r += '; nbytes_stored: %s' % human_readable_size(
                 self.nbytes_stored)
             r += '; ratio: %.1f' % (self.nbytes / self.nbytes_stored)
-        n_chunks = reduce(operator.mul, self.cdata_shape)
-        r += '; initialized: %s/%s' % (self.initialized, n_chunks)
+        r += '; initialized: %s/%s' % (self.nchunks_initialized,
+                                       self.nchunks)
 
         # filters
         if self.filters:
@@ -768,15 +799,28 @@ class Array(object):
 
         # guard condition
         if self._read_only:
-            raise PermissionError('array is read-only')
+            err_read_only()
 
         # synchronization
         if self._synchronizer is None:
+
+            # refresh metadata
+            if not self._cache_metadata:
+                self._load_metadata()
+
             return f(*args, **kwargs)
+
         else:
+
             # synchronize on the array
             mkey = self._key_prefix + array_meta_key
+
             with self._synchronizer[mkey]:
+
+                # refresh metadata
+                if not self._cache_metadata:
+                    self._load_metadata()
+
                 return f(*args, **kwargs)
 
     def resize(self, *args):
@@ -1022,7 +1066,7 @@ class Array(object):
             ...     v.resize(20000)
             ... except PermissionError as e:
             ...     print(e)
-            operation not permitted for views
+            not permitted for views
 
         """  # flake8: noqa
 
@@ -1034,7 +1078,8 @@ class Array(object):
         if synchronizer is None:
             synchronizer = self._synchronizer
         a = Array(store=store, path=path, chunk_store=chunk_store,
-                  read_only=read_only, synchronizer=synchronizer)
+                  read_only=read_only, synchronizer=synchronizer,
+                  cache_metadata=True)
         a._is_view = True
 
         # allow override of some properties

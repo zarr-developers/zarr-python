@@ -15,7 +15,8 @@ from nose.tools import assert_raises, eq_ as eq, assert_is_none
 
 
 from zarr.storage import init_array, array_meta_key, attrs_key, DictStore, \
-    DirectoryStore, ZipStore, init_group, group_meta_key, getsize, migrate_1to2
+    DirectoryStore, ZipStore, init_group, group_meta_key, getsize, \
+    migrate_1to2, TempStore
 from zarr.meta import decode_array_metadata, encode_array_metadata, \
     ZARR_FORMAT, decode_group_metadata, encode_group_metadata
 from zarr.compat import text_type
@@ -99,6 +100,8 @@ class StoreTests(object):
         store = self.create_store()
         store['foo'] = b'bar'
         store['baz'] = b'quux'
+        if hasattr(store, 'flush'):
+            store.flush()
         store2 = pickle.loads(pickle.dumps(store))
         eq(len(store), len(store2))
         eq(b'bar', store2['foo'])
@@ -106,7 +109,7 @@ class StoreTests(object):
         eq(sorted(store.keys()), sorted(store2.keys()))
         for k in dir(store):
             v = getattr(store, k)
-            if not callable(v):
+            if isinstance(v, (str, bool, int)):
                 eq(v, getattr(store2, k))
 
     def test_getsize(self):
@@ -168,17 +171,17 @@ class StoreTests(object):
             eq(6, store.getsize('c/e'))
             eq(3, store.getsize('c/e/f'))
             eq(3, store.getsize('c/e/g'))
-            with assert_raises(ValueError):
+            with assert_raises(KeyError):
                 store.getsize('x')
-            with assert_raises(ValueError):
+            with assert_raises(KeyError):
                 store.getsize('a/x')
-            with assert_raises(ValueError):
+            with assert_raises(KeyError):
                 store.getsize('c/x')
-            with assert_raises(ValueError):
+            with assert_raises(KeyError):
                 store.getsize('c/x/y')
-            with assert_raises(ValueError):
+            with assert_raises(KeyError):
                 store.getsize('c/d/y')
-            with assert_raises(ValueError):
+            with assert_raises(KeyError):
                 store.getsize('c/d/y/z')
 
         # test listdir (optional)
@@ -253,7 +256,7 @@ class StoreTests(object):
         )
 
         # don't overwrite (default)
-        with assert_raises(ValueError):
+        with assert_raises(KeyError):
             init_array(store, shape=1000, chunks=100)
 
         # do overwrite
@@ -306,7 +309,7 @@ class StoreTests(object):
         store[path + '/' + array_meta_key] = encode_array_metadata(meta)
 
         # don't overwrite
-        with assert_raises(ValueError):
+        with assert_raises(KeyError):
             init_array(store, shape=1000, chunks=100, path=path)
 
         # do overwrite
@@ -316,7 +319,8 @@ class StoreTests(object):
         except NotImplementedError:
             pass
         else:
-            assert array_meta_key in store
+            assert group_meta_key in store
+            assert array_meta_key not in store
             assert (path + '/' + array_meta_key) in store
             # should have been overwritten
             meta = decode_array_metadata(store[path + '/' + array_meta_key])
@@ -324,12 +328,6 @@ class StoreTests(object):
             eq((1000,), meta['shape'])
             eq((100,), meta['chunks'])
             eq(np.dtype('i4'), meta['dtype'])
-            # should have been left untouched
-            meta = decode_array_metadata(store[array_meta_key])
-            eq(ZARR_FORMAT, meta['zarr_format'])
-            eq((2000,), meta['shape'])
-            eq((200,), meta['chunks'])
-            eq(np.dtype('u1'), meta['dtype'])
 
     def test_init_array_overwrite_group(self):
         # setup
@@ -338,7 +336,7 @@ class StoreTests(object):
         store[path + '/' + group_meta_key] = encode_group_metadata()
 
         # don't overwrite
-        with assert_raises(ValueError):
+        with assert_raises(KeyError):
             init_array(store, shape=1000, chunks=100, path=path)
 
         # do overwrite
@@ -373,7 +371,7 @@ class StoreTests(object):
         chunk_store['1'] = b'bbb'
 
         # don't overwrite (default)
-        with assert_raises(ValueError):
+        with assert_raises(KeyError):
             init_array(store, shape=1000, chunks=100, chunk_store=chunk_store)
 
         # do overwrite
@@ -425,7 +423,7 @@ class StoreTests(object):
         )
 
         # don't overwrite array (default)
-        with assert_raises(ValueError):
+        with assert_raises(KeyError):
             init_group(store)
 
         # do overwrite
@@ -440,7 +438,7 @@ class StoreTests(object):
             eq(ZARR_FORMAT, meta['zarr_format'])
 
         # don't overwrite group
-        with assert_raises(ValueError):
+        with assert_raises(KeyError):
             init_group(store)
 
     def test_init_group_overwrite_path(self):
@@ -458,7 +456,7 @@ class StoreTests(object):
         store[path + '/' + array_meta_key] = encode_array_metadata(meta)
 
         # don't overwrite
-        with assert_raises(ValueError):
+        with assert_raises(KeyError):
             init_group(store, path=path)
 
         # do overwrite
@@ -467,18 +465,13 @@ class StoreTests(object):
         except NotImplementedError:
             pass
         else:
-            assert array_meta_key in store
+            assert array_meta_key not in store
+            assert group_meta_key in store
             assert (path + '/' + array_meta_key) not in store
             assert (path + '/' + group_meta_key) in store
             # should have been overwritten
             meta = decode_group_metadata(store[path + '/' + group_meta_key])
             eq(ZARR_FORMAT, meta['zarr_format'])
-            # should have been left untouched
-            meta = decode_array_metadata(store[array_meta_key])
-            eq(ZARR_FORMAT, meta['zarr_format'])
-            eq((2000,), meta['shape'])
-            eq((200,), meta['chunks'])
-            eq(np.dtype('u1'), meta['dtype'])
 
     def test_init_group_overwrite_chunk_store(self):
         # setup
@@ -497,7 +490,7 @@ class StoreTests(object):
         chunk_store['baz'] = b'quux'
 
         # don't overwrite array (default)
-        with assert_raises(ValueError):
+        with assert_raises(KeyError):
             init_group(store, chunk_store=chunk_store)
 
         # do overwrite
@@ -514,7 +507,7 @@ class StoreTests(object):
             assert 'baz' not in chunk_store
 
         # don't overwrite group
-        with assert_raises(ValueError):
+        with assert_raises(KeyError):
             init_group(store)
 
 
@@ -627,6 +620,16 @@ class TestDirectoryStore(StoreTests, unittest.TestCase):
         setdel_hierarchy_checks(store)
 
 
+class TestTempStore(StoreTests, unittest.TestCase):
+
+    def create_store(self):
+        return TempStore()
+
+    def test_setdel(self):
+        store = self.create_store()
+        setdel_hierarchy_checks(store)
+
+
 class TestZipStore(StoreTests, unittest.TestCase):
 
     def create_store(self):
@@ -636,8 +639,8 @@ class TestZipStore(StoreTests, unittest.TestCase):
         return store
 
     def test_mode(self):
-        store = ZipStore('example.zip', mode='w')
-        store['foo'] = b'bar'
+        with ZipStore('example.zip', mode='w') as store:
+            store['foo'] = b'bar'
         store = ZipStore('example.zip', mode='r')
         with assert_raises(PermissionError):
             store['foo'] = b'bar'

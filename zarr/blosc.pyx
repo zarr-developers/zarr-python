@@ -8,10 +8,12 @@ import threading
 
 
 # noinspection PyUnresolvedReferences
-from cpython cimport array
+from cpython cimport array, PyObject
 import array
 from cpython.buffer cimport PyObject_GetBuffer, PyBuffer_Release, \
     PyBUF_ANY_CONTIGUOUS, PyBUF_WRITEABLE
+from cpython.bytes cimport PyBytes_FromStringAndSize, PyBytes_AS_STRING, \
+    _PyBytes_Resize
 
 
 from zarr.compat import PY2, text_type
@@ -156,8 +158,6 @@ def decompress(source, dest=None):
         array.array source_array
         Py_buffer dest_buffer
         size_t nbytes, cbytes, blocksize
-        array.array char_array_template = array.array('b', [])
-        array.array dest_array
 
     # setup source buffer
     if PY2 and isinstance(source, array.array):
@@ -175,13 +175,15 @@ def decompress(source, dest=None):
     blosc_cbuffer_sizes(source_ptr, &nbytes, &cbytes, &blocksize)
 
     # setup destination buffer
+    release_dest_buffer = False
     if dest is None:
         # allocate memory
-        dest = array.clone(char_array_template, nbytes, zero=False)
-    if PY2 and isinstance(dest, array.array):
+        dest = PyBytes_FromStringAndSize(NULL, nbytes)
+        dest_ptr = PyBytes_AS_STRING(dest)
+        dest_nbytes = nbytes
+    elif PY2 and isinstance(dest, array.array):
         # workaround fact that array.array does not support new-style buffer
         # interface in PY2
-        release_dest_buffer = False
         dest_array = dest
         dest_ptr = <char *> dest_array.data.as_voidptr
         dest_nbytes = dest_array.buffer_info()[1] * dest_array.itemsize
@@ -250,9 +252,8 @@ def compress(source, char* cname, int clevel, int shuffle):
         char *dest_ptr
         Py_buffer source_buffer
         size_t nbytes, cbytes, itemsize
-        array.array char_array_template = array.array('b', [])
         array.array source_array
-        array.array dest
+        bytes dest
 
     # setup source buffer
     if PY2 and isinstance(source, array.array):
@@ -273,9 +274,8 @@ def compress(source, char* cname, int clevel, int shuffle):
     try:
 
         # setup destination
-        dest = array.clone(char_array_template, nbytes + BLOSC_MAX_OVERHEAD,
-                           zero=False)
-        dest_ptr = <char *> dest.data.as_voidptr
+        dest = PyBytes_FromStringAndSize(NULL, nbytes + BLOSC_MAX_OVERHEAD)
+        dest_ptr = PyBytes_AS_STRING(dest)
 
         # perform compression
         if _get_use_threads():
@@ -306,7 +306,7 @@ def compress(source, char* cname, int clevel, int shuffle):
         raise RuntimeError('error during blosc compression: %d' % cbytes)
 
     # resize after compression
-    array.resize(dest, cbytes)
+    dest = dest[:cbytes]
 
     return dest
 

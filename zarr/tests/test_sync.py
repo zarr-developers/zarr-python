@@ -78,7 +78,8 @@ class TestProcessSynchronizedArray(TestArray):
         atexit.register(shutil.rmtree, sync_path)
         synchronizer = ProcessSynchronizer(sync_path)
         return Array(store, path=path, synchronizer=synchronizer,
-                     read_only=read_only, chunk_store=chunk_store)
+                     read_only=read_only, chunk_store=chunk_store,
+                     cache_metadata=False)
 
     def test_repr(self):
         if not PY2:
