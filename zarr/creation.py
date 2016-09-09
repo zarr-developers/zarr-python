@@ -8,14 +8,16 @@ import numpy as np
 
 from zarr.core import Array
 from zarr.storage import DirectoryStore, init_array, contains_array, \
-    contains_group, default_compressor
+    contains_group, default_compressor, normalize_storage_path
 from zarr.codecs import codec_registry
+from zarr.errors import err_contains_array, err_contains_group, \
+    err_array_not_found
 
 
 def create(shape, chunks=None, dtype=None, compressor='default',
-           fill_value=None, order='C', store=None, synchronizer=None,
+           fill_value=0, order='C', store=None, synchronizer=None,
            overwrite=False, path=None, chunk_store=None, filters=None,
-           **kwargs):
+           cache_metadata=True, **kwargs):
     """Create an array.
 
     Parameters
@@ -32,14 +34,13 @@ def create(shape, chunks=None, dtype=None, compressor='default',
         Default value to use for uninitialized portions of the array.
     order : {'C', 'F'}, optional
         Memory layout to be used within each chunk.
-    store : MutableMapping, optional
-        Array storage. If not provided, a Python dict will be used, meaning
-        array data will be stored in memory.
+    store : MutableMapping or string
+        Store or path to directory in file system.
     synchronizer : object, optional
         Array synchronizer.
     overwrite : bool, optional
-        If True, delete all pre-existing data in `store` before creating the
-        array.
+        If True, delete all pre-existing data in `store` at `path` before
+        creating the array.
     path : string, optional
         Path under which array is stored.
     chunk_store : MutableMapping, optional
@@ -47,6 +48,11 @@ def create(shape, chunks=None, dtype=None, compressor='default',
         for storage of both chunks and metadata.
     filters : sequence of Codecs, optional
         Sequence of filters to use to encode chunk data prior to compression.
+    cache_metadata : bool, optional
+        If True, array configuration metadata will be cached for the
+        lifetime of the object. If False, array metadata will be reloaded
+        prior to all data access and modification operations (may incur
+        overhead depending on storage and data access pattern).
 
     Returns
     -------
@@ -61,15 +67,14 @@ def create(shape, chunks=None, dtype=None, compressor='default',
         >>> z = zarr.create((10000, 10000), chunks=(1000, 1000))
         >>> z
         Array((10000, 10000), float64, chunks=(1000, 1000), order=C)
-          nbytes: 762.9M; nbytes_stored: 326; ratio: 2453987.7; initialized: 0/100
+          nbytes: 762.9M; nbytes_stored: 323; ratio: 2476780.2; initialized: 0/100
           compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
           store: dict
 
     """  # flake8: noqa
 
-    # initialize store
-    if store is None:
-        store = dict()
+    # handle polymorphic store arg
+    store = _handle_store_arg(store)
 
     # compatibility
     compressor, fill_value = _handle_kwargs(compressor, fill_value, kwargs)
@@ -82,9 +87,18 @@ def create(shape, chunks=None, dtype=None, compressor='default',
 
     # instantiate array
     z = Array(store, path=path, chunk_store=chunk_store,
-              synchronizer=synchronizer)
+              synchronizer=synchronizer, cache_metadata=cache_metadata)
 
     return z
+
+
+def _handle_store_arg(store):
+    if store is None:
+        return dict()
+    elif isinstance(store, str):
+        return DirectoryStore(store)
+    else:
+        return store
 
 
 def _handle_kwargs(compressor, fill_value, kwargs):
@@ -92,7 +106,14 @@ def _handle_kwargs(compressor, fill_value, kwargs):
     # to be compatible with h5py, as well as backwards-compatible with Zarr
     # 1.x, accept 'compression' and 'compression_opts' keyword arguments
 
-    if 'compression' in kwargs:
+    if compressor != 'default':
+        # 'compressor' overrides 'compression'
+        if 'compression' in kwargs:
+            warn("'compression' keyword argument overridden by 'compressor'")
+        if 'compression_opts' in kwargs:
+            warn("ignoring keyword argument 'compression_opts'")
+
+    elif 'compression' in kwargs:
         compression = kwargs.pop('compression')
         compression_opts = kwargs.pop('compression_opts', None)
 
@@ -131,7 +152,7 @@ def _handle_kwargs(compressor, fill_value, kwargs):
 
     # ignore other keyword arguments
     for k in kwargs:
-        warn('ignoring keyword argument: %r' % k)
+        warn('ignoring keyword argument %r' % k)
 
     return compressor, fill_value
 
@@ -223,6 +244,26 @@ def full(shape, fill_value, **kwargs):
     return create(shape=shape, fill_value=fill_value, **kwargs)
 
 
+def _get_shape_chunks(a):
+    shape = None
+    chunks = None
+
+    if hasattr(a, 'shape') and \
+            isinstance(a.shape, tuple):
+        shape = a.shape
+
+        if hasattr(a, 'chunks') and \
+                isinstance(a.chunks, tuple) and \
+                (len(a.chunks) == len(a.shape)):
+            chunks = a.chunks
+
+        elif hasattr(a, 'chunklen'):
+            # bcolz carray
+            chunks = (a.chunklen,) + a.shape[1:]
+
+    return shape, chunks
+
+
 def array(data, **kwargs):
     """Create an array filled with `data`.
 
@@ -258,13 +299,7 @@ def array(data, **kwargs):
     # setup chunks
     chunks = kwargs.pop('chunks', None)
     if chunks is None:
-        # try to use same chunks as data
-        if hasattr(data, 'chunklen'):
-            # bcolz carray
-            chunks = (data.chunklen,) + shape[1:]
-        elif hasattr(data, 'chunks') and len(data.chunks) == len(data.shape):
-            # h5py dataset or zarr array
-            chunks = data.chunks
+        _, chunks = _get_shape_chunks(data)
 
     # instantiate array
     z = create(shape=shape, chunks=chunks, dtype=dtype, **kwargs)
@@ -275,16 +310,16 @@ def array(data, **kwargs):
     return z
 
 
-def open_array(path, mode='a', shape=None, chunks=None, dtype=None,
-               compressor='default', fill_value=None, order='C',
-               synchronizer=None, filters=None, **kwargs):
-    """Convenience function to instantiate an array stored in a
-    directory on the file system.
+def open_array(store=None, mode='a', shape=None, chunks=None, dtype=None,
+               compressor='default', fill_value=0, order='C',
+               synchronizer=None, filters=None, cache_metadata=True,
+               path=None, **kwargs):
+    """Open array using mode-like semantics.
 
     Parameters
     ----------
-    path : string
-        Path to directory in file system in which to store the array.
+    store : MutableMapping or string
+        Store or path to directory in file system.
     mode : {'r', 'r+', 'a', 'w', 'w-'}
         Persistence mode: 'r' means read only (must exist); 'r+' means
         read/write (must exist); 'a' means read/write (create if doesn't
@@ -306,6 +341,13 @@ def open_array(path, mode='a', shape=None, chunks=None, dtype=None,
         Array synchronizer.
     filters : sequence, optional
         Sequence of filters to use to encode chunk data prior to compression.
+    cache_metadata : bool, optional
+        If True, array configuration metadata will be cached for the
+        lifetime of the object. If False, array metadata will be reloaded
+        prior to all data access and modification operations (may incur
+        overhead depending on storage and data access pattern).
+    path : string, optional
+        Array path.
 
     Returns
     -------
@@ -339,16 +381,16 @@ def open_array(path, mode='a', shape=None, chunks=None, dtype=None,
 
     """  # flake8: noqa
 
-    # use same mode semantics as h5py, although N.B., here `path` is a
-    # directory:
+    # use same mode semantics as h5py
     # r : read only, must exist
     # r+ : read/write, must exist
     # w : create, delete if exists
     # w- or x : create, fail if exists
     # a : read/write if exists, create otherwise (default)
 
-    # setup store
-    store = DirectoryStore(path)
+    # handle polymorphic store arg
+    store = _handle_store_arg(store)
+    path = normalize_storage_path(path)
 
     # compatibility
     compressor, fill_value = _handle_kwargs(compressor, fill_value, kwargs)
@@ -356,39 +398,40 @@ def open_array(path, mode='a', shape=None, chunks=None, dtype=None,
     # ensure store is initialized
 
     if mode in ['r', 'r+']:
-        if contains_group(store):
-            raise ValueError('store contains group')
-        elif not contains_array(store):
-            raise ValueError('array does not exist')
+        if contains_group(store, path=path):
+            err_contains_group(path)
+        elif not contains_array(store, path=path):
+            err_array_not_found(path)
 
     elif mode == 'w':
         init_array(store, shape=shape, chunks=chunks, dtype=dtype,
                    compressor=compressor, fill_value=fill_value,
-                   order=order, filters=filters, overwrite=True)
+                   order=order, filters=filters, overwrite=True, path=path)
 
     elif mode == 'a':
-        if contains_group(store):
-            raise ValueError('store contains group')
-        elif not contains_array(store):
+        if contains_group(store, path=path):
+            err_contains_group(path)
+        elif not contains_array(store, path=path):
             init_array(store, shape=shape, chunks=chunks, dtype=dtype,
                        compressor=compressor, fill_value=fill_value,
-                       order=order, filters=filters)
+                       order=order, filters=filters, path=path)
 
     elif mode in ['w-', 'x']:
-        if contains_group(store):
-            raise ValueError('store contains group')
-        elif contains_array(store):
-            raise ValueError('store contains array')
+        if contains_group(store, path=path):
+            err_contains_group(path)
+        elif contains_array(store, path=path):
+            err_contains_array(path)
         else:
             init_array(store, shape=shape, chunks=chunks, dtype=dtype,
                        compressor=compressor, fill_value=fill_value,
-                       order=order, filters=filters)
+                       order=order, filters=filters, path=path)
 
     # determine read only status
     read_only = mode == 'r'
 
     # instantiate array
-    z = Array(store, read_only=read_only, synchronizer=synchronizer)
+    z = Array(store, read_only=read_only, synchronizer=synchronizer,
+              cache_metadata=cache_metadata, path=path)
 
     return z
 
@@ -399,11 +442,11 @@ open = open_array
 
 def _like_args(a, kwargs):
 
-    if hasattr(a, 'shape'):
-        kwargs.setdefault('shape', a.shape)
-
-    if hasattr(a, 'chunks'):
-        kwargs.setdefault('chunks', a.chunks)
+    shape, chunks = _get_shape_chunks(a)
+    if shape is not None:
+        kwargs.setdefault('shape', shape)
+    if chunks is not None:
+        kwargs.setdefault('chunks', chunks)
 
     if hasattr(a, 'dtype'):
         kwargs.setdefault('dtype', a.dtype)
