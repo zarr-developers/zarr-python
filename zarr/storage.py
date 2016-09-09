@@ -17,7 +17,9 @@ from zarr.util import normalize_shape, normalize_chunks, normalize_order, \
 from zarr.meta import encode_array_metadata, encode_group_metadata
 from zarr.compat import PY2, binary_type
 from zarr.codecs import codec_registry
-from zarr.errors import PermissionError
+from zarr.errors import PermissionError, err_contains_group, \
+    err_contains_array, err_path_not_found, err_bad_compressor, \
+    err_fspath_exists_notdir, err_read_only
 
 
 array_meta_key = '.zarray'
@@ -123,6 +125,19 @@ def getsize(store, path=None):
         return -1
 
 
+def _require_parent_group(path, store, chunk_store, overwrite):
+    # assume path is normalized
+    if path:
+        segments = path.split('/')
+        for i in range(len(segments)):
+            p = '/'.join(segments[:i])
+            if contains_array(store, p):
+                _init_group_metadata(store, path=p, chunk_store=chunk_store,
+                                     overwrite=overwrite)
+            elif not contains_group(store, p):
+                _init_group_metadata(store, path=p, chunk_store=chunk_store)
+
+
 def init_array(store, shape, chunks, dtype=None, compressor='default',
                fill_value=None, order='C', overwrite=False, path=None,
                chunk_store=None, filters=None):
@@ -196,11 +211,12 @@ def init_array(store, shape, chunks, dtype=None, compressor='default',
 
     Initialize an array using a storage path::
 
+        >>> store = dict()
         >>> init_array(store, shape=100000000, chunks=1000000, dtype='i1',
-        ...            path='foo/bar')
+        ...            path='foo')
         >>> sorted(store.keys())
-        ['.zarray', '.zattrs', 'foo/bar/.zarray', 'foo/bar/.zattrs']
-        >>> print(str(store['foo/bar/.zarray'], 'ascii'))
+        ['.zattrs', '.zgroup', 'foo/.zarray', 'foo/.zattrs']
+        >>> print(str(store['foo/.zarray'], 'ascii'))
         {
             "chunks": [
                 1000000
@@ -232,6 +248,21 @@ def init_array(store, shape, chunks, dtype=None, compressor='default',
     # normalize path
     path = normalize_storage_path(path)
     
+    # ensure parent group initialized
+    _require_parent_group(path, store=store, chunk_store=chunk_store,
+                          overwrite=overwrite)
+
+    _init_array_metadata(store, shape=shape, chunks=chunks, dtype=dtype,
+                         compressor=compressor, fill_value=fill_value,
+                         order=order, overwrite=overwrite, path=path,
+                         chunk_store=chunk_store, filters=filters)
+
+
+def _init_array_metadata(store, shape, chunks, dtype=None,
+                         compressor='default',
+                         fill_value=None, order='C', overwrite=False,
+                         path=None, chunk_store=None, filters=None):
+
     # guard conditions
     if overwrite:
         # attempt to delete any pre-existing items in store
@@ -239,9 +270,9 @@ def init_array(store, shape, chunks, dtype=None, compressor='default',
         if chunk_store is not None and chunk_store != store:
             rmdir(chunk_store, path)
     elif contains_array(store, path):
-        raise ValueError('store contains an array')
+        err_contains_array(path)
     elif contains_group(store, path):
-        raise ValueError('store contains a group')
+        err_contains_group(path)
 
     # normalize metadata
     shape = normalize_shape(shape)
@@ -259,8 +290,7 @@ def init_array(store, shape, chunks, dtype=None, compressor='default',
         try:
             compressor_config = compressor.get_config()
         except AttributeError:
-            raise ValueError('bad compressor argument; expected Codec object, '
-                             'found %r' % compressor)
+            err_bad_compressor(compressor)
     else:
         compressor_config = None
 
@@ -305,7 +335,18 @@ def init_group(store, overwrite=False, path=None, chunk_store=None):
 
     # normalize path
     path = normalize_storage_path(path)
-    
+
+    # ensure parent group initialized
+    _require_parent_group(path, store=store, chunk_store=chunk_store,
+                          overwrite=overwrite)
+
+    # initialise metadata
+    _init_group_metadata(store=store, overwrite=overwrite, path=path,
+                         chunk_store=chunk_store)
+
+
+def _init_group_metadata(store, overwrite=False, path=None, chunk_store=None):
+
     # guard conditions
     if overwrite:
         # attempt to delete any pre-existing items in store
@@ -313,9 +354,9 @@ def init_group(store, overwrite=False, path=None, chunk_store=None):
         if chunk_store is not None and chunk_store != store:
             rmdir(chunk_store, path)
     elif contains_array(store, path):
-        raise ValueError('store contains an array')
+        err_contains_array(path)
     elif contains_group(store, path):
-        raise ValueError('store contains a group')
+        err_contains_group(path)
 
     # initialize metadata
     # N.B., currently no metadata properties are needed, however there may
@@ -493,7 +534,7 @@ class DictStore(MutableMapping):
                 parent, key = self._get_parent(path)
                 value = parent[key]
             except KeyError:
-                raise ValueError('path not found: %r' % path)
+                err_path_not_found(path)
         else:
             value = self.root
 
@@ -558,7 +599,7 @@ class DirectoryStore(MutableMapping):
         # guard conditions
         path = os.path.abspath(path)
         if os.path.exists(path) and not os.path.isdir(path):
-            raise ValueError('path exists but is not a directory')
+            err_fspath_exists_notdir(path)
 
         self.path = path
 
@@ -674,7 +715,7 @@ class DirectoryStore(MutableMapping):
                     size += os.path.getsize(child_fs_path)
             return size
         else:
-            raise ValueError('path not found: %r' % path)
+            err_path_not_found(path)
 
 
 def _atexit_rmtree(path,
@@ -727,39 +768,69 @@ class ZipStore(MutableMapping):
     b'xxx'
     >>> sorted(store.keys())
     ['a/b/c', 'foo']
+    >>> store.close()
     >>> import zipfile
     >>> zf = zipfile.ZipFile('example.zip', mode='r')
     >>> sorted(zf.namelist())
     ['a/b/c', 'foo']
+
+    Notes
+    -----
+    When modifying a ZipStore the close() method must be called otherwise
+    essential data will not be written to the underlying zip file. The
+    ZipStore class also supports the context manager protocol, which ensures
+    the close() method is called on leaving the with statement.
 
     """
 
     def __init__(self, path, compression=zipfile.ZIP_STORED,
                  allowZip64=True, mode='a'):
 
-        # ensure zip file exists
+        # store properties
         path = os.path.abspath(path)
-        with zipfile.ZipFile(path, mode=mode):
-            pass
-
         self.path = path
         self.compression = compression
         self.allowZip64 = allowZip64
         self.mode = mode
 
+        # open zip file
+        self.zf = zipfile.ZipFile(path, mode=mode,
+                                  compression=compression,
+                                  allowZip64=allowZip64)
+
+    def __getstate__(self):
+        return self.path, self.compression, self.allowZip64, self.mode
+
+    def __setstate__(self, state):
+        self.__init__(*state)
+
+    def close(self):
+        """Closes the underlying zip file, ensuring all records are written."""
+        self.zf.close()
+
+    def flush(self):
+        """Closes the underlying zip file, ensuring all records are written,
+        then re-opens the file for further modifications."""
+        self.zf.close()
+        self.zf = zipfile.ZipFile(self.path, mode=self.mode,
+                                  compression=self.compression,
+                                  allowZip64=self.allowZip64)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        self.close()
+
     def __getitem__(self, key):
-        with zipfile.ZipFile(self.path) as zf:
-            with zf.open(key) as f:  # will raise KeyError
-                return f.read()
+        with self.zf.open(key) as f:  # will raise KeyError
+            return f.read()
 
     def __setitem__(self, key, value):
         if self.mode == 'r':
-            raise PermissionError('mapping is read-only')
+            err_read_only()
         value = ensure_bytes(value)
-        with zipfile.ZipFile(self.path, mode='a',
-                             compression=self.compression,
-                             allowZip64=self.allowZip64) as zf:
-            zf.writestr(key, value)
+        self.zf.writestr(key, value)
 
     def __delitem__(self, key):
         raise NotImplementedError
@@ -773,9 +844,7 @@ class ZipStore(MutableMapping):
         )
 
     def keylist(self):
-        with zipfile.ZipFile(self.path) as zf:
-            keylist = sorted(zf.namelist())
-        return keylist
+        return sorted(self.zf.namelist())
 
     def keys(self):
         for key in self.keylist():
@@ -788,13 +857,12 @@ class ZipStore(MutableMapping):
         return sum(1 for _ in self.keys())
 
     def __contains__(self, key):
-        with zipfile.ZipFile(self.path) as zf:
-            try:
-                zf.getinfo(key)
-            except KeyError:
-                return False
-            else:
-                return True
+        try:
+            self.zf.getinfo(key)
+        except KeyError:
+            return False
+        else:
+            return True
 
     def listdir(self, path=None):
         path = normalize_storage_path(path)
@@ -803,28 +871,26 @@ class ZipStore(MutableMapping):
     def getsize(self, path=None):
         path = normalize_storage_path(path)
         children = self.listdir(path)
-        with zipfile.ZipFile(self.path) as zf:
-            if children:
-                size = 0
-                with zipfile.ZipFile(self.path) as zf:
-                    for child in children:
-                        if path:
-                            name = path + '/' + child
-                        else:
-                            name = child
-                        try:
-                            info = zf.getinfo(name)
-                        except KeyError:
-                            pass
-                        else:
-                            size += info.compress_size
-                return size
-            elif path:
+        if children:
+            size = 0
+            for child in children:
+                if path:
+                    name = path + '/' + child
+                else:
+                    name = child
                 try:
-                    info = zf.getinfo(path)
-                    return info.compress_size
+                    info = self.zf.getinfo(name)
                 except KeyError:
-                    raise ValueError('path not found: %r' % path)
+                    pass
+                else:
+                    size += info.compress_size
+            return size
+        elif path:
+            try:
+                info = self.zf.getinfo(path)
+                return info.compress_size
+            except KeyError:
+                err_path_not_found(path)
             else:
                 return 0
 

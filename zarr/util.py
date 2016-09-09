@@ -12,6 +12,9 @@ from zarr.compat import integer_types, PY2, reduce
 def normalize_shape(shape):
     """Convenience function to normalize the `shape` argument."""
 
+    if shape is None:
+        raise TypeError('shape is None')
+
     # handle 1D convenience form
     if isinstance(shape, integer_types):
         shape = (int(shape),)

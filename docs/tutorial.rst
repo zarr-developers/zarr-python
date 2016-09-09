@@ -230,7 +230,7 @@ the delta filter::
     ...                chunks=(1000, 1000), compressor=compressor)
     >>> z
     Array((10000, 10000), int32, chunks=(1000, 1000), order=C)
-      nbytes: 381.5M; nbytes_stored: 248.9K; ratio: 1569.6; initialized: 100/100
+      nbytes: 381.5M; nbytes_stored: 248.9K; ratio: 1569.7; initialized: 100/100
       compressor: LZMA(format=1, check=-1, preset=None, filters=[{'dist': 4, 'id': 3}, {'preset': 1, 'id': 33}])
       store: dict
 
@@ -327,7 +327,7 @@ provided that all processes have access to a shared file system. E.g.::
     ...                     synchronizer=synchronizer)
     >>> z
     Array((10000, 10000), int32, chunks=(1000, 1000), order=C)
-      nbytes: 381.5M; nbytes_stored: 326; ratio: 1226993.9; initialized: 0/100
+      nbytes: 381.5M; nbytes_stored: 323; ratio: 1238390.1; initialized: 0/100
       compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
       store: DirectoryStore; synchronizer: ProcessSynchronizer
 
@@ -515,6 +515,7 @@ Here is an example storing an array directly into a Zip file::
       nbytes: 3.8M; nbytes_stored: 21.8K; ratio: 179.2; initialized: 100/100
       compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
       store: ZipStore
+    >>> store.close()
     >>> import os
     >>> os.path.getsize('example.zip')
     30721
@@ -536,11 +537,16 @@ Re-open and check that data have been written::
            [42, 42, 42, ..., 42, 42, 42],
            [42, 42, 42, ..., 42, 42, 42],
            [42, 42, 42, ..., 42, 42, 42]], dtype=int32)
+    >>> store.close()
 
 Note that there are some restrictions on how Zip files can be used,
 because items within a Zip file cannot be updated in place. This means
 that data in the array should only be written once and write
 operations should be aligned with chunk boundaries.
+
+Note also that the ``close()`` method must be called after writing any data to
+the store, otherwise essential records will not be written to the underlying
+zip file.
 
 The Dask project has implementations of the ``MutableMapping``
 interface for distributed storage systems, see the `S3Map

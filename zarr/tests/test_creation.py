@@ -21,6 +21,34 @@ from zarr.errors import PermissionError
 from zarr.codecs import Zlib
 
 
+# something bcolz-like
+class MockBcolzArray(object):
+
+    def __init__(self, data, chunklen):
+        self.data = data
+        self.chunklen = chunklen
+
+    def __getattr__(self, item):
+        return getattr(self.data, item)
+
+    def __getitem__(self, item):
+        return self.data[item]
+
+
+# something h5py-like
+class MockH5pyDataset(object):
+
+    def __init__(self, data, chunks):
+        self.data = data
+        self.chunks = chunks
+
+    def __getattr__(self, item):
+        return getattr(self.data, item)
+
+    def __getitem__(self, item):
+        return self.data[item]
+
+
 def test_array():
 
     # with numpy array
@@ -44,24 +72,22 @@ def test_array():
     eq(z.dtype, z2.dtype)
     assert_array_equal(z[:], z2[:])
 
-    # with something bcolz-like
-    class MockBcolzArray(object):
-
-        def __init__(self, data, chunklen):
-            self.data = data
-            self.chunklen = chunklen
-
-        def __getattr__(self, item):
-            return getattr(self.data, item)
-
-        def __getitem__(self, item):
-            return self.data[item]
-
     b = np.arange(1000).reshape(100, 10)
     c = MockBcolzArray(b, 10)
     z3 = array(c)
     eq(c.shape, z3.shape)
     eq((10, 10), z3.chunks)
+
+    b = np.arange(1000).reshape(100, 10)
+    c = MockH5pyDataset(b, chunks=(10, 2))
+    z4 = array(c)
+    eq(c.shape, z4.shape)
+    eq((10, 2), z4.chunks)
+
+    c = MockH5pyDataset(b, chunks=None)
+    z5 = array(c)
+    eq(c.shape, z5.shape)
+    assert_is_instance(z5.chunks, tuple)
 
 
 def test_empty():
@@ -101,10 +127,10 @@ def test_full():
 
 def test_open_array():
 
-    path = 'example'
+    store = 'example'
 
     # mode == 'w'
-    z = open_array(path, mode='w', shape=100, chunks=10)
+    z = open_array(store, mode='w', shape=100, chunks=10)
     z[:] = 42
     assert_is_instance(z, Array)
     assert_is_instance(z.store, DirectoryStore)
@@ -115,11 +141,11 @@ def test_open_array():
     # mode in 'r', 'r+'
     open_group('example_group', mode='w')
     for mode in 'r', 'r+':
-        with assert_raises(ValueError):
+        with assert_raises(KeyError):
             open_array('doesnotexist', mode=mode)
-        with assert_raises(ValueError):
+        with assert_raises(KeyError):
             open_array('example_group', mode=mode)
-    z = open_array(path, mode='r')
+    z = open_array(store, mode='r')
     assert_is_instance(z, Array)
     assert_is_instance(z.store, DirectoryStore)
     eq((100,), z.shape)
@@ -127,7 +153,7 @@ def test_open_array():
     assert_array_equal(np.full(100, fill_value=42), z[:])
     with assert_raises(PermissionError):
         z[:] = 43
-    z = open_array(path, mode='r+')
+    z = open_array(store, mode='r+')
     assert_is_instance(z, Array)
     assert_is_instance(z.store, DirectoryStore)
     eq((100,), z.shape)
@@ -137,38 +163,44 @@ def test_open_array():
     assert_array_equal(np.full(100, fill_value=43), z[:])
 
     # mode == 'a'
-    shutil.rmtree(path)
-    z = open_array(path, mode='a', shape=100, chunks=10)
+    shutil.rmtree(store)
+    z = open_array(store, mode='a', shape=100, chunks=10)
     z[:] = 42
     assert_is_instance(z, Array)
     assert_is_instance(z.store, DirectoryStore)
     eq((100,), z.shape)
     eq((10,), z.chunks)
     assert_array_equal(np.full(100, fill_value=42), z[:])
-    with assert_raises(ValueError):
+    with assert_raises(KeyError):
         open_array('example_group', mode='a')
 
     # mode in 'w-', 'x'
     for mode in 'w-', 'x':
-        shutil.rmtree(path)
-        z = open_array(path, mode=mode, shape=100, chunks=10)
+        shutil.rmtree(store)
+        z = open_array(store, mode=mode, shape=100, chunks=10)
         z[:] = 42
         assert_is_instance(z, Array)
         assert_is_instance(z.store, DirectoryStore)
         eq((100,), z.shape)
         eq((10,), z.chunks)
         assert_array_equal(np.full(100, fill_value=42), z[:])
-        with assert_raises(ValueError):
-            open_array(path, mode=mode)
-        with assert_raises(ValueError):
+        with assert_raises(KeyError):
+            open_array(store, mode=mode)
+        with assert_raises(KeyError):
             open_array('example_group', mode=mode)
 
     # with synchronizer
-    z = open_array(path, synchronizer=ThreadSynchronizer())
+    z = open_array(store, synchronizer=ThreadSynchronizer())
     assert_is_instance(z, Array)
+
+    # with path
+    z = open_array(store, shape=100, path='foo/bar', mode='w')
+    assert_is_instance(z, Array)
+    eq('foo/bar', z.path)
 
 
 def test_empty_like():
+
     # zarr array
     z = empty(100, chunks=10, dtype='f4', compressor=Zlib(5),
               order='F')
@@ -179,6 +211,7 @@ def test_empty_like():
     eq(z.compressor.get_config(), z2.compressor.get_config())
     eq(z.fill_value, z2.fill_value)
     eq(z.order, z2.order)
+
     # numpy array
     a = np.empty(100, dtype='f4')
     z3 = empty_like(a)
@@ -186,10 +219,26 @@ def test_empty_like():
     eq((100,), z3.chunks)
     eq(a.dtype, z3.dtype)
     assert_is_none(z3.fill_value)
+
     # something slightly silly
     a = [0] * 100
     z3 = empty_like(a, shape=200)
     eq((200,), z3.shape)
+
+    # other array-likes
+    b = np.arange(1000).reshape(100, 10)
+    c = MockBcolzArray(b, 10)
+    z = empty_like(c)
+    eq(b.shape, z.shape)
+    eq((10, 10), z.chunks)
+    c = MockH5pyDataset(b, chunks=(10, 2))
+    z = empty_like(c)
+    eq(b.shape, z.shape)
+    eq((10, 2), z.chunks)
+    c = MockH5pyDataset(b, chunks=None)
+    z = empty_like(c)
+    eq(b.shape, z.shape)
+    assert_is_instance(z.chunks, tuple)
 
 
 def test_zeros_like():
@@ -275,7 +324,7 @@ def test_open_like():
     eq(a.shape, z3.shape)
     eq((10,), z3.chunks)
     eq(a.dtype, z3.dtype)
-    assert_is_none(z3.fill_value)
+    eq(0, z3.fill_value)
 
 
 def test_create():
@@ -287,7 +336,7 @@ def test_create():
     eq((100,), z.chunks)  # auto-chunks
     eq(np.dtype(None), z.dtype)
     eq('blosc', z.compressor.codec_id)
-    assert_is_none(z.fill_value)
+    eq(0, z.fill_value)
 
     # all specified
     z = create(100, chunks=10, dtype='i4', compressor=Zlib(1),
@@ -325,3 +374,23 @@ def test_create():
     # errors
     with assert_raises(ValueError):
         create(100, compression=1)
+
+
+def test_compression_args():
+
+    z = create(100, compression='zlib', compression_opts=9)
+    assert_is_instance(z, Array)
+    eq('zlib', z.compressor.codec_id)
+    eq(9, z.compressor.level)
+
+    # 'compressor' overrides 'compression'
+    z = create(100, compressor=Zlib(9), compression='bz2', compression_opts=1)
+    assert_is_instance(z, Array)
+    eq('zlib', z.compressor.codec_id)
+    eq(9, z.compressor.level)
+
+    # 'compressor' ignores 'compression_opts'
+    z = create(100, compressor=Zlib(9), compression_opts=1)
+    assert_is_instance(z, Array)
+    eq('zlib', z.compressor.codec_id)
+    eq(9, z.compressor.level)

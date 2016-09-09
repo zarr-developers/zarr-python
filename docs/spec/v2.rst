@@ -442,6 +442,7 @@ Here is the same example using a Zip file as storage::
     >>> sub_grp = root_grp.create_group('foo')
     >>> a = sub_grp.create_dataset('bar', shape=(20, 20), chunks=(10, 10))
     >>> a[:] = 42
+    >>> store.close()
 
 What has been stored::
 

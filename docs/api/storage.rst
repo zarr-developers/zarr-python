@@ -14,4 +14,7 @@ can be used as a Zarr array store.
 .. autoclass:: TempStore
 .. autoclass:: ZipStore
 
+    .. automethod:: close
+    .. automethod:: flush
+
 .. autofunction:: migrate_1to2
