@@ -15,7 +15,8 @@ from nose.tools import assert_raises, eq_ as eq, assert_is_none
 
 
 from zarr.storage import init_array, array_meta_key, attrs_key, DictStore, \
-    DirectoryStore, ZipStore, init_group, group_meta_key, getsize, migrate_1to2
+    DirectoryStore, ZipStore, init_group, group_meta_key, getsize, \
+    migrate_1to2, TempStore
 from zarr.meta import decode_array_metadata, encode_array_metadata, \
     ZARR_FORMAT, decode_group_metadata, encode_group_metadata
 from zarr.compat import text_type
@@ -613,6 +614,16 @@ class TestDirectoryStore(StoreTests, unittest.TestCase):
         assert 'xxx' not in store
         store2['xxx'] = b'yyy'
         eq(b'yyy', store['xxx'])
+
+    def test_setdel(self):
+        store = self.create_store()
+        setdel_hierarchy_checks(store)
+
+
+class TestTempStore(StoreTests, unittest.TestCase):
+
+    def create_store(self):
+        return TempStore()
 
     def test_setdel(self):
         store = self.create_store()

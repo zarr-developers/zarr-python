@@ -11,6 +11,7 @@ can be used as a Zarr array store.
 
 .. autoclass:: DictStore
 .. autoclass:: DirectoryStore
+.. autoclass:: TempStore
 .. autoclass:: ZipStore
 
     .. automethod:: close

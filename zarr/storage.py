@@ -6,6 +6,7 @@ import tempfile
 import json
 import zipfile
 import shutil
+import atexit
 
 
 import numpy as np
@@ -715,6 +716,23 @@ class DirectoryStore(MutableMapping):
             return size
         else:
             err_path_not_found(path)
+
+
+def _atexit_rmtree(path,
+                   isdir=os.path.isdir,
+                   rmtree=shutil.rmtree):  # pragma: no cover
+    """Ensure directory removal at interpreter exit."""
+    if isdir(path):
+        rmtree(path)
+
+
+class TempStore(DirectoryStore):
+    """Directory store using a temporary directory for storage."""
+
+    def __init__(self, suffix='', prefix='zarr', dir=None):
+        path = tempfile.mkdtemp(suffix=suffix, prefix=prefix, dir=dir)
+        atexit.register(_atexit_rmtree, path)
+        super(TempStore, self).__init__(path)
 
 
 # noinspection PyPep8Naming
