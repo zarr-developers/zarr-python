@@ -104,7 +104,14 @@ def _handle_kwargs(compressor, fill_value, kwargs):
     # to be compatible with h5py, as well as backwards-compatible with Zarr
     # 1.x, accept 'compression' and 'compression_opts' keyword arguments
 
-    if 'compression' in kwargs:
+    if compressor != 'default':
+        # 'compressor' overrides 'compression'
+        if 'compression' in kwargs:
+            warn("'compression' keyword argument overridden by 'compressor'")
+        if 'compression_opts' in kwargs:
+            warn("ignoring keyword argument 'compression_opts'")
+
+    elif 'compression' in kwargs:
         compression = kwargs.pop('compression')
         compression_opts = kwargs.pop('compression_opts', None)
 
@@ -143,7 +150,7 @@ def _handle_kwargs(compressor, fill_value, kwargs):
 
     # ignore other keyword arguments
     for k in kwargs:
-        warn('ignoring keyword argument: %r' % k)
+        warn('ignoring keyword argument %r' % k)
 
     return compressor, fill_value
 

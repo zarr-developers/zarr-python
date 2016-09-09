@@ -330,3 +330,23 @@ def test_create():
     # errors
     with assert_raises(ValueError):
         create(100, compression=1)
+
+
+def test_compression_args():
+
+    z = create(100, compression='zlib', compression_opts=9)
+    assert_is_instance(z, Array)
+    eq('zlib', z.compressor.codec_id)
+    eq(9, z.compressor.level)
+
+    # 'compressor' overrides 'compression'
+    z = create(100, compressor=Zlib(9), compression='bz2', compression_opts=1)
+    assert_is_instance(z, Array)
+    eq('zlib', z.compressor.codec_id)
+    eq(9, z.compressor.level)
+
+    # 'compressor' ignores 'compression_opts'
+    z = create(100, compressor=Zlib(9), compression_opts=1)
+    assert_is_instance(z, Array)
+    eq('zlib', z.compressor.codec_id)
+    eq(9, z.compressor.level)
