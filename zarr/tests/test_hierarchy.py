@@ -66,14 +66,14 @@ class TestGroup(unittest.TestCase):
     def test_group_init_errors_1(self):
         store, chunk_store = self.create_store()
         # group metadata not initialized
-        with assert_raises(ValueError):
+        with assert_raises(KeyError):
             Group(store, chunk_store=chunk_store)
 
     def test_group_init_errors_2(self):
         store, chunk_store = self.create_store()
         init_array(store, shape=1000, chunks=100, chunk_store=chunk_store)
         # array blocks group
-        with assert_raises(ValueError):
+        with assert_raises(KeyError):
             Group(store, chunk_store=chunk_store)
 
     def test_create_group(self):
@@ -341,6 +341,31 @@ class TestGroup(unittest.TestCase):
             g.create_dataset('zzz', shape=100, chunks=10)
         with assert_raises(PermissionError):
             g.require_dataset('zzz', shape=100, chunks=10)
+
+    def test_create_overwrite(self):
+        try:
+            for method_name in 'create_dataset', 'create', 'empty', 'zeros', \
+                               'ones':
+                g = self.create_group()
+                getattr(g, method_name)('foo', shape=100, chunks=10)
+
+                # overwrite array with array
+                d = getattr(g, method_name)('foo', shape=200, chunks=20,
+                                            overwrite=True)
+                eq((200,), d.shape)
+                # overwrite array with group
+                g2 = g.create_group('foo', overwrite=True)
+                eq(0, len(g2))
+                # overwrite group with array
+                d = getattr(g, method_name)('foo', shape=300, chunks=30,
+                                            overwrite=True)
+                eq((300,), d.shape)
+                # overwrite array with group
+                d = getattr(g, method_name)('foo/bar', shape=400, chunks=40,
+                                            overwrite=True)
+                assert_is_instance(g['foo'], Group)
+        except NotImplementedError:
+            pass
 
     def test_getitem_contains_iterators(self):
         # setup
@@ -764,7 +789,7 @@ def test_group():
     # overwrite behaviour
     store = dict()
     init_array(store, shape=100, chunks=10)
-    with assert_raises(ValueError):
+    with assert_raises(KeyError):
         group(store)
     g = group(store, overwrite=True)
     assert_is_instance(g, Group)
@@ -774,10 +799,10 @@ def test_group():
 def test_open_group():
     # test the open_group() convenience function
 
-    path = 'example'
+    store = 'example'
 
     # mode == 'w'
-    g = open_group(path, mode='w')
+    g = open_group(store, mode='w')
     assert_is_instance(g, Group)
     assert_is_instance(g.store, DirectoryStore)
     eq(0, len(g))
@@ -787,42 +812,47 @@ def test_open_group():
     # mode in 'r', 'r+'
     open_array('example_array', shape=100, chunks=10, mode='w')
     for mode in 'r', 'r+':
-        with assert_raises(ValueError):
+        with assert_raises(KeyError):
             open_group('doesnotexist', mode=mode)
-        with assert_raises(ValueError):
+        with assert_raises(KeyError):
             open_group('example_array', mode=mode)
-    g = open_group(path, mode='r')
+    g = open_group(store, mode='r')
     assert_is_instance(g, Group)
     eq(2, len(g))
     with assert_raises(PermissionError):
         g.create_group('baz')
-    g = open_group(path, mode='r+')
+    g = open_group(store, mode='r+')
     assert_is_instance(g, Group)
     eq(2, len(g))
     g.create_groups('baz', 'quux')
     eq(4, len(g))
 
     # mode == 'a'
-    shutil.rmtree(path)
-    g = open_group(path, mode='a')
+    shutil.rmtree(store)
+    g = open_group(store, mode='a')
     assert_is_instance(g, Group)
     assert_is_instance(g.store, DirectoryStore)
     eq(0, len(g))
     g.create_groups('foo', 'bar')
     eq(2, len(g))
-    with assert_raises(ValueError):
+    with assert_raises(KeyError):
         open_group('example_array', mode='a')
 
     # mode in 'w-', 'x'
     for mode in 'w-', 'x':
-        shutil.rmtree(path)
-        g = open_group(path, mode=mode)
+        shutil.rmtree(store)
+        g = open_group(store, mode=mode)
         assert_is_instance(g, Group)
         assert_is_instance(g.store, DirectoryStore)
         eq(0, len(g))
         g.create_groups('foo', 'bar')
         eq(2, len(g))
-        with assert_raises(ValueError):
-            open_group(path, mode=mode)
-        with assert_raises(ValueError):
+        with assert_raises(KeyError):
+            open_group(store, mode=mode)
+        with assert_raises(KeyError):
             open_group('example_array', mode=mode)
+
+    # open with path
+    g = open_group(store, path='foo/bar')
+    assert_is_instance(g, Group)
+    eq('foo/bar', g.path)
