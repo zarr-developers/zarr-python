@@ -32,9 +32,8 @@ def create(shape, chunks=None, dtype=None, compressor='default',
         Default value to use for uninitialized portions of the array.
     order : {'C', 'F'}, optional
         Memory layout to be used within each chunk.
-    store : MutableMapping, optional
-        Array storage. If not provided, a Python dict will be used, meaning
-        array data will be stored in memory.
+    store : MutableMapping or string
+        Store or path to directory in file system.
     synchronizer : object, optional
         Array synchronizer.
     overwrite : bool, optional
@@ -72,9 +71,8 @@ def create(shape, chunks=None, dtype=None, compressor='default',
 
     """  # flake8: noqa
 
-    # initialize store
-    if store is None:
-        store = dict()
+    # handle polymorphic store arg
+    store = _handle_store_arg(store)
 
     # compatibility
     compressor, fill_value = _handle_kwargs(compressor, fill_value, kwargs)
@@ -90,6 +88,15 @@ def create(shape, chunks=None, dtype=None, compressor='default',
               synchronizer=synchronizer, cache_metadata=cache_metadata)
 
     return z
+
+
+def _handle_store_arg(store):
+    if store is None:
+        return dict()
+    elif isinstance(store, str):
+        return DirectoryStore(store)
+    else:
+        return store
 
 
 def _handle_kwargs(compressor, fill_value, kwargs):
@@ -280,16 +287,16 @@ def array(data, **kwargs):
     return z
 
 
-def open_array(path, mode='a', shape=None, chunks=None, dtype=None,
+def open_array(store=None, mode='a', shape=None, chunks=None, dtype=None,
                compressor='default', fill_value=None, order='C',
-               synchronizer=None, filters=None, cache_metadata=True, **kwargs):
-    """Convenience function to instantiate an array stored in a
-    directory on the file system.
+               synchronizer=None, filters=None, cache_metadata=True,
+               path=None, **kwargs):
+    """Open array using mode-like semantics.
 
     Parameters
     ----------
-    path : string
-        Path to directory in file system in which to store the array.
+    store : MutableMapping or string
+        Store or path to directory in file system.
     mode : {'r', 'r+', 'a', 'w', 'w-'}
         Persistence mode: 'r' means read only (must exist); 'r+' means
         read/write (must exist); 'a' means read/write (create if doesn't
@@ -316,6 +323,8 @@ def open_array(path, mode='a', shape=None, chunks=None, dtype=None,
         lifetime of the object. If False, array metadata will be reloaded
         prior to all data access and modification operations (may incur
         overhead depending on storage and data access pattern).
+    path : string, optional
+        Array path.
 
     Returns
     -------
@@ -349,16 +358,15 @@ def open_array(path, mode='a', shape=None, chunks=None, dtype=None,
 
     """  # flake8: noqa
 
-    # use same mode semantics as h5py, although N.B., here `path` is a
-    # directory:
+    # use same mode semantics as h5py
     # r : read only, must exist
     # r+ : read/write, must exist
     # w : create, delete if exists
     # w- or x : create, fail if exists
     # a : read/write if exists, create otherwise (default)
 
-    # setup store
-    store = DirectoryStore(path)
+    # handle polymorphic store arg
+    store = _handle_store_arg(store)
 
     # compatibility
     compressor, fill_value = _handle_kwargs(compressor, fill_value, kwargs)
@@ -366,40 +374,40 @@ def open_array(path, mode='a', shape=None, chunks=None, dtype=None,
     # ensure store is initialized
 
     if mode in ['r', 'r+']:
-        if contains_group(store):
+        if contains_group(store, path=path):
             raise ValueError('store contains group')
-        elif not contains_array(store):
+        elif not contains_array(store, path=path):
             raise ValueError('array does not exist')
 
     elif mode == 'w':
         init_array(store, shape=shape, chunks=chunks, dtype=dtype,
                    compressor=compressor, fill_value=fill_value,
-                   order=order, filters=filters, overwrite=True)
+                   order=order, filters=filters, overwrite=True, path=path)
 
     elif mode == 'a':
-        if contains_group(store):
+        if contains_group(store, path=path):
             raise ValueError('store contains group')
-        elif not contains_array(store):
+        elif not contains_array(store, path=path):
             init_array(store, shape=shape, chunks=chunks, dtype=dtype,
                        compressor=compressor, fill_value=fill_value,
-                       order=order, filters=filters)
+                       order=order, filters=filters, path=path)
 
     elif mode in ['w-', 'x']:
-        if contains_group(store):
+        if contains_group(store, path=path):
             raise ValueError('store contains group')
-        elif contains_array(store):
+        elif contains_array(store, path=path):
             raise ValueError('store contains array')
         else:
             init_array(store, shape=shape, chunks=chunks, dtype=dtype,
                        compressor=compressor, fill_value=fill_value,
-                       order=order, filters=filters)
+                       order=order, filters=filters, path=path)
 
     # determine read only status
     read_only = mode == 'r'
 
     # instantiate array
     z = Array(store, read_only=read_only, synchronizer=synchronizer,
-              cache_metadata=cache_metadata)
+              cache_metadata=cache_metadata, path=path)
 
     return z
 

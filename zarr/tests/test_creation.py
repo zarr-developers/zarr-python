@@ -101,10 +101,10 @@ def test_full():
 
 def test_open_array():
 
-    path = 'example'
+    store = 'example'
 
     # mode == 'w'
-    z = open_array(path, mode='w', shape=100, chunks=10)
+    z = open_array(store, mode='w', shape=100, chunks=10)
     z[:] = 42
     assert_is_instance(z, Array)
     assert_is_instance(z.store, DirectoryStore)
@@ -119,7 +119,7 @@ def test_open_array():
             open_array('doesnotexist', mode=mode)
         with assert_raises(ValueError):
             open_array('example_group', mode=mode)
-    z = open_array(path, mode='r')
+    z = open_array(store, mode='r')
     assert_is_instance(z, Array)
     assert_is_instance(z.store, DirectoryStore)
     eq((100,), z.shape)
@@ -127,7 +127,7 @@ def test_open_array():
     assert_array_equal(np.full(100, fill_value=42), z[:])
     with assert_raises(PermissionError):
         z[:] = 43
-    z = open_array(path, mode='r+')
+    z = open_array(store, mode='r+')
     assert_is_instance(z, Array)
     assert_is_instance(z.store, DirectoryStore)
     eq((100,), z.shape)
@@ -137,8 +137,8 @@ def test_open_array():
     assert_array_equal(np.full(100, fill_value=43), z[:])
 
     # mode == 'a'
-    shutil.rmtree(path)
-    z = open_array(path, mode='a', shape=100, chunks=10)
+    shutil.rmtree(store)
+    z = open_array(store, mode='a', shape=100, chunks=10)
     z[:] = 42
     assert_is_instance(z, Array)
     assert_is_instance(z.store, DirectoryStore)
@@ -150,8 +150,8 @@ def test_open_array():
 
     # mode in 'w-', 'x'
     for mode in 'w-', 'x':
-        shutil.rmtree(path)
-        z = open_array(path, mode=mode, shape=100, chunks=10)
+        shutil.rmtree(store)
+        z = open_array(store, mode=mode, shape=100, chunks=10)
         z[:] = 42
         assert_is_instance(z, Array)
         assert_is_instance(z.store, DirectoryStore)
@@ -159,13 +159,18 @@ def test_open_array():
         eq((10,), z.chunks)
         assert_array_equal(np.full(100, fill_value=42), z[:])
         with assert_raises(ValueError):
-            open_array(path, mode=mode)
+            open_array(store, mode=mode)
         with assert_raises(ValueError):
             open_array('example_group', mode=mode)
 
     # with synchronizer
-    z = open_array(path, synchronizer=ThreadSynchronizer())
+    z = open_array(store, synchronizer=ThreadSynchronizer())
     assert_is_instance(z, Array)
+
+    # with path
+    z = open_array(store, shape=100, path='foo/bar', mode='w')
+    assert_is_instance(z, Array)
+    eq('foo/bar', z.path)
 
 
 def test_empty_like():

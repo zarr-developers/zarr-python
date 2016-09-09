@@ -22,10 +22,10 @@ class Group(Mapping):
 
     Parameters
     ----------
-    store : HierarchicalStore
+    store : MutableMapping
         Group store, already initialized.
     path : string, optional
-        Storage path.
+        Group path.
     read_only : bool, optional
         True if group should be protected against modification.
     chunk_store : MutableMapping, optional
@@ -749,14 +749,23 @@ class Group(Mapping):
                          chunk_store=self._chunk_store, **kwargs)
 
 
-def group(store=None, overwrite=False, chunk_store=None, synchronizer=None):
+def _handle_store_arg(store):
+    if store is None:
+        return DictStore()
+    elif isinstance(store, str):
+        return DirectoryStore(store)
+    else:
+        return store
+
+
+def group(store=None, overwrite=False, chunk_store=None, synchronizer=None,
+          path=None):
     """Create a group.
 
     Parameters
     ----------
-    store : MutableMapping, optional
-        Group storage. If not provided, a DictStore will be used, meaning
-        that data will be stored in memory.
+    store : MutableMapping or string
+        Store or path to directory in file system.
     overwrite : bool, optional
         If True, delete any pre-existing data in `store` at `path` before
         creating the group.
@@ -765,6 +774,8 @@ def group(store=None, overwrite=False, chunk_store=None, synchronizer=None):
         for storage of both chunks and metadata.
     synchronizer : object, optional
         Array synchronizer.
+    path : string, optional
+        Group path.
 
     Returns
     -------
@@ -791,26 +802,25 @@ def group(store=None, overwrite=False, chunk_store=None, synchronizer=None):
 
     """
 
-    # ensure store
-    if store is None:
-        store = DictStore()
+    # handle polymorphic store arg
+    store = _handle_store_arg(store)
 
     # require group
     if overwrite or not contains_group(store):
-        init_group(store, overwrite=overwrite, chunk_store=chunk_store)
+        init_group(store, overwrite=overwrite, chunk_store=chunk_store,
+                   path=path)
 
     return Group(store, read_only=False, chunk_store=chunk_store,
-                 synchronizer=synchronizer)
+                 synchronizer=synchronizer, path=path)
 
 
-def open_group(path, mode='a', synchronizer=None):
-    """Convenience function to instantiate a group stored in a directory on
-    the file system.
+def open_group(store=None, mode='a', synchronizer=None, path=None):
+    """Open a group using mode-like semantics.
 
     Parameters
     ----------
-    path : string
-        Path to directory in file system in which to store the group.
+    store : MutableMapping or string
+        Store or path to directory in file system.
     mode : {'r', 'r+', 'a', 'w', 'w-'}
         Persistence mode: 'r' means read only (must exist); 'r+' means
         read/write (must exist); 'a' means read/write (create if doesn't
@@ -818,6 +828,8 @@ def open_group(path, mode='a', synchronizer=None):
         (fail if exists).
     synchronizer : object, optional
         Array synchronizer.
+    path : string, optional
+        Group path.
 
     Returns
     -------
@@ -843,35 +855,36 @@ def open_group(path, mode='a', synchronizer=None):
 
     """
 
-    # setup store
-    store = DirectoryStore(path)
+    # handle polymorphic store arg
+    store = _handle_store_arg(store)
 
     # ensure store is initialized
 
     if mode in ['r', 'r+']:
-        if contains_array(store):
+        if contains_array(store, path=path):
             raise ValueError('store contains array')
-        elif not contains_group(store):
+        elif not contains_group(store, path=path):
             raise ValueError('group does not exist')
 
     elif mode == 'w':
-        init_group(store, overwrite=True)
+        init_group(store, overwrite=True, path=path)
 
     elif mode == 'a':
-        if contains_array(store):
+        if contains_array(store, path=path):
             raise ValueError('store contains array')
-        if not contains_group(store):
-            init_group(store)
+        if not contains_group(store, path=path):
+            init_group(store, path=path)
 
     elif mode in ['w-', 'x']:
-        if contains_array(store):
+        if contains_array(store, path=path):
             raise ValueError('store contains array')
-        elif contains_group(store):
+        elif contains_group(store, path=path):
             raise ValueError('store contains group')
         else:
-            init_group(store)
+            init_group(store, path=path)
 
     # determine read only status
     read_only = mode == 'r'
 
-    return Group(store, read_only=read_only, synchronizer=synchronizer)
+    return Group(store, read_only=read_only, synchronizer=synchronizer,
+                 path=path)
