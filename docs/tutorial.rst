@@ -552,7 +552,7 @@ The Dask project has implementations of the ``MutableMapping``
 interface for distributed storage systems, see the `S3Map
 <http://s3fs.readthedocs.io/en/latest/api.html#s3fs.mapping.S3Map>`_
 and `HDFSMap
-<https://github.com/dask/hdfs3/blob/master/hdfs3/mapping.py>`_
+<http://hdfs3.readthedocs.io/en/latest/api.html#hdfs3.mapping.HDFSMap>`_
 classes.
 
 .. _tutorial_tips_chunks:
