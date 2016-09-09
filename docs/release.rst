@@ -11,7 +11,7 @@ Release notes
 * Added :class:`zarr.storage.TempStore` class for convenience to provide
   storage via a temporary directory
   (`#59 <https://github.com/alimanfoo/zarr/issues/59>`_).
-* Fixed performance issues with :class:`zarr.storage.ZipStore`` class
+* Fixed performance issues with :class:`zarr.storage.ZipStore` class
   (`#66 <https://github.com/alimanfoo/zarr/issues/27>`_).
 * The Blosc extension has been modified to return bytes instead of array
   objects from compress and decompress function calls. This should
