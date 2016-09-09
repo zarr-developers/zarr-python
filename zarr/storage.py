@@ -16,7 +16,9 @@ from zarr.util import normalize_shape, normalize_chunks, normalize_order, \
 from zarr.meta import encode_array_metadata, encode_group_metadata
 from zarr.compat import PY2, binary_type
 from zarr.codecs import codec_registry
-from zarr.errors import PermissionError
+from zarr.errors import PermissionError, err_contains_group, \
+    err_contains_array, err_path_not_found, err_bad_compressor, \
+    err_fspath_exists_notdir, err_read_only
 
 
 array_meta_key = '.zarray'
@@ -122,6 +124,19 @@ def getsize(store, path=None):
         return -1
 
 
+def _require_parent_group(path, store, chunk_store, overwrite):
+    # assume path is normalized
+    if path:
+        segments = path.split('/')
+        for i in range(len(segments)):
+            p = '/'.join(segments[:i])
+            if contains_array(store, p):
+                _init_group_metadata(store, path=p, chunk_store=chunk_store,
+                                     overwrite=overwrite)
+            elif not contains_group(store, p):
+                _init_group_metadata(store, path=p, chunk_store=chunk_store)
+
+
 def init_array(store, shape, chunks, dtype=None, compressor='default',
                fill_value=None, order='C', overwrite=False, path=None,
                chunk_store=None, filters=None):
@@ -195,11 +210,12 @@ def init_array(store, shape, chunks, dtype=None, compressor='default',
 
     Initialize an array using a storage path::
 
+        >>> store = dict()
         >>> init_array(store, shape=100000000, chunks=1000000, dtype='i1',
-        ...            path='foo/bar')
+        ...            path='foo')
         >>> sorted(store.keys())
-        ['.zarray', '.zattrs', 'foo/bar/.zarray', 'foo/bar/.zattrs']
-        >>> print(str(store['foo/bar/.zarray'], 'ascii'))
+        ['.zattrs', '.zgroup', 'foo/.zarray', 'foo/.zattrs']
+        >>> print(str(store['foo/.zarray'], 'ascii'))
         {
             "chunks": [
                 1000000
@@ -231,6 +247,21 @@ def init_array(store, shape, chunks, dtype=None, compressor='default',
     # normalize path
     path = normalize_storage_path(path)
     
+    # ensure parent group initialized
+    _require_parent_group(path, store=store, chunk_store=chunk_store,
+                          overwrite=overwrite)
+
+    _init_array_metadata(store, shape=shape, chunks=chunks, dtype=dtype,
+                         compressor=compressor, fill_value=fill_value,
+                         order=order, overwrite=overwrite, path=path,
+                         chunk_store=chunk_store, filters=filters)
+
+
+def _init_array_metadata(store, shape, chunks, dtype=None,
+                         compressor='default',
+                         fill_value=None, order='C', overwrite=False,
+                         path=None, chunk_store=None, filters=None):
+
     # guard conditions
     if overwrite:
         # attempt to delete any pre-existing items in store
@@ -238,9 +269,9 @@ def init_array(store, shape, chunks, dtype=None, compressor='default',
         if chunk_store is not None and chunk_store != store:
             rmdir(chunk_store, path)
     elif contains_array(store, path):
-        raise ValueError('store contains an array')
+        err_contains_array(path)
     elif contains_group(store, path):
-        raise ValueError('store contains a group')
+        err_contains_group(path)
 
     # normalize metadata
     shape = normalize_shape(shape)
@@ -258,8 +289,7 @@ def init_array(store, shape, chunks, dtype=None, compressor='default',
         try:
             compressor_config = compressor.get_config()
         except AttributeError:
-            raise ValueError('bad compressor argument; expected Codec object, '
-                             'found %r' % compressor)
+            err_bad_compressor(compressor)
     else:
         compressor_config = None
 
@@ -304,7 +334,18 @@ def init_group(store, overwrite=False, path=None, chunk_store=None):
 
     # normalize path
     path = normalize_storage_path(path)
-    
+
+    # ensure parent group initialized
+    _require_parent_group(path, store=store, chunk_store=chunk_store,
+                          overwrite=overwrite)
+
+    # initialise metadata
+    _init_group_metadata(store=store, overwrite=overwrite, path=path,
+                         chunk_store=chunk_store)
+
+
+def _init_group_metadata(store, overwrite=False, path=None, chunk_store=None):
+
     # guard conditions
     if overwrite:
         # attempt to delete any pre-existing items in store
@@ -312,9 +353,9 @@ def init_group(store, overwrite=False, path=None, chunk_store=None):
         if chunk_store is not None and chunk_store != store:
             rmdir(chunk_store, path)
     elif contains_array(store, path):
-        raise ValueError('store contains an array')
+        err_contains_array(path)
     elif contains_group(store, path):
-        raise ValueError('store contains a group')
+        err_contains_group(path)
 
     # initialize metadata
     # N.B., currently no metadata properties are needed, however there may
@@ -492,7 +533,7 @@ class DictStore(MutableMapping):
                 parent, key = self._get_parent(path)
                 value = parent[key]
             except KeyError:
-                raise ValueError('path not found: %r' % path)
+                err_path_not_found(path)
         else:
             value = self.root
 
@@ -557,7 +598,7 @@ class DirectoryStore(MutableMapping):
         # guard conditions
         path = os.path.abspath(path)
         if os.path.exists(path) and not os.path.isdir(path):
-            raise ValueError('path exists but is not a directory')
+            err_fspath_exists_notdir(path)
 
         self.path = path
 
@@ -673,7 +714,7 @@ class DirectoryStore(MutableMapping):
                     size += os.path.getsize(child_fs_path)
             return size
         else:
-            raise ValueError('path not found: %r' % path)
+            err_path_not_found(path)
 
 
 # noinspection PyPep8Naming
@@ -736,7 +777,7 @@ class ZipStore(MutableMapping):
 
     def __setitem__(self, key, value):
         if self.mode == 'r':
-            raise PermissionError('mapping is read-only')
+            err_read_only()
         value = ensure_bytes(value)
         with zipfile.ZipFile(self.path, mode='a',
                              compression=self.compression,
@@ -806,7 +847,7 @@ class ZipStore(MutableMapping):
                     info = zf.getinfo(path)
                     return info.compress_size
                 except KeyError:
-                    raise ValueError('path not found: %r' % path)
+                    err_path_not_found(path)
             else:
                 return 0
 

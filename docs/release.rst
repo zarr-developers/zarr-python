@@ -1,6 +1,14 @@
 Release notes
 =============
 
+* Added ``overwrite`` keyword argument to array and group creation methods
+  on the :class:`zarr.hierarchy.Group` class
+  (`#71 <https://github.com/alimanfoo/zarr/issues/71>`_).
+* Added ``cache_metadata`` keyword argument to array creation methods.
+* The functions :func:`zarr.creation.open_array` and
+  :func:`zarr.hierarchy.open_group` now accept any store as first argument
+  (`#56 <https://github.com/alimanfoo/zarr/issues/56>`_).
+
 .. _release_2.0.1:
 
 2.0.1
