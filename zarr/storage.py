@@ -16,7 +16,9 @@ from zarr.util import normalize_shape, normalize_chunks, normalize_order, \
 from zarr.meta import encode_array_metadata, encode_group_metadata
 from zarr.compat import PY2, binary_type
 from zarr.codecs import codec_registry
-from zarr.errors import PermissionError
+from zarr.errors import PermissionError, err_contains_group, \
+    err_contains_array, err_path_not_found, err_bad_compressor, \
+    err_fspath_exists_notdir, err_read_only
 
 
 array_meta_key = '.zarray'
@@ -267,9 +269,9 @@ def _init_array_metadata(store, shape, chunks, dtype=None,
         if chunk_store is not None and chunk_store != store:
             rmdir(chunk_store, path)
     elif contains_array(store, path):
-        raise KeyError('path %r contains an array' % path)
+        err_contains_array(path)
     elif contains_group(store, path):
-        raise KeyError('path %r contains a group' % path)
+        err_contains_group(path)
 
     # normalize metadata
     shape = normalize_shape(shape)
@@ -287,8 +289,7 @@ def _init_array_metadata(store, shape, chunks, dtype=None,
         try:
             compressor_config = compressor.get_config()
         except AttributeError:
-            raise ValueError('bad compressor argument; expected Codec object, '
-                             'found %r' % compressor)
+            err_bad_compressor(compressor)
     else:
         compressor_config = None
 
@@ -352,9 +353,9 @@ def _init_group_metadata(store, overwrite=False, path=None, chunk_store=None):
         if chunk_store is not None and chunk_store != store:
             rmdir(chunk_store, path)
     elif contains_array(store, path):
-        raise KeyError('path %r contains an array' % path)
+        err_contains_array(path)
     elif contains_group(store, path):
-        raise KeyError('path %r contains a group' % path)
+        err_contains_group(path)
 
     # initialize metadata
     # N.B., currently no metadata properties are needed, however there may
@@ -532,7 +533,7 @@ class DictStore(MutableMapping):
                 parent, key = self._get_parent(path)
                 value = parent[key]
             except KeyError:
-                raise KeyError('path %r not found' % path)
+                err_path_not_found(path)
         else:
             value = self.root
 
@@ -597,7 +598,7 @@ class DirectoryStore(MutableMapping):
         # guard conditions
         path = os.path.abspath(path)
         if os.path.exists(path) and not os.path.isdir(path):
-            raise ValueError('path exists but is not a directory')
+            err_fspath_exists_notdir(path)
 
         self.path = path
 
@@ -713,7 +714,7 @@ class DirectoryStore(MutableMapping):
                     size += os.path.getsize(child_fs_path)
             return size
         else:
-            raise KeyError('path %r not found' % path)
+            err_path_not_found(path)
 
 
 # noinspection PyPep8Naming
@@ -776,7 +777,7 @@ class ZipStore(MutableMapping):
 
     def __setitem__(self, key, value):
         if self.mode == 'r':
-            raise PermissionError('mapping is read-only')
+            err_read_only()
         value = ensure_bytes(value)
         with zipfile.ZipFile(self.path, mode='a',
                              compression=self.compression,
@@ -846,7 +847,7 @@ class ZipStore(MutableMapping):
                     info = zf.getinfo(path)
                     return info.compress_size
                 except KeyError:
-                    raise KeyError('path %r not found' % path)
+                    err_path_not_found(path)
             else:
                 return 0
 

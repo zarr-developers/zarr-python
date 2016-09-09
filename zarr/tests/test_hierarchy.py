@@ -66,14 +66,14 @@ class TestGroup(unittest.TestCase):
     def test_group_init_errors_1(self):
         store, chunk_store = self.create_store()
         # group metadata not initialized
-        with assert_raises(ValueError):
+        with assert_raises(KeyError):
             Group(store, chunk_store=chunk_store)
 
     def test_group_init_errors_2(self):
         store, chunk_store = self.create_store()
         init_array(store, shape=1000, chunks=100, chunk_store=chunk_store)
         # array blocks group
-        with assert_raises(ValueError):
+        with assert_raises(KeyError):
             Group(store, chunk_store=chunk_store)
 
     def test_create_group(self):
@@ -808,9 +808,9 @@ def test_open_group():
     # mode in 'r', 'r+'
     open_array('example_array', shape=100, chunks=10, mode='w')
     for mode in 'r', 'r+':
-        with assert_raises(ValueError):
+        with assert_raises(KeyError):
             open_group('doesnotexist', mode=mode)
-        with assert_raises(ValueError):
+        with assert_raises(KeyError):
             open_group('example_array', mode=mode)
     g = open_group(store, mode='r')
     assert_is_instance(g, Group)
@@ -831,7 +831,7 @@ def test_open_group():
     eq(0, len(g))
     g.create_groups('foo', 'bar')
     eq(2, len(g))
-    with assert_raises(ValueError):
+    with assert_raises(KeyError):
         open_group('example_array', mode='a')
 
     # mode in 'w-', 'x'
@@ -843,9 +843,9 @@ def test_open_group():
         eq(0, len(g))
         g.create_groups('foo', 'bar')
         eq(2, len(g))
-        with assert_raises(ValueError):
+        with assert_raises(KeyError):
             open_group(store, mode=mode)
-        with assert_raises(ValueError):
+        with assert_raises(KeyError):
             open_group('example_array', mode=mode)
 
     # open with path

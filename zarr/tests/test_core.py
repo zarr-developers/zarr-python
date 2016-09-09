@@ -51,13 +51,13 @@ class TestArray(unittest.TestCase):
 
         # store not initialized
         store = dict()
-        with assert_raises(ValueError):
+        with assert_raises(KeyError):
             Array(store)
 
         # group is in the way
         store = dict()
         init_group(store, path='baz')
-        with assert_raises(ValueError):
+        with assert_raises(KeyError):
             Array(store, path='baz')
 
     def create_array(self, read_only=False, **kwargs):

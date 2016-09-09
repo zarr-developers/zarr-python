@@ -8,12 +8,14 @@ import numpy as np
 
 from zarr.core import Array
 from zarr.storage import DirectoryStore, init_array, contains_array, \
-    contains_group, default_compressor, _require_parent_group
+    contains_group, default_compressor, normalize_storage_path
 from zarr.codecs import codec_registry
+from zarr.errors import err_contains_array, err_contains_group, \
+    err_array_not_found
 
 
 def create(shape, chunks=None, dtype=None, compressor='default',
-           fill_value=None, order='C', store=None, synchronizer=None,
+           fill_value=0, order='C', store=None, synchronizer=None,
            overwrite=False, path=None, chunk_store=None, filters=None,
            cache_metadata=True, **kwargs):
     """Create an array.
@@ -65,7 +67,7 @@ def create(shape, chunks=None, dtype=None, compressor='default',
         >>> z = zarr.create((10000, 10000), chunks=(1000, 1000))
         >>> z
         Array((10000, 10000), float64, chunks=(1000, 1000), order=C)
-          nbytes: 762.9M; nbytes_stored: 326; ratio: 2453987.7; initialized: 0/100
+          nbytes: 762.9M; nbytes_stored: 323; ratio: 2476780.2; initialized: 0/100
           compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
           store: dict
 
@@ -295,7 +297,7 @@ def array(data, **kwargs):
 
 
 def open_array(store=None, mode='a', shape=None, chunks=None, dtype=None,
-               compressor='default', fill_value=None, order='C',
+               compressor='default', fill_value=0, order='C',
                synchronizer=None, filters=None, cache_metadata=True,
                path=None, **kwargs):
     """Open array using mode-like semantics.
@@ -374,6 +376,7 @@ def open_array(store=None, mode='a', shape=None, chunks=None, dtype=None,
 
     # handle polymorphic store arg
     store = _handle_store_arg(store)
+    path = normalize_storage_path(path)
 
     # compatibility
     compressor, fill_value = _handle_kwargs(compressor, fill_value, kwargs)
@@ -382,9 +385,9 @@ def open_array(store=None, mode='a', shape=None, chunks=None, dtype=None,
 
     if mode in ['r', 'r+']:
         if contains_group(store, path=path):
-            raise ValueError('store contains group')
+            err_contains_group(path)
         elif not contains_array(store, path=path):
-            raise ValueError('array does not exist')
+            err_array_not_found(path)
 
     elif mode == 'w':
         init_array(store, shape=shape, chunks=chunks, dtype=dtype,
@@ -393,7 +396,7 @@ def open_array(store=None, mode='a', shape=None, chunks=None, dtype=None,
 
     elif mode == 'a':
         if contains_group(store, path=path):
-            raise ValueError('store contains group')
+            err_contains_group(path)
         elif not contains_array(store, path=path):
             init_array(store, shape=shape, chunks=chunks, dtype=dtype,
                        compressor=compressor, fill_value=fill_value,
@@ -401,9 +404,9 @@ def open_array(store=None, mode='a', shape=None, chunks=None, dtype=None,
 
     elif mode in ['w-', 'x']:
         if contains_group(store, path=path):
-            raise ValueError('store contains group')
+            err_contains_group(path)
         elif contains_array(store, path=path):
-            raise ValueError('store contains array')
+            err_contains_array(path)
         else:
             init_array(store, shape=shape, chunks=chunks, dtype=dtype,
                        compressor=compressor, fill_value=fill_value,

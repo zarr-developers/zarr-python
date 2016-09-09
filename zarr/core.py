@@ -13,7 +13,7 @@ from zarr.util import is_total_slice, normalize_array_selection, \
 from zarr.storage import array_meta_key, attrs_key, listdir, getsize
 from zarr.meta import decode_array_metadata, encode_array_metadata
 from zarr.attrs import Attributes
-from zarr.errors import PermissionError
+from zarr.errors import PermissionError, err_read_only, err_array_not_found
 from zarr.compat import reduce
 from zarr.codecs import get_codec
 
@@ -108,7 +108,7 @@ class Array(object):
             mkey = self._key_prefix + array_meta_key
             meta_bytes = self._store[mkey]
         except KeyError:
-            raise ValueError('store has no metadata')
+            err_array_not_found(self._path)
         else:
 
             # decode and store metadata
@@ -135,7 +135,7 @@ class Array(object):
 
     def _flush_metadata(self):
         if self._is_view:
-            raise PermissionError('operation not permitted for views')
+            raise PermissionError('not permitted for views')
 
         if self._compressor:
             compressor_config = self._compressor.get_config()
@@ -496,7 +496,7 @@ class Array(object):
 
         # guard conditions
         if self._read_only:
-            raise PermissionError('array is read-only')
+            err_read_only()
 
         # refresh metadata
         if not self._cache_metadata:
@@ -790,7 +790,7 @@ class Array(object):
 
         # guard condition
         if self._read_only:
-            raise PermissionError('array is read-only')
+            err_read_only()
 
         # synchronization
         if self._synchronizer is None:
@@ -1057,7 +1057,7 @@ class Array(object):
             ...     v.resize(20000)
             ... except PermissionError as e:
             ...     print(e)
-            operation not permitted for views
+            not permitted for views
 
         """  # flake8: noqa
 

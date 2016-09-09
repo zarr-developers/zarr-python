@@ -9,11 +9,12 @@ import numpy as np
 from zarr.attrs import Attributes
 from zarr.core import Array
 from zarr.storage import contains_array, contains_group, init_group, \
-    DictStore, DirectoryStore, group_meta_key, attrs_key, listdir, rmdir
+    DictStore, DirectoryStore, group_meta_key, attrs_key, listdir
 from zarr.creation import array, create, empty, zeros, ones, full, \
     empty_like, zeros_like, ones_like, full_like
 from zarr.util import normalize_storage_path, normalize_shape
-from zarr.errors import PermissionError
+from zarr.errors import PermissionError, err_contains_array, \
+    err_contains_group, err_group_not_found, err_read_only
 from zarr.meta import decode_group_metadata
 
 
@@ -91,14 +92,14 @@ class Group(Mapping):
 
         # guard conditions
         if contains_array(store, path=self._path):
-            raise ValueError('store contains an array')
+            err_contains_array(path)
 
         # initialize metadata
         try:
             mkey = self._key_prefix + group_meta_key
             meta_bytes = store[mkey]
         except KeyError:
-            raise ValueError('store has no metadata')
+            err_group_not_found(path)
         else:
             meta = decode_group_metadata(meta_bytes)
             self._meta = meta
@@ -285,7 +286,7 @@ class Group(Mapping):
           store: DictStore
         >>> g1['foo/bar/baz']
         Array(/foo/bar/baz, (100,), float64, chunks=(10,), order=C)
-          nbytes: 800; nbytes_stored: 293; ratio: 2.7; initialized: 0/10
+          nbytes: 800; nbytes_stored: 290; ratio: 2.8; initialized: 0/10
           compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
           store: DictStore
 
@@ -396,7 +397,7 @@ class Group(Mapping):
 
         # guard condition
         if self._read_only:
-            raise PermissionError('group is read-only')
+            err_read_only()
 
         # synchronization
         if self._synchronizer is None:
@@ -494,7 +495,7 @@ class Group(Mapping):
         return tuple(self.require_group(name) for name in names)
 
     def create_dataset(self, name, data=None, shape=None, chunks=None,
-                       dtype=None, compressor='default', fill_value=None,
+                       dtype=None, compressor='default', fill_value=0,
                        order='C', synchronizer=None, filters=None,
                        overwrite=False, cache_metadata=True, **kwargs):
         """Create an array.
@@ -543,7 +544,7 @@ class Group(Mapping):
         ...                        chunks=(1000, 1000))
         >>> d1
         Array(/foo, (10000, 10000), float64, chunks=(1000, 1000), order=C)
-          nbytes: 762.9M; nbytes_stored: 326; ratio: 2453987.7; initialized: 0/100
+          nbytes: 762.9M; nbytes_stored: 323; ratio: 2476780.2; initialized: 0/100
           compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
           store: DictStore
 
@@ -558,7 +559,7 @@ class Group(Mapping):
 
     def _create_dataset_nosync(self, name, data=None, shape=None, chunks=None,
                                dtype=None, compressor='default',
-                               fill_value=None, order='C', synchronizer=None,
+                               fill_value=0, order='C', synchronizer=None,
                                filters=None, overwrite=False,
                                cache_metadata=True, **kwargs):
 
@@ -804,6 +805,7 @@ def group(store=None, overwrite=False, chunk_store=None, synchronizer=None,
 
     # handle polymorphic store arg
     store = _handle_store_arg(store)
+    path = normalize_storage_path(path)
 
     # require group
     if overwrite or not contains_group(store):
@@ -857,29 +859,30 @@ def open_group(store=None, mode='a', synchronizer=None, path=None):
 
     # handle polymorphic store arg
     store = _handle_store_arg(store)
+    path = normalize_storage_path(path)
 
     # ensure store is initialized
 
     if mode in ['r', 'r+']:
         if contains_array(store, path=path):
-            raise ValueError('store contains array')
+            err_contains_array(path)
         elif not contains_group(store, path=path):
-            raise ValueError('group does not exist')
+            err_group_not_found(path)
 
     elif mode == 'w':
         init_group(store, overwrite=True, path=path)
 
     elif mode == 'a':
         if contains_array(store, path=path):
-            raise ValueError('store contains array')
+            err_contains_array(path)
         if not contains_group(store, path=path):
             init_group(store, path=path)
 
     elif mode in ['w-', 'x']:
         if contains_array(store, path=path):
-            raise ValueError('store contains array')
+            err_contains_array(path)
         elif contains_group(store, path=path):
-            raise ValueError('store contains group')
+            err_contains_group(path)
         else:
             init_group(store, path=path)
 

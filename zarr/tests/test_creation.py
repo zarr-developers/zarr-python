@@ -115,9 +115,9 @@ def test_open_array():
     # mode in 'r', 'r+'
     open_group('example_group', mode='w')
     for mode in 'r', 'r+':
-        with assert_raises(ValueError):
+        with assert_raises(KeyError):
             open_array('doesnotexist', mode=mode)
-        with assert_raises(ValueError):
+        with assert_raises(KeyError):
             open_array('example_group', mode=mode)
     z = open_array(store, mode='r')
     assert_is_instance(z, Array)
@@ -145,7 +145,7 @@ def test_open_array():
     eq((100,), z.shape)
     eq((10,), z.chunks)
     assert_array_equal(np.full(100, fill_value=42), z[:])
-    with assert_raises(ValueError):
+    with assert_raises(KeyError):
         open_array('example_group', mode='a')
 
     # mode in 'w-', 'x'
@@ -158,9 +158,9 @@ def test_open_array():
         eq((100,), z.shape)
         eq((10,), z.chunks)
         assert_array_equal(np.full(100, fill_value=42), z[:])
-        with assert_raises(ValueError):
+        with assert_raises(KeyError):
             open_array(store, mode=mode)
-        with assert_raises(ValueError):
+        with assert_raises(KeyError):
             open_array('example_group', mode=mode)
 
     # with synchronizer
@@ -280,7 +280,7 @@ def test_open_like():
     eq(a.shape, z3.shape)
     eq((10,), z3.chunks)
     eq(a.dtype, z3.dtype)
-    assert_is_none(z3.fill_value)
+    eq(0, z3.fill_value)
 
 
 def test_create():
@@ -292,7 +292,7 @@ def test_create():
     eq((100,), z.chunks)  # auto-chunks
     eq(np.dtype(None), z.dtype)
     eq('blosc', z.compressor.codec_id)
-    assert_is_none(z.fill_value)
+    eq(0, z.fill_value)
 
     # all specified
     z = create(100, chunks=10, dtype='i4', compressor=Zlib(1),
