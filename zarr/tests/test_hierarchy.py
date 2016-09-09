@@ -507,8 +507,15 @@ class TestGroup(unittest.TestCase):
 
     def test_setitem(self):
         g = self.create_group()
-        with assert_raises(TypeError):
-            g['foo'] = 'bar'
+        try:
+            data = np.arange(100)
+            g['foo'] = data
+            assert_array_equal(data, g['foo'])
+            data = np.arange(200)
+            g['foo'] = data
+            assert_array_equal(data, g['foo'])
+        except NotImplementedError:
+            pass
 
     def test_delitem(self):
         g = self.create_group()

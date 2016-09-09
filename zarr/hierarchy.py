@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, print_function, division
-from collections import Mapping
+from collections import MutableMapping
 
 
 import numpy as np
@@ -18,7 +18,7 @@ from zarr.errors import PermissionError, err_contains_array, \
 from zarr.meta import decode_group_metadata
 
 
-class Group(Mapping):
+class Group(MutableMapping):
     """Instantiate a group from an initialized store.
 
     Parameters
@@ -304,7 +304,7 @@ class Group(Mapping):
             raise KeyError(item)
 
     def __setitem__(self, item, value):
-        raise TypeError('item assignment not supported')
+        self.array(item, value, overwrite=True)
 
     def __delitem__(self, item):
         return self._write_op(self._delitem_nosync, item)
@@ -508,10 +508,7 @@ class Group(Mapping):
         """Convenience method to require multiple groups in a single call."""
         return tuple(self.require_group(name) for name in names)
 
-    def create_dataset(self, name, data=None, shape=None, chunks=None,
-                       dtype=None, compressor='default', fill_value=0,
-                       order='C', synchronizer=None, filters=None,
-                       overwrite=False, cache_metadata=True, **kwargs):
+    def create_dataset(self, name, **kwargs):
         """Create an array.
 
         Parameters
@@ -564,43 +561,23 @@ class Group(Mapping):
 
         """  # flake8: noqa
 
-        return self._write_op(self._create_dataset_nosync, name, data=data,
-                              shape=shape, chunks=chunks, dtype=dtype,
-                              compressor=compressor, fill_value=fill_value,
-                              order=order, synchronizer=synchronizer,
-                              filters=filters, overwrite=overwrite,
-                              cache_metadata=cache_metadata, **kwargs)
+        return self._write_op(self._create_dataset_nosync, name, **kwargs)
 
-    def _create_dataset_nosync(self, name, data=None, shape=None, chunks=None,
-                               dtype=None, compressor='default',
-                               fill_value=0, order='C', synchronizer=None,
-                               filters=None, overwrite=False,
-                               cache_metadata=True, **kwargs):
+    def _create_dataset_nosync(self, name, data=None, **kwargs):
 
         path = self._item_path(name)
 
         # determine synchronizer
-        if synchronizer is None:
-            synchronizer = self._synchronizer
+        kwargs.setdefault('synchronizer', self._synchronizer)
 
         # create array
-        if data is not None:
-            a = array(data, chunks=chunks, dtype=dtype,
-                      compressor=compressor, fill_value=fill_value,
-                      order=order, synchronizer=synchronizer,
-                      store=self._store, path=path,
-                      chunk_store=self._chunk_store, filters=filters,
-                      overwrite=overwrite, cache_metadata=cache_metadata,
-                      **kwargs)
+        if data is None:
+            a = create(store=self._store, path=path,
+                       chunk_store=self._chunk_store, **kwargs)
 
         else:
-            a = create(shape=shape, chunks=chunks, dtype=dtype,
-                       compressor=compressor, fill_value=fill_value,
-                       order=order, synchronizer=synchronizer,
-                       store=self._store, path=path,
-                       chunk_store=self._chunk_store, filters=filters,
-                       overwrite=overwrite, cache_metadata=cache_metadata,
-                       **kwargs)
+            a = array(data, store=self._store, path=path,
+                      chunk_store=self._chunk_store, **kwargs)
 
         return a
 

@@ -72,6 +72,8 @@ def test_array():
     eq(z.dtype, z2.dtype)
     assert_array_equal(z[:], z2[:])
 
+    # with chunky array-likes
+
     b = np.arange(1000).reshape(100, 10)
     c = MockBcolzArray(b, 10)
     z3 = array(c)
