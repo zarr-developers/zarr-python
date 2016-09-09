@@ -123,7 +123,7 @@ def getsize(store, path=None):
 
 
 def _require_parent_group(path, store, chunk_store, overwrite):
-    path = normalize_storage_path(path)
+    # assume path is normalized
     if path:
         segments = path.split('/')
         for i in range(len(segments)):
@@ -248,6 +248,17 @@ def init_array(store, shape, chunks, dtype=None, compressor='default',
     # ensure parent group initialized
     _require_parent_group(path, store=store, chunk_store=chunk_store,
                           overwrite=overwrite)
+
+    _init_array_metadata(store, shape=shape, chunks=chunks, dtype=dtype,
+                         compressor=compressor, fill_value=fill_value,
+                         order=order, overwrite=overwrite, path=path,
+                         chunk_store=chunk_store, filters=filters)
+
+
+def _init_array_metadata(store, shape, chunks, dtype=None,
+                         compressor='default',
+                         fill_value=None, order='C', overwrite=False,
+                         path=None, chunk_store=None, filters=None):
 
     # guard conditions
     if overwrite:

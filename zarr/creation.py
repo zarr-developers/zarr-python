@@ -15,7 +15,7 @@ from zarr.codecs import codec_registry
 def create(shape, chunks=None, dtype=None, compressor='default',
            fill_value=None, order='C', store=None, synchronizer=None,
            overwrite=False, path=None, chunk_store=None, filters=None,
-           **kwargs):
+           cache_metadata=True, **kwargs):
     """Create an array.
 
     Parameters
@@ -47,6 +47,11 @@ def create(shape, chunks=None, dtype=None, compressor='default',
         for storage of both chunks and metadata.
     filters : sequence of Codecs, optional
         Sequence of filters to use to encode chunk data prior to compression.
+    cache_metadata : bool, optional
+        If True, array configuration metadata will be cached for the
+        lifetime of the object. If False, array metadata will be reloaded
+        prior to all data access and modification operations (may incur
+        overhead depending on storage and data access pattern).
 
     Returns
     -------
@@ -82,7 +87,7 @@ def create(shape, chunks=None, dtype=None, compressor='default',
 
     # instantiate array
     z = Array(store, path=path, chunk_store=chunk_store,
-              synchronizer=synchronizer)
+              synchronizer=synchronizer, cache_metadata=cache_metadata)
 
     return z
 
@@ -277,7 +282,7 @@ def array(data, **kwargs):
 
 def open_array(path, mode='a', shape=None, chunks=None, dtype=None,
                compressor='default', fill_value=None, order='C',
-               synchronizer=None, filters=None, **kwargs):
+               synchronizer=None, filters=None, cache_metadata=True, **kwargs):
     """Convenience function to instantiate an array stored in a
     directory on the file system.
 
@@ -306,6 +311,11 @@ def open_array(path, mode='a', shape=None, chunks=None, dtype=None,
         Array synchronizer.
     filters : sequence, optional
         Sequence of filters to use to encode chunk data prior to compression.
+    cache_metadata : bool, optional
+        If True, array configuration metadata will be cached for the
+        lifetime of the object. If False, array metadata will be reloaded
+        prior to all data access and modification operations (may incur
+        overhead depending on storage and data access pattern).
 
     Returns
     -------
@@ -388,7 +398,8 @@ def open_array(path, mode='a', shape=None, chunks=None, dtype=None,
     read_only = mode == 'r'
 
     # instantiate array
-    z = Array(store, read_only=read_only, synchronizer=synchronizer)
+    z = Array(store, read_only=read_only, synchronizer=synchronizer,
+              cache_metadata=cache_metadata)
 
     return z
 

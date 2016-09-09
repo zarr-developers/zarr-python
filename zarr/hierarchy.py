@@ -496,7 +496,7 @@ class Group(Mapping):
     def create_dataset(self, name, data=None, shape=None, chunks=None,
                        dtype=None, compressor='default', fill_value=None,
                        order='C', synchronizer=None, filters=None,
-                       overwrite=False, **kwargs):
+                       overwrite=False, cache_metadata=True, **kwargs):
         """Create an array.
 
         Parameters
@@ -525,6 +525,11 @@ class Group(Mapping):
             compression.
         overwrite : bool, optional
             If True, replace any existing array or group with the given name.
+        cache_metadata : bool, optional
+            If True, array configuration metadata will be cached for the
+            lifetime of the object. If False, array metadata will be reloaded
+            prior to all data access and modification operations (may incur
+            overhead depending on storage and data access pattern).
 
         Returns
         -------
@@ -548,12 +553,14 @@ class Group(Mapping):
                               shape=shape, chunks=chunks, dtype=dtype,
                               compressor=compressor, fill_value=fill_value,
                               order=order, synchronizer=synchronizer,
-                              filters=filters, overwrite=overwrite, **kwargs)
+                              filters=filters, overwrite=overwrite,
+                              cache_metadata=cache_metadata, **kwargs)
 
     def _create_dataset_nosync(self, name, data=None, shape=None, chunks=None,
                                dtype=None, compressor='default',
                                fill_value=None, order='C', synchronizer=None,
-                               filters=None, overwrite=False, **kwargs):
+                               filters=None, overwrite=False,
+                               cache_metadata=True, **kwargs):
 
         path = self._item_path(name)
 
@@ -568,7 +575,8 @@ class Group(Mapping):
                       order=order, synchronizer=synchronizer,
                       store=self._store, path=path,
                       chunk_store=self._chunk_store, filters=filters,
-                      overwrite=overwrite, **kwargs)
+                      overwrite=overwrite, cache_metadata=cache_metadata,
+                      **kwargs)
 
         else:
             a = create(shape=shape, chunks=chunks, dtype=dtype,
@@ -576,7 +584,8 @@ class Group(Mapping):
                        order=order, synchronizer=synchronizer,
                        store=self._store, path=path,
                        chunk_store=self._chunk_store, filters=filters,
-                       overwrite=overwrite, **kwargs)
+                       overwrite=overwrite, cache_metadata=cache_metadata,
+                       **kwargs)
 
         return a
 
@@ -608,8 +617,10 @@ class Group(Mapping):
 
         if contains_array(self._store, path):
             synchronizer = kwargs.get('synchronizer', self._synchronizer)
+            cache_metadata = kwargs.get('cache_metadata', True)
             a = Array(self._store, path=path, read_only=self._read_only,
-                      chunk_store=self._chunk_store, synchronizer=synchronizer)
+                      chunk_store=self._chunk_store,
+                      synchronizer=synchronizer, cache_metadata=cache_metadata)
             shape = normalize_shape(shape)
             if shape != a.shape:
                 raise TypeError('shapes do not match')

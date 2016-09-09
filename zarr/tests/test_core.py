@@ -6,7 +6,6 @@ import atexit
 import shutil
 import pickle
 from collections import MutableMapping
-import os
 
 
 import numpy as np
@@ -711,16 +710,13 @@ class TestArrayWithFilters(TestArray):
 
 
 # custom store, does not support getsize()
-class CustomMapping(MutableMapping):
+class CustomMapping(object):
 
     def __init__(self):
         self.inner = dict()
 
-    def __iter__(self):
-        return iter(self.inner)
-
-    def __len__(self):
-        return len(self.inner)
+    def keys(self):
+        return self.inner.keys()
 
     def __getitem__(self, item):
         return self.inner[item]
@@ -764,3 +760,11 @@ class TestArrayWithCustomMapping(TestArray):
                 eq(l1, l2)
 
 
+class TestArrayNoCacheMetadata(TestArray):
+
+    @staticmethod
+    def create_array(read_only=False, **kwargs):
+        store = dict()
+        kwargs.setdefault('compressor', Zlib(level=1))
+        init_array(store, **kwargs)
+        return Array(store, read_only=read_only, cache_metadata=False)

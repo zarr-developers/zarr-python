@@ -34,6 +34,11 @@ class Array(object):
         for storage of both chunks and metadata.
     synchronizer : object, optional
         Array synchronizer.
+    cache_metadata : bool, optional
+        If True, array configuration metadata will be cached for the
+        lifetime of the object. If False, array metadata will be reloaded
+        prior to all data access and modification operations (may incur
+        overhead depending on storage and data access pattern).
 
     Attributes
     ----------
@@ -71,7 +76,7 @@ class Array(object):
     """  # flake8: noqa
 
     def __init__(self, store, path=None, read_only=False, chunk_store=None,
-                 synchronizer=None):
+                 synchronizer=None, cache_metadata=True):
         # N.B., expect at this point store is fully initialized with all
         # configuration metadata fully specified and normalized
 
@@ -87,11 +92,21 @@ class Array(object):
         else:
             self._chunk_store = chunk_store
         self._synchronizer = synchronizer
+        self._cache_metadata = cache_metadata
+        self._is_view = False
 
         # initialize metadata
+        self._load_metadata()
+
+        # initialize attributes
+        akey = self._key_prefix + attrs_key
+        self._attrs = Attributes(store, key=akey, read_only=read_only,
+                                 synchronizer=synchronizer)
+
+    def _load_metadata(self):
         try:
             mkey = self._key_prefix + array_meta_key
-            meta_bytes = store[mkey]
+            meta_bytes = self._store[mkey]
         except KeyError:
             raise ValueError('store has no metadata')
         else:
@@ -104,7 +119,6 @@ class Array(object):
             self._dtype = meta['dtype']
             self._fill_value = meta['fill_value']
             self._order = meta['order']
-            self._is_view = False
 
             # setup compressor
             config = meta['compressor']
@@ -119,14 +133,10 @@ class Array(object):
                 filters = [get_codec(f) for f in filters]
             self._filters = filters
 
-        # initialize attributes
-        akey = self._key_prefix + attrs_key
-        self._attrs = Attributes(store, key=akey, read_only=read_only,
-                                 synchronizer=synchronizer)
-
     def _flush_metadata(self):
         if self._is_view:
             raise PermissionError('operation not permitted for views')
+
         if self._compressor:
             compressor_config = self._compressor.get_config()
         else:
@@ -366,6 +376,10 @@ class Array(object):
 
         """  # flake8: noqa
 
+        # refresh metadata
+        if not self._cache_metadata:
+            self._load_metadata()
+
         # normalize selection
         selection = normalize_array_selection(item, self._shape)
 
@@ -483,6 +497,10 @@ class Array(object):
         # guard conditions
         if self._read_only:
             raise PermissionError('array is read-only')
+
+        # refresh metadata
+        if not self._cache_metadata:
+            self._load_metadata()
 
         # normalize selection
         selection = normalize_array_selection(key, self._shape)
@@ -717,6 +735,10 @@ class Array(object):
 
     def __repr__(self):
 
+        # refresh metadata
+        if not self._cache_metadata:
+            self._load_metadata()
+
         # main line
         r = '%s(' % type(self).__name__
         if self.name:
@@ -772,11 +794,24 @@ class Array(object):
 
         # synchronization
         if self._synchronizer is None:
+
+            # refresh metadata
+            if not self._cache_metadata:
+                self._load_metadata()
+
             return f(*args, **kwargs)
+
         else:
+
             # synchronize on the array
             mkey = self._key_prefix + array_meta_key
+
             with self._synchronizer[mkey]:
+
+                # refresh metadata
+                if not self._cache_metadata:
+                    self._load_metadata()
+
                 return f(*args, **kwargs)
 
     def resize(self, *args):
@@ -1034,7 +1069,8 @@ class Array(object):
         if synchronizer is None:
             synchronizer = self._synchronizer
         a = Array(store=store, path=path, chunk_store=chunk_store,
-                  read_only=read_only, synchronizer=synchronizer)
+                  read_only=read_only, synchronizer=synchronizer,
+                  cache_metadata=True)
         a._is_view = True
 
         # allow override of some properties
