@@ -7,7 +7,7 @@ Release notes
 -----
 
 * Group objects now support member deletion via ``del`` statement
-  ('#65 <https://github.com/alimanfoo/zarr/issues/65>'_).
+  (`#65 <https://github.com/alimanfoo/zarr/issues/65>`_).
 * Added :class:`zarr.storage.TempStore` class for convenience to provide
   storage via a temporary directory
   (`#59 <https://github.com/alimanfoo/zarr/issues/59>`_).
