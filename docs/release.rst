@@ -1,6 +1,8 @@
 Release notes
 =============
 
+* Fixed performance issues with ``ZipStore`` class
+  (`#66 <https://github.com/alimanfoo/zarr/issues/27>`_)
 * The Blosc extension has been modified to return bytes instead of array
   objects from compress and decompress function calls. This should
   improve compatibility and also provides a small performance increase for

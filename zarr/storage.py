@@ -750,39 +750,69 @@ class ZipStore(MutableMapping):
     b'xxx'
     >>> sorted(store.keys())
     ['a/b/c', 'foo']
+    >>> store.close()
     >>> import zipfile
     >>> zf = zipfile.ZipFile('example.zip', mode='r')
     >>> sorted(zf.namelist())
     ['a/b/c', 'foo']
+
+    Notes
+    -----
+    When modifying a ZipStore the close() method must be called otherwise
+    essential data will not be written to the underlying zip file. The
+    ZipStore class also supports the context manager protocol, which ensures
+    the close() method is called on leaving the with statement.
 
     """
 
     def __init__(self, path, compression=zipfile.ZIP_STORED,
                  allowZip64=True, mode='a'):
 
-        # ensure zip file exists
+        # store properties
         path = os.path.abspath(path)
-        with zipfile.ZipFile(path, mode=mode):
-            pass
-
         self.path = path
         self.compression = compression
         self.allowZip64 = allowZip64
         self.mode = mode
 
+        # open zip file
+        self.zf = zipfile.ZipFile(path, mode=mode,
+                                  compression=compression,
+                                  allowZip64=allowZip64)
+
+    def __getstate__(self):
+        return self.path, self.compression, self.allowZip64, self.mode
+
+    def __setstate__(self, state):
+        self.__init__(*state)
+
+    def close(self):
+        """Closes the underlying zip file, ensuring all records are written."""
+        self.zf.close()
+
+    def flush(self):
+        """Closes the underlying zip file, ensuring all records are written,
+        then re-opens the file for further modifications."""
+        self.zf.close()
+        self.zf = zipfile.ZipFile(self.path, mode=self.mode,
+                                  compression=self.compression,
+                                  allowZip64=self.allowZip64)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        self.close()
+
     def __getitem__(self, key):
-        with zipfile.ZipFile(self.path) as zf:
-            with zf.open(key) as f:  # will raise KeyError
-                return f.read()
+        with self.zf.open(key) as f:  # will raise KeyError
+            return f.read()
 
     def __setitem__(self, key, value):
         if self.mode == 'r':
             err_read_only()
         value = ensure_bytes(value)
-        with zipfile.ZipFile(self.path, mode='a',
-                             compression=self.compression,
-                             allowZip64=self.allowZip64) as zf:
-            zf.writestr(key, value)
+        self.zf.writestr(key, value)
 
     def __delitem__(self, key):
         raise NotImplementedError
@@ -796,9 +826,7 @@ class ZipStore(MutableMapping):
         )
 
     def keylist(self):
-        with zipfile.ZipFile(self.path) as zf:
-            keylist = sorted(zf.namelist())
-        return keylist
+        return sorted(self.zf.namelist())
 
     def keys(self):
         for key in self.keylist():
@@ -811,13 +839,12 @@ class ZipStore(MutableMapping):
         return sum(1 for _ in self.keys())
 
     def __contains__(self, key):
-        with zipfile.ZipFile(self.path) as zf:
-            try:
-                zf.getinfo(key)
-            except KeyError:
-                return False
-            else:
-                return True
+        try:
+            self.zf.getinfo(key)
+        except KeyError:
+            return False
+        else:
+            return True
 
     def listdir(self, path=None):
         path = normalize_storage_path(path)
@@ -826,28 +853,26 @@ class ZipStore(MutableMapping):
     def getsize(self, path=None):
         path = normalize_storage_path(path)
         children = self.listdir(path)
-        with zipfile.ZipFile(self.path) as zf:
-            if children:
-                size = 0
-                with zipfile.ZipFile(self.path) as zf:
-                    for child in children:
-                        if path:
-                            name = path + '/' + child
-                        else:
-                            name = child
-                        try:
-                            info = zf.getinfo(name)
-                        except KeyError:
-                            pass
-                        else:
-                            size += info.compress_size
-                return size
-            elif path:
+        if children:
+            size = 0
+            for child in children:
+                if path:
+                    name = path + '/' + child
+                else:
+                    name = child
                 try:
-                    info = zf.getinfo(path)
-                    return info.compress_size
+                    info = self.zf.getinfo(name)
                 except KeyError:
-                    err_path_not_found(path)
+                    pass
+                else:
+                    size += info.compress_size
+            return size
+        elif path:
+            try:
+                info = self.zf.getinfo(path)
+                return info.compress_size
+            except KeyError:
+                err_path_not_found(path)
             else:
                 return 0
 

@@ -515,6 +515,7 @@ Here is an example storing an array directly into a Zip file::
       nbytes: 3.8M; nbytes_stored: 21.8K; ratio: 179.2; initialized: 100/100
       compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
       store: ZipStore
+    >>> store.close()
     >>> import os
     >>> os.path.getsize('example.zip')
     30721
@@ -536,11 +537,16 @@ Re-open and check that data have been written::
            [42, 42, 42, ..., 42, 42, 42],
            [42, 42, 42, ..., 42, 42, 42],
            [42, 42, 42, ..., 42, 42, 42]], dtype=int32)
+    >>> store.close()
 
 Note that there are some restrictions on how Zip files can be used,
 because items within a Zip file cannot be updated in place. This means
 that data in the array should only be written once and write
 operations should be aligned with chunk boundaries.
+
+Note also that the ``close()`` method must be called after writing any data to
+the store, otherwise essential records will not be written to the underlying
+zip file.
 
 The Dask project has implementations of the ``MutableMapping``
 interface for distributed storage systems, see the `S3Map

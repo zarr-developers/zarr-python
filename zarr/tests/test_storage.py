@@ -99,6 +99,8 @@ class StoreTests(object):
         store = self.create_store()
         store['foo'] = b'bar'
         store['baz'] = b'quux'
+        if hasattr(store, 'flush'):
+            store.flush()
         store2 = pickle.loads(pickle.dumps(store))
         eq(len(store), len(store2))
         eq(b'bar', store2['foo'])
@@ -106,7 +108,7 @@ class StoreTests(object):
         eq(sorted(store.keys()), sorted(store2.keys()))
         for k in dir(store):
             v = getattr(store, k)
-            if not callable(v):
+            if isinstance(v, (str, bool, int)):
                 eq(v, getattr(store2, k))
 
     def test_getsize(self):
@@ -626,8 +628,8 @@ class TestZipStore(StoreTests, unittest.TestCase):
         return store
 
     def test_mode(self):
-        store = ZipStore('example.zip', mode='w')
-        store['foo'] = b'bar'
+        with ZipStore('example.zip', mode='w') as store:
+            store['foo'] = b'bar'
         store = ZipStore('example.zip', mode='r')
         with assert_raises(PermissionError):
             store['foo'] = b'bar'

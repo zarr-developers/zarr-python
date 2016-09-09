@@ -606,6 +606,10 @@ class TestGroup(unittest.TestCase):
         d = g.create_dataset('foo/bar', shape=100, chunks=10)
         d[:] = np.arange(100)
 
+        # needed for zip store
+        if hasattr(g.store, 'flush'):
+            g.store.flush()
+
         # pickle round trip
         g2 = pickle.loads(pickle.dumps(g))
         eq(g.path, g2.path)
