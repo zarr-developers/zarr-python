@@ -398,7 +398,8 @@ class TestArray(unittest.TestCase):
         eq(a.shape, z.shape)
         eq(a.dtype, z.dtype)
         eq((10, 10), z.chunks)
-        assert_array_equal(a, z[:])
+        actual = z[:]
+        assert_array_equal(a, actual)
 
         b = np.arange(105*105, 2*105*105, dtype='i4').reshape((105, 105))
         e = np.append(a, b, axis=0)
@@ -406,7 +407,8 @@ class TestArray(unittest.TestCase):
         eq(e.shape, z.shape)
         eq(e.dtype, z.dtype)
         eq((10, 10), z.chunks)
-        assert_array_equal(e, z[:])
+        actual = z[:]
+        assert_array_equal(e, actual)
 
     def test_append_2d_axis(self):
 

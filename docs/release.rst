@@ -1,6 +1,11 @@
 Release notes
 =============
 
+* The Blosc extension has been modified to return bytes instead of array
+  objects from compress and decompress function calls. This should
+  improve compatibility and also provides a small performance increase for
+  compressing high compression ratio data
+  (`#55 <https://github.com/alimanfoo/zarr/issues/55>`_).
 * Added ``overwrite`` keyword argument to array and group creation methods
   on the :class:`zarr.hierarchy.Group` class
   (`#71 <https://github.com/alimanfoo/zarr/issues/71>`_).
