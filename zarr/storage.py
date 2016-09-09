@@ -891,8 +891,8 @@ class ZipStore(MutableMapping):
                 return info.compress_size
             except KeyError:
                 err_path_not_found(path)
-            else:
-                return 0
+        else:
+            return 0
 
 
 def migrate_1to2(store):
