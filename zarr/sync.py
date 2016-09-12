@@ -17,9 +17,9 @@ class ThreadSynchronizer(object):
             return self.locks[item]
 
     def __getstate__(self):
-        return dict()
+        return True
 
-    def __setstate__(self, d):
+    def __setstate__(self, *args):
         # reinitialize from scratch
         self.__init__()
 
