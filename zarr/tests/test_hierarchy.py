@@ -484,6 +484,16 @@ class TestGroup(unittest.TestCase):
         eq(0, len(g))
         assert 'foo' not in g
 
+    def test_getattr(self):
+        # setup
+        g1 = self.create_group()
+        g2 = g1.create_group('foo')
+        d1 = g2.create_dataset('bar', shape=100)
+
+        # test
+        eq(g1['foo'], g1.foo)
+        eq(g2['bar'], g2.bar)
+
     def test_group_repr(self):
         g = self.create_group()
         expect = 'Group(/, 0)\n  store: dict'

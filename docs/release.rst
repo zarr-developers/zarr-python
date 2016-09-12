@@ -1,6 +1,14 @@
 Release notes
 =============
 
+.. _release_2.1.1:
+
+2.1.1
+-----
+
+Various minor improvements, including: Group objects support member access via
+dot notation (``__getattr__``);
+
 .. _release_2.1.0:
 
 2.1.0
