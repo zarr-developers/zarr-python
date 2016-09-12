@@ -4,6 +4,7 @@ from tempfile import mkdtemp
 import atexit
 import json
 import shutil
+import os
 from multiprocessing.pool import ThreadPool, Pool as ProcessPool
 from multiprocessing import cpu_count
 import tempfile
@@ -24,17 +25,6 @@ from zarr.storage import init_array, DirectoryStore, init_group, atexit_rmtree
 from zarr.compat import PY2
 from zarr.codecs import Zlib
 from zarr.hierarchy import Group
-
-
-if PY2:
-
-    class TemporaryDirectory(object):
-        def __init__(self):
-            self.name = tempfile.mkdtemp()
-            atexit.register(atexit_rmtree, self.name)
-
-else:
-    from tempfile import TemporaryDirectory
 
 
 class TestAttributesWithThreadSynchronizer(TestAttributes):
@@ -79,7 +69,7 @@ def _set_arange(arg):
 class MixinArraySyncTests(object):
 
     def test_parallel_setitem(self):
-        n = 200
+        n = 20
 
         # setup
         arr = self.create_array(shape=n * 1000, chunks=999, dtype='i4')
@@ -94,7 +84,7 @@ class MixinArraySyncTests(object):
         assert_array_equal(np.arange(n * 1000), arr[:])
 
     def test_parallel_append(self):
-        n = 200
+        n = 20
 
         # setup
         arr = self.create_array(shape=1000, chunks=999, dtype='i4')
@@ -140,9 +130,12 @@ class TestArrayWithThreadSynchronizer(TestArray, MixinArraySyncTests):
 class TestArrayWithProcessSynchronizer(TestArray, MixinArraySyncTests):
 
     def create_array(self, read_only=False, **kwargs):
-        store = DirectoryStore(TemporaryDirectory().name)
+        path = 'test_sync'
+        if os.path.exists(path):
+            shutil.rmtree(path)
+        store = DirectoryStore(path)
         init_array(store, **kwargs)
-        synchronizer = ProcessSynchronizer(TemporaryDirectory().name)
+        synchronizer = ProcessSynchronizer('test_sync_locks')
         return Array(store, synchronizer=synchronizer,
                      read_only=read_only, cache_metadata=False)
 
@@ -242,15 +235,18 @@ class TestGroupWithThreadSynchronizer(TestGroup, MixinGroupSyncTests):
 class TestGroupWithProcessSynchronizer(TestGroup, MixinGroupSyncTests):
 
     def create_store(self):
-        return DirectoryStore(TemporaryDirectory().name), None
+        path = 'test_sync'
+        if os.path.exists(path):
+            shutil.rmtree(path)
+        store = DirectoryStore(path)
+        return store, None
 
     def create_group(self, store=None, path=None, read_only=False,
                      chunk_store=None, synchronizer=None):
         if store is None:
-            store = DirectoryStore(TemporaryDirectory().name)
-            chunk_store = None
+            store, chunk_store = self.create_store()
         init_group(store, path=path, chunk_store=chunk_store)
-        synchronizer = ProcessSynchronizer(TemporaryDirectory().name)
+        synchronizer = ProcessSynchronizer('test_sync_locks')
         g = Group(store, path=path, read_only=read_only,
                   synchronizer=synchronizer, chunk_store=chunk_store)
         return g
