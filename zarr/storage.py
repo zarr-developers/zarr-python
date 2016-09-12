@@ -138,7 +138,7 @@ def _require_parent_group(path, store, chunk_store, overwrite):
                 _init_group_metadata(store, path=p, chunk_store=chunk_store)
 
 
-def init_array(store, shape, chunks, dtype=None, compressor='default',
+def init_array(store, shape, chunks=None, dtype=None, compressor='default',
                fill_value=None, order='C', overwrite=False, path=None,
                chunk_store=None, filters=None):
     """initialize an array store with the given configuration.
@@ -258,7 +258,7 @@ def init_array(store, shape, chunks, dtype=None, compressor='default',
                          chunk_store=chunk_store, filters=filters)
 
 
-def _init_array_metadata(store, shape, chunks, dtype=None,
+def _init_array_metadata(store, shape, chunks=None, dtype=None,
                          compressor='default',
                          fill_value=None, order='C', overwrite=False,
                          path=None, chunk_store=None, filters=None):

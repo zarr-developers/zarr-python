@@ -188,44 +188,57 @@ class Array(object):
     def shape(self):
         """A tuple of integers describing the length of each dimension of
         the array."""
+        # refresh metadata because shape can change if array is resized
+        if not self._cache_metadata:
+            self._load_metadata()
         return self._shape
+
+    @shape.setter
+    def shape(self, value):
+        self.resize(value)
 
     @property
     def chunks(self):
         """A tuple of integers describing the length of each dimension of a
         chunk of the array."""
+        # should be immutable
         return self._chunks
 
     @property
     def dtype(self):
         """The NumPy data type."""
+        # should be immutable
         return self._dtype
 
     @property
     def compressor(self):
         """Primary compression codec."""
+        # should be immutable
         return self._compressor
 
     @property
     def fill_value(self):
         """A value used for uninitialized portions of the array."""
+        # should be immutable
         return self._fill_value
 
     @property
     def order(self):
         """A string indicating the order in which bytes are arranged within
         chunks of the array."""
+        # should be immutable
         return self._order
+
+    @property
+    def filters(self):
+        """One or more codecs used to transform data prior to compression."""
+        # should be immutable
+        return self._filters
 
     @property
     def synchronizer(self):
         """Object used to synchronize write access to the array."""
         return self._synchronizer
-
-    @property
-    def filters(self):
-        """One or more codecs used to transform data prior to compression."""
-        return self._filters
 
     @property
     def attrs(self):

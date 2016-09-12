@@ -324,6 +324,11 @@ class TestArray(unittest.TestCase):
         eq((10,), z.chunks)
         assert_array_equal(a[:55], z[:])
 
+        # via shape setter
+        z.shape = (105,)
+        eq((105,), z.shape)
+        eq((105,), z[:].shape)
+
     def test_resize_2d(self):
 
         z = self.create_array(shape=(105, 105), chunks=(10, 10), dtype='i4',
@@ -362,6 +367,11 @@ class TestArray(unittest.TestCase):
         eq(np.dtype('i4'), z[:].dtype)
         eq((10, 10), z.chunks)
         assert_array_equal(a[:55, :1], z[:])
+
+        # via shape setter
+        z.shape = (105, 105)
+        eq((105, 105), z.shape)
+        eq((105, 105), z[:].shape)
 
     def test_append_1d(self):
 
@@ -772,3 +782,20 @@ class TestArrayNoCacheMetadata(TestArray):
         kwargs.setdefault('compressor', Zlib(level=1))
         init_array(store, **kwargs)
         return Array(store, read_only=read_only, cache_metadata=False)
+
+    def test_cache_metadata(self):
+        a1 = self.create_array(shape=100)
+        a2 = Array(a1.store, cache_metadata=True)
+        eq(a1.shape, a2.shape)
+
+        a2.resize(200)
+        eq((200,), a2.shape)
+        eq(a1.shape, a2.shape)
+
+        a2.append(np.zeros(100))
+        eq((300,), a2.shape)
+        eq(a1.shape, a2.shape)
+
+        a1.resize(400)
+        eq((400,), a1.shape)
+        eq((300,), a2.shape)
