@@ -6,9 +6,10 @@ Release notes
 2.1.1
 -----
 
-Various minor improvements, including: Group objects support member access via
-dot notation (``__getattr__``); fix metadata caching for ``Array.shape``
-property and derivatives; add ``Array.ndim`` property;
+Various minor improvements, including: ``Group`` objects support member access
+via dot notation (``__getattr__``); fix metadata caching for ``Array.shape``
+property and derivatives; add ``Array.ndim`` property; fix ``Array.__array__``
+method arguments;
 
 
 .. _release_2.1.0:

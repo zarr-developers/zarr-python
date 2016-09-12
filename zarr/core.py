@@ -320,8 +320,11 @@ class Array(object):
             # store comparison
         )
 
-    def __array__(self):
-        return self[:]
+    def __array__(self, *args):
+        a = self[:]
+        if args:
+            a = a.astype(args[0])
+        return a
 
     def __len__(self):
         return self.shape[0]

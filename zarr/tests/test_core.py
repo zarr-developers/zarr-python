@@ -487,6 +487,34 @@ class TestArray(unittest.TestCase):
             for l1, l2 in zip(expect.split('\n'), actual.split('\n')):
                 eq(l1, l2)
 
+    def test_np_ufuncs(self):
+        z = self.create_array(shape=(100, 100), chunks=(10, 10))
+        a = np.arange(10000).reshape(100, 100)
+        z[:] = a
+
+        eq(np.sum(a), np.sum(z))
+        assert_array_equal(np.sum(a, axis=0), np.sum(z, axis=0))
+        eq(np.mean(a), np.mean(z))
+        assert_array_equal(np.mean(a, axis=1), np.mean(z, axis=1))
+        condition = np.random.randint(0, 2, size=100, dtype=bool)
+        assert_array_equal(np.compress(condition, a, axis=0),
+                           np.compress(condition, z, axis=0))
+        indices = np.random.choice(100, size=50, replace=True)
+        assert_array_equal(np.take(a, indices, axis=1),
+                           np.take(z, indices, axis=1))
+
+        # use zarr array as indices or condition
+        zc = self.create_array(shape=condition.shape, dtype=condition.dtype,
+                               chunks=10)
+        zc[:] = condition
+        assert_array_equal(np.compress(condition, a, axis=0),
+                           np.compress(zc, a, axis=0))
+        zi = self.create_array(shape=indices.shape, dtype=indices.dtype,
+                               chunks=10)
+        zi[:] = indices
+        assert_array_equal(np.take(a, indices, axis=1),
+                           np.take(a, zi, axis=1))
+
 
 class TestArrayWithPath(TestArray):
 
