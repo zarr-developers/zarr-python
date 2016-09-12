@@ -97,12 +97,7 @@ class Array(object):
         self._is_view = False
 
         # initialize metadata
-        if self._synchronizer is None:
-            self._load_metadata()
-        else:
-            mkey = self._key_prefix + array_meta_key
-            with self._synchronizer[mkey]:
-                self._load_metadata()
+        self._load_metadata()
 
         # initialize attributes
         akey = self._key_prefix + attrs_key
@@ -110,6 +105,15 @@ class Array(object):
                                  synchronizer=synchronizer)
 
     def _load_metadata(self):
+        """(Re)load metadata from store."""
+        if self._synchronizer is None:
+            self._load_metadata_nosync()
+        else:
+            mkey = self._key_prefix + array_meta_key
+            with self._synchronizer[mkey]:
+                self._load_metadata_nosync()
+
+    def _load_metadata_nosync(self):
         try:
             mkey = self._key_prefix + array_meta_key
             meta_bytes = self._store[mkey]
@@ -136,10 +140,18 @@ class Array(object):
             # setup filters
             filters = meta['filters']
             if filters:
-                filters = [get_codec(f) for f in filters]
+                filters = [get_codec(config) for config in filters]
             self._filters = filters
 
-    def _flush_metadata(self):
+    def _refresh_metadata(self):
+        if not self._cache_metadata:
+            self._load_metadata()
+
+    def _refresh_metadata_nosync(self):
+        if not self._cache_metadata:
+            self._load_metadata_nosync()
+
+    def _flush_metadata_nosync(self):
         if self._is_view:
             raise PermissionError('not permitted for views')
 
@@ -193,9 +205,7 @@ class Array(object):
     def shape(self):
         """A tuple of integers describing the length of each dimension of
         the array."""
-        # refresh metadata because shape can change if array is resized
-        if not self._cache_metadata:
-            self._load_metadata()
+        self._refresh_metadata()
         return self._shape
 
     @shape.setter
@@ -206,38 +216,32 @@ class Array(object):
     def chunks(self):
         """A tuple of integers describing the length of each dimension of a
         chunk of the array."""
-        # should be immutable
         return self._chunks
 
     @property
     def dtype(self):
         """The NumPy data type."""
-        # should be immutable
         return self._dtype
 
     @property
     def compressor(self):
         """Primary compression codec."""
-        # should be immutable
         return self._compressor
 
     @property
     def fill_value(self):
         """A value used for uninitialized portions of the array."""
-        # should be immutable
         return self._fill_value
 
     @property
     def order(self):
         """A string indicating the order in which bytes are arranged within
         chunks of the array."""
-        # should be immutable
         return self._order
 
     @property
     def filters(self):
         """One or more codecs used to transform data prior to compression."""
-        # should be immutable
         return self._filters
 
     @property
@@ -257,9 +261,14 @@ class Array(object):
         return len(self.shape)
 
     @property
+    def _size(self):
+        return reduce(operator.mul, self._shape)
+
+    @property
     def size(self):
         """The total number of elements in the array."""
-        return reduce(operator.mul, self.shape)
+        self._refresh_metadata()
+        return self._size
 
     @property
     def itemsize(self):
@@ -267,10 +276,15 @@ class Array(object):
         return self.dtype.itemsize
 
     @property
+    def _nbytes(self):
+        return self._size * self.itemsize
+
+    @property
     def nbytes(self):
         """The total number of bytes that would be required to store the
         array without compression."""
-        return self.size * self.itemsize
+        self._refresh_metadata()
+        return self._nbytes
 
     @property
     def nbytes_stored(self):
@@ -288,17 +302,27 @@ class Array(object):
                 return m + n
 
     @property
+    def _cdata_shape(self):
+        return tuple(
+            int(np.ceil(s / c)) for s, c in zip(self._shape, self._chunks)
+        )
+
+    @property
     def cdata_shape(self):
         """A tuple of integers describing the number of chunks along each
         dimension of the array."""
-        return tuple(
-            int(np.ceil(s / c)) for s, c in zip(self.shape, self.chunks)
-        )
+        self._refresh_metadata()
+        return self._cdata_shape
+
+    @property
+    def _nchunks(self):
+        return reduce(operator.mul, self._cdata_shape)
 
     @property
     def nchunks(self):
         """Total number of chunks."""
-        return reduce(operator.mul, self.cdata_shape)
+        self._refresh_metadata()
+        return self._nchunks
 
     @property
     def nchunks_initialized(self):
@@ -769,48 +793,45 @@ class Array(object):
         return cdata
 
     def __repr__(self):
-
-        # refresh metadata
-        if not self._cache_metadata:
-            self._load_metadata()
+        self._refresh_metadata()
 
         # main line
         r = '%s(' % type(self).__name__
         if self.name:
             r += '%s, ' % self.name
-        r += '%s, ' % str(self.shape)
-        r += '%s, ' % str(self.dtype)
-        r += 'chunks=%s, ' % str(self.chunks)
-        r += 'order=%s' % self.order
+        r += '%s, ' % str(self._shape)
+        r += '%s, ' % str(self._dtype)
+        r += 'chunks=%s, ' % str(self._chunks)
+        r += 'order=%s' % self._order
         r += ')'
 
         # storage size info
-        r += '\n  nbytes: %s' % human_readable_size(self.nbytes)
+        r += '\n  nbytes: %s' % human_readable_size(self._nbytes)
         if self.nbytes_stored > 0:
             r += '; nbytes_stored: %s' % human_readable_size(
                 self.nbytes_stored)
-            r += '; ratio: %.1f' % (self.nbytes / self.nbytes_stored)
+            r += '; ratio: %.1f' % (self._nbytes / self.nbytes_stored)
         r += '; initialized: %s/%s' % (self.nchunks_initialized,
-                                       self.nchunks)
+                                       self._nchunks)
 
         # filters
-        if self.filters:
+        if self._filters:
             # first line
-            r += '\n  filters: %r' % self.filters[0]
+            r += '\n  filters: %r' % self._filters[0]
             # subsequent lines
-            for f in self.filters[1:]:
+            for f in self._filters[1:]:
                 r += '\n           %r' % f
 
         # compressor
-        if self.compressor:
-            r += '\n  compressor: %r' % self.compressor
+        if self._compressor:
+            r += '\n  compressor: %r' % self._compressor
 
         # storage and synchronizer classes
-        r += '\n  store: %s' % type(self.store).__name__
-        if self.store != self.chunk_store:
-            r += '; chunk_store: %s' % type(self.chunk_store).__name__
-        if self.synchronizer is not None:
-            r += '; synchronizer: %s' % type(self.synchronizer).__name__
+        r += '\n  store: %s' % type(self._store).__name__
+        if self._store != self._chunk_store:
+            r += '; chunk_store: %s' % type(self._chunk_store).__name__
+        if self._synchronizer is not None:
+            r += '; synchronizer: %s' % type(self._synchronizer).__name__
 
         return r
 
@@ -829,24 +850,14 @@ class Array(object):
 
         # synchronization
         if self._synchronizer is None:
-
-            # refresh metadata
-            if not self._cache_metadata:
-                self._load_metadata()
-
+            self._refresh_metadata_nosync()
             return f(*args, **kwargs)
 
         else:
-
             # synchronize on the array
             mkey = self._key_prefix + array_meta_key
-
             with self._synchronizer[mkey]:
-
-                # refresh metadata
-                if not self._cache_metadata:
-                    self._load_metadata()
-
+                self._refresh_metadata_nosync()
                 return f(*args, **kwargs)
 
     def resize(self, *args):
@@ -894,7 +905,7 @@ class Array(object):
 
         # update metadata
         self._shape = new_shape
-        self._flush_metadata()
+        self._flush_metadata_nosync()
 
         # determine the new number and arrangement of chunks
         chunks = self._chunks
@@ -920,6 +931,10 @@ class Array(object):
         axis : int
             Axis along which to append.
 
+        Returns
+        -------
+        new_shape : tuple
+
         Notes
         -----
         The size of all dimensions other than `axis` must match between this
@@ -937,12 +952,14 @@ class Array(object):
           compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
           store: dict
         >>> z.append(a)
+        (20000, 1000)
         >>> z
         Array((20000, 1000), int32, chunks=(1000, 100), order=C)
           nbytes: 76.3M; nbytes_stored: 3.8M; ratio: 20.3; initialized: 200/200
           compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
           store: dict
         >>> z.append(np.vstack([a, a]), axis=1)
+        (20000, 2000)
         >>> z
         Array((20000, 2000), int32, chunks=(1000, 100), order=C)
           nbytes: 152.6M; nbytes_stored: 7.5M; ratio: 20.3; initialized: 400/400

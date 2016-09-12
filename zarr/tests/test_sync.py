@@ -78,9 +78,9 @@ class MixinArraySyncTests(object):
 
         # parallel setitem
         future = pool.map_async(_set_arange, zip([arr] * n, range(n)))
-        results = future.get(60)
+        results = sorted(future.get(60))
         print(results)
-        eq(list(range(n)), sorted(results))
+        eq(list(range(n)), results)
         assert_array_equal(np.arange(n * 1000), arr[:])
 
     def test_parallel_append(self):
@@ -93,9 +93,9 @@ class MixinArraySyncTests(object):
 
         # parallel append
         future = pool.map_async(_append, zip([arr] * n, range(n)))
-        results = future.get(60)
+        results = sorted(future.get(60))
         print(results)
-        eq([((i+2)*1000,) for i in range(n)], sorted(results))
+        eq([((i+2)*1000,) for i in range(n)], results)
         eq(((n+1)*1000,), arr.shape)
 
 

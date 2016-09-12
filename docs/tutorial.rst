@@ -155,12 +155,14 @@ which can be used to append data to any axis. E.g.::
       compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
       store: dict
     >>> z.append(a)
+    (20000, 1000)
     >>> z
     Array((20000, 1000), int32, chunks=(1000, 100), order=C)
       nbytes: 76.3M; nbytes_stored: 3.8M; ratio: 20.3; initialized: 200/200
       compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
       store: dict
     >>> z.append(np.vstack([a, a]), axis=1)
+    (20000, 2000)
     >>> z
     Array((20000, 2000), int32, chunks=(1000, 100), order=C)
       nbytes: 152.6M; nbytes_stored: 7.5M; ratio: 20.3; initialized: 400/400
