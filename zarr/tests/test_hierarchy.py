@@ -488,7 +488,7 @@ class TestGroup(unittest.TestCase):
         # setup
         g1 = self.create_group()
         g2 = g1.create_group('foo')
-        d1 = g2.create_dataset('bar', shape=100)
+        g2.create_dataset('bar', shape=100)
 
         # test
         eq(g1['foo'], g1.foo)

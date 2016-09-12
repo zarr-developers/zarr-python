@@ -512,6 +512,7 @@ class TestArray(unittest.TestCase):
         zi = self.create_array(shape=indices.shape, dtype=indices.dtype,
                                chunks=10, filters=None)
         zi[:] = indices
+        # this triggers __array__() call with dtype argument
         assert_array_equal(np.take(a, indices, axis=1),
                            np.take(a, zi, axis=1))
 
