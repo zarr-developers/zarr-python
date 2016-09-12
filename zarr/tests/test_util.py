@@ -28,6 +28,12 @@ def test_normalize_chunks():
     eq((10, 10), normalize_chunks((10, 10), (100, 10), 1))
     eq((10, 10), normalize_chunks(10, (100, 10), 1))
     eq((10, 10), normalize_chunks((10, None), (100, 10), 1))
+    eq((30, 20, 10), normalize_chunks(30, (100, 20, 10), 1))
+    eq((30, 20, 10), normalize_chunks((30,), (100, 20, 10), 1))
+    eq((30, 20, 10), normalize_chunks((30, None), (100, 20, 10), 1))
+    eq((30, 20, 10), normalize_chunks((30, None, None), (100, 20, 10), 1))
+    eq((30, 20, 10), normalize_chunks((30, 20, None), (100, 20, 10), 1))
+    eq((30, 20, 10), normalize_chunks((30, 20, 10), (100, 20, 10), 1))
     with assert_raises(ValueError):
         normalize_chunks('foo', (100,), 1)
     with assert_raises(ValueError):
