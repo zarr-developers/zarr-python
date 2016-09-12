@@ -86,6 +86,7 @@ class TestArray(unittest.TestCase):
 
         # check properties
         eq(len(a), len(z))
+        eq(a.ndim, z.ndim)
         eq(a.shape, z.shape)
         eq(a.dtype, z.dtype)
         eq((100,), z.chunks)
@@ -172,6 +173,7 @@ class TestArray(unittest.TestCase):
 
         # check properties
         eq(len(a), len(z))
+        eq(a.ndim, z.ndim)
         eq(a.shape, z.shape)
         eq(a.dtype, z.dtype)
         eq((100, 2), z.chunks)
@@ -784,18 +786,39 @@ class TestArrayNoCacheMetadata(TestArray):
         return Array(store, read_only=read_only, cache_metadata=False)
 
     def test_cache_metadata(self):
-        a1 = self.create_array(shape=100)
+        a1 = self.create_array(shape=100, chunks=10, dtype='i1')
         a2 = Array(a1.store, cache_metadata=True)
         eq(a1.shape, a2.shape)
+        eq(a1.size, a2.size)
+        eq(a1.nbytes, a2.nbytes)
+        eq(a1.nchunks, a2.nchunks)
 
         a2.resize(200)
         eq((200,), a2.shape)
+        eq(200, a2.size)
+        eq(200, a2.nbytes)
+        eq(20, a2.nchunks)
         eq(a1.shape, a2.shape)
+        eq(a1.size, a2.size)
+        eq(a1.nbytes, a2.nbytes)
+        eq(a1.nchunks, a2.nchunks)
 
         a2.append(np.zeros(100))
         eq((300,), a2.shape)
+        eq(300, a2.size)
+        eq(300, a2.nbytes)
+        eq(30, a2.nchunks)
         eq(a1.shape, a2.shape)
+        eq(a1.size, a2.size)
+        eq(a1.nbytes, a2.nbytes)
+        eq(a1.nchunks, a2.nchunks)
 
         a1.resize(400)
         eq((400,), a1.shape)
+        eq(400, a1.size)
+        eq(400, a1.nbytes)
+        eq(40, a1.nchunks)
         eq((300,), a2.shape)
+        eq(300, a2.size)
+        eq(300, a2.nbytes)
+        eq(30, a2.nchunks)

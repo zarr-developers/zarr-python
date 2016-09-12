@@ -247,14 +247,19 @@ class Array(object):
         return self._attrs
 
     @property
+    def ndim(self):
+        """Number of dimensions."""
+        return len(self.shape)
+
+    @property
     def size(self):
         """The total number of elements in the array."""
-        return reduce(operator.mul, self._shape)
+        return reduce(operator.mul, self.shape)
 
     @property
     def itemsize(self):
         """The size in bytes of each item in the array."""
-        return self._dtype.itemsize
+        return self.dtype.itemsize
 
     @property
     def nbytes(self):
@@ -282,7 +287,7 @@ class Array(object):
         """A tuple of integers describing the number of chunks along each
         dimension of the array."""
         return tuple(
-            int(np.ceil(s / c)) for s, c in zip(self._shape, self._chunks)
+            int(np.ceil(s / c)) for s, c in zip(self.shape, self.chunks)
         )
 
     @property
