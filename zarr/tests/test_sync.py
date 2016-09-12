@@ -54,8 +54,8 @@ def _append(arg):
     import numpy as np
     x = np.empty(1000, dtype='i4')
     x[:] = i
-    z.append(x)
-    return z.shape
+    shape = z.append(x)
+    return shape
 
 
 def _set_arange(arg):

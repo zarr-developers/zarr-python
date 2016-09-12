@@ -986,6 +986,8 @@ class Array(object):
         )
         self[append_selection] = data
 
+        return new_shape
+
     def view(self, shape=None, chunks=None, dtype=None,
              fill_value=None, filters=None, read_only=None,
              synchronizer=None):
