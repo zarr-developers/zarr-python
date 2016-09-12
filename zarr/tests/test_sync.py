@@ -69,7 +69,7 @@ def _set_arange(arg):
 class MixinArraySyncTests(object):
 
     def test_parallel_setitem(self):
-        n = 20
+        n = 100
 
         # setup
         arr = self.create_array(shape=n * 1000, chunks=999, dtype='i4')
@@ -78,13 +78,16 @@ class MixinArraySyncTests(object):
 
         # parallel setitem
         future = pool.map_async(_set_arange, zip([arr] * n, range(n)))
+        pool.close()
         results = sorted(future.get(60))
+        pool.terminate()
+
         print(results)
         eq(list(range(n)), results)
         assert_array_equal(np.arange(n * 1000), arr[:])
 
     def test_parallel_append(self):
-        n = 20
+        n = 100
 
         # setup
         arr = self.create_array(shape=1000, chunks=999, dtype='i4')
@@ -93,7 +96,10 @@ class MixinArraySyncTests(object):
 
         # parallel append
         future = pool.map_async(_append, zip([arr] * n, range(n)))
+        pool.close()
         results = sorted(future.get(60))
+        pool.terminate()
+
         print(results)
         eq([((i+2)*1000,) for i in range(n)], results)
         eq(((n+1)*1000,), arr.shape)
@@ -181,10 +187,13 @@ class MixinGroupSyncTests(object):
 
         # parallel create group
         n = 100
-        results = pool.map_async(
+        future = pool.map_async(
             _create_group, zip([g] * n, [str(i) for i in range(n)]))
-        print(results.get(60))
+        pool.close()
+        results = sorted(future.get(60))
+        pool.terminate()
 
+        print(results)
         eq(n, len(g))
 
     def test_parallel_require_group(self):
@@ -195,10 +204,13 @@ class MixinGroupSyncTests(object):
 
         # parallel require group
         n = 100
-        results = pool.map_async(
+        future = pool.map_async(
             _require_group, zip([g] * n, [str(i//10) for i in range(n)]))
-        print(results.get(60))
+        pool.close()
+        results = sorted(future.get(60))
+        pool.terminate()
 
+        print(results)
         eq(n//10, len(g))
 
 
