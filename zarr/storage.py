@@ -61,7 +61,7 @@ def contains_group(store, path=None):
 def _rmdir_from_keys(store, path=None):
     # assume path already normalized
     prefix = _path_to_prefix(path)
-    for key in set(store.keys()):
+    for key in list(store.keys()):
         if key.startswith(prefix):
             del store[key]
 
@@ -81,7 +81,7 @@ def _listdir_from_keys(store, path=None):
     # assume path already normalized
     prefix = _path_to_prefix(path)
     children = set()
-    for key in store.keys():
+    for key in list(store.keys()):
         if key.startswith(prefix) and len(key) > len(prefix):
             suffix = key[len(prefix):]
             child = suffix.split('/')[0]
@@ -718,9 +718,9 @@ class DirectoryStore(MutableMapping):
             err_path_not_found(path)
 
 
-def _atexit_rmtree(path,
-                   isdir=os.path.isdir,
-                   rmtree=shutil.rmtree):  # pragma: no cover
+def atexit_rmtree(path,
+                  isdir=os.path.isdir,
+                  rmtree=shutil.rmtree):  # pragma: no cover
     """Ensure directory removal at interpreter exit."""
     if isdir(path):
         rmtree(path)
@@ -731,7 +731,7 @@ class TempStore(DirectoryStore):
 
     def __init__(self, suffix='', prefix='zarr', dir=None):
         path = tempfile.mkdtemp(suffix=suffix, prefix=prefix, dir=dir)
-        atexit.register(_atexit_rmtree, path)
+        atexit.register(atexit_rmtree, path)
         super(TempStore, self).__init__(path)
 
 
