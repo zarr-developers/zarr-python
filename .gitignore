@@ -68,3 +68,4 @@ zarr/version.py
 *.zip
 example*
 doesnotexist
+test_sync*
