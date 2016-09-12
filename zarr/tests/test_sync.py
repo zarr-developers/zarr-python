@@ -46,6 +46,15 @@ class TestProcessSynchronizedAttributes(TestAttributes):
                           read_only=read_only)
 
 
+def _append_data(arg):
+    z, i = arg
+    import numpy as np
+    x = np.empty(1000, dtype='i4')
+    x[:] = i
+    z.append(x)
+    return z.shape
+
+
 class MixinArraySyncTests(object):
 
     def test_parallel_append(self):
@@ -55,16 +64,8 @@ class MixinArraySyncTests(object):
         arr[:] = 0
         pool = self.create_pool(cpu_count())
 
-        def f(i):
-            x = np.empty(1000, dtype='i4')
-            x[:] = i
-            arr.append(x)
-
-        pool.map_async(f, range(1, 40, 1))
-
-        pool.close()
-        pool.join()
-        pool.terminate()
+        results = pool.map_async(_append_data, zip([arr] * 39, range(1, 40, 1)))
+        print(results.get())
 
         eq((40000,), arr.shape)
 
