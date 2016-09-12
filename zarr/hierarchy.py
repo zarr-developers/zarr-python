@@ -317,6 +317,10 @@ class Group(MutableMapping):
         else:
             raise KeyError(item)
 
+    def __getattr__(self, item):
+        # allow access to group members via dot notation
+        return self.__getitem__(item)
+
     def group_keys(self):
         """Return an iterator over member names for groups only.
 

@@ -22,7 +22,6 @@ from zarr.attrs import Attributes
 from zarr.errors import PermissionError
 from zarr.creation import open_array
 from zarr.compat import PY2
-from zarr.sync import ThreadSynchronizer, ProcessSynchronizer
 from zarr.codecs import Zlib
 
 
@@ -484,6 +483,16 @@ class TestGroup(unittest.TestCase):
         eq(0, len(g))
         assert 'foo' not in g
 
+    def test_getattr(self):
+        # setup
+        g1 = self.create_group()
+        g2 = g1.create_group('foo')
+        g2.create_dataset('bar', shape=100)
+
+        # test
+        eq(g1['foo'], g1.foo)
+        eq(g2['bar'], g2.bar)
+
     def test_group_repr(self):
         g = self.create_group()
         expect = 'Group(/, 0)\n  store: dict'
@@ -740,60 +749,6 @@ class TestGroupWithChunkStore(TestGroup):
         expect = ['foo/' + str(i) for i in range(10)]
         actual = sorted(chunk_store.keys())
         eq(expect, actual)
-
-
-class TestGroupWithThreadSynchronizer(TestGroup):
-
-    def create_group(self, store=None, path=None, read_only=False,
-                     chunk_store=None, synchronizer=None):
-        if store is None:
-            store, chunk_store = self.create_store()
-        init_group(store, path=path, chunk_store=chunk_store)
-        synchronizer = ThreadSynchronizer()
-        g = Group(store, path=path, read_only=read_only,
-                  chunk_store=chunk_store, synchronizer=synchronizer)
-        return g
-
-    def test_group_repr(self):
-        if not PY2:
-            g = self.create_group()
-            expect = 'Group(/, 0)\n' \
-                     '  store: dict; synchronizer: ThreadSynchronizer'
-            actual = repr(g)
-            for l1, l2 in zip(expect.split('\n'), actual.split('\n')):
-                eq(l1, l2)
-
-    def test_synchronizer_property(self):
-        g = self.create_group()
-        assert_is_instance(g.synchronizer, ThreadSynchronizer)
-
-
-class TestGroupWithProcessSynchronizer(TestGroup):
-
-    def create_group(self, store=None, path=None, read_only=False,
-                     chunk_store=None, synchronizer=None):
-        if store is None:
-            store, chunk_store = self.create_store()
-        init_group(store, path=path, chunk_store=chunk_store)
-        sync_path = tempfile.mkdtemp()
-        atexit.register(shutil.rmtree, sync_path)
-        synchronizer = ProcessSynchronizer(sync_path)
-        g = Group(store, path=path, read_only=read_only,
-                  chunk_store=chunk_store, synchronizer=synchronizer)
-        return g
-
-    def test_group_repr(self):
-        if not PY2:
-            g = self.create_group()
-            expect = 'Group(/, 0)\n' \
-                     '  store: dict; synchronizer: ProcessSynchronizer'
-            actual = repr(g)
-            for l1, l2 in zip(expect.split('\n'), actual.split('\n')):
-                eq(l1, l2)
-
-    def test_synchronizer_property(self):
-        g = self.create_group()
-        assert_is_instance(g.synchronizer, ProcessSynchronizer)
 
 
 def test_group():

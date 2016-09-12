@@ -12,7 +12,6 @@ import numpy as np
 
 
 from zarr.compat import text_type, binary_type
-from zarr.meta import encode_dtype, decode_dtype
 
 
 codec_registry = dict()
@@ -471,15 +470,9 @@ class Delta(Codec):
     def get_config(self):
         config = dict()
         config['id'] = self.codec_id
-        config['dtype'] = encode_dtype(self.dtype)
-        config['astype'] = encode_dtype(self.astype)
+        config['dtype'] = self.dtype.str
+        config['astype'] = self.astype.str
         return config
-
-    @classmethod
-    def from_config(cls, config):
-        dtype = decode_dtype(config['dtype'])
-        astype = decode_dtype(config['astype'])
-        return cls(dtype=dtype, astype=astype)
 
     def __repr__(self):
         r = '%s(dtype=%s' % (type(self).__name__, self.dtype)
@@ -595,20 +588,11 @@ class FixedScaleOffset(Codec):
     def get_config(self):
         config = dict()
         config['id'] = self.codec_id
-        config['astype'] = encode_dtype(self.astype)
-        config['dtype'] = encode_dtype(self.dtype)
+        config['astype'] = self.astype.str
+        config['dtype'] = self.dtype.str
         config['scale'] = self.scale
         config['offset'] = self.offset
         return config
-
-    @classmethod
-    def from_config(cls, config):
-        astype = decode_dtype(config['astype'])
-        dtype = decode_dtype(config['dtype'])
-        scale = config['scale']
-        offset = config['offset']
-        return cls(astype=astype, dtype=dtype, scale=scale,
-                   offset=offset)
 
     def __repr__(self):
         r = '%s(scale=%s, offset=%s, dtype=%s' % \
@@ -702,16 +686,9 @@ class Quantize(Codec):
         config = dict()
         config['id'] = self.codec_id
         config['digits'] = self.digits
-        config['dtype'] = encode_dtype(self.dtype)
-        config['astype'] = encode_dtype(self.astype)
+        config['dtype'] = self.dtype.str
+        config['astype'] = self.astype.str
         return config
-
-    @classmethod
-    def from_config(cls, config):
-        dtype = decode_dtype(config['dtype'])
-        astype = decode_dtype(config['astype'])
-        digits = config['digits']
-        return cls(digits=digits, dtype=dtype, astype=astype)
 
     def __repr__(self):
         r = '%s(digits=%s, dtype=%s' % \
@@ -805,10 +782,6 @@ class PackBits(Codec):
         config = dict()
         config['id'] = self.codec_id
         return config
-
-    @classmethod
-    def from_config(cls, config):
-        return cls()
 
     def __repr__(self):
         r = '%s()' % type(self).__name__
@@ -921,16 +894,9 @@ class Categorize(Codec):
         config = dict()
         config['id'] = self.codec_id
         config['labels'] = [_ensure_text(l) for l in self.labels]
-        config['dtype'] = encode_dtype(self.dtype)
-        config['astype'] = encode_dtype(self.astype)
+        config['dtype'] = self.dtype.str
+        config['astype'] = self.astype.str
         return config
-
-    @classmethod
-    def from_config(cls, config):
-        dtype = decode_dtype(config['dtype'])
-        astype = decode_dtype(config['astype'])
-        labels = config['labels']
-        return cls(labels=labels, dtype=dtype, astype=astype)
 
     def __repr__(self):
         # make sure labels part is not too long

@@ -155,12 +155,14 @@ which can be used to append data to any axis. E.g.::
       compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
       store: dict
     >>> z.append(a)
+    (20000, 1000)
     >>> z
     Array((20000, 1000), int32, chunks=(1000, 100), order=C)
       nbytes: 76.3M; nbytes_stored: 3.8M; ratio: 20.3; initialized: 200/200
       compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
       store: dict
     >>> z.append(np.vstack([a, a]), axis=1)
+    (20000, 2000)
     >>> z
     Array((20000, 2000), int32, chunks=(1000, 100), order=C)
       nbytes: 152.6M; nbytes_stored: 7.5M; ratio: 20.3; initialized: 400/400
@@ -220,12 +222,12 @@ compression, level 1::
       store: dict
 
 Here is an example using LZMA with a custom filter pipeline including
-the delta filter::
+LZMA's built-in delta filter::
 
     >>> import lzma
-    >>> filters = [dict(id=lzma.FILTER_DELTA, dist=4),
-    ...            dict(id=lzma.FILTER_LZMA2, preset=1)]
-    >>> compressor = zarr.LZMA(filters=filters)
+    >>> lzma_filters = [dict(id=lzma.FILTER_DELTA, dist=4),
+    ...                 dict(id=lzma.FILTER_LZMA2, preset=1)]
+    >>> compressor = zarr.LZMA(filters=lzma_filters)
     >>> z = zarr.array(np.arange(100000000, dtype='i4').reshape(10000, 10000),
     ...                chunks=(1000, 1000), compressor=compressor)
     >>> z
@@ -234,7 +236,28 @@ the delta filter::
       compressor: LZMA(format=1, check=-1, preset=None, filters=[{'dist': 4, 'id': 3}, {'preset': 1, 'id': 33}])
       store: dict
 
-To disable compression, set ``compressor=None`` when creating an array.
+The default compressor can be changed by setting the value of the
+``zarr.storage.default_compressor`` variable, e.g.::
+
+    >>> import zarr.storage
+    >>> # switch to using Zstandard via Blosc by default
+    ... zarr.storage.default_compressor = zarr.Blosc(cname='zstd', clevel=1, shuffle=1)
+    >>> z = zarr.zeros(100000000, chunks=1000000)
+    >>> z
+    Array((100000000,), float64, chunks=(1000000,), order=C)
+      nbytes: 762.9M; nbytes_stored: 302; ratio: 2649006.6; initialized: 0/100
+      compressor: Blosc(cname='zstd', clevel=1, shuffle=1)
+      store: dict
+    >>> # switch back to Blosc defaults
+    ... zarr.storage.default_compressor = zarr.Blosc()
+
+To disable compression, set ``compressor=None`` when creating an array, e.g.::
+
+    >>> z = zarr.zeros(100000000, chunks=1000000, compressor=None)
+    >>> z
+    Array((100000000,), float64, chunks=(1000000,), order=C)
+      nbytes: 762.9M; nbytes_stored: 209; ratio: 3827751.2; initialized: 0/100
+      store: dict
 
 .. _tutorial_filters:
 
@@ -321,8 +344,8 @@ This array is safe to read or write within a multi-threaded program.
 Zarr also provides support for process synchronization via file locking,
 provided that all processes have access to a shared file system. E.g.::
 
-    >>> synchronizer = zarr.ProcessSynchronizer('example.zarr')
-    >>> z = zarr.open_array('example.zarr', mode='w', shape=(10000, 10000),
+    >>> synchronizer = zarr.ProcessSynchronizer('example.sync')
+    >>> z = zarr.open_array('example', mode='w', shape=(10000, 10000),
     ...                     chunks=(1000, 1000), dtype='i4',
     ...                     synchronizer=synchronizer)
     >>> z

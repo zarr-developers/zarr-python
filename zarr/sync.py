@@ -5,6 +5,9 @@ from collections import defaultdict
 import os
 
 
+import fasteners
+
+
 class ThreadSynchronizer(object):
     """Provides synchronization using thread locks."""
 
@@ -17,9 +20,9 @@ class ThreadSynchronizer(object):
             return self.locks[item]
 
     def __getstate__(self):
-        return dict()
+        return True
 
-    def __setstate__(self, d):
+    def __setstate__(self, *args):
         # reinitialize from scratch
         self.__init__()
 
@@ -33,6 +36,7 @@ class ProcessSynchronizer(object):
     ----------
     path : string
         Path to a directory on a file system that is shared by all processes.
+        N.B., this should be a *different* path to where you store the array.
 
     """  # flake8: noqa
 
@@ -40,10 +44,8 @@ class ProcessSynchronizer(object):
         self.path = path
 
     def __getitem__(self, item):
-        import fasteners
-        lock = fasteners.InterProcessLock(
-            os.path.join(self.path, '%s.lock' % item)
-        )
+        path = os.path.join(self.path, item)
+        lock = fasteners.InterProcessLock(path)
         return lock
 
     # pickling and unpickling should be handled automatically

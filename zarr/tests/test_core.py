@@ -77,8 +77,11 @@ class TestArray(unittest.TestCase):
         eq(expect_nbytes_stored, z.nbytes_stored)
 
         # mess with store
-        z.store[z._key_prefix + 'foo'] = list(range(10))
-        eq(-1, z.nbytes_stored)
+        try:
+            z.store[z._key_prefix + 'foo'] = list(range(10))
+            eq(-1, z.nbytes_stored)
+        except TypeError:
+            pass
 
     def test_array_1d(self):
         a = np.arange(1050)
@@ -86,6 +89,7 @@ class TestArray(unittest.TestCase):
 
         # check properties
         eq(len(a), len(z))
+        eq(a.ndim, z.ndim)
         eq(a.shape, z.shape)
         eq(a.dtype, z.dtype)
         eq((100,), z.chunks)
@@ -172,6 +176,7 @@ class TestArray(unittest.TestCase):
 
         # check properties
         eq(len(a), len(z))
+        eq(a.ndim, z.ndim)
         eq(a.shape, z.shape)
         eq(a.dtype, z.dtype)
         eq((100, 2), z.chunks)
@@ -324,6 +329,11 @@ class TestArray(unittest.TestCase):
         eq((10,), z.chunks)
         assert_array_equal(a[:55], z[:])
 
+        # via shape setter
+        z.shape = (105,)
+        eq((105,), z.shape)
+        eq((105,), z[:].shape)
+
     def test_resize_2d(self):
 
         z = self.create_array(shape=(105, 105), chunks=(10, 10), dtype='i4',
@@ -362,6 +372,11 @@ class TestArray(unittest.TestCase):
         eq(np.dtype('i4'), z[:].dtype)
         eq((10, 10), z.chunks)
         assert_array_equal(a[:55, :1], z[:])
+
+        # via shape setter
+        z.shape = (105, 105)
+        eq((105, 105), z.shape)
+        eq((105, 105), z[:].shape)
 
     def test_append_1d(self):
 
@@ -474,6 +489,35 @@ class TestArray(unittest.TestCase):
             actual = repr(z)
             for l1, l2 in zip(expect.split('\n'), actual.split('\n')):
                 eq(l1, l2)
+
+    def test_np_ufuncs(self):
+        z = self.create_array(shape=(100, 100), chunks=(10, 10))
+        a = np.arange(10000).reshape(100, 100)
+        z[:] = a
+
+        eq(np.sum(a), np.sum(z))
+        assert_array_equal(np.sum(a, axis=0), np.sum(z, axis=0))
+        eq(np.mean(a), np.mean(z))
+        assert_array_equal(np.mean(a, axis=1), np.mean(z, axis=1))
+        condition = np.random.randint(0, 2, size=100, dtype=bool)
+        assert_array_equal(np.compress(condition, a, axis=0),
+                           np.compress(condition, z, axis=0))
+        indices = np.random.choice(100, size=50, replace=True)
+        assert_array_equal(np.take(a, indices, axis=1),
+                           np.take(z, indices, axis=1))
+
+        # use zarr array as indices or condition
+        zc = self.create_array(shape=condition.shape, dtype=condition.dtype,
+                               chunks=10, filters=None)
+        zc[:] = condition
+        assert_array_equal(np.compress(condition, a, axis=0),
+                           np.compress(zc, a, axis=0))
+        zi = self.create_array(shape=indices.shape, dtype=indices.dtype,
+                               chunks=10, filters=None)
+        zi[:] = indices
+        # this triggers __array__() call with dtype argument
+        assert_array_equal(np.take(a, indices, axis=1),
+                           np.take(a, zi, axis=1))
 
 
 class TestArrayWithPath(TestArray):
@@ -772,3 +816,41 @@ class TestArrayNoCacheMetadata(TestArray):
         kwargs.setdefault('compressor', Zlib(level=1))
         init_array(store, **kwargs)
         return Array(store, read_only=read_only, cache_metadata=False)
+
+    def test_cache_metadata(self):
+        a1 = self.create_array(shape=100, chunks=10, dtype='i1')
+        a2 = Array(a1.store, cache_metadata=True)
+        eq(a1.shape, a2.shape)
+        eq(a1.size, a2.size)
+        eq(a1.nbytes, a2.nbytes)
+        eq(a1.nchunks, a2.nchunks)
+
+        a2.resize(200)
+        eq((200,), a2.shape)
+        eq(200, a2.size)
+        eq(200, a2.nbytes)
+        eq(20, a2.nchunks)
+        eq(a1.shape, a2.shape)
+        eq(a1.size, a2.size)
+        eq(a1.nbytes, a2.nbytes)
+        eq(a1.nchunks, a2.nchunks)
+
+        a2.append(np.zeros(100))
+        eq((300,), a2.shape)
+        eq(300, a2.size)
+        eq(300, a2.nbytes)
+        eq(30, a2.nchunks)
+        eq(a1.shape, a2.shape)
+        eq(a1.size, a2.size)
+        eq(a1.nbytes, a2.nbytes)
+        eq(a1.nchunks, a2.nchunks)
+
+        a1.resize(400)
+        eq((400,), a1.shape)
+        eq(400, a1.size)
+        eq(400, a1.nbytes)
+        eq(40, a1.nchunks)
+        eq((300,), a2.shape)
+        eq(300, a2.size)
+        eq(300, a2.nbytes)
+        eq(30, a2.nchunks)

@@ -1,6 +1,17 @@
 Release notes
 =============
 
+.. _release_2.1.1:
+
+2.1.1
+-----
+
+Various minor improvements, including: ``Group`` objects support member access
+via dot notation (``__getattr__``); fixed metadata caching for ``Array.shape``
+property and derivatives; added ``Array.ndim`` property; fixed
+``Array.__array__`` method arguments; fixed bug in pickling ``Array`` state;
+fixed bug in pickling ``ThreadSynchronizer``.
+
 .. _release_2.1.0:
 
 2.1.0

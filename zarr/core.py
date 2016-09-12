@@ -105,6 +105,15 @@ class Array(object):
                                  synchronizer=synchronizer)
 
     def _load_metadata(self):
+        """(Re)load metadata from store."""
+        if self._synchronizer is None:
+            self._load_metadata_nosync()
+        else:
+            mkey = self._key_prefix + array_meta_key
+            with self._synchronizer[mkey]:
+                self._load_metadata_nosync()
+
+    def _load_metadata_nosync(self):
         try:
             mkey = self._key_prefix + array_meta_key
             meta_bytes = self._store[mkey]
@@ -131,10 +140,18 @@ class Array(object):
             # setup filters
             filters = meta['filters']
             if filters:
-                filters = [get_codec(f) for f in filters]
+                filters = [get_codec(config) for config in filters]
             self._filters = filters
 
-    def _flush_metadata(self):
+    def _refresh_metadata(self):
+        if not self._cache_metadata:
+            self._load_metadata()
+
+    def _refresh_metadata_nosync(self):
+        if not self._cache_metadata and not self._is_view:
+            self._load_metadata_nosync()
+
+    def _flush_metadata_nosync(self):
         if self._is_view:
             raise PermissionError('not permitted for views')
 
@@ -188,7 +205,14 @@ class Array(object):
     def shape(self):
         """A tuple of integers describing the length of each dimension of
         the array."""
+        # N.B., shape may change if array is resized, hence need to refresh
+        # metadata
+        self._refresh_metadata()
         return self._shape
+
+    @shape.setter
+    def shape(self, value):
+        self.resize(value)
 
     @property
     def chunks(self):
@@ -218,14 +242,14 @@ class Array(object):
         return self._order
 
     @property
-    def synchronizer(self):
-        """Object used to synchronize write access to the array."""
-        return self._synchronizer
-
-    @property
     def filters(self):
         """One or more codecs used to transform data prior to compression."""
         return self._filters
+
+    @property
+    def synchronizer(self):
+        """Object used to synchronize write access to the array."""
+        return self._synchronizer
 
     @property
     def attrs(self):
@@ -234,20 +258,39 @@ class Array(object):
         return self._attrs
 
     @property
+    def ndim(self):
+        """Number of dimensions."""
+        return len(self.shape)
+
+    @property
+    def _size(self):
+        return reduce(operator.mul, self._shape)
+
+    @property
     def size(self):
         """The total number of elements in the array."""
-        return reduce(operator.mul, self._shape)
+        # N.B., this property depends on shape, and shape may change if array
+        # is resized, hence need to refresh metadata
+        self._refresh_metadata()
+        return self._size
 
     @property
     def itemsize(self):
         """The size in bytes of each item in the array."""
-        return self._dtype.itemsize
+        return self.dtype.itemsize
+
+    @property
+    def _nbytes(self):
+        return self._size * self.itemsize
 
     @property
     def nbytes(self):
         """The total number of bytes that would be required to store the
         array without compression."""
-        return self.size * self.itemsize
+        # N.B., this property depends on shape, and shape may change if array
+        # is resized, hence need to refresh metadata
+        self._refresh_metadata()
+        return self._nbytes
 
     @property
     def nbytes_stored(self):
@@ -265,17 +308,26 @@ class Array(object):
                 return m + n
 
     @property
+    def _cdata_shape(self):
+        return tuple(int(np.ceil(s / c))
+                     for s, c in zip(self._shape, self._chunks))
+
+    @property
     def cdata_shape(self):
         """A tuple of integers describing the number of chunks along each
         dimension of the array."""
-        return tuple(
-            int(np.ceil(s / c)) for s, c in zip(self._shape, self._chunks)
-        )
+        self._refresh_metadata()
+        return self._cdata_shape
+
+    @property
+    def _nchunks(self):
+        return reduce(operator.mul, self._cdata_shape)
 
     @property
     def nchunks(self):
         """Total number of chunks."""
-        return reduce(operator.mul, self.cdata_shape)
+        self._refresh_metadata()
+        return self._nchunks
 
     @property
     def nchunks_initialized(self):
@@ -302,8 +354,11 @@ class Array(object):
             # store comparison
         )
 
-    def __array__(self):
-        return self[:]
+    def __array__(self, *args):
+        a = self[:]
+        if args:
+            a = a.astype(args[0])
+        return a
 
     def __len__(self):
         return self.shape[0]
@@ -509,7 +564,7 @@ class Array(object):
 
         # refresh metadata
         if not self._cache_metadata:
-            self._load_metadata()
+            self._load_metadata_nosync()
 
         # normalize selection
         selection = normalize_array_selection(key, self._shape)
@@ -743,57 +798,73 @@ class Array(object):
         return cdata
 
     def __repr__(self):
+        # N.B., __repr__ needs to be synchronized to ensure consistent view
+        # of metadata AND when retrieving nbytes_stored from filesystem storage
+        return self._synchronized_op(self._repr_nosync)
 
-        # refresh metadata
-        if not self._cache_metadata:
-            self._load_metadata()
+    def _repr_nosync(self):
 
         # main line
         r = '%s(' % type(self).__name__
         if self.name:
             r += '%s, ' % self.name
-        r += '%s, ' % str(self.shape)
-        r += '%s, ' % str(self.dtype)
-        r += 'chunks=%s, ' % str(self.chunks)
-        r += 'order=%s' % self.order
+        r += '%s, ' % str(self._shape)
+        r += '%s, ' % str(self._dtype)
+        r += 'chunks=%s, ' % str(self._chunks)
+        r += 'order=%s' % self._order
         r += ')'
 
         # storage size info
-        r += '\n  nbytes: %s' % human_readable_size(self.nbytes)
+        r += '\n  nbytes: %s' % human_readable_size(self._nbytes)
         if self.nbytes_stored > 0:
             r += '; nbytes_stored: %s' % human_readable_size(
                 self.nbytes_stored)
-            r += '; ratio: %.1f' % (self.nbytes / self.nbytes_stored)
+            r += '; ratio: %.1f' % (self._nbytes / self.nbytes_stored)
         r += '; initialized: %s/%s' % (self.nchunks_initialized,
-                                       self.nchunks)
+                                       self._nchunks)
 
         # filters
-        if self.filters:
+        if self._filters:
             # first line
-            r += '\n  filters: %r' % self.filters[0]
+            r += '\n  filters: %r' % self._filters[0]
             # subsequent lines
-            for f in self.filters[1:]:
+            for f in self._filters[1:]:
                 r += '\n           %r' % f
 
         # compressor
-        if self.compressor:
-            r += '\n  compressor: %r' % self.compressor
+        if self._compressor:
+            r += '\n  compressor: %r' % self._compressor
 
         # storage and synchronizer classes
-        r += '\n  store: %s' % type(self.store).__name__
-        if self.store != self.chunk_store:
-            r += '; chunk_store: %s' % type(self.chunk_store).__name__
-        if self.synchronizer is not None:
-            r += '; synchronizer: %s' % type(self.synchronizer).__name__
+        r += '\n  store: %s' % type(self._store).__name__
+        if self._store != self._chunk_store:
+            r += '; chunk_store: %s' % type(self._chunk_store).__name__
+        if self._synchronizer is not None:
+            r += '; synchronizer: %s' % type(self._synchronizer).__name__
 
         return r
 
     def __getstate__(self):
         return self._store, self._path, self._read_only, self._chunk_store, \
-               self._synchronizer
+               self._synchronizer, self._cache_metadata
 
     def __setstate__(self, state):
         self.__init__(*state)
+
+    def _synchronized_op(self, f, *args, **kwargs):
+
+        # no synchronization
+        if self._synchronizer is None:
+            self._refresh_metadata_nosync()
+            return f(*args, **kwargs)
+
+        else:
+            # synchronize on the array
+            mkey = self._key_prefix + array_meta_key
+            with self._synchronizer[mkey]:
+                self._refresh_metadata_nosync()
+                result = f(*args, **kwargs)
+            return result
 
     def _write_op(self, f, *args, **kwargs):
 
@@ -801,27 +872,7 @@ class Array(object):
         if self._read_only:
             err_read_only()
 
-        # synchronization
-        if self._synchronizer is None:
-
-            # refresh metadata
-            if not self._cache_metadata:
-                self._load_metadata()
-
-            return f(*args, **kwargs)
-
-        else:
-
-            # synchronize on the array
-            mkey = self._key_prefix + array_meta_key
-
-            with self._synchronizer[mkey]:
-
-                # refresh metadata
-                if not self._cache_metadata:
-                    self._load_metadata()
-
-                return f(*args, **kwargs)
+        return self._synchronized_op(f, *args, **kwargs)
 
     def resize(self, *args):
         """Change the shape of the array by growing or shrinking one or more
@@ -865,10 +916,11 @@ class Array(object):
         # normalize new shape argument
         old_shape = self._shape
         new_shape = normalize_resize_args(old_shape, *args)
+        old_cdata_shape = self._cdata_shape
 
         # update metadata
         self._shape = new_shape
-        self._flush_metadata()
+        self._flush_metadata_nosync()
 
         # determine the new number and arrangement of chunks
         chunks = self._chunks
@@ -876,13 +928,16 @@ class Array(object):
                                 for s, c in zip(new_shape, chunks))
 
         # remove any chunks not within range
-        for key in listdir(self._chunk_store, self._path):
-            if key not in [array_meta_key, attrs_key]:
-                cidx = map(int, key.split('.'))
-                if all(i < c for i, c in zip(cidx, new_cdata_shape)):
-                    pass  # keep the chunk
-                else:
-                    del self._chunk_store[self._key_prefix + key]
+        for cidx in itertools.product(*[range(n) for n in old_cdata_shape]):
+            if all(i < c for i, c in zip(cidx, new_cdata_shape)):
+                pass  # keep the chunk
+            else:
+                key = self._chunk_key(cidx)
+                try:
+                    del self._chunk_store[key]
+                except KeyError:
+                    # chunk not initialized
+                    pass
 
     def append(self, data, axis=0):
         """Append `data` to `axis`.
@@ -893,6 +948,10 @@ class Array(object):
             Data to be appended.
         axis : int
             Axis along which to append.
+
+        Returns
+        -------
+        new_shape : tuple
 
         Notes
         -----
@@ -911,12 +970,14 @@ class Array(object):
           compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
           store: dict
         >>> z.append(a)
+        (20000, 1000)
         >>> z
         Array((20000, 1000), int32, chunks=(1000, 100), order=C)
           nbytes: 76.3M; nbytes_stored: 3.8M; ratio: 20.3; initialized: 200/200
           compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
           store: dict
         >>> z.append(np.vstack([a, a]), axis=1)
+        (20000, 2000)
         >>> z
         Array((20000, 2000), int32, chunks=(1000, 100), order=C)
           nbytes: 152.6M; nbytes_stored: 7.5M; ratio: 20.3; initialized: 400/400
@@ -959,6 +1020,8 @@ class Array(object):
             for i in range(len(self._shape))
         )
         self[append_selection] = data
+
+        return new_shape
 
     def view(self, shape=None, chunks=None, dtype=None,
              fill_value=None, filters=None, read_only=None,
