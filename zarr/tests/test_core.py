@@ -505,12 +505,12 @@ class TestArray(unittest.TestCase):
 
         # use zarr array as indices or condition
         zc = self.create_array(shape=condition.shape, dtype=condition.dtype,
-                               chunks=10)
+                               chunks=10, filters=None)
         zc[:] = condition
         assert_array_equal(np.compress(condition, a, axis=0),
                            np.compress(zc, a, axis=0))
         zi = self.create_array(shape=indices.shape, dtype=indices.dtype,
-                               chunks=10)
+                               chunks=10, filters=None)
         zi[:] = indices
         assert_array_equal(np.take(a, indices, axis=1),
                            np.take(a, zi, axis=1))
