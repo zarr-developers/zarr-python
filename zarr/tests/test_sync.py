@@ -78,7 +78,7 @@ class MixinArraySyncTests(object):
 
         # parallel setitem
         future = pool.map_async(_set_arange, zip([arr] * n, range(n)))
-        results = future.get(30)
+        results = future.get(60)
         print(results)
         eq(list(range(n)), sorted(results))
         assert_array_equal(np.arange(n * 1000), arr[:])
@@ -93,7 +93,7 @@ class MixinArraySyncTests(object):
 
         # parallel append
         future = pool.map_async(_append, zip([arr] * n, range(n)))
-        results = future.get(30)
+        results = future.get(60)
         print(results)
         eq([((i+2)*1000,) for i in range(n)], sorted(results))
         eq(((n+1)*1000,), arr.shape)
@@ -183,7 +183,7 @@ class MixinGroupSyncTests(object):
         n = 100
         results = pool.map_async(
             _create_group, zip([g] * n, [str(i) for i in range(n)]))
-        print(results.get(30))
+        print(results.get(60))
 
         eq(n, len(g))
 
@@ -197,7 +197,7 @@ class MixinGroupSyncTests(object):
         n = 100
         results = pool.map_async(
             _require_group, zip([g] * n, [str(i//10) for i in range(n)]))
-        print(results.get(30))
+        print(results.get(60))
 
         eq(n//10, len(g))
 

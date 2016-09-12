@@ -97,7 +97,12 @@ class Array(object):
         self._is_view = False
 
         # initialize metadata
-        self._load_metadata()
+        if self._synchronizer is None:
+            self._load_metadata()
+        else:
+            mkey = self._key_prefix + array_meta_key
+            with self._synchronizer[mkey]:
+                self._load_metadata()
 
         # initialize attributes
         akey = self._key_prefix + attrs_key
