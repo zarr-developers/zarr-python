@@ -309,9 +309,8 @@ class Array(object):
 
     @property
     def _cdata_shape(self):
-        return tuple(
-            int(np.ceil(s / c)) for s, c in zip(self._shape, self._chunks)
-        )
+        return tuple(int(np.ceil(s / c))
+                     for s, c in zip(self._shape, self._chunks))
 
     @property
     def cdata_shape(self):
@@ -917,6 +916,7 @@ class Array(object):
         # normalize new shape argument
         old_shape = self._shape
         new_shape = normalize_resize_args(old_shape, *args)
+        old_cdata_shape = self._cdata_shape
 
         # update metadata
         self._shape = new_shape
@@ -928,17 +928,16 @@ class Array(object):
                                 for s, c in zip(new_shape, chunks))
 
         # remove any chunks not within range
-        for key in listdir(self._chunk_store, self._path):
-            if key not in [array_meta_key, attrs_key]:
+        for cidx in itertools.product(*[range(n) for n in old_cdata_shape]):
+            if all(i < c for i, c in zip(cidx, new_cdata_shape)):
+                pass  # keep the chunk
+            else:
+                key = self._chunk_key(cidx)
                 try:
-                    cidx = list(map(int, key.split('.')))
-                except ValueError as e:
-                    raise RuntimeError('unexpected key: %r' % key)
-                else:
-                    if all(i < c for i, c in zip(cidx, new_cdata_shape)):
-                        pass  # keep the chunk
-                    else:
-                        del self._chunk_store[self._key_prefix + key]
+                    del self._chunk_store[key]
+                except KeyError:
+                    # chunk not initialized
+                    pass
 
     def append(self, data, axis=0):
         """Append `data` to `axis`.
