@@ -4,8 +4,13 @@ from tempfile import mkdtemp
 import atexit
 import json
 import shutil
+from multiprocessing.pool import ThreadPool, Pool as ProcessPool
+from multiprocessing import cpu_count
+import os
+import tempfile
 
 
+import numpy as np
 from nose.tools import eq_ as eq
 
 
@@ -14,7 +19,7 @@ from zarr.tests.test_core import TestArray
 from zarr.sync import ThreadSynchronizer, ProcessSynchronizer
 from zarr.core import Array
 from zarr.attrs import Attributes
-from zarr.storage import init_array
+from zarr.storage import init_array, TempStore
 from zarr.compat import PY2
 from zarr.codecs import Zlib
 
@@ -41,15 +46,36 @@ class TestProcessSynchronizedAttributes(TestAttributes):
                           read_only=read_only)
 
 
-class TestThreadSynchronizedArray(TestArray):
+class MixinArraySyncTests(object):
 
-    def create_array(self, store=None, path=None, read_only=False,
-                     chunk_store=None, **kwargs):
-        if store is None:
-            store = dict()
-        init_array(store, path=path, chunk_store=chunk_store, **kwargs)
-        return Array(store, path=path, synchronizer=ThreadSynchronizer(),
-                     read_only=read_only, chunk_store=chunk_store)
+    def test_parallel_append(self):
+
+        # setup
+        arr = self.create_array(shape=1000, chunks=100, dtype='i4')
+        arr[:] = 0
+        pool = self.create_pool(cpu_count())
+
+        def f(i):
+            x = np.empty(1000, dtype='i4')
+            x[:] = i
+            arr.append(x)
+
+        pool.map_async(f, range(1, 40, 1))
+
+        pool.close()
+        pool.join()
+        pool.terminate()
+
+        eq((40000,), arr.shape)
+
+
+class TestThreadSynchronizedArray(TestArray, MixinArraySyncTests):
+
+    def create_array(self, read_only=False, **kwargs):
+        store = dict()
+        init_array(store, **kwargs)
+        return Array(store, synchronizer=ThreadSynchronizer(),
+                     read_only=read_only)
 
     def test_repr(self):
         if not PY2:
@@ -66,20 +92,19 @@ class TestThreadSynchronizedArray(TestArray):
             for l1, l2 in zip(expect.split('\n'), actual.split('\n')):
                 eq(l1, l2)
 
+    def create_pool(self, size):
+        pool = ThreadPool(size)
+        return pool
 
-class TestProcessSynchronizedArray(TestArray):
 
-    def create_array(self, store=None, path=None, read_only=False,
-                     chunk_store=None, **kwargs):
-        if store is None:
-            store = dict()
-        init_array(store, path=path, chunk_store=chunk_store, **kwargs)
-        sync_path = mkdtemp()
-        atexit.register(shutil.rmtree, sync_path)
-        synchronizer = ProcessSynchronizer(sync_path)
-        return Array(store, path=path, synchronizer=synchronizer,
-                     read_only=read_only, chunk_store=chunk_store,
-                     cache_metadata=False)
+class TestProcessSynchronizedArray(TestArray, MixinArraySyncTests):
+
+    def create_array(self, read_only=False, **kwargs):
+        store = TempStore()
+        init_array(store, **kwargs)
+        synchronizer = ProcessSynchronizer(tempfile.TemporaryDirectory().name)
+        return Array(store, synchronizer=synchronizer,
+                     read_only=read_only, cache_metadata=False)
 
     def test_repr(self):
         if not PY2:
@@ -90,8 +115,12 @@ class TestProcessSynchronizedArray(TestArray):
             expect = """Array((100,), float32, chunks=(10,), order=C)
   nbytes: 400; nbytes_stored: 245; ratio: 1.6; initialized: 0/10
   compressor: Zlib(level=1)
-  store: dict; synchronizer: ProcessSynchronizer
+  store: TempStore; synchronizer: ProcessSynchronizer
 """
             actual = repr(z)
             for l1, l2 in zip(expect.split('\n'), actual.split('\n')):
                 eq(l1, l2)
+
+    def create_pool(self, size):
+        pool = ProcessPool(size)
+        return pool

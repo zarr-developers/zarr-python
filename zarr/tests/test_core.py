@@ -77,8 +77,11 @@ class TestArray(unittest.TestCase):
         eq(expect_nbytes_stored, z.nbytes_stored)
 
         # mess with store
-        z.store[z._key_prefix + 'foo'] = list(range(10))
-        eq(-1, z.nbytes_stored)
+        try:
+            z.store[z._key_prefix + 'foo'] = list(range(10))
+            eq(-1, z.nbytes_stored)
+        except TypeError:
+            pass
 
     def test_array_1d(self):
         a = np.arange(1050)
