@@ -43,15 +43,12 @@ Alternatively, install Zarr via conda::
     $ conda install -c conda-forge zarr
   
 Zarr includes a C extension providing integration with the Blosc_
-library. Installing on any operating system via conda or installing on
-Windows via pip will install a pre-compiled binary
-distribution. However, if you have a newer CPU that supports the AVX2
-instruction set (e.g., Intel Haswell, Broadwell or Skylake) then
-compiling from source is preferable as the Blosc library includes some
-optimisations for AVX2::
+library. Installing via conda will install a pre-compiled binary distribution. 
+However, if you have a newer CPU that supports the AVX2 instruction set (e.g., 
+Intel Haswell, Broadwell or Skylake) then installing via pip is preferable, 
+because this will compile the Blosc library from source with optimisations 
+for AVX2.
   
-    $ pip install --no-binary=:all: zarr
- 
 To work with Zarr source code in development, install from GitHub::
 
     $ git clone --recursive https://github.com/alimanfoo/zarr.git
