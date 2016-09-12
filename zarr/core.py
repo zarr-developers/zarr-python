@@ -148,7 +148,7 @@ class Array(object):
             self._load_metadata()
 
     def _refresh_metadata_nosync(self):
-        if not self._cache_metadata:
+        if not self._cache_metadata and not self._is_view:
             self._load_metadata_nosync()
 
     def _flush_metadata_nosync(self):
@@ -205,6 +205,8 @@ class Array(object):
     def shape(self):
         """A tuple of integers describing the length of each dimension of
         the array."""
+        # N.B., shape may change if array is resized, hence need to refresh
+        # metadata
         self._refresh_metadata()
         return self._shape
 
@@ -267,6 +269,8 @@ class Array(object):
     @property
     def size(self):
         """The total number of elements in the array."""
+        # N.B., this property depends on shape, and shape may change if array
+        # is resized, hence need to refresh metadata
         self._refresh_metadata()
         return self._size
 
@@ -283,6 +287,8 @@ class Array(object):
     def nbytes(self):
         """The total number of bytes that would be required to store the
         array without compression."""
+        # N.B., this property depends on shape, and shape may change if array
+        # is resized, hence need to refresh metadata
         self._refresh_metadata()
         return self._nbytes
 
@@ -559,7 +565,7 @@ class Array(object):
 
         # refresh metadata
         if not self._cache_metadata:
-            self._load_metadata()
+            self._load_metadata_nosync()
 
         # normalize selection
         selection = normalize_array_selection(key, self._shape)
@@ -793,7 +799,11 @@ class Array(object):
         return cdata
 
     def __repr__(self):
-        self._refresh_metadata()
+        # N.B., __repr__ needs to be synchronized to ensure consistent view
+        # of metadata AND when retrieving nbytes_stored from filesystem storage
+        return self._synchronized_op(self._repr_nosync)
+
+    def _repr_nosync(self):
 
         # main line
         r = '%s(' % type(self).__name__
@@ -842,13 +852,9 @@ class Array(object):
     def __setstate__(self, state):
         self.__init__(*state)
 
-    def _write_op(self, f, *args, **kwargs):
+    def _synchronized_op(self, f, *args, **kwargs):
 
-        # guard condition
-        if self._read_only:
-            err_read_only()
-
-        # synchronization
+        # no synchronization
         if self._synchronizer is None:
             self._refresh_metadata_nosync()
             return f(*args, **kwargs)
@@ -858,7 +864,16 @@ class Array(object):
             mkey = self._key_prefix + array_meta_key
             with self._synchronizer[mkey]:
                 self._refresh_metadata_nosync()
-                return f(*args, **kwargs)
+                result = f(*args, **kwargs)
+            return result
+
+    def _write_op(self, f, *args, **kwargs):
+
+        # guard condition
+        if self._read_only:
+            err_read_only()
+
+        return self._synchronized_op(f, *args, **kwargs)
 
     def resize(self, *args):
         """Change the shape of the array by growing or shrinking one or more
@@ -915,11 +930,15 @@ class Array(object):
         # remove any chunks not within range
         for key in listdir(self._chunk_store, self._path):
             if key not in [array_meta_key, attrs_key]:
-                cidx = map(int, key.split('.'))
-                if all(i < c for i, c in zip(cidx, new_cdata_shape)):
-                    pass  # keep the chunk
+                try:
+                    cidx = list(map(int, key.split('.')))
+                except ValueError as e:
+                    raise RuntimeError('unexpected key: %r' % key)
                 else:
-                    del self._chunk_store[self._key_prefix + key]
+                    if all(i < c for i, c in zip(cidx, new_cdata_shape)):
+                        pass  # keep the chunk
+                    else:
+                        del self._chunk_store[self._key_prefix + key]
 
     def append(self, data, axis=0):
         """Append `data` to `axis`.

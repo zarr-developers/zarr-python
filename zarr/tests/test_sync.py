@@ -4,10 +4,12 @@ from tempfile import mkdtemp
 import atexit
 import json
 import shutil
-import os
-from multiprocessing.pool import ThreadPool, Pool as ProcessPool
+from multiprocessing.pool import ThreadPool
+from multiprocessing import Pool as ProcessPool
 from multiprocessing import cpu_count
 import tempfile
+import traceback
+import sys
 
 
 import numpy as np
@@ -50,20 +52,28 @@ class TestAttributesProcessSynchronizer(TestAttributes):
 
 
 def _append(arg):
-    z, i = arg
-    import numpy as np
-    x = np.empty(1000, dtype='i4')
-    x[:] = i
-    shape = z.append(x)
-    return shape
+    try:
+        z, i = arg
+        import numpy as np
+        x = np.empty(1000, dtype='i4')
+        x[:] = i
+        shape = z.append(x)
+        return shape
+    except Exception as e:
+        traceback.print_exc(file=sys.stderr)
+        raise
 
 
 def _set_arange(arg):
-    z, i = arg
-    import numpy as np
-    x = np.arange(i*1000, (i*1000)+1000, 1)
-    z[i*1000:(i*1000)+1000] = x
-    return i
+    try:
+        z, i = arg
+        import numpy as np
+        x = np.arange(i*1000, (i*1000)+1000, 1)
+        z[i*1000:(i*1000)+1000] = x
+        return i
+    except Exception as e:
+        traceback.print_exc(file=sys.stderr)
+        raise
 
 
 class MixinArraySyncTests(object):
@@ -77,14 +87,14 @@ class MixinArraySyncTests(object):
         pool = self.create_pool()
 
         # parallel setitem
-        future = pool.map_async(_set_arange, zip([arr] * n, range(n)))
-        results = sorted(future.get(60))
-        pool.close()
-        pool.terminate()
+        results = pool.map(_set_arange, zip([arr] * n, range(n)), chunksize=1)
+        results = sorted(results)
 
         print(results)
         eq(list(range(n)), results)
         assert_array_equal(np.arange(n * 1000), arr[:])
+
+        pool.terminate()
 
     def test_parallel_append(self):
         n = 100
@@ -95,14 +105,14 @@ class MixinArraySyncTests(object):
         pool = self.create_pool()
 
         # parallel append
-        future = pool.map_async(_append, zip([arr] * n, range(n)))
-        results = sorted(future.get(60))
-        pool.close()
-        pool.terminate()
+        results = pool.map(_append, zip([arr] * n, range(n)), chunksize=1)
+        results = sorted(results)
 
         print(results)
         eq([((i+2)*1000,) for i in range(n)], results)
         eq(((n+1)*1000,), arr.shape)
+
+        pool.terminate()
 
 
 class TestArrayWithThreadSynchronizer(TestArray, MixinArraySyncTests):
@@ -136,12 +146,13 @@ class TestArrayWithThreadSynchronizer(TestArray, MixinArraySyncTests):
 class TestArrayWithProcessSynchronizer(TestArray, MixinArraySyncTests):
 
     def create_array(self, read_only=False, **kwargs):
-        path = 'test_sync'
-        if os.path.exists(path):
-            shutil.rmtree(path)
+        path = tempfile.mkdtemp()
+        atexit.register(atexit_rmtree, path)
         store = DirectoryStore(path)
         init_array(store, **kwargs)
-        synchronizer = ProcessSynchronizer('test_sync_locks')
+        sync_path = tempfile.mkdtemp()
+        atexit.register(atexit_rmtree, sync_path)
+        synchronizer = ProcessSynchronizer(sync_path)
         return Array(store, synchronizer=synchronizer,
                      read_only=read_only, cache_metadata=False)
 
@@ -161,7 +172,7 @@ class TestArrayWithProcessSynchronizer(TestArray, MixinArraySyncTests):
                 eq(l1, l2)
 
     def create_pool(self):
-        pool = ProcessPool(cpu_count())
+        pool = ProcessPool(processes=cpu_count())
         return pool
 
 
@@ -187,14 +198,19 @@ class MixinGroupSyncTests(object):
 
         # parallel create group
         n = 100
-        future = pool.map_async(
-            _create_group, zip([g] * n, [str(i) for i in range(n)]))
-        results = sorted(future.get(60))
+        results = pool.map(
+            _create_group,
+            zip([g] * n, [str(i) for i in range(n)]),
+            chunksize=1
+        )
+        results = sorted(results)
         pool.close()
         pool.terminate()
 
         print(results)
         eq(n, len(g))
+
+        pool.terminate()
 
     def test_parallel_require_group(self):
 
@@ -204,14 +220,19 @@ class MixinGroupSyncTests(object):
 
         # parallel require group
         n = 100
-        future = pool.map_async(
-            _require_group, zip([g] * n, [str(i//10) for i in range(n)]))
-        results = sorted(future.get(60))
+        results = pool.map(
+            _require_group,
+            zip([g] * n, [str(i//10) for i in range(n)]),
+            chunksize=1
+        )
+        results = sorted(results)
         pool.close()
         pool.terminate()
 
         print(results)
         eq(n//10, len(g))
+
+        pool.terminate()
 
 
 class TestGroupWithThreadSynchronizer(TestGroup, MixinGroupSyncTests):
@@ -247,9 +268,8 @@ class TestGroupWithThreadSynchronizer(TestGroup, MixinGroupSyncTests):
 class TestGroupWithProcessSynchronizer(TestGroup, MixinGroupSyncTests):
 
     def create_store(self):
-        path = 'test_sync'
-        if os.path.exists(path):
-            shutil.rmtree(path)
+        path = tempfile.mkdtemp()
+        atexit.register(atexit_rmtree, path)
         store = DirectoryStore(path)
         return store, None
 
@@ -258,13 +278,15 @@ class TestGroupWithProcessSynchronizer(TestGroup, MixinGroupSyncTests):
         if store is None:
             store, chunk_store = self.create_store()
         init_group(store, path=path, chunk_store=chunk_store)
-        synchronizer = ProcessSynchronizer('test_sync_locks')
+        sync_path = tempfile.mkdtemp()
+        atexit.register(atexit_rmtree, sync_path)
+        synchronizer = ProcessSynchronizer(sync_path)
         g = Group(store, path=path, read_only=read_only,
                   synchronizer=synchronizer, chunk_store=chunk_store)
         return g
 
     def create_pool(self):
-        pool = ProcessPool(cpu_count())
+        pool = ProcessPool(processes=cpu_count())
         return pool
 
     def test_group_repr(self):

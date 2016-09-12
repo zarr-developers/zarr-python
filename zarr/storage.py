@@ -17,9 +17,9 @@ from zarr.util import normalize_shape, normalize_chunks, normalize_order, \
 from zarr.meta import encode_array_metadata, encode_group_metadata
 from zarr.compat import PY2, binary_type
 from zarr.codecs import codec_registry
-from zarr.errors import PermissionError, err_contains_group, \
-    err_contains_array, err_path_not_found, err_bad_compressor, \
-    err_fspath_exists_notdir, err_read_only
+from zarr.errors import err_contains_group, err_contains_array, \
+    err_path_not_found, err_bad_compressor, err_fspath_exists_notdir, \
+    err_read_only
 
 
 array_meta_key = '.zarray'
