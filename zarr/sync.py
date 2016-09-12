@@ -33,6 +33,7 @@ class ProcessSynchronizer(object):
     ----------
     path : string
         Path to a directory on a file system that is shared by all processes.
+        N.B., this should be a *different* path to where you store the array.
 
     """  # flake8: noqa
 
@@ -42,7 +43,7 @@ class ProcessSynchronizer(object):
     def __getitem__(self, item):
         import fasteners
         lock = fasteners.InterProcessLock(
-            os.path.join(self.path, '%s.lock' % item)
+            os.path.join(self.path, item)
         )
         return lock
 

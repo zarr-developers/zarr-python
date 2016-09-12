@@ -342,8 +342,8 @@ This array is safe to read or write within a multi-threaded program.
 Zarr also provides support for process synchronization via file locking,
 provided that all processes have access to a shared file system. E.g.::
 
-    >>> synchronizer = zarr.ProcessSynchronizer('example.zarr')
-    >>> z = zarr.open_array('example.zarr', mode='w', shape=(10000, 10000),
+    >>> synchronizer = zarr.ProcessSynchronizer('example.sync')
+    >>> z = zarr.open_array('example', mode='w', shape=(10000, 10000),
     ...                     chunks=(1000, 1000), dtype='i4',
     ...                     synchronizer=synchronizer)
     >>> z
