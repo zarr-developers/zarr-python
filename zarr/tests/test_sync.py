@@ -20,7 +20,7 @@ from zarr.tests.test_hierarchy import TestGroup
 from zarr.sync import ThreadSynchronizer, ProcessSynchronizer
 from zarr.core import Array
 from zarr.attrs import Attributes
-from zarr.storage import init_array, TempStore, init_group, atexit_rmtree
+from zarr.storage import init_array, DirectoryStore, init_group, atexit_rmtree
 from zarr.compat import PY2
 from zarr.codecs import Zlib
 from zarr.hierarchy import Group
@@ -79,7 +79,7 @@ def _set_arange(arg):
 class MixinArraySyncTests(object):
 
     def test_parallel_setitem(self):
-        n = 99
+        n = 200
 
         # setup
         arr = self.create_array(shape=n * 1000, chunks=999, dtype='i4')
@@ -87,13 +87,14 @@ class MixinArraySyncTests(object):
         pool = self.create_pool()
 
         # parallel setitem
-        results = pool.map_async(_set_arange, zip([arr] * n, range(n)))
-        print(results.get(20))
-
+        future = pool.map_async(_set_arange, zip([arr] * n, range(n)))
+        results = future.get(30)
+        print(results)
+        eq(list(range(n)), sorted(results))
         assert_array_equal(np.arange(n * 1000), arr[:])
 
     def test_parallel_append(self):
-        n = 99
+        n = 200
 
         # setup
         arr = self.create_array(shape=1000, chunks=999, dtype='i4')
@@ -101,9 +102,10 @@ class MixinArraySyncTests(object):
         pool = self.create_pool()
 
         # parallel append
-        results = pool.map_async(_append, zip([arr] * n, range(n)))
-        print(results.get(20))
-
+        future = pool.map_async(_append, zip([arr] * n, range(n)))
+        results = future.get(30)
+        print(results)
+        eq([((i+2)*1000,) for i in range(n)], sorted(results))
         eq(((n+1)*1000,), arr.shape)
 
 
@@ -138,7 +140,7 @@ class TestArrayWithThreadSynchronizer(TestArray, MixinArraySyncTests):
 class TestArrayWithProcessSynchronizer(TestArray, MixinArraySyncTests):
 
     def create_array(self, read_only=False, **kwargs):
-        store = TempStore()
+        store = DirectoryStore(TemporaryDirectory().name)
         init_array(store, **kwargs)
         synchronizer = ProcessSynchronizer(TemporaryDirectory().name)
         return Array(store, synchronizer=synchronizer,
@@ -153,7 +155,7 @@ class TestArrayWithProcessSynchronizer(TestArray, MixinArraySyncTests):
             expect = """Array((100,), float32, chunks=(10,), order=C)
   nbytes: 400; nbytes_stored: 245; ratio: 1.6; initialized: 0/10
   compressor: Zlib(level=1)
-  store: TempStore; synchronizer: ProcessSynchronizer
+  store: DirectoryStore; synchronizer: ProcessSynchronizer
 """
             actual = repr(z)
             for l1, l2 in zip(expect.split('\n'), actual.split('\n')):
@@ -185,10 +187,10 @@ class MixinGroupSyncTests(object):
         pool = self.create_pool()
 
         # parallel create group
-        n = 1000
+        n = 100
         results = pool.map_async(
             _create_group, zip([g] * n, [str(i) for i in range(n)]))
-        print(results.get(20))
+        print(results.get(30))
 
         eq(n, len(g))
 
@@ -199,10 +201,10 @@ class MixinGroupSyncTests(object):
         pool = self.create_pool()
 
         # parallel require group
-        n = 1000
+        n = 100
         results = pool.map_async(
             _require_group, zip([g] * n, [str(i//10) for i in range(n)]))
-        print(results.get(20))
+        print(results.get(30))
 
         eq(n//10, len(g))
 
@@ -240,12 +242,12 @@ class TestGroupWithThreadSynchronizer(TestGroup, MixinGroupSyncTests):
 class TestGroupWithProcessSynchronizer(TestGroup, MixinGroupSyncTests):
 
     def create_store(self):
-        return TempStore(), None
+        return DirectoryStore(TemporaryDirectory().name), None
 
     def create_group(self, store=None, path=None, read_only=False,
                      chunk_store=None, synchronizer=None):
         if store is None:
-            store = TempStore()
+            store = DirectoryStore(TemporaryDirectory().name)
             chunk_store = None
         init_group(store, path=path, chunk_store=chunk_store)
         synchronizer = ProcessSynchronizer(TemporaryDirectory().name)
@@ -261,7 +263,7 @@ class TestGroupWithProcessSynchronizer(TestGroup, MixinGroupSyncTests):
         if not PY2:
             g = self.create_group()
             expect = 'Group(/, 0)\n' \
-                     '  store: TempStore; synchronizer: ProcessSynchronizer'
+                     '  store: DirectoryStore; synchronizer: ProcessSynchronizer'
             actual = repr(g)
             for l1, l2 in zip(expect.split('\n'), actual.split('\n')):
                 eq(l1, l2)
