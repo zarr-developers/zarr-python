@@ -58,7 +58,7 @@ To work with Zarr source code in development, install from GitHub::
 To verify that Zarr has been fully installed (including the Blosc
 extension) run the test suite::
 
-    $ pip install nose zict heapdict
+    $ pip install nose
     $ python -m nose -v zarr
   
 Contents
