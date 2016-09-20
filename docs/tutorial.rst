@@ -5,7 +5,7 @@ Tutorial
 
 Zarr provides classes and functions for working with N-dimensional
 arrays that behave like NumPy arrays but whose data is divided into
-chunks and compressed. If you are already familiar with HDF5 datasets
+chunks and compressed. If you are already familiar with HDF5
 then Zarr arrays provide similar functionality, but with some
 additional flexibility.
 
@@ -98,7 +98,7 @@ enabling persistence of data between sessions. For example::
 
 The array above will store its configuration metadata and all
 compressed chunk data in a directory called 'example.zarr' relative to
-the current working directory. The :func:`zarr.creation.open` function
+the current working directory. The :func:`zarr.creation.open_array` function
 provides a convenient way to create a new persistent array or continue
 working with an existing array. Note that there is no need to close an
 array, and data are automatically flushed to disk whenever an array is
@@ -113,7 +113,7 @@ data, e.g.::
 
 Check that the data have been written and can be read again::
 
-    >>> z2 = zarr.open('example.zarr', mode='r')
+    >>> z2 = zarr.open_array('example.zarr', mode='r')
     >>> z2
     Array((10000, 10000), int32, chunks=(1000, 1000), order=C)
       nbytes: 381.5M; nbytes_stored: 1.9M; ratio: 204.5; initialized: 100/100
@@ -413,7 +413,7 @@ Groups can also contain arrays, e.g.::
 
 Arrays are known as "datasets" in HDF5 terminology. For compatibility with
 h5py, Zarr groups also implement the :func:`zarr.hierarchy.Group.create_dataset`
-method, e.g.::
+and :func:`zarr.hierarchy.Group.require_dataset` methods, e.g.::
 
     >>> z = bar_group.create_dataset('quux', shape=(10000, 10000),
     ...                              chunks=(1000, 1000), dtype='i4',
@@ -521,7 +521,7 @@ Storage alternatives
 ~~~~~~~~~~~~~~~~~~~~
 
 Zarr can use any object that implements the ``MutableMapping`` interface as
-the store for an array.
+the store for a group or an array.
 
 Here is an example storing an array directly into a Zip file::
 
@@ -612,7 +612,7 @@ to find a compromise, e.g.::
 
 If you are feeling lazy, you can let Zarr guess a chunk shape for your data,
 although please note that the algorithm for guessing a chunk shape is based on
-simple heuristics and may by far from optimal. E.g.::
+simple heuristics and may be far from optimal. E.g.::
 
     >>> z4 = zarr.zeros((10000, 10000), dtype='i4')
     >>> z4.chunks
