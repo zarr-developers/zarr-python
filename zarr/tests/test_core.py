@@ -299,6 +299,16 @@ class TestArray(unittest.TestCase):
             actual = z[:]
             assert_array_equal(a, actual)
 
+    def test_setitem_data_not_shared(self):
+        # check that data don't end up being shared with another array
+        # https://github.com/alimanfoo/zarr/issues/79
+        z = self.create_array(shape=20, chunks=10, dtype='i4')
+        a = np.arange(20, dtype='i4')
+        z[:] = a
+        assert_array_equal(z[:], np.arange(20, dtype='i4'))
+        a[:] = 0
+        assert_array_equal(z[:], np.arange(20, dtype='i4'))
+
     def test_resize_1d(self):
 
         z = self.create_array(shape=105, chunks=10, dtype='i4',

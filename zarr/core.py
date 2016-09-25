@@ -493,7 +493,7 @@ class Array(object):
         else:
             return out[()]
 
-    def __setitem__(self, key, value):
+    def __setitem__(self, item, value):
         """Modify data for some portion of the array.
 
         Examples
@@ -567,7 +567,7 @@ class Array(object):
             self._load_metadata_nosync()
 
         # normalize selection
-        selection = normalize_array_selection(key, self._shape)
+        selection = normalize_array_selection(item, self._shape)
 
         # check value shape
         expected_shape = tuple(
@@ -674,14 +674,14 @@ class Array(object):
                 else:
                     dest[()] = tmp
 
-    def _chunk_setitem(self, cidx, key, value):
+    def _chunk_setitem(self, cidx, item, value):
         """Replace part or whole of a chunk.
 
         Parameters
         ----------
         cidx : tuple of ints
             Indices of the chunk.
-        key : tuple of slices
+        item : tuple of slices
             Location of region within the chunk.
         value : scalar or ndarray
             Value to set.
@@ -690,19 +690,19 @@ class Array(object):
 
         # synchronization
         if self._synchronizer is None:
-            self._chunk_setitem_nosync(cidx, key, value)
+            self._chunk_setitem_nosync(cidx, item, value)
         else:
             # synchronize on the chunk
             ckey = self._chunk_key(cidx)
             with self._synchronizer[ckey]:
-                self._chunk_setitem_nosync(cidx, key, value)
+                self._chunk_setitem_nosync(cidx, item, value)
 
-    def _chunk_setitem_nosync(self, cidx, key, value):
+    def _chunk_setitem_nosync(self, cidx, item, value):
 
         # obtain key for chunk storage
         ckey = self._chunk_key(cidx)
 
-        if is_total_slice(key, self._chunks):
+        if is_total_slice(item, self._chunks):
             # totally replace chunk
 
             # optimization: we are completely replacing the chunk, so no need
@@ -717,11 +717,22 @@ class Array(object):
 
             else:
 
-                # ensure array is contiguous
-                if self._order == 'F':
-                    chunk = np.asfortranarray(value, dtype=self._dtype)
+                if not self._compressor and not self._filters:
+
+                    # https://github.com/alimanfoo/zarr/issues/79
+                    # Ensure a copy is taken so we don't end up storing
+                    # a view into someone else's array.
+                    # N.B., this assumes that filters or compressor always
+                    # take a copy and never attempt to apply encoding in-place.
+                    chunk = np.array(value, dtype=self._dtype,
+                                     order=self._order)
+
                 else:
-                    chunk = np.ascontiguousarray(value, dtype=self._dtype)
+                    # ensure array is contiguous
+                    if self._order == 'F':
+                        chunk = np.asfortranarray(value, dtype=self._dtype)
+                    else:
+                        chunk = np.ascontiguousarray(value, dtype=self._dtype)
 
         else:
             # partially replace the contents of this chunk
@@ -747,7 +758,7 @@ class Array(object):
                     chunk = chunk.copy(order='K')
 
             # modify
-            chunk[key] = value
+            chunk[item] = value
 
         # encode chunk
         cdata = self._encode_chunk(chunk)
