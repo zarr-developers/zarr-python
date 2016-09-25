@@ -1,6 +1,14 @@
 Release notes
 =============
 
+.. _release_2.1.2:
+
+2.1.2
+-----
+
+Resolved an issue when no compression is used and chunks are stored in memory
+(`#79 <https://github.com/alimanfoo/zarr/issues/79>`_).
+
 .. _release_2.1.1:
 
 2.1.1
