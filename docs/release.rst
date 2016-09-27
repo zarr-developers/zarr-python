@@ -1,6 +1,14 @@
 Release notes
 =============
 
+.. _release_2.1.3:
+
+2.1.3
+-----
+
+Resolved an issue with :func:`zarr.creation.array` where dtype was given as
+None (`#80 <https://github.com/alimanfoo/zarr/issues/80>`_).
+
 .. _release_2.1.2:
 
 2.1.2
