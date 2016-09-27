@@ -52,28 +52,20 @@ class TestAttributesProcessSynchronizer(TestAttributes):
 
 
 def _append(arg):
-    try:
-        z, i = arg
-        import numpy as np
-        x = np.empty(1000, dtype='i4')
-        x[:] = i
-        shape = z.append(x)
-        return shape
-    except Exception as e:
-        traceback.print_exc(file=sys.stderr)
-        raise
+    z, i = arg
+    import numpy as np
+    x = np.empty(1000, dtype='i4')
+    x[:] = i
+    shape = z.append(x)
+    return shape
 
 
 def _set_arange(arg):
-    try:
-        z, i = arg
-        import numpy as np
-        x = np.arange(i*1000, (i*1000)+1000, 1)
-        z[i*1000:(i*1000)+1000] = x
-        return i
-    except Exception as e:
-        traceback.print_exc(file=sys.stderr)
-        raise
+    z, i = arg
+    import numpy as np
+    x = np.arange(i*1000, (i*1000)+1000, 1)
+    z[i*1000:(i*1000)+1000] = x
+    return i
 
 
 class MixinArraySyncTests(object):
