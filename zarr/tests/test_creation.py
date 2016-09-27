@@ -91,6 +91,12 @@ def test_array():
     eq(c.shape, z5.shape)
     assert_is_instance(z5.chunks, tuple)
 
+    # with dtype=None
+    a = np.arange(100, dtype='i4')
+    z = array(a, dtype=None)
+    assert_array_equal(a[:], z[:])
+    eq(a.dtype, z.dtype)
+
 
 def test_empty():
     z = empty(100, chunks=10)

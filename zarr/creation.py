@@ -289,12 +289,20 @@ def array(data, **kwargs):
         data = np.asanyarray(data)
 
     # setup dtype
-    kwargs.setdefault('dtype', data.dtype)
+    kw_dtype = kwargs.get('dtype', None)
+    if kw_dtype is None:
+        kwargs['dtype'] = data.dtype
+    else:
+        kwargs['dtype'] = kw_dtype
 
     # setup shape and chunks
-    shape, chunks = _get_shape_chunks(data)
-    kwargs['shape'] = data.shape
-    kwargs.setdefault('chunks', chunks)
+    data_shape, data_chunks = _get_shape_chunks(data)
+    kwargs['shape'] = data_shape
+    kw_chunks = kwargs.get('chunks', None)
+    if kw_chunks is None:
+        kwargs['chunks'] = data_chunks
+    else:
+        kwargs['chunks'] = kw_chunks
 
     # instantiate array
     z = create(**kwargs)
