@@ -9,7 +9,8 @@ import numpy as np
 
 from zarr.compat import binary_type, text_type
 from zarr.meta import decode_array_metadata, encode_dtype, decode_dtype, \
-    ZARR_FORMAT, decode_group_metadata, encode_array_metadata
+    ZARR_FORMAT, decode_group_metadata, encode_array_metadata, \
+    encode_frame_metadata, decode_frame_metadata
 from zarr.errors import MetadataError
 from zarr.codecs import Delta, Zlib, Blosc
 
@@ -187,6 +188,39 @@ def test_encode_decode_dtype():
         o = json.loads(s)
         d = decode_dtype(o)
         eq(np.dtype(dt), d)
+
+
+def test_encode_decode_frame_1():
+
+    meta = dict(
+        nrows=(10,),
+        ncols=(10,),
+        chunks=(10,),
+        compressor=Zlib(1).get_config(),
+        filters=None,
+    )
+
+    meta_json = '''{
+        "chunks": [10],
+        "compressor": {"id": "zlib", "level": 1},
+        "filters": null,
+        "ncols": [10],
+        "nrows": [10],
+        "zarr_format": %s
+    }''' % ZARR_FORMAT
+
+    # test encoding
+    meta_enc = encode_frame_metadata(meta)
+    assert_json_eq(meta_json, meta_enc)
+
+    # test decoding
+    meta_dec = decode_frame_metadata(meta_enc)
+    eq(ZARR_FORMAT, meta_dec['zarr_format'])
+    eq(meta['nrows'], meta_dec['nrows'])
+    eq(meta['ncols'], meta_dec['ncols'])
+    eq(meta['chunks'], meta_dec['chunks'])
+    eq(meta['compressor'], meta_dec['compressor'])
+    assert_is_none(meta_dec['filters'])
 
 
 def test_decode_group():

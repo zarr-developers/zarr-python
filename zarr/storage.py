@@ -14,7 +14,7 @@ import numpy as np
 
 from zarr.util import normalize_shape, normalize_chunks, normalize_order, \
     normalize_storage_path, buffer_size
-from zarr.meta import encode_array_metadata, encode_group_metadata
+from zarr.meta import encode_array_metadata, encode_frame_metadata, encode_group_metadata
 from zarr.compat import PY2, binary_type
 from zarr.codecs import codec_registry
 from zarr.errors import err_contains_group, err_contains_array, \
@@ -23,6 +23,7 @@ from zarr.errors import err_contains_group, err_contains_array, \
 
 
 array_meta_key = '.zarray'
+frame_meta_key = '.zframe'
 group_meta_key = '.zgroup'
 attrs_key = '.zattrs'
 try:
@@ -40,7 +41,7 @@ def _path_to_prefix(path):
     else:
         prefix = ''
     return prefix
-    
+
 
 def contains_array(store, path=None):
     """Return True if the store contains an array at the given logical path."""
@@ -98,8 +99,8 @@ def listdir(store, path=None):
     else:
         # slow version, iterate through all keys
         return _listdir_from_keys(store, path)
-    
-    
+
+
 def getsize(store, path=None):
     """Compute size of stored items for a given path."""
     path = normalize_storage_path(path)
@@ -240,14 +241,14 @@ def init_array(store, shape, chunks=None, dtype=None, compressor='default',
     Notes
     -----
     The initialisation process involves normalising all array metadata,
-    encoding as JSON and storing under the '.zarray' key. User attributes are 
+    encoding as JSON and storing under the '.zarray' key. User attributes are
     also initialized and stored as JSON under the '.zattrs' key.
 
     """
 
     # normalize path
     path = normalize_storage_path(path)
-    
+
     # ensure parent group initialized
     _require_parent_group(path, store=store, chunk_store=chunk_store,
                           overwrite=overwrite)
