@@ -18,7 +18,76 @@ from zarr.compat import reduce
 from zarr.codecs import get_codec
 
 
-class Array(object):
+class Base(object):
+    """ ABC for Array / Frame """
+
+    @property
+    def store(self):
+        """A MutableMapping providing the underlying storage for the array."""
+        return self._store
+
+    @property
+    def path(self):
+        """Storage path."""
+        return self._path
+
+    @property
+    def name(self):
+        """Array name following h5py convention."""
+        if self.path:
+            # follow h5py convention: add leading slash
+            name = self.path
+            if name[0] != '/':
+                name = '/' + name
+            return name
+        return None
+
+    @property
+    def read_only(self):
+        """A boolean, True if modification operations are not permitted."""
+        return self._read_only
+
+    @property
+    def chunk_store(self):
+        """A MutableMapping providing the underlying storage for array
+        chunks."""
+        return self._chunk_store
+
+    @property
+    def chunks(self):
+        """A tuple of integers describing the length of each dimension of a
+        chunk of the array."""
+        return self._chunks
+
+    @property
+    def compressor(self):
+        """Primary compression codec."""
+        return self._compressor
+
+    @property
+    def filters(self):
+        """One or more codecs used to transform data prior to compression."""
+        return self._filters
+
+    @property
+    def synchronizer(self):
+        """Object used to synchronize write access to the array."""
+        return self._synchronizer
+
+    @property
+    def attrs(self):
+        """A MutableMapping containing user-defined attributes. Note that
+        attribute values must be JSON serializable."""
+        return self._attrs
+
+    @property
+    def ndim(self):
+        """Number of dimensions."""
+        return len(self.shape)
+
+
+
+class Array(Base):
     """Instantiate an array from an initialized store.
 
     Parameters
@@ -170,36 +239,20 @@ class Array(object):
         self._store[mkey] = encode_array_metadata(meta)
 
     @property
-    def store(self):
-        """A MutableMapping providing the underlying storage for the array."""
-        return self._store
+    def fill_value(self):
+        """A value used for uninitialized portions of the array."""
+        return self._fill_value
 
     @property
-    def path(self):
-        """Storage path."""
-        return self._path
+    def order(self):
+        """A string indicating the order in which bytes are arranged within
+        chunks of the array."""
+        return self._order
 
     @property
-    def name(self):
-        """Array name following h5py convention."""
-        if self.path:
-            # follow h5py convention: add leading slash
-            name = self.path
-            if name[0] != '/':
-                name = '/' + name
-            return name
-        return None
-
-    @property
-    def read_only(self):
-        """A boolean, True if modification operations are not permitted."""
-        return self._read_only
-
-    @property
-    def chunk_store(self):
-        """A MutableMapping providing the underlying storage for array
-        chunks."""
-        return self._chunk_store
+    def dtype(self):
+        """The NumPy data type."""
+        return self._dtype
 
     @property
     def shape(self):
@@ -213,54 +266,6 @@ class Array(object):
     @shape.setter
     def shape(self, value):
         self.resize(value)
-
-    @property
-    def chunks(self):
-        """A tuple of integers describing the length of each dimension of a
-        chunk of the array."""
-        return self._chunks
-
-    @property
-    def dtype(self):
-        """The NumPy data type."""
-        return self._dtype
-
-    @property
-    def compressor(self):
-        """Primary compression codec."""
-        return self._compressor
-
-    @property
-    def fill_value(self):
-        """A value used for uninitialized portions of the array."""
-        return self._fill_value
-
-    @property
-    def order(self):
-        """A string indicating the order in which bytes are arranged within
-        chunks of the array."""
-        return self._order
-
-    @property
-    def filters(self):
-        """One or more codecs used to transform data prior to compression."""
-        return self._filters
-
-    @property
-    def synchronizer(self):
-        """Object used to synchronize write access to the array."""
-        return self._synchronizer
-
-    @property
-    def attrs(self):
-        """A MutableMapping containing user-defined attributes. Note that
-        attribute values must be JSON serializable."""
-        return self._attrs
-
-    @property
-    def ndim(self):
-        """Number of dimensions."""
-        return len(self.shape)
 
     @property
     def _size(self):
