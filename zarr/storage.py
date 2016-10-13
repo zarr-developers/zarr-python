@@ -18,6 +18,7 @@ from zarr.meta import encode_array_metadata, encode_frame_metadata, encode_group
 from zarr.compat import PY2, binary_type
 from zarr.codecs import codec_registry
 from zarr.errors import err_contains_group, err_contains_array, \
+    err_contains_frame, \
     err_path_not_found, err_bad_compressor, err_fspath_exists_notdir, \
     err_read_only
 
@@ -48,6 +49,14 @@ def contains_array(store, path=None):
     path = normalize_storage_path(path)
     prefix = _path_to_prefix(path)
     key = prefix + array_meta_key
+    return key in store
+
+
+def contains_frame(store, path=None):
+    """Return True if the store contains a frame at the given logical path."""
+    path = normalize_storage_path(path)
+    prefix = _path_to_prefix(path)
+    key = prefix + frame_meta_key
     return key in store
 
 
@@ -134,6 +143,9 @@ def _require_parent_group(path, store, chunk_store, overwrite):
             p = '/'.join(segments[:i])
             if contains_array(store, p):
                 _init_group_metadata(store, path=p, chunk_store=chunk_store,
+                                     overwrite=overwrite)
+            elif contains_frame(store, p):
+                _init_frame_metadata(store, path=p, chunk_store=chunk_store,
                                      overwrite=overwrite)
             elif not contains_group(store, p):
                 _init_group_metadata(store, path=p, chunk_store=chunk_store)
@@ -272,6 +284,8 @@ def _init_array_metadata(store, shape, chunks=None, dtype=None,
             rmdir(chunk_store, path)
     elif contains_array(store, path):
         err_contains_array(path)
+    elif contains_frame(store, path):
+        err_contains_frame(path)
     elif contains_group(store, path):
         err_contains_group(path)
 
@@ -317,6 +331,61 @@ def _init_array_metadata(store, shape, chunks=None, dtype=None,
 init_store = init_array
 
 
+def init_frame(store, overwrite=False, path=None, chunk_store=None):
+    """initialize a frame store.
+
+    Parameters
+    ----------
+    store : MutableMapping
+        A mapping that supports string keys and byte sequence values.
+    overwrite : bool, optional
+        If True, erase all data in `store` prior to initialisation.
+    path : string, optional
+        Path under which array is stored.
+    chunk_store : MutableMapping, optional
+        Separate storage for chunks. If not provided, `store` will be used
+        for storage of both chunks and metadata.
+
+    """
+
+    # normalize path
+    path = normalize_storage_path(path)
+
+    # ensure parent group initialized
+    _require_parent_group(path, store=store, chunk_store=chunk_store,
+                          overwrite=overwrite)
+
+    # initialise metadata
+    _init_frame_metadata(store=store, overwrite=overwrite, path=path,
+                         chunk_store=chunk_store)
+
+
+def _init_frame_metadata(store, overwrite=False, path=None, chunk_store=None):
+
+    # guard conditions
+    if overwrite:
+        # attempt to delete any pre-existing items in store
+        rmdir(store, path)
+        if chunk_store is not None and chunk_store != store:
+            rmdir(chunk_store, path)
+    elif contains_array(store, path):
+        err_contains_array(path)
+    elif contains_frame(store, path):
+        err_contains_frame(path)
+    elif contains_group(store, path):
+        err_contains_group(path)
+
+    # initialize metadata
+    # N.B., currently no metadata properties are needed, however there may
+    # be in future
+    meta = dict()
+    key = _path_to_prefix(path) + group_meta_key
+    store[key] = encode_frame_metadata(meta)
+
+    # initialize attributes
+    key = _path_to_prefix(path) + attrs_key
+    store[key] = json.dumps(dict()).encode('ascii')
+
 def init_group(store, overwrite=False, path=None, chunk_store=None):
     """initialize a group store.
 
@@ -356,6 +425,8 @@ def _init_group_metadata(store, overwrite=False, path=None, chunk_store=None):
             rmdir(chunk_store, path)
     elif contains_array(store, path):
         err_contains_array(path)
+    elif contains_frame(store, path):
+        err_contains_frame(path)
     elif contains_group(store, path):
         err_contains_group(path)
 

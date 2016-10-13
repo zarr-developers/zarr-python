@@ -193,8 +193,6 @@ def test_encode_decode_dtype():
 def test_encode_decode_frame_1():
 
     meta = dict(
-        nrows=(10,),
-        ncols=(10,),
         chunks=(10,),
         compressor=Zlib(1).get_config(),
         filters=None,
@@ -204,8 +202,6 @@ def test_encode_decode_frame_1():
         "chunks": [10],
         "compressor": {"id": "zlib", "level": 1},
         "filters": null,
-        "ncols": [10],
-        "nrows": [10],
         "zarr_format": %s
     }''' % ZARR_FORMAT
 
@@ -216,8 +212,6 @@ def test_encode_decode_frame_1():
     # test decoding
     meta_dec = decode_frame_metadata(meta_enc)
     eq(ZARR_FORMAT, meta_dec['zarr_format'])
-    eq(meta['nrows'], meta_dec['nrows'])
-    eq(meta['ncols'], meta_dec['ncols'])
     eq(meta['chunks'], meta_dec['chunks'])
     eq(meta['compressor'], meta_dec['compressor'])
     assert_is_none(meta_dec['filters'])

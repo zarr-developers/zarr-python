@@ -84,8 +84,6 @@ def encode_array_metadata(meta):
 def encode_frame_metadata(meta):
     meta = dict(
         zarr_format=ZARR_FORMAT,
-        nrows=meta['nrows'],
-        ncols=meta['ncols'],
         chunks=meta['chunks'],
         compressor=meta['compressor'],
         filters=meta['filters'],
@@ -105,8 +103,6 @@ def decode_frame_metadata(s):
     try:
         meta = dict(
             zarr_format=meta['zarr_format'],
-            nrows=tuple(meta['nrows']),
-            ncols=tuple(meta['ncols']),
             chunks=tuple(meta['chunks']),
             compressor=meta['compressor'],
             filters=meta['filters'],
