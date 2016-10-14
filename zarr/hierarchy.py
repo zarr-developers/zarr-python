@@ -8,8 +8,10 @@ import numpy as np
 
 from zarr.attrs import Attributes
 from zarr.core import Array
-from zarr.storage import contains_array, contains_group, init_group, \
-    DictStore, DirectoryStore, group_meta_key, attrs_key, listdir, rmdir
+from zarr.frame import Frame
+from zarr.storage import contains_array, contains_group, contains_frame, \
+     init_group, DictStore, DirectoryStore, group_meta_key, attrs_key, \
+     listdir, rmdir
 from zarr.creation import array, create, empty, zeros, ones, full, \
     empty_like, zeros_like, ones_like, full_like
 from zarr.util import normalize_storage_path, normalize_shape
@@ -30,7 +32,7 @@ class Group(MutableMapping):
     read_only : bool, optional
         True if group should be protected against modification.
     chunk_store : MutableMapping, optional
-        Separate storage for chunks. If not provided, `store` will be used 
+        Separate storage for chunks. If not provided, `store` will be used
         for storage of both chunks and metadata.
     synchronizer : object, optional
         Array synchronizer.
@@ -137,7 +139,7 @@ class Group(MutableMapping):
 
     @property
     def chunk_store(self):
-        """A MutableMapping providing the underlying storage for array 
+        """A MutableMapping providing the underlying storage for array
         chunks."""
         return self._chunk_store
 
@@ -296,6 +298,10 @@ class Group(MutableMapping):
             return Array(self._store, read_only=self._read_only, path=path,
                          chunk_store=self._chunk_store,
                          synchronizer=self._synchronizer)
+        elif contains_frame(self._store, path):
+            return Frame(self._store, read_only=self._read_only, path=path,
+                         chunk_store=self._chunk_store,
+                         synchronizer=self._synchronizer)
         elif contains_group(self._store, path):
             return Group(self._store, read_only=self._read_only, path=path,
                          chunk_store=self._chunk_store,
@@ -304,7 +310,13 @@ class Group(MutableMapping):
             raise KeyError(item)
 
     def __setitem__(self, item, value):
-        self.array(item, value, overwrite=True)
+
+        # TODO / use duck-like introspection
+        import pandas as pd
+        if isinstance(value, pd.DataFrame):
+            self.frame(item, value, overwrite=True)
+        else:
+            self.array(item, value, overwrite=True)
 
     def __delitem__(self, item):
         return self._write_op(self._delitem_nosync, item)
@@ -407,6 +419,34 @@ class Group(MutableMapping):
             path = self._key_prefix + key
             if contains_array(self._store, path):
                 yield key, Array(self._store, path=path,
+                                 read_only=self._read_only,
+                                 chunk_store=self._chunk_store,
+                                 synchronizer=self._synchronizer)
+
+    def frame_keys(self):
+        """Return an iterator over member names for frames only.
+
+        Examples
+        --------
+        >>> import zarr
+
+        """
+        for key in sorted(listdir(self._store, self._path)):
+            path = self._key_prefix + key
+            if contains_frame(self._store, path):
+                yield key
+
+    def frames(self):
+        """Return an iterator over (name, value) pairs for frames only.
+
+        Examples
+        --------
+        >>> import zarr
+        """
+        for key in sorted(listdir(self._store, self._path)):
+            path = self._key_prefix + key
+            if contains_frame(self._store, path):
+                yield key, Frame(self._store, path=path,
                                  read_only=self._read_only,
                                  chunk_store=self._chunk_store,
                                  synchronizer=self._synchronizer)
@@ -698,6 +738,17 @@ class Group(MutableMapping):
         path = self._item_path(name)
         kwargs.setdefault('synchronizer', self._synchronizer)
         return array(data, store=self._store, path=path,
+                     chunk_store=self._chunk_store, **kwargs)
+
+    def frame(self, name, data, **kwargs):
+        """Create a frame. Keyword arguments as per
+        :func:`zarr.creation.frame`."""
+        return self._write_op(self._frame_nosync, name, data, **kwargs)
+
+    def _frame_nosync(self, name, data, **kwargs):
+        path = self._item_path(name)
+        kwargs.setdefault('synchronizer', self._synchronizer)
+        return frame(data, store=self._store, path=path,
                      chunk_store=self._chunk_store, **kwargs)
 
     def empty_like(self, name, data, **kwargs):

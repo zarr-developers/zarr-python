@@ -4,7 +4,6 @@ import operator
 import itertools
 
 import numpy as np
-import pandas as pd
 from zarr.core import Base
 
 
