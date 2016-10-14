@@ -13,8 +13,9 @@ import pandas as pd
 from pandas.util.testing import assert_frame_equal
 
 from zarr.storage import (DirectoryStore, ZipStore,
-                          init_frame, init_group)
+                          init_array, init_frame, init_group)
 from zarr.core import Array
+from zarr.frame import Frame
 from zarr.errors import PermissionError
 from zarr.compat import PY2
 from zarr.util import buffer_size
@@ -22,13 +23,14 @@ from zarr.codecs import Delta, FixedScaleOffset, Zlib,\
     Blosc, BZ2
 
 
-class TestFrame(unittest.TestCase):
+class TestArray(unittest.TestCase):
 
     def test_array_init(self):
 
         # normal initialization
         store = dict()
-        init_array(store, shape=100, chunks=10)
+        import pdb; pdb.set_trace()
+        init_frame(store, chunks=10)
         a = Array(store)
         assert_is_instance(a, Array)
         eq((100,), a.shape)

@@ -331,13 +331,20 @@ def _init_array_metadata(store, shape, chunks=None, dtype=None,
 init_store = init_array
 
 
-def init_frame(store, overwrite=False, path=None, chunk_store=None):
+def init_frame(store, nrows, dtypes, chunks=None, overwrite=False, path=None,
+               chunk_store=None):
     """initialize a frame store.
 
     Parameters
     ----------
     store : MutableMapping
         A mapping that supports string keys and byte sequence values.
+    nrows : int
+        Frame number of rows
+    dtypes : list
+        list of dtypes
+    chunks : int or tuple of ints, optional
+        Chunk shape. If not provided, will be guessed from `shape` and `dtype`.
     overwrite : bool, optional
         If True, erase all data in `store` prior to initialisation.
     path : string, optional
@@ -356,11 +363,12 @@ def init_frame(store, overwrite=False, path=None, chunk_store=None):
                           overwrite=overwrite)
 
     # initialise metadata
-    _init_frame_metadata(store=store, overwrite=overwrite, path=path,
+    _init_frame_metadata(store=store, nrows=nrows, dtypes=dtypes, chunks=chunks,
+                         overwrite=overwrite, path=path,
                          chunk_store=chunk_store)
 
 
-def _init_frame_metadata(store, overwrite=False, path=None, chunk_store=None):
+def _init_frame_metadata(store, nrows, dtypes, overwrite=False, path=None, chunk_store=None):
 
     # guard conditions
     if overwrite:
@@ -375,10 +383,18 @@ def _init_frame_metadata(store, overwrite=False, path=None, chunk_store=None):
     elif contains_group(store, path):
         err_contains_group(path)
 
+    # normalize metadata
+    if not isinstance(dtypes, (list, tuple)):
+        raise ValueError("dtypes must be a list-like")
+    dtypes = tuple([ np.dtype(d) for d in dtypes ])
+
     # initialize metadata
     # N.B., currently no metadata properties are needed, however there may
     # be in future
-    meta = dict()
+    meta = dict(nrows=nrows, dtypes=dtypes, chunks=chunks,
+                compressor=compressor_config,
+                filters=filters_config)
+
     key = _path_to_prefix(path) + group_meta_key
     store[key] = encode_frame_metadata(meta)
 

@@ -12,11 +12,13 @@ from nose.tools import assert_raises, eq_ as eq, assert_is, assert_true, \
     assert_is_instance, assert_false, assert_is_none
 import numpy as np
 from numpy.testing import assert_array_equal
-
+import pandas as pd
+from pandas.util.testing import assert_frame_equal
 
 from zarr.storage import DictStore, DirectoryStore, ZipStore, init_group, \
     init_array, attrs_key, array_meta_key, group_meta_key
 from zarr.core import Array
+from zarra.frame import Frame
 from zarr.hierarchy import Group, group, open_group
 from zarr.attrs import Attributes
 from zarr.errors import PermissionError
