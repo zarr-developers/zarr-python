@@ -10,12 +10,14 @@ from collections import MutableMapping
 
 import numpy as np
 import pandas as pd
+from pandas.util import testing as tm
 from pandas.util.testing import assert_frame_equal, assert_series_equal
 from nose.tools import eq_ as eq, assert_is_instance, \
     assert_raises, assert_true, assert_false, assert_is, assert_is_none
 
 from zarr.storage import (DirectoryStore, ZipStore,
                           init_array, init_frame, init_group)
+from zarr.hierarchy import group
 from zarr.core import Array
 from zarr.frame import Frame
 from zarr.errors import PermissionError
@@ -78,4 +80,24 @@ class TestFrame(unittest.TestCase):
 
         # get data
         result = a[:]
+        assert_frame_equal(result, df)
+
+    def test_mixed_frame(self):
+
+        np.random.seed(1234)
+        N = 10000
+        ngroups = 10
+        strings = tm.rands_array(10, 1000)
+
+        df = pd.DataFrame({'A': np.arange(N),
+                           'B': np.random.randint(0, ngroups, size=N),
+                           'C': np.random.randn(N),
+                           'D': pd.date_range('20130101', periods=ngroups).take(np.random.randint(0, ngroups, size=N)),
+                           #'E': pd.Series(strings.take(np.random.randint(0, ngroups, size=N))).astype('category')})
+                           #'f': strings.take(np.random.randint(0, ngroups, size=N)),
+                           })
+
+        g = group('foo')
+        g['df'] = df
+        result = g['df'][:]
         assert_frame_equal(result, df)

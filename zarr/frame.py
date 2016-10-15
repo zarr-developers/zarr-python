@@ -8,7 +8,7 @@ from zarr.core import Base, Array
 from zarr.util import is_total_slice, normalize_array_selection, \
     get_chunk_range, human_readable_size, normalize_resize_args, \
     normalize_storage_path, normalize_shape, normalize_chunks
-from zarr.storage import (frame_meta_key, attrs_key, listdir, getsize,
+from zarr.storage import (frame_meta_key, array_meta_key, attrs_key, listdir, getsize,
                           init_array, init_group)
 from zarr.meta import decode_frame_metadata, encode_frame_metadata
 from zarr.attrs import Attributes
@@ -16,7 +16,7 @@ from zarr.errors import PermissionError, err_read_only, err_frame_not_found
 from zarr.codecs import get_codec, PickleCodec
 
 from pandas import DataFrame, concat
-from pandas.api.types import is_object_dtype, is_categorical_dtype
+from pandas.api.types import is_object_dtype, is_categorical_dtype, is_datetime64_dtype
 
 
 class Frame(Base):
@@ -102,26 +102,38 @@ class Frame(Base):
                                  synchronizer=synchronizer)
         # create our arrays
         filters = self._filters
+
+        self._dtypes_map = dict(zip(self._columns, self._dtypes))
         self._arrays = {}
         for c, dtype in zip(self._columns, self._dtypes):
             path = self._key_prefix + '/data/' + c
+            mkey = path + '/' + array_meta_key
 
-            if is_object_dtype(dtype):
+            # create / read our arrays
+            if mkey not in store:
                 filters = self._filters
-                if filters is None:
-                    filters = []
-                filters += [PickleCodec()]
-            else:
-                filters = self._filters
-            init_array(store,
-                       self._nrows,
-                       chunks=self._chunks[0],
-                       dtype=dtype,
-                       compressor=self._compressor,
-                       path=path,
-                       chunk_store=self._chunk_store,
-                       filters=filters)
-            self._arrays[c] = Array(store, path=path, read_only=False)
+                if is_object_dtype(dtype):
+                    filters = self._filters
+                    if filters is None:
+                        filters = []
+                        filters += [PickleCodec()]
+                elif is_datetime64_dtype(dtype):
+                    dtype = 'i8'
+
+                init_array(store,
+                           self._nrows,
+                           chunks=self._chunks[0],
+                           dtype=dtype,
+                           compressor=self._compressor,
+                           path=path,
+                           chunk_store=self._chunk_store,
+                           filters=filters)
+                pass
+
+            self._arrays[c] = Array(self._store, path=path,
+                                    read_only=self._read_only,
+                                    chunk_store=self._chunk_store,
+                                    synchronizer=self._synchronizer)
 
     def _load_metadata_nosync(self):
         try:
@@ -221,15 +233,25 @@ class Frame(Base):
         from pandas import Series
         arr = self._arrays[c]
         arr = arr[indexer]
-        return Series(arr, name=c)
+
+        # re-create the actual dtypes
+        dtype = self._dtypes_map[c]
+        return Series(arr, name=c, dtype=dtype)
 
     def _series_to_array(self, c, indexer, value):
         """
         Set the array with name c for this value (a Series)
         and the indexer
         """
+
         arr = self._arrays[c]
-        arr[indexer] = value.values
+
+        if is_datetime64_dtype(value):
+            value = value.values.view('i8')
+        else:
+            value = value.values
+
+        arr[indexer] = value
 
     def __getitem__(self, item):
         """

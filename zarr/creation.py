@@ -4,6 +4,7 @@ from warnings import warn
 
 
 import numpy as np
+import pandas as pd
 
 
 from zarr.core import Array
@@ -145,7 +146,7 @@ def create_frame(nrows, columns, dtypes, chunks=None, compressor='default',
     compressor, _ = _handle_kwargs(compressor, None, kwargs)
 
     # initialize frame metadata
-    init_frame(store, nrows=nrows, columns=column, dtypes=dtypes, chunks=chunks,
+    init_frame(store, nrows=nrows, columns=columns, dtypes=dtypes, chunks=chunks,
                compressor=compressor, overwrite=overwrite, path=path,
                chunk_store=chunk_store, filters=filters)
 
@@ -370,6 +371,30 @@ def array(data, **kwargs):
 
     # instantiate array
     z = create(**kwargs)
+
+    # fill with data
+    z[:] = data
+
+    return z
+
+
+def frame(data, **kwargs):
+    """Create a frame filled with `data`.
+
+    Examples
+    --------
+
+    """  # flake8: noqa
+
+    if not isinstance(data, pd.DataFrame):
+        raise ValueError("data must be a DataFrame")
+
+    # instantiate frame
+    kwargs['nrows'] = len(data)
+    kwargs['columns'] = data.columns
+    kwargs['dtypes'] = data.dtypes
+
+    z = create_frame(**kwargs)
 
     # fill with data
     z[:] = data

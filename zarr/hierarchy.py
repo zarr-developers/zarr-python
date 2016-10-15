@@ -12,7 +12,7 @@ from zarr.frame import Frame
 from zarr.storage import contains_array, contains_group, contains_frame, \
      init_group, DictStore, DirectoryStore, group_meta_key, attrs_key, \
      listdir, rmdir
-from zarr.creation import array, create, empty, zeros, ones, full, \
+from zarr.creation import array, create, frame, create_frame, empty, zeros, ones, full, \
     empty_like, zeros_like, ones_like, full_like
 from zarr.util import normalize_storage_path, normalize_shape
 from zarr.errors import PermissionError, err_contains_array, \
