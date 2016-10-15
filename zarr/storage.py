@@ -144,9 +144,9 @@ def _require_parent_group(path, store, chunk_store, overwrite):
             if contains_array(store, p):
                 _init_group_metadata(store, path=p, chunk_store=chunk_store,
                                      overwrite=overwrite)
-            elif contains_frame(store, p):
-                _init_frame_metadata(store, path=p, chunk_store=chunk_store,
-                                     overwrite=overwrite)
+            #elif contains_frame(store, p):
+            #    _init_frame_metadata(store, path=p, chunk_store=chunk_store,
+            #                         overwrite=overwrite)
             elif not contains_group(store, p):
                 _init_group_metadata(store, path=p, chunk_store=chunk_store)
 
@@ -389,9 +389,14 @@ def _init_frame_metadata(store, nrows, columns, dtypes, chunks=None,
         err_contains_group(path)
 
     # normalize metadata
-    if not isinstance(dtypes, (list, tuple)):
+    from pandas.api.types import is_list_like
+    if not is_list_like(dtypes):
         raise ValueError("dtypes must be a list-like")
-    dtypes = tuple([ np.dtype(d) for d in dtypes ])
+    dtypes = [ np.dtype(d) for d in dtypes ]
+    if not is_list_like(columns):
+        raise ValueError("columns must be a list-like")
+    if not len(dtypes) == len(columns):
+        raise ValueError("number of columns must equal number of dtypes")
 
     # chunks are based on the rows; treat each rows as singular
     chunks = normalize_chunks(chunks, (nrows, 1), sum([dtype.itemsize for dtype in dtypes]))
@@ -419,8 +424,10 @@ def _init_frame_metadata(store, nrows, columns, dtypes, chunks=None,
     # initialize metadata
     # N.B., currently no metadata properties are needed, however there may
     # be in future
-    meta = dict(nrows=nrows, columns=columns,
-                dtypes=dtypes, chunks=chunks,
+    meta = dict(nrows=nrows,
+                columns=columns,
+                dtypes=dtypes,
+                chunks=chunks,
                 compressor=compressor_config,
                 filters=filters_config)
 
@@ -430,6 +437,7 @@ def _init_frame_metadata(store, nrows, columns, dtypes, chunks=None,
     # initialize attributes
     key = _path_to_prefix(path) + attrs_key
     store[key] = json.dumps(dict()).encode('ascii')
+
 
 def init_group(store, overwrite=False, path=None, chunk_store=None):
     """initialize a group store.
@@ -470,8 +478,8 @@ def _init_group_metadata(store, overwrite=False, path=None, chunk_store=None):
             rmdir(chunk_store, path)
     elif contains_array(store, path):
         err_contains_array(path)
-    elif contains_frame(store, path):
-        err_contains_frame(path)
+    #elif contains_frame(store, path):
+    #    err_contains_frame(path)
     elif contains_group(store, path):
         err_contains_group(path)
 

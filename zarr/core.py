@@ -20,6 +20,25 @@ from zarr.codecs import get_codec
 
 class Base(object):
     """ ABC for Array / Frame """
+    _meta_key = None
+    _is_view = False
+
+    def _load_metadata(self):
+        """(Re)load metadata from store."""
+        if self._synchronizer is None:
+            self._load_metadata_nosync()
+        else:
+            mkey = self._key_prefix + self._meta_key
+            with self._synchronizer[mkey]:
+                self._load_metadata_nosync()
+
+    def _refresh_metadata(self):
+        if not self._cache_metadata:
+            self._load_metadata()
+
+    def _refresh_metadata_nosync(self):
+        if not self._cache_metadata and not self._is_view:
+            self._load_metadata_nosync()
 
     @property
     def store(self):
@@ -60,6 +79,15 @@ class Base(object):
         return self._chunks
 
     @property
+    def shape(self):
+        """A tuple of integers describing the length of each dimension of
+        the array."""
+        # N.B., shape may change if array is resized, hence need to refresh
+        # metadata
+        self._refresh_metadata()
+        return self._shape
+
+    @property
     def compressor(self):
         """Primary compression codec."""
         return self._compressor
@@ -81,9 +109,84 @@ class Base(object):
         return self._attrs
 
     @property
+    def _size(self):
+        return reduce(operator.mul, self._shape)
+
+    @property
+    def size(self):
+        """The total number of elements in the array."""
+        # N.B., this property depends on shape, and shape may change if array
+        # is resized, hence need to refresh metadata
+        self._refresh_metadata()
+        return self._size
+
+    @property
     def ndim(self):
         """Number of dimensions."""
         return len(self.shape)
+
+    @property
+    def nbytes(self):
+        """The total number of bytes that would be required to store the
+        array without compression."""
+        # N.B., this property depends on shape, and shape may change if array
+        # is resized, hence need to refresh metadata
+        self._refresh_metadata()
+        return self._nbytes
+
+    @property
+    def nbytes_stored(self):
+        """The total number of stored bytes of data for the array. This
+        includes storage required for configuration metadata and user
+        attributes."""
+        m = getsize(self._store, self._path)
+        if self._store == self._chunk_store:
+            return m
+        else:
+            n = getsize(self._chunk_store, self._path)
+            if m < 0 or n < 0:
+                return -1
+            else:
+                return m + n
+
+    @property
+    def _cdata_shape(self):
+        return tuple(int(np.ceil(s / c))
+                     for s, c in zip(self._shape, self._chunks))
+
+    @property
+    def cdata_shape(self):
+        """A tuple of integers describing the number of chunks along each
+        dimension of the array."""
+        self._refresh_metadata()
+        return self._cdata_shape
+
+    @property
+    def _nchunks(self):
+        return reduce(operator.mul, self._cdata_shape)
+
+    @property
+    def nchunks(self):
+        """Total number of chunks."""
+        self._refresh_metadata()
+        return self._nchunks
+
+    @property
+    def nchunks_initialized(self):
+        """The number of chunks that have been initialized with some data."""
+        return sum(1 for k in listdir(self._chunk_store, self._path)
+                   if k not in [self._meta_key, attrs_key])
+
+    # backwards compability
+    initialized = nchunks_initialized
+
+    def __len__(self):
+        return self.shape[0]
+
+    def __repr__(self):
+        # N.B., __repr__ needs to be synchronized to ensure consistent view
+        # of metadata AND when retrieving nbytes_stored from filesystem storage
+        return self._synchronized_op(self._repr_nosync)
 
 
 
@@ -144,6 +247,7 @@ class Array(Base):
     view
 
     """  # flake8: noqa
+    _meta_key = array_meta_key
 
     def __init__(self, store, path=None, read_only=False, chunk_store=None,
                  synchronizer=None, cache_metadata=True):
@@ -172,15 +276,6 @@ class Array(Base):
         akey = self._key_prefix + attrs_key
         self._attrs = Attributes(store, key=akey, read_only=read_only,
                                  synchronizer=synchronizer)
-
-    def _load_metadata(self):
-        """(Re)load metadata from store."""
-        if self._synchronizer is None:
-            self._load_metadata_nosync()
-        else:
-            mkey = self._key_prefix + array_meta_key
-            with self._synchronizer[mkey]:
-                self._load_metadata_nosync()
 
     def _load_metadata_nosync(self):
         try:
@@ -211,14 +306,6 @@ class Array(Base):
             if filters:
                 filters = [get_codec(config) for config in filters]
             self._filters = filters
-
-    def _refresh_metadata(self):
-        if not self._cache_metadata:
-            self._load_metadata()
-
-    def _refresh_metadata_nosync(self):
-        if not self._cache_metadata and not self._is_view:
-            self._load_metadata_nosync()
 
     def _flush_metadata_nosync(self):
         if self._is_view:
@@ -268,18 +355,6 @@ class Array(Base):
         self.resize(value)
 
     @property
-    def _size(self):
-        return reduce(operator.mul, self._shape)
-
-    @property
-    def size(self):
-        """The total number of elements in the array."""
-        # N.B., this property depends on shape, and shape may change if array
-        # is resized, hence need to refresh metadata
-        self._refresh_metadata()
-        return self._size
-
-    @property
     def itemsize(self):
         """The size in bytes of each item in the array."""
         return self.dtype.itemsize
@@ -287,61 +362,6 @@ class Array(Base):
     @property
     def _nbytes(self):
         return self._size * self.itemsize
-
-    @property
-    def nbytes(self):
-        """The total number of bytes that would be required to store the
-        array without compression."""
-        # N.B., this property depends on shape, and shape may change if array
-        # is resized, hence need to refresh metadata
-        self._refresh_metadata()
-        return self._nbytes
-
-    @property
-    def nbytes_stored(self):
-        """The total number of stored bytes of data for the array. This
-        includes storage required for configuration metadata and user
-        attributes."""
-        m = getsize(self._store, self._path)
-        if self._store == self._chunk_store:
-            return m
-        else:
-            n = getsize(self._chunk_store, self._path)
-            if m < 0 or n < 0:
-                return -1
-            else:
-                return m + n
-
-    @property
-    def _cdata_shape(self):
-        return tuple(int(np.ceil(s / c))
-                     for s, c in zip(self._shape, self._chunks))
-
-    @property
-    def cdata_shape(self):
-        """A tuple of integers describing the number of chunks along each
-        dimension of the array."""
-        self._refresh_metadata()
-        return self._cdata_shape
-
-    @property
-    def _nchunks(self):
-        return reduce(operator.mul, self._cdata_shape)
-
-    @property
-    def nchunks(self):
-        """Total number of chunks."""
-        self._refresh_metadata()
-        return self._nchunks
-
-    @property
-    def nchunks_initialized(self):
-        """The number of chunks that have been initialized with some data."""
-        return sum(1 for k in listdir(self._chunk_store, self._path)
-                   if k not in [array_meta_key, attrs_key])
-
-    # backwards compability
-    initialized = nchunks_initialized
 
     @property
     def is_view(self):
@@ -364,9 +384,6 @@ class Array(Base):
         if args:
             a = a.astype(args[0])
         return a
-
-    def __len__(self):
-        return self.shape[0]
 
     def __getitem__(self, item):
         """Retrieve data for some portion of the array. Most NumPy-style
@@ -812,11 +829,6 @@ class Array(Base):
             cdata = chunk
 
         return cdata
-
-    def __repr__(self):
-        # N.B., __repr__ needs to be synchronized to ensure consistent view
-        # of metadata AND when retrieving nbytes_stored from filesystem storage
-        return self._synchronized_op(self._repr_nosync)
 
     def _repr_nosync(self):
 

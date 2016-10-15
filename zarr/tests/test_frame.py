@@ -32,11 +32,15 @@ class TestArray(unittest.TestCase):
         # normal initialization
         store = dict()
         import pdb; pdb.set_trace()
-        init_frame(store, nrows=10, dtypes=[np.float64, np.int64])
+        init_frame(store, nrows=100, columns=['float', 'int'], dtypes=[np.float64, np.int64])
         fr = Frame(store)
         assert_is_instance(fr, Frame)
-        eq((10,2), fr.shape)
+
+        assert repr(fr)
+        eq(["float", "int"], fr.columns)
+        eq((100,2), fr.shape)
         eq((10,), fr.chunks)
+        eq(100, fr.nrows)
         eq('', fr.path)
         assert_is_none(fr.name)
         assert_is(store, fr.store)

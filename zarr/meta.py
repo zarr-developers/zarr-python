@@ -108,7 +108,7 @@ def decode_frame_metadata(s):
             zarr_format=meta['zarr_format'],
             nrows=meta['nrows'],
             columns=meta['columns'],
-            dtypes=meta['dtypes'],
+            dtypes=[decode_dtype(dtype) for dtype in meta['dtypes']],
             chunks=tuple(meta['chunks']),
             compressor=meta['compressor'],
             filters=meta['filters'],
