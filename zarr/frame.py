@@ -5,6 +5,12 @@ import itertools
 
 import numpy as np
 from zarr.core import Base
+from zarr.util import normalize_storage_path
+from zarr.storage import frame_meta_key, attrs_key, listdir, getsize
+from zarr.meta import decode_frame_metadata, encode_frame_metadata
+from zarr.attrs import Attributes
+from zarr.errors import PermissionError, err_read_only, err_frame_not_found
+from zarr.codecs import get_codec
 
 
 class Frame(Base):
@@ -79,7 +85,6 @@ class Frame(Base):
             self._chunk_store = chunk_store
         self._synchronizer = synchronizer
         self._cache_metadata = cache_metadata
-        self._is_view = False
 
         # initialize metadata
         self._load_metadata()
@@ -94,26 +99,24 @@ class Frame(Base):
         if self._synchronizer is None:
             self._load_metadata_nosync()
         else:
-            mkey = self._key_prefix + array_meta_key
+            mkey = self._key_prefix + frame_meta_key
             with self._synchronizer[mkey]:
                 self._load_metadata_nosync()
 
     def _load_metadata_nosync(self):
         try:
-            mkey = self._key_prefix + array_meta_key
+            mkey = self._key_prefix + frame_meta_key
             meta_bytes = self._store[mkey]
         except KeyError:
-            err_array_not_found(self._path)
+            err_frame_not_found(self._path)
         else:
 
             # decode and store metadata
-            meta = decode_array_metadata(meta_bytes)
+            meta = decode_frame_metadata(meta_bytes)
             self._meta = meta
-            self._shape = meta['shape']
+            self._nrows = meta['nrows']
             self._chunks = meta['chunks']
-            self._dtype = meta['dtype']
-            self._fill_value = meta['fill_value']
-            self._order = meta['order']
+            self._dtypes = meta['dtypes']
 
             # setup compressor
             config = meta['compressor']
@@ -133,12 +136,10 @@ class Frame(Base):
             self._load_metadata()
 
     def _refresh_metadata_nosync(self):
-        if not self._cache_metadata and not self._is_view:
+        if not self._cache_metadata:
             self._load_metadata_nosync()
 
     def _flush_metadata_nosync(self):
-        if self._is_view:
-            raise PermissionError('not permitted for views')
 
         if self._compressor:
             compressor_config = self._compressor.get_config()
@@ -148,40 +149,38 @@ class Frame(Base):
             filters_config = [f.get_config() for f in self._filters]
         else:
             filters_config = None
-        meta = dict(shape=self._shape, chunks=self._chunks, dtype=self._dtype,
-                    compressor=compressor_config, fill_value=self._fill_value,
-                    order=self._order, filters=filters_config)
-        mkey = self._key_prefix + array_meta_key
-        self._store[mkey] = encode_array_metadata(meta)
+        meta = dict(nrows=self._nrows, chunks=self._chunks, dtypes=self._dtypes,
+                    compressor=compressor_config, filters=filters_config)
+        mkey = self._key_prefix + frame_meta_key
+        self._store[mkey] = encode_frame_metadata(meta)
 
     @property
-    def fill_value(self):
-        """A value used for uninitialized portions of the array."""
-        return self._fill_value
+    def nrows(self):
+        """ our number of rows """
+        return self._nrows
 
     @property
-    def order(self):
-        """A string indicating the order in which bytes are arranged within
-        chunks of the array."""
-        return self._order
+    def dtypes(self):
+        """ a list of our dtypes """
+        return self._dtypes
 
     @property
-    def dtype(self):
-        """The NumPy data type."""
-        return self._dtype
+    def _ncols(self):
+        return len(self.dtypes)
+
+    @property
+    def ncols(self):
+        return self._ncols
+
+    @property
+    def _shape(self):
+        return (self._nrows, self._ncols)
 
     @property
     def shape(self):
         """A tuple of integers describing the length of each dimension of
         the array."""
-        # N.B., shape may change if array is resized, hence need to refresh
-        # metadata
-        self._refresh_metadata()
         return self._shape
-
-    @shape.setter
-    def shape(self, value):
-        self.resize(value)
 
     @property
     def _size(self):
@@ -190,15 +189,12 @@ class Frame(Base):
     @property
     def size(self):
         """The total number of elements in the array."""
-        # N.B., this property depends on shape, and shape may change if array
-        # is resized, hence need to refresh metadata
-        self._refresh_metadata()
         return self._size
 
     @property
     def itemsize(self):
         """The size in bytes of each item in the array."""
-        return self.dtype.itemsize
+        return sum(dtype.itemsize for dtype in self.dtypes)
 
     @property
     def _nbytes(self):
@@ -254,35 +250,18 @@ class Frame(Base):
     def nchunks_initialized(self):
         """The number of chunks that have been initialized with some data."""
         return sum(1 for k in listdir(self._chunk_store, self._path)
-                   if k not in [array_meta_key, attrs_key])
-
-    # backwards compability
-    initialized = nchunks_initialized
-
-    @property
-    def is_view(self):
-        """A boolean, True if this array is a view on another array."""
-        return self._is_view
+                   if k not in [frame_meta_key, attrs_key])
 
     def __eq__(self, other):
         return (
-            isinstance(other, Array) and
+            isinstance(other, Frame) and
             self.store == other.store and
             self.read_only == other.read_only and
-            self.path == other.path and
-            not self._is_view
-            # N.B., no need to compare other properties, should be covered by
-            # store comparison
+            self.path == other.path
         )
 
-    def __array__(self, *args):
-        a = self[:]
-        if args:
-            a = a.astype(args[0])
-        return a
-
     def __len__(self):
-        return self.shape[0]
+        return self.nrows
 
     def __getitem__(self, item):
         """Retrieve data for some portion of the array. Most NumPy-style
@@ -741,9 +720,8 @@ class Frame(Base):
         if self.name:
             r += '%s, ' % self.name
         r += '%s, ' % str(self._shape)
-        r += '%s, ' % str(self._dtype)
+        r += '%s, ' % str(self._dtypes)
         r += 'chunks=%s, ' % str(self._chunks)
-        r += 'order=%s' % self._order
         r += ')'
 
         # storage size info
@@ -792,7 +770,7 @@ class Frame(Base):
 
         else:
             # synchronize on the array
-            mkey = self._key_prefix + array_meta_key
+            mkey = self._key_prefix + frame_meta_key
             with self._synchronizer[mkey]:
                 self._refresh_metadata_nosync()
                 result = f(*args, **kwargs)

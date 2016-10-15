@@ -85,6 +85,7 @@ def encode_frame_metadata(meta):
     meta = dict(
         zarr_format=ZARR_FORMAT,
         nrows=meta['nrows'],
+        columns=meta['columns'],
         dtypes=[encode_dtype(d) for d in meta['dtypes']],
         chunks=meta['chunks'],
         compressor=meta['compressor'],
@@ -106,6 +107,7 @@ def decode_frame_metadata(s):
         meta = dict(
             zarr_format=meta['zarr_format'],
             nrows=meta['nrows'],
+            columns=meta['columns'],
             dtypes=meta['dtypes'],
             chunks=tuple(meta['chunks']),
             compressor=meta['compressor'],

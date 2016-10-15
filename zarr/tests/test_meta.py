@@ -195,6 +195,7 @@ def test_encode_decode_frame_1():
     meta = dict(
         chunks=(10,),
         nrows=100,
+        columns=['float', 'int'],
         dtypes=[np.dtype('f8'), np.dtype('i8'), np.dtype('O')],
         compressor=Zlib(1).get_config(),
         filters=None,
@@ -202,6 +203,7 @@ def test_encode_decode_frame_1():
 
     meta_json = '''{
         "chunks": [10],
+        "columns": ["float", "int"],
         "compressor": {"id": "zlib", "level": 1},
         "dtypes": ["<f8", "<i8", "|O"],
         "filters": null,
@@ -217,6 +219,7 @@ def test_encode_decode_frame_1():
     meta_dec = decode_frame_metadata(meta_enc)
     eq(ZARR_FORMAT, meta_dec['zarr_format'])
     eq(meta['nrows'], meta_dec['nrows'])
+    eq(meta['columns'], meta_dec['columns'])
     eq(meta['dtypes'], meta_dec['dtypes'])
     eq(meta['chunks'], meta_dec['chunks'])
     eq(meta['compressor'], meta_dec['compressor'])

@@ -35,6 +35,10 @@ def err_array_not_found(path):
     raise KeyError('array not found at path %r' % path)
 
 
+def err_frame_not_found(path):
+    raise KeyError('frame not found at path %r' % path)
+
+
 def err_group_not_found(path):
     raise KeyError('group not found at path %r' % path)
 

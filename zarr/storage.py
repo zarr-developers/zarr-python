@@ -331,7 +331,7 @@ def _init_array_metadata(store, shape, chunks=None, dtype=None,
 init_store = init_array
 
 
-def init_frame(store, nrows, dtypes, chunks=None, overwrite=False, path=None,
+def init_frame(store, nrows, columns, dtypes, chunks=None, overwrite=False, path=None,
                chunk_store=None):
     """initialize a frame store.
 
@@ -341,6 +341,8 @@ def init_frame(store, nrows, dtypes, chunks=None, overwrite=False, path=None,
         A mapping that supports string keys and byte sequence values.
     nrows : int
         Frame number of rows
+    columns : list
+        list of string names of columns
     dtypes : list
         list of dtypes
     chunks : int or tuple of ints, optional
@@ -363,12 +365,15 @@ def init_frame(store, nrows, dtypes, chunks=None, overwrite=False, path=None,
                           overwrite=overwrite)
 
     # initialise metadata
-    _init_frame_metadata(store=store, nrows=nrows, dtypes=dtypes, chunks=chunks,
+    _init_frame_metadata(store=store, nrows=nrows, columns=columns,
+                         dtypes=dtypes, chunks=chunks,
                          overwrite=overwrite, path=path,
                          chunk_store=chunk_store)
 
 
-def _init_frame_metadata(store, nrows, dtypes, overwrite=False, path=None, chunk_store=None):
+def _init_frame_metadata(store, nrows, columns, dtypes, chunks=None,
+                         compressor='default', overwrite=False,
+                         path=None, chunk_store=None, filters=None):
 
     # guard conditions
     if overwrite:
@@ -388,14 +393,38 @@ def _init_frame_metadata(store, nrows, dtypes, overwrite=False, path=None, chunk
         raise ValueError("dtypes must be a list-like")
     dtypes = tuple([ np.dtype(d) for d in dtypes ])
 
+    # chunks are based on the rows; treat each rows as singular
+    chunks = normalize_chunks(chunks, (nrows, 1), sum([dtype.itemsize for dtype in dtypes]))
+
+    # obtain compressor config
+    if compressor == 'none':
+        # compatibility
+        compressor = None
+    elif compressor == 'default':
+        compressor = default_compressor
+    if compressor:
+        try:
+            compressor_config = compressor.get_config()
+        except AttributeError:
+            err_bad_compressor(compressor)
+    else:
+        compressor_config = None
+
+    # obtain filters config
+    if filters:
+        filters_config = [f.get_config() for f in filters]
+    else:
+        filters_config = None
+
     # initialize metadata
     # N.B., currently no metadata properties are needed, however there may
     # be in future
-    meta = dict(nrows=nrows, dtypes=dtypes, chunks=chunks,
+    meta = dict(nrows=nrows, columns=columns,
+                dtypes=dtypes, chunks=chunks,
                 compressor=compressor_config,
                 filters=filters_config)
 
-    key = _path_to_prefix(path) + group_meta_key
+    key = _path_to_prefix(path) + frame_meta_key
     store[key] = encode_frame_metadata(meta)
 
     # initialize attributes

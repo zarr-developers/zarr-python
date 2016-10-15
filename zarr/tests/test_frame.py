@@ -11,6 +11,8 @@ from collections import MutableMapping
 import numpy as np
 import pandas as pd
 from pandas.util.testing import assert_frame_equal
+from nose.tools import eq_ as eq, assert_is_instance, \
+    assert_raises, assert_true, assert_false, assert_is, assert_is_none
 
 from zarr.storage import (DirectoryStore, ZipStore,
                           init_array, init_frame, init_group)
@@ -30,14 +32,14 @@ class TestArray(unittest.TestCase):
         # normal initialization
         store = dict()
         import pdb; pdb.set_trace()
-        init_frame(store, chunks=10)
-        a = Array(store)
-        assert_is_instance(a, Array)
-        eq((100,), a.shape)
-        eq((10,), a.chunks)
-        eq('', a.path)
-        assert_is_none(a.name)
-        assert_is(store, a.store)
+        init_frame(store, nrows=10, dtypes=[np.float64, np.int64])
+        fr = Frame(store)
+        assert_is_instance(fr, Frame)
+        eq((10,2), fr.shape)
+        eq((10,), fr.chunks)
+        eq('', fr.path)
+        assert_is_none(fr.name)
+        assert_is(store, fr.store)
 
         # initialize at path
         store = dict()
