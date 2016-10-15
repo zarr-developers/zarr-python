@@ -18,7 +18,7 @@ from pandas.util.testing import assert_frame_equal
 from zarr.storage import DictStore, DirectoryStore, ZipStore, init_group, \
     init_array, attrs_key, array_meta_key, group_meta_key
 from zarr.core import Array
-from zarra.frame import Frame
+from zarr.frame import Frame
 from zarr.hierarchy import Group, group, open_group
 from zarr.attrs import Attributes
 from zarr.errors import PermissionError
