@@ -399,7 +399,7 @@ def _init_frame_metadata(store, nrows, columns, dtypes, chunks=None,
         raise ValueError("number of columns must equal number of dtypes")
 
     # chunks are based on the rows; treat each rows as singular
-    chunks = normalize_chunks(chunks, (nrows, 1), sum([dtype.itemsize for dtype in dtypes]))
+    chunks = normalize_chunks(chunks, (nrows, len(dtypes)), sum([dtype.itemsize for dtype in dtypes]))
 
     # obtain compressor config
     if compressor == 'none':

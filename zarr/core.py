@@ -188,6 +188,36 @@ class Base(object):
         # of metadata AND when retrieving nbytes_stored from filesystem storage
         return self._synchronized_op(self._repr_nosync)
 
+    def __getstate__(self):
+        return self._store, self._path, self._read_only, self._chunk_store, \
+               self._synchronizer, self._cache_metadata
+
+    def __setstate__(self, state):
+        self.__init__(*state)
+
+    def _synchronized_op(self, f, *args, **kwargs):
+
+        # no synchronization
+        if self._synchronizer is None:
+            self._refresh_metadata_nosync()
+            return f(*args, **kwargs)
+
+        else:
+            # synchronize on the array
+            mkey = self._key_prefix + self._meta_key
+            with self._synchronizer[mkey]:
+                self._refresh_metadata_nosync()
+                result = f(*args, **kwargs)
+            return result
+
+    def _write_op(self, f, *args, **kwargs):
+
+        # guard condition
+        if self._read_only:
+            err_read_only()
+
+        return self._synchronized_op(f, *args, **kwargs)
+
 
 
 class Array(Base):
@@ -872,35 +902,39 @@ class Array(Base):
 
         return r
 
-    def __getstate__(self):
-        return self._store, self._path, self._read_only, self._chunk_store, \
-               self._synchronizer, self._cache_metadata
+    def _repr_abbv_nosync(self):
+        # appreviated repr
 
-    def __setstate__(self, state):
-        self.__init__(*state)
+        # main line
+        r = '%s(' % type(self).__name__
+        if self.name:
+            r += '%s, ' % self.name
+        r += '%s, ' % str(self._dtype)
+        r += 'order=%s' % self._order
+        r += ')'
 
-    def _synchronized_op(self, f, *args, **kwargs):
+        # storage size info
+        r += '\n  nbytes: %s' % human_readable_size(self._nbytes)
+        if self.nbytes_stored > 0:
+            r += '; nbytes_stored: %s' % human_readable_size(
+                self.nbytes_stored)
+            r += '; ratio: %.1f' % (self._nbytes / self.nbytes_stored)
+        r += '; initialized: %s/%s' % (self.nchunks_initialized,
+                                       self._nchunks)
 
-        # no synchronization
-        if self._synchronizer is None:
-            self._refresh_metadata_nosync()
-            return f(*args, **kwargs)
+        # filters
+        if self._filters:
+            # first line
+            r += '\n  filters: %r' % self._filters[0]
+            # subsequent lines
+            for f in self._filters[1:]:
+                r += '\n           %r' % f
 
-        else:
-            # synchronize on the array
-            mkey = self._key_prefix + array_meta_key
-            with self._synchronizer[mkey]:
-                self._refresh_metadata_nosync()
-                result = f(*args, **kwargs)
-            return result
+        # compressor
+        if self._compressor:
+            r += '\n  compressor: %r' % self._compressor
 
-    def _write_op(self, f, *args, **kwargs):
-
-        # guard condition
-        if self._read_only:
-            err_read_only()
-
-        return self._synchronized_op(f, *args, **kwargs)
+        return r
 
     def resize(self, *args):
         """Change the shape of the array by growing or shrinking one or more

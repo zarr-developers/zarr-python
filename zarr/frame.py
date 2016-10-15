@@ -161,14 +161,13 @@ class Frame(Base):
         return self._nrows
 
     @property
+    def _shape(self):
+        return (self._nrows, self._ncols)
+
+    @property
     def columns(self):
         """ return a list of our columns """
         return self._columns
-
-    @property
-    def dtypes(self):
-        """ a list of our dtypes """
-        return self._dtypes
 
     @property
     def _ncols(self):
@@ -177,6 +176,11 @@ class Frame(Base):
     @property
     def ncols(self):
         return self._ncols
+
+    @property
+    def dtypes(self):
+        """ a list of our dtypes """
+        return self._dtypes
 
     @property
     def itemsize(self):
@@ -457,11 +461,6 @@ class Frame(Base):
 
         return cdata
 
-    def __repr__(self):
-        # N.B., __repr__ needs to be synchronized to ensure consistent view
-        # of metadata AND when retrieving nbytes_stored from filesystem storage
-        return self._synchronized_op(self._repr_nosync)
-
     def _repr_nosync(self):
 
         # main line
@@ -469,69 +468,23 @@ class Frame(Base):
         if self.name:
             r += '%s, ' % self.name
         r += '%s, ' % str(self._shape)
-        r += '%s, ' % str(self._dtypes)
         r += 'chunks=%s, ' % str(self._chunks)
         r += ')'
 
-        # storage size info
-        r += '\n  nbytes: %s' % human_readable_size(self._nbytes)
-        if self.nbytes_stored > 0:
-            r += '; nbytes_stored: %s' % human_readable_size(
-                self.nbytes_stored)
-            r += '; ratio: %.1f' % (self._nbytes / self.nbytes_stored)
-        r += '; initialized: %s/%s' % (self.nchunks_initialized,
-                                       self._nchunks)
-
-        # filters
-        if self._filters:
-            # first line
-            r += '\n  filters: %r' % self._filters[0]
-            # subsequent lines
-            for f in self._filters[1:]:
-                r += '\n           %r' % f
-
-        # compressor
-        if self._compressor:
-            r += '\n  compressor: %r' % self._compressor
-
         # storage and synchronizer classes
-        r += '\n  store: %s' % type(self._store).__name__
+        r += '\n store: %s' % type(self._store).__name__
         if self._store != self._chunk_store:
             r += '; chunk_store: %s' % type(self._chunk_store).__name__
         if self._synchronizer is not None:
             r += '; synchronizer: %s' % type(self._synchronizer).__name__
 
+        # arrays
+        r += '\n'
+        for c in self._columns:
+            arr = self._arrays[c]
+            r += '\n %s' % arr._repr_abbv_nosync()
+
         return r
-
-    def __getstate__(self):
-        return self._store, self._path, self._read_only, self._chunk_store, \
-               self._synchronizer, self._cache_metadata
-
-    def __setstate__(self, state):
-        self.__init__(*state)
-
-    def _synchronized_op(self, f, *args, **kwargs):
-
-        # no synchronization
-        if self._synchronizer is None:
-            self._refresh_metadata_nosync()
-            return f(*args, **kwargs)
-
-        else:
-            # synchronize on the array
-            mkey = self._key_prefix + frame_meta_key
-            with self._synchronizer[mkey]:
-                self._refresh_metadata_nosync()
-                result = f(*args, **kwargs)
-            return result
-
-    def _write_op(self, f, *args, **kwargs):
-
-        # guard condition
-        if self._read_only:
-            err_read_only()
-
-        return self._synchronized_op(f, *args, **kwargs)
 
     def resize(self, *args):
         raise NotImplementedError("resize is not implemented")
