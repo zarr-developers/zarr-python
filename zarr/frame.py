@@ -13,7 +13,10 @@ from zarr.storage import (frame_meta_key, attrs_key, listdir, getsize,
 from zarr.meta import decode_frame_metadata, encode_frame_metadata
 from zarr.attrs import Attributes
 from zarr.errors import PermissionError, err_read_only, err_frame_not_found
-from zarr.codecs import get_codec
+from zarr.codecs import get_codec, PickleCodec
+
+from pandas import DataFrame, concat
+from pandas.api.types import is_object_dtype, is_categorical_dtype
 
 
 class Frame(Base):
@@ -98,18 +101,27 @@ class Frame(Base):
         self._attrs = Attributes(store, key=akey, read_only=read_only,
                                  synchronizer=synchronizer)
         # create our arrays
+        filters = self._filters
         self._arrays = {}
         for c, dtype in zip(self._columns, self._dtypes):
             path = self._key_prefix + '/data/' + c
+
+            if is_object_dtype(dtype):
+                filters = self._filters
+                if filters is None:
+                    filters = []
+                filters += [PickleCodec()]
+            else:
+                filters = self._filters
             init_array(store,
-                       (self._nrows, 1),
-                       chunks=self._chunks,
+                       self._nrows,
+                       chunks=self._chunks[0],
                        dtype=dtype,
                        compressor=self._compressor,
                        path=path,
                        chunk_store=self._chunk_store,
-                       filters=self._filters)
-            self._arrays[c] = Array(store, path=path, read_only=True)
+                       filters=filters)
+            self._arrays[c] = Array(store, path=path, read_only=False)
 
     def _load_metadata_nosync(self):
         try:
@@ -123,7 +135,9 @@ class Frame(Base):
             meta = decode_frame_metadata(meta_bytes)
             self._meta = meta
             self._nrows = meta['nrows']
-            self._columns = meta['columns']
+
+            from pandas import Index
+            self._columns = Index(meta['columns'])
             self._dtypes = meta['dtypes']
             self._chunks = meta['chunks']
 
@@ -199,8 +213,27 @@ class Frame(Base):
             self.path == other.path
         )
 
+    def _array_to_series(self, c, indexer):
+        """
+        Return a pandas Series for this array with name c
+        Raise KeyError if not found
+        """
+        from pandas import Series
+        arr = self._arrays[c]
+        arr = arr[indexer]
+        return Series(arr, name=c)
+
+    def _series_to_array(self, c, indexer, value):
+        """
+        Set the array with name c for this value (a Series)
+        and the indexer
+        """
+        arr = self._arrays[c]
+        arr[indexer] = value.values
+
     def __getitem__(self, item):
-        """Retrieve a column or columns. Always returns a DataFrame of the requires column or columns.
+        """
+        Retrieve a column or columns. Always returns a DataFrame of the requires column or columns.
 
         Returns
         -------
@@ -215,251 +248,31 @@ class Frame(Base):
         if not self._cache_metadata:
             self._load_metadata()
 
-
-        import pdb; pdb.set_trace()
-
-
-        # normalize selection
-        selection = normalize_array_selection(item, self._shape)
-
-        # determine output array shape
-        out_shape = tuple(s.stop - s.start for s in selection
-                          if isinstance(s, slice))
-
-        # setup output array
-        out = np.empty(out_shape, dtype=self._dtype, order=self._order)
-
-        # determine indices of chunks overlapping the selection
-        chunk_range = get_chunk_range(selection, self._chunks)
-
-        # iterate over chunks in range
-        for cidx in itertools.product(*chunk_range):
-
-            # determine chunk offset
-            offset = [i * c for i, c in zip(cidx, self._chunks)]
-
-            # determine region within output array
-            out_selection = tuple(
-                slice(max(0, o - s.start),
-                      min(o + c - s.start, s.stop - s.start))
-                for s, o, c, in zip(selection, offset, self._chunks)
-                if isinstance(s, slice)
-            )
-
-            # determine region within chunk
-            chunk_selection = tuple(
-                slice(max(0, s.start - o), min(c, s.stop - o))
-                if isinstance(s, slice)
-                else s - o
-                for s, o, c in zip(selection, offset, self._chunks)
-            )
-
-            # obtain the destination array as a view of the output array
-            if out_selection:
-                dest = out[out_selection]
-            else:
-                dest = out
-
-            # load chunk selection into output array
-            self._chunk_getitem(cidx, chunk_selection, dest)
-
-        if out.shape:
-            return out
-        else:
-            return out[()]
+        columns = self._columns[item]
+        return concat([self._array_to_series(c, slice(None))
+                       for c in columns],
+                      axis=1)
 
     def __setitem__(self, item, value):
-        raise NotImplementedError("__setitem__ is not implemented")
+        """
+        Set particular data. item item refers to column or columns.
+        The shape and dtypes must match to the existing store.
 
-    def _chunk_getitem(self, cidx, item, dest):
-        """Obtain part or whole of a chunk.
-
-        Parameters
-        ----------
-        cidx : tuple of ints
-            Indices of the chunk.
-        item : tuple of slices
-            Location of region within the chunk.
-        dest : ndarray
-            Numpy array to store result in.
-
+        Examples
+        --------
         """
 
-        try:
+        # refresh metadata
+        if not self._cache_metadata:
+            self._load_metadata_nosync()
 
-            # obtain compressed data for chunk
-            ckey = self._chunk_key(cidx)
-            cdata = self._chunk_store[ckey]
+        # normalize selection
+        columns = self._columns[item]
+        if not isinstance(value, DataFrame):
+            raise ValueError("setting must be with a DataFrame")
 
-        except KeyError:
-
-            # chunk not initialized
-            if self._fill_value is not None:
-                dest.fill(self._fill_value)
-
-        else:
-
-            if is_total_slice(item, self._chunks) and \
-                    not self._filters and \
-                    ((self._order == 'C' and dest.flags.c_contiguous) or
-                     (self._order == 'F' and dest.flags.f_contiguous)):
-
-                # optimization: we want the whole chunk, and the destination is
-                # contiguous, so we can decompress directly from the chunk
-                # into the destination array
-                if self._compressor:
-                    self._compressor.decode(cdata, dest)
-                else:
-                    arr = np.frombuffer(cdata, dtype=self._dtype)
-                    arr = arr.reshape(self._chunks, order=self._order)
-                    np.copyto(dest, arr)
-
-            else:
-
-                # decode chunk
-                chunk = self._decode_chunk(cdata)
-
-                # set data in output array
-                # (split into two lines for profiling)
-                tmp = chunk[item]
-                if dest.shape:
-                    dest[:] = tmp
-                else:
-                    dest[()] = tmp
-
-    def _chunk_setitem(self, cidx, item, value):
-        """Replace part or whole of a chunk.
-
-        Parameters
-        ----------
-        cidx : tuple of ints
-            Indices of the chunk.
-        item : tuple of slices
-            Location of region within the chunk.
-        value : scalar or ndarray
-            Value to set.
-
-        """
-
-        # synchronization
-        if self._synchronizer is None:
-            self._chunk_setitem_nosync(cidx, item, value)
-        else:
-            # synchronize on the chunk
-            ckey = self._chunk_key(cidx)
-            with self._synchronizer[ckey]:
-                self._chunk_setitem_nosync(cidx, item, value)
-
-    def _chunk_setitem_nosync(self, cidx, item, value):
-
-        # obtain key for chunk storage
-        ckey = self._chunk_key(cidx)
-
-        if is_total_slice(item, self._chunks):
-            # totally replace chunk
-
-            # optimization: we are completely replacing the chunk, so no need
-            # to access the existing chunk data
-
-            if np.isscalar(value):
-
-                # setup array filled with value
-                chunk = np.empty(self._chunks, dtype=self._dtype,
-                                 order=self._order)
-                chunk.fill(value)
-
-            else:
-
-                if not self._compressor and not self._filters:
-
-                    # https://github.com/alimanfoo/zarr/issues/79
-                    # Ensure a copy is taken so we don't end up storing
-                    # a view into someone else's array.
-                    # N.B., this assumes that filters or compressor always
-                    # take a copy and never attempt to apply encoding in-place.
-                    chunk = np.array(value, dtype=self._dtype,
-                                     order=self._order)
-
-                else:
-                    # ensure array is contiguous
-                    if self._order == 'F':
-                        chunk = np.asfortranarray(value, dtype=self._dtype)
-                    else:
-                        chunk = np.ascontiguousarray(value, dtype=self._dtype)
-
-        else:
-            # partially replace the contents of this chunk
-
-            try:
-
-                # obtain compressed data for chunk
-                cdata = self._chunk_store[ckey]
-
-            except KeyError:
-
-                # chunk not initialized
-                chunk = np.empty(self._chunks, dtype=self._dtype,
-                                 order=self._order)
-                if self._fill_value is not None:
-                    chunk.fill(self._fill_value)
-
-            else:
-
-                # decode chunk
-                chunk = self._decode_chunk(cdata)
-                if not chunk.flags.writeable:
-                    chunk = chunk.copy(order='K')
-
-            # modify
-            chunk[item] = value
-
-        # encode chunk
-        cdata = self._encode_chunk(chunk)
-
-        # store
-        self._chunk_store[ckey] = cdata
-
-    def _chunk_key(self, cidx):
-        return self._key_prefix + '.'.join(map(str, cidx))
-
-    def _decode_chunk(self, cdata):
-
-        # decompress
-        if self._compressor:
-            chunk = self._compressor.decode(cdata)
-        else:
-            chunk = cdata
-
-        # apply filters
-        if self._filters:
-            for f in self._filters[::-1]:
-                chunk = f.decode(chunk)
-
-        # view as correct dtype
-        if isinstance(chunk, np.ndarray):
-            chunk = chunk.view(self._dtype)
-        else:
-            chunk = np.frombuffer(chunk, self._dtype)
-
-        # reshape
-        chunk = chunk.reshape(self._chunks, order=self._order)
-
-        return chunk
-
-    def _encode_chunk(self, chunk):
-
-        # apply filters
-        if self._filters:
-            for f in self._filters:
-                chunk = f.encode(chunk)
-
-        # compress
-        if self._compressor:
-            cdata = self._compressor.encode(chunk)
-        else:
-            cdata = chunk
-
-        return cdata
+        for c in columns:
+            self._series_to_array(c, slice(None), value[c])
 
     def _repr_nosync(self):
 

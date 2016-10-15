@@ -332,7 +332,7 @@ init_store = init_array
 
 
 def init_frame(store, nrows, columns, dtypes, chunks=None, overwrite=False, path=None,
-               chunk_store=None):
+               compressor='default', chunk_store=None, filters=None):
     """initialize a frame store.
 
     Parameters
@@ -347,6 +347,8 @@ def init_frame(store, nrows, columns, dtypes, chunks=None, overwrite=False, path
         list of dtypes
     chunks : int or tuple of ints, optional
         Chunk shape. If not provided, will be guessed from `shape` and `dtype`.
+    compressor : Codec, optional
+        Primary compressor.
     overwrite : bool, optional
         If True, erase all data in `store` prior to initialisation.
     path : string, optional
@@ -354,6 +356,8 @@ def init_frame(store, nrows, columns, dtypes, chunks=None, overwrite=False, path
     chunk_store : MutableMapping, optional
         Separate storage for chunks. If not provided, `store` will be used
         for storage of both chunks and metadata.
+    filters : sequence, optional
+        Sequence of filters to use to encode chunk data prior to compression.
 
     """
 
@@ -366,9 +370,9 @@ def init_frame(store, nrows, columns, dtypes, chunks=None, overwrite=False, path
 
     # initialise metadata
     _init_frame_metadata(store=store, nrows=nrows, columns=columns,
-                         dtypes=dtypes, chunks=chunks,
+                         dtypes=dtypes, chunks=chunks, compressor=compressor,
                          overwrite=overwrite, path=path,
-                         chunk_store=chunk_store)
+                         chunk_store=chunk_store, filters=filters)
 
 
 def _init_frame_metadata(store, nrows, columns, dtypes, chunks=None,
@@ -397,6 +401,7 @@ def _init_frame_metadata(store, nrows, columns, dtypes, chunks=None,
         raise ValueError("columns must be a list-like")
     if not len(dtypes) == len(columns):
         raise ValueError("number of columns must equal number of dtypes")
+    columns = list(columns)
 
     # chunks are based on the rows; treat each rows as singular
     chunks = normalize_chunks(chunks, (nrows, len(dtypes)), sum([dtype.itemsize for dtype in dtypes]))

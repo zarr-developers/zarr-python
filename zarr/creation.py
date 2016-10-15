@@ -7,17 +7,18 @@ import numpy as np
 
 
 from zarr.core import Array
-from zarr.storage import DirectoryStore, init_array, contains_array, \
+from zarr.frame import Frame
+from zarr.storage import DirectoryStore, init_array, init_frame, contains_array, \
     contains_group, default_compressor, normalize_storage_path
 from zarr.codecs import codec_registry
 from zarr.errors import err_contains_array, err_contains_group, \
     err_array_not_found
 
 
-def create(shape, chunks=None, dtype=None, compressor='default',
-           fill_value=0, order='C', store=None, synchronizer=None,
-           overwrite=False, path=None, chunk_store=None, filters=None,
-           cache_metadata=True, **kwargs):
+def create_array(shape, chunks=None, dtype=None, compressor='default',
+                 fill_value=0, order='C', store=None, synchronizer=None,
+                 overwrite=False, path=None, chunk_store=None, filters=None,
+                 cache_metadata=True, **kwargs):
     """Create an array.
 
     Parameters
@@ -81,12 +82,75 @@ def create(shape, chunks=None, dtype=None, compressor='default',
 
     # initialize array metadata
     init_array(store, shape=shape, chunks=chunks, dtype=dtype,
-               compressor=compressor, fill_value=fill_value, order=order, 
-               overwrite=overwrite, path=path, chunk_store=chunk_store, 
+               compressor=compressor, fill_value=fill_value, order=order,
+               overwrite=overwrite, path=path, chunk_store=chunk_store,
                filters=filters)
 
     # instantiate array
     z = Array(store, path=path, chunk_store=chunk_store,
+              synchronizer=synchronizer, cache_metadata=cache_metadata)
+
+    return z
+create = create_array
+
+def create_frame(nrows, columns, dtypes, chunks=None, compressor='default',
+                 store=None, synchronizer=None,
+                 overwrite=False, path=None, chunk_store=None, filters=None,
+                 cache_metadata=True, **kwargs):
+    """Create an array.
+
+    Parameters
+    ----------
+    nrows : int
+        len of Frame
+    columns : list of string columns
+    dtypes : list of dtypes
+    chunks : int or tuple of ints, optional
+        Chunk shape. If not provided, will be guessed from `shape` and `dtype`.
+    compressor : Codec, optional
+        Primary compressor.
+    store : MutableMapping or string
+        Store or path to directory in file system.
+    synchronizer : object, optional
+        Array synchronizer.
+    overwrite : bool, optional
+        If True, delete all pre-existing data in `store` at `path` before
+        creating the array.
+    path : string, optional
+        Path under which array is stored.
+    chunk_store : MutableMapping, optional
+        Separate storage for chunks. If not provided, `store` will be used
+        for storage of both chunks and metadata.
+    filters : sequence of Codecs, optional
+        Sequence of filters to use to encode chunk data prior to compression.
+    cache_metadata : bool, optional
+        If True, array configuration metadata will be cached for the
+        lifetime of the object. If False, array metadata will be reloaded
+        prior to all data access and modification operations (may incur
+        overhead depending on storage and data access pattern).
+
+    Returns
+    -------
+    z : zarr.frame.Frame
+
+    Examples
+    --------
+
+    """  # flake8: noqa
+
+    # handle polymorphic store arg
+    store = _handle_store_arg(store)
+
+    # compatibility
+    compressor, _ = _handle_kwargs(compressor, None, kwargs)
+
+    # initialize frame metadata
+    init_frame(store, nrows=nrows, columns=column, dtypes=dtypes, chunks=chunks,
+               compressor=compressor, overwrite=overwrite, path=path,
+               chunk_store=chunk_store, filters=filters)
+
+    # instantiate frame
+    z = Frame(store, path=path, chunk_store=chunk_store,
               synchronizer=synchronizer, cache_metadata=cache_metadata)
 
     return z
