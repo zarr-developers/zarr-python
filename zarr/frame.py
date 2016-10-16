@@ -106,7 +106,7 @@ class Frame(Base):
         self._dtypes_map = dict(zip(self._columns, self._dtypes))
         self._arrays = {}
         for c, dtype in zip(self._columns, self._dtypes):
-            path = self._key_prefix + '/data/' + c
+            path = normalize_storage_path(self._key_prefix + '/data/' + c)
             mkey = path + '/' + array_meta_key
 
             # create / read our arrays

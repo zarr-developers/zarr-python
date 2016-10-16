@@ -94,10 +94,10 @@ class TestFrame(unittest.TestCase):
                            'C': np.random.randn(N),
                            'D': pd.date_range('20130101', periods=ngroups).take(np.random.randint(0, ngroups, size=N)),
                            #'E': pd.Series(strings.take(np.random.randint(0, ngroups, size=N))).astype('category')})
-                           #'f': strings.take(np.random.randint(0, ngroups, size=N)),
+                           'F': strings.take(np.random.randint(0, ngroups, size=N)),
                            })
 
-        g = group('foo')
+        g = group(store=dict())
         g['df'] = df
         result = g['df'][:]
         assert_frame_equal(result, df)
