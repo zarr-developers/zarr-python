@@ -149,6 +149,7 @@ class CodecTests(object):
                                                           order=order)
         assert_array_almost_equal(arr, out, decimal=decimal)
 
+
 test_arrays = [
     np.arange(1000, dtype='i4'),
     np.linspace(1000, 1001, 1000, dtype='f8'),
