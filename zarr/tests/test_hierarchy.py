@@ -493,7 +493,7 @@ class TestGroup(unittest.TestCase):
         eq(g1['foo'], g1.foo)
         eq(g2['bar'], g2.bar)
         # test that hasattr returns False instead of an exception (issue #88)
-        eq(hasattr(g1, '__unexistingattribute__'), False)
+        assert_false(hasattr(g1, 'unexistingattribute'))
 
     def test_group_repr(self):
         g = self.create_group()
