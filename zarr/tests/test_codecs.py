@@ -294,6 +294,64 @@ class TestDelta(CodecTests, unittest.TestCase):
         eq(expect, actual)
 
 
+class TestAsType(CodecTests, unittest.TestCase):
+
+    codec_id = 'astype'
+
+    def test_encode(self):
+        for arr in test_arrays:
+            if arr.dtype.kind in {'f', 'i', 'u'}:
+                self._test_encode(
+                    arr,
+                    encode_dtype=arr.dtype,
+                    decode_dtype=arr.dtype
+                )
+
+    def test_decode(self):
+        for arr in test_arrays:
+            if arr.dtype.kind == 'f':
+                self._test_decode_lossy(
+                    arr,
+                    decimal=10,
+                    encode_dtype=arr.dtype,
+                    decode_dtype=arr.dtype
+                )
+            elif arr.dtype.kind in {'i', 'u'}:
+                self._test_decode_lossless(
+                    arr, encode_dtype=arr.dtype, decode_dtype=arr.dtype
+                )
+
+    def test_encode_output(self):
+        encode_dtype = 'i4'
+        decode_dtype = 'i8'
+        codec = self.init_codec(
+            encode_dtype=encode_dtype, decode_dtype=decode_dtype
+        )
+        arr = np.arange(10, 20, 1, dtype=decode_dtype)
+        expect = arr.astype(encode_dtype)
+        actual = codec.encode(arr)
+        assert_array_equal(expect, actual)
+        eq(np.dtype(encode_dtype), actual.dtype)
+
+    def test_decode_input(self):
+        encode_dtype = 'i4'
+        decode_dtype = 'i8'
+        codec = self.init_codec(
+            encode_dtype=encode_dtype, decode_dtype=decode_dtype
+        )
+        arr = np.arange(10, 20, 1, dtype=encode_dtype)
+        expect = arr.astype(decode_dtype)
+        actual = codec.decode(arr)
+        assert_array_equal(expect, actual)
+        eq(np.dtype(decode_dtype), actual.dtype)
+
+    def test_repr(self):
+        codec = self.init_codec(encode_dtype='i4', decode_dtype='i8')
+        expect = 'AsType(encode_dtype=int32, decode_dtype=int64)'
+        actual = repr(codec)
+        eq(expect, actual)
+
+
 class TestFixedScaleOffset(CodecTests, unittest.TestCase):
 
     codec_id = 'fixedscaleoffset'
