@@ -7,7 +7,7 @@ from numpy.testing import assert_array_equal, assert_array_almost_equal
 from nose.tools import eq_ as eq
 
 
-from zarr.codecs import Delta, FixedScaleOffset, \
+from zarr.codecs import AsType, Delta, FixedScaleOffset, \
     Quantize, PackBits, Categorize, \
     Zlib, Blosc, BZ2
 from zarr.creation import array
@@ -52,6 +52,38 @@ def test_array_with_delta_filter():
                 chunk = cdata
             actual = np.frombuffer(chunk, dtype=astype)
             expect = np.array([i * 10] + ([1] * 9), dtype=astype)
+            assert_array_equal(expect, actual)
+
+
+def test_array_with_astype_filter():
+
+    # setup
+    encode_dtype = 'i1'
+    decode_dtype = 'i8'
+    filters = [AsType(encode_dtype=encode_dtype, decode_dtype=decode_dtype)]
+    chunks = 10
+    chunk_size = 10
+    shape = chunks * chunk_size
+    data = np.arange(shape, dtype=decode_dtype)
+
+    for compressor in compressors:
+        print(repr(compressor))
+
+        a = array(data, chunks=chunks, compressor=compressor, filters=filters)
+
+        # check round-trip
+        assert data.dtype == a.dtype
+        assert_array_equal(data, a[:])
+
+        # check chunks
+        for i in range(chunks):
+            cdata = a.store[str(i)]
+            if compressor:
+                chunk = compressor.decode(cdata)
+            else:
+                chunk = cdata
+            actual = np.frombuffer(chunk, dtype=encode_dtype)
+            expect = data.astype(encode_dtype)[i*chunk_size:(i+1)*chunk_size]
             assert_array_equal(expect, actual)
 
 
