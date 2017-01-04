@@ -21,6 +21,7 @@ code of this module for details.
 .. autoclass:: BZ2
 .. autoclass:: LZMA
 .. autoclass:: Delta
+.. autoclass:: AsType
 .. autoclass:: FixedScaleOffset
 .. autoclass:: Quantize
 .. autoclass:: PackBits
