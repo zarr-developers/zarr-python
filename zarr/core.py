@@ -15,7 +15,7 @@ from zarr.meta import decode_array_metadata, encode_array_metadata
 from zarr.attrs import Attributes
 from zarr.errors import PermissionError, err_read_only, err_array_not_found
 from zarr.compat import reduce
-from zarr.codecs import get_codec
+from zarr.codecs import AsType, get_codec
 
 
 class Array(object):
@@ -73,6 +73,7 @@ class Array(object):
     resize
     append
     view
+    astype
 
     """  # flake8: noqa
 
@@ -1176,3 +1177,63 @@ class Array(object):
             a._filters = filters
 
         return a
+
+    def astype(self, dtype):
+        """Does on the fly type conversion of the underlying data.
+
+        Parameters
+        ----------
+        dtype : string or dtype
+            NumPy dtype.
+
+        Notes
+        -----
+        This method returns a new Array object which is a view on the same
+        underlying chunk data. Modifying any data via the view is currently
+        not permitted and will result in an error. This is an experimental
+        feature and its behavior is subject to change in the future.
+
+        See Also
+        --------
+        Array.view
+
+        Examples
+        --------
+
+        >>> import zarr
+        >>> import numpy as np
+        >>> data = np.arange(100, dtype=np.uint8)
+        >>> a = zarr.array(data, chunks=10)
+        >>> a[:]
+        array([ 0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15,
+               16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
+               32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47,
+               48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63,
+               64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79,
+               80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95,
+               96, 97, 98, 99], dtype=uint8)
+        >>> v = a.astype(np.float32)
+        >>> v.is_view
+        True
+        >>> v[:]
+        array([  0.,   1.,   2.,   3.,   4.,   5.,   6.,   7.,   8.,   9.,
+                10.,  11.,  12.,  13.,  14.,  15.,  16.,  17.,  18.,  19.,
+                20.,  21.,  22.,  23.,  24.,  25.,  26.,  27.,  28.,  29.,
+                30.,  31.,  32.,  33.,  34.,  35.,  36.,  37.,  38.,  39.,
+                40.,  41.,  42.,  43.,  44.,  45.,  46.,  47.,  48.,  49.,
+                50.,  51.,  52.,  53.,  54.,  55.,  56.,  57.,  58.,  59.,
+                60.,  61.,  62.,  63.,  64.,  65.,  66.,  67.,  68.,  69.,
+                70.,  71.,  72.,  73.,  74.,  75.,  76.,  77.,  78.,  79.,
+                80.,  81.,  82.,  83.,  84.,  85.,  86.,  87.,  88.,  89.,
+                90.,  91.,  92.,  93.,  94.,  95.,  96.,  97.,  98.,  99.],
+              dtype=float32)
+        """  # flake8: noqa
+
+        dtype = np.dtype(dtype)
+
+        filters = []
+        if self._filters:
+            filters.extend(self._filters)
+        filters.insert(0, AsType(encode_dtype=self._dtype, decode_dtype=dtype))
+
+        return self.view(filters=filters, dtype=dtype, read_only=True)

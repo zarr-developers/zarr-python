@@ -766,6 +766,40 @@ class TestArrayWithFilters(TestArray):
             for l1, l2 in zip(expect.split('\n'), actual.split('\n')):
                 eq(l1, l2)
 
+    def test_astype_no_filters(self):
+        shape = (100,)
+        dtype = np.dtype(np.int8)
+        astype = np.dtype(np.float32)
+
+        store = dict()
+        init_array(store, shape=shape, chunks=10, dtype=dtype)
+
+        data = np.arange(np.prod(shape), dtype=dtype).reshape(shape)
+
+        z1 = Array(store)
+        z1[...] = data
+        z2 = z1.astype(astype)
+
+        expected = data.astype(astype)
+        assert_array_equal(expected, z2)
+        eq(z2.read_only, True)
+
+    def test_astype(self):
+        shape = (100,)
+        chunks = (10,)
+
+        dtype = np.dtype(np.int8)
+        astype = np.dtype(np.float32)
+
+        data = np.arange(np.prod(shape), dtype=dtype).reshape(shape)
+
+        z1 = self.create_array(shape=shape, chunks=chunks, dtype=dtype)
+        z1[...] = data
+        z2 = z1.astype(astype)
+
+        expected = data.astype(astype)
+        assert_array_equal(expected, z2)
+
 
 # custom store, does not support getsize()
 class CustomMapping(object):

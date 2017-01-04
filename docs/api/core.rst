@@ -9,3 +9,4 @@ The Array class (``zarr.core``)
     .. automethod:: resize
     .. automethod:: append
     .. automethod:: view
+    .. automethod:: astype
