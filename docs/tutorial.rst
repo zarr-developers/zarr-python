@@ -122,6 +122,27 @@ Check that the data have been written and can be read again::
     >>> np.all(z1[:] == z2[:])
     True
 
+.. _tutorial_exporting:
+
+Exporting existing arrays to disk
+---------------------------------
+If you want to save an existing NumPy-like array to disk using Zarr you can use the store parameter. For example to export a random NumPy array to disk using the Zstd compression::
+
+    >>> data = np.random.randint(0, 10, (5, 5))
+    >>> data
+    array([[1, 2, 1, 2, 3],
+       [1, 9, 9, 9, 7],
+       [4, 1, 1, 8, 9],
+       [2, 4, 6, 9, 8],
+       [7, 8, 9, 1, 9]])
+    >>> store = zarr.DirectoryStore('example.zarr')
+    >>> z = zarr.array(data, store=store, dtype='int16', chunks=(1000,1000), compressor=zarr.Blosc(cname='zstd'))
+    >>> z
+    Array((5, 5), int16, chunks=(1000, 1000), order=C)
+      nbytes: 50; nbytes_stored: 1.2K; ratio: 0.0; initialized: 1/1
+      compressor: Blosc(cname='zstd', clevel=5, shuffle=1)
+      store: DirectoryStore
+
 .. _tutorial_resize:    
 
 Resizing and appending
