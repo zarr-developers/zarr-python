@@ -1,6 +1,16 @@
 Release notes
 =============
 
+.. _release_2.1.4:
+
+2.1.4
+-----
+
+Resolved an issue where calling ``hasattr`` on a ``Group`` object erroneously returned a
+``KeyError`` (`#88 <https://github.com/alimanfoo/zarr/issues/88>`_,
+`#95 <https://github.com/alimanfoo/zarr/issues/95>`_,
+`Vincent Schut <https://github.com/vincentschut>`_)
+
 .. _release_2.1.3:
 
 2.1.3
@@ -75,16 +85,16 @@ API docs for more information.
 Filters
 ~~~~~~~
 
-Support has been added for configuring filters to preprocess chunk data prior 
-to compression. See the tutorial section on :ref:`tutorial_filters` and the 
+Support has been added for configuring filters to preprocess chunk data prior
+to compression. See the tutorial section on :ref:`tutorial_filters` and the
 :mod:`zarr.codecs` API docs for more information.
 
 Other changes
 ~~~~~~~~~~~~~
 
-To accommodate support for hierarchies and filters, the Zarr metadata format 
-has been modified. See the :ref:`spec_v2` for more information. To migrate an 
-array stored using Zarr version 1.x, use the :func:`zarr.storage.migrate_1to2` 
+To accommodate support for hierarchies and filters, the Zarr metadata format
+has been modified. See the :ref:`spec_v2` for more information. To migrate an
+array stored using Zarr version 1.x, use the :func:`zarr.storage.migrate_1to2`
 function.
 
 The bundled Blosc library has been upgraded to version 1.11.0.
