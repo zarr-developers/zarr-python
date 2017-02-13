@@ -4,11 +4,11 @@ python:
   - 2.7
   - 3.4
   - 3.5
+  - 3.6
 
 install:
-  - pip install -U tox-travis
-  - pip install -U pip setuptools setuptools_scm wheel
-  - pip install -U nose -rrequirements.txt
+  - pip install -U tox-travis pip
+  - pip install -r requirements_dev.txt
   - python setup.py build_ext --inplace
 
 script:
