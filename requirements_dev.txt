@@ -1,3 +1,4 @@
+# pinned dependencies for the development and CI environment
 appdirs==1.4.0
 args==0.1.0
 clint==0.5.1
