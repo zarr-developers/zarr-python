@@ -233,7 +233,7 @@ LZMA's built-in delta filter::
     >>> z
     Array((10000, 10000), int32, chunks=(1000, 1000), order=C)
       nbytes: 381.5M; nbytes_stored: 248.9K; ratio: 1569.7; initialized: 100/100
-      compressor: LZMA(format=1, check=-1, preset=None, filters=[{'dist': 4, 'id': 3}, {'preset': 1, 'id': 33}])
+      compressor: LZMA(format=1, check=-1, preset=None, filters=[{'dist': 4, 'id': 3}, {'id': 33, 'preset': 1}])
       store: dict
 
 The default compressor can be changed by setting the value of the
