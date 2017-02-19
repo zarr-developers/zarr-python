@@ -5,3 +5,4 @@ numpydoc
 mock
 numpy
 cython
+kenjutsu>=0.4.2
