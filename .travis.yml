@@ -7,9 +7,12 @@ python:
   - 3.6
 
 install:
-  - pip install -U tox-travis pip setuptools wheel
+  - pip install -U tox-travis coveralls pip setuptools wheel
   - pip install -r requirements_dev.txt
   - python setup.py build_ext --inplace
 
 script:
   - tox
+
+after_success:
+  - coveralls
