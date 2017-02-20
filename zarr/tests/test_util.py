@@ -51,7 +51,6 @@ def test_is_total_slice():
     assert_true(is_total_slice(slice(None), (100,)))
     assert_true(is_total_slice(slice(0, 100), (100,)))
     assert_false(is_total_slice(slice(0, 50), (100,)))
-    assert_false(is_total_slice(slice(0, 100, 2), (100,)))
 
     # 2D
     assert_true(is_total_slice(Ellipsis, (100, 100)))
@@ -61,7 +60,6 @@ def test_is_total_slice():
     assert_false(is_total_slice((slice(0, 100), slice(0, 50)), (100, 100)))
     assert_false(is_total_slice((slice(0, 50), slice(0, 100)), (100, 100)))
     assert_false(is_total_slice((slice(0, 50), slice(0, 50)), (100, 100)))
-    assert_false(is_total_slice((slice(0, 100, 2), slice(0, 100)), (100, 100)))
 
     with assert_raises(TypeError):
         is_total_slice('foo', (100,))

@@ -114,23 +114,9 @@ def is_total_slice(item, shape):
     given `shape`. Used to optimize __setitem__ operations on the Chunk
     class."""
 
-    # N.B., assume shape is normalized
+    rf_item = normalize_array_selection(item, shape)
 
-    if item == Ellipsis:
-        return True
-    if item == slice(None):
-        return True
-    if isinstance(item, slice):
-        item = item,
-    if isinstance(item, tuple):
-        return all(
-            (isinstance(s, slice) and
-                ((s == slice(None)) or
-                 ((s.stop - s.start == l) and (s.step in [1, None]))))
-            for s, l in zip(item, shape)
-        )
-    else:
-        raise TypeError('expected slice or tuple of slices, found %r' % item)
+    return len_slices(rf_item) == shape
 
 
 def normalize_axis_selection(item, l):
