@@ -608,6 +608,26 @@ class Array(object):
                              % (str(expected_shape),
                                 str(value.shape)))
 
+        # Find where sequences of indices are.
+        seqs_locs = imap(lambda v: isinstance(v, collections.Sequence), selection)
+        seqs_locs = itertools.compress(irange(len(selection)), seqs_locs)
+        seqs_locs = list(seqs_locs)
+
+        # Set each index individually and return the result.
+        if seqs_locs:
+            assert len(seqs_locs) == 1
+            seq_loc = seqs_locs[0]
+            if not np.isscalar(value):
+                value = value.swapaxes(0, seq_loc)
+            for i, each_selection in enumerate(split_indices(selection)):
+                each_value = value
+                if not np.isscalar(value):
+                    each_value = value[i][None]
+                    each_value = each_value.swapaxes(0, seq_loc)
+                self.__setitem__(each_selection, each_value)
+
+            return
+
         # determine indices of chunks overlapping the selection
         chunk_range = get_chunk_range(selection, self._chunks)
 
