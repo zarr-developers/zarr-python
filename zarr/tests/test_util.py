@@ -80,12 +80,12 @@ def test_normalize_axis_selection():
         normalize_axis_selection(-1000, 100)
 
     # slice
-    eq(slice(0, 100), normalize_axis_selection(slice(None), 100))
-    eq(slice(0, 100), normalize_axis_selection(slice(None, 100), 100))
-    eq(slice(0, 100), normalize_axis_selection(slice(0, None), 100))
-    eq(slice(0, 100), normalize_axis_selection(slice(0, 1000), 100))
-    eq(slice(99, 100), normalize_axis_selection(slice(-1, None), 100))
-    eq(slice(98, 99), normalize_axis_selection(slice(-2, -1), 100))
+    eq(slice(0, 100, 1), normalize_axis_selection(slice(None), 100))
+    eq(slice(0, 100, 1), normalize_axis_selection(slice(None, 100), 100))
+    eq(slice(0, 100, 1), normalize_axis_selection(slice(0, None), 100))
+    eq(slice(0, 100, 1), normalize_axis_selection(slice(0, 1000), 100))
+    eq(slice(99, 100, 1), normalize_axis_selection(slice(-1, None), 100))
+    eq(slice(98, 99, 1), normalize_axis_selection(slice(-2, -1), 100))
     with assert_raises(IndexError):
         normalize_axis_selection(slice(100, None), 100)
     with assert_raises(IndexError):
@@ -98,6 +98,9 @@ def test_normalize_axis_selection():
     with assert_raises(TypeError):
         normalize_axis_selection('foo', 100)
 
+    with assert_raises(TypeError):
+        normalize_axis_selection([0, 1], 100)
+
     with assert_raises(NotImplementedError):
         normalize_axis_selection(slice(0, 100, 2), 100)
 
@@ -108,33 +111,39 @@ def test_normalize_array_selection():
     eq((0,), normalize_array_selection(0, (100,)))
 
     # 1D, slice
-    eq((slice(0, 100),), normalize_array_selection(Ellipsis, (100,)))
-    eq((slice(0, 100),), normalize_array_selection(slice(None), (100,)))
-    eq((slice(0, 100),), normalize_array_selection(slice(None, 100), (100,)))
-    eq((slice(0, 100),), normalize_array_selection(slice(0, None), (100,)))
+    eq((slice(0, 100, 1),), normalize_array_selection(Ellipsis, (100,)))
+    eq((slice(0, 100, 1),), normalize_array_selection(slice(None), (100,)))
+    eq(
+        (slice(0, 100, 1),),
+        normalize_array_selection(slice(None, 100), (100,))
+    )
+    eq((slice(0, 100, 1),), normalize_array_selection(slice(0, None), (100,)))
 
     # 2D, single item
     eq((0, 0), normalize_array_selection((0, 0), (100, 100)))
     eq((99, 1), normalize_array_selection((-1, 1), (100, 100)))
 
     # 2D, single col/row
-    eq((0, slice(0, 100)), normalize_array_selection((0, slice(None)),
-                                                     (100, 100)))
-    eq((0, slice(0, 100)), normalize_array_selection((0,),
-                                                     (100, 100)))
-    eq((slice(0, 100), 0), normalize_array_selection((slice(None), 0),
-                                                     (100, 100)))
+    eq((0, slice(0, 100, 1)), normalize_array_selection((0, slice(None)),
+                                                        (100, 100)))
+    eq((0, slice(0, 100, 1)), normalize_array_selection((0,),
+                                                        (100, 100)))
+    eq((slice(0, 100, 1), 0), normalize_array_selection((slice(None), 0),
+                                                        (100, 100)))
 
     # 2D slice
-    eq((slice(0, 100), slice(0, 100)),
+    eq((slice(0, 100, 1), slice(0, 100, 1)),
        normalize_array_selection(Ellipsis, (100, 100)))
-    eq((slice(0, 100), slice(0, 100)),
+    eq((slice(0, 100, 1), slice(0, 100, 1)),
        normalize_array_selection(slice(None), (100, 100)))
-    eq((slice(0, 100), slice(0, 100)),
+    eq((slice(0, 100, 1), slice(0, 100, 1)),
        normalize_array_selection((slice(None), slice(None)), (100, 100)))
 
     with assert_raises(TypeError):
         normalize_array_selection('foo', (100,))
+
+    with assert_raises(TypeError):
+        normalize_array_selection(([0, 1],), (100,))
 
 
 def test_normalize_resize_args():
