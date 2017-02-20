@@ -1,11 +1,23 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, print_function, division
+import collections
 import operator
 import itertools
+
+try:
+    irange = xrange
+except NameError:
+    irange = range
+
+try:
+    from itertools import map as imap
+except ImportError:
+    imap = map
 
 
 import numpy as np
 
+from kenjutsu.format import split_indices
 from kenjutsu.measure import len_slices
 
 from zarr.util import is_total_slice, normalize_array_selection, \
@@ -454,6 +466,22 @@ class Array(object):
 
         # setup output array
         out = np.empty(out_shape, dtype=self._dtype, order=self._order)
+
+        # Find where sequences of indices are.
+        seqs_locs = imap(lambda v: isinstance(v, collections.Sequence), selection)
+        seqs_locs = itertools.compress(irange(len(selection)), seqs_locs)
+        seqs_locs = list(seqs_locs)
+
+        # Retrieve each index individually and return the result.
+        if seqs_locs:
+            assert len(seqs_locs) == 1
+            seq_loc = seqs_locs[0]
+            out_swap = out.swapaxes(0, seq_loc)
+            for i, each_selection in enumerate(split_indices(selection)):
+                each_out = out_swap[i][None].swapaxes(0, seq_loc)
+                each_out[...] = self.__getitem__(each_selection)
+
+            return out
 
         # determine indices of chunks overlapping the selection
         chunk_range = get_chunk_range(selection, self._chunks)
