@@ -6,6 +6,9 @@ chunked, N-dimensional arrays, designed for use in parallel
 computing. See the `documentation <http://zarr.readthedocs.io/>`_ for
 more information.
 
+.. image:: https://readthedocs.org/projects/zarr/badge/?version=latest
+    :target: http://zarr.readthedocs.io/en/latest/?badge=latest
+
 .. image:: https://travis-ci.org/alimanfoo/zarr.svg?branch=master
     :target: https://travis-ci.org/alimanfoo/zarr
 
