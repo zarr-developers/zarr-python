@@ -215,6 +215,10 @@ class TestArray(unittest.TestCase):
         assert_array_equal(a[:110, :3], z[:110, :3])
         assert_array_equal(a[190:310, 3:7], z[190:310, 3:7])
         assert_array_equal(a[-110:, -3:], z[-110:, -3:])
+        assert_array_equal(a[0, ...], z[0, ...])
+        assert_array_equal(a[..., 0], z[..., 0])
+        assert_array_equal(a[10:20, ...], z[10:20, ...])
+        assert_array_equal(a[..., 3:7], z[..., 3:7])
         # single item
         assert_array_equal(a[0], z[0])
         assert_array_equal(a[-1], z[-1])
