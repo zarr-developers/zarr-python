@@ -51,6 +51,9 @@ def test_is_total_slice():
     assert_true(is_total_slice(slice(None), (100,)))
     assert_true(is_total_slice(slice(0, 100), (100,)))
     assert_false(is_total_slice(slice(0, 50), (100,)))
+    assert_false(is_total_slice(([1, 0, 2],), (100,)))
+    assert_true(is_total_slice(([1, 0, 2],), (3,)))
+    assert_true(is_total_slice(([1, 0, 2, 0],), (3,)))
 
     # 2D
     assert_true(is_total_slice(Ellipsis, (100, 100)))
@@ -60,6 +63,10 @@ def test_is_total_slice():
     assert_false(is_total_slice((slice(0, 100), slice(0, 50)), (100, 100)))
     assert_false(is_total_slice((slice(0, 50), slice(0, 100)), (100, 100)))
     assert_false(is_total_slice((slice(0, 50), slice(0, 50)), (100, 100)))
+    assert_false(is_total_slice(([1, 0, 2],), (100, 100)))
+    assert_false(is_total_slice((slice(None), [1, 0, 2]), (100, 100)))
+    assert_true(is_total_slice((slice(None), [1, 0, 2]), (100, 3)))
+    assert_true(is_total_slice((slice(None), [1, 0, 2, 0]), (100, 3)))
 
     with assert_raises(TypeError):
         is_total_slice('foo', (100,))
@@ -95,9 +102,6 @@ def test_normalize_axis_selection():
 
     with assert_raises(TypeError):
         normalize_axis_selection('foo', 100)
-
-    with assert_raises(TypeError):
-        normalize_axis_selection([0, 1], 100)
 
     with assert_raises(NotImplementedError):
         normalize_axis_selection(slice(0, 100, 2), 100)
@@ -139,9 +143,6 @@ def test_normalize_array_selection():
 
     with assert_raises(TypeError):
         normalize_array_selection('foo', (100,))
-
-    with assert_raises(TypeError):
-        normalize_array_selection(([0, 1],), (100,))
 
 
 def test_normalize_resize_args():

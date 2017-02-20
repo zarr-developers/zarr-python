@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, print_function, division
+import collections
 import numbers
 import operator
 
@@ -116,6 +117,13 @@ def is_total_slice(item, shape):
 
     rf_item = normalize_array_selection(item, shape)
 
+    # Remove any duplicates from sequences.
+    rf_item = list(rf_item)
+    for i in range(len(rf_item)):
+        if isinstance(rf_item[i], collections.Sequence):
+            rf_item[i] = list(set(rf_item[i]))
+    rf_item = tuple(rf_item)
+
     return len_slices(rf_item) == shape
 
 
@@ -124,9 +132,6 @@ def normalize_axis_selection(item, l):
     of size `l`."""
 
     rf_item = reformat_slices((item,), (l,))[0]
-
-    if not isinstance(rf_item, (slice, numbers.Integral)):
-        raise TypeError("expected integer or slice, found: %r" % rf_item)
 
     if isinstance(rf_item, slice) and rf_item.step != 1:
         raise NotImplementedError("slice with step not supported")
