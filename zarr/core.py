@@ -6,6 +6,7 @@ import itertools
 
 import numpy as np
 
+from kenjutsu.measure import len_slices
 
 from zarr.util import is_total_slice, normalize_array_selection, \
     get_chunk_range, human_readable_size, normalize_resize_args, \
@@ -449,8 +450,7 @@ class Array(object):
         selection = normalize_array_selection(item, self._shape)
 
         # determine output array shape
-        out_shape = tuple(s.stop - s.start for s in selection
-                          if isinstance(s, slice))
+        out_shape = len_slices(selection)
 
         # setup output array
         out = np.empty(out_shape, dtype=self._dtype, order=self._order)
@@ -571,10 +571,8 @@ class Array(object):
         selection = normalize_array_selection(item, self._shape)
 
         # check value shape
-        expected_shape = tuple(
-            s.stop - s.start for s in selection
-            if isinstance(s, slice)
-        )
+        expected_shape = len_slices(selection)
+
         if np.isscalar(value):
             pass
         elif expected_shape != value.shape:
