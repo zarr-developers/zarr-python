@@ -347,7 +347,7 @@ class TestAsType(CodecTests, unittest.TestCase):
 
     def test_repr(self):
         codec = self.init_codec(encode_dtype='i4', decode_dtype='i8')
-        expect = 'AsType(encode_dtype=int32, decode_dtype=int64)'
+        expect = "AsType(encode_dtype='<i4', decode_dtype='<i8')"
         actual = repr(codec)
         eq(expect, actual)
 
