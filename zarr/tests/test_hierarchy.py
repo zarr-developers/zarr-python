@@ -473,6 +473,75 @@ class TestGroup(unittest.TestCase):
         eq('baz', arrays[0][0])
         eq(g1['foo']['baz'], arrays[0][1])
 
+        # visitor collection tests
+        items = []
+
+        def visitor2(name, obj=None):
+            items.append(name)
+
+        def visitor3(name, obj):
+            items.append((name, obj))
+
+        del items[:]
+        g1.visit(visitor2)
+        eq([
+            "a",
+            "a/b",
+            "a/b/c",
+            "foo",
+            "foo/bar",
+            "foo/baz",
+        ], items)
+
+        del items[:]
+        g1["foo"].visit(visitor2)
+        eq([
+            "bar",
+            "baz",
+        ], items)
+
+        del items[:]
+        g1.visititems(visitor2)
+        eq([
+            "a",
+            "a/b",
+            "a/b/c",
+            "foo",
+            "foo/bar",
+            "foo/baz",
+        ], items)
+
+        del items[:]
+        g1["foo"].visititems(visitor2)
+        eq([
+            "bar",
+            "baz",
+        ], items)
+
+        del items[:]
+        g1.visititems(visitor3)
+        for n, o in items:
+            eq(g1[n], o)
+
+        del items[:]
+        g1["foo"].visititems(visitor3)
+        for n, o in items:
+            eq(g1["foo"][n], o)
+
+        # visitor filter tests
+        def visitor0(name, obj=None):
+            if name == "a/b/c/d":
+                return True  # pragma: no cover
+
+        def visitor1(name, obj=None):
+            if name == "a/b/c":
+                return True
+
+        eq(None, g1.visit(visitor0))
+        eq(None, g1.visititems(visitor0))
+        eq(True, g1.visit(visitor1))
+        eq(True, g1.visititems(visitor1))
+
     def test_empty_getitem_contains_iterators(self):
         # setup
         g = self.create_group()
