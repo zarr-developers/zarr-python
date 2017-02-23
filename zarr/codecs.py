@@ -241,11 +241,16 @@ class BZ2(Codec):
 codec_registry[BZ2.codec_id] = BZ2
 
 
+lzma = None
 try:
     import lzma
 except ImportError:  # pragma: no cover
-    pass
-else:
+    try:
+        from backports import lzma
+    except ImportError:
+        pass
+
+if lzma:
 
     # noinspection PyShadowingBuiltins
     class LZMA(Codec):
