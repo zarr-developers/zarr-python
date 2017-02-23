@@ -57,6 +57,7 @@ class Group(MutableMapping):
     array_keys
     arrays
     visit
+    visitvalues
     visititems
     create_group
     require_group
@@ -417,6 +418,54 @@ class Group(MutableMapping):
                                  chunk_store=self._chunk_store,
                                  synchronizer=self._synchronizer)
 
+    def visitvalues(self, func):
+        """Run ``func`` on each object.
+
+        Note: If ``func`` returns ``None`` (or doesn't return),
+              iteration continues. However, if ``func`` returns
+              anything else, it ceases and returns that value.
+
+        Examples
+        --------
+        >>> import zarr
+        >>> g1 = zarr.group()
+        >>> g2 = g1.create_group('foo')
+        >>> g3 = g1.create_group('bar')
+        >>> g4 = g3.create_group('baz')
+        >>> g5 = g3.create_group('quux')
+        >>> def print_visitor(obj):
+        ...     print(obj)
+        >>> g1.visitvalues(print_visitor)
+        Group(/bar, 2)
+          groups: 2; baz, quux
+          store: DictStore
+        Group(/bar/baz, 0)
+          store: DictStore
+        Group(/bar/quux, 0)
+          store: DictStore
+        Group(/foo, 0)
+          store: DictStore
+        >>> g3.visitvalues(print_visitor)
+        Group(/bar/baz, 0)
+          store: DictStore
+        Group(/bar/quux, 0)
+          store: DictStore
+
+        """
+
+        def _visit(obj):
+            yield obj
+
+            keys = sorted(getattr(obj, "keys", lambda : [])())
+            for each_key in keys:
+                for each_obj in _visit(obj[each_key]):
+                    yield each_obj
+
+        for each_obj in islice(_visit(self), 1, None):
+            value = func(each_obj)
+            if value is not None:
+                return value
+
     def visit(self, func):
         """Run ``func`` on each object's path.
 
@@ -445,19 +494,8 @@ class Group(MutableMapping):
 
         """
 
-        def _visit(obj):
-            yield obj
-
-            keys = sorted(getattr(obj, "keys", lambda : [])())
-            for each_key in keys:
-                for each_obj in _visit(obj[each_key]):
-                    yield each_obj
-
         base_len = len(self.name)
-        for each_obj in islice(_visit(self), 1, None):
-            value = func(each_obj.name[base_len:].lstrip("/"))
-            if value is not None:
-                return value
+        return self.visitvalues(lambda o: func(o.name[base_len:].lstrip("/")))
 
     def visititems(self, func):
         """Run ``func`` on each object's path and the object itself.
@@ -494,19 +532,8 @@ class Group(MutableMapping):
 
         """
 
-        def _visit(obj):
-            yield obj
-
-            keys = sorted(getattr(obj, "keys", lambda : [])())
-            for each_key in keys:
-                for each_obj in _visit(obj[each_key]):
-                    yield each_obj
-
         base_len = len(self.name)
-        for each_obj in islice(_visit(self), 1, None):
-            value = func(each_obj.name[base_len:].lstrip("/"), each_obj)
-            if value is not None:
-                return value
+        return self.visitvalues(lambda o: func(o.name[base_len:].lstrip("/"), o))
 
     def _write_op(self, f, *args, **kwargs):
 

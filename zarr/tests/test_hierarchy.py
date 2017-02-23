@@ -476,14 +476,17 @@ class TestGroup(unittest.TestCase):
         # visitor collection tests
         items = []
 
-        def visitor2(name, obj=None):
+        def visitor2(obj):
+            items.append(obj.path)
+
+        def visitor3(name, obj=None):
             items.append(name)
 
-        def visitor3(name, obj):
+        def visitor4(name, obj):
             items.append((name, obj))
 
         del items[:]
-        g1.visit(visitor2)
+        g1.visitvalues(visitor2)
         eq([
             "a",
             "a/b",
@@ -494,14 +497,14 @@ class TestGroup(unittest.TestCase):
         ], items)
 
         del items[:]
-        g1["foo"].visit(visitor2)
+        g1["foo"].visitvalues(visitor2)
         eq([
-            "bar",
-            "baz",
+            "foo/bar",
+            "foo/baz",
         ], items)
 
         del items[:]
-        g1.visititems(visitor2)
+        g1.visit(visitor3)
         eq([
             "a",
             "a/b",
@@ -512,7 +515,7 @@ class TestGroup(unittest.TestCase):
         ], items)
 
         del items[:]
-        g1["foo"].visititems(visitor2)
+        g1["foo"].visit(visitor3)
         eq([
             "bar",
             "baz",
@@ -520,26 +523,50 @@ class TestGroup(unittest.TestCase):
 
         del items[:]
         g1.visititems(visitor3)
+        eq([
+            "a",
+            "a/b",
+            "a/b/c",
+            "foo",
+            "foo/bar",
+            "foo/baz",
+        ], items)
+
+        del items[:]
+        g1["foo"].visititems(visitor3)
+        eq([
+            "bar",
+            "baz",
+        ], items)
+
+        del items[:]
+        g1.visititems(visitor4)
         for n, o in items:
             eq(g1[n], o)
 
         del items[:]
-        g1["foo"].visititems(visitor3)
+        g1["foo"].visititems(visitor4)
         for n, o in items:
             eq(g1["foo"][n], o)
 
         # visitor filter tests
-        def visitor0(name, obj=None):
+        def visitor0(val, *args):
+            name = getattr(val, "path", val)
+
             if name == "a/b/c/d":
                 return True  # pragma: no cover
 
-        def visitor1(name, obj=None):
+        def visitor1(val, *args):
+            name = getattr(val, "path", val)
+
             if name == "a/b/c":
-                return True
+                return True  # pragma: no cover
 
         eq(None, g1.visit(visitor0))
+        eq(None, g1.visitvalues(visitor0))
         eq(None, g1.visititems(visitor0))
         eq(True, g1.visit(visitor1))
+        eq(True, g1.visitvalues(visitor1))
         eq(True, g1.visititems(visitor1))
 
     def test_empty_getitem_contains_iterators(self):
