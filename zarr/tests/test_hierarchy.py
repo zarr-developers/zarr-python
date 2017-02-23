@@ -522,6 +522,24 @@ class TestGroup(unittest.TestCase):
         ], items)
 
         del items[:]
+        g1.visitkeys(visitor3)
+        eq([
+            "a",
+            "a/b",
+            "a/b/c",
+            "foo",
+            "foo/bar",
+            "foo/baz",
+        ], items)
+
+        del items[:]
+        g1["foo"].visitkeys(visitor3)
+        eq([
+            "bar",
+            "baz",
+        ], items)
+
+        del items[:]
         g1.visititems(visitor3)
         eq([
             "a",
@@ -563,9 +581,11 @@ class TestGroup(unittest.TestCase):
                 return True  # pragma: no cover
 
         eq(None, g1.visit(visitor0))
+        eq(None, g1.visitkeys(visitor0))
         eq(None, g1.visitvalues(visitor0))
         eq(None, g1.visititems(visitor0))
         eq(True, g1.visit(visitor1))
+        eq(True, g1.visitkeys(visitor1))
         eq(True, g1.visitvalues(visitor1))
         eq(True, g1.visititems(visitor1))
 

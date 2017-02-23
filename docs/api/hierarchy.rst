@@ -16,6 +16,7 @@ Groups (``zarr.hierarchy``)
     .. automethod:: array_keys
     .. automethod:: arrays
     .. automethod:: visit
+    .. automethod:: visitkeys
     .. automethod:: visitvalues
     .. automethod:: visititems
     .. automethod:: create_group

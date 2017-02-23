@@ -57,6 +57,7 @@ class Group(MutableMapping):
     array_keys
     arrays
     visit
+    visitkeys
     visitvalues
     visititems
     create_group
@@ -496,6 +497,12 @@ class Group(MutableMapping):
 
         base_len = len(self.name)
         return self.visitvalues(lambda o: func(o.name[base_len:].lstrip("/")))
+
+    def visitkeys(self, func):
+        """An alias for :py:meth:`~Group.visit`.
+        """
+
+        return self.visit(func)
 
     def visititems(self, func):
         """Run ``func`` on each object's path and the object itself.
