@@ -1,5 +1,5 @@
 # pinned dependencies for the development and CI environment
-appdirs==1.4.0
+appdirs==1.4.1
 args==0.1.0
 clint==0.5.1
 coverage==4.3.4
