@@ -14,15 +14,17 @@ import numpy as np
 
 from zarr.util import normalize_shape, normalize_chunks, normalize_order, \
     normalize_storage_path, buffer_size
-from zarr.meta import encode_array_metadata, encode_group_metadata
+from zarr.meta import encode_array_metadata, encode_frame_metadata, encode_group_metadata
 from zarr.compat import PY2, binary_type
 from zarr.codecs import codec_registry
 from zarr.errors import err_contains_group, err_contains_array, \
+    err_contains_frame, \
     err_path_not_found, err_bad_compressor, err_fspath_exists_notdir, \
     err_read_only
 
 
 array_meta_key = '.zarray'
+frame_meta_key = '.zframe'
 group_meta_key = '.zgroup'
 attrs_key = '.zattrs'
 try:
@@ -40,13 +42,21 @@ def _path_to_prefix(path):
     else:
         prefix = ''
     return prefix
-    
+
 
 def contains_array(store, path=None):
     """Return True if the store contains an array at the given logical path."""
     path = normalize_storage_path(path)
     prefix = _path_to_prefix(path)
     key = prefix + array_meta_key
+    return key in store
+
+
+def contains_frame(store, path=None):
+    """Return True if the store contains a frame at the given logical path."""
+    path = normalize_storage_path(path)
+    prefix = _path_to_prefix(path)
+    key = prefix + frame_meta_key
     return key in store
 
 
@@ -98,8 +108,8 @@ def listdir(store, path=None):
     else:
         # slow version, iterate through all keys
         return _listdir_from_keys(store, path)
-    
-    
+
+
 def getsize(store, path=None):
     """Compute size of stored items for a given path."""
     path = normalize_storage_path(path)
@@ -134,6 +144,9 @@ def _require_parent_group(path, store, chunk_store, overwrite):
             if contains_array(store, p):
                 _init_group_metadata(store, path=p, chunk_store=chunk_store,
                                      overwrite=overwrite)
+            #elif contains_frame(store, p):
+            #    _init_frame_metadata(store, path=p, chunk_store=chunk_store,
+            #                         overwrite=overwrite)
             elif not contains_group(store, p):
                 _init_group_metadata(store, path=p, chunk_store=chunk_store)
 
@@ -240,14 +253,14 @@ def init_array(store, shape, chunks=None, dtype=None, compressor='default',
     Notes
     -----
     The initialisation process involves normalising all array metadata,
-    encoding as JSON and storing under the '.zarray' key. User attributes are 
+    encoding as JSON and storing under the '.zarray' key. User attributes are
     also initialized and stored as JSON under the '.zattrs' key.
 
     """
 
     # normalize path
     path = normalize_storage_path(path)
-    
+
     # ensure parent group initialized
     _require_parent_group(path, store=store, chunk_store=chunk_store,
                           overwrite=overwrite)
@@ -271,6 +284,8 @@ def _init_array_metadata(store, shape, chunks=None, dtype=None,
             rmdir(chunk_store, path)
     elif contains_array(store, path):
         err_contains_array(path)
+    elif contains_frame(store, path):
+        err_contains_frame(path)
     elif contains_group(store, path):
         err_contains_group(path)
 
@@ -316,6 +331,119 @@ def _init_array_metadata(store, shape, chunks=None, dtype=None,
 init_store = init_array
 
 
+def init_frame(store, nrows, columns, dtypes, chunks=None, overwrite=False, path=None,
+               compressor='default', chunk_store=None, filters=None):
+    """initialize a frame store.
+
+    Parameters
+    ----------
+    store : MutableMapping
+        A mapping that supports string keys and byte sequence values.
+    nrows : int
+        Frame number of rows
+    columns : list
+        list of string names of columns
+    dtypes : list
+        list of dtypes
+    chunks : int or tuple of ints, optional
+        Chunk shape. If not provided, will be guessed from `shape` and `dtype`.
+    compressor : Codec, optional
+        Primary compressor.
+    overwrite : bool, optional
+        If True, erase all data in `store` prior to initialisation.
+    path : string, optional
+        Path under which array is stored.
+    chunk_store : MutableMapping, optional
+        Separate storage for chunks. If not provided, `store` will be used
+        for storage of both chunks and metadata.
+    filters : sequence, optional
+        Sequence of filters to use to encode chunk data prior to compression.
+
+    """
+
+    # normalize path
+    path = normalize_storage_path(path)
+
+    # ensure parent group initialized
+    _require_parent_group(path, store=store, chunk_store=chunk_store,
+                          overwrite=overwrite)
+
+    # initialise metadata
+    _init_frame_metadata(store=store, nrows=nrows, columns=columns,
+                         dtypes=dtypes, chunks=chunks, compressor=compressor,
+                         overwrite=overwrite, path=path,
+                         chunk_store=chunk_store, filters=filters)
+
+
+def _init_frame_metadata(store, nrows, columns, dtypes, chunks=None,
+                         compressor='default', overwrite=False,
+                         path=None, chunk_store=None, filters=None):
+
+    # guard conditions
+    if overwrite:
+        # attempt to delete any pre-existing items in store
+        rmdir(store, path)
+        if chunk_store is not None and chunk_store != store:
+            rmdir(chunk_store, path)
+    elif contains_array(store, path):
+        err_contains_array(path)
+    elif contains_frame(store, path):
+        err_contains_frame(path)
+    elif contains_group(store, path):
+        err_contains_group(path)
+
+    # normalize metadata
+    from pandas.api.types import is_list_like
+    if not is_list_like(dtypes):
+        raise ValueError("dtypes must be a list-like")
+    dtypes = [ np.dtype(d) for d in dtypes ]
+    if not is_list_like(columns):
+        raise ValueError("columns must be a list-like")
+    if not len(dtypes) == len(columns):
+        raise ValueError("number of columns must equal number of dtypes")
+    columns = list(columns)
+
+    # chunks are based on the rows; treat each rows as singular
+    chunks = normalize_chunks(chunks, (nrows, len(dtypes)), sum([dtype.itemsize for dtype in dtypes]))
+
+    # obtain compressor config
+    if compressor == 'none':
+        # compatibility
+        compressor = None
+    elif compressor == 'default':
+        compressor = default_compressor
+    if compressor:
+        try:
+            compressor_config = compressor.get_config()
+        except AttributeError:
+            err_bad_compressor(compressor)
+    else:
+        compressor_config = None
+
+    # obtain filters config
+    if filters:
+        filters_config = [f.get_config() for f in filters]
+    else:
+        filters_config = None
+
+    # initialize metadata
+    # N.B., currently no metadata properties are needed, however there may
+    # be in future
+    meta = dict(nrows=nrows,
+                columns=columns,
+                dtypes=dtypes,
+                chunks=chunks,
+                compressor=compressor_config,
+                filters=filters_config)
+
+    key = _path_to_prefix(path) + frame_meta_key
+    store[key] = encode_frame_metadata(meta)
+
+    # initialize attributes
+    key = _path_to_prefix(path) + attrs_key
+    store[key] = json.dumps(dict()).encode('ascii')
+
+
 def init_group(store, overwrite=False, path=None, chunk_store=None):
     """initialize a group store.
 
@@ -355,6 +483,8 @@ def _init_group_metadata(store, overwrite=False, path=None, chunk_store=None):
             rmdir(chunk_store, path)
     elif contains_array(store, path):
         err_contains_array(path)
+    #elif contains_frame(store, path):
+    #    err_contains_frame(path)
     elif contains_group(store, path):
         err_contains_group(path)
 

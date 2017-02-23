@@ -39,6 +39,32 @@ def decode_array_metadata(s):
         return meta
 
 
+def decode_array_metadata(s):
+    if isinstance(s, binary_type):
+        s = text_type(s, 'ascii')
+    meta = json.loads(s)
+    zarr_format = meta.get('zarr_format', None)
+    if zarr_format != ZARR_FORMAT:
+        raise MetadataError('unsupported zarr format: %s' % zarr_format)
+    try:
+        dtype = decode_dtype(meta['dtype'])
+        fill_value = decode_fill_value(meta['fill_value'], dtype)
+        meta = dict(
+            zarr_format=meta['zarr_format'],
+            shape=tuple(meta['shape']),
+            chunks=tuple(meta['chunks']),
+            dtype=dtype,
+            compressor=meta['compressor'],
+            fill_value=fill_value,
+            order=meta['order'],
+            filters=meta['filters'],
+        )
+    except Exception as e:
+        raise MetadataError('error decoding metadata: %s' % e)
+    else:
+        return meta
+
+
 def encode_array_metadata(meta):
     meta = dict(
         zarr_format=ZARR_FORMAT,
@@ -53,6 +79,44 @@ def encode_array_metadata(meta):
     s = json.dumps(meta, indent=4, sort_keys=True, ensure_ascii=True)
     b = s.encode('ascii')
     return b
+
+
+def encode_frame_metadata(meta):
+    meta = dict(
+        zarr_format=ZARR_FORMAT,
+        nrows=meta['nrows'],
+        columns=meta['columns'],
+        dtypes=[encode_dtype(d) for d in meta['dtypes']],
+        chunks=meta['chunks'],
+        compressor=meta['compressor'],
+        filters=meta['filters'],
+    )
+    s = json.dumps(meta, indent=4, sort_keys=True, ensure_ascii=True)
+    b = s.encode('ascii')
+    return b
+
+
+def decode_frame_metadata(s):
+    if isinstance(s, binary_type):
+        s = text_type(s, 'ascii')
+    meta = json.loads(s)
+    zarr_format = meta.get('zarr_format', None)
+    if zarr_format != ZARR_FORMAT:
+        raise MetadataError('unsupported zarr format: %s' % zarr_format)
+    try:
+        meta = dict(
+            zarr_format=meta['zarr_format'],
+            nrows=meta['nrows'],
+            columns=meta['columns'],
+            dtypes=[decode_dtype(dtype) for dtype in meta['dtypes']],
+            chunks=tuple(meta['chunks']),
+            compressor=meta['compressor'],
+            filters=meta['filters'],
+        )
+    except Exception as e:
+        raise MetadataError('error decoding metadata: %s' % e)
+    else:
+        return meta
 
 
 def encode_dtype(d):

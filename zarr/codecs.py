@@ -6,7 +6,7 @@ import array
 import math
 import multiprocessing
 import atexit
-
+import pickle
 
 import numpy as np
 
@@ -997,6 +997,30 @@ class Categorize(Codec):
 
 
 codec_registry[Categorize.codec_id] = Categorize
+
+class PickleCodec(Codec):
+
+    codec_id = 'x-pickle'
+
+    def encode(self, buf):
+        return pickle.dumps(buf)
+
+    def decode(self, buf, out=None):
+        dec = pickle.loads(buf)
+        if out is not None:
+            np.copyto(out, dec)
+            return out
+        else:
+            return dec
+
+    def get_config(self):
+        return dict(id=self.codec_id)
+
+    def __repr__(self):
+        return 'PickleCodec()'
+
+
+codec_registry[PickleCodec.codec_id] = PickleCodec
 
 
 __all__ = ['get_codec', 'codec_registry']

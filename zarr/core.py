@@ -18,7 +18,209 @@ from zarr.compat import reduce
 from zarr.codecs import AsType, get_codec
 
 
-class Array(object):
+class Base(object):
+    """ ABC for Array / Frame """
+    _meta_key = None
+    _is_view = False
+
+    def _load_metadata(self):
+        """(Re)load metadata from store."""
+        if self._synchronizer is None:
+            self._load_metadata_nosync()
+        else:
+            mkey = self._key_prefix + self._meta_key
+            with self._synchronizer[mkey]:
+                self._load_metadata_nosync()
+
+    def _refresh_metadata(self):
+        if not self._cache_metadata:
+            self._load_metadata()
+
+    def _refresh_metadata_nosync(self):
+        if not self._cache_metadata and not self._is_view:
+            self._load_metadata_nosync()
+
+    @property
+    def store(self):
+        """A MutableMapping providing the underlying storage for the array."""
+        return self._store
+
+    @property
+    def path(self):
+        """Storage path."""
+        return self._path
+
+    @property
+    def name(self):
+        """Array name following h5py convention."""
+        if self.path:
+            # follow h5py convention: add leading slash
+            name = self.path
+            if name[0] != '/':
+                name = '/' + name
+            return name
+        return None
+
+    @property
+    def read_only(self):
+        """A boolean, True if modification operations are not permitted."""
+        return self._read_only
+
+    @property
+    def chunk_store(self):
+        """A MutableMapping providing the underlying storage for array
+        chunks."""
+        return self._chunk_store
+
+    @property
+    def chunks(self):
+        """A tuple of integers describing the length of each dimension of a
+        chunk of the array."""
+        return self._chunks
+
+    @property
+    def shape(self):
+        """A tuple of integers describing the length of each dimension of
+        the array."""
+        # N.B., shape may change if array is resized, hence need to refresh
+        # metadata
+        self._refresh_metadata()
+        return self._shape
+
+    @property
+    def compressor(self):
+        """Primary compression codec."""
+        return self._compressor
+
+    @property
+    def filters(self):
+        """One or more codecs used to transform data prior to compression."""
+        return self._filters
+
+    @property
+    def synchronizer(self):
+        """Object used to synchronize write access to the array."""
+        return self._synchronizer
+
+    @property
+    def attrs(self):
+        """A MutableMapping containing user-defined attributes. Note that
+        attribute values must be JSON serializable."""
+        return self._attrs
+
+    @property
+    def _size(self):
+        return reduce(operator.mul, self._shape)
+
+    @property
+    def size(self):
+        """The total number of elements in the array."""
+        # N.B., this property depends on shape, and shape may change if array
+        # is resized, hence need to refresh metadata
+        self._refresh_metadata()
+        return self._size
+
+    @property
+    def ndim(self):
+        """Number of dimensions."""
+        return len(self.shape)
+
+    @property
+    def nbytes(self):
+        """The total number of bytes that would be required to store the
+        array without compression."""
+        # N.B., this property depends on shape, and shape may change if array
+        # is resized, hence need to refresh metadata
+        self._refresh_metadata()
+        return self._nbytes
+
+    @property
+    def nbytes_stored(self):
+        """The total number of stored bytes of data for the array. This
+        includes storage required for configuration metadata and user
+        attributes."""
+        m = getsize(self._store, self._path)
+        if self._store == self._chunk_store:
+            return m
+        else:
+            n = getsize(self._chunk_store, self._path)
+            if m < 0 or n < 0:
+                return -1
+            else:
+                return m + n
+
+    @property
+    def _cdata_shape(self):
+        return tuple(int(np.ceil(s / c))
+                     for s, c in zip(self._shape, self._chunks))
+
+    @property
+    def cdata_shape(self):
+        """A tuple of integers describing the number of chunks along each
+        dimension of the array."""
+        self._refresh_metadata()
+        return self._cdata_shape
+
+    @property
+    def _nchunks(self):
+        return reduce(operator.mul, self._cdata_shape)
+
+    @property
+    def nchunks(self):
+        """Total number of chunks."""
+        self._refresh_metadata()
+        return self._nchunks
+
+    @property
+    def nchunks_initialized(self):
+        """The number of chunks that have been initialized with some data."""
+        return sum(1 for k in listdir(self._chunk_store, self._path)
+                   if k not in [self._meta_key, attrs_key])
+
+    # backwards compability
+    initialized = nchunks_initialized
+
+    def __len__(self):
+        return self.shape[0]
+
+    def __repr__(self):
+        # N.B., __repr__ needs to be synchronized to ensure consistent view
+        # of metadata AND when retrieving nbytes_stored from filesystem storage
+        return self._synchronized_op(self._repr_nosync)
+
+    def __getstate__(self):
+        return self._store, self._path, self._read_only, self._chunk_store, \
+               self._synchronizer, self._cache_metadata
+
+    def __setstate__(self, state):
+        self.__init__(*state)
+
+    def _synchronized_op(self, f, *args, **kwargs):
+
+        # no synchronization
+        if self._synchronizer is None:
+            self._refresh_metadata_nosync()
+            return f(*args, **kwargs)
+
+        else:
+            # synchronize on the array
+            mkey = self._key_prefix + self._meta_key
+            with self._synchronizer[mkey]:
+                self._refresh_metadata_nosync()
+                result = f(*args, **kwargs)
+            return result
+
+    def _write_op(self, f, *args, **kwargs):
+
+        # guard condition
+        if self._read_only:
+            err_read_only()
+
+        return self._synchronized_op(f, *args, **kwargs)
+
+
+
+class Array(Base):
     """Instantiate an array from an initialized store.
 
     Parameters
@@ -76,6 +278,7 @@ class Array(object):
     astype
 
     """  # flake8: noqa
+    _meta_key = array_meta_key
 
     def __init__(self, store, path=None, read_only=False, chunk_store=None,
                  synchronizer=None, cache_metadata=True):
@@ -104,15 +307,6 @@ class Array(object):
         akey = self._key_prefix + attrs_key
         self._attrs = Attributes(store, key=akey, read_only=read_only,
                                  synchronizer=synchronizer)
-
-    def _load_metadata(self):
-        """(Re)load metadata from store."""
-        if self._synchronizer is None:
-            self._load_metadata_nosync()
-        else:
-            mkey = self._key_prefix + array_meta_key
-            with self._synchronizer[mkey]:
-                self._load_metadata_nosync()
 
     def _load_metadata_nosync(self):
         try:
@@ -144,14 +338,6 @@ class Array(object):
                 filters = [get_codec(config) for config in filters]
             self._filters = filters
 
-    def _refresh_metadata(self):
-        if not self._cache_metadata:
-            self._load_metadata()
-
-    def _refresh_metadata_nosync(self):
-        if not self._cache_metadata and not self._is_view:
-            self._load_metadata_nosync()
-
     def _flush_metadata_nosync(self):
         if self._is_view:
             raise PermissionError('not permitted for views')
@@ -171,36 +357,20 @@ class Array(object):
         self._store[mkey] = encode_array_metadata(meta)
 
     @property
-    def store(self):
-        """A MutableMapping providing the underlying storage for the array."""
-        return self._store
+    def fill_value(self):
+        """A value used for uninitialized portions of the array."""
+        return self._fill_value
 
     @property
-    def path(self):
-        """Storage path."""
-        return self._path
+    def order(self):
+        """A string indicating the order in which bytes are arranged within
+        chunks of the array."""
+        return self._order
 
     @property
-    def name(self):
-        """Array name following h5py convention."""
-        if self.path:
-            # follow h5py convention: add leading slash
-            name = self.path
-            if name[0] != '/':
-                name = '/' + name
-            return name
-        return None
-
-    @property
-    def read_only(self):
-        """A boolean, True if modification operations are not permitted."""
-        return self._read_only
-
-    @property
-    def chunk_store(self):
-        """A MutableMapping providing the underlying storage for array
-        chunks."""
-        return self._chunk_store
+    def dtype(self):
+        """The NumPy data type."""
+        return self._dtype
 
     @property
     def shape(self):
@@ -216,66 +386,6 @@ class Array(object):
         self.resize(value)
 
     @property
-    def chunks(self):
-        """A tuple of integers describing the length of each dimension of a
-        chunk of the array."""
-        return self._chunks
-
-    @property
-    def dtype(self):
-        """The NumPy data type."""
-        return self._dtype
-
-    @property
-    def compressor(self):
-        """Primary compression codec."""
-        return self._compressor
-
-    @property
-    def fill_value(self):
-        """A value used for uninitialized portions of the array."""
-        return self._fill_value
-
-    @property
-    def order(self):
-        """A string indicating the order in which bytes are arranged within
-        chunks of the array."""
-        return self._order
-
-    @property
-    def filters(self):
-        """One or more codecs used to transform data prior to compression."""
-        return self._filters
-
-    @property
-    def synchronizer(self):
-        """Object used to synchronize write access to the array."""
-        return self._synchronizer
-
-    @property
-    def attrs(self):
-        """A MutableMapping containing user-defined attributes. Note that
-        attribute values must be JSON serializable."""
-        return self._attrs
-
-    @property
-    def ndim(self):
-        """Number of dimensions."""
-        return len(self.shape)
-
-    @property
-    def _size(self):
-        return reduce(operator.mul, self._shape)
-
-    @property
-    def size(self):
-        """The total number of elements in the array."""
-        # N.B., this property depends on shape, and shape may change if array
-        # is resized, hence need to refresh metadata
-        self._refresh_metadata()
-        return self._size
-
-    @property
     def itemsize(self):
         """The size in bytes of each item in the array."""
         return self.dtype.itemsize
@@ -283,61 +393,6 @@ class Array(object):
     @property
     def _nbytes(self):
         return self._size * self.itemsize
-
-    @property
-    def nbytes(self):
-        """The total number of bytes that would be required to store the
-        array without compression."""
-        # N.B., this property depends on shape, and shape may change if array
-        # is resized, hence need to refresh metadata
-        self._refresh_metadata()
-        return self._nbytes
-
-    @property
-    def nbytes_stored(self):
-        """The total number of stored bytes of data for the array. This
-        includes storage required for configuration metadata and user
-        attributes."""
-        m = getsize(self._store, self._path)
-        if self._store == self._chunk_store:
-            return m
-        else:
-            n = getsize(self._chunk_store, self._path)
-            if m < 0 or n < 0:
-                return -1
-            else:
-                return m + n
-
-    @property
-    def _cdata_shape(self):
-        return tuple(int(np.ceil(s / c))
-                     for s, c in zip(self._shape, self._chunks))
-
-    @property
-    def cdata_shape(self):
-        """A tuple of integers describing the number of chunks along each
-        dimension of the array."""
-        self._refresh_metadata()
-        return self._cdata_shape
-
-    @property
-    def _nchunks(self):
-        return reduce(operator.mul, self._cdata_shape)
-
-    @property
-    def nchunks(self):
-        """Total number of chunks."""
-        self._refresh_metadata()
-        return self._nchunks
-
-    @property
-    def nchunks_initialized(self):
-        """The number of chunks that have been initialized with some data."""
-        return sum(1 for k in listdir(self._chunk_store, self._path)
-                   if k not in [array_meta_key, attrs_key])
-
-    # backwards compability
-    initialized = nchunks_initialized
 
     @property
     def is_view(self):
@@ -360,9 +415,6 @@ class Array(object):
         if args:
             a = a.astype(args[0])
         return a
-
-    def __len__(self):
-        return self.shape[0]
 
     def __getitem__(self, item):
         """Retrieve data for some portion of the array. Most NumPy-style
@@ -809,11 +861,6 @@ class Array(object):
 
         return cdata
 
-    def __repr__(self):
-        # N.B., __repr__ needs to be synchronized to ensure consistent view
-        # of metadata AND when retrieving nbytes_stored from filesystem storage
-        return self._synchronized_op(self._repr_nosync)
-
     def _repr_nosync(self):
 
         # main line
@@ -856,35 +903,39 @@ class Array(object):
 
         return r
 
-    def __getstate__(self):
-        return self._store, self._path, self._read_only, self._chunk_store, \
-               self._synchronizer, self._cache_metadata
+    def _repr_abbv_nosync(self):
+        # appreviated repr
 
-    def __setstate__(self, state):
-        self.__init__(*state)
+        # main line
+        r = '%s(' % type(self).__name__
+        if self.name:
+            r += '%s, ' % self.name
+        r += '%s, ' % str(self._dtype)
+        r += 'order=%s' % self._order
+        r += ')'
 
-    def _synchronized_op(self, f, *args, **kwargs):
+        # storage size info
+        r += '\n  nbytes: %s' % human_readable_size(self._nbytes)
+        if self.nbytes_stored > 0:
+            r += '; nbytes_stored: %s' % human_readable_size(
+                self.nbytes_stored)
+            r += '; ratio: %.1f' % (self._nbytes / self.nbytes_stored)
+        r += '; initialized: %s/%s' % (self.nchunks_initialized,
+                                       self._nchunks)
 
-        # no synchronization
-        if self._synchronizer is None:
-            self._refresh_metadata_nosync()
-            return f(*args, **kwargs)
+        # filters
+        if self._filters:
+            # first line
+            r += '\n  filters: %r' % self._filters[0]
+            # subsequent lines
+            for f in self._filters[1:]:
+                r += '\n           %r' % f
 
-        else:
-            # synchronize on the array
-            mkey = self._key_prefix + array_meta_key
-            with self._synchronizer[mkey]:
-                self._refresh_metadata_nosync()
-                result = f(*args, **kwargs)
-            return result
+        # compressor
+        if self._compressor:
+            r += '\n  compressor: %r' % self._compressor
 
-    def _write_op(self, f, *args, **kwargs):
-
-        # guard condition
-        if self._read_only:
-            err_read_only()
-
-        return self._synchronized_op(f, *args, **kwargs)
+        return r
 
     def resize(self, *args):
         """Change the shape of the array by growing or shrinking one or more
