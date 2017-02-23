@@ -201,11 +201,16 @@ class TestBZ2(CodecTests, unittest.TestCase):
             self._test_decode_lossless(arr, **config)
 
 
+lzma = None
 try:
     import lzma
 except ImportError:  # pragma: no cover
-    pass
-else:
+    try:
+        from backports import lzma
+    except ImportError:
+        pass
+
+if lzma:
 
     class TestLZMA(CodecTests, unittest.TestCase):
 
