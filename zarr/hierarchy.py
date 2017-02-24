@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, print_function, division
 from collections import MutableMapping
+from itertools import islice
 
 
 import numpy as np
@@ -55,6 +56,10 @@ class Group(MutableMapping):
     groups
     array_keys
     arrays
+    visit
+    visitkeys
+    visitvalues
+    visititems
     create_group
     require_group
     create_groups
@@ -413,6 +418,129 @@ class Group(MutableMapping):
                                  read_only=self._read_only,
                                  chunk_store=self._chunk_store,
                                  synchronizer=self._synchronizer)
+
+    def visitvalues(self, func):
+        """Run ``func`` on each object.
+
+        Note: If ``func`` returns ``None`` (or doesn't return),
+              iteration continues. However, if ``func`` returns
+              anything else, it ceases and returns that value.
+
+        Examples
+        --------
+        >>> import zarr
+        >>> g1 = zarr.group()
+        >>> g2 = g1.create_group('foo')
+        >>> g3 = g1.create_group('bar')
+        >>> g4 = g3.create_group('baz')
+        >>> g5 = g3.create_group('quux')
+        >>> def print_visitor(obj):
+        ...     print(obj)
+        >>> g1.visitvalues(print_visitor)
+        Group(/bar, 2)
+          groups: 2; baz, quux
+          store: DictStore
+        Group(/bar/baz, 0)
+          store: DictStore
+        Group(/bar/quux, 0)
+          store: DictStore
+        Group(/foo, 0)
+          store: DictStore
+        >>> g3.visitvalues(print_visitor)
+        Group(/bar/baz, 0)
+          store: DictStore
+        Group(/bar/quux, 0)
+          store: DictStore
+
+        """
+
+        def _visit(obj):
+            yield obj
+
+            keys = sorted(getattr(obj, "keys", lambda : [])())
+            for each_key in keys:
+                for each_obj in _visit(obj[each_key]):
+                    yield each_obj
+
+        for each_obj in islice(_visit(self), 1, None):
+            value = func(each_obj)
+            if value is not None:
+                return value
+
+    def visit(self, func):
+        """Run ``func`` on each object's path.
+
+        Note: If ``func`` returns ``None`` (or doesn't return),
+              iteration continues. However, if ``func`` returns
+              anything else, it ceases and returns that value.
+
+        Examples
+        --------
+        >>> import zarr
+        >>> g1 = zarr.group()
+        >>> g2 = g1.create_group('foo')
+        >>> g3 = g1.create_group('bar')
+        >>> g4 = g3.create_group('baz')
+        >>> g5 = g3.create_group('quux')
+        >>> def print_visitor(name):
+        ...     print(name)
+        >>> g1.visit(print_visitor)
+        bar
+        bar/baz
+        bar/quux
+        foo
+        >>> g3.visit(print_visitor)
+        baz
+        quux
+
+        """
+
+        base_len = len(self.name)
+        return self.visitvalues(lambda o: func(o.name[base_len:].lstrip("/")))
+
+    def visitkeys(self, func):
+        """An alias for :py:meth:`~Group.visit`.
+        """
+
+        return self.visit(func)
+
+    def visititems(self, func):
+        """Run ``func`` on each object's path and the object itself.
+
+        Note: If ``func`` returns ``None`` (or doesn't return),
+              iteration continues. However, if ``func`` returns
+              anything else, it ceases and returns that value.
+
+        Examples
+        --------
+        >>> import zarr
+        >>> g1 = zarr.group()
+        >>> g2 = g1.create_group('foo')
+        >>> g3 = g1.create_group('bar')
+        >>> g4 = g3.create_group('baz')
+        >>> g5 = g3.create_group('quux')
+        >>> def print_visitor(name, obj):
+        ...     print((name, obj))
+        >>> g1.visititems(print_visitor)
+        ('bar', Group(/bar, 2)
+          groups: 2; baz, quux
+          store: DictStore)
+        ('bar/baz', Group(/bar/baz, 0)
+          store: DictStore)
+        ('bar/quux', Group(/bar/quux, 0)
+          store: DictStore)
+        ('foo', Group(/foo, 0)
+          store: DictStore)
+        >>> g3.visititems(print_visitor)
+        ('baz', Group(/bar/baz, 0)
+          store: DictStore)
+        ('quux', Group(/bar/quux, 0)
+          store: DictStore)
+
+        """
+
+        base_len = len(self.name)
+        return self.visitvalues(lambda o: func(o.name[base_len:].lstrip("/"), o))
 
     def _write_op(self, f, *args, **kwargs):
 
