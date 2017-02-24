@@ -59,6 +59,9 @@ target/
 # PyCharm
 .idea
 
+# Jupyter
+.ipynb_checkpoints/
+
 # setuptools-scm
 zarr/version.py
 
