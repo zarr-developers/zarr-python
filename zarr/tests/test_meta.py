@@ -84,7 +84,8 @@ def test_encode_decode_array_2():
             "id": "blosc",
             "clevel": 3,
             "cname": "lz4",
-            "shuffle": 2
+            "shuffle": 2,
+            "blocksize": 0
         },
         "dtype": [["a", "<i4"], ["b", "|S10"]],
         "fill_value": 42,

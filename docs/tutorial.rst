@@ -21,8 +21,8 @@ example::
     >>> z = zarr.zeros((10000, 10000), chunks=(1000, 1000), dtype='i4')
     >>> z
     Array((10000, 10000), int32, chunks=(1000, 1000), order=C)
-      nbytes: 381.5M; nbytes_stored: 323; ratio: 1238390.1; initialized: 0/100
-      compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
+      nbytes: 381.5M; nbytes_stored: ...; ratio: ...; initialized: 0/100
+      compressor: Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
       store: dict
 
 The code above creates a 2-dimensional array of 32-bit integers with
@@ -33,7 +33,7 @@ For a complete list of array creation routines see the
 :mod:`zarr.creation` module documentation.
 
 .. _tutorial_array:
-     
+
 Reading and writing data
 ------------------------
 
@@ -44,14 +44,13 @@ scalar value::
     >>> z[:] = 42
     >>> z
     Array((10000, 10000), int32, chunks=(1000, 1000), order=C)
-      nbytes: 381.5M; nbytes_stored: 1.8M; ratio: 215.1; initialized: 100/100
-      compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
+      nbytes: 381.5M; nbytes_stored: ...; ratio: ...; initialized: 100/100
+      compressor: Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
       store: dict
 
-Notice that the values of ``nbytes_stored``, ``ratio`` and
-``initialized`` have changed. This is because when a Zarr array is
-first created, none of the chunks are initialized. Writing data into
-the array will cause the necessary chunks to be initialized.
+Notice that the values of ``initialized`` has changed. This is because
+when a Zarr array is first created, none of the chunks are initialized.
+Writing data into the array will cause the necessary chunks to be initialized.
 
 Regions of the array can also be written to, e.g.::
 
@@ -80,7 +79,7 @@ the requested region into a NumPy array, e.g.::
            [9999,   42,   42, ...,   42,   42,   42]], dtype=int32)
 
 .. _tutorial_persist:
-	   
+
 Persistent arrays
 -----------------
 
@@ -92,8 +91,8 @@ enabling persistence of data between sessions. For example::
     ...                      chunks=(1000, 1000), dtype='i4', fill_value=0)
     >>> z1
     Array((10000, 10000), int32, chunks=(1000, 1000), order=C)
-      nbytes: 381.5M; nbytes_stored: 323; ratio: 1238390.1; initialized: 0/100
-      compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
+      nbytes: 381.5M; nbytes_stored: ...; ratio: ...; initialized: 0/100
+      compressor: Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
       store: DirectoryStore
 
 The array above will store its configuration metadata and all
@@ -116,13 +115,13 @@ Check that the data have been written and can be read again::
     >>> z2 = zarr.open_array('example.zarr', mode='r')
     >>> z2
     Array((10000, 10000), int32, chunks=(1000, 1000), order=C)
-      nbytes: 381.5M; nbytes_stored: 1.9M; ratio: 204.5; initialized: 100/100
-      compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
+      nbytes: 381.5M; nbytes_stored: ...; ratio: ...; initialized: 100/100
+      compressor: Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
       store: DirectoryStore
     >>> np.all(z1[:] == z2[:])
     True
 
-.. _tutorial_resize:    
+.. _tutorial_resize:
 
 Resizing and appending
 ----------------------
@@ -133,11 +132,8 @@ can be increased or decreased in length. For example::
     >>> z = zarr.zeros(shape=(10000, 10000), chunks=(1000, 1000))
     >>> z[:] = 42
     >>> z.resize(20000, 10000)
-    >>> z
-    Array((20000, 10000), float64, chunks=(1000, 1000), order=C)
-      nbytes: 1.5G; nbytes_stored: 3.6M; ratio: 422.3; initialized: 100/200
-      compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
-      store: dict
+    >>> z.shape
+    (20000, 10000)
 
 Note that when an array is resized, the underlying data are not
 rearranged in any way. If one or more dimensions are shrunk, any
@@ -149,28 +145,18 @@ which can be used to append data to any axis. E.g.::
 
     >>> a = np.arange(10000000, dtype='i4').reshape(10000, 1000)
     >>> z = zarr.array(a, chunks=(1000, 100))
-    >>> z
-    Array((10000, 1000), int32, chunks=(1000, 100), order=C)
-      nbytes: 38.1M; nbytes_stored: 1.9M; ratio: 20.3; initialized: 100/100
-      compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
-      store: dict
+    >>> z.shape
+    (10000, 1000)
     >>> z.append(a)
     (20000, 1000)
-    >>> z
-    Array((20000, 1000), int32, chunks=(1000, 100), order=C)
-      nbytes: 76.3M; nbytes_stored: 3.8M; ratio: 20.3; initialized: 200/200
-      compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
-      store: dict
     >>> z.append(np.vstack([a, a]), axis=1)
     (20000, 2000)
     >>> z
     Array((20000, 2000), int32, chunks=(1000, 100), order=C)
-      nbytes: 152.6M; nbytes_stored: 7.5M; ratio: 20.3; initialized: 400/400
-      compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
-      store: dict
+      ...
 
 .. _tutorial_compress:
-      
+
 Compressors
 -----------
 
@@ -187,13 +173,14 @@ data.
 Different compressors can be provided via the ``compressor`` keyword argument
 accepted by all array creation functions. For example::
 
+    >>> from numcodecs import Blosc
     >>> z = zarr.array(np.arange(100000000, dtype='i4').reshape(10000, 10000),
     ...                chunks=(1000, 1000),
-    ...                compressor=zarr.Blosc(cname='zstd', clevel=3, shuffle=2))
+    ...                compressor=Blosc(cname='zstd', clevel=3, shuffle=Blosc.BITSHUFFLE))
     >>> z
     Array((10000, 10000), int32, chunks=(1000, 1000), order=C)
-      nbytes: 381.5M; nbytes_stored: 4.4M; ratio: 87.6; initialized: 100/100
-      compressor: Blosc(cname='zstd', clevel=3, shuffle=2)
+      nbytes: 381.5M; nbytes_stored: ...; ratio: ...; initialized: 100/100
+      compressor: Blosc(cname='zstd', clevel=3, shuffle=BITSHUFFLE, blocksize=0)
       store: dict
 
 The array above will use Blosc as the primary compressor, using the
@@ -203,22 +190,21 @@ the bitshuffle filter applied.
 A list of the internal compression libraries available within Blosc can be
 obtained via::
 
-    >>> from zarr import blosc
+    >>> from numcodecs import blosc
     >>> blosc.list_compressors()
     ['blosclz', 'lz4', 'lz4hc', 'snappy', 'zlib', 'zstd']
 
 In addition to Blosc, other compression libraries can also be
-used. Zarr comes with support for zlib, BZ2 and LZMA compression, via
-the Python standard library. For example, here is an array using zlib
-compression, level 1::
+used. For example, here is an array using Zstandard compression, level 1::
 
+    >>> from numcodecs import Zstd
     >>> z = zarr.array(np.arange(100000000, dtype='i4').reshape(10000, 10000),
     ...                chunks=(1000, 1000),
-    ...                compressor=zarr.Zlib(level=1))
+    ...                compressor=Zstd(level=1))
     >>> z
     Array((10000, 10000), int32, chunks=(1000, 1000), order=C)
-      nbytes: 381.5M; nbytes_stored: 132.2M; ratio: 2.9; initialized: 100/100
-      compressor: Zlib(level=1)
+      nbytes: 381.5M; nbytes_stored: ...; ratio: ...; initialized: 100/100
+      compressor: Zstd(level=1)
       store: dict
 
 Here is an example using LZMA with a custom filter pipeline including
@@ -227,12 +213,13 @@ LZMA's built-in delta filter::
     >>> import lzma
     >>> lzma_filters = [dict(id=lzma.FILTER_DELTA, dist=4),
     ...                 dict(id=lzma.FILTER_LZMA2, preset=1)]
-    >>> compressor = zarr.LZMA(filters=lzma_filters)
+    >>> from numcodecs import LZMA
+    >>> compressor = LZMA(filters=lzma_filters)
     >>> z = zarr.array(np.arange(100000000, dtype='i4').reshape(10000, 10000),
     ...                chunks=(1000, 1000), compressor=compressor)
     >>> z
     Array((10000, 10000), int32, chunks=(1000, 1000), order=C)
-      nbytes: 381.5M; nbytes_stored: 248.9K; ratio: 1569.7; initialized: 100/100
+      nbytes: 381.5M; nbytes_stored: ...; ratio: ...; initialized: 100/100
       compressor: LZMA(format=1, check=-1, preset=None, filters=[{'dist': 4, 'id': 3}, {'id': 33, 'preset': 1}])
       store: dict
 
@@ -240,23 +227,24 @@ The default compressor can be changed by setting the value of the
 ``zarr.storage.default_compressor`` variable, e.g.::
 
     >>> import zarr.storage
-    >>> # switch to using Zstandard via Blosc by default
-    ... zarr.storage.default_compressor = zarr.Blosc(cname='zstd', clevel=1, shuffle=1)
+    >>> from numcodecs import Zstd, Blosc
+    >>> # switch to using Zstandard
+    ... zarr.storage.default_compressor = Zstd(level=1)
     >>> z = zarr.zeros(100000000, chunks=1000000)
     >>> z
     Array((100000000,), float64, chunks=(1000000,), order=C)
-      nbytes: 762.9M; nbytes_stored: 302; ratio: 2649006.6; initialized: 0/100
-      compressor: Blosc(cname='zstd', clevel=1, shuffle=1)
+      nbytes: 762.9M; nbytes_stored: ...; ratio: ...; initialized: 0/100
+      compressor: Zstd(level=1)
       store: dict
     >>> # switch back to Blosc defaults
-    ... zarr.storage.default_compressor = zarr.Blosc()
+    ... zarr.storage.default_compressor = Blosc()
 
 To disable compression, set ``compressor=None`` when creating an array, e.g.::
 
     >>> z = zarr.zeros(100000000, chunks=1000000, compressor=None)
     >>> z
     Array((100000000,), float64, chunks=(1000000,), order=C)
-      nbytes: 762.9M; nbytes_stored: 209; ratio: 3827751.2; initialized: 0/100
+      nbytes: 762.9M; nbytes_stored: ...; ratio: ...; initialized: 0/100
       store: dict
 
 .. _tutorial_filters:
@@ -276,22 +264,22 @@ flexibility for implementing and using filters in combination with different
 compressors, Zarr also provides a mechanism for configuring filters outside of
 the primary compressor.
 
-Here is an example using the Zarr delta filter with the Blosc compressor:
+Here is an example using the delta filter with the Blosc compressor:
 
-    >>> filters = [zarr.Delta(dtype='i4')]
-    >>> compressor = zarr.Blosc(cname='zstd', clevel=1, shuffle=1)
+    >>> from numcodecs import Blosc, Delta
+    >>> filters = [Delta(dtype='i4')]
+    >>> compressor = Blosc(cname='zstd', clevel=1, shuffle=Blosc.SHUFFLE)
     >>> z = zarr.array(np.arange(100000000, dtype='i4').reshape(10000, 10000),
     ...                chunks=(1000, 1000), filters=filters, compressor=compressor)
     >>> z
     Array((10000, 10000), int32, chunks=(1000, 1000), order=C)
-      nbytes: 381.5M; nbytes_stored: 633.4K; ratio: 616.7; initialized: 100/100
-      filters: Delta(dtype=int32)
-      compressor: Blosc(cname='zstd', clevel=1, shuffle=1)
+      nbytes: 381.5M; nbytes_stored: ...; ratio: ...; initialized: 100/100
+      filters: Delta(dtype='<i4')
+      compressor: Blosc(cname='zstd', clevel=1, shuffle=SHUFFLE, blocksize=0)
       store: dict
 
-Zarr comes with implementations of delta, scale-offset, quantize, packbits and
-categorize filters. It is also relatively straightforward to implement custom
-filters. For more information see the :mod:`zarr.codecs` API docs.
+For more information about available filter codecs, see the
+`Numcodecs <http://numcodecs.readthedocs.io/>`_ documentation.
 
 .. _tutorial_sync:
 
@@ -335,8 +323,8 @@ array with thread synchronization::
     ...                 synchronizer=zarr.ThreadSynchronizer())
     >>> z
     Array((10000, 10000), int32, chunks=(1000, 1000), order=C)
-      nbytes: 381.5M; nbytes_stored: 323; ratio: 1238390.1; initialized: 0/100
-      compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
+      nbytes: 381.5M; nbytes_stored: ...; ratio: ...; initialized: 0/100
+      compressor: Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
       store: dict; synchronizer: ThreadSynchronizer
 
 This array is safe to read or write within a multi-threaded program.
@@ -350,8 +338,8 @@ provided that all processes have access to a shared file system. E.g.::
     ...                     synchronizer=synchronizer)
     >>> z
     Array((10000, 10000), int32, chunks=(1000, 1000), order=C)
-      nbytes: 381.5M; nbytes_stored: 323; ratio: 1238390.1; initialized: 0/100
-      compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
+      nbytes: 381.5M; nbytes_stored: ...; ratio: ...; initialized: 0/100
+      compressor: Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
       store: DirectoryStore; synchronizer: ProcessSynchronizer
 
 This array is safe to read or write from multiple processes.
@@ -407,9 +395,7 @@ Groups can also contain arrays, e.g.::
     ...                      compressor=zarr.Blosc(cname='zstd', clevel=1, shuffle=1))
     >>> z1
     Array(/foo/bar/baz, (10000, 10000), int32, chunks=(1000, 1000), order=C)
-      nbytes: 381.5M; nbytes_stored: 324; ratio: 1234567.9; initialized: 0/100
-      compressor: Blosc(cname='zstd', clevel=1, shuffle=1)
-      store: DictStore
+      ...
 
 Arrays are known as "datasets" in HDF5 terminology. For compatibility with
 h5py, Zarr groups also implement the :func:`zarr.hierarchy.Group.create_dataset`
@@ -421,9 +407,7 @@ and :func:`zarr.hierarchy.Group.require_dataset` methods, e.g.::
     ...                              compression_opts=1)
     >>> z
     Array(/foo/bar/quux, (10000, 10000), int32, chunks=(1000, 1000), order=C)
-      nbytes: 381.5M; nbytes_stored: 275; ratio: 1454545.5; initialized: 0/100
-      compressor: Zlib(level=1)
-      store: DictStore
+      ...
 
 Members of a group can be accessed via the suffix notation, e.g.::
 
@@ -441,9 +425,7 @@ e.g.::
       store: DictStore
     >>> root_group['foo/bar/baz']
     Array(/foo/bar/baz, (10000, 10000), int32, chunks=(1000, 1000), order=C)
-      nbytes: 381.5M; nbytes_stored: 324; ratio: 1234567.9; initialized: 0/100
-      compressor: Blosc(cname='zstd', clevel=1, shuffle=1)
-      store: DictStore
+      ...
 
 The :func:`zarr.hierarchy.open_group` provides a convenient way to create or
 re-open a group stored in a directory on the file-system, with sub-groups
@@ -458,9 +440,7 @@ stored in sub-directories, e.g.::
     ...                                     fill_value=0)
     >>> z
     Array(/foo/bar/baz, (10000, 10000), int32, chunks=(1000, 1000), order=C)
-      nbytes: 381.5M; nbytes_stored: 323; ratio: 1238390.1; initialized: 0/100
-      compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
-      store: DirectoryStore
+      ...
 
 For more information on groups see the :mod:`zarr.hierarchy` API docs.
 
@@ -500,13 +480,13 @@ data. E.g.::
     >>> a = np.arange(100000000, dtype='i4').reshape(10000, 10000).T
     >>> zarr.array(a, chunks=(1000, 1000))
     Array((10000, 10000), int32, chunks=(1000, 1000), order=C)
-      nbytes: 381.5M; nbytes_stored: 26.3M; ratio: 14.5; initialized: 100/100
-      compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
+      nbytes: 381.5M; nbytes_stored: 25.6M; ratio: 14.9; initialized: 100/100
+      compressor: Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
       store: dict
     >>> zarr.array(a, chunks=(1000, 1000), order='F')
     Array((10000, 10000), int32, chunks=(1000, 1000), order=F)
-      nbytes: 381.5M; nbytes_stored: 9.2M; ratio: 41.6; initialized: 100/100
-      compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
+      nbytes: 381.5M; nbytes_stored: 9.2M; ratio: 41.5; initialized: 100/100
+      compressor: Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
       store: dict
 
 In the above example, Fortran order gives a better compression ratio. This
@@ -529,19 +509,19 @@ Here is an example storing an array directly into a Zip file::
     >>> z = zarr.zeros((1000, 1000), chunks=(100, 100), dtype='i4', store=store)
     >>> z
     Array((1000, 1000), int32, chunks=(100, 100), order=C)
-      nbytes: 3.8M; nbytes_stored: 319; ratio: 12539.2; initialized: 0/100
-      compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
+      nbytes: 3.8M; nbytes_stored: ...; ratio: ...; initialized: 0/100
+      compressor: Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
       store: ZipStore
     >>> z[:] = 42
     >>> z
     Array((1000, 1000), int32, chunks=(100, 100), order=C)
-      nbytes: 3.8M; nbytes_stored: 21.8K; ratio: 179.2; initialized: 100/100
-      compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
+      nbytes: 3.8M; nbytes_stored: ...; ratio: ...; initialized: 100/100
+      compressor: Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
       store: ZipStore
     >>> store.close()
     >>> import os
     >>> os.path.getsize('example.zip')
-    30721
+    30745
 
 Re-open and check that data have been written::
 
@@ -549,8 +529,8 @@ Re-open and check that data have been written::
     >>> z = zarr.Array(store)
     >>> z
     Array((1000, 1000), int32, chunks=(100, 100), order=C)
-      nbytes: 3.8M; nbytes_stored: 21.8K; ratio: 179.2; initialized: 100/100
-      compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
+      nbytes: 3.8M; nbytes_stored: ...; ratio: ...; initialized: 100/100
+      compressor: Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
       store: ZipStore
     >>> z[:]
     array([[42, 42, 42, ..., 42, 42, 42],
@@ -619,7 +599,7 @@ simple heuristics and may be far from optimal. E.g.::
     (313, 313)
 
 .. _tutorial_tips_blosc:
-    
+
 Configuring Blosc
 ~~~~~~~~~~~~~~~~~
 

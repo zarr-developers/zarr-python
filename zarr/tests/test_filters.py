@@ -7,9 +7,9 @@ from numpy.testing import assert_array_equal, assert_array_almost_equal
 from nose.tools import eq_ as eq
 
 
-from zarr.codecs import AsType, Delta, FixedScaleOffset, \
-    Quantize, PackBits, Categorize, \
-    Zlib, Blosc, BZ2
+from numcodecs import AsType, Delta, FixedScaleOffset, PackBits, Categorize, Zlib, Blosc, BZ2
+# TODO port Quantize codec
+# from numcodecs import Quantize
 from zarr.creation import array
 from zarr.compat import PY2
 from zarr.util import buffer_tobytes
@@ -116,33 +116,34 @@ def test_array_with_scaleoffset_filter():
             assert_array_equal(expect, actual)
 
 
-def test_array_with_quantize_filter():
-
-    # setup
-    dtype = 'f8'
-    digits = 3
-    flt = Quantize(digits=digits, dtype=dtype)
-    filters = [flt]
-    data = np.linspace(0, 1, 34, dtype=dtype)
-
-    for compressor in compressors:
-        print(repr(compressor))
-
-        a = array(data, chunks=5, compressor=compressor, filters=filters)
-
-        # check round-trip
-        assert_array_almost_equal(data, a[:], decimal=digits)
-
-        # check chunks
-        for i in range(6):
-            cdata = a.store[str(i)]
-            if compressor:
-                chunk = compressor.decode(cdata)
-            else:
-                chunk = cdata
-            actual = np.frombuffer(chunk, dtype=dtype)
-            expect = flt.encode(data[i*5:(i*5)+5])
-            assert_array_equal(expect, actual)
+# TODO reinstate this test after porting Quantize to numcodecs
+# def test_array_with_quantize_filter():
+#
+#     # setup
+#     dtype = 'f8'
+#     digits = 3
+#     flt = Quantize(digits=digits, dtype=dtype)
+#     filters = [flt]
+#     data = np.linspace(0, 1, 34, dtype=dtype)
+#
+#     for compressor in compressors:
+#         print(repr(compressor))
+#
+#         a = array(data, chunks=5, compressor=compressor, filters=filters)
+#
+#         # check round-trip
+#         assert_array_almost_equal(data, a[:], decimal=digits)
+#
+#         # check chunks
+#         for i in range(6):
+#             cdata = a.store[str(i)]
+#             if compressor:
+#                 chunk = compressor.decode(cdata)
+#             else:
+#                 chunk = cdata
+#             actual = np.frombuffer(chunk, dtype=dtype)
+#             expect = flt.encode(data[i*5:(i*5)+5])
+#             assert_array_equal(expect, actual)
 
 
 def test_array_with_packbits_filter():

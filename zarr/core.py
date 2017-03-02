@@ -384,7 +384,7 @@ class Array(object):
             >>> z
             Array((100000000,), int32, chunks=(1000000,), order=C)
               nbytes: 381.5M; nbytes_stored: 6.4M; ratio: 59.9; initialized: 100/100
-              compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
+              compressor: Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
               store: dict
 
         Take some slices::
@@ -408,8 +408,8 @@ class Array(object):
             ...                chunks=(1000, 1000), dtype='i4')
             >>> z
             Array((10000, 10000), int32, chunks=(1000, 1000), order=C)
-              nbytes: 381.5M; nbytes_stored: 9.2M; ratio: 41.6; initialized: 100/100
-              compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
+              nbytes: 381.5M; nbytes_stored: 9.2M; ratio: 41.5; initialized: 100/100
+              compressor: Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
               store: dict
 
         Take some slices::
@@ -506,8 +506,8 @@ class Array(object):
             >>> z = zarr.zeros(100000000, chunks=1000000, dtype='i4')
             >>> z
             Array((100000000,), int32, chunks=(1000000,), order=C)
-              nbytes: 381.5M; nbytes_stored: 301; ratio: 1328903.7; initialized: 0/100
-              compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
+              nbytes: 381.5M; nbytes_stored: 325; ratio: 1230769.2; initialized: 0/100
+              compressor: Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
               store: dict
 
         Set all array elements to the same scalar value::
@@ -528,8 +528,8 @@ class Array(object):
             >>> z = zarr.zeros((10000, 10000), chunks=(1000, 1000), dtype='i4')
             >>> z
             Array((10000, 10000), int32, chunks=(1000, 1000), order=C)
-              nbytes: 381.5M; nbytes_stored: 323; ratio: 1238390.1; initialized: 0/100
-              compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
+              nbytes: 381.5M; nbytes_stored: 347; ratio: 1152737.8; initialized: 0/100
+              compressor: Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
               store: dict
 
         Set all array elements to the same scalar value::
@@ -890,23 +890,14 @@ class Array(object):
         --------
         >>> import zarr
         >>> z = zarr.zeros(shape=(10000, 10000), chunks=(1000, 1000))
-        >>> z
-        Array((10000, 10000), float64, chunks=(1000, 1000), order=C)
-          nbytes: 762.9M; nbytes_stored: 323; ratio: 2476780.2; initialized: 0/100
-          compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
-          store: dict
+        >>> z.shape
+        (10000, 10000)
         >>> z.resize(20000, 10000)
-        >>> z
-        Array((20000, 10000), float64, chunks=(1000, 1000), order=C)
-          nbytes: 1.5G; nbytes_stored: 323; ratio: 4953560.4; initialized: 0/200
-          compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
-          store: dict
+        >>> z.shape
+        (20000, 10000)
         >>> z.resize(30000, 1000)
-        >>> z
-        Array((30000, 1000), float64, chunks=(1000, 1000), order=C)
-          nbytes: 228.9M; nbytes_stored: 322; ratio: 745341.6; initialized: 0/30
-          compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
-          store: dict
+        >>> z.shape
+        (30000, 1000)
 
         Notes
         -----
@@ -975,21 +966,21 @@ class Array(object):
         >>> z
         Array((10000, 1000), int32, chunks=(1000, 100), order=C)
           nbytes: 38.1M; nbytes_stored: 1.9M; ratio: 20.3; initialized: 100/100
-          compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
+          compressor: Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
           store: dict
         >>> z.append(a)
         (20000, 1000)
         >>> z
         Array((20000, 1000), int32, chunks=(1000, 100), order=C)
           nbytes: 76.3M; nbytes_stored: 3.8M; ratio: 20.3; initialized: 200/200
-          compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
+          compressor: Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
           store: dict
         >>> z.append(np.vstack([a, a]), axis=1)
         (20000, 2000)
         >>> z
         Array((20000, 2000), int32, chunks=(1000, 100), order=C)
           nbytes: 152.6M; nbytes_stored: 7.5M; ratio: 20.3; initialized: 400/400
-          compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
+          compressor: Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
           store: dict
 
         """

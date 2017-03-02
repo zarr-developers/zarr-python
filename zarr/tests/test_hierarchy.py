@@ -22,7 +22,7 @@ from zarr.attrs import Attributes
 from zarr.errors import PermissionError
 from zarr.creation import open_array
 from zarr.compat import PY2
-from zarr.codecs import Zlib
+from numcodecs import Zlib
 
 
 # noinspection PyStatementEffect
@@ -213,10 +213,9 @@ class TestGroup(unittest.TestCase):
         # compression_opts as dict
         d = g.create_dataset('aaa', shape=1000, dtype='u1',
                              compression='blosc',
-                             compression_opts=dict(cname='zstd', clevel=1,
-                                                   shuffle=2))
+                             compression_opts=dict(cname='zstd', clevel=1, shuffle=2))
         eq(d.compressor.codec_id, 'blosc')
-        eq(b'zstd', d.compressor.cname)
+        eq('zstd', d.compressor.cname)
         eq(1, d.compressor.clevel)
         eq(2, d.compressor.shuffle)
 
@@ -225,13 +224,12 @@ class TestGroup(unittest.TestCase):
                              compression='blosc',
                              compression_opts=('zstd', 1, 2))
         eq(d.compressor.codec_id, 'blosc')
-        eq(b'zstd', d.compressor.cname)
+        eq('zstd', d.compressor.cname)
         eq(1, d.compressor.clevel)
         eq(2, d.compressor.shuffle)
 
         # None compression_opts
-        d = g.create_dataset('ccc', shape=1000, dtype='u1',
-                             compression='zlib')
+        d = g.create_dataset('ccc', shape=1000, dtype='u1', compression='zlib')
         eq(d.compressor.codec_id, 'zlib')
         eq(1, d.compressor.level)
 
@@ -240,8 +238,7 @@ class TestGroup(unittest.TestCase):
         assert_is_none(d.compressor)
 
         # compressor as compression
-        d = g.create_dataset('eee', shape=1000, dtype='u1',
-                             compression=Zlib(1))
+        d = g.create_dataset('eee', shape=1000, dtype='u1', compression=Zlib(1))
         eq(d.compressor.codec_id, 'zlib')
         eq(1, d.compressor.level)
 
