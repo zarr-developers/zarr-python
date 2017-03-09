@@ -71,6 +71,45 @@ def create(shape, chunks=None, dtype=None, compressor='default',
           compressor: Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
           store: dict
 
+    Create an array with different some different configuration options::
+
+        >>> from numcodecs import Blosc
+        >>> z = zarr.create((10000, 10000), chunks=(1000, 1000), dtype='i1', order='F',
+        ...                 compressor=Blosc(cname='zstd', clevel=1, shuffle=Blosc.BITSHUFFLE))
+        >>> z
+        Array((10000, 10000), int8, chunks=(1000, 1000), order=F)
+          nbytes: 95.4M; nbytes_stored: ...; ratio: ...; initialized: 0/100
+          compressor: Blosc(cname='zstd', clevel=1, shuffle=BITSHUFFLE, blocksize=0)
+          store: dict
+
+    To create an array with object dtype requires a filter that can handle Python object encoding,
+    e.g., `MsgPack` or `Pickle` from `numcodecs`::
+
+        >>> from numcodecs import MsgPack
+        >>> z = zarr.create((10000, 10000), chunks=(1000, 1000), dtype='object',
+        ...                 filters=[MsgPack()])
+        >>> z
+        Array((10000, 10000), object, chunks=(1000, 1000), order=C)
+          nbytes: 762.9M; nbytes_stored: ...; ratio: ...; initialized: 0/100
+          filters: MsgPack(encoding='utf-8')
+          compressor: Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
+          store: dict
+
+    Example with some filters, and also storing chunks separately from metadata::
+
+        >>> from numcodecs import Quantize, Adler32
+        >>> store, chunk_store = dict(), dict()
+        >>> z = zarr.create((10000, 10000), chunks=(1000, 1000), dtype='f8',
+        ...                 filters=[Quantize(digits=2, dtype='f8'), Adler32()],
+        ...                 store=store, chunk_store=chunk_store)
+        >>> z
+        Array((10000, 10000), float64, chunks=(1000, 1000), order=C)
+          nbytes: 762.9M; nbytes_stored: ...; ratio: ...; initialized: 0/100
+          filters: Quantize(digits=2, dtype='<f8')
+                   Adler32()
+          compressor: Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
+          store: dict; chunk_store: dict
+
     """  # flake8: noqa
 
     # handle polymorphic store arg

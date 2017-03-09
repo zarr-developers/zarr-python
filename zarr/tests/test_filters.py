@@ -11,7 +11,6 @@ from numcodecs import AsType, Delta, FixedScaleOffset, PackBits, Categorize, Zli
     Quantize
 from zarr.creation import array
 from zarr.compat import PY2
-from zarr.util import buffer_tobytes
 
 
 compressors = [
@@ -220,8 +219,8 @@ def test_compressor_as_filter():
 
         # check storage
         for i in range(10):
-            x = buffer_tobytes(a1.store[str(i)])
-            y = buffer_tobytes(a2.store[str(i)])
+            x = bytes(a1.store[str(i)])
+            y = bytes(a2.store[str(i)])
             eq(x, y)
 
         # check data
