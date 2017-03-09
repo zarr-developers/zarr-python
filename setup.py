@@ -25,7 +25,7 @@ setup(
     install_requires=[
         'numpy>=1.7',
         'fasteners',
-        'numcodecs>=0.1.1',
+        'numcodecs>=0.2.0',
     ],
     package_dir={'': '.'},
     packages=['zarr', 'zarr.tests'],
