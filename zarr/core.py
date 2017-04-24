@@ -506,7 +506,7 @@ class Array(object):
             >>> z = zarr.zeros(100000000, chunks=1000000, dtype='i4')
             >>> z
             Array((100000000,), int32, chunks=(1000000,), order=C)
-              nbytes: 381.5M; nbytes_stored: 325; ratio: 1230769.2; initialized: 0/100
+              nbytes: 381.5M; nbytes_stored: ...; ratio: ...; initialized: 0/100
               compressor: Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
               store: dict
 
@@ -528,7 +528,7 @@ class Array(object):
             >>> z = zarr.zeros((10000, 10000), chunks=(1000, 1000), dtype='i4')
             >>> z
             Array((10000, 10000), int32, chunks=(1000, 1000), order=C)
-              nbytes: 381.5M; nbytes_stored: 347; ratio: 1152737.8; initialized: 0/100
+              nbytes: 381.5M; nbytes_stored: ...; ratio: ...; initialized: 0/100
               compressor: Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
               store: dict
 
@@ -963,25 +963,15 @@ class Array(object):
         >>> import zarr
         >>> a = np.arange(10000000, dtype='i4').reshape(10000, 1000)
         >>> z = zarr.array(a, chunks=(1000, 100))
-        >>> z
-        Array((10000, 1000), int32, chunks=(1000, 100), order=C)
-          nbytes: 38.1M; nbytes_stored: 1.9M; ratio: 20.3; initialized: 100/100
-          compressor: Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
-          store: dict
+        >>> z.shape
+        (10000, 1000)
         >>> z.append(a)
         (20000, 1000)
-        >>> z
-        Array((20000, 1000), int32, chunks=(1000, 100), order=C)
-          nbytes: 76.3M; nbytes_stored: 3.8M; ratio: 20.3; initialized: 200/200
-          compressor: Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
-          store: dict
         >>> z.append(np.vstack([a, a]), axis=1)
         (20000, 2000)
         >>> z
         Array((20000, 2000), int32, chunks=(1000, 100), order=C)
-          nbytes: 152.6M; nbytes_stored: 7.5M; ratio: 20.3; initialized: 400/400
-          compressor: Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
-          store: dict
+          ...
 
         """
         return self._write_op(self._append_nosync, data, axis=axis)
