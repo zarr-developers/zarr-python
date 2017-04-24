@@ -1,10 +1,13 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, print_function, division
+import numbers
 import operator
 
 
 import numpy as np
 
+from kenjutsu.format import reformat_slices
+from kenjutsu.measure import len_slices
 
 from zarr.compat import integer_types, PY2, reduce
 
@@ -111,58 +114,29 @@ def is_total_slice(item, shape):
     given `shape`. Used to optimize __setitem__ operations on the Chunk
     class."""
 
-    # N.B., assume shape is normalized
+    rf_item = normalize_array_selection(item, shape)
 
-    if item == Ellipsis:
-        return True
-    if item == slice(None):
-        return True
-    if isinstance(item, slice):
-        item = item,
-    if isinstance(item, tuple):
-        return all(
-            (isinstance(s, slice) and
-                ((s == slice(None)) or
-                 ((s.stop - s.start == l) and (s.step in [1, None]))))
-            for s, l in zip(item, shape)
-        )
-    else:
-        raise TypeError('expected slice or tuple of slices, found %r' % item)
+    return len_slices(rf_item) == shape
 
 
 def normalize_axis_selection(item, l):
     """Convenience function to normalize a selection within a single axis
     of size `l`."""
 
-    if isinstance(item, int):
-        if item < 0:
-            # handle wraparound
-            item = l + item
-        if item > (l - 1) or item < 0:
-            raise IndexError('index out of bounds: %s' % item)
-        return item
+    rf_item = reformat_slices((item,), (l,))[0]
 
-    elif isinstance(item, slice):
-        if item.step is not None and item.step != 1:
-            raise NotImplementedError('slice with step not supported')
-        start = 0 if item.start is None else item.start
-        stop = l if item.stop is None else item.stop
-        if start < 0:
-            start = l + start
-        if stop < 0:
-            stop = l + stop
-        if start < 0 or stop < 0:
-            raise IndexError('index out of bounds: %s, %s' % (start, stop))
-        if start >= l:
-            raise IndexError('index out of bounds: %s, %s' % (start, stop))
-        if stop > l:
-            stop = l
-        if stop < start:
-            raise IndexError('index out of bounds: %s, %s' % (start, stop))
-        return slice(start, stop)
+    if not isinstance(rf_item, (slice, numbers.Integral)):
+        raise TypeError("expected integer or slice, found: %r" % rf_item)
 
-    else:
-        raise TypeError('expected integer or slice, found: %r' % item)
+    if isinstance(rf_item, slice) and rf_item.step != 1:
+        raise NotImplementedError("slice with step not supported")
+
+    if np.prod(len_slices((rf_item,))) == 0:
+        raise IndexError(
+            "index out of bounds: %s, %s" % (item.start, item.stop)
+        )
+
+    return rf_item
 
 
 # noinspection PyTypeChecker
@@ -170,29 +144,14 @@ def normalize_array_selection(item, shape):
     """Convenience function to normalize a selection within an array with
     the given `shape`."""
 
-    # normalize item
-    if isinstance(item, integer_types):
-        item = (int(item),)
-    elif isinstance(item, slice):
-        item = (item,)
-    elif item == Ellipsis:
-        item = (slice(None),)
+    rf_item = reformat_slices(item, shape)
 
-    # handle tuple of indices/slices
-    if isinstance(item, tuple):
+    # Only needed for constraint checks.
+    rf_item = tuple(
+        normalize_axis_selection(i, l) for i, l in zip(rf_item, shape)
+    )
 
-        # determine start and stop indices for all axes
-        selection = tuple(normalize_axis_selection(i, l)
-                          for i, l in zip(item, shape))
-
-        # fill out selection if not completely specified
-        if len(selection) < len(shape):
-            selection += tuple(slice(0, l) for l in shape[len(selection):])
-
-        return selection
-
-    else:
-        raise TypeError('expected indices or slice, found: %r' % item)
+    return rf_item
 
 
 def get_chunk_range(selection, chunks):
