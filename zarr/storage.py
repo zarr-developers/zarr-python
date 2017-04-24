@@ -40,7 +40,7 @@ def _path_to_prefix(path):
     else:
         prefix = ''
     return prefix
-    
+
 
 def contains_array(store, path=None):
     """Return True if the store contains an array at the given logical path."""
@@ -98,8 +98,8 @@ def listdir(store, path=None):
     else:
         # slow version, iterate through all keys
         return _listdir_from_keys(store, path)
-    
-    
+
+
 def getsize(store, path=None):
     """Compute size of stored items for a given path."""
     path = normalize_storage_path(path)
@@ -240,14 +240,14 @@ def init_array(store, shape, chunks=None, dtype=None, compressor='default',
     Notes
     -----
     The initialisation process involves normalising all array metadata,
-    encoding as JSON and storing under the '.zarray' key. User attributes are 
+    encoding as JSON and storing under the '.zarray' key. User attributes are
     also initialized and stored as JSON under the '.zattrs' key.
 
     """
 
     # normalize path
     path = normalize_storage_path(path)
-    
+
     # ensure parent group initialized
     _require_parent_group(path, store=store, chunk_store=chunk_store,
                           overwrite=overwrite)
@@ -373,6 +373,11 @@ def _init_group_metadata(store, overwrite=False, path=None, chunk_store=None):
 def ensure_bytes(s):
     if isinstance(s, binary_type):
         return s
+    if isinstance(s, np.ndarray):
+        if PY2:  # pragma: no cover
+            return s.tostring(order='Any')
+        else:
+            return s.tobytes(order='Any')
     if hasattr(s, 'tobytes'):
         return s.tobytes()
     if PY2 and hasattr(s, 'tostring'):  # pragma: no cover
@@ -612,6 +617,10 @@ class DirectoryStore(MutableMapping):
             raise KeyError(key)
 
     def __setitem__(self, key, value):
+
+        # handle F-contiguous numpy arrays
+        if isinstance(value, np.ndarray) and value.flags.f_contiguous:
+            value = ensure_bytes(value)
 
         # destination path for key
         file_path = os.path.join(self.path, key)
