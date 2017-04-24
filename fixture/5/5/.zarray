@@ -3,11 +3,10 @@
         1000
     ],
     "compressor": {
-        "check": -1,
-        "filters": null,
-        "format": 1,
-        "id": "lzma",
-        "preset": 1
+        "clevel": 1,
+        "cname": "zstd",
+        "id": "blosc",
+        "shuffle": 1
     },
     "dtype": "<u2",
     "fill_value": 0,

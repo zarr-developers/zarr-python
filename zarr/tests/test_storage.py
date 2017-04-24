@@ -769,17 +769,12 @@ def test_format_compatibility():
     compressors = [
         None,
         Zlib(level=1),
-        Zlib(level=5),
         BZ2(level=1),
-        BZ2(level=5),
         LZMA(preset=1),
-        LZMA(preset=5),
         Blosc(cname='zstd', clevel=1, shuffle=0),
-        Blosc(cname='zstd', clevel=5, shuffle=0),
         Blosc(cname='zstd', clevel=1, shuffle=1),
         Blosc(cname='zstd', clevel=1, shuffle=2),
         Blosc(cname='lz4', clevel=1, shuffle=0),
-        Blosc(cname='lz4', clevel=5, shuffle=0),
     ]
 
     for i, (arr, chunks) in enumerate(arrays_chunks):

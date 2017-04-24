@@ -3,8 +3,10 @@
         100000
     ],
     "compressor": {
-        "id": "bz2",
-        "level": 5
+        "clevel": 1,
+        "cname": "zstd",
+        "id": "blosc",
+        "shuffle": 0
     },
     "dtype": "<u8",
     "fill_value": 0,

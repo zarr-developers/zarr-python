@@ -3,8 +3,8 @@
         100000
     ],
     "compressor": {
-        "id": "zlib",
-        "level": 5
+        "id": "bz2",
+        "level": 1
     },
     "dtype": "<u8",
     "fill_value": 0,
