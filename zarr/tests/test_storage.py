@@ -8,6 +8,7 @@ import json
 import array
 import shutil
 import os
+import warnings
 
 
 import numpy as np
@@ -646,6 +647,21 @@ class TestZipStore(StoreTests, unittest.TestCase):
         store = ZipStore('example.zip', mode='r')
         with assert_raises(PermissionError):
             store['foo'] = b'bar'
+
+    def test_duplicate(self):
+        caught = False
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", UserWarning)
+            try:
+                with ZipStore('example.zip', mode='w') as store:
+                    store['foo'] = b'bar'
+                    store['foo'] = b'baz'
+            except UserWarning:
+                caught = False
+            else:
+                caught = True
+
+        self.assertTrue(caught, "Failed to catch UserWarning.")
 
 
 def test_getsize():

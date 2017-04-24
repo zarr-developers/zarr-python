@@ -7,6 +7,7 @@ import json
 import zipfile
 import shutil
 import atexit
+import warnings
 
 
 import numpy as np
@@ -841,7 +842,9 @@ class ZipStore(MutableMapping):
         if self.mode == 'r':
             err_read_only()
         value = ensure_bytes(value)
-        self.zf.writestr(key, value)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)
+            self.zf.writestr(key, value)
 
     def __delitem__(self, key):
         raise NotImplementedError
