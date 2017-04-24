@@ -14,7 +14,7 @@
     "filters": null,
     "order": "F",
     "shape": [
-        2000
+        3333
     ],
     "zarr_format": 2
 }

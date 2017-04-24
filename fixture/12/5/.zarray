@@ -13,7 +13,7 @@
     "filters": null,
     "order": "F",
     "shape": [
-        3333
+        4444
     ],
     "zarr_format": 2
 }
