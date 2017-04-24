@@ -6,7 +6,7 @@
         "clevel": 1,
         "cname": "zstd",
         "id": "blosc",
-        "shuffle": 0
+        "shuffle": 1
     },
     "dtype": "|S1",
     "fill_value": 0,

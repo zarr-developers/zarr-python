@@ -22,7 +22,7 @@ from zarr.meta import decode_array_metadata, encode_array_metadata, \
     ZARR_FORMAT, decode_group_metadata, encode_group_metadata
 from zarr.compat import text_type
 from zarr.storage import default_compressor
-from zarr.codecs import Zlib, Blosc, BZ2, LZMA
+from zarr.codecs import Zlib, Blosc, BZ2
 from zarr.errors import PermissionError
 from zarr.hierarchy import group
 
@@ -770,7 +770,6 @@ def test_format_compatibility():
         None,
         Zlib(level=1),
         BZ2(level=1),
-        LZMA(preset=1),
         Blosc(cname='zstd', clevel=1, shuffle=0),
         Blosc(cname='zstd', clevel=1, shuffle=1),
         Blosc(cname='zstd', clevel=1, shuffle=2),
