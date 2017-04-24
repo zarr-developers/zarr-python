@@ -7,12 +7,10 @@ from numpy.testing import assert_array_equal, assert_array_almost_equal
 from nose.tools import eq_ as eq
 
 
-from zarr.codecs import AsType, Delta, FixedScaleOffset, \
-    Quantize, PackBits, Categorize, \
-    Zlib, Blosc, BZ2
+from numcodecs import AsType, Delta, FixedScaleOffset, PackBits, Categorize, Zlib, Blosc, BZ2, \
+    Quantize
 from zarr.creation import array
 from zarr.compat import PY2
-from zarr.util import buffer_tobytes
 
 
 compressors = [
@@ -221,8 +219,8 @@ def test_compressor_as_filter():
 
         # check storage
         for i in range(10):
-            x = buffer_tobytes(a1.store[str(i)])
-            y = buffer_tobytes(a2.store[str(i)])
+            x = bytes(a1.store[str(i)])
+            y = bytes(a2.store[str(i)])
             eq(x, y)
 
         # check data

@@ -1,6 +1,0 @@
-recursive-include c-blosc *
-recursive-include zarr *.pxd
-recursive-include zarr *.pyx
-recursive-include zarr *.h
-recursive-include zarr *.c
-include cpuinfo.py

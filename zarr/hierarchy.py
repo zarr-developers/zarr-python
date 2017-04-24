@@ -31,7 +31,7 @@ class Group(MutableMapping):
     read_only : bool, optional
         True if group should be protected against modification.
     chunk_store : MutableMapping, optional
-        Separate storage for chunks. If not provided, `store` will be used 
+        Separate storage for chunks. If not provided, `store` will be used
         for storage of both chunks and metadata.
     synchronizer : object, optional
         Array synchronizer.
@@ -142,7 +142,7 @@ class Group(MutableMapping):
 
     @property
     def chunk_store(self):
-        """A MutableMapping providing the underlying storage for array 
+        """A MutableMapping providing the underlying storage for array
         chunks."""
         return self._chunk_store
 
@@ -291,8 +291,8 @@ class Group(MutableMapping):
           store: DictStore
         >>> g1['foo/bar/baz']
         Array(/foo/bar/baz, (100,), float64, chunks=(10,), order=C)
-          nbytes: 800; nbytes_stored: 290; ratio: 2.8; initialized: 0/10
-          compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
+          nbytes: 800; nbytes_stored: ...; ratio: ...; initialized: 0/10
+          compressor: Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
           store: DictStore
 
         """  # flake8: noqa
@@ -690,8 +690,8 @@ class Group(MutableMapping):
         ...                        chunks=(1000, 1000))
         >>> d1
         Array(/foo, (10000, 10000), float64, chunks=(1000, 1000), order=C)
-          nbytes: 762.9M; nbytes_stored: 323; ratio: 2476780.2; initialized: 0/100
-          compressor: Blosc(cname='lz4', clevel=5, shuffle=1)
+          nbytes: 762.9M; nbytes_stored: ...; ratio: ...; initialized: 0/100
+          compressor: Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
           store: DictStore
 
         """  # flake8: noqa

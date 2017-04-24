@@ -293,13 +293,3 @@ def buffer_size(v):
     else:
         v = memoryview(v)
         return reduce(operator.mul, v.shape) * v.itemsize
-
-
-def buffer_tobytes(v):
-    from array import array as _stdlib_array
-    if isinstance(v, np.ndarray):
-        return v.tobytes(order='A')
-    elif PY2 and isinstance(v, _stdlib_array):  # pragma: no cover
-        return v.tostring()
-    else:
-        return memoryview(v).tobytes()

@@ -16,7 +16,7 @@ from zarr.util import normalize_shape, normalize_chunks, normalize_order, \
     normalize_storage_path, buffer_size
 from zarr.meta import encode_array_metadata, encode_group_metadata
 from zarr.compat import PY2, binary_type
-from zarr.codecs import codec_registry
+from numcodecs.registry import codec_registry
 from zarr.errors import err_contains_group, err_contains_array, \
     err_path_not_found, err_bad_compressor, err_fspath_exists_notdir, \
     err_read_only
@@ -188,6 +188,7 @@ def init_array(store, shape, chunks=None, dtype=None, compressor='default',
                 1000
             ],
             "compressor": {
+                "blocksize": 0,
                 "clevel": 5,
                 "cname": "lz4",
                 "id": "blosc",
@@ -222,6 +223,7 @@ def init_array(store, shape, chunks=None, dtype=None, compressor='default',
                 1000000
             ],
             "compressor": {
+                "blocksize": 0,
                 "clevel": 5,
                 "cname": "lz4",
                 "id": "blosc",
