@@ -161,6 +161,7 @@ def run_setup(with_extensions):
         install_requires=[
             'numpy>=1.7',
             'fasteners',
+            'kenjutsu>=0.4.2',
         ],
         ext_modules=ext_modules,
         cmdclass=cmdclass,

@@ -1,11 +1,24 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, print_function, division
+import collections
 import operator
 import itertools
+
+try:
+    irange = xrange
+except NameError:
+    irange = range
+
+try:
+    from itertools import map as imap
+except ImportError:
+    imap = map
 
 
 import numpy as np
 
+from kenjutsu.format import split_indices
+from kenjutsu.measure import len_slices
 
 from zarr.util import is_total_slice, normalize_array_selection, \
     get_chunk_range, human_readable_size, normalize_resize_args, \
@@ -449,11 +462,26 @@ class Array(object):
         selection = normalize_array_selection(item, self._shape)
 
         # determine output array shape
-        out_shape = tuple(s.stop - s.start for s in selection
-                          if isinstance(s, slice))
+        out_shape = len_slices(selection)
 
         # setup output array
         out = np.empty(out_shape, dtype=self._dtype, order=self._order)
+
+        # Find where sequences of indices are.
+        seqs_locs = imap(lambda v: isinstance(v, collections.Sequence), selection)
+        seqs_locs = itertools.compress(irange(len(selection)), seqs_locs)
+        seqs_locs = list(seqs_locs)
+
+        # Retrieve each index individually and return the result.
+        if seqs_locs:
+            assert len(seqs_locs) == 1
+            seq_loc = seqs_locs[0]
+            out_swap = out.swapaxes(0, seq_loc)
+            for i, each_selection in enumerate(split_indices(selection)):
+                each_out = out_swap[i][None].swapaxes(0, seq_loc)
+                each_out[...] = self.__getitem__(each_selection)
+
+            return out
 
         # determine indices of chunks overlapping the selection
         chunk_range = get_chunk_range(selection, self._chunks)
@@ -571,16 +599,34 @@ class Array(object):
         selection = normalize_array_selection(item, self._shape)
 
         # check value shape
-        expected_shape = tuple(
-            s.stop - s.start for s in selection
-            if isinstance(s, slice)
-        )
+        expected_shape = len_slices(selection)
+
         if np.isscalar(value):
             pass
         elif expected_shape != value.shape:
             raise ValueError('value has wrong shape, expecting %s, found %s'
                              % (str(expected_shape),
                                 str(value.shape)))
+
+        # Find where sequences of indices are.
+        seqs_locs = imap(lambda v: isinstance(v, collections.Sequence), selection)
+        seqs_locs = itertools.compress(irange(len(selection)), seqs_locs)
+        seqs_locs = list(seqs_locs)
+
+        # Set each index individually and return the result.
+        if seqs_locs:
+            assert len(seqs_locs) == 1
+            seq_loc = seqs_locs[0]
+            if not np.isscalar(value):
+                value = value.swapaxes(0, seq_loc)
+            for i, each_selection in enumerate(split_indices(selection)):
+                each_value = value
+                if not np.isscalar(value):
+                    each_value = value[i][None]
+                    each_value = each_value.swapaxes(0, seq_loc)
+                self.__setitem__(each_selection, each_value)
+
+            return
 
         # determine indices of chunks overlapping the selection
         chunk_range = get_chunk_range(selection, self._chunks)

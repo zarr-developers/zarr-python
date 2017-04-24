@@ -132,6 +132,11 @@ class TestArray(unittest.TestCase):
         # single item
         eq(a[0], z[0])
         eq(a[-1], z[-1])
+        # index selection
+        assert_array_equal(a[(0,), ...], z[(0,), ...])
+        assert_array_equal(a[..., (0,)], z[..., (0,)])
+        assert_array_equal(a[(1,0,2), ...], z[(1,0,2), ...])
+        assert_array_equal(a[..., (1,0,2)], z[..., (1,0,2)])
 
         # check partial assignment
         b = np.arange(1e5, 2e5)
@@ -215,11 +220,24 @@ class TestArray(unittest.TestCase):
         assert_array_equal(a[:110, :3], z[:110, :3])
         assert_array_equal(a[190:310, 3:7], z[190:310, 3:7])
         assert_array_equal(a[-110:, -3:], z[-110:, -3:])
+        assert_array_equal(a[0, ...], z[0, ...])
+        assert_array_equal(a[..., 0], z[..., 0])
+        assert_array_equal(a[10:20, ...], z[10:20, ...])
+        assert_array_equal(a[..., 3:7], z[..., 3:7])
         # single item
         assert_array_equal(a[0], z[0])
         assert_array_equal(a[-1], z[-1])
         eq(a[0, 0], z[0, 0])
         eq(a[-1, -1], z[-1, -1])
+        # index selection
+        assert_array_equal(a[(0,), ...], z[(0,), ...])
+        assert_array_equal(a[..., (0,)], z[..., (0,)])
+        assert_array_equal(a[(1,0,2), ...], z[(1,0,2), ...])
+        assert_array_equal(a[..., (1,0,2)], z[..., (1,0,2)])
+
+        # illegal index selection
+        with self.assertRaises(ValueError) as e:
+            z[(0,), (1,0,2)]
 
         # check partial assignment
         b = np.arange(10000, 20000).reshape((1000, 10))
@@ -269,6 +287,21 @@ class TestArray(unittest.TestCase):
         eq(-1, z[0, 0])
         eq(-1, z[2, 2])
         eq(-1, z[-1, -1])
+        # check multiple indices assignment
+        d = np.arange(z.shape[0])
+        d = np.concatenate(2*[d[..., None]], axis=-1)
+        z[:, (0,)] = -1
+        assert_array_equal(-1, z[:, (0,)])
+        z[:, (2,1)] = -1
+        assert_array_equal(-1, z[:, (2,1)])
+        z[:, (0,)] = d[:, (0,)]
+        assert_array_equal(d[:, (0,)], z[:, (0,)])
+        z[:, (2,1)] = d
+        assert_array_equal(d, z[:, (2,1)])
+
+        # check illegal index assignment
+        with self.assertRaises(ValueError) as e:
+            z[(0,), (1,0,2)] = -1
 
     def test_array_order(self):
 
