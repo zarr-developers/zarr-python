@@ -1,6 +1,6 @@
 {
     "chunks": [
-        1000
+        100
     ],
     "compressor": null,
     "dtype": "<f4",
@@ -8,7 +8,7 @@
     "filters": null,
     "order": "F",
     "shape": [
-        33333
+        3333
     ],
     "zarr_format": 2
 }

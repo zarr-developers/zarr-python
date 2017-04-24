@@ -1,6 +1,6 @@
 {
     "chunks": [
-        100000
+        100
     ],
     "compressor": {
         "id": "zlib",
@@ -11,7 +11,7 @@
     "filters": null,
     "order": "F",
     "shape": [
-        333333
+        3333
     ],
     "zarr_format": 2
 }

@@ -1,6 +1,6 @@
 {
     "chunks": [
-        1000
+        100
     ],
     "compressor": {
         "check": -1,

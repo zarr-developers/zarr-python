@@ -1,6 +1,6 @@
 {
     "chunks": [
-        20000
+        1000
     ],
     "compressor": {
         "check": -1,
@@ -14,7 +14,7 @@
     "filters": null,
     "order": "F",
     "shape": [
-        200000
+        2000
     ],
     "zarr_format": 2
 }

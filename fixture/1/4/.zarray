@@ -1,6 +1,6 @@
 {
     "chunks": [
-        200
+        100
     ],
     "compressor": {
         "clevel": 1,
