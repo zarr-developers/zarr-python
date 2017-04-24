@@ -616,8 +616,7 @@ class Array(object):
                 )
 
                 # put data
-                self._chunk_setitem(cidx, chunk_selection,
-                                    value[value_selection])
+                self._chunk_setitem(cidx, chunk_selection, value[value_selection])
 
     def _chunk_getitem(self, cidx, item, dest):
         """Obtain part or whole of a chunk.
@@ -712,8 +711,7 @@ class Array(object):
             if np.isscalar(value):
 
                 # setup array filled with value
-                chunk = np.empty(self._chunks, dtype=self._dtype,
-                                 order=self._order)
+                chunk = np.empty(self._chunks, dtype=self._dtype, order=self._order)
                 chunk.fill(value)
 
             else:
@@ -725,8 +723,7 @@ class Array(object):
                     # a view into someone else's array.
                     # N.B., this assumes that filters or compressor always
                     # take a copy and never attempt to apply encoding in-place.
-                    chunk = np.array(value, dtype=self._dtype,
-                                     order=self._order)
+                    chunk = np.array(value, dtype=self._dtype, order=self._order)
 
                 else:
                     # ensure array is contiguous
@@ -746,8 +743,7 @@ class Array(object):
             except KeyError:
 
                 # chunk not initialized
-                chunk = np.empty(self._chunks, dtype=self._dtype,
-                                 order=self._order)
+                chunk = np.empty(self._chunks, dtype=self._dtype, order=self._order)
                 if self._fill_value is not None:
                     chunk.fill(self._fill_value)
 

@@ -1,0 +1,21 @@
+{
+    "chunks": [
+        100,
+        3,
+        3
+    ],
+    "compressor": {
+        "id": "bz2",
+        "level": 1
+    },
+    "dtype": "<i4",
+    "fill_value": 0,
+    "filters": null,
+    "order": "C",
+    "shape": [
+        200,
+        10,
+        10
+    ],
+    "zarr_format": 2
+}
