@@ -11,6 +11,7 @@ import os
 
 
 import numpy as np
+from numpy.testing import assert_array_equal, assert_array_almost_equal
 from nose.tools import assert_raises, eq_ as eq, assert_is_none
 
 
@@ -21,8 +22,9 @@ from zarr.meta import decode_array_metadata, encode_array_metadata, \
     ZARR_FORMAT, decode_group_metadata, encode_group_metadata
 from zarr.compat import text_type
 from zarr.storage import default_compressor
-from zarr.codecs import Zlib, Blosc
+from zarr.codecs import Zlib, Blosc, BZ2, LZMA
 from zarr.errors import PermissionError
+from zarr.hierarchy import group
 
 
 class StoreTests(object):
@@ -724,3 +726,91 @@ def test_migrate_1to2():
     assert 'compression' not in meta_migrated
     assert 'compression_opts' not in meta_migrated
     assert_is_none(meta_migrated['compressor'])
+
+
+def test_format_compatibility():
+
+    # This test is intended to catch any unintended changes that break the ability to read data
+    # stored with a previous minor version (which should be format-compatible).
+
+    # fixture data
+    fixture = group(store=DirectoryStore('fixture'))
+
+    # set seed to get consistent random data
+    np.random.seed(42)
+
+    arrays_chunks = [
+        (np.arange(200, dtype='i1'), 20),
+        (np.arange(2000, dtype='i2'), 200),
+        (np.arange(20000, dtype='i4'), 2000),
+        (np.arange(200000, dtype='i8'), 20000),
+        (np.random.randint(0, 200, size=333, dtype='u1'), 100),
+        (np.random.randint(0, 2000, size=3333, dtype='u2'), 1000),
+        (np.random.randint(0, 20000, size=33333, dtype='u4'), 10000),
+        (np.random.randint(0, 200000, size=333333, dtype='u8'), 100000),
+        (np.linspace(0, 1, 2000, dtype='f2'), 100),
+        (np.linspace(0, 1, 20000, dtype='f4'), 1000),
+        (np.linspace(0, 1, 200000, dtype='f8'), 10000),
+        (np.random.normal(loc=0, scale=1, size=3333).astype('f2'), 100),
+        (np.random.normal(loc=0, scale=1, size=33333).astype('f4'), 1000),
+        (np.random.normal(loc=0, scale=1, size=333333).astype('f8'), 10000),
+        (np.random.choice([b'A', b'C', b'G', b'T'], size=2000, replace=True).astype('S'), 100),
+        (np.random.choice(['foo', 'bar', 'baz', 'quux'], size=2000, replace=True).astype('U'), 100),
+        (np.random.choice([0, 1/3, 1/7, 1/9, np.nan], size=2000, replace=True).astype('f8'), 100),
+        (np.random.randint(0, 2, size=2000, dtype=bool), 100),
+        (np.arange(20000, dtype='i4').reshape(2000, 10, order='C'), (100, 3)),
+        (np.arange(20000, dtype='i4').reshape(200, 100, order='F'), (100, 30)),
+        (np.arange(20000, dtype='i4').reshape(200, 10, 10, order='C'), (100, 3, 3)),
+        (np.arange(20000, dtype='i4').reshape(20, 100, 10, order='F'), (10, 30, 3)),
+        (np.arange(20000, dtype='i4').reshape(20, 10, 10, 10, order='C'), (10, 3, 3, 3)),
+        (np.arange(20000, dtype='i4').reshape(20, 10, 10, 10, order='F'), (10, 3, 3, 3)),
+    ]
+
+    compressors = [
+        None,
+        Zlib(level=1),
+        Zlib(level=5),
+        BZ2(level=1),
+        BZ2(level=5),
+        LZMA(preset=1),
+        LZMA(preset=5),
+        Blosc(cname='zstd', clevel=1, shuffle=0),
+        Blosc(cname='zstd', clevel=5, shuffle=0),
+        Blosc(cname='zstd', clevel=1, shuffle=1),
+        Blosc(cname='zstd', clevel=1, shuffle=2),
+        Blosc(cname='lz4', clevel=1, shuffle=0),
+        Blosc(cname='lz4', clevel=5, shuffle=0),
+    ]
+
+    for i, (arr, chunks) in enumerate(arrays_chunks):
+
+        if arr.flags.f_contiguous:
+            order = 'F'
+        else:
+            order = 'C'
+
+        for j, compressor in enumerate(compressors):
+            path = '{}/{}'.format(i, j)
+
+            if path not in fixture:  # pragma: no cover
+                # store the data - should be one-time operation
+                fixture.array(path, data=arr, chunks=chunks, order=order, compressor=compressor)
+
+            # setup array
+            z = fixture[path]
+
+            # check contents
+            if arr.dtype.kind == 'f':
+                assert_array_almost_equal(arr, z[:])
+            else:
+                assert_array_equal(arr, z[:])
+
+            # check dtype
+            eq(arr.dtype, z.dtype)
+
+            # check compressor
+            if compressor is None:
+                assert_is_none(z.compressor)
+            else:
+                eq(compressor.codec_id, z.compressor.codec_id)
+                eq(compressor.get_config(), z.compressor.get_config())
