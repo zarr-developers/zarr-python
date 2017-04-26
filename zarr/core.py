@@ -840,6 +840,7 @@ class Array(object):
             ('Shape', str(self.shape)),
             ('Chunk shape', str(self.chunks)),
             ('Order', self.order),
+            ('Read-only', str(self.read_only)),
         ]
 
         # filters
