@@ -132,8 +132,7 @@ def _require_parent_group(path, store, chunk_store, overwrite):
         for i in range(len(segments)):
             p = '/'.join(segments[:i])
             if contains_array(store, p):
-                _init_group_metadata(store, path=p, chunk_store=chunk_store,
-                                     overwrite=overwrite)
+                _init_group_metadata(store, path=p, chunk_store=chunk_store, overwrite=overwrite)
             elif not contains_group(store, p):
                 _init_group_metadata(store, path=p, chunk_store=chunk_store)
 
@@ -251,8 +250,7 @@ def init_array(store, shape, chunks=None, dtype=None, compressor='default',
     path = normalize_storage_path(path)
 
     # ensure parent group initialized
-    _require_parent_group(path, store=store, chunk_store=chunk_store,
-                          overwrite=overwrite)
+    _require_parent_group(path, store=store, chunk_store=chunk_store, overwrite=overwrite)
 
     _init_array_metadata(store, shape=shape, chunks=chunks, dtype=dtype,
                          compressor=compressor, fill_value=fill_value,
@@ -260,16 +258,15 @@ def init_array(store, shape, chunks=None, dtype=None, compressor='default',
                          chunk_store=chunk_store, filters=filters)
 
 
-def _init_array_metadata(store, shape, chunks=None, dtype=None,
-                         compressor='default',
-                         fill_value=None, order='C', overwrite=False,
-                         path=None, chunk_store=None, filters=None):
+def _init_array_metadata(store, shape, chunks=None, dtype=None, compressor='default',
+                         fill_value=None, order='C', overwrite=False, path=None,
+                         chunk_store=None, filters=None):
 
     # guard conditions
     if overwrite:
         # attempt to delete any pre-existing items in store
         rmdir(store, path)
-        if chunk_store is not None and chunk_store != store:
+        if chunk_store is not None:
             rmdir(chunk_store, path)
     elif contains_array(store, path):
         err_contains_array(path)
@@ -339,12 +336,10 @@ def init_group(store, overwrite=False, path=None, chunk_store=None):
     path = normalize_storage_path(path)
 
     # ensure parent group initialized
-    _require_parent_group(path, store=store, chunk_store=chunk_store,
-                          overwrite=overwrite)
+    _require_parent_group(path, store=store, chunk_store=chunk_store, overwrite=overwrite)
 
     # initialise metadata
-    _init_group_metadata(store=store, overwrite=overwrite, path=path,
-                         chunk_store=chunk_store)
+    _init_group_metadata(store=store, overwrite=overwrite, path=path, chunk_store=chunk_store)
 
 
 def _init_group_metadata(store, overwrite=False, path=None, chunk_store=None):
@@ -353,7 +348,7 @@ def _init_group_metadata(store, overwrite=False, path=None, chunk_store=None):
     if overwrite:
         # attempt to delete any pre-existing items in store
         rmdir(store, path)
-        if chunk_store is not None and chunk_store != store:
+        if chunk_store is not None:
             rmdir(chunk_store, path)
     elif contains_array(store, path):
         err_contains_array(path)
