@@ -608,27 +608,6 @@ class TestGroup(unittest.TestCase):
         # test that hasattr returns False instead of an exception (issue #88)
         assert_false(hasattr(g1, 'unexistingattribute'))
 
-    def test_group_repr(self):
-        g = self.create_group()
-        expect = 'Group(/, 0)\n  store: dict'
-        actual = repr(g)
-        eq(expect, actual)
-        g.create_group('foo')
-        g.create_group('bar')
-        g.create_group('y'*80)
-        g.create_dataset('baz', shape=100, chunks=10)
-        g.create_dataset('quux', shape=100, chunks=10)
-        g.create_dataset('z'*80, shape=100, chunks=10)
-        expect = \
-            'Group(/, 6)\n' \
-            '  arrays: 3; baz, quux, ' \
-            'zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz...\n' \
-            '  groups: 3; bar, foo, ' \
-            'yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy...\n' \
-            '  store: dict'
-        actual = repr(g)
-        eq(expect, actual)
-
     def test_setitem(self):
         g = self.create_group()
         try:
@@ -775,13 +754,6 @@ class TestGroupWithDictStore(TestGroup):
     def create_store():
         return DictStore(), None
 
-    def test_group_repr(self):
-        g = self.create_group()
-        expect = 'Group(/, 0)\n  store: DictStore'
-        actual = repr(g)
-        for l1, l2 in zip(expect.split('\n'), actual.split('\n')):
-            eq(l1, l2)
-
 
 def rmtree(p, f=shutil.rmtree, g=os.path.isdir):  # pragma: no cover
     """Version of rmtree that will work atexit and only remove if directory."""
@@ -798,14 +770,6 @@ class TestGroupWithDirectoryStore(TestGroup):
         store = DirectoryStore(path)
         return store, None
 
-    def test_group_repr(self):
-        g = self.create_group()
-        expect = 'Group(/, 0)\n' \
-                 '  store: DirectoryStore'
-        actual = repr(g)
-        for l1, l2 in zip(expect.split('\n'), actual.split('\n')):
-            eq(l1, l2)
-
 
 class TestGroupWithZipStore(TestGroup):
 
@@ -816,29 +780,12 @@ class TestGroupWithZipStore(TestGroup):
         store = ZipStore(path)
         return store, None
 
-    def test_group_repr(self):
-        g = self.create_group()
-        expect = 'Group(/, 0)\n' \
-                 '  store: ZipStore'
-        actual = repr(g)
-        for l1, l2 in zip(expect.split('\n'), actual.split('\n')):
-            eq(l1, l2)
-
 
 class TestGroupWithChunkStore(TestGroup):
 
     @staticmethod
     def create_store():
         return dict(), dict()
-
-    def test_group_repr(self):
-        if not PY2:
-            g = self.create_group()
-            expect = 'Group(/, 0)\n' \
-                     '  store: dict; chunk_store: dict'
-            actual = repr(g)
-            for l1, l2 in zip(expect.split('\n'), actual.split('\n')):
-                eq(l1, l2)
 
     def test_chunk_store(self):
         # setup

@@ -197,36 +197,14 @@ class Group(MutableMapping):
         return sum(1 for _ in self)
 
     def __repr__(self):
-
-        # main line
-        r = '%s(' % type(self).__name__
-        r += self.name + ', '
-        r += str(len(self))
-        r += ')'
-
+        r = '<zarr group'
+        if self.name:
+            r += ' %r' % self.name
         # members
         array_keys = list(self.array_keys())
-        if array_keys:
-            arrays_line = '\n  arrays: %s; %s' % \
-                (len(array_keys), ', '.join(array_keys))
-            if len(arrays_line) > 80:
-                arrays_line = arrays_line[:77] + '...'
-            r += arrays_line
         group_keys = list(self.group_keys())
-        if group_keys:
-            groups_line = '\n  groups: %s; %s' % \
-                (len(group_keys), ', '.join(group_keys))
-            if len(groups_line) > 80:
-                groups_line = groups_line[:77] + '...'
-            r += groups_line
-
-        # storage and synchronizer classes
-        r += '\n  store: %s' % type(self.store).__name__
-        if self.store != self.chunk_store:
-            r += '; chunk_store: %s' % type(self.chunk_store).__name__
-        if self.synchronizer is not None:
-            r += '; synchronizer: %s' % type(self.synchronizer).__name__
-
+        r += ' (%s arrays, %s groups)' % (len(array_keys), len(group_keys))
+        r += '>'
         return r
 
     def __getstate__(self):

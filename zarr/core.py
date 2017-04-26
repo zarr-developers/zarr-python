@@ -83,16 +83,13 @@ class Array(object):
         # configuration metadata fully specified and normalized
 
         self._store = store
+        self._chunk_store = chunk_store
         self._path = normalize_storage_path(path)
         if self._path:
             self._key_prefix = self._path + '/'
         else:
             self._key_prefix = ''
         self._read_only = read_only
-        if chunk_store is None:
-            self._chunk_store = store
-        else:
-            self._chunk_store = chunk_store
         self._synchronizer = synchronizer
         self._cache_metadata = cache_metadata
         self._is_view = False
@@ -198,9 +195,11 @@ class Array(object):
 
     @property
     def chunk_store(self):
-        """A MutableMapping providing the underlying storage for array
-        chunks."""
-        return self._chunk_store
+        """A MutableMapping providing the underlying storage for array chunks."""
+        if self._chunk_store is None:
+            return self._store
+        else:
+            return self._chunk_store
 
     @property
     def shape(self):
@@ -299,7 +298,7 @@ class Array(object):
         includes storage required for configuration metadata and user
         attributes."""
         m = getsize(self._store, self._path)
-        if self._store == self._chunk_store:
+        if self._chunk_store is None:
             return m
         else:
             n = getsize(self._chunk_store, self._path)
@@ -333,7 +332,8 @@ class Array(object):
     @property
     def nchunks_initialized(self):
         """The number of chunks that have been initialized with some data."""
-        return sum(1 for k in listdir(self._chunk_store, self._path)
+        # TODO fix bug here, need to only count chunks
+        return sum(1 for k in listdir(self.chunk_store, self._path)
                    if k not in [array_meta_key, attrs_key])
 
     # backwards compability
@@ -636,7 +636,7 @@ class Array(object):
 
             # obtain compressed data for chunk
             ckey = self._chunk_key(cidx)
-            cdata = self._chunk_store[ckey]
+            cdata = self.chunk_store[ckey]
 
         except KeyError:
 
@@ -738,7 +738,7 @@ class Array(object):
             try:
 
                 # obtain compressed data for chunk
-                cdata = self._chunk_store[ckey]
+                cdata = self.chunk_store[ckey]
 
             except KeyError:
 
@@ -761,7 +761,7 @@ class Array(object):
         cdata = self._encode_chunk(chunk)
 
         # store
-        self._chunk_store[ckey] = cdata
+        self.chunk_store[ckey] = cdata
 
     def _chunk_key(self, cidx):
         return self._key_prefix + '.'.join(map(str, cidx))
@@ -806,55 +806,80 @@ class Array(object):
         return cdata
 
     def __repr__(self):
-        # N.B., __repr__ needs to be synchronized to ensure consistent view
-        # of metadata AND when retrieving nbytes_stored from filesystem storage
-        return self._synchronized_op(self._repr_nosync)
-
-    def _repr_nosync(self):
-
-        # main line
-        r = '%s(' % type(self).__name__
+        r = '<zarr array'
         if self.name:
-            r += '%s, ' % self.name
-        r += '%s, ' % str(self._shape)
-        r += '%s, ' % str(self._dtype)
-        r += 'chunks=%s, ' % str(self._chunks)
-        r += 'order=%s' % self._order
-        r += ')'
-
-        # storage size info
-        r += '\n  nbytes: %s' % human_readable_size(self._nbytes)
-        if self.nbytes_stored > 0:
-            r += '; nbytes_stored: %s' % human_readable_size(
-                self.nbytes_stored)
-            r += '; ratio: %.1f' % (self._nbytes / self.nbytes_stored)
-        r += '; initialized: %s/%s' % (self.nchunks_initialized,
-                                       self._nchunks)
-
-        # filters
-        if self._filters:
-            # first line
-            r += '\n  filters: %r' % self._filters[0]
-            # subsequent lines
-            for f in self._filters[1:]:
-                r += '\n           %r' % f
-
-        # compressor
-        if self._compressor:
-            r += '\n  compressor: %r' % self._compressor
-
-        # storage and synchronizer classes
-        r += '\n  store: %s' % type(self._store).__name__
-        if self._store != self._chunk_store:
-            r += '; chunk_store: %s' % type(self._chunk_store).__name__
-        if self._synchronizer is not None:
-            r += '; synchronizer: %s' % type(self._synchronizer).__name__
-
+            r += ' %r' % self.name
+        r += ': shape %s' % str(self.shape)
+        r += ', type %r' % self.dtype.str
+        r += '>'
         return r
 
+    def info(self):
+        """Report some diagnostic information about the array."""
+        return self._synchronized_op(self._info_nosync)
+
+    def _info_nosync(self):
+
+        def typestr(o):
+            return '%s.%s' % (type(o).__module__, type(o).__name__)
+
+        def bytestr(n):
+            if n > 2**10:
+                return '%s (%s)' % (n, human_readable_size(n))
+            else:
+                return str(n)
+
+        info = []
+
+        # basic info
+        if self.name is not None:
+            info += [('Name', self.name)]
+        info += [
+            ('Type', typestr(self)),
+            ('Data type', str(self.dtype)),
+            ('Shape', str(self.shape)),
+            ('Chunk shape', str(self.chunks)),
+            ('Order', self.order),
+        ]
+
+        # filters
+        if self.filters:
+            for i, f in enumerate(self.filters):
+                info += [('Filter [%s]' % i, repr(f))]
+
+        # compressor
+        info += [('Compressor', repr(self.compressor))]
+
+        # synchronizer
+        if self._synchronizer is not None:
+            info += [('Synchronizer type', typestr(self._synchronizer))]
+
+        # storage info
+        info += [('Store type', typestr(self._store))]
+        if self._chunk_store is not None:
+            info += [('Chunk store type', typestr(self._chunk_store))]
+        info += [('No. bytes', bytestr(self.nbytes))]
+        if self.nbytes_stored > 0:
+            info += [
+                ('No. bytes stored', bytestr(self.nbytes_stored)),
+                ('Storage ratio', '%.2f' % (self.nbytes / self.nbytes_stored)),
+            ]
+        info += [
+            ('No. chunks initialized', '%s/%s' % (self.nchunks_initialized, self.nchunks))
+        ]
+
+        # format report
+        keys = [k for k, v in info]
+        max_key_len = max(len(k) for k in keys)
+        report = ''
+        for k, v in info:
+            report += '%s : %s\n' % (k.ljust(max_key_len), v)
+
+        return report
+
     def __getstate__(self):
-        return self._store, self._path, self._read_only, self._chunk_store, \
-               self._synchronizer, self._cache_metadata
+        return self._store, self._path, self._read_only, self._chunk_store, self._synchronizer, \
+               self._cache_metadata
 
     def __setstate__(self, state):
         self.__init__(*state)
@@ -927,13 +952,14 @@ class Array(object):
                                 for s, c in zip(new_shape, chunks))
 
         # remove any chunks not within range
+        chunk_store = self.chunk_store
         for cidx in itertools.product(*[range(n) for n in old_cdata_shape]):
             if all(i < c for i, c in zip(cidx, new_cdata_shape)):
                 pass  # keep the chunk
             else:
                 key = self._chunk_key(cidx)
                 try:
-                    del self._chunk_store[key]
+                    del chunk_store[key]
                 except KeyError:
                     # chunk not initialized
                     pass
@@ -1129,9 +1155,8 @@ class Array(object):
             read_only = self._read_only
         if synchronizer is None:
             synchronizer = self._synchronizer
-        a = Array(store=store, path=path, chunk_store=chunk_store,
-                  read_only=read_only, synchronizer=synchronizer,
-                  cache_metadata=True)
+        a = Array(store=store, path=path, chunk_store=chunk_store, read_only=read_only,
+                  synchronizer=synchronizer, cache_metadata=True)
         a._is_view = True
 
         # allow override of some properties

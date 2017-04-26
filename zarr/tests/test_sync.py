@@ -115,21 +115,6 @@ class TestArrayWithThreadSynchronizer(TestArray, MixinArraySyncTests):
         return Array(store, synchronizer=ThreadSynchronizer(),
                      read_only=read_only)
 
-    def test_repr(self):
-        if not PY2:
-
-            z = self.create_array(shape=100, chunks=10, dtype='f4',
-                                  compressor=Zlib(1))
-            # flake8: noqa
-            expect = """Array((100,), float32, chunks=(10,), order=C)
-  nbytes: 400; nbytes_stored: 245; ratio: 1.6; initialized: 0/10
-  compressor: Zlib(level=1)
-  store: dict; synchronizer: ThreadSynchronizer
-"""
-            actual = repr(z)
-            for l1, l2 in zip(expect.split('\n'), actual.split('\n')):
-                eq(l1, l2)
-
     def create_pool(self):
         pool = ThreadPool(cpu_count())
         return pool
@@ -147,21 +132,6 @@ class TestArrayWithProcessSynchronizer(TestArray, MixinArraySyncTests):
         synchronizer = ProcessSynchronizer(sync_path)
         return Array(store, synchronizer=synchronizer,
                      read_only=read_only, cache_metadata=False)
-
-    def test_repr(self):
-        if not PY2:
-
-            z = self.create_array(shape=100, chunks=10, dtype='f4',
-                                  compressor=Zlib(1))
-            # flake8: noqa
-            expect = """Array((100,), float32, chunks=(10,), order=C)
-  nbytes: 400; nbytes_stored: 245; ratio: 1.6; initialized: 0/10
-  compressor: Zlib(level=1)
-  store: DirectoryStore; synchronizer: ProcessSynchronizer
-"""
-            actual = repr(z)
-            for l1, l2 in zip(expect.split('\n'), actual.split('\n')):
-                eq(l1, l2)
 
     def create_pool(self):
         pool = ProcessPool(processes=cpu_count())
@@ -243,15 +213,6 @@ class TestGroupWithThreadSynchronizer(TestGroup, MixinGroupSyncTests):
         pool = ThreadPool(cpu_count())
         return pool
 
-    def test_group_repr(self):
-        if not PY2:
-            g = self.create_group()
-            expect = 'Group(/, 0)\n' \
-                     '  store: dict; synchronizer: ThreadSynchronizer'
-            actual = repr(g)
-            for l1, l2 in zip(expect.split('\n'), actual.split('\n')):
-                eq(l1, l2)
-
     def test_synchronizer_property(self):
         g = self.create_group()
         assert_is_instance(g.synchronizer, ThreadSynchronizer)
@@ -280,15 +241,6 @@ class TestGroupWithProcessSynchronizer(TestGroup, MixinGroupSyncTests):
     def create_pool(self):
         pool = ProcessPool(processes=cpu_count())
         return pool
-
-    def test_group_repr(self):
-        if not PY2:
-            g = self.create_group()
-            expect = 'Group(/, 0)\n' \
-                     '  store: DirectoryStore; synchronizer: ProcessSynchronizer'
-            actual = repr(g)
-            for l1, l2 in zip(expect.split('\n'), actual.split('\n')):
-                eq(l1, l2)
 
     def test_synchronizer_property(self):
         g = self.create_group()
