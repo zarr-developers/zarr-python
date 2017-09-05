@@ -40,7 +40,7 @@ def guess_chunks(shape, typesize):
     """
 
     ndims = len(shape)
-    chunks = np.array(shape, dtype='=f8')
+    chunks = np.maximum(np.array(shape, dtype='=f8'), 1)
 
     # Determine the optimal chunk size in bytes using a PyTables expression.
     # This is kept as a float.

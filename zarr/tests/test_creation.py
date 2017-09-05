@@ -383,6 +383,16 @@ def test_create():
     with assert_raises(ValueError):
         create(100, compression=1)
 
+def test_create_zero_len():
+
+    # Just test defaults.
+    z = create(0)
+    assert_is_instance(z, Array)
+    eq((0,), z.shape)
+
+    n = z[:]
+    eq(0, len(n))
+
 
 def test_compression_args():
 
