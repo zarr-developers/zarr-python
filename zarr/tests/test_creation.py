@@ -383,6 +383,7 @@ def test_create():
     with assert_raises(ValueError):
         create(100, compression=1)
 
+
 def test_create_zero_len():
 
     # Just test defaults.
