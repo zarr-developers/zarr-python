@@ -153,6 +153,11 @@ def normalize_axis_selection(item, l):
             stop = l + stop
         if start < 0 or stop < 0:
             raise IndexError('index out of bounds: %s, %s' % (start, stop))
+
+        # Handle zero-length axis.
+        if start == stop == l == 0:
+            return slice(0, 0)
+
         if start >= l:
             raise IndexError('index out of bounds: %s, %s' % (start, stop))
         if stop > l:
