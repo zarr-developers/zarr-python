@@ -265,7 +265,7 @@ class Array(object):
 
     @property
     def _size(self):
-        return reduce(operator.mul, self._shape)
+        return reduce(operator.mul, self._shape, 1)
 
     @property
     def size(self):
@@ -322,7 +322,7 @@ class Array(object):
 
     @property
     def _nchunks(self):
-        return reduce(operator.mul, self._cdata_shape)
+        return reduce(operator.mul, self._cdata_shape, 1)
 
     @property
     def nchunks(self):

@@ -394,6 +394,11 @@ def test_create_zero_len():
     n = z[:]
     eq(0, len(n))
 
+def test_create_no_dims():
+    ar = np.ndarray(())
+    ar[()] = 100
+    z = array(ar)
+    assert_array_equal(ar, z[:])
 
 def test_compression_args():
 
