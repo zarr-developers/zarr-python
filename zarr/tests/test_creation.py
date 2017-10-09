@@ -394,11 +394,13 @@ def test_create_zero_len():
     n = z[:]
     eq(0, len(n))
 
+
 def test_create_no_dims():
     ar = np.ndarray(())
     ar[()] = 100
     z = array(ar)
     assert_array_equal(ar, z[:])
+
 
 def test_create_no_dims_dirstore():
     ar = np.ndarray(())
@@ -407,10 +409,11 @@ def test_create_no_dims_dirstore():
     path = tempfile.mkdtemp()
     try:
         store = DirectoryStore(path)
-        z = array(ar, store = store)
+        z = array(ar, store=store)
         assert_array_equal(ar, z[:])
     finally:
         shutil.rmtree(path)
+
 
 def test_compression_args():
 
