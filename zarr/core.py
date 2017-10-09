@@ -766,7 +766,7 @@ class Array(object):
     def _chunk_key(self, cidx):
         # Empty keys don't play well with file-systems...
         if len(cidx) == 0:
-            return self._key_prefix + 'null'
+            return self._key_prefix + '0'
         else:
             return self._key_prefix + '.'.join(map(str, cidx))
 
