@@ -764,7 +764,11 @@ class Array(object):
         self._chunk_store[ckey] = cdata
 
     def _chunk_key(self, cidx):
-        return self._key_prefix + '.'.join(map(str, cidx))
+        # Empty keys don't play well with file-systems...
+        if len(cidx) == 0:
+            return self._key_prefix + 'null'
+        else:
+            return self._key_prefix + '.'.join(map(str, cidx))
 
     def _decode_chunk(self, cdata):
 
