@@ -35,4 +35,3 @@ def test_info():
         'No. bytes stored', 'Storage ratio', 'Chunks initialized', 'Name'
     ])
     assert_list_equal(expected_keys, keys)
-

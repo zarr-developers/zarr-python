@@ -6,7 +6,6 @@ import atexit
 import shutil
 import os
 import pickle
-import io
 
 
 from nose.tools import assert_raises, eq_ as eq, assert_is, assert_true, \
