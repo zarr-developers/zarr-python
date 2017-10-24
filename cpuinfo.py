@@ -62,6 +62,10 @@ class DataSource(object):
 		return len(program_paths('dmesg')) > 0
 
 	@staticmethod
+	def has_dmesg_boot():
+		return os.path.exists('/var/run/dmesg.boot')
+
+	@staticmethod
 	def has_cpufreq_info():
 		return len(program_paths('cpufreq-info')) > 0
 
@@ -108,6 +112,10 @@ class DataSource(object):
 	@staticmethod
 	def dmesg_a():
 		return run_and_get_stdout(['dmesg', '-a'])
+
+	@staticmethod
+	def cat_dmesg_boot():
+		return run_and_get_stdout(['cat', '/var/run/dmesg.boot'])
 
 	@staticmethod
 	def sysctl_machdep_cpu_hw_cpufrequency():
@@ -1069,21 +1077,11 @@ def get_cpu_info_from_proc_cpuinfo():
 		#raise # NOTE: To have this throw on error, uncomment this line
 		return None
 
-def get_cpu_info_from_dmesg():
+def parse_dmesg_output(output):
 	'''
-	Returns the CPU info gathered from dmesg. Will return None if
-	dmesg is not found or does not have the desired info.
+	Parse dmesg output. Return None if there are any errors.
 	'''
 	try:
-		# Just return None if there is no dmesg
-		if not DataSource.has_dmesg():
-			return None
-
-		# If dmesg fails return None
-		returncode, output = DataSource.dmesg_a()
-		if output == None or returncode != 0:
-			return None
-
 		# Processor Brand
 		long_brand = output.split('CPU: ')[1].split('\n')[0]
 		processor_brand = long_brand.rsplit('(', 1)[0]
@@ -1166,6 +1164,40 @@ def get_cpu_info_from_dmesg():
 		}
 	except:
 		return None
+
+
+def get_cpu_info_from_dmesg():
+	'''
+	Returns the CPU info gathered from dmesg. Will return None if
+	dmesg is not found or does not have the desired info.
+	'''
+	# Just return None if there is no dmesg
+	if not DataSource.has_dmesg():
+		return None
+
+	# If dmesg fails return None
+	returncode, output = DataSource.dmesg_a()
+	if output == None or returncode != 0:
+		return None
+
+	return parse_dmesg_output(output)
+
+
+def get_cpu_info_from_dmesg_boot():
+        '''
+        Returns CPU info gathered from dmesg during boot. Will return None if
+        dmesg is not found or does not have the desired info.
+        '''
+
+        if not DataSource.has_dmesg_boot():
+                return None
+
+        returncode, output = DataSource.cat_dmesg_boot()
+        if output == None or returncode != 0:
+                return None
+
+        return parse_dmesg_output(output)
+
 
 def get_cpu_info_from_sysctl():
 	'''
@@ -1504,6 +1536,10 @@ def get_cpu_info():
 	# Try dmesg
 	if not info:
 		info = get_cpu_info_from_dmesg()
+
+	# Try dmesg saved during boot.
+	if not info:
+		info = get_cpu_info_from_dmesg_boot()
 
 	# Try sysinfo
 	if not info:
