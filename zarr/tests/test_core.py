@@ -514,6 +514,74 @@ class TestArray(unittest.TestCase):
         assert_array_equal(np.take(a, indices, axis=1),
                            np.take(a, zi, axis=1))
 
+    def test_0len_dim_1d(self):
+        # Test behavioud for 1D array with zero-length dimension.
+
+        z = self.create_array(shape=0, fill_value=0)
+        a = np.zeros(0)
+        eq(a.ndim, z.ndim)
+        eq(a.shape, z.shape)
+        eq(a.dtype, z.dtype)
+        eq(a.size, z.size)
+        eq(0, z.nchunks)
+
+        # cannot make a good decision when auto-chunking if a dimension has zero length,
+        # fall back to 1 for now
+        eq((1,), z.chunks)
+
+        # check __getitem__
+        assert_is_instance(z[:], np.ndarray)
+        assert_array_equal(a, np.array(z))
+        assert_array_equal(a, z[:])
+        assert_array_equal(a, z[...])
+        assert_array_equal(a[0:0], z[0:0])
+        with assert_raises(IndexError):
+            z[0]
+
+        # check __setitem__
+        # these should succeed but do nothing
+        z[:] = 42
+        z[...] = 42
+        # this should error
+        with assert_raises(IndexError):
+            z[0] = 42
+
+    def test_0len_dim_2d(self):
+        # Test behavioud for 2D array with a zero-length dimension.
+
+        z = self.create_array(shape=(10, 0), fill_value=0)
+        a = np.zeros((10, 0))
+        eq(a.ndim, z.ndim)
+        eq(a.shape, z.shape)
+        eq(a.dtype, z.dtype)
+        eq(a.size, z.size)
+        eq(0, z.nchunks)
+
+        # cannot make a good decision when auto-chunking if a dimension has zero length,
+        # fall back to 1 for now
+        eq((10, 1), z.chunks)
+
+        # check __getitem__
+        assert_is_instance(z[:], np.ndarray)
+        assert_array_equal(a, np.array(z))
+        assert_array_equal(a, z[:])
+        assert_array_equal(a, z[...])
+        assert_array_equal(a[0], z[0])
+        assert_array_equal(a[0, 0:0], z[0, 0:0])
+        assert_array_equal(a[0, :], z[0, :])
+        assert_array_equal(a[0, 0:0], z[0, 0:0])
+        with assert_raises(IndexError):
+            z[:, 0]
+
+        # check __setitem__
+        # these should succeed but do nothing
+        z[:] = 42
+        z[...] = 42
+        z[0, :] = 42
+        # this should error
+        with assert_raises(IndexError):
+            z[:, 0] = 42
+
 
 class TestArrayWithPath(TestArray):
 
