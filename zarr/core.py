@@ -446,7 +446,7 @@ class Array(object):
         if not self._cache_metadata:
             self._load_metadata()
 
-        # handle scalars
+        # handle zero-dimensional arrays
         if self._shape == ():
             return self._getitem_zd(item)
         else:
@@ -600,7 +600,7 @@ class Array(object):
         if not self._cache_metadata:
             self._load_metadata_nosync()
 
-        # handle scalars
+        # handle zero-dimensional arrays
         if self._shape == ():
             return self._setitem_zd(item, value)
         else:
