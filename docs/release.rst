@@ -4,9 +4,11 @@ Release notes
 Changes to ``__repr__``
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-The string representation (``repr``) of array and group objects has been simplified. For arrays the
-representation now reports the array name (if it has one), shape and dtype only. Information about
-array size and compression ratio is available via a new ``info`` property. E.g.::
+The string representation (``__repr__``) of array and group objects has been been simplified
+(`#83 <https://github.com/alimanfoo/zarr/issues/83>`_,
+`#115 <https://github.com/alimanfoo/zarr/issues/115>`_,
+`#132 <https://github.com/alimanfoo/zarr/issues/132>`_).
+Further information can be obtained via a new ``info`` property. E.g.::
 
     >>> import zarr
     >>> root = zarr.group()
@@ -14,25 +16,46 @@ array size and compression ratio is available via a new ``info`` property. E.g.:
     >>> bar = foo.zeros('bar', shape=1000000, chunks=100000)
     >>> bar[:] = 42
     >>> root
-    <zarr group '/' (0 arrays, 1 groups)>
+    <zarr.hierarchy.Group '/'>
+    >>> root.info
+    Name        : /
+    Type        : zarr.hierarchy.Group
+    Read-only   : False
+    Store type  : zarr.storage.DictStore
+    No. members : 1
+    No. arrays  : 0
+    No. groups  : 1
+    Groups      : foo
+
     >>> foo
-    <zarr group '/foo' (1 arrays, 0 groups)>
+    <zarr.hierarchy.Group '/foo'>
+    >>> foo.info
+    Name        : /foo
+    Type        : zarr.hierarchy.Group
+    Read-only   : False
+    Store type  : zarr.storage.DictStore
+    No. members : 1
+    No. arrays  : 1
+    No. groups  : 0
+    Arrays      : bar
+
     >>> bar
-    <zarr array '/foo/bar': shape (1000000,), type '<f8'>
+    <zarr.core.Array '/foo/bar' (1000000,) float64>
     >>> bar.info
-    Name                   : /foo/bar
-    Type                   : zarr.core.Array
-    Data type              : float64
-    Shape                  : (1000000,)
-    Chunk shape            : (100000,)
-    Order                  : C
-    Read-only              : False
-    Compressor             : Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
-    Store type             : zarr.storage.DictStore
-    No. bytes              : 8000000 (7.6M)
-    No. bytes stored       : 38482 (37.6K)
-    Storage ratio          : 207.9
-    No. chunks initialized : 10/10
+    Name               : /foo/bar
+    Type               : zarr.core.Array
+    Data type          : float64
+    Shape              : (1000000,)
+    Chunk shape        : (100000,)
+    Order              : C
+    Read-only          : False
+    Compressor         : Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
+    Store type         : zarr.storage.DictStore
+    No. bytes          : 8000000 (7.6M)
+    No. bytes stored   : 38482 (37.6K)
+    Storage ratio      : 207.9
+    Chunks initialized : 10/10
+
 
 .. _release_2.1.4:
 
