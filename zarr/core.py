@@ -7,9 +7,9 @@ import itertools
 import numpy as np
 
 
-from zarr.util import is_total_slice, normalize_array_selection, \
-    get_chunk_range, human_readable_size, normalize_resize_args, \
-    normalize_storage_path, normalize_shape, normalize_chunks
+from zarr.util import is_total_slice, normalize_array_selection, get_chunk_range, \
+    human_readable_size, normalize_resize_args, normalize_storage_path, normalize_shape, \
+    normalize_chunks, InfoReporter
 from zarr.storage import array_meta_key, attrs_key, listdir, getsize
 from zarr.meta import decode_array_metadata, encode_array_metadata
 from zarr.attrs import Attributes
@@ -65,6 +65,7 @@ class Array(object):
     nchunks
     nchunks_initialized
     is_view
+    info
 
     Methods
     -------
@@ -75,7 +76,7 @@ class Array(object):
     view
     astype
 
-    """  # flake8: noqa
+    """
 
     def __init__(self, store, path=None, read_only=False, chunk_store=None,
                  synchronizer=None, cache_metadata=True):
@@ -83,16 +84,13 @@ class Array(object):
         # configuration metadata fully specified and normalized
 
         self._store = store
+        self._chunk_store = chunk_store
         self._path = normalize_storage_path(path)
         if self._path:
             self._key_prefix = self._path + '/'
         else:
             self._key_prefix = ''
         self._read_only = read_only
-        if chunk_store is None:
-            self._chunk_store = store
-        else:
-            self._chunk_store = chunk_store
         self._synchronizer = synchronizer
         self._cache_metadata = cache_metadata
         self._is_view = False
@@ -104,6 +102,9 @@ class Array(object):
         akey = self._key_prefix + attrs_key
         self._attrs = Attributes(store, key=akey, read_only=read_only,
                                  synchronizer=synchronizer)
+
+        # initialize info reporter
+        self._info_reporter = InfoReporter(self)
 
     def _load_metadata(self):
         """(Re)load metadata from store."""
@@ -198,9 +199,11 @@ class Array(object):
 
     @property
     def chunk_store(self):
-        """A MutableMapping providing the underlying storage for array
-        chunks."""
-        return self._chunk_store
+        """A MutableMapping providing the underlying storage for array chunks."""
+        if self._chunk_store is None:
+            return self._store
+        else:
+            return self._chunk_store
 
     @property
     def shape(self):
@@ -299,7 +302,7 @@ class Array(object):
         includes storage required for configuration metadata and user
         attributes."""
         m = getsize(self._store, self._path)
-        if self._store == self._chunk_store:
+        if self._chunk_store is None:
             return m
         else:
             n = getsize(self._chunk_store, self._path)
@@ -333,7 +336,8 @@ class Array(object):
     @property
     def nchunks_initialized(self):
         """The number of chunks that have been initialized with some data."""
-        return sum(1 for k in listdir(self._chunk_store, self._path)
+        # TODO fix bug here, need to only count chunks
+        return sum(1 for k in listdir(self.chunk_store, self._path)
                    if k not in [array_meta_key, attrs_key])
 
     # backwards compability
@@ -382,10 +386,7 @@ class Array(object):
             >>> import numpy as np
             >>> z = zarr.array(np.arange(100000000), chunks=1000000, dtype='i4')
             >>> z
-            Array((100000000,), int32, chunks=(1000000,), order=C)
-              nbytes: 381.5M; nbytes_stored: 6.4M; ratio: 59.9; initialized: 100/100
-              compressor: Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
-              store: dict
+            <zarr.core.Array (100000000,) int32>
 
         Take some slices::
 
@@ -407,10 +408,7 @@ class Array(object):
             >>> z = zarr.array(np.arange(100000000).reshape(10000, 10000),
             ...                chunks=(1000, 1000), dtype='i4')
             >>> z
-            Array((10000, 10000), int32, chunks=(1000, 1000), order=C)
-              nbytes: 381.5M; nbytes_stored: 9.2M; ratio: 41.5; initialized: 100/100
-              compressor: Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
-              store: dict
+            <zarr.core.Array (10000, 10000) int32>
 
         Take some slices::
 
@@ -439,7 +437,7 @@ class Array(object):
                    [99980000, 99980001, 99980002, ..., 99989997, 99989998, 99989999],
                    [99990000, 99990001, 99990002, ..., 99999997, 99999998, 99999999]], dtype=int32)
 
-        """  # flake8: noqa
+        """
 
         # refresh metadata
         if not self._cache_metadata:
@@ -505,10 +503,7 @@ class Array(object):
             >>> import zarr
             >>> z = zarr.zeros(100000000, chunks=1000000, dtype='i4')
             >>> z
-            Array((100000000,), int32, chunks=(1000000,), order=C)
-              nbytes: 381.5M; nbytes_stored: ...; ratio: ...; initialized: 0/100
-              compressor: Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
-              store: dict
+            <zarr.core.Array (100000000,) int32>
 
         Set all array elements to the same scalar value::
 
@@ -527,10 +522,7 @@ class Array(object):
 
             >>> z = zarr.zeros((10000, 10000), chunks=(1000, 1000), dtype='i4')
             >>> z
-            Array((10000, 10000), int32, chunks=(1000, 1000), order=C)
-              nbytes: 381.5M; nbytes_stored: ...; ratio: ...; initialized: 0/100
-              compressor: Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
-              store: dict
+            <zarr.core.Array (10000, 10000) int32>
 
         Set all array elements to the same scalar value::
 
@@ -636,7 +628,7 @@ class Array(object):
 
             # obtain compressed data for chunk
             ckey = self._chunk_key(cidx)
-            cdata = self._chunk_store[ckey]
+            cdata = self.chunk_store[ckey]
 
         except KeyError:
 
@@ -738,7 +730,7 @@ class Array(object):
             try:
 
                 # obtain compressed data for chunk
-                cdata = self._chunk_store[ckey]
+                cdata = self.chunk_store[ckey]
 
             except KeyError:
 
@@ -761,7 +753,7 @@ class Array(object):
         cdata = self._encode_chunk(chunk)
 
         # store
-        self._chunk_store[ckey] = cdata
+        self.chunk_store[ckey] = cdata
 
     def _chunk_key(self, cidx):
         return self._key_prefix + '.'.join(map(str, cidx))
@@ -806,55 +798,99 @@ class Array(object):
         return cdata
 
     def __repr__(self):
-        # N.B., __repr__ needs to be synchronized to ensure consistent view
-        # of metadata AND when retrieving nbytes_stored from filesystem storage
-        return self._synchronized_op(self._repr_nosync)
-
-    def _repr_nosync(self):
-
-        # main line
-        r = '%s(' % type(self).__name__
+        t = type(self)
+        r = '<%s.%s' % (t.__module__, t.__name__)
         if self.name:
-            r += '%s, ' % self.name
-        r += '%s, ' % str(self._shape)
-        r += '%s, ' % str(self._dtype)
-        r += 'chunks=%s, ' % str(self._chunks)
-        r += 'order=%s' % self._order
-        r += ')'
-
-        # storage size info
-        r += '\n  nbytes: %s' % human_readable_size(self._nbytes)
-        if self.nbytes_stored > 0:
-            r += '; nbytes_stored: %s' % human_readable_size(
-                self.nbytes_stored)
-            r += '; ratio: %.1f' % (self._nbytes / self.nbytes_stored)
-        r += '; initialized: %s/%s' % (self.nchunks_initialized,
-                                       self._nchunks)
-
-        # filters
-        if self._filters:
-            # first line
-            r += '\n  filters: %r' % self._filters[0]
-            # subsequent lines
-            for f in self._filters[1:]:
-                r += '\n           %r' % f
-
-        # compressor
-        if self._compressor:
-            r += '\n  compressor: %r' % self._compressor
-
-        # storage and synchronizer classes
-        r += '\n  store: %s' % type(self._store).__name__
-        if self._store != self._chunk_store:
-            r += '; chunk_store: %s' % type(self._chunk_store).__name__
-        if self._synchronizer is not None:
-            r += '; synchronizer: %s' % type(self._synchronizer).__name__
-
+            r += ' %r' % self.name
+        r += ' %s' % str(self.shape)
+        r += ' %s' % self.dtype
+        r += '>'
         return r
 
+    @property
+    def info(self):
+        """Report some diagnostic information about the array.
+
+        Examples
+        --------
+        >>> import zarr
+        >>> z = zarr.zeros(1000000, chunks=100000, dtype='i4')
+        >>> z.info
+        Type               : zarr.core.Array
+        Data type          : int32
+        Shape              : (1000000,)
+        Chunk shape        : (100000,)
+        Order              : C
+        Read-only          : False
+        Compressor         : Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
+        Store type         : builtins.dict
+        No. bytes          : 4000000 (3.8M)
+        No. bytes stored   : ...
+        Storage ratio      : ...
+        Chunks initialized : 0/10
+
+        """
+        return self._info_reporter
+
+    def info_items(self):
+        return self._synchronized_op(self._info_items_nosync)
+
+    def _info_items_nosync(self):
+
+        def typestr(o):
+            return '%s.%s' % (type(o).__module__, type(o).__name__)
+
+        def bytestr(n):
+            if n > 2**10:
+                return '%s (%s)' % (n, human_readable_size(n))
+            else:
+                return str(n)
+
+        items = []
+
+        # basic info
+        if self.name is not None:
+            items += [('Name', self.name)]
+        items += [
+            ('Type', typestr(self)),
+            ('Data type', '%s' % self.dtype),
+            ('Shape', str(self.shape)),
+            ('Chunk shape', str(self.chunks)),
+            ('Order', self.order),
+            ('Read-only', str(self.read_only)),
+        ]
+
+        # filters
+        if self.filters:
+            for i, f in enumerate(self.filters):
+                items += [('Filter [%s]' % i, repr(f))]
+
+        # compressor
+        items += [('Compressor', repr(self.compressor))]
+
+        # synchronizer
+        if self._synchronizer is not None:
+            items += [('Synchronizer type', typestr(self._synchronizer))]
+
+        # storage info
+        items += [('Store type', typestr(self._store))]
+        if self._chunk_store is not None:
+            items += [('Chunk store type', typestr(self._chunk_store))]
+        items += [('No. bytes', bytestr(self.nbytes))]
+        if self.nbytes_stored > 0:
+            items += [
+                ('No. bytes stored', bytestr(self.nbytes_stored)),
+                ('Storage ratio', '%.1f' % (self.nbytes / self.nbytes_stored)),
+            ]
+        items += [
+            ('Chunks initialized', '%s/%s' % (self.nchunks_initialized, self.nchunks))
+        ]
+
+        return items
+
     def __getstate__(self):
-        return self._store, self._path, self._read_only, self._chunk_store, \
-               self._synchronizer, self._cache_metadata
+        return self._store, self._path, self._read_only, self._chunk_store, self._synchronizer, \
+               self._cache_metadata
 
     def __setstate__(self, state):
         self.__init__(*state)
@@ -906,7 +942,7 @@ class Array(object):
         If one or more dimensions are shrunk, any chunks falling outside the
         new array shape will be deleted from the underlying store.
 
-        """  # flake8: noqa
+        """
 
         return self._write_op(self._resize_nosync, *args)
 
@@ -927,13 +963,14 @@ class Array(object):
                                 for s, c in zip(new_shape, chunks))
 
         # remove any chunks not within range
+        chunk_store = self.chunk_store
         for cidx in itertools.product(*[range(n) for n in old_cdata_shape]):
             if all(i < c for i, c in zip(cidx, new_cdata_shape)):
                 pass  # keep the chunk
             else:
                 key = self._chunk_key(cidx)
                 try:
-                    del self._chunk_store[key]
+                    del chunk_store[key]
                 except KeyError:
                     # chunk not initialized
                     pass
@@ -970,8 +1007,7 @@ class Array(object):
         >>> z.append(np.vstack([a, a]), axis=1)
         (20000, 2000)
         >>> z
-        Array((20000, 2000), int32, chunks=(1000, 100), order=C)
-          ...
+        <zarr.core.Array (20000, 2000) int32>
 
         """
         return self._write_op(self._append_nosync, data, axis=axis)
@@ -1120,7 +1156,7 @@ class Array(object):
             ...     print(e)
             not permitted for views
 
-        """  # flake8: noqa
+        """
 
         store = self._store
         chunk_store = self._chunk_store
@@ -1129,9 +1165,8 @@ class Array(object):
             read_only = self._read_only
         if synchronizer is None:
             synchronizer = self._synchronizer
-        a = Array(store=store, path=path, chunk_store=chunk_store,
-                  read_only=read_only, synchronizer=synchronizer,
-                  cache_metadata=True)
+        a = Array(store=store, path=path, chunk_store=chunk_store, read_only=read_only,
+                  synchronizer=synchronizer, cache_metadata=True)
         a._is_view = True
 
         # allow override of some properties
@@ -1204,7 +1239,7 @@ class Array(object):
                 80.,  81.,  82.,  83.,  84.,  85.,  86.,  87.,  88.,  89.,
                 90.,  91.,  92.,  93.,  94.,  95.,  96.,  97.,  98.,  99.],
               dtype=float32)
-        """  # flake8: noqa
+        """
 
         dtype = np.dtype(dtype)
 

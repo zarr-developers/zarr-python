@@ -1,6 +1,16 @@
 Release notes
 =============
 
+Changes to ``__repr__``; new ``info`` property
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The string representation (``__repr__``) of array and group objects has been been simplified
+(`#83 <https://github.com/alimanfoo/zarr/issues/83>`_,
+`#115 <https://github.com/alimanfoo/zarr/issues/115>`_,
+`#132 <https://github.com/alimanfoo/zarr/issues/132>`_).
+Further diagnostic information can be obtained via a new ``info`` property. See the tutorial
+section on :ref:`tutorial_tips_info` for examples.
+
 .. _release_2.1.4:
 
 2.1.4

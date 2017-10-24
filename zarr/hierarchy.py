@@ -13,9 +13,8 @@ from zarr.storage import contains_array, contains_group, init_group, \
     DictStore, DirectoryStore, group_meta_key, attrs_key, listdir, rmdir
 from zarr.creation import array, create, empty, zeros, ones, full, \
     empty_like, zeros_like, ones_like, full_like
-from zarr.util import normalize_storage_path, normalize_shape
-from zarr.errors import PermissionError, err_contains_array, \
-    err_contains_group, err_group_not_found, err_read_only
+from zarr.util import normalize_storage_path, normalize_shape, InfoReporter
+from zarr.errors import err_contains_array, err_contains_group, err_group_not_found, err_read_only
 from zarr.meta import decode_group_metadata
 
 
@@ -45,6 +44,7 @@ class Group(MutableMapping):
     chunk_store
     synchronizer
     attrs
+    info
 
     Methods
     -------
@@ -79,20 +79,16 @@ class Group(MutableMapping):
 
     """
 
-    def __init__(self, store, path=None, read_only=False, chunk_store=None,
-                 synchronizer=None):
+    def __init__(self, store, path=None, read_only=False, chunk_store=None, synchronizer=None):
 
         self._store = store
+        self._chunk_store = chunk_store
         self._path = normalize_storage_path(path)
         if self._path:
             self._key_prefix = self._path + '/'
         else:
             self._key_prefix = ''
         self._read_only = read_only
-        if chunk_store is None:
-            self._chunk_store = store
-        else:
-            self._chunk_store = chunk_store
         self._synchronizer = synchronizer
 
         # guard conditions
@@ -113,6 +109,9 @@ class Group(MutableMapping):
         akey = self._key_prefix + attrs_key
         self._attrs = Attributes(store, key=akey, read_only=read_only,
                                  synchronizer=synchronizer)
+
+        # setup info
+        self.info = InfoReporter(self)
 
     @property
     def store(self):
@@ -142,9 +141,11 @@ class Group(MutableMapping):
 
     @property
     def chunk_store(self):
-        """A MutableMapping providing the underlying storage for array
-        chunks."""
-        return self._chunk_store
+        """A MutableMapping providing the underlying storage for array chunks."""
+        if self._chunk_store is None:
+            return self._store
+        else:
+            return self._chunk_store
 
     @property
     def synchronizer(self):
@@ -197,54 +198,61 @@ class Group(MutableMapping):
         return sum(1 for _ in self)
 
     def __repr__(self):
-
-        # main line
-        r = '%s(' % type(self).__name__
-        r += self.name + ', '
-        r += str(len(self))
-        r += ')'
-
-        # members
-        array_keys = list(self.array_keys())
-        if array_keys:
-            arrays_line = '\n  arrays: %s; %s' % \
-                (len(array_keys), ', '.join(array_keys))
-            if len(arrays_line) > 80:
-                arrays_line = arrays_line[:77] + '...'
-            r += arrays_line
-        group_keys = list(self.group_keys())
-        if group_keys:
-            groups_line = '\n  groups: %s; %s' % \
-                (len(group_keys), ', '.join(group_keys))
-            if len(groups_line) > 80:
-                groups_line = groups_line[:77] + '...'
-            r += groups_line
-
-        # storage and synchronizer classes
-        r += '\n  store: %s' % type(self.store).__name__
-        if self.store != self.chunk_store:
-            r += '; chunk_store: %s' % type(self.chunk_store).__name__
-        if self.synchronizer is not None:
-            r += '; synchronizer: %s' % type(self.synchronizer).__name__
-
+        t = type(self)
+        r = '<%s.%s' % (t.__module__, t.__name__)
+        if self.name:
+            r += ' %r' % self.name
+        r += '>'
         return r
 
+    def info_items(self):
+
+        def typestr(o):
+            return '%s.%s' % (type(o).__module__, type(o).__name__)
+
+        items = []
+
+        # basic info
+        if self.name is not None:
+            items += [('Name', self.name)]
+        items += [
+            ('Type', typestr(self)),
+            ('Read-only', str(self.read_only)),
+        ]
+
+        # synchronizer
+        if self._synchronizer is not None:
+            items += [('Synchronizer type', typestr(self._synchronizer))]
+
+        # storage info
+        items += [('Store type', typestr(self._store))]
+        if self._chunk_store is not None:
+            items += [('Chunk store type', typestr(self._chunk_store))]
+
+        # members
+        items += [('No. members', len(self))]
+        array_keys = sorted(self.array_keys())
+        group_keys = sorted(self.group_keys())
+        items += [('No. arrays', len(array_keys))]
+        items += [('No. groups', len(group_keys))]
+        if array_keys:
+            items += [('Arrays', ', '.join(array_keys))]
+        if group_keys:
+            items += [('Groups', ', '.join(group_keys))]
+
+        return items
+
     def __getstate__(self):
-        return self._store, self._path, self._read_only, self._chunk_store, \
-               self._synchronizer
+        return self._store, self._path, self._read_only, self._chunk_store, self._synchronizer
 
     def __setstate__(self, state):
         self.__init__(*state)
 
     def _item_path(self, item):
-        if item and item[0] == '/':
-            # absolute path
-            path = normalize_storage_path(item)
-        else:
-            # relative path
-            path = normalize_storage_path(item)
-            if self._path:
-                path = self._key_prefix + path
+        absolute = isinstance(item, str) and item and item[0] == '/'
+        path = normalize_storage_path(item)
+        if not absolute and self._path:
+            path = self._key_prefix + path
         return path
 
     def __contains__(self, item):
@@ -282,29 +290,20 @@ class Group(MutableMapping):
         >>> g1 = zarr.group()
         >>> d1 = g1.create_dataset('foo/bar/baz', shape=100, chunks=10)
         >>> g1['foo']
-        Group(/foo, 1)
-          groups: 1; bar
-          store: DictStore
+        <zarr.hierarchy.Group '/foo'>
         >>> g1['foo/bar']
-        Group(/foo/bar, 1)
-          arrays: 1; baz
-          store: DictStore
+        <zarr.hierarchy.Group '/foo/bar'>
         >>> g1['foo/bar/baz']
-        Array(/foo/bar/baz, (100,), float64, chunks=(10,), order=C)
-          nbytes: 800; nbytes_stored: ...; ratio: ...; initialized: 0/10
-          compressor: Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
-          store: DictStore
+        <zarr.core.Array '/foo/bar/baz' (100,) float64>
 
-        """  # flake8: noqa
+        """
         path = self._item_path(item)
         if contains_array(self._store, path):
             return Array(self._store, read_only=self._read_only, path=path,
-                         chunk_store=self._chunk_store,
-                         synchronizer=self._synchronizer)
+                         chunk_store=self._chunk_store, synchronizer=self._synchronizer)
         elif contains_group(self._store, path):
             return Group(self._store, read_only=self._read_only, path=path,
-                         chunk_store=self._chunk_store,
-                         synchronizer=self._synchronizer)
+                         chunk_store=self._chunk_store, synchronizer=self._synchronizer)
         else:
             raise KeyError(item)
 
@@ -369,10 +368,8 @@ class Group(MutableMapping):
         for key in sorted(listdir(self._store, self._path)):
             path = self._key_prefix + key
             if contains_group(self._store, path):
-                yield key, Group(self._store, path=path,
-                                 read_only=self._read_only,
-                                 chunk_store=self._chunk_store,
-                                 synchronizer=self._synchronizer)
+                yield key, Group(self._store, path=path, read_only=self._read_only,
+                                 chunk_store=self._chunk_store, synchronizer=self._synchronizer)
 
     def array_keys(self):
         """Return an iterator over member names for arrays only.
@@ -414,10 +411,8 @@ class Group(MutableMapping):
         for key in sorted(listdir(self._store, self._path)):
             path = self._key_prefix + key
             if contains_array(self._store, path):
-                yield key, Array(self._store, path=path,
-                                 read_only=self._read_only,
-                                 chunk_store=self._chunk_store,
-                                 synchronizer=self._synchronizer)
+                yield key, Array(self._store, path=path, read_only=self._read_only,
+                                 chunk_store=self._chunk_store, synchronizer=self._synchronizer)
 
     def visitvalues(self, func):
         """Run ``func`` on each object.
@@ -437,27 +432,20 @@ class Group(MutableMapping):
         >>> def print_visitor(obj):
         ...     print(obj)
         >>> g1.visitvalues(print_visitor)
-        Group(/bar, 2)
-          groups: 2; baz, quux
-          store: DictStore
-        Group(/bar/baz, 0)
-          store: DictStore
-        Group(/bar/quux, 0)
-          store: DictStore
-        Group(/foo, 0)
-          store: DictStore
+        <zarr.hierarchy.Group '/bar'>
+        <zarr.hierarchy.Group '/bar/baz'>
+        <zarr.hierarchy.Group '/bar/quux'>
+        <zarr.hierarchy.Group '/foo'>
         >>> g3.visitvalues(print_visitor)
-        Group(/bar/baz, 0)
-          store: DictStore
-        Group(/bar/quux, 0)
-          store: DictStore
+        <zarr.hierarchy.Group '/bar/baz'>
+        <zarr.hierarchy.Group '/bar/quux'>
 
         """
 
         def _visit(obj):
             yield obj
 
-            keys = sorted(getattr(obj, "keys", lambda : [])())
+            keys = sorted(getattr(obj, "keys", lambda: [])())
             for each_key in keys:
                 for each_obj in _visit(obj[each_key]):
                     yield each_obj
@@ -522,20 +510,13 @@ class Group(MutableMapping):
         >>> def print_visitor(name, obj):
         ...     print((name, obj))
         >>> g1.visititems(print_visitor)
-        ('bar', Group(/bar, 2)
-          groups: 2; baz, quux
-          store: DictStore)
-        ('bar/baz', Group(/bar/baz, 0)
-          store: DictStore)
-        ('bar/quux', Group(/bar/quux, 0)
-          store: DictStore)
-        ('foo', Group(/foo, 0)
-          store: DictStore)
+        ('bar', <zarr.hierarchy.Group '/bar'>)
+        ('bar/baz', <zarr.hierarchy.Group '/bar/baz'>)
+        ('bar/quux', <zarr.hierarchy.Group '/bar/quux'>)
+        ('foo', <zarr.hierarchy.Group '/foo'>)
         >>> g3.visititems(print_visitor)
-        ('baz', Group(/bar/baz, 0)
-          store: DictStore)
-        ('quux', Group(/bar/quux, 0)
-          store: DictStore)
+        ('baz', <zarr.hierarchy.Group '/bar/baz'>)
+        ('quux', <zarr.hierarchy.Group '/bar/quux'>)
 
         """
 
@@ -587,12 +568,10 @@ class Group(MutableMapping):
         path = self._item_path(name)
 
         # create terminal group
-        init_group(self._store, path=path, chunk_store=self._chunk_store,
-                   overwrite=overwrite)
+        init_group(self._store, path=path, chunk_store=self._chunk_store, overwrite=overwrite)
 
         return Group(self._store, path=path, read_only=self._read_only,
-                     chunk_store=self._chunk_store,
-                     synchronizer=self._synchronizer)
+                     chunk_store=self._chunk_store, synchronizer=self._synchronizer)
 
     def create_groups(self, *names, **kwargs):
         """Convenience method to create multiple groups in a single call."""
@@ -631,13 +610,11 @@ class Group(MutableMapping):
 
         # create terminal group if necessary
         if not contains_group(self._store, path):
-            init_group(store=self._store, path=path,
-                       chunk_store=self._chunk_store,
+            init_group(store=self._store, path=path, chunk_store=self._chunk_store,
                        overwrite=overwrite)
 
         return Group(self._store, path=path, read_only=self._read_only,
-                     chunk_store=self._chunk_store,
-                     synchronizer=self._synchronizer)
+                     chunk_store=self._chunk_store, synchronizer=self._synchronizer)
 
     def require_groups(self, *names):
         """Convenience method to require multiple groups in a single call."""
@@ -689,12 +666,13 @@ class Group(MutableMapping):
         >>> d1 = g1.create_dataset('foo', shape=(10000, 10000),
         ...                        chunks=(1000, 1000))
         >>> d1
-        Array(/foo, (10000, 10000), float64, chunks=(1000, 1000), order=C)
-          nbytes: 762.9M; nbytes_stored: ...; ratio: ...; initialized: 0/100
-          compressor: Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
-          store: DictStore
+        <zarr.core.Array '/foo' (10000, 10000) float64>
+        >>> d2 = g1.create_dataset('bar/baz/qux', shape=(100, 100, 100),
+        ...                        chunks=(100, 10, 10))
+        >>> d2
+        <zarr.core.Array '/bar/baz/qux' (100, 100, 100) float64>
 
-        """  # flake8: noqa
+        """
 
         return self._write_op(self._create_dataset_nosync, name, **kwargs)
 
@@ -707,12 +685,10 @@ class Group(MutableMapping):
 
         # create array
         if data is None:
-            a = create(store=self._store, path=path,
-                       chunk_store=self._chunk_store, **kwargs)
+            a = create(store=self._store, path=path, chunk_store=self._chunk_store, **kwargs)
 
         else:
-            a = array(data, store=self._store, path=path,
-                      chunk_store=self._chunk_store, **kwargs)
+            a = array(data, store=self._store, path=path, chunk_store=self._chunk_store, **kwargs)
 
         return a
 
@@ -746,8 +722,8 @@ class Group(MutableMapping):
             synchronizer = kwargs.get('synchronizer', self._synchronizer)
             cache_metadata = kwargs.get('cache_metadata', True)
             a = Array(self._store, path=path, read_only=self._read_only,
-                      chunk_store=self._chunk_store,
-                      synchronizer=synchronizer, cache_metadata=cache_metadata)
+                      chunk_store=self._chunk_store, synchronizer=synchronizer,
+                      cache_metadata=cache_metadata)
             shape = normalize_shape(shape)
             if shape != a.shape:
                 raise TypeError('shapes do not match')
@@ -772,8 +748,7 @@ class Group(MutableMapping):
     def _create_nosync(self, name, **kwargs):
         path = self._item_path(name)
         kwargs.setdefault('synchronizer', self._synchronizer)
-        return create(store=self._store, path=path,
-                      chunk_store=self._chunk_store, **kwargs)
+        return create(store=self._store, path=path, chunk_store=self._chunk_store, **kwargs)
 
     def empty(self, name, **kwargs):
         """Create an array. Keyword arguments as per
@@ -783,8 +758,7 @@ class Group(MutableMapping):
     def _empty_nosync(self, name, **kwargs):
         path = self._item_path(name)
         kwargs.setdefault('synchronizer', self._synchronizer)
-        return empty(store=self._store, path=path,
-                     chunk_store=self._chunk_store, **kwargs)
+        return empty(store=self._store, path=path, chunk_store=self._chunk_store, **kwargs)
 
     def zeros(self, name, **kwargs):
         """Create an array. Keyword arguments as per
@@ -794,8 +768,7 @@ class Group(MutableMapping):
     def _zeros_nosync(self, name, **kwargs):
         path = self._item_path(name)
         kwargs.setdefault('synchronizer', self._synchronizer)
-        return zeros(store=self._store, path=path,
-                     chunk_store=self._chunk_store, **kwargs)
+        return zeros(store=self._store, path=path, chunk_store=self._chunk_store, **kwargs)
 
     def ones(self, name, **kwargs):
         """Create an array. Keyword arguments as per
@@ -805,8 +778,7 @@ class Group(MutableMapping):
     def _ones_nosync(self, name, **kwargs):
         path = self._item_path(name)
         kwargs.setdefault('synchronizer', self._synchronizer)
-        return ones(store=self._store, path=path,
-                    chunk_store=self._chunk_store, **kwargs)
+        return ones(store=self._store, path=path, chunk_store=self._chunk_store, **kwargs)
 
     def full(self, name, fill_value, **kwargs):
         """Create an array. Keyword arguments as per
@@ -816,8 +788,7 @@ class Group(MutableMapping):
     def _full_nosync(self, name, fill_value, **kwargs):
         path = self._item_path(name)
         kwargs.setdefault('synchronizer', self._synchronizer)
-        return full(store=self._store, path=path,
-                    chunk_store=self._chunk_store,
+        return full(store=self._store, path=path, chunk_store=self._chunk_store,
                     fill_value=fill_value, **kwargs)
 
     def array(self, name, data, **kwargs):
@@ -828,8 +799,7 @@ class Group(MutableMapping):
     def _array_nosync(self, name, data, **kwargs):
         path = self._item_path(name)
         kwargs.setdefault('synchronizer', self._synchronizer)
-        return array(data, store=self._store, path=path,
-                     chunk_store=self._chunk_store, **kwargs)
+        return array(data, store=self._store, path=path, chunk_store=self._chunk_store, **kwargs)
 
     def empty_like(self, name, data, **kwargs):
         """Create an array. Keyword arguments as per
@@ -839,8 +809,8 @@ class Group(MutableMapping):
     def _empty_like_nosync(self, name, data, **kwargs):
         path = self._item_path(name)
         kwargs.setdefault('synchronizer', self._synchronizer)
-        return empty_like(data, store=self._store, path=path,
-                          chunk_store=self._chunk_store, **kwargs)
+        return empty_like(data, store=self._store, path=path, chunk_store=self._chunk_store,
+                          **kwargs)
 
     def zeros_like(self, name, data, **kwargs):
         """Create an array. Keyword arguments as per
@@ -850,8 +820,8 @@ class Group(MutableMapping):
     def _zeros_like_nosync(self, name, data, **kwargs):
         path = self._item_path(name)
         kwargs.setdefault('synchronizer', self._synchronizer)
-        return zeros_like(data, store=self._store, path=path,
-                          chunk_store=self._chunk_store, **kwargs)
+        return zeros_like(data, store=self._store, path=path, chunk_store=self._chunk_store,
+                          **kwargs)
 
     def ones_like(self, name, data, **kwargs):
         """Create an array. Keyword arguments as per
@@ -861,8 +831,8 @@ class Group(MutableMapping):
     def _ones_like_nosync(self, name, data, **kwargs):
         path = self._item_path(name)
         kwargs.setdefault('synchronizer', self._synchronizer)
-        return ones_like(data, store=self._store, path=path,
-                         chunk_store=self._chunk_store, **kwargs)
+        return ones_like(data, store=self._store, path=path, chunk_store=self._chunk_store,
+                         **kwargs)
 
     def full_like(self, name, data, **kwargs):
         """Create an array. Keyword arguments as per
@@ -872,8 +842,8 @@ class Group(MutableMapping):
     def _full_like_nosync(self, name, data, **kwargs):
         path = self._item_path(name)
         kwargs.setdefault('synchronizer', self._synchronizer)
-        return full_like(data, store=self._store, path=path,
-                         chunk_store=self._chunk_store, **kwargs)
+        return full_like(data, store=self._store, path=path, chunk_store=self._chunk_store,
+                         **kwargs)
 
 
 def _handle_store_arg(store):
@@ -916,16 +886,14 @@ def group(store=None, overwrite=False, chunk_store=None, synchronizer=None,
         >>> import zarr
         >>> g = zarr.group()
         >>> g
-        Group(/, 0)
-          store: DictStore
+        <zarr.hierarchy.Group '/'>
 
     Create a group with a different store::
 
         >>> store = zarr.DirectoryStore('example')
         >>> g = zarr.group(store=store, overwrite=True)
         >>> g
-        Group(/, 0)
-          store: DirectoryStore
+        <zarr.hierarchy.Group '/'>
 
     """
 
@@ -970,14 +938,10 @@ def open_group(store=None, mode='a', synchronizer=None, path=None):
     >>> foo = root.create_group('foo')
     >>> bar = root.create_group('bar')
     >>> root
-    Group(/, 2)
-      groups: 2; bar, foo
-      store: DirectoryStore
+    <zarr.hierarchy.Group '/'>
     >>> root2 = zarr.open_group('example', mode='a')
     >>> root2
-    Group(/, 2)
-      groups: 2; bar, foo
-      store: DirectoryStore
+    <zarr.hierarchy.Group '/'>
     >>> root == root2
     True
 

@@ -1,5 +1,9 @@
 language: python
 
+branches:
+  only:
+    - master
+
 sudo: false
 
 addons:

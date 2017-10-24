@@ -66,10 +66,7 @@ def create(shape, chunks=None, dtype=None, compressor='default',
         >>> import zarr
         >>> z = zarr.create((10000, 10000), chunks=(1000, 1000))
         >>> z
-        Array((10000, 10000), float64, chunks=(1000, 1000), order=C)
-          nbytes: 762.9M; nbytes_stored: ...; ratio: ...; initialized: 0/100
-          compressor: Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
-          store: dict
+        <zarr.core.Array (10000, 10000) float64>
 
     Create an array with different some different configuration options::
 
@@ -77,10 +74,7 @@ def create(shape, chunks=None, dtype=None, compressor='default',
         >>> z = zarr.create((10000, 10000), chunks=(1000, 1000), dtype='i1', order='F',
         ...                 compressor=Blosc(cname='zstd', clevel=1, shuffle=Blosc.BITSHUFFLE))
         >>> z
-        Array((10000, 10000), int8, chunks=(1000, 1000), order=F)
-          nbytes: 95.4M; nbytes_stored: ...; ratio: ...; initialized: 0/100
-          compressor: Blosc(cname='zstd', clevel=1, shuffle=BITSHUFFLE, blocksize=0)
-          store: dict
+        <zarr.core.Array (10000, 10000) int8>
 
     To create an array with object dtype requires a filter that can handle Python object encoding,
     e.g., `MsgPack` or `Pickle` from `numcodecs`::
@@ -89,11 +83,7 @@ def create(shape, chunks=None, dtype=None, compressor='default',
         >>> z = zarr.create((10000, 10000), chunks=(1000, 1000), dtype='object',
         ...                 filters=[MsgPack()])
         >>> z
-        Array((10000, 10000), object, chunks=(1000, 1000), order=C)
-          nbytes: 762.9M; nbytes_stored: ...; ratio: ...; initialized: 0/100
-          filters: MsgPack(encoding='utf-8')
-          compressor: Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
-          store: dict
+        <zarr.core.Array (10000, 10000) object>
 
     Example with some filters, and also storing chunks separately from metadata::
 
@@ -103,14 +93,9 @@ def create(shape, chunks=None, dtype=None, compressor='default',
         ...                 filters=[Quantize(digits=2, dtype='f8'), Adler32()],
         ...                 store=store, chunk_store=chunk_store)
         >>> z
-        Array((10000, 10000), float64, chunks=(1000, 1000), order=C)
-          nbytes: 762.9M; nbytes_stored: ...; ratio: ...; initialized: 0/100
-          filters: Quantize(digits=2, dtype='<f8')
-                   Adler32()
-          compressor: Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
-          store: dict; chunk_store: dict
+        <zarr.core.Array (10000, 10000) float64>
 
-    """  # flake8: noqa
+    """
 
     # handle polymorphic store arg
     store = _handle_store_arg(store)
@@ -222,15 +207,12 @@ def zeros(shape, **kwargs):
     >>> import zarr
     >>> z = zarr.zeros((10000, 10000), chunks=(1000, 1000))
     >>> z
-    Array((10000, 10000), float64, chunks=(1000, 1000), order=C)
-      nbytes: 762.9M; nbytes_stored: ...; ratio: ...; initialized: 0/100
-      compressor: Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
-      store: dict
+    <zarr.core.Array (10000, 10000) float64>
     >>> z[:2, :2]
     array([[ 0.,  0.],
            [ 0.,  0.]])
 
-    """  # flake8: noqa
+    """
 
     return create(shape=shape, fill_value=0, **kwargs)
 
@@ -246,15 +228,12 @@ def ones(shape, **kwargs):
     >>> import zarr
     >>> z = zarr.ones((10000, 10000), chunks=(1000, 1000))
     >>> z
-    Array((10000, 10000), float64, chunks=(1000, 1000), order=C)
-      nbytes: 762.9M; nbytes_stored: ...; ratio: ...; initialized: 0/100
-      compressor: Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
-      store: dict
+    <zarr.core.Array (10000, 10000) float64>
     >>> z[:2, :2]
     array([[ 1.,  1.],
            [ 1.,  1.]])
 
-    """  # flake8: noqa
+    """
 
     return create(shape=shape, fill_value=1, **kwargs)
 
@@ -270,15 +249,12 @@ def full(shape, fill_value, **kwargs):
     >>> import zarr
     >>> z = zarr.full((10000, 10000), chunks=(1000, 1000), fill_value=42)
     >>> z
-    Array((10000, 10000), float64, chunks=(1000, 1000), order=C)
-      nbytes: 762.9M; nbytes_stored: ...; ratio: ...; initialized: 0/100
-      compressor: Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
-      store: dict
+    <zarr.core.Array (10000, 10000) float64>
     >>> z[:2, :2]
     array([[ 42.,  42.],
            [ 42.,  42.]])
 
-    """  # flake8: noqa
+    """
 
     return create(shape=shape, fill_value=fill_value, **kwargs)
 
@@ -316,12 +292,9 @@ def array(data, **kwargs):
     >>> a = np.arange(100000000).reshape(10000, 10000)
     >>> z = zarr.array(a, chunks=(1000, 1000))
     >>> z
-    Array((10000, 10000), int64, chunks=(1000, 1000), order=C)
-      nbytes: 762.9M; nbytes_stored: 15.2M; ratio: 50.2; initialized: 100/100
-      compressor: Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
-      store: dict
+    <zarr.core.Array (10000, 10000) int64>
 
-    """  # flake8: noqa
+    """
 
     # ensure data is array-like
     if not hasattr(data, 'shape') or not hasattr(data, 'dtype'):
@@ -403,16 +376,10 @@ def open_array(store=None, mode='a', shape=None, chunks=None, dtype=None,
     ...                      chunks=(1000, 1000), fill_value=0)
     >>> z1[:] = np.arange(100000000).reshape(10000, 10000)
     >>> z1
-    Array((10000, 10000), float64, chunks=(1000, 1000), order=C)
-      nbytes: 762.9M; nbytes_stored: 23.0M; ratio: 33.2; initialized: 100/100
-      compressor: Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
-      store: DirectoryStore
+    <zarr.core.Array (10000, 10000) float64>
     >>> z2 = zarr.open_array('example.zarr', mode='r')
     >>> z2
-    Array((10000, 10000), float64, chunks=(1000, 1000), order=C)
-      nbytes: 762.9M; nbytes_stored: 23.0M; ratio: 33.2; initialized: 100/100
-      compressor: Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
-      store: DirectoryStore
+    <zarr.core.Array (10000, 10000) float64>
     >>> np.all(z1[:] == z2[:])
     True
 
@@ -421,7 +388,7 @@ def open_array(store=None, mode='a', shape=None, chunks=None, dtype=None,
     There is no need to close an array. Data are automatically flushed to the
     file system.
 
-    """  # flake8: noqa
+    """
 
     # use same mode semantics as h5py
     # r : read only, must exist

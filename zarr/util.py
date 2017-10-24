@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, print_function, division
 import operator
+from textwrap import TextWrapper
 
 
 import numpy as np
@@ -249,6 +250,15 @@ def normalize_order(order):
 
 
 def normalize_storage_path(path):
+
+    # handle bytes
+    if not PY2 and isinstance(path, bytes):
+        path = str(path, 'ascii')
+
+    # ensure str
+    if path is not None and not isinstance(path, str):
+        path = str(path)
+
     if path:
 
         # convert backslash to forward slash
@@ -293,3 +303,44 @@ def buffer_size(v):
     else:
         v = memoryview(v)
         return reduce(operator.mul, v.shape) * v.itemsize
+
+
+def info_text_report(items):
+    keys = [k for k, v in items]
+    max_key_len = max(len(k) for k in keys)
+    report = ''
+    for k, v in items:
+        wrapper = TextWrapper(width=80,
+                              initial_indent=k.ljust(max_key_len) + ' : ',
+                              subsequent_indent=' '*max_key_len + ' : ')
+        text = wrapper.fill(str(v))
+        report += text + '\n'
+    return report
+
+
+def info_html_report(items):
+    report = '<table class="zarr-info">'
+    report += '<tbody>'
+    for k, v in items:
+        report += '<tr>' \
+                  '<th style="text-align: left">%s</th>' \
+                  '<td style="text-align: left">%s</td>' \
+                  '</tr>' \
+                  % (k, v)
+    report += '</tbody>'
+    report += '</table>'
+    return report
+
+
+class InfoReporter(object):
+
+    def __init__(self, obj):
+        self.obj = obj
+
+    def __repr__(self):
+        items = self.obj.info_items()
+        return info_text_report(items)
+
+    def _repr_html_(self):
+        items = self.obj.info_items()
+        return info_html_report(items)

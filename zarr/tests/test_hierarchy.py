@@ -21,7 +21,7 @@ from zarr.hierarchy import Group, group, open_group
 from zarr.attrs import Attributes
 from zarr.errors import PermissionError
 from zarr.creation import open_array
-from zarr.compat import PY2
+from zarr.util import InfoReporter
 from numcodecs import Zlib
 
 
@@ -47,10 +47,17 @@ class TestGroup(unittest.TestCase):
         store, chunk_store = self.create_store()
         g = self.create_group(store, chunk_store=chunk_store)
         assert_is(store, g.store)
+        if chunk_store is None:
+            assert_is(store, g.chunk_store)
+        else:
+            assert_is(chunk_store, g.chunk_store)
         assert_false(g.read_only)
         eq('', g.path)
         eq('/', g.name)
         assert_is_instance(g.attrs, Attributes)
+        assert_is_instance(g.info, InfoReporter)
+        assert_is_instance(repr(g.info), str)
+        assert_is_instance(g.info._repr_html_(), str)
 
     def test_group_init_2(self):
         store, chunk_store = self.create_store()
@@ -105,6 +112,23 @@ class TestGroup(unittest.TestCase):
         assert_is_instance(g5, Group)
         eq('a/b/c', g5.path)
         eq('/a/b/c', g5.name)
+
+        # test non-str keys
+        class Foo(object):
+
+            def __init__(self, s):
+                self.s = s
+
+            def __str__(self):
+                return self.s
+
+        o = Foo('test/object')
+        go = g1.create_group(o)
+        assert_is_instance(go, Group)
+        eq('test/object', go.path)
+        go = g1.create_group(b'test/bytes')
+        assert_is_instance(go, Group)
+        eq('test/bytes', go.path)
 
         # test bad keys
         with assert_raises(KeyError):
@@ -608,27 +632,6 @@ class TestGroup(unittest.TestCase):
         # test that hasattr returns False instead of an exception (issue #88)
         assert_false(hasattr(g1, 'unexistingattribute'))
 
-    def test_group_repr(self):
-        g = self.create_group()
-        expect = 'Group(/, 0)\n  store: dict'
-        actual = repr(g)
-        eq(expect, actual)
-        g.create_group('foo')
-        g.create_group('bar')
-        g.create_group('y'*80)
-        g.create_dataset('baz', shape=100, chunks=10)
-        g.create_dataset('quux', shape=100, chunks=10)
-        g.create_dataset('z'*80, shape=100, chunks=10)
-        expect = \
-            'Group(/, 6)\n' \
-            '  arrays: 3; baz, quux, ' \
-            'zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz...\n' \
-            '  groups: 3; bar, foo, ' \
-            'yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy...\n' \
-            '  store: dict'
-        actual = repr(g)
-        eq(expect, actual)
-
     def test_setitem(self):
         g = self.create_group()
         try:
@@ -775,13 +778,6 @@ class TestGroupWithDictStore(TestGroup):
     def create_store():
         return DictStore(), None
 
-    def test_group_repr(self):
-        g = self.create_group()
-        expect = 'Group(/, 0)\n  store: DictStore'
-        actual = repr(g)
-        for l1, l2 in zip(expect.split('\n'), actual.split('\n')):
-            eq(l1, l2)
-
 
 def rmtree(p, f=shutil.rmtree, g=os.path.isdir):  # pragma: no cover
     """Version of rmtree that will work atexit and only remove if directory."""
@@ -798,14 +794,6 @@ class TestGroupWithDirectoryStore(TestGroup):
         store = DirectoryStore(path)
         return store, None
 
-    def test_group_repr(self):
-        g = self.create_group()
-        expect = 'Group(/, 0)\n' \
-                 '  store: DirectoryStore'
-        actual = repr(g)
-        for l1, l2 in zip(expect.split('\n'), actual.split('\n')):
-            eq(l1, l2)
-
 
 class TestGroupWithZipStore(TestGroup):
 
@@ -816,29 +804,12 @@ class TestGroupWithZipStore(TestGroup):
         store = ZipStore(path)
         return store, None
 
-    def test_group_repr(self):
-        g = self.create_group()
-        expect = 'Group(/, 0)\n' \
-                 '  store: ZipStore'
-        actual = repr(g)
-        for l1, l2 in zip(expect.split('\n'), actual.split('\n')):
-            eq(l1, l2)
-
 
 class TestGroupWithChunkStore(TestGroup):
 
     @staticmethod
     def create_store():
         return dict(), dict()
-
-    def test_group_repr(self):
-        if not PY2:
-            g = self.create_group()
-            expect = 'Group(/, 0)\n' \
-                     '  store: dict; chunk_store: dict'
-            actual = repr(g)
-            for l1, l2 in zip(expect.split('\n'), actual.split('\n')):
-                eq(l1, l2)
 
     def test_chunk_store(self):
         # setup
