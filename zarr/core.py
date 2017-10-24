@@ -613,11 +613,15 @@ class Array(object):
         if item not in ((), Ellipsis):
             raise IndexError('too many indices for array')
 
-        # obtain key for chunk storage
-        ckey = self._chunk_key((0,))
-
         # setup data to store
         arr = np.asarray(value, dtype=self._dtype)
+
+        # check value
+        if arr.shape != ():
+            raise ValueError('bad value; expected scalar, found %r' % value)
+
+        # obtain key for chunk storage
+        ckey = self._chunk_key((0,))
 
         # encode and store
         cdata = self._encode_chunk(arr)
@@ -637,7 +641,7 @@ class Array(object):
         if np.isscalar(value):
             pass
         elif expected_shape != value.shape:
-            raise ValueError('value has wrong shape, expecting %s, found %s'
+            raise ValueError('value has wrong shape; expected %s, found %s'
                              % (str(expected_shape),
                                 str(value.shape)))
 

@@ -630,6 +630,8 @@ class TestArray(unittest.TestCase):
             z[0] = 42
         with assert_raises(IndexError):
             z[:] = 42
+        with assert_raises(ValueError):
+            z[...] = np.array([1, 2, 3])
 
 
 class TestArrayWithPath(TestArray):
