@@ -2,12 +2,13 @@
 from __future__ import absolute_import, print_function, division
 import operator
 from textwrap import TextWrapper
+import numbers
 
 
 import numpy as np
 
 
-from zarr.compat import integer_types, PY2, reduce
+from zarr.compat import PY2, reduce
 
 
 def normalize_shape(shape):
@@ -17,7 +18,7 @@ def normalize_shape(shape):
         raise TypeError('shape is None')
 
     # handle 1D convenience form
-    if isinstance(shape, integer_types):
+    if isinstance(shape, numbers.Integral):
         shape = (int(shape),)
 
     # normalize
@@ -89,7 +90,7 @@ def normalize_chunks(chunks, shape, typesize):
         return guess_chunks(shape, typesize)
 
     # handle 1D convenience form
-    if isinstance(chunks, integer_types):
+    if isinstance(chunks, numbers.Integral):
         chunks = (int(chunks),)
 
     # handle bad dimensionality
@@ -137,7 +138,8 @@ def normalize_axis_selection(item, length):
     """Convenience function to normalize a selection within a single axis
     of size `l`."""
 
-    if isinstance(item, int):
+    if isinstance(item, numbers.Integral):
+        item = int(item)
 
         # handle wraparound
         if item < 0:
@@ -191,7 +193,7 @@ def normalize_array_selection(item, shape):
     the given `shape`."""
 
     # normalize item
-    if isinstance(item, integer_types):
+    if isinstance(item, numbers.Integral):
         item = (int(item),)
     elif isinstance(item, slice):
         item = (item,)

@@ -130,6 +130,11 @@ class TestArray(unittest.TestCase):
         # single item
         eq(a[0], z[0])
         eq(a[-1], z[-1])
+        # unusual integer items
+        eq(a[42], z[np.int64(42)])
+        eq(a[42], z[np.int32(42)])
+        eq(a[42], z[np.uint64(42)])
+        eq(a[42], z[np.uint32(42)])
 
         # check partial assignment
         b = np.arange(1e5, 2e5)
