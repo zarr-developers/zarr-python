@@ -317,10 +317,14 @@ def info_text_report(items):
 
 
 def info_html_report(items):
-    report = '<table>'
+    report = '<table class="zarr-info">'
     report += '<tbody>'
     for k, v in items:
-        report += '<tr><td>%s</td><td>%s</td></tr>' % (k, v)
+        report += '<tr>' \
+                  '<th style="text-align: left">%s</th>' \
+                  '<td style="text-align: left">%s</td>' \
+                  '</tr>' \
+                  % (k, v)
     report += '</tbody>'
     report += '</table>'
     return report
