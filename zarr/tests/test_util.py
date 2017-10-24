@@ -5,10 +5,9 @@ from __future__ import absolute_import, print_function, division
 from nose.tools import eq_ as eq, assert_raises, assert_true, assert_false, \
     assert_is_instance
 
-
-from zarr.util import normalize_shape, normalize_chunks, is_total_slice, \
-    normalize_axis_selection, normalize_array_selection, \
-    normalize_resize_args, human_readable_size, normalize_order, guess_chunks
+from zarr.util import normalize_shape, normalize_chunks, is_total_slice, normalize_axis_selection, \
+    normalize_array_selection, normalize_resize_args, human_readable_size, normalize_order, \
+    guess_chunks, info_html_report, info_text_report
 
 
 def test_normalize_shape():
@@ -194,3 +193,16 @@ def test_guess_chunks():
     chunks = guess_chunks((1000000,), 40000000)
     assert_is_instance(chunks, tuple)
     eq((1,), chunks)
+
+
+def test_info_text_report():
+    items = [('foo', 'bar'), ('baz', 'qux')]
+    expect = "foo : bar\nbaz : qux\n"
+    eq(expect, info_text_report(items))
+
+
+def test_info_html_report():
+    items = [('foo', 'bar'), ('baz', 'qux')]
+    actual = info_html_report(items)
+    eq('<table', actual[:6])
+    eq('</table>', actual[-8:])

@@ -103,8 +103,8 @@ class Array(object):
         self._attrs = Attributes(store, key=akey, read_only=read_only,
                                  synchronizer=synchronizer)
 
-        # initialize info
-        self.info = InfoReporter(self)
+        # initialize info reporter
+        self._info_reporter = InfoReporter(self)
 
     def _load_metadata(self):
         """(Re)load metadata from store."""
@@ -806,6 +806,31 @@ class Array(object):
         r += ' %s' % self.dtype
         r += '>'
         return r
+
+    @property
+    def info(self):
+        """Report some diagnostic information about the array.
+
+        Examples
+        --------
+        >>> import zarr
+        >>> z = zarr.zeros(1000000, chunks=100000, dtype='i4')
+        >>> z.info
+        Type               : zarr.core.Array
+        Data type          : int32
+        Shape              : (1000000,)
+        Chunk shape        : (100000,)
+        Order              : C
+        Read-only          : False
+        Compressor         : Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
+        Store type         : builtins.dict
+        No. bytes          : 4000000 (3.8M)
+        No. bytes stored   : ...
+        Storage ratio      : ...
+        Chunks initialized : 0/10
+
+        """
+        return self._info_reporter
 
     def info_items(self):
         return self._synchronized_op(self._info_items_nosync)

@@ -6,6 +6,7 @@ import atexit
 import shutil
 import os
 import pickle
+import io
 
 
 from nose.tools import assert_raises, eq_ as eq, assert_is, assert_true, \
@@ -21,6 +22,7 @@ from zarr.hierarchy import Group, group, open_group
 from zarr.attrs import Attributes
 from zarr.errors import PermissionError
 from zarr.creation import open_array
+from zarr.util import InfoReporter
 from numcodecs import Zlib
 
 
@@ -46,10 +48,17 @@ class TestGroup(unittest.TestCase):
         store, chunk_store = self.create_store()
         g = self.create_group(store, chunk_store=chunk_store)
         assert_is(store, g.store)
+        if chunk_store is None:
+            assert_is(store, g.chunk_store)
+        else:
+            assert_is(chunk_store, g.chunk_store)
         assert_false(g.read_only)
         eq('', g.path)
         eq('/', g.name)
         assert_is_instance(g.attrs, Attributes)
+        assert_is_instance(g.info, InfoReporter)
+        assert_is_instance(repr(g.info), str)
+        assert_is_instance(g.info._repr_html_(), str)
 
     def test_group_init_2(self):
         store, chunk_store = self.create_store()
@@ -104,6 +113,23 @@ class TestGroup(unittest.TestCase):
         assert_is_instance(g5, Group)
         eq('a/b/c', g5.path)
         eq('/a/b/c', g5.name)
+
+        # test non-str keys
+        class Foo(object):
+
+            def __init__(self, s):
+                self.s = s
+
+            def __str__(self):
+                return self.s
+
+        o = Foo('test/object')
+        go = g1.create_group(o)
+        assert_is_instance(go, Group)
+        eq('test/object', go.path)
+        go = g1.create_group(b'test/bytes')
+        assert_is_instance(go, Group)
+        eq('test/bytes', go.path)
 
         # test bad keys
         with assert_raises(KeyError):

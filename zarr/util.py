@@ -251,9 +251,11 @@ def normalize_order(order):
 
 def normalize_storage_path(path):
 
+    # handle bytes
     if not PY2 and isinstance(path, bytes):
         path = str(path, 'ascii')
 
+    # ensure str
     if path is not None and not isinstance(path, str):
         path = str(path)
 
