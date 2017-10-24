@@ -33,7 +33,8 @@ CHUNK_MAX = 16*1024*1024  # Hard upper limit (16M)
 
 
 def guess_chunks(shape, typesize):
-    """ Guess an appropriate chunk layout for a dataset, given its shape and
+    """
+    Guess an appropriate chunk layout for a dataset, given its shape and
     the size of each element in bytes.  Will allocate chunks only as large
     as MAX_SIZE.  Chunks are generally close to some power-of-2 fraction of
     each axis, slightly favoring bigger values for the last index.
@@ -41,7 +42,8 @@ def guess_chunks(shape, typesize):
     """
 
     ndims = len(shape)
-    chunks = np.array(shape, dtype='=f8')
+    # require chunks to have non-zero length for all dimensions
+    chunks = np.maximum(np.array(shape, dtype='=f8'), 1)
 
     # Determine the optimal chunk size in bytes using a PyTables expression.
     # This is kept as a float.
@@ -58,7 +60,7 @@ def guess_chunks(shape, typesize):
         # Repeatedly loop over the axes, dividing them by 2.  Stop when:
         # 1a. We're smaller than the target chunk size, OR
         # 1b. We're within 50% of the target chunk size, AND
-        #  2. The chunk is smaller than the maximum chunk size
+        # 2. The chunk is smaller than the maximum chunk size
 
         chunk_bytes = np.product(chunks)*typesize
 
@@ -131,35 +133,52 @@ def is_total_slice(item, shape):
         raise TypeError('expected slice or tuple of slices, found %r' % item)
 
 
-def normalize_axis_selection(item, l):
+def normalize_axis_selection(item, length):
     """Convenience function to normalize a selection within a single axis
     of size `l`."""
 
     if isinstance(item, int):
+
+        # handle wraparound
         if item < 0:
-            # handle wraparound
-            item = l + item
-        if item > (l - 1) or item < 0:
+            item = length + item
+
+        # handle out of bounds
+        if item >= length or item < 0:
             raise IndexError('index out of bounds: %s' % item)
+
         return item
 
     elif isinstance(item, slice):
+
+        # handle slice with step
         if item.step is not None and item.step != 1:
-            raise NotImplementedError('slice with step not supported')
+            raise NotImplementedError('slice with step not implemented')
+
+        # handle slice with None bound
         start = 0 if item.start is None else item.start
-        stop = l if item.stop is None else item.stop
+        stop = length if item.stop is None else item.stop
+
+        # handle wraparound
         if start < 0:
-            start = l + start
+            start = length + start
         if stop < 0:
-            stop = l + stop
+            stop = length + stop
+
+        # handle zero-length axis
+        if start == stop == length == 0:
+            return slice(0, 0)
+
+        # handle out of bounds
         if start < 0 or stop < 0:
             raise IndexError('index out of bounds: %s, %s' % (start, stop))
-        if start >= l:
+        if start >= length:
             raise IndexError('index out of bounds: %s, %s' % (start, stop))
-        if stop > l:
-            stop = l
+        if stop > length:
+            stop = length
         if stop < start:
             raise IndexError('index out of bounds: %s, %s' % (start, stop))
+
         return slice(start, stop)
 
     else:
