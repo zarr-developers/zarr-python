@@ -21,7 +21,6 @@ from zarr.hierarchy import Group, group, open_group
 from zarr.attrs import Attributes
 from zarr.errors import PermissionError
 from zarr.creation import open_array
-from zarr.compat import PY2
 from numcodecs import Zlib
 
 

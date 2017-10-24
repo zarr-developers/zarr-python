@@ -8,8 +8,6 @@ from multiprocessing.pool import ThreadPool
 from multiprocessing import Pool as ProcessPool
 from multiprocessing import cpu_count
 import tempfile
-import traceback
-import sys
 
 
 import numpy as np
@@ -24,8 +22,6 @@ from zarr.sync import ThreadSynchronizer, ProcessSynchronizer
 from zarr.core import Array
 from zarr.attrs import Attributes
 from zarr.storage import init_array, DirectoryStore, init_group, atexit_rmtree
-from zarr.compat import PY2
-from zarr.codecs import Zlib
 from zarr.hierarchy import Group
 
 

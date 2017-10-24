@@ -445,7 +445,7 @@ class Group(MutableMapping):
         def _visit(obj):
             yield obj
 
-            keys = sorted(getattr(obj, "keys", lambda : [])())
+            keys = sorted(getattr(obj, "keys", lambda: [])())
             for each_key in keys:
                 for each_obj in _visit(obj[each_key]):
                     yield each_obj
