@@ -268,7 +268,7 @@ class Array(object):
 
     @property
     def _size(self):
-        return reduce(operator.mul, self._shape)
+        return reduce(operator.mul, self._shape, 1)
 
     @property
     def size(self):
@@ -325,7 +325,7 @@ class Array(object):
 
     @property
     def _nchunks(self):
-        return reduce(operator.mul, self._cdata_shape)
+        return reduce(operator.mul, self._cdata_shape, 1)
 
     @property
     def nchunks(self):
@@ -360,13 +360,16 @@ class Array(object):
         )
 
     def __array__(self, *args):
-        a = self[:]
+        a = self[...]
         if args:
             a = a.astype(args[0])
         return a
 
     def __len__(self):
-        return self.shape[0]
+        if self.shape:
+            return self.shape[0]
+        else:
+            raise TypeError('len() of unsized object')
 
     def __getitem__(self, item):
         """Retrieve data for some portion of the array. Most NumPy-style
@@ -442,6 +445,43 @@ class Array(object):
         # refresh metadata
         if not self._cache_metadata:
             self._load_metadata()
+
+        # handle scalars
+        if self._shape == ():
+            return self._getitem_scalar(item)
+        else:
+            return self._getitem_array(item)
+
+    def _getitem_scalar(self, item):
+        # special case __getitem__ for scalar array
+
+        # check item is valid
+        if item not in ((), Ellipsis):
+            raise IndexError('too many indices for array')
+
+        try:
+
+            # obtain encoded data for chunk
+            ckey = self._chunk_key((0,))
+            cdata = self.chunk_store[ckey]
+
+        except KeyError:
+
+            # chunk not initialized
+            out = np.empty((), dtype=self._dtype)
+            if self._fill_value is not None:
+                out.fill(self._fill_value)
+
+        else:
+
+            out = self._decode_chunk(cdata)
+
+        # handle selection of the scalar value via empty tuple
+        out = out[item]
+
+        return out
+
+    def _getitem_array(self, item):
 
         # normalize selection
         selection = normalize_array_selection(item, self._shape)
@@ -559,6 +599,31 @@ class Array(object):
         if not self._cache_metadata:
             self._load_metadata_nosync()
 
+        # handle scalars
+        if self._shape == ():
+            return self._setitem_scalar(item, value)
+        else:
+            return self._setitem_array(item, value)
+
+    def _setitem_scalar(self, item, value):
+        # special case __setitem__ for scalar array
+
+        # check item is valid
+        if item not in ((), Ellipsis):
+            raise IndexError('too many indices for array')
+
+        # obtain key for chunk storage
+        ckey = self._chunk_key((0,))
+
+        # setup data to store
+        arr = np.asarray(value, dtype=self._dtype)
+
+        # encode and store
+        cdata = self._encode_chunk(arr)
+        self.chunk_store[ckey] = cdata
+
+    def _setitem_array(self, item, value):
+
         # normalize selection
         selection = normalize_array_selection(item, self._shape)
 
@@ -646,6 +711,7 @@ class Array(object):
                 # optimization: we want the whole chunk, and the destination is
                 # contiguous, so we can decompress directly from the chunk
                 # into the destination array
+
                 if self._compressor:
                     self._compressor.decode(cdata, dest)
                 else:

@@ -279,19 +279,23 @@ def _init_array_metadata(store, shape, chunks=None, dtype=None, compressor='defa
     chunks = normalize_chunks(chunks, shape, dtype.itemsize)
     order = normalize_order(order)
 
-    # obtain compressor config
-    if compressor == 'none':
+    # compressor prep
+    if shape == ():
+        # no point in compressing scalars
+        compressor = None
+    elif compressor == 'none':
         # compatibility
         compressor = None
     elif compressor == 'default':
         compressor = default_compressor
+
+    # obtain compressor config
+    compressor_config = None
     if compressor:
         try:
             compressor_config = compressor.get_config()
         except AttributeError:
             err_bad_compressor(compressor)
-    else:
-        compressor_config = None
 
     # obtain filters config
     if filters:

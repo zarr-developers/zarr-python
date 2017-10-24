@@ -158,6 +158,8 @@ class TestArray(unittest.TestCase):
             assert_array_equal(f[310:], z[310:])
 
     def test_array_1d_set_scalar(self):
+        # test setting the contents of an array with a scalar value
+
         # setup
         a = np.zeros(100)
         z = self.create_array(shape=a.shape, chunks=10, dtype=a.dtype)
@@ -586,6 +588,48 @@ class TestArray(unittest.TestCase):
         # this should error
         with assert_raises(IndexError):
             z[:, 0] = 42
+
+    def test_array_0d(self):
+        # test behaviour for scalars, i.e., array with 0 dimensions
+
+        # setup
+        a = np.zeros(())
+        z = self.create_array(shape=(), dtype=a.dtype, fill_value=0)
+
+        # check properties
+        eq(a.ndim, z.ndim)
+        eq(a.shape, z.shape)
+        eq(a.size, z.size)
+        eq(a.dtype, z.dtype)
+        with assert_raises(TypeError):
+            len(z)
+        eq((), z.chunks)
+        eq(1, z.nchunks)
+        # compressor always None - no point in compressing a scalar value
+        assert_is_none(z.compressor)
+
+        # check __getitem__
+        b = z[...]
+        assert_is_instance(b, np.ndarray)
+        eq(a.shape, b.shape)
+        eq(a.dtype, b.dtype)
+        assert_array_equal(a, np.array(z))
+        assert_array_equal(a, z[...])
+        eq(a[()], z[()])
+        with assert_raises(IndexError):
+            z[0]
+        with assert_raises(IndexError):
+            z[:]
+
+        # check __setitem__
+        z[...] = 42
+        eq(42, z[()])
+        z[()] = 43
+        eq(43, z[()])
+        with assert_raises(IndexError):
+            z[0] = 42
+        with assert_raises(IndexError):
+            z[:] = 42
 
 
 class TestArrayWithPath(TestArray):
