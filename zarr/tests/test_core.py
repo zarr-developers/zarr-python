@@ -160,7 +160,6 @@ class TestArray(unittest.TestCase):
         assert_array_equal(a, z[:])
 
         for value in -1, 0, 1, 10:
-            print(value)
             a[15:35] = value
             z[15:35] = value
             assert_array_equal(a, z[:])

@@ -415,7 +415,7 @@ class DictStore(MutableMapping):
     >>> sorted(store.keys())
     ['foo']
 
-    """  # flake8: noqa
+    """
 
     def __init__(self, cls=dict):
         self.root = cls()
@@ -594,7 +594,7 @@ class DirectoryStore(MutableMapping):
     >>> os.path.exists('example_store/a')
     False
 
-    """  # flake8: noqa
+    """
 
     def __init__(self, path):
 

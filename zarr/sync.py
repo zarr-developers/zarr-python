@@ -38,7 +38,7 @@ class ProcessSynchronizer(object):
         Path to a directory on a file system that is shared by all processes.
         N.B., this should be a *different* path to where you store the array.
 
-    """  # flake8: noqa
+    """
 
     def __init__(self, path):
         self.path = path

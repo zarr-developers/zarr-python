@@ -7,9 +7,9 @@ import itertools
 import numpy as np
 
 
-from zarr.util import is_total_slice, normalize_array_selection, \
-    get_chunk_range, human_readable_size, normalize_resize_args, \
-    normalize_storage_path, normalize_shape, normalize_chunks
+from zarr.util import is_total_slice, normalize_array_selection, get_chunk_range, \
+    human_readable_size, normalize_resize_args, normalize_storage_path, normalize_shape, \
+    normalize_chunks, InfoReporter
 from zarr.storage import array_meta_key, attrs_key, listdir, getsize
 from zarr.meta import decode_array_metadata, encode_array_metadata
 from zarr.attrs import Attributes
@@ -65,6 +65,7 @@ class Array(object):
     nchunks
     nchunks_initialized
     is_view
+    info
 
     Methods
     -------
@@ -75,7 +76,7 @@ class Array(object):
     view
     astype
 
-    """  # flake8: noqa
+    """
 
     def __init__(self, store, path=None, read_only=False, chunk_store=None,
                  synchronizer=None, cache_metadata=True):
@@ -101,6 +102,9 @@ class Array(object):
         akey = self._key_prefix + attrs_key
         self._attrs = Attributes(store, key=akey, read_only=read_only,
                                  synchronizer=synchronizer)
+
+        # initialize info
+        self.info = InfoReporter(self)
 
     def _load_metadata(self):
         """(Re)load metadata from store."""
@@ -382,10 +386,7 @@ class Array(object):
             >>> import numpy as np
             >>> z = zarr.array(np.arange(100000000), chunks=1000000, dtype='i4')
             >>> z
-            Array((100000000,), int32, chunks=(1000000,), order=C)
-              nbytes: 381.5M; nbytes_stored: 6.4M; ratio: 59.9; initialized: 100/100
-              compressor: Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
-              store: dict
+            <zarr.core.Array (100000000,) int32>
 
         Take some slices::
 
@@ -407,10 +408,7 @@ class Array(object):
             >>> z = zarr.array(np.arange(100000000).reshape(10000, 10000),
             ...                chunks=(1000, 1000), dtype='i4')
             >>> z
-            Array((10000, 10000), int32, chunks=(1000, 1000), order=C)
-              nbytes: 381.5M; nbytes_stored: 9.2M; ratio: 41.5; initialized: 100/100
-              compressor: Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
-              store: dict
+            <zarr.core.Array (10000, 10000) int32>
 
         Take some slices::
 
@@ -439,7 +437,7 @@ class Array(object):
                    [99980000, 99980001, 99980002, ..., 99989997, 99989998, 99989999],
                    [99990000, 99990001, 99990002, ..., 99999997, 99999998, 99999999]], dtype=int32)
 
-        """  # flake8: noqa
+        """
 
         # refresh metadata
         if not self._cache_metadata:
@@ -505,10 +503,7 @@ class Array(object):
             >>> import zarr
             >>> z = zarr.zeros(100000000, chunks=1000000, dtype='i4')
             >>> z
-            Array((100000000,), int32, chunks=(1000000,), order=C)
-              nbytes: 381.5M; nbytes_stored: ...; ratio: ...; initialized: 0/100
-              compressor: Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
-              store: dict
+            <zarr.core.Array (100000000,) int32>
 
         Set all array elements to the same scalar value::
 
@@ -527,10 +522,7 @@ class Array(object):
 
             >>> z = zarr.zeros((10000, 10000), chunks=(1000, 1000), dtype='i4')
             >>> z
-            Array((10000, 10000), int32, chunks=(1000, 1000), order=C)
-              nbytes: 381.5M; nbytes_stored: ...; ratio: ...; initialized: 0/100
-              compressor: Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
-              store: dict
+            <zarr.core.Array (10000, 10000) int32>
 
         Set all array elements to the same scalar value::
 
@@ -806,19 +798,19 @@ class Array(object):
         return cdata
 
     def __repr__(self):
-        r = '<zarr array'
+        t = type(self)
+        r = '<%s.%s' % (t.__module__, t.__name__)
         if self.name:
             r += ' %r' % self.name
-        r += ': shape %s' % str(self.shape)
-        r += ', type %r' % self.dtype.str
+        r += ' %s' % str(self.shape)
+        r += ' %s' % self.dtype
         r += '>'
         return r
 
-    def info(self):
-        """Report some diagnostic information about the array."""
-        return self._synchronized_op(self._info_nosync)
+    def info_items(self):
+        return self._synchronized_op(self._info_items_nosync)
 
-    def _info_nosync(self):
+    def _info_items_nosync(self):
 
         def typestr(o):
             return '%s.%s' % (type(o).__module__, type(o).__name__)
@@ -829,14 +821,14 @@ class Array(object):
             else:
                 return str(n)
 
-        info = []
+        items = []
 
         # basic info
         if self.name is not None:
-            info += [('Name', self.name)]
-        info += [
+            items += [('Name', self.name)]
+        items += [
             ('Type', typestr(self)),
-            ('Data type', str(self.dtype)),
+            ('Data type', '%s' % self.dtype),
             ('Shape', str(self.shape)),
             ('Chunk shape', str(self.chunks)),
             ('Order', self.order),
@@ -846,37 +838,30 @@ class Array(object):
         # filters
         if self.filters:
             for i, f in enumerate(self.filters):
-                info += [('Filter [%s]' % i, repr(f))]
+                items += [('Filter [%s]' % i, repr(f))]
 
         # compressor
-        info += [('Compressor', repr(self.compressor))]
+        items += [('Compressor', repr(self.compressor))]
 
         # synchronizer
         if self._synchronizer is not None:
-            info += [('Synchronizer type', typestr(self._synchronizer))]
+            items += [('Synchronizer type', typestr(self._synchronizer))]
 
         # storage info
-        info += [('Store type', typestr(self._store))]
+        items += [('Store type', typestr(self._store))]
         if self._chunk_store is not None:
-            info += [('Chunk store type', typestr(self._chunk_store))]
-        info += [('No. bytes', bytestr(self.nbytes))]
+            items += [('Chunk store type', typestr(self._chunk_store))]
+        items += [('No. bytes', bytestr(self.nbytes))]
         if self.nbytes_stored > 0:
-            info += [
+            items += [
                 ('No. bytes stored', bytestr(self.nbytes_stored)),
-                ('Storage ratio', '%.2f' % (self.nbytes / self.nbytes_stored)),
+                ('Storage ratio', '%.1f' % (self.nbytes / self.nbytes_stored)),
             ]
-        info += [
-            ('No. chunks initialized', '%s/%s' % (self.nchunks_initialized, self.nchunks))
+        items += [
+            ('Chunks initialized', '%s/%s' % (self.nchunks_initialized, self.nchunks))
         ]
 
-        # format report
-        keys = [k for k, v in info]
-        max_key_len = max(len(k) for k in keys)
-        report = ''
-        for k, v in info:
-            report += '%s : %s\n' % (k.ljust(max_key_len), v)
-
-        return report
+        return items
 
     def __getstate__(self):
         return self._store, self._path, self._read_only, self._chunk_store, self._synchronizer, \
@@ -932,7 +917,7 @@ class Array(object):
         If one or more dimensions are shrunk, any chunks falling outside the
         new array shape will be deleted from the underlying store.
 
-        """  # flake8: noqa
+        """
 
         return self._write_op(self._resize_nosync, *args)
 
@@ -997,8 +982,7 @@ class Array(object):
         >>> z.append(np.vstack([a, a]), axis=1)
         (20000, 2000)
         >>> z
-        Array((20000, 2000), int32, chunks=(1000, 100), order=C)
-          ...
+        <zarr.core.Array (20000, 2000) int32>
 
         """
         return self._write_op(self._append_nosync, data, axis=axis)
@@ -1147,7 +1131,7 @@ class Array(object):
             ...     print(e)
             not permitted for views
 
-        """  # flake8: noqa
+        """
 
         store = self._store
         chunk_store = self._chunk_store
@@ -1230,7 +1214,7 @@ class Array(object):
                 80.,  81.,  82.,  83.,  84.,  85.,  86.,  87.,  88.,  89.,
                 90.,  91.,  92.,  93.,  94.,  95.,  96.,  97.,  98.,  99.],
               dtype=float32)
-        """  # flake8: noqa
+        """
 
         dtype = np.dtype(dtype)
 

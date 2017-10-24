@@ -82,7 +82,6 @@ class MixinArraySyncTests(object):
         results = pool.map(_set_arange, zip([arr] * n, range(n)), chunksize=1)
         results = sorted(results)
 
-        print(results)
         eq(list(range(n)), results)
         assert_array_equal(np.arange(n * 1000), arr[:])
 
@@ -100,7 +99,6 @@ class MixinArraySyncTests(object):
         results = pool.map(_append, zip([arr] * n, range(n)), chunksize=1)
         results = sorted(results)
 
-        print(results)
         eq([((i+2)*1000,) for i in range(n)], results)
         eq(((n+1)*1000,), arr.shape)
 
@@ -169,7 +167,6 @@ class MixinGroupSyncTests(object):
         pool.close()
         pool.terminate()
 
-        print(results)
         eq(n, len(g))
 
         pool.terminate()
@@ -191,7 +188,6 @@ class MixinGroupSyncTests(object):
         pool.close()
         pool.terminate()
 
-        print(results)
         eq(n//10, len(g))
 
         pool.terminate()

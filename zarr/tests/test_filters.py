@@ -34,7 +34,7 @@ def test_array_with_delta_filter():
     data = np.arange(100, dtype=dtype)
 
     for compressor in compressors:
-        print(repr(compressor))
+        # print(repr(compressor))
 
         a = array(data, chunks=10, compressor=compressor, filters=filters)
 
@@ -65,7 +65,7 @@ def test_array_with_astype_filter():
     data = np.arange(shape, dtype=decode_dtype)
 
     for compressor in compressors:
-        print(repr(compressor))
+        # print(repr(compressor))
 
         a = array(data, chunks=chunks, compressor=compressor, filters=filters)
 
@@ -95,7 +95,7 @@ def test_array_with_scaleoffset_filter():
     data = np.linspace(1000, 1001, 34, dtype='f8')
 
     for compressor in compressors:
-        print(repr(compressor))
+        # print(repr(compressor))
 
         a = array(data, chunks=5, compressor=compressor, filters=filters)
 
@@ -124,7 +124,7 @@ def test_array_with_quantize_filter():
     data = np.linspace(0, 1, 34, dtype=dtype)
 
     for compressor in compressors:
-        print(repr(compressor))
+        # print(repr(compressor))
 
         a = array(data, chunks=5, compressor=compressor, filters=filters)
 
@@ -151,7 +151,7 @@ def test_array_with_packbits_filter():
     data = np.random.randint(0, 2, size=100, dtype=bool)
 
     for compressor in compressors:
-        print(repr(compressor))
+        # print(repr(compressor))
 
         a = array(data, chunks=5, compressor=compressor, filters=filters)
 
@@ -178,7 +178,7 @@ def test_array_with_categorize_filter():
     filters = [flt]
 
     for compressor in compressors:
-        print(repr(compressor))
+        # print(repr(compressor))
 
         a = array(data, chunks=5, compressor=compressor, filters=filters)
 
@@ -202,7 +202,7 @@ def test_compressor_as_filter():
         if compressor is None:
             # skip
             continue
-        print(repr(compressor))
+        # print(repr(compressor))
 
         # setup filters
         dtype = 'i8'
