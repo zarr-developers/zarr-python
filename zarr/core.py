@@ -268,7 +268,7 @@ class Array(object):
 
     @property
     def _size(self):
-        return reduce(operator.mul, self._shape)
+        return reduce(operator.mul, self._shape, 1)
 
     @property
     def size(self):
@@ -325,7 +325,7 @@ class Array(object):
 
     @property
     def _nchunks(self):
-        return reduce(operator.mul, self._cdata_shape)
+        return reduce(operator.mul, self._cdata_shape, 1)
 
     @property
     def nchunks(self):
@@ -756,7 +756,11 @@ class Array(object):
         self.chunk_store[ckey] = cdata
 
     def _chunk_key(self, cidx):
-        return self._key_prefix + '.'.join(map(str, cidx))
+        # Empty keys don't play well with file-systems...
+        if len(cidx) == 0:
+            return self._key_prefix + '0'
+        else:
+            return self._key_prefix + '.'.join(map(str, cidx))
 
     def _decode_chunk(self, cdata):
 
