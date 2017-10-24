@@ -26,7 +26,6 @@ pyparsing==2.2.0
 requests==2.18.4
 requests-toolbelt==0.8.0
 setuptools-scm==1.15.6
-six
 tox==2.9.1
 tox-travis==0.8
 tqdm==4.19.4
