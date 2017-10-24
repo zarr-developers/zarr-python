@@ -448,12 +448,12 @@ class Array(object):
 
         # handle scalars
         if self._shape == ():
-            return self._getitem_scalar(item)
+            return self._getitem_zd(item)
         else:
-            return self._getitem_array(item)
+            return self._getitem_nd(item)
 
-    def _getitem_scalar(self, item):
-        # special case __getitem__ for scalar array
+    def _getitem_zd(self, item):
+        # special case __getitem__ for zero-dimensional array
 
         # check item is valid
         if item not in ((), Ellipsis):
@@ -481,7 +481,8 @@ class Array(object):
 
         return out
 
-    def _getitem_array(self, item):
+    def _getitem_nd(self, item):
+        # implementation of __getitem__ for array with at least one dimension
 
         # normalize selection
         selection = normalize_array_selection(item, self._shape)
@@ -601,12 +602,12 @@ class Array(object):
 
         # handle scalars
         if self._shape == ():
-            return self._setitem_scalar(item, value)
+            return self._setitem_zd(item, value)
         else:
-            return self._setitem_array(item, value)
+            return self._setitem_nd(item, value)
 
-    def _setitem_scalar(self, item, value):
-        # special case __setitem__ for scalar array
+    def _setitem_zd(self, item, value):
+        # special case __setitem__ for zero-dimensional array
 
         # check item is valid
         if item not in ((), Ellipsis):
@@ -622,7 +623,8 @@ class Array(object):
         cdata = self._encode_chunk(arr)
         self.chunk_store[ckey] = cdata
 
-    def _setitem_array(self, item, value):
+    def _setitem_nd(self, item, value):
+        # implementation of __setitem__ for array with at least one dimension
 
         # normalize selection
         selection = normalize_array_selection(item, self._shape)
