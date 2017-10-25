@@ -590,7 +590,7 @@ class TestArray(unittest.TestCase):
             z[:, 0] = 42
 
     def test_array_0d(self):
-        # test behaviour for scalars, i.e., array with 0 dimensions
+        # test behaviour for array with 0 dimensions
 
         # setup
         a = np.zeros(())
@@ -607,7 +607,7 @@ class TestArray(unittest.TestCase):
         eq((), z.chunks)
         eq(1, z.nchunks)
         eq((1,), z.cdata_shape)
-        # compressor always None - no point in compressing a scalar value
+        # compressor always None - no point in compressing a single value
         assert_is_none(z.compressor)
 
         # check __getitem__

@@ -281,7 +281,7 @@ def _init_array_metadata(store, shape, chunks=None, dtype=None, compressor='defa
 
     # compressor prep
     if shape == ():
-        # no point in compressing scalars
+        # no point in compressing a 0-dimensional array, only a single value
         compressor = None
     elif compressor == 'none':
         # compatibility
