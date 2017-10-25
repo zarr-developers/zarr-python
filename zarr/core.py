@@ -268,7 +268,7 @@ class Array(object):
 
     @property
     def _size(self):
-        return reduce(operator.mul, self._shape)
+        return reduce(operator.mul, self._shape, 1)
 
     @property
     def size(self):
@@ -313,8 +313,11 @@ class Array(object):
 
     @property
     def _cdata_shape(self):
-        return tuple(int(np.ceil(s / c))
-                     for s, c in zip(self._shape, self._chunks))
+        if self._shape == ():
+            return (1,)
+        else:
+            return tuple(int(np.ceil(s / c))
+                         for s, c in zip(self._shape, self._chunks))
 
     @property
     def cdata_shape(self):
@@ -325,7 +328,7 @@ class Array(object):
 
     @property
     def _nchunks(self):
-        return reduce(operator.mul, self._cdata_shape)
+        return reduce(operator.mul, self._cdata_shape, 1)
 
     @property
     def nchunks(self):
@@ -360,13 +363,16 @@ class Array(object):
         )
 
     def __array__(self, *args):
-        a = self[:]
+        a = self[...]
         if args:
             a = a.astype(args[0])
         return a
 
     def __len__(self):
-        return self.shape[0]
+        if self.shape:
+            return self.shape[0]
+        else:
+            raise TypeError('len() of unsized object')
 
     def __getitem__(self, item):
         """Retrieve data for some portion of the array. Most NumPy-style
@@ -442,6 +448,41 @@ class Array(object):
         # refresh metadata
         if not self._cache_metadata:
             self._load_metadata()
+
+        # handle zero-dimensional arrays
+        if self._shape == ():
+            return self._getitem_zd(item)
+        else:
+            return self._getitem_nd(item)
+
+    def _getitem_zd(self, item):
+        # special case __getitem__ for zero-dimensional array
+
+        # check item is valid
+        if item not in ((), Ellipsis):
+            raise IndexError('too many indices for array')
+
+        try:
+            # obtain encoded data for chunk
+            ckey = self._chunk_key((0,))
+            cdata = self.chunk_store[ckey]
+
+        except KeyError:
+            # chunk not initialized
+            out = np.empty((), dtype=self._dtype)
+            if self._fill_value is not None:
+                out.fill(self._fill_value)
+
+        else:
+            out = self._decode_chunk(cdata)
+
+        # handle selection of the scalar value via empty tuple
+        out = out[item]
+
+        return out
+
+    def _getitem_nd(self, item):
+        # implementation of __getitem__ for array with at least one dimension
 
         # normalize selection
         selection = normalize_array_selection(item, self._shape)
@@ -559,6 +600,36 @@ class Array(object):
         if not self._cache_metadata:
             self._load_metadata_nosync()
 
+        # handle zero-dimensional arrays
+        if self._shape == ():
+            return self._setitem_zd(item, value)
+        else:
+            return self._setitem_nd(item, value)
+
+    def _setitem_zd(self, item, value):
+        # special case __setitem__ for zero-dimensional array
+
+        # check item is valid
+        if item not in ((), Ellipsis):
+            raise IndexError('too many indices for array')
+
+        # setup data to store
+        arr = np.asarray(value, dtype=self._dtype)
+
+        # check value
+        if arr.shape != ():
+            raise ValueError('bad value; expected scalar, found %r' % value)
+
+        # obtain key for chunk storage
+        ckey = self._chunk_key((0,))
+
+        # encode and store
+        cdata = self._encode_chunk(arr)
+        self.chunk_store[ckey] = cdata
+
+    def _setitem_nd(self, item, value):
+        # implementation of __setitem__ for array with at least one dimension
+
         # normalize selection
         selection = normalize_array_selection(item, self._shape)
 
@@ -570,7 +641,7 @@ class Array(object):
         if np.isscalar(value):
             pass
         elif expected_shape != value.shape:
-            raise ValueError('value has wrong shape, expecting %s, found %s'
+            raise ValueError('value has wrong shape; expected %s, found %s'
                              % (str(expected_shape),
                                 str(value.shape)))
 
@@ -646,6 +717,7 @@ class Array(object):
                 # optimization: we want the whole chunk, and the destination is
                 # contiguous, so we can decompress directly from the chunk
                 # into the destination array
+
                 if self._compressor:
                     self._compressor.decode(cdata, dest)
                 else:

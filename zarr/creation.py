@@ -320,7 +320,7 @@ def array(data, **kwargs):
     z = create(**kwargs)
 
     # fill with data
-    z[:] = data
+    z[...] = data
 
     return z
 

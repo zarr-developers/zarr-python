@@ -641,6 +641,10 @@ class TestGroup(unittest.TestCase):
             data = np.arange(200)
             g['foo'] = data
             assert_array_equal(data, g['foo'])
+            # 0d array
+            g['foo'] = 42
+            eq((), g['foo'].shape)
+            eq(42, g['foo'][()])
         except NotImplementedError:
             pass
 
