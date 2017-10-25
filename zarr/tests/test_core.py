@@ -520,7 +520,7 @@ class TestArray(unittest.TestCase):
                            np.take(a, zi, axis=1))
 
     def test_0len_dim_1d(self):
-        # Test behavioud for 1D array with zero-length dimension.
+        # Test behaviour for 1D array with zero-length dimension.
 
         z = self.create_array(shape=0, fill_value=0)
         a = np.zeros(0)
