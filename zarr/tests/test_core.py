@@ -601,10 +601,12 @@ class TestArray(unittest.TestCase):
         eq(a.shape, z.shape)
         eq(a.size, z.size)
         eq(a.dtype, z.dtype)
+        eq(a.nbytes, z.nbytes)
         with assert_raises(TypeError):
             len(z)
         eq((), z.chunks)
         eq(1, z.nchunks)
+        eq((1,), z.cdata_shape)
         # compressor always None - no point in compressing a scalar value
         assert_is_none(z.compressor)
 

@@ -313,8 +313,11 @@ class Array(object):
 
     @property
     def _cdata_shape(self):
-        return tuple(int(np.ceil(s / c))
-                     for s, c in zip(self._shape, self._chunks))
+        if self._shape == ():
+            return (1,)
+        else:
+            return tuple(int(np.ceil(s / c))
+                         for s, c in zip(self._shape, self._chunks))
 
     @property
     def cdata_shape(self):
@@ -460,20 +463,17 @@ class Array(object):
             raise IndexError('too many indices for array')
 
         try:
-
             # obtain encoded data for chunk
             ckey = self._chunk_key((0,))
             cdata = self.chunk_store[ckey]
 
         except KeyError:
-
             # chunk not initialized
             out = np.empty((), dtype=self._dtype)
             if self._fill_value is not None:
                 out.fill(self._fill_value)
 
         else:
-
             out = self._decode_chunk(cdata)
 
         # handle selection of the scalar value via empty tuple
