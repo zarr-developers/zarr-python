@@ -123,6 +123,12 @@ class TestArray(unittest.TestCase):
         assert_array_equal(a[:10], z[:10])
         assert_array_equal(a[10:20], z[10:20])
         assert_array_equal(a[-10:], z[-10:])
+        assert_array_equal(a[:10, ...], z[:10, ...])
+        assert_array_equal(a[10:20, ...], z[10:20, ...])
+        assert_array_equal(a[-10:, ...], z[-10:, ...])
+        assert_array_equal(a[..., :10], z[..., :10])
+        assert_array_equal(a[..., 10:20], z[..., 10:20])
+        assert_array_equal(a[..., -10:], z[..., -10:])
         # ...across chunk boundaries...
         assert_array_equal(a[:110], z[:110])
         assert_array_equal(a[190:310], z[190:310])
@@ -135,6 +141,18 @@ class TestArray(unittest.TestCase):
         eq(a[42], z[np.int32(42)])
         eq(a[42], z[np.uint64(42)])
         eq(a[42], z[np.uint32(42)])
+        # too many indices
+        with assert_raises(IndexError):
+            z[:, :]
+        with assert_raises(IndexError):
+            z[0, :]
+        with assert_raises(IndexError):
+            z[:, 0]
+        with assert_raises(IndexError):
+            z[0, 0]
+        # only single ellipsis allowed
+        with assert_raises(IndexError):
+            z[..., ...]
 
         # check partial assignment
         b = np.arange(1e5, 2e5)
@@ -194,36 +212,83 @@ class TestArray(unittest.TestCase):
         eq(a.nbytes, z.nbytes)
         eq(50, z.nchunks_initialized)
 
-        # check slicing
+        # check array-like
         assert_array_equal(a, np.array(z))
+
+        # check slicing
+
+        # total slice
         assert_array_equal(a, z[:])
         assert_array_equal(a, z[...])
         # noinspection PyTypeChecker
         assert_array_equal(a, z[slice(None)])
+
+        # slice first dimension
         assert_array_equal(a[:10], z[:10])
         assert_array_equal(a[10:20], z[10:20])
         assert_array_equal(a[-10:], z[-10:])
+        assert_array_equal(a[:10, :], z[:10, :])
+        assert_array_equal(a[10:20, :], z[10:20, :])
+        assert_array_equal(a[-10:, :], z[-10:, :])
+        assert_array_equal(a[:10, ...], z[:10, ...])
+        assert_array_equal(a[10:20, ...], z[10:20, ...])
+        assert_array_equal(a[-10:, ...], z[-10:, ...])
+        assert_array_equal(a[:10, :, ...], z[:10, :, ...])
+        assert_array_equal(a[10:20, :, ...], z[10:20, :, ...])
+        assert_array_equal(a[-10:, :, ...], z[-10:, :, ...])
+
+        # slice second dimension
         assert_array_equal(a[:, :2], z[:, :2])
         assert_array_equal(a[:, 2:4], z[:, 2:4])
         assert_array_equal(a[:, -2:], z[:, -2:])
+        assert_array_equal(a[..., :2], z[..., :2])
+        assert_array_equal(a[..., 2:4], z[..., 2:4])
+        assert_array_equal(a[..., -2:], z[..., -2:])
+        assert_array_equal(a[:, ..., :2], z[:, ..., :2])
+        assert_array_equal(a[:, ..., 2:4], z[:, ..., 2:4])
+        assert_array_equal(a[:, ..., -2:], z[:, ..., -2:])
+
+        # slice both dimensions
         assert_array_equal(a[:10, :2], z[:10, :2])
         assert_array_equal(a[10:20, 2:4], z[10:20, 2:4])
         assert_array_equal(a[-10:, -2:], z[-10:, -2:])
-        # ...across chunk boundaries...
+
+        # slicing across chunk boundaries
         assert_array_equal(a[:110], z[:110])
         assert_array_equal(a[190:310], z[190:310])
         assert_array_equal(a[-110:], z[-110:])
+        assert_array_equal(a[:110, :], z[:110, :])
+        assert_array_equal(a[190:310, :], z[190:310, :])
+        assert_array_equal(a[-110:, :], z[-110:, :])
         assert_array_equal(a[:, :3], z[:, :3])
         assert_array_equal(a[:, 3:7], z[:, 3:7])
         assert_array_equal(a[:, -3:], z[:, -3:])
         assert_array_equal(a[:110, :3], z[:110, :3])
         assert_array_equal(a[190:310, 3:7], z[190:310, 3:7])
         assert_array_equal(a[-110:, -3:], z[-110:, -3:])
-        # single item
+
+        # single row/col/item
         assert_array_equal(a[0], z[0])
         assert_array_equal(a[-1], z[-1])
+        assert_array_equal(a[:, 0], z[:, 0])
+        assert_array_equal(a[:, -1], z[:, -1])
         eq(a[0, 0], z[0, 0])
         eq(a[-1, -1], z[-1, -1])
+
+        # too many indices
+        with assert_raises(IndexError):
+            z[:, :, :]
+        with assert_raises(IndexError):
+            z[0, :, :]
+        with assert_raises(IndexError):
+            z[:, 0, :]
+        with assert_raises(IndexError):
+            z[:, :, 0]
+        with assert_raises(IndexError):
+            z[0, 0, 0]
+        # only single ellipsis allowed
+        with assert_raises(IndexError):
+            z[..., ...]
 
         # check partial assignment
         b = np.arange(10000, 20000).reshape((1000, 10))
