@@ -17,7 +17,7 @@ from nose.tools import assert_raises, eq_ as eq, assert_is_none
 
 from zarr.storage import init_array, array_meta_key, attrs_key, DictStore, \
     DirectoryStore, ZipStore, init_group, group_meta_key, getsize, \
-    migrate_1to2, TempStore
+    migrate_1to2, TempStore, atexit_rmtree
 from zarr.meta import decode_array_metadata, encode_array_metadata, \
     ZARR_FORMAT, decode_group_metadata, encode_group_metadata
 from zarr.compat import text_type
@@ -574,17 +574,11 @@ class TestDictStore(StoreTests, unittest.TestCase):
         eq(-1, store.getsize('b'))
 
 
-def rmtree(p, f=shutil.rmtree, g=os.path.isdir):  # pragma: no cover
-    """Version of rmtree that will work atexit and only remove if directory."""
-    if g(p):
-        f(p)
-
-
 class TestDirectoryStore(StoreTests, unittest.TestCase):
 
     def create_store(self):
         path = tempfile.mkdtemp()
-        atexit.register(rmtree, path)
+        atexit.register(atexit_rmtree, path)
         store = DirectoryStore(path)
         return store
 

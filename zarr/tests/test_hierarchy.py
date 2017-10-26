@@ -15,7 +15,7 @@ from numpy.testing import assert_array_equal
 
 
 from zarr.storage import DictStore, DirectoryStore, ZipStore, init_group, \
-    init_array, attrs_key, array_meta_key, group_meta_key
+    init_array, attrs_key, array_meta_key, group_meta_key, atexit_rmtree
 from zarr.core import Array
 from zarr.hierarchy import Group, group, open_group
 from zarr.attrs import Attributes
@@ -591,15 +591,13 @@ class TestGroup(unittest.TestCase):
         # visitor filter tests
         def visitor0(val, *args):
             name = getattr(val, "path", val)
-
             if name == "a/b/c/d":
                 return True  # pragma: no cover
 
         def visitor1(val, *args):
             name = getattr(val, "path", val)
-
             if name == "a/b/c":
-                return True  # pragma: no cover
+                return True
 
         eq(None, g1.visit(visitor0))
         eq(None, g1.visitkeys(visitor0))
@@ -783,18 +781,12 @@ class TestGroupWithDictStore(TestGroup):
         return DictStore(), None
 
 
-def rmtree(p, f=shutil.rmtree, g=os.path.isdir):  # pragma: no cover
-    """Version of rmtree that will work atexit and only remove if directory."""
-    if g(p):
-        f(p)
-
-
 class TestGroupWithDirectoryStore(TestGroup):
 
     @staticmethod
     def create_store():
         path = tempfile.mkdtemp()
-        atexit.register(rmtree, path)
+        atexit.register(atexit_rmtree, path)
         store = DirectoryStore(path)
         return store, None
 

@@ -7,13 +7,13 @@ import sys
 PY2 = sys.version_info[0] == 2
 
 
-if PY2:  # pragma: no cover
+if PY2:  # pragma: py3 no cover
 
     text_type = unicode
     binary_type = str
     reduce = reduce
 
-else:
+else:  # pragma: py2 no cover
 
     text_type = str
     binary_type = bytes
