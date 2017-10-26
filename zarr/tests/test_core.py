@@ -742,7 +742,8 @@ class TestArrayWithBloscCompressor(TestArray):
         return Array(store, read_only=read_only)
 
 
-if not PY2:
+# TODO can we rely on backports and remove the PY2 exclusion?
+if not PY2:  # pragma: py2 no cover
 
     from zarr.codecs import LZMA
 

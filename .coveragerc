@@ -3,4 +3,5 @@ omit = zarr/meta_v1.py
 
 [report]
 exclude_lines =
+    pragma: no cover
     pragma: ${PY_MAJOR_VERSION} no cover

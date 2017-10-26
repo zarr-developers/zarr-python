@@ -273,7 +273,7 @@ def normalize_order(order):
 def normalize_storage_path(path):
 
     # handle bytes
-    if not PY2 and isinstance(path, bytes):
+    if not PY2 and isinstance(path, bytes):  # pragma: py2 no cover
         path = str(path, 'ascii')
 
     # ensure str
@@ -317,11 +317,11 @@ def normalize_storage_path(path):
 
 def buffer_size(v):
     from array import array as _stdlib_array
-    if PY2 and isinstance(v, _stdlib_array):  # pragma: no cover
+    if PY2 and isinstance(v, _stdlib_array):  # pragma: py3 no cover
         # special case array.array because does not support buffer
         # interface in PY2
         return v.buffer_info()[1] * v.itemsize
-    else:
+    else:  # pragma: py2 no cover
         v = memoryview(v)
         return reduce(operator.mul, v.shape) * v.itemsize
 

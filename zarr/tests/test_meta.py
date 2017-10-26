@@ -14,8 +14,8 @@ from zarr.errors import MetadataError
 from zarr.codecs import Delta, Zlib, Blosc
 
 
-def assert_json_eq(expect, actual):  # pragma: no cover
-    if isinstance(expect, binary_type):
+def assert_json_eq(expect, actual):
+    if isinstance(expect, binary_type):  # pragma: py3 no cover
         expect = text_type(expect, 'ascii')
     if isinstance(actual, binary_type):
         actual = text_type(actual, 'ascii')

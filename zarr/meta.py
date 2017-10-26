@@ -66,11 +66,11 @@ def _decode_dtype_descr(d):
     # need to convert list of lists to list of tuples
     if isinstance(d, list):
         # recurse to handle nested structures
-        if PY2:  # pragma: no cover
+        if PY2:  # pragma: py3 no cover
             # under PY2 numpy rejects unicode field names
             d = [(f.encode('ascii'), _decode_dtype_descr(v))
                  for f, v in d]
-        else:
+        else:  # pragma: py2 no cover
             d = [(f, _decode_dtype_descr(v)) for f, v in d]
     return d
 

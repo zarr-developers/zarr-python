@@ -5,12 +5,12 @@ from __future__ import absolute_import, print_function, division
 from zarr.compat import PY2
 
 
-if PY2:  # pragma: no cover
+if PY2:  # pragma: py3 no cover
 
     class PermissionError(Exception):
         pass
 
-else:
+else:  # pragma: py2 no cover
 
     PermissionError = PermissionError
 

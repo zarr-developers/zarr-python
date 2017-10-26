@@ -375,13 +375,13 @@ def ensure_bytes(s):
     if isinstance(s, binary_type):
         return s
     if isinstance(s, np.ndarray):
-        if PY2:  # pragma: no cover
+        if PY2:  # pragma: py3 no cover
             return s.tostring(order='Any')
-        else:
+        else:  # pragma: py2 no cover
             return s.tobytes(order='Any')
     if hasattr(s, 'tobytes'):
         return s.tobytes()
-    if PY2 and hasattr(s, 'tostring'):  # pragma: no cover
+    if PY2 and hasattr(s, 'tostring'):  # pragma: py3 no cover
         return s.tostring()
     return memoryview(s).tobytes()
 
