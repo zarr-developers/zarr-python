@@ -201,15 +201,14 @@ def normalize_array_selection(item, shape):
     if n_ellipsis > 1:
         raise IndexError("an index can only have a single ellipsis ('...')")
     elif n_ellipsis == 1:
-        idx_ellipsis = item.index(Ellipsis)
-        n_items_l = idx_ellipsis  # items to left of ellipsis
-        n_items_r = len(item) - (idx_ellipsis + 1)  # items to right of ellipsis
+        n_items_l = item.index(Ellipsis)  # items to left of ellipsis
+        n_items_r = len(item) - (n_items_l + 1)  # items to right of ellipsis
         n_items = len(item) - 1  # all non-ellipsis items
         if n_items >= len(shape):
             # ellipsis does nothing, just remove it
             item = tuple(i for i in item if i != Ellipsis)
         else:
-            # replace ellipsis with slices
+            # replace ellipsis with as many slices are needed for number of dims
             new_item = item[:n_items_l] + ((slice(None),) * (len(shape) - n_items))
             if n_items_r:
                 new_item += item[-n_items_r:]
