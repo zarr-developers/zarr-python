@@ -401,11 +401,7 @@ def custom_html_sublist(group, indent):
                 result += "{0}{0}{1}\n".format(indent, l)
         result += "{0}{0}</ul>\n{0}".format(indent)
 
-    result += (
-        """</li>\n""".format(
-            indent, traverser.get_text(group)
-        )
-    )
+    result += "</li>\n"
 
     return result
 
