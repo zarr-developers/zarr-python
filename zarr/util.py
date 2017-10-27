@@ -485,30 +485,61 @@ class TreeHierarchy(object):
 
     def __init__(self, group):
         self.group = group
-        self.ascii_kwargs = dict()
 
-        self.update_ascii_kwargs(
-            gfx=dict(
-                UP_AND_RIGHT="+",
-                HORIZONTAL="-",
-                VERTICAL="|",
-                VERTICAL_AND_RIGHT="+"
-            ),
+        self.text_kwargs = dict(
             horiz_len=2,
             label_space=1,
             indent=1
         )
 
-    def update_ascii_kwargs(self, **ascii_kwargs):
-        self.ascii_kwargs.update(ascii_kwargs)
-        self.ascii_draw = LeftAligned(
-            traverse=ZarrGroupTraversal(),
-            draw=BoxStyle(**self.ascii_kwargs)
+        self.bytes_kwargs = dict(
+            UP_AND_RIGHT="+",
+            HORIZONTAL="-",
+            VERTICAL="|",
+            VERTICAL_AND_RIGHT="+"
         )
-        return self
+
+        self.unicode_kwargs = dict(
+            UP_AND_RIGHT=u"\u2514",
+            HORIZONTAL=u"\u2500",
+            VERTICAL=u"\u2502",
+            VERTICAL_AND_RIGHT=u"\u251C"
+        )
+
+    def __bytes__(self):
+        drawer = LeftAligned(
+            traverse=ZarrGroupTraversal(),
+            draw=BoxStyle(gfx=self.bytes_kwargs, **self.text_kwargs)
+        )
+
+        result = drawer(self.group)
+
+        # Unicode characters slip in on Python 3.
+        # So we need to straighten that out first.
+        if not PY2:
+            result = result.encode()
+
+        return result
+
+    def __unicode__(self):
+        drawer = LeftAligned(
+            traverse=ZarrGroupTraversal(),
+            draw=BoxStyle(gfx=self.unicode_kwargs, **self.text_kwargs)
+        )
+
+        return drawer(self.group)
+
+    def __str__(self):
+        if PY2:
+            return self.__bytes__()
+        else:
+            return self.__unicode__()
 
     def __repr__(self):
-        return self.ascii_draw(self.group)
+        if PY2:
+            return self.__bytes__()
+        else:
+            return self.__unicode__()
 
     def _repr_html_(self):
         return custom_html_list(self.group)

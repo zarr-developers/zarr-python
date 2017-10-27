@@ -18,6 +18,7 @@ from numpy.testing import assert_array_equal
 from zarr.storage import DictStore, DirectoryStore, ZipStore, init_group, \
     init_array, attrs_key, array_meta_key, group_meta_key, atexit_rmtree
 from zarr.core import Array
+from zarr.compat import PY2, text_type
 from zarr.hierarchy import Group, group, open_group
 from zarr.attrs import Attributes
 from zarr.errors import PermissionError
@@ -619,13 +620,25 @@ class TestGroup(unittest.TestCase):
         g5.create_dataset('baz', shape=100, chunks=10)
 
         # test
-        sg1 = textwrap.dedent(u"""\
+        bg1 = textwrap.dedent(u"""\
         /
          +-- bar
          |   +-- baz
          |   +-- quux
          |       +-- baz[...]
-         +-- foo""")
+         +-- foo""").encode()
+        eq(bg1, bytes(g1.tree()))
+        ug1 = textwrap.dedent(u"""\
+        /
+         ├── bar
+         │   ├── baz
+         │   └── quux
+         │       └── baz[...]
+         └── foo""")
+        eq(ug1, text_type(g1.tree()))
+        sg1 = ug1
+        if PY2:
+            sg1 = bg1
         eq(sg1, repr(g1.tree()))
         hg1 = textwrap.dedent(u"""\
         <div class="zarrTree">
@@ -649,8 +662,15 @@ class TestGroup(unittest.TestCase):
         </div>""")
         eq(hg1, g1.tree()._repr_html_().split("</style>")[1].strip())
 
-        sg2 = textwrap.dedent(u"""\
+        bg2 = textwrap.dedent(u"""\
+        foo""").encode()
+        eq(bg2, bytes(g2.tree()))
+        ug2 = textwrap.dedent(u"""\
         foo""")
+        eq(ug2, text_type(g2.tree()))
+        sg2 = ug2
+        if PY2:
+            sg2 = bg2
         eq(sg2, repr(g2.tree()))
         hg2 = textwrap.dedent(u"""\
         <div class="zarrTree">
@@ -660,11 +680,21 @@ class TestGroup(unittest.TestCase):
         </div>""")
         eq(hg2, g2.tree()._repr_html_().split("</style>")[1].strip())
 
-        sg3 = textwrap.dedent(u"""\
+        bg3 = textwrap.dedent(u"""\
         bar
          +-- baz
          +-- quux
-             +-- baz[...]""")
+             +-- baz[...]""").encode()
+        eq(bg3, bytes(g3.tree()))
+        ug3 = textwrap.dedent(u"""\
+        bar
+         ├── baz
+         └── quux
+             └── baz[...]""")
+        eq(ug3, text_type(g3.tree()))
+        sg3 = ug3
+        if PY2:
+            sg3 = bg3
         eq(sg3, repr(g3.tree()))
         hg3 = textwrap.dedent(u"""\
         <div class="zarrTree">
