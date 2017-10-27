@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, print_function, division
-from collections import OrderedDict, MutableMapping
+from collections import MutableMapping
 from itertools import islice
 
 import numpy as np
@@ -549,25 +549,7 @@ class Group(MutableMapping):
              +-- baz[...]
         """
 
-        def gen_tree(g):
-            r = OrderedDict()
-            n = self.name.strip("/")
-            n = n if n else "/"
-            d = r.setdefault(n, OrderedDict())
-
-            def _gen_branch(p, o):
-                sd = d
-                n = p.strip("/")
-                g = n.split("/")
-                g[-1] += "[...]" if isinstance(o, Array) else ""
-                for e in g:
-                    sd = sd.setdefault(e, OrderedDict())
-
-            g.visititems(_gen_branch)
-
-            return r
-
-        return TreeHierarchy(gen_tree(self))
+        return TreeHierarchy(self)
 
     def _write_op(self, f, *args, **kwargs):
 

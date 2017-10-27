@@ -5,6 +5,7 @@ from textwrap import TextWrapper
 import numbers
 
 from asciitree import BoxStyle, LeftAligned
+from asciitree.traversal import Traversal
 
 import numpy as np
 
@@ -368,10 +369,24 @@ class InfoReporter(object):
         return info_html_report(items)
 
 
+class ZarrGroupTraversal(Traversal):
+
+    def get_children(self, node):
+        return getattr(node, "values", lambda: [])()
+
+    def get_root(self, tree):
+        return tree
+
+    def get_text(self, node):
+        name = node.name.split("/")[-1] or "/"
+        name += "[...]" if hasattr(node, "dtype") else ""
+        return name
+
+
 class TreeHierarchy(object):
 
-    def __init__(self, hier, ascii_kwargs={}):
-        self.hier = hier
+    def __init__(self, group, ascii_kwargs={}):
+        self.group = group
 
         self.ascii_kwargs = dict(
             gfx=dict(
@@ -388,8 +403,11 @@ class TreeHierarchy(object):
 
     def update_ascii_kwargs(self, ascii_kwargs={}):
         self.ascii_kwargs.update(ascii_kwargs)
-        self.ascii_draw = LeftAligned(draw=BoxStyle(**self.ascii_kwargs))
+        self.ascii_draw = LeftAligned(
+            traverse=ZarrGroupTraversal(),
+            draw=BoxStyle(**self.ascii_kwargs)
+        )
         return self
 
     def __repr__(self):
-        return self.ascii_draw(self.hier)
+        return self.ascii_draw(self.group)
