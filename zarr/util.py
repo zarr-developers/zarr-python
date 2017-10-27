@@ -396,10 +396,9 @@ def custom_html_sublist(group, indent):
     children = traverser.get_children(group)
     if children:
         result += """\n{0}{0}<ul>\n""".format(indent)
-    for c in children:
-        for l in custom_html_sublist(c, indent).splitlines():
-            result += "{0}{0}{1}\n".format(indent, l)
-    if children:
+        for c in children:
+            for l in custom_html_sublist(c, indent).splitlines():
+                result += "{0}{0}{1}\n".format(indent, l)
         result += "{0}{0}</ul>\n{0}".format(indent)
 
     result += (
