@@ -385,10 +385,11 @@ class ZarrGroupTraversal(Traversal):
 
 class TreeHierarchy(object):
 
-    def __init__(self, group, ascii_kwargs={}):
+    def __init__(self, group):
         self.group = group
+        self.ascii_kwargs = dict()
 
-        self.ascii_kwargs = dict(
+        self.update_ascii_kwargs(dict(
             gfx=dict(
                 UP_AND_RIGHT="+",
                 HORIZONTAL="-",
@@ -398,8 +399,7 @@ class TreeHierarchy(object):
             horiz_len=2,
             label_space=1,
             indent=1
-        )
-        self.update_ascii_kwargs(ascii_kwargs)
+        ))
 
     def update_ascii_kwargs(self, ascii_kwargs={}):
         self.ascii_kwargs.update(ascii_kwargs)
