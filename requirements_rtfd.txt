@@ -1,3 +1,4 @@
+asciitree
 setuptools
 setuptools_scm
 sphinx

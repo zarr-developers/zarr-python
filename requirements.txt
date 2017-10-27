@@ -1,3 +1,4 @@
+asciitree
 numpy
 fasteners
 numcodecs
