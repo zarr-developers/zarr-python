@@ -3,9 +3,6 @@ from __future__ import absolute_import, print_function, division
 from collections import OrderedDict, MutableMapping
 from itertools import islice
 
-from asciitree import BoxStyle, LeftAligned
-from asciitree.drawing import BOX_LIGHT
-
 import numpy as np
 
 
@@ -15,7 +12,7 @@ from zarr.storage import contains_array, contains_group, init_group, \
     DictStore, DirectoryStore, group_meta_key, attrs_key, listdir, rmdir
 from zarr.creation import array, create, empty, zeros, ones, full, \
     empty_like, zeros_like, ones_like, full_like
-from zarr.util import normalize_storage_path, normalize_shape, InfoReporter
+from zarr.util import normalize_storage_path, normalize_shape, InfoReporter, TreeHierarchy
 from zarr.errors import err_contains_array, err_contains_group, err_group_not_found, err_read_only
 from zarr.meta import decode_group_metadata
 
@@ -570,10 +567,7 @@ class Group(MutableMapping):
 
             return r
 
-        box_sty = BoxStyle(gfx=BOX_LIGHT, horiz_len=2, label_space=1)
-        box_tr = LeftAligned(draw=box_sty)
-
-        return box_tr(gen_tree(self))
+        return TreeHierarchy(gen_tree(self))
 
     def _write_op(self, f, *args, **kwargs):
 
