@@ -4,6 +4,7 @@ import unittest
 import tempfile
 import atexit
 import shutil
+import textwrap
 import os
 import pickle
 
@@ -607,6 +608,36 @@ class TestGroup(unittest.TestCase):
         eq(True, g1.visitkeys(visitor1))
         eq(True, g1.visitvalues(visitor1))
         eq(True, g1.visititems(visitor1))
+
+    def test_tree(self):
+        # setup
+        g1 = self.create_group()
+        g2 = g1.create_group('foo')
+        g3 = g1.create_group('bar')
+        g3.create_group('baz')
+        g5 = g3.create_group('quux')
+        g5.create_dataset('baz', shape=100, chunks=10)
+
+        # test
+        sg1 = textwrap.dedent(u"""\
+        /
+         ├── bar
+         │   ├── baz
+         │   └── quux
+         │       └── baz[...]
+         └── foo""")
+        eq(sg1, g1.tree())
+
+        sg2 = textwrap.dedent(u"""\
+        foo""")
+        eq(sg2, g2.tree())
+
+        sg3 = textwrap.dedent(u"""\
+        bar
+         ├── baz
+         └── quux
+             └── baz[...]""")
+        eq(sg3, g3.tree())
 
     def test_empty_getitem_contains_iterators(self):
         # setup
