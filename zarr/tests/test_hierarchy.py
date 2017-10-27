@@ -621,11 +621,11 @@ class TestGroup(unittest.TestCase):
         # test
         sg1 = textwrap.dedent(u"""\
         /
-         ├── bar
-         │   ├── baz
-         │   └── quux
-         │       └── baz[...]
-         └── foo""")
+         +-- bar
+         |   +-- baz
+         |   +-- quux
+         |       +-- baz[...]
+         +-- foo""")
         eq(sg1, repr(g1.tree()))
 
         sg2 = textwrap.dedent(u"""\
@@ -634,9 +634,9 @@ class TestGroup(unittest.TestCase):
 
         sg3 = textwrap.dedent(u"""\
         bar
-         ├── baz
-         └── quux
-             └── baz[...]""")
+         +-- baz
+         +-- quux
+             +-- baz[...]""")
         eq(sg3, repr(g3.tree()))
 
     def test_empty_getitem_contains_iterators(self):

@@ -537,16 +537,16 @@ class Group(MutableMapping):
         >>> d1 = g5.create_dataset('baz', shape=100, chunks=10)
         >>> print(g1.tree())
         /
-         ├── bar
-         │   ├── baz
-         │   └── quux
-         │       └── baz[...]
-         └── foo
+         +-- bar
+         |   +-- baz
+         |   +-- quux
+         |       +-- baz[...]
+         +-- foo
         >>> print(g3.tree())
         bar
-         ├── baz
-         └── quux
-             └── baz[...]
+         +-- baz
+         +-- quux
+             +-- baz[...]
         """
 
         def gen_tree(g):

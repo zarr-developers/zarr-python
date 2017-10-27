@@ -5,7 +5,6 @@ from textwrap import TextWrapper
 import numbers
 
 from asciitree import BoxStyle, LeftAligned
-from asciitree.drawing import BOX_LIGHT
 
 import numpy as np
 
@@ -375,7 +374,15 @@ class TreeHierarchy(object):
         self.hier = hier
 
         self.ascii_kwargs = dict(
-            gfx=BOX_LIGHT, horiz_len=2, label_space=1, indent=1
+            gfx=dict(
+                UP_AND_RIGHT="+",
+                HORIZONTAL="-",
+                VERTICAL="|",
+                VERTICAL_AND_RIGHT="+"
+            ),
+            horiz_len=2,
+            label_space=1,
+            indent=1
         )
         self.update_ascii_kwargs(ascii_kwargs)
 
