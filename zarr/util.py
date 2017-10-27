@@ -412,36 +412,36 @@ def custom_html_list(group, indent="    "):
     # Add custom CSS style for our HTML list
     result += """<style type="text/css">\n"""
     result += dedent("""\
-        div.zarrTree {
+        div.zarr-tree {
             font-family: Courier, monospace;
             font-size: 11pt;
             font-style: normal;
         }
 
-        div.zarrTree ul,
-        div.zarrTree li,
-        div.zarrTree li > div {
+        div.zarr-tree ul,
+        div.zarr-tree li,
+        div.zarr-tree li > div {
             display: block;
             position: relative;
         }
 
-        div.zarrTree ul,
-        div.zarrTree li {
+        div.zarr-tree ul,
+        div.zarr-tree li {
             list-style-type: none;
         }
 
-        div.zarrTree li {
+        div.zarr-tree li {
             border-left: 2px solid #000;
             margin-left: 1em;
         }
 
-        div.zarrTree li > div {
+        div.zarr-tree li > div {
             padding-left: 1.3em;
             padding-top: 0.225em;
             padding-bottom: 0.225em;
         }
 
-        div.zarrTree li > div::before {
+        div.zarr-tree li > div::before {
             content: '';
             position: absolute;
             top: 0;
@@ -452,22 +452,22 @@ def custom_html_list(group, indent="    "):
             border-bottom: 2px solid #000;
         }
 
-        div.zarrTree > ul > li:first-child > div {
+        div.zarr-tree > ul > li:first-child > div {
             padding-left: 4%;
         }
 
-        div.zarrTree > ul > li:first-child > div::before {
+        div.zarr-tree > ul > li:first-child > div::before {
             border: 0 none transparent;
         }
 
-        div.zarrTree ul > li:last-child {
+        div.zarr-tree ul > li:last-child {
             border-left: 2px solid transparent;
         }
     """)
     result += "</style>\n\n"
 
     # Insert the HTML list
-    result += """<div class="zarrTree">\n"""
+    result += """<div class="zarr-tree">\n"""
     result += "<ul>\n"
     result += custom_html_sublist(group, indent=indent)
     result += "</ul>\n"

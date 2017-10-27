@@ -641,7 +641,7 @@ class TestGroup(unittest.TestCase):
             sg1 = bg1
         eq(sg1, repr(g1.tree()))
         hg1 = textwrap.dedent(u"""\
-        <div class="zarrTree">
+        <div class="zarr-tree">
         <ul>
             <li><div>/</div>
                 <ul>
@@ -673,7 +673,7 @@ class TestGroup(unittest.TestCase):
             sg2 = bg2
         eq(sg2, repr(g2.tree()))
         hg2 = textwrap.dedent(u"""\
-        <div class="zarrTree">
+        <div class="zarr-tree">
         <ul>
             <li><div>foo</div></li>
         </ul>
@@ -697,7 +697,7 @@ class TestGroup(unittest.TestCase):
             sg3 = bg3
         eq(sg3, repr(g3.tree()))
         hg3 = textwrap.dedent(u"""\
-        <div class="zarrTree">
+        <div class="zarr-tree">
         <ul>
             <li><div>bar</div>
                 <ul>
