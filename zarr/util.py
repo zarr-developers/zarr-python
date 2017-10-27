@@ -389,7 +389,7 @@ class TreeHierarchy(object):
         self.group = group
         self.ascii_kwargs = dict()
 
-        self.update_ascii_kwargs(dict(
+        self.update_ascii_kwargs(
             gfx=dict(
                 UP_AND_RIGHT="+",
                 HORIZONTAL="-",
@@ -399,9 +399,9 @@ class TreeHierarchy(object):
             horiz_len=2,
             label_space=1,
             indent=1
-        ))
+        )
 
-    def update_ascii_kwargs(self, ascii_kwargs={}):
+    def update_ascii_kwargs(self, **ascii_kwargs):
         self.ascii_kwargs.update(ascii_kwargs)
         self.ascii_draw = LeftAligned(
             traverse=ZarrGroupTraversal(),
