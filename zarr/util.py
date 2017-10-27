@@ -524,12 +524,6 @@ class TreeViewer(object):
 
         return drawer(self.group)
 
-    def __str__(self):
-        if PY2:
-            return self.__bytes__()
-        else:
-            return self.__unicode__()
-
     def __repr__(self):
         if PY2:
             return self.__bytes__()
