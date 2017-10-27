@@ -4,6 +4,8 @@ import operator
 from textwrap import TextWrapper
 import numbers
 
+from asciitree import BoxStyle, LeftAligned
+from asciitree.drawing import BOX_LIGHT
 
 import numpy as np
 
@@ -365,3 +367,22 @@ class InfoReporter(object):
     def _repr_html_(self):
         items = self.obj.info_items()
         return info_html_report(items)
+
+
+class TreeHierarchy(object):
+
+    def __init__(self, hier, ascii_kwargs={}):
+        self.hier = hier
+
+        self.ascii_kwargs = dict(
+            gfx=BOX_LIGHT, horiz_len=2, label_space=1, indent=1
+        )
+        self.update_ascii_kwargs(ascii_kwargs)
+
+    def update_ascii_kwargs(self, ascii_kwargs={}):
+        self.ascii_kwargs.update(ascii_kwargs)
+        self.ascii_draw = LeftAligned(draw=BoxStyle(**self.ascii_kwargs))
+        return self
+
+    def __repr__(self):
+        return self.ascii_draw(self.hier)
