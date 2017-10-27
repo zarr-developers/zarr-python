@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, print_function, division
-from collections import MutableMapping
+from collections import OrderedDict, MutableMapping
 from itertools import islice
 
+from asciitree import BoxStyle, LeftAligned
+from asciitree.drawing import BOX_LIGHT
 
 import numpy as np
 
@@ -60,6 +62,7 @@ class Group(MutableMapping):
     visitkeys
     visitvalues
     visititems
+    tree
     create_group
     require_group
     create_groups
@@ -522,6 +525,55 @@ class Group(MutableMapping):
 
         base_len = len(self.name)
         return self.visitvalues(lambda o: func(o.name[base_len:].lstrip("/"), o))
+
+    def tree(self):
+        """Provide a ``print`-able display of the hierarchy.
+
+        Examples
+        --------
+        >>> import zarr
+        >>> g1 = zarr.group()
+        >>> g2 = g1.create_group('foo')
+        >>> g3 = g1.create_group('bar')
+        >>> g4 = g3.create_group('baz')
+        >>> g5 = g3.create_group('quux')
+        >>> d1 = g5.create_dataset('baz', shape=100, chunks=10)
+        >>> print(g1.tree())
+        /
+         ├── bar
+         │   ├── baz
+         │   └── quux
+         │       └── baz[...]
+         └── foo
+        >>> print(g3.tree())
+        bar
+         ├── baz
+         └── quux
+             └── baz[...]
+        """
+
+        def gen_tree(g):
+            r = OrderedDict()
+            n = self.name.strip("/")
+            n = n if n else "/"
+            d = r.setdefault(n, OrderedDict())
+
+            def _gen_branch(p, o):
+                sd = d
+                n = p.strip("/")
+                g = n.split("/")
+                g[-1] += "[...]" if isinstance(o, Array) else ""
+                for e in g:
+                    sd = sd.setdefault(e, OrderedDict())
+
+            g.visititems(_gen_branch)
+
+            return r
+
+        box_sty = BoxStyle(gfx=BOX_LIGHT, horiz_len=2, label_space=1)
+        box_tr = LeftAligned(draw=box_sty)
+
+        return box_tr(gen_tree(self))
 
     def _write_op(self, f, *args, **kwargs):
 
