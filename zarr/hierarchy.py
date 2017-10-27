@@ -524,7 +524,7 @@ class Group(MutableMapping):
         return self.visitvalues(lambda o: func(o.name[base_len:].lstrip("/"), o))
 
     def tree(self):
-        """Provide a ``print`-able display of the hierarchy.
+        """Provide a ``print``-able display of the hierarchy.
 
         Examples
         --------
