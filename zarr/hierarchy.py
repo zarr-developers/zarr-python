@@ -12,7 +12,7 @@ from zarr.storage import contains_array, contains_group, init_group, \
     DictStore, DirectoryStore, group_meta_key, attrs_key, listdir, rmdir
 from zarr.creation import array, create, empty, zeros, ones, full, \
     empty_like, zeros_like, ones_like, full_like
-from zarr.util import normalize_storage_path, normalize_shape, InfoReporter, TreeHierarchy
+from zarr.util import normalize_storage_path, normalize_shape, InfoReporter, TreeViewer
 from zarr.errors import err_contains_array, err_contains_group, err_group_not_found, err_read_only
 from zarr.meta import decode_group_metadata
 
@@ -549,7 +549,7 @@ class Group(MutableMapping):
              └── baz[...]
         """
 
-        return TreeHierarchy(self)
+        return TreeViewer(self)
 
     def _write_op(self, f, *args, **kwargs):
 

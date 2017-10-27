@@ -476,7 +476,7 @@ def custom_html_list(group, indent="    "):
     return result
 
 
-class TreeHierarchy(object):
+class TreeViewer(object):
 
     def __init__(self, group):
         self.group = group
