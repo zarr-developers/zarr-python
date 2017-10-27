@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, print_function, division
 import operator
-from textwrap import TextWrapper
+from textwrap import TextWrapper, dedent
 import numbers
 
 from asciitree import BoxStyle, LeftAligned
@@ -383,6 +383,104 @@ class ZarrGroupTraversal(Traversal):
         return name
 
 
+def custom_html_sublist(group, indent):
+    traverser = ZarrGroupTraversal(tree=group)
+    result = ""
+
+    result += (
+        """{0}<li><div>{1}</div>""".format(
+            indent, traverser.get_text(group)
+        )
+    )
+
+    children = traverser.get_children(group)
+    if children:
+        result += """\n{0}{0}<ul>\n""".format(indent)
+    for c in children:
+        for l in custom_html_sublist(c, indent).splitlines():
+            result += "{0}{0}{1}\n".format(indent, l)
+    if children:
+        result += "{0}{0}</ul>\n{0}".format(indent)
+
+    result += (
+        """</li>\n""".format(
+            indent, traverser.get_text(group)
+        )
+    )
+
+    return result
+
+
+def custom_html_list(group, indent="    "):
+    result = ""
+
+    # Add custom CSS style for our HTML list
+    result += """<style type="text/css">\n"""
+    result += dedent("""\
+        div.zarrTree {
+            font-family: Courier, monospace;
+            font-size: 11pt;
+            font-style: normal;
+        }
+
+        div.zarrTree ul,
+        div.zarrTree li,
+        div.zarrTree li > div {
+            display: block;
+            position: relative;
+        }
+
+        div.zarrTree ul,
+        div.zarrTree li {
+            list-style-type: none;
+        }
+
+        div.zarrTree li {
+            border-left: 2px solid #000;
+            margin-left: 1em;
+        }
+
+        div.zarrTree li > div {
+            padding-left: 1.3em;
+            padding-top: 0.225em;
+            padding-bottom: 0.225em;
+        }
+
+        div.zarrTree li > div::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -2px;
+            bottom: 50%;
+            width: 1.2em;
+            border-left: 2px solid #000;
+            border-bottom: 2px solid #000;
+        }
+
+        div.zarrTree > ul > li:first-child > div {
+            padding-left: 4%;
+        }
+
+        div.zarrTree > ul > li:first-child > div::before {
+            border: 0 none transparent;
+        }
+
+        div.zarrTree ul > li:last-child {
+            border-left: 2px solid transparent;
+        }
+    """)
+    result += "</style>\n\n"
+
+    # Insert the HTML list
+    result += """<div class="zarrTree">\n"""
+    result += "<ul>\n"
+    result += custom_html_sublist(group, indent=indent)
+    result += "</ul>\n"
+    result += "</div>\n"
+
+    return result
+
+
 class TreeHierarchy(object):
 
     def __init__(self, group):
@@ -411,3 +509,6 @@ class TreeHierarchy(object):
 
     def __repr__(self):
         return self.ascii_draw(self.group)
+
+    def _repr_html_(self):
+        return custom_html_list(self.group)
