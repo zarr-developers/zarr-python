@@ -627,10 +627,38 @@ class TestGroup(unittest.TestCase):
          |       +-- baz[...]
          +-- foo""")
         eq(sg1, repr(g1.tree()))
+        hg1 = textwrap.dedent(u"""\
+        <div class="zarrTree">
+        <ul>
+            <li><div>/</div>
+                <ul>
+                    <li><div>bar</div>
+                        <ul>
+                            <li><div>baz</div></li>
+                            <li><div>quux</div>
+                                <ul>
+                                    <li><div>baz[...]</div></li>
+                                </ul>
+                            </li>
+                        </ul>
+                    </li>
+                    <li><div>foo</div></li>
+                </ul>
+            </li>
+        </ul>
+        </div>""")
+        eq(hg1, g1.tree()._repr_html_().split("</style>")[1].strip())
 
         sg2 = textwrap.dedent(u"""\
         foo""")
         eq(sg2, repr(g2.tree()))
+        hg2 = textwrap.dedent(u"""\
+        <div class="zarrTree">
+        <ul>
+            <li><div>foo</div></li>
+        </ul>
+        </div>""")
+        eq(hg2, g2.tree()._repr_html_().split("</style>")[1].strip())
 
         sg3 = textwrap.dedent(u"""\
         bar
@@ -638,6 +666,22 @@ class TestGroup(unittest.TestCase):
          +-- quux
              +-- baz[...]""")
         eq(sg3, repr(g3.tree()))
+        hg3 = textwrap.dedent(u"""\
+        <div class="zarrTree">
+        <ul>
+            <li><div>bar</div>
+                <ul>
+                    <li><div>baz</div></li>
+                    <li><div>quux</div>
+                        <ul>
+                            <li><div>baz[...]</div></li>
+                        </ul>
+                    </li>
+                </ul>
+            </li>
+        </ul>
+        </div>""")
+        eq(hg3, g3.tree()._repr_html_().split("</style>")[1].strip())
 
     def test_empty_getitem_contains_iterators(self):
         # setup
