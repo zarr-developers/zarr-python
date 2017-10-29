@@ -85,14 +85,13 @@ def test_normalize_axis_selection():
     eq(slice(0, 100), normalize_axis_selection(slice(0, 1000), 100))
     eq(slice(99, 100), normalize_axis_selection(slice(-1, None), 100))
     eq(slice(98, 99), normalize_axis_selection(slice(-2, -1), 100))
+    eq(slice(10, 10), normalize_axis_selection(slice(10, 0), 100))
     with assert_raises(IndexError):
         normalize_axis_selection(slice(100, None), 100)
     with assert_raises(IndexError):
         normalize_axis_selection(slice(1000, 2000), 100)
     with assert_raises(IndexError):
         normalize_axis_selection(slice(-1000, 0), 100)
-    with assert_raises(IndexError):
-        normalize_axis_selection(slice(10, 0), 100)
 
     with assert_raises(TypeError):
         normalize_axis_selection('foo', 100)

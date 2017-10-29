@@ -138,6 +138,10 @@ def normalize_axis_selection(item, length):
     """Convenience function to normalize a selection within a single axis
     of size `l`."""
 
+    # normalize list to array
+    if isinstance(item, list):
+        item = np.asarray(item)
+
     if isinstance(item, numbers.Integral):
         item = int(item)
 
@@ -172,19 +176,39 @@ def normalize_axis_selection(item, length):
             return slice(0, 0)
 
         # handle out of bounds
-        if start < 0 or stop < 0:
-            raise IndexError('index out of bounds: %s, %s' % (start, stop))
+        if start < 0:
+            raise IndexError('start index out of bounds: %s' % item.start)
+        if stop < 0:
+            raise IndexError('stop index out of bounds: %s' % item.stop)
         if start >= length:
-            raise IndexError('index out of bounds: %s, %s' % (start, stop))
+            raise IndexError('start index out of bounds: %ss' % item.start)
         if stop > length:
             stop = length
         if stop < start:
-            raise IndexError('index out of bounds: %s, %s' % (start, stop))
+            stop = start
 
         return slice(start, stop)
 
+    elif hasattr(item, 'dtype') and hasattr(item, 'shape'):
+
+        # check number of dimensions, only support indexing with 1d array
+        if len(item.shape) > 1:
+            raise IndexError('can only index with 1-dimensional array')
+
+        if item.dtype == bool:
+
+            # check shape
+            if item.shape[0] != length:
+                raise IndexError('Boolean array has wrong length; expected %s, found %s' %
+                                 (length, item.shape[0]))
+
+            return item
+
+        else:
+            raise IndexError('TODO')
+
     else:
-        raise TypeError('expected integer or slice, found: %r' % item)
+        raise TypeError('unsupported index item type: %r' % item)
 
 
 # noinspection PyTypeChecker
@@ -197,7 +221,7 @@ def normalize_array_selection(item, shape):
         item = (item,)
 
     # handle ellipsis
-    n_ellipsis = sum(1 for i in item if i == Ellipsis)
+    n_ellipsis = sum(1 for i in item if i is Ellipsis)
     if n_ellipsis > 1:
         raise IndexError("an index can only have a single ellipsis ('...')")
     elif n_ellipsis == 1:
@@ -228,14 +252,49 @@ def normalize_array_selection(item, shape):
     return selection
 
 
-def get_chunk_range(selection, chunks):
+def get_chunk_ranges(selection, chunks):
     """Convenience function to get a range over all chunk indices,
     for iterating over chunks."""
-    chunk_range = [range(s.start//l, int(np.ceil(s.stop/l)))
-                   if isinstance(s, slice)
-                   else range(s//l, (s//l)+1)
-                   for s, l in zip(selection, chunks)]
-    return chunk_range
+
+    chunk_ranges = []
+    out_shape = []
+
+    for item, chunk_length in zip(selection, chunks):
+        chunk_range = None
+        out_length = None
+
+        if isinstance(item, int):
+            chunk_range = [item//chunk_length]
+
+        elif isinstance(item, slice):
+            chunk_from = item.start//chunk_length
+            chunk_to = int(np.ceil(item.stop/chunk_length))
+            chunk_range = range(chunk_from, chunk_to)
+            out_length = item.stop - item.start
+
+        elif hasattr(item, 'dtype'):
+            if item.dtype == bool:
+
+                # convert to indices to find chunks with nonzero values and skip chunks with no
+                # requested values
+
+                # TODO profile this, try alternative strategies
+                indices = np.nonzero(item)[0]
+                chunk_range = np.unique(indices // chunk_length)
+                out_length = len(indices)
+
+            elif item.dtype.kind in 'ui':
+                raise NotImplementedError('TODO')
+
+        if chunk_range is None:
+            # should not happen
+            raise RuntimeError('could not determine chunk range')
+
+        chunk_ranges.append(chunk_range)
+        if out_length is not None:
+            out_shape.append(out_length)
+
+    return chunk_ranges, tuple(out_shape)
 
 
 def normalize_resize_args(old_shape, *args):

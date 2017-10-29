@@ -710,6 +710,20 @@ class TestArray(unittest.TestCase):
         z[:] = 42
         eq(10, z.nchunks_initialized)
 
+    def test_advanced_indexing_1d_bool(self):
+
+        # setup
+        a = np.arange(1050, dtype=int)
+        z = self.create_array(shape=a.shape, chunks=100, dtype=a.dtype)
+        z[:] = a
+
+        np.random.seed(42)
+        for p in 0.9, 0.5, 0.1, 0.01:
+            ix = np.random.binomial(1, p, size=a.shape[0]).astype(bool)
+            expect = a[ix]
+            actual = z[ix]
+            assert_array_equal(expect, actual)
+
 
 class TestArrayWithPath(TestArray):
 
