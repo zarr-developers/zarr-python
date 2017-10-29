@@ -259,40 +259,40 @@ def get_chunk_ranges(selection, chunks):
     chunk_ranges = []
     out_shape = []
 
-    for item, chunk_length in zip(selection, chunks):
-        chunk_range = None
-        out_length = None
+    for dim_sel, dim_chunk_len in zip(selection, chunks):
+        dim_chunk_range = None
+        dim_out_len = None
 
-        if isinstance(item, int):
-            chunk_range = [item//chunk_length]
+        if isinstance(dim_sel, int):
+            dim_chunk_range = [dim_sel//dim_chunk_len]
 
-        elif isinstance(item, slice):
-            chunk_from = item.start//chunk_length
-            chunk_to = int(np.ceil(item.stop/chunk_length))
-            chunk_range = range(chunk_from, chunk_to)
-            out_length = item.stop - item.start
+        elif isinstance(dim_sel, slice):
+            chunk_from = dim_sel.start//dim_chunk_len
+            chunk_to = int(np.ceil(dim_sel.stop/dim_chunk_len))
+            dim_chunk_range = range(chunk_from, chunk_to)
+            dim_out_len = dim_sel.stop - dim_sel.start
 
-        elif hasattr(item, 'dtype'):
-            if item.dtype == bool:
+        elif hasattr(dim_sel, 'dtype'):
+            if dim_sel.dtype == bool:
 
                 # convert to indices to find chunks with nonzero values and skip chunks with no
                 # requested values
 
                 # TODO profile this, try alternative strategies
-                indices = np.nonzero(item)[0]
-                chunk_range = np.unique(indices // chunk_length)
-                out_length = len(indices)
+                indices = np.nonzero(dim_sel)[0]
+                dim_chunk_range = np.unique(indices // dim_chunk_len)
+                dim_out_len = len(indices)
 
-            elif item.dtype.kind in 'ui':
+            elif dim_sel.dtype.kind in 'ui':
                 raise NotImplementedError('TODO')
 
-        if chunk_range is None:
+        if dim_chunk_range is None:
             # should not happen
             raise RuntimeError('could not determine chunk range')
 
-        chunk_ranges.append(chunk_range)
-        if out_length is not None:
-            out_shape.append(out_length)
+        chunk_ranges.append(dim_chunk_range)
+        if dim_out_len is not None:
+            out_shape.append(dim_out_len)
 
     return chunk_ranges, tuple(out_shape)
 

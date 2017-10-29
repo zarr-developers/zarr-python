@@ -735,9 +735,15 @@ class TestArray(unittest.TestCase):
         for p in 0.9, 0.5, 0.1, 0.01:
             ix0 = np.random.binomial(1, p, size=a.shape[0]).astype(bool)
             ix1 = np.random.binomial(1, p, size=a.shape[1]).astype(bool)
+
+            # index both axes with bool array
             expect = a[np.ix_(ix0, ix1)]
             actual = z[ix0, ix1]
             assert_array_equal(expect, actual)
+
+            # TODO mixed indexing with bool array / slice
+
+            # TODO mixed indexing with bool array / single index
 
 
 class TestArrayWithPath(TestArray):
