@@ -724,6 +724,21 @@ class TestArray(unittest.TestCase):
             actual = z[ix]
             assert_array_equal(expect, actual)
 
+    def test_advanced_indexing_2d_bool(self):
+
+        # setup
+        a = np.arange(10000, dtype=int).reshape(100, 100)
+        z = self.create_array(shape=a.shape, chunks=(10, 10), dtype=a.dtype)
+        z[:] = a
+
+        np.random.seed(42)
+        for p in 0.9, 0.5, 0.1, 0.01:
+            ix0 = np.random.binomial(1, p, size=a.shape[0]).astype(bool)
+            ix1 = np.random.binomial(1, p, size=a.shape[1]).astype(bool)
+            expect = a[np.ix_(ix0, ix1)]
+            actual = z[ix0, ix1]
+            assert_array_equal(expect, actual)
+
 
 class TestArrayWithPath(TestArray):
 
