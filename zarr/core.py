@@ -679,7 +679,7 @@ class Array(object):
 
                 # put data
                 dest = value[out_selection]
-                self._chunk_setitem(chunk_coords, chunk_selection, dest)
+                self._chunk_setitem(chunk_coords, chunk_selection, dest, squeeze_axes)
 
     def _chunk_getitem(self, chunk_coords, chunk_selection, dest, squeeze_axes=None):
         """Obtain part or whole of a chunk.
@@ -742,7 +742,7 @@ class Array(object):
                 else:
                     dest[()] = tmp
 
-    def _chunk_setitem(self, chunk_coords, chunk_selection, value):
+    def _chunk_setitem(self, chunk_coords, chunk_selection, value, squeeze_axes=None):
         """Replace part or whole of a chunk.
 
         Parameters
@@ -758,14 +758,14 @@ class Array(object):
 
         # synchronization
         if self._synchronizer is None:
-            self._chunk_setitem_nosync(chunk_coords, chunk_selection, value)
+            self._chunk_setitem_nosync(chunk_coords, chunk_selection, value, squeeze_axes)
         else:
             # synchronize on the chunk
             ckey = self._chunk_key(chunk_coords)
             with self._synchronizer[ckey]:
-                self._chunk_setitem_nosync(chunk_coords, chunk_selection, value)
+                self._chunk_setitem_nosync(chunk_coords, chunk_selection, value, squeeze_axes)
 
-    def _chunk_setitem_nosync(self, chunk_coords, chunk_selection, value):
+    def _chunk_setitem_nosync(self, chunk_coords, chunk_selection, value, squeeze_axes=None):
 
         # obtain key for chunk storage
         ckey = self._chunk_key(chunk_coords)
@@ -821,6 +821,13 @@ class Array(object):
                 chunk = self._decode_chunk(cdata)
                 if not chunk.flags.writeable:
                     chunk = chunk.copy(order='K')
+
+            # handle missing singleton dimensions
+            if squeeze_axes:
+                item = [slice(None)] * self.ndim
+                for a in squeeze_axes:
+                    item[a] = np.newaxis
+                value = value[item]
 
             # modify
             chunk[chunk_selection] = value
