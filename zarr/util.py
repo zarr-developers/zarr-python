@@ -192,13 +192,50 @@ class IntegerSelection(object):
 
     def __init__(self, dim_sel, dim_len, dim_chunk_len):
 
-        # TODO validate dim_sel
+        # has to be a numpy array so we can do bincount
+        dim_sel = np.asanyarray(dim_sel)
+
+        # TODO handle wraparound
+
+        # TODO validate dim_sel - out of bounds; monotonically increasing
 
         self.dim_sel = dim_sel
         self.dim_len = dim_len
         self.dim_chunk_len = dim_chunk_len
         self.nchunks = int(np.ceil(self.dim_len / self.dim_chunk_len))
 
+        # precompute some useful stuff
+        self.chunk_nitems = np.bincount(self.dim_sel // self.dim_chunk_len, minlength=self.nchunks)
+        self.chunk_nitems_cumsum = np.cumsum(self.chunk_nitems)
+
+    def get_chunk_sel(self, dim_chunk_idx):
+        # need to slice out relevant indices from the total selection, then subtract the chunk
+        # offset
+
+        dim_chunk_offset = dim_chunk_idx * self.dim_chunk_len
+
+        if dim_chunk_idx == 0:
+            start = 0
+        else:
+            start = self.chunk_nitems_cumsum[dim_chunk_idx - 1]
+        stop = start + self.chunk_nitems[dim_chunk_idx]
+        dim_chunk_sel = self.dim_sel[start:stop] - dim_chunk_offset
+
+        return dim_chunk_sel
+
+    def get_out_sel(self, dim_chunk_idx):
+        if dim_chunk_idx == 0:
+            start = 0
+        else:
+            start = self.chunk_nitems_cumsum[dim_chunk_idx - 1]
+        stop = start + self.chunk_nitems[dim_chunk_idx]
+        return slice(start, stop)
+
+    def get_chunk_ranges(self):
+        return np.nonzero(self.chunk_nitems)[0]
+
+
+# TODO support slice with step via integer selection (convert to np.arange)
 
 
 def normalize_dim_selection(dim_sel, dim_len, dim_chunk_len):
