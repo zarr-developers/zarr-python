@@ -197,7 +197,9 @@ class IntegerSelection(object):
 
         # TODO handle wraparound
 
-        # TODO validate dim_sel - out of bounds; monotonically increasing
+        # TODO validate dim_sel
+        # TODO check out of bounds
+        # TODO validate monotonically increasing
 
         self.dim_sel = dim_sel
         self.dim_len = dim_len
@@ -213,13 +215,8 @@ class IntegerSelection(object):
         # offset
 
         dim_chunk_offset = dim_chunk_idx * self.dim_chunk_len
-
-        if dim_chunk_idx == 0:
-            start = 0
-        else:
-            start = self.chunk_nitems_cumsum[dim_chunk_idx - 1]
-        stop = start + self.chunk_nitems[dim_chunk_idx]
-        dim_chunk_sel = self.dim_sel[start:stop] - dim_chunk_offset
+        dim_out_sel = self.get_out_sel(dim_chunk_idx)
+        dim_chunk_sel = self.dim_sel[dim_out_sel] - dim_chunk_offset
 
         return dim_chunk_sel
 
@@ -228,7 +225,7 @@ class IntegerSelection(object):
             start = 0
         else:
             start = self.chunk_nitems_cumsum[dim_chunk_idx - 1]
-        stop = start + self.chunk_nitems[dim_chunk_idx]
+        stop = self.chunk_nitems_cumsum[dim_chunk_idx]
         return slice(start, stop)
 
     def get_chunk_ranges(self):
