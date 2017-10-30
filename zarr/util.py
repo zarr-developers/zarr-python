@@ -153,39 +153,30 @@ class BooleanSelection(object):
         self.dim_chunk_len = dim_chunk_len
         self.nchunks = int(np.ceil(self.dim_len / self.dim_chunk_len))
 
-    def __getitem__(self, item):
-        return self.dim_sel[item]
+        # precompute number of selected items for each chunk
+        self.chunk_nitems = np.zeros(self.nchunks, dtype='i8')
+        for dim_chunk_idx in range(self.nchunks):
+            dim_chunk_offset = dim_chunk_idx * self.dim_chunk_len
+            self.chunk_nitems[dim_chunk_idx] = np.count_nonzero(
+                self.dim_sel[dim_chunk_offset:dim_chunk_offset + self.dim_chunk_len]
+            )
+        self.chunk_nitems_cumsum = np.cumsum(self.chunk_nitems)
+        self.nitems = self.chunk_nitems_cumsum[-1]
 
     def get_chunk_sel(self, dim_chunk_idx):
         dim_chunk_offset = dim_chunk_idx * self.dim_chunk_len
         return self.dim_sel[dim_chunk_offset:dim_chunk_offset + self.dim_chunk_len]
 
     def get_out_sel(self, dim_chunk_idx):
-        dim_out_offset = self.get_sel_offset(dim_chunk_idx)
-        dim_chunk_nitems = self.get_chunk_nitems(dim_chunk_idx)
-        return slice(dim_out_offset, dim_out_offset + dim_chunk_nitems)
-
-    @functools.lru_cache(maxsize=None)
-    def get_chunk_nitems(self, dim_chunk_idx):
-        dim_chunk_sel = self.get_chunk_sel(dim_chunk_idx)
-        return np.count_nonzero(dim_chunk_sel)
-
-    @functools.lru_cache(maxsize=None)
-    def get_nitems(self):
-        return sum(self.get_chunk_nitems(i) for i in range(self.nchunks))
-
-    @functools.lru_cache(maxsize=None)
-    def get_sel_offset(self, dim_chunk_idx):
         if dim_chunk_idx == 0:
-            return 0
+            start = 0
         else:
-            return self.get_sel_offset(dim_chunk_idx - 1) + self.get_chunk_nitems(dim_chunk_idx - 1)
+            start = self.chunk_nitems_cumsum[dim_chunk_idx - 1]
+        stop = self.chunk_nitems_cumsum[dim_chunk_idx]
+        return slice(start, stop)
 
     def get_chunk_ranges(self):
-        for dim_chunk_idx in range(self.nchunks):
-            nitems = self.get_chunk_nitems(dim_chunk_idx)
-            if nitems:
-                yield dim_chunk_idx
+        return np.nonzero(self.chunk_nitems)[0]
 
 
 class IntegerSelection(object):
@@ -206,16 +197,17 @@ class IntegerSelection(object):
         self.dim_chunk_len = dim_chunk_len
         self.nchunks = int(np.ceil(self.dim_len / self.dim_chunk_len))
 
-        # precompute some useful stuff
+        # precompute number of selected items for each chunk
         self.chunk_nitems = np.bincount(self.dim_sel // self.dim_chunk_len, minlength=self.nchunks)
         self.chunk_nitems_cumsum = np.cumsum(self.chunk_nitems)
+        self.nitems = len(dim_sel)
 
     def get_chunk_sel(self, dim_chunk_idx):
         # need to slice out relevant indices from the total selection, then subtract the chunk
         # offset
 
-        dim_chunk_offset = dim_chunk_idx * self.dim_chunk_len
         dim_out_sel = self.get_out_sel(dim_chunk_idx)
+        dim_chunk_offset = dim_chunk_idx * self.dim_chunk_len
         dim_chunk_sel = self.dim_sel[dim_out_sel] - dim_chunk_offset
 
         return dim_chunk_sel
@@ -230,9 +222,6 @@ class IntegerSelection(object):
 
     def get_chunk_ranges(self):
         return np.nonzero(self.chunk_nitems)[0]
-
-    def get_nitems(self):
-        return len(self.dim_sel)
 
 
 # TODO support slice with step via integer selection (convert to np.arange)
@@ -390,13 +379,13 @@ def get_chunks_for_selection(selection, chunks):
 
             # dim selection is a boolean array, delegate this to the BooleanSelection class
             dim_chunk_range = dim_sel.get_chunk_ranges()
-            dim_sel_len = dim_sel.get_nitems()
+            dim_sel_len = dim_sel.nitems
 
         elif isinstance(dim_sel, IntegerSelection):
 
             # dim selection is an integer array, delegate this to the integerSelection class
             dim_chunk_range = dim_sel.get_chunk_ranges()
-            dim_sel_len = dim_sel.get_nitems()
+            dim_sel_len = dim_sel.nitems
 
         else:
             raise RuntimeError('unexpected selection type')
