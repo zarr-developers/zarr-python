@@ -231,6 +231,9 @@ class IntegerSelection(object):
     def get_chunk_ranges(self):
         return np.nonzero(self.chunk_nitems)[0]
 
+    def get_nitems(self):
+        return len(self.dim_sel)
+
 
 # TODO support slice with step via integer selection (convert to np.arange)
 
@@ -297,10 +300,15 @@ def normalize_dim_selection(dim_sel, dim_len, dim_chunk_len):
         if dim_sel.dtype == bool:
             return BooleanSelection(dim_sel, dim_len, dim_chunk_len)
 
+        elif dim_sel.dtype.kind in 'ui':
+            return IntegerSelection(dim_sel, dim_len, dim_chunk_len)
+
         else:
-            raise IndexError('TODO')
+            # TODO IndexError?
+            raise TypeError('unsupported index item type: %r' % dim_sel)
 
     else:
+        # TODO IndexError?
         raise TypeError('unsupported index item type: %r' % dim_sel)
 
 
@@ -381,6 +389,12 @@ def get_chunks_for_selection(selection, chunks):
         elif isinstance(dim_sel, BooleanSelection):
 
             # dim selection is a boolean array, delegate this to the BooleanSelection class
+            dim_chunk_range = dim_sel.get_chunk_ranges()
+            dim_sel_len = dim_sel.get_nitems()
+
+        elif isinstance(dim_sel, IntegerSelection):
+
+            # dim selection is an integer array, delegate this to the integerSelection class
             dim_chunk_range = dim_sel.get_chunk_ranges()
             dim_sel_len = dim_sel.get_nitems()
 

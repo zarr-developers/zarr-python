@@ -10,7 +10,7 @@ import numpy as np
 
 from zarr.util import is_total_slice, normalize_array_selection, get_chunks_for_selection, \
     human_readable_size, normalize_resize_args, normalize_storage_path, normalize_shape, \
-    normalize_chunks, InfoReporter, BooleanSelection
+    normalize_chunks, InfoReporter, BooleanSelection, IntegerSelection
 from zarr.storage import array_meta_key, attrs_key, listdir, getsize
 from zarr.meta import decode_array_metadata, encode_array_metadata
 from zarr.attrs import Attributes
@@ -575,9 +575,9 @@ class Array(object):
                     dim_chunk_nitems = dim_chunk_sel_stop - dim_chunk_sel_start
                     dim_out_sel = slice(dim_out_offset, dim_out_offset + dim_chunk_nitems)
 
-                elif isinstance(dim_sel, BooleanSelection):
+                elif isinstance(dim_sel, (BooleanSelection, IntegerSelection)):
 
-                    # pull out a slice of the boolean indexing array for the current chunk
+                    # get selection to extract data for the current chunk
                     dim_chunk_sel = dim_sel.get_chunk_sel(dim_chunk_idx)
 
                     # figure out where to put these items in the output array
