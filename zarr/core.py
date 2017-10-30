@@ -659,10 +659,8 @@ class Array(object):
         if np.isscalar(value):
             pass
         elif sel_shape != value.shape:
-            # TODO IndexError? what does numpy do?
-            raise ValueError('value has wrong shape; expected %s, found %s'
-                             % (str(sel_shape),
-                                str(value.shape)))
+            raise ValueError('value shape does not match selection shape; expected %s, found %s'
+                             % (str(sel_shape), str(value.shape)))
 
         # iterate over chunks in range
         for chunk_coords in itertools.product(*chunk_ranges):

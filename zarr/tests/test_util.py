@@ -93,7 +93,7 @@ def test_normalize_axis_selection():
     with assert_raises(IndexError):
         normalize_dim_selection(slice(-1000, 0), 100, 10)
 
-    with assert_raises(TypeError):
+    with assert_raises(IndexError):
         normalize_dim_selection('foo', 100, 10)
 
     with assert_raises(NotImplementedError):
@@ -140,7 +140,7 @@ def test_normalize_array_selection():
     eq((slice(0, 100), slice(0, 100)),
        normalize_array_selection((slice(None), slice(None), Ellipsis), (100, 100), (10, 10)))
 
-    with assert_raises(TypeError):
+    with assert_raises(IndexError):
         normalize_array_selection('foo', (100,), (10,))
 
 

@@ -135,7 +135,7 @@ def is_total_slice(item, shape):
         raise TypeError('expected slice or tuple of slices, found %r' % item)
 
 
-class BooleanSelection(object):
+class BoolArraySelection(object):
 
     def __init__(self, dim_sel, dim_len, dim_chunk_len):
 
@@ -148,6 +148,7 @@ class BooleanSelection(object):
             raise IndexError('Boolean array has wrong length; expected %s, found %s' %
                              (dim_len, dim_sel.shape[0]))
 
+        # store attributes
         self.dim_sel = dim_sel
         self.dim_len = dim_len
         self.dim_chunk_len = dim_chunk_len
@@ -185,19 +186,31 @@ class BooleanSelection(object):
         return np.nonzero(self.chunk_nitems)[0]
 
 
-class IntegerSelection(object):
+class IntArraySelection(object):
 
     def __init__(self, dim_sel, dim_len, dim_chunk_len):
 
         # has to be a numpy array so we can do bincount
         dim_sel = np.asanyarray(dim_sel)
 
-        # TODO handle wraparound
+        # check number of dimensions, only support indexing with 1d array
+        if len(dim_sel.shape) > 1:
+            raise IndexError('can only index with 1-dimensional integer array')
 
-        # TODO validate dim_sel
-        # TODO check out of bounds
-        # TODO validate monotonically increasing
+        # handle wraparound
+        loc_neg = dim_sel < 0
+        if np.any(loc_neg):
+            dim_sel[loc_neg] = dim_sel[loc_neg] + dim_len
 
+        # handle out of bounds
+        if np.any(dim_sel < 0) or np.any(dim_sel >= dim_len):
+            raise IndexError('index out of bounds')
+
+        # validate monotonically increasing
+        if np.any(np.diff(dim_sel) < 0):
+            raise NotImplementedError('only monotonically increasing indices are supported')
+
+        # store attributes
         self.dim_sel = dim_sel
         self.dim_len = dim_len
         self.dim_chunk_len = dim_chunk_len
@@ -293,18 +306,16 @@ def normalize_dim_selection(dim_sel, dim_len, dim_chunk_len):
     elif hasattr(dim_sel, 'dtype') and hasattr(dim_sel, 'shape'):
 
         if dim_sel.dtype == bool:
-            return BooleanSelection(dim_sel, dim_len, dim_chunk_len)
+            return BoolArraySelection(dim_sel, dim_len, dim_chunk_len)
 
         elif dim_sel.dtype.kind in 'ui':
-            return IntegerSelection(dim_sel, dim_len, dim_chunk_len)
+            return IntArraySelection(dim_sel, dim_len, dim_chunk_len)
 
         else:
-            # TODO IndexError?
-            raise TypeError('unsupported index item type: %r' % dim_sel)
+            raise IndexError('unsupported index item type: %r' % dim_sel)
 
     else:
-        # TODO IndexError?
-        raise TypeError('unsupported index item type: %r' % dim_sel)
+        raise IndexError('unsupported index item type: %r' % dim_sel)
 
 
 # noinspection PyTypeChecker
@@ -381,13 +392,13 @@ def get_chunks_for_selection(selection, chunks):
             dim_chunk_range = range(dim_chunk_from, dim_chunk_to)
             dim_sel_len = dim_sel.stop - dim_sel.start
 
-        elif isinstance(dim_sel, BooleanSelection):
+        elif isinstance(dim_sel, BoolArraySelection):
 
             # dim selection is a boolean array, delegate this to the BooleanSelection class
             dim_chunk_range = dim_sel.get_chunk_ranges()
             dim_sel_len = dim_sel.nitems
 
-        elif isinstance(dim_sel, IntegerSelection):
+        elif isinstance(dim_sel, IntArraySelection):
 
             # dim selection is an integer array, delegate this to the integerSelection class
             dim_chunk_range = dim_sel.get_chunk_ranges()
@@ -461,7 +472,7 @@ def get_chunk_selections(selection, chunk_coords, chunks, n_advanced_selection):
             dim_chunk_nitems = dim_chunk_sel_stop - dim_chunk_sel_start
             dim_out_sel = slice(dim_out_offset, dim_out_offset + dim_chunk_nitems)
 
-        elif isinstance(dim_sel, (BooleanSelection, IntegerSelection)):
+        elif isinstance(dim_sel, (BoolArraySelection, IntArraySelection)):
 
             # get selection to extract data for the current chunk
             dim_chunk_sel = dim_sel.get_chunk_sel(dim_chunk_idx)

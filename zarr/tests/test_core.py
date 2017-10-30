@@ -725,7 +725,13 @@ class TestArray(unittest.TestCase):
             actual = z[ix]
             assert_array_equal(expect, actual)
 
-        # TODO test errors
+        # test errors
+        with assert_raises(IndexError):
+            z[ix[:50]]  # too short
+        with assert_raises(IndexError):
+            z[np.concatenate([ix[:50]] * 2)]  # too long
+        with assert_raises(IndexError):
+            z[[[True, False], [False, True]]]  # too many dimensions
 
     def test_advanced_indexing_1d_int(self):
 
@@ -743,7 +749,25 @@ class TestArray(unittest.TestCase):
             actual = z[ix]
             assert_array_equal(expect, actual)
 
-        # TODO test errors
+        # test wraparound
+        ix = [0, 3, 10, -23, -12, -1]
+        expect = a[ix]
+        actual = z[ix]
+        assert_array_equal(expect, actual)
+
+        # test errors
+        with assert_raises(IndexError):
+            ix = [a.shape[0] + 1]  # out of bounds
+            z[ix]
+        with assert_raises(IndexError):
+            ix = [-(a.shape[0] + 1)]  # out of bounds
+            z[ix]
+        with assert_raises(IndexError):
+            ix = [[2, 4], [6, 8]]  # too many dimensions
+            z[ix]
+        with assert_raises(NotImplementedError):
+            ix = [3, 105, 23, 127]  # not monotonically increasing
+            z[ix]
 
     def test_advanced_indexing_2d_bool(self):
 
@@ -788,8 +812,6 @@ class TestArray(unittest.TestCase):
                 expect = a[np.ix_(ix0, ix1)]
                 actual = z[ix0, ix1]
                 assert_array_equal(expect, actual)
-            
-        # TODO test errors
 
     def test_advanced_indexing_2d_int(self):
 
@@ -826,8 +848,6 @@ class TestArray(unittest.TestCase):
             expect = a[42, ix1]
             actual = z[42, ix1]
             assert_array_equal(expect, actual)
-
-        # TODO test errors
 
     def test_advanced_indexing_3d_bool(self):
 
@@ -979,8 +999,6 @@ class TestArray(unittest.TestCase):
             expect = a[np.ix_(ix0, [42], ix2)].squeeze(axis=1)
             actual = z[ix0, 42, ix2]
             assert_array_equal(expect, actual)
-
-    # TODO test mixed int and bool arrays
 
     def test_advanced_indexing_1d_bool_set(self):
 
