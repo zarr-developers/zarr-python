@@ -237,7 +237,7 @@ class IntegerSelection(object):
 
 def normalize_dim_selection(dim_sel, dim_len, dim_chunk_len):
     """Convenience function to normalize a selection within a single axis
-    of size `l`."""
+    of size `dim_len` for an array with chunk length `dim_chunk_len`."""
 
     # normalize list to array
     if isinstance(dim_sel, list):
