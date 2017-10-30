@@ -165,7 +165,13 @@ class BooleanSelection(object):
 
     def get_chunk_sel(self, dim_chunk_idx):
         dim_chunk_offset = dim_chunk_idx * self.dim_chunk_len
-        return self.dim_sel[dim_chunk_offset:dim_chunk_offset + self.dim_chunk_len]
+        dim_chunk_sel = self.dim_sel[dim_chunk_offset:dim_chunk_offset + self.dim_chunk_len]
+        # pad out if final chunk
+        if dim_chunk_sel.shape[0] < self.dim_chunk_len:
+            tmp = np.zeros(self.dim_chunk_len, dtype=bool)
+            tmp[:dim_chunk_sel.shape[0]] = dim_chunk_sel
+            dim_chunk_sel = tmp
+        return dim_chunk_sel
 
     def get_out_sel(self, dim_chunk_idx):
         if dim_chunk_idx == 0:

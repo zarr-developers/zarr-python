@@ -499,13 +499,14 @@ class Array(object):
         # normalize selection
         selection = normalize_array_selection(item, self._shape, self._chunks)
 
-        # figure out if we're doing advanced indexing
-        is_advanced_selection = any([not isinstance(dim_sel, (int, slice))
-                                     for dim_sel in selection])
+        # figure out if we're doing advanced indexing, count number of advanced selections - if
+        # more than one need special handling
+        n_advanced_selection = sum(1 for dim_sel in selection
+                                   if not isinstance(dim_sel, (int, slice)))
 
         # axes that need to get squeezed out if doing advanced selection
         squeeze_axes = None
-        if is_advanced_selection:
+        if n_advanced_selection > 1:
             squeeze_axes = tuple([i for i, dim_sel in enumerate(selection)
                                   if isinstance(dim_sel, int)])
 
@@ -598,7 +599,7 @@ class Array(object):
             out_selection = tuple(out_selection)
 
             # handle advanced indexing arrays orthogonally
-            if is_advanced_selection:
+            if n_advanced_selection > 1:
                 # numpy doesn't support orthogonal indexing directly as yet, so need to work
                 # around via np.ix_. Also np.ix_ does not support a mixture of arrays and slices
                 # or integers, so need to convert slices and integers into ranges.
