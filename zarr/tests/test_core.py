@@ -737,8 +737,8 @@ class TestArray(unittest.TestCase):
         np.random.seed(42)
         # test with different degrees of sparseness
         for p in 0.9, 0.5, 0.1, 0.01:
-            ix = np.random.binomial(1, p, size=a.shape[0]).astype(bool)
-            ix = np.nonzero(ix)[0]
+            ix = np.random.choice(a.shape[0], size=int(a.shape[0] * p), replace=True)
+            ix.sort()
             expect = a[ix]
             actual = z[ix]
             assert_array_equal(expect, actual)
@@ -779,6 +779,16 @@ class TestArray(unittest.TestCase):
             actual = z[42, ix1]
             assert_array_equal(expect, actual)
 
+            # mixed int array / bool array
+            selections = (
+                (ix0, np.nonzero(ix1)[0]),
+                (np.nonzero(ix0)[0], ix1),
+            )
+            for selection in selections:
+                expect = a[np.ix_(ix0, ix1)]
+                actual = z[ix0, ix1]
+                assert_array_equal(expect, actual)
+            
         # TODO test errors
 
     def test_advanced_indexing_2d_int(self):
@@ -791,10 +801,10 @@ class TestArray(unittest.TestCase):
         np.random.seed(42)
         # test with different degrees of sparseness
         for p in 0.9, 0.5, 0.1, 0.01:
-            ix0 = np.random.binomial(1, p, size=a.shape[0]).astype(bool)
-            ix0 = np.nonzero(ix0)[0]
-            ix1 = np.random.binomial(1, p, size=a.shape[1]).astype(bool)
-            ix1 = np.nonzero(ix1)[0]
+            ix0 = np.random.choice(a.shape[0], size=int(a.shape[0] * p), replace=True)
+            ix0.sort()
+            ix1 = np.random.choice(a.shape[1], size=int(a.shape[1] * p), replace=True)
+            ix1.sort()
 
             # index both axes with int array
             expect = a[np.ix_(ix0, ix1)]
@@ -903,12 +913,12 @@ class TestArray(unittest.TestCase):
         np.random.seed(42)
         # test with different degrees of sparseness
         for p in 0.9, 0.5, 0.1, 0.01:
-            ix0 = np.random.binomial(1, p, size=a.shape[0]).astype(bool)
-            ix0 = np.nonzero(ix0)[0]
-            ix1 = np.random.binomial(1, p, size=a.shape[1]).astype(bool)
-            ix1 = np.nonzero(ix1)[0]
-            ix2 = np.random.binomial(1, p, size=a.shape[2]).astype(bool)
-            ix2 = np.nonzero(ix2)[0]
+            ix0 = np.random.choice(a.shape[0], size=int(a.shape[0] * p), replace=True)
+            ix0.sort()
+            ix1 = np.random.choice(a.shape[1], size=int(a.shape[1] * p), replace=True)
+            ix1.sort()
+            ix2 = np.random.choice(a.shape[2], size=int(a.shape[2] * p), replace=True)
+            ix2.sort()
 
             # index all axes with int array
             expect = a[np.ix_(ix0, ix1, ix2)]
@@ -970,7 +980,110 @@ class TestArray(unittest.TestCase):
             actual = z[ix0, 42, ix2]
             assert_array_equal(expect, actual)
 
-    # TODO test advanced indexing with __setitem__
+    # TODO test mixed int and bool arrays
+
+    def test_advanced_indexing_1d_bool_set(self):
+
+        # setup
+        a = np.empty(1050, dtype=int)
+        v = np.arange(1050, dtype=int)
+        z = self.create_array(shape=a.shape, chunks=100, dtype=a.dtype)
+
+        np.random.seed(42)
+        # test with different degrees of sparseness
+        for p in 0.9, 0.5, 0.1, 0.01:
+            a[:] = 0
+            z[:] = 0
+            ix = np.random.binomial(1, p, size=a.shape[0]).astype(bool)
+            a[ix] = v[ix]
+            z[ix] = v[ix]
+            assert_array_equal(a, z[:])
+
+    def test_advanced_indexing_1d_int_set(self):
+
+        # setup
+        v = np.arange(1050, dtype=int)
+        a = np.empty(v.shape, dtype=v.dtype)
+        z = self.create_array(shape=a.shape, chunks=100, dtype=a.dtype)
+
+        np.random.seed(42)
+        # test with different degrees of sparseness
+        for p in 0.9, 0.5, 0.1, 0.01:
+            a[:] = 0
+            z[:] = 0
+            ix = np.random.choice(a.shape[0], size=int(a.shape[0] * p), replace=True)
+            ix.sort()
+            a[ix] = v[ix]
+            z[ix] = v[ix]
+            assert_array_equal(a, z[:])
+
+    def test_advanced_indexing_2d_bool_set(self):
+
+        # setup
+        v = np.arange(10000, dtype=int).reshape(100, 100)
+        a = np.empty_like(v)
+        z = self.create_array(shape=a.shape, chunks=(10, 10), dtype=a.dtype)
+
+        np.random.seed(42)
+        # test with different degrees of sparseness
+        for p in 0.9, 0.5, 0.1, 0.01:
+            a[:] = 0
+            z[:] = 0
+            ix0 = np.random.binomial(1, p, size=a.shape[0]).astype(bool)
+            ix1 = np.random.binomial(1, p, size=a.shape[1]).astype(bool)
+
+            # index both axes with bool array
+            selection = ix0, ix1
+            a[np.ix_(*selection)] = v[np.ix_(*selection)]
+            z[selection] = v[np.ix_(*selection)]
+            assert_array_equal(a, z[:])
+
+            # mixed indexing with bool array / slice
+            selections = (
+                (ix0, slice(15, 35)),
+                (slice(15, 35), ix1),
+                (ix0, 42),
+                (42, ix1),
+            )
+            for selection in selections:
+                a[selection] = v[selection]
+                z[selection] = v[selection]
+                assert_array_equal(a, z[:])
+
+    def test_advanced_indexing_2d_int_set(self):
+
+        # setup
+        v = np.arange(10000, dtype=int).reshape(100, 100)
+        a = np.empty_like(v)
+        z = self.create_array(shape=a.shape, chunks=(10, 10), dtype=a.dtype)
+
+        np.random.seed(42)
+        # test with different degrees of sparseness
+        for p in 0.9, 0.5, 0.1, 0.01:
+            a[:] = 0
+            z[:] = 0
+            ix0 = np.random.choice(a.shape[0], size=int(a.shape[0] * p), replace=True)
+            ix0.sort()
+            ix1 = np.random.choice(a.shape[1], size=int(a.shape[1] * p), replace=True)
+            ix1.sort()
+
+            # index both axes with int array
+            selection = ix0, ix1
+            a[np.ix_(*selection)] = v[np.ix_(*selection)]
+            z[selection] = v[np.ix_(*selection)]
+            assert_array_equal(a, z[:])
+
+            # mixed indexing with int array / slice
+            selections = (
+                (ix0, slice(15, 35)),
+                (slice(15, 35), ix1),
+                (ix0, 42),
+                (42, ix1),
+            )
+            for selection in selections:
+                a[selection] = v[selection]
+                z[selection] = v[selection]
+                assert_array_equal(a, z[:])
 
 
 class TestArrayWithPath(TestArray):
