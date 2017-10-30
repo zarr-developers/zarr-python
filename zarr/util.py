@@ -403,6 +403,101 @@ def get_chunks_for_selection(selection, chunks):
     return chunk_ranges, tuple(sel_shape)
 
 
+def get_chunk_selections(selection, chunk_coords, chunks, n_advanced_selection):
+
+    # chunk_coords: holds the index along each dimension for the current chunk within the
+    # chunk grid. E.g., (0, 0) locates the first (top left) chunk in a 2D chunk grid.
+
+    chunk_selection = []
+    out_selection = []
+
+    # iterate over dimensions (axes) of the array
+    for dim_sel, dim_chunk_idx, dim_chunk_len in zip(selection, chunk_coords, chunks):
+
+        # dim_sel: selection for current dimension
+        # dim_chunk_idx: chunk index along current dimension
+        # dim_chunk_len: chunk length along current dimension
+
+        # selection for current chunk along current dimension
+        dim_chunk_sel = None
+
+        # selection into output array to store data from current chunk
+        dim_out_sel = None
+
+        # calculate offset for current chunk along current dimension - this is used to
+        # determine the values to be extracted from the current chunk
+        dim_chunk_offset = dim_chunk_idx * dim_chunk_len
+
+        # handle integer selection, i.e., single item
+        if isinstance(dim_sel, int):
+
+            dim_chunk_sel = dim_sel - dim_chunk_offset
+
+            # N.B., leave dim_out_sel as None, as this dimension has been dropped in the
+            # output array because of single value index
+
+        # handle slice selection, i.e., contiguous range of items
+        elif isinstance(dim_sel, slice):
+
+            if dim_sel.start <= dim_chunk_offset:
+                # selection starts before current chunk
+                dim_chunk_sel_start = 0
+                dim_out_offset = dim_chunk_offset - dim_sel.start
+
+            else:
+                # selection starts within current chunk
+                dim_chunk_sel_start = dim_sel.start - dim_chunk_offset
+                dim_out_offset = 0
+
+            if dim_sel.stop > dim_chunk_offset + dim_chunk_len:
+                # selection ends after current chunk
+                dim_chunk_sel_stop = dim_chunk_len
+
+            else:
+                # selection ends within current chunk
+                dim_chunk_sel_stop = dim_sel.stop - dim_chunk_offset
+
+            dim_chunk_sel = slice(dim_chunk_sel_start, dim_chunk_sel_stop)
+            dim_chunk_nitems = dim_chunk_sel_stop - dim_chunk_sel_start
+            dim_out_sel = slice(dim_out_offset, dim_out_offset + dim_chunk_nitems)
+
+        elif isinstance(dim_sel, (BooleanSelection, IntegerSelection)):
+
+            # get selection to extract data for the current chunk
+            dim_chunk_sel = dim_sel.get_chunk_sel(dim_chunk_idx)
+
+            # figure out where to put these items in the output array
+            dim_out_sel = dim_sel.get_out_sel(dim_chunk_idx)
+
+        else:
+            raise RuntimeError('unexpected selection type')
+
+        # add to chunk selection
+        chunk_selection.append(dim_chunk_sel)
+
+        # add to output selection
+        if dim_out_sel is not None:
+            out_selection.append(dim_out_sel)
+
+    # normalise for indexing into numpy arrays
+    chunk_selection = tuple(chunk_selection)
+    out_selection = tuple(out_selection)
+
+    # handle advanced indexing arrays orthogonally
+    if n_advanced_selection > 1:
+        # numpy doesn't support orthogonal indexing directly as yet, so need to work
+        # around via np.ix_. Also np.ix_ does not support a mixture of arrays and slices
+        # or integers, so need to convert slices and integers into ranges.
+        chunk_selection = [range(dim_chunk_sel.start, dim_chunk_sel.stop)
+                           if isinstance(dim_chunk_sel, slice)
+                           else [dim_chunk_sel] if isinstance(dim_chunk_sel, int)
+                           else dim_chunk_sel
+                           for dim_chunk_sel in chunk_selection]
+        chunk_selection = np.ix_(*chunk_selection)
+
+    return chunk_selection, out_selection
+
+
 def normalize_resize_args(old_shape, *args):
 
     # normalize new shape argument

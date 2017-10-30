@@ -10,7 +10,7 @@ import numpy as np
 
 from zarr.util import is_total_slice, normalize_array_selection, get_chunks_for_selection, \
     human_readable_size, normalize_resize_args, normalize_storage_path, normalize_shape, \
-    normalize_chunks, InfoReporter, BooleanSelection, IntegerSelection
+    normalize_chunks, InfoReporter, get_chunk_selections
 from zarr.storage import array_meta_key, attrs_key, listdir, getsize
 from zarr.meta import decode_array_metadata, encode_array_metadata
 from zarr.attrs import Attributes
@@ -500,15 +500,17 @@ class Array(object):
         selection = normalize_array_selection(item, self._shape, self._chunks)
 
         # figure out if we're doing advanced indexing, count number of advanced selections - if
-        # more than one need special handling
+        # more than one need special handling, because we are doing orthogonal indexing here,
+        # which is different from fancy indexing if there is more than one array selection
         n_advanced_selection = sum(1 for dim_sel in selection
                                    if not isinstance(dim_sel, (int, slice)))
 
         # axes that need to get squeezed out if doing advanced selection
-        squeeze_axes = None
         if n_advanced_selection > 1:
             squeeze_axes = tuple([i for i, dim_sel in enumerate(selection)
                                   if isinstance(dim_sel, int)])
+        else:
+            squeeze_axes = None
 
         # determine indices of chunks overlapping the selection
         chunk_ranges, sel_shape = get_chunks_for_selection(selection, self._chunks)
@@ -519,96 +521,9 @@ class Array(object):
         # iterate over chunks in range, i.e., chunks overlapping the selection
         for chunk_coords in itertools.product(*chunk_ranges):
 
-            # chunk_coords: holds the index along each dimension for the current chunk within the
-            # chunk grid. E.g., (0, 0) locates the first (top left) chunk in a 2D chunk grid.
-
-            chunk_selection = []
-            out_selection = []
-
-            # iterate over dimensions (axes) of the array
-            for dim_sel, dim_chunk_idx, dim_chunk_len \
-                    in zip(selection, chunk_coords, self._chunks):
-
-                # dim_sel: selection for current dimension
-                # dim_chunk_idx: chunk index along current dimension
-                # dim_chunk_len: chunk length along current dimension
-
-                # selection for current chunk along current dimension
-                dim_chunk_sel = None
-
-                # selection into output array to store data from current chunk
-                dim_out_sel = None
-
-                # calculate offset for current chunk along current dimension - this is used to
-                # determine the values to be extracted from the current chunk
-                dim_chunk_offset = dim_chunk_idx * dim_chunk_len
-
-                # handle integer selection, i.e., single item
-                if isinstance(dim_sel, int):
-
-                    dim_chunk_sel = dim_sel - dim_chunk_offset
-
-                    # N.B., leave dim_out_sel as None, as this dimension has been dropped in the
-                    # output array because of single value index
-
-                # handle slice selection, i.e., contiguous range of items
-                elif isinstance(dim_sel, slice):
-
-                    if dim_sel.start <= dim_chunk_offset:
-                        # selection starts before current chunk
-                        dim_chunk_sel_start = 0
-                        dim_out_offset = dim_chunk_offset - dim_sel.start
-
-                    else:
-                        # selection starts within current chunk
-                        dim_chunk_sel_start = dim_sel.start - dim_chunk_offset
-                        dim_out_offset = 0
-
-                    if dim_sel.stop > dim_chunk_offset + dim_chunk_len:
-                        # selection ends after current chunk
-                        dim_chunk_sel_stop = dim_chunk_len
-
-                    else:
-                        # selection ends within current chunk
-                        dim_chunk_sel_stop = dim_sel.stop - dim_chunk_offset
-
-                    dim_chunk_sel = slice(dim_chunk_sel_start, dim_chunk_sel_stop)
-                    dim_chunk_nitems = dim_chunk_sel_stop - dim_chunk_sel_start
-                    dim_out_sel = slice(dim_out_offset, dim_out_offset + dim_chunk_nitems)
-
-                elif isinstance(dim_sel, (BooleanSelection, IntegerSelection)):
-
-                    # get selection to extract data for the current chunk
-                    dim_chunk_sel = dim_sel.get_chunk_sel(dim_chunk_idx)
-
-                    # figure out where to put these items in the output array
-                    dim_out_sel = dim_sel.get_out_sel(dim_chunk_idx)
-
-                else:
-                    raise RuntimeError('unexpected selection type')
-
-                # add to chunk selection
-                chunk_selection.append(dim_chunk_sel)
-
-                # add to output selection
-                if dim_out_sel is not None:
-                    out_selection.append(dim_out_sel)
-
-            # normalise for indexing into numpy arrays
-            chunk_selection = tuple(chunk_selection)
-            out_selection = tuple(out_selection)
-
-            # handle advanced indexing arrays orthogonally
-            if n_advanced_selection > 1:
-                # numpy doesn't support orthogonal indexing directly as yet, so need to work
-                # around via np.ix_. Also np.ix_ does not support a mixture of arrays and slices
-                # or integers, so need to convert slices and integers into ranges.
-                chunk_selection = [range(dim_chunk_sel.start, dim_chunk_sel.stop)
-                                   if isinstance(dim_chunk_sel, slice)
-                                   else [dim_chunk_sel] if isinstance(dim_chunk_sel, int)
-                                   else dim_chunk_sel
-                                   for dim_chunk_sel in chunk_selection]
-                chunk_selection = np.ix_(*chunk_selection)
+            # obtain selections for chunk and output arrays
+            chunk_selection, out_selection = \
+                get_chunk_selections(selection, chunk_coords, self._chunks, n_advanced_selection)
 
             # obtain the destination array as a view of the output array
             if out_selection:
@@ -724,6 +639,19 @@ class Array(object):
         # normalize selection
         selection = normalize_array_selection(item, self._shape, self._chunks)
 
+        # figure out if we're doing advanced indexing, count number of advanced selections - if
+        # more than one need special handling, because we are doing orthogonal indexing here,
+        # which is different from fancy indexing if there is more than one array selection
+        n_advanced_selection = sum(1 for dim_sel in selection
+                                   if not isinstance(dim_sel, (int, slice)))
+
+        # axes that need to get squeezed out if doing advanced selection
+        if n_advanced_selection > 1:
+            squeeze_axes = tuple([i for i, dim_sel in enumerate(selection)
+                                  if isinstance(dim_sel, int)])
+        else:
+            squeeze_axes = None
+
         # determine indices of chunks overlapping the selection
         chunk_ranges, sel_shape = get_chunks_for_selection(selection, self._chunks)
 
@@ -739,19 +667,9 @@ class Array(object):
         # iterate over chunks in range
         for chunk_coords in itertools.product(*chunk_ranges):
 
-            # TODO refactor code for computing input and output selection for current chunk -
-            # shared with __getitem__
-
-            # determine chunk offset
-            offset = [i * c for i, c in zip(chunk_coords, self._chunks)]
-
-            # determine required index range within chunk
-            chunk_selection = tuple(
-                slice(max(0, s.start - o), min(c, s.stop - o))
-                if isinstance(s, slice)
-                else s - o
-                for s, o, c in zip(selection, offset, self._chunks)
-            )
+            # obtain selections for chunk and destination arrays
+            chunk_selection, out_selection = \
+                get_chunk_selections(selection, chunk_coords, self._chunks, n_advanced_selection)
 
             if np.isscalar(value):
 
@@ -761,16 +679,9 @@ class Array(object):
             else:
                 # assume value is array-like
 
-                # determine index within value
-                value_selection = tuple(
-                    slice(max(0, o - s.start),
-                          min(o + c - s.start, s.stop - s.start))
-                    for s, o, c in zip(selection, offset, self._chunks)
-                    if isinstance(s, slice)
-                )
-
                 # put data
-                self._chunk_setitem(chunk_coords, chunk_selection, value[value_selection])
+                dest = value[out_selection]
+                self._chunk_setitem(chunk_coords, chunk_selection, dest)
 
     def _chunk_getitem(self, chunk_coords, chunk_selection, dest, squeeze_axes=None):
         """Obtain part or whole of a chunk.
