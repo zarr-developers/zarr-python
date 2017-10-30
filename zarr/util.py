@@ -156,10 +156,18 @@ class BooleanSelection(object):
     def __getitem__(self, item):
         return self.dim_sel[item]
 
+    def get_chunk_sel(self, dim_chunk_idx):
+        dim_chunk_offset = dim_chunk_idx * self.dim_chunk_len
+        return self.dim_sel[dim_chunk_offset:dim_chunk_offset + self.dim_chunk_len]
+
+    def get_out_sel(self, dim_chunk_idx):
+        dim_out_offset = self.get_sel_offset(dim_chunk_idx)
+        dim_chunk_nitems = self.get_chunk_nitems(dim_chunk_idx)
+        return slice(dim_out_offset, dim_out_offset + dim_chunk_nitems)
+
     @functools.lru_cache(maxsize=None)
     def get_chunk_nitems(self, dim_chunk_idx):
-        dim_chunk_offset = dim_chunk_idx * self.dim_chunk_len
-        dim_chunk_sel = self.dim_sel[dim_chunk_offset:dim_chunk_offset + self.dim_chunk_len]
+        dim_chunk_sel = self.get_chunk_sel(dim_chunk_idx)
         return np.count_nonzero(dim_chunk_sel)
 
     @functools.lru_cache(maxsize=None)
@@ -178,6 +186,19 @@ class BooleanSelection(object):
             nitems = self.get_chunk_nitems(dim_chunk_idx)
             if nitems:
                 yield dim_chunk_idx
+
+
+class IntegerSelection(object):
+
+    def __init__(self, dim_sel, dim_len, dim_chunk_len):
+
+        # TODO validate dim_sel
+
+        self.dim_sel = dim_sel
+        self.dim_len = dim_len
+        self.dim_chunk_len = dim_chunk_len
+        self.nchunks = int(np.ceil(self.dim_len / self.dim_chunk_len))
+
 
 
 def normalize_dim_selection(dim_sel, dim_len, dim_chunk_len):

@@ -578,12 +578,10 @@ class Array(object):
                 elif isinstance(dim_sel, BooleanSelection):
 
                     # pull out a slice of the boolean indexing array for the current chunk
-                    dim_chunk_sel = dim_sel[dim_chunk_offset:dim_chunk_offset + dim_chunk_len]
+                    dim_chunk_sel = dim_sel.get_chunk_sel(dim_chunk_idx)
 
                     # figure out where to put these items in the output array
-                    dim_out_offset = dim_sel.get_sel_offset(dim_chunk_idx)
-                    dim_chunk_nitems = dim_sel.get_chunk_nitems(dim_chunk_idx)
-                    dim_out_sel = slice(dim_out_offset, dim_out_offset + dim_chunk_nitems)
+                    dim_out_sel = dim_sel.get_out_sel(dim_chunk_idx)
 
                 else:
                     raise RuntimeError('unexpected selection type')
@@ -742,7 +740,7 @@ class Array(object):
 
             # TODO refactor code for computing input and output selection for current chunk -
             # shared with __getitem__
-            
+
             # determine chunk offset
             offset = [i * c for i, c in zip(chunk_coords, self._chunks)]
 
