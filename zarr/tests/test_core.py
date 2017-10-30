@@ -718,6 +718,7 @@ class TestArray(unittest.TestCase):
         z[:] = a
 
         np.random.seed(42)
+        # test with different degrees of sparseness
         for p in 0.9, 0.5, 0.1, 0.01:
             ix = np.random.binomial(1, p, size=a.shape[0]).astype(bool)
             expect = a[ix]
@@ -732,6 +733,7 @@ class TestArray(unittest.TestCase):
         z[:] = a
 
         np.random.seed(42)
+        # test with different degrees of sparseness
         for p in 0.9, 0.5, 0.1, 0.01:
             ix0 = np.random.binomial(1, p, size=a.shape[0]).astype(bool)
             ix1 = np.random.binomial(1, p, size=a.shape[1]).astype(bool)
@@ -741,9 +743,95 @@ class TestArray(unittest.TestCase):
             actual = z[ix0, ix1]
             assert_array_equal(expect, actual)
 
-            # TODO mixed indexing with bool array / slice
+            # mixed indexing with bool array / slice
+            expect = a[ix0, 15:35]
+            actual = z[ix0, 15:35]
+            assert_array_equal(expect, actual)
+            expect = a[15:35, ix1]
+            actual = z[15:35, ix1]
+            assert_array_equal(expect, actual)
 
-            # TODO mixed indexing with bool array / single index
+            # mixed indexing with bool array / single index
+            expect = a[ix0, 42]
+            actual = z[ix0, 42]
+            assert_array_equal(expect, actual)
+            expect = a[42, ix1]
+            actual = z[42, ix1]
+            assert_array_equal(expect, actual)
+
+    def test_advanced_indexing_3d_bool(self):
+
+        # setup
+        a = np.arange(1000000, dtype=int).reshape(100, 100, 100)
+        z = self.create_array(shape=a.shape, chunks=(10, 10, 10), dtype=a.dtype)
+        z[:] = a
+
+        np.random.seed(42)
+        # test with different degrees of sparseness
+        for p in 0.9, 0.5, 0.1, 0.01:
+            ix0 = np.random.binomial(1, p, size=a.shape[0]).astype(bool)
+            ix1 = np.random.binomial(1, p, size=a.shape[1]).astype(bool)
+            ix2 = np.random.binomial(1, p, size=a.shape[2]).astype(bool)
+
+            # index all axes with bool array
+            expect = a[np.ix_(ix0, ix1, ix2)]
+            actual = z[ix0, ix1, ix2]
+            assert_array_equal(expect, actual)
+
+            # mixed indexing with single bool array / slices
+            expect = a[ix0, 15:35, 25:45]
+            actual = z[ix0, 15:35, 25:45]
+            assert_array_equal(expect, actual)
+            expect = a[15:35, ix1, 25:45]
+            actual = z[15:35, ix1, 25:45]
+            assert_array_equal(expect, actual)
+            expect = a[15:35, 25:45, ix2]
+            actual = z[15:35, 25:45, ix2]
+            assert_array_equal(expect, actual)
+
+            # mixed indexing with single bool array / single index
+            expect = a[ix0, 42, 84]
+            actual = z[ix0, 42, 84]
+            assert_array_equal(expect, actual)
+            expect = a[42, ix1, 84]
+            actual = z[42, ix1, 84]
+            assert_array_equal(expect, actual)
+            expect = a[42, 84, ix2]
+            actual = z[42, 84, ix2]
+            assert_array_equal(expect, actual)
+
+            # mixed indexing with single bool array / slice / single index
+            expect = a[ix0, 15:35, 42]
+            actual = z[ix0, 15:35, 42]
+            assert_array_equal(expect, actual)
+            expect = a[42, ix1, 25:45]
+            actual = z[42, ix1, 25:45]
+            assert_array_equal(expect, actual)
+            expect = a[15:35, 42, ix2]
+            actual = z[15:35, 42, ix2]
+            assert_array_equal(expect, actual)
+
+            # mixed indexing with two bool array / slice
+            expect = a[np.ix_(ix0, ix1, range(25, 45))]
+            actual = z[ix0, ix1, 25:45]
+            assert_array_equal(expect, actual)
+            expect = a[np.ix_(range(15, 35), ix1, ix2)]
+            actual = z[15:35, ix1, ix2]
+            assert_array_equal(expect, actual)
+            expect = a[np.ix_(ix0, range(25, 45), ix2)]
+            actual = z[ix0, 25:45, ix2]
+            assert_array_equal(expect, actual)
+
+            # mixed indexing with two bool array / integer
+            expect = a[np.ix_(ix0, ix1, [42])].squeeze(axis=2)
+            actual = z[ix0, ix1, 42]
+            assert_array_equal(expect, actual)
+            expect = a[np.ix_([42], ix1, ix2)].squeeze(axis=0)
+            actual = z[42, ix1, ix2]
+            assert_array_equal(expect, actual)
+            expect = a[np.ix_(ix0, [42], ix2)].squeeze(axis=1)
+            actual = z[ix0, 42, ix2]
+            assert_array_equal(expect, actual)
 
 
 class TestArrayWithPath(TestArray):

@@ -3,6 +3,7 @@ from __future__ import absolute_import, print_function, division
 import operator
 from textwrap import TextWrapper
 import numbers
+import functools
 
 
 import numpy as np
@@ -134,116 +135,153 @@ def is_total_slice(item, shape):
         raise TypeError('expected slice or tuple of slices, found %r' % item)
 
 
-def normalize_axis_selection(item, length):
+class BooleanSelection(object):
+
+    def __init__(self, dim_sel, dim_len, dim_chunk_len):
+
+        # check number of dimensions, only support indexing with 1d array
+        if len(dim_sel.shape) > 1:
+            raise IndexError('can only index with 1-dimensional Boolean array')
+
+        # check shape
+        if dim_sel.shape[0] != dim_len:
+            raise IndexError('Boolean array has wrong length; expected %s, found %s' %
+                             (dim_len, dim_sel.shape[0]))
+
+        self.dim_sel = dim_sel
+        self.dim_len = dim_len
+        self.dim_chunk_len = dim_chunk_len
+        self.nchunks = int(np.ceil(self.dim_len / self.dim_chunk_len))
+
+    def __getitem__(self, item):
+        return self.dim_sel[item]
+
+    @functools.lru_cache(maxsize=None)
+    def get_chunk_nitems(self, dim_chunk_idx):
+        dim_chunk_offset = dim_chunk_idx * self.dim_chunk_len
+        dim_chunk_sel = self.dim_sel[dim_chunk_offset:dim_chunk_offset + self.dim_chunk_len]
+        return np.count_nonzero(dim_chunk_sel)
+
+    @functools.lru_cache(maxsize=None)
+    def get_nitems(self):
+        return sum(self.get_chunk_nitems(i) for i in range(self.nchunks))
+
+    @functools.lru_cache(maxsize=None)
+    def get_sel_offset(self, dim_chunk_idx):
+        if dim_chunk_idx == 0:
+            return 0
+        else:
+            return self.get_sel_offset(dim_chunk_idx - 1) + self.get_chunk_nitems(dim_chunk_idx - 1)
+
+    def get_chunk_ranges(self):
+        for dim_chunk_idx in range(self.nchunks):
+            nitems = self.get_chunk_nitems(dim_chunk_idx)
+            if nitems:
+                yield dim_chunk_idx
+
+
+def normalize_dim_selection(dim_sel, dim_len, dim_chunk_len):
     """Convenience function to normalize a selection within a single axis
     of size `l`."""
 
     # normalize list to array
-    if isinstance(item, list):
-        item = np.asarray(item)
+    if isinstance(dim_sel, list):
+        dim_sel = np.asarray(dim_sel)
 
-    if isinstance(item, numbers.Integral):
-        item = int(item)
+    if isinstance(dim_sel, numbers.Integral):
+
+        # normalize type to int
+        dim_sel = int(dim_sel)
 
         # handle wraparound
-        if item < 0:
-            item = length + item
+        if dim_sel < 0:
+            dim_sel = dim_len + dim_sel
 
         # handle out of bounds
-        if item >= length or item < 0:
-            raise IndexError('index out of bounds: %s' % item)
+        if dim_sel >= dim_len or dim_sel < 0:
+            raise IndexError('index out of bounds: %s' % dim_sel)
 
-        return item
+        return dim_sel
 
-    elif isinstance(item, slice):
+    elif isinstance(dim_sel, slice):
 
         # handle slice with step
-        if item.step is not None and item.step != 1:
+        if dim_sel.step is not None and dim_sel.step != 1:
             raise NotImplementedError('slice with step not implemented')
 
         # handle slice with None bound
-        start = 0 if item.start is None else item.start
-        stop = length if item.stop is None else item.stop
+        start = 0 if dim_sel.start is None else dim_sel.start
+        stop = dim_len if dim_sel.stop is None else dim_sel.stop
 
         # handle wraparound
         if start < 0:
-            start = length + start
+            start = dim_len + start
         if stop < 0:
-            stop = length + stop
+            stop = dim_len + stop
 
         # handle zero-length axis
-        if start == stop == length == 0:
+        if start == stop == dim_len == 0:
             return slice(0, 0)
 
         # handle out of bounds
         if start < 0:
-            raise IndexError('start index out of bounds: %s' % item.start)
+            raise IndexError('start index out of bounds: %s' % dim_sel.start)
         if stop < 0:
-            raise IndexError('stop index out of bounds: %s' % item.stop)
-        if start >= length:
-            raise IndexError('start index out of bounds: %ss' % item.start)
-        if stop > length:
-            stop = length
+            raise IndexError('stop index out of bounds: %s' % dim_sel.stop)
+        if start >= dim_len:
+            raise IndexError('start index out of bounds: %ss' % dim_sel.start)
+        if stop > dim_len:
+            stop = dim_len
         if stop < start:
             stop = start
 
         return slice(start, stop)
 
-    elif hasattr(item, 'dtype') and hasattr(item, 'shape'):
+    elif hasattr(dim_sel, 'dtype') and hasattr(dim_sel, 'shape'):
 
-        # check number of dimensions, only support indexing with 1d array
-        if len(item.shape) > 1:
-            raise IndexError('can only index with 1-dimensional array')
-
-        if item.dtype == bool:
-
-            # check shape
-            if item.shape[0] != length:
-                raise IndexError('Boolean array has wrong length; expected %s, found %s' %
-                                 (length, item.shape[0]))
-
-            return item
+        if dim_sel.dtype == bool:
+            return BooleanSelection(dim_sel, dim_len, dim_chunk_len)
 
         else:
             raise IndexError('TODO')
 
     else:
-        raise TypeError('unsupported index item type: %r' % item)
+        raise TypeError('unsupported index item type: %r' % dim_sel)
 
 
 # noinspection PyTypeChecker
-def normalize_array_selection(item, shape):
+def normalize_array_selection(selection, shape, chunks):
     """Convenience function to normalize a selection within an array with
     the given `shape`."""
 
     # ensure tuple
-    if not isinstance(item, tuple):
-        item = (item,)
+    if not isinstance(selection, tuple):
+        selection = (selection,)
 
     # handle ellipsis
-    n_ellipsis = sum(1 for i in item if i is Ellipsis)
+    n_ellipsis = sum(1 for i in selection if i is Ellipsis)
     if n_ellipsis > 1:
         raise IndexError("an index can only have a single ellipsis ('...')")
     elif n_ellipsis == 1:
-        n_items_l = item.index(Ellipsis)  # items to left of ellipsis
-        n_items_r = len(item) - (n_items_l + 1)  # items to right of ellipsis
-        n_items = len(item) - 1  # all non-ellipsis items
+        n_items_l = selection.index(Ellipsis)  # items to left of ellipsis
+        n_items_r = len(selection) - (n_items_l + 1)  # items to right of ellipsis
+        n_items = len(selection) - 1  # all non-ellipsis items
         if n_items >= len(shape):
             # ellipsis does nothing, just remove it
-            item = tuple(i for i in item if i != Ellipsis)
+            selection = tuple(i for i in selection if i != Ellipsis)
         else:
             # replace ellipsis with as many slices are needed for number of dims
-            new_item = item[:n_items_l] + ((slice(None),) * (len(shape) - n_items))
+            new_item = selection[:n_items_l] + ((slice(None),) * (len(shape) - n_items))
             if n_items_r:
-                new_item += item[-n_items_r:]
-            item = new_item
+                new_item += selection[-n_items_r:]
+            selection = new_item
 
     # check dimensionality
-    if len(item) > len(shape):
+    if len(selection) > len(shape):
         raise IndexError('too many indices for array')
 
     # determine start and stop indices for all axes
-    selection = tuple(normalize_axis_selection(i, l) for i, l in zip(item, shape))
+    selection = tuple(normalize_dim_selection(i, l, c) for i, l, c in zip(selection, shape, chunks))
 
     # fill out selection if not completely specified
     if len(selection) < len(shape):
@@ -252,49 +290,53 @@ def normalize_array_selection(item, shape):
     return selection
 
 
-def get_chunk_ranges(selection, chunks):
-    """Convenience function to get a range over all chunk indices,
-    for iterating over chunks."""
+def get_chunks_for_selection(selection, chunks):
+    """Convenience function to find chunks overlapping an array selection. N.B.,
+    assumes selection has already been normalized."""
 
+    # indices of chunks overlapping the selection
     chunk_ranges = []
-    out_shape = []
 
+    # shape of the selection
+    sel_shape = []
+
+    # iterate over dimensions of the array
     for dim_sel, dim_chunk_len in zip(selection, chunks):
-        dim_chunk_range = None
-        dim_out_len = None
+
+        # dim_sel: selection for current dimension
+        # dim_chunk_len: length of chunk along current dimension
+
+        dim_sel_len = None
 
         if isinstance(dim_sel, int):
+
+            # dim selection is an integer, i.e., single item, so only need single chunk index for
+            # this dimension
             dim_chunk_range = [dim_sel//dim_chunk_len]
 
         elif isinstance(dim_sel, slice):
-            chunk_from = dim_sel.start//dim_chunk_len
-            chunk_to = int(np.ceil(dim_sel.stop/dim_chunk_len))
-            dim_chunk_range = range(chunk_from, chunk_to)
-            dim_out_len = dim_sel.stop - dim_sel.start
 
-        elif hasattr(dim_sel, 'dtype'):
-            if dim_sel.dtype == bool:
+            # dim selection is a slice, need range of chunk indices including start and stop of
+            # selection
+            dim_chunk_from = dim_sel.start//dim_chunk_len
+            dim_chunk_to = int(np.ceil(dim_sel.stop/dim_chunk_len))
+            dim_chunk_range = range(dim_chunk_from, dim_chunk_to)
+            dim_sel_len = dim_sel.stop - dim_sel.start
 
-                # convert to indices to find chunks with nonzero values and skip chunks with no
-                # requested values
+        elif isinstance(dim_sel, BooleanSelection):
 
-                # TODO profile this, try alternative strategies
-                indices = np.nonzero(dim_sel)[0]
-                dim_chunk_range = np.unique(indices // dim_chunk_len)
-                dim_out_len = len(indices)
+            # dim selection is a boolean array, delegate this to the BooleanSelection class
+            dim_chunk_range = dim_sel.get_chunk_ranges()
+            dim_sel_len = dim_sel.get_nitems()
 
-            elif dim_sel.dtype.kind in 'ui':
-                raise NotImplementedError('TODO')
-
-        if dim_chunk_range is None:
-            # should not happen
-            raise RuntimeError('could not determine chunk range')
+        else:
+            raise RuntimeError('unexpected selection type')
 
         chunk_ranges.append(dim_chunk_range)
-        if dim_out_len is not None:
-            out_shape.append(dim_out_len)
+        if dim_sel_len is not None:
+            sel_shape.append(dim_sel_len)
 
-    return chunk_ranges, tuple(out_shape)
+    return chunk_ranges, tuple(sel_shape)
 
 
 def normalize_resize_args(old_shape, *args):
