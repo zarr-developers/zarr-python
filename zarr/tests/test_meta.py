@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, print_function, division
 import json
+import base64
 
 
 from nose.tools import eq_ as eq, assert_is_none, assert_raises
@@ -113,7 +114,7 @@ def test_encode_decode_array_2():
     eq([df.get_config()], meta_dec['filters'])
 
 
-def test_encode_decode_array_fill_values():
+def test_encode_decode_fill_values_nan():
 
     fills = (
         (np.nan, "NaN", np.isnan),
@@ -152,6 +153,45 @@ def test_encode_decode_array_fill_values():
         meta_dec = decode_array_metadata(meta_enc)
         actual = meta_dec['fill_value']
         assert f(actual)
+
+
+def test_encode_decode_fill_values_bytes():
+
+    fills = b'foo', bytes(10)
+
+    for v in fills:
+
+        s = str(base64.standard_b64encode(v), 'ascii')
+
+        meta = dict(
+            shape=(100,),
+            chunks=(10,),
+            dtype=np.dtype('S10'),
+            compressor=Zlib(1).get_config(),
+            fill_value=v,
+            filters=None,
+            order='C'
+        )
+
+        meta_json = '''{
+            "chunks": [10],
+            "compressor": {"id": "zlib", "level": 1},
+            "dtype": "|S10",
+            "fill_value": "%s",
+            "filters": null,
+            "order": "C",
+            "shape": [100],
+            "zarr_format": %s
+        }''' % (s, ZARR_FORMAT)
+
+        # test encoding
+        meta_enc = encode_array_metadata(meta)
+        assert_json_eq(meta_json, meta_enc)
+
+        # test decoding
+        meta_dec = decode_array_metadata(meta_enc)
+        actual = meta_dec['fill_value']
+        eq(v, actual)
 
 
 def test_decode_array_unsupported_format():
