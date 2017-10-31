@@ -217,6 +217,7 @@ class IntArraySelection(object):
         self.nchunks = int(np.ceil(self.dim_len / self.dim_chunk_len))
 
         # precompute number of selected items for each chunk
+        # note: for dense integer selections, the division operation here is the bottleneck
         self.chunk_nitems = np.bincount(self.dim_sel // self.dim_chunk_len, minlength=self.nchunks)
         self.chunk_nitems_cumsum = np.cumsum(self.chunk_nitems)
         self.nitems = len(dim_sel)
