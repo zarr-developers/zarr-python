@@ -3,7 +3,6 @@ from __future__ import absolute_import, print_function, division
 import operator
 from textwrap import TextWrapper
 import numbers
-import functools
 
 
 import numpy as np
