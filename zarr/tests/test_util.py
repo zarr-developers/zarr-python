@@ -111,18 +111,17 @@ def test_normalize_array_selection():
     eq((slice(0, 100),), normalize_array_selection(slice(None), (100,)))
     eq((slice(0, 100),), normalize_array_selection(slice(None, 100), (100,)))
     eq((slice(0, 100),), normalize_array_selection(slice(0, None), (100,)))
+    eq((slice(0, 100),), normalize_array_selection((slice(None), Ellipsis), (100,)))
+    eq((slice(0, 100),), normalize_array_selection((Ellipsis, slice(None)), (100,)))
 
     # 2D, single item
     eq((0, 0), normalize_array_selection((0, 0), (100, 100)))
     eq((99, 1), normalize_array_selection((-1, 1), (100, 100)))
 
     # 2D, single col/row
-    eq((0, slice(0, 100)), normalize_array_selection((0, slice(None)),
-                                                     (100, 100)))
-    eq((0, slice(0, 100)), normalize_array_selection((0,),
-                                                     (100, 100)))
-    eq((slice(0, 100), 0), normalize_array_selection((slice(None), 0),
-                                                     (100, 100)))
+    eq((0, slice(0, 100)), normalize_array_selection((0, slice(None)), (100, 100)))
+    eq((0, slice(0, 100)), normalize_array_selection((0,), (100, 100)))
+    eq((slice(0, 100), 0), normalize_array_selection((slice(None), 0), (100, 100)))
 
     # 2D slice
     eq((slice(0, 100), slice(0, 100)),
@@ -131,6 +130,16 @@ def test_normalize_array_selection():
        normalize_array_selection(slice(None), (100, 100)))
     eq((slice(0, 100), slice(0, 100)),
        normalize_array_selection((slice(None), slice(None)), (100, 100)))
+    eq((slice(0, 100), slice(0, 100)),
+       normalize_array_selection((Ellipsis, slice(None)), (100, 100)))
+    eq((slice(0, 100), slice(0, 100)),
+       normalize_array_selection((slice(None), Ellipsis), (100, 100)))
+    eq((slice(0, 100), slice(0, 100)),
+       normalize_array_selection((slice(None), Ellipsis, slice(None)), (100, 100)))
+    eq((slice(0, 100), slice(0, 100)),
+       normalize_array_selection((Ellipsis, slice(None), slice(None)), (100, 100)))
+    eq((slice(0, 100), slice(0, 100)),
+       normalize_array_selection((slice(None), slice(None), Ellipsis), (100, 100)))
 
     with assert_raises(TypeError):
         normalize_array_selection('foo', (100,))
