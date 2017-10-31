@@ -641,17 +641,22 @@ class DirectoryStore(MutableMapping):
                 raise KeyError(key)
 
         # write to temporary file
-        with tempfile.NamedTemporaryFile(mode='wb', delete=False,
-                                         dir=dir_path,
-                                         prefix=file_name + '.',
-                                         suffix='.partial') as f:
-            f.write(value)
-            temp_path = f.name
+        temp_path = None
+        try:
+            with tempfile.NamedTemporaryFile(mode='wb', delete=False, dir=dir_path,
+                                             prefix=file_name + '.', suffix='.partial') as f:
+                temp_path = f.name
+                f.write(value)
 
-        # move temporary file into place
-        if os.path.exists(file_path):
-            os.remove(file_path)
-        os.rename(temp_path, file_path)
+            # move temporary file into place
+            if os.path.exists(file_path):
+                os.remove(file_path)
+            os.rename(temp_path, file_path)
+
+        finally:
+            # clean up if temp file still exists for whatever reason
+            if temp_path is not None and os.path.exists(temp_path):
+                os.remove(temp_path)
 
     def __delitem__(self, key):
         path = os.path.join(self.path, key)
