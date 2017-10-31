@@ -299,6 +299,18 @@ class TestArray(unittest.TestCase):
         assert_array_equal(a[310:], z[310:])
         assert_array_equal(a[:, 7:], z[:, 7:])
 
+    def test_array_2d_edge_case(self):
+        # this fails with filters - chunks extend beyond edge of array, messes with delta filter
+        # if no fill value?
+        shape = 1000, 10
+        chunks = 300, 30
+        dtype = 'i8'
+        z = self.create_array(shape=shape, dtype=dtype, chunks=chunks)
+        z[:] = 0
+        expect = np.zeros(shape, dtype=dtype)
+        actual = z[:]
+        assert_array_equal(expect, actual)
+
     def test_array_2d_partial(self):
         z = self.create_array(shape=(1000, 10), chunks=(100, 2), dtype='i4',
                               fill_value=0)
@@ -1007,7 +1019,7 @@ class TestArray(unittest.TestCase):
         # setup
         v = np.arange(10000, dtype=int).reshape(1000, 10)
         a = np.empty_like(v)
-        z = self.create_array(shape=a.shape, chunks=(300, 30), dtype=a.dtype)
+        z = self.create_array(shape=a.shape, chunks=(300, 3), dtype=a.dtype)
 
         np.random.seed(42)
         # test with different degrees of sparseness
@@ -1021,7 +1033,7 @@ class TestArray(unittest.TestCase):
         # setup
         v = np.arange(10000, dtype=int).reshape(1000, 10)
         a = np.empty_like(v)
-        z = self.create_array(shape=a.shape, chunks=(300, 30), dtype=a.dtype)
+        z = self.create_array(shape=a.shape, chunks=(300, 3), dtype=a.dtype)
 
         np.random.seed(42)
         # test with different degrees of sparseness

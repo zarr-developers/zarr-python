@@ -474,9 +474,11 @@ class Array(object):
 
         except KeyError:
             # chunk not initialized
-            out = np.empty((), dtype=self._dtype)
             if self._fill_value is not None:
+                out = np.empty((), dtype=self._dtype)
                 out.fill(self._fill_value)
+            else:
+                out = np.zeros((), dtype=self._dtype)
 
         else:
             out = self._decode_chunk(cdata)
@@ -811,9 +813,13 @@ class Array(object):
             except KeyError:
 
                 # chunk not initialized
-                chunk = np.empty(self._chunks, dtype=self._dtype, order=self._order)
                 if self._fill_value is not None:
+                    chunk = np.empty(self._chunks, dtype=self._dtype, order=self._order)
                     chunk.fill(self._fill_value)
+                else:
+                    # N.B., use zeros here so any region beyond the array has consistent and
+                    # compressible data
+                    chunk = np.zeros(self._chunks, dtype=self._dtype, order=self._order)
 
             else:
 
