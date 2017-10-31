@@ -710,6 +710,11 @@ class TestArray(unittest.TestCase):
         z[:] = 42
         eq(10, z.nchunks_initialized)
 
+    def _test_advanced_indexing_1d_common(self, a, z, ix):
+        expect = a[ix]
+        actual = z[ix]
+        assert_array_equal(expect, actual)
+
     def test_advanced_indexing_1d_bool(self):
 
         # setup
@@ -721,9 +726,7 @@ class TestArray(unittest.TestCase):
         # test with different degrees of sparseness
         for p in 0.5, 0.1, 0.01:
             ix = np.random.binomial(1, p, size=a.shape[0]).astype(bool)
-            expect = a[ix]
-            actual = z[ix]
-            assert_array_equal(expect, actual)
+            self._test_advanced_indexing_1d_common(a, z, ix)
 
         # test errors
         with assert_raises(IndexError):
@@ -745,9 +748,7 @@ class TestArray(unittest.TestCase):
         for p in 0.5, 0.1, 0.01:
             ix = np.random.choice(a.shape[0], size=int(a.shape[0] * p), replace=True)
             ix.sort()
-            expect = a[ix]
-            actual = z[ix]
-            assert_array_equal(expect, actual)
+            self._test_advanced_indexing_1d_common(a, z, ix)
 
         # test wraparound
         ix = [0, 3, 10, -23, -12, -1]
@@ -769,39 +770,44 @@ class TestArray(unittest.TestCase):
             ix = [3, 105, 23, 127]  # not monotonically increasing
             z[ix]
 
+    def _test_advanced_indexing_2d_common(self, a, z, ix0, ix1):
+
+        # index both axes with array
+        expect = a[np.ix_(ix0, ix1)]
+        actual = z[ix0, ix1]
+        assert_array_equal(expect, actual)
+
+        # mixed indexing with array / slice
+        expect = a[ix0, 1:5]
+        actual = z[ix0, 1:5]
+        assert_array_equal(expect, actual)
+        expect = a[250:350, ix1]
+        actual = z[250:350, ix1]
+        assert_array_equal(expect, actual)
+
+        # mixed indexing with array / single index
+        expect = a[ix0, 4]
+        actual = z[ix0, 4]
+        assert_array_equal(expect, actual)
+        expect = a[42, ix1]
+        actual = z[42, ix1]
+        assert_array_equal(expect, actual)
+
     def test_advanced_indexing_2d_bool(self):
 
         # setup
-        a = np.arange(10000, dtype=int).reshape(100, 100)
-        z = self.create_array(shape=a.shape, chunks=(10, 10), dtype=a.dtype)
+        a = np.arange(10000, dtype=int).reshape(1000, 10)
+        z = self.create_array(shape=a.shape, chunks=(300, 3), dtype=a.dtype)
         z[:] = a
 
         np.random.seed(42)
         # test with different degrees of sparseness
         for p in 0.5, 0.1, 0.01:
             ix0 = np.random.binomial(1, p, size=a.shape[0]).astype(bool)
-            ix1 = np.random.binomial(1, p, size=a.shape[1]).astype(bool)
+            ix1 = np.random.binomial(1, 0.5, size=a.shape[1]).astype(bool)
 
-            # index both axes with bool array
-            expect = a[np.ix_(ix0, ix1)]
-            actual = z[ix0, ix1]
-            assert_array_equal(expect, actual)
-
-            # mixed indexing with bool array / slice
-            expect = a[ix0, 15:35]
-            actual = z[ix0, 15:35]
-            assert_array_equal(expect, actual)
-            expect = a[15:35, ix1]
-            actual = z[15:35, ix1]
-            assert_array_equal(expect, actual)
-
-            # mixed indexing with bool array / single index
-            expect = a[ix0, 42]
-            actual = z[ix0, 42]
-            assert_array_equal(expect, actual)
-            expect = a[42, ix1]
-            actual = z[42, ix1]
-            assert_array_equal(expect, actual)
+            # main tests
+            self._test_advanced_indexing_2d_common(a, z, ix0, ix1)
 
             # mixed int array / bool array
             selections = (
@@ -816,8 +822,8 @@ class TestArray(unittest.TestCase):
     def test_advanced_indexing_2d_int(self):
 
         # setup
-        a = np.arange(10000, dtype=int).reshape(100, 100)
-        z = self.create_array(shape=a.shape, chunks=(10, 10), dtype=a.dtype)
+        a = np.arange(10000, dtype=int).reshape(1000, 10)
+        z = self.create_array(shape=a.shape, chunks=(300, 3), dtype=a.dtype)
         z[:] = a
 
         np.random.seed(42)
@@ -825,109 +831,106 @@ class TestArray(unittest.TestCase):
         for p in 0.5, 0.1, 0.01:
             ix0 = np.random.choice(a.shape[0], size=int(a.shape[0] * p), replace=True)
             ix0.sort()
-            ix1 = np.random.choice(a.shape[1], size=int(a.shape[1] * p), replace=True)
+            ix1 = np.random.choice(a.shape[1], size=int(a.shape[1] * .5), replace=True)
             ix1.sort()
+            self._test_advanced_indexing_2d_common(a, z, ix0, ix1)
 
-            # index both axes with int array
-            expect = a[np.ix_(ix0, ix1)]
-            actual = z[ix0, ix1]
-            assert_array_equal(expect, actual)
+    def _test_advanced_indexing_3d_common(self, a, z, ix0, ix1, ix2):
 
-            # mixed indexing with int array / slice
-            expect = a[ix0, 15:35]
-            actual = z[ix0, 15:35]
-            assert_array_equal(expect, actual)
-            expect = a[15:35, ix1]
-            actual = z[15:35, ix1]
-            assert_array_equal(expect, actual)
+        # index all axes with array
+        expect = a[np.ix_(ix0, ix1, ix2)]
+        actual = z[ix0, ix1, ix2]
+        assert_array_equal(expect, actual)
 
-            # mixed indexing with int array / single index
-            expect = a[ix0, 42]
-            actual = z[ix0, 42]
-            assert_array_equal(expect, actual)
-            expect = a[42, ix1]
-            actual = z[42, ix1]
-            assert_array_equal(expect, actual)
+        # mixed indexing with single array / slices
+        expect = a[ix0, 15:25, 1:5]
+        actual = z[ix0, 15:25, 1:5]
+        assert_array_equal(expect, actual)
+        expect = a[50:70, ix1, 1:5]
+        actual = z[50:70, ix1, 1:5]
+        assert_array_equal(expect, actual)
+        expect = a[50:70, 15:25, ix2]
+        actual = z[50:70, 15:25, ix2]
+        assert_array_equal(expect, actual)
+
+        # mixed indexing with single array / single index
+        expect = a[ix0, 42, 4]
+        actual = z[ix0, 42, 4]
+        assert_array_equal(expect, actual)
+        expect = a[42, ix1, 4]
+        actual = z[42, ix1, 4]
+        assert_array_equal(expect, actual)
+        expect = a[84, 42, ix2]
+        actual = z[84, 42, ix2]
+        assert_array_equal(expect, actual)
+
+        # mixed indexing with single array / slice / single index
+        expect = a[ix0, 15:25, 4]
+        actual = z[ix0, 15:25, 4]
+        assert_array_equal(expect, actual)
+        expect = a[42, ix1, 1:5]
+        actual = z[42, ix1, 1:5]
+        assert_array_equal(expect, actual)
+        expect = a[50:70, 42, ix2]
+        actual = z[50:70, 42, ix2]
+        assert_array_equal(expect, actual)
+
+        # mixed indexing with two array / slice
+        expect = a[np.ix_(ix0, ix1, range(1, 5))]
+        actual = z[ix0, ix1, 1:5]
+        assert_array_equal(expect, actual)
+        expect = a[np.ix_(range(50, 70), ix1, ix2)]
+        actual = z[50:70, ix1, ix2]
+        assert_array_equal(expect, actual)
+        expect = a[np.ix_(ix0, range(15, 25), ix2)]
+        actual = z[ix0, 15:25, ix2]
+        assert_array_equal(expect, actual)
+
+        # mixed indexing with two array / integer
+        expect = a[np.ix_(ix0, ix1, [4])].squeeze(axis=2)
+        actual = z[ix0, ix1, 4]
+        assert_array_equal(expect, actual)
+        expect = a[np.ix_([42], ix1, ix2)].squeeze(axis=0)
+        actual = z[42, ix1, ix2]
+        assert_array_equal(expect, actual)
+        expect = a[np.ix_(ix0, [42], ix2)].squeeze(axis=1)
+        actual = z[ix0, 42, ix2]
+        assert_array_equal(expect, actual)
 
     def test_advanced_indexing_3d_bool(self):
 
         # setup
-        a = np.arange(1000000, dtype=int).reshape(100, 100, 100)
-        z = self.create_array(shape=a.shape, chunks=(10, 10, 10), dtype=a.dtype)
+        a = np.arange(100000, dtype=int).reshape(200, 50, 10)
+        z = self.create_array(shape=a.shape, chunks=(60, 20, 3), dtype=a.dtype)
         z[:] = a
 
         np.random.seed(42)
         # test with different degrees of sparseness
         for p in 0.5, 0.1, 0.01:
             ix0 = np.random.binomial(1, p, size=a.shape[0]).astype(bool)
-            ix1 = np.random.binomial(1, p, size=a.shape[1]).astype(bool)
-            ix2 = np.random.binomial(1, p, size=a.shape[2]).astype(bool)
+            ix1 = np.random.binomial(1, .5, size=a.shape[1]).astype(bool)
+            ix2 = np.random.binomial(1, .5, size=a.shape[2]).astype(bool)
+            self._test_advanced_indexing_3d_common(a, z, ix0, ix1, ix2)
 
-            # index all axes with bool array
-            expect = a[np.ix_(ix0, ix1, ix2)]
-            actual = z[ix0, ix1, ix2]
-            assert_array_equal(expect, actual)
+    def test_advanced_indexing_edge_cases(self):
 
-            # mixed indexing with single bool array / slices
-            expect = a[ix0, 15:35, 25:45]
-            actual = z[ix0, 15:35, 25:45]
-            assert_array_equal(expect, actual)
-            expect = a[15:35, ix1, 25:45]
-            actual = z[15:35, ix1, 25:45]
-            assert_array_equal(expect, actual)
-            expect = a[15:35, 25:45, ix2]
-            actual = z[15:35, 25:45, ix2]
-            assert_array_equal(expect, actual)
+        a = np.arange(6).reshape(1, 2, 3)
+        z = self.create_array(shape=a.shape, chunks=(1, 2, 3), dtype=a.dtype)
+        z[:] = a
 
-            # mixed indexing with single bool array / single index
-            expect = a[ix0, 42, 84]
-            actual = z[ix0, 42, 84]
-            assert_array_equal(expect, actual)
-            expect = a[42, ix1, 84]
-            actual = z[42, ix1, 84]
-            assert_array_equal(expect, actual)
-            expect = a[42, 84, ix2]
-            actual = z[42, 84, ix2]
-            assert_array_equal(expect, actual)
+        expect = a[np.ix_([0], range(2), [0, 1, 2])].squeeze(axis=0)
+        actual = z[0, :, [0, 1, 2]]
+        assert_array_equal(expect, actual)
 
-            # mixed indexing with single bool array / slice / single index
-            expect = a[ix0, 15:35, 42]
-            actual = z[ix0, 15:35, 42]
-            assert_array_equal(expect, actual)
-            expect = a[42, ix1, 25:45]
-            actual = z[42, ix1, 25:45]
-            assert_array_equal(expect, actual)
-            expect = a[15:35, 42, ix2]
-            actual = z[15:35, 42, ix2]
-            assert_array_equal(expect, actual)
-
-            # mixed indexing with two bool array / slice
-            expect = a[np.ix_(ix0, ix1, range(25, 45))]
-            actual = z[ix0, ix1, 25:45]
-            assert_array_equal(expect, actual)
-            expect = a[np.ix_(range(15, 35), ix1, ix2)]
-            actual = z[15:35, ix1, ix2]
-            assert_array_equal(expect, actual)
-            expect = a[np.ix_(ix0, range(25, 45), ix2)]
-            actual = z[ix0, 25:45, ix2]
-            assert_array_equal(expect, actual)
-
-            # mixed indexing with two bool array / integer
-            expect = a[np.ix_(ix0, ix1, [42])].squeeze(axis=2)
-            actual = z[ix0, ix1, 42]
-            assert_array_equal(expect, actual)
-            expect = a[np.ix_([42], ix1, ix2)].squeeze(axis=0)
-            actual = z[42, ix1, ix2]
-            assert_array_equal(expect, actual)
-            expect = a[np.ix_(ix0, [42], ix2)].squeeze(axis=1)
-            actual = z[ix0, 42, ix2]
-            assert_array_equal(expect, actual)
+        expect = a[np.ix_([0], range(2), [True, True, True])].squeeze(axis=0)
+        actual = z[0, :, [True, True, True]]
+        assert_array_equal(expect, actual)
 
     def test_advanced_indexing_3d_int(self):
 
         # setup
-        a = np.arange(1000000, dtype=int).reshape(100, 100, 100)
-        z = self.create_array(shape=a.shape, chunks=(10, 10, 10), dtype=a.dtype)
+        a = np.arange(100000, dtype=int).reshape(200, 50, 10)
+        z = self.create_array(shape=a.shape, chunks=(60, 20, 3), dtype=a.dtype)
         z[:] = a
 
         np.random.seed(42)
@@ -935,87 +938,31 @@ class TestArray(unittest.TestCase):
         for p in 0.5, 0.1, 0.01:
             ix0 = np.random.choice(a.shape[0], size=int(a.shape[0] * p), replace=True)
             ix0.sort()
-            ix1 = np.random.choice(a.shape[1], size=int(a.shape[1] * p), replace=True)
+            ix1 = np.random.choice(a.shape[1], size=int(a.shape[1] * .5), replace=True)
             ix1.sort()
-            ix2 = np.random.choice(a.shape[2], size=int(a.shape[2] * p), replace=True)
+            ix2 = np.random.choice(a.shape[2], size=int(a.shape[2] * .5), replace=True)
             ix2.sort()
+            self._test_advanced_indexing_3d_common(a, z, ix0, ix1, ix2)
 
-            # index all axes with int array
-            expect = a[np.ix_(ix0, ix1, ix2)]
-            actual = z[ix0, ix1, ix2]
-            assert_array_equal(expect, actual)
-
-            # mixed indexing with single int array / slices
-            expect = a[ix0, 15:35, 25:45]
-            actual = z[ix0, 15:35, 25:45]
-            assert_array_equal(expect, actual)
-            expect = a[15:35, ix1, 25:45]
-            actual = z[15:35, ix1, 25:45]
-            assert_array_equal(expect, actual)
-            expect = a[15:35, 25:45, ix2]
-            actual = z[15:35, 25:45, ix2]
-            assert_array_equal(expect, actual)
-
-            # mixed indexing with single int array / single index
-            expect = a[ix0, 42, 84]
-            actual = z[ix0, 42, 84]
-            assert_array_equal(expect, actual)
-            expect = a[42, ix1, 84]
-            actual = z[42, ix1, 84]
-            assert_array_equal(expect, actual)
-            expect = a[42, 84, ix2]
-            actual = z[42, 84, ix2]
-            assert_array_equal(expect, actual)
-
-            # mixed indexing with single int array / slice / single index
-            expect = a[ix0, 15:35, 42]
-            actual = z[ix0, 15:35, 42]
-            assert_array_equal(expect, actual)
-            expect = a[42, ix1, 25:45]
-            actual = z[42, ix1, 25:45]
-            assert_array_equal(expect, actual)
-            expect = a[15:35, 42, ix2]
-            actual = z[15:35, 42, ix2]
-            assert_array_equal(expect, actual)
-
-            # mixed indexing with two int array / slice
-            expect = a[np.ix_(ix0, ix1, range(25, 45))]
-            actual = z[ix0, ix1, 25:45]
-            assert_array_equal(expect, actual)
-            expect = a[np.ix_(range(15, 35), ix1, ix2)]
-            actual = z[15:35, ix1, ix2]
-            assert_array_equal(expect, actual)
-            expect = a[np.ix_(ix0, range(25, 45), ix2)]
-            actual = z[ix0, 25:45, ix2]
-            assert_array_equal(expect, actual)
-
-            # mixed indexing with two int array / integer
-            expect = a[np.ix_(ix0, ix1, [42])].squeeze(axis=2)
-            actual = z[ix0, ix1, 42]
-            assert_array_equal(expect, actual)
-            expect = a[np.ix_([42], ix1, ix2)].squeeze(axis=0)
-            actual = z[42, ix1, ix2]
-            assert_array_equal(expect, actual)
-            expect = a[np.ix_(ix0, [42], ix2)].squeeze(axis=1)
-            actual = z[ix0, 42, ix2]
-            assert_array_equal(expect, actual)
+    def _test_advanced_indexing_1d_common_set(self, v, a, z, ix):
+        a[:] = 0
+        z[:] = 0
+        a[ix] = v[ix]
+        z[ix] = v[ix]
+        assert_array_equal(a, z[:])
 
     def test_advanced_indexing_1d_bool_set(self):
 
         # setup
-        a = np.empty(1050, dtype=int)
         v = np.arange(1050, dtype=int)
+        a = np.empty(v.shape, dtype=int)
         z = self.create_array(shape=a.shape, chunks=100, dtype=a.dtype)
 
         np.random.seed(42)
         # test with different degrees of sparseness
         for p in 0.5, 0.1, 0.01:
-            a[:] = 0
-            z[:] = 0
             ix = np.random.binomial(1, p, size=a.shape[0]).astype(bool)
-            a[ix] = v[ix]
-            z[ix] = v[ix]
-            assert_array_equal(a, z[:])
+            self._test_advanced_indexing_1d_common_set(v, a, z, ix)
 
     def test_advanced_indexing_1d_int_set(self):
 
@@ -1027,144 +974,143 @@ class TestArray(unittest.TestCase):
         np.random.seed(42)
         # test with different degrees of sparseness
         for p in 0.5, 0.1, 0.01:
-            a[:] = 0
-            z[:] = 0
             ix = np.random.choice(a.shape[0], size=int(a.shape[0] * p), replace=True)
             ix.sort()
-            a[ix] = v[ix]
-            z[ix] = v[ix]
+            self._test_advanced_indexing_1d_common_set(v, a, z, ix)
+
+    def _test_advanced_indexing_2d_common_set(self, v, a, z, ix0, ix1):
+
+        # index both axes with array
+        a[:] = 0
+        z[:] = 0
+        selection = ix0, ix1
+        a[np.ix_(*selection)] = v[np.ix_(*selection)]
+        z[selection] = v[np.ix_(*selection)]
+        assert_array_equal(a, z[:])
+
+        # mixed indexing with array / slice or int
+        selections = (
+            (ix0, slice(1, 5)),
+            (slice(250, 350), ix1),
+            (ix0, 4),
+            (42, ix1),
+        )
+        for selection in selections:
+            a[:] = 0
+            z[:] = 0
+            a[selection] = v[selection]
+            z[selection] = v[selection]
             assert_array_equal(a, z[:])
 
     def test_advanced_indexing_2d_bool_set(self):
 
         # setup
-        v = np.arange(10000, dtype=int).reshape(100, 100)
+        v = np.arange(10000, dtype=int).reshape(1000, 10)
         a = np.empty_like(v)
-        z = self.create_array(shape=a.shape, chunks=(10, 10), dtype=a.dtype)
+        z = self.create_array(shape=a.shape, chunks=(300, 30), dtype=a.dtype)
 
         np.random.seed(42)
         # test with different degrees of sparseness
         for p in 0.5, 0.1, 0.01:
-            a[:] = 0
-            z[:] = 0
             ix0 = np.random.binomial(1, p, size=a.shape[0]).astype(bool)
-            ix1 = np.random.binomial(1, p, size=a.shape[1]).astype(bool)
-
-            # index both axes with bool array
-            selection = ix0, ix1
-            a[np.ix_(*selection)] = v[np.ix_(*selection)]
-            z[selection] = v[np.ix_(*selection)]
-            assert_array_equal(a, z[:])
-
-            # mixed indexing with bool array / slice
-            selections = (
-                (ix0, slice(15, 35)),
-                (slice(15, 35), ix1),
-                (ix0, 42),
-                (42, ix1),
-            )
-            for selection in selections:
-                a[:] = 0
-                z[:] = 0
-                a[selection] = v[selection]
-                z[selection] = v[selection]
-                assert_array_equal(a, z[:])
+            ix1 = np.random.binomial(1, .5, size=a.shape[1]).astype(bool)
+            self._test_advanced_indexing_2d_common_set(v, a, z, ix0, ix1)
 
     def test_advanced_indexing_2d_int_set(self):
 
         # setup
-        v = np.arange(10000, dtype=int).reshape(100, 100)
+        v = np.arange(10000, dtype=int).reshape(1000, 10)
         a = np.empty_like(v)
-        z = self.create_array(shape=a.shape, chunks=(10, 10), dtype=a.dtype)
+        z = self.create_array(shape=a.shape, chunks=(300, 30), dtype=a.dtype)
 
         np.random.seed(42)
         # test with different degrees of sparseness
         for p in 0.5, 0.1, 0.01:
-            a[:] = 0
-            z[:] = 0
             ix0 = np.random.choice(a.shape[0], size=int(a.shape[0] * p), replace=True)
             ix0.sort()
-            ix1 = np.random.choice(a.shape[1], size=int(a.shape[1] * p), replace=True)
+            ix1 = np.random.choice(a.shape[1], size=int(a.shape[1] * .5), replace=True)
             ix1.sort()
+            self._test_advanced_indexing_2d_common_set(v, a, z, ix0, ix1)
 
-            # index both axes with int array
-            selection = ix0, ix1
-            a[np.ix_(*selection)] = v[np.ix_(*selection)]
-            z[selection] = v[np.ix_(*selection)]
+    def _test_advanced_indexing_3d_common_set(self, v, a, z, ix0, ix1, ix2):
+
+        # index all axes with bool array
+        a[:] = 0
+        z[:] = 0
+        selection = ix0, ix1, ix2
+        a[np.ix_(*selection)] = v[np.ix_(*selection)]
+        z[selection] = v[np.ix_(*selection)]
+        assert_array_equal(a, z[:])
+
+        # mixed indexing with single bool array / slice or int
+        selections = (
+            (ix0, slice(15, 25), slice(1, 5)),
+            (slice(50, 70), ix1, slice(1, 5)),
+            (slice(50, 70), slice(15, 25), ix2),
+            (ix0, 42, 4),
+            (84, ix1, 4),
+            (84, 42, ix2),
+            (ix0, slice(15, 25), 4),
+            (slice(50, 70), ix1, 4),
+            (slice(50, 70), 42, ix2),
+        )
+        for selection in selections:
+            a[:] = 0
+            z[:] = 0
+            a[selection] = v[selection]
+            z[selection] = v[selection]
             assert_array_equal(a, z[:])
 
-            # mixed indexing with int array / slice
-            selections = (
-                (ix0, slice(15, 35)),
-                (slice(15, 35), ix1),
-                (ix0, 42),
-                (42, ix1),
-            )
-            for selection in selections:
-                a[:] = 0
-                z[:] = 0
-                a[selection] = v[selection]
-                z[selection] = v[selection]
-                assert_array_equal(a, z[:])
+        # indexing with two arrays / slice
+        a[:] = 0
+        z[:] = 0
+        zsel = ix0, ix1, slice(1, 5)
+        vsel = np.ix_(ix0, ix1, range(1, 5))
+        a[vsel] = v[vsel]
+        z[zsel] = v[vsel]
+        assert_array_equal(a, z[:])
+
+        # indexing with two arrays / integer
+        a[:] = 0
+        z[:] = 0
+        zsel = ix0, ix1, 4
+        vsel = np.ix_(ix0, ix1, [4])
+        a[vsel] = v[vsel]
+        z[zsel] = v[vsel].squeeze(axis=2)
+        assert_array_equal(a, z[:])
 
     def test_advanced_indexing_3d_bool_set(self):
 
         # setup
-        v = np.arange(1000000, dtype=int).reshape(100, 100, 100)
+        v = np.arange(100000, dtype=int).reshape(200, 50, 10)
         a = np.empty_like(v)
-        z = self.create_array(shape=a.shape, chunks=(10, 10, 10), dtype=a.dtype)
+        z = self.create_array(shape=a.shape, chunks=(60, 20, 3), dtype=a.dtype)
 
         np.random.seed(42)
         # test with different degrees of sparseness
         for p in 0.5, 0.1, 0.01:
-            a[:] = 0
-            z[:] = 0
             ix0 = np.random.binomial(1, p, size=a.shape[0]).astype(bool)
-            ix1 = np.random.binomial(1, p, size=a.shape[1]).astype(bool)
-            ix2 = np.random.binomial(1, p, size=a.shape[2]).astype(bool)
+            ix1 = np.random.binomial(1, .5, size=a.shape[1]).astype(bool)
+            ix2 = np.random.binomial(1, .5, size=a.shape[2]).astype(bool)
+            self._test_advanced_indexing_3d_common_set(v, a, z, ix0, ix1, ix2)
 
-            # index all axes with bool array
-            selection = ix0, ix1, ix2
-            a[np.ix_(*selection)] = v[np.ix_(*selection)]
-            z[selection] = v[np.ix_(*selection)]
-            assert_array_equal(a, z[:])
+    def test_advanced_indexing_3d_int_set(self):
 
-            # mixed indexing with single bool array / slice or int
-            selections = (
-                (ix0, slice(15, 35), slice(25, 45)),
-                (slice(15, 35), ix1, slice(25, 45)),
-                (slice(15, 35), slice(25, 45), ix2),
-                (ix0, 42, 84),
-                (42, ix1, 84),
-                (42, 84, ix2),
-                (ix0, slice(15, 35), 42),
-                (slice(15, 35), ix1, 42),
-                (slice(15, 35), 42, ix2),
-            )
-            for selection in selections:
-                a[:] = 0
-                z[:] = 0
-                a[selection] = v[selection]
-                z[selection] = v[selection]
-                assert_array_equal(a, z[:])
+        # setup
+        v = np.arange(100000, dtype=int).reshape(200, 50, 10)
+        a = np.empty_like(v)
+        z = self.create_array(shape=a.shape, chunks=(60, 20, 3), dtype=a.dtype)
 
-            # indexing with two arrays / slice
-            a[:] = 0
-            z[:] = 0
-            zsel = ix0, ix1, slice(25, 45)
-            vsel = np.ix_(ix0, ix1, range(25, 45))
-            a[vsel] = v[vsel]
-            z[zsel] = v[vsel]
-            assert_array_equal(a, z[:])
-
-            # indexing with two arrays / integer
-            a[:] = 0
-            z[:] = 0
-            zsel = ix0, ix1, 42
-            vsel = np.ix_(ix0, ix1, [42])
-            a[vsel] = v[vsel]
-            z[zsel] = v[vsel].squeeze(axis=2)
-            assert_array_equal(a, z[:])
+        np.random.seed(42)
+        # test with different degrees of sparseness
+        for p in 0.5, 0.1, 0.01:
+            ix0 = np.random.choice(a.shape[0], size=int(a.shape[0] * p), replace=True)
+            ix0.sort()
+            ix1 = np.random.choice(a.shape[1], size=int(a.shape[1] * .5), replace=True)
+            ix1.sort()
+            ix2 = np.random.choice(a.shape[2], size=int(a.shape[2] * .5), replace=True)
+            ix2.sort()
+            self._test_advanced_indexing_3d_common_set(v, a, z, ix0, ix1, ix2)
 
 
 class TestArrayWithPath(TestArray):
@@ -1310,6 +1256,7 @@ class TestArrayWithFilters(TestArray):
             Delta(dtype=dtype),
             FixedScaleOffset(dtype=dtype, scale=1, offset=0),
         ]
+        # print(dtype, filters[1].astype)
         kwargs.setdefault('filters', filters)
         compressor = Zlib(1)
         kwargs.setdefault('compressor', compressor)

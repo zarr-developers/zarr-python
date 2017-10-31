@@ -495,7 +495,7 @@ def get_chunk_selections(selection, chunk_coords, chunks, n_advanced_selection):
     out_selection = tuple(out_selection)
 
     # handle advanced indexing arrays orthogonally
-    if n_advanced_selection > 1:
+    if n_advanced_selection > 0:
         # numpy doesn't support orthogonal indexing directly as yet, so need to work
         # around via np.ix_. Also np.ix_ does not support a mixture of arrays and slices
         # or integers, so need to convert slices and integers into ranges.
