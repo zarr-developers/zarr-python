@@ -722,12 +722,15 @@ class TestArray(unittest.TestCase):
         z[:] = 42
         eq(10, z.nchunks_initialized)
 
-    def _test_advanced_indexing_1d_common(self, a, z, ix):
+    def _test_orthogonal_indexing_1d_common(self, a, z, ix):
         expect = a[ix]
-        actual = z[ix]
+        actual = z.get_orthogonal_selection(ix)
+        assert_array_equal(expect, actual)
+        actual = z.oindex[ix]
         assert_array_equal(expect, actual)
 
-    def test_advanced_indexing_1d_bool(self):
+    # noinspection PyStatementEffect
+    def test_orthogonal_indexing_1d_bool(self):
 
         # setup
         a = np.arange(1050, dtype=int)
@@ -738,17 +741,17 @@ class TestArray(unittest.TestCase):
         # test with different degrees of sparseness
         for p in 0.5, 0.1, 0.01:
             ix = np.random.binomial(1, p, size=a.shape[0]).astype(bool)
-            self._test_advanced_indexing_1d_common(a, z, ix)
+            self._test_orthogonal_indexing_1d_common(a, z, ix)
 
         # test errors
         with assert_raises(IndexError):
-            z[ix[:50]]  # too short
+            z.oindex[np.zeros(50, dtype=bool)]  # too short
         with assert_raises(IndexError):
-            z[np.concatenate([ix[:50]] * 2)]  # too long
+            z.oindex[np.zeros(2000, dtype=bool)]  # too long
         with assert_raises(IndexError):
-            z[[[True, False], [False, True]]]  # too many dimensions
+            z.oindex[[[True, False], [False, True]]]  # too many dimensions
 
-    def test_advanced_indexing_1d_int(self):
+    def test_orthogonal_indexing_1d_int(self):
 
         # setup
         a = np.arange(1050, dtype=int)
@@ -760,7 +763,7 @@ class TestArray(unittest.TestCase):
         for p in 0.5, 0.1, 0.01:
             ix = np.random.choice(a.shape[0], size=int(a.shape[0] * p), replace=True)
             ix.sort()
-            self._test_advanced_indexing_1d_common(a, z, ix)
+            self._test_orthogonal_indexing_1d_common(a, z, ix)
 
         # test wraparound
         ix = [0, 3, 10, -23, -12, -1]
@@ -771,18 +774,18 @@ class TestArray(unittest.TestCase):
         # test errors
         with assert_raises(IndexError):
             ix = [a.shape[0] + 1]  # out of bounds
-            z[ix]
+            z.oindex[ix]
         with assert_raises(IndexError):
             ix = [-(a.shape[0] + 1)]  # out of bounds
-            z[ix]
+            z.oindex[ix]
         with assert_raises(IndexError):
             ix = [[2, 4], [6, 8]]  # too many dimensions
-            z[ix]
+            z.oindex[ix]
         with assert_raises(NotImplementedError):
             ix = [3, 105, 23, 127]  # not monotonically increasing
-            z[ix]
+            z.oindex[ix]
 
-    def _test_advanced_indexing_2d_common(self, a, z, ix0, ix1):
+    def _test_orthogonal_indexing_2d_common(self, a, z, ix0, ix1):
 
         # index both axes with array
         expect = a[np.ix_(ix0, ix1)]
@@ -805,7 +808,7 @@ class TestArray(unittest.TestCase):
         actual = z[42, ix1]
         assert_array_equal(expect, actual)
 
-    def test_advanced_indexing_2d_bool(self):
+    def test_orthogonal_indexing_2d_bool(self):
 
         # setup
         a = np.arange(10000, dtype=int).reshape(1000, 10)
@@ -819,7 +822,7 @@ class TestArray(unittest.TestCase):
             ix1 = np.random.binomial(1, 0.5, size=a.shape[1]).astype(bool)
 
             # main tests
-            self._test_advanced_indexing_2d_common(a, z, ix0, ix1)
+            self._test_orthogonal_indexing_2d_common(a, z, ix0, ix1)
 
             # mixed int array / bool array
             selections = (
@@ -831,7 +834,7 @@ class TestArray(unittest.TestCase):
                 actual = z[ix0, ix1]
                 assert_array_equal(expect, actual)
 
-    def test_advanced_indexing_2d_int(self):
+    def test_orthogonal_indexing_2d_int(self):
 
         # setup
         a = np.arange(10000, dtype=int).reshape(1000, 10)
@@ -845,9 +848,9 @@ class TestArray(unittest.TestCase):
             ix0.sort()
             ix1 = np.random.choice(a.shape[1], size=int(a.shape[1] * .5), replace=True)
             ix1.sort()
-            self._test_advanced_indexing_2d_common(a, z, ix0, ix1)
+            self._test_orthogonal_indexing_2d_common(a, z, ix0, ix1)
 
-    def _test_advanced_indexing_3d_common(self, a, z, ix0, ix1, ix2):
+    def _test_orthogonal_indexing_3d_common(self, a, z, ix0, ix1, ix2):
 
         # index all axes with array
         expect = a[np.ix_(ix0, ix1, ix2)]
@@ -909,7 +912,7 @@ class TestArray(unittest.TestCase):
         actual = z[ix0, 42, ix2]
         assert_array_equal(expect, actual)
 
-    def test_advanced_indexing_3d_bool(self):
+    def test_orthogonal_indexing_3d_bool(self):
 
         # setup
         a = np.arange(100000, dtype=int).reshape(200, 50, 10)
@@ -922,9 +925,9 @@ class TestArray(unittest.TestCase):
             ix0 = np.random.binomial(1, p, size=a.shape[0]).astype(bool)
             ix1 = np.random.binomial(1, .5, size=a.shape[1]).astype(bool)
             ix2 = np.random.binomial(1, .5, size=a.shape[2]).astype(bool)
-            self._test_advanced_indexing_3d_common(a, z, ix0, ix1, ix2)
+            self._test_orthogonal_indexing_3d_common(a, z, ix0, ix1, ix2)
 
-    def test_advanced_indexing_edge_cases(self):
+    def test_orthogonal_indexing_edge_cases(self):
 
         a = np.arange(6).reshape(1, 2, 3)
         z = self.create_array(shape=a.shape, chunks=(1, 2, 3), dtype=a.dtype)
@@ -938,7 +941,7 @@ class TestArray(unittest.TestCase):
         actual = z[0, :, [True, True, True]]
         assert_array_equal(expect, actual)
 
-    def test_advanced_indexing_3d_int(self):
+    def test_orthogonal_indexing_3d_int(self):
 
         # setup
         a = np.arange(100000, dtype=int).reshape(200, 50, 10)
@@ -954,16 +957,16 @@ class TestArray(unittest.TestCase):
             ix1.sort()
             ix2 = np.random.choice(a.shape[2], size=int(a.shape[2] * .5), replace=True)
             ix2.sort()
-            self._test_advanced_indexing_3d_common(a, z, ix0, ix1, ix2)
+            self._test_orthogonal_indexing_3d_common(a, z, ix0, ix1, ix2)
 
-    def _test_advanced_indexing_1d_common_set(self, v, a, z, ix):
+    def _test_orthogonal_indexing_1d_common_set(self, v, a, z, ix):
         a[:] = 0
         z[:] = 0
         a[ix] = v[ix]
         z[ix] = v[ix]
         assert_array_equal(a, z[:])
 
-    def test_advanced_indexing_1d_bool_set(self):
+    def test_orthogonal_indexing_1d_bool_set(self):
 
         # setup
         v = np.arange(1050, dtype=int)
@@ -974,9 +977,9 @@ class TestArray(unittest.TestCase):
         # test with different degrees of sparseness
         for p in 0.5, 0.1, 0.01:
             ix = np.random.binomial(1, p, size=a.shape[0]).astype(bool)
-            self._test_advanced_indexing_1d_common_set(v, a, z, ix)
+            self._test_orthogonal_indexing_1d_common_set(v, a, z, ix)
 
-    def test_advanced_indexing_1d_int_set(self):
+    def test_orthogonal_indexing_1d_int_set(self):
 
         # setup
         v = np.arange(1050, dtype=int)
@@ -988,9 +991,9 @@ class TestArray(unittest.TestCase):
         for p in 0.5, 0.1, 0.01:
             ix = np.random.choice(a.shape[0], size=int(a.shape[0] * p), replace=True)
             ix.sort()
-            self._test_advanced_indexing_1d_common_set(v, a, z, ix)
+            self._test_orthogonal_indexing_1d_common_set(v, a, z, ix)
 
-    def _test_advanced_indexing_2d_common_set(self, v, a, z, ix0, ix1):
+    def _test_orthogonal_indexing_2d_common_set(self, v, a, z, ix0, ix1):
 
         # index both axes with array
         a[:] = 0
@@ -1014,7 +1017,7 @@ class TestArray(unittest.TestCase):
             z[selection] = v[selection]
             assert_array_equal(a, z[:])
 
-    def test_advanced_indexing_2d_bool_set(self):
+    def test_orthogonal_indexing_2d_bool_set(self):
 
         # setup
         v = np.arange(10000, dtype=int).reshape(1000, 10)
@@ -1026,9 +1029,9 @@ class TestArray(unittest.TestCase):
         for p in 0.5, 0.1, 0.01:
             ix0 = np.random.binomial(1, p, size=a.shape[0]).astype(bool)
             ix1 = np.random.binomial(1, .5, size=a.shape[1]).astype(bool)
-            self._test_advanced_indexing_2d_common_set(v, a, z, ix0, ix1)
+            self._test_orthogonal_indexing_2d_common_set(v, a, z, ix0, ix1)
 
-    def test_advanced_indexing_2d_int_set(self):
+    def test_orthogonal_indexing_2d_int_set(self):
 
         # setup
         v = np.arange(10000, dtype=int).reshape(1000, 10)
@@ -1042,9 +1045,9 @@ class TestArray(unittest.TestCase):
             ix0.sort()
             ix1 = np.random.choice(a.shape[1], size=int(a.shape[1] * .5), replace=True)
             ix1.sort()
-            self._test_advanced_indexing_2d_common_set(v, a, z, ix0, ix1)
+            self._test_orthogonal_indexing_2d_common_set(v, a, z, ix0, ix1)
 
-    def _test_advanced_indexing_3d_common_set(self, v, a, z, ix0, ix1, ix2):
+    def _test_orthogonal_indexing_3d_common_set(self, v, a, z, ix0, ix1, ix2):
 
         # index all axes with bool array
         a[:] = 0
@@ -1091,7 +1094,7 @@ class TestArray(unittest.TestCase):
         z[zsel] = v[vsel].squeeze(axis=2)
         assert_array_equal(a, z[:])
 
-    def test_advanced_indexing_3d_bool_set(self):
+    def test_orthogonal_indexing_3d_bool_set(self):
 
         # setup
         v = np.arange(100000, dtype=int).reshape(200, 50, 10)
@@ -1104,9 +1107,9 @@ class TestArray(unittest.TestCase):
             ix0 = np.random.binomial(1, p, size=a.shape[0]).astype(bool)
             ix1 = np.random.binomial(1, .5, size=a.shape[1]).astype(bool)
             ix2 = np.random.binomial(1, .5, size=a.shape[2]).astype(bool)
-            self._test_advanced_indexing_3d_common_set(v, a, z, ix0, ix1, ix2)
+            self._test_orthogonal_indexing_3d_common_set(v, a, z, ix0, ix1, ix2)
 
-    def test_advanced_indexing_3d_int_set(self):
+    def test_orthogonal_indexing_3d_int_set(self):
 
         # setup
         v = np.arange(100000, dtype=int).reshape(200, 50, 10)
@@ -1122,7 +1125,7 @@ class TestArray(unittest.TestCase):
             ix1.sort()
             ix2 = np.random.choice(a.shape[2], size=int(a.shape[2] * .5), replace=True)
             ix2.sort()
-            self._test_advanced_indexing_3d_common_set(v, a, z, ix0, ix1, ix2)
+            self._test_orthogonal_indexing_3d_common_set(v, a, z, ix0, ix1, ix2)
 
 
 class TestArrayWithPath(TestArray):
