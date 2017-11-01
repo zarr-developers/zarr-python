@@ -17,11 +17,10 @@ from nose.tools import assert_raises, eq_ as eq, assert_is_none
 
 from zarr.storage import init_array, array_meta_key, attrs_key, DictStore, \
     DirectoryStore, ZipStore, init_group, group_meta_key, getsize, \
-    migrate_1to2, TempStore, atexit_rmtree
+    migrate_1to2, TempStore, atexit_rmtree, NestedDirectoryStore, default_compressor
 from zarr.meta import decode_array_metadata, encode_array_metadata, \
     ZARR_FORMAT, decode_group_metadata, encode_group_metadata
 from zarr.compat import text_type
-from zarr.storage import default_compressor
 from zarr.codecs import Zlib, Blosc, BZ2
 from zarr.errors import PermissionError
 from zarr.hierarchy import group
@@ -614,6 +613,27 @@ class TestDirectoryStore(StoreTests, unittest.TestCase):
     def test_setdel(self):
         store = self.create_store()
         setdel_hierarchy_checks(store)
+
+
+class TestNestedDirectoryStore(TestDirectoryStore, unittest.TestCase):
+
+    def create_store(self):
+        path = tempfile.mkdtemp()
+        atexit.register(atexit_rmtree, path)
+        store = NestedDirectoryStore(path)
+        return store
+
+    def test_chunk_nesting(self):
+        store = self.create_store()
+        # any path where last segment looks like a chunk key gets special handling
+        store['0.0'] = b'xxx'
+        eq(b'xxx', store['0.0'])
+        eq(b'xxx', store['0/0'])
+        store['foo/10.20.30'] = b'yyy'
+        eq(b'yyy', store['foo/10.20.30'])
+        eq(b'yyy', store['foo/10/20/30'])
+        store['42'] = b'zzz'
+        eq(b'zzz', store['42'])
 
 
 class TestTempStore(StoreTests, unittest.TestCase):

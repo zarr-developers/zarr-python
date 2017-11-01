@@ -7,6 +7,7 @@ import json
 import zipfile
 import shutil
 import atexit
+import re
 
 
 import numpy as np
@@ -691,11 +692,15 @@ class DirectoryStore(MutableMapping):
     def __len__(self):
         return sum(1 for _ in self.keys())
 
-    def listdir(self, path=None):
+    def dir_path(self, path=None):
         store_path = normalize_storage_path(path)
         dir_path = self.path
         if store_path:
             dir_path = os.path.join(dir_path, store_path)
+        return dir_path
+
+    def listdir(self, path=None):
+        dir_path = self.dir_path(path)
         if os.path.isdir(dir_path):
             return sorted(os.listdir(dir_path))
         else:
@@ -743,6 +748,69 @@ class TempStore(DirectoryStore):
         path = tempfile.mkdtemp(suffix=suffix, prefix=prefix, dir=dir)
         atexit.register(atexit_rmtree, path)
         super(TempStore, self).__init__(path)
+
+
+_prog_ckey = re.compile(r'^(\d+)(\.\d+)+$')
+_prog_number = re.compile(r'^\d+$')
+
+
+class NestedDirectoryStore(DirectoryStore):
+
+    def __init__(self, path):
+        super(NestedDirectoryStore, self).__init__(path)
+
+    def map_key(self, key):
+        segments = list(key.split('/'))
+        if segments:
+            last_segment = segments[-1]
+            if _prog_ckey.match(last_segment):
+                last_segment = last_segment.replace('.', '/')
+                segments = segments[:-1] + [last_segment]
+                key = '/'.join(segments)
+        return key
+
+    def __getitem__(self, key):
+        key = self.map_key(key)
+        return super(NestedDirectoryStore, self).__getitem__(key)
+
+    def __setitem__(self, key, value):
+        key = self.map_key(key)
+        super(NestedDirectoryStore, self).__setitem__(key, value)
+
+    def __delitem__(self, key):
+        key = self.map_key(key)
+        super(NestedDirectoryStore, self).__delitem__(key)
+
+    def __contains__(self, key):
+        key = self.map_key(key)
+        return super(NestedDirectoryStore, self).__contains__(key)
+
+    def __eq__(self, other):
+        return (
+            isinstance(other, NestedDirectoryStore) and
+            self.path == other.path
+        )
+
+    def listdir(self, path=None):
+        children = super(NestedDirectoryStore, self).listdir(path=path)
+        if array_meta_key in children:
+            # special handling of directories containing an array to map nested chunk keys back
+            # to standard chunk keys
+            new_children = []
+            root_path = self.dir_path(path)
+            for entry in children:
+                entry_path = os.path.join(root_path, entry)
+                if _prog_number.match(entry) and os.path.isdir(entry_path):
+                    for dir_path, _, file_names in os.walk(entry_path):
+                        for file_name in file_names:
+                            file_path = os.path.join(dir_path, file_name)
+                            rel_path = file_path.split(root_path + '/')[1]
+                            new_children.append(rel_path.replace('/', '.'))
+                else:
+                    new_children.append(entry)
+            return sorted(new_children)
+        else:
+            return children
 
 
 # noinspection PyPep8Naming

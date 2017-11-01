@@ -13,7 +13,7 @@ from nose.tools import eq_ as eq, assert_is_instance, \
     assert_raises, assert_true, assert_false, assert_is, assert_is_none
 
 
-from zarr.storage import DirectoryStore, init_array, init_group
+from zarr.storage import DirectoryStore, init_array, init_group, NestedDirectoryStore
 from zarr.core import Array
 from zarr.errors import PermissionError
 from zarr.compat import PY2
@@ -711,6 +711,18 @@ class TestArrayWithDirectoryStore(TestArray):
         z[:] = 42
         expect_nbytes_stored = sum(buffer_size(v) for v in z.store.values())
         eq(expect_nbytes_stored, z.nbytes_stored)
+
+
+class TestArrayWithNestedDirectoryStore(TestArrayWithDirectoryStore):
+
+    @staticmethod
+    def create_array(read_only=False, **kwargs):
+        path = mkdtemp()
+        atexit.register(shutil.rmtree, path)
+        store = NestedDirectoryStore(path)
+        kwargs.setdefault('compressor', Zlib(1))
+        init_array(store, **kwargs)
+        return Array(store, read_only=read_only)
 
 
 class TestArrayWithNoCompressor(TestArray):
