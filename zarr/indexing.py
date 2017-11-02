@@ -46,46 +46,60 @@ class OIndex(object):
 
     def __getitem__(self, selection):
 
-        # ensure tuple
-        if not isinstance(selection, tuple):
-            selection = (selection,)
-
-        # handle ellipsis
-        selection = replace_ellipsis(selection, self.array.shape)
-
         # delegate to method
         return self.array.get_orthogonal_selection(selection)
 
 
-class OrthogonalSelection(object):
+def normalize_integer_selection(dim_sel, dim_len):
+
+    # normalize type to int
+    dim_sel = int(dim_sel)
+
+    # handle wraparound
+    if dim_sel < 0:
+        dim_sel = dim_len + dim_sel
+
+    # handle out of bounds
+    if dim_sel >= dim_len or dim_sel < 0:
+        raise IndexError('index out of bounds: %s' % dim_sel)
+
+    return dim_sel
+
+
+def normalize_slice_selection(dim_sel, dim_len):
+
+    # handle slice with None bound
+    start = 0 if dim_sel.start is None else dim_sel.start
+    stop = dim_len if dim_sel.stop is None else dim_sel.stop
+    step = 1 if dim_sel.step is None else dim_sel.step
+
+    # handle wraparound
+    if start < 0:
+        start = dim_len + start
+    if stop < 0:
+        stop = dim_len + stop
+
+    # handle out of bounds
+    if start < 0:
+        raise IndexError('start index out of bounds: %s' % dim_sel.start)
+    if stop < 0:
+        raise IndexError('stop index out of bounds: %s' % dim_sel.stop)
+    if start >= dim_len and dim_len > 0:
+        raise IndexError('start index out of bounds: %ss' % dim_sel.start)
+    if stop > dim_len:
+        stop = dim_len
+    if stop < start:
+        stop = start
+
+    return slice(start, stop, step)
+
+
+class IndexerBase(object):
 
     def __init__(self, selection, array):
-
-        # ensure tuple
-        if not isinstance(selection, tuple):
-            selection = (selection,)
-
-        # validation - check dimensionality
-        if len(selection) > len(array.shape):
-            raise IndexError('too many indices for array')
-        if len(selection) < len(array.shape):
-            raise IndexError('not enough indices for array')
-
-        # normalization
-        self.selection = self.normalize_selection(selection, array)
+        self.selection = selection
         self.array = array
-
-        # figure out if we're going to be doing advanced indexing on chunks, if so then
-        # chunk selections will need special handling
-        self.is_advanced = any([not isinstance(dim_sel, (int, slice))
-                                for dim_sel in self.selection])
-
-        # locate axes that need to get squeezed out later if doing advanced selection
-        if self.is_advanced:
-            self.squeeze_axes = tuple([i for i, dim_sel in enumerate(self.selection)
-                                       if isinstance(dim_sel, int)])
-        else:
-            self.squeeze_axes = None
+        self.squeeze_axes = None
 
     def __iter__(self):
         return iter(self.selection)
@@ -93,10 +107,216 @@ class OrthogonalSelection(object):
     def __len__(self):
         return len(self.selection)
 
+
+# noinspection PyProtectedMember
+class BasicIndexer(IndexerBase):
+
+    def __init__(self, selection, array):
+
+        # ensure tuple
+        if not isinstance(selection, tuple):
+            selection = (selection,)
+
+        # handle ellipsis
+        selection = replace_ellipsis(selection, array._shape)
+
+        # validation - check dimensionality
+        if len(selection) > len(array._shape):
+            raise IndexError('too many indices for array')
+        if len(selection) < len(array._shape):
+            raise IndexError('not enough indices for array')
+
+        # TODO refactor with OrthogonalIndexer
+
+        # normalization
+        selection = self.normalize_selection(selection, array)
+
+        # complete initialisation
+        super(BasicIndexer, self).__init__(selection, array)
+
+    def normalize_selection(self, selection, array):
+        # normalize each dimension
+        selection = tuple(self.normalize_dim_selection(s, l)
+                          for s, l in zip(selection, array._shape))
+        return selection
+
+    def normalize_dim_selection(self, dim_sel, dim_len):
+
+        if isinstance(dim_sel, numbers.Integral):
+
+            dim_sel = normalize_integer_selection(dim_sel, dim_len)
+            return dim_sel
+
+        elif isinstance(dim_sel, slice):
+
+            dim_sel = normalize_slice_selection(dim_sel, dim_len)
+
+            # handle slice with step
+            if dim_sel.step is not None and dim_sel.step != 1:
+                raise IndexError('slice with step not supported via basic indexing')
+
+            return dim_sel
+
+        else:
+            raise IndexError('unsupported index item type: %r' % dim_sel)
+
+    def get_overlapping_chunks(self):
+        """Convenience function to find chunks overlapping an array selection. N.B.,
+        assumes selection has already been normalized."""
+
+        # indices of chunks overlapping the selection
+        chunk_ranges = []
+
+        # shape of the selection
+        sel_shape = []
+
+        # iterate over dimensions of the array
+        for dim_sel, dim_chunk_len in zip(self.selection, self.array._chunks):
+
+            # dim_sel: selection for current dimension
+            # dim_chunk_len: length of chunk along current dimension
+
+            dim_sel_len = None
+
+            if isinstance(dim_sel, int):
+
+                # dim selection is an integer, i.e., single item, so only need single chunk index
+                # for this dimension
+                dim_chunk_range = [dim_sel//dim_chunk_len]
+
+            elif isinstance(dim_sel, slice):
+
+                # dim selection is a slice, need range of chunk indices including start and stop of
+                # selection
+                dim_chunk_from = dim_sel.start//dim_chunk_len
+                dim_chunk_to = int(np.ceil(dim_sel.stop/dim_chunk_len))
+                dim_chunk_range = range(dim_chunk_from, dim_chunk_to)
+                dim_sel_len = dim_sel.stop - dim_sel.start
+
+            else:
+                raise RuntimeError('unexpected selection type')
+
+            chunk_ranges.append(dim_chunk_range)
+            if dim_sel_len is not None:
+                sel_shape.append(dim_sel_len)
+
+        return chunk_ranges, tuple(sel_shape)
+
+    def get_chunk_projection(self, chunk_coords):
+
+        # chunk_coords: holds the index along each dimension for the current chunk within the
+        # chunk grid. E.g., (0, 0) locates the first (top left) chunk in a 2D chunk grid.
+
+        chunk_selection = []
+        out_selection = []
+
+        # iterate over dimensions (axes) of the array
+        for dim_sel, dim_chunk_idx, dim_chunk_len in zip(self.selection, chunk_coords,
+                                                         self.array._chunks):
+
+            # dim_sel: selection for current dimension
+            # dim_chunk_idx: chunk index along current dimension
+            # dim_chunk_len: chunk length along current dimension
+
+            # selection into output array to store data from current chunk
+            dim_out_sel = None
+
+            # calculate offset for current chunk along current dimension - this is used to
+            # determine the values to be extracted from the current chunk
+            dim_chunk_offset = dim_chunk_idx * dim_chunk_len
+
+            # handle integer selection, i.e., single item
+            if isinstance(dim_sel, int):
+
+                dim_chunk_sel = dim_sel - dim_chunk_offset
+
+                # N.B., leave dim_out_sel as None, as this dimension has been dropped in the
+                # output array because of single value index
+
+            # handle slice selection, i.e., contiguous range of items
+            elif isinstance(dim_sel, slice):
+
+                if dim_sel.start <= dim_chunk_offset:
+                    # selection starts before current chunk
+                    dim_chunk_sel_start = 0
+                    dim_out_offset = dim_chunk_offset - dim_sel.start
+
+                else:
+                    # selection starts within current chunk
+                    dim_chunk_sel_start = dim_sel.start - dim_chunk_offset
+                    dim_out_offset = 0
+
+                if dim_sel.stop > dim_chunk_offset + dim_chunk_len:
+                    # selection ends after current chunk
+                    dim_chunk_sel_stop = dim_chunk_len
+
+                else:
+                    # selection ends within current chunk
+                    dim_chunk_sel_stop = dim_sel.stop - dim_chunk_offset
+
+                dim_chunk_sel = slice(dim_chunk_sel_start, dim_chunk_sel_stop)
+                dim_chunk_nitems = dim_chunk_sel_stop - dim_chunk_sel_start
+                dim_out_sel = slice(dim_out_offset, dim_out_offset + dim_chunk_nitems)
+
+                # TODO refactor code with OrthogonalIndexer
+
+            else:
+                raise RuntimeError('unexpected selection type')
+
+            # add to chunk selection
+            chunk_selection.append(dim_chunk_sel)
+
+            # add to output selection
+            if dim_out_sel is not None:
+                out_selection.append(dim_out_sel)
+
+        # normalise for indexing into numpy arrays
+        chunk_selection = tuple(chunk_selection)
+        out_selection = tuple(out_selection)
+
+        return chunk_selection, out_selection
+
+
+# noinspection PyProtectedMember
+class OrthogonalIndexer(IndexerBase):
+
+    def __init__(self, selection, array):
+
+        # ensure tuple
+        if not isinstance(selection, tuple):
+            selection = (selection,)
+
+        # handle ellipsis
+        selection = replace_ellipsis(selection, array._shape)
+
+        # validation - check dimensionality
+        if len(selection) > len(array._shape):
+            raise IndexError('too many indices for array')
+        if len(selection) < len(array._shape):
+            raise IndexError('not enough indices for array')
+
+        # normalization
+        selection = self.normalize_selection(selection, array)
+
+        # super initialisation
+        super(OrthogonalIndexer, self).__init__(selection, array)
+
+        # figure out if we're going to be doing advanced indexing on chunks, if so then
+        # chunk selections will need special handling
+        self.is_advanced = any([not isinstance(dim_sel, (int, slice))
+                                for dim_sel in selection])
+
+        # locate axes that need to get squeezed out later if doing advanced selection
+        if self.is_advanced:
+            self.squeeze_axes = tuple([i for i, dim_sel in enumerate(selection)
+                                       if isinstance(dim_sel, int)])
+        else:
+            self.squeeze_axes = None
+
     def normalize_selection(self, selection, array):
         # normalize each dimension
         selection = tuple(self.normalize_dim_selection(s, l, c)
-                          for s, l, c in zip(selection, array.shape, array.chunks))
+                          for s, l, c in zip(selection, array._shape, array._chunks))
         return selection
 
     def normalize_dim_selection(self, dim_sel, dim_len, dim_chunk_len):
@@ -107,56 +327,21 @@ class OrthogonalSelection(object):
 
         if isinstance(dim_sel, numbers.Integral):
 
-            # normalize type to int
-            dim_sel = int(dim_sel)
-
-            # handle wraparound
-            if dim_sel < 0:
-                dim_sel = dim_len + dim_sel
-
-            # handle out of bounds
-            if dim_sel >= dim_len or dim_sel < 0:
-                raise IndexError('index out of bounds: %s' % dim_sel)
-
+            dim_sel = normalize_integer_selection(dim_sel, dim_len)
             return dim_sel
 
         elif isinstance(dim_sel, slice):
 
-            # handle slice with None bound
-            start = 0 if dim_sel.start is None else dim_sel.start
-            stop = dim_len if dim_sel.stop is None else dim_sel.stop
-
-            # handle wraparound
-            if start < 0:
-                start = dim_len + start
-            if stop < 0:
-                stop = dim_len + stop
-
-            # handle zero-length axis
-            if start == stop == dim_len == 0:
-                return slice(0, 0)
-
-            # handle out of bounds
-            if start < 0:
-                raise IndexError('start index out of bounds: %s' % dim_sel.start)
-            if stop < 0:
-                raise IndexError('stop index out of bounds: %s' % dim_sel.stop)
-            if start >= dim_len:
-                raise IndexError('start index out of bounds: %ss' % dim_sel.start)
-            if stop > dim_len:
-                stop = dim_len
-            if stop < start:
-                stop = start
+            dim_sel = normalize_slice_selection(dim_sel, dim_len)
 
             # handle slice with step
-            if dim_sel.step is not None:
-                if dim_sel.step > 1:
-                    dim_sel = np.arange(start, stop, dim_sel.step)
-                    return IntArrayOrthogonalSelection(dim_sel, dim_len, dim_chunk_len)
-                elif dim_sel.step < 1:
-                    raise IndexError('only positive step supported')
+            if dim_sel.step > 1:
+                dim_sel = np.arange(dim_sel.start, dim_sel.stop, dim_sel.step)
+                return IntArrayOrthogonalSelection(dim_sel, dim_len, dim_chunk_len)
+            elif dim_sel.step < 1:
+                raise IndexError('only positive step supported')
 
-            return slice(start, stop)
+            return dim_sel
 
         elif hasattr(dim_sel, 'dtype') and hasattr(dim_sel, 'shape'):
 
@@ -183,7 +368,7 @@ class OrthogonalSelection(object):
         sel_shape = []
 
         # iterate over dimensions of the array
-        for dim_sel, dim_chunk_len in zip(self.selection, self.array.chunks):
+        for dim_sel, dim_chunk_len in zip(self.selection, self.array._chunks):
 
             # dim_sel: selection for current dimension
             # dim_chunk_len: length of chunk along current dimension
@@ -236,7 +421,7 @@ class OrthogonalSelection(object):
 
         # iterate over dimensions (axes) of the array
         for dim_sel, dim_chunk_idx, dim_chunk_len in zip(self.selection, chunk_coords,
-                                                         self.array.chunks):
+                                                         self.array._chunks):
 
             # dim_sel: selection for current dimension
             # dim_chunk_idx: chunk index along current dimension
@@ -309,14 +494,28 @@ class OrthogonalSelection(object):
             # numpy doesn't support orthogonal indexing directly as yet, so need to work
             # around via np.ix_. Also np.ix_ does not support a mixture of arrays and slices
             # or integers, so need to convert slices and integers into ranges.
-            chunk_selection = [range(dim_chunk_sel.start, dim_chunk_sel.stop)
-                               if isinstance(dim_chunk_sel, slice)
-                               else [dim_chunk_sel] if isinstance(dim_chunk_sel, int)
-                               else dim_chunk_sel
-                               for dim_chunk_sel in chunk_selection]
-            chunk_selection = np.ix_(*chunk_selection)
+            chunk_selection = ix_(*chunk_selection)
 
         return chunk_selection, out_selection
+
+
+def slice_to_range(dim_sel):
+    return range(dim_sel.start, dim_sel.stop, 1 if dim_sel.step is None else dim_sel.step)
+
+
+def ix_(*selection):
+    """Convert an orthogonal selection to a numpy advanced (fancy) selection, with support for
+    slices and single ints."""
+
+    # replace slice and int as these are not supported by numpy ix_()
+    selection = [slice_to_range(dim_sel) if isinstance(dim_sel, slice)
+                 else [dim_sel] if isinstance(dim_sel, int)
+                 else dim_sel
+                 for dim_sel in selection]
+
+    selection = np.ix_(*selection)
+
+    return selection
 
 
 class IntArrayOrthogonalSelection(object):

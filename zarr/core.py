@@ -17,7 +17,7 @@ from zarr.attrs import Attributes
 from zarr.errors import PermissionError, err_read_only, err_array_not_found
 from zarr.compat import reduce
 from zarr.codecs import AsType, get_codec
-from zarr.indexing import OIndex, OrthogonalSelection
+from zarr.indexing import OIndex, OrthogonalIndexer, BasicIndexer
 
 
 class Array(object):
@@ -388,7 +388,7 @@ class Array(object):
         else:
             raise TypeError('len() of unsized object')
 
-    def __getitem__(self, item):
+    def __getitem__(self, selection):
         """Retrieve data for some portion of the array. Most NumPy-style
         slicing operations are supported.
 
@@ -459,21 +459,27 @@ class Array(object):
 
         """
 
+        # delegate to method
+        return self.get_basic_selection(selection)
+
+    def get_basic_selection(self, selection, out=None):
+        """TODO"""
+
         # refresh metadata
         if not self._cache_metadata:
             self._load_metadata()
 
         # handle zero-dimensional arrays
         if self._shape == ():
-            return self._getitem_zd(item)
+            return self._get_basic_selection_zd(selection, out=out)
         else:
-            return self._getitem_nd(item)
+            return self._get_basic_selection_nd(selection, out=out)
 
-    def _getitem_zd(self, item):
-        # special case __getitem__ for zero-dimensional array
+    def _get_basic_selection_zd(self, selection, out=None):
+        # special case basic selection for zero-dimensional array
 
-        # check item is valid
-        if item not in ((), Ellipsis):
+        # check selection is valid
+        if selection not in ((), Ellipsis):
             raise IndexError('too many indices for array')
 
         try:
@@ -484,79 +490,52 @@ class Array(object):
         except KeyError:
             # chunk not initialized
             if self._fill_value is not None:
-                out = np.empty((), dtype=self._dtype)
-                out.fill(self._fill_value)
+                chunk = np.empty((), dtype=self._dtype)
+                chunk.fill(self._fill_value)
             else:
-                out = np.zeros((), dtype=self._dtype)
+                chunk = np.zeros((), dtype=self._dtype)
 
         else:
-            out = self._decode_chunk(cdata)
+            chunk = self._decode_chunk(cdata)
 
         # handle selection of the scalar value via empty tuple
-        out = out[item]
+        if out is None:
+            out = chunk[selection]
+        else:
+            out[selection] = chunk[selection]
 
         return out
 
-    def _getitem_nd(self, item):
-        # implementation of __getitem__ for array with at least one dimension
+    def _get_basic_selection_nd(self, selection, out=None):
+        # implementation of basic selection for array with at least one dimension
 
-        # N.B., this is the crux of zarr. We iterate over all chunks which overlap the selection
-        # and thus contain data that needs to be extracted. Each chunk is processed in turn,
-        # extracting the necessary data and storing into the correct location in the output array.
+        # setup indexer
+        indexer = BasicIndexer(selection, self)
+
+        return self._get_selection(indexer, out=out)
+
+    def get_orthogonal_selection(self, selection, out=None):
+
+        # refresh metadata
+        if not self._cache_metadata:
+            self._load_metadata()
+
+        # setup indexer
+        indexer = OrthogonalIndexer(selection, self)
+
+        return self._get_selection(indexer, out=out)
+
+    def _get_selection(self, indexer, out=None):
+
+        # We iterate over all chunks which overlap the selection and thus contain data that needs
+        # to be extracted. Each chunk is processed in turn, extracting the necessary data and
+        # storing into the correct location in the output array.
 
         # N.B., it is an important optimisation that we only visit chunks which overlap the
         # selection. This minimises the nuimber of iterations in the main for loop.
 
-        # normalize selection
-        selection = normalize_array_selection(item, self._shape, self._chunks)
-
-        # figure out if we're doing advanced indexing, count number of advanced selections - if
-        # more than one need special handling, because we are doing orthogonal indexing here,
-        # which is different from fancy indexing if there is more than one array selection
-        n_advanced_selection = sum(1 for dim_sel in selection
-                                   if not isinstance(dim_sel, (int, slice)))
-
-        # axes that need to get squeezed out if doing advanced selection
-        if n_advanced_selection > 0:
-            squeeze_axes = tuple([i for i, dim_sel in enumerate(selection)
-                                  if isinstance(dim_sel, int)])
-        else:
-            squeeze_axes = None
-
         # determine indices of chunks overlapping the selection
-        chunk_ranges, sel_shape = get_chunks_for_selection(selection, self._chunks)
-
-        # setup output array
-        out = np.empty(sel_shape, dtype=self._dtype, order=self._order)
-
-        # iterate over chunks in range, i.e., chunks overlapping the selection
-        for chunk_coords in itertools.product(*chunk_ranges):
-
-            # obtain selections for chunk and output arrays
-            chunk_selection, out_selection = \
-                get_chunk_selections(selection, chunk_coords, self._chunks, n_advanced_selection)
-
-            # obtain the destination array as a view of the output array
-            if out_selection:
-                dest = out[out_selection]
-            else:
-                dest = out
-
-            # load chunk selection into output array
-            self._chunk_getitem(chunk_coords, chunk_selection, dest, squeeze_axes)
-
-        if out.shape:
-            return out
-        else:
-            return out[()]
-
-    def get_orthogonal_selection(self, selection, out=None):
-
-        # setup selection
-        selection = OrthogonalSelection(selection, self)
-
-        # determine indices of chunks overlapping the selection
-        chunk_ranges, sel_shape = selection.get_overlapping_chunks()
+        chunk_ranges, sel_shape = indexer.get_overlapping_chunks()
 
         # setup output array
         if out is None:
@@ -572,11 +551,11 @@ class Array(object):
         for chunk_coords in itertools.product(*chunk_ranges):
 
             # obtain selections for chunk and output arrays
-            chunk_selection, out_selection = selection.get_chunk_projection(chunk_coords)
+            chunk_selection, out_selection = indexer.get_chunk_projection(chunk_coords)
 
             # load chunk selection into output array
             self._chunk_getitem(chunk_coords, chunk_selection, out, out_selection,
-                                squeeze_axes=selection.squeeze_axes)
+                                squeeze_axes=indexer.squeeze_axes)
 
         if out.shape:
             return out
@@ -759,32 +738,34 @@ class Array(object):
 
             if isinstance(out, np.ndarray) and \
                     is_total_slice(chunk_selection, self._chunks) and \
-                    not self._filters and \
-                    ((self._order == 'C' and out.flags.c_contiguous) or
-                     (self._order == 'F' and out.flags.f_contiguous)):
-
-                # optimization: we want the whole chunk, and the destination is
-                # contiguous, so we can decompress directly from the chunk
-                # into the destination array
+                    not self._filters:
 
                 dest = out[out_selection]
-                if self._compressor:
-                    self._compressor.decode(cdata, dest)
-                else:
-                    chunk = np.frombuffer(cdata, dtype=self._dtype)
-                    chunk = chunk.reshape(self._chunks, order=self._order)
-                    np.copyto(dest, chunk)
+                contiguous = ((self._order == 'C' and dest.flags.c_contiguous) or
+                              (self._order == 'F' and dest.flags.f_contiguous))
 
-            else:
+                if contiguous:
 
-                # decode chunk
-                chunk = self._decode_chunk(cdata)
+                    # optimization: we want the whole chunk, and the destination is
+                    # contiguous, so we can decompress directly from the chunk
+                    # into the destination array
 
-                # set data in output array
-                tmp = chunk[chunk_selection]
-                if squeeze_axes:
-                    tmp = np.squeeze(tmp, axis=squeeze_axes)
-                out[out_selection] = tmp
+                    if self._compressor:
+                        self._compressor.decode(cdata, dest)
+                    else:
+                        chunk = np.frombuffer(cdata, dtype=self._dtype)
+                        chunk = chunk.reshape(self._chunks, order=self._order)
+                        np.copyto(dest, chunk)
+                    return
+
+            # decode chunk
+            chunk = self._decode_chunk(cdata)
+
+            # set data in output array
+            tmp = chunk[chunk_selection]
+            if squeeze_axes:
+                tmp = np.squeeze(tmp, axis=squeeze_axes)
+            out[out_selection] = tmp
 
     def _chunk_setitem(self, chunk_coords, chunk_selection, value, squeeze_axes=None):
         """Replace part or whole of a chunk.

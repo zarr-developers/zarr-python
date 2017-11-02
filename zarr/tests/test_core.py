@@ -18,7 +18,18 @@ from zarr.core import Array
 from zarr.errors import PermissionError
 from zarr.compat import PY2
 from zarr.util import buffer_size
+from zarr.indexing import ix_
 from numcodecs import Delta, FixedScaleOffset, Zlib, Blosc, BZ2
+
+
+def oindex(a, selection):
+    """Implementation of orthogonal indexing with slices and ints."""
+    squeeze_axes = tuple([i for i, s in enumerate(selection) if isinstance(s, int)])
+    selection = ix_(*selection)
+    result = a[selection]
+    if squeeze_axes:
+        result = result.squeeze(axis=squeeze_axes)
+    return result
 
 
 class TestArray(unittest.TestCase):
@@ -751,6 +762,7 @@ class TestArray(unittest.TestCase):
         with assert_raises(IndexError):
             z.oindex[[[True, False], [False, True]]]  # too many dimensions
 
+    # noinspection PyStatementEffect
     def test_orthogonal_indexing_1d_int(self):
 
         # setup
@@ -768,7 +780,7 @@ class TestArray(unittest.TestCase):
         # test wraparound
         ix = [0, 3, 10, -23, -12, -1]
         expect = a[ix]
-        actual = z[ix]
+        actual = z.oindex[ix]
         assert_array_equal(expect, actual)
 
         # test errors
@@ -787,26 +799,23 @@ class TestArray(unittest.TestCase):
 
     def _test_orthogonal_indexing_2d_common(self, a, z, ix0, ix1):
 
-        # index both axes with array
-        expect = a[np.ix_(ix0, ix1)]
-        actual = z[ix0, ix1]
-        assert_array_equal(expect, actual)
+        selections = [
+            # index both axes with array
+            (ix0, ix1),
+            # mixed indexing with array / slice
+            (ix0, slice(1, 5)),
+            (slice(250, 350), ix1),
+            # mixed indexing with array / int
+            (ix0, 4),
+            (42, ix1),
+        ]
 
-        # mixed indexing with array / slice
-        expect = a[ix0, 1:5]
-        actual = z[ix0, 1:5]
-        assert_array_equal(expect, actual)
-        expect = a[250:350, ix1]
-        actual = z[250:350, ix1]
-        assert_array_equal(expect, actual)
-
-        # mixed indexing with array / single index
-        expect = a[ix0, 4]
-        actual = z[ix0, 4]
-        assert_array_equal(expect, actual)
-        expect = a[42, ix1]
-        actual = z[42, ix1]
-        assert_array_equal(expect, actual)
+        for selection in selections:
+            expect = oindex(a, selection)
+            actual = z.get_orthogonal_selection(selection)
+            assert_array_equal(expect, actual)
+            actual = z.oindex[selection]
+            assert_array_equal(expect, actual)
 
     def test_orthogonal_indexing_2d_bool(self):
 
@@ -830,8 +839,8 @@ class TestArray(unittest.TestCase):
                 (np.nonzero(ix0)[0], ix1),
             )
             for selection in selections:
-                expect = a[np.ix_(ix0, ix1)]
-                actual = z[ix0, ix1]
+                expect = oindex(a, selection)
+                actual = z.oindex[selection]
                 assert_array_equal(expect, actual)
 
     def test_orthogonal_indexing_2d_int(self):
@@ -852,65 +861,36 @@ class TestArray(unittest.TestCase):
 
     def _test_orthogonal_indexing_3d_common(self, a, z, ix0, ix1, ix2):
 
-        # index all axes with array
-        expect = a[np.ix_(ix0, ix1, ix2)]
-        actual = z[ix0, ix1, ix2]
-        assert_array_equal(expect, actual)
-
-        # mixed indexing with single array / slices
-        expect = a[ix0, 15:25, 1:5]
-        actual = z[ix0, 15:25, 1:5]
-        assert_array_equal(expect, actual)
-        expect = a[50:70, ix1, 1:5]
-        actual = z[50:70, ix1, 1:5]
-        assert_array_equal(expect, actual)
-        expect = a[50:70, 15:25, ix2]
-        actual = z[50:70, 15:25, ix2]
-        assert_array_equal(expect, actual)
-
-        # mixed indexing with single array / single index
-        expect = a[ix0, 42, 4]
-        actual = z[ix0, 42, 4]
-        assert_array_equal(expect, actual)
-        expect = a[42, ix1, 4]
-        actual = z[42, ix1, 4]
-        assert_array_equal(expect, actual)
-        expect = a[84, 42, ix2]
-        actual = z[84, 42, ix2]
-        assert_array_equal(expect, actual)
-
-        # mixed indexing with single array / slice / single index
-        expect = a[ix0, 15:25, 4]
-        actual = z[ix0, 15:25, 4]
-        assert_array_equal(expect, actual)
-        expect = a[42, ix1, 1:5]
-        actual = z[42, ix1, 1:5]
-        assert_array_equal(expect, actual)
-        expect = a[50:70, 42, ix2]
-        actual = z[50:70, 42, ix2]
-        assert_array_equal(expect, actual)
-
-        # mixed indexing with two array / slice
-        expect = a[np.ix_(ix0, ix1, range(1, 5))]
-        actual = z[ix0, ix1, 1:5]
-        assert_array_equal(expect, actual)
-        expect = a[np.ix_(range(50, 70), ix1, ix2)]
-        actual = z[50:70, ix1, ix2]
-        assert_array_equal(expect, actual)
-        expect = a[np.ix_(ix0, range(15, 25), ix2)]
-        actual = z[ix0, 15:25, ix2]
-        assert_array_equal(expect, actual)
-
-        # mixed indexing with two array / integer
-        expect = a[np.ix_(ix0, ix1, [4])].squeeze(axis=2)
-        actual = z[ix0, ix1, 4]
-        assert_array_equal(expect, actual)
-        expect = a[np.ix_([42], ix1, ix2)].squeeze(axis=0)
-        actual = z[42, ix1, ix2]
-        assert_array_equal(expect, actual)
-        expect = a[np.ix_(ix0, [42], ix2)].squeeze(axis=1)
-        actual = z[ix0, 42, ix2]
-        assert_array_equal(expect, actual)
+        selections = [
+            # index all axes with array
+            (ix0, ix1, ix2),
+            # mixed indexing with single array / slices
+            (ix0, slice(15, 25), slice(1, 5)),
+            (slice(50, 70), ix1, slice(1, 5)),
+            (slice(50, 70), slice(15, 25), ix2),
+            # mixed indexing with single array / ints
+            (ix0, 42, 4),
+            (84, ix1, 4),
+            (84, 42, ix2),
+            # mixed indexing with single array / slice / int
+            (ix0, slice(15, 25), 4),
+            (42, ix1, slice(1, 5)),
+            (slice(50, 70), 42, ix2),
+            # mixed indexing with two array / slice
+            (ix0, ix1, slice(1, 5)),
+            (slice(50, 70), ix1, ix2),
+            (ix0, slice(15, 25), ix2),
+            # mixed indexing with two array / integer
+            (ix0, ix1, 4),
+            (42, ix1, ix2),
+            (ix0, 42, ix2),
+        ]
+        for selection in selections:
+            expect = oindex(a, selection)
+            actual = z.get_orthogonal_selection(selection)
+            assert_array_equal(expect, actual)
+            actual = z.oindex[selection]
+            assert_array_equal(expect, actual)
 
     def test_orthogonal_indexing_3d_bool(self):
 
@@ -933,12 +913,12 @@ class TestArray(unittest.TestCase):
         z = self.create_array(shape=a.shape, chunks=(1, 2, 3), dtype=a.dtype)
         z[:] = a
 
-        expect = a[np.ix_([0], range(2), [0, 1, 2])].squeeze(axis=0)
-        actual = z[0, :, [0, 1, 2]]
+        expect = a[ix_([0], range(2), [0, 1, 2])].squeeze(axis=0)
+        actual = z.oindex[0, :, [0, 1, 2]]
         assert_array_equal(expect, actual)
 
-        expect = a[np.ix_([0], range(2), [True, True, True])].squeeze(axis=0)
-        actual = z[0, :, [True, True, True]]
+        expect = a[ix_([0], range(2), [True, True, True])].squeeze(axis=0)
+        actual = z.oindex[0, :, [True, True, True]]
         assert_array_equal(expect, actual)
 
     def test_orthogonal_indexing_3d_int(self):
@@ -999,8 +979,8 @@ class TestArray(unittest.TestCase):
         a[:] = 0
         z[:] = 0
         selection = ix0, ix1
-        a[np.ix_(*selection)] = v[np.ix_(*selection)]
-        z[selection] = v[np.ix_(*selection)]
+        a[ix_(*selection)] = v[ix_(*selection)]
+        z[selection] = v[ix_(*selection)]
         assert_array_equal(a, z[:])
 
         # mixed indexing with array / slice or int
@@ -1053,8 +1033,8 @@ class TestArray(unittest.TestCase):
         a[:] = 0
         z[:] = 0
         selection = ix0, ix1, ix2
-        a[np.ix_(*selection)] = v[np.ix_(*selection)]
-        z[selection] = v[np.ix_(*selection)]
+        a[ix_(*selection)] = v[ix_(*selection)]
+        z[selection] = v[ix_(*selection)]
         assert_array_equal(a, z[:])
 
         # mixed indexing with single bool array / slice or int
@@ -1080,7 +1060,7 @@ class TestArray(unittest.TestCase):
         a[:] = 0
         z[:] = 0
         zsel = ix0, ix1, slice(1, 5)
-        vsel = np.ix_(ix0, ix1, range(1, 5))
+        vsel = ix_(ix0, ix1, range(1, 5))
         a[vsel] = v[vsel]
         z[zsel] = v[vsel]
         assert_array_equal(a, z[:])
@@ -1089,7 +1069,7 @@ class TestArray(unittest.TestCase):
         a[:] = 0
         z[:] = 0
         zsel = ix0, ix1, 4
-        vsel = np.ix_(ix0, ix1, [4])
+        vsel = ix_(ix0, ix1, [4])
         a[vsel] = v[vsel]
         z[zsel] = v[vsel].squeeze(axis=2)
         assert_array_equal(a, z[:])
