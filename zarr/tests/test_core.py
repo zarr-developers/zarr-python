@@ -32,6 +32,7 @@ def oindex(a, selection):
     return result
 
 
+# noinspection PyMethodMayBeStatic
 class TestArray(unittest.TestCase):
 
     def test_array_init(self):
@@ -939,11 +940,16 @@ class TestArray(unittest.TestCase):
             ix2.sort()
             self._test_orthogonal_indexing_3d_common(a, z, ix0, ix1, ix2)
 
+    # TODO change to use .oindex for setter
+
     def _test_orthogonal_indexing_1d_common_set(self, v, a, z, ix):
         a[:] = 0
-        z[:] = 0
         a[ix] = v[ix]
-        z[ix] = v[ix]
+        z[:] = 0
+        z.oindex[ix] = v[ix]
+        assert_array_equal(a, z[:])
+        z[:] = 0
+        z.set_orthogonal_selection(ix, v[ix])
         assert_array_equal(a, z[:])
 
     def test_orthogonal_indexing_1d_bool_set(self):
@@ -975,16 +981,10 @@ class TestArray(unittest.TestCase):
 
     def _test_orthogonal_indexing_2d_common_set(self, v, a, z, ix0, ix1):
 
-        # index both axes with array
-        a[:] = 0
-        z[:] = 0
-        selection = ix0, ix1
-        a[ix_(*selection)] = v[ix_(*selection)]
-        z[selection] = v[ix_(*selection)]
-        assert_array_equal(a, z[:])
-
-        # mixed indexing with array / slice or int
         selections = (
+            # index both axes with array
+            (ix0, ix1),
+            # mixed indexing with array / slice or int
             (ix0, slice(1, 5)),
             (slice(250, 350), ix1),
             (ix0, 4),
@@ -992,9 +992,12 @@ class TestArray(unittest.TestCase):
         )
         for selection in selections:
             a[:] = 0
+            a[ix_(*selection)] = v[ix_(*selection)]
             z[:] = 0
-            a[selection] = v[selection]
-            z[selection] = v[selection]
+            z.oindex[selection] = oindex(v, selection)
+            assert_array_equal(a, z[:])
+            z[:] = 0
+            z.set_orthogonal_selection(selection, oindex(v, selection))
             assert_array_equal(a, z[:])
 
     def test_orthogonal_indexing_2d_bool_set(self):
@@ -1029,16 +1032,10 @@ class TestArray(unittest.TestCase):
 
     def _test_orthogonal_indexing_3d_common_set(self, v, a, z, ix0, ix1, ix2):
 
-        # index all axes with bool array
-        a[:] = 0
-        z[:] = 0
-        selection = ix0, ix1, ix2
-        a[ix_(*selection)] = v[ix_(*selection)]
-        z[selection] = v[ix_(*selection)]
-        assert_array_equal(a, z[:])
-
-        # mixed indexing with single bool array / slice or int
         selections = (
+            # index all axes with bool array
+            (ix0, ix1, ix2),
+            # mixed indexing with single bool array / slice or int
             (ix0, slice(15, 25), slice(1, 5)),
             (slice(50, 70), ix1, slice(1, 5)),
             (slice(50, 70), slice(15, 25), ix2),
@@ -1048,31 +1045,20 @@ class TestArray(unittest.TestCase):
             (ix0, slice(15, 25), 4),
             (slice(50, 70), ix1, 4),
             (slice(50, 70), 42, ix2),
+            # indexing with two arrays / slice
+            (ix0, ix1, slice(1, 5)),
+            # indexing with two arrays / integer
+            (ix0, ix1, 4),
         )
         for selection in selections:
             a[:] = 0
+            a[ix_(*selection)] = v[ix_(*selection)]
             z[:] = 0
-            a[selection] = v[selection]
-            z[selection] = v[selection]
+            z.oindex[selection] = oindex(v, selection)
             assert_array_equal(a, z[:])
-
-        # indexing with two arrays / slice
-        a[:] = 0
-        z[:] = 0
-        zsel = ix0, ix1, slice(1, 5)
-        vsel = ix_(ix0, ix1, range(1, 5))
-        a[vsel] = v[vsel]
-        z[zsel] = v[vsel]
-        assert_array_equal(a, z[:])
-
-        # indexing with two arrays / integer
-        a[:] = 0
-        z[:] = 0
-        zsel = ix0, ix1, 4
-        vsel = ix_(ix0, ix1, [4])
-        a[vsel] = v[vsel]
-        z[zsel] = v[vsel].squeeze(axis=2)
-        assert_array_equal(a, z[:])
+            z[:] = 0
+            z.set_orthogonal_selection(selection, oindex(v, selection))
+            assert_array_equal(a, z[:])
 
     def test_orthogonal_indexing_3d_bool_set(self):
 
@@ -1106,6 +1092,51 @@ class TestArray(unittest.TestCase):
             ix2 = np.random.choice(a.shape[2], size=int(a.shape[2] * .5), replace=True)
             ix2.sort()
             self._test_orthogonal_indexing_3d_common_set(v, a, z, ix0, ix1, ix2)
+
+    def test_get_selection_out(self):
+
+        # basic selections
+        a = np.arange(1050)
+        z = self.create_array(shape=1050, chunks=100, dtype=a.dtype)
+        z[:] = a
+        selections = [
+            slice(50, 150),
+            slice(0, 1050),
+            slice(1, 2),
+        ]
+        for selection in selections:
+            expect = a[selection]
+            out = self.create_array(shape=expect.shape, chunks=10, dtype=expect.dtype, fill_value=0)
+            z.get_basic_selection(selection, out=out)
+            assert_array_equal(expect, out[:])
+
+        # orthogonal selections
+        a = np.arange(10000, dtype=int).reshape(1000, 10)
+        z = self.create_array(shape=a.shape, chunks=(300, 3), dtype=a.dtype)
+        z[:] = a
+        np.random.seed(42)
+        # test with different degrees of sparseness
+        for p in 0.5, 0.1, 0.01:
+            ix0 = np.random.binomial(1, p, size=a.shape[0]).astype(bool)
+            ix1 = np.random.binomial(1, .5, size=a.shape[1]).astype(bool)
+            selections = [
+                # index both axes with array
+                (ix0, ix1),
+                # mixed indexing with array / slice
+                (ix0, slice(1, 5)),
+                (slice(250, 350), ix1),
+                # mixed indexing with array / int
+                (ix0, 4),
+                (42, ix1),
+                # mixed int array / bool array
+                (ix0, np.nonzero(ix1)[0]),
+                (np.nonzero(ix0)[0], ix1),
+            ]
+            for selection in selections:
+                expect = oindex(a, selection)
+                out = self.create_array(shape=expect.shape, chunks=10, dtype=expect.dtype, fill_value=0)
+                z.get_orthogonal_selection(selection, out=out)
+                assert_array_equal(expect, out[:])
 
 
 class TestArrayWithPath(TestArray):

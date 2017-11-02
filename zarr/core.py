@@ -562,7 +562,7 @@ class Array(object):
         else:
             return out[()]
 
-    def __setitem__(self, item, value):
+    def __setitem__(self, selection, value):
         """Modify data for some portion of the array.
 
         Examples
@@ -621,6 +621,11 @@ class Array(object):
 
         """
 
+        self.set_basic_selection(selection, value)
+
+    def set_basic_selection(self, selection, value):
+        """TODO"""
+
         # guard conditions
         if self._read_only:
             err_read_only()
@@ -631,15 +636,30 @@ class Array(object):
 
         # handle zero-dimensional arrays
         if self._shape == ():
-            return self._setitem_zd(item, value)
+            return self._set_basic_selection_zd(selection, value)
         else:
-            return self._setitem_nd(item, value)
+            return self._set_basic_selection_nd(selection, value)
 
-    def _setitem_zd(self, item, value):
+    def set_orthogonal_selection(self, selection, value):
+
+        # guard conditions
+        if self._read_only:
+            err_read_only()
+
+        # refresh metadata
+        if not self._cache_metadata:
+            self._load_metadata_nosync()
+
+        # setup indexer
+        indexer = OrthogonalIndexer(selection, self)
+
+        self._set_selection(indexer, value)
+
+    def _set_basic_selection_zd(self, selection, value):
         # special case __setitem__ for zero-dimensional array
 
         # check item is valid
-        if item not in ((), Ellipsis):
+        if selection not in ((), Ellipsis):
             raise IndexError('too many indices for array')
 
         # setup data to store
@@ -656,53 +676,55 @@ class Array(object):
         cdata = self._encode_chunk(arr)
         self.chunk_store[ckey] = cdata
 
-    def _setitem_nd(self, item, value):
+    def _set_basic_selection_nd(self, selection, value):
         # implementation of __setitem__ for array with at least one dimension
 
-        # normalize selection
-        selection = normalize_array_selection(item, self._shape, self._chunks)
+        # setup indexer
+        indexer = BasicIndexer(selection, self)
 
-        # figure out if we're doing advanced indexing, count number of advanced selections - if
-        # more than one need special handling, because we are doing orthogonal indexing here,
-        # which is different from fancy indexing if there is more than one array selection
-        n_advanced_selection = sum(1 for dim_sel in selection
-                                   if not isinstance(dim_sel, (int, slice)))
+        self._set_selection(indexer, value)
 
-        # axes that need to get squeezed out if doing advanced selection
-        if n_advanced_selection > 0:
-            squeeze_axes = tuple([i for i, dim_sel in enumerate(selection)
-                                  if isinstance(dim_sel, int)])
-        else:
-            squeeze_axes = None
+    def _set_selection(self, indexer, value):
+
+        # We iterate over all chunks which overlap the selection and thus contain data that needs
+        # to be replaced. Each chunk is processed in turn, extracting the necessary data from the
+        # value array and storing into the chunk array.
+
+        # N.B., it is an important optimisation that we only visit chunks which overlap the
+        # selection. This minimises the nuimber of iterations in the main for loop.
 
         # determine indices of chunks overlapping the selection
-        chunk_ranges, sel_shape = get_chunks_for_selection(selection, self._chunks)
+        chunk_ranges, sel_shape = indexer.get_overlapping_chunks()
 
         # check value shape
         if np.isscalar(value):
             pass
-        elif sel_shape != value.shape:
-            raise ValueError('value shape does not match selection shape; expected %s, found %s'
-                             % (str(sel_shape), str(value.shape)))
+        else:
+            if not hasattr(value, 'shape'):
+                raise TypeError('value must be an array-like object')
+            if value.shape != sel_shape:
+                raise ValueError('value has wrong shape for selection')
 
         # iterate over chunks in range
         for chunk_coords in itertools.product(*chunk_ranges):
 
             # obtain selections for chunk and destination arrays
-            chunk_selection, out_selection = \
-                get_chunk_selections(selection, chunk_coords, self._chunks, n_advanced_selection)
+            chunk_selection, value_selection = indexer.get_chunk_projection(chunk_coords)
 
+            # extract data to store
             if np.isscalar(value):
-
-                # put data
-                self._chunk_setitem(chunk_coords, chunk_selection, value)
-
+                chunk_value = value
             else:
-                # assume value is array-like
+                chunk_value = value[value_selection]
+                # handle missing singleton dimensions
+                if indexer.squeeze_axes:
+                    item = [slice(None)] * self.ndim
+                    for a in indexer.squeeze_axes:
+                        item[a] = np.newaxis
+                    chunk_value = chunk_value[item]
 
-                # put data
-                dest = value[out_selection]
-                self._chunk_setitem(chunk_coords, chunk_selection, dest, squeeze_axes)
+            # put data
+            self._chunk_setitem(chunk_coords, chunk_selection, chunk_value)
 
     def _chunk_getitem(self, chunk_coords, chunk_selection, out, out_selection, squeeze_axes=None):
         """Obtain part or whole of a chunk.
@@ -767,7 +789,7 @@ class Array(object):
                 tmp = np.squeeze(tmp, axis=squeeze_axes)
             out[out_selection] = tmp
 
-    def _chunk_setitem(self, chunk_coords, chunk_selection, value, squeeze_axes=None):
+    def _chunk_setitem(self, chunk_coords, chunk_selection, value):
         """Replace part or whole of a chunk.
 
         Parameters
@@ -783,14 +805,14 @@ class Array(object):
 
         # synchronization
         if self._synchronizer is None:
-            self._chunk_setitem_nosync(chunk_coords, chunk_selection, value, squeeze_axes)
+            self._chunk_setitem_nosync(chunk_coords, chunk_selection, value)
         else:
             # synchronize on the chunk
             ckey = self._chunk_key(chunk_coords)
             with self._synchronizer[ckey]:
-                self._chunk_setitem_nosync(chunk_coords, chunk_selection, value, squeeze_axes)
+                self._chunk_setitem_nosync(chunk_coords, chunk_selection, value)
 
-    def _chunk_setitem_nosync(self, chunk_coords, chunk_selection, value, squeeze_axes=None):
+    def _chunk_setitem_nosync(self, chunk_coords, chunk_selection, value):
 
         # obtain key for chunk storage
         ckey = self._chunk_key(chunk_coords)
@@ -850,13 +872,6 @@ class Array(object):
                 chunk = self._decode_chunk(cdata)
                 if not chunk.flags.writeable:
                     chunk = chunk.copy(order='K')
-
-            # handle missing singleton dimensions
-            if squeeze_axes:
-                item = [slice(None)] * self.ndim
-                for a in squeeze_axes:
-                    item[a] = np.newaxis
-                value = value[item]
 
             # modify
             chunk[chunk_selection] = value

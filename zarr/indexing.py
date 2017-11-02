@@ -45,9 +45,10 @@ class OIndex(object):
         self.array = array
 
     def __getitem__(self, selection):
-
-        # delegate to method
         return self.array.get_orthogonal_selection(selection)
+
+    def __setitem__(self, selection, value):
+        return self.array.set_orthogonal_selection(selection, value)
 
 
 def normalize_integer_selection(dim_sel, dim_len):
@@ -153,7 +154,8 @@ class BasicIndexer(IndexerBase):
 
             # handle slice with step
             if dim_sel.step is not None and dim_sel.step != 1:
-                raise IndexError('slice with step not supported via basic indexing')
+                raise IndexError('slice with step not supported via basic indexing; use '
+                                 'orthogonal indexing instead')
 
             return dim_sel
 
