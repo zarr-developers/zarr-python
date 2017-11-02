@@ -798,6 +798,28 @@ class TestArray(unittest.TestCase):
             ix = [3, 105, 23, 127]  # not monotonically increasing
             z.oindex[ix]
 
+    def test_orthogonal_indexing_1d_slice_with_step(self):
+
+        # setup
+        a = np.arange(1050, dtype=int)
+        z = self.create_array(shape=a.shape, chunks=100, dtype=a.dtype)
+        z[:] = a
+
+        selections = [
+            slice(0, 1050),
+            slice(0, 1050, 1),
+            slice(0, 1050, 10),
+            slice(0, 1050, 100),
+            slice(0, 1050, 1000),
+            slice(50, 150, 1),
+            slice(50, 150, 10),
+            slice(50, 150, 100),
+        ]
+        for selection in selections:
+            expect = a[selection]
+            actual = z.oindex[selection]
+            assert_array_equal(expect, actual)
+
     def _test_orthogonal_indexing_2d_common(self, a, z, ix0, ix1):
 
         selections = [
@@ -805,7 +827,9 @@ class TestArray(unittest.TestCase):
             (ix0, ix1),
             # mixed indexing with array / slice
             (ix0, slice(1, 5)),
+            (ix0, slice(1, 5, 2)),
             (slice(250, 350), ix1),
+            (slice(250, 350, 10), ix1),
             # mixed indexing with array / int
             (ix0, 4),
             (42, ix1),
@@ -869,6 +893,9 @@ class TestArray(unittest.TestCase):
             (ix0, slice(15, 25), slice(1, 5)),
             (slice(50, 70), ix1, slice(1, 5)),
             (slice(50, 70), slice(15, 25), ix2),
+            (ix0, slice(15, 25, 5), slice(1, 5, 2)),
+            (slice(50, 70, 3), ix1, slice(1, 5, 2)),
+            (slice(50, 70, 3), slice(15, 25, 5), ix2),
             # mixed indexing with single array / ints
             (ix0, 42, 4),
             (84, ix1, 4),
@@ -939,8 +966,6 @@ class TestArray(unittest.TestCase):
             ix2 = np.random.choice(a.shape[2], size=int(a.shape[2] * .5), replace=True)
             ix2.sort()
             self._test_orthogonal_indexing_3d_common(a, z, ix0, ix1, ix2)
-
-    # TODO change to use .oindex for setter
 
     def _test_orthogonal_indexing_1d_common_set(self, v, a, z, ix):
         a[:] = 0
@@ -1134,7 +1159,8 @@ class TestArray(unittest.TestCase):
             ]
             for selection in selections:
                 expect = oindex(a, selection)
-                out = self.create_array(shape=expect.shape, chunks=10, dtype=expect.dtype, fill_value=0)
+                out = self.create_array(shape=expect.shape, chunks=10, dtype=expect.dtype,
+                                        fill_value=0)
                 z.get_orthogonal_selection(selection, out=out)
                 assert_array_equal(expect, out[:])
 
