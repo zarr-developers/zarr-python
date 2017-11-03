@@ -1118,6 +1118,102 @@ class TestArray(unittest.TestCase):
             ix2.sort()
             self._test_orthogonal_indexing_3d_common_set(v, a, z, ix0, ix1, ix2)
 
+    # noinspection PyStatementEffect
+    def test_coordinate_indexing_1d(self):
+
+        # setup
+        a = np.arange(1050, dtype=int)
+        z = self.create_array(shape=a.shape, chunks=100, dtype=a.dtype)
+        z[:] = a
+
+        np.random.seed(42)
+        # test with different degrees of sparseness
+        for p in 0.5, 0.1, 0.01:
+            ix = np.random.choice(a.shape[0], size=int(a.shape[0] * p), replace=True)
+            ix.sort()
+            expect = a[ix]
+            actual = z.get_coordinate_selection(ix)
+            assert_array_equal(expect, actual)
+            actual = z.vindex[ix]
+            assert_array_equal(expect, actual)
+
+        # test wraparound
+        ix = [0, 3, 10, -23, -12, -1]
+        expect = a[ix]
+        actual = z.get_coordinate_selection(ix)
+        assert_array_equal(expect, actual)
+
+        # test errors
+        with assert_raises(IndexError):
+            ix = [a.shape[0] + 1]  # out of bounds
+            z.get_coordinate_selection(ix)
+        with assert_raises(IndexError):
+            ix = [-(a.shape[0] + 1)]  # out of bounds
+            z.get_coordinate_selection(ix)
+        with assert_raises(IndexError):
+            ix = [[2, 4], [6, 8]]  # too many dimensions
+            z.get_coordinate_selection(ix)
+        with assert_raises(NotImplementedError):
+            ix = [3, 105, 23, 127]  # not monotonically increasing
+            z.get_coordinate_selection(ix)
+        with assert_raises(NotImplementedError):
+            ix = slice(5, 15)
+            z.get_coordinate_selection(ix)
+        with assert_raises(NotImplementedError):
+            ix = Ellipsis
+            z.get_coordinate_selection(ix)
+
+    def test_coordinate_indexing_2d(self):
+
+        # setup
+        a = np.arange(10000, dtype=int).reshape(1000, 10)
+        z = self.create_array(shape=a.shape, chunks=(300, 3), dtype=a.dtype)
+        z[:] = a
+
+        np.random.seed(42)
+        # test with different degrees of sparseness
+        for p in 0.5, 0.1, 0.01:
+            ix0 = np.random.choice(a.shape[0], size=int(a.shape[0] * p), replace=True)
+            ix1 = np.random.choice(a.shape[1], size=int(a.shape[1] * .5), replace=True)
+            srt = np.lexsort((ix0, ix1))
+            ix0 = ix0[srt]
+            ix1 = ix1[srt]
+
+            selections = [
+                # index both axes with array
+                (ix0, ix1),
+                # mixed indexing with array / int
+                (ix0, 4),
+                (42, ix1),
+            ]
+
+            for selection in selections:
+                expect = a[selection]
+                actual = z.get_coordinate_selection(selection)
+                assert_array_equal(expect, actual)
+                actual = z.vindex[selection]
+                assert_array_equal(expect, actual)
+
+        with assert_raises(NotImplementedError):
+            selection = slice(5, 15), [1, 2, 3]
+            z.get_coordinate_selection(selection)
+        with assert_raises(NotImplementedError):
+            selection = [1, 2, 3], slice(5, 15)
+            z.get_coordinate_selection(selection)
+        with assert_raises(NotImplementedError):
+            selection = Ellipsis, [1, 2, 3]
+            z.get_coordinate_selection(selection)
+        with assert_raises(NotImplementedError):
+            # not monotonically increasing
+            ix0 = [3, 3, 4, 2, 5]
+            ix1 = [1, 3, 5, 7, 9]
+            z.get_coordinate_selection((ix0, ix1))
+        with assert_raises(NotImplementedError):
+            # not monotonically increasing
+            ix0 = [3, 3, 4, 4, 5]
+            ix1 = [1, 3, 2, 1, 7]
+            z.get_coordinate_selection((ix0, ix1))
+
     def test_get_selection_out(self):
 
         # basic selections
@@ -1163,6 +1259,12 @@ class TestArray(unittest.TestCase):
                                         fill_value=0)
                 z.get_orthogonal_selection(selection, out=out)
                 assert_array_equal(expect, out[:])
+
+        # TODO coordinate selection
+
+        # TODO mask selection
+
+        # TODO selection with fields
 
 
 class TestArrayWithPath(TestArray):

@@ -17,7 +17,7 @@ from zarr.attrs import Attributes
 from zarr.errors import PermissionError, err_read_only, err_array_not_found
 from zarr.compat import reduce
 from zarr.codecs import AsType, get_codec
-from zarr.indexing import OIndex, OrthogonalIndexer, BasicIndexer
+from zarr.indexing import OIndex, OrthogonalIndexer, BasicIndexer, VIndex, CoordinateIndexer
 
 
 class Array(object):
@@ -110,6 +110,7 @@ class Array(object):
 
         # initialize indexing helpers
         self._oindex = OIndex(self)
+        self._vindex = VIndex(self)
 
     def _load_metadata(self):
         """(Re)load metadata from store."""
@@ -365,6 +366,11 @@ class Array(object):
         """TODO"""
         return self._oindex
 
+    @property
+    def vindex(self):
+        """TODO"""
+        return self._vindex
+
     def __eq__(self, other):
         return (
             isinstance(other, Array) and
@@ -522,6 +528,17 @@ class Array(object):
 
         # setup indexer
         indexer = OrthogonalIndexer(selection, self)
+
+        return self._get_selection(indexer, out=out)
+
+    def get_coordinate_selection(self, selection, out=None):
+
+        # refresh metadata
+        if not self._cache_metadata:
+            self._load_metadata()
+
+        # setup indexer
+        indexer = CoordinateIndexer(selection, self)
 
         return self._get_selection(indexer, out=out)
 
