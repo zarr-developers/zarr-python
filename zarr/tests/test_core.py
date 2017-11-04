@@ -784,6 +784,12 @@ class TestArray(unittest.TestCase):
         actual = z.oindex[ix]
         assert_array_equal(expect, actual)
 
+        # test not sorted
+        ix = [3, 105, 23, 127]  # not monotonically increasing
+        expect = a[ix]
+        actual = z.oindex[ix]
+        assert_array_equal(expect, actual)
+
         # test errors
         with assert_raises(IndexError):
             ix = [a.shape[0] + 1]  # out of bounds
@@ -793,9 +799,6 @@ class TestArray(unittest.TestCase):
             z.oindex[ix]
         with assert_raises(IndexError):
             ix = [[2, 4], [6, 8]]  # too many dimensions
-            z.oindex[ix]
-        with assert_raises(NotImplementedError):
-            ix = [3, 105, 23, 127]  # not monotonically increasing
             z.oindex[ix]
 
     def test_orthogonal_indexing_1d_slice_with_step(self):
@@ -1215,9 +1218,9 @@ class TestArray(unittest.TestCase):
         actual = z.get_coordinate_selection((ix0, ix1))
         assert_array_equal(expect, actual)
         # not monotonically increasing
-        ix0 = [3, 3, 4, 4, 5]
+        ix0 = [1, 1, 2, 2, 5]
         ix1 = [1, 3, 2, 1, 7]
-        # TODO fix failure here
+        expect = a[ix0, ix1]
         actual = z.get_coordinate_selection((ix0, ix1))
         assert_array_equal(expect, actual)
 

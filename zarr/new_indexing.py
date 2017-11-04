@@ -2,6 +2,7 @@
 from __future__ import absolute_import, print_function, division
 import numbers
 import itertools
+import collections
 
 
 import numpy as np
@@ -23,7 +24,23 @@ def normalize_integer_selection(dim_sel, dim_len):
     return dim_sel
 
 
-class IntIndexer(object):
+ChunkDimProjection = collections.namedtuple('ChunkDimProjection',
+                                            ('dim_chunk_ix', 'dim_chunk_sel', 'dim_out_sel'))
+"""A mapping from chunk to output array for a single dimension.
+
+Parameters
+----------
+dim_chunk_ix
+    Index of chunk.
+dim_chunk_sel
+    Selection of items from chunk array.
+dim_out_sel
+    Selection of items in target (output) array.
+
+"""
+
+
+class IntDimIndexer(object):
 
     def __init__(self, dim_sel, dim_len, dim_chunk_len):
 
@@ -40,13 +57,12 @@ class IntIndexer(object):
         self.dim_chunk_len = dim_chunk_len
         self.nitems = 1
 
-    def get_overlapping_chunks(self):
-
+    def __iter__(self):
         dim_chunk_ix = self.dim_sel // self.dim_chunk_len
         dim_offset = dim_chunk_ix * self.dim_chunk_len
         dim_chunk_sel = self.dim_sel - dim_offset
         dim_out_sel = None
-        yield dim_chunk_ix, dim_chunk_sel, dim_out_sel
+        yield ChunkDimProjection(dim_chunk_ix, dim_chunk_sel, dim_out_sel)
 
 
 def normalize_slice_selection(dim_sel, dim_len):
@@ -77,7 +93,7 @@ def normalize_slice_selection(dim_sel, dim_len):
     return slice(start, stop, step)
 
 
-class SliceIndexer(object):
+class SliceDimIndexer(object):
 
     def __init__(self, dim_sel, dim_len, dim_chunk_len):
 
@@ -94,7 +110,7 @@ class SliceIndexer(object):
         self.dim_chunk_len = dim_chunk_len
         self.nitems = dim_sel.stop - dim_sel.start
 
-    def get_overlapping_chunks(self):
+    def __iter__(self):
 
         dim_chunk_from = self.dim_sel.start // self.dim_chunk_len
         dim_chunk_to = int(np.ceil(self.dim_sel.stop / self.dim_chunk_len))
@@ -125,7 +141,7 @@ class SliceIndexer(object):
             dim_chunk_nitems = dim_chunk_sel_stop - dim_chunk_sel_start
             dim_out_sel = slice(dim_out_offset, dim_out_offset + dim_chunk_nitems)
 
-            yield dim_chunk_ix, dim_chunk_sel, dim_out_sel
+            yield ChunkDimProjection(dim_chunk_ix, dim_chunk_sel, dim_out_sel)
 
 
 def replace_ellipsis(selection, shape):
@@ -167,6 +183,24 @@ def ensure_tuple(v):
     return v
 
 
+ChunkProjection = collections.namedtuple('ChunkProjection',
+                                         ('chunk_coords', 'chunk_selection', 'out_selection'))
+"""A mapping of items from chunk to output array. Can be used to extract items from the chunk 
+array for loading into an output array. Can also be used to extract items from a value array for 
+setting/updating in a chunk array.
+
+Parameters
+----------
+chunk_coords
+    Indices of chunk.
+chunk_selection
+    Selection of items from chunk array.
+out_selection
+    Selection of items in target (output) array.
+
+"""
+
+
 # noinspection PyProtectedMember
 class BasicIndexer(object):
 
@@ -190,11 +224,11 @@ class BasicIndexer(object):
 
             if isinstance(dim_sel, numbers.Integral):
                 dim_sel = normalize_integer_selection(dim_sel, dim_len)
-                dim_indexer = IntIndexer(dim_sel, dim_len, dim_chunk_len)
+                dim_indexer = IntDimIndexer(dim_sel, dim_len, dim_chunk_len)
 
             elif isinstance(dim_sel, slice):
                 dim_sel = normalize_slice_selection(dim_sel, dim_len)
-                dim_indexer = SliceIndexer(dim_sel, dim_len, dim_chunk_len)
+                dim_indexer = SliceDimIndexer(dim_sel, dim_len, dim_chunk_len)
 
             else:
                 raise IndexError('bad selection type')
@@ -203,18 +237,17 @@ class BasicIndexer(object):
 
         self.dim_indexers = dim_indexers
         self.shape = tuple(s.nitems for s in self.dim_indexers
-                           if not isinstance(s, IntIndexer))
-        self.squeeze_axes = None
+                           if not isinstance(s, IntDimIndexer))
+        self.drop_axes = None
 
-    def get_overlapping_chunks(self):
-        overlaps = [s.get_overlapping_chunks() for s in self.dim_indexers]
-        for dim_tasks in itertools.product(*overlaps):
+    def __iter__(self):
+        for dim_projections in itertools.product(*self.dim_indexers):
 
-            chunk_coords = tuple(t[0] for t in dim_tasks)
-            chunk_selection = tuple(t[1] for t in dim_tasks)
-            out_selection = tuple(t[2] for t in dim_tasks if t[2] is not None)
+            chunk_coords = tuple(p.dim_chunk_ix for p in dim_projections)
+            chunk_selection = tuple(p.dim_chunk_sel for p in dim_projections)
+            out_selection = tuple(p.dim_out_sel for p in dim_projections if p.dim_out_sel is not None)
 
-            yield chunk_coords, chunk_selection, out_selection
+            yield ChunkProjection(chunk_coords, chunk_selection, out_selection)
 
 
 class BoolArrayDimIndexer(object):
@@ -245,7 +278,7 @@ class BoolArrayDimIndexer(object):
         self.chunk_nitems_cumsum = np.cumsum(self.chunk_nitems)
         self.nitems = self.chunk_nitems_cumsum[-1]
 
-    def get_overlapping_chunks(self):
+    def __iter__(self):
 
         # iterate over chunks with at least one item
         for dim_chunk_ix in np.nonzero(self.chunk_nitems)[0]:
@@ -268,7 +301,7 @@ class BoolArrayDimIndexer(object):
             stop = self.chunk_nitems_cumsum[dim_chunk_ix]
             dim_out_sel = slice(start, stop)
 
-            yield dim_chunk_ix, dim_chunk_sel, dim_out_sel
+            yield ChunkDimProjection(dim_chunk_ix, dim_chunk_sel, dim_out_sel)
 
 
 def find_runs(x):
@@ -339,7 +372,7 @@ class IntArrayDimIndexer(object):
         # find runs of indices in the same chunk
         self.dim_chunk_ixs, self.run_starts, self.run_lengths = find_runs(dim_chunk_sel)
 
-    def get_overlapping_chunks(self):
+    def __iter__(self):
 
         # iterate over chunks
         for dim_chunk_ix, s, l in zip(self.dim_chunk_ixs, self.run_starts, self.run_lengths):
@@ -351,7 +384,7 @@ class IntArrayDimIndexer(object):
             dim_offset = dim_chunk_ix * self.dim_chunk_len
             dim_chunk_sel = self.dim_sel[dim_out_sel] - dim_offset
 
-            yield dim_chunk_ix, dim_chunk_sel, dim_out_sel
+            yield ChunkDimProjection(dim_chunk_ix, dim_chunk_sel, dim_out_sel)
 
 
 def slice_to_range(s):
@@ -399,7 +432,7 @@ class OrthogonalIndexer(object):
 
             if isinstance(dim_sel, numbers.Integral):
                 dim_sel = normalize_integer_selection(dim_sel, dim_len)
-                dim_indexer = IntIndexer(dim_sel, dim_len, dim_chunk_len)
+                dim_indexer = IntDimIndexer(dim_sel, dim_len, dim_chunk_len)
 
             elif isinstance(dim_sel, slice):
 
@@ -411,7 +444,7 @@ class OrthogonalIndexer(object):
                     dim_sel = np.arange(dim_sel.start, dim_sel.stop, dim_sel.step)
                     dim_indexer = IntArrayDimIndexer(dim_sel, dim_len, dim_chunk_len)
                 else:
-                    dim_indexer = SliceIndexer(dim_sel, dim_len, dim_chunk_len)
+                    dim_indexer = SliceDimIndexer(dim_sel, dim_len, dim_chunk_len)
 
             elif hasattr(dim_sel, 'dtype') and hasattr(dim_sel, 'shape'):
 
@@ -431,22 +464,21 @@ class OrthogonalIndexer(object):
 
         self.dim_indexers = dim_indexers
         self.shape = tuple(s.nitems for s in self.dim_indexers
-                           if not isinstance(s, IntIndexer))
-        self.is_advanced = any([not isinstance(dim_indexer, (IntIndexer, SliceIndexer))
+                           if not isinstance(s, IntDimIndexer))
+        self.is_advanced = any([not isinstance(dim_indexer, (IntDimIndexer, SliceDimIndexer))
                                 for dim_indexer in self.dim_indexers])
         if self.is_advanced:
-            self.squeeze_axes = tuple([i for i, dim_indexer in enumerate(self.dim_indexers)
-                                       if isinstance(dim_indexer, IntIndexer)])
+            self.drop_axes = tuple([i for i, dim_indexer in enumerate(self.dim_indexers)
+                                       if isinstance(dim_indexer, IntDimIndexer)])
         else:
-            self.squeeze_axes = None
+            self.drop_axes = None
 
-    def get_overlapping_chunks(self):
-        overlaps = [s.get_overlapping_chunks() for s in self.dim_indexers]
-        for dim_tasks in itertools.product(*overlaps):
+    def __iter__(self):
+        for dim_projections in itertools.product(*self.dim_indexers):
 
-            chunk_coords = tuple(t[0] for t in dim_tasks)
-            chunk_selection = tuple(t[1] for t in dim_tasks)
-            out_selection = tuple(t[2] for t in dim_tasks if t[2] is not None)
+            chunk_coords = tuple(p.dim_chunk_ix for p in dim_projections)
+            chunk_selection = tuple(p.dim_chunk_sel for p in dim_projections)
+            out_selection = tuple(p.dim_out_sel for p in dim_projections if p.dim_out_sel is not None)
 
             # handle advanced indexing arrays orthogonally
             if self.is_advanced:
@@ -455,7 +487,7 @@ class OrthogonalIndexer(object):
                 # or integers, so need to convert slices and integers into ranges.
                 chunk_selection = ix_(*chunk_selection)
 
-            yield chunk_coords, chunk_selection, out_selection
+            yield ChunkProjection(chunk_coords, chunk_selection, out_selection)
 
 
 class OIndex(object):
@@ -517,7 +549,7 @@ class CoordinateIndexer(object):
         selection = np.broadcast_arrays(*selection)
         self.selection = selection
         self.shape = len(self.selection[0]) if self.selection[0].shape else 1
-        self.squeeze_axes = None
+        self.drop_axes = None
         self.array = array
 
         # normalization
@@ -550,7 +582,7 @@ class CoordinateIndexer(object):
         # unravel
         self.chunks_mixs = np.unravel_index(self.chunks_rixs, dims=array._cdata_shape)
 
-    def get_overlapping_chunks(self):
+    def __iter__(self):
 
         # iterate over chunks
         for i in range(len(self.chunks_rixs)):
@@ -571,7 +603,7 @@ class CoordinateIndexer(object):
                 for (dim_sel, dim_chunk_offset) in zip(self.selection, chunk_offsets)
             )
 
-            yield chunk_coords, chunk_selection, out_selection
+            yield ChunkProjection(chunk_coords, chunk_selection, out_selection)
 
 
 class VIndex(object):

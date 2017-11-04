@@ -565,11 +565,11 @@ class Array(object):
                 raise ValueError('out has wrong shape for selection')
 
         # iterate over chunks
-        for chunk_coords, chunk_selection, out_selection in indexer.get_overlapping_chunks():
+        for chunk_coords, chunk_selection, out_selection in indexer:
 
             # load chunk selection into output array
             self._chunk_getitem(chunk_coords, chunk_selection, out, out_selection,
-                                squeeze_axes=indexer.squeeze_axes)
+                                drop_axes=indexer.drop_axes)
 
         if out.shape:
             return out
@@ -735,7 +735,7 @@ class Array(object):
                 raise ValueError('value has wrong shape for selection')
 
         # iterate over chunks in range
-        for chunk_coords, chunk_selection, out_selection in indexer.get_overlapping_chunks():
+        for chunk_coords, chunk_selection, out_selection in indexer:
 
             # extract data to store
             if np.isscalar(value):
@@ -743,16 +743,16 @@ class Array(object):
             else:
                 chunk_value = value[out_selection]
                 # handle missing singleton dimensions
-                if indexer.squeeze_axes:
+                if indexer.drop_axes:
                     item = [slice(None)] * self.ndim
-                    for a in indexer.squeeze_axes:
+                    for a in indexer.drop_axes:
                         item[a] = np.newaxis
                     chunk_value = chunk_value[item]
 
             # put data
             self._chunk_setitem(chunk_coords, chunk_selection, chunk_value)
 
-    def _chunk_getitem(self, chunk_coords, chunk_selection, out, out_selection, squeeze_axes=None):
+    def _chunk_getitem(self, chunk_coords, chunk_selection, out, out_selection, drop_axes=None):
         """Obtain part or whole of a chunk.
 
         Parameters
@@ -765,7 +765,7 @@ class Array(object):
             Array to store result in.
         out_selection : selection
             Location of region within output array to store results in.
-        squeeze_axes : tuple of ints
+        drop_axes : tuple of ints
             Axes to squeeze out of the chunk.
 
         """
@@ -813,8 +813,8 @@ class Array(object):
 
             # set data in output array
             tmp = chunk[chunk_selection]
-            if squeeze_axes:
-                tmp = np.squeeze(tmp, axis=squeeze_axes)
+            if drop_axes:
+                tmp = np.squeeze(tmp, axis=drop_axes)
             out[out_selection] = tmp
 
     def _chunk_setitem(self, chunk_coords, chunk_selection, value):
