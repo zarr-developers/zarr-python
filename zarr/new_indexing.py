@@ -128,6 +128,95 @@ class SliceIndexer(object):
             yield dim_chunk_ix, dim_chunk_sel, dim_out_sel
 
 
+def replace_ellipsis(selection, shape):
+
+    # count number of ellipsis present
+    n_ellipsis = sum(1 for i in selection if i is Ellipsis)
+
+    if n_ellipsis > 1:
+        # more than 1 is an error
+        raise IndexError("an index can only have a single ellipsis ('...')")
+
+    elif n_ellipsis == 1:
+        # locate the ellipsis, count how many items to left and right
+        n_items_l = selection.index(Ellipsis)  # items to left of ellipsis
+        n_items_r = len(selection) - (n_items_l + 1)  # items to right of ellipsis
+        n_items = len(selection) - 1  # all non-ellipsis items
+
+        if n_items >= len(shape):
+            # ellipsis does nothing, just remove it
+            selection = tuple(i for i in selection if i != Ellipsis)
+
+        else:
+            # replace ellipsis with as many slices are needed for number of dims
+            new_item = selection[:n_items_l] + ((slice(None),) * (len(shape) - n_items))
+            if n_items_r:
+                new_item += selection[-n_items_r:]
+            selection = new_item
+
+    # fill out selection if not completely specified
+    if len(selection) < len(shape):
+        selection += tuple(slice(0, l) for l in shape[len(selection):])
+
+    return selection
+
+
+def ensure_tuple(v):
+    if not isinstance(v, tuple):
+        v = (v,)
+    return v
+
+
+# noinspection PyProtectedMember
+class BasicIndexer(object):
+
+    def __init__(self, selection, array):
+
+        # ensure tuple
+        selection = ensure_tuple(selection)
+
+        # handle ellipsis
+        selection = replace_ellipsis(selection, array._shape)
+
+        # validation - check dimensionality
+        if len(selection) > len(array._shape):
+            raise IndexError('too many indices for array')
+        if len(selection) < len(array._shape):
+            raise IndexError('not enough indices for array')
+
+        # setup per-dimension indexers
+        dim_indexers = []
+        for dim_sel, dim_len, dim_chunk_len in zip(selection, array._shape, array._chunks):
+
+            if isinstance(dim_sel, numbers.Integral):
+                dim_sel = normalize_integer_selection(dim_sel, dim_len)
+                dim_indexer = IntIndexer(dim_sel, dim_len, dim_chunk_len)
+
+            elif isinstance(dim_sel, slice):
+                dim_sel = normalize_slice_selection(dim_sel, dim_len)
+                dim_indexer = SliceIndexer(dim_sel, dim_len, dim_chunk_len)
+
+            else:
+                raise IndexError('bad selection type')
+
+            dim_indexers.append(dim_indexer)
+
+        self.dim_indexers = dim_indexers
+        self.shape = tuple(s.nitems for s in self.dim_indexers
+                           if not isinstance(s, IntIndexer))
+        self.squeeze_axes = None
+
+    def get_overlapping_chunks(self):
+        overlaps = [s.get_overlapping_chunks() for s in self.dim_indexers]
+        for dim_tasks in itertools.product(*overlaps):
+
+            chunk_coords = tuple(t[0] for t in dim_tasks)
+            chunk_selection = tuple(t[1] for t in dim_tasks)
+            out_selection = tuple(t[2] for t in dim_tasks if t[2] is not None)
+
+            yield chunk_coords, chunk_selection, out_selection
+
+
 class BoolArrayDimIndexer(object):
 
     def __init__(self, dim_sel, dim_len, dim_chunk_len):
@@ -265,89 +354,6 @@ class IntArrayDimIndexer(object):
             yield dim_chunk_ix, dim_chunk_sel, dim_out_sel
 
 
-def replace_ellipsis(selection, shape):
-
-    # count number of ellipsis present
-    n_ellipsis = sum(1 for i in selection if i is Ellipsis)
-
-    if n_ellipsis > 1:
-        # more than 1 is an error
-        raise IndexError("an index can only have a single ellipsis ('...')")
-
-    elif n_ellipsis == 1:
-        # locate the ellipsis, count how many items to left and right
-        n_items_l = selection.index(Ellipsis)  # items to left of ellipsis
-        n_items_r = len(selection) - (n_items_l + 1)  # items to right of ellipsis
-        n_items = len(selection) - 1  # all non-ellipsis items
-
-        if n_items >= len(shape):
-            # ellipsis does nothing, just remove it
-            selection = tuple(i for i in selection if i != Ellipsis)
-
-        else:
-            # replace ellipsis with as many slices are needed for number of dims
-            new_item = selection[:n_items_l] + ((slice(None),) * (len(shape) - n_items))
-            if n_items_r:
-                new_item += selection[-n_items_r:]
-            selection = new_item
-
-    # fill out selection if not completely specified
-    if len(selection) < len(shape):
-        selection += tuple(slice(0, l) for l in shape[len(selection):])
-
-    return selection
-
-
-# noinspection PyProtectedMember
-class BasicIndexer(object):
-
-    def __init__(self, selection, array):
-
-        # ensure tuple
-        if not isinstance(selection, tuple):
-            selection = (selection,)
-
-        # handle ellipsis
-        selection = replace_ellipsis(selection, array._shape)
-
-        # validation - check dimensionality
-        if len(selection) > len(array._shape):
-            raise IndexError('too many indices for array')
-        if len(selection) < len(array._shape):
-            raise IndexError('not enough indices for array')
-
-        # setup per-dimension indexers
-        dim_indexers = []
-        for dim_sel, dim_len, dim_chunk_len in zip(selection, array._shape, array._chunks):
-
-            if isinstance(dim_sel, numbers.Integral):
-                dim_sel = normalize_integer_selection(dim_sel, dim_len)
-                dim_indexer = IntIndexer(dim_sel, dim_len, dim_chunk_len)
-
-            elif isinstance(dim_sel, slice):
-                dim_sel = normalize_slice_selection(dim_sel, dim_len)
-                dim_indexer = SliceIndexer(dim_sel, dim_len, dim_chunk_len)
-
-            else:
-                raise IndexError('bad selection type')
-
-            dim_indexers.append(dim_indexer)
-
-        self.dim_indexers = dim_indexers
-        self.shape = tuple(s.nitems for s in self.dim_indexers)
-        self.squeeze_axes = None
-
-    def get_overlapping_chunks(self):
-        overlaps = [s.get_overlapping_chunks() for s in self.dim_indexers]
-        for dim_tasks in itertools.product(*overlaps):
-
-            chunk_coords = tuple(t[0] for t in dim_tasks)
-            chunk_selection = tuple(t[1] for t in dim_tasks)
-            out_selection = tuple(t[2] for t in dim_tasks)
-
-            yield chunk_coords, chunk_selection, out_selection
-
-
 def slice_to_range(s):
     return range(s.start, s.stop, 1 if s.step is None else s.step)
 
@@ -372,8 +378,7 @@ class OrthogonalIndexer(object):
     def __init__(self, selection, array):
 
         # ensure tuple
-        if not isinstance(selection, tuple):
-            selection = (selection,)
+        selection = ensure_tuple(selection)
 
         # handle ellipsis
         selection = replace_ellipsis(selection, array._shape)
@@ -425,7 +430,8 @@ class OrthogonalIndexer(object):
             dim_indexers.append(dim_indexer)
 
         self.dim_indexers = dim_indexers
-        self.shape = tuple(s.nitems for s in self.dim_indexers)
+        self.shape = tuple(s.nitems for s in self.dim_indexers
+                           if not isinstance(s, IntIndexer))
         self.is_advanced = any([not isinstance(dim_indexer, (IntIndexer, SliceIndexer))
                                 for dim_indexer in self.dim_indexers])
         if self.is_advanced:
@@ -440,7 +446,7 @@ class OrthogonalIndexer(object):
 
             chunk_coords = tuple(t[0] for t in dim_tasks)
             chunk_selection = tuple(t[1] for t in dim_tasks)
-            out_selection = tuple(t[2] for t in dim_tasks)
+            out_selection = tuple(t[2] for t in dim_tasks if t[2] is not None)
 
             # handle advanced indexing arrays orthogonally
             if self.is_advanced:
@@ -466,7 +472,7 @@ class OIndex(object):
 
 def is_coordinate_selection(selection, array):
     return (
-        (len(selection) == array.ndim) and
+        (len(selection) == len(array._shape)) and
         all(
             [(isinstance(dim_sel, numbers.Integral) or
              (hasattr(dim_sel, 'dtype') and dim_sel.dtype.kind in 'ui'))
@@ -497,8 +503,9 @@ class CoordinateIndexer(object):
     def __init__(self, selection, array):
 
         # some initial normalization
-        if not isinstance(selection, tuple):
-            selection = tuple(selection)
+        selection = ensure_tuple(selection)
+        selection = tuple([i] if isinstance(i, numbers.Integral) else i
+                          for i in selection)
         selection = replace_lists(selection)
 
         # validation
@@ -507,12 +514,14 @@ class CoordinateIndexer(object):
             raise IndexError('invalid coordinate selection')
 
         # attempt to broadcast selection - this will raise error if array dimensions don't match
-        self.selection = np.broadcast_arrays(*selection)
-        self.shape = len(selection[0])
+        selection = np.broadcast_arrays(*selection)
+        self.selection = selection
+        self.shape = len(self.selection[0]) if self.selection[0].shape else 1
         self.squeeze_axes = None
+        self.array = array
 
         # normalization
-        for dim_sel, dim_len in zip(selection, array.shape):
+        for dim_sel, dim_len in zip(self.selection, array.shape):
 
             # check number of dimensions, only support indexing with 1d array
             if len(dim_sel.shape) > 1:
@@ -531,7 +540,7 @@ class CoordinateIndexer(object):
         # compute flattened chunk index for each point selected
         chunks_multi_index = tuple(
             dim_sel // dim_chunk_len
-            for (dim_sel, dim_chunk_len) in zip(selection, array._chunks)
+            for (dim_sel, dim_chunk_len) in zip(self.selection, array._chunks)
         )
         chunks_raveled_indices = np.ravel_multi_index(chunks_multi_index,
                                                       dims=array._cdata_shape)
@@ -539,12 +548,16 @@ class CoordinateIndexer(object):
         # find runs of indices in the same chunk
         self.chunks_rixs, self.run_starts, self.run_lengths = find_runs(chunks_raveled_indices)
         # unravel
-        self.chunks_ixs = np.unravel_index(self.chunks_rixs, dims=array._cdata_shape)
+        self.chunks_mixs = np.unravel_index(self.chunks_rixs, dims=array._cdata_shape)
 
     def get_overlapping_chunks(self):
 
         # iterate over chunks
-        for chunk_coords, s, l in zip(self.chunks_ixs, self.run_starts, self.run_lengths):
+        for i in range(len(self.chunks_rixs)):
+
+            chunk_coords = tuple(mix[i] for mix in self.chunks_mixs)
+            s = self.run_starts[i]
+            l = self.run_lengths[i]
 
             out_selection = slice(s, s+l)
 
@@ -567,8 +580,7 @@ class VIndex(object):
         self.array = array
 
     def __getitem__(self, selection):
-        if not isinstance(selection, tuple):
-            selection = tuple(selection)
+        selection = ensure_tuple(selection)
         selection = replace_lists(selection)
         if is_coordinate_selection(selection, self.array):
             return self.array.get_coordinate_selection(selection)

@@ -770,6 +770,8 @@ class Array(object):
 
         """
 
+        assert len(chunk_coords) == len(self._cdata_shape)
+
         try:
 
             # obtain compressed data for chunk

@@ -990,6 +990,8 @@ class TestArray(unittest.TestCase):
             ix = np.random.binomial(1, p, size=a.shape[0]).astype(bool)
             self._test_orthogonal_indexing_1d_common_set(v, a, z, ix)
 
+    # TODO test orthogonal with unsorted ints
+
     def test_orthogonal_indexing_1d_int_set(self):
 
         # setup
@@ -1001,6 +1003,7 @@ class TestArray(unittest.TestCase):
         # test with different degrees of sparseness
         for p in 0.5, 0.1, 0.01:
             ix = np.random.choice(a.shape[0], size=int(a.shape[0] * p), replace=True)
+            self._test_orthogonal_indexing_1d_common_set(v, a, z, ix)
             ix.sort()
             self._test_orthogonal_indexing_1d_common_set(v, a, z, ix)
 
@@ -1137,8 +1140,20 @@ class TestArray(unittest.TestCase):
             actual = z.vindex[ix]
             assert_array_equal(expect, actual)
 
+        # test single item
+        ix = 42
+        expect = a[ix]
+        actual = z.get_coordinate_selection(ix)
+        assert_array_equal(expect, actual)
+
         # test wraparound
         ix = [0, 3, 10, -23, -12, -1]
+        expect = a[ix]
+        actual = z.get_coordinate_selection(ix)
+        assert_array_equal(expect, actual)
+
+        # test out of order
+        ix = [3, 105, 23, 127]  # not monotonically increasing
         expect = a[ix]
         actual = z.get_coordinate_selection(ix)
         assert_array_equal(expect, actual)
@@ -1153,13 +1168,10 @@ class TestArray(unittest.TestCase):
         with assert_raises(IndexError):
             ix = [[2, 4], [6, 8]]  # too many dimensions
             z.get_coordinate_selection(ix)
-        with assert_raises(NotImplementedError):
-            ix = [3, 105, 23, 127]  # not monotonically increasing
-            z.get_coordinate_selection(ix)
-        with assert_raises(NotImplementedError):
+        with assert_raises(IndexError):
             ix = slice(5, 15)
             z.get_coordinate_selection(ix)
-        with assert_raises(NotImplementedError):
+        with assert_raises(IndexError):
             ix = Ellipsis
             z.get_coordinate_selection(ix)
 
@@ -1173,8 +1185,9 @@ class TestArray(unittest.TestCase):
         np.random.seed(42)
         # test with different degrees of sparseness
         for p in 0.5, 0.1, 0.01:
-            ix0 = np.random.choice(a.shape[0], size=int(a.shape[0] * p), replace=True)
-            ix1 = np.random.choice(a.shape[1], size=int(a.shape[1] * .5), replace=True)
+            n = int(a.size * p)
+            ix0 = np.random.choice(a.shape[0], size=n, replace=True)
+            ix1 = np.random.choice(a.shape[1], size=n, replace=True)
             srt = np.lexsort((ix0, ix1))
             ix0 = ix0[srt]
             ix1 = ix1[srt]
@@ -1185,6 +1198,7 @@ class TestArray(unittest.TestCase):
                 # mixed indexing with array / int
                 (ix0, 4),
                 (42, ix1),
+                (42, 4),
             ]
 
             for selection in selections:
@@ -1194,25 +1208,28 @@ class TestArray(unittest.TestCase):
                 actual = z.vindex[selection]
                 assert_array_equal(expect, actual)
 
-        with assert_raises(NotImplementedError):
+        # not monotonically increasing
+        ix0 = [3, 3, 4, 2, 5]
+        ix1 = [1, 3, 5, 7, 9]
+        expect = a[ix0, ix1]
+        actual = z.get_coordinate_selection((ix0, ix1))
+        assert_array_equal(expect, actual)
+        # not monotonically increasing
+        ix0 = [3, 3, 4, 4, 5]
+        ix1 = [1, 3, 2, 1, 7]
+        # TODO fix failure here
+        actual = z.get_coordinate_selection((ix0, ix1))
+        assert_array_equal(expect, actual)
+
+        with assert_raises(IndexError):
             selection = slice(5, 15), [1, 2, 3]
             z.get_coordinate_selection(selection)
-        with assert_raises(NotImplementedError):
+        with assert_raises(IndexError):
             selection = [1, 2, 3], slice(5, 15)
             z.get_coordinate_selection(selection)
-        with assert_raises(NotImplementedError):
+        with assert_raises(IndexError):
             selection = Ellipsis, [1, 2, 3]
             z.get_coordinate_selection(selection)
-        with assert_raises(NotImplementedError):
-            # not monotonically increasing
-            ix0 = [3, 3, 4, 2, 5]
-            ix1 = [1, 3, 5, 7, 9]
-            z.get_coordinate_selection((ix0, ix1))
-        with assert_raises(NotImplementedError):
-            # not monotonically increasing
-            ix0 = [3, 3, 4, 4, 5]
-            ix1 = [1, 3, 2, 1, 7]
-            z.get_coordinate_selection((ix0, ix1))
 
     def test_get_selection_out(self):
 
