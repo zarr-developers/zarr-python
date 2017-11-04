@@ -17,7 +17,7 @@ from zarr.attrs import Attributes
 from zarr.errors import PermissionError, err_read_only, err_array_not_found
 from zarr.compat import reduce
 from zarr.codecs import AsType, get_codec
-from zarr.indexing import OIndex, OrthogonalIndexer, BasicIndexer, VIndex, CoordinateIndexer
+from zarr.new_indexing import OIndex, OrthogonalIndexer, BasicIndexer, VIndex, CoordinateIndexer
 
 
 class Array(object):
@@ -551,8 +551,8 @@ class Array(object):
         # N.B., it is an important optimisation that we only visit chunks which overlap the
         # selection. This minimises the nuimber of iterations in the main for loop.
 
-        # determine indices of chunks overlapping the selection
-        chunk_ranges, sel_shape = indexer.get_overlapping_chunks()
+        # determine output shape
+        sel_shape = indexer.shape
 
         # setup output array
         if out is None:
@@ -564,11 +564,8 @@ class Array(object):
             if out.shape != sel_shape:
                 raise ValueError('out has wrong shape for selection')
 
-        # iterate over chunks in range, i.e., chunks overlapping the selection
-        for chunk_coords in itertools.product(*chunk_ranges):
-
-            # obtain selections for chunk and output arrays
-            chunk_selection, out_selection = indexer.get_chunk_projection(chunk_coords)
+        # iterate over chunks
+        for chunk_coords, chunk_selection, out_selection in indexer.get_overlapping_chunks():
 
             # load chunk selection into output array
             self._chunk_getitem(chunk_coords, chunk_selection, out, out_selection,
@@ -672,6 +669,21 @@ class Array(object):
 
         self._set_selection(indexer, value)
 
+    def set_coordinate_selection(self, selection, value):
+
+        # guard conditions
+        if self._read_only:
+            err_read_only()
+
+        # refresh metadata
+        if not self._cache_metadata:
+            self._load_metadata_nosync()
+
+        # setup indexer
+        indexer = CoordinateIndexer(selection, self)
+
+        self._set_selection(indexer, value)
+
     def _set_basic_selection_zd(self, selection, value):
         # special case __setitem__ for zero-dimensional array
 
@@ -711,7 +723,7 @@ class Array(object):
         # selection. This minimises the nuimber of iterations in the main for loop.
 
         # determine indices of chunks overlapping the selection
-        chunk_ranges, sel_shape = indexer.get_overlapping_chunks()
+        sel_shape = indexer.shape
 
         # check value shape
         if np.isscalar(value):
@@ -723,16 +735,13 @@ class Array(object):
                 raise ValueError('value has wrong shape for selection')
 
         # iterate over chunks in range
-        for chunk_coords in itertools.product(*chunk_ranges):
-
-            # obtain selections for chunk and destination arrays
-            chunk_selection, value_selection = indexer.get_chunk_projection(chunk_coords)
+        for chunk_coords, chunk_selection, out_selection in indexer.get_overlapping_chunks():
 
             # extract data to store
             if np.isscalar(value):
                 chunk_value = value
             else:
-                chunk_value = value[value_selection]
+                chunk_value = value[out_selection]
                 # handle missing singleton dimensions
                 if indexer.squeeze_axes:
                     item = [slice(None)] * self.ndim

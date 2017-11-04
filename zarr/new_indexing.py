@@ -23,7 +23,7 @@ def normalize_integer_selection(dim_sel, dim_len):
     return dim_sel
 
 
-class IntSelection(object):
+class IntIndexer(object):
 
     def __init__(self, dim_sel, dim_len, dim_chunk_len):
 
@@ -77,7 +77,7 @@ def normalize_slice_selection(dim_sel, dim_len):
     return slice(start, stop, step)
 
 
-class SliceSelection(object):
+class SliceIndexer(object):
 
     def __init__(self, dim_sel, dim_len, dim_chunk_len):
 
@@ -128,7 +128,7 @@ class SliceSelection(object):
             yield dim_chunk_ix, dim_chunk_sel, dim_out_sel
 
 
-class BoolArrayDimSelection(object):
+class BoolArrayDimIndexer(object):
 
     def __init__(self, dim_sel, dim_len, dim_chunk_len):
 
@@ -211,7 +211,7 @@ def find_runs(x):
         return run_values, run_starts, run_lengths
 
 
-class IntArrayDimSelection(object):
+class IntArrayDimIndexer(object):
     """Integer array selection against a single dimension."""
 
     def __init__(self, dim_sel, dim_len, dim_chunk_len):
@@ -243,16 +243,17 @@ class IntArrayDimSelection(object):
         self.nchunks = int(np.ceil(self.dim_len / self.dim_chunk_len))
         self.nitems = len(dim_sel)
 
-    def get_overlapping_chunks(self):
-
         # locate required chunk for each index
         dim_chunk_sel = self.dim_sel // self.dim_chunk_len
+        self.dim_chunk_sel = dim_chunk_sel
 
         # find runs of indices in the same chunk
-        dim_chunk_ixs, run_starts, run_lengths = find_runs(dim_chunk_sel)
+        self.dim_chunk_ixs, self.run_starts, self.run_lengths = find_runs(dim_chunk_sel)
+
+    def get_overlapping_chunks(self):
 
         # iterate over chunks
-        for dim_chunk_ix, s, l in zip(dim_chunk_ixs, run_starts, run_lengths):
+        for dim_chunk_ix, s, l in zip(self.dim_chunk_ixs, self.run_starts, self.run_lengths):
 
             # find region in output array
             dim_out_sel = slice(s, s + l)
@@ -297,6 +298,7 @@ def replace_ellipsis(selection, shape):
     return selection
 
 
+# noinspection PyProtectedMember
 class BasicIndexer(object):
 
     def __init__(self, selection, array):
@@ -314,8 +316,266 @@ class BasicIndexer(object):
         if len(selection) < len(array._shape):
             raise IndexError('not enough indices for array')
 
-        # TODO normalize and setup selections
+        # setup per-dimension indexers
+        dim_indexers = []
+        for dim_sel, dim_len, dim_chunk_len in zip(selection, array._shape, array._chunks):
+
+            if isinstance(dim_sel, numbers.Integral):
+                dim_sel = normalize_integer_selection(dim_sel, dim_len)
+                dim_indexer = IntIndexer(dim_sel, dim_len, dim_chunk_len)
+
+            elif isinstance(dim_sel, slice):
+                dim_sel = normalize_slice_selection(dim_sel, dim_len)
+                dim_indexer = SliceIndexer(dim_sel, dim_len, dim_chunk_len)
+
+            else:
+                raise IndexError('bad selection type')
+
+            dim_indexers.append(dim_indexer)
+
+        self.dim_indexers = dim_indexers
+        self.shape = tuple(s.nitems for s in self.dim_indexers)
+        self.squeeze_axes = None
 
     def get_overlapping_chunks(self):
-        dim_tasks = [s.get_overlapping_chunks() for s in self.selection]
-        return itertools.product(*dim_tasks)
+        overlaps = [s.get_overlapping_chunks() for s in self.dim_indexers]
+        for dim_tasks in itertools.product(*overlaps):
+
+            chunk_coords = tuple(t[0] for t in dim_tasks)
+            chunk_selection = tuple(t[1] for t in dim_tasks)
+            out_selection = tuple(t[2] for t in dim_tasks)
+
+            yield chunk_coords, chunk_selection, out_selection
+
+
+def slice_to_range(s):
+    return range(s.start, s.stop, 1 if s.step is None else s.step)
+
+
+def ix_(*selection):
+    """Convert an orthogonal selection to a numpy advanced (fancy) selection, with support for
+    slices and single ints."""
+
+    # replace slice and int as these are not supported by numpy ix_()
+    selection = [slice_to_range(dim_sel) if isinstance(dim_sel, slice)
+                 else [dim_sel] if isinstance(dim_sel, int)
+                 else dim_sel
+                 for dim_sel in selection]
+
+    selection = np.ix_(*selection)
+
+    return selection
+
+
+class OrthogonalIndexer(object):
+
+    def __init__(self, selection, array):
+
+        # ensure tuple
+        if not isinstance(selection, tuple):
+            selection = (selection,)
+
+        # handle ellipsis
+        selection = replace_ellipsis(selection, array._shape)
+
+        # validation - check dimensionality
+        if len(selection) > len(array._shape):
+            raise IndexError('too many indices for array')
+        if len(selection) < len(array._shape):
+            raise IndexError('not enough indices for array')
+
+        # setup per-dimension indexers
+        dim_indexers = []
+        for dim_sel, dim_len, dim_chunk_len in zip(selection, array._shape, array._chunks):
+
+            # normalize list to array
+            if isinstance(dim_sel, list):
+                dim_sel = np.asarray(dim_sel)
+
+            if isinstance(dim_sel, numbers.Integral):
+                dim_sel = normalize_integer_selection(dim_sel, dim_len)
+                dim_indexer = IntIndexer(dim_sel, dim_len, dim_chunk_len)
+
+            elif isinstance(dim_sel, slice):
+
+                # normalize
+                dim_sel = normalize_slice_selection(dim_sel, dim_len)
+
+                # handle slice with step
+                if dim_sel.step != 1:
+                    dim_sel = np.arange(dim_sel.start, dim_sel.stop, dim_sel.step)
+                    dim_indexer = IntArrayDimIndexer(dim_sel, dim_len, dim_chunk_len)
+                else:
+                    dim_indexer = SliceIndexer(dim_sel, dim_len, dim_chunk_len)
+
+            elif hasattr(dim_sel, 'dtype') and hasattr(dim_sel, 'shape'):
+
+                if dim_sel.dtype == bool:
+                    dim_indexer = BoolArrayDimIndexer(dim_sel, dim_len, dim_chunk_len)
+
+                elif dim_sel.dtype.kind in 'ui':
+                    dim_indexer = IntArrayDimIndexer(dim_sel, dim_len, dim_chunk_len)
+
+                else:
+                    raise IndexError('bad selection type')
+
+            else:
+                raise IndexError('bad selection type')
+
+            dim_indexers.append(dim_indexer)
+
+        self.dim_indexers = dim_indexers
+        self.shape = tuple(s.nitems for s in self.dim_indexers)
+        self.is_advanced = any([not isinstance(dim_indexer, (IntIndexer, SliceIndexer))
+                                for dim_indexer in self.dim_indexers])
+        if self.is_advanced:
+            self.squeeze_axes = tuple([i for i, dim_indexer in enumerate(self.dim_indexers)
+                                       if isinstance(dim_indexer, IntIndexer)])
+        else:
+            self.squeeze_axes = None
+
+    def get_overlapping_chunks(self):
+        overlaps = [s.get_overlapping_chunks() for s in self.dim_indexers]
+        for dim_tasks in itertools.product(*overlaps):
+
+            chunk_coords = tuple(t[0] for t in dim_tasks)
+            chunk_selection = tuple(t[1] for t in dim_tasks)
+            out_selection = tuple(t[2] for t in dim_tasks)
+
+            # handle advanced indexing arrays orthogonally
+            if self.is_advanced:
+                # numpy doesn't support orthogonal indexing directly as yet, so need to work
+                # around via np.ix_. Also np.ix_ does not support a mixture of arrays and slices
+                # or integers, so need to convert slices and integers into ranges.
+                chunk_selection = ix_(*chunk_selection)
+
+            yield chunk_coords, chunk_selection, out_selection
+
+
+class OIndex(object):
+
+    def __init__(self, array):
+        self.array = array
+
+    def __getitem__(self, selection):
+        return self.array.get_orthogonal_selection(selection)
+
+    def __setitem__(self, selection, value):
+        return self.array.set_orthogonal_selection(selection, value)
+
+
+def is_coordinate_selection(selection, array):
+    return (
+        (len(selection) == array.ndim) and
+        all(
+            [(isinstance(dim_sel, numbers.Integral) or
+             (hasattr(dim_sel, 'dtype') and dim_sel.dtype.kind in 'ui'))
+             for dim_sel in selection]
+        )
+    )
+
+
+def is_mask_selection(selection, array):
+    return (
+        hasattr(selection, 'dtype') and
+        selection.dtype == bool and
+        hasattr(selection, 'shape') and
+        len(selection.shape) == len(array.shape)
+    )
+
+
+def replace_lists(selection):
+    return tuple(
+        np.asarray(dim_sel) if isinstance(dim_sel, list) else dim_sel
+        for dim_sel in selection
+    )
+
+
+# noinspection PyProtectedMember
+class CoordinateIndexer(object):
+
+    def __init__(self, selection, array):
+
+        # some initial normalization
+        if not isinstance(selection, tuple):
+            selection = tuple(selection)
+        selection = replace_lists(selection)
+
+        # validation
+        if not is_coordinate_selection(selection, array):
+            # TODO refactor error messages for consistency
+            raise IndexError('invalid coordinate selection')
+
+        # attempt to broadcast selection - this will raise error if array dimensions don't match
+        self.selection = np.broadcast_arrays(*selection)
+        self.shape = len(selection[0])
+        self.squeeze_axes = None
+
+        # normalization
+        for dim_sel, dim_len in zip(selection, array.shape):
+
+            # check number of dimensions, only support indexing with 1d array
+            if len(dim_sel.shape) > 1:
+                raise IndexError('selection must be 1-dimensional integer array')
+
+            # handle wraparound
+            loc_neg = dim_sel < 0
+            if np.any(loc_neg):
+                # TODO need to take a copy here, or OK to replace?
+                dim_sel[loc_neg] = dim_sel[loc_neg] + dim_len
+
+            # handle out of bounds
+            if np.any(dim_sel < 0) or np.any(dim_sel >= dim_len):
+                raise IndexError('index out of bounds')
+
+        # compute flattened chunk index for each point selected
+        chunks_multi_index = tuple(
+            dim_sel // dim_chunk_len
+            for (dim_sel, dim_chunk_len) in zip(selection, array._chunks)
+        )
+        chunks_raveled_indices = np.ravel_multi_index(chunks_multi_index,
+                                                      dims=array._cdata_shape)
+
+        # find runs of indices in the same chunk
+        self.chunks_rixs, self.run_starts, self.run_lengths = find_runs(chunks_raveled_indices)
+        # unravel
+        self.chunks_ixs = np.unravel_index(self.chunks_rixs, dims=array._cdata_shape)
+
+    def get_overlapping_chunks(self):
+
+        # iterate over chunks
+        for chunk_coords, s, l in zip(self.chunks_ixs, self.run_starts, self.run_lengths):
+
+            out_selection = slice(s, s+l)
+
+            chunk_offsets = tuple(
+                dim_chunk_ix * dim_chunk_len
+                for dim_chunk_ix, dim_chunk_len in zip(chunk_coords, self.array._chunks)
+            )
+
+            chunk_selection = tuple(
+                dim_sel[out_selection] - dim_chunk_offset
+                for (dim_sel, dim_chunk_offset) in zip(self.selection, chunk_offsets)
+            )
+
+            yield chunk_coords, chunk_selection, out_selection
+
+
+class VIndex(object):
+
+    def __init__(self, array):
+        self.array = array
+
+    def __getitem__(self, selection):
+        if not isinstance(selection, tuple):
+            selection = tuple(selection)
+        selection = replace_lists(selection)
+        if is_coordinate_selection(selection, self.array):
+            return self.array.get_coordinate_selection(selection)
+        # elif is_mask_selection(selection, self.array):
+        #     return self.array.get_mask_selection(selection)
+        else:
+            raise IndexError('unsupported selection')
+
+    def __setitem__(self, selection, value):
+        return self.array.set_orthogonal_selection(selection, value)
