@@ -8,9 +8,8 @@ import re
 import numpy as np
 
 
-from zarr.util import is_total_slice, normalize_array_selection, get_chunks_for_selection, \
-    human_readable_size, normalize_resize_args, normalize_storage_path, normalize_shape, \
-    normalize_chunks, InfoReporter, get_chunk_selections
+from zarr.util import is_total_slice, human_readable_size, normalize_resize_args, \
+    normalize_storage_path, normalize_shape, normalize_chunks, InfoReporter
 from zarr.storage import array_meta_key, attrs_key, listdir, getsize
 from zarr.meta import decode_array_metadata, encode_array_metadata
 from zarr.attrs import Attributes

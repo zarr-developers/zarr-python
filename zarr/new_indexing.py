@@ -270,18 +270,19 @@ class BoolArrayDimIndexer(object):
 
         # precompute number of selected items for each chunk
         self.chunk_nitems = np.zeros(self.nchunks, dtype='i8')
-        for dim_chunk_idx in range(self.nchunks):
-            dim_offset = dim_chunk_idx * self.dim_chunk_len
-            self.chunk_nitems[dim_chunk_idx] = np.count_nonzero(
+        for dim_chunk_ix in range(self.nchunks):
+            dim_offset = dim_chunk_ix * self.dim_chunk_len
+            self.chunk_nitems[dim_chunk_ix] = np.count_nonzero(
                 self.dim_sel[dim_offset:dim_offset + self.dim_chunk_len]
             )
         self.chunk_nitems_cumsum = np.cumsum(self.chunk_nitems)
         self.nitems = self.chunk_nitems_cumsum[-1]
+        self.dim_chunk_ixs = np.nonzero(self.chunk_nitems)[0]
 
     def __iter__(self):
 
         # iterate over chunks with at least one item
-        for dim_chunk_ix in np.nonzero(self.chunk_nitems)[0]:
+        for dim_chunk_ix in self.dim_chunk_ixs:
 
             # find region in chunk
             dim_offset = dim_chunk_ix * self.dim_chunk_len
@@ -359,10 +360,11 @@ class IntArrayDimIndexer(object):
             raise IndexError('selection contains index out of bounds')
 
         # handle non-monotonic indices
+        dim_sel_chunk = dim_sel // dim_chunk_len
         if np.any(np.diff(dim_sel) < 0):
             self.is_monotonic = False
-            # sort indices
-            self.dim_sort = np.argsort(dim_sel)
+            # sort indices to group by chunk
+            self.dim_sort = np.argsort(dim_sel_chunk)
             self.dim_sel = np.take(dim_sel, self.dim_sort)
 
         else:
@@ -374,12 +376,11 @@ class IntArrayDimIndexer(object):
         self.dim_len = dim_len
         self.dim_chunk_len = dim_chunk_len
         self.nchunks = int(np.ceil(self.dim_len / self.dim_chunk_len))
-        self.nitems = len(dim_sel)
+        self.nitems = len(self.dim_sel)
 
         # precompute number of selected items for each chunk
         # note: for dense integer selections, the division operation here is the bottleneck
-        self.chunk_nitems = np.bincount(self.dim_sel // self.dim_chunk_len,
-                                        minlength=self.nchunks)
+        self.chunk_nitems = np.bincount(dim_sel_chunk, minlength=self.nchunks)
         self.chunk_nitems_cumsum = np.cumsum(self.chunk_nitems)
         self.dim_chunk_ixs = np.nonzero(self.chunk_nitems)[0]
 
@@ -568,9 +569,6 @@ class CoordinateIndexer(object):
 
         # attempt to broadcast selection - this will raise error if array dimensions don't match
         selection = np.broadcast_arrays(*selection)
-        self.shape = len(selection[0]) if selection[0].shape else 1
-        self.drop_axes = None
-        self.array = array
 
         # normalization
         for dim_sel, dim_len in zip(selection, array.shape):
@@ -589,24 +587,25 @@ class CoordinateIndexer(object):
             if np.any(dim_sel < 0) or np.any(dim_sel >= dim_len):
                 raise IndexError('index out of bounds')
 
-        # handle monotonicity
-        lexsort = np.lexsort(selection[::-1])
-        if np.any(np.diff(lexsort) != 1):
-            self.is_monotonic = False
-            self.lexsort = lexsort
-            self.selection = tuple(np.take(dim_sel, lexsort) for dim_sel in selection)
-        else:
-            self.is_monotonic = True
-            self.lexsort = None
-            self.selection = selection
-
-        # compute flattened chunk index for each point selected
+        # compute flattened chunk index for each point in the selection
         chunks_multi_index = tuple(
             dim_sel // dim_chunk_len
-            for (dim_sel, dim_chunk_len) in zip(self.selection, array._chunks)
+            for (dim_sel, dim_chunk_len) in zip(selection, array._chunks)
         )
         chunks_raveled_indices = np.ravel_multi_index(chunks_multi_index,
                                                       dims=array._cdata_shape)
+
+        # group points by chunk
+        sel_sort = np.argsort(chunks_raveled_indices)
+        chunks_raveled_indices = chunks_raveled_indices[sel_sort]
+        selection = tuple(dim_sel[sel_sort] for dim_sel in selection)
+
+        # store atrributes
+        self.selection = selection
+        self.sel_sort = sel_sort
+        self.shape = len(selection[0]) if selection[0].shape else 1
+        self.drop_axes = None
+        self.array = array
 
         # precompute number of selected items for each chunk
         self.chunk_nitems = np.bincount(chunks_raveled_indices, minlength=array.nchunks)
@@ -627,12 +626,7 @@ class CoordinateIndexer(object):
             else:
                 start = self.chunk_nitems_cumsum[chunk_rix - 1]
             stop = self.chunk_nitems_cumsum[chunk_rix]
-            if self.is_monotonic:
-                out_selection = slice(start, stop)
-            else:
-                out_selection = self.lexsort[start:stop]
-
-            # TODO fix bug somewhere around here
+            out_selection = self.sel_sort[start:stop]
 
             chunk_offsets = tuple(
                 dim_chunk_ix * dim_chunk_len
