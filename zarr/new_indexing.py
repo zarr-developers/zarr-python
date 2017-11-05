@@ -304,33 +304,33 @@ class BoolArrayDimIndexer(object):
             yield ChunkDimProjection(dim_chunk_ix, dim_chunk_sel, dim_out_sel)
 
 
-def find_runs(x):
-    """Find runs of consecutive items in an array."""
-
-    # ensure array
-    x = np.asanyarray(x)
-    if x.ndim != 1:
-        raise ValueError('only 1D array supported')
-    n = x.shape[0]
-
-    # handle empty array
-    if n == 0:
-        return np.array([]), np.array([]), np.array([])
-
-    else:
-        # find run starts
-        loc_run_start = np.empty(n, dtype=bool)
-        loc_run_start[0] = True
-        np.not_equal(x[:-1], x[1:], out=loc_run_start[1:])
-        run_starts = np.nonzero(loc_run_start)[0]
-
-        # find run values
-        run_values = x[loc_run_start]
-
-        # find run lengths
-        run_lengths = np.diff(np.append(run_starts, n))
-
-        return run_values, run_starts, run_lengths
+# def find_runs(x):
+#     """Find runs of consecutive items in an array."""
+#
+#     # ensure array
+#     x = np.asanyarray(x)
+#     if x.ndim != 1:
+#         raise ValueError('only 1D array supported')
+#     n = x.shape[0]
+#
+#     # handle empty array
+#     if n == 0:
+#         return np.array([]), np.array([]), np.array([])
+#
+#     else:
+#         # find run starts
+#         loc_run_start = np.empty(n, dtype=bool)
+#         loc_run_start[0] = True
+#         np.not_equal(x[:-1], x[1:], out=loc_run_start[1:])
+#         run_starts = np.nonzero(loc_run_start)[0]
+#
+#         # find run values
+#         run_values = x[loc_run_start]
+#
+#         # find run lengths
+#         run_lengths = np.diff(np.append(run_starts, n))
+#
+#         return run_values, run_starts, run_lengths
 
 
 class IntArrayDimIndexer(object):
@@ -358,31 +358,49 @@ class IntArrayDimIndexer(object):
         if np.any(dim_sel < 0) or np.any(dim_sel >= dim_len):
             raise IndexError('selection contains index out of bounds')
 
+        # handle non-monotonic indices
+        if np.any(np.diff(dim_sel) < 0):
+            self.is_monotonic = False
+            # sort indices
+            self.dim_sort = np.argsort(dim_sel)
+            self.dim_sel = np.take(dim_sel, self.dim_sort)
+
+        else:
+            self.is_monotonic = True
+            self.dim_sort = None
+            self.dim_sel = dim_sel
+
         # store attributes
-        self.dim_sel = dim_sel
         self.dim_len = dim_len
         self.dim_chunk_len = dim_chunk_len
         self.nchunks = int(np.ceil(self.dim_len / self.dim_chunk_len))
         self.nitems = len(dim_sel)
 
-        # locate required chunk for each index
-        dim_chunk_sel = self.dim_sel // self.dim_chunk_len
-        self.dim_chunk_sel = dim_chunk_sel
-
-        # find runs of indices in the same chunk
-        self.dim_chunk_ixs, self.run_starts, self.run_lengths = find_runs(dim_chunk_sel)
+        # precompute number of selected items for each chunk
+        # note: for dense integer selections, the division operation here is the bottleneck
+        self.chunk_nitems = np.bincount(self.dim_sel // self.dim_chunk_len,
+                                        minlength=self.nchunks)
+        self.chunk_nitems_cumsum = np.cumsum(self.chunk_nitems)
+        self.dim_chunk_ixs = np.nonzero(self.chunk_nitems)[0]
 
     def __iter__(self):
 
-        # iterate over chunks
-        for dim_chunk_ix, s, l in zip(self.dim_chunk_ixs, self.run_starts, self.run_lengths):
+        for dim_chunk_ix in self.dim_chunk_ixs:
 
-            # find region in output array
-            dim_out_sel = slice(s, s + l)
+            # find region in output
+            if dim_chunk_ix == 0:
+                start = 0
+            else:
+                start = self.chunk_nitems_cumsum[dim_chunk_ix - 1]
+            stop = self.chunk_nitems_cumsum[dim_chunk_ix]
+            if self.is_monotonic:
+                dim_out_sel = slice(start, stop)
+            else:
+                dim_out_sel = self.dim_sort[start:stop]
 
             # find region in chunk
             dim_offset = dim_chunk_ix * self.dim_chunk_len
-            dim_chunk_sel = self.dim_sel[dim_out_sel] - dim_offset
+            dim_chunk_sel = self.dim_sel[start:stop] - dim_offset
 
             yield ChunkDimProjection(dim_chunk_ix, dim_chunk_sel, dim_out_sel)
 
@@ -416,6 +434,9 @@ class OrthogonalIndexer(object):
         # handle ellipsis
         selection = replace_ellipsis(selection, array._shape)
 
+        # normalize list to array
+        selection = replace_lists(selection)
+
         # validation - check dimensionality
         if len(selection) > len(array._shape):
             raise IndexError('too many indices for array')
@@ -425,10 +446,6 @@ class OrthogonalIndexer(object):
         # setup per-dimension indexers
         dim_indexers = []
         for dim_sel, dim_len, dim_chunk_len in zip(selection, array._shape, array._chunks):
-
-            # normalize list to array
-            if isinstance(dim_sel, list):
-                dim_sel = np.asarray(dim_sel)
 
             if isinstance(dim_sel, numbers.Integral):
                 dim_sel = normalize_integer_selection(dim_sel, dim_len)
@@ -486,6 +503,10 @@ class OrthogonalIndexer(object):
                 # around via np.ix_. Also np.ix_ does not support a mixture of arrays and slices
                 # or integers, so need to convert slices and integers into ranges.
                 chunk_selection = ix_(*chunk_selection)
+
+                # special case for non-monotonic indices
+                if any([not isinstance(s, (int, slice)) for s in out_selection]):
+                    out_selection = ix_(*out_selection)
 
             yield ChunkProjection(chunk_coords, chunk_selection, out_selection)
 
@@ -547,13 +568,12 @@ class CoordinateIndexer(object):
 
         # attempt to broadcast selection - this will raise error if array dimensions don't match
         selection = np.broadcast_arrays(*selection)
-        self.selection = selection
-        self.shape = len(self.selection[0]) if self.selection[0].shape else 1
+        self.shape = len(selection[0]) if selection[0].shape else 1
         self.drop_axes = None
         self.array = array
 
         # normalization
-        for dim_sel, dim_len in zip(self.selection, array.shape):
+        for dim_sel, dim_len in zip(selection, array.shape):
 
             # check number of dimensions, only support indexing with 1d array
             if len(dim_sel.shape) > 1:
@@ -569,6 +589,17 @@ class CoordinateIndexer(object):
             if np.any(dim_sel < 0) or np.any(dim_sel >= dim_len):
                 raise IndexError('index out of bounds')
 
+        # handle monotonicity
+        lexsort = np.lexsort(selection[::-1])
+        if np.any(np.diff(lexsort) != 1):
+            self.is_monotonic = False
+            self.lexsort = lexsort
+            self.selection = tuple(np.take(dim_sel, lexsort) for dim_sel in selection)
+        else:
+            self.is_monotonic = True
+            self.lexsort = None
+            self.selection = selection
+
         # compute flattened chunk index for each point selected
         chunks_multi_index = tuple(
             dim_sel // dim_chunk_len
@@ -577,29 +608,38 @@ class CoordinateIndexer(object):
         chunks_raveled_indices = np.ravel_multi_index(chunks_multi_index,
                                                       dims=array._cdata_shape)
 
-        # find runs of indices in the same chunk
-        self.chunks_rixs, self.run_starts, self.run_lengths = find_runs(chunks_raveled_indices)
+        # precompute number of selected items for each chunk
+        self.chunk_nitems = np.bincount(chunks_raveled_indices, minlength=array.nchunks)
+        self.chunk_nitems_cumsum = np.cumsum(self.chunk_nitems)
+        self.chunk_rixs = np.nonzero(self.chunk_nitems)[0]
+
         # unravel
-        self.chunks_mixs = np.unravel_index(self.chunks_rixs, dims=array._cdata_shape)
+        self.chunk_mixs = np.unravel_index(self.chunk_rixs, dims=array._cdata_shape)
 
     def __iter__(self):
 
         # iterate over chunks
-        for i in range(len(self.chunks_rixs)):
+        for i, chunk_rix in enumerate(self.chunk_rixs):
 
-            chunk_coords = tuple(mix[i] for mix in self.chunks_mixs)
-            s = self.run_starts[i]
-            l = self.run_lengths[i]
+            chunk_coords = tuple(m[i] for m in self.chunk_mixs)
+            if chunk_rix == 0:
+                start = 0
+            else:
+                start = self.chunk_nitems_cumsum[chunk_rix - 1]
+            stop = self.chunk_nitems_cumsum[chunk_rix]
+            if self.is_monotonic:
+                out_selection = slice(start, stop)
+            else:
+                out_selection = self.lexsort[start:stop]
 
-            out_selection = slice(s, s+l)
+            # TODO fix bug somewhere around here
 
             chunk_offsets = tuple(
                 dim_chunk_ix * dim_chunk_len
                 for dim_chunk_ix, dim_chunk_len in zip(chunk_coords, self.array._chunks)
             )
-
             chunk_selection = tuple(
-                dim_sel[out_selection] - dim_chunk_offset
+                dim_sel[start:stop] - dim_chunk_offset
                 for (dim_sel, dim_chunk_offset) in zip(self.selection, chunk_offsets)
             )
 

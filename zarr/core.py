@@ -465,8 +465,17 @@ class Array(object):
 
         """
 
-        # delegate to method
-        return self.get_basic_selection(selection)
+        if len(self._shape) == 0:
+            return self._get_basic_selection_zd(selection)
+
+        elif len(self._shape) == 1:
+            # safe to do "fancy" indexing, no ambiguity
+            return self.get_orthogonal_selection(selection)
+
+        else:
+            # "fancy" indexing can be ambiguous/hard to understand for multidimensional arrays,
+            # force people to go through explicit methods
+            return self.get_basic_selection(selection)
 
     def get_basic_selection(self, selection, out=None):
         """TODO"""
@@ -635,7 +644,17 @@ class Array(object):
 
         """
 
-        self.set_basic_selection(selection, value)
+        if len(self._shape) == 0:
+            self._set_basic_selection_zd(selection, value)
+
+        elif len(self._shape) == 1:
+            # safe to do "fancy" indexing, no ambiguity
+            self.set_orthogonal_selection(selection, value)
+
+        else:
+            # "fancy" indexing can be ambiguous/hard to understand for multidimensional arrays,
+            # force people to go through explicit methods
+            self.set_basic_selection(selection, value)
 
     def set_basic_selection(self, selection, value):
         """TODO"""
@@ -787,6 +806,7 @@ class Array(object):
         else:
 
             if isinstance(out, np.ndarray) and \
+                    isinstance(out_selection, slice) and \
                     is_total_slice(chunk_selection, self._chunks) and \
                     not self._filters:
 
