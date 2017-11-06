@@ -5,9 +5,8 @@ from __future__ import absolute_import, print_function, division
 from nose.tools import eq_ as eq, assert_raises, assert_true, assert_false, \
     assert_is_instance
 
-from zarr.util import normalize_shape, normalize_chunks, is_total_slice, normalize_dim_selection, \
-    normalize_array_selection, normalize_resize_args, human_readable_size, normalize_order, \
-    guess_chunks, info_html_report, info_text_report
+from zarr.util import normalize_shape, normalize_chunks, is_total_slice, normalize_resize_args, \
+    human_readable_size, normalize_order, guess_chunks, info_html_report, info_text_report
 
 
 def test_normalize_shape():
@@ -64,84 +63,6 @@ def test_is_total_slice():
 
     with assert_raises(TypeError):
         is_total_slice('foo', (100,))
-
-
-def test_normalize_axis_selection():
-
-    # single item
-    eq(1, normalize_dim_selection(1, 100, 10))
-    eq(99, normalize_dim_selection(-1, 100, 10))
-    with assert_raises(IndexError):
-        normalize_dim_selection(100, 100, 10)
-    with assert_raises(IndexError):
-        normalize_dim_selection(1000, 100, 10)
-    with assert_raises(IndexError):
-        normalize_dim_selection(-1000, 100, 10)
-
-    # slice
-    eq(slice(0, 100), normalize_dim_selection(slice(None), 100, 10))
-    eq(slice(0, 100), normalize_dim_selection(slice(None, 100), 100, 10))
-    eq(slice(0, 100), normalize_dim_selection(slice(0, None), 100, 10))
-    eq(slice(0, 100), normalize_dim_selection(slice(0, 1000), 100, 10))
-    eq(slice(99, 100), normalize_dim_selection(slice(-1, None), 100, 10))
-    eq(slice(98, 99), normalize_dim_selection(slice(-2, -1), 100, 10))
-    eq(slice(10, 10), normalize_dim_selection(slice(10, 0), 100, 10))
-    with assert_raises(IndexError):
-        normalize_dim_selection(slice(100, None), 100, 10)
-    with assert_raises(IndexError):
-        normalize_dim_selection(slice(1000, 2000), 100, 10)
-    with assert_raises(IndexError):
-        normalize_dim_selection(slice(-1000, 0), 100, 10)
-
-    with assert_raises(IndexError):
-        normalize_dim_selection('foo', 100, 10)
-
-    with assert_raises(NotImplementedError):
-        normalize_dim_selection(slice(0, 100, 2), 100, 10)
-
-
-def test_normalize_array_selection():
-
-    # 1D, single item
-    eq((0,), normalize_array_selection(0, (100,), (10,)))
-
-    # 1D, slice
-    eq((slice(0, 100),), normalize_array_selection(Ellipsis, (100,), (10,)))
-    eq((slice(0, 100),), normalize_array_selection(slice(None), (100,), (10,)))
-    eq((slice(0, 100),), normalize_array_selection(slice(None, 100), (100,), (10,)))
-    eq((slice(0, 100),), normalize_array_selection(slice(0, None), (100,), (10,)))
-    eq((slice(0, 100),), normalize_array_selection((slice(None), Ellipsis), (100,), (10,)))
-    eq((slice(0, 100),), normalize_array_selection((Ellipsis, slice(None)), (100,), (10,)))
-
-    # 2D, single item
-    eq((0, 0), normalize_array_selection((0, 0), (100, 100), (10, 10)))
-    eq((99, 1), normalize_array_selection((-1, 1), (100, 100), (10, 10)))
-
-    # 2D, single col/row
-    eq((0, slice(0, 100)), normalize_array_selection((0, slice(None)), (100, 100), (10, 10)))
-    eq((0, slice(0, 100)), normalize_array_selection((0,), (100, 100), (10, 10)))
-    eq((slice(0, 100), 0), normalize_array_selection((slice(None), 0), (100, 100), (10, 10)))
-
-    # 2D slice
-    eq((slice(0, 100), slice(0, 100)),
-       normalize_array_selection(Ellipsis, (100, 100), (10, 10)))
-    eq((slice(0, 100), slice(0, 100)),
-       normalize_array_selection(slice(None), (100, 100), (10, 10)))
-    eq((slice(0, 100), slice(0, 100)),
-       normalize_array_selection((slice(None), slice(None)), (100, 100), (10, 10)))
-    eq((slice(0, 100), slice(0, 100)),
-       normalize_array_selection((Ellipsis, slice(None)), (100, 100), (10, 10)))
-    eq((slice(0, 100), slice(0, 100)),
-       normalize_array_selection((slice(None), Ellipsis), (100, 100), (10, 10)))
-    eq((slice(0, 100), slice(0, 100)),
-       normalize_array_selection((slice(None), Ellipsis, slice(None)), (100, 100), (10, 10)))
-    eq((slice(0, 100), slice(0, 100)),
-       normalize_array_selection((Ellipsis, slice(None), slice(None)), (100, 100), (10, 10)))
-    eq((slice(0, 100), slice(0, 100)),
-       normalize_array_selection((slice(None), slice(None), Ellipsis), (100, 100), (10, 10)))
-
-    with assert_raises(IndexError):
-        normalize_array_selection('foo', (100,), (10,))
 
 
 def test_normalize_resize_args():

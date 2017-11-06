@@ -16,7 +16,7 @@ from zarr.attrs import Attributes
 from zarr.errors import PermissionError, err_read_only, err_array_not_found
 from zarr.compat import reduce
 from zarr.codecs import AsType, get_codec
-from zarr.new_indexing import OIndex, OrthogonalIndexer, BasicIndexer, VIndex, CoordinateIndexer
+from zarr.indexing import OIndex, OrthogonalIndexer, BasicIndexer, VIndex, CoordinateIndexer
 
 
 class Array(object):
