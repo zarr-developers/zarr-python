@@ -874,4 +874,117 @@ def test_get_selection_out():
             assert_array_equal(expect, out[:])
 
 
-# TODO selection with fields
+def test_get_selections_with_fields():
+
+    a = [[('aaa', 1, 4.2),
+          ('bbb', 2, 8.4),
+          ('ccc', 3, 12.6)]]
+    a = np.array(a, dtype=[('foo', 'S3'), ('bar', 'i4'), ('baz', 'f8')])
+    z = zarr.create(shape=a.shape, chunks=2, dtype=a.dtype)
+    z[:] = a
+
+    # single field
+    fields = 'foo'
+
+    # no selection
+    expect = a[fields]
+    actual = z.get_basic_selection(fields=fields)
+    assert_array_equal(expect, actual)
+    # alternative API
+    actual = z[fields]
+    assert_array_equal(expect, actual)
+
+    # basic selection with slice
+    expect = a[0:2][fields]
+    actual = z.get_basic_selection(slice(0, 2), fields=fields)
+    assert_array_equal(expect, actual)
+    # alternative API
+    actual = z[0:2, fields]
+    assert_array_equal(expect, actual)
+
+    # orthogonal selection
+    ix = [0, 2]
+    expect = a[ix][fields]
+    actual = z.get_orthogonal_selection(ix, fields=fields)
+    assert_array_equal(expect, actual)
+    # alternative APIs
+    actual = z[ix, fields]
+    assert_array_equal(expect, actual)
+    actual = z.oindex[ix, fields]
+    assert_array_equal(expect, actual)
+
+    # coordinate selection
+    ix = [0, 2]
+    expect = a[ix][fields]
+    actual = z.get_coordinate_selection(ix, fields=fields)
+    assert_array_equal(expect, actual)
+    # alternative APIs
+    actual = z[ix, fields]
+    assert_array_equal(expect, actual)
+    actual = z.vindex[ix, fields]
+    assert_array_equal(expect, actual)
+
+    # mask selection
+    ix = [True, False, True]
+    expect = a[ix][fields]
+    actual = z.get_mask_selection(ix, fields=fields)
+    assert_array_equal(expect, actual)
+    # alternative APIs
+    actual = z[ix, fields]
+    assert_array_equal(expect, actual)
+    actual = z.vindex[ix, fields]
+    assert_array_equal(expect, actual)
+
+    # multiple field
+    fields = ['foo', 'bar']
+
+    # no selection
+    expect = a[fields]
+    actual = z.get_basic_selection(fields=fields)
+    assert_array_equal(expect, actual)
+    # alternative API
+    actual = z[fields]
+    assert_array_equal(expect, actual)
+    actual = z[tuple(fields)]
+    assert_array_equal(expect, actual)
+
+    # basic selection with slice
+    expect = a[0:2][fields]
+    actual = z.get_basic_selection(slice(0, 2), fields=fields)
+    assert_array_equal(expect, actual)
+    # alternative API
+    actual = z[0:2, fields[0], fields[1]]
+    assert_array_equal(expect, actual)
+
+    # orthogonal selection
+    ix = [0, 2]
+    expect = a[ix][fields]
+    actual = z.get_orthogonal_selection(ix, fields=fields)
+    assert_array_equal(expect, actual)
+    # alternative APIs
+    actual = z[ix, fields[0], fields[1]]
+    assert_array_equal(expect, actual)
+    actual = z.oindex[ix, fields[0], fields[1]]
+    assert_array_equal(expect, actual)
+
+    # coordinate selection
+    ix = [0, 2]
+    expect = a[ix][fields]
+    actual = z.get_coordinate_selection(ix, fields=fields)
+    assert_array_equal(expect, actual)
+    # alternative APIs
+    actual = z[ix, fields[0], fields[1]]
+    assert_array_equal(expect, actual)
+    actual = z.vindex[ix, fields[0], fields[1]]
+    assert_array_equal(expect, actual)
+
+    # mask selection
+    ix = [True, False, True]
+    expect = a[ix][fields]
+    actual = z.get_mask_selection(ix, fields=fields)
+    assert_array_equal(expect, actual)
+    # alternative APIs
+    actual = z[ix, fields[0], fields[1]]
+    assert_array_equal(expect, actual)
+    actual = z.vindex[ix, fields[0], fields[1]]
+    assert_array_equal(expect, actual)
