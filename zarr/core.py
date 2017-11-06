@@ -16,7 +16,8 @@ from zarr.attrs import Attributes
 from zarr.errors import PermissionError, err_read_only, err_array_not_found
 from zarr.compat import reduce
 from zarr.codecs import AsType, get_codec
-from zarr.indexing import OIndex, OrthogonalIndexer, BasicIndexer, VIndex, CoordinateIndexer
+from zarr.indexing import OIndex, OrthogonalIndexer, BasicIndexer, VIndex, CoordinateIndexer, \
+    MaskIndexer
 
 
 class Array(object):
@@ -529,6 +530,7 @@ class Array(object):
         return self._get_selection(indexer, out=out)
 
     def get_orthogonal_selection(self, selection, out=None):
+        """TODO"""
 
         # refresh metadata
         if not self._cache_metadata:
@@ -540,6 +542,7 @@ class Array(object):
         return self._get_selection(indexer, out=out)
 
     def get_coordinate_selection(self, selection, out=None):
+        """TODO"""
 
         # refresh metadata
         if not self._cache_metadata:
@@ -547,6 +550,18 @@ class Array(object):
 
         # setup indexer
         indexer = CoordinateIndexer(selection, self)
+
+        return self._get_selection(indexer, out=out)
+
+    def get_mask_selection(self, selection, out=None):
+        """TODO"""
+
+        # refresh metadata
+        if not self._cache_metadata:
+            self._load_metadata()
+
+        # setup indexer
+        indexer = MaskIndexer(selection, self)
 
         return self._get_selection(indexer, out=out)
 
@@ -673,6 +688,7 @@ class Array(object):
             return self._set_basic_selection_nd(selection, value)
 
     def set_orthogonal_selection(self, selection, value):
+        """TODO"""
 
         # guard conditions
         if self._read_only:
@@ -688,6 +704,7 @@ class Array(object):
         self._set_selection(indexer, value)
 
     def set_coordinate_selection(self, selection, value):
+        """TODO"""
 
         # guard conditions
         if self._read_only:
@@ -699,6 +716,22 @@ class Array(object):
 
         # setup indexer
         indexer = CoordinateIndexer(selection, self)
+
+        self._set_selection(indexer, value)
+
+    def set_mask_selection(self, selection, value):
+        """TODO"""
+
+        # guard conditions
+        if self._read_only:
+            err_read_only()
+
+        # refresh metadata
+        if not self._cache_metadata:
+            self._load_metadata_nosync()
+
+        # setup indexer
+        indexer = MaskIndexer(selection, self)
 
         self._set_selection(indexer, value)
 
@@ -750,7 +783,8 @@ class Array(object):
             if not hasattr(value, 'shape'):
                 raise TypeError('value must be an array-like object')
             if value.shape != sel_shape:
-                raise ValueError('value has wrong shape for selection')
+                raise ValueError('value has wrong shape for selection; expected {}, got {}'
+                                 .format(sel_shape, value.shape))
 
         # iterate over chunks in range
         for chunk_coords, chunk_selection, out_selection in indexer:

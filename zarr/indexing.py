@@ -8,6 +8,18 @@ import collections
 import numpy as np
 
 
+def is_integer(x):
+    return isinstance(x, numbers.Integral)
+
+
+def is_integer_array(x):
+    return hasattr(x, 'dtype') and x.dtype.kind in 'ui'
+
+
+def is_bool_array(x):
+    return hasattr(x, 'dtype') and x.dtype == bool
+
+
 def normalize_integer_selection(dim_sel, dim_len):
 
     # normalize type to int
@@ -45,7 +57,7 @@ class IntDimIndexer(object):
     def __init__(self, dim_sel, dim_len, dim_chunk_len):
 
         # check type
-        if not isinstance(dim_sel, numbers.Integral):
+        if not is_integer(dim_sel):
             raise ValueError('selection must be an integer')
 
         # normalize
@@ -431,7 +443,7 @@ class OrthogonalIndexer(object):
         dim_indexers = []
         for dim_sel, dim_len, dim_chunk_len in zip(selection, array._shape, array._chunks):
 
-            if isinstance(dim_sel, numbers.Integral):
+            if is_integer(dim_sel):
 
                 dim_indexer = IntDimIndexer(dim_sel, dim_len, dim_chunk_len)
 
@@ -447,16 +459,13 @@ class OrthogonalIndexer(object):
                 else:
                     dim_indexer = SliceDimIndexer(dim_sel, dim_len, dim_chunk_len)
 
-            elif hasattr(dim_sel, 'dtype') and hasattr(dim_sel, 'shape'):
+            elif is_integer_array(dim_sel):
 
-                if dim_sel.dtype == bool:
-                    dim_indexer = BoolArrayDimIndexer(dim_sel, dim_len, dim_chunk_len)
+                dim_indexer = IntArrayDimIndexer(dim_sel, dim_len, dim_chunk_len)
 
-                elif dim_sel.dtype.kind in 'ui':
-                    dim_indexer = IntArrayDimIndexer(dim_sel, dim_len, dim_chunk_len)
+            elif is_bool_array(dim_sel):
 
-                else:
-                    raise IndexError('bad selection type')
+                dim_indexer = BoolArrayDimIndexer(dim_sel, dim_len, dim_chunk_len)
 
             else:
                 raise IndexError('bad selection type')
@@ -511,8 +520,7 @@ def is_coordinate_selection(selection, array):
     return (
         (len(selection) == len(array._shape)) and
         all(
-            [(isinstance(dim_sel, numbers.Integral) or
-             (hasattr(dim_sel, 'dtype') and dim_sel.dtype.kind in 'ui'))
+            [is_integer(dim_sel) or is_integer_array(dim_sel)
              for dim_sel in selection]
         )
     )
@@ -520,10 +528,9 @@ def is_coordinate_selection(selection, array):
 
 def is_mask_selection(selection, array):
     return (
-        hasattr(selection, 'dtype') and
-        selection.dtype == bool and
-        hasattr(selection, 'shape') and
-        len(selection.shape) == len(array.shape)
+        len(selection) == 1 and
+        is_bool_array(selection[0]) and
+        selection[0].shape == array.shape
     )
 
 
@@ -541,8 +548,7 @@ class CoordinateIndexer(object):
 
         # some initial normalization
         selection = ensure_tuple(selection)
-        selection = tuple([i] if isinstance(i, numbers.Integral) else i
-                          for i in selection)
+        selection = tuple([i] if is_integer(i) else i for i in selection)
         selection = replace_lists(selection)
 
         # validation
@@ -586,7 +592,7 @@ class CoordinateIndexer(object):
         # store atrributes
         self.selection = selection
         self.sel_sort = sel_sort
-        self.shape = len(selection[0]) if selection[0].shape else 1
+        self.shape = selection[0].shape if selection[0].shape else (1,)
         self.drop_axes = None
         self.array = array
 
@@ -623,6 +629,27 @@ class CoordinateIndexer(object):
             yield ChunkProjection(chunk_coords, chunk_selection, out_selection)
 
 
+# noinspection PyProtectedMember
+class MaskIndexer(CoordinateIndexer):
+
+    def __init__(self, selection, array):
+
+        # some initial normalization
+        selection = ensure_tuple(selection)
+        selection = replace_lists(selection)
+
+        # validation
+        if not is_mask_selection(selection, array):
+            # TODO refactor error messages for consistency
+            raise IndexError('invalid mask selection')
+
+        # convert to indices
+        selection = np.nonzero(selection[0])
+
+        # delegate the rest to superclass
+        super(MaskIndexer, self).__init__(selection, array)
+
+
 class VIndex(object):
 
     def __init__(self, array):
@@ -633,10 +660,17 @@ class VIndex(object):
         selection = replace_lists(selection)
         if is_coordinate_selection(selection, self.array):
             return self.array.get_coordinate_selection(selection)
-        # elif is_mask_selection(selection, self.array):
-        #     return self.array.get_mask_selection(selection)
+        elif is_mask_selection(selection, self.array):
+            return self.array.get_mask_selection(selection)
         else:
             raise IndexError('unsupported selection')
 
     def __setitem__(self, selection, value):
-        return self.array.set_orthogonal_selection(selection, value)
+        selection = ensure_tuple(selection)
+        selection = replace_lists(selection)
+        if is_coordinate_selection(selection, self.array):
+            return self.array.set_coordinate_selection(selection, value)
+        elif is_mask_selection(selection, self.array):
+            return self.array.set_mask_selection(selection, value)
+        else:
+            raise IndexError('unsupported selection')
