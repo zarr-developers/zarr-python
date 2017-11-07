@@ -537,17 +537,31 @@ def test_get_coordinate_selection_1d():
     expect = a[ix]
     actual = z.get_coordinate_selection(ix)
     assert_array_equal(expect, actual)
+    actual = z.vindex[ix]
+    assert_array_equal(expect, actual)
 
     # test wraparound
     ix = [0, 3, 10, -23, -12, -1]
     expect = a[ix]
     actual = z.get_coordinate_selection(ix)
     assert_array_equal(expect, actual)
+    actual = z.vindex[ix]
+    assert_array_equal(expect, actual)
 
     # test out of order
     ix = [3, 105, 23, 127]  # not monotonically increasing
     expect = a[ix]
     actual = z.get_coordinate_selection(ix)
+    assert_array_equal(expect, actual)
+    actual = z.vindex[ix]
+    assert_array_equal(expect, actual)
+
+    # test multi-dimensional selection
+    ix = np.array([[2, 4], [6, 8]])
+    expect = a[ix]
+    actual = z.get_coordinate_selection(ix)
+    assert_array_equal(expect, actual)
+    actual = z.vindex[ix]
     assert_array_equal(expect, actual)
 
     # test errors
@@ -558,13 +572,10 @@ def test_get_coordinate_selection_1d():
         ix = [-(a.shape[0] + 1)]  # out of bounds
         z.get_coordinate_selection(ix)
     with assert_raises(IndexError):
-        ix = [[2, 4], [6, 8]]  # too many dimensions
+        ix = slice(5, 15)  # not supported
         z.get_coordinate_selection(ix)
     with assert_raises(IndexError):
-        ix = slice(5, 15)
-        z.get_coordinate_selection(ix)
-    with assert_raises(IndexError):
-        ix = Ellipsis
+        ix = Ellipsis  # not supported
         z.get_coordinate_selection(ix)
 
 
@@ -622,12 +633,27 @@ def test_get_coordinate_selection_2d():
     expect = a[ix0, ix1]
     actual = z.get_coordinate_selection((ix0, ix1))
     assert_array_equal(expect, actual)
+    actual = z.vindex[ix0, ix1]
+    assert_array_equal(expect, actual)
 
     # not monotonically increasing (second dim)
     ix0 = [1, 1, 2, 2, 5]
     ix1 = [1, 3, 2, 1, 0]
     expect = a[ix0, ix1]
     actual = z.get_coordinate_selection((ix0, ix1))
+    assert_array_equal(expect, actual)
+    actual = z.vindex[ix0, ix1]
+    assert_array_equal(expect, actual)
+
+    # multi-dimensional selection
+    ix0 = np.array([[1, 1, 2],
+                    [2, 2, 5]])
+    ix1 = np.array([[1, 3, 2],
+                    [1, 0, 0]])
+    expect = a[ix0, ix1]
+    actual = z.get_coordinate_selection((ix0, ix1))
+    assert_array_equal(expect, actual)
+    actual = z.vindex[ix0, ix1]
     assert_array_equal(expect, actual)
 
     with assert_raises(IndexError):
@@ -638,6 +664,9 @@ def test_get_coordinate_selection_2d():
         z.get_coordinate_selection(selection)
     with assert_raises(IndexError):
         selection = Ellipsis, [1, 2, 3]
+        z.get_coordinate_selection(selection)
+    with assert_raises(IndexError):
+        selection = Ellipsis
         z.get_coordinate_selection(selection)
 
 
@@ -657,10 +686,10 @@ def test_set_coordinate_selection_1d_int():
         a[:] = 0
         a[ix] = v[ix]
         z[:] = 0
-        z.vindex[ix] = v[ix]
+        z.set_coordinate_selection(ix, v[ix])
         assert_array_equal(a, z[:])
         z[:] = 0
-        z.set_coordinate_selection(ix, v[ix])
+        z.vindex[ix] = v[ix]
         assert_array_equal(a, z[:])
 
 
@@ -690,10 +719,10 @@ def test_set_coordinate_selection_2d_int():
             a[:] = 0
             a[selection] = v[selection]
             z[:] = 0
-            z.vindex[selection] = v[selection]
+            z.set_coordinate_selection(selection, v[selection])
             assert_array_equal(a, z[:])
             z[:] = 0
-            z.set_coordinate_selection(selection, v[selection])
+            z.vindex[selection] = v[selection]
             assert_array_equal(a, z[:])
 
 

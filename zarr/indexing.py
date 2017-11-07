@@ -529,21 +529,21 @@ class OIndex(object):
         return self.array.set_orthogonal_selection(selection, value, fields=fields)
 
 
+# noinspection PyProtectedMember
 def is_coordinate_selection(selection, array):
     return (
         (len(selection) == len(array._shape)) and
-        all(
-            [is_integer(dim_sel) or is_integer_array(dim_sel)
-             for dim_sel in selection]
-        )
+        all([is_integer(dim_sel) or is_integer_array(dim_sel)
+             for dim_sel in selection])
     )
 
 
+# noinspection PyProtectedMember
 def is_mask_selection(selection, array):
     return (
         len(selection) == 1 and
         is_bool_array(selection[0]) and
-        selection[0].shape == array.shape
+        selection[0].shape == array._shape
     )
 
 
@@ -569,15 +569,8 @@ class CoordinateIndexer(object):
             # TODO refactor error messages for consistency
             raise IndexError('invalid coordinate selection')
 
-        # attempt to broadcast selection - this will raise error if array dimensions don't match
-        selection = np.broadcast_arrays(*selection)
-
-        # normalization
+        # handle wraparound, boundscheck
         for dim_sel, dim_len in zip(selection, array.shape):
-
-            # check number of dimensions, only support indexing with 1d array
-            if len(dim_sel.shape) > 1:
-                raise IndexError('selection must be 1-dimensional integer array')
 
             # handle wraparound
             loc_neg = dim_sel < 0
@@ -589,11 +582,24 @@ class CoordinateIndexer(object):
             if np.any(dim_sel < 0) or np.any(dim_sel >= dim_len):
                 raise IndexError('index out of bounds')
 
-        # compute flattened chunk index for each point in the selection
+        # compute chunk index for each point in the selection
         chunks_multi_index = tuple(
             dim_sel // dim_chunk_len
             for (dim_sel, dim_chunk_len) in zip(selection, array._chunks)
         )
+
+        # broadcast selection - this will raise error if array dimensions don't match
+        selection = np.broadcast_arrays(*selection)
+        chunks_multi_index = np.broadcast_arrays(*chunks_multi_index)
+
+        # remember shape of selection, because we will flatten indices for processing
+        self.sel_shape = selection[0].shape if selection[0].shape else (1,)
+
+        # flatten selection
+        selection = [dim_sel.reshape(-1) for dim_sel in selection]
+        chunks_multi_index = [dim_chunks.reshape(-1) for dim_chunks in chunks_multi_index]
+
+        # ravel chunk indices
         chunks_raveled_indices = np.ravel_multi_index(chunks_multi_index,
                                                       dims=array._cdata_shape)
 
@@ -612,9 +618,10 @@ class CoordinateIndexer(object):
         # precompute number of selected items for each chunk
         self.chunk_nitems = np.bincount(chunks_raveled_indices, minlength=array.nchunks)
         self.chunk_nitems_cumsum = np.cumsum(self.chunk_nitems)
+        # locate the chunks we need to process
         self.chunk_rixs = np.nonzero(self.chunk_nitems)[0]
 
-        # unravel
+        # unravel chunk indices
         self.chunk_mixs = np.unravel_index(self.chunk_rixs, dims=array._cdata_shape)
 
     def __iter__(self):

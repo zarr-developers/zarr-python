@@ -555,7 +555,16 @@ class Array(object):
         # setup indexer
         indexer = CoordinateIndexer(selection, self)
 
-        return self._get_selection(indexer=indexer, out=out, fields=fields)
+        # handle output - need to flatten
+        if out is not None:
+            out = out.reshape(-1)
+
+        out = self._get_selection(indexer=indexer, out=out, fields=fields)
+
+        # restore shape
+        out = out.reshape(indexer.sel_shape)
+
+        return out
 
     def get_mask_selection(self, selection, out=None, fields=None):
         """TODO"""
