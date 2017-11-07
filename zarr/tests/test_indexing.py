@@ -7,8 +7,7 @@ from numpy.testing import assert_array_equal
 from nose.tools import assert_raises, eq_ as eq
 
 
-from zarr.indexing import normalize_integer_selection, normalize_slice_selection, \
-    replace_ellipsis, ix_, oindex
+from zarr.indexing import normalize_integer_selection, replace_ellipsis, oindex, oindex_set
 import zarr
 
 
@@ -24,21 +23,21 @@ def test_normalize_integer_selection():
         normalize_integer_selection(-1000, 100)
 
 
-def test_normalize_slice_selection():
-
-    eq(slice(0, 100, 1), normalize_slice_selection(slice(None), 100))
-    eq(slice(0, 100, 1), normalize_slice_selection(slice(None, 100), 100))
-    eq(slice(0, 100, 1), normalize_slice_selection(slice(0, None), 100))
-    eq(slice(0, 100, 1), normalize_slice_selection(slice(0, 1000), 100))
-    eq(slice(99, 100, 1), normalize_slice_selection(slice(-1, None), 100))
-    eq(slice(98, 99, 1), normalize_slice_selection(slice(-2, -1), 100))
-    eq(slice(10, 10, 1), normalize_slice_selection(slice(10, 0), 100))
-    with assert_raises(IndexError):
-        normalize_slice_selection(slice(100, None), 100)
-    with assert_raises(IndexError):
-        normalize_slice_selection(slice(1000, 2000), 100)
-    with assert_raises(IndexError):
-        normalize_slice_selection(slice(-1000, 0), 100)
+# def test_normalize_slice_selection():
+#
+#     eq(slice(0, 100, 1), normalize_slice_selection(slice(None), 100))
+#     eq(slice(0, 100, 1), normalize_slice_selection(slice(None, 100), 100))
+#     eq(slice(0, 100, 1), normalize_slice_selection(slice(0, None), 100))
+#     eq(slice(0, 100, 1), normalize_slice_selection(slice(0, 1000), 100))
+#     eq(slice(99, 100, 1), normalize_slice_selection(slice(-1, None), 100))
+#     eq(slice(98, 99, 1), normalize_slice_selection(slice(-2, -1), 100))
+#     eq(slice(10, 10, 1), normalize_slice_selection(slice(10, 0), 100))
+#     with assert_raises(IndexError):
+#         normalize_slice_selection(slice(100, None), 100)
+#     with assert_raises(IndexError):
+#         normalize_slice_selection(slice(1000, 2000), 100)
+#     with assert_raises(IndexError):
+#         normalize_slice_selection(slice(-1000, 0), 100)
 
 
 def test_replace_ellipsis():
@@ -132,17 +131,22 @@ def test_get_orthogonal_selection_1d_int():
         ix.sort()
         _test_get_orthogonal_selection_1d_common(a, z, ix)
 
-    # test wraparound
-    ix = [0, 3, 10, -23, -12, -1]
-    expect = a[ix]
-    actual = z.oindex[ix]
-    assert_array_equal(expect, actual)
+    selections = [
+        # test single value
+        0,
+        -1,
+        # test wraparound
+        [0, 3, 10, -23, -12, -1],
+        # explicit test not sorted
+        [3, 105, 23, 127],  # not monotonically increasing
 
-    # explicit test not sorted
-    ix = [3, 105, 23, 127]  # not monotonically increasing
-    expect = a[ix]
-    actual = z.oindex[ix]
-    assert_array_equal(expect, actual)
+    ]
+    for selection in selections:
+        expect = a[selection]
+        actual = z.get_orthogonal_selection(selection)
+        assert_array_equal(expect, actual)
+        actual = z.oindex[selection]
+        assert_array_equal(expect, actual)
 
     # test errors
     with assert_raises(IndexError):
@@ -169,9 +173,14 @@ def test_get_orthogonal_selection_1d_slice_with_step():
         slice(0, 1050, 10),
         slice(0, 1050, 100),
         slice(0, 1050, 1000),
+        slice(1050, 0, -1),
+        slice(1050, 0, -10),
+        slice(50, 150),
         slice(50, 150, 1),
         slice(50, 150, 10),
-        slice(50, 150, 100),
+        slice(150, 50, -1),
+        slice(150, 50, -10),
+        slice(-1, 0, -1),
     ]
     for selection in selections:
         expect = a[selection]
@@ -187,6 +196,9 @@ def test_get_orthogonal_selection_1d_slice_with_step():
 def _test_get_orthogonal_selection_2d_common(a, z, ix0, ix1):
 
     selections = [
+        # single value
+        (42, 4),
+        (-1, -1),
         # index both axes with array
         (ix0, ix1),
         # mixed indexing with array / slice
@@ -255,6 +267,9 @@ def test_get_orthogonal_selection_2d_int():
 def _test_get_orthogonal_selection_3d_common(a, z, ix0, ix1, ix2):
 
     selections = [
+        # single value
+        (84, 42, 4),
+        (-1, -1, -1),
         # index all axes with array
         (ix0, ix1, ix2),
         # mixed indexing with single array / slices
@@ -311,11 +326,11 @@ def test_orthogonal_indexing_edge_cases():
     z = zarr.create(shape=a.shape, chunks=(1, 2, 3), dtype=a.dtype)
     z[:] = a
 
-    expect = a[ix_([0], range(2), [0, 1, 2])].squeeze(axis=0)
+    expect = oindex(a, (0, slice(None), [0, 1, 2]))
     actual = z.oindex[0, :, [0, 1, 2]]
     assert_array_equal(expect, actual)
 
-    expect = a[ix_([0], range(2), [True, True, True])].squeeze(axis=0)
+    expect = oindex(a, (0, slice(None), [True, True, True]))
     actual = z.oindex[0, :, [True, True, True]]
     assert_array_equal(expect, actual)
 
@@ -341,13 +356,16 @@ def test_get_orthogonal_selection_3d_int():
 
 
 def _test_set_orthogonal_selection_1d_common(v, a, z, ix):
+    # setup expectation
     a[:] = 0
     a[ix] = v[ix]
-    z[:] = 0
-    z.oindex[ix] = v[ix]
-    assert_array_equal(a, z[:])
+    # long-form API
     z[:] = 0
     z.set_orthogonal_selection(ix, v[ix])
+    assert_array_equal(a, z[:])
+    # short-form API
+    z[:] = 0
+    z.oindex[ix] = v[ix]
     assert_array_equal(a, z[:])
     # # also available via __setitem__ for 1d arrays
     # z[:] = 0
@@ -388,6 +406,9 @@ def test_set_orthogonal_selection_1d_int():
 def _test_set_orthogonal_selection_2d_common(v, a, z, ix0, ix1):
 
     selections = (
+        # single value
+        (42, 4),
+        (-1, -1),
         # index both axes with array
         (ix0, ix1),
         # mixed indexing with array / slice or int
@@ -397,13 +418,17 @@ def _test_set_orthogonal_selection_2d_common(v, a, z, ix0, ix1):
         (42, ix1),
     )
     for selection in selections:
+        # setup expectation
         a[:] = 0
-        a[ix_(*selection)] = v[ix_(*selection)]
+        value = oindex(v, selection)
+        oindex_set(a, selection, value)
+        # long-form API
         z[:] = 0
-        z.oindex[selection] = oindex(v, selection)
+        z.set_orthogonal_selection(selection, value)
         assert_array_equal(a, z[:])
+        # short-form API
         z[:] = 0
-        z.set_orthogonal_selection(selection, oindex(v, selection))
+        z.oindex[selection] = value
         assert_array_equal(a, z[:])
 
 
@@ -443,6 +468,9 @@ def test_set_orthogonal_selection_2d_int():
 def _test_set_orthogonal_selection_3d_common(v, a, z, ix0, ix1, ix2):
 
     selections = (
+        # single value
+        (84, 42, 4),
+        (-1, -1, -1),
         # index all axes with bool array
         (ix0, ix1, ix2),
         # mixed indexing with single bool array / slice or int
@@ -461,13 +489,17 @@ def _test_set_orthogonal_selection_3d_common(v, a, z, ix0, ix1, ix2):
         (ix0, ix1, 4),
     )
     for selection in selections:
+        # setup expectation
         a[:] = 0
-        a[ix_(*selection)] = v[ix_(*selection)]
+        value = oindex(v, selection)
+        oindex_set(a, selection, value)
+        # long-form API
         z[:] = 0
-        z.oindex[selection] = oindex(v, selection)
+        z.set_orthogonal_selection(selection, value)
         assert_array_equal(a, z[:])
+        # short-form API
         z[:] = 0
-        z.set_orthogonal_selection(selection, oindex(v, selection))
+        z.oindex[selection] = value
         assert_array_equal(a, z[:])
 
 
@@ -532,37 +564,25 @@ def test_get_coordinate_selection_1d():
         actual = z.vindex[ix]
         assert_array_equal(expect, actual)
 
-    # test single item
-    ix = 42
-    expect = a[ix]
-    actual = z.get_coordinate_selection(ix)
-    assert_array_equal(expect, actual)
-    actual = z.vindex[ix]
-    assert_array_equal(expect, actual)
-
-    # test wraparound
-    ix = [0, 3, 10, -23, -12, -1]
-    expect = a[ix]
-    actual = z.get_coordinate_selection(ix)
-    assert_array_equal(expect, actual)
-    actual = z.vindex[ix]
-    assert_array_equal(expect, actual)
-
-    # test out of order
-    ix = [3, 105, 23, 127]  # not monotonically increasing
-    expect = a[ix]
-    actual = z.get_coordinate_selection(ix)
-    assert_array_equal(expect, actual)
-    actual = z.vindex[ix]
-    assert_array_equal(expect, actual)
-
-    # test multi-dimensional selection
-    ix = np.array([[2, 4], [6, 8]])
-    expect = a[ix]
-    actual = z.get_coordinate_selection(ix)
-    assert_array_equal(expect, actual)
-    actual = z.vindex[ix]
-    assert_array_equal(expect, actual)
+    selections = [
+        # test single item
+        42,
+        -1,
+        # test wraparound
+        [0, 3, 10, -23, -12, -1],
+        # test out of order
+        [3, 105, 23, 127],  # not monotonically increasing
+        # test multi-dimensional selection
+        np.array([[2, 4], [6, 8]]),
+    ]
+    for selection in selections:
+        expect = a[selection]
+        # long-form API
+        actual = z.get_coordinate_selection(selection)
+        assert_array_equal(expect, actual)
+        # short-form API
+        actual = z.vindex[selection]
+        assert_array_equal(expect, actual)
 
     # test errors
     with assert_raises(IndexError):
@@ -593,6 +613,9 @@ def test_get_coordinate_selection_2d():
         ix0 = np.random.choice(a.shape[0], size=n, replace=True)
         ix1 = np.random.choice(a.shape[1], size=n, replace=True)
         selections = [
+            # single value
+            (42, 4),
+            (-1, -1),
             # index both axes with array
             (ix0, ix1),
             # mixed indexing with array / int
@@ -603,27 +626,10 @@ def test_get_coordinate_selection_2d():
 
         for selection in selections:
             expect = a[selection]
+            # long-form API
             actual = z.get_coordinate_selection(selection)
             assert_array_equal(expect, actual)
-            actual = z.vindex[selection]
-            assert_array_equal(expect, actual)
-
-        srt = np.lexsort((ix0, ix1))
-        ix0 = ix0[srt]
-        ix1 = ix1[srt]
-        selections = [
-            # index both axes with array
-            (ix0, ix1),
-            # mixed indexing with array / int
-            (ix0, 4),
-            (42, ix1),
-            (42, 4),
-        ]
-
-        for selection in selections:
-            expect = a[selection]
-            actual = z.get_coordinate_selection(selection)
-            assert_array_equal(expect, actual)
+            # short-form API
             actual = z.vindex[selection]
             assert_array_equal(expect, actual)
 
@@ -708,6 +714,8 @@ def test_set_coordinate_selection_2d_int():
         ix1 = np.random.choice(a.shape[1], size=n, replace=True)
 
         selections = (
+            (42, 4),
+            (-1, -1),
             # index both axes with array
             (ix0, ix1),
             # mixed indexing with array / int
@@ -1042,22 +1050,19 @@ def test_set_selections_with_fields():
 
         else:
 
-            # total selection
+            # setup expectation
             a[:] = ('', 0, 0)
             z[:] = ('', 0, 0)
             assert_array_equal(a, z[:])
-            if isinstance(fields, str):
-                a[fields] = v[fields]
-            else:
-                for f in fields:
-                    a[f] = v[f]
+            a[fields] = v[fields]
+            # total selection
             z.set_basic_selection(Ellipsis, v[fields], fields=fields)
             assert_array_equal(a, z[:])
 
             # basic selection with slice
             a[:] = ('', 0, 0)
             z[:] = ('', 0, 0)
-            a[0:2][fields] = v[0:2][fields]
+            a[fields][0:2] = v[fields][0:2]
             z.set_basic_selection(slice(0, 2), v[0:2][fields], fields=fields)
             assert_array_equal(a, z[:])
 

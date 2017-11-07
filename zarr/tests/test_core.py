@@ -82,6 +82,7 @@ class TestArray(unittest.TestCase):
         except TypeError:
             pass
 
+    # noinspection PyStatementEffect
     def test_array_1d(self):
         a = np.arange(1050)
         z = self.create_array(shape=a.shape, chunks=100, dtype=a.dtype)
@@ -193,6 +194,7 @@ class TestArray(unittest.TestCase):
             z[:] = value
             assert_array_equal(a, z[:])
 
+    # noinspection PyStatementEffect
     def test_array_2d(self):
         a = np.arange(10000).reshape((1000, 10))
         z = self.create_array(shape=a.shape, chunks=(100, 2), dtype=a.dtype)
@@ -599,6 +601,7 @@ class TestArray(unittest.TestCase):
         assert_array_equal(np.take(a, indices, axis=1),
                            np.take(a, zi, axis=1))
 
+    # noinspection PyStatementEffect
     def test_0len_dim_1d(self):
         # Test behaviour for 1D array with zero-length dimension.
 
@@ -631,6 +634,7 @@ class TestArray(unittest.TestCase):
         with assert_raises(IndexError):
             z[0] = 42
 
+    # noinspection PyStatementEffect
     def test_0len_dim_2d(self):
         # Test behavioud for 2D array with a zero-length dimension.
 
@@ -667,6 +671,7 @@ class TestArray(unittest.TestCase):
         with assert_raises(IndexError):
             z[:, 0] = 42
 
+    # noinspection PyStatementEffect
     def test_array_0d(self):
         # test behaviour for array with 0 dimensions
 

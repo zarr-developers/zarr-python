@@ -77,32 +77,32 @@ class IntDimIndexer(object):
         yield ChunkDimProjection(dim_chunk_ix, dim_chunk_sel, dim_out_sel)
 
 
-def normalize_slice_selection(dim_sel, dim_len):
-
-    # handle slice with None bound
-    start = 0 if dim_sel.start is None else dim_sel.start
-    stop = dim_len if dim_sel.stop is None else dim_sel.stop
-    step = 1 if dim_sel.step is None else dim_sel.step
-
-    # handle wraparound
-    if start < 0:
-        start = dim_len + start
-    if stop < 0:
-        stop = dim_len + stop
-
-    # handle out of bounds
-    if start < 0:
-        raise IndexError('start index out of bounds: %s' % dim_sel.start)
-    if stop < 0:
-        raise IndexError('stop index out of bounds: %s' % dim_sel.stop)
-    if start >= dim_len and dim_len > 0:
-        raise IndexError('start index out of bounds: %ss' % dim_sel.start)
-    if stop > dim_len:
-        stop = dim_len
-    if stop < start:
-        stop = start
-
-    return slice(start, stop, step)
+# def normalize_slice_selection(dim_sel, dim_len):
+#
+#     # handle slice with None bound
+#     start = 0 if dim_sel.start is None else dim_sel.start
+#     stop = dim_len if dim_sel.stop is None else dim_sel.stop
+#     step = 1 if dim_sel.step is None else dim_sel.step
+#
+#     # handle wraparound
+#     if start < 0:
+#         start = dim_len + start
+#     if stop < 0:
+#         stop = dim_len + stop
+#
+#     # handle out of bounds
+#     if start < 0:
+#         raise IndexError('start index out of bounds: %s' % dim_sel.start)
+#     if stop < 0:
+#         raise IndexError('stop index out of bounds: %s' % dim_sel.stop)
+#     if start >= dim_len and dim_len > 0:
+#         raise IndexError('start index out of bounds: %ss' % dim_sel.start)
+#     if stop > dim_len:
+#         stop = dim_len
+#     if stop < start:
+#         stop = start
+#
+#     return slice(start, stop, step)
 
 
 class SliceDimIndexer(object):
@@ -114,40 +114,39 @@ class SliceDimIndexer(object):
             raise ValueError('selection must be a contiguous slice')
 
         # normalize
-        dim_sel = normalize_slice_selection(dim_sel, dim_len)
+        self.start, self.stop, _ = dim_sel.indices(dim_len)
 
         # store attributes
-        self.dim_sel = dim_sel
         self.dim_len = dim_len
         self.dim_chunk_len = dim_chunk_len
-        self.nitems = dim_sel.stop - dim_sel.start
+        self.nitems = self.stop - self.start
 
     def __iter__(self):
 
-        dim_chunk_from = self.dim_sel.start // self.dim_chunk_len
-        dim_chunk_to = int(np.ceil(self.dim_sel.stop / self.dim_chunk_len))
+        dim_chunk_from = self.start // self.dim_chunk_len
+        dim_chunk_to = int(np.ceil(self.stop / self.dim_chunk_len))
 
         for dim_chunk_ix in range(dim_chunk_from, dim_chunk_to):
 
             dim_offset = dim_chunk_ix * self.dim_chunk_len
 
-            if self.dim_sel.start <= dim_offset:
+            if self.start <= dim_offset:
                 # selection starts before current chunk
                 dim_chunk_sel_start = 0
-                dim_out_offset = dim_offset - self.dim_sel.start
+                dim_out_offset = dim_offset - self.start
 
             else:
                 # selection starts within current chunk
-                dim_chunk_sel_start = self.dim_sel.start - dim_offset
+                dim_chunk_sel_start = self.start - dim_offset
                 dim_out_offset = 0
 
-            if self.dim_sel.stop > (dim_offset + self.dim_chunk_len):
+            if self.stop > (dim_offset + self.dim_chunk_len):
                 # selection ends after current chunk
                 dim_chunk_sel_stop = self.dim_chunk_len
 
             else:
                 # selection ends within current chunk
-                dim_chunk_sel_stop = self.dim_sel.stop - dim_offset
+                dim_chunk_sel_stop = self.stop - dim_offset
 
             dim_chunk_sel = slice(dim_chunk_sel_start, dim_chunk_sel_stop)
             dim_chunk_nitems = dim_chunk_sel_stop - dim_chunk_sel_start
@@ -266,7 +265,8 @@ class BasicIndexer(object):
 
             chunk_coords = tuple(p.dim_chunk_ix for p in dim_projections)
             chunk_selection = tuple(p.dim_chunk_sel for p in dim_projections)
-            out_selection = tuple(p.dim_out_sel for p in dim_projections if p.dim_out_sel is not None)
+            out_selection = tuple(p.dim_out_sel for p in dim_projections
+                                  if p.dim_out_sel is not None)
 
             yield ChunkProjection(chunk_coords, chunk_selection, out_selection)
 
@@ -398,19 +398,19 @@ class IntArrayDimIndexer(object):
             yield ChunkDimProjection(dim_chunk_ix, dim_chunk_sel, dim_out_sel)
 
 
-def slice_to_range(s):
-    return range(s.start, s.stop, 1 if s.step is None else s.step)
+def slice_to_range(s, l):
+    return range(*s.indices(l))
 
 
-def ix_(*selection):
+def ix_(selection, shape):
     """Convert an orthogonal selection to a numpy advanced (fancy) selection, with support for
     slices and single ints."""
 
     # replace slice and int as these are not supported by numpy ix_()
-    selection = [slice_to_range(dim_sel) if isinstance(dim_sel, slice)
+    selection = [slice_to_range(dim_sel, dim_len) if isinstance(dim_sel, slice)
                  else [dim_sel] if is_integer(dim_sel)
                  else dim_sel
-                 for dim_sel in selection]
+                 for dim_sel, dim_len in zip(selection, shape)]
 
     selection = np.ix_(*selection)
 
@@ -420,13 +420,25 @@ def ix_(*selection):
 def oindex(a, selection):
     """Implementation of orthogonal indexing with slices and ints."""
     drop_axes = tuple([i for i, s in enumerate(selection) if is_integer(s)])
-    selection = ix_(*selection)
+    selection = ix_(selection, a.shape)
     result = a[selection]
     if drop_axes:
         result = result.squeeze(axis=drop_axes)
     return result
 
 
+def oindex_set(a, selection, value):
+    drop_axes = tuple([i for i, s in enumerate(selection) if is_integer(s)])
+    selection = ix_(selection, a.shape)
+    if drop_axes:
+        value_selection = [slice(None)] * len(a.shape)
+        for i in drop_axes:
+            value_selection[i] = np.newaxis
+        value = value[value_selection]
+    a[selection] = value
+
+
+# noinspection PyProtectedMember
 class OrthogonalIndexer(object):
 
     def __init__(self, selection, array):
@@ -457,11 +469,12 @@ class OrthogonalIndexer(object):
             elif isinstance(dim_sel, slice):
 
                 # normalize so we can check for step
-                dim_sel = normalize_slice_selection(dim_sel, dim_len)
+                start, stop, strides = dim_sel.indices(dim_len)
+                # dim_sel = normalize_slice_selection(dim_sel, dim_len)
 
                 # handle slice with step
-                if dim_sel.step != 1:
-                    dim_sel = np.arange(dim_sel.start, dim_sel.stop, dim_sel.step)
+                if strides != 1:
+                    dim_sel = np.arange(start, stop, strides)
                     dim_indexer = IntArrayDimIndexer(dim_sel, dim_len, dim_chunk_len)
                 else:
                     dim_indexer = SliceDimIndexer(dim_sel, dim_len, dim_chunk_len)
@@ -479,6 +492,7 @@ class OrthogonalIndexer(object):
 
             dim_indexers.append(dim_indexer)
 
+        self.array = array
         self.dim_indexers = dim_indexers
         self.shape = tuple(s.nitems for s in self.dim_indexers
                            if not isinstance(s, IntDimIndexer))
@@ -486,7 +500,7 @@ class OrthogonalIndexer(object):
                                 for dim_indexer in self.dim_indexers])
         if self.is_advanced:
             self.drop_axes = tuple([i for i, dim_indexer in enumerate(self.dim_indexers)
-                                       if isinstance(dim_indexer, IntDimIndexer)])
+                                    if isinstance(dim_indexer, IntDimIndexer)])
         else:
             self.drop_axes = None
 
@@ -495,18 +509,20 @@ class OrthogonalIndexer(object):
 
             chunk_coords = tuple(p.dim_chunk_ix for p in dim_projections)
             chunk_selection = tuple(p.dim_chunk_sel for p in dim_projections)
-            out_selection = tuple(p.dim_out_sel for p in dim_projections if p.dim_out_sel is not None)
+            out_selection = tuple(p.dim_out_sel for p in dim_projections
+                                  if p.dim_out_sel is not None)
 
             # handle advanced indexing arrays orthogonally
             if self.is_advanced:
+
                 # numpy doesn't support orthogonal indexing directly as yet, so need to work
                 # around via np.ix_. Also np.ix_ does not support a mixture of arrays and slices
                 # or integers, so need to convert slices and integers into ranges.
-                chunk_selection = ix_(*chunk_selection)
+                chunk_selection = ix_(chunk_selection, self.array._chunks)
 
                 # special case for non-monotonic indices
-                if any([not isinstance(s, (int, slice)) for s in out_selection]):
-                    out_selection = ix_(*out_selection)
+                if any([not isinstance(s, (numbers.Integral, slice)) for s in out_selection]):
+                    out_selection = ix_(out_selection, self.shape)
 
             yield ChunkProjection(chunk_coords, chunk_selection, out_selection)
 
@@ -720,12 +736,15 @@ def check_fields(fields, dtype):
 
 def pop_fields(selection):
     if isinstance(selection, str):
+        # single field selection
         fields = selection
         selection = ()
     elif not isinstance(selection, tuple):
+        # single selection item, no fields
         fields = None
         # leave selection as-is
     else:
+        # multiple items, split fields from selection items
         fields = [f for f in selection if isinstance(f, str)]
         fields = fields[0] if len(fields) == 1 else fields
         selection = tuple(s for s in selection if not isinstance(s, str))

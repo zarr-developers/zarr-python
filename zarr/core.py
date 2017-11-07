@@ -328,7 +328,7 @@ class Array(object):
     @property
     def _cdata_shape(self):
         if self._shape == ():
-            return (1,)
+            return 1,
         else:
             return tuple(int(np.ceil(s / c))
                          for s, c in zip(self._shape, self._chunks))
