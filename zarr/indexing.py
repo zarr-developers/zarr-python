@@ -77,34 +77,6 @@ class IntDimIndexer(object):
         yield ChunkDimProjection(dim_chunk_ix, dim_chunk_sel, dim_out_sel)
 
 
-# def normalize_slice_selection(dim_sel, dim_len):
-#
-#     # handle slice with None bound
-#     start = 0 if dim_sel.start is None else dim_sel.start
-#     stop = dim_len if dim_sel.stop is None else dim_sel.stop
-#     step = 1 if dim_sel.step is None else dim_sel.step
-#
-#     # handle wraparound
-#     if start < 0:
-#         start = dim_len + start
-#     if stop < 0:
-#         stop = dim_len + stop
-#
-#     # handle out of bounds
-#     if start < 0:
-#         raise IndexError('start index out of bounds: %s' % dim_sel.start)
-#     if stop < 0:
-#         raise IndexError('stop index out of bounds: %s' % dim_sel.stop)
-#     if start >= dim_len and dim_len > 0:
-#         raise IndexError('start index out of bounds: %ss' % dim_sel.start)
-#     if stop > dim_len:
-#         stop = dim_len
-#     if stop < start:
-#         stop = start
-#
-#     return slice(start, stop, step)
-
-
 class SliceDimIndexer(object):
 
     def __init__(self, dim_sel, dim_len, dim_chunk_len):
@@ -119,7 +91,7 @@ class SliceDimIndexer(object):
         # store attributes
         self.dim_len = dim_len
         self.dim_chunk_len = dim_chunk_len
-        self.nitems = self.stop - self.start
+        self.nitems = max(0, self.stop - self.start)
 
     def __iter__(self):
 

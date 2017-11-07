@@ -23,23 +23,6 @@ def test_normalize_integer_selection():
         normalize_integer_selection(-1000, 100)
 
 
-# def test_normalize_slice_selection():
-#
-#     eq(slice(0, 100, 1), normalize_slice_selection(slice(None), 100))
-#     eq(slice(0, 100, 1), normalize_slice_selection(slice(None, 100), 100))
-#     eq(slice(0, 100, 1), normalize_slice_selection(slice(0, None), 100))
-#     eq(slice(0, 100, 1), normalize_slice_selection(slice(0, 1000), 100))
-#     eq(slice(99, 100, 1), normalize_slice_selection(slice(-1, None), 100))
-#     eq(slice(98, 99, 1), normalize_slice_selection(slice(-2, -1), 100))
-#     eq(slice(10, 10, 1), normalize_slice_selection(slice(10, 0), 100))
-#     with assert_raises(IndexError):
-#         normalize_slice_selection(slice(100, None), 100)
-#     with assert_raises(IndexError):
-#         normalize_slice_selection(slice(1000, 2000), 100)
-#     with assert_raises(IndexError):
-#         normalize_slice_selection(slice(-1000, 0), 100)
-
-
 def test_replace_ellipsis():
 
     # 1D, single item
@@ -79,6 +62,118 @@ def test_replace_ellipsis():
        replace_ellipsis((Ellipsis, slice(None), slice(None)), (100, 100)))
     eq((slice(None), slice(None)),
        replace_ellipsis((slice(None), slice(None), Ellipsis), (100, 100)))
+
+
+# noinspection PyStatementEffect
+def test_get_basic_selection_1d():
+
+    # setup
+    a = np.arange(1050, dtype=int)
+    z = zarr.create(shape=a.shape, chunks=100, dtype=a.dtype)
+    z[:] = a
+
+    selections = [
+        # single value
+        42,
+        -1,
+        # slices
+        slice(None),
+        slice(0, 1050),
+        slice(50, 150),
+        slice(0, 2000),
+        slice(-150, -50),
+        slice(-2000, 2000),
+        slice(0, 0),  # empty result
+        slice(-1, 0),  # empty result
+        # total selections
+        Ellipsis,
+        (),
+        (Ellipsis, slice(None)),
+    ]
+
+    for selection in selections:
+        expect = a[selection]
+        # long-form API
+        actual = z.get_basic_selection(selection)
+        assert_array_equal(expect, actual)
+        # basic selection available via __getitem__
+        actual = z[selection]
+        assert_array_equal(expect, actual)
+
+    with assert_raises(IndexError):
+        z[::2]  # slice with step
+    with assert_raises(IndexError):
+        z[::-1]  # slice with step
+    with assert_raises(IndexError):
+        z[[0, 1]]  # fancy indexing
+    with assert_raises(IndexError):
+        z[0, 0]  # too many indices
+    with assert_raises(IndexError):
+        z[:, :]  # too many indices
+
+
+# noinspection PyStatementEffect
+def test_get_basic_selection_2d():
+
+    # setup
+    a = np.arange(10000, dtype=int).reshape(1000, 10)
+    z = zarr.create(shape=a.shape, chunks=(300, 3), dtype=a.dtype)
+    z[:] = a
+
+    selections = [
+        # single row
+        42,
+        -1,
+        (42, slice(None)),
+        (-1, slice(None)),
+        # single col
+        (slice(None), 4),
+        (slice(None), -1),
+        # row slices
+        slice(None),
+        slice(0, 1000),
+        slice(250, 350),
+        slice(0, 2000),
+        slice(-350, -250),
+        slice(0, 0),  # empty result
+        slice(-1, 0),  # empty result
+        slice(-2000, 0),
+        slice(-2000, 2000),
+        # 2D slices
+        (slice(None), slice(1, 5)),
+        (slice(250, 350), slice(None)),
+        (slice(250, 350), slice(1, 5)),
+        (slice(250, 350), slice(-5, -1)),
+        (slice(250, 350), slice(-50, 50)),
+        # total selections
+        (slice(None), slice(None)),
+        Ellipsis,
+        (),
+        (Ellipsis, slice(None)),
+        (Ellipsis, slice(None), slice(None)),
+    ]
+
+    for selection in selections:
+        expect = a[selection]
+        # long-form API
+        actual = z.get_basic_selection(selection)
+        assert_array_equal(expect, actual)
+        # basic selection available via __getitem__
+        actual = z[selection]
+        assert_array_equal(expect, actual)
+
+    with assert_raises(IndexError):
+        z[::2]  # slice with step
+    with assert_raises(IndexError):
+        z[:, ::2]  # slice with step
+    with assert_raises(IndexError):
+        z[[0, 1]]  # fancy indexing
+    with assert_raises(IndexError):
+        z[:, [0, 1]]  # fancy indexing
+    with assert_raises(IndexError):
+        z[0, 0, 0]  # too many indices
+    with assert_raises(IndexError):
+        z[:, :, :]  # too many indices
 
 
 def _test_get_orthogonal_selection_1d_common(a, z, ix):
