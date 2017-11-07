@@ -8,16 +8,16 @@ import re
 import numpy as np
 
 
-from zarr.util import is_total_slice, human_readable_size, normalize_resize_args, \
-    normalize_storage_path, normalize_shape, normalize_chunks, InfoReporter
+from zarr.util import (is_total_slice, human_readable_size, normalize_resize_args,
+                       normalize_storage_path, normalize_shape, normalize_chunks, InfoReporter)
 from zarr.storage import array_meta_key, attrs_key, listdir, getsize
 from zarr.meta import decode_array_metadata, encode_array_metadata
 from zarr.attrs import Attributes
 from zarr.errors import PermissionError, err_read_only, err_array_not_found
 from zarr.compat import reduce
 from zarr.codecs import AsType, get_codec
-from zarr.indexing import OIndex, OrthogonalIndexer, BasicIndexer, VIndex, CoordinateIndexer, \
-    MaskIndexer, check_fields, pop_fields, ensure_tuple
+from zarr.indexing import (OIndex, OrthogonalIndexer, BasicIndexer, VIndex, CoordinateIndexer,
+                           MaskIndexer, check_fields, pop_fields, ensure_tuple)
 
 
 def is_scalar(value, dtype):
@@ -1130,8 +1130,8 @@ class Array(object):
         return items
 
     def __getstate__(self):
-        return self._store, self._path, self._read_only, self._chunk_store, self._synchronizer, \
-               self._cache_metadata
+        return (self._store, self._path, self._read_only, self._chunk_store, self._synchronizer,
+                self._cache_metadata)
 
     def __setstate__(self, state):
         self.__init__(*state)
