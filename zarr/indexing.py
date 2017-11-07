@@ -110,8 +110,8 @@ class SliceDimIndexer(object):
     def __init__(self, dim_sel, dim_len, dim_chunk_len):
 
         # check type
-        if not isinstance(dim_sel, slice):
-            raise ValueError('selection must be a slice')
+        if not is_contiguous_slice(dim_sel):
+            raise ValueError('selection must be a contiguous slice')
 
         # normalize
         dim_sel = normalize_slice_selection(dim_sel, dim_len)
@@ -192,7 +192,9 @@ def replace_ellipsis(selection, shape):
 
 
 def ensure_tuple(v):
-    if not isinstance(v, tuple):
+    if v is None:
+        v = ()
+    elif not isinstance(v, tuple):
         v = (v,)
     return v
 
@@ -222,6 +224,10 @@ def check_selection_length(selection, shape):
         raise IndexError('not enough indices for array')
 
 
+def is_contiguous_slice(s):
+    return isinstance(s, slice) and (s.step is None or s.step == 1)
+
+
 # noinspection PyProtectedMember
 class BasicIndexer(object):
 
@@ -238,14 +244,15 @@ class BasicIndexer(object):
         dim_indexers = []
         for dim_sel, dim_len, dim_chunk_len in zip(selection, array._shape, array._chunks):
 
-            if isinstance(dim_sel, int):
+            if is_integer(dim_sel):
                 dim_indexer = IntDimIndexer(dim_sel, dim_len, dim_chunk_len)
 
-            elif isinstance(dim_sel, slice):
+            elif is_contiguous_slice(dim_sel):
                 dim_indexer = SliceDimIndexer(dim_sel, dim_len, dim_chunk_len)
 
             else:
-                raise IndexError('bad selection type')
+                raise IndexError('bad selection type; expected integer or contiguous slice, '
+                                 'got {!r}'.format(dim_sel))
 
             dim_indexers.append(dim_indexer)
 
@@ -401,7 +408,7 @@ def ix_(*selection):
 
     # replace slice and int as these are not supported by numpy ix_()
     selection = [slice_to_range(dim_sel) if isinstance(dim_sel, slice)
-                 else [dim_sel] if isinstance(dim_sel, int)
+                 else [dim_sel] if is_integer(dim_sel)
                  else dim_sel
                  for dim_sel in selection]
 
@@ -412,7 +419,7 @@ def ix_(*selection):
 
 def oindex(a, selection):
     """Implementation of orthogonal indexing with slices and ints."""
-    drop_axes = tuple([i for i, s in enumerate(selection) if isinstance(s, int)])
+    drop_axes = tuple([i for i, s in enumerate(selection) if is_integer(s)])
     selection = ix_(*selection)
     result = a[selection]
     if drop_axes:
@@ -510,10 +517,16 @@ class OIndex(object):
         self.array = array
 
     def __getitem__(self, selection):
-        return self.array.get_orthogonal_selection(selection)
+        fields, selection = pop_fields(selection)
+        selection = ensure_tuple(selection)
+        selection = replace_lists(selection)
+        return self.array.get_orthogonal_selection(selection, fields=fields)
 
     def __setitem__(self, selection, value):
-        return self.array.set_orthogonal_selection(selection, value)
+        fields, selection = pop_fields(selection)
+        selection = ensure_tuple(selection)
+        selection = replace_lists(selection)
+        return self.array.set_orthogonal_selection(selection, value, fields=fields)
 
 
 def is_coordinate_selection(selection, array):
@@ -656,21 +669,58 @@ class VIndex(object):
         self.array = array
 
     def __getitem__(self, selection):
+        fields, selection = pop_fields(selection)
         selection = ensure_tuple(selection)
         selection = replace_lists(selection)
         if is_coordinate_selection(selection, self.array):
-            return self.array.get_coordinate_selection(selection)
+            return self.array.get_coordinate_selection(selection, fields=fields)
         elif is_mask_selection(selection, self.array):
-            return self.array.get_mask_selection(selection)
+            return self.array.get_mask_selection(selection, fields=fields)
         else:
             raise IndexError('unsupported selection')
 
     def __setitem__(self, selection, value):
+        fields, selection = pop_fields(selection)
         selection = ensure_tuple(selection)
         selection = replace_lists(selection)
         if is_coordinate_selection(selection, self.array):
-            return self.array.set_coordinate_selection(selection, value)
+            return self.array.set_coordinate_selection(selection, value, fields=fields)
         elif is_mask_selection(selection, self.array):
-            return self.array.set_mask_selection(selection, value)
+            return self.array.set_mask_selection(selection, value, fields=fields)
         else:
             raise IndexError('unsupported selection')
+
+
+def check_fields(fields, dtype):
+    if fields:
+        if dtype.names is None:
+            raise IndexError('array does not have any fields')
+        try:
+            if isinstance(fields, str):
+                # single field selection
+                out_dtype = dtype[fields]
+            else:
+                # multiple field selection
+                out_dtype = np.dtype([(f, dtype[f]) for f in fields])
+        except KeyError:
+            # TODO better error message
+            raise IndexError('bad field selection')
+        else:
+            return out_dtype
+    else:
+        return dtype
+
+
+def pop_fields(selection):
+    if isinstance(selection, str):
+        fields = selection
+        selection = ()
+    elif not isinstance(selection, tuple):
+        fields = None
+        # leave selection as-is
+    else:
+        fields = [f for f in selection if isinstance(f, str)]
+        fields = fields[0] if len(fields) == 1 else fields
+        selection = tuple(s for s in selection if not isinstance(s, str))
+        selection = selection[0] if len(selection) == 1 else selection
+    return fields, selection

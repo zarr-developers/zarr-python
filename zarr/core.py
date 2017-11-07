@@ -17,7 +17,15 @@ from zarr.errors import PermissionError, err_read_only, err_array_not_found
 from zarr.compat import reduce
 from zarr.codecs import AsType, get_codec
 from zarr.indexing import OIndex, OrthogonalIndexer, BasicIndexer, VIndex, CoordinateIndexer, \
-    MaskIndexer
+    MaskIndexer, check_fields, pop_fields, ensure_tuple
+
+
+def is_scalar(value, dtype):
+    if np.isscalar(value):
+        return True
+    if isinstance(value, tuple) and dtype.names and len(value) == len(dtype.names):
+        return True
+    return False
 
 
 class Array(object):
@@ -465,19 +473,10 @@ class Array(object):
 
         """
 
-        if len(self._shape) == 0:
-            return self._get_basic_selection_zd(selection)
+        fields, selection = pop_fields(selection)
+        return self.get_basic_selection(selection, fields=fields)
 
-        elif len(self._shape) == 1:
-            # safe to do "fancy" indexing, no ambiguity
-            return self.get_orthogonal_selection(selection)
-
-        else:
-            # "fancy" indexing can be ambiguous/hard to understand for multidimensional arrays,
-            # force people to go through explicit methods
-            return self.get_basic_selection(selection)
-
-    def get_basic_selection(self, selection, out=None):
+    def get_basic_selection(self, selection, out=None, fields=None):
         """TODO"""
 
         # refresh metadata
@@ -486,15 +485,16 @@ class Array(object):
 
         # handle zero-dimensional arrays
         if self._shape == ():
-            return self._get_basic_selection_zd(selection, out=out)
+            return self._get_basic_selection_zd(selection=selection, out=out, fields=fields)
         else:
-            return self._get_basic_selection_nd(selection, out=out)
+            return self._get_basic_selection_nd(selection=selection, out=out, fields=fields)
 
-    def _get_basic_selection_zd(self, selection, out=None):
+    def _get_basic_selection_zd(self, selection, out=None, fields=None):
         # special case basic selection for zero-dimensional array
 
         # check selection is valid
-        if selection not in ((), Ellipsis):
+        selection = ensure_tuple(selection)
+        if selection not in ((), (Ellipsis,)):
             raise IndexError('too many indices for array')
 
         try:
@@ -519,17 +519,21 @@ class Array(object):
         else:
             out[selection] = chunk[selection]
 
+        # handle fields
+        if fields:
+            out = out[fields]
+
         return out
 
-    def _get_basic_selection_nd(self, selection, out=None):
+    def _get_basic_selection_nd(self, selection, out=None, fields=None):
         # implementation of basic selection for array with at least one dimension
 
         # setup indexer
         indexer = BasicIndexer(selection, self)
 
-        return self._get_selection(indexer, out=out)
+        return self._get_selection(indexer=indexer, out=out, fields=fields)
 
-    def get_orthogonal_selection(self, selection, out=None):
+    def get_orthogonal_selection(self, selection, out=None, fields=None):
         """TODO"""
 
         # refresh metadata
@@ -539,9 +543,9 @@ class Array(object):
         # setup indexer
         indexer = OrthogonalIndexer(selection, self)
 
-        return self._get_selection(indexer, out=out)
+        return self._get_selection(indexer=indexer, out=out, fields=fields)
 
-    def get_coordinate_selection(self, selection, out=None):
+    def get_coordinate_selection(self, selection, out=None, fields=None):
         """TODO"""
 
         # refresh metadata
@@ -551,9 +555,9 @@ class Array(object):
         # setup indexer
         indexer = CoordinateIndexer(selection, self)
 
-        return self._get_selection(indexer, out=out)
+        return self._get_selection(indexer=indexer, out=out, fields=fields)
 
-    def get_mask_selection(self, selection, out=None):
+    def get_mask_selection(self, selection, out=None, fields=None):
         """TODO"""
 
         # refresh metadata
@@ -563,9 +567,9 @@ class Array(object):
         # setup indexer
         indexer = MaskIndexer(selection, self)
 
-        return self._get_selection(indexer, out=out)
+        return self._get_selection(indexer=indexer, out=out, fields=fields)
 
-    def _get_selection(self, indexer, out=None):
+    def _get_selection(self, indexer, out=None, fields=None):
 
         # We iterate over all chunks which overlap the selection and thus contain data that needs
         # to be extracted. Each chunk is processed in turn, extracting the necessary data and
@@ -574,17 +578,20 @@ class Array(object):
         # N.B., it is an important optimisation that we only visit chunks which overlap the
         # selection. This minimises the nuimber of iterations in the main for loop.
 
+        # check fields are sensible
+        out_dtype = check_fields(fields, self._dtype)
+
         # determine output shape
-        sel_shape = indexer.shape
+        out_shape = indexer.shape
 
         # setup output array
         if out is None:
-            out = np.empty(sel_shape, dtype=self._dtype, order=self._order)
+            out = np.empty(out_shape, dtype=out_dtype, order=self._order)
         else:
             # validate 'out' parameter
             if not hasattr(out, 'shape'):
                 raise TypeError('out must be an array-like object')
-            if out.shape != sel_shape:
+            if out.shape != out_shape:
                 raise ValueError('out has wrong shape for selection')
 
         # iterate over chunks
@@ -592,7 +599,7 @@ class Array(object):
 
             # load chunk selection into output array
             self._chunk_getitem(chunk_coords, chunk_selection, out, out_selection,
-                                drop_axes=indexer.drop_axes)
+                                drop_axes=indexer.drop_axes, fields=fields)
 
         if out.shape:
             return out
@@ -658,19 +665,10 @@ class Array(object):
 
         """
 
-        if len(self._shape) == 0:
-            self._set_basic_selection_zd(selection, value)
+        fields, selection = pop_fields(selection)
+        self.set_basic_selection(selection, value, fields=fields)
 
-        elif len(self._shape) == 1:
-            # safe to do "fancy" indexing, no ambiguity
-            self.set_orthogonal_selection(selection, value)
-
-        else:
-            # "fancy" indexing can be ambiguous/hard to understand for multidimensional arrays,
-            # force people to go through explicit methods
-            self.set_basic_selection(selection, value)
-
-    def set_basic_selection(self, selection, value):
+    def set_basic_selection(self, selection, value, fields=None):
         """TODO"""
 
         # guard conditions
@@ -683,11 +681,11 @@ class Array(object):
 
         # handle zero-dimensional arrays
         if self._shape == ():
-            return self._set_basic_selection_zd(selection, value)
+            return self._set_basic_selection_zd(selection, value, fields=fields)
         else:
-            return self._set_basic_selection_nd(selection, value)
+            return self._set_basic_selection_nd(selection, value, fields=fields)
 
-    def set_orthogonal_selection(self, selection, value):
+    def set_orthogonal_selection(self, selection, value, fields=None):
         """TODO"""
 
         # guard conditions
@@ -701,9 +699,9 @@ class Array(object):
         # setup indexer
         indexer = OrthogonalIndexer(selection, self)
 
-        self._set_selection(indexer, value)
+        self._set_selection(indexer, value, fields=fields)
 
-    def set_coordinate_selection(self, selection, value):
+    def set_coordinate_selection(self, selection, value, fields=None):
         """TODO"""
 
         # guard conditions
@@ -717,9 +715,9 @@ class Array(object):
         # setup indexer
         indexer = CoordinateIndexer(selection, self)
 
-        self._set_selection(indexer, value)
+        self._set_selection(indexer, value, fields=fields)
 
-    def set_mask_selection(self, selection, value):
+    def set_mask_selection(self, selection, value, fields=None):
         """TODO"""
 
         # guard conditions
@@ -733,13 +731,17 @@ class Array(object):
         # setup indexer
         indexer = MaskIndexer(selection, self)
 
-        self._set_selection(indexer, value)
+        self._set_selection(indexer, value, fields=fields)
 
-    def _set_basic_selection_zd(self, selection, value):
+    def _set_basic_selection_zd(self, selection, value, fields=None):
         # special case __setitem__ for zero-dimensional array
 
+        if fields:
+            raise IndexError('fields not supported for 0d array')
+
         # check item is valid
-        if selection not in ((), Ellipsis):
+        selection = ensure_tuple(selection)
+        if selection not in ((), (Ellipsis,)):
             raise IndexError('too many indices for array')
 
         # setup data to store
@@ -756,15 +758,15 @@ class Array(object):
         cdata = self._encode_chunk(arr)
         self.chunk_store[ckey] = cdata
 
-    def _set_basic_selection_nd(self, selection, value):
+    def _set_basic_selection_nd(self, selection, value, fields=None):
         # implementation of __setitem__ for array with at least one dimension
 
         # setup indexer
         indexer = BasicIndexer(selection, self)
 
-        self._set_selection(indexer, value)
+        self._set_selection(indexer, value, fields=fields)
 
-    def _set_selection(self, indexer, value):
+    def _set_selection(self, indexer, value, fields=None):
 
         # We iterate over all chunks which overlap the selection and thus contain data that needs
         # to be replaced. Each chunk is processed in turn, extracting the necessary data from the
@@ -773,15 +775,20 @@ class Array(object):
         # N.B., it is an important optimisation that we only visit chunks which overlap the
         # selection. This minimises the nuimber of iterations in the main for loop.
 
+        # check fields are sensible
+        check_fields(fields, self._dtype)
+        if fields and isinstance(fields, list):
+            raise ValueError('multi-field assignment is not supported')
+
         # determine indices of chunks overlapping the selection
         sel_shape = indexer.shape
 
         # check value shape
-        if np.isscalar(value):
+        if is_scalar(value, self._dtype):
             pass
         else:
             if not hasattr(value, 'shape'):
-                raise TypeError('value must be an array-like object')
+                value = np.asarray(value)
             if value.shape != sel_shape:
                 raise ValueError('value has wrong shape for selection; expected {}, got {}'
                                  .format(sel_shape, value.shape))
@@ -790,7 +797,7 @@ class Array(object):
         for chunk_coords, chunk_selection, out_selection in indexer:
 
             # extract data to store
-            if np.isscalar(value):
+            if is_scalar(value, self._dtype):
                 chunk_value = value
             else:
                 chunk_value = value[out_selection]
@@ -802,9 +809,10 @@ class Array(object):
                     chunk_value = chunk_value[item]
 
             # put data
-            self._chunk_setitem(chunk_coords, chunk_selection, chunk_value)
+            self._chunk_setitem(chunk_coords, chunk_selection, chunk_value, fields=fields)
 
-    def _chunk_getitem(self, chunk_coords, chunk_selection, out, out_selection, drop_axes=None):
+    def _chunk_getitem(self, chunk_coords, chunk_selection, out, out_selection, drop_axes=None,
+                       fields=None):
         """Obtain part or whole of a chunk.
 
         Parameters
@@ -819,6 +827,8 @@ class Array(object):
             Location of region within output array to store results in.
         drop_axes : tuple of ints
             Axes to squeeze out of the chunk.
+        fields
+            TODO
 
         """
 
@@ -838,10 +848,11 @@ class Array(object):
 
         else:
 
-            if isinstance(out, np.ndarray) and \
-                    isinstance(out_selection, slice) and \
-                    is_total_slice(chunk_selection, self._chunks) and \
-                    not self._filters:
+            if (isinstance(out, np.ndarray) and
+                    not fields and
+                    isinstance(out_selection, slice) and
+                    is_total_slice(chunk_selection, self._chunks) and
+                    not self._filters):
 
                 dest = out[out_selection]
                 contiguous = ((self._order == 'C' and dest.flags.c_contiguous) or
@@ -864,13 +875,17 @@ class Array(object):
             # decode chunk
             chunk = self._decode_chunk(cdata)
 
-            # set data in output array
+            # select data from chunk
+            if fields:
+                chunk = chunk[fields]
             tmp = chunk[chunk_selection]
             if drop_axes:
                 tmp = np.squeeze(tmp, axis=drop_axes)
+
+            # store selected data in output
             out[out_selection] = tmp
 
-    def _chunk_setitem(self, chunk_coords, chunk_selection, value):
+    def _chunk_setitem(self, chunk_coords, chunk_selection, value, fields=None):
         """Replace part or whole of a chunk.
 
         Parameters
@@ -886,25 +901,25 @@ class Array(object):
 
         # synchronization
         if self._synchronizer is None:
-            self._chunk_setitem_nosync(chunk_coords, chunk_selection, value)
+            self._chunk_setitem_nosync(chunk_coords, chunk_selection, value, fields=fields)
         else:
             # synchronize on the chunk
             ckey = self._chunk_key(chunk_coords)
             with self._synchronizer[ckey]:
-                self._chunk_setitem_nosync(chunk_coords, chunk_selection, value)
+                self._chunk_setitem_nosync(chunk_coords, chunk_selection, value, fields=fields)
 
-    def _chunk_setitem_nosync(self, chunk_coords, chunk_selection, value):
+    def _chunk_setitem_nosync(self, chunk_coords, chunk_selection, value, fields=None):
 
         # obtain key for chunk storage
         ckey = self._chunk_key(chunk_coords)
 
-        if is_total_slice(chunk_selection, self._chunks):
+        if is_total_slice(chunk_selection, self._chunks) and not fields:
             # totally replace chunk
 
             # optimization: we are completely replacing the chunk, so no need
             # to access the existing chunk data
 
-            if np.isscalar(value):
+            if is_scalar(value, self._dtype):
 
                 # setup array filled with value
                 chunk = np.empty(self._chunks, dtype=self._dtype, order=self._order)
@@ -955,7 +970,12 @@ class Array(object):
                     chunk = chunk.copy(order='K')
 
             # modify
-            chunk[chunk_selection] = value
+            if fields:
+                # N.B., currently multi-field assignment is not supported in numpy, so this only
+                # works for a single field
+                chunk[fields][chunk_selection] = value
+            else:
+                chunk[chunk_selection] = value
 
         # encode chunk
         cdata = self._encode_chunk(chunk)

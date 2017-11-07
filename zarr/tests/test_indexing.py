@@ -88,9 +88,9 @@ def _test_get_orthogonal_selection_1d_common(a, z, ix):
     assert_array_equal(expect, actual)
     actual = z.oindex[ix]
     assert_array_equal(expect, actual)
-    # for 1d arrays, also available via __getitem__
-    actual = z[ix]
-    assert_array_equal(expect, actual)
+    # # for 1d arrays, also available via __getitem__
+    # actual = z[ix]
+    # assert_array_equal(expect, actual)
 
 
 # noinspection PyStatementEffect
@@ -179,9 +179,9 @@ def test_get_orthogonal_selection_1d_slice_with_step():
         assert_array_equal(expect, actual)
         actual = z.oindex[selection]
         assert_array_equal(expect, actual)
-        # for 1d arrays also available via __getitem__
-        actual = z[selection]
-        assert_array_equal(expect, actual)
+        # # for 1d arrays also available via __getitem__
+        # actual = z[selection]
+        # assert_array_equal(expect, actual)
 
 
 def _test_get_orthogonal_selection_2d_common(a, z, ix0, ix1):
@@ -349,10 +349,10 @@ def _test_set_orthogonal_selection_1d_common(v, a, z, ix):
     z[:] = 0
     z.set_orthogonal_selection(ix, v[ix])
     assert_array_equal(a, z[:])
-    # also available via __getitem__ for 1d arrays
-    z[:] = 0
-    z[ix] = v[ix]
-    assert_array_equal(a, z[:])
+    # # also available via __setitem__ for 1d arrays
+    # z[:] = 0
+    # z[ix] = v[ix]
+    # assert_array_equal(a, z[:])
 
 
 def test_set_orthogonal_selection_1d_bool():
@@ -715,9 +715,9 @@ def test_get_mask_selection_1d():
         assert_array_equal(expect, actual)
         actual = z.vindex[ix]
         assert_array_equal(expect, actual)
-        # for 1d arrays, also available via __getitem__
-        actual = z[ix]
-        assert_array_equal(expect, actual)
+        # # for 1d arrays, also available via __getitem__
+        # actual = z[ix]
+        # assert_array_equal(expect, actual)
 
     # test errors
     with assert_raises(IndexError):
@@ -775,10 +775,10 @@ def test_set_mask_selection_1d():
         z[:] = 0
         z.vindex[ix] = v[ix]
         assert_array_equal(a, z[:])
-        # for 1d arrays, also available via __setitem__
-        z[:] = 0
-        z[ix] = v[ix]
-        assert_array_equal(a, z[:])
+        # # for 1d arrays, also available via __setitem__
+        # z[:] = 0
+        # z[ix] = v[ix]
+        # assert_array_equal(a, z[:])
 
 
 def test_set_mask_selection_2d():
@@ -876,115 +876,182 @@ def test_get_selection_out():
 
 def test_get_selections_with_fields():
 
-    a = [[('aaa', 1, 4.2),
-          ('bbb', 2, 8.4),
-          ('ccc', 3, 12.6)]]
+    a = [('aaa', 1, 4.2),
+         ('bbb', 2, 8.4),
+         ('ccc', 3, 12.6)]
     a = np.array(a, dtype=[('foo', 'S3'), ('bar', 'i4'), ('baz', 'f8')])
     z = zarr.create(shape=a.shape, chunks=2, dtype=a.dtype)
     z[:] = a
 
-    # single field
-    fields = 'foo'
+    fields_fixture = [
+        'foo',
+        ['foo'],
+        ['foo', 'bar'],
+        ['foo', 'baz'],
+        ['bar', 'baz'],
+        ['foo', 'bar', 'baz'],
+        ['bar', 'foo'],
+        ['baz', 'bar', 'foo'],
+    ]
 
-    # no selection
-    expect = a[fields]
-    actual = z.get_basic_selection(fields=fields)
-    assert_array_equal(expect, actual)
-    # alternative API
-    actual = z[fields]
-    assert_array_equal(expect, actual)
+    for fields in fields_fixture:
 
-    # basic selection with slice
-    expect = a[0:2][fields]
-    actual = z.get_basic_selection(slice(0, 2), fields=fields)
-    assert_array_equal(expect, actual)
-    # alternative API
-    actual = z[0:2, fields]
-    assert_array_equal(expect, actual)
+        # total selection
+        expect = a[fields]
+        actual = z.get_basic_selection(Ellipsis, fields=fields)
+        assert_array_equal(expect, actual)
+        # alternative API
+        if isinstance(fields, str):
+            actual = z[fields]
+            assert_array_equal(expect, actual)
+        elif len(fields) == 2:
+            actual = z[fields[0], fields[1]]
+            assert_array_equal(expect, actual)
+        if isinstance(fields, str):
+            actual = z[..., fields]
+            assert_array_equal(expect, actual)
+        elif len(fields) == 2:
+            actual = z[..., fields[0], fields[1]]
+            assert_array_equal(expect, actual)
 
-    # orthogonal selection
-    ix = [0, 2]
-    expect = a[ix][fields]
-    actual = z.get_orthogonal_selection(ix, fields=fields)
-    assert_array_equal(expect, actual)
-    # alternative APIs
-    actual = z[ix, fields]
-    assert_array_equal(expect, actual)
-    actual = z.oindex[ix, fields]
-    assert_array_equal(expect, actual)
+        # basic selection with slice
+        expect = a[fields][0:2]
+        actual = z.get_basic_selection(slice(0, 2), fields=fields)
+        assert_array_equal(expect, actual)
+        # alternative API
+        if isinstance(fields, str):
+            actual = z[0:2, fields]
+            assert_array_equal(expect, actual)
+        elif len(fields) == 2:
+            actual = z[0:2, fields[0], fields[1]]
+            assert_array_equal(expect, actual)
 
-    # coordinate selection
-    ix = [0, 2]
-    expect = a[ix][fields]
-    actual = z.get_coordinate_selection(ix, fields=fields)
-    assert_array_equal(expect, actual)
-    # alternative APIs
-    actual = z[ix, fields]
-    assert_array_equal(expect, actual)
-    actual = z.vindex[ix, fields]
-    assert_array_equal(expect, actual)
+        # basic selection with single item
+        expect = a[fields][1]
+        actual = z.get_basic_selection(1, fields=fields)
+        assert_array_equal(expect, actual)
+        # alternative API
+        if isinstance(fields, str):
+            actual = z[1, fields]
+            assert_array_equal(expect, actual)
+        elif len(fields) == 2:
+            actual = z[1, fields[0], fields[1]]
+            assert_array_equal(expect, actual)
 
-    # mask selection
-    ix = [True, False, True]
-    expect = a[ix][fields]
-    actual = z.get_mask_selection(ix, fields=fields)
-    assert_array_equal(expect, actual)
-    # alternative APIs
-    actual = z[ix, fields]
-    assert_array_equal(expect, actual)
-    actual = z.vindex[ix, fields]
-    assert_array_equal(expect, actual)
+        # orthogonal selection
+        ix = [0, 2]
+        expect = a[fields][ix]
+        actual = z.get_orthogonal_selection(ix, fields=fields)
+        assert_array_equal(expect, actual)
+        # alternative API
+        if isinstance(fields, str):
+            actual = z.oindex[ix, fields]
+            assert_array_equal(expect, actual)
+        elif len(fields) == 2:
+            actual = z.oindex[ix, fields[0], fields[1]]
+            assert_array_equal(expect, actual)
 
-    # multiple field
-    fields = ['foo', 'bar']
+        # coordinate selection
+        ix = [0, 2]
+        expect = a[fields][ix]
+        actual = z.get_coordinate_selection(ix, fields=fields)
+        assert_array_equal(expect, actual)
+        # alternative API
+        if isinstance(fields, str):
+            actual = z.vindex[ix, fields]
+            assert_array_equal(expect, actual)
+        elif len(fields) == 2:
+            actual = z.vindex[ix, fields[0], fields[1]]
+            assert_array_equal(expect, actual)
 
-    # no selection
-    expect = a[fields]
-    actual = z.get_basic_selection(fields=fields)
-    assert_array_equal(expect, actual)
-    # alternative API
-    actual = z[fields]
-    assert_array_equal(expect, actual)
-    actual = z[tuple(fields)]
-    assert_array_equal(expect, actual)
+        # mask selection
+        ix = [True, False, True]
+        expect = a[fields][ix]
+        actual = z.get_mask_selection(ix, fields=fields)
+        assert_array_equal(expect, actual)
+        # alternative API
+        if isinstance(fields, str):
+            actual = z.vindex[ix, fields]
+            assert_array_equal(expect, actual)
+        elif len(fields) == 2:
+            actual = z.vindex[ix, fields[0], fields[1]]
+            assert_array_equal(expect, actual)
 
-    # basic selection with slice
-    expect = a[0:2][fields]
-    actual = z.get_basic_selection(slice(0, 2), fields=fields)
-    assert_array_equal(expect, actual)
-    # alternative API
-    actual = z[0:2, fields[0], fields[1]]
-    assert_array_equal(expect, actual)
 
-    # orthogonal selection
-    ix = [0, 2]
-    expect = a[ix][fields]
-    actual = z.get_orthogonal_selection(ix, fields=fields)
-    assert_array_equal(expect, actual)
-    # alternative APIs
-    actual = z[ix, fields[0], fields[1]]
-    assert_array_equal(expect, actual)
-    actual = z.oindex[ix, fields[0], fields[1]]
-    assert_array_equal(expect, actual)
+def test_set_selections_with_fields():
 
-    # coordinate selection
-    ix = [0, 2]
-    expect = a[ix][fields]
-    actual = z.get_coordinate_selection(ix, fields=fields)
-    assert_array_equal(expect, actual)
-    # alternative APIs
-    actual = z[ix, fields[0], fields[1]]
-    assert_array_equal(expect, actual)
-    actual = z.vindex[ix, fields[0], fields[1]]
-    assert_array_equal(expect, actual)
+    v = [('aaa', 1, 4.2),
+         ('bbb', 2, 8.4),
+         ('ccc', 3, 12.6)]
+    v = np.array(v, dtype=[('foo', 'S3'), ('bar', 'i4'), ('baz', 'f8')])
+    a = np.empty_like(v)
+    z = zarr.empty_like(v, chunks=2)
 
-    # mask selection
-    ix = [True, False, True]
-    expect = a[ix][fields]
-    actual = z.get_mask_selection(ix, fields=fields)
-    assert_array_equal(expect, actual)
-    # alternative APIs
-    actual = z[ix, fields[0], fields[1]]
-    assert_array_equal(expect, actual)
-    actual = z.vindex[ix, fields[0], fields[1]]
-    assert_array_equal(expect, actual)
+    fields_fixture = [
+        'foo',
+        # ['foo'],
+        # ['foo', 'bar'],
+        # ['foo', 'baz'],
+        # ['bar', 'baz'],
+        # ['foo', 'bar', 'baz'],
+        # ['bar', 'foo'],
+        # ['baz', 'bar', 'foo'],
+    ]
+
+    for fields in fields_fixture:
+
+        # currently multi-field assignment is not supported in numpy, so we won't support it either
+        if isinstance(fields, list):
+            with assert_raises(ValueError):
+                z.set_basic_selection(Ellipsis, v[fields], fields=fields)
+            with assert_raises(ValueError):
+                z.set_orthogonal_selection([0, 2], v[fields], fields=fields)
+            with assert_raises(ValueError):
+                z.set_coordinate_selection([0, 2], v[fields], fields=fields)
+            with assert_raises(ValueError):
+                z.set_mask_selection([True, False, True], v[fields], fields=fields)
+
+        else:
+
+            # total selection
+            a[:] = ('', 0, 0)
+            z[:] = ('', 0, 0)
+            assert_array_equal(a, z[:])
+            if isinstance(fields, str):
+                a[fields] = v[fields]
+            else:
+                for f in fields:
+                    a[f] = v[f]
+            z.set_basic_selection(Ellipsis, v[fields], fields=fields)
+            assert_array_equal(a, z[:])
+
+            # basic selection with slice
+            a[:] = ('', 0, 0)
+            z[:] = ('', 0, 0)
+            a[0:2][fields] = v[0:2][fields]
+            z.set_basic_selection(slice(0, 2), v[0:2][fields], fields=fields)
+            assert_array_equal(a, z[:])
+
+            # orthogonal selection
+            a[:] = ('', 0, 0)
+            z[:] = ('', 0, 0)
+            ix = [0, 2]
+            a[fields][ix] = v[fields][ix]
+            z.set_orthogonal_selection(ix, v[fields][ix], fields=fields)
+            assert_array_equal(a, z[:])
+
+            # coordinate selection
+            a[:] = ('', 0, 0)
+            z[:] = ('', 0, 0)
+            ix = [0, 2]
+            a[fields][ix] = v[fields][ix]
+            z.set_coordinate_selection(ix, v[fields][ix], fields=fields)
+            assert_array_equal(a, z[:])
+
+            # mask selection
+            a[:] = ('', 0, 0)
+            z[:] = ('', 0, 0)
+            ix = [True, False, True]
+            a[fields][ix] = v[fields][ix]
+            z.set_mask_selection(ix, v[fields][ix], fields=fields)
+            assert_array_equal(a, z[:])
