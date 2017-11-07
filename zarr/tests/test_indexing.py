@@ -451,21 +451,18 @@ def test_get_orthogonal_selection_3d_int():
 
 
 def _test_set_orthogonal_selection_1d_common(v, a, z, ix):
-    # setup expectation
-    a[:] = 0
-    a[ix] = v[ix]
-    # long-form API
-    z[:] = 0
-    z.set_orthogonal_selection(ix, v[ix])
-    assert_array_equal(a, z[:])
-    # short-form API
-    z[:] = 0
-    z.oindex[ix] = v[ix]
-    assert_array_equal(a, z[:])
-    # # also available via __setitem__ for 1d arrays
-    # z[:] = 0
-    # z[ix] = v[ix]
-    # assert_array_equal(a, z[:])
+    for value in 42, oindex(v, ix):
+        # setup expectation
+        a[:] = 0
+        a[ix] = value
+        # long-form API
+        z[:] = 0
+        z.set_orthogonal_selection(ix, value)
+        assert_array_equal(a, z[:])
+        # short-form API
+        z[:] = 0
+        z.oindex[ix] = value
+        assert_array_equal(a, z[:])
 
 
 def test_set_orthogonal_selection_1d_bool():
@@ -513,18 +510,18 @@ def _test_set_orthogonal_selection_2d_common(v, a, z, ix0, ix1):
         (42, ix1),
     )
     for selection in selections:
-        # setup expectation
-        a[:] = 0
-        value = oindex(v, selection)
-        oindex_set(a, selection, value)
-        # long-form API
-        z[:] = 0
-        z.set_orthogonal_selection(selection, value)
-        assert_array_equal(a, z[:])
-        # short-form API
-        z[:] = 0
-        z.oindex[selection] = value
-        assert_array_equal(a, z[:])
+        for value in 42, oindex(v, selection):
+            # setup expectation
+            a[:] = 0
+            oindex_set(a, selection, value)
+            # long-form API
+            z[:] = 0
+            z.set_orthogonal_selection(selection, value)
+            assert_array_equal(a, z[:])
+            # short-form API
+            z[:] = 0
+            z.oindex[selection] = value
+            assert_array_equal(a, z[:])
 
 
 def test_set_orthogonal_selection_2d_bool():
@@ -584,18 +581,18 @@ def _test_set_orthogonal_selection_3d_common(v, a, z, ix0, ix1, ix2):
         (ix0, ix1, 4),
     )
     for selection in selections:
-        # setup expectation
-        a[:] = 0
-        value = oindex(v, selection)
-        oindex_set(a, selection, value)
-        # long-form API
-        z[:] = 0
-        z.set_orthogonal_selection(selection, value)
-        assert_array_equal(a, z[:])
-        # short-form API
-        z[:] = 0
-        z.oindex[selection] = value
-        assert_array_equal(a, z[:])
+        for value in 42, oindex(v, selection):
+            # setup expectation
+            a[:] = 0
+            oindex_set(a, selection, value)
+            # long-form API
+            z[:] = 0
+            z.set_orthogonal_selection(selection, value)
+            assert_array_equal(a, z[:])
+            # short-form API
+            z[:] = 0
+            z.oindex[selection] = value
+            assert_array_equal(a, z[:])
 
 
 def test_set_orthogonal_selection_3d_bool():
@@ -793,6 +790,21 @@ def test_set_coordinate_selection_1d_int():
         z.vindex[ix] = v[ix]
         assert_array_equal(a, z[:])
 
+    # multi-dimensional selection
+    ix = np.array([[2, 4], [6, 8]])
+    for value in 42, v[ix]:
+        # setup expectation
+        a[:] = 0
+        a[ix] = value
+        # test long-form API
+        z[:] = 0
+        z.set_coordinate_selection(ix, value)
+        assert_array_equal(a, z[:])
+        # test short-form API
+        z[:] = 0
+        z.vindex[ix] = value
+        assert_array_equal(a, z[:])
+
 
 def test_set_coordinate_selection_2d_int():
 
@@ -827,6 +839,25 @@ def test_set_coordinate_selection_2d_int():
             z[:] = 0
             z.vindex[selection] = v[selection]
             assert_array_equal(a, z[:])
+
+    # multi-dimensional selection
+    ix0 = np.array([[1, 2, 3],
+                    [4, 5, 6]])
+    ix1 = np.array([[1, 3, 2],
+                    [2, 0, 5]])
+
+    for value in 42, v[ix0, ix1]:
+        # setup expectation
+        a[:] = 0
+        a[ix0, ix1] = value
+        # test long-form API
+        z[:] = 0
+        z.set_coordinate_selection((ix0, ix1), value)
+        assert_array_equal(a, z[:])
+        # test short-form API
+        z[:] = 0
+        z.vindex[ix0, ix1] = value
+        assert_array_equal(a, z[:])
 
 
 # noinspection PyStatementEffect

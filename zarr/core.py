@@ -724,6 +724,10 @@ class Array(object):
         # setup indexer
         indexer = CoordinateIndexer(selection, self)
 
+        # handle value - need to flatten
+        if hasattr(value, 'shape') and len(value.shape) > 1:
+            value = value.reshape(-1)
+
         self._set_selection(indexer, value, fields=fields)
 
     def set_mask_selection(self, selection, value, fields=None):
@@ -758,7 +762,7 @@ class Array(object):
 
         # check value
         if arr.shape != ():
-            raise ValueError('bad value; expected scalar, found %r' % value)
+            raise ValueError('expected scalar or 0-dimensional array, found %r' % value)
 
         # obtain key for chunk storage
         ckey = self._chunk_key((0,))

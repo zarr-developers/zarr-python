@@ -222,8 +222,8 @@ class BasicIndexer(object):
                 dim_indexer = SliceDimIndexer(dim_sel, dim_len, dim_chunk_len)
 
             else:
-                raise IndexError('bad selection type; expected integer or contiguous slice, '
-                                 'got {!r}'.format(dim_sel))
+                raise IndexError('unsupported selection type; expected integer or contiguous '
+                                 'slice, got {!r}'.format(dim_sel))
 
             dim_indexers.append(dim_indexer)
 
@@ -375,15 +375,18 @@ def slice_to_range(s, l):
 
 
 def ix_(selection, shape):
-    """Convert an orthogonal selection to a numpy advanced (fancy) selection, with support for
-    slices and single ints."""
+    """Convert an orthogonal selection to a numpy advanced (fancy) selection, like numpy.ix_
+    but with support for slices and single ints."""
 
-    # replace slice and int as these are not supported by numpy ix_()
+    selection = ensure_tuple(selection)
+
+    # replace slice and int as these are not supported by numpy.ix_
     selection = [slice_to_range(dim_sel, dim_len) if isinstance(dim_sel, slice)
                  else [dim_sel] if is_integer(dim_sel)
                  else dim_sel
                  for dim_sel, dim_len in zip(selection, shape)]
 
+    # now get numpy to convert to a coordinate selection
     selection = np.ix_(*selection)
 
     return selection
@@ -391,6 +394,7 @@ def ix_(selection, shape):
 
 def oindex(a, selection):
     """Implementation of orthogonal indexing with slices and ints."""
+    selection = ensure_tuple(selection)
     drop_axes = tuple([i for i, s in enumerate(selection) if is_integer(s)])
     selection = ix_(selection, a.shape)
     result = a[selection]
@@ -402,7 +406,7 @@ def oindex(a, selection):
 def oindex_set(a, selection, value):
     drop_axes = tuple([i for i, s in enumerate(selection) if is_integer(s)])
     selection = ix_(selection, a.shape)
-    if drop_axes:
+    if not np.isscalar(value) and drop_axes:
         value_selection = [slice(None)] * len(a.shape)
         for i in drop_axes:
             value_selection[i] = np.newaxis
@@ -460,7 +464,8 @@ class OrthogonalIndexer(object):
                 dim_indexer = BoolArrayDimIndexer(dim_sel, dim_len, dim_chunk_len)
 
             else:
-                raise IndexError('bad selection type')
+                # TODO improve and refactor error messages
+                raise IndexError('unsupported selection type')
 
             dim_indexers.append(dim_indexer)
 
@@ -592,9 +597,13 @@ class CoordinateIndexer(object):
                                                       dims=array._cdata_shape)
 
         # group points by chunk
-        sel_sort = np.argsort(chunks_raveled_indices)
-        chunks_raveled_indices = chunks_raveled_indices[sel_sort]
-        selection = tuple(dim_sel[sel_sort] for dim_sel in selection)
+        if np.any(np.diff(chunks_raveled_indices) < 0):
+            # optimisation, only sort if needed
+            sel_sort = np.argsort(chunks_raveled_indices)
+            # chunks_raveled_indices = chunks_raveled_indices[sel_sort]
+            selection = tuple(dim_sel[sel_sort] for dim_sel in selection)
+        else:
+            sel_sort = None
 
         # store atrributes
         self.selection = selection
@@ -623,7 +632,10 @@ class CoordinateIndexer(object):
             else:
                 start = self.chunk_nitems_cumsum[chunk_rix - 1]
             stop = self.chunk_nitems_cumsum[chunk_rix]
-            out_selection = self.sel_sort[start:stop]
+            if self.sel_sort is None:
+                out_selection = slice(start, stop)
+            else:
+                out_selection = self.sel_sort[start:stop]
 
             chunk_offsets = tuple(
                 dim_chunk_ix * dim_chunk_len
@@ -697,9 +709,9 @@ def check_fields(fields, dtype):
             else:
                 # multiple field selection
                 out_dtype = np.dtype([(f, dtype[f]) for f in fields])
-        except KeyError:
+        except KeyError as e:
             # TODO better error message
-            raise IndexError('bad field selection')
+            raise IndexError('field not found: {!s}'.format(e))
         else:
             return out_dtype
     else:
