@@ -205,8 +205,8 @@ def ensure_tuple(v):
 
 ChunkProjection = collections.namedtuple('ChunkProjection',
                                          ('chunk_coords', 'chunk_selection', 'out_selection'))
-"""A mapping of items from chunk to output array. Can be used to extract items from the chunk 
-array for loading into an output array. Can also be used to extract items from a value array for 
+"""A mapping of items from chunk to output array. Can be used to extract items from the chunk
+array for loading into an output array. Can also be used to extract items from a value array for
 setting/updating in a chunk array.
 
 Parameters

@@ -618,7 +618,7 @@ simple heuristics and may be far from optimal. E.g.::
 
     >>> z4 = zarr.zeros((10000, 10000), dtype='i4')
     >>> z4.chunks
-    (313, 313)
+    (313, 625)
 
 .. _tutorial_tips_blosc:
 

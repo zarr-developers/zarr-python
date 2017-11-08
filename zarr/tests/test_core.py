@@ -601,7 +601,7 @@ class TestArray(unittest.TestCase):
         with assert_raises(PermissionError):
             z.append(np.arange(1000))
         with assert_raises(PermissionError):
-            z.set_basic_selection(..., 42)
+            z.set_basic_selection(Ellipsis, 42)
         with assert_raises(PermissionError):
             z.set_orthogonal_selection([0, 1, 2], 42)
         with assert_raises(PermissionError):

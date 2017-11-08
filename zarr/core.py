@@ -764,7 +764,7 @@ class Array(object):
 
         # check selection is valid
         selection = ensure_tuple(selection)
-        if selection not in ((), (...,)):
+        if selection not in ((), (Ellipsis,)):
             raise IndexError('too many indices for array')
 
         # check fields
