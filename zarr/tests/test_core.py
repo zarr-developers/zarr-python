@@ -194,6 +194,48 @@ class TestArray(unittest.TestCase):
             z[:] = value
             assert_array_equal(a, z[:])
 
+    def test_array_1d_selections(self):
+        # light test here, full tests in test_indexing
+
+        # setup
+        a = np.arange(1050)
+        z = self.create_array(shape=a.shape, chunks=100, dtype=a.dtype)
+        z[:] = a
+
+        # get
+        assert_array_equal(a[50:150], z.get_orthogonal_selection(slice(50, 150)))
+        assert_array_equal(a[50:150], z.oindex[50: 150])
+        ix = [99, 100, 101]
+        bix = np.zeros_like(a, dtype=bool)
+        bix[ix] = True
+        assert_array_equal(a[ix], z.get_orthogonal_selection(ix))
+        assert_array_equal(a[ix], z.oindex[ix])
+        assert_array_equal(a[ix], z.get_coordinate_selection(ix))
+        assert_array_equal(a[ix], z.vindex[ix])
+        assert_array_equal(a[bix], z.get_mask_selection(bix))
+        assert_array_equal(a[bix], z.oindex[bix])
+        assert_array_equal(a[bix], z.vindex[bix])
+
+        # set
+        z.set_orthogonal_selection(slice(50, 150), 1)
+        assert_array_equal(1, z[50:150])
+        z.oindex[50:150] = 2
+        assert_array_equal(2, z[50:150])
+        z.set_orthogonal_selection(ix, 3)
+        assert_array_equal(3, z.get_coordinate_selection(ix))
+        z.oindex[ix] = 4
+        assert_array_equal(4, z.oindex[ix])
+        z.set_coordinate_selection(ix, 5)
+        assert_array_equal(5, z.get_coordinate_selection(ix))
+        z.vindex[ix] = 6
+        assert_array_equal(6, z.vindex[ix])
+        z.set_mask_selection(bix, 7)
+        assert_array_equal(7, z.get_mask_selection(bix))
+        z.vindex[bix] = 8
+        assert_array_equal(8, z.vindex[bix])
+        z.oindex[bix] = 9
+        assert_array_equal(9, z.oindex[bix])
+
     # noinspection PyStatementEffect
     def test_array_2d(self):
         a = np.arange(10000).reshape((1000, 10))
@@ -558,6 +600,18 @@ class TestArray(unittest.TestCase):
             z.resize(2000)
         with assert_raises(PermissionError):
             z.append(np.arange(1000))
+        with assert_raises(PermissionError):
+            z.set_basic_selection(..., 42)
+        with assert_raises(PermissionError):
+            z.set_orthogonal_selection([0, 1, 2], 42)
+        with assert_raises(PermissionError):
+            z.oindex[[0, 1, 2]] = 42
+        with assert_raises(PermissionError):
+            z.set_coordinate_selection([0, 1, 2], 42)
+        with assert_raises(PermissionError):
+            z.vindex[[0, 1, 2]] = 42
+        with assert_raises(PermissionError):
+            z.set_mask_selection(np.ones(z.shape, dtype=bool), 42)
 
     def test_pickle(self):
 

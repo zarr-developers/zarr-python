@@ -9,7 +9,8 @@ import numpy as np
 
 
 from zarr.util import (is_total_slice, human_readable_size, normalize_resize_args,
-                       normalize_storage_path, normalize_shape, normalize_chunks, InfoReporter)
+                       normalize_storage_path, normalize_shape, normalize_chunks, InfoReporter,
+                       check_array_shape)
 from zarr.storage import array_meta_key, attrs_key, listdir, getsize
 from zarr.meta import decode_array_metadata, encode_array_metadata
 from zarr.attrs import Attributes
@@ -17,17 +18,11 @@ from zarr.errors import PermissionError, err_read_only, err_array_not_found
 from zarr.compat import reduce
 from zarr.codecs import AsType, get_codec
 from zarr.indexing import (OIndex, OrthogonalIndexer, BasicIndexer, VIndex, CoordinateIndexer,
-                           MaskIndexer, check_fields, pop_fields, ensure_tuple)
+                           MaskIndexer, check_fields, pop_fields, ensure_tuple, is_scalar,
+                           is_contiguous_selection)
 
 
-def is_scalar(value, dtype):
-    if np.isscalar(value):
-        return True
-    if isinstance(value, tuple) and dtype.names and len(value) == len(dtype.names):
-        return True
-    return False
-
-
+# noinspection PyUnresolvedReferences
 class Array(object):
     """Instantiate an array from an initialized store.
 
@@ -76,6 +71,8 @@ class Array(object):
     nchunks_initialized
     is_view
     info
+    vindex
+    oindex
 
     Methods
     -------
@@ -85,6 +82,14 @@ class Array(object):
     append
     view
     astype
+    get_basic_selection
+    set_basic_selection
+    get_mask_selection
+    set_mask_selection
+    get_orthogonal_selection
+    set_orthogonal_selection
+    get_coordinate_selection
+    set_coordinate_selection
 
     """
 
@@ -483,6 +488,9 @@ class Array(object):
         if not self._cache_metadata:
             self._load_metadata()
 
+        # check args
+        check_fields(fields, self._dtype)
+
         # handle zero-dimensional arrays
         if self._shape == ():
             return self._get_basic_selection_zd(selection=selection, out=out, fields=fields)
@@ -504,24 +512,22 @@ class Array(object):
 
         except KeyError:
             # chunk not initialized
+            chunk = np.zeros((), dtype=self._dtype)
             if self._fill_value is not None:
-                chunk = np.empty((), dtype=self._dtype)
                 chunk.fill(self._fill_value)
-            else:
-                chunk = np.zeros((), dtype=self._dtype)
 
         else:
             chunk = self._decode_chunk(cdata)
+
+        # handle fields
+        if fields:
+            chunk = chunk[fields]
 
         # handle selection of the scalar value via empty tuple
         if out is None:
             out = chunk[selection]
         else:
             out[selection] = chunk[selection]
-
-        # handle fields
-        if fields:
-            out = out[fields]
 
         return out
 
@@ -540,6 +546,9 @@ class Array(object):
         if not self._cache_metadata:
             self._load_metadata()
 
+        # check args
+        check_fields(fields, self._dtype)
+
         # setup indexer
         indexer = OrthogonalIndexer(selection, self)
 
@@ -551,6 +560,9 @@ class Array(object):
         # refresh metadata
         if not self._cache_metadata:
             self._load_metadata()
+
+        # check args
+        check_fields(fields, self._dtype)
 
         # setup indexer
         indexer = CoordinateIndexer(selection, self)
@@ -572,6 +584,9 @@ class Array(object):
         # refresh metadata
         if not self._cache_metadata:
             self._load_metadata()
+
+        # check args
+        check_fields(fields, self._dtype)
 
         # setup indexer
         indexer = MaskIndexer(selection, self)
@@ -597,11 +612,7 @@ class Array(object):
         if out is None:
             out = np.empty(out_shape, dtype=out_dtype, order=self._order)
         else:
-            # validate 'out' parameter
-            if not hasattr(out, 'shape'):
-                raise TypeError('out must be an array-like object')
-            if out.shape != out_shape:
-                raise ValueError('out has wrong shape for selection')
+            check_array_shape('out', out, out_shape)
 
         # iterate over chunks
         for chunk_coords, chunk_selection, out_selection in indexer:
@@ -725,6 +736,8 @@ class Array(object):
         indexer = CoordinateIndexer(selection, self)
 
         # handle value - need to flatten
+        if not is_scalar(value, self._dtype):
+            value = np.asanyarray(value)
         if hasattr(value, 'shape') and len(value.shape) > 1:
             value = value.reshape(-1)
 
@@ -749,26 +762,42 @@ class Array(object):
     def _set_basic_selection_zd(self, selection, value, fields=None):
         # special case __setitem__ for zero-dimensional array
 
-        if fields:
-            raise IndexError('fields not supported for 0d array')
-
-        # check item is valid
+        # check selection is valid
         selection = ensure_tuple(selection)
-        if selection not in ((), (Ellipsis,)):
+        if selection not in ((), (...,)):
             raise IndexError('too many indices for array')
 
-        # setup data to store
-        arr = np.asarray(value, dtype=self._dtype)
+        # check fields
+        check_fields(fields, self._dtype)
+        if fields and isinstance(fields, list):
+            raise ValueError('multi-field assignment is not supported')
 
-        # check value
-        if arr.shape != ():
-            raise ValueError('expected scalar or 0-dimensional array, found %r' % value)
-
-        # obtain key for chunk storage
+        # obtain key for chunk
         ckey = self._chunk_key((0,))
 
+        # setup chunk
+        try:
+            # obtain compressed data for chunk
+            cdata = self.chunk_store[ckey]
+
+        except KeyError:
+            # chunk not initialized
+            chunk = np.zeros((), dtype=self._dtype)
+            if self._fill_value is not None:
+                chunk.fill(self._fill_value)
+
+        else:
+            # decode chunk
+            chunk = self._decode_chunk(cdata).copy()
+
+        # set value
+        if fields:
+            chunk[fields][selection] = value
+        else:
+            chunk[selection] = value
+
         # encode and store
-        cdata = self._encode_chunk(arr)
+        cdata = self._encode_chunk(chunk)
         self.chunk_store[ckey] = cdata
 
     def _set_basic_selection_nd(self, selection, value, fields=None):
@@ -801,10 +830,8 @@ class Array(object):
             pass
         else:
             if not hasattr(value, 'shape'):
-                value = np.asarray(value)
-            if value.shape != sel_shape:
-                raise ValueError('value has wrong shape for selection; expected {}, got {}'
-                                 .format(sel_shape, value.shape))
+                value = np.asanyarray(value)
+            check_array_shape('value', value, sel_shape)
 
         # iterate over chunks in range
         for chunk_coords, chunk_selection, out_selection in indexer:
@@ -847,14 +874,14 @@ class Array(object):
 
         assert len(chunk_coords) == len(self._cdata_shape)
 
-        try:
+        # obtain key for chunk
+        ckey = self._chunk_key(chunk_coords)
 
+        try:
             # obtain compressed data for chunk
-            ckey = self._chunk_key(chunk_coords)
             cdata = self.chunk_store[ckey]
 
         except KeyError:
-
             # chunk not initialized
             if self._fill_value is not None:
                 out[out_selection] = self._fill_value
@@ -863,15 +890,19 @@ class Array(object):
 
             if (isinstance(out, np.ndarray) and
                     not fields and
-                    isinstance(out_selection, slice) and
+                    is_contiguous_selection(out_selection) and
                     is_total_slice(chunk_selection, self._chunks) and
                     not self._filters):
 
                 dest = out[out_selection]
-                contiguous = ((self._order == 'C' and dest.flags.c_contiguous) or
-                              (self._order == 'F' and dest.flags.f_contiguous))
+                write_direct = (
+                    dest.flags.writeable and (
+                        (self._order == 'C' and dest.flags.c_contiguous) or
+                        (self._order == 'F' and dest.flags.f_contiguous)
+                    )
+                )
 
-                if contiguous:
+                if write_direct:
 
                     # optimization: we want the whole chunk, and the destination is
                     # contiguous, so we can decompress directly from the chunk
@@ -1256,7 +1287,7 @@ class Array(object):
     def _append_nosync(self, data, axis=0):
 
         # ensure data is array-like
-        if not hasattr(data, 'shape') or not hasattr(data, 'dtype'):
+        if not hasattr(data, 'shape'):
             data = np.asanyarray(data)
 
         # ensure shapes are compatible for non-append dimensions

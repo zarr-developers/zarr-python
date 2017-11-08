@@ -272,3 +272,12 @@ class InfoReporter(object):
     def _repr_html_(self):
         items = self.obj.info_items()
         return info_html_report(items)
+
+
+def check_array_shape(param, array, shape):
+    if not hasattr(array, 'shape'):
+        raise TypeError('parameter {!r}: expected an array-like object, got {!r}'
+                        .format(param, type(array)))
+    if array.shape != shape:
+        raise ValueError('parameter {!r}: expected array with shape {!r}, got {!r}'
+                         .format(param, shape, array.shape))

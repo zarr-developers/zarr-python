@@ -20,6 +20,14 @@ def is_bool_array(x):
     return hasattr(x, 'dtype') and x.dtype == bool
 
 
+def is_scalar(value, dtype):
+    if np.isscalar(value):
+        return True
+    if isinstance(value, tuple) and dtype.names and len(value) == len(dtype.names):
+        return True
+    return False
+
+
 def normalize_integer_selection(dim_sel, dim_len):
 
     # normalize type to int
@@ -197,6 +205,14 @@ def check_selection_length(selection, shape):
 
 def is_contiguous_slice(s):
     return isinstance(s, slice) and (s.step is None or s.step == 1)
+
+
+def is_contiguous_selection(selection):
+    selection = ensure_tuple(selection)
+    return all([
+        (is_integer_array(s) or is_contiguous_slice(s) or s == Ellipsis)
+        for s in selection
+    ])
 
 
 # noinspection PyProtectedMember
@@ -407,6 +423,7 @@ def oindex_set(a, selection, value):
     drop_axes = tuple([i for i, s in enumerate(selection) if is_integer(s)])
     selection = ix_(selection, a.shape)
     if not np.isscalar(value) and drop_axes:
+        value = np.asanyarray(value)
         value_selection = [slice(None)] * len(a.shape)
         for i in drop_axes:
             value_selection[i] = np.newaxis

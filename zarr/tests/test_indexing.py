@@ -29,12 +29,12 @@ def test_replace_ellipsis():
     eq((0,), replace_ellipsis(0, (100,)))
 
     # 1D
-    eq((slice(None),), replace_ellipsis(Ellipsis, (100,)))
+    eq((slice(None),), replace_ellipsis(..., (100,)))
     eq((slice(None),), replace_ellipsis(slice(None), (100,)))
     eq((slice(None, 100),), replace_ellipsis(slice(None, 100), (100,)))
     eq((slice(0, None),), replace_ellipsis(slice(0, None), (100,)))
-    eq((slice(None),), replace_ellipsis((slice(None), Ellipsis), (100,)))
-    eq((slice(None),), replace_ellipsis((Ellipsis, slice(None)), (100,)))
+    eq((slice(None),), replace_ellipsis((slice(None), ...), (100,)))
+    eq((slice(None),), replace_ellipsis((..., slice(None)), (100,)))
 
     # 2D, single item
     eq((0, 0), replace_ellipsis((0, 0), (100, 100)))
@@ -47,21 +47,60 @@ def test_replace_ellipsis():
 
     # 2D slice
     eq((slice(None), slice(None)),
-       replace_ellipsis(Ellipsis, (100, 100)))
+       replace_ellipsis(..., (100, 100)))
     eq((slice(None), slice(None)),
        replace_ellipsis(slice(None), (100, 100)))
     eq((slice(None), slice(None)),
        replace_ellipsis((slice(None), slice(None)), (100, 100)))
     eq((slice(None), slice(None)),
-       replace_ellipsis((Ellipsis, slice(None)), (100, 100)))
+       replace_ellipsis((..., slice(None)), (100, 100)))
     eq((slice(None), slice(None)),
-       replace_ellipsis((slice(None), Ellipsis), (100, 100)))
+       replace_ellipsis((slice(None), ...), (100, 100)))
     eq((slice(None), slice(None)),
-       replace_ellipsis((slice(None), Ellipsis, slice(None)), (100, 100)))
+       replace_ellipsis((slice(None), ..., slice(None)), (100, 100)))
     eq((slice(None), slice(None)),
-       replace_ellipsis((Ellipsis, slice(None), slice(None)), (100, 100)))
+       replace_ellipsis((..., slice(None), slice(None)), (100, 100)))
     eq((slice(None), slice(None)),
-       replace_ellipsis((slice(None), slice(None), Ellipsis), (100, 100)))
+       replace_ellipsis((slice(None), slice(None), ...), (100, 100)))
+
+
+def test_get_basic_selection_0d():
+
+    # setup
+    a = np.array(42)
+    z = zarr.create(shape=a.shape, dtype=a.dtype, fill_value=None)
+    z[...] = a
+
+    assert_array_equal(a, z.get_basic_selection(...))
+    assert_array_equal(a, z[...])
+    eq(42, z.get_basic_selection(()))
+    eq(42, z[()])
+
+    # test out param
+    b = np.zeros_like(a)
+    z.get_basic_selection(..., out=b)
+    assert_array_equal(a, b)
+
+    # test structured array
+    value = (b'aaa', 1,  4.2)
+    a = np.array(value, dtype=[('foo', 'S3'), ('bar', 'i4'), ('baz', 'f8')])
+    z = zarr.create(shape=a.shape, dtype=a.dtype, fill_value=None)
+    z[()] = value
+    assert_array_equal(a, z.get_basic_selection(...))
+    assert_array_equal(a, z[...])
+    eq(a[()], z.get_basic_selection(()))
+    eq(a[()], z[()])
+    eq(b'aaa', z.get_basic_selection((), fields='foo'))
+    eq(b'aaa', z['foo'])
+    eq(a[['foo', 'bar']], z.get_basic_selection((), fields=['foo', 'bar']))
+    eq(a[['foo', 'bar']], z['foo', 'bar'])
+    # test out param
+    b = np.zeros_like(a)
+    z.get_basic_selection(..., out=b)
+    assert_array_equal(a, b)
+    c = np.zeros_like(a[['foo', 'bar']])
+    z.get_basic_selection(..., out=c, fields=['foo', 'bar'])
+    assert_array_equal(a[['foo', 'bar']], c)
 
 
 # noinspection PyStatementEffect
@@ -86,9 +125,9 @@ def test_get_basic_selection_1d():
         slice(0, 0),  # empty result
         slice(-1, 0),  # empty result
         # total selections
-        Ellipsis,
+        ...,
         (),
-        (Ellipsis, slice(None)),
+        (..., slice(None)),
     ]
 
     for selection in selections:
@@ -147,10 +186,10 @@ def test_get_basic_selection_2d():
         (slice(250, 350), slice(-50, 50)),
         # total selections
         (slice(None), slice(None)),
-        Ellipsis,
+        ...,
         (),
-        (Ellipsis, slice(None)),
-        (Ellipsis, slice(None), slice(None)),
+        (..., slice(None)),
+        (..., slice(None), slice(None)),
     ]
 
     for selection in selections:
@@ -174,6 +213,53 @@ def test_get_basic_selection_2d():
         z[0, 0, 0]  # too many indices
     with assert_raises(IndexError):
         z[:, :, :]  # too many indices
+
+
+def test_set_basic_selection_0d():
+
+    # setup
+    v = np.array(42)
+    a = np.zeros_like(v)
+    z = zarr.zeros_like(v)
+    assert_array_equal(a, z)
+
+    # tests
+    z.set_basic_selection(..., v)
+    assert_array_equal(v, z)
+    z[...] = 0
+    assert_array_equal(a, z)
+    z[...] = v
+    assert_array_equal(v, z)
+
+    # test structured array
+    value = (b'aaa', 1,  4.2)
+    v = np.array(value, dtype=[('foo', 'S3'), ('bar', 'i4'), ('baz', 'f8')])
+    a = np.zeros_like(v)
+    z = zarr.create(shape=a.shape, dtype=a.dtype, fill_value=None)
+
+    # tests
+    z.set_basic_selection(..., v)
+    assert_array_equal(v, z)
+    z.set_basic_selection(..., a)
+    assert_array_equal(a, z)
+    z[...] = v
+    assert_array_equal(v, z)
+    z[...] = a
+    assert_array_equal(a, z)
+    # with fields
+    z.set_basic_selection(..., v['foo'], fields='foo')
+    eq(v['foo'], z['foo'])
+    eq(a['bar'], z['bar'])
+    eq(a['baz'], z['baz'])
+    z['bar'] = v['bar']
+    eq(v['foo'], z['foo'])
+    eq(v['bar'], z['bar'])
+    eq(a['baz'], z['baz'])
+    # multiple field assignment not supported
+    with assert_raises(ValueError):
+        z.set_basic_selection(..., v[['foo', 'bar']], fields=['foo', 'bar'])
+    with assert_raises(ValueError):
+        z[..., 'foo', 'bar'] = v[['foo', 'bar']]
 
 
 def _test_get_orthogonal_selection_1d_common(a, z, ix):
@@ -451,7 +537,7 @@ def test_get_orthogonal_selection_3d_int():
 
 
 def _test_set_orthogonal_selection_1d_common(v, a, z, ix):
-    for value in 42, oindex(v, ix):
+    for value in 42, oindex(v, ix), oindex(v, ix).tolist():
         # setup expectation
         a[:] = 0
         a[ix] = value
@@ -510,7 +596,7 @@ def _test_set_orthogonal_selection_2d_common(v, a, z, ix0, ix1):
         (42, ix1),
     )
     for selection in selections:
-        for value in 42, oindex(v, selection):
+        for value in 42, oindex(v, selection), oindex(v, selection).tolist():
             # setup expectation
             a[:] = 0
             oindex_set(a, selection, value)
@@ -581,7 +667,7 @@ def _test_set_orthogonal_selection_3d_common(v, a, z, ix0, ix1, ix2):
         (ix0, ix1, 4),
     )
     for selection in selections:
-        for value in 42, oindex(v, selection):
+        for value in 42, oindex(v, selection), oindex(v, selection).tolist():
             # setup expectation
             a[:] = 0
             oindex_set(a, selection, value)
@@ -687,7 +773,7 @@ def test_get_coordinate_selection_1d():
         ix = slice(5, 15)  # not supported
         z.get_coordinate_selection(ix)
     with assert_raises(IndexError):
-        ix = Ellipsis  # not supported
+        ix = ...  # not supported
         z.get_coordinate_selection(ix)
 
 
@@ -761,10 +847,10 @@ def test_get_coordinate_selection_2d():
         selection = [1, 2, 3], slice(5, 15)
         z.get_coordinate_selection(selection)
     with assert_raises(IndexError):
-        selection = Ellipsis, [1, 2, 3]
+        selection = ..., [1, 2, 3]
         z.get_coordinate_selection(selection)
     with assert_raises(IndexError):
-        selection = Ellipsis
+        selection = ...
         z.get_coordinate_selection(selection)
 
 
@@ -792,7 +878,7 @@ def test_set_coordinate_selection_1d_int():
 
     # multi-dimensional selection
     ix = np.array([[2, 4], [6, 8]])
-    for value in 42, v[ix]:
+    for value in 42, v[ix], v[ix].tolist():
         # setup expectation
         a[:] = 0
         a[ix] = value
@@ -846,7 +932,7 @@ def test_set_coordinate_selection_2d_int():
     ix1 = np.array([[1, 3, 2],
                     [2, 0, 5]])
 
-    for value in 42, v[ix0, ix1]:
+    for value in 42, v[ix0, ix1], v[ix0, ix1].tolist():
         # setup expectation
         a[:] = 0
         a[ix0, ix1] = value
@@ -1061,7 +1147,7 @@ def test_get_selections_with_fields():
 
         # total selection
         expect = a[fields]
-        actual = z.get_basic_selection(Ellipsis, fields=fields)
+        actual = z.get_basic_selection(..., fields=fields)
         assert_array_equal(expect, actual)
         # alternative API
         if isinstance(fields, str):
@@ -1152,13 +1238,13 @@ def test_set_selections_with_fields():
 
     fields_fixture = [
         'foo',
-        # ['foo'],
-        # ['foo', 'bar'],
-        # ['foo', 'baz'],
-        # ['bar', 'baz'],
-        # ['foo', 'bar', 'baz'],
-        # ['bar', 'foo'],
-        # ['baz', 'bar', 'foo'],
+        ['foo'],
+        ['foo', 'bar'],
+        ['foo', 'baz'],
+        ['bar', 'baz'],
+        ['foo', 'bar', 'baz'],
+        ['bar', 'foo'],
+        ['baz', 'bar', 'foo'],
     ]
 
     for fields in fields_fixture:
@@ -1166,7 +1252,7 @@ def test_set_selections_with_fields():
         # currently multi-field assignment is not supported in numpy, so we won't support it either
         if isinstance(fields, list):
             with assert_raises(ValueError):
-                z.set_basic_selection(Ellipsis, v[fields], fields=fields)
+                z.set_basic_selection(..., v[fields], fields=fields)
             with assert_raises(ValueError):
                 z.set_orthogonal_selection([0, 2], v[fields], fields=fields)
             with assert_raises(ValueError):
@@ -1182,7 +1268,7 @@ def test_set_selections_with_fields():
             assert_array_equal(a, z[:])
             a[fields] = v[fields]
             # total selection
-            z.set_basic_selection(Ellipsis, v[fields], fields=fields)
+            z.set_basic_selection(..., v[fields], fields=fields)
             assert_array_equal(a, z[:])
 
             # basic selection with slice
