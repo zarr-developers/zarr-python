@@ -64,10 +64,6 @@ class IntDimIndexer(object):
 
     def __init__(self, dim_sel, dim_len, dim_chunk_len):
 
-        # check type
-        if not is_integer(dim_sel):
-            raise ValueError('selection must be an integer')
-
         # normalize
         dim_sel = normalize_integer_selection(dim_sel, dim_len)
 
@@ -88,10 +84,6 @@ class IntDimIndexer(object):
 class SliceDimIndexer(object):
 
     def __init__(self, dim_sel, dim_len, dim_chunk_len):
-
-        # check type
-        if not is_contiguous_slice(dim_sel):
-            raise ValueError('selection must be a contiguous slice')
 
         # normalize
         self.start, self.stop, _ = dim_sel.indices(dim_len)
@@ -167,13 +159,15 @@ def replace_ellipsis(selection, shape):
     if len(selection) < len(shape):
         selection += (slice(None),) * (len(shape) - len(selection))
 
+    # check selection not too long
+    if len(selection) > len(shape):
+        raise IndexError('too many indices for array')
+
     return selection
 
 
 def ensure_tuple(v):
-    if v is None:
-        v = ()
-    elif not isinstance(v, tuple):
+    if not isinstance(v, tuple):
         v = (v,)
     return v
 
@@ -196,13 +190,6 @@ out_selection
 """
 
 
-def check_selection_length(selection, shape):
-    if len(selection) > len(shape):
-        raise IndexError('too many indices for array')
-    if len(selection) < len(shape):
-        raise IndexError('not enough indices for array')
-
-
 def is_contiguous_slice(s):
     return isinstance(s, slice) and (s.step is None or s.step == 1)
 
@@ -220,12 +207,8 @@ class BasicIndexer(object):
 
     def __init__(self, selection, array):
 
-        # ensure tuple
-        selection = ensure_tuple(selection)
-
         # handle ellipsis
         selection = replace_ellipsis(selection, array._shape)
-        check_selection_length(selection, array._shape)
 
         # setup per-dimension indexers
         dim_indexers = []
@@ -314,10 +297,33 @@ class BoolArrayDimIndexer(object):
             yield ChunkDimProjection(dim_chunk_ix, dim_chunk_sel, dim_out_sel)
 
 
+class Order:
+    UNKNOWN = 0
+    INCREASING = 1
+    DECREASING = 2
+    UNORDERED = 3
+
+    @staticmethod
+    def check(a):
+        diff = np.diff(a)
+        diff_positive = diff >= 0
+        n_diff_positive = np.count_nonzero(diff_positive)
+        all_increasing = n_diff_positive == len(diff_positive)
+        any_increasing = n_diff_positive > 0
+        if all_increasing:
+            order = Order.INCREASING
+        elif any_increasing:
+            order = Order.UNORDERED
+        else:
+            order = Order.DECREASING
+        return order
+
+
 class IntArrayDimIndexer(object):
     """Integer array selection against a single dimension."""
 
-    def __init__(self, dim_sel, dim_len, dim_chunk_len):
+    def __init__(self, dim_sel, dim_len, dim_chunk_len, wraparound=True, boundscheck=True,
+                 order=Order.UNKNOWN):
 
         # ensure array
         dim_sel = np.asanyarray(dim_sel)
@@ -326,43 +332,53 @@ class IntArrayDimIndexer(object):
         if dim_sel.ndim != 1:
             raise IndexError('selection must be a 1d array')
 
-        # check dtype
-        if dim_sel.dtype.kind not in 'ui':
-            raise IndexError('selection must be an integer array')
-
         # handle wraparound
-        loc_neg = dim_sel < 0
-        if np.any(loc_neg):
-            dim_sel[loc_neg] = dim_sel[loc_neg] + dim_len
+        if wraparound:
+            loc_neg = dim_sel < 0
+            if np.any(loc_neg):
+                dim_sel[loc_neg] = dim_sel[loc_neg] + dim_len
 
         # handle out of bounds
-        if np.any(dim_sel < 0) or np.any(dim_sel >= dim_len):
-            raise IndexError('selection contains index out of bounds')
-
-        # handle non-monotonic indices
-        dim_sel_chunk = dim_sel // dim_chunk_len
-        if np.any(np.diff(dim_sel) < 0):
-            self.is_monotonic = False
-            # sort indices to group by chunk
-            self.dim_sort = np.argsort(dim_sel_chunk)
-            self.dim_sel = np.take(dim_sel, self.dim_sort)
-
-        else:
-            self.is_monotonic = True
-            self.dim_sort = None
-            self.dim_sel = dim_sel
+        if boundscheck:
+            if np.any(dim_sel < 0) or np.any(dim_sel >= dim_len):
+                raise IndexError('selection contains index out of bounds')
 
         # store attributes
         self.dim_len = dim_len
         self.dim_chunk_len = dim_chunk_len
         self.nchunks = int(np.ceil(self.dim_len / self.dim_chunk_len))
-        self.nitems = len(self.dim_sel)
+        self.nitems = len(dim_sel)
+
+        # determine which chunk is needed for each selection item
+        # note: for dense integer selections, the division operation here is the bottleneck
+        dim_sel_chunk = dim_sel // dim_chunk_len
+
+        # determine order of indices
+        if order == Order.UNKNOWN:
+            order = Order.check(dim_sel)
+        self.order = order
+
+        if self.order == Order.INCREASING:
+            self.dim_sel = dim_sel
+            self.dim_out_sel = None
+        elif self.order == Order.DECREASING:
+            self.dim_sel = dim_sel[::-1]
+            # TODO I'm sure there's a way to do this without creating an arange, but can't see it
+            # at the moment
+            self.dim_out_sel = np.arange(self.nitems - 1, -1, -1)
+        else:
+            # sort indices to group by chunk
+            self.dim_out_sel = np.argsort(dim_sel_chunk)
+            self.dim_sel = np.take(dim_sel, self.dim_out_sel)
 
         # precompute number of selected items for each chunk
-        # note: for dense integer selections, the division operation here is the bottleneck
         self.chunk_nitems = np.bincount(dim_sel_chunk, minlength=self.nchunks)
-        self.chunk_nitems_cumsum = np.cumsum(self.chunk_nitems)
+
+        # find chunks that we need to visit
         self.dim_chunk_ixs = np.nonzero(self.chunk_nitems)[0]
+
+        # compute offsets into the output array
+        self.chunk_nitems_cumsum = np.cumsum(self.chunk_nitems)
 
     def __iter__(self):
 
@@ -374,10 +390,10 @@ class IntArrayDimIndexer(object):
             else:
                 start = self.chunk_nitems_cumsum[dim_chunk_ix - 1]
             stop = self.chunk_nitems_cumsum[dim_chunk_ix]
-            if self.is_monotonic:
+            if self.order == Order.INCREASING:
                 dim_out_sel = slice(start, stop)
             else:
-                dim_out_sel = self.dim_sort[start:stop]
+                dim_out_sel = self.dim_out_sel[start:stop]
 
             # find region in chunk
             dim_offset = dim_chunk_ix * self.dim_chunk_len
@@ -436,20 +452,11 @@ class OrthogonalIndexer(object):
 
     def __init__(self, selection, array):
 
-        # ensure tuple
-        selection = ensure_tuple(selection)
-
         # handle ellipsis
         selection = replace_ellipsis(selection, array._shape)
 
         # normalize list to array
         selection = replace_lists(selection)
-
-        # validation - check dimensionality
-        if len(selection) > len(array._shape):
-            raise IndexError('too many indices for array')
-        if len(selection) < len(array._shape):
-            raise IndexError('not enough indices for array')
 
         # setup per-dimension indexers
         dim_indexers = []
@@ -468,7 +475,16 @@ class OrthogonalIndexer(object):
                 # handle slice with step
                 if strides != 1:
                     dim_sel = np.arange(start, stop, strides)
-                    dim_indexer = IntArrayDimIndexer(dim_sel, dim_len, dim_chunk_len)
+                    if strides > 1:
+                        order = Order.INCREASING
+                    elif strides < 0:
+                        order = Order.DECREASING
+                    else:
+                        # TODO better error here?
+                        raise RuntimeError('unexpected strides')
+                    dim_indexer = IntArrayDimIndexer(dim_sel, dim_len, dim_chunk_len,
+                                                     wraparound=False, boundscheck=False,
+                                                     order=order)
                 else:
                     dim_indexer = SliceDimIndexer(dim_sel, dim_len, dim_chunk_len)
 
