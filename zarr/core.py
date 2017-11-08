@@ -818,7 +818,7 @@ class Array(object):
             >>> a = np.arange(100000000)
             >>> z = zarr.zeros_like(a)
 
-        ...the following assignment operations are equivalent:
+        ...the following assignment operations are equivalent::
 
             >>> z[:10] = 24
             >>> z[:10]
@@ -827,7 +827,18 @@ class Array(object):
             >>> z[:10]
             array([42, 42, 42, 42, 42, 42, 42, 42, 42, 42])
 
-        @@TODO doc fieldss
+        For arrays with a structured dtype, the `fields` parameter can be used to set data for
+        a specific field, e.g.::
+
+            >>> a = np.array([(b'aaa', 1, 4.2),
+            ...               (b'bbb', 2, 8.4),
+            ...               (b'ccc', 3, 12.6)],
+            ...              dtype=[('foo', 'S3'), ('bar', 'i4'), ('baz', 'f8')])
+            >>> z = zarr.array(a)
+            >>> z.set_basic_selection(slice(0, 2), b'zzz', fields='foo')
+            >>> z[:]
+            array([(b'zzz', 1,   4.2), (b'zzz', 2,   8.4), (b'ccc', 3,  12.6)],
+                  dtype=[('foo', 'S3'), ('bar', '<i4'), ('baz', '<f8')])
 
         See Also
         --------
