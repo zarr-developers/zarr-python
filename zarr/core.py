@@ -376,12 +376,15 @@ class Array(object):
 
     @property
     def oindex(self):
-        """TODO"""
+        """Shortcut for orthogonal (outer) indexing, see :func:`get_orthogonal_selection` and
+        :func:`set_orthogonal_selection` for documentation and examples."""
         return self._oindex
 
     @property
     def vindex(self):
-        """TODO"""
+        """Shortcut for vectorized (inner) indexing, see :func:`get_coordinate_selection`,
+        :func:`set_coordinate_selection`, :func:`get_mask_selection` and
+        :func:`set_mask_selection` for documentation and examples."""
         return self._vindex
 
     def __eq__(self, other):
@@ -408,8 +411,13 @@ class Array(object):
             raise TypeError('len() of unsized object')
 
     def __getitem__(self, selection):
-        """Retrieve data for some portion of the array. Most NumPy-style
-        slicing operations are supported.
+        """Retrieve data for some portion of the array.
+
+        Parameters
+        ----------
+        selection : int, slice or tuple of int/slice
+            An integer index or slice or tuple of int/slice specifying the requested region for
+            each dimension of the array.
 
         Returns
         -------
@@ -418,7 +426,6 @@ class Array(object):
 
         Examples
         --------
-
         Setup a 1-dimensional array::
 
             >>> import zarr
@@ -437,15 +444,19 @@ class Array(object):
             array([99999995, 99999996, 99999997, 99999998, 99999999], dtype=int32)
             >>> z[5:10]
             array([5, 6, 7, 8, 9], dtype=int32)
+            >>> z[5:10:2]
+            array([5, 7, 9], dtype=int32)
             >>> z[:]
             array([       0,        1,        2, ..., 99999997, 99999998, 99999999], dtype=int32)
+            >>> z[::2]
+            array([       0,        2,        4, ..., 99999994, 99999996, 99999998], dtype=int32)
 
         Setup a 2-dimensional array::
 
             >>> import zarr
             >>> import numpy as np
-            >>> z = zarr.array(np.arange(100000000).reshape(10000, 10000),
-            ...                chunks=(1000, 1000), dtype='i4')
+            >>> z = zarr.array(np.arange(100000000).reshape(10000, 10000), chunks=(1000, 1000),
+            ...                dtype='i4')
             >>> z
             <zarr.core.Array (10000, 10000) int32>
 
@@ -475,6 +486,24 @@ class Array(object):
                    [99970000, 99970001, 99970002, ..., 99979997, 99979998, 99979999],
                    [99980000, 99980001, 99980002, ..., 99989997, 99989998, 99989999],
                    [99990000, 99990001, 99990002, ..., 99999997, 99999998, 99999999]], dtype=int32)
+            >>> z[::10, ::2]
+            array([[       0,        2,        4, ...,     9994,     9996,     9998],
+                   [  100000,   100002,   100004, ...,   109994,   109996,   109998],
+                   [  200000,   200002,   200004, ...,   209994,   209996,   209998],
+                   ...,
+                   [99700000, 99700002, 99700004, ..., 99709994, 99709996, 99709998],
+                   [99800000, 99800002, 99800004, ..., 99809994, 99809996, 99809998],
+                   [99900000, 99900002, 99900004, ..., 99909994, 99909996, 99909998]], dtype=int32)
+
+        Notes
+        -----
+        Slices with step > 1 are supported, but slices with negative step are not.
+
+        See Also
+        --------
+        get_basic_selection, set_basic_selection, get_mask_selection, set_mask_selection,
+        get_coordinate_selection, set_coordinate_selection, get_orthogonal_selection,
+        set_orthogonal_selection, vindex, oindex, __setitem__
 
         """
 
@@ -482,7 +511,67 @@ class Array(object):
         return self.get_basic_selection(selection, fields=fields)
 
     def get_basic_selection(self, selection, out=None, fields=None):
-        """TODO"""
+        """Retrieve data for some portion of the array.
+
+        Parameters
+        ----------
+        selection : int, slice or tuple of int/slice
+            An integer index or slice or tuple of int/slice specifying the requested region for
+            each dimension of the array.
+        out : ndarray
+            If given, load the selected data directly into this array.
+        fields : str or sequence of str
+            For arrays with a structured dtype, one or more fields can be specified to extract
+            data for.
+
+        Returns
+        -------
+        out : ndarray
+            A NumPy array containing the data for the requested region.
+
+        Examples
+        --------
+        This method provides the implementation for indexing operations via ``__getitem__``. For
+        example, given a Zarr array::
+
+            >>> import zarr
+            >>> import numpy as np
+            >>> z = zarr.array(np.arange(100000000), chunks=1000000, dtype='i4')
+
+        ...the following operations are equivalent:
+
+            >>> np.all(z[5] == z.get_basic_selection(5))
+            True
+            >>> np.all(z[5:10:2] == z.get_basic_selection(slice(5, 10, 2)))
+            True
+            >>> np.all(z[...] == z.get_basic_selection(Ellipsis))
+            True
+
+        However, this method provides some additional parameters which may be useful. For
+        example, data may be loaded directly into an output array via the `out` parameter::
+
+            >>> out = np.zeros(10, dtype=z.dtype)
+            >>> z.get_basic_selection(slice(1000, 1010), out=out)
+            array([1000, 1001, 1002, 1003, 1004, 1005, 1006, 1007, 1008, 1009], dtype=int32)
+            >>> out
+            array([1000, 1001, 1002, 1003, 1004, 1005, 1006, 1007, 1008, 1009], dtype=int32)
+
+        For structured arrays, data may be loaded from a subset of the data fields via the
+        `fields` parameter, e.g.::
+
+            >>> a = np.array([(b'aaa', 1, 4.2),
+            ...               (b'bbb', 2, 8.4),
+            ...               (b'ccc', 3, 12.6)],
+            ...              dtype=[('foo', 'S3'), ('bar', 'i4'), ('baz', 'f8')])
+            >>> z = zarr.array(a)
+            >>> z.get_basic_selection(slice(0, 2), fields='foo')
+            array([b'aaa', b'bbb'],
+                  dtype='|S3')
+            >>> z.get_basic_selection(slice(0, 2), fields=['bar', 'baz'])
+            array([(1,  4.2), (2,  8.4)],
+                  dtype=[('bar', '<i4'), ('baz', '<f8')])
+
+        """
 
         # refresh metadata
         if not self._cache_metadata:
@@ -600,7 +689,7 @@ class Array(object):
         # storing into the correct location in the output array.
 
         # N.B., it is an important optimisation that we only visit chunks which overlap the
-        # selection. This minimises the nuimber of iterations in the main for loop.
+        # selection. This minimises the number of iterations in the main for loop.
 
         # check fields are sensible
         out_dtype = check_fields(fields, self._dtype)
@@ -629,9 +718,16 @@ class Array(object):
     def __setitem__(self, selection, value):
         """Modify data for some portion of the array.
 
+        Parameters
+        ----------
+        selection : int, slice or tuple of int/slice
+            An integer index or slice or tuple of int/slice specifying the requested region for
+            each dimension of the array.
+        value : scalar or array-like
+            Value to be stored into the array.
+
         Examples
         --------
-
         Setup a 1-dimensional array::
 
             >>> import zarr
@@ -683,13 +779,63 @@ class Array(object):
                    [9998,   42,   42, ...,   42,   42,   42],
                    [9999,   42,   42, ...,   42,   42,   42]], dtype=int32)
 
+        Notes
+        -----
+        Slices with step > 1 are supported, but slices with negative step are not.
+
+        See Also
+        --------
+        get_basic_selection, set_basic_selection, get_mask_selection, set_mask_selection,
+        get_coordinate_selection, set_coordinate_selection, get_orthogonal_selection,
+        set_orthogonal_selection, vindex, oindex, __getitem__
+
         """
 
         fields, selection = pop_fields(selection)
         self.set_basic_selection(selection, value, fields=fields)
 
     def set_basic_selection(self, selection, value, fields=None):
-        """TODO"""
+        """Modify data for some portion of the array.
+
+        Parameters
+        ----------
+        selection : int, slice or tuple of int/slice
+            An integer index or slice or tuple of int/slice specifying the requested region for
+            each dimension of the array.
+        value : scalar or array-like
+            Value to be stored into the array.
+        fields : str or sequence of str
+            For arrays with a structured dtype, one or more fields can be specified to set
+            data for.
+
+        Examples
+        --------
+        This method provides the implementation for indexing operations via ``__setitem__``. For
+        example, given a Zarr array::
+
+            >>> import zarr
+            >>> import numpy as np
+            >>> a = np.arange(100000000)
+            >>> z = zarr.zeros_like(a)
+
+        ...the following assignment operations are equivalent:
+
+            >>> z[:10] = 24
+            >>> z[:10]
+            array([24, 24, 24, 24, 24, 24, 24, 24, 24, 24])
+            >>> z.set_basic_selection(slice(10), 42)
+            >>> z[:10]
+            array([42, 42, 42, 42, 42, 42, 42, 42, 42, 42])
+
+        @@TODO doc fieldss
+
+        See Also
+        --------
+        get_basic_selection, get_mask_selection, set_mask_selection,
+        get_coordinate_selection, set_coordinate_selection, get_orthogonal_selection,
+        set_orthogonal_selection, vindex, oindex, __getitem__, __setitem__
+
+        """
 
         # guard conditions
         if self._read_only:
