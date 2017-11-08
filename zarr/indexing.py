@@ -12,12 +12,18 @@ def is_integer(x):
     return isinstance(x, numbers.Integral)
 
 
-def is_integer_array(x):
-    return hasattr(x, 'dtype') and x.dtype.kind in 'ui'
+def is_integer_array(x, ndim=None):
+    t = hasattr(x, 'shape') and hasattr(x, 'dtype') and x.dtype.kind in 'ui'
+    if ndim is not None:
+        t = t and len(x.shape) == ndim
+    return t
 
 
-def is_bool_array(x):
-    return hasattr(x, 'dtype') and x.dtype == bool
+def is_bool_array(x, ndim=None):
+    t = hasattr(x, 'shape') and hasattr(x, 'dtype') and x.dtype == bool
+    if ndim is not None:
+        t = t and len(x.shape) == ndim
+    return t
 
 
 def is_scalar(value, dtype):
@@ -81,47 +87,65 @@ class IntDimIndexer(object):
         yield ChunkDimProjection(dim_chunk_ix, dim_chunk_sel, dim_out_sel)
 
 
+def ceildiv(a, b):
+    return int(np.ceil(a / b))
+
+
 class SliceDimIndexer(object):
 
     def __init__(self, dim_sel, dim_len, dim_chunk_len):
 
         # normalize
-        self.start, self.stop, _ = dim_sel.indices(dim_len)
+        self.start, self.stop, self.step = dim_sel.indices(dim_len)
+        if self.step < 1:
+            raise IndexError('only slices with step >= 1 are supported')
 
         # store attributes
         self.dim_len = dim_len
         self.dim_chunk_len = dim_chunk_len
-        self.nitems = max(0, self.stop - self.start)
+        self.nitems = max(0, ceildiv((self.stop - self.start), self.step))
+        self.nchunks = ceildiv(self.dim_len, self.dim_chunk_len)
 
     def __iter__(self):
 
-        dim_chunk_from = self.start // self.dim_chunk_len
-        dim_chunk_to = int(np.ceil(self.stop / self.dim_chunk_len))
+        # figure out the range of chunks we need to visit
+        dim_chunk_ix_from = self.start // self.dim_chunk_len
+        dim_chunk_ix_to = ceildiv(self.stop, self.dim_chunk_len)
 
-        for dim_chunk_ix in range(dim_chunk_from, dim_chunk_to):
+        # iterate over chunks in range
+        for dim_chunk_ix in range(dim_chunk_ix_from, dim_chunk_ix_to):
 
+            # compute offsets for chunk within overall array
             dim_offset = dim_chunk_ix * self.dim_chunk_len
+            dim_limit = min(self.dim_len, (dim_chunk_ix + 1) * self.dim_chunk_len)
 
-            if self.start <= dim_offset:
+            # determine chunk length, accounting for trailing chunk
+            dim_chunk_len = dim_limit - dim_offset
+
+            if self.start < dim_offset:
                 # selection starts before current chunk
                 dim_chunk_sel_start = 0
-                dim_out_offset = dim_offset - self.start
+                remainder = (dim_offset - self.start) % self.step
+                if remainder:
+                    dim_chunk_sel_start += self.step - remainder
+                # compute number of previous items, provides offset into output array
+                dim_out_offset = ceildiv((dim_offset - self.start), self.step)
 
             else:
                 # selection starts within current chunk
                 dim_chunk_sel_start = self.start - dim_offset
                 dim_out_offset = 0
 
-            if self.stop > (dim_offset + self.dim_chunk_len):
+            if self.stop > dim_limit:
                 # selection ends after current chunk
-                dim_chunk_sel_stop = self.dim_chunk_len
+                dim_chunk_sel_stop = dim_chunk_len
 
             else:
                 # selection ends within current chunk
                 dim_chunk_sel_stop = self.stop - dim_offset
 
-            dim_chunk_sel = slice(dim_chunk_sel_start, dim_chunk_sel_stop)
-            dim_chunk_nitems = dim_chunk_sel_stop - dim_chunk_sel_start
+            dim_chunk_sel = slice(dim_chunk_sel_start, dim_chunk_sel_stop, self.step)
+            dim_chunk_nitems = ceildiv((dim_chunk_sel_stop - dim_chunk_sel_start), self.step)
             dim_out_sel = slice(dim_out_offset, dim_out_offset + dim_chunk_nitems)
 
             yield ChunkDimProjection(dim_chunk_ix, dim_chunk_sel, dim_out_sel)
@@ -166,6 +190,13 @@ def replace_ellipsis(selection, shape):
     return selection
 
 
+def replace_lists(selection):
+    return tuple(
+        np.asarray(dim_sel) if isinstance(dim_sel, list) else dim_sel
+        for dim_sel in selection
+    )
+
+
 def ensure_tuple(v):
     if not isinstance(v, tuple):
         v = (v,)
@@ -190,8 +221,16 @@ out_selection
 """
 
 
+def is_slice(s):
+    return isinstance(s, slice)
+
+
 def is_contiguous_slice(s):
-    return isinstance(s, slice) and (s.step is None or s.step == 1)
+    return is_slice(s) and (s.step is None or s.step == 1)
+
+
+def is_positive_slice(s):
+    return is_slice(s) and (s.step is None or s.step >= 1)
 
 
 def is_contiguous_selection(selection):
@@ -200,6 +239,11 @@ def is_contiguous_selection(selection):
         (is_integer_array(s) or is_contiguous_slice(s) or s == Ellipsis)
         for s in selection
     ])
+
+
+def is_basic_selection(selection):
+    selection = ensure_tuple(selection)
+    return all([is_integer(s) or is_positive_slice(s) for s in selection])
 
 
 # noinspection PyProtectedMember
@@ -217,12 +261,12 @@ class BasicIndexer(object):
             if is_integer(dim_sel):
                 dim_indexer = IntDimIndexer(dim_sel, dim_len, dim_chunk_len)
 
-            elif is_contiguous_slice(dim_sel):
+            elif is_slice(dim_sel):
                 dim_indexer = SliceDimIndexer(dim_sel, dim_len, dim_chunk_len)
 
             else:
-                raise IndexError('unsupported selection type; expected integer or contiguous '
-                                 'slice, got {!r}'.format(dim_sel))
+                raise IndexError('unsupported selection type; expected integer or slice, got {!r}'
+                                 .format(type(dim_sel)))
 
             dim_indexers.append(dim_indexer)
 
@@ -247,7 +291,7 @@ class BoolArrayDimIndexer(object):
     def __init__(self, dim_sel, dim_len, dim_chunk_len):
 
         # check number of dimensions
-        if len(dim_sel.shape) > 1:
+        if not is_bool_array(dim_sel, 1):
             raise IndexError('selection must be a 1d array')
 
         # check shape
@@ -258,7 +302,7 @@ class BoolArrayDimIndexer(object):
         self.dim_sel = dim_sel
         self.dim_len = dim_len
         self.dim_chunk_len = dim_chunk_len
-        self.nchunks = int(np.ceil(self.dim_len / self.dim_chunk_len))
+        self.nchunks = ceildiv(self.dim_len, self.dim_chunk_len)
 
         # precompute number of selected items for each chunk
         self.chunk_nitems = np.zeros(self.nchunks, dtype='i8')
@@ -327,9 +371,7 @@ class IntArrayDimIndexer(object):
 
         # ensure array
         dim_sel = np.asanyarray(dim_sel)
-
-        # check number of dimensions
-        if dim_sel.ndim != 1:
+        if not is_integer_array(dim_sel, 1):
             raise IndexError('selection must be a 1d array')
 
         # handle wraparound
@@ -346,7 +388,7 @@ class IntArrayDimIndexer(object):
         # store attributes
         self.dim_len = dim_len
         self.dim_chunk_len = dim_chunk_len
-        self.nchunks = int(np.ceil(self.dim_len / self.dim_chunk_len))
+        self.nchunks = ceildiv(self.dim_len, self.dim_chunk_len)
         self.nitems = len(dim_sel)
 
         # determine which chunk is needed for each selection item
@@ -363,8 +405,7 @@ class IntArrayDimIndexer(object):
             self.dim_out_sel = None
         elif self.order == Order.DECREASING:
             self.dim_sel = dim_sel[::-1]
-            # TODO I'm sure there's a way to do this without creating an arange, but can't see it
-            # at the moment
+            # TODO do this without creating an arange
             self.dim_out_sel = np.arange(self.nitems - 1, -1, -1)
         else:
             # sort indices to group by chunk
@@ -410,7 +451,8 @@ def ix_(selection, shape):
     """Convert an orthogonal selection to a numpy advanced (fancy) selection, like numpy.ix_
     but with support for slices and single ints."""
 
-    selection = ensure_tuple(selection)
+    # normalisation
+    selection = replace_ellipsis(selection, shape)
 
     # replace slice and int as these are not supported by numpy.ix_
     selection = [slice_to_range(dim_sel, dim_len) if isinstance(dim_sel, slice)
@@ -426,7 +468,7 @@ def ix_(selection, shape):
 
 def oindex(a, selection):
     """Implementation of orthogonal indexing with slices and ints."""
-    selection = ensure_tuple(selection)
+    selection = replace_ellipsis(selection, a.shape)
     drop_axes = tuple([i for i, s in enumerate(selection) if is_integer(s)])
     selection = ix_(selection, a.shape)
     result = a[selection]
@@ -436,6 +478,7 @@ def oindex(a, selection):
 
 
 def oindex_set(a, selection, value):
+    selection = replace_ellipsis(selection, a.shape)
     drop_axes = tuple([i for i, s in enumerate(selection) if is_integer(s)])
     selection = ix_(selection, a.shape)
     if not np.isscalar(value) and drop_axes:
@@ -468,25 +511,7 @@ class OrthogonalIndexer(object):
 
             elif isinstance(dim_sel, slice):
 
-                # normalize so we can check for step
-                start, stop, strides = dim_sel.indices(dim_len)
-                # dim_sel = normalize_slice_selection(dim_sel, dim_len)
-
-                # handle slice with step
-                if strides != 1:
-                    dim_sel = np.arange(start, stop, strides)
-                    if strides > 1:
-                        order = Order.INCREASING
-                    elif strides < 0:
-                        order = Order.DECREASING
-                    else:
-                        # TODO better error here?
-                        raise RuntimeError('unexpected strides')
-                    dim_indexer = IntArrayDimIndexer(dim_sel, dim_len, dim_chunk_len,
-                                                     wraparound=False, boundscheck=False,
-                                                     order=order)
-                else:
-                    dim_indexer = SliceDimIndexer(dim_sel, dim_len, dim_chunk_len)
+                dim_indexer = SliceDimIndexer(dim_sel, dim_len, dim_chunk_len)
 
             elif is_integer_array(dim_sel):
 
@@ -498,7 +523,7 @@ class OrthogonalIndexer(object):
 
             else:
                 # TODO improve and refactor error messages
-                raise IndexError('unsupported selection type')
+                raise IndexError('unsupported selection type {!r}'.format(type(dim_sel)))
 
             dim_indexers.append(dim_indexer)
 
@@ -506,8 +531,7 @@ class OrthogonalIndexer(object):
         self.dim_indexers = dim_indexers
         self.shape = tuple(s.nitems for s in self.dim_indexers
                            if not isinstance(s, IntDimIndexer))
-        self.is_advanced = any([not isinstance(dim_indexer, (IntDimIndexer, SliceDimIndexer))
-                                for dim_indexer in self.dim_indexers])
+        self.is_advanced = not is_basic_selection(selection)
         if self.is_advanced:
             self.drop_axes = tuple([i for i, dim_indexer in enumerate(self.dim_indexers)
                                     if isinstance(dim_indexer, IntDimIndexer)])
@@ -531,7 +555,7 @@ class OrthogonalIndexer(object):
                 chunk_selection = ix_(chunk_selection, self.array._chunks)
 
                 # special case for non-monotonic indices
-                if any([not isinstance(s, (numbers.Integral, slice)) for s in out_selection]):
+                if not is_basic_selection(out_selection):
                     out_selection = ix_(out_selection, self.shape)
 
             yield ChunkProjection(chunk_coords, chunk_selection, out_selection)
@@ -570,13 +594,6 @@ def is_mask_selection(selection, array):
         len(selection) == 1 and
         is_bool_array(selection[0]) and
         selection[0].shape == array._shape
-    )
-
-
-def replace_lists(selection):
-    return tuple(
-        np.asarray(dim_sel) if isinstance(dim_sel, list) else dim_sel
-        for dim_sel in selection
     )
 
 

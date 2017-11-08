@@ -7,7 +7,7 @@ from numpy.testing import assert_array_equal
 from nose.tools import assert_raises, eq_ as eq
 
 
-from zarr.indexing import normalize_integer_selection, replace_ellipsis, oindex, oindex_set
+from zarr.indexing import (normalize_integer_selection, replace_ellipsis, oindex, oindex_set)
 import zarr
 
 
@@ -103,6 +103,89 @@ def test_get_basic_selection_0d():
     assert_array_equal(a[['foo', 'bar']], c)
 
 
+basic_selections_1d = [
+    # single value
+    42,
+    -1,
+    # slices
+    slice(0, 1050),
+    slice(50, 150),
+    slice(0, 2000),
+    slice(-150, -50),
+    slice(-2000, 2000),
+    slice(0, 0),  # empty result
+    slice(-1, 0),  # empty result
+    # total selections
+    slice(None),
+    ...,
+    (),
+    (..., slice(None)),
+    # slice with step
+    slice(None),
+    slice(None, None),
+    slice(None, None, 1),
+    slice(None, None, 10),
+    slice(None, None, 100),
+    slice(None, None, 1000),
+    slice(None, None, 10000),
+    slice(0, 1050),
+    slice(0, 1050, 1),
+    slice(0, 1050, 10),
+    slice(0, 1050, 100),
+    slice(0, 1050, 1000),
+    slice(0, 1050, 10000),
+    slice(1, 31, 3),
+    slice(1, 31, 30),
+    slice(1, 31, 300),
+    slice(81, 121, 3),
+    slice(81, 121, 30),
+    slice(81, 121, 300),
+    slice(50, 150),
+    slice(50, 150, 1),
+    slice(50, 150, 10),
+]
+
+
+basic_selections_1d_bad = [
+    # only positive step supported
+    slice(None, None, -1),
+    slice(None, None, -10),
+    slice(None, None, -100),
+    slice(None, None, -1000),
+    slice(None, None, -10000),
+    slice(1050, -1, -1),
+    slice(1050, -1, -10),
+    slice(1050, -1, -100),
+    slice(1050, -1, -1000),
+    slice(1050, -1, -10000),
+    slice(1050, 0, -1),
+    slice(1050, 0, -10),
+    slice(1050, 0, -100),
+    slice(1050, 0, -1000),
+    slice(1050, 0, -10000),
+    slice(150, 50, -1),
+    slice(150, 50, -10),
+    slice(31, 1, -3),
+    slice(121, 81, -3),
+    slice(-1, 0, -1),
+    # bad stuff
+    2.3,
+    'foo',
+    b'xxx',
+    None,
+    (0, 0),
+    (slice(None), slice(None)),
+]
+
+
+def _test_get_basic_selection(a, z, selection):
+    expect = a[selection]
+    actual = z.get_basic_selection(selection)
+    assert_array_equal(expect, actual)
+    actual = z[selection]
+    assert_array_equal(expect, actual)
+
+
 # noinspection PyStatementEffect
 def test_get_basic_selection_1d():
 
@@ -111,44 +194,69 @@ def test_get_basic_selection_1d():
     z = zarr.create(shape=a.shape, chunks=100, dtype=a.dtype)
     z[:] = a
 
-    selections = [
-        # single value
-        42,
-        -1,
-        # slices
-        slice(None),
-        slice(0, 1050),
-        slice(50, 150),
-        slice(0, 2000),
-        slice(-150, -50),
-        slice(-2000, 2000),
-        slice(0, 0),  # empty result
-        slice(-1, 0),  # empty result
-        # total selections
-        ...,
-        (),
-        (..., slice(None)),
+    for selection in basic_selections_1d:
+        _test_get_basic_selection(a, z, selection)
+
+    bad_selections = basic_selections_1d_bad + [
+        [0, 1],  # fancy indexing
     ]
+    for selection in bad_selections:
+        with assert_raises(IndexError):
+            z.get_basic_selection(selection)
+        with assert_raises(IndexError):
+            z[selection]
 
-    for selection in selections:
-        expect = a[selection]
-        # long-form API
-        actual = z.get_basic_selection(selection)
-        assert_array_equal(expect, actual)
-        # basic selection available via __getitem__
-        actual = z[selection]
-        assert_array_equal(expect, actual)
 
-    with assert_raises(IndexError):
-        z[::2]  # slice with step
-    with assert_raises(IndexError):
-        z[::-1]  # slice with step
-    with assert_raises(IndexError):
-        z[[0, 1]]  # fancy indexing
-    with assert_raises(IndexError):
-        z[0, 0]  # too many indices
-    with assert_raises(IndexError):
-        z[:, :]  # too many indices
+basic_selections_2d = [
+    # single row
+    42,
+    -1,
+    (42, slice(None)),
+    (-1, slice(None)),
+    # single col
+    (slice(None), 4),
+    (slice(None), -1),
+    # row slices
+    slice(None),
+    slice(0, 1000),
+    slice(250, 350),
+    slice(0, 2000),
+    slice(-350, -250),
+    slice(0, 0),  # empty result
+    slice(-1, 0),  # empty result
+    slice(-2000, 0),
+    slice(-2000, 2000),
+    # 2D slices
+    (slice(None), slice(1, 5)),
+    (slice(250, 350), slice(None)),
+    (slice(250, 350), slice(1, 5)),
+    (slice(250, 350), slice(-5, -1)),
+    (slice(250, 350), slice(-50, 50)),
+    (slice(250, 350, 10), slice(1, 5)),
+    (slice(250, 350), slice(1, 5, 2)),
+    (slice(250, 350, 33), slice(1, 5, 3)),
+    # total selections
+    (slice(None), slice(None)),
+    ...,
+    (),
+    (..., slice(None)),
+    (..., slice(None), slice(None)),
+]
+
+
+basic_selections_2d_bad = [
+    # bad stuff
+    2.3,
+    'foo',
+    b'xxx',
+    None,
+    (2.3, slice(None)),
+    # only positive step supported
+    slice(None, None, -1),
+    (slice(None, None, -1), slice(None)),
+    (0, 0, 0),
+    (slice(None), slice(None), slice(None)),
+]
 
 
 # noinspection PyStatementEffect
@@ -159,60 +267,20 @@ def test_get_basic_selection_2d():
     z = zarr.create(shape=a.shape, chunks=(300, 3), dtype=a.dtype)
     z[:] = a
 
-    selections = [
-        # single row
-        42,
-        -1,
-        (42, slice(None)),
-        (-1, slice(None)),
-        # single col
-        (slice(None), 4),
-        (slice(None), -1),
-        # row slices
-        slice(None),
-        slice(0, 1000),
-        slice(250, 350),
-        slice(0, 2000),
-        slice(-350, -250),
-        slice(0, 0),  # empty result
-        slice(-1, 0),  # empty result
-        slice(-2000, 0),
-        slice(-2000, 2000),
-        # 2D slices
-        (slice(None), slice(1, 5)),
-        (slice(250, 350), slice(None)),
-        (slice(250, 350), slice(1, 5)),
-        (slice(250, 350), slice(-5, -1)),
-        (slice(250, 350), slice(-50, 50)),
-        # total selections
-        (slice(None), slice(None)),
-        ...,
-        (),
-        (..., slice(None)),
-        (..., slice(None), slice(None)),
+    for selection in basic_selections_2d:
+        _test_get_basic_selection(a, z, selection)
+
+    bad_selections = basic_selections_2d_bad + [
+        # integer arrays
+        [0, 1],
+        ([0, 1], [0, 1]),
+        (slice(None), [0, 1]),
     ]
-
-    for selection in selections:
-        expect = a[selection]
-        # long-form API
-        actual = z.get_basic_selection(selection)
-        assert_array_equal(expect, actual)
-        # basic selection available via __getitem__
-        actual = z[selection]
-        assert_array_equal(expect, actual)
-
-    with assert_raises(IndexError):
-        z[::2]  # slice with step
-    with assert_raises(IndexError):
-        z[:, ::2]  # slice with step
-    with assert_raises(IndexError):
-        z[[0, 1]]  # fancy indexing
-    with assert_raises(IndexError):
-        z[:, [0, 1]]  # fancy indexing
-    with assert_raises(IndexError):
-        z[0, 0, 0]  # too many indices
-    with assert_raises(IndexError):
-        z[:, :, :]  # too many indices
+    for selection in bad_selections:
+        with assert_raises(IndexError):
+            z.get_basic_selection(selection)
+        with assert_raises(IndexError):
+            z[selection]
 
 
 def test_set_basic_selection_0d():
@@ -262,15 +330,12 @@ def test_set_basic_selection_0d():
         z[..., 'foo', 'bar'] = v[['foo', 'bar']]
 
 
-def _test_get_orthogonal_selection_1d_common(a, z, ix):
-    expect = a[ix]
-    actual = z.get_orthogonal_selection(ix)
+def _test_get_orthogonal_selection(a, z, selection):
+    expect = oindex(a, selection)
+    actual = z.get_orthogonal_selection(selection)
     assert_array_equal(expect, actual)
-    actual = z.oindex[ix]
+    actual = z.oindex[selection]
     assert_array_equal(expect, actual)
-    # # for 1d arrays, also available via __getitem__
-    # actual = z[ix]
-    # assert_array_equal(expect, actual)
 
 
 # noinspection PyStatementEffect
@@ -285,7 +350,7 @@ def test_get_orthogonal_selection_1d_bool():
     # test with different degrees of sparseness
     for p in 0.5, 0.1, 0.01:
         ix = np.random.binomial(1, p, size=a.shape[0]).astype(bool)
-        _test_get_orthogonal_selection_1d_common(a, z, ix)
+        _test_get_orthogonal_selection(a, z, ix)
 
     # test errors
     with assert_raises(IndexError):
@@ -307,79 +372,40 @@ def test_get_orthogonal_selection_1d_int():
     np.random.seed(42)
     # test with different degrees of sparseness
     for p in 2, 0.5, 0.1, 0.01:
+        # unordered
         ix = np.random.choice(a.shape[0], size=int(a.shape[0] * p), replace=True)
-        _test_get_orthogonal_selection_1d_common(a, z, ix)
+        _test_get_orthogonal_selection(a, z, ix)
+        # increasing
         ix.sort()
-        _test_get_orthogonal_selection_1d_common(a, z, ix)
+        _test_get_orthogonal_selection(a, z, ix)
+        # decreasing
+        ix = ix[::-1]
+        _test_get_orthogonal_selection(a, z, ix)
 
-    selections = [
-        # test single value
-        0,
-        -1,
+    selections = basic_selections_1d + [
         # test wraparound
         [0, 3, 10, -23, -12, -1],
         # explicit test not sorted
-        [3, 105, 23, 127],  # not monotonically increasing
+        [3, 105, 23, 127],
 
     ]
     for selection in selections:
-        expect = a[selection]
-        actual = z.get_orthogonal_selection(selection)
-        assert_array_equal(expect, actual)
-        actual = z.oindex[selection]
-        assert_array_equal(expect, actual)
+        _test_get_orthogonal_selection(a, z, selection)
 
-    # test errors
-    with assert_raises(IndexError):
-        ix = [a.shape[0] + 1]  # out of bounds
-        z.oindex[ix]
-    with assert_raises(IndexError):
-        ix = [-(a.shape[0] + 1)]  # out of bounds
-        z.oindex[ix]
-    with assert_raises(IndexError):
-        ix = [[2, 4], [6, 8]]  # too many dimensions
-        z.oindex[ix]
-
-
-def test_get_orthogonal_selection_1d_slice_with_step():
-
-    # setup
-    a = np.arange(1050, dtype=int)
-    z = zarr.create(shape=a.shape, chunks=100, dtype=a.dtype)
-    z[:] = a
-
-    selections = [
-        slice(0, 1050),
-        slice(0, 1050, 1),
-        slice(0, 1050, 10),
-        slice(0, 1050, 100),
-        slice(0, 1050, 1000),
-        slice(1050, 0, -1),
-        slice(1050, 0, -10),
-        slice(50, 150),
-        slice(50, 150, 1),
-        slice(50, 150, 10),
-        slice(150, 50, -1),
-        slice(150, 50, -10),
-        slice(-1, 0, -1),
+    bad_selections = basic_selections_1d_bad + [
+        [a.shape[0] + 1],  # out of bounds
+        [-(a.shape[0] + 1)],  # out of bounds
+        [[2, 4], [6, 8]],  # too many dimensions
     ]
-    for selection in selections:
-        expect = a[selection]
-        actual = z.get_orthogonal_selection(selection)
-        assert_array_equal(expect, actual)
-        actual = z.oindex[selection]
-        assert_array_equal(expect, actual)
-        # # for 1d arrays also available via __getitem__
-        # actual = z[selection]
-        # assert_array_equal(expect, actual)
+    for selection in bad_selections:
+        with assert_raises(IndexError):
+            z.get_orthogonal_selection(selection)
+        with assert_raises(IndexError):
+            z.oindex[selection]
 
 
-def _test_get_orthogonal_selection_2d_common(a, z, ix0, ix1):
-
+def _test_get_orthogonal_selection_2d(a, z, ix0, ix1):
     selections = [
-        # single value
-        (42, 4),
-        (-1, -1),
         # index both axes with array
         (ix0, ix1),
         # mixed indexing with array / slice
@@ -391,16 +417,12 @@ def _test_get_orthogonal_selection_2d_common(a, z, ix0, ix1):
         (ix0, 4),
         (42, ix1),
     ]
-
     for selection in selections:
-        expect = oindex(a, selection)
-        actual = z.get_orthogonal_selection(selection)
-        assert_array_equal(expect, actual)
-        actual = z.oindex[selection]
-        assert_array_equal(expect, actual)
+        _test_get_orthogonal_selection(a, z, selection)
 
 
-def test_get_orthogonal_selection_2d_bool():
+# noinspection PyStatementEffect
+def test_get_orthogonal_selection_2d():
 
     # setup
     a = np.arange(10000, dtype=int).reshape(1000, 10)
@@ -410,11 +432,11 @@ def test_get_orthogonal_selection_2d_bool():
     np.random.seed(42)
     # test with different degrees of sparseness
     for p in 0.5, 0.1, 0.01:
+
+        # boolean arrays
         ix0 = np.random.binomial(1, p, size=a.shape[0]).astype(bool)
         ix1 = np.random.binomial(1, 0.5, size=a.shape[1]).astype(bool)
-
-        # main tests
-        _test_get_orthogonal_selection_2d_common(a, z, ix0, ix1)
+        _test_get_orthogonal_selection_2d(a, z, ix0, ix1)
 
         # mixed int array / bool array
         selections = (
@@ -422,31 +444,30 @@ def test_get_orthogonal_selection_2d_bool():
             (np.nonzero(ix0)[0], ix1),
         )
         for selection in selections:
-            expect = oindex(a, selection)
-            actual = z.oindex[selection]
-            assert_array_equal(expect, actual)
+            _test_get_orthogonal_selection(a, z, selection)
 
-
-def test_get_orthogonal_selection_2d_int():
-
-    # setup
-    a = np.arange(10000, dtype=int).reshape(1000, 10)
-    z = zarr.create(shape=a.shape, chunks=(300, 3), dtype=a.dtype)
-    z[:] = a
-
-    np.random.seed(42)
-    # test with different degrees of sparseness
-    for p in 2, 0.5, 0.1, 0.01:
+        # integer arrays
         ix0 = np.random.choice(a.shape[0], size=int(a.shape[0] * p), replace=True)
         ix1 = np.random.choice(a.shape[1], size=int(a.shape[1] * .5), replace=True)
-        _test_get_orthogonal_selection_2d_common(a, z, ix0, ix1)
+        _test_get_orthogonal_selection_2d(a, z, ix0, ix1)
         ix0.sort()
         ix1.sort()
-        _test_get_orthogonal_selection_2d_common(a, z, ix0, ix1)
+        _test_get_orthogonal_selection_2d(a, z, ix0, ix1)
+        ix0 = ix0[::-1]
+        ix1 = ix1[::-1]
+        _test_get_orthogonal_selection_2d(a, z, ix0, ix1)
+
+    for selection in basic_selections_2d:
+        _test_get_orthogonal_selection(a, z, selection)
+
+    for selection in basic_selections_2d_bad:
+        with assert_raises(IndexError):
+            z.get_orthogonal_selection(selection)
+        with assert_raises(IndexError):
+            z.oindex[selection]
 
 
-def _test_get_orthogonal_selection_3d_common(a, z, ix0, ix1, ix2):
-
+def _test_get_orthogonal_selection_3d(a, z, ix0, ix1, ix2):
     selections = [
         # single value
         (84, 42, 4),
@@ -478,14 +499,10 @@ def _test_get_orthogonal_selection_3d_common(a, z, ix0, ix1, ix2):
         (ix0, 42, ix2),
     ]
     for selection in selections:
-        expect = oindex(a, selection)
-        actual = z.get_orthogonal_selection(selection)
-        assert_array_equal(expect, actual)
-        actual = z.oindex[selection]
-        assert_array_equal(expect, actual)
+        _test_get_orthogonal_selection(a, z, selection)
 
 
-def test_get_orthogonal_selection_3d_bool():
+def test_get_orthogonal_selection_3d():
 
     # setup
     a = np.arange(100000, dtype=int).reshape(200, 50, 10)
@@ -495,10 +512,26 @@ def test_get_orthogonal_selection_3d_bool():
     np.random.seed(42)
     # test with different degrees of sparseness
     for p in 0.5, 0.1, 0.01:
+
+        # boolean arrays
         ix0 = np.random.binomial(1, p, size=a.shape[0]).astype(bool)
         ix1 = np.random.binomial(1, .5, size=a.shape[1]).astype(bool)
         ix2 = np.random.binomial(1, .5, size=a.shape[2]).astype(bool)
-        _test_get_orthogonal_selection_3d_common(a, z, ix0, ix1, ix2)
+        _test_get_orthogonal_selection_3d(a, z, ix0, ix1, ix2)
+
+        # integer arrays
+        ix0 = np.random.choice(a.shape[0], size=int(a.shape[0] * p), replace=True)
+        ix1 = np.random.choice(a.shape[1], size=int(a.shape[1] * .5), replace=True)
+        ix2 = np.random.choice(a.shape[2], size=int(a.shape[2] * .5), replace=True)
+        _test_get_orthogonal_selection_3d(a, z, ix0, ix1, ix2)
+        ix0.sort()
+        ix1.sort()
+        ix2.sort()
+        _test_get_orthogonal_selection_3d(a, z, ix0, ix1, ix2)
+        ix0 = ix0[::-1]
+        ix1 = ix1[::-1]
+        ix2 = ix2[::-1]
+        _test_get_orthogonal_selection_3d(a, z, ix0, ix1, ix2)
 
 
 def test_orthogonal_indexing_edge_cases():
@@ -516,77 +549,55 @@ def test_orthogonal_indexing_edge_cases():
     assert_array_equal(expect, actual)
 
 
-def test_get_orthogonal_selection_3d_int():
-
-    # setup
-    a = np.arange(100000, dtype=int).reshape(200, 50, 10)
-    z = zarr.create(shape=a.shape, chunks=(60, 20, 3), dtype=a.dtype)
-    z[:] = a
-
-    np.random.seed(42)
-    # test with different degrees of sparseness
-    for p in 2, 0.5, 0.1, 0.01:
-        ix0 = np.random.choice(a.shape[0], size=int(a.shape[0] * p), replace=True)
-        ix1 = np.random.choice(a.shape[1], size=int(a.shape[1] * .5), replace=True)
-        ix2 = np.random.choice(a.shape[2], size=int(a.shape[2] * .5), replace=True)
-        _test_get_orthogonal_selection_3d_common(a, z, ix0, ix1, ix2)
-        ix0.sort()
-        ix1.sort()
-        ix2.sort()
-        _test_get_orthogonal_selection_3d_common(a, z, ix0, ix1, ix2)
-
-
-def _test_set_orthogonal_selection_1d_common(v, a, z, ix):
-    for value in 42, oindex(v, ix), oindex(v, ix).tolist():
+def _test_set_orthogonal_selection(v, a, z, selection):
+    for value in 42, oindex(v, selection), oindex(v, selection).tolist():
+        if isinstance(value, list) and value == []:
+            # skip these cases as cannot preserve all dimensions
+            continue
         # setup expectation
         a[:] = 0
-        a[ix] = value
+        oindex_set(a, selection, value)
         # long-form API
         z[:] = 0
-        z.set_orthogonal_selection(ix, value)
+        z.set_orthogonal_selection(selection, value)
         assert_array_equal(a, z[:])
         # short-form API
         z[:] = 0
-        z.oindex[ix] = value
+        z.oindex[selection] = value
         assert_array_equal(a, z[:])
 
 
-def test_set_orthogonal_selection_1d_bool():
+def test_set_orthogonal_selection_1d():
 
     # setup
     v = np.arange(1050, dtype=int)
     a = np.empty(v.shape, dtype=int)
     z = zarr.create(shape=a.shape, chunks=100, dtype=a.dtype)
 
-    np.random.seed(42)
     # test with different degrees of sparseness
+    np.random.seed(42)
     for p in 0.5, 0.1, 0.01:
+
+        # boolean arrays
         ix = np.random.binomial(1, p, size=a.shape[0]).astype(bool)
-        _test_set_orthogonal_selection_1d_common(v, a, z, ix)
+        _test_set_orthogonal_selection(v, a, z, ix)
 
-
-def test_set_orthogonal_selection_1d_int():
-
-    # setup
-    v = np.arange(1050, dtype=int)
-    a = np.empty(v.shape, dtype=v.dtype)
-    z = zarr.create(shape=a.shape, chunks=100, dtype=a.dtype)
-
-    np.random.seed(42)
-    # test with different degrees of sparseness
-    for p in 2, 0.5, 0.1, 0.01:
+        # integer arrays
         ix = np.random.choice(a.shape[0], size=int(a.shape[0] * p), replace=True)
-        _test_set_orthogonal_selection_1d_common(v, a, z, ix)
+        _test_set_orthogonal_selection(v, a, z, ix)
         ix.sort()
-        _test_set_orthogonal_selection_1d_common(v, a, z, ix)
+        _test_set_orthogonal_selection(v, a, z, ix)
+        ix = ix[::-1]
+        _test_set_orthogonal_selection(v, a, z, ix)
+
+    # basic selections
+    for selection in basic_selections_1d:
+        _test_set_orthogonal_selection(v, a, z, selection)
 
 
-def _test_set_orthogonal_selection_2d_common(v, a, z, ix0, ix1):
+def _test_set_orthogonal_selection_2d(v, a, z, ix0, ix1):
 
-    selections = (
-        # single value
-        (42, 4),
-        (-1, -1),
+    selections = [
         # index both axes with array
         (ix0, ix1),
         # mixed indexing with array / slice or int
@@ -594,23 +605,12 @@ def _test_set_orthogonal_selection_2d_common(v, a, z, ix0, ix1):
         (slice(250, 350), ix1),
         (ix0, 4),
         (42, ix1),
-    )
+    ]
     for selection in selections:
-        for value in 42, oindex(v, selection), oindex(v, selection).tolist():
-            # setup expectation
-            a[:] = 0
-            oindex_set(a, selection, value)
-            # long-form API
-            z[:] = 0
-            z.set_orthogonal_selection(selection, value)
-            assert_array_equal(a, z[:])
-            # short-form API
-            z[:] = 0
-            z.oindex[selection] = value
-            assert_array_equal(a, z[:])
+        _test_set_orthogonal_selection(v, a, z, selection)
 
 
-def test_set_orthogonal_selection_2d_bool():
+def test_set_orthogonal_selection_2d():
 
     # setup
     v = np.arange(10000, dtype=int).reshape(1000, 10)
@@ -620,30 +620,28 @@ def test_set_orthogonal_selection_2d_bool():
     np.random.seed(42)
     # test with different degrees of sparseness
     for p in 0.5, 0.1, 0.01:
+
+        # boolean arrays
         ix0 = np.random.binomial(1, p, size=a.shape[0]).astype(bool)
         ix1 = np.random.binomial(1, .5, size=a.shape[1]).astype(bool)
-        _test_set_orthogonal_selection_2d_common(v, a, z, ix0, ix1)
+        _test_set_orthogonal_selection_2d(v, a, z, ix0, ix1)
 
-
-def test_set_orthogonal_selection_2d_int():
-
-    # setup
-    v = np.arange(10000, dtype=int).reshape(1000, 10)
-    a = np.empty_like(v)
-    z = zarr.create(shape=a.shape, chunks=(300, 3), dtype=a.dtype)
-
-    np.random.seed(42)
-    # test with different degrees of sparseness
-    for p in 2, 0.5, 0.1, 0.01:
+        # integer arrays
         ix0 = np.random.choice(a.shape[0], size=int(a.shape[0] * p), replace=True)
         ix1 = np.random.choice(a.shape[1], size=int(a.shape[1] * .5), replace=True)
-        _test_set_orthogonal_selection_2d_common(v, a, z, ix0, ix1)
+        _test_set_orthogonal_selection_2d(v, a, z, ix0, ix1)
         ix0.sort()
         ix1.sort()
-        _test_set_orthogonal_selection_2d_common(v, a, z, ix0, ix1)
+        _test_set_orthogonal_selection_2d(v, a, z, ix0, ix1)
+        ix0 = ix0[::-1]
+        ix1 = ix1[::-1]
+        _test_set_orthogonal_selection_2d(v, a, z, ix0, ix1)
+
+    for selection in basic_selections_2d:
+        _test_set_orthogonal_selection(v, a, z, selection)
 
 
-def _test_set_orthogonal_selection_3d_common(v, a, z, ix0, ix1, ix2):
+def _test_set_orthogonal_selection_3d(v, a, z, ix0, ix1, ix2):
 
     selections = (
         # single value
@@ -667,21 +665,10 @@ def _test_set_orthogonal_selection_3d_common(v, a, z, ix0, ix1, ix2):
         (ix0, ix1, 4),
     )
     for selection in selections:
-        for value in 42, oindex(v, selection), oindex(v, selection).tolist():
-            # setup expectation
-            a[:] = 0
-            oindex_set(a, selection, value)
-            # long-form API
-            z[:] = 0
-            z.set_orthogonal_selection(selection, value)
-            assert_array_equal(a, z[:])
-            # short-form API
-            z[:] = 0
-            z.oindex[selection] = value
-            assert_array_equal(a, z[:])
+        _test_set_orthogonal_selection(v, a, z, selection)
 
 
-def test_set_orthogonal_selection_3d_bool():
+def test_set_orthogonal_selection_3d():
 
     # setup
     v = np.arange(100000, dtype=int).reshape(200, 50, 10)
@@ -691,30 +678,49 @@ def test_set_orthogonal_selection_3d_bool():
     np.random.seed(42)
     # test with different degrees of sparseness
     for p in 0.5, 0.1, 0.01:
+
+        # boolean arrays
         ix0 = np.random.binomial(1, p, size=a.shape[0]).astype(bool)
         ix1 = np.random.binomial(1, .5, size=a.shape[1]).astype(bool)
         ix2 = np.random.binomial(1, .5, size=a.shape[2]).astype(bool)
-        _test_set_orthogonal_selection_3d_common(v, a, z, ix0, ix1, ix2)
+        _test_set_orthogonal_selection_3d(v, a, z, ix0, ix1, ix2)
 
-
-def test_set_orthogonal_selection_3d_int():
-
-    # setup
-    v = np.arange(100000, dtype=int).reshape(200, 50, 10)
-    a = np.empty_like(v)
-    z = zarr.create(shape=a.shape, chunks=(60, 20, 3), dtype=a.dtype)
-
-    np.random.seed(42)
-    # test with different degrees of sparseness
-    for p in 2, 0.5, 0.1, 0.01:
+        # integer arrays
         ix0 = np.random.choice(a.shape[0], size=int(a.shape[0] * p), replace=True)
         ix1 = np.random.choice(a.shape[1], size=int(a.shape[1] * .5), replace=True)
         ix2 = np.random.choice(a.shape[2], size=int(a.shape[2] * .5), replace=True)
-        _test_set_orthogonal_selection_3d_common(v, a, z, ix0, ix1, ix2)
+        _test_set_orthogonal_selection_3d(v, a, z, ix0, ix1, ix2)
         ix0.sort()
         ix1.sort()
         ix2.sort()
-        _test_set_orthogonal_selection_3d_common(v, a, z, ix0, ix1, ix2)
+        _test_set_orthogonal_selection_3d(v, a, z, ix0, ix1, ix2)
+        ix0 = ix0[::-1]
+        ix1 = ix1[::-1]
+        ix2 = ix2[::-1]
+        _test_set_orthogonal_selection_3d(v, a, z, ix0, ix1, ix2)
+
+
+def _test_get_coordinate_selection(a, z, selection):
+    expect = a[selection]
+    actual = z.get_coordinate_selection(selection)
+    assert_array_equal(expect, actual)
+    actual = z.vindex[selection]
+    assert_array_equal(expect, actual)
+
+
+coordinate_selections_1d_bad = [
+    # slice not supported
+    slice(5, 15),
+    slice(None),
+    ...,
+    # bad stuff
+    2.3,
+    'foo',
+    b'xxx',
+    None,
+    (0, 0),
+    (slice(None), slice(None)),
+]
 
 
 # noinspection PyStatementEffect
@@ -730,17 +736,11 @@ def test_get_coordinate_selection_1d():
     for p in 2, 0.5, 0.1, 0.01:
         n = int(a.size * p)
         ix = np.random.choice(a.shape[0], size=n, replace=True)
-        expect = a[ix]
-        actual = z.get_coordinate_selection(ix)
-        assert_array_equal(expect, actual)
-        actual = z.vindex[ix]
-        assert_array_equal(expect, actual)
+        _test_get_coordinate_selection(a, z, ix)
         ix.sort()
-        expect = a[ix]
-        actual = z.get_coordinate_selection(ix)
-        assert_array_equal(expect, actual)
-        actual = z.vindex[ix]
-        assert_array_equal(expect, actual)
+        _test_get_coordinate_selection(a, z, ix)
+        ix = ix[::-1]
+        _test_get_coordinate_selection(a, z, ix)
 
     selections = [
         # test single item
@@ -754,27 +754,18 @@ def test_get_coordinate_selection_1d():
         np.array([[2, 4], [6, 8]]),
     ]
     for selection in selections:
-        expect = a[selection]
-        # long-form API
-        actual = z.get_coordinate_selection(selection)
-        assert_array_equal(expect, actual)
-        # short-form API
-        actual = z.vindex[selection]
-        assert_array_equal(expect, actual)
+        _test_get_coordinate_selection(a, z, selection)
 
     # test errors
-    with assert_raises(IndexError):
-        ix = [a.shape[0] + 1]  # out of bounds
-        z.get_coordinate_selection(ix)
-    with assert_raises(IndexError):
-        ix = [-(a.shape[0] + 1)]  # out of bounds
-        z.get_coordinate_selection(ix)
-    with assert_raises(IndexError):
-        ix = slice(5, 15)  # not supported
-        z.get_coordinate_selection(ix)
-    with assert_raises(IndexError):
-        ix = ...  # not supported
-        z.get_coordinate_selection(ix)
+    bad_selections = coordinate_selections_1d_bad + [
+        [a.shape[0] + 1],  # out of bounds
+        [-(a.shape[0] + 1)],  # out of bounds
+    ]
+    for selection in bad_selections:
+        with assert_raises(IndexError):
+            z.get_coordinate_selection(selection)
+        with assert_raises(IndexError):
+            z.vindex[selection]
 
 
 def test_get_coordinate_selection_2d():
@@ -801,44 +792,25 @@ def test_get_coordinate_selection_2d():
             (42, ix1),
             (42, 4),
         ]
-
         for selection in selections:
-            expect = a[selection]
-            # long-form API
-            actual = z.get_coordinate_selection(selection)
-            assert_array_equal(expect, actual)
-            # short-form API
-            actual = z.vindex[selection]
-            assert_array_equal(expect, actual)
+            _test_get_coordinate_selection(a, z, selection)
 
     # not monotonically increasing (first dim)
     ix0 = [3, 3, 4, 2, 5]
     ix1 = [1, 3, 5, 7, 9]
-    expect = a[ix0, ix1]
-    actual = z.get_coordinate_selection((ix0, ix1))
-    assert_array_equal(expect, actual)
-    actual = z.vindex[ix0, ix1]
-    assert_array_equal(expect, actual)
+    _test_get_coordinate_selection(a, z, (ix0, ix1))
 
     # not monotonically increasing (second dim)
     ix0 = [1, 1, 2, 2, 5]
     ix1 = [1, 3, 2, 1, 0]
-    expect = a[ix0, ix1]
-    actual = z.get_coordinate_selection((ix0, ix1))
-    assert_array_equal(expect, actual)
-    actual = z.vindex[ix0, ix1]
-    assert_array_equal(expect, actual)
+    _test_get_coordinate_selection(a, z, (ix0, ix1))
 
     # multi-dimensional selection
     ix0 = np.array([[1, 1, 2],
                     [2, 2, 5]])
     ix1 = np.array([[1, 3, 2],
                     [1, 0, 0]])
-    expect = a[ix0, ix1]
-    actual = z.get_coordinate_selection((ix0, ix1))
-    assert_array_equal(expect, actual)
-    actual = z.vindex[ix0, ix1]
-    assert_array_equal(expect, actual)
+    _test_get_coordinate_selection(a, z, (ix0, ix1))
 
     with assert_raises(IndexError):
         selection = slice(5, 15), [1, 2, 3]
@@ -854,7 +826,22 @@ def test_get_coordinate_selection_2d():
         z.get_coordinate_selection(selection)
 
 
-def test_set_coordinate_selection_1d_int():
+def _test_set_coordinate_selection(v, a, z, selection):
+    for value in 42, v[selection], v[selection].tolist():
+        # setup expectation
+        a[:] = 0
+        a[selection] = value
+        # test long-form API
+        z[:] = 0
+        z.set_coordinate_selection(selection, value)
+        assert_array_equal(a, z[:])
+        # test short-form API
+        z[:] = 0
+        z.vindex[selection] = value
+        assert_array_equal(a, z[:])
+
+
+def test_set_coordinate_selection_1d():
 
     # setup
     v = np.arange(1050, dtype=int)
@@ -866,33 +853,20 @@ def test_set_coordinate_selection_1d_int():
     for p in 2, 0.5, 0.1, 0.01:
         n = int(a.size * p)
         ix = np.random.choice(a.shape[0], size=n, replace=True)
-
-        a[:] = 0
-        a[ix] = v[ix]
-        z[:] = 0
-        z.set_coordinate_selection(ix, v[ix])
-        assert_array_equal(a, z[:])
-        z[:] = 0
-        z.vindex[ix] = v[ix]
-        assert_array_equal(a, z[:])
+        _test_set_coordinate_selection(v, a, z, ix)
 
     # multi-dimensional selection
     ix = np.array([[2, 4], [6, 8]])
-    for value in 42, v[ix], v[ix].tolist():
-        # setup expectation
-        a[:] = 0
-        a[ix] = value
-        # test long-form API
-        z[:] = 0
-        z.set_coordinate_selection(ix, value)
-        assert_array_equal(a, z[:])
-        # test short-form API
-        z[:] = 0
-        z.vindex[ix] = value
-        assert_array_equal(a, z[:])
+    _test_set_coordinate_selection(v, a, z, ix)
+
+    for selection in coordinate_selections_1d_bad:
+        with assert_raises(IndexError):
+            z.set_coordinate_selection(selection, 42)
+        with assert_raises(IndexError):
+            z.vindex[selection] = 42
 
 
-def test_set_coordinate_selection_2d_int():
+def test_set_coordinate_selection_2d():
 
     # setup
     v = np.arange(10000, dtype=int).reshape(1000, 10)
@@ -915,35 +889,38 @@ def test_set_coordinate_selection_2d_int():
             (ix0, 4),
             (42, ix1),
         )
-
         for selection in selections:
-            a[:] = 0
-            a[selection] = v[selection]
-            z[:] = 0
-            z.set_coordinate_selection(selection, v[selection])
-            assert_array_equal(a, z[:])
-            z[:] = 0
-            z.vindex[selection] = v[selection]
-            assert_array_equal(a, z[:])
+            _test_set_coordinate_selection(v, a, z, selection)
 
     # multi-dimensional selection
     ix0 = np.array([[1, 2, 3],
                     [4, 5, 6]])
     ix1 = np.array([[1, 3, 2],
                     [2, 0, 5]])
+    _test_set_coordinate_selection(v, a, z, (ix0, ix1))
 
-    for value in 42, v[ix0, ix1], v[ix0, ix1].tolist():
-        # setup expectation
-        a[:] = 0
-        a[ix0, ix1] = value
-        # test long-form API
-        z[:] = 0
-        z.set_coordinate_selection((ix0, ix1), value)
-        assert_array_equal(a, z[:])
-        # test short-form API
-        z[:] = 0
-        z.vindex[ix0, ix1] = value
-        assert_array_equal(a, z[:])
+
+def _test_get_mask_selection(a, z, selection):
+    expect = a[selection]
+    actual = z.get_mask_selection(selection)
+    assert_array_equal(expect, actual)
+    actual = z.vindex[selection]
+    assert_array_equal(expect, actual)
+
+
+mask_selections_1d_bad = [
+    # slice not supported
+    slice(5, 15),
+    slice(None),
+    ...,
+    # bad stuff
+    2.3,
+    'foo',
+    b'xxx',
+    None,
+    (0, 0),
+    (slice(None), slice(None)),
+]
 
 
 # noinspection PyStatementEffect
@@ -958,23 +935,19 @@ def test_get_mask_selection_1d():
     # test with different degrees of sparseness
     for p in 0.5, 0.1, 0.01:
         ix = np.random.binomial(1, p, size=a.shape[0]).astype(bool)
-
-        expect = a[ix]
-        actual = z.get_mask_selection(ix)
-        assert_array_equal(expect, actual)
-        actual = z.vindex[ix]
-        assert_array_equal(expect, actual)
-        # # for 1d arrays, also available via __getitem__
-        # actual = z[ix]
-        # assert_array_equal(expect, actual)
+        _test_get_mask_selection(a, z, ix)
 
     # test errors
-    with assert_raises(IndexError):
-        z.vindex[np.zeros(50, dtype=bool)]  # too short
-    with assert_raises(IndexError):
-        z.vindex[np.zeros(2000, dtype=bool)]  # too long
-    with assert_raises(IndexError):
-        z.vindex[[[True, False], [False, True]]]  # too many dimensions
+    bad_selections = mask_selections_1d_bad + [
+        np.zeros(50, dtype=bool),  # too short
+        np.zeros(2000, dtype=bool),  # too long
+        [[True, False], [False, True]],  # too many dimensions
+    ]
+    for selection in bad_selections:
+        with assert_raises(IndexError):
+            z.get_mask_selection(selection)
+        with assert_raises(IndexError):
+            z.vindex[selection]
 
 
 # noinspection PyStatementEffect
@@ -989,11 +962,7 @@ def test_get_mask_selection_2d():
     # test with different degrees of sparseness
     for p in 0.5, 0.1, 0.01:
         ix = np.random.binomial(1, p, size=a.size).astype(bool).reshape(a.shape)
-        expect = a[ix]
-        actual = z.get_mask_selection(ix)
-        assert_array_equal(expect, actual)
-        actual = z.vindex[ix]
-        assert_array_equal(expect, actual)
+        _test_get_mask_selection(a, z, ix)
 
     # test errors
     with assert_raises(IndexError):
@@ -1002,6 +971,17 @@ def test_get_mask_selection_2d():
         z.vindex[np.zeros((2000, 10), dtype=bool)]  # too long
     with assert_raises(IndexError):
         z.vindex[[True, False]]  # wrong no. dimensions
+
+
+def _test_set_mask_selection(v, a, z, selection):
+    a[:] = 0
+    z[:] = 0
+    a[selection] = v[selection]
+    z.set_mask_selection(selection, v[selection])
+    assert_array_equal(a, z[:])
+    z[:] = 0
+    z.vindex[selection] = v[selection]
+    assert_array_equal(a, z[:])
 
 
 def test_set_mask_selection_1d():
@@ -1015,19 +995,13 @@ def test_set_mask_selection_1d():
     # test with different degrees of sparseness
     for p in 0.5, 0.1, 0.01:
         ix = np.random.binomial(1, p, size=a.shape[0]).astype(bool)
+        _test_set_mask_selection(v, a, z, ix)
 
-        a[:] = 0
-        z[:] = 0
-        a[ix] = v[ix]
-        z.set_mask_selection(ix, v[ix])
-        assert_array_equal(a, z[:])
-        z[:] = 0
-        z.vindex[ix] = v[ix]
-        assert_array_equal(a, z[:])
-        # # for 1d arrays, also available via __setitem__
-        # z[:] = 0
-        # z[ix] = v[ix]
-        # assert_array_equal(a, z[:])
+    for selection in mask_selections_1d_bad:
+        with assert_raises(IndexError):
+            z.set_mask_selection(selection, 42)
+        with assert_raises(IndexError):
+            z.vindex[selection] = 42
 
 
 def test_set_mask_selection_2d():
@@ -1041,15 +1015,7 @@ def test_set_mask_selection_2d():
     # test with different degrees of sparseness
     for p in 0.5, 0.1, 0.01:
         ix = np.random.binomial(1, p, size=a.size).astype(bool).reshape(a.shape)
-
-        a[:] = 0
-        z[:] = 0
-        a[ix] = v[ix]
-        z.set_mask_selection(ix, v[ix])
-        assert_array_equal(a, z[:])
-        z[:] = 0
-        z.vindex[ix] = v[ix]
-        assert_array_equal(a, z[:])
+        _test_set_mask_selection(v, a, z, ix)
 
 
 def test_get_selection_out():
@@ -1068,6 +1034,9 @@ def test_get_selection_out():
         out = zarr.create(shape=expect.shape, chunks=10, dtype=expect.dtype, fill_value=0)
         z.get_basic_selection(selection, out=out)
         assert_array_equal(expect, out[:])
+
+    with assert_raises(TypeError):
+        z.get_basic_selection(..., out=[])
 
     # orthogonal selections
     a = np.arange(10000, dtype=int).reshape(1000, 10)
@@ -1225,6 +1194,10 @@ def test_get_selections_with_fields():
         elif len(fields) == 2:
             actual = z.vindex[ix, fields[0], fields[1]]
             assert_array_equal(expect, actual)
+
+    # missing/bad fields
+    with assert_raises(IndexError):
+        z.get_basic_selection(..., fields=['notafield'])
 
 
 def test_set_selections_with_fields():
