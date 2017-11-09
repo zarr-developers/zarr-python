@@ -749,9 +749,16 @@ class VIndex(object):
 
 
 def check_fields(fields, dtype):
+    # early out
+    if fields is None:
+        return dtype
+    # check type
+    if not isinstance(fields, (str, list, tuple)):
+        raise TypeError("'fields' argument must be a string or list of strings; found {!r}"
+                        .format(type(fields)))
     if fields:
         if dtype.names is None:
-            raise IndexError('array does not have any fields')
+            raise IndexError("invalid 'fields' argument, array does not have any fields")
         try:
             if isinstance(fields, str):
                 # single field selection
@@ -760,8 +767,7 @@ def check_fields(fields, dtype):
                 # multiple field selection
                 out_dtype = np.dtype([(f, dtype[f]) for f in fields])
         except KeyError as e:
-            # TODO better error message
-            raise IndexError('field not found: {!s}'.format(e))
+            raise IndexError("invalid 'fields' argument, field not found: {!r}".format(e))
         else:
             return out_dtype
     else:
