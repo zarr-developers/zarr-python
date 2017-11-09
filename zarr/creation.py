@@ -329,22 +329,21 @@ def array(data, **kwargs):
     return z
 
 
-def open_array(store=None, mode='a', shape=None, chunks=None, dtype=None,
-               compressor='default', fill_value=0, order='C',
-               synchronizer=None, filters=None, cache_metadata=True,
+def open_array(store, mode='a', shape=None, chunks=None, dtype=None, compressor='default',
+               fill_value=0, order='C', synchronizer=None, filters=None, cache_metadata=True,
                path=None, **kwargs):
-    """Open array using mode-like semantics.
+    """Open an array using file-mode-like semantics.
 
     Parameters
     ----------
     store : MutableMapping or string
         Store or path to directory in file system.
-    mode : {'r', 'r+', 'a', 'w', 'w-'}
+    mode : {'r', 'r+', 'a', 'w', 'w-'}, optional
         Persistence mode: 'r' means read only (must exist); 'r+' means
         read/write (must exist); 'a' means read/write (create if doesn't
         exist); 'w' means create (overwrite if exists); 'w-' means create
         (fail if exists).
-    shape : int or tuple of ints
+    shape : int or tuple of ints, optional
         Array shape.
     chunks : int or tuple of ints, optional
         Chunk shape. If not provided, will be guessed from `shape` and `dtype`.
@@ -352,7 +351,7 @@ def open_array(store=None, mode='a', shape=None, chunks=None, dtype=None,
         NumPy dtype.
     compressor : Codec, optional
         Primary compressor.
-    fill_value : object
+    fill_value : object, optional
         Default value to use for uninitialized portions of the array.
     order : {'C', 'F'}, optional
         Memory layout to be used within each chunk.
@@ -366,7 +365,7 @@ def open_array(store=None, mode='a', shape=None, chunks=None, dtype=None,
         prior to all data access and modification operations (may incur
         overhead depending on storage and data access pattern).
     path : string, optional
-        Array path.
+        Array path within store.
 
     Returns
     -------

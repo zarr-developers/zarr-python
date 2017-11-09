@@ -97,6 +97,12 @@ def test_array():
     assert_array_equal(a[:], z[:])
     eq(a.dtype, z.dtype)
 
+    # with dtype=something else
+    a = np.arange(100, dtype='i4')
+    z = array(a, dtype='i8')
+    assert_array_equal(a[:], z[:])
+    eq(np.dtype('i8'), z.dtype)
+
 
 def test_empty():
     z = empty(100, chunks=10)

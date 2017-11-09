@@ -1198,6 +1198,8 @@ def test_get_selections_with_fields():
     # missing/bad fields
     with assert_raises(IndexError):
         z.get_basic_selection(Ellipsis, fields=['notafield'])
+    with assert_raises(IndexError):
+        z.get_basic_selection(Ellipsis, fields=slice(None))
 
 
 def test_set_selections_with_fields():

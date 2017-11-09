@@ -754,8 +754,8 @@ def check_fields(fields, dtype):
         return dtype
     # check type
     if not isinstance(fields, (str, list, tuple)):
-        raise TypeError("'fields' argument must be a string or list of strings; found {!r}"
-                        .format(type(fields)))
+        raise IndexError("'fields' argument must be a string or list of strings; found {!r}"
+                         .format(type(fields)))
     if fields:
         if dtype.names is None:
             raise IndexError("invalid 'fields' argument, array does not have any fields")
