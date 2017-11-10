@@ -462,7 +462,7 @@ Diagnostic information about arrays and groups is available via the ``info`` pro
     Compressor         : Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
     Store type         : zarr.storage.DictStore
     No. bytes          : 8000000 (7.6M)
-    No. bytes stored   : 38482 (37.6K)
+    No. bytes stored   : 38484 (37.6K)
     Storage ratio      : 207.9
     Chunks initialized : 10/10
 

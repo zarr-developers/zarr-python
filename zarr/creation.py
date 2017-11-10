@@ -100,8 +100,12 @@ def create(shape, chunks=None, dtype=None, compressor='default',
     # handle polymorphic store arg
     store = _handle_store_arg(store)
 
-    # compatibility
+    # API compatibility with h5py
     compressor, fill_value = _handle_kwargs(compressor, fill_value, kwargs)
+
+    # ensure fill_value of correct type
+    if fill_value is not None:
+        fill_value = np.array(fill_value, dtype=dtype)[()]
 
     # initialize array metadata
     init_array(store, shape=shape, chunks=chunks, dtype=dtype,
@@ -401,8 +405,12 @@ def open_array(store=None, mode='a', shape=None, chunks=None, dtype=None,
     store = _handle_store_arg(store)
     path = normalize_storage_path(path)
 
-    # compatibility
+    # API compatibility with h5py
     compressor, fill_value = _handle_kwargs(compressor, fill_value, kwargs)
+
+    # ensure fill_value of correct type
+    if fill_value is not None:
+        fill_value = np.array(fill_value, dtype=dtype)[()]
 
     # ensure store is initialized
 
