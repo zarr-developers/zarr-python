@@ -635,6 +635,16 @@ class TestArray(unittest.TestCase):
         with assert_raises(ValueError):
             z[...] = np.array([1, 2, 3])
 
+    def test_nchunks_initialized(self):
+
+        z = self.create_array(shape=100, chunks=10)
+        eq(0, z.nchunks_initialized)
+        # manually put something into the store to confuse matters
+        z.store['foo'] = b'bar'
+        eq(0, z.nchunks_initialized)
+        z[:] = 42
+        eq(10, z.nchunks_initialized)
+
 
 class TestArrayWithPath(TestArray):
 

@@ -2,6 +2,7 @@
 from __future__ import absolute_import, print_function, division
 import operator
 import itertools
+import re
 
 
 import numpy as np
@@ -340,8 +341,12 @@ class Array(object):
     def nchunks_initialized(self):
         """The number of chunks that have been initialized with some data."""
         # TODO fix bug here, need to only count chunks
-        return sum(1 for k in listdir(self.chunk_store, self._path)
-                   if k not in [array_meta_key, attrs_key])
+
+        # key pattern for chunk keys
+        prog = re.compile(r'\.'.join([r'\d+'] * min(1, self.ndim)))
+
+        # count chunk keys
+        return sum(1 for k in listdir(self.chunk_store, self._path) if prog.match(k))
 
     # backwards compability
     initialized = nchunks_initialized
