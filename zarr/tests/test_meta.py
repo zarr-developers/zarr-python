@@ -8,7 +8,7 @@ from nose.tools import eq_ as eq, assert_is_none, assert_raises
 import numpy as np
 
 
-from zarr.compat import binary_type, text_type
+from zarr.compat import binary_type, text_type, PY2
 from zarr.meta import decode_array_metadata, encode_dtype, decode_dtype, \
     ZARR_FORMAT, decode_group_metadata, encode_array_metadata
 from zarr.errors import MetadataError
@@ -161,7 +161,9 @@ def test_encode_decode_fill_values_bytes():
 
     for v in fills:
 
-        s = str(base64.standard_b64encode(v), 'ascii')
+        s = base64.standard_b64encode(v)
+        if not PY2:
+            s = str(s, 'ascii')
 
         meta = dict(
             shape=(100,),
