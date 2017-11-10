@@ -34,6 +34,11 @@ def is_scalar(value, dtype):
     return False
 
 
+def err_boundscheck(dim_len):
+    raise IndexError('index out of bounds for dimension with length {}'
+                     .format(dim_len))
+
+
 def normalize_integer_selection(dim_sel, dim_len):
 
     # normalize type to int
@@ -45,7 +50,7 @@ def normalize_integer_selection(dim_sel, dim_len):
 
     # handle out of bounds
     if dim_sel >= dim_len or dim_sel < 0:
-        raise IndexError('index out of bounds')
+        err_boundscheck(dim_len)
 
     return dim_sel
 
@@ -91,6 +96,10 @@ def ceildiv(a, b):
     return int(np.ceil(a / b))
 
 
+def err_negative_step():
+    raise IndexError('only slices with step >= 1 are supported')
+
+
 class SliceDimIndexer(object):
 
     def __init__(self, dim_sel, dim_len, dim_chunk_len):
@@ -98,7 +107,7 @@ class SliceDimIndexer(object):
         # normalize
         self.start, self.stop, self.step = dim_sel.indices(dim_len)
         if self.step < 1:
-            raise IndexError('only slices with step >= 1 are supported')
+            err_negative_step()
 
         # store attributes
         self.dim_len = dim_len
@@ -185,7 +194,8 @@ def replace_ellipsis(selection, shape):
 
     # check selection not too long
     if len(selection) > len(shape):
-        raise IndexError('too many indices for array')
+        raise IndexError('too many indices for array; expected {}, got {}'
+                         .format(len(shape), len(selection)))
 
     return selection
 
@@ -265,8 +275,8 @@ class BasicIndexer(object):
                 dim_indexer = SliceDimIndexer(dim_sel, dim_len, dim_chunk_len)
 
             else:
-                raise IndexError('unsupported selection type; expected integer or slice, got {!r}'
-                                 .format(type(dim_sel)))
+                raise IndexError('unsupported selection item for basic indexing; expected integer '
+                                 'or slice, got {!r}'.format(type(dim_sel)))
 
             dim_indexers.append(dim_indexer)
 
@@ -292,11 +302,12 @@ class BoolArrayDimIndexer(object):
 
         # check number of dimensions
         if not is_bool_array(dim_sel, 1):
-            raise IndexError('selection must be a 1d array')
+            raise IndexError('Boolean arrays in an orthogonal selection must 1-dimensional only')
 
         # check shape
         if dim_sel.shape[0] != dim_len:
-            raise IndexError('selection has the wrong length')
+            raise IndexError('Boolean array has the wrong length for dimension; '
+                             'expected {}, got {}'.format(dim_len, dim_sel.shape[0]))
 
         # store attributes
         self.dim_sel = dim_sel
@@ -363,27 +374,35 @@ class Order:
         return order
 
 
+def wraparound_indices(x, dim_len):
+    loc_neg = x < 0
+    if np.any(loc_neg):
+        x[loc_neg] = x[loc_neg] + dim_len
+
+
+def boundscheck_indices(x, dim_len):
+    if np.any(x < 0) or np.any(x >= dim_len):
+        err_boundscheck(dim_len)
+
+
 class IntArrayDimIndexer(object):
     """Integer array selection against a single dimension."""
 
     def __init__(self, dim_sel, dim_len, dim_chunk_len, wraparound=True, boundscheck=True,
                  order=Order.UNKNOWN):
 
-        # ensure array
+        # ensure 1d array
         dim_sel = np.asanyarray(dim_sel)
         if not is_integer_array(dim_sel, 1):
-            raise IndexError('selection must be a 1d array')
+            raise IndexError('integer arrays in an orthogonal selection must be 1-dimensional only')
 
         # handle wraparound
         if wraparound:
-            loc_neg = dim_sel < 0
-            if np.any(loc_neg):
-                dim_sel[loc_neg] = dim_sel[loc_neg] + dim_len
+            wraparound_indices(dim_sel, dim_len)
 
         # handle out of bounds
         if boundscheck:
-            if np.any(dim_sel < 0) or np.any(dim_sel >= dim_len):
-                raise IndexError('selection contains index out of bounds')
+            boundscheck_indices(dim_sel, dim_len)
 
         # store attributes
         self.dim_len = dim_len
@@ -405,7 +424,7 @@ class IntArrayDimIndexer(object):
             self.dim_out_sel = None
         elif self.order == Order.DECREASING:
             self.dim_sel = dim_sel[::-1]
-            # TODO do this without creating an arange
+            # TODO should be possible to do this without creating an arange
             self.dim_out_sel = np.arange(self.nitems - 1, -1, -1)
         else:
             # sort indices to group by chunk
@@ -506,24 +525,21 @@ class OrthogonalIndexer(object):
         for dim_sel, dim_len, dim_chunk_len in zip(selection, array._shape, array._chunks):
 
             if is_integer(dim_sel):
-
                 dim_indexer = IntDimIndexer(dim_sel, dim_len, dim_chunk_len)
 
             elif isinstance(dim_sel, slice):
-
                 dim_indexer = SliceDimIndexer(dim_sel, dim_len, dim_chunk_len)
 
             elif is_integer_array(dim_sel):
-
                 dim_indexer = IntArrayDimIndexer(dim_sel, dim_len, dim_chunk_len)
 
             elif is_bool_array(dim_sel):
-
                 dim_indexer = BoolArrayDimIndexer(dim_sel, dim_len, dim_chunk_len)
 
             else:
-                # TODO improve and refactor error messages
-                raise IndexError('unsupported selection type {!r}'.format(type(dim_sel)))
+                raise IndexError('unsupported selection item for orthogonal indexing; expected '
+                                 'integer, slice, integer array or Boolean array, got {!r}'
+                                 .format(type(dim_sel)))
 
             dim_indexers.append(dim_indexer)
 
@@ -609,21 +625,17 @@ class CoordinateIndexer(object):
 
         # validation
         if not is_coordinate_selection(selection, array):
-            # TODO refactor error messages for consistency
-            raise IndexError('invalid coordinate selection')
+            raise IndexError('invalid coordinate selection; expected one integer (coordinate) '
+                             'array per dimension of the target array, got {!r}'.format(selection))
 
         # handle wraparound, boundscheck
         for dim_sel, dim_len in zip(selection, array.shape):
 
             # handle wraparound
-            loc_neg = dim_sel < 0
-            if np.any(loc_neg):
-                # TODO need to take a copy here, or OK to replace?
-                dim_sel[loc_neg] = dim_sel[loc_neg] + dim_len
+            wraparound_indices(dim_sel, dim_len)
 
             # handle out of bounds
-            if np.any(dim_sel < 0) or np.any(dim_sel >= dim_len):
-                raise IndexError('index out of bounds')
+            boundscheck_indices(dim_sel, dim_len)
 
         # compute chunk index for each point in the selection
         chunks_multi_index = tuple(
@@ -650,7 +662,6 @@ class CoordinateIndexer(object):
         if np.any(np.diff(chunks_raveled_indices) < 0):
             # optimisation, only sort if needed
             sel_sort = np.argsort(chunks_raveled_indices)
-            # chunks_raveled_indices = chunks_raveled_indices[sel_sort]
             selection = tuple(dim_sel[sel_sort] for dim_sel in selection)
         else:
             sel_sort = None
@@ -710,14 +721,21 @@ class MaskIndexer(CoordinateIndexer):
 
         # validation
         if not is_mask_selection(selection, array):
-            # TODO refactor error messages for consistency
-            raise IndexError('invalid mask selection')
+            raise IndexError('invalid mask selection; expected one Boolean (mask)'
+                             'array with the same shape as the target array, got {!r}'
+                             .format(selection))
 
         # convert to indices
         selection = np.nonzero(selection[0])
 
         # delegate the rest to superclass
         super(MaskIndexer, self).__init__(selection, array)
+
+
+def err_vindex_invalid_selection(selection):
+    raise IndexError('unsupported selection type for vectorized indexing; only coordinate '
+                     'selection (tuple of integer arrays) and mask selection (single '
+                     'Boolean array) are supported; got {!r}'.format(selection))
 
 
 class VIndex(object):
@@ -734,18 +752,18 @@ class VIndex(object):
         elif is_mask_selection(selection, self.array):
             return self.array.get_mask_selection(selection, fields=fields)
         else:
-            raise IndexError('unsupported selection')
+            err_vindex_invalid_selection(selection)
 
     def __setitem__(self, selection, value):
         fields, selection = pop_fields(selection)
         selection = ensure_tuple(selection)
         selection = replace_lists(selection)
         if is_coordinate_selection(selection, self.array):
-            return self.array.set_coordinate_selection(selection, value, fields=fields)
+            self.array.set_coordinate_selection(selection, value, fields=fields)
         elif is_mask_selection(selection, self.array):
-            return self.array.set_mask_selection(selection, value, fields=fields)
+            self.array.set_mask_selection(selection, value, fields=fields)
         else:
-            raise IndexError('unsupported selection')
+            err_vindex_invalid_selection(selection)
 
 
 def check_fields(fields, dtype):
