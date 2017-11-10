@@ -8,6 +8,10 @@ import collections
 import numpy as np
 
 
+from zarr.errors import (err_too_many_indices, err_boundscheck, err_negative_step,
+                         err_vindex_invalid_selection)
+
+
 def is_integer(x):
     return isinstance(x, numbers.Integral)
 
@@ -32,11 +36,6 @@ def is_scalar(value, dtype):
     if isinstance(value, tuple) and dtype.names and len(value) == len(dtype.names):
         return True
     return False
-
-
-def err_boundscheck(dim_len):
-    raise IndexError('index out of bounds for dimension with length {}'
-                     .format(dim_len))
 
 
 def normalize_integer_selection(dim_sel, dim_len):
@@ -94,10 +93,6 @@ class IntDimIndexer(object):
 
 def ceildiv(a, b):
     return int(np.ceil(a / b))
-
-
-def err_negative_step():
-    raise IndexError('only slices with step >= 1 are supported')
 
 
 class SliceDimIndexer(object):
@@ -160,6 +155,11 @@ class SliceDimIndexer(object):
             yield ChunkDimProjection(dim_chunk_ix, dim_chunk_sel, dim_out_sel)
 
 
+def check_selection_length(selection, shape):
+    if len(selection) > len(shape):
+        err_too_many_indices(selection, shape)
+
+
 def replace_ellipsis(selection, shape):
 
     selection = ensure_tuple(selection)
@@ -193,9 +193,7 @@ def replace_ellipsis(selection, shape):
         selection += (slice(None),) * (len(shape) - len(selection))
 
     # check selection not too long
-    if len(selection) > len(shape):
-        raise IndexError('too many indices for array; expected {}, got {}'
-                         .format(len(shape), len(selection)))
+    check_selection_length(selection, shape)
 
     return selection
 
@@ -732,12 +730,6 @@ class MaskIndexer(CoordinateIndexer):
         super(MaskIndexer, self).__init__(selection, array)
 
 
-def err_vindex_invalid_selection(selection):
-    raise IndexError('unsupported selection type for vectorized indexing; only coordinate '
-                     'selection (tuple of integer arrays) and mask selection (single '
-                     'Boolean array) are supported; got {!r}'.format(selection))
-
-
 class VIndex(object):
 
     def __init__(self, array):
@@ -790,6 +782,15 @@ def check_fields(fields, dtype):
             return out_dtype
     else:
         return dtype
+
+
+def check_no_multi_fields(fields):
+    if isinstance(fields, list):
+        if len(fields) == 1:
+            return fields[0]
+        elif len(fields) > 1:
+            raise IndexError('multiple fields are not supported for this operation')
+    return fields
 
 
 def pop_fields(selection):

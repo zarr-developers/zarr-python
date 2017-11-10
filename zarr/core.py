@@ -19,7 +19,7 @@ from zarr.compat import reduce
 from zarr.codecs import AsType, get_codec
 from zarr.indexing import (OIndex, OrthogonalIndexer, BasicIndexer, VIndex, CoordinateIndexer,
                            MaskIndexer, check_fields, pop_fields, ensure_tuple, is_scalar,
-                           is_contiguous_selection)
+                           is_contiguous_selection, err_too_many_indices, check_no_multi_fields)
 
 
 # noinspection PyUnresolvedReferences
@@ -174,7 +174,7 @@ class Array(object):
 
     def _flush_metadata_nosync(self):
         if self._is_view:
-            raise PermissionError('not permitted for views')
+            raise PermissionError('operation not permitted for views')
 
         if self._compressor:
             compressor_config = self._compressor.get_config()
@@ -408,6 +408,7 @@ class Array(object):
         if self.shape:
             return self.shape[0]
         else:
+            # 0-dimensional array, same error message as numpy
             raise TypeError('len() of unsized object')
 
     def __getitem__(self, selection):
@@ -667,7 +668,7 @@ class Array(object):
         # check selection is valid
         selection = ensure_tuple(selection)
         if selection not in ((), (Ellipsis,)):
-            raise IndexError('too many indices for array')
+            err_too_many_indices(selection, ())
 
         try:
             # obtain encoded data for chunk
@@ -1418,12 +1419,11 @@ class Array(object):
         # check selection is valid
         selection = ensure_tuple(selection)
         if selection not in ((), (Ellipsis,)):
-            raise IndexError('too many indices for array')
+            err_too_many_indices(selection, self._shape)
 
         # check fields
         check_fields(fields, self._dtype)
-        if fields and isinstance(fields, list):
-            raise ValueError('multi-field assignment is not supported')
+        fields = check_no_multi_fields(fields)
 
         # obtain key for chunk
         ckey = self._chunk_key((0,))
@@ -1472,8 +1472,7 @@ class Array(object):
 
         # check fields are sensible
         check_fields(fields, self._dtype)
-        if fields and isinstance(fields, list):
-            raise ValueError('multi-field assignment is not supported')
+        fields = check_no_multi_fields(fields)
 
         # determine indices of chunks overlapping the selection
         sel_shape = indexer.shape
@@ -1949,7 +1948,8 @@ class Array(object):
         data_shape_preserved = tuple(s for i, s in enumerate(data.shape)
                                      if i != axis)
         if self_shape_preserved != data_shape_preserved:
-            raise ValueError('shapes not compatible')
+            raise ValueError('shape of data to append is not compatible with the array; all '
+                             'dimensions must match except for the dimension being appended')
 
         # remember old shape
         old_shape = self._shape
@@ -2079,7 +2079,7 @@ class Array(object):
             ...     v.resize(20000)
             ... except PermissionError as e:
             ...     print(e)
-            not permitted for views
+            operation not permitted for views
 
         """
 

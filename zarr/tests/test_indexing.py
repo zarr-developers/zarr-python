@@ -324,9 +324,9 @@ def test_set_basic_selection_0d():
     eq(v['bar'], z['bar'])
     eq(a['baz'], z['baz'])
     # multiple field assignment not supported
-    with assert_raises(ValueError):
+    with assert_raises(IndexError):
         z.set_basic_selection(Ellipsis, v[['foo', 'bar']], fields=['foo', 'bar'])
-    with assert_raises(ValueError):
+    with assert_raises(IndexError):
         z[..., 'foo', 'bar'] = v[['foo', 'bar']]
 
 
@@ -1213,6 +1213,7 @@ def test_set_selections_with_fields():
 
     fields_fixture = [
         'foo',
+        [],
         ['foo'],
         ['foo', 'bar'],
         ['foo', 'baz'],
@@ -1225,54 +1226,64 @@ def test_set_selections_with_fields():
     for fields in fields_fixture:
 
         # currently multi-field assignment is not supported in numpy, so we won't support it either
-        if isinstance(fields, list):
-            with assert_raises(ValueError):
-                z.set_basic_selection(Ellipsis, v[fields], fields=fields)
-            with assert_raises(ValueError):
-                z.set_orthogonal_selection([0, 2], v[fields], fields=fields)
-            with assert_raises(ValueError):
-                z.set_coordinate_selection([0, 2], v[fields], fields=fields)
-            with assert_raises(ValueError):
-                z.set_mask_selection([True, False, True], v[fields], fields=fields)
+        if isinstance(fields, list) and len(fields) > 1:
+            with assert_raises(IndexError):
+                z.set_basic_selection(Ellipsis, v, fields=fields)
+            with assert_raises(IndexError):
+                z.set_orthogonal_selection([0, 2], v, fields=fields)
+            with assert_raises(IndexError):
+                z.set_coordinate_selection([0, 2], v, fields=fields)
+            with assert_raises(IndexError):
+                z.set_mask_selection([True, False, True], v, fields=fields)
 
         else:
+
+            if isinstance(fields, list) and len(fields) == 1:
+                # work around numpy does not support multi-field assignment even if there is only
+                # one field
+                key = fields[0]
+            elif isinstance(fields, list) and len(fields) == 0:
+                # work around numpy ambiguity about what is a field selection
+                key = Ellipsis
+            else:
+                key = fields
 
             # setup expectation
             a[:] = ('', 0, 0)
             z[:] = ('', 0, 0)
             assert_array_equal(a, z[:])
-            a[fields] = v[fields]
+            a[key] = v[key]
             # total selection
-            z.set_basic_selection(Ellipsis, v[fields], fields=fields)
+            z.set_basic_selection(Ellipsis, v[key], fields=fields)
             assert_array_equal(a, z[:])
 
             # basic selection with slice
             a[:] = ('', 0, 0)
             z[:] = ('', 0, 0)
-            a[fields][0:2] = v[fields][0:2]
-            z.set_basic_selection(slice(0, 2), v[0:2][fields], fields=fields)
+            a[key][0:2] = v[key][0:2]
+            z.set_basic_selection(slice(0, 2), v[key][0:2], fields=fields)
             assert_array_equal(a, z[:])
 
             # orthogonal selection
             a[:] = ('', 0, 0)
             z[:] = ('', 0, 0)
             ix = [0, 2]
-            a[fields][ix] = v[fields][ix]
-            z.set_orthogonal_selection(ix, v[fields][ix], fields=fields)
+            a[key][ix] = v[key][ix]
+            z.set_orthogonal_selection(ix, v[key][ix], fields=fields)
             assert_array_equal(a, z[:])
 
             # coordinate selection
             a[:] = ('', 0, 0)
             z[:] = ('', 0, 0)
             ix = [0, 2]
-            a[fields][ix] = v[fields][ix]
-            z.set_coordinate_selection(ix, v[fields][ix], fields=fields)
+            a[key][ix] = v[key][ix]
+            z.set_coordinate_selection(ix, v[key][ix], fields=fields)
             assert_array_equal(a, z[:])
 
             # mask selection
             a[:] = ('', 0, 0)
             z[:] = ('', 0, 0)
             ix = [True, False, True]
-            a[fields][ix] = v[fields][ix]
-            z.set_mask_selection(ix, v[fields][ix], fields=fields)
+            a[key][ix] = v[key][ix]
+            z.set_mask_selection(ix, v[key][ix], fields=fields)
             assert_array_equal(a, z[:])

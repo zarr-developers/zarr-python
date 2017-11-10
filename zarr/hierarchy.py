@@ -719,6 +719,9 @@ class Group(MutableMapping):
         path = self._item_path(name)
 
         if contains_array(self._store, path):
+
+            # array already exists at path, validate that it is the right shape and type
+
             synchronizer = kwargs.get('synchronizer', self._synchronizer)
             cache_metadata = kwargs.get('cache_metadata', True)
             a = Array(self._store, path=path, read_only=self._read_only,
@@ -726,14 +729,17 @@ class Group(MutableMapping):
                       cache_metadata=cache_metadata)
             shape = normalize_shape(shape)
             if shape != a.shape:
-                raise TypeError('shapes do not match')
+                raise TypeError('shape do not match existing array; expected {}, got {}'
+                                .format(a.shape, shape))
             dtype = np.dtype(dtype)
             if exact:
                 if dtype != a.dtype:
-                    raise TypeError('dtypes do not match exactly')
+                    raise TypeError('dtypes do not match exactly; expected {}, got {}'
+                                    .format(a.dtype, dtype))
             else:
                 if not np.can_cast(dtype, a.dtype):
-                    raise TypeError('dtypes cannot be safely cast')
+                    raise TypeError('dtypes ({}, {}) cannot be safely cast'
+                                    .format(dtype, a.dtype))
             return a
 
         else:
