@@ -804,8 +804,8 @@ class NestedDirectoryStore(DirectoryStore):
                     for dir_path, _, file_names in os.walk(entry_path):
                         for file_name in file_names:
                             file_path = os.path.join(dir_path, file_name)
-                            rel_path = file_path.split(root_path + '/')[1]
-                            new_children.append(rel_path.replace('/', '.'))
+                            rel_path = file_path.split(root_path + os.path.sep)[1]
+                            new_children.append(rel_path.replace(os.path.sep, '.'))
                 else:
                     new_children.append(entry)
             return sorted(new_children)
