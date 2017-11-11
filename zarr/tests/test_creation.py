@@ -136,7 +136,7 @@ def test_full():
 
     # "NaN"
     z = full(100, chunks=10, fill_value='NaN', dtype='U3')
-    assert np.all(z[:] == 'NaN')
+    assert np.all(z[:] == 'NaN'), (z[0], type(z[0]))
 
 
 def test_open_array():
