@@ -149,10 +149,10 @@ class Array(object):
             self._chunks = meta['chunks']
             self._dtype = meta['dtype']
             fill_value = meta['fill_value']
-            print('Array._load_metadata_nosync, from meta', fill_value)
+            print('Array._load_metadata_nosync, from meta', repr(fill_value))
             if fill_value is not None:
                 fill_value = np.array(fill_value, self._dtype)[()]
-            print('Array._load_metadata_nosync, after pass through array', fill_value)
+            print('Array._load_metadata_nosync, after pass through array', repr(fill_value))
             self._fill_value = fill_value
             self._order = meta['order']
 
