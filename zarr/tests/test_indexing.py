@@ -1098,7 +1098,7 @@ def test_get_selections_with_fields():
          ('bbb', 2, 8.4),
          ('ccc', 3, 12.6)]
     a = np.array(a, dtype=[('foo', 'S3'), ('bar', 'i4'), ('baz', 'f8')])
-    z = zarr.create(shape=a.shape, chunks=2, dtype=a.dtype)
+    z = zarr.create(shape=a.shape, chunks=2, dtype=a.dtype, fill_value=None)
     z[:] = a
 
     fields_fixture = [

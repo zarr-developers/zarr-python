@@ -286,6 +286,18 @@ def _init_array_metadata(store, shape, chunks=None, dtype=None, compressor='defa
     chunks = normalize_chunks(chunks, shape, dtype.itemsize)
     order = normalize_order(order)
 
+    # ensure fill_value of correct type
+    if fill_value == 0 and dtype.kind == 'V':
+        # special case because 0 used as default, but cannot be used for structured arrays
+        fill_value = b''
+    elif fill_value is not None:
+        try:
+            fill_value = np.array(fill_value, dtype=dtype)[()]
+        except Exception as e:
+            # re-raise with our own error message to be helpful
+            raise ValueError('fill_value {!r} is not valid for dtype {}; nested exception: {}'
+                             .format(fill_value, dtype, e))
+
     # compressor prep
     if shape == ():
         # no point in compressing a 0-dimensional array, only a single value

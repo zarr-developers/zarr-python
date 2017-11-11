@@ -124,7 +124,7 @@ def decode_fill_value(v, dtype):
             return np.NINF
         else:
             return np.array(v, dtype=dtype)[()]
-    elif dtype.kind == 'S':
+    elif dtype.kind in 'SV':
         try:
             return base64.standard_b64decode(v)
         except Exception:
@@ -152,7 +152,7 @@ def encode_fill_value(v, dtype):
         return int(v)
     elif dtype.kind == 'b':
         return bool(v)
-    elif dtype.kind == 'S':
+    elif dtype.kind in 'SV':
         v = base64.standard_b64encode(v)
         if not PY2:
             v = str(v, 'ascii')

@@ -148,7 +148,10 @@ class Array(object):
             self._shape = meta['shape']
             self._chunks = meta['chunks']
             self._dtype = meta['dtype']
-            self._fill_value = meta['fill_value']
+            fill_value = meta['fill_value']
+            if fill_value is not None:
+                fill_value = np.array(fill_value, self._dtype)[()]
+            self._fill_value = fill_value
             self._order = meta['order']
 
             # setup compressor
@@ -358,7 +361,6 @@ class Array(object):
     @property
     def nchunks_initialized(self):
         """The number of chunks that have been initialized with some data."""
-        # TODO fix bug here, need to only count chunks
 
         # key pattern for chunk keys
         prog = re.compile(r'\.'.join([r'\d+'] * min(1, self.ndim)))
@@ -1057,7 +1059,6 @@ class Array(object):
             >>> z[...]
             array([(b'zzz', 1,   4.2), (b'zzz', 2,   8.4), (b'zzz', 3,  12.6)],
                   dtype=[('foo', 'S3'), ('bar', '<i4'), ('baz', '<f8')])
-
 
         Notes
         -----

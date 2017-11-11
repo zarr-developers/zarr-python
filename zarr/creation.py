@@ -103,10 +103,6 @@ def create(shape, chunks=None, dtype=None, compressor='default',
     # API compatibility with h5py
     compressor, fill_value = _handle_kwargs(compressor, fill_value, kwargs)
 
-    # ensure fill_value of correct type
-    if fill_value is not None:
-        fill_value = np.array(fill_value, dtype=dtype)[()]
-
     # initialize array metadata
     init_array(store, shape=shape, chunks=chunks, dtype=dtype,
                compressor=compressor, fill_value=fill_value, order=order,

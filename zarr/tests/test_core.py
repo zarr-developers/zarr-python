@@ -782,6 +782,30 @@ class TestArray(unittest.TestCase):
         z[:] = 42
         eq(10, z.nchunks_initialized)
 
+    def test_structured_array(self):
+
+        # setup some data
+        a = np.array([(b'aaa', 1, 4.2),
+                      (b'bbb', 2, 8.4),
+                      (b'ccc', 3, 12.6)],
+                     dtype=[('foo', 'S3'), ('bar', 'i4'), ('baz', 'f8')])
+        for fill_value in None, b'', (b'zzz', 0, 0.0):
+            if fill_value is not None:
+                fill_value = np.array(fill_value, dtype=a.dtype)[()]
+            z = self.create_array(shape=a.shape, chunks=2, dtype=a.dtype, fill_value=fill_value)
+            eq(3, len(z))
+            eq(fill_value, z.fill_value)
+            z[...] = a
+            eq(a[0], z[0])
+            assert_array_equal(a, z[...])
+            assert_array_equal(a['foo'], z['foo'])
+            assert_array_equal(a['bar'], z['bar'])
+            assert_array_equal(a['baz'], z['baz'])
+
+        with assert_raises(ValueError):
+            # dodgy fill value
+            self.create_array(shape=a.shape, chunks=2, dtype=a.dtype, fill_value=42)
+
 
 class TestArrayWithPath(TestArray):
 
@@ -966,6 +990,10 @@ class TestArrayWithFilters(TestArray):
 
         expected = data.astype(astype)
         assert_array_equal(expected, z2)
+
+    def test_structured_array(self):
+        # don't implement this one, cannot do delta on structured array
+        pass
 
 
 # custom store, does not support getsize()

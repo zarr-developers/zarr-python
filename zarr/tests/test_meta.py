@@ -74,7 +74,7 @@ def test_encode_decode_array_2():
         chunks=(10, 10),
         dtype=np.dtype([('a', 'i4'), ('b', 'S10')]),
         compressor=compressor.get_config(),
-        fill_value=42,
+        fill_value=b'',
         order='F',
         filters=[df.get_config()]
     )
@@ -89,7 +89,7 @@ def test_encode_decode_array_2():
             "blocksize": 0
         },
         "dtype": [["a", "<i4"], ["b", "|S10"]],
-        "fill_value": 42,
+        "fill_value": "",
         "filters": [
             {"id": "delta", "astype": "<u2", "dtype": "|V14"}
         ],

@@ -76,7 +76,7 @@ stored in memory. Zarr arrays can also be stored on a file system,
 enabling persistence of data between sessions. For example::
 
     >>> z1 = zarr.open_array('example.zarr', mode='w', shape=(10000, 10000),
-    ...                      chunks=(1000, 1000), dtype='i4', fill_value=0)
+    ...                      chunks=(1000, 1000), dtype='i4')
 
 The array above will store its configuration metadata and all
 compressed chunk data in a directory called 'example.zarr' relative to
@@ -382,8 +382,7 @@ and :func:`zarr.hierarchy.Group.require_dataset` methods, e.g.::
 
     >>> z = bar_group.create_dataset('quux', shape=(10000, 10000),
     ...                              chunks=(1000, 1000), dtype='i4',
-    ...                              fill_value=0, compression='gzip',
-    ...                              compression_opts=1)
+    ...                              compression='gzip', compression_opts=1)
     >>> z
     <zarr.core.Array '/foo/bar/quux' (10000, 10000) int32>
 
@@ -408,8 +407,7 @@ stored in sub-directories, e.g.::
     >>> persistent_group
     <zarr.hierarchy.Group '/'>
     >>> z = persistent_group.create_dataset('foo/bar/baz', shape=(10000, 10000),
-    ...                                     chunks=(1000, 1000), dtype='i4',
-    ...                                     fill_value=0)
+    ...                                     chunks=(1000, 1000), dtype='i4')
     >>> z
     <zarr.core.Array '/foo/bar/baz' (10000, 10000) int32>
 
@@ -722,7 +720,7 @@ directory on the local file system. This is used under the hood by the
 :func:`zarr.creation.open_array` and :func:`zarr.hierarchy.open_group` functions. In other words,
 the following code::
 
-    >>> z = zarr.open_array('example.zarr', mode='w', shape=1000000, dtype='i4', fill_value=0)
+    >>> z = zarr.open_array('example.zarr', mode='w', shape=1000000, dtype='i4')
 
 ...is just short-hand for::
 
