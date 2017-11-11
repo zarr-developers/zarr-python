@@ -690,10 +690,14 @@ def test_set_orthogonal_selection_3d():
         ix1 = np.random.choice(a.shape[1], size=int(a.shape[1] * .5), replace=True)
         ix2 = np.random.choice(a.shape[2], size=int(a.shape[2] * .5), replace=True)
         _test_set_orthogonal_selection_3d(v, a, z, ix0, ix1, ix2)
+
+        # sorted increasing
         ix0.sort()
         ix1.sort()
         ix2.sort()
         _test_set_orthogonal_selection_3d(v, a, z, ix0, ix1, ix2)
+
+        # sorted decreasing
         ix0 = ix0[::-1]
         ix1 = ix1[::-1]
         ix2 = ix2[::-1]
