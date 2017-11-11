@@ -136,8 +136,14 @@ def test_full():
 
     # "NaN"
     z = full(100, chunks=10, fill_value='NaN', dtype='U3')
-    eq(np.array('NaN', dtype='U3')[()], z[0])
+    v = np.array('NaN', dtype='U3')[()]
+    eq(v, z[0])
     eq('NaN', z[0])
+    a = z[...]
+    print(a.dtype, repr(a[0]), type(a[0]), a[0] == 'NaN', a[0:2] == 'NaN', a[0:2] == v)
+    eq('NaN', z[...][0])
+    t = z[:] == u'NaN'
+    assert np.all(t), (np.count_nonzero(t), t.size)
     t = z[:] == 'NaN'
     assert np.all(t), (np.count_nonzero(t), t.size)
 
