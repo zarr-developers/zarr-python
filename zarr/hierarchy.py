@@ -10,12 +10,12 @@ import numpy as np
 from zarr.compat import PY2
 from zarr.attrs import Attributes
 from zarr.core import Array
-from zarr.storage import contains_array, contains_group, init_group, \
-    DictStore, DirectoryStore, group_meta_key, attrs_key, listdir, rmdir
-from zarr.creation import array, create, empty, zeros, ones, full, \
-    empty_like, zeros_like, ones_like, full_like
-from zarr.util import normalize_storage_path, normalize_shape, InfoReporter, \
-    is_valid_python_name, instance_dir
+from zarr.storage import (contains_array, contains_group, init_group, DictStore, DirectoryStore,
+                          group_meta_key, attrs_key, listdir, rmdir)
+from zarr.creation import (array, create, empty, zeros, ones, full, empty_like, zeros_like,
+                           ones_like, full_like)
+from zarr.util import (normalize_storage_path, normalize_shape, InfoReporter,
+                       is_valid_python_name, instance_dir)
 from zarr.errors import err_contains_array, err_contains_group, err_group_not_found, err_read_only
 from zarr.meta import decode_group_metadata
 
