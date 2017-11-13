@@ -285,7 +285,7 @@ def _init_array_metadata(store, shape, chunks=None, dtype=None, compressor='defa
     dtype = np.dtype(dtype)
     chunks = normalize_chunks(chunks, shape, dtype.itemsize)
     order = normalize_order(order)
-    fill_value = normalize_fill_value(fill_value)
+    fill_value = normalize_fill_value(fill_value, dtype)
 
     # compressor prep
     if shape == ():
