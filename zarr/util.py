@@ -333,36 +333,17 @@ def is_valid_python_name(name):
 def instance_dir(obj):  # pragma: py3 no cover
     """Vanilla implementation of built-in dir() for PY2 to help with overriding __dir__. Based on
     implementation of dir() in pypy."""
-
     d = dict()
-    try:
-        if isinstance(obj.__dict__, dict):
-            d.update(obj.__dict__)
-    except AttributeError:
-        pass
-    try:
-        d.update(class_dir(obj.__class__))
-    except AttributeError:
-        pass
-
+    d.update(obj.__dict__)
+    d.update(class_dir(obj.__class__))
     result = sorted(d.keys())
     return result
 
 
 def class_dir(klass):  # pragma: py3 no cover
     d = dict()
-    try:
-        d.update(klass.__dict__)
-    except AttributeError:
-        pass
-    try:
-        bases = klass.__bases__
-    except AttributeError:
-        pass
-    else:
-        try:
-            for base in bases:
-                d.update(class_dir(base))
-        except TypeError:
-            pass
+    d.update(klass.__dict__)
+    bases = klass.__bases__
+    for base in bases:
+        d.update(class_dir(base))
     return d
