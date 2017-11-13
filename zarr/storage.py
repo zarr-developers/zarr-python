@@ -385,10 +385,10 @@ def ensure_bytes(s):
     if isinstance(s, np.ndarray):
         if PY2:  # pragma: py3 no cover
             # noinspection PyArgumentList
-            return s.tostring(order='Any')
+            return s.tostring(order='A')
         else:  # pragma: py2 no cover
             # noinspection PyArgumentList
-            return s.tobytes(order='Any')
+            return s.tobytes(order='A')
     if hasattr(s, 'tobytes'):
         return s.tobytes()
     if PY2 and hasattr(s, 'tostring'):  # pragma: py3 no cover
@@ -587,12 +587,14 @@ class DirectoryStore(MutableMapping):
     >>> store['foo'] = b'bar'
     >>> store['foo']
     b'bar'
-    >>> open('example_store/foo', 'rb').read()
+    >>> with open('example_store/foo', 'rb') as f:
+    ...     f.read()
     b'bar'
     >>> store['a/b/c'] = b'xxx'
     >>> store['a/b/c']
     b'xxx'
-    >>> open('example_store/a/b/c', 'rb').read()
+    >>> with open('example_store/a/b/c', 'rb') as f:
+    ...     f.read()
     b'xxx'
     >>> sorted(store.keys())
     ['a/b/c', 'foo']
@@ -801,9 +803,11 @@ class NestedDirectoryStore(DirectoryStore):
         >>> store['a/b/c'] = b'xxx'
         >>> store['a/b/c']
         b'xxx'
-        >>> open('example_nested_store/foo', 'rb').read()
+        >>> with open('example_nested_store/foo', 'rb') as f:
+        ...     f.read()
         b'bar'
-        >>> open('example_nested_store/a/b/c', 'rb').read()
+        >>> with open('example_nested_store/a/b/c', 'rb') as f:
+        ...     f.read()
         b'xxx'
 
     Chunk keys are handled in a special way, such that the '.' characters in the key are mapped to
@@ -815,9 +819,11 @@ class NestedDirectoryStore(DirectoryStore):
         >>> store['baz/2.1.12'] = b'zzz'
         >>> store['baz/2.1.12']
         b'zzz'
-        >>> open('example_nested_store/bar/0/0', 'rb').read()
+        >>> with open('example_nested_store/bar/0/0', 'rb') as f:
+        ...     f.read()
         b'yyy'
-        >>> open('example_nested_store/baz/2/1/12', 'rb').read()
+        >>> with open('example_nested_store/baz/2/1/12', 'rb') as f:
+        ...     f.read()
         b'zzz'
 
     Notes

@@ -3,6 +3,7 @@ from __future__ import absolute_import, print_function, division
 import tempfile
 import shutil
 import atexit
+import warnings
 
 
 import numpy as np
@@ -20,6 +21,11 @@ from zarr.hierarchy import open_group
 from zarr.errors import PermissionError
 from zarr.codecs import Zlib
 from zarr.compat import PY2
+
+
+# needed for PY2/PY3 consistent behaviour
+warnings.resetwarnings()
+warnings.simplefilter('always')
 
 
 # something bcolz-like
@@ -424,6 +430,8 @@ def test_create():
 
 
 def test_compression_args():
+    warnings.resetwarnings()
+    warnings.simplefilter('always')
 
     z = create(100, compression='zlib', compression_opts=9)
     assert_is_instance(z, Array)
@@ -441,3 +449,39 @@ def test_compression_args():
     assert_is_instance(z, Array)
     eq('zlib', z.compressor.codec_id)
     eq(9, z.compressor.level)
+
+    warnings.resetwarnings()
+    warnings.simplefilter('error')
+    with assert_raises(UserWarning):
+        # 'compressor' overrides 'compression'
+        create(100, compressor=Zlib(9), compression='bz2', compression_opts=1)
+    with assert_raises(UserWarning):
+        # 'compressor' ignores 'compression_opts'
+        create(100, compressor=Zlib(9), compression_opts=1)
+    warnings.resetwarnings()
+    warnings.simplefilter('always')
+
+
+def test_create_read_only():
+    # https://github.com/alimanfoo/zarr/issues/151
+
+    # create an array initially read-only, then enable writing
+    z = create(100, read_only=True)
+    assert z.read_only
+    with assert_raises(PermissionError):
+        z[:] = 42
+    z.read_only = False
+    z[:] = 42
+    assert np.all(z[...] == 42)
+    z.read_only = True
+    with assert_raises(PermissionError):
+        z[:] = 0
+
+    # this is subtly different, but here we want to create an array with data, and then have it
+    # be read-only
+    a = np.arange(100)
+    z = array(a, read_only=True)
+    assert_array_equal(a, z[...])
+    assert z.read_only
+    with assert_raises(PermissionError):
+        z[:] = 42
