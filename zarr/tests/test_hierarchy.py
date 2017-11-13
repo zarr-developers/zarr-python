@@ -928,3 +928,94 @@ def test_open_group():
     g = open_group(store, path='foo/bar')
     assert_is_instance(g, Group)
     eq('foo/bar', g.path)
+
+
+def test_group_completions():
+    g = group()
+    d = dir(g)
+    assert 'foo' not in d
+    assert 'bar' not in d
+    assert 'baz' not in d
+    assert 'qux' not in d
+    assert 'xxx' not in d
+    assert 'yyy' not in d
+    assert 'zzz' not in d
+    assert '123' not in d
+    assert '456' not in d
+    g.create_groups('foo', 'bar', 'baz/qux', '123')
+    g.zeros('xxx', shape=100)
+    g.zeros('yyy', shape=100)
+    g.zeros('zzz', shape=100)
+    g.zeros('456', shape=100)
+    d = dir(g)
+    assert 'foo' in d
+    assert 'bar' in d
+    assert 'baz' in d
+    assert 'qux' not in d
+    assert 'xxx' in d
+    assert 'yyy' in d
+    assert 'zzz' in d
+    assert '123' not in d  # not valid identifier
+    assert '456' not in d  # not valid identifier
+
+
+def test_group_key_completions():
+    g = group()
+    d = dir(g)
+    k = g._ipython_key_completions_()
+
+    # none of these names should be an attribute
+    assert 'foo' not in d
+    assert 'bar' not in d
+    assert 'baz' not in d
+    assert 'qux' not in d
+    assert 'xxx' not in d
+    assert 'yyy' not in d
+    assert 'zzz' not in d
+    assert '123' not in d
+    assert '456' not in d
+    assert 'asdf;' not in d
+
+    # none of these names should be an item
+    assert 'foo' not in k
+    assert 'bar' not in k
+    assert 'baz' not in k
+    assert 'qux' not in k
+    assert 'xxx' not in k
+    assert 'yyy' not in k
+    assert 'zzz' not in k
+    assert '123' not in k
+    assert '456' not in k
+    assert 'asdf;' not in k
+
+    g.create_groups('foo', 'bar', 'baz/qux', '123')
+    g.zeros('xxx', shape=100)
+    g.zeros('yyy', shape=100)
+    g.zeros('zzz', shape=100)
+    g.zeros('456', shape=100)
+    g.zeros('asdf;', shape=100)
+
+    d = dir(g)
+    k = g._ipython_key_completions_()
+
+    assert 'foo' in d
+    assert 'bar' in d
+    assert 'baz' in d
+    assert 'qux' not in d
+    assert 'xxx' in d
+    assert 'yyy' in d
+    assert 'zzz' in d
+    assert '123' not in d  # not valid identifier
+    assert '456' not in d  # not valid identifier
+    assert 'asdf;' not in d  # not valid identifier
+
+    assert 'foo' in k
+    assert 'bar' in k
+    assert 'baz' in k
+    assert 'qux' not in k
+    assert 'xxx' in k
+    assert 'yyy' in k
+    assert 'zzz' in k
+    assert '123' in k
+    assert '456' in k
+    assert 'asdf;' in k

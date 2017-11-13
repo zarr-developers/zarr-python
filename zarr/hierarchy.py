@@ -7,13 +7,15 @@ from itertools import islice
 import numpy as np
 
 
+from zarr.compat import PY2
 from zarr.attrs import Attributes
 from zarr.core import Array
 from zarr.storage import contains_array, contains_group, init_group, \
     DictStore, DirectoryStore, group_meta_key, attrs_key, listdir, rmdir
 from zarr.creation import array, create, empty, zeros, ones, full, \
     empty_like, zeros_like, ones_like, full_like
-from zarr.util import normalize_storage_path, normalize_shape, InfoReporter
+from zarr.util import normalize_storage_path, normalize_shape, InfoReporter, \
+    is_valid_python_name, instance_dir
 from zarr.errors import err_contains_array, err_contains_group, err_group_not_found, err_read_only
 from zarr.meta import decode_group_metadata
 
@@ -76,6 +78,7 @@ class Group(MutableMapping):
     zeros_like
     ones_like
     full_like
+    info
 
     """
 
@@ -111,7 +114,7 @@ class Group(MutableMapping):
                                  synchronizer=synchronizer)
 
         # setup info
-        self.info = InfoReporter(self)
+        self._info = InfoReporter(self)
 
     @property
     def store(self):
@@ -157,6 +160,11 @@ class Group(MutableMapping):
         """A MutableMapping containing user-defined attributes. Note that
         attribute values must be JSON serializable."""
         return self._attrs
+
+    @property
+    def info(self):
+        """Return diagnostic information about the group."""
+        return self._info
 
     def __eq__(self, other):
         return (
@@ -327,6 +335,18 @@ class Group(MutableMapping):
             return self.__getitem__(item)
         except KeyError:
             raise AttributeError
+
+    def __dir__(self):
+        if PY2:  # pragma: py3 no cover
+            base = instance_dir(self)
+        else:  # pragma: py2 no cover
+            base = super().__dir__()
+        keys = sorted(set(base + list(self)))
+        keys = [k for k in keys if is_valid_python_name(k)]
+        return keys
+
+    def _ipython_key_completions_(self):
+        return sorted(self)
 
     def group_keys(self):
         """Return an iterator over member names for groups only.
