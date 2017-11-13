@@ -6,6 +6,7 @@ import atexit
 import shutil
 import os
 import pickle
+import warnings
 
 
 from nose.tools import assert_raises, eq_ as eq, assert_is, assert_true, \
@@ -23,6 +24,11 @@ from zarr.errors import PermissionError
 from zarr.creation import open_array
 from zarr.util import InfoReporter
 from numcodecs import Zlib
+
+
+# needed for PY2/PY3 consistent behaviour
+warnings.resetwarnings()
+warnings.simplefilter('always')
 
 
 # noinspection PyStatementEffect
@@ -344,12 +350,21 @@ class TestGroup(unittest.TestCase):
         with assert_raises(KeyError):
             g.require_dataset('c/d', shape=100, chunks=10)
 
-        # h5py compatibility
+        # h5py compatibility, accept 'fillvalue'
         d = g.create_dataset('x', shape=100, chunks=10, fillvalue=42)
         eq(42, d.fill_value)
-        # ignore 'shuffle'
+
+        # h5py compatibility, ignore 'shuffle'
+        warnings.resetwarnings()
+        warnings.simplefilter('ignore')
         d = g.create_dataset('y', shape=100, chunks=10, shuffle=True)
         assert not hasattr(d, 'shuffle')
+        warnings.resetwarnings()
+        warnings.simplefilter('error')
+        with assert_raises(UserWarning):
+            g.create_dataset('y', shape=100, chunks=10, shuffle=True)
+        warnings.resetwarnings()
+        warnings.simplefilter('always')
 
         # read-only
         g = self.create_group(read_only=True)
