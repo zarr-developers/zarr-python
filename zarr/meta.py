@@ -112,7 +112,6 @@ FLOAT_FILLS = {
 
 
 def decode_fill_value(v, dtype):
-    print('decode_fill_value', v, dtype, dtype.kind)
     # early out
     if v is None:
         return v
@@ -127,20 +126,21 @@ def decode_fill_value(v, dtype):
             return np.array(v, dtype=dtype)[()]
     elif dtype.kind in 'SV':
         try:
-            return base64.standard_b64decode(v)
+            v = base64.standard_b64decode(v)
+            v = np.array(v, dtype=dtype)[()]
+            return v
         except Exception:
             # be lenient, allow for other values that may have been used before base64 encoding
             # and may work as fill values, e.g., the number 0
             return v
     elif dtype.kind == 'U':
-        print('decoding unicode fill value')
+        # leave as-is
         return v
     else:
-        return v
+        return np.array(v, dtype=dtype)[()]
 
 
 def encode_fill_value(v, dtype):
-    print('encode_fill_value', v, dtype, dtype.kind)
     # early out
     if v is None:
         return v
@@ -163,7 +163,6 @@ def encode_fill_value(v, dtype):
             v = str(v, 'ascii')
         return v
     elif dtype.kind == 'U':
-        print('encoding unicode fill value')
         return v
     else:
         return v

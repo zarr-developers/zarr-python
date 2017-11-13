@@ -8,7 +8,7 @@ import numbers
 import numpy as np
 
 
-from zarr.compat import PY2, reduce
+from zarr.compat import PY2, reduce, text_type
 
 
 def normalize_shape(shape):
@@ -175,6 +175,35 @@ def normalize_order(order):
     if order not in ['C', 'F']:
         raise ValueError("order must be either 'C' or 'F', found: %r" % order)
     return order
+
+
+def normalize_fill_value(fill_value, dtype):
+
+    if fill_value is None:
+        # no fill value
+        pass
+
+    elif fill_value == 0 and dtype.kind == 'V':
+        # special case because 0 used as default, but cannot be used for structured arrays
+        fill_value = b''
+
+    elif dtype.kind == 'U':
+        # special case unicode because of encoding issues on Windows if pass through numpy...
+        # UnicodeDecodeError: 'utf-32-le' codec can't decode bytes in position ...: code point not
+        # in range(0x110000)
+        if not isinstance(fill_value, text_type):
+            raise ValueError('fill_value {!r} is not valid for dtype{}; must be a unicode string'
+                             .format(fill_value, dtype))
+        # otherwise leave as-is
+
+    else:
+        try:
+            fill_value = np.array(fill_value, dtype=dtype)[()]
+        except Exception as e:
+            # re-raise with our own error message to be helpful
+            raise ValueError('fill_value {!r} is not valid for dtype {}; nested exception: {}'
+                             .format(fill_value, dtype, e))
+    return fill_value
 
 
 def normalize_storage_path(path):
