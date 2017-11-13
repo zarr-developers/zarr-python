@@ -155,14 +155,14 @@ def test_full():
 
     # bytes fill value / unicode dtype
     v = b'xxx'
-    if PY2:
+    if PY2:  # pragma: py3 no cover
         # allow this on PY2
         z = full(100, chunks=10, fill_value=v, dtype='U3')
         a = z[...]
         eq(z.dtype, a.dtype)
         eq(v, a[0])
         assert np.all(a == v)
-    else:
+    else:  # pragma: py2 no cover
         # be strict on PY3
         with assert_raises(ValueError):
             full(100, chunks=10, fill_value=v, dtype='U3')
