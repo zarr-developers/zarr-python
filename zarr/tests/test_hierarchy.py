@@ -356,13 +356,13 @@ class TestGroup(unittest.TestCase):
 
         # h5py compatibility, ignore 'shuffle'
         warnings.resetwarnings()
-        warnings.simplefilter('ignore')
-        d = g.create_dataset('y', shape=100, chunks=10, shuffle=True)
+        warnings.simplefilter('always')
+        d = g.create_dataset('y1', shape=100, chunks=10, shuffle=True)
         assert not hasattr(d, 'shuffle')
         warnings.resetwarnings()
         warnings.simplefilter('error')
         with assert_raises(UserWarning):
-            g.create_dataset('y', shape=100, chunks=10, shuffle=True)
+            g.create_dataset('y2', shape=100, chunks=10, shuffle=True)
         warnings.resetwarnings()
         warnings.simplefilter('always')
 
