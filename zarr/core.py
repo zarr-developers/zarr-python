@@ -142,7 +142,7 @@ class Array(object):
             err_array_not_found(self._path)
         else:
 
-            # decode and store metadata
+            # decode and store metadata as instance members
             meta = decode_array_metadata(meta_bytes)
             self._meta = meta
             self._shape = meta['shape']
