@@ -135,29 +135,37 @@ def test_full():
     z = full(100, chunks=10, fill_value=np.nan, dtype='f8')
     assert np.all(np.isnan(z[:]))
 
-    # byte string
+    # byte string dtype
     v = b'xxx'
     z = full(100, chunks=10, fill_value=v, dtype='S3')
     eq(v, z[0])
     a = z[...]
+    eq(z.dtype, a.dtype)
     eq(v, a[0])
-    t = z[...] == v
-    assert np.all(t)
+    assert np.all(a == v)
 
-    # unicode string
+    # unicode string dtype
     v = u'xxx'
     z = full(100, chunks=10, fill_value=v, dtype='U3')
     eq(v, z[0])
     a = z[...]
     eq(z.dtype, a.dtype)
     eq(v, a[0])
-    t = z[...] == v
-    assert np.all(t)
+    assert np.all(a == v)
 
-    # dodgy fill value
-    if not PY2:
+    # bytes fill value / unicode dtype
+    v = b'xxx'
+    if PY2:
+        # allow this on PY2
+        z = full(100, chunks=10, fill_value=v, dtype='U3')
+        a = z[...]
+        eq(z.dtype, a.dtype)
+        eq(v, a[0])
+        assert np.all(a == v)
+    else:
+        # be strict on PY3
         with assert_raises(ValueError):
-            full(100, chunks=10, fill_value=b'NaN', dtype='U3')
+            full(100, chunks=10, fill_value=v, dtype='U3')
 
 
 def test_open_array():
