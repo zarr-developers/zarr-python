@@ -105,7 +105,7 @@ class Array(object):
             self._key_prefix = self._path + '/'
         else:
             self._key_prefix = ''
-        self._read_only = read_only
+        self._read_only = bool(read_only)
         self._synchronizer = synchronizer
         self._cache_metadata = cache_metadata
         self._is_view = False
@@ -215,6 +215,10 @@ class Array(object):
     def read_only(self):
         """A boolean, True if modification operations are not permitted."""
         return self._read_only
+
+    @read_only.setter
+    def read_only(self, value):
+        self._read_only = bool(value)
 
     @property
     def chunk_store(self):
