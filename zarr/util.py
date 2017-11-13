@@ -320,7 +320,7 @@ def is_valid_python_name(name):
         import ast
         # noinspection PyBroadException
         try:
-            ast.parse('"".{}'.format(name))
+            ast.parse('"".{};'.format(name))
         except Exception:
             return False
         else:
