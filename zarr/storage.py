@@ -19,7 +19,7 @@ import numpy as np
 
 
 from zarr.util import normalize_shape, normalize_chunks, normalize_order, \
-    normalize_storage_path, buffer_size
+    normalize_storage_path, buffer_size, normalize_fill_value
 from zarr.meta import encode_array_metadata, encode_group_metadata
 from zarr.compat import PY2, binary_type
 from numcodecs.registry import codec_registry
@@ -285,6 +285,7 @@ def _init_array_metadata(store, shape, chunks=None, dtype=None, compressor='defa
     dtype = np.dtype(dtype)
     chunks = normalize_chunks(chunks, shape, dtype.itemsize)
     order = normalize_order(order)
+    fill_value = normalize_fill_value(fill_value, dtype)
 
     # compressor prep
     if shape == ():

@@ -124,15 +124,20 @@ def decode_fill_value(v, dtype):
             return np.NINF
         else:
             return np.array(v, dtype=dtype)[()]
-    elif dtype.kind == 'S':
+    elif dtype.kind in 'SV':
         try:
-            return base64.standard_b64decode(v)
+            v = base64.standard_b64decode(v)
+            v = np.array(v, dtype=dtype)[()]
+            return v
         except Exception:
             # be lenient, allow for other values that may have been used before base64 encoding
             # and may work as fill values, e.g., the number 0
             return v
-    else:
+    elif dtype.kind == 'U':
+        # leave as-is
         return v
+    else:
+        return np.array(v, dtype=dtype)[()]
 
 
 def encode_fill_value(v, dtype):
@@ -152,10 +157,12 @@ def encode_fill_value(v, dtype):
         return int(v)
     elif dtype.kind == 'b':
         return bool(v)
-    elif dtype.kind == 'S':
+    elif dtype.kind in 'SV':
         v = base64.standard_b64encode(v)
         if not PY2:
             v = str(v, 'ascii')
+        return v
+    elif dtype.kind == 'U':
         return v
     else:
         return v

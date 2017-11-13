@@ -19,6 +19,7 @@ from zarr.storage import DirectoryStore
 from zarr.hierarchy import open_group
 from zarr.errors import PermissionError
 from zarr.codecs import Zlib
+from zarr.compat import PY2
 
 
 # something bcolz-like
@@ -97,6 +98,12 @@ def test_array():
     assert_array_equal(a[:], z[:])
     eq(a.dtype, z.dtype)
 
+    # with dtype=something else
+    a = np.arange(100, dtype='i4')
+    z = array(a, dtype='i8')
+    assert_array_equal(a[:], z[:])
+    eq(np.dtype('i8'), z.dtype)
+
 
 def test_empty():
     z = empty(100, chunks=10)
@@ -128,9 +135,37 @@ def test_full():
     z = full(100, chunks=10, fill_value=np.nan, dtype='f8')
     assert np.all(np.isnan(z[:]))
 
-    # "NaN"
-    z = full(100, chunks=10, fill_value='NaN', dtype='U3')
-    assert np.all(z[:] == 'NaN')
+    # byte string dtype
+    v = b'xxx'
+    z = full(100, chunks=10, fill_value=v, dtype='S3')
+    eq(v, z[0])
+    a = z[...]
+    eq(z.dtype, a.dtype)
+    eq(v, a[0])
+    assert np.all(a == v)
+
+    # unicode string dtype
+    v = u'xxx'
+    z = full(100, chunks=10, fill_value=v, dtype='U3')
+    eq(v, z[0])
+    a = z[...]
+    eq(z.dtype, a.dtype)
+    eq(v, a[0])
+    assert np.all(a == v)
+
+    # bytes fill value / unicode dtype
+    v = b'xxx'
+    if PY2:  # pragma: py3 no cover
+        # allow this on PY2
+        z = full(100, chunks=10, fill_value=v, dtype='U3')
+        a = z[...]
+        eq(z.dtype, a.dtype)
+        eq(v, a[0])
+        assert np.all(a == v)
+    else:  # pragma: py2 no cover
+        # be strict on PY3
+        with assert_raises(ValueError):
+            full(100, chunks=10, fill_value=v, dtype='U3')
 
 
 def test_open_array():
@@ -370,7 +405,7 @@ def test_create():
     with assert_raises(ValueError):
         create(100, chunks=10, compressor='zlib')
 
-    # compatibility
+    # h5py compatibility
 
     z = create(100, compression='zlib', compression_opts=9)
     eq('zlib', z.compressor.codec_id)
@@ -381,7 +416,11 @@ def test_create():
 
     # errors
     with assert_raises(ValueError):
+        # bad compression argument
         create(100, compression=1)
+    with assert_raises(ValueError):
+        # bad fill value
+        create(100, dtype='i4', fill_value='foo')
 
 
 def test_compression_args():

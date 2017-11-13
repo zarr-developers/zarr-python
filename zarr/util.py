@@ -8,7 +8,7 @@ import numbers
 import numpy as np
 
 
-from zarr.compat import PY2, reduce
+from zarr.compat import PY2, reduce, text_type, binary_type
 
 
 def normalize_shape(shape):
@@ -28,9 +28,9 @@ def normalize_shape(shape):
 
 # code to guess chunk shape, adapted from h5py
 
-CHUNK_BASE = 64*1024  # Multiplier by which chunks are adjusted
+CHUNK_BASE = 128*1024  # Multiplier by which chunks are adjusted
 CHUNK_MIN = 128*1024  # Soft lower limit (128k)
-CHUNK_MAX = 16*1024*1024  # Hard upper limit (16M)
+CHUNK_MAX = 64*1024*1024  # Hard upper limit
 
 
 def guess_chunks(shape, typesize):
@@ -134,99 +134,6 @@ def is_total_slice(item, shape):
         raise TypeError('expected slice or tuple of slices, found %r' % item)
 
 
-def normalize_axis_selection(item, length):
-    """Convenience function to normalize a selection within a single axis
-    of size `l`."""
-
-    if isinstance(item, numbers.Integral):
-        item = int(item)
-
-        # handle wraparound
-        if item < 0:
-            item = length + item
-
-        # handle out of bounds
-        if item >= length or item < 0:
-            raise IndexError('index out of bounds: %s' % item)
-
-        return item
-
-    elif isinstance(item, slice):
-
-        # handle slice with step
-        if item.step is not None and item.step != 1:
-            raise NotImplementedError('slice with step not implemented')
-
-        # handle slice with None bound
-        start = 0 if item.start is None else item.start
-        stop = length if item.stop is None else item.stop
-
-        # handle wraparound
-        if start < 0:
-            start = length + start
-        if stop < 0:
-            stop = length + stop
-
-        # handle zero-length axis
-        if start == stop == length == 0:
-            return slice(0, 0)
-
-        # handle out of bounds
-        if start < 0 or stop < 0:
-            raise IndexError('index out of bounds: %s, %s' % (start, stop))
-        if start >= length:
-            raise IndexError('index out of bounds: %s, %s' % (start, stop))
-        if stop > length:
-            stop = length
-        if stop < start:
-            raise IndexError('index out of bounds: %s, %s' % (start, stop))
-
-        return slice(start, stop)
-
-    else:
-        raise TypeError('expected integer or slice, found: %r' % item)
-
-
-# noinspection PyTypeChecker
-def normalize_array_selection(item, shape):
-    """Convenience function to normalize a selection within an array with
-    the given `shape`."""
-
-    # normalize item
-    if isinstance(item, numbers.Integral):
-        item = (int(item),)
-    elif isinstance(item, slice):
-        item = (item,)
-    elif item == Ellipsis:
-        item = (slice(None),)
-
-    # handle tuple of indices/slices
-    if isinstance(item, tuple):
-
-        # determine start and stop indices for all axes
-        selection = tuple(normalize_axis_selection(i, l)
-                          for i, l in zip(item, shape))
-
-        # fill out selection if not completely specified
-        if len(selection) < len(shape):
-            selection += tuple(slice(0, l) for l in shape[len(selection):])
-
-        return selection
-
-    else:
-        raise TypeError('expected indices or slice, found: %r' % item)
-
-
-def get_chunk_range(selection, chunks):
-    """Convenience function to get a range over all chunk indices,
-    for iterating over chunks."""
-    chunk_range = [range(s.start//l, int(np.ceil(s.stop/l)))
-                   if isinstance(s, slice)
-                   else range(s//l, (s//l)+1)
-                   for s, l in zip(selection, chunks)]
-    return chunk_range
-
-
 def normalize_resize_args(old_shape, *args):
 
     # normalize new shape argument
@@ -268,6 +175,38 @@ def normalize_order(order):
     if order not in ['C', 'F']:
         raise ValueError("order must be either 'C' or 'F', found: %r" % order)
     return order
+
+
+def normalize_fill_value(fill_value, dtype):
+
+    if fill_value is None:
+        # no fill value
+        pass
+
+    elif fill_value == 0 and dtype.kind == 'V':
+        # special case because 0 used as default, but cannot be used for structured arrays
+        fill_value = b''
+
+    elif dtype.kind == 'U':
+        # special case unicode because of encoding issues on Windows if passed through numpy
+        # https://github.com/alimanfoo/zarr/pull/172#issuecomment-343782713
+
+        if PY2 and isinstance(fill_value, binary_type):  # pragma: py3 no cover
+            # this is OK on PY2, can be written as JSON
+            pass
+
+        elif not isinstance(fill_value, text_type):
+            raise ValueError('fill_value {!r} is not valid for dtype {}; must be a unicode string'
+                             .format(fill_value, dtype))
+
+    else:
+        try:
+            fill_value = np.array(fill_value, dtype=dtype)[()]
+        except Exception as e:
+            # re-raise with our own error message to be helpful
+            raise ValueError('fill_value {!r} is not valid for dtype {}; nested exception: {}'
+                             .format(fill_value, dtype, e))
+    return fill_value
 
 
 def normalize_storage_path(path):
@@ -365,3 +304,12 @@ class InfoReporter(object):
     def _repr_html_(self):
         items = self.obj.info_items()
         return info_html_report(items)
+
+
+def check_array_shape(param, array, shape):
+    if not hasattr(array, 'shape'):
+        raise TypeError('parameter {!r}: expected an array-like object, got {!r}'
+                        .format(param, type(array)))
+    if array.shape != shape:
+        raise ValueError('parameter {!r}: expected array with shape {!r}, got {!r}'
+                         .format(param, shape, array.shape))

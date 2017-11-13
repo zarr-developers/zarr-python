@@ -3,31 +3,31 @@
 Zarr storage specification version 2
 ====================================
 
-This document provides a technical specification of the protocol and format 
-used for storing Zarr arrays. The key words "MUST", "MUST NOT", "REQUIRED", 
-"SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and 
-"OPTIONAL" in this document are to be interpreted as described in `RFC 2119 
+This document provides a technical specification of the protocol and format
+used for storing Zarr arrays. The key words "MUST", "MUST NOT", "REQUIRED",
+"SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and
+"OPTIONAL" in this document are to be interpreted as described in `RFC 2119
 <https://www.ietf.org/rfc/rfc2119.txt>`_.
 
 Status
 ------
 
-This specification is the latest version. See :ref:`spec` for previous 
+This specification is the latest version. See :ref:`spec` for previous
 versions.
 
 Storage
 -------
 
-A Zarr array can be stored in any storage system that provides a key/value 
-interface, where a key is an ASCII string and a value is an arbitrary sequence 
-of bytes, and the supported operations are read (get the sequence of bytes 
-associated with a given key), write (set the sequence of bytes associated with 
+A Zarr array can be stored in any storage system that provides a key/value
+interface, where a key is an ASCII string and a value is an arbitrary sequence
+of bytes, and the supported operations are read (get the sequence of bytes
+associated with a given key), write (set the sequence of bytes associated with
 a given key) and delete (remove a key/value pair).
 
-For example, a directory in a file system can provide this interface, where 
-keys are file names, values are file contents, and files can be read, written 
-or deleted via the operating system. Equally, an S3 bucket can provide this 
-interface, where keys are resource names, values are resource contents, and 
+For example, a directory in a file system can provide this interface, where
+keys are file names, values are file contents, and files can be read, written
+or deleted via the operating system. Equally, an S3 bucket can provide this
+interface, where keys are resource names, values are resource contents, and
 resources can be read, written or deleted via HTTP.
 
 Below an "array store" refers to any system implementing this interface.
@@ -38,11 +38,11 @@ Arrays
 Metadata
 ~~~~~~~~
 
-Each array requires essential configuration metadata to be stored, enabling 
-correct interpretation of the stored data. This metadata is encoded using JSON 
+Each array requires essential configuration metadata to be stored, enabling
+correct interpretation of the stored data. This metadata is encoded using JSON
 and stored as the value of the ".zarray" key within an array store.
 
-The metadata resource is a JSON object. The following keys MUST be present 
+The metadata resource is a JSON object. The following keys MUST be present
 within the object:
 
 zarr_format
@@ -57,8 +57,8 @@ dtype
     A string or list defining a valid data type for the array. See also
     the subsection below on data type encoding.
 compressor
-    A JSON object identifying the primary compression codec and providing 
-    configuration parameters, or ``null`` if no compressor is to be used. 
+    A JSON object identifying the primary compression codec and providing
+    configuration parameters, or ``null`` if no compressor is to be used.
     The object MUST contain an ``"id"`` key identifying the codec to be used.
 fill_value
     A scalar value providing the default value to use for uninitialized
@@ -74,10 +74,10 @@ filters
 
 Other keys MUST NOT be present within the metadata object.
 
-For example, the JSON object below defines a 2-dimensional array of 64-bit 
-little-endian floating point numbers with 10000 rows and 10000 columns, divided 
-into chunks of 1000 rows and 1000 columns (so there will be 100 chunks in total 
-arranged in a 10 by 10 grid). Within each chunk the data are laid out in C 
+For example, the JSON object below defines a 2-dimensional array of 64-bit
+little-endian floating point numbers with 10000 rows and 10000 columns, divided
+into chunks of 1000 rows and 1000 columns (so there will be 100 chunks in total
+arranged in a 10 by 10 grid). Within each chunk the data are laid out in C
 contiguous order. Each chunk is encoded using a delta filter and compressed
 using the Blosc compression library prior to storage::
 
@@ -109,8 +109,8 @@ Data type encoding
 ~~~~~~~~~~~~~~~~~~
 
 Simple data types are encoded within the array metadata as a string,
-following the `NumPy array protocol type string (typestr) format 
-<http://docs.scipy.org/doc/numpy/reference/arrays.interface.html>`_. The format 
+following the `NumPy array protocol type string (typestr) format
+<http://docs.scipy.org/doc/numpy/reference/arrays.interface.html>`_. The format
 consists of 3 parts:
 
 * One character describing the byteorder of the data (``"<"``: little-endian;
@@ -127,9 +127,9 @@ The byte order MUST be specified. E.g., ``"<f8"``, ``">i4"``, ``"|b1"`` and
 ``"|S12"`` are valid data type encodings.
 
 Structured data types (i.e., with multiple named fields) are encoded as a list
-of two-element lists, following `NumPy array protocol type descriptions (descr) 
-<http://docs.scipy.org/doc/numpy/reference/arrays.interface.html#>`_. For 
-example, the JSON list ``[["r", "|u1"], ["g", "|u1"], ["b", "|u1"]]`` defines a 
+of two-element lists, following `NumPy array protocol type descriptions (descr)
+<http://docs.scipy.org/doc/numpy/reference/arrays.interface.html#>`_. For
+example, the JSON list ``[["r", "|u1"], ["g", "|u1"], ["b", "|u1"]]`` defines a
 data type composed of three single-byte unsigned integers labelled "r", "g" and
 "b".
 
@@ -147,37 +147,41 @@ Positive Infinity  ``"Infinity"``
 Negative Infinity  ``"-Infinity"``
 =================  ===============
 
+If an array has a fixed length byte string data type (e.g., ``"|S12"``), or a
+structured data type, and if the fill value is not null, then the fill value
+MUST be encoded as an ASCII string using the standard Base64 alphabet.
+
 Chunks
 ~~~~~~
 
-Each chunk of the array is compressed by passing the raw bytes for the chunk 
-through the primary compression library to obtain a new sequence of bytes 
-comprising the compressed chunk data. No header is added to the compressed 
-bytes or any other modification made. The internal structure of the compressed 
-bytes will depend on which primary compressor was used. For example, the `Blosc 
-compressor <https://github.com/Blosc/c-blosc/blob/master/README_HEADER.rst>`_ 
-produces a sequence of bytes that begins with a 16-byte header followed by 
+Each chunk of the array is compressed by passing the raw bytes for the chunk
+through the primary compression library to obtain a new sequence of bytes
+comprising the compressed chunk data. No header is added to the compressed
+bytes or any other modification made. The internal structure of the compressed
+bytes will depend on which primary compressor was used. For example, the `Blosc
+compressor <https://github.com/Blosc/c-blosc/blob/master/README_HEADER.rst>`_
+produces a sequence of bytes that begins with a 16-byte header followed by
 compressed data.
 
-The compressed sequence of bytes for each chunk is stored under a key formed 
-from the index of the chunk within the grid of chunks representing the array. 
-To form a string key for a chunk, the indices are converted to strings and 
+The compressed sequence of bytes for each chunk is stored under a key formed
+from the index of the chunk within the grid of chunks representing the array.
+To form a string key for a chunk, the indices are converted to strings and
 concatenated with the period character (".") separating each index. For
-example, given an array with shape (10000, 10000) and chunk shape (1000, 1000) 
-there will be 100 chunks laid out in a 10 by 10 grid. The chunk with indices 
-(0, 0) provides data for rows 0-1000 and columns 0-1000 and is stored under the 
+example, given an array with shape (10000, 10000) and chunk shape (1000, 1000)
+there will be 100 chunks laid out in a 10 by 10 grid. The chunk with indices
+(0, 0) provides data for rows 0-1000 and columns 0-1000 and is stored under the
 key "0.0"; the chunk with indices (2, 4) provides data for rows 2000-3000 and
 columns 4000-5000 and is stored under the key "2.4"; etc.
 
-There is no need for all chunks to be present within an array store. If a chunk 
-is not present then it is considered to be in an uninitialized state.  An 
-unitialized chunk MUST be treated as if it was uniformly filled with the value 
+There is no need for all chunks to be present within an array store. If a chunk
+is not present then it is considered to be in an uninitialized state.  An
+unitialized chunk MUST be treated as if it was uniformly filled with the value
 of the "fill_value" field in the array metadata. If the "fill_value" field is
 ``null`` then the contents of the chunk are undefined.
 
-Note that all chunks in an array have the same shape. If the length of any 
-array dimension is not exactly divisible by the length of the corresponding 
-chunk dimension then some chunks will overhang the edge of the array. The 
+Note that all chunks in an array have the same shape. If the length of any
+array dimension is not exactly divisible by the length of the corresponding
+chunk dimension then some chunks will overhang the edge of the array. The
 contents of any chunk region falling outside the array are undefined.
 
 Filters
@@ -196,15 +200,15 @@ Hierarchies
 Logical storage paths
 ~~~~~~~~~~~~~~~~~~~~~
 
-Multiple arrays can be stored in the same array store by associating each array 
-with a different logical path. A logical path is simply an ASCII string. The 
-logical path is used to form a prefix for keys used by the array. For example, 
+Multiple arrays can be stored in the same array store by associating each array
+with a different logical path. A logical path is simply an ASCII string. The
+logical path is used to form a prefix for keys used by the array. For example,
 if an array is stored at logical path "foo/bar" then the array metadata will be
 stored under the key "foo/bar/.zarray", the user-defined attributes will be
 stored under the key "foo/bar/.zattrs", and the chunks will be stored under
 keys like "foo/bar/0.0", "foo/bar/0.1", etc.
 
-To ensure consistent behaviour across different storage systems, logical paths 
+To ensure consistent behaviour across different storage systems, logical paths
 MUST be normalized as follows:
 
 * Replace all backward slash characters ("\\") with forward slash characters
@@ -221,11 +225,11 @@ After normalization, if splitting a logical path by the "/" character results
 in any path segment equal to the string "." or the string ".." then an error
 MUST be raised.
 
-N.B., how the underlying array store processes requests to store values under 
+N.B., how the underlying array store processes requests to store values under
 keys containing the "/" character is entirely up to the store implementation
-and is not constrained by this specification. E.g., an array store could simply 
-treat all keys as opaque ASCII strings; equally, an array store could map 
-logical paths onto some kind of hierarchical storage (e.g., directories on a 
+and is not constrained by this specification. E.g., an array store could simply
+treat all keys as opaque ASCII strings; equally, an array store could map
+logical paths onto some kind of hierarchical storage (e.g., directories on a
 file system).
 
 Groups
@@ -233,12 +237,12 @@ Groups
 
 Arrays can be organized into groups which can also contain other groups. A
 group is created by storing group metadata under the ".zgroup" key under some
-logical path. E.g., a group exists at the root of an array store if the 
+logical path. E.g., a group exists at the root of an array store if the
 ".zgroup" key exists in the store, and a group exists at logical path "foo/bar"
 if the "foo/bar/.zgroup" key exists in the store.
 
-If the user requests a group to be created under some logical path, then groups 
-MUST also be created at all ancestor paths. E.g., if the user requests group 
+If the user requests a group to be created under some logical path, then groups
+MUST also be created at all ancestor paths. E.g., if the user requests group
 creation at path "foo/bar" then groups MUST be created at path "foo" and the
 root of the store, if they don't already exist.
 
@@ -256,7 +260,7 @@ zarr_format
 
 Other keys MUST NOT be present within the metadata object.
 
-The members of a group are arrays and groups stored under logical paths that 
+The members of a group are arrays and groups stored under logical paths that
 are direct children of the parent group's logical path. E.g., if groups exist
 under the logical paths "foo" and "foo/bar" and an array exists at logical path
 "foo/baz" then the members of the group at path "foo" are the group at path
@@ -265,8 +269,8 @@ under the logical paths "foo" and "foo/bar" and an array exists at logical path
 Attributes
 ----------
 
-An array or group can be associated with custom attributes, which are simple 
-key/value items with application-specific meaning. Custom attributes are 
+An array or group can be associated with custom attributes, which are simple
+key/value items with application-specific meaning. Custom attributes are
 encoded as a JSON object and stored under the ".zattrs" key within an array
 store.
 
@@ -377,7 +381,7 @@ Modify the array attributes::
 Storing multiple arrays in a hierarchy
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Below is an example of storing multiple Zarr arrays organized into a group 
+Below is an example of storing multiple Zarr arrays organized into a group
 hierarchy, using a directory on the local file system as storage. This storage
 implementation maps logical paths onto directory paths on the file system,
 however this is an implementation choice and is not required.

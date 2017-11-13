@@ -719,6 +719,9 @@ class Group(MutableMapping):
         path = self._item_path(name)
 
         if contains_array(self._store, path):
+
+            # array already exists at path, validate that it is the right shape and type
+
             synchronizer = kwargs.get('synchronizer', self._synchronizer)
             cache_metadata = kwargs.get('cache_metadata', True)
             a = Array(self._store, path=path, read_only=self._read_only,
@@ -726,14 +729,17 @@ class Group(MutableMapping):
                       cache_metadata=cache_metadata)
             shape = normalize_shape(shape)
             if shape != a.shape:
-                raise TypeError('shapes do not match')
+                raise TypeError('shape do not match existing array; expected {}, got {}'
+                                .format(a.shape, shape))
             dtype = np.dtype(dtype)
             if exact:
                 if dtype != a.dtype:
-                    raise TypeError('dtypes do not match exactly')
+                    raise TypeError('dtypes do not match exactly; expected {}, got {}'
+                                    .format(a.dtype, dtype))
             else:
                 if not np.can_cast(dtype, a.dtype):
-                    raise TypeError('dtypes cannot be safely cast')
+                    raise TypeError('dtypes ({}, {}) cannot be safely cast'
+                                    .format(dtype, a.dtype))
             return a
 
         else:
@@ -855,13 +861,12 @@ def _handle_store_arg(store):
         return store
 
 
-def group(store=None, overwrite=False, chunk_store=None, synchronizer=None,
-          path=None):
+def group(store=None, overwrite=False, chunk_store=None, synchronizer=None, path=None):
     """Create a group.
 
     Parameters
     ----------
-    store : MutableMapping or string
+    store : MutableMapping or string, optional
         Store or path to directory in file system.
     overwrite : bool, optional
         If True, delete any pre-existing data in `store` at `path` before
@@ -872,7 +877,7 @@ def group(store=None, overwrite=False, chunk_store=None, synchronizer=None,
     synchronizer : object, optional
         Array synchronizer.
     path : string, optional
-        Group path.
+        Group path within store.
 
     Returns
     -------
@@ -910,14 +915,14 @@ def group(store=None, overwrite=False, chunk_store=None, synchronizer=None,
                  synchronizer=synchronizer, path=path)
 
 
-def open_group(store=None, mode='a', synchronizer=None, path=None):
-    """Open a group using mode-like semantics.
+def open_group(store, mode='a', synchronizer=None, path=None):
+    """Open a group using file-mode-like semantics.
 
     Parameters
     ----------
     store : MutableMapping or string
         Store or path to directory in file system.
-    mode : {'r', 'r+', 'a', 'w', 'w-'}
+    mode : {'r', 'r+', 'a', 'w', 'w-'}, optional
         Persistence mode: 'r' means read only (must exist); 'r+' means
         read/write (must exist); 'a' means read/write (create if doesn't
         exist); 'w' means create (overwrite if exists); 'w-' means create
@@ -925,7 +930,7 @@ def open_group(store=None, mode='a', synchronizer=None, path=None):
     synchronizer : object, optional
         Array synchronizer.
     path : string, optional
-        Group path.
+        Group path within store.
 
     Returns
     -------
