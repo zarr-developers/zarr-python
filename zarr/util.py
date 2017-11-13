@@ -8,7 +8,7 @@ import numbers
 import numpy as np
 
 
-from zarr.compat import PY2, reduce, text_type
+from zarr.compat import PY2, reduce, text_type, binary_type
 
 
 def normalize_shape(shape):
@@ -188,13 +188,16 @@ def normalize_fill_value(fill_value, dtype):
         fill_value = b''
 
     elif dtype.kind == 'U':
-        # special case unicode because of encoding issues on Windows if pass through numpy...
-        # UnicodeDecodeError: 'utf-32-le' codec can't decode bytes in position ...: code point not
-        # in range(0x110000)
-        if not isinstance(fill_value, text_type):
-            raise ValueError('fill_value {!r} is not valid for dtype{}; must be a unicode string'
+        # special case unicode because of encoding issues on Windows if passed through numpy
+        # https://github.com/alimanfoo/zarr/pull/172#issuecomment-343782713
+
+        if PY2 and isinstance(fill_value, binary_type):  # pragma: py3 no cover
+            # this is OK on PY2, can be written as JSON
+            pass
+
+        elif not isinstance(fill_value, text_type):
+            raise ValueError('fill_value {!r} is not valid for dtype {}; must be a unicode string'
                              .format(fill_value, dtype))
-        # otherwise leave as-is
 
     else:
         try:

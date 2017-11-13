@@ -19,6 +19,7 @@ from zarr.storage import DirectoryStore
 from zarr.hierarchy import open_group
 from zarr.errors import PermissionError
 from zarr.codecs import Zlib
+from zarr.compat import PY2
 
 
 # something bcolz-like
@@ -134,17 +135,17 @@ def test_full():
     z = full(100, chunks=10, fill_value=np.nan, dtype='f8')
     assert np.all(np.isnan(z[:]))
 
-    # "NaN" byte string
-    v = b'NaN'
+    # byte string
+    v = b'xxx'
     z = full(100, chunks=10, fill_value=v, dtype='S3')
     eq(v, z[0])
     a = z[...]
     eq(v, a[0])
     t = z[...] == v
-    assert np.all(t), (np.count_nonzero(t), t.size)
+    assert np.all(t)
 
-    # "NaN" unicode string
-    v = 'NaN'
+    # unicode string
+    v = u'xxx'
     z = full(100, chunks=10, fill_value=v, dtype='U3')
     eq(v, z[0])
     a = z[...]
@@ -152,6 +153,11 @@ def test_full():
     eq(v, a[0])
     t = z[...] == v
     assert np.all(t)
+
+    # dodgy fill value
+    if not PY2:
+        with assert_raises(ValueError):
+            full(100, chunks=10, fill_value=b'NaN', dtype='U3')
 
 
 def test_open_array():
