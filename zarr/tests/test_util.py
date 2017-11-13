@@ -2,11 +2,11 @@
 from __future__ import absolute_import, print_function, division
 
 
-from nose.tools import eq_ as eq, assert_raises, assert_true, assert_false, \
-    assert_is_instance
+from nose.tools import (eq_ as eq, assert_raises, assert_true, assert_false, assert_is_instance)
 
-from zarr.util import normalize_shape, normalize_chunks, is_total_slice, normalize_resize_args, \
-    human_readable_size, normalize_order, guess_chunks, info_html_report, info_text_report
+from zarr.util import (normalize_shape, normalize_chunks, is_total_slice, normalize_resize_args,
+                       human_readable_size, normalize_order, guess_chunks, info_html_report,
+                       info_text_report)
 
 
 def test_normalize_shape():

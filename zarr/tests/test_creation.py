@@ -6,13 +6,12 @@ import atexit
 
 
 import numpy as np
-from nose.tools import eq_ as eq, assert_is_none, assert_is_instance, \
-    assert_raises
+from nose.tools import eq_ as eq, assert_is_none, assert_is_instance, assert_raises
 from numpy.testing import assert_array_equal
 
 
-from zarr.creation import array, empty, zeros, ones, full, open_array, \
-    empty_like, zeros_like, ones_like, full_like, open_like, create
+from zarr.creation import (array, empty, zeros, ones, full, open_array, empty_like, zeros_like,
+                           ones_like, full_like, open_like, create)
 from zarr.sync import ThreadSynchronizer
 from zarr.core import Array
 from zarr.storage import DirectoryStore
