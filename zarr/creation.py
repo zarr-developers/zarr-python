@@ -17,7 +17,7 @@ from zarr.errors import err_contains_array, err_contains_group, \
 def create(shape, chunks=None, dtype=None, compressor='default',
            fill_value=0, order='C', store=None, synchronizer=None,
            overwrite=False, path=None, chunk_store=None, filters=None,
-           cache_metadata=True, **kwargs):
+           cache_metadata=True, read_only=False, **kwargs):
     """Create an array.
 
     Parameters
@@ -53,6 +53,8 @@ def create(shape, chunks=None, dtype=None, compressor='default',
         lifetime of the object. If False, array metadata will be reloaded
         prior to all data access and modification operations (may incur
         overhead depending on storage and data access pattern).
+    read_only : bool, optional
+        True if array should be protected against modification.
 
     Returns
     -------
@@ -104,14 +106,13 @@ def create(shape, chunks=None, dtype=None, compressor='default',
     compressor, fill_value = _handle_kwargs(compressor, fill_value, kwargs)
 
     # initialize array metadata
-    init_array(store, shape=shape, chunks=chunks, dtype=dtype,
-               compressor=compressor, fill_value=fill_value, order=order,
-               overwrite=overwrite, path=path, chunk_store=chunk_store,
-               filters=filters)
+    init_array(store, shape=shape, chunks=chunks, dtype=dtype, compressor=compressor,
+               fill_value=fill_value, order=order, overwrite=overwrite, path=path,
+               chunk_store=chunk_store, filters=filters)
 
     # instantiate array
-    z = Array(store, path=path, chunk_store=chunk_store,
-              synchronizer=synchronizer, cache_metadata=cache_metadata)
+    z = Array(store, path=path, chunk_store=chunk_store, synchronizer=synchronizer,
+              cache_metadata=cache_metadata, read_only=read_only)
 
     return z
 
@@ -134,8 +135,10 @@ def _handle_kwargs(compressor, fill_value, kwargs):
         # 'compressor' overrides 'compression'
         if 'compression' in kwargs:
             warn("'compression' keyword argument overridden by 'compressor'")
+            del kwargs['compression']
         if 'compression_opts' in kwargs:
-            warn("ignoring keyword argument 'compression_opts'")
+            warn("'compression_opts' keyword argument overridden by 'compressor'")
+            del kwargs['compression_opts']
 
     elif 'compression' in kwargs:
         compression = kwargs.pop('compression')
@@ -316,11 +319,17 @@ def array(data, **kwargs):
     else:
         kwargs['chunks'] = kw_chunks
 
+    # pop read-only to apply after storing the data
+    read_only = kwargs.pop('read_only', False)
+
     # instantiate array
     z = create(**kwargs)
 
     # fill with data
     z[...] = data
+
+    # set read_only property afterwards
+    z.read_only = read_only
 
     return z
 
