@@ -790,11 +790,13 @@ class TestArray(unittest.TestCase):
                       (b'ccc', 3, 12.6)],
                      dtype=[('foo', 'S3'), ('bar', 'i4'), ('baz', 'f8')])
         for fill_value in None, b'', (b'zzz', 0, 0.0):
-            if fill_value is not None:
-                fill_value = np.array(fill_value, dtype=a.dtype)[()]
             z = self.create_array(shape=a.shape, chunks=2, dtype=a.dtype, fill_value=fill_value)
             eq(3, len(z))
-            eq(fill_value, z.fill_value)
+            if fill_value is not None:
+                np_fill_value = np.array(fill_value, dtype=a.dtype)[()]
+                eq(np_fill_value, z.fill_value)
+                eq(np_fill_value, z[0])
+                eq(np_fill_value, z[-1])
             z[...] = a
             eq(a[0], z[0])
             assert_array_equal(a, z[...])
@@ -950,7 +952,6 @@ class TestArrayWithFilters(TestArray):
             Delta(dtype=dtype),
             FixedScaleOffset(dtype=dtype, scale=1, offset=0),
         ]
-        # print(dtype, filters[1].astype)
         kwargs.setdefault('filters', filters)
         compressor = Zlib(1)
         kwargs.setdefault('compressor', compressor)

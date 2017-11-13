@@ -137,10 +137,8 @@ def test_full():
     # "NaN" byte string
     v = b'NaN'
     z = full(100, chunks=10, fill_value=v, dtype='S3')
-    print(z.store['.zarray'])
     eq(v, z[0])
     a = z[...]
-    print(a.dtype, a[0], a[0:2], repr(a[0]), type(a[0]), a[0] == v, a[0:2] == v)
     eq(v, a[0])
     t = z[...] == v
     assert np.all(t), (np.count_nonzero(t), t.size)
@@ -148,13 +146,12 @@ def test_full():
     # "NaN" unicode string
     v = 'NaN'
     z = full(100, chunks=10, fill_value=v, dtype='U3')
-    print(z.store['.zarray'])
     eq(v, z[0])
     a = z[...]
-    print(a.dtype, a[0], a[0:2], repr(a[0]), type(a[0]), a[0] == v, a[0:2] == v)
+    eq(z.dtype, a.dtype)
     eq(v, a[0])
     t = z[...] == v
-    assert np.all(t), (np.count_nonzero(t), t.size)
+    assert np.all(t)
 
 
 def test_open_array():

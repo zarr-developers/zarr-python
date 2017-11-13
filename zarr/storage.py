@@ -19,7 +19,7 @@ import numpy as np
 
 
 from zarr.util import normalize_shape, normalize_chunks, normalize_order, \
-    normalize_storage_path, buffer_size
+    normalize_storage_path, buffer_size, normalize_fill_value
 from zarr.meta import encode_array_metadata, encode_group_metadata
 from zarr.compat import PY2, binary_type
 from numcodecs.registry import codec_registry
@@ -285,18 +285,7 @@ def _init_array_metadata(store, shape, chunks=None, dtype=None, compressor='defa
     dtype = np.dtype(dtype)
     chunks = normalize_chunks(chunks, shape, dtype.itemsize)
     order = normalize_order(order)
-
-    # ensure fill_value of correct type
-    if fill_value == 0 and dtype.kind == 'V':
-        # special case because 0 used as default, but cannot be used for structured arrays
-        fill_value = b''
-    elif fill_value is not None:
-        try:
-            fill_value = np.array(fill_value, dtype=dtype)[()]
-        except Exception as e:
-            # re-raise with our own error message to be helpful
-            raise ValueError('fill_value {!r} is not valid for dtype {}; nested exception: {}'
-                             .format(fill_value, dtype, e))
+    fill_value = normalize_fill_value(fill_value)
 
     # compressor prep
     if shape == ():
