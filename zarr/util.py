@@ -89,6 +89,10 @@ def normalize_chunks(chunks, shape, typesize):
     if chunks is None or chunks is True:
         return guess_chunks(shape, typesize)
 
+    # handle no chunking
+    if chunks is False:
+        return shape
+
     # handle 1D convenience form
     if isinstance(chunks, numbers.Integral):
         chunks = (int(chunks),)
