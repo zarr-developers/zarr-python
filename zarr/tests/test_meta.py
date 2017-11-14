@@ -9,8 +9,8 @@ import numpy as np
 
 
 from zarr.compat import binary_type, text_type, PY2
-from zarr.meta import decode_array_metadata, encode_dtype, decode_dtype, \
-    ZARR_FORMAT, decode_group_metadata, encode_array_metadata
+from zarr.meta import (decode_array_metadata, encode_dtype, decode_dtype, ZARR_FORMAT,
+                       decode_group_metadata, encode_array_metadata)
 from zarr.errors import MetadataError
 from zarr.codecs import Delta, Zlib, Blosc
 

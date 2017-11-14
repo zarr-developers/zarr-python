@@ -9,8 +9,8 @@ import pickle
 
 import numpy as np
 from numpy.testing import assert_array_equal
-from nose.tools import eq_ as eq, assert_is_instance, \
-    assert_raises, assert_true, assert_false, assert_is, assert_is_none
+from nose.tools import (eq_ as eq, assert_is_instance, assert_raises, assert_true, assert_false,
+                        assert_is, assert_is_none)
 
 
 from zarr.storage import DirectoryStore, init_array, init_group, NestedDirectoryStore

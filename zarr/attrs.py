@@ -94,3 +94,6 @@ class Attributes(MutableMapping):
 
     def __len__(self):
         return len(self.asdict())
+
+    def _ipython_key_completions_(self):
+        return sorted(self)

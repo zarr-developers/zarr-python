@@ -15,11 +15,11 @@ from numpy.testing import assert_array_equal, assert_array_almost_equal
 from nose.tools import assert_raises, eq_ as eq, assert_is_none
 
 
-from zarr.storage import init_array, array_meta_key, attrs_key, DictStore, \
-    DirectoryStore, ZipStore, init_group, group_meta_key, getsize, \
-    migrate_1to2, TempStore, atexit_rmtree, NestedDirectoryStore, default_compressor
-from zarr.meta import decode_array_metadata, encode_array_metadata, \
-    ZARR_FORMAT, decode_group_metadata, encode_group_metadata
+from zarr.storage import (init_array, array_meta_key, attrs_key, DictStore, DirectoryStore,
+                          ZipStore, init_group, group_meta_key, getsize, migrate_1to2, TempStore,
+                          atexit_rmtree, NestedDirectoryStore, default_compressor)
+from zarr.meta import (decode_array_metadata, encode_array_metadata, ZARR_FORMAT,
+                       decode_group_metadata, encode_group_metadata)
 from zarr.compat import text_type
 from zarr.codecs import Zlib, Blosc, BZ2
 from zarr.errors import PermissionError

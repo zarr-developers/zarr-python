@@ -313,3 +313,37 @@ def check_array_shape(param, array, shape):
     if array.shape != shape:
         raise ValueError('parameter {!r}: expected array with shape {!r}, got {!r}'
                          .format(param, shape, array.shape))
+
+
+def is_valid_python_name(name):
+    if PY2:  # pragma: py3 no cover
+        import ast
+        # noinspection PyBroadException
+        try:
+            ast.parse('"".{};'.format(name))
+        except Exception:
+            return False
+        else:
+            return True
+    else:  # pragma: py2 no cover
+        from keyword import iskeyword
+        return name.isidentifier() and not iskeyword(name)
+
+
+def instance_dir(obj):  # pragma: py3 no cover
+    """Vanilla implementation of built-in dir() for PY2 to help with overriding __dir__. Based on
+    implementation of dir() in pypy."""
+    d = dict()
+    d.update(obj.__dict__)
+    d.update(class_dir(obj.__class__))
+    result = sorted(d.keys())
+    return result
+
+
+def class_dir(klass):  # pragma: py3 no cover
+    d = dict()
+    d.update(klass.__dict__)
+    bases = klass.__bases__
+    for base in bases:
+        d.update(class_dir(base))
+    return d

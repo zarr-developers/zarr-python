@@ -7,11 +7,10 @@ import numpy as np
 
 
 from zarr.core import Array
-from zarr.storage import DirectoryStore, init_array, contains_array, \
-    contains_group, default_compressor, normalize_storage_path
+from zarr.storage import (DirectoryStore, init_array, contains_array, contains_group,
+                          default_compressor, normalize_storage_path)
 from numcodecs.registry import codec_registry
-from zarr.errors import err_contains_array, err_contains_group, \
-    err_array_not_found
+from zarr.errors import err_contains_array, err_contains_group, err_array_not_found
 
 
 def create(shape, chunks=None, dtype=None, compressor='default',
