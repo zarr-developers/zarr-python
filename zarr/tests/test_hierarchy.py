@@ -78,14 +78,14 @@ class TestGroup(unittest.TestCase):
     def test_group_init_errors_1(self):
         store, chunk_store = self.create_store()
         # group metadata not initialized
-        with assert_raises(KeyError):
+        with assert_raises(ValueError):
             Group(store, chunk_store=chunk_store)
 
     def test_group_init_errors_2(self):
         store, chunk_store = self.create_store()
         init_array(store, shape=1000, chunks=100, chunk_store=chunk_store)
         # array blocks group
-        with assert_raises(KeyError):
+        with assert_raises(ValueError):
             Group(store, chunk_store=chunk_store)
 
     def test_create_group(self):
@@ -137,17 +137,17 @@ class TestGroup(unittest.TestCase):
         eq('test/bytes', go.path)
 
         # test bad keys
-        with assert_raises(KeyError):
+        with assert_raises(ValueError):
             g1.create_group('foo')  # already exists
-        with assert_raises(KeyError):
+        with assert_raises(ValueError):
             g1.create_group('a/b/c')  # already exists
-        with assert_raises(KeyError):
+        with assert_raises(ValueError):
             g4.create_group('/a/b/c')  # already exists
-        with assert_raises(KeyError):
+        with assert_raises(ValueError):
             g1.create_group('')
-        with assert_raises(KeyError):
+        with assert_raises(ValueError):
             g1.create_group('/')
-        with assert_raises(KeyError):
+        with assert_raises(ValueError):
             g1.create_group('//')
 
         # multi
@@ -321,33 +321,33 @@ class TestGroup(unittest.TestCase):
 
         # array obstructs group, array
         g.create_dataset('foo', shape=100, chunks=10)
-        with assert_raises(KeyError):
+        with assert_raises(ValueError):
             g.create_group('foo/bar')
-        with assert_raises(KeyError):
+        with assert_raises(ValueError):
             g.require_group('foo/bar')
-        with assert_raises(KeyError):
+        with assert_raises(ValueError):
             g.create_dataset('foo/bar', shape=100, chunks=10)
-        with assert_raises(KeyError):
+        with assert_raises(ValueError):
             g.require_dataset('foo/bar', shape=100, chunks=10)
 
         # array obstructs group, array
         g.create_dataset('a/b', shape=100, chunks=10)
-        with assert_raises(KeyError):
+        with assert_raises(ValueError):
             g.create_group('a/b')
-        with assert_raises(KeyError):
+        with assert_raises(ValueError):
             g.require_group('a/b')
-        with assert_raises(KeyError):
+        with assert_raises(ValueError):
             g.create_dataset('a/b', shape=100, chunks=10)
 
         # group obstructs array
         g.create_group('c/d')
-        with assert_raises(KeyError):
+        with assert_raises(ValueError):
             g.create_dataset('c', shape=100, chunks=10)
-        with assert_raises(KeyError):
+        with assert_raises(ValueError):
             g.require_dataset('c', shape=100, chunks=10)
-        with assert_raises(KeyError):
+        with assert_raises(ValueError):
             g.create_dataset('c/d', shape=100, chunks=10)
-        with assert_raises(KeyError):
+        with assert_raises(ValueError):
             g.require_dataset('c/d', shape=100, chunks=10)
 
         # h5py compatibility, accept 'fillvalue'
@@ -876,7 +876,7 @@ def test_group():
     # overwrite behaviour
     store = dict()
     init_array(store, shape=100, chunks=10)
-    with assert_raises(KeyError):
+    with assert_raises(ValueError):
         group(store)
     g = group(store, overwrite=True)
     assert_is_instance(g, Group)
@@ -899,9 +899,9 @@ def test_open_group():
     # mode in 'r', 'r+'
     open_array('example_array', shape=100, chunks=10, mode='w')
     for mode in 'r', 'r+':
-        with assert_raises(KeyError):
+        with assert_raises(ValueError):
             open_group('doesnotexist', mode=mode)
-        with assert_raises(KeyError):
+        with assert_raises(ValueError):
             open_group('example_array', mode=mode)
     g = open_group(store, mode='r')
     assert_is_instance(g, Group)
@@ -922,7 +922,7 @@ def test_open_group():
     eq(0, len(g))
     g.create_groups('foo', 'bar')
     eq(2, len(g))
-    with assert_raises(KeyError):
+    with assert_raises(ValueError):
         open_group('example_array', mode='a')
 
     # mode in 'w-', 'x'
@@ -934,9 +934,9 @@ def test_open_group():
         eq(0, len(g))
         g.create_groups('foo', 'bar')
         eq(2, len(g))
-        with assert_raises(KeyError):
+        with assert_raises(ValueError):
             open_group(store, mode=mode)
-        with assert_raises(KeyError):
+        with assert_raises(ValueError):
             open_group('example_array', mode=mode)
 
     # open with path

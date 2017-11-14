@@ -1730,6 +1730,8 @@ class Array(object):
             r += ' %r' % self.name
         r += ' %s' % str(self.shape)
         r += ' %s' % self.dtype
+        if self._read_only:
+            r += ' read-only'
         r += '>'
         return r
 

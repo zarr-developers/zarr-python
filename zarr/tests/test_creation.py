@@ -189,9 +189,9 @@ def test_open_array():
     # mode in 'r', 'r+'
     open_group('example_group', mode='w')
     for mode in 'r', 'r+':
-        with assert_raises(KeyError):
+        with assert_raises(ValueError):
             open_array('doesnotexist', mode=mode)
-        with assert_raises(KeyError):
+        with assert_raises(ValueError):
             open_array('example_group', mode=mode)
     z = open_array(store, mode='r')
     assert_is_instance(z, Array)
@@ -219,7 +219,7 @@ def test_open_array():
     eq((100,), z.shape)
     eq((10,), z.chunks)
     assert_array_equal(np.full(100, fill_value=42), z[:])
-    with assert_raises(KeyError):
+    with assert_raises(ValueError):
         open_array('example_group', mode='a')
 
     # mode in 'w-', 'x'
@@ -232,9 +232,9 @@ def test_open_array():
         eq((100,), z.shape)
         eq((10,), z.chunks)
         assert_array_equal(np.full(100, fill_value=42), z[:])
-        with assert_raises(KeyError):
+        with assert_raises(ValueError):
             open_array(store, mode=mode)
-        with assert_raises(KeyError):
+        with assert_raises(ValueError):
             open_array('example_group', mode=mode)
 
     # with synchronizer

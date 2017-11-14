@@ -10,3 +10,4 @@ API reference
     api/storage
     api/codecs
     api/sync
+    api/convenience
