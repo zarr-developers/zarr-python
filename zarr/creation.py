@@ -34,7 +34,7 @@ def create(shape, chunks=None, dtype=None, compressor='default',
     order : {'C', 'F'}, optional
         Memory layout to be used within each chunk.
     store : MutableMapping or string
-        Store or path to directory in file system.
+        Store or path to directory in file system or name of zip file.
     synchronizer : object, optional
         Array synchronizer.
     overwrite : bool, optional
@@ -345,7 +345,7 @@ def open_array(store, mode='a', shape=None, chunks=None, dtype=None, compressor=
     Parameters
     ----------
     store : MutableMapping or string
-        Store or path to directory in file system.
+        Store or path to directory in file system or name of zip file.
     mode : {'r', 'r+', 'a', 'w', 'w-'}, optional
         Persistence mode: 'r' means read only (must exist); 'r+' means
         read/write (must exist); 'a' means read/write (create if doesn't
@@ -458,10 +458,6 @@ def open_array(store, mode='a', shape=None, chunks=None, dtype=None, compressor=
               cache_metadata=cache_metadata, path=path)
 
     return z
-
-
-# # backwards compatibility
-# open = open_array
 
 
 def _like_args(a, kwargs):

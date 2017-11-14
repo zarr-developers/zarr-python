@@ -939,7 +939,7 @@ def open_group(store, mode='a', synchronizer=None, path=None):
     Parameters
     ----------
     store : MutableMapping or string
-        Store or path to directory in file system.
+        Store or path to directory in file system or name of zip file.
     mode : {'r', 'r+', 'a', 'w', 'w-'}, optional
         Persistence mode: 'r' means read only (must exist); 'r+' means
         read/write (must exist); 'a' means read/write (create if doesn't

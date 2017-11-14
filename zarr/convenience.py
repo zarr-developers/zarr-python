@@ -135,7 +135,10 @@ def savez(store, *args, **kwargs):
     ----------
     store : MutableMapping or string
         Store or path to directory in file system or name of zip file.
-    TODO
+    args : ndarray
+        NumPy arrays with data to save.
+    kwargs
+        NumPy arrays with data to save.
 
     Examples
     --------
@@ -217,12 +220,13 @@ class LazyLoader(Mapping):
         return r
 
 
-def load(store, path=None):
+def load(store):
     """Load data from an array or group into memory using NumPy.
 
     Parameters
     ----------
-    @@TODO
+    store : MutableMapping or string
+        Store or path to directory in file system or name of zip file.
 
     See Also
     --------
@@ -236,9 +240,8 @@ def load(store, path=None):
     """
     # handle polymorphic store arg
     store = normalize_store_arg(store)
-    path = normalize_storage_path(path)
-    if contains_array(store, path):
-        return Array(store=store, path=path)[...]
-    elif contains_group(store, path):
-        grp = Group(store=store, path=path)
+    if contains_array(store, path=None):
+        return Array(store=store, path=None)[...]
+    elif contains_group(store, path=None):
+        grp = Group(store=store, path=None)
         return LazyLoader(grp)
