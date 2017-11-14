@@ -427,6 +427,15 @@ def test_create():
         # bad fill value
         create(100, dtype='i4', fill_value='foo')
 
+    # auto chunks
+    z = create(1000000000, chunks=True)
+    assert z.chunks[0] < z.shape[0]
+    z = create(1000000000, chunks=None)  # backwards-compatibility
+    assert z.chunks[0] < z.shape[0]
+    # no chunks
+    z = create(1000000000, chunks=False)
+    assert z.chunks == z.shape
+
 
 def test_compression_args():
     warnings.resetwarnings()
