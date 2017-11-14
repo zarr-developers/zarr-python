@@ -10,10 +10,10 @@ import numpy as np
 from zarr.compat import PY2
 from zarr.attrs import Attributes
 from zarr.core import Array
-from zarr.storage import (contains_array, contains_group, init_group, DictStore, DirectoryStore,
-                          group_meta_key, attrs_key, listdir, rmdir)
+from zarr.storage import (contains_array, contains_group, init_group, DictStore, group_meta_key,
+                          attrs_key, listdir, rmdir)
 from zarr.creation import (array, create, empty, zeros, ones, full, empty_like, zeros_like,
-                           ones_like, full_like)
+                           ones_like, full_like, normalize_store_arg)
 from zarr.util import (normalize_storage_path, normalize_shape, InfoReporter,
                        is_valid_python_name, instance_dir)
 from zarr.errors import err_contains_array, err_contains_group, err_group_not_found, err_read_only
@@ -210,6 +210,8 @@ class Group(MutableMapping):
         r = '<%s.%s' % (t.__module__, t.__name__)
         if self.name:
             r += ' %r' % self.name
+        if self._read_only:
+            r += ' read-only'
         r += '>'
         return r
 
@@ -340,6 +342,7 @@ class Group(MutableMapping):
         if PY2:  # pragma: py3 no cover
             base = instance_dir(self)
         else:  # pragma: py2 no cover
+            # noinspection PyUnresolvedReferences
             base = super().__dir__()
         keys = sorted(set(base + list(self)))
         keys = [k for k in keys if is_valid_python_name(k)]
@@ -872,13 +875,8 @@ class Group(MutableMapping):
                          **kwargs)
 
 
-def _handle_store_arg(store):
-    if store is None:
-        return DictStore()
-    elif isinstance(store, str):
-        return DirectoryStore(store)
-    else:
-        return store
+def _normalize_store_arg(store, clobber=False):
+    return normalize_store_arg(store, clobber=clobber, default=DictStore)
 
 
 def group(store=None, overwrite=False, chunk_store=None, synchronizer=None, path=None):
@@ -923,7 +921,7 @@ def group(store=None, overwrite=False, chunk_store=None, synchronizer=None, path
     """
 
     # handle polymorphic store arg
-    store = _handle_store_arg(store)
+    store = _normalize_store_arg(store)
     path = normalize_storage_path(path)
 
     # require group
@@ -973,7 +971,7 @@ def open_group(store, mode='a', synchronizer=None, path=None):
     """
 
     # handle polymorphic store arg
-    store = _handle_store_arg(store)
+    store = _normalize_store_arg(store)
     path = normalize_storage_path(path)
 
     # ensure store is initialized

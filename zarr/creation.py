@@ -8,7 +8,7 @@ import numpy as np
 
 from zarr.core import Array
 from zarr.storage import (DirectoryStore, init_array, contains_array, contains_group,
-                          default_compressor, normalize_storage_path)
+                          default_compressor, normalize_storage_path, ZipStore)
 from numcodecs.registry import codec_registry
 from zarr.errors import err_contains_array, err_contains_group, err_array_not_found
 
@@ -99,10 +99,10 @@ def create(shape, chunks=None, dtype=None, compressor='default',
     """
 
     # handle polymorphic store arg
-    store = _handle_store_arg(store)
+    store = normalize_store_arg(store)
 
     # API compatibility with h5py
-    compressor, fill_value = _handle_kwargs(compressor, fill_value, kwargs)
+    compressor, fill_value = _kwargs_compat(compressor, fill_value, kwargs)
 
     # initialize array metadata
     init_array(store, shape=shape, chunks=chunks, dtype=dtype, compressor=compressor,
@@ -116,16 +116,20 @@ def create(shape, chunks=None, dtype=None, compressor='default',
     return z
 
 
-def _handle_store_arg(store):
+def normalize_store_arg(store, clobber=False, default=dict):
     if store is None:
-        return dict()
+        return default()
     elif isinstance(store, str):
-        return DirectoryStore(store)
+        if store.endswith('.zip'):
+            mode = 'w' if clobber else 'a'
+            return ZipStore(store, mode=mode)
+        else:
+            return DirectoryStore(store)
     else:
         return store
 
 
-def _handle_kwargs(compressor, fill_value, kwargs):
+def _kwargs_compat(compressor, fill_value, kwargs):
 
     # to be compatible with h5py, as well as backwards-compatible with Zarr
     # 1.x, accept 'compression' and 'compression_opts' keyword arguments
@@ -386,7 +390,7 @@ def open_array(store, mode='a', shape=None, chunks=None, dtype=None, compressor=
     <zarr.core.Array (10000, 10000) float64>
     >>> z2 = zarr.open_array('example.zarr', mode='r')
     >>> z2
-    <zarr.core.Array (10000, 10000) float64>
+    <zarr.core.Array (10000, 10000) float64 read-only>
     >>> np.all(z1[:] == z2[:])
     True
 
@@ -405,11 +409,11 @@ def open_array(store, mode='a', shape=None, chunks=None, dtype=None, compressor=
     # a : read/write if exists, create otherwise (default)
 
     # handle polymorphic store arg
-    store = _handle_store_arg(store)
+    store = normalize_store_arg(store, clobber=(mode == 'w'))
     path = normalize_storage_path(path)
 
     # API compatibility with h5py
-    compressor, fill_value = _handle_kwargs(compressor, fill_value, kwargs)
+    compressor, fill_value = _kwargs_compat(compressor, fill_value, kwargs)
 
     # ensure fill_value of correct type
     if fill_value is not None:
@@ -456,8 +460,8 @@ def open_array(store, mode='a', shape=None, chunks=None, dtype=None, compressor=
     return z
 
 
-# backwards compatibility
-open = open_array
+# # backwards compatibility
+# open = open_array
 
 
 def _like_args(a, kwargs):

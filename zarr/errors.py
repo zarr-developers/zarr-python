@@ -20,23 +20,23 @@ class MetadataError(Exception):
 
 
 def err_contains_group(path):
-    raise KeyError('path %r contains a group' % path)
+    raise ValueError('path %r contains a group' % path)
 
 
 def err_contains_array(path):
-    raise KeyError('path %r contains an array' % path)
+    raise ValueError('path %r contains an array' % path)
 
 
 def err_array_not_found(path):
-    raise KeyError('array not found at path %r' % path)
+    raise ValueError('array not found at path %r' % path)
 
 
 def err_group_not_found(path):
-    raise KeyError('group not found at path %r' % path)
+    raise ValueError('group not found at path %r' % path)
 
 
 def err_path_not_found(path):
-    raise KeyError('path %r not found' % path)
+    raise ValueError('nothing found at path %r' % path)
 
 
 def err_bad_compressor(compressor):
