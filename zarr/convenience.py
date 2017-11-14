@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+"""Convenience functions for storing and loading data."""
 from __future__ import absolute_import, print_function, division
 from collections import Mapping
 
@@ -90,7 +91,7 @@ def open(store, mode='a', **kwargs):
             err_path_not_found(path)
 
 
-def save(store, arr, **kwargs):
+def save_array(store, arr, **kwargs):
     """Convenience function to save a NumPy array to the local file system, following a similar
     API to the NumPy save() function.
 
@@ -110,24 +111,28 @@ def save(store, arr, **kwargs):
         >>> import zarr
         >>> import numpy as np
         >>> arr = np.arange(10000)
-        >>> zarr.save('example.zarr', arr)
+        >>> zarr.save_array('example.zarr', arr)
         >>> zarr.load('example.zarr')
         array([   0,    1,    2, ..., 9997, 9998, 9999])
 
     Save an array to a single file (uses a :class:`ZipStore`)::
 
-        >>> zarr.save('example.zip', arr)
+        >>> zarr.save_array('example.zip', arr)
         >>> zarr.load('example.zip')
         array([   0,    1,    2, ..., 9997, 9998, 9999])
 
     """
+    may_need_closing = isinstance(store, str)
     store = normalize_store_arg(store, clobber=True)
-    _create_array(arr, store=store, overwrite=True, **kwargs)
-    if hasattr(store, 'close'):
-        store.close()
+    try:
+        _create_array(arr, store=store, overwrite=True, **kwargs)
+    finally:
+        if may_need_closing and hasattr(store, 'close'):
+            # needed to ensure zip file records are written
+            store.close()
 
 
-def savez(store, *args, **kwargs):
+def save_group(store, *args, **kwargs):
     """Convenience function to save several NumPy arrays to the local file system, following a
     similar API to the NumPy savez()/savez_compressed() functions.
 
@@ -142,32 +147,38 @@ def savez(store, *args, **kwargs):
 
     Examples
     --------
-    Save arrays to a directory on the file system (uses a :class:`DirectoryStore`)::
+    Save several arrays to a directory on the file system (uses a :class:`DirectoryStore`)::
 
         >>> import zarr
         >>> import numpy as np
         >>> a1 = np.arange(10000)
         >>> a2 = np.arange(10000, 0, -1)
-        >>> zarr.savez('example.zarr', a1, a2)
+        >>> zarr.save_group('example.zarr', a1, a2)
         >>> loader = zarr.load('example.zarr')
+        >>> loader
+        <LazyLoader: arr_0, arr_1>
         >>> loader['arr_0']
         array([   0,    1,    2, ..., 9997, 9998, 9999])
         >>> loader['arr_1']
         array([10000,  9999,  9998, ...,     3,     2,     1])
 
-    Save arrays using named keyword arguments::
+    Save several arrays using named keyword arguments::
 
-        >>> zarr.savez('example.zarr', foo=a1, bar=a2)
+        >>> zarr.save_group('example.zarr', foo=a1, bar=a2)
         >>> loader = zarr.load('example.zarr')
+        >>> loader
+        <LazyLoader: bar, foo>
         >>> loader['foo']
         array([   0,    1,    2, ..., 9997, 9998, 9999])
         >>> loader['bar']
         array([10000,  9999,  9998, ...,     3,     2,     1])
 
-    Store arrays in a single zip file (uses a :class:`ZipStore`)::
+    Store several arrays in a single zip file (uses a :class:`ZipStore`)::
 
-        >>> zarr.savez('example.zip', foo=a1, bar=a2)
+        >>> zarr.save_group('example.zip', foo=a1, bar=a2)
         >>> loader = zarr.load('example.zip')
+        >>> loader
+        <LazyLoader: bar, foo>
         >>> loader['foo']
         array([   0,    1,    2, ..., 9997, 9998, 9999])
         >>> loader['bar']
@@ -178,16 +189,101 @@ def savez(store, *args, **kwargs):
     Default compression options will be used.
 
     """
+    if len(args) == 0 and len(kwargs) == 0:
+        raise ValueError('at least one array must be provided')
     # handle polymorphic store arg
+    may_need_closing = isinstance(store, str)
     store = normalize_store_arg(store, clobber=True)
-    grp = _create_group(store, overwrite=True)
-    for i, arr in enumerate(args):
-        k = 'arr_{}'.format(i)
-        grp.create_dataset(k, data=arr, overwrite=True)
-    for k, arr in kwargs.items():
-        grp.create_dataset(k, data=arr, overwrite=True)
-    if hasattr(store, 'close'):
-        store.close()
+    try:
+        grp = _create_group(store, overwrite=True)
+        for i, arr in enumerate(args):
+            k = 'arr_{}'.format(i)
+            grp.create_dataset(k, data=arr, overwrite=True)
+        for k, arr in kwargs.items():
+            grp.create_dataset(k, data=arr, overwrite=True)
+    finally:
+        if may_need_closing and hasattr(store, 'close'):
+            # needed to ensure zip file records are written
+            store.close()
+
+
+def save(store, *args, **kwargs):
+    """Convenience function to save an array or arrays to the local file system.
+
+    Parameters
+    ----------
+    store : MutableMapping or string
+        Store or path to directory in file system or name of zip file.
+    args : ndarray
+        NumPy arrays with data to save.
+    kwargs
+        NumPy arrays with data to save.
+
+    Examples
+    --------
+    Save an array to a directory on the file system (uses a :class:`DirectoryStore`)::
+
+        >>> import zarr
+        >>> import numpy as np
+        >>> arr = np.arange(10000)
+        >>> zarr.save('example.zarr', arr)
+        >>> zarr.load('example.zarr')
+        array([   0,    1,    2, ..., 9997, 9998, 9999])
+
+    Save an array to a single file (uses a :class:`ZipStore`)::
+
+        >>> zarr.save('example.zip', arr)
+        >>> zarr.load('example.zip')
+        array([   0,    1,    2, ..., 9997, 9998, 9999])
+
+    Save several arrays to a directory on the file system (uses a :class:`DirectoryStore`)::
+
+        >>> import zarr
+        >>> import numpy as np
+        >>> a1 = np.arange(10000)
+        >>> a2 = np.arange(10000, 0, -1)
+        >>> zarr.save('example.zarr', a1, a2)
+        >>> loader = zarr.load('example.zarr')
+        >>> loader
+        <LazyLoader: arr_0, arr_1>
+        >>> loader['arr_0']
+        array([   0,    1,    2, ..., 9997, 9998, 9999])
+        >>> loader['arr_1']
+        array([10000,  9999,  9998, ...,     3,     2,     1])
+
+    Save several arrays using named keyword arguments::
+
+        >>> zarr.save('example.zarr', foo=a1, bar=a2)
+        >>> loader = zarr.load('example.zarr')
+        >>> loader
+        <LazyLoader: bar, foo>
+        >>> loader['foo']
+        array([   0,    1,    2, ..., 9997, 9998, 9999])
+        >>> loader['bar']
+        array([10000,  9999,  9998, ...,     3,     2,     1])
+
+    Store several arrays in a single zip file (uses a :class:`ZipStore`)::
+
+        >>> zarr.save('example.zip', foo=a1, bar=a2)
+        >>> loader = zarr.load('example.zip')
+        >>> loader
+        <LazyLoader: bar, foo>
+        >>> loader['foo']
+        array([   0,    1,    2, ..., 9997, 9998, 9999])
+        >>> loader['bar']
+        array([10000,  9999,  9998, ...,     3,     2,     1])
+
+    See Also
+    --------
+    save_array, save_group
+
+    """
+    if len(args) == 0 and len(kwargs) == 0:
+        raise ValueError('at least one array must be provided')
+    if len(args) == 1 and len(kwargs) == 0:
+        save_array(store, args[0])
+    else:
+        save_group(store, *args, **kwargs)
 
 
 class LazyLoader(Mapping):
@@ -221,12 +317,18 @@ class LazyLoader(Mapping):
 
 
 def load(store):
-    """Load data from an array or group into memory using NumPy.
+    """Load data from an array or group into memory.
 
     Parameters
     ----------
     store : MutableMapping or string
         Store or path to directory in file system or name of zip file.
+
+    Returns
+    -------
+    out
+        If the store contains an array, out will be a numpy array. If the store contains a group,
+        out will be a dict-like object where keys are array names and values are numpy arrays.
 
     See Also
     --------
