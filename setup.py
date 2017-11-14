@@ -23,6 +23,7 @@ setup(
         'setuptools-scm>1.5.4'
     ],
     install_requires=[
+        'asciitree',
         'numpy>=1.7',
         'fasteners',
         'numcodecs>=0.2.0',

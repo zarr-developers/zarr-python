@@ -1,3 +1,4 @@
+asciitree
 nose
 numpy
 fasteners

@@ -3,18 +3,17 @@ from __future__ import absolute_import, print_function, division
 from collections import MutableMapping
 from itertools import islice
 
-
 import numpy as np
 
 
 from zarr.compat import PY2
 from zarr.attrs import Attributes
 from zarr.core import Array
-from zarr.storage import (contains_array, contains_group, init_group, DictStore, group_meta_key,
-                          attrs_key, listdir, rmdir)
-from zarr.creation import (array, create, empty, zeros, ones, full, empty_like, zeros_like,
-                           ones_like, full_like, normalize_store_arg)
-from zarr.util import (normalize_storage_path, normalize_shape, InfoReporter,
+from zarr.storage import (contains_array, contains_group, init_group,
+                          DictStore, group_meta_key, attrs_key, listdir, rmdir)
+from zarr.creation import (array, create, empty, zeros, ones, full,
+                           empty_like, zeros_like, ones_like, full_like, normalize_store_arg)
+from zarr.util import (normalize_storage_path, normalize_shape, InfoReporter, TreeViewer,
                        is_valid_python_name, instance_dir)
 from zarr.errors import err_contains_array, err_contains_group, err_group_not_found, err_read_only
 from zarr.meta import decode_group_metadata
@@ -62,6 +61,7 @@ class Group(MutableMapping):
     visitkeys
     visitvalues
     visititems
+    tree
     create_group
     require_group
     create_groups
@@ -545,6 +545,34 @@ class Group(MutableMapping):
 
         base_len = len(self.name)
         return self.visitvalues(lambda o: func(o.name[base_len:].lstrip("/"), o))
+
+    def tree(self):
+        """Provide a ``print``-able display of the hierarchy.
+
+        Examples
+        --------
+        >>> import zarr
+        >>> g1 = zarr.group()
+        >>> g2 = g1.create_group('foo')
+        >>> g3 = g1.create_group('bar')
+        >>> g4 = g3.create_group('baz')
+        >>> g5 = g3.create_group('quux')
+        >>> d1 = g5.create_dataset('baz', shape=100, chunks=10)
+        >>> print(g1.tree())
+        /
+         ├── bar
+         │   ├── baz
+         │   └── quux
+         │       └── baz[...]
+         └── foo
+        >>> print(g3.tree())
+        bar
+         ├── baz
+         └── quux
+             └── baz[...]
+        """
+
+        return TreeViewer(self)
 
     def _write_op(self, f, *args, **kwargs):
 

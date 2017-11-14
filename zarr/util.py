@@ -1,9 +1,11 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, print_function, division
 import operator
-from textwrap import TextWrapper
+from textwrap import TextWrapper, dedent
 import numbers
 
+from asciitree import BoxStyle, LeftAligned
+from asciitree.traversal import Traversal
 
 import numpy as np
 
@@ -308,6 +310,171 @@ class InfoReporter(object):
     def _repr_html_(self):
         items = self.obj.info_items()
         return info_html_report(items)
+
+
+class ZarrGroupTraversal(Traversal):
+
+    def get_children(self, node):
+        return getattr(node, "values", lambda: [])()
+
+    def get_root(self, tree):
+        return tree
+
+    def get_text(self, node):
+        name = node.name.split("/")[-1] or "/"
+        name += "[...]" if hasattr(node, "dtype") else ""
+        return name
+
+
+def custom_html_sublist(group, indent):
+    traverser = ZarrGroupTraversal(tree=group)
+    result = ""
+
+    result += (
+        """{0}<li><div>{1}</div>""".format(
+            indent, traverser.get_text(group)
+        )
+    )
+
+    children = traverser.get_children(group)
+    if children:
+        result += """\n{0}{0}<ul>\n""".format(indent)
+        for c in children:
+            for l in custom_html_sublist(c, indent).splitlines():
+                result += "{0}{0}{1}\n".format(indent, l)
+        result += "{0}{0}</ul>\n{0}".format(indent)
+
+    result += "</li>\n"
+
+    return result
+
+
+def custom_html_list(group, indent="    "):
+    result = ""
+
+    # Add custom CSS style for our HTML list
+    result += """<style type="text/css">\n"""
+    result += dedent("""\
+        div.zarr-tree {
+            font-family: Courier, monospace;
+            font-size: 11pt;
+            font-style: normal;
+        }
+
+        div.zarr-tree ul,
+        div.zarr-tree li,
+        div.zarr-tree li > div {
+            display: block;
+            position: relative;
+        }
+
+        div.zarr-tree ul,
+        div.zarr-tree li {
+            list-style-type: none;
+        }
+
+        div.zarr-tree li {
+            border-left: 2px solid #000;
+            margin-left: 1em;
+        }
+
+        div.zarr-tree li > div {
+            padding-left: 1.3em;
+            padding-top: 0.225em;
+            padding-bottom: 0.225em;
+        }
+
+        div.zarr-tree li > div::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -2px;
+            bottom: 50%;
+            width: 1.2em;
+            border-left: 2px solid #000;
+            border-bottom: 2px solid #000;
+        }
+
+        div.zarr-tree > ul > li:first-child > div {
+            padding-left: 4%;
+        }
+
+        div.zarr-tree > ul > li:first-child > div::before {
+            border: 0 none transparent;
+        }
+
+        div.zarr-tree ul > li:last-child {
+            border-left: 2px solid transparent;
+        }
+    """)
+    result += "</style>\n\n"
+
+    # Insert the HTML list
+    result += """<div class="zarr-tree">\n"""
+    result += "<ul>\n"
+    result += custom_html_sublist(group, indent=indent)
+    result += "</ul>\n"
+    result += "</div>\n"
+
+    return result
+
+
+class TreeViewer(object):
+
+    def __init__(self, group):
+        self.group = group
+
+        self.text_kwargs = dict(
+            horiz_len=2,
+            label_space=1,
+            indent=1
+        )
+
+        self.bytes_kwargs = dict(
+            UP_AND_RIGHT="+",
+            HORIZONTAL="-",
+            VERTICAL="|",
+            VERTICAL_AND_RIGHT="+"
+        )
+
+        self.unicode_kwargs = dict(
+            UP_AND_RIGHT=u"\u2514",
+            HORIZONTAL=u"\u2500",
+            VERTICAL=u"\u2502",
+            VERTICAL_AND_RIGHT=u"\u251C"
+        )
+
+    def __bytes__(self):
+        drawer = LeftAligned(
+            traverse=ZarrGroupTraversal(),
+            draw=BoxStyle(gfx=self.bytes_kwargs, **self.text_kwargs)
+        )
+
+        result = drawer(self.group)
+
+        # Unicode characters slip in on Python 3.
+        # So we need to straighten that out first.
+        if not PY2:
+            result = result.encode()
+
+        return result
+
+    def __unicode__(self):
+        drawer = LeftAligned(
+            traverse=ZarrGroupTraversal(),
+            draw=BoxStyle(gfx=self.unicode_kwargs, **self.text_kwargs)
+        )
+
+        return drawer(self.group)
+
+    def __repr__(self):
+        if PY2:
+            return self.__bytes__()
+        else:
+            return self.__unicode__()
+
+    def _repr_html_(self):
+        return custom_html_list(self.group)
 
 
 def check_array_shape(param, array, shape):
