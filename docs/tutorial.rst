@@ -5,9 +5,9 @@ Tutorial
 
 Zarr provides classes and functions for working with N-dimensional
 arrays that behave like NumPy arrays but whose data is divided into
-chunks and compressed. If you are already familiar with HDF5
-then Zarr arrays provide similar functionality, but with some
-additional flexibility.
+chunks and compressed. If you are already familiar with HDF5 then Zarr
+arrays provide similar functionality, but with some additional
+flexibility.
 
 .. _tutorial_create:
 
@@ -72,19 +72,20 @@ Persistent arrays
 -----------------
 
 In the examples above, compressed data for each chunk of the array was
-stored in memory. Zarr arrays can also be stored on a file system,
-enabling persistence of data between sessions. For example::
+stored in main memory. Zarr arrays can also be stored on a file
+system, enabling persistence of data between sessions. For example::
 
-    >>> z1 = zarr.open_array('example.zarr', mode='w', shape=(10000, 10000),
-    ...                      chunks=(1000, 1000), dtype='i4')
+    >>> z1 = zarr.open('example.zarr', mode='w', shape=(10000, 10000),
+    ...                chunks=(1000, 1000), dtype='i4')
 
 The array above will store its configuration metadata and all
 compressed chunk data in a directory called 'example.zarr' relative to
-the current working directory. The :func:`zarr.creation.open_array` function
-provides a convenient way to create a new persistent array or continue
-working with an existing array. Note that there is no need to close an
-array, and data are automatically flushed to disk whenever an array is
-modified.
+the current working directory. The :func:`zarr.open` function provides
+a convenient way to create a new persistent array or continue working
+with an existing array. Note that although the function is called
+"open", there is no need to close an array, and data are automatically
+flushed to disk and files are automatically closed whenever an array
+is modified.
 
 Persistent arrays support the same interface for reading and writing
 data, e.g.::
@@ -95,12 +96,12 @@ data, e.g.::
 
 Check that the data have been written and can be read again::
 
-    >>> z2 = zarr.open_array('example.zarr', mode='r')
+    >>> z2 = zarr.open('example.zarr', mode='r')
     >>> np.all(z1[...] == z2[...])
     True
 
-Please note that there are a number of other options for persistent array storage, see the
-section on :ref:`tutorial_tips_storage` below.
+Please note that there are a number of other options for persistent
+array storage, see the section on :ref:`tutorial_tips_storage` below.
 
 .. _tutorial_resize:
 
@@ -140,10 +141,12 @@ which can be used to append data to any axis. E.g.::
 Compressors
 -----------
 
-A number of different compressors can be used with Zarr. A separate package called Numcodecs_ is
-available which provides an interface to various compressor libraries including Blosc, Zstandard,
-LZ4, Zlib, BZ2 and LZMA. Different compressors can be provided via the ``compressor`` keyword
-argument accepted by all array creation functions. For example::
+A number of different compressors can be used with Zarr. A separate
+package called Numcodecs_ is available which provides a common
+interface to various compressor libraries including Blosc, Zstandard,
+LZ4, Zlib, BZ2 and LZMA. Different compressors can be provided via the
+``compressor`` keyword argument accepted by all array creation
+functions. For example::
 
     >>> from numcodecs import Blosc
     >>> compressor = Blosc(cname='zstd', clevel=3, shuffle=Blosc.BITSHUFFLE)
@@ -152,11 +155,13 @@ argument accepted by all array creation functions. For example::
     >>> z.compressor
     Blosc(cname='zstd', clevel=3, shuffle=BITSHUFFLE, blocksize=0)
 
-This array above will use Blosc as the primary compressor, using the Zstandard algorithm
-(compression level 3) internally within Blosc, and with the bitshuffle filter applied.
+This array above will use Blosc as the primary compressor, using the
+Zstandard algorithm (compression level 3) internally within Blosc, and
+with the bitshuffle filter applied.
 
-When using a compressor, it can be useful to get some diagnostics on the compression ratio. Zarr
-arrays provide a ``info`` property which can be used to print some diagnostics, e.g.::
+When using a compressor, it can be useful to get some diagnostics on
+the compression ratio. Zarr arrays provide a ``info`` property which
+can be used to print some diagnostics, e.g.::
 
     >>> z.info
     Type               : zarr.core.Array
@@ -173,20 +178,24 @@ arrays provide a ``info`` property which can be used to print some diagnostics, 
     Storage ratio      : 87.6
     Chunks initialized : 100/100
 
-If you don't specify a compressor, by default Zarr uses the Blosc compressor. Blosc is extremely
-fast and can be configured in a variety of ways to improve the compression ratio for different
-types of data. Blosc is in fact a "meta-compressor", which means that it can used a number of
-different compression algorithms internally to compress the data. Blosc also provides highly
-optimized implementations of byte and bit shuffle filters, which can significantly improve
-compression ratios for some data. A list of the internal compression libraries available within
-Blosc can be obtained via::
+If you don't specify a compressor, by default Zarr uses the Blosc
+compressor. Blosc is generally very fast and can be configured in a
+variety of ways to improve the compression ratio for different types
+of data. Blosc is in fact a "meta-compressor", which means that it can
+used a number of different compression algorithms internally to
+compress the data. Blosc also provides highly optimized
+implementations of byte and bit shuffle filters, which can
+significantly improve compression ratios for some data. A list of the
+internal compression libraries available within Blosc can be obtained
+via::
 
     >>> from numcodecs import blosc
     >>> blosc.list_compressors()
     ['blosclz', 'lz4', 'lz4hc', 'snappy', 'zlib', 'zstd']
 
-In addition to Blosc, other compression libraries can also be used. For example, here is an array
-using Zstandard compression, level 1::
+In addition to Blosc, other compression libraries can also be
+used. For example, here is an array using Zstandard compression, level
+1::
 
     >>> from numcodecs import Zstd
     >>> z = zarr.array(np.arange(100000000, dtype='i4').reshape(10000, 10000),
@@ -220,7 +229,8 @@ The default compressor can be changed by setting the value of the
     >>> # switch back to Blosc defaults
     ... zarr.storage.default_compressor = Blosc()
 
-To disable compression, set ``compressor=None`` when creating an array, e.g.::
+To disable compression, set ``compressor=None`` when creating an
+array, e.g.::
 
     >>> z = zarr.zeros(100000000, chunks=1000000, compressor=None)
     >>> z.compressor is None
@@ -231,19 +241,20 @@ To disable compression, set ``compressor=None`` when creating an array, e.g.::
 Filters
 -------
 
-In some cases, compression can be improved by transforming the data in some
-way. For example, if nearby values tend to be correlated, then shuffling the
-bytes within each numerical value or storing the difference between adjacent
-values may increase compression ratio. Some compressors provide built-in
-filters that apply transformations to the data prior to compression. For
-example, the Blosc compressor has highly optimized built-in implementations of
+In some cases, compression can be improved by transforming the data in
+some way. For example, if nearby values tend to be correlated, then
+shuffling the bytes within each numerical value or storing the
+difference between adjacent values may increase compression
+ratio. Some compressors provide built-in filters that apply
+transformations to the data prior to compression. For example, the
+Blosc compressor has highly optimized built-in implementations of
 byte- and bit-shuffle filters, and the LZMA compressor has a built-in
 implementation of a delta filter. However, to provide additional
-flexibility for implementing and using filters in combination with different
-compressors, Zarr also provides a mechanism for configuring filters outside of
-the primary compressor.
+flexibility for implementing and using filters in combination with
+different compressors, Zarr also provides a mechanism for configuring
+filters outside of the primary compressor.
 
-Here is an example using the delta filter with the Blosc compressor::
+Here is an example using a delta filter with the Blosc compressor::
 
     >>> from numcodecs import Blosc, Delta
     >>> filters = [Delta(dtype='i4')]
@@ -279,8 +290,9 @@ parallelism are supported. The Python global interpreter lock (GIL) is
 released for both compression and decompression operations, so Zarr
 will not block other Python threads from running.
 
-A Zarr array can be read concurrently by multiple threads or processes.
-No synchronization (i.e., locking) is required for concurrent reads.
+A Zarr array can be read concurrently by multiple threads or
+processes.  No synchronization (i.e., locking) is required for
+concurrent reads.
 
 A Zarr array can also be written to concurrently by multiple threads
 or processes. Some synchronization may be required, depending on the
@@ -313,8 +325,9 @@ array with thread synchronization::
 
 This array is safe to read or write within a multi-threaded program.
 
-Zarr also provides support for process synchronization via file locking,
-provided that all processes have access to a shared file system. E.g.::
+Zarr also provides support for process synchronization via file
+locking, provided that all processes have access to a shared file
+system. E.g.::
 
     >>> synchronizer = zarr.ProcessSynchronizer('example.sync')
     >>> z = zarr.open_array('example', mode='w', shape=(10000, 10000),
@@ -330,8 +343,9 @@ This array is safe to read or write from multiple processes.
 User attributes
 ---------------
 
-Zarr arrays also support custom key/value attributes, which can be useful
-for associating an array with application-specific metadata. For example::
+Zarr arrays support custom key/value attributes, which can be useful
+for associating an array with application-specific metadata. For
+example::
 
     >>> z = zarr.zeros((10000, 10000), chunks=(1000, 1000), dtype='i4')
     >>> z.attrs['foo'] = 'bar'
@@ -345,17 +359,17 @@ for associating an array with application-specific metadata. For example::
     >>> z.attrs['baz']
     42
 
-Internally Zarr uses JSON to store array attributes, so attribute values
-must be JSON serializable.
+Internally Zarr uses JSON to store array attributes, so attribute
+values must be JSON serializable.
 
 .. _tutorial_groups:
 
 Groups
 ------
 
-Zarr supports hierarchical organization of arrays via groups. As with arrays,
-groups can be stored in memory, on disk, or via other storage systems that
-support a similar interface.
+Zarr supports hierarchical organization of arrays via groups. As with
+arrays, groups can be stored in memory, on disk, or via other storage
+systems that support a similar interface.
 
 To create a group, use the :func:`zarr.hierarchy.group` function::
 
@@ -363,8 +377,9 @@ To create a group, use the :func:`zarr.hierarchy.group` function::
     >>> root_group
     <zarr.hierarchy.Group '/'>
 
-Groups have a similar API to the Group class from `h5py <http://www.h5py.org/>`_.
-For example, groups can contain other groups::
+Groups have a similar API to the Group class from `h5py
+<http://www.h5py.org/>`_.  For example, groups can contain other
+groups::
 
     >>> foo_group = root_group.create_group('foo')
     >>> bar_group = foo_group.create_group('bar')
@@ -391,19 +406,19 @@ Members of a group can be accessed via the suffix notation, e.g.::
     >>> root_group['foo']
     <zarr.hierarchy.Group '/foo'>
 
-The '/' character can be used to access multiple levels of the hierarchy,
-e.g.::
+The '/' character can be used to access multiple levels of the
+hierarchy in one call, e.g.::
 
     >>> root_group['foo/bar']
     <zarr.hierarchy.Group '/foo/bar'>
     >>> root_group['foo/bar/baz']
     <zarr.core.Array '/foo/bar/baz' (10000, 10000) int32>
 
-The :func:`zarr.hierarchy.open_group` provides a convenient way to create or
-re-open a group stored in a directory on the file-system, with sub-groups
-stored in sub-directories, e.g.::
+The :func:`zarr.open` function provides a convenient way to create or
+re-open a group stored in a directory on the file-system, with
+sub-groups stored in sub-directories, e.g.::
 
-    >>> persistent_group = zarr.open_group('example', mode='w')
+    >>> persistent_group = zarr.open('example.zarr', mode='w')
     >>> persistent_group
     <zarr.hierarchy.Group '/'>
     >>> z = persistent_group.create_dataset('foo/bar/baz', shape=(10000, 10000),
@@ -418,18 +433,21 @@ For more information on groups see the :mod:`zarr.hierarchy` API docs.
 Advanced indexing
 -----------------
 
-As of Zarr version 2.2, Zarr arrays support several methods for advanced or "fancy" indexing,
-which enable a subset of data items to be extracted or updated in an array without loading the
-entire array into memory. Note that although this functionality is similar to some of the
-advanced indexing capabilities available on NumPy arrays and on h5py datasets, **the Zarr API for
-advanced indexing is different from both NumPy and h5py**, so please read this section carefully.
-For a complete description of the indexing API, see the documentation for the
-:class:`zarr.core.Array` class.
+As of Zarr version 2.2, Zarr arrays support several methods for
+advanced or "fancy" indexing, which enable a subset of data items to
+be extracted or updated in an array without loading the entire array
+into memory. Note that although this functionality is similar to some
+of the advanced indexing capabilities available on NumPy arrays and on
+h5py datasets, **the Zarr API for advanced indexing is different from
+both NumPy and h5py**, so please read this section carefully.  For a
+complete description of the indexing API, see the documentation for
+the :class:`zarr.core.Array` class.
 
 Indexing with coordinate arrays
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Items from a Zarr array can be extracted by providing an integer array of coordinates. E.g.::
+Items from a Zarr array can be extracted by providing an integer array
+of coordinates. E.g.::
 
     >>> z = zarr.array(np.arange(10))
     >>> z[...]
@@ -443,7 +461,8 @@ Coordinate arrays can also be used to update data, e.g.::
     >>> z[...]
     array([ 0, -1,  2,  3, -2,  5,  6,  7,  8,  9])
 
-For multidimensional arrays, coordinates must be provided for each dimension, e.g.::
+For multidimensional arrays, coordinates must be provided for each
+dimension, e.g.::
 
     >>> z = zarr.array(np.arange(15).reshape(3, 5))
     >>> z[...]
@@ -458,7 +477,8 @@ For multidimensional arrays, coordinates must be provided for each dimension, e.
            [ 5,  6,  7,  8,  9],
            [10, 11, 12, -2, 14]])
 
-For convenience, coordinate indexing is also available via the ``vindex`` property, e.g.::
+For convenience, coordinate indexing is also available via the
+``vindex`` property, e.g.::
 
     >>> z.vindex[[0, 2], [1, 3]]
     array([-1, -2])
@@ -471,7 +491,7 @@ For convenience, coordinate indexing is also available via the ``vindex`` proper
 Indexing with a mask array
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Items can also be extracted by providing a Boolean mask array. E.g.::
+Items can also be extracted by providing a Boolean mask. E.g.::
 
     >>> z = zarr.array(np.arange(10))
     >>> z[...]
@@ -503,7 +523,8 @@ Here is a multidimensional example::
            [ 5,  6,  7,  8,  9],
            [10, 11, 12, -2, 14]])
 
-For convenience, mask indexing is also available via the ``vindex`` property, e.g.::
+For convenience, mask indexing is also available via the ``vindex``
+property, e.g.::
 
     >>> z.vindex[sel]
     array([-1, -2])
@@ -513,16 +534,18 @@ For convenience, mask indexing is also available via the ``vindex`` property, e.
            [ 5,  6,  7,  8,  9],
            [10, 11, 12, -4, 14]])
 
-Mask indexing is conceptually the same as coordinate indexing, and is implemented internally via
-the same machinery. Both styles of indexing allow selecting arbitrary items from an array, also
-known as point selection.
+Mask indexing is conceptually the same as coordinate indexing, and is
+implemented internally via the same machinery. Both styles of indexing
+allow selecting arbitrary items from an array, also known as point
+selection.
 
 Orthogonal indexing
 ~~~~~~~~~~~~~~~~~~~
 
-Zarr arrays also support methods for orthogonal indexing, which allows selections to be made
-along each dimension of an array independently. For example, this allows selecting a subset of
-rows and/or columns from a 2-dimensional array. E.g.::
+Zarr arrays also support methods for orthogonal indexing, which allows
+selections to be made along each dimension of an array
+independently. For example, this allows selecting a subset of rows
+and/or columns from a 2-dimensional array. E.g.::
 
     >>> z = zarr.array(np.arange(15).reshape(3, 5))
     >>> z[...]
@@ -548,8 +571,8 @@ Data can also be modified, e.g.::
            [ 5,  6,  7,  8,  9],
            [10, -3, 12, -4, 14]])
 
-For convenience, the orthogonal indexing functionality is also available via the ``oindex``
-property, e.g.::
+For convenience, the orthogonal indexing functionality is also
+available via the ``oindex`` property, e.g.::
 
     >>> z = zarr.array(np.arange(15).reshape(3, 5))
     >>> z.oindex[[0, 2], :]  # select first and third rows
@@ -568,14 +591,15 @@ property, e.g.::
            [ 5,  6,  7,  8,  9],
            [10, -3, 12, -4, 14]])
 
-Any combination of integer, slice, integer array and/or Boolean array can be used for orthogonal
-indexing.
+Any combination of integer, slice, 1D integer array and/or 1D Boolean
+array can be used for orthogonal indexing.
 
 Indexing fields in structured arrays
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-All selection methods support a ``fields`` parameter which allows retrieving or replacing data
-for a specific field in an array with a structured dtype. E.g.::
+All selection methods support a ``fields`` parameter which allows
+retrieving or replacing data for a specific field in an array with a
+structured dtype. E.g.::
 
     >>> a = np.array([(b'aaa', 1, 4.2),
     ...               (b'bbb', 2, 8.4),
@@ -603,7 +627,8 @@ Tips and tricks
 Array and group information
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Diagnostic information about arrays and groups is available via the ``info`` property. E.g.::
+Diagnostic information about arrays and groups is available via the
+``info`` property. E.g.::
 
     >>> root_group = zarr.group()
     >>> foo_group = root_group.create_group('foo')
@@ -702,42 +727,48 @@ data. E.g.::
     Storage ratio      : 41.5
     Chunks initialized : 100/100
 
-In the above example, Fortran order gives a better compression ratio. This
-is an artifical example but illustrates the general point that changing the
-order of bytes within chunks of an array may improve the compression ratio,
-depending on the structure of the data, the compression algorithm used, and
-which compression filters (e.g., byte shuffle) have been applied.
+In the above example, Fortran order gives a better compression
+ratio. This is an artifical example but illustrates the general point
+that changing the order of bytes within chunks of an array may improve
+the compression ratio, depending on the structure of the data, the
+compression algorithm used, and which compression filters (e.g., byte
+shuffle) have been applied.
 
 .. _tutorial_tips_storage:
 
 Storage alternatives
 ~~~~~~~~~~~~~~~~~~~~
 
-Zarr can use any object that implements the ``MutableMapping`` interface as the store for a group
-or an array. Some storage classes are provided in the :mod:`zarr.storage` module. For example,
-the :class:`zarr.storage.DirectoryStore` class provides a ``MutableMapping`` interface to a
-directory on the local file system. This is used under the hood by the
-:func:`zarr.creation.open_array` and :func:`zarr.hierarchy.open_group` functions. In other words,
-the following code::
+Zarr can use any object that implements the ``MutableMapping``
+interface as the store for a group or an array. Some storage classes
+are provided in the :mod:`zarr.storage` module. For example, the
+:class:`zarr.storage.DirectoryStore` class provides a
+``MutableMapping`` interface to a directory on the local file
+system. This is used under the hood by the
+:func:`zarr.creation.open_array` and :func:`zarr.hierarchy.open_group`
+functions.
 
-    >>> z = zarr.open_array('example.zarr', mode='w', shape=1000000, dtype='i4')
+In other words, the following code::
 
-...is just short-hand for::
+    >>> z = zarr.open('example.zarr', mode='w', shape=1000000, dtype='i4')
+
+...is just a convenient short-hand for::
 
     >>> store = zarr.DirectoryStore('example.zarr')
     >>> z = zarr.zeros(store=store, overwrite=True, shape=1000000, dtype='i4')
 
 ...and the following code::
 
-    >>> grp = zarr.open_group('example.zarr', mode='w')
+    >>> grp = zarr.open('example.zarr', mode='w')
 
 ...is just a short-hand for::
 
     >>> store = zarr.DirectoryStore('example.zarr')
     >>> grp = zarr.group(store=store, overwrite=True)
 
-Any other storage class could be used in place of :class:`zarr.storage.DirectoryStore`. For
-example, here is an array stored directly into a Zip file::
+Any other storage class could be used in place of
+:class:`zarr.storage.DirectoryStore`. For example, here is an array
+stored directly into a zip file::
 
     >>> store = zarr.ZipStore('example.zip', mode='w')
     >>> root_group = zarr.group(store=store)
@@ -766,9 +797,10 @@ Re-open and check that data have been written::
 Note that there are some restrictions on how Zip files can be used,
 because items within a Zip file cannot be updated in place. This means
 that data in the array should only be written once and write
-operations should be aligned with chunk boundaries. Note also that the ``close()`` method must be
-called after writing any data to the store, otherwise essential records will not be written to
-the underlying zip file.
+operations should be aligned with chunk boundaries. Note also that the
+``close()`` method must be called after writing any data to the store,
+otherwise essential records will not be written to the underlying zip
+file.
 
 The Dask project has implementations of the ``MutableMapping``
 interface for distributed storage systems, see the `S3Map
@@ -782,41 +814,46 @@ classes.
 Chunk size and shape
 ~~~~~~~~~~~~~~~~~~~~
 
-In general, chunks of at least 1 megabyte (1M) seem to provide the best
-performance, at least when using the Blosc compression library.
+In general, chunks of at least 1 megabyte (1M) seem to provide the
+best performance, at least when using the Blosc compression library.
 
-The optimal chunk shape will depend on how you want to access the data. E.g.,
-for a 2-dimensional array, if you only ever take slices along the first
-dimension, then chunk across the second dimenson. If you know you want to
-chunk across an entire dimension you can use ``None`` within the ``chunks``
-argument, e.g.::
+The optimal chunk shape will depend on how you want to access the
+data. E.g., for a 2-dimensional array, if you only ever take slices
+along the first dimension, then chunk across the second dimenson. If
+you know you want to chunk across an entire dimension you can use
+``None`` within the ``chunks`` argument, e.g.::
 
     >>> z1 = zarr.zeros((10000, 10000), chunks=(100, None), dtype='i4')
     >>> z1.chunks
     (100, 10000)
 
-Alternatively, if you only ever take slices along the second dimension, then
-chunk across the first dimension, e.g.::
+Alternatively, if you only ever take slices along the second
+dimension, then chunk across the first dimension, e.g.::
 
     >>> z2 = zarr.zeros((10000, 10000), chunks=(None, 100), dtype='i4')
     >>> z2.chunks
     (10000, 100)
 
-If you require reasonable performance for both access patterns then you need
-to find a compromise, e.g.::
+If you require reasonable performance for both access patterns then
+you need to find a compromise, e.g.::
 
     >>> z3 = zarr.zeros((10000, 10000), chunks=(1000, 1000), dtype='i4')
     >>> z3.chunks
     (1000, 1000)
 
-If you are feeling lazy, you can let Zarr guess a chunk shape for your data,
-although please note that the algorithm for guessing a chunk shape is based on
-simple heuristics and may be far from optimal. E.g.::
+If you are feeling lazy, you can let Zarr guess a chunk shape for your
+data by providing ``chunks=True`, although please note that the
+algorithm for guessing a chunk shape is based on simple heuristics and
+may be far from optimal. E.g.::
 
-    >>> z4 = zarr.zeros((10000, 10000), dtype='i4')
+    >>> z4 = zarr.zeros((10000, 10000), chunks=True, dtype='i4')
     >>> z4.chunks
     (313, 625)
 
+If you know you are always going to be loading the entire array into
+memory, you can turn off chunks by providing ``chunks=False``, in
+which case there will be one single chunk for the array.
+ 
 .. _tutorial_tips_blosc:
 
 Configuring Blosc
