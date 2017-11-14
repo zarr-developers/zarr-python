@@ -3,22 +3,28 @@ from __future__ import absolute_import, print_function, division
 import tempfile
 import shutil
 import atexit
+import warnings
 
 
 import numpy as np
-from nose.tools import eq_ as eq, assert_is_none, assert_is_instance, \
-    assert_raises
+from nose.tools import eq_ as eq, assert_is_none, assert_is_instance, assert_raises
 from numpy.testing import assert_array_equal
 
 
-from zarr.creation import array, empty, zeros, ones, full, open_array, \
-    empty_like, zeros_like, ones_like, full_like, open_like, create
+from zarr.creation import (array, empty, zeros, ones, full, open_array, empty_like, zeros_like,
+                           ones_like, full_like, open_like, create)
 from zarr.sync import ThreadSynchronizer
 from zarr.core import Array
 from zarr.storage import DirectoryStore
 from zarr.hierarchy import open_group
 from zarr.errors import PermissionError
 from zarr.codecs import Zlib
+from zarr.compat import PY2
+
+
+# needed for PY2/PY3 consistent behaviour
+warnings.resetwarnings()
+warnings.simplefilter('always')
 
 
 # something bcolz-like
@@ -97,6 +103,12 @@ def test_array():
     assert_array_equal(a[:], z[:])
     eq(a.dtype, z.dtype)
 
+    # with dtype=something else
+    a = np.arange(100, dtype='i4')
+    z = array(a, dtype='i8')
+    assert_array_equal(a[:], z[:])
+    eq(np.dtype('i8'), z.dtype)
+
 
 def test_empty():
     z = empty(100, chunks=10)
@@ -128,9 +140,37 @@ def test_full():
     z = full(100, chunks=10, fill_value=np.nan, dtype='f8')
     assert np.all(np.isnan(z[:]))
 
-    # "NaN"
-    z = full(100, chunks=10, fill_value='NaN', dtype='U3')
-    assert np.all(z[:] == 'NaN')
+    # byte string dtype
+    v = b'xxx'
+    z = full(100, chunks=10, fill_value=v, dtype='S3')
+    eq(v, z[0])
+    a = z[...]
+    eq(z.dtype, a.dtype)
+    eq(v, a[0])
+    assert np.all(a == v)
+
+    # unicode string dtype
+    v = u'xxx'
+    z = full(100, chunks=10, fill_value=v, dtype='U3')
+    eq(v, z[0])
+    a = z[...]
+    eq(z.dtype, a.dtype)
+    eq(v, a[0])
+    assert np.all(a == v)
+
+    # bytes fill value / unicode dtype
+    v = b'xxx'
+    if PY2:  # pragma: py3 no cover
+        # allow this on PY2
+        z = full(100, chunks=10, fill_value=v, dtype='U3')
+        a = z[...]
+        eq(z.dtype, a.dtype)
+        eq(v, a[0])
+        assert np.all(a == v)
+    else:  # pragma: py2 no cover
+        # be strict on PY3
+        with assert_raises(ValueError):
+            full(100, chunks=10, fill_value=v, dtype='U3')
 
 
 def test_open_array():
@@ -149,9 +189,9 @@ def test_open_array():
     # mode in 'r', 'r+'
     open_group('example_group', mode='w')
     for mode in 'r', 'r+':
-        with assert_raises(KeyError):
+        with assert_raises(ValueError):
             open_array('doesnotexist', mode=mode)
-        with assert_raises(KeyError):
+        with assert_raises(ValueError):
             open_array('example_group', mode=mode)
     z = open_array(store, mode='r')
     assert_is_instance(z, Array)
@@ -179,7 +219,7 @@ def test_open_array():
     eq((100,), z.shape)
     eq((10,), z.chunks)
     assert_array_equal(np.full(100, fill_value=42), z[:])
-    with assert_raises(KeyError):
+    with assert_raises(ValueError):
         open_array('example_group', mode='a')
 
     # mode in 'w-', 'x'
@@ -192,9 +232,9 @@ def test_open_array():
         eq((100,), z.shape)
         eq((10,), z.chunks)
         assert_array_equal(np.full(100, fill_value=42), z[:])
-        with assert_raises(KeyError):
+        with assert_raises(ValueError):
             open_array(store, mode=mode)
-        with assert_raises(KeyError):
+        with assert_raises(ValueError):
             open_array('example_group', mode=mode)
 
     # with synchronizer
@@ -370,7 +410,7 @@ def test_create():
     with assert_raises(ValueError):
         create(100, chunks=10, compressor='zlib')
 
-    # compatibility
+    # h5py compatibility
 
     z = create(100, compression='zlib', compression_opts=9)
     eq('zlib', z.compressor.codec_id)
@@ -381,10 +421,16 @@ def test_create():
 
     # errors
     with assert_raises(ValueError):
+        # bad compression argument
         create(100, compression=1)
+    with assert_raises(ValueError):
+        # bad fill value
+        create(100, dtype='i4', fill_value='foo')
 
 
 def test_compression_args():
+    warnings.resetwarnings()
+    warnings.simplefilter('always')
 
     z = create(100, compression='zlib', compression_opts=9)
     assert_is_instance(z, Array)
@@ -402,3 +448,39 @@ def test_compression_args():
     assert_is_instance(z, Array)
     eq('zlib', z.compressor.codec_id)
     eq(9, z.compressor.level)
+
+    warnings.resetwarnings()
+    warnings.simplefilter('error')
+    with assert_raises(UserWarning):
+        # 'compressor' overrides 'compression'
+        create(100, compressor=Zlib(9), compression='bz2', compression_opts=1)
+    with assert_raises(UserWarning):
+        # 'compressor' ignores 'compression_opts'
+        create(100, compressor=Zlib(9), compression_opts=1)
+    warnings.resetwarnings()
+    warnings.simplefilter('always')
+
+
+def test_create_read_only():
+    # https://github.com/alimanfoo/zarr/issues/151
+
+    # create an array initially read-only, then enable writing
+    z = create(100, read_only=True)
+    assert z.read_only
+    with assert_raises(PermissionError):
+        z[:] = 42
+    z.read_only = False
+    z[:] = 42
+    assert np.all(z[...] == 42)
+    z.read_only = True
+    with assert_raises(PermissionError):
+        z[:] = 0
+
+    # this is subtly different, but here we want to create an array with data, and then have it
+    # be read-only
+    a = np.arange(100)
+    z = array(a, read_only=True)
+    assert_array_equal(a, z[...])
+    assert z.read_only
+    with assert_raises(PermissionError):
+        z[:] = 42

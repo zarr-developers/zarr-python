@@ -86,3 +86,19 @@ class TestAttributes(unittest.TestCase):
             del a['foo']
         with assert_raises(PermissionError):
             a.update(foo='quux')
+
+    def test_key_completions(self):
+        a = self.init_attributes(dict())
+        d = a._ipython_key_completions_()
+        assert 'foo' not in d
+        assert '123' not in d
+        assert 'baz' not in d
+        assert 'asdf;' not in d
+        a['foo'] = 42
+        a['123'] = 4.2
+        a['asdf;'] = 'ghjkl;'
+        d = a._ipython_key_completions_()
+        assert 'foo' in d
+        assert '123' in d
+        assert 'asdf;' in d
+        assert 'baz' not in d

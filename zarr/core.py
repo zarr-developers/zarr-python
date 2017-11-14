@@ -2,22 +2,27 @@
 from __future__ import absolute_import, print_function, division
 import operator
 import itertools
+import re
 
 
 import numpy as np
 
 
-from zarr.util import is_total_slice, normalize_array_selection, get_chunk_range, \
-    human_readable_size, normalize_resize_args, normalize_storage_path, normalize_shape, \
-    normalize_chunks, InfoReporter
+from zarr.util import (is_total_slice, human_readable_size, normalize_resize_args,
+                       normalize_storage_path, normalize_shape, normalize_chunks, InfoReporter,
+                       check_array_shape)
 from zarr.storage import array_meta_key, attrs_key, listdir, getsize
 from zarr.meta import decode_array_metadata, encode_array_metadata
 from zarr.attrs import Attributes
 from zarr.errors import PermissionError, err_read_only, err_array_not_found
 from zarr.compat import reduce
 from zarr.codecs import AsType, get_codec
+from zarr.indexing import (OIndex, OrthogonalIndexer, BasicIndexer, VIndex, CoordinateIndexer,
+                           MaskIndexer, check_fields, pop_fields, ensure_tuple, is_scalar,
+                           is_contiguous_selection, err_too_many_indices, check_no_multi_fields)
 
 
+# noinspection PyUnresolvedReferences
 class Array(object):
     """Instantiate an array from an initialized store.
 
@@ -66,11 +71,21 @@ class Array(object):
     nchunks_initialized
     is_view
     info
+    vindex
+    oindex
 
     Methods
     -------
     __getitem__
     __setitem__
+    get_basic_selection
+    set_basic_selection
+    get_orthogonal_selection
+    set_orthogonal_selection
+    get_mask_selection
+    set_mask_selection
+    get_coordinate_selection
+    set_coordinate_selection
     resize
     append
     view
@@ -90,7 +105,7 @@ class Array(object):
             self._key_prefix = self._path + '/'
         else:
             self._key_prefix = ''
-        self._read_only = read_only
+        self._read_only = bool(read_only)
         self._synchronizer = synchronizer
         self._cache_metadata = cache_metadata
         self._is_view = False
@@ -105,6 +120,10 @@ class Array(object):
 
         # initialize info reporter
         self._info_reporter = InfoReporter(self)
+
+        # initialize indexing helpers
+        self._oindex = OIndex(self)
+        self._vindex = VIndex(self)
 
     def _load_metadata(self):
         """(Re)load metadata from store."""
@@ -123,7 +142,7 @@ class Array(object):
             err_array_not_found(self._path)
         else:
 
-            # decode and store metadata
+            # decode and store metadata as instance members
             meta = decode_array_metadata(meta_bytes)
             self._meta = meta
             self._shape = meta['shape']
@@ -155,7 +174,7 @@ class Array(object):
 
     def _flush_metadata_nosync(self):
         if self._is_view:
-            raise PermissionError('not permitted for views')
+            raise PermissionError('operation not permitted for views')
 
         if self._compressor:
             compressor_config = self._compressor.get_config()
@@ -196,6 +215,10 @@ class Array(object):
     def read_only(self):
         """A boolean, True if modification operations are not permitted."""
         return self._read_only
+
+    @read_only.setter
+    def read_only(self, value):
+        self._read_only = bool(value)
 
     @property
     def chunk_store(self):
@@ -314,7 +337,7 @@ class Array(object):
     @property
     def _cdata_shape(self):
         if self._shape == ():
-            return (1,)
+            return 1,
         else:
             return tuple(int(np.ceil(s / c))
                          for s, c in zip(self._shape, self._chunks))
@@ -339,9 +362,12 @@ class Array(object):
     @property
     def nchunks_initialized(self):
         """The number of chunks that have been initialized with some data."""
-        # TODO fix bug here, need to only count chunks
-        return sum(1 for k in listdir(self.chunk_store, self._path)
-                   if k not in [array_meta_key, attrs_key])
+
+        # key pattern for chunk keys
+        prog = re.compile(r'\.'.join([r'\d+'] * min(1, self.ndim)))
+
+        # count chunk keys
+        return sum(1 for k in listdir(self.chunk_store, self._path) if prog.match(k))
 
     # backwards compability
     initialized = nchunks_initialized
@@ -350,6 +376,19 @@ class Array(object):
     def is_view(self):
         """A boolean, True if this array is a view on another array."""
         return self._is_view
+
+    @property
+    def oindex(self):
+        """Shortcut for orthogonal (outer) indexing, see :func:`get_orthogonal_selection` and
+        :func:`set_orthogonal_selection` for documentation and examples."""
+        return self._oindex
+
+    @property
+    def vindex(self):
+        """Shortcut for vectorized (inner) indexing, see :func:`get_coordinate_selection`,
+        :func:`set_coordinate_selection`, :func:`get_mask_selection` and
+        :func:`set_mask_selection` for documentation and examples."""
+        return self._vindex
 
     def __eq__(self, other):
         return (
@@ -372,11 +411,17 @@ class Array(object):
         if self.shape:
             return self.shape[0]
         else:
+            # 0-dimensional array, same error message as numpy
             raise TypeError('len() of unsized object')
 
-    def __getitem__(self, item):
-        """Retrieve data for some portion of the array. Most NumPy-style
-        slicing operations are supported.
+    def __getitem__(self, selection):
+        """Retrieve data for an item or region of the array.
+
+        Parameters
+        ----------
+        selection : tuple
+            An integer index or slice or tuple of int/slice objects specifying the requested
+            item or region for each dimension of the array.
 
         Returns
         -------
@@ -385,63 +430,225 @@ class Array(object):
 
         Examples
         --------
-
         Setup a 1-dimensional array::
 
             >>> import zarr
             >>> import numpy as np
-            >>> z = zarr.array(np.arange(100000000), chunks=1000000, dtype='i4')
-            >>> z
-            <zarr.core.Array (100000000,) int32>
+            >>> z = zarr.array(np.arange(100))
 
-        Take some slices::
+        Retrieve a single item::
 
             >>> z[5]
             5
+
+        Retrieve a region via slicing::
+
             >>> z[:5]
-            array([0, 1, 2, 3, 4], dtype=int32)
+            array([0, 1, 2, 3, 4])
             >>> z[-5:]
-            array([99999995, 99999996, 99999997, 99999998, 99999999], dtype=int32)
+            array([95, 96, 97, 98, 99])
             >>> z[5:10]
-            array([5, 6, 7, 8, 9], dtype=int32)
-            >>> z[:]
-            array([       0,        1,        2, ..., 99999997, 99999998, 99999999], dtype=int32)
+            array([5, 6, 7, 8, 9])
+            >>> z[5:10:2]
+            array([5, 7, 9])
+            >>> z[::2]
+            array([ 0,  2,  4, ..., 94, 96, 98])
+
+        Load the entire array into memory::
+
+            >>> z[...]
+            array([ 0,  1,  2, ..., 97, 98, 99])
 
         Setup a 2-dimensional array::
 
-            >>> import zarr
-            >>> import numpy as np
-            >>> z = zarr.array(np.arange(100000000).reshape(10000, 10000),
-            ...                chunks=(1000, 1000), dtype='i4')
-            >>> z
-            <zarr.core.Array (10000, 10000) int32>
+            >>> z = zarr.array(np.arange(100).reshape(10, 10))
 
-        Take some slices::
+        Retrieve an item::
 
             >>> z[2, 2]
-            20002
-            >>> z[:2, :2]
-            array([[    0,     1],
-                   [10000, 10001]], dtype=int32)
-            >>> z[:2]
-            array([[    0,     1,     2, ...,  9997,  9998,  9999],
-                   [10000, 10001, 10002, ..., 19997, 19998, 19999]], dtype=int32)
-            >>> z[:, :2]
-            array([[       0,        1],
-                   [   10000,    10001],
-                   [   20000,    20001],
-                   ...,
-                   [99970000, 99970001],
-                   [99980000, 99980001],
-                   [99990000, 99990001]], dtype=int32)
-            >>> z[:]
-            array([[       0,        1,        2, ...,     9997,     9998,     9999],
-                   [   10000,    10001,    10002, ...,    19997,    19998,    19999],
-                   [   20000,    20001,    20002, ...,    29997,    29998,    29999],
-                   ...,
-                   [99970000, 99970001, 99970002, ..., 99979997, 99979998, 99979999],
-                   [99980000, 99980001, 99980002, ..., 99989997, 99989998, 99989999],
-                   [99990000, 99990001, 99990002, ..., 99999997, 99999998, 99999999]], dtype=int32)
+            22
+
+        Retrieve a region via slicing::
+
+            >>> z[1:3, 1:3]
+            array([[11, 12],
+                   [21, 22]])
+            >>> z[1:3, :]
+            array([[10, 11, 12, 13, 14, 15, 16, 17, 18, 19],
+                   [20, 21, 22, 23, 24, 25, 26, 27, 28, 29]])
+            >>> z[:, 1:3]
+            array([[ 1,  2],
+                   [11, 12],
+                   [21, 22],
+                   [31, 32],
+                   [41, 42],
+                   [51, 52],
+                   [61, 62],
+                   [71, 72],
+                   [81, 82],
+                   [91, 92]])
+            >>> z[0:5:2, 0:5:2]
+            array([[ 0,  2,  4],
+                   [20, 22, 24],
+                   [40, 42, 44]])
+            >>> z[::2, ::2]
+            array([[ 0,  2,  4,  6,  8],
+                   [20, 22, 24, 26, 28],
+                   [40, 42, 44, 46, 48],
+                   [60, 62, 64, 66, 68],
+                   [80, 82, 84, 86, 88]])
+
+        Load the entire array into memory::
+
+            >>> z[...]
+            array([[ 0,  1,  2,  3,  4,  5,  6,  7,  8,  9],
+                   [10, 11, 12, 13, 14, 15, 16, 17, 18, 19],
+                   [20, 21, 22, 23, 24, 25, 26, 27, 28, 29],
+                   [30, 31, 32, 33, 34, 35, 36, 37, 38, 39],
+                   [40, 41, 42, 43, 44, 45, 46, 47, 48, 49],
+                   [50, 51, 52, 53, 54, 55, 56, 57, 58, 59],
+                   [60, 61, 62, 63, 64, 65, 66, 67, 68, 69],
+                   [70, 71, 72, 73, 74, 75, 76, 77, 78, 79],
+                   [80, 81, 82, 83, 84, 85, 86, 87, 88, 89],
+                   [90, 91, 92, 93, 94, 95, 96, 97, 98, 99]])
+
+        For arrays with a structured dtype, specific fields can be retrieved, e.g.::
+
+            >>> a = np.array([(b'aaa', 1, 4.2),
+            ...               (b'bbb', 2, 8.4),
+            ...               (b'ccc', 3, 12.6)],
+            ...              dtype=[('foo', 'S3'), ('bar', 'i4'), ('baz', 'f8')])
+            >>> z = zarr.array(a)
+            >>> z['foo']
+            array([b'aaa', b'bbb', b'ccc'],
+                  dtype='|S3')
+
+        Notes
+        -----
+        Slices with step > 1 are supported, but slices with negative step are not.
+
+        Currently the implementation for __getitem__ is provided by :func:`get_basic_selection`.
+        For advanced ("fancy") indexing, see the methods listed under See Also.
+
+        See Also
+        --------
+        get_basic_selection, set_basic_selection, get_mask_selection, set_mask_selection,
+        get_coordinate_selection, set_coordinate_selection, get_orthogonal_selection,
+        set_orthogonal_selection, vindex, oindex, __setitem__
+
+        """
+
+        fields, selection = pop_fields(selection)
+        return self.get_basic_selection(selection, fields=fields)
+
+    def get_basic_selection(self, selection=Ellipsis, out=None, fields=None):
+        """Retrieve data for an item or region of the array.
+
+        Parameters
+        ----------
+        selection : tuple
+            A tuple specifying the requested item or region for each dimension of the array. May
+            be any combination of int and/or slice for multidimensional arrays.
+        out : ndarray, optional
+            If given, load the selected data directly into this array.
+        fields : str or sequence of str, optional
+            For arrays with a structured dtype, one or more fields can be specified to extract
+            data for.
+
+        Returns
+        -------
+        out : ndarray
+            A NumPy array containing the data for the requested region.
+
+        Examples
+        --------
+        Setup a 1-dimensional array::
+
+            >>> import zarr
+            >>> import numpy as np
+            >>> z = zarr.array(np.arange(100))
+
+        Retrieve a single item::
+
+            >>> z.get_basic_selection(5)
+            5
+
+        Retrieve a region via slicing::
+
+            >>> z.get_basic_selection(slice(5))
+            array([0, 1, 2, 3, 4])
+            >>> z.get_basic_selection(slice(-5, None))
+            array([95, 96, 97, 98, 99])
+            >>> z.get_basic_selection(slice(5, 10))
+            array([5, 6, 7, 8, 9])
+            >>> z.get_basic_selection(slice(5, 10, 2))
+            array([5, 7, 9])
+            >>> z.get_basic_selection(slice(None, None, 2))
+            array([  0,  2,  4, ..., 94, 96, 98])
+
+        Setup a 2-dimensional array::
+
+            >>> z = zarr.array(np.arange(100).reshape(10, 10))
+
+        Retrieve an item::
+
+            >>> z.get_basic_selection((2, 2))
+            22
+
+        Retrieve a region via slicing::
+
+            >>> z.get_basic_selection((slice(1, 3), slice(1, 3)))
+            array([[11, 12],
+                   [21, 22]])
+            >>> z.get_basic_selection((slice(1, 3), slice(None)))
+            array([[10, 11, 12, 13, 14, 15, 16, 17, 18, 19],
+                   [20, 21, 22, 23, 24, 25, 26, 27, 28, 29]])
+            >>> z.get_basic_selection((slice(None), slice(1, 3)))
+            array([[ 1,  2],
+                   [11, 12],
+                   [21, 22],
+                   [31, 32],
+                   [41, 42],
+                   [51, 52],
+                   [61, 62],
+                   [71, 72],
+                   [81, 82],
+                   [91, 92]])
+            >>> z.get_basic_selection((slice(0, 5, 2), slice(0, 5, 2)))
+            array([[ 0,  2,  4],
+                   [20, 22, 24],
+                   [40, 42, 44]])
+            >>> z.get_basic_selection((slice(None, None, 2), slice(None, None, 2)))
+            array([[ 0,  2,  4,  6,  8],
+                   [20, 22, 24, 26, 28],
+                   [40, 42, 44, 46, 48],
+                   [60, 62, 64, 66, 68],
+                   [80, 82, 84, 86, 88]])
+
+        For arrays with a structured dtype, specific fields can be retrieved, e.g.::
+
+            >>> a = np.array([(b'aaa', 1, 4.2),
+            ...               (b'bbb', 2, 8.4),
+            ...               (b'ccc', 3, 12.6)],
+            ...              dtype=[('foo', 'S3'), ('bar', 'i4'), ('baz', 'f8')])
+            >>> z = zarr.array(a)
+            >>> z.get_basic_selection(slice(2), fields='foo')
+            array([b'aaa', b'bbb'],
+                  dtype='|S3')
+
+        Notes
+        -----
+        Slices with step > 1 are supported, but slices with negative step are not.
+
+        Currently this method provides the implementation for accessing data via the square
+        bracket notation (__getitem__). See :func:`__getitem__` for examples using the
+        alternative notation.
+
+        See Also
+        --------
+        set_basic_selection, get_mask_selection, set_mask_selection,
+        get_coordinate_selection, set_coordinate_selection, get_orthogonal_selection,
+        set_orthogonal_selection, vindex, oindex, __getitem__, __setitem__
 
         """
 
@@ -449,18 +656,22 @@ class Array(object):
         if not self._cache_metadata:
             self._load_metadata()
 
+        # check args
+        check_fields(fields, self._dtype)
+
         # handle zero-dimensional arrays
         if self._shape == ():
-            return self._getitem_zd(item)
+            return self._get_basic_selection_zd(selection=selection, out=out, fields=fields)
         else:
-            return self._getitem_nd(item)
+            return self._get_basic_selection_nd(selection=selection, out=out, fields=fields)
 
-    def _getitem_zd(self, item):
-        # special case __getitem__ for zero-dimensional array
+    def _get_basic_selection_zd(self, selection, out=None, fields=None):
+        # special case basic selection for zero-dimensional array
 
-        # check item is valid
-        if item not in ((), Ellipsis):
-            raise IndexError('too many indices for array')
+        # check selection is valid
+        selection = ensure_tuple(selection)
+        if selection not in ((), (Ellipsis,)):
+            err_too_many_indices(selection, ())
 
         try:
             # obtain encoded data for chunk
@@ -469,126 +680,484 @@ class Array(object):
 
         except KeyError:
             # chunk not initialized
-            out = np.empty((), dtype=self._dtype)
+            chunk = np.zeros((), dtype=self._dtype)
             if self._fill_value is not None:
-                out.fill(self._fill_value)
+                chunk.fill(self._fill_value)
 
         else:
-            out = self._decode_chunk(cdata)
+            chunk = self._decode_chunk(cdata)
+
+        # handle fields
+        if fields:
+            chunk = chunk[fields]
 
         # handle selection of the scalar value via empty tuple
-        out = out[item]
+        if out is None:
+            out = chunk[selection]
+        else:
+            out[selection] = chunk[selection]
 
         return out
 
-    def _getitem_nd(self, item):
-        # implementation of __getitem__ for array with at least one dimension
+    def _get_basic_selection_nd(self, selection, out=None, fields=None):
+        # implementation of basic selection for array with at least one dimension
 
-        # normalize selection
-        selection = normalize_array_selection(item, self._shape)
+        # setup indexer
+        indexer = BasicIndexer(selection, self)
 
-        # determine output array shape
-        out_shape = tuple(s.stop - s.start for s in selection
-                          if isinstance(s, slice))
+        return self._get_selection(indexer=indexer, out=out, fields=fields)
+
+    def get_orthogonal_selection(self, selection, out=None, fields=None):
+        """Retrieve data by making a selection for each dimension of the array. For example,
+        if an array has 2 dimensions, allows selecting specific rows and/or columns. The
+        selection for each dimension can be either an integer (indexing a single item), a slice,
+        an array of integers, or a Boolean array where True values indicate a selection.
+
+        Parameters
+        ----------
+        selection : tuple
+            A selection for each dimension of the array. May be any combination of int, slice,
+            integer array or Boolean array.
+        out : ndarray, optional
+            If given, load the selected data directly into this array.
+        fields : str or sequence of str, optional
+            For arrays with a structured dtype, one or more fields can be specified to extract
+            data for.
+
+        Returns
+        -------
+        out : ndarray
+            A NumPy array containing the data for the requested selection.
+
+        Examples
+        --------
+        Setup a 2-dimensional array::
+
+            >>> import zarr
+            >>> import numpy as np
+            >>> z = zarr.array(np.arange(100).reshape(10, 10))
+
+        Retrieve rows and columns via any combination of int, slice, integer array and/or Boolean
+        array::
+
+            >>> z.get_orthogonal_selection(([1, 4], slice(None)))
+            array([[10, 11, 12, 13, 14, 15, 16, 17, 18, 19],
+                   [40, 41, 42, 43, 44, 45, 46, 47, 48, 49]])
+            >>> z.get_orthogonal_selection((slice(None), [1, 4]))
+            array([[ 1,  4],
+                   [11, 14],
+                   [21, 24],
+                   [31, 34],
+                   [41, 44],
+                   [51, 54],
+                   [61, 64],
+                   [71, 74],
+                   [81, 84],
+                   [91, 94]])
+            >>> z.get_orthogonal_selection(([1, 4], [1, 4]))
+            array([[11, 14],
+                   [41, 44]])
+            >>> sel = np.zeros(z.shape[0], dtype=bool)
+            >>> sel[1] = True
+            >>> sel[4] = True
+            >>> z.get_orthogonal_selection((sel, sel))
+            array([[11, 14],
+                   [41, 44]])
+
+        For convenience, the orthogonal selection functionality is also available via the
+        `oindex` property, e.g.::
+
+            >>> z.oindex[[1, 4], :]
+            array([[10, 11, 12, 13, 14, 15, 16, 17, 18, 19],
+                   [40, 41, 42, 43, 44, 45, 46, 47, 48, 49]])
+            >>> z.oindex[:, [1, 4]]
+            array([[ 1,  4],
+                   [11, 14],
+                   [21, 24],
+                   [31, 34],
+                   [41, 44],
+                   [51, 54],
+                   [61, 64],
+                   [71, 74],
+                   [81, 84],
+                   [91, 94]])
+            >>> z.oindex[[1, 4], [1, 4]]
+            array([[11, 14],
+                   [41, 44]])
+            >>> sel = np.zeros(z.shape[0], dtype=bool)
+            >>> sel[1] = True
+            >>> sel[4] = True
+            >>> z.oindex[sel, sel]
+            array([[11, 14],
+                   [41, 44]])
+
+        Notes
+        -----
+        Orthogonal indexing is also known as outer indexing.
+
+        Slices with step > 1 are supported, but slices with negative step are not.
+
+        See Also
+        --------
+        get_basic_selection, set_basic_selection, get_mask_selection, set_mask_selection,
+        get_coordinate_selection, set_coordinate_selection, set_orthogonal_selection, vindex,
+        oindex, __getitem__, __setitem__
+
+        """
+
+        # refresh metadata
+        if not self._cache_metadata:
+            self._load_metadata()
+
+        # check args
+        check_fields(fields, self._dtype)
+
+        # setup indexer
+        indexer = OrthogonalIndexer(selection, self)
+
+        return self._get_selection(indexer=indexer, out=out, fields=fields)
+
+    def get_coordinate_selection(self, selection, out=None, fields=None):
+        """Retrieve a selection of individual items, by providing the indices (coordinates) for
+        each selected item.
+
+        Parameters
+        ----------
+        selection : tuple
+            An integer (coordinate) array for each dimension of the array.
+        out : ndarray, optional
+            If given, load the selected data directly into this array.
+        fields : str or sequence of str, optional
+            For arrays with a structured dtype, one or more fields can be specified to extract
+            data for.
+
+        Returns
+        -------
+        out : ndarray
+            A NumPy array containing the data for the requested selection.
+
+        Examples
+        --------
+        Setup a 2-dimensional array::
+
+            >>> import zarr
+            >>> import numpy as np
+            >>> z = zarr.array(np.arange(100).reshape(10, 10))
+
+        Retrieve items by specifying their coordinates::
+
+            >>> z.get_coordinate_selection(([1, 4], [1, 4]))
+            array([11, 44])
+
+        For convenience, the coordinate selection functionality is also available via the
+        `vindex` property, e.g.::
+
+            >>> z.vindex[[1, 4], [1, 4]]
+            array([11, 44])
+
+        Notes
+        -----
+        Coordinate indexing is also known as point selection, and is a form of vectorized or inner
+        indexing.
+
+        Slices are not supported. Coordinate arrays must be provided for all dimensions of the
+        array.
+
+        Coordinate arrays may be multidimensional, in which case the output array will also be
+        multidimensional. Coordinate arrays are broadcast against each other before being
+        applied. The shape of the output will be the same as the shape of each coordinate array
+        after broadcasting.
+
+        See Also
+        --------
+        get_basic_selection, set_basic_selection, get_mask_selection, set_mask_selection,
+        get_orthogonal_selection, set_orthogonal_selection, set_coordinate_selection, vindex,
+        oindex, __getitem__, __setitem__
+
+        """
+
+        # refresh metadata
+        if not self._cache_metadata:
+            self._load_metadata()
+
+        # check args
+        check_fields(fields, self._dtype)
+
+        # setup indexer
+        indexer = CoordinateIndexer(selection, self)
+
+        # handle output - need to flatten
+        if out is not None:
+            out = out.reshape(-1)
+
+        out = self._get_selection(indexer=indexer, out=out, fields=fields)
+
+        # restore shape
+        out = out.reshape(indexer.sel_shape)
+
+        return out
+
+    def get_mask_selection(self, selection, out=None, fields=None):
+        """Retrieve a selection of individual items, by providing a Boolean array of the same
+        shape as the array against which the selection is being made, where True values indicate
+        a selected item.
+
+        Parameters
+        ----------
+        selection : ndarray, bool
+            A Boolean array of the same shape as the array against which the selection is being
+            made.
+        out : ndarray, optional
+            If given, load the selected data directly into this array.
+        fields : str or sequence of str, optional
+            For arrays with a structured dtype, one or more fields can be specified to extract
+            data for.
+
+        Returns
+        -------
+        out : ndarray
+            A NumPy array containing the data for the requested selection.
+
+        Examples
+        --------
+        Setup a 2-dimensional array::
+
+            >>> import zarr
+            >>> import numpy as np
+            >>> z = zarr.array(np.arange(100).reshape(10, 10))
+
+        Retrieve items by specifying a maks::
+
+            >>> sel = np.zeros_like(z, dtype=bool)
+            >>> sel[1, 1] = True
+            >>> sel[4, 4] = True
+            >>> z.get_mask_selection(sel)
+            array([11, 44])
+
+        For convenience, the mask selection functionality is also available via the
+        `vindex` property, e.g.::
+
+            >>> z.vindex[sel]
+            array([11, 44])
+
+        Notes
+        -----
+        Mask indexing is a form of vectorized or inner indexing, and is equivalent to coordinate
+        indexing. Internally the mask array is converted to coordinate arrays by calling
+        `np.nonzero`.
+
+        See Also
+        --------
+        get_basic_selection, set_basic_selection, set_mask_selection, get_orthogonal_selection,
+        set_orthogonal_selection, get_coordinate_selection, set_coordinate_selection, vindex,
+        oindex, __getitem__, __setitem__
+
+        """
+
+        # refresh metadata
+        if not self._cache_metadata:
+            self._load_metadata()
+
+        # check args
+        check_fields(fields, self._dtype)
+
+        # setup indexer
+        indexer = MaskIndexer(selection, self)
+
+        return self._get_selection(indexer=indexer, out=out, fields=fields)
+
+    def _get_selection(self, indexer, out=None, fields=None):
+
+        # We iterate over all chunks which overlap the selection and thus contain data that needs
+        # to be extracted. Each chunk is processed in turn, extracting the necessary data and
+        # storing into the correct location in the output array.
+
+        # N.B., it is an important optimisation that we only visit chunks which overlap the
+        # selection. This minimises the number of iterations in the main for loop.
+
+        # check fields are sensible
+        out_dtype = check_fields(fields, self._dtype)
+
+        # determine output shape
+        out_shape = indexer.shape
 
         # setup output array
-        out = np.empty(out_shape, dtype=self._dtype, order=self._order)
+        if out is None:
+            out = np.empty(out_shape, dtype=out_dtype, order=self._order)
+        else:
+            check_array_shape('out', out, out_shape)
 
-        # determine indices of chunks overlapping the selection
-        chunk_range = get_chunk_range(selection, self._chunks)
-
-        # iterate over chunks in range
-        for cidx in itertools.product(*chunk_range):
-
-            # determine chunk offset
-            offset = [i * c for i, c in zip(cidx, self._chunks)]
-
-            # determine region within output array
-            out_selection = tuple(
-                slice(max(0, o - s.start),
-                      min(o + c - s.start, s.stop - s.start))
-                for s, o, c, in zip(selection, offset, self._chunks)
-                if isinstance(s, slice)
-            )
-
-            # determine region within chunk
-            chunk_selection = tuple(
-                slice(max(0, s.start - o), min(c, s.stop - o))
-                if isinstance(s, slice)
-                else s - o
-                for s, o, c in zip(selection, offset, self._chunks)
-            )
-
-            # obtain the destination array as a view of the output array
-            if out_selection:
-                dest = out[out_selection]
-            else:
-                dest = out
+        # iterate over chunks
+        for chunk_coords, chunk_selection, out_selection in indexer:
 
             # load chunk selection into output array
-            self._chunk_getitem(cidx, chunk_selection, dest)
+            self._chunk_getitem(chunk_coords, chunk_selection, out, out_selection,
+                                drop_axes=indexer.drop_axes, fields=fields)
 
         if out.shape:
             return out
         else:
             return out[()]
 
-    def __setitem__(self, item, value):
-        """Modify data for some portion of the array.
+    def __setitem__(self, selection, value):
+        """Modify data for an item or region of the array.
+
+        Parameters
+        ----------
+        selection : tuple
+            An integer index or slice or tuple of int/slice specifying the requested region for
+            each dimension of the array.
+        value : scalar or array-like
+            Value to be stored into the array.
 
         Examples
         --------
-
         Setup a 1-dimensional array::
 
             >>> import zarr
-            >>> z = zarr.zeros(100000000, chunks=1000000, dtype='i4')
-            >>> z
-            <zarr.core.Array (100000000,) int32>
+            >>> z = zarr.zeros(100, dtype=int)
 
         Set all array elements to the same scalar value::
 
-            >>> z[:] = 42
-            >>> z[:]
-            array([42, 42, 42, ..., 42, 42, 42], dtype=int32)
+            >>> z[...] = 42
+            >>> z[...]
+            array([42, 42, 42, ..., 42, 42, 42])
 
         Set a portion of the array::
 
-            >>> z[:100] = np.arange(100)
-            >>> z[-100:] = np.arange(100)[::-1]
-            >>> z[:]
-            array([0, 1, 2, ..., 2, 1, 0], dtype=int32)
+            >>> z[:10] = np.arange(10)
+            >>> z[-10:] = np.arange(10)[::-1]
+            >>> z[...]
+            array([ 0, 1, 2, ..., 2, 1, 0])
 
         Setup a 2-dimensional array::
 
-            >>> z = zarr.zeros((10000, 10000), chunks=(1000, 1000), dtype='i4')
-            >>> z
-            <zarr.core.Array (10000, 10000) int32>
+            >>> z = zarr.zeros((5, 5), dtype=int)
 
         Set all array elements to the same scalar value::
 
-            >>> z[:] = 42
-            >>> z[:]
-            array([[42, 42, 42, ..., 42, 42, 42],
-                   [42, 42, 42, ..., 42, 42, 42],
-                   [42, 42, 42, ..., 42, 42, 42],
-                   ...,
-                   [42, 42, 42, ..., 42, 42, 42],
-                   [42, 42, 42, ..., 42, 42, 42],
-                   [42, 42, 42, ..., 42, 42, 42]], dtype=int32)
+            >>> z[...] = 42
 
         Set a portion of the array::
 
             >>> z[0, :] = np.arange(z.shape[1])
             >>> z[:, 0] = np.arange(z.shape[0])
+            >>> z[...]
+            array([[ 0,  1,  2,  3,  4],
+                   [ 1, 42, 42, 42, 42],
+                   [ 2, 42, 42, 42, 42],
+                   [ 3, 42, 42, 42, 42],
+                   [ 4, 42, 42, 42, 42]])
+
+        For arrays with a structured dtype, specific fields can be modified, e.g.::
+
+            >>> a = np.array([(b'aaa', 1, 4.2),
+            ...               (b'bbb', 2, 8.4),
+            ...               (b'ccc', 3, 12.6)],
+            ...              dtype=[('foo', 'S3'), ('bar', 'i4'), ('baz', 'f8')])
+            >>> z = zarr.array(a)
+            >>> z['foo'] = b'zzz'
+            >>> z[...]
+            array([(b'zzz', 1,   4.2), (b'zzz', 2,   8.4), (b'zzz', 3,  12.6)],
+                  dtype=[('foo', 'S3'), ('bar', '<i4'), ('baz', '<f8')])
+
+        Notes
+        -----
+        Slices with step > 1 are supported, but slices with negative step are not.
+
+        Currently the implementation for __setitem__ is provided by :func:`set_basic_selection`,
+        which means that only integers and slices are supported within the selection. For
+        advanced ("fancy") indexing, see the methods listed under See Also.
+
+        See Also
+        --------
+        get_basic_selection, set_basic_selection, get_mask_selection, set_mask_selection,
+        get_coordinate_selection, set_coordinate_selection, get_orthogonal_selection,
+        set_orthogonal_selection, vindex, oindex, __getitem__
+
+        """
+
+        fields, selection = pop_fields(selection)
+        self.set_basic_selection(selection, value, fields=fields)
+
+    def set_basic_selection(self, selection, value, fields=None):
+        """Modify data for an item or region of the array.
+
+        Parameters
+        ----------
+        selection : tuple
+            An integer index or slice or tuple of int/slice specifying the requested region for
+            each dimension of the array.
+        value : scalar or array-like
+            Value to be stored into the array.
+        fields : str or sequence of str, optional
+            For arrays with a structured dtype, one or more fields can be specified to set
+            data for.
+
+        Examples
+        --------
+        Setup a 1-dimensional array::
+
+            >>> import zarr
+            >>> import numpy as np
+            >>> z = zarr.zeros(100, dtype=int)
+
+        Set all array elements to the same scalar value::
+
+            >>> z.set_basic_selection(..., 42)
+            >>> z[...]
+            array([42, 42, 42, ..., 42, 42, 42])
+
+        Set a portion of the array::
+
+            >>> z.set_basic_selection(slice(10), np.arange(10))
+            >>> z.set_basic_selection(slice(-10, None), np.arange(10)[::-1])
+            >>> z[...]
+            array([ 0, 1, 2, ..., 2, 1, 0])
+
+        Setup a 2-dimensional array::
+
+            >>> z = zarr.zeros((5, 5), dtype=int)
+
+        Set all array elements to the same scalar value::
+
+            >>> z.set_basic_selection(..., 42)
+
+        Set a portion of the array::
+
+            >>> z.set_basic_selection((0, slice(None)), np.arange(z.shape[1]))
+            >>> z.set_basic_selection((slice(None), 0), np.arange(z.shape[0]))
+            >>> z[...]
+            array([[ 0,  1,  2,  3,  4],
+                   [ 1, 42, 42, 42, 42],
+                   [ 2, 42, 42, 42, 42],
+                   [ 3, 42, 42, 42, 42],
+                   [ 4, 42, 42, 42, 42]])
+
+        For arrays with a structured dtype, the `fields` parameter can be used to set data for
+        a specific field, e.g.::
+
+            >>> a = np.array([(b'aaa', 1, 4.2),
+            ...               (b'bbb', 2, 8.4),
+            ...               (b'ccc', 3, 12.6)],
+            ...              dtype=[('foo', 'S3'), ('bar', 'i4'), ('baz', 'f8')])
+            >>> z = zarr.array(a)
+            >>> z.set_basic_selection(slice(0, 2), b'zzz', fields='foo')
             >>> z[:]
-            array([[   0,    1,    2, ..., 9997, 9998, 9999],
-                   [   1,   42,   42, ...,   42,   42,   42],
-                   [   2,   42,   42, ...,   42,   42,   42],
-                   ...,
-                   [9997,   42,   42, ...,   42,   42,   42],
-                   [9998,   42,   42, ...,   42,   42,   42],
-                   [9999,   42,   42, ...,   42,   42,   42]], dtype=int32)
+            array([(b'zzz', 1,   4.2), (b'zzz', 2,   8.4), (b'ccc', 3,  12.6)],
+                  dtype=[('foo', 'S3'), ('bar', '<i4'), ('baz', '<f8')])
+
+        Notes
+        -----
+        This method provides the underlying implementation for modifying data via square
+        bracket notation, see :func:`__setitem__` for equivalent examples using the alternative
+        notation.
+
+        See Also
+        --------
+        get_basic_selection, get_mask_selection, set_mask_selection, get_coordinate_selection,
+        set_coordinate_selection, get_orthogonal_selection, set_orthogonal_selection, vindex,
+        oindex, __getitem__, __setitem__
 
         """
 
@@ -602,150 +1171,426 @@ class Array(object):
 
         # handle zero-dimensional arrays
         if self._shape == ():
-            return self._setitem_zd(item, value)
+            return self._set_basic_selection_zd(selection, value, fields=fields)
         else:
-            return self._setitem_nd(item, value)
+            return self._set_basic_selection_nd(selection, value, fields=fields)
 
-    def _setitem_zd(self, item, value):
+    def set_orthogonal_selection(self, selection, value, fields=None):
+        """Modify data via a selection for each dimension of the array.
+
+        Parameters
+        ----------
+        selection : tuple
+            A selection for each dimension of the array. May be any combination of int, slice,
+            integer array or Boolean array.
+        value : scalar or array-like
+            Value to be stored into the array.
+        fields : str or sequence of str, optional
+            For arrays with a structured dtype, one or more fields can be specified to set
+            data for.
+
+        Examples
+        --------
+        Setup a 2-dimensional array::
+
+            >>> import zarr
+            >>> import numpy as np
+            >>> z = zarr.zeros((5, 5), dtype=int)
+
+        Set data for a selection of rows::
+
+            >>> z.set_orthogonal_selection(([1, 4], slice(None)), 1)
+            >>> z[...]
+            array([[0, 0, 0, 0, 0],
+                   [1, 1, 1, 1, 1],
+                   [0, 0, 0, 0, 0],
+                   [0, 0, 0, 0, 0],
+                   [1, 1, 1, 1, 1]])
+
+        Set data for a selection of columns::
+
+            >>> z.set_orthogonal_selection((slice(None), [1, 4]), 2)
+            >>> z[...]
+            array([[0, 2, 0, 0, 2],
+                   [1, 2, 1, 1, 2],
+                   [0, 2, 0, 0, 2],
+                   [0, 2, 0, 0, 2],
+                   [1, 2, 1, 1, 2]])
+
+        Set data for a selection of rows and columns::
+
+            >>> z.set_orthogonal_selection(([1, 4], [1, 4]), 3)
+            >>> z[...]
+            array([[0, 2, 0, 0, 2],
+                   [1, 3, 1, 1, 3],
+                   [0, 2, 0, 0, 2],
+                   [0, 2, 0, 0, 2],
+                   [1, 3, 1, 1, 3]])
+
+        For convenience, this functionality is also available via the `oindex` property. E.g.::
+
+            >>> z.oindex[[1, 4], [1, 4]] = 4
+            >>> z[...]
+            array([[0, 2, 0, 0, 2],
+                   [1, 4, 1, 1, 4],
+                   [0, 2, 0, 0, 2],
+                   [0, 2, 0, 0, 2],
+                   [1, 4, 1, 1, 4]])
+
+        Notes
+        -----
+        Orthogonal indexing is also known as outer indexing.
+
+        Slices with step > 1 are supported, but slices with negative step are not.
+
+        See Also
+        --------
+        get_basic_selection, set_basic_selection, get_mask_selection, set_mask_selection,
+        get_coordinate_selection, set_coordinate_selection, get_orthogonal_selection,
+        vindex, oindex, __getitem__, __setitem__
+
+        """
+
+        # guard conditions
+        if self._read_only:
+            err_read_only()
+
+        # refresh metadata
+        if not self._cache_metadata:
+            self._load_metadata_nosync()
+
+        # setup indexer
+        indexer = OrthogonalIndexer(selection, self)
+
+        self._set_selection(indexer, value, fields=fields)
+
+    def set_coordinate_selection(self, selection, value, fields=None):
+        """Modify a selection of individual items, by providing the indices (coordinates) for
+        each item to be modified.
+
+        Parameters
+        ----------
+        selection : tuple
+            An integer (coordinate) array for each dimension of the array.
+        value : scalar or array-like
+            Value to be stored into the array.
+        fields : str or sequence of str, optional
+            For arrays with a structured dtype, one or more fields can be specified to set
+            data for.
+
+        Examples
+        --------
+        Setup a 2-dimensional array::
+
+            >>> import zarr
+            >>> import numpy as np
+            >>> z = zarr.zeros((5, 5), dtype=int)
+
+        Set data for a selection of items::
+
+            >>> z.set_coordinate_selection(([1, 4], [1, 4]), 1)
+            >>> z[...]
+            array([[0, 0, 0, 0, 0],
+                   [0, 1, 0, 0, 0],
+                   [0, 0, 0, 0, 0],
+                   [0, 0, 0, 0, 0],
+                   [0, 0, 0, 0, 1]])
+
+        For convenience, this functionality is also available via the `vindex` property. E.g.::
+
+            >>> z.vindex[[1, 4], [1, 4]] = 2
+            >>> z[...]
+            array([[0, 0, 0, 0, 0],
+                   [0, 2, 0, 0, 0],
+                   [0, 0, 0, 0, 0],
+                   [0, 0, 0, 0, 0],
+                   [0, 0, 0, 0, 2]])
+
+        Notes
+        -----
+        Coordinate indexing is also known as point selection, and is a form of vectorized or inner
+        indexing.
+
+        Slices are not supported. Coordinate arrays must be provided for all dimensions of the
+        array.
+
+        See Also
+        --------
+        get_basic_selection, set_basic_selection, get_mask_selection, set_mask_selection,
+        get_orthogonal_selection, set_orthogonal_selection, get_coordinate_selection, vindex,
+        oindex, __getitem__, __setitem__
+
+        """
+
+        # guard conditions
+        if self._read_only:
+            err_read_only()
+
+        # refresh metadata
+        if not self._cache_metadata:
+            self._load_metadata_nosync()
+
+        # setup indexer
+        indexer = CoordinateIndexer(selection, self)
+
+        # handle value - need to flatten
+        if not is_scalar(value, self._dtype):
+            value = np.asanyarray(value)
+        if hasattr(value, 'shape') and len(value.shape) > 1:
+            value = value.reshape(-1)
+
+        self._set_selection(indexer, value, fields=fields)
+
+    def set_mask_selection(self, selection, value, fields=None):
+        """Modify a selection of individual items, by providing a Boolean array of the same
+        shape as the array against which the selection is being made, where True values indicate
+        a selected item.
+
+        Parameters
+        ----------
+        selection : ndarray, bool
+            A Boolean array of the same shape as the array against which the selection is being
+            made.
+        value : scalar or array-like
+            Value to be stored into the array.
+        fields : str or sequence of str, optional
+            For arrays with a structured dtype, one or more fields can be specified to set
+            data for.
+
+        Examples
+        --------
+        Setup a 2-dimensional array::
+
+            >>> import zarr
+            >>> import numpy as np
+            >>> z = zarr.zeros((5, 5), dtype=int)
+
+        Set data for a selection of items::
+
+            >>> sel = np.zeros_like(z, dtype=bool)
+            >>> sel[1, 1] = True
+            >>> sel[4, 4] = True
+            >>> z.set_mask_selection(sel, 1)
+            >>> z[...]
+            array([[0, 0, 0, 0, 0],
+                   [0, 1, 0, 0, 0],
+                   [0, 0, 0, 0, 0],
+                   [0, 0, 0, 0, 0],
+                   [0, 0, 0, 0, 1]])
+
+        For convenience, this functionality is also available via the `vindex` property. E.g.::
+
+            >>> z.vindex[sel] = 2
+            >>> z[...]
+            array([[0, 0, 0, 0, 0],
+                   [0, 2, 0, 0, 0],
+                   [0, 0, 0, 0, 0],
+                   [0, 0, 0, 0, 0],
+                   [0, 0, 0, 0, 2]])
+
+        Notes
+        -----
+        Mask indexing is a form of vectorized or inner indexing, and is equivalent to coordinate
+        indexing. Internally the mask array is converted to coordinate arrays by calling
+        `np.nonzero`.
+
+        See Also
+        --------
+        get_basic_selection, set_basic_selection, get_mask_selection, get_orthogonal_selection,
+        set_orthogonal_selection, get_coordinate_selection, set_coordinate_selection, vindex,
+        oindex, __getitem__, __setitem__
+
+        """
+
+        # guard conditions
+        if self._read_only:
+            err_read_only()
+
+        # refresh metadata
+        if not self._cache_metadata:
+            self._load_metadata_nosync()
+
+        # setup indexer
+        indexer = MaskIndexer(selection, self)
+
+        self._set_selection(indexer, value, fields=fields)
+
+    def _set_basic_selection_zd(self, selection, value, fields=None):
         # special case __setitem__ for zero-dimensional array
 
-        # check item is valid
-        if item not in ((), Ellipsis):
-            raise IndexError('too many indices for array')
+        # check selection is valid
+        selection = ensure_tuple(selection)
+        if selection not in ((), (Ellipsis,)):
+            err_too_many_indices(selection, self._shape)
 
-        # setup data to store
-        arr = np.asarray(value, dtype=self._dtype)
+        # check fields
+        check_fields(fields, self._dtype)
+        fields = check_no_multi_fields(fields)
 
-        # check value
-        if arr.shape != ():
-            raise ValueError('bad value; expected scalar, found %r' % value)
-
-        # obtain key for chunk storage
+        # obtain key for chunk
         ckey = self._chunk_key((0,))
 
+        # setup chunk
+        try:
+            # obtain compressed data for chunk
+            cdata = self.chunk_store[ckey]
+
+        except KeyError:
+            # chunk not initialized
+            chunk = np.zeros((), dtype=self._dtype)
+            if self._fill_value is not None:
+                chunk.fill(self._fill_value)
+
+        else:
+            # decode chunk
+            chunk = self._decode_chunk(cdata).copy()
+
+        # set value
+        if fields:
+            chunk[fields][selection] = value
+        else:
+            chunk[selection] = value
+
         # encode and store
-        cdata = self._encode_chunk(arr)
+        cdata = self._encode_chunk(chunk)
         self.chunk_store[ckey] = cdata
 
-    def _setitem_nd(self, item, value):
+    def _set_basic_selection_nd(self, selection, value, fields=None):
         # implementation of __setitem__ for array with at least one dimension
 
-        # normalize selection
-        selection = normalize_array_selection(item, self._shape)
+        # setup indexer
+        indexer = BasicIndexer(selection, self)
 
-        # check value shape
-        expected_shape = tuple(
-            s.stop - s.start for s in selection
-            if isinstance(s, slice)
-        )
-        if np.isscalar(value):
-            pass
-        elif expected_shape != value.shape:
-            raise ValueError('value has wrong shape; expected %s, found %s'
-                             % (str(expected_shape),
-                                str(value.shape)))
+        self._set_selection(indexer, value, fields=fields)
+
+    def _set_selection(self, indexer, value, fields=None):
+
+        # We iterate over all chunks which overlap the selection and thus contain data that needs
+        # to be replaced. Each chunk is processed in turn, extracting the necessary data from the
+        # value array and storing into the chunk array.
+
+        # N.B., it is an important optimisation that we only visit chunks which overlap the
+        # selection. This minimises the nuimber of iterations in the main for loop.
+
+        # check fields are sensible
+        check_fields(fields, self._dtype)
+        fields = check_no_multi_fields(fields)
 
         # determine indices of chunks overlapping the selection
-        chunk_range = get_chunk_range(selection, self._chunks)
+        sel_shape = indexer.shape
+
+        # check value shape
+        if is_scalar(value, self._dtype):
+            pass
+        else:
+            if not hasattr(value, 'shape'):
+                value = np.asanyarray(value)
+            check_array_shape('value', value, sel_shape)
 
         # iterate over chunks in range
-        for cidx in itertools.product(*chunk_range):
+        for chunk_coords, chunk_selection, out_selection in indexer:
 
-            # determine chunk offset
-            offset = [i * c for i, c in zip(cidx, self._chunks)]
-
-            # determine required index range within chunk
-            chunk_selection = tuple(
-                slice(max(0, s.start - o), min(c, s.stop - o))
-                if isinstance(s, slice)
-                else s - o
-                for s, o, c in zip(selection, offset, self._chunks)
-            )
-
-            if np.isscalar(value):
-
-                # put data
-                self._chunk_setitem(cidx, chunk_selection, value)
-
+            # extract data to store
+            if is_scalar(value, self._dtype):
+                chunk_value = value
             else:
-                # assume value is array-like
+                chunk_value = value[out_selection]
+                # handle missing singleton dimensions
+                if indexer.drop_axes:
+                    item = [slice(None)] * self.ndim
+                    for a in indexer.drop_axes:
+                        item[a] = np.newaxis
+                    chunk_value = chunk_value[item]
 
-                # determine index within value
-                value_selection = tuple(
-                    slice(max(0, o - s.start),
-                          min(o + c - s.start, s.stop - s.start))
-                    for s, o, c in zip(selection, offset, self._chunks)
-                    if isinstance(s, slice)
-                )
+            # put data
+            self._chunk_setitem(chunk_coords, chunk_selection, chunk_value, fields=fields)
 
-                # put data
-                self._chunk_setitem(cidx, chunk_selection, value[value_selection])
-
-    def _chunk_getitem(self, cidx, item, dest):
+    def _chunk_getitem(self, chunk_coords, chunk_selection, out, out_selection, drop_axes=None,
+                       fields=None):
         """Obtain part or whole of a chunk.
 
         Parameters
         ----------
-        cidx : tuple of ints
+        chunk_coords : tuple of ints
             Indices of the chunk.
-        item : tuple of slices
-            Location of region within the chunk.
-        dest : ndarray
-            Numpy array to store result in.
+        chunk_selection : selection
+            Location of region within the chunk to extract.
+        out : ndarray
+            Array to store result in.
+        out_selection : selection
+            Location of region within output array to store results in.
+        drop_axes : tuple of ints
+            Axes to squeeze out of the chunk.
+        fields
+            TODO
 
         """
 
-        try:
+        assert len(chunk_coords) == len(self._cdata_shape)
 
+        # obtain key for chunk
+        ckey = self._chunk_key(chunk_coords)
+
+        try:
             # obtain compressed data for chunk
-            ckey = self._chunk_key(cidx)
             cdata = self.chunk_store[ckey]
 
         except KeyError:
-
             # chunk not initialized
             if self._fill_value is not None:
-                dest.fill(self._fill_value)
+                out[out_selection] = self._fill_value
 
         else:
 
-            if is_total_slice(item, self._chunks) and \
-                    not self._filters and \
-                    ((self._order == 'C' and dest.flags.c_contiguous) or
-                     (self._order == 'F' and dest.flags.f_contiguous)):
+            if (isinstance(out, np.ndarray) and
+                    not fields and
+                    is_contiguous_selection(out_selection) and
+                    is_total_slice(chunk_selection, self._chunks) and
+                    not self._filters):
 
-                # optimization: we want the whole chunk, and the destination is
-                # contiguous, so we can decompress directly from the chunk
-                # into the destination array
+                dest = out[out_selection]
+                write_direct = (
+                    dest.flags.writeable and (
+                        (self._order == 'C' and dest.flags.c_contiguous) or
+                        (self._order == 'F' and dest.flags.f_contiguous)
+                    )
+                )
 
-                if self._compressor:
-                    self._compressor.decode(cdata, dest)
-                else:
-                    arr = np.frombuffer(cdata, dtype=self._dtype)
-                    arr = arr.reshape(self._chunks, order=self._order)
-                    np.copyto(dest, arr)
+                if write_direct:
 
-            else:
+                    # optimization: we want the whole chunk, and the destination is
+                    # contiguous, so we can decompress directly from the chunk
+                    # into the destination array
 
-                # decode chunk
-                chunk = self._decode_chunk(cdata)
+                    if self._compressor:
+                        self._compressor.decode(cdata, dest)
+                    else:
+                        chunk = np.frombuffer(cdata, dtype=self._dtype)
+                        chunk = chunk.reshape(self._chunks, order=self._order)
+                        np.copyto(dest, chunk)
+                    return
 
-                # set data in output array
-                # (split into two lines for profiling)
-                tmp = chunk[item]
-                if dest.shape:
-                    dest[:] = tmp
-                else:
-                    dest[()] = tmp
+            # decode chunk
+            chunk = self._decode_chunk(cdata)
 
-    def _chunk_setitem(self, cidx, item, value):
+            # select data from chunk
+            if fields:
+                chunk = chunk[fields]
+            tmp = chunk[chunk_selection]
+            if drop_axes:
+                tmp = np.squeeze(tmp, axis=drop_axes)
+
+            # store selected data in output
+            out[out_selection] = tmp
+
+    def _chunk_setitem(self, chunk_coords, chunk_selection, value, fields=None):
         """Replace part or whole of a chunk.
 
         Parameters
         ----------
-        cidx : tuple of ints
+        chunk_coords : tuple of ints
             Indices of the chunk.
-        item : tuple of slices
+        chunk_selection : tuple of slices
             Location of region within the chunk.
         value : scalar or ndarray
             Value to set.
@@ -754,25 +1599,25 @@ class Array(object):
 
         # synchronization
         if self._synchronizer is None:
-            self._chunk_setitem_nosync(cidx, item, value)
+            self._chunk_setitem_nosync(chunk_coords, chunk_selection, value, fields=fields)
         else:
             # synchronize on the chunk
-            ckey = self._chunk_key(cidx)
+            ckey = self._chunk_key(chunk_coords)
             with self._synchronizer[ckey]:
-                self._chunk_setitem_nosync(cidx, item, value)
+                self._chunk_setitem_nosync(chunk_coords, chunk_selection, value, fields=fields)
 
-    def _chunk_setitem_nosync(self, cidx, item, value):
+    def _chunk_setitem_nosync(self, chunk_coords, chunk_selection, value, fields=None):
 
         # obtain key for chunk storage
-        ckey = self._chunk_key(cidx)
+        ckey = self._chunk_key(chunk_coords)
 
-        if is_total_slice(item, self._chunks):
+        if is_total_slice(chunk_selection, self._chunks) and not fields:
             # totally replace chunk
 
             # optimization: we are completely replacing the chunk, so no need
             # to access the existing chunk data
 
-            if np.isscalar(value):
+            if is_scalar(value, self._dtype):
 
                 # setup array filled with value
                 chunk = np.empty(self._chunks, dtype=self._dtype, order=self._order)
@@ -807,9 +1652,13 @@ class Array(object):
             except KeyError:
 
                 # chunk not initialized
-                chunk = np.empty(self._chunks, dtype=self._dtype, order=self._order)
                 if self._fill_value is not None:
+                    chunk = np.empty(self._chunks, dtype=self._dtype, order=self._order)
                     chunk.fill(self._fill_value)
+                else:
+                    # N.B., use zeros here so any region beyond the array has consistent and
+                    # compressible data
+                    chunk = np.zeros(self._chunks, dtype=self._dtype, order=self._order)
 
             else:
 
@@ -819,7 +1668,12 @@ class Array(object):
                     chunk = chunk.copy(order='K')
 
             # modify
-            chunk[item] = value
+            if fields:
+                # N.B., currently multi-field assignment is not supported in numpy, so this only
+                # works for a single field
+                chunk[fields][chunk_selection] = value
+            else:
+                chunk[chunk_selection] = value
 
         # encode chunk
         cdata = self._encode_chunk(chunk)
@@ -827,8 +1681,8 @@ class Array(object):
         # store
         self.chunk_store[ckey] = cdata
 
-    def _chunk_key(self, cidx):
-        return self._key_prefix + '.'.join(map(str, cidx))
+    def _chunk_key(self, chunk_coords):
+        return self._key_prefix + '.'.join(map(str, chunk_coords))
 
     def _decode_chunk(self, cdata):
 
@@ -876,6 +1730,8 @@ class Array(object):
             r += ' %r' % self.name
         r += ' %s' % str(self.shape)
         r += ' %s' % self.dtype
+        if self._read_only:
+            r += ' read-only'
         r += '>'
         return r
 
@@ -961,8 +1817,8 @@ class Array(object):
         return items
 
     def __getstate__(self):
-        return self._store, self._path, self._read_only, self._chunk_store, self._synchronizer, \
-               self._cache_metadata
+        return (self._store, self._path, self._read_only, self._chunk_store, self._synchronizer,
+                self._cache_metadata)
 
     def __setstate__(self, state):
         self.__init__(*state)
@@ -1078,8 +1934,8 @@ class Array(object):
         (20000, 1000)
         >>> z.append(np.vstack([a, a]), axis=1)
         (20000, 2000)
-        >>> z
-        <zarr.core.Array (20000, 2000) int32>
+        >>> z.shape
+        (20000, 2000)
 
         """
         return self._write_op(self._append_nosync, data, axis=axis)
@@ -1087,7 +1943,7 @@ class Array(object):
     def _append_nosync(self, data, axis=0):
 
         # ensure data is array-like
-        if not hasattr(data, 'shape') or not hasattr(data, 'dtype'):
+        if not hasattr(data, 'shape'):
             data = np.asanyarray(data)
 
         # ensure shapes are compatible for non-append dimensions
@@ -1096,7 +1952,8 @@ class Array(object):
         data_shape_preserved = tuple(s for i, s in enumerate(data.shape)
                                      if i != axis)
         if self_shape_preserved != data_shape_preserved:
-            raise ValueError('shapes not compatible')
+            raise ValueError('shape of data to append is not compatible with the array; all '
+                             'dimensions must match except for the dimension being appended')
 
         # remember old shape
         old_shape = self._shape
@@ -1226,7 +2083,7 @@ class Array(object):
             ...     v.resize(20000)
             ... except PermissionError as e:
             ...     print(e)
-            not permitted for views
+            operation not permitted for views
 
         """
 
@@ -1263,7 +2120,7 @@ class Array(object):
         return a
 
     def astype(self, dtype):
-        """Does on the fly type conversion of the underlying data.
+        """Returns a view that does on the fly type conversion of the underlying data.
 
         Parameters
         ----------

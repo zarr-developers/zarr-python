@@ -7,16 +7,17 @@ import shutil
 import textwrap
 import os
 import pickle
+import warnings
 
 
-from nose.tools import assert_raises, eq_ as eq, assert_is, assert_true, \
-    assert_is_instance, assert_false, assert_is_none
+from nose.tools import (assert_raises, eq_ as eq, assert_is, assert_true, assert_is_instance,
+                        assert_false, assert_is_none)
 import numpy as np
 from numpy.testing import assert_array_equal
 
 
-from zarr.storage import DictStore, DirectoryStore, ZipStore, init_group, \
-    init_array, attrs_key, array_meta_key, group_meta_key, atexit_rmtree
+from zarr.storage import (DictStore, DirectoryStore, ZipStore, init_group, init_array, attrs_key,
+                          array_meta_key, group_meta_key, atexit_rmtree, NestedDirectoryStore)
 from zarr.core import Array
 from zarr.compat import PY2, text_type
 from zarr.hierarchy import Group, group, open_group
@@ -25,6 +26,11 @@ from zarr.errors import PermissionError
 from zarr.creation import open_array
 from zarr.util import InfoReporter
 from numcodecs import Zlib
+
+
+# needed for PY2/PY3 consistent behaviour
+warnings.resetwarnings()
+warnings.simplefilter('always')
 
 
 # noinspection PyStatementEffect
@@ -74,14 +80,14 @@ class TestGroup(unittest.TestCase):
     def test_group_init_errors_1(self):
         store, chunk_store = self.create_store()
         # group metadata not initialized
-        with assert_raises(KeyError):
+        with assert_raises(ValueError):
             Group(store, chunk_store=chunk_store)
 
     def test_group_init_errors_2(self):
         store, chunk_store = self.create_store()
         init_array(store, shape=1000, chunks=100, chunk_store=chunk_store)
         # array blocks group
-        with assert_raises(KeyError):
+        with assert_raises(ValueError):
             Group(store, chunk_store=chunk_store)
 
     def test_create_group(self):
@@ -133,17 +139,17 @@ class TestGroup(unittest.TestCase):
         eq('test/bytes', go.path)
 
         # test bad keys
-        with assert_raises(KeyError):
+        with assert_raises(ValueError):
             g1.create_group('foo')  # already exists
-        with assert_raises(KeyError):
+        with assert_raises(ValueError):
             g1.create_group('a/b/c')  # already exists
-        with assert_raises(KeyError):
+        with assert_raises(ValueError):
             g4.create_group('/a/b/c')  # already exists
-        with assert_raises(KeyError):
+        with assert_raises(ValueError):
             g1.create_group('')
-        with assert_raises(KeyError):
+        with assert_raises(ValueError):
             g1.create_group('/')
-        with assert_raises(KeyError):
+        with assert_raises(ValueError):
             g1.create_group('//')
 
         # multi
@@ -317,41 +323,50 @@ class TestGroup(unittest.TestCase):
 
         # array obstructs group, array
         g.create_dataset('foo', shape=100, chunks=10)
-        with assert_raises(KeyError):
+        with assert_raises(ValueError):
             g.create_group('foo/bar')
-        with assert_raises(KeyError):
+        with assert_raises(ValueError):
             g.require_group('foo/bar')
-        with assert_raises(KeyError):
+        with assert_raises(ValueError):
             g.create_dataset('foo/bar', shape=100, chunks=10)
-        with assert_raises(KeyError):
+        with assert_raises(ValueError):
             g.require_dataset('foo/bar', shape=100, chunks=10)
 
         # array obstructs group, array
         g.create_dataset('a/b', shape=100, chunks=10)
-        with assert_raises(KeyError):
+        with assert_raises(ValueError):
             g.create_group('a/b')
-        with assert_raises(KeyError):
+        with assert_raises(ValueError):
             g.require_group('a/b')
-        with assert_raises(KeyError):
+        with assert_raises(ValueError):
             g.create_dataset('a/b', shape=100, chunks=10)
 
         # group obstructs array
         g.create_group('c/d')
-        with assert_raises(KeyError):
+        with assert_raises(ValueError):
             g.create_dataset('c', shape=100, chunks=10)
-        with assert_raises(KeyError):
+        with assert_raises(ValueError):
             g.require_dataset('c', shape=100, chunks=10)
-        with assert_raises(KeyError):
+        with assert_raises(ValueError):
             g.create_dataset('c/d', shape=100, chunks=10)
-        with assert_raises(KeyError):
+        with assert_raises(ValueError):
             g.require_dataset('c/d', shape=100, chunks=10)
 
-        # h5py compatibility
+        # h5py compatibility, accept 'fillvalue'
         d = g.create_dataset('x', shape=100, chunks=10, fillvalue=42)
         eq(42, d.fill_value)
-        # ignore 'shuffle'
-        d = g.create_dataset('y', shape=100, chunks=10, shuffle=True)
+
+        # h5py compatibility, ignore 'shuffle'
+        warnings.resetwarnings()
+        warnings.simplefilter('always')
+        d = g.create_dataset('y1', shape=100, chunks=10, shuffle=True)
         assert not hasattr(d, 'shuffle')
+        warnings.resetwarnings()
+        warnings.simplefilter('error')
+        with assert_raises(UserWarning):
+            g.create_dataset('y2', shape=100, chunks=10, shuffle=True)
+        warnings.resetwarnings()
+        warnings.simplefilter('always')
 
         # read-only
         g = self.create_group(read_only=True)
@@ -896,6 +911,16 @@ class TestGroupWithDirectoryStore(TestGroup):
         return store, None
 
 
+class TestGroupWithNestedDirectoryStore(TestGroup):
+
+    @staticmethod
+    def create_store():
+        path = tempfile.mkdtemp()
+        atexit.register(atexit_rmtree, path)
+        store = NestedDirectoryStore(path)
+        return store, None
+
+
 class TestGroupWithZipStore(TestGroup):
 
     @staticmethod
@@ -956,7 +981,7 @@ def test_group():
     # overwrite behaviour
     store = dict()
     init_array(store, shape=100, chunks=10)
-    with assert_raises(KeyError):
+    with assert_raises(ValueError):
         group(store)
     g = group(store, overwrite=True)
     assert_is_instance(g, Group)
@@ -979,9 +1004,9 @@ def test_open_group():
     # mode in 'r', 'r+'
     open_array('example_array', shape=100, chunks=10, mode='w')
     for mode in 'r', 'r+':
-        with assert_raises(KeyError):
+        with assert_raises(ValueError):
             open_group('doesnotexist', mode=mode)
-        with assert_raises(KeyError):
+        with assert_raises(ValueError):
             open_group('example_array', mode=mode)
     g = open_group(store, mode='r')
     assert_is_instance(g, Group)
@@ -1002,7 +1027,7 @@ def test_open_group():
     eq(0, len(g))
     g.create_groups('foo', 'bar')
     eq(2, len(g))
-    with assert_raises(KeyError):
+    with assert_raises(ValueError):
         open_group('example_array', mode='a')
 
     # mode in 'w-', 'x'
@@ -1014,12 +1039,103 @@ def test_open_group():
         eq(0, len(g))
         g.create_groups('foo', 'bar')
         eq(2, len(g))
-        with assert_raises(KeyError):
+        with assert_raises(ValueError):
             open_group(store, mode=mode)
-        with assert_raises(KeyError):
+        with assert_raises(ValueError):
             open_group('example_array', mode=mode)
 
     # open with path
     g = open_group(store, path='foo/bar')
     assert_is_instance(g, Group)
     eq('foo/bar', g.path)
+
+
+def test_group_completions():
+    g = group()
+    d = dir(g)
+    assert 'foo' not in d
+    assert 'bar' not in d
+    assert 'baz' not in d
+    assert 'qux' not in d
+    assert 'xxx' not in d
+    assert 'yyy' not in d
+    assert 'zzz' not in d
+    assert '123' not in d
+    assert '456' not in d
+    g.create_groups('foo', 'bar', 'baz/qux', '123')
+    g.zeros('xxx', shape=100)
+    g.zeros('yyy', shape=100)
+    g.zeros('zzz', shape=100)
+    g.zeros('456', shape=100)
+    d = dir(g)
+    assert 'foo' in d
+    assert 'bar' in d
+    assert 'baz' in d
+    assert 'qux' not in d
+    assert 'xxx' in d
+    assert 'yyy' in d
+    assert 'zzz' in d
+    assert '123' not in d  # not valid identifier
+    assert '456' not in d  # not valid identifier
+
+
+def test_group_key_completions():
+    g = group()
+    d = dir(g)
+    k = g._ipython_key_completions_()
+
+    # none of these names should be an attribute
+    assert 'foo' not in d
+    assert 'bar' not in d
+    assert 'baz' not in d
+    assert 'qux' not in d
+    assert 'xxx' not in d
+    assert 'yyy' not in d
+    assert 'zzz' not in d
+    assert '123' not in d
+    assert '456' not in d
+    assert 'asdf;' not in d
+
+    # none of these names should be an item
+    assert 'foo' not in k
+    assert 'bar' not in k
+    assert 'baz' not in k
+    assert 'qux' not in k
+    assert 'xxx' not in k
+    assert 'yyy' not in k
+    assert 'zzz' not in k
+    assert '123' not in k
+    assert '456' not in k
+    assert 'asdf;' not in k
+
+    g.create_groups('foo', 'bar', 'baz/qux', '123')
+    g.zeros('xxx', shape=100)
+    g.zeros('yyy', shape=100)
+    g.zeros('zzz', shape=100)
+    g.zeros('456', shape=100)
+    g.zeros('asdf;', shape=100)
+
+    d = dir(g)
+    k = g._ipython_key_completions_()
+
+    assert 'foo' in d
+    assert 'bar' in d
+    assert 'baz' in d
+    assert 'qux' not in d
+    assert 'xxx' in d
+    assert 'yyy' in d
+    assert 'zzz' in d
+    assert '123' not in d  # not valid identifier
+    assert '456' not in d  # not valid identifier
+    assert 'asdf;' not in d  # not valid identifier
+
+    assert 'foo' in k
+    assert 'bar' in k
+    assert 'baz' in k
+    assert 'qux' not in k
+    assert 'xxx' in k
+    assert 'yyy' in k
+    assert 'zzz' in k
+    assert '123' in k
+    assert '456' in k
+    assert 'asdf;' in k

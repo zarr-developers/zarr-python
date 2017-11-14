@@ -15,13 +15,12 @@ from numpy.testing import assert_array_equal, assert_array_almost_equal
 from nose.tools import assert_raises, eq_ as eq, assert_is_none
 
 
-from zarr.storage import init_array, array_meta_key, attrs_key, DictStore, \
-    DirectoryStore, ZipStore, init_group, group_meta_key, getsize, \
-    migrate_1to2, TempStore, atexit_rmtree
-from zarr.meta import decode_array_metadata, encode_array_metadata, \
-    ZARR_FORMAT, decode_group_metadata, encode_group_metadata
+from zarr.storage import (init_array, array_meta_key, attrs_key, DictStore, DirectoryStore,
+                          ZipStore, init_group, group_meta_key, getsize, migrate_1to2, TempStore,
+                          atexit_rmtree, NestedDirectoryStore, default_compressor)
+from zarr.meta import (decode_array_metadata, encode_array_metadata, ZARR_FORMAT,
+                       decode_group_metadata, encode_group_metadata)
 from zarr.compat import text_type
-from zarr.storage import default_compressor
 from zarr.codecs import Zlib, Blosc, BZ2
 from zarr.errors import PermissionError
 from zarr.hierarchy import group
@@ -173,17 +172,17 @@ class StoreTests(object):
             eq(6, store.getsize('c/e'))
             eq(3, store.getsize('c/e/f'))
             eq(3, store.getsize('c/e/g'))
-            with assert_raises(KeyError):
+            with assert_raises(ValueError):
                 store.getsize('x')
-            with assert_raises(KeyError):
+            with assert_raises(ValueError):
                 store.getsize('a/x')
-            with assert_raises(KeyError):
+            with assert_raises(ValueError):
                 store.getsize('c/x')
-            with assert_raises(KeyError):
+            with assert_raises(ValueError):
                 store.getsize('c/x/y')
-            with assert_raises(KeyError):
+            with assert_raises(ValueError):
                 store.getsize('c/d/y')
-            with assert_raises(KeyError):
+            with assert_raises(ValueError):
                 store.getsize('c/d/y/z')
 
         # test listdir (optional)
@@ -258,7 +257,7 @@ class StoreTests(object):
         )
 
         # don't overwrite (default)
-        with assert_raises(KeyError):
+        with assert_raises(ValueError):
             init_array(store, shape=1000, chunks=100)
 
         # do overwrite
@@ -311,7 +310,7 @@ class StoreTests(object):
         store[path + '/' + array_meta_key] = encode_array_metadata(meta)
 
         # don't overwrite
-        with assert_raises(KeyError):
+        with assert_raises(ValueError):
             init_array(store, shape=1000, chunks=100, path=path)
 
         # do overwrite
@@ -338,7 +337,7 @@ class StoreTests(object):
         store[path + '/' + group_meta_key] = encode_group_metadata()
 
         # don't overwrite
-        with assert_raises(KeyError):
+        with assert_raises(ValueError):
             init_array(store, shape=1000, chunks=100, path=path)
 
         # do overwrite
@@ -373,7 +372,7 @@ class StoreTests(object):
         chunk_store['1'] = b'bbb'
 
         # don't overwrite (default)
-        with assert_raises(KeyError):
+        with assert_raises(ValueError):
             init_array(store, shape=1000, chunks=100, chunk_store=chunk_store)
 
         # do overwrite
@@ -425,7 +424,7 @@ class StoreTests(object):
         )
 
         # don't overwrite array (default)
-        with assert_raises(KeyError):
+        with assert_raises(ValueError):
             init_group(store)
 
         # do overwrite
@@ -440,7 +439,7 @@ class StoreTests(object):
             eq(ZARR_FORMAT, meta['zarr_format'])
 
         # don't overwrite group
-        with assert_raises(KeyError):
+        with assert_raises(ValueError):
             init_group(store)
 
     def test_init_group_overwrite_path(self):
@@ -458,7 +457,7 @@ class StoreTests(object):
         store[path + '/' + array_meta_key] = encode_array_metadata(meta)
 
         # don't overwrite
-        with assert_raises(KeyError):
+        with assert_raises(ValueError):
             init_group(store, path=path)
 
         # do overwrite
@@ -492,7 +491,7 @@ class StoreTests(object):
         chunk_store['baz'] = b'quux'
 
         # don't overwrite array (default)
-        with assert_raises(KeyError):
+        with assert_raises(ValueError):
             init_group(store, chunk_store=chunk_store)
 
         # do overwrite
@@ -509,7 +508,7 @@ class StoreTests(object):
             assert 'baz' not in chunk_store
 
         # don't overwrite group
-        with assert_raises(KeyError):
+        with assert_raises(ValueError):
             init_group(store)
 
 
@@ -614,6 +613,27 @@ class TestDirectoryStore(StoreTests, unittest.TestCase):
     def test_setdel(self):
         store = self.create_store()
         setdel_hierarchy_checks(store)
+
+
+class TestNestedDirectoryStore(TestDirectoryStore, unittest.TestCase):
+
+    def create_store(self):
+        path = tempfile.mkdtemp()
+        atexit.register(atexit_rmtree, path)
+        store = NestedDirectoryStore(path)
+        return store
+
+    def test_chunk_nesting(self):
+        store = self.create_store()
+        # any path where last segment looks like a chunk key gets special handling
+        store['0.0'] = b'xxx'
+        eq(b'xxx', store['0.0'])
+        eq(b'xxx', store['0/0'])
+        store['foo/10.20.30'] = b'yyy'
+        eq(b'yyy', store['foo/10.20.30'])
+        eq(b'yyy', store['foo/10/20/30'])
+        store['42'] = b'zzz'
+        eq(b'zzz', store['42'])
 
 
 class TestTempStore(StoreTests, unittest.TestCase):

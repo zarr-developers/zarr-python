@@ -1,15 +1,16 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, print_function, division
 import json
+import base64
 
 
 from nose.tools import eq_ as eq, assert_is_none, assert_raises
 import numpy as np
 
 
-from zarr.compat import binary_type, text_type
-from zarr.meta import decode_array_metadata, encode_dtype, decode_dtype, \
-    ZARR_FORMAT, decode_group_metadata, encode_array_metadata
+from zarr.compat import binary_type, text_type, PY2
+from zarr.meta import (decode_array_metadata, encode_dtype, decode_dtype, ZARR_FORMAT,
+                       decode_group_metadata, encode_array_metadata)
 from zarr.errors import MetadataError
 from zarr.codecs import Delta, Zlib, Blosc
 
@@ -73,7 +74,7 @@ def test_encode_decode_array_2():
         chunks=(10, 10),
         dtype=np.dtype([('a', 'i4'), ('b', 'S10')]),
         compressor=compressor.get_config(),
-        fill_value=42,
+        fill_value=b'',
         order='F',
         filters=[df.get_config()]
     )
@@ -88,7 +89,7 @@ def test_encode_decode_array_2():
             "blocksize": 0
         },
         "dtype": [["a", "<i4"], ["b", "|S10"]],
-        "fill_value": 42,
+        "fill_value": "",
         "filters": [
             {"id": "delta", "astype": "<u2", "dtype": "|V14"}
         ],
@@ -109,11 +110,12 @@ def test_encode_decode_array_2():
     eq(meta['dtype'], meta_dec['dtype'])
     eq(meta['compressor'], meta_dec['compressor'])
     eq(meta['order'], meta_dec['order'])
-    eq(meta['fill_value'], meta_dec['fill_value'])
+    np_fill_value = np.array(meta['fill_value'], dtype=meta['dtype'])[()]
+    eq(np_fill_value, meta_dec['fill_value'])
     eq([df.get_config()], meta_dec['filters'])
 
 
-def test_encode_decode_array_fill_values():
+def test_encode_decode_fill_values_nan():
 
     fills = (
         (np.nan, "NaN", np.isnan),
@@ -152,6 +154,49 @@ def test_encode_decode_array_fill_values():
         meta_dec = decode_array_metadata(meta_enc)
         actual = meta_dec['fill_value']
         assert f(actual)
+
+
+def test_encode_decode_fill_values_bytes():
+
+    dtype = np.dtype('S10')
+    fills = b'foo', bytes(10)
+
+    for v in fills:
+
+        s = base64.standard_b64encode(v)
+        if not PY2:
+            s = str(s, 'ascii')
+
+        meta = dict(
+            shape=(100,),
+            chunks=(10,),
+            dtype=dtype,
+            compressor=Zlib(1).get_config(),
+            fill_value=v,
+            filters=None,
+            order='C'
+        )
+
+        meta_json = '''{
+            "chunks": [10],
+            "compressor": {"id": "zlib", "level": 1},
+            "dtype": "|S10",
+            "fill_value": "%s",
+            "filters": null,
+            "order": "C",
+            "shape": [100],
+            "zarr_format": %s
+        }''' % (s, ZARR_FORMAT)
+
+        # test encoding
+        meta_enc = encode_array_metadata(meta)
+        assert_json_eq(meta_json, meta_enc)
+
+        # test decoding
+        meta_dec = decode_array_metadata(meta_enc)
+        actual = meta_dec['fill_value']
+        np_v = np.array(v, dtype=dtype)[()]
+        eq(np_v, actual)
 
 
 def test_decode_array_unsupported_format():

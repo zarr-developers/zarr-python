@@ -1,4 +1,9 @@
 # -*- coding: utf-8 -*-
+"""
+This module contains storage classes for use with Zarr arrays and groups. Note that any object
+implementing the ``MutableMapping`` interface can be used as a Zarr array store.
+
+"""
 from __future__ import absolute_import, print_function, division
 from collections import MutableMapping
 import os
@@ -7,25 +12,26 @@ import json
 import zipfile
 import shutil
 import atexit
+import re
 
 
 import numpy as np
 
 
-from zarr.util import normalize_shape, normalize_chunks, normalize_order, \
-    normalize_storage_path, buffer_size
+from zarr.util import (normalize_shape, normalize_chunks, normalize_order,
+                       normalize_storage_path, buffer_size, normalize_fill_value)
 from zarr.meta import encode_array_metadata, encode_group_metadata
 from zarr.compat import PY2, binary_type
 from numcodecs.registry import codec_registry
-from zarr.errors import err_contains_group, err_contains_array, \
-    err_path_not_found, err_bad_compressor, err_fspath_exists_notdir, \
-    err_read_only
+from zarr.errors import (err_contains_group, err_contains_array, err_path_not_found,
+                         err_bad_compressor, err_fspath_exists_notdir, err_read_only)
 
 
 array_meta_key = '.zarray'
 group_meta_key = '.zgroup'
 attrs_key = '.zattrs'
 try:
+    # noinspection PyUnresolvedReferences
     from zarr.codecs import Blosc
     default_compressor = Blosc()
 except ImportError:  # pragma: no cover
@@ -278,6 +284,7 @@ def _init_array_metadata(store, shape, chunks=None, dtype=None, compressor='defa
     dtype = np.dtype(dtype)
     chunks = normalize_chunks(chunks, shape, dtype.itemsize)
     order = normalize_order(order)
+    fill_value = normalize_fill_value(fill_value, dtype)
 
     # compressor prep
     if shape == ():
@@ -376,9 +383,11 @@ def ensure_bytes(s):
         return s
     if isinstance(s, np.ndarray):
         if PY2:  # pragma: py3 no cover
-            return s.tostring(order='Any')
+            # noinspection PyArgumentList
+            return s.tostring(order='A')
         else:  # pragma: py2 no cover
-            return s.tobytes(order='Any')
+            # noinspection PyArgumentList
+            return s.tobytes(order='A')
     if hasattr(s, 'tobytes'):
         return s.tobytes()
     if PY2 and hasattr(s, 'tostring'):  # pragma: py3 no cover
@@ -535,14 +544,13 @@ class DictStore(MutableMapping):
         path = normalize_storage_path(path)
 
         # obtain value to return size of
+        value = self.root
         if path:
             try:
                 parent, key = self._get_parent(path)
                 value = parent[key]
             except KeyError:
                 err_path_not_found(path)
-        else:
-            value = self.root
 
         # obtain size of value
         if isinstance(value, self.cls):
@@ -578,12 +586,14 @@ class DirectoryStore(MutableMapping):
     >>> store['foo'] = b'bar'
     >>> store['foo']
     b'bar'
-    >>> open('example_store/foo', 'rb').read()
+    >>> with open('example_store/foo', 'rb') as f:
+    ...     f.read()
     b'bar'
     >>> store['a/b/c'] = b'xxx'
     >>> store['a/b/c']
     b'xxx'
-    >>> open('example_store/a/b/c', 'rb').read()
+    >>> with open('example_store/a/b/c', 'rb') as f:
+    ...     f.read()
     b'xxx'
     >>> sorted(store.keys())
     ['a/b/c', 'foo']
@@ -641,17 +651,22 @@ class DirectoryStore(MutableMapping):
                 raise KeyError(key)
 
         # write to temporary file
-        with tempfile.NamedTemporaryFile(mode='wb', delete=False,
-                                         dir=dir_path,
-                                         prefix=file_name + '.',
-                                         suffix='.partial') as f:
-            f.write(value)
-            temp_path = f.name
+        temp_path = None
+        try:
+            with tempfile.NamedTemporaryFile(mode='wb', delete=False, dir=dir_path,
+                                             prefix=file_name + '.', suffix='.partial') as f:
+                temp_path = f.name
+                f.write(value)
 
-        # move temporary file into place
-        if os.path.exists(file_path):
-            os.remove(file_path)
-        os.rename(temp_path, file_path)
+            # move temporary file into place
+            if os.path.exists(file_path):
+                os.remove(file_path)
+            os.rename(temp_path, file_path)
+
+        finally:
+            # clean up if temp file still exists for whatever reason
+            if temp_path is not None and os.path.exists(temp_path):
+                os.remove(temp_path)
 
     def __delitem__(self, key):
         path = os.path.join(self.path, key)
@@ -691,11 +706,15 @@ class DirectoryStore(MutableMapping):
     def __len__(self):
         return sum(1 for _ in self.keys())
 
-    def listdir(self, path=None):
+    def dir_path(self, path=None):
         store_path = normalize_storage_path(path)
         dir_path = self.path
         if store_path:
             dir_path = os.path.join(dir_path, store_path)
+        return dir_path
+
+    def listdir(self, path=None):
+        dir_path = self.dir_path(path)
         if os.path.isdir(dir_path):
             return sorted(os.listdir(dir_path))
         else:
@@ -739,10 +758,128 @@ def atexit_rmtree(path,
 class TempStore(DirectoryStore):
     """Directory store using a temporary directory for storage."""
 
+    # noinspection PyShadowingBuiltins
     def __init__(self, suffix='', prefix='zarr', dir=None):
         path = tempfile.mkdtemp(suffix=suffix, prefix=prefix, dir=dir)
         atexit.register(atexit_rmtree, path)
         super(TempStore, self).__init__(path)
+
+
+_prog_ckey = re.compile(r'^(\d+)(\.\d+)+$')
+_prog_number = re.compile(r'^\d+$')
+
+
+def _map_ckey(key):
+    segments = list(key.split('/'))
+    if segments:
+        last_segment = segments[-1]
+        if _prog_ckey.match(last_segment):
+            last_segment = last_segment.replace('.', '/')
+            segments = segments[:-1] + [last_segment]
+            key = '/'.join(segments)
+    return key
+
+
+class NestedDirectoryStore(DirectoryStore):
+    """Mutable Mapping interface to a directory, with special handling for chunk keys so that
+    chunk files for multidimensional arrays are stored in a nested directory tree. Keys must be
+    strings, values must be bytes-like objects.
+
+    Parameters
+    ----------
+    path : string
+        Location of directory.
+
+    Examples
+    --------
+    Most keys are mapped to file paths as normal, e.g.::
+
+        >>> import zarr
+        >>> store = zarr.NestedDirectoryStore('example_nested_store')
+        >>> store['foo'] = b'bar'
+        >>> store['foo']
+        b'bar'
+        >>> store['a/b/c'] = b'xxx'
+        >>> store['a/b/c']
+        b'xxx'
+        >>> with open('example_nested_store/foo', 'rb') as f:
+        ...     f.read()
+        b'bar'
+        >>> with open('example_nested_store/a/b/c', 'rb') as f:
+        ...     f.read()
+        b'xxx'
+
+    Chunk keys are handled in a special way, such that the '.' characters in the key are mapped to
+    directory path separators internally. E.g.::
+
+        >>> store['bar/0.0'] = b'yyy'
+        >>> store['bar/0.0']
+        b'yyy'
+        >>> store['baz/2.1.12'] = b'zzz'
+        >>> store['baz/2.1.12']
+        b'zzz'
+        >>> with open('example_nested_store/bar/0/0', 'rb') as f:
+        ...     f.read()
+        b'yyy'
+        >>> with open('example_nested_store/baz/2/1/12', 'rb') as f:
+        ...     f.read()
+        b'zzz'
+
+    Notes
+    -----
+    The standard DirectoryStore class stores all chunk files for an array together in a single
+    directory. On some file systems the potentially large number of files in a single directory
+    can cause performance issues. The NestedDirectoryStore class provides an alternative where
+    chunk files for multidimensional arrays will be organised into a directory hierarchy,
+    thus reducing the number of files in any one directory.
+
+    """
+
+    def __init__(self, path):
+        super(NestedDirectoryStore, self).__init__(path)
+
+    def __getitem__(self, key):
+        key = _map_ckey(key)
+        return super(NestedDirectoryStore, self).__getitem__(key)
+
+    def __setitem__(self, key, value):
+        key = _map_ckey(key)
+        super(NestedDirectoryStore, self).__setitem__(key, value)
+
+    def __delitem__(self, key):
+        key = _map_ckey(key)
+        super(NestedDirectoryStore, self).__delitem__(key)
+
+    def __contains__(self, key):
+        key = _map_ckey(key)
+        return super(NestedDirectoryStore, self).__contains__(key)
+
+    def __eq__(self, other):
+        return (
+            isinstance(other, NestedDirectoryStore) and
+            self.path == other.path
+        )
+
+    def listdir(self, path=None):
+        children = super(NestedDirectoryStore, self).listdir(path=path)
+        if array_meta_key in children:
+            # special handling of directories containing an array to map nested chunk keys back
+            # to standard chunk keys
+            new_children = []
+            root_path = self.dir_path(path)
+            for entry in children:
+                entry_path = os.path.join(root_path, entry)
+                if _prog_number.match(entry) and os.path.isdir(entry_path):
+                    for dir_path, _, file_names in os.walk(entry_path):
+                        for file_name in file_names:
+                            file_path = os.path.join(dir_path, file_name)
+                            rel_path = file_path.split(root_path + os.path.sep)[1]
+                            new_children.append(rel_path.replace(os.path.sep, '.'))
+                else:
+                    new_children.append(entry)
+            return sorted(new_children)
+        else:
+            return children
 
 
 # noinspection PyPep8Naming

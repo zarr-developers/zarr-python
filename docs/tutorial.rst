@@ -40,10 +40,6 @@ scalar value::
 
     >>> z[:] = 42
 
-Notice that the values of ``initialized`` has changed. This is because
-when a Zarr array is first created, none of the chunks are initialized.
-Writing data into the array will cause the necessary chunks to be initialized.
-
 Regions of the array can also be written to, e.g.::
 
     >>> import numpy as np
@@ -51,7 +47,7 @@ Regions of the array can also be written to, e.g.::
     >>> z[:, 0] = np.arange(10000)
 
 The contents of the array can be retrieved by slicing, which will load
-the requested region into a NumPy array, e.g.::
+the requested region into memory as a NumPy array, e.g.::
 
     >>> z[0, 0]
     0
@@ -61,7 +57,7 @@ the requested region into a NumPy array, e.g.::
     array([   0,    1,    2, ..., 9997, 9998, 9999], dtype=int32)
     >>> z[:, 0]
     array([   0,    1,    2, ..., 9997, 9998, 9999], dtype=int32)
-    >>> z[:]
+    >>> z[...]
     array([[   0,    1,    2, ..., 9997, 9998, 9999],
            [   1,   42,   42, ...,   42,   42,   42],
            [   2,   42,   42, ...,   42,   42,   42],
@@ -80,9 +76,7 @@ stored in memory. Zarr arrays can also be stored on a file system,
 enabling persistence of data between sessions. For example::
 
     >>> z1 = zarr.open_array('example.zarr', mode='w', shape=(10000, 10000),
-    ...                      chunks=(1000, 1000), dtype='i4', fill_value=0)
-    >>> z1
-    <zarr.core.Array (10000, 10000) int32>
+    ...                      chunks=(1000, 1000), dtype='i4')
 
 The array above will store its configuration metadata and all
 compressed chunk data in a directory called 'example.zarr' relative to
@@ -102,10 +96,11 @@ data, e.g.::
 Check that the data have been written and can be read again::
 
     >>> z2 = zarr.open_array('example.zarr', mode='r')
-    >>> z2
-    <zarr.core.Array (10000, 10000) int32>
-    >>> np.all(z1[:] == z2[:])
+    >>> np.all(z1[...] == z2[...])
     True
+
+Please note that there are a number of other options for persistent array storage, see the
+section on :ref:`tutorial_tips_storage` below.
 
 .. _tutorial_resize:
 
@@ -145,44 +140,57 @@ which can be used to append data to any axis. E.g.::
 Compressors
 -----------
 
-By default, Zarr uses the `Blosc <http://www.blosc.org/>`_ compression
-library to compress each chunk of an array. Blosc is extremely fast
-and can be configured in a variety of ways to improve the compression
-ratio for different types of data. Blosc is in fact a
-"meta-compressor", which means that it can used a number of different
-compression algorithms internally to compress the data. Blosc also
-provides highly optimized implementations of byte and bit shuffle
-filters, which can significantly improve compression ratios for some
-data.
-
-Different compressors can be provided via the ``compressor`` keyword argument
-accepted by all array creation functions. For example::
+A number of different compressors can be used with Zarr. A separate package called Numcodecs_ is
+available which provides an interface to various compressor libraries including Blosc, Zstandard,
+LZ4, Zlib, BZ2 and LZMA. Different compressors can be provided via the ``compressor`` keyword
+argument accepted by all array creation functions. For example::
 
     >>> from numcodecs import Blosc
-    >>> z = zarr.array(np.arange(100000000, dtype='i4').reshape(10000, 10000),
-    ...                chunks=(1000, 1000),
-    ...                compressor=Blosc(cname='zstd', clevel=3, shuffle=Blosc.BITSHUFFLE))
+    >>> compressor = Blosc(cname='zstd', clevel=3, shuffle=Blosc.BITSHUFFLE)
+    >>> data = np.arange(100000000, dtype='i4').reshape(10000, 10000)
+    >>> z = zarr.array(data, chunks=(1000, 1000), compressor=compressor)
     >>> z.compressor
     Blosc(cname='zstd', clevel=3, shuffle=BITSHUFFLE, blocksize=0)
 
-The array above will use Blosc as the primary compressor, using the
-Zstandard algorithm (compression level 3) internally within Blosc, and with
-the bitshuffle filter applied.
+This array above will use Blosc as the primary compressor, using the Zstandard algorithm
+(compression level 3) internally within Blosc, and with the bitshuffle filter applied.
 
-A list of the internal compression libraries available within Blosc can be
-obtained via::
+When using a compressor, it can be useful to get some diagnostics on the compression ratio. Zarr
+arrays provide a ``info`` property which can be used to print some diagnostics, e.g.::
+
+    >>> z.info
+    Type               : zarr.core.Array
+    Data type          : int32
+    Shape              : (10000, 10000)
+    Chunk shape        : (1000, 1000)
+    Order              : C
+    Read-only          : False
+    Compressor         : Blosc(cname='zstd', clevel=3, shuffle=BITSHUFFLE,
+                       : blocksize=0)
+    Store type         : builtins.dict
+    No. bytes          : 400000000 (381.5M)
+    No. bytes stored   : 4565055 (4.4M)
+    Storage ratio      : 87.6
+    Chunks initialized : 100/100
+
+If you don't specify a compressor, by default Zarr uses the Blosc compressor. Blosc is extremely
+fast and can be configured in a variety of ways to improve the compression ratio for different
+types of data. Blosc is in fact a "meta-compressor", which means that it can used a number of
+different compression algorithms internally to compress the data. Blosc also provides highly
+optimized implementations of byte and bit shuffle filters, which can significantly improve
+compression ratios for some data. A list of the internal compression libraries available within
+Blosc can be obtained via::
 
     >>> from numcodecs import blosc
     >>> blosc.list_compressors()
     ['blosclz', 'lz4', 'lz4hc', 'snappy', 'zlib', 'zstd']
 
-In addition to Blosc, other compression libraries can also be
-used. For example, here is an array using Zstandard compression, level 1::
+In addition to Blosc, other compression libraries can also be used. For example, here is an array
+using Zstandard compression, level 1::
 
     >>> from numcodecs import Zstd
     >>> z = zarr.array(np.arange(100000000, dtype='i4').reshape(10000, 10000),
-    ...                chunks=(1000, 1000),
-    ...                compressor=Zstd(level=1))
+    ...                chunks=(1000, 1000), compressor=Zstd(level=1))
     >>> z.compressor
     Zstd(level=1)
 
@@ -235,15 +243,13 @@ flexibility for implementing and using filters in combination with different
 compressors, Zarr also provides a mechanism for configuring filters outside of
 the primary compressor.
 
-Here is an example using the delta filter with the Blosc compressor:
+Here is an example using the delta filter with the Blosc compressor::
 
     >>> from numcodecs import Blosc, Delta
     >>> filters = [Delta(dtype='i4')]
     >>> compressor = Blosc(cname='zstd', clevel=1, shuffle=Blosc.SHUFFLE)
-    >>> z = zarr.array(np.arange(100000000, dtype='i4').reshape(10000, 10000),
-    ...                chunks=(1000, 1000), filters=filters, compressor=compressor)
-    >>> z
-    <zarr.core.Array (10000, 10000) int32>
+    >>> data = np.arange(100000000, dtype='i4').reshape(10000, 10000)
+    >>> z = zarr.array(data, chunks=(1000, 1000), filters=filters, compressor=compressor)
     >>> z.info
     Type               : zarr.core.Array
     Data type          : int32
@@ -376,8 +382,7 @@ and :func:`zarr.hierarchy.Group.require_dataset` methods, e.g.::
 
     >>> z = bar_group.create_dataset('quux', shape=(10000, 10000),
     ...                              chunks=(1000, 1000), dtype='i4',
-    ...                              fill_value=0, compression='gzip',
-    ...                              compression_opts=1)
+    ...                              compression='gzip', compression_opts=1)
     >>> z
     <zarr.core.Array '/foo/bar/quux' (10000, 10000) int32>
 
@@ -402,12 +407,191 @@ stored in sub-directories, e.g.::
     >>> persistent_group
     <zarr.hierarchy.Group '/'>
     >>> z = persistent_group.create_dataset('foo/bar/baz', shape=(10000, 10000),
-    ...                                     chunks=(1000, 1000), dtype='i4',
-    ...                                     fill_value=0)
+    ...                                     chunks=(1000, 1000), dtype='i4')
     >>> z
     <zarr.core.Array '/foo/bar/baz' (10000, 10000) int32>
 
 For more information on groups see the :mod:`zarr.hierarchy` API docs.
+
+.. _tutorial_indexing:
+
+Advanced indexing
+-----------------
+
+As of Zarr version 2.2, Zarr arrays support several methods for advanced or "fancy" indexing,
+which enable a subset of data items to be extracted or updated in an array without loading the
+entire array into memory. Note that although this functionality is similar to some of the
+advanced indexing capabilities available on NumPy arrays and on h5py datasets, **the Zarr API for
+advanced indexing is different from both NumPy and h5py**, so please read this section carefully.
+For a complete description of the indexing API, see the documentation for the
+:class:`zarr.core.Array` class.
+
+Indexing with coordinate arrays
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Items from a Zarr array can be extracted by providing an integer array of coordinates. E.g.::
+
+    >>> z = zarr.array(np.arange(10))
+    >>> z[...]
+    array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
+    >>> z.get_coordinate_selection([1, 4])
+    array([1, 4])
+
+Coordinate arrays can also be used to update data, e.g.::
+
+    >>> z.set_coordinate_selection([1, 4], [-1, -2])
+    >>> z[...]
+    array([ 0, -1,  2,  3, -2,  5,  6,  7,  8,  9])
+
+For multidimensional arrays, coordinates must be provided for each dimension, e.g.::
+
+    >>> z = zarr.array(np.arange(15).reshape(3, 5))
+    >>> z[...]
+    array([[ 0,  1,  2,  3,  4],
+           [ 5,  6,  7,  8,  9],
+           [10, 11, 12, 13, 14]])
+    >>> z.get_coordinate_selection(([0, 2], [1, 3]))
+    array([ 1, 13])
+    >>> z.set_coordinate_selection(([0, 2], [1, 3]), [-1, -2])
+    >>> z[...]
+    array([[ 0, -1,  2,  3,  4],
+           [ 5,  6,  7,  8,  9],
+           [10, 11, 12, -2, 14]])
+
+For convenience, coordinate indexing is also available via the ``vindex`` property, e.g.::
+
+    >>> z.vindex[[0, 2], [1, 3]]
+    array([-1, -2])
+    >>> z.vindex[[0, 2], [1, 3]] = [-3, -4]
+    >>> z[...]
+    array([[ 0, -3,  2,  3,  4],
+           [ 5,  6,  7,  8,  9],
+           [10, 11, 12, -4, 14]])
+
+Indexing with a mask array
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Items can also be extracted by providing a Boolean mask array. E.g.::
+
+    >>> z = zarr.array(np.arange(10))
+    >>> z[...]
+    array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
+    >>> sel = np.zeros_like(z, dtype=bool)
+    >>> sel[1] = True
+    >>> sel[4] = True
+    >>> z.get_mask_selection(sel)
+    array([1, 4])
+    >>> z.set_mask_selection(sel, [-1, -2])
+    >>> z[...]
+    array([ 0, -1,  2,  3, -2,  5,  6,  7,  8,  9])
+
+Here is a multidimensional example::
+
+    >>> z = zarr.array(np.arange(15).reshape(3, 5))
+    >>> z[...]
+    array([[ 0,  1,  2,  3,  4],
+           [ 5,  6,  7,  8,  9],
+           [10, 11, 12, 13, 14]])
+    >>> sel = np.zeros_like(z, dtype=bool)
+    >>> sel[0, 1] = True
+    >>> sel[2, 3] = True
+    >>> z.get_mask_selection(sel)
+    array([ 1, 13])
+    >>> z.set_mask_selection(sel, [-1, -2])
+    >>> z[...]
+    array([[ 0, -1,  2,  3,  4],
+           [ 5,  6,  7,  8,  9],
+           [10, 11, 12, -2, 14]])
+
+For convenience, mask indexing is also available via the ``vindex`` property, e.g.::
+
+    >>> z.vindex[sel]
+    array([-1, -2])
+    >>> z.vindex[sel] = [-3, -4]
+    >>> z[...]
+    array([[ 0, -3,  2,  3,  4],
+           [ 5,  6,  7,  8,  9],
+           [10, 11, 12, -4, 14]])
+
+Mask indexing is conceptually the same as coordinate indexing, and is implemented internally via
+the same machinery. Both styles of indexing allow selecting arbitrary items from an array, also
+known as point selection.
+
+Orthogonal indexing
+~~~~~~~~~~~~~~~~~~~
+
+Zarr arrays also support methods for orthogonal indexing, which allows selections to be made
+along each dimension of an array independently. For example, this allows selecting a subset of
+rows and/or columns from a 2-dimensional array. E.g.::
+
+    >>> z = zarr.array(np.arange(15).reshape(3, 5))
+    >>> z[...]
+    array([[ 0,  1,  2,  3,  4],
+           [ 5,  6,  7,  8,  9],
+           [10, 11, 12, 13, 14]])
+    >>> z.get_orthogonal_selection(([0, 2], slice(None)))  # select first and third rows
+    array([[ 0,  1,  2,  3,  4],
+           [10, 11, 12, 13, 14]])
+    >>> z.get_orthogonal_selection((slice(None), [1, 3]))  # select second and fourth columns
+    array([[ 1,  3],
+           [ 6,  8],
+           [11, 13]])
+    >>> z.get_orthogonal_selection(([0, 2], [1, 3]))       # select rows [0, 2] and columns [1, 4]
+    array([[ 1,  3],
+           [11, 13]])
+
+Data can also be modified, e.g.::
+
+    >>> z.set_orthogonal_selection(([0, 2], [1, 3]), [[-1, -2], [-3, -4]])
+    >>> z[...]
+    array([[ 0, -1,  2, -2,  4],
+           [ 5,  6,  7,  8,  9],
+           [10, -3, 12, -4, 14]])
+
+For convenience, the orthogonal indexing functionality is also available via the ``oindex``
+property, e.g.::
+
+    >>> z = zarr.array(np.arange(15).reshape(3, 5))
+    >>> z.oindex[[0, 2], :]  # select first and third rows
+    array([[ 0,  1,  2,  3,  4],
+           [10, 11, 12, 13, 14]])
+    >>> z.oindex[:, [1, 3]]  # select second and fourth columns
+    array([[ 1,  3],
+           [ 6,  8],
+           [11, 13]])
+    >>> z.oindex[[0, 2], [1, 3]]  # select rows [0, 2] and columns [1, 4]
+    array([[ 1,  3],
+           [11, 13]])
+    >>> z.oindex[[0, 2], [1, 3]] = [[-1, -2], [-3, -4]]
+    >>> z[...]
+    array([[ 0, -1,  2, -2,  4],
+           [ 5,  6,  7,  8,  9],
+           [10, -3, 12, -4, 14]])
+
+Any combination of integer, slice, integer array and/or Boolean array can be used for orthogonal
+indexing.
+
+Indexing fields in structured arrays
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+All selection methods support a ``fields`` parameter which allows retrieving or replacing data
+for a specific field in an array with a structured dtype. E.g.::
+
+    >>> a = np.array([(b'aaa', 1, 4.2),
+    ...               (b'bbb', 2, 8.4),
+    ...               (b'ccc', 3, 12.6)],
+    ...              dtype=[('foo', 'S3'), ('bar', 'i4'), ('baz', 'f8')])
+    >>> z = zarr.array(a)
+    >>> z['foo']
+    array([b'aaa', b'bbb', b'ccc'],
+          dtype='|S3')
+    >>> z['baz']
+    array([  4.2,   8.4,  12.6])
+    >>> z.get_basic_selection(slice(0, 2), fields='bar')
+    array([1, 2], dtype=int32)
+    >>> z.get_coordinate_selection([0, 2], fields=['foo', 'baz'])
+    array([(b'aaa',   4.2), (b'ccc',  12.6)],
+          dtype=[('foo', 'S3'), ('baz', '<f8')])
 
 .. _tutorial_tips:
 
@@ -425,8 +609,6 @@ Diagnostic information about arrays and groups is available via the ``info`` pro
     >>> foo_group = root_group.create_group('foo')
     >>> z = foo_group.zeros('bar', shape=1000000, chunks=100000)
     >>> z[:] = 42
-    >>> root_group
-    <zarr.hierarchy.Group '/'>
     >>> root_group.info
     Name        : /
     Type        : zarr.hierarchy.Group
@@ -437,8 +619,6 @@ Diagnostic information about arrays and groups is available via the ``info`` pro
     No. groups  : 1
     Groups      : foo
 
-    >>> foo_group
-    <zarr.hierarchy.Group '/foo'>
     >>> foo_group.info
     Name        : /foo
     Type        : zarr.hierarchy.Group
@@ -449,8 +629,6 @@ Diagnostic information about arrays and groups is available via the ``info`` pro
     No. groups  : 0
     Arrays      : bar
 
-    >>> z
-    <zarr.core.Array '/foo/bar' (1000000,) float64>
     >>> z.info
     Name               : /foo/bar
     Type               : zarr.core.Array
@@ -462,7 +640,7 @@ Diagnostic information about arrays and groups is available via the ``info`` pro
     Compressor         : Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
     Store type         : zarr.storage.DictStore
     No. bytes          : 8000000 (7.6M)
-    No. bytes stored   : 38482 (37.6K)
+    No. bytes stored   : 38484 (37.6K)
     Storage ratio      : 207.9
     Chunks initialized : 10/10
 
@@ -535,10 +713,31 @@ which compression filters (e.g., byte shuffle) have been applied.
 Storage alternatives
 ~~~~~~~~~~~~~~~~~~~~
 
-Zarr can use any object that implements the ``MutableMapping`` interface as
-the store for a group or an array.
+Zarr can use any object that implements the ``MutableMapping`` interface as the store for a group
+or an array. Some storage classes are provided in the :mod:`zarr.storage` module. For example,
+the :class:`zarr.storage.DirectoryStore` class provides a ``MutableMapping`` interface to a
+directory on the local file system. This is used under the hood by the
+:func:`zarr.creation.open_array` and :func:`zarr.hierarchy.open_group` functions. In other words,
+the following code::
 
-Here is an example storing an array directly into a Zip file::
+    >>> z = zarr.open_array('example.zarr', mode='w', shape=1000000, dtype='i4')
+
+...is just short-hand for::
+
+    >>> store = zarr.DirectoryStore('example.zarr')
+    >>> z = zarr.zeros(store=store, overwrite=True, shape=1000000, dtype='i4')
+
+...and the following code::
+
+    >>> grp = zarr.open_group('example.zarr', mode='w')
+
+...is just a short-hand for::
+
+    >>> store = zarr.DirectoryStore('example.zarr')
+    >>> grp = zarr.group(store=store, overwrite=True)
+
+Any other storage class could be used in place of :class:`zarr.storage.DirectoryStore`. For
+example, here is an array stored directly into a Zip file::
 
     >>> store = zarr.ZipStore('example.zip', mode='w')
     >>> root_group = zarr.group(store=store)
@@ -567,11 +766,9 @@ Re-open and check that data have been written::
 Note that there are some restrictions on how Zip files can be used,
 because items within a Zip file cannot be updated in place. This means
 that data in the array should only be written once and write
-operations should be aligned with chunk boundaries.
-
-Note also that the ``close()`` method must be called after writing any data to
-the store, otherwise essential records will not be written to the underlying
-zip file.
+operations should be aligned with chunk boundaries. Note also that the ``close()`` method must be
+called after writing any data to the store, otherwise essential records will not be written to
+the underlying zip file.
 
 The Dask project has implementations of the ``MutableMapping``
 interface for distributed storage systems, see the `S3Map
@@ -618,7 +815,7 @@ simple heuristics and may be far from optimal. E.g.::
 
     >>> z4 = zarr.zeros((10000, 10000), dtype='i4')
     >>> z4.chunks
-    (313, 313)
+    (313, 625)
 
 .. _tutorial_tips_blosc:
 

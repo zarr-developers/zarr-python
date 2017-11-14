@@ -9,11 +9,11 @@ import pickle
 
 import numpy as np
 from numpy.testing import assert_array_equal
-from nose.tools import eq_ as eq, assert_is_instance, \
-    assert_raises, assert_true, assert_false, assert_is, assert_is_none
+from nose.tools import (eq_ as eq, assert_is_instance, assert_raises, assert_true, assert_false,
+                        assert_is, assert_is_none)
 
 
-from zarr.storage import DirectoryStore, init_array, init_group
+from zarr.storage import DirectoryStore, init_array, init_group, NestedDirectoryStore
 from zarr.core import Array
 from zarr.errors import PermissionError
 from zarr.compat import PY2
@@ -21,6 +21,7 @@ from zarr.util import buffer_size
 from numcodecs import Delta, FixedScaleOffset, Zlib, Blosc, BZ2
 
 
+# noinspection PyMethodMayBeStatic
 class TestArray(unittest.TestCase):
 
     def test_array_init(self):
@@ -49,13 +50,13 @@ class TestArray(unittest.TestCase):
 
         # store not initialized
         store = dict()
-        with assert_raises(KeyError):
+        with assert_raises(ValueError):
             Array(store)
 
         # group is in the way
         store = dict()
         init_group(store, path='baz')
-        with assert_raises(KeyError):
+        with assert_raises(ValueError):
             Array(store, path='baz')
 
     def create_array(self, read_only=False, **kwargs):
@@ -81,6 +82,7 @@ class TestArray(unittest.TestCase):
         except TypeError:
             pass
 
+    # noinspection PyStatementEffect
     def test_array_1d(self):
         a = np.arange(1050)
         z = self.create_array(shape=a.shape, chunks=100, dtype=a.dtype)
@@ -123,6 +125,12 @@ class TestArray(unittest.TestCase):
         assert_array_equal(a[:10], z[:10])
         assert_array_equal(a[10:20], z[10:20])
         assert_array_equal(a[-10:], z[-10:])
+        assert_array_equal(a[:10, ...], z[:10, ...])
+        assert_array_equal(a[10:20, ...], z[10:20, ...])
+        assert_array_equal(a[-10:, ...], z[-10:, ...])
+        assert_array_equal(a[..., :10], z[..., :10])
+        assert_array_equal(a[..., 10:20], z[..., 10:20])
+        assert_array_equal(a[..., -10:], z[..., -10:])
         # ...across chunk boundaries...
         assert_array_equal(a[:110], z[:110])
         assert_array_equal(a[190:310], z[190:310])
@@ -135,6 +143,18 @@ class TestArray(unittest.TestCase):
         eq(a[42], z[np.int32(42)])
         eq(a[42], z[np.uint64(42)])
         eq(a[42], z[np.uint32(42)])
+        # too many indices
+        with assert_raises(IndexError):
+            z[:, :]
+        with assert_raises(IndexError):
+            z[0, :]
+        with assert_raises(IndexError):
+            z[:, 0]
+        with assert_raises(IndexError):
+            z[0, 0]
+        # only single ellipsis allowed
+        with assert_raises(IndexError):
+            z[..., ...]
 
         # check partial assignment
         b = np.arange(1e5, 2e5)
@@ -174,6 +194,49 @@ class TestArray(unittest.TestCase):
             z[:] = value
             assert_array_equal(a, z[:])
 
+    def test_array_1d_selections(self):
+        # light test here, full tests in test_indexing
+
+        # setup
+        a = np.arange(1050)
+        z = self.create_array(shape=a.shape, chunks=100, dtype=a.dtype)
+        z[:] = a
+
+        # get
+        assert_array_equal(a[50:150], z.get_orthogonal_selection(slice(50, 150)))
+        assert_array_equal(a[50:150], z.oindex[50: 150])
+        ix = [99, 100, 101]
+        bix = np.zeros_like(a, dtype=bool)
+        bix[ix] = True
+        assert_array_equal(a[ix], z.get_orthogonal_selection(ix))
+        assert_array_equal(a[ix], z.oindex[ix])
+        assert_array_equal(a[ix], z.get_coordinate_selection(ix))
+        assert_array_equal(a[ix], z.vindex[ix])
+        assert_array_equal(a[bix], z.get_mask_selection(bix))
+        assert_array_equal(a[bix], z.oindex[bix])
+        assert_array_equal(a[bix], z.vindex[bix])
+
+        # set
+        z.set_orthogonal_selection(slice(50, 150), 1)
+        assert_array_equal(1, z[50:150])
+        z.oindex[50:150] = 2
+        assert_array_equal(2, z[50:150])
+        z.set_orthogonal_selection(ix, 3)
+        assert_array_equal(3, z.get_coordinate_selection(ix))
+        z.oindex[ix] = 4
+        assert_array_equal(4, z.oindex[ix])
+        z.set_coordinate_selection(ix, 5)
+        assert_array_equal(5, z.get_coordinate_selection(ix))
+        z.vindex[ix] = 6
+        assert_array_equal(6, z.vindex[ix])
+        z.set_mask_selection(bix, 7)
+        assert_array_equal(7, z.get_mask_selection(bix))
+        z.vindex[bix] = 8
+        assert_array_equal(8, z.vindex[bix])
+        z.oindex[bix] = 9
+        assert_array_equal(9, z.oindex[bix])
+
+    # noinspection PyStatementEffect
     def test_array_2d(self):
         a = np.arange(10000).reshape((1000, 10))
         z = self.create_array(shape=a.shape, chunks=(100, 2), dtype=a.dtype)
@@ -194,36 +257,83 @@ class TestArray(unittest.TestCase):
         eq(a.nbytes, z.nbytes)
         eq(50, z.nchunks_initialized)
 
-        # check slicing
+        # check array-like
         assert_array_equal(a, np.array(z))
+
+        # check slicing
+
+        # total slice
         assert_array_equal(a, z[:])
         assert_array_equal(a, z[...])
         # noinspection PyTypeChecker
         assert_array_equal(a, z[slice(None)])
+
+        # slice first dimension
         assert_array_equal(a[:10], z[:10])
         assert_array_equal(a[10:20], z[10:20])
         assert_array_equal(a[-10:], z[-10:])
+        assert_array_equal(a[:10, :], z[:10, :])
+        assert_array_equal(a[10:20, :], z[10:20, :])
+        assert_array_equal(a[-10:, :], z[-10:, :])
+        assert_array_equal(a[:10, ...], z[:10, ...])
+        assert_array_equal(a[10:20, ...], z[10:20, ...])
+        assert_array_equal(a[-10:, ...], z[-10:, ...])
+        assert_array_equal(a[:10, :, ...], z[:10, :, ...])
+        assert_array_equal(a[10:20, :, ...], z[10:20, :, ...])
+        assert_array_equal(a[-10:, :, ...], z[-10:, :, ...])
+
+        # slice second dimension
         assert_array_equal(a[:, :2], z[:, :2])
         assert_array_equal(a[:, 2:4], z[:, 2:4])
         assert_array_equal(a[:, -2:], z[:, -2:])
+        assert_array_equal(a[..., :2], z[..., :2])
+        assert_array_equal(a[..., 2:4], z[..., 2:4])
+        assert_array_equal(a[..., -2:], z[..., -2:])
+        assert_array_equal(a[:, ..., :2], z[:, ..., :2])
+        assert_array_equal(a[:, ..., 2:4], z[:, ..., 2:4])
+        assert_array_equal(a[:, ..., -2:], z[:, ..., -2:])
+
+        # slice both dimensions
         assert_array_equal(a[:10, :2], z[:10, :2])
         assert_array_equal(a[10:20, 2:4], z[10:20, 2:4])
         assert_array_equal(a[-10:, -2:], z[-10:, -2:])
-        # ...across chunk boundaries...
+
+        # slicing across chunk boundaries
         assert_array_equal(a[:110], z[:110])
         assert_array_equal(a[190:310], z[190:310])
         assert_array_equal(a[-110:], z[-110:])
+        assert_array_equal(a[:110, :], z[:110, :])
+        assert_array_equal(a[190:310, :], z[190:310, :])
+        assert_array_equal(a[-110:, :], z[-110:, :])
         assert_array_equal(a[:, :3], z[:, :3])
         assert_array_equal(a[:, 3:7], z[:, 3:7])
         assert_array_equal(a[:, -3:], z[:, -3:])
         assert_array_equal(a[:110, :3], z[:110, :3])
         assert_array_equal(a[190:310, 3:7], z[190:310, 3:7])
         assert_array_equal(a[-110:, -3:], z[-110:, -3:])
-        # single item
+
+        # single row/col/item
         assert_array_equal(a[0], z[0])
         assert_array_equal(a[-1], z[-1])
+        assert_array_equal(a[:, 0], z[:, 0])
+        assert_array_equal(a[:, -1], z[:, -1])
         eq(a[0, 0], z[0, 0])
         eq(a[-1, -1], z[-1, -1])
+
+        # too many indices
+        with assert_raises(IndexError):
+            z[:, :, :]
+        with assert_raises(IndexError):
+            z[0, :, :]
+        with assert_raises(IndexError):
+            z[:, 0, :]
+        with assert_raises(IndexError):
+            z[:, :, 0]
+        with assert_raises(IndexError):
+            z[0, 0, 0]
+        # only single ellipsis allowed
+        with assert_raises(IndexError):
+            z[..., ...]
 
         # check partial assignment
         b = np.arange(10000, 20000).reshape((1000, 10))
@@ -233,6 +343,18 @@ class TestArray(unittest.TestCase):
         assert_array_equal(b[190:310, 3:7], z[190:310, 3:7])
         assert_array_equal(a[310:], z[310:])
         assert_array_equal(a[:, 7:], z[:, 7:])
+
+    def test_array_2d_edge_case(self):
+        # this fails with filters - chunks extend beyond edge of array, messes with delta filter
+        # if no fill value?
+        shape = 1000, 10
+        chunks = 300, 30
+        dtype = 'i8'
+        z = self.create_array(shape=shape, dtype=dtype, chunks=chunks)
+        z[:] = 0
+        expect = np.zeros(shape, dtype=dtype)
+        actual = z[:]
+        assert_array_equal(expect, actual)
 
     def test_array_2d_partial(self):
         z = self.create_array(shape=(1000, 10), chunks=(100, 2), dtype='i4',
@@ -478,6 +600,18 @@ class TestArray(unittest.TestCase):
             z.resize(2000)
         with assert_raises(PermissionError):
             z.append(np.arange(1000))
+        with assert_raises(PermissionError):
+            z.set_basic_selection(Ellipsis, 42)
+        with assert_raises(PermissionError):
+            z.set_orthogonal_selection([0, 1, 2], 42)
+        with assert_raises(PermissionError):
+            z.oindex[[0, 1, 2]] = 42
+        with assert_raises(PermissionError):
+            z.set_coordinate_selection([0, 1, 2], 42)
+        with assert_raises(PermissionError):
+            z.vindex[[0, 1, 2]] = 42
+        with assert_raises(PermissionError):
+            z.set_mask_selection(np.ones(z.shape, dtype=bool), 42)
 
     def test_pickle(self):
 
@@ -521,6 +655,7 @@ class TestArray(unittest.TestCase):
         assert_array_equal(np.take(a, indices, axis=1),
                            np.take(a, zi, axis=1))
 
+    # noinspection PyStatementEffect
     def test_0len_dim_1d(self):
         # Test behaviour for 1D array with zero-length dimension.
 
@@ -553,6 +688,7 @@ class TestArray(unittest.TestCase):
         with assert_raises(IndexError):
             z[0] = 42
 
+    # noinspection PyStatementEffect
     def test_0len_dim_2d(self):
         # Test behavioud for 2D array with a zero-length dimension.
 
@@ -589,6 +725,7 @@ class TestArray(unittest.TestCase):
         with assert_raises(IndexError):
             z[:, 0] = 42
 
+    # noinspection PyStatementEffect
     def test_array_0d(self):
         # test behaviour for array with 0 dimensions
 
@@ -634,6 +771,42 @@ class TestArray(unittest.TestCase):
             z[:] = 42
         with assert_raises(ValueError):
             z[...] = np.array([1, 2, 3])
+
+    def test_nchunks_initialized(self):
+
+        z = self.create_array(shape=100, chunks=10)
+        eq(0, z.nchunks_initialized)
+        # manually put something into the store to confuse matters
+        z.store['foo'] = b'bar'
+        eq(0, z.nchunks_initialized)
+        z[:] = 42
+        eq(10, z.nchunks_initialized)
+
+    def test_structured_array(self):
+
+        # setup some data
+        a = np.array([(b'aaa', 1, 4.2),
+                      (b'bbb', 2, 8.4),
+                      (b'ccc', 3, 12.6)],
+                     dtype=[('foo', 'S3'), ('bar', 'i4'), ('baz', 'f8')])
+        for fill_value in None, b'', (b'zzz', 0, 0.0):
+            z = self.create_array(shape=a.shape, chunks=2, dtype=a.dtype, fill_value=fill_value)
+            eq(3, len(z))
+            if fill_value is not None:
+                np_fill_value = np.array(fill_value, dtype=a.dtype)[()]
+                eq(np_fill_value, z.fill_value)
+                eq(np_fill_value, z[0])
+                eq(np_fill_value, z[-1])
+            z[...] = a
+            eq(a[0], z[0])
+            assert_array_equal(a, z[...])
+            assert_array_equal(a['foo'], z['foo'])
+            assert_array_equal(a['bar'], z['bar'])
+            assert_array_equal(a['baz'], z['baz'])
+
+        with assert_raises(ValueError):
+            # dodgy fill value
+            self.create_array(shape=a.shape, chunks=2, dtype=a.dtype, fill_value=42)
 
 
 class TestArrayWithPath(TestArray):
@@ -711,6 +884,18 @@ class TestArrayWithDirectoryStore(TestArray):
         z[:] = 42
         expect_nbytes_stored = sum(buffer_size(v) for v in z.store.values())
         eq(expect_nbytes_stored, z.nbytes_stored)
+
+
+class TestArrayWithNestedDirectoryStore(TestArrayWithDirectoryStore):
+
+    @staticmethod
+    def create_array(read_only=False, **kwargs):
+        path = mkdtemp()
+        atexit.register(shutil.rmtree, path)
+        store = NestedDirectoryStore(path)
+        kwargs.setdefault('compressor', Zlib(1))
+        init_array(store, **kwargs)
+        return Array(store, read_only=read_only)
 
 
 class TestArrayWithNoCompressor(TestArray):
@@ -806,6 +991,10 @@ class TestArrayWithFilters(TestArray):
 
         expected = data.astype(astype)
         assert_array_equal(expected, z2)
+
+    def test_structured_array(self):
+        # don't implement this one, cannot do delta on structured array
+        pass
 
 
 # custom store, does not support getsize()

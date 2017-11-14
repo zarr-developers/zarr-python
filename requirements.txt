@@ -1,4 +1,5 @@
 asciitree
+nose
 numpy
 fasteners
 numcodecs

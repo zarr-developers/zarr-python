@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, print_function, division
 import json
+import base64
 
 
 import numpy as np
@@ -40,13 +41,14 @@ def decode_array_metadata(s):
 
 
 def encode_array_metadata(meta):
+    dtype = meta['dtype']
     meta = dict(
         zarr_format=ZARR_FORMAT,
         shape=meta['shape'],
         chunks=meta['chunks'],
-        dtype=encode_dtype(meta['dtype']),
+        dtype=encode_dtype(dtype),
         compressor=meta['compressor'],
-        fill_value=encode_fill_value(meta['fill_value']),
+        fill_value=encode_fill_value(meta['fill_value'], dtype),
         order=meta['order'],
         filters=meta['filters'],
     )
@@ -110,6 +112,9 @@ FLOAT_FILLS = {
 
 
 def decode_fill_value(v, dtype):
+    # early out
+    if v is None:
+        return v
     if dtype.kind == 'f':
         if v == 'NaN':
             return np.nan
@@ -118,13 +123,28 @@ def decode_fill_value(v, dtype):
         elif v == '-Infinity':
             return np.NINF
         else:
+            return np.array(v, dtype=dtype)[()]
+    elif dtype.kind in 'SV':
+        try:
+            v = base64.standard_b64decode(v)
+            v = np.array(v, dtype=dtype)[()]
             return v
-    else:
+        except Exception:
+            # be lenient, allow for other values that may have been used before base64 encoding
+            # and may work as fill values, e.g., the number 0
+            return v
+    elif dtype.kind == 'U':
+        # leave as-is
         return v
+    else:
+        return np.array(v, dtype=dtype)[()]
 
 
-def encode_fill_value(v):
-    try:
+def encode_fill_value(v, dtype):
+    # early out
+    if v is None:
+        return v
+    if dtype.kind == 'f':
         if np.isnan(v):
             return 'NaN'
         elif np.isposinf(v):
@@ -132,6 +152,17 @@ def encode_fill_value(v):
         elif np.isneginf(v):
             return '-Infinity'
         else:
-            return v
-    except TypeError:
+            return float(v)
+    elif dtype.kind in 'ui':
+        return int(v)
+    elif dtype.kind == 'b':
+        return bool(v)
+    elif dtype.kind in 'SV':
+        v = base64.standard_b64encode(v)
+        if not PY2:
+            v = str(v, 'ascii')
+        return v
+    elif dtype.kind == 'U':
+        return v
+    else:
         return v

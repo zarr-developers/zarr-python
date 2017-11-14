@@ -6,13 +6,15 @@ from itertools import islice
 import numpy as np
 
 
+from zarr.compat import PY2
 from zarr.attrs import Attributes
 from zarr.core import Array
-from zarr.storage import contains_array, contains_group, init_group, \
-    DictStore, DirectoryStore, group_meta_key, attrs_key, listdir, rmdir
-from zarr.creation import array, create, empty, zeros, ones, full, \
-    empty_like, zeros_like, ones_like, full_like
-from zarr.util import normalize_storage_path, normalize_shape, InfoReporter, TreeViewer
+from zarr.storage import (contains_array, contains_group, init_group,
+                          DictStore, group_meta_key, attrs_key, listdir, rmdir)
+from zarr.creation import (array, create, empty, zeros, ones, full,
+                           empty_like, zeros_like, ones_like, full_like, normalize_store_arg)
+from zarr.util import (normalize_storage_path, normalize_shape, InfoReporter, TreeViewer,
+                       is_valid_python_name, instance_dir)
 from zarr.errors import err_contains_array, err_contains_group, err_group_not_found, err_read_only
 from zarr.meta import decode_group_metadata
 
@@ -76,6 +78,7 @@ class Group(MutableMapping):
     zeros_like
     ones_like
     full_like
+    info
 
     """
 
@@ -111,7 +114,7 @@ class Group(MutableMapping):
                                  synchronizer=synchronizer)
 
         # setup info
-        self.info = InfoReporter(self)
+        self._info = InfoReporter(self)
 
     @property
     def store(self):
@@ -158,6 +161,11 @@ class Group(MutableMapping):
         attribute values must be JSON serializable."""
         return self._attrs
 
+    @property
+    def info(self):
+        """Return diagnostic information about the group."""
+        return self._info
+
     def __eq__(self, other):
         return (
             isinstance(other, Group) and
@@ -202,6 +210,8 @@ class Group(MutableMapping):
         r = '<%s.%s' % (t.__module__, t.__name__)
         if self.name:
             r += ' %r' % self.name
+        if self._read_only:
+            r += ' read-only'
         r += '>'
         return r
 
@@ -327,6 +337,19 @@ class Group(MutableMapping):
             return self.__getitem__(item)
         except KeyError:
             raise AttributeError
+
+    def __dir__(self):
+        if PY2:  # pragma: py3 no cover
+            base = instance_dir(self)
+        else:  # pragma: py2 no cover
+            # noinspection PyUnresolvedReferences
+            base = super().__dir__()
+        keys = sorted(set(base + list(self)))
+        keys = [k for k in keys if is_valid_python_name(k)]
+        return keys
+
+    def _ipython_key_completions_(self):
+        return sorted(self)
 
     def group_keys(self):
         """Return an iterator over member names for groups only.
@@ -747,6 +770,9 @@ class Group(MutableMapping):
         path = self._item_path(name)
 
         if contains_array(self._store, path):
+
+            # array already exists at path, validate that it is the right shape and type
+
             synchronizer = kwargs.get('synchronizer', self._synchronizer)
             cache_metadata = kwargs.get('cache_metadata', True)
             a = Array(self._store, path=path, read_only=self._read_only,
@@ -754,14 +780,17 @@ class Group(MutableMapping):
                       cache_metadata=cache_metadata)
             shape = normalize_shape(shape)
             if shape != a.shape:
-                raise TypeError('shapes do not match')
+                raise TypeError('shape do not match existing array; expected {}, got {}'
+                                .format(a.shape, shape))
             dtype = np.dtype(dtype)
             if exact:
                 if dtype != a.dtype:
-                    raise TypeError('dtypes do not match exactly')
+                    raise TypeError('dtypes do not match exactly; expected {}, got {}'
+                                    .format(a.dtype, dtype))
             else:
                 if not np.can_cast(dtype, a.dtype):
-                    raise TypeError('dtypes cannot be safely cast')
+                    raise TypeError('dtypes ({}, {}) cannot be safely cast'
+                                    .format(dtype, a.dtype))
             return a
 
         else:
@@ -874,22 +903,16 @@ class Group(MutableMapping):
                          **kwargs)
 
 
-def _handle_store_arg(store):
-    if store is None:
-        return DictStore()
-    elif isinstance(store, str):
-        return DirectoryStore(store)
-    else:
-        return store
+def _normalize_store_arg(store, clobber=False):
+    return normalize_store_arg(store, clobber=clobber, default=DictStore)
 
 
-def group(store=None, overwrite=False, chunk_store=None, synchronizer=None,
-          path=None):
+def group(store=None, overwrite=False, chunk_store=None, synchronizer=None, path=None):
     """Create a group.
 
     Parameters
     ----------
-    store : MutableMapping or string
+    store : MutableMapping or string, optional
         Store or path to directory in file system.
     overwrite : bool, optional
         If True, delete any pre-existing data in `store` at `path` before
@@ -900,7 +923,7 @@ def group(store=None, overwrite=False, chunk_store=None, synchronizer=None,
     synchronizer : object, optional
         Array synchronizer.
     path : string, optional
-        Group path.
+        Group path within store.
 
     Returns
     -------
@@ -926,7 +949,7 @@ def group(store=None, overwrite=False, chunk_store=None, synchronizer=None,
     """
 
     # handle polymorphic store arg
-    store = _handle_store_arg(store)
+    store = _normalize_store_arg(store)
     path = normalize_storage_path(path)
 
     # require group
@@ -938,14 +961,14 @@ def group(store=None, overwrite=False, chunk_store=None, synchronizer=None,
                  synchronizer=synchronizer, path=path)
 
 
-def open_group(store=None, mode='a', synchronizer=None, path=None):
-    """Open a group using mode-like semantics.
+def open_group(store, mode='a', synchronizer=None, path=None):
+    """Open a group using file-mode-like semantics.
 
     Parameters
     ----------
     store : MutableMapping or string
-        Store or path to directory in file system.
-    mode : {'r', 'r+', 'a', 'w', 'w-'}
+        Store or path to directory in file system or name of zip file.
+    mode : {'r', 'r+', 'a', 'w', 'w-'}, optional
         Persistence mode: 'r' means read only (must exist); 'r+' means
         read/write (must exist); 'a' means read/write (create if doesn't
         exist); 'w' means create (overwrite if exists); 'w-' means create
@@ -953,7 +976,7 @@ def open_group(store=None, mode='a', synchronizer=None, path=None):
     synchronizer : object, optional
         Array synchronizer.
     path : string, optional
-        Group path.
+        Group path within store.
 
     Returns
     -------
@@ -976,7 +999,7 @@ def open_group(store=None, mode='a', synchronizer=None, path=None):
     """
 
     # handle polymorphic store arg
-    store = _handle_store_arg(store)
+    store = _normalize_store_arg(store)
     path = normalize_storage_path(path)
 
     # ensure store is initialized

@@ -7,17 +7,16 @@ import numpy as np
 
 
 from zarr.core import Array
-from zarr.storage import DirectoryStore, init_array, contains_array, \
-    contains_group, default_compressor, normalize_storage_path
+from zarr.storage import (DirectoryStore, init_array, contains_array, contains_group,
+                          default_compressor, normalize_storage_path, ZipStore)
 from numcodecs.registry import codec_registry
-from zarr.errors import err_contains_array, err_contains_group, \
-    err_array_not_found
+from zarr.errors import err_contains_array, err_contains_group, err_array_not_found
 
 
 def create(shape, chunks=None, dtype=None, compressor='default',
            fill_value=0, order='C', store=None, synchronizer=None,
            overwrite=False, path=None, chunk_store=None, filters=None,
-           cache_metadata=True, **kwargs):
+           cache_metadata=True, read_only=False, **kwargs):
     """Create an array.
 
     Parameters
@@ -35,7 +34,7 @@ def create(shape, chunks=None, dtype=None, compressor='default',
     order : {'C', 'F'}, optional
         Memory layout to be used within each chunk.
     store : MutableMapping or string
-        Store or path to directory in file system.
+        Store or path to directory in file system or name of zip file.
     synchronizer : object, optional
         Array synchronizer.
     overwrite : bool, optional
@@ -53,6 +52,8 @@ def create(shape, chunks=None, dtype=None, compressor='default',
         lifetime of the object. If False, array metadata will be reloaded
         prior to all data access and modification operations (may incur
         overhead depending on storage and data access pattern).
+    read_only : bool, optional
+        True if array should be protected against modification.
 
     Returns
     -------
@@ -98,34 +99,37 @@ def create(shape, chunks=None, dtype=None, compressor='default',
     """
 
     # handle polymorphic store arg
-    store = _handle_store_arg(store)
+    store = normalize_store_arg(store)
 
-    # compatibility
-    compressor, fill_value = _handle_kwargs(compressor, fill_value, kwargs)
+    # API compatibility with h5py
+    compressor, fill_value = _kwargs_compat(compressor, fill_value, kwargs)
 
     # initialize array metadata
-    init_array(store, shape=shape, chunks=chunks, dtype=dtype,
-               compressor=compressor, fill_value=fill_value, order=order,
-               overwrite=overwrite, path=path, chunk_store=chunk_store,
-               filters=filters)
+    init_array(store, shape=shape, chunks=chunks, dtype=dtype, compressor=compressor,
+               fill_value=fill_value, order=order, overwrite=overwrite, path=path,
+               chunk_store=chunk_store, filters=filters)
 
     # instantiate array
-    z = Array(store, path=path, chunk_store=chunk_store,
-              synchronizer=synchronizer, cache_metadata=cache_metadata)
+    z = Array(store, path=path, chunk_store=chunk_store, synchronizer=synchronizer,
+              cache_metadata=cache_metadata, read_only=read_only)
 
     return z
 
 
-def _handle_store_arg(store):
+def normalize_store_arg(store, clobber=False, default=dict):
     if store is None:
-        return dict()
+        return default()
     elif isinstance(store, str):
-        return DirectoryStore(store)
+        if store.endswith('.zip'):
+            mode = 'w' if clobber else 'a'
+            return ZipStore(store, mode=mode)
+        else:
+            return DirectoryStore(store)
     else:
         return store
 
 
-def _handle_kwargs(compressor, fill_value, kwargs):
+def _kwargs_compat(compressor, fill_value, kwargs):
 
     # to be compatible with h5py, as well as backwards-compatible with Zarr
     # 1.x, accept 'compression' and 'compression_opts' keyword arguments
@@ -134,8 +138,10 @@ def _handle_kwargs(compressor, fill_value, kwargs):
         # 'compressor' overrides 'compression'
         if 'compression' in kwargs:
             warn("'compression' keyword argument overridden by 'compressor'")
+            del kwargs['compression']
         if 'compression_opts' in kwargs:
-            warn("ignoring keyword argument 'compression_opts'")
+            warn("'compression_opts' keyword argument overridden by 'compressor'")
+            del kwargs['compression_opts']
 
     elif 'compression' in kwargs:
         compression = kwargs.pop('compression')
@@ -316,31 +322,36 @@ def array(data, **kwargs):
     else:
         kwargs['chunks'] = kw_chunks
 
+    # pop read-only to apply after storing the data
+    read_only = kwargs.pop('read_only', False)
+
     # instantiate array
     z = create(**kwargs)
 
     # fill with data
     z[...] = data
 
+    # set read_only property afterwards
+    z.read_only = read_only
+
     return z
 
 
-def open_array(store=None, mode='a', shape=None, chunks=None, dtype=None,
-               compressor='default', fill_value=0, order='C',
-               synchronizer=None, filters=None, cache_metadata=True,
+def open_array(store, mode='a', shape=None, chunks=None, dtype=None, compressor='default',
+               fill_value=0, order='C', synchronizer=None, filters=None, cache_metadata=True,
                path=None, **kwargs):
-    """Open array using mode-like semantics.
+    """Open an array using file-mode-like semantics.
 
     Parameters
     ----------
     store : MutableMapping or string
-        Store or path to directory in file system.
-    mode : {'r', 'r+', 'a', 'w', 'w-'}
+        Store or path to directory in file system or name of zip file.
+    mode : {'r', 'r+', 'a', 'w', 'w-'}, optional
         Persistence mode: 'r' means read only (must exist); 'r+' means
         read/write (must exist); 'a' means read/write (create if doesn't
         exist); 'w' means create (overwrite if exists); 'w-' means create
         (fail if exists).
-    shape : int or tuple of ints
+    shape : int or tuple of ints, optional
         Array shape.
     chunks : int or tuple of ints, optional
         Chunk shape. If not provided, will be guessed from `shape` and `dtype`.
@@ -348,7 +359,7 @@ def open_array(store=None, mode='a', shape=None, chunks=None, dtype=None,
         NumPy dtype.
     compressor : Codec, optional
         Primary compressor.
-    fill_value : object
+    fill_value : object, optional
         Default value to use for uninitialized portions of the array.
     order : {'C', 'F'}, optional
         Memory layout to be used within each chunk.
@@ -362,7 +373,7 @@ def open_array(store=None, mode='a', shape=None, chunks=None, dtype=None,
         prior to all data access and modification operations (may incur
         overhead depending on storage and data access pattern).
     path : string, optional
-        Array path.
+        Array path within store.
 
     Returns
     -------
@@ -379,7 +390,7 @@ def open_array(store=None, mode='a', shape=None, chunks=None, dtype=None,
     <zarr.core.Array (10000, 10000) float64>
     >>> z2 = zarr.open_array('example.zarr', mode='r')
     >>> z2
-    <zarr.core.Array (10000, 10000) float64>
+    <zarr.core.Array (10000, 10000) float64 read-only>
     >>> np.all(z1[:] == z2[:])
     True
 
@@ -398,11 +409,15 @@ def open_array(store=None, mode='a', shape=None, chunks=None, dtype=None,
     # a : read/write if exists, create otherwise (default)
 
     # handle polymorphic store arg
-    store = _handle_store_arg(store)
+    store = normalize_store_arg(store, clobber=(mode == 'w'))
     path = normalize_storage_path(path)
 
-    # compatibility
-    compressor, fill_value = _handle_kwargs(compressor, fill_value, kwargs)
+    # API compatibility with h5py
+    compressor, fill_value = _kwargs_compat(compressor, fill_value, kwargs)
+
+    # ensure fill_value of correct type
+    if fill_value is not None:
+        fill_value = np.array(fill_value, dtype=dtype)[()]
 
     # ensure store is initialized
 
@@ -443,10 +458,6 @@ def open_array(store=None, mode='a', shape=None, chunks=None, dtype=None,
               cache_metadata=cache_metadata, path=path)
 
     return z
-
-
-# backwards compatibility
-open = open_array
 
 
 def _like_args(a, kwargs):
