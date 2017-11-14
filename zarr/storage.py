@@ -941,15 +941,18 @@ class ZipStore(MutableMapping):
         self.mode = mode
 
         # open zip file
-        self.zf = zipfile.ZipFile(path, mode=mode,
-                                  compression=compression,
-                                  allowZip64=allowZip64)
+        self.zf = zipfile.ZipFile(path, mode=mode, compression=compression, allowZip64=allowZip64)
 
     def __getstate__(self):
         return self.path, self.compression, self.allowZip64, self.mode
 
     def __setstate__(self, state):
-        self.__init__(*state)
+        path, compression, allowZip64, mode = state
+        # if initially opened with mode 'w' or 'x', re-open in mode 'a' so file doesn't get
+        # clobbered
+        if mode in 'wx':
+            mode = 'a'
+        self.__init__(path=path, compression=compression, allowZip64=allowZip64, mode=mode)
 
     def close(self):
         """Closes the underlying zip file, ensuring all records are written."""
@@ -958,10 +961,15 @@ class ZipStore(MutableMapping):
     def flush(self):
         """Closes the underlying zip file, ensuring all records are written,
         then re-opens the file for further modifications."""
-        self.zf.close()
-        self.zf = zipfile.ZipFile(self.path, mode=self.mode,
-                                  compression=self.compression,
-                                  allowZip64=self.allowZip64)
+        if self.mode == 'r':
+            raise PermissionError('cannot flush read-only ZipStore')
+        else:
+            self.zf.close()
+            # N.B., re-open with mode 'a' regardless of initial mode so we don't wipe what's been
+            # written
+            self.zf = zipfile.ZipFile(self.path, mode='a',
+                                      compression=self.compression,
+                                      allowZip64=self.allowZip64)
 
     def __enter__(self):
         return self
