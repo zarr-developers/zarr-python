@@ -48,7 +48,7 @@ def open(store, mode='a', **kwargs):
         >>> zr = zarr.open(store, mode='r')  # open existing array read-only
         >>> zr
         <zarr.core.Array (100,) int32 read-only>
-        >>> gw = zarr.open(store, mode='w')  # open new group, overwriting any previous data in store
+        >>> gw = zarr.open(store, mode='w')  # open new group, overwriting any previous data
         >>> gw
         <zarr.hierarchy.Group '/'>
         >>> ga = zarr.open(store, mode='a')  # open existing group for reading and writing
