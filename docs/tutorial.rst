@@ -14,8 +14,7 @@ flexibility.
 Creating an array
 -----------------
 
-Zarr has a number of convenience functions for creating arrays. For
-example::
+Zarr has several functions for creating arrays. For example::
 
     >>> import zarr
     >>> z = zarr.zeros((10000, 10000), chunks=(1000, 1000), dtype='i4')
@@ -101,7 +100,10 @@ Check that the data have been written and can be read again::
     True
 
 Please note that there are a number of other options for persistent
-array storage, see the section on :ref:`tutorial_tips_storage` below.
+array storage, see the section on :ref:`tutorial_tips_storage`
+below. Also, if you are just looking for a convenient way to save
+NumPy arrays to disk then load back into memory later, see the
+functions :func:`zarr.save` and :func:`zarr.load`.
 
 .. _tutorial_resize:
 
@@ -744,9 +746,7 @@ interface as the store for a group or an array. Some storage classes
 are provided in the :mod:`zarr.storage` module. For example, the
 :class:`zarr.storage.DirectoryStore` class provides a
 ``MutableMapping`` interface to a directory on the local file
-system. This is used under the hood by the
-:func:`zarr.creation.open_array` and :func:`zarr.hierarchy.open_group`
-functions.
+system. This is used under the hood by the :func:`zarr.open` function.
 
 In other words, the following code::
 
@@ -755,7 +755,7 @@ In other words, the following code::
 ...is just a convenient short-hand for::
 
     >>> store = zarr.DirectoryStore('example.zarr')
-    >>> z = zarr.zeros(store=store, overwrite=True, shape=1000000, dtype='i4')
+    >>> z = zarr.create(store=store, overwrite=True, shape=1000000, dtype='i4')
 
 ...and the following code::
 
@@ -767,8 +767,8 @@ In other words, the following code::
     >>> grp = zarr.group(store=store, overwrite=True)
 
 Any other storage class could be used in place of
-:class:`zarr.storage.DirectoryStore`. For example, here is an array
-stored directly into a zip file::
+:class:`zarr.storage.DirectoryStore` in the code examples above. For
+example, here is an array stored directly into a Zip file::
 
     >>> store = zarr.ZipStore('example.zip', mode='w')
     >>> root_group = zarr.group(store=store)
