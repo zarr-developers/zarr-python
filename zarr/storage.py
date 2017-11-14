@@ -143,7 +143,7 @@ def _require_parent_group(path, store, chunk_store, overwrite):
                 _init_group_metadata(store, path=p, chunk_store=chunk_store)
 
 
-def init_array(store, shape, chunks=None, dtype=None, compressor='default',
+def init_array(store, shape, chunks=True, dtype=None, compressor='default',
                fill_value=None, order='C', overwrite=False, path=None,
                chunk_store=None, filters=None):
     """initialize an array store with the given configuration.
@@ -155,7 +155,8 @@ def init_array(store, shape, chunks=None, dtype=None, compressor='default',
     shape : int or tuple of ints
         Array shape.
     chunks : int or tuple of ints, optional
-        Chunk shape. If not provided, will be guessed from `shape` and `dtype`.
+        Chunk shape. If True, will be guessed from `shape` and `dtype`. If
+        False, will be set to `shape`, i.e., single chunk for the whole array.
     dtype : string or dtype, optional
         NumPy dtype.
     compressor : Codec, optional

@@ -13,7 +13,7 @@ from numcodecs.registry import codec_registry
 from zarr.errors import err_contains_array, err_contains_group, err_array_not_found
 
 
-def create(shape, chunks=None, dtype=None, compressor='default',
+def create(shape, chunks=True, dtype=None, compressor='default',
            fill_value=0, order='C', store=None, synchronizer=None,
            overwrite=False, path=None, chunk_store=None, filters=None,
            cache_metadata=True, read_only=False, **kwargs):
@@ -24,7 +24,8 @@ def create(shape, chunks=None, dtype=None, compressor='default',
     shape : int or tuple of ints
         Array shape.
     chunks : int or tuple of ints, optional
-        Chunk shape. If not provided, will be guessed from `shape` and `dtype`.
+        Chunk shape. If True, will be guessed from `shape` and `dtype`. If
+        False, will be set to `shape`, i.e., single chunk for the whole array.
     dtype : string or dtype, optional
         NumPy dtype.
     compressor : Codec, optional
@@ -337,7 +338,7 @@ def array(data, **kwargs):
     return z
 
 
-def open_array(store, mode='a', shape=None, chunks=None, dtype=None, compressor='default',
+def open_array(store, mode='a', shape=None, chunks=True, dtype=None, compressor='default',
                fill_value=0, order='C', synchronizer=None, filters=None, cache_metadata=True,
                path=None, **kwargs):
     """Open an array using file-mode-like semantics.
@@ -354,7 +355,8 @@ def open_array(store, mode='a', shape=None, chunks=None, dtype=None, compressor=
     shape : int or tuple of ints, optional
         Array shape.
     chunks : int or tuple of ints, optional
-        Chunk shape. If not provided, will be guessed from `shape` and `dtype`.
+        Chunk shape. If True, will be guessed from `shape` and `dtype`. If
+        False, will be set to `shape`, i.e., single chunk for the whole array.
     dtype : string or dtype, optional
         NumPy dtype.
     compressor : Codec, optional
