@@ -13,8 +13,12 @@ if PY2:  # pragma: py3 no cover
     binary_type = str
     reduce = reduce
 
+    class PermissionError(Exception):
+        pass
+
 else:  # pragma: py2 no cover
 
     text_type = str
     binary_type = bytes
     from functools import reduce
+    PermissionError = PermissionError
