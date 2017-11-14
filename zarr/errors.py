@@ -2,17 +2,7 @@
 from __future__ import absolute_import, print_function, division
 
 
-from zarr.compat import PY2
-
-
-if PY2:  # pragma: py3 no cover
-
-    class PermissionError(Exception):
-        pass
-
-else:  # pragma: py2 no cover
-
-    PermissionError = PermissionError
+from zarr.compat import PermissionError
 
 
 class MetadataError(Exception):
