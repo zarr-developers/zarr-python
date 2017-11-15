@@ -338,7 +338,7 @@ class TreeNode(object):
         return type(self.obj).__name__
 
 
-class ZarrTraversal(Traversal):
+class TreeTraversal(Traversal):
 
     def get_children(self, node):
         return node.get_children()
@@ -351,13 +351,12 @@ class ZarrTraversal(Traversal):
 
 
 def tree_html_sublist(node, root=False, expand=False):
-    traverser = ZarrTraversal(tree=node)
     result = ''
     data_jstree = '{"type": "%s"}' % node.get_type()
     css_class = 'jstree-open' if (root or expand) else ''
     result += "<li data-jstree='{}' class='{}'>".format(data_jstree, css_class)
-    result += '<span>{}</span>'.format(traverser.get_text(node))
-    children = traverser.get_children(node)
+    result += '<span>{}</span>'.format(node.get_text())
+    children = node.get_children()
     if children:
         result += '<ul>'
         for c in children:
@@ -457,7 +456,7 @@ class TreeViewer(object):
 
     def __bytes__(self):
         drawer = LeftAligned(
-            traverse=ZarrTraversal(),
+            traverse=TreeTraversal(),
             draw=BoxStyle(gfx=self.bytes_kwargs, **self.text_kwargs)
         )
         root = TreeNode(self.group, level=self.level)
@@ -472,7 +471,7 @@ class TreeViewer(object):
 
     def __unicode__(self):
         drawer = LeftAligned(
-            traverse=ZarrTraversal(),
+            traverse=TreeTraversal(),
             draw=BoxStyle(gfx=self.unicode_kwargs, **self.text_kwargs)
         )
         root = TreeNode(self.group, level=self.level)
