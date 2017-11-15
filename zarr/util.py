@@ -414,7 +414,7 @@ def tree_html(group, expand, level):
                     plugins: ["types"]
                 });
             });
-        </script>         
+        </script>
     """ % (node_id, tree_group_icon, tree_array_icon))
 
     return result
