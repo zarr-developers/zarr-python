@@ -625,109 +625,6 @@ class TestGroup(unittest.TestCase):
         eq(True, g1.visitvalues(visitor1))
         eq(True, g1.visititems(visitor1))
 
-    def test_tree(self):
-        # setup
-        g1 = self.create_group()
-        g2 = g1.create_group('foo')
-        g3 = g1.create_group('bar')
-        g3.create_group('baz')
-        g5 = g3.create_group('quux')
-        g5.create_dataset('baz', shape=100, chunks=10)
-
-        # test
-        bg1 = textwrap.dedent(u"""\
-        /
-         +-- bar
-         |   +-- baz
-         |   +-- quux
-         |       +-- baz[...]
-         +-- foo""").encode()
-        eq(bg1, bytes(g1.tree()))
-        ug1 = textwrap.dedent(u"""\
-        /
-         ├── bar
-         │   ├── baz
-         │   └── quux
-         │       └── baz[...]
-         └── foo""")
-        eq(ug1, text_type(g1.tree()))
-        sg1 = ug1
-        if PY2:
-            sg1 = bg1
-        eq(sg1, repr(g1.tree()))
-        hg1 = textwrap.dedent(u"""\
-        <div class="zarr-tree">
-        <ul>
-            <li><div>/</div>
-                <ul>
-                    <li><div>bar</div>
-                        <ul>
-                            <li><div>baz</div></li>
-                            <li><div>quux</div>
-                                <ul>
-                                    <li><div>baz[...]</div></li>
-                                </ul>
-                            </li>
-                        </ul>
-                    </li>
-                    <li><div>foo</div></li>
-                </ul>
-            </li>
-        </ul>
-        </div>""")
-        eq(hg1, g1.tree()._repr_html_().split("</style>")[1].strip())
-
-        bg2 = textwrap.dedent(u"""\
-        foo""").encode()
-        eq(bg2, bytes(g2.tree()))
-        ug2 = textwrap.dedent(u"""\
-        foo""")
-        eq(ug2, text_type(g2.tree()))
-        sg2 = ug2
-        if PY2:
-            sg2 = bg2
-        eq(sg2, repr(g2.tree()))
-        hg2 = textwrap.dedent(u"""\
-        <div class="zarr-tree">
-        <ul>
-            <li><div>foo</div></li>
-        </ul>
-        </div>""")
-        eq(hg2, g2.tree()._repr_html_().split("</style>")[1].strip())
-
-        bg3 = textwrap.dedent(u"""\
-        bar
-         +-- baz
-         +-- quux
-             +-- baz[...]""").encode()
-        eq(bg3, bytes(g3.tree()))
-        ug3 = textwrap.dedent(u"""\
-        bar
-         ├── baz
-         └── quux
-             └── baz[...]""")
-        eq(ug3, text_type(g3.tree()))
-        sg3 = ug3
-        if PY2:
-            sg3 = bg3
-        eq(sg3, repr(g3.tree()))
-        hg3 = textwrap.dedent(u"""\
-        <div class="zarr-tree">
-        <ul>
-            <li><div>bar</div>
-                <ul>
-                    <li><div>baz</div></li>
-                    <li><div>quux</div>
-                        <ul>
-                            <li><div>baz[...]</div></li>
-                        </ul>
-                    </li>
-                </ul>
-            </li>
-        </ul>
-        </div>""")
-        eq(hg3, g3.tree()._repr_html_().split("</style>")[1].strip())
-
     def test_empty_getitem_contains_iterators(self):
         # setup
         g = self.create_group()
@@ -1139,3 +1036,64 @@ def test_group_key_completions():
     assert '123' in k
     assert '456' in k
     assert 'asdf;' in k
+
+
+def _check_tree(g, expect_bytes, expect_text):
+    eq(expect_bytes, bytes(g.tree()))
+    eq(expect_text, text_type(g.tree()))
+    expect_repr = expect_text
+    if PY2:  # pragma: py3 no cover
+        expect_repr = expect_bytes
+    eq(expect_repr, repr(g.tree()))
+    # test _repr_html_ lightly
+    # noinspection PyProtectedMember
+    html = g.tree()._repr_html_().strip()
+    assert html.startswith('<link')
+    assert html.endswith('</script>')
+
+
+def test_tree():
+    # setup
+    g1 = group()
+    g2 = g1.create_group('foo')
+    g3 = g1.create_group('bar')
+    g3.create_group('baz')
+    g5 = g3.create_group('quux')
+    g5.create_dataset('baz', shape=100, chunks=10)
+
+    # test root group
+    expect_bytes = textwrap.dedent(u"""\
+    /
+     +-- bar
+     |   +-- baz
+     |   +-- quux
+     |       +-- baz (100,) float64
+     +-- foo""").encode()
+    expect_text = textwrap.dedent(u"""\
+    /
+     ├── bar
+     │   ├── baz
+     │   └── quux
+     │       └── baz (100,) float64
+     └── foo""")
+    _check_tree(g1, expect_bytes, expect_text)
+
+    # test different group
+    expect_bytes = textwrap.dedent(u"""\
+    foo""").encode()
+    expect_text = textwrap.dedent(u"""\
+    foo""")
+    _check_tree(g2, expect_bytes, expect_text)
+
+    # test different group
+    expect_bytes = textwrap.dedent(u"""\
+    bar
+     +-- baz
+     +-- quux
+         +-- baz (100,) float64""").encode()
+    expect_text = textwrap.dedent(u"""\
+    bar
+     ├── baz
+     └── quux
+         └── baz (100,) float64""")
+    _check_tree(g3, expect_bytes, expect_text)
