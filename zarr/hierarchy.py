@@ -546,8 +546,15 @@ class Group(MutableMapping):
         base_len = len(self.name)
         return self.visitvalues(lambda o: func(o.name[base_len:].lstrip("/"), o))
 
-    def tree(self):
+    def tree(self, expand=False, level=None):
         """Provide a ``print``-able display of the hierarchy.
+
+        Parameters
+        ----------
+        expand : bool, optional
+            Only relevant for HTML representation. If True, tree will be fully expanded.
+        level : int, optional
+            Maximum depth to descend into hierarchy.
 
         Examples
         --------
@@ -558,21 +565,28 @@ class Group(MutableMapping):
         >>> g4 = g3.create_group('baz')
         >>> g5 = g3.create_group('quux')
         >>> d1 = g5.create_dataset('baz', shape=100, chunks=10)
-        >>> print(g1.tree())
+        >>> g1.tree()
         /
          ├── bar
          │   ├── baz
          │   └── quux
-         │       └── baz[...]
+         │       └── baz (100,) float64
          └── foo
-        >>> print(g3.tree())
+        >>> g1.tree(level=2)
+        /
+         ├── bar
+         │   ├── baz
+         │   └── quux
+         └── foo
+        >>> g3.tree()
         bar
          ├── baz
          └── quux
-             └── baz[...]
+             └── baz (100,) float64
+
         """
 
-        return TreeViewer(self)
+        return TreeViewer(self, expand=expand, level=level)
 
     def _write_op(self, f, *args, **kwargs):
 

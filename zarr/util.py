@@ -3,10 +3,11 @@ from __future__ import absolute_import, print_function, division
 import operator
 from textwrap import TextWrapper, dedent
 import numbers
+import uuid
+
 
 from asciitree import BoxStyle, LeftAligned
 from asciitree.traversal import Traversal
-
 import numpy as np
 
 
@@ -312,117 +313,129 @@ class InfoReporter(object):
         return info_html_report(items)
 
 
-class ZarrGroupTraversal(Traversal):
+class TreeNode(object):
+
+    def __init__(self, obj, depth=0, level=None):
+        self.obj = obj
+        self.depth = depth
+        self.level = level
+
+    def get_children(self):
+        if hasattr(self.obj, 'values'):
+            if self.level is None or self.depth < self.level:
+                depth = self.depth + 1
+                return [TreeNode(o, depth=depth, level=self.level)
+                        for o in self.obj.values()]
+        return []
+
+    def get_text(self):
+        name = self.obj.name.split("/")[-1] or "/"
+        if hasattr(self.obj, 'shape'):
+            name += ' {} {}'.format(self.obj.shape, self.obj.dtype)
+        return name
+
+    def get_type(self):
+        return type(self.obj).__name__
+
+
+class TreeTraversal(Traversal):
 
     def get_children(self, node):
-        return getattr(node, "values", lambda: [])()
+        return node.get_children()
 
     def get_root(self, tree):
         return tree
 
     def get_text(self, node):
-        name = node.name.split("/")[-1] or "/"
-        name += "[...]" if hasattr(node, "dtype") else ""
-        return name
+        return node.get_text()
 
 
-def custom_html_sublist(group, indent):
-    traverser = ZarrGroupTraversal(tree=group)
-    result = ""
-
-    result += (
-        """{0}<li><div>{1}</div>""".format(
-            indent, traverser.get_text(group)
-        )
-    )
-
-    children = traverser.get_children(group)
+def tree_html_sublist(node, root=False, expand=False):
+    result = ''
+    data_jstree = '{"type": "%s"}' % node.get_type()
+    if root or (expand is True) or (isinstance(expand, int) and node.depth < expand):
+        css_class = 'jstree-open'
+    else:
+        css_class = ''
+    result += "<li data-jstree='{}' class='{}'>".format(data_jstree, css_class)
+    result += '<span>{}</span>'.format(node.get_text())
+    children = node.get_children()
     if children:
-        result += """\n{0}{0}<ul>\n""".format(indent)
+        result += '<ul>'
         for c in children:
-            for l in custom_html_sublist(c, indent).splitlines():
-                result += "{0}{0}{1}\n".format(indent, l)
-        result += "{0}{0}</ul>\n{0}".format(indent)
+            result += tree_html_sublist(c, expand=expand)
+        result += '</ul>'
+    result += '</li>'
+    return result
 
-    result += "</li>\n"
+
+def tree_html(group, expand, level):
+
+    result = ''
+
+    # include CSS for jstree default theme
+    css_url = '//cdnjs.cloudflare.com/ajax/libs/jstree/3.3.3/themes/default/style.min.css'
+    result += '<link rel="stylesheet" href="{}"/>'.format(css_url)
+
+    # construct the tree as HTML nested lists
+    node_id = uuid.uuid4()
+    result += '<div id="{}" class="zarr-tree">'.format(node_id)
+    result += '<ul>'
+    root = TreeNode(group, level=level)
+    result += tree_html_sublist(root, root=True, expand=expand)
+    result += '</ul>'
+    result += '</div>'
+
+    # construct javascript
+    result += dedent("""
+        <script>
+            if (!require.defined('jquery')) {
+                require.config({
+                    paths: {
+                        jquery: '//cdnjs.cloudflare.com/ajax/libs/jquery/1.12.1/jquery.min'
+                    },
+                });
+            }
+            if (!require.defined('jstree')) {
+                require.config({
+                    paths: {
+                        jstree: '//cdnjs.cloudflare.com/ajax/libs/jstree/3.3.3/jstree.min'
+                    },
+                });
+            }
+            require(['jstree'], function() {
+                $('#%s').jstree({
+                    types: {
+                        Group: {
+                            icon: "%s"
+                        },
+                        Array: {
+                            icon: "%s"
+                        }
+                    },
+                    plugins: ["types"]
+                });
+            });
+        </script>
+    """ % (node_id, tree_group_icon, tree_array_icon))
 
     return result
 
 
-def custom_html_list(group, indent="    "):
-    result = ""
-
-    # Add custom CSS style for our HTML list
-    result += """<style type="text/css">\n"""
-    result += dedent("""\
-        div.zarr-tree {
-            font-family: Courier, monospace;
-            font-size: 11pt;
-            font-style: normal;
-        }
-
-        div.zarr-tree ul,
-        div.zarr-tree li,
-        div.zarr-tree li > div {
-            display: block;
-            position: relative;
-        }
-
-        div.zarr-tree ul,
-        div.zarr-tree li {
-            list-style-type: none;
-        }
-
-        div.zarr-tree li {
-            border-left: 2px solid #000;
-            margin-left: 1em;
-        }
-
-        div.zarr-tree li > div {
-            padding-left: 1.3em;
-            padding-top: 0.225em;
-            padding-bottom: 0.225em;
-        }
-
-        div.zarr-tree li > div::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: -2px;
-            bottom: 50%;
-            width: 1.2em;
-            border-left: 2px solid #000;
-            border-bottom: 2px solid #000;
-        }
-
-        div.zarr-tree > ul > li:first-child > div {
-            padding-left: 4%;
-        }
-
-        div.zarr-tree > ul > li:first-child > div::before {
-            border: 0 none transparent;
-        }
-
-        div.zarr-tree ul > li:last-child {
-            border-left: 2px solid transparent;
-        }
-    """)
-    result += "</style>\n\n"
-
-    # Insert the HTML list
-    result += """<div class="zarr-tree">\n"""
-    result += "<ul>\n"
-    result += custom_html_sublist(group, indent=indent)
-    result += "</ul>\n"
-    result += "</div>\n"
-
-    return result
+tree_group_icon = 'fa fa-folder'
+tree_array_icon = 'fa fa-table'
+# alternatives...
+# tree_group_icon: 'jstree-folder'
+# tree_array_icon: 'jstree-file'
 
 
 class TreeViewer(object):
 
-    def __init__(self, group):
+    def __init__(self, group, expand=False, level=None):
+
         self.group = group
+        self.expand = expand
+        self.level = level
 
         self.text_kwargs = dict(
             horiz_len=2,
@@ -446,11 +459,11 @@ class TreeViewer(object):
 
     def __bytes__(self):
         drawer = LeftAligned(
-            traverse=ZarrGroupTraversal(),
+            traverse=TreeTraversal(),
             draw=BoxStyle(gfx=self.bytes_kwargs, **self.text_kwargs)
         )
-
-        result = drawer(self.group)
+        root = TreeNode(self.group, level=self.level)
+        result = drawer(root)
 
         # Unicode characters slip in on Python 3.
         # So we need to straighten that out first.
@@ -461,20 +474,20 @@ class TreeViewer(object):
 
     def __unicode__(self):
         drawer = LeftAligned(
-            traverse=ZarrGroupTraversal(),
+            traverse=TreeTraversal(),
             draw=BoxStyle(gfx=self.unicode_kwargs, **self.text_kwargs)
         )
-
-        return drawer(self.group)
+        root = TreeNode(self.group, level=self.level)
+        return drawer(root)
 
     def __repr__(self):
-        if PY2:
+        if PY2:  # pragma: py3 no cover
             return self.__bytes__()
-        else:
+        else:  # pragma: py2 no cover
             return self.__unicode__()
 
     def _repr_html_(self):
-        return custom_html_list(self.group)
+        return tree_html(self.group, expand=self.expand, level=self.level)
 
 
 def check_array_shape(param, array, shape):
