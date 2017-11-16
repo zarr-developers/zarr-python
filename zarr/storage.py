@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-This module contains storage classes for use with Zarr arrays and groups. Note that any object
-implementing the ``MutableMapping`` interface can be used as a Zarr array store.
+This module contains storage classes for use with Zarr arrays and groups. Note that any
+object implementing the ``MutableMapping`` interface can be used as a Zarr array store.
 
 """
 from __future__ import absolute_import, print_function, division
@@ -138,7 +138,8 @@ def _require_parent_group(path, store, chunk_store, overwrite):
         for i in range(len(segments)):
             p = '/'.join(segments[:i])
             if contains_array(store, p):
-                _init_group_metadata(store, path=p, chunk_store=chunk_store, overwrite=overwrite)
+                _init_group_metadata(store, path=p, chunk_store=chunk_store,
+                                     overwrite=overwrite)
             elif not contains_group(store, p):
                 _init_group_metadata(store, path=p, chunk_store=chunk_store)
 
@@ -348,10 +349,12 @@ def init_group(store, overwrite=False, path=None, chunk_store=None):
     path = normalize_storage_path(path)
 
     # ensure parent group initialized
-    _require_parent_group(path, store=store, chunk_store=chunk_store, overwrite=overwrite)
+    _require_parent_group(path, store=store, chunk_store=chunk_store,
+                          overwrite=overwrite)
 
     # initialise metadata
-    _init_group_metadata(store=store, overwrite=overwrite, path=path, chunk_store=chunk_store)
+    _init_group_metadata(store=store, overwrite=overwrite, path=path,
+                         chunk_store=chunk_store)
 
 
 def _init_group_metadata(store, overwrite=False, path=None, chunk_store=None):
@@ -655,7 +658,8 @@ class DirectoryStore(MutableMapping):
         temp_path = None
         try:
             with tempfile.NamedTemporaryFile(mode='wb', delete=False, dir=dir_path,
-                                             prefix=file_name + '.', suffix='.partial') as f:
+                                             prefix=file_name + '.',
+                                             suffix='.partial') as f:
                 temp_path = f.name
                 f.write(value)
 
@@ -782,9 +786,9 @@ def _map_ckey(key):
 
 
 class NestedDirectoryStore(DirectoryStore):
-    """Mutable Mapping interface to a directory, with special handling for chunk keys so that
-    chunk files for multidimensional arrays are stored in a nested directory tree. Keys must be
-    strings, values must be bytes-like objects.
+    """Mutable Mapping interface to a directory, with special handling for chunk keys so
+    that chunk files for multidimensional arrays are stored in a nested directory tree.
+    Keys must be strings, values must be bytes-like objects.
 
     Parameters
     ----------
@@ -810,8 +814,8 @@ class NestedDirectoryStore(DirectoryStore):
         ...     f.read()
         b'xxx'
 
-    Chunk keys are handled in a special way, such that the '.' characters in the key are mapped to
-    directory path separators internally. E.g.::
+    Chunk keys are handled in a special way, such that the '.' characters in the key
+    are mapped to directory path separators internally. E.g.::
 
         >>> store['bar/0.0'] = b'yyy'
         >>> store['bar/0.0']
@@ -828,11 +832,12 @@ class NestedDirectoryStore(DirectoryStore):
 
     Notes
     -----
-    The standard DirectoryStore class stores all chunk files for an array together in a single
-    directory. On some file systems the potentially large number of files in a single directory
-    can cause performance issues. The NestedDirectoryStore class provides an alternative where
-    chunk files for multidimensional arrays will be organised into a directory hierarchy,
-    thus reducing the number of files in any one directory.
+    The standard DirectoryStore class stores all chunk files for an array together in a
+    single directory. On some file systems the potentially large number of files in a
+    single directory can cause performance issues. The NestedDirectoryStore class
+    provides an alternative where chunk files for multidimensional arrays will be
+    organised into a directory hierarchy, thus reducing the number of files in any one
+    directory.
 
     """
 
@@ -864,8 +869,8 @@ class NestedDirectoryStore(DirectoryStore):
     def listdir(self, path=None):
         children = super(NestedDirectoryStore, self).listdir(path=path)
         if array_meta_key in children:
-            # special handling of directories containing an array to map nested chunk keys back
-            # to standard chunk keys
+            # special handling of directories containing an array to map nested chunk
+            # keys back to standard chunk keys
             new_children = []
             root_path = self.dir_path(path)
             for entry in children:
@@ -885,7 +890,7 @@ class NestedDirectoryStore(DirectoryStore):
 
 # noinspection PyPep8Naming
 class ZipStore(MutableMapping):
-    """Mutable Mapping interface to a Zip file. Keys must be strings,
+    """MutableMapping interface to a Zip file. Keys must be strings,
     values must be bytes-like objects.
 
     Parameters
@@ -931,8 +936,7 @@ class ZipStore(MutableMapping):
 
     """
 
-    def __init__(self, path, compression=zipfile.ZIP_STORED,
-                 allowZip64=True, mode='a'):
+    def __init__(self, path, compression=zipfile.ZIP_STORED, allowZip64=True, mode='a'):
 
         # store properties
         path = os.path.abspath(path)
@@ -942,18 +946,20 @@ class ZipStore(MutableMapping):
         self.mode = mode
 
         # open zip file
-        self.zf = zipfile.ZipFile(path, mode=mode, compression=compression, allowZip64=allowZip64)
+        self.zf = zipfile.ZipFile(path, mode=mode, compression=compression,
+                                  allowZip64=allowZip64)
 
     def __getstate__(self):
         return self.path, self.compression, self.allowZip64, self.mode
 
     def __setstate__(self, state):
         path, compression, allowZip64, mode = state
-        # if initially opened with mode 'w' or 'x', re-open in mode 'a' so file doesn't get
-        # clobbered
+        # if initially opened with mode 'w' or 'x', re-open in mode 'a' so file doesn't
+        # get clobbered
         if mode in 'wx':
             mode = 'a'
-        self.__init__(path=path, compression=compression, allowZip64=allowZip64, mode=mode)
+        self.__init__(path=path, compression=compression, allowZip64=allowZip64,
+                      mode=mode)
 
     def close(self):
         """Closes the underlying zip file, ensuring all records are written."""
@@ -966,8 +972,8 @@ class ZipStore(MutableMapping):
             raise PermissionError('cannot flush read-only ZipStore')
         else:
             self.zf.close()
-            # N.B., re-open with mode 'a' regardless of initial mode so we don't wipe what's been
-            # written
+            # N.B., re-open with mode 'a' regardless of initial mode so we don't wipe
+            # what's been written
             self.zf = zipfile.ZipFile(self.path, mode='a',
                                       compression=self.compression,
                                       allowZip64=self.allowZip64)
@@ -1098,3 +1104,140 @@ def migrate_1to2(store):
     # migrate user attributes
     store[attrs_key] = store['attrs']
     del store['attrs']
+
+
+def encode_key(key):
+    if hasattr(key, 'encode'):
+        key = key.encode()
+    return key
+
+
+def decode_key(key):
+    if hasattr(key, 'decode'):
+        key = key.decode()
+    return key
+
+
+# noinspection PyShadowingBuiltins
+class DBMStore(MutableMapping):
+    """Storage class using a DBM-style database.
+
+    Parameters
+    ----------
+    path : string
+        Location of database file.
+    flag : string, optional
+        Flags for opening the database file.
+    mode : int
+        File mode used if a new file is created.
+    open : function, optional
+        Function to open the database file. If not provided, `dbm.open` will be used on
+        Python 3, and `anydbm.open` will be used on Python 2.
+    **open_kwargs
+        Keyword arguments to pass the `open` function.
+
+    Notes
+    -----
+    Please note that, by default, this class will use the Python standard library
+    `dbm.open` function to open the database file (or `anydbm.open` on Python 2). There
+    are up to three different implementations of DBM-style databases available in any
+    Python installation, and which one is used may vary from one system to another.
+    Database file formats are not compatible between these different implementations.
+    Also some implementations are more efficient than others. If you want to ensure a
+    specific implementation is used, pass the corresponding open function, e.g.,
+    `dbm.gnu.open` to use the GNU DBM library.
+
+    Examples
+    --------
+    >>> import zarr
+    >>> store = zarr.DBMStore('example.dbm', flag='c')
+    >>> store['foo'] = b'bar'
+    >>> store['foo']
+    b'bar'
+    >>> store['a/b/c'] = b'xxx'
+    >>> store['a/b/c']
+    b'xxx'
+    >>> sorted(store.keys())
+    ['a/b/c', 'foo']
+    >>> store.close()
+
+    """
+
+    def __init__(self, path, flag='c', mode=0o666, open=None, **open_kwargs):
+        if open is None:
+            if PY2:  # pragma: py3 no cover
+                import anydbm
+                open = anydbm.open
+            else:  # pragma: py2 no cover
+                import dbm
+                open = dbm.open
+        self.db = open(path, flag, mode, **open_kwargs)
+        self.path = path
+        self.flag = flag
+        self.mode = mode
+        self.open = open
+        self.open_kwargs = open_kwargs
+
+    def __getattr__(self, attr):
+        # pass everything else through
+        return getattr(self.db, attr)
+
+    def __getstate__(self):
+        self.sync()  # just in case, needed for PY2
+        return self.path, self.flag, self.mode, self.open, self.open_kwargs
+
+    def __setstate__(self, state):
+        path, flag, mode, open, open_kws = state
+        if flag == 'n':
+            # don't clobber an existing database
+            flag = 'c'
+        self.__init__(path=path, flag=flag, mode=mode, open=open, **open_kws)
+
+    def close(self):
+        if hasattr(self.db, 'close'):
+            self.db.close()
+
+    def sync(self):
+        if hasattr(self.db, 'sync'):
+            self.db.sync()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        self.close()
+
+    def __getitem__(self, key):
+        key = encode_key(key)
+        return self.db[key]
+
+    def __setitem__(self, key, value):
+        key = encode_key(key)
+        value = ensure_bytes(value)
+        self.db[key] = value
+
+    def __delitem__(self, key):
+        key = encode_key(key)
+        del self.db[key]
+
+    def __eq__(self, other):
+        return (
+            isinstance(other, DBMStore) and
+            self.path == other.path and
+            # allow flag and mode to differ
+            self.open == other.open and
+            self.open_kwargs == other.open_kwargs
+        )
+
+    def keys(self):
+        return (decode_key(k) for k in iter(self.db.keys()))
+
+    def __iter__(self):
+        return self.keys()
+
+    def __len__(self):
+        return sum(1 for _ in self.keys())
+
+    def __contains__(self, key):
+        key = encode_key(key)
+        return key in self.db

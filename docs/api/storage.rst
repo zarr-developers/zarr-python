@@ -10,6 +10,7 @@ Storage (``zarr.storage``)
 .. autoclass:: TempStore
 .. autoclass:: NestedDirectoryStore
 .. autoclass:: ZipStore
+.. autoclass:: DBMStore
 
     .. automethod:: close
     .. automethod:: flush
