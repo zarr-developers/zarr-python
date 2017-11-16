@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-This module contains storage classes for use with Zarr arrays and groups. Note that any object
-implementing the ``MutableMapping`` interface can be used as a Zarr array store.
+This module contains storage classes for use with Zarr arrays and groups. Note that any
+object implementing the ``MutableMapping`` interface can be used as a Zarr array store.
 
 """
 from __future__ import absolute_import, print_function, division
@@ -138,7 +138,8 @@ def _require_parent_group(path, store, chunk_store, overwrite):
         for i in range(len(segments)):
             p = '/'.join(segments[:i])
             if contains_array(store, p):
-                _init_group_metadata(store, path=p, chunk_store=chunk_store, overwrite=overwrite)
+                _init_group_metadata(store, path=p, chunk_store=chunk_store,
+                                     overwrite=overwrite)
             elif not contains_group(store, p):
                 _init_group_metadata(store, path=p, chunk_store=chunk_store)
 
@@ -348,10 +349,12 @@ def init_group(store, overwrite=False, path=None, chunk_store=None):
     path = normalize_storage_path(path)
 
     # ensure parent group initialized
-    _require_parent_group(path, store=store, chunk_store=chunk_store, overwrite=overwrite)
+    _require_parent_group(path, store=store, chunk_store=chunk_store,
+                          overwrite=overwrite)
 
     # initialise metadata
-    _init_group_metadata(store=store, overwrite=overwrite, path=path, chunk_store=chunk_store)
+    _init_group_metadata(store=store, overwrite=overwrite, path=path,
+                         chunk_store=chunk_store)
 
 
 def _init_group_metadata(store, overwrite=False, path=None, chunk_store=None):
@@ -655,7 +658,8 @@ class DirectoryStore(MutableMapping):
         temp_path = None
         try:
             with tempfile.NamedTemporaryFile(mode='wb', delete=False, dir=dir_path,
-                                             prefix=file_name + '.', suffix='.partial') as f:
+                                             prefix=file_name + '.',
+                                             suffix='.partial') as f:
                 temp_path = f.name
                 f.write(value)
 
@@ -782,9 +786,9 @@ def _map_ckey(key):
 
 
 class NestedDirectoryStore(DirectoryStore):
-    """Mutable Mapping interface to a directory, with special handling for chunk keys so that
-    chunk files for multidimensional arrays are stored in a nested directory tree. Keys must be
-    strings, values must be bytes-like objects.
+    """Mutable Mapping interface to a directory, with special handling for chunk keys so
+    that chunk files for multidimensional arrays are stored in a nested directory tree.
+    Keys must be strings, values must be bytes-like objects.
 
     Parameters
     ----------
@@ -810,8 +814,8 @@ class NestedDirectoryStore(DirectoryStore):
         ...     f.read()
         b'xxx'
 
-    Chunk keys are handled in a special way, such that the '.' characters in the key are mapped to
-    directory path separators internally. E.g.::
+    Chunk keys are handled in a special way, such that the '.' characters in the key
+    are mapped to directory path separators internally. E.g.::
 
         >>> store['bar/0.0'] = b'yyy'
         >>> store['bar/0.0']
@@ -828,11 +832,12 @@ class NestedDirectoryStore(DirectoryStore):
 
     Notes
     -----
-    The standard DirectoryStore class stores all chunk files for an array together in a single
-    directory. On some file systems the potentially large number of files in a single directory
-    can cause performance issues. The NestedDirectoryStore class provides an alternative where
-    chunk files for multidimensional arrays will be organised into a directory hierarchy,
-    thus reducing the number of files in any one directory.
+    The standard DirectoryStore class stores all chunk files for an array together in a
+    single directory. On some file systems the potentially large number of files in a
+    single directory can cause performance issues. The NestedDirectoryStore class
+    provides an alternative where chunk files for multidimensional arrays will be
+    organised into a directory hierarchy, thus reducing the number of files in any one
+    directory.
 
     """
 
@@ -864,8 +869,8 @@ class NestedDirectoryStore(DirectoryStore):
     def listdir(self, path=None):
         children = super(NestedDirectoryStore, self).listdir(path=path)
         if array_meta_key in children:
-            # special handling of directories containing an array to map nested chunk keys back
-            # to standard chunk keys
+            # special handling of directories containing an array to map nested chunk
+            # keys back to standard chunk keys
             new_children = []
             root_path = self.dir_path(path)
             for entry in children:
@@ -941,18 +946,20 @@ class ZipStore(MutableMapping):
         self.mode = mode
 
         # open zip file
-        self.zf = zipfile.ZipFile(path, mode=mode, compression=compression, allowZip64=allowZip64)
+        self.zf = zipfile.ZipFile(path, mode=mode, compression=compression,
+                                  allowZip64=allowZip64)
 
     def __getstate__(self):
         return self.path, self.compression, self.allowZip64, self.mode
 
     def __setstate__(self, state):
         path, compression, allowZip64, mode = state
-        # if initially opened with mode 'w' or 'x', re-open in mode 'a' so file doesn't get
-        # clobbered
+        # if initially opened with mode 'w' or 'x', re-open in mode 'a' so file doesn't
+        # get clobbered
         if mode in 'wx':
             mode = 'a'
-        self.__init__(path=path, compression=compression, allowZip64=allowZip64, mode=mode)
+        self.__init__(path=path, compression=compression, allowZip64=allowZip64,
+                      mode=mode)
 
     def close(self):
         """Closes the underlying zip file, ensuring all records are written."""
@@ -965,8 +972,8 @@ class ZipStore(MutableMapping):
             raise PermissionError('cannot flush read-only ZipStore')
         else:
             self.zf.close()
-            # N.B., re-open with mode 'a' regardless of initial mode so we don't wipe what's been
-            # written
+            # N.B., re-open with mode 'a' regardless of initial mode so we don't wipe
+            # what's been written
             self.zf = zipfile.ZipFile(self.path, mode='a',
                                       compression=self.compression,
                                       allowZip64=self.allowZip64)
@@ -1119,6 +1126,10 @@ class DBMStore(MutableMapping):
     ----------
     path : string
         Location of database file.
+    flag : string, optional
+        Flags for opening the database file.
+    mode : int
+        File mode used if a new file is created.
     open : function, optional
         Function to open the database file.
     **open_kwargs
@@ -1126,15 +1137,16 @@ class DBMStore(MutableMapping):
 
     Notes
     -----
-    Please note that, by default, this class will use the Python standard library `dbm.open`
-    function to open the database file. There are up to three different implementations of DBM
-    databases available in any Python installation, and which one is used may vary from one
-    system to another. Database file formats are not compatible between these different
-    implementations. Also some implementations are more efficient than others.
+    Please note that, by default, this class will use the Python standard library
+    `dbm.open` function to open the database file. There are up to three different
+    implementations of DBM databases available in any Python installation, and which
+    one is used may vary from one system to another. Database file formats are not
+    compatible between these different implementations. Also some implementations are
+    more efficient than others.
 
-    Most DBM-style database objects already support a MutableMapping interface, but usually
-    accept and return keys as bytes rather than text. This class is just a thing wrapper to map
-    keys from text to bytes and back again.
+    Most DBM-style database objects already support a MutableMapping interface,
+    but usually accept and return keys as bytes rather than text. This class is just a
+    thin wrapper to map keys from text to bytes and back again.
 
     Examples
     --------
