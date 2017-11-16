@@ -353,7 +353,10 @@ class TreeTraversal(Traversal):
 def tree_html_sublist(node, root=False, expand=False):
     result = ''
     data_jstree = '{"type": "%s"}' % node.get_type()
-    css_class = 'jstree-open' if (root or expand) else ''
+    if root or (expand is True) or (isinstance(expand, int) and node.depth < expand):
+        css_class = 'jstree-open'
+    else:
+        css_class = ''
     result += "<li data-jstree='{}' class='{}'>".format(data_jstree, css_class)
     result += '<span>{}</span>'.format(node.get_text())
     children = node.get_children()
