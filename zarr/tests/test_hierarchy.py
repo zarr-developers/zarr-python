@@ -851,7 +851,7 @@ try:
             store = DBMStore(path, flag='n', open=bsddb3.btopen)
             return store, None
 
-except ImportError:
+except ImportError:  # pragma: no cover
     pass
 
 

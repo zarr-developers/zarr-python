@@ -931,7 +931,7 @@ try:
         def test_nbytes_stored(self):
             pass  # not implemented
 
-except ImportError:
+except ImportError:  # pragma: no cover
     pass
 
 

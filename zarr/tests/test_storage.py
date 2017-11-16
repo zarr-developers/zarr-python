@@ -668,6 +668,12 @@ class TestZipStore(StoreTests, unittest.TestCase):
         with assert_raises(PermissionError):
             store.flush()
 
+    def test_context_manager(self):
+        with self.create_store() as store:
+            store['foo'] = b'bar'
+            store['baz'] = b'qux'
+            eq(2, len(store))
+
 
 class TestDBMStoreStdlib(StoreTests, unittest.TestCase):
 
@@ -676,6 +682,12 @@ class TestDBMStoreStdlib(StoreTests, unittest.TestCase):
         atexit.register(os.remove, path)
         store = DBMStore(path, flag='n')
         return store
+
+    def test_context_manager(self):
+        with self.create_store() as store:
+            store['foo'] = b'bar'
+            store['baz'] = b'qux'
+            eq(2, len(store))
 
 
 try:
@@ -689,7 +701,7 @@ try:
             store = DBMStore(path, flag='n', open=bsddb3.btopen)
             return store
 
-except ImportError:
+except ImportError:  # pragma: no cover
     pass
 
 
