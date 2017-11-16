@@ -17,7 +17,8 @@ from numpy.testing import assert_array_equal
 
 
 from zarr.storage import (DictStore, DirectoryStore, ZipStore, init_group, init_array, attrs_key,
-                          array_meta_key, group_meta_key, atexit_rmtree, NestedDirectoryStore)
+                          array_meta_key, group_meta_key, atexit_rmtree, NestedDirectoryStore,
+                          DBMStore)
 from zarr.core import Array
 from zarr.compat import PY2, text_type
 from zarr.hierarchy import Group, group, open_group
@@ -825,6 +826,16 @@ class TestGroupWithZipStore(TestGroup):
         path = tempfile.mktemp(suffix='.zip')
         atexit.register(os.remove, path)
         store = ZipStore(path)
+        return store, None
+
+
+class TestGroupWithDBMStore(TestGroup):
+
+    @staticmethod
+    def create_store():
+        path = tempfile.mktemp(suffix='.dbm')
+        atexit.register(os.remove, path)
+        store = DBMStore(path, flag='n')
         return store, None
 
 

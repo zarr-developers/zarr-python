@@ -13,6 +13,7 @@ import zipfile
 import shutil
 import atexit
 import re
+import dbm
 
 
 import numpy as np
@@ -885,7 +886,7 @@ class NestedDirectoryStore(DirectoryStore):
 
 # noinspection PyPep8Naming
 class ZipStore(MutableMapping):
-    """Mutable Mapping interface to a Zip file. Keys must be strings,
+    """MutableMapping interface to a Zip file. Keys must be strings,
     values must be bytes-like objects.
 
     Parameters
@@ -931,8 +932,7 @@ class ZipStore(MutableMapping):
 
     """
 
-    def __init__(self, path, compression=zipfile.ZIP_STORED,
-                 allowZip64=True, mode='a'):
+    def __init__(self, path, compression=zipfile.ZIP_STORED, allowZip64=True, mode='a'):
 
         # store properties
         path = os.path.abspath(path)
@@ -1098,3 +1098,124 @@ def migrate_1to2(store):
     # migrate user attributes
     store[attrs_key] = store['attrs']
     del store['attrs']
+
+
+def encode_key(key):
+    if hasattr(key, 'encode'):
+        key = key.encode()
+    return key
+
+
+def decode_key(key):
+    if hasattr(key, 'decode'):
+        key = key.decode()
+    return key
+
+
+# noinspection PyShadowingBuiltins
+class DBMStore(MutableMapping):
+    """Storage class using a DBM-style database.
+
+    Parameters
+    ----------
+    path : string
+        Location of database file.
+    open : function, optional
+        Function to open the database file.
+    **open_kws
+        Keyword arguments to pass the `open` function.
+
+    Notes
+    -----
+    Please note that, by default, this class will use the Python standard library `dbm.open`
+    function to open the database file. There are up to three different implementations of DBM
+    databases available in any Python installation, and which one is used may vary from one
+    system to another. Database file formats are not compatible between these different
+    implementations. Also some implementations are more efficient than others.
+
+    Most DBM-style database objects already support a MutableMapping interface, but usually
+    accept and return keys as bytes rather than text. This class is just a thing wrapper to map
+    keys from text to bytes and back again.
+
+    Examples
+    --------
+    >>> import zarr
+    >>> store = zarr.DBMStore('example.dbm', flag='c')
+    >>> store['foo'] = b'bar'
+    >>> store['foo']
+    b'bar'
+    >>> store['a/b/c'] = b'xxx'
+    >>> store['a/b/c']
+    b'xxx'
+    >>> sorted(store.keys())
+    ['a/b/c', 'foo']
+    >>> store.close()
+
+    """
+
+    def __init__(self, path, open=dbm.open, **open_kws):
+        self.db = open(path, **open_kws)
+        self.path = path
+        self.open = open
+        self.open_kws = open_kws
+
+    def __getattr__(self, attr):
+        # pass everything else through
+        return getattr(self.db, attr)
+
+    def __getstate__(self):
+        return self.path, self.open, self.open_kws
+
+    def __setstate__(self, state):
+        path, open, open_kws = state
+        if 'flag' in open_kws and open_kws['flag'] == 'n':
+            # don't clobber an existing database
+            open_kws['flag'] = 'c'
+        self.__init__(path=path, open=open, **open_kws)
+
+    def close(self):
+        if hasattr(self.db, 'close'):
+            self.db.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        self.close()
+
+    def __getitem__(self, key):
+        key = encode_key(key)
+        return self.db[key]
+
+    def __setitem__(self, key, value):
+        key = encode_key(key)
+        value = ensure_bytes(value)
+        self.db[key] = value
+
+    def __delitem__(self, key):
+        key = encode_key(key)
+        del self.db[key]
+
+    def __eq__(self, other):
+        return (
+            isinstance(other, DBMStore) and
+            self.path == other.path and
+            self.open == other.open and
+            # allow different flag values to account for db being re-opened after pickling
+            all([self.open_kws[k] == other.open_kws[k]
+                 for k in self.open_kws if k != 'flag'])
+        )
+
+    def keys(self):
+        return (decode_key(k) for k in iter(self.db.keys()))
+
+    def __iter__(self):
+        return self.keys()
+
+    def __len__(self):
+        return sum(1 for _ in self.keys())
+
+    def __contains__(self, key):
+        key = encode_key(key)
+        return key in self.db
+

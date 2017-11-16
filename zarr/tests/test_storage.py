@@ -17,7 +17,7 @@ from nose.tools import assert_raises, eq_ as eq, assert_is_none
 
 from zarr.storage import (init_array, array_meta_key, attrs_key, DictStore, DirectoryStore,
                           ZipStore, init_group, group_meta_key, getsize, migrate_1to2, TempStore,
-                          atexit_rmtree, NestedDirectoryStore, default_compressor)
+                          atexit_rmtree, NestedDirectoryStore, default_compressor, DBMStore)
 from zarr.meta import (decode_array_metadata, encode_array_metadata, ZARR_FORMAT,
                        decode_group_metadata, encode_group_metadata)
 from zarr.compat import text_type
@@ -667,6 +667,15 @@ class TestZipStore(StoreTests, unittest.TestCase):
         store = ZipStore('example.zip', mode='r')
         with assert_raises(PermissionError):
             store.flush()
+
+
+class TestDBMStore(StoreTests, unittest.TestCase):
+
+    def create_store(self):
+        path = tempfile.mktemp(suffix='.dbm')
+        atexit.register(os.remove, path)
+        store = DBMStore(path, flag='n')
+        return store
 
 
 def test_getsize():

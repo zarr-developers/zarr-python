@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, print_function, division
 import unittest
-from tempfile import mkdtemp
+from tempfile import mkdtemp, mktemp
 import atexit
 import shutil
 import pickle
+import os
 
 
 import numpy as np
@@ -13,7 +14,7 @@ from nose.tools import (eq_ as eq, assert_is_instance, assert_raises, assert_tru
                         assert_is, assert_is_none)
 
 
-from zarr.storage import DirectoryStore, init_array, init_group, NestedDirectoryStore
+from zarr.storage import DirectoryStore, init_array, init_group, NestedDirectoryStore, DBMStore
 from zarr.core import Array
 from zarr.errors import PermissionError
 from zarr.compat import PY2
@@ -896,6 +897,21 @@ class TestArrayWithNestedDirectoryStore(TestArrayWithDirectoryStore):
         kwargs.setdefault('compressor', Zlib(1))
         init_array(store, **kwargs)
         return Array(store, read_only=read_only)
+
+
+class TestArrayWithDBMStore(TestArray):
+
+    @staticmethod
+    def create_array(read_only=False, **kwargs):
+        path = mktemp(suffix='.dbm')
+        atexit.register(os.remove, path)
+        store = DBMStore(path, flag='n')
+        kwargs.setdefault('compressor', Zlib(1))
+        init_array(store, **kwargs)
+        return Array(store, read_only=read_only)
+
+    def test_nbytes_stored(self):
+        pass  # not implemented
 
 
 class TestArrayWithNoCompressor(TestArray):
