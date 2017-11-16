@@ -1131,22 +1131,21 @@ class DBMStore(MutableMapping):
     mode : int
         File mode used if a new file is created.
     open : function, optional
-        Function to open the database file.
+        Function to open the database file. If not provided, `dbm.open` will be used on
+        Python 3, and `anydbm.open` will be used on Python 2.
     **open_kwargs
         Keyword arguments to pass the `open` function.
 
     Notes
     -----
     Please note that, by default, this class will use the Python standard library
-    `dbm.open` function to open the database file. There are up to three different
-    implementations of DBM databases available in any Python installation, and which
-    one is used may vary from one system to another. Database file formats are not
-    compatible between these different implementations. Also some implementations are
-    more efficient than others.
-
-    Most DBM-style database objects already support a MutableMapping interface,
-    but usually accept and return keys as bytes rather than text. This class is just a
-    thin wrapper to map keys from text to bytes and back again.
+    `dbm.open` function to open the database file (or `anydbm.open` on Python 2). There
+    are up to three different implementations of DBM-style databases available in any
+    Python installation, and which one is used may vary from one system to another.
+    Database file formats are not compatible between these different implementations.
+    Also some implementations are more efficient than others. If you want to ensure a
+    specific implementation is used, pass the corresponding open function, e.g.,
+    `dbm.gnu.open` to use the GNU DBM library.
 
     Examples
     --------

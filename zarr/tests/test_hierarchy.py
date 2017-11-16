@@ -829,7 +829,7 @@ class TestGroupWithZipStore(TestGroup):
         return store, None
 
 
-class TestGroupWithDBMStore(TestGroup):
+class TestGroupWithDBMStoreStdlib(TestGroup):
 
     @staticmethod
     def create_store():

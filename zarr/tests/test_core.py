@@ -899,7 +899,7 @@ class TestArrayWithNestedDirectoryStore(TestArrayWithDirectoryStore):
         return Array(store, read_only=read_only)
 
 
-class TestArrayWithDBMStore(TestArray):
+class TestArrayWithDBMStoreStdlib(TestArray):
 
     @staticmethod
     def create_array(read_only=False, **kwargs):

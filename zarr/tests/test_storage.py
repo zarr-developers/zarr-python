@@ -669,13 +669,28 @@ class TestZipStore(StoreTests, unittest.TestCase):
             store.flush()
 
 
-class TestDBMStore(StoreTests, unittest.TestCase):
+class TestDBMStoreStdlib(StoreTests, unittest.TestCase):
 
     def create_store(self):
         path = tempfile.mktemp(suffix='.dbm')
         atexit.register(os.remove, path)
         store = DBMStore(path, flag='n')
         return store
+
+
+try:
+    import bsddb3
+
+    class TestDBMStoreBerkeleyDB(StoreTests, unittest.TestCase):
+
+        def create_store(self):
+            path = tempfile.mktemp(suffix='.dbm')
+            atexit.register(os.remove, path)
+            store = DBMStore(path, flag='n', open=bsddb3.btopen)
+            return store
+
+except ImportError:
+    pass
 
 
 def test_getsize():
