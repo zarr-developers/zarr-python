@@ -1242,4 +1242,3 @@ class DBMStore(MutableMapping):
     def __contains__(self, key):
         key = encode_key(key)
         return key in self.db
-
