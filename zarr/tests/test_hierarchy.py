@@ -839,6 +839,22 @@ class TestGroupWithDBMStoreStdlib(TestGroup):
         return store, None
 
 
+try:
+    import bsddb3
+
+    class TestGroupWithDBMStoreBerkeleyDB(TestGroup):
+
+        @staticmethod
+        def create_store():
+            path = tempfile.mktemp(suffix='.dbm')
+            atexit.register(os.remove, path)
+            store = DBMStore(path, flag='n', open=bsddb3.btopen)
+            return store, None
+
+except ImportError:
+    pass
+
+
 class TestGroupWithChunkStore(TestGroup):
 
     @staticmethod

@@ -914,6 +914,27 @@ class TestArrayWithDBMStoreStdlib(TestArray):
         pass  # not implemented
 
 
+try:
+    import bsddb3
+
+    class TestArrayWithDBMStoreBerkeleyDB(TestArray):
+
+        @staticmethod
+        def create_array(read_only=False, **kwargs):
+            path = mktemp(suffix='.dbm')
+            atexit.register(os.remove, path)
+            store = DBMStore(path, flag='n', open=bsddb3.btopen)
+            kwargs.setdefault('compressor', Zlib(1))
+            init_array(store, **kwargs)
+            return Array(store, read_only=read_only)
+
+        def test_nbytes_stored(self):
+            pass  # not implemented
+
+except ImportError:
+    pass
+
+
 class TestArrayWithNoCompressor(TestArray):
 
     def create_array(self, read_only=False, **kwargs):

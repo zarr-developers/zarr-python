@@ -1,7 +1,6 @@
 appdirs==1.4.3
 args==0.1.0
 asciitree==0.3.3
-bsddb3==6.2.5
 certifi==2017.7.27.1
 chardet==3.0.4
 clint==0.5.1
