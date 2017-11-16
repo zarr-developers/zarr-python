@@ -13,7 +13,6 @@ import zipfile
 import shutil
 import atexit
 import re
-import dbm
 
 
 import numpy as np
@@ -1122,7 +1121,7 @@ class DBMStore(MutableMapping):
         Location of database file.
     open : function, optional
         Function to open the database file.
-    **open_kws
+    **open_kwargs
         Keyword arguments to pass the `open` function.
 
     Notes
@@ -1153,29 +1152,43 @@ class DBMStore(MutableMapping):
 
     """
 
-    def __init__(self, path, open=dbm.open, **open_kws):
-        self.db = open(path, **open_kws)
+    def __init__(self, path, flag='c', mode=0o666, open=None, **open_kwargs):
+        if open is None:
+            if PY2:  # pragma: py3 no cover
+                import anydbm
+                open = anydbm.open
+            else:  # pragma: py2 no cover
+                import dbm
+                open = dbm.open
+        self.db = open(path, flag, mode, **open_kwargs)
         self.path = path
+        self.flag = flag
+        self.mode = mode
         self.open = open
-        self.open_kws = open_kws
+        self.open_kwargs = open_kwargs
 
     def __getattr__(self, attr):
         # pass everything else through
         return getattr(self.db, attr)
 
     def __getstate__(self):
-        return self.path, self.open, self.open_kws
+        self.sync()  # just in case, needed for PY2
+        return self.path, self.flag, self.mode, self.open, self.open_kwargs
 
     def __setstate__(self, state):
-        path, open, open_kws = state
-        if 'flag' in open_kws and open_kws['flag'] == 'n':
+        path, flag, mode, open, open_kws = state
+        if flag == 'n':
             # don't clobber an existing database
-            open_kws['flag'] = 'c'
-        self.__init__(path=path, open=open, **open_kws)
+            flag = 'c'
+        self.__init__(path=path, flag=flag, mode=mode, open=open, **open_kws)
 
     def close(self):
         if hasattr(self.db, 'close'):
             self.db.close()
+
+    def sync(self):
+        if hasattr(self.db, 'sync'):
+            self.db.sync()
 
     def __enter__(self):
         return self
@@ -1200,10 +1213,9 @@ class DBMStore(MutableMapping):
         return (
             isinstance(other, DBMStore) and
             self.path == other.path and
+            # allow flag and mode to differ
             self.open == other.open and
-            # allow different flag values to account for db being re-opened after pickling
-            all([self.open_kws[k] == other.open_kws[k]
-                 for k in self.open_kws if k != 'flag'])
+            self.open_kwargs == other.open_kwargs
         )
 
     def keys(self):
