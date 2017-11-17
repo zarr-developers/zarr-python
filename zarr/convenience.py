@@ -208,7 +208,7 @@ def save_group(store, *args, **kwargs):
 
 
 def save(store, *args, **kwargs):
-    """Convenience function to save an array or arrays to the local file system.
+    """Convenience function to save an array or group of arrays to the local file system.
 
     Parameters
     ----------
@@ -230,13 +230,14 @@ def save(store, *args, **kwargs):
         >>> zarr.load('data/example.zarr')
         array([   0,    1,    2, ..., 9997, 9998, 9999])
 
-    Save an array to a single file (uses a :class:`ZipStore`)::
+    Save an array to a Zip file (uses a :class:`ZipStore`)::
 
         >>> zarr.save('data/example.zip', arr)
         >>> zarr.load('data/example.zip')
         array([   0,    1,    2, ..., 9997, 9998, 9999])
 
-    Save several arrays to a directory on the file system (uses a :class:`DirectoryStore`)::
+    Save several arrays to a directory on the file system (uses a
+    :class:`DirectoryStore` and stores arrays in a group)::
 
         >>> import zarr
         >>> import numpy as np

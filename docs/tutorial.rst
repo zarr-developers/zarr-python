@@ -77,11 +77,11 @@ persistence of data between sessions. For example::
 
 The array above will store its configuration metadata and all compressed chunk
 data in a directory called 'data/example.zarr' relative to the current working
-directory. The :func:`zarr.open` function provides a convenient way to create a
-new persistent array or continue working with an existing array. Note that
-although the function is called "open", there is no need to close an array, and
-data are automatically flushed to disk and files are automatically closed
-whenever an array is modified.
+directory. The :func:`zarr.convenience.open` function provides a convenient way
+to create a new persistent array or continue working with an existing
+array. Note that although the function is called "open", there is no need to
+close an array: data are automatically flushed to disk, and files are
+automatically closed whenever an array is modified.
 
 Persistent arrays support the same interface for reading and writing data,
 e.g.::
