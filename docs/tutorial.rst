@@ -4,7 +4,7 @@ Tutorial
 ========
 
 Zarr provides classes and functions for working with N-dimensional arrays that
-behave like NumPy arrays but whose data is divided into chunks and
+behave like NumPy arrays but whose data is divided into chunks and each chunk is
 compressed. If you are already familiar with HDF5 then Zarr arrays provide
 similar functionality, but with some additional flexibility.
 
@@ -636,7 +636,8 @@ following code::
 
 Any other compatible storage class could be used in place of
 :class:`zarr.storage.DirectoryStore` in the code examples above. For example,
-here is an array stored directly into a Zip file::
+here is an array stored directly into a Zip file, via the
+:class:`zarr.storage.ZipStore` class::
 
     >>> store = zarr.ZipStore('data/example.zip', mode='w')
     >>> root = zarr.group(store=store)
@@ -669,21 +670,21 @@ boundaries. Note also that the ``close()`` method must be called after writing
 any data to the store, otherwise essential records will not be written to the
 underlying zip file.
 
-Another alternative is the :class:`zarr.storage.DBMStore` class, added in Zarr
-version 2.2. This class allows any DBM-style database to be used for storing an
-array or group. Here is an example using a Berkeley DB B-tree database for
-storage (requires `bsddb3 <https://www.jcea.es/programacion/pybsddb.htm>`_ to be
-installed):
+Another storage alternative is the :class:`zarr.storage.DBMStore` class, added
+in Zarr version 2.2. This class allows any DBM-style database to be used for
+storing an array or group. Here is an example using a Berkeley DB B-tree
+database for storage (requires `bsddb3
+<https://www.jcea.es/programacion/pybsddb.htm>`_ to be installed):
 
     >>> import bsddb3
-    >>> store = zarr.DBMStore('data/example.db', open=bsddb3.btopen)
+    >>> store = zarr.DBMStore('data/example.db', open=bsddb3.btopen, flag='n')
     >>> root = zarr.group(store=store)
     >>> z = root.zeros('foo/bar', shape=(1000, 1000), chunks=(100, 100), dtype='i4')
     >>> z[:] = 42
     >>> store.close()
     >>> import os
     >>> os.path.getsize('data/example.db')
-    32805
+    36864
 
 Re-open and check that data have been written::
 
@@ -700,17 +701,43 @@ Re-open and check that data have been written::
            [42, 42, 42, ..., 42, 42, 42]], dtype=int32)
     >>> store.close()
 
-It is also possible to use distributed storage systems with Zarr. The Dask
-project has implementations of the ``MutableMapping`` interface for S3 and HDFS
-which can be used with Zarr, see the `S3Map
-<http://s3fs.readthedocs.io/en/latest/api.html#s3fs.mapping.S3Map>`_ and
-`HDFSMap
-<http://hdfs3.readthedocs.io/en/latest/api.html#hdfs3.mapping.HDFSMap>`_
-classes. Also, @@TODO Google cloud storage.
+It is also possible to use distributed storage systems. The Dask project has
+implementations of the ``MutableMapping`` interface for Amazon S3 (`S3Map
+<http://s3fs.readthedocs.io/en/latest/api.html#s3fs.mapping.S3Map>`_), Hadoop
+Distributed File System (`HDFSMap
+<http://hdfs3.readthedocs.io/en/latest/api.html#hdfs3.mapping.HDFSMap>`_) and
+Google Cloud Storage (`GCSMap
+<http://gcsfs.readthedocs.io/en/latest/api.html#gcsfs.mapping.GCSMap>`_), which
+can be used with Zarr.
 
-Here's an example using ``S3Map`` to read an array created previously::
+Here is an example using S3Map to read an array created previously::
 
-@@TODO S3 example.
+    >>> import s3fs
+    >>> import zarr
+    >>> s3 = s3fs.S3FileSystem(anon=True, client_kwargs=dict(region_name='eu-west-2'))
+    >>> store = s3fs.S3Map(root='zarr-demo/store', s3=s3, check=False)
+    >>> root = zarr.group(store=store)
+    >>> z = root['foo/bar/baz']
+    >>> z
+    <zarr.core.Array '/foo/bar/baz' (21,) |S1>
+    >>> z.info
+    Name               : /foo/bar/baz
+    Type               : zarr.core.Array
+    Data type          : |S1
+    Shape              : (21,)
+    Chunk shape        : (7,)
+    Order              : C
+    Read-only          : False
+    Compressor         : Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
+    Store type         : s3fs.mapping.S3Map
+    No. bytes          : 21
+    Chunks initialized : 3/3
+    >>> z[:]
+    array([b'H', b'e', b'l', b'l', b'o', b' ', b'f', b'r', b'o', b'm', b' ',
+           b't', b'h', b'e', b' ', b'c', b'l', b'o', b'u', b'd', b'!'],
+          dtype='|S1')
+    >>> z[:].tostring()
+    b'Hello from the cloud!'
 
 .. _tutorial_tips_info:
 

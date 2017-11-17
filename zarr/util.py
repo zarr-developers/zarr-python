@@ -190,12 +190,13 @@ def normalize_fill_value(fill_value, dtype):
         # no fill value
         pass
 
-    elif fill_value == 0 and dtype.kind == 'V':
+    elif fill_value == 0 and dtype.kind in 'SV':
         # special case because 0 used as default, but cannot be used for structured arrays
         fill_value = b''
 
     elif dtype.kind == 'U':
-        # special case unicode because of encoding issues on Windows if passed through numpy
+        # special case unicode because of encoding issues on Windows if passed through
+        # numpy
         # https://github.com/alimanfoo/zarr/pull/172#issuecomment-343782713
 
         if PY2 and isinstance(fill_value, binary_type):  # pragma: py3 no cover
@@ -203,16 +204,16 @@ def normalize_fill_value(fill_value, dtype):
             pass
 
         elif not isinstance(fill_value, text_type):
-            raise ValueError('fill_value {!r} is not valid for dtype {}; must be a unicode string'
-                             .format(fill_value, dtype))
+            raise ValueError('fill_value {!r} is not valid for dtype {}; must be a '
+                             'unicode string'.format(fill_value, dtype))
 
     else:
         try:
             fill_value = np.array(fill_value, dtype=dtype)[()]
         except Exception as e:
             # re-raise with our own error message to be helpful
-            raise ValueError('fill_value {!r} is not valid for dtype {}; nested exception: {}'
-                             .format(fill_value, dtype, e))
+            raise ValueError('fill_value {!r} is not valid for dtype {}; nested '
+                             'exception: {}'.format(fill_value, dtype, e))
     return fill_value
 
 
