@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
-"""
-This module contains storage classes for use with Zarr arrays and groups. Note that any
-object implementing the ``MutableMapping`` interface can be used as a Zarr array store.
+"""This module contains storage classes for use with Zarr arrays and groups.
+
+Note that any object implementing the :class:`MutableMapping` interface from the
+:mod:`collections` module in the Python standard library can be used as a Zarr
+array store, as long as it accepts string (str) keys and bytes values.
 
 """
 from __future__ import absolute_import, print_function, division
@@ -147,7 +149,8 @@ def _require_parent_group(path, store, chunk_store, overwrite):
 def init_array(store, shape, chunks=True, dtype=None, compressor='default',
                fill_value=None, order='C', overwrite=False, path=None,
                chunk_store=None, filters=None):
-    """initialize an array store with the given configuration.
+    """Initialize an array store with the given configuration. Note that this is a low-level
+    function and there should be no need to call this directly from user code.
 
     Parameters
     ----------
@@ -188,7 +191,7 @@ def init_array(store, shape, chunks=True, dtype=None, compressor='default',
 
     Array metadata is stored as JSON::
 
-        >>> print(str(store['.zarray'], 'ascii'))
+        >>> print(store['.zarray'].decode())
         {
             "chunks": [
                 1000,
@@ -214,17 +217,16 @@ def init_array(store, shape, chunks=True, dtype=None, compressor='default',
 
     User-defined attributes are also stored as JSON, initially empty::
 
-        >>> print(str(store['.zattrs'], 'ascii'))
+        >>> print(store['.zattrs'].decode())
         {}
 
     Initialize an array using a storage path::
 
         >>> store = dict()
-        >>> init_array(store, shape=100000000, chunks=1000000, dtype='i1',
-        ...            path='foo')
+        >>> init_array(store, shape=100000000, chunks=1000000, dtype='i1', path='foo')
         >>> sorted(store.keys())
         ['.zattrs', '.zgroup', 'foo/.zarray', 'foo/.zattrs']
-        >>> print(str(store['foo/.zarray'], 'ascii'))
+        >>> print(store['foo/.zarray'].decode())
         {
             "chunks": [
                 1000000
@@ -248,9 +250,9 @@ def init_array(store, shape, chunks=True, dtype=None, compressor='default',
 
     Notes
     -----
-    The initialisation process involves normalising all array metadata,
-    encoding as JSON and storing under the '.zarray' key. User attributes are
-    also initialized and stored as JSON under the '.zattrs' key.
+    The initialisation process involves normalising all array metadata, encoding
+    as JSON and storing under the '.zarray' key. User attributes are also
+    initialized and stored as JSON under the '.zattrs' key.
 
     """
 
@@ -329,7 +331,8 @@ init_store = init_array
 
 
 def init_group(store, overwrite=False, path=None, chunk_store=None):
-    """initialize a group store.
+    """Initialize a group store. Note that this is a low-level function and there should be no
+    need to call this directly from user code.
 
     Parameters
     ----------
@@ -410,27 +413,22 @@ def _dict_store_keys(d, prefix='', cls=dict):
 
 
 class DictStore(MutableMapping):
-    """Extended mutable mapping interface to a hierarchy of dicts.
+    """Store class that uses a hierarchy of :class:`dict`s, thus all data will be
+    held in main memory.
 
     Examples
     --------
-    >>> import zarr
-    >>> store = zarr.DictStore()
-    >>> store['foo'] = b'bar'
-    >>> store['foo']
-    b'bar'
-    >>> store['a/b/c'] = b'xxx'
-    >>> store['a/b/c']
-    b'xxx'
-    >>> sorted(store.keys())
-    ['a/b/c', 'foo']
-    >>> store.listdir()
-    ['a', 'foo']
-    >>> store.listdir('a/b')
-    ['c']
-    >>> store.rmdir('a')
-    >>> sorted(store.keys())
-    ['foo']
+    This is the default class used when creating a group. E.g.::
+
+        >>> import zarr
+        >>> g = zarr.group()
+        >>> type(g.store)
+
+    Note that the default class when creating an array is the built-in
+    :class:`dict` class, i.e.::
+
+        >>> z = zarr.zeros(100)
+        >>> type(z.store)
 
     """
 
@@ -575,42 +573,51 @@ class DictStore(MutableMapping):
 
 
 class DirectoryStore(MutableMapping):
-    """Mutable Mapping interface to a directory. Keys must be strings,
-    values must be bytes-like objects.
+    """Storage class using directories and files on a standard file system.
 
     Parameters
     ----------
     path : string
-        Location of directory.
+        Location of directory to use as the root of the storage hierarchy.
 
     Examples
     --------
-    >>> import zarr
-    >>> store = zarr.DirectoryStore('example_store')
-    >>> store['foo'] = b'bar'
-    >>> store['foo']
-    b'bar'
-    >>> with open('example_store/foo', 'rb') as f:
-    ...     f.read()
-    b'bar'
-    >>> store['a/b/c'] = b'xxx'
-    >>> store['a/b/c']
-    b'xxx'
-    >>> with open('example_store/a/b/c', 'rb') as f:
-    ...     f.read()
-    b'xxx'
-    >>> sorted(store.keys())
-    ['a/b/c', 'foo']
-    >>> store.listdir()
-    ['a', 'foo']
-    >>> store.listdir('a/b')
-    ['c']
-    >>> store.rmdir('a')
-    >>> sorted(store.keys())
-    ['foo']
-    >>> import os
-    >>> os.path.exists('example_store/a')
-    False
+    Store a single array::
+
+        >>> import zarr
+        >>> store = zarr.DirectoryStore('examples/array.zarr')
+        >>> z = zarr.zeros((10, 10), chunks=(5, 5), store=store, overwrite=True)
+        >>> z[...] = 42
+
+    Each chunk of the array is stored as a separate file on the file system,
+    i.e.::
+
+        >>> import os
+        >>> sorted(os.listdir('examples/array.zarr'))
+
+    Store a group::
+
+        >>> store = zarr.DirectoryStore('examples/group.zarr')
+        >>> root = zarr.group(store=store, overwrite=True)
+        >>> foo = root.create_group('foo')
+        >>> bar = foo.zeros('bar', shape=(10, 10), chunks=(5, 5)
+        >>> bar[...] = 42
+
+    When storing a group, levels in the group hierarchy will correspond to
+    directories on the file system, i.e.::
+
+        >>> sorted(os.listdir('examples/group.zarr'))
+        >>> sorted(os.listdir('examples/group.zarr/foo'))
+        >>> sorted(os.listdir('examples/group.zarr/foo/bar'))
+
+    Notes
+    -----
+    Atomic writes are used, which means that data are first written to a
+    temporary file, then moved into place when the write is successfully
+    completed.
+
+    Files are only held open while they are being read or written and are closed
+    immediately afterwards, so there is no need to manually close any files.
 
     """
 
@@ -761,7 +768,18 @@ def atexit_rmtree(path,
 
 
 class TempStore(DirectoryStore):
-    """Directory store using a temporary directory for storage."""
+    """Directory store using a temporary directory for storage.
+
+    Parameters
+    ----------
+    suffix : string, optional
+        Suffix for the temporary directory name.
+    prefix : string, optional
+        Prefix for the temporary directory name.
+    dir : string, optional
+        Path to parent directory in which to create temporary directory.
+
+    """
 
     # noinspection PyShadowingBuiltins
     def __init__(self, suffix='', prefix='zarr', dir=None):
@@ -786,58 +804,57 @@ def _map_ckey(key):
 
 
 class NestedDirectoryStore(DirectoryStore):
-    """Mutable Mapping interface to a directory, with special handling for chunk keys so
-    that chunk files for multidimensional arrays are stored in a nested directory tree.
-    Keys must be strings, values must be bytes-like objects.
+    """Storage class using directories and files on a standard file system, with
+    special handling for chunk keys so that chunk files for multidimensional
+    arrays are stored in a nested directory tree.
 
     Parameters
     ----------
     path : string
-        Location of directory.
+        Location of directory to use as the root of the storage hierarchy.
 
     Examples
     --------
-    Most keys are mapped to file paths as normal, e.g.::
+    Store a single array::
 
         >>> import zarr
-        >>> store = zarr.NestedDirectoryStore('example_nested_store')
-        >>> store['foo'] = b'bar'
-        >>> store['foo']
-        b'bar'
-        >>> store['a/b/c'] = b'xxx'
-        >>> store['a/b/c']
-        b'xxx'
-        >>> with open('example_nested_store/foo', 'rb') as f:
-        ...     f.read()
-        b'bar'
-        >>> with open('example_nested_store/a/b/c', 'rb') as f:
-        ...     f.read()
-        b'xxx'
+        >>> store = zarr.NestedDirectoryStore('examples/array.zarr')
+        >>> z = zarr.zeros((10, 10), chunks=(5, 5), store=store, overwrite=True)
+        >>> z[...] = 42
 
-    Chunk keys are handled in a special way, such that the '.' characters in the key
-    are mapped to directory path separators internally. E.g.::
+    Each chunk of the array is stored as a separate file on the file system,
+    note the multiple directory levels used for the chunk files::
 
-        >>> store['bar/0.0'] = b'yyy'
-        >>> store['bar/0.0']
-        b'yyy'
-        >>> store['baz/2.1.12'] = b'zzz'
-        >>> store['baz/2.1.12']
-        b'zzz'
-        >>> with open('example_nested_store/bar/0/0', 'rb') as f:
-        ...     f.read()
-        b'yyy'
-        >>> with open('example_nested_store/baz/2/1/12', 'rb') as f:
-        ...     f.read()
-        b'zzz'
+        >>> import os
+        >>> sorted(os.listdir('examples/array.zarr'))
+        >>> sorted(os.listdir('examples/array.zarr/0'))
+        >>> sorted(os.listdir('examples/array.zarr/1'))
+
+    Store a group::
+
+        >>> store = zarr.NestedDirectoryStore('examples/group.zarr')
+        >>> root = zarr.group(store=store, overwrite=True)
+        >>> foo = root.create_group('foo')
+        >>> bar = foo.zeros('bar', shape=(10, 10), chunks=(5, 5)
+        >>> bar[...] = 42
+
+    When storing a group, levels in the group hierarchy will correspond to
+    directories on the file system, i.e.::
+
+        >>> sorted(os.listdir('examples/group.zarr'))
+        >>> sorted(os.listdir('examples/group.zarr/foo'))
+        >>> sorted(os.listdir('examples/group.zarr/foo/bar'))
+        >>> sorted(os.listdir('examples/group.zarr/foo/bar/0'))
+        >>> sorted(os.listdir('examples/group.zarr/foo/bar/1'))
 
     Notes
     -----
-    The standard DirectoryStore class stores all chunk files for an array together in a
-    single directory. On some file systems the potentially large number of files in a
-    single directory can cause performance issues. The NestedDirectoryStore class
-    provides an alternative where chunk files for multidimensional arrays will be
-    organised into a directory hierarchy, thus reducing the number of files in any one
-    directory.
+    The :class:`DirectoryStore` class stores all chunk files for an array
+    together in a single directory. On some file systems, the potentially large
+    number of files in a single directory can cause performance issues. The
+    :class:`NestedDirectoryStore` class provides an alternative where chunk
+    files for multidimensional arrays will be organised into a directory
+    hierarchy, thus reducing the number of files in any one directory.
 
     """
 
@@ -890,8 +907,7 @@ class NestedDirectoryStore(DirectoryStore):
 
 # noinspection PyPep8Naming
 class ZipStore(MutableMapping):
-    """MutableMapping interface to a Zip file. Keys must be strings,
-    values must be bytes-like objects.
+    """Storage class using a Zip file.
 
     Parameters
     ----------
@@ -911,28 +927,63 @@ class ZipStore(MutableMapping):
 
     Examples
     --------
-    >>> import zarr
-    >>> store = zarr.ZipStore('example.zip', mode='w')
-    >>> store['foo'] = b'bar'
-    >>> store['foo']
-    b'bar'
-    >>> store['a/b/c'] = b'xxx'
-    >>> store['a/b/c']
-    b'xxx'
-    >>> sorted(store.keys())
-    ['a/b/c', 'foo']
-    >>> store.close()
-    >>> import zipfile
-    >>> zf = zipfile.ZipFile('example.zip', mode='r')
-    >>> sorted(zf.namelist())
-    ['a/b/c', 'foo']
+    Store a single array::
+
+        >>> import zarr
+        >>> store = zarr.ZipStore('examples/array.zip', mode='w')
+        >>> z = zarr.zeros((10, 10), chunks=(5, 5), store=store)
+        >>> z[...] = 42
+        >>> store.close()  # don't forget to call this when you're done
+
+    Store a group::
+
+        >>> store = zarr.ZipStore('examples/group.zip', mode='w')
+        >>> root = zarr.group(store=store)
+        >>> foo = root.create_group('foo')
+        >>> bar = foo.zeros('bar', shape=(10, 10), chunks=(5, 5)
+        >>> bar[...] = 42
+        >>> store.close()  # don't forget to call this when you're done
+
+    After modifying a ZipStore, the `close()` method must be called, otherwise
+    essential data will not be written to the underlying Zip file. The ZipStore
+    class also supports the context manager protocol, which ensures the `close()`
+    method is called on leaving the context, e.g.::
+
+        >>> with zarr.ZipStore('examples/array.zip', mode='w') as store:
+        ...     z = zarr.zeros((10, 10), chunks=(5, 5), store=store)
+        ...     z[...] = 42
+        ...     # no need to call store.close()
 
     Notes
     -----
-    When modifying a ZipStore the close() method must be called otherwise
-    essential data will not be written to the underlying zip file. The
-    ZipStore class also supports the context manager protocol, which ensures
-    the close() method is called on leaving the with statement.
+    Each chunk of an array is stored as a separate entry in the Zip file. Note
+    that Zip files do not provide any way to remove or replace existing entries.
+    If an attempt is made to replace an entry, then a warning is generated by
+    the Python standard library about a duplicate Zip file entry. This can be
+    triggered if you attempt to write data to a Zarr array more than once,
+    e.g.::
+
+        >>> store = zarr.ZipStore('example.zip', mode='w')
+        >>> z = zarr.zeros(100, chunks=10, store=store)
+        >>> z[...] = 42  # first write
+        >>> z[...] = 84  # second write generates warnings
+        >>> store.close()
+
+    This can also happen in a more subtle situation, where data are written only
+    once to a Zarr array, but the write operations are not aligned with chunk
+    boundaries, e.g.::
+
+        >>> store = zarr.ZipStore('example.zip', mode='w')
+        >>> z = zarr.zeros(100, chunks=10, store=store)
+        >>> z[5:15] = 42
+        >>> z[15:25] = 42  # write overlaps chunk previously written
+
+    To avoid creating duplicate entries, only write data once, and align writes
+    with chunk boundaries. This alignment is done automatically if you call
+    ``z[...] = ...`` or create an array from existing data via :func:`zarr.array`.
+
+    Alternatively, use a :class:`DirectoryStore` when writing the data, then
+    manually Zip the directory and use the Zip file for subsequent reads.
 
     """
 
@@ -1136,30 +1187,59 @@ class DBMStore(MutableMapping):
     **open_kwargs
         Keyword arguments to pass the `open` function.
 
-    Notes
-    -----
-    Please note that, by default, this class will use the Python standard library
-    `dbm.open` function to open the database file (or `anydbm.open` on Python 2). There
-    are up to three different implementations of DBM-style databases available in any
-    Python installation, and which one is used may vary from one system to another.
-    Database file formats are not compatible between these different implementations.
-    Also some implementations are more efficient than others. If you want to ensure a
-    specific implementation is used, pass the corresponding open function, e.g.,
-    `dbm.gnu.open` to use the GNU DBM library.
-
     Examples
     --------
-    >>> import zarr
-    >>> store = zarr.DBMStore('example.dbm', flag='c')
-    >>> store['foo'] = b'bar'
-    >>> store['foo']
-    b'bar'
-    >>> store['a/b/c'] = b'xxx'
-    >>> store['a/b/c']
-    b'xxx'
-    >>> sorted(store.keys())
-    ['a/b/c', 'foo']
-    >>> store.close()
+    Store a single array::
+
+        >>> import zarr
+        >>> store = zarr.DBMStore('examples/array.db')
+        >>> z = zarr.zeros((10, 10), chunks=(5, 5), store=store, overwrite=True)
+        >>> z[...] = 42
+        >>> store.close()  # don't forget to call this when you're done
+
+    Store a group::
+
+        >>> store = zarr.DBMStore('examples/group.db')
+        >>> root = zarr.group(store=store, overwrite=True)
+        >>> foo = root.create_group('foo')
+        >>> bar = foo.zeros('bar', shape=(10, 10), chunks=(5, 5))
+        >>> bar[...] = 42
+        >>> store.close()  # don't forget to call this when you're done
+
+    After modifying a DBMStore, the `close()` method must be called, otherwise
+    essential data may not be written to the underlying database file. The
+    DBMStore class also supports the context manager protocol, which ensures the
+    `close()` method is called on leaving the context, e.g.::
+
+        >>> with zarr.DBMStore('examples/array.db') as store:
+        ...     z = zarr.zeros((10, 10), chunks=(5, 5), store=store)
+        ...     z[...] = 42
+        ...     # no need to call store.close()
+
+    A different database library can be used by passing a different function to
+    the `open` parameter. For example, if the `bsddb3
+    <https://www.jcea.es/programacion/pybsddb.htm>`_ package is installed, a
+    Berkeley DB database can be used::
+
+        >>> import bsddb3
+        >>> store = zarr.DBMStore('examples/array.bdb', open=bsddb3.btopen)
+        >>> z = zarr.zeros((10, 10), chunks=(5, 5), store=store, overwrite=True)
+        >>> z[...] = 42
+        >>> store.close()
+
+    Notes
+    -----
+    Please note that, by default, this class will use the Python standard
+    library `dbm.open` function to open the database file (or `anydbm.open` on
+    Python 2). There are up to three different implementations of DBM-style
+    databases available in any Python installation, and which one is used may
+    vary from one system to another.  Database file formats are not compatible
+    between these different implementations.  Also, some implementations are
+    more efficient than others. In particular, the "dumb" implementation will be
+    the fall-back on many systems, and has very poor performance for some usage
+    scenarios. If you want to ensure a specific implementation is used, pass the
+    corresponding open function, e.g., `dbm.gnu.open` to use the GNU DBM
+    library.
 
     """
 
