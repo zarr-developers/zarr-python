@@ -435,7 +435,7 @@ For more information on groups see the :mod:`zarr.hierarchy` API docs.
 Advanced indexing
 -----------------
 
-As of Zarr version 2.2, Zarr arrays support several methods for
+As of version 2.2, Zarr arrays support several methods for
 advanced or "fancy" indexing, which enable a subset of data items to
 be extracted or updated in an array without loading the entire array
 into memory. Note that although this functionality is similar to some

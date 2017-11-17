@@ -413,8 +413,8 @@ def _dict_store_keys(d, prefix='', cls=dict):
 
 
 class DictStore(MutableMapping):
-    """Store class that uses a hierarchy of :class:`dict`, thus all data will be
-    held in main memory.
+    """Store class that uses a hierarchy of :class:`dict` objects, thus all data
+    will be held in main memory.
 
     Examples
     --------
@@ -958,9 +958,9 @@ class ZipStore(MutableMapping):
         >>> bar[...] = 42
         >>> store.close()  # don't forget to call this when you're done
 
-    After modifying a ZipStore, the `close()` method must be called, otherwise
+    After modifying a ZipStore, the ``close()`` method must be called, otherwise
     essential data will not be written to the underlying Zip file. The ZipStore
-    class also supports the context manager protocol, which ensures the `close()`
+    class also supports the context manager protocol, which ensures the ``close()``
     method is called on leaving the context, e.g.::
 
         >>> with zarr.ZipStore('data/array.zip', mode='w') as store:
@@ -1196,8 +1196,8 @@ class DBMStore(MutableMapping):
     mode : int
         File mode used if a new file is created.
     open : function, optional
-        Function to open the database file. If not provided, `dbm.open` will be used on
-        Python 3, and `anydbm.open` will be used on Python 2.
+        Function to open the database file. If not provided, :func:`dbm.open` will be
+        used on Python 3, and :func:`anydbm.open` will be used on Python 2.
     **open_kwargs
         Keyword arguments to pass the `open` function.
 
@@ -1220,10 +1220,10 @@ class DBMStore(MutableMapping):
         >>> bar[...] = 42
         >>> store.close()  # don't forget to call this when you're done
 
-    After modifying a DBMStore, the `close()` method must be called, otherwise
+    After modifying a DBMStore, the ``close()`` method must be called, otherwise
     essential data may not be written to the underlying database file. The
     DBMStore class also supports the context manager protocol, which ensures the
-    `close()` method is called on leaving the context, e.g.::
+    ``close()`` method is called on leaving the context, e.g.::
 
         >>> with zarr.DBMStore('data/array.db') as store:
         ...     z = zarr.zeros((10, 10), chunks=(5, 5), store=store, overwrite=True)
