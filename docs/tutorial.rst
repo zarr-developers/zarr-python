@@ -842,7 +842,7 @@ you need to find a compromise, e.g.::
     (1000, 1000)
 
 If you are feeling lazy, you can let Zarr guess a chunk shape for your
-data by providing ``chunks=True`, although please note that the
+data by providing ``chunks=True``, although please note that the
 algorithm for guessing a chunk shape is based on simple heuristics and
 may be far from optimal. E.g.::
 
@@ -852,7 +852,11 @@ may be far from optimal. E.g.::
 
 If you know you are always going to be loading the entire array into
 memory, you can turn off chunks by providing ``chunks=False``, in
-which case there will be one single chunk for the array.
+which case there will be one single chunk for the array::
+
+    >>> z5 = zarr.zeros((10000, 10000), chunks=False, dtype='i4')
+    >>> z5.chunks
+    (10000, 10000)
 
 .. _tutorial_tips_blosc:
 

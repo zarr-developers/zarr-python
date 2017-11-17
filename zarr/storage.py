@@ -413,7 +413,7 @@ def _dict_store_keys(d, prefix='', cls=dict):
 
 
 class DictStore(MutableMapping):
-    """Store class that uses a hierarchy of :class:`dict`s, thus all data will be
+    """Store class that uses a hierarchy of :class:`dict`, thus all data will be
     held in main memory.
 
     Examples
@@ -1288,10 +1288,12 @@ class DBMStore(MutableMapping):
         self.__init__(path=path, flag=flag, mode=mode, open=open, **open_kws)
 
     def close(self):
+        """Closes the underlying database file."""
         if hasattr(self.db, 'close'):
             self.db.close()
 
     def sync(self):
+        """Synchronizes data to the underlying database file."""
         if hasattr(self.db, 'sync'):
             self.db.sync()
 

@@ -399,7 +399,7 @@ The metadata resource for the root group has been created, as well as a custom
 attributes resource::
 
     >>> import os
-    >>> sorted(os.listdir('example_hierarchy'))
+    >>> sorted(os.listdir('data/group.zarr'))
     ['.zattrs', '.zgroup']
 
 Inspect the group metadata::
