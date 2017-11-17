@@ -96,10 +96,17 @@ Check that the data have been written and can be read again::
     >>> np.all(z1[...] == z2[...])
     True
 
+Also, if you are just looking for a fast and convenient way to save NumPy arrays to disk
+then load back into memory later, the functions :func:`zarr.convenience.save` and
+:func:`zarr.convenience.load` may be useful. E.g.::
+
+    >>> a = np.arange(10)
+    >>> zarr.save('data/example.zarr', a)
+    >>> zarr.load('data/example.zarr')
+    array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
+
 Please note that there are a number of other options for persistent array
-storage, see the section on :ref:`tutorial_tips_storage` below. Also, if you are
-just looking for a convenient way to save NumPy arrays to disk then load back
-into memory later, see the functions :func:`zarr.save` and :func:`zarr.load`.
+storage, see the section on :ref:`tutorial_tips_storage` below.
 
 .. _tutorial_resize:
 
