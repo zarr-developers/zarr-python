@@ -295,7 +295,7 @@ local file system as storage.
 Create an array::
 
     >>> import zarr
-    >>> store = zarr.DirectoryStore('example')
+    >>> store = zarr.DirectoryStore('data/example.zarr')
     >>> a = zarr.create(shape=(20, 20), chunks=(10, 10), dtype='i4',
     ...                 fill_value=42, compressor=zarr.Zlib(level=1),
     ...                 store=store, overwrite=True)
@@ -304,12 +304,12 @@ No chunks are initialized yet, so only the ".zarray" and ".zattrs" keys
 have been set in the store::
 
     >>> import os
-    >>> sorted(os.listdir('example'))
+    >>> sorted(os.listdir('data/example.zarr'))
     ['.zarray', '.zattrs']
 
 Inspect the array metadata::
 
-    >>> print(open('example/.zarray').read())
+    >>> print(open('data/example.zarr/.zarray').read())
     {
         "chunks": [
             10,
@@ -332,26 +332,26 @@ Inspect the array metadata::
 
 Inspect the array attributes::
 
-    >>> print(open('example/.zattrs').read())
+    >>> print(open('data/example.zarr/.zattrs').read())
     {}
 
 Chunks are initialized on demand. E.g., set some data::
 
     >>> a[0:10, 0:10] = 1
-    >>> sorted(os.listdir('example'))
+    >>> sorted(os.listdir('data/example.zarr'))
     ['.zarray', '.zattrs', '0.0']
 
 Set some more data::
 
     >>> a[0:10, 10:20] = 2
     >>> a[10:20, :] = 3
-    >>> sorted(os.listdir('example'))
+    >>> sorted(os.listdir('data/example.zarr'))
     ['.zarray', '.zattrs', '0.0', '0.1', '1.0', '1.1']
 
 Manually decompress a single chunk for illustration::
 
     >>> import zlib
-    >>> buf = zlib.decompress(open('example/0.0', 'rb').read())
+    >>> buf = zlib.decompress(open('data/example.zarr/0.0', 'rb').read())
     >>> import numpy as np
     >>> chunk = np.frombuffer(buf, dtype='<i4')
     >>> chunk
@@ -366,7 +366,7 @@ Modify the array attributes::
     >>> a.attrs['foo'] = 42
     >>> a.attrs['bar'] = 'apples'
     >>> a.attrs['baz'] = [1, 2, 3, 4]
-    >>> print(open('example/.zattrs').read())
+    >>> print(open('data/example.zarr/.zattrs').read())
     {
         "bar": "apples",
         "baz": [
@@ -389,7 +389,7 @@ however this is an implementation choice and is not required.
 Setup the store::
 
     >>> import zarr
-    >>> store = zarr.DirectoryStore('example_hierarchy')
+    >>> store = zarr.DirectoryStore('data/group.zarr')
 
 Create the root group::
 
@@ -404,14 +404,14 @@ attributes resource::
 
 Inspect the group metadata::
 
-    >>> print(open('example_hierarchy/.zgroup').read())
+    >>> print(open('data/group.zarr/.zgroup').read())
     {
         "zarr_format": 2
     }
 
 Inspect the group attributes::
 
-    >>> print(open('example_hierarchy/.zattrs').read())
+    >>> print(open('data/group.zarr/.zattrs').read())
     {}
 
 Create a sub-group::
@@ -420,9 +420,9 @@ Create a sub-group::
 
 What has been stored::
 
-    >>> sorted(os.listdir('example_hierarchy'))
+    >>> sorted(os.listdir('data/group.zarr'))
     ['.zattrs', '.zgroup', 'foo']
-    >>> sorted(os.listdir('example_hierarchy/foo'))
+    >>> sorted(os.listdir('data/group.zarr/foo'))
     ['.zattrs', '.zgroup']
 
 Create an array within the sub-group::
@@ -432,16 +432,16 @@ Create an array within the sub-group::
 
 What has been stored::
 
-    >>> sorted(os.listdir('example_hierarchy'))
+    >>> sorted(os.listdir('data/group.zarr'))
     ['.zattrs', '.zgroup', 'foo']
-    >>> sorted(os.listdir('example_hierarchy/foo'))
+    >>> sorted(os.listdir('data/group.zarr/foo'))
     ['.zattrs', '.zgroup', 'bar']
-    >>> sorted(os.listdir('example_hierarchy/foo/bar'))
+    >>> sorted(os.listdir('data/group.zarr/foo/bar'))
     ['.zarray', '.zattrs', '0.0', '0.1', '1.0', '1.1']
 
 Here is the same example using a Zip file as storage::
 
-    >>> store = zarr.ZipStore('example_hierarchy.zip', mode='w')
+    >>> store = zarr.ZipStore('data/group.zip', mode='w')
     >>> root_grp = zarr.group(store)
     >>> sub_grp = root_grp.create_group('foo')
     >>> a = sub_grp.create_dataset('bar', shape=(20, 20), chunks=(10, 10))
@@ -451,7 +451,7 @@ Here is the same example using a Zip file as storage::
 What has been stored::
 
     >>> import zipfile
-    >>> zf = zipfile.ZipFile('example_hierarchy.zip', mode='r')
+    >>> zf = zipfile.ZipFile('data/group.zip', mode='r')
     >>> for name in sorted(zf.namelist()):
     ...     print(name)
     .zattrs

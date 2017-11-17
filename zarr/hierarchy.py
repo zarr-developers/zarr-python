@@ -945,7 +945,6 @@ def group(store=None, overwrite=False, chunk_store=None, synchronizer=None, path
 
     Examples
     --------
-
     Create a group in memory::
 
         >>> import zarr
@@ -955,7 +954,7 @@ def group(store=None, overwrite=False, chunk_store=None, synchronizer=None, path
 
     Create a group with a different store::
 
-        >>> store = zarr.DirectoryStore('example')
+        >>> store = zarr.DirectoryStore('data/example.zarr')
         >>> g = zarr.group(store=store, overwrite=True)
         >>> g
         <zarr.hierarchy.Group '/'>
@@ -999,12 +998,12 @@ def open_group(store, mode='a', synchronizer=None, path=None):
     Examples
     --------
     >>> import zarr
-    >>> root = zarr.open_group('example', mode='w')
+    >>> root = zarr.open_group('data/example.zarr', mode='w')
     >>> foo = root.create_group('foo')
     >>> bar = root.create_group('bar')
     >>> root
     <zarr.hierarchy.Group '/'>
-    >>> root2 = zarr.open_group('example', mode='a')
+    >>> root2 = zarr.open_group('data/example.zarr', mode='a')
     >>> root2
     <zarr.hierarchy.Group '/'>
     >>> root == root2

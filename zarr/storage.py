@@ -423,12 +423,14 @@ class DictStore(MutableMapping):
         >>> import zarr
         >>> g = zarr.group()
         >>> type(g.store)
+        <class 'zarr.storage.DictStore'>
 
     Note that the default class when creating an array is the built-in
     :class:`dict` class, i.e.::
 
         >>> z = zarr.zeros(100)
         >>> type(z.store)
+        <class 'dict'>
 
     """
 
@@ -585,7 +587,7 @@ class DirectoryStore(MutableMapping):
     Store a single array::
 
         >>> import zarr
-        >>> store = zarr.DirectoryStore('examples/array.zarr')
+        >>> store = zarr.DirectoryStore('data/array.zarr')
         >>> z = zarr.zeros((10, 10), chunks=(5, 5), store=store, overwrite=True)
         >>> z[...] = 42
 
@@ -593,22 +595,26 @@ class DirectoryStore(MutableMapping):
     i.e.::
 
         >>> import os
-        >>> sorted(os.listdir('examples/array.zarr'))
+        >>> sorted(os.listdir('data/array.zarr'))
+        ['.zarray', '.zattrs', '0.0', '0.1', '1.0', '1.1']
 
     Store a group::
 
-        >>> store = zarr.DirectoryStore('examples/group.zarr')
+        >>> store = zarr.DirectoryStore('data/group.zarr')
         >>> root = zarr.group(store=store, overwrite=True)
         >>> foo = root.create_group('foo')
-        >>> bar = foo.zeros('bar', shape=(10, 10), chunks=(5, 5)
+        >>> bar = foo.zeros('bar', shape=(10, 10), chunks=(5, 5))
         >>> bar[...] = 42
 
     When storing a group, levels in the group hierarchy will correspond to
     directories on the file system, i.e.::
 
-        >>> sorted(os.listdir('examples/group.zarr'))
-        >>> sorted(os.listdir('examples/group.zarr/foo'))
-        >>> sorted(os.listdir('examples/group.zarr/foo/bar'))
+        >>> sorted(os.listdir('data/group.zarr'))
+        ['.zattrs', '.zgroup', 'foo']
+        >>> sorted(os.listdir('data/group.zarr/foo'))
+        ['.zattrs', '.zgroup', 'bar']
+        >>> sorted(os.listdir('data/group.zarr/foo/bar'))
+        ['.zarray', '.zattrs', '0.0', '0.1', '1.0', '1.1']
 
     Notes
     -----
@@ -818,7 +824,7 @@ class NestedDirectoryStore(DirectoryStore):
     Store a single array::
 
         >>> import zarr
-        >>> store = zarr.NestedDirectoryStore('examples/array.zarr')
+        >>> store = zarr.NestedDirectoryStore('data/array.zarr')
         >>> z = zarr.zeros((10, 10), chunks=(5, 5), store=store, overwrite=True)
         >>> z[...] = 42
 
@@ -826,26 +832,34 @@ class NestedDirectoryStore(DirectoryStore):
     note the multiple directory levels used for the chunk files::
 
         >>> import os
-        >>> sorted(os.listdir('examples/array.zarr'))
-        >>> sorted(os.listdir('examples/array.zarr/0'))
-        >>> sorted(os.listdir('examples/array.zarr/1'))
+        >>> sorted(os.listdir('data/array.zarr'))
+        ['.zarray', '.zattrs', '0', '1']
+        >>> sorted(os.listdir('data/array.zarr/0'))
+        ['0', '1']
+        >>> sorted(os.listdir('data/array.zarr/1'))
+        ['0', '1']
 
     Store a group::
 
-        >>> store = zarr.NestedDirectoryStore('examples/group.zarr')
+        >>> store = zarr.NestedDirectoryStore('data/group.zarr')
         >>> root = zarr.group(store=store, overwrite=True)
         >>> foo = root.create_group('foo')
-        >>> bar = foo.zeros('bar', shape=(10, 10), chunks=(5, 5)
+        >>> bar = foo.zeros('bar', shape=(10, 10), chunks=(5, 5))
         >>> bar[...] = 42
 
     When storing a group, levels in the group hierarchy will correspond to
     directories on the file system, i.e.::
 
-        >>> sorted(os.listdir('examples/group.zarr'))
-        >>> sorted(os.listdir('examples/group.zarr/foo'))
-        >>> sorted(os.listdir('examples/group.zarr/foo/bar'))
-        >>> sorted(os.listdir('examples/group.zarr/foo/bar/0'))
-        >>> sorted(os.listdir('examples/group.zarr/foo/bar/1'))
+        >>> sorted(os.listdir('data/group.zarr'))
+        ['.zattrs', '.zgroup', 'foo']
+        >>> sorted(os.listdir('data/group.zarr/foo'))
+        ['.zattrs', '.zgroup', 'bar']
+        >>> sorted(os.listdir('data/group.zarr/foo/bar'))
+        ['.zarray', '.zattrs', '0', '1']
+        >>> sorted(os.listdir('data/group.zarr/foo/bar/0'))
+        ['0', '1']
+        >>> sorted(os.listdir('data/group.zarr/foo/bar/1'))
+        ['0', '1']
 
     Notes
     -----
@@ -930,17 +944,17 @@ class ZipStore(MutableMapping):
     Store a single array::
 
         >>> import zarr
-        >>> store = zarr.ZipStore('examples/array.zip', mode='w')
+        >>> store = zarr.ZipStore('data/array.zip', mode='w')
         >>> z = zarr.zeros((10, 10), chunks=(5, 5), store=store)
         >>> z[...] = 42
         >>> store.close()  # don't forget to call this when you're done
 
     Store a group::
 
-        >>> store = zarr.ZipStore('examples/group.zip', mode='w')
+        >>> store = zarr.ZipStore('data/group.zip', mode='w')
         >>> root = zarr.group(store=store)
         >>> foo = root.create_group('foo')
-        >>> bar = foo.zeros('bar', shape=(10, 10), chunks=(5, 5)
+        >>> bar = foo.zeros('bar', shape=(10, 10), chunks=(5, 5))
         >>> bar[...] = 42
         >>> store.close()  # don't forget to call this when you're done
 
@@ -949,7 +963,7 @@ class ZipStore(MutableMapping):
     class also supports the context manager protocol, which ensures the `close()`
     method is called on leaving the context, e.g.::
 
-        >>> with zarr.ZipStore('examples/array.zip', mode='w') as store:
+        >>> with zarr.ZipStore('data/array.zip', mode='w') as store:
         ...     z = zarr.zeros((10, 10), chunks=(5, 5), store=store)
         ...     z[...] = 42
         ...     # no need to call store.close()
@@ -963,20 +977,20 @@ class ZipStore(MutableMapping):
     triggered if you attempt to write data to a Zarr array more than once,
     e.g.::
 
-        >>> store = zarr.ZipStore('example.zip', mode='w')
+        >>> store = zarr.ZipStore('data/example.zip', mode='w')
         >>> z = zarr.zeros(100, chunks=10, store=store)
-        >>> z[...] = 42  # first write
-        >>> z[...] = 84  # second write generates warnings
+        >>> z[...] = 42  # first write OK
+        >>> z[...] = 42  # second write generates warnings
         >>> store.close()
 
     This can also happen in a more subtle situation, where data are written only
     once to a Zarr array, but the write operations are not aligned with chunk
     boundaries, e.g.::
 
-        >>> store = zarr.ZipStore('example.zip', mode='w')
+        >>> store = zarr.ZipStore('data/example.zip', mode='w')
         >>> z = zarr.zeros(100, chunks=10, store=store)
         >>> z[5:15] = 42
-        >>> z[15:25] = 42  # write overlaps chunk previously written
+        >>> z[15:25] = 42  # write overlaps chunk previously written, generates warnings
 
     To avoid creating duplicate entries, only write data once, and align writes
     with chunk boundaries. This alignment is done automatically if you call
@@ -1192,14 +1206,14 @@ class DBMStore(MutableMapping):
     Store a single array::
 
         >>> import zarr
-        >>> store = zarr.DBMStore('examples/array.db')
+        >>> store = zarr.DBMStore('data/array.db')
         >>> z = zarr.zeros((10, 10), chunks=(5, 5), store=store, overwrite=True)
         >>> z[...] = 42
         >>> store.close()  # don't forget to call this when you're done
 
     Store a group::
 
-        >>> store = zarr.DBMStore('examples/group.db')
+        >>> store = zarr.DBMStore('data/group.db')
         >>> root = zarr.group(store=store, overwrite=True)
         >>> foo = root.create_group('foo')
         >>> bar = foo.zeros('bar', shape=(10, 10), chunks=(5, 5))
@@ -1211,8 +1225,8 @@ class DBMStore(MutableMapping):
     DBMStore class also supports the context manager protocol, which ensures the
     `close()` method is called on leaving the context, e.g.::
 
-        >>> with zarr.DBMStore('examples/array.db') as store:
-        ...     z = zarr.zeros((10, 10), chunks=(5, 5), store=store)
+        >>> with zarr.DBMStore('data/array.db') as store:
+        ...     z = zarr.zeros((10, 10), chunks=(5, 5), store=store, overwrite=True)
         ...     z[...] = 42
         ...     # no need to call store.close()
 
@@ -1222,7 +1236,7 @@ class DBMStore(MutableMapping):
     Berkeley DB database can be used::
 
         >>> import bsddb3
-        >>> store = zarr.DBMStore('examples/array.bdb', open=bsddb3.btopen)
+        >>> store = zarr.DBMStore('data/array.bdb', open=bsddb3.btopen)
         >>> z = zarr.zeros((10, 10), chunks=(5, 5), store=store, overwrite=True)
         >>> z[...] = 42
         >>> store.close()

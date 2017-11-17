@@ -65,16 +65,16 @@ def test_open_group():
 def test_save_errors():
     with assert_raises(ValueError):
         # no arrays provided
-        save_group('example.zarr')
+        save_group('data/group.zarr')
     with assert_raises(ValueError):
         # no arrays provided
-        save('example.zarr')
+        save('data/group.zarr')
 
 
 def test_lazy_loader():
     foo = np.arange(100)
     bar = np.arange(100, 0, -1)
-    store = 'example.zarr'
+    store = 'data/group.zarr'
     save(store, foo=foo, bar=bar)
     loader = load(store)
     assert 'foo' in loader

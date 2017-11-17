@@ -915,7 +915,7 @@ def test_group():
 def test_open_group():
     # test the open_group() convenience function
 
-    store = 'example'
+    store = 'data/group.zarr'
 
     # mode == 'w'
     g = open_group(store, mode='w')
@@ -926,12 +926,12 @@ def test_open_group():
     eq(2, len(g))
 
     # mode in 'r', 'r+'
-    open_array('example_array', shape=100, chunks=10, mode='w')
+    open_array('data/array.zarr', shape=100, chunks=10, mode='w')
     for mode in 'r', 'r+':
         with assert_raises(ValueError):
             open_group('doesnotexist', mode=mode)
         with assert_raises(ValueError):
-            open_group('example_array', mode=mode)
+            open_group('data/array.zarr', mode=mode)
     g = open_group(store, mode='r')
     assert_is_instance(g, Group)
     eq(2, len(g))
@@ -952,7 +952,7 @@ def test_open_group():
     g.create_groups('foo', 'bar')
     eq(2, len(g))
     with assert_raises(ValueError):
-        open_group('example_array', mode='a')
+        open_group('data/array.zarr', mode='a')
 
     # mode in 'w-', 'x'
     for mode in 'w-', 'x':
@@ -966,7 +966,7 @@ def test_open_group():
         with assert_raises(ValueError):
             open_group(store, mode=mode)
         with assert_raises(ValueError):
-            open_group('example_array', mode=mode)
+            open_group('data/array.zarr', mode=mode)
 
     # open with path
     g = open_group(store, path='foo/bar')

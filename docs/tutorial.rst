@@ -74,11 +74,11 @@ In the examples above, compressed data for each chunk of the array was
 stored in main memory. Zarr arrays can also be stored on a file
 system, enabling persistence of data between sessions. For example::
 
-    >>> z1 = zarr.open('example.zarr', mode='w', shape=(10000, 10000),
+    >>> z1 = zarr.open('data/example.zarr', mode='w', shape=(10000, 10000),
     ...                chunks=(1000, 1000), dtype='i4')
 
 The array above will store its configuration metadata and all
-compressed chunk data in a directory called 'example.zarr' relative to
+compressed chunk data in a directory called 'data/example.zarr' relative to
 the current working directory. The :func:`zarr.open` function provides
 a convenient way to create a new persistent array or continue working
 with an existing array. Note that although the function is called
@@ -95,7 +95,7 @@ data, e.g.::
 
 Check that the data have been written and can be read again::
 
-    >>> z2 = zarr.open('example.zarr', mode='r')
+    >>> z2 = zarr.open('data/example.zarr', mode='r')
     >>> np.all(z1[...] == z2[...])
     True
 
@@ -331,8 +331,8 @@ Zarr also provides support for process synchronization via file
 locking, provided that all processes have access to a shared file
 system. E.g.::
 
-    >>> synchronizer = zarr.ProcessSynchronizer('example.sync')
-    >>> z = zarr.open_array('example', mode='w', shape=(10000, 10000),
+    >>> synchronizer = zarr.ProcessSynchronizer('data/example.sync')
+    >>> z = zarr.open_array('data/example', mode='w', shape=(10000, 10000),
     ...                     chunks=(1000, 1000), dtype='i4',
     ...                     synchronizer=synchronizer)
     >>> z
@@ -420,7 +420,7 @@ The :func:`zarr.open` function provides a convenient way to create or
 re-open a group stored in a directory on the file-system, with
 sub-groups stored in sub-directories, e.g.::
 
-    >>> persistent_group = zarr.open('example.zarr', mode='w')
+    >>> persistent_group = zarr.open('data/example.zarr', mode='w')
     >>> persistent_group
     <zarr.hierarchy.Group '/'>
     >>> z = persistent_group.create_dataset('foo/bar/baz', shape=(10000, 10000),
@@ -750,38 +750,38 @@ system. This is used under the hood by the :func:`zarr.open` function.
 
 In other words, the following code::
 
-    >>> z = zarr.open('example.zarr', mode='w', shape=1000000, dtype='i4')
+    >>> z = zarr.open('data/example.zarr', mode='w', shape=1000000, dtype='i4')
 
 ...is just a convenient short-hand for::
 
-    >>> store = zarr.DirectoryStore('example.zarr')
+    >>> store = zarr.DirectoryStore('data/example.zarr')
     >>> z = zarr.create(store=store, overwrite=True, shape=1000000, dtype='i4')
 
 ...and the following code::
 
-    >>> grp = zarr.open('example.zarr', mode='w')
+    >>> grp = zarr.open('data/example.zarr', mode='w')
 
 ...is just a short-hand for::
 
-    >>> store = zarr.DirectoryStore('example.zarr')
+    >>> store = zarr.DirectoryStore('data/example.zarr')
     >>> grp = zarr.group(store=store, overwrite=True)
 
 Any other storage class could be used in place of
 :class:`zarr.storage.DirectoryStore` in the code examples above. For
 example, here is an array stored directly into a Zip file::
 
-    >>> store = zarr.ZipStore('example.zip', mode='w')
+    >>> store = zarr.ZipStore('data/example.zip', mode='w')
     >>> root_group = zarr.group(store=store)
     >>> z = root_group.zeros('foo/bar', shape=(1000, 1000), chunks=(100, 100), dtype='i4')
     >>> z[:] = 42
     >>> store.close()
     >>> import os
-    >>> os.path.getsize('example.zip')
+    >>> os.path.getsize('data/example.zip')
     32805
 
 Re-open and check that data have been written::
 
-    >>> store = zarr.ZipStore('example.zip', mode='r')
+    >>> store = zarr.ZipStore('data/example.zip', mode='r')
     >>> root_group = zarr.group(store=store)
     >>> z = root_group['foo/bar']
     >>> z[:]
@@ -853,7 +853,7 @@ may be far from optimal. E.g.::
 If you know you are always going to be loading the entire array into
 memory, you can turn off chunks by providing ``chunks=False``, in
 which case there will be one single chunk for the array.
- 
+
 .. _tutorial_tips_blosc:
 
 Configuring Blosc
