@@ -277,86 +277,6 @@ Here is an example using a delta filter with the Blosc compressor::
 For more information about available filter codecs, see the `Numcodecs
 <http://numcodecs.readthedocs.io/>`_ documentation.
 
-.. _tutorial_sync:
-
-Parallel computing and synchronization
---------------------------------------
-
-Zarr arrays can be used as either the source or sink for data in parallel
-computations. Both multi-threaded and multi-process parallelism are
-supported. The Python global interpreter lock (GIL) is released wherever
-possible for both compression and decompression operations, so Zarr will
-generally not block other Python threads from running.
-
-A Zarr array can be read concurrently by multiple threads or processes.  No
-synchronization (i.e., locking) is required for concurrent reads.
-
-A Zarr array can also be written to concurrently by multiple threads or
-processes. Some synchronization may be required, depending on the way the data
-is being written.
-
-If each worker in a parallel computation is writing to a separate region of the
-array, and if region boundaries are perfectly aligned with chunk boundaries,
-then no synchronization is required. However, if region and chunk boundaries are
-not perfectly aligned, then synchronization is required to avoid two workers
-attempting to modify the same chunk at the same time.
-
-To give a simple example, consider a 1-dimensional array of length 60, ``z``,
-divided into three chunks of 20 elements each. If three workers are running and
-each attempts to write to a 20 element region (i.e., ``z[0:20]``, ``z[20:40]``
-and ``z[40:60]``) then each worker will be writing to a separate chunk and no
-synchronization is required. However, if two workers are running and each
-attempts to write to a 30 element region (i.e., ``z[0:30]`` and ``z[30:60]``)
-then it is possible both workers will attempt to modify the middle chunk at the
-same time, and synchronization is required to prevent data loss.
-
-Zarr provides support for chunk-level synchronization. E.g., create an array
-with thread synchronization::
-
-    >>> z = zarr.zeros((10000, 10000), chunks=(1000, 1000), dtype='i4',
-    ...                 synchronizer=zarr.ThreadSynchronizer())
-    >>> z
-    <zarr.core.Array (10000, 10000) int32>
-
-This array is safe to read or write within a multi-threaded program.
-
-Zarr also provides support for process synchronization via file locking,
-provided that all processes have access to a shared file system, and provided
-that the underlying file system supports file locking (which is not the case for
-some networked file systems). E.g.::
-
-    >>> synchronizer = zarr.ProcessSynchronizer('data/example.sync')
-    >>> z = zarr.open_array('data/example', mode='w', shape=(10000, 10000),
-    ...                     chunks=(1000, 1000), dtype='i4',
-    ...                     synchronizer=synchronizer)
-    >>> z
-    <zarr.core.Array (10000, 10000) int32>
-
-This array is safe to read or write from multiple processes,
-
-.. _tutorial_attrs:
-
-User attributes
----------------
-
-Zarr arrays support custom key/value attributes, which can be useful for
-associating an array with application-specific metadata. For example::
-
-    >>> z = zarr.zeros((10000, 10000), chunks=(1000, 1000), dtype='i4')
-    >>> z.attrs['foo'] = 'bar'
-    >>> z.attrs['baz'] = 42
-    >>> sorted(z.attrs)
-    ['baz', 'foo']
-    >>> 'foo' in z.attrs
-    True
-    >>> z.attrs['foo']
-    'bar'
-    >>> z.attrs['baz']
-    42
-
-Internally Zarr uses JSON to store array attributes, so attribute values must be
-JSON serializable.
-
 .. _tutorial_groups:
 
 Groups
@@ -428,6 +348,35 @@ sub-directories, e.g.::
 
 For more information on groups see the :mod:`zarr.hierarchy` and
 :mod:`zarr.convenience` API docs.
+
+.. _tutorial_attrs:
+
+User attributes
+---------------
+
+Zarr arrays and groups support custom key/value attributes, which can be useful for
+storing application-specific metadata. For example::
+
+    >>> root = zarr.group()
+    >>> root.attrs['foo'] = 'bar'
+    >>> z = root.zeros('zzz', shape=(10000, 10000))
+    >>> z.attrs['baz'] = 42
+    >>> z.attrs['qux'] = [1, 4, 7, 12]
+    >>> sorted(root.attrs)
+    ['foo']
+    >>> 'foo' in root.attrs
+    True
+    >>> root.attrs['foo']
+    'bar'
+    >>> sorted(z.attrs)
+    ['baz', 'qux']
+    >>> z.attrs['baz']
+    42
+    >>> z.attrs['qux']
+    [1, 4, 7, 12]
+
+Internally Zarr uses JSON to store array attributes, so attribute values must be
+JSON serializable.
 
 .. _tutorial_indexing:
 
@@ -623,17 +572,17 @@ Storage alternatives
 
 Zarr can use any object that implements the ``MutableMapping`` interface from
 the :mod:`collections` module in the Python standard library as the store for a
-group or an array. Some storage classes are provided in the :mod:`zarr.storage`
-module.
+group or an array.
 
-For example, the :class:`zarr.storage.DirectoryStore` class provides a
+Some pre-defined storage classes are provided in the :mod:`zarr.storage`
+module. For example, the :class:`zarr.storage.DirectoryStore` class provides a
 ``MutableMapping`` interface to a directory on the local file system. This is
 used under the hood by the :func:`zarr.open` function. In other words, the
 following code::
 
     >>> z = zarr.open('data/example.zarr', mode='w', shape=1000000, dtype='i4')
 
-...is just a convenient short-hand for::
+...is short-hand for::
 
     >>> store = zarr.DirectoryStore('data/example.zarr')
     >>> z = zarr.create(store=store, overwrite=True, shape=1000000, dtype='i4')
@@ -642,7 +591,7 @@ following code::
 
     >>> root = zarr.open('data/example.zarr', mode='w')
 
-...is just a short-hand for::
+...is short-hand for::
 
     >>> store = zarr.DirectoryStore('data/example.zarr')
     >>> root = zarr.group(store=store, overwrite=True)
@@ -796,7 +745,8 @@ E.g. using pickle::
            'Xin chào thế giới', 'Njatjeta Botë!', 'Γεια σου κόσμε!', 'こんにちは世界',
            '世界，你好！', 'Helló, világ!', 'Zdravo svete!', 'เฮลโลเวิลด์'], dtype=object)
 
-...or alternatively using msgpack (requires msgpack-python to be installed)::
+...or alternatively using msgpack (requires `msgpack-python
+<https://github.com/msgpack/msgpack-python>`_ to be installed)::
 
     >>> z = zarr.zeros(12, dtype=object, filters=[numcodecs.MsgPack()])
     >>> z[:] = greetings
@@ -980,6 +930,63 @@ If you're using Zarr within a Jupyter notebook, calling ``tree()`` will generate
 interactive tree representation, see the `repr_tree.ipynb notebook
 <http://nbviewer.jupyter.org/github/alimanfoo/zarr/blob/master/notebooks/repr_tree.ipynb>`_
 for more examples.
+
+.. _tutorial_sync:
+
+Parallel computing and synchronization
+--------------------------------------
+
+Zarr arrays can be used as either the source or sink for data in parallel
+computations. Both multi-threaded and multi-process parallelism are
+supported. The Python global interpreter lock (GIL) is released wherever
+possible for both compression and decompression operations, so Zarr will
+generally not block other Python threads from running.
+
+A Zarr array can be read concurrently by multiple threads or processes.  No
+synchronization (i.e., locking) is required for concurrent reads.
+
+A Zarr array can also be written to concurrently by multiple threads or
+processes. Some synchronization may be required, depending on the way the data
+is being written.
+
+If each worker in a parallel computation is writing to a separate region of the
+array, and if region boundaries are perfectly aligned with chunk boundaries,
+then no synchronization is required. However, if region and chunk boundaries are
+not perfectly aligned, then synchronization is required to avoid two workers
+attempting to modify the same chunk at the same time.
+
+To give a simple example, consider a 1-dimensional array of length 60, ``z``,
+divided into three chunks of 20 elements each. If three workers are running and
+each attempts to write to a 20 element region (i.e., ``z[0:20]``, ``z[20:40]``
+and ``z[40:60]``) then each worker will be writing to a separate chunk and no
+synchronization is required. However, if two workers are running and each
+attempts to write to a 30 element region (i.e., ``z[0:30]`` and ``z[30:60]``)
+then it is possible both workers will attempt to modify the middle chunk at the
+same time, and synchronization is required to prevent data loss.
+
+Zarr provides support for chunk-level synchronization. E.g., create an array
+with thread synchronization::
+
+    >>> z = zarr.zeros((10000, 10000), chunks=(1000, 1000), dtype='i4',
+    ...                 synchronizer=zarr.ThreadSynchronizer())
+    >>> z
+    <zarr.core.Array (10000, 10000) int32>
+
+This array is safe to read or write within a multi-threaded program.
+
+Zarr also provides support for process synchronization via file locking,
+provided that all processes have access to a shared file system, and provided
+that the underlying file system supports file locking (which is not the case for
+some networked file systems). E.g.::
+
+    >>> synchronizer = zarr.ProcessSynchronizer('data/example.sync')
+    >>> z = zarr.open_array('data/example', mode='w', shape=(10000, 10000),
+    ...                     chunks=(1000, 1000), dtype='i4',
+    ...                     synchronizer=synchronizer)
+    >>> z
+    <zarr.core.Array (10000, 10000) int32>
+
+This array is safe to read or write from multiple processes,
 
 .. _tutorial_tips:
 
