@@ -349,6 +349,83 @@ sub-directories, e.g.::
 For more information on groups see the :mod:`zarr.hierarchy` and
 :mod:`zarr.convenience` API docs.
 
+.. _tutorial_diagnostics:
+
+Array and group diagnostics
+---------------------------
+
+Diagnostic information about arrays and groups is available via the ``info``
+property. E.g.::
+
+    >>> root = zarr.group()
+    >>> foo = root.create_group('foo')
+    >>> bar = foo.zeros('bar', shape=1000000, chunks=100000, dtype='i8')
+    >>> bar[:] = 42
+    >>> baz = foo.zeros('baz', shape=(1000, 1000), chunks=(100, 100), dtype='f4')
+    >>> baz[:] = 4.2
+    >>> root.info
+    Name        : /
+    Type        : zarr.hierarchy.Group
+    Read-only   : False
+    Store type  : zarr.storage.DictStore
+    No. members : 1
+    No. arrays  : 0
+    No. groups  : 1
+    Groups      : foo
+
+    >>> foo.info
+    Name        : /foo
+    Type        : zarr.hierarchy.Group
+    Read-only   : False
+    Store type  : zarr.storage.DictStore
+    No. members : 2
+    No. arrays  : 2
+    No. groups  : 0
+    Arrays      : bar, baz
+
+    >>> bar.info
+    Name               : /foo/bar
+    Type               : zarr.core.Array
+    Data type          : int64
+    Shape              : (1000000,)
+    Chunk shape        : (100000,)
+    Order              : C
+    Read-only          : False
+    Compressor         : Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
+    Store type         : zarr.storage.DictStore
+    No. bytes          : 8000000 (7.6M)
+    No. bytes stored   : 37482 (36.6K)
+    Storage ratio      : 213.4
+    Chunks initialized : 10/10
+
+    >>> baz.info
+    Name               : /foo/baz
+    Type               : zarr.core.Array
+    Data type          : float32
+    Shape              : (1000, 1000)
+    Chunk shape        : (100, 100)
+    Order              : C
+    Read-only          : False
+    Compressor         : Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
+    Store type         : zarr.storage.DictStore
+    No. bytes          : 4000000 (3.8M)
+    No. bytes stored   : 23245 (22.7K)
+    Storage ratio      : 172.1
+    Chunks initialized : 100/100
+
+Groups also have the :func:`zarr.hierarchy.Group.tree` method, e.g.::
+
+    >>> root.tree()
+    /
+     └── foo
+         ├── bar (1000000,) int64
+         └── baz (1000, 1000) float32
+
+If you're using Zarr within a Jupyter notebook, calling ``tree()`` will generate an
+interactive tree representation, see the `repr_tree.ipynb notebook
+<http://nbviewer.jupyter.org/github/alimanfoo/zarr/blob/master/notebooks/repr_tree.ipynb>`_
+for more examples.
+
 .. _tutorial_attrs:
 
 User attributes
@@ -577,8 +654,8 @@ group or an array.
 Some pre-defined storage classes are provided in the :mod:`zarr.storage`
 module. For example, the :class:`zarr.storage.DirectoryStore` class provides a
 ``MutableMapping`` interface to a directory on the local file system. This is
-used under the hood by the :func:`zarr.open` function. In other words, the
-following code::
+used under the hood by the :func:`zarr.convenience.open` function. In other words,
+the following code::
 
     >>> z = zarr.open('data/example.zarr', mode='w', shape=1000000, dtype='i4')
 
@@ -853,83 +930,6 @@ artifical example but illustrates the general point that changing the order of
 bytes within chunks of an array may improve the compression ratio, depending on
 the structure of the data, the compression algorithm used, and which compression
 filters (e.g., byte-shuffle) have been applied.
-
-.. _tutorial_diagnostics:
-
-Array and group diagnostics
----------------------------
-
-Diagnostic information about arrays and groups is available via the ``info``
-property. E.g.::
-
-    >>> root = zarr.group()
-    >>> foo = root.create_group('foo')
-    >>> bar = foo.zeros('bar', shape=1000000, chunks=100000, dtype='i8')
-    >>> bar[:] = 42
-    >>> baz = foo.zeros('baz', shape=(1000, 1000), chunks=(100, 100), dtype='f4')
-    >>> baz[:] = 4.2
-    >>> root.info
-    Name        : /
-    Type        : zarr.hierarchy.Group
-    Read-only   : False
-    Store type  : zarr.storage.DictStore
-    No. members : 1
-    No. arrays  : 0
-    No. groups  : 1
-    Groups      : foo
-
-    >>> foo.info
-    Name        : /foo
-    Type        : zarr.hierarchy.Group
-    Read-only   : False
-    Store type  : zarr.storage.DictStore
-    No. members : 2
-    No. arrays  : 2
-    No. groups  : 0
-    Arrays      : bar, baz
-
-    >>> bar.info
-    Name               : /foo/bar
-    Type               : zarr.core.Array
-    Data type          : int64
-    Shape              : (1000000,)
-    Chunk shape        : (100000,)
-    Order              : C
-    Read-only          : False
-    Compressor         : Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
-    Store type         : zarr.storage.DictStore
-    No. bytes          : 8000000 (7.6M)
-    No. bytes stored   : 37482 (36.6K)
-    Storage ratio      : 213.4
-    Chunks initialized : 10/10
-
-    >>> baz.info
-    Name               : /foo/baz
-    Type               : zarr.core.Array
-    Data type          : float32
-    Shape              : (1000, 1000)
-    Chunk shape        : (100, 100)
-    Order              : C
-    Read-only          : False
-    Compressor         : Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
-    Store type         : zarr.storage.DictStore
-    No. bytes          : 4000000 (3.8M)
-    No. bytes stored   : 23245 (22.7K)
-    Storage ratio      : 172.1
-    Chunks initialized : 100/100
-
-Groups also have the :func:`zarr.hierarchy.Group.tree` method, e.g.::
-
-    >>> root.tree()
-    /
-     └── foo
-         ├── bar (1000000,) int64
-         └── baz (1000, 1000) float32
-
-If you're using Zarr within a Jupyter notebook, calling ``tree()`` will generate an
-interactive tree representation, see the `repr_tree.ipynb notebook
-<http://nbviewer.jupyter.org/github/alimanfoo/zarr/blob/master/notebooks/repr_tree.ipynb>`_
-for more examples.
 
 .. _tutorial_sync:
 

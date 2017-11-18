@@ -2,7 +2,9 @@
 from __future__ import absolute_import, print_function, division
 
 
+import numpy as np
 from nose.tools import (eq_ as eq, assert_raises, assert_true, assert_false, assert_is_instance)
+
 
 from zarr.util import (normalize_shape, normalize_chunks, is_total_slice, normalize_resize_args,
                        human_readable_size, normalize_order, guess_chunks, info_html_report,
@@ -100,9 +102,9 @@ def test_normalize_order():
 
 
 def test_normalize_fill_value():
-    eq(b'', normalize_fill_value(0, dtype='S1'))
-    eq(b'', normalize_fill_value(0, dtype=[('foo', 'i4'), ('bar', 'f8')]))
-    eq('', normalize_fill_value(0, dtype='U1'))
+    eq(b'', normalize_fill_value(0, dtype=np.dtype('S1')))
+    eq(b'', normalize_fill_value(0, dtype=np.dtype([('foo', 'i4'), ('bar', 'f8')])))
+    eq('', normalize_fill_value(0, dtype=np.dtype('U1')))
 
 
 def test_guess_chunks():
