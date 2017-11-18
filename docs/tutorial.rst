@@ -54,7 +54,7 @@ requested region into memory as a NumPy array, e.g.::
     array([   0,    1,    2, ..., 9997, 9998, 9999], dtype=int32)
     >>> z[:, 0]
     array([   0,    1,    2, ..., 9997, 9998, 9999], dtype=int32)
-    >>> z[...]
+    >>> z[:]
     array([[   0,    1,    2, ..., 9997, 9998, 9999],
            [   1,   42,   42, ...,   42,   42,   42],
            [   2,   42,   42, ...,   42,   42,   42],
@@ -93,7 +93,7 @@ e.g.::
 Check that the data have been written and can be read again::
 
     >>> z2 = zarr.open('data/example.zarr', mode='r')
-    >>> np.all(z1[...] == z2[...])
+    >>> np.all(z1[:] == z2[:])
     True
 
 If you are just looking for a fast and convenient way to save NumPy arrays to
@@ -477,7 +477,7 @@ Items from a Zarr array can be extracted by providing an integer array of
 coordinates. E.g.::
 
     >>> z = zarr.array(np.arange(10))
-    >>> z[...]
+    >>> z[:]
     array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
     >>> z.get_coordinate_selection([1, 4])
     array([1, 4])
@@ -485,21 +485,21 @@ coordinates. E.g.::
 Coordinate arrays can also be used to update data, e.g.::
 
     >>> z.set_coordinate_selection([1, 4], [-1, -2])
-    >>> z[...]
+    >>> z[:]
     array([ 0, -1,  2,  3, -2,  5,  6,  7,  8,  9])
 
 For multidimensional arrays, coordinates must be provided for each dimension,
 e.g.::
 
     >>> z = zarr.array(np.arange(15).reshape(3, 5))
-    >>> z[...]
+    >>> z[:]
     array([[ 0,  1,  2,  3,  4],
            [ 5,  6,  7,  8,  9],
            [10, 11, 12, 13, 14]])
     >>> z.get_coordinate_selection(([0, 2], [1, 3]))
     array([ 1, 13])
     >>> z.set_coordinate_selection(([0, 2], [1, 3]), [-1, -2])
-    >>> z[...]
+    >>> z[:]
     array([[ 0, -1,  2,  3,  4],
            [ 5,  6,  7,  8,  9],
            [10, 11, 12, -2, 14]])
@@ -510,7 +510,7 @@ property, e.g.::
     >>> z.vindex[[0, 2], [1, 3]]
     array([-1, -2])
     >>> z.vindex[[0, 2], [1, 3]] = [-3, -4]
-    >>> z[...]
+    >>> z[:]
     array([[ 0, -3,  2,  3,  4],
            [ 5,  6,  7,  8,  9],
            [10, 11, 12, -4, 14]])
@@ -521,7 +521,7 @@ Indexing with a mask array
 Items can also be extracted by providing a Boolean mask. E.g.::
 
     >>> z = zarr.array(np.arange(10))
-    >>> z[...]
+    >>> z[:]
     array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
     >>> sel = np.zeros_like(z, dtype=bool)
     >>> sel[1] = True
@@ -529,13 +529,13 @@ Items can also be extracted by providing a Boolean mask. E.g.::
     >>> z.get_mask_selection(sel)
     array([1, 4])
     >>> z.set_mask_selection(sel, [-1, -2])
-    >>> z[...]
+    >>> z[:]
     array([ 0, -1,  2,  3, -2,  5,  6,  7,  8,  9])
 
 Here's a multidimensional example::
 
     >>> z = zarr.array(np.arange(15).reshape(3, 5))
-    >>> z[...]
+    >>> z[:]
     array([[ 0,  1,  2,  3,  4],
            [ 5,  6,  7,  8,  9],
            [10, 11, 12, 13, 14]])
@@ -545,7 +545,7 @@ Here's a multidimensional example::
     >>> z.get_mask_selection(sel)
     array([ 1, 13])
     >>> z.set_mask_selection(sel, [-1, -2])
-    >>> z[...]
+    >>> z[:]
     array([[ 0, -1,  2,  3,  4],
            [ 5,  6,  7,  8,  9],
            [10, 11, 12, -2, 14]])
@@ -556,7 +556,7 @@ e.g.::
     >>> z.vindex[sel]
     array([-1, -2])
     >>> z.vindex[sel] = [-3, -4]
-    >>> z[...]
+    >>> z[:]
     array([[ 0, -3,  2,  3,  4],
            [ 5,  6,  7,  8,  9],
            [10, 11, 12, -4, 14]])
@@ -574,7 +574,7 @@ example, this allows selecting a subset of rows and/or columns from a
 2-dimensional array. E.g.::
 
     >>> z = zarr.array(np.arange(15).reshape(3, 5))
-    >>> z[...]
+    >>> z[:]
     array([[ 0,  1,  2,  3,  4],
            [ 5,  6,  7,  8,  9],
            [10, 11, 12, 13, 14]])
@@ -592,7 +592,7 @@ example, this allows selecting a subset of rows and/or columns from a
 Data can also be modified, e.g.::
 
     >>> z.set_orthogonal_selection(([0, 2], [1, 3]), [[-1, -2], [-3, -4]])
-    >>> z[...]
+    >>> z[:]
     array([[ 0, -1,  2, -2,  4],
            [ 5,  6,  7,  8,  9],
            [10, -3, 12, -4, 14]])
@@ -612,7 +612,7 @@ For convenience, the orthogonal indexing functionality is also available via the
     array([[ 1,  3],
            [11, 13]])
     >>> z.oindex[[0, 2], [1, 3]] = [[-1, -2], [-3, -4]]
-    >>> z[...]
+    >>> z[:]
     array([[ 0, -1,  2, -2,  4],
            [ 5,  6,  7,  8,  9],
            [10, -3, 12, -4, 14]])
@@ -987,6 +987,50 @@ some networked file systems). E.g.::
     <zarr.core.Array (10000, 10000) int32>
 
 This array is safe to read or write from multiple processes,
+
+.. _tutorial_pickle:
+
+Pickle support
+--------------
+
+Zarr arrays and groups can be pickled, as long as the underlying store object can be
+pickled. Instances of any of the storage classes provided in the :mod:`zarr.storage`
+module can be pickled, as can the built-in ``dict`` class which can also be used for
+storage.
+
+Note that if an array or group is backed by an in-memory store like a ``dict`` or
+:class:`zarr.storage.DictStore`, then when it is pickled all of the store data will be
+included in the pickled data. However, if an array or group is backed by a persistent
+store like a :class:`zarr.storage.DirectoryStore`, :class:`zarr.storage.ZipStore` or
+:class:`zarr.storage.DBMStore` then the store data **are not** pickled. The only thing
+that is pickled is the necessary parameters to allow the store to re-open any
+underlying files or databases upon being unpickled.
+
+E.g., pickle/unpickle an in-memory array::
+
+    >>> import pickle
+    >>> z1 = zarr.array(np.arange(100000))
+    >>> s = pickle.dumps(z1)
+    >>> len(s)
+    14092
+    >>> z2 = pickle.loads(s)
+    >>> z1 == z2
+    True
+    >>> np.all(z1[:] == z2[:])
+    True
+
+E.g., pickle/unpickle an array stored on disk::
+
+    >>> z3 = zarr.open('data/example.zarr', mode='w', shape=100000, dtype='i8')
+    >>> z3[:] = np.arange(100000)
+    >>> s = pickle.dumps(z3)
+    >>> len(s)
+    156
+    >>> z4 = pickle.loads(s)
+    >>> z3 == z4
+    True
+    >>> np.all(z3[:] == z4[:])
+    True
 
 .. _tutorial_tips:
 
