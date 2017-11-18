@@ -787,8 +787,8 @@ def test_migrate_1to2():
 
 def test_format_compatibility():
 
-    # This test is intended to catch any unintended changes that break the ability to read data
-    # stored with a previous minor version (which should be format-compatible).
+    # This test is intended to catch any unintended changes that break the ability to
+    # read data stored with a previous minor version (which should be format-compatible).
 
     # fixture data
     fixture = group(store=DirectoryStore('fixture'))

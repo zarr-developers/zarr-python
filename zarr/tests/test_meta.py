@@ -159,14 +159,11 @@ def test_encode_decode_fill_values_nan():
 def test_encode_decode_fill_values_bytes():
 
     dtype = np.dtype('S10')
-    fills = b'foo', bytes(10)
+    fills = 0, b'foo', bytes(10)
 
     for v in fills:
 
-        s = base64.standard_b64encode(v)
-        if not PY2:
-            s = str(s, 'ascii')
-
+        # setup and encode metadata
         meta = dict(
             shape=(100,),
             chunks=(10,),
@@ -176,7 +173,12 @@ def test_encode_decode_fill_values_bytes():
             filters=None,
             order='C'
         )
+        meta_enc = encode_array_metadata(meta)
 
+        # define expected metadata encoded as JSON
+        s = base64.standard_b64encode(b'' if v == 0 else v)
+        if not PY2:
+            s = s.encode()
         meta_json = '''{
             "chunks": [10],
             "compressor": {"id": "zlib", "level": 1},
@@ -189,14 +191,16 @@ def test_encode_decode_fill_values_bytes():
         }''' % (s, ZARR_FORMAT)
 
         # test encoding
-        meta_enc = encode_array_metadata(meta)
         assert_json_eq(meta_json, meta_enc)
 
         # test decoding
         meta_dec = decode_array_metadata(meta_enc)
         actual = meta_dec['fill_value']
-        np_v = np.array(v, dtype=dtype)[()]
-        eq(np_v, actual)
+        if v == 0:
+            expect = b''
+        else:
+            expect = np.array(v, dtype=dtype)[()]
+        eq(expect, actual)
 
 
 def test_decode_array_unsupported_format():

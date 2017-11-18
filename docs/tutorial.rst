@@ -96,9 +96,10 @@ Check that the data have been written and can be read again::
     >>> np.all(z1[...] == z2[...])
     True
 
-Also, if you are just looking for a fast and convenient way to save NumPy arrays to disk
-then load back into memory later, the functions :func:`zarr.convenience.save` and
-:func:`zarr.convenience.load` may be useful. E.g.::
+If you are just looking for a fast and convenient way to save NumPy arrays to
+disk then load back into memory later, the functions
+:func:`zarr.convenience.save` and :func:`zarr.convenience.load` may be
+useful. E.g.::
 
     >>> a = np.arange(10)
     >>> zarr.save('data/example.zarr', a)
@@ -747,6 +748,57 @@ Here is an example using S3Map to read an array created previously::
     b'Hello from the cloud!'
 
 .. _tutorial_tips_info:
+
+String arrays
+-------------
+
+There are several options for storing arrays of strings.
+
+If your strings are all ASCII strings, and you know the maximum length of the string in
+your dataset, then you can use an array with a fixed-length bytes dtype. E.g.::
+
+    >>> z = zarr.zeros(10, dtype='S6')
+    >>> z[0] = b'Hello'
+    >>> z[1] = b'world!'
+    >>> z[:]
+    array([b'Hello', b'world!', b'', b'', b'', b'', b'', b'', b'', b''],
+          dtype='|S6')
+
+A fixed-length unicode dtype is also available, e.g.::
+
+    >>> z = zarr.zeros(12, dtype='U20')
+    >>> greetings = ['¡Hola mundo!', 'Hej Världen!', 'Servus Woid!', 'Hei maailma!',
+    ...              'Xin chào thế giới', 'Njatjeta Botë!', 'Γεια σου κόσμε!',
+    ...              'こんにちは世界', '世界，你好！', 'Helló, világ!', 'Zdravo svete!',
+    ...              'เฮลโลเวิลด์']
+    >>> z[:] = greetings
+    >>> z[:]
+    array(['¡Hola mundo!', 'Hej Världen!', 'Servus Woid!', 'Hei maailma!',
+           'Xin chào thế giới', 'Njatjeta Botë!', 'Γεια σου κόσμε!', 'こんにちは世界',
+           '世界，你好！', 'Helló, világ!', 'Zdravo svete!', 'เฮลโลเวิลด์'],
+          dtype='<U20')
+
+For variable-length strings, the "object" dtype can be used, but a filter must be
+provided to encode the data. There are currently two codecs available that can encode
+variable length string objects, :class:`numcodecs.Pickle` and :class:`numcodecs.MsgPack`.
+E.g. using pickle::
+
+    >>> import numcodecs
+    >>> z = zarr.zeros(12, dtype=object, filters=[numcodecs.Pickle()])
+    >>> z[:] = greetings
+    >>> z[:]
+    array(['¡Hola mundo!', 'Hej Världen!', 'Servus Woid!', 'Hei maailma!',
+           'Xin chào thế giới', 'Njatjeta Botë!', 'Γεια σου κόσμε!', 'こんにちは世界',
+           '世界，你好！', 'Helló, világ!', 'Zdravo svete!', 'เฮลโลเวิลด์'], dtype=object)
+
+...or alternatively using msgpack (requires msgpack-python to be installed)::
+
+    >>> z = zarr.zeros(12, dtype=object, filters=[numcodecs.MsgPack()])
+    >>> z[:] = greetings
+    >>> z[:]
+    array(['¡Hola mundo!', 'Hej Världen!', 'Servus Woid!', 'Hei maailma!',
+           'Xin chào thế giới', 'Njatjeta Botë!', 'Γεια σου κόσμε!', 'こんにちは世界',
+           '世界，你好！', 'Helló, világ!', 'Zdravo svete!', 'เฮลโลเวิลด์'], dtype=object)
 
 Array and group information
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~

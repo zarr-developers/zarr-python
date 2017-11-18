@@ -199,7 +199,10 @@ def normalize_fill_value(fill_value, dtype):
         # numpy
         # https://github.com/alimanfoo/zarr/pull/172#issuecomment-343782713
 
-        if PY2 and isinstance(fill_value, binary_type):  # pragma: py3 no cover
+        if fill_value == 0:
+            fill_value = ''
+
+        elif PY2 and isinstance(fill_value, binary_type):  # pragma: py3 no cover
             # this is OK on PY2, can be written as JSON
             pass
 
