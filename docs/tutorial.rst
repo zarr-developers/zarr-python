@@ -107,7 +107,7 @@ useful. E.g.::
     array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
 
 Please note that there are a number of other options for persistent array
-storage, see the section on :ref:`tutorial_tips_storage` below.
+storage, see the section on :ref:`tutorial_storage` below.
 
 .. _tutorial_resize:
 
@@ -405,8 +405,18 @@ call, e.g.::
     >>> root['foo/bar/baz']
     <zarr.core.Array '/foo/bar/baz' (10000, 10000) int32>
 
-The :func:`zarr.open` function provides a convenient way to create or re-open a
-group stored in a directory on the file-system, with sub-groups stored in
+The :func:`zarr.hierarchy.Group.tree` method can be used to print a tree
+representation of the hierarchy, e.g.::
+
+    >>> root.tree()
+    /
+     └── foo
+         └── bar
+             ├── baz (10000, 10000) int32
+             └── quux (10000, 10000) int32
+
+The :func:`zarr.convenience.open` function provides a convenient way to create or
+re-open a group stored in a directory on the file-system, with sub-groups stored in
 sub-directories, e.g.::
 
     >>> root = zarr.open('data/group.zarr', mode='w')
@@ -606,15 +616,10 @@ replacing data for a specific field in an array with a structured dtype. E.g.::
     array([(b'aaa',   4.2), (b'ccc',  12.6)],
           dtype=[('foo', 'S3'), ('baz', '<f8')])
 
-.. _tutorial_tips:
-
-Tips and tricks
----------------
-
-.. _tutorial_tips_storage:
+.. _tutorial_storage:
 
 Storage alternatives
-~~~~~~~~~~~~~~~~~~~~
+--------------------
 
 Zarr can use any object that implements the ``MutableMapping`` interface from
 the :mod:`collections` module in the Python standard library as the store for a
@@ -747,7 +752,7 @@ Here is an example using S3Map to read an array created previously::
     >>> z[:].tostring()
     b'Hello from the cloud!'
 
-.. _tutorial_tips_info:
+.. _tutorial_strings:
 
 String arrays
 -------------
@@ -800,71 +805,63 @@ E.g. using pickle::
            'Xin chào thế giới', 'Njatjeta Botë!', 'Γεια σου κόσμε!', 'こんにちは世界',
            '世界，你好！', 'Helló, világ!', 'Zdravo svete!', 'เฮลโลเวิลด์'], dtype=object)
 
-Array and group information
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.. _tutorial_chunks:
 
-Diagnostic information about arrays and groups is available via the ``info``
-property. E.g.::
+Chunk optimizations
+-------------------
 
-    >>> root = zarr.group()
-    >>> foo = root.create_group('foo')
-    >>> z = foo.zeros('bar', shape=1000000, chunks=100000)
-    >>> z[:] = 42
-    >>> root.info
-    Name        : /
-    Type        : zarr.hierarchy.Group
-    Read-only   : False
-    Store type  : zarr.storage.DictStore
-    No. members : 1
-    No. arrays  : 0
-    No. groups  : 1
-    Groups      : foo
+.. _tutorial_chunks_shape:
 
-    >>> foo.info
-    Name        : /foo
-    Type        : zarr.hierarchy.Group
-    Read-only   : False
-    Store type  : zarr.storage.DictStore
-    No. members : 1
-    No. arrays  : 1
-    No. groups  : 0
-    Arrays      : bar
-
-    >>> z.info
-    Name               : /foo/bar
-    Type               : zarr.core.Array
-    Data type          : float64
-    Shape              : (1000000,)
-    Chunk shape        : (100000,)
-    Order              : C
-    Read-only          : False
-    Compressor         : Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
-    Store type         : zarr.storage.DictStore
-    No. bytes          : 8000000 (7.6M)
-    No. bytes stored   : 38484 (37.6K)
-    Storage ratio      : 207.9
-    Chunks initialized : 10/10
-
-.. _tutorial_tips_copy:
-
-Copying large arrays
+Chunk size and shape
 ~~~~~~~~~~~~~~~~~~~~
 
-Data can be copied between large arrays without needing much memory, e.g.::
+In general, chunks of at least 1 megabyte (1M) uncompressed size seem to provide
+better performance, at least when using the Blosc compression library.
 
-    >>> z1 = zarr.empty((10000, 10000), chunks=(1000, 1000), dtype='i4')
-    >>> z1[:] = 42
-    >>> z2 = zarr.empty_like(z1)
-    >>> z2[:] = z1
+The optimal chunk shape will depend on how you want to access the data. E.g.,
+for a 2-dimensional array, if you only ever take slices along the first
+dimension, then chunk across the second dimenson. If you know you want to chunk
+across an entire dimension you can use ``None`` within the ``chunks`` argument,
+e.g.::
 
-Internally the example above works chunk-by-chunk, extracting only the data from
-``z1`` required to fill each chunk in ``z2``. The source of the data (``z1``)
-could equally be an h5py Dataset.
+    >>> z1 = zarr.zeros((10000, 10000), chunks=(100, None), dtype='i4')
+    >>> z1.chunks
+    (100, 10000)
 
-.. _tutorial_tips_order:
+Alternatively, if you only ever take slices along the second dimension, then
+chunk across the first dimension, e.g.::
 
-Changing chunk memory layout
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    >>> z2 = zarr.zeros((10000, 10000), chunks=(None, 100), dtype='i4')
+    >>> z2.chunks
+    (10000, 100)
+
+If you require reasonable performance for both access patterns then you need to
+find a compromise, e.g.::
+
+    >>> z3 = zarr.zeros((10000, 10000), chunks=(1000, 1000), dtype='i4')
+    >>> z3.chunks
+    (1000, 1000)
+
+If you are feeling lazy, you can let Zarr guess a chunk shape for your data by
+providing ``chunks=True``, although please note that the algorithm for guessing
+a chunk shape is based on simple heuristics and may be far from optimal. E.g.::
+
+    >>> z4 = zarr.zeros((10000, 10000), chunks=True, dtype='i4')
+    >>> z4.chunks
+    (313, 625)
+
+If you know you are always going to be loading the entire array into memory, you
+can turn off chunks by providing ``chunks=False``, in which case there will be
+one single chunk for the array::
+
+    >>> z5 = zarr.zeros((10000, 10000), chunks=False, dtype='i4')
+    >>> z5.chunks
+    (10000, 10000)
+
+.. _tutorial_chunks_order:
+
+Chunk memory layout
+~~~~~~~~~~~~~~~~~~~
 
 The order of bytes **within each chunk** of an array can be changed via the
 ``order`` keyword argument, to use either C or Fortran layout. For
@@ -907,53 +904,103 @@ bytes within chunks of an array may improve the compression ratio, depending on
 the structure of the data, the compression algorithm used, and which compression
 filters (e.g., byte-shuffle) have been applied.
 
-.. _tutorial_tips_chunks:
+.. _tutorial_diagnostics:
 
-Chunk size and shape
+Array and group diagnostics
+---------------------------
+
+Diagnostic information about arrays and groups is available via the ``info``
+property. E.g.::
+
+    >>> root = zarr.group()
+    >>> foo = root.create_group('foo')
+    >>> bar = foo.zeros('bar', shape=1000000, chunks=100000, dtype='i8')
+    >>> bar[:] = 42
+    >>> baz = foo.zeros('baz', shape=(1000, 1000), chunks=(100, 100), dtype='f4')
+    >>> baz[:] = 4.2
+    >>> root.info
+    Name        : /
+    Type        : zarr.hierarchy.Group
+    Read-only   : False
+    Store type  : zarr.storage.DictStore
+    No. members : 1
+    No. arrays  : 0
+    No. groups  : 1
+    Groups      : foo
+
+    >>> foo.info
+    Name        : /foo
+    Type        : zarr.hierarchy.Group
+    Read-only   : False
+    Store type  : zarr.storage.DictStore
+    No. members : 2
+    No. arrays  : 2
+    No. groups  : 0
+    Arrays      : bar, baz
+
+    >>> bar.info
+    Name               : /foo/bar
+    Type               : zarr.core.Array
+    Data type          : int64
+    Shape              : (1000000,)
+    Chunk shape        : (100000,)
+    Order              : C
+    Read-only          : False
+    Compressor         : Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
+    Store type         : zarr.storage.DictStore
+    No. bytes          : 8000000 (7.6M)
+    No. bytes stored   : 37482 (36.6K)
+    Storage ratio      : 213.4
+    Chunks initialized : 10/10
+
+    >>> baz.info
+    Name               : /foo/baz
+    Type               : zarr.core.Array
+    Data type          : float32
+    Shape              : (1000, 1000)
+    Chunk shape        : (100, 100)
+    Order              : C
+    Read-only          : False
+    Compressor         : Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
+    Store type         : zarr.storage.DictStore
+    No. bytes          : 4000000 (3.8M)
+    No. bytes stored   : 23245 (22.7K)
+    Storage ratio      : 172.1
+    Chunks initialized : 100/100
+
+Groups also have the :func:`zarr.hierarchy.Group.tree` method, e.g.::
+
+    >>> root.tree()
+    /
+     └── foo
+         ├── bar (1000000,) int64
+         └── baz (1000, 1000) float32
+
+If you're using Zarr within a Jupyter notebook, calling ``tree()`` will generate an
+interactive tree representation, see the `repr_tree.ipynb notebook
+<http://nbviewer.jupyter.org/github/alimanfoo/zarr/blob/master/notebooks/repr_tree.ipynb>`_
+for more examples.
+
+.. _tutorial_tips:
+
+Usage tips
+----------
+
+.. _tutorial_tips_copy:
+
+Copying large arrays
 ~~~~~~~~~~~~~~~~~~~~
 
-In general, chunks of at least 1 megabyte (1M) seem to provide the best
-performance, at least when using the Blosc compression library.
+Data can be copied between large arrays without needing much memory, e.g.::
 
-The optimal chunk shape will depend on how you want to access the data. E.g.,
-for a 2-dimensional array, if you only ever take slices along the first
-dimension, then chunk across the second dimenson. If you know you want to chunk
-across an entire dimension you can use ``None`` within the ``chunks`` argument,
-e.g.::
+    >>> z1 = zarr.empty((10000, 10000), chunks=(1000, 1000), dtype='i4')
+    >>> z1[:] = 42
+    >>> z2 = zarr.empty_like(z1)
+    >>> z2[:] = z1
 
-    >>> z1 = zarr.zeros((10000, 10000), chunks=(100, None), dtype='i4')
-    >>> z1.chunks
-    (100, 10000)
-
-Alternatively, if you only ever take slices along the second dimension, then
-chunk across the first dimension, e.g.::
-
-    >>> z2 = zarr.zeros((10000, 10000), chunks=(None, 100), dtype='i4')
-    >>> z2.chunks
-    (10000, 100)
-
-If you require reasonable performance for both access patterns then you need to
-find a compromise, e.g.::
-
-    >>> z3 = zarr.zeros((10000, 10000), chunks=(1000, 1000), dtype='i4')
-    >>> z3.chunks
-    (1000, 1000)
-
-If you are feeling lazy, you can let Zarr guess a chunk shape for your data by
-providing ``chunks=True``, although please note that the algorithm for guessing
-a chunk shape is based on simple heuristics and may be far from optimal. E.g.::
-
-    >>> z4 = zarr.zeros((10000, 10000), chunks=True, dtype='i4')
-    >>> z4.chunks
-    (313, 625)
-
-If you know you are always going to be loading the entire array into memory, you
-can turn off chunks by providing ``chunks=False``, in which case there will be
-one single chunk for the array::
-
-    >>> z5 = zarr.zeros((10000, 10000), chunks=False, dtype='i4')
-    >>> z5.chunks
-    (10000, 10000)
+Internally the example above works chunk-by-chunk, extracting only the data from
+``z1`` required to fill each chunk in ``z2``. The source of the data (``z1``)
+could equally be an h5py Dataset.
 
 .. _tutorial_tips_blosc:
 
