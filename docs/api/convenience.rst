@@ -1,5 +1,5 @@
-Array creation (``zarr.convenience``)
-=====================================
+Convenience functions (``zarr.convenience``)
+============================================
 .. automodule:: zarr.convenience
 .. autofunction:: open
 .. autofunction:: save
