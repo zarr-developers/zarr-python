@@ -23,8 +23,8 @@ Enhancements
   :func:`zarr.hierarchy.Group.tree` method which enables a tree representation of
   a group hierarchy to be printed. Also provides an interactive tree
   representation when used within a Jupyter notebook. See the
-  :ref:`tutorial_diagnostics` tutorial section for examples. (:issue:`82`,
-  :issue:`140`, :issue:`184`)
+  :ref:`tutorial_diagnostics` tutorial section for examples. By John Kirkham
+  (jakirkham_); :issue:`82`, :issue:`140`, :issue:`184`.
 
 * **New open(), save(), load() convenience function**. The function
   :func:`zarr.convenience.open` provides a convenient way to open a persistent
@@ -32,63 +32,68 @@ Enhancements
   store. The functions :func:`zarr.convenience.save` and
   :func:`zarr.convenience.load` are also available and provide a convenient way to
   save an entire NumPy array to disk and load back into memory later. See the
-  tutorial section :ref:`tutorial_persist` for examples. (:issue:`104`,
-  :issue:`105`, :issue:`141`, :issue:`181`).
+  tutorial section :ref:`tutorial_persist` for examples. :issue:`104`,
+  :issue:`105`, :issue:`141`, :issue:`181`.
 
 * **IPython completions**. The ``Group`` class now implements ``__dir__()`` and
   ``_ipython_key_completions_()`` which enables tab-completion for group members
-  to be used in any IPython interactive environment. (:issue:`170`)
+  to be used in any IPython interactive environment. :issue:`170`.
   
 * **New info property; changes to __repr__**. The ``Group`` and
   ``Array`` classes have a new ``info`` property which can be used to print
   diagnostic information, including compression ratio where available. See the
   tutorial section on :ref:`tutorial_diagnostics` for examples. The string
   representation (``__repr__``) of these classes has been simplified to ensure
-  it is cheap and quick to compute in all circumstances. (:issue:`83`,
-  :issue:`115`, :issue:`132`)
+  it is cheap and quick to compute in all circumstances. :issue:`83`,
+  :issue:`115`, :issue:`132`.
 
 Bug fixes
 ~~~~~~~~~
 
 * Fixed bug where ``read_only`` keyword argument was ignored when creating an
-  array. (:issue:`151`, :issue:`179`)
+  array; :issue:`151`, :issue:`179`.
   
-* Fixed bugs when using a ``ZipStore`` opened in 'w' mode. (:issue:`158`,
-  :issue:`182`)
+* Fixed bugs when using a ``ZipStore`` opened in 'w' mode; :issue:`158`,
+  :issue:`182`.
   
-* Fill values can now be provided for fixed-length string arrays. (:issue:`165`,
-  :issue:`176`)
+* Fill values can now be provided for fixed-length string arrays; :issue:`165`,
+  :issue:`176`.
 
 Documentation
 ~~~~~~~~~~~~~
 
 * A new :ref:`tutorial_strings` section has been added to the tutorial.
 
+Acknowledgments
+~~~~~~~~~~~~~~~
+
+Thank you to Stephan Hoyer (shoyer_), John Kirkham (jakirkham_), Francesc Alted
+(FrancescAlted_), and Matthew Rocklin (mrocklin_) for code reviews and/or
+comments on pull requests.
+
 .. _release_2.1.4:
 
 2.1.4
 -----
 
-Resolved an issue where calling ``hasattr`` on a ``Group`` object erroneously returned a
-``KeyError`` (:issue:`88`,
-:issue:`95`,
-`Vincent Schut <https://github.com/vincentschut>`_)
+* Resolved an issue where calling ``hasattr`` on a ``Group`` object erroneously
+  returned a ``KeyError``. By Vincent Schut (vincentschut_); :issue:`88`, :issue:`95`.
 
 .. _release_2.1.3:
 
 2.1.3
 -----
 
-Resolved an issue with :func:`zarr.creation.array` where dtype was given as
-None (:issue:`80`).
+* Resolved an issue with :func:`zarr.creation.array` where dtype was given as
+  None (:issue:`80`).
 
 .. _release_2.1.2:
 
 2.1.2
 -----
 
-Resolved an issue when no compression is used and chunks are stored in memory
-(:issue:`79`).
+* Resolved an issue when no compression is used and chunks are stored in memory
+  (:issue:`79`).
 
 .. _release_2.1.1:
 
@@ -303,3 +308,5 @@ See `v0.3.0 release notes on GitHub
 .. _scopatz: https://github.com/scopatz
 .. _martindurant: https://github.com/martindurant
 .. _FrancescAlted: https://github.com/FrancescAlted
+.. _jakirkham: https://github.com/jakirkham
+.. _vincentschut: https://github.com/vincentschut
