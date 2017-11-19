@@ -1,17 +1,68 @@
 Release notes
 =============
 
-2.2rc1
-------
+.. release_2.2.0rc1
 
+2.2.0rc1
+--------
 
-Changes to ``__repr__``; new ``info`` property
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Enhancements
+~~~~~~~~~~~~
 
-The string representation (``__repr__``) of array and group objects has been
-been simplified (:issue:`83`, :issue:`115`, :issue:`132`). Further diagnostic
-information can be obtained via a new ``info`` property. See the tutorial
-section on :ref:`tutorial_diagnostics` for examples.
+* **New storage class for DBM-style databases**. The
+  :class:`zarr.storage.DBMStore` class enables any DBM-style database to be used
+  as the backing store for an array or group. See the tutorial section on
+  :ref:`tutorial_storage` for some examples. (:issue:`133`, :issue:`186`)
+
+* **New storage class using a nested directory structure for chunk files**. The
+  :class:`zarr.storage.NestedDirectoryStore` has been added, which is similar to
+  the existing :class:`zarr.storage.DirectoryStore` class but nests chunk files
+  for multidimensional arrays into sub-directories. (:issue:`155`, :issue:`177`)
+
+* **New tree() method for printing hierarchies**. The ``Group`` class has a new
+  :func:`zarr.hierarchy.Group.tree` method which enables a tree representation of
+  a group hierarchy to be printed. Also provides an interactive tree
+  representation when used within a Jupyter notebook. See the
+  :ref:`tutorial_diagnostics` tutorial section for examples. (:issue:`82`,
+  :issue:`140`, :issue:`184`)
+
+* **New open(), save(), load() convenience function**. The function
+  :func:`zarr.convenience.open` provides a convenient way to open a persistent
+  array or group, using either a ``DirectoryStore`` or ``ZipStore`` as the backing
+  store. The functions :func:`zarr.convenience.save` and
+  :func:`zarr.convenience.load` are also available and provide a convenient way to
+  save an entire NumPy array to disk and load back into memory later. See the
+  tutorial section :ref:`tutorial_persist` for examples. (:issue:`104`,
+  :issue:`105`, :issue:`141`, :issue:`181`).
+
+* **IPython completions**. The ``Group`` class now implements ``__dir__()`` and
+  ``_ipython_key_completions_()`` which enables tab-completion for group members
+  to be used in any IPython interactive environment. (:issue:`170`)
+  
+* **New info property; changes to __repr__**. The ``Group`` and
+  ``Array`` classes have a new ``info`` property which can be used to print
+  diagnostic information, including compression ratio where available. See the
+  tutorial section on :ref:`tutorial_diagnostics` for examples. The string
+  representation (``__repr__``) of these classes has been simplified to ensure
+  it is cheap and quick to compute in all circumstances. (:issue:`83`,
+  :issue:`115`, :issue:`132`)
+
+Bug fixes
+~~~~~~~~~
+
+* Fixed bug where ``read_only`` keyword argument was ignored when creating an
+  array. (:issue:`151`, :issue:`179`)
+  
+* Fixed bugs when using a ``ZipStore`` opened in 'w' mode. (:issue:`158`,
+  :issue:`182`)
+  
+* Fill values can now be provided for fixed-length string arrays. (:issue:`165`,
+  :issue:`176`)
+
+Documentation
+~~~~~~~~~~~~~
+
+* A new :ref:`tutorial_strings` section has been added to the tutorial.
 
 .. _release_2.1.4:
 
