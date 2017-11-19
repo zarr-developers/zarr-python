@@ -1,14 +1,16 @@
 Release notes
 =============
 
+2.2rc1
+------
+
+
 Changes to ``__repr__``; new ``info`` property
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The string representation (``__repr__``) of array and group objects has been been simplified
-(`#83 <https://github.com/alimanfoo/zarr/issues/83>`_,
-`#115 <https://github.com/alimanfoo/zarr/issues/115>`_,
-`#132 <https://github.com/alimanfoo/zarr/issues/132>`_).
-Further diagnostic information can be obtained via a new ``info`` property. See the tutorial
+The string representation (``__repr__``) of array and group objects has been
+been simplified (:issue:`83`, :issue:`115`, :issue:`132`). Further diagnostic
+information can be obtained via a new ``info`` property. See the tutorial
 section on :ref:`tutorial_diagnostics` for examples.
 
 .. _release_2.1.4:
@@ -17,8 +19,8 @@ section on :ref:`tutorial_diagnostics` for examples.
 -----
 
 Resolved an issue where calling ``hasattr`` on a ``Group`` object erroneously returned a
-``KeyError`` (`#88 <https://github.com/alimanfoo/zarr/issues/88>`_,
-`#95 <https://github.com/alimanfoo/zarr/issues/95>`_,
+``KeyError`` (:issue:`88`,
+:issue:`95`,
 `Vincent Schut <https://github.com/vincentschut>`_)
 
 .. _release_2.1.3:
@@ -27,7 +29,7 @@ Resolved an issue where calling ``hasattr`` on a ``Group`` object erroneously re
 -----
 
 Resolved an issue with :func:`zarr.creation.array` where dtype was given as
-None (`#80 <https://github.com/alimanfoo/zarr/issues/80>`_).
+None (:issue:`80`).
 
 .. _release_2.1.2:
 
@@ -35,7 +37,7 @@ None (`#80 <https://github.com/alimanfoo/zarr/issues/80>`_).
 -----
 
 Resolved an issue when no compression is used and chunks are stored in memory
-(`#79 <https://github.com/alimanfoo/zarr/issues/79>`_).
+(:issue:`79`).
 
 .. _release_2.1.1:
 
@@ -54,24 +56,24 @@ fixed bug in pickling ``ThreadSynchronizer``.
 -----
 
 * Group objects now support member deletion via ``del`` statement
-  (`#65 <https://github.com/alimanfoo/zarr/issues/65>`_).
+  (:issue:`65`).
 * Added :class:`zarr.storage.TempStore` class for convenience to provide
   storage via a temporary directory
-  (`#59 <https://github.com/alimanfoo/zarr/issues/59>`_).
+  (:issue:`59`).
 * Fixed performance issues with :class:`zarr.storage.ZipStore` class
-  (`#66 <https://github.com/alimanfoo/zarr/issues/27>`_).
+  (:issue:`66`).
 * The Blosc extension has been modified to return bytes instead of array
   objects from compress and decompress function calls. This should
   improve compatibility and also provides a small performance increase for
   compressing high compression ratio data
-  (`#55 <https://github.com/alimanfoo/zarr/issues/55>`_).
+  (:issue:`55`).
 * Added ``overwrite`` keyword argument to array and group creation methods
   on the :class:`zarr.hierarchy.Group` class
-  (`#71 <https://github.com/alimanfoo/zarr/issues/71>`_).
+  (:issue:`71`).
 * Added ``cache_metadata`` keyword argument to array creation methods.
 * The functions :func:`zarr.creation.open_array` and
   :func:`zarr.hierarchy.open_group` now accept any store as first argument
-  (`#56 <https://github.com/alimanfoo/zarr/issues/56>`_).
+  (:issue:`56`).
 
 .. _release_2.0.1:
 
