@@ -117,14 +117,17 @@ consists of 3 parts:
   ``">"``: big-endian; ``"|"``: not-relevant)
 * One character code giving the basic type of the array (``"b"``: Boolean (integer
   type where all values are only True or False); ``"i"``: integer; ``"u"``: unsigned
-  integer; ``"f"``: floating point; ``"c"``: complex floating point; ``"m"``: timedelta;
-  ``"M"``: datetime; ``"S"``: string (fixed-length sequence of char); ``"U"``: unicode
-  (fixed-length sequence of Py_UNICODE); ``"V"``: other (void * – each item is a
-  fixed-size chunk of memory))
+  integer; ``"f"``: floating point; ``"c"``: complex floating point; ``"S"``: string
+  (fixed-length sequence of char); ``"U"``: unicode (fixed-length sequence of
+  Py_UNICODE); ``"V"``: other (void * – each item is a fixed-size chunk of memory))
 * An integer specifying the number of bytes the type uses.
 
 The byte order MUST be specified. E.g., ``"<f8"``, ``">i4"``, ``"|b1"`` and
 ``"|S12"`` are valid data type encodings.
+
+Please note that NumPy's datetime64 ("M") and timedelta64 ("m") data types are **not**
+currently supported. Please store data using an appropriate physical data type instead,
+e.g., 64-bit integer.
 
 Structured data types (i.e., with multiple named fields) are encoded as a list
 of two-element lists, following `NumPy array protocol type descriptions (descr)

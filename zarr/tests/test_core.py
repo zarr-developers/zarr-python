@@ -9,7 +9,7 @@ import os
 
 
 import numpy as np
-from numpy.testing import assert_array_equal
+from numpy.testing import assert_array_equal, assert_array_almost_equal
 from nose.tools import (eq_ as eq, assert_is_instance, assert_raises, assert_true, assert_false,
                         assert_is, assert_is_none)
 
@@ -346,8 +346,8 @@ class TestArray(unittest.TestCase):
         assert_array_equal(a[:, 7:], z[:, 7:])
 
     def test_array_2d_edge_case(self):
-        # this fails with filters - chunks extend beyond edge of array, messes with delta filter
-        # if no fill value?
+        # this fails with filters - chunks extend beyond edge of array, messes with delta
+        # filter if no fill value?
         shape = 1000, 10
         chunks = 300, 30
         dtype = 'i8'
@@ -791,7 +791,8 @@ class TestArray(unittest.TestCase):
                       (b'ccc', 3, 12.6)],
                      dtype=[('foo', 'S3'), ('bar', 'i4'), ('baz', 'f8')])
         for fill_value in None, b'', (b'zzz', 0, 0.0):
-            z = self.create_array(shape=a.shape, chunks=2, dtype=a.dtype, fill_value=fill_value)
+            z = self.create_array(shape=a.shape, chunks=2, dtype=a.dtype,
+                                  fill_value=fill_value)
             eq(3, len(z))
             if fill_value is not None:
                 np_fill_value = np.array(fill_value, dtype=a.dtype)[()]
@@ -808,6 +809,31 @@ class TestArray(unittest.TestCase):
         with assert_raises(ValueError):
             # dodgy fill value
             self.create_array(shape=a.shape, chunks=2, dtype=a.dtype, fill_value=42)
+
+    def test_dtypes(self):
+
+        # integers
+        for t in 'u1', 'u2', 'u4', 'u8', 'i1', 'i2', 'i4', 'i8':
+            z = self.create_array(shape=10, chunks=3, dtype=t)
+            assert z.dtype == np.dtype(t)
+            a = np.arange(z.shape[0], dtype=t)
+            z[:] = a
+            assert_array_equal(a, z[:])
+
+        # floats
+        for t in 'f2', 'f4', 'f8':
+            z = self.create_array(shape=10, chunks=3, dtype=t)
+            assert z.dtype == np.dtype(t)
+            a = np.linspace(0, 1, z.shape[0], dtype=t)
+            z[:] = a
+            assert_array_almost_equal(a, z[:])
+
+        # datetime, timedelta are not supported for the time being
+        for resolution in 'D', 'us', 'ns':
+            with assert_raises(ValueError):
+                self.create_array(shape=10, dtype='datetime64[{}]'.format(resolution))
+            with assert_raises(ValueError):
+                self.create_array(shape=10, dtype='timedelta64[{}]'.format(resolution))
 
 
 class TestArrayWithPath(TestArray):
@@ -1031,6 +1057,10 @@ class TestArrayWithFilters(TestArray):
 
     def test_structured_array(self):
         # don't implement this one, cannot do delta on structured array
+        pass
+
+    def test_dtypes(self):
+        # don't implement this one, delta messes up floats
         pass
 
 
