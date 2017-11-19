@@ -1011,8 +1011,8 @@ E.g., pickle/unpickle an in-memory array::
     >>> import pickle
     >>> z1 = zarr.array(np.arange(100000))
     >>> s = pickle.dumps(z1)
-    >>> len(s)
-    14092
+    >>> len(s) > 10000  # relatively large because data have been pickled
+    True
     >>> z2 = pickle.loads(s)
     >>> z1 == z2
     True
@@ -1021,11 +1021,11 @@ E.g., pickle/unpickle an in-memory array::
 
 E.g., pickle/unpickle an array stored on disk::
 
-    >>> z3 = zarr.open('data/example.zarr', mode='w', shape=100000, dtype='i8')
+    >>> z3 = zarr.open('data/walnuts.zarr', mode='w', shape=100000, dtype='i8')
     >>> z3[:] = np.arange(100000)
     >>> s = pickle.dumps(z3)
-    >>> len(s)
-    156
+    >>> len(s) < 200  # small because no data have been pickled
+    True
     >>> z4 = pickle.loads(s)
     >>> z3 == z4
     True
