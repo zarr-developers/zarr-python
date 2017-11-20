@@ -10,15 +10,15 @@ import pickle
 import warnings
 
 
-from nose.tools import (assert_raises, eq_ as eq, assert_is, assert_true, assert_is_instance,
-                        assert_false, assert_is_none)
+from nose.tools import (assert_raises, eq_ as eq, assert_is, assert_true,
+                        assert_is_instance, assert_false, assert_is_none)
 import numpy as np
 from numpy.testing import assert_array_equal
 
 
-from zarr.storage import (DictStore, DirectoryStore, ZipStore, init_group, init_array, attrs_key,
-                          array_meta_key, group_meta_key, atexit_rmtree, NestedDirectoryStore,
-                          DBMStore)
+from zarr.storage import (DictStore, DirectoryStore, ZipStore, init_group, init_array,
+                          attrs_key, array_meta_key, group_meta_key, atexit_rmtree,
+                          NestedDirectoryStore, DBMStore, LMDBStore)
 from zarr.core import Array
 from zarr.compat import PY2, text_type
 from zarr.hierarchy import Group, group, open_group
@@ -849,6 +849,22 @@ try:
             path = tempfile.mktemp(suffix='.dbm')
             atexit.register(os.remove, path)
             store = DBMStore(path, flag='n', open=bsddb3.btopen)
+            return store, None
+
+except ImportError:  # pragma: no cover
+    pass
+
+
+try:
+    import lmdb
+
+    class TestGroupWithLMDBStore(TestGroup):
+
+        @staticmethod
+        def create_store():
+            path = tempfile.mktemp(suffix='.lmdb')
+            atexit.register(os.remove, path)
+            store = LMDBStore(path)
             return store, None
 
 except ImportError:  # pragma: no cover

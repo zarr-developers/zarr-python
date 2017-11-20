@@ -15,6 +15,8 @@ import zipfile
 import shutil
 import atexit
 import re
+import sys
+import multiprocessing
 
 
 import numpy as np
@@ -1176,13 +1178,13 @@ def migrate_1to2(store):
 
 def encode_key(key):
     if hasattr(key, 'encode'):
-        key = key.encode()
+        key = key.encode('ascii')
     return key
 
 
 def decode_key(key):
     if hasattr(key, 'decode'):
-        key = key.decode()
+        key = key.decode('ascii')
     return key
 
 
@@ -1268,6 +1270,7 @@ class DBMStore(MutableMapping):
             else:  # pragma: py2 no cover
                 import dbm
                 open = dbm.open
+        path = os.path.abspath(path)
         self.db = open(path, flag, mode, **open_kwargs)
         self.path = path
         self.flag = flag
@@ -1340,3 +1343,127 @@ class DBMStore(MutableMapping):
     def __contains__(self, key):
         key = encode_key(key)
         return key in self.db
+
+
+def lmdb_decode_key(key):
+    # assume buffers=True
+    return key.tobytes().decode('ascii')
+
+
+class LMDBStore(MutableMapping):
+    """TODO"""
+
+    def __init__(self, path, **kwargs):
+        import lmdb
+
+        # set default memory map size to something larger than the lmdb default, which is
+        # very likely to be too small for any moderate dataset (logic copied from zict)
+        map_size = (1 << 40 if sys.maxsize >= 2**32 else 1 << 28)
+        kwargs.setdefault('map_size', map_size)
+
+        # don't initialize buffers to zero by default, shouldn't be necessary
+        kwargs.setdefault('meminit', False)
+
+        # decide whether to use the writemap option based on the operating system's
+        # support for sparse files - writemap requires sparse file support otherwise
+        # the whole# `map_size` may be reserved up front on disk (logic copied from zict)
+        writemap = sys.platform.startswith('linux')
+        kwargs.setdefault('writemap', writemap)
+
+        # decide options for when data are flushed to disk - deviate from zict here to
+        # err on the side of maintaining database integrity
+        kwargs.setdefault('metasync', True)
+        kwargs.setdefault('sync', True)
+        kwargs.setdefault('map_async', False)
+
+        # set default option for number of cached transactions
+        max_spare_txns = multiprocessing.cpu_count()
+        kwargs.setdefault('max_spare_txns', max_spare_txns)
+
+        # normalize path
+        path = os.path.abspath(path)
+
+        # open database
+        self.db = lmdb.open(path, **kwargs)
+
+        # store properties
+        self.path = path
+        self.kwargs = kwargs
+
+    def __getattr__(self, attr):
+        # pass everything else through
+        return getattr(self.db, attr)
+
+    def __getstate__(self):
+        self.db.sync()  # just in case
+        return self.path, self.kwargs
+
+    def __setstate__(self, state):
+        path, kwargs = state
+        self.__init__(path, **kwargs)
+
+    def close(self):
+        """Closes the underlying database."""
+        self.db.close()
+
+    def sync(self):
+        """Synchronizes data to the file system."""
+        self.db.sync()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        self.close()
+
+    def __getitem__(self, key):
+        key = encode_key(key)
+        # use the buffers option, should avoid a memory copy
+        with self.db.begin(buffers=True) as txn:
+            value = txn.get(key)
+        if value is None:
+            raise KeyError(key)
+        return value
+
+    def __setitem__(self, key, value):
+        key = encode_key(key)
+        with self.db.begin(write=True, buffers=True) as txn:
+            txn.put(key, value)
+
+    def __delitem__(self, key):
+        key = encode_key(key)
+        with self.db.begin(write=True) as txn:
+            if not txn.delete(key):
+                raise KeyError(key)
+
+    def __contains__(self, key):
+        key = encode_key(key)
+        with self.db.begin(buffers=True) as txn:
+            with txn.cursor() as cursor:
+                return cursor.set_key(key)
+
+    def items(self):
+        with self.db.begin(buffers=True) as txn:
+            with txn.cursor() as cursor:
+                for k, v in cursor.iternext(keys=True, values=True):
+                    yield lmdb_decode_key(k), v
+
+    def keys(self):
+        with self.db.begin(buffers=True) as txn:
+            with txn.cursor() as cursor:
+                for k in cursor.iternext(keys=True, values=False):
+                    yield lmdb_decode_key(k)
+
+    def values(self):
+        with self.db.begin(buffers=True) as txn:
+            with txn.cursor() as cursor:
+                for v in cursor.iternext(keys=False, values=True):
+                    yield v
+
+    def __iter__(self):
+        return self.keys()
+
+    def __len__(self):
+        return self.db.stat()['entries']
+
+    # TODO could implement listdir efficiently by seeking to key prefix

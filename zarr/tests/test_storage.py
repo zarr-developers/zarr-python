@@ -15,9 +15,10 @@ from numpy.testing import assert_array_equal, assert_array_almost_equal
 from nose.tools import assert_raises, eq_ as eq, assert_is_none
 
 
-from zarr.storage import (init_array, array_meta_key, attrs_key, DictStore, DirectoryStore,
-                          ZipStore, init_group, group_meta_key, getsize, migrate_1to2, TempStore,
-                          atexit_rmtree, NestedDirectoryStore, default_compressor, DBMStore)
+from zarr.storage import (init_array, array_meta_key, attrs_key, DictStore,
+                          DirectoryStore, ZipStore, init_group, group_meta_key,
+                          getsize, migrate_1to2, TempStore, atexit_rmtree,
+                          NestedDirectoryStore, default_compressor, DBMStore, LMDBStore)
 from zarr.meta import (decode_array_metadata, encode_array_metadata, ZARR_FORMAT,
                        decode_group_metadata, encode_group_metadata)
 from zarr.compat import text_type
@@ -693,13 +694,34 @@ class TestDBMStoreStdlib(StoreTests, unittest.TestCase):
 try:
     import bsddb3
 
-    class TestDBMStoreBerkeleyDB(StoreTests, unittest.TestCase):
+    class TestDBMStoreBerkeleyDB(TestDBMStoreStdlib):
 
         def create_store(self):
             path = tempfile.mktemp(suffix='.dbm')
             atexit.register(os.remove, path)
             store = DBMStore(path, flag='n', open=bsddb3.btopen)
             return store
+
+except ImportError:  # pragma: no cover
+    pass
+
+
+try:
+    import lmdb
+
+    class TestLMDBStore(StoreTests, unittest.TestCase):
+
+        def create_store(self):
+            path = tempfile.mktemp(suffix='.lmdb')
+            atexit.register(os.remove, path)
+            store = LMDBStore(path)
+            return store
+
+        def test_context_manager(self):
+            with self.create_store() as store:
+                store['foo'] = b'bar'
+                store['baz'] = b'qux'
+                eq(2, len(store))
 
 except ImportError:  # pragma: no cover
     pass

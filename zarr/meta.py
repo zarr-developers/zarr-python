@@ -15,8 +15,10 @@ ZARR_FORMAT = 2
 
 
 def decode_array_metadata(s):
+    if isinstance(s, memoryview):
+        s = s.tobytes()
     if isinstance(s, binary_type):
-        s = text_type(s, 'ascii')
+        s = s.decode('ascii')
     meta = json.loads(s)
     zarr_format = meta.get('zarr_format', None)
     if zarr_format != ZARR_FORMAT:
@@ -83,6 +85,8 @@ def decode_dtype(d):
 
 
 def decode_group_metadata(s):
+    if isinstance(s, memoryview):
+        s = s.tobytes()
     if isinstance(s, binary_type):
         s = text_type(s, 'ascii')
     meta = json.loads(s)
@@ -95,6 +99,8 @@ def decode_group_metadata(s):
     return meta
 
 
+# N.B., keep `meta` parameter as a placeholder for future
+# noinspection PyUnusedLocal
 def encode_group_metadata(meta=None):
     meta = dict(
         zarr_format=ZARR_FORMAT,
@@ -130,8 +136,8 @@ def decode_fill_value(v, dtype):
             v = np.array(v, dtype=dtype)[()]
             return v
         except Exception:
-            # be lenient, allow for other values that may have been used before base64 encoding
-            # and may work as fill values, e.g., the number 0
+            # be lenient, allow for other values that may have been used before base64
+            # encoding and may work as fill values, e.g., the number 0
             return v
     elif dtype.kind == 'U':
         # leave as-is
