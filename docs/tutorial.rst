@@ -1032,6 +1032,8 @@ E.g., pickle/unpickle an array stored on disk::
     >>> np.all(z3[:] == z4[:])
     True
 
+.. _tutorial_datetime:
+
 Datetimes and timedeltas
 ------------------------
 

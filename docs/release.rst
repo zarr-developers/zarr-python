@@ -9,16 +9,23 @@ Release notes
 Enhancements
 ~~~~~~~~~~~~
 
+* **Advanced indexing**. The ``Array`` class has several new methods and
+  properties that enable a selection of items in an array to be retrieved or
+  updated. See the :ref:`tutorial_indexing` tutorial section for more
+  information. There is also a `notebook
+  <https://github.com/alimanfoo/zarr/blob/master/notebooks/advanced_indexing.ipynb>`_
+  with extended examples and performance benchmarks. :issue:`78`, :issue:`89`,
+  :issue:`112`, :issue:`172`.
+  
 * **New package for compressor and filter codecs**. The classes previously
   defined in the :mod:`zarr.codecs` module have been factored out into a
   separate package called Numcodecs_. The new Numcodecs_ package also includes
   several new codec classes not previously available in Zarr, including
   compressor codecs for Zstd and LZ4. This change is backwards-compatible with
-  existing code, as all codec classes defined by Numcodecs are also imported
-  into the :mod:`zarr.codecs` namespace. However, it is recommended to import
-  codecs from the new package, see the tutorial sections on
-  :ref:`tutorial_compress` and :ref:`tutorial_filters` for
-  examples. :issue:`74`, :issue:`139`, :issue:`102`.
+  existing code, as all codec classes defined by Numcodecs are imported into the
+  :mod:`zarr.codecs` namespace. However, it is recommended to import codecs from
+  the new package, see the tutorial sections on :ref:`tutorial_compress` and
+  :ref:`tutorial_filters` for examples. :issue:`74`, :issue:`139`, :issue:`102`.
   
 * **New storage class for DBM-style databases**. The
   :class:`zarr.storage.DBMStore` class enables any DBM-style database to be used
@@ -37,14 +44,18 @@ Enhancements
   :ref:`tutorial_diagnostics` tutorial section for examples. By John Kirkham
   (jakirkham_); :issue:`82`, :issue:`140`, :issue:`184`.
 
+* **Visitor API**. The ``Group`` class now implements the h5py visitor API, see
+  docs for the :func:`zarr.hierarchy.Group.visit`,
+  :func:`zarr.hierarchy.Group.visititems` and
+  :func:`zarr.hierarchy.Group.visitvalues` methods. By John Kirkham
+  (jakirkham_), :issue:`92`, :issue:`122`.
+
 * **Viewing an array as a different dtype**. The ``Array`` class has a new
   :func:`zarr.core.Array.astype` method, which is a convenience that enables an
   array to be viewed as a different dtype. By John Kirkham (jakirkham_),
   :issue:`94`, :issue:`96`.
 
-* **Visitor API**. @@TODO
-
-* **New open(), save(), load() convenience function**. The function
+* **New open(), save(), load() convenience functions**. The function
   :func:`zarr.convenience.open` provides a convenient way to open a persistent
   array or group, using either a ``DirectoryStore`` or ``ZipStore`` as the backing
   store. The functions :func:`zarr.convenience.save` and
@@ -92,8 +103,13 @@ Bug fixes
 Documentation
 ~~~~~~~~~~~~~
 
+* A new :ref:`tutorial_indexing` section has been added to the tutorial.
 * A new :ref:`tutorial_strings` section has been added to the tutorial.
 * The :ref:`tutorial_chunks` tutorial section has been reorganised and updated.
+* The :ref:`tutorial_storage` tutorial section has been updated with new examples.
+* A new tutorial section on :ref:`tutorial_pickle` has been added.
+* A new tutorial section on :ref:`tutorial_datetime` has been added.
+* A new tutorial section on :ref:`tutorial_diagnostics` has been added.
 
 Maintenance
 ~~~~~~~~~~~
@@ -106,7 +122,7 @@ Maintenance
 Acknowledgments
 ~~~~~~~~~~~~~~~
 
-The following people contributed code to this release: John Kirkham (jakirkham_), @@TODO.
+The following people contributed code to this release: John Kirkham (jakirkham_).
 
 Thank you to Stephan Hoyer (shoyer_), John Kirkham (jakirkham_), Francesc Alted
 (FrancescAlted_), and Matthew Rocklin (mrocklin_) for code reviews and/or
