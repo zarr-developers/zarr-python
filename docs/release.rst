@@ -103,6 +103,13 @@ Bug fixes
 Documentation
 ~~~~~~~~~~~~~
 
+* Some changes have been made to the :ref:`spec_v2` document to clarify
+  ambiguities and add some missing information. These changes do not modify any
+  of the material previously implemented, and so the changes have been made
+  in-place in the document. The specification now describes how bytes fill
+  values should be encoded and decoded for arrays with a fixed-length byte
+  string data type. The specification now also clarifies that datetime64 and
+  timedelta64 data types are not supported in this version.
 * A new :ref:`tutorial_indexing` section has been added to the tutorial.
 * A new :ref:`tutorial_strings` section has been added to the tutorial.
 * The :ref:`tutorial_chunks` tutorial section has been reorganised and updated.
