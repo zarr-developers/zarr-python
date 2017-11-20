@@ -25,17 +25,19 @@ Enhancements
   existing code, as all codec classes defined by Numcodecs are imported into the
   :mod:`zarr.codecs` namespace. However, it is recommended to import codecs from
   the new package, see the tutorial sections on :ref:`tutorial_compress` and
-  :ref:`tutorial_filters` for examples. :issue:`74`, :issue:`139`, :issue:`102`.
+  :ref:`tutorial_filters` for examples. With contributions by John Kirkham
+  (jakirkam_); :issue:`74`, :issue:`102`, :issue:`120`, :issue:`123`,
+  :issue:`139`.
   
 * **New storage class for DBM-style databases**. The
   :class:`zarr.storage.DBMStore` class enables any DBM-style database to be used
   as the backing store for an array or group. See the tutorial section on
-  :ref:`tutorial_storage` for some examples. (:issue:`133`, :issue:`186`)
+  :ref:`tutorial_storage` for some examples. :issue:`133`, :issue:`186`
 
 * **New storage class using a nested directory structure for chunk files**. The
   :class:`zarr.storage.NestedDirectoryStore` has been added, which is similar to
   the existing :class:`zarr.storage.DirectoryStore` class but nests chunk files
-  for multidimensional arrays into sub-directories. (:issue:`155`, :issue:`177`)
+  for multidimensional arrays into sub-directories. :issue:`155`, :issue:`177`
 
 * **New tree() method for printing hierarchies**. The ``Group`` class has a new
   :func:`zarr.hierarchy.Group.tree` method which enables a tree representation of
@@ -121,11 +123,12 @@ Documentation
   :issue:`176`). The specification now also clarifies that datetime64 and
   timedelta64 data types are not supported in this version (:issue:`85`).
 * A new :ref:`tutorial_indexing` section has been added to the tutorial.
-* A new :ref:`tutorial_strings` section has been added to the tutorial.
+* A new :ref:`tutorial_strings` section has been added to the tutorial
+  (:issue:`135`, :issue:`175`).
 * The :ref:`tutorial_chunks` tutorial section has been reorganised and updated.
 * The :ref:`tutorial_persist` and :ref:`tutorial_storage` tutorial sections have
   been updated with new examples (:issue:`100`, :issue:`101`, :issue:`103`).
-* A new tutorial section on :ref:`tutorial_pickle` has been added.
+* A new tutorial section on :ref:`tutorial_pickle` has been added (:issue:`91`).
 * A new tutorial section on :ref:`tutorial_datetime` has been added.
 * A new tutorial section on :ref:`tutorial_diagnostics` has been added.
 
