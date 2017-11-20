@@ -115,14 +115,16 @@ Documentation
 * Some changes have been made to the :ref:`spec_v2` document to clarify
   ambiguities and add some missing information. These changes do not modify any
   of the material previously implemented, and so the changes have been made
-  in-place in the document. The specification now describes how bytes fill
-  values should be encoded and decoded for arrays with a fixed-length byte
-  string data type. The specification now also clarifies that datetime64 and
-  timedelta64 data types are not supported in this version.
+  in-place in the document without incrementing the document version number. The
+  specification now describes how bytes fill values should be encoded and
+  decoded for arrays with a fixed-length byte string data type (:issue:`165`,
+  :issue:`176`). The specification now also clarifies that datetime64 and
+  timedelta64 data types are not supported in this version (:issue:`85`).
 * A new :ref:`tutorial_indexing` section has been added to the tutorial.
 * A new :ref:`tutorial_strings` section has been added to the tutorial.
 * The :ref:`tutorial_chunks` tutorial section has been reorganised and updated.
-* The :ref:`tutorial_storage` tutorial section has been updated with new examples.
+* The :ref:`tutorial_persist` and :ref:`tutorial_storage` tutorial sections have
+  been updated with new examples (:issue:`100`, :issue:`101`, :issue:`103`).
 * A new tutorial section on :ref:`tutorial_pickle` has been added.
 * A new tutorial section on :ref:`tutorial_datetime` has been added.
 * A new tutorial section on :ref:`tutorial_diagnostics` has been added.
@@ -132,8 +134,8 @@ Maintenance
 
 * A data fixture has been included in the test suite to ensure data format
   compatibility is maintained; :issue:`83`, :issue:`146`.
-* Continuous integration updates; :issue:`125`, :issue:`126`, :issue:`109`,
-  :issue:`114`, :issue:`171`.
+* Continuous integration updates and improvements; :issue:`118`, :issue:`124`,
+  :issue:`125`, :issue:`126`, :issue:`109`, :issue:`114`, :issue:`171`.
 
 Acknowledgments
 ~~~~~~~~~~~~~~~
@@ -141,7 +143,9 @@ Acknowledgments
 Code was contributed to this release by John Kirkham (jakirkham_) and Prakhar
 Goel (newt0311_).
 
-Thank you to Stephan Hoyer (shoyer_), John Kirkham (jakirkham_), Francesc Alted
+Documentation was contributed to this release by Mamy Ratsimbazafy (mratsim_).
+
+Thank you to John Kirkham (jakirkham_), Stephan Hoyer (shoyer_), Francesc Alted
 (FrancescAlted_), and Matthew Rocklin (mrocklin_) for code reviews and/or
 comments on pull requests.
 
@@ -385,3 +389,4 @@ See `v0.3.0 release notes on GitHub
 .. _jakirkham: https://github.com/jakirkham
 .. _vincentschut: https://github.com/vincentschut
 .. _newt0311: https://github.com/newt0311
+.. _mratsim: https://github.com/mratsim
