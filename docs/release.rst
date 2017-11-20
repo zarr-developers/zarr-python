@@ -18,7 +18,7 @@ Enhancements
   into the :mod:`zarr.codecs` namespace. However, it is recommended to import
   codecs from the new package, see the tutorial sections on
   :ref:`tutorial_compress` and :ref:`tutorial_filters` for
-  examples. :issue:`74`, :issue:`139`.
+  examples. :issue:`74`, :issue:`139`, :issue:`102`.
   
 * **New storage class for DBM-style databases**. The
   :class:`zarr.storage.DBMStore` class enables any DBM-style database to be used
@@ -36,6 +36,13 @@ Enhancements
   representation when used within a Jupyter notebook. See the
   :ref:`tutorial_diagnostics` tutorial section for examples. By John Kirkham
   (jakirkham_); :issue:`82`, :issue:`140`, :issue:`184`.
+
+* **Viewing an array as a different dtype**. The ``Array`` class has a new
+  :func:`zarr.core.Array.astype` method, which is a convenience that enables an
+  array to be viewed as a different dtype. By John Kirkham (jakirkham_),
+  :issue:`94`, :issue:`96`.
+
+* **Visitor API**. @@TODO
 
 * **New open(), save(), load() convenience function**. The function
   :func:`zarr.convenience.open` provides a convenient way to open a persistent
@@ -58,6 +65,12 @@ Enhancements
   it is cheap and quick to compute in all circumstances. :issue:`83`,
   :issue:`115`, :issue:`132`.
 
+* **Chunk options**. When creating an array, ``chunks=False`` can be specified,
+  which will result in an array with a single chunk only. Alternatively,
+  ``chunks=True`` will trigger an automatic chunk shape guess. See
+  :ref:`tutorial_chunks` for more on the ``chunks`` parameter. :issue:`106`,
+  :issue:`107`, :issue:`183`.
+
 Bug fixes
 ~~~~~~~~~
 
@@ -70,16 +83,25 @@ Bug fixes
 * Fill values can now be provided for fixed-length string arrays; :issue:`165`,
   :issue:`176`.
 
+* Fixed a bug where the number of chunks initialized could be counted
+  incorrectly; :issue:`97`, :issue:`174`.
+
+* Fixed a bug related to the use of an ellipsis (...) in indexing statements;
+  :issue:`93`, :issue:`172`.
+
 Documentation
 ~~~~~~~~~~~~~
 
 * A new :ref:`tutorial_strings` section has been added to the tutorial.
+* The :ref:`tutorial_chunks` tutorial section has been reorganised and updated.
 
 Maintenance
 ~~~~~~~~~~~
 
 * A data fixture has been included in the test suite to ensure data format
   compatibility is maintained; :issue:`83`, :issue:`146`.
+* Continuous integration updates; :issue:`125`, :issue:`126`, :issue:`109`,
+  :issue:`114`
 
 Acknowledgments
 ~~~~~~~~~~~~~~~
