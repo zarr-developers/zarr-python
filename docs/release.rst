@@ -9,6 +9,17 @@ Release notes
 Enhancements
 ~~~~~~~~~~~~
 
+* **New package for compressor and filter codecs**. The classes previously
+  defined in the :mod:`zarr.codecs` module have been factored out into a
+  separate package called Numcodecs_. The new Numcodecs_ package also includes
+  several new codec classes not previously available in Zarr, including
+  compressor codecs for Zstd and LZ4. This change is backwards-compatible with
+  existing code, as all codec classes defined by Numcodecs are also imported
+  into the :mod:`zarr.codecs` namespace. However, it is recommended to import
+  codecs from the new package, see the tutorial sections on
+  :ref:`tutorial_compress` and :ref:`tutorial_filters` for
+  examples. :issue:`74`, :issue:`139`.
+  
 * **New storage class for DBM-style databases**. The
   :class:`zarr.storage.DBMStore` class enables any DBM-style database to be used
   as the backing store for an array or group. See the tutorial section on
@@ -64,8 +75,16 @@ Documentation
 
 * A new :ref:`tutorial_strings` section has been added to the tutorial.
 
+Maintenance
+~~~~~~~~~~~
+
+* A data fixture has been included in the test suite to ensure data format
+  compatibility is maintained; :issue:`83`, :issue:`146`.
+
 Acknowledgments
 ~~~~~~~~~~~~~~~
+
+The following people contributed code to this release: John Kirkham (jakirkham_), @@TODO.
 
 Thank you to Stephan Hoyer (shoyer_), John Kirkham (jakirkham_), Francesc Alted
 (FrancescAlted_), and Matthew Rocklin (mrocklin_) for code reviews and/or
