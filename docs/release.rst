@@ -74,13 +74,19 @@ Enhancements
   tutorial section on :ref:`tutorial_diagnostics` for examples. The string
   representation (``__repr__``) of these classes has been simplified to ensure
   it is cheap and quick to compute in all circumstances. :issue:`83`,
-  :issue:`115`, :issue:`132`.
+  :issue:`115`, :issue:`132`: :issue:`148`.
 
 * **Chunk options**. When creating an array, ``chunks=False`` can be specified,
   which will result in an array with a single chunk only. Alternatively,
   ``chunks=True`` will trigger an automatic chunk shape guess. See
   :ref:`tutorial_chunks` for more on the ``chunks`` parameter. :issue:`106`,
   :issue:`107`, :issue:`183`.
+
+* **Zero-dimensional arrays** and are now supported; by Prakhar Goel
+  (newt0311_), :issue:`154`, :issue:`161`.
+
+* **Arrays with one or more zero-length dimensions** are now fully supported; by
+  Prakhar Goel (newt0311_), :issue:`150`, :issue:`154`, :issue:`160`.
 
 Bug fixes
 ~~~~~~~~~
@@ -99,6 +105,9 @@ Bug fixes
 
 * Fixed a bug related to the use of an ellipsis (...) in indexing statements;
   :issue:`93`, :issue:`168`, :issue:`172`.
+
+* Fixed bug preventing use of other integer types for indexing; :issue:`143`,
+  :issue:`147`.
 
 Documentation
 ~~~~~~~~~~~~~
@@ -129,7 +138,8 @@ Maintenance
 Acknowledgments
 ~~~~~~~~~~~~~~~
 
-The following people contributed code to this release: John Kirkham (jakirkham_).
+Code was contributed to this release by John Kirkham (jakirkham_) and Prakhar
+Goel (newt0311_).
 
 Thank you to Stephan Hoyer (shoyer_), John Kirkham (jakirkham_), Francesc Alted
 (FrancescAlted_), and Matthew Rocklin (mrocklin_) for code reviews and/or
@@ -374,3 +384,4 @@ See `v0.3.0 release notes on GitHub
 .. _FrancescAlted: https://github.com/FrancescAlted
 .. _jakirkham: https://github.com/jakirkham
 .. _vincentschut: https://github.com/vincentschut
+.. _newt0311: https://github.com/newt0311
