@@ -16,19 +16,19 @@ Enhancements
   <https://github.com/alimanfoo/zarr/blob/master/notebooks/advanced_indexing.ipynb>`_
   with extended examples and performance benchmarks. :issue:`78`, :issue:`89`,
   :issue:`112`, :issue:`172`.
-  
+
 * **New package for compressor and filter codecs**. The classes previously
   defined in the :mod:`zarr.codecs` module have been factored out into a
-  separate package called Numcodecs_. The new Numcodecs_ package also includes
+  separate package called NumCodecs_. The new NumCodecs_ package also includes
   several new codec classes not previously available in Zarr, including
   compressor codecs for Zstd and LZ4. This change is backwards-compatible with
-  existing code, as all codec classes defined by Numcodecs are imported into the
+  existing code, as all codec classes defined by NumCodecs are imported into the
   :mod:`zarr.codecs` namespace. However, it is recommended to import codecs from
   the new package, see the tutorial sections on :ref:`tutorial_compress` and
   :ref:`tutorial_filters` for examples. With contributions by John Kirkham
-  (jakirkam_); :issue:`74`, :issue:`102`, :issue:`120`, :issue:`123`,
+  (jakirkham_); :issue:`74`, :issue:`102`, :issue:`120`, :issue:`123`,
   :issue:`139`.
-  
+
 * **New storage class for DBM-style databases**. The
   :class:`zarr.storage.DBMStore` class enables any DBM-style database to be used
   as the backing store for an array or group. See the tutorial section on
@@ -54,7 +54,7 @@ Enhancements
 
 * **Viewing an array as a different dtype**. The ``Array`` class has a new
   :func:`zarr.core.Array.astype` method, which is a convenience that enables an
-  array to be viewed as a different dtype. By John Kirkham (jakirkham_),
+  array to be viewed as a different dtype. By :user:`John Kirkham <jakirkham>`,
   :issue:`94`, :issue:`96`.
 
 * **New open(), save(), load() convenience functions**. The function
@@ -69,7 +69,7 @@ Enhancements
 * **IPython completions**. The ``Group`` class now implements ``__dir__()`` and
   ``_ipython_key_completions_()`` which enables tab-completion for group members
   to be used in any IPython interactive environment. :issue:`170`.
-  
+
 * **New info property; changes to __repr__**. The ``Group`` and
   ``Array`` classes have a new ``info`` property which can be used to print
   diagnostic information, including compression ratio where available. See the
@@ -88,17 +88,17 @@ Enhancements
   (newt0311_), :issue:`154`, :issue:`161`.
 
 * **Arrays with one or more zero-length dimensions** are now fully supported; by
-  Prakhar Goel (newt0311_), :issue:`150`, :issue:`154`, :issue:`160`.
+  :user:`Prakhar Goel <newt0311>`, :issue:`150`, :issue:`154`, :issue:`160`.
 
 Bug fixes
 ~~~~~~~~~
 
 * Fixed bug where ``read_only`` keyword argument was ignored when creating an
   array; :issue:`151`, :issue:`179`.
-  
+
 * Fixed bugs when using a ``ZipStore`` opened in 'w' mode; :issue:`158`,
   :issue:`182`.
-  
+
 * Fill values can now be provided for fixed-length string arrays; :issue:`165`,
   :issue:`176`.
 
@@ -143,14 +143,14 @@ Maintenance
 Acknowledgments
 ~~~~~~~~~~~~~~~
 
-Code was contributed to this release by John Kirkham (jakirkham_) and Prakhar
-Goel (newt0311_).
+Code was contributed to this release by :user:`John Kirkham <jakirkham>` and
+:user:`Prakhar Goel <newt0311>`.
 
-Documentation was contributed to this release by Mamy Ratsimbazafy (mratsim_).
+Documentation was contributed to this release by :user:`Mamy Ratsimbazafy <mratsim>`.
 
-Thank you to John Kirkham (jakirkham_), Stephan Hoyer (shoyer_), Francesc Alted
-(FrancescAlted_), and Matthew Rocklin (mrocklin_) for code reviews and/or
-comments on pull requests.
+Thank you to :user:`John Kirkham <jakirkham>`, :user:`Stephan Hoyer <shoyer>`,
+:user:`Francesc Alted <FrancescAlted>`, and :user:`Matthew Rocklin <mrocklin>` for code
+reviews and/or comments on pull requests.
 
 .. _release_2.1.4:
 
@@ -158,7 +158,8 @@ comments on pull requests.
 -----
 
 * Resolved an issue where calling ``hasattr`` on a ``Group`` object erroneously
-  returned a ``KeyError``. By Vincent Schut (vincentschut_); :issue:`88`, :issue:`95`.
+  returned a ``KeyError``. By :user:`Vincent Schut <vincentschut>`; :issue:`88`,
+  :issue:`95`.
 
 .. _release_2.1.3:
 
@@ -251,8 +252,8 @@ The bundled Blosc library has been upgraded to version 1.11.0.
 Acknowledgments
 ~~~~~~~~~~~~~~~
 
-Thanks to Matthew Rocklin (mrocklin_), Stephan Hoyer (shoyer_) and
-Francesc Alted (FrancescAlted_) for contributions and comments.
+Thanks to :user:`Matthew Rocklin <mrocklin>`, :user:`Stephan Hoyer <shoyer>` and
+:user:`Francesc Alted <FrancescAlted>` for contributions and comments.
 
 .. _release_1.1.0:
 
@@ -364,9 +365,9 @@ partial slices.
 Acknowledgments
 ~~~~~~~~~~~~~~~
 
-Thanks to Matthew Rocklin (mrocklin_), Stephan Hoyer (shoyer_),
-Francesc Alted (FrancescAlted_), Anthony Scopatz (scopatz_) and Martin
-Durant (martindurant_) for contributions and comments.
+Thanks to :user:`Matthew Rocklin <mrocklin>`, :user:`Stephan Hoyer <shoyer>`,
+:user:`Francesc Alted <FrancescAlted>`, :user:`Anthony Scopatz <scopatz>` and
+:user:`Martin Durant <martindurant>` for contributions and comments.
 
 .. _release_0.4.0:
 
@@ -393,3 +394,4 @@ See `v0.3.0 release notes on GitHub
 .. _vincentschut: https://github.com/vincentschut
 .. _newt0311: https://github.com/newt0311
 .. _mratsim: https://github.com/mratsim
+.. _NumCodecs: http://numcodecs.readthedocs.io/

@@ -147,7 +147,7 @@ Compressors
 -----------
 
 A number of different compressors can be used with Zarr. A separate package
-called Numcodecs_ is available which provides a common interface to various
+called NumCodecs_ is available which provides a common interface to various
 compressor libraries including Blosc, Zstandard, LZ4, Zlib, BZ2 and
 LZMA. Different compressors can be provided via the ``compressor`` keyword
 argument accepted by all array creation functions. For example::
