@@ -98,7 +98,7 @@ Bug fixes
   incorrectly; :issue:`97`, :issue:`174`.
 
 * Fixed a bug related to the use of an ellipsis (...) in indexing statements;
-  :issue:`93`, :issue:`172`.
+  :issue:`93`, :issue:`168`, :issue:`172`.
 
 Documentation
 ~~~~~~~~~~~~~
@@ -124,7 +124,7 @@ Maintenance
 * A data fixture has been included in the test suite to ensure data format
   compatibility is maintained; :issue:`83`, :issue:`146`.
 * Continuous integration updates; :issue:`125`, :issue:`126`, :issue:`109`,
-  :issue:`114`
+  :issue:`114`, :issue:`171`.
 
 Acknowledgments
 ~~~~~~~~~~~~~~~
