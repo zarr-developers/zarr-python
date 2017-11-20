@@ -25,9 +25,9 @@ Enhancements
   existing code, as all codec classes defined by NumCodecs are imported into the
   :mod:`zarr.codecs` namespace. However, it is recommended to import codecs from
   the new package, see the tutorial sections on :ref:`tutorial_compress` and
-  :ref:`tutorial_filters` for examples. With contributions by John Kirkham
-  (jakirkham_); :issue:`74`, :issue:`102`, :issue:`120`, :issue:`123`,
-  :issue:`139`.
+  :ref:`tutorial_filters` for examples. With contributions by
+  :user:`John Kirkham <jakirkham>`; :issue:`74`, :issue:`102`, :issue:`120`,
+  :issue:`123`, :issue:`139`.
 
 * **New storage class for DBM-style databases**. The
   :class:`zarr.storage.DBMStore` class enables any DBM-style database to be used
@@ -43,14 +43,14 @@ Enhancements
   :func:`zarr.hierarchy.Group.tree` method which enables a tree representation of
   a group hierarchy to be printed. Also provides an interactive tree
   representation when used within a Jupyter notebook. See the
-  :ref:`tutorial_diagnostics` tutorial section for examples. By John Kirkham
-  (jakirkham_); :issue:`82`, :issue:`140`, :issue:`184`.
+  :ref:`tutorial_diagnostics` tutorial section for examples. By
+  :user:`John Kirkham <jakirkham>`; :issue:`82`, :issue:`140`, :issue:`184`.
 
 * **Visitor API**. The ``Group`` class now implements the h5py visitor API, see
   docs for the :func:`zarr.hierarchy.Group.visit`,
   :func:`zarr.hierarchy.Group.visititems` and
-  :func:`zarr.hierarchy.Group.visitvalues` methods. By John Kirkham
-  (jakirkham_), :issue:`92`, :issue:`122`.
+  :func:`zarr.hierarchy.Group.visitvalues` methods. By
+  :user:`John Kirkham <jakirkham>`, :issue:`92`, :issue:`122`.
 
 * **Viewing an array as a different dtype**. The ``Array`` class has a new
   :func:`zarr.core.Array.astype` method, which is a convenience that enables an
@@ -84,8 +84,8 @@ Enhancements
   :ref:`tutorial_chunks` for more on the ``chunks`` parameter. :issue:`106`,
   :issue:`107`, :issue:`183`.
 
-* **Zero-dimensional arrays** and are now supported; by Prakhar Goel
-  (newt0311_), :issue:`154`, :issue:`161`.
+* **Zero-dimensional arrays** and are now supported; by
+  :user:`Prakhar Goel <newt0311>`, :issue:`154`, :issue:`161`.
 
 * **Arrays with one or more zero-length dimensions** are now fully supported; by
   :user:`Prakhar Goel <newt0311>`, :issue:`150`, :issue:`154`, :issue:`160`.
@@ -385,13 +385,4 @@ See `v0.4.0 release notes on GitHub
 See `v0.3.0 release notes on GitHub
 <https://github.com/alimanfoo/zarr/releases/tag/v0.3.0>`_.
 
-.. _mrocklin: https://github.com/mrocklin
-.. _shoyer: https://github.com/shoyer
-.. _scopatz: https://github.com/scopatz
-.. _martindurant: https://github.com/martindurant
-.. _FrancescAlted: https://github.com/FrancescAlted
-.. _jakirkham: https://github.com/jakirkham
-.. _vincentschut: https://github.com/vincentschut
-.. _newt0311: https://github.com/newt0311
-.. _mratsim: https://github.com/mratsim
 .. _NumCodecs: http://numcodecs.readthedocs.io/
