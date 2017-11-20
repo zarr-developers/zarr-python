@@ -12,7 +12,7 @@ Highlights
 
 * Create N-dimensional arrays with any NumPy dtype.
 * Chunk arrays along any dimension.
-* Compress and/or filter chunks using any numcodecs_ codec.
+* Compress and/or filter chunks using any NumCodecs_ codec.
 * Store arrays in memory, on disk, inside a Zip file, on S3, ...
 * Read an array concurrently from multiple threads or processes.
 * Write to an array concurrently from multiple threads or processes.
@@ -65,15 +65,19 @@ Contents
 Acknowledgments
 ---------------
 
-The following people have contributed to the development of Zarr, by contributing code and/or
-providing ideas, feedback and advice:
+The following people have contributed to the development of Zarr by contributing code,
+documentation, code reviews, comments and/or ideas:
 
-* `Francesc Alted <https://github.com/FrancescAlted>`_
-* `Stephan Hoyer <https://github.com/shoyer>`_
-* `John Kirkham <https://github.com/jakirkham>`_
-* `Alistair Miles <https://github.com/alimanfoo>`_
-* `Matthew Rocklin <https://github.com/mrocklin>`_
-* `Vincent Schut <https://github.com/vincentschut>`_
+* :user:`Francesc Alted <FrancescAlted>`
+* :user:`Martin Durant <martindurant>`
+* :user:`Stephan Hoyer <shoyer>`
+* :user:`John Kirkham <jakirkham>`
+* :user:`Alistair Miles <alimanfoo>`
+* :user:`Mamy Ratsimbazafy <mratsim>`
+* :user:`Matthew Rocklin <mrocklin>`
+* :user:`Vincent Schut <vincentschut>`
+* :user:`Anthony Scopatz <scopatz>`
+* :user:`Prakhar Goel <newt0311>`
 
 Zarr is inspired by `HDF5 <https://www.hdfgroup.org/HDF5/>`_, `h5py
 <http://www.h5py.org/>`_ and `bcolz <http://bcolz.blosc.org/>`_.
@@ -88,4 +92,4 @@ Indices and tables
 * :ref:`modindex`
 * :ref:`search`
 
-.. _numcodecs: http://numcodecs.readthedocs.io/
+.. _NumCodecs: http://numcodecs.readthedocs.io/

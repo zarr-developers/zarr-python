@@ -580,7 +580,7 @@ class TestDirectoryStore(StoreTests, unittest.TestCase):
     def test_filesystem_path(self):
 
         # test behaviour with path that does not exist
-        path = 'example'
+        path = 'data/store'
         if os.path.exists(path):
             shutil.rmtree(path)
         store = DirectoryStore(path)
@@ -651,20 +651,20 @@ class TestZipStore(StoreTests, unittest.TestCase):
         return store
 
     def test_mode(self):
-        with ZipStore('example.zip', mode='w') as store:
+        with ZipStore('data/store.zip', mode='w') as store:
             store['foo'] = b'bar'
-        store = ZipStore('example.zip', mode='r')
+        store = ZipStore('data/store.zip', mode='r')
         with assert_raises(PermissionError):
             store['foo'] = b'bar'
 
     def test_flush(self):
-        store = ZipStore('example.zip', mode='w')
+        store = ZipStore('data/store.zip', mode='w')
         store['foo'] = b'bar'
         store.flush()
         assert store['foo'] == b'bar'
         store.close()
 
-        store = ZipStore('example.zip', mode='r')
+        store = ZipStore('data/store.zip', mode='r')
         with assert_raises(PermissionError):
             store.flush()
 
@@ -787,8 +787,8 @@ def test_migrate_1to2():
 
 def test_format_compatibility():
 
-    # This test is intended to catch any unintended changes that break the ability to read data
-    # stored with a previous minor version (which should be format-compatible).
+    # This test is intended to catch any unintended changes that break the ability to
+    # read data stored with a previous minor version (which should be format-compatible).
 
     # fixture data
     fixture = group(store=DirectoryStore('fixture'))

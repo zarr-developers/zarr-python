@@ -9,17 +9,18 @@ import numpy as np
 
 
 from zarr.util import (is_total_slice, human_readable_size, normalize_resize_args,
-                       normalize_storage_path, normalize_shape, normalize_chunks, InfoReporter,
-                       check_array_shape)
+                       normalize_storage_path, normalize_shape, normalize_chunks,
+                       InfoReporter, check_array_shape)
 from zarr.storage import array_meta_key, attrs_key, listdir, getsize
 from zarr.meta import decode_array_metadata, encode_array_metadata
 from zarr.attrs import Attributes
 from zarr.errors import PermissionError, err_read_only, err_array_not_found
 from zarr.compat import reduce
 from zarr.codecs import AsType, get_codec
-from zarr.indexing import (OIndex, OrthogonalIndexer, BasicIndexer, VIndex, CoordinateIndexer,
-                           MaskIndexer, check_fields, pop_fields, ensure_tuple, is_scalar,
-                           is_contiguous_selection, err_too_many_indices, check_no_multi_fields)
+from zarr.indexing import (OIndex, OrthogonalIndexer, BasicIndexer, VIndex,
+                           CoordinateIndexer, MaskIndexer, check_fields, pop_fields,
+                           ensure_tuple, is_scalar, is_contiguous_selection,
+                           err_too_many_indices, check_no_multi_fields)
 
 
 # noinspection PyUnresolvedReferences
@@ -420,8 +421,8 @@ class Array(object):
         Parameters
         ----------
         selection : tuple
-            An integer index or slice or tuple of int/slice objects specifying the requested
-            item or region for each dimension of the array.
+            An integer index or slice or tuple of int/slice objects specifying the
+            requested item or region for each dimension of the array.
 
         Returns
         -------
@@ -527,8 +528,9 @@ class Array(object):
         -----
         Slices with step > 1 are supported, but slices with negative step are not.
 
-        Currently the implementation for __getitem__ is provided by :func:`get_basic_selection`.
-        For advanced ("fancy") indexing, see the methods listed under See Also.
+        Currently the implementation for __getitem__ is provided by
+        :func:`get_basic_selection`. For advanced ("fancy") indexing, see the methods
+        listed under See Also.
 
         See Also
         --------
@@ -547,13 +549,13 @@ class Array(object):
         Parameters
         ----------
         selection : tuple
-            A tuple specifying the requested item or region for each dimension of the array. May
-            be any combination of int and/or slice for multidimensional arrays.
+            A tuple specifying the requested item or region for each dimension of the
+            array. May be any combination of int and/or slice for multidimensional arrays.
         out : ndarray, optional
             If given, load the selected data directly into this array.
         fields : str or sequence of str, optional
-            For arrays with a structured dtype, one or more fields can be specified to extract
-            data for.
+            For arrays with a structured dtype, one or more fields can be specified to
+            extract data for.
 
         Returns
         -------
@@ -640,9 +642,9 @@ class Array(object):
         -----
         Slices with step > 1 are supported, but slices with negative step are not.
 
-        Currently this method provides the implementation for accessing data via the square
-        bracket notation (__getitem__). See :func:`__getitem__` for examples using the
-        alternative notation.
+        Currently this method provides the implementation for accessing data via the
+        square bracket notation (__getitem__). See :func:`__getitem__` for examples
+        using the alternative notation.
 
         See Also
         --------
@@ -661,9 +663,11 @@ class Array(object):
 
         # handle zero-dimensional arrays
         if self._shape == ():
-            return self._get_basic_selection_zd(selection=selection, out=out, fields=fields)
+            return self._get_basic_selection_zd(selection=selection, out=out,
+                                                fields=fields)
         else:
-            return self._get_basic_selection_nd(selection=selection, out=out, fields=fields)
+            return self._get_basic_selection_nd(selection=selection, out=out,
+                                                fields=fields)
 
     def _get_basic_selection_zd(self, selection, out=None, fields=None):
         # special case basic selection for zero-dimensional array
@@ -708,21 +712,22 @@ class Array(object):
         return self._get_selection(indexer=indexer, out=out, fields=fields)
 
     def get_orthogonal_selection(self, selection, out=None, fields=None):
-        """Retrieve data by making a selection for each dimension of the array. For example,
-        if an array has 2 dimensions, allows selecting specific rows and/or columns. The
-        selection for each dimension can be either an integer (indexing a single item), a slice,
-        an array of integers, or a Boolean array where True values indicate a selection.
+        """Retrieve data by making a selection for each dimension of the array. For
+        example, if an array has 2 dimensions, allows selecting specific rows and/or
+        columns. The selection for each dimension can be either an integer (indexing a
+        single item), a slice, an array of integers, or a Boolean array where True
+        values indicate a selection.
 
         Parameters
         ----------
         selection : tuple
-            A selection for each dimension of the array. May be any combination of int, slice,
-            integer array or Boolean array.
+            A selection for each dimension of the array. May be any combination of int,
+            slice, integer array or Boolean array.
         out : ndarray, optional
             If given, load the selected data directly into this array.
         fields : str or sequence of str, optional
-            For arrays with a structured dtype, one or more fields can be specified to extract
-            data for.
+            For arrays with a structured dtype, one or more fields can be specified to
+            extract data for.
 
         Returns
         -------
@@ -737,8 +742,8 @@ class Array(object):
             >>> import numpy as np
             >>> z = zarr.array(np.arange(100).reshape(10, 10))
 
-        Retrieve rows and columns via any combination of int, slice, integer array and/or Boolean
-        array::
+        Retrieve rows and columns via any combination of int, slice, integer array and/or
+        Boolean array::
 
             >>> z.get_orthogonal_selection(([1, 4], slice(None)))
             array([[10, 11, 12, 13, 14, 15, 16, 17, 18, 19],
@@ -800,8 +805,8 @@ class Array(object):
         See Also
         --------
         get_basic_selection, set_basic_selection, get_mask_selection, set_mask_selection,
-        get_coordinate_selection, set_coordinate_selection, set_orthogonal_selection, vindex,
-        oindex, __getitem__, __setitem__
+        get_coordinate_selection, set_coordinate_selection, set_orthogonal_selection,
+        vindex, oindex, __getitem__, __setitem__
 
         """
 
@@ -818,8 +823,8 @@ class Array(object):
         return self._get_selection(indexer=indexer, out=out, fields=fields)
 
     def get_coordinate_selection(self, selection, out=None, fields=None):
-        """Retrieve a selection of individual items, by providing the indices (coordinates) for
-        each selected item.
+        """Retrieve a selection of individual items, by providing the indices
+        (coordinates) for each selected item.
 
         Parameters
         ----------
@@ -828,8 +833,8 @@ class Array(object):
         out : ndarray, optional
             If given, load the selected data directly into this array.
         fields : str or sequence of str, optional
-            For arrays with a structured dtype, one or more fields can be specified to extract
-            data for.
+            For arrays with a structured dtype, one or more fields can be specified to
+            extract data for.
 
         Returns
         -------
@@ -857,22 +862,22 @@ class Array(object):
 
         Notes
         -----
-        Coordinate indexing is also known as point selection, and is a form of vectorized or inner
-        indexing.
+        Coordinate indexing is also known as point selection, and is a form of vectorized
+        or inner indexing.
 
-        Slices are not supported. Coordinate arrays must be provided for all dimensions of the
-        array.
+        Slices are not supported. Coordinate arrays must be provided for all dimensions
+        of the array.
 
-        Coordinate arrays may be multidimensional, in which case the output array will also be
-        multidimensional. Coordinate arrays are broadcast against each other before being
-        applied. The shape of the output will be the same as the shape of each coordinate array
-        after broadcasting.
+        Coordinate arrays may be multidimensional, in which case the output array will
+        also be multidimensional. Coordinate arrays are broadcast against each other
+        before being applied. The shape of the output will be the same as the shape of
+        each coordinate array after broadcasting.
 
         See Also
         --------
         get_basic_selection, set_basic_selection, get_mask_selection, set_mask_selection,
-        get_orthogonal_selection, set_orthogonal_selection, set_coordinate_selection, vindex,
-        oindex, __getitem__, __setitem__
+        get_orthogonal_selection, set_orthogonal_selection, set_coordinate_selection,
+        vindex, oindex, __getitem__, __setitem__
 
         """
 
@@ -898,20 +903,20 @@ class Array(object):
         return out
 
     def get_mask_selection(self, selection, out=None, fields=None):
-        """Retrieve a selection of individual items, by providing a Boolean array of the same
-        shape as the array against which the selection is being made, where True values indicate
-        a selected item.
+        """Retrieve a selection of individual items, by providing a Boolean array of the
+        same shape as the array against which the selection is being made, where True
+        values indicate a selected item.
 
         Parameters
         ----------
         selection : ndarray, bool
-            A Boolean array of the same shape as the array against which the selection is being
-            made.
+            A Boolean array of the same shape as the array against which the selection is
+            being made.
         out : ndarray, optional
             If given, load the selected data directly into this array.
         fields : str or sequence of str, optional
-            For arrays with a structured dtype, one or more fields can be specified to extract
-            data for.
+            For arrays with a structured dtype, one or more fields can be specified to
+            extract data for.
 
         Returns
         -------
@@ -942,15 +947,15 @@ class Array(object):
 
         Notes
         -----
-        Mask indexing is a form of vectorized or inner indexing, and is equivalent to coordinate
-        indexing. Internally the mask array is converted to coordinate arrays by calling
-        `np.nonzero`.
+        Mask indexing is a form of vectorized or inner indexing, and is equivalent to
+        coordinate indexing. Internally the mask array is converted to coordinate
+        arrays by calling `np.nonzero`.
 
         See Also
         --------
-        get_basic_selection, set_basic_selection, set_mask_selection, get_orthogonal_selection,
-        set_orthogonal_selection, get_coordinate_selection, set_coordinate_selection, vindex,
-        oindex, __getitem__, __setitem__
+        get_basic_selection, set_basic_selection, set_mask_selection,
+        get_orthogonal_selection, set_orthogonal_selection, get_coordinate_selection,
+        set_coordinate_selection, vindex, oindex, __getitem__, __setitem__
 
         """
 
@@ -968,12 +973,12 @@ class Array(object):
 
     def _get_selection(self, indexer, out=None, fields=None):
 
-        # We iterate over all chunks which overlap the selection and thus contain data that needs
-        # to be extracted. Each chunk is processed in turn, extracting the necessary data and
-        # storing into the correct location in the output array.
+        # We iterate over all chunks which overlap the selection and thus contain data
+        # that needs to be extracted. Each chunk is processed in turn, extracting the
+        # necessary data and storing into the correct location in the output array.
 
-        # N.B., it is an important optimisation that we only visit chunks which overlap the
-        # selection. This minimises the number of iterations in the main for loop.
+        # N.B., it is an important optimisation that we only visit chunks which overlap
+        # the selection. This minimises the number of iterations in the main for loop.
 
         # check fields are sensible
         out_dtype = check_fields(fields, self._dtype)
@@ -1005,8 +1010,8 @@ class Array(object):
         Parameters
         ----------
         selection : tuple
-            An integer index or slice or tuple of int/slice specifying the requested region for
-            each dimension of the array.
+            An integer index or slice or tuple of int/slice specifying the requested
+            region for each dimension of the array.
         value : scalar or array-like
             Value to be stored into the array.
 
@@ -1065,9 +1070,10 @@ class Array(object):
         -----
         Slices with step > 1 are supported, but slices with negative step are not.
 
-        Currently the implementation for __setitem__ is provided by :func:`set_basic_selection`,
-        which means that only integers and slices are supported within the selection. For
-        advanced ("fancy") indexing, see the methods listed under See Also.
+        Currently the implementation for __setitem__ is provided by
+        :func:`set_basic_selection`, which means that only integers and slices are
+        supported within the selection. For advanced ("fancy") indexing, see the
+        methods listed under See Also.
 
         See Also
         --------
@@ -1086,8 +1092,8 @@ class Array(object):
         Parameters
         ----------
         selection : tuple
-            An integer index or slice or tuple of int/slice specifying the requested region for
-            each dimension of the array.
+            An integer index or slice or tuple of int/slice specifying the requested
+            region for each dimension of the array.
         value : scalar or array-like
             Value to be stored into the array.
         fields : str or sequence of str, optional
@@ -1134,8 +1140,8 @@ class Array(object):
                    [ 3, 42, 42, 42, 42],
                    [ 4, 42, 42, 42, 42]])
 
-        For arrays with a structured dtype, the `fields` parameter can be used to set data for
-        a specific field, e.g.::
+        For arrays with a structured dtype, the `fields` parameter can be used to set
+        data for a specific field, e.g.::
 
             >>> a = np.array([(b'aaa', 1, 4.2),
             ...               (b'bbb', 2, 8.4),
@@ -1150,14 +1156,14 @@ class Array(object):
         Notes
         -----
         This method provides the underlying implementation for modifying data via square
-        bracket notation, see :func:`__setitem__` for equivalent examples using the alternative
-        notation.
+        bracket notation, see :func:`__setitem__` for equivalent examples using the
+        alternative notation.
 
         See Also
         --------
-        get_basic_selection, get_mask_selection, set_mask_selection, get_coordinate_selection,
-        set_coordinate_selection, get_orthogonal_selection, set_orthogonal_selection, vindex,
-        oindex, __getitem__, __setitem__
+        get_basic_selection, get_mask_selection, set_mask_selection,
+        get_coordinate_selection, set_coordinate_selection, get_orthogonal_selection,
+        set_orthogonal_selection, vindex, oindex, __getitem__, __setitem__
 
         """
 
@@ -1181,8 +1187,8 @@ class Array(object):
         Parameters
         ----------
         selection : tuple
-            A selection for each dimension of the array. May be any combination of int, slice,
-            integer array or Boolean array.
+            A selection for each dimension of the array. May be any combination of int,
+            slice, integer array or Boolean array.
         value : scalar or array-like
             Value to be stored into the array.
         fields : str or sequence of str, optional
@@ -1227,7 +1233,8 @@ class Array(object):
                    [0, 2, 0, 0, 2],
                    [1, 3, 1, 1, 3]])
 
-        For convenience, this functionality is also available via the `oindex` property. E.g.::
+        For convenience, this functionality is also available via the `oindex` property.
+        E.g.::
 
             >>> z.oindex[[1, 4], [1, 4]] = 4
             >>> z[...]
@@ -1265,8 +1272,8 @@ class Array(object):
         self._set_selection(indexer, value, fields=fields)
 
     def set_coordinate_selection(self, selection, value, fields=None):
-        """Modify a selection of individual items, by providing the indices (coordinates) for
-        each item to be modified.
+        """Modify a selection of individual items, by providing the indices (coordinates)
+        for each item to be modified.
 
         Parameters
         ----------
@@ -1296,7 +1303,8 @@ class Array(object):
                    [0, 0, 0, 0, 0],
                    [0, 0, 0, 0, 1]])
 
-        For convenience, this functionality is also available via the `vindex` property. E.g.::
+        For convenience, this functionality is also available via the `vindex` property.
+        E.g.::
 
             >>> z.vindex[[1, 4], [1, 4]] = 2
             >>> z[...]
@@ -1308,17 +1316,17 @@ class Array(object):
 
         Notes
         -----
-        Coordinate indexing is also known as point selection, and is a form of vectorized or inner
-        indexing.
+        Coordinate indexing is also known as point selection, and is a form of vectorized
+        or inner indexing.
 
-        Slices are not supported. Coordinate arrays must be provided for all dimensions of the
-        array.
+        Slices are not supported. Coordinate arrays must be provided for all dimensions
+        of the array.
 
         See Also
         --------
         get_basic_selection, set_basic_selection, get_mask_selection, set_mask_selection,
-        get_orthogonal_selection, set_orthogonal_selection, get_coordinate_selection, vindex,
-        oindex, __getitem__, __setitem__
+        get_orthogonal_selection, set_orthogonal_selection, get_coordinate_selection,
+        vindex, oindex, __getitem__, __setitem__
 
         """
 
@@ -1342,15 +1350,15 @@ class Array(object):
         self._set_selection(indexer, value, fields=fields)
 
     def set_mask_selection(self, selection, value, fields=None):
-        """Modify a selection of individual items, by providing a Boolean array of the same
-        shape as the array against which the selection is being made, where True values indicate
-        a selected item.
+        """Modify a selection of individual items, by providing a Boolean array of the
+        same shape as the array against which the selection is being made, where True
+        values indicate a selected item.
 
         Parameters
         ----------
         selection : ndarray, bool
-            A Boolean array of the same shape as the array against which the selection is being
-            made.
+            A Boolean array of the same shape as the array against which the selection is
+            being made.
         value : scalar or array-like
             Value to be stored into the array.
         fields : str or sequence of str, optional
@@ -1378,7 +1386,8 @@ class Array(object):
                    [0, 0, 0, 0, 0],
                    [0, 0, 0, 0, 1]])
 
-        For convenience, this functionality is also available via the `vindex` property. E.g.::
+        For convenience, this functionality is also available via the `vindex` property.
+        E.g.::
 
             >>> z.vindex[sel] = 2
             >>> z[...]
@@ -1390,15 +1399,15 @@ class Array(object):
 
         Notes
         -----
-        Mask indexing is a form of vectorized or inner indexing, and is equivalent to coordinate
-        indexing. Internally the mask array is converted to coordinate arrays by calling
-        `np.nonzero`.
+        Mask indexing is a form of vectorized or inner indexing, and is equivalent to
+        coordinate indexing. Internally the mask array is converted to coordinate
+        arrays by calling `np.nonzero`.
 
         See Also
         --------
-        get_basic_selection, set_basic_selection, get_mask_selection, get_orthogonal_selection,
-        set_orthogonal_selection, get_coordinate_selection, set_coordinate_selection, vindex,
-        oindex, __getitem__, __setitem__
+        get_basic_selection, set_basic_selection, get_mask_selection,
+        get_orthogonal_selection, set_orthogonal_selection, get_coordinate_selection,
+        set_coordinate_selection, vindex, oindex, __getitem__, __setitem__
 
         """
 
@@ -1465,12 +1474,12 @@ class Array(object):
 
     def _set_selection(self, indexer, value, fields=None):
 
-        # We iterate over all chunks which overlap the selection and thus contain data that needs
-        # to be replaced. Each chunk is processed in turn, extracting the necessary data from the
-        # value array and storing into the chunk array.
+        # We iterate over all chunks which overlap the selection and thus contain data
+        # that needs to be replaced. Each chunk is processed in turn, extracting the
+        # necessary data from the value array and storing into the chunk array.
 
-        # N.B., it is an important optimisation that we only visit chunks which overlap the
-        # selection. This minimises the nuimber of iterations in the main for loop.
+        # N.B., it is an important optimisation that we only visit chunks which overlap
+        # the selection. This minimises the nuimber of iterations in the main for loop.
 
         # check fields are sensible
         check_fields(fields, self._dtype)
@@ -1505,8 +1514,8 @@ class Array(object):
             # put data
             self._chunk_setitem(chunk_coords, chunk_selection, chunk_value, fields=fields)
 
-    def _chunk_getitem(self, chunk_coords, chunk_selection, out, out_selection, drop_axes=None,
-                       fields=None):
+    def _chunk_getitem(self, chunk_coords, chunk_selection, out, out_selection,
+                       drop_axes=None, fields=None):
         """Obtain part or whole of a chunk.
 
         Parameters
@@ -1599,12 +1608,14 @@ class Array(object):
 
         # synchronization
         if self._synchronizer is None:
-            self._chunk_setitem_nosync(chunk_coords, chunk_selection, value, fields=fields)
+            self._chunk_setitem_nosync(chunk_coords, chunk_selection, value,
+                                       fields=fields)
         else:
             # synchronize on the chunk
             ckey = self._chunk_key(chunk_coords)
             with self._synchronizer[ckey]:
-                self._chunk_setitem_nosync(chunk_coords, chunk_selection, value, fields=fields)
+                self._chunk_setitem_nosync(chunk_coords, chunk_selection, value,
+                                           fields=fields)
 
     def _chunk_setitem_nosync(self, chunk_coords, chunk_selection, value, fields=None):
 
@@ -1656,8 +1667,8 @@ class Array(object):
                     chunk = np.empty(self._chunks, dtype=self._dtype, order=self._order)
                     chunk.fill(self._fill_value)
                 else:
-                    # N.B., use zeros here so any region beyond the array has consistent and
-                    # compressible data
+                    # N.B., use zeros here so any region beyond the array has consistent
+                    # and compressible data
                     chunk = np.zeros(self._chunks, dtype=self._dtype, order=self._order)
 
             else:
@@ -1669,8 +1680,8 @@ class Array(object):
 
             # modify
             if fields:
-                # N.B., currently multi-field assignment is not supported in numpy, so this only
-                # works for a single field
+                # N.B., currently multi-field assignment is not supported in numpy, so
+                # this only works for a single field
                 chunk[fields][chunk_selection] = value
             else:
                 chunk[chunk_selection] = value
@@ -1817,8 +1828,8 @@ class Array(object):
         return items
 
     def __getstate__(self):
-        return (self._store, self._path, self._read_only, self._chunk_store, self._synchronizer,
-                self._cache_metadata)
+        return (self._store, self._path, self._read_only, self._chunk_store,
+                self._synchronizer, self._cache_metadata)
 
     def __setstate__(self, state):
         self.__init__(*state)
@@ -1952,8 +1963,9 @@ class Array(object):
         data_shape_preserved = tuple(s for i, s in enumerate(data.shape)
                                      if i != axis)
         if self_shape_preserved != data_shape_preserved:
-            raise ValueError('shape of data to append is not compatible with the array; all '
-                             'dimensions must match except for the dimension being appended')
+            raise ValueError('shape of data to append is not compatible with the array; '
+                             'all dimensions must match except for the dimension being '
+                             'appended')
 
         # remember old shape
         old_shape = self._shape

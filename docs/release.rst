@@ -1,41 +1,181 @@
 Release notes
 =============
 
-Changes to ``__repr__``; new ``info`` property
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.. release_2.2.0rc1
 
-The string representation (``__repr__``) of array and group objects has been been simplified
-(`#83 <https://github.com/alimanfoo/zarr/issues/83>`_,
-`#115 <https://github.com/alimanfoo/zarr/issues/115>`_,
-`#132 <https://github.com/alimanfoo/zarr/issues/132>`_).
-Further diagnostic information can be obtained via a new ``info`` property. See the tutorial
-section on :ref:`tutorial_tips_info` for examples.
+2.2.0rc1
+--------
+
+Enhancements
+~~~~~~~~~~~~
+
+* **Advanced indexing**. The ``Array`` class has several new methods and
+  properties that enable a selection of items in an array to be retrieved or
+  updated. See the :ref:`tutorial_indexing` tutorial section for more
+  information. There is also a `notebook
+  <https://github.com/alimanfoo/zarr/blob/master/notebooks/advanced_indexing.ipynb>`_
+  with extended examples and performance benchmarks. :issue:`78`, :issue:`89`,
+  :issue:`112`, :issue:`172`.
+
+* **New package for compressor and filter codecs**. The classes previously
+  defined in the :mod:`zarr.codecs` module have been factored out into a
+  separate package called NumCodecs_. The NumCodecs_ package also includes
+  several new codec classes not previously available in Zarr, including
+  compressor codecs for Zstd and LZ4. This change is backwards-compatible with
+  existing code, as all codec classes defined by NumCodecs are imported into the
+  :mod:`zarr.codecs` namespace. However, it is recommended to import codecs from
+  the new package, see the tutorial sections on :ref:`tutorial_compress` and
+  :ref:`tutorial_filters` for examples. With contributions by
+  :user:`John Kirkham <jakirkham>`; :issue:`74`, :issue:`102`, :issue:`120`,
+  :issue:`123`, :issue:`139`.
+
+* **New storage class for DBM-style databases**. The
+  :class:`zarr.storage.DBMStore` class enables any DBM-style database to be used
+  as the backing store for an array or group. See the tutorial section on
+  :ref:`tutorial_storage` for some examples. :issue:`133`, :issue:`186`
+
+* **New storage class using a nested directory structure for chunk files**. The
+  :class:`zarr.storage.NestedDirectoryStore` has been added, which is similar to
+  the existing :class:`zarr.storage.DirectoryStore` class but nests chunk files
+  for multidimensional arrays into sub-directories. :issue:`155`, :issue:`177`
+
+* **New tree() method for printing hierarchies**. The ``Group`` class has a new
+  :func:`zarr.hierarchy.Group.tree` method which enables a tree representation of
+  a group hierarchy to be printed. Also provides an interactive tree
+  representation when used within a Jupyter notebook. See the
+  :ref:`tutorial_diagnostics` tutorial section for examples. By
+  :user:`John Kirkham <jakirkham>`; :issue:`82`, :issue:`140`, :issue:`184`.
+
+* **Visitor API**. The ``Group`` class now implements the h5py visitor API, see
+  docs for the :func:`zarr.hierarchy.Group.visit`,
+  :func:`zarr.hierarchy.Group.visititems` and
+  :func:`zarr.hierarchy.Group.visitvalues` methods. By
+  :user:`John Kirkham <jakirkham>`, :issue:`92`, :issue:`122`.
+
+* **Viewing an array as a different dtype**. The ``Array`` class has a new
+  :func:`zarr.core.Array.astype` method, which is a convenience that enables an
+  array to be viewed as a different dtype. By :user:`John Kirkham <jakirkham>`,
+  :issue:`94`, :issue:`96`.
+
+* **New open(), save(), load() convenience functions**. The function
+  :func:`zarr.convenience.open` provides a convenient way to open a persistent
+  array or group, using either a ``DirectoryStore`` or ``ZipStore`` as the backing
+  store. The functions :func:`zarr.convenience.save` and
+  :func:`zarr.convenience.load` are also available and provide a convenient way to
+  save an entire NumPy array to disk and load back into memory later. See the
+  tutorial section :ref:`tutorial_persist` for examples. :issue:`104`,
+  :issue:`105`, :issue:`141`, :issue:`181`.
+
+* **IPython completions**. The ``Group`` class now implements ``__dir__()`` and
+  ``_ipython_key_completions_()`` which enables tab-completion for group members
+  to be used in any IPython interactive environment. :issue:`170`.
+
+* **New info property; changes to __repr__**. The ``Group`` and
+  ``Array`` classes have a new ``info`` property which can be used to print
+  diagnostic information, including compression ratio where available. See the
+  tutorial section on :ref:`tutorial_diagnostics` for examples. The string
+  representation (``__repr__``) of these classes has been simplified to ensure
+  it is cheap and quick to compute in all circumstances. :issue:`83`,
+  :issue:`115`, :issue:`132`, :issue:`148`.
+
+* **Chunk options**. When creating an array, ``chunks=False`` can be specified,
+  which will result in an array with a single chunk only. Alternatively,
+  ``chunks=True`` will trigger an automatic chunk shape guess. See
+  :ref:`tutorial_chunks` for more on the ``chunks`` parameter. :issue:`106`,
+  :issue:`107`, :issue:`183`.
+
+* **Zero-dimensional arrays** and are now supported; by
+  :user:`Prakhar Goel <newt0311>`, :issue:`154`, :issue:`161`.
+
+* **Arrays with one or more zero-length dimensions** are now fully supported; by
+  :user:`Prakhar Goel <newt0311>`, :issue:`150`, :issue:`154`, :issue:`160`.
+
+Bug fixes
+~~~~~~~~~
+
+* Fixed bug where ``read_only`` keyword argument was ignored when creating an
+  array; :issue:`151`, :issue:`179`.
+
+* Fixed bugs when using a ``ZipStore`` opened in 'w' mode; :issue:`158`,
+  :issue:`182`.
+
+* Fill values can now be provided for fixed-length string arrays; :issue:`165`,
+  :issue:`176`.
+
+* Fixed a bug where the number of chunks initialized could be counted
+  incorrectly; :issue:`97`, :issue:`174`.
+
+* Fixed a bug related to the use of an ellipsis (...) in indexing statements;
+  :issue:`93`, :issue:`168`, :issue:`172`.
+
+* Fixed a bug preventing use of other integer types for indexing; :issue:`143`,
+  :issue:`147`.
+
+Documentation
+~~~~~~~~~~~~~
+
+* Some changes have been made to the :ref:`spec_v2` document to clarify
+  ambiguities and add some missing information. These changes do not modify any
+  of the material previously implemented, and so the changes have been made
+  in-place in the document without incrementing the document version number. The
+  specification now describes how bytes fill values should be encoded and
+  decoded for arrays with a fixed-length byte string data type (:issue:`165`,
+  :issue:`176`). The specification now also clarifies that datetime64 and
+  timedelta64 data types are not supported in this version (:issue:`85`).
+* A new :ref:`tutorial_indexing` section has been added to the tutorial.
+* A new :ref:`tutorial_strings` section has been added to the tutorial
+  (:issue:`135`, :issue:`175`).
+* The :ref:`tutorial_chunks` tutorial section has been reorganised and updated.
+* The :ref:`tutorial_persist` and :ref:`tutorial_storage` tutorial sections have
+  been updated with new examples (:issue:`100`, :issue:`101`, :issue:`103`).
+* A new tutorial section on :ref:`tutorial_pickle` has been added (:issue:`91`).
+* A new tutorial section on :ref:`tutorial_datetime` has been added.
+* A new tutorial section on :ref:`tutorial_diagnostics` has been added.
+
+Maintenance
+~~~~~~~~~~~
+
+* A data fixture has been included in the test suite to ensure data format
+  compatibility is maintained; :issue:`83`, :issue:`146`.
+* Various continuous integration updates and improvements; :issue:`118`, :issue:`124`,
+  :issue:`125`, :issue:`126`, :issue:`109`, :issue:`114`, :issue:`171`.
+
+Acknowledgments
+~~~~~~~~~~~~~~~
+
+Code was contributed to this release by :user:`John Kirkham <jakirkham>` and
+:user:`Prakhar Goel <newt0311>`.
+
+Documentation was contributed to this release by :user:`Mamy Ratsimbazafy <mratsim>`.
+
+Thank you to :user:`John Kirkham <jakirkham>`, :user:`Stephan Hoyer <shoyer>`,
+:user:`Francesc Alted <FrancescAlted>`, and :user:`Matthew Rocklin <mrocklin>` for code
+reviews and/or comments on pull requests.
 
 .. _release_2.1.4:
 
 2.1.4
 -----
 
-Resolved an issue where calling ``hasattr`` on a ``Group`` object erroneously returned a
-``KeyError`` (`#88 <https://github.com/alimanfoo/zarr/issues/88>`_,
-`#95 <https://github.com/alimanfoo/zarr/issues/95>`_,
-`Vincent Schut <https://github.com/vincentschut>`_)
+* Resolved an issue where calling ``hasattr`` on a ``Group`` object erroneously
+  returned a ``KeyError``. By :user:`Vincent Schut <vincentschut>`; :issue:`88`,
+  :issue:`95`.
 
 .. _release_2.1.3:
 
 2.1.3
 -----
 
-Resolved an issue with :func:`zarr.creation.array` where dtype was given as
-None (`#80 <https://github.com/alimanfoo/zarr/issues/80>`_).
+* Resolved an issue with :func:`zarr.creation.array` where dtype was given as
+  None (:issue:`80`).
 
 .. _release_2.1.2:
 
 2.1.2
 -----
 
-Resolved an issue when no compression is used and chunks are stored in memory
-(`#79 <https://github.com/alimanfoo/zarr/issues/79>`_).
+* Resolved an issue when no compression is used and chunks are stored in memory
+  (:issue:`79`).
 
 .. _release_2.1.1:
 
@@ -54,24 +194,24 @@ fixed bug in pickling ``ThreadSynchronizer``.
 -----
 
 * Group objects now support member deletion via ``del`` statement
-  (`#65 <https://github.com/alimanfoo/zarr/issues/65>`_).
+  (:issue:`65`).
 * Added :class:`zarr.storage.TempStore` class for convenience to provide
   storage via a temporary directory
-  (`#59 <https://github.com/alimanfoo/zarr/issues/59>`_).
+  (:issue:`59`).
 * Fixed performance issues with :class:`zarr.storage.ZipStore` class
-  (`#66 <https://github.com/alimanfoo/zarr/issues/27>`_).
+  (:issue:`66`).
 * The Blosc extension has been modified to return bytes instead of array
   objects from compress and decompress function calls. This should
   improve compatibility and also provides a small performance increase for
   compressing high compression ratio data
-  (`#55 <https://github.com/alimanfoo/zarr/issues/55>`_).
+  (:issue:`55`).
 * Added ``overwrite`` keyword argument to array and group creation methods
   on the :class:`zarr.hierarchy.Group` class
-  (`#71 <https://github.com/alimanfoo/zarr/issues/71>`_).
+  (:issue:`71`).
 * Added ``cache_metadata`` keyword argument to array creation methods.
 * The functions :func:`zarr.creation.open_array` and
   :func:`zarr.hierarchy.open_group` now accept any store as first argument
-  (`#56 <https://github.com/alimanfoo/zarr/issues/56>`_).
+  (:issue:`56`).
 
 .. _release_2.0.1:
 
@@ -112,8 +252,8 @@ The bundled Blosc library has been upgraded to version 1.11.0.
 Acknowledgments
 ~~~~~~~~~~~~~~~
 
-Thanks to Matthew Rocklin (mrocklin_), Stephan Hoyer (shoyer_) and
-Francesc Alted (FrancescAlted_) for contributions and comments.
+Thanks to :user:`Matthew Rocklin <mrocklin>`, :user:`Stephan Hoyer <shoyer>` and
+:user:`Francesc Alted <FrancescAlted>` for contributions and comments.
 
 .. _release_1.1.0:
 
@@ -149,7 +289,7 @@ abstraction layer between the core array logic and data storage (`#21
 <https://github.com/alimanfoo/zarr/issues/21>`_). In this release, any
 object that implements the ``MutableMapping`` interface can be used as
 an array store. See the tutorial sections on :ref:`tutorial_persist`
-and :ref:`tutorial_tips_storage`, the :ref:`spec_v1`, and the
+and :ref:`tutorial_storage`, the :ref:`spec_v1`, and the
 :mod:`zarr.storage` module documentation for more information.
 
 Please note also that the file organization and file name conventions
@@ -216,7 +356,7 @@ The memory layout within chunks can now be set as either "C"
 (row-major) or "F" (column-major), which can help to provide better
 compression for some data (`#7
 <https://github.com/alimanfoo/zarr/issues/7>`_). See the tutorial
-section on :ref:`tutorial_tips_order` for more information.
+section on :ref:`tutorial_chunks_order` for more information.
 
 A bug has been fixed within the ``__getitem__`` and ``__setitem__``
 machinery for slicing arrays, to properly handle getting and setting
@@ -225,9 +365,9 @@ partial slices.
 Acknowledgments
 ~~~~~~~~~~~~~~~
 
-Thanks to Matthew Rocklin (mrocklin_), Stephan Hoyer (shoyer_),
-Francesc Alted (FrancescAlted_), Anthony Scopatz (scopatz_) and Martin
-Durant (martindurant_) for contributions and comments.
+Thanks to :user:`Matthew Rocklin <mrocklin>`, :user:`Stephan Hoyer <shoyer>`,
+:user:`Francesc Alted <FrancescAlted>`, :user:`Anthony Scopatz <scopatz>` and
+:user:`Martin Durant <martindurant>` for contributions and comments.
 
 .. _release_0.4.0:
 
@@ -245,8 +385,4 @@ See `v0.4.0 release notes on GitHub
 See `v0.3.0 release notes on GitHub
 <https://github.com/alimanfoo/zarr/releases/tag/v0.3.0>`_.
 
-.. _mrocklin: https://github.com/mrocklin
-.. _shoyer: https://github.com/shoyer
-.. _scopatz: https://github.com/scopatz
-.. _martindurant: https://github.com/martindurant
-.. _FrancescAlted: https://github.com/FrancescAlted
+.. _NumCodecs: http://numcodecs.readthedocs.io/

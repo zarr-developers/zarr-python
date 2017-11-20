@@ -36,10 +36,10 @@ def open(store, mode='a', **kwargs):
     Examples
     --------
 
-    Storing data in a directory 'example.zarr' on the local file system::
+    Storing data in a directory 'data/example.zarr' on the local file system::
 
         >>> import zarr
-        >>> store = 'example.zarr'
+        >>> store = 'data/example.zarr'
         >>> zw = zarr.open(store, mode='w', shape=100, dtype='i4')  # open new array
         >>> zw
         <zarr.core.Array (100,) int32>
@@ -111,14 +111,14 @@ def save_array(store, arr, **kwargs):
         >>> import zarr
         >>> import numpy as np
         >>> arr = np.arange(10000)
-        >>> zarr.save_array('example.zarr', arr)
-        >>> zarr.load('example.zarr')
+        >>> zarr.save_array('data/example.zarr', arr)
+        >>> zarr.load('data/example.zarr')
         array([   0,    1,    2, ..., 9997, 9998, 9999])
 
     Save an array to a single file (uses a :class:`ZipStore`)::
 
-        >>> zarr.save_array('example.zip', arr)
-        >>> zarr.load('example.zip')
+        >>> zarr.save_array('data/example.zip', arr)
+        >>> zarr.load('data/example.zip')
         array([   0,    1,    2, ..., 9997, 9998, 9999])
 
     """
@@ -153,8 +153,8 @@ def save_group(store, *args, **kwargs):
         >>> import numpy as np
         >>> a1 = np.arange(10000)
         >>> a2 = np.arange(10000, 0, -1)
-        >>> zarr.save_group('example.zarr', a1, a2)
-        >>> loader = zarr.load('example.zarr')
+        >>> zarr.save_group('data/example.zarr', a1, a2)
+        >>> loader = zarr.load('data/example.zarr')
         >>> loader
         <LazyLoader: arr_0, arr_1>
         >>> loader['arr_0']
@@ -164,8 +164,8 @@ def save_group(store, *args, **kwargs):
 
     Save several arrays using named keyword arguments::
 
-        >>> zarr.save_group('example.zarr', foo=a1, bar=a2)
-        >>> loader = zarr.load('example.zarr')
+        >>> zarr.save_group('data/example.zarr', foo=a1, bar=a2)
+        >>> loader = zarr.load('data/example.zarr')
         >>> loader
         <LazyLoader: bar, foo>
         >>> loader['foo']
@@ -175,8 +175,8 @@ def save_group(store, *args, **kwargs):
 
     Store several arrays in a single zip file (uses a :class:`ZipStore`)::
 
-        >>> zarr.save_group('example.zip', foo=a1, bar=a2)
-        >>> loader = zarr.load('example.zip')
+        >>> zarr.save_group('data/example.zip', foo=a1, bar=a2)
+        >>> loader = zarr.load('data/example.zip')
         >>> loader
         <LazyLoader: bar, foo>
         >>> loader['foo']
@@ -208,7 +208,7 @@ def save_group(store, *args, **kwargs):
 
 
 def save(store, *args, **kwargs):
-    """Convenience function to save an array or arrays to the local file system.
+    """Convenience function to save an array or group of arrays to the local file system.
 
     Parameters
     ----------
@@ -226,24 +226,25 @@ def save(store, *args, **kwargs):
         >>> import zarr
         >>> import numpy as np
         >>> arr = np.arange(10000)
-        >>> zarr.save('example.zarr', arr)
-        >>> zarr.load('example.zarr')
+        >>> zarr.save('data/example.zarr', arr)
+        >>> zarr.load('data/example.zarr')
         array([   0,    1,    2, ..., 9997, 9998, 9999])
 
-    Save an array to a single file (uses a :class:`ZipStore`)::
+    Save an array to a Zip file (uses a :class:`ZipStore`)::
 
-        >>> zarr.save('example.zip', arr)
-        >>> zarr.load('example.zip')
+        >>> zarr.save('data/example.zip', arr)
+        >>> zarr.load('data/example.zip')
         array([   0,    1,    2, ..., 9997, 9998, 9999])
 
-    Save several arrays to a directory on the file system (uses a :class:`DirectoryStore`)::
+    Save several arrays to a directory on the file system (uses a
+    :class:`DirectoryStore` and stores arrays in a group)::
 
         >>> import zarr
         >>> import numpy as np
         >>> a1 = np.arange(10000)
         >>> a2 = np.arange(10000, 0, -1)
-        >>> zarr.save('example.zarr', a1, a2)
-        >>> loader = zarr.load('example.zarr')
+        >>> zarr.save('data/example.zarr', a1, a2)
+        >>> loader = zarr.load('data/example.zarr')
         >>> loader
         <LazyLoader: arr_0, arr_1>
         >>> loader['arr_0']
@@ -253,8 +254,8 @@ def save(store, *args, **kwargs):
 
     Save several arrays using named keyword arguments::
 
-        >>> zarr.save('example.zarr', foo=a1, bar=a2)
-        >>> loader = zarr.load('example.zarr')
+        >>> zarr.save('data/example.zarr', foo=a1, bar=a2)
+        >>> loader = zarr.load('data/example.zarr')
         >>> loader
         <LazyLoader: bar, foo>
         >>> loader['foo']
@@ -264,8 +265,8 @@ def save(store, *args, **kwargs):
 
     Store several arrays in a single zip file (uses a :class:`ZipStore`)::
 
-        >>> zarr.save('example.zip', foo=a1, bar=a2)
-        >>> loader = zarr.load('example.zip')
+        >>> zarr.save('data/example.zip', foo=a1, bar=a2)
+        >>> loader = zarr.load('data/example.zip')
         >>> loader
         <LazyLoader: bar, foo>
         >>> loader['foo']

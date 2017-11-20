@@ -175,7 +175,7 @@ def test_full():
 
 def test_open_array():
 
-    store = 'example'
+    store = 'data/array.zarr'
 
     # mode == 'w'
     z = open_array(store, mode='w', shape=100, chunks=10)
@@ -187,12 +187,12 @@ def test_open_array():
     assert_array_equal(np.full(100, fill_value=42), z[:])
 
     # mode in 'r', 'r+'
-    open_group('example_group', mode='w')
+    open_group('data/group.zarr', mode='w')
     for mode in 'r', 'r+':
         with assert_raises(ValueError):
             open_array('doesnotexist', mode=mode)
         with assert_raises(ValueError):
-            open_array('example_group', mode=mode)
+            open_array('data/group.zarr', mode=mode)
     z = open_array(store, mode='r')
     assert_is_instance(z, Array)
     assert_is_instance(z.store, DirectoryStore)
@@ -220,7 +220,7 @@ def test_open_array():
     eq((10,), z.chunks)
     assert_array_equal(np.full(100, fill_value=42), z[:])
     with assert_raises(ValueError):
-        open_array('example_group', mode='a')
+        open_array('data/group.zarr', mode='a')
 
     # mode in 'w-', 'x'
     for mode in 'w-', 'x':
@@ -235,7 +235,7 @@ def test_open_array():
         with assert_raises(ValueError):
             open_array(store, mode=mode)
         with assert_raises(ValueError):
-            open_array('example_group', mode=mode)
+            open_array('data/group.zarr', mode=mode)
 
     # with synchronizer
     z = open_array(store, synchronizer=ThreadSynchronizer())

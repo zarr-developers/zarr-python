@@ -385,12 +385,12 @@ def open_array(store, mode='a', shape=None, chunks=True, dtype=None, compressor=
     --------
     >>> import numpy as np
     >>> import zarr
-    >>> z1 = zarr.open_array('example.zarr', mode='w', shape=(10000, 10000),
+    >>> z1 = zarr.open_array('data/example.zarr', mode='w', shape=(10000, 10000),
     ...                      chunks=(1000, 1000), fill_value=0)
     >>> z1[:] = np.arange(100000000).reshape(10000, 10000)
     >>> z1
     <zarr.core.Array (10000, 10000) float64>
-    >>> z2 = zarr.open_array('example.zarr', mode='r')
+    >>> z2 = zarr.open_array('data/example.zarr', mode='r')
     >>> z2
     <zarr.core.Array (10000, 10000) float64 read-only>
     >>> np.all(z1[:] == z2[:])

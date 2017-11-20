@@ -65,10 +65,13 @@ target/
 # setuptools-scm
 zarr/version.py
 
-# test data
-*.zarr
+# emacs
 *~
-*.zip
-example*
-doesnotexist
-test_sync*
+
+# test data
+#*.zarr
+#*.zip
+#example*
+#doesnotexist
+#test_sync*
+data/*

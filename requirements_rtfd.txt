@@ -2,7 +2,7 @@ asciitree
 setuptools
 setuptools_scm
 sphinx
+sphinx-issues
 numpydoc
 mock
 numpy
-cython
