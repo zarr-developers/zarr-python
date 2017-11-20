@@ -19,7 +19,7 @@ Enhancements
 
 * **New package for compressor and filter codecs**. The classes previously
   defined in the :mod:`zarr.codecs` module have been factored out into a
-  separate package called NumCodecs_. The new NumCodecs_ package also includes
+  separate package called NumCodecs_. The NumCodecs_ package also includes
   several new codec classes not previously available in Zarr, including
   compressor codecs for Zstd and LZ4. This change is backwards-compatible with
   existing code, as all codec classes defined by NumCodecs are imported into the
@@ -76,7 +76,7 @@ Enhancements
   tutorial section on :ref:`tutorial_diagnostics` for examples. The string
   representation (``__repr__``) of these classes has been simplified to ensure
   it is cheap and quick to compute in all circumstances. :issue:`83`,
-  :issue:`115`, :issue:`132`: :issue:`148`.
+  :issue:`115`, :issue:`132`, :issue:`148`.
 
 * **Chunk options**. When creating an array, ``chunks=False`` can be specified,
   which will result in an array with a single chunk only. Alternatively,
@@ -108,7 +108,7 @@ Bug fixes
 * Fixed a bug related to the use of an ellipsis (...) in indexing statements;
   :issue:`93`, :issue:`168`, :issue:`172`.
 
-* Fixed bug preventing use of other integer types for indexing; :issue:`143`,
+* Fixed a bug preventing use of other integer types for indexing; :issue:`143`,
   :issue:`147`.
 
 Documentation
@@ -137,7 +137,7 @@ Maintenance
 
 * A data fixture has been included in the test suite to ensure data format
   compatibility is maintained; :issue:`83`, :issue:`146`.
-* Continuous integration updates and improvements; :issue:`118`, :issue:`124`,
+* Various continuous integration updates and improvements; :issue:`118`, :issue:`124`,
   :issue:`125`, :issue:`126`, :issue:`109`, :issue:`114`, :issue:`171`.
 
 Acknowledgments
