@@ -554,6 +554,15 @@ class DictStore(MutableMapping):
         else:
             return []
 
+    def rename(self, src_path, dst_path):
+        src_path = normalize_storage_path(src_path)
+        dst_path = normalize_storage_path(dst_path)
+
+        src_parent, src_key = self._get_parent(src_path)
+        dst_parent, dst_key = self._require_parent(dst_path)
+
+        dst_parent[dst_key] = src_parent.pop(src_key)
+
     def rmdir(self, path=None):
         path = normalize_storage_path(path)
         if path:
