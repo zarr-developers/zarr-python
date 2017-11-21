@@ -12,6 +12,7 @@ import os
 
 import numpy as np
 from numpy.testing import assert_array_equal, assert_array_almost_equal
+from nose import SkipTest
 from nose.tools import assert_raises, eq_ as eq, assert_is_none
 
 
@@ -21,7 +22,7 @@ from zarr.storage import (init_array, array_meta_key, attrs_key, DictStore,
                           NestedDirectoryStore, default_compressor, DBMStore, LMDBStore)
 from zarr.meta import (decode_array_metadata, encode_array_metadata, ZARR_FORMAT,
                        decode_group_metadata, encode_group_metadata)
-from zarr.compat import text_type
+from zarr.compat import text_type, PY2
 from zarr.codecs import Zlib, Blosc, BZ2
 from zarr.errors import PermissionError
 from zarr.hierarchy import group
@@ -40,6 +41,7 @@ class StoreTests(object):
         # test __contains__, __getitem__, __setitem__
         assert 'foo' not in store
         with assert_raises(KeyError):
+            # noinspection PyStatementEffect
             store['foo']
         store['foo'] = b'bar'
         assert 'foo' in store
@@ -53,8 +55,10 @@ class StoreTests(object):
         else:
             assert 'foo' not in store
             with assert_raises(KeyError):
+                # noinspection PyStatementEffect
                 store['foo']
             with assert_raises(KeyError):
+                # noinspection PyStatementEffect
                 del store['foo']
 
     def test_writeable_values(self):
@@ -706,25 +710,28 @@ except ImportError:  # pragma: no cover
     pass
 
 
-try:
-    import lmdb
+class TestLMDBStore(StoreTests, unittest.TestCase):
 
-    class TestLMDBStore(StoreTests, unittest.TestCase):
+    def create_store(self):
+        path = tempfile.mktemp(suffix='.lmdb')
+        atexit_rmtree(path)
+        if PY2:
+            # don't use buffers, otherwise would have to rewrite tests as bytes and
+            # buffer don't compare equal in PY2
+            buffers = False
+        else:
+            buffers = True
+        try:
+            store = LMDBStore(path, buffers=buffers)
+        except ImportError:  # pragma: no cover
+            raise SkipTest('lmdb not installed')
+        return store
 
-        def create_store(self):
-            path = tempfile.mktemp(suffix='.lmdb')
-            atexit.register(os.remove, path)
-            store = LMDBStore(path)
-            return store
-
-        def test_context_manager(self):
-            with self.create_store() as store:
-                store['foo'] = b'bar'
-                store['baz'] = b'qux'
-                eq(2, len(store))
-
-except ImportError:  # pragma: no cover
-    pass
+    def test_context_manager(self):
+        with self.create_store() as store:
+            store['foo'] = b'bar'
+            store['baz'] = b'qux'
+            eq(2, len(store))
 
 
 def test_getsize():

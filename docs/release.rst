@@ -30,14 +30,19 @@ Enhancements
   :issue:`123`, :issue:`139`.
 
 * **New storage class for DBM-style databases**. The
-  :class:`zarr.storage.DBMStore` class enables any DBM-style database to be used
-  as the backing store for an array or group. See the tutorial section on
-  :ref:`tutorial_storage` for some examples. :issue:`133`, :issue:`186`
+  :class:`zarr.storage.DBMStore` class enables any DBM-style database such as gdbm,
+  ndbm or Berkeley DB, to be used as the backing store for an array or group. See the
+  tutorial section on :ref:`tutorial_storage` for some examples. :issue:`133`,
+  :issue:`186`.
+
+* **New storage class for LMDB databases**. The :class:`zarr.storage.LMDBStore` class
+  enables an LMDB "Lightning" database to be used as the backing store for an array or
+  group. @@TODO issue
 
 * **New storage class using a nested directory structure for chunk files**. The
   :class:`zarr.storage.NestedDirectoryStore` has been added, which is similar to
   the existing :class:`zarr.storage.DirectoryStore` class but nests chunk files
-  for multidimensional arrays into sub-directories. :issue:`155`, :issue:`177`
+  for multidimensional arrays into sub-directories. :issue:`155`, :issue:`177`.
 
 * **New tree() method for printing hierarchies**. The ``Group`` class has a new
   :func:`zarr.hierarchy.Group.tree` method which enables a tree representation of

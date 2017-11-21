@@ -1345,15 +1345,75 @@ class DBMStore(MutableMapping):
         return key in self.db
 
 
-def lmdb_decode_key(key):
-    # assume buffers=True
-    return key.tobytes().decode('ascii')
+if PY2:
+
+    def lmdb_decode_key_buffer(key):
+        # assume buffers=True
+        return str(key)
+
+    def lmdb_decode_key_bytes(key):
+        return key
+
+else:
+
+    def lmdb_decode_key_buffer(key):
+        # assume buffers=True
+        return key.tobytes().decode('ascii')
+
+    def lmdb_decode_key_bytes(key):
+        # assume buffers=False
+        return key.decode('ascii')
 
 
 class LMDBStore(MutableMapping):
-    """TODO"""
+    """Storage class using LMDB.
 
-    def __init__(self, path, **kwargs):
+    Parameters
+    ----------
+    path : string
+        Location of database file.
+    buffers : bool, optional
+        If True (default) use support for buffers, which should increase performance by
+        reducing memory copies.
+    **kwargs
+        Keyword arguments passed through to the `lmdb.open` function.
+
+    Notes
+    -----
+    Requires the `lmdb <http://lmdb.readthedocs.io/en/release/>`_ package to be installed.
+
+    Examples
+    --------
+    Store a single array::
+
+        >>> import zarr
+        >>> store = zarr.LMDBStore('data/array.mdb')
+        >>> z = zarr.zeros((10, 10), chunks=(5, 5), store=store, overwrite=True)
+        >>> z[...] = 42
+        >>> store.close()  # don't forget to call this when you're done
+
+    Store a group::
+
+        >>> store = zarr.LMDBStore('data/group.mdb')
+        >>> root = zarr.group(store=store, overwrite=True)
+        >>> foo = root.create_group('foo')
+        >>> bar = foo.zeros('bar', shape=(10, 10), chunks=(5, 5))
+        >>> bar[...] = 42
+        >>> store.close()  # don't forget to call this when you're done
+
+    After modifying a DBMStore, the ``close()`` method must be called, otherwise
+    essential data may not be written to the underlying database file. The
+    DBMStore class also supports the context manager protocol, which ensures the
+    ``close()`` method is called on leaving the context, e.g.::
+
+        >>> with zarr.LMDBStore('data/array.mdb') as store:
+        ...     z = zarr.zeros((10, 10), chunks=(5, 5), store=store, overwrite=True)
+        ...     z[...] = 42
+        ...     # no need to call store.close()
+
+    """
+
+    def __init__(self, path, buffers=True, **kwargs):
         import lmdb
 
         # set default memory map size to something larger than the lmdb default, which is
@@ -1370,10 +1430,11 @@ class LMDBStore(MutableMapping):
         writemap = sys.platform.startswith('linux')
         kwargs.setdefault('writemap', writemap)
 
-        # decide options for when data are flushed to disk - deviate from zict here to
-        # err on the side of maintaining database integrity
-        kwargs.setdefault('metasync', True)
-        kwargs.setdefault('sync', True)
+        # decide options for when data are flushed to disk - choose to delay syncing
+        # data to filesystem, otherwise pay a large performance penalty (zict also does
+        # this)
+        kwargs.setdefault('metasync', False)
+        kwargs.setdefault('sync', False)
         kwargs.setdefault('map_async', False)
 
         # set default option for number of cached transactions
@@ -1387,6 +1448,11 @@ class LMDBStore(MutableMapping):
         self.db = lmdb.open(path, **kwargs)
 
         # store properties
+        if buffers:
+            self.decode_key = lmdb_decode_key_buffer
+        else:
+            self.decode_key = lmdb_decode_key_bytes
+        self.buffers = buffers
         self.path = path
         self.kwargs = kwargs
 
@@ -1395,7 +1461,7 @@ class LMDBStore(MutableMapping):
         return getattr(self.db, attr)
 
     def __getstate__(self):
-        self.db.sync()  # just in case
+        self.sync()  # just in case
         return self.path, self.kwargs
 
     def __setstate__(self, state):
@@ -1419,7 +1485,7 @@ class LMDBStore(MutableMapping):
     def __getitem__(self, key):
         key = encode_key(key)
         # use the buffers option, should avoid a memory copy
-        with self.db.begin(buffers=True) as txn:
+        with self.db.begin(buffers=self.buffers) as txn:
             value = txn.get(key)
         if value is None:
             raise KeyError(key)
@@ -1427,7 +1493,7 @@ class LMDBStore(MutableMapping):
 
     def __setitem__(self, key, value):
         key = encode_key(key)
-        with self.db.begin(write=True, buffers=True) as txn:
+        with self.db.begin(write=True, buffers=self.buffers) as txn:
             txn.put(key, value)
 
     def __delitem__(self, key):
@@ -1438,24 +1504,24 @@ class LMDBStore(MutableMapping):
 
     def __contains__(self, key):
         key = encode_key(key)
-        with self.db.begin(buffers=True) as txn:
+        with self.db.begin(buffers=self.buffers) as txn:
             with txn.cursor() as cursor:
                 return cursor.set_key(key)
 
     def items(self):
-        with self.db.begin(buffers=True) as txn:
+        with self.db.begin(buffers=self.buffers) as txn:
             with txn.cursor() as cursor:
                 for k, v in cursor.iternext(keys=True, values=True):
-                    yield lmdb_decode_key(k), v
+                    yield self.decode_key(k), v
 
     def keys(self):
-        with self.db.begin(buffers=True) as txn:
+        with self.db.begin(buffers=self.buffers) as txn:
             with txn.cursor() as cursor:
                 for k in cursor.iternext(keys=True, values=False):
-                    yield lmdb_decode_key(k)
+                    yield self.decode_key(k)
 
     def values(self):
-        with self.db.begin(buffers=True) as txn:
+        with self.db.begin(buffers=self.buffers) as txn:
             with txn.cursor() as cursor:
                 for v in cursor.iternext(keys=False, values=True):
                     yield v
@@ -1465,5 +1531,3 @@ class LMDBStore(MutableMapping):
 
     def __len__(self):
         return self.db.stat()['entries']
-
-    # TODO could implement listdir efficiently by seeking to key prefix

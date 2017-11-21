@@ -16,6 +16,11 @@ Storage (``zarr.storage``)
     .. automethod:: close
     .. automethod:: sync
 
+.. autoclass:: LMDBStore
+
+    .. automethod:: close
+    .. automethod:: sync
+
 .. autofunction:: init_array
 .. autofunction:: init_group
 .. autofunction:: migrate_1to2

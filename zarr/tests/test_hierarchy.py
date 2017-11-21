@@ -10,10 +10,11 @@ import pickle
 import warnings
 
 
-from nose.tools import (assert_raises, eq_ as eq, assert_is, assert_true,
-                        assert_is_instance, assert_false, assert_is_none)
 import numpy as np
 from numpy.testing import assert_array_equal
+from nose.tools import (assert_raises, eq_ as eq, assert_is, assert_true,
+                        assert_is_instance, assert_false, assert_is_none)
+from nose import SkipTest
 
 
 from zarr.storage import (DictStore, DirectoryStore, ZipStore, init_group, init_array,
@@ -855,20 +856,17 @@ except ImportError:  # pragma: no cover
     pass
 
 
-try:
-    import lmdb
+class TestGroupWithLMDBStore(TestGroup):
 
-    class TestGroupWithLMDBStore(TestGroup):
-
-        @staticmethod
-        def create_store():
-            path = tempfile.mktemp(suffix='.lmdb')
-            atexit.register(os.remove, path)
+    @staticmethod
+    def create_store():
+        path = tempfile.mktemp(suffix='.lmdb')
+        atexit_rmtree(path)
+        try:
             store = LMDBStore(path)
-            return store, None
-
-except ImportError:  # pragma: no cover
-    pass
+        except ImportError:  # pragma: no cover
+            raise SkipTest('lmdb nod installed')
+        return store, None
 
 
 class TestGroupWithChunkStore(TestGroup):

@@ -12,10 +12,11 @@ import numpy as np
 from numpy.testing import assert_array_equal, assert_array_almost_equal
 from nose.tools import (eq_ as eq, assert_is_instance, assert_raises, assert_true,
                         assert_false, assert_is, assert_is_none)
+from nose import SkipTest
 
 
 from zarr.storage import (DirectoryStore, init_array, init_group, NestedDirectoryStore,
-                          DBMStore, LMDBStore)
+                          DBMStore, LMDBStore, atexit_rmtree)
 from zarr.core import Array
 from zarr.errors import PermissionError
 from zarr.compat import PY2
@@ -962,25 +963,22 @@ except ImportError:  # pragma: no cover
     pass
 
 
-try:
-    import lmdb
+class TestArrayWithLMDBStore(TestArray):
 
-    class TestArrayWithLMDBStore(TestArray):
-
-        @staticmethod
-        def create_array(read_only=False, **kwargs):
-            path = mktemp(suffix='.lmdb')
-            atexit.register(os.remove, path)
+    @staticmethod
+    def create_array(read_only=False, **kwargs):
+        path = mktemp(suffix='.lmdb')
+        atexit_rmtree(path)
+        try:
             store = LMDBStore(path)
-            kwargs.setdefault('compressor', Zlib(1))
-            init_array(store, **kwargs)
-            return Array(store, read_only=read_only)
+        except ImportError:  # pragma: no cover
+            raise SkipTest('lmdb not installed')
+        kwargs.setdefault('compressor', Zlib(1))
+        init_array(store, **kwargs)
+        return Array(store, read_only=read_only)
 
-        def test_nbytes_stored(self):
-            pass  # not implemented
-
-except ImportError:  # pragma: no cover
-    pass
+    def test_nbytes_stored(self):
+        pass  # not implemented
 
 
 class TestArrayWithNoCompressor(TestArray):
