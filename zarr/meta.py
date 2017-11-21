@@ -7,7 +7,7 @@ import base64
 import numpy as np
 
 
-from zarr.compat import PY2, text_type, binary_type
+from zarr.compat import PY2, binary_type
 from zarr.errors import MetadataError
 
 
@@ -16,7 +16,8 @@ ZARR_FORMAT = 2
 
 def _ensure_str(s):
     if PY2:  # pragma: py3 no cover
-        if isinstance(s, buffer):
+        # noinspection PyUnresolvedReferences
+        if isinstance(s, buffer):  # noqa
             s = str(s)
     else:  # pragma: py2 no cover
         if isinstance(s, memoryview):
