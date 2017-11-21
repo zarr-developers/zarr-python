@@ -85,6 +85,28 @@ def rmdir(store, path=None):
         _rmdir_from_keys(store, path)
 
 
+def _rename_from_keys(store, src_path, dst_path):
+    # assume path already normalized
+    src_prefix = _path_to_prefix(src_path)
+    dst_prefix = _path_to_prefix(dst_path)
+    for key in list(store.keys()):
+        if key.startswith(src_prefix):
+            new_key = dst_prefix + key.lstrip(src_prefix)
+            store[new_key] = store.pop(key)
+
+
+def rename(store, src_path, dst_path):
+    """Rename all items under the given path."""
+    src_path = normalize_storage_path(src_path)
+    dst_path = normalize_storage_path(dst_path)
+    if hasattr(store, 'rename'):
+        # pass through
+        store.rename(src_path, dst_path)
+    else:
+        # slow version, delete one key at a time
+        _rename_from_keys(store, src_path, dst_path)
+
+
 def _listdir_from_keys(store, path=None):
     # assume path already normalized
     prefix = _path_to_prefix(path)
