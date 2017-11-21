@@ -1462,11 +1462,11 @@ class LMDBStore(MutableMapping):
 
     def __getstate__(self):
         self.sync()  # just in case
-        return self.path, self.kwargs
+        return self.path, self.buffers, self.kwargs
 
     def __setstate__(self, state):
-        path, kwargs = state
-        self.__init__(path, **kwargs)
+        path, buffers, kwargs = state
+        self.__init__(path=path, buffers=buffers, **kwargs)
 
     def close(self):
         """Closes the underlying database."""

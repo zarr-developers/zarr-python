@@ -14,11 +14,20 @@ from zarr.errors import MetadataError
 ZARR_FORMAT = 2
 
 
+def _ensure_str(s):
+    if PY2:  # pragma: py3 no cover
+        if isinstance(s, buffer):
+            s = str(s)
+    else:  # pragma: py2 no cover
+        if isinstance(s, memoryview):
+            s = s.tobytes()
+        if isinstance(s, binary_type):
+            s = s.decode('ascii')
+    return s
+
+
 def decode_array_metadata(s):
-    if isinstance(s, memoryview):
-        s = s.tobytes()
-    if isinstance(s, binary_type):
-        s = s.decode('ascii')
+    s = _ensure_str(s)
     meta = json.loads(s)
     zarr_format = meta.get('zarr_format', None)
     if zarr_format != ZARR_FORMAT:
@@ -85,10 +94,7 @@ def decode_dtype(d):
 
 
 def decode_group_metadata(s):
-    if isinstance(s, memoryview):
-        s = s.tobytes()
-    if isinstance(s, binary_type):
-        s = text_type(s, 'ascii')
+    s = _ensure_str(s)
     meta = json.loads(s)
     zarr_format = meta.get('zarr_format', None)
     if zarr_format != ZARR_FORMAT:
