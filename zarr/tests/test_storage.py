@@ -195,6 +195,52 @@ class StoreTests(object):
             eq([], store.listdir('c/d/y/z'))
             eq([], store.listdir('c/e/f'))
 
+        # test rename (optional)
+        if hasattr(store, 'rename'):
+            store.rename('c/e', 'c/e2')
+            assert 'c/d' in store
+            assert 'c/e' not in store
+            assert 'c/e/f' not in store
+            assert 'c/e/g' not in store
+            assert 'c/e2' not in store
+            assert 'c/e2/f' in store
+            assert 'c/e2/g' in store
+            store.rename('c/e2', 'c/e')
+            assert 'c/d' in store
+            assert 'c/e2' not in store
+            assert 'c/e2/f' not in store
+            assert 'c/e2/g' not in store
+            assert 'c/e' not in store
+            assert 'c/e/f' in store
+            assert 'c/e/g' in store
+            store.rename('c', 'c1/c2/c3')
+            assert 'a' in store
+            assert 'c' not in store
+            assert 'c/d' not in store
+            assert 'c/e' not in store
+            assert 'c/e/f' not in store
+            assert 'c/e/g' not in store
+            assert 'c1' not in store
+            assert 'c1/c2' not in store
+            assert 'c1/c2/c3' not in store
+            assert 'c1/c2/c3/d' in store
+            assert 'c1/c2/c3/e' not in store
+            assert 'c1/c2/c3/e/f' in store
+            assert 'c1/c2/c3/e/g' in store
+            store.rename('c1/c2/c3', 'c')
+            assert 'c' not in store
+            assert 'c/d' in store
+            assert 'c/e' not in store
+            assert 'c/e/f' in store
+            assert 'c/e/g' in store
+            assert 'c1' not in store
+            assert 'c1/c2' not in store
+            assert 'c1/c2/c3' not in store
+            assert 'c1/c2/c3/d' not in store
+            assert 'c1/c2/c3/e' not in store
+            assert 'c1/c2/c3/e/f' not in store
+            assert 'c1/c2/c3/e/g' not in store
+
         # test rmdir (optional)
         if hasattr(store, 'rmdir'):
             store.rmdir('c/e')
