@@ -1380,7 +1380,7 @@ class LMDBStore(MutableMapping):
 
     Notes
     -----
-    Requires the `lmdb <http://lmdb.readthedocs.io/en/release/>`_ package to be installed.
+    Requires the `lmdb <http://lmdb.readthedocs.io/>`_ package to be installed.
 
     Examples
     --------
