@@ -17,6 +17,7 @@ import atexit
 import re
 import sys
 import multiprocessing
+from threading import Lock
 
 
 import numpy as np
@@ -578,6 +579,9 @@ class DictStore(MutableMapping):
             except TypeError:
                 return -1
 
+    def clear(self):
+        self.root.clear()
+
 
 class DirectoryStore(MutableMapping):
     """Storage class using directories and files on a standard file system.
@@ -769,6 +773,9 @@ class DirectoryStore(MutableMapping):
         else:
             err_path_not_found(path)
 
+    def clear(self):
+        shutil.rmtree(self.path)
+
 
 def atexit_rmtree(path,
                   isdir=os.path.isdir,
@@ -803,7 +810,7 @@ _prog_ckey = re.compile(r'^(\d+)(\.\d+)+$')
 _prog_number = re.compile(r'^\d+$')
 
 
-def _map_ckey(key):
+def _nested_map_ckey(key):
     segments = list(key.split('/'))
     if segments:
         last_segment = segments[-1]
@@ -881,19 +888,19 @@ class NestedDirectoryStore(DirectoryStore):
         super(NestedDirectoryStore, self).__init__(path)
 
     def __getitem__(self, key):
-        key = _map_ckey(key)
+        key = _nested_map_ckey(key)
         return super(NestedDirectoryStore, self).__getitem__(key)
 
     def __setitem__(self, key, value):
-        key = _map_ckey(key)
+        key = _nested_map_ckey(key)
         super(NestedDirectoryStore, self).__setitem__(key, value)
 
     def __delitem__(self, key):
-        key = _map_ckey(key)
+        key = _nested_map_ckey(key)
         super(NestedDirectoryStore, self).__delitem__(key)
 
     def __contains__(self, key):
-        key = _map_ckey(key)
+        key = _nested_map_ckey(key)
         return super(NestedDirectoryStore, self).__contains__(key)
 
     def __eq__(self, other):
@@ -1014,6 +1021,7 @@ class ZipStore(MutableMapping):
         self.compression = compression
         self.allowZip64 = allowZip64
         self.mode = mode
+        self.mutex = Lock()
 
         # open zip file
         self.zf = zipfile.ZipFile(path, mode=mode, compression=compression,
@@ -1055,14 +1063,16 @@ class ZipStore(MutableMapping):
         self.close()
 
     def __getitem__(self, key):
-        with self.zf.open(key) as f:  # will raise KeyError
-            return f.read()
+        with self.mutex:
+            with self.zf.open(key) as f:  # will raise KeyError
+                return f.read()
 
     def __setitem__(self, key, value):
         if self.mode == 'r':
             err_read_only()
         value = ensure_bytes(value)
-        self.zf.writestr(key, value)
+        with self.mutex:
+            self.zf.writestr(key, value)
 
     def __delitem__(self, key):
         raise NotImplementedError
@@ -1126,6 +1136,16 @@ class ZipStore(MutableMapping):
         else:
             return 0
 
+    def clear(self):
+        if self.mode == 'r':
+            err_read_only()
+        self.close()
+        os.remove(self.path)
+        self.zf = zipfile.ZipFile(self.path, mode=self.mode, compression=self.compression,
+                                  allowZip64=self.allowZip64)
+
+
+
 
 def migrate_1to2(store):
     """Migrate array metadata in `store` from Zarr format version 1 to
@@ -1176,13 +1196,13 @@ def migrate_1to2(store):
     del store['attrs']
 
 
-def encode_key(key):
+def _dbm_encode_key(key):
     if hasattr(key, 'encode'):
         key = key.encode('ascii')
     return key
 
 
-def decode_key(key):
+def _dbm_decode_key(key):
     if hasattr(key, 'decode'):
         key = key.decode('ascii')
     return key
@@ -1278,12 +1298,8 @@ class DBMStore(MutableMapping):
         self.open = open
         self.open_kwargs = open_kwargs
 
-    def __getattr__(self, attr):
-        # pass everything else through
-        return getattr(self.db, attr)
-
     def __getstate__(self):
-        self.sync()  # just in case, needed for PY2
+        self.flush()  # just in case, needed for PY2
         return self.path, self.flag, self.mode, self.open, self.open_kwargs
 
     def __setstate__(self, state):
@@ -1298,7 +1314,7 @@ class DBMStore(MutableMapping):
         if hasattr(self.db, 'close'):
             self.db.close()
 
-    def sync(self):
+    def flush(self):
         """Synchronizes data to the underlying database file."""
         if hasattr(self.db, 'sync'):
             self.db.sync()
@@ -1310,16 +1326,16 @@ class DBMStore(MutableMapping):
         self.close()
 
     def __getitem__(self, key):
-        key = encode_key(key)
+        key = _dbm_encode_key(key)
         return self.db[key]
 
     def __setitem__(self, key, value):
-        key = encode_key(key)
+        key = _dbm_encode_key(key)
         value = ensure_bytes(value)
         self.db[key] = value
 
     def __delitem__(self, key):
-        key = encode_key(key)
+        key = _dbm_encode_key(key)
         del self.db[key]
 
     def __eq__(self, other):
@@ -1332,7 +1348,7 @@ class DBMStore(MutableMapping):
         )
 
     def keys(self):
-        return (decode_key(k) for k in iter(self.db.keys()))
+        return (_dbm_decode_key(k) for k in iter(self.db.keys()))
 
     def __iter__(self):
         return self.keys()
@@ -1341,26 +1357,26 @@ class DBMStore(MutableMapping):
         return sum(1 for _ in self.keys())
 
     def __contains__(self, key):
-        key = encode_key(key)
+        key = _dbm_encode_key(key)
         return key in self.db
 
 
 if PY2:
 
-    def lmdb_decode_key_buffer(key):
+    def _lmdb_decode_key_buffer(key):
         # assume buffers=True
         return str(key)
 
-    def lmdb_decode_key_bytes(key):
+    def _lmdb_decode_key_bytes(key):
         return key
 
 else:
 
-    def lmdb_decode_key_buffer(key):
+    def _lmdb_decode_key_buffer(key):
         # assume buffers=True
         return key.tobytes().decode('ascii')
 
-    def lmdb_decode_key_bytes(key):
+    def _lmdb_decode_key_bytes(key):
         # assume buffers=False
         return key.decode('ascii')
 
@@ -1449,19 +1465,15 @@ class LMDBStore(MutableMapping):
 
         # store properties
         if buffers:
-            self.decode_key = lmdb_decode_key_buffer
+            self.decode_key = _lmdb_decode_key_buffer
         else:
-            self.decode_key = lmdb_decode_key_bytes
+            self.decode_key = _lmdb_decode_key_bytes
         self.buffers = buffers
         self.path = path
         self.kwargs = kwargs
 
-    def __getattr__(self, attr):
-        # pass everything else through
-        return getattr(self.db, attr)
-
     def __getstate__(self):
-        self.sync()  # just in case
+        self.flush()  # just in case
         return self.path, self.buffers, self.kwargs
 
     def __setstate__(self, state):
@@ -1472,7 +1484,7 @@ class LMDBStore(MutableMapping):
         """Closes the underlying database."""
         self.db.close()
 
-    def sync(self):
+    def flush(self):
         """Synchronizes data to the file system."""
         self.db.sync()
 
@@ -1483,7 +1495,7 @@ class LMDBStore(MutableMapping):
         self.close()
 
     def __getitem__(self, key):
-        key = encode_key(key)
+        key = _dbm_encode_key(key)
         # use the buffers option, should avoid a memory copy
         with self.db.begin(buffers=self.buffers) as txn:
             value = txn.get(key)
@@ -1492,18 +1504,18 @@ class LMDBStore(MutableMapping):
         return value
 
     def __setitem__(self, key, value):
-        key = encode_key(key)
+        key = _dbm_encode_key(key)
         with self.db.begin(write=True, buffers=self.buffers) as txn:
             txn.put(key, value)
 
     def __delitem__(self, key):
-        key = encode_key(key)
+        key = _dbm_encode_key(key)
         with self.db.begin(write=True) as txn:
             if not txn.delete(key):
                 raise KeyError(key)
 
     def __contains__(self, key):
-        key = encode_key(key)
+        key = _dbm_encode_key(key)
         with self.db.begin(buffers=self.buffers) as txn:
             with txn.cursor() as cursor:
                 return cursor.set_key(key)
