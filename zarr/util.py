@@ -31,7 +31,7 @@ def normalize_shape(shape):
 
 # code to guess chunk shape, adapted from h5py
 
-CHUNK_BASE = 128*1024  # Multiplier by which chunks are adjusted
+CHUNK_BASE = 256*1024  # Multiplier by which chunks are adjusted
 CHUNK_MIN = 128*1024  # Soft lower limit (128k)
 CHUNK_MAX = 64*1024*1024  # Hard upper limit
 
