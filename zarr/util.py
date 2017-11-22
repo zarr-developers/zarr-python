@@ -519,8 +519,8 @@ def is_valid_python_name(name):
 
 
 def instance_dir(obj):  # pragma: py3 no cover
-    """Vanilla implementation of built-in dir() for PY2 to help with overriding __dir__. Based on
-    implementation of dir() in pypy."""
+    """Vanilla implementation of built-in dir() for PY2 to help with overriding __dir__.
+    Based on implementation of dir() in pypy."""
     d = dict()
     d.update(obj.__dict__)
     d.update(class_dir(obj.__class__))
@@ -538,6 +538,7 @@ def class_dir(klass):  # pragma: py3 no cover
 
 
 class NoLock(object):
+    """A lock that doesn't lock."""
 
     def __enter__(self):
         pass
