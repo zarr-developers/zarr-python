@@ -927,31 +927,36 @@ filters (e.g., byte-shuffle) have been applied.
 Parallel computing and synchronization
 --------------------------------------
 
-Zarr arrays have been designed to be usable as the source and/or sink for data
-in parallel computations. Both multi-threaded and multi-process parallelism are
-supported. The Python global interpreter lock (GIL) is released wherever
-possible for both compression and decompression operations, so Zarr will
-generally not block other Python threads from running.
+Zarr arrays have been designed for use as the source and/or sink for data in
+parallel computations. Please note that this is an area of ongoing research and
+development. If you are using Zarr for parallel computing, we welcome feedback,
+experience, discussion, ideas and advice, particularly about issues such as data
+integrity and performance.
 
-Please note that Zarr arrays can be stored via a number of different storage
-systems (see :ref:`tutorial_storage`), and not all storage systems support
-concurrent access from multiple threads or processes. Please see the API docs
-for the :mod:`zarr.storage` module for more information about which storage
+Both multi-threaded and multi-process parallelism are possible, although Zarr
+can use a number of different storage systems (see :ref:`tutorial_storage`) and
+not all storage systems support both types of parallelism. Please see the API
+docs for the :mod:`zarr.storage` module for more information about which storage
 classes support parellel computing.
 
-If the underlying store supports concurrent reads, then a Zarr array can be read
-concurrently by multiple threads or processes. No synchronization (i.e.,
-locking) is required for concurrent reads.
+The bottleneck for most storage and retrieval operations is
+compression/decompression, and the Python global interpreter lock (GIL) is
+released wherever possible during these operations, so Zarr will generally not
+block other Python threads from running.
 
-If the underlying store supports concurrent writes, then a Zarr array can also
-be written to concurrently by multiple threads or processes. Some
-synchronization may be required, depending on the way the data is being written.
+Depending on how data are being accessed or updated, some synchronization
+(locking) may be required to avoid data loss. If an array is being read
+concurrently by multiple threads or processes, no synchronization is
+required. If an array is being written to concurrently by multiple threads or
+processes, some synchronization may be required, depending on the way the data
+is being written.
 
 If each worker in a parallel computation is writing to a separate region of the
 array, and if region boundaries are perfectly aligned with chunk boundaries,
 then no synchronization is required. However, if region and chunk boundaries are
 not perfectly aligned, then synchronization is required to avoid two workers
-attempting to modify the same chunk at the same time.
+attempting to modify the same chunk at the same time, which could result in data
+loss.
 
 To give a simple example, consider a 1-dimensional array of length 60, ``z``,
 divided into three chunks of 20 elements each. If three workers are running and
