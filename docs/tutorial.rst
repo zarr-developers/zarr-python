@@ -729,10 +729,6 @@ group (requires `lmdb <http://lmdb.readthedocs.io/>`_ to be installed)::
     >>> z[:] = 42
     >>> store.close()
 
-If you are interested in performance, there are some [very simple benchmarks](@@TODO)
-comparing different local storage options. However, any other benchmark data or
-usage experience would be very welcome.
-
 It is also possible to use distributed storage systems. The Dask project has
 implementations of the ``MutableMapping`` interface for Amazon S3 (`S3Map
 <http://s3fs.readthedocs.io/en/latest/api.html#s3fs.mapping.S3Map>`_), Hadoop
