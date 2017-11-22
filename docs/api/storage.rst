@@ -14,12 +14,12 @@ Storage (``zarr.storage``)
 .. autoclass:: DBMStore
 
     .. automethod:: close
-    .. automethod:: sync
+    .. automethod:: flush
 
 .. autoclass:: LMDBStore
 
     .. automethod:: close
-    .. automethod:: sync
+    .. automethod:: flush
 
 .. autofunction:: init_array
 .. autofunction:: init_group
