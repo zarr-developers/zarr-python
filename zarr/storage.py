@@ -440,7 +440,7 @@ class DictStore(MutableMapping):
 
     Notes
     -----
-    This class should be safe to read or write in multiple threads.
+    Safe to write in multiple threads.
 
     """
 
@@ -647,10 +647,10 @@ class DirectoryStore(MutableMapping):
     -----
     Atomic writes are used, which means that data are first written to a
     temporary file, then moved into place when the write is successfully
-    completed.
+    completed. Files are only held open while they are being read or written and are
+    closed immediately afterwards, so there is no need to manually close any files.
 
-    Files are only held open while they are being read or written and are closed
-    immediately afterwards, so there is no need to manually close any files.
+    Safe to write in multiple threads or processes.
 
     """
 
@@ -901,6 +901,8 @@ class NestedDirectoryStore(DirectoryStore):
     files for multidimensional arrays will be organised into a directory
     hierarchy, thus reducing the number of files in any one directory.
 
+    Safe to write in multiple threads or processes.
+
     """
 
     def __init__(self, path):
@@ -1029,6 +1031,8 @@ class ZipStore(MutableMapping):
 
     Alternatively, use a :class:`DirectoryStore` when writing the data, then
     manually Zip the directory and use the Zip file for subsequent reads.
+
+    Safe to write in multiple threads but not in multiple processes.
 
     """
 
@@ -1310,6 +1314,10 @@ class DBMStore(MutableMapping):
     corresponding open function, e.g., `dbm.gnu.open` to use the GNU DBM
     library.
 
+    Safe to write in multiple threads. May be safe to write in multiple processes,
+    depending on which DBM implementation is being used, although this has not been
+    tested.
+
     """
 
     def __init__(self, path, flag='c', mode=0o666, open=None, write_lock=True,
@@ -1322,6 +1330,7 @@ class DBMStore(MutableMapping):
                 import dbm
                 open = dbm.open
         path = os.path.abspath(path)
+        # noinspection PyArgumentList
         self.db = open(path, flag, mode, **open_kwargs)
         self.path = path
         self.flag = flag
@@ -1470,6 +1479,14 @@ class LMDBStore(MutableMapping):
         ...     z = zarr.zeros((10, 10), chunks=(5, 5), store=store, overwrite=True)
         ...     z[...] = 42
         ...     # no need to call store.close()
+
+    Notes
+    -----
+    By default writes are not immediately flushed to disk to increase performance. You
+    can ensure data are flushed to disk by calling the ``flush()`` or ``close()`` methods.
+
+    Should be safe to write in multiple threads or processes due to the synchronization
+    support within LMDB, although writing from multiple processes has not been tested.
 
     """
 
