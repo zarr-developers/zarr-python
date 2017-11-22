@@ -713,8 +713,8 @@ database for storage (requires `bsddb3
 <https://www.jcea.es/programacion/pybsddb.htm>`_ to be installed)::
 
     >>> import bsddb3
-    >>> store = zarr.DBMStore('data/example.bdb', open=bsddb3.btopen, flag='n')
-    >>> root = zarr.group(store=store)
+    >>> store = zarr.DBMStore('data/example.bdb', open=bsddb3.btopen)
+    >>> root = zarr.group(store=store, overwrite=True)
     >>> z = root.zeros('foo/bar', shape=(1000, 1000), chunks=(100, 100), dtype='i4')
     >>> z[:] = 42
     >>> store.close()
@@ -724,7 +724,7 @@ enables the lightning memory-mapped database (LMDB) to be used for storing an ar
 group (requires `lmdb <http://lmdb.readthedocs.io/>`_ to be installed)::
 
     >>> store = zarr.LMDBStore('data/example.lmdb')
-    >>> root = zarr.group(store=store)
+    >>> root = zarr.group(store=store, overwrite=True)
     >>> z = root.zeros('foo/bar', shape=(1000, 1000), chunks=(100, 100), dtype='i4')
     >>> z[:] = 42
     >>> store.close()
@@ -870,7 +870,7 @@ a chunk shape is based on simple heuristics and may be far from optimal. E.g.::
 
     >>> z4 = zarr.zeros((10000, 10000), chunks=True, dtype='i4')
     >>> z4.chunks
-    (313, 625)
+    (625, 625)
 
 If you know you are always going to be loading the entire array into memory, you
 can turn off chunks by providing ``chunks=False``, in which case there will be

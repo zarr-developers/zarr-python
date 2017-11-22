@@ -970,7 +970,25 @@ class TestArrayWithLMDBStore(TestArray):
         path = mktemp(suffix='.lmdb')
         atexit_rmtree(path)
         try:
-            store = LMDBStore(path)
+            store = LMDBStore(path, buffers=True)
+        except ImportError:  # pragma: no cover
+            raise SkipTest('lmdb not installed')
+        kwargs.setdefault('compressor', Zlib(1))
+        init_array(store, **kwargs)
+        return Array(store, read_only=read_only)
+
+    def test_nbytes_stored(self):
+        pass  # not implemented
+
+
+class TestArrayWithLMDBStoreNoBuffers(TestArray):
+
+    @staticmethod
+    def create_array(read_only=False, **kwargs):
+        path = mktemp(suffix='.lmdb')
+        atexit_rmtree(path)
+        try:
+            store = LMDBStore(path, buffers=False)
         except ImportError:  # pragma: no cover
             raise SkipTest('lmdb not installed')
         kwargs.setdefault('compressor', Zlib(1))

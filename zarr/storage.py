@@ -717,15 +717,16 @@ class DirectoryStore(MutableMapping):
         )
 
     def keys(self):
-        directories = [(self.path, '')]
-        while directories:
-            dir_name, prefix = directories.pop()
-            for name in os.listdir(dir_name):
-                path = os.path.join(dir_name, name)
-                if os.path.isfile(path):
-                    yield prefix + name
-                elif os.path.isdir(path):
-                    directories.append((path, prefix + name + '/'))
+        if os.path.exists(self.path):
+            directories = [(self.path, '')]
+            while directories:
+                dir_name, prefix = directories.pop()
+                for name in os.listdir(dir_name):
+                    path = os.path.join(dir_name, name)
+                    if os.path.isfile(path):
+                        yield prefix + name
+                    elif os.path.isdir(path):
+                        directories.append((path, prefix + name + '/'))
 
     def __iter__(self):
         return self.keys()
@@ -1145,8 +1146,6 @@ class ZipStore(MutableMapping):
                                   allowZip64=self.allowZip64)
 
 
-
-
 def migrate_1to2(store):
     """Migrate array metadata in `store` from Zarr format version 1 to
     version 2.
@@ -1361,7 +1360,7 @@ class DBMStore(MutableMapping):
         return key in self.db
 
 
-if PY2:
+if PY2:  # pragma: py3 no cover
 
     def _lmdb_decode_key_buffer(key):
         # assume buffers=True
@@ -1370,7 +1369,7 @@ if PY2:
     def _lmdb_decode_key_bytes(key):
         return key
 
-else:
+else:  # pragma: py2 no cover
 
     def _lmdb_decode_key_buffer(key):
         # assume buffers=True

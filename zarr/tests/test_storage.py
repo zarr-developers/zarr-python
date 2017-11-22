@@ -61,6 +61,16 @@ class StoreTests(object):
                 # noinspection PyStatementEffect
                 del store['foo']
 
+    def test_clear(self):
+        store = self.create_store()
+        store['foo'] = b'bar'
+        store['baz'] = b'qux'
+        assert len(store) == 2
+        store.clear()
+        assert len(store) == 0
+        assert 'foo' not in store
+        assert 'baz' not in store
+
     def test_writeable_values(self):
         store = self.create_store()
 
@@ -134,6 +144,7 @@ class StoreTests(object):
             eq(15, store.getsize())
             eq(5, store.getsize('spong'))
 
+    # noinspection PyStatementEffect
     def test_hierarchy(self):
         # setup
         store = self.create_store()
@@ -661,6 +672,8 @@ class TestZipStore(StoreTests, unittest.TestCase):
         store = ZipStore('data/store.zip', mode='r')
         with assert_raises(PermissionError):
             store['foo'] = b'bar'
+        with assert_raises(PermissionError):
+            store.clear()
 
     def test_flush(self):
         store = ZipStore('data/store.zip', mode='w')
@@ -715,11 +728,11 @@ class TestLMDBStore(StoreTests, unittest.TestCase):
     def create_store(self):
         path = tempfile.mktemp(suffix='.lmdb')
         atexit_rmtree(path)
-        if PY2:
+        if PY2:  # pragma: py3 no cover
             # don't use buffers, otherwise would have to rewrite tests as bytes and
             # buffer don't compare equal in PY2
             buffers = False
-        else:
+        else:  # pragma: py2 no cover
             buffers = True
         try:
             store = LMDBStore(path, buffers=buffers)

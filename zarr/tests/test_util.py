@@ -113,7 +113,7 @@ def test_guess_chunks():
         (100, 100),
         (1000000,),
         (1000000000,),
-        (10000000000000000,),
+        (10000000000000000000000,),
         (10000, 10000),
         (10000000, 1000),
         (1000, 10000000),
@@ -121,6 +121,7 @@ def test_guess_chunks():
         (1000, 10000000, 2),
         (10000, 10000, 10000),
         (100000, 100000, 100000),
+        (1000000000, 1000000000, 1000000000),
         (0,),
         (0, 0),
         (10, 0),
@@ -135,7 +136,7 @@ def test_guess_chunks():
         assert all([0 < c <= max(s, 1) for c, s in zip(chunks, shape)])
 
     # ludicrous itemsize
-    chunks = guess_chunks((1000000,), 40000000)
+    chunks = guess_chunks((1000000,), 40000000000)
     assert_is_instance(chunks, tuple)
     eq((1,), chunks)
 
