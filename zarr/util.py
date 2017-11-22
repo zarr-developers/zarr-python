@@ -546,11 +546,5 @@ class NoLock(object):
     def __exit__(self, *args):
         pass
 
-    def acquire(self, *args, **kwargs):
-        pass
-
-    def release(self):
-        pass
-
 
 nolock = NoLock()

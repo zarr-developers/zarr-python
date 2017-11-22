@@ -693,7 +693,7 @@ class TestZipStore(StoreTests, unittest.TestCase):
             eq(2, len(store))
 
 
-class TestDBMStoreStdlib(StoreTests, unittest.TestCase):
+class TestDBMStore(StoreTests, unittest.TestCase):
 
     def create_store(self):
         path = tempfile.mktemp(suffix='.dbm')
@@ -709,14 +709,32 @@ class TestDBMStoreStdlib(StoreTests, unittest.TestCase):
 
 
 try:
-    import bsddb3
+    if PY2:  # pragma: py3 no cover
+        import gdbm
+    else:  # pragma: py2 no cover
+        import dbm.gnu as gdbm
 
-    class TestDBMStoreBerkeleyDB(TestDBMStoreStdlib):
+    class TestDBMStoreGnu(TestDBMStore):
 
         def create_store(self):
             path = tempfile.mktemp(suffix='.dbm')
             atexit.register(os.remove, path)
-            store = DBMStore(path, flag='n', open=bsddb3.btopen)
+            store = DBMStore(path, flag='n', open=gdbm.open, write_lock=False)
+            return store
+
+except ImportError:  # pragma: no cover
+    pass
+
+
+try:
+    import bsddb3
+
+    class TestDBMStoreBerkeleyDB(TestDBMStore):
+
+        def create_store(self):
+            path = tempfile.mktemp(suffix='.dbm')
+            atexit.register(os.remove, path)
+            store = DBMStore(path, flag='n', open=bsddb3.btopen, write_lock=False)
             return store
 
 except ImportError:  # pragma: no cover
