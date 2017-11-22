@@ -438,11 +438,16 @@ class DictStore(MutableMapping):
         >>> type(z.store)
         <class 'dict'>
 
+    Notes
+    -----
+    This class should be safe to read or write in multiple threads.
+
     """
 
     def __init__(self, cls=dict):
         self.root = cls()
         self.cls = cls
+        self.write_mutex = Lock()
 
     def _get_parent(self, item):
         parent = self.root
@@ -484,15 +489,17 @@ class DictStore(MutableMapping):
                 return value
 
     def __setitem__(self, item, value):
-        parent, key = self._require_parent(item)
-        parent[key] = value
+        with self.write_mutex:
+            parent, key = self._require_parent(item)
+            parent[key] = value
 
     def __delitem__(self, item):
-        parent, key = self._get_parent(item)
-        try:
-            del parent[key]
-        except KeyError:
-            raise KeyError(item)
+        with self.write_mutex:
+            parent, key = self._get_parent(item)
+            try:
+                del parent[key]
+            except KeyError:
+                raise KeyError(item)
 
     def __contains__(self, item):
         try:
@@ -580,7 +587,8 @@ class DictStore(MutableMapping):
                 return -1
 
     def clear(self):
-        self.root.clear()
+        with self.write_mutex:
+            self.root.clear()
 
 
 class DirectoryStore(MutableMapping):
@@ -1022,6 +1030,7 @@ class ZipStore(MutableMapping):
         self.compression = compression
         self.allowZip64 = allowZip64
         self.mode = mode
+        # TODO no lock needed if mode='r'? Does it matter for read-only performance?
         self.mutex = Lock()
 
         # open zip file
@@ -1296,6 +1305,7 @@ class DBMStore(MutableMapping):
         self.mode = mode
         self.open = open
         self.open_kwargs = open_kwargs
+        # TODO consider optional write mutex
 
     def __getstate__(self):
         self.flush()  # just in case, needed for PY2
