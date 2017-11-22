@@ -38,6 +38,7 @@ class TestArray(unittest.TestCase):
         eq((10,), a.chunks)
         eq('', a.path)
         assert_is_none(a.name)
+        assert_is_none(a.basename)
         assert_is(store, a.store)
 
         # initialize at path
@@ -49,6 +50,7 @@ class TestArray(unittest.TestCase):
         eq((10,), a.chunks)
         eq('foo/bar', a.path)
         eq('/foo/bar', a.name)
+        eq('bar', a.basename)
         assert_is(store, a.store)
 
         # store not initialized

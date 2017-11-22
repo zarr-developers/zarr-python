@@ -64,6 +64,7 @@ class TestGroup(unittest.TestCase):
         assert_false(g.read_only)
         eq('', g.path)
         eq('/', g.name)
+        eq('', g.basename)
         assert_is_instance(g.attrs, Attributes)
         assert_is_instance(g.info, InfoReporter)
         assert_is_instance(repr(g.info), str)
@@ -77,6 +78,7 @@ class TestGroup(unittest.TestCase):
         assert_true(g.read_only)
         eq('foo/bar', g.path)
         eq('/foo/bar', g.name)
+        eq('bar', g.basename)
         assert_is_instance(g.attrs, Attributes)
 
     def test_group_init_errors_1(self):
