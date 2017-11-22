@@ -141,6 +141,11 @@ class Group(MutableMapping):
         return '/'
 
     @property
+    def basename(self):
+        """Final component of name."""
+        return self.name.split('/')[-1]
+
+    @property
     def read_only(self):
         """A boolean, True if modification operations are not permitted."""
         return self._read_only
@@ -473,11 +478,10 @@ class Group(MutableMapping):
 
         def _visit(obj):
             yield obj
-
             keys = sorted(getattr(obj, "keys", lambda: [])())
-            for each_key in keys:
-                for each_obj in _visit(obj[each_key]):
-                    yield each_obj
+            for k in keys:
+                for v in _visit(obj[k]):
+                    yield v
 
         for each_obj in islice(_visit(self), 1, None):
             value = func(each_obj)

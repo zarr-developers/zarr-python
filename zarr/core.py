@@ -213,6 +213,13 @@ class Array(object):
         return None
 
     @property
+    def basename(self):
+        """Final component of name."""
+        if self.name is not None:
+            return self.name.split('/')[-1]
+        return None
+
+    @property
     def read_only(self):
         """A boolean, True if modification operations are not permitted."""
         return self._read_only
