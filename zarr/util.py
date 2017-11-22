@@ -535,3 +535,21 @@ def class_dir(klass):  # pragma: py3 no cover
     for base in bases:
         d.update(class_dir(base))
     return d
+
+
+class NoLock(object):
+
+    def __enter__(self):
+        pass
+
+    def __exit__(self, *args):
+        pass
+
+    def acquire(self, *args, **kwargs):
+        pass
+
+    def release(self):
+        pass
+
+
+nolock = NoLock()

@@ -10,7 +10,7 @@ import numpy as np
 
 from zarr.util import (is_total_slice, human_readable_size, normalize_resize_args,
                        normalize_storage_path, normalize_shape, normalize_chunks,
-                       InfoReporter, check_array_shape)
+                       InfoReporter, check_array_shape, nolock)
 from zarr.storage import array_meta_key, attrs_key, listdir, getsize
 from zarr.meta import decode_array_metadata, encode_array_metadata
 from zarr.attrs import Attributes
@@ -1606,16 +1606,17 @@ class Array(object):
 
         """
 
-        # synchronization
         if self._synchronizer is None:
-            self._chunk_setitem_nosync(chunk_coords, chunk_selection, value,
-                                       fields=fields)
+            # no synchronization
+            lock = nolock
         else:
             # synchronize on the chunk
             ckey = self._chunk_key(chunk_coords)
-            with self._synchronizer[ckey]:
-                self._chunk_setitem_nosync(chunk_coords, chunk_selection, value,
-                                           fields=fields)
+            lock = self._synchronizer[ckey]
+
+        with lock:
+            self._chunk_setitem_nosync(chunk_coords, chunk_selection, value,
+                                       fields=fields)
 
     def _chunk_setitem_nosync(self, chunk_coords, chunk_selection, value, fields=None):
 
@@ -1836,18 +1837,20 @@ class Array(object):
 
     def _synchronized_op(self, f, *args, **kwargs):
 
-        # no synchronization
         if self._synchronizer is None:
-            self._refresh_metadata_nosync()
-            return f(*args, **kwargs)
+            # no synchronization
+            lock = nolock
 
         else:
             # synchronize on the array
             mkey = self._key_prefix + array_meta_key
-            with self._synchronizer[mkey]:
-                self._refresh_metadata_nosync()
-                result = f(*args, **kwargs)
-            return result
+            lock = self._synchronizer[mkey]
+
+        with lock:
+            self._refresh_metadata_nosync()
+            result = f(*args, **kwargs)
+
+        return result
 
     def _write_op(self, f, *args, **kwargs):
 

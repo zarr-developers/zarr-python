@@ -17,14 +17,14 @@ import atexit
 import re
 import sys
 import multiprocessing
-from threading import Lock
+from threading import Lock, RLock
 
 
 import numpy as np
 
 
 from zarr.util import (normalize_shape, normalize_chunks, normalize_order,
-                       normalize_storage_path, buffer_size, normalize_fill_value)
+                       normalize_storage_path, buffer_size, normalize_fill_value, nolock)
 from zarr.meta import encode_array_metadata, encode_group_metadata
 from zarr.compat import PY2, binary_type, PermissionError
 from numcodecs.registry import codec_registry
@@ -444,10 +444,20 @@ class DictStore(MutableMapping):
 
     """
 
-    def __init__(self, cls=dict):
-        self.root = cls()
+    def __init__(self, root=None, cls=dict):
+        if root is None:
+            self.root = cls()
+        else:
+            self.root = root
         self.cls = cls
         self.write_mutex = Lock()
+
+    def __getstate__(self):
+        return self.root, self.cls
+
+    def __setstate__(self, state):
+        root, cls = state
+        self.__init__(root=root, cls=cls)
 
     def _get_parent(self, item):
         parent = self.root
@@ -1030,8 +1040,11 @@ class ZipStore(MutableMapping):
         self.compression = compression
         self.allowZip64 = allowZip64
         self.mode = mode
-        # TODO no lock needed if mode='r'? Does it matter for read-only performance?
-        self.mutex = Lock()
+
+        # Current understanding is that zipfile module in stdlib is not thread-safe,
+        # and so locking is required for both read and write. However, this has not
+        # been investigated in detail, perhaps no lock is needed if mode='r'.
+        self.mutex = RLock()
 
         # open zip file
         self.zf = zipfile.ZipFile(path, mode=mode, compression=compression,
@@ -1051,7 +1064,8 @@ class ZipStore(MutableMapping):
 
     def close(self):
         """Closes the underlying zip file, ensuring all records are written."""
-        self.zf.close()
+        with self.mutex:
+            self.zf.close()
 
     def flush(self):
         """Closes the underlying zip file, ensuring all records are written,
@@ -1059,12 +1073,13 @@ class ZipStore(MutableMapping):
         if self.mode == 'r':
             raise PermissionError('cannot flush read-only ZipStore')
         else:
-            self.zf.close()
-            # N.B., re-open with mode 'a' regardless of initial mode so we don't wipe
-            # what's been written
-            self.zf = zipfile.ZipFile(self.path, mode='a',
-                                      compression=self.compression,
-                                      allowZip64=self.allowZip64)
+            with self.mutex:
+                self.zf.close()
+                # N.B., re-open with mode 'a' regardless of initial mode so we don't wipe
+                # what's been written
+                self.zf = zipfile.ZipFile(self.path, mode='a',
+                                          compression=self.compression,
+                                          allowZip64=self.allowZip64)
 
     def __enter__(self):
         return self
@@ -1096,7 +1111,8 @@ class ZipStore(MutableMapping):
         )
 
     def keylist(self):
-        return sorted(self.zf.namelist())
+        with self.mutex:
+            return sorted(self.zf.namelist())
 
     def keys(self):
         for key in self.keylist():
@@ -1110,7 +1126,8 @@ class ZipStore(MutableMapping):
 
     def __contains__(self, key):
         try:
-            self.zf.getinfo(key)
+            with self.mutex:
+                self.zf.getinfo(key)
         except KeyError:
             return False
         else:
@@ -1122,37 +1139,40 @@ class ZipStore(MutableMapping):
 
     def getsize(self, path=None):
         path = normalize_storage_path(path)
-        children = self.listdir(path)
-        if children:
-            size = 0
-            for child in children:
-                if path:
-                    name = path + '/' + child
-                else:
-                    name = child
+        with self.mutex:
+            children = self.listdir(path)
+            if children:
+                size = 0
+                for child in children:
+                    if path:
+                        name = path + '/' + child
+                    else:
+                        name = child
+                    try:
+                        info = self.zf.getinfo(name)
+                    except KeyError:
+                        pass
+                    else:
+                        size += info.compress_size
+                return size
+            elif path:
                 try:
-                    info = self.zf.getinfo(name)
+                    info = self.zf.getinfo(path)
+                    return info.compress_size
                 except KeyError:
-                    pass
-                else:
-                    size += info.compress_size
-            return size
-        elif path:
-            try:
-                info = self.zf.getinfo(path)
-                return info.compress_size
-            except KeyError:
-                err_path_not_found(path)
-        else:
-            return 0
+                    err_path_not_found(path)
+            else:
+                return 0
 
     def clear(self):
         if self.mode == 'r':
             err_read_only()
-        self.close()
-        os.remove(self.path)
-        self.zf = zipfile.ZipFile(self.path, mode=self.mode, compression=self.compression,
-                                  allowZip64=self.allowZip64)
+        with self.mutex:
+            self.close()
+            os.remove(self.path)
+            self.zf = zipfile.ZipFile(self.path, mode=self.mode,
+                                      compression=self.compression,
+                                      allowZip64=self.allowZip64)
 
 
 def migrate_1to2(store):
@@ -1231,6 +1251,8 @@ class DBMStore(MutableMapping):
     open : function, optional
         Function to open the database file. If not provided, :func:`dbm.open` will be
         used on Python 3, and :func:`anydbm.open` will be used on Python 2.
+    thread_lock: bool, optional
+        Use a lock to prevent concurrent writes from multiple threads (True by default).
     **open_kwargs
         Keyword arguments to pass the `open` function.
 
@@ -1290,7 +1312,8 @@ class DBMStore(MutableMapping):
 
     """
 
-    def __init__(self, path, flag='c', mode=0o666, open=None, **open_kwargs):
+    def __init__(self, path, flag='c', mode=0o666, open=None,
+                 write_lock=True, **open_kwargs):
         if open is None:
             if PY2:  # pragma: py3 no cover
                 import anydbm
@@ -1304,29 +1327,37 @@ class DBMStore(MutableMapping):
         self.flag = flag
         self.mode = mode
         self.open = open
+        self.write_lock = write_lock
+        if write_lock:
+            self.write_mutex = Lock()
+        else:
+            self.write_mutex = nolock
         self.open_kwargs = open_kwargs
-        # TODO consider optional write mutex
 
     def __getstate__(self):
         self.flush()  # just in case, needed for PY2
-        return self.path, self.flag, self.mode, self.open, self.open_kwargs
+        return (self.path, self.flag, self.mode, self.open, self.write_lock,
+                self.open_kwargs)
 
     def __setstate__(self, state):
-        path, flag, mode, open, open_kws = state
+        path, flag, mode, open, write_lock, open_kws = state
         if flag == 'n':
             # don't clobber an existing database
             flag = 'c'
-        self.__init__(path=path, flag=flag, mode=mode, open=open, **open_kws)
+        self.__init__(path=path, flag=flag, mode=mode, open=open,
+                      write_lock=write_lock, **open_kws)
 
     def close(self):
         """Closes the underlying database file."""
         if hasattr(self.db, 'close'):
-            self.db.close()
+            with self.write_mutex:
+                self.db.close()
 
     def flush(self):
         """Synchronizes data to the underlying database file."""
         if hasattr(self.db, 'sync'):
-            self.db.sync()
+            with self.write_mutex:
+                self.db.sync()
 
     def __enter__(self):
         return self
@@ -1341,11 +1372,13 @@ class DBMStore(MutableMapping):
     def __setitem__(self, key, value):
         key = _dbm_encode_key(key)
         value = ensure_bytes(value)
-        self.db[key] = value
+        with self.write_mutex:
+            self.db[key] = value
 
     def __delitem__(self, key):
         key = _dbm_encode_key(key)
-        del self.db[key]
+        with self.write_mutex:
+            del self.db[key]
 
     def __eq__(self, other):
         return (
