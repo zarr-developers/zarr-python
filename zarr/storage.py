@@ -1251,7 +1251,7 @@ class DBMStore(MutableMapping):
     open : function, optional
         Function to open the database file. If not provided, :func:`dbm.open` will be
         used on Python 3, and :func:`anydbm.open` will be used on Python 2.
-    thread_lock: bool, optional
+    write_lock: bool, optional
         Use a lock to prevent concurrent writes from multiple threads (True by default).
     **open_kwargs
         Keyword arguments to pass the `open` function.
@@ -1312,8 +1312,8 @@ class DBMStore(MutableMapping):
 
     """
 
-    def __init__(self, path, flag='c', mode=0o666, open=None,
-                 write_lock=True, **open_kwargs):
+    def __init__(self, path, flag='c', mode=0o666, open=None, write_lock=True,
+                 **open_kwargs):
         if open is None:
             if PY2:  # pragma: py3 no cover
                 import anydbm
@@ -1329,6 +1329,8 @@ class DBMStore(MutableMapping):
         self.open = open
         self.write_lock = write_lock
         if write_lock:
+            # This may not be required as some dbm implementations manage their own
+            # locks, but err on the side of caution.
             self.write_mutex = Lock()
         else:
             self.write_mutex = nolock
