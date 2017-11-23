@@ -71,6 +71,20 @@ class StoreTests(object):
         assert 'foo' not in store
         assert 'baz' not in store
 
+    def test_pop(self):
+        store = self.create_store()
+        store['foo'] = b'bar'
+        store['baz'] = b'qux'
+        assert len(store) == 2
+        v = store.pop('foo')
+        assert v == b'bar'
+        assert len(store) == 1
+        v = store.pop('baz')
+        assert v == b'qux'
+        assert len(store) == 0
+        with assert_raises(KeyError):
+            store.pop('xxx')
+
     def test_writeable_values(self):
         store = self.create_store()
 
@@ -688,6 +702,13 @@ class TestZipStore(StoreTests, unittest.TestCase):
             store['foo'] = b'bar'
             store['baz'] = b'qux'
             eq(2, len(store))
+
+    def test_pop(self):
+        # override because not implemented
+        store = self.create_store()
+        store['foo'] = b'bar'
+        with assert_raises(NotImplementedError):
+            store.pop('foo')
 
 
 class TestDBMStore(StoreTests, unittest.TestCase):
