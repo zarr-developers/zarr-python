@@ -1055,6 +1055,7 @@ class ZipStore(MutableMapping):
                                   allowZip64=allowZip64)
 
     def __getstate__(self):
+        self.flush()
         return self.path, self.compression, self.allowZip64, self.mode
 
     def __setstate__(self, state):
@@ -1074,9 +1075,7 @@ class ZipStore(MutableMapping):
     def flush(self):
         """Closes the underlying zip file, ensuring all records are written,
         then re-opens the file for further modifications."""
-        if self.mode == 'r':
-            raise PermissionError('cannot flush read-only ZipStore')
-        else:
+        if self.mode != 'r':
             with self.mutex:
                 self.zf.close()
                 # N.B., re-open with mode 'a' regardless of initial mode so we don't wipe
@@ -1346,15 +1345,14 @@ class DBMStore(MutableMapping):
         self.open_kwargs = open_kwargs
 
     def __getstate__(self):
-        self.flush()  # just in case, needed for PY2
+        self.flush()  # needed for py2 and ndbm
         return (self.path, self.flag, self.mode, self.open, self.write_lock,
                 self.open_kwargs)
 
     def __setstate__(self, state):
         path, flag, mode, open, write_lock, open_kws = state
-        if flag == 'n':
-            # don't clobber an existing database
-            flag = 'c'
+        if flag[0] == 'n':
+            flag = 'c' + flag[1:]  # don't clobber an existing database
         self.__init__(path=path, flag=flag, mode=mode, open=open,
                       write_lock=write_lock, **open_kws)
 
@@ -1366,9 +1364,18 @@ class DBMStore(MutableMapping):
 
     def flush(self):
         """Synchronizes data to the underlying database file."""
-        if hasattr(self.db, 'sync'):
+        if self.flag[0] != 'r':
             with self.write_mutex:
-                self.db.sync()
+                if hasattr(self.db, 'sync'):
+                        self.db.sync()
+                else:
+                    # fall-back, close and re-open, needed for ndbm
+                    flag = self.flag
+                    if flag[0] == 'n':
+                        flag = 'c' + flag[1:]  # don't clobber an existing database
+                    self.db.close()
+                    # noinspection PyArgumentList
+                    self.db = self.open(self.path, flag, self.mode, **self.open_kwargs)
 
     def __enter__(self):
         return self

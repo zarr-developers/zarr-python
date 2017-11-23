@@ -116,8 +116,6 @@ class StoreTests(object):
         store = self.create_store()
         store['foo'] = b'bar'
         store['baz'] = b'quux'
-        if hasattr(store, 'flush'):
-            store.flush()
         store2 = pickle.loads(pickle.dumps(store))
         eq(len(store), len(store2))
         eq(sorted(store.keys()), sorted(store2.keys()))
@@ -683,8 +681,7 @@ class TestZipStore(StoreTests, unittest.TestCase):
         store.close()
 
         store = ZipStore('data/store.zip', mode='r')
-        with assert_raises(PermissionError):
-            store.flush()
+        store.flush()  # no-op
 
     def test_context_manager(self):
         with self.create_store() as store:
@@ -708,6 +705,19 @@ class TestDBMStore(StoreTests, unittest.TestCase):
             eq(2, len(store))
 
 
+class TestDBMStoreDumb(TestDBMStore):
+
+    def create_store(self):
+        path = tempfile.mktemp(suffix='.dumbdbm')
+        if PY2:  # pragma: py3 no cover
+            import dumbdbm
+        else:  # pragma: py2 no cover
+            import dbm.dumb as dumbdbm
+        atexit.register(os.remove, path)
+        store = DBMStore(path, flag='n', open=dumbdbm.open)
+        return store
+
+
 try:
     if PY2:  # pragma: py3 no cover
         import gdbm
@@ -717,13 +727,29 @@ try:
     class TestDBMStoreGnu(TestDBMStore):
 
         def create_store(self):
-            path = tempfile.mktemp(suffix='.dbm')
+            path = tempfile.mktemp(suffix='.gdbm')
             atexit.register(os.remove, path)
             store = DBMStore(path, flag='n', open=gdbm.open, write_lock=False)
             return store
 
 except ImportError:  # pragma: no cover
     pass
+
+
+if not PY2:
+    try:
+        import dbm.ndbm as ndbm
+
+        class TestDBMStoreNDBM(TestDBMStore):
+
+            def create_store(self):
+                path = tempfile.mktemp(suffix='.ndbm')
+                atexit.register(os.remove, path)
+                store = DBMStore(path, flag='n', open=ndbm.open)
+                return store
+
+    except ImportError:  # pragma: no cover
+        pass
 
 
 try:
