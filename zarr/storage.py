@@ -1502,7 +1502,7 @@ class LMDBStore(MutableMapping):
 
         # set default memory map size to something larger than the lmdb default, which is
         # very likely to be too small for any moderate dataset (logic copied from zict)
-        map_size = (1 << 40 if sys.maxsize >= 2**32 else 1 << 28)
+        map_size = (2**40 if sys.maxsize >= 2**32 else 2**28)
         kwargs.setdefault('map_size', map_size)
 
         # don't initialize buffers to zero by default, shouldn't be necessary
