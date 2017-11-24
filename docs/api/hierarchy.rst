@@ -36,3 +36,4 @@ Groups (``zarr.hierarchy``)
     .. automethod:: zeros_like
     .. automethod:: ones_like
     .. automethod:: full_like
+    .. automethod:: move

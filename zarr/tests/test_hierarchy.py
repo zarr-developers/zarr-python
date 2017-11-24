@@ -689,6 +689,9 @@ class TestGroup(unittest.TestCase):
         g = self.create_group()
 
         data = np.arange(100)
+        g['boo'] = data
+
+        data = np.arange(100)
         g['foo'] = data
 
         try:
@@ -719,6 +722,12 @@ class TestGroup(unittest.TestCase):
             assert 'bar' in g
             assert isinstance(g['foo2'], Group)
             assert_array_equal(data, g['bar'])
+
+            with assert_raises(ValueError):
+                g2.move('bar', 'bar2')
+
+            with assert_raises(ValueError):
+                g.move('bar', 'boo')
         except NotImplementedError:
             pass
 
