@@ -95,8 +95,12 @@ Enhancements
 * **Arrays with one or more zero-length dimensions** are now fully supported; by
   :user:`Prakhar Goel <newt0311>`, :issue:`150`, :issue:`154`, :issue:`160`.
 
-* **The .zattrs key is now optional** and will now only be created if at least one
-  custom attribute has been set; :issue:`121`, :issue:`200`.
+* **The .zattrs key is now optional** and will now only be created when the first
+  custom attribute is set; :issue:`121`, :issue:`200`.
+
+* **New Group.move() method** supports moving a sub-group or array to a different
+  location within the same hierarchy. By :user:`John Kirkham <jakirkham>`,
+  :issue:`191`, :issue:`193`, :issue:`196`.
 
 Bug fixes
 ~~~~~~~~~
