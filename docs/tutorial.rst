@@ -983,7 +983,8 @@ This array is safe to read or write from multiple processes.
 
 When using multiple processes to parallelize reads or writes with the blosc
 compression library, it is necessary to set ``zarr.blosc.use_threads = False``,
-as bloscs context manager will share incorrect global state amongst processes.
+as blosc's context manager will share incorrect global state amongst processes.
+Disabling will allow the 'contextual' manager to have correct local state.
 
 Please note that support for parallel computing is an area of ongoing research
 and development. If you are using Zarr for parallel computing, we welcome
