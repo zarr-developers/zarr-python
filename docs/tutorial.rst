@@ -1099,3 +1099,7 @@ behaviour, set the value of the ``blosc.use_threads`` variable to
 ``True`` (Blosc always uses multiple internal threads) or ``False``
 (Blosc always runs in single-threaded contextual mode). To re-enable
 automatic switching, set ``blosc.use_threads`` to ``None``.
+
+Please note that if Zarr is being used within a multi-process program, Blosc may not
+be safe to use in multi-threaded mode and may cause the program to hang. If using Blosc
+in a multi-process program then it is recommended to set ``blosc.use_threads = False``.
