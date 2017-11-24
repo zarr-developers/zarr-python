@@ -15,15 +15,18 @@ import zipfile
 import shutil
 import atexit
 import re
+import sys
+import multiprocessing
+from threading import Lock, RLock
 
 
 import numpy as np
 
 
 from zarr.util import (normalize_shape, normalize_chunks, normalize_order,
-                       normalize_storage_path, buffer_size, normalize_fill_value)
+                       normalize_storage_path, buffer_size, normalize_fill_value, nolock)
 from zarr.meta import encode_array_metadata, encode_group_metadata
-from zarr.compat import PY2, binary_type, PermissionError
+from zarr.compat import PY2, binary_type
 from numcodecs.registry import codec_registry
 from zarr.errors import (err_contains_group, err_contains_array, err_path_not_found,
                          err_bad_compressor, err_fspath_exists_notdir, err_read_only)
@@ -435,11 +438,26 @@ class DictStore(MutableMapping):
         >>> type(z.store)
         <class 'dict'>
 
+    Notes
+    -----
+    Safe to write in multiple threads.
+
     """
 
-    def __init__(self, cls=dict):
-        self.root = cls()
+    def __init__(self, root=None, cls=dict):
+        if root is None:
+            self.root = cls()
+        else:
+            self.root = root
         self.cls = cls
+        self.write_mutex = Lock()
+
+    def __getstate__(self):
+        return self.root, self.cls
+
+    def __setstate__(self, state):
+        root, cls = state
+        self.__init__(root=root, cls=cls)
 
     def _get_parent(self, item):
         parent = self.root
@@ -481,15 +499,17 @@ class DictStore(MutableMapping):
                 return value
 
     def __setitem__(self, item, value):
-        parent, key = self._require_parent(item)
-        parent[key] = value
+        with self.write_mutex:
+            parent, key = self._require_parent(item)
+            parent[key] = value
 
     def __delitem__(self, item):
-        parent, key = self._get_parent(item)
-        try:
-            del parent[key]
-        except KeyError:
-            raise KeyError(item)
+        with self.write_mutex:
+            parent, key = self._get_parent(item)
+            try:
+                del parent[key]
+            except KeyError:
+                raise KeyError(item)
 
     def __contains__(self, item):
         try:
@@ -576,6 +596,10 @@ class DictStore(MutableMapping):
             except TypeError:
                 return -1
 
+    def clear(self):
+        with self.write_mutex:
+            self.root.clear()
+
 
 class DirectoryStore(MutableMapping):
     """Storage class using directories and files on a standard file system.
@@ -623,10 +647,10 @@ class DirectoryStore(MutableMapping):
     -----
     Atomic writes are used, which means that data are first written to a
     temporary file, then moved into place when the write is successfully
-    completed.
+    completed. Files are only held open while they are being read or written and are
+    closed immediately afterwards, so there is no need to manually close any files.
 
-    Files are only held open while they are being read or written and are closed
-    immediately afterwards, so there is no need to manually close any files.
+    Safe to write in multiple threads or processes.
 
     """
 
@@ -711,15 +735,16 @@ class DirectoryStore(MutableMapping):
         )
 
     def keys(self):
-        directories = [(self.path, '')]
-        while directories:
-            dir_name, prefix = directories.pop()
-            for name in os.listdir(dir_name):
-                path = os.path.join(dir_name, name)
-                if os.path.isfile(path):
-                    yield prefix + name
-                elif os.path.isdir(path):
-                    directories.append((path, prefix + name + '/'))
+        if os.path.exists(self.path):
+            directories = [(self.path, '')]
+            while directories:
+                dir_name, prefix = directories.pop()
+                for name in os.listdir(dir_name):
+                    path = os.path.join(dir_name, name)
+                    if os.path.isfile(path):
+                        yield prefix + name
+                    elif os.path.isdir(path):
+                        directories.append((path, prefix + name + '/'))
 
     def __iter__(self):
         return self.keys()
@@ -767,6 +792,9 @@ class DirectoryStore(MutableMapping):
         else:
             err_path_not_found(path)
 
+    def clear(self):
+        shutil.rmtree(self.path)
+
 
 def atexit_rmtree(path,
                   isdir=os.path.isdir,
@@ -801,7 +829,7 @@ _prog_ckey = re.compile(r'^(\d+)(\.\d+)+$')
 _prog_number = re.compile(r'^\d+$')
 
 
-def _map_ckey(key):
+def _nested_map_ckey(key):
     segments = list(key.split('/'))
     if segments:
         last_segment = segments[-1]
@@ -873,25 +901,27 @@ class NestedDirectoryStore(DirectoryStore):
     files for multidimensional arrays will be organised into a directory
     hierarchy, thus reducing the number of files in any one directory.
 
+    Safe to write in multiple threads or processes.
+
     """
 
     def __init__(self, path):
         super(NestedDirectoryStore, self).__init__(path)
 
     def __getitem__(self, key):
-        key = _map_ckey(key)
+        key = _nested_map_ckey(key)
         return super(NestedDirectoryStore, self).__getitem__(key)
 
     def __setitem__(self, key, value):
-        key = _map_ckey(key)
+        key = _nested_map_ckey(key)
         super(NestedDirectoryStore, self).__setitem__(key, value)
 
     def __delitem__(self, key):
-        key = _map_ckey(key)
+        key = _nested_map_ckey(key)
         super(NestedDirectoryStore, self).__delitem__(key)
 
     def __contains__(self, key):
-        key = _map_ckey(key)
+        key = _nested_map_ckey(key)
         return super(NestedDirectoryStore, self).__contains__(key)
 
     def __eq__(self, other):
@@ -1002,6 +1032,8 @@ class ZipStore(MutableMapping):
     Alternatively, use a :class:`DirectoryStore` when writing the data, then
     manually Zip the directory and use the Zip file for subsequent reads.
 
+    Safe to write in multiple threads but not in multiple processes.
+
     """
 
     def __init__(self, path, compression=zipfile.ZIP_STORED, allowZip64=True, mode='a'):
@@ -1013,11 +1045,17 @@ class ZipStore(MutableMapping):
         self.allowZip64 = allowZip64
         self.mode = mode
 
+        # Current understanding is that zipfile module in stdlib is not thread-safe,
+        # and so locking is required for both read and write. However, this has not
+        # been investigated in detail, perhaps no lock is needed if mode='r'.
+        self.mutex = RLock()
+
         # open zip file
         self.zf = zipfile.ZipFile(path, mode=mode, compression=compression,
                                   allowZip64=allowZip64)
 
     def __getstate__(self):
+        self.flush()
         return self.path, self.compression, self.allowZip64, self.mode
 
     def __setstate__(self, state):
@@ -1031,20 +1069,20 @@ class ZipStore(MutableMapping):
 
     def close(self):
         """Closes the underlying zip file, ensuring all records are written."""
-        self.zf.close()
+        with self.mutex:
+            self.zf.close()
 
     def flush(self):
         """Closes the underlying zip file, ensuring all records are written,
         then re-opens the file for further modifications."""
-        if self.mode == 'r':
-            raise PermissionError('cannot flush read-only ZipStore')
-        else:
-            self.zf.close()
-            # N.B., re-open with mode 'a' regardless of initial mode so we don't wipe
-            # what's been written
-            self.zf = zipfile.ZipFile(self.path, mode='a',
-                                      compression=self.compression,
-                                      allowZip64=self.allowZip64)
+        if self.mode != 'r':
+            with self.mutex:
+                self.zf.close()
+                # N.B., re-open with mode 'a' regardless of initial mode so we don't wipe
+                # what's been written
+                self.zf = zipfile.ZipFile(self.path, mode='a',
+                                          compression=self.compression,
+                                          allowZip64=self.allowZip64)
 
     def __enter__(self):
         return self
@@ -1053,14 +1091,16 @@ class ZipStore(MutableMapping):
         self.close()
 
     def __getitem__(self, key):
-        with self.zf.open(key) as f:  # will raise KeyError
-            return f.read()
+        with self.mutex:
+            with self.zf.open(key) as f:  # will raise KeyError
+                return f.read()
 
     def __setitem__(self, key, value):
         if self.mode == 'r':
             err_read_only()
         value = ensure_bytes(value)
-        self.zf.writestr(key, value)
+        with self.mutex:
+            self.zf.writestr(key, value)
 
     def __delitem__(self, key):
         raise NotImplementedError
@@ -1074,7 +1114,8 @@ class ZipStore(MutableMapping):
         )
 
     def keylist(self):
-        return sorted(self.zf.namelist())
+        with self.mutex:
+            return sorted(self.zf.namelist())
 
     def keys(self):
         for key in self.keylist():
@@ -1088,7 +1129,8 @@ class ZipStore(MutableMapping):
 
     def __contains__(self, key):
         try:
-            self.zf.getinfo(key)
+            with self.mutex:
+                self.zf.getinfo(key)
         except KeyError:
             return False
         else:
@@ -1100,29 +1142,40 @@ class ZipStore(MutableMapping):
 
     def getsize(self, path=None):
         path = normalize_storage_path(path)
-        children = self.listdir(path)
-        if children:
-            size = 0
-            for child in children:
-                if path:
-                    name = path + '/' + child
-                else:
-                    name = child
+        with self.mutex:
+            children = self.listdir(path)
+            if children:
+                size = 0
+                for child in children:
+                    if path:
+                        name = path + '/' + child
+                    else:
+                        name = child
+                    try:
+                        info = self.zf.getinfo(name)
+                    except KeyError:
+                        pass
+                    else:
+                        size += info.compress_size
+                return size
+            elif path:
                 try:
-                    info = self.zf.getinfo(name)
+                    info = self.zf.getinfo(path)
+                    return info.compress_size
                 except KeyError:
-                    pass
-                else:
-                    size += info.compress_size
-            return size
-        elif path:
-            try:
-                info = self.zf.getinfo(path)
-                return info.compress_size
-            except KeyError:
-                err_path_not_found(path)
-        else:
-            return 0
+                    err_path_not_found(path)
+            else:
+                return 0
+
+    def clear(self):
+        if self.mode == 'r':
+            err_read_only()
+        with self.mutex:
+            self.close()
+            os.remove(self.path)
+            self.zf = zipfile.ZipFile(self.path, mode=self.mode,
+                                      compression=self.compression,
+                                      allowZip64=self.allowZip64)
 
 
 def migrate_1to2(store):
@@ -1174,15 +1227,15 @@ def migrate_1to2(store):
     del store['attrs']
 
 
-def encode_key(key):
+def _dbm_encode_key(key):
     if hasattr(key, 'encode'):
-        key = key.encode()
+        key = key.encode('ascii')
     return key
 
 
-def decode_key(key):
+def _dbm_decode_key(key):
     if hasattr(key, 'decode'):
-        key = key.decode()
+        key = key.decode('ascii')
     return key
 
 
@@ -1201,6 +1254,8 @@ class DBMStore(MutableMapping):
     open : function, optional
         Function to open the database file. If not provided, :func:`dbm.open` will be
         used on Python 3, and :func:`anydbm.open` will be used on Python 2.
+    write_lock: bool, optional
+        Use a lock to prevent concurrent writes from multiple threads (True by default).
     **open_kwargs
         Keyword arguments to pass the `open` function.
 
@@ -1258,9 +1313,14 @@ class DBMStore(MutableMapping):
     corresponding open function, e.g., `dbm.gnu.open` to use the GNU DBM
     library.
 
+    Safe to write in multiple threads. May be safe to write in multiple processes,
+    depending on which DBM implementation is being used, although this has not been
+    tested.
+
     """
 
-    def __init__(self, path, flag='c', mode=0o666, open=None, **open_kwargs):
+    def __init__(self, path, flag='c', mode=0o666, open=None, write_lock=True,
+                 **open_kwargs):
         if open is None:
             if PY2:  # pragma: py3 no cover
                 import anydbm
@@ -1268,37 +1328,54 @@ class DBMStore(MutableMapping):
             else:  # pragma: py2 no cover
                 import dbm
                 open = dbm.open
+        path = os.path.abspath(path)
+        # noinspection PyArgumentList
         self.db = open(path, flag, mode, **open_kwargs)
         self.path = path
         self.flag = flag
         self.mode = mode
         self.open = open
+        self.write_lock = write_lock
+        if write_lock:
+            # This may not be required as some dbm implementations manage their own
+            # locks, but err on the side of caution.
+            self.write_mutex = Lock()
+        else:
+            self.write_mutex = nolock
         self.open_kwargs = open_kwargs
 
-    def __getattr__(self, attr):
-        # pass everything else through
-        return getattr(self.db, attr)
-
     def __getstate__(self):
-        self.sync()  # just in case, needed for PY2
-        return self.path, self.flag, self.mode, self.open, self.open_kwargs
+        self.flush()  # needed for py2 and ndbm
+        return (self.path, self.flag, self.mode, self.open, self.write_lock,
+                self.open_kwargs)
 
     def __setstate__(self, state):
-        path, flag, mode, open, open_kws = state
-        if flag == 'n':
-            # don't clobber an existing database
-            flag = 'c'
-        self.__init__(path=path, flag=flag, mode=mode, open=open, **open_kws)
+        path, flag, mode, open, write_lock, open_kws = state
+        if flag[0] == 'n':
+            flag = 'c' + flag[1:]  # don't clobber an existing database
+        self.__init__(path=path, flag=flag, mode=mode, open=open,
+                      write_lock=write_lock, **open_kws)
 
     def close(self):
         """Closes the underlying database file."""
         if hasattr(self.db, 'close'):
-            self.db.close()
+            with self.write_mutex:
+                self.db.close()
 
-    def sync(self):
+    def flush(self):
         """Synchronizes data to the underlying database file."""
-        if hasattr(self.db, 'sync'):
-            self.db.sync()
+        if self.flag[0] != 'r':
+            with self.write_mutex:
+                if hasattr(self.db, 'sync'):
+                        self.db.sync()
+                else:
+                    # fall-back, close and re-open, needed for ndbm
+                    flag = self.flag
+                    if flag[0] == 'n':
+                        flag = 'c' + flag[1:]  # don't clobber an existing database
+                    self.db.close()
+                    # noinspection PyArgumentList
+                    self.db = self.open(self.path, flag, self.mode, **self.open_kwargs)
 
     def __enter__(self):
         return self
@@ -1307,17 +1384,19 @@ class DBMStore(MutableMapping):
         self.close()
 
     def __getitem__(self, key):
-        key = encode_key(key)
+        key = _dbm_encode_key(key)
         return self.db[key]
 
     def __setitem__(self, key, value):
-        key = encode_key(key)
+        key = _dbm_encode_key(key)
         value = ensure_bytes(value)
-        self.db[key] = value
+        with self.write_mutex:
+            self.db[key] = value
 
     def __delitem__(self, key):
-        key = encode_key(key)
-        del self.db[key]
+        key = _dbm_encode_key(key)
+        with self.write_mutex:
+            del self.db[key]
 
     def __eq__(self, other):
         return (
@@ -1329,7 +1408,7 @@ class DBMStore(MutableMapping):
         )
 
     def keys(self):
-        return (decode_key(k) for k in iter(self.db.keys()))
+        return (_dbm_decode_key(k) for k in iter(self.db.keys()))
 
     def __iter__(self):
         return self.keys()
@@ -1338,5 +1417,197 @@ class DBMStore(MutableMapping):
         return sum(1 for _ in self.keys())
 
     def __contains__(self, key):
-        key = encode_key(key)
+        key = _dbm_encode_key(key)
         return key in self.db
+
+
+if PY2:  # pragma: py3 no cover
+
+    def _lmdb_decode_key_buffer(key):
+        # assume buffers=True
+        return str(key)
+
+    def _lmdb_decode_key_bytes(key):
+        return key
+
+else:  # pragma: py2 no cover
+
+    def _lmdb_decode_key_buffer(key):
+        # assume buffers=True
+        return key.tobytes().decode('ascii')
+
+    def _lmdb_decode_key_bytes(key):
+        # assume buffers=False
+        return key.decode('ascii')
+
+
+class LMDBStore(MutableMapping):
+    """Storage class using LMDB.
+
+    Parameters
+    ----------
+    path : string
+        Location of database file.
+    buffers : bool, optional
+        If True (default) use support for buffers, which should increase performance by
+        reducing memory copies.
+    **kwargs
+        Keyword arguments passed through to the `lmdb.open` function.
+
+    Notes
+    -----
+    Requires the `lmdb <http://lmdb.readthedocs.io/>`_ package to be installed.
+
+    Examples
+    --------
+    Store a single array::
+
+        >>> import zarr
+        >>> store = zarr.LMDBStore('data/array.mdb')
+        >>> z = zarr.zeros((10, 10), chunks=(5, 5), store=store, overwrite=True)
+        >>> z[...] = 42
+        >>> store.close()  # don't forget to call this when you're done
+
+    Store a group::
+
+        >>> store = zarr.LMDBStore('data/group.mdb')
+        >>> root = zarr.group(store=store, overwrite=True)
+        >>> foo = root.create_group('foo')
+        >>> bar = foo.zeros('bar', shape=(10, 10), chunks=(5, 5))
+        >>> bar[...] = 42
+        >>> store.close()  # don't forget to call this when you're done
+
+    After modifying a DBMStore, the ``close()`` method must be called, otherwise
+    essential data may not be written to the underlying database file. The
+    DBMStore class also supports the context manager protocol, which ensures the
+    ``close()`` method is called on leaving the context, e.g.::
+
+        >>> with zarr.LMDBStore('data/array.mdb') as store:
+        ...     z = zarr.zeros((10, 10), chunks=(5, 5), store=store, overwrite=True)
+        ...     z[...] = 42
+        ...     # no need to call store.close()
+
+    Notes
+    -----
+    By default writes are not immediately flushed to disk to increase performance. You
+    can ensure data are flushed to disk by calling the ``flush()`` or ``close()`` methods.
+
+    Should be safe to write in multiple threads or processes due to the synchronization
+    support within LMDB, although writing from multiple processes has not been tested.
+
+    """
+
+    def __init__(self, path, buffers=True, **kwargs):
+        import lmdb
+
+        # set default memory map size to something larger than the lmdb default, which is
+        # very likely to be too small for any moderate dataset (logic copied from zict)
+        map_size = (2**40 if sys.maxsize >= 2**32 else 2**28)
+        kwargs.setdefault('map_size', map_size)
+
+        # don't initialize buffers to zero by default, shouldn't be necessary
+        kwargs.setdefault('meminit', False)
+
+        # decide whether to use the writemap option based on the operating system's
+        # support for sparse files - writemap requires sparse file support otherwise
+        # the whole# `map_size` may be reserved up front on disk (logic copied from zict)
+        writemap = sys.platform.startswith('linux')
+        kwargs.setdefault('writemap', writemap)
+
+        # decide options for when data are flushed to disk - choose to delay syncing
+        # data to filesystem, otherwise pay a large performance penalty (zict also does
+        # this)
+        kwargs.setdefault('metasync', False)
+        kwargs.setdefault('sync', False)
+        kwargs.setdefault('map_async', False)
+
+        # set default option for number of cached transactions
+        max_spare_txns = multiprocessing.cpu_count()
+        kwargs.setdefault('max_spare_txns', max_spare_txns)
+
+        # normalize path
+        path = os.path.abspath(path)
+
+        # open database
+        self.db = lmdb.open(path, **kwargs)
+
+        # store properties
+        if buffers:
+            self.decode_key = _lmdb_decode_key_buffer
+        else:
+            self.decode_key = _lmdb_decode_key_bytes
+        self.buffers = buffers
+        self.path = path
+        self.kwargs = kwargs
+
+    def __getstate__(self):
+        self.flush()  # just in case
+        return self.path, self.buffers, self.kwargs
+
+    def __setstate__(self, state):
+        path, buffers, kwargs = state
+        self.__init__(path=path, buffers=buffers, **kwargs)
+
+    def close(self):
+        """Closes the underlying database."""
+        self.db.close()
+
+    def flush(self):
+        """Synchronizes data to the file system."""
+        self.db.sync()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        self.close()
+
+    def __getitem__(self, key):
+        key = _dbm_encode_key(key)
+        # use the buffers option, should avoid a memory copy
+        with self.db.begin(buffers=self.buffers) as txn:
+            value = txn.get(key)
+        if value is None:
+            raise KeyError(key)
+        return value
+
+    def __setitem__(self, key, value):
+        key = _dbm_encode_key(key)
+        with self.db.begin(write=True, buffers=self.buffers) as txn:
+            txn.put(key, value)
+
+    def __delitem__(self, key):
+        key = _dbm_encode_key(key)
+        with self.db.begin(write=True) as txn:
+            if not txn.delete(key):
+                raise KeyError(key)
+
+    def __contains__(self, key):
+        key = _dbm_encode_key(key)
+        with self.db.begin(buffers=self.buffers) as txn:
+            with txn.cursor() as cursor:
+                return cursor.set_key(key)
+
+    def items(self):
+        with self.db.begin(buffers=self.buffers) as txn:
+            with txn.cursor() as cursor:
+                for k, v in cursor.iternext(keys=True, values=True):
+                    yield self.decode_key(k), v
+
+    def keys(self):
+        with self.db.begin(buffers=self.buffers) as txn:
+            with txn.cursor() as cursor:
+                for k in cursor.iternext(keys=True, values=False):
+                    yield self.decode_key(k)
+
+    def values(self):
+        with self.db.begin(buffers=self.buffers) as txn:
+            with txn.cursor() as cursor:
+                for v in cursor.iternext(keys=False, values=True):
+                    yield v
+
+    def __iter__(self):
+        return self.keys()
+
+    def __len__(self):
+        return self.db.stat()['entries']

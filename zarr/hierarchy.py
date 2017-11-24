@@ -12,10 +12,12 @@ from zarr.core import Array
 from zarr.storage import (contains_array, contains_group, init_group,
                           DictStore, group_meta_key, attrs_key, listdir, rmdir)
 from zarr.creation import (array, create, empty, zeros, ones, full,
-                           empty_like, zeros_like, ones_like, full_like, normalize_store_arg)
+                           empty_like, zeros_like, ones_like, full_like,
+                           normalize_store_arg)
 from zarr.util import (normalize_storage_path, normalize_shape, InfoReporter, TreeViewer,
-                       is_valid_python_name, instance_dir)
-from zarr.errors import err_contains_array, err_contains_group, err_group_not_found, err_read_only
+                       is_valid_python_name, instance_dir, nolock)
+from zarr.errors import (err_contains_array, err_contains_group, err_group_not_found,
+                         err_read_only)
 from zarr.meta import decode_group_metadata
 
 
@@ -82,7 +84,8 @@ class Group(MutableMapping):
 
     """
 
-    def __init__(self, store, path=None, read_only=False, chunk_store=None, synchronizer=None):
+    def __init__(self, store, path=None, read_only=False, chunk_store=None,
+                 synchronizer=None):
 
         self._store = store
         self._chunk_store = chunk_store
@@ -136,6 +139,11 @@ class Group(MutableMapping):
                 name = '/' + name
             return name
         return '/'
+
+    @property
+    def basename(self):
+        """Final component of name."""
+        return self.name.split('/')[-1]
 
     @property
     def read_only(self):
@@ -253,7 +261,8 @@ class Group(MutableMapping):
         return items
 
     def __getstate__(self):
-        return self._store, self._path, self._read_only, self._chunk_store, self._synchronizer
+        return (self._store, self._path, self._read_only, self._chunk_store,
+                self._synchronizer)
 
     def __setstate__(self, state):
         self.__init__(*state)
@@ -392,7 +401,8 @@ class Group(MutableMapping):
             path = self._key_prefix + key
             if contains_group(self._store, path):
                 yield key, Group(self._store, path=path, read_only=self._read_only,
-                                 chunk_store=self._chunk_store, synchronizer=self._synchronizer)
+                                 chunk_store=self._chunk_store,
+                                 synchronizer=self._synchronizer)
 
     def array_keys(self):
         """Return an iterator over member names for arrays only.
@@ -435,7 +445,8 @@ class Group(MutableMapping):
             path = self._key_prefix + key
             if contains_array(self._store, path):
                 yield key, Array(self._store, path=path, read_only=self._read_only,
-                                 chunk_store=self._chunk_store, synchronizer=self._synchronizer)
+                                 chunk_store=self._chunk_store,
+                                 synchronizer=self._synchronizer)
 
     def visitvalues(self, func):
         """Run ``func`` on each object.
@@ -467,11 +478,10 @@ class Group(MutableMapping):
 
         def _visit(obj):
             yield obj
-
             keys = sorted(getattr(obj, "keys", lambda: [])())
-            for each_key in keys:
-                for each_obj in _visit(obj[each_key]):
-                    yield each_obj
+            for k in keys:
+                for v in _visit(obj[k]):
+                    yield v
 
         for each_obj in islice(_visit(self), 1, None):
             value = func(each_obj)
@@ -594,13 +604,15 @@ class Group(MutableMapping):
         if self._read_only:
             err_read_only()
 
-        # synchronization
         if self._synchronizer is None:
-            return f(*args, **kwargs)
+            # no synchronization
+            lock = nolock
         else:
             # synchronize on the root group
-            with self._synchronizer[group_meta_key]:
-                return f(*args, **kwargs)
+            lock = self._synchronizer[group_meta_key]
+
+        with lock:
+            return f(*args, **kwargs)
 
     def create_group(self, name, overwrite=False):
         """Create a sub-group.
@@ -626,14 +638,14 @@ class Group(MutableMapping):
 
         """
 
-        return self._write_op(self._create_group_nosync, name,
-                              overwrite=overwrite)
+        return self._write_op(self._create_group_nosync, name, overwrite=overwrite)
 
     def _create_group_nosync(self, name, overwrite=False):
         path = self._item_path(name)
 
         # create terminal group
-        init_group(self._store, path=path, chunk_store=self._chunk_store, overwrite=overwrite)
+        init_group(self._store, path=path, chunk_store=self._chunk_store,
+                   overwrite=overwrite)
 
         return Group(self._store, path=path, read_only=self._read_only,
                      chunk_store=self._chunk_store, synchronizer=self._synchronizer)
@@ -750,10 +762,12 @@ class Group(MutableMapping):
 
         # create array
         if data is None:
-            a = create(store=self._store, path=path, chunk_store=self._chunk_store, **kwargs)
+            a = create(store=self._store, path=path, chunk_store=self._chunk_store,
+                       **kwargs)
 
         else:
-            a = array(data, store=self._store, path=path, chunk_store=self._chunk_store, **kwargs)
+            a = array(data, store=self._store, path=path, chunk_store=self._chunk_store,
+                      **kwargs)
 
         return a
 
@@ -819,7 +833,8 @@ class Group(MutableMapping):
     def _create_nosync(self, name, **kwargs):
         path = self._item_path(name)
         kwargs.setdefault('synchronizer', self._synchronizer)
-        return create(store=self._store, path=path, chunk_store=self._chunk_store, **kwargs)
+        return create(store=self._store, path=path, chunk_store=self._chunk_store,
+                      **kwargs)
 
     def empty(self, name, **kwargs):
         """Create an array. Keyword arguments as per
@@ -829,7 +844,8 @@ class Group(MutableMapping):
     def _empty_nosync(self, name, **kwargs):
         path = self._item_path(name)
         kwargs.setdefault('synchronizer', self._synchronizer)
-        return empty(store=self._store, path=path, chunk_store=self._chunk_store, **kwargs)
+        return empty(store=self._store, path=path, chunk_store=self._chunk_store,
+                     **kwargs)
 
     def zeros(self, name, **kwargs):
         """Create an array. Keyword arguments as per
@@ -839,7 +855,8 @@ class Group(MutableMapping):
     def _zeros_nosync(self, name, **kwargs):
         path = self._item_path(name)
         kwargs.setdefault('synchronizer', self._synchronizer)
-        return zeros(store=self._store, path=path, chunk_store=self._chunk_store, **kwargs)
+        return zeros(store=self._store, path=path, chunk_store=self._chunk_store,
+                     **kwargs)
 
     def ones(self, name, **kwargs):
         """Create an array. Keyword arguments as per
@@ -870,7 +887,8 @@ class Group(MutableMapping):
     def _array_nosync(self, name, data, **kwargs):
         path = self._item_path(name)
         kwargs.setdefault('synchronizer', self._synchronizer)
-        return array(data, store=self._store, path=path, chunk_store=self._chunk_store, **kwargs)
+        return array(data, store=self._store, path=path, chunk_store=self._chunk_store,
+                     **kwargs)
 
     def empty_like(self, name, data, **kwargs):
         """Create an array. Keyword arguments as per
@@ -880,8 +898,8 @@ class Group(MutableMapping):
     def _empty_like_nosync(self, name, data, **kwargs):
         path = self._item_path(name)
         kwargs.setdefault('synchronizer', self._synchronizer)
-        return empty_like(data, store=self._store, path=path, chunk_store=self._chunk_store,
-                          **kwargs)
+        return empty_like(data, store=self._store, path=path,
+                          chunk_store=self._chunk_store, **kwargs)
 
     def zeros_like(self, name, data, **kwargs):
         """Create an array. Keyword arguments as per
@@ -891,8 +909,8 @@ class Group(MutableMapping):
     def _zeros_like_nosync(self, name, data, **kwargs):
         path = self._item_path(name)
         kwargs.setdefault('synchronizer', self._synchronizer)
-        return zeros_like(data, store=self._store, path=path, chunk_store=self._chunk_store,
-                          **kwargs)
+        return zeros_like(data, store=self._store, path=path,
+                          chunk_store=self._chunk_store, **kwargs)
 
     def ones_like(self, name, data, **kwargs):
         """Create an array. Keyword arguments as per
@@ -902,8 +920,8 @@ class Group(MutableMapping):
     def _ones_like_nosync(self, name, data, **kwargs):
         path = self._item_path(name)
         kwargs.setdefault('synchronizer', self._synchronizer)
-        return ones_like(data, store=self._store, path=path, chunk_store=self._chunk_store,
-                         **kwargs)
+        return ones_like(data, store=self._store, path=path,
+                         chunk_store=self._chunk_store, **kwargs)
 
     def full_like(self, name, data, **kwargs):
         """Create an array. Keyword arguments as per
@@ -913,8 +931,8 @@ class Group(MutableMapping):
     def _full_like_nosync(self, name, data, **kwargs):
         path = self._item_path(name)
         kwargs.setdefault('synchronizer', self._synchronizer)
-        return full_like(data, store=self._store, path=path, chunk_store=self._chunk_store,
-                         **kwargs)
+        return full_like(data, store=self._store, path=path,
+                         chunk_store=self._chunk_store, **kwargs)
 
 
 def _normalize_store_arg(store, clobber=False):
@@ -1043,5 +1061,4 @@ def open_group(store, mode='a', synchronizer=None, path=None):
     # determine read only status
     read_only = mode == 'r'
 
-    return Group(store, read_only=read_only, synchronizer=synchronizer,
-                 path=path)
+    return Group(store, read_only=read_only, synchronizer=synchronizer, path=path)

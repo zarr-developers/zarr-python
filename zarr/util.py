@@ -31,7 +31,7 @@ def normalize_shape(shape):
 
 # code to guess chunk shape, adapted from h5py
 
-CHUNK_BASE = 128*1024  # Multiplier by which chunks are adjusted
+CHUNK_BASE = 256*1024  # Multiplier by which chunks are adjusted
 CHUNK_MIN = 128*1024  # Soft lower limit (128k)
 CHUNK_MAX = 64*1024*1024  # Hard upper limit
 
@@ -519,8 +519,8 @@ def is_valid_python_name(name):
 
 
 def instance_dir(obj):  # pragma: py3 no cover
-    """Vanilla implementation of built-in dir() for PY2 to help with overriding __dir__. Based on
-    implementation of dir() in pypy."""
+    """Vanilla implementation of built-in dir() for PY2 to help with overriding __dir__.
+    Based on implementation of dir() in pypy."""
     d = dict()
     d.update(obj.__dict__)
     d.update(class_dir(obj.__class__))
@@ -535,3 +535,16 @@ def class_dir(klass):  # pragma: py3 no cover
     for base in bases:
         d.update(class_dir(base))
     return d
+
+
+class NoLock(object):
+    """A lock that doesn't lock."""
+
+    def __enter__(self):
+        pass
+
+    def __exit__(self, *args):
+        pass
+
+
+nolock = NoLock()

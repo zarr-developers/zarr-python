@@ -683,9 +683,6 @@ here is an array stored directly into a Zip file, via the
     >>> z = root.zeros('foo/bar', shape=(1000, 1000), chunks=(100, 100), dtype='i4')
     >>> z[:] = 42
     >>> store.close()
-    >>> import os
-    >>> os.path.getsize('data/example.zip')
-    32805
 
 Re-open and check that data have been written::
 
@@ -713,31 +710,23 @@ Another storage alternative is the :class:`zarr.storage.DBMStore` class, added
 in Zarr version 2.2. This class allows any DBM-style database to be used for
 storing an array or group. Here is an example using a Berkeley DB B-tree
 database for storage (requires `bsddb3
-<https://www.jcea.es/programacion/pybsddb.htm>`_ to be installed):
+<https://www.jcea.es/programacion/pybsddb.htm>`_ to be installed)::
 
     >>> import bsddb3
-    >>> store = zarr.DBMStore('data/example.db', open=bsddb3.btopen, flag='n')
-    >>> root = zarr.group(store=store)
+    >>> store = zarr.DBMStore('data/example.bdb', open=bsddb3.btopen)
+    >>> root = zarr.group(store=store, overwrite=True)
     >>> z = root.zeros('foo/bar', shape=(1000, 1000), chunks=(100, 100), dtype='i4')
     >>> z[:] = 42
     >>> store.close()
-    >>> import os
-    >>> os.path.getsize('data/example.db')
-    36864
 
-Re-open and check that data have been written::
+Also added in Zarr version 2.2 is the :class:`zarr.storage.LMDBStore` class which
+enables the lightning memory-mapped database (LMDB) to be used for storing an array or
+group (requires `lmdb <http://lmdb.readthedocs.io/>`_ to be installed)::
 
-    >>> store = zarr.DBMStore('data/example.db', open=bsddb3.btopen)
-    >>> root = zarr.group(store=store)
-    >>> z = root['foo/bar']
-    >>> z[:]
-    array([[42, 42, 42, ..., 42, 42, 42],
-           [42, 42, 42, ..., 42, 42, 42],
-           [42, 42, 42, ..., 42, 42, 42],
-           ...,
-           [42, 42, 42, ..., 42, 42, 42],
-           [42, 42, 42, ..., 42, 42, 42],
-           [42, 42, 42, ..., 42, 42, 42]], dtype=int32)
+    >>> store = zarr.LMDBStore('data/example.lmdb')
+    >>> root = zarr.group(store=store, overwrite=True)
+    >>> z = root.zeros('foo/bar', shape=(1000, 1000), chunks=(100, 100), dtype='i4')
+    >>> z[:] = 42
     >>> store.close()
 
 It is also possible to use distributed storage systems. The Dask project has
@@ -777,6 +766,8 @@ Here is an example using S3Map to read an array created previously::
           dtype='|S1')
     >>> z[:].tostring()
     b'Hello from the cloud!'
+
+
 
 .. _tutorial_strings:
 
@@ -875,7 +866,7 @@ a chunk shape is based on simple heuristics and may be far from optimal. E.g.::
 
     >>> z4 = zarr.zeros((10000, 10000), chunks=True, dtype='i4')
     >>> z4.chunks
-    (313, 625)
+    (625, 625)
 
 If you know you are always going to be loading the entire array into memory, you
 can turn off chunks by providing ``chunks=False``, in which case there will be
@@ -936,24 +927,26 @@ filters (e.g., byte-shuffle) have been applied.
 Parallel computing and synchronization
 --------------------------------------
 
-Zarr arrays can be used as either the source or sink for data in parallel
-computations. Both multi-threaded and multi-process parallelism are
-supported. The Python global interpreter lock (GIL) is released wherever
-possible for both compression and decompression operations, so Zarr will
-generally not block other Python threads from running.
+Zarr arrays have been designed for use as the source or sink for data in
+parallel computations. By data source we mean that multiple concurrent read
+operations may occur. By data sink we mean that multiple concurrent write
+operations may occur, with each writer updating a different region of the
+array. Zarr arrays have **not** been designed for situations where multiple
+readers and writers are concurrently operating on the same array.
 
-A Zarr array can be read concurrently by multiple threads or processes.  No
-synchronization (i.e., locking) is required for concurrent reads.
+Both multi-threaded and multi-process parallelism are possible. The bottleneck
+for most storage and retrieval operations is compression/decompression, and the
+Python global interpreter lock (GIL) is released wherever possible during these
+operations, so Zarr will generally not block other Python threads from running.
 
-A Zarr array can also be written to concurrently by multiple threads or
-processes. Some synchronization may be required, depending on the way the data
-is being written.
-
-If each worker in a parallel computation is writing to a separate region of the
-array, and if region boundaries are perfectly aligned with chunk boundaries,
-then no synchronization is required. However, if region and chunk boundaries are
-not perfectly aligned, then synchronization is required to avoid two workers
-attempting to modify the same chunk at the same time.
+When using a Zarr array as a data sink, some synchronization (locking) may be
+required to avoid data loss, depending on how data are being updated. If each
+worker in a parallel computation is writing to a separate region of the array,
+and if region boundaries are perfectly aligned with chunk boundaries, then no
+synchronization is required. However, if region and chunk boundaries are not
+perfectly aligned, then synchronization is required to avoid two workers
+attempting to modify the same chunk at the same time, which could result in data
+loss.
 
 To give a simple example, consider a 1-dimensional array of length 60, ``z``,
 divided into three chunks of 20 elements each. If three workers are running and
@@ -986,7 +979,12 @@ some networked file systems). E.g.::
     >>> z
     <zarr.core.Array (10000, 10000) int32>
 
-This array is safe to read or write from multiple processes,
+This array is safe to read or write from multiple processes.
+
+Please note that support for parallel computing is an area of ongoing research
+and development. If you are using Zarr for parallel computing, we welcome
+feedback, experience, discussion, ideas and advice, particularly about issues
+related to data integrity and performance.
 
 .. _tutorial_pickle:
 

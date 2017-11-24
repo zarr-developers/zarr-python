@@ -10,11 +10,13 @@ import os
 
 import numpy as np
 from numpy.testing import assert_array_equal, assert_array_almost_equal
-from nose.tools import (eq_ as eq, assert_is_instance, assert_raises, assert_true, assert_false,
-                        assert_is, assert_is_none)
+from nose.tools import (eq_ as eq, assert_is_instance, assert_raises, assert_true,
+                        assert_false, assert_is, assert_is_none)
+from nose import SkipTest
 
 
-from zarr.storage import DirectoryStore, init_array, init_group, NestedDirectoryStore, DBMStore
+from zarr.storage import (DirectoryStore, init_array, init_group, NestedDirectoryStore,
+                          DBMStore, LMDBStore, atexit_rmtree)
 from zarr.core import Array
 from zarr.errors import PermissionError
 from zarr.compat import PY2
@@ -36,6 +38,7 @@ class TestArray(unittest.TestCase):
         eq((10,), a.chunks)
         eq('', a.path)
         assert_is_none(a.name)
+        assert_is_none(a.basename)
         assert_is(store, a.store)
 
         # initialize at path
@@ -47,6 +50,7 @@ class TestArray(unittest.TestCase):
         eq((10,), a.chunks)
         eq('foo/bar', a.path)
         eq('/foo/bar', a.name)
+        eq('bar', a.basename)
         assert_is(store, a.store)
 
         # store not initialized
@@ -925,7 +929,7 @@ class TestArrayWithNestedDirectoryStore(TestArrayWithDirectoryStore):
         return Array(store, read_only=read_only)
 
 
-class TestArrayWithDBMStoreStdlib(TestArray):
+class TestArrayWithDBMStore(TestArray):
 
     @staticmethod
     def create_array(read_only=False, **kwargs):
@@ -959,6 +963,42 @@ try:
 
 except ImportError:  # pragma: no cover
     pass
+
+
+class TestArrayWithLMDBStore(TestArray):
+
+    @staticmethod
+    def create_array(read_only=False, **kwargs):
+        path = mktemp(suffix='.lmdb')
+        atexit_rmtree(path)
+        try:
+            store = LMDBStore(path, buffers=True)
+        except ImportError:  # pragma: no cover
+            raise SkipTest('lmdb not installed')
+        kwargs.setdefault('compressor', Zlib(1))
+        init_array(store, **kwargs)
+        return Array(store, read_only=read_only)
+
+    def test_nbytes_stored(self):
+        pass  # not implemented
+
+
+class TestArrayWithLMDBStoreNoBuffers(TestArray):
+
+    @staticmethod
+    def create_array(read_only=False, **kwargs):
+        path = mktemp(suffix='.lmdb')
+        atexit_rmtree(path)
+        try:
+            store = LMDBStore(path, buffers=False)
+        except ImportError:  # pragma: no cover
+            raise SkipTest('lmdb not installed')
+        kwargs.setdefault('compressor', Zlib(1))
+        init_array(store, **kwargs)
+        return Array(store, read_only=read_only)
+
+    def test_nbytes_stored(self):
+        pass  # not implemented
 
 
 class TestArrayWithNoCompressor(TestArray):

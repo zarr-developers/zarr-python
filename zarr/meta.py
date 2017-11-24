@@ -7,16 +7,28 @@ import base64
 import numpy as np
 
 
-from zarr.compat import PY2, text_type, binary_type
+from zarr.compat import PY2, binary_type
 from zarr.errors import MetadataError
 
 
 ZARR_FORMAT = 2
 
 
+def _ensure_str(s):
+    if PY2:  # pragma: py3 no cover
+        # noinspection PyUnresolvedReferences
+        if isinstance(s, buffer):  # noqa
+            s = str(s)
+    else:  # pragma: py2 no cover
+        if isinstance(s, memoryview):
+            s = s.tobytes()
+        if isinstance(s, binary_type):
+            s = s.decode('ascii')
+    return s
+
+
 def decode_array_metadata(s):
-    if isinstance(s, binary_type):
-        s = text_type(s, 'ascii')
+    s = _ensure_str(s)
     meta = json.loads(s)
     zarr_format = meta.get('zarr_format', None)
     if zarr_format != ZARR_FORMAT:
@@ -83,8 +95,7 @@ def decode_dtype(d):
 
 
 def decode_group_metadata(s):
-    if isinstance(s, binary_type):
-        s = text_type(s, 'ascii')
+    s = _ensure_str(s)
     meta = json.loads(s)
     zarr_format = meta.get('zarr_format', None)
     if zarr_format != ZARR_FORMAT:
@@ -95,6 +106,8 @@ def decode_group_metadata(s):
     return meta
 
 
+# N.B., keep `meta` parameter as a placeholder for future
+# noinspection PyUnusedLocal
 def encode_group_metadata(meta=None):
     meta = dict(
         zarr_format=ZARR_FORMAT,
@@ -130,8 +143,8 @@ def decode_fill_value(v, dtype):
             v = np.array(v, dtype=dtype)[()]
             return v
         except Exception:
-            # be lenient, allow for other values that may have been used before base64 encoding
-            # and may work as fill values, e.g., the number 0
+            # be lenient, allow for other values that may have been used before base64
+            # encoding and may work as fill values, e.g., the number 0
             return v
     elif dtype.kind == 'U':
         # leave as-is
