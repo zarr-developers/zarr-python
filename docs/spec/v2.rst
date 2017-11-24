@@ -466,8 +466,28 @@ What has been stored::
 Changes
 -------
 
+Version 2 clarifications
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+The following changes have been made to the version 2 specification since it was
+initially published to clarify ambiguities and add some missing information.
+
+* The specification now describes how bytes fill values should be encoded and
+  decoded for arrays with a fixed-length byte string data type (:issue:`165`,
+  :issue:`176`).
+
+* The specification now clarifies that datetime64 and timedelta64 data types are not
+  supported in this version (:issue:`85`).
+
+* The specification now clarifies that the '.zattrs' key does not have to be present for
+  either arrays or groups, and if absent then custom attributes should be treated as
+  empty.
+
+
 Changes in version 2
 ~~~~~~~~~~~~~~~~~~~~
+
+The following changes were made between version 1 and version 2 of this specification:
 
 * Added support for storing multiple arrays in the same store and organising
   arrays into hierarchies using groups.

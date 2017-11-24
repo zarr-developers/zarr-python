@@ -1472,7 +1472,9 @@ else:  # pragma: py2 no cover
 
 
 class LMDBStore(MutableMapping):
-    """Storage class using LMDB.
+    """Storage class using LMDB. Requires the `lmdb <http://lmdb.readthedocs.io/>`_
+    package to be installed.
+
 
     Parameters
     ----------
@@ -1483,10 +1485,6 @@ class LMDBStore(MutableMapping):
         reducing memory copies.
     **kwargs
         Keyword arguments passed through to the `lmdb.open` function.
-
-    Notes
-    -----
-    Requires the `lmdb <http://lmdb.readthedocs.io/>`_ package to be installed.
 
     Examples
     --------
