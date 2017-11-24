@@ -10,7 +10,7 @@ from zarr.compat import PY2
 from zarr.attrs import Attributes
 from zarr.core import Array
 from zarr.storage import (contains_array, contains_group, init_group,
-                          DictStore, group_meta_key, attrs_key, listdir, rmdir)
+                          DictStore, group_meta_key, attrs_key, listdir, rename, rmdir)
 from zarr.creation import (array, create, empty, zeros, ones, full,
                            empty_like, zeros_like, ones_like, full_like,
                            normalize_store_arg)
@@ -81,6 +81,7 @@ class Group(MutableMapping):
     ones_like
     full_like
     info
+    move
 
     """
 
@@ -933,6 +934,37 @@ class Group(MutableMapping):
         kwargs.setdefault('synchronizer', self._synchronizer)
         return full_like(data, store=self._store, path=path,
                          chunk_store=self._chunk_store, **kwargs)
+
+    def _move_nosync(self, path, new_path):
+        rename(self._store, path, new_path)
+        if self._chunk_store is not None:
+            rename(self._chunk_store, path, new_path)
+
+    def move(self, source, dest):
+        """Move contents from one path to another relative to the Group.
+
+        Parameters
+        ----------
+        source : string
+            Name or path to a Zarr object to move.
+        dest : string
+            New name or path of the Zarr object.
+        """
+
+        source = self._item_path(source)
+        dest = self._item_path(dest)
+
+        # Check that source exists.
+        if not (contains_array(self._store, source) or contains_group(self._store, source)):
+            raise ValueError('The source, "%s", does not exist.' % source)
+        if contains_array(self._store, dest) or contains_group(self._store, dest):
+            raise ValueError('The dest, "%s", already exists.' % dest)
+
+        # Ensure groups needed for `dest` exist.
+        if "/" in dest:
+            self.require_group("/" + dest.rsplit("/", 1)[0])
+
+        self._write_op(self._move_nosync, source, dest)
 
 
 def _normalize_store_arg(store, clobber=False):
