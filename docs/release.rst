@@ -37,7 +37,7 @@ Enhancements
 
 * **New storage class for LMDB databases**. The :class:`zarr.storage.LMDBStore` class
   enables an LMDB "Lightning" database to be used as the backing store for an array or
-  group. @@TODO issue
+  group. :issue:`192`.
 
 * **New storage class using a nested directory structure for chunk files**. The
   :class:`zarr.storage.NestedDirectoryStore` has been added, which is similar to
@@ -101,6 +101,9 @@ Enhancements
 * **New Group.move() method** supports moving a sub-group or array to a different
   location within the same hierarchy. By :user:`John Kirkham <jakirkham>`,
   :issue:`191`, :issue:`193`, :issue:`196`.
+
+* **ZipStore is now thread-safe**; :issue:`194`, :issue:`192`.
+
 
 Bug fixes
 ~~~~~~~~~
