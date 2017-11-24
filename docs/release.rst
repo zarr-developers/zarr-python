@@ -95,6 +95,9 @@ Enhancements
 * **Arrays with one or more zero-length dimensions** are now fully supported; by
   :user:`Prakhar Goel <newt0311>`, :issue:`150`, :issue:`154`, :issue:`160`.
 
+* **The .zattrs key is now optional** and will now only be created if at least one
+  custom attribute has been set; :issue:`121`, :issue:`200`.
+
 Bug fixes
 ~~~~~~~~~
 
@@ -120,13 +123,16 @@ Documentation
 ~~~~~~~~~~~~~
 
 * Some changes have been made to the :ref:`spec_v2` document to clarify
-  ambiguities and add some missing information. These changes do not modify any
-  of the material previously implemented, and so the changes have been made
+  ambiguities and add some missing information. These changes do not break compatibility
+  with any of the material as previously implemented, and so the changes have been made
   in-place in the document without incrementing the document version number. The
   specification now describes how bytes fill values should be encoded and
   decoded for arrays with a fixed-length byte string data type (:issue:`165`,
-  :issue:`176`). The specification now also clarifies that datetime64 and
-  timedelta64 data types are not supported in this version (:issue:`85`).
+  :issue:`176`). The specification now clarifies that datetime64 and
+  timedelta64 data types are not supported in this version (:issue:`85`). The
+  specification now clarifies that the '.zattrs' key does not have to be present for
+  either arrays or groups, and if absent then custom attributes should be treated as
+  empty.
 * A new :ref:`tutorial_indexing` section has been added to the tutorial.
 * A new :ref:`tutorial_strings` section has been added to the tutorial
   (:issue:`135`, :issue:`175`).
