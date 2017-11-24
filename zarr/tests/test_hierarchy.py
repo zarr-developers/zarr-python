@@ -18,7 +18,7 @@ from nose import SkipTest
 
 
 from zarr.storage import (DictStore, DirectoryStore, ZipStore, init_group, init_array,
-                          attrs_key, array_meta_key, group_meta_key, atexit_rmtree,
+                          array_meta_key, group_meta_key, atexit_rmtree,
                           NestedDirectoryStore, DBMStore, LMDBStore)
 from zarr.core import Array
 from zarr.compat import PY2, text_type
@@ -66,6 +66,8 @@ class TestGroup(unittest.TestCase):
         eq('/', g.name)
         eq('', g.basename)
         assert_is_instance(g.attrs, Attributes)
+        g.attrs['foo'] = 'bar'
+        assert g.attrs['foo'] == 'bar'
         assert_is_instance(g.info, InfoReporter)
         assert_is_instance(repr(g.info), str)
         assert_is_instance(g.info._repr_html_(), str)
@@ -940,8 +942,7 @@ class TestGroupWithChunkStore(TestGroup):
         assert_array_equal(np.arange(100), a[:])
 
         # check store keys
-        expect = sorted([attrs_key, group_meta_key, 'foo/' + attrs_key,
-                         'foo/' + array_meta_key])
+        expect = sorted([group_meta_key, 'foo/' + array_meta_key])
         actual = sorted(store.keys())
         eq(expect, actual)
         expect = ['foo/' + str(i) for i in range(10)]

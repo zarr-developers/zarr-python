@@ -10,7 +10,6 @@ from __future__ import absolute_import, print_function, division
 from collections import MutableMapping
 import os
 import tempfile
-import json
 import zipfile
 import shutil
 import atexit
@@ -212,7 +211,7 @@ def init_array(store, shape, chunks=True, dtype=None, compressor='default',
         >>> store = dict()
         >>> init_array(store, shape=(10000, 10000), chunks=(1000, 1000))
         >>> sorted(store.keys())
-        ['.zarray', '.zattrs']
+        ['.zarray']
 
     Array metadata is stored as JSON::
 
@@ -240,17 +239,12 @@ def init_array(store, shape, chunks=True, dtype=None, compressor='default',
             "zarr_format": 2
         }
 
-    User-defined attributes are also stored as JSON, initially empty::
-
-        >>> print(store['.zattrs'].decode())
-        {}
-
     Initialize an array using a storage path::
 
         >>> store = dict()
         >>> init_array(store, shape=100000000, chunks=1000000, dtype='i1', path='foo')
         >>> sorted(store.keys())
-        ['.zattrs', '.zgroup', 'foo/.zarray', 'foo/.zattrs']
+        ['.zgroup', 'foo/.zarray']
         >>> print(store['foo/.zarray'].decode())
         {
             "chunks": [
@@ -276,8 +270,7 @@ def init_array(store, shape, chunks=True, dtype=None, compressor='default',
     Notes
     -----
     The initialisation process involves normalising all array metadata, encoding
-    as JSON and storing under the '.zarray' key. User attributes are also
-    initialized and stored as JSON under the '.zattrs' key.
+    as JSON and storing under the '.zarray' key.
 
     """
 
@@ -349,10 +342,6 @@ def _init_array_metadata(store, shape, chunks=None, dtype=None, compressor='defa
     key = _path_to_prefix(path) + array_meta_key
     store[key] = encode_array_metadata(meta)
 
-    # initialize attributes
-    key = _path_to_prefix(path) + attrs_key
-    store[key] = json.dumps(dict()).encode('ascii')
-
 
 # backwards compatibility
 init_store = init_array
@@ -407,10 +396,6 @@ def _init_group_metadata(store, overwrite=False, path=None, chunk_store=None):
     meta = dict()
     key = _path_to_prefix(path) + group_meta_key
     store[key] = encode_group_metadata(meta)
-
-    # initialize attributes
-    key = _path_to_prefix(path) + attrs_key
-    store[key] = json.dumps(dict()).encode('ascii')
 
 
 def ensure_bytes(s):
@@ -654,7 +639,7 @@ class DirectoryStore(MutableMapping):
 
         >>> import os
         >>> sorted(os.listdir('data/array.zarr'))
-        ['.zarray', '.zattrs', '0.0', '0.1', '1.0', '1.1']
+        ['.zarray', '0.0', '0.1', '1.0', '1.1']
 
     Store a group::
 
@@ -668,11 +653,11 @@ class DirectoryStore(MutableMapping):
     directories on the file system, i.e.::
 
         >>> sorted(os.listdir('data/group.zarr'))
-        ['.zattrs', '.zgroup', 'foo']
+        ['.zgroup', 'foo']
         >>> sorted(os.listdir('data/group.zarr/foo'))
-        ['.zattrs', '.zgroup', 'bar']
+        ['.zgroup', 'bar']
         >>> sorted(os.listdir('data/group.zarr/foo/bar'))
-        ['.zarray', '.zattrs', '0.0', '0.1', '1.0', '1.1']
+        ['.zarray', '0.0', '0.1', '1.0', '1.1']
 
     Notes
     -----
@@ -909,7 +894,7 @@ class NestedDirectoryStore(DirectoryStore):
 
         >>> import os
         >>> sorted(os.listdir('data/array.zarr'))
-        ['.zarray', '.zattrs', '0', '1']
+        ['.zarray', '0', '1']
         >>> sorted(os.listdir('data/array.zarr/0'))
         ['0', '1']
         >>> sorted(os.listdir('data/array.zarr/1'))
@@ -927,11 +912,11 @@ class NestedDirectoryStore(DirectoryStore):
     directories on the file system, i.e.::
 
         >>> sorted(os.listdir('data/group.zarr'))
-        ['.zattrs', '.zgroup', 'foo']
+        ['.zgroup', 'foo']
         >>> sorted(os.listdir('data/group.zarr/foo'))
-        ['.zattrs', '.zgroup', 'bar']
+        ['.zgroup', 'bar']
         >>> sorted(os.listdir('data/group.zarr/foo/bar'))
-        ['.zarray', '.zattrs', '0', '1']
+        ['.zarray', '0', '1']
         >>> sorted(os.listdir('data/group.zarr/foo/bar/0'))
         ['0', '1']
         >>> sorted(os.listdir('data/group.zarr/foo/bar/1'))
@@ -1487,7 +1472,9 @@ else:  # pragma: py2 no cover
 
 
 class LMDBStore(MutableMapping):
-    """Storage class using LMDB.
+    """Storage class using LMDB. Requires the `lmdb <http://lmdb.readthedocs.io/>`_
+    package to be installed.
+
 
     Parameters
     ----------
@@ -1498,10 +1485,6 @@ class LMDBStore(MutableMapping):
         reducing memory copies.
     **kwargs
         Keyword arguments passed through to the `lmdb.open` function.
-
-    Notes
-    -----
-    Requires the `lmdb <http://lmdb.readthedocs.io/>`_ package to be installed.
 
     Examples
     --------
