@@ -178,7 +178,7 @@ print some diagnostics, e.g.::
                        : blocksize=0)
     Store type         : builtins.dict
     No. bytes          : 400000000 (381.5M)
-    No. bytes stored   : 4565055 (4.4M)
+    No. bytes stored   : 4565053 (4.4M)
     Storage ratio      : 87.6
     Chunks initialized : 100/100
 
@@ -270,7 +270,7 @@ Here is an example using a delta filter with the Blosc compressor::
     Compressor         : Blosc(cname='zstd', clevel=1, shuffle=SHUFFLE, blocksize=0)
     Store type         : builtins.dict
     No. bytes          : 400000000 (381.5M)
-    No. bytes stored   : 648607 (633.4K)
+    No. bytes stored   : 648605 (633.4K)
     Storage ratio      : 616.7
     Chunks initialized : 100/100
 
@@ -394,7 +394,7 @@ property. E.g.::
     Compressor         : Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
     Store type         : zarr.storage.DictStore
     No. bytes          : 8000000 (7.6M)
-    No. bytes stored   : 37482 (36.6K)
+    No. bytes stored   : 37480 (36.6K)
     Storage ratio      : 213.4
     Chunks initialized : 10/10
 
@@ -409,7 +409,7 @@ property. E.g.::
     Compressor         : Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
     Store type         : zarr.storage.DictStore
     No. bytes          : 4000000 (3.8M)
-    No. bytes stored   : 23245 (22.7K)
+    No. bytes stored   : 23243 (22.7K)
     Storage ratio      : 172.1
     Chunks initialized : 100/100
 
@@ -898,7 +898,7 @@ ratios, depending on the correlation structure within the data. E.g.::
     Compressor         : Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
     Store type         : builtins.dict
     No. bytes          : 400000000 (381.5M)
-    No. bytes stored   : 26805737 (25.6M)
+    No. bytes stored   : 26805735 (25.6M)
     Storage ratio      : 14.9
     Chunks initialized : 100/100
     >>> f = zarr.array(a, chunks=(1000, 1000), order='F')
@@ -912,7 +912,7 @@ ratios, depending on the correlation structure within the data. E.g.::
     Compressor         : Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
     Store type         : builtins.dict
     No. bytes          : 400000000 (381.5M)
-    No. bytes stored   : 9633603 (9.2M)
+    No. bytes stored   : 9633601 (9.2M)
     Storage ratio      : 41.5
     Chunks initialized : 100/100
 

@@ -275,7 +275,8 @@ Attributes
 An array or group can be associated with custom attributes, which are simple
 key/value items with application-specific meaning. Custom attributes are
 encoded as a JSON object and stored under the ".zattrs" key within an array
-store.
+store. The ".zattrs" key does not have to be present, and if it is absent the
+attributes should be treated as empty.
 
 For example, the JSON object below encodes three attributes named
 "foo", "bar" and "baz"::
@@ -308,7 +309,7 @@ have been set in the store::
 
     >>> import os
     >>> sorted(os.listdir('data/example.zarr'))
-    ['.zarray', '.zattrs']
+    ['.zarray']
 
 Inspect the array metadata::
 
@@ -333,23 +334,18 @@ Inspect the array metadata::
         "zarr_format": 2
     }
 
-Inspect the array attributes::
-
-    >>> print(open('data/example.zarr/.zattrs').read())
-    {}
-
 Chunks are initialized on demand. E.g., set some data::
 
     >>> a[0:10, 0:10] = 1
     >>> sorted(os.listdir('data/example.zarr'))
-    ['.zarray', '.zattrs', '0.0']
+    ['.zarray', '0.0']
 
 Set some more data::
 
     >>> a[0:10, 10:20] = 2
     >>> a[10:20, :] = 3
     >>> sorted(os.listdir('data/example.zarr'))
-    ['.zarray', '.zattrs', '0.0', '0.1', '1.0', '1.1']
+    ['.zarray', '0.0', '0.1', '1.0', '1.1']
 
 Manually decompress a single chunk for illustration::
 
@@ -369,6 +365,8 @@ Modify the array attributes::
     >>> a.attrs['foo'] = 42
     >>> a.attrs['bar'] = 'apples'
     >>> a.attrs['baz'] = [1, 2, 3, 4]
+    >>> sorted(os.listdir('data/example.zarr'))
+    ['.zarray', '.zattrs', '0.0', '0.1', '1.0', '1.1']
     >>> print(open('data/example.zarr/.zattrs').read())
     {
         "bar": "apples",
@@ -398,12 +396,11 @@ Create the root group::
 
     >>> root_grp = zarr.group(store, overwrite=True)
 
-The metadata resource for the root group has been created, as well as a custom
-attributes resource::
+The metadata resource for the root group has been created::
 
     >>> import os
     >>> sorted(os.listdir('data/group.zarr'))
-    ['.zattrs', '.zgroup']
+    ['.zgroup']
 
 Inspect the group metadata::
 
@@ -412,11 +409,6 @@ Inspect the group metadata::
         "zarr_format": 2
     }
 
-Inspect the group attributes::
-
-    >>> print(open('data/group.zarr/.zattrs').read())
-    {}
-
 Create a sub-group::
 
     >>> sub_grp = root_grp.create_group('foo')
@@ -424,21 +416,25 @@ Create a sub-group::
 What has been stored::
 
     >>> sorted(os.listdir('data/group.zarr'))
-    ['.zattrs', '.zgroup', 'foo']
+    ['.zgroup', 'foo']
     >>> sorted(os.listdir('data/group.zarr/foo'))
-    ['.zattrs', '.zgroup']
+    ['.zgroup']
 
 Create an array within the sub-group::
 
     >>> a = sub_grp.create_dataset('bar', shape=(20, 20), chunks=(10, 10))
     >>> a[:] = 42
 
+Set a custom attributes::
+
+    >>> a.attrs['comment'] = 'answer to life, the universe and everything'
+
 What has been stored::
 
     >>> sorted(os.listdir('data/group.zarr'))
-    ['.zattrs', '.zgroup', 'foo']
+    ['.zgroup', 'foo']
     >>> sorted(os.listdir('data/group.zarr/foo'))
-    ['.zattrs', '.zgroup', 'bar']
+    ['.zgroup', 'bar']
     >>> sorted(os.listdir('data/group.zarr/foo/bar'))
     ['.zarray', '.zattrs', '0.0', '0.1', '1.0', '1.1']
 
@@ -449,6 +445,7 @@ Here is the same example using a Zip file as storage::
     >>> sub_grp = root_grp.create_group('foo')
     >>> a = sub_grp.create_dataset('bar', shape=(20, 20), chunks=(10, 10))
     >>> a[:] = 42
+    >>> a.attrs['comment'] = 'answer to life, the universe and everything'
     >>> store.close()
 
 What has been stored::
@@ -457,9 +454,7 @@ What has been stored::
     >>> zf = zipfile.ZipFile('data/group.zip', mode='r')
     >>> for name in sorted(zf.namelist()):
     ...     print(name)
-    .zattrs
     .zgroup
-    foo/.zattrs
     foo/.zgroup
     foo/bar/.zarray
     foo/bar/.zattrs
