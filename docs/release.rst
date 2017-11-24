@@ -146,6 +146,9 @@ Documentation
 * A new tutorial section on :ref:`tutorial_pickle` has been added (:issue:`91`).
 * A new tutorial section on :ref:`tutorial_datetime` has been added.
 * A new tutorial section on :ref:`tutorial_diagnostics` has been added.
+* The tutorial sections on :ref:`tutorial_sync` and :ref:`tutorial_tips_blosc` have been
+  updated to provide information about how to avoid program hangs when using the Blosc
+  compressor with multiple processes (:issue:`199`, :issue:`201`).
 
 Maintenance
 ~~~~~~~~~~~
@@ -161,7 +164,8 @@ Acknowledgments
 Code was contributed to this release by :user:`John Kirkham <jakirkham>` and
 :user:`Prakhar Goel <newt0311>`.
 
-Documentation was contributed to this release by :user:`Mamy Ratsimbazafy <mratsim>`.
+Documentation was contributed to this release by :user:`Mamy Ratsimbazafy <mratsim>`
+and :user:`Charles Noyes <CSNoyes>`.
 
 Thank you to :user:`John Kirkham <jakirkham>`, :user:`Stephan Hoyer <shoyer>`,
 :user:`Francesc Alted <FrancescAlted>`, and :user:`Matthew Rocklin <mrocklin>` for code

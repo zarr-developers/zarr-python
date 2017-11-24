@@ -981,10 +981,10 @@ some networked file systems). E.g.::
 
 This array is safe to read or write from multiple processes.
 
-When using multiple processes to parallelize reads or writes with the blosc
-compression library, it is necessary to set ``zarr.blosc.use_threads = False``,
-as blosc's context manager will share incorrect global state amongst processes.
-Disabling will allow the 'contextual' manager to have correct local state.
+When using multiple processes to parallelize reads or writes on arrays using the Blosc
+compression library, it may be necessary to set ``numcodecs.blosc.use_threads = False``,
+as otherwise Blosc may share incorrect global state amongst processes causing programs
+to hang. See also the section on :ref:`tutorial_tips_blosc` below.
 
 Please note that support for parallel computing is an area of ongoing research
 and development. If you are using Zarr for parallel computing, we welcome
@@ -1087,7 +1087,7 @@ Configuring Blosc
 ~~~~~~~~~~~~~~~~~
 
 The Blosc compressor is able to use multiple threads internally to accelerate
-compression and decompression. By default, Zarr allows Blosc to use up to 8
+compression and decompression. By default, Blosc uses up to 8
 internal threads. The number of Blosc threads can be changed to increase or
 decrease this number, e.g.::
 
