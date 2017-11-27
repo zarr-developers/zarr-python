@@ -1840,6 +1840,19 @@ class Array(object):
     def hexdigest(self, hashname="sha1"):
         """
         Compute a checksum for the data. Default uses sha1 for speed.
+
+        Examples
+        --------
+        >>> import zarr
+        >>> z = zarr.empty(shape=(10000, 10000), chunks=(1000, 1000))
+        >>> z.hexdigest()
+        '041f90bc7a571452af4f850a8ca2c6cddfa8a1ac'
+        >>> z = zarr.zeros(shape=(10000, 10000), chunks=(1000, 1000))
+        >>> z.hexdigest()
+        '7162d416d26a68063b66ed1f30e0a866e4abed60'
+        >>> z = zarr.zeros(shape=(10000, 10000), dtype="u1", chunks=(1000, 1000))
+        >>> z.hexdigest()
+        'cb387af37410ae5a3222e893cf3373e4e4f22816'
         """
 
         h = hashlib.new(hashname)
