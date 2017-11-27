@@ -113,6 +113,29 @@ class TestArrayWithThreadSynchronizer(TestArray, MixinArraySyncTests):
         pool = ThreadPool(cpu_count())
         return pool
 
+    def test_hexdigest(self):
+        # Check basic 1-D array
+        z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
+        eq('f710da18d45d38d4aaf2afd7fb822fdd73d02957', z.hexdigest())
+
+        # Check basic 1-D array with different type
+        z = self.create_array(shape=(1050,), chunks=100, dtype='f4')
+        eq('1437428e69754b1e1a38bd7fc9e43669577620db', z.hexdigest())
+
+        # Check basic 2-D array
+        z = self.create_array(shape=(20, 35,), chunks=10, dtype='i4')
+        eq('dde44c72cc530bd6aae39b629eb15a2da627e5f9', z.hexdigest())
+
+        # Check basic 1-D array with some data
+        z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
+        z[200:400] = np.arange(200, 400, dtype='i4')
+        eq('4c0a76fb1222498e09dcd92f7f9221d6cea8b40e', z.hexdigest())
+
+        # Check basic 1-D array with attributes
+        z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
+        z.attrs['foo'] = 'bar'
+        eq('05b0663ffe1785f38d3a459dec17e57a18f254af', z.hexdigest())
+
 
 class TestArrayWithProcessSynchronizer(TestArray, MixinArraySyncTests):
 
@@ -130,6 +153,29 @@ class TestArrayWithProcessSynchronizer(TestArray, MixinArraySyncTests):
     def create_pool(self):
         pool = ProcessPool(processes=cpu_count())
         return pool
+
+    def test_hexdigest(self):
+        # Check basic 1-D array
+        z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
+        eq('f710da18d45d38d4aaf2afd7fb822fdd73d02957', z.hexdigest())
+
+        # Check basic 1-D array with different type
+        z = self.create_array(shape=(1050,), chunks=100, dtype='f4')
+        eq('1437428e69754b1e1a38bd7fc9e43669577620db', z.hexdigest())
+
+        # Check basic 2-D array
+        z = self.create_array(shape=(20, 35,), chunks=10, dtype='i4')
+        eq('dde44c72cc530bd6aae39b629eb15a2da627e5f9', z.hexdigest())
+
+        # Check basic 1-D array with some data
+        z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
+        z[200:400] = np.arange(200, 400, dtype='i4')
+        eq('4c0a76fb1222498e09dcd92f7f9221d6cea8b40e', z.hexdigest())
+
+        # Check basic 1-D array with attributes
+        z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
+        z.attrs['foo'] = 'bar'
+        eq('05b0663ffe1785f38d3a459dec17e57a18f254af', z.hexdigest())
 
 
 def _create_group(arg):
