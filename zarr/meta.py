@@ -64,7 +64,7 @@ def encode_array_metadata(meta):
         order=meta['order'],
         filters=meta['filters'],
     )
-    s = json.dumps(meta, indent=4, sort_keys=True, ensure_ascii=True)
+    s = json.dumps(meta, indent=4, sort_keys=True, ensure_ascii=True, separators=(',', ': '))
     b = s.encode('ascii')
     return b
 

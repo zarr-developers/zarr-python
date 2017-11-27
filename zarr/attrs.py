@@ -24,7 +24,7 @@ class Attributes(MutableMapping):
         return self.asdict()[item]
 
     def _put(self, d):
-        s = json.dumps(d, indent=4, sort_keys=True, ensure_ascii=True)
+        s = json.dumps(d, indent=4, sort_keys=True, ensure_ascii=True, separators=(',', ': '))
         self.store[self.key] = s.encode('ascii')
 
     def _write_op(self, f, *args, **kwargs):
