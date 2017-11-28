@@ -2,6 +2,7 @@
 from __future__ import absolute_import, print_function, division
 import operator
 import itertools
+import hashlib
 import re
 
 
@@ -87,6 +88,7 @@ class Array(object):
     set_mask_selection
     get_coordinate_selection
     set_coordinate_selection
+    hexdigest
     resize
     append
     view
@@ -1834,6 +1836,37 @@ class Array(object):
         ]
 
         return items
+
+    def hexdigest(self, hashname="sha1"):
+        """
+        Compute a checksum for the data. Default uses sha1 for speed.
+
+        Examples
+        --------
+        >>> import zarr
+        >>> z = zarr.empty(shape=(10000, 10000), chunks=(1000, 1000))
+        >>> z.hexdigest()
+        '041f90bc7a571452af4f850a8ca2c6cddfa8a1ac'
+        >>> z = zarr.zeros(shape=(10000, 10000), chunks=(1000, 1000))
+        >>> z.hexdigest()
+        '7162d416d26a68063b66ed1f30e0a866e4abed60'
+        >>> z = zarr.zeros(shape=(10000, 10000), dtype="u1", chunks=(1000, 1000))
+        >>> z.hexdigest()
+        'cb387af37410ae5a3222e893cf3373e4e4f22816'
+        """
+
+        h = hashlib.new(hashname)
+
+        for i in itertools.product(*[range(s) for s in self.cdata_shape]):
+            h.update(self.chunk_store.get(self._chunk_key(i), b""))
+
+        h.update(self.store.get(self._key_prefix + array_meta_key, b""))
+
+        h.update(self.store.get(self.attrs.key, b""))
+
+        checksum = h.hexdigest()
+
+        return checksum
 
     def __getstate__(self):
         return (self._store, self._path, self._read_only, self._chunk_store,

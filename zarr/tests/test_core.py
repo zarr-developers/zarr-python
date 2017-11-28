@@ -40,6 +40,7 @@ class TestArray(unittest.TestCase):
         assert_is_none(a.name)
         assert_is_none(a.basename)
         assert_is(store, a.store)
+        eq("8fecb7a17ea1493d9c1430d04437b4f5b0b34985", a.hexdigest())
 
         # initialize at path
         store = dict()
@@ -52,6 +53,7 @@ class TestArray(unittest.TestCase):
         eq('/foo/bar', a.name)
         eq('bar', a.basename)
         assert_is(store, a.store)
+        eq("8fecb7a17ea1493d9c1430d04437b4f5b0b34985", a.hexdigest())
 
         # store not initialized
         store = dict()
@@ -439,6 +441,29 @@ class TestArray(unittest.TestCase):
         assert_array_equal(z[:], np.arange(20, dtype='i4'))
         a[:] = 0
         assert_array_equal(z[:], np.arange(20, dtype='i4'))
+
+    def test_hexdigest(self):
+        # Check basic 1-D array
+        z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
+        eq('063b02ff8d9d3bab6da932ad5828b506ef0a6578', z.hexdigest())
+
+        # Check basic 1-D array with different type
+        z = self.create_array(shape=(1050,), chunks=100, dtype='f4')
+        eq('f97b84dc9ffac807415f750100108764e837bb82', z.hexdigest())
+
+        # Check basic 2-D array
+        z = self.create_array(shape=(20, 35,), chunks=10, dtype='i4')
+        eq('4f797d7bdad0fa1c9fa8c80832efb891a68de104', z.hexdigest())
+
+        # Check basic 1-D array with some data
+        z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
+        z[200:400] = np.arange(200, 400, dtype='i4')
+        eq('14470724dca6c1837edddedc490571b6a7f270bc', z.hexdigest())
+
+        # Check basic 1-D array with attributes
+        z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
+        z.attrs['foo'] = 'bar'
+        eq('2a1046dd99b914459b3e86be9dde05027a07d209', z.hexdigest())
 
     def test_resize_1d(self):
 
@@ -848,6 +873,29 @@ class TestArrayWithPath(TestArray):
         init_array(store, path='foo/bar', **kwargs)
         return Array(store, path='foo/bar', read_only=read_only)
 
+    def test_hexdigest(self):
+        # Check basic 1-D array
+        z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
+        eq('f710da18d45d38d4aaf2afd7fb822fdd73d02957', z.hexdigest())
+
+        # Check basic 1-D array with different type
+        z = self.create_array(shape=(1050,), chunks=100, dtype='f4')
+        eq('1437428e69754b1e1a38bd7fc9e43669577620db', z.hexdigest())
+
+        # Check basic 2-D array
+        z = self.create_array(shape=(20, 35,), chunks=10, dtype='i4')
+        eq('dde44c72cc530bd6aae39b629eb15a2da627e5f9', z.hexdigest())
+
+        # Check basic 1-D array with some data
+        z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
+        z[200:400] = np.arange(200, 400, dtype='i4')
+        eq('4c0a76fb1222498e09dcd92f7f9221d6cea8b40e', z.hexdigest())
+
+        # Check basic 1-D array with attributes
+        z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
+        z.attrs['foo'] = 'bar'
+        eq('05b0663ffe1785f38d3a459dec17e57a18f254af', z.hexdigest())
+
     def test_nbytes_stored(self):
 
         # dict as store
@@ -876,6 +924,29 @@ class TestArrayWithChunkStore(TestArray):
         chunk_store = dict()
         init_array(store, chunk_store=chunk_store, **kwargs)
         return Array(store, read_only=read_only, chunk_store=chunk_store)
+
+    def test_hexdigest(self):
+        # Check basic 1-D array
+        z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
+        eq('f710da18d45d38d4aaf2afd7fb822fdd73d02957', z.hexdigest())
+
+        # Check basic 1-D array with different type
+        z = self.create_array(shape=(1050,), chunks=100, dtype='f4')
+        eq('1437428e69754b1e1a38bd7fc9e43669577620db', z.hexdigest())
+
+        # Check basic 2-D array
+        z = self.create_array(shape=(20, 35,), chunks=10, dtype='i4')
+        eq('dde44c72cc530bd6aae39b629eb15a2da627e5f9', z.hexdigest())
+
+        # Check basic 1-D array with some data
+        z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
+        z[200:400] = np.arange(200, 400, dtype='i4')
+        eq('4c0a76fb1222498e09dcd92f7f9221d6cea8b40e', z.hexdigest())
+
+        # Check basic 1-D array with attributes
+        z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
+        z.attrs['foo'] = 'bar'
+        eq('05b0663ffe1785f38d3a459dec17e57a18f254af', z.hexdigest())
 
     def test_nbytes_stored(self):
 
@@ -1009,6 +1080,29 @@ class TestArrayWithNoCompressor(TestArray):
         init_array(store, **kwargs)
         return Array(store, read_only=read_only)
 
+    def test_hexdigest(self):
+        # Check basic 1-D array
+        z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
+        eq('d3da3d485de4a5fcc6d91f9dfc6a7cba9720c561', z.hexdigest())
+
+        # Check basic 1-D array with different type
+        z = self.create_array(shape=(1050,), chunks=100, dtype='f4')
+        eq('443b8dee512e42946cb63ff01d28e9bee8105a5f', z.hexdigest())
+
+        # Check basic 2-D array
+        z = self.create_array(shape=(20, 35,), chunks=10, dtype='i4')
+        eq('de841ca276042993da53985de1e7769f5d0fc54d', z.hexdigest())
+
+        # Check basic 1-D array with some data
+        z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
+        z[200:400] = np.arange(200, 400, dtype='i4')
+        eq('42b6ae0d50ec361628736ab7e68fe5fefca22136', z.hexdigest())
+
+        # Check basic 1-D array with attributes
+        z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
+        z.attrs['foo'] = 'bar'
+        eq('a0535f31c130f5e5ac66ba0713d1c1ceaebd089b', z.hexdigest())
+
 
 class TestArrayWithBZ2Compressor(TestArray):
 
@@ -1019,6 +1113,29 @@ class TestArrayWithBZ2Compressor(TestArray):
         init_array(store, **kwargs)
         return Array(store, read_only=read_only)
 
+    def test_hexdigest(self):
+        # Check basic 1-D array
+        z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
+        eq('33141032439fb1df5e24ad9891a7d845b6c668c8', z.hexdigest())
+
+        # Check basic 1-D array with different type
+        z = self.create_array(shape=(1050,), chunks=100, dtype='f4')
+        eq('44d719da065c88a412d609a5500ff41e07b331d6', z.hexdigest())
+
+        # Check basic 2-D array
+        z = self.create_array(shape=(20, 35,), chunks=10, dtype='i4')
+        eq('f57a9a73a4004490fe1b871688651b8a298a5db7', z.hexdigest())
+
+        # Check basic 1-D array with some data
+        z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
+        z[200:400] = np.arange(200, 400, dtype='i4')
+        eq('1e1bcaac63e4ef3c4a68f11672537131c627f168', z.hexdigest())
+
+        # Check basic 1-D array with attributes
+        z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
+        z.attrs['foo'] = 'bar'
+        eq('86d7b9bf22dccbeaa22f340f38be506b55e76ff2', z.hexdigest())
+
 
 class TestArrayWithBloscCompressor(TestArray):
 
@@ -1028,6 +1145,29 @@ class TestArrayWithBloscCompressor(TestArray):
         kwargs.setdefault('compressor', compressor)
         init_array(store, **kwargs)
         return Array(store, read_only=read_only)
+
+    def test_hexdigest(self):
+        # Check basic 1-D array
+        z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
+        eq('7ff2ae8511eac915fad311647c168ccfe943e788', z.hexdigest())
+
+        # Check basic 1-D array with different type
+        z = self.create_array(shape=(1050,), chunks=100, dtype='f4')
+        eq('962705c861863495e9ccb7be7735907aa15e85b5', z.hexdigest())
+
+        # Check basic 2-D array
+        z = self.create_array(shape=(20, 35,), chunks=10, dtype='i4')
+        eq('deb675ff91dd26dba11b65aab5f19a1f21a5645b', z.hexdigest())
+
+        # Check basic 1-D array with some data
+        z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
+        z[200:400] = np.arange(200, 400, dtype='i4')
+        eq('90e30bdab745a9641cd0eb605356f531bc8ec1c3', z.hexdigest())
+
+        # Check basic 1-D array with attributes
+        z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
+        z.attrs['foo'] = 'bar'
+        eq('95d40c391f167db8b1290e3c39d9bf741edacdf6', z.hexdigest())
 
 
 # TODO can we rely on backports and remove the PY2 exclusion?
@@ -1043,6 +1183,29 @@ if not PY2:  # pragma: py2 no cover
             kwargs.setdefault('compressor', compressor)
             init_array(store, **kwargs)
             return Array(store, read_only=read_only)
+
+        def test_hexdigest(self):
+            # Check basic 1-D array
+            z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
+            eq('93ecaa530a1162a9d48a3c1dcee4586ccfc59bae', z.hexdigest())
+
+            # Check basic 1-D array with different type
+            z = self.create_array(shape=(1050,), chunks=100, dtype='f4')
+            eq('04a9755a0cd638683531b7816c7fa4fbb6f577f2', z.hexdigest())
+
+            # Check basic 2-D array
+            z = self.create_array(shape=(20, 35,), chunks=10, dtype='i4')
+            eq('b93b163a21e8500519250a6defb821d03eb5d9e0', z.hexdigest())
+
+            # Check basic 1-D array with some data
+            z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
+            z[200:400] = np.arange(200, 400, dtype='i4')
+            eq('cde499f3dc945b4e97197ff8e3cf8188a1262c35', z.hexdigest())
+
+            # Check basic 1-D array with attributes
+            z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
+            z.attrs['foo'] = 'bar'
+            eq('e2cf3afbf66ad0e28a2b6b68b1b07817c69aaee2', z.hexdigest())
 
 
 class TestArrayWithFilters(TestArray):
@@ -1060,6 +1223,29 @@ class TestArrayWithFilters(TestArray):
         kwargs.setdefault('compressor', compressor)
         init_array(store, **kwargs)
         return Array(store, read_only=read_only)
+
+    def test_hexdigest(self):
+        # Check basic 1-D array
+        z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
+        eq('b80367c5599d47110d42bd8886240c2f46620dba', z.hexdigest())
+
+        # Check basic 1-D array with different type
+        z = self.create_array(shape=(1050,), chunks=100, dtype='f4')
+        eq('95a7b2471225e73199c9716d21e8d3dd6e5f6f2a', z.hexdigest())
+
+        # Check basic 2-D array
+        z = self.create_array(shape=(20, 35,), chunks=10, dtype='i4')
+        eq('9abf3ad54413ab11855d88a5e0087cd416657e02', z.hexdigest())
+
+        # Check basic 1-D array with some data
+        z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
+        z[200:400] = np.arange(200, 400, dtype='i4')
+        eq('c649ad229bc5720258b934ea958570c2f354c2eb', z.hexdigest())
+
+        # Check basic 1-D array with attributes
+        z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
+        z.attrs['foo'] = 'bar'
+        eq('62fc9236d78af18a5ec26c12eea1d33bce52501e', z.hexdigest())
 
     def test_astype_no_filters(self):
         shape = (100,)
@@ -1112,6 +1298,12 @@ class CustomMapping(object):
 
     def keys(self):
         return self.inner.keys()
+
+    def get(self, item, default=None):
+        try:
+            return self.inner[item]
+        except KeyError:
+            return default
 
     def __getitem__(self, item):
         return self.inner[item]
