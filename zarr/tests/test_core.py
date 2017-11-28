@@ -815,25 +815,28 @@ class TestArray(unittest.TestCase):
     def test_structured_array(self):
 
         # setup some data
-        a = np.array([(b'aaa', 1, 4.2),
+        d = np.array([(b'aaa', 1, 4.2),
                       (b'bbb', 2, 8.4),
                       (b'ccc', 3, 12.6)],
                      dtype=[('foo', 'S3'), ('bar', 'i4'), ('baz', 'f8')])
-        for fill_value in None, b'', (b'zzz', 0, 0.0):
-            z = self.create_array(shape=a.shape, chunks=2, dtype=a.dtype,
-                                  fill_value=fill_value)
-            eq(3, len(z))
-            if fill_value is not None:
-                np_fill_value = np.array(fill_value, dtype=a.dtype)[()]
-                eq(np_fill_value, z.fill_value)
-                eq(np_fill_value, z[0])
-                eq(np_fill_value, z[-1])
-            z[...] = a
-            eq(a[0], z[0])
-            assert_array_equal(a, z[...])
-            assert_array_equal(a['foo'], z['foo'])
-            assert_array_equal(a['bar'], z['bar'])
-            assert_array_equal(a['baz'], z['baz'])
+        for a in (d, d[:0]):
+            for fill_value in None, b'', (b'zzz', 0, 0.0):
+                z = self.create_array(shape=a.shape, chunks=2, dtype=a.dtype,
+                                      fill_value=fill_value)
+                eq(len(a), len(z))
+                if fill_value is not None:
+                    np_fill_value = np.array(fill_value, dtype=a.dtype)[()]
+                    eq(np_fill_value, z.fill_value)
+                    if len(z):
+                        eq(np_fill_value, z[0])
+                        eq(np_fill_value, z[-1])
+                z[...] = a
+                if len(a):
+                    eq(a[0], z[0])
+                assert_array_equal(a, z[...])
+                assert_array_equal(a['foo'], z['foo'])
+                assert_array_equal(a['bar'], z['bar'])
+                assert_array_equal(a['baz'], z['baz'])
 
         with assert_raises(ValueError):
             # dodgy fill value
