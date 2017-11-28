@@ -104,6 +104,9 @@ Enhancements
 
 * **ZipStore is now thread-safe**; :issue:`194`, :issue:`192`.
 
+* **New Array.hexdigest() method** computes an ``Array``'s hash with ``hashlib``.
+  By :user:`John Kirkham <jakirkham>`, :issue:`98`, :issue:`203`.
+
 
 Bug fixes
 ~~~~~~~~~
