@@ -19,7 +19,8 @@ from nose.tools import assert_raises, eq_ as eq, assert_is_none
 from zarr.storage import (init_array, array_meta_key, attrs_key, DictStore,
                           DirectoryStore, ZipStore, init_group, group_meta_key,
                           getsize, migrate_1to2, TempStore, atexit_rmtree,
-                          NestedDirectoryStore, default_compressor, DBMStore, LMDBStore)
+                          NestedDirectoryStore, default_compressor, DBMStore,
+                          LMDBStore, atexit_rmglob)
 from zarr.meta import (decode_array_metadata, encode_array_metadata, ZARR_FORMAT,
                        decode_group_metadata, encode_group_metadata)
 from zarr.compat import PY2
@@ -763,11 +764,11 @@ class TestDBMStoreDumb(TestDBMStore):
 
     def create_store(self):
         path = tempfile.mktemp(suffix='.dumbdbm')
+        atexit_rmglob(path + '*')
         if PY2:  # pragma: py3 no cover
             import dumbdbm
         else:  # pragma: py2 no cover
             import dbm.dumb as dumbdbm
-        atexit.register(os.remove, path)
         store = DBMStore(path, flag='n', open=dumbdbm.open)
         return store
 
@@ -798,7 +799,7 @@ if not PY2:
 
             def create_store(self):
                 path = tempfile.mktemp(suffix='.ndbm')
-                atexit.register(os.remove, path)
+                atexit_rmglob(path + '*')
                 store = DBMStore(path, flag='n', open=ndbm.open)
                 return store
 

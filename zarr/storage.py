@@ -17,6 +17,7 @@ import re
 import sys
 import multiprocessing
 from threading import Lock, RLock
+import glob
 
 
 import numpy as np
@@ -832,6 +833,20 @@ def atexit_rmtree(path,
     """Ensure directory removal at interpreter exit."""
     if isdir(path):
         rmtree(path)
+
+
+def atexit_rmglob(path,
+                  glob=glob.glob,
+                  isdir=os.path.isdir,
+                  isfile=os.path.isfile,
+                  remove=os.remove,
+                  rmtree=shutil.rmtree):  # pragma: no cover
+    """Ensure removal of multiple files at interpreter exit."""
+    for p in glob(path):
+        if isfile(p):
+            remove(p)
+        elif isdir(p):
+            rmtree(p)
 
 
 class TempStore(DirectoryStore):
