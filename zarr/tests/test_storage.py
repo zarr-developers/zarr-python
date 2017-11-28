@@ -748,8 +748,8 @@ class TestZipStore(StoreTests, unittest.TestCase):
 class TestDBMStore(StoreTests, unittest.TestCase):
 
     def create_store(self):
-        path = tempfile.mktemp(suffix='.dbm')
-        atexit.register(os.remove, path)
+        path = tempfile.mktemp(suffix='.anydbm')
+        atexit.register(atexit_rmglob, path + '*')
         store = DBMStore(path, flag='n')
         return store
 
@@ -764,7 +764,7 @@ class TestDBMStoreDumb(TestDBMStore):
 
     def create_store(self):
         path = tempfile.mktemp(suffix='.dumbdbm')
-        atexit_rmglob(path + '*')
+        atexit.register(atexit_rmglob, path + '*')
         if PY2:  # pragma: py3 no cover
             import dumbdbm
         else:  # pragma: py2 no cover
@@ -799,7 +799,7 @@ if not PY2:
 
             def create_store(self):
                 path = tempfile.mktemp(suffix='.ndbm')
-                atexit_rmglob(path + '*')
+                atexit.register(atexit_rmglob, path + '*')
                 store = DBMStore(path, flag='n', open=ndbm.open)
                 return store
 
@@ -826,7 +826,7 @@ class TestLMDBStore(StoreTests, unittest.TestCase):
 
     def create_store(self):
         path = tempfile.mktemp(suffix='.lmdb')
-        atexit_rmtree(path)
+        atexit.register(atexit_rmtree, path)
         if PY2:  # pragma: py3 no cover
             # don't use buffers, otherwise would have to rewrite tests as bytes and
             # buffer don't compare equal in PY2

@@ -16,7 +16,7 @@ from nose import SkipTest
 
 
 from zarr.storage import (DirectoryStore, init_array, init_group, NestedDirectoryStore,
-                          DBMStore, LMDBStore, atexit_rmtree)
+                          DBMStore, LMDBStore, atexit_rmtree, atexit_rmglob)
 from zarr.core import Array
 from zarr.errors import PermissionError
 from zarr.compat import PY2
@@ -933,8 +933,8 @@ class TestArrayWithDBMStore(TestArray):
 
     @staticmethod
     def create_array(read_only=False, **kwargs):
-        path = mktemp(suffix='.dbm')
-        atexit.register(os.remove, path)
+        path = mktemp(suffix='.anydbm')
+        atexit.register(atexit_rmglob, path + '*')
         store = DBMStore(path, flag='n')
         kwargs.setdefault('compressor', Zlib(1))
         init_array(store, **kwargs)
@@ -970,7 +970,7 @@ class TestArrayWithLMDBStore(TestArray):
     @staticmethod
     def create_array(read_only=False, **kwargs):
         path = mktemp(suffix='.lmdb')
-        atexit_rmtree(path)
+        atexit.register(atexit_rmtree, path)
         try:
             store = LMDBStore(path, buffers=True)
         except ImportError:  # pragma: no cover
@@ -988,7 +988,7 @@ class TestArrayWithLMDBStoreNoBuffers(TestArray):
     @staticmethod
     def create_array(read_only=False, **kwargs):
         path = mktemp(suffix='.lmdb')
-        atexit_rmtree(path)
+        atexit.register(atexit_rmtree, path)
         try:
             store = LMDBStore(path, buffers=False)
         except ImportError:  # pragma: no cover

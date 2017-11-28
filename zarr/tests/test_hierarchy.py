@@ -19,7 +19,7 @@ from nose import SkipTest
 
 from zarr.storage import (DictStore, DirectoryStore, ZipStore, init_group, init_array,
                           array_meta_key, group_meta_key, atexit_rmtree,
-                          NestedDirectoryStore, DBMStore, LMDBStore)
+                          NestedDirectoryStore, DBMStore, LMDBStore, atexit_rmglob)
 from zarr.core import Array
 from zarr.compat import PY2, text_type
 from zarr.hierarchy import Group, group, open_group
@@ -884,8 +884,8 @@ class TestGroupWithDBMStore(TestGroup):
 
     @staticmethod
     def create_store():
-        path = tempfile.mktemp(suffix='.dbm')
-        atexit.register(os.remove, path)
+        path = tempfile.mktemp(suffix='.anydbm')
+        atexit.register(atexit_rmglob, path + '*')
         store = DBMStore(path, flag='n')
         return store, None
 
@@ -911,7 +911,7 @@ class TestGroupWithLMDBStore(TestGroup):
     @staticmethod
     def create_store():
         path = tempfile.mktemp(suffix='.lmdb')
-        atexit_rmtree(path)
+        atexit.register(atexit_rmtree, path)
         try:
             store = LMDBStore(path)
         except ImportError:  # pragma: no cover

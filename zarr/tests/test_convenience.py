@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, print_function, division
 import tempfile
+import atexit
 
 
 from nose.tools import assert_raises
@@ -17,7 +18,7 @@ from zarr.hierarchy import Group
 def test_open_array():
 
     store = tempfile.mkdtemp()
-    atexit_rmtree(store)
+    atexit.register(atexit_rmtree, store)
 
     # open array, create if doesn't exist
     z = open(store, mode='a', shape=100)
@@ -43,7 +44,7 @@ def test_open_array():
 def test_open_group():
 
     store = tempfile.mkdtemp()
-    atexit_rmtree(store)
+    atexit.register(atexit_rmtree, store)
 
     # open group, create if doesn't exist
     g = open(store, mode='a')
