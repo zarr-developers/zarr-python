@@ -1676,6 +1676,8 @@ class Array(object):
                 if self._fill_value is not None:
                     chunk = np.empty(self._chunks, dtype=self._dtype, order=self._order)
                     chunk.fill(self._fill_value)
+                elif self._dtype == object:
+                    chunk = np.empty(self._chunks, dtype=self._dtype, order=self._order)
                 else:
                     # N.B., use zeros here so any region beyond the array has consistent
                     # and compressible data
