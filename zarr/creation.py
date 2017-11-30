@@ -16,7 +16,8 @@ from zarr.errors import err_contains_array, err_contains_group, err_array_not_fo
 def create(shape, chunks=True, dtype=None, compressor='default',
            fill_value=0, order='C', store=None, synchronizer=None,
            overwrite=False, path=None, chunk_store=None, filters=None,
-           cache_metadata=True, read_only=False, **kwargs):
+           cache_metadata=True, read_only=False, object_codec=None,
+           **kwargs):
     """Create an array.
 
     Parameters
@@ -55,6 +56,8 @@ def create(shape, chunks=True, dtype=None, compressor='default',
         overhead depending on storage and data access pattern).
     read_only : bool, optional
         True if array should be protected against modification.
+    object_codec : Codec, optional
+        A codec to encode object arrays, only needed if dtype=object.
 
     Returns
     -------
@@ -82,8 +85,8 @@ def create(shape, chunks=True, dtype=None, compressor='default',
     e.g., `MsgPack` or `Pickle` from `numcodecs`::
 
         >>> from numcodecs import MsgPack
-        >>> z = zarr.create((10000, 10000), chunks=(1000, 1000), dtype='object',
-        ...                 filters=[MsgPack()])
+        >>> z = zarr.create((10000, 10000), chunks=(1000, 1000), dtype=object,
+        ...                 object_codec=MsgPack())
         >>> z
         <zarr.core.Array (10000, 10000) object>
 
@@ -108,7 +111,7 @@ def create(shape, chunks=True, dtype=None, compressor='default',
     # initialize array metadata
     init_array(store, shape=shape, chunks=chunks, dtype=dtype, compressor=compressor,
                fill_value=fill_value, order=order, overwrite=overwrite, path=path,
-               chunk_store=chunk_store, filters=filters)
+               chunk_store=chunk_store, filters=filters, object_codec=object_codec)
 
     # instantiate array
     z = Array(store, path=path, chunk_store=chunk_store, synchronizer=synchronizer,
@@ -340,7 +343,7 @@ def array(data, **kwargs):
 
 def open_array(store, mode='a', shape=None, chunks=True, dtype=None, compressor='default',
                fill_value=0, order='C', synchronizer=None, filters=None, cache_metadata=True,
-               path=None, **kwargs):
+               path=None, object_codec=None, **kwargs):
     """Open an array using file-mode-like semantics.
 
     Parameters
@@ -376,6 +379,8 @@ def open_array(store, mode='a', shape=None, chunks=True, dtype=None, compressor=
         overhead depending on storage and data access pattern).
     path : string, optional
         Array path within store.
+    object_codec : Codec, optional
+        A codec to encode object arrays, only needed if dtype=object.
 
     Returns
     -------
@@ -432,7 +437,8 @@ def open_array(store, mode='a', shape=None, chunks=True, dtype=None, compressor=
     elif mode == 'w':
         init_array(store, shape=shape, chunks=chunks, dtype=dtype,
                    compressor=compressor, fill_value=fill_value,
-                   order=order, filters=filters, overwrite=True, path=path)
+                   order=order, filters=filters, overwrite=True, path=path,
+                   object_codec=object_codec)
 
     elif mode == 'a':
         if contains_group(store, path=path):
@@ -440,7 +446,8 @@ def open_array(store, mode='a', shape=None, chunks=True, dtype=None, compressor=
         elif not contains_array(store, path=path):
             init_array(store, shape=shape, chunks=chunks, dtype=dtype,
                        compressor=compressor, fill_value=fill_value,
-                       order=order, filters=filters, path=path)
+                       order=order, filters=filters, path=path,
+                       object_codec=object_codec)
 
     elif mode in ['w-', 'x']:
         if contains_group(store, path=path):
@@ -450,7 +457,8 @@ def open_array(store, mode='a', shape=None, chunks=True, dtype=None, compressor=
         else:
             init_array(store, shape=shape, chunks=chunks, dtype=dtype,
                        compressor=compressor, fill_value=fill_value,
-                       order=order, filters=filters, path=path)
+                       order=order, filters=filters, path=path,
+                       object_codec=object_codec)
 
     # determine read only status
     read_only = mode == 'r'
