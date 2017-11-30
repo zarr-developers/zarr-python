@@ -1498,7 +1498,11 @@ class Array(object):
         sel_shape = indexer.shape
 
         # check value shape
-        if is_scalar(value, self._dtype):
+        if sel_shape == ():
+            # setting a single item
+            pass
+        elif is_scalar(value, self._dtype):
+            # setting a scalar value
             pass
         else:
             if not hasattr(value, 'shape'):
@@ -1509,7 +1513,9 @@ class Array(object):
         for chunk_coords, chunk_selection, out_selection in indexer:
 
             # extract data to store
-            if is_scalar(value, self._dtype):
+            if sel_shape == ():
+                chunk_value = value
+            elif is_scalar(value, self._dtype):
                 chunk_value = value
             else:
                 chunk_value = value[out_selection]
@@ -1737,6 +1743,11 @@ class Array(object):
         if self._filters:
             for f in self._filters:
                 chunk = f.encode(chunk)
+
+        # check object encoding
+        if isinstance(chunk, np.ndarray) and chunk.dtype == object:
+            # TODO review error message
+            raise RuntimeError('object array detected without encoding')
 
         # compress
         if self._compressor:

@@ -177,6 +177,10 @@ class TestArrayWithProcessSynchronizer(TestArray, MixinArraySyncTests):
         z.attrs['foo'] = 'bar'
         eq('05b0663ffe1785f38d3a459dec17e57a18f254af', z.hexdigest())
 
+    def test_object_arrays_danger(self):
+        # skip this one, metadata get reloaded in each process
+        pass
+
 
 def _create_group(arg):
     g, name = arg
