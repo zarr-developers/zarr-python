@@ -864,6 +864,12 @@ class TestArray(unittest.TestCase):
             with assert_raises(ValueError):
                 self.create_array(shape=10, dtype='timedelta64[{}]'.format(resolution))
 
+    def test_object_arrays(self):
+
+        # an object_codec is required for object arrays
+        with assert_raises(ValueError):
+            self.create_array(shape=10, chunks=3, dtype=object)
+
 
 class TestArrayWithPath(TestArray):
 
