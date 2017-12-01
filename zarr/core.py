@@ -1570,7 +1570,8 @@ class Array(object):
                     not fields and
                     is_contiguous_selection(out_selection) and
                     is_total_slice(chunk_selection, self._chunks) and
-                    not self._filters):
+                    not self._filters and
+                    self._dtype != object):
 
                 dest = out[out_selection]
                 write_direct = (
@@ -1727,7 +1728,12 @@ class Array(object):
                 chunk = f.decode(chunk)
 
         # view as correct dtype
-        if isinstance(chunk, np.ndarray):
+        if self._dtype == object:
+            if isinstance(chunk, np.ndarray):
+                chunk = chunk.astype(self._dtype)
+            else:
+                raise RuntimeError('cannot read object array without object codec')
+        elif isinstance(chunk, np.ndarray):
             chunk = chunk.view(self._dtype)
         else:
             chunk = np.frombuffer(chunk, self._dtype)
@@ -1746,8 +1752,7 @@ class Array(object):
 
         # check object encoding
         if isinstance(chunk, np.ndarray) and chunk.dtype == object:
-            # TODO review error message
-            raise RuntimeError('object array detected without encoding')
+            raise RuntimeError('cannot write object array without object codec')
 
         # compress
         if self._compressor:

@@ -21,7 +21,8 @@ from zarr.core import Array
 from zarr.errors import PermissionError
 from zarr.compat import PY2
 from zarr.util import buffer_size
-from numcodecs import Delta, FixedScaleOffset, Zlib, Blosc, BZ2, MsgPack, Pickle
+from numcodecs import (Delta, FixedScaleOffset, Zlib, Blosc, BZ2, MsgPack, Pickle,
+                       Categorize)
 
 
 # noinspection PyMethodMayBeStatic
@@ -910,6 +911,32 @@ class TestArray(unittest.TestCase):
             z[0] = 'foo'
         with assert_raises(RuntimeError):
             z[:] = 42
+
+        # do something else dangerous
+        labels = [
+            '¡Hola mundo!',
+            'Hej Världen!',
+            'Servus Woid!',
+            'Hei maailma!',
+            'Xin chào thế giới',
+            'Njatjeta Botë!',
+            'Γεια σου κόσμε!',
+            'こんにちは世界',
+            '世界，你好！',
+            'Helló, világ!',
+            'Zdravo svete!',
+            'เฮลโลเวิลด์'
+        ]
+        data = labels * 10
+        for compressor in Zlib(1), Blosc():
+            z = self.create_array(shape=len(data), chunks=30, dtype=object,
+                                  object_codec=Categorize(labels, dtype=object),
+                                  compressor=compressor)
+            z[:] = data
+            v = z.view(filters=[])
+            with assert_raises(RuntimeError):
+                # noinspection PyStatementEffect
+                v[:]
 
 
 class TestArrayWithPath(TestArray):
