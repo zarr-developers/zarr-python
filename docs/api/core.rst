@@ -14,6 +14,7 @@ The Array class (``zarr.core``)
     .. automethod:: set_coordinate_selection
     .. automethod:: get_orthogonal_selection
     .. automethod:: set_orthogonal_selection
+    .. automethod:: digest
     .. automethod:: hexdigest
     .. automethod:: resize
     .. automethod:: append
