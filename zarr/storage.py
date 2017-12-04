@@ -18,6 +18,7 @@ import sys
 import multiprocessing
 from threading import Lock, RLock
 import glob
+import warnings
 
 
 import numpy as np
@@ -346,7 +347,7 @@ def _init_array_metadata(store, shape, chunks=None, dtype=None, compressor='defa
         else:
             filters_config.insert(0, object_codec.get_config())
     elif object_codec is not None:
-        raise ValueError('an object_codec is only needed for object arrays')
+        warnings.warn('an object_codec is only needed for object arrays')
 
     # use null to indicate no filters
     if not filters_config:
