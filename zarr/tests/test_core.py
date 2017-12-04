@@ -13,6 +13,7 @@ from numpy.testing import assert_array_equal, assert_array_almost_equal
 from nose.tools import (eq_ as eq, assert_is_instance, assert_raises, assert_true,
                         assert_false, assert_is, assert_is_none)
 from nose import SkipTest
+import pytest
 
 
 from zarr.storage import (DirectoryStore, init_array, init_group, NestedDirectoryStore,
@@ -22,7 +23,7 @@ from zarr.errors import PermissionError
 from zarr.compat import PY2
 from zarr.util import buffer_size
 from numcodecs import (Delta, FixedScaleOffset, Zlib, Blosc, BZ2, MsgPack, Pickle,
-                       Categorize)
+                       Categorize, JSON)
 
 
 # noinspection PyMethodMayBeStatic
@@ -901,6 +902,43 @@ class TestArray(unittest.TestCase):
         a = z[:]
         assert a.dtype == object
 
+        # create an object array using JSON
+        z = self.create_array(shape=10, chunks=3, dtype=object, object_codec=JSON())
+        z[0] = 'foo'
+        assert z[0] == 'foo'
+        # z[1] = b'bar'
+        # assert z[1] == b'bar'  # not supported for JSON
+        z[2] = 1
+        assert z[2] == 1
+        z[3] = [2, 4, 6, 'baz']
+        assert z[3] == [2, 4, 6, 'baz']
+        z[4] = {'a': 'b', 'c': 'd'}
+        assert z[4] == {'a': 'b', 'c': 'd'}
+        a = z[:]
+        assert a.dtype == object
+
+    def test_object_arrays_text(self):
+
+        from numcodecs.tests.common import greetings
+        data = np.array(greetings * 1000, dtype=object)
+
+        z = self.create_array(shape=data.shape, dtype=object, object_codec=MsgPack())
+        z[:] = data
+        assert_array_equal(data, z[:])
+
+        z = self.create_array(shape=data.shape, dtype=object, object_codec=JSON())
+        z[:] = data
+        assert_array_equal(data, z[:])
+
+        z = self.create_array(shape=data.shape, dtype=object, object_codec=Pickle())
+        z[:] = data
+        assert_array_equal(data, z[:])
+
+        z = self.create_array(shape=data.shape, dtype=object,
+                              object_codec=Categorize(greetings, dtype=object))
+        z[:] = data
+        assert_array_equal(data, z[:])
+
     def test_object_arrays_danger(self):
 
         # do something dangerous - manually force an object array with no object codec
@@ -937,6 +975,12 @@ class TestArray(unittest.TestCase):
             with assert_raises(RuntimeError):
                 # noinspection PyStatementEffect
                 v[:]
+
+    def test_object_codec_warnings(self):
+
+        with pytest.warns(UserWarning):
+            # provide object_codec, but not object dtype
+            self.create_array(shape=10, chunks=5, dtype='i4', object_codec=JSON())
 
 
 class TestArrayWithPath(TestArray):
@@ -1364,6 +1408,10 @@ class TestArrayWithFilters(TestArray):
         pass
 
     def test_object_arrays(self):
+        # skip this one, cannot use delta with objects
+        pass
+
+    def test_object_arrays_text(self):
         # skip this one, cannot use delta with objects
         pass
 
