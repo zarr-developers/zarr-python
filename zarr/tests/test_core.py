@@ -876,8 +876,13 @@ class TestArray(unittest.TestCase):
     def test_object_arrays(self):
 
         # an object_codec is required for object arrays
-        with pytest.warns(FutureWarning):
+        with pytest.raises(ValueError):
             self.create_array(shape=10, chunks=3, dtype=object)
+
+        # an object_codec is required for object arrays, but allow to be provided via
+        # filters to maintain API backwards compatibility
+        with pytest.warns(FutureWarning):
+            self.create_array(shape=10, chunks=3, dtype=object, filters=[MsgPack()])
 
         # create an object array using msgpack
         z = self.create_array(shape=10, chunks=3, dtype=object, object_codec=MsgPack())
