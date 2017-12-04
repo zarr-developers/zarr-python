@@ -6,6 +6,7 @@ import atexit
 import shutil
 import pickle
 import os
+import warnings
 
 
 import numpy as np
@@ -24,6 +25,12 @@ from zarr.compat import PY2
 from zarr.util import buffer_size
 from numcodecs import (Delta, FixedScaleOffset, Zlib, Blosc, BZ2, MsgPack, Pickle,
                        Categorize, JSON)
+
+
+# needed for PY2/PY3 consistent behaviour
+if PY2:  # pragma: py3 no cover
+    warnings.resetwarnings()
+    warnings.simplefilter('always')
 
 
 # noinspection PyMethodMayBeStatic
@@ -869,7 +876,7 @@ class TestArray(unittest.TestCase):
     def test_object_arrays(self):
 
         # an object_codec is required for object arrays
-        with assert_raises(ValueError):
+        with pytest.warns(FutureWarning):
             self.create_array(shape=10, chunks=3, dtype=object)
 
         # create an object array using msgpack
