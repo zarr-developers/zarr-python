@@ -9,10 +9,11 @@ import warnings
 import numpy as np
 from nose.tools import eq_ as eq, assert_is_none, assert_is_instance, assert_raises
 from numpy.testing import assert_array_equal
+import pytest
 
 
-from zarr.creation import (array, empty, zeros, ones, full, open_array, empty_like, zeros_like,
-                           ones_like, full_like, open_like, create)
+from zarr.creation import (array, empty, zeros, ones, full, open_array, empty_like,
+                           zeros_like, ones_like, full_like, open_like, create)
 from zarr.sync import ThreadSynchronizer
 from zarr.core import Array
 from zarr.storage import DirectoryStore
@@ -23,8 +24,9 @@ from zarr.compat import PY2
 
 
 # needed for PY2/PY3 consistent behaviour
-warnings.resetwarnings()
-warnings.simplefilter('always')
+if PY2:  # pragma: py3 no cover
+    warnings.resetwarnings()
+    warnings.simplefilter('always')
 
 
 # something bcolz-like
@@ -438,8 +440,6 @@ def test_create():
 
 
 def test_compression_args():
-    warnings.resetwarnings()
-    warnings.simplefilter('always')
 
     z = create(100, compression='zlib', compression_opts=9)
     assert_is_instance(z, Array)
@@ -458,16 +458,12 @@ def test_compression_args():
     eq('zlib', z.compressor.codec_id)
     eq(9, z.compressor.level)
 
-    warnings.resetwarnings()
-    warnings.simplefilter('error')
-    with assert_raises(UserWarning):
+    with pytest.warns(UserWarning):
         # 'compressor' overrides 'compression'
         create(100, compressor=Zlib(9), compression='bz2', compression_opts=1)
-    with assert_raises(UserWarning):
+    with pytest.warns(UserWarning):
         # 'compressor' ignores 'compression_opts'
         create(100, compressor=Zlib(9), compression_opts=1)
-    warnings.resetwarnings()
-    warnings.simplefilter('always')
 
 
 def test_create_read_only():
@@ -485,8 +481,8 @@ def test_create_read_only():
     with assert_raises(PermissionError):
         z[:] = 0
 
-    # this is subtly different, but here we want to create an array with data, and then have it
-    # be read-only
+    # this is subtly different, but here we want to create an array with data, and then
+    # have it be read-only
     a = np.arange(100)
     z = array(a, read_only=True)
     assert_array_equal(a, z[...])

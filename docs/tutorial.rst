@@ -178,8 +178,8 @@ print some diagnostics, e.g.::
                        : blocksize=0)
     Store type         : builtins.dict
     No. bytes          : 400000000 (381.5M)
-    No. bytes stored   : 4565053 (4.4M)
-    Storage ratio      : 87.6
+    No. bytes stored   : 3702484 (3.5M)
+    Storage ratio      : 108.0
     Chunks initialized : 100/100
 
 If you don't specify a compressor, by default Zarr uses the Blosc
@@ -270,8 +270,8 @@ Here is an example using a delta filter with the Blosc compressor::
     Compressor         : Blosc(cname='zstd', clevel=1, shuffle=SHUFFLE, blocksize=0)
     Store type         : builtins.dict
     No. bytes          : 400000000 (381.5M)
-    No. bytes stored   : 648605 (633.4K)
-    Storage ratio      : 616.7
+    No. bytes stored   : 328085 (320.4K)
+    Storage ratio      : 1219.2
     Chunks initialized : 100/100
 
 For more information about available filter codecs, see the `Numcodecs
@@ -394,8 +394,8 @@ property. E.g.::
     Compressor         : Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
     Store type         : zarr.storage.DictStore
     No. bytes          : 8000000 (7.6M)
-    No. bytes stored   : 37480 (36.6K)
-    Storage ratio      : 213.4
+    No. bytes stored   : 34840 (34.0K)
+    Storage ratio      : 229.6
     Chunks initialized : 10/10
 
     >>> baz.info
@@ -409,8 +409,8 @@ property. E.g.::
     Compressor         : Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
     Store type         : zarr.storage.DictStore
     No. bytes          : 4000000 (3.8M)
-    No. bytes stored   : 23243 (22.7K)
-    Storage ratio      : 172.1
+    No. bytes stored   : 20443 (20.0K)
+    Storage ratio      : 195.7
     Chunks initialized : 100/100
 
 Groups also have the :func:`zarr.hierarchy.Group.tree` method, e.g.::
@@ -768,7 +768,6 @@ Here is an example using S3Map to read an array created previously::
     b'Hello from the cloud!'
 
 
-
 .. _tutorial_strings:
 
 String arrays
@@ -788,40 +787,80 @@ your dataset, then you can use an array with a fixed-length bytes dtype. E.g.::
 
 A fixed-length unicode dtype is also available, e.g.::
 
-    >>> z = zarr.zeros(12, dtype='U20')
     >>> greetings = ['¡Hola mundo!', 'Hej Världen!', 'Servus Woid!', 'Hei maailma!',
     ...              'Xin chào thế giới', 'Njatjeta Botë!', 'Γεια σου κόσμε!',
     ...              'こんにちは世界', '世界，你好！', 'Helló, világ!', 'Zdravo svete!',
     ...              'เฮลโลเวิลด์']
-    >>> z[:] = greetings
+    >>> text_data = greetings * 10000
+    >>> z = zarr.array(text_data, dtype='U20')
     >>> z[:]
-    array(['¡Hola mundo!', 'Hej Världen!', 'Servus Woid!', 'Hei maailma!',
-           'Xin chào thế giới', 'Njatjeta Botë!', 'Γεια σου κόσμε!', 'こんにちは世界',
-           '世界，你好！', 'Helló, világ!', 'Zdravo svete!', 'เฮลโลเวิลด์'],
+    array(['¡Hola mundo!', 'Hej Världen!', 'Servus Woid!', ...,
+           'Helló, világ!', 'Zdravo svete!', 'เฮลโลเวิลด์'],
           dtype='<U20')
 
-For variable-length strings, the "object" dtype can be used, but a filter must be
-provided to encode the data. There are currently two codecs available that can encode
-variable length string objects, :class:`numcodecs.Pickle` and :class:`numcodecs.MsgPack`.
-E.g. using pickle::
+For variable-length strings, the "object" dtype can be used, but a codec must be
+provided to encode the data (see also :ref:`tutorial_objects` below). At the time of
+writing there are three codecs available that can encode variable length string
+objects, :class:`numcodecs.JSON`, :class:`numcodecs.MsgPack`. and
+:class:`numcodecs.Pickle`. E.g. using JSON::
 
     >>> import numcodecs
-    >>> z = zarr.zeros(12, dtype=object, filters=[numcodecs.Pickle()])
-    >>> z[:] = greetings
+    >>> z = zarr.array(text_data, dtype=object, object_codec=numcodecs.JSON())
     >>> z[:]
-    array(['¡Hola mundo!', 'Hej Världen!', 'Servus Woid!', 'Hei maailma!',
-           'Xin chào thế giới', 'Njatjeta Botë!', 'Γεια σου κόσμε!', 'こんにちは世界',
-           '世界，你好！', 'Helló, világ!', 'Zdravo svete!', 'เฮลโลเวิลด์'], dtype=object)
+    array(['¡Hola mundo!', 'Hej Världen!', 'Servus Woid!', ...,
+           'Helló, világ!', 'Zdravo svete!', 'เฮลโลเวิลด์'], dtype=object)
 
 ...or alternatively using msgpack (requires `msgpack-python
 <https://github.com/msgpack/msgpack-python>`_ to be installed)::
 
-    >>> z = zarr.zeros(12, dtype=object, filters=[numcodecs.MsgPack()])
-    >>> z[:] = greetings
+    >>> z = zarr.array(text_data, dtype=object, object_codec=numcodecs.MsgPack())
     >>> z[:]
-    array(['¡Hola mundo!', 'Hej Världen!', 'Servus Woid!', 'Hei maailma!',
-           'Xin chào thế giới', 'Njatjeta Botë!', 'Γεια σου κόσμε!', 'こんにちは世界',
-           '世界，你好！', 'Helló, világ!', 'Zdravo svete!', 'เฮลโลเวิลด์'], dtype=object)
+    array(['¡Hola mundo!', 'Hej Världen!', 'Servus Woid!', ...,
+           'Helló, világ!', 'Zdravo svete!', 'เฮลโลเวิลด์'], dtype=object)
+
+If you know ahead of time all the possible string values that can occur, then you could
+also use the :class:`numcodecs.Categorize` codec to encode each unique value as an
+integer. E.g.::
+
+    >>> categorize = numcodecs.Categorize(greetings, dtype=object)
+    >>> z = zarr.array(text_data, dtype=object, object_codec=categorize)
+    >>> z[:]
+    array(['¡Hola mundo!', 'Hej Världen!', 'Servus Woid!', ...,
+           'Helló, világ!', 'Zdravo svete!', 'เฮลโลเวิลด์'], dtype=object)
+
+
+.. _tutorial_objects:
+
+Object arrays
+-------------
+
+Zarr supports arrays with an "object" dtype. This allows arrays to contain any type of
+object, such as variable length unicode strings, or variable length lists, or other
+possibilities. When creating an object array, a codec must be provided via the
+``object_codec`` argument. This codec handles encoding (serialization) of Python objects.
+At the time of writing there are three codecs available that can serve as a
+general purpose object codec and support encoding of a variety of
+object types: :class:`numcodecs.JSON`, :class:`numcodecs.MsgPack`. and
+:class:`numcodecs.Pickle`.
+
+For example, using the JSON codec::
+
+    >>> z = zarr.empty(5, dtype=object, object_codec=numcodecs.JSON())
+    >>> z[0] = 42
+    >>> z[1] = 'foo'
+    >>> z[2] = ['bar', 'baz', 'qux']
+    >>> z[3] = {'a': 1, 'b': 2.2}
+    >>> z[:]
+    array([42, 'foo', list(['bar', 'baz', 'qux']), {'a': 1, 'b': 2.2}, None], dtype=object)
+
+Not all codecs support encoding of all object types. The
+:class:`numcodecs.Pickle` codec is the most flexible, supporting encoding any type
+of Python object. However, if you are sharing data with anyone other than yourself, then
+Pickle is not recommended as it is a potential security risk. This is because malicious
+code can be embedded within pickled data. The JSON and MsgPack codecs do not have any
+security issues and support encoding of unicode strings, lists and dictionaries.
+MsgPack is usually faster for both encoding and decoding.
+
 
 .. _tutorial_chunks:
 
@@ -898,8 +937,8 @@ ratios, depending on the correlation structure within the data. E.g.::
     Compressor         : Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
     Store type         : builtins.dict
     No. bytes          : 400000000 (381.5M)
-    No. bytes stored   : 26805735 (25.6M)
-    Storage ratio      : 14.9
+    No. bytes stored   : 15857834 (15.1M)
+    Storage ratio      : 25.2
     Chunks initialized : 100/100
     >>> f = zarr.array(a, chunks=(1000, 1000), order='F')
     >>> f.info
@@ -912,8 +951,8 @@ ratios, depending on the correlation structure within the data. E.g.::
     Compressor         : Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
     Store type         : builtins.dict
     No. bytes          : 400000000 (381.5M)
-    No. bytes stored   : 9633601 (9.2M)
-    Storage ratio      : 41.5
+    No. bytes stored   : 7233241 (6.9M)
+    Storage ratio      : 55.3
     Chunks initialized : 100/100
 
 In the above example, Fortran order gives a better compression ratio. This is an
@@ -1014,7 +1053,7 @@ E.g., pickle/unpickle an in-memory array::
     >>> import pickle
     >>> z1 = zarr.array(np.arange(100000))
     >>> s = pickle.dumps(z1)
-    >>> len(s) > 10000  # relatively large because data have been pickled
+    >>> len(s) > 5000  # relatively large because data have been pickled
     True
     >>> z2 = pickle.loads(s)
     >>> z1 == z2

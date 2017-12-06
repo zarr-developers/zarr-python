@@ -15,6 +15,7 @@ from numpy.testing import assert_array_equal
 from nose.tools import (assert_raises, eq_ as eq, assert_is, assert_true,
                         assert_is_instance, assert_false, assert_is_none)
 from nose import SkipTest
+import pytest
 
 
 from zarr.storage import (DictStore, DirectoryStore, ZipStore, init_group, init_array,
@@ -31,8 +32,9 @@ from numcodecs import Zlib
 
 
 # needed for PY2/PY3 consistent behaviour
-warnings.resetwarnings()
-warnings.simplefilter('always')
+if PY2:  # pragma: py3 no cover
+    warnings.resetwarnings()
+    warnings.simplefilter('always')
 
 
 # noinspection PyStatementEffect
@@ -363,16 +365,8 @@ class TestGroup(unittest.TestCase):
         eq(42, d.fill_value)
 
         # h5py compatibility, ignore 'shuffle'
-        warnings.resetwarnings()
-        warnings.simplefilter('always')
-        d = g.create_dataset('y1', shape=100, chunks=10, shuffle=True)
-        assert not hasattr(d, 'shuffle')
-        warnings.resetwarnings()
-        warnings.simplefilter('error')
-        with assert_raises(UserWarning):
-            g.create_dataset('y2', shape=100, chunks=10, shuffle=True)
-        warnings.resetwarnings()
-        warnings.simplefilter('always')
+        with pytest.warns(UserWarning, match="ignoring keyword argument 'shuffle'"):
+            g.create_dataset('y', shape=100, chunks=10, shuffle=True)
 
         # read-only
         g = self.create_group(read_only=True)
@@ -406,6 +400,7 @@ class TestGroup(unittest.TestCase):
                 # overwrite array with group
                 d = getattr(g, method_name)('foo/bar', shape=400, chunks=40,
                                             overwrite=True)
+                eq((400,), d.shape)
                 assert_is_instance(g['foo'], Group)
         except NotImplementedError:
             pass
@@ -1069,6 +1064,7 @@ def test_group_completions():
 def test_group_key_completions():
     g = group()
     d = dir(g)
+    # noinspection PyProtectedMember
     k = g._ipython_key_completions_()
 
     # none of these names should be an attribute
@@ -1103,6 +1099,7 @@ def test_group_key_completions():
     g.zeros('asdf;', shape=100)
 
     d = dir(g)
+    # noinspection PyProtectedMember
     k = g._ipython_key_completions_()
 
     assert 'foo' in d

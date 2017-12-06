@@ -18,6 +18,7 @@ import sys
 import multiprocessing
 from threading import Lock, RLock
 import glob
+import warnings
 
 
 import numpy as np
@@ -173,7 +174,7 @@ def _require_parent_group(path, store, chunk_store, overwrite):
 
 def init_array(store, shape, chunks=True, dtype=None, compressor='default',
                fill_value=None, order='C', overwrite=False, path=None,
-               chunk_store=None, filters=None):
+               chunk_store=None, filters=None, object_codec=None):
     """Initialize an array store with the given configuration. Note that this is a low-level
     function and there should be no need to call this directly from user code.
 
@@ -203,6 +204,8 @@ def init_array(store, shape, chunks=True, dtype=None, compressor='default',
         for storage of both chunks and metadata.
     filters : sequence, optional
         Sequence of filters to use to encode chunk data prior to compression.
+    object_codec : Codec, optional
+        A codec to encode object arrays, only needed if dtype=object.
 
     Examples
     --------
@@ -284,12 +287,13 @@ def init_array(store, shape, chunks=True, dtype=None, compressor='default',
     _init_array_metadata(store, shape=shape, chunks=chunks, dtype=dtype,
                          compressor=compressor, fill_value=fill_value,
                          order=order, overwrite=overwrite, path=path,
-                         chunk_store=chunk_store, filters=filters)
+                         chunk_store=chunk_store, filters=filters,
+                         object_codec=object_codec)
 
 
 def _init_array_metadata(store, shape, chunks=None, dtype=None, compressor='default',
                          fill_value=None, order='C', overwrite=False, path=None,
-                         chunk_store=None, filters=None):
+                         chunk_store=None, filters=None, object_codec=None):
 
     # guard conditions
     if overwrite:
@@ -334,6 +338,26 @@ def _init_array_metadata(store, shape, chunks=None, dtype=None, compressor='defa
     if filters:
         filters_config = [f.get_config() for f in filters]
     else:
+        filters_config = []
+
+    # deal with object encoding
+    if dtype == object:
+        if object_codec is None:
+            if not filters:
+                # there are no filters so we can be sure there is no object codec
+                raise ValueError('missing object_codec for object array')
+            else:
+                # one of the filters may be an object codec, issue a warning rather
+                # than raise an error to maintain backwards-compatibility
+                warnings.warn('missing object_codec for object array; this will raise a '
+                              'ValueError in version 3.0', FutureWarning)
+        else:
+            filters_config.insert(0, object_codec.get_config())
+    elif object_codec is not None:
+        warnings.warn('an object_codec is only needed for object arrays')
+
+    # use null to indicate no filters
+    if not filters_config:
         filters_config = None
 
     # initialize metadata

@@ -6,6 +6,7 @@ import atexit
 import shutil
 import pickle
 import os
+import warnings
 
 
 import numpy as np
@@ -13,6 +14,7 @@ from numpy.testing import assert_array_equal, assert_array_almost_equal
 from nose.tools import (eq_ as eq, assert_is_instance, assert_raises, assert_true,
                         assert_false, assert_is, assert_is_none)
 from nose import SkipTest
+import pytest
 
 
 from zarr.storage import (DirectoryStore, init_array, init_group, NestedDirectoryStore,
@@ -21,7 +23,14 @@ from zarr.core import Array
 from zarr.errors import PermissionError
 from zarr.compat import PY2
 from zarr.util import buffer_size
-from numcodecs import Delta, FixedScaleOffset, Zlib, Blosc, BZ2
+from numcodecs import (Delta, FixedScaleOffset, Zlib, Blosc, BZ2, MsgPack, Pickle,
+                       Categorize, JSON)
+
+
+# needed for PY2/PY3 consistent behaviour
+if PY2:  # pragma: py3 no cover
+    warnings.resetwarnings()
+    warnings.simplefilter('always')
 
 
 # noinspection PyMethodMayBeStatic
@@ -867,6 +876,127 @@ class TestArray(unittest.TestCase):
             with assert_raises(ValueError):
                 self.create_array(shape=10, dtype='timedelta64[{}]'.format(resolution))
 
+    def test_object_arrays(self):
+
+        # an object_codec is required for object arrays
+        with pytest.raises(ValueError):
+            self.create_array(shape=10, chunks=3, dtype=object)
+
+        # an object_codec is required for object arrays, but allow to be provided via
+        # filters to maintain API backwards compatibility
+        with pytest.warns(FutureWarning):
+            self.create_array(shape=10, chunks=3, dtype=object, filters=[MsgPack()])
+
+        # create an object array using msgpack
+        z = self.create_array(shape=10, chunks=3, dtype=object, object_codec=MsgPack())
+        z[0] = 'foo'
+        assert z[0] == 'foo'
+        z[1] = b'bar'
+        assert z[1] == 'bar'  # msgpack gets this wrong
+        z[2] = 1
+        assert z[2] == 1
+        z[3] = [2, 4, 6, 'baz']
+        assert z[3] == [2, 4, 6, 'baz']
+        z[4] = {'a': 'b', 'c': 'd'}
+        assert z[4] == {'a': 'b', 'c': 'd'}
+        a = z[:]
+        assert a.dtype == object
+
+        # create an object array using pickle
+        z = self.create_array(shape=10, chunks=3, dtype=object, object_codec=Pickle())
+        z[0] = 'foo'
+        assert z[0] == 'foo'
+        z[1] = b'bar'
+        assert z[1] == b'bar'
+        z[2] = 1
+        assert z[2] == 1
+        z[3] = [2, 4, 6, 'baz']
+        assert z[3] == [2, 4, 6, 'baz']
+        z[4] = {'a': 'b', 'c': 'd'}
+        assert z[4] == {'a': 'b', 'c': 'd'}
+        a = z[:]
+        assert a.dtype == object
+
+        # create an object array using JSON
+        z = self.create_array(shape=10, chunks=3, dtype=object, object_codec=JSON())
+        z[0] = 'foo'
+        assert z[0] == 'foo'
+        # z[1] = b'bar'
+        # assert z[1] == b'bar'  # not supported for JSON
+        z[2] = 1
+        assert z[2] == 1
+        z[3] = [2, 4, 6, 'baz']
+        assert z[3] == [2, 4, 6, 'baz']
+        z[4] = {'a': 'b', 'c': 'd'}
+        assert z[4] == {'a': 'b', 'c': 'd'}
+        a = z[:]
+        assert a.dtype == object
+
+    def test_object_arrays_text(self):
+
+        from numcodecs.tests.common import greetings
+        data = np.array(greetings * 1000, dtype=object)
+
+        z = self.create_array(shape=data.shape, dtype=object, object_codec=MsgPack())
+        z[:] = data
+        assert_array_equal(data, z[:])
+
+        z = self.create_array(shape=data.shape, dtype=object, object_codec=JSON())
+        z[:] = data
+        assert_array_equal(data, z[:])
+
+        z = self.create_array(shape=data.shape, dtype=object, object_codec=Pickle())
+        z[:] = data
+        assert_array_equal(data, z[:])
+
+        z = self.create_array(shape=data.shape, dtype=object,
+                              object_codec=Categorize(greetings, dtype=object))
+        z[:] = data
+        assert_array_equal(data, z[:])
+
+    def test_object_arrays_danger(self):
+
+        # do something dangerous - manually force an object array with no object codec
+        z = self.create_array(shape=5, chunks=2, dtype=object, fill_value=0,
+                              object_codec=MsgPack())
+        z._filters = None  # wipe filters
+        with assert_raises(RuntimeError):
+            z[0] = 'foo'
+        with assert_raises(RuntimeError):
+            z[:] = 42
+
+        # do something else dangerous
+        labels = [
+            '¡Hola mundo!',
+            'Hej Världen!',
+            'Servus Woid!',
+            'Hei maailma!',
+            'Xin chào thế giới',
+            'Njatjeta Botë!',
+            'Γεια σου κόσμε!',
+            'こんにちは世界',
+            '世界，你好！',
+            'Helló, világ!',
+            'Zdravo svete!',
+            'เฮลโลเวิลด์'
+        ]
+        data = labels * 10
+        for compressor in Zlib(1), Blosc():
+            z = self.create_array(shape=len(data), chunks=30, dtype=object,
+                                  object_codec=Categorize(labels, dtype=object),
+                                  compressor=compressor)
+            z[:] = data
+            v = z.view(filters=[])
+            with assert_raises(RuntimeError):
+                # noinspection PyStatementEffect
+                v[:]
+
+    def test_object_codec_warnings(self):
+
+        with pytest.warns(UserWarning):
+            # provide object_codec, but not object dtype
+            self.create_array(shape=10, chunks=5, dtype='i4', object_codec=JSON())
+
 
 class TestArrayWithPath(TestArray):
 
@@ -1285,11 +1415,23 @@ class TestArrayWithFilters(TestArray):
         assert_array_equal(expected, z2)
 
     def test_structured_array(self):
-        # don't implement this one, cannot do delta on structured array
+        # skip this one, cannot do delta on structured array
         pass
 
     def test_dtypes(self):
-        # don't implement this one, delta messes up floats
+        # skip this one, delta messes up floats
+        pass
+
+    def test_object_arrays(self):
+        # skip this one, cannot use delta with objects
+        pass
+
+    def test_object_arrays_text(self):
+        # skip this one, cannot use delta with objects
+        pass
+
+    def test_object_arrays_danger(self):
+        # skip this one, cannot use delta with objects
         pass
 
 
@@ -1383,3 +1525,7 @@ class TestArrayNoCacheMetadata(TestArray):
         eq(300, a2.size)
         eq(300, a2.nbytes)
         eq(30, a2.nchunks)
+
+    def test_object_arrays_danger(self):
+        # skip this one as it only works if metadata are cached
+        pass

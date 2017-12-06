@@ -40,18 +40,11 @@ environment:
 
 install:
   - "SET PATH=%PYTHON%;%PYTHON%\\Scripts;%PATH%"
-  - git submodule update --init --recursive
 
 build: off
 
 test_script:
   - "%CMD_IN_ENV% python -m pip install -U pip setuptools wheel"
   - "%CMD_IN_ENV% python -m pip install -rrequirements_dev.txt"
-  - "%CMD_IN_ENV% python setup.py build_ext --inplace"
-  - "%CMD_IN_ENV% python -m nose -v"
-
-after_test:
   - "%CMD_IN_ENV% python setup.py bdist_wheel"
-
-artifacts:
-  - path: dist\*
+  - "%CMD_IN_ENV% python -m pytest -v zarr"

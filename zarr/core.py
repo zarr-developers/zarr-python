@@ -1498,7 +1498,11 @@ class Array(object):
         sel_shape = indexer.shape
 
         # check value shape
-        if is_scalar(value, self._dtype):
+        if sel_shape == ():
+            # setting a single item
+            pass
+        elif is_scalar(value, self._dtype):
+            # setting a scalar value
             pass
         else:
             if not hasattr(value, 'shape'):
@@ -1509,7 +1513,9 @@ class Array(object):
         for chunk_coords, chunk_selection, out_selection in indexer:
 
             # extract data to store
-            if is_scalar(value, self._dtype):
+            if sel_shape == ():
+                chunk_value = value
+            elif is_scalar(value, self._dtype):
                 chunk_value = value
             else:
                 chunk_value = value[out_selection]
@@ -1564,7 +1570,8 @@ class Array(object):
                     not fields and
                     is_contiguous_selection(out_selection) and
                     is_total_slice(chunk_selection, self._chunks) and
-                    not self._filters):
+                    not self._filters and
+                    self._dtype != object):
 
                 dest = out[out_selection]
                 write_direct = (
@@ -1676,6 +1683,8 @@ class Array(object):
                 if self._fill_value is not None:
                     chunk = np.empty(self._chunks, dtype=self._dtype, order=self._order)
                     chunk.fill(self._fill_value)
+                elif self._dtype == object:
+                    chunk = np.empty(self._chunks, dtype=self._dtype, order=self._order)
                 else:
                     # N.B., use zeros here so any region beyond the array has consistent
                     # and compressible data
@@ -1719,7 +1728,12 @@ class Array(object):
                 chunk = f.decode(chunk)
 
         # view as correct dtype
-        if isinstance(chunk, np.ndarray):
+        if self._dtype == object:
+            if isinstance(chunk, np.ndarray):
+                chunk = chunk.astype(self._dtype)
+            else:
+                raise RuntimeError('cannot read object array without object codec')
+        elif isinstance(chunk, np.ndarray):
             chunk = chunk.view(self._dtype)
         else:
             chunk = np.frombuffer(chunk, self._dtype)
@@ -1735,6 +1749,10 @@ class Array(object):
         if self._filters:
             for f in self._filters:
                 chunk = f.encode(chunk)
+
+        # check object encoding
+        if isinstance(chunk, np.ndarray) and chunk.dtype == object:
+            raise RuntimeError('cannot write object array without object codec')
 
         # compress
         if self._compressor:
