@@ -132,6 +132,7 @@ def normalize_dtype(dtype, object_codec):
     if inspect.isclass(dtype):
         dtype = dtype.__name__
     if isinstance(dtype, str):
+        # allow ':' to delimit class from codec arguments
         tokens = dtype.split(':')
         key = tokens[0]
         if key in object_codecs:
