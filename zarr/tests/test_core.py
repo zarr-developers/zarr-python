@@ -24,7 +24,8 @@ from zarr.errors import PermissionError
 from zarr.compat import PY2
 from zarr.util import buffer_size
 from numcodecs import (Delta, FixedScaleOffset, Zlib, Blosc, BZ2, MsgPack, Pickle,
-                       Categorize, JSON)
+                       Categorize, JSON, VLenUTF8, VLenBytes, VLenArray)
+from numcodecs.tests.common import greetings
 
 
 # needed for PY2/PY3 consistent behaviour
@@ -932,10 +933,13 @@ class TestArray(unittest.TestCase):
         a = z[:]
         assert a.dtype == object
 
-    def test_object_arrays_text(self):
+    def test_object_arrays_vlen_text(self):
 
-        from numcodecs.tests.common import greetings
         data = np.array(greetings * 1000, dtype=object)
+
+        z = self.create_array(shape=data.shape, dtype=object, object_codec=VLenUTF8())
+        z[:] = data
+        assert_array_equal(data, z[:])
 
         z = self.create_array(shape=data.shape, dtype=object, object_codec=MsgPack())
         z[:] = data
@@ -953,6 +957,38 @@ class TestArray(unittest.TestCase):
                               object_codec=Categorize(greetings, dtype=object))
         z[:] = data
         assert_array_equal(data, z[:])
+
+    def test_object_arrays_vlen_bytes(self):
+
+        greetings_bytes = [g.encode('utf8') for g in greetings]
+        data = np.array(greetings_bytes * 1000, dtype=object)
+
+        z = self.create_array(shape=data.shape, dtype=object, object_codec=VLenBytes())
+        z[:] = data
+        assert_array_equal(data, z[:])
+
+        z = self.create_array(shape=data.shape, dtype=object, object_codec=Pickle())
+        z[:] = data
+        assert_array_equal(data, z[:])
+
+    def test_object_arrays_vlen_array(self):
+
+        data = np.array([np.array([1, 3, 7]),
+                         np.array([5]),
+                         np.array([2, 8, 12])] * 1000, dtype=object)
+
+        codecs = VLenArray(int), VLenArray('<u4')
+        for codec in codecs:
+            z = self.create_array(shape=data.shape, dtype=object, object_codec=codec)
+            z[:] = data
+            a = z[:]
+            assert isinstance(a, np.ndarray)
+            assert a.dtype == object
+            assert a.shape == data.shape
+            for expected, actual in zip(data.flat, a.flat):
+                assert isinstance(actual, np.ndarray)
+                assert_array_equal(expected, actual)
+                assert actual.dtype == codec.dtype
 
     def test_object_arrays_danger(self):
 
@@ -1426,7 +1462,15 @@ class TestArrayWithFilters(TestArray):
         # skip this one, cannot use delta with objects
         pass
 
-    def test_object_arrays_text(self):
+    def test_object_arrays_vlen_text(self):
+        # skip this one, cannot use delta with objects
+        pass
+
+    def test_object_arrays_vlen_bytes(self):
+        # skip this one, cannot use delta with objects
+        pass
+
+    def test_object_arrays_vlen_array(self):
         # skip this one, cannot use delta with objects
         pass
 
