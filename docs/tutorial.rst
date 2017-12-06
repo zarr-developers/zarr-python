@@ -855,11 +855,11 @@ For example, using the JSON codec::
 
 Not all codecs support encoding of all object types. The
 :class:`numcodecs.Pickle` codec is the most flexible, supporting encoding any type
-of Python object. However, if you are sharing data with anyone other than yourself then
-Pickle is not recommended as it is a potential security risk, because malicious code can
-be embedded within pickled data. The JSON and MsgPack codecs support encoding of unicode
-strings, lists and dictionaries, with MsgPack usually faster for both encoding and
-decoding.
+of Python object. However, if you are sharing data with anyone other than yourself, then
+Pickle is not recommended as it is a potential security risk. This is because malicious
+code can be embedded within pickled data. The JSON and MsgPack codecs do not have any
+security issues and support encoding of unicode strings, lists and dictionaries.
+MsgPack is usually faster for both encoding and decoding.
 
 
 .. _tutorial_chunks:
