@@ -21,7 +21,7 @@ from zarr.storage import (DirectoryStore, init_array, init_group, NestedDirector
                           DBMStore, LMDBStore, atexit_rmtree, atexit_rmglob)
 from zarr.core import Array
 from zarr.errors import PermissionError
-from zarr.compat import PY2
+from zarr.compat import PY2, text_type, binary_type
 from zarr.util import buffer_size
 from numcodecs import (Delta, FixedScaleOffset, Zlib, Blosc, BZ2, MsgPack, Pickle,
                        Categorize, JSON, VLenUTF8, VLenBytes, VLenArray)
@@ -941,6 +941,13 @@ class TestArray(unittest.TestCase):
         z[:] = data
         assert_array_equal(data, z[:])
 
+        # convenience API
+        z = self.create_array(shape=data.shape, dtype=text_type)
+        assert z.dtype == object
+        assert isinstance(z.filters[0], VLenUTF8)
+        z[:] = data
+        assert_array_equal(data, z[:])
+
         z = self.create_array(shape=data.shape, dtype=object, object_codec=MsgPack())
         z[:] = data
         assert_array_equal(data, z[:])
@@ -967,6 +974,13 @@ class TestArray(unittest.TestCase):
         z[:] = data
         assert_array_equal(data, z[:])
 
+        # convenience API
+        z = self.create_array(shape=data.shape, dtype=binary_type)
+        assert z.dtype == object
+        assert isinstance(z.filters[0], VLenBytes)
+        z[:] = data
+        assert_array_equal(data, z[:])
+
         z = self.create_array(shape=data.shape, dtype=object, object_codec=Pickle())
         z[:] = data
         assert_array_equal(data, z[:])
@@ -977,18 +991,29 @@ class TestArray(unittest.TestCase):
                          np.array([5]),
                          np.array([2, 8, 12])] * 1000, dtype=object)
 
+        def compare_arrays(expected, actual, item_dtype):
+            assert isinstance(actual, np.ndarray)
+            assert actual.dtype == object
+            assert actual.shape == expected.shape
+            for e, a in zip(expected.flat, actual.flat):
+                assert isinstance(a, np.ndarray)
+                assert_array_equal(e, a)
+                assert a.dtype == item_dtype
+
         codecs = VLenArray(int), VLenArray('<u4')
         for codec in codecs:
             z = self.create_array(shape=data.shape, dtype=object, object_codec=codec)
             z[:] = data
-            a = z[:]
-            assert isinstance(a, np.ndarray)
-            assert a.dtype == object
-            assert a.shape == data.shape
-            for expected, actual in zip(data.flat, a.flat):
-                assert isinstance(actual, np.ndarray)
-                assert_array_equal(expected, actual)
-                assert actual.dtype == codec.dtype
+            compare_arrays(data, z[:], codec.dtype)
+
+        # convenience API
+        for item_type in 'int', '<u4':
+            z = self.create_array(shape=data.shape, dtype='array:{}'.format(item_type))
+            assert z.dtype == object
+            assert isinstance(z.filters[0], VLenArray)
+            assert z.filters[0].dtype == np.dtype(item_type)
+            z[:] = data
+            compare_arrays(data, z[:], np.dtype(item_type))
 
     def test_object_arrays_danger(self):
 
