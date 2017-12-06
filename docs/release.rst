@@ -107,6 +107,17 @@ Enhancements
 * **New Array.hexdigest() method** computes an ``Array``'s hash with ``hashlib``.
   By :user:`John Kirkham <jakirkham>`, :issue:`98`, :issue:`203`.
 
+* **Improved support for object arrays**. In previous versions of Zarr,
+  creating an array with ``dtype=object`` was possible but could under certain
+  circumstances lead to unexpected errors and/or segmentation faults. To make it easier
+  to properly configure an object array, a new ``object_codec`` parameter has been
+  added to array creation functions. See the tutorial section on :ref:`tutorial_objects`
+  for more information and examples. Also, runtime checks have been added in both Zarr
+  and Numcodecs so that segmentation faults are no longer possible, even with a badly
+  configured array. This API change is backwards compatible and previous code that created
+  an object array and provided an object codec via the ``filters`` parameter will
+  continue to work, however a warning will be raised to encourage use of the
+  ``object_codec`` parameter. :issue:`208`, :issue:`212`.
 
 Bug fixes
 ~~~~~~~~~
