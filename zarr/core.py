@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, print_function, division
+import binascii
 import operator
 import itertools
 import hashlib
@@ -88,6 +89,7 @@ class Array(object):
     set_mask_selection
     get_coordinate_selection
     set_coordinate_selection
+    digest
     hexdigest
     resize
     append
@@ -1855,6 +1857,38 @@ class Array(object):
 
         return items
 
+    def digest(self, hashname="sha1"):
+        """
+        Compute a checksum for the data. Default uses sha1 for speed.
+
+        Examples
+        --------
+        >>> import binascii
+        >>> import zarr
+        >>> z = zarr.empty(shape=(10000, 10000), chunks=(1000, 1000))
+        >>> binascii.hexlify(z.digest())
+        b'041f90bc7a571452af4f850a8ca2c6cddfa8a1ac'
+        >>> z = zarr.zeros(shape=(10000, 10000), chunks=(1000, 1000))
+        >>> binascii.hexlify(z.digest())
+        b'7162d416d26a68063b66ed1f30e0a866e4abed60'
+        >>> z = zarr.zeros(shape=(10000, 10000), dtype="u1", chunks=(1000, 1000))
+        >>> binascii.hexlify(z.digest())
+        b'cb387af37410ae5a3222e893cf3373e4e4f22816'
+        """
+
+        h = hashlib.new(hashname)
+
+        for i in itertools.product(*[range(s) for s in self.cdata_shape]):
+            h.update(self.chunk_store.get(self._chunk_key(i), b""))
+
+        h.update(self.store.get(self._key_prefix + array_meta_key, b""))
+
+        h.update(self.store.get(self.attrs.key, b""))
+
+        checksum = h.digest()
+
+        return checksum
+
     def hexdigest(self, hashname="sha1"):
         """
         Compute a checksum for the data. Default uses sha1 for speed.
@@ -1873,16 +1907,11 @@ class Array(object):
         'cb387af37410ae5a3222e893cf3373e4e4f22816'
         """
 
-        h = hashlib.new(hashname)
+        checksum = binascii.hexlify(self.digest(hashname=hashname))
 
-        for i in itertools.product(*[range(s) for s in self.cdata_shape]):
-            h.update(self.chunk_store.get(self._chunk_key(i), b""))
-
-        h.update(self.store.get(self._key_prefix + array_meta_key, b""))
-
-        h.update(self.store.get(self.attrs.key, b""))
-
-        checksum = h.hexdigest()
+        # This is a bytes object on Python 3 and we want a str.
+        if type(checksum) is not str:
+            checksum = checksum.decode('utf8')
 
         return checksum
 
