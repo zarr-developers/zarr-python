@@ -145,7 +145,7 @@ def normalize_dtype(dtype, object_codec):
                     args = ()
                 try:
                     object_codec = codec_registry[codec_id](*args)
-                except KeyError:
+                except KeyError:  # pragma: no cover
                     raise ValueError('codec %r for object type %r is not '
                                      'available; please provide an '
                                      'object_codec manually' % (codec_id, key))

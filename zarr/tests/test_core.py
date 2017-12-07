@@ -874,7 +874,7 @@ class TestArray(unittest.TestCase):
         for base_type in 'Mm':
             for resolution in 'D', 'us', 'ns':
                 dtype = '{}8[{}]'.format(base_type, resolution)
-                z = self.create_array(shape=100, dtype=dtype)
+                z = self.create_array(shape=100, dtype=dtype, fill_value=0)
                 assert z.dtype == np.dtype(dtype)
                 a = np.random.randint(0, np.iinfo('u8').max, size=z.shape[0],
                                       dtype='u8').view(dtype)

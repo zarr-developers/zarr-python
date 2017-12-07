@@ -1079,10 +1079,10 @@ E.g., pickle/unpickle an array stored on disk::
 Datetimes and timedeltas
 ------------------------
 
-NumPy's ``datetime64`` ('M') and ``timedelta64`` ('m') dtypes are supported for Zarr
+NumPy's ``datetime64`` ('M8') and ``timedelta64`` ('m8') dtypes are supported for Zarr
 arrays, as long as the units are specified. E.g.::
 
-    >>> z = zarr.array(['2007-07-13', '2006-01-13', '2010-08-13'], dtype='M[D]')
+    >>> z = zarr.array(['2007-07-13', '2006-01-13', '2010-08-13'], dtype='M8[D]')
     >>> z
     <zarr.core.Array (3,) datetime64[D]>
     >>> z[:]
