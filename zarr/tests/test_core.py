@@ -948,8 +948,16 @@ class TestArray(unittest.TestCase):
         data = np.array(greetings * 1000, dtype=object)
 
         z = self.create_array(shape=data.shape, dtype=object, object_codec=VLenUTF8())
+        z[0] = u'foo'
+        assert z[0] == u'foo'
+        z[1] = u'bar'
+        assert z[1] == u'bar'
+        z[2] = u'baz'
+        assert z[2] == u'baz'
         z[:] = data
-        assert_array_equal(data, z[:])
+        a = z[:]
+        assert a.dtype == object
+        assert_array_equal(data, a)
 
         # convenience API
         z = self.create_array(shape=data.shape, dtype=text_type)
@@ -981,8 +989,16 @@ class TestArray(unittest.TestCase):
         data = np.array(greetings_bytes * 1000, dtype=object)
 
         z = self.create_array(shape=data.shape, dtype=object, object_codec=VLenBytes())
+        z[0] = b'foo'
+        assert z[0] == b'foo'
+        z[1] = b'bar'
+        assert z[1] == b'bar'
+        z[2] = b'baz'
+        assert z[2] == b'baz'
         z[:] = data
-        assert_array_equal(data, z[:])
+        a = z[:]
+        assert a.dtype == object
+        assert_array_equal(data, a)
 
         # convenience API
         z = self.create_array(shape=data.shape, dtype=binary_type)
@@ -1013,8 +1029,12 @@ class TestArray(unittest.TestCase):
         codecs = VLenArray(int), VLenArray('<u4')
         for codec in codecs:
             z = self.create_array(shape=data.shape, dtype=object, object_codec=codec)
+            z[0] = np.array([4, 7])
+            assert_array_equal(np.array([4, 7]), z[0])
             z[:] = data
-            compare_arrays(data, z[:], codec.dtype)
+            a = z[:]
+            assert a.dtype == object
+            compare_arrays(data, a, codec.dtype)
 
         # convenience API
         for item_type in 'int', '<u4':
