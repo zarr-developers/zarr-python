@@ -15,6 +15,8 @@ Status
 This specification is the latest version. See :ref:`spec` for previous
 versions.
 
+.. _spec_v2_storage:
+
 Storage
 -------
 
@@ -32,8 +34,12 @@ resources can be read, written or deleted via HTTP.
 
 Below an "array store" refers to any system implementing this interface.
 
+.. _spec_v2_array:
+
 Arrays
 ------
+
+.. _spec_v2_array_metadata:
 
 Metadata
 ~~~~~~~~
@@ -105,6 +111,8 @@ using the Blosc compression library prior to storage::
         "zarr_format": 2
     }
 
+.. _spec_v2_array_dtype:
+
 Data type encoding
 ~~~~~~~~~~~~~~~~~~
 
@@ -139,6 +147,8 @@ example, the JSON list ``[["r", "|u1"], ["g", "|u1"], ["b", "|u1"]]`` defines a
 data type composed of three single-byte unsigned integers labelled "r", "g" and
 "b".
 
+.. _spec_v2_array_fill_value:
+
 Fill value encoding
 ~~~~~~~~~~~~~~~~~~~
 
@@ -156,6 +166,8 @@ Negative Infinity  ``"-Infinity"``
 If an array has a fixed length byte string data type (e.g., ``"|S12"``), or a
 structured data type, and if the fill value is not null, then the fill value
 MUST be encoded as an ASCII string using the standard Base64 alphabet.
+
+.. _spec_v2_array_chunks:
 
 Chunks
 ~~~~~~
@@ -190,6 +202,8 @@ array dimension is not exactly divisible by the length of the corresponding
 chunk dimension then some chunks will overhang the edge of the array. The
 contents of any chunk region falling outside the array are undefined.
 
+.. _spec_v2_array_filters:
+
 Filters
 ~~~~~~~
 
@@ -200,8 +214,12 @@ the primary compressor. When retrieving data, stored chunk data are
 decompressed by the primary compressor then decoded using filters in the
 reverse order.
 
+.. _spec_v2_hierarchy:
+
 Hierarchies
 -----------
+
+.. _spec_v2_hierarchy_paths:
 
 Logical storage paths
 ~~~~~~~~~~~~~~~~~~~~~
@@ -238,6 +256,8 @@ treat all keys as opaque ASCII strings; equally, an array store could map
 logical paths onto some kind of hierarchical storage (e.g., directories on a
 file system).
 
+.. _spec_v2_hierarchy_groups:
+
 Groups
 ~~~~~~
 
@@ -272,6 +292,8 @@ under the logical paths "foo" and "foo/bar" and an array exists at logical path
 "foo/baz" then the members of the group at path "foo" are the group at path
 "foo/bar" and the array at path "foo/baz".
 
+.. _spec_v2_attrs:
+
 Attributes
 ----------
 
@@ -289,6 +311,8 @@ For example, the JSON object below encodes three attributes named
         "bar": "apples",
         "baz": [1, 2, 3, 4]
     }
+
+.. _spec_v2_examples:
 
 Examples
 --------
@@ -466,6 +490,8 @@ What has been stored::
     foo/bar/1.0
     foo/bar/1.1
 
+.. _spec_v2_changes:
+
 Changes
 -------
 
@@ -487,8 +513,8 @@ initially published to clarify ambiguities and add some missing information.
   empty.
 
 
-Changes in version 2
-~~~~~~~~~~~~~~~~~~~~
+Changes from version 1 to version 2
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The following changes were made between version 1 and version 2 of this specification:
 
