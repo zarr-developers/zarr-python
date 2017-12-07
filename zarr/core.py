@@ -1590,7 +1590,10 @@ class Array(object):
                     if self._compressor:
                         self._compressor.decode(cdata, dest)
                     else:
-                        chunk = np.frombuffer(cdata, dtype=self._dtype)
+                        if isinstance(cdata, np.ndarray):
+                            chunk = cdata.view(self._dtype)
+                        else:
+                            chunk = np.frombuffer(cdata, dtype=self._dtype)
                         chunk = chunk.reshape(self._chunks, order=self._order)
                         np.copyto(dest, chunk)
                     return
@@ -1736,7 +1739,7 @@ class Array(object):
         elif isinstance(chunk, np.ndarray):
             chunk = chunk.view(self._dtype)
         else:
-            chunk = np.frombuffer(chunk, self._dtype)
+            chunk = np.frombuffer(chunk, dtype=self._dtype)
 
         # reshape
         chunk = chunk.reshape(self._chunks, order=self._order)
@@ -2087,15 +2090,15 @@ class Array(object):
             >>> import zarr
             >>> import numpy as np
             >>> np.random.seed(42)
-            >>> labels = [b'female', b'male']
+            >>> labels = ['female', 'male']
             >>> data = np.random.choice(labels, size=10000)
             >>> filters = [zarr.Categorize(labels=labels,
-            ...                                  dtype=data.dtype,
-            ...                                  astype='u1')]
+            ...                            dtype=data.dtype,
+            ...                            astype='u1')]
             >>> a = zarr.array(data, chunks=1000, filters=filters)
             >>> a[:]
-            array([b'female', b'male', b'female', ..., b'male', b'male', b'female'],
-                  dtype='|S6')
+            array(['female', 'male', 'female', ..., 'male', 'male', 'female'],
+                  dtype='<U6')
             >>> v = a.view(dtype='u1', filters=[])
             >>> v.is_view
             True
@@ -2110,10 +2113,10 @@ class Array(object):
             >>> v[:]
             array([1, 1, 1, ..., 2, 2, 2], dtype=uint8)
             >>> a[:]
-            array([b'female', b'female', b'female', ..., b'male', b'male', b'male'],
-                  dtype='|S6')
+            array(['female', 'female', 'female', ..., 'male', 'male', 'male'],
+                  dtype='<U6')
 
-        View as a different dtype with the same itemsize:
+        View as a different dtype with the same item size:
 
             >>> data = np.random.randint(0, 2, size=10000, dtype='u1')
             >>> a = zarr.array(data, chunks=1000)
@@ -2125,7 +2128,7 @@ class Array(object):
             >>> np.all(a[:].view(dtype=bool) == v[:])
             True
 
-        An array can be viewed with a dtype with a different itemsize, however
+        An array can be viewed with a dtype with a different item size, however
         some care is needed to adjust the shape and chunk shape so that chunk
         data is interpreted correctly:
 

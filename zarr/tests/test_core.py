@@ -855,27 +855,37 @@ class TestArray(unittest.TestCase):
     def test_dtypes(self):
 
         # integers
-        for t in 'u1', 'u2', 'u4', 'u8', 'i1', 'i2', 'i4', 'i8':
-            z = self.create_array(shape=10, chunks=3, dtype=t)
-            assert z.dtype == np.dtype(t)
-            a = np.arange(z.shape[0], dtype=t)
+        for dtype in 'u1', 'u2', 'u4', 'u8', 'i1', 'i2', 'i4', 'i8':
+            z = self.create_array(shape=10, chunks=3, dtype=dtype)
+            assert z.dtype == np.dtype(dtype)
+            a = np.arange(z.shape[0], dtype=dtype)
             z[:] = a
             assert_array_equal(a, z[:])
 
         # floats
-        for t in 'f2', 'f4', 'f8':
-            z = self.create_array(shape=10, chunks=3, dtype=t)
-            assert z.dtype == np.dtype(t)
-            a = np.linspace(0, 1, z.shape[0], dtype=t)
+        for dtype in 'f2', 'f4', 'f8':
+            z = self.create_array(shape=10, chunks=3, dtype=dtype)
+            assert z.dtype == np.dtype(dtype)
+            a = np.linspace(0, 1, z.shape[0], dtype=dtype)
             z[:] = a
             assert_array_almost_equal(a, z[:])
 
-        # datetime, timedelta are not supported for the time being
-        for resolution in 'D', 'us', 'ns':
-            with assert_raises(ValueError):
-                self.create_array(shape=10, dtype='datetime64[{}]'.format(resolution))
-            with assert_raises(ValueError):
-                self.create_array(shape=10, dtype='timedelta64[{}]'.format(resolution))
+        # datetime, timedelta
+        for base_type in 'Mm':
+            for resolution in 'D', 'us', 'ns':
+                dtype = '{}8[{}]'.format(base_type, resolution)
+                z = self.create_array(shape=100, dtype=dtype)
+                assert z.dtype == np.dtype(dtype)
+                a = np.random.randint(0, np.iinfo('u8').max, size=z.shape[0],
+                                      dtype='u8').view(dtype)
+                z[:] = a
+                assert_array_equal(a, z[:])
+
+        # check that datetime generic units are not allowed
+        with assert_raises(ValueError):
+            self.create_array(shape=100, dtype='M8')
+        with assert_raises(ValueError):
+            self.create_array(shape=100, dtype='m8')
 
     def test_object_arrays(self):
 

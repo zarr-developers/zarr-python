@@ -153,9 +153,10 @@ def normalize_dtype(dtype, object_codec):
 
     dtype = np.dtype(dtype)
 
-    if dtype.kind in 'mM':
-        raise ValueError('datetime64 and timedelta64 dtypes are not currently '
-                         'supported; please store the data using int64 instead')
+    # don't allow generic datetime64 or timedelta64, require units to be specified
+    if dtype == np.dtype('M8') or dtype == np.dtype('m8'):
+        raise ValueError('datetime64 and timedelta64 dtypes with generic units '
+                         'are not supported, please specify units (e.g., "M8[ns]")')
 
     return dtype, object_codec
 
