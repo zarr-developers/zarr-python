@@ -117,17 +117,20 @@ consists of 3 parts:
   ``">"``: big-endian; ``"|"``: not-relevant)
 * One character code giving the basic type of the array (``"b"``: Boolean (integer
   type where all values are only True or False); ``"i"``: integer; ``"u"``: unsigned
-  integer; ``"f"``: floating point; ``"c"``: complex floating point; ``"S"``: string
-  (fixed-length sequence of char); ``"U"``: unicode (fixed-length sequence of
-  Py_UNICODE); ``"V"``: other (void * – each item is a fixed-size chunk of memory))
+  integer; ``"f"``: floating point; ``"c"``: complex floating point; ``"m"``: timedelta;
+  ``"M"``: datetime; ``"S"``: string (fixed-length sequence of char); ``"U"``: unicode
+  (fixed-length sequence of Py_UNICODE); ``"V"``: other (void * – each item is a
+  fixed-size chunk of memory))
 * An integer specifying the number of bytes the type uses.
 
 The byte order MUST be specified. E.g., ``"<f8"``, ``">i4"``, ``"|b1"`` and
 ``"|S12"`` are valid data type encodings.
 
-Please note that NumPy's datetime64 ("M") and timedelta64 ("m") data types are **not**
-currently supported. Please store data using an appropriate physical data type instead,
-e.g., 64-bit integer.
+For datetime64 ("M") and timedelta64 ("m") data types, these MUST also include the
+units within square brackets. A list of valid units and their definitions are given in
+the `NumPy documentation on Datetimes and Timedeltas
+<https://docs.scipy.org/doc/numpy/reference/arrays.datetime.html#datetime-units>`_.
+For example, ``"<M8[ns]"`` specifies a datetime64 data type with nanosecond time units.
 
 Structured data types (i.e., with multiple named fields) are encoded as a list
 of two-element lists, following `NumPy array protocol type descriptions (descr)
@@ -476,8 +479,8 @@ initially published to clarify ambiguities and add some missing information.
   decoded for arrays with a fixed-length byte string data type (:issue:`165`,
   :issue:`176`).
 
-* The specification now clarifies that datetime64 and timedelta64 data types are not
-  supported in this version (:issue:`85`).
+* The specification now clarifies that units must be specified for datetime64 and
+  timedelta64 data types (:issue:`85`, :issue:`215`).
 
 * The specification now clarifies that the '.zattrs' key does not have to be present for
   either arrays or groups, and if absent then custom attributes should be treated as
