@@ -1079,24 +1079,13 @@ E.g., pickle/unpickle an array stored on disk::
 Datetimes and timedeltas
 ------------------------
 
-Please note that NumPy's ``datetime64`` and ``timedelta64`` dtypes are **not** currently
-supported for Zarr arrays. If you would like to store datetime or timedelta data, you
-can store the data in an array with an integer dtype, e.g.::
+NumPy's ``datetime64`` ('M') and ``timedelta64`` ('m') dtypes are supported for Zarr
+arrays, as long as the units are specified. E.g.::
 
-    >>> a = np.array(['2007-07-13', '2006-01-13', '2010-08-13'], dtype='datetime64[D]')
-    >>> z = zarr.array(a.view('i8'))
+    >>> z = zarr.array(['2007-07-13', '2006-01-13', '2010-08-13'], dtype='M[D]')
     >>> z
-    <zarr.core.Array (3,) int64>
+    <zarr.core.Array (3,) datetime64[D]>
     >>> z[:]
-    array([13707, 13161, 14834])
-    >>> z[:].view(a.dtype)
-    array(['2007-07-13', '2006-01-13', '2010-08-13'], dtype='datetime64[D]')
-
-If you would like a convenient way to retrieve the data from this array viewed as the
-original datetime64 dtype, try the :func:`zarr.core.Array.astype` method, e.g.::
-
-    >>> zv = z.astype(a.dtype)
-    >>> zv[:]
     array(['2007-07-13', '2006-01-13', '2010-08-13'], dtype='datetime64[D]')
 
 .. _tutorial_tips:
