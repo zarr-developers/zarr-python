@@ -7,12 +7,13 @@ import atexit
 from nose.tools import assert_raises
 import numpy as np
 from numpy.testing import assert_array_equal
+from numcodecs import Zlib
 
 
-from zarr.convenience import open, save, save_group, load, copy_store
+from zarr.convenience import open, save, save_group, load, copy_store, copy
 from zarr.storage import atexit_rmtree
 from zarr.core import Array
-from zarr.hierarchy import Group
+from zarr.hierarchy import Group, group
 
 
 def test_open_array():
@@ -177,3 +178,80 @@ def test_copy_store():
     assert 'foo' in dest
     assert 'bar/baz' not in dest
     assert 'bar/qux' in dest
+
+
+def test_copy():
+
+    source = group()
+    foo = source.create_group('foo')
+    foo.attrs['experiment'] = 'weird science'
+    baz = foo.create_dataset('bar/baz', data=np.arange(100), chunks=50)
+    baz.attrs['units'] = 'metres'
+
+    # copy array with default options
+    dest = group()
+    copy(source['foo/bar/baz'], dest)
+    a = dest['baz']  # defaults to use source name
+    assert isinstance(a, Array)
+    assert a.dtype == baz.dtype
+    assert a.shape == baz.shape
+    assert a.chunks == baz.chunks
+    assert a.compressor == baz.compressor
+    assert_array_equal(a[:], baz[:])
+    assert a.attrs['units'] == 'metres'
+
+    # copy array with name
+    dest = group()
+    copy(source['foo/bar/baz'], dest, name='qux')
+    assert 'baz' not in dest
+    a = dest['qux']
+    assert isinstance(a, Array)
+    assert a.dtype == baz.dtype
+    assert a.shape == baz.shape
+    assert a.chunks == baz.chunks
+    assert a.compressor == baz.compressor
+    assert_array_equal(a[:], baz[:])
+    assert a.attrs['units'] == 'metres'
+
+    # copy array, provide creation options
+    compressor = Zlib(1)
+    chunks = True
+    copy(source['foo/bar/baz'], dest, without_attrs=True, compressor=compressor,
+         chunks=chunks)
+    a = dest['baz']
+    assert isinstance(a, Array)
+    assert a.dtype == baz.dtype
+    assert a.shape == baz.shape
+    assert a.chunks != baz.chunks  # autochunking was requested
+    assert a.compressor == compressor
+    assert_array_equal(a[:], baz[:])
+    assert 'units' not in a.attrs
+
+    # copy group, default options
+    dest = group()
+    copy(source['foo'], dest)
+    g = dest['foo']  # defaults to use source name
+    assert isinstance(g, Group)
+    assert g.attrs['experiment'] == 'weird science'
+    a = g['bar/baz']
+    assert a.dtype == baz.dtype
+    assert a.shape == baz.shape
+    assert a.chunks == baz.chunks
+    assert a.compressor == baz.compressor
+    assert_array_equal(a[:], baz[:])
+    assert a.attrs['units'] == 'metres'
+
+    # copy group, non-default options
+    dest = group()
+    copy(source['foo'], dest, name='qux', without_attrs=True)
+    assert 'foo' not in dest
+    g = dest['qux']
+    assert isinstance(g, Group)
+    assert 'experiment' not in g.attrs
+    a = g['bar/baz']
+    assert a.dtype == baz.dtype
+    assert a.shape == baz.shape
+    assert a.chunks == baz.chunks
+    assert a.compressor == baz.compressor
+    assert_array_equal(a[:], baz[:])
+    assert 'units' not in a.attrs

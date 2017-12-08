@@ -399,6 +399,27 @@ def copy_store(source, dest, source_path='', dest_path='', excludes=None,
     because it avoids de-compressing and re-compressing data, rather the compressed
     chunk data for each array are copied directly between stores.
 
+    Parameters
+    ----------
+    source : Mapping
+        Store to copy data from.
+    dest : MutableMapping
+        Store to copy data into.
+    source_path : str, optional
+        Only copy data from under this path in the source store.
+    dest_path : str, optional
+        Copy data into this path in the destination store.
+    excludes : sequence of str, optional
+        One or more regular expressions which will be matched against keys in the
+        source store. Any matching key will not be copied.
+    includes : sequence of str, optional
+        One or more regular expressions which will be matched against keys in the
+        source store and will override any excludes also matching.
+    flags : int, optional
+        Regular expression flags used for matching excludes and includes.
+    log : callable, file path or file-like object, optional
+        If provided, will be used to log progress information.
+
     Examples
     --------
     >>> import zarr
@@ -484,3 +505,68 @@ def copy_store(source, dest, source_path='', dest_path='', excludes=None,
                 # retrieve and copy data
                 log('{} -> {}'.format(source_key, dest_key))
                 dest[dest_key] = source[source_key]
+
+
+def copy(source, dest, name=None, without_attrs=False, log=None, **create_kws):
+    """TODO"""
+
+    # setup logging
+    with _LogWriter(log) as log:
+        _copy(log, source, dest, name=name, without_attrs=without_attrs, **create_kws)
+
+
+def _copy(log, source, dest, name=None, without_attrs=False, **create_kws):
+    """TODO"""
+
+    # are we copying to/from h5py?
+    source_h5py = source.__module__.startswith('h5py.')
+    dest_h5py = dest.__module__.startswith('h5py.')
+
+    # determine name to copy to
+    if name is None:
+        name = source.name.split('/')[-1]
+        if not name:
+            raise TypeError('source has no name, please provide the `name` '
+                            'parameter to indicate a name to copy to')
+
+    if hasattr(source, 'shape'):
+        # copy a dataset/array
+
+        # setup creation keyword arguments
+        kws = create_kws.copy()
+
+        # setup chunks option, preserve by default
+        kws.setdefault('chunks', source.chunks)
+
+        # setup compression options
+        if source_h5py:
+            if dest_h5py:
+                # h5py -> h5py; preserve compression options by default
+                kws.setdefault('compression', source.compression)
+                kws.setdefault('compression_opts', source.compression_opts)
+                kws.setdefault('shuffle', source.shuffle)
+            else:
+                # h5py -> zarr; use zarr default compression options
+                pass
+        else:
+            if dest_h5py:
+                # zarr -> h5py; use some vaguely sensible defaults
+                kws.setdefault('compression', 'gzip')
+                kws.setdefault('compression_opts', 1)
+                kws.setdefault('shuffle', True)
+            else:
+                # zarr -> zarr; preserve compression options by default
+                kws.setdefault('compressor', source.compressor)
+
+        # create new dataset in destination
+        ds = dest.create_dataset(name, shape=source.shape, dtype=source.dtype, **kws)
+
+        # copy data - N.B., if dest is h5py this will load all data into memory
+        log('{} -> {}'.format(source.name, ds.name))
+        ds[:] = source
+
+        # copy attributes
+        if not without_attrs:
+            ds.attrs.update(source.attrs)
+
+    else:
