@@ -11,5 +11,5 @@ from zarr.storage import (DictStore, DirectoryStore, ZipStore, TempStore,
 from zarr.hierarchy import group, open_group, Group
 from zarr.sync import ThreadSynchronizer, ProcessSynchronizer
 from zarr.codecs import *
-from zarr.convenience import open, save, save_array, save_group, load
+from zarr.convenience import open, save, save_array, save_group, load, copy_store
 from zarr.version import version as __version__

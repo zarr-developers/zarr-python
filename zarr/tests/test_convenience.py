@@ -9,7 +9,7 @@ import numpy as np
 from numpy.testing import assert_array_equal
 
 
-from zarr.convenience import open, save, save_group, load
+from zarr.convenience import open, save, save_group, load, copy_store
 from zarr.storage import atexit_rmtree
 from zarr.core import Array
 from zarr.hierarchy import Group
@@ -85,3 +85,66 @@ def test_lazy_loader():
     assert sorted(loader) == ['bar', 'foo']
     assert_array_equal(foo, loader['foo'])
     assert_array_equal(bar, loader['bar'])
+
+
+def test_copy_store():
+
+    # no paths
+    source = dict()
+    source['foo'] = b'xxx'
+    source['bar'] = b'yyy'
+    dest = dict()
+    copy_store(source, dest)
+    assert len(dest) == 2
+    for key in source:
+        assert source[key] == dest[key]
+
+    # with source path
+    source = dict()
+    source['foo'] = b'xxx'
+    source['bar/baz'] = b'yyy'
+    source['bar/qux'] = b'zzz'
+    # paths should be normalized
+    for source_path in 'bar', 'bar/', '/bar', '/bar/':
+        dest = dict()
+        copy_store(source, dest, source_path=source_path)
+        assert len(dest) == 2
+        for key in source:
+            if key.startswith('bar/'):
+                dest_key = key.split('bar/')[1]
+                assert source[key] == dest[dest_key]
+            else:
+                assert key not in dest
+
+    # with dest path
+    source = dict()
+    source['foo'] = b'xxx'
+    source['bar/baz'] = b'yyy'
+    source['bar/qux'] = b'zzz'
+    # paths should be normalized
+    for dest_path in 'new', 'new/', '/new', '/new/':
+        dest = dict()
+        copy_store(source, dest, dest_path=dest_path)
+        assert len(dest) == 3
+        for key in source:
+            dest_key = 'new/' + key
+            assert source[key] == dest[dest_key]
+
+    # with source and dest path
+    source = dict()
+    source['foo'] = b'xxx'
+    source['bar/baz'] = b'yyy'
+    source['bar/qux'] = b'zzz'
+    # paths should be normalized
+    for source_path in 'bar', 'bar/', '/bar', '/bar/':
+        for dest_path in 'new', 'new/', '/new', '/new/':
+            dest = dict()
+            copy_store(source, dest, source_path=source_path, dest_path=dest_path)
+            assert len(dest) == 2
+            for key in source:
+                if key.startswith('bar/'):
+                    dest_key = 'new/' + key.split('bar/')[1]
+                    assert source[key] == dest[dest_key]
+                else:
+                    assert key not in dest
+                    assert ('new/' + key) not in dest

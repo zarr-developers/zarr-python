@@ -2,6 +2,7 @@
 """Convenience functions for storing and loading data."""
 from __future__ import absolute_import, print_function, division
 from collections import Mapping
+import io
 
 
 from zarr.core import Array
@@ -348,3 +349,71 @@ def load(store):
     elif contains_group(store, path=None):
         grp = Group(store=store, path=None)
         return LazyLoader(grp)
+
+
+class _LogWriter(object):
+
+    def __init__(self, log):
+        self.log_func = None
+        self.log_file = None
+        self.needs_closing = False
+        if log is None:
+            # don't do any logging
+            pass
+        elif callable(log):
+            self.log_func = log
+        elif isinstance(log, str):
+            self.log_file = io.open(log, mode='w')
+            self.needs_closing = True
+        else:
+            if not hasattr(log, 'write'):
+                raise TypeError('log must be a callable function, file path or file-like '
+                                'object, found %r' % log)
+            self.log_file = log
+            self.needs_closing = False
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        if self.log_file is not None and self.needs_closing:
+            self.log_file.close()
+
+    def __call__(self, *args, **kwargs):
+        if self.log_file is not None:
+            kwargs['file'] = self.log_file
+            print(*args, **kwargs)
+            if hasattr(self.log_file, 'flush'):
+                # get immediate feedback
+                self.log_file.flush()
+        elif self.log_func is not None:
+            self.log_func(*args, **kwargs)
+
+
+def copy_store(source, dest, source_path='', dest_path='', log=None):
+    """TODO"""
+
+    # normalize paths
+    source_path = normalize_storage_path(source_path)
+    dest_path = normalize_storage_path(dest_path)
+    if source_path:
+        source_path = source_path + '/'
+    if dest_path:
+        dest_path = dest_path + '/'
+
+    # setup logging
+    with _LogWriter(log) as log:
+
+        # iterate over source keys
+        for source_key in sorted(source.keys()):
+
+            # filter to keys under source path
+            if source_key.startswith(source_path):
+
+                # map key to destination path
+                key_suffix = source_key[len(source_path):]
+                dest_key = dest_path + key_suffix
+
+                # retrieve and copy data
+                log('{} -> {}'.format(source_key, dest_key))
+                dest[dest_key] = source[source_key]
