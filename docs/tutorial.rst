@@ -779,6 +779,8 @@ If your strings are all ASCII strings, and you know the maximum length of the st
 your dataset, then you can use an array with a fixed-length bytes dtype. E.g.::
 
     >>> z = zarr.zeros(10, dtype='S6')
+    >>> z
+    <zarr.core.Array (10,) |S6>
     >>> z[0] = b'Hello'
     >>> z[1] = b'world!'
     >>> z[:]
@@ -793,37 +795,68 @@ A fixed-length unicode dtype is also available, e.g.::
     ...              'เฮลโลเวิลด์']
     >>> text_data = greetings * 10000
     >>> z = zarr.array(text_data, dtype='U20')
+    >>> z
+    <zarr.core.Array (120000,) <U20>
     >>> z[:]
     array(['¡Hola mundo!', 'Hej Världen!', 'Servus Woid!', ...,
            'Helló, világ!', 'Zdravo svete!', 'เฮลโลเวิลด์'],
           dtype='<U20')
 
-For variable-length strings, the "object" dtype can be used, but a codec must be
+For variable-length strings, the ``object`` dtype can be used, but a codec must be
 provided to encode the data (see also :ref:`tutorial_objects` below). At the time of
-writing there are three codecs available that can encode variable length string
-objects, :class:`numcodecs.JSON`, :class:`numcodecs.MsgPack`. and
-:class:`numcodecs.Pickle`. E.g. using JSON::
+writing there are four codecs available that can encode variable length string
+objects: :class:`numcodecs.VLenUTF8`, :class:`numcodecs.JSON`, :class:`numcodecs.MsgPack`.
+and :class:`numcodecs.Pickle`. E.g. using ``VLenUTF8``::
 
     >>> import numcodecs
-    >>> z = zarr.array(text_data, dtype=object, object_codec=numcodecs.JSON())
+    >>> z = zarr.array(text_data, dtype=object, object_codec=numcodecs.VLenUTF8())
+    >>> z
+    <zarr.core.Array (120000,) object>
+    >>> z.filters
+    [VLenUTF8()]
     >>> z[:]
     array(['¡Hola mundo!', 'Hej Världen!', 'Servus Woid!', ...,
            'Helló, világ!', 'Zdravo svete!', 'เฮลโลเวิลด์'], dtype=object)
 
-...or alternatively using msgpack (requires `msgpack-python
-<https://github.com/msgpack/msgpack-python>`_ to be installed)::
+As a convenience, ``dtype=str`` (or ``dtype=unicode`` on Python 2.7) can be used, which
+is a short-hand for ``dtype=object, object_codec=numcodecs.VLenUTF8()``, e.g.::
 
-    >>> z = zarr.array(text_data, dtype=object, object_codec=numcodecs.MsgPack())
+    >>> z = zarr.array(text_data, dtype=str)
+    >>> z
+    <zarr.core.Array (120000,) object>
+    >>> z.filters
+    [VLenUTF8()]
     >>> z[:]
     array(['¡Hola mundo!', 'Hej Världen!', 'Servus Woid!', ...,
            'Helló, világ!', 'Zdravo svete!', 'เฮลโลเวิลด์'], dtype=object)
 
-If you know ahead of time all the possible string values that can occur, then you could
-also use the :class:`numcodecs.Categorize` codec to encode each unique value as an
+Variable-length byte strings are also supported via ``dtype=object``. Again an
+``object_codec`` is required, which can be one of :class:`numcodecs.VLenBytes` or
+:class:`numcodecs.Pickle`. For convenience, ``dtype=bytes`` (or ``dtype=str`` on Python
+2.7) can be used as a short-hand for ``dtype=object, object_codec=numcodecs.VLenBytes()``,
+e.g.::
+
+    >>> bytes_data = [g.encode('utf-8') for g in greetings] * 10000
+    >>> z = zarr.array(bytes_data, dtype=bytes)
+    >>> z
+    <zarr.core.Array (120000,) object>
+    >>> z.filters
+    [VLenBytes()]
+    >>> z[:]
+    array([b'\xc2\xa1Hola mundo!', b'Hej V\xc3\xa4rlden!', b'Servus Woid!',
+           ..., b'Hell\xc3\xb3, vil\xc3\xa1g!', b'Zdravo svete!',
+           b'\xe0\xb9\x80\xe0\xb8\xae\xe0\xb8\xa5\xe0\xb9\x82\xe0\xb8\xa5\xe0\xb9\x80\xe0\xb8\xa7\xe0\xb8\xb4\xe0\xb8\xa5\xe0\xb8\x94\xe0\xb9\x8c'], dtype=object)
+
+If you know ahead of time all the possible string values that can occur, you could
+also use the :class:`numcodecs.Categorize` codec to encode each unique string value as an
 integer. E.g.::
 
     >>> categorize = numcodecs.Categorize(greetings, dtype=object)
     >>> z = zarr.array(text_data, dtype=object, object_codec=categorize)
+    >>> z
+    <zarr.core.Array (120000,) object>
+    >>> z.filters
+    [Categorize(dtype='|O', astype='|u1', labels=['¡Hola mundo!', 'Hej Världen!', 'Servus Woid!', ...])]
     >>> z[:]
     array(['¡Hola mundo!', 'Hej Världen!', 'Servus Woid!', ...,
            'Helló, világ!', 'Zdravo svete!', 'เฮลโลเวิลด์'], dtype=object)
@@ -835,13 +868,14 @@ Object arrays
 -------------
 
 Zarr supports arrays with an "object" dtype. This allows arrays to contain any type of
-object, such as variable length unicode strings, or variable length lists, or other
-possibilities. When creating an object array, a codec must be provided via the
+object, such as variable length unicode strings, or variable length arrays of numbers, or
+other possibilities. When creating an object array, a codec must be provided via the
 ``object_codec`` argument. This codec handles encoding (serialization) of Python objects.
-At the time of writing there are three codecs available that can serve as a
-general purpose object codec and support encoding of a variety of
-object types: :class:`numcodecs.JSON`, :class:`numcodecs.MsgPack`. and
-:class:`numcodecs.Pickle`.
+The best codec to use will depend on what type of objects are present in the array.
+
+At the time of writing there are three codecs available that can serve as a general
+purpose object codec and support encoding of a mixture of object types:
+:class:`numcodecs.JSON`, :class:`numcodecs.MsgPack`. and :class:`numcodecs.Pickle`.
 
 For example, using the JSON codec::
 
@@ -861,6 +895,40 @@ code can be embedded within pickled data. The JSON and MsgPack codecs do not hav
 security issues and support encoding of unicode strings, lists and dictionaries.
 MsgPack is usually faster for both encoding and decoding.
 
+Ragged arrays
+~~~~~~~~~~~~~
+
+If you need to store an array of arrays, where each member array can be of any length
+and stores the same primitive type (a.k.a. a ragged array), the
+:class:`numcodecs.VLenArray` codec can be used, e.g.::
+
+    >>> z = zarr.empty(4, dtype=object, object_codec=numcodecs.VLenArray(int))
+    >>> z
+    <zarr.core.Array (4,) object>
+    >>> z.filters
+    [VLenArray(dtype='<i8')]
+    >>> z[0] = np.array([1, 3, 5])
+    >>> z[1] = np.array([4])
+    >>> z[2] = np.array([7, 9, 14])
+    >>> z[:]
+    array([array([1, 3, 5]), array([4]), array([ 7,  9, 14]),
+           array([], dtype=int64)], dtype=object)
+
+As a convenience, ``dtype='array:T'`` can be used as a short-hand for
+``dtype=object, object_codec=numcodecs.VLenArray('T')``, where 'T' can be any NumPy
+primitive dtype such as 'i4' or 'f8'. E.g.::
+
+    >>> z = zarr.empty(4, dtype='array:i8')
+    >>> z
+    <zarr.core.Array (4,) object>
+    >>> z.filters
+    [VLenArray(dtype='<i8')]
+    >>> z[0] = np.array([1, 3, 5])
+    >>> z[1] = np.array([4])
+    >>> z[2] = np.array([7, 9, 14])
+    >>> z[:]
+    array([array([1, 3, 5]), array([4]), array([ 7,  9, 14]),
+           array([], dtype=int64)], dtype=object)
 
 .. _tutorial_chunks:
 
@@ -1079,25 +1147,19 @@ E.g., pickle/unpickle an array stored on disk::
 Datetimes and timedeltas
 ------------------------
 
-Please note that NumPy's ``datetime64`` and ``timedelta64`` dtypes are **not** currently
-supported for Zarr arrays. If you would like to store datetime or timedelta data, you
-can store the data in an array with an integer dtype, e.g.::
+NumPy's ``datetime64`` ('M8') and ``timedelta64`` ('m8') dtypes are supported for Zarr
+arrays, as long as the units are specified. E.g.::
 
-    >>> a = np.array(['2007-07-13', '2006-01-13', '2010-08-13'], dtype='datetime64[D]')
-    >>> z = zarr.array(a.view('i8'))
+    >>> z = zarr.array(['2007-07-13', '2006-01-13', '2010-08-13'], dtype='M8[D]')
     >>> z
-    <zarr.core.Array (3,) int64>
+    <zarr.core.Array (3,) datetime64[D]>
     >>> z[:]
-    array([13707, 13161, 14834])
-    >>> z[:].view(a.dtype)
     array(['2007-07-13', '2006-01-13', '2010-08-13'], dtype='datetime64[D]')
-
-If you would like a convenient way to retrieve the data from this array viewed as the
-original datetime64 dtype, try the :func:`zarr.core.Array.astype` method, e.g.::
-
-    >>> zv = z.astype(a.dtype)
-    >>> zv[:]
-    array(['2007-07-13', '2006-01-13', '2010-08-13'], dtype='datetime64[D]')
+    >>> z[0]
+    numpy.datetime64('2007-07-13')
+    >>> z[0] = '1999-12-31'
+    >>> z[:]
+    array(['1999-12-31', '2006-01-13', '2010-08-13'], dtype='datetime64[D]')
 
 .. _tutorial_tips:
 

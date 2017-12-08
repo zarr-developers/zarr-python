@@ -4,14 +4,24 @@ import operator
 from textwrap import TextWrapper, dedent
 import numbers
 import uuid
+import inspect
 
 
 from asciitree import BoxStyle, LeftAligned
 from asciitree.traversal import Traversal
 import numpy as np
+from numcodecs.registry import codec_registry
 
 
 from zarr.compat import PY2, reduce, text_type, binary_type
+
+
+# codecs to use for object dtype convenience API
+object_codecs = {
+    text_type.__name__: 'vlen-utf8',
+    binary_type.__name__: 'vlen-bytes',
+    'array': 'vlen-array',
+}
 
 
 def normalize_shape(shape):
@@ -114,6 +124,41 @@ def normalize_chunks(chunks, shape, typesize):
                    for s, c in zip(shape, chunks))
 
     return chunks
+
+
+def normalize_dtype(dtype, object_codec):
+
+    # convenience API for object arrays
+    if inspect.isclass(dtype):
+        dtype = dtype.__name__
+    if isinstance(dtype, str):
+        # allow ':' to delimit class from codec arguments
+        tokens = dtype.split(':')
+        key = tokens[0]
+        if key in object_codecs:
+            dtype = np.dtype(object)
+            if object_codec is None:
+                codec_id = object_codecs[key]
+                if len(tokens) > 1:
+                    args = tokens[1].split(',')
+                else:
+                    args = ()
+                try:
+                    object_codec = codec_registry[codec_id](*args)
+                except KeyError:  # pragma: no cover
+                    raise ValueError('codec %r for object type %r is not '
+                                     'available; please provide an '
+                                     'object_codec manually' % (codec_id, key))
+            return dtype, object_codec
+
+    dtype = np.dtype(dtype)
+
+    # don't allow generic datetime64 or timedelta64, require units to be specified
+    if dtype == np.dtype('M8') or dtype == np.dtype('m8'):
+        raise ValueError('datetime64 and timedelta64 dtypes with generic units '
+                         'are not supported, please specify units (e.g., "M8[ns]")')
+
+    return dtype, object_codec
 
 
 # noinspection PyTypeChecker

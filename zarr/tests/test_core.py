@@ -21,10 +21,11 @@ from zarr.storage import (DirectoryStore, init_array, init_group, NestedDirector
                           DBMStore, LMDBStore, atexit_rmtree, atexit_rmglob)
 from zarr.core import Array
 from zarr.errors import PermissionError
-from zarr.compat import PY2
+from zarr.compat import PY2, text_type, binary_type
 from zarr.util import buffer_size
 from numcodecs import (Delta, FixedScaleOffset, Zlib, Blosc, BZ2, MsgPack, Pickle,
-                       Categorize, JSON)
+                       Categorize, JSON, VLenUTF8, VLenBytes, VLenArray)
+from numcodecs.tests.common import greetings
 
 
 # needed for PY2/PY3 consistent behaviour
@@ -854,27 +855,37 @@ class TestArray(unittest.TestCase):
     def test_dtypes(self):
 
         # integers
-        for t in 'u1', 'u2', 'u4', 'u8', 'i1', 'i2', 'i4', 'i8':
-            z = self.create_array(shape=10, chunks=3, dtype=t)
-            assert z.dtype == np.dtype(t)
-            a = np.arange(z.shape[0], dtype=t)
+        for dtype in 'u1', 'u2', 'u4', 'u8', 'i1', 'i2', 'i4', 'i8':
+            z = self.create_array(shape=10, chunks=3, dtype=dtype)
+            assert z.dtype == np.dtype(dtype)
+            a = np.arange(z.shape[0], dtype=dtype)
             z[:] = a
             assert_array_equal(a, z[:])
 
         # floats
-        for t in 'f2', 'f4', 'f8':
-            z = self.create_array(shape=10, chunks=3, dtype=t)
-            assert z.dtype == np.dtype(t)
-            a = np.linspace(0, 1, z.shape[0], dtype=t)
+        for dtype in 'f2', 'f4', 'f8':
+            z = self.create_array(shape=10, chunks=3, dtype=dtype)
+            assert z.dtype == np.dtype(dtype)
+            a = np.linspace(0, 1, z.shape[0], dtype=dtype)
             z[:] = a
             assert_array_almost_equal(a, z[:])
 
-        # datetime, timedelta are not supported for the time being
-        for resolution in 'D', 'us', 'ns':
-            with assert_raises(ValueError):
-                self.create_array(shape=10, dtype='datetime64[{}]'.format(resolution))
-            with assert_raises(ValueError):
-                self.create_array(shape=10, dtype='timedelta64[{}]'.format(resolution))
+        # datetime, timedelta
+        for base_type in 'Mm':
+            for resolution in 'D', 'us', 'ns':
+                dtype = '{}8[{}]'.format(base_type, resolution)
+                z = self.create_array(shape=100, dtype=dtype, fill_value=0)
+                assert z.dtype == np.dtype(dtype)
+                a = np.random.randint(0, np.iinfo('u8').max, size=z.shape[0],
+                                      dtype='u8').view(dtype)
+                z[:] = a
+                assert_array_equal(a, z[:])
+
+        # check that datetime generic units are not allowed
+        with assert_raises(ValueError):
+            self.create_array(shape=100, dtype='M8')
+        with assert_raises(ValueError):
+            self.create_array(shape=100, dtype='m8')
 
     def test_object_arrays(self):
 
@@ -932,10 +943,28 @@ class TestArray(unittest.TestCase):
         a = z[:]
         assert a.dtype == object
 
-    def test_object_arrays_text(self):
+    def test_object_arrays_vlen_text(self):
 
-        from numcodecs.tests.common import greetings
         data = np.array(greetings * 1000, dtype=object)
+
+        z = self.create_array(shape=data.shape, dtype=object, object_codec=VLenUTF8())
+        z[0] = u'foo'
+        assert z[0] == u'foo'
+        z[1] = u'bar'
+        assert z[1] == u'bar'
+        z[2] = u'baz'
+        assert z[2] == u'baz'
+        z[:] = data
+        a = z[:]
+        assert a.dtype == object
+        assert_array_equal(data, a)
+
+        # convenience API
+        z = self.create_array(shape=data.shape, dtype=text_type)
+        assert z.dtype == object
+        assert isinstance(z.filters[0], VLenUTF8)
+        z[:] = data
+        assert_array_equal(data, z[:])
 
         z = self.create_array(shape=data.shape, dtype=object, object_codec=MsgPack())
         z[:] = data
@@ -954,6 +983,68 @@ class TestArray(unittest.TestCase):
         z[:] = data
         assert_array_equal(data, z[:])
 
+    def test_object_arrays_vlen_bytes(self):
+
+        greetings_bytes = [g.encode('utf8') for g in greetings]
+        data = np.array(greetings_bytes * 1000, dtype=object)
+
+        z = self.create_array(shape=data.shape, dtype=object, object_codec=VLenBytes())
+        z[0] = b'foo'
+        assert z[0] == b'foo'
+        z[1] = b'bar'
+        assert z[1] == b'bar'
+        z[2] = b'baz'
+        assert z[2] == b'baz'
+        z[:] = data
+        a = z[:]
+        assert a.dtype == object
+        assert_array_equal(data, a)
+
+        # convenience API
+        z = self.create_array(shape=data.shape, dtype=binary_type)
+        assert z.dtype == object
+        assert isinstance(z.filters[0], VLenBytes)
+        z[:] = data
+        assert_array_equal(data, z[:])
+
+        z = self.create_array(shape=data.shape, dtype=object, object_codec=Pickle())
+        z[:] = data
+        assert_array_equal(data, z[:])
+
+    def test_object_arrays_vlen_array(self):
+
+        data = np.array([np.array([1, 3, 7]),
+                         np.array([5]),
+                         np.array([2, 8, 12])] * 1000, dtype=object)
+
+        def compare_arrays(expected, actual, item_dtype):
+            assert isinstance(actual, np.ndarray)
+            assert actual.dtype == object
+            assert actual.shape == expected.shape
+            for e, a in zip(expected.flat, actual.flat):
+                assert isinstance(a, np.ndarray)
+                assert_array_equal(e, a)
+                assert a.dtype == item_dtype
+
+        codecs = VLenArray(int), VLenArray('<u4')
+        for codec in codecs:
+            z = self.create_array(shape=data.shape, dtype=object, object_codec=codec)
+            z[0] = np.array([4, 7])
+            assert_array_equal(np.array([4, 7]), z[0])
+            z[:] = data
+            a = z[:]
+            assert a.dtype == object
+            compare_arrays(data, a, codec.dtype)
+
+        # convenience API
+        for item_type in 'int', '<u4':
+            z = self.create_array(shape=data.shape, dtype='array:{}'.format(item_type))
+            assert z.dtype == object
+            assert isinstance(z.filters[0], VLenArray)
+            assert z.filters[0].dtype == np.dtype(item_type)
+            z[:] = data
+            compare_arrays(data, z[:], np.dtype(item_type))
+
     def test_object_arrays_danger(self):
 
         # do something dangerous - manually force an object array with no object codec
@@ -966,24 +1057,11 @@ class TestArray(unittest.TestCase):
             z[:] = 42
 
         # do something else dangerous
-        labels = [
-            '¡Hola mundo!',
-            'Hej Världen!',
-            'Servus Woid!',
-            'Hei maailma!',
-            'Xin chào thế giới',
-            'Njatjeta Botë!',
-            'Γεια σου κόσμε!',
-            'こんにちは世界',
-            '世界，你好！',
-            'Helló, világ!',
-            'Zdravo svete!',
-            'เฮลโลเวิลด์'
-        ]
-        data = labels * 10
+        data = greetings * 10
         for compressor in Zlib(1), Blosc():
             z = self.create_array(shape=len(data), chunks=30, dtype=object,
-                                  object_codec=Categorize(labels, dtype=object),
+                                  object_codec=Categorize(greetings,
+                                                          dtype=object),
                                   compressor=compressor)
             z[:] = data
             v = z.view(filters=[])
@@ -1426,7 +1504,15 @@ class TestArrayWithFilters(TestArray):
         # skip this one, cannot use delta with objects
         pass
 
-    def test_object_arrays_text(self):
+    def test_object_arrays_vlen_text(self):
+        # skip this one, cannot use delta with objects
+        pass
+
+    def test_object_arrays_vlen_bytes(self):
+        # skip this one, cannot use delta with objects
+        pass
+
+    def test_object_arrays_vlen_array(self):
         # skip this one, cannot use delta with objects
         pass
 

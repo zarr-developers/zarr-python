@@ -1,10 +1,15 @@
 Release notes
 =============
 
-.. release_2.2.0rc1
+.. _release_2.2.0rc1:
 
 2.2.0rc1
 --------
+
+To install the release candidate version::
+
+    $ pip install --pre zarr==2.2.0rc1
+
 
 Enhancements
 ~~~~~~~~~~~~
@@ -119,6 +124,9 @@ Enhancements
   continue to work, however a warning will be raised to encourage use of the
   ``object_codec`` parameter. :issue:`208`, :issue:`212`.
 
+* **Added support for ``datetime64`` and ``timedelta64`` data types**;
+  :issue:`85`, :issue:`215`.
+
 Bug fixes
 ~~~~~~~~~
 
@@ -146,14 +154,8 @@ Documentation
 * Some changes have been made to the :ref:`spec_v2` document to clarify
   ambiguities and add some missing information. These changes do not break compatibility
   with any of the material as previously implemented, and so the changes have been made
-  in-place in the document without incrementing the document version number. The
-  specification now describes how bytes fill values should be encoded and
-  decoded for arrays with a fixed-length byte string data type (:issue:`165`,
-  :issue:`176`). The specification now clarifies that datetime64 and
-  timedelta64 data types are not supported in this version (:issue:`85`). The
-  specification now clarifies that the '.zattrs' key does not have to be present for
-  either arrays or groups, and if absent then custom attributes should be treated as
-  empty.
+  in-place in the document without incrementing the document version number. See the
+  section on :ref:`spec_v2_changes` in the specification document for more information.
 * A new :ref:`tutorial_indexing` section has been added to the tutorial.
 * A new :ref:`tutorial_strings` section has been added to the tutorial
   (:issue:`135`, :issue:`175`).

@@ -25,7 +25,8 @@ import numpy as np
 
 
 from zarr.util import (normalize_shape, normalize_chunks, normalize_order,
-                       normalize_storage_path, buffer_size, normalize_fill_value, nolock)
+                       normalize_storage_path, buffer_size,
+                       normalize_fill_value, nolock, normalize_dtype)
 from zarr.meta import encode_array_metadata, encode_group_metadata
 from zarr.compat import PY2, binary_type
 from numcodecs.registry import codec_registry
@@ -308,10 +309,7 @@ def _init_array_metadata(store, shape, chunks=None, dtype=None, compressor='defa
 
     # normalize metadata
     shape = normalize_shape(shape)
-    dtype = np.dtype(dtype)
-    if dtype.kind in 'mM':
-        raise ValueError('datetime64 and timedelta64 dtypes are not currently supported; '
-                         'please store the data using int64 instead')
+    dtype, object_codec = normalize_dtype(dtype, object_codec)
     chunks = normalize_chunks(chunks, shape, dtype.itemsize)
     order = normalize_order(order)
     fill_value = normalize_fill_value(fill_value, dtype)
