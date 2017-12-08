@@ -2,12 +2,14 @@
 from __future__ import absolute_import, print_function, division
 import tempfile
 import atexit
+import os
 
 
 from nose.tools import assert_raises
 import numpy as np
 from numpy.testing import assert_array_equal
 from numcodecs import Zlib
+import pytest
 
 
 from zarr.convenience import open, save, save_group, load, copy_store, copy
@@ -180,78 +182,135 @@ def test_copy_store():
     assert 'bar/qux' in dest
 
 
-def test_copy():
+def _test_copy(new_source, new_dest):
 
-    source = group()
+    source = new_source()
     foo = source.create_group('foo')
     foo.attrs['experiment'] = 'weird science'
-    baz = foo.create_dataset('bar/baz', data=np.arange(100), chunks=50)
+    baz = foo.create_dataset('bar/baz', data=np.arange(100), chunks=(50,))
     baz.attrs['units'] = 'metres'
+    spam = source.create_dataset('spam', data=np.arange(100, 200), chunks=(30,))
 
     # copy array with default options
-    dest = group()
+    dest = new_dest()
     copy(source['foo/bar/baz'], dest)
     a = dest['baz']  # defaults to use source name
-    assert isinstance(a, Array)
     assert a.dtype == baz.dtype
     assert a.shape == baz.shape
     assert a.chunks == baz.chunks
-    assert a.compressor == baz.compressor
+    if hasattr(a, 'compressor') and hasattr(baz, 'compressor'):
+        assert a.compressor == baz.compressor
     assert_array_equal(a[:], baz[:])
     assert a.attrs['units'] == 'metres'
 
     # copy array with name
-    dest = group()
+    dest = new_dest()
     copy(source['foo/bar/baz'], dest, name='qux')
     assert 'baz' not in dest
     a = dest['qux']
-    assert isinstance(a, Array)
     assert a.dtype == baz.dtype
     assert a.shape == baz.shape
     assert a.chunks == baz.chunks
-    assert a.compressor == baz.compressor
+    if hasattr(a, 'compressor') and hasattr(baz, 'compressor'):
+        assert a.compressor == baz.compressor
     assert_array_equal(a[:], baz[:])
     assert a.attrs['units'] == 'metres'
 
     # copy array, provide creation options
-    compressor = Zlib(1)
-    chunks = True
-    copy(source['foo/bar/baz'], dest, without_attrs=True, compressor=compressor,
-         chunks=chunks)
+    dest = new_dest()
+    compressor = Zlib(9)
+    if isinstance(dest, Group):
+        copy(source['foo/bar/baz'], dest, without_attrs=True, compressor=compressor,
+             chunks=True)
+    else:
+        copy(source['foo/bar/baz'], dest, without_attrs=True, compression='gzip',
+             compression_opts=9, chunks=True)
     a = dest['baz']
-    assert isinstance(a, Array)
     assert a.dtype == baz.dtype
     assert a.shape == baz.shape
     assert a.chunks != baz.chunks  # autochunking was requested
-    assert a.compressor == compressor
+    if hasattr(a, 'compressor'):
+        assert compressor == a.compressor
+        if hasattr(baz, 'compressor'):
+            assert a.compressor != baz.compressor
+    else:
+        assert a.compression == 'gzip'
+        assert a.compression_opts == 9
     assert_array_equal(a[:], baz[:])
     assert 'units' not in a.attrs
 
     # copy group, default options
-    dest = group()
+    dest = new_dest()
     copy(source['foo'], dest)
     g = dest['foo']  # defaults to use source name
-    assert isinstance(g, Group)
     assert g.attrs['experiment'] == 'weird science'
     a = g['bar/baz']
     assert a.dtype == baz.dtype
     assert a.shape == baz.shape
     assert a.chunks == baz.chunks
-    assert a.compressor == baz.compressor
+    if hasattr(a, 'compressor') and hasattr(baz, 'compressor'):
+        assert a.compressor == baz.compressor
     assert_array_equal(a[:], baz[:])
     assert a.attrs['units'] == 'metres'
 
     # copy group, non-default options
-    dest = group()
+    dest = new_dest()
     copy(source['foo'], dest, name='qux', without_attrs=True)
     assert 'foo' not in dest
     g = dest['qux']
-    assert isinstance(g, Group)
     assert 'experiment' not in g.attrs
     a = g['bar/baz']
     assert a.dtype == baz.dtype
     assert a.shape == baz.shape
     assert a.chunks == baz.chunks
-    assert a.compressor == baz.compressor
+    if hasattr(a, 'compressor') and hasattr(baz, 'compressor'):
+        assert a.compressor == baz.compressor
     assert_array_equal(a[:], baz[:])
     assert 'units' not in a.attrs
+
+    # copy group, shallow
+    dest = new_dest()
+    copy(source, dest, name='eggs', shallow=True)
+    assert 'eggs' in dest
+    eggs = dest['eggs']
+    assert 'spam' in eggs
+    a = eggs['spam']
+    assert a.dtype == spam.dtype
+    assert a.shape == spam.shape
+    assert a.chunks == spam.chunks
+    if hasattr(a, 'compressor') and hasattr(spam, 'compressor'):
+        assert a.compressor == spam.compressor
+    assert_array_equal(a[:], spam[:])
+    assert 'foo' not in eggs
+    assert 'bar' not in eggs
+
+
+def test_copy_zarr_zarr():
+    # zarr -> zarr
+    _test_copy(group, group)
+
+
+try:
+    import h5py
+    have_h5py = True
+except ImportError:
+    have_h5py = False
+
+
+def temp_h5f():
+    fn = tempfile.mktemp()
+    atexit.register(os.remove, fn)
+    h5f = h5py.File(fn, mode='w')
+    return h5f
+
+
+@pytest.mark.skipif(not have_h5py, reason='h5py not installed')
+def test_copy_h5py_zarr():
+    # h5py -> zarr
+    _test_copy(temp_h5f, group)
+
+
+@pytest.mark.skipif(not have_h5py, reason='h5py not installed')
+def test_copy_zarr_h5py():
+    # zarr -> h5py
+    _test_copy(group, temp_h5f)

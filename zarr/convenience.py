@@ -11,7 +11,7 @@ from zarr.creation import open_array, normalize_store_arg, array as _create_arra
 from zarr.hierarchy import open_group, group as _create_group, Group
 from zarr.storage import contains_array, contains_group
 from zarr.errors import err_path_not_found
-from zarr.util import normalize_storage_path
+from zarr.util import normalize_storage_path, TreeViewer
 
 
 # noinspection PyShadowingBuiltins
@@ -507,16 +507,59 @@ def copy_store(source, dest, source_path='', dest_path='', excludes=None,
                 dest[dest_key] = source[source_key]
 
 
-def copy(source, dest, name=None, without_attrs=False, log=None, **create_kws):
-    """TODO"""
+def copy(source, dest, name=None, shallow=False, without_attrs=False, log=None,
+         **create_kws):
+    """Copy the source object into the given destination.
+
+    Parameters
+    ----------
+    source : group or array/dataset
+        A zarr group or array, or an h5py group or dataset.
+    dest : group
+        A zarr or h5py group.
+    name : str, optional
+        Name to copy the object to.
+    shallow : bool, optional
+        If True, only copy immediate children of `source`.
+    without_attrs : bool, optional
+        Do not copy user attributes.
+    log : callable, file path or file-like object, optional
+        If provided, will be used to log progress information.
+    **create_kws
+        Passed through to the create_dataset method when copying an array/dataset.
+
+    Examples
+    --------
+    >>> import h5py
+    >>> import zarr
+    >>> import numpy as np
+    >>> source = h5py.File('data/example.h5', mode='w')
+    >>> foo = source.create_group('foo')
+    >>> baz = foo.create_dataset('bar/baz', data=np.arange(100), chunks=(50,))
+    >>> spam = source.create_dataset('spam', data=np.arange(100, 200), chunks=(30,))
+    >>> zarr.tree(source)
+    /
+     ├── foo
+     │   └── bar
+     │       └── baz (100,) int64
+     └── spam (100,) int64
+    >>> dest = zarr.group()
+    >>> zarr.copy(source['foo'], dest)
+    >>> dest.tree()  # N.B., no spam
+    /
+     └── foo
+         └── bar
+             └── baz (100,) int64
+
+    """
 
     # setup logging
     with _LogWriter(log) as log:
-        _copy(log, source, dest, name=name, without_attrs=without_attrs, **create_kws)
+        _copy(log, source, dest, name=name, root=True, shallow=shallow,
+              without_attrs=without_attrs, **create_kws)
 
 
-def _copy(log, source, dest, name=None, without_attrs=False, **create_kws):
-    """TODO"""
+def _copy(log, source, dest, name, root, shallow, without_attrs, **create_kws):
 
     # are we copying to/from h5py?
     source_h5py = source.__module__.startswith('h5py.')
@@ -569,4 +612,119 @@ def _copy(log, source, dest, name=None, without_attrs=False, **create_kws):
         if not without_attrs:
             ds.attrs.update(source.attrs)
 
-    else:
+    elif root or not shallow:
+        # copy a group
+
+        # creat new group in destination
+        grp = dest.create_group(name)
+
+        # copy attributes
+        if not without_attrs:
+            grp.attrs.update(source.attrs)
+
+        # recurse
+        for k in source.keys():
+            _copy(log, source[k], grp, name=k, root=False, shallow=shallow,
+                  without_attrs=without_attrs, **create_kws)
+
+
+def tree(grp, expand=False, level=None):
+    """Provide a ``print``-able display of the hierarchy. This function is provided
+    mainly as a convenience for obtaining a tree view of an h5py group - zarr groups
+    have a ``.tree()`` method.
+
+    Parameters
+    ----------
+    grp : Group
+        Zarr or h5py group.
+    expand : bool, optional
+        Only relevant for HTML representation. If True, tree will be fully expanded.
+    level : int, optional
+        Maximum depth to descend into hierarchy.
+
+    Examples
+    --------
+    >>> import zarr
+    >>> g1 = zarr.group()
+    >>> g2 = g1.create_group('foo')
+    >>> g3 = g1.create_group('bar')
+    >>> g4 = g3.create_group('baz')
+    >>> g5 = g3.create_group('qux')
+    >>> d1 = g5.create_dataset('baz', shape=100, chunks=10)
+    >>> g1.tree()
+    /
+     ├── bar
+     │   ├── baz
+     │   └── qux
+     │       └── baz (100,) float64
+     └── foo
+    >>> import h5py
+    >>> h5f = h5py.File('data/example.h5', mode='w')
+    >>> zarr.copy_all(g1, h5f)
+    >>> zarr.tree(h5f)
+    /
+     ├── bar
+     │   ├── baz
+     │   └── qux
+     │       └── baz (100,) float64
+     └── foo
+
+    See Also
+    --------
+    zarr.hierarchy.Group.tree
+
+    """
+
+    return TreeViewer(grp, expand=expand, level=level)
+
+
+def copy_all(source, dest, shallow=False, without_attrs=False, log=None, **create_kws):
+    """Copy all children of the source group into the destination group.
+
+    Parameters
+    ----------
+    source : group or array/dataset
+        A zarr group or array, or an h5py group or dataset.
+    dest : group
+        A zarr or h5py group.
+    shallow : bool, optional
+        If True, only copy immediate children of `source`.
+    without_attrs : bool, optional
+        Do not copy user attributes.
+    log : callable, file path or file-like object, optional
+        If provided, will be used to log progress information.
+    **create_kws
+        Passed through to the create_dataset method when copying an array/dataset.
+
+    Examples
+    --------
+    >>> import h5py
+    >>> import zarr
+    >>> import numpy as np
+    >>> source = h5py.File('data/example.h5', mode='w')
+    >>> foo = source.create_group('foo')
+    >>> baz = foo.create_dataset('bar/baz', data=np.arange(100), chunks=(50,))
+    >>> spam = source.create_dataset('spam', data=np.arange(100, 200), chunks=(30,))
+    >>> zarr.tree(source)
+    /
+     ├── foo
+     │   └── bar
+     │       └── baz (100,) int64
+     └── spam (100,) int64
+    >>> dest = zarr.group()
+    >>> zarr.copy_all(source, dest)
+    >>> dest.tree()
+    /
+     ├── foo
+     │   └── bar
+     │       └── baz (100,) int64
+     └── spam (100,) int64
+
+    """
+
+    # setup logging
+    with _LogWriter(log) as log:
+        for k in source.keys():
+            _copy(log, source[k], dest, name=k, root=False, shallow=shallow,
+                  without_attrs=without_attrs, **create_kws)
+
