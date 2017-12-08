@@ -544,7 +544,11 @@ def copy(source, dest, name=None, shallow=False, without_attrs=False, log=None,
      │       └── baz (100,) int64
      └── spam (100,) int64
     >>> dest = zarr.group()
-    >>> zarr.copy(source['foo'], dest)
+    >>> import sys
+    >>> zarr.copy(source['foo'], dest, log=sys.stdout)
+    /foo -> /foo
+    /foo/bar -> /foo/bar
+    /foo/bar/baz -> /foo/bar/baz
     >>> dest.tree()  # N.B., no spam
     /
      └── foo
@@ -617,6 +621,7 @@ def _copy(log, source, dest, name, root, shallow, without_attrs, **create_kws):
 
         # creat new group in destination
         grp = dest.create_group(name)
+        log('{} -> {}'.format(source.name, grp.name))
 
         # copy attributes
         if not without_attrs:
@@ -712,7 +717,12 @@ def copy_all(source, dest, shallow=False, without_attrs=False, log=None, **creat
      │       └── baz (100,) int64
      └── spam (100,) int64
     >>> dest = zarr.group()
-    >>> zarr.copy_all(source, dest)
+    >>> import sys
+    >>> zarr.copy_all(source, dest, log=sys.stdout)
+    /foo -> /foo
+    /foo/bar -> /foo/bar
+    /foo/bar/baz -> /foo/bar/baz
+    /spam -> /spam
     >>> dest.tree()
     /
      ├── foo
