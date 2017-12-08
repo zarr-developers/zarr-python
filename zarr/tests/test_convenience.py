@@ -148,3 +148,32 @@ def test_copy_store():
                 else:
                     assert key not in dest
                     assert ('new/' + key) not in dest
+
+    # with excludes/includes
+    source = dict()
+    source['foo'] = b'xxx'
+    source['bar/baz'] = b'yyy'
+    source['bar/qux'] = b'zzz'
+    # single excludes
+    dest = dict()
+    excludes = 'f.*'
+    copy_store(source, dest, excludes=excludes)
+    assert len(dest) == 2
+    assert 'foo' not in dest
+    # multiple excludes
+    dest = dict()
+    excludes = 'b.z', '.*x'
+    copy_store(source, dest, excludes=excludes)
+    assert len(dest) == 1
+    assert 'foo' in dest
+    assert 'bar/baz' not in dest
+    assert 'bar/qux' not in dest
+    # excludes and includes
+    dest = dict()
+    excludes = 'b.*'
+    includes = '.*x'
+    copy_store(source, dest, excludes=excludes, includes=includes)
+    assert len(dest) == 2
+    assert 'foo' in dest
+    assert 'bar/baz' not in dest
+    assert 'bar/qux' in dest

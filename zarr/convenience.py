@@ -3,6 +3,7 @@
 from __future__ import absolute_import, print_function, division
 from collections import Mapping
 import io
+import re
 
 
 from zarr.core import Array
@@ -390,7 +391,8 @@ class _LogWriter(object):
             self.log_func(*args, **kwargs)
 
 
-def copy_store(source, dest, source_path='', dest_path='', log=None):
+def copy_store(source, dest, source_path='', dest_path='', excludes=None,
+               includes=None, flags=0, log=None):
     """TODO"""
 
     # normalize paths
@@ -401,6 +403,18 @@ def copy_store(source, dest, source_path='', dest_path='', log=None):
     if dest_path:
         dest_path = dest_path + '/'
 
+    # normalize excludes and includes
+    if excludes is None:
+        excludes = []
+    elif isinstance(excludes, str):
+        excludes = [excludes]
+    if includes is None:
+        includes = []
+    elif isinstance(includes, str):
+        includes = [includes]
+    excludes = [re.compile(e, flags) for e in excludes]
+    includes = [re.compile(i, flags) for i in includes]
+
     # setup logging
     with _LogWriter(log) as log:
 
@@ -409,6 +423,20 @@ def copy_store(source, dest, source_path='', dest_path='', log=None):
 
             # filter to keys under source path
             if source_key.startswith(source_path):
+
+                # process excludes and includes
+                exclude = False
+                for prog in excludes:
+                    if prog.search(source_key):
+                        exclude = True
+                        break
+                if exclude:
+                    for prog in includes:
+                        if prog.search(source_key):
+                            exclude = False
+                            break
+                if exclude:
+                    continue
 
                 # map key to destination path
                 key_suffix = source_key[len(source_path):]
