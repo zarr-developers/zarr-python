@@ -6,3 +6,4 @@ Convenience functions (``zarr.convenience``)
 .. autofunction:: load
 .. autofunction:: save_array
 .. autofunction:: save_group
+.. autofunction:: copy_store

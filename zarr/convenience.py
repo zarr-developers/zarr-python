@@ -393,7 +393,46 @@ class _LogWriter(object):
 
 def copy_store(source, dest, source_path='', dest_path='', excludes=None,
                includes=None, flags=0, log=None):
-    """TODO"""
+    """Copy data directly from the `source` store to the `dest` store. Use this
+    function when you want to copy a group or array in the most efficient way,
+    preserving all configuration and attributes. This function is more efficient
+    because it avoids de-compressing and re-compressing data, rather the compressed
+    chunk data for each array are copied directly between stores.
+
+    Examples
+    --------
+    >>> import zarr
+    >>> root = zarr.group()
+    >>> foo = root.create_group('foo')
+    >>> bar = foo.create_group('bar')
+    >>> baz = bar.create_dataset('baz', shape=100, chunks=50, dtype='i8')
+    >>> import numpy as np
+    >>> baz[:] = np.arange(100)
+    >>> root.tree()
+    /
+     └── foo
+         └── bar
+             └── baz (100,) int64
+    >>> source = root.store
+    >>> dest = dict()  # or could be any other type of store
+    >>> import sys
+    >>> zarr.copy_store(source, dest, log=sys.stdout)
+    .zgroup -> .zgroup
+    foo/.zgroup -> foo/.zgroup
+    foo/bar/.zgroup -> foo/bar/.zgroup
+    foo/bar/baz/.zarray -> foo/bar/baz/.zarray
+    foo/bar/baz/0 -> foo/bar/baz/0
+    foo/bar/baz/1 -> foo/bar/baz/1
+    >>> new_root = zarr.group(dest)
+    >>> new_root.tree()
+    /
+     └── foo
+         └── bar
+             └── baz (100,) int64
+    >>> new_root['foo/bar/baz'][:]
+    array([ 0,  1,  2,  ..., 97, 98, 99])
+
+    """
 
     # normalize paths
     source_path = normalize_storage_path(source_path)
