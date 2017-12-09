@@ -314,3 +314,9 @@ def test_copy_h5py_zarr():
 def test_copy_zarr_h5py():
     # zarr -> h5py
     _test_copy(group, temp_h5f)
+
+
+@pytest.mark.skipif(not have_h5py, reason='h5py not installed')
+def test_copy_h5py_h5py():
+    # zarr -> h5py
+    _test_copy(temp_h5f, temp_h5f)
