@@ -739,4 +739,3 @@ def copy_all(source, dest, shallow=False, without_attrs=False, log=None, **creat
         for k in source.keys():
             _copy(log, source[k], dest, name=k, root=False, shallow=shallow,
                   without_attrs=without_attrs, **create_kws)
-
