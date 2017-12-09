@@ -511,7 +511,7 @@ def copy_store(source, dest, source_path='', dest_path='', excludes=None,
 
 def copy(source, dest, name=None, shallow=False, without_attrs=False, log=None,
          **create_kws):
-    """Copy the source object into the given destination.
+    """Copy the `source` array or group into the `dest` group.
 
     Parameters
     ----------
@@ -686,7 +686,7 @@ def tree(grp, expand=False, level=None):
 
 
 def copy_all(source, dest, shallow=False, without_attrs=False, log=None, **create_kws):
-    """Copy all children of the source group into the destination group.
+    """Copy all children of the `source` group into the `dest` group.
 
     Parameters
     ----------
