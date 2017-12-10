@@ -4,6 +4,10 @@ from __future__ import absolute_import, print_function, division
 from collections import Mapping
 import io
 import re
+import itertools
+
+
+import numpy as np
 
 
 from zarr.core import Array
@@ -611,6 +615,7 @@ def _copy(log, source, dest, name, root, shallow, without_attrs, overwrite, **cr
         else:
             if dest_h5py:
                 # zarr -> h5py; use some vaguely sensible defaults
+                kws.setdefault('chunks', True)
                 kws.setdefault('compression', 'gzip')
                 kws.setdefault('compression_opts', 1)
                 kws.setdefault('shuffle', False)
@@ -621,9 +626,14 @@ def _copy(log, source, dest, name, root, shallow, without_attrs, overwrite, **cr
         # create new dataset in destination
         ds = dest.create_dataset(name, shape=source.shape, dtype=source.dtype, **kws)
 
-        # copy data - N.B., if dest is h5py this will load all data into memory
+        # copy data - N.B., go chunk by chunk to avoid loading everything into memory
         log('{} -> {}'.format(source.name, ds.name))
-        ds[:] = source
+        shape = ds.shape
+        chunks = ds.chunks
+        chunk_offsets = [range(0, s, c) for s, c in zip(shape, chunks)]
+        for offset in itertools.product(*chunk_offsets):
+            sel = tuple(slice(o, min(s, o + c)) for o, s, c in zip(offset, shape, chunks))
+            ds[sel] = source[sel]
 
         # copy attributes
         if not without_attrs:

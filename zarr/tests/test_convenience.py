@@ -274,7 +274,8 @@ def _test_copy(new_source, new_dest):
     foo.attrs['experiment'] = 'weird science'
     baz = foo.create_dataset('bar/baz', data=np.arange(100), chunks=(50,))
     baz.attrs['units'] = 'metres'
-    source.create_dataset('spam', data=np.arange(100, 200), chunks=(30,))
+    source.create_dataset('spam', data=np.arange(100, 200).reshape(20, 5),
+                          chunks=(10, 2))
 
     # copy array with default options
     copy(source['foo/bar/baz'], dest)
