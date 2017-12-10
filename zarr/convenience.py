@@ -15,7 +15,7 @@ from zarr.creation import open_array, normalize_store_arg, array as _create_arra
 from zarr.hierarchy import open_group, group as _create_group, Group
 from zarr.storage import contains_array, contains_group
 from zarr.errors import err_path_not_found
-from zarr.util import normalize_storage_path, TreeViewer
+from zarr.util import normalize_storage_path, TreeViewer, buffer_size
 
 
 # noinspection PyShadowingBuiltins
@@ -396,13 +396,14 @@ class _LogWriter(object):
 
 
 def copy_store(source, dest, source_path='', dest_path='', excludes=None,
-               includes=None, flags=0, log=None):
+               includes=None, flags=0, if_exists='raise', dry_run=False,
+               log=None):
     """Copy data directly from the `source` store to the `dest` store. Use this
     function when you want to copy a group or array in the most efficient way,
     preserving all configuration and attributes. This function is more efficient
     than the copy() or copy_all() functions because it avoids de-compressing and
-    re-compressing data, rather the compressed chunk data for each array are copied
-    directly between stores.
+    re-compressing data, rather the compressed chunk data for each array are
+    copied directly between stores.
 
     Parameters
     ----------
@@ -415,18 +416,27 @@ def copy_store(source, dest, source_path='', dest_path='', excludes=None,
     dest_path : str, optional
         Copy data into this path in the destination store.
     excludes : sequence of str, optional
-        One or more regular expressions which will be matched against keys in the
-        source store. Any matching key will not be copied.
+        One or more regular expressions which will be matched against keys in
+        the source store. Any matching key will not be copied.
     includes : sequence of str, optional
-        One or more regular expressions which will be matched against keys in the
-        source store and will override any excludes also matching.
+        One or more regular expressions which will be matched against keys in
+        the source store and will override any excludes also matching.
     flags : int, optional
         Regular expression flags used for matching excludes and includes.
+    if_exists : {'raise', 'replace', 'skip'}, optional
+        How to handle keys that already exist in the destination store. If
+        'raise' then a ValueError is raised on the first key already present
+        in the destination store. If 'replace' then any data will be replaced in
+        the destination. If 'skip' then any existing keys will not be copied.
+    dry_run : bool, optional
+        If True, don't actually copy anything, just log what would have
+        happened.
     log : callable, file path or file-like object, optional
         If provided, will be used to log progress information.
 
     Examples
     --------
+
     >>> import zarr
     >>> store1 = zarr.DirectoryStore('data/example.zarr')
     >>> root = zarr.group(store1, overwrite=True)
@@ -441,14 +451,15 @@ def copy_store(source, dest, source_path='', dest_path='', excludes=None,
          └── bar
              └── baz (100,) int64
     >>> import sys
-    >>> store2 = zarr.ZipStore('data/example.zip', mode='w')  # or any type of store
+    >>> store2 = zarr.ZipStore('data/example.zip', mode='w')
     >>> zarr.copy_store(store1, store2, log=sys.stdout)
-    .zgroup -> .zgroup
-    foo/.zgroup -> foo/.zgroup
-    foo/bar/.zgroup -> foo/bar/.zgroup
-    foo/bar/baz/.zarray -> foo/bar/baz/.zarray
-    foo/bar/baz/0 -> foo/bar/baz/0
-    foo/bar/baz/1 -> foo/bar/baz/1
+    copy .zgroup
+    copy foo/.zgroup
+    copy foo/bar/.zgroup
+    copy foo/bar/baz/.zarray
+    copy foo/bar/baz/0
+    copy foo/bar/baz/1
+    all done: 6 copy, 0 skip; 566 bytes copied
     >>> new_root = zarr.group(store2)
     >>> new_root.tree()
     /
@@ -481,6 +492,17 @@ def copy_store(source, dest, source_path='', dest_path='', excludes=None,
     excludes = [re.compile(e, flags) for e in excludes]
     includes = [re.compile(i, flags) for i in includes]
 
+    # check if_exists parameter
+    valid_if_exists = ['raise', 'replace', 'skip']
+    if if_exists not in valid_if_exists:
+        raise ValueError('if_exists must be one of {!r}; found {!r}'
+                         .format(valid_if_exists, if_exists))
+
+    # setup counting variables
+    n_copy = 0
+    n_skip = 0
+    n_bytes_copied = 0
+
     # setup logging
     with _LogWriter(log) as log:
 
@@ -508,9 +530,42 @@ def copy_store(source, dest, source_path='', dest_path='', excludes=None,
                 key_suffix = source_key[len(source_path):]
                 dest_key = dest_path + key_suffix
 
-                # retrieve and copy data
-                log('{} -> {}'.format(source_key, dest_key))
-                dest[dest_key] = source[source_key]
+                # create a descriptive label for this operation
+                descr = source_key
+                if dest_key != source_key:
+                    descr = descr + ' -> ' + dest_key
+
+                # decide what to do
+                do_copy = True
+                if if_exists != 'replace':
+                    if dest_key in dest:
+                        if if_exists == 'raise':
+                            raise ValueError('key {!r} exists in destination'
+                                             .format(dest_key))
+                        elif if_exists == 'skip':
+                            do_copy = False
+
+                # take action
+                if do_copy:
+                    n_copy += 1
+                    log('copy {}'.format(descr))
+                    if not dry_run:
+                        data = source[source_key]
+                        n_bytes_copied += buffer_size(data)
+                        dest[dest_key] = data
+                else:
+                    n_skip += 1
+                    log('skip {}'.format(descr))
+
+    # log a final message with a summary of what happened
+    if dry_run:
+        final_message = 'dry run: '
+    else:
+        final_message = 'all done: '
+    final_message += '{} copy, {} skip'.format(n_copy, n_skip)
+    if not dry_run:
+        final_message += '; {:,} bytes copied'.format(n_bytes_copied)
+    log(final_message)
 
 
 def copy(source, dest, name=None, shallow=False, without_attrs=False, log=None,

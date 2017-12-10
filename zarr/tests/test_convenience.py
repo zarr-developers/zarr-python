@@ -90,9 +90,7 @@ def test_lazy_loader():
     assert_array_equal(bar, loader['bar'])
 
 
-def test_copy_store():
-
-    # no paths
+def test_copy_store_no_paths():
     source = dict()
     source['foo'] = b'xxx'
     source['bar'] = b'yyy'
@@ -102,7 +100,8 @@ def test_copy_store():
     for key in source:
         assert source[key] == dest[key]
 
-    # with source path
+
+def test_copy_store_source_path():
     source = dict()
     source['foo'] = b'xxx'
     source['bar/baz'] = b'yyy'
@@ -119,7 +118,8 @@ def test_copy_store():
             else:
                 assert key not in dest
 
-    # with dest path
+
+def test_copy_store_dest_path():
     source = dict()
     source['foo'] = b'xxx'
     source['bar/baz'] = b'yyy'
@@ -133,7 +133,8 @@ def test_copy_store():
             dest_key = 'new/' + key
             assert source[key] == dest[dest_key]
 
-    # with source and dest path
+
+def test_copy_store_source_dest_path():
     source = dict()
     source['foo'] = b'xxx'
     source['bar/baz'] = b'yyy'
@@ -152,7 +153,8 @@ def test_copy_store():
                     assert key not in dest
                     assert ('new/' + key) not in dest
 
-    # with excludes/includes
+
+def test_copy_store_excludes_includes():
     source = dict()
     source['foo'] = b'xxx'
     source['bar/baz'] = b'yyy'
@@ -180,6 +182,49 @@ def test_copy_store():
     assert 'foo' in dest
     assert 'bar/baz' not in dest
     assert 'bar/qux' in dest
+
+
+def test_copy_store_dry_run():
+    source = dict()
+    source['foo'] = b'xxx'
+    source['bar/baz'] = b'yyy'
+    source['bar/qux'] = b'zzz'
+    dest = dict()
+    copy_store(source, dest, dry_run=True)
+    assert 0 == len(dest)
+
+
+def test_copy_store_if_exists():
+
+    # setup
+    source = dict()
+    source['foo'] = b'xxx'
+    source['bar/baz'] = b'yyy'
+    source['bar/qux'] = b'zzz'
+    dest = dict()
+    dest['bar/baz'] = b'mmm'
+
+    # default ('raise')
+    with pytest.raises(ValueError):
+        copy_store(source, dest)
+
+    # explicit 'raise'
+    with pytest.raises(ValueError):
+        copy_store(source, dest, if_exists='raise')
+
+    # skip
+    copy_store(source, dest, if_exists='skip')
+    assert 3 == len(dest)
+    assert dest['foo'] == b'xxx'
+    assert dest['bar/baz'] == b'mmm'
+    assert dest['bar/qux'] == b'zzz'
+
+    # replace
+    copy_store(source, dest, if_exists='replace')
+    assert 3 == len(dest)
+    assert dest['foo'] == b'xxx'
+    assert dest['bar/baz'] == b'yyy'
+    assert dest['bar/qux'] == b'zzz'
 
 
 def check_copied_array(original, copied, without_attrs=False, expect_props=None):
