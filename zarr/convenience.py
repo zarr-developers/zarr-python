@@ -593,7 +593,7 @@ def _copy(log, source, dest, name, root, shallow, without_attrs, overwrite, **cr
                 log('delete {}/{}'.format(dest.name, name))
                 del dest[name]
             else:
-                raise ValueError('object {!r} already exists in destination '
+                raise ValueError('an object {!r} already exists in destination '
                                  '{!r}'.format(name, dest.name))
 
         # setup creation keyword arguments
