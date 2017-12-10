@@ -510,7 +510,7 @@ def copy_store(source, dest, source_path='', dest_path='', excludes=None,
 
 
 def copy(source, dest, name=None, shallow=False, without_attrs=False, log=None,
-         **create_kws):
+         overwrite=False, **create_kws):
     """Copy the `source` array or group into the `dest` group.
 
     Parameters
@@ -527,6 +527,8 @@ def copy(source, dest, name=None, shallow=False, without_attrs=False, log=None,
         Do not copy user attributes.
     log : callable, file path or file-like object, optional
         If provided, will be used to log progress information.
+    overwrite : bool, optional
+        If True, replace any objects in the destination.
     **create_kws
         Passed through to the create_dataset method when copying an array/dataset.
 
@@ -562,10 +564,10 @@ def copy(source, dest, name=None, shallow=False, without_attrs=False, log=None,
     # setup logging
     with _LogWriter(log) as log:
         _copy(log, source, dest, name=name, root=True, shallow=shallow,
-              without_attrs=without_attrs, **create_kws)
+              without_attrs=without_attrs, overwrite=overwrite, **create_kws)
 
 
-def _copy(log, source, dest, name, root, shallow, without_attrs, **create_kws):
+def _copy(log, source, dest, name, root, shallow, without_attrs, overwrite, **create_kws):
 
     # are we copying to/from h5py?
     source_h5py = source.__module__.startswith('h5py.')
@@ -580,6 +582,15 @@ def _copy(log, source, dest, name, root, shallow, without_attrs, **create_kws):
 
     if hasattr(source, 'shape'):
         # copy a dataset/array
+
+        # check if already exists
+        if name in dest:
+            if overwrite:
+                log('delete {}/{}'.format(dest.name, name))
+                del dest[name]
+            else:
+                raise ValueError('object {!r} already exists in destination '
+                                 '{!r}'.format(name, dest.name))
 
         # setup creation keyword arguments
         kws = create_kws.copy()
@@ -602,7 +613,7 @@ def _copy(log, source, dest, name, root, shallow, without_attrs, **create_kws):
                 # zarr -> h5py; use some vaguely sensible defaults
                 kws.setdefault('compression', 'gzip')
                 kws.setdefault('compression_opts', 1)
-                kws.setdefault('shuffle', True)
+                kws.setdefault('shuffle', False)
             else:
                 # zarr -> zarr; preserve compression options by default
                 kws.setdefault('compressor', source.compressor)
@@ -621,8 +632,17 @@ def _copy(log, source, dest, name, root, shallow, without_attrs, **create_kws):
     elif root or not shallow:
         # copy a group
 
-        # creat new group in destination
-        grp = dest.create_group(name)
+        # check if an array is in the way
+        if name in dest and hasattr(dest[name], 'shape'):
+            if overwrite:
+                log('delete {}/{}'.format(dest.name, name))
+                del dest[name]
+            else:
+                raise ValueError('an array {!r} already exists in destination '
+                                 '{!r}'.format(name, dest.name))
+
+        # require group in destination
+        grp = dest.require_group(name)
         log('{} -> {}'.format(source.name, grp.name))
 
         # copy attributes
@@ -632,7 +652,7 @@ def _copy(log, source, dest, name, root, shallow, without_attrs, **create_kws):
         # recurse
         for k in source.keys():
             _copy(log, source[k], grp, name=k, root=False, shallow=shallow,
-                  without_attrs=without_attrs, **create_kws)
+                  without_attrs=without_attrs, overwrite=overwrite, **create_kws)
 
 
 def tree(grp, expand=False, level=None):
@@ -685,7 +705,8 @@ def tree(grp, expand=False, level=None):
     return TreeViewer(grp, expand=expand, level=level)
 
 
-def copy_all(source, dest, shallow=False, without_attrs=False, log=None, **create_kws):
+def copy_all(source, dest, shallow=False, without_attrs=False, log=None,
+             overwrite=False, **create_kws):
     """Copy all children of the `source` group into the `dest` group.
 
     Parameters
@@ -700,6 +721,8 @@ def copy_all(source, dest, shallow=False, without_attrs=False, log=None, **creat
         Do not copy user attributes.
     log : callable, file path or file-like object, optional
         If provided, will be used to log progress information.
+    overwrite : bool, optional
+        If True, replace any objects in the destination.
     **create_kws
         Passed through to the create_dataset method when copying an array/dataset.
 
@@ -738,4 +761,4 @@ def copy_all(source, dest, shallow=False, without_attrs=False, log=None, **creat
     with _LogWriter(log) as log:
         for k in source.keys():
             _copy(log, source[k], dest, name=k, root=False, shallow=shallow,
-                  without_attrs=without_attrs, **create_kws)
+                  without_attrs=without_attrs, overwrite=overwrite, **create_kws)

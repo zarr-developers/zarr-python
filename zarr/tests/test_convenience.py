@@ -8,7 +8,7 @@ import os
 from nose.tools import assert_raises
 import numpy as np
 from numpy.testing import assert_array_equal
-from numcodecs import Zlib
+from numcodecs import Zlib, Adler32
 import pytest
 
 
@@ -182,111 +182,175 @@ def test_copy_store():
     assert 'bar/qux' in dest
 
 
+def check_copied_array(original, copied, without_attrs=False, expect_props=None):
+
+    # setup
+    source_h5py = original.__module__.startswith('h5py.')
+    dest_h5py = copied.__module__.startswith('h5py.')
+    zarr_to_zarr = not (source_h5py or dest_h5py)
+    h5py_to_h5py = source_h5py and dest_h5py
+    zarr_to_h5py = not source_h5py and dest_h5py
+    h5py_to_zarr = source_h5py and not dest_h5py
+    if expect_props is None:
+        expect_props = dict()
+    else:
+        expect_props = expect_props.copy()
+
+    # common properties in zarr and h5py
+    for p in 'dtype', 'shape', 'chunks':
+        expect_props.setdefault(p, getattr(original, p))
+
+    # zarr-specific properties
+    if zarr_to_zarr:
+        for p in 'compressor', 'filters', 'order', 'fill_value':
+            expect_props.setdefault(p, getattr(original, p))
+
+    # h5py-specific properties
+    if h5py_to_h5py:
+        for p in ('maxshape', 'compression', 'compression_opts', 'shuffle',
+                  'scaleoffset', 'fletcher32', 'fillvalue'):
+            expect_props.setdefault(p, getattr(original, p))
+
+    # common properties with some name differences
+    if h5py_to_zarr:
+        expect_props.setdefault('fill_value', original.fillvalue)
+    if zarr_to_h5py:
+        expect_props.setdefault('fillvalue', original.fill_value)
+
+    # compare properties
+    for k, v in expect_props.items():
+        assert v == getattr(copied, k)
+
+    # compare data
+    assert_array_equal(original[:], copied[:])
+
+    # compare attrs
+    if without_attrs:
+        for k in original.attrs.keys():
+            assert k not in copied.attrs
+    else:
+        assert sorted(original.attrs.items()) == sorted(copied.attrs.items())
+
+
+def check_copied_group(original, copied, without_attrs=False, expect_props=None,
+                       shallow=False):
+
+    # setup
+    if expect_props is None:
+        expect_props = dict()
+    else:
+        expect_props = expect_props.copy()
+
+    # compare children
+    for k, v in original.items():
+        if hasattr(v, 'shape'):
+            assert k in copied
+            check_copied_array(v, copied[k], without_attrs=without_attrs,
+                               expect_props=expect_props)
+        elif shallow:
+            assert k not in copied
+        else:
+            assert k in copied
+            check_copied_group(v, copied[k], without_attrs=without_attrs,
+                               shallow=shallow, expect_props=expect_props)
+
+    # compare attrs
+    if without_attrs:
+        for k in original.attrs.keys():
+            assert k not in copied.attrs
+    else:
+        assert sorted(original.attrs.items()) == sorted(copied.attrs.items())
+
+
 def _test_copy(new_source, new_dest):
 
     source = new_source()
+    dest = new_dest()
+    # source_h5py = source.__module__.startswith('h5py.')
+    dest_h5py = dest.__module__.startswith('h5py.')
+
+    # setup source
     foo = source.create_group('foo')
     foo.attrs['experiment'] = 'weird science'
     baz = foo.create_dataset('bar/baz', data=np.arange(100), chunks=(50,))
     baz.attrs['units'] = 'metres'
-    spam = source.create_dataset('spam', data=np.arange(100, 200), chunks=(30,))
+    source.create_dataset('spam', data=np.arange(100, 200), chunks=(30,))
 
     # copy array with default options
-    dest = new_dest()
     copy(source['foo/bar/baz'], dest)
-    a = dest['baz']  # defaults to use source name
-    assert a.dtype == baz.dtype
-    assert a.shape == baz.shape
-    assert a.chunks == baz.chunks
-    if hasattr(a, 'compressor') and hasattr(baz, 'compressor'):
-        assert a.compressor == baz.compressor
-    assert_array_equal(a[:], baz[:])
-    assert a.attrs['units'] == 'metres'
+    check_copied_array(source['foo/bar/baz'], dest['baz'])
 
     # copy array with name
     dest = new_dest()
     copy(source['foo/bar/baz'], dest, name='qux')
     assert 'baz' not in dest
-    a = dest['qux']
-    assert a.dtype == baz.dtype
-    assert a.shape == baz.shape
-    assert a.chunks == baz.chunks
-    if hasattr(a, 'compressor') and hasattr(baz, 'compressor'):
-        assert a.compressor == baz.compressor
-    assert_array_equal(a[:], baz[:])
-    assert a.attrs['units'] == 'metres'
+    check_copied_array(source['foo/bar/baz'], dest['qux'])
 
     # copy array, provide creation options
     dest = new_dest()
     compressor = Zlib(9)
-    if isinstance(dest, Group):
-        copy(source['foo/bar/baz'], dest, without_attrs=True, compressor=compressor,
-             chunks=True)
+    create_kws = dict(chunks=(10,))
+    if dest_h5py:
+        create_kws.update(compression='gzip', compression_opts=9, shuffle=True,
+                          fletcher32=True, fillvalue=42)
     else:
-        copy(source['foo/bar/baz'], dest, without_attrs=True, compression='gzip',
-             compression_opts=9, chunks=True)
-    a = dest['baz']
-    assert a.dtype == baz.dtype
-    assert a.shape == baz.shape
-    assert a.chunks != baz.chunks  # autochunking was requested
-    if hasattr(a, 'compressor'):
-        assert compressor == a.compressor
-        if hasattr(baz, 'compressor'):
-            assert a.compressor != baz.compressor
-    else:
-        assert a.compression == 'gzip'
-        assert a.compression_opts == 9
-    assert_array_equal(a[:], baz[:])
-    assert 'units' not in a.attrs
+        create_kws.update(compressor=compressor, fill_value=42, order='F',
+                          filters=[Adler32()])
+    copy(source['foo/bar/baz'], dest, without_attrs=True, **create_kws)
+    check_copied_array(source['foo/bar/baz'], dest['baz'], without_attrs=True,
+                       expect_props=create_kws)
+
+    # copy array, dest array in the way
+    dest = new_dest()
+    dest.create_dataset('baz', shape=(10,))
+    with pytest.raises(ValueError):
+        copy(source['foo/bar/baz'], dest)
+    assert (10,) == dest['baz'].shape
+    copy(source['foo/bar/baz'], dest, overwrite=True)
+    check_copied_array(source['foo/bar/baz'], dest['baz'])
+
+    # copy array, dest group in the way
+    dest = new_dest()
+    dest.create_group('baz')
+    with pytest.raises(ValueError):
+        copy(source['foo/bar/baz'], dest)
+    assert not hasattr(dest['baz'], 'shape')
+    copy(source['foo/bar/baz'], dest, overwrite=True)
+    check_copied_array(source['foo/bar/baz'], dest['baz'])
 
     # copy group, default options
     dest = new_dest()
     copy(source['foo'], dest)
-    g = dest['foo']  # defaults to use source name
-    assert g.attrs['experiment'] == 'weird science'
-    a = g['bar/baz']
-    assert a.dtype == baz.dtype
-    assert a.shape == baz.shape
-    assert a.chunks == baz.chunks
-    if hasattr(a, 'compressor') and hasattr(baz, 'compressor'):
-        assert a.compressor == baz.compressor
-    assert_array_equal(a[:], baz[:])
-    assert a.attrs['units'] == 'metres'
+    check_copied_group(source['foo'], dest['foo'])
 
     # copy group, non-default options
     dest = new_dest()
     copy(source['foo'], dest, name='qux', without_attrs=True)
     assert 'foo' not in dest
-    g = dest['qux']
-    assert 'experiment' not in g.attrs
-    a = g['bar/baz']
-    assert a.dtype == baz.dtype
-    assert a.shape == baz.shape
-    assert a.chunks == baz.chunks
-    if hasattr(a, 'compressor') and hasattr(baz, 'compressor'):
-        assert a.compressor == baz.compressor
-    assert_array_equal(a[:], baz[:])
-    assert 'units' not in a.attrs
+    check_copied_group(source['foo'], dest['qux'], without_attrs=True)
 
     # copy group, shallow
     dest = new_dest()
     copy(source, dest, name='eggs', shallow=True)
-    assert 'eggs' in dest
-    eggs = dest['eggs']
-    assert 'spam' in eggs
-    a = eggs['spam']
-    assert a.dtype == spam.dtype
-    assert a.shape == spam.shape
-    assert a.chunks == spam.chunks
-    if hasattr(a, 'compressor') and hasattr(spam, 'compressor'):
-        assert a.compressor == spam.compressor
-    assert_array_equal(a[:], spam[:])
-    assert 'foo' not in eggs
-    assert 'bar' not in eggs
+    check_copied_group(source, dest['eggs'], shallow=True)
+
+    # copy group, dest groups exist
+    dest = new_dest()
+    dest.create_group('foo/bar')
+    copy(source['foo'], dest)
+    check_copied_group(source['foo'], dest['foo'])
+
+    # copy group, dest array in the way
+    dest = new_dest()
+    dest.create_dataset('foo/bar', shape=(10,))
+    with pytest.raises(ValueError):
+        copy(source['foo'], dest)
+    assert dest['foo/bar'].shape == (10,)
+    copy(source['foo'], dest, overwrite=True)
+    check_copied_group(source['foo'], dest['foo'])
 
 
-def test_copy_zarr_zarr():
-    # zarr -> zarr
+def test_copy_zarr_to_zarr():
     _test_copy(group, group)
 
 
@@ -305,18 +369,15 @@ def temp_h5f():
 
 
 @pytest.mark.skipif(not have_h5py, reason='h5py not installed')
-def test_copy_h5py_zarr():
-    # h5py -> zarr
+def test_copy_h5py_to_zarr():
     _test_copy(temp_h5f, group)
 
 
 @pytest.mark.skipif(not have_h5py, reason='h5py not installed')
-def test_copy_zarr_h5py():
-    # zarr -> h5py
+def test_copy_zarr_to_h5py():
     _test_copy(group, temp_h5f)
 
 
 @pytest.mark.skipif(not have_h5py, reason='h5py not installed')
-def test_copy_h5py_h5py():
-    # zarr -> h5py
+def test_copy_h5py_to_h5py():
     _test_copy(temp_h5f, temp_h5f)
