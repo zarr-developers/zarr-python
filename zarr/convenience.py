@@ -425,6 +425,7 @@ def tree(grp, expand=False, level=None):
     >>> import h5py
     >>> h5f = h5py.File('data/example.h5', mode='w')
     >>> zarr.copy_all(g1, h5f)
+    (5, 0, 800)
     >>> zarr.tree(h5f)
     /
      ├── bar
@@ -493,6 +494,15 @@ def copy_store(source, dest, source_path='', dest_path='', excludes=None,
     log : callable, file path or file-like object, optional
         If provided, will be used to log progress information.
 
+    Returns
+    -------
+    n_copied : int
+        Number of items copied.
+    n_skipped : int
+        Number of items skipped.
+    n_bytes_copied : int
+        Number of bytes of data that were actually copied.
+
     Examples
     --------
 
@@ -519,6 +529,7 @@ def copy_store(source, dest, source_path='', dest_path='', excludes=None,
     copy foo/bar/baz/0
     copy foo/bar/baz/1
     all done: 6 copied, 0 skipped, 566 bytes copied
+    (6, 0, 566)
     >>> new_root = zarr.group(store2)
     >>> new_root.tree()
     /
@@ -558,9 +569,7 @@ def copy_store(source, dest, source_path='', dest_path='', excludes=None,
                          .format(valid_if_exists, if_exists))
 
     # setup counting variables
-    n_copied = 0
-    n_skipped = 0
-    n_bytes_copied = 0
+    n_copied = n_skipped = n_bytes_copied = 0
 
     # setup logging
     with _LogWriter(log) as log:
@@ -619,9 +628,11 @@ def copy_store(source, dest, source_path='', dest_path='', excludes=None,
         # log a final message with a summary of what happened
         _log_copy_summary(log, dry_run, n_copied, n_skipped, n_bytes_copied)
 
+    return n_copied, n_skipped, n_bytes_copied
+
 
 def copy(source, dest, name=None, shallow=False, without_attrs=False, log=None,
-         if_exists='raise', dry_run=False, return_stats=False, **create_kws):
+         if_exists='raise', dry_run=False, **create_kws):
     """Copy the `source` array or group into the `dest` group.
 
     Parameters
@@ -649,10 +660,17 @@ def copy(source, dest, name=None, shallow=False, without_attrs=False, log=None,
     dry_run : bool, optional
         If True, don't actually copy anything, just log what would have
         happened.
-    return_stats : bool, optional
-        If True, return n_copied, n_skipped, n_bytes_copied.
     **create_kws
         Passed through to the create_dataset method when copying an array/dataset.
+
+    Returns
+    -------
+    n_copied : int
+        Number of items copied.
+    n_skipped : int
+        Number of items skipped.
+    n_bytes_copied : int
+        Number of bytes of data that were actually copied.
 
     Examples
     --------
@@ -676,6 +694,7 @@ def copy(source, dest, name=None, shallow=False, without_attrs=False, log=None,
     copy /foo/bar
     copy /foo/bar/baz (100,) int64
     all done: 3 copied, 0 skipped, 800 bytes copied
+    (3, 0, 800)
     >>> dest.tree()  # N.B., no spam
     /
      └── foo
@@ -697,8 +716,7 @@ def copy(source, dest, name=None, shallow=False, without_attrs=False, log=None,
         # log a final message with a summary of what happened
         _log_copy_summary(log, dry_run, n_copied, n_skipped, n_bytes_copied)
 
-        if return_stats:
-            return n_copied, n_skipped, n_bytes_copied
+        return n_copied, n_skipped, n_bytes_copied
 
 
 def _copy(log, source, dest, name, root, shallow, without_attrs, if_exists,
@@ -902,6 +920,15 @@ def copy_all(source, dest, shallow=False, without_attrs=False, log=None,
         Passed through to the create_dataset method when copying an
         array/dataset.
 
+    Returns
+    -------
+    n_copied : int
+        Number of items copied.
+    n_skipped : int
+        Number of items skipped.
+    n_bytes_copied : int
+        Number of bytes of data that were actually copied.
+
     Examples
     --------
     >>> import h5py
@@ -925,6 +952,7 @@ def copy_all(source, dest, shallow=False, without_attrs=False, log=None,
     copy /foo/bar/baz (100,) int64
     copy /spam (100,) int64
     all done: 4 copied, 0 skipped, 1,600 bytes copied
+    (4, 0, 1600)
     >>> dest.tree()
     /
      ├── foo
@@ -951,3 +979,5 @@ def copy_all(source, dest, shallow=False, without_attrs=False, log=None,
 
         # log a final message with a summary of what happened
         _log_copy_summary(log, dry_run, n_copied, n_skipped, n_bytes_copied)
+
+    return n_copied, n_skipped, n_bytes_copied
