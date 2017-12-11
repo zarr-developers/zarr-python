@@ -3,6 +3,7 @@ from __future__ import absolute_import, print_function, division
 import tempfile
 import atexit
 import os
+import unittest
 
 
 from nose.tools import assert_raises
@@ -16,6 +17,7 @@ from zarr.convenience import open, save, save_group, load, copy_store, copy
 from zarr.storage import atexit_rmtree
 from zarr.core import Array
 from zarr.hierarchy import Group, group
+from zarr.errors import CopyError
 
 
 def test_open_array():
@@ -90,141 +92,130 @@ def test_lazy_loader():
     assert_array_equal(bar, loader['bar'])
 
 
-def test_copy_store_no_paths():
-    source = dict()
-    source['foo'] = b'xxx'
-    source['bar'] = b'yyy'
-    dest = dict()
-    copy_store(source, dest)
-    assert len(dest) == 2
-    for key in source:
-        assert source[key] == dest[key]
+class TestCopyStore(unittest.TestCase):
 
+    def setUp(self):
+        source = dict()
+        source['foo'] = b'xxx'
+        source['bar/baz'] = b'yyy'
+        source['bar/qux'] = b'zzz'
+        self.source = source
 
-def test_copy_store_source_path():
-    source = dict()
-    source['foo'] = b'xxx'
-    source['bar/baz'] = b'yyy'
-    source['bar/qux'] = b'zzz'
-    # paths should be normalized
-    for source_path in 'bar', 'bar/', '/bar', '/bar/':
+    def test_no_paths(self):
+        source = self.source
         dest = dict()
-        copy_store(source, dest, source_path=source_path)
-        assert len(dest) == 2
+        copy_store(source, dest)
+        assert len(source) == len(dest)
         for key in source:
-            if key.startswith('bar/'):
-                dest_key = key.split('bar/')[1]
-                assert source[key] == dest[dest_key]
-            else:
-                assert key not in dest
+            assert source[key] == dest[key]
 
-
-def test_copy_store_dest_path():
-    source = dict()
-    source['foo'] = b'xxx'
-    source['bar/baz'] = b'yyy'
-    source['bar/qux'] = b'zzz'
-    # paths should be normalized
-    for dest_path in 'new', 'new/', '/new', '/new/':
-        dest = dict()
-        copy_store(source, dest, dest_path=dest_path)
-        assert len(dest) == 3
-        for key in source:
-            dest_key = 'new/' + key
-            assert source[key] == dest[dest_key]
-
-
-def test_copy_store_source_dest_path():
-    source = dict()
-    source['foo'] = b'xxx'
-    source['bar/baz'] = b'yyy'
-    source['bar/qux'] = b'zzz'
-    # paths should be normalized
-    for source_path in 'bar', 'bar/', '/bar', '/bar/':
-        for dest_path in 'new', 'new/', '/new', '/new/':
+    def test_source_path(self):
+        source = self.source
+        # paths should be normalized
+        for source_path in 'bar', 'bar/', '/bar', '/bar/':
             dest = dict()
-            copy_store(source, dest, source_path=source_path, dest_path=dest_path)
-            assert len(dest) == 2
+            copy_store(source, dest, source_path=source_path)
+            assert 2 == len(dest)
             for key in source:
                 if key.startswith('bar/'):
-                    dest_key = 'new/' + key.split('bar/')[1]
+                    dest_key = key.split('bar/')[1]
                     assert source[key] == dest[dest_key]
                 else:
                     assert key not in dest
-                    assert ('new/' + key) not in dest
 
+    def test_dest_path(self):
+        source = self.source
+        # paths should be normalized
+        for dest_path in 'new', 'new/', '/new', '/new/':
+            dest = dict()
+            copy_store(source, dest, dest_path=dest_path)
+            assert len(source) == len(dest)
+            for key in source:
+                dest_key = 'new/' + key
+                assert source[key] == dest[dest_key]
 
-def test_copy_store_excludes_includes():
-    source = dict()
-    source['foo'] = b'xxx'
-    source['bar/baz'] = b'yyy'
-    source['bar/qux'] = b'zzz'
-    # single excludes
-    dest = dict()
-    excludes = 'f.*'
-    copy_store(source, dest, excludes=excludes)
-    assert len(dest) == 2
-    assert 'foo' not in dest
-    # multiple excludes
-    dest = dict()
-    excludes = 'b.z', '.*x'
-    copy_store(source, dest, excludes=excludes)
-    assert len(dest) == 1
-    assert 'foo' in dest
-    assert 'bar/baz' not in dest
-    assert 'bar/qux' not in dest
-    # excludes and includes
-    dest = dict()
-    excludes = 'b.*'
-    includes = '.*x'
-    copy_store(source, dest, excludes=excludes, includes=includes)
-    assert len(dest) == 2
-    assert 'foo' in dest
-    assert 'bar/baz' not in dest
-    assert 'bar/qux' in dest
+    def test_source_dest_path(self):
+        source = self.source
+        # paths should be normalized
+        for source_path in 'bar', 'bar/', '/bar', '/bar/':
+            for dest_path in 'new', 'new/', '/new', '/new/':
+                dest = dict()
+                copy_store(source, dest, source_path=source_path,
+                           dest_path=dest_path)
+                assert 2 == len(dest)
+                for key in source:
+                    if key.startswith('bar/'):
+                        dest_key = 'new/' + key.split('bar/')[1]
+                        assert source[key] == dest[dest_key]
+                    else:
+                        assert key not in dest
+                        assert ('new/' + key) not in dest
 
+    def test_excludes_includes(self):
+        source = self.source
 
-def test_copy_store_dry_run():
-    source = dict()
-    source['foo'] = b'xxx'
-    source['bar/baz'] = b'yyy'
-    source['bar/qux'] = b'zzz'
-    dest = dict()
-    copy_store(source, dest, dry_run=True)
-    assert 0 == len(dest)
+        # single excludes
+        dest = dict()
+        excludes = 'f.*'
+        copy_store(source, dest, excludes=excludes)
+        assert len(dest) == 2
+        assert 'foo' not in dest
 
+        # multiple excludes
+        dest = dict()
+        excludes = 'b.z', '.*x'
+        copy_store(source, dest, excludes=excludes)
+        assert len(dest) == 1
+        assert 'foo' in dest
+        assert 'bar/baz' not in dest
+        assert 'bar/qux' not in dest
 
-def test_copy_store_if_exists():
+        # excludes and includes
+        dest = dict()
+        excludes = 'b.*'
+        includes = '.*x'
+        copy_store(source, dest, excludes=excludes, includes=includes)
+        assert len(dest) == 2
+        assert 'foo' in dest
+        assert 'bar/baz' not in dest
+        assert 'bar/qux' in dest
 
-    # setup
-    source = dict()
-    source['foo'] = b'xxx'
-    source['bar/baz'] = b'yyy'
-    source['bar/qux'] = b'zzz'
-    dest = dict()
-    dest['bar/baz'] = b'mmm'
+    def test_dry_run(self):
+        source = self.source
+        dest = dict()
+        copy_store(source, dest, dry_run=True)
+        assert 0 == len(dest)
 
-    # default ('raise')
-    with pytest.raises(ValueError):
-        copy_store(source, dest)
+    def test_if_exists(self):
+        source = self.source
+        dest = dict()
+        dest['bar/baz'] = b'mmm'
 
-    # explicit 'raise'
-    with pytest.raises(ValueError):
-        copy_store(source, dest, if_exists='raise')
+        # default ('raise')
+        with pytest.raises(CopyError):
+            copy_store(source, dest)
 
-    # skip
-    copy_store(source, dest, if_exists='skip')
-    assert 3 == len(dest)
-    assert dest['foo'] == b'xxx'
-    assert dest['bar/baz'] == b'mmm'
-    assert dest['bar/qux'] == b'zzz'
+        # explicit 'raise'
+        with pytest.raises(CopyError):
+            copy_store(source, dest, if_exists='raise')
 
-    # replace
-    copy_store(source, dest, if_exists='replace')
-    assert 3 == len(dest)
-    assert dest['foo'] == b'xxx'
-    assert dest['bar/baz'] == b'yyy'
-    assert dest['bar/qux'] == b'zzz'
+        # skip
+        copy_store(source, dest, if_exists='skip')
+        assert 3 == len(dest)
+        assert dest['foo'] == b'xxx'
+        assert dest['bar/baz'] == b'mmm'
+        assert dest['bar/qux'] == b'zzz'
+
+        # replace
+        copy_store(source, dest, if_exists='replace')
+        assert 3 == len(dest)
+        assert dest['foo'] == b'xxx'
+        assert dest['bar/baz'] == b'yyy'
+        assert dest['bar/qux'] == b'zzz'
+
+        # invalid option
+        with pytest.raises(ValueError):
+            copy_store(source, dest, if_exists='foobar')
 
 
 def check_copied_array(original, copied, without_attrs=False, expect_props=None):
@@ -307,103 +298,268 @@ def check_copied_group(original, copied, without_attrs=False, expect_props=None,
         assert sorted(original.attrs.items()) == sorted(copied.attrs.items())
 
 
-def _test_copy(new_source, new_dest):
+# noinspection PyAttributeOutsideInit
+class TestCopy(unittest.TestCase):
 
-    source = new_source()
-    dest = new_dest()
-    # source_h5py = source.__module__.startswith('h5py.')
-    dest_h5py = dest.__module__.startswith('h5py.')
+    def __init__(self, *args, **kwargs):
+        super(TestCopy, self).__init__(*args, **kwargs)
+        self.source_h5py = False
+        self.dest_h5py = False
+        self.new_source = group
+        self.new_dest = group
 
-    # setup source
-    foo = source.create_group('foo')
-    foo.attrs['experiment'] = 'weird science'
-    baz = foo.create_dataset('bar/baz', data=np.arange(100), chunks=(50,))
-    baz.attrs['units'] = 'metres'
-    source.create_dataset('spam', data=np.arange(100, 200).reshape(20, 5),
-                          chunks=(10, 2))
+    def setUp(self):
+        source = self.new_source()
+        foo = source.create_group('foo')
+        foo.attrs['experiment'] = 'weird science'
+        baz = foo.create_dataset('bar/baz', data=np.arange(100), chunks=(50,))
+        baz.attrs['units'] = 'metres'
+        source.create_dataset('spam', data=np.arange(100, 200).reshape(20, 5),
+                              chunks=(10, 2))
+        self.source = source
 
-    # copy array with default options
-    copy(source['foo/bar/baz'], dest)
-    check_copied_array(source['foo/bar/baz'], dest['baz'])
+    def test_copy_array(self):
+        source = self.source
+        dest = self.new_dest()
 
-    # copy array with name
-    dest = new_dest()
-    copy(source['foo/bar/baz'], dest, name='qux')
-    assert 'baz' not in dest
-    check_copied_array(source['foo/bar/baz'], dest['qux'])
-
-    # copy array, provide creation options
-    dest = new_dest()
-    compressor = Zlib(9)
-    create_kws = dict(chunks=(10,))
-    if dest_h5py:
-        create_kws.update(compression='gzip', compression_opts=9, shuffle=True,
-                          fletcher32=True, fillvalue=42)
-    else:
-        create_kws.update(compressor=compressor, fill_value=42, order='F',
-                          filters=[Adler32()])
-    copy(source['foo/bar/baz'], dest, without_attrs=True, **create_kws)
-    check_copied_array(source['foo/bar/baz'], dest['baz'], without_attrs=True,
-                       expect_props=create_kws)
-
-    # copy array, dest array in the way
-    dest = new_dest()
-    dest.create_dataset('baz', shape=(10,))
-    with pytest.raises(ValueError):
+        # copy array with default options
         copy(source['foo/bar/baz'], dest)
-    assert (10,) == dest['baz'].shape
-    copy(source['foo/bar/baz'], dest, if_exists='replace')
-    check_copied_array(source['foo/bar/baz'], dest['baz'])
+        check_copied_array(source['foo/bar/baz'], dest['baz'])
 
-    # copy array, dest group in the way
-    dest = new_dest()
-    dest.create_group('baz')
-    with pytest.raises(ValueError):
-        copy(source['foo/bar/baz'], dest)
-    assert not hasattr(dest['baz'], 'shape')
-    copy(source['foo/bar/baz'], dest, if_exists='replace')
-    check_copied_array(source['foo/bar/baz'], dest['baz'])
+    def test_copy_array_name(self):
+        source = self.source
+        dest = self.new_dest()
 
-    # copy group, default options
-    dest = new_dest()
-    copy(source['foo'], dest)
-    check_copied_group(source['foo'], dest['foo'])
+        # copy array with name
+        copy(source['foo/bar/baz'], dest, name='qux')
+        assert 'baz' not in dest
+        check_copied_array(source['foo/bar/baz'], dest['qux'])
 
-    # copy group, non-default options
-    dest = new_dest()
-    copy(source['foo'], dest, name='qux', without_attrs=True)
-    assert 'foo' not in dest
-    check_copied_group(source['foo'], dest['qux'], without_attrs=True)
+    def test_copy_array_create_options(self):
+        source = self.source
+        dest = self.new_dest()
 
-    # copy group, shallow
-    dest = new_dest()
-    copy(source, dest, name='eggs', shallow=True)
-    check_copied_group(source, dest['eggs'], shallow=True)
+        # copy array, provide creation options
+        compressor = Zlib(9)
+        create_kws = dict(chunks=(10,))
+        if self.dest_h5py:
+            create_kws.update(compression='gzip', compression_opts=9,
+                              shuffle=True, fletcher32=True, fillvalue=42)
+        else:
+            create_kws.update(compressor=compressor, fill_value=42, order='F',
+                              filters=[Adler32()])
+        copy(source['foo/bar/baz'], dest, without_attrs=True, **create_kws)
+        check_copied_array(source['foo/bar/baz'], dest['baz'],
+                           without_attrs=True, expect_props=create_kws)
 
-    # copy group, dest groups exist
-    dest = new_dest()
-    dest.create_group('foo/bar')
-    copy(source['foo'], dest)
-    check_copied_group(source['foo'], dest['foo'])
+    def test_copy_array_exists_array(self):
+        source = self.source
+        dest = self.new_dest()
 
-    # copy group, dest array in the way
-    dest = new_dest()
-    dest.create_dataset('foo/bar', shape=(10,))
-    with pytest.raises(ValueError):
+        # copy array, dest array in the way
+        dest.create_dataset('baz', shape=(10,))
+
+        # raise
+        with pytest.raises(CopyError):
+            # should raise by default
+            copy(source['foo/bar/baz'], dest)
+        assert (10,) == dest['baz'].shape
+        with pytest.raises(CopyError):
+            copy(source['foo/bar/baz'], dest, if_exists='raise')
+        assert (10,) == dest['baz'].shape
+
+        # skip
+        copy(source['foo/bar/baz'], dest, if_exists='skip')
+        assert (10,) == dest['baz'].shape
+
+        # replace
+        copy(source['foo/bar/baz'], dest, if_exists='replace')
+        check_copied_array(source['foo/bar/baz'], dest['baz'])
+
+        # invalid option
+        with pytest.raises(ValueError):
+            copy(source['foo/bar/baz'], dest, if_exists='foobar')
+
+    def test_copy_array_exists_group(self):
+        source = self.source
+        dest = self.new_dest()
+
+        # copy array, dest group in the way
+        dest.create_group('baz')
+
+        # raise
+        with pytest.raises(CopyError):
+            copy(source['foo/bar/baz'], dest)
+        assert not hasattr(dest['baz'], 'shape')
+        with pytest.raises(CopyError):
+            copy(source['foo/bar/baz'], dest, if_exists='raise')
+        assert not hasattr(dest['baz'], 'shape')
+
+        # skip
+        copy(source['foo/bar/baz'], dest, if_exists='skip')
+        assert not hasattr(dest['baz'], 'shape')
+
+        # replace
+        copy(source['foo/bar/baz'], dest, if_exists='replace')
+        check_copied_array(source['foo/bar/baz'], dest['baz'])
+
+    def test_copy_array_skip_initialized(self):
+        source = self.source
+        dest = self.new_dest()
+        dest.create_dataset('baz', shape=(100,), chunks=(10,), dtype='i8')
+        assert not np.all(source['foo/bar/baz'][:] == dest['baz'][:])
+
+        if self.dest_h5py:
+            with assert_raises(ValueError):
+                # not available with copy to h5py
+                copy(source['foo/bar/baz'], dest, if_exists='skip_initialized')
+
+        else:
+            # copy array, dest array exists but not yet initialized
+            copy(source['foo/bar/baz'], dest, if_exists='skip_initialized')
+            check_copied_array(source['foo/bar/baz'], dest['baz'])
+
+            # copy array, dest array exists and initialized, will be skipped
+            dest['baz'][:] = np.arange(100, 200)
+            copy(source['foo/bar/baz'], dest, if_exists='skip_initialized')
+            assert_array_equal(np.arange(100, 200), dest['baz'][:])
+            assert not np.all(source['foo/bar/baz'][:] == dest['baz'][:])
+
+    def test_copy_group(self):
+        source = self.source
+        dest = self.new_dest()
+
+        # copy group, default options
         copy(source['foo'], dest)
-    assert dest['foo/bar'].shape == (10,)
-    copy(source['foo'], dest, if_exists='replace')
-    check_copied_group(source['foo'], dest['foo'])
+        check_copied_group(source['foo'], dest['foo'])
 
+    def test_copy_group_no_name(self):
+        source = self.source
+        dest = self.new_dest()
 
-def test_copy_zarr_to_zarr():
-    _test_copy(group, group)
+        with pytest.raises(TypeError):
+            # need a name if copy root
+            copy(source, dest)
+
+        copy(source, dest, name='root')
+        check_copied_group(source, dest['root'])
+
+    def test_copy_group_options(self):
+        source = self.source
+        dest = self.new_dest()
+
+        # copy group, non-default options
+        copy(source['foo'], dest, name='qux', without_attrs=True)
+        assert 'foo' not in dest
+        check_copied_group(source['foo'], dest['qux'], without_attrs=True)
+
+    def test_copy_group_shallow(self):
+        source = self.source
+        dest = self.new_dest()
+
+        # copy group, shallow
+        copy(source, dest, name='eggs', shallow=True)
+        check_copied_group(source, dest['eggs'], shallow=True)
+
+    def test_copy_group_exists_group(self):
+        source = self.source
+        dest = self.new_dest()
+
+        # copy group, dest groups exist
+        dest.create_group('foo/bar')
+        copy(source['foo'], dest)
+        check_copied_group(source['foo'], dest['foo'])
+
+    def test_copy_group_exists_array(self):
+        source = self.source
+        dest = self.new_dest()
+
+        # copy group, dest array in the way
+        dest.create_dataset('foo/bar', shape=(10,))
+
+        # raise
+        with pytest.raises(CopyError):
+            copy(source['foo'], dest)
+        assert dest['foo/bar'].shape == (10,)
+        with pytest.raises(CopyError):
+            copy(source['foo'], dest, if_exists='raise')
+        assert dest['foo/bar'].shape == (10,)
+
+        # skip
+        copy(source['foo'], dest, if_exists='skip')
+        assert dest['foo/bar'].shape == (10,)
+
+        # replace
+        copy(source['foo'], dest, if_exists='replace')
+        check_copied_group(source['foo'], dest['foo'])
+
+    def test_copy_group_dry_run(self):
+        source = self.source
+        dest = self.new_dest()
+
+        # dry run, empty destination
+        n_copied, n_skipped, n_bytes_copied = \
+            copy(source['foo'], dest, dry_run=True, return_stats=True)
+        assert 0 == len(dest)
+        assert 3 == n_copied
+        assert 0 == n_skipped
+        assert 0 == n_bytes_copied
+
+        # dry run, array exists in destination
+        baz = np.arange(100, 200)
+        dest.create_dataset('foo/bar/baz', data=baz)
+        assert not np.all(source['foo/bar/baz'][:] == dest['foo/bar/baz'][:])
+        assert 1 == len(dest)
+
+        # raise
+        with pytest.raises(CopyError):
+            copy(source['foo'], dest, dry_run=True)
+        assert 1 == len(dest)
+
+        # skip
+        n_copied, n_skipped, n_bytes_copied = \
+            copy(source['foo'], dest, dry_run=True, if_exists='skip',
+                 return_stats=True)
+        assert 1 == len(dest)
+        assert 2 == n_copied
+        assert 1 == n_skipped
+        assert 0 == n_bytes_copied
+        assert_array_equal(baz, dest['foo/bar/baz'])
+
+        # replace
+        n_copied, n_skipped, n_bytes_copied = \
+            copy(source['foo'], dest, dry_run=True, if_exists='replace',
+                 return_stats=True)
+        assert 1 == len(dest)
+        assert 3 == n_copied
+        assert 0 == n_skipped
+        assert 0 == n_bytes_copied
+        assert_array_equal(baz, dest['foo/bar/baz'])
+
+    def test_logging(self):
+        source = self.source
+        dest = self.new_dest()
+
+        # callable log
+        copy(source['foo'], dest, dry_run=True, log=print)
+
+        # file name
+        with tempfile.NamedTemporaryFile() as f:
+            copy(source['foo'], dest, dry_run=True, log=f.name)
+
+        # file
+        with tempfile.NamedTemporaryFile(mode='w') as f:
+            copy(source['foo'], dest, dry_run=True, log=f)
+
+        # bad option
+        with pytest.raises(TypeError):
+            copy(source['foo'], dest, dry_run=True, log=True)
 
 
 try:
-    import h5py
+    import h5py  # no qa
     have_h5py = True
-except ImportError:
+except ImportError:  # pragma: no cover
     have_h5py = False
 
 
@@ -415,15 +571,33 @@ def temp_h5f():
 
 
 @pytest.mark.skipif(not have_h5py, reason='h5py not installed')
-def test_copy_h5py_to_zarr():
-    _test_copy(temp_h5f, group)
+class TestCopyHDF5ToZarr(TestCopy):
+
+    def __init__(self, *args, **kwargs):
+        super(TestCopyHDF5ToZarr, self).__init__(*args, **kwargs)
+        self.source_h5py = True
+        self.dest_h5py = False
+        self.new_source = temp_h5f
+        self.new_dest = group
 
 
 @pytest.mark.skipif(not have_h5py, reason='h5py not installed')
-def test_copy_zarr_to_h5py():
-    _test_copy(group, temp_h5f)
+class TestCopyZarrToHDF5(TestCopy):
+
+    def __init__(self, *args, **kwargs):
+        super(TestCopyZarrToHDF5, self).__init__(*args, **kwargs)
+        self.source_h5py = False
+        self.dest_h5py = True
+        self.new_source = group
+        self.new_dest = temp_h5f
 
 
 @pytest.mark.skipif(not have_h5py, reason='h5py not installed')
-def test_copy_h5py_to_h5py():
-    _test_copy(temp_h5f, temp_h5f)
+class TestCopyHDF5ToHDF5(TestCopy):
+
+    def __init__(self, *args, **kwargs):
+        super(TestCopyHDF5ToHDF5, self).__init__(*args, **kwargs)
+        self.source_h5py = True
+        self.dest_h5py = True
+        self.new_source = temp_h5f
+        self.new_dest = temp_h5f
