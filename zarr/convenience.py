@@ -8,11 +8,13 @@ import itertools
 
 
 from zarr.core import Array
-from zarr.creation import open_array, normalize_store_arg, array as _create_array
+from zarr.creation import (open_array, normalize_store_arg,
+                           array as _create_array)
 from zarr.hierarchy import open_group, group as _create_group, Group
 from zarr.storage import contains_array, contains_group
 from zarr.errors import err_path_not_found, CopyError
 from zarr.util import normalize_storage_path, TreeViewer, buffer_size
+from zarr.compat import PY2, text_type
 
 
 # noinspection PyShadowingBuiltins
@@ -353,45 +355,6 @@ def load(store):
         return LazyLoader(grp)
 
 
-class _LogWriter(object):
-
-    def __init__(self, log):
-        self.log_func = None
-        self.log_file = None
-        self.needs_closing = False
-        if log is None:
-            # don't do any logging
-            pass
-        elif callable(log):
-            self.log_func = log
-        elif isinstance(log, str):
-            self.log_file = io.open(log, mode='w')
-            self.needs_closing = True
-        else:
-            if not hasattr(log, 'write'):
-                raise TypeError('log must be a callable function, file path or '
-                                'file-like object, found %r' % log)
-            self.log_file = log
-            self.needs_closing = False
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *args):
-        if self.log_file is not None and self.needs_closing:
-            self.log_file.close()
-
-    def __call__(self, *args, **kwargs):
-        if self.log_file is not None:
-            kwargs['file'] = self.log_file
-            print(*args, **kwargs)
-            if hasattr(self.log_file, 'flush'):
-                # get immediate feedback
-                self.log_file.flush()
-        elif self.log_func is not None:
-            self.log_func(*args, **kwargs)
-
-
 def tree(grp, expand=False, level=None):
     """Provide a ``print``-able display of the hierarchy. This function is provided
     mainly as a convenience for obtaining a tree view of an h5py group - zarr groups
@@ -441,6 +404,48 @@ def tree(grp, expand=False, level=None):
     """
 
     return TreeViewer(grp, expand=expand, level=level)
+
+
+class _LogWriter(object):
+
+    def __init__(self, log):
+        self.log_func = None
+        self.log_file = None
+        self.needs_closing = False
+        if log is None:
+            # don't do any logging
+            pass
+        elif callable(log):
+            self.log_func = log
+        elif isinstance(log, str):
+            self.log_file = io.open(log, mode='w')
+            self.needs_closing = True
+        else:
+            if not hasattr(log, 'write'):
+                raise TypeError('log must be a callable function, file path or '
+                                'file-like object, found %r' % log)
+            self.log_file = log
+            self.needs_closing = False
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        if self.log_file is not None and self.needs_closing:
+            self.log_file.close()
+
+    def __call__(self, *args, **kwargs):
+        if self.log_file is not None:
+            kwargs['file'] = self.log_file
+            if PY2:  # pragma: py3 no cover
+                # expect file opened in text mode, need to adapt message
+                args = [text_type(a) for a in args]
+            print(*args, **kwargs)
+            if hasattr(self.log_file, 'flush'):
+                # get immediate feedback
+                self.log_file.flush()
+        elif self.log_func is not None:
+            self.log_func(*args, **kwargs)
 
 
 def _log_copy_summary(log, dry_run, n_copied, n_skipped, n_bytes_copied):

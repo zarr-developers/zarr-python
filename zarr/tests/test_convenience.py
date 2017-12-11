@@ -218,7 +218,8 @@ class TestCopyStore(unittest.TestCase):
             copy_store(source, dest, if_exists='foobar')
 
 
-def check_copied_array(original, copied, without_attrs=False, expect_props=None):
+def check_copied_array(original, copied, without_attrs=False,
+                       expect_props=None):
 
     # setup
     source_h5py = original.__module__.startswith('h5py.')
@@ -544,11 +545,12 @@ class TestCopy(unittest.TestCase):
         copy(source['foo'], dest, dry_run=True, log=print)
 
         # file name
-        with tempfile.NamedTemporaryFile() as f:
-            copy(source['foo'], dest, dry_run=True, log=f.name)
+        fn = tempfile.mktemp()
+        atexit.register(os.remove, fn)
+        copy(source['foo'], dest, dry_run=True, log=fn)
 
         # file
-        with tempfile.NamedTemporaryFile(mode='w') as f:
+        with tempfile.TemporaryFile(mode='w') as f:
             copy(source['foo'], dest, dry_run=True, log=f)
 
         # bad option
