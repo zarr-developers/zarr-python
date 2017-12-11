@@ -5,9 +5,7 @@ from collections import Mapping
 import io
 import re
 import itertools
-
-
-import numpy as np
+import operator
 
 
 from zarr.core import Array
@@ -569,7 +567,7 @@ def copy_store(source, dest, source_path='', dest_path='', excludes=None,
 
 
 def copy(source, dest, name=None, shallow=False, without_attrs=False, log=None,
-         overwrite=False, **create_kws):
+         if_exists='raise', dry_run=False, **create_kws):
     """Copy the `source` array or group into the `dest` group.
 
     Parameters
@@ -586,8 +584,17 @@ def copy(source, dest, name=None, shallow=False, without_attrs=False, log=None,
         Do not copy user attributes.
     log : callable, file path or file-like object, optional
         If provided, will be used to log progress information.
-    overwrite : bool, optional
-        If True, replace any objects in the destination.
+    if_exists : {'raise', 'replace', 'skip', 'skip_initialized'}, optional
+        How to handle arrays that already exist in the destination group. If
+        'raise' then a ValueError is raised on the first array already present
+        in the destination group. If 'replace' then any array will be
+        replaced in the destination. If 'skip' then any existing arrays will
+        not be copied. If 'skip_initialized' then any existing arrays with
+        all chunks initialized will not be copied (not available when copying to
+        h5py).
+    dry_run : bool, optional
+        If True, don't actually copy anything, just log what would have
+        happened.
     **create_kws
         Passed through to the create_dataset method when copying an array/dataset.
 
@@ -609,9 +616,10 @@ def copy(source, dest, name=None, shallow=False, without_attrs=False, log=None,
     >>> dest = zarr.group()
     >>> import sys
     >>> zarr.copy(source['foo'], dest, log=sys.stdout)
-    /foo -> /foo
-    /foo/bar -> /foo/bar
-    /foo/bar/baz -> /foo/bar/baz
+    copy /foo
+    copy /foo/bar
+    copy /foo/bar/baz (100,) int64
+    all done: 3 copy, 0 skip; 800 bytes copied
     >>> dest.tree()  # N.B., no spam
     /
      └── foo
@@ -622,15 +630,43 @@ def copy(source, dest, name=None, shallow=False, without_attrs=False, log=None,
 
     # setup logging
     with _LogWriter(log) as log:
-        _copy(log, source, dest, name=name, root=True, shallow=shallow,
-              without_attrs=without_attrs, overwrite=overwrite, **create_kws)
+
+        # do the copying
+        n_copy, n_skip, n_bytes_copied = _copy(
+            log, source, dest, name=name, root=True, shallow=shallow,
+            without_attrs=without_attrs, if_exists=if_exists, dry_run=dry_run,
+            **create_kws
+        )
+
+        # log a final message with a summary of what was done
+        if dry_run:
+            final_message = 'dry run: '
+        else:
+            final_message = 'all done: '
+        final_message += '{} copy, {} skip'.format(n_copy, n_skip)
+        if not dry_run:
+            final_message += '; {:,} bytes copied'.format(n_bytes_copied)
+        log(final_message)
 
 
-def _copy(log, source, dest, name, root, shallow, without_attrs, overwrite, **create_kws):
+def _copy(log, source, dest, name, root, shallow, without_attrs, if_exists,
+          dry_run, **create_kws):
+
+    # setup counting variables
+    n_copy = n_skip = n_bytes_copied = 0
 
     # are we copying to/from h5py?
     source_h5py = source.__module__.startswith('h5py.')
     dest_h5py = dest.__module__.startswith('h5py.')
+
+    # check if_exists parameter
+    valid_if_exists = ['raise', 'replace', 'skip', 'skip_initialized']
+    if if_exists not in valid_if_exists:
+        raise ValueError('if_exists must be one of {!r}; found {!r}'
+                         .format(valid_if_exists, if_exists))
+    if dest_h5py and if_exists == 'skip_initialized':
+        raise ValueError('{!r} can only be used then copying to zarr'
+                          .format(if_exists))
 
     # determine name to copy to
     if name is None:
@@ -642,82 +678,139 @@ def _copy(log, source, dest, name, root, shallow, without_attrs, overwrite, **cr
     if hasattr(source, 'shape'):
         # copy a dataset/array
 
-        # check if already exists
-        if name in dest:
-            if overwrite:
-                log('delete {}/{}'.format(dest.name, name))
-                del dest[name]
-            else:
+        # check if already exists, decide what to do
+        do_copy = True
+        exists = name in dest
+        if exists:
+            if if_exists == 'raise':
                 raise ValueError('an object {!r} already exists in destination '
                                  '{!r}'.format(name, dest.name))
+            elif if_exists == 'skip':
+                do_copy = False
+            elif if_exists == 'skip_initialized':
+                ds = dest[name]
+                if ds.n_initialized == ds.n_chunks:
+                    do_copy = False
 
-        # setup creation keyword arguments
-        kws = create_kws.copy()
-
-        # setup chunks option, preserve by default
-        kws.setdefault('chunks', source.chunks)
-
-        # setup compression options
-        if source_h5py:
-            if dest_h5py:
-                # h5py -> h5py; preserve compression options by default
-                kws.setdefault('compression', source.compression)
-                kws.setdefault('compression_opts', source.compression_opts)
-                kws.setdefault('shuffle', source.shuffle)
-            else:
-                # h5py -> zarr; use zarr default compression options
-                pass
+        # log a message about what we're going to do
+        if do_copy:
+            n_copy += 1
+            message = 'copy {} {} {}'.format(source.name, source.shape,
+                                             source.dtype)
         else:
-            if dest_h5py:
-                # zarr -> h5py; use some vaguely sensible defaults
-                kws.setdefault('chunks', True)
-                kws.setdefault('compression', 'gzip')
-                kws.setdefault('compression_opts', 1)
-                kws.setdefault('shuffle', False)
+            n_skip += 1
+            message = 'skip {} {} {}'.format(source.name, source.shape,
+                                             source.dtype)
+        log(message)
+
+        # take action
+        if do_copy and not dry_run:
+
+            # clear the way
+            if exists:
+                del dest[name]
+
+            # setup creation keyword arguments
+            kws = create_kws.copy()
+
+            # setup chunks option, preserve by default
+            kws.setdefault('chunks', source.chunks)
+
+            # setup compression options
+            if source_h5py:
+                if dest_h5py:
+                    # h5py -> h5py; preserve compression options by default
+                    kws.setdefault('compression', source.compression)
+                    kws.setdefault('compression_opts', source.compression_opts)
+                    kws.setdefault('shuffle', source.shuffle)
+                else:
+                    # h5py -> zarr; use zarr default compression options
+                    pass
             else:
-                # zarr -> zarr; preserve compression options by default
-                kws.setdefault('compressor', source.compressor)
+                if dest_h5py:
+                    # zarr -> h5py; use some vaguely sensible defaults
+                    kws.setdefault('chunks', True)
+                    kws.setdefault('compression', 'gzip')
+                    kws.setdefault('compression_opts', 1)
+                    kws.setdefault('shuffle', False)
+                else:
+                    # zarr -> zarr; preserve compression options by default
+                    kws.setdefault('compressor', source.compressor)
 
-        # create new dataset in destination
-        ds = dest.create_dataset(name, shape=source.shape, dtype=source.dtype, **kws)
+            # create new dataset in destination
+            ds = dest.create_dataset(name, shape=source.shape,
+                                     dtype=source.dtype, **kws)
 
-        # copy data - N.B., go chunk by chunk to avoid loading everything into memory
-        log('{} -> {}'.format(source.name, ds.name))
-        shape = ds.shape
-        chunks = ds.chunks
-        chunk_offsets = [range(0, s, c) for s, c in zip(shape, chunks)]
-        for offset in itertools.product(*chunk_offsets):
-            sel = tuple(slice(o, min(s, o + c)) for o, s, c in zip(offset, shape, chunks))
-            ds[sel] = source[sel]
+            # copy data - N.B., go chunk by chunk to avoid loading everything
+            # into memory
+            shape = ds.shape
+            chunks = ds.chunks
+            chunk_offsets = [range(0, s, c) for s, c in zip(shape, chunks)]
+            for offset in itertools.product(*chunk_offsets):
+                sel = tuple(slice(o, min(s, o + c))
+                            for o, s, c in zip(offset, shape, chunks))
+                ds[sel] = source[sel]
+            n_bytes_copied += ds.size * ds.dtype.itemsize
 
-        # copy attributes
-        if not without_attrs:
-            ds.attrs.update(source.attrs)
+            # copy attributes
+            if not without_attrs:
+                ds.attrs.update(source.attrs)
 
     elif root or not shallow:
         # copy a group
 
         # check if an array is in the way
-        if name in dest and hasattr(dest[name], 'shape'):
-            if overwrite:
-                log('delete {}/{}'.format(dest.name, name))
-                del dest[name]
-            else:
+        exists_array = name in dest and hasattr(dest[name], 'shape')
+        if exists_array:
+            if if_exists == 'raise':
                 raise ValueError('an array {!r} already exists in destination '
                                  '{!r}'.format(name, dest.name))
+            elif if_exists == 'skip':
+                n_skip += 1
+                log('skip {}'.format(source.name))
+                return
 
-        # require group in destination
-        grp = dest.require_group(name)
-        log('{} -> {}'.format(source.name, grp.name))
+        # log action
+        n_copy += 1
+        log('copy {}'.format(source.name))
 
-        # copy attributes
-        if not without_attrs:
-            grp.attrs.update(source.attrs)
+        if not dry_run:
 
-        # recurse
-        for k in source.keys():
-            _copy(log, source[k], grp, name=k, root=False, shallow=shallow,
-                  without_attrs=without_attrs, overwrite=overwrite, **create_kws)
+            # clear the way
+            if exists_array:
+                del dest[name]
+
+            # require group in destination
+            grp = dest.require_group(name)
+
+            # copy attributes
+            if not without_attrs:
+                grp.attrs.update(source.attrs)
+
+            # recurse
+            for k in source.keys():
+                c, s, b = _copy(
+                    log, source[k], grp, name=k, root=False, shallow=shallow,
+                    without_attrs=without_attrs, if_exists=if_exists,
+                    dry_run=dry_run, **create_kws)
+                n_copy += c
+                n_skip += s
+                n_bytes_copied += b
+
+        elif name in dest:
+            # dry run
+            grp = dest[name]
+            # recurse
+            for k in source.keys():
+                c, s, b = _copy(
+                    log, source[k], grp, name=k, root=False, shallow=shallow,
+                    without_attrs=without_attrs, if_exists=if_exists,
+                    dry_run=dry_run, **create_kws)
+                n_copy += c
+                n_skip += s
+                n_bytes_copied += b
+
+    return n_copy, n_skip, n_bytes_copied
 
 
 def tree(grp, expand=False, level=None):
@@ -771,7 +864,7 @@ def tree(grp, expand=False, level=None):
 
 
 def copy_all(source, dest, shallow=False, without_attrs=False, log=None,
-             overwrite=False, **create_kws):
+             if_exists='raise', dry_run=False, **create_kws):
     """Copy all children of the `source` group into the `dest` group.
 
     Parameters
@@ -786,10 +879,20 @@ def copy_all(source, dest, shallow=False, without_attrs=False, log=None,
         Do not copy user attributes.
     log : callable, file path or file-like object, optional
         If provided, will be used to log progress information.
-    overwrite : bool, optional
-        If True, replace any objects in the destination.
+    if_exists : {'raise', 'replace', 'skip', 'skip_initialized'}, optional
+        How to handle arrays that already exist in the destination group. If
+        'raise' then a ValueError is raised on the first array already present
+        in the destination group. If 'replace' then any array will be
+        replaced in the destination. If 'skip' then any existing arrays will
+        not be copied. If 'skip_initialized' then any existing arrays with
+        all chunks initialized will not be copied (not available when copying to
+        h5py).
+    dry_run : bool, optional
+        If True, don't actually copy anything, just log what would have
+        happened.
     **create_kws
-        Passed through to the create_dataset method when copying an array/dataset.
+        Passed through to the create_dataset method when copying an
+        array/dataset.
 
     Examples
     --------
@@ -809,10 +912,11 @@ def copy_all(source, dest, shallow=False, without_attrs=False, log=None,
     >>> dest = zarr.group()
     >>> import sys
     >>> zarr.copy_all(source, dest, log=sys.stdout)
-    /foo -> /foo
-    /foo/bar -> /foo/bar
-    /foo/bar/baz -> /foo/bar/baz
-    /spam -> /spam
+    copy /foo
+    copy /foo/bar
+    copy /foo/bar/baz (100,) int64
+    copy /spam (100,) int64
+    all done: 4 copy, 0 skip; 1,600 bytes copied
     >>> dest.tree()
     /
      ├── foo
@@ -822,8 +926,27 @@ def copy_all(source, dest, shallow=False, without_attrs=False, log=None,
 
     """
 
+    # setup counting variables
+    n_copy = n_skip = n_bytes_copied = 0
+
     # setup logging
     with _LogWriter(log) as log:
+
         for k in source.keys():
-            _copy(log, source[k], dest, name=k, root=False, shallow=shallow,
-                  without_attrs=without_attrs, overwrite=overwrite, **create_kws)
+            c, s, b = _copy(
+                log, source[k], dest, name=k, root=False, shallow=shallow,
+                without_attrs=without_attrs, if_exists=if_exists,
+                dry_run=dry_run, **create_kws)
+            n_copy += c
+            n_skip += s
+            n_bytes_copied += b
+
+        # log a final message with a summary of what was done
+        if dry_run:
+            final_message = 'dry run: '
+        else:
+            final_message = 'all done: '
+        final_message += '{} copy, {} skip'.format(n_copy, n_skip)
+        if not dry_run:
+            final_message += '; {:,} bytes copied'.format(n_bytes_copied)
+        log(final_message)

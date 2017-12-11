@@ -352,7 +352,7 @@ def _test_copy(new_source, new_dest):
     with pytest.raises(ValueError):
         copy(source['foo/bar/baz'], dest)
     assert (10,) == dest['baz'].shape
-    copy(source['foo/bar/baz'], dest, overwrite=True)
+    copy(source['foo/bar/baz'], dest, if_exists='replace')
     check_copied_array(source['foo/bar/baz'], dest['baz'])
 
     # copy array, dest group in the way
@@ -361,7 +361,7 @@ def _test_copy(new_source, new_dest):
     with pytest.raises(ValueError):
         copy(source['foo/bar/baz'], dest)
     assert not hasattr(dest['baz'], 'shape')
-    copy(source['foo/bar/baz'], dest, overwrite=True)
+    copy(source['foo/bar/baz'], dest, if_exists='replace')
     check_copied_array(source['foo/bar/baz'], dest['baz'])
 
     # copy group, default options
@@ -392,7 +392,7 @@ def _test_copy(new_source, new_dest):
     with pytest.raises(ValueError):
         copy(source['foo'], dest)
     assert dest['foo/bar'].shape == (10,)
-    copy(source['foo'], dest, overwrite=True)
+    copy(source['foo'], dest, if_exists='replace')
     check_copied_group(source['foo'], dest['foo'])
 
 
