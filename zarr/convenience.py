@@ -793,9 +793,11 @@ def _copy(log, source, dest, name, root, shallow, without_attrs, if_exists,
                         kws.setdefault('compression', source.compression)
                         kws.setdefault('compression_opts', source.compression_opts)
                         kws.setdefault('shuffle', source.shuffle)
+                        kws.setdefault('fletcher32', source.fletcher32)
+                        kws.setdefault('fillvalue', source.fillvalue)
                     else:
                         # h5py -> zarr; use zarr default compression options
-                        pass
+                        kws.setdefault('fill_value', source.fillvalue)
                 else:
                     if dest_h5py:
                         # zarr -> h5py; use some vaguely sensible defaults
@@ -803,9 +805,13 @@ def _copy(log, source, dest, name, root, shallow, without_attrs, if_exists,
                         kws.setdefault('compression', 'gzip')
                         kws.setdefault('compression_opts', 1)
                         kws.setdefault('shuffle', False)
+                        kws.setdefault('fillvalue', source.fill_value)
                     else:
                         # zarr -> zarr; preserve compression options by default
                         kws.setdefault('compressor', source.compressor)
+                        kws.setdefault('filters', source.filters)
+                        kws.setdefault('order', source.order)
+                        kws.setdefault('fill_value', source.fill_value)
 
                 # create new dataset in destination
                 ds = dest.create_dataset(name, shape=source.shape,

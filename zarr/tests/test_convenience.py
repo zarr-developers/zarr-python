@@ -315,8 +315,14 @@ class TestCopy(unittest.TestCase):
         foo.attrs['experiment'] = 'weird science'
         baz = foo.create_dataset('bar/baz', data=np.arange(100), chunks=(50,))
         baz.attrs['units'] = 'metres'
+        if self.source_h5py:
+            extra_kws = dict(compression='gzip', compression_opts=3, fillvalue=84,
+                             shuffle=True, fletcher32=True)
+        else:
+            extra_kws = dict(compressor=Zlib(3), order='F', fill_value=42,
+                             filters=[Adler32()])
         source.create_dataset('spam', data=np.arange(100, 200).reshape(20, 5),
-                              chunks=(10, 2))
+                              chunks=(10, 2), dtype='i2', **extra_kws)
         self.source = source
 
     def test_copy_array(self):
@@ -326,6 +332,8 @@ class TestCopy(unittest.TestCase):
         # copy array with default options
         copy(source['foo/bar/baz'], dest)
         check_copied_array(source['foo/bar/baz'], dest['baz'])
+        copy(source['spam'], dest)
+        check_copied_array(source['spam'], dest['spam'])
 
     def test_copy_array_name(self):
         source = self.source
