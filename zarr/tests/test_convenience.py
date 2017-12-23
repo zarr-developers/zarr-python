@@ -585,6 +585,7 @@ def temp_h5f():
     fn = tempfile.mktemp()
     atexit.register(os.remove, fn)
     h5f = h5py.File(fn, mode='w')
+    atexit.register(lambda v: v.close(), h5f)
     return h5f
 
 
