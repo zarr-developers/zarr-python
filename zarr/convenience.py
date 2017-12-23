@@ -636,6 +636,11 @@ def copy_store(source, dest, source_path='', dest_path='', excludes=None,
     return n_copied, n_skipped, n_bytes_copied
 
 
+def _check_dest_is_group(dest):
+    if not hasattr(dest, 'create_dataset'):
+        raise ValueError('dest must be a group, got {!r}'.format(dest))
+
+
 def copy(source, dest, name=None, shallow=False, without_attrs=False, log=None,
          if_exists='raise', dry_run=False, **create_kws):
     """Copy the `source` array or group into the `dest` group.
@@ -707,6 +712,9 @@ def copy(source, dest, name=None, shallow=False, without_attrs=False, log=None,
              └── baz (100,) int64
 
     """
+
+    # value checks
+    _check_dest_is_group(dest)
 
     # setup logging
     with _LogWriter(log) as log:
@@ -972,6 +980,9 @@ def copy_all(source, dest, shallow=False, without_attrs=False, log=None,
      └── spam (100,) int64
 
     """
+
+    # value checks
+    _check_dest_is_group(dest)
 
     # setup counting variables
     n_copied = n_skipped = n_bytes_copied = 0

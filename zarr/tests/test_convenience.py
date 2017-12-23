@@ -335,6 +335,14 @@ class TestCopy(unittest.TestCase):
         copy(source['spam'], dest)
         check_copied_array(source['spam'], dest['spam'])
 
+    def test_copy_bad_dest(self):
+        source = self.source
+
+        # try to copy to an array, dest must be a group
+        dest = self.new_dest().create_dataset('eggs', shape=(100,))
+        with pytest.raises(ValueError):
+            copy(source['foo/bar/baz'], dest)
+
     def test_copy_array_name(self):
         source = self.source
         dest = self.new_dest()
