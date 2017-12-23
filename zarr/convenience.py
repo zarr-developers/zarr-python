@@ -684,32 +684,70 @@ def copy(source, dest, name=None, shallow=False, without_attrs=False, log=None,
 
     Examples
     --------
-    >>> import h5py
-    >>> import zarr
-    >>> import numpy as np
-    >>> source = h5py.File('data/example.h5', mode='w')
-    >>> foo = source.create_group('foo')
-    >>> baz = foo.create_dataset('bar/baz', data=np.arange(100), chunks=(50,))
-    >>> spam = source.create_dataset('spam', data=np.arange(100, 200), chunks=(30,))
-    >>> zarr.tree(source)
-    /
-     ├── foo
-     │   └── bar
-     │       └── baz (100,) int64
-     └── spam (100,) int64
-    >>> dest = zarr.group()
-    >>> from sys import stdout
-    >>> zarr.copy(source['foo'], dest, log=stdout)
-    copy /foo
-    copy /foo/bar
-    copy /foo/bar/baz (100,) int64
-    all done: 3 copied, 0 skipped, 800 bytes copied
-    (3, 0, 800)
-    >>> dest.tree()  # N.B., no spam
-    /
-     └── foo
-         └── bar
-             └── baz (100,) int64
+    Here's an example of copying a group named 'foo' from an HDF5 file to a
+    Zarr group::
+
+        >>> import h5py
+        >>> import zarr
+        >>> import numpy as np
+        >>> source = h5py.File('data/example.h5', mode='w')
+        >>> foo = source.create_group('foo')
+        >>> baz = foo.create_dataset('bar/baz', data=np.arange(100), chunks=(50,))
+        >>> spam = source.create_dataset('spam', data=np.arange(100, 200), chunks=(30,))
+        >>> zarr.tree(source)
+        /
+         ├── foo
+         │   └── bar
+         │       └── baz (100,) int64
+         └── spam (100,) int64
+        >>> dest = zarr.group()
+        >>> from sys import stdout
+        >>> zarr.copy(source['foo'], dest, log=stdout)
+        copy /foo
+        copy /foo/bar
+        copy /foo/bar/baz (100,) int64
+        all done: 3 copied, 0 skipped, 800 bytes copied
+        (3, 0, 800)
+        >>> dest.tree()  # N.B., no spam
+        /
+         └── foo
+             └── bar
+                 └── baz (100,) int64
+        >>> source.close()
+
+    The ``if_exists`` parameter provides options for how to handle pre-existing data in
+    the destination. Here are some examples of these options, also using
+    ``dry_run=True`` to find out what would happen without actually copying anything::
+
+        >>> source = zarr.group()
+        >>> dest = zarr.group()
+        >>> baz = source.create_dataset('foo/bar/baz', data=np.arange(100))
+        >>> spam = source.create_dataset('foo/spam', data=np.arange(1000))
+        >>> existing_spam = dest.create_dataset('foo/spam', data=np.arange(1000))
+        >>> from sys import stdout
+        >>> try:
+        ...     zarr.copy(source['foo'], dest, log=stdout, dry_run=True)
+        ... except zarr.CopyError as e:
+        ...     print(e)
+        ...
+        copy /foo
+        copy /foo/bar
+        copy /foo/bar/baz (100,) int64
+        an object 'spam' already exists in destination '/foo'
+        >>> zarr.copy(source['foo'], dest, log=stdout, if_exists='replace', dry_run=True)
+        copy /foo
+        copy /foo/bar
+        copy /foo/bar/baz (100,) int64
+        copy /foo/spam (1000,) int64
+        dry run: 4 copied, 0 skipped
+        (4, 0, 0)
+        >>> zarr.copy(source['foo'], dest, log=stdout, if_exists='skip', dry_run=True)
+        copy /foo
+        copy /foo/bar
+        copy /foo/bar/baz (100,) int64
+        skip /foo/spam (1000,) int64
+        dry run: 3 copied, 1 skipped
+        (3, 1, 0)
 
     """
 
@@ -978,6 +1016,7 @@ def copy_all(source, dest, shallow=False, without_attrs=False, log=None,
      │   └── bar
      │       └── baz (100,) int64
      └── spam (100,) int64
+    >>> source.close()
 
     """
 
