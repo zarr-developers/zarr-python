@@ -2,7 +2,6 @@
 from __future__ import absolute_import, print_function, division
 from tempfile import mkdtemp
 import atexit
-import json
 import shutil
 from multiprocessing.pool import ThreadPool
 from multiprocessing import Pool as ProcessPool
