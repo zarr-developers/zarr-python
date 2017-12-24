@@ -1565,14 +1565,15 @@ class TestArrayWithCustomMapping(TestArray):
         eq(-1, z.nbytes_stored)
 
 
-class TestArrayNoCacheMetadata(TestArray):
+class TestArrayNoCache(TestArray):
 
     @staticmethod
     def create_array(read_only=False, **kwargs):
         store = dict()
         kwargs.setdefault('compressor', Zlib(level=1))
         init_array(store, **kwargs)
-        return Array(store, read_only=read_only, cache_metadata=False)
+        return Array(store, read_only=read_only, cache_metadata=False,
+                     cache_attrs=False)
 
     def test_cache_metadata(self):
         a1 = self.create_array(shape=100, chunks=10, dtype='i1')
@@ -1582,6 +1583,7 @@ class TestArrayNoCacheMetadata(TestArray):
         eq(a1.nbytes, a2.nbytes)
         eq(a1.nchunks, a2.nchunks)
 
+        # a1 is not caching so *will* see updates made via other objects
         a2.resize(200)
         eq((200,), a2.shape)
         eq(200, a2.size)
@@ -1602,6 +1604,7 @@ class TestArrayNoCacheMetadata(TestArray):
         eq(a1.nbytes, a2.nbytes)
         eq(a1.nchunks, a2.nchunks)
 
+        # a2 is caching so *will not* see updates made via other objects
         a1.resize(400)
         eq((400,), a1.shape)
         eq(400, a1.size)
@@ -1611,6 +1614,21 @@ class TestArrayNoCacheMetadata(TestArray):
         eq(300, a2.size)
         eq(300, a2.nbytes)
         eq(30, a2.nchunks)
+
+    def test_cache_attrs(self):
+        a1 = self.create_array(shape=100, chunks=10, dtype='i1')
+        a2 = Array(a1.store, cache_attrs=True)
+        eq(a1.attrs.asdict(), a2.attrs.asdict())
+
+        # a1 is not caching so *will* see updates made via other objects
+        a2.attrs['foo'] = 'xxx'
+        a2.attrs['bar'] = 42
+        eq(a1.attrs.asdict(), a2.attrs.asdict())
+
+        # a2 is caching so *will not* see updates made via other objects
+        a1.attrs['foo'] = 'yyy'
+        assert 'yyy' == a1.attrs['foo']
+        assert 'xxx' == a2.attrs['foo']
 
     def test_object_arrays_danger(self):
         # skip this one as it only works if metadata are cached

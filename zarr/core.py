@@ -47,6 +47,10 @@ class Array(object):
         lifetime of the object. If False, array metadata will be reloaded
         prior to all data access and modification operations (may incur
         overhead depending on storage and data access pattern).
+    cache_attrs : bool, optional
+        If True (default), user attributes will be cached for attribute read
+        operations. If False, user attributes are reloaded from the store prior
+        to all attribute read operations.
 
     Attributes
     ----------
@@ -99,7 +103,7 @@ class Array(object):
     """
 
     def __init__(self, store, path=None, read_only=False, chunk_store=None,
-                 synchronizer=None, cache_metadata=True):
+                 synchronizer=None, cache_metadata=True, cache_attrs=True):
         # N.B., expect at this point store is fully initialized with all
         # configuration metadata fully specified and normalized
 
@@ -121,7 +125,7 @@ class Array(object):
         # initialize attributes
         akey = self._key_prefix + attrs_key
         self._attrs = Attributes(store, key=akey, read_only=read_only,
-                                 synchronizer=synchronizer)
+                                 synchronizer=synchronizer, cache=cache_attrs)
 
         # initialize info reporter
         self._info_reporter = InfoReporter(self)
