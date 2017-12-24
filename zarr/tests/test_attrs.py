@@ -2,6 +2,7 @@
 from __future__ import absolute_import, print_function, division
 import json
 import unittest
+import collections
 
 
 from nose.tools import eq_ as eq, assert_raises
@@ -12,10 +13,38 @@ from zarr.compat import binary_type, text_type
 from zarr.errors import PermissionError
 
 
+class CountingDict(collections.MutableMapping):
+
+    def __init__(self):
+        self.wrapped = dict()
+        self.counter = collections.Counter()
+
+    def __len__(self):
+        return len(self.wrapped)
+
+    def __iter__(self):
+        return iter(self.wrapped)
+
+    def __contains__(self, item):
+        return item in self.wrapped
+
+    def __getitem__(self, item):
+        self.counter['__getitem__', item] += 1
+        return self.wrapped[item]
+
+    def __setitem__(self, key, value):
+        self.counter['__setitem__', key] += 1
+        self.wrapped[key] = value
+
+    def __delitem__(self, key):
+        self.counter['__delitem__', key] += 1
+        del self.wrapped[key]
+
+
 class TestAttributes(unittest.TestCase):
 
-    def init_attributes(self, store, read_only=False):
-        return Attributes(store, key='attrs', read_only=read_only)
+    def init_attributes(self, store, read_only=False, cache=True):
+        return Attributes(store, key='attrs', read_only=read_only, cache=cache)
 
     def test_storage(self):
 
@@ -102,3 +131,72 @@ class TestAttributes(unittest.TestCase):
         assert '123' in d
         assert 'asdf;' in d
         assert 'baz' not in d
+
+    def test_caching_on(self):
+        # caching is turned on by default
+        store = CountingDict()
+        eq(0, store.counter['__getitem__', 'attrs'])
+        eq(0, store.counter['__setitem__', 'attrs'])
+        store['attrs'] = json.dumps(dict(foo='xxx', bar=42)).encode('ascii')
+        eq(0, store.counter['__getitem__', 'attrs'])
+        eq(1, store.counter['__setitem__', 'attrs'])
+        a = self.init_attributes(store)
+        eq(a['foo'], 'xxx')
+        eq(1, store.counter['__getitem__', 'attrs'])
+        eq(a['bar'], 42)
+        eq(1, store.counter['__getitem__', 'attrs'])
+        eq(a['foo'], 'xxx')
+        eq(1, store.counter['__getitem__', 'attrs'])
+        a['foo'] = 'yyy'
+        eq(2, store.counter['__getitem__', 'attrs'])
+        eq(2, store.counter['__setitem__', 'attrs'])
+        eq(a['foo'], 'yyy')
+        eq(2, store.counter['__getitem__', 'attrs'])
+        eq(2, store.counter['__setitem__', 'attrs'])
+        a.update(foo='zzz', bar=84)
+        eq(3, store.counter['__getitem__', 'attrs'])
+        eq(3, store.counter['__setitem__', 'attrs'])
+        eq(a['foo'], 'zzz')
+        eq(a['bar'], 84)
+        eq(3, store.counter['__getitem__', 'attrs'])
+        eq(3, store.counter['__setitem__', 'attrs'])
+        assert 'foo' in a
+        eq(3, store.counter['__getitem__', 'attrs'])
+        eq(3, store.counter['__setitem__', 'attrs'])
+        assert 'spam' not in a
+        eq(3, store.counter['__getitem__', 'attrs'])
+        eq(3, store.counter['__setitem__', 'attrs'])
+
+    def test_caching_off(self):
+        store = CountingDict()
+        eq(0, store.counter['__getitem__', 'attrs'])
+        eq(0, store.counter['__setitem__', 'attrs'])
+        store['attrs'] = json.dumps(dict(foo='xxx', bar=42)).encode('ascii')
+        eq(0, store.counter['__getitem__', 'attrs'])
+        eq(1, store.counter['__setitem__', 'attrs'])
+        a = self.init_attributes(store, cache=False)
+        eq(a['foo'], 'xxx')
+        eq(1, store.counter['__getitem__', 'attrs'])
+        eq(a['bar'], 42)
+        eq(2, store.counter['__getitem__', 'attrs'])
+        eq(a['foo'], 'xxx')
+        eq(3, store.counter['__getitem__', 'attrs'])
+        a['foo'] = 'yyy'
+        eq(4, store.counter['__getitem__', 'attrs'])
+        eq(2, store.counter['__setitem__', 'attrs'])
+        eq(a['foo'], 'yyy')
+        eq(5, store.counter['__getitem__', 'attrs'])
+        eq(2, store.counter['__setitem__', 'attrs'])
+        a.update(foo='zzz', bar=84)
+        eq(6, store.counter['__getitem__', 'attrs'])
+        eq(3, store.counter['__setitem__', 'attrs'])
+        eq(a['foo'], 'zzz')
+        eq(a['bar'], 84)
+        eq(8, store.counter['__getitem__', 'attrs'])
+        eq(3, store.counter['__setitem__', 'attrs'])
+        assert 'foo' in a
+        eq(9, store.counter['__getitem__', 'attrs'])
+        eq(3, store.counter['__setitem__', 'attrs'])
+        assert 'spam' not in a
+        eq(10, store.counter['__getitem__', 'attrs'])
+        eq(3, store.counter['__setitem__', 'attrs'])
