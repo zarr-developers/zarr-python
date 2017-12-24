@@ -27,24 +27,22 @@ from zarr.hierarchy import Group
 
 class TestAttributesWithThreadSynchronizer(TestAttributes):
 
-    def init_attributes(self, store, read_only=False):
+    def init_attributes(self, store, read_only=False, cache=True):
         key = 'attrs'
-        store[key] = json.dumps(dict()).encode('ascii')
         synchronizer = ThreadSynchronizer()
         return Attributes(store, synchronizer=synchronizer, key=key,
-                          read_only=read_only)
+                          read_only=read_only, cache=cache)
 
 
 class TestAttributesProcessSynchronizer(TestAttributes):
 
-    def init_attributes(self, store, read_only=False):
+    def init_attributes(self, store, read_only=False, cache=True):
         key = 'attrs'
-        store[key] = json.dumps(dict()).encode('ascii')
         sync_path = mkdtemp()
         atexit.register(shutil.rmtree, sync_path)
         synchronizer = ProcessSynchronizer(sync_path)
         return Attributes(store, synchronizer=synchronizer, key=key,
-                          read_only=read_only)
+                          read_only=read_only, cache=cache)
 
 
 def _append(arg):
