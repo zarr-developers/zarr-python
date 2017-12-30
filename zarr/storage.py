@@ -7,7 +7,7 @@ array store, as long as it accepts string (str) keys and bytes values.
 
 """
 from __future__ import absolute_import, print_function, division
-from collections import MutableMapping
+from collections import MutableMapping, OrderedDict
 import os
 import tempfile
 import zipfile
@@ -1676,3 +1676,124 @@ class LMDBStore(MutableMapping):
 
     def __len__(self):
         return self.db.stat()['entries']
+
+
+class LRUStoreCache(MutableMapping):
+
+    def __init__(self, store, max_size):
+        self._store = store
+        self._max_size = max_size
+        self._current_size = 0
+        self._keys_cache = None
+        self._listdir_cache = dict()
+        self._values_cache = OrderedDict()
+        self._mutex = Lock()
+        self.hits = self.misses = 0
+
+    def __getstate__(self):
+        return (self._store, self._max_size, self._current_size, self._keys_cache,
+                self._values_cache, self.hits, self.misses)
+
+    def __setstate__(self, state):
+        (self._store, self._max_size, self._current_size, self._keys_cache,
+         self._values_cache, self.hits, self.misses) = state
+        self._mutex = Lock()
+
+    def __len__(self):
+        return len(self._store)
+
+    def __iter__(self):
+        return self.keys()
+
+    def keys(self):
+        with self._mutex:
+            if self._keys_cache is None:
+                self._keys_cache = list(self._store.keys())
+        return iter(self._keys_cache)
+
+    def listdir(self, path):
+        with self._mutex:
+            try:
+                return self._listdir_cache[path]
+            except KeyError:
+                listing = listdir(self._store, path)
+                self._listdir_cache[path] = listing
+                return listing
+
+    def _pop_value(self):
+        # remove the first value from the cache, as this will be the least recently
+        # used value
+        _, v = self._values_cache.popitem(last=False)
+        return v
+
+    def _accommodate_value(self, value_size):
+        if self._max_size is None:
+            return
+        # ensure there is enough space in the cache for a new value
+        while self._current_size + value_size > self._max_size:
+            v = self._pop_value()
+            self._current_size -= buffer_size(v)
+
+    def _cache_value(self, key, value):
+        # cache a value
+        value_size = buffer_size(value)
+        # check size of the value against max size, as if the value itself exceeds max
+        # size then we are never going to cache it
+        if self._max_size is None or value_size <= self._max_size:
+            self._accommodate_value(value_size)
+            self._values_cache[key] = value
+            self._current_size += value_size
+
+    def clear_values(self):
+        with self._mutex:
+            self._values_cache.clear()
+
+    def clear_keys(self):
+        with self._mutex:
+            self._keys_cache = None
+            self._listdir_cache.clear()
+
+    def _clear_value(self, key):
+        if key in self._values_cache:
+            value = self._values_cache.pop(key)
+            self._current_size -= buffer_size(value)
+
+    def __getitem__(self, key):
+        try:
+            # first try to obtain the value from the cache
+            with self._mutex:
+                value = self._values_cache[key]
+                # cache hit if no KeyError is raised
+                self.hits += 1
+                # treat the end as most recently used
+                self._values_cache.move_to_end(key)
+
+        except KeyError:
+            # cache miss, retrieve value from the store
+            value = self._store[key]
+            with self._mutex:
+                self.misses += 1
+                # need to check if key is not in the cache, as it may have been cached
+                # while we were retrieving the value from the store
+                if key not in self._values_cache:
+                    self._cache_value(key, value)
+
+        return value
+
+    def __setitem__(self, key, value):
+        self._store[key] = value
+        with self._mutex:
+            # clear keys
+            self._keys_cache = None
+            # clear value
+            self._clear_value(key)
+            # cache new value
+            self._cache_value(key, value)
+
+    def __delitem__(self, key):
+        del self._store[key]
+        with self._mutex:
+            # clear keys
+            self._keys_cache = None
+            # clear value
+            self._clear_value(key)

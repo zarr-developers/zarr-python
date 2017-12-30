@@ -20,7 +20,7 @@ from zarr.storage import (init_array, array_meta_key, attrs_key, DictStore,
                           DirectoryStore, ZipStore, init_group, group_meta_key,
                           getsize, migrate_1to2, TempStore, atexit_rmtree,
                           NestedDirectoryStore, default_compressor, DBMStore,
-                          LMDBStore, atexit_rmglob)
+                          LMDBStore, atexit_rmglob, LRUStoreCache)
 from zarr.meta import (decode_array_metadata, encode_array_metadata, ZARR_FORMAT,
                        decode_group_metadata, encode_group_metadata)
 from zarr.compat import PY2
@@ -844,6 +844,14 @@ class TestLMDBStore(StoreTests, unittest.TestCase):
             store['foo'] = b'bar'
             store['baz'] = b'qux'
             eq(2, len(store))
+
+
+class TestLRUStoreCache(StoreTests, unittest.TestCase):
+
+    def create_store(self):
+        return LRUStoreCache(dict(), max_size=2**27)
+
+    # TODO test caching
 
 
 def test_getsize():
