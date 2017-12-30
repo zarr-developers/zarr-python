@@ -143,18 +143,23 @@ def getsize(store, path=None):
         return store.getsize(path)
     elif isinstance(store, dict):
         # compute from size of values
-        prefix = _path_to_prefix(path)
-        size = 0
-        for k in listdir(store, path):
-            try:
-                v = store[prefix + k]
-            except KeyError:
-                pass
-            else:
+        if path in store:
+            v = store[path]
+            size = buffer_size(v)
+        else:
+            members = listdir(store, path)
+            prefix = _path_to_prefix(path)
+            size = 0
+            for k in members:
                 try:
-                    size += buffer_size(v)
-                except TypeError:
-                    return -1
+                    v = store[prefix + k]
+                except KeyError:
+                    pass
+                else:
+                    try:
+                        size += buffer_size(v)
+                    except TypeError:
+                        return -1
         return size
     else:
         return -1
@@ -610,16 +615,21 @@ class DictStore(MutableMapping):
         path = normalize_storage_path(path)
 
         # obtain value to return size of
-        value = self.root
+        value = None
         if path:
             try:
                 parent, key = self._get_parent(path)
                 value = parent[key]
             except KeyError:
-                err_path_not_found(path)
+                pass
+        else:
+            value = self.root
 
         # obtain size of value
-        if isinstance(value, self.cls):
+        if value is None:
+            return 0
+
+        elif isinstance(value, self.cls):
             # total size for directory
             size = 0
             for v in value.values():
@@ -629,6 +639,7 @@ class DictStore(MutableMapping):
                     except TypeError:
                         return -1
             return size
+
         else:
             try:
                 return buffer_size(value)
@@ -843,7 +854,7 @@ class DirectoryStore(MutableMapping):
                     size += os.path.getsize(child_fs_path)
             return size
         else:
-            err_path_not_found(path)
+            return 0
 
     def clear(self):
         shutil.rmtree(self.path)
@@ -1230,7 +1241,7 @@ class ZipStore(MutableMapping):
                     info = self.zf.getinfo(path)
                     return info.compress_size
                 except KeyError:
-                    err_path_not_found(path)
+                    return 0
             else:
                 return 0
 
@@ -1692,11 +1703,11 @@ class LRUStoreCache(MutableMapping):
 
     def __getstate__(self):
         return (self._store, self._max_size, self._current_size, self._keys_cache,
-                self._values_cache, self.hits, self.misses)
+                self._listdir_cache, self._values_cache, self.hits, self.misses)
 
     def __setstate__(self, state):
         (self._store, self._max_size, self._current_size, self._keys_cache,
-         self._values_cache, self.hits, self.misses) = state
+         self._listdir_cache, self._values_cache, self.hits, self.misses) = state
         self._mutex = Lock()
 
     def __len__(self):
@@ -1711,7 +1722,7 @@ class LRUStoreCache(MutableMapping):
                 self._keys_cache = list(self._store.keys())
         return iter(self._keys_cache)
 
-    def listdir(self, path):
+    def listdir(self, path=None):
         with self._mutex:
             try:
                 return self._listdir_cache[path]
@@ -1719,6 +1730,9 @@ class LRUStoreCache(MutableMapping):
                 listing = listdir(self._store, path)
                 self._listdir_cache[path] = listing
                 return listing
+
+    def getsize(self, path=None):
+        return getsize(self._store, path=path)
 
     def _pop_value(self):
         # remove the first value from the cache, as this will be the least recently
@@ -1750,8 +1764,11 @@ class LRUStoreCache(MutableMapping):
 
     def clear_keys(self):
         with self._mutex:
-            self._keys_cache = None
-            self._listdir_cache.clear()
+            self._clear_keys()
+
+    def _clear_keys(self):
+        self._keys_cache = None
+        self._listdir_cache.clear()
 
     def _clear_value(self, key):
         if key in self._values_cache:
@@ -1783,17 +1800,12 @@ class LRUStoreCache(MutableMapping):
     def __setitem__(self, key, value):
         self._store[key] = value
         with self._mutex:
-            # clear keys
-            self._keys_cache = None
-            # clear value
+            self._clear_keys()
             self._clear_value(key)
-            # cache new value
             self._cache_value(key, value)
 
     def __delitem__(self, key):
         del self._store[key]
         with self._mutex:
-            # clear keys
-            self._keys_cache = None
-            # clear value
+            self._clear_keys()
             self._clear_value(key)

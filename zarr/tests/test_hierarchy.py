@@ -20,7 +20,8 @@ import pytest
 
 from zarr.storage import (DictStore, DirectoryStore, ZipStore, init_group, init_array,
                           array_meta_key, group_meta_key, atexit_rmtree,
-                          NestedDirectoryStore, DBMStore, LMDBStore, atexit_rmglob)
+                          NestedDirectoryStore, DBMStore, LMDBStore, atexit_rmglob,
+                          LRUStoreCache)
 from zarr.core import Array
 from zarr.compat import PY2, text_type
 from zarr.hierarchy import Group, group, open_group
@@ -943,6 +944,14 @@ class TestGroupWithChunkStore(TestGroup):
         expect = ['foo/' + str(i) for i in range(10)]
         actual = sorted(chunk_store.keys())
         eq(expect, actual)
+
+
+class TestGroupWithStoreCache(TestGroup):
+
+    @staticmethod
+    def create_store():
+        store = LRUStoreCache(dict(), max_size=None)
+        return store, None
 
 
 def test_group():
