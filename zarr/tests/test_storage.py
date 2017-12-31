@@ -848,7 +848,7 @@ class TestLRUStoreCache(StoreTests, unittest.TestCase):
     def create_store(self):
         return LRUStoreCache(dict(), max_size=2**27)
 
-    def test_cache_values(self):
+    def test_cache_values_no_max_size(self):
 
         # setup store
         store = CountingDict()
@@ -903,6 +903,102 @@ class TestLRUStoreCache(StoreTests, unittest.TestCase):
         assert 1 == store.counter['__setitem__', 'bar']
 
     # TODO test max size
+    def test_cache_values_with_max_size(self):
+
+        # setup store
+        store = CountingDict()
+        store['foo'] = b'xxx'
+        store['bar'] = b'yyy'
+        assert 0 == store.counter['__getitem__', 'foo']
+        assert 0 == store.counter['__getitem__', 'bar']
+        # setup cache - can only hold one item
+        cache = LRUStoreCache(store, max_size=5)
+        assert 0 == cache.hits
+        assert 0 == cache.misses
+
+        # test first 'foo' __getitem__, cache miss
+        assert b'xxx' == cache['foo']
+        assert 1 == store.counter['__getitem__', 'foo']
+        assert 0 == cache.hits
+        assert 1 == cache.misses
+
+        # test second 'foo' __getitem__, cache hit
+        assert b'xxx' == cache['foo']
+        assert 1 == store.counter['__getitem__', 'foo']
+        assert 1 == cache.hits
+        assert 1 == cache.misses
+
+        # test first 'bar' __getitem__, cache miss
+        assert b'yyy' == cache['bar']
+        assert 1 == store.counter['__getitem__', 'bar']
+        assert 1 == cache.hits
+        assert 2 == cache.misses
+
+        # test second 'bar' __getitem__, cache hit
+        assert b'yyy' == cache['bar']
+        assert 1 == store.counter['__getitem__', 'bar']
+        assert 2 == cache.hits
+        assert 2 == cache.misses
+
+        # test 'foo' __getitem__, should have been evicted, cache miss
+        assert b'xxx' == cache['foo']
+        assert 2 == store.counter['__getitem__', 'foo']
+        assert 2 == cache.hits
+        assert 3 == cache.misses
+
+        # test 'bar' __getitem__, should have been evicted, cache miss
+        assert b'yyy' == cache['bar']
+        assert 2 == store.counter['__getitem__', 'bar']
+        assert 2 == cache.hits
+        assert 4 == cache.misses
+
+        # setup store
+        store = CountingDict()
+        store['foo'] = b'xxx'
+        store['bar'] = b'yyy'
+        assert 0 == store.counter['__getitem__', 'foo']
+        assert 0 == store.counter['__getitem__', 'bar']
+        # setup cache - can hold two items
+        cache = LRUStoreCache(store, max_size=6)
+        assert 0 == cache.hits
+        assert 0 == cache.misses
+
+        # test first 'foo' __getitem__, cache miss
+        assert b'xxx' == cache['foo']
+        assert 1 == store.counter['__getitem__', 'foo']
+        assert 0 == cache.hits
+        assert 1 == cache.misses
+
+        # test second 'foo' __getitem__, cache hit
+        assert b'xxx' == cache['foo']
+        assert 1 == store.counter['__getitem__', 'foo']
+        assert 1 == cache.hits
+        assert 1 == cache.misses
+
+        # test first 'bar' __getitem__, cache miss
+        assert b'yyy' == cache['bar']
+        assert 1 == store.counter['__getitem__', 'bar']
+        assert 1 == cache.hits
+        assert 2 == cache.misses
+
+        # test second 'bar' __getitem__, cache hit
+        assert b'yyy' == cache['bar']
+        assert 1 == store.counter['__getitem__', 'bar']
+        assert 2 == cache.hits
+        assert 2 == cache.misses
+
+        # test 'foo' __getitem__, should still be cached
+        assert b'xxx' == cache['foo']
+        assert 1 == store.counter['__getitem__', 'foo']
+        assert 3 == cache.hits
+        assert 2 == cache.misses
+
+        # test 'bar' __getitem__, should still be cached
+        assert b'yyy' == cache['bar']
+        assert 1 == store.counter['__getitem__', 'bar']
+        assert 4 == cache.hits
+        assert 2 == cache.misses
+
     # TODO test key caching
 
 
