@@ -28,10 +28,10 @@ from zarr.util import (normalize_shape, normalize_chunks, normalize_order,
                        normalize_storage_path, buffer_size,
                        normalize_fill_value, nolock, normalize_dtype)
 from zarr.meta import encode_array_metadata, encode_group_metadata
-from zarr.compat import PY2, binary_type
+from zarr.compat import PY2, binary_type, OrderedDict_move_to_end
 from numcodecs.registry import codec_registry
-from zarr.errors import (err_contains_group, err_contains_array, err_path_not_found,
-                         err_bad_compressor, err_fspath_exists_notdir, err_read_only)
+from zarr.errors import (err_contains_group, err_contains_array, err_bad_compressor,
+                         err_fspath_exists_notdir, err_read_only)
 
 
 array_meta_key = '.zarray'
@@ -1783,7 +1783,7 @@ class LRUStoreCache(MutableMapping):
                 # cache hit if no KeyError is raised
                 self.hits += 1
                 # treat the end as most recently used
-                self._values_cache.move_to_end(key)
+                OrderedDict_move_to_end(self._values_cache, key)
 
         except KeyError:
             # cache miss, retrieve value from the store

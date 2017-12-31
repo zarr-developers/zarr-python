@@ -318,7 +318,10 @@ def buffer_size(v):
         return v.buffer_info()[1] * v.itemsize
     else:  # pragma: py2 no cover
         v = memoryview(v)
-        return reduce(operator.mul, v.shape, 1) * v.itemsize
+        if v.shape:
+            return reduce(operator.mul, v.shape) * v.itemsize
+        else:
+            return v.itemsize
 
 
 def info_text_report(items):
