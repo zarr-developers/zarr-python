@@ -1696,6 +1696,7 @@ class LRUStoreCache(MutableMapping):
         self._max_size = max_size
         self._current_size = 0
         self._keys_cache = None
+        self._contains_cache = None
         self._listdir_cache = dict()
         self._values_cache = OrderedDict()
         self._mutex = Lock()
@@ -1703,11 +1704,13 @@ class LRUStoreCache(MutableMapping):
 
     def __getstate__(self):
         return (self._store, self._max_size, self._current_size, self._keys_cache,
-                self._listdir_cache, self._values_cache, self.hits, self.misses)
+                self._contains_cache, self._listdir_cache, self._values_cache, self.hits,
+                self.misses)
 
     def __setstate__(self, state):
         (self._store, self._max_size, self._current_size, self._keys_cache,
-         self._listdir_cache, self._values_cache, self.hits, self.misses) = state
+         self._contains_cache, self._listdir_cache, self._values_cache, self.hits,
+         self.misses) = state
         self._mutex = Lock()
 
     def __len__(self):
@@ -1716,10 +1719,19 @@ class LRUStoreCache(MutableMapping):
     def __iter__(self):
         return self.keys()
 
+    def __contains__(self, key):
+        with self._mutex:
+            if self._contains_cache is None:
+                self._contains_cache = set(self._keys())
+            return key in self._contains_cache
+
     def keys(self):
         with self._mutex:
-            if self._keys_cache is None:
-                self._keys_cache = list(self._store.keys())
+            return self._keys()
+
+    def _keys(self):
+        if self._keys_cache is None:
+            self._keys_cache = list(self._store.keys())
         return iter(self._keys_cache)
 
     def listdir(self, path=None):
@@ -1768,6 +1780,7 @@ class LRUStoreCache(MutableMapping):
 
     def _clear_keys(self):
         self._keys_cache = None
+        self._contains_cache = None
         self._listdir_cache.clear()
 
     def _clear_value(self, key):

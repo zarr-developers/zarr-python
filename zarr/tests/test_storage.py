@@ -889,6 +889,12 @@ class TestLRUStoreCache(StoreTests, unittest.TestCase):
         assert 2 == cache.hits
         assert 1 == cache.misses
 
+        # manually clear all cached values
+        cache.clear_values()
+        assert b'zzz' == cache['foo']
+        assert 2 == store.counter['__getitem__', 'foo']
+        assert 2 == store.counter['__setitem__', 'foo']
+
         # test __delitem__
         del cache['foo']
         with pytest.raises(KeyError):
@@ -902,7 +908,6 @@ class TestLRUStoreCache(StoreTests, unittest.TestCase):
         assert 0 == store.counter['__getitem__', 'bar']
         assert 1 == store.counter['__setitem__', 'bar']
 
-    # TODO test max size
     def test_cache_values_with_max_size(self):
 
         # setup store
@@ -999,7 +1004,63 @@ class TestLRUStoreCache(StoreTests, unittest.TestCase):
         assert 4 == cache.hits
         assert 2 == cache.misses
 
-    # TODO test key caching
+    def test_cache_keys(self):
+
+        # setup
+        store = CountingDict()
+        store['foo'] = b'xxx'
+        store['bar'] = b'yyy'
+        assert 0 == store.counter['__contains__', 'foo']
+        assert 0 == store.counter['__iter__']
+        assert 0 == store.counter['keys']
+        cache = LRUStoreCache(store, max_size=None)
+
+        # keys should be cached on first call
+        keys = sorted(cache.keys())
+        assert keys == ['bar', 'foo']
+        assert 1 == store.counter['keys']
+        # keys should now be cached
+        assert keys == sorted(cache.keys())
+        assert 1 == store.counter['keys']
+        assert 'foo' in cache
+        assert 0 == store.counter['__contains__', 'foo']
+        assert keys == sorted(cache)
+        assert 0 == store.counter['__iter__']
+        assert 1 == store.counter['keys']
+
+        # cache should be cleared if store is modified - crude but simple for now
+        cache['baz'] = b'zzz'
+        keys = sorted(cache.keys())
+        assert keys == ['bar', 'baz', 'foo']
+        assert 2 == store.counter['keys']
+        # keys should now be cached
+        assert keys == sorted(cache.keys())
+        assert 2 == store.counter['keys']
+
+        # manually clear keys
+        cache.clear_keys()
+        keys = sorted(cache.keys())
+        assert keys == ['bar', 'baz', 'foo']
+        assert 3 == store.counter['keys']
+        assert 0 == store.counter['__contains__', 'foo']
+        assert 0 == store.counter['__iter__']
+        cache.clear_keys()
+        keys = sorted(cache)
+        assert keys == ['bar', 'baz', 'foo']
+        assert 4 == store.counter['keys']
+        assert 0 == store.counter['__contains__', 'foo']
+        assert 0 == store.counter['__iter__']
+        cache.clear_keys()
+        assert 'foo' in cache
+        assert 5 == store.counter['keys']
+        assert 0 == store.counter['__contains__', 'foo']
+        assert 0 == store.counter['__iter__']
+
+        # check these would get counted if called directly
+        assert 'foo' in store
+        assert 1 == store.counter['__contains__', 'foo']
+        assert keys == sorted(store)
+        assert 1 == store.counter['__iter__']
 
 
 def test_getsize():
