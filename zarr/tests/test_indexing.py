@@ -4,64 +4,65 @@ from __future__ import absolute_import, print_function, division
 
 import numpy as np
 from numpy.testing import assert_array_equal
-from nose.tools import assert_raises, eq_ as eq
+import pytest
 
 
-from zarr.indexing import (normalize_integer_selection, replace_ellipsis, oindex, oindex_set)
+from zarr.indexing import (normalize_integer_selection, replace_ellipsis, oindex,
+                           oindex_set)
 import zarr
 
 
 def test_normalize_integer_selection():
 
-    eq(1, normalize_integer_selection(1, 100))
-    eq(99, normalize_integer_selection(-1, 100))
-    with assert_raises(IndexError):
+    assert 1 == normalize_integer_selection(1, 100)
+    assert 99 == normalize_integer_selection(-1, 100)
+    with pytest.raises(IndexError):
         normalize_integer_selection(100, 100)
-    with assert_raises(IndexError):
+    with pytest.raises(IndexError):
         normalize_integer_selection(1000, 100)
-    with assert_raises(IndexError):
+    with pytest.raises(IndexError):
         normalize_integer_selection(-1000, 100)
 
 
 def test_replace_ellipsis():
 
     # 1D, single item
-    eq((0,), replace_ellipsis(0, (100,)))
+    assert (0,) == replace_ellipsis(0, (100,))
 
     # 1D
-    eq((slice(None),), replace_ellipsis(Ellipsis, (100,)))
-    eq((slice(None),), replace_ellipsis(slice(None), (100,)))
-    eq((slice(None, 100),), replace_ellipsis(slice(None, 100), (100,)))
-    eq((slice(0, None),), replace_ellipsis(slice(0, None), (100,)))
-    eq((slice(None),), replace_ellipsis((slice(None), Ellipsis), (100,)))
-    eq((slice(None),), replace_ellipsis((Ellipsis, slice(None)), (100,)))
+    assert (slice(None),) == replace_ellipsis(Ellipsis, (100,))
+    assert (slice(None),) == replace_ellipsis(slice(None), (100,))
+    assert (slice(None, 100),) == replace_ellipsis(slice(None, 100), (100,))
+    assert (slice(0, None),) == replace_ellipsis(slice(0, None), (100,))
+    assert (slice(None),) == replace_ellipsis((slice(None), Ellipsis), (100,))
+    assert (slice(None),) == replace_ellipsis((Ellipsis, slice(None)), (100,))
 
     # 2D, single item
-    eq((0, 0), replace_ellipsis((0, 0), (100, 100)))
-    eq((-1, 1), replace_ellipsis((-1, 1), (100, 100)))
+    assert (0, 0) == replace_ellipsis((0, 0), (100, 100))
+    assert (-1, 1) == replace_ellipsis((-1, 1), (100, 100))
 
     # 2D, single col/row
-    eq((0, slice(None)), replace_ellipsis((0, slice(None)), (100, 100)))
-    eq((0, slice(None)), replace_ellipsis((0,), (100, 100)))
-    eq((slice(None), 0), replace_ellipsis((slice(None), 0), (100, 100)))
+    assert (0, slice(None)) == replace_ellipsis((0, slice(None)), (100, 100))
+    assert (0, slice(None)) == replace_ellipsis((0,), (100, 100))
+    assert (slice(None), 0) == replace_ellipsis((slice(None), 0), (100, 100))
 
     # 2D slice
-    eq((slice(None), slice(None)),
-       replace_ellipsis(Ellipsis, (100, 100)))
-    eq((slice(None), slice(None)),
-       replace_ellipsis(slice(None), (100, 100)))
-    eq((slice(None), slice(None)),
-       replace_ellipsis((slice(None), slice(None)), (100, 100)))
-    eq((slice(None), slice(None)),
-       replace_ellipsis((Ellipsis, slice(None)), (100, 100)))
-    eq((slice(None), slice(None)),
-       replace_ellipsis((slice(None), Ellipsis), (100, 100)))
-    eq((slice(None), slice(None)),
-       replace_ellipsis((slice(None), Ellipsis, slice(None)), (100, 100)))
-    eq((slice(None), slice(None)),
-       replace_ellipsis((Ellipsis, slice(None), slice(None)), (100, 100)))
-    eq((slice(None), slice(None)),
-       replace_ellipsis((slice(None), slice(None), Ellipsis), (100, 100)))
+    assert ((slice(None), slice(None)) ==
+            replace_ellipsis(Ellipsis, (100, 100)))
+    assert ((slice(None), slice(None)) ==
+            replace_ellipsis(slice(None), (100, 100)))
+    assert ((slice(None), slice(None)) ==
+            replace_ellipsis((slice(None), slice(None)), (100, 100)))
+    assert ((slice(None), slice(None)) ==
+            replace_ellipsis((Ellipsis, slice(None)), (100, 100)))
+    assert ((slice(None), slice(None)) ==
+            replace_ellipsis((slice(None), Ellipsis), (100, 100)))
+    assert ((slice(None), slice(None)) ==
+            replace_ellipsis((slice(None), Ellipsis, slice(None)), (100, 100)))
+    assert ((slice(None), slice(None)) ==
+            replace_ellipsis((Ellipsis, slice(None), slice(None)), (100, 100)))
+    assert ((slice(None), slice(None)) ==
+            replace_ellipsis((slice(None), slice(None), Ellipsis), (100, 100)))
 
 
 def test_get_basic_selection_0d():
@@ -73,8 +74,8 @@ def test_get_basic_selection_0d():
 
     assert_array_equal(a, z.get_basic_selection(Ellipsis))
     assert_array_equal(a, z[...])
-    eq(42, z.get_basic_selection(()))
-    eq(42, z[()])
+    assert 42 == z.get_basic_selection(())
+    assert 42 == z[()]
 
     # test out param
     b = np.zeros_like(a)
@@ -88,12 +89,12 @@ def test_get_basic_selection_0d():
     z[()] = value
     assert_array_equal(a, z.get_basic_selection(Ellipsis))
     assert_array_equal(a, z[...])
-    eq(a[()], z.get_basic_selection(()))
-    eq(a[()], z[()])
-    eq(b'aaa', z.get_basic_selection((), fields='foo'))
-    eq(b'aaa', z['foo'])
-    eq(a[['foo', 'bar']], z.get_basic_selection((), fields=['foo', 'bar']))
-    eq(a[['foo', 'bar']], z['foo', 'bar'])
+    assert a[()] == z.get_basic_selection(())
+    assert a[()] == z[()]
+    assert b'aaa' == z.get_basic_selection((), fields='foo')
+    assert b'aaa' == z['foo']
+    assert a[['foo', 'bar']] == z.get_basic_selection((), fields=['foo', 'bar'])
+    assert a[['foo', 'bar']] == z['foo', 'bar']
     # test out param
     b = np.zeros_like(a)
     z.get_basic_selection(Ellipsis, out=b)
@@ -201,9 +202,9 @@ def test_get_basic_selection_1d():
         [0, 1],  # fancy indexing
     ]
     for selection in bad_selections:
-        with assert_raises(IndexError):
+        with pytest.raises(IndexError):
             z.get_basic_selection(selection)
-        with assert_raises(IndexError):
+        with pytest.raises(IndexError):
             z[selection]
 
 
@@ -277,9 +278,9 @@ def test_get_basic_selection_2d():
         (slice(None), [0, 1]),
     ]
     for selection in bad_selections:
-        with assert_raises(IndexError):
+        with pytest.raises(IndexError):
             z.get_basic_selection(selection)
-        with assert_raises(IndexError):
+        with pytest.raises(IndexError):
             z[selection]
 
 
@@ -316,17 +317,17 @@ def test_set_basic_selection_0d():
     assert_array_equal(a, z)
     # with fields
     z.set_basic_selection(Ellipsis, v['foo'], fields='foo')
-    eq(v['foo'], z['foo'])
-    eq(a['bar'], z['bar'])
-    eq(a['baz'], z['baz'])
+    assert v['foo'] == z['foo']
+    assert a['bar'] == z['bar']
+    assert a['baz'] == z['baz']
     z['bar'] = v['bar']
-    eq(v['foo'], z['foo'])
-    eq(v['bar'], z['bar'])
-    eq(a['baz'], z['baz'])
+    assert v['foo'] == z['foo']
+    assert v['bar'] == z['bar']
+    assert a['baz'] == z['baz']
     # multiple field assignment not supported
-    with assert_raises(IndexError):
+    with pytest.raises(IndexError):
         z.set_basic_selection(Ellipsis, v[['foo', 'bar']], fields=['foo', 'bar'])
-    with assert_raises(IndexError):
+    with pytest.raises(IndexError):
         z[..., 'foo', 'bar'] = v[['foo', 'bar']]
 
 
@@ -353,11 +354,11 @@ def test_get_orthogonal_selection_1d_bool():
         _test_get_orthogonal_selection(a, z, ix)
 
     # test errors
-    with assert_raises(IndexError):
+    with pytest.raises(IndexError):
         z.oindex[np.zeros(50, dtype=bool)]  # too short
-    with assert_raises(IndexError):
+    with pytest.raises(IndexError):
         z.oindex[np.zeros(2000, dtype=bool)]  # too long
-    with assert_raises(IndexError):
+    with pytest.raises(IndexError):
         z.oindex[[[True, False], [False, True]]]  # too many dimensions
 
 
@@ -398,9 +399,9 @@ def test_get_orthogonal_selection_1d_int():
         [[2, 4], [6, 8]],  # too many dimensions
     ]
     for selection in bad_selections:
-        with assert_raises(IndexError):
+        with pytest.raises(IndexError):
             z.get_orthogonal_selection(selection)
-        with assert_raises(IndexError):
+        with pytest.raises(IndexError):
             z.oindex[selection]
 
 
@@ -461,9 +462,9 @@ def test_get_orthogonal_selection_2d():
         _test_get_orthogonal_selection(a, z, selection)
 
     for selection in basic_selections_2d_bad:
-        with assert_raises(IndexError):
+        with pytest.raises(IndexError):
             z.get_orthogonal_selection(selection)
-        with assert_raises(IndexError):
+        with pytest.raises(IndexError):
             z.oindex[selection]
 
 
@@ -766,9 +767,9 @@ def test_get_coordinate_selection_1d():
         [-(a.shape[0] + 1)],  # out of bounds
     ]
     for selection in bad_selections:
-        with assert_raises(IndexError):
+        with pytest.raises(IndexError):
             z.get_coordinate_selection(selection)
-        with assert_raises(IndexError):
+        with pytest.raises(IndexError):
             z.vindex[selection]
 
 
@@ -816,16 +817,16 @@ def test_get_coordinate_selection_2d():
                     [1, 0, 0]])
     _test_get_coordinate_selection(a, z, (ix0, ix1))
 
-    with assert_raises(IndexError):
+    with pytest.raises(IndexError):
         selection = slice(5, 15), [1, 2, 3]
         z.get_coordinate_selection(selection)
-    with assert_raises(IndexError):
+    with pytest.raises(IndexError):
         selection = [1, 2, 3], slice(5, 15)
         z.get_coordinate_selection(selection)
-    with assert_raises(IndexError):
+    with pytest.raises(IndexError):
         selection = Ellipsis, [1, 2, 3]
         z.get_coordinate_selection(selection)
-    with assert_raises(IndexError):
+    with pytest.raises(IndexError):
         selection = Ellipsis
         z.get_coordinate_selection(selection)
 
@@ -864,9 +865,9 @@ def test_set_coordinate_selection_1d():
     _test_set_coordinate_selection(v, a, z, ix)
 
     for selection in coordinate_selections_1d_bad:
-        with assert_raises(IndexError):
+        with pytest.raises(IndexError):
             z.set_coordinate_selection(selection, 42)
-        with assert_raises(IndexError):
+        with pytest.raises(IndexError):
             z.vindex[selection] = 42
 
 
@@ -948,9 +949,9 @@ def test_get_mask_selection_1d():
         [[True, False], [False, True]],  # too many dimensions
     ]
     for selection in bad_selections:
-        with assert_raises(IndexError):
+        with pytest.raises(IndexError):
             z.get_mask_selection(selection)
-        with assert_raises(IndexError):
+        with pytest.raises(IndexError):
             z.vindex[selection]
 
 
@@ -969,11 +970,11 @@ def test_get_mask_selection_2d():
         _test_get_mask_selection(a, z, ix)
 
     # test errors
-    with assert_raises(IndexError):
+    with pytest.raises(IndexError):
         z.vindex[np.zeros((1000, 5), dtype=bool)]  # too short
-    with assert_raises(IndexError):
+    with pytest.raises(IndexError):
         z.vindex[np.zeros((2000, 10), dtype=bool)]  # too long
-    with assert_raises(IndexError):
+    with pytest.raises(IndexError):
         z.vindex[[True, False]]  # wrong no. dimensions
 
 
@@ -1002,9 +1003,9 @@ def test_set_mask_selection_1d():
         _test_set_mask_selection(v, a, z, ix)
 
     for selection in mask_selections_1d_bad:
-        with assert_raises(IndexError):
+        with pytest.raises(IndexError):
             z.set_mask_selection(selection, 42)
-        with assert_raises(IndexError):
+        with pytest.raises(IndexError):
             z.vindex[selection] = 42
 
 
@@ -1039,7 +1040,7 @@ def test_get_selection_out():
         z.get_basic_selection(selection, out=out)
         assert_array_equal(expect, out[:])
 
-    with assert_raises(TypeError):
+    with pytest.raises(TypeError):
         z.get_basic_selection(Ellipsis, out=[])
 
     # orthogonal selections
@@ -1200,9 +1201,9 @@ def test_get_selections_with_fields():
             assert_array_equal(expect, actual)
 
     # missing/bad fields
-    with assert_raises(IndexError):
+    with pytest.raises(IndexError):
         z.get_basic_selection(Ellipsis, fields=['notafield'])
-    with assert_raises(IndexError):
+    with pytest.raises(IndexError):
         z.get_basic_selection(Ellipsis, fields=slice(None))
 
 
@@ -1229,22 +1230,23 @@ def test_set_selections_with_fields():
 
     for fields in fields_fixture:
 
-        # currently multi-field assignment is not supported in numpy, so we won't support it either
+        # currently multi-field assignment is not supported in numpy, so we won't support
+        # it either
         if isinstance(fields, list) and len(fields) > 1:
-            with assert_raises(IndexError):
+            with pytest.raises(IndexError):
                 z.set_basic_selection(Ellipsis, v, fields=fields)
-            with assert_raises(IndexError):
+            with pytest.raises(IndexError):
                 z.set_orthogonal_selection([0, 2], v, fields=fields)
-            with assert_raises(IndexError):
+            with pytest.raises(IndexError):
                 z.set_coordinate_selection([0, 2], v, fields=fields)
-            with assert_raises(IndexError):
+            with pytest.raises(IndexError):
                 z.set_mask_selection([True, False, True], v, fields=fields)
 
         else:
 
             if isinstance(fields, list) and len(fields) == 1:
-                # work around numpy does not support multi-field assignment even if there is only
-                # one field
+                # work around numpy does not support multi-field assignment even if there
+                # is only one field
                 key = fields[0]
             elif isinstance(fields, list) and len(fields) == 0:
                 # work around numpy ambiguity about what is a field selection
