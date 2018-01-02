@@ -775,7 +775,7 @@ Copying/migrating data
 
 If you have some data in an HDF5 file and would like to copy some or all of it
 into a Zarr group, or vice-versa, the :func:`zarr.convenience.copy` and
-:func:`zarr.convenience.copyall` functions can be used. Here's an example
+:func:`zarr.convenience.copy_all` functions can be used. Here's an example
 copying a group named 'foo' from an HDF5 file to a Zarr group::
 
     >>> import h5py
@@ -807,7 +807,7 @@ copying a group named 'foo' from an HDF5 file to a Zarr group::
     >>> source.close()
 
 If rather than copying a single group or dataset you would like to copy all
-groups and datasets, use :func:`zarr.convenience.copyall`, e.g.::
+groups and datasets, use :func:`zarr.convenience.copy_all`, e.g.::
 
     >>> source = h5py.File('data/example.h5', mode='r')
     >>> dest = zarr.open_group('data/example2.zarr', mode='w')
