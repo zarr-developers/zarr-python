@@ -13,3 +13,4 @@ The Attributes class (``zarr.attrs``)
     .. automethod:: asdict
     .. automethod:: put
     .. automethod:: update
+    .. automethod:: refresh

@@ -55,6 +55,11 @@ class Attributes(MutableMapping):
             self._cached_asdict = d
         return d
 
+    def refresh(self):
+        """Refresh cached attributes from the store."""
+        if self.cache:
+            self._cached_asdict = self._get_nosync()
+
     def __contains__(self, x):
         return x in self.asdict()
 

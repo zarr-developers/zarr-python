@@ -168,6 +168,16 @@ class TestAttributes(unittest.TestCase):
         eq(4, store.counter['__getitem__', 'attrs'])
         eq(4, store.counter['__setitem__', 'attrs'])
 
+        # test refresh()
+        store['attrs'] = json.dumps(dict(foo='xxx', bar=42)).encode('ascii')
+        eq(4, store.counter['__getitem__', 'attrs'])
+        a.refresh()
+        eq(5, store.counter['__getitem__', 'attrs'])
+        eq(a['foo'], 'xxx')
+        eq(5, store.counter['__getitem__', 'attrs'])
+        eq(a['bar'], 42)
+        eq(5, store.counter['__getitem__', 'attrs'])
+
     def test_caching_off(self):
 
         # setup store
