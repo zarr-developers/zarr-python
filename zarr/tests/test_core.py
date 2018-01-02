@@ -11,9 +11,6 @@ import warnings
 
 import numpy as np
 from numpy.testing import assert_array_equal, assert_array_almost_equal
-from nose.tools import (eq_ as eq, assert_is_instance, assert_raises, assert_true,
-                        assert_false, assert_is, assert_is_none)
-from nose import SkipTest
 import pytest
 
 
@@ -44,37 +41,37 @@ class TestArray(unittest.TestCase):
         store = dict()
         init_array(store, shape=100, chunks=10)
         a = Array(store)
-        assert_is_instance(a, Array)
-        eq((100,), a.shape)
-        eq((10,), a.chunks)
-        eq('', a.path)
-        assert_is_none(a.name)
-        assert_is_none(a.basename)
-        assert_is(store, a.store)
-        eq("8fecb7a17ea1493d9c1430d04437b4f5b0b34985", a.hexdigest())
+        assert isinstance(a, Array)
+        assert (100,) == a.shape
+        assert (10,) == a.chunks
+        assert '' == a.path
+        assert a.name is None
+        assert a.basename is None
+        assert store is a.store
+        assert "8fecb7a17ea1493d9c1430d04437b4f5b0b34985" == a.hexdigest()
 
         # initialize at path
         store = dict()
         init_array(store, shape=100, chunks=10, path='foo/bar')
         a = Array(store, path='foo/bar')
-        assert_is_instance(a, Array)
-        eq((100,), a.shape)
-        eq((10,), a.chunks)
-        eq('foo/bar', a.path)
-        eq('/foo/bar', a.name)
-        eq('bar', a.basename)
-        assert_is(store, a.store)
-        eq("8fecb7a17ea1493d9c1430d04437b4f5b0b34985", a.hexdigest())
+        assert isinstance(a, Array)
+        assert (100,) == a.shape
+        assert (10,) == a.chunks
+        assert 'foo/bar' == a.path
+        assert '/foo/bar' == a.name
+        assert 'bar' == a.basename
+        assert store is a.store
+        assert "8fecb7a17ea1493d9c1430d04437b4f5b0b34985" == a.hexdigest()
 
         # store not initialized
         store = dict()
-        with assert_raises(ValueError):
+        with pytest.raises(ValueError):
             Array(store)
 
         # group is in the way
         store = dict()
         init_group(store, path='baz')
-        with assert_raises(ValueError):
+        with pytest.raises(ValueError):
             Array(store, path='baz')
 
     def create_array(self, read_only=False, **kwargs):
@@ -91,15 +88,15 @@ class TestArray(unittest.TestCase):
         # dict as store
         z = self.create_array(shape=1000, chunks=100)
         expect_nbytes_stored = sum(buffer_size(v) for v in z.store.values())
-        eq(expect_nbytes_stored, z.nbytes_stored)
+        assert expect_nbytes_stored == z.nbytes_stored
         z[:] = 42
         expect_nbytes_stored = sum(buffer_size(v) for v in z.store.values())
-        eq(expect_nbytes_stored, z.nbytes_stored)
+        assert expect_nbytes_stored == z.nbytes_stored
 
         # mess with store
         try:
             z.store[z._key_prefix + 'foo'] = list(range(10))
-            eq(-1, z.nbytes_stored)
+            assert -1 == z.nbytes_stored
         except TypeError:
             pass
 
@@ -109,33 +106,33 @@ class TestArray(unittest.TestCase):
         z = self.create_array(shape=a.shape, chunks=100, dtype=a.dtype)
 
         # check properties
-        eq(len(a), len(z))
-        eq(a.ndim, z.ndim)
-        eq(a.shape, z.shape)
-        eq(a.dtype, z.dtype)
-        eq((100,), z.chunks)
-        eq(a.nbytes, z.nbytes)
-        eq(11, z.nchunks)
-        eq(0, z.nchunks_initialized)
-        eq((11,), z.cdata_shape)
+        assert len(a) == len(z)
+        assert a.ndim == z.ndim
+        assert a.shape == z.shape
+        assert a.dtype == z.dtype
+        assert (100,) == z.chunks
+        assert a.nbytes == z.nbytes
+        assert 11 == z.nchunks
+        assert 0 == z.nchunks_initialized
+        assert (11,) == z.cdata_shape
 
         # check empty
         b = z[:]
-        assert_is_instance(b, np.ndarray)
-        eq(a.shape, b.shape)
-        eq(a.dtype, b.dtype)
+        assert isinstance(b, np.ndarray)
+        assert a.shape == b.shape
+        assert a.dtype == b.dtype
 
         # check attributes
         z.attrs['foo'] = 'bar'
-        eq('bar', z.attrs['foo'])
+        assert 'bar' == z.attrs['foo']
 
         # set data
         z[:] = a
 
         # check properties
-        eq(a.nbytes, z.nbytes)
-        eq(11, z.nchunks)
-        eq(11, z.nchunks_initialized)
+        assert a.nbytes == z.nbytes
+        assert 11 == z.nchunks
+        assert 11 == z.nchunks_initialized
 
         # check slicing
         assert_array_equal(a, np.array(z))
@@ -157,24 +154,24 @@ class TestArray(unittest.TestCase):
         assert_array_equal(a[190:310], z[190:310])
         assert_array_equal(a[-110:], z[-110:])
         # single item
-        eq(a[0], z[0])
-        eq(a[-1], z[-1])
+        assert a[0] == z[0]
+        assert a[-1] == z[-1]
         # unusual integer items
-        eq(a[42], z[np.int64(42)])
-        eq(a[42], z[np.int32(42)])
-        eq(a[42], z[np.uint64(42)])
-        eq(a[42], z[np.uint32(42)])
+        assert a[42] == z[np.int64(42)]
+        assert a[42] == z[np.int32(42)]
+        assert a[42] == z[np.uint64(42)]
+        assert a[42] == z[np.uint32(42)]
         # too many indices
-        with assert_raises(IndexError):
+        with pytest.raises(IndexError):
             z[:, :]
-        with assert_raises(IndexError):
+        with pytest.raises(IndexError):
             z[0, :]
-        with assert_raises(IndexError):
+        with pytest.raises(IndexError):
             z[:, 0]
-        with assert_raises(IndexError):
+        with pytest.raises(IndexError):
             z[0, 0]
         # only single ellipsis allowed
-        with assert_raises(IndexError):
+        with pytest.raises(IndexError):
             z[..., ...]
 
         # check partial assignment
@@ -263,20 +260,20 @@ class TestArray(unittest.TestCase):
         z = self.create_array(shape=a.shape, chunks=(100, 2), dtype=a.dtype)
 
         # check properties
-        eq(len(a), len(z))
-        eq(a.ndim, z.ndim)
-        eq(a.shape, z.shape)
-        eq(a.dtype, z.dtype)
-        eq((100, 2), z.chunks)
-        eq(0, z.nchunks_initialized)
-        eq((10, 5), z.cdata_shape)
+        assert len(a) == len(z)
+        assert a.ndim == z.ndim
+        assert a.shape == z.shape
+        assert a.dtype == z.dtype
+        assert (100, 2) == z.chunks
+        assert 0 == z.nchunks_initialized
+        assert (10, 5) == z.cdata_shape
 
         # set data
         z[:] = a
 
         # check properties
-        eq(a.nbytes, z.nbytes)
-        eq(50, z.nchunks_initialized)
+        assert a.nbytes == z.nbytes
+        assert 50 == z.nchunks_initialized
 
         # check array-like
         assert_array_equal(a, np.array(z))
@@ -338,22 +335,22 @@ class TestArray(unittest.TestCase):
         assert_array_equal(a[-1], z[-1])
         assert_array_equal(a[:, 0], z[:, 0])
         assert_array_equal(a[:, -1], z[:, -1])
-        eq(a[0, 0], z[0, 0])
-        eq(a[-1, -1], z[-1, -1])
+        assert a[0, 0] == z[0, 0]
+        assert a[-1, -1] == z[-1, -1]
 
         # too many indices
-        with assert_raises(IndexError):
+        with pytest.raises(IndexError):
             z[:, :, :]
-        with assert_raises(IndexError):
+        with pytest.raises(IndexError):
             z[0, :, :]
-        with assert_raises(IndexError):
+        with pytest.raises(IndexError):
             z[:, 0, :]
-        with assert_raises(IndexError):
+        with pytest.raises(IndexError):
             z[:, :, 0]
-        with assert_raises(IndexError):
+        with pytest.raises(IndexError):
             z[0, 0, 0]
         # only single ellipsis allowed
-        with assert_raises(IndexError):
+        with pytest.raises(IndexError):
             z[..., ...]
 
         # check partial assignment
@@ -384,10 +381,10 @@ class TestArray(unittest.TestCase):
         # check partial assignment, single row
         c = np.arange(z.shape[1])
         z[0, :] = c
-        with assert_raises(ValueError):
+        with pytest.raises(ValueError):
             # N.B., NumPy allows this, but we'll be strict for now
             z[2:3] = c
-        with assert_raises(ValueError):
+        with pytest.raises(ValueError):
             # N.B., NumPy allows this, but we'll be strict for now
             z[-1:] = c
         z[2:3] = c[None, :]
@@ -399,9 +396,9 @@ class TestArray(unittest.TestCase):
         # check partial assignment, single column
         d = np.arange(z.shape[0])
         z[:, 0] = d
-        with assert_raises(ValueError):
+        with pytest.raises(ValueError):
             z[:, 2:3] = d
-        with assert_raises(ValueError):
+        with pytest.raises(ValueError):
             z[:, -1:] = d
         z[:, 2:3] = d[:, None]
         z[:, -1:] = d[:, None]
@@ -413,9 +410,9 @@ class TestArray(unittest.TestCase):
         z[0, 0] = -1
         z[2, 2] = -1
         z[-1, -1] = -1
-        eq(-1, z[0, 0])
-        eq(-1, z[2, 2])
-        eq(-1, z[-1, -1])
+        assert -1 == z[0, 0]
+        assert -1 == z[2, 2]
+        assert -1 == z[-1, -1]
 
     def test_array_order(self):
 
@@ -424,11 +421,11 @@ class TestArray(unittest.TestCase):
         for order in 'C', 'F':
             z = self.create_array(shape=a.shape, chunks=100, dtype=a.dtype,
                                   order=order)
-            eq(order, z.order)
+            assert order == z.order
             if order == 'F':
-                assert_true(z[:].flags.f_contiguous)
+                assert z[:].flags.f_contiguous
             else:
-                assert_true(z[:].flags.c_contiguous)
+                assert z[:].flags.c_contiguous
             z[:] = a
             assert_array_equal(a, z[:])
 
@@ -437,11 +434,11 @@ class TestArray(unittest.TestCase):
         for order in 'C', 'F':
             z = self.create_array(shape=a.shape, chunks=(10, 10),
                                   dtype=a.dtype, order=order)
-            eq(order, z.order)
+            assert order == z.order
             if order == 'F':
-                assert_true(z[:].flags.f_contiguous)
+                assert z[:].flags.f_contiguous
             else:
-                assert_true(z[:].flags.c_contiguous)
+                assert z[:].flags.c_contiguous
             z[:] = a
             actual = z[:]
             assert_array_equal(a, actual)
@@ -459,25 +456,25 @@ class TestArray(unittest.TestCase):
     def test_hexdigest(self):
         # Check basic 1-D array
         z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
-        eq('063b02ff8d9d3bab6da932ad5828b506ef0a6578', z.hexdigest())
+        assert '063b02ff8d9d3bab6da932ad5828b506ef0a6578' == z.hexdigest()
 
         # Check basic 1-D array with different type
         z = self.create_array(shape=(1050,), chunks=100, dtype='f4')
-        eq('f97b84dc9ffac807415f750100108764e837bb82', z.hexdigest())
+        assert 'f97b84dc9ffac807415f750100108764e837bb82' == z.hexdigest()
 
         # Check basic 2-D array
         z = self.create_array(shape=(20, 35,), chunks=10, dtype='i4')
-        eq('4f797d7bdad0fa1c9fa8c80832efb891a68de104', z.hexdigest())
+        assert '4f797d7bdad0fa1c9fa8c80832efb891a68de104' == z.hexdigest()
 
         # Check basic 1-D array with some data
         z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
         z[200:400] = np.arange(200, 400, dtype='i4')
-        eq('14470724dca6c1837edddedc490571b6a7f270bc', z.hexdigest())
+        assert '14470724dca6c1837edddedc490571b6a7f270bc' == z.hexdigest()
 
         # Check basic 1-D array with attributes
         z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
         z.attrs['foo'] = 'bar'
-        eq('2a1046dd99b914459b3e86be9dde05027a07d209', z.hexdigest())
+        assert '2a1046dd99b914459b3e86be9dde05027a07d209' == z.hexdigest()
 
     def test_resize_1d(self):
 
@@ -485,34 +482,34 @@ class TestArray(unittest.TestCase):
                               fill_value=0)
         a = np.arange(105, dtype='i4')
         z[:] = a
-        eq((105,), z.shape)
-        eq((105,), z[:].shape)
-        eq(np.dtype('i4'), z.dtype)
-        eq(np.dtype('i4'), z[:].dtype)
-        eq((10,), z.chunks)
+        assert (105,) == z.shape
+        assert (105,) == z[:].shape
+        assert np.dtype('i4') == z.dtype
+        assert np.dtype('i4') == z[:].dtype
+        assert (10,) == z.chunks
         assert_array_equal(a, z[:])
 
         z.resize(205)
-        eq((205,), z.shape)
-        eq((205,), z[:].shape)
-        eq(np.dtype('i4'), z.dtype)
-        eq(np.dtype('i4'), z[:].dtype)
-        eq((10,), z.chunks)
+        assert (205,) == z.shape
+        assert (205,) == z[:].shape
+        assert np.dtype('i4') == z.dtype
+        assert np.dtype('i4') == z[:].dtype
+        assert (10,) == z.chunks
         assert_array_equal(a, z[:105])
         assert_array_equal(np.zeros(100, dtype='i4'), z[105:])
 
         z.resize(55)
-        eq((55,), z.shape)
-        eq((55,), z[:].shape)
-        eq(np.dtype('i4'), z.dtype)
-        eq(np.dtype('i4'), z[:].dtype)
-        eq((10,), z.chunks)
+        assert (55,) == z.shape
+        assert (55,) == z[:].shape
+        assert np.dtype('i4') == z.dtype
+        assert np.dtype('i4') == z[:].dtype
+        assert (10,) == z.chunks
         assert_array_equal(a[:55], z[:])
 
         # via shape setter
         z.shape = (105,)
-        eq((105,), z.shape)
-        eq((105,), z[:].shape)
+        assert (105,) == z.shape
+        assert (105,) == z[:].shape
 
     def test_resize_2d(self):
 
@@ -520,69 +517,69 @@ class TestArray(unittest.TestCase):
                               fill_value=0)
         a = np.arange(105*105, dtype='i4').reshape((105, 105))
         z[:] = a
-        eq((105, 105), z.shape)
-        eq((105, 105), z[:].shape)
-        eq(np.dtype('i4'), z.dtype)
-        eq(np.dtype('i4'), z[:].dtype)
-        eq((10, 10), z.chunks)
+        assert (105, 105) == z.shape
+        assert (105, 105) == z[:].shape
+        assert np.dtype('i4') == z.dtype
+        assert np.dtype('i4') == z[:].dtype
+        assert (10, 10) == z.chunks
         assert_array_equal(a, z[:])
 
         z.resize((205, 205))
-        eq((205, 205), z.shape)
-        eq((205, 205), z[:].shape)
-        eq(np.dtype('i4'), z.dtype)
-        eq(np.dtype('i4'), z[:].dtype)
-        eq((10, 10), z.chunks)
+        assert (205, 205) == z.shape
+        assert (205, 205) == z[:].shape
+        assert np.dtype('i4') == z.dtype
+        assert np.dtype('i4') == z[:].dtype
+        assert (10, 10) == z.chunks
         assert_array_equal(a, z[:105, :105])
         assert_array_equal(np.zeros((100, 205), dtype='i4'), z[105:, :])
         assert_array_equal(np.zeros((205, 100), dtype='i4'), z[:, 105:])
 
         z.resize((55, 55))
-        eq((55, 55), z.shape)
-        eq((55, 55), z[:].shape)
-        eq(np.dtype('i4'), z.dtype)
-        eq(np.dtype('i4'), z[:].dtype)
-        eq((10, 10), z.chunks)
+        assert (55, 55) == z.shape
+        assert (55, 55) == z[:].shape
+        assert np.dtype('i4') == z.dtype
+        assert np.dtype('i4') == z[:].dtype
+        assert (10, 10) == z.chunks
         assert_array_equal(a[:55, :55], z[:])
 
         z.resize((55, 1))
-        eq((55, 1), z.shape)
-        eq((55, 1), z[:].shape)
-        eq(np.dtype('i4'), z.dtype)
-        eq(np.dtype('i4'), z[:].dtype)
-        eq((10, 10), z.chunks)
+        assert (55, 1) == z.shape
+        assert (55, 1) == z[:].shape
+        assert np.dtype('i4') == z.dtype
+        assert np.dtype('i4') == z[:].dtype
+        assert (10, 10) == z.chunks
         assert_array_equal(a[:55, :1], z[:])
 
         # via shape setter
         z.shape = (105, 105)
-        eq((105, 105), z.shape)
-        eq((105, 105), z[:].shape)
+        assert (105, 105) == z.shape
+        assert (105, 105) == z[:].shape
 
     def test_append_1d(self):
 
         a = np.arange(105)
         z = self.create_array(shape=a.shape, chunks=10, dtype=a.dtype)
         z[:] = a
-        eq(a.shape, z.shape)
-        eq(a.dtype, z.dtype)
-        eq((10,), z.chunks)
+        assert a.shape == z.shape
+        assert a.dtype == z.dtype
+        assert (10,) == z.chunks
         assert_array_equal(a, z[:])
 
         b = np.arange(105, 205)
         e = np.append(a, b)
         z.append(b)
-        eq(e.shape, z.shape)
-        eq(e.dtype, z.dtype)
-        eq((10,), z.chunks)
+        assert e.shape == z.shape
+        assert e.dtype == z.dtype
+        assert (10,) == z.chunks
         assert_array_equal(e, z[:])
 
         # check append handles array-like
         c = [1, 2, 3]
         f = np.append(e, c)
         z.append(c)
-        eq(f.shape, z.shape)
-        eq(f.dtype, z.dtype)
-        eq((10,), z.chunks)
+        assert f.shape == z.shape
+        assert f.dtype == z.dtype
+        assert (10,) == z.chunks
         assert_array_equal(f, z[:])
 
     def test_append_2d(self):
@@ -590,18 +587,18 @@ class TestArray(unittest.TestCase):
         a = np.arange(105*105, dtype='i4').reshape((105, 105))
         z = self.create_array(shape=a.shape, chunks=(10, 10), dtype=a.dtype)
         z[:] = a
-        eq(a.shape, z.shape)
-        eq(a.dtype, z.dtype)
-        eq((10, 10), z.chunks)
+        assert a.shape == z.shape
+        assert a.dtype == z.dtype
+        assert (10, 10) == z.chunks
         actual = z[:]
         assert_array_equal(a, actual)
 
         b = np.arange(105*105, 2*105*105, dtype='i4').reshape((105, 105))
         e = np.append(a, b, axis=0)
         z.append(b)
-        eq(e.shape, z.shape)
-        eq(e.dtype, z.dtype)
-        eq((10, 10), z.chunks)
+        assert e.shape == z.shape
+        assert e.dtype == z.dtype
+        assert (10, 10) == z.chunks
         actual = z[:]
         assert_array_equal(e, actual)
 
@@ -610,17 +607,17 @@ class TestArray(unittest.TestCase):
         a = np.arange(105*105, dtype='i4').reshape((105, 105))
         z = self.create_array(shape=a.shape, chunks=(10, 10), dtype=a.dtype)
         z[:] = a
-        eq(a.shape, z.shape)
-        eq(a.dtype, z.dtype)
-        eq((10, 10), z.chunks)
+        assert a.shape == z.shape
+        assert a.dtype == z.dtype
+        assert (10, 10) == z.chunks
         assert_array_equal(a, z[:])
 
         b = np.arange(105*105, 2*105*105, dtype='i4').reshape((105, 105))
         e = np.append(a, b, axis=1)
         z.append(b, axis=1)
-        eq(e.shape, z.shape)
-        eq(e.dtype, z.dtype)
-        eq((10, 10), z.chunks)
+        assert e.shape == z.shape
+        assert e.dtype == z.dtype
+        assert (10, 10) == z.chunks
         assert_array_equal(e, z[:])
 
     def test_append_bad_shape(self):
@@ -628,33 +625,33 @@ class TestArray(unittest.TestCase):
         z = self.create_array(shape=a.shape, chunks=10, dtype=a.dtype)
         z[:] = a
         b = a.reshape(10, 10)
-        with assert_raises(ValueError):
+        with pytest.raises(ValueError):
             z.append(b)
 
     def test_read_only(self):
 
         z = self.create_array(shape=1000, chunks=100)
-        assert_false(z.read_only)
+        assert not z.read_only
 
         z = self.create_array(shape=1000, chunks=100, read_only=True)
-        assert_true(z.read_only)
-        with assert_raises(PermissionError):
+        assert z.read_only
+        with pytest.raises(PermissionError):
             z[:] = 42
-        with assert_raises(PermissionError):
+        with pytest.raises(PermissionError):
             z.resize(2000)
-        with assert_raises(PermissionError):
+        with pytest.raises(PermissionError):
             z.append(np.arange(1000))
-        with assert_raises(PermissionError):
+        with pytest.raises(PermissionError):
             z.set_basic_selection(Ellipsis, 42)
-        with assert_raises(PermissionError):
+        with pytest.raises(PermissionError):
             z.set_orthogonal_selection([0, 1, 2], 42)
-        with assert_raises(PermissionError):
+        with pytest.raises(PermissionError):
             z.oindex[[0, 1, 2]] = 42
-        with assert_raises(PermissionError):
+        with pytest.raises(PermissionError):
             z.set_coordinate_selection([0, 1, 2], 42)
-        with assert_raises(PermissionError):
+        with pytest.raises(PermissionError):
             z.vindex[[0, 1, 2]] = 42
-        with assert_raises(PermissionError):
+        with pytest.raises(PermissionError):
             z.set_mask_selection(np.ones(z.shape, dtype=bool), 42)
 
     def test_pickle(self):
@@ -663,14 +660,14 @@ class TestArray(unittest.TestCase):
                               cache_attrs=False)
         z[:] = np.random.randint(0, 1000, 1000)
         z2 = pickle.loads(pickle.dumps(z))
-        eq(z.shape, z2.shape)
-        eq(z.chunks, z2.chunks)
-        eq(z.dtype, z2.dtype)
+        assert z.shape == z2.shape
+        assert z.chunks == z2.chunks
+        assert z.dtype == z2.dtype
         if z.compressor:
-            eq(z.compressor.get_config(), z2.compressor.get_config())
-        eq(z.fill_value, z2.fill_value)
-        eq(z._cache_metadata, z2._cache_metadata)
-        eq(z.attrs.cache, z2.attrs.cache)
+            assert z.compressor.get_config() == z2.compressor.get_config()
+        assert z.fill_value == z2.fill_value
+        assert z._cache_metadata == z2._cache_metadata
+        assert z.attrs.cache == z2.attrs.cache
         assert_array_equal(z[:], z2[:])
 
     def test_np_ufuncs(self):
@@ -678,9 +675,9 @@ class TestArray(unittest.TestCase):
         a = np.arange(10000).reshape(100, 100)
         z[:] = a
 
-        eq(np.sum(a), np.sum(z))
+        assert np.sum(a) == np.sum(z)
         assert_array_equal(np.sum(a, axis=0), np.sum(z, axis=0))
-        eq(np.mean(a), np.mean(z))
+        assert np.mean(a) == np.mean(z)
         assert_array_equal(np.mean(a, axis=1), np.mean(z, axis=1))
         condition = np.random.randint(0, 2, size=100, dtype=bool)
         assert_array_equal(np.compress(condition, a, axis=0),
@@ -708,23 +705,23 @@ class TestArray(unittest.TestCase):
 
         z = self.create_array(shape=0, fill_value=0)
         a = np.zeros(0)
-        eq(a.ndim, z.ndim)
-        eq(a.shape, z.shape)
-        eq(a.dtype, z.dtype)
-        eq(a.size, z.size)
-        eq(0, z.nchunks)
+        assert a.ndim == z.ndim
+        assert a.shape == z.shape
+        assert a.dtype == z.dtype
+        assert a.size == z.size
+        assert 0 == z.nchunks
 
         # cannot make a good decision when auto-chunking if a dimension has zero length,
         # fall back to 1 for now
-        eq((1,), z.chunks)
+        assert (1,) == z.chunks
 
         # check __getitem__
-        assert_is_instance(z[:], np.ndarray)
+        assert isinstance(z[:], np.ndarray)
         assert_array_equal(a, np.array(z))
         assert_array_equal(a, z[:])
         assert_array_equal(a, z[...])
         assert_array_equal(a[0:0], z[0:0])
-        with assert_raises(IndexError):
+        with pytest.raises(IndexError):
             z[0]
 
         # check __setitem__
@@ -732,7 +729,7 @@ class TestArray(unittest.TestCase):
         z[:] = 42
         z[...] = 42
         # this should error
-        with assert_raises(IndexError):
+        with pytest.raises(IndexError):
             z[0] = 42
 
     # noinspection PyStatementEffect
@@ -741,18 +738,18 @@ class TestArray(unittest.TestCase):
 
         z = self.create_array(shape=(10, 0), fill_value=0)
         a = np.zeros((10, 0))
-        eq(a.ndim, z.ndim)
-        eq(a.shape, z.shape)
-        eq(a.dtype, z.dtype)
-        eq(a.size, z.size)
-        eq(0, z.nchunks)
+        assert a.ndim == z.ndim
+        assert a.shape == z.shape
+        assert a.dtype == z.dtype
+        assert a.size == z.size
+        assert 0 == z.nchunks
 
         # cannot make a good decision when auto-chunking if a dimension has zero length,
         # fall back to 1 for now
-        eq((10, 1), z.chunks)
+        assert (10, 1) == z.chunks
 
         # check __getitem__
-        assert_is_instance(z[:], np.ndarray)
+        assert isinstance(z[:], np.ndarray)
         assert_array_equal(a, np.array(z))
         assert_array_equal(a, z[:])
         assert_array_equal(a, z[...])
@@ -760,7 +757,7 @@ class TestArray(unittest.TestCase):
         assert_array_equal(a[0, 0:0], z[0, 0:0])
         assert_array_equal(a[0, :], z[0, :])
         assert_array_equal(a[0, 0:0], z[0, 0:0])
-        with assert_raises(IndexError):
+        with pytest.raises(IndexError):
             z[:, 0]
 
         # check __setitem__
@@ -769,7 +766,7 @@ class TestArray(unittest.TestCase):
         z[...] = 42
         z[0, :] = 42
         # this should error
-        with assert_raises(IndexError):
+        with pytest.raises(IndexError):
             z[:, 0] = 42
 
     # noinspection PyStatementEffect
@@ -781,53 +778,53 @@ class TestArray(unittest.TestCase):
         z = self.create_array(shape=(), dtype=a.dtype, fill_value=0)
 
         # check properties
-        eq(a.ndim, z.ndim)
-        eq(a.shape, z.shape)
-        eq(a.size, z.size)
-        eq(a.dtype, z.dtype)
-        eq(a.nbytes, z.nbytes)
-        with assert_raises(TypeError):
+        assert a.ndim == z.ndim
+        assert a.shape == z.shape
+        assert a.size == z.size
+        assert a.dtype == z.dtype
+        assert a.nbytes == z.nbytes
+        with pytest.raises(TypeError):
             len(z)
-        eq((), z.chunks)
-        eq(1, z.nchunks)
-        eq((1,), z.cdata_shape)
+        assert () == z.chunks
+        assert 1 == z.nchunks
+        assert (1,) == z.cdata_shape
         # compressor always None - no point in compressing a single value
-        assert_is_none(z.compressor)
+        assert z.compressor is None
 
         # check __getitem__
         b = z[...]
-        assert_is_instance(b, np.ndarray)
-        eq(a.shape, b.shape)
-        eq(a.dtype, b.dtype)
+        assert isinstance(b, np.ndarray)
+        assert a.shape == b.shape
+        assert a.dtype == b.dtype
         assert_array_equal(a, np.array(z))
         assert_array_equal(a, z[...])
-        eq(a[()], z[()])
-        with assert_raises(IndexError):
+        assert a[()] == z[()]
+        with pytest.raises(IndexError):
             z[0]
-        with assert_raises(IndexError):
+        with pytest.raises(IndexError):
             z[:]
 
         # check __setitem__
         z[...] = 42
-        eq(42, z[()])
+        assert 42 == z[()]
         z[()] = 43
-        eq(43, z[()])
-        with assert_raises(IndexError):
+        assert 43 == z[()]
+        with pytest.raises(IndexError):
             z[0] = 42
-        with assert_raises(IndexError):
+        with pytest.raises(IndexError):
             z[:] = 42
-        with assert_raises(ValueError):
+        with pytest.raises(ValueError):
             z[...] = np.array([1, 2, 3])
 
     def test_nchunks_initialized(self):
 
         z = self.create_array(shape=100, chunks=10)
-        eq(0, z.nchunks_initialized)
+        assert 0 == z.nchunks_initialized
         # manually put something into the store to confuse matters
         z.store['foo'] = b'bar'
-        eq(0, z.nchunks_initialized)
+        assert 0 == z.nchunks_initialized
         z[:] = 42
-        eq(10, z.nchunks_initialized)
+        assert 10 == z.nchunks_initialized
 
     def test_structured_array(self):
 
@@ -840,24 +837,24 @@ class TestArray(unittest.TestCase):
             for fill_value in None, b'', (b'zzz', 0, 0.0):
                 z = self.create_array(shape=a.shape, chunks=2, dtype=a.dtype,
                                       fill_value=fill_value)
-                eq(len(a), len(z))
+                assert len(a) == len(z)
                 if fill_value is not None:
                     np_fill_value = np.array(fill_value, dtype=a.dtype)[()]
-                    eq(np_fill_value, z.fill_value)
+                    assert np_fill_value == z.fill_value
                     if len(z):
-                        eq(np_fill_value, z[0])
-                        eq(np_fill_value, z[-1])
+                        assert np_fill_value == z[0]
+                        assert np_fill_value == z[-1]
                 z[...] = a
                 if len(a):
-                    eq(a[0], z[0])
+                    assert a[0] == z[0]
                 assert_array_equal(a, z[...])
                 assert_array_equal(a['foo'], z['foo'])
                 assert_array_equal(a['bar'], z['bar'])
                 assert_array_equal(a['baz'], z['baz'])
 
-        with assert_raises(ValueError):
-            # dodgy fill value
-            self.create_array(shape=a.shape, chunks=2, dtype=a.dtype, fill_value=42)
+            with pytest.raises(ValueError):
+                # dodgy fill value
+                self.create_array(shape=a.shape, chunks=2, dtype=a.dtype, fill_value=42)
 
     def test_dtypes(self):
 
@@ -889,9 +886,9 @@ class TestArray(unittest.TestCase):
                 assert_array_equal(a, z[:])
 
         # check that datetime generic units are not allowed
-        with assert_raises(ValueError):
+        with pytest.raises(ValueError):
             self.create_array(shape=100, dtype='M8')
-        with assert_raises(ValueError):
+        with pytest.raises(ValueError):
             self.create_array(shape=100, dtype='m8')
 
     def test_object_arrays(self):
@@ -1028,10 +1025,10 @@ class TestArray(unittest.TestCase):
             assert isinstance(actual, np.ndarray)
             assert actual.dtype == object
             assert actual.shape == expected.shape
-            for e, a in zip(expected.flat, actual.flat):
-                assert isinstance(a, np.ndarray)
-                assert_array_equal(e, a)
-                assert a.dtype == item_dtype
+            for ev, av in zip(expected.flat, actual.flat):
+                assert isinstance(av, np.ndarray)
+                assert_array_equal(ev, av)
+                assert av.dtype == item_dtype
 
         codecs = VLenArray(int), VLenArray('<u4')
         for codec in codecs:
@@ -1058,9 +1055,9 @@ class TestArray(unittest.TestCase):
         z = self.create_array(shape=5, chunks=2, dtype=object, fill_value=0,
                               object_codec=MsgPack())
         z._filters = None  # wipe filters
-        with assert_raises(RuntimeError):
+        with pytest.raises(RuntimeError):
             z[0] = 'foo'
-        with assert_raises(RuntimeError):
+        with pytest.raises(RuntimeError):
             z[:] = 42
 
         # do something else dangerous
@@ -1072,7 +1069,7 @@ class TestArray(unittest.TestCase):
                                   compressor=compressor)
             z[:] = data
             v = z.view(filters=[])
-            with assert_raises(RuntimeError):
+            with pytest.raises(RuntimeError):
                 # noinspection PyStatementEffect
                 v[:]
 
@@ -1097,25 +1094,25 @@ class TestArrayWithPath(TestArray):
     def test_hexdigest(self):
         # Check basic 1-D array
         z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
-        eq('f710da18d45d38d4aaf2afd7fb822fdd73d02957', z.hexdigest())
+        assert 'f710da18d45d38d4aaf2afd7fb822fdd73d02957' == z.hexdigest()
 
         # Check basic 1-D array with different type
         z = self.create_array(shape=(1050,), chunks=100, dtype='f4')
-        eq('1437428e69754b1e1a38bd7fc9e43669577620db', z.hexdigest())
+        assert '1437428e69754b1e1a38bd7fc9e43669577620db' == z.hexdigest()
 
         # Check basic 2-D array
         z = self.create_array(shape=(20, 35,), chunks=10, dtype='i4')
-        eq('dde44c72cc530bd6aae39b629eb15a2da627e5f9', z.hexdigest())
+        assert 'dde44c72cc530bd6aae39b629eb15a2da627e5f9' == z.hexdigest()
 
         # Check basic 1-D array with some data
         z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
         z[200:400] = np.arange(200, 400, dtype='i4')
-        eq('4c0a76fb1222498e09dcd92f7f9221d6cea8b40e', z.hexdigest())
+        assert '4c0a76fb1222498e09dcd92f7f9221d6cea8b40e' == z.hexdigest()
 
         # Check basic 1-D array with attributes
         z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
         z.attrs['foo'] = 'bar'
-        eq('05b0663ffe1785f38d3a459dec17e57a18f254af', z.hexdigest())
+        assert '05b0663ffe1785f38d3a459dec17e57a18f254af' == z.hexdigest()
 
     def test_nbytes_stored(self):
 
@@ -1124,16 +1121,16 @@ class TestArrayWithPath(TestArray):
         expect_nbytes_stored = sum(buffer_size(v)
                                    for k, v in z.store.items()
                                    if k.startswith('foo/bar/'))
-        eq(expect_nbytes_stored, z.nbytes_stored)
+        assert expect_nbytes_stored == z.nbytes_stored
         z[:] = 42
         expect_nbytes_stored = sum(buffer_size(v)
                                    for k, v in z.store.items()
                                    if k.startswith('foo/bar/'))
-        eq(expect_nbytes_stored, z.nbytes_stored)
+        assert expect_nbytes_stored == z.nbytes_stored
 
         # mess with store
         z.store[z._key_prefix + 'foo'] = list(range(10))
-        eq(-1, z.nbytes_stored)
+        assert -1 == z.nbytes_stored
 
 
 class TestArrayWithChunkStore(TestArray):
@@ -1152,25 +1149,25 @@ class TestArrayWithChunkStore(TestArray):
     def test_hexdigest(self):
         # Check basic 1-D array
         z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
-        eq('f710da18d45d38d4aaf2afd7fb822fdd73d02957', z.hexdigest())
+        assert 'f710da18d45d38d4aaf2afd7fb822fdd73d02957' == z.hexdigest()
 
         # Check basic 1-D array with different type
         z = self.create_array(shape=(1050,), chunks=100, dtype='f4')
-        eq('1437428e69754b1e1a38bd7fc9e43669577620db', z.hexdigest())
+        assert '1437428e69754b1e1a38bd7fc9e43669577620db' == z.hexdigest()
 
         # Check basic 2-D array
         z = self.create_array(shape=(20, 35,), chunks=10, dtype='i4')
-        eq('dde44c72cc530bd6aae39b629eb15a2da627e5f9', z.hexdigest())
+        assert 'dde44c72cc530bd6aae39b629eb15a2da627e5f9' == z.hexdigest()
 
         # Check basic 1-D array with some data
         z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
         z[200:400] = np.arange(200, 400, dtype='i4')
-        eq('4c0a76fb1222498e09dcd92f7f9221d6cea8b40e', z.hexdigest())
+        assert '4c0a76fb1222498e09dcd92f7f9221d6cea8b40e' == z.hexdigest()
 
         # Check basic 1-D array with attributes
         z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
         z.attrs['foo'] = 'bar'
-        eq('05b0663ffe1785f38d3a459dec17e57a18f254af', z.hexdigest())
+        assert '05b0663ffe1785f38d3a459dec17e57a18f254af' == z.hexdigest()
 
     def test_nbytes_stored(self):
 
@@ -1178,16 +1175,16 @@ class TestArrayWithChunkStore(TestArray):
         expect_nbytes_stored = sum(buffer_size(v) for v in z.store.values())
         expect_nbytes_stored += sum(buffer_size(v)
                                     for v in z.chunk_store.values())
-        eq(expect_nbytes_stored, z.nbytes_stored)
+        assert expect_nbytes_stored == z.nbytes_stored
         z[:] = 42
         expect_nbytes_stored = sum(buffer_size(v) for v in z.store.values())
         expect_nbytes_stored += sum(buffer_size(v)
                                     for v in z.chunk_store.values())
-        eq(expect_nbytes_stored, z.nbytes_stored)
+        assert expect_nbytes_stored == z.nbytes_stored
 
         # mess with store
         z.chunk_store[z._key_prefix + 'foo'] = list(range(10))
-        eq(-1, z.nbytes_stored)
+        assert -1 == z.nbytes_stored
 
 
 class TestArrayWithDirectoryStore(TestArray):
@@ -1209,10 +1206,10 @@ class TestArrayWithDirectoryStore(TestArray):
         # dict as store
         z = self.create_array(shape=1000, chunks=100)
         expect_nbytes_stored = sum(buffer_size(v) for v in z.store.values())
-        eq(expect_nbytes_stored, z.nbytes_stored)
+        assert expect_nbytes_stored == z.nbytes_stored
         z[:] = 42
         expect_nbytes_stored = sum(buffer_size(v) for v in z.store.values())
-        eq(expect_nbytes_stored, z.nbytes_stored)
+        assert expect_nbytes_stored == z.nbytes_stored
 
 
 class TestArrayWithNestedDirectoryStore(TestArrayWithDirectoryStore):
@@ -1250,38 +1247,18 @@ class TestArrayWithDBMStore(TestArray):
 
 try:
     import bsddb3
-
-    class TestArrayWithDBMStoreBerkeleyDB(TestArray):
-
-        @staticmethod
-        def create_array(read_only=False, **kwargs):
-            path = mktemp(suffix='.dbm')
-            atexit.register(os.remove, path)
-            store = DBMStore(path, flag='n', open=bsddb3.btopen)
-            cache_metadata = kwargs.pop('cache_metadata', True)
-            cache_attrs = kwargs.pop('cache_attrs', True)
-            kwargs.setdefault('compressor', Zlib(1))
-            init_array(store, **kwargs)
-            return Array(store, read_only=read_only, cache_metadata=cache_metadata,
-                         cache_attrs=cache_attrs)
-
-        def test_nbytes_stored(self):
-            pass  # not implemented
-
 except ImportError:  # pragma: no cover
-    pass
+    bsddb3 = None
 
 
-class TestArrayWithLMDBStore(TestArray):
+@pytest.mark.skipif(bsddb3 is None, reason='bsddb3 not installed')
+class TestArrayWithDBMStoreBerkeleyDB(TestArray):
 
     @staticmethod
     def create_array(read_only=False, **kwargs):
-        path = mktemp(suffix='.lmdb')
-        atexit.register(atexit_rmtree, path)
-        try:
-            store = LMDBStore(path, buffers=True)
-        except ImportError:  # pragma: no cover
-            raise SkipTest('lmdb not installed')
+        path = mktemp(suffix='.dbm')
+        atexit.register(os.remove, path)
+        store = DBMStore(path, flag='n', open=bsddb3.btopen)
         cache_metadata = kwargs.pop('cache_metadata', True)
         cache_attrs = kwargs.pop('cache_attrs', True)
         kwargs.setdefault('compressor', Zlib(1))
@@ -1293,16 +1270,39 @@ class TestArrayWithLMDBStore(TestArray):
         pass  # not implemented
 
 
+try:
+    import lmdb
+except ImportError:
+    lmdb = None
+
+
+@pytest.mark.skipif(lmdb is None, reason='lmdb is not installed')
+class TestArrayWithLMDBStore(TestArray):
+
+    @staticmethod
+    def create_array(read_only=False, **kwargs):
+        path = mktemp(suffix='.lmdb')
+        atexit.register(atexit_rmtree, path)
+        store = LMDBStore(path, buffers=True)
+        cache_metadata = kwargs.pop('cache_metadata', True)
+        cache_attrs = kwargs.pop('cache_attrs', True)
+        kwargs.setdefault('compressor', Zlib(1))
+        init_array(store, **kwargs)
+        return Array(store, read_only=read_only, cache_metadata=cache_metadata,
+                     cache_attrs=cache_attrs)
+
+    def test_nbytes_stored(self):
+        pass  # not implemented
+
+
+@pytest.mark.skipif(lmdb is None, reason='lmdb is not installed')
 class TestArrayWithLMDBStoreNoBuffers(TestArray):
 
     @staticmethod
     def create_array(read_only=False, **kwargs):
         path = mktemp(suffix='.lmdb')
         atexit.register(atexit_rmtree, path)
-        try:
-            store = LMDBStore(path, buffers=False)
-        except ImportError:  # pragma: no cover
-            raise SkipTest('lmdb not installed')
+        store = LMDBStore(path, buffers=False)
         cache_metadata = kwargs.pop('cache_metadata', True)
         cache_attrs = kwargs.pop('cache_attrs', True)
         kwargs.setdefault('compressor', Zlib(1))
@@ -1328,25 +1328,25 @@ class TestArrayWithNoCompressor(TestArray):
     def test_hexdigest(self):
         # Check basic 1-D array
         z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
-        eq('d3da3d485de4a5fcc6d91f9dfc6a7cba9720c561', z.hexdigest())
+        assert 'd3da3d485de4a5fcc6d91f9dfc6a7cba9720c561' == z.hexdigest()
 
         # Check basic 1-D array with different type
         z = self.create_array(shape=(1050,), chunks=100, dtype='f4')
-        eq('443b8dee512e42946cb63ff01d28e9bee8105a5f', z.hexdigest())
+        assert '443b8dee512e42946cb63ff01d28e9bee8105a5f' == z.hexdigest()
 
         # Check basic 2-D array
         z = self.create_array(shape=(20, 35,), chunks=10, dtype='i4')
-        eq('de841ca276042993da53985de1e7769f5d0fc54d', z.hexdigest())
+        assert 'de841ca276042993da53985de1e7769f5d0fc54d' == z.hexdigest()
 
         # Check basic 1-D array with some data
         z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
         z[200:400] = np.arange(200, 400, dtype='i4')
-        eq('42b6ae0d50ec361628736ab7e68fe5fefca22136', z.hexdigest())
+        assert '42b6ae0d50ec361628736ab7e68fe5fefca22136' == z.hexdigest()
 
         # Check basic 1-D array with attributes
         z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
         z.attrs['foo'] = 'bar'
-        eq('a0535f31c130f5e5ac66ba0713d1c1ceaebd089b', z.hexdigest())
+        assert 'a0535f31c130f5e5ac66ba0713d1c1ceaebd089b' == z.hexdigest()
 
 
 class TestArrayWithBZ2Compressor(TestArray):
@@ -1364,25 +1364,25 @@ class TestArrayWithBZ2Compressor(TestArray):
     def test_hexdigest(self):
         # Check basic 1-D array
         z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
-        eq('33141032439fb1df5e24ad9891a7d845b6c668c8', z.hexdigest())
+        assert '33141032439fb1df5e24ad9891a7d845b6c668c8' == z.hexdigest()
 
         # Check basic 1-D array with different type
         z = self.create_array(shape=(1050,), chunks=100, dtype='f4')
-        eq('44d719da065c88a412d609a5500ff41e07b331d6', z.hexdigest())
+        assert '44d719da065c88a412d609a5500ff41e07b331d6' == z.hexdigest()
 
         # Check basic 2-D array
         z = self.create_array(shape=(20, 35,), chunks=10, dtype='i4')
-        eq('f57a9a73a4004490fe1b871688651b8a298a5db7', z.hexdigest())
+        assert 'f57a9a73a4004490fe1b871688651b8a298a5db7' == z.hexdigest()
 
         # Check basic 1-D array with some data
         z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
         z[200:400] = np.arange(200, 400, dtype='i4')
-        eq('1e1bcaac63e4ef3c4a68f11672537131c627f168', z.hexdigest())
+        assert '1e1bcaac63e4ef3c4a68f11672537131c627f168' == z.hexdigest()
 
         # Check basic 1-D array with attributes
         z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
         z.attrs['foo'] = 'bar'
-        eq('86d7b9bf22dccbeaa22f340f38be506b55e76ff2', z.hexdigest())
+        assert '86d7b9bf22dccbeaa22f340f38be506b55e76ff2' == z.hexdigest()
 
 
 class TestArrayWithBloscCompressor(TestArray):
@@ -1400,28 +1400,28 @@ class TestArrayWithBloscCompressor(TestArray):
     def test_hexdigest(self):
         # Check basic 1-D array
         z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
-        eq('7ff2ae8511eac915fad311647c168ccfe943e788', z.hexdigest())
+        assert '7ff2ae8511eac915fad311647c168ccfe943e788' == z.hexdigest()
 
         # Check basic 1-D array with different type
         z = self.create_array(shape=(1050,), chunks=100, dtype='f4')
-        eq('962705c861863495e9ccb7be7735907aa15e85b5', z.hexdigest())
+        assert '962705c861863495e9ccb7be7735907aa15e85b5' == z.hexdigest()
 
         # Check basic 2-D array
         z = self.create_array(shape=(20, 35,), chunks=10, dtype='i4')
-        eq('deb675ff91dd26dba11b65aab5f19a1f21a5645b', z.hexdigest())
+        assert 'deb675ff91dd26dba11b65aab5f19a1f21a5645b' == z.hexdigest()
 
         # Check basic 1-D array with some data
         z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
         z[200:400] = np.arange(200, 400, dtype='i4')
-        eq('90e30bdab745a9641cd0eb605356f531bc8ec1c3', z.hexdigest())
+        assert '90e30bdab745a9641cd0eb605356f531bc8ec1c3' == z.hexdigest()
 
         # Check basic 1-D array with attributes
         z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
         z.attrs['foo'] = 'bar'
-        eq('95d40c391f167db8b1290e3c39d9bf741edacdf6', z.hexdigest())
+        assert '95d40c391f167db8b1290e3c39d9bf741edacdf6' == z.hexdigest()
 
 
-# TODO can we rely on backports and remove the PY2 exclusion?
+# TODO rely on backports and remove the PY2 exclusion
 if not PY2:  # pragma: py2 no cover
 
     from zarr.codecs import LZMA
@@ -1441,25 +1441,25 @@ if not PY2:  # pragma: py2 no cover
         def test_hexdigest(self):
             # Check basic 1-D array
             z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
-            eq('93ecaa530a1162a9d48a3c1dcee4586ccfc59bae', z.hexdigest())
+            assert '93ecaa530a1162a9d48a3c1dcee4586ccfc59bae' == z.hexdigest()
 
             # Check basic 1-D array with different type
             z = self.create_array(shape=(1050,), chunks=100, dtype='f4')
-            eq('04a9755a0cd638683531b7816c7fa4fbb6f577f2', z.hexdigest())
+            assert '04a9755a0cd638683531b7816c7fa4fbb6f577f2' == z.hexdigest()
 
             # Check basic 2-D array
             z = self.create_array(shape=(20, 35,), chunks=10, dtype='i4')
-            eq('b93b163a21e8500519250a6defb821d03eb5d9e0', z.hexdigest())
+            assert 'b93b163a21e8500519250a6defb821d03eb5d9e0' == z.hexdigest()
 
             # Check basic 1-D array with some data
             z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
             z[200:400] = np.arange(200, 400, dtype='i4')
-            eq('cde499f3dc945b4e97197ff8e3cf8188a1262c35', z.hexdigest())
+            assert 'cde499f3dc945b4e97197ff8e3cf8188a1262c35' == z.hexdigest()
 
             # Check basic 1-D array with attributes
             z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
             z.attrs['foo'] = 'bar'
-            eq('e2cf3afbf66ad0e28a2b6b68b1b07817c69aaee2', z.hexdigest())
+            assert 'e2cf3afbf66ad0e28a2b6b68b1b07817c69aaee2' == z.hexdigest()
 
 
 class TestArrayWithFilters(TestArray):
@@ -1484,25 +1484,25 @@ class TestArrayWithFilters(TestArray):
     def test_hexdigest(self):
         # Check basic 1-D array
         z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
-        eq('b80367c5599d47110d42bd8886240c2f46620dba', z.hexdigest())
+        assert 'b80367c5599d47110d42bd8886240c2f46620dba' == z.hexdigest()
 
         # Check basic 1-D array with different type
         z = self.create_array(shape=(1050,), chunks=100, dtype='f4')
-        eq('95a7b2471225e73199c9716d21e8d3dd6e5f6f2a', z.hexdigest())
+        assert '95a7b2471225e73199c9716d21e8d3dd6e5f6f2a' == z.hexdigest()
 
         # Check basic 2-D array
         z = self.create_array(shape=(20, 35,), chunks=10, dtype='i4')
-        eq('9abf3ad54413ab11855d88a5e0087cd416657e02', z.hexdigest())
+        assert '9abf3ad54413ab11855d88a5e0087cd416657e02' == z.hexdigest()
 
         # Check basic 1-D array with some data
         z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
         z[200:400] = np.arange(200, 400, dtype='i4')
-        eq('c649ad229bc5720258b934ea958570c2f354c2eb', z.hexdigest())
+        assert 'c649ad229bc5720258b934ea958570c2f354c2eb' == z.hexdigest()
 
         # Check basic 1-D array with attributes
         z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
         z.attrs['foo'] = 'bar'
-        eq('62fc9236d78af18a5ec26c12eea1d33bce52501e', z.hexdigest())
+        assert '62fc9236d78af18a5ec26c12eea1d33bce52501e' == z.hexdigest()
 
     def test_astype_no_filters(self):
         shape = (100,)
@@ -1520,7 +1520,7 @@ class TestArrayWithFilters(TestArray):
 
         expected = data.astype(astype)
         assert_array_equal(expected, z2)
-        eq(z2.read_only, True)
+        assert z2.read_only
 
     def test_astype(self):
         shape = (100,)
@@ -1609,9 +1609,9 @@ class TestArrayWithCustomMapping(TestArray):
 
     def test_nbytes_stored(self):
         z = self.create_array(shape=1000, chunks=100)
-        eq(-1, z.nbytes_stored)
+        assert -1 == z.nbytes_stored
         z[:] = 42
-        eq(-1, z.nbytes_stored)
+        assert -1 == z.nbytes_stored
 
 
 class TestArrayNoCache(TestArray):
@@ -1629,52 +1629,52 @@ class TestArrayNoCache(TestArray):
     def test_cache_metadata(self):
         a1 = self.create_array(shape=100, chunks=10, dtype='i1', cache_metadata=False)
         a2 = Array(a1.store, cache_metadata=True)
-        eq(a1.shape, a2.shape)
-        eq(a1.size, a2.size)
-        eq(a1.nbytes, a2.nbytes)
-        eq(a1.nchunks, a2.nchunks)
+        assert a1.shape == a2.shape
+        assert a1.size == a2.size
+        assert a1.nbytes == a2.nbytes
+        assert a1.nchunks == a2.nchunks
 
         # a1 is not caching so *will* see updates made via other objects
         a2.resize(200)
-        eq((200,), a2.shape)
-        eq(200, a2.size)
-        eq(200, a2.nbytes)
-        eq(20, a2.nchunks)
-        eq(a1.shape, a2.shape)
-        eq(a1.size, a2.size)
-        eq(a1.nbytes, a2.nbytes)
-        eq(a1.nchunks, a2.nchunks)
+        assert (200,) == a2.shape
+        assert 200 == a2.size
+        assert 200 == a2.nbytes
+        assert 20 == a2.nchunks
+        assert a1.shape == a2.shape
+        assert a1.size == a2.size
+        assert a1.nbytes == a2.nbytes
+        assert a1.nchunks == a2.nchunks
 
         a2.append(np.zeros(100))
-        eq((300,), a2.shape)
-        eq(300, a2.size)
-        eq(300, a2.nbytes)
-        eq(30, a2.nchunks)
-        eq(a1.shape, a2.shape)
-        eq(a1.size, a2.size)
-        eq(a1.nbytes, a2.nbytes)
-        eq(a1.nchunks, a2.nchunks)
+        assert (300,) == a2.shape
+        assert 300 == a2.size
+        assert 300 == a2.nbytes
+        assert 30 == a2.nchunks
+        assert a1.shape == a2.shape
+        assert a1.size == a2.size
+        assert a1.nbytes == a2.nbytes
+        assert a1.nchunks == a2.nchunks
 
         # a2 is caching so *will not* see updates made via other objects
         a1.resize(400)
-        eq((400,), a1.shape)
-        eq(400, a1.size)
-        eq(400, a1.nbytes)
-        eq(40, a1.nchunks)
-        eq((300,), a2.shape)
-        eq(300, a2.size)
-        eq(300, a2.nbytes)
-        eq(30, a2.nchunks)
+        assert (400,) == a1.shape
+        assert 400 == a1.size
+        assert 400 == a1.nbytes
+        assert 40 == a1.nchunks
+        assert (300,) == a2.shape
+        assert 300 == a2.size
+        assert 300 == a2.nbytes
+        assert 30 == a2.nchunks
 
     def test_cache_attrs(self):
         a1 = self.create_array(shape=100, chunks=10, dtype='i1', cache_attrs=False)
         a2 = Array(a1.store, cache_attrs=True)
-        eq(a1.attrs.asdict(), a2.attrs.asdict())
+        assert a1.attrs.asdict() == a2.attrs.asdict()
 
         # a1 is not caching so *will* see updates made via other objects
         a2.attrs['foo'] = 'xxx'
         a2.attrs['bar'] = 42
-        eq(a1.attrs.asdict(), a2.attrs.asdict())
+        assert a1.attrs.asdict() == a2.attrs.asdict()
 
         # a2 is caching so *will not* see updates made via other objects
         a1.attrs['foo'] = 'yyy'
