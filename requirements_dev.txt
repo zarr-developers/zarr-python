@@ -10,6 +10,7 @@ Cython==0.27.2
 docopt==0.6.2
 fasteners==0.14.1
 flake8==3.5.0
+h5py==2.7.1
 idna==2.6
 mccabe==0.6.1
 monotonic==1.3

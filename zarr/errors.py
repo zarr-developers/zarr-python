@@ -9,6 +9,10 @@ class MetadataError(Exception):
     pass
 
 
+class CopyError(RuntimeError):
+    pass
+
+
 def err_contains_group(path):
     raise ValueError('path %r contains a group' % path)
 

@@ -18,7 +18,8 @@ import pytest
 
 
 from zarr.storage import (DirectoryStore, init_array, init_group, NestedDirectoryStore,
-                          DBMStore, LMDBStore, atexit_rmtree, atexit_rmglob)
+                          DBMStore, LMDBStore, atexit_rmtree, atexit_rmglob,
+                          LRUStoreCache)
 from zarr.core import Array
 from zarr.errors import PermissionError
 from zarr.compat import PY2, text_type, binary_type
@@ -1683,3 +1684,13 @@ class TestArrayNoCache(TestArray):
     def test_object_arrays_danger(self):
         # skip this one as it only works if metadata are cached
         pass
+
+
+class TestArrayWithStoreCache(TestArray):
+
+    @staticmethod
+    def create_array(read_only=False, **kwargs):
+        store = LRUStoreCache(dict(), max_size=None)
+        kwargs.setdefault('compressor', Zlib(level=1))
+        init_array(store, **kwargs)
+        return Array(store, read_only=read_only)
