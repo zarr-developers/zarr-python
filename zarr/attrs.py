@@ -115,7 +115,7 @@ class Attributes(MutableMapping):
 
     def keys(self):
         return self.asdict().keys()
-    
+
     def __iter__(self):
         return iter(self.asdict())
 

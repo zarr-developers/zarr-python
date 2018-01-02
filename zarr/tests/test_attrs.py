@@ -46,16 +46,25 @@ class TestAttributes(unittest.TestCase):
         del a['foo']
         assert 'foo' not in a
         with assert_raises(KeyError):
+            # noinspection PyStatementEffect
             a['foo']
 
-    def test_update(self):
+    def test_update_put(self):
 
         a = self.init_attributes(dict())
         assert 'foo' not in a
+        assert 'bar' not in a
         assert 'baz' not in a
-        a.update(foo='bar', baz=42)
-        eq(a['foo'], 'bar')
-        eq(a['baz'], 42)
+
+        a.update(foo='spam', bar=42, baz=4.2)
+        eq(a['foo'], 'spam')
+        eq(a['bar'], 42)
+        eq(a['baz'], 4.2)
+
+        a.put(dict(foo='eggs', bar=84))
+        eq(a['foo'], 'eggs')
+        eq(a['bar'], 84)
+        assert 'baz' not in a
 
     def test_iterators(self):
 
