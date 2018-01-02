@@ -4,11 +4,10 @@ from __future__ import absolute_import, print_function, division
 
 import numpy as np
 from numpy.testing import assert_array_equal, assert_array_almost_equal
-from nose.tools import eq_ as eq
 
 
-from numcodecs import (AsType, Delta, FixedScaleOffset, PackBits, Categorize, Zlib, Blosc, BZ2,
-                       Quantize)
+from numcodecs import (AsType, Delta, FixedScaleOffset, PackBits, Categorize, Zlib, Blosc,
+                       BZ2, Quantize)
 from zarr.creation import array
 from zarr.compat import PY2
 
@@ -20,7 +19,7 @@ compressors = [
     Blosc(),
 ]
 
-# TODO can we rely on backports and remove PY2 exclusion?
+# TODO rely on backports and remove PY2 exclusion
 if not PY2:  # pragma: py2 no cover
     from zarr.codecs import LZMA
     compressors.append(LZMA())
@@ -215,7 +214,7 @@ def test_compressor_as_filter():
         for i in range(10):
             x = bytes(a1.store[str(i)])
             y = bytes(a2.store[str(i)])
-            eq(x, y)
+            assert x == y
 
         # check data
         assert_array_equal(data, a1[:])
