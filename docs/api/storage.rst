@@ -23,8 +23,9 @@ Storage (``zarr.storage``)
 
 .. autoclass:: LRUStoreCache
 
-    .. automethod:: clear_values
-    .. automethod:: clear_keys
+    .. automethod:: invalidate
+    .. automethod:: invalidate_values
+    .. automethod:: invalidate_keys
 
 .. autofunction:: init_array
 .. autofunction:: init_group

@@ -889,10 +889,14 @@ class TestLRUStoreCache(StoreTests, unittest.TestCase):
         assert 2 == cache.hits
         assert 1 == cache.misses
 
-        # manually clear all cached values
-        cache.clear_values()
+        # manually invalidate all cached values
+        cache.invalidate_values()
         assert b'zzz' == cache['foo']
         assert 2 == store.counter['__getitem__', 'foo']
+        assert 2 == store.counter['__setitem__', 'foo']
+        cache.invalidate()
+        assert b'zzz' == cache['foo']
+        assert 3 == store.counter['__getitem__', 'foo']
         assert 2 == store.counter['__setitem__', 'foo']
 
         # test __delitem__
@@ -1037,20 +1041,20 @@ class TestLRUStoreCache(StoreTests, unittest.TestCase):
         assert keys == sorted(cache.keys())
         assert 2 == store.counter['keys']
 
-        # manually clear keys
-        cache.clear_keys()
+        # manually invalidate keys
+        cache.invalidate_keys()
         keys = sorted(cache.keys())
         assert keys == ['bar', 'baz', 'foo']
         assert 3 == store.counter['keys']
         assert 0 == store.counter['__contains__', 'foo']
         assert 0 == store.counter['__iter__']
-        cache.clear_keys()
+        cache.invalidate_keys()
         keys = sorted(cache)
         assert keys == ['bar', 'baz', 'foo']
         assert 4 == store.counter['keys']
         assert 0 == store.counter['__contains__', 'foo']
         assert 0 == store.counter['__iter__']
-        cache.clear_keys()
+        cache.invalidate_keys()
         assert 'foo' in cache
         assert 5 == store.counter['keys']
         assert 0 == store.counter['__contains__', 'foo']

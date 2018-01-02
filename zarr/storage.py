@@ -1732,8 +1732,14 @@ class LRUStoreCache(MutableMapping):
         >>> root = zarr.group(store=cache)
         >>> z = root['foo/bar/baz']
         >>> from timeit import timeit
-        >>> timeit('print(z.tostring())', number=1)  # first time is relatively slow
-        >>> timeit('print(z.tostring())', number=1)  # second time is fast, uses cache
+        >>> # first data access is relatively slow, retrieved from store
+        ... timeit('print(z[:].tostring())', number=1, globals=globals())  # doctest: +SKIP
+        b'Hello from the cloud!'
+        0.1081731989979744
+        >>> # second data access is faster, uses cache
+        ... timeit('print(z[:].tostring())', number=1, globals=globals())  # doctest: +SKIP
+        b'Hello from the cloud!'
+        0.0009490990014455747
 
     """
 
@@ -1760,7 +1766,7 @@ class LRUStoreCache(MutableMapping):
         self._mutex = Lock()
 
     def __len__(self):
-        return len(self._store)
+        return len(self._keys())
 
     def __iter__(self):
         return self.keys()
@@ -1771,14 +1777,18 @@ class LRUStoreCache(MutableMapping):
                 self._contains_cache = set(self._keys())
             return key in self._contains_cache
 
+    def clear(self):
+        self._store.clear()
+        self.invalidate()
+
     def keys(self):
         with self._mutex:
-            return self._keys()
+            return iter(self._keys())
 
     def _keys(self):
         if self._keys_cache is None:
             self._keys_cache = list(self._store.keys())
-        return iter(self._keys_cache)
+        return self._keys_cache
 
     def listdir(self, path=None):
         with self._mutex:
@@ -1816,22 +1826,28 @@ class LRUStoreCache(MutableMapping):
             self._values_cache[key] = value
             self._current_size += value_size
 
-    def clear_values(self):
+    def invalidate(self):
+        """Completely clear the cache."""
+        with self._mutex:
+            self._values_cache.clear()
+            self._invalidate_keys()
+
+    def invalidate_values(self):
         """Clear the values cache."""
         with self._mutex:
             self._values_cache.clear()
 
-    def clear_keys(self):
+    def invalidate_keys(self):
         """Clear the keys cache."""
         with self._mutex:
-            self._clear_keys()
+            self._invalidate_keys()
 
-    def _clear_keys(self):
+    def _invalidate_keys(self):
         self._keys_cache = None
         self._contains_cache = None
         self._listdir_cache.clear()
 
-    def _clear_value(self, key):
+    def _invalidate_value(self, key):
         if key in self._values_cache:
             value = self._values_cache.pop(key)
             self._current_size -= buffer_size(value)
@@ -1861,12 +1877,12 @@ class LRUStoreCache(MutableMapping):
     def __setitem__(self, key, value):
         self._store[key] = value
         with self._mutex:
-            self._clear_keys()
-            self._clear_value(key)
+            self._invalidate_keys()
+            self._invalidate_value(key)
             self._cache_value(key, value)
 
     def __delitem__(self, key):
         del self._store[key]
         with self._mutex:
-            self._clear_keys()
-            self._clear_value(key)
+            self._invalidate_keys()
+            self._invalidate_value(key)
