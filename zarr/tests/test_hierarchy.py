@@ -12,9 +12,6 @@ import warnings
 
 import numpy as np
 from numpy.testing import assert_array_equal
-from nose.tools import (assert_raises, eq_ as eq, assert_is, assert_true,
-                        assert_is_instance, assert_false, assert_is_none)
-from nose import SkipTest
 import pytest
 
 
@@ -59,76 +56,76 @@ class TestGroup(unittest.TestCase):
     def test_group_init_1(self):
         store, chunk_store = self.create_store()
         g = self.create_group(store, chunk_store=chunk_store)
-        assert_is(store, g.store)
+        assert store is g.store
         if chunk_store is None:
-            assert_is(store, g.chunk_store)
+            assert store is g.chunk_store
         else:
-            assert_is(chunk_store, g.chunk_store)
-        assert_false(g.read_only)
-        eq('', g.path)
-        eq('/', g.name)
-        eq('', g.basename)
-        assert_is_instance(g.attrs, Attributes)
+            assert chunk_store is g.chunk_store
+        assert not g.read_only
+        assert '' == g.path
+        assert '/' == g.name
+        assert '' == g.basename
+        assert isinstance(g.attrs, Attributes)
         g.attrs['foo'] = 'bar'
         assert g.attrs['foo'] == 'bar'
-        assert_is_instance(g.info, InfoReporter)
-        assert_is_instance(repr(g.info), str)
-        assert_is_instance(g.info._repr_html_(), str)
+        assert isinstance(g.info, InfoReporter)
+        assert isinstance(repr(g.info), str)
+        assert isinstance(g.info._repr_html_(), str)
 
     def test_group_init_2(self):
         store, chunk_store = self.create_store()
         g = self.create_group(store, chunk_store=chunk_store,
                               path='/foo/bar/', read_only=True)
-        assert_is(store, g.store)
-        assert_true(g.read_only)
-        eq('foo/bar', g.path)
-        eq('/foo/bar', g.name)
-        eq('bar', g.basename)
-        assert_is_instance(g.attrs, Attributes)
+        assert store is g.store
+        assert g.read_only
+        assert 'foo/bar' == g.path
+        assert '/foo/bar' == g.name
+        assert 'bar' == g.basename
+        assert isinstance(g.attrs, Attributes)
 
     def test_group_init_errors_1(self):
         store, chunk_store = self.create_store()
         # group metadata not initialized
-        with assert_raises(ValueError):
+        with pytest.raises(ValueError):
             Group(store, chunk_store=chunk_store)
 
     def test_group_init_errors_2(self):
         store, chunk_store = self.create_store()
         init_array(store, shape=1000, chunks=100, chunk_store=chunk_store)
         # array blocks group
-        with assert_raises(ValueError):
+        with pytest.raises(ValueError):
             Group(store, chunk_store=chunk_store)
 
     def test_create_group(self):
         g1 = self.create_group()
 
         # check root group
-        eq('', g1.path)
-        eq('/', g1.name)
+        assert '' == g1.path
+        assert '/' == g1.name
 
         # create level 1 child group
         g2 = g1.create_group('foo')
-        assert_is_instance(g2, Group)
-        eq('foo', g2.path)
-        eq('/foo', g2.name)
+        assert isinstance(g2, Group)
+        assert 'foo' == g2.path
+        assert '/foo' == g2.name
 
         # create level 2 child group
         g3 = g2.create_group('bar')
-        assert_is_instance(g3, Group)
-        eq('foo/bar', g3.path)
-        eq('/foo/bar', g3.name)
+        assert isinstance(g3, Group)
+        assert 'foo/bar' == g3.path
+        assert '/foo/bar' == g3.name
 
         # create level 3 child group
         g4 = g1.create_group('foo/bar/baz')
-        assert_is_instance(g4, Group)
-        eq('foo/bar/baz', g4.path)
-        eq('/foo/bar/baz', g4.name)
+        assert isinstance(g4, Group)
+        assert 'foo/bar/baz' == g4.path
+        assert '/foo/bar/baz' == g4.name
 
         # create level 3 group via root
         g5 = g4.create_group('/a/b/c/')
-        assert_is_instance(g5, Group)
-        eq('a/b/c', g5.path)
-        eq('/a/b/c', g5.name)
+        assert isinstance(g5, Group)
+        assert 'a/b/c' == g5.path
+        assert '/a/b/c' == g5.name
 
         # test non-str keys
         class Foo(object):
@@ -141,113 +138,113 @@ class TestGroup(unittest.TestCase):
 
         o = Foo('test/object')
         go = g1.create_group(o)
-        assert_is_instance(go, Group)
-        eq('test/object', go.path)
+        assert isinstance(go, Group)
+        assert 'test/object' == go.path
         go = g1.create_group(b'test/bytes')
-        assert_is_instance(go, Group)
-        eq('test/bytes', go.path)
+        assert isinstance(go, Group)
+        assert 'test/bytes' == go.path
 
         # test bad keys
-        with assert_raises(ValueError):
+        with pytest.raises(ValueError):
             g1.create_group('foo')  # already exists
-        with assert_raises(ValueError):
+        with pytest.raises(ValueError):
             g1.create_group('a/b/c')  # already exists
-        with assert_raises(ValueError):
+        with pytest.raises(ValueError):
             g4.create_group('/a/b/c')  # already exists
-        with assert_raises(ValueError):
+        with pytest.raises(ValueError):
             g1.create_group('')
-        with assert_raises(ValueError):
+        with pytest.raises(ValueError):
             g1.create_group('/')
-        with assert_raises(ValueError):
+        with pytest.raises(ValueError):
             g1.create_group('//')
 
         # multi
         g6, g7 = g1.create_groups('y', 'z')
-        assert_is_instance(g6, Group)
-        eq(g6.path, 'y')
-        assert_is_instance(g7, Group)
-        eq(g7.path, 'z')
+        assert isinstance(g6, Group)
+        assert g6.path == 'y'
+        assert isinstance(g7, Group)
+        assert g7.path == 'z'
 
     def test_require_group(self):
         g1 = self.create_group()
 
         # test creation
         g2 = g1.require_group('foo')
-        assert_is_instance(g2, Group)
-        eq('foo', g2.path)
+        assert isinstance(g2, Group)
+        assert 'foo' == g2.path
         g3 = g2.require_group('bar')
-        assert_is_instance(g3, Group)
-        eq('foo/bar', g3.path)
+        assert isinstance(g3, Group)
+        assert 'foo/bar' == g3.path
         g4 = g1.require_group('foo/bar/baz')
-        assert_is_instance(g4, Group)
-        eq('foo/bar/baz', g4.path)
+        assert isinstance(g4, Group)
+        assert 'foo/bar/baz' == g4.path
         g5 = g4.require_group('/a/b/c/')
-        assert_is_instance(g5, Group)
-        eq('a/b/c', g5.path)
+        assert isinstance(g5, Group)
+        assert 'a/b/c' == g5.path
 
         # test when already created
         g2a = g1.require_group('foo')
-        eq(g2, g2a)
-        assert_is(g2.store, g2a.store)
+        assert g2 == g2a
+        assert g2.store is g2a.store
         g3a = g2a.require_group('bar')
-        eq(g3, g3a)
-        assert_is(g3.store, g3a.store)
+        assert g3 == g3a
+        assert g3.store is g3a.store
         g4a = g1.require_group('foo/bar/baz')
-        eq(g4, g4a)
-        assert_is(g4.store, g4a.store)
+        assert g4 == g4a
+        assert g4.store is g4a.store
         g5a = g4a.require_group('/a/b/c/')
-        eq(g5, g5a)
-        assert_is(g5.store, g5a.store)
+        assert g5 == g5a
+        assert g5.store is g5a.store
 
         # test path normalization
-        eq(g1.require_group('quux'), g1.require_group('/quux/'))
+        assert g1.require_group('quux') == g1.require_group('/quux/')
 
         # multi
         g6, g7 = g1.require_groups('y', 'z')
-        assert_is_instance(g6, Group)
-        eq(g6.path, 'y')
-        assert_is_instance(g7, Group)
-        eq(g7.path, 'z')
+        assert isinstance(g6, Group)
+        assert g6.path == 'y'
+        assert isinstance(g7, Group)
+        assert g7.path == 'z'
 
     def test_create_dataset(self):
         g = self.create_group()
 
         # create as immediate child
         d1 = g.create_dataset('foo', shape=1000, chunks=100)
-        assert_is_instance(d1, Array)
-        eq((1000,), d1.shape)
-        eq((100,), d1.chunks)
-        eq('foo', d1.path)
-        eq('/foo', d1.name)
-        assert_is(g.store, d1.store)
+        assert isinstance(d1, Array)
+        assert (1000,) == d1.shape
+        assert (100,) == d1.chunks
+        assert 'foo' == d1.path
+        assert '/foo' == d1.name
+        assert g.store is d1.store
 
         # create as descendant
         d2 = g.create_dataset('/a/b/c/', shape=2000, chunks=200, dtype='i1',
                               compression='zlib', compression_opts=9,
                               fill_value=42, order='F')
-        assert_is_instance(d2, Array)
-        eq((2000,), d2.shape)
-        eq((200,), d2.chunks)
-        eq(np.dtype('i1'), d2.dtype)
-        eq('zlib', d2.compressor.codec_id)
-        eq(9, d2.compressor.level)
-        eq(42, d2.fill_value)
-        eq('F', d2.order)
-        eq('a/b/c', d2.path)
-        eq('/a/b/c', d2.name)
-        assert_is(g.store, d2.store)
+        assert isinstance(d2, Array)
+        assert (2000,) == d2.shape
+        assert (200,) == d2.chunks
+        assert np.dtype('i1') == d2.dtype
+        assert 'zlib' == d2.compressor.codec_id
+        assert 9 == d2.compressor.level
+        assert 42 == d2.fill_value
+        assert 'F' == d2.order
+        assert 'a/b/c' == d2.path
+        assert '/a/b/c' == d2.name
+        assert g.store is d2.store
 
         # create with data
         data = np.arange(3000, dtype='u2')
         d3 = g.create_dataset('bar', data=data, chunks=300)
-        assert_is_instance(d3, Array)
-        eq((3000,), d3.shape)
-        eq((300,), d3.chunks)
-        eq(np.dtype('u2'), d3.dtype)
+        assert isinstance(d3, Array)
+        assert (3000,) == d3.shape
+        assert (300,) == d3.chunks
+        assert np.dtype('u2') == d3.dtype
         assert_array_equal(data, d3[:])
-        eq('bar', d3.path)
-        eq('/bar', d3.name)
-        assert_is(g.store, d3.store)
+        assert 'bar' == d3.path
+        assert '/bar' == d3.name
+        assert g.store is d3.store
 
         # compression arguments handling follows...
 
@@ -255,33 +252,33 @@ class TestGroup(unittest.TestCase):
         d = g.create_dataset('aaa', shape=1000, dtype='u1',
                              compression='blosc',
                              compression_opts=dict(cname='zstd', clevel=1, shuffle=2))
-        eq(d.compressor.codec_id, 'blosc')
-        eq('zstd', d.compressor.cname)
-        eq(1, d.compressor.clevel)
-        eq(2, d.compressor.shuffle)
+        assert d.compressor.codec_id == 'blosc'
+        assert 'zstd' == d.compressor.cname
+        assert 1 == d.compressor.clevel
+        assert 2 == d.compressor.shuffle
 
         # compression_opts as sequence
         d = g.create_dataset('bbb', shape=1000, dtype='u1',
                              compression='blosc',
                              compression_opts=('zstd', 1, 2))
-        eq(d.compressor.codec_id, 'blosc')
-        eq('zstd', d.compressor.cname)
-        eq(1, d.compressor.clevel)
-        eq(2, d.compressor.shuffle)
+        assert d.compressor.codec_id == 'blosc'
+        assert 'zstd' == d.compressor.cname
+        assert 1 == d.compressor.clevel
+        assert 2 == d.compressor.shuffle
 
         # None compression_opts
         d = g.create_dataset('ccc', shape=1000, dtype='u1', compression='zlib')
-        eq(d.compressor.codec_id, 'zlib')
-        eq(1, d.compressor.level)
+        assert d.compressor.codec_id == 'zlib'
+        assert 1 == d.compressor.level
 
         # None compression
         d = g.create_dataset('ddd', shape=1000, dtype='u1', compression=None)
-        assert_is_none(d.compressor)
+        assert d.compressor is None
 
         # compressor as compression
         d = g.create_dataset('eee', shape=1000, dtype='u1', compression=Zlib(1))
-        eq(d.compressor.codec_id, 'zlib')
-        eq(1, d.compressor.level)
+        assert d.compressor.codec_id == 'zlib'
+        assert 1 == d.compressor.level
 
     def test_require_dataset(self):
         g = self.create_group()
@@ -289,40 +286,40 @@ class TestGroup(unittest.TestCase):
         # create
         d1 = g.require_dataset('foo', shape=1000, chunks=100, dtype='f4')
         d1[:] = np.arange(1000)
-        assert_is_instance(d1, Array)
-        eq((1000,), d1.shape)
-        eq((100,), d1.chunks)
-        eq(np.dtype('f4'), d1.dtype)
-        eq('foo', d1.path)
-        eq('/foo', d1.name)
-        assert_is(g.store, d1.store)
+        assert isinstance(d1, Array)
+        assert (1000,) == d1.shape
+        assert (100,) == d1.chunks
+        assert np.dtype('f4') == d1.dtype
+        assert 'foo' == d1.path
+        assert '/foo' == d1.name
+        assert g.store is d1.store
         assert_array_equal(np.arange(1000), d1[:])
 
         # require
         d2 = g.require_dataset('foo', shape=1000, chunks=100, dtype='f4')
-        assert_is_instance(d2, Array)
-        eq((1000,), d2.shape)
-        eq((100,), d2.chunks)
-        eq(np.dtype('f4'), d2.dtype)
-        eq('foo', d2.path)
-        eq('/foo', d2.name)
-        assert_is(g.store, d2.store)
+        assert isinstance(d2, Array)
+        assert (1000,) == d2.shape
+        assert (100,) == d2.chunks
+        assert np.dtype('f4') == d2.dtype
+        assert 'foo' == d2.path
+        assert '/foo' == d2.name
+        assert g.store is d2.store
         assert_array_equal(np.arange(1000), d2[:])
-        eq(d1, d2)
+        assert d1 == d2
 
         # bad shape - use TypeError for h5py compatibility
-        with assert_raises(TypeError):
+        with pytest.raises(TypeError):
             g.require_dataset('foo', shape=2000, chunks=100, dtype='f4')
 
         # dtype matching
         # can cast
         d3 = g.require_dataset('foo', shape=1000, chunks=100, dtype='i2')
-        eq(np.dtype('f4'), d3.dtype)
-        eq(d1, d3)
-        with assert_raises(TypeError):
+        assert np.dtype('f4') == d3.dtype
+        assert d1 == d3
+        with pytest.raises(TypeError):
             # cannot cast
             g.require_dataset('foo', shape=1000, chunks=100, dtype='i4')
-        with assert_raises(TypeError):
+        with pytest.raises(TypeError):
             # can cast but not exact match
             g.require_dataset('foo', shape=1000, chunks=100, dtype='i2',
                               exact=True)
@@ -332,38 +329,38 @@ class TestGroup(unittest.TestCase):
 
         # array obstructs group, array
         g.create_dataset('foo', shape=100, chunks=10)
-        with assert_raises(ValueError):
+        with pytest.raises(ValueError):
             g.create_group('foo/bar')
-        with assert_raises(ValueError):
+        with pytest.raises(ValueError):
             g.require_group('foo/bar')
-        with assert_raises(ValueError):
+        with pytest.raises(ValueError):
             g.create_dataset('foo/bar', shape=100, chunks=10)
-        with assert_raises(ValueError):
+        with pytest.raises(ValueError):
             g.require_dataset('foo/bar', shape=100, chunks=10)
 
         # array obstructs group, array
         g.create_dataset('a/b', shape=100, chunks=10)
-        with assert_raises(ValueError):
+        with pytest.raises(ValueError):
             g.create_group('a/b')
-        with assert_raises(ValueError):
+        with pytest.raises(ValueError):
             g.require_group('a/b')
-        with assert_raises(ValueError):
+        with pytest.raises(ValueError):
             g.create_dataset('a/b', shape=100, chunks=10)
 
         # group obstructs array
         g.create_group('c/d')
-        with assert_raises(ValueError):
+        with pytest.raises(ValueError):
             g.create_dataset('c', shape=100, chunks=10)
-        with assert_raises(ValueError):
+        with pytest.raises(ValueError):
             g.require_dataset('c', shape=100, chunks=10)
-        with assert_raises(ValueError):
+        with pytest.raises(ValueError):
             g.create_dataset('c/d', shape=100, chunks=10)
-        with assert_raises(ValueError):
+        with pytest.raises(ValueError):
             g.require_dataset('c/d', shape=100, chunks=10)
 
         # h5py compatibility, accept 'fillvalue'
         d = g.create_dataset('x', shape=100, chunks=10, fillvalue=42)
-        eq(42, d.fill_value)
+        assert 42 == d.fill_value
 
         # h5py compatibility, ignore 'shuffle'
         with pytest.warns(UserWarning, match="ignoring keyword argument 'shuffle'"):
@@ -371,13 +368,13 @@ class TestGroup(unittest.TestCase):
 
         # read-only
         g = self.create_group(read_only=True)
-        with assert_raises(PermissionError):
+        with pytest.raises(PermissionError):
             g.create_group('zzz')
-        with assert_raises(PermissionError):
+        with pytest.raises(PermissionError):
             g.require_group('zzz')
-        with assert_raises(PermissionError):
+        with pytest.raises(PermissionError):
             g.create_dataset('zzz', shape=100, chunks=10)
-        with assert_raises(PermissionError):
+        with pytest.raises(PermissionError):
             g.require_dataset('zzz', shape=100, chunks=10)
 
     def test_create_overwrite(self):
@@ -390,19 +387,19 @@ class TestGroup(unittest.TestCase):
                 # overwrite array with array
                 d = getattr(g, method_name)('foo', shape=200, chunks=20,
                                             overwrite=True)
-                eq((200,), d.shape)
+                assert (200,) == d.shape
                 # overwrite array with group
                 g2 = g.create_group('foo', overwrite=True)
-                eq(0, len(g2))
+                assert 0 == len(g2)
                 # overwrite group with array
                 d = getattr(g, method_name)('foo', shape=300, chunks=30,
                                             overwrite=True)
-                eq((300,), d.shape)
+                assert (300,) == d.shape
                 # overwrite array with group
                 d = getattr(g, method_name)('foo/bar', shape=400, chunks=40,
                                             overwrite=True)
-                eq((400,), d.shape)
-                assert_is_instance(g['foo'], Group)
+                assert (400,) == d.shape
+                assert isinstance(g['foo'], Group)
         except NotImplementedError:
             pass
 
@@ -416,22 +413,22 @@ class TestGroup(unittest.TestCase):
         d2[:] = np.arange(3000)
 
         # test __getitem__
-        assert_is_instance(g1['foo'], Group)
-        assert_is_instance(g1['foo']['bar'], Group)
-        assert_is_instance(g1['foo/bar'], Group)
-        assert_is_instance(g1['/foo/bar/'], Group)
-        assert_is_instance(g1['foo/baz'], Array)
-        eq(g2, g1['foo/bar'])
-        eq(g1['foo']['bar'], g1['foo/bar'])
-        eq(d2, g1['foo/baz'])
+        assert isinstance(g1['foo'], Group)
+        assert isinstance(g1['foo']['bar'], Group)
+        assert isinstance(g1['foo/bar'], Group)
+        assert isinstance(g1['/foo/bar/'], Group)
+        assert isinstance(g1['foo/baz'], Array)
+        assert g2 == g1['foo/bar']
+        assert g1['foo']['bar'] == g1['foo/bar']
+        assert d2 == g1['foo/baz']
         assert_array_equal(d2[:], g1['foo/baz'])
-        assert_is_instance(g1['a'], Group)
-        assert_is_instance(g1['a']['b'], Group)
-        assert_is_instance(g1['a/b'], Group)
-        assert_is_instance(g1['a']['b']['c'], Array)
-        assert_is_instance(g1['a/b/c'], Array)
-        eq(d1, g1['a/b/c'])
-        eq(g1['a']['b']['c'], g1['a/b/c'])
+        assert isinstance(g1['a'], Group)
+        assert isinstance(g1['a']['b'], Group)
+        assert isinstance(g1['a/b'], Group)
+        assert isinstance(g1['a']['b']['c'], Array)
+        assert isinstance(g1['a/b/c'], Array)
+        assert d1 == g1['a/b/c']
+        assert g1['a']['b']['c'] == g1['a/b/c']
         assert_array_equal(d1[:], g1['a/b/c'][:])
 
         # test __contains__
@@ -448,70 +445,70 @@ class TestGroup(unittest.TestCase):
         assert 'quux' not in g1['foo']
 
         # test key errors
-        with assert_raises(KeyError):
+        with pytest.raises(KeyError):
             g1['baz']
-        with assert_raises(KeyError):
+        with pytest.raises(KeyError):
             g1['x/y/z']
 
         # test __len__
-        eq(2, len(g1))
-        eq(2, len(g1['foo']))
-        eq(0, len(g1['foo/bar']))
-        eq(1, len(g1['a']))
-        eq(1, len(g1['a/b']))
+        assert 2 == len(g1)
+        assert 2 == len(g1['foo'])
+        assert 0 == len(g1['foo/bar'])
+        assert 1 == len(g1['a'])
+        assert 1 == len(g1['a/b'])
 
         # test __iter__, keys()
         # currently assumes sorted by key
 
-        eq(['a', 'foo'], list(g1))
-        eq(['a', 'foo'], list(g1.keys()))
-        eq(['bar', 'baz'], list(g1['foo']))
-        eq(['bar', 'baz'], list(g1['foo'].keys()))
-        eq([], sorted(g1['foo/bar']))
-        eq([], sorted(g1['foo/bar'].keys()))
+        assert ['a', 'foo'] == list(g1)
+        assert ['a', 'foo'] == list(g1.keys())
+        assert ['bar', 'baz'] == list(g1['foo'])
+        assert ['bar', 'baz'] == list(g1['foo'].keys())
+        assert [] == sorted(g1['foo/bar'])
+        assert [] == sorted(g1['foo/bar'].keys())
 
         # test items(), values()
         # currently assumes sorted by key
 
         items = list(g1.items())
         values = list(g1.values())
-        eq('a', items[0][0])
-        eq(g1['a'], items[0][1])
-        eq(g1['a'], values[0])
-        eq('foo', items[1][0])
-        eq(g1['foo'], items[1][1])
-        eq(g1['foo'], values[1])
+        assert 'a' == items[0][0]
+        assert g1['a'] == items[0][1]
+        assert g1['a'] == values[0]
+        assert 'foo' == items[1][0]
+        assert g1['foo'] == items[1][1]
+        assert g1['foo'] == values[1]
 
         items = list(g1['foo'].items())
         values = list(g1['foo'].values())
-        eq('bar', items[0][0])
-        eq(g1['foo']['bar'], items[0][1])
-        eq(g1['foo']['bar'], values[0])
-        eq('baz', items[1][0])
-        eq(g1['foo']['baz'], items[1][1])
-        eq(g1['foo']['baz'], values[1])
+        assert 'bar' == items[0][0]
+        assert g1['foo']['bar'] == items[0][1]
+        assert g1['foo']['bar'] == values[0]
+        assert 'baz' == items[1][0]
+        assert g1['foo']['baz'] == items[1][1]
+        assert g1['foo']['baz'] == values[1]
 
         # test array_keys(), arrays(), group_keys(), groups()
         # currently assumes sorted by key
 
-        eq(['a', 'foo'], list(g1.group_keys()))
+        assert ['a', 'foo'] == list(g1.group_keys())
         groups = list(g1.groups())
         arrays = list(g1.arrays())
-        eq('a', groups[0][0])
-        eq(g1['a'], groups[0][1])
-        eq('foo', groups[1][0])
-        eq(g1['foo'], groups[1][1])
-        eq([], list(g1.array_keys()))
-        eq([], arrays)
+        assert 'a' == groups[0][0]
+        assert g1['a'] == groups[0][1]
+        assert 'foo' == groups[1][0]
+        assert g1['foo'] == groups[1][1]
+        assert [] == list(g1.array_keys())
+        assert [] == arrays
 
-        eq(['bar'], list(g1['foo'].group_keys()))
-        eq(['baz'], list(g1['foo'].array_keys()))
+        assert ['bar'] == list(g1['foo'].group_keys())
+        assert ['baz'] == list(g1['foo'].array_keys())
         groups = list(g1['foo'].groups())
         arrays = list(g1['foo'].arrays())
-        eq('bar', groups[0][0])
-        eq(g1['foo']['bar'], groups[0][1])
-        eq('baz', arrays[0][0])
-        eq(g1['foo']['baz'], arrays[0][1])
+        assert 'bar' == groups[0][0]
+        assert g1['foo']['bar'] == groups[0][1]
+        assert 'baz' == arrays[0][0]
+        assert g1['foo']['baz'] == arrays[0][1]
 
         # visitor collection tests
         items = []
@@ -519,6 +516,7 @@ class TestGroup(unittest.TestCase):
         def visitor2(obj):
             items.append(obj.path)
 
+        # noinspection PyUnusedLocal
         def visitor3(name, obj=None):
             items.append(name)
 
@@ -527,114 +525,116 @@ class TestGroup(unittest.TestCase):
 
         del items[:]
         g1.visitvalues(visitor2)
-        eq([
+        assert [
             "a",
             "a/b",
             "a/b/c",
             "foo",
             "foo/bar",
             "foo/baz",
-        ], items)
+        ] == items
 
         del items[:]
         g1["foo"].visitvalues(visitor2)
-        eq([
+        assert [
             "foo/bar",
             "foo/baz",
-        ], items)
+        ] == items
 
         del items[:]
         g1.visit(visitor3)
-        eq([
+        assert [
             "a",
             "a/b",
             "a/b/c",
             "foo",
             "foo/bar",
             "foo/baz",
-        ], items)
+        ] == items
 
         del items[:]
         g1["foo"].visit(visitor3)
-        eq([
+        assert [
             "bar",
             "baz",
-        ], items)
+        ] == items
 
         del items[:]
         g1.visitkeys(visitor3)
-        eq([
+        assert [
             "a",
             "a/b",
             "a/b/c",
             "foo",
             "foo/bar",
             "foo/baz",
-        ], items)
+        ] == items
 
         del items[:]
         g1["foo"].visitkeys(visitor3)
-        eq([
+        assert [
             "bar",
             "baz",
-        ], items)
+        ] == items
 
         del items[:]
         g1.visititems(visitor3)
-        eq([
+        assert [
             "a",
             "a/b",
             "a/b/c",
             "foo",
             "foo/bar",
             "foo/baz",
-        ], items)
+        ] == items
 
         del items[:]
         g1["foo"].visititems(visitor3)
-        eq([
+        assert [
             "bar",
             "baz",
-        ], items)
+        ] == items
 
         del items[:]
         g1.visititems(visitor4)
         for n, o in items:
-            eq(g1[n], o)
+            assert g1[n] == o
 
         del items[:]
         g1["foo"].visititems(visitor4)
         for n, o in items:
-            eq(g1["foo"][n], o)
+            assert g1["foo"][n] == o
 
         # visitor filter tests
+        # noinspection PyUnusedLocal
         def visitor0(val, *args):
             name = getattr(val, "path", val)
             if name == "a/b/c/d":
                 return True  # pragma: no cover
 
+        # noinspection PyUnusedLocal
         def visitor1(val, *args):
             name = getattr(val, "path", val)
             if name == "a/b/c":
                 return True
 
-        eq(None, g1.visit(visitor0))
-        eq(None, g1.visitkeys(visitor0))
-        eq(None, g1.visitvalues(visitor0))
-        eq(None, g1.visititems(visitor0))
-        eq(True, g1.visit(visitor1))
-        eq(True, g1.visitkeys(visitor1))
-        eq(True, g1.visitvalues(visitor1))
-        eq(True, g1.visititems(visitor1))
+        assert g1.visit(visitor0) is None
+        assert g1.visitkeys(visitor0) is None
+        assert g1.visitvalues(visitor0) is None
+        assert g1.visititems(visitor0) is None
+        assert g1.visit(visitor1) is True
+        assert g1.visitkeys(visitor1) is True
+        assert g1.visitvalues(visitor1) is True
+        assert g1.visititems(visitor1) is True
 
     def test_empty_getitem_contains_iterators(self):
         # setup
         g = self.create_group()
 
         # test
-        eq([], list(g))
-        eq([], list(g.keys()))
-        eq(0, len(g))
+        assert [] == list(g)
+        assert [] == list(g.keys())
+        assert 0 == len(g)
         assert 'foo' not in g
 
     def test_getattr(self):
@@ -644,10 +644,10 @@ class TestGroup(unittest.TestCase):
         g2.create_dataset('bar', shape=100)
 
         # test
-        eq(g1['foo'], g1.foo)
-        eq(g2['bar'], g2.bar)
+        assert g1['foo'] == g1.foo
+        assert g2['bar'] == g2.bar
         # test that hasattr returns False instead of an exception (issue #88)
-        assert_false(hasattr(g1, 'unexistingattribute'))
+        assert not hasattr(g1, 'unexistingattribute')
 
     def test_setitem(self):
         g = self.create_group()
@@ -660,8 +660,8 @@ class TestGroup(unittest.TestCase):
             assert_array_equal(data, g['foo'])
             # 0d array
             g['foo'] = 42
-            eq((), g['foo'].shape)
-            eq(42, g['foo'][()])
+            assert () == g['foo'].shape
+            assert 42 == g['foo'][()]
         except NotImplementedError:
             pass
 
@@ -674,7 +674,7 @@ class TestGroup(unittest.TestCase):
         assert 'bar/baz' in g
         try:
             del g['bar']
-            with assert_raises(KeyError):
+            with pytest.raises(KeyError):
                 del g['xxx']
         except NotImplementedError:
             pass
@@ -721,10 +721,10 @@ class TestGroup(unittest.TestCase):
             assert isinstance(g['foo2'], Group)
             assert_array_equal(data, g['bar'])
 
-            with assert_raises(ValueError):
+            with pytest.raises(ValueError):
                 g2.move('bar', 'bar2')
 
-            with assert_raises(ValueError):
+            with pytest.raises(ValueError):
                 g.move('bar', 'boo')
         except NotImplementedError:
             pass
@@ -733,90 +733,90 @@ class TestGroup(unittest.TestCase):
         grp = self.create_group()
 
         a = grp.create('a', shape=100, chunks=10)
-        assert_is_instance(a, Array)
+        assert isinstance(a, Array)
         b = grp.empty('b', shape=100, chunks=10)
-        assert_is_instance(b, Array)
-        assert_is_none(b.fill_value)
+        assert isinstance(b, Array)
+        assert b.fill_value is None
         c = grp.zeros('c', shape=100, chunks=10)
-        assert_is_instance(c, Array)
-        eq(0, c.fill_value)
+        assert isinstance(c, Array)
+        assert 0 == c.fill_value
         d = grp.ones('d', shape=100, chunks=10)
-        assert_is_instance(d, Array)
-        eq(1, d.fill_value)
+        assert isinstance(d, Array)
+        assert 1 == d.fill_value
         e = grp.full('e', shape=100, chunks=10, fill_value=42)
-        assert_is_instance(e, Array)
-        eq(42, e.fill_value)
+        assert isinstance(e, Array)
+        assert 42 == e.fill_value
 
         f = grp.empty_like('f', a)
-        assert_is_instance(f, Array)
-        assert_is_none(f.fill_value)
+        assert isinstance(f, Array)
+        assert f.fill_value is None
         g = grp.zeros_like('g', a)
-        assert_is_instance(g, Array)
-        eq(0, g.fill_value)
+        assert isinstance(g, Array)
+        assert 0 == g.fill_value
         h = grp.ones_like('h', a)
-        assert_is_instance(h, Array)
-        eq(1, h.fill_value)
+        assert isinstance(h, Array)
+        assert 1 == h.fill_value
         i = grp.full_like('i', e)
-        assert_is_instance(i, Array)
-        eq(42, i.fill_value)
+        assert isinstance(i, Array)
+        assert 42 == i.fill_value
 
         j = grp.array('j', data=np.arange(100), chunks=10)
-        assert_is_instance(j, Array)
+        assert isinstance(j, Array)
         assert_array_equal(np.arange(100), j[:])
 
         grp = self.create_group(read_only=True)
-        with assert_raises(PermissionError):
+        with pytest.raises(PermissionError):
             grp.create('aa', shape=100, chunks=10)
-        with assert_raises(PermissionError):
+        with pytest.raises(PermissionError):
             grp.empty('aa', shape=100, chunks=10)
-        with assert_raises(PermissionError):
+        with pytest.raises(PermissionError):
             grp.zeros('aa', shape=100, chunks=10)
-        with assert_raises(PermissionError):
+        with pytest.raises(PermissionError):
             grp.ones('aa', shape=100, chunks=10)
-        with assert_raises(PermissionError):
+        with pytest.raises(PermissionError):
             grp.full('aa', shape=100, chunks=10, fill_value=42)
-        with assert_raises(PermissionError):
+        with pytest.raises(PermissionError):
             grp.array('aa', data=np.arange(100), chunks=10)
-        with assert_raises(PermissionError):
+        with pytest.raises(PermissionError):
             grp.create('aa', shape=100, chunks=10)
-        with assert_raises(PermissionError):
+        with pytest.raises(PermissionError):
             grp.empty_like('aa', a)
-        with assert_raises(PermissionError):
+        with pytest.raises(PermissionError):
             grp.zeros_like('aa', a)
-        with assert_raises(PermissionError):
+        with pytest.raises(PermissionError):
             grp.ones_like('aa', a)
-        with assert_raises(PermissionError):
+        with pytest.raises(PermissionError):
             grp.full_like('aa', a)
 
     def test_paths(self):
         g1 = self.create_group()
         g2 = g1.create_group('foo/bar')
 
-        eq(g1, g1['/'])
-        eq(g1, g1['//'])
-        eq(g1, g1['///'])
-        eq(g1, g2['/'])
-        eq(g1, g2['//'])
-        eq(g1, g2['///'])
-        eq(g2, g1['foo/bar'])
-        eq(g2, g1['/foo/bar'])
-        eq(g2, g1['foo/bar/'])
-        eq(g2, g1['//foo/bar'])
-        eq(g2, g1['//foo//bar//'])
-        eq(g2, g1['///foo///bar///'])
-        eq(g2, g2['/foo/bar'])
+        assert g1 == g1['/']
+        assert g1 == g1['//']
+        assert g1 == g1['///']
+        assert g1 == g2['/']
+        assert g1 == g2['//']
+        assert g1 == g2['///']
+        assert g2 == g1['foo/bar']
+        assert g2 == g1['/foo/bar']
+        assert g2 == g1['foo/bar/']
+        assert g2 == g1['//foo/bar']
+        assert g2 == g1['//foo//bar//']
+        assert g2 == g1['///foo///bar///']
+        assert g2 == g2['/foo/bar']
 
-        with assert_raises(ValueError):
+        with pytest.raises(ValueError):
             g1['.']
-        with assert_raises(ValueError):
+        with pytest.raises(ValueError):
             g1['..']
-        with assert_raises(ValueError):
+        with pytest.raises(ValueError):
             g1['foo/.']
-        with assert_raises(ValueError):
+        with pytest.raises(ValueError):
             g1['foo/..']
-        with assert_raises(ValueError):
+        with pytest.raises(ValueError):
             g1['foo/./bar']
-        with assert_raises(ValueError):
+        with pytest.raises(ValueError):
             g1['foo/../bar']
 
     def test_pickle(self):
@@ -831,12 +831,12 @@ class TestGroup(unittest.TestCase):
 
         # pickle round trip
         g2 = pickle.loads(pickle.dumps(g))
-        eq(g.path, g2.path)
-        eq(g.name, g2.name)
-        eq(len(g), len(g2))
-        eq(list(g), list(g2))
-        eq(g['foo'], g2['foo'])
-        eq(g['foo/bar'], g2['foo/bar'])
+        assert g.path == g2.path
+        assert g.name == g2.name
+        assert len(g) == len(g2)
+        assert list(g) == list(g2)
+        assert g['foo'] == g2['foo']
+        assert g['foo/bar'] == g2['foo/bar']
 
 
 class TestGroupWithDictStore(TestGroup):
@@ -888,30 +888,35 @@ class TestGroupWithDBMStore(TestGroup):
 
 try:
     import bsddb3
-
-    class TestGroupWithDBMStoreBerkeleyDB(TestGroup):
-
-        @staticmethod
-        def create_store():
-            path = tempfile.mktemp(suffix='.dbm')
-            atexit.register(os.remove, path)
-            store = DBMStore(path, flag='n', open=bsddb3.btopen)
-            return store, None
-
 except ImportError:  # pragma: no cover
-    pass
+    bsddb3 = None
 
 
+@pytest.mark.skipif(bsddb3 is None, reason='bsddb3 is not installed')
+class TestGroupWithDBMStoreBerkeleyDB(TestGroup):
+
+    @staticmethod
+    def create_store():
+        path = tempfile.mktemp(suffix='.dbm')
+        atexit.register(os.remove, path)
+        store = DBMStore(path, flag='n', open=bsddb3.btopen)
+        return store, None
+
+
+try:
+    import lmdb
+except ImportError:
+    lmdb = None
+
+
+@pytest.mark.skipif(lmdb is None, reason='lmdb is not installed')
 class TestGroupWithLMDBStore(TestGroup):
 
     @staticmethod
     def create_store():
         path = tempfile.mktemp(suffix='.lmdb')
         atexit.register(atexit_rmtree, path)
-        try:
-            store = LMDBStore(path)
-        except ImportError:  # pragma: no cover
-            raise SkipTest('lmdb nod installed')
+        store = LMDBStore(path)
         return store, None
 
 
@@ -927,23 +932,23 @@ class TestGroupWithChunkStore(TestGroup):
         g = self.create_group(store, chunk_store=chunk_store)
 
         # check attributes
-        assert_is(store, g.store)
-        assert_is(chunk_store, g.chunk_store)
+        assert store is g.store
+        assert chunk_store is g.chunk_store
 
         # create array
         a = g.zeros('foo', shape=100, chunks=10)
-        assert_is(store, a.store)
-        assert_is(chunk_store, a.chunk_store)
+        assert store is a.store
+        assert chunk_store is a.chunk_store
         a[:] = np.arange(100)
         assert_array_equal(np.arange(100), a[:])
 
         # check store keys
         expect = sorted([group_meta_key, 'foo/' + array_meta_key])
         actual = sorted(store.keys())
-        eq(expect, actual)
+        assert expect == actual
         expect = ['foo/' + str(i) for i in range(10)]
         actual = sorted(chunk_store.keys())
-        eq(expect, actual)
+        assert expect == actual
 
 
 class TestGroupWithStoreCache(TestGroup):
@@ -959,24 +964,24 @@ def test_group():
 
     # basic usage
     g = group()
-    assert_is_instance(g, Group)
-    eq('', g.path)
-    eq('/', g.name)
+    assert isinstance(g, Group)
+    assert '' == g.path
+    assert '/' == g.name
 
     # usage with custom store
     store = dict()
     g = group(store=store)
-    assert_is_instance(g, Group)
-    assert_is(store, g.store)
+    assert isinstance(g, Group)
+    assert store is g.store
 
     # overwrite behaviour
     store = dict()
     init_array(store, shape=100, chunks=10)
-    with assert_raises(ValueError):
+    with pytest.raises(ValueError):
         group(store)
     g = group(store, overwrite=True)
-    assert_is_instance(g, Group)
-    assert_is(store, g.store)
+    assert isinstance(g, Group)
+    assert store is g.store
 
 
 def test_open_group():
@@ -986,59 +991,59 @@ def test_open_group():
 
     # mode == 'w'
     g = open_group(store, mode='w')
-    assert_is_instance(g, Group)
-    assert_is_instance(g.store, DirectoryStore)
-    eq(0, len(g))
+    assert isinstance(g, Group)
+    assert isinstance(g.store, DirectoryStore)
+    assert 0 == len(g)
     g.create_groups('foo', 'bar')
-    eq(2, len(g))
+    assert 2 == len(g)
 
     # mode in 'r', 'r+'
     open_array('data/array.zarr', shape=100, chunks=10, mode='w')
     for mode in 'r', 'r+':
-        with assert_raises(ValueError):
+        with pytest.raises(ValueError):
             open_group('doesnotexist', mode=mode)
-        with assert_raises(ValueError):
+        with pytest.raises(ValueError):
             open_group('data/array.zarr', mode=mode)
     g = open_group(store, mode='r')
-    assert_is_instance(g, Group)
-    eq(2, len(g))
-    with assert_raises(PermissionError):
+    assert isinstance(g, Group)
+    assert 2 == len(g)
+    with pytest.raises(PermissionError):
         g.create_group('baz')
     g = open_group(store, mode='r+')
-    assert_is_instance(g, Group)
-    eq(2, len(g))
+    assert isinstance(g, Group)
+    assert 2 == len(g)
     g.create_groups('baz', 'quux')
-    eq(4, len(g))
+    assert 4 == len(g)
 
     # mode == 'a'
     shutil.rmtree(store)
     g = open_group(store, mode='a')
-    assert_is_instance(g, Group)
-    assert_is_instance(g.store, DirectoryStore)
-    eq(0, len(g))
+    assert isinstance(g, Group)
+    assert isinstance(g.store, DirectoryStore)
+    assert 0 == len(g)
     g.create_groups('foo', 'bar')
-    eq(2, len(g))
-    with assert_raises(ValueError):
+    assert 2 == len(g)
+    with pytest.raises(ValueError):
         open_group('data/array.zarr', mode='a')
 
     # mode in 'w-', 'x'
     for mode in 'w-', 'x':
         shutil.rmtree(store)
         g = open_group(store, mode=mode)
-        assert_is_instance(g, Group)
-        assert_is_instance(g.store, DirectoryStore)
-        eq(0, len(g))
+        assert isinstance(g, Group)
+        assert isinstance(g.store, DirectoryStore)
+        assert 0 == len(g)
         g.create_groups('foo', 'bar')
-        eq(2, len(g))
-        with assert_raises(ValueError):
+        assert 2 == len(g)
+        with pytest.raises(ValueError):
             open_group(store, mode=mode)
-        with assert_raises(ValueError):
+        with pytest.raises(ValueError):
             open_group('data/array.zarr', mode=mode)
 
     # open with path
     g = open_group(store, path='foo/bar')
-    assert_is_instance(g, Group)
-    eq('foo/bar', g.path)
+    assert isinstance(g, Group)
+    assert 'foo/bar' == g.path
 
 
 def test_group_completions():
@@ -1135,12 +1140,12 @@ def test_group_key_completions():
 
 
 def _check_tree(g, expect_bytes, expect_text):
-    eq(expect_bytes, bytes(g.tree()))
-    eq(expect_text, text_type(g.tree()))
+    assert expect_bytes == bytes(g.tree())
+    assert expect_text == text_type(g.tree())
     expect_repr = expect_text
     if PY2:  # pragma: py3 no cover
         expect_repr = expect_bytes
-    eq(expect_repr, repr(g.tree()))
+    assert expect_repr == repr(g.tree())
     # test _repr_html_ lightly
     # noinspection PyProtectedMember
     html = g.tree()._repr_html_().strip()
