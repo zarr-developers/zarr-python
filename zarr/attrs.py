@@ -20,10 +20,12 @@ class Attributes(MutableMapping):
         self.synchronizer = synchronizer
 
     def _get(self):
-        if self.key in self.store:
-            d = json.loads(text_type(self.store[self.key], 'ascii'))
-        else:
+        try:
+            data = self.store[self.key]
+        except KeyError:
             d = dict()
+        else:
+            d = json.loads(text_type(data, 'ascii'))
         return d
 
     def _put(self, d):
