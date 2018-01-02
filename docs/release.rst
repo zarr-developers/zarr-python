@@ -127,6 +127,10 @@ Enhancements
 * **Added support for ``datetime64`` and ``timedelta64`` data types**;
   :issue:`85`, :issue:`215`.
 
+* **Array and group attributes are now cached by default** to improve performance with
+  slow stores, e.g., stores accessing data via the network; :issue:`220`, :issue:`218`,
+  :issue:`204`.
+
 Bug fixes
 ~~~~~~~~~
 
