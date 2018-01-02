@@ -127,6 +127,11 @@ Enhancements
 * **Added support for ``datetime64`` and ``timedelta64`` data types**;
   :issue:`85`, :issue:`215`.
 
+* **New LRUStoreCache class**. The class :class:`zarr.storage.LRUStoreCache` has been
+  added and provides a means to locally cache data in memory from a store that may be
+  slow, e.g., a store that retrieves data from a remote server via the network;
+  :issue:`223`.
+
 Bug fixes
 ~~~~~~~~~
 
