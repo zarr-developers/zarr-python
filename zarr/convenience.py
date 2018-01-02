@@ -787,13 +787,14 @@ def _copy(log, source, dest, name, root, shallow, without_attrs, if_exists,
         raise ValueError('if_exists must be one of {!r}; found {!r}'
                          .format(valid_if_exists, if_exists))
     if dest_h5py and if_exists == 'skip_initialized':
-        raise ValueError('{!r} can only be used then copying to zarr'
+        raise ValueError('{!r} can only be used when copying to zarr'
                          .format(if_exists))
 
     # determine name to copy to
     if name is None:
         name = source.name.split('/')[-1]
         if not name:
+            # this can happen if source is the root group
             raise TypeError('source has no name, please provide the `name` '
                             'parameter to indicate a name to copy to')
 
