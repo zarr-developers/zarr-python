@@ -5,6 +5,15 @@ Note that any object implementing the :class:`MutableMapping` interface from the
 :mod:`collections` module in the Python standard library can be used as a Zarr
 array store, as long as it accepts string (str) keys and bytes values.
 
+In addition to the :class:`MutableMapping` interface, store classes may also implement
+optional methods `listdir` (list members of a "directory") and `rmdir` (remove all
+members of a "directory"). These methods should be implemented if the store class is
+aware of the hierarchical organisation of resources within the store and can provide
+efficient implementations. If these methods are not available, Zarr will fall back to
+slower implementations that work via the :class:`MutableMapping` interface. Store
+classes may also optionally implement a `rename` method (rename all members under a given
+path) and a `getsize` method (return the size in bytes of a given value).
+
 """
 from __future__ import absolute_import, print_function, division
 from collections import MutableMapping, OrderedDict
@@ -80,7 +89,9 @@ def _rmdir_from_keys(store, path=None):
 
 
 def rmdir(store, path=None):
-    """Remove all items under the given path."""
+    """Remove all items under the given path. If `store` provides a `rmdir` method,
+    this will be called, otherwise will fall back to implementation via the
+    `MutableMapping` interface."""
     path = normalize_storage_path(path)
     if hasattr(store, 'rmdir'):
         # pass through
@@ -101,7 +112,9 @@ def _rename_from_keys(store, src_path, dst_path):
 
 
 def rename(store, src_path, dst_path):
-    """Rename all items under the given path."""
+    """Rename all items under the given path. If `store` provides a `rename` method,
+    this will be called, otherwise will fall back to implementation via the
+    `MutableMapping` interface."""
     src_path = normalize_storage_path(src_path)
     dst_path = normalize_storage_path(dst_path)
     if hasattr(store, 'rename'):
@@ -125,7 +138,9 @@ def _listdir_from_keys(store, path=None):
 
 
 def listdir(store, path=None):
-    """Obtain a directory listing for the given path."""
+    """Obtain a directory listing for the given path. If `store` provides a `listdir`
+    method, this will be called, otherwise will fall back to implementation via the
+    `MutableMapping` interface."""
     path = normalize_storage_path(path)
     if hasattr(store, 'listdir'):
         # pass through
@@ -136,7 +151,8 @@ def listdir(store, path=None):
 
 
 def getsize(store, path=None):
-    """Compute size of stored items for a given path."""
+    """Compute size of stored items for a given path. If `store` provides a `getsize`
+    method, this will be called, otherwise will return -1."""
     path = normalize_storage_path(path)
     if hasattr(store, 'getsize'):
         # pass through
@@ -868,6 +884,7 @@ def atexit_rmtree(path,
         rmtree(path)
 
 
+# noinspection PyShadowingNames
 def atexit_rmglob(path,
                   glob=glob.glob,
                   isdir=os.path.isdir,
@@ -1690,6 +1707,35 @@ class LMDBStore(MutableMapping):
 
 
 class LRUStoreCache(MutableMapping):
+    """Storage class that implements a least-recently-used (LRU) cache layer over
+    some other store. Intended primarily for use with stores that can be slow to
+    access, e.g., remote stores that require network communication to store and
+    retrieve data.
+
+    Parameters
+    ----------
+    store : MutableMapping
+        The store containing the actual data to be cached.
+    max_size : int
+        The maximum size that the cache may grow to, in number of bytes. Provide `None`
+        if you would like the cache to have unlimited size.
+
+    Examples
+    --------
+    The example below wraps an S3 store with an LRU cache::
+
+        >>> import s3fs
+        >>> import zarr
+        >>> s3 = s3fs.S3FileSystem(anon=True, client_kwargs=dict(region_name='eu-west-2'))
+        >>> store = s3fs.S3Map(root='zarr-demo/store', s3=s3, check=False)
+        >>> cache = zarr.LRUStoreCache(store, max_size=2**28)
+        >>> root = zarr.group(store=cache)
+        >>> z = root['foo/bar/baz']
+        >>> from timeit import timeit
+        >>> timeit('print(z.tostring())', number=1)  # first time is relatively slow
+        >>> timeit('print(z.tostring())', number=1)  # second time is fast, uses cache
+
+    """
 
     def __init__(self, store, max_size):
         self._store = store
@@ -1771,10 +1817,12 @@ class LRUStoreCache(MutableMapping):
             self._current_size += value_size
 
     def clear_values(self):
+        """Clear the values cache."""
         with self._mutex:
             self._values_cache.clear()
 
     def clear_keys(self):
+        """Clear the keys cache."""
         with self._mutex:
             self._clear_keys()
 
