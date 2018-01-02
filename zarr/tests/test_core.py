@@ -1692,5 +1692,8 @@ class TestArrayWithStoreCache(TestArray):
     def create_array(read_only=False, **kwargs):
         store = LRUStoreCache(dict(), max_size=None)
         kwargs.setdefault('compressor', Zlib(level=1))
+        cache_metadata = kwargs.pop('cache_metadata', True)
+        cache_attrs = kwargs.pop('cache_attrs', True)
         init_array(store, **kwargs)
-        return Array(store, read_only=read_only)
+        return Array(store, read_only=read_only, cache_metadata=cache_metadata,
+                     cache_attrs=cache_attrs)
