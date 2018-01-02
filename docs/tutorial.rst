@@ -802,6 +802,110 @@ raise an issue on the GitHub issue tracker with any profiling data you can provi
 there may be opportunities to optimise further either within Zarr or within the mapping
 interface to the storage.
 
+.. _tutorial_copy:
+
+Copying/migrating data
+----------------------
+
+If you have some data in an HDF5 file and would like to copy some or all of it
+into a Zarr group, or vice-versa, the :func:`zarr.convenience.copy` and
+:func:`zarr.convenience.copy_all` functions can be used. Here's an example
+copying a group named 'foo' from an HDF5 file to a Zarr group::
+
+    >>> import h5py
+    >>> import zarr
+    >>> import numpy as np
+    >>> source = h5py.File('data/example.h5', mode='w')
+    >>> foo = source.create_group('foo')
+    >>> baz = foo.create_dataset('bar/baz', data=np.arange(100), chunks=(50,))
+    >>> spam = source.create_dataset('spam', data=np.arange(100, 200), chunks=(30,))
+    >>> zarr.tree(source)
+    /
+     ├── foo
+     │   └── bar
+     │       └── baz (100,) int64
+     └── spam (100,) int64
+    >>> dest = zarr.open_group('data/example.zarr', mode='w')
+    >>> from sys import stdout
+    >>> zarr.copy(source['foo'], dest, log=stdout)
+    copy /foo
+    copy /foo/bar
+    copy /foo/bar/baz (100,) int64
+    all done: 3 copied, 0 skipped, 800 bytes copied
+    (3, 0, 800)
+    >>> dest.tree()  # N.B., no spam
+    /
+     └── foo
+         └── bar
+             └── baz (100,) int64
+    >>> source.close()
+
+If rather than copying a single group or dataset you would like to copy all
+groups and datasets, use :func:`zarr.convenience.copy_all`, e.g.::
+
+    >>> source = h5py.File('data/example.h5', mode='r')
+    >>> dest = zarr.open_group('data/example2.zarr', mode='w')
+    >>> zarr.copy_all(source, dest, log=stdout)
+    copy /foo
+    copy /foo/bar
+    copy /foo/bar/baz (100,) int64
+    copy /spam (100,) int64
+    all done: 4 copied, 0 skipped, 1,600 bytes copied
+    (4, 0, 1600)
+    >>> dest.tree()
+    /
+     ├── foo
+     │   └── bar
+     │       └── baz (100,) int64
+     └── spam (100,) int64
+
+If you need to copy data between two Zarr groups, the
+func:`zarr.convenience.copy` and :func:`zarr.convenience.copy_all` functions can
+be used and provide the most flexibility. However, if you want to copy data
+in the most efficient way possible, without changing any configuration options,
+the :func:`zarr.convenience.copy_store` function can be used. This function
+copies data directly between the underlying stores, without any decompression or
+re-compression, and so should be faster. E.g.::
+
+    >>> import zarr
+    >>> import numpy as np
+    >>> store1 = zarr.DirectoryStore('data/example.zarr')
+    >>> root = zarr.group(store1, overwrite=True)
+    >>> baz = root.create_dataset('foo/bar/baz', data=np.arange(100), chunks=(50,))
+    >>> spam = root.create_dataset('spam', data=np.arange(100, 200), chunks=(30,))
+    >>> root.tree()
+    /
+     ├── foo
+     │   └── bar
+     │       └── baz (100,) int64
+     └── spam (100,) int64
+    >>> from sys import stdout
+    >>> store2 = zarr.ZipStore('data/example.zip', mode='w')
+    >>> zarr.copy_store(store1, store2, log=stdout)
+    copy .zgroup
+    copy foo/.zgroup
+    copy foo/bar/.zgroup
+    copy foo/bar/baz/.zarray
+    copy foo/bar/baz/0
+    copy foo/bar/baz/1
+    copy spam/.zarray
+    copy spam/0
+    copy spam/1
+    copy spam/2
+    copy spam/3
+    all done: 11 copied, 0 skipped, 1,138 bytes copied
+    (11, 0, 1138)
+    >>> new_root = zarr.group(store2)
+    >>> new_root.tree()
+    /
+     ├── foo
+     │   └── bar
+     │       └── baz (100,) int64
+     └── spam (100,) int64
+    >>> new_root['foo/bar/baz'][:]
+    array([ 0,  1,  2,  ..., 97, 98, 99])
+    >>> store2.close()  # zip stores need to be closed
+
 .. _tutorial_strings:
 
 String arrays

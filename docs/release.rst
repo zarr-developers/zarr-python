@@ -132,6 +132,13 @@ Enhancements
   slow, e.g., a store that retrieves data from a remote server via the network;
   :issue:`223`.
 
+* **New copy functions**. The new functions :func:`zarr.convenience.copy` and
+  :func:`zarr.convenience.copy_all` provide a way to copy groups and/or arrays
+  between HDF5 and Zarr, or between two Zarr groups. The
+  :func:`zarr.convenience.copy_store` provides a more efficient way to copy
+  data directly between two Zarr stores. :issue:`87`, :issue:`113`,
+  :issue:`137`, :issue:`217`.
+
 Bug fixes
 ~~~~~~~~~
 
