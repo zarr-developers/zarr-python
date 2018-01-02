@@ -729,6 +729,9 @@ group (requires `lmdb <http://lmdb.readthedocs.io/>`_ to be installed)::
     >>> z[:] = 42
     >>> store.close()
 
+Distributed/cloud storage
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
 It is also possible to use distributed storage systems. The Dask project has
 implementations of the ``MutableMapping`` interface for Amazon S3 (`S3Map
 <http://s3fs.readthedocs.io/en/latest/api.html#s3fs.mapping.S3Map>`_), Hadoop
@@ -767,6 +770,141 @@ Here is an example using S3Map to read an array created previously::
     >>> z[:].tostring()
     b'Hello from the cloud!'
 
+Note that retrieving data from a remote service via the network can be significantly
+slower than retrieving data from a local file system, and will depend on network latency
+and bandwidth between the client and server systems. If you are experiencing poor
+performance, there are several things you can try. One option is to increase the array
+chunk size, which will reduce the number of chunks and thus reduce the number of network
+round-trips required to retrieve data for an array (and thus reduce the impact of network
+latency). Another option is to try to increase the compression ratio by changing
+compression options or trying a different compressor (which will reduce the impact of
+limited network bandwidth). As of version 2.2, Zarr also provides the
+:class:`zarr.storage.LRUStoreCache` which can be used to implement a local in-memory cache
+layer over a remote store. E.g.::
+
+    >>> s3 = s3fs.S3FileSystem(anon=True, client_kwargs=dict(region_name='eu-west-2'))
+    >>> store = s3fs.S3Map(root='zarr-demo/store', s3=s3, check=False)
+    >>> cache = zarr.LRUStoreCache(store, max_size=2**28)
+    >>> root = zarr.group(store=cache)
+    >>> z = root['foo/bar/baz']
+    >>> from timeit import timeit
+    >>> # first data access is relatively slow, retrieved from store
+    ... timeit('print(z[:].tostring())', number=1, globals=globals())  # doctest: +SKIP
+    b'Hello from the cloud!'
+    0.1081731989979744
+    >>> # second data access is faster, uses cache
+    ... timeit('print(z[:].tostring())', number=1, globals=globals())  # doctest: +SKIP
+    b'Hello from the cloud!'
+    0.0009490990014455747
+
+If you are still experiencing poor performance with distributed/cloud storage, please
+raise an issue on the GitHub issue tracker with any profiling data you can provide, as
+there may be opportunities to optimise further either within Zarr or within the mapping
+interface to the storage.
+
+.. _tutorial_copy:
+
+Copying/migrating data
+----------------------
+
+If you have some data in an HDF5 file and would like to copy some or all of it
+into a Zarr group, or vice-versa, the :func:`zarr.convenience.copy` and
+:func:`zarr.convenience.copy_all` functions can be used. Here's an example
+copying a group named 'foo' from an HDF5 file to a Zarr group::
+
+    >>> import h5py
+    >>> import zarr
+    >>> import numpy as np
+    >>> source = h5py.File('data/example.h5', mode='w')
+    >>> foo = source.create_group('foo')
+    >>> baz = foo.create_dataset('bar/baz', data=np.arange(100), chunks=(50,))
+    >>> spam = source.create_dataset('spam', data=np.arange(100, 200), chunks=(30,))
+    >>> zarr.tree(source)
+    /
+     ├── foo
+     │   └── bar
+     │       └── baz (100,) int64
+     └── spam (100,) int64
+    >>> dest = zarr.open_group('data/example.zarr', mode='w')
+    >>> from sys import stdout
+    >>> zarr.copy(source['foo'], dest, log=stdout)
+    copy /foo
+    copy /foo/bar
+    copy /foo/bar/baz (100,) int64
+    all done: 3 copied, 0 skipped, 800 bytes copied
+    (3, 0, 800)
+    >>> dest.tree()  # N.B., no spam
+    /
+     └── foo
+         └── bar
+             └── baz (100,) int64
+    >>> source.close()
+
+If rather than copying a single group or dataset you would like to copy all
+groups and datasets, use :func:`zarr.convenience.copy_all`, e.g.::
+
+    >>> source = h5py.File('data/example.h5', mode='r')
+    >>> dest = zarr.open_group('data/example2.zarr', mode='w')
+    >>> zarr.copy_all(source, dest, log=stdout)
+    copy /foo
+    copy /foo/bar
+    copy /foo/bar/baz (100,) int64
+    copy /spam (100,) int64
+    all done: 4 copied, 0 skipped, 1,600 bytes copied
+    (4, 0, 1600)
+    >>> dest.tree()
+    /
+     ├── foo
+     │   └── bar
+     │       └── baz (100,) int64
+     └── spam (100,) int64
+
+If you need to copy data between two Zarr groups, the
+func:`zarr.convenience.copy` and :func:`zarr.convenience.copy_all` functions can
+be used and provide the most flexibility. However, if you want to copy data
+in the most efficient way possible, without changing any configuration options,
+the :func:`zarr.convenience.copy_store` function can be used. This function
+copies data directly between the underlying stores, without any decompression or
+re-compression, and so should be faster. E.g.::
+
+    >>> import zarr
+    >>> import numpy as np
+    >>> store1 = zarr.DirectoryStore('data/example.zarr')
+    >>> root = zarr.group(store1, overwrite=True)
+    >>> baz = root.create_dataset('foo/bar/baz', data=np.arange(100), chunks=(50,))
+    >>> spam = root.create_dataset('spam', data=np.arange(100, 200), chunks=(30,))
+    >>> root.tree()
+    /
+     ├── foo
+     │   └── bar
+     │       └── baz (100,) int64
+     └── spam (100,) int64
+    >>> from sys import stdout
+    >>> store2 = zarr.ZipStore('data/example.zip', mode='w')
+    >>> zarr.copy_store(store1, store2, log=stdout)
+    copy .zgroup
+    copy foo/.zgroup
+    copy foo/bar/.zgroup
+    copy foo/bar/baz/.zarray
+    copy foo/bar/baz/0
+    copy foo/bar/baz/1
+    copy spam/.zarray
+    copy spam/0
+    copy spam/1
+    copy spam/2
+    copy spam/3
+    all done: 11 copied, 0 skipped, 1,138 bytes copied
+    (11, 0, 1138)
+    >>> new_root = zarr.group(store2)
+    >>> new_root.tree()
+    /
+     ├── foo
+     │   └── bar
+     │       └── baz (100,) int64
+     └── spam (100,) int64
+    >>> new_root['foo/bar/baz'][:]
+    array([ 0,  1,  2,  ..., 97, 98, 99])
+    >>> store2.close()  # zip stores need to be closed
 
 .. _tutorial_strings:
 
