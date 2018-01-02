@@ -11,7 +11,22 @@ from zarr.errors import PermissionError
 class Attributes(MutableMapping):
     """Class providing access to user attributes on an array or group. Should not be
     instantiated directly, will be available via the `.attrs` property of an array or
-    group."""
+    group.
+
+    Parameters
+    ----------
+    store : MutableMapping
+        The store in which to store the attributes.
+    key : str, optional
+        The key under which the attributes will be stored.
+    read_only : bool, optional
+        If True, attributes cannot be modified.
+    cache : bool, optional
+        If True (default), attributes will be cached locally.
+    synchronizer : Synchronizer
+        Only necessary if attributes may be modified from multiple threads or processes.
+
+    """
 
     def __init__(self, store, key='.zattrs', read_only=False, cache=True,
                  synchronizer=None):

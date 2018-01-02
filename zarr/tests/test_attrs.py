@@ -115,25 +115,35 @@ class TestAttributes(unittest.TestCase):
 
     def test_caching_on(self):
         # caching is turned on by default
+
+        # setup store
         store = CountingDict()
         eq(0, store.counter['__getitem__', 'attrs'])
         eq(0, store.counter['__setitem__', 'attrs'])
         store['attrs'] = json.dumps(dict(foo='xxx', bar=42)).encode('ascii')
         eq(0, store.counter['__getitem__', 'attrs'])
         eq(1, store.counter['__setitem__', 'attrs'])
+
+        # setup attributes
         a = self.init_attributes(store)
+
+        # test __getitem__ causes all attributes to be cached
         eq(a['foo'], 'xxx')
         eq(1, store.counter['__getitem__', 'attrs'])
         eq(a['bar'], 42)
         eq(1, store.counter['__getitem__', 'attrs'])
         eq(a['foo'], 'xxx')
         eq(1, store.counter['__getitem__', 'attrs'])
+
+        # test __setitem__ updates the cache
         a['foo'] = 'yyy'
         eq(2, store.counter['__getitem__', 'attrs'])
         eq(2, store.counter['__setitem__', 'attrs'])
         eq(a['foo'], 'yyy')
         eq(2, store.counter['__getitem__', 'attrs'])
         eq(2, store.counter['__setitem__', 'attrs'])
+
+        # test update() updates the cache
         a.update(foo='zzz', bar=84)
         eq(3, store.counter['__getitem__', 'attrs'])
         eq(3, store.counter['__setitem__', 'attrs'])
@@ -141,6 +151,8 @@ class TestAttributes(unittest.TestCase):
         eq(a['bar'], 84)
         eq(3, store.counter['__getitem__', 'attrs'])
         eq(3, store.counter['__setitem__', 'attrs'])
+
+        # test __contains__ uses the cache
         assert 'foo' in a
         eq(3, store.counter['__getitem__', 'attrs'])
         eq(3, store.counter['__setitem__', 'attrs'])
@@ -148,26 +160,44 @@ class TestAttributes(unittest.TestCase):
         eq(3, store.counter['__getitem__', 'attrs'])
         eq(3, store.counter['__setitem__', 'attrs'])
 
+        # test __delitem__ updates the cache
+        del a['bar']
+        eq(4, store.counter['__getitem__', 'attrs'])
+        eq(4, store.counter['__setitem__', 'attrs'])
+        assert 'bar' not in a
+        eq(4, store.counter['__getitem__', 'attrs'])
+        eq(4, store.counter['__setitem__', 'attrs'])
+
     def test_caching_off(self):
+
+        # setup store
         store = CountingDict()
         eq(0, store.counter['__getitem__', 'attrs'])
         eq(0, store.counter['__setitem__', 'attrs'])
         store['attrs'] = json.dumps(dict(foo='xxx', bar=42)).encode('ascii')
         eq(0, store.counter['__getitem__', 'attrs'])
         eq(1, store.counter['__setitem__', 'attrs'])
+
+        # setup attributes
         a = self.init_attributes(store, cache=False)
+
+        # test __getitem__
         eq(a['foo'], 'xxx')
         eq(1, store.counter['__getitem__', 'attrs'])
         eq(a['bar'], 42)
         eq(2, store.counter['__getitem__', 'attrs'])
         eq(a['foo'], 'xxx')
         eq(3, store.counter['__getitem__', 'attrs'])
+
+        # test __setitem__
         a['foo'] = 'yyy'
         eq(4, store.counter['__getitem__', 'attrs'])
         eq(2, store.counter['__setitem__', 'attrs'])
         eq(a['foo'], 'yyy')
         eq(5, store.counter['__getitem__', 'attrs'])
         eq(2, store.counter['__setitem__', 'attrs'])
+
+        # test update()
         a.update(foo='zzz', bar=84)
         eq(6, store.counter['__getitem__', 'attrs'])
         eq(3, store.counter['__setitem__', 'attrs'])
@@ -175,6 +205,8 @@ class TestAttributes(unittest.TestCase):
         eq(a['bar'], 84)
         eq(8, store.counter['__getitem__', 'attrs'])
         eq(3, store.counter['__setitem__', 'attrs'])
+
+        # test __contains__
         assert 'foo' in a
         eq(9, store.counter['__getitem__', 'attrs'])
         eq(3, store.counter['__setitem__', 'attrs'])
