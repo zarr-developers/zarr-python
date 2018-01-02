@@ -267,7 +267,7 @@ class Group(MutableMapping):
 
     def __getstate__(self):
         return (self._store, self._path, self._read_only, self._chunk_store,
-                self._synchronizer)
+                self.attrs.cache, self._synchronizer)
 
     def __setstate__(self, state):
         self.__init__(*state)
