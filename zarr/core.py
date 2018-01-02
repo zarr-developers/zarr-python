@@ -43,7 +43,7 @@ class Array(object):
     synchronizer : object, optional
         Array synchronizer.
     cache_metadata : bool, optional
-        If True, array configuration metadata will be cached for the
+        If True (default), array configuration metadata will be cached for the
         lifetime of the object. If False, array metadata will be reloaded
         prior to all data access and modification operations (may incur
         overhead depending on storage and data access pattern).
