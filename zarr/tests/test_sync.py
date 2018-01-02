@@ -102,9 +102,12 @@ class TestArrayWithThreadSynchronizer(TestArray, MixinArraySyncTests):
 
     def create_array(self, read_only=False, **kwargs):
         store = dict()
+        cache_metadata = kwargs.pop('cache_metadata', True)
+        cache_attrs = kwargs.pop('cache_attrs', True)
         init_array(store, **kwargs)
         return Array(store, synchronizer=ThreadSynchronizer(),
-                     read_only=read_only)
+                     read_only=read_only, cache_metadata=cache_metadata,
+                     cache_attrs=cache_attrs)
 
     def create_pool(self):
         pool = ThreadPool(cpu_count())
@@ -140,12 +143,14 @@ class TestArrayWithProcessSynchronizer(TestArray, MixinArraySyncTests):
         path = tempfile.mkdtemp()
         atexit.register(atexit_rmtree, path)
         store = DirectoryStore(path)
+        cache_metadata = kwargs.pop('cache_metadata', False)
+        cache_attrs = kwargs.pop('cache_attrs', False)
         init_array(store, **kwargs)
         sync_path = tempfile.mkdtemp()
         atexit.register(atexit_rmtree, sync_path)
         synchronizer = ProcessSynchronizer(sync_path)
-        return Array(store, synchronizer=synchronizer,
-                     read_only=read_only, cache_metadata=False)
+        return Array(store, synchronizer=synchronizer, read_only=read_only,
+                     cache_metadata=cache_metadata, cache_attrs=cache_attrs)
 
     def create_pool(self):
         pool = ProcessPool(processes=cpu_count())

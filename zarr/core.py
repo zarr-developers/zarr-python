@@ -1924,7 +1924,7 @@ class Array(object):
 
     def __getstate__(self):
         return (self._store, self._path, self._read_only, self._chunk_store,
-                self._synchronizer, self._cache_metadata)
+                self._synchronizer, self._cache_metadata, self._attrs.cache)
 
     def __setstate__(self, state):
         self.__init__(*state)
