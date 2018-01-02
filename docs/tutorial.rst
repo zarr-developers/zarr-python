@@ -729,6 +729,9 @@ group (requires `lmdb <http://lmdb.readthedocs.io/>`_ to be installed)::
     >>> z[:] = 42
     >>> store.close()
 
+Distributed/cloud storage
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
 It is also possible to use distributed storage systems. The Dask project has
 implementations of the ``MutableMapping`` interface for Amazon S3 (`S3Map
 <http://s3fs.readthedocs.io/en/latest/api.html#s3fs.mapping.S3Map>`_), Hadoop
@@ -767,6 +770,37 @@ Here is an example using S3Map to read an array created previously::
     >>> z[:].tostring()
     b'Hello from the cloud!'
 
+Note that retrieving data from a remote service via the network can be significantly
+slower than retrieving data from a local file system, and will depend on network latency
+and bandwidth between the client and server systems. If you are experiencing poor
+performance, there are several things you can try. One option is to increase the array
+chunk size, which will reduce the number of chunks and thus reduce the number of network
+round-trips required to retrieve data for an array (and thus reduce the impact of network
+latency). Another option is to try to increase the compression ratio by changing
+compression options or trying a different compressor (which will reduce the impact of
+limited network bandwidth). As of version 2.2, Zarr also provides the
+:class:`zarr.storage.LRUStoreCache` which can be used to implement a local in-memory cache
+layer over a remote store. E.g.::
+
+    >>> s3 = s3fs.S3FileSystem(anon=True, client_kwargs=dict(region_name='eu-west-2'))
+    >>> store = s3fs.S3Map(root='zarr-demo/store', s3=s3, check=False)
+    >>> cache = zarr.LRUStoreCache(store, max_size=2**28)
+    >>> root = zarr.group(store=cache)
+    >>> z = root['foo/bar/baz']
+    >>> from timeit import timeit
+    >>> # first data access is relatively slow, retrieved from store
+    ... timeit('print(z[:].tostring())', number=1, globals=globals())  # doctest: +SKIP
+    b'Hello from the cloud!'
+    0.1081731989979744
+    >>> # second data access is faster, uses cache
+    ... timeit('print(z[:].tostring())', number=1, globals=globals())  # doctest: +SKIP
+    b'Hello from the cloud!'
+    0.0009490990014455747
+
+If you are still experiencing poor performance with distributed/cloud storage, please
+raise an issue on the GitHub issue tracker with any profiling data you can provide, as
+there may be opportunities to optimise further either within Zarr or within the mapping
+interface to the storage.
 
 .. _tutorial_strings:
 
