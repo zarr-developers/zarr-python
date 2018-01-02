@@ -10,12 +10,13 @@ from nose.tools import eq_ as eq, assert_raises
 from zarr.attrs import Attributes
 from zarr.compat import binary_type, text_type
 from zarr.errors import PermissionError
+from zarr.tests.util import CountingDict
 
 
 class TestAttributes(unittest.TestCase):
 
-    def init_attributes(self, store, read_only=False):
-        return Attributes(store, key='attrs', read_only=read_only)
+    def init_attributes(self, store, read_only=False, cache=True):
+        return Attributes(store, key='attrs', read_only=read_only, cache=cache)
 
     def test_storage(self):
 
@@ -45,16 +46,25 @@ class TestAttributes(unittest.TestCase):
         del a['foo']
         assert 'foo' not in a
         with assert_raises(KeyError):
+            # noinspection PyStatementEffect
             a['foo']
 
-    def test_update(self):
+    def test_update_put(self):
 
         a = self.init_attributes(dict())
         assert 'foo' not in a
+        assert 'bar' not in a
         assert 'baz' not in a
-        a.update(foo='bar', baz=42)
-        eq(a['foo'], 'bar')
-        eq(a['baz'], 42)
+
+        a.update(foo='spam', bar=42, baz=4.2)
+        eq(a['foo'], 'spam')
+        eq(a['bar'], 42)
+        eq(a['baz'], 4.2)
+
+        a.put(dict(foo='eggs', bar=84))
+        eq(a['foo'], 'eggs')
+        eq(a['bar'], 84)
+        assert 'baz' not in a
 
     def test_iterators(self):
 
@@ -102,3 +112,114 @@ class TestAttributes(unittest.TestCase):
         assert '123' in d
         assert 'asdf;' in d
         assert 'baz' not in d
+
+    def test_caching_on(self):
+        # caching is turned on by default
+
+        # setup store
+        store = CountingDict()
+        eq(0, store.counter['__getitem__', 'attrs'])
+        eq(0, store.counter['__setitem__', 'attrs'])
+        store['attrs'] = json.dumps(dict(foo='xxx', bar=42)).encode('ascii')
+        eq(0, store.counter['__getitem__', 'attrs'])
+        eq(1, store.counter['__setitem__', 'attrs'])
+
+        # setup attributes
+        a = self.init_attributes(store)
+
+        # test __getitem__ causes all attributes to be cached
+        eq(a['foo'], 'xxx')
+        eq(1, store.counter['__getitem__', 'attrs'])
+        eq(a['bar'], 42)
+        eq(1, store.counter['__getitem__', 'attrs'])
+        eq(a['foo'], 'xxx')
+        eq(1, store.counter['__getitem__', 'attrs'])
+
+        # test __setitem__ updates the cache
+        a['foo'] = 'yyy'
+        eq(2, store.counter['__getitem__', 'attrs'])
+        eq(2, store.counter['__setitem__', 'attrs'])
+        eq(a['foo'], 'yyy')
+        eq(2, store.counter['__getitem__', 'attrs'])
+        eq(2, store.counter['__setitem__', 'attrs'])
+
+        # test update() updates the cache
+        a.update(foo='zzz', bar=84)
+        eq(3, store.counter['__getitem__', 'attrs'])
+        eq(3, store.counter['__setitem__', 'attrs'])
+        eq(a['foo'], 'zzz')
+        eq(a['bar'], 84)
+        eq(3, store.counter['__getitem__', 'attrs'])
+        eq(3, store.counter['__setitem__', 'attrs'])
+
+        # test __contains__ uses the cache
+        assert 'foo' in a
+        eq(3, store.counter['__getitem__', 'attrs'])
+        eq(3, store.counter['__setitem__', 'attrs'])
+        assert 'spam' not in a
+        eq(3, store.counter['__getitem__', 'attrs'])
+        eq(3, store.counter['__setitem__', 'attrs'])
+
+        # test __delitem__ updates the cache
+        del a['bar']
+        eq(4, store.counter['__getitem__', 'attrs'])
+        eq(4, store.counter['__setitem__', 'attrs'])
+        assert 'bar' not in a
+        eq(4, store.counter['__getitem__', 'attrs'])
+        eq(4, store.counter['__setitem__', 'attrs'])
+
+        # test refresh()
+        store['attrs'] = json.dumps(dict(foo='xxx', bar=42)).encode('ascii')
+        eq(4, store.counter['__getitem__', 'attrs'])
+        a.refresh()
+        eq(5, store.counter['__getitem__', 'attrs'])
+        eq(a['foo'], 'xxx')
+        eq(5, store.counter['__getitem__', 'attrs'])
+        eq(a['bar'], 42)
+        eq(5, store.counter['__getitem__', 'attrs'])
+
+    def test_caching_off(self):
+
+        # setup store
+        store = CountingDict()
+        eq(0, store.counter['__getitem__', 'attrs'])
+        eq(0, store.counter['__setitem__', 'attrs'])
+        store['attrs'] = json.dumps(dict(foo='xxx', bar=42)).encode('ascii')
+        eq(0, store.counter['__getitem__', 'attrs'])
+        eq(1, store.counter['__setitem__', 'attrs'])
+
+        # setup attributes
+        a = self.init_attributes(store, cache=False)
+
+        # test __getitem__
+        eq(a['foo'], 'xxx')
+        eq(1, store.counter['__getitem__', 'attrs'])
+        eq(a['bar'], 42)
+        eq(2, store.counter['__getitem__', 'attrs'])
+        eq(a['foo'], 'xxx')
+        eq(3, store.counter['__getitem__', 'attrs'])
+
+        # test __setitem__
+        a['foo'] = 'yyy'
+        eq(4, store.counter['__getitem__', 'attrs'])
+        eq(2, store.counter['__setitem__', 'attrs'])
+        eq(a['foo'], 'yyy')
+        eq(5, store.counter['__getitem__', 'attrs'])
+        eq(2, store.counter['__setitem__', 'attrs'])
+
+        # test update()
+        a.update(foo='zzz', bar=84)
+        eq(6, store.counter['__getitem__', 'attrs'])
+        eq(3, store.counter['__setitem__', 'attrs'])
+        eq(a['foo'], 'zzz')
+        eq(a['bar'], 84)
+        eq(8, store.counter['__getitem__', 'attrs'])
+        eq(3, store.counter['__setitem__', 'attrs'])
+
+        # test __contains__
+        assert 'foo' in a
+        eq(9, store.counter['__getitem__', 'attrs'])
+        eq(3, store.counter['__setitem__', 'attrs'])
+        assert 'spam' not in a
+        eq(10, store.counter['__getitem__', 'attrs'])
+        eq(3, store.counter['__setitem__', 'attrs'])

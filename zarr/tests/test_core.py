@@ -80,8 +80,11 @@ class TestArray(unittest.TestCase):
     def create_array(self, read_only=False, **kwargs):
         store = dict()
         kwargs.setdefault('compressor', Zlib(level=1))
+        cache_metadata = kwargs.pop('cache_metadata', True)
+        cache_attrs = kwargs.pop('cache_attrs', True)
         init_array(store, **kwargs)
-        return Array(store, read_only=read_only)
+        return Array(store, read_only=read_only, cache_metadata=cache_metadata,
+                     cache_attrs=cache_attrs)
 
     def test_nbytes_stored(self):
 
@@ -656,7 +659,8 @@ class TestArray(unittest.TestCase):
 
     def test_pickle(self):
 
-        z = self.create_array(shape=1000, chunks=100, dtype=int)
+        z = self.create_array(shape=1000, chunks=100, dtype=int, cache_metadata=False,
+                              cache_attrs=False)
         z[:] = np.random.randint(0, 1000, 1000)
         z2 = pickle.loads(pickle.dumps(z))
         eq(z.shape, z2.shape)
@@ -665,6 +669,8 @@ class TestArray(unittest.TestCase):
         if z.compressor:
             eq(z.compressor.get_config(), z2.compressor.get_config())
         eq(z.fill_value, z2.fill_value)
+        eq(z._cache_metadata, z2._cache_metadata)
+        eq(z.attrs.cache, z2.attrs.cache)
         assert_array_equal(z[:], z2[:])
 
     def test_np_ufuncs(self):
@@ -1082,8 +1088,11 @@ class TestArrayWithPath(TestArray):
     @staticmethod
     def create_array(read_only=False, **kwargs):
         store = dict()
+        cache_metadata = kwargs.pop('cache_metadata', True)
+        cache_attrs = kwargs.pop('cache_attrs', True)
         init_array(store, path='foo/bar', **kwargs)
-        return Array(store, path='foo/bar', read_only=read_only)
+        return Array(store, path='foo/bar', read_only=read_only,
+                     cache_metadata=cache_metadata, cache_attrs=cache_attrs)
 
     def test_hexdigest(self):
         # Check basic 1-D array
@@ -1134,8 +1143,11 @@ class TestArrayWithChunkStore(TestArray):
         store = dict()
         # separate chunk store
         chunk_store = dict()
+        cache_metadata = kwargs.pop('cache_metadata', True)
+        cache_attrs = kwargs.pop('cache_attrs', True)
         init_array(store, chunk_store=chunk_store, **kwargs)
-        return Array(store, read_only=read_only, chunk_store=chunk_store)
+        return Array(store, read_only=read_only, chunk_store=chunk_store,
+                     cache_metadata=cache_metadata, cache_attrs=cache_attrs)
 
     def test_hexdigest(self):
         # Check basic 1-D array
@@ -1185,9 +1197,12 @@ class TestArrayWithDirectoryStore(TestArray):
         path = mkdtemp()
         atexit.register(shutil.rmtree, path)
         store = DirectoryStore(path)
+        cache_metadata = kwargs.pop('cache_metadata', True)
+        cache_attrs = kwargs.pop('cache_attrs', True)
         kwargs.setdefault('compressor', Zlib(1))
         init_array(store, **kwargs)
-        return Array(store, read_only=read_only)
+        return Array(store, read_only=read_only, cache_metadata=cache_metadata,
+                     cache_attrs=cache_attrs)
 
     def test_nbytes_stored(self):
 
@@ -1207,9 +1222,12 @@ class TestArrayWithNestedDirectoryStore(TestArrayWithDirectoryStore):
         path = mkdtemp()
         atexit.register(shutil.rmtree, path)
         store = NestedDirectoryStore(path)
+        cache_metadata = kwargs.pop('cache_metadata', True)
+        cache_attrs = kwargs.pop('cache_attrs', True)
         kwargs.setdefault('compressor', Zlib(1))
         init_array(store, **kwargs)
-        return Array(store, read_only=read_only)
+        return Array(store, read_only=read_only, cache_metadata=cache_metadata,
+                     cache_attrs=cache_attrs)
 
 
 class TestArrayWithDBMStore(TestArray):
@@ -1219,9 +1237,12 @@ class TestArrayWithDBMStore(TestArray):
         path = mktemp(suffix='.anydbm')
         atexit.register(atexit_rmglob, path + '*')
         store = DBMStore(path, flag='n')
+        cache_metadata = kwargs.pop('cache_metadata', True)
+        cache_attrs = kwargs.pop('cache_attrs', True)
         kwargs.setdefault('compressor', Zlib(1))
         init_array(store, **kwargs)
-        return Array(store, read_only=read_only)
+        return Array(store, read_only=read_only, cache_attrs=cache_attrs,
+                     cache_metadata=cache_metadata)
 
     def test_nbytes_stored(self):
         pass  # not implemented
@@ -1237,9 +1258,12 @@ try:
             path = mktemp(suffix='.dbm')
             atexit.register(os.remove, path)
             store = DBMStore(path, flag='n', open=bsddb3.btopen)
+            cache_metadata = kwargs.pop('cache_metadata', True)
+            cache_attrs = kwargs.pop('cache_attrs', True)
             kwargs.setdefault('compressor', Zlib(1))
             init_array(store, **kwargs)
-            return Array(store, read_only=read_only)
+            return Array(store, read_only=read_only, cache_metadata=cache_metadata,
+                         cache_attrs=cache_attrs)
 
         def test_nbytes_stored(self):
             pass  # not implemented
@@ -1258,9 +1282,12 @@ class TestArrayWithLMDBStore(TestArray):
             store = LMDBStore(path, buffers=True)
         except ImportError:  # pragma: no cover
             raise SkipTest('lmdb not installed')
+        cache_metadata = kwargs.pop('cache_metadata', True)
+        cache_attrs = kwargs.pop('cache_attrs', True)
         kwargs.setdefault('compressor', Zlib(1))
         init_array(store, **kwargs)
-        return Array(store, read_only=read_only)
+        return Array(store, read_only=read_only, cache_metadata=cache_metadata,
+                     cache_attrs=cache_attrs)
 
     def test_nbytes_stored(self):
         pass  # not implemented
@@ -1276,9 +1303,12 @@ class TestArrayWithLMDBStoreNoBuffers(TestArray):
             store = LMDBStore(path, buffers=False)
         except ImportError:  # pragma: no cover
             raise SkipTest('lmdb not installed')
+        cache_metadata = kwargs.pop('cache_metadata', True)
+        cache_attrs = kwargs.pop('cache_attrs', True)
         kwargs.setdefault('compressor', Zlib(1))
         init_array(store, **kwargs)
-        return Array(store, read_only=read_only)
+        return Array(store, read_only=read_only, cache_metadata=cache_metadata,
+                     cache_attrs=cache_attrs)
 
     def test_nbytes_stored(self):
         pass  # not implemented
@@ -1289,8 +1319,11 @@ class TestArrayWithNoCompressor(TestArray):
     def create_array(self, read_only=False, **kwargs):
         store = dict()
         kwargs.setdefault('compressor', None)
+        cache_metadata = kwargs.pop('cache_metadata', True)
+        cache_attrs = kwargs.pop('cache_attrs', True)
         init_array(store, **kwargs)
-        return Array(store, read_only=read_only)
+        return Array(store, read_only=read_only, cache_metadata=cache_metadata,
+                     cache_attrs=cache_attrs)
 
     def test_hexdigest(self):
         # Check basic 1-D array
@@ -1322,8 +1355,11 @@ class TestArrayWithBZ2Compressor(TestArray):
         store = dict()
         compressor = BZ2(level=1)
         kwargs.setdefault('compressor', compressor)
+        cache_metadata = kwargs.pop('cache_metadata', True)
+        cache_attrs = kwargs.pop('cache_attrs', True)
         init_array(store, **kwargs)
-        return Array(store, read_only=read_only)
+        return Array(store, read_only=read_only, cache_metadata=cache_metadata,
+                     cache_attrs=cache_attrs)
 
     def test_hexdigest(self):
         # Check basic 1-D array
@@ -1355,8 +1391,11 @@ class TestArrayWithBloscCompressor(TestArray):
         store = dict()
         compressor = Blosc(cname='zstd', clevel=1, shuffle=1)
         kwargs.setdefault('compressor', compressor)
+        cache_metadata = kwargs.pop('cache_metadata', True)
+        cache_attrs = kwargs.pop('cache_attrs', True)
         init_array(store, **kwargs)
-        return Array(store, read_only=read_only)
+        return Array(store, read_only=read_only, cache_metadata=cache_metadata,
+                     cache_attrs=cache_attrs)
 
     def test_hexdigest(self):
         # Check basic 1-D array
@@ -1393,8 +1432,11 @@ if not PY2:  # pragma: py2 no cover
             store = dict()
             compressor = LZMA(preset=1)
             kwargs.setdefault('compressor', compressor)
+            cache_metadata = kwargs.pop('cache_metadata', True)
+            cache_attrs = kwargs.pop('cache_attrs', True)
             init_array(store, **kwargs)
-            return Array(store, read_only=read_only)
+            return Array(store, read_only=read_only, cache_metadata=cache_metadata,
+                         cache_attrs=cache_attrs)
 
         def test_hexdigest(self):
             # Check basic 1-D array
@@ -1433,8 +1475,11 @@ class TestArrayWithFilters(TestArray):
         kwargs.setdefault('filters', filters)
         compressor = Zlib(1)
         kwargs.setdefault('compressor', compressor)
+        cache_metadata = kwargs.pop('cache_metadata', True)
+        cache_attrs = kwargs.pop('cache_attrs', True)
         init_array(store, **kwargs)
-        return Array(store, read_only=read_only)
+        return Array(store, read_only=read_only, cache_attrs=cache_attrs,
+                     cache_metadata=cache_metadata)
 
     def test_hexdigest(self):
         # Check basic 1-D array
@@ -1556,8 +1601,11 @@ class TestArrayWithCustomMapping(TestArray):
     def create_array(read_only=False, **kwargs):
         store = CustomMapping()
         kwargs.setdefault('compressor', Zlib(1))
+        cache_metadata = kwargs.pop('cache_metadata', True)
+        cache_attrs = kwargs.pop('cache_attrs', True)
         init_array(store, **kwargs)
-        return Array(store, read_only=read_only)
+        return Array(store, read_only=read_only, cache_metadata=cache_metadata,
+                     cache_attrs=cache_attrs)
 
     def test_nbytes_stored(self):
         z = self.create_array(shape=1000, chunks=100)
@@ -1566,23 +1614,27 @@ class TestArrayWithCustomMapping(TestArray):
         eq(-1, z.nbytes_stored)
 
 
-class TestArrayNoCacheMetadata(TestArray):
+class TestArrayNoCache(TestArray):
 
     @staticmethod
     def create_array(read_only=False, **kwargs):
         store = dict()
         kwargs.setdefault('compressor', Zlib(level=1))
+        cache_metadata = kwargs.pop('cache_metadata', True)
+        cache_attrs = kwargs.pop('cache_attrs', True)
         init_array(store, **kwargs)
-        return Array(store, read_only=read_only, cache_metadata=False)
+        return Array(store, read_only=read_only, cache_metadata=cache_metadata,
+                     cache_attrs=cache_attrs)
 
     def test_cache_metadata(self):
-        a1 = self.create_array(shape=100, chunks=10, dtype='i1')
+        a1 = self.create_array(shape=100, chunks=10, dtype='i1', cache_metadata=False)
         a2 = Array(a1.store, cache_metadata=True)
         eq(a1.shape, a2.shape)
         eq(a1.size, a2.size)
         eq(a1.nbytes, a2.nbytes)
         eq(a1.nchunks, a2.nchunks)
 
+        # a1 is not caching so *will* see updates made via other objects
         a2.resize(200)
         eq((200,), a2.shape)
         eq(200, a2.size)
@@ -1603,6 +1655,7 @@ class TestArrayNoCacheMetadata(TestArray):
         eq(a1.nbytes, a2.nbytes)
         eq(a1.nchunks, a2.nchunks)
 
+        # a2 is caching so *will not* see updates made via other objects
         a1.resize(400)
         eq((400,), a1.shape)
         eq(400, a1.size)
@@ -1612,6 +1665,21 @@ class TestArrayNoCacheMetadata(TestArray):
         eq(300, a2.size)
         eq(300, a2.nbytes)
         eq(30, a2.nchunks)
+
+    def test_cache_attrs(self):
+        a1 = self.create_array(shape=100, chunks=10, dtype='i1', cache_attrs=False)
+        a2 = Array(a1.store, cache_attrs=True)
+        eq(a1.attrs.asdict(), a2.attrs.asdict())
+
+        # a1 is not caching so *will* see updates made via other objects
+        a2.attrs['foo'] = 'xxx'
+        a2.attrs['bar'] = 42
+        eq(a1.attrs.asdict(), a2.attrs.asdict())
+
+        # a2 is caching so *will not* see updates made via other objects
+        a1.attrs['foo'] = 'yyy'
+        assert 'yyy' == a1.attrs['foo']
+        assert 'xxx' == a2.attrs['foo']
 
     def test_object_arrays_danger(self):
         # skip this one as it only works if metadata are cached
@@ -1624,5 +1692,8 @@ class TestArrayWithStoreCache(TestArray):
     def create_array(read_only=False, **kwargs):
         store = LRUStoreCache(dict(), max_size=None)
         kwargs.setdefault('compressor', Zlib(level=1))
+        cache_metadata = kwargs.pop('cache_metadata', True)
+        cache_attrs = kwargs.pop('cache_attrs', True)
         init_array(store, **kwargs)
-        return Array(store, read_only=read_only)
+        return Array(store, read_only=read_only, cache_metadata=cache_metadata,
+                     cache_attrs=cache_attrs)

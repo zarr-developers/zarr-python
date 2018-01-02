@@ -2,7 +2,6 @@
 from __future__ import absolute_import, print_function, division
 from tempfile import mkdtemp
 import atexit
-import json
 import shutil
 from multiprocessing.pool import ThreadPool
 from multiprocessing import Pool as ProcessPool
@@ -27,24 +26,22 @@ from zarr.hierarchy import Group
 
 class TestAttributesWithThreadSynchronizer(TestAttributes):
 
-    def init_attributes(self, store, read_only=False):
+    def init_attributes(self, store, read_only=False, cache=True):
         key = 'attrs'
-        store[key] = json.dumps(dict()).encode('ascii')
         synchronizer = ThreadSynchronizer()
         return Attributes(store, synchronizer=synchronizer, key=key,
-                          read_only=read_only)
+                          read_only=read_only, cache=cache)
 
 
 class TestAttributesProcessSynchronizer(TestAttributes):
 
-    def init_attributes(self, store, read_only=False):
+    def init_attributes(self, store, read_only=False, cache=True):
         key = 'attrs'
-        store[key] = json.dumps(dict()).encode('ascii')
         sync_path = mkdtemp()
         atexit.register(shutil.rmtree, sync_path)
         synchronizer = ProcessSynchronizer(sync_path)
         return Attributes(store, synchronizer=synchronizer, key=key,
-                          read_only=read_only)
+                          read_only=read_only, cache=cache)
 
 
 def _append(arg):
@@ -105,9 +102,12 @@ class TestArrayWithThreadSynchronizer(TestArray, MixinArraySyncTests):
 
     def create_array(self, read_only=False, **kwargs):
         store = dict()
+        cache_metadata = kwargs.pop('cache_metadata', True)
+        cache_attrs = kwargs.pop('cache_attrs', True)
         init_array(store, **kwargs)
         return Array(store, synchronizer=ThreadSynchronizer(),
-                     read_only=read_only)
+                     read_only=read_only, cache_metadata=cache_metadata,
+                     cache_attrs=cache_attrs)
 
     def create_pool(self):
         pool = ThreadPool(cpu_count())
@@ -143,12 +143,14 @@ class TestArrayWithProcessSynchronizer(TestArray, MixinArraySyncTests):
         path = tempfile.mkdtemp()
         atexit.register(atexit_rmtree, path)
         store = DirectoryStore(path)
+        cache_metadata = kwargs.pop('cache_metadata', False)
+        cache_attrs = kwargs.pop('cache_attrs', False)
         init_array(store, **kwargs)
         sync_path = tempfile.mkdtemp()
         atexit.register(atexit_rmtree, sync_path)
         synchronizer = ProcessSynchronizer(sync_path)
-        return Array(store, synchronizer=synchronizer,
-                     read_only=read_only, cache_metadata=False)
+        return Array(store, synchronizer=synchronizer, read_only=read_only,
+                     cache_metadata=cache_metadata, cache_attrs=cache_attrs)
 
     def create_pool(self):
         pool = ProcessPool(processes=cpu_count())
