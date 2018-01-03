@@ -892,16 +892,15 @@ except ImportError:  # pragma: no cover
     bsddb3 = None
 
 
-if bsddb3 is not None:
+@unittest.skipIf(bsddb3 is None, 'bsddb3 is not installed')
+class TestGroupWithDBMStoreBerkeleyDB(TestGroup):
 
-    class TestGroupWithDBMStoreBerkeleyDB(TestGroup):
-
-        @staticmethod
-        def create_store():
-            path = tempfile.mktemp(suffix='.dbm')
-            atexit.register(os.remove, path)
-            store = DBMStore(path, flag='n', open=bsddb3.btopen)
-            return store, None
+    @staticmethod
+    def create_store():
+        path = tempfile.mktemp(suffix='.dbm')
+        atexit.register(os.remove, path)
+        store = DBMStore(path, flag='n', open=bsddb3.btopen)
+        return store, None
 
 
 try:
@@ -910,16 +909,15 @@ except ImportError:  # pragma: no cover
     lmdb = None
 
 
-if lmdb is not None:
+@unittest.skipIf(lmdb is None, 'lmdb is not installed')
+class TestGroupWithLMDBStore(TestGroup):
 
-    class TestGroupWithLMDBStore(TestGroup):
-
-        @staticmethod
-        def create_store():
-            path = tempfile.mktemp(suffix='.lmdb')
-            atexit.register(atexit_rmtree, path)
-            store = LMDBStore(path)
-            return store, None
+    @staticmethod
+    def create_store():
+        path = tempfile.mktemp(suffix='.lmdb')
+        atexit.register(atexit_rmtree, path)
+        store = LMDBStore(path)
+        return store, None
 
 
 class TestGroupWithChunkStore(TestGroup):

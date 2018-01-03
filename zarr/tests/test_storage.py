@@ -90,10 +90,10 @@ class StoreTests(object):
         store = self.create_store()
 
         # __setitem__ should accept any value that implements buffer interface
-        store['foo'] = b'bar'
-        store['foo'] = bytearray(b'bar')
-        store['foo'] = array.array('B', b'bar')
-        store['foo'] = np.frombuffer(b'bar', dtype='u1')
+        store['foo1'] = b'bar'
+        store['foo2'] = bytearray(b'bar')
+        store['foo3'] = array.array('B', b'bar')
+        store['foo4'] = np.frombuffer(b'bar', dtype='u1')
 
     def test_update(self):
         store = self.create_store()
@@ -777,32 +777,30 @@ except ImportError:  # pragma: no cover
     gdbm = None
 
 
-if gdbm is not None:
+@unittest.skipIf(gdbm is None, 'gdbm is not installed')
+class TestDBMStoreGnu(TestDBMStore):
 
-    class TestDBMStoreGnu(TestDBMStore):
-
-        def create_store(self):
-            path = tempfile.mktemp(suffix='.gdbm')
-            atexit.register(os.remove, path)
-            store = DBMStore(path, flag='n', open=gdbm.open, write_lock=False)
-            return store
+    def create_store(self):
+        path = tempfile.mktemp(suffix='.gdbm')
+        atexit.register(os.remove, path)
+        store = DBMStore(path, flag='n', open=gdbm.open, write_lock=False)
+        return store
 
 
-if not PY2:
+if not PY2:  # pragma: py2 no cover
     try:
         import dbm.ndbm as ndbm
     except ImportError:  # pragma: no cover
         ndbm = None
 
-    if ndbm is not None:
+    @unittest.skipIf(ndbm is None, 'ndbm is not installed')
+    class TestDBMStoreNDBM(TestDBMStore):
 
-        class TestDBMStoreNDBM(TestDBMStore):
-
-            def create_store(self):
-                path = tempfile.mktemp(suffix='.ndbm')
-                atexit.register(atexit_rmglob, path + '*')
-                store = DBMStore(path, flag='n', open=ndbm.open)
-                return store
+        def create_store(self):
+            path = tempfile.mktemp(suffix='.ndbm')
+            atexit.register(atexit_rmglob, path + '*')
+            store = DBMStore(path, flag='n', open=ndbm.open)
+            return store
 
 
 try:
@@ -811,15 +809,14 @@ except ImportError:  # pragma: no cover
     bsddb3 = None
 
 
-if bsddb3 is not None:
+@unittest.skipIf(bsddb3 is None, 'bsddb3 is not installed')
+class TestDBMStoreBerkeleyDB(TestDBMStore):
 
-    class TestDBMStoreBerkeleyDB(TestDBMStore):
-
-        def create_store(self):
-            path = tempfile.mktemp(suffix='.dbm')
-            atexit.register(os.remove, path)
-            store = DBMStore(path, flag='n', open=bsddb3.btopen, write_lock=False)
-            return store
+    def create_store(self):
+        path = tempfile.mktemp(suffix='.dbm')
+        atexit.register(os.remove, path)
+        store = DBMStore(path, flag='n', open=bsddb3.btopen, write_lock=False)
+        return store
 
 
 try:
@@ -828,27 +825,26 @@ except ImportError:  # pragma: no cover
     lmdb = None
 
 
-if lmdb is not None:
+@unittest.skipIf(lmdb is None, 'lmdb is not installed')
+class TestLMDBStore(StoreTests, unittest.TestCase):
 
-    class TestLMDBStore(StoreTests, unittest.TestCase):
+    def create_store(self):
+        path = tempfile.mktemp(suffix='.lmdb')
+        atexit.register(atexit_rmtree, path)
+        if PY2:  # pragma: py3 no cover
+            # don't use buffers, otherwise would have to rewrite tests as bytes and
+            # buffer don't compare equal in PY2
+            buffers = False
+        else:  # pragma: py2 no cover
+            buffers = True
+        store = LMDBStore(path, buffers=buffers)
+        return store
 
-        def create_store(self):
-            path = tempfile.mktemp(suffix='.lmdb')
-            atexit.register(atexit_rmtree, path)
-            if PY2:  # pragma: py3 no cover
-                # don't use buffers, otherwise would have to rewrite tests as bytes and
-                # buffer don't compare equal in PY2
-                buffers = False
-            else:  # pragma: py2 no cover
-                buffers = True
-            store = LMDBStore(path, buffers=buffers)
-            return store
-
-        def test_context_manager(self):
-            with self.create_store() as store:
-                store['foo'] = b'bar'
-                store['baz'] = b'qux'
-                assert 2 == len(store)
+    def test_context_manager(self):
+        with self.create_store() as store:
+            store['foo'] = b'bar'
+            store['baz'] = b'qux'
+            assert 2 == len(store)
 
 
 class TestLRUStoreCache(StoreTests, unittest.TestCase):

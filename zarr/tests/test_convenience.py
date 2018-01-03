@@ -579,38 +579,42 @@ except ImportError:  # pragma: no cover
     h5py = None
 
 
-if h5py is not None:
+def temp_h5f():
+    fn = tempfile.mktemp()
+    atexit.register(os.remove, fn)
+    h5f = h5py.File(fn, mode='w')
+    atexit.register(lambda v: v.close(), h5f)
+    return h5f
 
-    def temp_h5f():
-        fn = tempfile.mktemp()
-        atexit.register(os.remove, fn)
-        h5f = h5py.File(fn, mode='w')
-        atexit.register(lambda v: v.close(), h5f)
-        return h5f
 
-    class TestCopyHDF5ToZarr(TestCopy):
+@unittest.skipIf(h5py is None, 'h5py is not installed')
+class TestCopyHDF5ToZarr(TestCopy):
 
-        def __init__(self, *args, **kwargs):
-            super(TestCopyHDF5ToZarr, self).__init__(*args, **kwargs)
-            self.source_h5py = True
-            self.dest_h5py = False
-            self.new_source = temp_h5f
-            self.new_dest = group
+    def __init__(self, *args, **kwargs):
+        super(TestCopyHDF5ToZarr, self).__init__(*args, **kwargs)
+        self.source_h5py = True
+        self.dest_h5py = False
+        self.new_source = temp_h5f
+        self.new_dest = group
 
-    class TestCopyZarrToHDF5(TestCopy):
 
-        def __init__(self, *args, **kwargs):
-            super(TestCopyZarrToHDF5, self).__init__(*args, **kwargs)
-            self.source_h5py = False
-            self.dest_h5py = True
-            self.new_source = group
-            self.new_dest = temp_h5f
+@unittest.skipIf(h5py is None, 'h5py is not installed')
+class TestCopyZarrToHDF5(TestCopy):
 
-    class TestCopyHDF5ToHDF5(TestCopy):
+    def __init__(self, *args, **kwargs):
+        super(TestCopyZarrToHDF5, self).__init__(*args, **kwargs)
+        self.source_h5py = False
+        self.dest_h5py = True
+        self.new_source = group
+        self.new_dest = temp_h5f
 
-        def __init__(self, *args, **kwargs):
-            super(TestCopyHDF5ToHDF5, self).__init__(*args, **kwargs)
-            self.source_h5py = True
-            self.dest_h5py = True
-            self.new_source = temp_h5f
-            self.new_dest = temp_h5f
+
+@unittest.skipIf(h5py is None, 'h5py is not installed')
+class TestCopyHDF5ToHDF5(TestCopy):
+
+    def __init__(self, *args, **kwargs):
+        super(TestCopyHDF5ToHDF5, self).__init__(*args, **kwargs)
+        self.source_h5py = True
+        self.dest_h5py = True
+        self.new_source = temp_h5f
+        self.new_dest = temp_h5f
