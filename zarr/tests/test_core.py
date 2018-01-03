@@ -1251,23 +1251,24 @@ except ImportError:  # pragma: no cover
     bsddb3 = None
 
 
-@pytest.mark.skipif(bsddb3 is None, reason='bsddb3 not installed')
-class TestArrayWithDBMStoreBerkeleyDB(TestArray):
+if bsddb3 is not None:
 
-    @staticmethod
-    def create_array(read_only=False, **kwargs):
-        path = mktemp(suffix='.dbm')
-        atexit.register(os.remove, path)
-        store = DBMStore(path, flag='n', open=bsddb3.btopen)
-        cache_metadata = kwargs.pop('cache_metadata', True)
-        cache_attrs = kwargs.pop('cache_attrs', True)
-        kwargs.setdefault('compressor', Zlib(1))
-        init_array(store, **kwargs)
-        return Array(store, read_only=read_only, cache_metadata=cache_metadata,
-                     cache_attrs=cache_attrs)
+    class TestArrayWithDBMStoreBerkeleyDB(TestArray):
 
-    def test_nbytes_stored(self):
-        pass  # not implemented
+        @staticmethod
+        def create_array(read_only=False, **kwargs):
+            path = mktemp(suffix='.dbm')
+            atexit.register(os.remove, path)
+            store = DBMStore(path, flag='n', open=bsddb3.btopen)
+            cache_metadata = kwargs.pop('cache_metadata', True)
+            cache_attrs = kwargs.pop('cache_attrs', True)
+            kwargs.setdefault('compressor', Zlib(1))
+            init_array(store, **kwargs)
+            return Array(store, read_only=read_only, cache_metadata=cache_metadata,
+                         cache_attrs=cache_attrs)
+
+        def test_nbytes_stored(self):
+            pass  # not implemented
 
 
 try:
@@ -1276,42 +1277,41 @@ except ImportError:  # pragma: no cover
     lmdb = None
 
 
-@pytest.mark.skipif(lmdb is None, reason='lmdb is not installed')
-class TestArrayWithLMDBStore(TestArray):
+if lmdb is not None:
 
-    @staticmethod
-    def create_array(read_only=False, **kwargs):
-        path = mktemp(suffix='.lmdb')
-        atexit.register(atexit_rmtree, path)
-        store = LMDBStore(path, buffers=True)
-        cache_metadata = kwargs.pop('cache_metadata', True)
-        cache_attrs = kwargs.pop('cache_attrs', True)
-        kwargs.setdefault('compressor', Zlib(1))
-        init_array(store, **kwargs)
-        return Array(store, read_only=read_only, cache_metadata=cache_metadata,
-                     cache_attrs=cache_attrs)
+    class TestArrayWithLMDBStore(TestArray):
 
-    def test_nbytes_stored(self):
-        pass  # not implemented
+        @staticmethod
+        def create_array(read_only=False, **kwargs):
+            path = mktemp(suffix='.lmdb')
+            atexit.register(atexit_rmtree, path)
+            store = LMDBStore(path, buffers=True)
+            cache_metadata = kwargs.pop('cache_metadata', True)
+            cache_attrs = kwargs.pop('cache_attrs', True)
+            kwargs.setdefault('compressor', Zlib(1))
+            init_array(store, **kwargs)
+            return Array(store, read_only=read_only, cache_metadata=cache_metadata,
+                         cache_attrs=cache_attrs)
 
+        def test_nbytes_stored(self):
+            pass  # not implemented
 
-@pytest.mark.skipif(lmdb is None, reason='lmdb is not installed')
-class TestArrayWithLMDBStoreNoBuffers(TestArray):
+    class TestArrayWithLMDBStoreNoBuffers(TestArray):
 
-    @staticmethod
-    def create_array(read_only=False, **kwargs):
-        path = mktemp(suffix='.lmdb')
-        atexit.register(atexit_rmtree, path)
-        store = LMDBStore(path, buffers=False)
-        cache_metadata = kwargs.pop('cache_metadata', True)
-        cache_attrs = kwargs.pop('cache_attrs', True)
-        kwargs.setdefault('compressor', Zlib(1))
-        init_array(store, **kwargs)
-        return Array(store, read_only=read_only, cache_metadata=cache_metadata,
-                     cache_attrs=cache_attrs)
+        @staticmethod
+        def create_array(read_only=False, **kwargs):
+            path = mktemp(suffix='.lmdb')
+            atexit.register(atexit_rmtree, path)
+            store = LMDBStore(path, buffers=False)
+            cache_metadata = kwargs.pop('cache_metadata', True)
+            cache_attrs = kwargs.pop('cache_attrs', True)
+            kwargs.setdefault('compressor', Zlib(1))
+            init_array(store, **kwargs)
+            return Array(store, read_only=read_only, cache_metadata=cache_metadata,
+                         cache_attrs=cache_attrs)
 
-    def test_nbytes_stored(self):
-        pass  # not implemented
+        def test_nbytes_stored(self):
+            pass  # not implemented
 
 
 class TestArrayWithNoCompressor(TestArray):

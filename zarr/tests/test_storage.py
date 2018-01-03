@@ -777,14 +777,15 @@ except ImportError:  # pragma: no cover
     gdbm = None
 
 
-@pytest.mark.skipif(gdbm is None, reason='gdbm is not installed')
-class TestDBMStoreGnu(TestDBMStore):
+if gdbm is not None:
 
-    def create_store(self):
-        path = tempfile.mktemp(suffix='.gdbm')
-        atexit.register(os.remove, path)
-        store = DBMStore(path, flag='n', open=gdbm.open, write_lock=False)
-        return store
+    class TestDBMStoreGnu(TestDBMStore):
+
+        def create_store(self):
+            path = tempfile.mktemp(suffix='.gdbm')
+            atexit.register(os.remove, path)
+            store = DBMStore(path, flag='n', open=gdbm.open, write_lock=False)
+            return store
 
 
 if not PY2:
@@ -793,14 +794,15 @@ if not PY2:
     except ImportError:  # pragma: no cover
         ndbm = None
 
-    @pytest.mark.skipif(ndbm is None, reason='ndbm is not installed')
-    class TestDBMStoreNDBM(TestDBMStore):
+    if ndbm is not None:
 
-        def create_store(self):
-            path = tempfile.mktemp(suffix='.ndbm')
-            atexit.register(atexit_rmglob, path + '*')
-            store = DBMStore(path, flag='n', open=ndbm.open)
-            return store
+        class TestDBMStoreNDBM(TestDBMStore):
+
+            def create_store(self):
+                path = tempfile.mktemp(suffix='.ndbm')
+                atexit.register(atexit_rmglob, path + '*')
+                store = DBMStore(path, flag='n', open=ndbm.open)
+                return store
 
 
 try:
@@ -809,14 +811,15 @@ except ImportError:  # pragma: no cover
     bsddb3 = None
 
 
-@pytest.mark.skipif(bsddb3 is None, reason='bsddb3 is not installed')
-class TestDBMStoreBerkeleyDB(TestDBMStore):
+if bsddb3 is not None:
 
-    def create_store(self):
-        path = tempfile.mktemp(suffix='.dbm')
-        atexit.register(os.remove, path)
-        store = DBMStore(path, flag='n', open=bsddb3.btopen, write_lock=False)
-        return store
+    class TestDBMStoreBerkeleyDB(TestDBMStore):
+
+        def create_store(self):
+            path = tempfile.mktemp(suffix='.dbm')
+            atexit.register(os.remove, path)
+            store = DBMStore(path, flag='n', open=bsddb3.btopen, write_lock=False)
+            return store
 
 
 try:
@@ -825,26 +828,27 @@ except ImportError:  # pragma: no cover
     lmdb = None
 
 
-@pytest.mark.skipif(lmdb is None, reason='lmdb is not installed')
-class TestLMDBStore(StoreTests, unittest.TestCase):
+if lmdb is not None:
 
-    def create_store(self):
-        path = tempfile.mktemp(suffix='.lmdb')
-        atexit.register(atexit_rmtree, path)
-        if PY2:  # pragma: py3 no cover
-            # don't use buffers, otherwise would have to rewrite tests as bytes and
-            # buffer don't compare equal in PY2
-            buffers = False
-        else:  # pragma: py2 no cover
-            buffers = True
-        store = LMDBStore(path, buffers=buffers)
-        return store
+    class TestLMDBStore(StoreTests, unittest.TestCase):
 
-    def test_context_manager(self):
-        with self.create_store() as store:
-            store['foo'] = b'bar'
-            store['baz'] = b'qux'
-            assert 2 == len(store)
+        def create_store(self):
+            path = tempfile.mktemp(suffix='.lmdb')
+            atexit.register(atexit_rmtree, path)
+            if PY2:  # pragma: py3 no cover
+                # don't use buffers, otherwise would have to rewrite tests as bytes and
+                # buffer don't compare equal in PY2
+                buffers = False
+            else:  # pragma: py2 no cover
+                buffers = True
+            store = LMDBStore(path, buffers=buffers)
+            return store
+
+        def test_context_manager(self):
+            with self.create_store() as store:
+                store['foo'] = b'bar'
+                store['baz'] = b'qux'
+                assert 2 == len(store)
 
 
 class TestLRUStoreCache(StoreTests, unittest.TestCase):
