@@ -403,6 +403,11 @@ def tree(grp, expand=False, level=None):
     --------
     zarr.hierarchy.Group.tree
 
+    Notes
+    -----
+    Please note that the behaviour of this function is still evolving and the
+    default output and/or parameters may change in future versions.
+
     """
 
     return TreeViewer(grp, expand=expand, level=level)
