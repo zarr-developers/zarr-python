@@ -174,8 +174,8 @@ and produce a coverage report. This should be 100% before code can be accepted i
 main code base.
 
 When submitting a pull request, coverage will also be collected across all supported
-versions via the Coveralls service, and will be reported back within the pull request.
-Coveralls coverage must also be 100% before code can be accepted.
+Python versions via the Coveralls service, and will be reported back within the pull
+request. Coveralls coverage must also be 100% before code can be accepted.
 
 Documentation
 ~~~~~~~~~~~~~
