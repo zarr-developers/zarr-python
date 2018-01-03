@@ -139,6 +139,7 @@ def decode_fill_value(v, dtype):
         else:
             return np.array(v, dtype=dtype)[()]
     elif dtype.kind in 'SV':
+        # noinspection PyBroadException
         try:
             v = base64.standard_b64decode(v)
             v = np.array(v, dtype=dtype)[()]

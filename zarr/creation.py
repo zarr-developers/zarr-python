@@ -80,13 +80,14 @@ def create(shape, chunks=True, dtype=None, compressor='default',
     Create an array with different some different configuration options::
 
         >>> from numcodecs import Blosc
+        >>> compressor = Blosc(cname='zstd', clevel=1, shuffle=Blosc.BITSHUFFLE)
         >>> z = zarr.create((10000, 10000), chunks=(1000, 1000), dtype='i1', order='F',
-        ...                 compressor=Blosc(cname='zstd', clevel=1, shuffle=Blosc.BITSHUFFLE))
+        ...                 compressor=compressor)
         >>> z
         <zarr.core.Array (10000, 10000) int8>
 
-    To create an array with object dtype requires a filter that can handle Python object encoding,
-    e.g., `MsgPack` or `Pickle` from `numcodecs`::
+    To create an array with object dtype requires a filter that can handle Python object
+    encoding, e.g., `MsgPack` or `Pickle` from `numcodecs`::
 
         >>> from numcodecs import MsgPack
         >>> z = zarr.create((10000, 10000), chunks=(1000, 1000), dtype=object,
