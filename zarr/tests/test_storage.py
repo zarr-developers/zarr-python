@@ -793,7 +793,6 @@ if not PY2:
     except ImportError:  # pragma: no cover
         ndbm = None
 
-
     @pytest.mark.skipif(ndbm is None, reason='ndbm is not installed')
     class TestDBMStoreNDBM(TestDBMStore):
 
@@ -822,7 +821,7 @@ class TestDBMStoreBerkeleyDB(TestDBMStore):
 
 try:
     import lmdb
-except ImportError:
+except ImportError:  # pragma: no cover
     lmdb = None
 
 

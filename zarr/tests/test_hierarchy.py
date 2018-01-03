@@ -905,7 +905,7 @@ class TestGroupWithDBMStoreBerkeleyDB(TestGroup):
 
 try:
     import lmdb
-except ImportError:
+except ImportError:  # pragma: no cover
     lmdb = None
 
 

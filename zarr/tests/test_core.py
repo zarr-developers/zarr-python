@@ -1272,7 +1272,7 @@ class TestArrayWithDBMStoreBerkeleyDB(TestArray):
 
 try:
     import lmdb
-except ImportError:
+except ImportError:  # pragma: no cover
     lmdb = None
 
 
