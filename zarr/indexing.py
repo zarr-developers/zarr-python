@@ -54,8 +54,10 @@ def normalize_integer_selection(dim_sel, dim_len):
     return dim_sel
 
 
-ChunkDimProjection = collections.namedtuple('ChunkDimProjection',
-                                            ('dim_chunk_ix', 'dim_chunk_sel', 'dim_out_sel'))
+ChunkDimProjection = collections.namedtuple(
+    'ChunkDimProjection',
+    ('dim_chunk_ix', 'dim_chunk_sel', 'dim_out_sel')
+)
 """A mapping from chunk to output array for a single dimension.
 
 Parameters
@@ -149,7 +151,8 @@ class SliceDimIndexer(object):
                 dim_chunk_sel_stop = self.stop - dim_offset
 
             dim_chunk_sel = slice(dim_chunk_sel_start, dim_chunk_sel_stop, self.step)
-            dim_chunk_nitems = ceildiv((dim_chunk_sel_stop - dim_chunk_sel_start), self.step)
+            dim_chunk_nitems = ceildiv((dim_chunk_sel_stop - dim_chunk_sel_start),
+                                       self.step)
             dim_out_sel = slice(dim_out_offset, dim_out_offset + dim_chunk_nitems)
 
             yield ChunkDimProjection(dim_chunk_ix, dim_chunk_sel, dim_out_sel)
@@ -211,11 +214,13 @@ def ensure_tuple(v):
     return v
 
 
-ChunkProjection = collections.namedtuple('ChunkProjection',
-                                         ('chunk_coords', 'chunk_selection', 'out_selection'))
-"""A mapping of items from chunk to output array. Can be used to extract items from the chunk
-array for loading into an output array. Can also be used to extract items from a value array for
-setting/updating in a chunk array.
+ChunkProjection = collections.namedtuple(
+    'ChunkProjection',
+    ('chunk_coords', 'chunk_selection', 'out_selection')
+)
+"""A mapping of items from chunk to output array. Can be used to extract items from the
+chunk array for loading into an output array. Can also be used to extract items from a
+value array for setting/updating in a chunk array.
 
 Parameters
 ----------
@@ -264,7 +269,8 @@ class BasicIndexer(object):
 
         # setup per-dimension indexers
         dim_indexers = []
-        for dim_sel, dim_len, dim_chunk_len in zip(selection, array._shape, array._chunks):
+        for dim_sel, dim_len, dim_chunk_len in \
+                zip(selection, array._shape, array._chunks):
 
             if is_integer(dim_sel):
                 dim_indexer = IntDimIndexer(dim_sel, dim_len, dim_chunk_len)
@@ -273,8 +279,9 @@ class BasicIndexer(object):
                 dim_indexer = SliceDimIndexer(dim_sel, dim_len, dim_chunk_len)
 
             else:
-                raise IndexError('unsupported selection item for basic indexing; expected integer '
-                                 'or slice, got {!r}'.format(type(dim_sel)))
+                raise IndexError('unsupported selection item for basic indexing; '
+                                 'expected integer or slice, got {!r}'
+                                 .format(type(dim_sel)))
 
             dim_indexers.append(dim_indexer)
 
@@ -300,7 +307,8 @@ class BoolArrayDimIndexer(object):
 
         # check number of dimensions
         if not is_bool_array(dim_sel, 1):
-            raise IndexError('Boolean arrays in an orthogonal selection must 1-dimensional only')
+            raise IndexError('Boolean arrays in an orthogonal selection must '
+                             'be 1-dimensional only')
 
         # check shape
         if dim_sel.shape[0] != dim_len:
@@ -392,7 +400,8 @@ class IntArrayDimIndexer(object):
         # ensure 1d array
         dim_sel = np.asanyarray(dim_sel)
         if not is_integer_array(dim_sel, 1):
-            raise IndexError('integer arrays in an orthogonal selection must be 1-dimensional only')
+            raise IndexError('integer arrays in an orthogonal selection must be '
+                             '1-dimensional only')
 
         # handle wraparound
         if wraparound:
@@ -409,7 +418,8 @@ class IntArrayDimIndexer(object):
         self.nitems = len(dim_sel)
 
         # determine which chunk is needed for each selection item
-        # note: for dense integer selections, the division operation here is the bottleneck
+        # note: for dense integer selections, the division operation here is the
+        # bottleneck
         dim_sel_chunk = dim_sel // dim_chunk_len
 
         # determine order of indices
@@ -520,7 +530,8 @@ class OrthogonalIndexer(object):
 
         # setup per-dimension indexers
         dim_indexers = []
-        for dim_sel, dim_len, dim_chunk_len in zip(selection, array._shape, array._chunks):
+        for dim_sel, dim_len, dim_chunk_len in \
+                zip(selection, array._shape, array._chunks):
 
             if is_integer(dim_sel):
                 dim_indexer = IntDimIndexer(dim_sel, dim_len, dim_chunk_len)
@@ -535,8 +546,9 @@ class OrthogonalIndexer(object):
                 dim_indexer = BoolArrayDimIndexer(dim_sel, dim_len, dim_chunk_len)
 
             else:
-                raise IndexError('unsupported selection item for orthogonal indexing; expected '
-                                 'integer, slice, integer array or Boolean array, got {!r}'
+                raise IndexError('unsupported selection item for orthogonal indexing; '
+                                 'expected integer, slice, integer array or Boolean '
+                                 'array, got {!r}'
                                  .format(type(dim_sel)))
 
             dim_indexers.append(dim_indexer)
@@ -563,9 +575,10 @@ class OrthogonalIndexer(object):
             # handle advanced indexing arrays orthogonally
             if self.is_advanced:
 
-                # numpy doesn't support orthogonal indexing directly as yet, so need to work
-                # around via np.ix_. Also np.ix_ does not support a mixture of arrays and slices
-                # or integers, so need to convert slices and integers into ranges.
+                # N.B., numpy doesn't support orthogonal indexing directly as yet,
+                # so need to work around via np.ix_. Also np.ix_ does not support a
+                # mixture of arrays and slices or integers, so need to convert slices
+                # and integers into ranges.
                 chunk_selection = ix_(chunk_selection, self.array._chunks)
 
                 # special case for non-monotonic indices
@@ -623,8 +636,9 @@ class CoordinateIndexer(object):
 
         # validation
         if not is_coordinate_selection(selection, array):
-            raise IndexError('invalid coordinate selection; expected one integer (coordinate) '
-                             'array per dimension of the target array, got {!r}'.format(selection))
+            raise IndexError('invalid coordinate selection; expected one integer '
+                             '(coordinate) array per dimension of the target array, '
+                             'got {!r}'.format(selection))
 
         # handle wraparound, boundscheck
         for dim_sel, dim_len in zip(selection, array.shape):
@@ -764,8 +778,8 @@ def check_fields(fields, dtype):
         return dtype
     # check type
     if not isinstance(fields, (str, list, tuple)):
-        raise IndexError("'fields' argument must be a string or list of strings; found {!r}"
-                         .format(type(fields)))
+        raise IndexError("'fields' argument must be a string or list of strings; found "
+                         "{!r}".format(type(fields)))
     if fields:
         if dtype.names is None:
             raise IndexError("invalid 'fields' argument, array does not have any fields")

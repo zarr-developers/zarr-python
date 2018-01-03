@@ -54,7 +54,7 @@ def open(store, mode='a', **kwargs):
         >>> zr = zarr.open(store, mode='r')  # open existing array read-only
         >>> zr
         <zarr.core.Array (100,) int32 read-only>
-        >>> gw = zarr.open(store, mode='w')  # open new group, overwriting any previous data
+        >>> gw = zarr.open(store, mode='w')  # open new group, overwriting previous data
         >>> gw
         <zarr.hierarchy.Group '/'>
         >>> ga = zarr.open(store, mode='a')  # open existing group for reading and writing
@@ -97,8 +97,8 @@ def open(store, mode='a', **kwargs):
 
 
 def save_array(store, arr, **kwargs):
-    """Convenience function to save a NumPy array to the local file system, following a similar
-    API to the NumPy save() function.
+    """Convenience function to save a NumPy array to the local file system, following a
+    similar API to the NumPy save() function.
 
     Parameters
     ----------
@@ -152,7 +152,8 @@ def save_group(store, *args, **kwargs):
 
     Examples
     --------
-    Save several arrays to a directory on the file system (uses a :class:`DirectoryStore`)::
+    Save several arrays to a directory on the file system (uses a
+    :class:`DirectoryStore`):
 
         >>> import zarr
         >>> import numpy as np
@@ -333,8 +334,9 @@ def load(store):
     Returns
     -------
     out
-        If the store contains an array, out will be a numpy array. If the store contains a group,
-        out will be a dict-like object where keys are array names and values are numpy arrays.
+        If the store contains an array, out will be a numpy array. If the store contains
+        a group, out will be a dict-like object where keys are array names and values
+        are numpy arrays.
 
     See Also
     --------
@@ -342,8 +344,8 @@ def load(store):
 
     Notes
     -----
-    If loading data from a group of arrays, data will not be immediately loaded into memory.
-    Rather, arrays will be loaded into memory as they are requested.
+    If loading data from a group of arrays, data will not be immediately loaded into
+    memory. Rather, arrays will be loaded into memory as they are requested.
 
     """
     # handle polymorphic store arg

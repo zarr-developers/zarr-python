@@ -6,7 +6,6 @@ import os
 import unittest
 
 
-from nose.tools import assert_raises
 import numpy as np
 from numpy.testing import assert_array_equal
 from numcodecs import Zlib, Adler32
@@ -42,7 +41,7 @@ def test_open_array():
     assert z.read_only
 
     # path not found
-    with assert_raises(ValueError):
+    with pytest.raises(ValueError):
         open('doesnotexist', mode='r')
 
 
@@ -69,10 +68,10 @@ def test_open_group():
 
 
 def test_save_errors():
-    with assert_raises(ValueError):
+    with pytest.raises(ValueError):
         # no arrays provided
         save_group('data/group.zarr')
-    with assert_raises(ValueError):
+    with pytest.raises(ValueError):
         # no arrays provided
         save('data/group.zarr')
 
@@ -427,7 +426,7 @@ class TestCopy(unittest.TestCase):
         assert not np.all(source['foo/bar/baz'][:] == dest['baz'][:])
 
         if self.dest_h5py:
-            with assert_raises(ValueError):
+            with pytest.raises(ValueError):
                 # not available with copy to h5py
                 copy(source['foo/bar/baz'], dest, if_exists='skip_initialized')
 
@@ -575,10 +574,9 @@ class TestCopy(unittest.TestCase):
 
 
 try:
-    import h5py  # no qa
-    have_h5py = True
+    import h5py
 except ImportError:  # pragma: no cover
-    have_h5py = False
+    h5py = None
 
 
 def temp_h5f():
@@ -589,7 +587,7 @@ def temp_h5f():
     return h5f
 
 
-@pytest.mark.skipif(not have_h5py, reason='h5py not installed')
+@pytest.mark.skipif(h5py is None, reason='h5py not installed')
 class TestCopyHDF5ToZarr(TestCopy):
 
     def __init__(self, *args, **kwargs):
@@ -600,7 +598,7 @@ class TestCopyHDF5ToZarr(TestCopy):
         self.new_dest = group
 
 
-@pytest.mark.skipif(not have_h5py, reason='h5py not installed')
+@pytest.mark.skipif(h5py is None, reason='h5py not installed')
 class TestCopyZarrToHDF5(TestCopy):
 
     def __init__(self, *args, **kwargs):
@@ -611,7 +609,7 @@ class TestCopyZarrToHDF5(TestCopy):
         self.new_dest = temp_h5f
 
 
-@pytest.mark.skipif(not have_h5py, reason='h5py not installed')
+@pytest.mark.skipif(h5py is None, reason='h5py not installed')
 class TestCopyHDF5ToHDF5(TestCopy):
 
     def __init__(self, *args, **kwargs):

@@ -113,11 +113,13 @@ class Attributes(MutableMapping):
         self._write_op(self._put_nosync, d)
 
     def _put_nosync(self, d):
-        s = json.dumps(d, indent=4, sort_keys=True, ensure_ascii=True, separators=(',', ': '))
+        s = json.dumps(d, indent=4, sort_keys=True, ensure_ascii=True,
+                       separators=(',', ': '))
         self.store[self.key] = s.encode('ascii')
         if self.cache:
             self._cached_asdict = d
 
+    # noinspection PyMethodOverriding
     def update(self, *args, **kwargs):
         """Update the values of several attributes in a single operation."""
         self._write_op(self._update_nosync, *args, **kwargs)

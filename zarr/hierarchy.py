@@ -708,6 +708,7 @@ class Group(MutableMapping):
         """Convenience method to require multiple groups in a single call."""
         return tuple(self.require_group(name) for name in names)
 
+    # noinspection PyIncorrectDocstring
     def create_dataset(self, name, **kwargs):
         """Create an array.
 
@@ -977,7 +978,8 @@ class Group(MutableMapping):
         dest = self._item_path(dest)
 
         # Check that source exists.
-        if not (contains_array(self._store, source) or contains_group(self._store, source)):
+        if not (contains_array(self._store, source) or
+                contains_group(self._store, source)):
             raise ValueError('The source, "%s", does not exist.' % source)
         if contains_array(self._store, dest) or contains_group(self._store, dest):
             raise ValueError('The dest, "%s", already exists.' % dest)

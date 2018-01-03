@@ -2,9 +2,6 @@
 from __future__ import absolute_import, print_function, division
 
 
-from nose.tools import assert_list_equal
-
-
 import zarr
 import numcodecs
 
@@ -24,7 +21,7 @@ def test_info():
         'Type', 'Read-only', 'Synchronizer type', 'Store type', 'Chunk store type',
         'No. members', 'No. arrays', 'No. groups', 'Arrays', 'Groups', 'Name'
     ])
-    assert_list_equal(expected_keys, keys)
+    assert expected_keys == keys
 
     # test array info
     items = z.info_items()
@@ -34,4 +31,4 @@ def test_info():
         'Compressor', 'Synchronizer type', 'Store type', 'Chunk store type', 'No. bytes',
         'No. bytes stored', 'Storage ratio', 'Chunks initialized', 'Name'
     ])
-    assert_list_equal(expected_keys, keys)
+    assert expected_keys == keys
