@@ -190,6 +190,7 @@ Maintenance
 
 * A data fixture has been included in the test suite to ensure data format
   compatibility is maintained; :issue:`83`, :issue:`146`.
+* The test suite has been migrated from nosetests to pytest; :issue:`189`, :issue:`225`.
 * Various continuous integration updates and improvements; :issue:`118`, :issue:`124`,
   :issue:`125`, :issue:`126`, :issue:`109`, :issue:`114`, :issue:`171`.
 
