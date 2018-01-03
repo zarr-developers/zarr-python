@@ -10,7 +10,6 @@ import tempfile
 
 
 import numpy as np
-from nose.tools import eq_ as eq, assert_is_instance
 from numpy.testing import assert_array_equal
 
 
@@ -46,8 +45,8 @@ class TestAttributesProcessSynchronizer(TestAttributes):
 
 def _append(arg):
     z, i = arg
-    import numpy as np
-    x = np.empty(1000, dtype='i4')
+    import numpy
+    x = numpy.empty(1000, dtype='i4')
     x[:] = i
     shape = z.append(x)
     return shape
@@ -55,8 +54,8 @@ def _append(arg):
 
 def _set_arange(arg):
     z, i = arg
-    import numpy as np
-    x = np.arange(i*1000, (i*1000)+1000, 1)
+    import numpy
+    x = numpy.arange(i*1000, (i*1000)+1000, 1)
     z[i*1000:(i*1000)+1000] = x
     return i
 
@@ -75,7 +74,7 @@ class MixinArraySyncTests(object):
         results = pool.map(_set_arange, zip([arr] * n, range(n)), chunksize=1)
         results = sorted(results)
 
-        eq(list(range(n)), results)
+        assert list(range(n)) == results
         assert_array_equal(np.arange(n * 1000), arr[:])
 
         pool.terminate()
@@ -92,8 +91,8 @@ class MixinArraySyncTests(object):
         results = pool.map(_append, zip([arr] * n, range(n)), chunksize=1)
         results = sorted(results)
 
-        eq([((i+2)*1000,) for i in range(n)], results)
-        eq(((n+1)*1000,), arr.shape)
+        assert [((i+2)*1000,) for i in range(n)] == results
+        assert ((n+1)*1000,) == arr.shape
 
         pool.terminate()
 
@@ -109,6 +108,7 @@ class TestArrayWithThreadSynchronizer(TestArray, MixinArraySyncTests):
                      read_only=read_only, cache_metadata=cache_metadata,
                      cache_attrs=cache_attrs)
 
+    # noinspection PyMethodMayBeStatic
     def create_pool(self):
         pool = ThreadPool(cpu_count())
         return pool
@@ -116,25 +116,25 @@ class TestArrayWithThreadSynchronizer(TestArray, MixinArraySyncTests):
     def test_hexdigest(self):
         # Check basic 1-D array
         z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
-        eq('f710da18d45d38d4aaf2afd7fb822fdd73d02957', z.hexdigest())
+        assert 'f710da18d45d38d4aaf2afd7fb822fdd73d02957' == z.hexdigest()
 
         # Check basic 1-D array with different type
         z = self.create_array(shape=(1050,), chunks=100, dtype='f4')
-        eq('1437428e69754b1e1a38bd7fc9e43669577620db', z.hexdigest())
+        assert '1437428e69754b1e1a38bd7fc9e43669577620db' == z.hexdigest()
 
         # Check basic 2-D array
         z = self.create_array(shape=(20, 35,), chunks=10, dtype='i4')
-        eq('dde44c72cc530bd6aae39b629eb15a2da627e5f9', z.hexdigest())
+        assert 'dde44c72cc530bd6aae39b629eb15a2da627e5f9' == z.hexdigest()
 
         # Check basic 1-D array with some data
         z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
         z[200:400] = np.arange(200, 400, dtype='i4')
-        eq('4c0a76fb1222498e09dcd92f7f9221d6cea8b40e', z.hexdigest())
+        assert '4c0a76fb1222498e09dcd92f7f9221d6cea8b40e' == z.hexdigest()
 
         # Check basic 1-D array with attributes
         z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
         z.attrs['foo'] = 'bar'
-        eq('05b0663ffe1785f38d3a459dec17e57a18f254af', z.hexdigest())
+        assert '05b0663ffe1785f38d3a459dec17e57a18f254af' == z.hexdigest()
 
 
 class TestArrayWithProcessSynchronizer(TestArray, MixinArraySyncTests):
@@ -152,6 +152,7 @@ class TestArrayWithProcessSynchronizer(TestArray, MixinArraySyncTests):
         return Array(store, synchronizer=synchronizer, read_only=read_only,
                      cache_metadata=cache_metadata, cache_attrs=cache_attrs)
 
+    # noinspection PyMethodMayBeStatic
     def create_pool(self):
         pool = ProcessPool(processes=cpu_count())
         return pool
@@ -159,25 +160,25 @@ class TestArrayWithProcessSynchronizer(TestArray, MixinArraySyncTests):
     def test_hexdigest(self):
         # Check basic 1-D array
         z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
-        eq('f710da18d45d38d4aaf2afd7fb822fdd73d02957', z.hexdigest())
+        assert 'f710da18d45d38d4aaf2afd7fb822fdd73d02957' == z.hexdigest()
 
         # Check basic 1-D array with different type
         z = self.create_array(shape=(1050,), chunks=100, dtype='f4')
-        eq('1437428e69754b1e1a38bd7fc9e43669577620db', z.hexdigest())
+        assert '1437428e69754b1e1a38bd7fc9e43669577620db' == z.hexdigest()
 
         # Check basic 2-D array
         z = self.create_array(shape=(20, 35,), chunks=10, dtype='i4')
-        eq('dde44c72cc530bd6aae39b629eb15a2da627e5f9', z.hexdigest())
+        assert 'dde44c72cc530bd6aae39b629eb15a2da627e5f9' == z.hexdigest()
 
         # Check basic 1-D array with some data
         z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
         z[200:400] = np.arange(200, 400, dtype='i4')
-        eq('4c0a76fb1222498e09dcd92f7f9221d6cea8b40e', z.hexdigest())
+        assert '4c0a76fb1222498e09dcd92f7f9221d6cea8b40e' == z.hexdigest()
 
         # Check basic 1-D array with attributes
         z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
         z.attrs['foo'] = 'bar'
-        eq('05b0663ffe1785f38d3a459dec17e57a18f254af', z.hexdigest())
+        assert '05b0663ffe1785f38d3a459dec17e57a18f254af' == z.hexdigest()
 
     def test_object_arrays_danger(self):
         # skip this one, metadata get reloaded in each process
@@ -206,16 +207,16 @@ class MixinGroupSyncTests(object):
 
         # parallel create group
         n = 100
-        results = pool.map(
+        results = list(pool.map(
             _create_group,
             zip([g] * n, [str(i) for i in range(n)]),
             chunksize=1
-        )
-        results = sorted(results)
+        ))
+        assert n == len(results)
         pool.close()
         pool.terminate()
 
-        eq(n, len(g))
+        assert n == len(g)
 
         pool.terminate()
 
@@ -227,16 +228,16 @@ class MixinGroupSyncTests(object):
 
         # parallel require group
         n = 100
-        results = pool.map(
+        results = list(pool.map(
             _require_group,
             zip([g] * n, [str(i//10) for i in range(n)]),
             chunksize=1
-        )
-        results = sorted(results)
+        ))
+        assert n == len(results)
         pool.close()
         pool.terminate()
 
-        eq(n//10, len(g))
+        assert n//10 == len(g)
 
         pool.terminate()
 
@@ -253,13 +254,14 @@ class TestGroupWithThreadSynchronizer(TestGroup, MixinGroupSyncTests):
                   chunk_store=chunk_store, synchronizer=synchronizer)
         return g
 
+    # noinspection PyMethodMayBeStatic
     def create_pool(self):
         pool = ThreadPool(cpu_count())
         return pool
 
     def test_synchronizer_property(self):
         g = self.create_group()
-        assert_is_instance(g.synchronizer, ThreadSynchronizer)
+        assert isinstance(g.synchronizer, ThreadSynchronizer)
 
 
 class TestGroupWithProcessSynchronizer(TestGroup, MixinGroupSyncTests):
@@ -282,10 +284,11 @@ class TestGroupWithProcessSynchronizer(TestGroup, MixinGroupSyncTests):
                   synchronizer=synchronizer, chunk_store=chunk_store)
         return g
 
+    # noinspection PyMethodMayBeStatic
     def create_pool(self):
         pool = ProcessPool(processes=cpu_count())
         return pool
 
     def test_synchronizer_property(self):
         g = self.create_group()
-        assert_is_instance(g.synchronizer, ProcessSynchronizer)
+        assert isinstance(g.synchronizer, ProcessSynchronizer)
