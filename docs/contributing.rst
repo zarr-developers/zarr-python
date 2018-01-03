@@ -11,7 +11,7 @@ Asking for help
 If you have a question about how to use Zarr, please post your question on
 StackOverflow using the `"zarr" tag <https://stackoverflow.com/questions/tagged/zarr>`_
 . If you don't get a response within a day or two, feel free to raise a `GitHub issue
-<https://github.com/alimanfoo/zarr/issues/new>`_ including a link to your StackOverflow
+<https://github.com/zarr-developers/zarr/issues/new>`_ including a link to your StackOverflow
 question. We will try to respond to questions as quickly as possible, but please bear
 in mind that there may be periods where we have limited time to answer questions
 due to other commitments.
@@ -20,7 +20,7 @@ Bug reports
 -----------
 
 If you find a bug, please raise a `GitHub issue
-<https://github.com/alimanfoo/zarr/issues/new>`_. Please include the following items in
+<https://github.com/zarr-developers/zarr/issues/new>`_. Please include the following items in
 a bug report:
 
 1. A minimal, self-contained snippet of Python code reproducing the problem. You can
@@ -53,7 +53,7 @@ Enhancement proposals
 ---------------------
 
 If you have an idea about a new feature or some other improvement to Zarr, please raise a
-`GitHub issue <https://github.com/alimanfoo/zarr/issues/new>`_ first to discuss.
+`GitHub issue <https://github.com/zarr-developers/zarr/issues/new>`_ first to discuss.
 
 We very much welcome ideas and suggestions for how to improve Zarr, but please bear in
 mind that we are likely to be conservative in accepting proposals for new features. The
