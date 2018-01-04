@@ -197,7 +197,7 @@ Maintenance
 Acknowledgments
 ~~~~~~~~~~~~~~~
 
-Code was contributed to this release by :user:`Alistair Miles <alimanfoo`, :user:`John
+Code was contributed to this release by :user:`Alistair Miles <alimanfoo>`, :user:`John
 Kirkham <jakirkham>` and :user:`Prakhar Goel <newt0311>`.
 
 Documentation was contributed to this release by :user:`Mamy Ratsimbazafy <mratsim>`
