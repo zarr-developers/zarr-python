@@ -124,7 +124,7 @@ Enhancements
   continue to work, however a warning will be raised to encourage use of the
   ``object_codec`` parameter. :issue:`208`, :issue:`212`.
 
-* **Added support for ``datetime64`` and ``timedelta64`` data types**;
+* **Added support for datetime64 and timedelta64 data types**;
   :issue:`85`, :issue:`215`.
 
 * **Array and group attributes are now cached by default** to improve performance with
@@ -197,8 +197,8 @@ Maintenance
 Acknowledgments
 ~~~~~~~~~~~~~~~
 
-Code was contributed to this release by :user:`John Kirkham <jakirkham>` and
-:user:`Prakhar Goel <newt0311>`.
+Code was contributed to this release by :user:`Alistair Miles <alimanfoo`, :user:`John
+Kirkham <jakirkham>` and :user:`Prakhar Goel <newt0311>`.
 
 Documentation was contributed to this release by :user:`Mamy Ratsimbazafy <mratsim>`
 and :user:`Charles Noyes <CSNoyes>`.

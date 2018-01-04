@@ -860,7 +860,7 @@ groups and datasets, use :func:`zarr.convenience.copy_all`, e.g.::
      └── spam (100,) int64
 
 If you need to copy data between two Zarr groups, the
-func:`zarr.convenience.copy` and :func:`zarr.convenience.copy_all` functions can
+:func:`zarr.convenience.copy` and :func:`zarr.convenience.copy_all` functions can
 be used and provide the most flexibility. However, if you want to copy data
 in the most efficient way possible, without changing any configuration options,
 the :func:`zarr.convenience.copy_store` function can be used. This function
