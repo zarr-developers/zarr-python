@@ -67,7 +67,8 @@ Contents
 Projects using Zarr
 -------------------
 
-If you are using Zarr, we would [love to hear about it](https://github.com/zarr-developers/zarr/issues/228).
+If you are using Zarr, we would `love to hear about it
+<https://github.com/zarr-developers/zarr/issues/228>`_.
 
 Acknowledgments
 ---------------
