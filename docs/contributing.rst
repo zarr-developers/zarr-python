@@ -28,26 +28,26 @@ a bug report:
 
 
     ```python
-    >>> import zarr
-    >>> g = zarr.group()
-    ...
+    import zarr
+    g = zarr.group()
+    # etc.
     ```
 
-2. Information about the version of Zarr, along with versions of dependencies and the
+2. An explanation of why the current behaviour is wrong/not desired, and what you
+   expect instead.
+
+3. Information about the version of Zarr, along with versions of dependencies and the
    Python interpreter, and installation information. The version of Zarr can be obtained
    from the ``zarr.__version__`` property. Please also state how Zarr was installed,
    e.g., "installed via pip into a virtual environment", or "installed using conda".
-   Information about other packages installed can be obtained by executing ``pip list``
-   (if using pip to install packages) or ``conda list`` (if using conda to install
+   Information about other packages installed can be obtained by executing ``pip freeze``
+   (if using pip to install packages) or ``conda env export`` (if using conda to install
    packages) from the operating system command prompt. The version of the Python
    interpreter can be obtained by running a Python interactive session, e.g.::
 
     $ python
     Python 3.6.1 (default, Mar 22 2017, 06:17:05)
     [GCC 6.3.0 20170321] on linux
-
-3. An explanation of why the current behaviour is wrong/not desired, and what you
-   expect instead.
 
 Enhancement proposals
 ---------------------
@@ -60,7 +60,7 @@ mind that we are likely to be conservative in accepting proposals for new featur
 reasons for this are that we would like to keep the Zarr code base lean and focused on
 a core set of functionalities, and available time for development, review and maintenance
 of new features is limited. But if you have a great idea, please don't let that stop
-you posting it on GitHub, just please don't be offended if we respond cautiously.
+you from posting it on GitHub, just please don't be offended if we respond cautiously.
 
 Contributing code and/or documentation
 --------------------------------------
@@ -103,6 +103,9 @@ To verify that your development environment is working, you can run the unit tes
 Creating a branch
 ~~~~~~~~~~~~~~~~~
 
+Before you do any new work or submit a pull request, please open an issue on GitHub to
+report the bug or propose the feature you'd like to add.
+
 It's best to create a new, separate branch for each piece of work you want to do. E.g.::
 
     git fetch upstream
@@ -113,16 +116,20 @@ this branch specific to one bug or feature so it is clear what the branch brings
 Zarr.
 
 To update this branch with latest code from Zarr, you can retrieve the changes from
-the master branch::
+the master branch and perform a rebase::
 
     git fetch upstream
     git rebase upstream/master
 
 This will replay your commits on top of the latest Zarr git master. If this leads to
 merge conflicts, these need to be resolved before submitting a pull request.
+Alternatively, you can merge the changes in from upstream/master instead of rebasing,
+which can be simpler::
 
-Before you do any new work or submit a pull request, please open an issue on GitHub to
-report the bug or propose the feature you'd like to add.
+    git fetch upstream
+    git merge upstream/master
+
+Again, any conflicts need to be resolved before submitting a pull request.
 
 Running the test suite
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -152,7 +159,9 @@ tox environment runs the doctests, i.e., doctests only need to succeed under Pyt
 
 All tests are automatically run via Travis (Linux) and AppVeyor (Windows) continuous
 integration services for every pull request. Tests must pass under both services before
-code can be accepted.
+code can be accepted. Test coverage is also collected automatically via the Coveralls
+service, and total coverage over all builds must be 100% (although individual builds
+may be lower due to Python 2/3 or other differences).
 
 Code standards
 ~~~~~~~~~~~~~~
@@ -183,8 +192,8 @@ Documentation
 
 Docstrings for user-facing classes and functions should follow the `numpydoc
 <https://github.com/numpy/numpy/blob/master/doc/HOWTO_DOCUMENT.rst.txt>`_ standard,
-including sections for Parameters and Examples. All examples will be run as doctests
-under Python 3.6.
+including sections for Parameters and Examples. All examples should run as doctests
+under Python 3.6 only.
 
 Zarr uses Sphinx for documentation, hosted on readthedocs.org. Documentation is
 written in the RestructuredText markup language (.rst files) in the ``docs`` folder.

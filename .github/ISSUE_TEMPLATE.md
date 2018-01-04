@@ -1,9 +1,5 @@
-<!--
-
 For bug reports, please follow the template below. For enhancement proposals, feel free
 to use whatever template makes sense.
-
--->
 
 #### Minimal, reproducible code sample, a copy-pastable example if possible
 
@@ -27,5 +23,5 @@ Please provide the following:
 * Operating system (Linux/Windows/Mac)
 * How Zarr was installed (e.g., "using pip into virtual environment", or "using conda")
 
-Also, if you think it might be relevant, please provide the output from ``pip list`` or
-``conda list`` depending on which was used to install Zarr.
+Also, if you think it might be relevant, please provide the output from ``pip freeze`` or
+``conda env export`` depending on which was used to install Zarr.
