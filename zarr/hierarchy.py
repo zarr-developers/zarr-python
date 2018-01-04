@@ -605,8 +605,9 @@ class Group(MutableMapping):
 
         Notes
         -----
-        Please note that the behaviour of this function is still evolving and the
-        default output and/or parameters may change in future versions.
+        Please note that this is an experimental feature. The behaviour of this
+        function is still evolving and the default output and/or parameters may change
+        in future versions.
 
         """
 
