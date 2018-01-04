@@ -19,9 +19,11 @@ compressors = [
     Blosc(),
 ]
 
-# TODO rely on backports and remove PY2 exclusion
-if not PY2:  # pragma: py2 no cover
-    from zarr.codecs import LZMA
+try:
+    from numcodecs import LZMA
+except ImportError:  # pragma: no cover
+    LZMA = None
+else:
     compressors.append(LZMA())
 
 

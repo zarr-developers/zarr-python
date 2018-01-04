@@ -1421,45 +1421,47 @@ class TestArrayWithBloscCompressor(TestArray):
         assert '95d40c391f167db8b1290e3c39d9bf741edacdf6' == z.hexdigest()
 
 
-# TODO rely on backports and remove the PY2 exclusion
-if not PY2:  # pragma: py2 no cover
+try:
+    from numcodecs import LZMA
+except ImportError:  # pragma: no cover
+    LZMA = None
 
-    from zarr.codecs import LZMA
 
-    class TestArrayWithLZMACompressor(TestArray):
+@unittest.skipIf(LZMA is None, 'LZMA codec not available')
+class TestArrayWithLZMACompressor(TestArray):
 
-        def create_array(self, read_only=False, **kwargs):
-            store = dict()
-            compressor = LZMA(preset=1)
-            kwargs.setdefault('compressor', compressor)
-            cache_metadata = kwargs.pop('cache_metadata', True)
-            cache_attrs = kwargs.pop('cache_attrs', True)
-            init_array(store, **kwargs)
-            return Array(store, read_only=read_only, cache_metadata=cache_metadata,
-                         cache_attrs=cache_attrs)
+    def create_array(self, read_only=False, **kwargs):
+        store = dict()
+        compressor = LZMA(preset=1)
+        kwargs.setdefault('compressor', compressor)
+        cache_metadata = kwargs.pop('cache_metadata', True)
+        cache_attrs = kwargs.pop('cache_attrs', True)
+        init_array(store, **kwargs)
+        return Array(store, read_only=read_only, cache_metadata=cache_metadata,
+                     cache_attrs=cache_attrs)
 
-        def test_hexdigest(self):
-            # Check basic 1-D array
-            z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
-            assert '93ecaa530a1162a9d48a3c1dcee4586ccfc59bae' == z.hexdigest()
+    def test_hexdigest(self):
+        # Check basic 1-D array
+        z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
+        assert '93ecaa530a1162a9d48a3c1dcee4586ccfc59bae' == z.hexdigest()
 
-            # Check basic 1-D array with different type
-            z = self.create_array(shape=(1050,), chunks=100, dtype='f4')
-            assert '04a9755a0cd638683531b7816c7fa4fbb6f577f2' == z.hexdigest()
+        # Check basic 1-D array with different type
+        z = self.create_array(shape=(1050,), chunks=100, dtype='f4')
+        assert '04a9755a0cd638683531b7816c7fa4fbb6f577f2' == z.hexdigest()
 
-            # Check basic 2-D array
-            z = self.create_array(shape=(20, 35,), chunks=10, dtype='i4')
-            assert 'b93b163a21e8500519250a6defb821d03eb5d9e0' == z.hexdigest()
+        # Check basic 2-D array
+        z = self.create_array(shape=(20, 35,), chunks=10, dtype='i4')
+        assert 'b93b163a21e8500519250a6defb821d03eb5d9e0' == z.hexdigest()
 
-            # Check basic 1-D array with some data
-            z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
-            z[200:400] = np.arange(200, 400, dtype='i4')
-            assert 'cde499f3dc945b4e97197ff8e3cf8188a1262c35' == z.hexdigest()
+        # Check basic 1-D array with some data
+        z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
+        z[200:400] = np.arange(200, 400, dtype='i4')
+        assert 'cde499f3dc945b4e97197ff8e3cf8188a1262c35' == z.hexdigest()
 
-            # Check basic 1-D array with attributes
-            z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
-            z.attrs['foo'] = 'bar'
-            assert 'e2cf3afbf66ad0e28a2b6b68b1b07817c69aaee2' == z.hexdigest()
+        # Check basic 1-D array with attributes
+        z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
+        z.attrs['foo'] = 'bar'
+        assert 'e2cf3afbf66ad0e28a2b6b68b1b07817c69aaee2' == z.hexdigest()
 
 
 class TestArrayWithFilters(TestArray):
