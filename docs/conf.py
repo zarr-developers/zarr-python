@@ -60,7 +60,7 @@ extensions = [
 
 numpydoc_show_class_members = False
 numpydoc_class_members_toctree = False
-issues_github_path = 'alimanfoo/zarr'
+issues_github_path = 'zarr-developers/zarr'
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
@@ -78,8 +78,8 @@ master_doc = 'index'
 
 # General information about the project.
 project = 'zarr'
-copyright = '2016, Alistair Miles'
-author = 'Alistair Miles'
+copyright = '2018, Zarr Developers'
+author = 'Zarr Developers'
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
@@ -258,7 +258,7 @@ latex_elements = {
 #  author, documentclass [howto, manual, or own class]).
 latex_documents = [
     (master_doc, 'zarr.tex', 'zarr Documentation',
-     'Alistair Miles', 'manual'),
+     'Zarr Developers', 'manual'),
 ]
 
 # The name of an image file (relative to this directory) to place at the top of

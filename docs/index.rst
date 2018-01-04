@@ -22,7 +22,8 @@ Status
 ------
 
 Zarr is still a young project. Feedback and bug reports are very welcome, please get in touch via
-the `GitHub issue tracker <https://github.com/alimanfoo/zarr/issues>`_.
+the `GitHub issue tracker <https://github.com/zarr-developers/zarr/issues>`_. See
+:doc:`contributing` for further information about contributing to Zarr.
 
 Installation
 ------------
@@ -42,7 +43,7 @@ Alternatively, install Zarr via conda::
 
 To work with Zarr source code in development, install from GitHub::
 
-    $ git clone --recursive https://github.com/alimanfoo/zarr.git
+    $ git clone --recursive https://github.com/zarr-developers/zarr.git
     $ cd zarr
     $ python setup.py install
 
@@ -61,6 +62,12 @@ Contents
     api
     spec
     release
+    contributing
+
+Projects using Zarr
+-------------------
+
+If you are using Zarr, we would [love to hear about it](https://github.com/zarr-developers/zarr/issues/228).
 
 Acknowledgments
 ---------------

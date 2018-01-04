@@ -423,7 +423,7 @@ Groups also have the :func:`zarr.hierarchy.Group.tree` method, e.g.::
 
 If you're using Zarr within a Jupyter notebook, calling ``tree()`` will generate an
 interactive tree representation, see the `repr_tree.ipynb notebook
-<http://nbviewer.jupyter.org/github/alimanfoo/zarr/blob/master/notebooks/repr_tree.ipynb>`_
+<http://nbviewer.jupyter.org/github/zarr-developers/zarr/blob/master/notebooks/repr_tree.ipynb>`_
 for more examples.
 
 .. _tutorial_attrs:

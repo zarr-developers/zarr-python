@@ -9,11 +9,11 @@ more information.
 .. image:: https://readthedocs.org/projects/zarr/badge/?version=latest
     :target: http://zarr.readthedocs.io/en/latest/?badge=latest
 
-.. image:: https://travis-ci.org/alimanfoo/zarr.svg?branch=master
-    :target: https://travis-ci.org/alimanfoo/zarr
+.. image:: https://travis-ci.org/zarr-developers/zarr.svg?branch=master
+    :target: https://travis-ci.org/zarr-developers/zarr
 
 .. image:: https://ci.appveyor.com/api/projects/status/7d4iko59k8hpbbik?svg=true
-    :target: https://ci.appveyor.com/project/alimanfoo/zarr
+    :target: https://ci.appveyor.com/project/zarr-developers/zarr
 
-.. image:: https://coveralls.io/repos/github/alimanfoo/zarr/badge.svg?branch=master
-    :target: https://coveralls.io/github/alimanfoo/zarr?branch=master
+.. image:: https://coveralls.io/repos/github/zarr-developers/zarr/badge.svg?branch=master
+    :target: https://coveralls.io/github/zarr-developers/zarr?branch=master

@@ -18,7 +18,7 @@ Enhancements
   properties that enable a selection of items in an array to be retrieved or
   updated. See the :ref:`tutorial_indexing` tutorial section for more
   information. There is also a `notebook
-  <https://github.com/alimanfoo/zarr/blob/master/notebooks/advanced_indexing.ipynb>`_
+  <https://github.com/zarr-developers/zarr/blob/master/notebooks/advanced_indexing.ipynb>`_
   with extended examples and performance benchmarks. :issue:`78`, :issue:`89`,
   :issue:`112`, :issue:`172`.
 
@@ -340,8 +340,8 @@ Storage
 ~~~~~~~
 
 The main motivation for re-organizing the code was to create an
-abstraction layer between the core array logic and data storage (`#21
-<https://github.com/alimanfoo/zarr/issues/21>`_). In this release, any
+abstraction layer between the core array logic and data storage (:issue:`21`).
+In this release, any
 object that implements the ``MutableMapping`` interface can be used as
 an array store. See the tutorial sections on :ref:`tutorial_persist`
 and :ref:`tutorial_storage`, the :ref:`spec_v1`, and the
@@ -392,8 +392,7 @@ performance improvement for multi-threaded compression operations.
 
 The :mod:`zarr.blosc` extension now automatically detects whether it
 is running within a single-threaded or multi-threaded program and
-adapts its internal behaviour accordingly (`#27
-<https://github.com/alimanfoo/zarr/issues/27>`_). There is no need for
+adapts its internal behaviour accordingly (:issue:`27`). There is no need for
 the user to make any API calls to switch Blosc between contextual and
 non-contextual (global lock) mode. See also the tutorial section on
 :ref:`tutorial_tips_blosc`.
@@ -409,8 +408,7 @@ option present in the previous release, and this has been removed.
 
 The memory layout within chunks can now be set as either "C"
 (row-major) or "F" (column-major), which can help to provide better
-compression for some data (`#7
-<https://github.com/alimanfoo/zarr/issues/7>`_). See the tutorial
+compression for some data (:issue:`7`). See the tutorial
 section on :ref:`tutorial_chunks_order` for more information.
 
 A bug has been fixed within the ``__getitem__`` and ``__setitem__``
@@ -430,7 +428,7 @@ Thanks to :user:`Matthew Rocklin <mrocklin>`, :user:`Stephan Hoyer <shoyer>`,
 -----
 
 See `v0.4.0 release notes on GitHub
-<https://github.com/alimanfoo/zarr/releases/tag/v0.4.0>`_.
+<https://github.com/zarr-developers/zarr/releases/tag/v0.4.0>`_.
 
 .. _release_0.3.0:
 
@@ -438,6 +436,6 @@ See `v0.4.0 release notes on GitHub
 -----
 
 See `v0.3.0 release notes on GitHub
-<https://github.com/alimanfoo/zarr/releases/tag/v0.3.0>`_.
+<https://github.com/zarr-developers/zarr/releases/tag/v0.3.0>`_.
 
 .. _NumCodecs: http://numcodecs.readthedocs.io/
