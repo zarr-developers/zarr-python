@@ -199,3 +199,121 @@ The documentation can be built by running::
     $ tox -e docs
 
 The resulting built documentation will be available in the ``.tox/docs/tmp/html`` folder.
+
+Development best practices, policies and procedures
+---------------------------------------------------
+
+The following information is mainly for core developers, but may also be of interest to
+contributors.
+
+Merging pull requests
+~~~~~~~~~~~~~~~~~~~~~
+
+If at all possible, pull requests submitted by an external contributor should be
+reviewed and approved by all core developers before being merged. Pull requests
+submitted by a core developer should be reviewed and approved by all other core
+developers before being merged.
+
+Pull requests should not be merged until all CI checks have passed (Travis, AppVeyor,
+Coveralls) against code that has had the latest master merged in.
+
+Compatibility and versioning policies
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Because Zarr is a data storage library, there are two types of compatibility to
+consider: API compatibility and data format compatibility.
+
+Here we consider all functions, classes and methods that do not begin with an
+underscore as part of the Zarr public API. Any change to the public API that does **not**
+break existing third party code importing Zarr, or cause third party code to behave in
+a different way, is a **backwards-compatible API change**. For example, adding a new
+function, class or method is usually a backwards compatible change. However, removing a
+function, class or method; removing an argument to a function or method; adding a
+required argument to a function or method; or changing the behaviour of a function or
+method, are examples of **backwards-incompatible API changes**.
+
+If a release contains no changes to the public API (e.g., contains only bug fixes or
+other maintenance work), then the micro version number should be incremented (e.g.,
+2.2.0 -> 2.2.1). If a release contains API changes, but all API changes are
+backwards-compatible, then the minor version number should be incremented
+(e.g., 2.2.1 -> 2.3.0). If a release contains any backwards-incompatible API changes,
+the major version number should be incremented (e.g., 2.3.0 -> 3.0.0).
+
+Exceptions can be made for any function, class or method which has been documented as
+an experimental feature, i.e., backwards-incompatible changes can be included in a
+minor release, although this should be avoided wherever possible.
+
+The data format used by Zarr is defined by a specification document, which should be
+platform-independent and contain sufficient detail to construct an interoperable
+software library to read and/or write Zarr data using any programming language. The
+latest version of the specification document is available from the :ref:`spec` page.
+Here, **data format compatibility** means that all software libraries that implement a
+particular version of the Zarr storage specification are interoperable, in the sense
+that data written by any one library could be read by all others. It is obviously
+desirable to maintain data format compatibility wherever possible. However, if a change
+is needed to the storage specification, and that change would break data format
+compatibility in any way, then the storage specification version number should be
+incremented (e.g., 2 -> 3).
+
+The versioning of the Zarr software library is related to the versioning of the storage
+specification as follows. A particular version of the Zarr library will
+implement a particular version of the storage specification. For example, Zarr version
+2.2.0 implements the Zarr storage specification version 2. If a release of the Zarr
+library implements a different version of the storage specification, then the major
+version number of the Zarr library should be incremented. E.g., if Zarr version 2.2.0
+implements the storage spec version 2, and the next release of the Zarr library
+implements storage spec version 3, then the next library release should have version
+number 3.0.0. Note however that the major version number of the Zarr library may not
+always correspond to the spec version number. For example, Zarr versions 2.x, 3.x, and
+4.x might all implement the same version of the storage spec and thus maintain data
+format compatibility, although they will not maintain API compatibility.
+
+Note that the Zarr test suite includes a data fixture and tests to try and ensure that
+data format compatibility is not accidentally broken. See the
+:func:`test_format_compatibility` function in the :mod:`zarr.tests.test_storage` module
+for details.
+
+When to make a release
+~~~~~~~~~~~~~~~~~~~~~~
+
+Ideally, any bug fixes that don't change the public API should be released as soon as
+possible. It is fine for a micro release to contain only a single bug fix.
+
+When to make a minor release is at the discretion of the core developers. There are no
+hard-and-fast rules, e.g., it is fine to make a minor release to make a single new
+feature available; equally, it is fine to make a minor release that includes a number of
+changes.
+
+Major releases obviously need to be given careful consideration, and should be done as
+infrequently as possible, as they will break existing code and/or affect data
+compatibility in some way.
+
+Release procedure
+~~~~~~~~~~~~~~~~~
+
+Checkout and update the master branch::
+
+    $ git checkout master
+    $ git pull
+
+Verify all tests pass on all supported Python versions, and docs build::
+
+    $ tox
+
+Tag the version (where "X.X.X" stands for the version number, e.g., "2.2.0")::
+
+    $ version=X.X.X
+    $ git tag -a v$version -m v$version
+    $ git push --tags
+
+Release source code to PyPI::
+
+    $ python setup.py register sdist
+    $ twine upload dist/zarr-${version}.tar.gz
+
+Obtain checksum for release to conda-forge::
+
+    $ openssl sha256 dist/zarr-${version}.tar.gz
+
+Release to conda-forge by making a pull request against the zarr-feedstock conda-forge
+repository, incrementing the version number.
