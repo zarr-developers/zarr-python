@@ -9,8 +9,8 @@ Asking for help
 ---------------
 
 If you have a question about how to use Zarr, please post your question on
-StackOverflow using the `"zarr" tag <https://stackoverflow.com/questions/tagged/zarr>`_
-. If you don't get a response within a day or two, feel free to raise a `GitHub issue
+StackOverflow using the `"zarr" tag <https://stackoverflow.com/questions/tagged/zarr>`_.
+If you don't get a response within a day or two, feel free to raise a `GitHub issue
 <https://github.com/zarr-developers/zarr/issues/new>`_ including a link to your StackOverflow
 question. We will try to respond to questions as quickly as possible, but please bear
 in mind that there may be periods where we have limited time to answer questions
@@ -111,7 +111,7 @@ It's best to create a new, separate branch for each piece of work you want to do
     git fetch upstream
     git checkout -b shiny-new-feature upsteam/master
 
-This changes your working directory to the shiny-new-feature branch. Keep any changes in
+This changes your working directory to the 'shiny-new-feature' branch. Keep any changes in
 this branch specific to one bug or feature so it is clear what the branch brings to
 Zarr.
 
@@ -192,7 +192,7 @@ Documentation
 
 Docstrings for user-facing classes and functions should follow the `numpydoc
 <https://github.com/numpy/numpy/blob/master/doc/HOWTO_DOCUMENT.rst.txt>`_ standard,
-including sections for Parameters and Examples. All examples should run as doctests
+including sections for Parameters and Examples. All examples should run and pass as doctests
 under Python 3.6 only.
 
 Zarr uses Sphinx for documentation, hosted on readthedocs.org. Documentation is
@@ -218,10 +218,9 @@ contributors.
 Merging pull requests
 ~~~~~~~~~~~~~~~~~~~~~
 
-If at all possible, pull requests submitted by an external contributor should be
-reviewed and approved by all core developers before being merged. Pull requests
-submitted by a core developer should be reviewed and approved by all other core
-developers before being merged.
+Pull requests submitted by an external contributor should be reviewed and approved by at least
+one core developers before being merged. Ideally, pull requests submitted by a core developer
+should be reviewed and approved by at least one other core developers before being merged.
 
 Pull requests should not be merged until all CI checks have passed (Travis, AppVeyor,
 Coveralls) against code that has had the latest master merged in.
@@ -232,33 +231,45 @@ Compatibility and versioning policies
 Because Zarr is a data storage library, there are two types of compatibility to
 consider: API compatibility and data format compatibility.
 
-Here we consider all functions, classes and methods that do not begin with an
-underscore as part of the Zarr public API. Any change to the public API that does **not**
-break existing third party code importing Zarr, or cause third party code to behave in
-a different way, is a **backwards-compatible API change**. For example, adding a new
-function, class or method is usually a backwards-compatible change. However, removing a
-function, class or method; removing an argument to a function or method; adding a
-required argument to a function or method; or changing the behaviour of a function or
-method, are examples of **backwards-incompatible API changes**.
+API compatibility
+"""""""""""""""""
+
+All functions, classes and methods that are included in the API
+documentation (files under ``docs/api/*.rst``) are considered as part of the Zarr **public API**,
+except if they have been documented as an experimental feature, in which case they are part of
+the **experimental API**.
+
+Any change to the public API that does **not** break existing third party
+code importing Zarr, or cause third party code to behave in a different way, is a
+**backwards-compatible API change**. For example, adding a new function, class or method is usually
+a backwards-compatible change. However, removing a function, class or method; removing an argument
+to a function or method; adding a required argument to a function or method; or changing the
+behaviour of a function or method, are examples of **backwards-incompatible API changes**.
 
 If a release contains no changes to the public API (e.g., contains only bug fixes or
 other maintenance work), then the micro version number should be incremented (e.g.,
-2.2.0 -> 2.2.1). If a release contains API changes, but all API changes are
+2.2.0 -> 2.2.1). If a release contains public API changes, but all changes are
 backwards-compatible, then the minor version number should be incremented
-(e.g., 2.2.1 -> 2.3.0). If a release contains any backwards-incompatible API changes,
+(e.g., 2.2.1 -> 2.3.0). If a release contains any backwards-incompatible public API changes,
 the major version number should be incremented (e.g., 2.3.0 -> 3.0.0).
 
-Exceptions can be made for any function, class or method which has been documented as
-an experimental feature, i.e., backwards-incompatible changes can be included in a
-minor release, although this should be avoided wherever possible.
+Backwards-incompatible changes to the experimental API can be included in a minor release,
+although this should be minimised if possible. I.e., it would be preferable to save up
+backwards-incompatible changes to the experimental API to be included in a major release, and to
+stabilise those features at the same time (i.e., move from experimental to public API), rather than
+frequently tinkering with the experimental API in minor releases.
+
+Data format compatibility
+"""""""""""""""""""""""""
 
 The data format used by Zarr is defined by a specification document, which should be
 platform-independent and contain sufficient detail to construct an interoperable
 software library to read and/or write Zarr data using any programming language. The
 latest version of the specification document is available from the :ref:`spec` page.
+
 Here, **data format compatibility** means that all software libraries that implement a
 particular version of the Zarr storage specification are interoperable, in the sense
-that data written by any one library could be read by all others. It is obviously
+that data written by any one library can be read by all others. It is obviously
 desirable to maintain data format compatibility wherever possible. However, if a change
 is needed to the storage specification, and that change would break data format
 compatibility in any way, then the storage specification version number should be
@@ -275,7 +286,9 @@ implements storage spec version 3, then the next library release should have ver
 number 3.0.0. Note however that the major version number of the Zarr library may not
 always correspond to the spec version number. For example, Zarr versions 2.x, 3.x, and
 4.x might all implement the same version of the storage spec and thus maintain data
-format compatibility, although they will not maintain API compatibility.
+format compatibility, although they will not maintain API compatibility. The version number
+of the storage specification that is currently implemented is stored under the
+``zarr.meta.ZARR_FORMAT`` variable.
 
 Note that the Zarr test suite includes a data fixture and tests to try and ensure that
 data format compatibility is not accidentally broken. See the
