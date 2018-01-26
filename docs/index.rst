@@ -39,10 +39,15 @@ Install Zarr from PyPI::
 Alternatively, install Zarr via conda::
 
     $ conda install -c conda-forge zarr
+    
+To install the latest development version of Zarr, you can use pip with the 
+latest GitHub master:
+
+    $ pip install git+https://github.com/zarr-developers/zarr.git
 
 To work with Zarr source code in development, install from GitHub::
 
-    $ git clone --recursive https://github.com/alimanfoo/zarr.git
+    $ git clone --recursive https://github.com/zarr-developers/zarr.git
     $ cd zarr
     $ python setup.py install
 
