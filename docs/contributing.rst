@@ -106,10 +106,15 @@ Creating a branch
 Before you do any new work or submit a pull request, please open an issue on GitHub to
 report the bug or propose the feature you'd like to add.
 
-It's best to create a new, separate branch for each piece of work you want to do. E.g.::
+It's best to synchronize your fork with the upstream repository, then create a
+new, separate branch for each piece of work you want to do. E.g.::
 
+    git checkout master
     git fetch upstream
-    git checkout -b shiny-new-feature upsteam/master
+    git rebase upstream/master
+    git push
+    git checkout -b shiny-new-feature
+    git push -u origin shiny-new-feature
 
 This changes your working directory to the 'shiny-new-feature' branch. Keep any changes in
 this branch specific to one bug or feature so it is clear what the branch brings to
