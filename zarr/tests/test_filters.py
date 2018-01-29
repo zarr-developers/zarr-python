@@ -9,7 +9,6 @@ from numpy.testing import assert_array_equal, assert_array_almost_equal
 from numcodecs import (AsType, Delta, FixedScaleOffset, PackBits, Categorize, Zlib, Blosc,
                        BZ2, Quantize)
 from zarr.creation import array
-from zarr.compat import PY2
 
 
 compressors = [
@@ -19,9 +18,11 @@ compressors = [
     Blosc(),
 ]
 
-# TODO rely on backports and remove PY2 exclusion
-if not PY2:  # pragma: py2 no cover
-    from zarr.codecs import LZMA
+try:
+    from numcodecs import LZMA
+except ImportError:  # pragma: no cover
+    LZMA = None
+else:
     compressors.append(LZMA())
 
 

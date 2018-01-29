@@ -22,7 +22,8 @@ Status
 ------
 
 Zarr is still a young project. Feedback and bug reports are very welcome, please get in touch via
-the `GitHub issue tracker <https://github.com/alimanfoo/zarr/issues>`_.
+the `GitHub issue tracker <https://github.com/zarr-developers/zarr/issues>`_. See
+:doc:`contributing` for further information about contributing to Zarr.
 
 Installation
 ------------
@@ -66,6 +67,13 @@ Contents
     api
     spec
     release
+    contributing
+
+Projects using Zarr
+-------------------
+
+If you are using Zarr, we would `love to hear about it
+<https://github.com/zarr-developers/zarr/issues/228>`_.
 
 Acknowledgments
 ---------------

@@ -892,7 +892,7 @@ except ImportError:  # pragma: no cover
     bsddb3 = None
 
 
-@pytest.mark.skipif(bsddb3 is None, reason='bsddb3 is not installed')
+@unittest.skipIf(bsddb3 is None, 'bsddb3 is not installed')
 class TestGroupWithDBMStoreBerkeleyDB(TestGroup):
 
     @staticmethod
@@ -909,7 +909,7 @@ except ImportError:  # pragma: no cover
     lmdb = None
 
 
-@pytest.mark.skipif(lmdb is None, reason='lmdb is not installed')
+@unittest.skipIf(lmdb is None, 'lmdb is not installed')
 class TestGroupWithLMDBStore(TestGroup):
 
     @staticmethod

@@ -403,6 +403,12 @@ def tree(grp, expand=False, level=None):
     --------
     zarr.hierarchy.Group.tree
 
+    Notes
+    -----
+    Please note that this is an experimental feature. The behaviour of this
+    function is still evolving and the default output and/or parameters may change
+    in future versions.
+
     """
 
     return TreeViewer(grp, expand=expand, level=level)
@@ -546,6 +552,12 @@ def copy_store(source, dest, source_path='', dest_path='', excludes=None,
     >>> new_root['foo/bar/baz'][:]
     array([ 0,  1,  2,  ..., 97, 98, 99])
     >>> store2.close()  # zip stores need to be closed
+
+    Notes
+    -----
+    Please note that this is an experimental feature. The behaviour of this
+    function is still evolving and the default behaviour and/or parameters may change
+    in future versions.
 
     """
 
@@ -750,6 +762,12 @@ def copy(source, dest, name=None, shallow=False, without_attrs=False, log=None,
         skip /foo/spam (1000,) int64
         dry run: 3 copied, 1 skipped
         (3, 1, 0)
+
+    Notes
+    -----
+    Please note that this is an experimental feature. The behaviour of this
+    function is still evolving and the default behaviour and/or parameters may change
+    in future versions.
 
     """
 
@@ -1020,6 +1038,12 @@ def copy_all(source, dest, shallow=False, without_attrs=False, log=None,
      │       └── baz (100,) int64
      └── spam (100,) int64
     >>> source.close()
+
+    Notes
+    -----
+    Please note that this is an experimental feature. The behaviour of this
+    function is still evolving and the default behaviour and/or parameters may change
+    in future versions.
 
     """
 

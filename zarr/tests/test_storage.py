@@ -90,10 +90,10 @@ class StoreTests(object):
         store = self.create_store()
 
         # __setitem__ should accept any value that implements buffer interface
-        store['foo'] = b'bar'
-        store['foo'] = bytearray(b'bar')
-        store['foo'] = array.array('B', b'bar')
-        store['foo'] = np.frombuffer(b'bar', dtype='u1')
+        store['foo1'] = b'bar'
+        store['foo2'] = bytearray(b'bar')
+        store['foo3'] = array.array('B', b'bar')
+        store['foo4'] = np.frombuffer(b'bar', dtype='u1')
 
     def test_update(self):
         store = self.create_store()
@@ -777,7 +777,7 @@ except ImportError:  # pragma: no cover
     gdbm = None
 
 
-@pytest.mark.skipif(gdbm is None, reason='gdbm is not installed')
+@unittest.skipIf(gdbm is None, 'gdbm is not installed')
 class TestDBMStoreGnu(TestDBMStore):
 
     def create_store(self):
@@ -787,13 +787,13 @@ class TestDBMStoreGnu(TestDBMStore):
         return store
 
 
-if not PY2:
+if not PY2:  # pragma: py2 no cover
     try:
         import dbm.ndbm as ndbm
     except ImportError:  # pragma: no cover
         ndbm = None
 
-    @pytest.mark.skipif(ndbm is None, reason='ndbm is not installed')
+    @unittest.skipIf(ndbm is None, 'ndbm is not installed')
     class TestDBMStoreNDBM(TestDBMStore):
 
         def create_store(self):
@@ -809,7 +809,7 @@ except ImportError:  # pragma: no cover
     bsddb3 = None
 
 
-@pytest.mark.skipif(bsddb3 is None, reason='bsddb3 is not installed')
+@unittest.skipIf(bsddb3 is None, 'bsddb3 is not installed')
 class TestDBMStoreBerkeleyDB(TestDBMStore):
 
     def create_store(self):
@@ -825,7 +825,7 @@ except ImportError:  # pragma: no cover
     lmdb = None
 
 
-@pytest.mark.skipif(lmdb is None, reason='lmdb is not installed')
+@unittest.skipIf(lmdb is None, 'lmdb is not installed')
 class TestLMDBStore(StoreTests, unittest.TestCase):
 
     def create_store(self):

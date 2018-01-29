@@ -3,7 +3,7 @@ from __future__ import absolute_import, print_function, division
 from setuptools import setup
 
 
-DESCRIPTION = 'A minimal implementation of chunked, compressed, ' \
+DESCRIPTION = 'An implementation of chunked, compressed, ' \
               'N-dimensional arrays for Python.'
 
 with open('README.rst') as f:
@@ -46,10 +46,8 @@ setup(
         'Programming Language :: Python :: 3.5',
         'Programming Language :: Python :: 3.6',
     ],
-    author='Alistair Miles',
-    author_email='alimanfoo@googlemail.com',
     maintainer='Alistair Miles',
     maintainer_email='alimanfoo@googlemail.com',
-    url='https://github.com/alimanfoo/zarr',
+    url='https://github.com/zarr-developers/zarr',
     license='MIT',
 )

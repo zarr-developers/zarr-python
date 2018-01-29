@@ -603,6 +603,12 @@ class Group(MutableMapping):
          └── quux
              └── baz (100,) float64
 
+        Notes
+        -----
+        Please note that this is an experimental feature. The behaviour of this
+        function is still evolving and the default output and/or parameters may change
+        in future versions.
+
         """
 
         return TreeViewer(self, expand=expand, level=level)

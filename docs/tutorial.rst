@@ -423,7 +423,7 @@ Groups also have the :func:`zarr.hierarchy.Group.tree` method, e.g.::
 
 If you're using Zarr within a Jupyter notebook, calling ``tree()`` will generate an
 interactive tree representation, see the `repr_tree.ipynb notebook
-<http://nbviewer.jupyter.org/github/alimanfoo/zarr/blob/master/notebooks/repr_tree.ipynb>`_
+<http://nbviewer.jupyter.org/github/zarr-developers/zarr/blob/master/notebooks/repr_tree.ipynb>`_
 for more examples.
 
 .. _tutorial_attrs:
@@ -860,7 +860,7 @@ groups and datasets, use :func:`zarr.convenience.copy_all`, e.g.::
      └── spam (100,) int64
 
 If you need to copy data between two Zarr groups, the
-func:`zarr.convenience.copy` and :func:`zarr.convenience.copy_all` functions can
+:func:`zarr.convenience.copy` and :func:`zarr.convenience.copy_all` functions can
 be used and provide the most flexibility. However, if you want to copy data
 in the most efficient way possible, without changing any configuration options,
 the :func:`zarr.convenience.copy_store` function can be used. This function
