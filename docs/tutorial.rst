@@ -178,8 +178,8 @@ print some diagnostics, e.g.::
                        : blocksize=0)
     Store type         : builtins.dict
     No. bytes          : 400000000 (381.5M)
-    No. bytes stored   : 3702484 (3.5M)
-    Storage ratio      : 108.0
+    No. bytes stored   : 3242241 (3.1M)
+    Storage ratio      : 123.4
     Chunks initialized : 100/100
 
 If you don't specify a compressor, by default Zarr uses the Blosc
@@ -270,8 +270,8 @@ Here is an example using a delta filter with the Blosc compressor::
     Compressor         : Blosc(cname='zstd', clevel=1, shuffle=SHUFFLE, blocksize=0)
     Store type         : builtins.dict
     No. bytes          : 400000000 (381.5M)
-    No. bytes stored   : 328085 (320.4K)
-    Storage ratio      : 1219.2
+    No. bytes stored   : 648605 (633.4K)
+    Storage ratio      : 616.7
     Chunks initialized : 100/100
 
 For more information about available filter codecs, see the `Numcodecs
@@ -394,8 +394,8 @@ property. E.g.::
     Compressor         : Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
     Store type         : zarr.storage.DictStore
     No. bytes          : 8000000 (7.6M)
-    No. bytes stored   : 34840 (34.0K)
-    Storage ratio      : 229.6
+    No. bytes stored   : 33460 (32.7K)
+    Storage ratio      : 239.1
     Chunks initialized : 10/10
 
     >>> baz.info
@@ -1143,8 +1143,8 @@ ratios, depending on the correlation structure within the data. E.g.::
     Compressor         : Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
     Store type         : builtins.dict
     No. bytes          : 400000000 (381.5M)
-    No. bytes stored   : 15857834 (15.1M)
-    Storage ratio      : 25.2
+    No. bytes stored   : 10502688 (10.0M)
+    Storage ratio      : 38.1
     Chunks initialized : 100/100
     >>> f = zarr.array(a, chunks=(1000, 1000), order='F')
     >>> f.info
@@ -1157,8 +1157,8 @@ ratios, depending on the correlation structure within the data. E.g.::
     Compressor         : Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
     Store type         : builtins.dict
     No. bytes          : 400000000 (381.5M)
-    No. bytes stored   : 7233241 (6.9M)
-    Storage ratio      : 55.3
+    No. bytes stored   : 5530511 (5.3M)
+    Storage ratio      : 72.3
     Chunks initialized : 100/100
 
 In the above example, Fortran order gives a better compression ratio. This is an
