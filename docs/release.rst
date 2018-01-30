@@ -1,15 +1,15 @@
 Release notes
 =============
 
-.. _release_2.2.0rc1:
+.. _release_2.2.0:
 
-2.2.0rc1
---------
+2.2.0 (release candidate)
+-------------------------
 
-To install the release candidate version::
+Version 2.2.0 is currently at the release candidate stage. To install the latest release 
+candidate version::
 
-    $ pip install --pre zarr==2.2.0rc1
-
+    $ pip install --pre zarr
 
 Enhancements
 ~~~~~~~~~~~~
@@ -190,7 +190,7 @@ Maintenance
 
 * A data fixture has been included in the test suite to ensure data format
   compatibility is maintained; :issue:`83`, :issue:`146`.
-* The test suite has been migrated from nosetests to pytest; :issue:`189`, :issue:`225`.
+* The test suite has been migrated from nosetests to pytest; :issue:`189`, :issue:`225`, :issue:`237`.
 * Various continuous integration updates and improvements; :issue:`118`, :issue:`124`,
   :issue:`125`, :issue:`126`, :issue:`109`, :issue:`114`, :issue:`171`.
 
