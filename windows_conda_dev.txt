@@ -4,7 +4,6 @@ fasteners
 flake8
 monotonic
 msgpack-python
-nose
 numcodecs
 numpy
 setuptools_scm

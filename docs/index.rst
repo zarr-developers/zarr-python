@@ -54,8 +54,8 @@ To work with Zarr source code in development, install from GitHub::
 
 To verify that Zarr has been fully installed, run the test suite::
 
-    $ pip install nose
-    $ python -m nose -v zarr
+    $ pip install pytest
+    $ python -m pytest -v --pyargs zarr
 
 Contents
 --------
