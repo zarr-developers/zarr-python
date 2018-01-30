@@ -235,19 +235,16 @@ def normalize_fill_value(fill_value, dtype):
         # no fill value
         pass
 
-    elif fill_value == 0 and dtype.kind in 'SV':
-        # special case because 0 used as default, but cannot be used for structured arrays
-        fill_value = b''
+    elif fill_value == 0:
+        # this should be compatible across numpy versions for any array type, including
+        # structured arrays
+        fill_value = np.zeros((), dtype=dtype)[()]
 
     elif dtype.kind == 'U':
-        # special case unicode because of encoding issues on Windows if passed through
-        # numpy
+        # special case unicode because of encoding issues on Windows if passed through numpy
         # https://github.com/alimanfoo/zarr/pull/172#issuecomment-343782713
 
-        if fill_value == 0:
-            fill_value = ''
-
-        elif PY2 and isinstance(fill_value, binary_type):  # pragma: py3 no cover
+        if PY2 and isinstance(fill_value, binary_type):  # pragma: py3 no cover
             # this is OK on PY2, can be written as JSON
             pass
 
@@ -257,11 +254,17 @@ def normalize_fill_value(fill_value, dtype):
 
     else:
         try:
-            fill_value = np.array(fill_value, dtype=dtype)[()]
+            if isinstance(fill_value, binary_type) and dtype.kind == 'V':
+                # special case for numpy 1.14 compatibility
+                fill_value = np.array(fill_value, dtype=dtype.str).view(dtype)[()]
+            else:
+                fill_value = np.array(fill_value, dtype=dtype)[()]
+
         except Exception as e:
             # re-raise with our own error message to be helpful
             raise ValueError('fill_value {!r} is not valid for dtype {}; nested '
                              'exception: {}'.format(fill_value, dtype, e))
+
     return fill_value
 
 

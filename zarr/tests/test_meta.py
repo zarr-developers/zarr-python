@@ -69,12 +69,14 @@ def test_encode_decode_array_2():
     # some variations
     df = Delta(astype='u2', dtype='V14')
     compressor = Blosc(cname='lz4', clevel=3, shuffle=2)
+    dtype = np.dtype([('a', 'i4'), ('b', 'S10')])
+    fill_value = np.zeros((), dtype=dtype)[()]
     meta = dict(
         shape=(100, 100),
         chunks=(10, 10),
-        dtype=np.dtype([('a', 'i4'), ('b', 'S10')]),
+        dtype=dtype,
         compressor=compressor.get_config(),
-        fill_value=b'',
+        fill_value=fill_value,
         order='F',
         filters=[df.get_config()]
     )
@@ -89,7 +91,7 @@ def test_encode_decode_array_2():
             "blocksize": 0
         },
         "dtype": [["a", "<i4"], ["b", "|S10"]],
-        "fill_value": "",
+        "fill_value": "AAAAAAAAAAAAAAAAAAA=",
         "filters": [
             {"id": "delta", "astype": "<u2", "dtype": "|V14"}
         ],
@@ -110,8 +112,7 @@ def test_encode_decode_array_2():
     assert meta['dtype'] == meta_dec['dtype']
     assert meta['compressor'] == meta_dec['compressor']
     assert meta['order'] == meta_dec['order']
-    np_fill_value = np.array(meta['fill_value'], dtype=meta['dtype'])[()]
-    assert np_fill_value == meta_dec['fill_value']
+    assert fill_value == meta_dec['fill_value']
     assert [df.get_config()] == meta_dec['filters']
 
 
