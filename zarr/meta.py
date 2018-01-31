@@ -178,7 +178,7 @@ def encode_fill_value(v, dtype):
         return bool(v)
     elif dtype.kind in 'SV':
         v = base64.standard_b64encode(v)
-        if not PY2:
+        if not PY2:  # pragma: py2 no cover
             v = str(v, 'ascii')
         return v
     elif dtype.kind == 'U':
