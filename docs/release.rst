@@ -6,7 +6,7 @@ Release notes
 2.2.0 (release candidate)
 -------------------------
 
-Version 2.2.0 is currently at the release candidate stage. To install the latest release 
+Version 2.2.0 is currently at the release candidate stage. To install the latest release
 candidate version::
 
     $ pip install --pre zarr
@@ -190,9 +190,12 @@ Maintenance
 
 * A data fixture has been included in the test suite to ensure data format
   compatibility is maintained; :issue:`83`, :issue:`146`.
-* The test suite has been migrated from nosetests to pytest; :issue:`189`, :issue:`225`, :issue:`237`.
+* The test suite has been migrated from nosetests to pytest; :issue:`189`, :issue:`225`.
 * Various continuous integration updates and improvements; :issue:`118`, :issue:`124`,
   :issue:`125`, :issue:`126`, :issue:`109`, :issue:`114`, :issue:`171`.
+* Bump numcodecs dependency to 0.5.3, completely remove nose dependency, :issue:`237`.
+* Fix compatibility issues with NumPy 1.14 regarding fill values for structured arrays,
+  :issue:`222`, :issue:`238`, :issue:`239`.
 
 Acknowledgments
 ~~~~~~~~~~~~~~~
