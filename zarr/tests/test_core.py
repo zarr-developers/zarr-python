@@ -855,11 +855,6 @@ class TestArray(unittest.TestCase):
                 assert_array_equal(a['bar'], z['bar'])
                 assert_array_equal(a['baz'], z['baz'])
 
-            # this does not raise with numpy 1.14
-            # with pytest.raises(ValueError):
-            #     # dodgy fill value
-            #     self.create_array(shape=a.shape, chunks=2, dtype=a.dtype, fill_value=42)
-
     def test_dtypes(self):
 
         # integers
