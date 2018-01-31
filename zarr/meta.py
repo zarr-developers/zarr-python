@@ -138,16 +138,20 @@ def decode_fill_value(v, dtype):
             return np.NINF
         else:
             return np.array(v, dtype=dtype)[()]
-    elif dtype.kind in 'SV':
+    elif dtype.kind == 'S':
         # noinspection PyBroadException
         try:
             v = base64.standard_b64decode(v)
-            v = np.array(v, dtype=dtype)[()]
-            return v
         except Exception:
             # be lenient, allow for other values that may have been used before base64
             # encoding and may work as fill values, e.g., the number 0
-            return v
+            pass
+        v = np.array(v, dtype=dtype)[()]
+        return v
+    elif dtype.kind == 'V':
+        v = base64.standard_b64decode(v)
+        v = np.array(v, dtype=dtype.str).view(dtype)[()]
+        return v
     elif dtype.kind == 'U':
         # leave as-is
         return v
@@ -174,7 +178,7 @@ def encode_fill_value(v, dtype):
         return bool(v)
     elif dtype.kind in 'SV':
         v = base64.standard_b64encode(v)
-        if not PY2:
+        if not PY2:  # pragma: py2 no cover
             v = str(v, 'ascii')
         return v
     elif dtype.kind == 'U':

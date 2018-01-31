@@ -104,7 +104,9 @@ def test_normalize_order():
 
 def test_normalize_fill_value():
     assert b'' == normalize_fill_value(0, dtype=np.dtype('S1'))
-    assert b'' == normalize_fill_value(0, dtype=np.dtype([('foo', 'i4'), ('bar', 'f8')]))
+    structured_dtype = np.dtype([('foo', 'S3'), ('bar', 'i4'), ('baz', 'f8')])
+    expect = np.array((b'', 0, 0.), dtype=structured_dtype)[()]
+    assert expect == normalize_fill_value(0, dtype=structured_dtype)
     assert '' == normalize_fill_value(0, dtype=np.dtype('U1'))
 
 
