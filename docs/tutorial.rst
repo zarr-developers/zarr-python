@@ -394,8 +394,8 @@ property. E.g.::
     Compressor         : Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
     Store type         : zarr.storage.DictStore
     No. bytes          : 8000000 (7.6M)
-    No. bytes stored   : 33460 (32.7K)
-    Storage ratio      : 239.1
+    No. bytes stored   : 33240 (32.5K)
+    Storage ratio      : 240.7
     Chunks initialized : 10/10
 
     >>> baz.info
@@ -409,8 +409,8 @@ property. E.g.::
     Compressor         : Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
     Store type         : zarr.storage.DictStore
     No. bytes          : 4000000 (3.8M)
-    No. bytes stored   : 20443 (20.0K)
-    Storage ratio      : 195.7
+    No. bytes stored   : 23943 (23.4K)
+    Storage ratio      : 167.1
     Chunks initialized : 100/100
 
 Groups also have the :func:`zarr.hierarchy.Group.tree` method, e.g.::
@@ -1143,8 +1143,8 @@ ratios, depending on the correlation structure within the data. E.g.::
     Compressor         : Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
     Store type         : builtins.dict
     No. bytes          : 400000000 (381.5M)
-    No. bytes stored   : 10502688 (10.0M)
-    Storage ratio      : 38.1
+    No. bytes stored   : 6696010 (6.4M)
+    Storage ratio      : 59.7
     Chunks initialized : 100/100
     >>> f = zarr.array(a, chunks=(1000, 1000), order='F')
     >>> f.info
@@ -1157,8 +1157,8 @@ ratios, depending on the correlation structure within the data. E.g.::
     Compressor         : Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
     Store type         : builtins.dict
     No. bytes          : 400000000 (381.5M)
-    No. bytes stored   : 5530511 (5.3M)
-    Storage ratio      : 72.3
+    No. bytes stored   : 4684636 (4.5M)
+    Storage ratio      : 85.4
     Chunks initialized : 100/100
 
 In the above example, Fortran order gives a better compression ratio. This is an
