@@ -3,17 +3,8 @@ Release notes
 
 .. _release_2.2.0:
 
-2.2.0 (release candidate)
--------------------------
-
-Version 2.2.0 is currently at the release candidate stage. To install the latest release
-candidate version using pip::
-
-    $ pip install --pre zarr
-
-Alternatively, to install the latest release candidate using conda::
-
-    $ conda install -c conda-forge/label/rc zarr
+2.2.0
+-----
 
 Enhancements
 ~~~~~~~~~~~~
