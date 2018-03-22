@@ -805,7 +805,11 @@ class DirectoryStore(MutableMapping):
             directories = [(self.path, '')]
             while directories:
                 dir_name, prefix = directories.pop()
+                if dir_name.endswith('.partial'):
+                    continue
                 for name in os.listdir(dir_name):
+                    if name.endswith('.partial'):
+                        continue
                     path = os.path.join(dir_name, name)
                     if os.path.isfile(path):
                         yield prefix + name
