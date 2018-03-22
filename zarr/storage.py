@@ -781,12 +781,15 @@ class DirectoryStore(MutableMapping):
 
     def __delitem__(self, key):
         path = os.path.join(self.path, key)
+        temp_path = path + '.partial'
         if os.path.isfile(path):
-            os.remove(path)
+            os.rename(path, temp_path)
+            os.remove(temp_path)
         elif os.path.isdir(path):
             # include support for deleting directories, even though strictly
             # speaking these do not exist as keys in the store
-            shutil.rmtree(path)
+            os.rename(path, temp_path)
+            shutil.rmtree(temp_path)
         else:
             raise KeyError(key)
 
