@@ -841,10 +841,7 @@ class DirectoryStore(MutableMapping):
         src_path = os.path.join(dir_path, store_src_path)
         dst_path = os.path.join(dir_path, store_dst_path)
 
-        dst_dir = os.path.dirname(dst_path)
-        if not os.path.exists(dst_dir):
-            os.makedirs(dst_dir)
-        os.rename(src_path, dst_path)
+        os.renames(src_path, dst_path)
 
     def rmdir(self, path=None):
         store_path = normalize_storage_path(path)
