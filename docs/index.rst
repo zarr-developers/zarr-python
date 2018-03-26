@@ -42,7 +42,7 @@ Alternatively, install Zarr via conda::
     $ conda install -c conda-forge zarr
     
 To install the latest development version of Zarr, you can use pip with the 
-latest GitHub master:
+latest GitHub master::
 
     $ pip install git+https://github.com/zarr-developers/zarr.git
 
