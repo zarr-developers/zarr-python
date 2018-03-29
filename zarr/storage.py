@@ -1883,3 +1883,157 @@ class LRUStoreCache(MutableMapping):
         with self._mutex:
             self._invalidate_keys()
             self._invalidate_value(key)
+
+
+# utility functions for object stores
+
+
+def _strip_prefix_from_path(path, prefix):
+    # normalized things will not have any leading or trailing slashes
+    path_norm = normalize_storage_path(path)
+    prefix_norm = normalize_storage_path(prefix)
+    if path_norm.startswith(prefix_norm):
+        return path_norm[(len(prefix_norm)+1):]
+    else:
+        return path
+
+
+def _append_path_to_prefix(path, prefix):
+    return '/'.join([normalize_storage_path(prefix),
+                     normalize_storage_path(path)])
+
+
+def atexit_rmgcspath(bucket, path):
+    from google.cloud import storage
+    client = storage.Client()
+    bucket = client.get_bucket(bucket)
+    bucket.delete_blobs(bucket.list_blobs(prefix=path))
+    print('deleted blobs')
+
+
+class GCSStore(MutableMapping):
+
+    def __init__(self, bucket_name, prefix=None, client_kwargs={}):
+
+        self.bucket_name = bucket_name
+        self.prefix = normalize_storage_path(prefix)
+        self.client_kwargs = {}
+        self.initialize_bucket()
+
+    def initialize_bucket(self):
+        from google.cloud import storage
+        # run `gcloud auth application-default login` from shell
+        client = storage.Client(**self.client_kwargs)
+        self.bucket = client.get_bucket(self.bucket_name)
+        # need to properly handle excpetions
+        import google.api_core.exceptions as exceptions
+        self.exceptions = exceptions
+
+    # needed for pickling
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        del state['bucket']
+        del state['exceptions']
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        self.initialize_bucket()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        pass
+
+    def __getitem__(self, key):
+        blob_name = _append_path_to_prefix(key, self.prefix)
+        blob = self.bucket.get_blob(blob_name)
+        if blob:
+            return blob.download_as_string()
+        else:
+            raise KeyError('Blob %s not found' % blob_name)
+
+    def __setitem__(self, key, value):
+        blob_name = _append_path_to_prefix(key, self.prefix)
+        blob = self.bucket.blob(blob_name)
+        blob.upload_from_string(value)
+
+    def __delitem__(self, key):
+        blob_name = _append_path_to_prefix(key, self.prefix)
+        try:
+            self.bucket.delete_blob(blob_name)
+        except self.exceptions.NotFound as er:
+            raise KeyError(er.message)
+
+    def __contains__(self, key):
+        blob_name = _append_path_to_prefix(key, self.prefix)
+        return self.bucket.get_blob(blob_name) is not None
+
+    def __eq__(self, other):
+        return (
+            isinstance(other, GCSMap) and
+            self.bucket_name == other.bucket_name and
+            self.prefix == other.prefix
+        )
+
+    def __iter__(self):
+        blobs = self.bucket.list_blobs(prefix=self.prefix)
+        for blob in blobs:
+            yield _strip_prefix_from_path(blob.name, self.prefix)
+
+    def __len__(self):
+        iterator = self.bucket.list_blobs(prefix=self.prefix)
+        return len(list(iterator))
+
+    def list_gcs_directory_blobs(self, path):
+        """Return list of all blobs *directly* under a gcs prefix."""
+        prefix = normalize_storage_path(path) + '/'
+        return [blob.name for blob in
+                self.bucket.list_blobs(prefix=prefix, delimiter='/')]
+
+    # from https://github.com/GoogleCloudPlatform/google-cloud-python/issues/920#issuecomment-326125992
+    def list_gcs_subdirectories(self, path):
+        """Return set of all "subdirectories" from a gcs prefix."""
+        prefix = normalize_storage_path(path) + '/'
+        iterator = self.bucket.list_blobs(prefix=prefix, delimiter='/')
+        prefixes = set()
+        for page in iterator.pages:
+            prefixes.update(page.prefixes)
+        # need to strip trailing slash to be consistent with os.listdir
+        return [path[:-1] for path in prefixes]
+
+    def list_gcs_directory(self, prefix, strip_prefix=True):
+        """Return a list of all blobs and subdirectories from a gcs prefix."""
+        items = set()
+        items.update(self.list_gcs_directory_blobs(prefix))
+        items.update(self.list_gcs_subdirectories(prefix))
+        items = list(items)
+        if strip_prefix:
+            items = [_strip_prefix_from_path(path, prefix) for path in items]
+        return items
+
+    def dir_path(self, path=None):
+        dir_path = _append_path_to_prefix(path, self.prefix)
+        return dir_path
+
+    def listdir(self, path=None):
+        dir_path = self.dir_path(path)
+        return sorted(self.list_gcs_directory(dir_path, strip_prefix=True))
+
+    def rename(self, src_path, dst_path):
+        raise NotImplementedErrror
+
+    def rmdir(self, path=None):
+        dir_path = self.dir_path(path)
+        self.bucket.delete_blobs(self.bucket.list_blobs(prefix=dir_path))
+
+    def getsize(self, path=None):
+        dir_path = self.dir_path(path)
+        size = 0
+        for blob in self.bucket.list_blobs(prefix=dir_path):
+            size += blob.size
+        return size
+
+    def clear(self):
+        self.rmdir()

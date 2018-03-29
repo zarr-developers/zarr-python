@@ -7,7 +7,7 @@ import shutil
 import pickle
 import os
 import warnings
-
+import uuid
 
 import numpy as np
 from numpy.testing import assert_array_equal, assert_array_almost_equal
@@ -16,7 +16,7 @@ import pytest
 
 from zarr.storage import (DirectoryStore, init_array, init_group, NestedDirectoryStore,
                           DBMStore, LMDBStore, atexit_rmtree, atexit_rmglob,
-                          LRUStoreCache)
+                          LRUStoreCache, GCSStore, atexit_rmgcspath)
 from zarr.core import Array
 from zarr.errors import PermissionError
 from zarr.compat import PY2, text_type, binary_type
@@ -1695,6 +1695,29 @@ class TestArrayWithStoreCache(TestArray):
         kwargs.setdefault('compressor', Zlib(level=1))
         cache_metadata = kwargs.pop('cache_metadata', True)
         cache_attrs = kwargs.pop('cache_attrs', True)
+        init_array(store, **kwargs)
+        return Array(store, read_only=read_only, cache_metadata=cache_metadata,
+                     cache_attrs=cache_attrs)
+
+try:
+    from google.cloud import storage as gcstorage
+    # cleanup function
+
+except ImportError:  # pragma: no cover
+    gcstorage = None
+
+
+@unittest.skipIf(gcstorage is None, 'google-cloud-storage is not installed')
+class TestGCSArray(TestArray):
+
+    def create_array(self, read_only=False, **kwargs):
+        bucket = 'zarr-test'
+        prefix = uuid.uuid4()
+        atexit.register(atexit_rmgcspath, bucket, prefix)
+        store = GCSStore(bucket, prefix)
+        cache_metadata = kwargs.pop('cache_metadata', True)
+        cache_attrs = kwargs.pop('cache_attrs', True)
+        kwargs.setdefault('compressor', Zlib(1))
         init_array(store, **kwargs)
         return Array(store, read_only=read_only, cache_metadata=cache_metadata,
                      cache_attrs=cache_attrs)

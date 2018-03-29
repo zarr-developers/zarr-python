@@ -8,6 +8,7 @@ import json
 import array
 import shutil
 import os
+import uuid
 
 
 import numpy as np
@@ -19,7 +20,8 @@ from zarr.storage import (init_array, array_meta_key, attrs_key, DictStore,
                           DirectoryStore, ZipStore, init_group, group_meta_key,
                           getsize, migrate_1to2, TempStore, atexit_rmtree,
                           NestedDirectoryStore, default_compressor, DBMStore,
-                          LMDBStore, atexit_rmglob, LRUStoreCache)
+                          LMDBStore, atexit_rmglob, LRUStoreCache, GCSStore,
+                          atexit_rmgcspath)
 from zarr.meta import (decode_array_metadata, encode_array_metadata, ZARR_FORMAT,
                        decode_group_metadata, encode_group_metadata)
 from zarr.compat import PY2
@@ -1235,3 +1237,31 @@ def test_format_compatibility():
             else:
                 assert compressor.codec_id == z.compressor.codec_id
                 assert compressor.get_config() == z.compressor.get_config()
+
+
+try:
+    from google.cloud import storage as gcstorage
+    # cleanup function
+
+except ImportError:  # pragma: no cover
+    gcstorage = None
+
+
+@unittest.skipIf(gcstorage is None, 'google-cloud-storage is not installed')
+class TestGCSStore(StoreTests, unittest.TestCase):
+
+    def create_store(self):
+        # would need to be replaced with a dedicated test bucket
+        bucket = 'zarr-test'
+        prefix = uuid.uuid4()
+
+        print('registering')
+        atexit.register(atexit_rmgcspath, bucket, prefix)
+        store = GCSStore(bucket, prefix)
+        return store
+
+    def test_context_manager(self):
+        with self.create_store() as store:
+            store['foo'] = b'bar'
+            store['baz'] = b'qux'
+            assert 2 == len(store)
