@@ -1908,10 +1908,29 @@ def atexit_rmgcspath(bucket, path):
     client = storage.Client()
     bucket = client.get_bucket(bucket)
     bucket.delete_blobs(bucket.list_blobs(prefix=path))
-    print('deleted blobs')
 
 
 class GCSStore(MutableMapping):
+    """Storage class using a Google Cloud Storage (GCS)
+
+    Parameters
+    ----------
+    bucket_name : string
+        The name of the GCS bucket
+    prefix : string, optional
+        The prefix within the bucket (i.e. subdirectory)
+    client_kwargs : dict, optional
+        Extra options passed to ``google.cloud.storage.Client`` when connecting
+        to GCS
+
+    Notes
+    -----
+    In order to use this store, you must install the Google Cloud Storage
+    `Python Client Library <https://cloud.google.com/storage/docs/reference/libraries>`_.
+    You must also provide valid application credentials, either by setting the
+    ``GOOGLE_APPLICATION_CREDENTIALS`` environment variable or via
+    `default credentials <https://cloud.google.com/sdk/gcloud/reference/auth/application-default/login>`_.
+    """
 
     def __init__(self, bucket_name, prefix=None, client_kwargs={}):
 
@@ -1946,45 +1965,8 @@ class GCSStore(MutableMapping):
     def __exit__(self, *args):
         pass
 
-    def __getitem__(self, key):
-        blob_name = _append_path_to_prefix(key, self.prefix)
-        blob = self.bucket.get_blob(blob_name)
-        if blob:
-            return blob.download_as_string()
-        else:
-            raise KeyError('Blob %s not found' % blob_name)
-
-    def __setitem__(self, key, value):
-        blob_name = _append_path_to_prefix(key, self.prefix)
-        blob = self.bucket.blob(blob_name)
-        blob.upload_from_string(value)
-
-    def __delitem__(self, key):
-        blob_name = _append_path_to_prefix(key, self.prefix)
-        try:
-            self.bucket.delete_blob(blob_name)
-        except self.exceptions.NotFound as er:
-            raise KeyError(er.message)
-
-    def __contains__(self, key):
-        blob_name = _append_path_to_prefix(key, self.prefix)
-        return self.bucket.get_blob(blob_name) is not None
-
-    def __eq__(self, other):
-        return (
-            isinstance(other, GCSMap) and
-            self.bucket_name == other.bucket_name and
-            self.prefix == other.prefix
-        )
-
-    def __iter__(self):
-        blobs = self.bucket.list_blobs(prefix=self.prefix)
-        for blob in blobs:
-            yield _strip_prefix_from_path(blob.name, self.prefix)
-
-    def __len__(self):
-        iterator = self.bucket.list_blobs(prefix=self.prefix)
-        return len(list(iterator))
+    def full_path(self, path=None):
+        return _append_path_to_prefix(path, self.prefix)
 
     def list_gcs_directory_blobs(self, path):
         """Return list of all blobs *directly* under a gcs prefix."""
@@ -1992,7 +1974,7 @@ class GCSStore(MutableMapping):
         return [blob.name for blob in
                 self.bucket.list_blobs(prefix=prefix, delimiter='/')]
 
-    # from https://github.com/GoogleCloudPlatform/google-cloud-python/issues/920#issuecomment-326125992
+    # from https://github.com/GoogleCloudPlatform/google-cloud-python/issues/920
     def list_gcs_subdirectories(self, path):
         """Return set of all "subdirectories" from a gcs prefix."""
         prefix = normalize_storage_path(path) + '/'
@@ -2013,27 +1995,69 @@ class GCSStore(MutableMapping):
             items = [_strip_prefix_from_path(path, prefix) for path in items]
         return items
 
-    def dir_path(self, path=None):
-        dir_path = _append_path_to_prefix(path, self.prefix)
-        return dir_path
-
     def listdir(self, path=None):
-        dir_path = self.dir_path(path)
+        dir_path = self.full_path(path)
         return sorted(self.list_gcs_directory(dir_path, strip_prefix=True))
 
-    def rename(self, src_path, dst_path):
-        raise NotImplementedErrror
-
     def rmdir(self, path=None):
-        dir_path = self.dir_path(path)
+        # make sure it's a directory
+        dir_path = normalize_storage_path(self.full_path(path)) + '/'
         self.bucket.delete_blobs(self.bucket.list_blobs(prefix=dir_path))
 
     def getsize(self, path=None):
-        dir_path = self.dir_path(path)
-        size = 0
-        for blob in self.bucket.list_blobs(prefix=dir_path):
-            size += blob.size
-        return size
+        # this function should *not* be recursive
+        # a lot of slash trickery is required to make this work right
+        full_path = self.full_path(path)
+        blob = self.bucket.get_blob(full_path)
+        if blob is not None:
+            return blob.size
+        else:
+            dir_path = normalize_storage_path(full_path) + '/'
+            blobs = self.bucket.list_blobs(prefix=dir_path, delimiter='/')
+            size = 0
+            for blob in blobs:
+                size += blob.size
+            return size
 
     def clear(self):
         self.rmdir()
+
+    def __getitem__(self, key):
+        blob_name = self.full_path(key)
+        blob = self.bucket.get_blob(blob_name)
+        if blob:
+            return blob.download_as_string()
+        else:
+            raise KeyError('Blob %s not found' % blob_name)
+
+    def __setitem__(self, key, value):
+        blob_name = self.full_path(key)
+        blob = self.bucket.blob(blob_name)
+        blob.upload_from_string(value)
+
+    def __delitem__(self, key):
+        blob_name = self.full_path(key)
+        try:
+            self.bucket.delete_blob(blob_name)
+        except self.exceptions.NotFound as er:
+            raise KeyError(er.message)
+
+    def __contains__(self, key):
+        blob_name = self.full_path(key)
+        return self.bucket.get_blob(blob_name) is not None
+
+    def __eq__(self, other):
+        return (
+            isinstance(other, GCSStore) and
+            self.bucket_name == other.bucket_name and
+            self.prefix == other.prefix
+        )
+
+    def __iter__(self):
+        blobs = self.bucket.list_blobs(prefix=self.prefix)
+        for blob in blobs:
+            yield _strip_prefix_from_path(blob.name, self.prefix)
+
+    def __len__(self):
+        iterator = self.bucket.list_blobs(prefix=self.prefix)
+        return len(list(iterator))
