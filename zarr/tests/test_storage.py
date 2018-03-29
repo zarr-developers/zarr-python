@@ -1254,8 +1254,6 @@ class TestGCSStore(StoreTests, unittest.TestCase):
         # would need to be replaced with a dedicated test bucket
         bucket = 'zarr-test'
         prefix = uuid.uuid4()
-
-        print('registering')
         atexit.register(atexit_rmgcspath, bucket, prefix)
         store = GCSStore(bucket, prefix)
         return store

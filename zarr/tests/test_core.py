@@ -1699,10 +1699,9 @@ class TestArrayWithStoreCache(TestArray):
         return Array(store, read_only=read_only, cache_metadata=cache_metadata,
                      cache_attrs=cache_attrs)
 
+
 try:
     from google.cloud import storage as gcstorage
-    # cleanup function
-
 except ImportError:  # pragma: no cover
     gcstorage = None
 
