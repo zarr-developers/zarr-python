@@ -1939,7 +1939,7 @@ class GCSStore(MutableMapping):
 
         self.bucket_name = bucket_name
         self.prefix = normalize_storage_path(prefix)
-        self.client_kwargs = {}
+        self.client_kwargs = client_kwargs
         self.initialize_bucket()
 
     def initialize_bucket(self):
