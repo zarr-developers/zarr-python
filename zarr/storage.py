@@ -2076,8 +2076,8 @@ class ABSStore(MutableMapping):
         self.initialize_container()
 
     def initialize_container(self):
-        from azure import storage
-        self.client = storage.blob.BlockBlobService(self.user, self.token)
+        from azure.storage.blob import BlockBlobService
+        self.client = BlockBlobService(self.user, self.token)
         # azure doesn't seem to be a way to initialize a container as google goes with get_bucket().
         # client needs to be used in functions and container name needs to be passed on.
         # could get rid of this function and consolidate.
