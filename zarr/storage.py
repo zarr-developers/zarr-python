@@ -2127,11 +2127,11 @@ class ABSStore(MutableMapping):
             return False
 
     def list_abs_directory_blobs(self, prefix):
-        """Return list of all blobs under an abs prefix."""
+        """Return list of all blobs from an abs prefix."""
         return [blob.name for blob in self.client.list_blobs(self.container_name)]
 
     def list_abs_subdirectories(self, prefix):
-        """Return set of all "subdirectories" from a abs prefix."""
+        """Return list of all "subdirectories" from an abs prefix."""
         return list(set([blob.name.rsplit('/', 1)[0] for blob in self.client.list_blobs(self.container_name) if '/' in blob.name]))
 
     def list_abs_directory(self, prefix, strip_prefix=True):
