@@ -2097,7 +2097,8 @@ class ABSStore(MutableMapping):
             raise KeyError('Blob %s not found' % blob_name)
 
     def __setitem__(self, key, value):
-        raise NotImplementedError
+        blob_name = '/'.join([self.prefix, key])
+        self.client.create_blob_from_text(self.container_name, blob_name, value)
 
     def __delitem__(self, key):
         raise NotImplementedError
