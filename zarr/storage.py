@@ -2072,9 +2072,11 @@ class ABSStore(MutableMapping):
         self.initialize_container()
 
     def initialize_container(self):
-
         from azure.storage.blob import BlockBlobService
         self.client = BlockBlobService(self.account_name, self.account_key)
+        # change logging level to deal with https://github.com/Azure/azure-storage-python/issues/437
+        import logging
+        logging.basicConfig(level=logging.CRITICAL)
 
     # needed for pickling
     def __getstate__(self):
@@ -2117,11 +2119,12 @@ class ABSStore(MutableMapping):
         raise NotImplementedError
 
     def __contains__(self, key):
+        # this is where the logging error occurs. not sure why we are looking for a .zarray below every blob
         blob_name = '/'.join([self.prefix, key])
-        try:
-            return self.client.get_blob_to_text(self.container_name, blob_name)
-        except:
-            return None
+        if self.client.exists(self.container_name, blob_name):
+            return True
+        else:
+            return False
 
     def list_abs_directory_blobs(self, prefix):
         """Return list of all blobs under an abs prefix."""
