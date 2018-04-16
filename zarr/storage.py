@@ -2064,9 +2064,6 @@ class GCSStore(MutableMapping):
 
 class ABSStore(MutableMapping):
 
-#import logging
-#logger = logging.getLogger(__name__)
-
     def __init__(self, container_name, prefix, user, token):
 
         self.user = user
@@ -2076,6 +2073,7 @@ class ABSStore(MutableMapping):
         self.initialize_container()
 
     def initialize_container(self):
+
         from azure.storage.blob import BlockBlobService
         self.client = BlockBlobService(self.user, self.token)
         # azure doesn't seem to be a way to initialize a container as google goes with get_bucket().
@@ -2092,13 +2090,11 @@ class ABSStore(MutableMapping):
         self.__dict__.update(state)
         self.initialize_container()
 
-
     def __getitem__(self, key):
-        #logger.debug('__getitem__(%s)' % key) # not sure what logger returns. need to test live and adapt.
         blob_name = '/'.join([self.prefix, key])
-        blob = self.client.get_blob_to_text(self.container_name, blob_name)
+        blob = self.client.get_blob_to_bytes(self.container_name, blob_name)
         if blob:
-            return blob
+            return blob.content
         else:
             raise KeyError('Blob %s not found' % blob_name)
 
@@ -2108,14 +2104,9 @@ class ABSStore(MutableMapping):
     def __delitem__(self, key):
         raise NotImplementedError
 
-    def __contains__(self, key):
-        #logger.debug('__contains__(%s)' % key)
-        blob_name = '/'.join([self.container_name, key])
-        return self.client.get_blob_to_text(blob_name) is not None
-
     def __eq__(self, other):
         return (
-            isinstance(other, ABSMap) and
+            isinstance(other, ABSStore) and
             self.container_name == other.container_name and
             self.prefix == other.prefix
         )
@@ -2130,25 +2121,22 @@ class ABSStore(MutableMapping):
         raise NotImplementedError
 
     def __contains__(self, key):
-        #logger.debug('__contains__(%s)' % key)
         blob_name = '/'.join([self.prefix, key])
-        return self.client.get_blob_to_text(blob_name) is not None
+        try:
+            return self.client.get_blob_to_text(self.container_name, blob_name)
+        except:
+            return None
 
     def list_abs_directory_blobs(self, prefix):
-        """Return list of all blobs under a abs prefix."""
-        return [blob.name for blob in
-                self.client.list_blobs(prefix=prefix)]
+        """Return list of all blobs under an abs prefix."""
+        return [blob.name for blob in self.client.list_blobs(self.container_name)]
 
     def list_abs_subdirectories(self, prefix):
         """Return set of all "subdirectories" from a abs prefix."""
-        iterator = self.client.list_blobs(prefix=prefix, delimiter='/')
-
-        # here comes a hack. azure list_blobs() doesn't seems to have iterator.pages
-
-        return set([blob.name.rsplit('/',1)[:-1][0] for blob in iterator  if '/' in blob.name])
+        return list(set([blob.name.rsplit('/', 1)[0] for blob in self.client.list_blobs(self.container_name) if '/' in blob.name]))
 
     def list_abs_directory(self, prefix, strip_prefix=True):
-        """Return a list of all blobs and subdirectories from a gcs prefix."""
+        """Return a list of all blobs and subdirectories from an abs prefix."""
         items = set()
         items.update(self.list_abs_directory_blobs(prefix))
         items.update(self.list_abs_subdirectories(prefix))
@@ -2168,7 +2156,6 @@ class ABSStore(MutableMapping):
         return dir_path
 
     def listdir(self, path=None):
-        #logger.debug('listdir(%s)' % path)
         dir_path = self.dir_path(path)
         return sorted(self.list_abs_directory(dir_path, strip_prefix=True))
 
@@ -2179,7 +2166,6 @@ class ABSStore(MutableMapping):
         raise NotImplementedErrror
 
     def getsize(self, path=None):
-        #logger.debug('getsize %s' % path)
         dir_path = self.dir_path(path)
         size = 0
         for blob in self.client.list_blobs(prefix=dir_path):
