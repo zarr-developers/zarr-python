@@ -2064,10 +2064,9 @@ class GCSStore(MutableMapping):
 
 class ABSStore(MutableMapping):
 
-    def __init__(self, container_name, prefix, user, token):
-
-        self.user = user
-        self.token = token
+    def __init__(self, container_name, prefix, account_name, account_key):
+        self.account_name = account_name
+        self.account_key = account_key
         self.container_name = container_name
         self.prefix = normalize_storage_path(prefix)
         self.initialize_container()
@@ -2075,10 +2074,7 @@ class ABSStore(MutableMapping):
     def initialize_container(self):
 
         from azure.storage.blob import BlockBlobService
-        self.client = BlockBlobService(self.user, self.token)
-        # azure doesn't seem to be a way to initialize a container as google goes with get_bucket().
-        # client needs to be used in functions and container name needs to be passed on.
-        # could get rid of this function and consolidate.
+        self.client = BlockBlobService(self.account_name, self.account_key)
 
     # needed for pickling
     def __getstate__(self):
