@@ -2089,6 +2089,15 @@ class ABSStore(MutableMapping):
         self.__dict__.update(state)
         self.initialize_container()
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        pass
+
+    def full_path(self, path=None):
+        return _append_path_to_prefix(path, self.prefix)
+
     def __getitem__(self, key):
         blob_name = '/'.join([self.prefix, key])
         blob = self.client.get_blob_to_bytes(self.container_name, blob_name)
@@ -2164,7 +2173,9 @@ class ABSStore(MutableMapping):
         raise NotImplementedErrror
 
     def rmdir(self, path=None):
-        raise NotImplementedErrror
+        dir_path = normalize_storage_path(self.full_path(path)) + '/'
+        for blob in self.client.list_blobs(self.container_name, dir_path):
+            self.client.delete_blob(self.container_name, blob.name)
 
     def getsize(self, path=None):
         dir_path = self.dir_path(path)
