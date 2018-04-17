@@ -2075,13 +2075,14 @@ class ABSStore(MutableMapping):
         from azure.storage.blob import BlockBlobService
         self.client = BlockBlobService(self.account_name, self.account_key)
         # change logging level to deal with https://github.com/Azure/azure-storage-python/issues/437
+        # it would be better to set up a logging filter that throws out just the
+        # error logged when calling exists().
         import logging
         logging.basicConfig(level=logging.CRITICAL)
 
     # needed for pickling
     def __getstate__(self):
         state = self.__dict__.copy()
-        del state['container']
         return state
 
     def __setstate__(self, state):
