@@ -772,9 +772,18 @@ class DirectoryStore(MutableMapping):
                 f.write(value)
 
             # move temporary file into place
-            if os.path.exists(file_path):
-                os.remove(file_path)
-            os.rename(temp_path, file_path)
+            if hasattr(os, 'replace'):
+                # Python >= 3.3 has replace() which can replace existing
+                # files on all platforms.
+                os.replace(temp_path, file_path)
+            else:
+                # In Python < 3.3 use rename().
+                if os.name == 'nt' and os.path.exists(file_path):
+                    # On windows, rename() can't overwrite files. So
+                    # the file is removed first.
+                    os.remove(file_path)
+
+                os.rename(temp_path, file_path)
 
         finally:
             # clean up if temp file still exists for whatever reason
