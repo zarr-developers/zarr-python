@@ -1069,3 +1069,24 @@ def copy_all(source, dest, shallow=False, without_attrs=False, log=None,
         _log_copy_summary(log, dry_run, n_copied, n_skipped, n_bytes_copied)
 
     return n_copied, n_skipped, n_bytes_copied
+
+
+def consolidate_metadata(mapping, out_key='.zmetadata'):
+    """
+    Read all the metadata in the files within the given dataset and join
+
+    Parameters
+    ----------
+    mapping : MutableMapping instance
+        Containing metadata and data keys of a zarr dataset
+    out_key : str
+        Key to place the consolidated data into
+    """
+    import json
+
+    def is_zarr_key(key):
+        return (key.endswith('.zarray') or key.endswith('.zgroup') or
+                key.endswith('.zattrs'))
+
+    out = {key: mapping[key].decode() for key in mapping if is_zarr_key(key)}
+    mapping[out_key] = json.dumps(out)
