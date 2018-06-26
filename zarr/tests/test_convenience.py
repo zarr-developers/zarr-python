@@ -12,8 +12,8 @@ from numcodecs import Zlib, Adler32
 import pytest
 
 
-from zarr.convenience import open, save, save_group, load, copy_store, copy
-from zarr.storage import atexit_rmtree
+from zarr.convenience import open, save, save_group, load, copy_store, copy, consolidate_metadata
+from zarr.storage import atexit_rmtree, DictStore
 from zarr.core import Array
 from zarr.hierarchy import Group, group
 from zarr.errors import CopyError
@@ -89,6 +89,34 @@ def test_lazy_loader():
     assert sorted(loader) == ['bar', 'foo']
     assert_array_equal(foo, loader['foo'])
     assert_array_equal(bar, loader['bar'])
+
+
+def test_consolidate_metadata():
+    import json
+    store = DictStore()
+    z = group(store)
+    z.create_group('g1')
+    g2 = z.create_group('g2')
+    g2.attrs['hello'] = 'world'
+    arr = g2.create_dataset('arr', shape=(20, 20), dtype='f8')
+    arr.attrs['data'] = 1
+    arr[:] = 1.0
+    consolidate_metadata(store)
+    assert '.zmetadata' in store
+    for key in ['.zgroup',
+                'g1/.zgroup',
+                'g2/.zgroup',
+                'g2/.zattrs',
+                'g2/arr/.zarray',
+                'g2/arr/.zattrs']:
+        del store[key]
+    meta = json.loads(store['.zmetadata'])
+    meta = {k: v.encode() for k, v in meta.items()}
+    z2 = group(meta, chunk_store=store)
+    assert list(z2) == ['g1', 'g2']
+    assert z2.g2.attrs['hello'] == 'world'
+    assert z2.g2.arr.attrs['data'] == 1
+    assert (z2.g2.arr[:] == 1.0).all()
 
 
 class TestCopyStore(unittest.TestCase):
