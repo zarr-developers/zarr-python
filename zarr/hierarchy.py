@@ -92,6 +92,14 @@ class Group(MutableMapping):
     def __init__(self, store, path=None, read_only=False, chunk_store=None,
                  cache_attrs=True, synchronizer=None):
 
+        try:
+            import json
+            metadata = json.loads(store['.zmetadata'])
+            meta_store = {k: v.encode() for k, v in metadata.items()}
+            chunk_store, store = store, meta_store
+        except (KeyError, ValueError, json.JSONDecodeError):
+            pass
+
         self._store = store
         self._chunk_store = chunk_store
         self._path = normalize_storage_path(path)
