@@ -1089,4 +1089,4 @@ def consolidate_metadata(mapping, out_key='.zmetadata'):
                 key.endswith('.zattrs'))
 
     out = {key: mapping[key].decode() for key in mapping if is_zarr_key(key)}
-    mapping[out_key] = json.dumps(out)
+    mapping[out_key] = json.dumps(out).encode()
