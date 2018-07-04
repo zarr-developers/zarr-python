@@ -131,9 +131,12 @@ class StoreTests(object):
         store = self.create_store()
         store['foo'] = b'bar'
         store['baz'] = b'quux'
-        store2 = pickle.loads(pickle.dumps(store))
-        assert len(store) == len(store2)
-        assert sorted(store.keys()) == sorted(store2.keys())
+        pickled = pickle.dumps(store)
+        if hasattr(store, 'close'):
+            store.close()
+        store2 = pickle.loads(pickled)
+        assert 2 == len(store2)
+        assert ['baz', 'foo'] == sorted(store2.keys())
         assert b'bar' == store2['foo']
         assert b'quux' == store2['baz']
 

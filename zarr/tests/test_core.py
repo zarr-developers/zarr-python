@@ -659,8 +659,16 @@ class TestArray(unittest.TestCase):
         z = self.create_array(shape=1000, chunks=100, dtype=int, cache_metadata=False,
                               cache_attrs=False)
         z[:] = np.random.randint(0, 1000, 1000)
-        z2 = pickle.loads(pickle.dumps(z))
-        assert z.shape == z2.shape
+        pickled = pickle.dumps(z)
+
+        shape = z.shape
+        array = z[:]
+
+        if hasattr(z.store, 'close'):
+            z.store.close()
+
+        z2 = pickle.loads(pickled)
+        assert shape == z2.shape
         assert z.chunks == z2.chunks
         assert z.dtype == z2.dtype
         if z.compressor:
@@ -668,7 +676,7 @@ class TestArray(unittest.TestCase):
         assert z.fill_value == z2.fill_value
         assert z._cache_metadata == z2._cache_metadata
         assert z.attrs.cache == z2.attrs.cache
-        assert_array_equal(z[:], z2[:])
+        assert_array_equal(array, z2[:])
 
     def test_np_ufuncs(self):
         z = self.create_array(shape=(100, 100), chunks=(10, 10))

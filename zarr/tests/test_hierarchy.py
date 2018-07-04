@@ -819,6 +819,9 @@ class TestGroup(unittest.TestCase):
         with pytest.raises(ValueError):
             g1['foo/../bar']
 
+    def maybe_close(self, store):
+        pass
+
     def test_pickle(self):
         # setup
         g = self.create_group()
@@ -829,14 +832,23 @@ class TestGroup(unittest.TestCase):
         if hasattr(g.store, 'flush'):
             g.store.flush()
 
+        pickled = pickle.dumps(g)
+
+        elems = list(g)
+        foo = g['foo']
+        bar = g['foo/bar']
+
+        self.maybe_close(g.store)
+
         # pickle round trip
-        g2 = pickle.loads(pickle.dumps(g))
+        g2 = pickle.loads(pickled)
+
         assert g.path == g2.path
         assert g.name == g2.name
-        assert len(g) == len(g2)
-        assert list(g) == list(g2)
-        assert g['foo'] == g2['foo']
-        assert g['foo/bar'] == g2['foo/bar']
+        assert 1 == len(g2)
+        assert elems == list(g2)
+        assert foo == g2['foo']
+        assert bar == g2['foo/bar']
 
 
 class TestGroupWithDictStore(TestGroup):
@@ -877,6 +889,9 @@ class TestGroupWithZipStore(TestGroup):
 
 
 class TestGroupWithDBMStore(TestGroup):
+
+    def maybe_close(self, store):
+        store.close()
 
     @staticmethod
     def create_store():
