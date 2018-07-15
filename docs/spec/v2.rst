@@ -1,6 +1,6 @@
 .. _spec_v2:
 
-Zarr storage specification version 2
+Zarr storage specification version 3
 ====================================
 
 This document provides a technical specification of the protocol and format
@@ -78,6 +78,14 @@ filters
     filters are to be applied. Each codec configuration object MUST contain a
     ``"id"`` key identifying the codec to be used.
 
+The following keys MAY be present:
+
+dimensions
+    A list of string or ``null`` values providing optional names for each ofthe
+    array's dimensions. If provided, the list MUST have length equal to the
+    number of array dimensions. If omitted, the array MUST be treated
+    equivalently to providing dimensions as a list of all ``null`` values.
+
 Other keys MUST NOT be present within the metadata object.
 
 For example, the JSON object below defines a 2-dimensional array of 64-bit
@@ -98,6 +106,10 @@ using the Blosc compression library prior to storage::
             "clevel": 5,
             "shuffle": 1
         },
+        "dimensions": [
+            "row",
+            "column"
+        ]
         "dtype": "<f8",
         "fill_value": "NaN",
         "filters": [
@@ -108,7 +120,7 @@ using the Blosc compression library prior to storage::
             10000,
             10000
         ],
-        "zarr_format": 2
+        "zarr_format": 3
     }
 
 .. _spec_v2_array_dtype:
@@ -284,6 +296,20 @@ zarr_format
     An integer defining the version of the storage specification to which the
     array store adheres.
 
+The following keys are OPTIONAL:
+
+dimensions
+    A JSON object defining a map from string dimension names to integer sizes.
+    All arrays in a group or its descendents with dimension names MUST have
+    matching size along their named dimensions, unless any of those dimensions
+    are overriden by dimensions in a descendent group.
+netzdf
+    An optional boolean indicating whether arrays within the group and its
+    descendents adhere to the more restrictive "netZDF" file-format (detailed
+    below), in which dimensions are REQUIRED for all arrays. If omitted,
+    software SHOULD NOT make assumptions about whether or not dimensions can be
+    found on all arrays.
+
 Other keys MUST NOT be present within the metadata object.
 
 The members of a group are arrays and groups stored under logical paths that
@@ -311,6 +337,61 @@ For example, the JSON object below encodes three attributes named
         "bar": "apples",
         "baz": [1, 2, 3, 4]
     }
+
+.. _spec_v2_dimensions:
+
+Dimensions
+----------
+
+Groups and arrays can be associated with optional dimension names. This feature
+is intended to facilitate self-described datasets.
+
+Dimensions are required to be consistent. Any dimensions set on an array
+(any non-``null`` value), MUST also be defined on an ancestor group. Dimension
+sizes can be overwritten in descendent groups, but the size of each named
+dimensions on an array MUST match the size of that dimension on the most direct
+ancestor group on which it is defined.
+
+For example, the JSON objects below describe a hierarchy of arrays, where the
+dimension ``x`` has size 1000 on the array ``foo`` and size 2000 on the array
+``nested/bar``::
+
+    .zgroup:
+        {
+            "dimensions": {"x": 1000},
+            ...
+        }
+    foo/.zarray:
+        {
+            "dimensions": ["x"],
+            "shape": [1000]
+            ...
+        }
+    nested/.zgroup:
+        {
+            "dimensions": {"x": 2000},
+            ...
+        }
+    nested/bar/.zarray:
+        {
+            "dimensions": ["x"],
+            "shape": [2000]
+            ...
+        }
+
+.. _spec_v2_netzdf:
+
+NetZDF
+------
+
+NetZDF is a more restricted variant of the Zarr storage format, with the
+following changes:
+
+* The "dimensions" field is REQUIRED for all arrays.
+* All entries in "dimensions" on arrays MUST be strings: ``null`` dimensions are
+  not allowed.
+* The "netzdf" field is REQUIRED, with a value of ``true``, on all groups that
+  that obey the netZDF spec.
 
 .. _spec_v2_examples:
 
@@ -358,7 +439,7 @@ Inspect the array metadata::
             20,
             20
         ],
-        "zarr_format": 2
+        "zarr_format": 3
     }
 
 Chunks are initialized on demand. E.g., set some data::
@@ -433,7 +514,7 @@ Inspect the group metadata::
 
     >>> print(open('data/group.zarr/.zgroup').read())
     {
-        "zarr_format": 2
+        "zarr_format": 3
     }
 
 Create a sub-group::
@@ -494,6 +575,13 @@ What has been stored::
 
 Changes
 -------
+
+Version 3 changes
+~~~~~~~~~~~~~~~~~~~
+
+* Optional support for named dimensions on arrays and groups.
+* Added a description of the more restrictive "netZDF" format, inspired by the
+  `netCDF <https://www.unidata.ucar.edu/netcdf>`_ data model.
 
 Version 2 clarifications
 ~~~~~~~~~~~~~~~~~~~~~~~~
