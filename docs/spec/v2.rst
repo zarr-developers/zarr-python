@@ -346,11 +346,11 @@ Dimensions
 Groups and arrays can be associated with optional dimension names. This feature
 is intended to facilitate self-described datasets.
 
-Dimensions are required to be consistent. Any dimensions set on an array
-(any non-``null`` value), MUST also be defined on an ancestor group. Dimension
-sizes can be overwritten in descendent groups, but the size of each named
-dimensions on an array MUST match the size of that dimension on the most direct
-ancestor group on which it is defined.
+Setting dimensions on groups is an OPTIONAL way to indicate that arrays that
+use reuse the same dimension have a consistent size. When a dimension is set on
+a group, the size of each dimensions on arrays inside that group is REQUIRED to
+match. This includes arrays inside descendent groups, unless the dimension is
+explicitly overwritten by dimensions on a descendent group.
 
 For example, the JSON objects below describe a hierarchy of arrays, where the
 dimension ``x`` has size 1000 on the array ``foo`` and size 2000 on the array
@@ -379,6 +379,10 @@ dimension ``x`` has size 1000 on the array ``foo`` and size 2000 on the array
             ...
         }
 
+If dimensions were removed from ``nested/.zarray`` then the array store would
+be invalid, because the array ``nested/bar`` has inconsistent size for
+dimension ``x`` from the size of the dimension in the root group.
+
 .. _spec_v2_netzdf:
 
 NetZDF
@@ -390,6 +394,7 @@ following changes:
 * The "dimensions" field is REQUIRED for all arrays.
 * All entries in "dimensions" on arrays MUST be strings: ``null`` dimensions are
   not allowed.
+* Every dimension on an array MUST be found on dimensions in an ancestor group.
 * The "netzdf" field is REQUIRED, with a value of ``true``, on all groups that
   that obey the netZDF spec.
 
