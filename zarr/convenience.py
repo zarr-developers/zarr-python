@@ -1073,7 +1073,16 @@ def copy_all(source, dest, shallow=False, without_attrs=False, log=None,
 
 def consolidate_metadata(mapping, out_key='.zmetadata'):
     """
-    Read all the metadata in the files within the given dataset and join
+    Store all the metadata in the files within the given dataset in one key
+
+    This produces a single file in the backend store, containing all the
+    metadata read from all the zarr-related keys that can be found. This
+    should be used in conjunction with ``storage.ConsolidatedMetadataStore``
+    to reduce the number of operations on the backend store at read time.
+
+    Note, however, that if the dataset is changed after this consolidation,
+    then the metadata read by ``storage.ConsolidatedMetadataStore`` would
+    be out of sync with reality unless this function is called again.
 
     Parameters
     ----------
@@ -1081,8 +1090,13 @@ def consolidate_metadata(mapping, out_key='.zmetadata'):
         Containing metadata and data keys of a zarr dataset
     out_key : str
         Key to place the consolidated data into
+
+    Returns
+    -------
+    ConsolidatedMetadataStore instance, based on the same base store.
     """
     import json
+    from .storage import ConsolidatedMetadataStore
 
     def is_zarr_key(key):
         return (key.endswith('.zarray') or key.endswith('.zgroup') or
@@ -1090,3 +1104,4 @@ def consolidate_metadata(mapping, out_key='.zmetadata'):
 
     out = {key: mapping[key].decode() for key in mapping if is_zarr_key(key)}
     mapping[out_key] = json.dumps(out).encode()
+    return ConsolidatedMetadataStore(mapping, out_key)
