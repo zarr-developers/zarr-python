@@ -1912,11 +1912,15 @@ class ConsolidatedMetadataStore(MutableMapping):
         store: MutableMapping
             Containing the zarr dataset
         metadata_key: str
-            The target in the store where all of the metadata are stores. We
+            The target in the store where all of the metadata are stored. We
             assume JSON encoding.
         """
         self.store = store
-        metadata = json.loads(store[metadata_key])
+        if sys.version_info.major == 3 and sys.version_info.minor < 6:
+            d = store[metadata_key].decode()
+        else:
+            d = store[metadata_key]
+        metadata = json.loads(d)
         self.meta_store = {k: v.encode() for k, v in metadata.items()}
 
     def __getitem__(self, key):
