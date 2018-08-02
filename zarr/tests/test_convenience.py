@@ -120,6 +120,10 @@ def test_consolidate_metadata():
     assert list(out) == list(cstore)
 
     # tests del/write on the store
+    with pytest.raises(NotImplementedError):
+        del cstore['.zgroup']
+    with pytest.raises(NotImplementedError):
+        cstore['.zgroup'] = None
     del cstore['g2/arr/0.0']
     assert (z2.g2.arr[:] == 0).all()
     z2.g2.arr[:] = 2
