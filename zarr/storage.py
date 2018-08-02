@@ -2040,7 +2040,7 @@ class ABSStore(MutableMapping):
 
     def rmdir(self, path=None):
         dir_path = normalize_storage_path(self.full_path(path)) + '/'
-        for blob in self.client.list_blobs(self.container_name, dir_path):
+        for blob in self.client.list_blobs(self.container_name, prefix=dir_path):
             self.client.delete_blob(self.container_name, blob.name)
 
     def getsize(self, path=None):
