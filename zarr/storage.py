@@ -1917,8 +1917,8 @@ class ConsolidatedMetadataStore(MutableMapping):
         """
         self.store = store
         if sys.version_info.major == 3 and sys.version_info.minor < 6:
-            d = store[metadata_key].decode()
-        else:
+            d = store[metadata_key].decode()  # pragma: no cover
+        else:  # pragma: no cover
             d = store[metadata_key]
         metadata = json.loads(d)
         self.meta_store = {k: v.encode() for k, v in metadata.items()}
