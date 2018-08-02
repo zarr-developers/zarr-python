@@ -2063,6 +2063,24 @@ class GCSStore(MutableMapping):
         return len(list(iterator))
 
 class ABSStore(MutableMapping):
+    """Storage class using Azure Blob Storage (ABS)
+
+    Parameters
+    ----------
+    container_name : string
+        The name of the ABS container to use
+    prefix : string, optional
+        The prefix within the container (i.e. subdirectory)
+    account_name : string
+        The Azure blob storage account name
+    account_key : string
+        The Azure blob storage account acess key
+
+    Notes
+    -----
+    In order to use this store, you must install the Azure Blob Storage
+    `Python Client Library <https://github.com/Azure/azure-storage-python/tree/master/azure-storage-blob>`_.
+    """
 
     def __init__(self, container_name, prefix, account_name, account_key):
         self.account_name = account_name
