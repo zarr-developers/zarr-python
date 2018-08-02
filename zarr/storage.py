@@ -24,6 +24,7 @@ import shutil
 import atexit
 import re
 import sys
+import json
 import multiprocessing
 from threading import Lock, RLock
 import glob
@@ -1883,3 +1884,66 @@ class LRUStoreCache(MutableMapping):
         with self._mutex:
             self._invalidate_keys()
             self._invalidate_value(key)
+
+
+class ConsolidatedMetadataStore(MutableMapping):
+    """A layer over other storage, with the metadata within a single key
+
+    The purpose of this class, is to be able to get all of the metadata for
+    a given dataset in a single read operation from the underlying storage.
+    See ``convenience.consolidate_metadata()`` for how to create this single
+    metadata key.
+
+    This class loads from the one key, and stores the data in a dict, so that
+    accessing the keys no longer requires operations on the backend store.
+
+    This class is read-only, and attempts to change the dataset metadata will
+    fail, but changing the data is possible. If the backend storage is changed
+    directly, then the metadata stored here could become obsolete, and
+    ``conslidate_metadata`` should be called again and the class re-invoked.
+    The use case is for write once, read many times.
+
+    """
+    def __init__(self, store, metadata_key='.zmetadata'):
+        """
+
+        Parameters
+        ----------
+        store: MutableMapping
+            Containing the zarr dataset
+        metadata_key: str
+            The target in the store where all of the metadata are stores. We
+            assume JSON encoding.
+        """
+        self.store = store
+        metadata = json.loads(store[metadata_key])
+        self.meta_store = {k: v.encode() for k, v in metadata.items()}
+
+    def __getitem__(self, key):
+        """Try local dict before falling back to real storage"""
+        try:
+            return self.meta_store[key]
+        except KeyError:
+            return self.store[key]
+
+    def __iter__(self):
+        """Only list local keys - data must be got via getitem"""
+        return iter(self.meta_store)
+
+    def __len__(self):
+        """Only len of local keys"""
+        return len(self.meta_store)
+
+    def __delitem__(self, key):
+        """Data can be deleted from storage"""
+        if key not in self:
+            del self.store[key]
+        else:
+            raise NotImplementedError
+
+    def __setitem__(self, key, value):
+        """Data can be written to storage"""
+        if key not in self:
+            self.store[key] = value
+        else:
+            raise NotImplementedError

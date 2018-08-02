@@ -92,7 +92,7 @@ def test_lazy_loader():
 
 
 def test_consolidate_metadata():
-    import json
+    from zarr.storage import ConsolidatedMetadataStore
     store = DictStore()
     z = group(store)
     z.create_group('g1')
@@ -101,7 +101,8 @@ def test_consolidate_metadata():
     arr = g2.create_dataset('arr', shape=(20, 20), dtype='f8')
     arr.attrs['data'] = 1
     arr[:] = 1.0
-    consolidate_metadata(store)
+    out = consolidate_metadata(store)
+    assert isinstance(out, ConsolidatedMetadataStore)
     assert '.zmetadata' in store
     for key in ['.zgroup',
                 'g1/.zgroup',
@@ -110,13 +111,13 @@ def test_consolidate_metadata():
                 'g2/arr/.zarray',
                 'g2/arr/.zattrs']:
         del store[key]
-    meta = json.loads(store['.zmetadata'])
-    meta = {k: v.encode() for k, v in meta.items()}
-    z2 = group(meta, chunk_store=store)
+    cstore = ConsolidatedMetadataStore(store)
+    z2 = open(cstore, mode='r')
     assert list(z2) == ['g1', 'g2']
     assert z2.g2.attrs['hello'] == 'world'
     assert z2.g2.arr.attrs['data'] == 1
     assert (z2.g2.arr[:] == 1.0).all()
+    assert list(out)
 
 
 class TestCopyStore(unittest.TestCase):
