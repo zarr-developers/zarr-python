@@ -2046,7 +2046,7 @@ class ABSStore(MutableMapping):
     def getsize(self, path=None):
         dir_path = self.dir_path(path)
         size = 0
-        for blob in self.client.list_blobs(prefix=dir_path):
+        for blob in self.client.list_blobs(self.container_name, prefix=dir_path):
             size += blob.properties.content_length # from https://stackoverflow.com/questions/47694592/get-container-sizes-in-azure-blob-storage-using-python
         return size
 
