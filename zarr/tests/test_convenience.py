@@ -112,12 +112,18 @@ def test_consolidate_metadata():
                 'g2/arr/.zattrs']:
         del store[key]
     cstore = ConsolidatedMetadataStore(store)
-    z2 = open(cstore, mode='r')
+    z2 = open(cstore)
     assert list(z2) == ['g1', 'g2']
     assert z2.g2.attrs['hello'] == 'world'
     assert z2.g2.arr.attrs['data'] == 1
     assert (z2.g2.arr[:] == 1.0).all()
-    assert list(out)
+    assert list(out) == list(cstore)
+
+    # tests del/write on the store
+    del cstore['g2/arr/0.0']
+    assert (z2.g2.arr[:] == 0).all()
+    z2.g2.arr[:] = 2
+    assert (z2.g2.arr[:] == 2).all()
 
 
 class TestCopyStore(unittest.TestCase):

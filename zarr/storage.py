@@ -1940,14 +1940,14 @@ class ConsolidatedMetadataStore(MutableMapping):
 
     def __delitem__(self, key):
         """Data can be deleted from storage"""
-        if key not in self:
+        if key not in self.meta_store:
             del self.store[key]
         else:
             raise NotImplementedError
 
     def __setitem__(self, key, value):
         """Data can be written to storage"""
-        if key not in self:
+        if key not in self.meta_store:
             self.store[key] = value
         else:
             raise NotImplementedError
