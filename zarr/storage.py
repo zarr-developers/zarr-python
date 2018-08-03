@@ -1940,11 +1940,6 @@ class ABSStore(MutableMapping):
     def initialize_container(self):
         from azure.storage.blob import BlockBlobService
         self.client = BlockBlobService(self.account_name, self.account_key)
-        # change logging level to deal with https://github.com/Azure/azure-storage-python/issues/437
-        # it would be better to set up a logging filter that throws out just the
-        # error logged when calling exists().
-        import logging
-        logging.basicConfig(level=logging.CRITICAL)
 
     # needed for pickling
     def __getstate__(self):
@@ -1996,7 +1991,6 @@ class ABSStore(MutableMapping):
         raise NotImplementedError
 
     def __contains__(self, key):
-        # this is where the logging error occurs. not sure why we are looking for a .zarray below every blob
         blob_name = '/'.join([self.prefix, key])
         if self.client.exists(self.container_name, blob_name):
             return True
