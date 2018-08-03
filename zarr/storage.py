@@ -1911,23 +1911,25 @@ def atexit_rmgcspath(bucket, path):
 
 
 class ABSStore(MutableMapping):
-    """Storage class using Azure Blob Storage (ABS)
+    """Storage class using Azure Blob Storage (ABS).
 
     Parameters
     ----------
     container_name : string
-        The name of the ABS container to use
-    prefix : string, optional
-        The prefix within the container (i.e. subdirectory)
+        The name of the ABS container to use. Currently this must exist in the
+        storage account.
+    prefix : string
+        Location of the "directory" to use as the root of the storage hierarchy
+        within the container.
     account_name : string
-        The Azure blob storage account name
+        The Azure blob storage account name.
     account_key : string
-        The Azure blob storage account acess key
+        The Azure blob storage account acess key.
 
     Notes
     -----
     In order to use this store, you must install the Azure Blob Storage
-    `Python Client Library <https://github.com/Azure/azure-storage-python/tree/master/azure-storage-blob>`_.
+    `Python Client Library <https://github.com/Azure/azure-storage-python/tree/master/azure-storage-blob>`_ version >= 1.3.0.
     """
 
     def __init__(self, container_name, prefix, account_name, account_key):
@@ -2041,7 +2043,7 @@ class ABSStore(MutableMapping):
         dir_path = self.dir_path(path)
         size = 0
         for blob in self.client.list_blobs(self.container_name, prefix=dir_path):
-            size += blob.properties.content_length # from https://stackoverflow.com/questions/47694592/get-container-sizes-in-azure-blob-storage-using-python
+            size += blob.properties.content_length
         return size
 
     def clear(self):
