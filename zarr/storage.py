@@ -1903,13 +1903,6 @@ def _append_path_to_prefix(path, prefix):
                      normalize_storage_path(path)])
 
 
-def atexit_rmgcspath(bucket, path):
-    from google.cloud import storage
-    client = storage.Client()
-    bucket = client.get_bucket(bucket)
-    bucket.delete_blobs(bucket.list_blobs(prefix=path))
-
-
 class ABSStore(MutableMapping):
     """Storage class using Azure Blob Storage (ABS).
 
