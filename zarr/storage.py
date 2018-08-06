@@ -1885,24 +1885,6 @@ class LRUStoreCache(MutableMapping):
             self._invalidate_value(key)
 
 
-# utility functions for object stores
-
-
-def _strip_prefix_from_path(path, prefix):
-    # normalized things will not have any leading or trailing slashes
-    path_norm = normalize_storage_path(path)
-    prefix_norm = normalize_storage_path(prefix)
-    if path_norm.startswith(prefix_norm):
-        return path_norm[(len(prefix_norm)+1):]
-    else:
-        return path
-
-
-def _append_path_to_prefix(path, prefix):
-    return '/'.join([normalize_storage_path(prefix),
-                     normalize_storage_path(path)])
-
-
 class ABSStore(MutableMapping):
     """Storage class using Azure Blob Storage (ABS).
 
@@ -1950,6 +1932,10 @@ class ABSStore(MutableMapping):
 
     def __exit__(self, *args):
         pass
+
+    def _append_path_to_prefix(path, prefix):
+        return '/'.join([normalize_storage_path(prefix),
+                         normalize_storage_path(path)])
 
     def full_path(self, path=None):
         return _append_path_to_prefix(path, self.prefix)
@@ -1999,6 +1985,15 @@ class ABSStore(MutableMapping):
     def list_abs_subdirectories(self, prefix):
         """Return list of all "subdirectories" from an abs prefix."""
         return list(set([blob.name.rsplit('/', 1)[0] for blob in self.client.list_blobs(self.container_name) if '/' in blob.name]))
+
+    def _strip_prefix_from_path(path, prefix):
+        # normalized things will not have any leading or trailing slashes
+        path_norm = normalize_storage_path(path)
+        prefix_norm = normalize_storage_path(prefix)
+        if path_norm.startswith(prefix_norm):
+            return path_norm[(len(prefix_norm)+1):]
+        else:
+            return path
 
     def list_abs_directory(self, prefix, strip_prefix=True):
         """Return a list of all blobs and subdirectories from an abs prefix."""
