@@ -1933,27 +1933,38 @@ class ABSStore(MutableMapping):
     def __exit__(self, *args):
         pass
 
+    @staticmethod
     def _append_path_to_prefix(path, prefix):
         return '/'.join([normalize_storage_path(prefix),
                          normalize_storage_path(path)])
 
     def full_path(self, path=None):
-        return _append_path_to_prefix(path, self.prefix)
+        return self._append_path_to_prefix(path, self.prefix)
 
     def __getitem__(self, key):
+        from azure.common import AzureMissingResourceHttpError
         blob_name = '/'.join([self.prefix, key])
-        blob = self.client.get_blob_to_bytes(self.container_name, blob_name)
-        if blob:
+        try:
+            blob = self.client.get_blob_to_bytes(self.container_name, blob_name)
             return blob.content
-        else:
+        except AzureMissingResourceHttpError:
             raise KeyError('Blob %s not found' % blob_name)
 
     def __setitem__(self, key, value):
+        import io
         blob_name = '/'.join([self.prefix, key])
-        self.client.create_blob_from_text(self.container_name, blob_name, value)
+        buffer = io.BytesIO()
+        buffer.write(value)
+        buffer.seek(0)
+        self.client.create_blob_from_bytes(self.container_name, blob_name, buffer.read())
 
     def __delitem__(self, key):
-        raise NotImplementedError
+        if self.client.exists(self.container_name, '/'.join([self.prefix, key])):
+            self.client.delete_blob(self.container_name, '/'.join([self.prefix, key]))
+        elif self.__contains__(key):
+            self.rmdir(key)
+        else:
+            raise KeyError
 
     def __eq__(self, other):
         return (
@@ -1963,13 +1974,14 @@ class ABSStore(MutableMapping):
         )
 
     def keys(self):
-        raise NotImplementedError
+        return list(self.__iter__())
 
     def __iter__(self):
-        raise NotImplementedError
+        for blob in self.client.list_blobs(self.container_name, self.prefix + '/'):
+            yield self._strip_prefix_from_path(blob.name, self.prefix)
 
     def __len__(self):
-        raise NotImplementedError
+        return len(self.keys())
 
     def __contains__(self, key):
         blob_name = '/'.join([self.prefix, key])
@@ -1986,6 +1998,7 @@ class ABSStore(MutableMapping):
         """Return list of all "subdirectories" from an abs prefix."""
         return list(set([blob.name.rsplit('/', 1)[0] for blob in self.client.list_blobs(self.container_name) if '/' in blob.name]))
 
+    @staticmethod
     def _strip_prefix_from_path(path, prefix):
         # normalized things will not have any leading or trailing slashes
         path_norm = normalize_storage_path(path)
@@ -2015,24 +2028,24 @@ class ABSStore(MutableMapping):
             dir_path += '/'
         return dir_path
 
-    def listdir(self, path=None):
-        dir_path = self.dir_path(path)
-        return sorted(self.list_abs_directory(dir_path, strip_prefix=True))
-
-    def rename(self, src_path, dst_path):
-        raise NotImplementedErrror
+    # def listdir(self, path=None):
+    #     dir_path = self.dir_path(path)
+    #     return sorted(self.list_abs_directory(dir_path, strip_prefix=True))
+    #
+    # def rename(self, src_path, dst_path):
+    #     raise NotImplementedErrror
 
     def rmdir(self, path=None):
         dir_path = normalize_storage_path(self.full_path(path)) + '/'
         for blob in self.client.list_blobs(self.container_name, prefix=dir_path):
             self.client.delete_blob(self.container_name, blob.name)
 
-    def getsize(self, path=None):
-        dir_path = self.dir_path(path)
-        size = 0
-        for blob in self.client.list_blobs(self.container_name, prefix=dir_path):
-            size += blob.properties.content_length
-        return size
+    # def getsize(self, path=None):
+    #     dir_path = self.dir_path(path)
+    #     size = 0
+    #     for blob in self.client.list_blobs(self.container_name, prefix=dir_path):
+    #         size += blob.properties.content_length
+    #     return size
 
     def clear(self):
-        raise NotImplementedError
+        self.rmdir()

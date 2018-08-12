@@ -19,7 +19,7 @@ from zarr.storage import (init_array, array_meta_key, attrs_key, DictStore,
                           DirectoryStore, ZipStore, init_group, group_meta_key,
                           getsize, migrate_1to2, TempStore, atexit_rmtree,
                           NestedDirectoryStore, default_compressor, DBMStore,
-                          LMDBStore, atexit_rmglob, LRUStoreCache)
+                          LMDBStore, atexit_rmglob, LRUStoreCache, ABSStore)
 from zarr.meta import (decode_array_metadata, encode_array_metadata, ZARR_FORMAT,
                        decode_group_metadata, encode_group_metadata)
 from zarr.compat import PY2
@@ -1235,3 +1235,12 @@ def test_format_compatibility():
             else:
                 assert compressor.codec_id == z.compressor.codec_id
                 assert compressor.get_config() == z.compressor.get_config()
+
+
+class TestABSStore(StoreTests, unittest.TestCase):
+
+    def create_store(self):
+        from zarr.azureblob import BLOB_ACCOUNT_NAME, BLOB_ACCOUNT_KEY
+        store = ABSStore('test', 'zarrtesting/', BLOB_ACCOUNT_NAME, BLOB_ACCOUNT_KEY)
+        store.rmdir()
+        return store
