@@ -1945,6 +1945,9 @@ class ABSStore(MutableMapping):
 
     def __setitem__(self, key, value):
         import io
+        import array
+        if PY2 and isinstance(value, array.array):
+            value = value.tostring()
         blob_name = '/'.join([self.prefix, key])
         buffer = io.BytesIO()
         buffer.write(value)
