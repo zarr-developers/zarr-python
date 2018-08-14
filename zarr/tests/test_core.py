@@ -16,7 +16,7 @@ import pytest
 
 from zarr.storage import (DirectoryStore, init_array, init_group, NestedDirectoryStore,
                           DBMStore, LMDBStore, atexit_rmtree, atexit_rmglob,
-                          LRUStoreCache)
+                          LRUStoreCache, ABSStore)
 from zarr.core import Array
 from zarr.errors import PermissionError
 from zarr.compat import PY2, text_type, binary_type
@@ -1209,6 +1209,33 @@ class TestArrayWithDirectoryStore(TestArray):
         z[:] = 42
         expect_nbytes_stored = sum(buffer_size(v) for v in z.store.values())
         assert expect_nbytes_stored == z.nbytes_stored
+
+
+class TestArrayWithABSStore(TestArray):
+
+    @staticmethod
+    def absstore():
+        from azure.storage.blob import BlockBlobService
+        blob_emulator_connection_string = 'DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;'+\
+            'AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;'+\
+            'BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;'+\
+            'TableEndpoint=http://127.0.0.1:10002/devstoreaccount1;'+\
+            'QueueEndpoint=http://127.0.0.1:10001/devstoreaccount1;'
+        blob_client = BlockBlobService(is_emulated=True, connection_string=blob_emulator_connection_string)
+        if not blob_client.exists('test'):
+            blob_client.create_container('test')
+        store = ABSStore('test', 'zarrtesting/', blob_client)
+        store.rmdir()
+        return store
+
+    def create_array(self, read_only=False, **kwargs):
+        store = self.absstore()
+        kwargs.setdefault('compressor', Zlib(1))
+        cache_metadata = kwargs.pop('cache_metadata', True)
+        cache_attrs = kwargs.pop('cache_attrs', True)
+        init_array(store, **kwargs)
+        return Array(store, read_only=read_only, cache_metadata=cache_metadata,
+                     cache_attrs=cache_attrs)
 
 
 class TestArrayWithNestedDirectoryStore(TestArrayWithDirectoryStore):
