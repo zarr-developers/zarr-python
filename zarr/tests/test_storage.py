@@ -1247,6 +1247,8 @@ class TestABSStore(StoreTests, unittest.TestCase):
             'TableEndpoint=http://127.0.0.1:10002/devstoreaccount1;'+\
             'QueueEndpoint=http://127.0.0.1:10001/devstoreaccount1;'
         blob_client = BlockBlobService(is_emulated=True, connection_string=blob_emulator_connection_string)
+        if not blob_client.exists('test'):
+            blob_client.create_container('test')
         store = ABSStore('test', 'zarrtesting/', blob_client)
         store.rmdir()
         return store
