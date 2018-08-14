@@ -1907,16 +1907,10 @@ class ABSStore(MutableMapping):
     `Python Client Library <https://github.com/Azure/azure-storage-python/tree/master/azure-storage-blob>`_ version >= 1.3.0.
     """
 
-    def __init__(self, container_name, prefix, account_name, account_key):
-        self.account_name = account_name
-        self.account_key = account_key
+    def __init__(self, container_name, prefix, blob_client):
+        self.client = blob_client
         self.container_name = container_name
         self.prefix = normalize_storage_path(prefix)
-        self.initialize_container()
-
-    def initialize_container(self):
-        from azure.storage.blob import BlockBlobService
-        self.client = BlockBlobService(self.account_name, self.account_key)
 
     # needed for pickling
     def __getstate__(self):
@@ -1925,7 +1919,6 @@ class ABSStore(MutableMapping):
 
     def __setstate__(self, state):
         self.__dict__.update(state)
-        self.initialize_container()
 
     def __enter__(self):
         return self
