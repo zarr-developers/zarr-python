@@ -1996,11 +1996,15 @@ class ABSStore(MutableMapping):
 
     def list_abs_directory_blobs(self, prefix):
         """Return list of all blobs from an abs prefix."""
-        return [blob.name for blob in self.client.list_blobs(self.container_name)]
+        return [blob.name for blob in self.client.list_blobs(self.container_name, prefix=prefix) if '/' not in blob.name[len(prefix):]]
 
     def list_abs_subdirectories(self, prefix):
         """Return list of all "subdirectories" from an abs prefix."""
-        return list(set([blob.name.rsplit('/', 1)[0] for blob in self.client.list_blobs(self.container_name) if '/' in blob.name]))
+        dirs = []
+        for blob in self.client.list_blobs(self.container_name, prefix=prefix):
+            if '/' in blob.name[len(prefix):]:
+                dirs.append(blob.name[:blob.name.find('/', len(prefix))])
+        return dirs
 
     @staticmethod
     def _strip_prefix_from_path(path, prefix):
@@ -2019,7 +2023,7 @@ class ABSStore(MutableMapping):
         items.update(self.list_abs_subdirectories(prefix))
         items = list(items)
         if strip_prefix:
-            items = [_strip_prefix_from_path(path, prefix) for path in items]
+            items = [self._strip_prefix_from_path(path, prefix) for path in items]
         return items
 
     def dir_path(self, path=None):
@@ -2028,14 +2032,13 @@ class ABSStore(MutableMapping):
         dir_path = self.prefix
         if store_path:
             dir_path = os.path.join(dir_path, store_path)
-        else:
-            dir_path += '/'
+        dir_path += '/'
         return dir_path
 
-    # def listdir(self, path=None):
-    #     dir_path = self.dir_path(path)
-    #     return sorted(self.list_abs_directory(dir_path, strip_prefix=True))
-    #
+    def listdir(self, path=None):
+        dir_path = self.dir_path(path)
+        return sorted(self.list_abs_directory(dir_path, strip_prefix=True))
+
     # def rename(self, src_path, dst_path):
     #     raise NotImplementedErrror
 
