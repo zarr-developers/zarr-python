@@ -1224,7 +1224,8 @@ class TestArrayWithABSStore(TestArray):
         blob_client = BlockBlobService(is_emulated=True, connection_string=blob_emulator_connection_string)
         if not blob_client.exists('test'):
             blob_client.create_container('test')
-        store = ABSStore('test', 'zarrtesting/', blob_client)
+        store = ABSStore(container_name='test', prefix='zarrtesting/', account_name='foo', account_key='bar')
+        store.client = blob_client
         store.rmdir()
         return store
 
