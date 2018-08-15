@@ -1216,12 +1216,7 @@ class TestArrayWithABSStore(TestArray):
     @staticmethod
     def absstore():
         from azure.storage.blob import BlockBlobService
-        blob_emulator_connection_string = 'DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;'+\
-            'AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;'+\
-            'BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;'+\
-            'TableEndpoint=http://127.0.0.1:10002/devstoreaccount1;'+\
-            'QueueEndpoint=http://127.0.0.1:10001/devstoreaccount1;'
-        blob_client = BlockBlobService(is_emulated=True, connection_string=blob_emulator_connection_string)
+        blob_client = BlockBlobService(is_emulated=True)
         if not blob_client.exists('test'):
             blob_client.create_container('test')
         store = ABSStore(container_name='test', prefix='zarrtesting/', account_name='foo', account_key='bar')
