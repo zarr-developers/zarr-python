@@ -3,3 +3,4 @@ pytest
 numpy
 fasteners
 numcodecs
+azure-storage-blob

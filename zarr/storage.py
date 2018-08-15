@@ -28,9 +28,13 @@ import multiprocessing
 from threading import Lock, RLock
 import glob
 import warnings
+import io
+import array
 
 
 import numpy as np
+from azure.storage.blob import BlockBlobService
+from azure.common import AzureMissingResourceHttpError
 
 
 from zarr.util import (normalize_shape, normalize_chunks, normalize_order,
@@ -1914,7 +1918,6 @@ class ABSStore(MutableMapping):
         self.prefix = normalize_storage_path(prefix)
 
     def initialize_container(self):
-        from azure.storage.blob import BlockBlobService
         self.client = BlockBlobService(self.account_name, self.account_key)
 
     # needed for pickling
@@ -1941,7 +1944,6 @@ class ABSStore(MutableMapping):
         return self._append_path_to_prefix(path, self.prefix)
 
     def __getitem__(self, key):
-        from azure.common import AzureMissingResourceHttpError
         blob_name = '/'.join([self.prefix, key])
         try:
             blob = self.client.get_blob_to_bytes(self.container_name, blob_name)
@@ -1950,8 +1952,6 @@ class ABSStore(MutableMapping):
             raise KeyError('Blob %s not found' % blob_name)
 
     def __setitem__(self, key, value):
-        import io
-        import array
         if PY2 and isinstance(value, array.array):
             value = value.tostring()
         blob_name = '/'.join([self.prefix, key])

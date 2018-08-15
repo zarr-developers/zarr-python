@@ -13,6 +13,7 @@ import os
 import numpy as np
 from numpy.testing import assert_array_equal, assert_array_almost_equal
 import pytest
+from azure.storage.blob import BlockBlobService
 
 
 from zarr.storage import (init_array, array_meta_key, attrs_key, DictStore,
@@ -1240,7 +1241,6 @@ def test_format_compatibility():
 class TestABSStore(StoreTests, unittest.TestCase):
 
     def create_store(self):
-        from azure.storage.blob import BlockBlobService
         blob_client = BlockBlobService(is_emulated=True)
         if not blob_client.exists('test'):
             blob_client.create_container('test')

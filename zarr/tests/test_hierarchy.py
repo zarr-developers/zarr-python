@@ -13,6 +13,7 @@ import warnings
 import numpy as np
 from numpy.testing import assert_array_equal
 import pytest
+from azure.storage.blob import BlockBlobService
 
 
 from zarr.storage import (DictStore, DirectoryStore, ZipStore, init_group, init_array,
@@ -860,7 +861,6 @@ class TestGroupWithABSStore(TestGroup):
 
     @staticmethod
     def create_store():
-        from azure.storage.blob import BlockBlobService
         blob_client = BlockBlobService(is_emulated=True)
         if not blob_client.exists('test'):
             blob_client.create_container('test')
