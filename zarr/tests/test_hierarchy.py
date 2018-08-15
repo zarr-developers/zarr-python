@@ -18,7 +18,7 @@ import pytest
 from zarr.storage import (DictStore, DirectoryStore, ZipStore, init_group, init_array,
                           array_meta_key, group_meta_key, atexit_rmtree,
                           NestedDirectoryStore, DBMStore, LMDBStore, atexit_rmglob,
-                          LRUStoreCache)
+                          LRUStoreCache, ABSStore)
 from zarr.core import Array
 from zarr.compat import PY2, text_type
 from zarr.hierarchy import Group, group, open_group
@@ -853,6 +853,25 @@ class TestGroupWithDirectoryStore(TestGroup):
         path = tempfile.mkdtemp()
         atexit.register(atexit_rmtree, path)
         store = DirectoryStore(path)
+        return store, None
+
+
+class TestGroupWithABSStore(TestGroup):
+
+    @staticmethod
+    def create_store():
+        from azure.storage.blob import BlockBlobService
+        blob_emulator_connection_string = 'DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;' + \
+                                          'AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;' + \
+                                          'BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;' + \
+                                          'TableEndpoint=http://127.0.0.1:10002/devstoreaccount1;' + \
+                                          'QueueEndpoint=http://127.0.0.1:10001/devstoreaccount1;'
+        blob_client = BlockBlobService(is_emulated=True, connection_string=blob_emulator_connection_string)
+        if not blob_client.exists('test'):
+            blob_client.create_container('test')
+        store = ABSStore(container_name='test', prefix='zarrtesting/', account_name='foo', account_key='bar')
+        store.client = blob_client
+        store.rmdir()
         return store, None
 
 
