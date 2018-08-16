@@ -2047,12 +2047,18 @@ class ABSStore(MutableMapping):
         for blob in self.client.list_blobs(self.container_name, prefix=dir_path):
             self.client.delete_blob(self.container_name, blob.name)
 
-    # def getsize(self, path=None):
-    #     dir_path = self.dir_path(path)
-    #     size = 0
-    #     for blob in self.client.list_blobs(self.container_name, prefix=dir_path):
-    #         size += blob.properties.content_length
-    #     return size
+    def getsize(self, path=None):
+        store_path = normalize_storage_path(path)
+        fs_path = self.prefix
+        if store_path:
+            fs_path = self._append_path_to_prefix(store_path, self.prefix)
+        if self.client.exists(self.container_name, fs_path):
+            return self.client.get_blob_properties(self.container_name, fs_path).properties.content_length
+        else:
+            size = 0
+            for blob_name in self.list_abs_directory_blobs(fs_path + '/'):
+                size += self.client.get_blob_properties(self.container_name, blob_name).properties.content_length
+            return size
 
     def clear(self):
         self.rmdir()
