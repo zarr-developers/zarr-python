@@ -1925,6 +1925,7 @@ class ABSStore(MutableMapping):
     # needed for pickling
     def __getstate__(self):
         state = self.__dict__.copy()
+        del state['client']
         return state
 
     def __setstate__(self, state):
