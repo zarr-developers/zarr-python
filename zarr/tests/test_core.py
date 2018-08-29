@@ -16,7 +16,7 @@ import pytest
 
 from zarr.storage import (DirectoryStore, init_array, init_group, NestedDirectoryStore,
                           DBMStore, LMDBStore, atexit_rmtree, atexit_rmglob,
-                          LRUStoreCache)
+                          LRUStoreCache, ChunkCache)
 from zarr.core import Array
 from zarr.errors import PermissionError
 from zarr.compat import PY2, text_type, binary_type
@@ -1698,3 +1698,48 @@ class TestArrayWithStoreCache(TestArray):
         init_array(store, **kwargs)
         return Array(store, read_only=read_only, cache_metadata=cache_metadata,
                      cache_attrs=cache_attrs)
+
+
+class TestArrayWithChunkCache(TestArray):
+
+    @staticmethod
+    def create_array(read_only=False, **kwargs):
+        store = dict()
+        kwargs.setdefault('compressor', Zlib(level=1))
+        cache_metadata = kwargs.pop('cache_metadata', True)
+        cache_attrs = kwargs.pop('cache_attrs', True)
+        init_array(store, **kwargs)
+        return Array(store, read_only=read_only, cache_metadata=cache_metadata,
+                     cache_attrs=cache_attrs, chunk_cache=ChunkCache(max_size=None))
+
+    @staticmethod
+    def create_array_with_cache(read_only=False, **kwargs):
+        store = dict()
+        kwargs.setdefault('compressor', Zlib(level=1))
+        cache_metadata = kwargs.pop('cache_metadata', True)
+        cache_attrs = kwargs.pop('cache_attrs', True)
+        init_array(store, **kwargs)
+        cache = ChunkCache(max_size=None)
+        return Array(store, read_only=read_only, cache_metadata=cache_metadata,
+                     cache_attrs=cache_attrs, chunk_cache=cache), cache
+
+    def test_hit_miss(self):
+        a = np.arange(100).reshape((10, 10))
+        z, cache = self.create_array_with_cache(shape=a.shape, chunks=(10,1), dtype=a.dtype)
+
+        # test write cache
+        z[:] = a
+        assert cache.misses == 0 and cache.hits == 0
+        _ = z[:]
+        assert cache.misses == 0 and cache.hits == 10
+
+        cache.clear()
+        cache.misses = 0
+        cache.hits = 0
+
+        # test read cache
+        assert cache.misses == 0 and cache.hits == 0
+        _ = z[:]
+        assert cache.misses == 10 and cache.hits == 0
+        _ = z[:]
+        assert cache.misses == 10 and cache.hits == 10

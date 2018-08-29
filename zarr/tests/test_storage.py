@@ -19,7 +19,7 @@ from zarr.storage import (init_array, array_meta_key, attrs_key, DictStore,
                           DirectoryStore, ZipStore, init_group, group_meta_key,
                           getsize, migrate_1to2, TempStore, atexit_rmtree,
                           NestedDirectoryStore, default_compressor, DBMStore,
-                          LMDBStore, atexit_rmglob, LRUStoreCache)
+                          LMDBStore, atexit_rmglob, LRUStoreCache, ChunkCache)
 from zarr.meta import (decode_array_metadata, encode_array_metadata, ZARR_FORMAT,
                        decode_group_metadata, encode_group_metadata)
 from zarr.compat import PY2
@@ -1069,6 +1069,61 @@ class TestLRUStoreCache(StoreTests, unittest.TestCase):
         assert 1 == store.counter['__contains__', 'foo']
         assert keys == sorted(store)
         assert 1 == store.counter['__iter__']
+
+
+class TestChunkCache(object):
+
+    def test_cache_values_no_max_size(self):
+
+        # setup cache
+        cache = ChunkCache(max_size=None)
+        assert 0 == cache.hits
+        assert 0 == cache.misses
+        cache['foo'] = b'xxx'
+        cache['bar'] = b'yyy'
+        assert 0 == cache.hits
+        assert 0 == cache.misses
+
+        # test __getitem__ hits cache with existent key
+        assert b'xxx' == cache['foo']
+        assert 1 == cache.hits
+        assert 0 == cache.misses
+
+        # test __getitem__ misses and raises KeyError with non existent key
+        with pytest.raises(KeyError):
+            _ = cache['baz']
+        assert 1 == cache.hits
+        assert 1 == cache.misses
+
+        # test second __getitem__, cache hit
+        assert b'xxx' == cache['foo']
+        assert 2 == cache.hits
+        assert 1 == cache.misses
+
+        # test __setitem__, __getitem__
+        cache['foo'] = b'zzz'
+        # should be a cache hit
+        assert b'zzz' == cache['foo']
+        assert 3 == cache.hits
+        assert 1 == cache.misses
+
+        # manually invalidate all cached values
+        cache.invalidate_values()
+        with pytest.raises(KeyError):
+            assert b'zzz' == cache['foo']
+        cache['foo'] = b'zzz'
+        assert b'zzz' == cache['foo']
+        cache.invalidate()
+        with pytest.raises(KeyError):
+            assert b'zzz' == cache['foo']
+
+        # test __delitem__
+        cache['foo'] = b'zzz'
+        assert b'zzz' == cache['foo']
+        del cache['foo']
+        with pytest.raises(KeyError):
+            # noinspection PyStatementEffect
+            cache['foo']
 
 
 def test_getsize():

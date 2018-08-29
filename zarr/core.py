@@ -103,7 +103,8 @@ class Array(object):
     """
 
     def __init__(self, store, path=None, read_only=False, chunk_store=None,
-                 synchronizer=None, cache_metadata=True, cache_attrs=True):
+                 synchronizer=None, cache_metadata=True, cache_attrs=True,
+                 chunk_cache=None):
         # N.B., expect at this point store is fully initialized with all
         # configuration metadata fully specified and normalized
 
@@ -118,6 +119,7 @@ class Array(object):
         self._synchronizer = synchronizer
         self._cache_metadata = cache_metadata
         self._is_view = False
+        self._chunk_cache = chunk_cache
 
         # initialize metadata
         self._load_metadata()
@@ -1562,8 +1564,21 @@ class Array(object):
         ckey = self._chunk_key(chunk_coords)
 
         try:
+
+            cdata = None
+            chunk_was_cached = False
+
+            # first try getting from cache (if one has been provided)
+            if self._chunk_cache is not None:
+                try:
+                    cdata = self._chunk_cache[ckey]
+                    chunk_was_cached = True
+                except KeyError:
+                    pass
+
             # obtain compressed data for chunk
-            cdata = self.chunk_store[ckey]
+            if not chunk_was_cached:
+                cdata = self.chunk_store[ckey]
 
         except KeyError:
             # chunk not initialized
@@ -1593,8 +1608,12 @@ class Array(object):
                     # contiguous, so we can decompress directly from the chunk
                     # into the destination array
 
-                    if self._compressor:
+                    if chunk_was_cached:
+                        np.copyto(dest, cdata)
+                    elif self._compressor:
                         self._compressor.decode(cdata, dest)
+                        if self._chunk_cache is not None:
+                            self._chunk_cache[ckey] = np.copy(dest)
                     else:
                         if isinstance(cdata, np.ndarray):
                             chunk = cdata.view(self._dtype)
@@ -1602,10 +1621,17 @@ class Array(object):
                             chunk = np.frombuffer(cdata, dtype=self._dtype)
                         chunk = chunk.reshape(self._chunks, order=self._order)
                         np.copyto(dest, chunk)
+                        if self._chunk_cache is not None:
+                            self._chunk_cache[ckey] = np.copy(chunk)
                     return
 
             # decode chunk
-            chunk = self._decode_chunk(cdata)
+            if not chunk_was_cached:
+                chunk = self._decode_chunk(cdata)
+                if self._chunk_cache is not None:
+                    self._chunk_cache[ckey] = np.copy(chunk)
+            else:
+                chunk = np.copy(cdata)
 
             # select data from chunk
             if fields:
@@ -1714,6 +1740,8 @@ class Array(object):
             else:
                 chunk[chunk_selection] = value
 
+        if self._chunk_cache is not None:
+            self._chunk_cache[ckey] = np.copy(chunk)
         # encode chunk
         cdata = self._encode_chunk(chunk)
 
