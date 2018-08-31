@@ -80,15 +80,25 @@ def encode_dtype(d):
         return d.str
 
 
+def _unpack_fields(field, vtype, *shape):
+    if PY2: # pragma: py3 no cover
+        if len(shape):
+            return (field.encode("ascii"), _decode_dtype_descr(vtype), shape[0])
+        else:
+            return (field.encode("ascii"), _decode_dtype_descr(vtype))
+    else: # pragma: py2 no cover
+        return (field, _decode_dtype_descr(vtype), *shape)
+
+
 def _decode_dtype_descr(d):
     # need to convert list of lists to list of tuples
     if isinstance(d, list):
         # recurse to handle nested structures
         if PY2:  # pragma: py3 no cover
             # under PY2 numpy rejects unicode field names
-            d = [(lambda f, v, *s: (f.encode("ascii"), _decode_dtype_descr(v), *s))(*k) for k in d]
+            d = [_unpack_fields(*k) for k in d]
         else:  # pragma: py2 no cover
-            d = [(lambda f, v, *s: (f, _decode_dtype_descr(v), *s))(*k) for k in d]
+            d = [_unpack_fields(*k) for k in d]
     return d
 
 
