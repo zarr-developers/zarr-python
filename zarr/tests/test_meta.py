@@ -131,11 +131,11 @@ def test_encode_decode_array_shape():
     meta_json = '''{
         "chunks": [10],
         "compressor": {"id": "zlib", "level": 1},
-        "dtype": "(10, 10)<f8",
+        "dtype": "<f8",
         "fill_value": null,
         "filters": null,
         "order": "C",
-        "shape": [100],
+        "shape": [100, 10, 10],
         "zarr_format": %s
     }''' % ZARR_FORMAT
 
@@ -146,9 +146,13 @@ def test_encode_decode_array_shape():
     # test decoding
     meta_dec = decode_array_metadata(meta_enc)
     assert ZARR_FORMAT == meta_dec['zarr_format']
-    assert meta['shape'] == meta_dec['shape']
+    # NOTE(onalant): https://github.com/zarr-developers/zarr/pull/296#issuecomment-417608487
+    # To maintain consistency with numpy unstructured arrays, unpack dimensions into shape.
+    # assert meta['shape'] == meta_dec['shape']
     assert meta['chunks'] == meta_dec['chunks']
-    assert meta['dtype'] == meta_dec['dtype']
+    # NOTE(onalant): https://github.com/zarr-developers/zarr/pull/296#issuecomment-417608487
+    # To maintain consistency with numpy unstructured arrays, unpack dimensions into shape.
+    # assert meta['dtype'] == meta_dec['dtype']
     assert meta['compressor'] == meta_dec['compressor']
     assert meta['order'] == meta_dec['order']
     assert meta_dec['fill_value'] is None

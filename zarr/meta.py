@@ -54,9 +54,12 @@ def decode_array_metadata(s):
 
 def encode_array_metadata(meta):
     dtype = meta['dtype']
+    sdshape = ()
+    if dtype.subdtype is not None:
+        dtype, sdshape = dtype.subdtype
     meta = dict(
         zarr_format=ZARR_FORMAT,
-        shape=meta['shape'],
+        shape=meta['shape'] + sdshape,
         chunks=meta['chunks'],
         dtype=encode_dtype(dtype),
         compressor=meta['compressor'],
@@ -73,9 +76,6 @@ def encode_array_metadata(meta):
 def encode_dtype(d):
     if d.fields is not None:
         return d.descr
-    elif d.subdtype is not None:
-        sdname, sdshape = d.subdtype
-        return "%s%s" % (str(sdshape), sdname.str)
     else:
         return d.str
 
