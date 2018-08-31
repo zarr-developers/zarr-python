@@ -71,10 +71,13 @@ def encode_array_metadata(meta):
 
 
 def encode_dtype(d):
-    if d.fields is None:
-        return d.str
-    else:
+    if d.fields is not None:
         return d.descr
+    elif d.subdtype is not None:
+        sdname, sdshape = d.subdtype
+        return "%s%s" % (str(sdshape), sdname.str)
+    else:
+        return d.str
 
 
 def _decode_dtype_descr(d):
