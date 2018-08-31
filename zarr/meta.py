@@ -83,10 +83,11 @@ def _decode_dtype_descr(d):
         # recurse to handle nested structures
         if PY2:  # pragma: py3 no cover
             # under PY2 numpy rejects unicode field names
-            d = [(f.encode('ascii'), _decode_dtype_descr(v))
-                 for f, v in d]
+            unpack = lambda f, v, *s: (f.encode('ascii'), _decode_dtype_descr(v), *s)
+            d = [unpack(*k) for k in d]
         else:  # pragma: py2 no cover
-            d = [(f, _decode_dtype_descr(v)) for f, v in d]
+            unpack = lambda f, v, *s: (f, _decode_dtype_descr(v), *s)
+            d = [unpack(*k) for k in d]
     return d
 
 
