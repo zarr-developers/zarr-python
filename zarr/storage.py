@@ -1958,10 +1958,8 @@ class ABSStore(MutableMapping):
         if PY2 and isinstance(value, array.array):
             value = value.tostring()
         blob_name = '/'.join([self.prefix, key])
-        buffer = io.BytesIO()
-        buffer.write(value)
-        buffer.seek(0)
-        self.client.create_blob_from_bytes(self.container_name, blob_name, buffer.read())
+        buffer = io.BytesIO(value)
+        self.client.create_blob_from_stream(self.container_name, blob_name, buffer)
 
     def __delitem__(self, key):
         if self.client.exists(self.container_name, '/'.join([self.prefix, key])):
