@@ -1908,19 +1908,21 @@ class ABSStore(MutableMapping):
     Notes
     -----
     In order to use this store, you must install the Azure Blob Storage
-    `Python Client Library <https://github.com/Azure/azure-storage-python/tree/master/azure-storage-blob>`_ version >= 1.3.0.
+    https://github.com/Azure/azure-storage-python/tree/master/azure-storage-blob_ version >= 1.3.0.
     """
 
-    def __init__(self, container, prefix, account_name=None, account_key=None, blob_service_kwargs=None):
+    def __init__(self, container, prefix, account_name=None, account_key=None,
+                 blob_service_kwargs=None):
         self.container_name = container
         self.prefix = normalize_storage_path(prefix)
         self.account_name = account_name
         self.account_key = account_key
         if blob_service_kwargs is not None:
-             self.blob_service_kwargs = blob_service_kwargs
+            self.blob_service_kwargs = blob_service_kwargs
         else:
-             self.blob_service_kwargs = dict()
-        self.client = BlockBlobService(self.account_name, self.account_key, **self.blob_service_kwargs)
+            self.blob_service_kwargs = dict()
+        self.client = BlockBlobService(self.account_name, self.account_key,
+                                       **self.blob_service_kwargs)
 
     # needed for pickling
     def __getstate__(self):
@@ -1930,7 +1932,8 @@ class ABSStore(MutableMapping):
 
     def __setstate__(self, state):
         self.__dict__.update(state)
-        self.client = BlockBlobService(self.account_name, self.account_key, **self.blob_service_kwargs)
+        self.client = BlockBlobService(self.account_name, self.account_key,
+                                       **self.blob_service_kwargs)
 
     def __enter__(self):
         return self
@@ -1995,7 +1998,11 @@ class ABSStore(MutableMapping):
 
     def list_abs_directory_blobs(self, prefix):
         """Return list of all blobs from an abs prefix."""
-        return [blob.name for blob in self.client.list_blobs(self.container_name, prefix=prefix) if '/' not in blob.name[len(prefix):]]
+        blobs = list()
+        for blob in self.client.list_blobs(self.container_name, prefix=prefix):
+            if '/' not in blob.name[len(prefix):]:
+                blobs.append(blob.name)
+        return blobs
 
     def list_abs_subdirectories(self, prefix):
         """Return list of all "subdirectories" from an abs prefix."""
@@ -2052,11 +2059,13 @@ class ABSStore(MutableMapping):
         if store_path:
             fs_path = self._append_path_to_prefix(store_path, self.prefix)
         if self.client.exists(self.container_name, fs_path):
-            return self.client.get_blob_properties(self.container_name, fs_path).properties.content_length
+            return self.client.get_blob_properties(self.container_name,
+                                                   fs_path).properties.content_length
         else:
             size = 0
             for blob_name in self.list_abs_directory_blobs(fs_path + '/'):
-                size += self.client.get_blob_properties(self.container_name, blob_name).properties.content_length
+                size += self.client.get_blob_properties(self.container_name,
+                                                        blob_name).properties.content_length
             return size
 
     def clear(self):
