@@ -1577,10 +1577,6 @@ class TestArrayWithFilters(TestArray):
     def create_array(read_only=False, **kwargs):
         store = dict()
         dtype = kwargs.get('dtype', None)
-        # WARN(onalant): this is to compensate for unstructured dtypes
-        #                should this be in upstream numcodecs?
-        if isinstance(dtype, np.dtype):
-            dtype = dtype.base
         filters = [
             Delta(dtype=dtype),
             FixedScaleOffset(dtype=dtype, scale=1, offset=0),
@@ -1650,6 +1646,10 @@ class TestArrayWithFilters(TestArray):
 
         expected = data.astype(astype)
         assert_array_equal(expected, z2)
+
+    def test_unstructured_array(self):
+        # skip this one, cannot do delta on unstructured array
+        pass
 
     def test_structured_array(self):
         # skip this one, cannot do delta on structured array
