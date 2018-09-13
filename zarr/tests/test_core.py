@@ -846,6 +846,28 @@ class TestArray(unittest.TestCase):
         z[:] = 42
         assert 10 == z.nchunks_initialized
 
+    def test_unstructured_array(self):
+
+        subshape = (2, 2)
+        dt = np.dtype("%sf4" % (subshape,))
+        # setup some data
+        d = np.array([((0, 1),
+                       (1, 2)),
+                      ((1, 2),
+                       (2, 3)),
+                      ((2, 3),
+                       (3, 4))],
+                     dtype=dt)
+
+        for a in (d, d[:0]):
+            for fill_value in None, 0:
+                z = self.create_array(shape=a.shape[:-len(subshape)], chunks=2, dtype=dt, fill_value=fill_value)
+                assert len(a) == len(z)
+                if fill_value is not None:
+                    assert fill_value == z.fill_value
+                z[...] = a
+                assert_array_equal(a, z[...])
+
     def test_structured_array(self):
 
         # setup some data
@@ -874,6 +896,70 @@ class TestArray(unittest.TestCase):
                 assert_array_equal(a['foo'], z['foo'])
                 assert_array_equal(a['bar'], z['bar'])
                 assert_array_equal(a['baz'], z['baz'])
+
+    def test_structured_array_subshapes(self):
+
+        # setup some data
+        d = np.array([(0, ((0, 1, 2), (1, 2, 3)), b'aaa'),
+                      (1, ((1, 2, 3), (2, 3, 4)), b'bbb'),
+                      (2, ((2, 3, 4), (3, 4, 5)), b'ccc')],
+                     dtype=[('foo', 'i8'), ('bar', '(2, 3)f4'), ('baz', 'S3')])
+        for a in (d, d[:0]):
+            for fill_value in None, b'', (0, ((0, 0, 0), (1, 1, 1)), b'zzz'):
+                z = self.create_array(shape=a.shape, chunks=2, dtype=a.dtype, fill_value=fill_value)
+                assert len(a) == len(z)
+                if fill_value is not None:
+                    if fill_value == b'':
+                        # numpy 1.14 compatibility
+                        np_fill_value = np.array(fill_value, dtype=a.dtype.str).view(a.dtype)[()]
+                    else:
+                        np_fill_value = np.array(fill_value, dtype=a.dtype)[()]
+                    assert np_fill_value == z.fill_value
+                    if len(z):
+                        assert np_fill_value == z[0]
+                        assert np_fill_value == z[-1]
+                z[...] = a
+                if len(a):
+                    assert a[0] == z[0]
+                    assert_array_equal(a, z[...])
+                    assert_array_equal(a['foo'], z['foo'])
+                    assert_array_equal(a['bar'], z['bar'])
+                    assert_array_equal(a['baz'], z['baz'])
+                else:
+                    # BUG(onalant): numpy cannot compare empty arrays of structured dtypes with shapes
+                    assert a.tobytes() == z[...].tobytes()
+
+    def test_structured_array_nested(self):
+
+        # setup some data
+        d = np.array([(0, (0, ((0, 1), (1, 2), (2, 3)), 0), b'aaa'),
+                      (1, (1, ((1, 2), (2, 3), (3, 4)), 1), b'bbb'),
+                      (2, (2, ((2, 3), (3, 4), (4, 5)), 2), b'ccc')],
+                     dtype=[('foo', 'i8'), ('bar', [('foo', 'i4'), ('bar', '(3, 2)f4'), ('baz', 'u1')]), ('baz', 'S3')])
+        for a in (d, d[:0]):
+            for fill_value in None, b'', (0, (0, ((0, 0), (1, 1), (2, 2)), 0), b'zzz'):
+                z = self.create_array(shape=a.shape, chunks=2, dtype=a.dtype, fill_value=fill_value)
+                assert len(a) == len(z)
+                if fill_value is not None:
+                    if fill_value == b'':
+                        # numpy 1.14 compatibility
+                        np_fill_value = np.array(fill_value, dtype=a.dtype.str).view(a.dtype)[()]
+                    else:
+                        np_fill_value = np.array(fill_value, dtype=a.dtype)[()]
+                    assert np_fill_value == z.fill_value
+                    if len(z):
+                        assert np_fill_value == z[0]
+                        assert np_fill_value == z[-1]
+                z[...] = a
+                if len(a):
+                    assert a[0] == z[0]
+                    assert_array_equal(a, z[...])
+                    assert_array_equal(a['foo'], z['foo'])
+                    assert_array_equal(a['bar'], z['bar'])
+                    assert_array_equal(a['baz'], z['baz'])
+                else:
+                    # BUG(onalant): numpy cannot compare empty arrays of structured dtypes with shapes
+                    assert a.tobytes() == z[...].tobytes()
 
     def test_dtypes(self):
 
@@ -1489,6 +1575,10 @@ class TestArrayWithFilters(TestArray):
     def create_array(read_only=False, **kwargs):
         store = dict()
         dtype = kwargs.get('dtype', None)
+        # WARN(onalant): this is to compensate for unstructured dtypes
+        #                should this be in upstream numcodecs?
+        if isinstance(dtype, np.dtype):
+            dtype = dtype.base
         filters = [
             Delta(dtype=dtype),
             FixedScaleOffset(dtype=dtype, scale=1, offset=0),
@@ -1560,6 +1650,14 @@ class TestArrayWithFilters(TestArray):
         assert_array_equal(expected, z2)
 
     def test_structured_array(self):
+        # skip this one, cannot do delta on structured array
+        pass
+
+    def test_structured_array_subshapes(self):
+        # skip this one, cannot do delta on structured array
+        pass
+
+    def test_structured_array_nested(self):
         # skip this one, cannot do delta on structured array
         pass
 
