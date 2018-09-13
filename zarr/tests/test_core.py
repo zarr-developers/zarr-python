@@ -925,8 +925,7 @@ class TestArray(unittest.TestCase):
                     assert_array_equal(a['bar'], z['bar'])
                     assert_array_equal(a['baz'], z['baz'])
                 else:
-                    # BUG(onalant): numpy cannot compare empty arrays of structured dtypes with
-                    #               subshapes
+                    # BUG(onalant): https://www.github.com/numpy/numpy/issues/11946
                     assert a.tobytes() == z[...].tobytes()
 
     def test_structured_array_nested(self):
@@ -959,8 +958,7 @@ class TestArray(unittest.TestCase):
                     assert_array_equal(a['bar'], z['bar'])
                     assert_array_equal(a['baz'], z['baz'])
                 else:
-                    # BUG(onalant): numpy cannot compare empty arrays of structured dtypes with
-                    #               subshapes
+                    # BUG(onalant): https://www.github.com/numpy/numpy/issues/11946
                     assert a.tobytes() == z[...].tobytes()
 
     def test_dtypes(self):
