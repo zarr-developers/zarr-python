@@ -1631,7 +1631,7 @@ class Array(object):
                 if self._chunk_cache is not None:
                     self._chunk_cache[ckey] = np.copy(chunk)
             else:
-                chunk = np.copy(cdata)
+                chunk = cdata
 
             # select data from chunk
             if fields:
