@@ -116,7 +116,7 @@ def test_encode_decode_array_2():
     assert [df.get_config()] == meta_dec['filters']
 
 
-def test_encode_decode_array_unstructured():
+def test_encode_decode_array_dtype_shape():
 
     meta = dict(
         shape=(100,),
@@ -146,12 +146,10 @@ def test_encode_decode_array_unstructured():
     # test decoding
     meta_dec = decode_array_metadata(meta_enc)
     assert ZARR_FORMAT == meta_dec['zarr_format']
-    # NOTE(onalant): https://github.com/zarr-developers/zarr/pull/296#issuecomment-417608487
-    # To maintain consistency with numpy unstructured arrays, unpack dimensions into shape.
+    # to maintain consistency with numpy unstructured arrays, unpack dimensions into shape
     assert meta['shape'] + meta['dtype'].shape == meta_dec['shape']
     assert meta['chunks'] == meta_dec['chunks']
-    # NOTE(onalant): https://github.com/zarr-developers/zarr/pull/296#issuecomment-417608487
-    # To maintain consistency with numpy unstructured arrays, unpack dtypes.
+    # to maintain consistency with numpy unstructured arrays, unpack dtypes
     assert meta['dtype'].base == meta_dec['dtype']
     assert meta['compressor'] == meta_dec['compressor']
     assert meta['order'] == meta_dec['order']
@@ -189,12 +187,10 @@ def test_encode_decode_array_structured():
     # test decoding
     meta_dec = decode_array_metadata(meta_enc)
     assert ZARR_FORMAT == meta_dec['zarr_format']
-    # NOTE(onalant): https://github.com/zarr-developers/zarr/pull/296#issuecomment-417608487
-    # To maintain consistency with numpy unstructured arrays, unpack dimensions into shape.
+    # to maintain consistency with numpy unstructured arrays, unpack dimensions into shape
     assert meta['shape'] + meta['dtype'].shape == meta_dec['shape']
     assert meta['chunks'] == meta_dec['chunks']
-    # NOTE(onalant): https://github.com/zarr-developers/zarr/pull/296#issuecomment-417608487
-    # To maintain consistency with numpy unstructured arrays, unpack dtypes.
+    # to maintain consistency with numpy unstructured arrays, unpack dimensions into shape
     assert meta['dtype'].base == meta_dec['dtype']
     assert meta['compressor'] == meta_dec['compressor']
     assert meta['order'] == meta_dec['order']

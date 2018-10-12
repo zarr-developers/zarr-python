@@ -846,7 +846,7 @@ class TestArray(unittest.TestCase):
         z[:] = 42
         assert 10 == z.nchunks_initialized
 
-    def test_unstructured_array(self):
+    def test_array_dtype_shape(self):
 
         dt = "(2, 2)f4"
         # setup some data
@@ -925,7 +925,7 @@ class TestArray(unittest.TestCase):
                     assert_array_equal(a['bar'], z['bar'])
                     assert_array_equal(a['baz'], z['baz'])
                 else:
-                    # BUG(onalant): https://www.github.com/numpy/numpy/issues/11946
+                    # workaround for numpy bug https://www.github.com/numpy/numpy/issues/11946
                     assert a.tobytes() == z[...].tobytes()
 
     def test_structured_array_nested(self):
@@ -958,7 +958,7 @@ class TestArray(unittest.TestCase):
                     assert_array_equal(a['bar'], z['bar'])
                     assert_array_equal(a['baz'], z['baz'])
                 else:
-                    # BUG(onalant): https://www.github.com/numpy/numpy/issues/11946
+                    # workaround for numpy bug https://www.github.com/numpy/numpy/issues/11946
                     assert a.tobytes() == z[...].tobytes()
 
     def test_dtypes(self):
@@ -1645,7 +1645,7 @@ class TestArrayWithFilters(TestArray):
         expected = data.astype(astype)
         assert_array_equal(expected, z2)
 
-    def test_unstructured_array(self):
+    def test_array_dtype_shape(self):
         # skip this one, cannot do delta on unstructured array
         pass
 
