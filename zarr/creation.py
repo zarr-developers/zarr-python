@@ -9,6 +9,7 @@ import numpy as np
 from zarr.core import Array
 from zarr.storage import (DirectoryStore, init_array, contains_array, contains_group,
                           default_compressor, normalize_storage_path, ZipStore)
+from zarr.n5 import N5Store
 from numcodecs.registry import codec_registry
 from zarr.errors import err_contains_array, err_contains_group, err_array_not_found
 
@@ -132,6 +133,8 @@ def normalize_store_arg(store, clobber=False, default=dict):
         if store.endswith('.zip'):
             mode = 'w' if clobber else 'a'
             return ZipStore(store, mode=mode)
+        elif store.endswith('.n5'):
+            return N5Store(store)
         else:
             return DirectoryStore(store)
     else:
