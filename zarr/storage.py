@@ -1886,15 +1886,38 @@ class LRUStoreCache(MutableMapping):
 
 
 class LRUChunkCache(MutableMapping):
-    """Storage class that implements a least-recently-used (LRU) cache for array chunks.
+    """Class that implements a least-recently-used (LRU) cache for array chunks.
     Intended primarily for use with stores that can be slow to access, e.g., remote stores that
-    require network communication to store and retrieve data.
+    require network communication to store and retrieve data, and/or arrays where decompression
+    of data is computationally expensive.
 
     Parameters
     ----------
     max_size : int
         The maximum size that the cache may grow to, in number of bytes. Provide `None`
         if you would like the cache to have unlimited size.
+
+    Examples
+    --------
+    The example below uses a dict store to store the encoded array and uses LRUChunkCache to
+    store decoded chunks::
+
+        >>> import zarr
+        >>> from numcodecs import LZMA
+        >>> import numpy as np
+        >>> store = zarr.DictStore()
+        >>> z = zarr.array(np.random.randn(1000000).reshape(1000,1000), chunks=(100,100), store=store, compressor=LZMA())
+        >>> from timeit import timeit
+        >>> # data access without cache
+        ... timeit('z[:]', number=1, globals=globals())  # doctest: +SKIP
+        0.6703157789888792
+        >>> z_with_cache = zarr.Array(store=store, chunk_cache=zarr.LRUChunkCache(max_size=None))
+        >>> # first data access about the same as without cache
+        ... timeit('z_with_cache[:]', number=1, globals=globals())  # doctest: +SKIP
+        0.681269913999131
+        >>> # second time accesses the decoded chunks in the cache
+        ... timeit('z_with_cache[:]', number=1, globals=globals())  # doctest: +SKIP
+        0.007617925992235541
 
     """
 

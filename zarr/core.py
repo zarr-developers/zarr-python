@@ -51,6 +51,10 @@ class Array(object):
         If True (default), user attributes will be cached for attribute read
         operations. If False, user attributes are reloaded from the store prior
         to all attribute read operations.
+    chunk_cache: MutableMapping, optional
+        Mapping to store decoded chunks for caching. Can be used in repeated
+        chunk access scenarios when decoding of data is computationally
+        expensive.
 
     Attributes
     ----------
