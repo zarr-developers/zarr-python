@@ -19,7 +19,7 @@ from zarr.storage import (init_array, array_meta_key, attrs_key, DictStore,
                           DirectoryStore, ZipStore, init_group, group_meta_key,
                           getsize, migrate_1to2, TempStore, atexit_rmtree,
                           NestedDirectoryStore, default_compressor, DBMStore,
-                          LMDBStore, atexit_rmglob, LRUStoreCache, ChunkCache)
+                          LMDBStore, atexit_rmglob, LRUStoreCache, LRUChunkCache)
 from zarr.meta import (decode_array_metadata, encode_array_metadata, ZARR_FORMAT,
                        decode_group_metadata, encode_group_metadata)
 from zarr.compat import PY2
@@ -1071,7 +1071,7 @@ class TestLRUStoreCache(StoreTests, unittest.TestCase):
         assert 1 == store.counter['__iter__']
 
 
-class TestChunkCache(object):
+class TestLRUChunkCache(object):
 
     class MockChunkCacheArray(object):
 
@@ -1103,7 +1103,7 @@ class TestChunkCache(object):
         assert 1 == store.counter['__setitem__', 'bar']
 
         # setup cache
-        cache = ChunkCache(max_size=None)
+        cache = LRUChunkCache(max_size=None)
         assert 0 == cache.hits
         assert 0 == cache.misses
 
@@ -1165,7 +1165,7 @@ class TestChunkCache(object):
         assert 0 == store.counter['__getitem__', 'bar']
 
         # setup cache can only hold one item
-        cache = ChunkCache(max_size=5)
+        cache = LRUChunkCache(max_size=5)
         assert 0 == cache.hits
         assert 0 == cache.misses
 
@@ -1216,7 +1216,7 @@ class TestChunkCache(object):
         assert 0 == store.counter['__getitem__', 'bar']
 
         # setup cache can hold 2 items
-        cache = ChunkCache(max_size=6)
+        cache = LRUChunkCache(max_size=6)
         assert 0 == cache.hits
         assert 0 == cache.misses
 

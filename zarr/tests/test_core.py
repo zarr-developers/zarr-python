@@ -16,7 +16,7 @@ import pytest
 
 from zarr.storage import (DirectoryStore, init_array, init_group, NestedDirectoryStore,
                           DBMStore, LMDBStore, atexit_rmtree, atexit_rmglob,
-                          LRUStoreCache, ChunkCache)
+                          LRUStoreCache, LRUChunkCache)
 from zarr.core import Array
 from zarr.errors import PermissionError
 from zarr.compat import PY2, text_type, binary_type
@@ -1700,7 +1700,7 @@ class TestArrayWithStoreCache(TestArray):
                      cache_attrs=cache_attrs)
 
 
-class TestArrayWithChunkCache(TestArray):
+class TestArrayWithLRUChunkCache(TestArray):
 
     @staticmethod
     def create_array(read_only=False, **kwargs):
@@ -1710,7 +1710,7 @@ class TestArrayWithChunkCache(TestArray):
         cache_attrs = kwargs.pop('cache_attrs', True)
         init_array(store, **kwargs)
         return Array(store, read_only=read_only, cache_metadata=cache_metadata,
-                     cache_attrs=cache_attrs, chunk_cache=ChunkCache(max_size=None))
+                     cache_attrs=cache_attrs, chunk_cache=LRUChunkCache(max_size=None))
 
     @staticmethod
     def create_array_with_cache(read_only=False, **kwargs):
@@ -1719,7 +1719,7 @@ class TestArrayWithChunkCache(TestArray):
         cache_metadata = kwargs.pop('cache_metadata', True)
         cache_attrs = kwargs.pop('cache_attrs', True)
         init_array(store, **kwargs)
-        cache = ChunkCache(max_size=None)
+        cache = LRUChunkCache(max_size=None)
         return Array(store, read_only=read_only, cache_metadata=cache_metadata,
                      cache_attrs=cache_attrs, chunk_cache=cache), cache
 
