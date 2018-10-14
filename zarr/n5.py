@@ -9,8 +9,9 @@ from .storage import (
         array_meta_key as zarr_array_meta_key,
         attrs_key as zarr_attrs_key,
         _prog_ckey)
+from numcodecs.abc import Codec
+from numcodecs.registry import register_codec, get_codec
 import json
-import re
 
 zarr_to_n5_keys = [
     ('chunks', 'blockSize'),
@@ -59,8 +60,6 @@ class N5Store(NestedDirectoryStore):
 
     def __getitem__(self, key):
 
-        print("Getting key %s"%key)
-
         if key.endswith(zarr_group_meta_key):
             key = key.replace(zarr_group_meta_key, n5_attrs_key)
             value = group_metadata_to_zarr(json.loads(self[key]))
@@ -79,8 +78,6 @@ class N5Store(NestedDirectoryStore):
         return super(N5Store, self).__getitem__(key)
 
     def __setitem__(self, key, value):
-
-        print("Setting %s to %s"%(key, value[:10]))
 
         if key.endswith(zarr_group_meta_key):
 
@@ -123,8 +120,6 @@ class N5Store(NestedDirectoryStore):
         # super(N5Store, self).__delitem__(key)
 
     def __contains__(self, key):
-
-        print("Checking if %s exists"%key)
 
         if key.endswith(zarr_group_meta_key):
             key = key.replace(zarr_group_meta_key, n5_attrs_key)
@@ -186,16 +181,20 @@ def array_metadata_to_n5(array_metadata):
         del array_metadata[f]
     del array_metadata['zarr_format']
 
-    if 'compression' in array_metadata:
-        compression = array_metadata['compression']
-        compression['type'] = compression['cname']
-        del compression['cname']
-        if 'blocksize' in compression:
-            compression['blockSize'] = compression['blocksize']
-            del compression['blocksize']
-        if 'clevel' in compression:
-            compression['level'] = compression['clevel']
-            del compression['clevel']
+    assert 'compression' in array_metadata
+    assert array_metadata['compression']['id'] == N5ChunkWrapper.codec_id
+
+    compressor_config = array_metadata['compression']['compressor_config']
+    if 'cname' in compressor_config:
+        compressor_config['type'] = compressor_config['cname']
+        del compressor_config['cname']
+    if 'blocksize' in compressor_config:
+        compressor_config['blockSize'] = compressor_config['blocksize']
+        del compressor_config['blocksize']
+    if 'clevel' in compressor_config:
+        compressor_config['level'] = compressor_config['clevel']
+        del compressor_config['clevel']
+    array_metadata['compression'] = compressor_config
 
     return array_metadata
 
@@ -206,15 +205,80 @@ def array_metadata_to_zarr(array_metadata):
         del array_metadata[f]
     array_metadata['zarr_format'] = ZARR_FORMAT
 
-    if 'compressor' in array_metadata:
-        compression = array_metadata['compressor']
-        compression['cname'] = compression['type']
-        del compression['type']
-        if 'blockSize' in compression:
-            compression['blocksize'] = compression['blockSize']
-            del compression['blockSize']
-        if 'level' in compression:
-            compression['clevel'] = compression['level']
-            del compression['level']
+    assert 'compressor' in array_metadata
+
+    compressor_config = array_metadata['compressor']
+    if 'type' in compressor_config:
+        compressor_config['cname'] = compressor_config['type']
+        del compressor_config['type']
+    if 'blockSize' in compressor_config:
+        compressor_config['blocksize'] = compressor_config['blockSize']
+        del compressor_config['blockSize']
+    if 'level' in compressor_config:
+        compressor_config['clevel'] = compressor_config['level']
+        del compressor_config['level']
+    array_metadata['compressor'] = {
+        'id': N5ChunkWrapper.codec_id,
+        'compressor_config': compressor_config
+    }
 
     return array_metadata
+
+class N5ChunkWrapper(Codec):
+
+    codec_id = 'n5_wrapper'
+
+    def __init__(self, compressor_config=None, compressor=None):
+
+        if compressor:
+            assert compressor_config is None, (
+                "Only one of compressor_config or compressor should be given.")
+            compressor_config = compressor.get_config()
+
+        self.compressor_config = compressor_config
+        self._compressor = get_codec(compressor_config)
+
+    def get_config(self):
+        config = {
+            'id': self.codec_id,
+            'compressor_config': self._compressor.get_config()
+        }
+        return config
+
+    def encode(self, chunk):
+
+        header = self._create_header(chunk)
+        return header + self._compressor.encode(chunk)
+
+    def decode(self, chunk, out=None):
+
+        len_header, header = self._read_header(chunk)
+        chunk = chunk[len_header:]
+        return self._compressor.decode(chunk, out)
+
+    def _create_header(self, chunk):
+
+        mode = int(0).to_bytes(2, byteorder='big')
+        num_dims = len(chunk.shape).to_bytes(2, byteorder='big')
+        shape = b''.join(d.to_bytes(4, byteorder='big') for d in chunk.shape)
+
+        return mode + num_dims + shape
+
+    def _read_header(self, chunk):
+
+        mode = int.from_bytes(chunk[0:2], byteorder='big')
+        num_dims = int.from_bytes(chunk[2:4], byteorder='big')
+        shape = (
+            int.from_bytes(chunk[i:i+4], byteorder='big')
+            for i in range(4, num_dims*4 + 4)
+        )
+
+        len_header = 4 + num_dims*4
+
+        return len_header, {
+            'mode': mode,
+            'num_dims': num_dims,
+            'shape': shape
+        }
+
+register_codec(N5ChunkWrapper, 'n5_wrapper')
