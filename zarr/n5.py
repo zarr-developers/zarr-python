@@ -182,9 +182,8 @@ def array_metadata_to_n5(array_metadata):
     array_metadata['blockSize'] = array_metadata['blockSize'][::-1]
 
     assert 'compression' in array_metadata
-    assert array_metadata['compression']['id'] == N5ChunkWrapper.codec_id
 
-    compressor_config = array_metadata['compression']['compressor_config']
+    compressor_config = array_metadata['compression']
     compressor_config = compressor_config_to_n5(compressor_config)
     if compressor_config:
         array_metadata['compression'] = compressor_config
@@ -214,6 +213,9 @@ def array_metadata_to_zarr(array_metadata):
     return array_metadata
 
 def compressor_config_to_n5(compressor_config):
+
+    if compressor_config is None:
+        return { 'type': 'raw' }
 
     codec_id = compressor_config['id']
     n5_config = { 'type': codec_id }
