@@ -10,10 +10,12 @@ from .storage import (
         attrs_key as zarr_attrs_key,
         _prog_ckey)
 from numcodecs.abc import Codec
+from numcodecs.compat import buffer_copy
 from numcodecs.registry import register_codec, get_codec
-import numpy as np
 import json
 import logging
+import numpy as np
+import struct
 
 logger = logging.getLogger(__name__)
 
@@ -215,14 +217,13 @@ def array_metadata_to_zarr(array_metadata):
     compressor_config = compressor_config_to_zarr(compressor_config)
     array_metadata['compressor'] = {
         'id': N5ChunkWrapper.codec_id,
-        'compressor_config': compressor_config
+        'compressor_config': compressor_config,
+        'dtype': array_metadata['dtype']
     }
 
     return array_metadata
 
 def compressor_config_to_n5(compressor_config):
-
-    print("Converting %s to N5..."%compressor_config)
 
     codec_id = compressor_config['id']
     n5_config = { 'type': codec_id }
@@ -281,8 +282,6 @@ def compressor_config_to_n5(compressor_config):
 
 def compressor_config_to_zarr(compressor_config):
 
-    print("Converting %s to zarr..."%compressor_config)
-
     codec_id = compressor_config['type']
     zarr_config = { 'id': codec_id }
 
@@ -327,7 +326,21 @@ class N5ChunkWrapper(Codec):
 
     codec_id = 'n5_wrapper'
 
-    def __init__(self, compressor_config=None, compressor=None):
+    def __init__(self, dtype, compressor_config=None, compressor=None):
+
+        self.dtype = np.dtype(dtype)
+        self._dtype_format = {
+            'uint8': 'B',
+            'uint16': 'H',
+            'uint32': 'I',
+            'uint64': 'Q',
+            'int8': 'b',
+            'int16': 'h',
+            'int32': 'i',
+            'int64': 'q',
+            'float32': 'f',
+            'float64': 'd'
+        }[self.dtype.name]
 
         if compressor:
             assert compressor_config is None, (
@@ -357,6 +370,8 @@ class N5ChunkWrapper(Codec):
         if self._compressor:
             return header + self._compressor.encode(chunk)
         else:
+            # get chunk data in big endian
+            chunk = chunk.astype(self.dtype.newbyteorder('>')).tobytes()
             return header + chunk
 
     def decode(self, chunk, out=None):
@@ -365,9 +380,21 @@ class N5ChunkWrapper(Codec):
         chunk = chunk[len_header:]
 
         if self._compressor:
+
             return self._compressor.decode(chunk, out)
+
         else:
-            return chunk
+
+            # get chunk data in little endian
+            n = 1
+            for d in header['shape']:
+                n *= d
+            big_endian_format = '>%d'%n + self._dtype_format
+            little_endian_format = '<%d'%n + self._dtype_format
+            unpacked = struct.unpack(big_endian_format, chunk)
+            chunk = struct.pack(little_endian_format, *unpacked)
+
+            return buffer_copy(chunk, out)
 
     def _create_header(self, chunk):
 
@@ -381,16 +408,15 @@ class N5ChunkWrapper(Codec):
 
         mode = int.from_bytes(chunk[0:2], byteorder='big')
         num_dims = int.from_bytes(chunk[2:4], byteorder='big')
-        shape = (
+        shape = tuple(
             int.from_bytes(chunk[i:i+4], byteorder='big')
-            for i in range(4, num_dims*4 + 4)
+            for i in range(4, num_dims*4 + 4, 4)
         )
 
         len_header = 4 + num_dims*4
 
         return len_header, {
             'mode': mode,
-            'num_dims': num_dims,
             'shape': shape
         }
 
