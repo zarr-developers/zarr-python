@@ -186,6 +186,8 @@ def array_metadata_to_n5(array_metadata):
     del array_metadata['zarr_format']
 
     array_metadata['dataType'] = np.dtype(array_metadata['dataType']).name
+    array_metadata['dimensions'] = array_metadata['dimensions'][::-1]
+    array_metadata['blockSize'] = array_metadata['blockSize'][::-1]
 
     assert 'compression' in array_metadata
     assert array_metadata['compression']['id'] == N5ChunkWrapper.codec_id
@@ -205,6 +207,9 @@ def array_metadata_to_zarr(array_metadata):
         array_metadata[t] = array_metadata[f]
         del array_metadata[f]
     array_metadata['zarr_format'] = ZARR_FORMAT
+
+    array_metadata['shape'] = array_metadata['shape'][::-1]
+    array_metadata['chunks'] = array_metadata['chunks'][::-1]
 
     compressor_config = array_metadata['compressor']
     compressor_config = compressor_config_to_zarr(compressor_config)
