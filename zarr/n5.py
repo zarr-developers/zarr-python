@@ -230,11 +230,8 @@ def compressor_config_to_n5(compressor_config):
 
     if codec_id == 'bz2':
 
-        logger.warn("Not all N5 implementations support bz2 compression "
-            "(yet). You might not be able to open the dataset with another "
-            "N5 library.")
-
-        n5_config['level'] = compressor_config['level']
+        n5_config['type'] = 'bzip2'
+        n5_config['blockSize'] = compressor_config['level']
 
     elif codec_id == 'blosc':
 
@@ -250,7 +247,7 @@ def compressor_config_to_n5(compressor_config):
 
     elif codec_id == 'lz4':
 
-        n5_config['level'] = compressor_config['acceleration']
+        n5_config['blockSize'] = compressor_config['acceleration']
 
     elif codec_id == 'lzma':
 
@@ -267,7 +264,7 @@ def compressor_config_to_n5(compressor_config):
 
         n5_config['type'] = 'gzip'
         n5_config['level'] = compressor_config['level']
-        n5_config['useZlib'] = False
+        n5_config['useZlib'] = True
 
     elif codec_id == 'raw':
 
@@ -285,9 +282,10 @@ def compressor_config_to_zarr(compressor_config):
     codec_id = compressor_config['type']
     zarr_config = { 'id': codec_id }
 
-    if codec_id == 'bz2':
+    if codec_id == 'bzip2':
 
-        zarr_config['level'] = compressor_config['level']
+        zarr_config['id'] = 'bz2'
+        zarr_config['level'] = compressor_config['blockSize']
 
     elif codec_id == 'blosc':
 
@@ -298,7 +296,7 @@ def compressor_config_to_zarr(compressor_config):
 
     elif codec_id == 'lz4':
 
-        zarr_config['acceleration'] = compressor_config['level']
+        zarr_config['acceleration'] = compressor_config['blockSize']
 
     elif codec_id == 'lzma':
 
