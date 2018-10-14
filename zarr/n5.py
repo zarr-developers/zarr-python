@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
-"""This module contains a storage class to support the N5 format.
+"""This module contains a storage class and codec to support the N5 format.
 """
-from __future__ import absolute_import, print_function, division
+from __future__ import absolute_import, division
 from .meta import ZARR_FORMAT
 from .storage import (
         NestedDirectoryStore,
@@ -59,10 +59,6 @@ class N5Store(NestedDirectoryStore):
     Safe to write in multiple threads or processes.
 
     """
-
-
-    # def __init__(self, path):
-        # super(N5Store, self).__init__(path)
 
     def __getitem__(self, key):
 
@@ -122,9 +118,6 @@ class N5Store(NestedDirectoryStore):
 
         super(N5Store, self).__setitem__(key, value)
 
-    # def __delitem__(self, key):
-        # super(N5Store, self).__delitem__(key)
-
     def __contains__(self, key):
 
         if key.endswith(zarr_group_meta_key):
@@ -152,9 +145,6 @@ class N5Store(NestedDirectoryStore):
             isinstance(other, N5Store) and
             self.path == other.path
         )
-
-    # def listdir(self, path=None):
-        # return super(N5Store, self).listdir(path)
 
 def invert_chunk_coords(key):
     segments = list(key.split('/'))
@@ -327,19 +317,6 @@ class N5ChunkWrapper(Codec):
     def __init__(self, dtype, compressor_config=None, compressor=None):
 
         self.dtype = np.dtype(dtype)
-        self._dtype_format = {
-            'uint8': 'B',
-            'uint16': 'H',
-            'uint32': 'I',
-            'uint64': 'Q',
-            'int8': 'b',
-            'int16': 'h',
-            'int32': 'i',
-            'int64': 'q',
-            'float32': 'f',
-            'float64': 'd'
-        }[self.dtype.name]
-
         # is the dtype a little endian format?
         self._little_endian = (
             self.dtype.byteorder == '<' or
