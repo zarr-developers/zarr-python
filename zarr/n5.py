@@ -15,7 +15,7 @@ from numcodecs.registry import register_codec, get_codec
 import json
 import logging
 import numpy as np
-import struct
+import sys
 
 logger = logging.getLogger(__name__)
 
@@ -340,6 +340,12 @@ class N5ChunkWrapper(Codec):
             'float64': 'd'
         }[self.dtype.name]
 
+        # is the dtype a little endian format?
+        self._little_endian = (
+            self.dtype.byteorder == '<' or
+            (self.dtype.byteorder == '=' and sys.byteorder == 'little')
+        )
+
         if compressor:
             assert compressor_config is None, (
                 "Only one of compressor_config or compressor should be given.")
@@ -364,13 +370,12 @@ class N5ChunkWrapper(Codec):
     def encode(self, chunk):
 
         header = self._create_header(chunk)
+        chunk = self._to_big_endian(chunk)
 
         if self._compressor:
             return header + self._compressor.encode(chunk)
         else:
-            # get chunk data in big endian
-            chunk = chunk.astype(self.dtype.newbyteorder('>')).tobytes()
-            return header + chunk
+            return header + bytes(chunk)
 
     def decode(self, chunk, out=None):
 
@@ -379,20 +384,29 @@ class N5ChunkWrapper(Codec):
 
         if self._compressor:
 
-            return self._compressor.decode(chunk, out)
+            chunk = self._compressor.decode(chunk, out)
+
+            if out is not None:
+
+                if self._little_endian:
+                    # in-place byteswap directly on ndarray out:
+                    out.byteswap(inplace=True)
+
+                return out
 
         else:
 
-            # get chunk data in little endian
-            n = 1
-            for d in header['shape']:
-                n *= d
-            big_endian_format = '>%d'%n + self._dtype_format
-            little_endian_format = '<%d'%n + self._dtype_format
-            unpacked = struct.unpack(big_endian_format, chunk)
-            chunk = struct.pack(little_endian_format, *unpacked)
+            if out is not None:
 
-            return buffer_copy(chunk, out)
+                buffer_copy(chunk, out)
+                if self._little_endian:
+                    # in-place byteswap directly on ndarray out:
+                    out.byteswap(inplace=True)
+
+                return out
+
+        # more expensive byteswap
+        return self._from_big_endian(chunk)
 
     def _create_header(self, chunk):
 
@@ -417,5 +431,21 @@ class N5ChunkWrapper(Codec):
             'mode': mode,
             'shape': shape
         }
+
+    def _to_big_endian(self, data):
+        # assumes data is ndarray
+
+        if self._little_endian:
+            return data.byteswap()
+        return data
+
+    def _from_big_endian(self, data):
+        # assumes data is byte array in big endian
+
+        if not self._little_endian:
+            return data
+
+        a = np.frombuffer(data, self.dtype.newbyteorder('>'))
+        return a.astype(self.dtype)
 
 register_codec(N5ChunkWrapper, 'n5_wrapper')
