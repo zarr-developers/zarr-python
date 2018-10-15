@@ -698,19 +698,36 @@ class Array(object):
         if selection not in ((), (Ellipsis,)):
             err_too_many_indices(selection, ())
 
-        try:
-            # obtain encoded data for chunk
-            ckey = self._chunk_key((0,))
-            cdata = self.chunk_store[ckey]
+        # obtain key for chunk
+        ckey = self._chunk_key((0,))
 
-        except KeyError:
-            # chunk not initialized
-            chunk = np.zeros((), dtype=self._dtype)
-            if self._fill_value is not None:
-                chunk.fill(self._fill_value)
+        # setup variable to hold decoded chunk
+        chunk = None
 
-        else:
-            chunk = self._decode_chunk(cdata)
+        # check for cached chunk
+        if self._chunk_cache is not None:
+            try:
+                chunk = self._chunk_cache[ckey]
+            except KeyError:
+                pass
+
+        if chunk is None:
+            try:
+                # obtain encoded data for chunk
+                cdata = self.chunk_store[ckey]
+
+            except KeyError:
+                # chunk not initialized
+                chunk = np.zeros((), dtype=self._dtype)
+                if self._fill_value is not None:
+                    chunk.fill(self._fill_value)
+
+            else:
+                chunk = self._decode_chunk(cdata)
+
+        # cache decoded chunk
+        if self._chunk_cache is not None:
+            self._chunk_cache[ckey] = chunk
 
         # handle fields
         if fields:
@@ -1460,20 +1477,29 @@ class Array(object):
         # obtain key for chunk
         ckey = self._chunk_key((0,))
 
-        # setup chunk
-        try:
-            # obtain compressed data for chunk
-            cdata = self.chunk_store[ckey]
+        chunk = None
 
-        except KeyError:
-            # chunk not initialized
-            chunk = np.zeros((), dtype=self._dtype)
-            if self._fill_value is not None:
-                chunk.fill(self._fill_value)
+        if self._chunk_cache is not None:
+            try:
+                chunk = self._chunk_cache[ckey]
+            except KeyError:
+                pass
 
-        else:
-            # decode chunk
-            chunk = self._decode_chunk(cdata).copy()
+        if chunk is None:
+            # setup chunk
+            try:
+                # obtain compressed data for chunk
+                cdata = self.chunk_store[ckey]
+
+            except KeyError:
+                # chunk not initialized
+                chunk = np.zeros((), dtype=self._dtype)
+                if self._fill_value is not None:
+                    chunk.fill(self._fill_value)
+
+            else:
+                # decode chunk
+                chunk = self._decode_chunk(cdata).copy()
 
         # set value
         if fields:
@@ -1484,6 +1510,8 @@ class Array(object):
         # encode and store
         cdata = self._encode_chunk(chunk)
         self.chunk_store[ckey] = cdata
+        if self._chunk_cache is not None:
+            self._chunk_cache[ckey] = chunk
 
     def _set_basic_selection_nd(self, selection, value, fields=None):
         # implementation of __setitem__ for array with at least one dimension
