@@ -1752,6 +1752,9 @@ class Array(object):
 
         # cache the chunk
         if self._chunk_cache is not None:
+            # ensure cached chunk has been round tripped through encode-decode if dtype=object
+            if self.dtype == object:
+                chunk = self._decode_chunk(cdata)
             self._chunk_cache[ckey] = np.copy(chunk)
 
     def _chunk_key(self, chunk_coords):
