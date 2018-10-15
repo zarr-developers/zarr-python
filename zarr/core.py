@@ -1744,13 +1744,15 @@ class Array(object):
             else:
                 chunk[chunk_selection] = value
 
-        if self._chunk_cache is not None:
-            self._chunk_cache[ckey] = np.copy(chunk)
         # encode chunk
         cdata = self._encode_chunk(chunk)
 
         # store
         self.chunk_store[ckey] = cdata
+
+        # cache the chunk
+        if self._chunk_cache is not None:
+            self._chunk_cache[ckey] = np.copy(chunk)
 
     def _chunk_key(self, chunk_coords):
         return self._key_prefix + '.'.join(map(str, chunk_coords))
