@@ -797,6 +797,30 @@ layer over a remote store. E.g.::
     b'Hello from the cloud!'
     0.0009490990014455747
 
+The above :class:`zarr.storage.LRUStoreCache` wraps any Zarr storage class, and stores
+encoded chunks. So every time cache is accessed, the chunk has to be decoded. For cases
+where decoding is computationally expensive, Zarr also provides a
+:class:`zarr.storage.LRUChunkCache` which can store decoded chunks, e.g.::
+
+    >>> import zarr
+    >>> from numcodecs import LZMA
+    >>> import numpy as np
+    >>> store = zarr.DictStore()
+    >>> z = zarr.array(np.random.randn(1000000).reshape(1000,1000), chunks=(100,100),
+    ...                store=store, compressor=LZMA())
+    >>> from timeit import timeit
+    >>> # data access without cache
+    ... timeit('z[:]', number=1, globals=globals())  # doctest: +SKIP
+    0.6703157789888792
+    >>> z_with_cache = zarr.Array(store=store, chunk_cache=zarr.LRUChunkCache(max_size=None))
+    >>> # first data access about the same as without cache
+    ... timeit('z_with_cache[:]', number=1, globals=globals())  # doctest: +SKIP
+    0.681269913999131
+    >>> # second time accesses the decoded chunks in the cache
+    ... timeit('z_with_cache[:]', number=1, globals=globals())  # doctest: +SKIP
+    0.007617925992235541
+
+
 If you are still experiencing poor performance with distributed/cloud storage, please
 raise an issue on the GitHub issue tracker with any profiling data you can provide, as
 there may be opportunities to optimise further either within Zarr or within the mapping

@@ -27,6 +27,10 @@ Storage (``zarr.storage``)
     .. automethod:: invalidate_values
     .. automethod:: invalidate_keys
 
+.. autoclass:: LRUChunkCache
+
+    .. automethod:: invalidate
+
 .. autofunction:: init_array
 .. autofunction:: init_group
 .. autofunction:: contains_array
