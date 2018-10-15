@@ -1906,7 +1906,8 @@ class LRUChunkCache(MutableMapping):
         >>> from numcodecs import LZMA
         >>> import numpy as np
         >>> store = zarr.DictStore()
-        >>> z = zarr.array(np.random.randn(1000000).reshape(1000,1000), chunks=(100,100), store=store, compressor=LZMA())
+        >>> z = zarr.array(np.random.randn(1000000).reshape(1000,1000), chunks=(100,100),
+        ...                store=store, compressor=LZMA())
         >>> from timeit import timeit
         >>> # data access without cache
         ... timeit('z[:]', number=1, globals=globals())  # doctest: +SKIP

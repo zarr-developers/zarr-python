@@ -1725,12 +1725,12 @@ class TestArrayWithLRUChunkCache(TestArray):
 
     def test_hit_miss(self):
         a = np.arange(100).reshape((10, 10))
-        z, cache = self.create_array_with_cache(shape=a.shape, chunks=(10,1), dtype=a.dtype)
+        z, cache = self.create_array_with_cache(shape=a.shape, chunks=(10, 1), dtype=a.dtype)
 
         # test write cache
         z[:] = a
         assert cache.misses == 0 and cache.hits == 0
-        _ = z[:]
+        z[:]
         assert cache.misses == 0 and cache.hits == 10
 
         cache.clear()
@@ -1739,7 +1739,7 @@ class TestArrayWithLRUChunkCache(TestArray):
 
         # test read cache
         assert cache.misses == 0 and cache.hits == 0
-        _ = z[:]
+        z[:]
         assert cache.misses == 10 and cache.hits == 0
-        _ = z[:]
+        z[:]
         assert cache.misses == 10 and cache.hits == 10
