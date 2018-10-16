@@ -181,8 +181,24 @@ def array_metadata_to_n5(array_metadata):
     array_metadata['dimensions'] = array_metadata['dimensions'][::-1]
     array_metadata['blockSize'] = array_metadata['blockSize'][::-1]
 
-    assert 'compression' in array_metadata
+    if 'fill_value' in array_metadata:
+        assert array_metadata['fill_value'] == 0, (
+            "N5 only supports fill_value==0 (for now)")
+        del array_metadata['fill_value']
 
+    if 'order' in array_metadata:
+        assert array_metadata['order'] == 'C', (
+            "zarr N5 storage only stores arrays in C order (for now)")
+        del array_metadata['order']
+
+    if 'filters' in array_metadata:
+        assert (
+                array_metadata['filters'] == [] or
+                array_metadata['filters'] == None), (
+            "N5 storage does not support zarr filters")
+        del array_metadata['filters']
+
+    assert 'compression' in array_metadata
     compressor_config = array_metadata['compression']
     compressor_config = compressor_config_to_n5(compressor_config)
     if compressor_config:
@@ -201,6 +217,9 @@ def array_metadata_to_zarr(array_metadata):
 
     array_metadata['shape'] = array_metadata['shape'][::-1]
     array_metadata['chunks'] = array_metadata['chunks'][::-1]
+    array_metadata['fill_value'] = 0
+    array_metadata['order'] = 'C'
+    array_metadata['filters'] = []
 
     compressor_config = array_metadata['compressor']
     compressor_config = compressor_config_to_zarr(compressor_config)
