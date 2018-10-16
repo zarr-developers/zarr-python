@@ -226,7 +226,8 @@ def array_metadata_to_zarr(array_metadata):
     array_metadata['compressor'] = {
         'id': N5ChunkWrapper.codec_id,
         'compressor_config': compressor_config,
-        'dtype': array_metadata['dtype']
+        'dtype': array_metadata['dtype'],
+        'chunk_shape': array_metadata['chunks']
     }
 
     return array_metadata
@@ -345,9 +346,10 @@ class N5ChunkWrapper(Codec):
 
     codec_id = 'n5_wrapper'
 
-    def __init__(self, dtype, compressor_config=None, compressor=None):
+    def __init__(self, dtype, chunk_shape, compressor_config=None, compressor=None):
 
         self.dtype = np.dtype(dtype)
+        self.chunk_shape = tuple(chunk_shape)
         # is the dtype a little endian format?
         self._little_endian = (
             self.dtype.byteorder == '<' or
@@ -389,40 +391,54 @@ class N5ChunkWrapper(Codec):
 
     def decode(self, chunk, out=None):
 
-        len_header, header = self._read_header(chunk)
+        len_header, chunk_shape = self._read_header(chunk)
         chunk = chunk[len_header:]
 
-        if self._compressor:
+        if out is not None:
 
-            chunk = self._compressor.decode(chunk, out)
+            # out should only be used if we read a complete chunk
+            assert chunk_shape == self.chunk_shape, (
+                "Expected chunk of shape %s, found %s"%(
+                    self.chunk_shape,
+                    chunk_shape))
 
-            if out is not None:
+            if self._compressor:
+                self._compressor.decode(chunk, out)
+            else:
+                buffer_copy(chunk, out)
 
-                if self._little_endian:
-                    # in-place byteswap directly on ndarray out:
-                    out.byteswap(inplace=True)
+            # we can byteswap in-place
+            if self._little_endian:
+                out.byteswap(inplace=True)
 
-                return out
+            return out
 
         else:
 
-            if out is not None:
+            if self._compressor:
+                chunk = self._compressor.decode(chunk)
 
-                buffer_copy(chunk, out)
-                if self._little_endian:
-                    # in-place byteswap directly on ndarray out:
-                    out.byteswap(inplace=True)
+            # more expensive byteswap
+            chunk = self._from_big_endian(chunk)
 
-                return out
+            # read partial chunk
+            if chunk_shape != self.chunk_shape:
+                chunk = chunk.reshape(chunk_shape)
+                complete_chunk = np.zeros(self.chunk_shape, dtype=self.dtype)
+                target_slices = tuple(slice(0, s) for s in chunk_shape)
+                complete_chunk[target_slices] = chunk.reshape(chunk_shape)
+                chunk = complete_chunk
 
-        # more expensive byteswap
-        return self._from_big_endian(chunk)
+            return chunk
 
     def _create_header(self, chunk):
 
         mode = int(0).to_bytes(2, byteorder='big')
         num_dims = len(chunk.shape).to_bytes(2, byteorder='big')
-        shape = b''.join(d.to_bytes(4, byteorder='big') for d in chunk.shape)
+        shape = b''.join(
+            d.to_bytes(4, byteorder='big')
+            for d in chunk.shape[::-1]
+        )
 
         return mode + num_dims + shape
 
@@ -433,14 +449,11 @@ class N5ChunkWrapper(Codec):
         shape = tuple(
             int.from_bytes(chunk[i:i+4], byteorder='big')
             for i in range(4, num_dims*4 + 4, 4)
-        )
+        )[::-1]
 
         len_header = 4 + num_dims*4
 
-        return len_header, {
-            'mode': mode,
-            'shape': shape
-        }
+        return len_header, shape
 
     def _to_big_endian(self, data):
         # assumes data is ndarray
@@ -458,4 +471,4 @@ class N5ChunkWrapper(Codec):
         a = np.frombuffer(data, self.dtype.newbyteorder('>'))
         return a.astype(self.dtype)
 
-register_codec(N5ChunkWrapper, 'n5_wrapper')
+register_codec(N5ChunkWrapper, N5ChunkWrapper.codec_id)
