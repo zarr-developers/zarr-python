@@ -688,6 +688,13 @@ class TestNestedDirectoryStore(TestDirectoryStore, unittest.TestCase):
         store['42'] = b'zzz'
         assert b'zzz' == store['42']
 
+class TestN5Store(TestNestedDirectoryStore, unittest.TestCase):
+
+    def create_store(self):
+        path = tempfile.mkdtemp()
+        atexit.register(atexit_rmtree, path)
+        store = N5Store(path)
+        return store
 
 class TestTempStore(StoreTests, unittest.TestCase):
 
