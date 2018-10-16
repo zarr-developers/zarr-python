@@ -277,6 +277,12 @@ def compressor_config_to_n5(compressor_config):
         n5_config['level'] = compressor_config['level']
         n5_config['useZlib'] = True
 
+    elif codec_id == 'gzip':
+
+        n5_config['type'] = 'gzip'
+        n5_config['level'] = compressor_config['level']
+        n5_config['useZlib'] = False
+
     elif codec_id == 'raw':
 
         pass
@@ -318,8 +324,12 @@ def compressor_config_to_zarr(compressor_config):
 
     elif codec_id == 'gzip':
 
-        zarr_config['id'] = 'zlib'
-        zarr_config['level'] = compressor_config['level']
+        if 'useZlib' in compressor_config and compressor_config['useZlib']:
+            zarr_config['id'] = 'zlib'
+            zarr_config['level'] = compressor_config['level']
+        else:
+            zarr_config['id'] = 'gzip'
+            zarr_config['level'] = compressor_config['level']
 
     elif codec_id == 'raw':
 
