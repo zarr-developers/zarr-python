@@ -367,13 +367,15 @@ class N5ChunkWrapper(Codec):
 
     def encode(self, chunk):
 
+        assert chunk.flags.c_contiguous
+
         header = self._create_header(chunk)
         chunk = self._to_big_endian(chunk)
 
         if self._compressor:
             return header + self._compressor.encode(chunk)
         else:
-            return header + bytes(chunk)
+            return header + chunk.tobytes(order='A')
 
     def decode(self, chunk, out=None):
 
