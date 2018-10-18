@@ -44,6 +44,10 @@ Enhancements
   the existing :class:`zarr.storage.DirectoryStore` class but nests chunk files
   for multidimensional arrays into sub-directories. :issue:`155`, :issue:`177`.
 
+* **New storage class for N5 containers**. The :class:`zarr.n5.N5Store` has been
+  added, which uses :class:`zarr.storage.NestedDirectoryStore` to support
+  reading and writing from and to N5 containers.
+
 * **New tree() method for printing hierarchies**. The ``Group`` class has a new
   :func:`zarr.hierarchy.Group.tree` method which enables a tree representation of
   a group hierarchy to be printed. Also provides an interactive tree
