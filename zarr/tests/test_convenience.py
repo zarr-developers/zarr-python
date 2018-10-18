@@ -98,9 +98,12 @@ def test_consolidate_metadata():
     z.create_group('g1')
     g2 = z.create_group('g2')
     g2.attrs['hello'] = 'world'
-    arr = g2.create_dataset('arr', shape=(20, 20), dtype='f8')
+    arr = g2.create_dataset('arr', shape=(20, 20), chunks=(5, 5), dtype='f8')
+    assert 16 == arr.nchunks
+    assert 0 == arr.nchunks_initialized
     arr.attrs['data'] = 1
     arr[:] = 1.0
+    assert 16 == arr.nchunks_initialized
     out = consolidate_metadata(store)
     assert isinstance(out, ConsolidatedMetadataStore)
     assert '.zmetadata' in store
@@ -113,10 +116,12 @@ def test_consolidate_metadata():
         del store[key]
     cstore = ConsolidatedMetadataStore(store)
     z2 = open(cstore)
-    assert list(z2) == ['g1', 'g2']
-    assert z2.g2.attrs['hello'] == 'world'
-    assert z2.g2.arr.attrs['data'] == 1
+    assert ['g1', 'g2'] == list(z2)
+    assert 'world' == z2.g2.attrs['hello']
+    assert 1 == z2.g2.arr.attrs['data']
     assert (z2.g2.arr[:] == 1.0).all()
+    assert 16 == z2.g2.arr.nchunks
+    assert 16 == z2.g2.arr.nchunks_initialized
     assert list(out) == list(cstore)
 
     # tests del/write on the store
