@@ -142,6 +142,8 @@ class StoreTests(object):
         # store before can round-trip through pickle
         if hasattr(store, 'close'):
             store.close()
+            # check can still pickle after close
+            assert dump == pickle.dumps(store)
         store2 = pickle.loads(dump)
 
         # verify

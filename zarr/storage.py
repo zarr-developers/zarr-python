@@ -1635,7 +1635,11 @@ class LMDBStore(MutableMapping):
         self.kwargs = kwargs
 
     def __getstate__(self):
-        self.flush()  # just in case
+        try:
+            self.flush()  # just in case
+        except Exception:
+            # flush may fail if db has already been closed
+            pass
         return self.path, self.buffers, self.kwargs
 
     def __setstate__(self, state):
