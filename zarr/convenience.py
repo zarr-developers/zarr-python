@@ -1071,37 +1071,41 @@ def copy_all(source, dest, shallow=False, without_attrs=False, log=None,
     return n_copied, n_skipped, n_bytes_copied
 
 
-def consolidate_metadata(mapping, out_key='.zmetadata'):
+def consolidate_metadata(store, metadata_key='.zmetadata'):
     """
-    Store all the metadata in the files within the given dataset in one key
+    Consolidate all metadata for groups and arrays within the given store
+    into a single resource and put it under the given key.
 
-    This produces a single file in the backend store, containing all the
+    This produces a single object in the backend store, containing all the
     metadata read from all the zarr-related keys that can be found. This
     should be used in conjunction with ``storage.ConsolidatedMetadataStore``
     to reduce the number of operations on the backend store at read time.
 
-    Note, however, that if the dataset is changed after this consolidation,
-    then the metadata read by ``storage.ConsolidatedMetadataStore`` would
-    be out of sync with reality unless this function is called again.
+    Note, however, that if any metadata in the store is changed after this
+    consolidation, then the metadata read by ``storage.ConsolidatedMetadataStore``
+    would be out of sync with reality unless this function is called again.
 
     Parameters
     ----------
-    mapping : MutableMapping instance
-        Containing metadata and data keys of a zarr dataset
-    out_key : str
-        Key to place the consolidated data into
+    store : MutableMapping or string
+        Store or path to directory in file system or name of zip file.
+    metadata_key : str
+        Key to put the consolidated metadata under.
 
     Returns
     -------
     ConsolidatedMetadataStore instance, based on the same base store.
+
     """
     import json
     from .storage import ConsolidatedMetadataStore
+
+    store = normalize_store_arg(store)
 
     def is_zarr_key(key):
         return (key.endswith('.zarray') or key.endswith('.zgroup') or
                 key.endswith('.zattrs'))
 
-    out = {key: mapping[key].decode() for key in mapping if is_zarr_key(key)}
-    mapping[out_key] = json.dumps(out).encode()
-    return ConsolidatedMetadataStore(mapping, out_key)
+    out = {key: store[key].decode() for key in store if is_zarr_key(key)}
+    store[metadata_key] = json.dumps(out).encode()
+    return ConsolidatedMetadataStore(store, metadata_key)
