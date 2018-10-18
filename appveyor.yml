@@ -14,45 +14,36 @@ environment:
 
     - PYTHON: "C:\\Python27"
       PYTHON_VERSION: "2.7"
-      NUMPY_VERSION: "1.13.3"
+      NUMPY_VERSION: "1.15.2"
 
     - PYTHON: "C:\\Python27-x64"
       PYTHON_VERSION: "2.7"
-      NUMPY_VERSION: "1.13.3"
-      DISTUTILS_USE_SDK: "1"
-
-    - PYTHON: "C:\\Python34"
-      NUMPY_VERSION: "1.13.3"
-      PYTHON_VERSION: "3.4"
-
-    - PYTHON: "C:\\Python34-x64"
-      PYTHON_VERSION: "3.4"
-      NUMPY_VERSION: "1.13.3"
+      NUMPY_VERSION: "1.15.2"
       DISTUTILS_USE_SDK: "1"
 
     - PYTHON: "C:\\Python35"
       PYTHON_VERSION: "3.5"
-      NUMPY_VERSION: "1.13.3"
+      NUMPY_VERSION: "1.15.2"
 
     - PYTHON: "C:\\Python35-x64"
       PYTHON_VERSION: "3.5"
-      NUMPY_VERSION: "1.13.3"
+      NUMPY_VERSION: "1.15.2"
 
     - PYTHON: "C:\\Python36"
       PYTHON_VERSION: "3.6"
-      NUMPY_VERSION: "1.13.3"
+      NUMPY_VERSION: "1.15.2"
 
     - PYTHON: "C:\\Python36-x64"
       PYTHON_VERSION: "3.6"
-      NUMPY_VERSION: "1.13.3"
+      NUMPY_VERSION: "1.15.2"
 
-    - PYTHON: "C:\\Python36"
-      PYTHON_VERSION: "3.6"
-      NUMPY_VERSION: "1.14.0"
+    - PYTHON: "C:\\Python37"
+      PYTHON_VERSION: "3.7"
+      NUMPY_VERSION: "1.15.2"
 
-    - PYTHON: "C:\\Python36-x64"
-      PYTHON_VERSION: "3.6"
-      NUMPY_VERSION: "1.14.0"
+    - PYTHON: "C:\\Python37-x64"
+      PYTHON_VERSION: "3.7"
+      NUMPY_VERSION: "1.15.2"
 
 install:
   - "SET PATH=%PYTHON%;%PYTHON%\\Scripts;%PATH%"
