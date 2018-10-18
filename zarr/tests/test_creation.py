@@ -3,7 +3,6 @@ from __future__ import absolute_import, print_function, division
 import tempfile
 import shutil
 import atexit
-import warnings
 
 
 import numpy as np
@@ -20,12 +19,6 @@ from zarr.hierarchy import open_group
 from zarr.errors import PermissionError
 from zarr.codecs import Zlib
 from zarr.compat import PY2
-
-
-# needed for PY2/PY3 consistent behaviour
-if PY2:  # pragma: py3 no cover
-    warnings.resetwarnings()
-    warnings.simplefilter('always')
 
 
 # something bcolz-like
@@ -457,12 +450,15 @@ def test_compression_args():
     assert 'zlib' == z.compressor.codec_id
     assert 9 == z.compressor.level
 
-    with pytest.warns(UserWarning):
-        # 'compressor' overrides 'compression'
-        create(100, compressor=Zlib(9), compression='bz2', compression_opts=1)
-    with pytest.warns(UserWarning):
-        # 'compressor' ignores 'compression_opts'
-        create(100, compressor=Zlib(9), compression_opts=1)
+    # cannot get warning tests to work on PY2
+    if not PY2:  # pragma: py2 no cover
+
+        with pytest.warns(UserWarning):
+            # 'compressor' overrides 'compression'
+            create(100, compressor=Zlib(9), compression='bz2', compression_opts=1)
+        with pytest.warns(UserWarning):
+            # 'compressor' ignores 'compression_opts'
+            create(100, compressor=Zlib(9), compression_opts=1)
 
 
 def test_create_read_only():
