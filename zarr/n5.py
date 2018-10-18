@@ -573,7 +573,7 @@ class N5ChunkWrapper(Codec):
 
             # we can byteswap in-place
             if self._little_endian:
-                out.byteswap(inplace=True)
+                out.byteswap(True)
 
             return out
 
