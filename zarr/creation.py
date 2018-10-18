@@ -346,15 +346,15 @@ def array(data, **kwargs):
     return z
 
 
-def open_array(store, mode='a', shape=None, chunks=True, dtype=None, compressor='default',
-               fill_value=0, order='C', synchronizer=None, filters=None,
-               cache_metadata=True, cache_attrs=True, path=None, object_codec=None,
-               chunk_store=None, **kwargs):
+def open_array(store=None, mode='a', shape=None, chunks=True, dtype=None,
+               compressor='default', fill_value=0, order='C', synchronizer=None,
+               filters=None, cache_metadata=True, cache_attrs=True, path=None,
+               object_codec=None, chunk_store=None, **kwargs):
     """Open an array using file-mode-like semantics.
 
     Parameters
     ----------
-    store : MutableMapping or string
+    store : MutableMapping or string, optional
         Store or path to directory in file system or name of zip file.
     mode : {'r', 'r+', 'a', 'w', 'w-'}, optional
         Persistence mode: 'r' means read only (must exist); 'r+' means

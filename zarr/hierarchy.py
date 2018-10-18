@@ -1058,13 +1058,13 @@ def group(store=None, overwrite=False, chunk_store=None,
                  cache_attrs=cache_attrs, synchronizer=synchronizer, path=path)
 
 
-def open_group(store, mode='a', cache_attrs=True, synchronizer=None, path=None,
+def open_group(store=None, mode='a', cache_attrs=True, synchronizer=None, path=None,
                chunk_store=None):
     """Open a group using file-mode-like semantics.
 
     Parameters
     ----------
-    store : MutableMapping or string
+    store : MutableMapping or string, optional
         Store or path to directory in file system or name of zip file.
     mode : {'r', 'r+', 'a', 'w', 'w-'}, optional
         Persistence mode: 'r' means read only (must exist); 'r+' means

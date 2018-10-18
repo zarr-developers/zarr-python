@@ -18,12 +18,12 @@ from zarr.compat import PY2, text_type
 
 
 # noinspection PyShadowingBuiltins
-def open(store, mode='a', **kwargs):
+def open(store=None, mode='a', **kwargs):
     """Convenience function to open a group or array using file-mode-like semantics.
 
     Parameters
     ----------
-    store : MutableMapping or string
+    store : MutableMapping or string, optional
         Store or path to directory in file system or name of zip file.
     mode : {'r', 'r+', 'a', 'w', 'w-'}, optional
         Persistence mode: 'r' means read only (must exist); 'r+' means
@@ -1112,7 +1112,7 @@ def consolidate_metadata(store, metadata_key='.zmetadata'):
     return ConsolidatedMetadataStore(store, metadata_key=metadata_key)
 
 
-def open_consolidated(store, metadata_key='.zmetadata', mode='r'):
+def open_consolidated(store, metadata_key='.zmetadata', mode='a'):
     """TODO doc me"""
 
     from .storage import ConsolidatedMetadataStore

@@ -1942,10 +1942,10 @@ class ConsolidatedMetadataStore(MutableMapping):
         return len(self.meta_store)
 
     def __delitem__(self, key):
-        raise PermissionError
+        err_read_only()
 
     def __setitem__(self, key, value):
-        raise PermissionError
+        err_read_only()
 
     def getsize(self, path):
         return getsize(self.meta_store, path)
