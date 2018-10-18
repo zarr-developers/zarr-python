@@ -67,7 +67,7 @@ class N5Store(NestedDirectoryStore):
         if key.endswith(zarr_group_meta_key):
 
             key = key.replace(zarr_group_meta_key, n5_attrs_key)
-            value = group_metadata_to_zarr(json.loads(self[key]))
+            value = group_metadata_to_zarr(self._load_n5_attrs(key))
 
             return json.dumps(
                 value,
@@ -78,7 +78,7 @@ class N5Store(NestedDirectoryStore):
         elif key.endswith(zarr_array_meta_key):
 
             key = key.replace(zarr_array_meta_key, n5_attrs_key)
-            value = array_metadata_to_zarr(json.loads(self[key]))
+            value = array_metadata_to_zarr(self._load_n5_attrs(key))
 
             return json.dumps(
                 value,
@@ -89,7 +89,7 @@ class N5Store(NestedDirectoryStore):
         elif key.endswith(zarr_attrs_key):
 
             key = key.replace(zarr_attrs_key, n5_attrs_key)
-            value = attrs_to_zarr(json.loads(self[key]))
+            value = attrs_to_zarr(self._load_n5_attrs(key))
 
             if len(value) == 0:
                 raise KeyError(key)
@@ -100,9 +100,12 @@ class N5Store(NestedDirectoryStore):
                     ensure_ascii=True,
                     indent=4).encode('ascii')
 
-        key = invert_chunk_coords(key)
+        elif is_chunk_key(key):
 
-        return super(N5Store, self).__getitem__(key)
+            key = invert_chunk_coords(key)
+            return super(N5Store, self).__getitem__(key)
+
+        raise KeyError(key)
 
     def __setitem__(self, key, value):
 
@@ -110,14 +113,11 @@ class N5Store(NestedDirectoryStore):
 
             key = key.replace(zarr_group_meta_key, n5_attrs_key)
 
-            if key in self:
-                attrs = json.loads(self[key])
-                attrs.update(**json.loads(value))
-            else:
-                attrs = json.loads(value)
+            n5_attrs = self._load_n5_attrs(key)
+            n5_attrs.update(**group_metadata_to_n5(json.loads(value)))
 
             value = json.dumps(
-                group_metadata_to_n5(attrs),
+                n5_attrs,
                 sort_keys=True,
                 ensure_ascii=True,
                 indent=4).encode('ascii')
@@ -126,14 +126,11 @@ class N5Store(NestedDirectoryStore):
 
             key = key.replace(zarr_array_meta_key, n5_attrs_key)
 
-            if key in self:
-                attrs = json.loads(self[key])
-                attrs.update(**json.loads(value))
-            else:
-                attrs = json.loads(value)
+            n5_attrs = self._load_n5_attrs(key)
+            n5_attrs.update(**array_metadata_to_n5(json.loads(value)))
 
             value = json.dumps(
-                array_metadata_to_n5(attrs),
+                n5_attrs,
                 sort_keys=True,
                 ensure_ascii=True,
                 indent=4).encode('ascii')
@@ -142,17 +139,21 @@ class N5Store(NestedDirectoryStore):
 
             key = key.replace(zarr_attrs_key, n5_attrs_key)
 
+            n5_attrs = self._load_n5_attrs(key)
             zarr_attrs = json.loads(value)
-            for k in zarr_attrs.keys():
-                assert k not in n5_keywords, (
+
+            for k in n5_keywords:
+                assert k not in zarr_attrs.keys(), (
                     "Can not set attribute %s, this is a reserved N5 "
                     "keyword"%k)
 
-            if key in self:
-                attrs = json.loads(self[key])
-                attrs.update(**zarr_attrs)
-            else:
-                attrs = zarr_attrs
+            # replace previous user attributes
+            for k in n5_attrs.keys():
+                if k not in n5_keywords:
+                    del n5_attrs[k]
+
+            # add new user attributes
+            n5_attrs.update(**zarr_attrs)
 
             value = json.dumps(
                 attrs,
@@ -202,9 +203,12 @@ class N5Store(NestedDirectoryStore):
             key = key.replace(zarr_array_meta_key, n5_attrs_key)
             return self._contains_attrs(key)
 
-        key = invert_chunk_coords(key)
+        elif is_chunk_key(key):
 
-        return super(N5Store, self).__contains__(key)
+            key = invert_chunk_coords(key)
+            return super(N5Store, self).__contains__(key)
+
+        return False
 
     def __eq__(self, other):
         return (
@@ -262,6 +266,9 @@ class N5Store(NestedDirectoryStore):
 
             return children
 
+    def _load_n5_attrs(self, path):
+        return json.loads(super(N5Store, self).__getitem__(path))
+
     def _is_group(self, path):
 
         if path is None:
@@ -296,6 +303,13 @@ class N5Store(NestedDirectoryStore):
 
         attrs = attrs_to_zarr(json.loads(self[attrs_key]))
         return len(attrs) > 0
+
+def is_chunk_key(key):
+    segments = list(key.split('/'))
+    if segments:
+        last_segment = segments[-1]
+        return _prog_ckey.match(last_segment)
+    return False
 
 def invert_chunk_coords(key):
     segments = list(key.split('/'))
