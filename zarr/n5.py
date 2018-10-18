@@ -187,15 +187,13 @@ class N5Store(NestedDirectoryStore):
             if not key in self:
                 return False
             # group if not a dataset (attributes do not contain 'dimensions')
-            return 'dimensions' not in json.loads(self[key])
+            return 'dimensions' not in self._load_n5_attrs(key)
 
         elif key.endswith(zarr_array_meta_key):
 
             key = key.replace(zarr_array_meta_key, n5_attrs_key)
-            if not key in self:
-                return False
             # array if attributes contain 'dimensions'
-            return 'dimensions' in json.loads(self[key])
+            return 'dimensions' in self._load_n5_attrs(key)
 
         elif key.endswith(zarr_attrs_key): # pragma: no cover
 
@@ -265,7 +263,10 @@ class N5Store(NestedDirectoryStore):
             return children
 
     def _load_n5_attrs(self, path):
-        return json.loads(super(N5Store, self).__getitem__(path))
+        try:
+            return json.loads(super(N5Store, self).__getitem__(path))
+        except KeyError:
+            return {}
 
     def _is_group(self, path):
 
@@ -274,9 +275,8 @@ class N5Store(NestedDirectoryStore):
         else:
             attrs_key = os.path.join(path, n5_attrs_key)
 
-        return (
-            attrs_key in self and
-            'dimensions' not in json.loads(self[attrs_key]))
+        n5_attrs = self._load_n5_attrs(attrs_key)
+        return len(n5_attrs) > 0 and 'dimensions' not in n5_attrs
 
     def _is_array(self, path):
 
@@ -285,9 +285,7 @@ class N5Store(NestedDirectoryStore):
         else:
             attrs_key = os.path.join(path, n5_attrs_key)
 
-        return (
-            attrs_key in self and
-            'dimensions' in json.loads(self[attrs_key]))
+        return 'dimensions' in self._load_n5_attrs(attrs_key)
 
     def _contains_attrs(self, path):
 
@@ -299,7 +297,7 @@ class N5Store(NestedDirectoryStore):
             else: # pragma: no cover
                 attrs_key = path
 
-        attrs = attrs_to_zarr(json.loads(self[attrs_key]))
+        attrs = attrs_to_zarr(self._load_n5_attrs(attrs_key))
         return len(attrs) > 0
 
 def is_chunk_key(key):
