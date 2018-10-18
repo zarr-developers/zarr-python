@@ -1,6 +1,18 @@
 Release notes
 =============
 
+.. _release_2.3.0:
+
+2.3.0 (Work in Progress)
+------------------------
+
+Maintenance
+~~~~~~~~~~~
+
+* CI and test environments have been upgraded to include Python 3.7, drop Python 3.4, and
+  upgrade all package requirements. :issue:`308`.
+
+
 .. _release_2.2.0:
 
 2.2.0
