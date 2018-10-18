@@ -13,5 +13,6 @@ from zarr.sync import ThreadSynchronizer, ProcessSynchronizer
 from zarr.codecs import *
 from zarr.convenience import (open, save, save_array, save_group, load, copy_store,
                               copy, copy_all, tree)
+from zarr.n5 import N5Store
 from zarr.errors import CopyError, MetadataError, PermissionError
 from zarr.version import version as __version__
