@@ -364,10 +364,7 @@ def array_metadata_to_n5(array_metadata):
     assert 'compression' in array_metadata
     compressor_config = array_metadata['compression']
     compressor_config = compressor_config_to_n5(compressor_config)
-    if compressor_config:
-        array_metadata['compression'] = compressor_config
-    else:
-        del array_metadata['compression']
+    array_metadata['compression'] = compressor_config
 
     return array_metadata
 
