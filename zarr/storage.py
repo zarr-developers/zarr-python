@@ -1930,30 +1930,25 @@ class ConsolidatedMetadataStore(MutableMapping):
         self.meta_store = {k: v.encode() for k, v in metadata.items()}
 
     def __getitem__(self, key):
-        """Try local dict before falling back to real storage"""
-        try:
-            return self.meta_store[key]
-        except KeyError:
-            return self.store[key]
+        return self.meta_store[key]
+
+    def __contains__(self, item):
+        return item in self.meta_store
 
     def __iter__(self):
-        """Only list local keys - data must be got via getitem"""
         return iter(self.meta_store)
 
     def __len__(self):
-        """Only len of local keys"""
         return len(self.meta_store)
 
     def __delitem__(self, key):
-        """Data can be deleted from storage"""
-        if key not in self.meta_store:
-            del self.store[key]
-        else:
-            raise NotImplementedError
+        raise PermissionError
 
     def __setitem__(self, key, value):
-        """Data can be written to storage"""
-        if key not in self.meta_store:
-            self.store[key] = value
-        else:
-            raise NotImplementedError
+        raise PermissionError
+
+    def getsize(self, path):
+        return getsize(self.meta_store, path)
+
+    def listdir(self, path):
+        return listdir(self.meta_store, path)

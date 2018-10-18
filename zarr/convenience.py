@@ -68,7 +68,8 @@ def open(store, mode='a', **kwargs):
 
     path = kwargs.get('path', None)
     # handle polymorphic store arg
-    store = normalize_store_arg(store, clobber=(mode == 'w'))
+    clobber = mode == 'w'
+    store = normalize_store_arg(store, clobber=clobber)
     path = normalize_storage_path(path)
 
     if mode in {'w', 'w-', 'x'}:
@@ -1108,4 +1109,22 @@ def consolidate_metadata(store, metadata_key='.zmetadata'):
 
     out = {key: store[key].decode() for key in store if is_zarr_key(key)}
     store[metadata_key] = json.dumps(out).encode()
-    return ConsolidatedMetadataStore(store, metadata_key)
+    return ConsolidatedMetadataStore(store, metadata_key=metadata_key)
+
+
+def open_consolidated(store, metadata_key='.zmetadata', mode='r'):
+    """TODO doc me"""
+
+    from .storage import ConsolidatedMetadataStore
+
+    # normalize parameters
+    store = normalize_store_arg(store)
+    if mode not in 'ra':
+        raise ValueError("invalid mode, expected either 'r' or 'a'; found {!r}"
+                         .format(mode))
+
+    # setup metadata sotre
+    meta_store = ConsolidatedMetadataStore(store, metadata_key=metadata_key)
+
+    # pass through
+    return open(store=meta_store, chunk_store=store, mode=mode)
