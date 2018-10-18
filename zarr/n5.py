@@ -103,9 +103,8 @@ class N5Store(NestedDirectoryStore):
         elif is_chunk_key(key):
 
             key = invert_chunk_coords(key)
-            return super(N5Store, self).__getitem__(key)
 
-        raise KeyError(key)
+        return super(N5Store, self).__getitem__(key)
 
     def __setitem__(self, key, value):
 
