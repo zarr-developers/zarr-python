@@ -128,12 +128,25 @@ class StoreTests(object):
                 set(store.items()))
 
     def test_pickle(self):
+
+        # setup store
         store = self.create_store()
         store['foo'] = b'bar'
         store['baz'] = b'quux'
-        store2 = pickle.loads(pickle.dumps(store))
-        assert len(store) == len(store2)
-        assert sorted(store.keys()) == sorted(store2.keys())
+        n = len(store)
+        keys = sorted(store.keys())
+
+        # round-trip through pickle
+        dump = pickle.dumps(store)
+        # some stores cannot be opened twice at the same time, need to close first
+        # store before can round-trip through pickle
+        if hasattr(store, 'close'):
+            store.close()
+        store2 = pickle.loads(dump)
+
+        # verify
+        assert n == len(store2)
+        assert keys == sorted(store2.keys())
         assert b'bar' == store2['foo']
         assert b'quux' == store2['baz']
 
@@ -745,6 +758,7 @@ class TestDBMStore(StoreTests, unittest.TestCase):
     def create_store(self):
         path = tempfile.mktemp(suffix='.anydbm')
         atexit.register(atexit_rmglob, path + '*')
+        # create store using default dbm implementation
         store = DBMStore(path, flag='n')
         return store
 

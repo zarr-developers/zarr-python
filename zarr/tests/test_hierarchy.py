@@ -820,23 +820,31 @@ class TestGroup(unittest.TestCase):
             g1['foo/../bar']
 
     def test_pickle(self):
-        # setup
+
+        # setup group
         g = self.create_group()
         d = g.create_dataset('foo/bar', shape=100, chunks=10)
         d[:] = np.arange(100)
+        path = g.path
+        name = g.name
+        n = len(g)
+        keys = list(g)
 
-        # needed for zip store
-        if hasattr(g.store, 'flush'):
-            g.store.flush()
+        # round-trip through pickle
+        dump = pickle.dumps(g)
+        # some stores cannot be opened twice at the same time, need to close first
+        # store before can round-trip through pickle
+        if hasattr(g.store, 'close'):
+            g.store.close()
+        g2 = pickle.loads(dump)
 
-        # pickle round trip
-        g2 = pickle.loads(pickle.dumps(g))
-        assert g.path == g2.path
-        assert g.name == g2.name
-        assert len(g) == len(g2)
-        assert list(g) == list(g2)
-        assert g['foo'] == g2['foo']
-        assert g['foo/bar'] == g2['foo/bar']
+        # verify
+        assert path == g2.path
+        assert name == g2.name
+        assert n == len(g2)
+        assert keys == list(g2)
+        assert isinstance(g2['foo'], Group)
+        assert isinstance(g2['foo/bar'], Array)
 
 
 class TestGroupWithDictStore(TestGroup):
