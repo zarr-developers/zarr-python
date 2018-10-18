@@ -17,7 +17,7 @@ from zarr.convenience import (open, save, save_group, load, copy_store, copy,
 from zarr.storage import atexit_rmtree, DictStore
 from zarr.core import Array
 from zarr.hierarchy import Group, group
-from zarr.errors import CopyError
+from zarr.errors import CopyError, PermissionError
 
 
 def test_open_array():
