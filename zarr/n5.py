@@ -160,7 +160,7 @@ class N5Store(NestedDirectoryStore):
                 ensure_ascii=True,
                 indent=4).encode('ascii')
 
-        else:
+        elif is_chunk_key(key):
 
             key = invert_chunk_coords(key)
 
@@ -174,8 +174,8 @@ class N5Store(NestedDirectoryStore):
             key = key.replace(zarr_array_meta_key, n5_attrs_key)
         elif key.endswith(zarr_attrs_key):
             key = key.replace(zarr_attrs_key, n5_attrs_key)
-
-        key = invert_chunk_coords(key)
+        elif is_chunk_key(key):
+            key = invert_chunk_coords(key)
 
         super(N5Store, self).__delitem__(key)
 
@@ -205,9 +205,8 @@ class N5Store(NestedDirectoryStore):
         elif is_chunk_key(key):
 
             key = invert_chunk_coords(key)
-            return super(N5Store, self).__contains__(key)
 
-        return False
+        return super(N5Store, self).__contains__(key)
 
     def __eq__(self, other):
         return (
