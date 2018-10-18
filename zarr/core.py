@@ -2157,7 +2157,7 @@ class Array(object):
             array([0, 0, 1, ..., 1, 0, 0], dtype=uint8)
             >>> v = a.view(dtype=bool)
             >>> v[:]
-            array([False, False,  True, ...,  True, False, False], dtype=bool)
+            array([False, False,  True, ...,  True, False, False])
             >>> np.all(a[:].view(dtype=bool) == v[:])
             True
 
