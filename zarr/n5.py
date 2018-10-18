@@ -166,6 +166,19 @@ class N5Store(NestedDirectoryStore):
 
         super(N5Store, self).__setitem__(key, value)
 
+    def __delitem__(self, key):
+
+        if key.endswith(zarr_group_meta_key):
+            key = key.replace(zarr_group_meta_key, n5_attrs_key)
+        elif key.endswith(zarr_array_meta_key):
+            key = key.replace(zarr_array_meta_key, n5_attrs_key)
+        elif key.endswith(zarr_attrs_key):
+            key = key.replace(zarr_attrs_key, n5_attrs_key)
+
+        key = invert_chunk_coords(key)
+
+        super(N5Store, self).__delitem__(key)
+
     def __contains__(self, key):
 
         if key.endswith(zarr_group_meta_key):
@@ -198,6 +211,56 @@ class N5Store(NestedDirectoryStore):
             isinstance(other, N5Store) and
             self.path == other.path
         )
+
+    def listdir(self, path=None):
+
+        if path is not None:
+            path = invert_chunk_coords(path)
+
+        # We can't use NestedDirectoryStore's listdir, as it requires
+        # array_meta_key to be present in array directories, which this store
+        # doesn't provide.
+        children = super(NestedDirectoryStore, self).listdir(path=path)
+
+        if self._is_array(path):
+
+            # replace n5 attribute file with respective zarr attribute files
+            children.remove(n5_attrs_key)
+            children.append(zarr_array_meta_key)
+            if self._contains_attrs(path):
+                children.append(zarr_attrs_key)
+
+            # special handling of directories containing an array to map
+            # inverted nested chunk keys back to standard chunk keys
+            new_children = []
+            root_path = self.dir_path(path)
+            for entry in children:
+                entry_path = os.path.join(root_path, entry)
+                if _prog_number.match(entry) and os.path.isdir(entry_path):
+                    for dir_path, _, file_names in os.walk(entry_path):
+                        for file_name in file_names:
+                            file_path = os.path.join(dir_path, file_name)
+                            rel_path = file_path.split(root_path + os.path.sep)[1]
+                            new_child = rel_path.replace(os.path.sep, '.')
+                            new_children.append(invert_chunk_coords(new_child))
+                else:
+                    new_children.append(entry)
+
+            return sorted(new_children)
+
+        elif self._is_group(path):
+
+            # replace n5 attribute file with respective zarr attribute files
+            children.remove(n5_attrs_key)
+            children.append(zarr_group_meta_key)
+            if self._contains_attrs(path):
+                children.append(zarr_attrs_key)
+
+            return sorted(children)
+
+        else:
+
+            return children
 
     def _is_group(self, path):
 
