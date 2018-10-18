@@ -147,7 +147,7 @@ class N5Store(NestedDirectoryStore):
                     "keyword"%k)
 
             # replace previous user attributes
-            for k in n5_attrs.keys():
+            for k in list(n5_attrs.keys()):
                 if k not in n5_keywords:
                     del n5_attrs[k]
 
@@ -155,7 +155,7 @@ class N5Store(NestedDirectoryStore):
             n5_attrs.update(**zarr_attrs)
 
             value = json.dumps(
-                attrs,
+                n5_attrs,
                 sort_keys=True,
                 ensure_ascii=True,
                 indent=4).encode('ascii')
