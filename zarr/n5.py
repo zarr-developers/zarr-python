@@ -168,11 +168,11 @@ class N5Store(NestedDirectoryStore):
 
     def __delitem__(self, key):
 
-        if key.endswith(zarr_group_meta_key):
+        if key.endswith(zarr_group_meta_key): # pragma: no cover
             key = key.replace(zarr_group_meta_key, n5_attrs_key)
-        elif key.endswith(zarr_array_meta_key):
+        elif key.endswith(zarr_array_meta_key): # pragma: no cover
             key = key.replace(zarr_array_meta_key, n5_attrs_key)
-        elif key.endswith(zarr_attrs_key):
+        elif key.endswith(zarr_attrs_key): # pragma: no cover
             key = key.replace(zarr_attrs_key, n5_attrs_key)
         elif is_chunk_key(key):
             key = invert_chunk_coords(key)
@@ -197,7 +197,7 @@ class N5Store(NestedDirectoryStore):
             # array if attributes contain 'dimensions'
             return 'dimensions' in json.loads(self[key])
 
-        elif key.endswith(zarr_attrs_key):
+        elif key.endswith(zarr_attrs_key): # pragma: no cover
 
             key = key.replace(zarr_array_meta_key, n5_attrs_key)
             return self._contains_attrs(key)
@@ -255,7 +255,7 @@ class N5Store(NestedDirectoryStore):
             # replace n5 attribute file with respective zarr attribute files
             children.remove(n5_attrs_key)
             children.append(zarr_group_meta_key)
-            if self._contains_attrs(path):
+            if self._contains_attrs(path): # pragma: no cover
                 children.append(zarr_attrs_key)
 
             return sorted(children)
@@ -296,7 +296,7 @@ class N5Store(NestedDirectoryStore):
         else:
             if not path.endswith(n5_attrs_key):
                 attrs_key = os.path.join(path, n5_attrs_key)
-            else:
+            else: # pragma: no cover
                 attrs_key = path
 
         attrs = attrs_to_zarr(json.loads(self[attrs_key]))
@@ -307,7 +307,7 @@ def is_chunk_key(key):
     if segments:
         last_segment = segments[-1]
         return _prog_ckey.match(last_segment)
-    return False
+    return False # pragma: no cover
 
 def invert_chunk_coords(key):
     segments = list(key.split('/'))
@@ -458,13 +458,13 @@ def compressor_config_to_n5(compressor_config):
         n5_config['level'] = compressor_config['level']
         n5_config['useZlib'] = True
 
-    elif codec_id == 'gzip':
+    elif codec_id == 'gzip': # pragma: no cover
 
         n5_config['type'] = 'gzip'
         n5_config['level'] = compressor_config['level']
         n5_config['useZlib'] = False
 
-    else:
+    else: # pragma: no cover
 
         raise RuntimeError("Unknown compressor with id %s"%codec_id)
 
@@ -504,7 +504,7 @@ def compressor_config_to_zarr(compressor_config):
         if 'useZlib' in compressor_config and compressor_config['useZlib']:
             zarr_config['id'] = 'zlib'
             zarr_config['level'] = compressor_config['level']
-        else:
+        else: # pragma: no cover
             zarr_config['id'] = 'gzip'
             zarr_config['level'] = compressor_config['level']
 
@@ -512,7 +512,7 @@ def compressor_config_to_zarr(compressor_config):
 
         return None
 
-    else:
+    else: # pragma: no cover
 
         raise RuntimeError("Unknown compressor with id %s"%codec_id)
 
@@ -532,7 +532,7 @@ class N5ChunkWrapper(Codec):
             (self.dtype.byteorder == '=' and sys.byteorder == 'little')
         )
 
-        if compressor:
+        if compressor: # pragma: no cover
             assert compressor_config is None, (
                 "Only one of compressor_config or compressor should be given.")
             compressor_config = compressor.get_config()
@@ -598,7 +598,7 @@ class N5ChunkWrapper(Codec):
             chunk = self._from_big_endian(chunk)
 
             # read partial chunk
-            if chunk_shape != self.chunk_shape:
+            if chunk_shape != self.chunk_shape: # pragma: no cover
                 chunk = chunk.reshape(chunk_shape)
                 complete_chunk = np.zeros(self.chunk_shape, dtype=self.dtype)
                 target_slices = tuple(slice(0, s) for s in chunk_shape)
