@@ -53,7 +53,7 @@ build: off
 test_script:
   - "%CMD_IN_ENV% python -m pip install -U pip setuptools wheel"
   - "%CMD_IN_ENV% python -m pip install numpy==%NUMPY_VERSION%"
+  - "%CMD_IN_ENV% python -m pip install -v --no-binary=numcodecs numcodecs==0.5.5"
   - "%CMD_IN_ENV% python -m pip install -rrequirements_dev.txt"
   - "%CMD_IN_ENV% python setup.py install"
   - "%CMD_IN_ENV% python -m pytest -v --pyargs zarr"
-  
