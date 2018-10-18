@@ -8,7 +8,7 @@ from .storage import (
         group_meta_key as zarr_group_meta_key,
         array_meta_key as zarr_array_meta_key,
         attrs_key as zarr_attrs_key,
-        _prog_ckey)
+        _prog_ckey, _prog_number)
 from numcodecs.abc import Codec
 from numcodecs.compat import buffer_copy
 from numcodecs.registry import register_codec, get_codec
@@ -16,6 +16,7 @@ import json
 import logging
 import numpy as np
 import sys
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +27,7 @@ zarr_to_n5_keys = [
     ('shape', 'dimensions')
 ]
 n5_attrs_key = 'attributes.json'
+n5_keywords = ['n5', 'dataType', 'dimensions', 'blockSize', 'compression']
 
 class N5Store(NestedDirectoryStore):
     """Storage class using directories and files on a standard file system,
@@ -63,17 +65,40 @@ class N5Store(NestedDirectoryStore):
     def __getitem__(self, key):
 
         if key.endswith(zarr_group_meta_key):
+
             key = key.replace(zarr_group_meta_key, n5_attrs_key)
             value = group_metadata_to_zarr(json.loads(self[key]))
-            return json.dumps(value, ensure_ascii=True).encode('ascii')
+
+            return json.dumps(
+                value,
+                sort_keys=True,
+                ensure_ascii=True,
+                indent=4).encode('ascii')
 
         elif key.endswith(zarr_array_meta_key):
+
             key = key.replace(zarr_array_meta_key, n5_attrs_key)
             value = array_metadata_to_zarr(json.loads(self[key]))
-            return json.dumps(value, ensure_ascii=True).encode('ascii')
+
+            return json.dumps(
+                value,
+                sort_keys=True,
+                ensure_ascii=True,
+                indent=4).encode('ascii')
 
         elif key.endswith(zarr_attrs_key):
+
             key = key.replace(zarr_attrs_key, n5_attrs_key)
+            value = attrs_to_zarr(json.loads(self[key]))
+
+            if len(value) == 0:
+                raise KeyError(key)
+            else:
+                return json.dumps(
+                    value,
+                    sort_keys=True,
+                    ensure_ascii=True,
+                    indent=4).encode('ascii')
 
         key = invert_chunk_coords(key)
 
@@ -91,10 +116,11 @@ class N5Store(NestedDirectoryStore):
             else:
                 attrs = json.loads(value)
 
-            value = json.dumps(group_metadata_to_n5(attrs),
-                               indent=4,
-                               sort_keys=True,
-                               ensure_ascii=True).encode('ascii')
+            value = json.dumps(
+                group_metadata_to_n5(attrs),
+                sort_keys=True,
+                ensure_ascii=True,
+                indent=4).encode('ascii')
 
         elif key.endswith(zarr_array_meta_key):
 
@@ -106,21 +132,44 @@ class N5Store(NestedDirectoryStore):
             else:
                 attrs = json.loads(value)
 
-            value = json.dumps(array_metadata_to_n5(attrs),
-                               indent=4,
-                               sort_keys=True,
-                               ensure_ascii=True).encode('ascii')
+            value = json.dumps(
+                array_metadata_to_n5(attrs),
+                sort_keys=True,
+                ensure_ascii=True,
+                indent=4).encode('ascii')
 
         elif key.endswith(zarr_attrs_key):
+
             key = key.replace(zarr_attrs_key, n5_attrs_key)
 
-        key = invert_chunk_coords(key)
+            zarr_attrs = json.loads(value)
+            for k in zarr_attrs.keys():
+                assert k not in n5_keywords, (
+                    "Can not set attribute %s, this is a reserved N5 "
+                    "keyword"%k)
+
+            if key in self:
+                attrs = json.loads(self[key])
+                attrs.update(**zarr_attrs)
+            else:
+                attrs = zarr_attrs
+
+            value = json.dumps(
+                attrs,
+                sort_keys=True,
+                ensure_ascii=True,
+                indent=4).encode('ascii')
+
+        else:
+
+            key = invert_chunk_coords(key)
 
         super(N5Store, self).__setitem__(key, value)
 
     def __contains__(self, key):
 
         if key.endswith(zarr_group_meta_key):
+
             key = key.replace(zarr_group_meta_key, n5_attrs_key)
             if not key in self:
                 return False
@@ -128,13 +177,17 @@ class N5Store(NestedDirectoryStore):
             return 'dimensions' not in json.loads(self[key])
 
         elif key.endswith(zarr_array_meta_key):
+
             key = key.replace(zarr_array_meta_key, n5_attrs_key)
             if not key in self:
                 return False
+            # array if attributes contain 'dimensions'
             return 'dimensions' in json.loads(self[key])
 
         elif key.endswith(zarr_attrs_key):
+
             key = key.replace(zarr_array_meta_key, n5_attrs_key)
+            return self._contains_attrs(key)
 
         key = invert_chunk_coords(key)
 
@@ -145,6 +198,41 @@ class N5Store(NestedDirectoryStore):
             isinstance(other, N5Store) and
             self.path == other.path
         )
+
+    def _is_group(self, path):
+
+        if path is None:
+            attrs_key = n5_attrs_key
+        else:
+            attrs_key = os.path.join(path, n5_attrs_key)
+
+        return (
+            attrs_key in self and
+            'dimensions' not in json.loads(self[attrs_key]))
+
+    def _is_array(self, path):
+
+        if path is None:
+            attrs_key = n5_attrs_key
+        else:
+            attrs_key = os.path.join(path, n5_attrs_key)
+
+        return (
+            attrs_key in self and
+            'dimensions' in json.loads(self[attrs_key]))
+
+    def _contains_attrs(self, path):
+
+        if path is None:
+            attrs_key = n5_attrs_key
+        else:
+            if not path.endswith(n5_attrs_key):
+                attrs_key = os.path.join(path, n5_attrs_key)
+            else:
+                attrs_key = path
+
+        attrs = attrs_to_zarr(json.loads(self[attrs_key]))
+        return len(attrs) > 0
 
 def invert_chunk_coords(key):
     segments = list(key.split('/'))
@@ -231,6 +319,17 @@ def array_metadata_to_zarr(array_metadata):
     }
 
     return array_metadata
+
+def attrs_to_zarr(attrs):
+    '''Get all zarr attributes from an N5 attributes dictionary (i.e.,
+    all non-keyword attributes).'''
+
+    # remove all N5 keywords
+    for n5_key in n5_keywords:
+        if n5_key in attrs:
+            del attrs[n5_key]
+
+    return attrs
 
 def compressor_config_to_n5(compressor_config):
 
