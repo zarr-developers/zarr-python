@@ -333,7 +333,9 @@ def array_metadata_to_n5(array_metadata):
     array_metadata['blockSize'] = array_metadata['blockSize'][::-1]
 
     if 'fill_value' in array_metadata:
-        assert array_metadata['fill_value'] == 0, (
+        assert (
+                array_metadata['fill_value'] == 0 or
+                array_metadata['fill_value'] is None), (
             "N5 only supports fill_value==0 (for now)")
         del array_metadata['fill_value']
 
@@ -368,7 +370,7 @@ def array_metadata_to_zarr(array_metadata):
 
     array_metadata['shape'] = array_metadata['shape'][::-1]
     array_metadata['chunks'] = array_metadata['chunks'][::-1]
-    array_metadata['fill_value'] = 0
+    array_metadata['fill_value'] = 0 # also if None was requested
     array_metadata['order'] = 'C'
     array_metadata['filters'] = []
 
