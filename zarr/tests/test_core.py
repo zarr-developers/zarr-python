@@ -21,6 +21,7 @@ from zarr.core import Array
 from zarr.errors import PermissionError
 from zarr.compat import PY2, text_type, binary_type
 from zarr.util import buffer_size
+from zarr.n5 import N5Store
 from numcodecs import (Delta, FixedScaleOffset, Zlib, Blosc, BZ2, MsgPack, Pickle,
                        Categorize, JSON, VLenUTF8, VLenBytes, VLenArray)
 from numcodecs.tests.common import greetings
@@ -1225,6 +1226,146 @@ class TestArrayWithNestedDirectoryStore(TestArrayWithDirectoryStore):
         return Array(store, read_only=read_only, cache_metadata=cache_metadata,
                      cache_attrs=cache_attrs)
 
+
+class TestArrayWithN5Store(TestArrayWithDirectoryStore):
+
+    @staticmethod
+    def create_array(read_only=False, **kwargs):
+        path = mkdtemp()
+        atexit.register(shutil.rmtree, path)
+        store = N5Store(path)
+        cache_metadata = kwargs.pop('cache_metadata', True)
+        cache_attrs = kwargs.pop('cache_attrs', True)
+        kwargs.setdefault('compressor', Zlib(1))
+        init_array(store, **kwargs)
+        return Array(store, read_only=read_only, cache_metadata=cache_metadata,
+                     cache_attrs=cache_attrs)
+
+    def test_array_0d(self):
+        # test behaviour for array with 0 dimensions
+
+        # setup
+        a = np.zeros(())
+        z = self.create_array(shape=(), dtype=a.dtype, fill_value=0)
+
+        # check properties
+        assert a.ndim == z.ndim
+        assert a.shape == z.shape
+        assert a.size == z.size
+        assert a.dtype == z.dtype
+        assert a.nbytes == z.nbytes
+        with pytest.raises(TypeError):
+            len(z)
+        assert () == z.chunks
+        assert 1 == z.nchunks
+        assert (1,) == z.cdata_shape
+        # compressor always None - no point in compressing a single value
+        assert z.compressor.compressor_config is None
+
+        # check __getitem__
+        b = z[...]
+        assert isinstance(b, np.ndarray)
+        assert a.shape == b.shape
+        assert a.dtype == b.dtype
+        assert_array_equal(a, np.array(z))
+        assert_array_equal(a, z[...])
+        assert a[()] == z[()]
+        with pytest.raises(IndexError):
+            z[0]
+        with pytest.raises(IndexError):
+            z[:]
+
+        # check __setitem__
+        z[...] = 42
+        assert 42 == z[()]
+        z[()] = 43
+        assert 43 == z[()]
+        with pytest.raises(IndexError):
+            z[0] = 42
+        with pytest.raises(IndexError):
+            z[:] = 42
+        with pytest.raises(ValueError):
+            z[...] = np.array([1, 2, 3])
+
+    def test_array_1d_fill_value(self):
+        # N5 does not support fill values != 0
+        pass
+
+    def test_array_order(self):
+
+        # 1D
+        a = np.arange(1050)
+        for order in 'C': # F not supported by N5 (yet)
+            z = self.create_array(shape=a.shape, chunks=100, dtype=a.dtype,
+                                  order=order)
+            assert order == z.order
+            if order == 'F':
+                assert z[:].flags.f_contiguous
+            else:
+                assert z[:].flags.c_contiguous
+            z[:] = a
+            assert_array_equal(a, z[:])
+
+        # 2D
+        a = np.arange(10000).reshape((100, 100))
+        for order in 'C': # F not supported by N5 (yet)
+            z = self.create_array(shape=a.shape, chunks=(10, 10),
+                                  dtype=a.dtype, order=order)
+            assert order == z.order
+            if order == 'F':
+                assert z[:].flags.f_contiguous
+            else:
+                assert z[:].flags.c_contiguous
+            z[:] = a
+            actual = z[:]
+            assert_array_equal(a, actual)
+
+    def test_structured_array(self):
+        # structured arrays not supported in N5
+        pass
+
+    def test_object_arrays(self):
+        # object arrays not supported in N5
+        pass
+
+    def test_object_arrays_vlen_text(self):
+        # object arrays not supported in N5
+        pass
+
+    def test_object_arrays_vlen_bytes(self):
+        # object arrays not supported in N5
+        pass
+
+    def test_object_arrays_vlen_array(self):
+        # object arrays not supported in N5
+        pass
+
+    def test_object_arrays_danger(self):
+        # object arrays not supported in N5
+        pass
+
+    def test_hexdigest(self):
+        # Check basic 1-D array
+        z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
+        assert 'c6b83adfad999fbd865057531d749d87cf138f58' == z.hexdigest()
+
+        # Check basic 1-D array with different type
+        z = self.create_array(shape=(1050,), chunks=100, dtype='f4')
+        assert 'a3d6d187536ecc3a9dd6897df55d258e2f52f9c5' == z.hexdigest()
+
+        # Check basic 2-D array
+        z = self.create_array(shape=(20, 35,), chunks=10, dtype='i4')
+        assert '189690c5701d33a41cd7ce9aa0ac8dac49a69c51' == z.hexdigest()
+
+        # Check basic 1-D array with some data
+        z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
+        z[200:400] = np.arange(200, 400, dtype='i4')
+        assert 'b63f031031dcd5248785616edcb2d6fe68203c28' == z.hexdigest()
+
+        # Check basic 1-D array with attributes
+        z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
+        z.attrs['foo'] = 'bar'
+        assert '0cfc673215a8292a87f3c505e2402ce75243c601' == z.hexdigest()
 
 class TestArrayWithDBMStore(TestArray):
 
