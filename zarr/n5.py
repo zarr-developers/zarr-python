@@ -401,6 +401,10 @@ def compressor_config_to_n5(compressor_config):
     if compressor_config is None:
         return { 'type': 'raw' }
 
+    # peel wrapper, if present
+    if compressor_config['id'] == N5ChunkWrapper.codec_id:
+        compressor_config = compressor_config['compressor_config']
+
     codec_id = compressor_config['id']
     n5_config = { 'type': codec_id }
 
@@ -448,10 +452,6 @@ def compressor_config_to_n5(compressor_config):
         n5_config['level'] = compressor_config['level']
         n5_config['useZlib'] = False
 
-    elif codec_id == 'raw':
-
-        pass
-
     else:
 
         raise RuntimeError("Unknown compressor with id %s"%codec_id)
@@ -498,7 +498,7 @@ def compressor_config_to_zarr(compressor_config):
 
     elif codec_id == 'raw':
 
-        pass
+        return None
 
     else:
 
@@ -528,7 +528,7 @@ class N5ChunkWrapper(Codec):
         if (
                 compressor_config is None and compressor is None or
                 compressor_config['id'] == 'raw'):
-            self.compressor_config = { 'id': 'raw' }
+            self.compressor_config = None
             self._compressor = None
         else:
             self._compressor = get_codec(compressor_config)
