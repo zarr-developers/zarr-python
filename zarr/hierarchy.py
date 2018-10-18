@@ -1058,7 +1058,8 @@ def group(store=None, overwrite=False, chunk_store=None,
                  cache_attrs=cache_attrs, synchronizer=synchronizer, path=path)
 
 
-def open_group(store, mode='a', cache_attrs=True, synchronizer=None, path=None):
+def open_group(store, mode='a', cache_attrs=True, synchronizer=None, path=None,
+               chunk_store=None):
     """Open a group using file-mode-like semantics.
 
     Parameters
@@ -1078,6 +1079,8 @@ def open_group(store, mode='a', cache_attrs=True, synchronizer=None, path=None):
         Array synchronizer.
     path : string, optional
         Group path within store.
+    chunk_store : MutableMapping or string, optional
+        Store or path to directory in file system or name of zip file.
 
     Returns
     -------
@@ -1101,6 +1104,8 @@ def open_group(store, mode='a', cache_attrs=True, synchronizer=None, path=None):
 
     # handle polymorphic store arg
     store = _normalize_store_arg(store)
+    if chunk_store is not None:
+        chunk_store = _normalize_store_arg(chunk_store)
     path = normalize_storage_path(path)
 
     # ensure store is initialized
@@ -1112,13 +1117,13 @@ def open_group(store, mode='a', cache_attrs=True, synchronizer=None, path=None):
             err_group_not_found(path)
 
     elif mode == 'w':
-        init_group(store, overwrite=True, path=path)
+        init_group(store, overwrite=True, path=path, chunk_store=chunk_store)
 
     elif mode == 'a':
         if contains_array(store, path=path):
             err_contains_array(path)
         if not contains_group(store, path=path):
-            init_group(store, path=path)
+            init_group(store, path=path, chunk_store=chunk_store)
 
     elif mode in ['w-', 'x']:
         if contains_array(store, path=path):
@@ -1126,10 +1131,10 @@ def open_group(store, mode='a', cache_attrs=True, synchronizer=None, path=None):
         elif contains_group(store, path=path):
             err_contains_group(path)
         else:
-            init_group(store, path=path)
+            init_group(store, path=path, chunk_store=chunk_store)
 
     # determine read only status
     read_only = mode == 'r'
 
     return Group(store, read_only=read_only, cache_attrs=cache_attrs,
-                 synchronizer=synchronizer, path=path)
+                 synchronizer=synchronizer, path=path, chunk_store=chunk_store)
