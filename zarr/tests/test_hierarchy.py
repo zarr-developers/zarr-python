@@ -832,7 +832,7 @@ class TestGroup(unittest.TestCase):
 
         # round-trip through pickle
         dump = pickle.dumps(g)
-        # some stores cannot be opened twice at the same time, need to close first
+        # some stores cannot be opened twice at the same time, need to close
         # store before can round-trip through pickle
         if hasattr(g.store, 'close'):
             g.store.close()
