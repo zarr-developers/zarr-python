@@ -1437,7 +1437,11 @@ class DBMStore(MutableMapping):
         self.open_kwargs = open_kwargs
 
     def __getstate__(self):
-        self.flush()  # needed for py2 and ndbm
+        try:
+            self.flush()  # needed for py2 and ndbm
+        except Exception:
+            # flush may fail if db has already been closed
+            pass
         return (self.path, self.flag, self.mode, self.open, self.write_lock,
                 self.open_kwargs)
 
@@ -1631,7 +1635,11 @@ class LMDBStore(MutableMapping):
         self.kwargs = kwargs
 
     def __getstate__(self):
-        self.flush()  # just in case
+        try:
+            self.flush()  # just in case
+        except Exception:
+            # flush may fail if db has already been closed
+            pass
         return self.path, self.buffers, self.kwargs
 
     def __setstate__(self, state):

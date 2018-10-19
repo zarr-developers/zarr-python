@@ -224,8 +224,8 @@ def zeros(shape, **kwargs):
     >>> z
     <zarr.core.Array (10000, 10000) float64>
     >>> z[:2, :2]
-    array([[ 0.,  0.],
-           [ 0.,  0.]])
+    array([[0., 0.],
+           [0., 0.]])
 
     """
 
@@ -245,8 +245,8 @@ def ones(shape, **kwargs):
     >>> z
     <zarr.core.Array (10000, 10000) float64>
     >>> z[:2, :2]
-    array([[ 1.,  1.],
-           [ 1.,  1.]])
+    array([[1., 1.],
+           [1., 1.]])
 
     """
 
@@ -266,8 +266,8 @@ def full(shape, fill_value, **kwargs):
     >>> z
     <zarr.core.Array (10000, 10000) float64>
     >>> z[:2, :2]
-    array([[ 42.,  42.],
-           [ 42.,  42.]])
+    array([[42., 42.],
+           [42., 42.]])
 
     """
 

@@ -656,19 +656,39 @@ class TestArray(unittest.TestCase):
 
     def test_pickle(self):
 
+        # setup array
         z = self.create_array(shape=1000, chunks=100, dtype=int, cache_metadata=False,
                               cache_attrs=False)
-        z[:] = np.random.randint(0, 1000, 1000)
-        z2 = pickle.loads(pickle.dumps(z))
-        assert z.shape == z2.shape
-        assert z.chunks == z2.chunks
-        assert z.dtype == z2.dtype
+        shape = z.shape
+        chunks = z.chunks
+        dtype = z.dtype
+        compressor_config = None
         if z.compressor:
-            assert z.compressor.get_config() == z2.compressor.get_config()
-        assert z.fill_value == z2.fill_value
-        assert z._cache_metadata == z2._cache_metadata
-        assert z.attrs.cache == z2.attrs.cache
-        assert_array_equal(z[:], z2[:])
+            compressor_config = z.compressor.get_config()
+        fill_value = z.fill_value
+        cache_metadata = z._cache_metadata
+        attrs_cache = z.attrs.cache
+        a = np.random.randint(0, 1000, 1000)
+        z[:] = a
+
+        # round trip through pickle
+        dump = pickle.dumps(z)
+        # some stores cannot be opened twice at the same time, need to close
+        # store before can round-trip through pickle
+        if hasattr(z.store, 'close'):
+            z.store.close()
+        z2 = pickle.loads(dump)
+
+        # verify
+        assert shape == z2.shape
+        assert chunks == z2.chunks
+        assert dtype == z2.dtype
+        if z2.compressor:
+            assert compressor_config == z2.compressor.get_config()
+        assert fill_value == z2.fill_value
+        assert cache_metadata == z2._cache_metadata
+        assert attrs_cache == z2.attrs.cache
+        assert_array_equal(a, z2[:])
 
     def test_np_ufuncs(self):
         z = self.create_array(shape=(100, 100), chunks=(10, 10))

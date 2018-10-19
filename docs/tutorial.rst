@@ -1331,7 +1331,7 @@ internal threads. The number of Blosc threads can be changed to increase or
 decrease this number, e.g.::
 
     >>> from zarr import blosc
-    >>> blosc.set_nthreads(2)
+    >>> blosc.set_nthreads(2)  # doctest: +SKIP
     8
 
 When a Zarr array is being used within a multi-threaded program, Zarr
