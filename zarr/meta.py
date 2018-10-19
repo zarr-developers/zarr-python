@@ -54,9 +54,12 @@ def decode_array_metadata(s):
 
 def encode_array_metadata(meta):
     dtype = meta['dtype']
+    sdshape = ()
+    if dtype.subdtype is not None:
+        dtype, sdshape = dtype.subdtype
     meta = dict(
         zarr_format=ZARR_FORMAT,
-        shape=meta['shape'],
+        shape=meta['shape'] + sdshape,
         chunks=meta['chunks'],
         dtype=encode_dtype(dtype),
         compressor=meta['compressor'],
@@ -83,10 +86,9 @@ def _decode_dtype_descr(d):
         # recurse to handle nested structures
         if PY2:  # pragma: py3 no cover
             # under PY2 numpy rejects unicode field names
-            d = [(f.encode('ascii'), _decode_dtype_descr(v))
-                 for f, v in d]
+            d = [(k[0].encode("ascii"), _decode_dtype_descr(k[1])) + tuple(k[2:]) for k in d]
         else:  # pragma: py2 no cover
-            d = [(f, _decode_dtype_descr(v)) for f, v in d]
+            d = [(k[0], _decode_dtype_descr(k[1])) + tuple(k[2:]) for k in d]
     return d
 
 
