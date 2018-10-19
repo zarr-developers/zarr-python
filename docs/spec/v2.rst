@@ -530,10 +530,9 @@ initially published to clarify ambiguities and add some missing information.
   either arrays or groups, and if absent then custom attributes should be treated as
   empty.
 
-* The specification now clarifies that structured datatypes with
-  subarray shapes and/or with nested structured data types are
-  supported, and describes the JSON syntax for encoding them in array
-  metadata (:issue:`111`, :issue:`296`).
+* The specification now describes how structured datatypes with
+  subarray shapes and/or with nested structured data types are encoded
+  in array metadata (:issue:`111`, :issue:`296`).
 
 
 Changes from version 1 to version 2
