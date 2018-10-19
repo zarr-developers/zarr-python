@@ -867,99 +867,69 @@ class TestArray(unittest.TestCase):
                 z[...] = a
                 assert_array_equal(a, z[...])
 
-    def test_structured_array(self):
+    def check_structured_array(self, d, fill_values):
+        for a in (d, d[:0]):
+            for fill_value in fill_values:
+                z = self.create_array(shape=a.shape, chunks=2, dtype=a.dtype, fill_value=fill_value)
+                assert len(a) == len(z)
+                assert a.shape == z.shape
+                assert a.dtype == z.dtype
 
-        # setup some data
+                # check use of fill value before array is initialised with data
+                if fill_value is not None:
+                    if fill_value == b'':
+                        # numpy 1.14 compatibility
+                        np_fill_value = np.array(fill_value, dtype=a.dtype.str).view(a.dtype)[()]
+                    else:
+                        np_fill_value = np.array(fill_value, dtype=a.dtype)[()]
+                    assert np_fill_value == z.fill_value
+                    if len(a):
+                        assert np_fill_value == z[0]
+                        assert np_fill_value == z[-1]
+                        empty = np.empty_like(a)
+                        empty[:] = np_fill_value
+                        assert empty[0] == z[0]
+                        assert_array_equal(empty[0:2], z[0:2])
+                        assert_array_equal(empty, z[...])
+                        for f in a.dtype.names:
+                            assert_array_equal(empty[f], z[f])
+
+                # store data in array
+                z[...] = a
+
+                # check stored data
+                if len(a):
+                    assert a[0] == z[0]
+                    assert a[-1] == z[-1]
+                    assert_array_equal(a[0:2], z[0:2])
+                    assert_array_equal(a, z[...])
+                    for f in a.dtype.names:
+                        assert_array_equal(a[f], z[f])
+
+    def test_structured_array(self):
         d = np.array([(b'aaa', 1, 4.2),
                       (b'bbb', 2, 8.4),
                       (b'ccc', 3, 12.6)],
                      dtype=[('foo', 'S3'), ('bar', 'i4'), ('baz', 'f8')])
-        for a in (d, d[:0]):
-            for fill_value in None, b'', (b'zzz', 42, 16.8):
-                z = self.create_array(shape=a.shape, chunks=2, dtype=a.dtype, fill_value=fill_value)
-                assert len(a) == len(z)
-                if fill_value is not None:
-                    if fill_value == b'':
-                        # numpy 1.14 compatibility
-                        np_fill_value = np.array(fill_value, dtype=a.dtype.str).view(a.dtype)[()]
-                    else:
-                        np_fill_value = np.array(fill_value, dtype=a.dtype)[()]
-                    assert np_fill_value == z.fill_value
-                    if len(z):
-                        assert np_fill_value == z[0]
-                        assert np_fill_value == z[-1]
-                z[...] = a
-                if len(a):
-                    assert a[0] == z[0]
-                assert_array_equal(a, z[...])
-                assert_array_equal(a['foo'], z['foo'])
-                assert_array_equal(a['bar'], z['bar'])
-                assert_array_equal(a['baz'], z['baz'])
+        fill_values = None, b'', (b'zzz', 42, 16.8)
+        self.check_structured_array(d, fill_values)
 
     def test_structured_array_subshapes(self):
-
-        # setup some data
         d = np.array([(0, ((0, 1, 2), (1, 2, 3)), b'aaa'),
                       (1, ((1, 2, 3), (2, 3, 4)), b'bbb'),
                       (2, ((2, 3, 4), (3, 4, 5)), b'ccc')],
                      dtype=[('foo', 'i8'), ('bar', '(2, 3)f4'), ('baz', 'S3')])
-        for a in (d, d[:0]):
-            for fill_value in None, b'', (0, ((0, 0, 0), (1, 1, 1)), b'zzz'):
-                z = self.create_array(shape=a.shape, chunks=2, dtype=a.dtype, fill_value=fill_value)
-                assert len(a) == len(z)
-                if fill_value is not None:
-                    if fill_value == b'':
-                        # numpy 1.14 compatibility
-                        np_fill_value = np.array(fill_value, dtype=a.dtype.str).view(a.dtype)[()]
-                    else:
-                        np_fill_value = np.array(fill_value, dtype=a.dtype)[()]
-                    assert np_fill_value == z.fill_value
-                    if len(z):
-                        assert np_fill_value == z[0]
-                        assert np_fill_value == z[-1]
-                z[...] = a
-                if len(a):
-                    assert a[0] == z[0]
-                    assert_array_equal(a, z[...])
-                    assert_array_equal(a['foo'], z['foo'])
-                    assert_array_equal(a['bar'], z['bar'])
-                    assert_array_equal(a['baz'], z['baz'])
-                else:
-                    # workaround for numpy bug https://www.github.com/numpy/numpy/issues/11946
-                    assert a.tobytes() == z[...].tobytes()
+        fill_values = None, b'', (0, ((0, 0, 0), (1, 1, 1)), b'zzz')
+        self.check_structured_array(d, fill_values)
 
     def test_structured_array_nested(self):
-
-        # setup some data
         d = np.array([(0, (0, ((0, 1), (1, 2), (2, 3)), 0), b'aaa'),
                       (1, (1, ((1, 2), (2, 3), (3, 4)), 1), b'bbb'),
                       (2, (2, ((2, 3), (3, 4), (4, 5)), 2), b'ccc')],
                      dtype=[('foo', 'i8'), ('bar', [('foo', 'i4'), ('bar', '(3, 2)f4'),
                             ('baz', 'u1')]), ('baz', 'S3')])
-        for a in (d, d[:0]):
-            for fill_value in None, b'', (0, (0, ((0, 0), (1, 1), (2, 2)), 0), b'zzz'):
-                z = self.create_array(shape=a.shape, chunks=2, dtype=a.dtype, fill_value=fill_value)
-                assert len(a) == len(z)
-                if fill_value is not None:
-                    if fill_value == b'':
-                        # numpy 1.14 compatibility
-                        np_fill_value = np.array(fill_value, dtype=a.dtype.str).view(a.dtype)[()]
-                    else:
-                        np_fill_value = np.array(fill_value, dtype=a.dtype)[()]
-                    assert np_fill_value == z.fill_value
-                    if len(z):
-                        assert np_fill_value == z[0]
-                        assert np_fill_value == z[-1]
-                z[...] = a
-                if len(a):
-                    assert a[0] == z[0]
-                    assert_array_equal(a, z[...])
-                    assert_array_equal(a['foo'], z['foo'])
-                    assert_array_equal(a['bar'], z['bar'])
-                    assert_array_equal(a['baz'], z['baz'])
-                else:
-                    # workaround for numpy bug https://www.github.com/numpy/numpy/issues/11946
-                    assert a.tobytes() == z[...].tobytes()
+        fill_values = None, b'', (0, (0, ((0, 0), (1, 1), (2, 2)), 0), b'zzz')
+        self.check_structured_array(d, fill_values)
 
     def test_dtypes(self):
 
