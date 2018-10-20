@@ -2,7 +2,7 @@
 """This module contains a storage class and codec to support the N5 format.
 """
 from __future__ import absolute_import, division
-from .meta import ZARR_FORMAT
+from .meta import ZARR_FORMAT, _ensure_str
 from .storage import (
         NestedDirectoryStore,
         group_meta_key as zarr_group_meta_key,
@@ -112,6 +112,7 @@ class N5Store(NestedDirectoryStore):
 
             key = key.replace(zarr_group_meta_key, n5_attrs_key)
 
+            value = _ensure_str(value)
             n5_attrs = self._load_n5_attrs(key)
             n5_attrs.update(**group_metadata_to_n5(json.loads(value)))
 
@@ -125,6 +126,7 @@ class N5Store(NestedDirectoryStore):
 
             key = key.replace(zarr_array_meta_key, n5_attrs_key)
 
+            value = _ensure_str(value)
             n5_attrs = self._load_n5_attrs(key)
             n5_attrs.update(**array_metadata_to_n5(json.loads(value)))
 
@@ -138,6 +140,7 @@ class N5Store(NestedDirectoryStore):
 
             key = key.replace(zarr_attrs_key, n5_attrs_key)
 
+            value = _ensure_str(value)
             n5_attrs = self._load_n5_attrs(key)
             zarr_attrs = json.loads(value)
 
@@ -264,7 +267,9 @@ class N5Store(NestedDirectoryStore):
 
     def _load_n5_attrs(self, path):
         try:
-            return json.loads(super(N5Store, self).__getitem__(path))
+            s = super(N5Store, self).__getitem__(path)
+            s = _ensure_str(s)
+            return json.loads(s)
         except KeyError:
             return {}
 
