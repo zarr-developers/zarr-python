@@ -55,6 +55,11 @@ class Array(object):
         Mapping to store decoded chunks for caching. Can be used in repeated
         chunk access scenarios when decoding of data is computationally
         expensive.
+        NOTE: When using the write cache feature with object arrays(i.e.
+        when dtype of array is 'object' and when writing to the array with
+        chunk_cache provided) could result in a slight slowdown as some
+        dtypes, like VLenArray, have to go through the encode-decode phase
+        before having the correct dtype.
 
     Attributes
     ----------
