@@ -29,8 +29,8 @@ from zarr.hierarchy import group
 from zarr.tests.util import CountingDict
 
 
-class StoreTests(object):
-    """Abstract store tests."""
+class MutableMappingStoreTests(object):
+    """Abstract Mutable Mapping Tests"""
 
     def create_store(self, **kwargs):  # pragma: no cover
         # implement in sub-class
@@ -156,6 +156,10 @@ class StoreTests(object):
             store['spong'] = np.frombuffer(b'zzzzz', dtype='u1')
             assert 15 == getsize(store)
             assert 5 == getsize(store, 'spong')
+
+
+class StoreTests(MutableMappingStoreTests):
+    """Abstract store tests."""
 
     # noinspection PyStatementEffect
     def test_hierarchy(self):
@@ -1071,7 +1075,7 @@ class TestLRUStoreCache(StoreTests, unittest.TestCase):
         assert 1 == store.counter['__iter__']
 
 
-class TestLRUChunkCache(object):
+class TestLRUChunkCache(MutableMappingStoreTests, unittest.TestCase):
 
     class MockChunkCacheArray(object):
 
@@ -1090,6 +1094,9 @@ class TestLRUChunkCache(object):
                 value = self._store[item]
                 self._chunk_cache[item] = value
                 return value
+
+    def create_store(self):
+        return LRUChunkCache(max_size=None)
 
     def test_cache_values_no_max_size(self):
 
