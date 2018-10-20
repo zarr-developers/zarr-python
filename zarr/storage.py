@@ -1935,7 +1935,7 @@ class LRUChunkCache(MutableMapping):
                 self.misses)
 
     def __setstate__(self, state):
-        (self._store, self._max_size, self._current_size,
+        (self._max_size, self._current_size,
          self._values_cache, self.hits,
          self.misses) = state
         self._mutex = Lock()
@@ -1959,6 +1959,12 @@ class LRUChunkCache(MutableMapping):
 
     def _keys(self):
         return self._values_cache.keys()
+
+    def values(self):
+        return self._values_cache.values()
+
+    def items(self):
+        return self._values_cache.items()
 
     def _pop_value(self):
         # remove the first value from the cache, as this will be the least recently
@@ -2023,5 +2029,7 @@ class LRUChunkCache(MutableMapping):
             self._cache_value(key, value)
 
     def __delitem__(self, key):
+        if key not in self._values_cache:
+            raise KeyError
         with self._mutex:
             self._invalidate_value(key)
