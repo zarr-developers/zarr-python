@@ -599,10 +599,11 @@ class N5ChunkWrapper(Codec):
 
             # read partial chunk
             if chunk_shape != self.chunk_shape: # pragma: no cover
+                chunk = np.frombuffer(chunk, dtype=self.dtype)
                 chunk = chunk.reshape(chunk_shape)
                 complete_chunk = np.zeros(self.chunk_shape, dtype=self.dtype)
                 target_slices = tuple(slice(0, s) for s in chunk_shape)
-                complete_chunk[target_slices] = chunk.reshape(chunk_shape)
+                complete_chunk[target_slices] = chunk
                 chunk = complete_chunk
 
             return chunk
