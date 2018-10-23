@@ -673,7 +673,7 @@ class TestArray(unittest.TestCase):
 
         # round trip through pickle
         dump = pickle.dumps(z)
-        # some stores cannot be opened twice at the same time, need to close first
+        # some stores cannot be opened twice at the same time, need to close
         # store before can round-trip through pickle
         if hasattr(z.store, 'close'):
             z.store.close()

@@ -18,12 +18,12 @@ from zarr.compat import PY2, text_type
 
 
 # noinspection PyShadowingBuiltins
-def open(store, mode='a', **kwargs):
+def open(store=None, mode='a', **kwargs):
     """Convenience function to open a group or array using file-mode-like semantics.
 
     Parameters
     ----------
-    store : MutableMapping or string
+    store : MutableMapping or string, optional
         Store or path to directory in file system or name of zip file.
     mode : {'r', 'r+', 'a', 'w', 'w-'}, optional
         Persistence mode: 'r' means read only (must exist); 'r+' means
@@ -68,7 +68,8 @@ def open(store, mode='a', **kwargs):
 
     path = kwargs.get('path', None)
     # handle polymorphic store arg
-    store = normalize_store_arg(store, clobber=(mode == 'w'))
+    clobber = mode == 'w'
+    store = normalize_store_arg(store, clobber=clobber)
     path = normalize_storage_path(path)
 
     if mode in {'w', 'w-', 'x'}:
@@ -1071,37 +1072,59 @@ def copy_all(source, dest, shallow=False, without_attrs=False, log=None,
     return n_copied, n_skipped, n_bytes_copied
 
 
-def consolidate_metadata(mapping, out_key='.zmetadata'):
+def consolidate_metadata(store, metadata_key='.zmetadata'):
     """
-    Store all the metadata in the files within the given dataset in one key
+    Consolidate all metadata for groups and arrays within the given store
+    into a single resource and put it under the given key.
 
-    This produces a single file in the backend store, containing all the
+    This produces a single object in the backend store, containing all the
     metadata read from all the zarr-related keys that can be found. This
     should be used in conjunction with ``storage.ConsolidatedMetadataStore``
     to reduce the number of operations on the backend store at read time.
 
-    Note, however, that if the dataset is changed after this consolidation,
-    then the metadata read by ``storage.ConsolidatedMetadataStore`` would
-    be out of sync with reality unless this function is called again.
+    Note, however, that if any metadata in the store is changed after this
+    consolidation, then the metadata read by ``storage.ConsolidatedMetadataStore``
+    would be out of sync with reality unless this function is called again.
 
     Parameters
     ----------
-    mapping : MutableMapping instance
-        Containing metadata and data keys of a zarr dataset
-    out_key : str
-        Key to place the consolidated data into
+    store : MutableMapping or string
+        Store or path to directory in file system or name of zip file.
+    metadata_key : str
+        Key to put the consolidated metadata under.
 
     Returns
     -------
     ConsolidatedMetadataStore instance, based on the same base store.
+
     """
     import json
     from .storage import ConsolidatedMetadataStore
+
+    store = normalize_store_arg(store)
 
     def is_zarr_key(key):
         return (key.endswith('.zarray') or key.endswith('.zgroup') or
                 key.endswith('.zattrs'))
 
-    out = {key: mapping[key].decode() for key in mapping if is_zarr_key(key)}
-    mapping[out_key] = json.dumps(out).encode()
-    return ConsolidatedMetadataStore(mapping, out_key)
+    out = {key: store[key].decode() for key in store if is_zarr_key(key)}
+    store[metadata_key] = json.dumps(out).encode()
+    return ConsolidatedMetadataStore(store, metadata_key=metadata_key)
+
+
+def open_consolidated(store, metadata_key='.zmetadata', mode='a'):
+    """TODO doc me"""
+
+    from .storage import ConsolidatedMetadataStore
+
+    # normalize parameters
+    store = normalize_store_arg(store)
+    if mode not in 'ra':
+        raise ValueError("invalid mode, expected either 'r' or 'a'; found {!r}"
+                         .format(mode))
+
+    # setup metadata sotre
+    meta_store = ConsolidatedMetadataStore(store, metadata_key=metadata_key)
+
+    # pass through
+    return open(store=meta_store, chunk_store=store, mode=mode)

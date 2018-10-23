@@ -138,10 +138,12 @@ class StoreTests(object):
 
         # round-trip through pickle
         dump = pickle.dumps(store)
-        # some stores cannot be opened twice at the same time, need to close first
+        # some stores cannot be opened twice at the same time, need to close
         # store before can round-trip through pickle
         if hasattr(store, 'close'):
             store.close()
+            # check can still pickle after close
+            assert dump == pickle.dumps(store)
         store2 = pickle.loads(dump)
 
         # verify

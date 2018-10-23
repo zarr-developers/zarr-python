@@ -12,11 +12,12 @@ from numcodecs import Zlib, Adler32
 import pytest
 
 
-from zarr.convenience import open, save, save_group, load, copy_store, copy, consolidate_metadata
+from zarr.convenience import (open, save, save_group, load, copy_store, copy,
+                              consolidate_metadata, open_consolidated)
 from zarr.storage import atexit_rmtree, DictStore
 from zarr.core import Array
 from zarr.hierarchy import Group, group
-from zarr.errors import CopyError
+from zarr.errors import CopyError, PermissionError
 
 
 def test_open_array():
@@ -93,14 +94,21 @@ def test_lazy_loader():
 
 def test_consolidate_metadata():
     from zarr.storage import ConsolidatedMetadataStore
+
+    # setup initial data
     store = DictStore()
     z = group(store)
     z.create_group('g1')
     g2 = z.create_group('g2')
     g2.attrs['hello'] = 'world'
-    arr = g2.create_dataset('arr', shape=(20, 20), dtype='f8')
+    arr = g2.create_dataset('arr', shape=(20, 20), chunks=(5, 5), dtype='f8')
+    assert 16 == arr.nchunks
+    assert 0 == arr.nchunks_initialized
     arr.attrs['data'] = 1
     arr[:] = 1.0
+    assert 16 == arr.nchunks_initialized
+
+    # perform consolidation
     out = consolidate_metadata(store)
     assert isinstance(out, ConsolidatedMetadataStore)
     assert '.zmetadata' in store
@@ -111,21 +119,37 @@ def test_consolidate_metadata():
                 'g2/arr/.zarray',
                 'g2/arr/.zattrs']:
         del store[key]
-    cstore = ConsolidatedMetadataStore(store)
-    z2 = open(cstore)
-    assert list(z2) == ['g1', 'g2']
-    assert z2.g2.attrs['hello'] == 'world'
-    assert z2.g2.arr.attrs['data'] == 1
+
+    # open consolidated
+    z2 = open_consolidated(store, mode='a')
+    assert ['g1', 'g2'] == list(z2)
+    assert 'world' == z2.g2.attrs['hello']
+    assert 1 == z2.g2.arr.attrs['data']
     assert (z2.g2.arr[:] == 1.0).all()
-    assert list(out) == list(cstore)
+    assert 16 == z2.g2.arr.nchunks
+    assert 16 == z2.g2.arr.nchunks_initialized
 
     # tests del/write on the store
-    with pytest.raises(NotImplementedError):
-        del cstore['.zgroup']
-    with pytest.raises(NotImplementedError):
-        cstore['.zgroup'] = None
-    del cstore['g2/arr/0.0']
-    assert (z2.g2.arr[:] == 0).all()
+    with pytest.raises(PermissionError):
+        del out['.zgroup']
+    with pytest.raises(PermissionError):
+        out['.zgroup'] = None
+
+    # test new metadata are not writeable
+    with pytest.raises(PermissionError):
+        z2.create_group('g3')
+    with pytest.raises(PermissionError):
+        z2.create_dataset('spam', shape=42, chunks=7, dtype='i4')
+    with pytest.raises(PermissionError):
+        del z2['g2']
+
+    # test consolidated metadata are not writeable
+    with pytest.raises(PermissionError):
+        z2.g2.attrs['hello'] = 'universe'
+    with pytest.raises(PermissionError):
+        z2.g2.arr.attrs['foo'] = 'bar'
+
+    # test the data are writeable
     z2.g2.arr[:] = 2
     assert (z2.g2.arr[:] == 2).all()
 

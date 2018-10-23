@@ -1636,7 +1636,11 @@ class LMDBStore(MutableMapping):
         self.kwargs = kwargs
 
     def __getstate__(self):
-        self.flush()  # just in case
+        try:
+            self.flush()  # just in case
+        except Exception:
+            # flush may fail if db has already been closed
+            pass
         return self.path, self.buffers, self.kwargs
 
     def __setstate__(self, state):
@@ -1891,7 +1895,7 @@ class LRUStoreCache(MutableMapping):
 
 
 class ConsolidatedMetadataStore(MutableMapping):
-    """A layer over other storage, with the metadata within a single key
+    """A layer over other storage, with the metadata within a single key.
 
     The purpose of this class, is to be able to get all of the metadata for
     a given dataset in a single read operation from the underlying storage.
@@ -1904,21 +1908,19 @@ class ConsolidatedMetadataStore(MutableMapping):
     This class is read-only, and attempts to change the dataset metadata will
     fail, but changing the data is possible. If the backend storage is changed
     directly, then the metadata stored here could become obsolete, and
-    ``conslidate_metadata`` should be called again and the class re-invoked.
+    ``consolidate_metadata`` should be called again and the class re-invoked.
     The use case is for write once, read many times.
+
+    Parameters
+    ----------
+    store: MutableMapping
+        Containing the zarr dataset.
+    metadata_key: str
+        The target in the store where all of the metadata are stored. We
+        assume JSON encoding.
 
     """
     def __init__(self, store, metadata_key='.zmetadata'):
-        """
-
-        Parameters
-        ----------
-        store: MutableMapping
-            Containing the zarr dataset
-        metadata_key: str
-            The target in the store where all of the metadata are stored. We
-            assume JSON encoding.
-        """
         self.store = store
         if sys.version_info.major == 3 and sys.version_info.minor < 6:
             d = store[metadata_key].decode()  # pragma: no cover
@@ -1928,30 +1930,25 @@ class ConsolidatedMetadataStore(MutableMapping):
         self.meta_store = {k: v.encode() for k, v in metadata.items()}
 
     def __getitem__(self, key):
-        """Try local dict before falling back to real storage"""
-        try:
-            return self.meta_store[key]
-        except KeyError:
-            return self.store[key]
+        return self.meta_store[key]
+
+    def __contains__(self, item):
+        return item in self.meta_store
 
     def __iter__(self):
-        """Only list local keys - data must be got via getitem"""
         return iter(self.meta_store)
 
     def __len__(self):
-        """Only len of local keys"""
         return len(self.meta_store)
 
     def __delitem__(self, key):
-        """Data can be deleted from storage"""
-        if key not in self.meta_store:
-            del self.store[key]
-        else:
-            raise NotImplementedError
+        err_read_only()
 
     def __setitem__(self, key, value):
-        """Data can be written to storage"""
-        if key not in self.meta_store:
-            self.store[key] = value
-        else:
-            raise NotImplementedError
+        err_read_only()
+
+    def getsize(self, path):
+        return getsize(self.meta_store, path)
+
+    def listdir(self, path):
+        return listdir(self.meta_store, path)
