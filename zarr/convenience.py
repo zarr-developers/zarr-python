@@ -1080,11 +1080,13 @@ def consolidate_metadata(store, metadata_key='.zmetadata'):
     This produces a single object in the backend store, containing all the
     metadata read from all the zarr-related keys that can be found. This
     should be used in conjunction with ``storage.ConsolidatedMetadataStore``
-    to reduce the number of operations on the backend store at read time.
+    to reduce the number of operations on the backend store at read time;
+    normally, users will call ``open_consolidated()`` to open in optimised,
+    read-only mode.
 
-    Note, however, that if any metadata in the store is changed after this
-    consolidation, then the metadata read by ``storage.ConsolidatedMetadataStore``
-    would be out of sync with reality unless this function is called again.
+    Note, that if the metadata in the store is changed after this
+    consolidation, then the metadata read by ``open_consolidated()``
+    would be incorrect unless this function is called again.
 
     Parameters
     ----------
@@ -1095,11 +1097,10 @@ def consolidate_metadata(store, metadata_key='.zmetadata'):
 
     Returns
     -------
-    ConsolidatedMetadataStore instance, based on the same base store.
+    Group instance, opened with the new consolidated metadata
 
     """
     import json
-    from .storage import ConsolidatedMetadataStore
 
     store = normalize_store_arg(store)
 
@@ -1109,11 +1110,35 @@ def consolidate_metadata(store, metadata_key='.zmetadata'):
 
     out = {key: store[key].decode() for key in store if is_zarr_key(key)}
     store[metadata_key] = json.dumps(out).encode()
-    return ConsolidatedMetadataStore(store, metadata_key=metadata_key)
+    return open_consolidated(store, metadata_key=metadata_key)
 
 
 def open_consolidated(store, metadata_key='.zmetadata', mode='a'):
-    """TODO doc me"""
+    """Open group using metadata consolidated into a single key
+
+    This is an optimised method for opening a Zarr group, where instead of
+    traversing the group/array hierarchy by accessing the metadata keys at
+    each level, a single key contains all of the metadata for everything.
+    For remote data sources where the overhead of accessing a key is large
+    compared to the time to read data.
+
+    The group accessed must have already had its metadata consolidated into a
+    single key using the function ``consolidate_metadata()``.
+
+    This optimised method only works in modes which do not change the
+    metadata, although the data may still be written/updated.
+
+    Parameters
+    ----------
+    store : MutableMapping or string
+        Store or path to directory in file system or name of zip file.
+    metadata_key : str
+        Key to read the consolidated metadata from. The default (.zmetadata)
+        corresponds to the default used by ``consolidate_metadata()``.
+    mode : {'r', 'a'}, optional
+        Persistence mode. Only modes which cannot change the metadata are
+        allowed.
+    """
 
     from .storage import ConsolidatedMetadataStore
 

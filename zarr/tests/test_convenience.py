@@ -110,7 +110,7 @@ def test_consolidate_metadata():
 
     # perform consolidation
     out = consolidate_metadata(store)
-    assert isinstance(out, ConsolidatedMetadataStore)
+    assert isinstance(out, Group)
     assert '.zmetadata' in store
     for key in ['.zgroup',
                 'g1/.zgroup',
@@ -130,10 +130,11 @@ def test_consolidate_metadata():
     assert 16 == z2.g2.arr.nchunks_initialized
 
     # tests del/write on the store
+    cmd = ConsolidatedMetadataStore(store)
     with pytest.raises(PermissionError):
-        del out['.zgroup']
+        del cmd['.zgroup']
     with pytest.raises(PermissionError):
-        out['.zgroup'] = None
+        cmd['.zgroup'] = None
 
     # test new metadata are not writeable
     with pytest.raises(PermissionError):
