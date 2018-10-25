@@ -758,6 +758,9 @@ class DirectoryStore(MutableMapping):
         if not os.path.exists(dir_path):
             try:
                 os.makedirs(dir_path)
+            except OSError:
+                if not os.path.isdir(dir_path):
+                    raise FileNotFoundError(dir_path)
             except Exception:
                 raise KeyError(key)
 
