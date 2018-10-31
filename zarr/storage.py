@@ -1895,12 +1895,13 @@ class LRUStoreCache(MutableMapping):
 
 
 class ConsolidatedMetadataStore(MutableMapping):
-    """A layer over other storage, with the metadata within a single key.
+    """A layer over other storage, where the metadata has been consolidated into
+    a single key.
 
     The purpose of this class, is to be able to get all of the metadata for
     a given dataset in a single read operation from the underlying storage.
-    See ``convenience.consolidate_metadata()`` for how to create this single
-    metadata key.
+    See :func:`zarr.convenience.consolidate_metadata` for how to create this
+    single metadata key.
 
     This class loads from the one key, and stores the data in a dict, so that
     accessing the keys no longer requires operations on the backend store.
@@ -1908,8 +1909,12 @@ class ConsolidatedMetadataStore(MutableMapping):
     This class is read-only, and attempts to change the dataset metadata will
     fail, but changing the data is possible. If the backend storage is changed
     directly, then the metadata stored here could become obsolete, and
-    ``consolidate_metadata`` should be called again and the class re-invoked.
-    The use case is for write once, read many times.
+    :func:`zarr.convenience.consolidate_metadata` should be called again and the class
+    re-invoked. The use case is for write once, read many times.
+
+    .. versionadded:: 2.3
+
+    .. note:: This is an experimental feature.
 
     Parameters
     ----------
@@ -1918,6 +1923,10 @@ class ConsolidatedMetadataStore(MutableMapping):
     metadata_key: str
         The target in the store where all of the metadata are stored. We
         assume JSON encoding.
+
+    See Also
+    --------
+    zarr.convenience.consolidate_metadata, zarr.convenience.open_consolidated
 
     """
     def __init__(self, store, metadata_key='.zmetadata'):

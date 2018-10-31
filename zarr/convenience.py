@@ -31,12 +31,17 @@ def open(store=None, mode='a', **kwargs):
         exist); 'w' means create (overwrite if exists); 'w-' means create
         (fail if exists).
     **kwargs
-        Additional parameters are passed through to :func:`zarr.open_array` or
-        :func:`zarr.open_group`.
+        Additional parameters are passed through to :func:`zarr.creation.open_array` or
+        :func:`zarr.hierarchy.open_group`.
+
+    Returns
+    -------
+    z : :class:`zarr.core.Array` or :class:`zarr.hierarchy.Group`
+        Array or group, depending on what exists in the given store.
 
     See Also
     --------
-    zarr.open_array, zarr.open_group
+    zarr.creation.open_array, zarr.hierarchy.open_group
 
     Examples
     --------
@@ -1078,15 +1083,16 @@ def consolidate_metadata(store, metadata_key='.zmetadata'):
     into a single resource and put it under the given key.
 
     This produces a single object in the backend store, containing all the
-    metadata read from all the zarr-related keys that can be found. This
-    should be used in conjunction with ``storage.ConsolidatedMetadataStore``
-    to reduce the number of operations on the backend store at read time;
-    normally, users will call ``open_consolidated()`` to open in optimised,
-    read-only mode.
+    metadata read from all the zarr-related keys that can be found. After
+    metadata have been consolidated, use :func:`open_consolidated` to open
+    the root group in optimised, read-only mode, using the consolidated
+    metadata to reduce the number of read operations on the backend store.
 
     Note, that if the metadata in the store is changed after this
-    consolidation, then the metadata read by ``open_consolidated()``
+    consolidation, then the metadata read by :func:`open_consolidated`
     would be incorrect unless this function is called again.
+
+    .. note:: This is an experimental feature.
 
     Parameters
     ----------
@@ -1097,7 +1103,12 @@ def consolidate_metadata(store, metadata_key='.zmetadata'):
 
     Returns
     -------
-    Group instance, opened with the new consolidated metadata
+    g : :class:`zarr.hierarchy.Group`
+        Group instance, opened with the new consolidated metadata.
+
+    See Also
+    --------
+    open_consolidated
 
     """
     import json
@@ -1113,8 +1124,8 @@ def consolidate_metadata(store, metadata_key='.zmetadata'):
     return open_consolidated(store, metadata_key=metadata_key)
 
 
-def open_consolidated(store, metadata_key='.zmetadata', mode='a'):
-    """Open group using metadata consolidated into a single key
+def open_consolidated(store, metadata_key='.zmetadata', mode='r+'):
+    """Open group using metadata previously consolidated into a single key.
 
     This is an optimised method for opening a Zarr group, where instead of
     traversing the group/array hierarchy by accessing the metadata keys at
@@ -1123,7 +1134,7 @@ def open_consolidated(store, metadata_key='.zmetadata', mode='a'):
     compared to the time to read data.
 
     The group accessed must have already had its metadata consolidated into a
-    single key using the function ``consolidate_metadata()``.
+    single key using the function :func:`consolidate_metadata`.
 
     This optimised method only works in modes which do not change the
     metadata, although the data may still be written/updated.
@@ -1134,18 +1145,30 @@ def open_consolidated(store, metadata_key='.zmetadata', mode='a'):
         Store or path to directory in file system or name of zip file.
     metadata_key : str
         Key to read the consolidated metadata from. The default (.zmetadata)
-        corresponds to the default used by ``consolidate_metadata()``.
-    mode : {'r', 'a'}, optional
-        Persistence mode. Only modes which cannot change the metadata are
-        allowed.
+        corresponds to the default used by :func:`consolidate_metadata`.
+    mode : {'r', 'r+'}, optional
+        Persistence mode: 'r' means read only (must exist); 'r+' means
+        read/write (must exist) although only writes to data are allowed,
+        changes to metadata including creation of new arrays or group
+        are not allowed.
+
+    Returns
+    -------
+    g : :class:`zarr.hierarchy.Group`
+        Group instance, opened with the consolidated metadata.
+
+    See Also
+    --------
+    consolidate_metadata
+
     """
 
     from .storage import ConsolidatedMetadataStore
 
     # normalize parameters
     store = normalize_store_arg(store)
-    if mode not in 'ra':
-        raise ValueError("invalid mode, expected either 'r' or 'a'; found {!r}"
+    if mode not in {'r', 'r+'}:
+        raise ValueError("invalid mode, expected either 'r' or 'r+'; found {!r}"
                          .format(mode))
 
     # setup metadata sotre
