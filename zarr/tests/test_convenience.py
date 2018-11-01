@@ -14,7 +14,7 @@ import pytest
 
 from zarr.convenience import (open, save, save_group, load, copy_store, copy,
                               consolidate_metadata, open_consolidated)
-from zarr.storage import atexit_rmtree, DictStore
+from zarr.storage import atexit_rmtree, DictStore, getsize, ConsolidatedMetadataStore
 from zarr.core import Array
 from zarr.hierarchy import Group, group
 from zarr.errors import CopyError, PermissionError
@@ -93,7 +93,6 @@ def test_lazy_loader():
 
 
 def test_consolidate_metadata():
-    from zarr.storage import ConsolidatedMetadataStore
 
     # setup initial data
     store = DictStore()
@@ -121,7 +120,7 @@ def test_consolidate_metadata():
         del store[key]
 
     # open consolidated
-    z2 = open_consolidated(store, mode='a')
+    z2 = open_consolidated(store, mode='r+')
     assert ['g1', 'g2'] == list(z2)
     assert 'world' == z2.g2.attrs['hello']
     assert 1 == z2.g2.arr.attrs['data']
@@ -135,6 +134,9 @@ def test_consolidate_metadata():
         del cmd['.zgroup']
     with pytest.raises(PermissionError):
         cmd['.zgroup'] = None
+
+    # test getsize on the store
+    assert getsize(cmd) == getsize(store)
 
     # test new metadata are not writeable
     with pytest.raises(PermissionError):
@@ -153,6 +155,12 @@ def test_consolidate_metadata():
     # test the data are writeable
     z2.g2.arr[:] = 2
     assert (z2.g2.arr[:] == 2).all()
+
+    # test invalid modes
+    with pytest.raises(ValueError):
+        open_consolidated(store, mode='a')
+    with pytest.raises(ValueError):
+        open_consolidated(store, mode='w')
 
 
 class TestCopyStore(unittest.TestCase):
