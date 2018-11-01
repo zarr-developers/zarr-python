@@ -804,6 +804,33 @@ interface to the storage.
 
 .. _tutorial_copy:
 
+Consolidating metadata
+~~~~~~~~~~~~~~~~~~~~~~
+
+(This is an experimental feature.)
+
+Since there is a significant overhead for every connection to s3, the pattern described in
+the previous section may incur significant latency while scanning the metadata of the data-set
+hierarchy, even though each individual file is small. For cases such as these, once the file
+is static and can be regarded as read-only, at least for the metadata/structure of the
+data-set, the many metadata files can be consolidated into a single one.
+Doing this can greatly increase the speed of reading the data-set hierarchy::
+
+   >>> zarr.consolidate_metadata(store)
+
+Creates a special key with a copy of all of the metadata from the many files.
+Later::
+
+   >>> root = zarr.open_consolidated(store)
+
+Uses this special key to read all of the metadata in a single call to the backend storage.
+
+Note that, the data-set could still be opened in the normal way and altered, causing the
+consolidated metadata to become out of sync with the real state of the data-set. In this
+case, :func:`zarr.consolidate_metadata` would need to be called again. The data-set
+returned by :func:`zarr.open_consolidated` is read-only for the metadata, but the data
+values can still be updated.
+
 Copying/migrating data
 ----------------------
 

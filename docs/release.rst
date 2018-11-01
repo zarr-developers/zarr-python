@@ -6,6 +6,15 @@ Release notes
 2.3.0 (Work in Progress)
 ------------------------
 
+Enhancements
+~~~~~~~~~~~~
+
+* Add "consolidated" metadata as an experimental option: use :func:`zarr.consolidate_metadata` to copy
+  all metadata from the various keys within a data-set under a single key, and
+  :func:`zarr.open_consolidated` to use this single key. This can greatly cut down the
+  number of calls to the storage backend, and so remove a lot of of over head for
+  remote data. :issue:`268`.
+
 Maintenance
 ~~~~~~~~~~~
 

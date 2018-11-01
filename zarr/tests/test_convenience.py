@@ -121,7 +121,7 @@ def test_consolidate_metadata():
         del store[key]
 
     # open consolidated
-    z2 = open_consolidated(store, mode='a')
+    z2 = open_consolidated(store)
     assert ['g1', 'g2'] == list(z2)
     assert 'world' == z2.g2.attrs['hello']
     assert 1 == z2.g2.arr.attrs['data']
