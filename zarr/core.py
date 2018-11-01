@@ -1568,7 +1568,11 @@ class Array(object):
         except KeyError:
             # chunk not initialized
             if self._fill_value is not None:
-                out[out_selection] = self._fill_value
+                if fields:
+                    fill_value = self._fill_value[fields]
+                else:
+                    fill_value = self._fill_value
+                out[out_selection] = fill_value
 
         else:
 
