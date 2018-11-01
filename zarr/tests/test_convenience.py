@@ -4,6 +4,7 @@ import tempfile
 import atexit
 import os
 import unittest
+from numbers import Integral
 
 
 import numpy as np
@@ -136,7 +137,7 @@ def test_consolidate_metadata():
         cmd['.zgroup'] = None
 
     # test getsize on the store
-    assert isinstance(getsize(cmd), int)
+    assert isinstance(getsize(cmd), Integral)
 
     # test new metadata are not writeable
     with pytest.raises(PermissionError):

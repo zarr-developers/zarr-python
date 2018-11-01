@@ -46,7 +46,7 @@ python-dateutil==2.7.3
 readme-renderer==22.0
 requests==2.19.1
 requests-toolbelt==0.8.0
-setuptools-scm=3.1.0
+setuptools-scm==3.1.0
 s3fs==0.1.6
 s3transfer==0.1.13
 scandir==1.9.0
