@@ -9,11 +9,12 @@ Release notes
 Enhancements
 ~~~~~~~~~~~~
 
-* Add "consolidated" metadata as an experimental option: use :func:`zarr.consolidate_metadata` to copy
-  all metadata from the various keys within a data-set under a single key, and
-  :func:`zarr.open_consolidated` to use this single key. This can greatly cut down the
-  number of calls to the storage backend, and so remove a lot of of over head for
-  remote data. By :user:`Martin Durant <martindurant>`, :issue:`268`.
+* Add "consolidated" metadata as an experimental feature: use
+  :func:`zarr.convenience.consolidate_metadata` to copy all metadata from the various
+  metadata keys within a dataset hierarchy under a single key, and
+  :func:`zarr.convenience.open_consolidated` to use this single key. This can greatly
+  cut down the number of calls to the storage backend, and so remove a lot of overhead
+  for reading remote data. By :user:`Martin Durant <martindurant>`, :issue:`268`.
 
 * Support has been added for structured arrays with sub-array shape and/or nested fields. By
   :user:`Tarik Onalan <onalant>`, :issue:`111`, :issue:`296`.
