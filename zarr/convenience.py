@@ -15,6 +15,7 @@ from zarr.storage import contains_array, contains_group
 from zarr.errors import err_path_not_found, CopyError
 from zarr.util import normalize_storage_path, TreeViewer, buffer_size
 from zarr.compat import PY2, text_type
+from zarr.meta import ensure_str, json_dumps
 
 
 # noinspection PyShadowingBuiltins
@@ -1119,8 +1120,15 @@ def consolidate_metadata(store, metadata_key='.zmetadata'):
         return (key.endswith('.zarray') or key.endswith('.zgroup') or
                 key.endswith('.zattrs'))
 
-    out = {key: store[key].decode() for key in store if is_zarr_key(key)}
-    store[metadata_key] = json.dumps(out).encode()
+#    out = {key: store[key].decode() for key in store if is_zarr_key(key)}
+    out = {
+        'zarr_consolidated_format': 1,
+        'metadata': {
+            key: json.loads(ensure_str(store[key]))
+            for key in store if is_zarr_key(key)
+        }
+    }
+    store[metadata_key] = json_dumps(out).encode()
     return open_consolidated(store, metadata_key=metadata_key)
 
 

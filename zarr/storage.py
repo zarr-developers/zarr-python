@@ -41,7 +41,7 @@ from zarr.meta import encode_array_metadata, encode_group_metadata
 from zarr.compat import PY2, binary_type, OrderedDict_move_to_end
 from numcodecs.registry import codec_registry
 from zarr.errors import (err_contains_group, err_contains_array, err_bad_compressor,
-                         err_fspath_exists_notdir, err_read_only)
+                         err_fspath_exists_notdir, err_read_only, MetadataError)
 
 
 array_meta_key = '.zarray'
@@ -1932,12 +1932,22 @@ class ConsolidatedMetadataStore(MutableMapping):
     """
     def __init__(self, store, metadata_key='.zmetadata'):
         self.store = store
+
+        # retrieve consolidated metadata
         if sys.version_info.major == 3 and sys.version_info.minor < 6:
             d = store[metadata_key].decode()  # pragma: no cover
         else:  # pragma: no cover
             d = store[metadata_key]
-        metadata = json.loads(d)
-        self.meta_store = {k: v.encode() for k, v in metadata.items()}
+        meta = json.loads(d)
+
+        # check format of consolidated metadata
+        consolidated_format = meta.get('zarr_consolidated_format', None)
+        if consolidated_format != 1:
+            raise MetadataError('unsupported zarr consolidated metadata format: %s' %
+                                consolidated_format)
+
+        # decode metadata
+        self.meta_store = meta['metadata']
 
     def __getitem__(self, key):
         return self.meta_store[key]
