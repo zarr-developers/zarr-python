@@ -1120,7 +1120,6 @@ def consolidate_metadata(store, metadata_key='.zmetadata'):
         return (key.endswith('.zarray') or key.endswith('.zgroup') or
                 key.endswith('.zattrs'))
 
-#    out = {key: store[key].decode() for key in store if is_zarr_key(key)}
     out = {
         'zarr_consolidated_format': 1,
         'metadata': {

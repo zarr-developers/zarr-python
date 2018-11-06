@@ -34,13 +34,21 @@ def json_dumps(o):
 
 
 def parse_metadata(s):
+
+    # Here we allow that a store may return an already-parsed metadata object,
+    # or a string of JSON that we will parse here. We allow for an already-parsed
+    # object to accommodate a consolidated metadata store, where all the metadata for
+    # all groups and arrays will already have been parsed from JSON.
+
     if isinstance(s, Mapping):
         # assume metadata has already been parsed into a mapping object
         meta = s
+
     else:
         # assume metadata needs to be parsed as JSON
         s = ensure_str(s)
         meta = json.loads(s)
+
     return meta
 
 
