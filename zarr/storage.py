@@ -33,7 +33,6 @@ import warnings
 
 import numpy as np
 
-
 from zarr.util import (normalize_shape, normalize_chunks, normalize_order,
                        normalize_storage_path, buffer_size,
                        normalize_fill_value, nolock, normalize_dtype)
@@ -54,6 +53,24 @@ try:
 except ImportError:  # pragma: no cover
     from zarr.codecs import Zlib
     default_compressor = Zlib()
+
+# Find the best function for FS replace.
+# Preferably atomic.
+if hasattr(os, 'replace'):
+    # Python >= 3.3 has replace() which can replace existing
+    # files on all platforms.
+    replace = os.replace
+else:
+    # In Python < 3.3 use rename().
+    if os.name == 'nt':
+        def replace(old, new):
+            if os.path.exists(new):
+                # On windows, rename() can't overwrite files. So
+                # the file is removed first.
+                os.remove(new)
+            os.rename(old, new)
+    else:
+        replace = os.rename
 
 
 def _path_to_prefix(path):
@@ -772,18 +789,7 @@ class DirectoryStore(MutableMapping):
                 f.write(value)
 
             # move temporary file into place
-            if hasattr(os, 'replace'):
-                # Python >= 3.3 has replace() which can replace existing
-                # files on all platforms.
-                os.replace(temp_path, file_path)
-            else:
-                # In Python < 3.3 use rename().
-                if os.name == 'nt' and os.path.exists(file_path):
-                    # On windows, rename() can't overwrite files. So
-                    # the file is removed first.
-                    os.remove(file_path)
-
-                os.rename(temp_path, file_path)
+            replace(temp_path, file_path)
 
         finally:
             # clean up if temp file still exists for whatever reason
