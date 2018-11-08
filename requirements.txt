@@ -1,5 +1,5 @@
 asciitree
-pytest
-numpy
 fasteners
 numcodecs
+numpy
+pytest
