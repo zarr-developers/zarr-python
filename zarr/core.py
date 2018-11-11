@@ -1482,29 +1482,20 @@ class Array(object):
         # obtain key for chunk
         ckey = self._chunk_key((0,))
 
-        chunk = None
+       # setup chunk
+        try:
+            # obtain compressed data for chunk
+            cdata = self.chunk_store[ckey]
 
-        if self._chunk_cache is not None:
-            try:
-                chunk = self._chunk_cache[ckey]
-            except KeyError:
-                pass
+        except KeyError:
+            # chunk not initialized
+            chunk = np.zeros((), dtype=self._dtype)
+            if self._fill_value is not None:
+                chunk.fill(self._fill_value)
 
-        if chunk is None:
-            # setup chunk
-            try:
-                # obtain compressed data for chunk
-                cdata = self.chunk_store[ckey]
-
-            except KeyError:
-                # chunk not initialized
-                chunk = np.zeros((), dtype=self._dtype)
-                if self._fill_value is not None:
-                    chunk.fill(self._fill_value)
-
-            else:
-                # decode chunk
-                chunk = self._decode_chunk(cdata).copy()
+        else:
+            # decode chunk
+            chunk = self._decode_chunk(cdata).copy()
 
         # set value
         if fields:
@@ -1515,7 +1506,11 @@ class Array(object):
         # encode and store
         cdata = self._encode_chunk(chunk)
         self.chunk_store[ckey] = cdata
+
         if self._chunk_cache is not None:
+            # ensure cached chunk has been round tripped through encode-decode if dtype=object
+            if self.dtype == object:
+                chunk = self._decode_chunk(cdata)
             self._chunk_cache[ckey] = chunk
 
     def _set_basic_selection_nd(self, selection, value, fields=None):

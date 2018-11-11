@@ -1743,3 +1743,50 @@ class TestArrayWithLRUChunkCache(TestArray):
         assert cache.misses == 10 and cache.hits == 0
         z[:]
         assert cache.misses == 10 and cache.hits == 10
+
+    # noinspection PyStatementEffect
+    def test_array_0d_with_object_arrays(self):
+        # test behaviour for array with 0 dimensions
+
+        # setup
+        a = np.zeros((), dtype=object)
+        z = self.create_array(shape=(), dtype=a.dtype, fill_value=0, object_codec=Pickle())
+
+        # check properties
+        assert a.ndim == z.ndim
+        assert a.shape == z.shape
+        assert a.size == z.size
+        assert a.dtype == z.dtype
+        assert a.nbytes == z.nbytes
+        with pytest.raises(TypeError):
+            len(z)
+        assert () == z.chunks
+        assert 1 == z.nchunks
+        assert (1,) == z.cdata_shape
+        # compressor always None - no point in compressing a single value
+        assert z.compressor is None
+
+        # check __getitem__
+        b = z[...]
+        assert isinstance(b, np.ndarray)
+        assert a.shape == b.shape
+        assert a.dtype == b.dtype
+        assert_array_equal(a, np.array(z))
+        assert_array_equal(a, z[...])
+        assert a[()] == z[()]
+        with pytest.raises(IndexError):
+            z[0]
+        with pytest.raises(IndexError):
+            z[:]
+
+        # check __setitem__
+        z[...] = 42
+        assert 42 == z[()]
+        z[()] = 43
+        assert 43 == z[()]
+        with pytest.raises(IndexError):
+            z[0] = 42
+        with pytest.raises(IndexError):
+            z[:] = 42
+        with pytest.raises(ValueError):
+            z[...] = np.array([1, 2, 3])
