@@ -1602,19 +1602,17 @@ class Array(object):
 
         try:
 
-            cdata = None
-            chunk_was_cached = False
+            cdata, chunk = None, None
 
             # first try getting from cache (if one has been provided)
             if self._chunk_cache is not None:
                 try:
-                    cdata = self._chunk_cache[ckey]
-                    chunk_was_cached = True
+                    chunk = self._chunk_cache[ckey]
                 except KeyError:
                     pass
 
             # obtain compressed data for chunk
-            if not chunk_was_cached:
+            if chunk is None:
                 cdata = self.chunk_store[ckey]
 
         except KeyError:
@@ -1645,8 +1643,8 @@ class Array(object):
                     # contiguous, so we can decompress directly from the chunk
                     # into the destination array
 
-                    if chunk_was_cached:
-                        np.copyto(dest, cdata)
+                    if chunk is not None:
+                        np.copyto(dest, chunk)
                     elif self._compressor:
                         self._compressor.decode(cdata, dest)
                         if self._chunk_cache is not None:
@@ -1663,12 +1661,10 @@ class Array(object):
                     return
 
             # decode chunk
-            if not chunk_was_cached:
+            if chunk is None:
                 chunk = self._decode_chunk(cdata)
                 if self._chunk_cache is not None:
                     self._chunk_cache[ckey] = np.copy(chunk)
-            else:
-                chunk = cdata
 
             # select data from chunk
             if fields:
