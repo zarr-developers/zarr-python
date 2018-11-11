@@ -1482,7 +1482,7 @@ class Array(object):
         # obtain key for chunk
         ckey = self._chunk_key((0,))
 
-       # setup chunk
+        # setup chunk
         try:
             # obtain compressed data for chunk
             cdata = self.chunk_store[ckey]
