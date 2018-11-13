@@ -44,7 +44,7 @@ pytest==3.9.1
 pytest-cov==2.6.0
 python-dateutil==2.7.3
 readme-renderer==22.0
-requests==2.19.1
+requests==2.20.0
 requests-toolbelt==0.8.0
 s3fs==0.1.6
 s3transfer==0.1.13
