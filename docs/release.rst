@@ -1,6 +1,29 @@
 Release notes
 =============
 
+.. _release_2.3.0:
+
+2.3.0 (Work in Progress)
+------------------------
+
+Enhancements
+~~~~~~~~~~~~
+
+* Support has been added for structured arrays with sub-array shape and/or nested fields. By
+  :user:`Tarik Onalan <onalant>`, :issue:`111`, :issue:`296`.
+
+Maintenance
+~~~~~~~~~~~
+
+* CI and test environments have been upgraded to include Python 3.7, drop Python 3.4, and
+  upgrade all pinned package requirements. :issue:`308`.
+
+* Failing tests related to pickling/unpickling have been fixed. By :user:`Ryan Williams <ryan-williams>`,
+  :issue:`273`, :issue:`308`.
+
+Acknowledgments
+~~~~~~~~~~~~~~~
+
 .. _release_2.2.0:
 
 2.2.0
