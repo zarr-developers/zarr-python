@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, print_function, division
 from setuptools import setup
+import sys
 
 
 DESCRIPTION = 'An implementation of chunked, compressed, ' \
@@ -8,6 +9,16 @@ DESCRIPTION = 'An implementation of chunked, compressed, ' \
 
 with open('README.rst') as f:
     LONG_DESCRIPTION = f.read()
+
+dependencies = [
+    'asciitree',
+    'numpy>=1.7',
+    'fasteners',
+    'numcodecs>=0.5.3',
+]
+
+if sys.version_info < (3, 3) and sys.platform == "win32":
+    dependencies.append('pyosreplace')
 
 setup(
     name='zarr',
@@ -22,13 +33,7 @@ setup(
         'setuptools>18.0',
         'setuptools-scm>1.5.4'
     ],
-    install_requires=[
-        'asciitree',
-        'numpy>=1.7',
-        'fasteners',
-        'numcodecs>=0.5.3',
-        "pyosreplace : python_version < '3.3' and sys.platform == 'win32'",
-    ],
+    install_requires=dependencies,
     package_dir={'': '.'},
     packages=['zarr', 'zarr.tests'],
     classifiers=[
