@@ -1257,11 +1257,44 @@ def test_format_compatibility():
 class TestConsolidatedMetadataStore(unittest.TestCase):
 
     def test_bad_format(self):
+
+        # setup store with consolidated metdata
         store = dict()
-        metadata = json.dumps({
+        consolidated = {
             # bad format version
             'zarr_consolidated_format': 0,
-        })
-        store['.zmetadata'] = metadata
+        }
+        store['.zmetadata'] = json.dumps(consolidated)
+
+        # check appropriate error is raised
         with pytest.raises(MetadataError):
             ConsolidatedMetadataStore(store)
+
+    def test_read_write(self):
+
+        # setup store with consolidated metdata
+        store = dict()
+        consolidated = {
+            'zarr_consolidated_format': 1,
+            'metadata': {
+                'foo': 'bar',
+                'baz': 42,
+            }
+        }
+        store['.zmetadata'] = json.dumps(consolidated)
+
+        # create consolidated store
+        cs = ConsolidatedMetadataStore(store)
+
+        # test __contains__, __getitem__
+        for key, value in consolidated['metadata'].items():
+            assert key in cs
+            assert value == cs[key]
+
+        # test __delitem__, __setitem__
+        with pytest.raises(PermissionError):
+            del cs['foo']
+        with pytest.raises(PermissionError):
+            cs['bar'] = 0
+        with pytest.raises(PermissionError):
+            cs['spam'] = 'eggs'
