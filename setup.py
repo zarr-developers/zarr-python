@@ -27,6 +27,7 @@ setup(
         'numpy>=1.7',
         'fasteners',
         'numcodecs>=0.5.3',
+        "pyosreplace : python_version < '3.3' and sys.platform == 'win32'",
     ],
     package_dir={'': '.'},
     packages=['zarr', 'zarr.tests'],

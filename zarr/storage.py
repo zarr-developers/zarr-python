@@ -54,23 +54,14 @@ except ImportError:  # pragma: no cover
     from zarr.codecs import Zlib
     default_compressor = Zlib()
 
-# Find the best function for FS replace.
-# Preferably atomic.
-if hasattr(os, 'replace'):
-    # Python >= 3.3 has replace() which can replace existing
-    # files on all platforms.
-    replace = os.replace
+# Find which function to use for atomic replace
+if sys.version_info >= (3, 3):
+    from os import replace
+elif sys.platform == "win32":
+    from osreplace import replace
 else:
-    # In Python < 3.3 use rename().
-    if os.name == 'nt':
-        def replace(old, new):
-            if os.path.exists(new):
-                # On windows, rename() can't overwrite files. So
-                # the file is removed first.
-                os.remove(new)
-            os.rename(old, new)
-    else:
-        replace = os.rename
+    # POSIX rename() is always atomic
+    from os import rename as replace
 
 
 def _path_to_prefix(path):
