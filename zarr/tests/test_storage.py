@@ -1264,7 +1264,7 @@ class TestConsolidatedMetadataStore(unittest.TestCase):
             # bad format version
             'zarr_consolidated_format': 0,
         }
-        store['.zmetadata'] = json.dumps(consolidated)
+        store['.zmetadata'] = json.dumps(consolidated).encode()
 
         # check appropriate error is raised
         with pytest.raises(MetadataError):
@@ -1281,7 +1281,7 @@ class TestConsolidatedMetadataStore(unittest.TestCase):
                 'baz': 42,
             }
         }
-        store['.zmetadata'] = json.dumps(consolidated)
+        store['.zmetadata'] = json.dumps(consolidated).encode()
 
         # create consolidated store
         cs = ConsolidatedMetadataStore(store)
