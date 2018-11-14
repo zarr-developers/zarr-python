@@ -24,6 +24,7 @@ import shutil
 import atexit
 import re
 import sys
+import json
 import multiprocessing
 from threading import Lock, RLock
 import glob
@@ -40,7 +41,7 @@ from zarr.meta import encode_array_metadata, encode_group_metadata
 from zarr.compat import PY2, binary_type, OrderedDict_move_to_end
 from numcodecs.registry import codec_registry
 from zarr.errors import (err_contains_group, err_contains_array, err_bad_compressor,
-                         err_fspath_exists_notdir, err_read_only)
+                         err_fspath_exists_notdir, err_read_only, MetadataError)
 
 
 array_meta_key = '.zarray'
@@ -1892,6 +1893,85 @@ class LRUStoreCache(MutableMapping):
         with self._mutex:
             self._invalidate_keys()
             self._invalidate_value(key)
+
+
+class ConsolidatedMetadataStore(MutableMapping):
+    """A layer over other storage, where the metadata has been consolidated into
+    a single key.
+
+    The purpose of this class, is to be able to get all of the metadata for
+    a given dataset in a single read operation from the underlying storage.
+    See :func:`zarr.convenience.consolidate_metadata` for how to create this
+    single metadata key.
+
+    This class loads from the one key, and stores the data in a dict, so that
+    accessing the keys no longer requires operations on the backend store.
+
+    This class is read-only, and attempts to change the dataset metadata will
+    fail, but changing the data is possible. If the backend storage is changed
+    directly, then the metadata stored here could become obsolete, and
+    :func:`zarr.convenience.consolidate_metadata` should be called again and the class
+    re-invoked. The use case is for write once, read many times.
+
+    .. versionadded:: 2.3
+
+    .. note:: This is an experimental feature.
+
+    Parameters
+    ----------
+    store: MutableMapping
+        Containing the zarr dataset.
+    metadata_key: str
+        The target in the store where all of the metadata are stored. We
+        assume JSON encoding.
+
+    See Also
+    --------
+    zarr.convenience.consolidate_metadata, zarr.convenience.open_consolidated
+
+    """
+    def __init__(self, store, metadata_key='.zmetadata'):
+        self.store = store
+
+        # retrieve consolidated metadata
+        if sys.version_info.major == 3 and sys.version_info.minor < 6:
+            d = store[metadata_key].decode()  # pragma: no cover
+        else:  # pragma: no cover
+            d = store[metadata_key]
+        meta = json.loads(d)
+
+        # check format of consolidated metadata
+        consolidated_format = meta.get('zarr_consolidated_format', None)
+        if consolidated_format != 1:
+            raise MetadataError('unsupported zarr consolidated metadata format: %s' %
+                                consolidated_format)
+
+        # decode metadata
+        self.meta_store = meta['metadata']
+
+    def __getitem__(self, key):
+        return self.meta_store[key]
+
+    def __contains__(self, item):
+        return item in self.meta_store
+
+    def __iter__(self):
+        return iter(self.meta_store)
+
+    def __len__(self):
+        return len(self.meta_store)
+
+    def __delitem__(self, key):
+        err_read_only()
+
+    def __setitem__(self, key, value):
+        err_read_only()
+
+    def getsize(self, path):
+        return getsize(self.meta_store, path)
+
+    def listdir(self, path):
+        return listdir(self.meta_store, path)
 
 
 class LRUChunkCache(MutableMapping):

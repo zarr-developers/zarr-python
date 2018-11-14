@@ -27,6 +27,8 @@ Storage (``zarr.storage``)
     .. automethod:: invalidate_values
     .. automethod:: invalidate_keys
 
+.. autoclass:: ConsolidatedMetadataStore
+
 .. autoclass:: LRUChunkCache
 
     .. automethod:: invalidate
