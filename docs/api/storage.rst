@@ -27,6 +27,8 @@ Storage (``zarr.storage``)
     .. automethod:: invalidate_values
     .. automethod:: invalidate_keys
 
+.. autoclass:: ConsolidatedMetadataStore
+
 .. autofunction:: init_array
 .. autofunction:: init_group
 .. autofunction:: contains_array

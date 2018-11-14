@@ -3,6 +3,7 @@ from __future__ import absolute_import, print_function, division
 import tempfile
 import shutil
 import atexit
+import os.path
 
 
 import numpy as np
@@ -239,6 +240,14 @@ def test_open_array():
     z = open_array(store, shape=100, path='foo/bar', mode='w')
     assert isinstance(z, Array)
     assert 'foo/bar' == z.path
+
+    # with chunk store
+    meta_store = 'data/meta.zarr'
+    chunk_store = 'data/chunks.zarr'
+    z = open_array(store=meta_store, chunk_store=chunk_store, shape=11, mode='w')
+    z[:] = 42
+    assert os.path.abspath(meta_store) == z.store.path
+    assert os.path.abspath(chunk_store) == z.chunk_store.path
 
 
 def test_empty_like():
