@@ -16,7 +16,7 @@ import pytest
 
 from zarr.storage import (DirectoryStore, init_array, init_group, NestedDirectoryStore,
                           DBMStore, LMDBStore, atexit_rmtree, atexit_rmglob,
-                          LRUStoreCache)
+                          LRUStoreCache, LRUChunkCache)
 from zarr.core import Array
 from zarr.errors import PermissionError
 from zarr.compat import PY2, text_type, binary_type
@@ -1786,3 +1786,95 @@ class TestArrayWithStoreCache(TestArray):
         init_array(store, **kwargs)
         return Array(store, read_only=read_only, cache_metadata=cache_metadata,
                      cache_attrs=cache_attrs)
+
+
+class TestArrayWithLRUChunkCache(TestArray):
+
+    @staticmethod
+    def create_array(read_only=False, **kwargs):
+        store = dict()
+        kwargs.setdefault('compressor', Zlib(level=1))
+        cache_metadata = kwargs.pop('cache_metadata', True)
+        cache_attrs = kwargs.pop('cache_attrs', True)
+        init_array(store, **kwargs)
+        return Array(store, read_only=read_only, cache_metadata=cache_metadata,
+                     cache_attrs=cache_attrs, chunk_cache=LRUChunkCache(max_size=None))
+
+    @staticmethod
+    def create_array_with_cache(read_only=False, **kwargs):
+        store = dict()
+        kwargs.setdefault('compressor', Zlib(level=1))
+        cache_metadata = kwargs.pop('cache_metadata', True)
+        cache_attrs = kwargs.pop('cache_attrs', True)
+        init_array(store, **kwargs)
+        cache = LRUChunkCache(max_size=None)
+        return Array(store, read_only=read_only, cache_metadata=cache_metadata,
+                     cache_attrs=cache_attrs, chunk_cache=cache), cache
+
+    def test_hit_miss(self):
+        a = np.arange(100).reshape((10, 10))
+        z, cache = self.create_array_with_cache(shape=a.shape, chunks=(10, 1), dtype=a.dtype)
+
+        # test write cache
+        z[:] = a
+        assert cache.misses == 0 and cache.hits == 0
+        z[:]
+        assert cache.misses == 0 and cache.hits == 10
+
+        cache.clear()
+        cache.misses = 0
+        cache.hits = 0
+
+        # test read cache
+        assert cache.misses == 0 and cache.hits == 0
+        z[:]
+        assert cache.misses == 10 and cache.hits == 0
+        z[:]
+        assert cache.misses == 10 and cache.hits == 10
+
+    # noinspection PyStatementEffect
+    def test_array_0d_with_object_arrays(self):
+        # test behaviour for array with 0 dimensions
+
+        # setup
+        a = np.zeros((), dtype=object)
+        z = self.create_array(shape=(), dtype=a.dtype, fill_value=0, object_codec=Pickle())
+
+        # check properties
+        assert a.ndim == z.ndim
+        assert a.shape == z.shape
+        assert a.size == z.size
+        assert a.dtype == z.dtype
+        assert a.nbytes == z.nbytes
+        with pytest.raises(TypeError):
+            len(z)
+        assert () == z.chunks
+        assert 1 == z.nchunks
+        assert (1,) == z.cdata_shape
+        # compressor always None - no point in compressing a single value
+        assert z.compressor is None
+
+        # check __getitem__
+        b = z[...]
+        assert isinstance(b, np.ndarray)
+        assert a.shape == b.shape
+        assert a.dtype == b.dtype
+        assert_array_equal(a, np.array(z))
+        assert_array_equal(a, z[...])
+        assert a[()] == z[()]
+        with pytest.raises(IndexError):
+            z[0]
+        with pytest.raises(IndexError):
+            z[:]
+
+        # check __setitem__
+        z[...] = 42
+        assert 42 == z[()]
+        z[()] = 43
+        assert 43 == z[()]
+        with pytest.raises(IndexError):
+            z[0] = 42
+        with pytest.raises(IndexError):
+            z[:] = 42
+        with pytest.raises(ValueError):
+            z[...] = np.array([1, 2, 3])

@@ -51,6 +51,15 @@ class Array(object):
         If True (default), user attributes will be cached for attribute read
         operations. If False, user attributes are reloaded from the store prior
         to all attribute read operations.
+    chunk_cache: MutableMapping, optional
+        Mapping to store decoded chunks for caching. Can be used in repeated
+        chunk access scenarios when decoding of data is computationally
+        expensive.
+        NOTE: When using the write cache feature with object arrays(i.e.
+        when dtype of array is 'object' and when writing to the array with
+        chunk_cache provided) could result in a slight slowdown as some
+        dtypes, like VLenArray, have to go through the encode-decode phase
+        before having the correct dtype.
 
     Attributes
     ----------
@@ -103,7 +112,8 @@ class Array(object):
     """
 
     def __init__(self, store, path=None, read_only=False, chunk_store=None,
-                 synchronizer=None, cache_metadata=True, cache_attrs=True):
+                 synchronizer=None, cache_metadata=True, cache_attrs=True,
+                 chunk_cache=None):
         # N.B., expect at this point store is fully initialized with all
         # configuration metadata fully specified and normalized
 
@@ -118,6 +128,7 @@ class Array(object):
         self._synchronizer = synchronizer
         self._cache_metadata = cache_metadata
         self._is_view = False
+        self._chunk_cache = chunk_cache
 
         # initialize metadata
         self._load_metadata()
@@ -695,19 +706,36 @@ class Array(object):
         if selection not in ((), (Ellipsis,)):
             err_too_many_indices(selection, ())
 
-        try:
-            # obtain encoded data for chunk
-            ckey = self._chunk_key((0,))
-            cdata = self.chunk_store[ckey]
+        # obtain key for chunk
+        ckey = self._chunk_key((0,))
 
-        except KeyError:
-            # chunk not initialized
-            chunk = np.zeros((), dtype=self._dtype)
-            if self._fill_value is not None:
-                chunk.fill(self._fill_value)
+        # setup variable to hold decoded chunk
+        chunk = None
 
-        else:
-            chunk = self._decode_chunk(cdata)
+        # check for cached chunk
+        if self._chunk_cache is not None:
+            try:
+                chunk = self._chunk_cache[ckey]
+            except KeyError:
+                pass
+
+        if chunk is None:
+            try:
+                # obtain encoded data for chunk
+                cdata = self.chunk_store[ckey]
+
+            except KeyError:
+                # chunk not initialized
+                chunk = np.zeros((), dtype=self._dtype)
+                if self._fill_value is not None:
+                    chunk.fill(self._fill_value)
+
+            else:
+                chunk = self._decode_chunk(cdata)
+
+        # cache decoded chunk
+        if self._chunk_cache is not None:
+            self._chunk_cache[ckey] = chunk
 
         # handle fields
         if fields:
@@ -1482,6 +1510,12 @@ class Array(object):
         cdata = self._encode_chunk(chunk)
         self.chunk_store[ckey] = cdata
 
+        if self._chunk_cache is not None:
+            # ensure cached chunk has been round tripped through encode-decode if dtype=object
+            if self.dtype == object:
+                chunk = self._decode_chunk(cdata)
+            self._chunk_cache[ckey] = chunk
+
     def _set_basic_selection_nd(self, selection, value, fields=None):
         # implementation of __setitem__ for array with at least one dimension
 
@@ -1565,8 +1599,19 @@ class Array(object):
         ckey = self._chunk_key(chunk_coords)
 
         try:
+
+            cdata, chunk = None, None
+
+            # first try getting from cache (if one has been provided)
+            if self._chunk_cache is not None:
+                try:
+                    chunk = self._chunk_cache[ckey]
+                except KeyError:
+                    pass
+
             # obtain compressed data for chunk
-            cdata = self.chunk_store[ckey]
+            if chunk is None:
+                cdata = self.chunk_store[ckey]
 
         except KeyError:
             # chunk not initialized
@@ -1600,7 +1645,9 @@ class Array(object):
                     # contiguous, so we can decompress directly from the chunk
                     # into the destination array
 
-                    if self._compressor:
+                    if chunk is not None:
+                        np.copyto(dest, chunk)
+                    elif self._compressor:
                         self._compressor.decode(cdata, dest)
                     else:
                         if isinstance(cdata, np.ndarray):
@@ -1612,7 +1659,10 @@ class Array(object):
                     return
 
             # decode chunk
-            chunk = self._decode_chunk(cdata)
+            if chunk is None:
+                chunk = self._decode_chunk(cdata)
+                if self._chunk_cache is not None:
+                    self._chunk_cache[ckey] = np.copy(chunk)
 
             # select data from chunk
             if fields:
@@ -1726,6 +1776,13 @@ class Array(object):
 
         # store
         self.chunk_store[ckey] = cdata
+
+        # cache the chunk
+        if self._chunk_cache is not None:
+            # ensure cached chunk has been round tripped through encode-decode if dtype=object
+            if self.dtype == object:
+                chunk = self._decode_chunk(cdata)
+            self._chunk_cache[ckey] = np.copy(chunk)
 
     def _chunk_key(self, chunk_coords):
         return self._key_prefix + '.'.join(map(str, chunk_coords))

@@ -29,6 +29,10 @@ Storage (``zarr.storage``)
 
 .. autoclass:: ConsolidatedMetadataStore
 
+.. autoclass:: LRUChunkCache
+
+    .. automethod:: invalidate
+
 .. autofunction:: init_array
 .. autofunction:: init_group
 .. autofunction:: contains_array

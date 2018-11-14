@@ -315,6 +315,9 @@ def normalize_storage_path(path):
 
 def buffer_size(v):
     from array import array as _stdlib_array
+    # special case for 'Mm' dtypes
+    if hasattr(v, 'dtype') and v.dtype.kind in 'Mm':
+        return v.nbytes
     if PY2 and isinstance(v, _stdlib_array):  # pragma: py3 no cover
         # special case array.array because does not support buffer
         # interface in PY2
