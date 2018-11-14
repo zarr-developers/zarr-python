@@ -19,12 +19,13 @@ from zarr.storage import (init_array, array_meta_key, attrs_key, DictStore,
                           DirectoryStore, ZipStore, init_group, group_meta_key,
                           getsize, migrate_1to2, TempStore, atexit_rmtree,
                           NestedDirectoryStore, default_compressor, DBMStore,
-                          LMDBStore, atexit_rmglob, LRUStoreCache)
+                          LMDBStore, atexit_rmglob, LRUStoreCache,
+                          ConsolidatedMetadataStore)
 from zarr.meta import (decode_array_metadata, encode_array_metadata, ZARR_FORMAT,
                        decode_group_metadata, encode_group_metadata)
 from zarr.compat import PY2
 from zarr.codecs import Zlib, Blosc, BZ2
-from zarr.errors import PermissionError
+from zarr.errors import PermissionError, MetadataError
 from zarr.hierarchy import group
 from zarr.tests.util import CountingDict
 
@@ -1251,3 +1252,49 @@ def test_format_compatibility():
             else:
                 assert compressor.codec_id == z.compressor.codec_id
                 assert compressor.get_config() == z.compressor.get_config()
+
+
+class TestConsolidatedMetadataStore(unittest.TestCase):
+
+    def test_bad_format(self):
+
+        # setup store with consolidated metdata
+        store = dict()
+        consolidated = {
+            # bad format version
+            'zarr_consolidated_format': 0,
+        }
+        store['.zmetadata'] = json.dumps(consolidated).encode()
+
+        # check appropriate error is raised
+        with pytest.raises(MetadataError):
+            ConsolidatedMetadataStore(store)
+
+    def test_read_write(self):
+
+        # setup store with consolidated metdata
+        store = dict()
+        consolidated = {
+            'zarr_consolidated_format': 1,
+            'metadata': {
+                'foo': 'bar',
+                'baz': 42,
+            }
+        }
+        store['.zmetadata'] = json.dumps(consolidated).encode()
+
+        # create consolidated store
+        cs = ConsolidatedMetadataStore(store)
+
+        # test __contains__, __getitem__
+        for key, value in consolidated['metadata'].items():
+            assert key in cs
+            assert value == cs[key]
+
+        # test __delitem__, __setitem__
+        with pytest.raises(PermissionError):
+            del cs['foo']
+        with pytest.raises(PermissionError):
+            cs['bar'] = 0
+        with pytest.raises(PermissionError):
+            cs['spam'] = 'eggs'
