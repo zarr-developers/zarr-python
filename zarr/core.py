@@ -1646,8 +1646,6 @@ class Array(object):
                         np.copyto(dest, chunk)
                     elif self._compressor:
                         self._compressor.decode(cdata, dest)
-                        if self._chunk_cache is not None:
-                            self._chunk_cache[ckey] = np.copy(dest)
                     else:
                         if isinstance(cdata, np.ndarray):
                             chunk = cdata.view(self._dtype)
@@ -1655,8 +1653,6 @@ class Array(object):
                             chunk = np.frombuffer(cdata, dtype=self._dtype)
                         chunk = chunk.reshape(self._chunks, order=self._order)
                         np.copyto(dest, chunk)
-                        if self._chunk_cache is not None:
-                            self._chunk_cache[ckey] = np.copy(chunk)
                     return
 
             # decode chunk
