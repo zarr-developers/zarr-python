@@ -1131,7 +1131,7 @@ def consolidate_metadata(store, metadata_key='.zmetadata'):
     return open_consolidated(store, metadata_key=metadata_key)
 
 
-def open_consolidated(store, metadata_key='.zmetadata', mode='r+'):
+def open_consolidated(store, metadata_key='.zmetadata', mode='r+', **kwargs):
     """Open group using metadata previously consolidated into a single key.
 
     This is an optimised method for opening a Zarr group, where instead of
@@ -1158,6 +1158,9 @@ def open_consolidated(store, metadata_key='.zmetadata', mode='r+'):
         read/write (must exist) although only writes to data are allowed,
         changes to metadata including creation of new arrays or group
         are not allowed.
+    **kwargs
+        Additional parameters are passed through to :func:`zarr.creation.open_array` or
+        :func:`zarr.hierarchy.open_group`.
 
     Returns
     -------
@@ -1182,4 +1185,4 @@ def open_consolidated(store, metadata_key='.zmetadata', mode='r+'):
     meta_store = ConsolidatedMetadataStore(store, metadata_key=metadata_key)
 
     # pass through
-    return open(store=meta_store, chunk_store=store, mode=mode)
+    return open(store=meta_store, chunk_store=store, mode=mode, **kwargs)
