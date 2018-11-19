@@ -163,6 +163,9 @@ def test_consolidate_metadata():
     with pytest.raises(ValueError):
         open_consolidated(store, mode='w')
 
+    # make sure keyword arguments are passed through without error
+    open_consolidated(store, cache_attrs=True, synchronizer=None)
+
 
 class TestCopyStore(unittest.TestCase):
 
