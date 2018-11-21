@@ -1,3 +1,4 @@
 asciitree==0.3.3
 fasteners==0.14.1
 numcodecs==0.5.5
+pyosreplace==0.1; python_version < '3.3' and sys.platform == 'win32'
