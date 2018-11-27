@@ -20,12 +20,13 @@ from zarr.storage import (init_array, array_meta_key, attrs_key, DictStore,
                           DirectoryStore, ZipStore, init_group, group_meta_key,
                           getsize, migrate_1to2, TempStore, atexit_rmtree,
                           NestedDirectoryStore, default_compressor, DBMStore,
-                          LMDBStore, atexit_rmglob, LRUStoreCache, ABSStore)
+                          LMDBStore, atexit_rmglob, LRUStoreCache, ABSStore,
+                          ConsolidatedMetadataStore)
 from zarr.meta import (decode_array_metadata, encode_array_metadata, ZARR_FORMAT,
                        decode_group_metadata, encode_group_metadata)
 from zarr.compat import PY2
 from zarr.codecs import Zlib, Blosc, BZ2
-from zarr.errors import PermissionError
+from zarr.errors import PermissionError, MetadataError
 from zarr.hierarchy import group
 from zarr.tests.util import CountingDict
 
@@ -129,12 +130,27 @@ class StoreTests(object):
                 set(store.items()))
 
     def test_pickle(self):
+
+        # setup store
         store = self.create_store()
         store['foo'] = b'bar'
         store['baz'] = b'quux'
-        store2 = pickle.loads(pickle.dumps(store))
-        assert len(store) == len(store2)
-        assert sorted(store.keys()) == sorted(store2.keys())
+        n = len(store)
+        keys = sorted(store.keys())
+
+        # round-trip through pickle
+        dump = pickle.dumps(store)
+        # some stores cannot be opened twice at the same time, need to close
+        # store before can round-trip through pickle
+        if hasattr(store, 'close'):
+            store.close()
+            # check can still pickle after close
+            assert dump == pickle.dumps(store)
+        store2 = pickle.loads(dump)
+
+        # verify
+        assert n == len(store2)
+        assert keys == sorted(store2.keys())
         assert b'bar' == store2['foo']
         assert b'quux' == store2['baz']
 
@@ -746,6 +762,7 @@ class TestDBMStore(StoreTests, unittest.TestCase):
     def create_store(self):
         path = tempfile.mktemp(suffix='.anydbm')
         atexit.register(atexit_rmglob, path + '*')
+        # create store using default dbm implementation
         store = DBMStore(path, flag='n')
         return store
 
@@ -1248,3 +1265,50 @@ class TestABSStore(StoreTests, unittest.TestCase):
                          account_key='bar', blob_service_kwargs={'is_emulated': True})
         store.rmdir()
         return store
+
+
+class TestConsolidatedMetadataStore(unittest.TestCase):
+
+    def test_bad_format(self):
+
+        # setup store with consolidated metdata
+        store = dict()
+        consolidated = {
+            # bad format version
+            'zarr_consolidated_format': 0,
+        }
+        store['.zmetadata'] = json.dumps(consolidated).encode()
+
+        # check appropriate error is raised
+        with pytest.raises(MetadataError):
+            ConsolidatedMetadataStore(store)
+
+    def test_read_write(self):
+
+        # setup store with consolidated metdata
+        store = dict()
+        consolidated = {
+            'zarr_consolidated_format': 1,
+            'metadata': {
+                'foo': 'bar',
+                'baz': 42,
+            }
+        }
+        store['.zmetadata'] = json.dumps(consolidated).encode()
+
+        # create consolidated store
+        cs = ConsolidatedMetadataStore(store)
+
+        # test __contains__, __getitem__
+        for key, value in consolidated['metadata'].items():
+            assert key in cs
+            assert value == cs[key]
+
+        # test __delitem__, __setitem__
+        with pytest.raises(PermissionError):
+            del cs['foo']
+        with pytest.raises(PermissionError):
+            cs['bar'] = 0
+        with pytest.raises(PermissionError):
+            cs['spam'] = 'eggs'
+

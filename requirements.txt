@@ -1,6 +1,5 @@
 asciitree
-pytest
-numpy
 fasteners
 numcodecs
-azure-storage-blob
+numpy
+pytest
