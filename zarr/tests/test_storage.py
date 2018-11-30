@@ -24,7 +24,7 @@ from zarr.storage import (init_array, array_meta_key, attrs_key, DictStore,
 from zarr.meta import (decode_array_metadata, encode_array_metadata, ZARR_FORMAT,
                        decode_group_metadata, encode_group_metadata)
 from zarr.compat import PY2
-from zarr.codecs import Zlib, Blosc, BZ2, LZ4, LZMA#, GZip
+from zarr.codecs import Zlib, Blosc, BZ2, LZ4, LZMA, GZip
 from zarr.errors import PermissionError, MetadataError
 from zarr.hierarchy import group
 from zarr.n5 import N5Store
@@ -823,7 +823,7 @@ class TestN5Store(TestNestedDirectoryStore, unittest.TestCase):
 
     def test_compressors(self):
         compressors = [
-            None, BZ2(), Blosc(), LZ4(), LZMA(), Zlib()#, GZip()
+            None, BZ2(), Blosc(), LZ4(), LZMA(), Zlib(), GZip()
         ]
         for compressor in compressors:
             store = self.create_store()
