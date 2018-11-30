@@ -27,8 +27,8 @@ environment:
 
 install:
   - cmd:
-    "C:\Program Files (x86)\Microsoft SDKs\Azure\Storage Emulator\AzureStorageEmulator.exe" start
-    "C:\Program Files (x86)\Microsoft SDKs\Azure\Storage Emulator\AzureStorageEmulator.exe" status
+    - "C:\Program Files (x86)\Microsoft SDKs\Azure\Storage Emulator\AzureStorageEmulator.exe" start
+    - "C:\Program Files (x86)\Microsoft SDKs\Azure\Storage Emulator\AzureStorageEmulator.exe" status
   - "SET PATH=%PYTHON%;%PYTHON%\\Scripts;%PATH%"
   - "%CMD_IN_ENV% python -m pip install -U pip setuptools wheel"
   - "%CMD_IN_ENV% python -m pip install -rrequirements_test.txt"
