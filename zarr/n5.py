@@ -10,7 +10,7 @@ from .storage import (
         attrs_key as zarr_attrs_key,
         _prog_ckey, _prog_number)
 from numcodecs.abc import Codec
-from numcodecs.compat import buffer_copy
+from numcodecs.compat import ndarray_copy
 from numcodecs.registry import register_codec, get_codec
 import json
 import logging
@@ -581,7 +581,7 @@ class N5ChunkWrapper(Codec):
             if self._compressor:
                 self._compressor.decode(chunk, out)
             else:
-                buffer_copy(chunk, out)
+                ndarray_copy(chunk, out)
 
             # we can byteswap in-place
             if self._little_endian:
