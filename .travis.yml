@@ -11,6 +11,9 @@ addons:
     packages:
     - libdb-dev
 
+services:
+  - docker
+
 matrix:
   include:
     - python: 2.7
@@ -19,6 +22,11 @@ matrix:
     - python: 3.7
       dist: xenial
       sudo: true
+
+before_install:
+  - docker pull arafato/azurite
+  - mkdir ~/blob_emulator
+  - docker run -e executable=blob -d -t -p 10000:10000 -v ~/blob_emulator:/opt/azurite/folder arafato/azurite
 
 install:
   - pip install -U pip setuptools wheel tox-travis coveralls
