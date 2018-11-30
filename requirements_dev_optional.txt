@@ -1,2 +1,3 @@
-bsddb3==6.2.5
-lmdb==0.93
+# These packages are currently not available on Windows.
+bsddb3==6.2.6
+lmdb==0.94

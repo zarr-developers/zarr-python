@@ -4,8 +4,8 @@ import json
 from collections import MutableMapping
 
 
-from zarr.compat import text_type
 from zarr.errors import PermissionError
+from zarr.meta import parse_metadata
 
 
 class Attributes(MutableMapping):
@@ -43,7 +43,7 @@ class Attributes(MutableMapping):
         except KeyError:
             d = dict()
         else:
-            d = json.loads(text_type(data, 'ascii'))
+            d = parse_metadata(data)
         return d
 
     def asdict(self):

@@ -165,6 +165,9 @@ class Array(object):
             if config is None:
                 self._compressor = None
             else:
+                # temporary workaround for
+                # https://github.com/zarr-developers/numcodecs/issues/78
+                config = dict(config)
                 self._compressor = get_codec(config)
 
             # setup filters
@@ -1568,7 +1571,11 @@ class Array(object):
         except KeyError:
             # chunk not initialized
             if self._fill_value is not None:
-                out[out_selection] = self._fill_value
+                if fields:
+                    fill_value = self._fill_value[fields]
+                else:
+                    fill_value = self._fill_value
+                out[out_selection] = fill_value
 
         else:
 
@@ -2157,7 +2164,7 @@ class Array(object):
             array([0, 0, 1, ..., 1, 0, 0], dtype=uint8)
             >>> v = a.view(dtype=bool)
             >>> v[:]
-            array([False, False,  True, ...,  True, False, False], dtype=bool)
+            array([False, False,  True, ...,  True, False, False])
             >>> np.all(a[:].view(dtype=bool) == v[:])
             True
 

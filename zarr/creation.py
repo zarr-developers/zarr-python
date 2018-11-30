@@ -227,8 +227,8 @@ def zeros(shape, **kwargs):
     >>> z
     <zarr.core.Array (10000, 10000) float64>
     >>> z[:2, :2]
-    array([[ 0.,  0.],
-           [ 0.,  0.]])
+    array([[0., 0.],
+           [0., 0.]])
 
     """
 
@@ -248,8 +248,8 @@ def ones(shape, **kwargs):
     >>> z
     <zarr.core.Array (10000, 10000) float64>
     >>> z[:2, :2]
-    array([[ 1.,  1.],
-           [ 1.,  1.]])
+    array([[1., 1.],
+           [1., 1.]])
 
     """
 
@@ -269,8 +269,8 @@ def full(shape, fill_value, **kwargs):
     >>> z
     <zarr.core.Array (10000, 10000) float64>
     >>> z[:2, :2]
-    array([[ 42.,  42.],
-           [ 42.,  42.]])
+    array([[42., 42.],
+           [42., 42.]])
 
     """
 
@@ -349,15 +349,15 @@ def array(data, **kwargs):
     return z
 
 
-def open_array(store, mode='a', shape=None, chunks=True, dtype=None, compressor='default',
-               fill_value=0, order='C', synchronizer=None, filters=None,
-               cache_metadata=True, cache_attrs=True, path=None, object_codec=None,
-               **kwargs):
+def open_array(store=None, mode='a', shape=None, chunks=True, dtype=None,
+               compressor='default', fill_value=0, order='C', synchronizer=None,
+               filters=None, cache_metadata=True, cache_attrs=True, path=None,
+               object_codec=None, chunk_store=None, **kwargs):
     """Open an array using file-mode-like semantics.
 
     Parameters
     ----------
-    store : MutableMapping or string
+    store : MutableMapping or string, optional
         Store or path to directory in file system or name of zip file.
     mode : {'r', 'r+', 'a', 'w', 'w-'}, optional
         Persistence mode: 'r' means read only (must exist); 'r+' means
@@ -394,6 +394,8 @@ def open_array(store, mode='a', shape=None, chunks=True, dtype=None, compressor=
         Array path within store.
     object_codec : Codec, optional
         A codec to encode object arrays, only needed if dtype=object.
+    chunk_store : MutableMapping or string, optional
+        Store or path to directory in file system or name of zip file.
 
     Returns
     -------
@@ -429,7 +431,10 @@ def open_array(store, mode='a', shape=None, chunks=True, dtype=None, compressor=
     # a : read/write if exists, create otherwise (default)
 
     # handle polymorphic store arg
-    store = normalize_store_arg(store, clobber=(mode == 'w'))
+    clobber = mode == 'w'
+    store = normalize_store_arg(store, clobber=clobber)
+    if chunk_store is not None:
+        chunk_store = normalize_store_arg(chunk_store, clobber=clobber)
     path = normalize_storage_path(path)
 
     # API compatibility with h5py
@@ -451,7 +456,7 @@ def open_array(store, mode='a', shape=None, chunks=True, dtype=None, compressor=
         init_array(store, shape=shape, chunks=chunks, dtype=dtype,
                    compressor=compressor, fill_value=fill_value,
                    order=order, filters=filters, overwrite=True, path=path,
-                   object_codec=object_codec)
+                   object_codec=object_codec, chunk_store=chunk_store)
 
     elif mode == 'a':
         if contains_group(store, path=path):
@@ -460,7 +465,7 @@ def open_array(store, mode='a', shape=None, chunks=True, dtype=None, compressor=
             init_array(store, shape=shape, chunks=chunks, dtype=dtype,
                        compressor=compressor, fill_value=fill_value,
                        order=order, filters=filters, path=path,
-                       object_codec=object_codec)
+                       object_codec=object_codec, chunk_store=chunk_store)
 
     elif mode in ['w-', 'x']:
         if contains_group(store, path=path):
@@ -471,14 +476,15 @@ def open_array(store, mode='a', shape=None, chunks=True, dtype=None, compressor=
             init_array(store, shape=shape, chunks=chunks, dtype=dtype,
                        compressor=compressor, fill_value=fill_value,
                        order=order, filters=filters, path=path,
-                       object_codec=object_codec)
+                       object_codec=object_codec, chunk_store=chunk_store)
 
     # determine read only status
     read_only = mode == 'r'
 
     # instantiate array
     z = Array(store, read_only=read_only, synchronizer=synchronizer,
-              cache_metadata=cache_metadata, cache_attrs=cache_attrs, path=path)
+              cache_metadata=cache_metadata, cache_attrs=cache_attrs, path=path,
+              chunk_store=chunk_store)
 
     return z
 

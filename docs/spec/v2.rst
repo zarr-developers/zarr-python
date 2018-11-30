@@ -140,13 +140,31 @@ the `NumPy documentation on Datetimes and Timedeltas
 <https://docs.scipy.org/doc/numpy/reference/arrays.datetime.html#datetime-units>`_.
 For example, ``"<M8[ns]"`` specifies a datetime64 data type with nanosecond time units.
 
-Structured data types (i.e., with multiple named fields) are encoded as a list
-of two-element lists, following `NumPy array protocol type descriptions (descr)
-<http://docs.scipy.org/doc/numpy/reference/arrays.interface.html#>`_. For
-example, the JSON list ``[["r", "|u1"], ["g", "|u1"], ["b", "|u1"]]`` defines a
-data type composed of three single-byte unsigned integers labelled "r", "g" and
-"b".
+Structured data types (i.e., with multiple named fields) are encoded
+as a list of lists, following `NumPy array protocol type descriptions
+(descr)
+<http://docs.scipy.org/doc/numpy/reference/arrays.interface.html#>`_. Each
+sub-list has the form ``[fieldname, datatype, shape]`` where ``shape``
+is optional. ``fieldname`` is a string, ``datatype`` is a string
+specifying a simple data type (see above), and ``shape`` is a list of
+integers specifying subarray shape. For example, the JSON list below
+defines a data type composed of three single-byte unsigned integer
+fields named "r", "g" and "b"::
 
+    [["r", "|u1"], ["g", "|u1"], ["b", "|u1"]]
+
+For example, the JSON list below defines a data type composed of three
+fields named "x", "y" and "z", where "x" and "y" each contain 32-bit
+floats, and each item in "z" is a 2 by 2 array of floats::
+
+    [["x", "<f4"], ["y", "<f4"], ["z", "<f4", [2, 2]]]
+
+Structured data types may also be nested, e.g., the following JSON
+list defines a data type with two fields "foo" and "bar", where "bar"
+has two sub-fields "baz" and "qux"::
+
+    [["foo", "<f4"], ["bar", [["baz", "<f4"], ["qux", "<i4"]]]] 
+    
 .. _spec_v2_array_fill_value:
 
 Fill value encoding
@@ -511,6 +529,10 @@ initially published to clarify ambiguities and add some missing information.
 * The specification now clarifies that the '.zattrs' key does not have to be present for
   either arrays or groups, and if absent then custom attributes should be treated as
   empty.
+
+* The specification now describes how structured datatypes with
+  subarray shapes and/or with nested structured data types are encoded
+  in array metadata (:issue:`111`, :issue:`296`).
 
 
 Changes from version 1 to version 2
