@@ -26,7 +26,7 @@ environment:
       PYTHON_VERSION: "3.7"
 
 install:
-  - cmd: |
+  - cmd:
     "C:\Program Files (x86)\Microsoft SDKs\Azure\Storage Emulator\AzureStorageEmulator.exe" start
     "C:\Program Files (x86)\Microsoft SDKs\Azure\Storage Emulator\AzureStorageEmulator.exe" status
   - "SET PATH=%PYTHON%;%PYTHON%\\Scripts;%PATH%"
