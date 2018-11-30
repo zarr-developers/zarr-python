@@ -26,6 +26,13 @@ environment:
       PYTHON_VERSION: "3.7"
 
 install:
+  - ps: |
+    $msiPath = "$($env:USERPROFILE)\MicrosoftAzureStorageEmulator.msi"
+    (New-Object Net.WebClient).DownloadFile('https://download.microsoft.com/download/B/4/A/B4A8422F-C564-4393-80DA-6865A8C4B32D/MicrosoftAzureStorageEmulator.msi', $msiPath)
+    cmd /c start /wait msiexec /i $msiPath /quiet
+ - cmd: |
+    "C:\Program Files (x86)\Microsoft SDKs\Azure\Storage Emulator\AzureStorageEmulator.exe" start
+    "C:\Program Files (x86)\Microsoft SDKs\Azure\Storage Emulator\AzureStorageEmulator.exe" status
   - "SET PATH=%PYTHON%;%PYTHON%\\Scripts;%PATH%"
   - "%CMD_IN_ENV% python -m pip install -U pip setuptools wheel"
   - "%CMD_IN_ENV% python -m pip install -rrequirements_test.txt"
@@ -38,3 +45,7 @@ build: off
 
 test_script:
   - "%CMD_IN_ENV% python -m pytest -v --pyargs zarr"
+
+on_finish:
+  - cmd: |
+    "C:\Program Files (x86)\Microsoft SDKs\Azure\Storage Emulator\AzureStorageEmulator.exe" stop
