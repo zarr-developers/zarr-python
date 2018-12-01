@@ -8,7 +8,7 @@ import re
 
 
 import numpy as np
-from numcodecs.compat import ensure_contiguous_ndarray
+from numcodecs.compat import ensure_ndarray, ensure_contiguous_ndarray
 
 
 from zarr.util import (is_total_slice, human_readable_size, normalize_resize_args,
@@ -1745,10 +1745,11 @@ class Array(object):
                 chunk = f.decode(chunk)
 
         # view as numpy array with correct dtype
+        chunk = ensure_ndarray(chunk)
         if self._dtype == object:
             # special case object dtype, because incorrect handling can lead to
             # segfaults and other bad things happening
-            if isinstance(chunk, np.ndarray) and chunk.dtype == object:
+            if chunk.dtype == object:
                 # chunk is already of correct dtype, good to carry on
                 # flatten just to be sure we can reshape later
                 chunk = chunk.reshape(-1, order='A')
