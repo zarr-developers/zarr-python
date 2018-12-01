@@ -8,7 +8,7 @@ import re
 
 
 import numpy as np
-from numcodecs.compat import ensure_ndarray, ensure_contiguous_ndarray
+from numcodecs.compat import ensure_ndarray
 
 
 from zarr.util import (is_total_slice, human_readable_size, normalize_resize_args,
@@ -1761,7 +1761,7 @@ class Array(object):
                 # array during decoding.
                 raise RuntimeError('cannot read object array without object codec')
         else:
-            chunk = ensure_contiguous_ndarray(chunk).view(self._dtype)
+            chunk = chunk.reshape(-1, order='A').view(self._dtype)
 
         # ensure correct chunk shape
         chunk = chunk.reshape(self._chunks, order=self._order)
