@@ -1746,18 +1746,17 @@ class Array(object):
 
         # view as numpy array with correct dtype
         chunk = ensure_ndarray(chunk)
-        if self._dtype == object:
-            # special case object dtype, because incorrect handling can lead to
-            # segfaults and other bad things happening
-            if chunk.dtype != object:
-                # If we end up here, someone must have hacked around with the filters.
-                # We cannot deal with object arrays unless there is an object
-                # codec in the filter chain, i.e., a filter that converts from object
-                # array to something else during encoding, and converts back to object
-                # array during decoding.
-                raise RuntimeError('cannot read object array without object codec')
-        else:
+        # special case object dtype, because incorrect handling can lead to
+        # segfaults and other bad things happening
+        if self._dtype != object:
             chunk = chunk.view(self._dtype)
+        elif chunk.dtype != object:
+            # If we end up here, someone must have hacked around with the filters.
+            # We cannot deal with object arrays unless there is an object
+            # codec in the filter chain, i.e., a filter that converts from object
+            # array to something else during encoding, and converts back to object
+            # array during decoding.
+            raise RuntimeError('cannot read object array without object codec')
 
         # ensure correct chunk shape
         chunk = chunk.reshape(-1, order='A')
