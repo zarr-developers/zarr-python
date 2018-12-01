@@ -1749,11 +1749,7 @@ class Array(object):
         if self._dtype == object:
             # special case object dtype, because incorrect handling can lead to
             # segfaults and other bad things happening
-            if chunk.dtype == object:
-                # chunk is already of correct dtype, good to carry on
-                # flatten just to be sure we can reshape later
-                chunk = chunk.reshape(-1, order='A')
-            else:
+            if chunk.dtype != object:
                 # If we end up here, someone must have hacked around with the filters.
                 # We cannot deal with object arrays unless there is an object
                 # codec in the filter chain, i.e., a filter that converts from object
@@ -1761,9 +1757,10 @@ class Array(object):
                 # array during decoding.
                 raise RuntimeError('cannot read object array without object codec')
         else:
-            chunk = chunk.reshape(-1, order='A').view(self._dtype)
+            chunk = chunk.view(self._dtype)
 
         # ensure correct chunk shape
+        chunk = chunk.reshape(-1, order='A')
         chunk = chunk.reshape(self._chunks, order=self._order)
 
         return chunk
