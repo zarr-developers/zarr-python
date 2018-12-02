@@ -7,7 +7,7 @@ import numpy as np
 
 
 from zarr.core import Array
-from zarr.storage import (DirectoryStore, init_array, contains_array, contains_group,
+from zarr.storage import (DictStore, DirectoryStore, init_array, contains_array, contains_group,
                           default_compressor, normalize_storage_path, ZipStore)
 from numcodecs.registry import codec_registry
 from zarr.errors import err_contains_array, err_contains_group, err_array_not_found
@@ -125,7 +125,7 @@ def create(shape, chunks=True, dtype=None, compressor='default',
     return z
 
 
-def normalize_store_arg(store, clobber=False, default=dict):
+def normalize_store_arg(store, clobber=False, default=DictStore):
     if store is None:
         return default()
     elif isinstance(store, str):
