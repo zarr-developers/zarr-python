@@ -633,14 +633,6 @@ class TestDictStore(StoreTests, unittest.TestCase):
         store = self.create_store()
         setdel_hierarchy_checks(store)
 
-    def test_getsize_ext(self):
-        store = self.create_store()
-        store['a'] = list(range(10))
-        store['b/c'] = list(range(10))
-        assert -1 == store.getsize()
-        assert -1 == store.getsize('a')
-        assert -1 == store.getsize('b')
-
 
 class TestDirectoryStore(StoreTests, unittest.TestCase):
 
