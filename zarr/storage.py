@@ -719,6 +719,8 @@ class DirectoryStore(MutableMapping):
 
         # coerce to flat, contiguous array (ideally without copying)
         value = ensure_ndarray(value).reshape(-1, order='A')
+        if value.dtype.kind in 'mM':
+            value = value.view('i8')
 
         # destination path for key
         file_path = os.path.join(self.path, key)
@@ -1168,6 +1170,8 @@ class ZipStore(MutableMapping):
         if self.mode == 'r':
             err_read_only()
         value = ensure_ndarray(value).reshape(-1, order='A')
+        if value.dtype.kind in 'mM':
+            value = value.view('i8')
         with self.mutex:
             self.zf.writestr(key, value)
 
