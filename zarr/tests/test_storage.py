@@ -1088,6 +1088,10 @@ def test_getsize():
     assert 7 == getsize(store)
     assert 5 == getsize(store, 'baz')
 
+    store = dict()
+    store['boo'] = None
+    assert -1 == getsize(store)
+
 
 def test_migrate_1to2():
     from zarr import meta_v1
