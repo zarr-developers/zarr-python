@@ -40,6 +40,7 @@ from zarr.util import (normalize_shape, normalize_chunks, normalize_order,
 from zarr.meta import encode_array_metadata, encode_group_metadata
 from zarr.compat import PY2, binary_type, OrderedDict_move_to_end
 from numcodecs.registry import codec_registry
+from numcodecs.compat import ensure_bytes
 from zarr.errors import (err_contains_group, err_contains_array, err_bad_compressor,
                          err_fspath_exists_notdir, err_read_only, MetadataError)
 
@@ -554,6 +555,8 @@ class DictStore(MutableMapping):
     def __setitem__(self, item, value):
         with self.write_mutex:
             parent, key = self._require_parent(item)
+            if not isinstance(value, self.cls):
+                value = ensure_bytes(value)
             parent[key] = value
 
     def __delitem__(self, item):
