@@ -634,17 +634,11 @@ class DictStore(MutableMapping):
             size = 0
             for v in value.values():
                 if not isinstance(v, self.cls):
-                    try:
-                        size += buffer_size(v)
-                    except TypeError:
-                        return -1
+                    size += buffer_size(v)
             return size
 
         else:
-            try:
-                return buffer_size(value)
-            except TypeError:
-                return -1
+            return buffer_size(value)
 
     def clear(self):
         with self.write_mutex:
