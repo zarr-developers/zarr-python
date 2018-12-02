@@ -1811,10 +1811,10 @@ class Array(object):
         Order              : C
         Read-only          : False
         Compressor         : Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
-        Store type         : builtins.dict
+        Store type         : zarr.storage.DictStore
         No. bytes          : 4000000 (3.8M)
-        No. bytes stored   : ...
-        Storage ratio      : ...
+        No. bytes stored   : 320
+        Storage ratio      : 12500.0
         Chunks initialized : 0/10
 
         """
