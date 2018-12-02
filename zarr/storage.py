@@ -445,23 +445,6 @@ def _init_group_metadata(store, overwrite=False, path=None, chunk_store=None):
     store[key] = encode_group_metadata(meta)
 
 
-def ensure_bytes(s):
-    if isinstance(s, binary_type):
-        return s
-    if isinstance(s, np.ndarray):
-        if PY2:  # pragma: py3 no cover
-            # noinspection PyArgumentList
-            return s.tostring(order='A')
-        else:  # pragma: py2 no cover
-            # noinspection PyArgumentList
-            return s.tobytes(order='A')
-    if hasattr(s, 'tobytes'):
-        return s.tobytes()
-    if PY2 and hasattr(s, 'tostring'):  # pragma: py3 no cover
-        return s.tostring()
-    return memoryview(s).tobytes()
-
-
 def _dict_store_keys(d, prefix='', cls=dict):
     for k in d.keys():
         v = d[k]
