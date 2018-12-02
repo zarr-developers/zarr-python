@@ -37,7 +37,7 @@ from zarr.util import (normalize_shape, normalize_chunks, normalize_order,
 from zarr.meta import encode_array_metadata, encode_group_metadata
 from zarr.compat import PY2, OrderedDict_move_to_end
 from numcodecs.registry import codec_registry
-from numcodecs.compat import ensure_bytes, ensure_ndarray
+from numcodecs.compat import ensure_bytes, ensure_contiguous_ndarray
 from zarr.errors import (err_contains_group, err_contains_array, err_bad_compressor,
                          err_fspath_exists_notdir, err_read_only, MetadataError)
 
@@ -718,9 +718,7 @@ class DirectoryStore(MutableMapping):
     def __setitem__(self, key, value):
 
         # coerce to flat, contiguous array (ideally without copying)
-        value = ensure_ndarray(value).reshape(-1, order='A')
-        if value.dtype.kind in 'mM':
-            value = value.view('i8')
+        value = ensure_contiguous_ndarray(value)
 
         # destination path for key
         file_path = os.path.join(self.path, key)
@@ -1169,9 +1167,7 @@ class ZipStore(MutableMapping):
     def __setitem__(self, key, value):
         if self.mode == 'r':
             err_read_only()
-        value = ensure_ndarray(value).reshape(-1, order='A')
-        if value.dtype.kind in 'mM':
-            value = value.view('i8')
+        value = ensure_contiguous_ndarray(value)
         with self.mutex:
             self.zf.writestr(key, value)
 
