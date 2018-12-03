@@ -26,7 +26,7 @@ setup(
         'asciitree',
         'numpy>=1.7',
         'fasteners',
-        'numcodecs>=0.6.1',
+        'numcodecs>=0.6.2',
     ],
     package_dir={'': '.'},
     packages=['zarr', 'zarr.tests'],
