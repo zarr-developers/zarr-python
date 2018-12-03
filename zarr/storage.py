@@ -38,8 +38,9 @@ from zarr.util import (normalize_shape, normalize_chunks, normalize_order,
                        normalize_storage_path, buffer_size,
                        normalize_fill_value, nolock, normalize_dtype)
 from zarr.meta import encode_array_metadata, encode_group_metadata
-from zarr.compat import PY2, binary_type, OrderedDict_move_to_end
+from zarr.compat import PY2, OrderedDict_move_to_end
 from numcodecs.registry import codec_registry
+from numcodecs.compat import ensure_bytes
 from zarr.errors import (err_contains_group, err_contains_array, err_bad_compressor,
                          err_fspath_exists_notdir, err_read_only, MetadataError)
 
@@ -442,23 +443,6 @@ def _init_group_metadata(store, overwrite=False, path=None, chunk_store=None):
     meta = dict()
     key = _path_to_prefix(path) + group_meta_key
     store[key] = encode_group_metadata(meta)
-
-
-def ensure_bytes(s):
-    if isinstance(s, binary_type):
-        return s
-    if isinstance(s, np.ndarray):
-        if PY2:  # pragma: py3 no cover
-            # noinspection PyArgumentList
-            return s.tostring(order='A')
-        else:  # pragma: py2 no cover
-            # noinspection PyArgumentList
-            return s.tobytes(order='A')
-    if hasattr(s, 'tobytes'):
-        return s.tobytes()
-    if PY2 and hasattr(s, 'tostring'):  # pragma: py3 no cover
-        return s.tostring()
-    return memoryview(s).tobytes()
 
 
 def _dict_store_keys(d, prefix='', cls=dict):
