@@ -778,7 +778,7 @@ class DirectoryStore(MutableMapping):
 
         finally:
             # clean up if temp file still exists for whatever reason
-            if temp_path is not None and os.path.exists(temp_path):
+            if temp_path is not None and os.path.exists(temp_path):  # pragma: no cover
                 os.remove(temp_path)
 
     def __delitem__(self, key):
