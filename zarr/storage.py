@@ -31,14 +31,13 @@ import glob
 import warnings
 
 
-import numpy as np
-
 from zarr.util import (normalize_shape, normalize_chunks, normalize_order,
                        normalize_storage_path, buffer_size,
                        normalize_fill_value, nolock, normalize_dtype)
 from zarr.meta import encode_array_metadata, encode_group_metadata
-from zarr.compat import PY2, binary_type, OrderedDict_move_to_end
+from zarr.compat import PY2, OrderedDict_move_to_end
 from numcodecs.registry import codec_registry
+from numcodecs.compat import ensure_bytes, ensure_contiguous_ndarray
 from zarr.errors import (err_contains_group, err_contains_array, err_bad_compressor,
                          err_fspath_exists_notdir, err_read_only, MetadataError)
 
@@ -452,23 +451,6 @@ def _init_group_metadata(store, overwrite=False, path=None, chunk_store=None):
     store[key] = encode_group_metadata(meta)
 
 
-def ensure_bytes(s):
-    if isinstance(s, binary_type):
-        return s
-    if isinstance(s, np.ndarray):
-        if PY2:  # pragma: py3 no cover
-            # noinspection PyArgumentList
-            return s.tostring(order='A')
-        else:  # pragma: py2 no cover
-            # noinspection PyArgumentList
-            return s.tobytes(order='A')
-    if hasattr(s, 'tobytes'):
-        return s.tobytes()
-    if PY2 and hasattr(s, 'tostring'):  # pragma: py3 no cover
-        return s.tostring()
-    return memoryview(s).tobytes()
-
-
 def _dict_store_keys(d, prefix='', cls=dict):
     for k in d.keys():
         v = d[k]
@@ -749,9 +731,8 @@ class DirectoryStore(MutableMapping):
 
     def __setitem__(self, key, value):
 
-        # handle F-contiguous numpy arrays
-        if isinstance(value, np.ndarray) and value.flags.f_contiguous:
-            value = ensure_bytes(value)
+        # coerce to flat, contiguous array (ideally without copying)
+        value = ensure_contiguous_ndarray(value)
 
         # destination path for key
         file_path = os.path.join(self.path, key)
@@ -784,7 +765,7 @@ class DirectoryStore(MutableMapping):
 
         finally:
             # clean up if temp file still exists for whatever reason
-            if temp_path is not None and os.path.exists(temp_path):
+            if temp_path is not None and os.path.exists(temp_path):  # pragma: no cover
                 os.remove(temp_path)
 
     def __delitem__(self, key):
@@ -1198,7 +1179,7 @@ class ZipStore(MutableMapping):
     def __setitem__(self, key, value):
         if self.mode == 'r':
             err_read_only()
-        value = ensure_bytes(value)
+        value = ensure_contiguous_ndarray(value)
         with self.mutex:
             self.zf.writestr(key, value)
 

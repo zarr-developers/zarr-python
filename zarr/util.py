@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, print_function, division
-import operator
 from textwrap import TextWrapper, dedent
 import numbers
 import uuid
@@ -10,10 +9,11 @@ import inspect
 from asciitree import BoxStyle, LeftAligned
 from asciitree.traversal import Traversal
 import numpy as np
+from numcodecs.compat import ensure_ndarray
 from numcodecs.registry import codec_registry
 
 
-from zarr.compat import PY2, reduce, text_type, binary_type
+from zarr.compat import PY2, text_type, binary_type
 
 
 # codecs to use for object dtype convenience API
@@ -314,17 +314,7 @@ def normalize_storage_path(path):
 
 
 def buffer_size(v):
-    from array import array as _stdlib_array
-    if PY2 and isinstance(v, _stdlib_array):  # pragma: py3 no cover
-        # special case array.array because does not support buffer
-        # interface in PY2
-        return v.buffer_info()[1] * v.itemsize
-    else:  # pragma: py2 no cover
-        v = memoryview(v)
-        if v.shape:
-            return reduce(operator.mul, v.shape) * v.itemsize
-        else:
-            return v.itemsize
+    return ensure_ndarray(v).nbytes
 
 
 def info_text_report(items):

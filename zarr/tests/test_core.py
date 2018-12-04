@@ -982,7 +982,7 @@ class TestArray(unittest.TestCase):
         z[0] = 'foo'
         assert z[0] == 'foo'
         z[1] = b'bar'
-        assert z[1] == 'bar'  # msgpack gets this wrong
+        assert z[1] == b'bar'
         z[2] = 1
         assert z[2] == 1
         z[3] = [2, 4, 6, 'baz']

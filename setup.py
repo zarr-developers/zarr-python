@@ -14,7 +14,7 @@ dependencies = [
     'asciitree',
     'numpy>=1.7',
     'fasteners',
-    'numcodecs>=0.5.3',
+    'numcodecs>=0.6.2',
 ]
 
 if sys.version_info < (3, 3) and sys.platform == "win32":
@@ -48,7 +48,6 @@ setup(
         'Programming Language :: Python :: 2',
         'Programming Language :: Python :: 2.7',
         'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.4',
         'Programming Language :: Python :: 3.5',
         'Programming Language :: Python :: 3.6',
         'Programming Language :: Python :: 3.7',
