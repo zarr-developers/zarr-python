@@ -22,6 +22,11 @@ Enhancements
 Maintenance
 ~~~~~~~~~~~
 
+* The required version of the `numcodecs <http://numcodecs.rtfd.io>`_ package has been upgraded 
+  to 0.6.2, which has enabled some code simplification and fixes a failing test involving
+  msgpack encoding. By :user:`John Kirkham <jakirkham>`, :issue:`352`, :issue:`355`, 
+  :issue:`324`.
+
 * CI and test environments have been upgraded to include Python 3.7, drop Python 3.4, and
   upgrade all pinned package requirements. :issue:`308`.
 
