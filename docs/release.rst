@@ -19,22 +19,28 @@ Enhancements
 * Support has been added for structured arrays with sub-array shape and/or nested fields. By
   :user:`Tarik Onalan <onalant>`, :issue:`111`, :issue:`296`.
 
-Maintenance
-~~~~~~~~~~~
+Bug fixes
+~~~~~~~~~
+
+* The implementation of the :class:`zarr.storage.DirectoryStore` class has been modified to 
+  ensure that writes are atomic and there are no race conditions where a chunk might appear 
+  transiently missing during a write operation. By :user:`sbalmer <sbalmer>`, :issue:`327`, 
+  :issue:`263`.
 
 * The required version of the `numcodecs <http://numcodecs.rtfd.io>`_ package has been upgraded 
   to 0.6.2, which has enabled some code simplification and fixes a failing test involving
   msgpack encoding. By :user:`John Kirkham <jakirkham>`, :issue:`352`, :issue:`355`, 
   :issue:`324`.
 
-* CI and test environments have been upgraded to include Python 3.7, drop Python 3.4, and
-  upgrade all pinned package requirements. :issue:`308`.
-
 * Failing tests related to pickling/unpickling have been fixed. By :user:`Ryan Williams <ryan-williams>`,
   :issue:`273`, :issue:`308`.
 
-Acknowledgments
-~~~~~~~~~~~~~~~
+Maintenance
+~~~~~~~~~~~
+
+* CI and test environments have been upgraded to include Python 3.7, drop Python 3.4, and
+  upgrade all pinned package requirements. :issue:`308`.
+
 
 .. _release_2.2.0:
 
