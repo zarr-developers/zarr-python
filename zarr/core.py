@@ -1929,7 +1929,7 @@ class Array(object):
         checksum = binascii.hexlify(self.digest(hashname=hashname))
 
         # This is a bytes object on Python 3 and we want a str.
-        if type(checksum) is not str:
+        if type(checksum) is not str:  # pragma: py2 no cover
             checksum = checksum.decode('utf8')
 
         return checksum
