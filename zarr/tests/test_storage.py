@@ -63,6 +63,12 @@ class StoreTests(object):
                 # noinspection PyStatementEffect
                 del store['foo']
 
+    def test_set_invalid_content(self):
+        store = self.create_store()
+
+        with pytest.raises(TypeError):
+            store['baz'] = list(range(5))
+
     def test_clear(self):
         store = self.create_store()
         store['foo'] = b'bar'
@@ -585,6 +591,10 @@ class TestMappingStore(StoreTests, unittest.TestCase):
 
     def create_store(self):
         return dict()
+
+    def test_set_invalid_content(self):
+        # Generic mappings support non-buffer types
+        pass
 
 
 def setdel_hierarchy_checks(store):
