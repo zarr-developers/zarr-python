@@ -639,6 +639,11 @@ class TestDictStore(StoreTests, unittest.TestCase):
     def create_store(self):
         return DictStore()
 
+    def test_store_contains_bytes(self):
+        store = self.create_store()
+        store['foo'] = np.array([97, 98, 99, 100, 101], dtype=np.uint8)
+        assert store['foo'] == b'abcde'
+
     def test_setdel(self):
         store = self.create_store()
         setdel_hierarchy_checks(store)
