@@ -41,6 +41,11 @@ Maintenance
 * CI and test environments have been upgraded to include Python 3.7, drop Python 3.4, and
   upgrade all pinned package requirements. :issue:`308`.
 
+* Corrects handling of ``NaT`` in ``datetime64`` and ``timedelta64`` in various
+  compressors (by :user:`John Kirkham <jakirkham>`; :issue:`344`).
+
+Acknowledgments
+~~~~~~~~~~~~~~~
 
 .. _release_2.2.0:
 
