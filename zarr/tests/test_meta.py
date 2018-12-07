@@ -122,7 +122,7 @@ def test_encode_decode_array_datetime_timedelta():
     for k in ['m8[s]', 'M8[s]']:
         compressor = Blosc(cname='lz4', clevel=3, shuffle=2)
         dtype = np.dtype(k)
-        fill_value = np.full((), np.nan, dtype=dtype)[()]
+        fill_value = dtype.type("NaT")
         meta = dict(
             shape=(100, 100),
             chunks=(10, 10),
