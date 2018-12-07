@@ -544,6 +544,7 @@ class DictStore(MutableMapping):
     def __setitem__(self, item, value):
         with self.write_mutex:
             parent, key = self._require_parent(item)
+            value = ensure_bytes(value)
             parent[key] = value
 
     def __delitem__(self, item):
@@ -642,17 +643,11 @@ class DictStore(MutableMapping):
             size = 0
             for v in value.values():
                 if not isinstance(v, self.cls):
-                    try:
-                        size += buffer_size(v)
-                    except TypeError:
-                        return -1
+                    size += buffer_size(v)
             return size
 
         else:
-            try:
-                return buffer_size(value)
-            except TypeError:
-                return -1
+            return buffer_size(value)
 
     def clear(self):
         with self.write_mutex:

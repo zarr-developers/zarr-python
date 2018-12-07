@@ -35,6 +35,9 @@ Bug fixes
 * Failing tests related to pickling/unpickling have been fixed. By :user:`Ryan Williams <ryan-williams>`,
   :issue:`273`, :issue:`308`.
 
+* Ensure ``DictStore`` contains only ``bytes`` to facilitate comparisons and protect against writes.
+  By :user:`John Kirkham <jakirkham>`, :issue:`350`
+
 Maintenance
 ~~~~~~~~~~~
 
