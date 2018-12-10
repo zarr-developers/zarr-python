@@ -843,11 +843,10 @@ class DirectoryStore(MutableMapping):
         if os.path.isfile(fs_path):
             return os.path.getsize(fs_path)
         elif os.path.isdir(fs_path):
-            children = os.listdir(fs_path)
             size = 0
-            for child in children:
-                child_fs_path = os.path.join(fs_path, child)
-                if os.path.isfile(child_fs_path):
+            for dirname, dirs, children in os.walk(fs_path):
+                for child in children:
+                    child_fs_path = os.path.join(dirname, child)
                     size += os.path.getsize(child_fs_path)
             return size
         else:
