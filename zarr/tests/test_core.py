@@ -1285,6 +1285,13 @@ class TestArrayWithDirectoryStore(TestArray):
         expect_nbytes_stored = sum(buffer_size(v) for v in z.store.values())
         assert expect_nbytes_stored == z.nbytes_stored
 
+        z2 = self.create_array(shape=(1000, 1100), chunks=100)
+        expect_nbytes_stored = sum(buffer_size(v) for v in z2.store.values())
+        assert expect_nbytes_stored == z2.nbytes_stored
+        z2[:] = 42
+        expect_nbytes_stored = sum(buffer_size(v) for v in z2.store.values())
+        assert expect_nbytes_stored == z2.nbytes_stored
+
 
 class TestArrayWithNestedDirectoryStore(TestArrayWithDirectoryStore):
 
