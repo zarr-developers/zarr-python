@@ -1604,10 +1604,7 @@ class Array(object):
                     if self._compressor:
                         self._compressor.decode(cdata, dest)
                     else:
-                        if isinstance(cdata, np.ndarray):
-                            chunk = cdata.view(self._dtype)
-                        else:
-                            chunk = np.frombuffer(cdata, dtype=self._dtype)
+                        chunk = ensure_ndarray(cdata).view(self._dtype)
                         chunk = chunk.reshape(self._chunks, order=self._order)
                         np.copyto(dest, chunk)
                     return
