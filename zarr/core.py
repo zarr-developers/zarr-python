@@ -166,9 +166,6 @@ class Array(object):
             if config is None:
                 self._compressor = None
             else:
-                # temporary workaround for
-                # https://github.com/zarr-developers/numcodecs/issues/78
-                config = dict(config)
                 self._compressor = get_codec(config)
 
             # setup filters
