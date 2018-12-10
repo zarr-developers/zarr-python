@@ -209,6 +209,6 @@ def encode_fill_value(v, dtype):
     elif dtype.kind == 'U':
         return v
     elif dtype.kind in 'mM':
-        return int(v.view('u8'))
+        return int(v.view('i8'))
     else:
         return v

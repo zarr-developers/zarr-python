@@ -135,6 +135,12 @@ def test_full():
     z = full(100, chunks=10, fill_value=np.nan, dtype='f8')
     assert np.all(np.isnan(z[:]))
 
+    # NaT
+    z = full(100, chunks=10, fill_value='NaT', dtype='M8[s]')
+    assert np.all(np.isnat(z[:]))
+    z = full(100, chunks=10, fill_value='NaT', dtype='m8[s]')
+    assert np.all(np.isnat(z[:]))
+
     # byte string dtype
     v = b'xxx'
     z = full(100, chunks=10, fill_value=v, dtype='S3')
