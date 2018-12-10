@@ -29,8 +29,8 @@ Bug fixes
 
 * The required version of the `numcodecs <http://numcodecs.rtfd.io>`_ package has been upgraded 
   to 0.6.2, which has enabled some code simplification and fixes a failing test involving
-  msgpack encoding. By :user:`John Kirkham <jakirkham>`, :issue:`360`, :issue:`352`, :issue:`355`,
-  :issue:`324`.
+  msgpack encoding. By :user:`John Kirkham <jakirkham>`, :issue:`361`, :issue:`360`, :issue:`352`,
+  :issue:`355`, :issue:`324`.
 
 * Failing tests related to pickling/unpickling have been fixed. By :user:`Ryan Williams <ryan-williams>`,
   :issue:`273`, :issue:`308`.
