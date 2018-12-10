@@ -1278,8 +1278,6 @@ class TestArrayWithDirectoryStore(TestArray):
                      cache_attrs=cache_attrs)
 
     def test_nbytes_stored(self):
-
-        # dict as store
         z = self.create_array(shape=1000, chunks=100)
         expect_nbytes_stored = sum(buffer_size(v) for v in z.store.values())
         assert expect_nbytes_stored == z.nbytes_stored
