@@ -38,6 +38,9 @@ Bug fixes
 * Ensure ``DictStore`` contains only ``bytes`` to facilitate comparisons and protect against writes.
   By :user:`John Kirkham <jakirkham>`, :issue:`350`
 
+* Fix size computation of ``DirectoryStore`` and subclasses to be recursive.
+  By :user:`John Kirkham <jakirkham>`, :issue:`253`, :issue:`362`
+
 Maintenance
 ~~~~~~~~~~~
 
