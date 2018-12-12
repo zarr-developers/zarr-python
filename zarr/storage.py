@@ -42,8 +42,9 @@ from zarr.util import (normalize_shape, normalize_chunks, normalize_order,
                        normalize_storage_path, buffer_size,
                        normalize_fill_value, nolock, normalize_dtype)
 from zarr.meta import encode_array_metadata, encode_group_metadata
-from zarr.compat import PY2, binary_type, OrderedDict_move_to_end
+from zarr.compat import PY2, OrderedDict_move_to_end
 from numcodecs.registry import codec_registry
+from numcodecs.compat import ensure_bytes, ensure_contiguous_ndarray
 from zarr.errors import (err_contains_group, err_contains_array, err_bad_compressor,
                          err_fspath_exists_notdir, err_read_only, MetadataError)
 
@@ -58,6 +59,15 @@ try:
 except ImportError:  # pragma: no cover
     from zarr.codecs import Zlib
     default_compressor = Zlib()
+
+# Find which function to use for atomic replace
+if sys.version_info >= (3, 3):
+    from os import replace
+elif sys.platform == "win32":  # pragma: no cover
+    from osreplace import replace
+else:  # pragma: no cover
+    # POSIX rename() is always atomic
+    from os import rename as replace
 
 
 def _path_to_prefix(path):
@@ -448,23 +458,6 @@ def _init_group_metadata(store, overwrite=False, path=None, chunk_store=None):
     store[key] = encode_group_metadata(meta)
 
 
-def ensure_bytes(s):
-    if isinstance(s, binary_type):
-        return s
-    if isinstance(s, np.ndarray):
-        if PY2:  # pragma: py3 no cover
-            # noinspection PyArgumentList
-            return s.tostring(order='A')
-        else:  # pragma: py2 no cover
-            # noinspection PyArgumentList
-            return s.tobytes(order='A')
-    if hasattr(s, 'tobytes'):
-        return s.tobytes()
-    if PY2 and hasattr(s, 'tostring'):  # pragma: py3 no cover
-        return s.tostring()
-    return memoryview(s).tobytes()
-
-
 def _dict_store_keys(d, prefix='', cls=dict):
     for k in d.keys():
         v = d[k]
@@ -558,6 +551,7 @@ class DictStore(MutableMapping):
     def __setitem__(self, item, value):
         with self.write_mutex:
             parent, key = self._require_parent(item)
+            value = ensure_bytes(value)
             parent[key] = value
 
     def __delitem__(self, item):
@@ -656,17 +650,11 @@ class DictStore(MutableMapping):
             size = 0
             for v in value.values():
                 if not isinstance(v, self.cls):
-                    try:
-                        size += buffer_size(v)
-                    except TypeError:
-                        return -1
+                    size += buffer_size(v)
             return size
 
         else:
-            try:
-                return buffer_size(value)
-            except TypeError:
-                return -1
+            return buffer_size(value)
 
     def clear(self):
         with self.write_mutex:
@@ -745,9 +733,8 @@ class DirectoryStore(MutableMapping):
 
     def __setitem__(self, key, value):
 
-        # handle F-contiguous numpy arrays
-        if isinstance(value, np.ndarray) and value.flags.f_contiguous:
-            value = ensure_bytes(value)
+        # coerce to flat, contiguous array (ideally without copying)
+        value = ensure_contiguous_ndarray(value)
 
         # destination path for key
         file_path = os.path.join(self.path, key)
@@ -776,13 +763,11 @@ class DirectoryStore(MutableMapping):
                 f.write(value)
 
             # move temporary file into place
-            if os.path.exists(file_path):
-                os.remove(file_path)
-            os.rename(temp_path, file_path)
+            replace(temp_path, file_path)
 
         finally:
             # clean up if temp file still exists for whatever reason
-            if temp_path is not None and os.path.exists(temp_path):
+            if temp_path is not None and os.path.exists(temp_path):  # pragma: no cover
                 os.remove(temp_path)
 
     def __delitem__(self, key):
@@ -1196,7 +1181,7 @@ class ZipStore(MutableMapping):
     def __setitem__(self, key, value):
         if self.mode == 'r':
             err_read_only()
-        value = ensure_bytes(value)
+        value = ensure_contiguous_ndarray(value)
         with self.mutex:
             self.zf.writestr(key, value)
 

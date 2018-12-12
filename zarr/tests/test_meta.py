@@ -116,6 +116,60 @@ def test_encode_decode_array_2():
     assert [df.get_config()] == meta_dec['filters']
 
 
+def test_encode_decode_array_datetime_timedelta():
+
+    # some variations
+    for k in ['m8[s]', 'M8[s]']:
+        compressor = Blosc(cname='lz4', clevel=3, shuffle=2)
+        dtype = np.dtype(k)
+        fill_value = dtype.type("NaT")
+        meta = dict(
+            shape=(100, 100),
+            chunks=(10, 10),
+            dtype=dtype,
+            compressor=compressor.get_config(),
+            fill_value=fill_value,
+            order=dtype.char,
+            filters=[]
+        )
+
+        meta_json = '''{
+            "chunks": [10, 10],
+            "compressor": {
+                "id": "blosc",
+                "clevel": 3,
+                "cname": "lz4",
+                "shuffle": 2,
+                "blocksize": 0
+            },
+            "dtype": "%s",
+            "fill_value": -9223372036854775808,
+            "filters": [],
+            "order": "%s",
+            "shape": [100, 100],
+            "zarr_format": %s
+        }''' % (dtype.str, dtype.char, ZARR_FORMAT)
+
+        # test encoding
+        meta_enc = encode_array_metadata(meta)
+        assert_json_equal(meta_json, meta_enc)
+
+        # test decoding
+        meta_dec = decode_array_metadata(meta_enc)
+        assert ZARR_FORMAT == meta_dec['zarr_format']
+        assert meta['shape'] == meta_dec['shape']
+        assert meta['chunks'] == meta_dec['chunks']
+        assert meta['dtype'] == meta_dec['dtype']
+        assert meta['compressor'] == meta_dec['compressor']
+        assert meta['order'] == meta_dec['order']
+        # Based off of this SO answer: https://stackoverflow.com/a/49972198
+        assert np.all(
+            fill_value.view((np.uint8, fill_value.itemsize)) ==
+            meta_dec['fill_value'].view((np.uint8, meta_dec['fill_value'].itemsize))
+        )
+        assert [] == meta_dec['filters']
+
+
 def test_encode_decode_array_dtype_shape():
 
     meta = dict(

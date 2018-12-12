@@ -8,6 +8,7 @@ import re
 
 
 import numpy as np
+from numcodecs.compat import ensure_ndarray
 
 
 from zarr.util import (is_total_slice, human_readable_size, normalize_resize_args,
@@ -1603,10 +1604,7 @@ class Array(object):
                     if self._compressor:
                         self._compressor.decode(cdata, dest)
                     else:
-                        if isinstance(cdata, np.ndarray):
-                            chunk = cdata.view(self._dtype)
-                        else:
-                            chunk = np.frombuffer(cdata, dtype=self._dtype)
+                        chunk = ensure_ndarray(cdata).view(self._dtype)
                         chunk = chunk.reshape(self._chunks, order=self._order)
                         np.copyto(dest, chunk)
                     return
@@ -1743,18 +1741,22 @@ class Array(object):
             for f in self._filters[::-1]:
                 chunk = f.decode(chunk)
 
-        # view as correct dtype
-        if self._dtype == object:
-            if isinstance(chunk, np.ndarray):
-                chunk = chunk.astype(self._dtype)
-            else:
-                raise RuntimeError('cannot read object array without object codec')
-        elif isinstance(chunk, np.ndarray):
+        # view as numpy array with correct dtype
+        chunk = ensure_ndarray(chunk)
+        # special case object dtype, because incorrect handling can lead to
+        # segfaults and other bad things happening
+        if self._dtype != object:
             chunk = chunk.view(self._dtype)
-        else:
-            chunk = np.frombuffer(chunk, dtype=self._dtype)
+        elif chunk.dtype != object:
+            # If we end up here, someone must have hacked around with the filters.
+            # We cannot deal with object arrays unless there is an object
+            # codec in the filter chain, i.e., a filter that converts from object
+            # array to something else during encoding, and converts back to object
+            # array during decoding.
+            raise RuntimeError('cannot read object array without object codec')
 
-        # reshape
+        # ensure correct chunk shape
+        chunk = chunk.reshape(-1, order='A')
         chunk = chunk.reshape(self._chunks, order=self._order)
 
         return chunk
@@ -1924,7 +1926,7 @@ class Array(object):
         checksum = binascii.hexlify(self.digest(hashname=hashname))
 
         # This is a bytes object on Python 3 and we want a str.
-        if type(checksum) is not str:
+        if type(checksum) is not str:  # pragma: py2 no cover
             checksum = checksum.decode('utf8')
 
         return checksum
