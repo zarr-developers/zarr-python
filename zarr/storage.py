@@ -33,7 +33,6 @@ import io
 import array
 
 
-import numpy as np
 from azure.storage.blob import BlockBlobService
 from azure.common import AzureMissingResourceHttpError
 
@@ -2144,4 +2143,3 @@ class ConsolidatedMetadataStore(MutableMapping):
 
     def listdir(self, path):
         return listdir(self.meta_store, path)
-

@@ -1322,4 +1322,3 @@ class TestConsolidatedMetadataStore(unittest.TestCase):
             cs['bar'] = 0
         with pytest.raises(PermissionError):
             cs['spam'] = 'eggs'
-
