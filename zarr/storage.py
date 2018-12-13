@@ -1913,7 +1913,7 @@ class ABSStore(MutableMapping):
         self.account_key = account_key
         if blob_service_kwargs is not None:
             self.blob_service_kwargs = blob_service_kwargs
-        else:
+        else:  # pragma: no cover
             self.blob_service_kwargs = dict()
         self.client = BlockBlobService(self.account_name, self.account_key,
                                        **self.blob_service_kwargs)
@@ -1961,8 +1961,6 @@ class ABSStore(MutableMapping):
     def __delitem__(self, key):
         if self.client.exists(self.container_name, '/'.join([self.prefix, key])):
             self.client.delete_blob(self.container_name, '/'.join([self.prefix, key]))
-        elif self.__contains__(key):
-            self.rmdir(key)
         else:
             raise KeyError
 
@@ -2011,10 +2009,8 @@ class ABSStore(MutableMapping):
         # normalized things will not have any leading or trailing slashes
         path_norm = normalize_storage_path(path)
         prefix_norm = normalize_storage_path(prefix)
-        if path_norm.startswith(prefix_norm):
-            return path_norm[(len(prefix_norm)+1):]
-        else:
-            return path
+
+        return path_norm[(len(prefix_norm)+1):]
 
     def list_abs_directory(self, prefix, strip_prefix=True):
         """Return a list of all blobs and subdirectories from an abs prefix."""

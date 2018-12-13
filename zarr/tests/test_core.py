@@ -1294,8 +1294,8 @@ class TestArrayWithABSStore(TestArray):
     @staticmethod
     def absstore():
         blob_client = BlockBlobService(is_emulated=True)
-        if not blob_client.exists('test'):
-            blob_client.create_container('test')
+        blob_client.delete_container('test')
+        blob_client.create_container('test')
         store = ABSStore(container='test', prefix='zarrtesting/', account_name='foo',
                          account_key='bar', blob_service_kwargs={'is_emulated': True})
         store.rmdir()
