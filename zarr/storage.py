@@ -1991,7 +1991,7 @@ class ABSStore(MutableMapping):
     def list_abs_directory_blobs(self, prefix):
         """Return list of all blobs from an abs prefix."""
         blobs = list()
-        for blob in self.client.list_blobs(self.container_name, prefix=prefix):
+        for blob in self.client.list_blobs(self.container_name, prefix=prefix, delimiter='/'):
             if '/' not in blob.name[len(prefix):]:
                 blobs.append(blob.name)
         return blobs
@@ -1999,7 +1999,7 @@ class ABSStore(MutableMapping):
     def list_abs_subdirectories(self, prefix):
         """Return list of all "subdirectories" from an abs prefix."""
         dirs = []
-        for blob in self.client.list_blobs(self.container_name, prefix=prefix):
+        for blob in self.client.list_blobs(self.container_name, prefix=prefix, delimiter='/'):
             if '/' in blob.name[len(prefix):]:
                 dirs.append(blob.name[:blob.name.find('/', len(prefix))])
         return dirs
@@ -2034,9 +2034,6 @@ class ABSStore(MutableMapping):
     def listdir(self, path=None):
         dir_path = self.dir_path(path)
         return sorted(self.list_abs_directory(dir_path, strip_prefix=True))
-
-    # def rename(self, src_path, dst_path):
-    #     raise NotImplementedErrror
 
     def rmdir(self, path=None):
         dir_path = normalize_storage_path(self.full_path(path)) + '/'
