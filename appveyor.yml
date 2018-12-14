@@ -39,10 +39,10 @@ install:
 build: off
 
 before_test:
-  - cmd: C:\\Program Files (x86)\\Microsoft SDKs\\Azure\\Storage Emulator\\AzureStorageEmulator.exe start
+  - cmd: "C:\\Program Files (x86)\\Microsoft SDKs\\Azure\\Storage Emulator\\AzureStorageEmulator.exe" start
 
 test_script:
   - "%CMD_IN_ENV% python -m pytest -v --pyargs zarr"
 
 after_test:
-  - cmd: C:\\Program Files (x86)\\Microsoft SDKs\\Azure\\Storage Emulator\\AzureStorageEmulator.exe stop
+  - cmd: "C:\\Program Files (x86)\\Microsoft SDKs\\Azure\\Storage Emulator\\AzureStorageEmulator.exe" stop
