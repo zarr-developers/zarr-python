@@ -2,6 +2,8 @@ branches:
   only:
     - master
 
+# the VS C++ compiler path, doesn't seem to exist in the PATH environment variable of
+# the Visual Studio 2017 build VM, due to which the pyosreplace package fails to build
 image: Visual Studio 2015
 
 environment:
@@ -33,7 +35,7 @@ install:
   - "%CMD_IN_ENV% python -m pip install -U pip setuptools wheel"
   - "%CMD_IN_ENV% python -m pip install -rrequirements_test.txt"
   - "%CMD_IN_ENV% python -m pip install -rrequirements_dev_npy.txt"
-  - "%CMD_IN_ENV% python -m pip install --no-binary=numcodecs -v -rrequirements_dev.txt"
+  - "%CMD_IN_ENV% python -m pip install --no-binary=numcodecs -rrequirements_dev.txt"
   - "%CMD_IN_ENV% python setup.py install"
   - "%CMD_IN_ENV% python -m pip freeze"
 
