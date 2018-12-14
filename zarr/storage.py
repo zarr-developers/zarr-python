@@ -1889,8 +1889,7 @@ class ABSStore(MutableMapping):
     Parameters
     ----------
     container_name : string
-        The name of the ABS container to use. Currently this must exist in the
-        storage account.
+        The name of the ABS container to use.
     prefix : string
         Location of the "directory" to use as the root of the storage hierarchy
         within the container.
@@ -1898,6 +1897,9 @@ class ABSStore(MutableMapping):
         The Azure blob storage account name.
     account_key : string
         The Azure blob storage account acess key.
+    blob_service_kwargs : dictionary
+        Extra arguments to be passed into the azure blob client, for e.g. when
+        using the emulator, pass in blob_service_kwargs={'is_emulated': True}
 
     Notes
     -----
