@@ -33,7 +33,7 @@ install:
   - "%CMD_IN_ENV% python -m pip install -U pip setuptools wheel"
   - "%CMD_IN_ENV% python -m pip install -rrequirements_test.txt"
   - "%CMD_IN_ENV% python -m pip install -rrequirements_dev_npy.txt"
-  - "%CMD_IN_ENV% python -m pip install --no-binary=numcodecs -rrequirements_dev.txt"
+  - "%CMD_IN_ENV% python -m pip install --no-binary=numcodecs -v -rrequirements_dev.txt"
   - "%CMD_IN_ENV% python setup.py install"
   - "%CMD_IN_ENV% python -m pip freeze"
 
