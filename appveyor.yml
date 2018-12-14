@@ -28,7 +28,6 @@ environment:
       PYTHON_VERSION: "3.7"
 
 install:
-  - "docker run -d -p 10000:10000 -p 10001:10001 -p 10002:10002 microsoft/azure-storage-emulator"
   - "SET PATH=%PYTHON%;%PYTHON%\\Scripts;%PATH%"
   - "%CMD_IN_ENV% python -m pip install -U pip setuptools wheel"
   - "%CMD_IN_ENV% python -m pip install -rrequirements_test.txt"
@@ -39,5 +38,11 @@ install:
 
 build: off
 
+before_test:
+  - "C:\Program Files (x86)\Microsoft SDKs\Azure\Storage Emulator\AzureStorageEmulator.exe start"
+
 test_script:
   - "%CMD_IN_ENV% python -m pytest -v --pyargs zarr"
+
+after_test:
+  - "C:\Program Files (x86)\Microsoft SDKs\Azure\Storage Emulator\AzureStorageEmulator.exe stop"
