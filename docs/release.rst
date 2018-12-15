@@ -38,6 +38,9 @@ Bug fixes
 * Ensure ``DictStore`` contains only ``bytes`` to facilitate comparisons and protect against writes.
   By :user:`John Kirkham <jakirkham>`, :issue:`350`
 
+* Test and fix an issue (w.r.t. fill values) when storing complex data to ``Array``.
+  By :user:`John Kirkham <jakirkham>`, :issue:`363`
+
 Maintenance
 ~~~~~~~~~~~
 
