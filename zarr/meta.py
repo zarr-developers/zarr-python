@@ -163,6 +163,11 @@ def decode_fill_value(v, dtype):
             return np.NINF
         else:
             return np.array(v, dtype=dtype)[()]
+    elif dtype.kind in 'c':
+        v = (decode_fill_value(v[0], dtype.type().real.dtype),
+             decode_fill_value(v[1], dtype.type().imag.dtype))
+        v = v[0] + 1j * v[1]
+        return np.array(v, dtype=dtype)[()]
     elif dtype.kind == 'S':
         # noinspection PyBroadException
         try:
@@ -201,6 +206,10 @@ def encode_fill_value(v, dtype):
         return int(v)
     elif dtype.kind == 'b':
         return bool(v)
+    elif dtype.kind in 'c':
+        v = (encode_fill_value(v.real, dtype.type().real.dtype),
+             encode_fill_value(v.imag, dtype.type().imag.dtype))
+        return v
     elif dtype.kind in 'SV':
         v = base64.standard_b64encode(v)
         if not PY2:  # pragma: py2 no cover
