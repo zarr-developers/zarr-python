@@ -1476,6 +1476,17 @@ class Array(object):
         else:
             chunk[selection] = value
 
+        # clear chunk if it only contains the fill value
+        if np.all(np.equal(chunk, self._fill_value)):
+            try:
+                del self.chunk_store[ckey]
+                return
+            except KeyError:
+                return
+            except Exception:
+                # deleting failed, fallback to overwriting
+                pass
+
         # encode and store
         cdata = self._encode_chunk(chunk)
         self.chunk_store[ckey] = cdata
@@ -1715,6 +1726,17 @@ class Array(object):
                 chunk[fields][chunk_selection] = value
             else:
                 chunk[chunk_selection] = value
+
+        # clear chunk if it only contains the fill value
+        if np.all(np.equal(chunk, self._fill_value)):
+            try:
+                del self.chunk_store[ckey]
+                return
+            except KeyError:
+                return
+            except Exception:
+                # deleting failed, fallback to overwriting
+                pass
 
         # encode and store
         cdata = self._encode_chunk(chunk)
