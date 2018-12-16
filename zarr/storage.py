@@ -1942,8 +1942,12 @@ class ABSStore(MutableMapping):
         return '/'.join([normalize_storage_path(prefix),
                          normalize_storage_path(path)])
 
-    def full_path(self, path=None):
-        return self._append_path_to_prefix(path, self.prefix)
+    @staticmethod
+    def _strip_prefix_from_path(path, prefix):
+        # normalized things will not have any leading or trailing slashes
+        path_norm = normalize_storage_path(path)
+        prefix_norm = normalize_storage_path(prefix)
+        return path_norm[(len(prefix_norm)+1):]
 
     def __getitem__(self, key):
         blob_name = '/'.join([self.prefix, key])
@@ -1990,55 +1994,24 @@ class ABSStore(MutableMapping):
         else:
             return False
 
-    def list_abs_directory_blobs(self, prefix):
-        """Return list of all blobs from an abs prefix."""
-        blobs = list()
-        for blob in self.client.list_blobs(self.container_name, prefix=prefix, delimiter='/'):
-            if '/' not in blob.name[len(prefix):]:
-                blobs.append(blob.name)
-        return blobs
-
-    def list_abs_subdirectories(self, prefix):
-        """Return list of all "subdirectories" from an abs prefix."""
-        dirs = []
-        for blob in self.client.list_blobs(self.container_name, prefix=prefix, delimiter='/'):
-            if '/' in blob.name[len(prefix):]:
-                dirs.append(blob.name[:blob.name.find('/', len(prefix))])
-        return dirs
-
-    @staticmethod
-    def _strip_prefix_from_path(path, prefix):
-        # normalized things will not have any leading or trailing slashes
-        path_norm = normalize_storage_path(path)
-        prefix_norm = normalize_storage_path(prefix)
-
-        return path_norm[(len(prefix_norm)+1):]
-
-    def list_abs_directory(self, prefix, strip_prefix=True):
-        """Return a list of all blobs and subdirectories from an abs prefix."""
-        items = set()
-        items.update(self.list_abs_directory_blobs(prefix))
-        items.update(self.list_abs_subdirectories(prefix))
-        items = list(items)
-        if strip_prefix:
-            items = [self._strip_prefix_from_path(path, prefix) for path in items]
-        return items
-
-    def dir_path(self, path=None):
+    def listdir(self, path=None):
         store_path = normalize_storage_path(path)
         # prefix is normalized to not have a trailing slash
         dir_path = self.prefix
         if store_path:
             dir_path = dir_path + '/' + store_path
         dir_path += '/'
-        return dir_path
-
-    def listdir(self, path=None):
-        dir_path = self.dir_path(path)
-        return sorted(self.list_abs_directory(dir_path, strip_prefix=True))
+        items = list()
+        for blob in self.client.list_blobs(self.container_name, prefix=dir_path, delimiter='/'):
+            if '/' in blob.name[len(dir_path):]:
+                items.append(self._strip_prefix_from_path(
+                    blob.name[:blob.name.find('/', len(dir_path))], dir_path))
+            else:
+                items.append(self._strip_prefix_from_path(blob.name, dir_path))
+        return items
 
     def rmdir(self, path=None):
-        dir_path = normalize_storage_path(self.full_path(path)) + '/'
+        dir_path = normalize_storage_path(self._append_path_to_prefix(path, self.prefix)) + '/'
         for blob in self.client.list_blobs(self.container_name, prefix=dir_path):
             self.client.delete_blob(self.container_name, blob.name)
 
@@ -2052,9 +2025,10 @@ class ABSStore(MutableMapping):
                                                    fs_path).properties.content_length
         else:
             size = 0
-            for blob_name in self.list_abs_directory_blobs(fs_path + '/'):
-                size += self.client.get_blob_properties(self.container_name,
-                                                        blob_name).properties.content_length
+            for blob in self.client.list_blobs(self.container_name, prefix=fs_path + '/',
+                                               delimiter='/'):
+                if '/' not in blob.name[len(fs_path + '/'):]:
+                    size += blob.properties.content_length
             return size
 
     def clear(self):
