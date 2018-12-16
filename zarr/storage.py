@@ -2029,7 +2029,7 @@ class ABSStore(MutableMapping):
         # prefix is normalized to not have a trailing slash
         dir_path = self.prefix
         if store_path:
-            dir_path = os.path.join(dir_path, store_path)
+            dir_path = dir_path + '/' + store_path
         dir_path += '/'
         return dir_path
 
