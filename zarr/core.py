@@ -1716,10 +1716,8 @@ class Array(object):
             else:
                 chunk[chunk_selection] = value
 
-        # encode chunk
+        # encode and store
         cdata = self._encode_chunk(chunk)
-
-        # store
         self.chunk_store[ckey] = cdata
 
     def _chunk_key(self, chunk_coords):
