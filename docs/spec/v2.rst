@@ -253,7 +253,7 @@ keys like "foo/bar/0.0", "foo/bar/0.1", etc.
 To ensure consistent behaviour across different storage systems, logical paths
 MUST be normalized as follows:
 
-* Replace all backward slash characters ("\\") with forward slash characters
+* Replace all backward slash characters ("\\\\") with forward slash characters
   ("/")
 * Strip any leading "/" characters
 * Strip any trailing "/" characters
