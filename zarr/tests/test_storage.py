@@ -331,14 +331,19 @@ class StoreTests(object):
 
     def test_init_array_overwrite(self):
         self._test_init_array_overwrite('F')
+
     def test_init_array_overwrite_path(self):
         self._test_init_array_overwrite_path('F')
+
     def test_init_array_overwrite_chunk_store(self):
         self._test_init_array_overwrite_chunk_store('F')
+
     def test_init_group_overwrite(self):
         self._test_init_group_overwrite('F')
+
     def test_init_group_overwrite_path(self):
         self._test_init_group_overwrite_path('F')
+
     def test_init_group_overwrite_chunk_store(self):
         self._test_init_group_overwrite_chunk_store('F')
 
@@ -726,6 +731,7 @@ class TestNestedDirectoryStore(TestDirectoryStore, unittest.TestCase):
         store['42'] = b'zzz'
         assert b'zzz' == store['42']
 
+
 class TestN5Store(TestNestedDirectoryStore, unittest.TestCase):
 
     def create_store(self):
@@ -800,14 +806,19 @@ class TestN5Store(TestNestedDirectoryStore, unittest.TestCase):
 
     def test_init_array_overwrite(self):
         self._test_init_array_overwrite('C')
+
     def test_init_array_overwrite_path(self):
         self._test_init_array_overwrite_path('C')
+
     def test_init_array_overwrite_chunk_store(self):
         self._test_init_array_overwrite_chunk_store('C')
+
     def test_init_group_overwrite(self):
         self._test_init_group_overwrite('C')
+
     def test_init_group_overwrite_path(self):
         self._test_init_group_overwrite_path('C')
+
     def test_init_group_overwrite_chunk_store(self):
         self._test_init_group_overwrite_chunk_store('C')
 
@@ -886,6 +897,7 @@ class TestN5Store(TestNestedDirectoryStore, unittest.TestCase):
         attrs = json.loads(store['a/.zattrs'])
         assert 'foo' in attrs and attrs['foo'] == 'bar'
         assert 'bar' in attrs and attrs['bar'] == 'foo'
+
 
 class TestTempStore(StoreTests, unittest.TestCase):
 

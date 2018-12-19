@@ -29,6 +29,7 @@ zarr_to_n5_keys = [
 n5_attrs_key = 'attributes.json'
 n5_keywords = ['n5', 'dataType', 'dimensions', 'blockSize', 'compression']
 
+
 class N5Store(NestedDirectoryStore):
     """Storage class using directories and files on a standard file system,
     following the N5 format (https://github.com/saalfeldlab/n5).
@@ -147,7 +148,7 @@ class N5Store(NestedDirectoryStore):
             for k in n5_keywords:
                 assert k not in zarr_attrs.keys(), (
                     "Can not set attribute %s, this is a reserved N5 "
-                    "keyword"%k)
+                    "keyword" % k)
 
             # replace previous user attributes
             for k in list(n5_attrs.keys()):
@@ -171,11 +172,11 @@ class N5Store(NestedDirectoryStore):
 
     def __delitem__(self, key):
 
-        if key.endswith(zarr_group_meta_key): # pragma: no cover
+        if key.endswith(zarr_group_meta_key):  # pragma: no cover
             key = key.replace(zarr_group_meta_key, n5_attrs_key)
-        elif key.endswith(zarr_array_meta_key): # pragma: no cover
+        elif key.endswith(zarr_array_meta_key):  # pragma: no cover
             key = key.replace(zarr_array_meta_key, n5_attrs_key)
-        elif key.endswith(zarr_attrs_key): # pragma: no cover
+        elif key.endswith(zarr_attrs_key):  # pragma: no cover
             key = key.replace(zarr_attrs_key, n5_attrs_key)
         elif is_chunk_key(key):
             key = invert_chunk_coords(key)
@@ -187,7 +188,7 @@ class N5Store(NestedDirectoryStore):
         if key.endswith(zarr_group_meta_key):
 
             key = key.replace(zarr_group_meta_key, n5_attrs_key)
-            if not key in self:
+            if key not in self:
                 return False
             # group if not a dataset (attributes do not contain 'dimensions')
             return 'dimensions' not in self._load_n5_attrs(key)
@@ -198,7 +199,7 @@ class N5Store(NestedDirectoryStore):
             # array if attributes contain 'dimensions'
             return 'dimensions' in self._load_n5_attrs(key)
 
-        elif key.endswith(zarr_attrs_key): # pragma: no cover
+        elif key.endswith(zarr_attrs_key):  # pragma: no cover
 
             key = key.replace(zarr_array_meta_key, n5_attrs_key)
             return self._contains_attrs(key)
@@ -256,7 +257,7 @@ class N5Store(NestedDirectoryStore):
             # replace n5 attribute file with respective zarr attribute files
             children.remove(n5_attrs_key)
             children.append(zarr_group_meta_key)
-            if self._contains_attrs(path): # pragma: no cover
+            if self._contains_attrs(path):  # pragma: no cover
                 children.append(zarr_attrs_key)
 
             return sorted(children)
@@ -299,18 +300,20 @@ class N5Store(NestedDirectoryStore):
         else:
             if not path.endswith(n5_attrs_key):
                 attrs_key = os.path.join(path, n5_attrs_key)
-            else: # pragma: no cover
+            else:  # pragma: no cover
                 attrs_key = path
 
         attrs = attrs_to_zarr(self._load_n5_attrs(attrs_key))
         return len(attrs) > 0
+
 
 def is_chunk_key(key):
     segments = list(key.split('/'))
     if segments:
         last_segment = segments[-1]
         return _prog_ckey.match(last_segment)
-    return False # pragma: no cover
+    return False  # pragma: no cover
+
 
 def invert_chunk_coords(key):
     segments = list(key.split('/'))
@@ -323,17 +326,20 @@ def invert_chunk_coords(key):
             key = '/'.join(segments)
     return key
 
+
 def group_metadata_to_n5(group_metadata):
     '''Convert group metadata from zarr to N5 format.'''
     del group_metadata['zarr_format']
     group_metadata['n5'] = '2.0.0'
     return group_metadata
 
+
 def group_metadata_to_zarr(group_metadata):
     '''Convert group metadata from N5 to zarr format.'''
     del group_metadata['n5']
     group_metadata['zarr_format'] = ZARR_FORMAT
     return group_metadata
+
 
 def array_metadata_to_n5(array_metadata):
     '''Convert array metadata from zarr to N5 format.'''
@@ -345,9 +351,9 @@ def array_metadata_to_n5(array_metadata):
 
     try:
         dtype = np.dtype(array_metadata['dataType'])
-    except:
+    except TypeError:
         raise TypeError(
-            "data type %s not supported by N5"%array_metadata['dataType'])
+            "data type %s not supported by N5" % array_metadata['dataType'])
 
     array_metadata['dataType'] = dtype.name
     array_metadata['dimensions'] = array_metadata['dimensions'][::-1]
@@ -368,7 +374,7 @@ def array_metadata_to_n5(array_metadata):
     if 'filters' in array_metadata:
         assert (
                 array_metadata['filters'] == [] or
-                array_metadata['filters'] == None), (
+                array_metadata['filters'] is None), (
             "N5 storage does not support zarr filters")
         del array_metadata['filters']
 
@@ -379,6 +385,7 @@ def array_metadata_to_n5(array_metadata):
 
     return array_metadata
 
+
 def array_metadata_to_zarr(array_metadata):
     '''Convert array metadata from N5 to zarr format.'''
     for t, f in zarr_to_n5_keys:
@@ -388,7 +395,7 @@ def array_metadata_to_zarr(array_metadata):
 
     array_metadata['shape'] = array_metadata['shape'][::-1]
     array_metadata['chunks'] = array_metadata['chunks'][::-1]
-    array_metadata['fill_value'] = 0 # also if None was requested
+    array_metadata['fill_value'] = 0  # also if None was requested
     array_metadata['order'] = 'C'
     array_metadata['filters'] = []
 
@@ -403,6 +410,7 @@ def array_metadata_to_zarr(array_metadata):
 
     return array_metadata
 
+
 def attrs_to_zarr(attrs):
     '''Get all zarr attributes from an N5 attributes dictionary (i.e.,
     all non-keyword attributes).'''
@@ -414,17 +422,18 @@ def attrs_to_zarr(attrs):
 
     return attrs
 
+
 def compressor_config_to_n5(compressor_config):
 
     if compressor_config is None:
-        return { 'type': 'raw' }
+        return {'type': 'raw'}
 
     # peel wrapper, if present
     if compressor_config['id'] == N5ChunkWrapper.codec_id:
         compressor_config = compressor_config['compressor_config']
 
     codec_id = compressor_config['id']
-    n5_config = { 'type': codec_id }
+    n5_config = {'type': codec_id}
 
     if codec_id == 'bz2':
 
@@ -433,9 +442,9 @@ def compressor_config_to_n5(compressor_config):
 
     elif codec_id == 'blosc':
 
-        logger.warn("Not all N5 implementations support blosc compression "
-            "(yet). You might not be able to open the dataset with another "
-            "N5 library.")
+        logger.warn(
+            "Not all N5 implementations support blosc compression (yet). You "
+            "might not be able to open the dataset with another N5 library.")
 
         n5_config['codec'] = compressor_config['cname']
         n5_config['level'] = compressor_config['clevel']
@@ -449,9 +458,9 @@ def compressor_config_to_n5(compressor_config):
 
     elif codec_id == 'lzma':
 
-        logger.warn("Not all N5 implementations support lzma compression "
-            "(yet). You might not be able to open the dataset with another "
-            "N5 library.")
+        logger.warn(
+            "Not all N5 implementations support lzma compression (yet). You "
+            "might not be able to open the dataset with another N5 library.")
 
         n5_config['format'] = compressor_config['format']
         n5_config['check'] = compressor_config['check']
@@ -464,15 +473,15 @@ def compressor_config_to_n5(compressor_config):
         n5_config['level'] = compressor_config['level']
         n5_config['useZlib'] = True
 
-    elif codec_id == 'gzip': # pragma: no cover
+    elif codec_id == 'gzip':  # pragma: no cover
 
         n5_config['type'] = 'gzip'
         n5_config['level'] = compressor_config['level']
         n5_config['useZlib'] = False
 
-    else: # pragma: no cover
+    else:  # pragma: no cover
 
-        raise RuntimeError("Unknown compressor with id %s"%codec_id)
+        raise RuntimeError("Unknown compressor with id %s" % codec_id)
 
     return n5_config
 
@@ -480,7 +489,7 @@ def compressor_config_to_n5(compressor_config):
 def compressor_config_to_zarr(compressor_config):
 
     codec_id = compressor_config['type']
-    zarr_config = { 'id': codec_id }
+    zarr_config = {'id': codec_id}
 
     if codec_id == 'bzip2':
 
@@ -510,7 +519,7 @@ def compressor_config_to_zarr(compressor_config):
         if 'useZlib' in compressor_config and compressor_config['useZlib']:
             zarr_config['id'] = 'zlib'
             zarr_config['level'] = compressor_config['level']
-        else: # pragma: no cover
+        else:  # pragma: no cover
             zarr_config['id'] = 'gzip'
             zarr_config['level'] = compressor_config['level']
 
@@ -518,11 +527,12 @@ def compressor_config_to_zarr(compressor_config):
 
         return None
 
-    else: # pragma: no cover
+    else:  # pragma: no cover
 
-        raise RuntimeError("Unknown compressor with id %s"%codec_id)
+        raise RuntimeError("Unknown compressor with id %s" % codec_id)
 
     return zarr_config
+
 
 class N5ChunkWrapper(Codec):
 
@@ -538,7 +548,7 @@ class N5ChunkWrapper(Codec):
             (self.dtype.byteorder == '=' and sys.byteorder == 'little')
         )
 
-        if compressor: # pragma: no cover
+        if compressor:  # pragma: no cover
             assert compressor_config is None, (
                 "Only one of compressor_config or compressor should be given.")
             compressor_config = compressor.get_config()
@@ -580,7 +590,7 @@ class N5ChunkWrapper(Codec):
 
             # out should only be used if we read a complete chunk
             assert chunk_shape == self.chunk_shape, (
-                "Expected chunk of shape %s, found %s"%(
+                "Expected chunk of shape %s, found %s" % (
                     self.chunk_shape,
                     chunk_shape))
 
@@ -604,7 +614,7 @@ class N5ChunkWrapper(Codec):
             chunk = self._from_big_endian(chunk)
 
             # read partial chunk
-            if chunk_shape != self.chunk_shape: # pragma: no cover
+            if chunk_shape != self.chunk_shape:  # pragma: no cover
                 chunk = np.frombuffer(chunk, dtype=self.dtype)
                 chunk = chunk.reshape(chunk_shape)
                 complete_chunk = np.zeros(self.chunk_shape, dtype=self.dtype)
@@ -627,7 +637,6 @@ class N5ChunkWrapper(Codec):
 
     def _read_header(self, chunk):
 
-        mode = int.from_bytes(chunk[0:2], byteorder='big')
         num_dims = int.from_bytes(chunk[2:4], byteorder='big')
         shape = tuple(
             int.from_bytes(chunk[i:i+4], byteorder='big')
@@ -653,5 +662,6 @@ class N5ChunkWrapper(Codec):
 
         a = np.frombuffer(data, self.dtype.newbyteorder('>'))
         return a.astype(self.dtype)
+
 
 register_codec(N5ChunkWrapper, N5ChunkWrapper.codec_id)

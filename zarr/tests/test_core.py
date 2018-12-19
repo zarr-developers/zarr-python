@@ -1372,7 +1372,7 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
 
         # 1D
         a = np.arange(1050)
-        for order in 'C': # F not supported by N5 (yet)
+        for order in 'C':  # F not supported by N5 (yet)
             z = self.create_array(shape=a.shape, chunks=100, dtype=a.dtype,
                                   order=order)
             assert order == z.order
@@ -1385,7 +1385,7 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
 
         # 2D
         a = np.arange(10000).reshape((100, 100))
-        for order in 'C': # F not supported by N5 (yet)
+        for order in 'C':  # F not supported by N5 (yet)
             z = self.create_array(shape=a.shape, chunks=(10, 10),
                                   dtype=a.dtype, order=order)
             assert order == z.order
@@ -1451,6 +1451,7 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
         z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
         z.attrs['foo'] = 'bar'
         assert '0cfc673215a8292a87f3c505e2402ce75243c601' == z.hexdigest()
+
 
 class TestArrayWithDBMStore(TestArray):
 
