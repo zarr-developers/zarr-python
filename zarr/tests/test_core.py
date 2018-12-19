@@ -1401,6 +1401,14 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
         # structured arrays not supported in N5
         pass
 
+    def test_structured_array_subshapes(self):
+        # structured arrays not supported in N5
+        pass
+
+    def test_structured_array_nested(self):
+        # structured arrays not supported in N5
+        pass
+
     def test_object_arrays(self):
         # object arrays not supported in N5
         pass
