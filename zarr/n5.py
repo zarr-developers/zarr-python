@@ -343,7 +343,13 @@ def array_metadata_to_n5(array_metadata):
         del array_metadata[f]
     del array_metadata['zarr_format']
 
-    array_metadata['dataType'] = np.dtype(array_metadata['dataType']).name
+    try:
+        dtype = np.dtype(array_metadata['dataType'])
+    except:
+        raise TypeError(
+            "data type %s not supported by N5"%array_metadata['dataType'])
+
+    array_metadata['dataType'] = dtype.name
     array_metadata['dimensions'] = array_metadata['dimensions'][::-1]
     array_metadata['blockSize'] = array_metadata['blockSize'][::-1]
 
