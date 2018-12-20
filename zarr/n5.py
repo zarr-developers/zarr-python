@@ -638,9 +638,9 @@ class N5ChunkWrapper(Codec):
 
     def _read_header(self, chunk):
 
-        num_dims = int.from_bytes(chunk[2:4], byteorder='big')
+        num_dims = struct.unpack('>H', chunk[2:4])[0]
         shape = tuple(
-            int.from_bytes(chunk[i:i+4], byteorder='big')
+            struct.unpack('>I', chunk[i:i+4])[0]
             for i in range(4, num_dims*4 + 4, 4)
         )[::-1]
 
