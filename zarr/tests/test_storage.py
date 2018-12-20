@@ -22,7 +22,7 @@ from zarr.storage import (init_array, array_meta_key, attrs_key, DictStore,
                           LMDBStore, atexit_rmglob, LRUStoreCache,
                           ConsolidatedMetadataStore)
 from zarr.meta import (decode_array_metadata, encode_array_metadata, ZARR_FORMAT,
-                       decode_group_metadata, encode_group_metadata)
+                       decode_group_metadata, encode_group_metadata, ensure_str)
 from zarr.compat import PY2
 from zarr.codecs import Zlib, Blosc, BZ2, LZ4, GZip
 from zarr.errors import PermissionError, MetadataError
@@ -898,10 +898,10 @@ class TestN5Store(TestNestedDirectoryStore, unittest.TestCase):
             path='a')
         a = Array(store, path='a')
         a.attrs['foo'] = 'bar'
-        attrs = json.loads(store['a/.zattrs'])
+        attrs = json.loads(ensure_str(store['a/.zattrs']))
         assert 'foo' in attrs and attrs['foo'] == 'bar'
         a.attrs['bar'] = 'foo'
-        attrs = json.loads(store['a/.zattrs'])
+        attrs = json.loads(ensure_str(store['a/.zattrs']))
         assert 'foo' in attrs and attrs['foo'] == 'bar'
         assert 'bar' in attrs and attrs['bar'] == 'foo'
 
