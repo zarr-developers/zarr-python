@@ -15,6 +15,7 @@ from numcodecs.registry import register_codec, get_codec
 import json
 import logging
 import numpy as np
+import struct
 import sys
 import os
 
@@ -626,10 +627,10 @@ class N5ChunkWrapper(Codec):
 
     def _create_header(self, chunk):
 
-        mode = int(0).to_bytes(2, byteorder='big')
-        num_dims = len(chunk.shape).to_bytes(2, byteorder='big')
+        mode = struct.pack('>H', 0)
+        num_dims = struct.pack('>H', len(chunk.shape))
         shape = b''.join(
-            d.to_bytes(4, byteorder='big')
+            struct.pack('>I', d)
             for d in chunk.shape[::-1]
         )
 
