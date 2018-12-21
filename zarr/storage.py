@@ -1989,22 +1989,22 @@ class SQLiteStore(MutableMapping):
             return has
 
     def items(self):
-        for k, v in self.cursor.execute("SELECT k, v from kv"):
+        for k, v in self.cursor.execute("SELECT k, v FROM kv"):
             yield k, v
 
     def keys(self):
-        for k, in self.cursor.execute("SELECT k from kv"):
+        for k, in self.cursor.execute("SELECT k FROM kv"):
             yield k
 
     def values(self):
-        for v, in self.cursor.execute("SELECT v from kv"):
+        for v, in self.cursor.execute("SELECT v FROM kv"):
             yield v
 
     def __iter__(self):
         return self.keys()
 
     def __len__(self):
-        for c, in self.cursor.execute("SELECT Count(*) from kv"):
+        for c, in self.cursor.execute("SELECT COUNT(*) FROM kv"):
             return c
 
 
