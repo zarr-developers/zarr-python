@@ -1962,16 +1962,7 @@ class SQLiteStore(MutableMapping):
             raise KeyError(key)
 
     def __setitem__(self, key, value):
-        # Python 2 cannot store `memoryview`s, but it can store `buffer`s.
-        # However Python 2 won't return `bytes` then. So we coerce to `bytes`,
-        # which are handled correctly. Python 3 doesn't have these issues.
-        if PY2:  # pragma: py3 no cover
-            value = ensure_bytes(value)
-        else:  # pragma: py2 no cover
-            value = ensure_contiguous_ndarray(value)
-
-        self.cursor.execute('REPLACE INTO kv VALUES (?, ?)', (key, value))
-        self.flush()
+        self.update({key: value})
 
     def __delitem__(self, key):
         if key in self:
