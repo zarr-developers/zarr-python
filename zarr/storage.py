@@ -1948,9 +1948,6 @@ class SQLiteStore(MutableMapping):
         path, kwargs = state
         self.__init__(path=path, **kwargs)
 
-    def flush(self):
-        self.db.commit()
-
     def close(self):
         """Closes the underlying database."""
 
