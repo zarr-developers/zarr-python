@@ -1950,11 +1950,11 @@ class SQLiteStore(MutableMapping):
     def close(self):
         """Closes the underlying database."""
 
-        # close and remove cursor object
-        self.cursor.close()
+        # write out everything
+        self.flush()
 
-        # close and remove db object
-        self.db.commit()
+        # close cursor and db objects
+        self.cursor.close()
         self.db.close()
 
     def __getitem__(self, key):
