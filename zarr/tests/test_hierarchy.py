@@ -17,8 +17,8 @@ import pytest
 
 from zarr.storage import (DictStore, DirectoryStore, ZipStore, init_group, init_array,
                           array_meta_key, group_meta_key, atexit_rmtree,
-                          NestedDirectoryStore, DBMStore, LMDBStore, atexit_rmglob,
-                          LRUStoreCache)
+                          NestedDirectoryStore, DBMStore, LMDBStore, SQLiteStore,
+                          atexit_rmglob, LRUStoreCache)
 from zarr.core import Array
 from zarr.compat import PY2, text_type
 from zarr.hierarchy import Group, group, open_group
@@ -925,6 +925,22 @@ class TestGroupWithLMDBStore(TestGroup):
         path = tempfile.mktemp(suffix='.lmdb')
         atexit.register(atexit_rmtree, path)
         store = LMDBStore(path)
+        return store, None
+
+
+try:
+    import sqlite3
+except ImportError:  # pragma: no cover
+    sqlite3 = None
+
+
+@unittest.skipIf(sqlite3 is None, 'python built without sqlite')
+class TestSQLiteStore(TestGroup):
+
+    def create_store(self):
+        path = tempfile.mktemp(suffix='.db')
+        atexit.register(atexit_rmtree, path)
+        store = SQLiteStore(path)
         return store, None
 
 
