@@ -1938,6 +1938,11 @@ class SQLiteStore(MutableMapping):
         )
 
     def __getstate__(self):
+        try:
+            self.flush()
+        except Exception:
+            # flush may fail if db has already been closed
+            pass
         return self.path, self.kwargs
 
     def __setstate__(self, state):
