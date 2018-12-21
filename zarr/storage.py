@@ -1892,13 +1892,13 @@ class SQLiteStore(MutableMapping):
     Store a single array::
 
         >>> import zarr
-        >>> store = zarr.SQLiteStore('data/array.db')
+        >>> store = zarr.SQLiteStore('data/array.sqldb')
         >>> z = zarr.zeros((10, 10), chunks=(5, 5), store=store, overwrite=True)
         >>> z[...] = 42
 
     Store a group::
 
-        >>> store = zarr.SQLiteStore('data/group.db')
+        >>> store = zarr.SQLiteStore('data/group.sqldb')
         >>> root = zarr.group(store=store, overwrite=True)
         >>> foo = root.create_group('foo')
         >>> bar = foo.zeros('bar', shape=(10, 10), chunks=(5, 5))
