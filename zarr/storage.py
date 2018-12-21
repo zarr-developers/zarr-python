@@ -1979,10 +1979,12 @@ class SQLiteStore(MutableMapping):
             value = ensure_contiguous_ndarray(value)
 
         self.cursor.execute('REPLACE INTO kv VALUES (?, ?)', (key, value))
+        self.flush()
 
     def __delitem__(self, key):
         if key in self:
             self.cursor.execute('DELETE FROM kv WHERE k = ?', (key,))
+            self.flush()
         else:
             raise KeyError(key)
 
