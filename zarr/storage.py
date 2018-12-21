@@ -1886,6 +1886,23 @@ class SQLiteStore(MutableMapping):
         Location of database file.
     **kwargs
         Keyword arguments passed through to the `sqlite3.connect` function.
+
+    Examples
+    --------
+    Store a single array::
+
+        >>> import zarr
+        >>> store = zarr.SQLiteStore('data/array.db')
+        >>> z = zarr.zeros((10, 10), chunks=(5, 5), store=store, overwrite=True)
+        >>> z[...] = 42
+
+    Store a group::
+
+        >>> store = zarr.SQLiteStore('data/group.db')
+        >>> root = zarr.group(store=store, overwrite=True)
+        >>> foo = root.create_group('foo')
+        >>> bar = foo.zeros('bar', shape=(10, 10), chunks=(5, 5))
+        >>> bar[...] = 42
     """
 
     def __init__(self, path, **kwargs):
