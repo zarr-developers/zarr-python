@@ -1983,7 +1983,6 @@ class SQLiteStore(MutableMapping):
     def __delitem__(self, key):
         if key in self:
             self.cursor.execute('DELETE FROM kv WHERE k = ?', (key,))
-            return
         else:
             raise KeyError(key)
 
