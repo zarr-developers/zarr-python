@@ -1913,7 +1913,7 @@ class SQLiteStore(MutableMapping):
         kwargs.setdefault('timeout', 5.0)
         kwargs.setdefault('detect_types', 0)
         kwargs.setdefault('isolation_level', None)  # autocommit
-        kwargs.setdefault('check_same_thread', True)  # disallow writing from other threads
+        kwargs.setdefault('check_same_thread', False)  # disallow writing from other threads
         kwargs.setdefault('cached_statements', 100)
 
         # normalize path
