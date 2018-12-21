@@ -2004,6 +2004,27 @@ class SQLiteStore(MutableMapping):
         for c, in self.cursor.execute("SELECT COUNT(*) FROM kv"):
             return c
 
+    def update(self, *args, **kwargs):
+        args += (kwargs,)
+
+        kv_list = []
+        for dct in args:
+            for k, v in dct.items():
+                # Python 2 cannot store `memoryview`s, but it can store
+                # `buffer`s. However Python 2 won't return `bytes` then. So we
+                # coerce to `bytes`, which are handled correctly. Python 3
+                # doesn't have these issues.
+                if PY2:  # pragma: py3 no cover
+                    v = ensure_bytes(v)
+                else:  # pragma: py2 no cover
+                    v = ensure_contiguous_ndarray(v)
+
+                # Accumulate key-value pairs for storage
+                kv_list.append((k, v))
+
+        self.cursor.executemany('REPLACE INTO kv VALUES (?, ?)', kv_list)
+        self.flush()
+
 
 class ConsolidatedMetadataStore(MutableMapping):
     """A layer over other storage, where the metadata has been consolidated into
