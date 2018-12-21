@@ -1970,7 +1970,6 @@ class SQLiteStore(MutableMapping):
     def __delitem__(self, key):
         if key in self:
             self.cursor.execute('DELETE FROM kv WHERE k = ?', (key,))
-            self.flush()
         else:
             raise KeyError(key)
 
@@ -2017,7 +2016,6 @@ class SQLiteStore(MutableMapping):
                 kv_list.append((k, v))
 
         self.cursor.executemany('REPLACE INTO kv VALUES (?, ?)', kv_list)
-        self.flush()
 
 
 class ConsolidatedMetadataStore(MutableMapping):
