@@ -737,6 +737,7 @@ Python is built with SQLite support)::
     >>> root = zarr.group(store=store, overwrite=True)
     >>> z = root.zeros('foo/bar', shape=(1000, 1000), chunks=(100, 100), dtype='i4')
     >>> z[:] = 42
+    >>> store.close()
 
 Distributed/cloud storage
 ~~~~~~~~~~~~~~~~~~~~~~~~~

@@ -1895,6 +1895,7 @@ class SQLiteStore(MutableMapping):
         >>> store = zarr.SQLiteStore('data/array.sqldb')
         >>> z = zarr.zeros((10, 10), chunks=(5, 5), store=store, overwrite=True)
         >>> z[...] = 42
+        >>> store.close()  # don't forget to call this when you're done
 
     Store a group::
 
@@ -1903,6 +1904,7 @@ class SQLiteStore(MutableMapping):
         >>> foo = root.create_group('foo')
         >>> bar = foo.zeros('bar', shape=(10, 10), chunks=(5, 5))
         >>> bar[...] = 42
+        >>> store.close()  # don't forget to call this when you're done
     """
 
     def __init__(self, path, **kwargs):
