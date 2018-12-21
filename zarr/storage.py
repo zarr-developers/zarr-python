@@ -1975,13 +1975,11 @@ class SQLiteStore(MutableMapping):
         self.cursor.execute('REPLACE INTO kv VALUES (?, ?)', (key, value))
 
     def __delitem__(self, key):
-        op_has = 'SELECT EXISTS (SELECT k, v FROM kv WHERE k = ?)'
-        for has, in self.cursor.execute(op_has, (key,)):
-            if has:
-                self.cursor.execute('DELETE FROM kv WHERE k = ?', (key,))
-                return
-            else:
-                raise KeyError(key)
+        if key in self:
+            self.cursor.execute('DELETE FROM kv WHERE k = ?', (key,))
+            return
+        else:
+            raise KeyError(key)
 
     def __contains__(self, key):
         op_has = 'SELECT EXISTS (SELECT k, v FROM kv WHERE k = ?)'
