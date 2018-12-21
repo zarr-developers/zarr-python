@@ -1917,7 +1917,8 @@ class SQLiteStore(MutableMapping):
         kwargs.setdefault('cached_statements', 100)
 
         # normalize path
-        path = os.path.abspath(path)
+        if path != ":memory:":
+            path = os.path.abspath(path)
 
         # store properties
         self.path = path
