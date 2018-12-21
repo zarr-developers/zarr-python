@@ -19,7 +19,7 @@ Enhancements
 * Support has been added for structured arrays with sub-array shape and/or nested fields. By
   :user:`Tarik Onalan <onalant>`, :issue:`111`, :issue:`296`.
 
-* Adds the SQLite-backed :class:`zarr.storage.SQLiteStore` class enables an
+* Adds the SQLite-backed :class:`zarr.storage.SQLiteStore` class enabling an
   SQLite database to be used as the backing store for an array or group.
   :issue:`368`.
 
