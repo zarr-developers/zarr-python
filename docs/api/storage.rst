@@ -21,6 +21,8 @@ Storage (``zarr.storage``)
     .. automethod:: close
     .. automethod:: flush
 
+.. autoclass:: SQLiteStore
+
 .. autoclass:: LRUStoreCache
 
     .. automethod:: invalidate
