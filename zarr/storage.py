@@ -1921,11 +1921,19 @@ class SQLiteStore(MutableMapping):
         self.path = path
         self.kwargs = kwargs
 
+        # open database
+        self.db = sqlite3.connect(self.path, **self.kwargs)
+
+        # handle keys as `str`s
+        self.db.text_factory = str
+
+        # get a cursor to read/write to the database
+        self.cursor = self.db.cursor()
+
         # initialize database with our table if missing
-        with self:
-            self.cursor.execute(
-                'CREATE TABLE IF NOT EXISTS kv(k TEXT PRIMARY KEY, v BLOB)'
-            )
+        self.cursor.execute(
+            'CREATE TABLE IF NOT EXISTS kv(k TEXT PRIMARY KEY, v BLOB)'
+        )
 
     def __getstate__(self):
         return self.path, self.kwargs
@@ -1934,44 +1942,24 @@ class SQLiteStore(MutableMapping):
         path, kwargs = state
         self.__init__(path=path, **kwargs)
 
+    def flush(self):
+        self.db.commit()
+
     def close(self):
         """Closes the underlying database."""
 
         # close and remove cursor object
-        if hasattr(self, 'cursor'):
-            self.cursor.close()
-            del self.cursor
+        self.cursor.close()
 
         # close and remove db object
-        if hasattr(self, 'db'):
-            self.db.commit()
-            self.db.close()
-            del self.db
-
-    def __enter__(self):
-        import sqlite3
-
-        # open database
-        if not hasattr(self, 'db'):
-            self.db = sqlite3.connect(self.path, **self.kwargs)
-            # handle keys as `str`s
-            self.db.text_factory = str
-
-        # get a cursor to read/write to the database
-        if not hasattr(self, 'cursor'):
-            self.cursor = self.db.cursor()
-
-        return self
-
-    def __exit__(self, *args):
-        self.close()
+        self.db.commit()
+        self.db.close()
 
     def __getitem__(self, key):
-        with self:
-            for v, in self.cursor.execute('SELECT v FROM kv WHERE k = ?', (key,)):
-                return v
-            else:
-                raise KeyError(key)
+        for v, in self.cursor.execute('SELECT v FROM kv WHERE k = ?', (key,)):
+            return v
+        else:
+            raise KeyError(key)
 
     def __setitem__(self, key, value):
         # Python 2 cannot store `memoryview`s, but it can store `buffer`s.
@@ -1982,48 +1970,40 @@ class SQLiteStore(MutableMapping):
         else:  # pragma: py2 no cover
             value = ensure_contiguous_ndarray(value)
 
-        with self:
-            self.cursor.execute('REPLACE INTO kv VALUES (?, ?)', (key, value))
+        self.cursor.execute('REPLACE INTO kv VALUES (?, ?)', (key, value))
 
     def __delitem__(self, key):
-        with self:
-            op_has = 'SELECT EXISTS (SELECT k, v FROM kv WHERE k = ?)'
-            for has, in self.cursor.execute(op_has, (key,)):
-                if has:
-                    self.cursor.execute('DELETE FROM kv WHERE k = ?', (key,))
-                    return
-                else:
-                    raise KeyError(key)
+        op_has = 'SELECT EXISTS (SELECT k, v FROM kv WHERE k = ?)'
+        for has, in self.cursor.execute(op_has, (key,)):
+            if has:
+                self.cursor.execute('DELETE FROM kv WHERE k = ?', (key,))
+                return
+            else:
+                raise KeyError(key)
 
     def __contains__(self, key):
-        with self:
-            op_has = 'SELECT EXISTS (SELECT k, v FROM kv WHERE k = ?)'
-            for has, in self.cursor.execute(op_has, (key,)):
-                return has
+        op_has = 'SELECT EXISTS (SELECT k, v FROM kv WHERE k = ?)'
+        for has, in self.cursor.execute(op_has, (key,)):
+            return has
 
     def items(self):
-        with self:
-            for k, v in self.cursor.execute("SELECT k, v from kv"):
-                yield k, v
+        for k, v in self.cursor.execute("SELECT k, v from kv"):
+            yield k, v
 
     def keys(self):
-        with self:
-            for k, in self.cursor.execute("SELECT k from kv"):
-                yield k
+        for k, in self.cursor.execute("SELECT k from kv"):
+            yield k
 
     def values(self):
-        with self:
-            for v, in self.cursor.execute("SELECT v from kv"):
-                yield v
+        for v, in self.cursor.execute("SELECT v from kv"):
+            yield v
 
     def __iter__(self):
-        with self:
-            return self.keys()
+        return self.keys()
 
     def __len__(self):
-        with self:
-            for c, in self.cursor.execute("SELECT Count(*) from kv"):
-                return c
+        for c, in self.cursor.execute("SELECT Count(*) from kv"):
+            return c
 
 
 class ConsolidatedMetadataStore(MutableMapping):
