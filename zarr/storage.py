@@ -1911,9 +1911,6 @@ class SQLiteStore(MutableMapping):
         import sqlite3
 
         kwargs.setdefault('timeout', 5.0)
-        kwargs.setdefault('detect_types', 0)
-        kwargs.setdefault('isolation_level', None)  # autocommit
-        kwargs.setdefault('check_same_thread', False)  # disallow writing from other threads
         kwargs.setdefault('cached_statements', 100)
 
         # normalize path
@@ -1925,7 +1922,13 @@ class SQLiteStore(MutableMapping):
         self.kwargs = kwargs
 
         # open database
-        self.db = sqlite3.connect(self.path, **self.kwargs)
+        self.db = sqlite3.connect(
+            self.path,
+            detect_types=0,
+            isolation_level=None,
+            check_same_thread=False,
+            **self.kwargs
+        )
 
         # handle keys as `str`s
         self.db.text_factory = str
