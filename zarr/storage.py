@@ -1951,9 +1951,6 @@ class SQLiteStore(MutableMapping):
     def close(self):
         """Closes the underlying database."""
 
-        # write out everything
-        self.flush()
-
         # close cursor and db objects
         self.cursor.close()
         self.db.close()
