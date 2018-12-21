@@ -1877,6 +1877,138 @@ class LRUStoreCache(MutableMapping):
             self._invalidate_value(key)
 
 
+class SQLiteStore(MutableMapping):
+    """Storage class using SQLite.
+
+    Parameters
+    ----------
+    path : string
+        Location of database file.
+    **kwargs
+        Keyword arguments passed through to the `sqlite3.connect` function.
+    """
+
+    def __init__(self, path, **kwargs):
+        import sqlite3  # noqa: F401
+
+        kwargs.setdefault('timeout', 5.0)
+        kwargs.setdefault('detect_types', 0)
+        kwargs.setdefault('isolation_level', None)  # autocommit
+        kwargs.setdefault('check_same_thread', False)  # disallow writing from other threads
+        kwargs.setdefault('cached_statements', 100)
+
+        # normalize path
+        path = os.path.abspath(path)
+
+        # store properties
+        self.path = path
+        self.kwargs = kwargs
+
+        # initialize database with our table if missing
+        with self:
+            self.cursor.execute(
+                'CREATE TABLE IF NOT EXISTS kv(k TEXT PRIMARY KEY, v BLOB)'
+            )
+
+    def __getstate__(self):
+        return self.path, self.kwargs
+
+    def __setstate__(self, state):
+        path, kwargs = state
+        self.__init__(path=path, **kwargs)
+
+    def close(self):
+        """Closes the underlying database."""
+
+        # close and remove cursor object
+        if hasattr(self, 'cursor'):
+            self.cursor.close()
+            del self.cursor
+
+        # close and remove db object
+        if hasattr(self, 'db'):
+            self.db.commit()
+            self.db.close()
+            del self.db
+
+    def __enter__(self):
+        import sqlite3
+
+        # open database
+        if not hasattr(self, 'db'):
+            self.db = sqlite3.connect(self.path, **self.kwargs)
+            # handle keys as `str`s
+            self.db.text_factory = str
+
+        # get a cursor to read/write to the database
+        if not hasattr(self, 'cursor'):
+            self.cursor = self.db.cursor()
+
+        return self
+
+    def __exit__(self, *args):
+        self.close()
+
+    def __getitem__(self, key):
+        with self:
+            for v, in self.cursor.execute('SELECT v FROM kv WHERE k = ?', (key,)):
+                return v
+            else:
+                raise KeyError(key)
+
+    def __setitem__(self, key, value):
+        # Python 2 cannot store `memoryview`s, but it can store `buffer`s.
+        # However Python 2 won't return `bytes` then. So we coerce to `bytes`,
+        # which are handled correctly. Python 3 doesn't have these issues.
+        if PY2:  # pragma: py3 no cover
+            value = ensure_bytes(value)
+        else:  # pragma: py2 no cover
+            value = ensure_contiguous_ndarray(value)
+
+        with self:
+            self.cursor.execute('REPLACE INTO kv VALUES (?, ?)', (key, value))
+
+    def __delitem__(self, key):
+        with self:
+            op_has = 'SELECT EXISTS (SELECT k, v FROM kv WHERE k = ?)'
+            for has, in self.cursor.execute(op_has, (key,)):
+                if has:
+                    self.cursor.execute('DELETE FROM kv WHERE k = ?', (key,))
+                    return
+                else:
+                    raise KeyError(key)
+
+    def __contains__(self, key):
+        with self:
+            op_has = 'SELECT EXISTS (SELECT k, v FROM kv WHERE k = ?)'
+            for has, in self.cursor.execute(op_has, (key,)):
+                return has
+
+    def items(self):
+        with self:
+            for k, v in self.cursor.execute("SELECT k, v from kv"):
+                yield k, v
+
+    def keys(self):
+        with self:
+            for k, in self.cursor.execute("SELECT k from kv"):
+                yield k
+
+    def values(self):
+        with self:
+            for v, in self.cursor.execute("SELECT v from kv"):
+                yield v
+
+    def __iter__(self):
+        with self:
+            return self.keys()
+
+    def __len__(self):
+        with self:
+            for c, in self.cursor.execute("SELECT Count(*) from kv"):
+                return c
+
+
 class ConsolidatedMetadataStore(MutableMapping):
     """A layer over other storage, where the metadata has been consolidated into
     a single key.
