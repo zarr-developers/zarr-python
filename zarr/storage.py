@@ -1908,7 +1908,7 @@ class SQLiteStore(MutableMapping):
     """
 
     def __init__(self, path, **kwargs):
-        import sqlite3  # noqa: F401
+        import sqlite3
 
         kwargs.setdefault('timeout', 5.0)
         kwargs.setdefault('detect_types', 0)
