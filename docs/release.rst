@@ -21,7 +21,7 @@ Enhancements
 
 * Adds the SQLite-backed :class:`zarr.storage.SQLiteStore` class enabling an
   SQLite database to be used as the backing store for an array or group.
-  :issue:`368`.
+   By :user:`John Kirkham <jakirkham>`, :issue:`368`, :issue:`365`.
 
 Bug fixes
 ~~~~~~~~~
