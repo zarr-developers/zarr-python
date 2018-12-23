@@ -1958,8 +1958,7 @@ class ABSStore(MutableMapping):
             raise KeyError('Blob %s not found' % blob_name)
 
     def __setitem__(self, key, value):
-        if PY2 and isinstance(value, array.array):
-            value = value.tostring()
+        value = ensure_bytes(value)
         blob_name = '/'.join([self.prefix, key])
         buffer = io.BytesIO(value)
         self.client.create_blob_from_stream(self.container_name, blob_name, buffer)
