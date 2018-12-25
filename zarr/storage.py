@@ -2038,11 +2038,9 @@ class SQLiteStore(MutableMapping):
         path = normalize_storage_path(path)
         keys = self.cursor.execute(
             '''
-            SELECT l FROM (
-                SELECT DISTINCT SUBSTR(m, 0, INSTR(m, "/")) AS l FROM (
-                    SELECT LTRIM(SUBSTR(k, LENGTH("{p}") + 1), "/") || "/" AS m
-                    FROM {t} WHERE k LIKE "{p}_%"
-                )
+            SELECT DISTINCT SUBSTR(m, 0, INSTR(m, "/")) AS l FROM (
+                SELECT LTRIM(SUBSTR(k, LENGTH("{p}") + 1), "/") || "/" AS m
+                FROM {t} WHERE k LIKE "{p}_%"
             ) ORDER BY l ASC
             '''.format(
                 t=self.table, p=path
