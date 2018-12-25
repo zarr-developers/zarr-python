@@ -2014,6 +2014,19 @@ class SQLiteStore(MutableMapping):
 
         self.cursor.executemany('REPLACE INTO kv VALUES (?, ?)', kv_list)
 
+    def rmdir(self, path=None):
+        path = normalize_storage_path(path)
+        if path:
+            self.cursor.execute(
+                '''
+                DELETE FROM kv WHERE k LIKE "{p}_%"
+                '''.format(
+                    p=path
+                )
+            )
+        else:
+            self.clear()
+
     def clear(self):
         self.cursor.executescript('''
             BEGIN TRANSACTION;
