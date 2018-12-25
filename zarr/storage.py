@@ -20,6 +20,7 @@ from collections import MutableMapping, OrderedDict
 import os
 import operator
 import tempfile
+import uuid
 import zipfile
 import shutil
 import atexit
@@ -2071,18 +2072,18 @@ class SQLiteStore(MutableMapping):
         self.cursor.executescript(
             '''
             BEGIN TRANSACTION;
-                CREATE TEMPORARY TABLE {t}_sdkt AS
+                CREATE TEMPORARY TABLE _{t}_{u} AS
                 SELECT LTRIM("{dp}" || "/" || mk, "/"), mv FROM (
                     SELECT LTRIM(SUBSTR(k, LENGTH("{sp}") + 1), "/") AS mk,
                            v AS mv
                     FROM {t} WHERE k LIKE "{sp}%"
                 );
                 DELETE FROM {t} WHERE k LIKE "{sp}%";
-                REPLACE INTO {t} SELECT * FROM {t}_sdkt;
-                DROP TABLE {t}_sdkt;
+                REPLACE INTO {t} SELECT * FROM _{t}_{u};
+                DROP TABLE _{t}_{u};
             COMMIT TRANSACTION;
             '''.format(
-                t=self.table, sp=src_path, dp=dst_path
+                t=self.table, u=uuid.uuid4().hex, sp=src_path, dp=dst_path
             )
         )
 
