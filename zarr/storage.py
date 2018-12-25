@@ -2073,14 +2073,9 @@ class SQLiteStore(MutableMapping):
             '''
             BEGIN TRANSACTION;
                 CREATE TEMPORARY TABLE _{t}_{u} AS
-                SELECT LTRIM(
-                           (
-                               "{dp}" ||
-                               "/" ||
-                               LTRIM(SUBSTR(k, LENGTH("{sp}") + 1), "/")
-                           ),
-                           "/"
-                       ),
+                SELECT LTRIM(("{dp}" || "/" ||
+                               LTRIM(SUBSTR(k, LENGTH("{sp}") + 1), "/")),
+                             "/"),
                        v
                 FROM {t} WHERE k LIKE "{sp}%";
                 DELETE FROM {t} WHERE k LIKE "{sp}%";
