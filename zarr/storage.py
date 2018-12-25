@@ -1908,7 +1908,7 @@ class SQLiteStore(MutableMapping):
         >>> store.close()  # don't forget to call this when you're done
     """
 
-    def __init__(self, path, **kwargs):
+    def __init__(self, path, table="zarr", **kwargs):
         import sqlite3
 
         kwargs.setdefault('timeout', 5.0)
@@ -1920,6 +1920,7 @@ class SQLiteStore(MutableMapping):
 
         # store properties
         self.path = path
+        self.table = table
         self.kwargs = kwargs
 
         # open database
@@ -1939,7 +1940,9 @@ class SQLiteStore(MutableMapping):
 
         # initialize database with our table if missing
         self.cursor.execute(
-            'CREATE TABLE IF NOT EXISTS kv(k TEXT PRIMARY KEY, v BLOB)'
+            'CREATE TABLE IF NOT EXISTS {t}(k TEXT PRIMARY KEY, v BLOB)'.format(
+                t=self.table
+            )
         )
 
     def __getstate__(self):
@@ -1957,7 +1960,10 @@ class SQLiteStore(MutableMapping):
         self.db.close()
 
     def __getitem__(self, key):
-        for v, in self.cursor.execute('SELECT v FROM kv WHERE k = ?', (key,)):
+        value = self.cursor.execute(
+            'SELECT v FROM {t} WHERE k = ?'.format(t=self.table), (key,)
+        )
+        for v, in value:
             return v
         else:
             raise KeyError(key)
@@ -1967,32 +1973,42 @@ class SQLiteStore(MutableMapping):
 
     def __delitem__(self, key):
         if key in self:
-            self.cursor.execute('DELETE FROM kv WHERE k = ?', (key,))
+            self.cursor.execute(
+                'DELETE FROM {t} WHERE k = ?'.format(t=self.table), (key,)
+            )
         else:
             raise KeyError(key)
 
     def __contains__(self, key):
-        op_has = 'SELECT EXISTS (SELECT k, v FROM kv WHERE k = ?)'
+        op_has = 'SELECT EXISTS (SELECT k, v FROM {t} WHERE k = ?)'.format(
+            t=self.table
+        )
         for has, in self.cursor.execute(op_has, (key,)):
             return has
 
     def items(self):
-        for k, v in self.cursor.execute("SELECT k, v FROM kv"):
+        kvs = self.cursor.execute("SELECT k, v FROM {t}".format(t=self.table))
+        for k, v in kvs:
             yield k, v
 
     def keys(self):
-        for k, in self.cursor.execute("SELECT k FROM kv"):
+        ks = self.cursor.execute("SELECT k FROM {t}".format(t=self.table))
+        for k, in ks:
             yield k
 
     def values(self):
-        for v, in self.cursor.execute("SELECT v FROM kv"):
+        vs = self.cursor.execute("SELECT v FROM {t}".format(t=self.table))
+        for v, in vs:
             yield v
 
     def __iter__(self):
         return self.keys()
 
     def __len__(self):
-        for c, in self.cursor.execute("SELECT COUNT(*) FROM kv"):
+        cs = self.cursor.execute(
+            "SELECT COUNT(*) FROM {t}".format(t=self.table)
+        )
+        for c, in cs:
             return c
 
     def update(self, *args, **kwargs):
@@ -2013,7 +2029,9 @@ class SQLiteStore(MutableMapping):
                 # Accumulate key-value pairs for storage
                 kv_list.append((k, v))
 
-        self.cursor.executemany('REPLACE INTO kv VALUES (?, ?)', kv_list)
+        self.cursor.executemany(
+            'REPLACE INTO {t} VALUES (?, ?)'.format(t=self.table), kv_list
+        )
 
     def listdir(self, path=None):
         path = normalize_storage_path(path)
@@ -2022,11 +2040,11 @@ class SQLiteStore(MutableMapping):
             SELECT l FROM (
                 SELECT DISTINCT SUBSTR(m, 0, INSTR(m, "/")) AS l FROM (
                     SELECT LTRIM(SUBSTR(k, LENGTH("{p}") + 1), "/") || "/" AS m
-                    FROM kv WHERE k LIKE "{p}_%"
+                    FROM {t} WHERE k LIKE "{p}_%"
                 )
             ) ORDER BY l ASC
             '''.format(
-                p=path
+                t=self.table, p=path
             )
         )
         keys = list(map(operator.itemgetter(0), keys))
@@ -2036,11 +2054,11 @@ class SQLiteStore(MutableMapping):
         path = normalize_storage_path(path)
         size = self.cursor.execute(
             '''
-            SELECT COALESCE(SUM(LENGTH(v)), 0) FROM kv
+            SELECT COALESCE(SUM(LENGTH(v)), 0) FROM {t}
             WHERE k LIKE "{p}%" AND
                   0 == INSTR(LTRIM(SUBSTR(k, LENGTH("{p}") + 1), "/"), "/")
             '''.format(
-                p=path
+                t=self.table, p=path
             )
         )
         for s, in size:
@@ -2053,18 +2071,18 @@ class SQLiteStore(MutableMapping):
         self.cursor.executescript(
             '''
             BEGIN TRANSACTION;
-                CREATE TEMPORARY TABLE sdkt AS
+                CREATE TEMPORARY TABLE {t}_sdkt AS
                 SELECT LTRIM("{dp}" || "/" || mk, "/"), mv FROM (
                     SELECT LTRIM(SUBSTR(k, LENGTH("{sp}") + 1), "/") AS mk,
                            v AS mv
-                    FROM kv WHERE k LIKE "{sp}%"
+                    FROM {t} WHERE k LIKE "{sp}%"
                 );
-                DELETE FROM kv WHERE k LIKE "{sp}%";
-                REPLACE INTO kv SELECT * FROM sdkt;
-                DROP TABLE sdkt;
+                DELETE FROM {t} WHERE k LIKE "{sp}%";
+                REPLACE INTO {t} SELECT * FROM {t}_sdkt;
+                DROP TABLE {t}_sdkt;
             COMMIT TRANSACTION;
             '''.format(
-                sp=src_path, dp=dst_path
+                t=self.table, sp=src_path, dp=dst_path
             )
         )
 
@@ -2073,9 +2091,9 @@ class SQLiteStore(MutableMapping):
         if path:
             self.cursor.execute(
                 '''
-                DELETE FROM kv WHERE k LIKE "{p}_%"
+                DELETE FROM {t} WHERE k LIKE "{p}_%"
                 '''.format(
-                    p=path
+                    t=self.table, p=path
                 )
             )
         else:
@@ -2084,10 +2102,10 @@ class SQLiteStore(MutableMapping):
     def clear(self):
         self.cursor.executescript('''
             BEGIN TRANSACTION;
-                DROP TABLE kv;
-                CREATE TABLE kv(k TEXT PRIMARY KEY, v BLOB);
+                DROP TABLE {t};
+                CREATE TABLE {t}(k TEXT PRIMARY KEY, v BLOB);
             COMMIT TRANSACTION;
-        ''')
+        '''.format(t=self.table))
 
 
 class ConsolidatedMetadataStore(MutableMapping):
