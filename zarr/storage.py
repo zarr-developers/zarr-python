@@ -18,6 +18,7 @@ path) and a `getsize` method (return the size in bytes of a given value).
 from __future__ import absolute_import, print_function, division
 from collections import MutableMapping, OrderedDict
 import os
+import operator
 import tempfile
 import zipfile
 import shutil
@@ -2013,6 +2014,23 @@ class SQLiteStore(MutableMapping):
                 kv_list.append((k, v))
 
         self.cursor.executemany('REPLACE INTO kv VALUES (?, ?)', kv_list)
+
+    def listdir(self, path=None):
+        path = normalize_storage_path(path)
+        keys = self.cursor.execute(
+            '''
+            SELECT l FROM (
+                SELECT DISTINCT SUBSTR(m, 0, INSTR(m, "/")) AS l FROM (
+                    SELECT LTRIM(SUBSTR(k, LENGTH("{p}") + 1), "/") || "/" AS m
+                    FROM kv WHERE k LIKE "{p}_%"
+                )
+            ) ORDER BY l ASC
+            '''.format(
+                p=path
+            )
+        )
+        keys = list(map(operator.itemgetter(0), keys))
+        return keys
 
     def getsize(self, path=None):
         path = normalize_storage_path(path)
