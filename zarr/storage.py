@@ -2014,6 +2014,20 @@ class SQLiteStore(MutableMapping):
 
         self.cursor.executemany('REPLACE INTO kv VALUES (?, ?)', kv_list)
 
+    def getsize(self, path=None):
+        path = normalize_storage_path(path)
+        size = self.cursor.execute(
+            '''
+            SELECT COALESCE(SUM(LENGTH(v)), 0) FROM kv
+            WHERE k LIKE "{p}%" AND
+                  0 == INSTR(LTRIM(SUBSTR(k, LENGTH("{p}") + 1), "/"), "/")
+            '''.format(
+                p=path
+            )
+        )
+        for s, in size:
+            return s
+
     def rmdir(self, path=None):
         path = normalize_storage_path(path)
         if path:
