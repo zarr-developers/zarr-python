@@ -2014,6 +2014,14 @@ class SQLiteStore(MutableMapping):
 
         self.cursor.executemany('REPLACE INTO kv VALUES (?, ?)', kv_list)
 
+    def clear(self):
+        self.cursor.executescript('''
+            BEGIN TRANSACTION;
+                DROP TABLE kv;
+                CREATE TABLE kv(k TEXT PRIMARY KEY, v BLOB);
+            COMMIT TRANSACTION;
+        ''')
+
 
 class ConsolidatedMetadataStore(MutableMapping):
     """A layer over other storage, where the metadata has been consolidated into
