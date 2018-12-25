@@ -1983,6 +1983,7 @@ class SQLiteStore(MutableMapping):
     def __contains__(self, key):
         op_has = 'SELECT COUNT(*) FROM {t} WHERE k = ?'.format(t=self.table)
         for has, in self.cursor.execute(op_has, (key,)):
+            has = bool(has)
             return has
 
     def items(self):
