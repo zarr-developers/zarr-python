@@ -2046,6 +2046,28 @@ class SQLiteStore(MutableMapping):
         for s, in size:
             return s
 
+    def rename(self, src_path, dst_path):
+        src_path = normalize_storage_path(src_path)
+        dst_path = normalize_storage_path(dst_path)
+
+        self.cursor.executescript(
+            '''
+            BEGIN TRANSACTION;
+                CREATE TEMPORARY TABLE sdkt AS
+                SELECT LTRIM("{dp}" || "/" || mk, "/"), mv FROM (
+                    SELECT LTRIM(SUBSTR(k, LENGTH("{sp}") + 1), "/") AS mk,
+                           v AS mv
+                    FROM kv WHERE k LIKE "{sp}%"
+                );
+                DELETE FROM kv WHERE k LIKE "{sp}%";
+                REPLACE INTO kv SELECT * FROM sdkt;
+                DROP TABLE sdkt;
+            COMMIT TRANSACTION;
+            '''.format(
+                sp=src_path, dp=dst_path
+            )
+        )
+
     def rmdir(self, path=None):
         path = normalize_storage_path(path)
         if path:
