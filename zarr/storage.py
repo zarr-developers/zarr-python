@@ -1909,14 +1909,14 @@ class SQLiteStore(MutableMapping):
         >>> store.close()  # don't forget to call this when you're done
     """
 
-    def __init__(self, path, table="zarr", **kwargs):
+    def __init__(self, path, table='zarr', **kwargs):
         import sqlite3
 
         kwargs.setdefault('timeout', 5.0)
         kwargs.setdefault('cached_statements', 100)
 
         # normalize path
-        if path != ":memory:":
+        if path != ':memory:':
             path = os.path.abspath(path)
 
         # store properties
@@ -1987,17 +1987,17 @@ class SQLiteStore(MutableMapping):
             return has
 
     def items(self):
-        kvs = self.cursor.execute("SELECT k, v FROM {t}".format(t=self.table))
+        kvs = self.cursor.execute('SELECT k, v FROM {t}'.format(t=self.table))
         for k, v in kvs:
             yield k, v
 
     def keys(self):
-        ks = self.cursor.execute("SELECT k FROM {t}".format(t=self.table))
+        ks = self.cursor.execute('SELECT k FROM {t}'.format(t=self.table))
         for k, in ks:
             yield k
 
     def values(self):
-        vs = self.cursor.execute("SELECT v FROM {t}".format(t=self.table))
+        vs = self.cursor.execute('SELECT v FROM {t}'.format(t=self.table))
         for v, in vs:
             yield v
 
@@ -2006,7 +2006,7 @@ class SQLiteStore(MutableMapping):
 
     def __len__(self):
         cs = self.cursor.execute(
-            "SELECT COUNT(*) FROM {t}".format(t=self.table)
+            'SELECT COUNT(*) FROM {t}'.format(t=self.table)
         )
         for c, in cs:
             return c
