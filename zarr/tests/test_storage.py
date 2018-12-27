@@ -19,8 +19,8 @@ from zarr.storage import (init_array, array_meta_key, attrs_key, DictStore,
                           DirectoryStore, ZipStore, init_group, group_meta_key,
                           getsize, migrate_1to2, TempStore, atexit_rmtree,
                           NestedDirectoryStore, default_compressor, DBMStore,
-                          LMDBStore, SQLiteStore, atexit_rmglob, LRUStoreCache,
-                          ConsolidatedMetadataStore)
+                          LMDBStore, SQLiteStore, MongoDBStore, RedisStore,
+                          atexit_rmglob, LRUStoreCache, ConsolidatedMetadataStore)
 from zarr.meta import (decode_array_metadata, encode_array_metadata, ZARR_FORMAT,
                        decode_group_metadata, encode_group_metadata)
 from zarr.compat import PY2
@@ -876,6 +876,16 @@ try:
 except ImportError:  # pragma: no cover
     sqlite3 = None
 
+try:
+    import pymongo
+except ImportError:  # pragma: no cover
+    pymongo = None
+
+try:
+    import redis
+except ImportError:  # pragma: no cover
+    redis = None
+
 
 @unittest.skipIf(sqlite3 is None, 'python built without sqlite')
 class TestSQLiteStore(StoreTests, unittest.TestCase):
@@ -884,6 +894,26 @@ class TestSQLiteStore(StoreTests, unittest.TestCase):
         path = tempfile.mktemp(suffix='.db')
         atexit.register(atexit_rmtree, path)
         store = SQLiteStore(path)
+        return store
+
+
+@unittest.skipIf(pymongo is None, 'test requires pymongo')
+class TestMongoDBStore(StoreTests, unittest.TestCase):
+
+    def create_store(self):
+        # TODO: this is the default host for MongoDB on Travis,
+        # we probably want to generalize this though
+        store = MongoDBStore('127.0.0.1')
+        return store
+
+
+@unittest.skipIf(redis is None, 'test requires redis')
+class TestRedisStore(StoreTests, unittest.TestCase):
+
+    def create_store(self):
+        # TODO: this is the default host for Redis on Travis,
+        # we probably want to generalize this though
+        store = RedisStore('localhost')
         return store
 
 

@@ -2109,6 +2109,71 @@ class SQLiteStore(MutableMapping):
         '''.format(t=self.table))
 
 
+class MongoDBStore(MutableMapping):
+    _key = 'key'
+    _value = 'value'
+
+    def __init__(self, database='mongodb_zarr', collection='zarr_collection',
+                 **kwargs):
+        import pymongo
+
+        self.client = pymongo.MongoClient(**kwargs)
+        self.collection = self.client[database][collection]
+
+    def __getitem__(self, key):
+        doc = self.collection.find_one({self._key: key})
+
+        if doc is None:
+            raise KeyError(key)
+        else:
+            return doc[self._value]
+
+    def __setitem__(self, key, val):
+        del self[key]
+        self.collection.insert_one({self._key: key, self._value: val})
+
+    def __delitem__(self, key):
+        self.collection.delete_many({self._key: key})
+
+    def __iter__(self):
+        for f in self.collection.find({}):
+            yield f[self._key]
+
+    def __len__(self):
+        return self.collection.count_documents({})
+
+
+class RedisStore(MutableMapping):
+
+    def __init__(self, prefix='zarr', **kwargs):
+        import redis
+        self.prefix = prefix
+        self.client = redis.Redis(**kwargs)
+
+    def _key(self, key):
+        return self.prefix + ':' + key
+
+    def __getitem__(self, key):
+        return self.client[self._key(key)]
+
+    def __setitem__(self, key, val):
+        self.client[self._key(key)] = val
+
+    def __delitem__(self, key):
+        del self.client[self._key(key)]
+
+    def __iter__(self):
+        for key in self.client.keys(self.prefix + ":*"):
+            yield key[len(self.prefix) + 1:].decode('utf-8')
+
+    def __len__(self):
+        return len(iter(self))
+
+    def clear(self):
+        for key in self.keys():
+            del self[key]
+
+
 class ConsolidatedMetadataStore(MutableMapping):
     """A layer over other storage, where the metadata has been consolidated into
     a single key.

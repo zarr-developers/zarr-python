@@ -10,6 +10,9 @@ addons:
   apt:
     packages:
     - libdb-dev
+services:
+  - redis-server
+  - mongodb
 
 matrix:
   include:
