@@ -2110,6 +2110,18 @@ class SQLiteStore(MutableMapping):
 
 
 class MongoDBStore(MutableMapping):
+    """Storage class using MongoDB.
+
+    Parameters
+    ----------
+    database : string
+        Name of database
+    collection : string
+        Name of collection
+    **kwargs
+        Keyword arguments passed through to the `pymongo.MongoClient` function.
+    """
+    
     _key = 'key'
     _value = 'value'
 
@@ -2144,7 +2156,15 @@ class MongoDBStore(MutableMapping):
 
 
 class RedisStore(MutableMapping):
+    """Storage class using Redis.
 
+    Parameters
+    ----------
+    prefix : string
+        Name of prefix for Redis keys
+    **kwargs
+        Keyword arguments passed through to the `redis.Redis` function.
+    """
     def __init__(self, prefix='zarr', **kwargs):
         import redis
         self.prefix = prefix
