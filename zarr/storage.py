@@ -62,6 +62,11 @@ else:  # pragma: no cover
     # POSIX rename() is always atomic
     from os import rename as replace
 
+# Import the proper urljoin function
+if sys.version_info.major == 3:
+    from urllib.parse import urljoin
+else:
+    from urlparse import urljoin
 
 def _path_to_prefix(path):
     # assume path already normalized
@@ -1954,3 +1959,37 @@ class ConsolidatedMetadataStore(MutableMapping):
 
     def listdir(self, path):
         return listdir(self.meta_store, path)
+
+
+class HTTPStore(MutableMapping):
+
+    def __init__(self, url_base):
+        import requests
+        self.url_base = url_base
+        self.session = requests.Session()
+
+    def __getitem__(self, key):
+        r = self.session.get(urljoin(self.url_base, key))
+        r.raise_for_status()
+        # is it correct to always return bytes?
+        return r.content
+
+    def __contains__(self, key):
+        h = self.session.head(urljoin(self.url_base, key))
+        return h.status_code == 200
+
+    def _not_implemented_error(self):
+        raise NotImplementedError('HTTPStore is designed to be used only with '
+                                  'consolidated metadata')
+
+    def __setitem__(self, key, value):
+        self._not_implemented_error()
+
+    def __delitem__(self, key):
+        self._not_implemented_error()
+
+    def __iter__(self):
+        self._not_implemented_error()
+
+    def __len__(self):
+        self._not_implemented_error()
