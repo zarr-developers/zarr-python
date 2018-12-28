@@ -2129,8 +2129,12 @@ class MongoDBStore(MutableMapping):
                  **kwargs):
         import pymongo
 
-        self.client = pymongo.MongoClient(**kwargs)
-        self.collection = self.client[database][collection]
+        self._database = database
+        self._collection = collection
+        self._kwargs = kwargs
+
+        self.client = pymongo.MongoClient(**self._kwargs)
+        self.collection = self.client[self._database][self._collection]
 
     def __getitem__(self, key):
         doc = self.collection.find_one({self._key: key})
@@ -2154,6 +2158,13 @@ class MongoDBStore(MutableMapping):
     def __len__(self):
         return self.collection.count_documents({})
 
+    def __getstate__(self):
+        return self._database, self._collection, self._kwargs
+
+    def __setstate__(self, state):
+        database, collection, kwargs = state
+        self.__init__(database=database, colection=collection, **kwargs)
+
 
 class RedisStore(MutableMapping):
     """Storage class using Redis.
@@ -2167,11 +2178,13 @@ class RedisStore(MutableMapping):
     """
     def __init__(self, prefix='zarr', **kwargs):
         import redis
-        self.prefix = prefix
+        self._prefix = prefix
+        self._kwargs = kwargs
+
         self.client = redis.Redis(**kwargs)
 
     def _key(self, key):
-        return self.prefix + ':' + key
+        return self._prefix + ':' + key
 
     def __getitem__(self, key):
         return self.client[self._key(key)]
@@ -2183,8 +2196,8 @@ class RedisStore(MutableMapping):
         del self.client[self._key(key)]
 
     def __iter__(self):
-        for key in self.client.keys(self.prefix + ":*"):
-            yield key[len(self.prefix) + 1:].decode('utf-8')
+        for key in self.client.keys(self._prefix + ":*"):
+            yield key[len(self._prefix) + 1:].decode('utf-8')
 
     def __len__(self):
         return len(iter(self))
@@ -2193,6 +2206,12 @@ class RedisStore(MutableMapping):
         for key in self.keys():
             del self[key]
 
+    def __getstate__(self):
+        return self._prefix, self._kwargs
+
+    def __setstate__(self, state):
+        prefix, kwargs = state
+        self.__init__(prefix=prefix, **kwargs)
 
 class ConsolidatedMetadataStore(MutableMapping):
     """A layer over other storage, where the metadata has been consolidated into
