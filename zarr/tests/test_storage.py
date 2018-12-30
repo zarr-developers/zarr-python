@@ -913,7 +913,7 @@ class TestRedisStore(StoreTests, unittest.TestCase):
     def create_store(self):
         # TODO: this is the default host for Redis on Travis,
         # we probably want to generalize this though
-        store = RedisStore(host='localhost', port=7777)
+        store = RedisStore(host='localhost')
         return store
 
 

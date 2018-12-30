@@ -11,6 +11,10 @@ addons:
     packages:
     - libdb-dev
 
+services:	
+  - redis-server	
+  - mongodb
+
 matrix:
   include:
     - python: 2.7
@@ -21,7 +25,6 @@ matrix:
       sudo: true
 
 before_script:
-    - sudo redis-server /etc/redis/redis.conf --port 7777
     - mongo mydb_test --eval 'db.createUser({user:"travis",pwd:"test",roles:["readWrite"]});'
 
 install:
