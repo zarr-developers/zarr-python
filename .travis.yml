@@ -10,9 +10,6 @@ addons:
   apt:
     packages:
     - libdb-dev
-services:
-  - redis-server
-  - mongodb
 
 matrix:
   include:
@@ -22,6 +19,10 @@ matrix:
     - python: 3.7
       dist: xenial
       sudo: true
+
+before_script:
+    - sudo redis-server /etc/redis/redis.conf --port 7777
+    - mongo mydb_test --eval 'db.createUser({user:"travis",pwd:"test",roles:["readWrite"]});'
 
 install:
   - pip install -U pip setuptools wheel tox-travis coveralls
