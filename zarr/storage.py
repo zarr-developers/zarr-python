@@ -2121,7 +2121,7 @@ class MongoDBStore(MutableMapping):
     **kwargs
         Keyword arguments passed through to the `pymongo.MongoClient` function.
     """
-    
+
     _key = 'key'
     _value = 'value'
 
