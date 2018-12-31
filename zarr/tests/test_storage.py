@@ -903,7 +903,10 @@ class TestMongoDBStore(StoreTests, unittest.TestCase):
     def create_store(self):
         # TODO: this is the default host for MongoDB on Travis,
         # we probably want to generalize this though
-        store = MongoDBStore(host='127.0.0.1')
+        store = MongoDBStore(host='127.0.0.1', database='zarr_tests',
+                             collection='zarr_tests')
+        # start with an empty store
+        store.clear()
         return store
 
 
@@ -913,7 +916,9 @@ class TestRedisStore(StoreTests, unittest.TestCase):
     def create_store(self):
         # TODO: this is the default host for Redis on Travis,
         # we probably want to generalize this though
-        store = RedisStore(host='localhost')
+        store = RedisStore(host='localhost', port=7777)
+        # start with an empty store
+        store.clear()
         return store
 
 

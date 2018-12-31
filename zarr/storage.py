@@ -2134,7 +2134,8 @@ class MongoDBStore(MutableMapping):
         self._kwargs = kwargs
 
         self.client = pymongo.MongoClient(**self._kwargs)
-        self.collection = self.client[self._database][self._collection]
+        self.db = self.client.get_database(self._database)
+        self.collection = self.db.get_collection(self._collection)
 
     def __getitem__(self, key):
         doc = self.collection.find_one({self._key: key})
@@ -2144,12 +2145,16 @@ class MongoDBStore(MutableMapping):
         else:
             return doc[self._value]
 
-    def __setitem__(self, key, val):
-        del self[key]
-        self.collection.insert_one({self._key: key, self._value: val})
+    def __setitem__(self, key, value):
+        value = ensure_bytes(value)
+        self.collection.replace_one({self._key: key},
+                                    {self._key: key, self._value: value},
+                                    upsert=True)
 
     def __delitem__(self, key):
-        self.collection.delete_many({self._key: key})
+        result = self.collection.delete_many({self._key: key})
+        if not result.deleted_count == 1:
+            raise KeyError(key)
 
     def __iter__(self):
         for f in self.collection.find({}):
@@ -2163,7 +2168,15 @@ class MongoDBStore(MutableMapping):
 
     def __setstate__(self, state):
         database, collection, kwargs = state
-        self.__init__(database=database, colection=collection, **kwargs)
+        self.__init__(database=database, collection=collection, **kwargs)
+
+    def close(self):
+        """Cleanup client resources and disconnect from MongoDB."""
+        self.client.close()
+
+    def clear(self):
+        """Remove all items from store."""
+        self.collection.delete_many({})
 
 
 class RedisStore(MutableMapping):
@@ -2184,27 +2197,37 @@ class RedisStore(MutableMapping):
         self.client = redis.Redis(**kwargs)
 
     def _key(self, key):
-        return self._prefix + ':' + key
+        return '{prefix}:{key}'.format(prefix=self._prefix, key=key)
 
     def __getitem__(self, key):
-        return self.client[self._key(key)]
+        value = self.client[self._key(key)]
+        if value is None:
+            raise KeyError(key)
+        return value
 
-    def __setitem__(self, key, val):
-        self.client[self._key(key)] = val
+    def __setitem__(self, key, value):
+        value = ensure_bytes(value)
+        self.client[self._key(key)] = value
 
     def __delitem__(self, key):
+        if key not in self.keylist():
+            raise KeyError(key)
         del self.client[self._key(key)]
 
+    def keylist(self):
+        offset = len(self._key(''))  # length of prefix
+        return [key[offset:].decode('utf-8') for key in self.client.keys(self._key('*'))]
+
+    def keys(self):
+        for key in self.keylist():
+            yield key
+
     def __iter__(self):
-        for key in self.client.keys(self._prefix + ":*"):
-            yield key[len(self._prefix) + 1:].decode('utf-8')
+        for key in self.keys():
+            yield key
 
     def __len__(self):
-        return len(iter(self))
-
-    def clear(self):
-        for key in self.keys():
-            del self[key]
+        return len(self.keylist())
 
     def __getstate__(self):
         return self._prefix, self._kwargs
@@ -2212,6 +2235,11 @@ class RedisStore(MutableMapping):
     def __setstate__(self, state):
         prefix, kwargs = state
         self.__init__(prefix=prefix, **kwargs)
+
+    def clear(self):
+        for key in self.keys():
+            del self[key]
+
 
 class ConsolidatedMetadataStore(MutableMapping):
     """A layer over other storage, where the metadata has been consolidated into
