@@ -2143,7 +2143,7 @@ class MongoDBStore(MutableMapping):
         if doc is None:
             raise KeyError(key)
         else:
-            return doc[self._value]
+            return doc[self._value].decode('utf-8')
 
     def __setitem__(self, key, value):
         value = ensure_bytes(value)
