@@ -1735,7 +1735,7 @@ class Array(object):
 
         # apply filters
         if self._filters:
-            for f in self._filters[::-1]:
+            for f in reversed(self._filters):
                 chunk = f.decode(chunk)
 
         # view as numpy array with correct dtype
