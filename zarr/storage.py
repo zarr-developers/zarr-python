@@ -1968,7 +1968,7 @@ class SQLiteStore(MutableMapping):
 
     def __delitem__(self, key):
         self.cursor.execute('DELETE FROM zarr WHERE k = ?', (key,))
-        if self.cursor.rowcount != 1:
+        if self.cursor.rowcount < 1:
             raise KeyError(key)
 
     def __contains__(self, key):
