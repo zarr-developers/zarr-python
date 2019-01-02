@@ -1957,7 +1957,7 @@ class SQLiteStore(MutableMapping):
         self.db.close()
 
     def __getitem__(self, key):
-        value = self.cursor.execute('SELECT v FROM zarr WHERE k = ?', (key,))
+        value = self.cursor.execute('SELECT v FROM zarr WHERE (k = ?)', (key,))
         for v, in value:
             return v
         else:
@@ -1967,13 +1967,13 @@ class SQLiteStore(MutableMapping):
         self.update({key: value})
 
     def __delitem__(self, key):
-        self.cursor.execute('DELETE FROM zarr WHERE k = ?', (key,))
+        self.cursor.execute('DELETE FROM zarr WHERE (k = ?)', (key,))
         if self.cursor.rowcount < 1:
             raise KeyError(key)
 
     def __contains__(self, key):
         cs = self.cursor.execute(
-            'SELECT COUNT(*) FROM zarr WHERE k = ?', (key,)
+            'SELECT COUNT(*) FROM zarr WHERE (k = ?)', (key,)
         )
         for has, in cs:
             has = bool(has)
