@@ -1974,8 +1974,7 @@ class SQLiteStore(MutableMapping):
 
     def __contains__(self, key):
         cs = self.cursor.execute(
-            'SELECT COUNT(*) FROM zarr WHERE k = ?',
-            (key,)
+            'SELECT COUNT(*) FROM zarr WHERE k = ?', (key,)
         )
         for has, in cs:
             has = bool(has)
