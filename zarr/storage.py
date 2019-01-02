@@ -1908,7 +1908,7 @@ class SQLiteStore(MutableMapping):
         >>> store.close()  # don't forget to call this when you're done
     """
 
-    def __init__(self, path, table='zarr', **kwargs):
+    def __init__(self, path, **kwargs):
         import sqlite3
 
         kwargs.setdefault('timeout', 5.0)
@@ -1920,7 +1920,6 @@ class SQLiteStore(MutableMapping):
 
         # store properties
         self.path = path
-        self.table = table
         self.kwargs = kwargs
 
         # open database
@@ -1941,10 +1940,8 @@ class SQLiteStore(MutableMapping):
         # initialize database with our table if missing
         self.cursor.execute(
             '''
-            CREATE TABLE IF NOT EXISTS {t}(k TEXT PRIMARY KEY, v BLOB)
-            '''.format(
-                t=self.table
-            )
+            CREATE TABLE IF NOT EXISTS zarr(k TEXT PRIMARY KEY, v BLOB)
+            '''
         )
 
     def __getstate__(self):
@@ -1963,7 +1960,7 @@ class SQLiteStore(MutableMapping):
 
     def __getitem__(self, key):
         value = self.cursor.execute(
-            'SELECT v FROM {t} WHERE k = ?'.format(t=self.table), (key,)
+            'SELECT v FROM zarr WHERE k = ?', (key,)
         )
         for v, in value:
             return v
@@ -1976,14 +1973,14 @@ class SQLiteStore(MutableMapping):
     def __delitem__(self, key):
         if key in self:
             self.cursor.execute(
-                'DELETE FROM {t} WHERE k = ?'.format(t=self.table), (key,)
+                'DELETE FROM zarr WHERE k = ?', (key,)
             )
         else:
             raise KeyError(key)
 
     def __contains__(self, key):
         cs = self.cursor.execute(
-            'SELECT COUNT(*) FROM {t} WHERE k = ?'.format(t=self.table),
+            'SELECT COUNT(*) FROM zarr WHERE k = ?',
             (key,)
         )
         for has, in cs:
@@ -1991,17 +1988,17 @@ class SQLiteStore(MutableMapping):
             return has
 
     def items(self):
-        kvs = self.cursor.execute('SELECT k, v FROM {t}'.format(t=self.table))
+        kvs = self.cursor.execute('SELECT k, v FROM zarr')
         for k, v in kvs:
             yield k, v
 
     def keys(self):
-        ks = self.cursor.execute('SELECT k FROM {t}'.format(t=self.table))
+        ks = self.cursor.execute('SELECT k FROM zarr')
         for k, in ks:
             yield k
 
     def values(self):
-        vs = self.cursor.execute('SELECT v FROM {t}'.format(t=self.table))
+        vs = self.cursor.execute('SELECT v FROM zarr')
         for v, in vs:
             yield v
 
@@ -2010,7 +2007,7 @@ class SQLiteStore(MutableMapping):
 
     def __len__(self):
         cs = self.cursor.execute(
-            'SELECT COUNT(*) FROM {t}'.format(t=self.table)
+            'SELECT COUNT(*) FROM zarr'
         )
         for c, in cs:
             return c
@@ -2034,7 +2031,7 @@ class SQLiteStore(MutableMapping):
                 kv_list.append((k, v))
 
         self.cursor.executemany(
-            'REPLACE INTO {t} VALUES (?, ?)'.format(t=self.table), kv_list
+            'REPLACE INTO zarr VALUES (?, ?)', kv_list
         )
 
     def listdir(self, path=None):
@@ -2043,11 +2040,9 @@ class SQLiteStore(MutableMapping):
             '''
             SELECT DISTINCT SUBSTR(m, 0, INSTR(m, "/")) AS l FROM (
                 SELECT LTRIM(SUBSTR(k, LENGTH(?) + 1), "/") || "/" AS m
-                FROM {t} WHERE k LIKE ? || "_%"
+                FROM zarr WHERE k LIKE ? || "_%"
             ) ORDER BY l ASC
-            '''.format(
-                t=self.table
-            ),
+            ''',
             (path, path)
         )
         keys = list(map(operator.itemgetter(0), keys))
@@ -2057,12 +2052,10 @@ class SQLiteStore(MutableMapping):
         path = normalize_storage_path(path)
         size = self.cursor.execute(
             '''
-            SELECT COALESCE(SUM(LENGTH(v)), 0) FROM {t}
+            SELECT COALESCE(SUM(LENGTH(v)), 0) FROM zarr
             WHERE k LIKE ? || "%" AND
                   0 == INSTR(LTRIM(SUBSTR(k, LENGTH(?) + 1), "/"), "/")
-            '''.format(
-                t=self.table
-            ),
+            ''',
             (path, path)
         )
         for s, in size:
@@ -2073,10 +2066,8 @@ class SQLiteStore(MutableMapping):
         if path:
             self.cursor.execute(
                 '''
-                DELETE FROM {t} WHERE k LIKE ? || "_%"
-                '''.format(
-                    t=self.table
-                ),
+                DELETE FROM zarr WHERE k LIKE ? || "_%"
+                ''',
                 (path,)
             )
         else:
@@ -2086,12 +2077,10 @@ class SQLiteStore(MutableMapping):
         self.cursor.executescript(
             '''
             BEGIN TRANSACTION;
-                DROP TABLE {t};
-                CREATE TABLE {t}(k TEXT PRIMARY KEY, v BLOB);
+                DROP TABLE zarr;
+                CREATE TABLE zarr(k TEXT PRIMARY KEY, v BLOB);
             COMMIT TRANSACTION;
-            '''.format(
-                t=self.table
-            )
+            '''
         )
 
 
