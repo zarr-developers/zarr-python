@@ -2028,7 +2028,7 @@ class SQLiteStore(MutableMapping):
             '''
             SELECT DISTINCT SUBSTR(m, 0, INSTR(m, "/")) AS l FROM (
                 SELECT LTRIM(SUBSTR(k, LENGTH(?) + 1), "/") || "/" AS m
-                FROM zarr WHERE k LIKE ? || "_%"
+                FROM zarr WHERE k LIKE (? || "_%")
             ) ORDER BY l ASC
             ''',
             (path, path)
@@ -2041,7 +2041,7 @@ class SQLiteStore(MutableMapping):
         size = self.cursor.execute(
             '''
             SELECT COALESCE(SUM(LENGTH(v)), 0) FROM zarr
-            WHERE k LIKE ? || "%" AND
+            WHERE k LIKE (? || "%") AND
                   0 == INSTR(LTRIM(SUBSTR(k, LENGTH(?) + 1), "/"), "/")
             ''',
             (path, path)
@@ -2054,7 +2054,7 @@ class SQLiteStore(MutableMapping):
         if path:
             self.cursor.execute(
                 '''
-                DELETE FROM zarr WHERE k LIKE ? || "_%"
+                DELETE FROM zarr WHERE k LIKE (? || "_%")
                 ''',
                 (path,)
             )
