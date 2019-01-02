@@ -2100,12 +2100,16 @@ class SQLiteStore(MutableMapping):
             self.clear()
 
     def clear(self):
-        self.cursor.executescript('''
+        self.cursor.executescript(
+            '''
             BEGIN TRANSACTION;
                 DROP TABLE {t};
                 CREATE TABLE {t}(k TEXT PRIMARY KEY, v BLOB);
             COMMIT TRANSACTION;
-        '''.format(t=self.table))
+            '''.format(
+                t=self.table
+            )
+        )
 
 
 class ConsolidatedMetadataStore(MutableMapping):
