@@ -2053,8 +2053,7 @@ class SQLiteStore(MutableMapping):
         path = normalize_storage_path(path)
         if path:
             self.cursor.execute(
-                'DELETE FROM zarr WHERE k LIKE (? || "_%")',
-                (path,)
+                'DELETE FROM zarr WHERE k LIKE (? || "_%")', (path,)
             )
         else:
             self.clear()
