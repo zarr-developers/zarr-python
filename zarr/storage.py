@@ -2040,12 +2040,13 @@ class SQLiteStore(MutableMapping):
         keys = self.cursor.execute(
             '''
             SELECT DISTINCT SUBSTR(m, 0, INSTR(m, "/")) AS l FROM (
-                SELECT LTRIM(SUBSTR(k, LENGTH("{p}") + 1), "/") || "/" AS m
-                FROM {t} WHERE k LIKE "{p}_%"
+                SELECT LTRIM(SUBSTR(k, LENGTH(?) + 1), "/") || "/" AS m
+                FROM {t} WHERE k LIKE ? || "_%"
             ) ORDER BY l ASC
             '''.format(
-                t=self.table, p=path
-            )
+                t=self.table
+            ),
+            (path, path)
         )
         keys = list(map(operator.itemgetter(0), keys))
         return keys
