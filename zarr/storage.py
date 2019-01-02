@@ -1983,8 +1983,11 @@ class SQLiteStore(MutableMapping):
             raise KeyError(key)
 
     def __contains__(self, key):
-        op_has = 'SELECT COUNT(*) FROM {t} WHERE k = ?'.format(t=self.table)
-        for has, in self.cursor.execute(op_has, (key,)):
+        cs = self.cursor.execute(
+            'SELECT COUNT(*) FROM {t} WHERE k = ?'.format(t=self.table),
+            (key,)
+        )
+        for has, in cs:
             has = bool(has)
             return has
 
