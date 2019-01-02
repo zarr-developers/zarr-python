@@ -2056,11 +2056,12 @@ class SQLiteStore(MutableMapping):
         size = self.cursor.execute(
             '''
             SELECT COALESCE(SUM(LENGTH(v)), 0) FROM {t}
-            WHERE k LIKE "{p}%" AND
-                  0 == INSTR(LTRIM(SUBSTR(k, LENGTH("{p}") + 1), "/"), "/")
+            WHERE k LIKE ? || "%" AND
+                  0 == INSTR(LTRIM(SUBSTR(k, LENGTH(?) + 1), "/"), "/")
             '''.format(
-                t=self.table, p=path
-            )
+                t=self.table
+            ),
+            (path, path)
         )
         for s, in size:
             return s
