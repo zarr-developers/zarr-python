@@ -1941,7 +1941,9 @@ class SQLiteStore(MutableMapping):
 
         # initialize database with our table if missing
         self.cursor.execute(
-            'CREATE TABLE IF NOT EXISTS {t}(k TEXT PRIMARY KEY, v BLOB)'.format(
+            '''
+            CREATE TABLE IF NOT EXISTS {t}(k TEXT PRIMARY KEY, v BLOB)
+            '''.format(
                 t=self.table
             )
         )
