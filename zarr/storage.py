@@ -1939,9 +1939,7 @@ class SQLiteStore(MutableMapping):
 
         # initialize database with our table if missing
         self.cursor.execute(
-            '''
-            CREATE TABLE IF NOT EXISTS zarr(k TEXT PRIMARY KEY, v BLOB)
-            '''
+            'CREATE TABLE IF NOT EXISTS zarr(k TEXT PRIMARY KEY, v BLOB)'
         )
 
     def __getstate__(self):
@@ -1959,9 +1957,7 @@ class SQLiteStore(MutableMapping):
         self.db.close()
 
     def __getitem__(self, key):
-        value = self.cursor.execute(
-            'SELECT v FROM zarr WHERE k = ?', (key,)
-        )
+        value = self.cursor.execute('SELECT v FROM zarr WHERE k = ?', (key,))
         for v, in value:
             return v
         else:
@@ -1972,9 +1968,7 @@ class SQLiteStore(MutableMapping):
 
     def __delitem__(self, key):
         if key in self:
-            self.cursor.execute(
-                'DELETE FROM zarr WHERE k = ?', (key,)
-            )
+            self.cursor.execute('DELETE FROM zarr WHERE k = ?', (key,))
         else:
             raise KeyError(key)
 
@@ -2006,9 +2000,7 @@ class SQLiteStore(MutableMapping):
         return self.keys()
 
     def __len__(self):
-        cs = self.cursor.execute(
-            'SELECT COUNT(*) FROM zarr'
-        )
+        cs = self.cursor.execute('SELECT COUNT(*) FROM zarr')
         for c, in cs:
             return c
 
@@ -2030,9 +2022,7 @@ class SQLiteStore(MutableMapping):
                 # Accumulate key-value pairs for storage
                 kv_list.append((k, v))
 
-        self.cursor.executemany(
-            'REPLACE INTO zarr VALUES (?, ?)', kv_list
-        )
+        self.cursor.executemany('REPLACE INTO zarr VALUES (?, ?)', kv_list)
 
     def listdir(self, path=None):
         path = normalize_storage_path(path)
