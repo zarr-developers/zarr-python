@@ -1930,6 +1930,9 @@ class SQLiteStore(MutableMapping):
         if sqlite3.sqlite_version_info >= (3, 3, 1):
             check_same_thread = False
 
+        # keep a lock for serializing mutable operations
+        self.lock = Lock()
+
         # open database
         self.db = sqlite3.connect(
             self.path,
@@ -1946,9 +1949,10 @@ class SQLiteStore(MutableMapping):
         self.cursor = self.db.cursor()
 
         # initialize database with our table if missing
-        self.cursor.execute(
-            'CREATE TABLE IF NOT EXISTS zarr(k TEXT PRIMARY KEY, v BLOB)'
-        )
+        with self.lock:
+            self.cursor.execute(
+                'CREATE TABLE IF NOT EXISTS zarr(k TEXT PRIMARY KEY, v BLOB)'
+            )
 
     def __getstate__(self):
         return self.path, self.kwargs
@@ -1974,9 +1978,10 @@ class SQLiteStore(MutableMapping):
         self.update({key: value})
 
     def __delitem__(self, key):
-        self.cursor.execute('DELETE FROM zarr WHERE (k = ?)', (key,))
-        if self.cursor.rowcount < 1:
-            raise KeyError(key)
+        with self.lock:
+            self.cursor.execute('DELETE FROM zarr WHERE (k = ?)', (key,))
+            if self.cursor.rowcount < 1:
+                raise KeyError(key)
 
     def __contains__(self, key):
         cs = self.cursor.execute(
@@ -2027,7 +2032,8 @@ class SQLiteStore(MutableMapping):
                 # Accumulate key-value pairs for storage
                 kv_list.append((k, v))
 
-        self.cursor.executemany('REPLACE INTO zarr VALUES (?, ?)', kv_list)
+        with self.lock:
+            self.cursor.executemany('REPLACE INTO zarr VALUES (?, ?)', kv_list)
 
     def listdir(self, path=None):
         path = normalize_storage_path(path)
@@ -2059,21 +2065,23 @@ class SQLiteStore(MutableMapping):
     def rmdir(self, path=None):
         path = normalize_storage_path(path)
         if path:
-            self.cursor.execute(
-                'DELETE FROM zarr WHERE k LIKE (? || "_%")', (path,)
-            )
+            with self.lock:
+                self.cursor.execute(
+                    'DELETE FROM zarr WHERE k LIKE (? || "_%")', (path,)
+                )
         else:
             self.clear()
 
     def clear(self):
-        self.cursor.executescript(
-            '''
-            BEGIN TRANSACTION;
-                DROP TABLE zarr;
-                CREATE TABLE zarr(k TEXT PRIMARY KEY, v BLOB);
-            COMMIT TRANSACTION;
-            '''
-        )
+        with self.lock:
+            self.cursor.executescript(
+                '''
+                BEGIN TRANSACTION;
+                    DROP TABLE zarr;
+                    CREATE TABLE zarr(k TEXT PRIMARY KEY, v BLOB);
+                COMMIT TRANSACTION;
+                '''
+            )
 
 
 class ConsolidatedMetadataStore(MutableMapping):
