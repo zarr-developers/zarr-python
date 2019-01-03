@@ -1960,8 +1960,7 @@ class SQLiteStore(MutableMapping):
         value = self.cursor.execute('SELECT v FROM zarr WHERE (k = ?)', (key,))
         for v, in value:
             return v
-        else:
-            raise KeyError(key)
+        raise KeyError(key)
 
     def __setitem__(self, key, value):
         self.update({key: value})
