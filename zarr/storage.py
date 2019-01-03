@@ -1926,9 +1926,9 @@ class SQLiteStore(MutableMapping):
         #
         # ref: https://www.sqlite.org/releaselog/3_3_1.html
         # ref: https://bugs.python.org/issue27190
-        check_same_thread=True
+        check_same_thread = True
         if sqlite3.sqlite_version_info >= (3, 3, 1):
-            check_same_thread=False
+            check_same_thread = False
 
         # open database
         self.db = sqlite3.connect(
