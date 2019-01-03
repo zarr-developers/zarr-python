@@ -935,7 +935,7 @@ except ImportError:  # pragma: no cover
 
 
 @unittest.skipIf(sqlite3 is None, 'python built without sqlite')
-class TestSQLiteStore(TestGroup):
+class TestGroupWithSQLiteStore(TestGroup):
 
     def create_store(self):
         path = tempfile.mktemp(suffix='.db')
