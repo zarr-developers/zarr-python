@@ -1531,6 +1531,7 @@ class Array(object):
                     item = [slice(None)] * self.ndim
                     for a in indexer.drop_axes:
                         item[a] = np.newaxis
+                    item = tuple(item)
                     chunk_value = chunk_value[item]
 
             # put data
