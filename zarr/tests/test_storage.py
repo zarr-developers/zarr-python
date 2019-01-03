@@ -8,6 +8,7 @@ import json
 import array
 import shutil
 import os
+from pickle import PicklingError
 
 
 import numpy as np
@@ -885,6 +886,25 @@ class TestSQLiteStore(StoreTests, unittest.TestCase):
         atexit.register(atexit_rmtree, path)
         store = SQLiteStore(path)
         return store
+
+
+@unittest.skipIf(sqlite3 is None, 'python built without sqlite')
+class TestSQLiteStoreInMemory(TestSQLiteStore):
+
+    def create_store(self):
+        store = SQLiteStore(':memory:')
+        return store
+
+    def test_pickle(self):
+
+        # setup store
+        store = self.create_store()
+        store['foo'] = b'bar'
+        store['baz'] = b'quux'
+
+        # round-trip through pickle
+        with pytest.raises(PicklingError):
+            pickle.dumps(store)
 
 
 class TestLRUStoreCache(StoreTests, unittest.TestCase):
