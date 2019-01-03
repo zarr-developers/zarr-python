@@ -27,6 +27,7 @@ import re
 import sys
 import json
 import multiprocessing
+from pickle import PicklingError
 from threading import Lock, RLock
 import glob
 import warnings
@@ -1955,6 +1956,8 @@ class SQLiteStore(MutableMapping):
             )
 
     def __getstate__(self):
+        if self.path == ':memory:':
+            raise PicklingError('Cannot pickle in-memory SQLite databases')
         return self.path, self.kwargs
 
     def __setstate__(self, state):
