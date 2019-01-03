@@ -42,6 +42,9 @@ Bug fixes
 * Ensure ``DictStore`` contains only ``bytes`` to facilitate comparisons and protect against writes.
   By :user:`John Kirkham <jakirkham>`, :issue:`350`
 
+* Always use a ``tuple`` when indexing a NumPy ``ndarray``.
+  By :user:`John Kirkham <jakirkham>`, :issue:`376`
+
 Maintenance
 ~~~~~~~~~~~
 

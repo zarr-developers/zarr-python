@@ -1531,6 +1531,7 @@ class Array(object):
                     item = [slice(None)] * self.ndim
                     for a in indexer.drop_axes:
                         item[a] = np.newaxis
+                    item = tuple(item)
                     chunk_value = chunk_value[item]
 
             # put data
@@ -1735,7 +1736,7 @@ class Array(object):
 
         # apply filters
         if self._filters:
-            for f in self._filters[::-1]:
+            for f in reversed(self._filters):
                 chunk = f.decode(chunk)
 
         # view as numpy array with correct dtype
