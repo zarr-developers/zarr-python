@@ -92,6 +92,8 @@ class StoreTests(object):
         assert len(store) == 0
         with pytest.raises(KeyError):
             store.pop('xxx')
+        v = store.pop('xxx', b'')
+        assert v == b''
 
     def test_writeable_values(self):
         store = self.create_store()
