@@ -37,7 +37,7 @@ from zarr.util import (normalize_shape, normalize_chunks, normalize_order,
                        normalize_storage_path, buffer_size,
                        normalize_fill_value, nolock, normalize_dtype)
 from zarr.meta import encode_array_metadata, encode_group_metadata
-from zarr.compat import PY2, OrderedDict_move_to_end
+from zarr.compat import PY2, OrderedDict_move_to_end, text_type
 from numcodecs.registry import codec_registry
 from numcodecs.compat import ensure_bytes, ensure_contiguous_ndarray
 from zarr.errors import (err_contains_group, err_contains_array, err_bad_compressor,
@@ -2146,7 +2146,10 @@ class MongoDBStore(MutableMapping):
             return doc[self._value]
 
     def __setitem__(self, key, value):
-        value = ensure_bytes(value)
+        if isinstance(value, text_type):
+            value = value.encode('ascii')
+        else:
+            value = ensure_bytes(value)
         self.collection.replace_one({self._key: key},
                                     {self._key: key, self._value: value},
                                     upsert=True)
@@ -2200,10 +2203,7 @@ class RedisStore(MutableMapping):
         return '{prefix}:{key}'.format(prefix=self._prefix, key=key)
 
     def __getitem__(self, key):
-        value = self.client[self._key(key)]
-        if value is None:
-            raise KeyError(key)
-        return value
+        return self.client[self._key(key)]
 
     def __setitem__(self, key, value):
         value = ensure_bytes(value)
