@@ -1912,9 +1912,6 @@ class SQLiteStore(MutableMapping):
     def __init__(self, path, **kwargs):
         import sqlite3
 
-        kwargs.setdefault('timeout', 5.0)
-        kwargs.setdefault('cached_statements', 100)
-
         # normalize path
         if path != ':memory:':
             path = os.path.abspath(path)
