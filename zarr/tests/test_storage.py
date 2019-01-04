@@ -889,7 +889,7 @@ class TestSQLiteStore(StoreTests, unittest.TestCase):
 
 
 @unittest.skipIf(sqlite3 is None, 'python built without sqlite')
-class TestSQLiteStoreInMemory(TestSQLiteStore):
+class TestSQLiteStoreInMemory(TestSQLiteStore, unittest.TestCase):
 
     def create_store(self):
         store = SQLiteStore(':memory:')
