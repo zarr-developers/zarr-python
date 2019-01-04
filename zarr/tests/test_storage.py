@@ -94,6 +94,8 @@ class StoreTests(object):
             store.pop('xxx')
         v = store.pop('xxx', b'')
         assert v == b''
+        v = store.pop('xxx', None)
+        assert v is None
 
     def test_writeable_values(self):
         store = self.create_store()
