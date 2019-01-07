@@ -2112,6 +2112,9 @@ class SQLiteStore(MutableMapping):
 class MongoDBStore(MutableMapping):
     """Storage class using MongoDB.
 
+    Requires the `pymongo <https://api.mongodb.com/python/current/>`_
+    package to be installed.
+
     Parameters
     ----------
     database : string
@@ -2120,6 +2123,30 @@ class MongoDBStore(MutableMapping):
         Name of collection
     **kwargs
         Keyword arguments passed through to the `pymongo.MongoClient` function.
+
+    Examples
+    --------
+    Store a single array::
+
+        >>> import zarr
+        >>> store = zarr.MongoDBStore('localhost')
+        >>> z = zarr.zeros((10, 10), chunks=(5, 5), store=store, overwrite=True)
+        >>> z[...] = 42
+        >>> store.close()
+
+    Store a group::
+
+        >>> store = zarr.MongoDBStore('localhost')
+        >>> root = zarr.group(store=store, overwrite=True)
+        >>> foo = root.create_group('foo')
+        >>> bar = foo.zeros('bar', shape=(10, 10), chunks=(5, 5))
+        >>> bar[...] = 42
+        >>> store.close()
+
+    Notes
+    -----
+    The maximum chunksize in MongoDB documents is 16 MB.
+
     """
 
     _key = 'key'
@@ -2182,12 +2209,33 @@ class MongoDBStore(MutableMapping):
 class RedisStore(MutableMapping):
     """Storage class using Redis.
 
+    Requires the `redis <https://redis-py.readthedocs.io/>`_
+    package to be installed.
+
     Parameters
     ----------
     prefix : string
         Name of prefix for Redis keys
     **kwargs
         Keyword arguments passed through to the `redis.Redis` function.
+
+    Examples
+    --------
+    Store a single array::
+
+        >>> import zarr
+        >>> store = zarr.RedisStore(port=6379)
+        >>> z = zarr.zeros((10, 10), chunks=(5, 5), store=store, overwrite=True)
+        >>> z[...] = 42
+
+    Store a group::
+
+        >>> store = zarr.RedisStore(port=6379)
+        >>> root = zarr.group(store=store, overwrite=True)
+        >>> foo = root.create_group('foo')
+        >>> bar = foo.zeros('bar', shape=(10, 10), chunks=(5, 5))
+        >>> bar[...] = 42
+
     """
     def __init__(self, prefix='zarr', **kwargs):
         import redis
@@ -2213,7 +2261,8 @@ class RedisStore(MutableMapping):
 
     def keylist(self):
         offset = len(self._key(''))  # length of prefix
-        return [key[offset:].decode('utf-8') for key in self.client.keys(self._key('*'))]
+        return [key[offset:].decode('utf-8')
+                for key in self.client.keys(self._key('*'))]
 
     def keys(self):
         for key in self.keylist():
