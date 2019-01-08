@@ -5,9 +5,10 @@ import base64
 
 
 import numpy as np
+from numcodecs.compat import ensure_bytes
 
 
-from zarr.compat import PY2, binary_type, Mapping
+from zarr.compat import PY2, Mapping
 from zarr.errors import MetadataError
 
 
@@ -15,14 +16,9 @@ ZARR_FORMAT = 2
 
 
 def ensure_str(s):
-    if PY2:  # pragma: py3 no cover
-        # noinspection PyUnresolvedReferences
-        if isinstance(s, buffer):  # noqa
-            s = str(s)
-    else:  # pragma: py2 no cover
-        if isinstance(s, memoryview):
-            s = s.tobytes()
-        if isinstance(s, binary_type):
+    if not isinstance(s, str):
+        s = ensure_bytes(s)
+        if not PY2:  # pragma: py2 no cover
             s = s.decode('ascii')
     return s
 
@@ -213,6 +209,6 @@ def encode_fill_value(v, dtype):
     elif dtype.kind == 'U':
         return v
     elif dtype.kind in 'mM':
-        return int(v.view('u8'))
+        return int(v.view('i8'))
     else:
         return v

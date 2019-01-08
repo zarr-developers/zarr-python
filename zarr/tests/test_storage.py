@@ -63,6 +63,12 @@ class MutableMappingStoreTests(object):
                 # noinspection PyStatementEffect
                 del store['foo']
 
+    def test_set_invalid_content(self):
+        store = self.create_store()
+
+        with pytest.raises(TypeError):
+            store['baz'] = list(range(5))
+
     def test_clear(self):
         store = self.create_store()
         store['foo'] = b'bar'
@@ -590,6 +596,10 @@ class TestMappingStore(StoreTests, unittest.TestCase):
     def create_store(self):
         return dict()
 
+    def test_set_invalid_content(self):
+        # Generic mappings support non-buffer types
+        pass
+
 
 def setdel_hierarchy_checks(store):
     # these tests are for stores that are aware of hierarchy levels; this
@@ -633,17 +643,14 @@ class TestDictStore(StoreTests, unittest.TestCase):
     def create_store(self):
         return DictStore()
 
+    def test_store_contains_bytes(self):
+        store = self.create_store()
+        store['foo'] = np.array([97, 98, 99, 100, 101], dtype=np.uint8)
+        assert store['foo'] == b'abcde'
+
     def test_setdel(self):
         store = self.create_store()
         setdel_hierarchy_checks(store)
-
-    def test_getsize_ext(self):
-        store = self.create_store()
-        store['a'] = list(range(10))
-        store['b/c'] = list(range(10))
-        assert -1 == store.getsize()
-        assert -1 == store.getsize('a')
-        assert -1 == store.getsize('b')
 
 
 class TestDirectoryStore(StoreTests, unittest.TestCase):
@@ -1291,6 +1298,10 @@ def test_getsize():
     store['baz/quux'] = b'ccccc'
     assert 7 == getsize(store)
     assert 5 == getsize(store, 'baz')
+
+    store = dict()
+    store['boo'] = None
+    assert -1 == getsize(store)
 
 
 def test_migrate_1to2():

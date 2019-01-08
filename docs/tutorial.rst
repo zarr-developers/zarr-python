@@ -178,8 +178,8 @@ print some diagnostics, e.g.::
                        : blocksize=0)
     Store type         : builtins.dict
     No. bytes          : 400000000 (381.5M)
-    No. bytes stored   : 3242241 (3.1M)
-    Storage ratio      : 123.4
+    No. bytes stored   : 3379344 (3.2M)
+    Storage ratio      : 118.4
     Chunks initialized : 100/100
 
 If you don't specify a compressor, by default Zarr uses the Blosc
