@@ -3,7 +3,7 @@ from __future__ import absolute_import, print_function, division
 import tempfile
 import shutil
 import atexit
-import warnings
+import os.path
 
 
 import numpy as np
@@ -20,12 +20,6 @@ from zarr.hierarchy import open_group
 from zarr.errors import PermissionError
 from zarr.codecs import Zlib
 from zarr.compat import PY2
-
-
-# needed for PY2/PY3 consistent behaviour
-if PY2:  # pragma: py3 no cover
-    warnings.resetwarnings()
-    warnings.simplefilter('always')
 
 
 # something bcolz-like
@@ -141,6 +135,12 @@ def test_full():
     z = full(100, chunks=10, fill_value=np.nan, dtype='f8')
     assert np.all(np.isnan(z[:]))
 
+    # NaT
+    z = full(100, chunks=10, fill_value='NaT', dtype='M8[s]')
+    assert np.all(np.isnat(z[:]))
+    z = full(100, chunks=10, fill_value='NaT', dtype='m8[s]')
+    assert np.all(np.isnat(z[:]))
+
     # byte string dtype
     v = b'xxx'
     z = full(100, chunks=10, fill_value=v, dtype='S3')
@@ -246,6 +246,14 @@ def test_open_array():
     z = open_array(store, shape=100, path='foo/bar', mode='w')
     assert isinstance(z, Array)
     assert 'foo/bar' == z.path
+
+    # with chunk store
+    meta_store = 'data/meta.zarr'
+    chunk_store = 'data/chunks.zarr'
+    z = open_array(store=meta_store, chunk_store=chunk_store, shape=11, mode='w')
+    z[:] = 42
+    assert os.path.abspath(meta_store) == z.store.path
+    assert os.path.abspath(chunk_store) == z.chunk_store.path
 
 
 def test_empty_like():
@@ -457,12 +465,15 @@ def test_compression_args():
     assert 'zlib' == z.compressor.codec_id
     assert 9 == z.compressor.level
 
-    with pytest.warns(UserWarning):
-        # 'compressor' overrides 'compression'
-        create(100, compressor=Zlib(9), compression='bz2', compression_opts=1)
-    with pytest.warns(UserWarning):
-        # 'compressor' ignores 'compression_opts'
-        create(100, compressor=Zlib(9), compression_opts=1)
+    # cannot get warning tests to work on PY2
+    if not PY2:  # pragma: py2 no cover
+
+        with pytest.warns(UserWarning):
+            # 'compressor' overrides 'compression'
+            create(100, compressor=Zlib(9), compression='bz2', compression_opts=1)
+        with pytest.warns(UserWarning):
+            # 'compressor' ignores 'compression_opts'
+            create(100, compressor=Zlib(9), compression_opts=1)
 
 
 def test_create_read_only():

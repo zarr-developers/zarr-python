@@ -8,6 +8,7 @@ import re
 
 
 import numpy as np
+from numcodecs.compat import ensure_ndarray
 
 
 from zarr.util import (is_total_slice, human_readable_size, normalize_resize_args,
@@ -1482,29 +1483,20 @@ class Array(object):
         # obtain key for chunk
         ckey = self._chunk_key((0,))
 
-        chunk = None
+        # setup chunk
+        try:
+            # obtain compressed data for chunk
+            cdata = self.chunk_store[ckey]
 
-        if self._chunk_cache is not None:
-            try:
-                chunk = self._chunk_cache[ckey]
-            except KeyError:
-                pass
+        except KeyError:
+            # chunk not initialized
+            chunk = np.zeros((), dtype=self._dtype)
+            if self._fill_value is not None:
+                chunk.fill(self._fill_value)
 
-        if chunk is None:
-            # setup chunk
-            try:
-                # obtain compressed data for chunk
-                cdata = self.chunk_store[ckey]
-
-            except KeyError:
-                # chunk not initialized
-                chunk = np.zeros((), dtype=self._dtype)
-                if self._fill_value is not None:
-                    chunk.fill(self._fill_value)
-
-            else:
-                # decode chunk
-                chunk = self._decode_chunk(cdata).copy()
+        else:
+            # decode chunk
+            chunk = self._decode_chunk(cdata).copy()
 
         # set value
         if fields:
@@ -1515,7 +1507,11 @@ class Array(object):
         # encode and store
         cdata = self._encode_chunk(chunk)
         self.chunk_store[ckey] = cdata
+
         if self._chunk_cache is not None:
+            # ensure cached chunk has been round tripped through encode-decode if dtype=object
+            if self.dtype == object:
+                chunk = self._decode_chunk(cdata)
             self._chunk_cache[ckey] = chunk
 
     def _set_basic_selection_nd(self, selection, value, fields=None):
@@ -1569,6 +1565,7 @@ class Array(object):
                     item = [slice(None)] * self.ndim
                     for a in indexer.drop_axes:
                         item[a] = np.newaxis
+                    item = tuple(item)
                     chunk_value = chunk_value[item]
 
             # put data
@@ -1602,25 +1599,27 @@ class Array(object):
 
         try:
 
-            cdata = None
-            chunk_was_cached = False
+            cdata, chunk = None, None
 
             # first try getting from cache (if one has been provided)
             if self._chunk_cache is not None:
                 try:
-                    cdata = self._chunk_cache[ckey]
-                    chunk_was_cached = True
+                    chunk = self._chunk_cache[ckey]
                 except KeyError:
                     pass
 
             # obtain compressed data for chunk
-            if not chunk_was_cached:
+            if chunk is None:
                 cdata = self.chunk_store[ckey]
 
         except KeyError:
             # chunk not initialized
             if self._fill_value is not None:
-                out[out_selection] = self._fill_value
+                if fields:
+                    fill_value = self._fill_value[fields]
+                else:
+                    fill_value = self._fill_value
+                out[out_selection] = fill_value
 
         else:
 
@@ -1645,30 +1644,21 @@ class Array(object):
                     # contiguous, so we can decompress directly from the chunk
                     # into the destination array
 
-                    if chunk_was_cached:
-                        np.copyto(dest, cdata)
+                    if chunk is not None:
+                        np.copyto(dest, chunk)
                     elif self._compressor:
                         self._compressor.decode(cdata, dest)
-                        if self._chunk_cache is not None:
-                            self._chunk_cache[ckey] = np.copy(dest)
                     else:
-                        if isinstance(cdata, np.ndarray):
-                            chunk = cdata.view(self._dtype)
-                        else:
-                            chunk = np.frombuffer(cdata, dtype=self._dtype)
+                        chunk = ensure_ndarray(cdata).view(self._dtype)
                         chunk = chunk.reshape(self._chunks, order=self._order)
                         np.copyto(dest, chunk)
-                        if self._chunk_cache is not None:
-                            self._chunk_cache[ckey] = np.copy(chunk)
                     return
 
             # decode chunk
-            if not chunk_was_cached:
+            if chunk is None:
                 chunk = self._decode_chunk(cdata)
                 if self._chunk_cache is not None:
                     self._chunk_cache[ckey] = np.copy(chunk)
-            else:
-                chunk = cdata
 
             # select data from chunk
             if fields:
@@ -1803,21 +1793,25 @@ class Array(object):
 
         # apply filters
         if self._filters:
-            for f in self._filters[::-1]:
+            for f in reversed(self._filters):
                 chunk = f.decode(chunk)
 
-        # view as correct dtype
-        if self._dtype == object:
-            if isinstance(chunk, np.ndarray):
-                chunk = chunk.astype(self._dtype)
-            else:
-                raise RuntimeError('cannot read object array without object codec')
-        elif isinstance(chunk, np.ndarray):
+        # view as numpy array with correct dtype
+        chunk = ensure_ndarray(chunk)
+        # special case object dtype, because incorrect handling can lead to
+        # segfaults and other bad things happening
+        if self._dtype != object:
             chunk = chunk.view(self._dtype)
-        else:
-            chunk = np.frombuffer(chunk, dtype=self._dtype)
+        elif chunk.dtype != object:
+            # If we end up here, someone must have hacked around with the filters.
+            # We cannot deal with object arrays unless there is an object
+            # codec in the filter chain, i.e., a filter that converts from object
+            # array to something else during encoding, and converts back to object
+            # array during decoding.
+            raise RuntimeError('cannot read object array without object codec')
 
-        # reshape
+        # ensure correct chunk shape
+        chunk = chunk.reshape(-1, order='A')
         chunk = chunk.reshape(self._chunks, order=self._order)
 
         return chunk
@@ -1987,7 +1981,7 @@ class Array(object):
         checksum = binascii.hexlify(self.digest(hashname=hashname))
 
         # This is a bytes object on Python 3 and we want a str.
-        if type(checksum) is not str:
+        if type(checksum) is not str:  # pragma: py2 no cover
             checksum = checksum.decode('utf8')
 
         return checksum
@@ -2227,7 +2221,7 @@ class Array(object):
             array([0, 0, 1, ..., 1, 0, 0], dtype=uint8)
             >>> v = a.view(dtype=bool)
             >>> v[:]
-            array([False, False,  True, ...,  True, False, False], dtype=bool)
+            array([False, False,  True, ...,  True, False, False])
             >>> np.all(a[:].view(dtype=bool) == v[:])
             True
 

@@ -24,23 +24,22 @@ import shutil
 import atexit
 import re
 import sys
+import json
 import multiprocessing
 from threading import Lock, RLock
 import glob
 import warnings
 
 
-import numpy as np
-
-
 from zarr.util import (normalize_shape, normalize_chunks, normalize_order,
                        normalize_storage_path, buffer_size,
                        normalize_fill_value, nolock, normalize_dtype)
 from zarr.meta import encode_array_metadata, encode_group_metadata
-from zarr.compat import PY2, binary_type, OrderedDict_move_to_end
+from zarr.compat import PY2, OrderedDict_move_to_end
 from numcodecs.registry import codec_registry
+from numcodecs.compat import ensure_bytes, ensure_contiguous_ndarray
 from zarr.errors import (err_contains_group, err_contains_array, err_bad_compressor,
-                         err_fspath_exists_notdir, err_read_only)
+                         err_fspath_exists_notdir, err_read_only, MetadataError)
 
 
 array_meta_key = '.zarray'
@@ -53,6 +52,15 @@ try:
 except ImportError:  # pragma: no cover
     from zarr.codecs import Zlib
     default_compressor = Zlib()
+
+# Find which function to use for atomic replace
+if sys.version_info >= (3, 3):
+    from os import replace
+elif sys.platform == "win32":  # pragma: no cover
+    from osreplace import replace
+else:  # pragma: no cover
+    # POSIX rename() is always atomic
+    from os import rename as replace
 
 
 def _path_to_prefix(path):
@@ -329,8 +337,9 @@ def _init_array_metadata(store, shape, chunks=None, dtype=None, compressor='defa
         err_contains_group(path)
 
     # normalize metadata
-    shape = normalize_shape(shape)
     dtype, object_codec = normalize_dtype(dtype, object_codec)
+    shape = normalize_shape(shape) + dtype.shape
+    dtype = dtype.base
     chunks = normalize_chunks(chunks, shape, dtype.itemsize)
     order = normalize_order(order)
     fill_value = normalize_fill_value(fill_value, dtype)
@@ -442,23 +451,6 @@ def _init_group_metadata(store, overwrite=False, path=None, chunk_store=None):
     store[key] = encode_group_metadata(meta)
 
 
-def ensure_bytes(s):
-    if isinstance(s, binary_type):
-        return s
-    if isinstance(s, np.ndarray):
-        if PY2:  # pragma: py3 no cover
-            # noinspection PyArgumentList
-            return s.tostring(order='A')
-        else:  # pragma: py2 no cover
-            # noinspection PyArgumentList
-            return s.tobytes(order='A')
-    if hasattr(s, 'tobytes'):
-        return s.tobytes()
-    if PY2 and hasattr(s, 'tostring'):  # pragma: py3 no cover
-        return s.tostring()
-    return memoryview(s).tobytes()
-
-
 def _dict_store_keys(d, prefix='', cls=dict):
     for k in d.keys():
         v = d[k]
@@ -552,6 +544,7 @@ class DictStore(MutableMapping):
     def __setitem__(self, item, value):
         with self.write_mutex:
             parent, key = self._require_parent(item)
+            value = ensure_bytes(value)
             parent[key] = value
 
     def __delitem__(self, item):
@@ -650,17 +643,11 @@ class DictStore(MutableMapping):
             size = 0
             for v in value.values():
                 if not isinstance(v, self.cls):
-                    try:
-                        size += buffer_size(v)
-                    except TypeError:
-                        return -1
+                    size += buffer_size(v)
             return size
 
         else:
-            try:
-                return buffer_size(value)
-            except TypeError:
-                return -1
+            return buffer_size(value)
 
     def clear(self):
         with self.write_mutex:
@@ -739,9 +726,8 @@ class DirectoryStore(MutableMapping):
 
     def __setitem__(self, key, value):
 
-        # handle F-contiguous numpy arrays
-        if isinstance(value, np.ndarray) and value.flags.f_contiguous:
-            value = ensure_bytes(value)
+        # coerce to flat, contiguous array (ideally without copying)
+        value = ensure_contiguous_ndarray(value)
 
         # destination path for key
         file_path = os.path.join(self.path, key)
@@ -770,13 +756,11 @@ class DirectoryStore(MutableMapping):
                 f.write(value)
 
             # move temporary file into place
-            if os.path.exists(file_path):
-                os.remove(file_path)
-            os.rename(temp_path, file_path)
+            replace(temp_path, file_path)
 
         finally:
             # clean up if temp file still exists for whatever reason
-            if temp_path is not None and os.path.exists(temp_path):
+            if temp_path is not None and os.path.exists(temp_path):  # pragma: no cover
                 os.remove(temp_path)
 
     def __delitem__(self, key):
@@ -1190,7 +1174,7 @@ class ZipStore(MutableMapping):
     def __setitem__(self, key, value):
         if self.mode == 'r':
             err_read_only()
-        value = ensure_bytes(value)
+        value = ensure_contiguous_ndarray(value)
         with self.mutex:
             self.zf.writestr(key, value)
 
@@ -1437,7 +1421,11 @@ class DBMStore(MutableMapping):
         self.open_kwargs = open_kwargs
 
     def __getstate__(self):
-        self.flush()  # needed for py2 and ndbm
+        try:
+            self.flush()  # needed for py2 and ndbm
+        except Exception:
+            # flush may fail if db has already been closed
+            pass
         return (self.path, self.flag, self.mode, self.open, self.write_lock,
                 self.open_kwargs)
 
@@ -1631,7 +1619,11 @@ class LMDBStore(MutableMapping):
         self.kwargs = kwargs
 
     def __getstate__(self):
-        self.flush()  # just in case
+        try:
+            self.flush()  # just in case
+        except Exception:
+            # flush may fail if db has already been closed
+            pass
         return self.path, self.buffers, self.kwargs
 
     def __setstate__(self, state):
@@ -1905,7 +1897,86 @@ class LRUStoreCache(LRUMappingCache):
             self._invalidate_value(key)
 
 
-class LRUChunkCache(LRUMappingCache):
+class ConsolidatedMetadataStore(MutableMapping):
+    """A layer over other storage, where the metadata has been consolidated into
+    a single key.
+
+    The purpose of this class, is to be able to get all of the metadata for
+    a given dataset in a single read operation from the underlying storage.
+    See :func:`zarr.convenience.consolidate_metadata` for how to create this
+    single metadata key.
+
+    This class loads from the one key, and stores the data in a dict, so that
+    accessing the keys no longer requires operations on the backend store.
+
+    This class is read-only, and attempts to change the dataset metadata will
+    fail, but changing the data is possible. If the backend storage is changed
+    directly, then the metadata stored here could become obsolete, and
+    :func:`zarr.convenience.consolidate_metadata` should be called again and the class
+    re-invoked. The use case is for write once, read many times.
+
+    .. versionadded:: 2.3
+
+    .. note:: This is an experimental feature.
+
+    Parameters
+    ----------
+    store: MutableMapping
+        Containing the zarr dataset.
+    metadata_key: str
+        The target in the store where all of the metadata are stored. We
+        assume JSON encoding.
+
+    See Also
+    --------
+    zarr.convenience.consolidate_metadata, zarr.convenience.open_consolidated
+
+    """
+    def __init__(self, store, metadata_key='.zmetadata'):
+        self.store = store
+
+        # retrieve consolidated metadata
+        if sys.version_info.major == 3 and sys.version_info.minor < 6:
+            d = store[metadata_key].decode()  # pragma: no cover
+        else:  # pragma: no cover
+            d = store[metadata_key]
+        meta = json.loads(d)
+
+        # check format of consolidated metadata
+        consolidated_format = meta.get('zarr_consolidated_format', None)
+        if consolidated_format != 1:
+            raise MetadataError('unsupported zarr consolidated metadata format: %s' %
+                                consolidated_format)
+
+        # decode metadata
+        self.meta_store = meta['metadata']
+
+    def __getitem__(self, key):
+        return self.meta_store[key]
+
+    def __contains__(self, item):
+        return item in self.meta_store
+
+    def __iter__(self):
+        return iter(self.meta_store)
+
+    def __len__(self):
+        return len(self.meta_store)
+
+    def __delitem__(self, key):
+        err_read_only()
+
+    def __setitem__(self, key, value):
+        err_read_only()
+
+    def getsize(self, path):
+        return getsize(self.meta_store, path)
+
+    def listdir(self, path):
+        return listdir(self.meta_store, path)
+
+
+class LRUChunkCache(MutableMapping):
     """Class that implements a least-recently-used (LRU) cache for array chunks.
     Intended primarily for use with stores that can be slow to access, e.g., remote stores that
     require network communication to store and retrieve data, and/or arrays where decompression

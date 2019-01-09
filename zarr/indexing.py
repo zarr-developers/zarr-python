@@ -513,6 +513,7 @@ def oindex_set(a, selection, value):
         value_selection = [slice(None)] * len(a.shape)
         for i in drop_axes:
             value_selection[i] = np.newaxis
+        value_selection = tuple(value_selection)
         value = value[value_selection]
     a[selection] = value
 
@@ -678,7 +679,7 @@ class CoordinateIndexer(object):
         else:
             sel_sort = None
 
-        # store atrributes
+        # store attributes
         self.selection = selection
         self.sel_sort = sel_sort
         self.shape = selection[0].shape if selection[0].shape else (1,)

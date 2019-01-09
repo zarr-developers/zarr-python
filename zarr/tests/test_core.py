@@ -656,19 +656,39 @@ class TestArray(unittest.TestCase):
 
     def test_pickle(self):
 
+        # setup array
         z = self.create_array(shape=1000, chunks=100, dtype=int, cache_metadata=False,
                               cache_attrs=False)
-        z[:] = np.random.randint(0, 1000, 1000)
-        z2 = pickle.loads(pickle.dumps(z))
-        assert z.shape == z2.shape
-        assert z.chunks == z2.chunks
-        assert z.dtype == z2.dtype
+        shape = z.shape
+        chunks = z.chunks
+        dtype = z.dtype
+        compressor_config = None
         if z.compressor:
-            assert z.compressor.get_config() == z2.compressor.get_config()
-        assert z.fill_value == z2.fill_value
-        assert z._cache_metadata == z2._cache_metadata
-        assert z.attrs.cache == z2.attrs.cache
-        assert_array_equal(z[:], z2[:])
+            compressor_config = z.compressor.get_config()
+        fill_value = z.fill_value
+        cache_metadata = z._cache_metadata
+        attrs_cache = z.attrs.cache
+        a = np.random.randint(0, 1000, 1000)
+        z[:] = a
+
+        # round trip through pickle
+        dump = pickle.dumps(z)
+        # some stores cannot be opened twice at the same time, need to close
+        # store before can round-trip through pickle
+        if hasattr(z.store, 'close'):
+            z.store.close()
+        z2 = pickle.loads(dump)
+
+        # verify
+        assert shape == z2.shape
+        assert chunks == z2.chunks
+        assert dtype == z2.dtype
+        if z2.compressor:
+            assert compressor_config == z2.compressor.get_config()
+        assert fill_value == z2.fill_value
+        assert cache_metadata == z2._cache_metadata
+        assert attrs_cache == z2.attrs.cache
+        assert_array_equal(a, z2[:])
 
     def test_np_ufuncs(self):
         z = self.create_array(shape=(100, 100), chunks=(10, 10))
@@ -826,17 +846,36 @@ class TestArray(unittest.TestCase):
         z[:] = 42
         assert 10 == z.nchunks_initialized
 
-    def test_structured_array(self):
+    def test_array_dtype_shape(self):
 
+        dt = "(2, 2)f4"
         # setup some data
-        d = np.array([(b'aaa', 1, 4.2),
-                      (b'bbb', 2, 8.4),
-                      (b'ccc', 3, 12.6)],
-                     dtype=[('foo', 'S3'), ('bar', 'i4'), ('baz', 'f8')])
+        d = np.array([((0, 1),
+                       (1, 2)),
+                      ((1, 2),
+                       (2, 3)),
+                      ((2, 3),
+                       (3, 4))],
+                     dtype=dt)
+
         for a in (d, d[:0]):
-            for fill_value in None, b'', (b'zzz', 42, 16.8):
+            for fill_value in None, 0:
+                z = self.create_array(shape=a.shape[:-2], chunks=2, dtype=dt, fill_value=fill_value)
+                assert len(a) == len(z)
+                if fill_value is not None:
+                    assert fill_value == z.fill_value
+                z[...] = a
+                assert_array_equal(a, z[...])
+
+    def check_structured_array(self, d, fill_values):
+        for a in (d, d[:0]):
+            for fill_value in fill_values:
                 z = self.create_array(shape=a.shape, chunks=2, dtype=a.dtype, fill_value=fill_value)
                 assert len(a) == len(z)
+                assert a.shape == z.shape
+                assert a.dtype == z.dtype
+
+                # check use of fill value before array is initialised with data
                 if fill_value is not None:
                     if fill_value == b'':
                         # numpy 1.14 compatibility
@@ -844,16 +883,53 @@ class TestArray(unittest.TestCase):
                     else:
                         np_fill_value = np.array(fill_value, dtype=a.dtype)[()]
                     assert np_fill_value == z.fill_value
-                    if len(z):
+                    if len(a):
                         assert np_fill_value == z[0]
                         assert np_fill_value == z[-1]
+                        empty = np.empty_like(a)
+                        empty[:] = np_fill_value
+                        assert empty[0] == z[0]
+                        assert_array_equal(empty[0:2], z[0:2])
+                        assert_array_equal(empty, z[...])
+                        for f in a.dtype.names:
+                            assert_array_equal(empty[f], z[f])
+
+                # store data in array
                 z[...] = a
+
+                # check stored data
                 if len(a):
                     assert a[0] == z[0]
-                assert_array_equal(a, z[...])
-                assert_array_equal(a['foo'], z['foo'])
-                assert_array_equal(a['bar'], z['bar'])
-                assert_array_equal(a['baz'], z['baz'])
+                    assert a[-1] == z[-1]
+                    assert_array_equal(a[0:2], z[0:2])
+                    assert_array_equal(a, z[...])
+                    for f in a.dtype.names:
+                        assert_array_equal(a[f], z[f])
+
+    def test_structured_array(self):
+        d = np.array([(b'aaa', 1, 4.2),
+                      (b'bbb', 2, 8.4),
+                      (b'ccc', 3, 12.6)],
+                     dtype=[('foo', 'S3'), ('bar', 'i4'), ('baz', 'f8')])
+        fill_values = None, b'', (b'zzz', 42, 16.8)
+        self.check_structured_array(d, fill_values)
+
+    def test_structured_array_subshapes(self):
+        d = np.array([(0, ((0, 1, 2), (1, 2, 3)), b'aaa'),
+                      (1, ((1, 2, 3), (2, 3, 4)), b'bbb'),
+                      (2, ((2, 3, 4), (3, 4, 5)), b'ccc')],
+                     dtype=[('foo', 'i8'), ('bar', '(2, 3)f4'), ('baz', 'S3')])
+        fill_values = None, b'', (0, ((0, 0, 0), (1, 1, 1)), b'zzz')
+        self.check_structured_array(d, fill_values)
+
+    def test_structured_array_nested(self):
+        d = np.array([(0, (0, ((0, 1), (1, 2), (2, 3)), 0), b'aaa'),
+                      (1, (1, ((1, 2), (2, 3), (3, 4)), 1), b'bbb'),
+                      (2, (2, ((2, 3), (3, 4), (4, 5)), 2), b'ccc')],
+                     dtype=[('foo', 'i8'), ('bar', [('foo', 'i4'), ('bar', '(3, 2)f4'),
+                            ('baz', 'u1')]), ('baz', 'S3')])
+        fill_values = None, b'', (0, (0, ((0, 0), (1, 1), (2, 2)), 0), b'zzz')
+        self.check_structured_array(d, fill_values)
 
     def test_dtypes(self):
 
@@ -879,8 +955,9 @@ class TestArray(unittest.TestCase):
                 dtype = '{}8[{}]'.format(base_type, resolution)
                 z = self.create_array(shape=100, dtype=dtype, fill_value=0)
                 assert z.dtype == np.dtype(dtype)
-                a = np.random.randint(0, np.iinfo('u8').max, size=z.shape[0],
-                                      dtype='u8').view(dtype)
+                a = np.random.randint(np.iinfo('i8').min, np.iinfo('i8').max,
+                                      size=z.shape[0],
+                                      dtype='i8').view(dtype)
                 z[:] = a
                 assert_array_equal(a, z[:])
 
@@ -906,7 +983,7 @@ class TestArray(unittest.TestCase):
         z[0] = 'foo'
         assert z[0] == 'foo'
         z[1] = b'bar'
-        assert z[1] == 'bar'  # msgpack gets this wrong
+        assert z[1] == b'bar'
         z[2] = 1
         assert z[2] == 1
         z[3] = [2, 4, 6, 'baz']
@@ -1539,7 +1616,19 @@ class TestArrayWithFilters(TestArray):
         expected = data.astype(astype)
         assert_array_equal(expected, z2)
 
+    def test_array_dtype_shape(self):
+        # skip this one, cannot do delta on unstructured array
+        pass
+
     def test_structured_array(self):
+        # skip this one, cannot do delta on structured array
+        pass
+
+    def test_structured_array_subshapes(self):
+        # skip this one, cannot do delta on structured array
+        pass
+
+    def test_structured_array_nested(self):
         # skip this one, cannot do delta on structured array
         pass
 
@@ -1743,3 +1832,50 @@ class TestArrayWithLRUChunkCache(TestArray):
         assert cache.misses == 10 and cache.hits == 0
         z[:]
         assert cache.misses == 10 and cache.hits == 10
+
+    # noinspection PyStatementEffect
+    def test_array_0d_with_object_arrays(self):
+        # test behaviour for array with 0 dimensions
+
+        # setup
+        a = np.zeros((), dtype=object)
+        z = self.create_array(shape=(), dtype=a.dtype, fill_value=0, object_codec=Pickle())
+
+        # check properties
+        assert a.ndim == z.ndim
+        assert a.shape == z.shape
+        assert a.size == z.size
+        assert a.dtype == z.dtype
+        assert a.nbytes == z.nbytes
+        with pytest.raises(TypeError):
+            len(z)
+        assert () == z.chunks
+        assert 1 == z.nchunks
+        assert (1,) == z.cdata_shape
+        # compressor always None - no point in compressing a single value
+        assert z.compressor is None
+
+        # check __getitem__
+        b = z[...]
+        assert isinstance(b, np.ndarray)
+        assert a.shape == b.shape
+        assert a.dtype == b.dtype
+        assert_array_equal(a, np.array(z))
+        assert_array_equal(a, z[...])
+        assert a[()] == z[()]
+        with pytest.raises(IndexError):
+            z[0]
+        with pytest.raises(IndexError):
+            z[:]
+
+        # check __setitem__
+        z[...] = 42
+        assert 42 == z[()]
+        z[()] = 43
+        assert 43 == z[()]
+        with pytest.raises(IndexError):
+            z[0] = 42
+        with pytest.raises(IndexError):
+            z[:] = 42
+        with pytest.raises(ValueError):
+            z[...] = np.array([1, 2, 3])

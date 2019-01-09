@@ -12,57 +12,29 @@ environment:
 
   matrix:
 
-    - PYTHON: "C:\\Python27"
-      PYTHON_VERSION: "2.7"
-      NUMPY_VERSION: "1.13.3"
-
     - PYTHON: "C:\\Python27-x64"
       PYTHON_VERSION: "2.7"
-      NUMPY_VERSION: "1.13.3"
       DISTUTILS_USE_SDK: "1"
-
-    - PYTHON: "C:\\Python34"
-      NUMPY_VERSION: "1.13.3"
-      PYTHON_VERSION: "3.4"
-
-    - PYTHON: "C:\\Python34-x64"
-      PYTHON_VERSION: "3.4"
-      NUMPY_VERSION: "1.13.3"
-      DISTUTILS_USE_SDK: "1"
-
-    - PYTHON: "C:\\Python35"
-      PYTHON_VERSION: "3.5"
-      NUMPY_VERSION: "1.13.3"
 
     - PYTHON: "C:\\Python35-x64"
       PYTHON_VERSION: "3.5"
-      NUMPY_VERSION: "1.13.3"
-
-    - PYTHON: "C:\\Python36"
-      PYTHON_VERSION: "3.6"
-      NUMPY_VERSION: "1.13.3"
 
     - PYTHON: "C:\\Python36-x64"
       PYTHON_VERSION: "3.6"
-      NUMPY_VERSION: "1.13.3"
 
-    - PYTHON: "C:\\Python36"
-      PYTHON_VERSION: "3.6"
-      NUMPY_VERSION: "1.14.0"
-
-    - PYTHON: "C:\\Python36-x64"
-      PYTHON_VERSION: "3.6"
-      NUMPY_VERSION: "1.14.0"
+    - PYTHON: "C:\\Python37-x64"
+      PYTHON_VERSION: "3.7"
 
 install:
   - "SET PATH=%PYTHON%;%PYTHON%\\Scripts;%PATH%"
+  - "%CMD_IN_ENV% python -m pip install -U pip setuptools wheel"
+  - "%CMD_IN_ENV% python -m pip install -rrequirements_test.txt"
+  - "%CMD_IN_ENV% python -m pip install -rrequirements_dev_npy.txt"
+  - "%CMD_IN_ENV% python -m pip install --no-binary=numcodecs -rrequirements_dev.txt"
+  - "%CMD_IN_ENV% python setup.py install"
+  - "%CMD_IN_ENV% python -m pip freeze"
 
 build: off
 
 test_script:
-  - "%CMD_IN_ENV% python -m pip install -U pip setuptools wheel"
-  - "%CMD_IN_ENV% python -m pip install numpy==%NUMPY_VERSION%"
-  - "%CMD_IN_ENV% python -m pip install -rrequirements_dev.txt"
-  - "%CMD_IN_ENV% python setup.py install"
   - "%CMD_IN_ENV% python -m pytest -v --pyargs zarr"
-  
