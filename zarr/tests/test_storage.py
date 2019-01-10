@@ -33,7 +33,7 @@ from zarr.tests.util import CountingDict
 
 try:
     from zarr.codecs import LZMA
-except ImportError:
+except ImportError:  # pragma: no cover
     LZMA = None
 
 
@@ -740,7 +740,7 @@ class TestNestedDirectoryStore(TestDirectoryStore, unittest.TestCase):
 class TestN5Store(TestNestedDirectoryStore, unittest.TestCase):
 
     def create_store(self):
-        path = tempfile.mkdtemp()
+        path = tempfile.mkdtemp(suffix='.n5')
         atexit.register(atexit_rmtree, path)
         store = N5Store(path)
         return store

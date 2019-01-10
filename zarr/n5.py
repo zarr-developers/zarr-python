@@ -328,7 +328,7 @@ def array_metadata_to_n5(array_metadata):
 
     try:
         dtype = np.dtype(array_metadata['dataType'])
-    except TypeError:
+    except TypeError:  # pragma: no cover
         raise TypeError(
             "data type %s not supported by N5" % array_metadata['dataType'])
 

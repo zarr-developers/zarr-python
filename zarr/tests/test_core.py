@@ -1370,32 +1370,27 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
 
     def test_array_order(self):
 
+        # N5 only supports 'C' at the moment
+
         # 1D
         a = np.arange(1050)
-        for order in 'C':  # F not supported by N5 (yet)
-            z = self.create_array(shape=a.shape, chunks=100, dtype=a.dtype,
-                                  order=order)
-            assert order == z.order
-            if order == 'F':
-                assert z[:].flags.f_contiguous
-            else:
-                assert z[:].flags.c_contiguous
-            z[:] = a
-            assert_array_equal(a, z[:])
+        z = self.create_array(shape=a.shape, chunks=100, dtype=a.dtype,
+                              order='C')
+        assert z.order == 'C'
+        assert z[:].flags.c_contiguous
+        z[:] = a
+        assert_array_equal(a, z[:])
 
         # 2D
         a = np.arange(10000).reshape((100, 100))
-        for order in 'C':  # F not supported by N5 (yet)
-            z = self.create_array(shape=a.shape, chunks=(10, 10),
-                                  dtype=a.dtype, order=order)
-            assert order == z.order
-            if order == 'F':
-                assert z[:].flags.f_contiguous
-            else:
-                assert z[:].flags.c_contiguous
-            z[:] = a
-            actual = z[:]
-            assert_array_equal(a, actual)
+        z = self.create_array(shape=a.shape, chunks=(10, 10),
+                              dtype=a.dtype, order='C')
+
+        assert z.order == 'C'
+        assert z[:].flags.c_contiguous
+        z[:] = a
+        actual = z[:]
+        assert_array_equal(a, actual)
 
     def test_structured_array(self):
         # structured arrays not supported in N5
