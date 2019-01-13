@@ -23,9 +23,12 @@ Enhancements
   SQLite database to be used as the backing store for an array or group.
   By :user:`John Kirkham <jakirkham>`, :issue:`368`, :issue:`365`.
 
-* Adds the :class:`zarr.storage.RedisStore` and :class:`zarr.storage.MongoDBStore` classes
-  enabling an Redis and MongoDB databases to be used as the backing store for an array
-  or group.
+* Adds the Redis-backed :class:`zarr.storage.RedisStore` class enabling an
+  Redis database to be used as the backing store for an array or group.
+  By :user:`Joe Hamman <jhamman>`, :issue:`299`, :issue:`372`.
+
+* Adds the MongoDB-backed :class:`zarr.storage.MongoDBStore` class enabling an
+  MongoDB database to be used as the backing store for an array or group.
   By :user:`Joe Hamman <jhamman>`, :issue:`299`, :issue:`372`.
 
 Bug fixes
