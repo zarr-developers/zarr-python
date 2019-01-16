@@ -513,6 +513,7 @@ def oindex_set(a, selection, value):
         value_selection = [slice(None)] * len(a.shape)
         for i in drop_axes:
             value_selection[i] = np.newaxis
+        value_selection = tuple(value_selection)
         value = value[value_selection]
     a[selection] = value
 
