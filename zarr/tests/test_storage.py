@@ -92,6 +92,12 @@ class StoreTests(object):
         assert len(store) == 0
         with pytest.raises(KeyError):
             store.pop('xxx')
+        v = store.pop('xxx', b'default')
+        assert v == b'default'
+        v = store.pop('xxx', b'')
+        assert v == b''
+        v = store.pop('xxx', None)
+        assert v is None
 
     def test_popitem(self):
         store = self.create_store()
