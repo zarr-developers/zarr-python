@@ -11,8 +11,8 @@ addons:
     packages:
     - libdb-dev
 
-services:	
-  - redis-server	
+services:
+  - redis-server
   - mongodb
 
 matrix:
