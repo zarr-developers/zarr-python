@@ -18,6 +18,7 @@ path) and a `getsize` method (return the size in bytes of a given value).
 from __future__ import absolute_import, print_function, division
 from collections import MutableMapping, OrderedDict
 import os
+import operator
 import tempfile
 import zipfile
 import shutil
@@ -26,6 +27,7 @@ import re
 import sys
 import json
 import multiprocessing
+from pickle import PicklingError
 from threading import Lock, RLock
 import glob
 import warnings
@@ -1875,6 +1877,211 @@ class LRUStoreCache(MutableMapping):
         with self._mutex:
             self._invalidate_keys()
             self._invalidate_value(key)
+
+
+class SQLiteStore(MutableMapping):
+    """Storage class using SQLite.
+
+    Parameters
+    ----------
+    path : string
+        Location of database file.
+    **kwargs
+        Keyword arguments passed through to the `sqlite3.connect` function.
+
+    Examples
+    --------
+    Store a single array::
+
+        >>> import zarr
+        >>> store = zarr.SQLiteStore('data/array.sqldb')
+        >>> z = zarr.zeros((10, 10), chunks=(5, 5), store=store, overwrite=True)
+        >>> z[...] = 42
+        >>> store.close()  # don't forget to call this when you're done
+
+    Store a group::
+
+        >>> store = zarr.SQLiteStore('data/group.sqldb')
+        >>> root = zarr.group(store=store, overwrite=True)
+        >>> foo = root.create_group('foo')
+        >>> bar = foo.zeros('bar', shape=(10, 10), chunks=(5, 5))
+        >>> bar[...] = 42
+        >>> store.close()  # don't forget to call this when you're done
+    """
+
+    def __init__(self, path, **kwargs):
+        import sqlite3
+
+        # normalize path
+        if path != ':memory:':
+            path = os.path.abspath(path)
+
+        # store properties
+        self.path = path
+        self.kwargs = kwargs
+
+        # allow threading if SQLite connections are thread-safe
+        #
+        # ref: https://www.sqlite.org/releaselog/3_3_1.html
+        # ref: https://bugs.python.org/issue27190
+        check_same_thread = True
+        if sqlite3.sqlite_version_info >= (3, 3, 1):
+            check_same_thread = False
+
+        # keep a lock for serializing mutable operations
+        self.lock = Lock()
+
+        # open database
+        self.db = sqlite3.connect(
+            self.path,
+            detect_types=0,
+            isolation_level=None,
+            check_same_thread=check_same_thread,
+            **self.kwargs
+        )
+
+        # handle keys as `str`s
+        self.db.text_factory = str
+
+        # get a cursor to read/write to the database
+        self.cursor = self.db.cursor()
+
+        # initialize database with our table if missing
+        with self.lock:
+            self.cursor.execute(
+                'CREATE TABLE IF NOT EXISTS zarr(k TEXT PRIMARY KEY, v BLOB)'
+            )
+
+    def __getstate__(self):
+        if self.path == ':memory:':
+            raise PicklingError('Cannot pickle in-memory SQLite databases')
+        return self.path, self.kwargs
+
+    def __setstate__(self, state):
+        path, kwargs = state
+        self.__init__(path=path, **kwargs)
+
+    def close(self):
+        """Closes the underlying database."""
+
+        # close cursor and db objects
+        self.cursor.close()
+        self.db.close()
+
+    def __getitem__(self, key):
+        value = self.cursor.execute('SELECT v FROM zarr WHERE (k = ?)', (key,))
+        for v, in value:
+            return v
+        raise KeyError(key)
+
+    def __setitem__(self, key, value):
+        self.update({key: value})
+
+    def __delitem__(self, key):
+        with self.lock:
+            self.cursor.execute('DELETE FROM zarr WHERE (k = ?)', (key,))
+            if self.cursor.rowcount < 1:
+                raise KeyError(key)
+
+    def __contains__(self, key):
+        cs = self.cursor.execute(
+            'SELECT COUNT(*) FROM zarr WHERE (k = ?)', (key,)
+        )
+        for has, in cs:
+            has = bool(has)
+            return has
+
+    def items(self):
+        kvs = self.cursor.execute('SELECT k, v FROM zarr')
+        for k, v in kvs:
+            yield k, v
+
+    def keys(self):
+        ks = self.cursor.execute('SELECT k FROM zarr')
+        for k, in ks:
+            yield k
+
+    def values(self):
+        vs = self.cursor.execute('SELECT v FROM zarr')
+        for v, in vs:
+            yield v
+
+    def __iter__(self):
+        return self.keys()
+
+    def __len__(self):
+        cs = self.cursor.execute('SELECT COUNT(*) FROM zarr')
+        for c, in cs:
+            return c
+
+    def update(self, *args, **kwargs):
+        args += (kwargs,)
+
+        kv_list = []
+        for dct in args:
+            for k, v in dct.items():
+                # Python 2 cannot store `memoryview`s, but it can store
+                # `buffer`s. However Python 2 won't return `bytes` then. So we
+                # coerce to `bytes`, which are handled correctly. Python 3
+                # doesn't have these issues.
+                if PY2:  # pragma: py3 no cover
+                    v = ensure_bytes(v)
+                else:  # pragma: py2 no cover
+                    v = ensure_contiguous_ndarray(v)
+
+                # Accumulate key-value pairs for storage
+                kv_list.append((k, v))
+
+        with self.lock:
+            self.cursor.executemany('REPLACE INTO zarr VALUES (?, ?)', kv_list)
+
+    def listdir(self, path=None):
+        path = normalize_storage_path(path)
+        keys = self.cursor.execute(
+            '''
+            SELECT DISTINCT SUBSTR(m, 0, INSTR(m, "/")) AS l FROM (
+                SELECT LTRIM(SUBSTR(k, LENGTH(?) + 1), "/") || "/" AS m
+                FROM zarr WHERE k LIKE (? || "_%")
+            ) ORDER BY l ASC
+            ''',
+            (path, path)
+        )
+        keys = list(map(operator.itemgetter(0), keys))
+        return keys
+
+    def getsize(self, path=None):
+        path = normalize_storage_path(path)
+        size = self.cursor.execute(
+            '''
+            SELECT COALESCE(SUM(LENGTH(v)), 0) FROM zarr
+            WHERE k LIKE (? || "%") AND
+                  0 == INSTR(LTRIM(SUBSTR(k, LENGTH(?) + 1), "/"), "/")
+            ''',
+            (path, path)
+        )
+        for s, in size:
+            return s
+
+    def rmdir(self, path=None):
+        path = normalize_storage_path(path)
+        if path:
+            with self.lock:
+                self.cursor.execute(
+                    'DELETE FROM zarr WHERE k LIKE (? || "_%")', (path,)
+                )
+        else:
+            self.clear()
+
+    def clear(self):
+        with self.lock:
+            self.cursor.executescript(
+                '''
+                BEGIN TRANSACTION;
+                    DROP TABLE zarr;
+                    CREATE TABLE zarr(k TEXT PRIMARY KEY, v BLOB);
+                COMMIT TRANSACTION;
+                '''
+            )
 
 
 class ConsolidatedMetadataStore(MutableMapping):
