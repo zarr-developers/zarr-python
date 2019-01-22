@@ -8,6 +8,7 @@ import json
 import array
 import shutil
 import os
+from pickle import PicklingError
 
 
 import numpy as np
@@ -92,6 +93,22 @@ class StoreTests(object):
         assert len(store) == 0
         with pytest.raises(KeyError):
             store.pop('xxx')
+        v = store.pop('xxx', b'default')
+        assert v == b'default'
+        v = store.pop('xxx', b'')
+        assert v == b''
+        v = store.pop('xxx', None)
+        assert v is None
+
+    def test_popitem(self):
+        store = self.create_store()
+        store['foo'] = b'bar'
+        k, v = store.popitem()
+        assert k == 'foo'
+        assert v == b'bar'
+        assert len(store) == 0
+        with pytest.raises(KeyError):
+            store.popitem()
 
     def test_writeable_values(self):
         store = self.create_store()
@@ -762,6 +779,13 @@ class TestZipStore(StoreTests, unittest.TestCase):
         with pytest.raises(NotImplementedError):
             store.pop('foo')
 
+    def test_popitem(self):
+        # override because not implemented
+        store = self.create_store()
+        store['foo'] = b'bar'
+        with pytest.raises(NotImplementedError):
+            store.popitem()
+
 
 class TestDBMStore(StoreTests, unittest.TestCase):
 
@@ -886,7 +910,6 @@ try:
 except ImportError:  # pragma: no cover
     redis = None
 
-
 @unittest.skipIf(sqlite3 is None, 'python built without sqlite')
 class TestSQLiteStore(StoreTests, unittest.TestCase):
 
@@ -895,6 +918,25 @@ class TestSQLiteStore(StoreTests, unittest.TestCase):
         atexit.register(atexit_rmtree, path)
         store = SQLiteStore(path)
         return store
+
+
+@unittest.skipIf(sqlite3 is None, 'python built without sqlite')
+class TestSQLiteStoreInMemory(TestSQLiteStore, unittest.TestCase):
+
+    def create_store(self):
+        store = SQLiteStore(':memory:')
+        return store
+
+    def test_pickle(self):
+
+        # setup store
+        store = self.create_store()
+        store['foo'] = b'bar'
+        store['baz'] = b'quux'
+
+        # round-trip through pickle
+        with pytest.raises(PicklingError):
+            pickle.dumps(store)
 
 
 @unittest.skipIf(pymongo is None, 'test requires pymongo')

@@ -28,6 +28,7 @@ import re
 import sys
 import json
 import multiprocessing
+from pickle import PicklingError
 from threading import Lock, RLock
 import glob
 import warnings
@@ -1909,27 +1910,34 @@ class SQLiteStore(MutableMapping):
         >>> store.close()  # don't forget to call this when you're done
     """
 
-    def __init__(self, path, table="zarr", **kwargs):
+    def __init__(self, path, **kwargs):
         import sqlite3
 
-        kwargs.setdefault('timeout', 5.0)
-        kwargs.setdefault('cached_statements', 100)
-
         # normalize path
-        if path != ":memory:":
+        if path != ':memory:':
             path = os.path.abspath(path)
 
         # store properties
         self.path = path
-        self.table = table
         self.kwargs = kwargs
+
+        # allow threading if SQLite connections are thread-safe
+        #
+        # ref: https://www.sqlite.org/releaselog/3_3_1.html
+        # ref: https://bugs.python.org/issue27190
+        check_same_thread = True
+        if sqlite3.sqlite_version_info >= (3, 3, 1):
+            check_same_thread = False
+
+        # keep a lock for serializing mutable operations
+        self.lock = Lock()
 
         # open database
         self.db = sqlite3.connect(
             self.path,
             detect_types=0,
             isolation_level=None,
-            check_same_thread=False,
+            check_same_thread=check_same_thread,
             **self.kwargs
         )
 
@@ -1940,13 +1948,14 @@ class SQLiteStore(MutableMapping):
         self.cursor = self.db.cursor()
 
         # initialize database with our table if missing
-        self.cursor.execute(
-            'CREATE TABLE IF NOT EXISTS {t}(k TEXT PRIMARY KEY, v BLOB)'.format(
-                t=self.table
+        with self.lock:
+            self.cursor.execute(
+                'CREATE TABLE IF NOT EXISTS zarr(k TEXT PRIMARY KEY, v BLOB)'
             )
-        )
 
     def __getstate__(self):
+        if self.path == ':memory:':
+            raise PicklingError('Cannot pickle in-memory SQLite databases')
         return self.path, self.kwargs
 
     def __setstate__(self, state):
@@ -1961,44 +1970,40 @@ class SQLiteStore(MutableMapping):
         self.db.close()
 
     def __getitem__(self, key):
-        value = self.cursor.execute(
-            'SELECT v FROM {t} WHERE k = ?'.format(t=self.table), (key,)
-        )
+        value = self.cursor.execute('SELECT v FROM zarr WHERE (k = ?)', (key,))
         for v, in value:
             return v
-        else:
-            raise KeyError(key)
+        raise KeyError(key)
 
     def __setitem__(self, key, value):
         self.update({key: value})
 
     def __delitem__(self, key):
-        if key in self:
-            self.cursor.execute(
-                'DELETE FROM {t} WHERE k = ?'.format(t=self.table), (key,)
-            )
-        else:
-            raise KeyError(key)
+        with self.lock:
+            self.cursor.execute('DELETE FROM zarr WHERE (k = ?)', (key,))
+            if self.cursor.rowcount < 1:
+                raise KeyError(key)
 
     def __contains__(self, key):
-        op_has = 'SELECT EXISTS (SELECT k, v FROM {t} WHERE k = ?)'.format(
-            t=self.table
+        cs = self.cursor.execute(
+            'SELECT COUNT(*) FROM zarr WHERE (k = ?)', (key,)
         )
-        for has, in self.cursor.execute(op_has, (key,)):
+        for has, in cs:
+            has = bool(has)
             return has
 
     def items(self):
-        kvs = self.cursor.execute("SELECT k, v FROM {t}".format(t=self.table))
+        kvs = self.cursor.execute('SELECT k, v FROM zarr')
         for k, v in kvs:
             yield k, v
 
     def keys(self):
-        ks = self.cursor.execute("SELECT k FROM {t}".format(t=self.table))
+        ks = self.cursor.execute('SELECT k FROM zarr')
         for k, in ks:
             yield k
 
     def values(self):
-        vs = self.cursor.execute("SELECT v FROM {t}".format(t=self.table))
+        vs = self.cursor.execute('SELECT v FROM zarr')
         for v, in vs:
             yield v
 
@@ -2006,9 +2011,7 @@ class SQLiteStore(MutableMapping):
         return self.keys()
 
     def __len__(self):
-        cs = self.cursor.execute(
-            "SELECT COUNT(*) FROM {t}".format(t=self.table)
-        )
+        cs = self.cursor.execute('SELECT COUNT(*) FROM zarr')
         for c, in cs:
             return c
 
@@ -2030,23 +2033,19 @@ class SQLiteStore(MutableMapping):
                 # Accumulate key-value pairs for storage
                 kv_list.append((k, v))
 
-        self.cursor.executemany(
-            'REPLACE INTO {t} VALUES (?, ?)'.format(t=self.table), kv_list
-        )
+        with self.lock:
+            self.cursor.executemany('REPLACE INTO zarr VALUES (?, ?)', kv_list)
 
     def listdir(self, path=None):
         path = normalize_storage_path(path)
         keys = self.cursor.execute(
             '''
-            SELECT l FROM (
-                SELECT DISTINCT SUBSTR(m, 0, INSTR(m, "/")) AS l FROM (
-                    SELECT LTRIM(SUBSTR(k, LENGTH("{p}") + 1), "/") || "/" AS m
-                    FROM {t} WHERE k LIKE "{p}_%"
-                )
+            SELECT DISTINCT SUBSTR(m, 0, INSTR(m, "/")) AS l FROM (
+                SELECT LTRIM(SUBSTR(k, LENGTH(?) + 1), "/") || "/" AS m
+                FROM zarr WHERE k LIKE (? || "_%")
             ) ORDER BY l ASC
-            '''.format(
-                t=self.table, p=path
-            )
+            ''',
+            (path, path)
         )
         keys = list(map(operator.itemgetter(0), keys))
         return keys
@@ -2055,58 +2054,35 @@ class SQLiteStore(MutableMapping):
         path = normalize_storage_path(path)
         size = self.cursor.execute(
             '''
-            SELECT COALESCE(SUM(LENGTH(v)), 0) FROM {t}
-            WHERE k LIKE "{p}%" AND
-                  0 == INSTR(LTRIM(SUBSTR(k, LENGTH("{p}") + 1), "/"), "/")
-            '''.format(
-                t=self.table, p=path
-            )
+            SELECT COALESCE(SUM(LENGTH(v)), 0) FROM zarr
+            WHERE k LIKE (? || "%") AND
+                  0 == INSTR(LTRIM(SUBSTR(k, LENGTH(?) + 1), "/"), "/")
+            ''',
+            (path, path)
         )
         for s, in size:
             return s
 
-    def rename(self, src_path, dst_path):
-        src_path = normalize_storage_path(src_path)
-        dst_path = normalize_storage_path(dst_path)
-
-        self.cursor.executescript(
-            '''
-            BEGIN TRANSACTION;
-                CREATE TEMPORARY TABLE _{t}_{u} AS
-                SELECT LTRIM("{dp}" || "/" || mk, "/"), mv FROM (
-                    SELECT LTRIM(SUBSTR(k, LENGTH("{sp}") + 1), "/") AS mk,
-                           v AS mv
-                    FROM {t} WHERE k LIKE "{sp}%"
-                );
-                DELETE FROM {t} WHERE k LIKE "{sp}%";
-                REPLACE INTO {t} SELECT * FROM _{t}_{u};
-                DROP TABLE _{t}_{u};
-            COMMIT TRANSACTION;
-            '''.format(
-                t=self.table, u=uuid.uuid4().hex, sp=src_path, dp=dst_path
-            )
-        )
-
     def rmdir(self, path=None):
         path = normalize_storage_path(path)
         if path:
-            self.cursor.execute(
-                '''
-                DELETE FROM {t} WHERE k LIKE "{p}_%"
-                '''.format(
-                    t=self.table, p=path
+            with self.lock:
+                self.cursor.execute(
+                    'DELETE FROM zarr WHERE k LIKE (? || "_%")', (path,)
                 )
-            )
         else:
             self.clear()
 
     def clear(self):
-        self.cursor.executescript('''
-            BEGIN TRANSACTION;
-                DROP TABLE {t};
-                CREATE TABLE {t}(k TEXT PRIMARY KEY, v BLOB);
-            COMMIT TRANSACTION;
-        '''.format(t=self.table))
+        with self.lock:
+            self.cursor.executescript(
+                '''
+                BEGIN TRANSACTION;
+                    DROP TABLE zarr;
+                    CREATE TABLE zarr(k TEXT PRIMARY KEY, v BLOB);
+                COMMIT TRANSACTION;
+                '''
+            )
 
 
 class MongoDBStore(MutableMapping):
