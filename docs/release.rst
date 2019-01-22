@@ -19,6 +19,10 @@ Enhancements
 * Support has been added for structured arrays with sub-array shape and/or nested fields. By
   :user:`Tarik Onalan <onalant>`, :issue:`111`, :issue:`296`.
 
+* Adds the SQLite-backed :class:`zarr.storage.SQLiteStore` class enabling an
+  SQLite database to be used as the backing store for an array or group.
+  By :user:`John Kirkham <jakirkham>`, :issue:`368`, :issue:`365`.
+
 Bug fixes
 ~~~~~~~~~
 
@@ -29,14 +33,17 @@ Bug fixes
 
 * The required version of the `numcodecs <http://numcodecs.rtfd.io>`_ package has been upgraded 
   to 0.6.2, which has enabled some code simplification and fixes a failing test involving
-  msgpack encoding. By :user:`John Kirkham <jakirkham>`, :issue:`360`, :issue:`352`, :issue:`355`,
-  :issue:`324`.
+  msgpack encoding. By :user:`John Kirkham <jakirkham>`, :issue:`361`, :issue:`360`, :issue:`352`,
+  :issue:`355`, :issue:`324`.
 
 * Failing tests related to pickling/unpickling have been fixed. By :user:`Ryan Williams <ryan-williams>`,
   :issue:`273`, :issue:`308`.
 
 * Ensure ``DictStore`` contains only ``bytes`` to facilitate comparisons and protect against writes.
   By :user:`John Kirkham <jakirkham>`, :issue:`350`
+
+* Always use a ``tuple`` when indexing a NumPy ``ndarray``.
+  By :user:`John Kirkham <jakirkham>`, :issue:`376`
 
 Maintenance
 ~~~~~~~~~~~

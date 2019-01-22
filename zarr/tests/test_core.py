@@ -16,8 +16,8 @@ from azure.storage.blob import BlockBlobService
 
 
 from zarr.storage import (DirectoryStore, init_array, init_group, NestedDirectoryStore,
-                          DBMStore, LMDBStore, atexit_rmtree, atexit_rmglob,
-                          LRUStoreCache, ABSStore)
+                          DBMStore, LMDBStore, SQLiteStore, ABSStore, atexit_rmtree,
+                          atexit_rmglob, LRUStoreCache)
 from zarr.core import Array
 from zarr.errors import PermissionError
 from zarr.compat import PY2, text_type, binary_type
@@ -1402,6 +1402,31 @@ class TestArrayWithLMDBStoreNoBuffers(TestArray):
         path = mktemp(suffix='.lmdb')
         atexit.register(atexit_rmtree, path)
         store = LMDBStore(path, buffers=False)
+        cache_metadata = kwargs.pop('cache_metadata', True)
+        cache_attrs = kwargs.pop('cache_attrs', True)
+        kwargs.setdefault('compressor', Zlib(1))
+        init_array(store, **kwargs)
+        return Array(store, read_only=read_only, cache_metadata=cache_metadata,
+                     cache_attrs=cache_attrs)
+
+    def test_nbytes_stored(self):
+        pass  # not implemented
+
+
+try:
+    import sqlite3
+except ImportError:  # pragma: no cover
+    sqlite3 = None
+
+
+@unittest.skipIf(sqlite3 is None, 'python built without sqlite')
+class TestArrayWithSQLiteStore(TestArray):
+
+    @staticmethod
+    def create_array(read_only=False, **kwargs):
+        path = mktemp(suffix='.db')
+        atexit.register(atexit_rmtree, path)
+        store = SQLiteStore(path)
         cache_metadata = kwargs.pop('cache_metadata', True)
         cache_attrs = kwargs.pop('cache_attrs', True)
         kwargs.setdefault('compressor', Zlib(1))
