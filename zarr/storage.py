@@ -32,7 +32,6 @@ from threading import Lock, RLock
 import glob
 import warnings
 import io
-import array
 
 
 from azure.storage.blob import BlockBlobService
