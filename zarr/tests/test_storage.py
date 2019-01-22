@@ -910,6 +910,7 @@ try:
 except ImportError:  # pragma: no cover
     redis = None
 
+
 @unittest.skipIf(sqlite3 is None, 'python built without sqlite')
 class TestSQLiteStore(StoreTests, unittest.TestCase):
 

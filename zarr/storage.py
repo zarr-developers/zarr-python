@@ -20,7 +20,6 @@ from collections import MutableMapping, OrderedDict
 import os
 import operator
 import tempfile
-import uuid
 import zipfile
 import shutil
 import atexit
