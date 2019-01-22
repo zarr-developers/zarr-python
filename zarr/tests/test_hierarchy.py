@@ -18,8 +18,6 @@ from azure.storage.blob import BlockBlobService
 
 from zarr.storage import (DictStore, DirectoryStore, ZipStore, init_group, init_array,
                           array_meta_key, group_meta_key, atexit_rmtree,
-                          NestedDirectoryStore, DBMStore, LMDBStore, atexit_rmglob,
-                          LRUStoreCache, ABSStore)
                           NestedDirectoryStore, DBMStore, LMDBStore, SQLiteStore,
                           ABSStore, atexit_rmglob, LRUStoreCache)
 from zarr.core import Array
