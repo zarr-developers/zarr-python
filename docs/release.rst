@@ -9,6 +9,9 @@ Release notes
 Enhancements
 ~~~~~~~~~~~~
 
+* New storage backend, backed by Azure Blob Storage, :class:`zarr.storage.ABSStore`.
+  Chunks are stored as block blobs.
+
 * Add "consolidated" metadata as an experimental feature: use
   :func:`zarr.convenience.consolidate_metadata` to copy all metadata from the various
   metadata keys within a dataset hierarchy under a single key, and

@@ -1897,7 +1897,7 @@ class ABSStore(MutableMapping):
     account_name : string
         The Azure blob storage account name.
     account_key : string
-        The Azure blob storage account acess key.
+        The Azure blob storage account access key.
     blob_service_kwargs : dictionary
         Extra arguments to be passed into the azure blob client, for e.g. when
         using the emulator, pass in blob_service_kwargs={'is_emulated': True}
