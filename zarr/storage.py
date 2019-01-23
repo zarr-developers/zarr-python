@@ -1889,7 +1889,7 @@ class ABSStore(MutableMapping):
 
     Parameters
     ----------
-    container_name : string
+    container : string
         The name of the ABS container to use.
     prefix : string
         Location of the "directory" to use as the root of the storage hierarchy
@@ -1910,7 +1910,7 @@ class ABSStore(MutableMapping):
 
     def __init__(self, container, prefix, account_name=None, account_key=None,
                  blob_service_kwargs=None):
-        self.container_name = container
+        self.container = container
         self.prefix = normalize_storage_path(prefix)
         self.account_name = account_name
         self.account_key = account_key
@@ -1953,7 +1953,7 @@ class ABSStore(MutableMapping):
     def __getitem__(self, key):
         blob_name = '/'.join([self.prefix, key])
         try:
-            blob = self.client.get_blob_to_bytes(self.container_name, blob_name)
+            blob = self.client.get_blob_to_bytes(self.container, blob_name)
             return blob.content
         except AzureMissingResourceHttpError:
             raise KeyError('Blob %s not found' % blob_name)
@@ -1962,18 +1962,18 @@ class ABSStore(MutableMapping):
         value = ensure_bytes(value)
         blob_name = '/'.join([self.prefix, key])
         buffer = io.BytesIO(value)
-        self.client.create_blob_from_stream(self.container_name, blob_name, buffer)
+        self.client.create_blob_from_stream(self.container, blob_name, buffer)
 
     def __delitem__(self, key):
-        if self.client.exists(self.container_name, '/'.join([self.prefix, key])):
-            self.client.delete_blob(self.container_name, '/'.join([self.prefix, key]))
+        if self.client.exists(self.container, '/'.join([self.prefix, key])):
+            self.client.delete_blob(self.container, '/'.join([self.prefix, key]))
         else:
             raise KeyError
 
     def __eq__(self, other):
         return (
             isinstance(other, ABSStore) and
-            self.container_name == other.container_name and
+            self.container == other.container and
             self.prefix == other.prefix
         )
 
@@ -1981,7 +1981,7 @@ class ABSStore(MutableMapping):
         return list(self.__iter__())
 
     def __iter__(self):
-        for blob in self.client.list_blobs(self.container_name, self.prefix + '/'):
+        for blob in self.client.list_blobs(self.container, self.prefix + '/'):
             yield self._strip_prefix_from_path(blob.name, self.prefix)
 
     def __len__(self):
@@ -1989,7 +1989,7 @@ class ABSStore(MutableMapping):
 
     def __contains__(self, key):
         blob_name = '/'.join([self.prefix, key])
-        if self.client.exists(self.container_name, blob_name):
+        if self.client.exists(self.container, blob_name):
             return True
         else:
             return False
@@ -2002,7 +2002,7 @@ class ABSStore(MutableMapping):
             dir_path = dir_path + '/' + store_path
         dir_path += '/'
         items = list()
-        for blob in self.client.list_blobs(self.container_name, prefix=dir_path, delimiter='/'):
+        for blob in self.client.list_blobs(self.container, prefix=dir_path, delimiter='/'):
             if '/' in blob.name[len(dir_path):]:
                 items.append(self._strip_prefix_from_path(
                     blob.name[:blob.name.find('/', len(dir_path))], dir_path))
@@ -2012,20 +2012,20 @@ class ABSStore(MutableMapping):
 
     def rmdir(self, path=None):
         dir_path = normalize_storage_path(self._append_path_to_prefix(path, self.prefix)) + '/'
-        for blob in self.client.list_blobs(self.container_name, prefix=dir_path):
-            self.client.delete_blob(self.container_name, blob.name)
+        for blob in self.client.list_blobs(self.container, prefix=dir_path):
+            self.client.delete_blob(self.container, blob.name)
 
     def getsize(self, path=None):
         store_path = normalize_storage_path(path)
         fs_path = self.prefix
         if store_path:
             fs_path = self._append_path_to_prefix(store_path, self.prefix)
-        if self.client.exists(self.container_name, fs_path):
-            return self.client.get_blob_properties(self.container_name,
+        if self.client.exists(self.container, fs_path):
+            return self.client.get_blob_properties(self.container,
                                                    fs_path).properties.content_length
         else:
             size = 0
-            for blob in self.client.list_blobs(self.container_name, prefix=fs_path + '/',
+            for blob in self.client.list_blobs(self.container, prefix=fs_path + '/',
                                                delimiter='/'):
                 if '/' not in blob.name[len(fs_path + '/'):]:
                     size += blob.properties.content_length
