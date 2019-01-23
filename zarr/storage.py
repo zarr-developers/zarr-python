@@ -1959,10 +1959,10 @@ class ABSStore(MutableMapping):
         self.client.create_blob_from_stream(self.container, blob_name, buffer)
 
     def __delitem__(self, key):
-        if self.client.exists(self.container, '/'.join([self.prefix, key])):
+        try:
             self.client.delete_blob(self.container, '/'.join([self.prefix, key]))
-        else:
-            raise KeyError
+        except AzureMissingResourceHttpError:
+            raise KeyError('Blob %s not found' % key)
 
     def __eq__(self, other):
         return (
