@@ -1336,12 +1336,6 @@ class TestABSStore(StoreTests, unittest.TestCase):
         store.rmdir()
         return store
 
-    def test_context_manager(self):
-        with self.create_store() as store:
-            store['foo'] = b'bar'
-            store['baz'] = b'qux'
-            assert 2 == len(store)
-
 
 class TestConsolidatedMetadataStore(unittest.TestCase):
 

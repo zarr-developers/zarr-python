@@ -1932,12 +1932,6 @@ class ABSStore(MutableMapping):
         self.client = BlockBlobService(self.account_name, self.account_key,
                                        **self.blob_service_kwargs)
 
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *args):
-        pass
-
     @staticmethod
     def _append_path_to_prefix(path, prefix):
         return '/'.join([normalize_storage_path(prefix),
