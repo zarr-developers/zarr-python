@@ -1976,7 +1976,7 @@ class ConsolidatedMetadataStore(MutableMapping):
         return listdir(self.meta_store, path)
 
 
-class LRUChunkCache(MutableMapping):
+class LRUChunkCache(LRUMappingCache):
     """Class that implements a least-recently-used (LRU) cache for array chunks.
     Intended primarily for use with stores that can be slow to access, e.g., remote stores that
     require network communication to store and retrieve data, and/or arrays where decompression
