@@ -1803,7 +1803,7 @@ class LRUStoreCache(LRUMappingCache):
     """
 
     def __init__(self, store, max_size):
-        super().__init__(max_size)
+        super(LRUStoreCache, self).__init__(max_size)
         self._store = store
         self._keys_cache = None
         self._contains_cache = None
@@ -2221,7 +2221,7 @@ class LRUChunkCache(LRUMappingCache):
     """
 
     def __init__(self, max_size):
-        super().__init__(max_size)
+        super(LRUChunkCache, self).__init__(max_size)
 
     def __getstate__(self):
         return (self._max_size, self._current_size,
