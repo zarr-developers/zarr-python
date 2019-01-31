@@ -42,9 +42,9 @@ simple as possible to implement in other programming languages;
 support for multiple concurrent readers or writers; support for a
 variety of parallel computing environments, from multi-threaded
 execution on a single CPU to multi-process execution across a
-multi-node cluster; pluggable storage subsystem with support for cloud
-object stores; pluggable encoding subsystem with support for a variety
-of modern compressors.
+multi-node cluster; pluggable storage subsystem with support for file
+systems, key-value databases and cloud object stores; pluggable
+encoding subsystem with support for a variety of modern compressors.
 
 Results
 ~~~~~~~
@@ -52,11 +52,12 @@ Results
 We illustrate the use of Zarr with examples from several different
 scientific domains. Zarr is being used within the Pangeo project [5_],
 which is building a community platform for big data geoscience. The
-Pangeo community have converted several existing datasets to Zarr,
-including @@TODO, and have demonstrated their use in computations
-including @@TODO. Within the MalariaGEN project [6_], Zarr is used to
+Pangeo community have converted a number of existing climate modelling
+and satellite observation datasets to Zarr [6_], and has demonstrated
+their use in computations using HPC and cloud computing
+environments. Within the MalariaGEN project [7_], Zarr is used to
 store genome variation data from next-generation sequencing of natural
-populations of malaria parasites and mosquitoes (see, e.g., [7_]), and
+populations of malaria parasites and mosquitoes (see, e.g., [8_]), and
 these data are used as input to analyses of the evolution of these
 organisms in response to selective pressure from anti-malarial drugs
 and insecticides. @@TODO another example.
@@ -69,8 +70,8 @@ of scientific domains, and work is ongoing to establish a community
 process for further development of the specifications and
 implementations in other programming languages. Zarr has recently been
 presented in several venues, including a webinar for the ESIP
-Federation tech dive series [8_], and @@TODO @rabernat's recent talk
-[9_].
+Federation tech dive series [9_], and a talk at the AGU Fall Meeting
+2018 [10_].
 
 
 References
@@ -81,10 +82,11 @@ References
 .. _3: https://github.com/zarr-developers/numcodecs
 .. _4: https://www.hdfgroup.org/solutions/hdf5/
 .. _5: https://pangeo.io/
-.. _6: https://www.malariagen.net/
-.. _7: http://alimanfoo.github.io/2016/09/21/genotype-compression-benchmark.html
-.. _8: http://wiki.esipfed.org/index.php/Interoperability_and_Technology/Tech_Dive_Webinar_Series#8_March.2C_2018:_.22Zarr:_A_simple.2C_open.2C_scalable_solution_for_big_NetCDF.2FHDF_data_on_the_Cloud.22:_Alistair_Miles.2C_University_of_Oxford.
-.. _9: @@TODO
+.. _6: https://pangeo.io/catalog.html
+.. _7: https://www.malariagen.net/
+.. _8: http://alimanfoo.github.io/2016/09/21/genotype-compression-benchmark.html
+.. _9: http://wiki.esipfed.org/index.php/Interoperability_and_Technology/Tech_Dive_Webinar_Series#8_March.2C_2018:_.22Zarr:_A_simple.2C_open.2C_scalable_solution_for_big_NetCDF.2FHDF_data_on_the_Cloud.22:_Alistair_Miles.2C_University_of_Oxford.
+.. _10: https://agu.confex.com/agu/fm18/meetingapp.cgi/Paper/390015
 
 
 Authors
