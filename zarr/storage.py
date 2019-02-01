@@ -34,10 +34,6 @@ import warnings
 import io
 
 
-from azure.storage.blob import BlockBlobService
-from azure.common import AzureMissingResourceHttpError
-
-
 from zarr.util import (normalize_shape, normalize_chunks, normalize_order,
                        normalize_storage_path, buffer_size,
                        normalize_fill_value, nolock, normalize_dtype)
@@ -1910,6 +1906,7 @@ class ABSStore(MutableMapping):
 
     def __init__(self, container, prefix, account_name=None, account_key=None,
                  blob_service_kwargs=None):
+        from azure.storage.blob import BlockBlobService
         self.container = container
         self.prefix = normalize_storage_path(prefix)
         self.account_name = account_name
@@ -1928,6 +1925,7 @@ class ABSStore(MutableMapping):
         return state
 
     def __setstate__(self, state):
+        from azure.storage.blob import BlockBlobService
         self.__dict__.update(state)
         self.client = BlockBlobService(self.account_name, self.account_key,
                                        **self.blob_service_kwargs)
@@ -1945,6 +1943,7 @@ class ABSStore(MutableMapping):
         return path_norm[(len(prefix_norm)+1):]
 
     def __getitem__(self, key):
+        from azure.common import AzureMissingResourceHttpError
         blob_name = '/'.join([self.prefix, key])
         try:
             blob = self.client.get_blob_to_bytes(self.container, blob_name)
@@ -1959,6 +1958,7 @@ class ABSStore(MutableMapping):
         self.client.create_blob_from_stream(self.container, blob_name, buffer)
 
     def __delitem__(self, key):
+        from azure.common import AzureMissingResourceHttpError
         try:
             self.client.delete_blob(self.container, '/'.join([self.prefix, key]))
         except AzureMissingResourceHttpError:
