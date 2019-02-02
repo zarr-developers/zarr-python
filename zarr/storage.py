@@ -1901,7 +1901,6 @@ class ABSStore(MutableMapping):
     Notes
     -----
     In order to use this store, you must install the Microsoft Azure Storage SDK for Python
-    https://github.com/Azure/azure-storage-python/tree/master/azure-storage-blob_ version >= 1.3.0.
     """
 
     def __init__(self, container, prefix, account_name=None, account_key=None,
