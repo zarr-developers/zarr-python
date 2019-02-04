@@ -729,6 +729,21 @@ group (requires `lmdb <http://lmdb.readthedocs.io/>`_ to be installed)::
     >>> z[:] = 42
     >>> store.close()
 
+For compatibility with the `N5<https://github.com/saalfeldlab/n5`_ data format,
+Zarr also provides an N5 backend. Similar to the zip storage class, an
+:class:`zarr.n5.N5Store` can be instantiated directly::
+
+    >>> store = zarr.N5Store('data/example.n5', mode='w')
+    >>> root = zarr.group(store=store)
+    >>> z = root.zeros('foo/bar', shape=(1000, 1000), chunks=(100, 100), dtype='i4')
+    >>> z[:] = 42
+    >>> store.close()
+
+For convenience, the N5 backend will automatically be chosen when the filename
+ends with `.n5`::
+
+    >>> root = zarr.open('data/example.n5', mode='w')
+
 Distributed/cloud storage
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
