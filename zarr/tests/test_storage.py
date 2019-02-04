@@ -775,7 +775,7 @@ class TestN5Store(TestNestedDirectoryStore, unittest.TestCase):
         store['foo/10.20.30'] = b'yyy'
         assert 'foo/10.20.30' in store
         assert b'yyy' == store['foo/10.20.30']
-        # N5 reverts axis order
+        # N5 reverses axis order
         assert b'yyy' == store['foo/30/20/10']
         store['42'] = b'zzz'
         assert '42' in store
