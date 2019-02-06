@@ -1449,7 +1449,7 @@ class DBMStore(MutableMapping):
         if self.flag[0] != 'r':
             with self.write_mutex:
                 if hasattr(self.db, 'sync'):
-                        self.db.sync()
+                    self.db.sync()
                 else:
                     # fall-back, close and re-open, needed for ndbm
                     flag = self.flag
