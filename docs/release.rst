@@ -24,7 +24,7 @@ Enhancements
   By :user:`John Kirkham <jakirkham>`, :issue:`368`, :issue:`365`.
 
 * Efficient iteration over arrays by decompressing chunkwise.
-  By :user:`Jerome Kelleher <jeromekelleher>`, :issue:`398`.
+  By :user:`Jerome Kelleher <jeromekelleher>`, :issue:`398`, :issue:`399`.
 
 Bug fixes
 ~~~~~~~~~
