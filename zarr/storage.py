@@ -2087,6 +2087,8 @@ class SQLiteStore(MutableMapping):
 class MongoDBStore(MutableMapping):
     """Storage class using MongoDB.
 
+    .. note:: This is an experimental feature.
+
     Requires the `pymongo <https://api.mongodb.com/python/current/>`_
     package to be installed.
 
@@ -2183,6 +2185,8 @@ class MongoDBStore(MutableMapping):
 
 class RedisStore(MutableMapping):
     """Storage class using Redis.
+
+    .. note:: This is an experimental feature.
 
     Requires the `redis <https://redis-py.readthedocs.io/>`_
     package to be installed.
