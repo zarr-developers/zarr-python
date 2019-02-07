@@ -2234,9 +2234,9 @@ class RedisStore(MutableMapping):
         self.client[self._key(key)] = value
 
     def __delitem__(self, key):
-        if key not in self.keylist():
+        count = self.client.delete(self._key(key))
+        if not count:
             raise KeyError(key)
-        del self.client[self._key(key)]
 
     def keylist(self):
         offset = len(self._key(''))  # length of prefix
