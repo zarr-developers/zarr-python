@@ -12,6 +12,7 @@ if PY2:  # pragma: py3 no cover
     text_type = unicode
     binary_type = str
     reduce = reduce
+    from itertools import izip_longest as zip_longest
 
     class PermissionError(Exception):
         pass
@@ -27,6 +28,7 @@ else:  # pragma: py2 no cover
     text_type = str
     binary_type = bytes
     from functools import reduce
+    from itertools import zip_longest
     PermissionError = PermissionError
 
     def OrderedDict_move_to_end(od, key):
