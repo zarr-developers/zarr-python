@@ -30,7 +30,7 @@ Enhancements
   Redis database to be used as the backing store for an array or group.
   By :user:`Joe Hamman <jhamman>`, :issue:`299`, :issue:`372`.
 
-* Adds the MongoDB-backed :class:`zarr.storage.MongoDBStore` class enabling an
+* Adds the MongoDB-backed :class:`zarr.storage.MongoDBStore` class enabling a
   MongoDB database to be used as the backing store for an array or group.
   By :user:`Joe Hamman <jhamman>`, :issue:`299`, :issue:`372`.
 
