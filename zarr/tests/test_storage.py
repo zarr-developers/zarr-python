@@ -902,11 +902,24 @@ except ImportError:  # pragma: no cover
 
 try:
     import pymongo
+    from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError
+    try:
+        client = pymongo.MongoClient(host='127.0.0.1',
+                                    serverSelectionTimeoutMS=1e3)
+        client.server_info()
+    except (ConnectionFailure, ServerSelectionTimeoutError):  # pragma: no cover
+        pymongo = None
 except ImportError:  # pragma: no cover
     pymongo = None
 
 try:
     import redis
+    from redis import ConnectionError
+    try:
+        rs = redis.Redis("localhost", port=6379)
+        rs.ping()
+    except ConnectionError:  # pragma: no cover
+        redis = None
 except ImportError:  # pragma: no cover
     redis = None
 
