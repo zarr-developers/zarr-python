@@ -905,7 +905,7 @@ try:
     from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError
     try:
         client = pymongo.MongoClient(host='127.0.0.1',
-                                    serverSelectionTimeoutMS=1e3)
+                                     serverSelectionTimeoutMS=1e3)
         client.server_info()
     except (ConnectionFailure, ServerSelectionTimeoutError):  # pragma: no cover
         pymongo = None
