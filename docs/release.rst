@@ -26,11 +26,11 @@ Enhancements
 * Efficient iteration over arrays by decompressing chunkwise.
   By :user:`Jerome Kelleher <jeromekelleher>`, :issue:`398`, :issue:`399`.
 
-* Adds the Redis-backed :class:`zarr.storage.RedisStore` class enabling an
+* Adds the Redis-backed :class:`zarr.storage.RedisStore` class enabling a
   Redis database to be used as the backing store for an array or group.
   By :user:`Joe Hamman <jhamman>`, :issue:`299`, :issue:`372`.
 
-* Adds the MongoDB-backed :class:`zarr.storage.MongoDBStore` class enabling an
+* Adds the MongoDB-backed :class:`zarr.storage.MongoDBStore` class enabling a
   MongoDB database to be used as the backing store for an array or group.
   By :user:`Joe Hamman <jhamman>`, :issue:`299`, :issue:`372`.
 
