@@ -424,6 +424,18 @@ class Array(object):
             a = a.astype(args[0])
         return a
 
+    def __iter__(self):
+        if len(self.shape) == 0:
+            # Same error as numpy
+            raise TypeError("iteration over a 0-d array")
+        # Avoid repeatedly decompressing chunks by iterating over the chunks
+        # in the first dimension.
+        chunk_size = self.chunks[0]
+        for j in range(self.shape[0]):
+            if j % chunk_size == 0:
+                chunk = self[j: j + chunk_size]
+            yield chunk[j % chunk_size]
+
     def __len__(self):
         if self.shape:
             return self.shape[0]
