@@ -1719,7 +1719,7 @@ class LRUMappingCache(MutableMapping):
             return iter(self._keys())
 
     def _keys(self):
-        raise NotImplementedError
+        raise NotImplementedError  # pragma: no cover
 
     def _pop_value(self):
         # remove the first value from the cache, as this will be the least recently
@@ -1756,13 +1756,13 @@ class LRUMappingCache(MutableMapping):
             self._current_size -= buffer_size(value)
 
     def __getitem__(self, key):
-        raise NotImplementedError
+        raise NotImplementedError  # pragma: no cover
 
     def __setitem__(self, key, value):
-        raise NotImplementedError
+        raise NotImplementedError  # pragma: no cover
 
     def __delitem__(self, key):
-        raise NotImplementedError
+        raise NotImplementedError  # pragma: no cover
 
 
 class LRUStoreCache(LRUMappingCache):
