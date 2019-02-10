@@ -20,8 +20,9 @@ from zarr.storage import (init_array, array_meta_key, attrs_key, DictStore,
                           DirectoryStore, ZipStore, init_group, group_meta_key,
                           getsize, migrate_1to2, TempStore, atexit_rmtree,
                           NestedDirectoryStore, default_compressor, DBMStore,
-                          LMDBStore, SQLiteStore, atexit_rmglob, LRUStoreCache,
-                          ConsolidatedMetadataStore, LRUChunkCache)
+                          LMDBStore, SQLiteStore, MongoDBStore, RedisStore,
+                          atexit_rmglob, LRUStoreCache, ConsolidatedMetadataStore,
+                          LRUChunkCache)
 from zarr.meta import (decode_array_metadata, encode_array_metadata, ZARR_FORMAT,
                        decode_group_metadata, encode_group_metadata)
 from zarr.compat import PY2
@@ -904,6 +905,29 @@ try:
 except ImportError:  # pragma: no cover
     sqlite3 = None
 
+try:
+    import pymongo
+    from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError
+    try:
+        client = pymongo.MongoClient(host='127.0.0.1',
+                                     serverSelectionTimeoutMS=1e3)
+        client.server_info()
+    except (ConnectionFailure, ServerSelectionTimeoutError):  # pragma: no cover
+        pymongo = None
+except ImportError:  # pragma: no cover
+    pymongo = None
+
+try:
+    import redis
+    from redis import ConnectionError
+    try:
+        rs = redis.Redis("localhost", port=6379)
+        rs.ping()
+    except ConnectionError:  # pragma: no cover
+        redis = None
+except ImportError:  # pragma: no cover
+    redis = None
+
 
 @unittest.skipIf(sqlite3 is None, 'python built without sqlite')
 class TestSQLiteStore(StoreTests, unittest.TestCase):
@@ -932,6 +956,29 @@ class TestSQLiteStoreInMemory(TestSQLiteStore, unittest.TestCase):
         # round-trip through pickle
         with pytest.raises(PicklingError):
             pickle.dumps(store)
+
+
+@unittest.skipIf(pymongo is None, 'test requires pymongo')
+class TestMongoDBStore(StoreTests, unittest.TestCase):
+
+    def create_store(self):
+        store = MongoDBStore(host='127.0.0.1', database='zarr_tests',
+                             collection='zarr_tests')
+        # start with an empty store
+        store.clear()
+        return store
+
+
+@unittest.skipIf(redis is None, 'test requires redis')
+class TestRedisStore(StoreTests, unittest.TestCase):
+
+    def create_store(self):
+        # TODO: this is the default host for Redis on Travis,
+        # we probably want to generalize this though
+        store = RedisStore(host='localhost', port=6379)
+        # start with an empty store
+        store.clear()
+        return store
 
 
 class TestLRUStoreCache(StoreTests, unittest.TestCase):

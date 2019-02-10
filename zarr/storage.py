@@ -37,7 +37,7 @@ from zarr.util import (normalize_shape, normalize_chunks, normalize_order,
                        normalize_storage_path, buffer_size,
                        normalize_fill_value, nolock, normalize_dtype)
 from zarr.meta import encode_array_metadata, encode_group_metadata
-from zarr.compat import PY2, OrderedDict_move_to_end
+from zarr.compat import PY2, OrderedDict_move_to_end, binary_type
 from numcodecs.registry import codec_registry
 from numcodecs.compat import ensure_bytes, ensure_contiguous_ndarray
 from zarr.errors import (err_contains_group, err_contains_array, err_bad_compressor,
@@ -1449,7 +1449,7 @@ class DBMStore(MutableMapping):
         if self.flag[0] != 'r':
             with self.write_mutex:
                 if hasattr(self.db, 'sync'):
-                        self.db.sync()
+                    self.db.sync()
                 else:
                     # fall-back, close and re-open, needed for ndbm
                     flag = self.flag
@@ -2102,6 +2102,188 @@ class SQLiteStore(MutableMapping):
                 COMMIT TRANSACTION;
                 '''
             )
+
+
+class MongoDBStore(MutableMapping):
+    """Storage class using MongoDB.
+
+    .. note:: This is an experimental feature.
+
+    Requires the `pymongo <https://api.mongodb.com/python/current/>`_
+    package to be installed.
+
+    Parameters
+    ----------
+    database : string
+        Name of database
+    collection : string
+        Name of collection
+    **kwargs
+        Keyword arguments passed through to the `pymongo.MongoClient` function.
+
+    Examples
+    --------
+    Store a single array::
+
+        >>> import zarr
+        >>> store = zarr.MongoDBStore('localhost')
+        >>> z = zarr.zeros((10, 10), chunks=(5, 5), store=store, overwrite=True)
+        >>> z[...] = 42
+        >>> store.close()
+
+    Store a group::
+
+        >>> store = zarr.MongoDBStore('localhost')
+        >>> root = zarr.group(store=store, overwrite=True)
+        >>> foo = root.create_group('foo')
+        >>> bar = foo.zeros('bar', shape=(10, 10), chunks=(5, 5))
+        >>> bar[...] = 42
+        >>> store.close()
+
+    Notes
+    -----
+    The maximum chunksize in MongoDB documents is 16 MB.
+
+    """
+
+    _key = 'key'
+    _value = 'value'
+
+    def __init__(self, database='mongodb_zarr', collection='zarr_collection',
+                 **kwargs):
+        import pymongo
+
+        self._database = database
+        self._collection = collection
+        self._kwargs = kwargs
+
+        self.client = pymongo.MongoClient(**self._kwargs)
+        self.db = self.client.get_database(self._database)
+        self.collection = self.db.get_collection(self._collection)
+
+    def __getitem__(self, key):
+        doc = self.collection.find_one({self._key: key})
+
+        if doc is None:
+            raise KeyError(key)
+        else:
+            return binary_type(doc[self._value])
+
+    def __setitem__(self, key, value):
+        value = ensure_bytes(value)
+        self.collection.replace_one({self._key: key},
+                                    {self._key: key, self._value: value},
+                                    upsert=True)
+
+    def __delitem__(self, key):
+        result = self.collection.delete_many({self._key: key})
+        if not result.deleted_count == 1:
+            raise KeyError(key)
+
+    def __iter__(self):
+        for f in self.collection.find({}):
+            yield f[self._key]
+
+    def __len__(self):
+        return self.collection.count_documents({})
+
+    def __getstate__(self):
+        return self._database, self._collection, self._kwargs
+
+    def __setstate__(self, state):
+        database, collection, kwargs = state
+        self.__init__(database=database, collection=collection, **kwargs)
+
+    def close(self):
+        """Cleanup client resources and disconnect from MongoDB."""
+        self.client.close()
+
+    def clear(self):
+        """Remove all items from store."""
+        self.collection.delete_many({})
+
+
+class RedisStore(MutableMapping):
+    """Storage class using Redis.
+
+    .. note:: This is an experimental feature.
+
+    Requires the `redis <https://redis-py.readthedocs.io/>`_
+    package to be installed.
+
+    Parameters
+    ----------
+    prefix : string
+        Name of prefix for Redis keys
+    **kwargs
+        Keyword arguments passed through to the `redis.Redis` function.
+
+    Examples
+    --------
+    Store a single array::
+
+        >>> import zarr
+        >>> store = zarr.RedisStore(port=6379)
+        >>> z = zarr.zeros((10, 10), chunks=(5, 5), store=store, overwrite=True)
+        >>> z[...] = 42
+
+    Store a group::
+
+        >>> store = zarr.RedisStore(port=6379)
+        >>> root = zarr.group(store=store, overwrite=True)
+        >>> foo = root.create_group('foo')
+        >>> bar = foo.zeros('bar', shape=(10, 10), chunks=(5, 5))
+        >>> bar[...] = 42
+
+    """
+    def __init__(self, prefix='zarr', **kwargs):
+        import redis
+        self._prefix = prefix
+        self._kwargs = kwargs
+
+        self.client = redis.Redis(**kwargs)
+
+    def _key(self, key):
+        return '{prefix}:{key}'.format(prefix=self._prefix, key=key)
+
+    def __getitem__(self, key):
+        return self.client[self._key(key)]
+
+    def __setitem__(self, key, value):
+        value = ensure_bytes(value)
+        self.client[self._key(key)] = value
+
+    def __delitem__(self, key):
+        count = self.client.delete(self._key(key))
+        if not count:
+            raise KeyError(key)
+
+    def keylist(self):
+        offset = len(self._key(''))  # length of prefix
+        return [key[offset:].decode('utf-8')
+                for key in self.client.keys(self._key('*'))]
+
+    def keys(self):
+        for key in self.keylist():
+            yield key
+
+    def __iter__(self):
+        for key in self.keys():
+            yield key
+
+    def __len__(self):
+        return len(self.keylist())
+
+    def __getstate__(self):
+        return self._prefix, self._kwargs
+
+    def __setstate__(self, state):
+        prefix, kwargs = state
+        self.__init__(prefix=prefix, **kwargs)
+
+    def clear(self):
+        for key in self.keys():
+            del self[key]
 
 
 class ConsolidatedMetadataStore(MutableMapping):
