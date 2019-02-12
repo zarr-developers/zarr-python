@@ -15,11 +15,11 @@ import pytest
 
 
 from zarr.storage import (DirectoryStore, init_array, init_group, NestedDirectoryStore,
-                          DBMStore, LMDBStore, atexit_rmtree, atexit_rmglob,
+                          DBMStore, LMDBStore, SQLiteStore, atexit_rmtree, atexit_rmglob,
                           LRUStoreCache)
 from zarr.core import Array
 from zarr.errors import PermissionError
-from zarr.compat import PY2, text_type, binary_type
+from zarr.compat import PY2, text_type, binary_type, zip_longest
 from zarr.util import buffer_size
 from zarr.n5 import N5Store
 from numcodecs import (Delta, FixedScaleOffset, Zlib, Blosc, BZ2, MsgPack, Pickle,
@@ -1156,6 +1156,40 @@ class TestArray(unittest.TestCase):
             # provide object_codec, but not object dtype
             self.create_array(shape=10, chunks=5, dtype='i4', object_codec=JSON())
 
+    def test_zero_d_iter(self):
+        a = np.array(1, dtype=int)
+        z = self.create_array(shape=a.shape, dtype=int)
+        z[...] = a
+        with pytest.raises(TypeError):
+            # noinspection PyStatementEffect
+            list(a)
+        with pytest.raises(TypeError):
+            # noinspection PyStatementEffect
+            list(z)
+
+    def test_iter(self):
+        params = (
+            ((1,), (1,)),
+            ((2,), (1,)),
+            ((1,), (2,)),
+            ((3,), (3,)),
+            ((1000,), (100,)),
+            ((100,), (1000,)),
+            ((1, 100), (1, 1)),
+            ((1, 0), (1, 1)),
+            ((0, 1), (1, 1)),
+            ((0, 1), (2, 1)),
+            ((100, 1), (3, 1)),
+            ((100, 100), (10, 10)),
+            ((10, 10, 10), (3, 3, 3)),
+        )
+        for shape, chunks in params:
+            z = self.create_array(shape=shape, chunks=chunks, dtype=int)
+            a = np.arange(np.product(shape)).reshape(shape)
+            z[:] = a
+            for expect, actual in zip_longest(a, z):
+                assert_array_equal(expect, actual)
+
 
 class TestArrayWithPath(TestArray):
 
@@ -1524,6 +1558,31 @@ class TestArrayWithLMDBStoreNoBuffers(TestArray):
         path = mktemp(suffix='.lmdb')
         atexit.register(atexit_rmtree, path)
         store = LMDBStore(path, buffers=False)
+        cache_metadata = kwargs.pop('cache_metadata', True)
+        cache_attrs = kwargs.pop('cache_attrs', True)
+        kwargs.setdefault('compressor', Zlib(1))
+        init_array(store, **kwargs)
+        return Array(store, read_only=read_only, cache_metadata=cache_metadata,
+                     cache_attrs=cache_attrs)
+
+    def test_nbytes_stored(self):
+        pass  # not implemented
+
+
+try:
+    import sqlite3
+except ImportError:  # pragma: no cover
+    sqlite3 = None
+
+
+@unittest.skipIf(sqlite3 is None, 'python built without sqlite')
+class TestArrayWithSQLiteStore(TestArray):
+
+    @staticmethod
+    def create_array(read_only=False, **kwargs):
+        path = mktemp(suffix='.db')
+        atexit.register(atexit_rmtree, path)
+        store = SQLiteStore(path)
         cache_metadata = kwargs.pop('cache_metadata', True)
         cache_attrs = kwargs.pop('cache_attrs', True)
         kwargs.setdefault('compressor', Zlib(1))
