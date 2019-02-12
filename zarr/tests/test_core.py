@@ -1189,6 +1189,16 @@ class TestArray(unittest.TestCase):
             for expect, actual in zip_longest(a, z):
                 assert_array_equal(expect, actual)
 
+    def test_endian(self):
+        dtype = np.dtype('float32')
+        a1 = self.create_array(shape=1000, chunks=100, dtype=dtype.newbyteorder('<'))
+        a1[:] = 1
+        x1 = a1[:]
+        a2 = self.create_array(shape=1000, chunks=100, dtype=dtype.newbyteorder('>'))
+        a2[:] = 1
+        x2 = a2[:]
+        assert_array_equal(x1, x2)
+
 
 class TestArrayWithPath(TestArray):
 
