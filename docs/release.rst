@@ -34,6 +34,10 @@ Enhancements
   MongoDB database to be used as the backing store for an array or group.
   By :user:`Joe Hamman <jhamman>`, :issue:`299`, :issue:`372`.
 
+* **New storage class for N5 containers**. The :class:`zarr.n5.N5Store` has been
+  added, which uses :class:`zarr.storage.NestedDirectoryStore` to support
+  reading and writing from and to N5 containers.
+
 Bug fixes
 ~~~~~~~~~
 
@@ -110,10 +114,6 @@ Enhancements
   :class:`zarr.storage.NestedDirectoryStore` has been added, which is similar to
   the existing :class:`zarr.storage.DirectoryStore` class but nests chunk files
   for multidimensional arrays into sub-directories. :issue:`155`, :issue:`177`.
-
-* **New storage class for N5 containers**. The :class:`zarr.n5.N5Store` has been
-  added, which uses :class:`zarr.storage.NestedDirectoryStore` to support
-  reading and writing from and to N5 containers.
 
 * **New tree() method for printing hierarchies**. The ``Group`` class has a new
   :func:`zarr.hierarchy.Group.tree` method which enables a tree representation of
