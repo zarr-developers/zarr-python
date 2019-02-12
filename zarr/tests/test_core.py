@@ -23,7 +23,7 @@ from zarr.errors import PermissionError
 from zarr.compat import PY2, text_type, binary_type, zip_longest
 from zarr.meta import ensure_str
 from zarr.util import buffer_size
-from numcodecs import (Delta, FixedScaleOffset, Zlib, Blosc, BZ2, MsgPack, Pickle,
+from numcodecs import (Delta, FixedScaleOffset, LZ4, GZip, Zlib, Blosc, BZ2, MsgPack, Pickle,
                        Categorize, JSON, VLenUTF8, VLenBytes, VLenArray)
 from numcodecs.tests.common import greetings
 
@@ -1190,6 +1190,19 @@ class TestArray(unittest.TestCase):
             z[:] = a
             for expect, actual in zip_longest(a, z):
                 assert_array_equal(expect, actual)
+
+    def test_compressors(self):
+        compressors = [
+            None, BZ2(), Blosc(), LZ4(), Zlib(), GZip()
+        ]
+        if LZMA:
+            compressors.append(LZMA())
+        for compressor in compressors:
+            a = self.create_array(shape=1000, chunks=100, compressor=compressor)
+            a[0:100] = 1
+            assert np.all(a[0:100] == 1)
+            a[:] = 1
+            assert np.all(a[:] == 1)
 
     def test_endian(self):
         dtype = np.dtype('float32')
