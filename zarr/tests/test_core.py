@@ -3,6 +3,7 @@ from __future__ import absolute_import, print_function, division
 import unittest
 from tempfile import mkdtemp, mktemp
 import atexit
+import json
 import shutil
 import pickle
 import os
@@ -20,6 +21,7 @@ from zarr.storage import (DirectoryStore, init_array, init_group, NestedDirector
 from zarr.core import Array
 from zarr.errors import PermissionError
 from zarr.compat import PY2, text_type, binary_type, zip_longest
+from zarr.meta import ensure_str
 from zarr.util import buffer_size
 from numcodecs import (Delta, FixedScaleOffset, Zlib, Blosc, BZ2, MsgPack, Pickle,
                        Categorize, JSON, VLenUTF8, VLenBytes, VLenArray)
@@ -1198,6 +1200,16 @@ class TestArray(unittest.TestCase):
         a2[:] = 1
         x2 = a2[:]
         assert_array_equal(x1, x2)
+
+    def test_attributes(self):
+        a = self.create_array(shape=10, chunks=10, dtype='i8')
+        a.attrs['foo'] = 'bar'
+        attrs = json.loads(ensure_str(a.store[a.attrs.key]))
+        assert 'foo' in attrs and attrs['foo'] == 'bar'
+        a.attrs['bar'] = 'foo'
+        attrs = json.loads(ensure_str(a.store[a.attrs.key]))
+        assert 'foo' in attrs and attrs['foo'] == 'bar'
+        assert 'bar' in attrs and attrs['bar'] == 'foo'
 
 
 class TestArrayWithPath(TestArray):
