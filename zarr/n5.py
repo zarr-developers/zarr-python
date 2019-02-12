@@ -60,6 +60,8 @@ class N5Store(NestedDirectoryStore):
     Notes
     -----
 
+    This is an experimental feature.
+
     Safe to write in multiple threads or processes.
 
     """
