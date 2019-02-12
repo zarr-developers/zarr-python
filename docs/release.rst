@@ -9,8 +9,7 @@ Release notes
 Enhancements
 ~~~~~~~~~~~~
 
-* New storage backend, backed by Azure Blob Storage,
-  class :class:`zarr.storage.ABSStore`.
+* New storage backend, backed by Azure Blob Storage, class :class:`zarr.storage.ABSStore`.
   All data is stored as Block blobs.
 
 * Add "consolidated" metadata as an experimental feature: use
