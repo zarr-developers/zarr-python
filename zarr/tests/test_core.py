@@ -1405,6 +1405,9 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
     def test_array_order(self):
 
         # N5 only supports 'C' at the moment
+        with pytest.raises(AssertionError):
+            self.create_array(shape=(10, 11), chunks=(10, 11), dtype='i8',
+                              order='F')
 
         # 1D
         a = np.arange(1050)
