@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, print_function, division
+from contextlib import contextmanager
 import unittest
 import tempfile
 import atexit
@@ -25,7 +26,7 @@ from zarr.storage import (init_array, array_meta_key, attrs_key, DictStore,
 from zarr.meta import (decode_array_metadata, encode_array_metadata, ZARR_FORMAT,
                        decode_group_metadata, encode_group_metadata, ensure_str)
 from zarr.compat import PY2
-from zarr.codecs import Zlib, Blosc, BZ2, LZ4, GZip
+from zarr.codecs import AsType, Zlib, Blosc, BZ2, LZ4, GZip
 from zarr.errors import PermissionError, MetadataError
 from zarr.hierarchy import group
 from zarr.n5 import N5Store
@@ -36,6 +37,11 @@ try:
     from zarr.codecs import LZMA
 except ImportError:  # pragma: no cover
     LZMA = None
+
+
+@contextmanager
+def does_not_raise():
+    yield
 
 
 class StoreTests(object):
@@ -856,10 +862,15 @@ class TestN5Store(TestNestedDirectoryStore, unittest.TestCase):
         assert ZARR_FORMAT == meta['zarr_format']
 
     def test_filters(self):
-        store = self.create_store()
-        init_array(store, shape=1000, chunks=100, filters=None)
-        store = self.create_store()
-        init_array(store, shape=1000, chunks=100, filters=[])
+        all_filters, all_errors = zip(*[
+            (None, does_not_raise()),
+            ([], does_not_raise()),
+            ([AsType('f4', 'f8')], pytest.raises(AssertionError)),
+        ])
+        for filters, error in zip(all_filters, all_errors):
+            store = self.create_store()
+            with error:
+                init_array(store, shape=1000, chunks=100, filters=filters)
 
     def test_compressors(self):
         compressors = [
