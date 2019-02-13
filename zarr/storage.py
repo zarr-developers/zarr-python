@@ -1186,12 +1186,14 @@ class ZipStore(MutableMapping):
         raise NotImplementedError
 
     def __eq__(self, other):
-        return (
-            isinstance(other, ZipStore) and
-            self.path == other.path and
-            self.compression == other.compression and
-            self.allowZip64 == other.allowZip64
-        )
+        if not isinstance(other, ZipStore):
+            return False
+        elif not (self.compression == other.compression or self.allowZip64 == other.allowZip64):
+            return False
+        elif self.path == other.path:
+            return True
+        else:
+            return super(ZipStore, self).__eq__(other)
 
     def keylist(self):
         with self.mutex:
