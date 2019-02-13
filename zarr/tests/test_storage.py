@@ -119,6 +119,35 @@ class StoreTests(object):
         store['foo3'] = array.array('B', b'bar')
         store['foo4'] = np.frombuffer(b'bar', dtype='u1')
 
+    def test_compare_eq(self):
+        store1 = self.create_store()
+        store2 = self.create_store()
+
+        assert store1 == store1
+        store2['foo'] = b'abcde'
+        assert store2 == store2
+
+        store1 = self.create_store()
+        store2 = self.create_store()
+
+        store1['foo'] = b'abcde'
+        store2['foo'] = b'abcde'
+        assert store1 == store2
+
+        store1 = self.create_store()
+        store2 = self.create_store()
+
+        store1['foo'] = b'abcde'
+        store2['baz'] = b'abcde'
+        assert store1 != store2
+
+        store1 = self.create_store()
+        store2 = self.create_store()
+
+        store1['foo'] = b'abcde'
+        store2['foo'] = b'uvwxy'
+        assert store1 != store2
+
     def test_update(self):
         store = self.create_store()
         assert 'foo' not in store
