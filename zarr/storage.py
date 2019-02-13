@@ -1485,15 +1485,13 @@ class DBMStore(MutableMapping):
             del self.db[key]
 
     def __eq__(self, other):
-        if not isinstance(other, DBMStore):
-            return False
-        elif not (self.open == other.open and self.open_kwargs == other.open_kwargs):
+        return (
+            isinstance(other, DBMStore) and
+            self.path == other.path and
             # allow flag and mode to differ
-            return False
-        elif self.path == other.path:
-            return True
-        else:
-            return super(DBMStore, self).__eq__(other)
+            self.open == other.open and
+            self.open_kwargs == other.open_kwargs
+        )
 
     def keys(self):
         return (_dbm_decode_key(k) for k in iter(self.db.keys()))
