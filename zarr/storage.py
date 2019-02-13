@@ -569,8 +569,8 @@ class DictStore(MutableMapping):
     def __eq__(self, other):
         return (
             isinstance(other, DictStore) and
-            self.root == other.root and
-            self.cls == other.cls
+            self.cls == other.cls and
+            self.root == other.root
         )
 
     def keys(self):
