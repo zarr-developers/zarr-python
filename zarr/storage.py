@@ -1005,10 +1005,10 @@ class NestedDirectoryStore(DirectoryStore):
         return super(NestedDirectoryStore, self).__contains__(key)
 
     def __eq__(self, other):
-        if not isinstance(other, NestedDirectoryStore):
-            return False
-        else:
-            return super(NestedDirectoryStore, self).__eq__(other)
+        return (
+            isinstance(other, NestedDirectoryStore) and
+            self.path == other.path
+        )
 
     def listdir(self, path=None):
         children = super(NestedDirectoryStore, self).listdir(path=path)
