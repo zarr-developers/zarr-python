@@ -781,10 +781,12 @@ class DirectoryStore(MutableMapping):
         return os.path.isfile(file_path)
 
     def __eq__(self, other):
-        return (
-            isinstance(other, DirectoryStore) and
-            self.path == other.path
-        )
+        if not isinstance(other, DirectoryStore):
+            return False
+        elif self.path == other.path:
+            return True
+        else:
+            return super(DirectoryStore, self).__eq__(other)
 
     def keys(self):
         if os.path.exists(self.path):
