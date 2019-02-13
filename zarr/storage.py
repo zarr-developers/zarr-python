@@ -570,7 +570,7 @@ class DictStore(MutableMapping):
         return (
             isinstance(other, DictStore) and
             self.cls == other.cls and
-            self.root == other.root
+            self.root is other.root
         )
 
     def keys(self):
