@@ -132,7 +132,7 @@ class StoreTests(object):
 
         store1['foo'] = b'abcde'
         store2['foo'] = b'abcde'
-        assert store1 == store2
+        assert store1 != store2
 
         store1 = self.create_store()
         store2 = self.create_store()
