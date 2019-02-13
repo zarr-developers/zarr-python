@@ -1968,6 +1968,14 @@ class SQLiteStore(MutableMapping):
         self.cursor.close()
         self.db.close()
 
+    def __eq__(self, other):
+        return (
+            isinstance(other, SQLiteStore) and
+            self.path == other.path and
+            self.kwargs == other.kwargs and
+            self.db == other.db
+        )
+
     def __getitem__(self, key):
         value = self.cursor.execute('SELECT v FROM zarr WHERE (k = ?)', (key,))
         for v, in value:
