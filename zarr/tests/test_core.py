@@ -1458,23 +1458,62 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
             self.check_structured_array(d, fill_values)
 
     def test_object_arrays(self):
-        # object arrays not supported in N5
-        pass
+
+        # an object_codec is required for object arrays
+        with pytest.raises(ValueError):
+            self.create_array(shape=10, chunks=3, dtype=object)
+
+        # an object_codec is required for object arrays, but allow to be provided via
+        # filters to maintain API backwards compatibility
+        with pytest.raises(AssertionError):
+            with pytest.warns(FutureWarning):
+                self.create_array(shape=10, chunks=3, dtype=object, filters=[MsgPack()])
+
+        # create an object array using an object codec
+        with pytest.raises(AssertionError):
+            self.create_array(shape=10, chunks=3, dtype=object, object_codec=MsgPack())
 
     def test_object_arrays_vlen_text(self):
-        # object arrays not supported in N5
-        pass
+
+        data = np.array(greetings * 1000, dtype=object)
+
+        with pytest.raises(AssertionError):
+            self.create_array(shape=data.shape, dtype=object, object_codec=VLenUTF8())
+
+        # convenience API
+        with pytest.raises(AssertionError):
+            self.create_array(shape=data.shape, dtype=text_type)
 
     def test_object_arrays_vlen_bytes(self):
-        # object arrays not supported in N5
-        pass
+
+        greetings_bytes = [g.encode('utf8') for g in greetings]
+        data = np.array(greetings_bytes * 1000, dtype=object)
+
+        with pytest.raises(AssertionError):
+            self.create_array(shape=data.shape, dtype=object, object_codec=VLenBytes())
+
+        # convenience API
+        with pytest.raises(AssertionError):
+            self.create_array(shape=data.shape, dtype=binary_type)
 
     def test_object_arrays_vlen_array(self):
-        # object arrays not supported in N5
-        pass
+
+        data = np.array([np.array([1, 3, 7]),
+                         np.array([5]),
+                         np.array([2, 8, 12])] * 1000, dtype=object)
+
+        codecs = VLenArray(int), VLenArray('<u4')
+        for codec in codecs:
+            with pytest.raises(AssertionError):
+                self.create_array(shape=data.shape, dtype=object, object_codec=codec)
+
+        # convenience API
+        for item_type in 'int', '<u4':
+            with pytest.raises(AssertionError):
+                self.create_array(shape=data.shape, dtype='array:{}'.format(item_type))
 
     def test_object_arrays_danger(self):
-        # object arrays not supported in N5
+        # Cannot hacking out object codec as N5 doesn't allow object codecs
         pass
 
     def test_hexdigest(self):
