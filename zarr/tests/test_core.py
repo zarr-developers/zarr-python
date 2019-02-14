@@ -93,7 +93,7 @@ class TestArray(unittest.TestCase):
         for v in z.chunk_store.values():
             try:
                 ensure_ndarray(v)
-            except TypeError:
+            except TypeError:  # pragma: no cover
                 pytest.fail("Non-bytes-like value: %s" % repr(v))
 
     def test_store_has_bytes_values(self):
