@@ -1,2 +1,4 @@
 pycodestyle:
-  max-line-length: 100
+    max-line-length: 100
+    exclude:
+        - docs
