@@ -23,6 +23,7 @@ from zarr.compat import PY2, text_type, binary_type, zip_longest
 from zarr.util import buffer_size
 from numcodecs import (Delta, FixedScaleOffset, Zlib, Blosc, BZ2, MsgPack, Pickle,
                        Categorize, JSON, VLenUTF8, VLenBytes, VLenArray)
+from numcodecs.compat import ensure_ndarray
 from numcodecs.tests.common import greetings
 
 
@@ -82,6 +83,18 @@ class TestArray(unittest.TestCase):
         init_array(store, **kwargs)
         return Array(store, read_only=read_only, cache_metadata=cache_metadata,
                      cache_attrs=cache_attrs)
+
+    def test_store_has_binary_values(self):
+        # Initialize array
+        np.random.seed(42)
+        z = self.create_array(shape=(1050,), chunks=100, dtype='f8', compressor=[])
+        z[:] = np.random.random(z.shape)
+
+        for v in z.chunk_store.values():
+            try:
+                ensure_ndarray(v)
+            except TypeError:
+                pytest.fail("Non-bytes-like value: %s" % repr(v))
 
     def test_nbytes_stored(self):
 
