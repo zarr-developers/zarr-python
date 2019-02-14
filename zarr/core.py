@@ -8,7 +8,7 @@ import re
 
 
 import numpy as np
-from numcodecs.compat import ensure_ndarray
+from numcodecs.compat import ensure_bytes, ensure_ndarray
 
 
 from zarr.util import (is_total_slice, human_readable_size, normalize_resize_args,
@@ -1787,6 +1787,10 @@ class Array(object):
             cdata = self._compressor.encode(chunk)
         else:
             cdata = chunk
+
+        # ensure in-memory data is immutable and easy to compare
+        if isinstance(self.chunk_store, dict):
+            cdata = ensure_bytes(cdata)
 
         return cdata
 
