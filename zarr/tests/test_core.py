@@ -1878,3 +1878,7 @@ class TestArrayWithStoreCache(TestArray):
         init_array(store, **kwargs)
         return Array(store, read_only=read_only, cache_metadata=cache_metadata,
                      cache_attrs=cache_attrs)
+
+    def test_store_has_bytes_values(self):
+        # skip as the cache has no control over how the store provides values
+        pass
