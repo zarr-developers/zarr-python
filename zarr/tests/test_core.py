@@ -1430,16 +1430,32 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
         assert_array_equal(a, actual)
 
     def test_structured_array(self):
-        # structured arrays not supported in N5
-        pass
+        d = np.array([(b'aaa', 1, 4.2),
+                      (b'bbb', 2, 8.4),
+                      (b'ccc', 3, 12.6)],
+                     dtype=[('foo', 'S3'), ('bar', 'i4'), ('baz', 'f8')])
+        fill_values = None, b'', (b'zzz', 42, 16.8)
+        with pytest.raises(TypeError):
+            self.check_structured_array(d, fill_values)
 
     def test_structured_array_subshapes(self):
-        # structured arrays not supported in N5
-        pass
+        d = np.array([(0, ((0, 1, 2), (1, 2, 3)), b'aaa'),
+                      (1, ((1, 2, 3), (2, 3, 4)), b'bbb'),
+                      (2, ((2, 3, 4), (3, 4, 5)), b'ccc')],
+                     dtype=[('foo', 'i8'), ('bar', '(2, 3)f4'), ('baz', 'S3')])
+        fill_values = None, b'', (0, ((0, 0, 0), (1, 1, 1)), b'zzz')
+        with pytest.raises(TypeError):
+            self.check_structured_array(d, fill_values)
 
     def test_structured_array_nested(self):
-        # structured arrays not supported in N5
-        pass
+        d = np.array([(0, (0, ((0, 1), (1, 2), (2, 3)), 0), b'aaa'),
+                      (1, (1, ((1, 2), (2, 3), (3, 4)), 1), b'bbb'),
+                      (2, (2, ((2, 3), (3, 4), (4, 5)), 2), b'ccc')],
+                     dtype=[('foo', 'i8'), ('bar', [('foo', 'i4'), ('bar', '(3, 2)f4'),
+                            ('baz', 'u1')]), ('baz', 'S3')])
+        fill_values = None, b'', (0, (0, ((0, 0), (1, 1), (2, 2)), 0), b'zzz')
+        with pytest.raises(TypeError):
+            self.check_structured_array(d, fill_values)
 
     def test_object_arrays(self):
         # object arrays not supported in N5
