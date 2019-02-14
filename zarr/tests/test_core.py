@@ -1725,6 +1725,9 @@ class CustomMapping(object):
     def keys(self):
         return self.inner.keys()
 
+    def values(self):
+        return self.inner.values()
+
     def get(self, item, default=None):
         try:
             return self.inner[item]
