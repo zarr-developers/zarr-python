@@ -754,7 +754,6 @@ an N5 backend (this is currently an experimental feature). Similar to the zip st
     >>> root = zarr.group(store=store)
     >>> z = root.zeros('foo/bar', shape=(1000, 1000), chunks=(100, 100), dtype='i4')
     >>> z[:] = 42
-    >>> store.close()
 
 For convenience, the N5 backend will automatically be chosen when the filename
 ends with `.n5`::
