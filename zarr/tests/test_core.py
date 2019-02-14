@@ -1427,6 +1427,9 @@ class TestArrayWithLMDBStore(TestArray):
         return Array(store, read_only=read_only, cache_metadata=cache_metadata,
                      cache_attrs=cache_attrs)
 
+    def test_store_has_bytes_values(self):
+        pass  # returns values as memoryviews/buffers instead of bytes
+
     def test_nbytes_stored(self):
         pass  # not implemented
 
