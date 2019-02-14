@@ -1677,21 +1677,11 @@ class Array(object):
 
             else:
 
-                if not self._compressor and not self._filters:
-
-                    # https://github.com/alimanfoo/zarr/issues/79
-                    # Ensure a copy is taken so we don't end up storing
-                    # a view into someone else's array.
-                    # N.B., this assumes that filters or compressor always
-                    # take a copy and never attempt to apply encoding in-place.
-                    chunk = np.array(value, dtype=self._dtype, order=self._order)
-
+                # ensure array is contiguous
+                if self._order == 'F':
+                    chunk = np.asfortranarray(value, dtype=self._dtype)
                 else:
-                    # ensure array is contiguous
-                    if self._order == 'F':
-                        chunk = np.asfortranarray(value, dtype=self._dtype)
-                    else:
-                        chunk = np.ascontiguousarray(value, dtype=self._dtype)
+                    chunk = np.ascontiguousarray(value, dtype=self._dtype)
 
         else:
             # partially replace the contents of this chunk
