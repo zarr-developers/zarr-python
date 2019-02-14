@@ -23,7 +23,7 @@ from zarr.compat import PY2, text_type, binary_type, zip_longest
 from zarr.util import buffer_size
 from numcodecs import (Delta, FixedScaleOffset, Zlib, Blosc, BZ2, MsgPack, Pickle,
                        Categorize, JSON, VLenUTF8, VLenBytes, VLenArray)
-from numcodecs.compat import ensure_ndarray
+from numcodecs.compat import ensure_bytes, ensure_ndarray
 from numcodecs.tests.common import greetings
 
 
@@ -1767,7 +1767,7 @@ class CustomMapping(object):
         return self.inner[item]
 
     def __setitem__(self, item, value):
-        self.inner[item] = value
+        self.inner[item] = ensure_bytes(value)
 
     def __delitem__(self, key):
         del self.inner[key]
