@@ -96,6 +96,19 @@ class TestArray(unittest.TestCase):
             except TypeError:
                 pytest.fail("Non-bytes-like value: %s" % repr(v))
 
+    def test_store_has_bytes_values(self):
+        # Test that many stores do hold bytes values.
+        # Though this is not a strict requirement.
+        # Should be disabled by any stores that fail this as needed.
+
+        # Initialize array
+        np.random.seed(42)
+        z = self.create_array(shape=(1050,), chunks=100, dtype='f8', compressor=[])
+        z[:] = np.random.random(z.shape)
+
+        # Check in-memory array only contains `bytes`
+        assert all([isinstance(v, binary_type) for v in z.chunk_store.values()])
+
     def test_nbytes_stored(self):
 
         # dict as store
