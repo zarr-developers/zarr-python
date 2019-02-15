@@ -1,5 +1,5 @@
-Zarr - scalable storage of tensor data for use in parallel and distributed computations
-=======================================================================================
+Zarr - scalable storage of tensor data for use in parallel and distributed computing
+====================================================================================
 
 SciPy 2019 submission.
 
@@ -9,7 +9,16 @@ Short summary
 
 (target: 100 words)
 
-@@TODO
+Many scientific problems involve computing over large N-dimensional
+typed arrays of data, and reading or writing data is often the major
+bottleneck limiting speed or scalability. The Zarr project is
+developing a simple, scalable approach to storage of such data in a
+way that is compatible with a range of approaches to distributed and
+parallel computing. We describe the Zarr protocol and data storage
+format, and the current state of implementations for various
+programming languages including Python. We also describe current uses
+of Zarr in malaria genomics, the Human Cell Atlas, and the Pangeo
+project.
 
 
 Abstract
@@ -49,29 +58,36 @@ encoding subsystem with support for a variety of modern compressors.
 Results
 ~~~~~~~
 
-We illustrate the use of Zarr with examples from several different
-scientific domains. Zarr is being used within the Pangeo project [5_],
-which is building a community platform for big data geoscience. The
-Pangeo community have converted a number of existing climate modelling
-and satellite observation datasets to Zarr [6_], and has demonstrated
+We illustrate the use of Zarr with examples from several scientific
+domains. Zarr is being used within the Pangeo project [5_], which is
+building a community platform for big data geoscience. The Pangeo
+community have converted a number of existing climate modelling and
+satellite observation datasets to Zarr [6_], and has demonstrated
 their use in computations using HPC and cloud computing
 environments. Within the MalariaGEN project [7_], Zarr is used to
 store genome variation data from next-generation sequencing of natural
-populations of malaria parasites and mosquitoes (see, e.g., [8_]), and
-these data are used as input to analyses of the evolution of these
-organisms in response to selective pressure from anti-malarial drugs
-and insecticides. @@TODO another example.
+populations of malaria parasites and mosquitoes [8_] and these data
+are used as input to analyses of the evolution of these organisms in
+response to selective pressure from anti-malarial drugs and
+insecticides. Zarr is being used within the Human Cell Atlas (HCA)
+project [9_], which is building a reference atlas of healthy human
+cell types. This project hopes to leverage this information to better
+understand the dysregulation of cellular states that underly human
+disease. The Human Cell Atlas uses Zarr as the output data format
+because it enables the project to easily generate matrices containing
+user-selected subsets of cells.
 
 Conclusions
 ~~~~~~~~~~~
 
-Zarr is generating interest from potential users across a wide range
-of scientific domains, and work is ongoing to establish a community
-process for further development of the specifications and
-implementations in other programming languages. Zarr has recently been
+Zarr is generating interest across a range of scientific domains, and
+work is ongoing to establish a community process to support further
+development of the specifications and implementations in other
+programming languages [10_, 11_, 12_] and building interoperability
+with a similar project called N5 [13_]. Zarr has recently been
 presented in several venues, including a webinar for the ESIP
-Federation tech dive series [9_], and a talk at the AGU Fall Meeting
-2018 [10_].
+Federation tech dive series [14_], and a talk at the AGU Fall Meeting
+2018 [15_].
 
 
 References
@@ -85,11 +101,41 @@ References
 .. _6: https://pangeo.io/catalog.html
 .. _7: https://www.malariagen.net/
 .. _8: http://alimanfoo.github.io/2016/09/21/genotype-compression-benchmark.html
-.. _9: http://wiki.esipfed.org/index.php/Interoperability_and_Technology/Tech_Dive_Webinar_Series#8_March.2C_2018:_.22Zarr:_A_simple.2C_open.2C_scalable_solution_for_big_NetCDF.2FHDF_data_on_the_Cloud.22:_Alistair_Miles.2C_University_of_Oxford.
-.. _10: https://agu.confex.com/agu/fm18/meetingapp.cgi/Paper/390015
+.. _9: https://www.humancellatlas.org/
+.. _10: https://github.com/constantinpape/z5
+.. _11: https://github.com/lasersonlab/ndarray.scala
+.. _12: https://github.com/meggart/ZarrNative.jl
+.. _13: https://github.com/saalfeldlab/n5
+.. _14: http://wiki.esipfed.org/index.php/Interoperability_and_Technology/Tech_Dive_Webinar_Series#8_March.2C_2018:_.22Zarr:_A_simple.2C_open.2C_scalable_solution_for_big_NetCDF.2FHDF_data_on_the_Cloud.22:_Alistair_Miles.2C_University_of_Oxford.
+.. _15: https://agu.confex.com/agu/fm18/meetingapp.cgi/Paper/390015
 
 
 Authors
 -------
 
-@@TODO
+Project contributors are listed in alphabetical order by surname.
+
+* `Alistair Miles <https://github.com/alimanfoo>`_, University of Oxford
+* `John Kirkham <https://github.com/jakirkham>`_, HHMI Janelia
+* `Ryan Abernathy <https://github.com/rabernat>`_, Columbia University 
+* `Martin Durant <https://github.com/martindurant>`_, Anaconda, inc.
+* `Tarik Onalan <https://github.com/onalant>`_
+* `Matthew Rocklin <https://github.com/mrocklin>`_, NVIDIA
+* `Vincent Schut <https://github.com/vincentschut>`_, Satelligence
+* `Joe Hamman <https://github.com/jhamman>`_, NCAR
+* `Charles Noyes <https://github.com/CSNoyes>`_, University of Southern California
+* `Jerome Kelleher <https://github.com/jeromekelleher>`_, University of Oxford
+* `Stephan Balmer <https://github.com/sbalmer>`_
+* `Jan Funke <https://github.com/funkey>`_, HHMI Janelia
+* `Tim Crone <https://github.com/tjcrone>`_, Columbia University
+* `Zain Patel <https://github.com/mzjp2>`_, University of Cambridge
+* https://github.com/shikharsg
+* `Justin Swaney <https://github.com/jmswaney>`_, MIT
+* `Ambrose Carr <https://github.com/ambrosejcarr>`_, Chan Zuckerberg Initiative
+* `Constantin Pape <https://github.com/constantinpape>`_, University of Heidelberg
+* `Stephan Saafeld <https://github.com/axtimwalde>`_, HHMI Janelia
+* `Ryan Williams <https://github.com/ryan-williams>`_, Chan Zuckerberg Initiative
+* `Josh Moore <https://github.com/joshmoore>`_, Glencoe Software
+* `Stephan Hoyer <https://github.com/shoyer`_, Google
+* `Fabian Gans <https://github.com/meggart>`_, Max Planck Institute
+* https://github.com/dazzag24
