@@ -7,8 +7,6 @@ SciPy 2019 submission.
 Short summary
 -------------
 
-(target: 100 words)
-
 Many scientific problems involve computing over large N-dimensional
 typed arrays of data, and reading or writing data is often the major
 bottleneck limiting speed or scalability. The Zarr project is
@@ -23,8 +21,6 @@ project.
 
 Abstract
 --------
-
-(target: 500 words)
 
 Background
 ~~~~~~~~~~
@@ -46,14 +42,14 @@ We have designed a new storage format and protocol for tensor data
 [1_], and have released an open source Python implementation [2_,
 3_]. Our approach builds on data storage concepts from HDF5 [4_],
 particularly chunking and compression, and hierarchical organisation
-of datasets. Key design goals include: platform-independent and as
-simple as possible to implement in other programming languages;
-support for multiple concurrent readers or writers; support for a
-variety of parallel computing environments, from multi-threaded
-execution on a single CPU to multi-process execution across a
-multi-node cluster; pluggable storage subsystem with support for file
-systems, key-value databases and cloud object stores; pluggable
-encoding subsystem with support for a variety of modern compressors.
+of datasets. Key design goals include: a simple protocol and format
+that can be implemented in other programming languages; support for
+multiple concurrent readers or writers; support for a variety of
+parallel computing environments, from multi-threaded execution on a
+single CPU to multi-process execution across a multi-node cluster;
+pluggable storage subsystem with support for file systems, key-value
+databases and cloud object stores; pluggable encoding subsystem with
+support for a variety of modern compressors.
 
 Results
 ~~~~~~~
@@ -84,10 +80,13 @@ Zarr is generating interest across a range of scientific domains, and
 work is ongoing to establish a community process to support further
 development of the specifications and implementations in other
 programming languages [10_, 11_, 12_] and building interoperability
-with a similar project called N5 [13_]. Zarr has recently been
-presented in several venues, including a webinar for the ESIP
-Federation tech dive series [14_], and a talk at the AGU Fall Meeting
-2018 [15_].
+with a similar project called N5 [13_]. Other packages within the
+PyData ecosystem, notably Dask [14_], Xarray [15_] and Intake [16_],
+have added capability to read and write Zarr, and together these
+packages provide a compelling solution for large scale data science
+using Python [17_]. Zarr has recently been presented in several
+venues, including a webinar for the ESIP Federation tech dive series
+[18_], and a talk at the AGU Fall Meeting 2018 [19_].
 
 
 References
@@ -106,8 +105,12 @@ References
 .. _11: https://github.com/lasersonlab/ndarray.scala
 .. _12: https://github.com/meggart/ZarrNative.jl
 .. _13: https://github.com/saalfeldlab/n5
-.. _14: http://wiki.esipfed.org/index.php/Interoperability_and_Technology/Tech_Dive_Webinar_Series#8_March.2C_2018:_.22Zarr:_A_simple.2C_open.2C_scalable_solution_for_big_NetCDF.2FHDF_data_on_the_Cloud.22:_Alistair_Miles.2C_University_of_Oxford.
-.. _15: https://agu.confex.com/agu/fm18/meetingapp.cgi/Paper/390015
+.. _14: http://docs.dask.org/en/latest/array-creation.html
+.. _15: http://xarray.pydata.org/en/stable/io.html
+.. _16: https://github.com/ContinuumIO/intake-xarray
+.. _17: http://matthewrocklin.com/blog/work/2018/01/22/pangeo-2
+.. _18: http://wiki.esipfed.org/index.php/Interoperability_and_Technology/Tech_Dive_Webinar_Series#8_March.2C_2018:_.22Zarr:_A_simple.2C_open.2C_scalable_solution_for_big_NetCDF.2FHDF_data_on_the_Cloud.22:_Alistair_Miles.2C_University_of_Oxford.
+.. _19: https://agu.confex.com/agu/fm18/meetingapp.cgi/Paper/390015
 
 
 Authors
@@ -116,13 +119,14 @@ Authors
 Project contributors are listed in alphabetical order by surname.
 
 * `Ryan Abernathey <https://github.com/rabernat>`_, Columbia University 
-* `Stephan Balmer <https://github.com/sbalmer>`_
+* `Stephan Balmer <https://github.com/sbalmer>`_, Meteotest
 * `Ambrose Carr <https://github.com/ambrosejcarr>`_, Chan Zuckerberg Initiative
 * `Tim Crone <https://github.com/tjcrone>`_, Columbia University
-* https://github.com/dazzag24
 * `Martin Durant <https://github.com/martindurant>`_, Anaconda, inc.
 * `Jan Funke <https://github.com/funkey>`_, HHMI Janelia
+* `Darren Gallagher <https://github.com/dazzag24>`_, Satavia
 * `Fabian Gans <https://github.com/meggart>`_, Max Planck Institute
+* `Shikhar Goenka <https://github.com/shikharsg>`_, Satavia
 * `Joe Hamman <https://github.com/jhamman>`_, NCAR
 * `Stephan Hoyer <https://github.com/shoyer`_, Google
 * `Jerome Kelleher <https://github.com/jeromekelleher>`_, University of Oxford
@@ -136,6 +140,5 @@ Project contributors are listed in alphabetical order by surname.
 * `Matthew Rocklin <https://github.com/mrocklin>`_, NVIDIA
 * `Stephan Saafeld <https://github.com/axtimwalde>`_, HHMI Janelia
 * `Vincent Schut <https://github.com/vincentschut>`_, Satelligence
-* https://github.com/shikharsg
 * `Justin Swaney <https://github.com/jmswaney>`_, MIT
 * `Ryan Williams <https://github.com/ryan-williams>`_, Chan Zuckerberg Initiative
