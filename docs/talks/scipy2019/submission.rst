@@ -62,7 +62,7 @@ We illustrate the use of Zarr with examples from several scientific
 domains. Zarr is being used within the Pangeo project [5_], which is
 building a community platform for big data geoscience. The Pangeo
 community have converted a number of existing climate modelling and
-satellite observation datasets to Zarr [6_], and has demonstrated
+satellite observation datasets to Zarr [6_], and have demonstrated
 their use in computations using HPC and cloud computing
 environments. Within the MalariaGEN project [7_], Zarr is used to
 store genome variation data from next-generation sequencing of natural
@@ -113,9 +113,9 @@ References
 Authors
 -------
 
-Project contributors are listed in alphabetical order by Surname.
+Project contributors are listed in alphabetical order by surname.
 
-* `Ryan Abernathy <https://github.com/rabernat>`_, Columbia University 
+* `Ryan Abernathey <https://github.com/rabernat>`_, Columbia University 
 * `Stephan Balmer <https://github.com/sbalmer>`_
 * `Ambrose Carr <https://github.com/ambrosejcarr>`_, Chan Zuckerberg Initiative
 * `Tim Crone <https://github.com/tjcrone>`_, Columbia University
