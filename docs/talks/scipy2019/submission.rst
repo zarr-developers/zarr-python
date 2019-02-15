@@ -128,7 +128,7 @@ Project contributors are listed in alphabetical order by surname.
 * `Jerome Kelleher <https://github.com/jeromekelleher>`_, University of Oxford
 * `John Kirkham <https://github.com/jakirkham>`_, HHMI Janelia
 * `Alistair Miles <https://github.com/alimanfoo>`_, University of Oxford
-* `Josh Moore <https://github.com/joshmoore>`_, Glencoe Software
+* `Josh Moore <https://github.com/joshmoore>`_, University of Dundee
 * `Charles Noyes <https://github.com/CSNoyes>`_, University of Southern California
 * `Tarik Onalan <https://github.com/onalant>`_
 * `Constantin Pape <https://github.com/constantinpape>`_, University of Heidelberg
