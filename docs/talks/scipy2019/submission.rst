@@ -113,29 +113,29 @@ References
 Authors
 -------
 
-Project contributors are listed in alphabetical order by surname.
+Project contributors are listed in alphabetical order by Surname.
 
-* `Alistair Miles <https://github.com/alimanfoo>`_, University of Oxford
-* `John Kirkham <https://github.com/jakirkham>`_, HHMI Janelia
 * `Ryan Abernathy <https://github.com/rabernat>`_, Columbia University 
-* `Martin Durant <https://github.com/martindurant>`_, Anaconda, inc.
-* `Tarik Onalan <https://github.com/onalant>`_
-* `Matthew Rocklin <https://github.com/mrocklin>`_, NVIDIA
-* `Vincent Schut <https://github.com/vincentschut>`_, Satelligence
-* `Joe Hamman <https://github.com/jhamman>`_, NCAR
-* `Charles Noyes <https://github.com/CSNoyes>`_, University of Southern California
-* `Jerome Kelleher <https://github.com/jeromekelleher>`_, University of Oxford
 * `Stephan Balmer <https://github.com/sbalmer>`_
-* `Jan Funke <https://github.com/funkey>`_, HHMI Janelia
+* `Ambrose Carr <https://github.com/ambrosejcarr>`_, Chan Zuckerberg Initiative
 * `Tim Crone <https://github.com/tjcrone>`_, Columbia University
+* https://github.com/dazzag24
+* `Martin Durant <https://github.com/martindurant>`_, Anaconda, inc.
+* `Jan Funke <https://github.com/funkey>`_, HHMI Janelia
+* `Fabian Gans <https://github.com/meggart>`_, Max Planck Institute
+* `Joe Hamman <https://github.com/jhamman>`_, NCAR
+* `Stephan Hoyer <https://github.com/shoyer`_, Google
+* `Jerome Kelleher <https://github.com/jeromekelleher>`_, University of Oxford
+* `John Kirkham <https://github.com/jakirkham>`_, HHMI Janelia
+* `Alistair Miles <https://github.com/alimanfoo>`_, University of Oxford
+* `Josh Moore <https://github.com/joshmoore>`_, Glencoe Software
+* `Charles Noyes <https://github.com/CSNoyes>`_, University of Southern California
+* `Tarik Onalan <https://github.com/onalant>`_
+* `Constantin Pape <https://github.com/constantinpape>`_, University of Heidelberg
 * `Zain Patel <https://github.com/mzjp2>`_, University of Cambridge
+* `Matthew Rocklin <https://github.com/mrocklin>`_, NVIDIA
+* `Stephan Saafeld <https://github.com/axtimwalde>`_, HHMI Janelia
+* `Vincent Schut <https://github.com/vincentschut>`_, Satelligence
 * https://github.com/shikharsg
 * `Justin Swaney <https://github.com/jmswaney>`_, MIT
-* `Ambrose Carr <https://github.com/ambrosejcarr>`_, Chan Zuckerberg Initiative
-* `Constantin Pape <https://github.com/constantinpape>`_, University of Heidelberg
-* `Stephan Saafeld <https://github.com/axtimwalde>`_, HHMI Janelia
 * `Ryan Williams <https://github.com/ryan-williams>`_, Chan Zuckerberg Initiative
-* `Josh Moore <https://github.com/joshmoore>`_, Glencoe Software
-* `Stephan Hoyer <https://github.com/shoyer`_, Google
-* `Fabian Gans <https://github.com/meggart>`_, Max Planck Institute
-* https://github.com/dazzag24
