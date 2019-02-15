@@ -125,10 +125,10 @@ Project contributors are listed in alphabetical order by surname.
 * `Martin Durant <https://github.com/martindurant>`_, Anaconda, inc.
 * `Jan Funke <https://github.com/funkey>`_, HHMI Janelia
 * `Darren Gallagher <https://github.com/dazzag24>`_, Satavia
-* `Fabian Gans <https://github.com/meggart>`_, Max Planck Institute
+* `Fabian Gans <https://github.com/meggart>`_, Max Planck Institute for Biogeochemistry
 * `Shikhar Goenka <https://github.com/shikharsg>`_, Satavia
 * `Joe Hamman <https://github.com/jhamman>`_, NCAR
-* `Stephan Hoyer <https://github.com/shoyer`_, Google
+* `Stephan Hoyer <https://github.com/shoyer>`_, Google
 * `Jerome Kelleher <https://github.com/jeromekelleher>`_, University of Oxford
 * `John Kirkham <https://github.com/jakirkham>`_, HHMI Janelia
 * `Alistair Miles <https://github.com/alimanfoo>`_, University of Oxford
