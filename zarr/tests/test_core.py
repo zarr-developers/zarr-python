@@ -15,7 +15,7 @@ from numpy.testing import assert_array_equal, assert_array_almost_equal
 import pytest
 
 
-from zarr.storage import (DirectoryStore, init_array, init_group, NestedDirectoryStore,
+from zarr.storage import (DictStore, DirectoryStore, init_array, init_group, NestedDirectoryStore,
                           DBMStore, LMDBStore, SQLiteStore, atexit_rmtree, atexit_rmglob,
                           LRUStoreCache)
 from zarr.core import Array
@@ -41,7 +41,7 @@ class TestArray(unittest.TestCase):
     def test_array_init(self):
 
         # normal initialization
-        store = dict()
+        store = DictStore()
         init_array(store, shape=100, chunks=10)
         a = Array(store)
         assert isinstance(a, Array)
@@ -54,7 +54,7 @@ class TestArray(unittest.TestCase):
         assert "8fecb7a17ea1493d9c1430d04437b4f5b0b34985" == a.hexdigest()
 
         # initialize at path
-        store = dict()
+        store = DictStore()
         init_array(store, shape=100, chunks=10, path='foo/bar')
         a = Array(store, path='foo/bar')
         assert isinstance(a, Array)
@@ -67,18 +67,18 @@ class TestArray(unittest.TestCase):
         assert "8fecb7a17ea1493d9c1430d04437b4f5b0b34985" == a.hexdigest()
 
         # store not initialized
-        store = dict()
+        store = DictStore()
         with pytest.raises(ValueError):
             Array(store)
 
         # group is in the way
-        store = dict()
+        store = DictStore()
         init_group(store, path='baz')
         with pytest.raises(ValueError):
             Array(store, path='baz')
 
     def create_array(self, read_only=False, **kwargs):
-        store = dict()
+        store = DictStore()
         kwargs.setdefault('compressor', Zlib(level=1))
         cache_metadata = kwargs.pop('cache_metadata', True)
         cache_attrs = kwargs.pop('cache_attrs', True)
@@ -1255,7 +1255,7 @@ class TestArrayWithPath(TestArray):
 
     @staticmethod
     def create_array(read_only=False, **kwargs):
-        store = dict()
+        store = DictStore()
         cache_metadata = kwargs.pop('cache_metadata', True)
         cache_attrs = kwargs.pop('cache_attrs', True)
         init_array(store, path='foo/bar', **kwargs)
@@ -1308,9 +1308,9 @@ class TestArrayWithChunkStore(TestArray):
 
     @staticmethod
     def create_array(read_only=False, **kwargs):
-        store = dict()
+        store = DictStore()
         # separate chunk store
-        chunk_store = dict()
+        chunk_store = DictStore()
         cache_metadata = kwargs.pop('cache_metadata', True)
         cache_attrs = kwargs.pop('cache_attrs', True)
         init_array(store, chunk_store=chunk_store, **kwargs)
@@ -1516,7 +1516,7 @@ class TestArrayWithSQLiteStore(TestArray):
 class TestArrayWithNoCompressor(TestArray):
 
     def create_array(self, read_only=False, **kwargs):
-        store = dict()
+        store = DictStore()
         kwargs.setdefault('compressor', None)
         cache_metadata = kwargs.pop('cache_metadata', True)
         cache_attrs = kwargs.pop('cache_attrs', True)
@@ -1551,7 +1551,7 @@ class TestArrayWithNoCompressor(TestArray):
 class TestArrayWithBZ2Compressor(TestArray):
 
     def create_array(self, read_only=False, **kwargs):
-        store = dict()
+        store = DictStore()
         compressor = BZ2(level=1)
         kwargs.setdefault('compressor', compressor)
         cache_metadata = kwargs.pop('cache_metadata', True)
@@ -1587,7 +1587,7 @@ class TestArrayWithBZ2Compressor(TestArray):
 class TestArrayWithBloscCompressor(TestArray):
 
     def create_array(self, read_only=False, **kwargs):
-        store = dict()
+        store = DictStore()
         compressor = Blosc(cname='zstd', clevel=1, shuffle=1)
         kwargs.setdefault('compressor', compressor)
         cache_metadata = kwargs.pop('cache_metadata', True)
@@ -1630,7 +1630,7 @@ except ImportError:  # pragma: no cover
 class TestArrayWithLZMACompressor(TestArray):
 
     def create_array(self, read_only=False, **kwargs):
-        store = dict()
+        store = DictStore()
         compressor = LZMA(preset=1)
         kwargs.setdefault('compressor', compressor)
         cache_metadata = kwargs.pop('cache_metadata', True)
@@ -1667,7 +1667,7 @@ class TestArrayWithFilters(TestArray):
 
     @staticmethod
     def create_array(read_only=False, **kwargs):
-        store = dict()
+        store = DictStore()
         dtype = kwargs.get('dtype', None)
         filters = [
             Delta(dtype=dtype),
@@ -1710,7 +1710,7 @@ class TestArrayWithFilters(TestArray):
         dtype = np.dtype(np.int8)
         astype = np.dtype(np.float32)
 
-        store = dict()
+        store = DictStore()
         init_array(store, shape=shape, chunks=10, dtype=dtype)
 
         data = np.arange(np.prod(shape), dtype=dtype).reshape(shape)
@@ -1834,7 +1834,7 @@ class TestArrayNoCache(TestArray):
 
     @staticmethod
     def create_array(read_only=False, **kwargs):
-        store = dict()
+        store = DictStore()
         kwargs.setdefault('compressor', Zlib(level=1))
         cache_metadata = kwargs.pop('cache_metadata', True)
         cache_attrs = kwargs.pop('cache_attrs', True)
@@ -1906,7 +1906,7 @@ class TestArrayWithStoreCache(TestArray):
 
     @staticmethod
     def create_array(read_only=False, **kwargs):
-        store = LRUStoreCache(dict(), max_size=None)
+        store = LRUStoreCache(DictStore(), max_size=None)
         kwargs.setdefault('compressor', Zlib(level=1))
         cache_metadata = kwargs.pop('cache_metadata', True)
         cache_attrs = kwargs.pop('cache_attrs', True)
