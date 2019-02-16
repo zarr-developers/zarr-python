@@ -476,12 +476,11 @@ class DictStore(MutableMapping):
         >>> type(g.store)
         <class 'zarr.storage.DictStore'>
 
-    Note that the default class when creating an array is the built-in
-    :class:`dict` class, i.e.::
+    Also this is the default class when creating an array. E.g.::
 
         >>> z = zarr.zeros(100)
         >>> type(z.store)
-        <class 'dict'>
+        <class 'zarr.storage.DictStore'>
 
     Notes
     -----
