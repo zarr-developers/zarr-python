@@ -729,6 +729,23 @@ group (requires `lmdb <http://lmdb.readthedocs.io/>`_ to be installed)::
     >>> z[:] = 42
     >>> store.close()
 
+In Zarr version 2.3 is the :class:`zarr.storage.SQLiteStore` class which
+enables the SQLite database to be used for storing an array or group (requires
+Python is built with SQLite support)::
+
+    >>> store = zarr.SQLiteStore('data/example.sqldb')
+    >>> root = zarr.group(store=store, overwrite=True)
+    >>> z = root.zeros('foo/bar', shape=(1000, 1000), chunks=(100, 100), dtype='i4')
+    >>> z[:] = 42
+    >>> store.close()
+
+Also added in Zarr version 2.3 are two storage classes for interfacing with server-client
+databases. The :class:`zarr.storage.RedisStore` class interfaces `Redis <https://redis.io/>`_
+(an in memory data structure store), and the :class:`zarr.storage.MongoDB` class interfaces
+with `MongoDB <https://www.mongodb.com/>`_ (an oject oriented NoSQL database). These stores
+respectively require the `redis <https://redis-py.readthedocs.io>`_ and
+`pymongo <https://api.mongodb.com/python/current/>`_ packages to be installed. 
+
 Distributed/cloud storage
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 

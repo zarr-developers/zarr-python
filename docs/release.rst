@@ -19,18 +19,33 @@ Enhancements
 * Support has been added for structured arrays with sub-array shape and/or nested fields. By
   :user:`Tarik Onalan <onalant>`, :issue:`111`, :issue:`296`.
 
+* Adds the SQLite-backed :class:`zarr.storage.SQLiteStore` class enabling an
+  SQLite database to be used as the backing store for an array or group.
+  By :user:`John Kirkham <jakirkham>`, :issue:`368`, :issue:`365`.
+
+* Efficient iteration over arrays by decompressing chunkwise.
+  By :user:`Jerome Kelleher <jeromekelleher>`, :issue:`398`, :issue:`399`.
+
+* Adds the Redis-backed :class:`zarr.storage.RedisStore` class enabling a
+  Redis database to be used as the backing store for an array or group.
+  By :user:`Joe Hamman <jhamman>`, :issue:`299`, :issue:`372`.
+
+* Adds the MongoDB-backed :class:`zarr.storage.MongoDBStore` class enabling a
+  MongoDB database to be used as the backing store for an array or group.
+  By :user:`Joe Hamman <jhamman>`, :issue:`299`, :issue:`372`.
+
 Bug fixes
 ~~~~~~~~~
 
-* The implementation of the :class:`zarr.storage.DirectoryStore` class has been modified to 
-  ensure that writes are atomic and there are no race conditions where a chunk might appear 
-  transiently missing during a write operation. By :user:`sbalmer <sbalmer>`, :issue:`327`, 
+* The implementation of the :class:`zarr.storage.DirectoryStore` class has been modified to
+  ensure that writes are atomic and there are no race conditions where a chunk might appear
+  transiently missing during a write operation. By :user:`sbalmer <sbalmer>`, :issue:`327`,
   :issue:`263`.
 
-* The required version of the `numcodecs <http://numcodecs.rtfd.io>`_ package has been upgraded 
+* The required version of the `numcodecs <http://numcodecs.rtfd.io>`_ package has been upgraded
   to 0.6.2, which has enabled some code simplification and fixes a failing test involving
-  msgpack encoding. By :user:`John Kirkham <jakirkham>`, :issue:`360`, :issue:`352`, :issue:`355`,
-  :issue:`324`.
+  msgpack encoding. By :user:`John Kirkham <jakirkham>`, :issue:`361`, :issue:`360`, :issue:`352`,
+  :issue:`355`, :issue:`324`.
 
 * Failing tests related to pickling/unpickling have been fixed. By :user:`Ryan Williams <ryan-williams>`,
   :issue:`273`, :issue:`308`.
@@ -40,6 +55,14 @@ Bug fixes
 
 * Test and fix an issue (w.r.t. fill values) when storing complex data to ``Array``.
   By :user:`John Kirkham <jakirkham>`, :issue:`363`
+
+* Always use a ``tuple`` when indexing a NumPy ``ndarray``.
+  By :user:`John Kirkham <jakirkham>`, :issue:`376`
+
+* Ensure when ``Array`` uses a ``dict``-based chunk store that it only contains
+  ``bytes`` to facilitate comparisons and protect against writes. Drop the copy
+  for the no filter/compressor case as this handles that case.
+  By :user:`John Kirkham <jakirkham>`, :issue:`359`
 
 Maintenance
 ~~~~~~~~~~~

@@ -8,7 +8,7 @@ import re
 
 
 import numpy as np
-from numcodecs.compat import ensure_ndarray
+from numcodecs.compat import ensure_bytes, ensure_ndarray
 
 
 from zarr.util import (is_total_slice, human_readable_size, normalize_resize_args,
@@ -166,9 +166,6 @@ class Array(object):
             if config is None:
                 self._compressor = None
             else:
-                # temporary workaround for
-                # https://github.com/zarr-developers/numcodecs/issues/78
-                config = dict(config)
                 self._compressor = get_codec(config)
 
             # setup filters
@@ -426,6 +423,18 @@ class Array(object):
         if args:
             a = a.astype(args[0])
         return a
+
+    def __iter__(self):
+        if len(self.shape) == 0:
+            # Same error as numpy
+            raise TypeError("iteration over a 0-d array")
+        # Avoid repeatedly decompressing chunks by iterating over the chunks
+        # in the first dimension.
+        chunk_size = self.chunks[0]
+        for j in range(self.shape[0]):
+            if j % chunk_size == 0:
+                chunk = self[j: j + chunk_size]
+            yield chunk[j % chunk_size]
 
     def __len__(self):
         if self.shape:
@@ -1534,6 +1543,7 @@ class Array(object):
                     item = [slice(None)] * self.ndim
                     for a in indexer.drop_axes:
                         item[a] = np.newaxis
+                    item = tuple(item)
                     chunk_value = chunk_value[item]
 
             # put data
@@ -1667,21 +1677,11 @@ class Array(object):
 
             else:
 
-                if not self._compressor and not self._filters:
-
-                    # https://github.com/alimanfoo/zarr/issues/79
-                    # Ensure a copy is taken so we don't end up storing
-                    # a view into someone else's array.
-                    # N.B., this assumes that filters or compressor always
-                    # take a copy and never attempt to apply encoding in-place.
-                    chunk = np.array(value, dtype=self._dtype, order=self._order)
-
+                # ensure array is contiguous
+                if self._order == 'F':
+                    chunk = np.asfortranarray(value, dtype=self._dtype)
                 else:
-                    # ensure array is contiguous
-                    if self._order == 'F':
-                        chunk = np.asfortranarray(value, dtype=self._dtype)
-                    else:
-                        chunk = np.ascontiguousarray(value, dtype=self._dtype)
+                    chunk = np.ascontiguousarray(value, dtype=self._dtype)
 
         else:
             # partially replace the contents of this chunk
@@ -1738,7 +1738,7 @@ class Array(object):
 
         # apply filters
         if self._filters:
-            for f in self._filters[::-1]:
+            for f in reversed(self._filters):
                 chunk = f.decode(chunk)
 
         # view as numpy array with correct dtype
@@ -1777,6 +1777,10 @@ class Array(object):
             cdata = self._compressor.encode(chunk)
         else:
             cdata = chunk
+
+        # ensure in-memory data is immutable and easy to compare
+        if isinstance(self.chunk_store, dict):
+            cdata = ensure_bytes(cdata)
 
         return cdata
 
