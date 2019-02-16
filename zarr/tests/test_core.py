@@ -23,6 +23,7 @@ from zarr.compat import PY2, text_type, binary_type, zip_longest
 from zarr.util import buffer_size
 from numcodecs import (Delta, FixedScaleOffset, Zlib, Blosc, BZ2, MsgPack, Pickle,
                        Categorize, JSON, VLenUTF8, VLenBytes, VLenArray)
+from numcodecs.compat import ensure_bytes, ensure_ndarray
 from numcodecs.tests.common import greetings
 
 
@@ -82,6 +83,31 @@ class TestArray(unittest.TestCase):
         init_array(store, **kwargs)
         return Array(store, read_only=read_only, cache_metadata=cache_metadata,
                      cache_attrs=cache_attrs)
+
+    def test_store_has_binary_values(self):
+        # Initialize array
+        np.random.seed(42)
+        z = self.create_array(shape=(1050,), chunks=100, dtype='f8', compressor=[])
+        z[:] = np.random.random(z.shape)
+
+        for v in z.chunk_store.values():
+            try:
+                ensure_ndarray(v)
+            except TypeError:  # pragma: no cover
+                pytest.fail("Non-bytes-like value: %s" % repr(v))
+
+    def test_store_has_bytes_values(self):
+        # Test that many stores do hold bytes values.
+        # Though this is not a strict requirement.
+        # Should be disabled by any stores that fail this as needed.
+
+        # Initialize array
+        np.random.seed(42)
+        z = self.create_array(shape=(1050,), chunks=100, dtype='f8', compressor=[])
+        z[:] = np.random.random(z.shape)
+
+        # Check in-memory array only contains `bytes`
+        assert all([isinstance(v, binary_type) for v in z.chunk_store.values()])
 
     def test_nbytes_stored(self):
 
@@ -1401,6 +1427,9 @@ class TestArrayWithLMDBStore(TestArray):
         return Array(store, read_only=read_only, cache_metadata=cache_metadata,
                      cache_attrs=cache_attrs)
 
+    def test_store_has_bytes_values(self):
+        pass  # returns values as memoryviews/buffers instead of bytes
+
     def test_nbytes_stored(self):
         pass  # not implemented
 
@@ -1725,6 +1754,9 @@ class CustomMapping(object):
     def keys(self):
         return self.inner.keys()
 
+    def values(self):
+        return self.inner.values()
+
     def get(self, item, default=None):
         try:
             return self.inner[item]
@@ -1735,7 +1767,7 @@ class CustomMapping(object):
         return self.inner[item]
 
     def __setitem__(self, item, value):
-        self.inner[item] = value
+        self.inner[item] = ensure_bytes(value)
 
     def __delitem__(self, key):
         del self.inner[key]
@@ -1846,3 +1878,7 @@ class TestArrayWithStoreCache(TestArray):
         init_array(store, **kwargs)
         return Array(store, read_only=read_only, cache_metadata=cache_metadata,
                      cache_attrs=cache_attrs)
+
+    def test_store_has_bytes_values(self):
+        # skip as the cache has no control over how the store provides values
+        pass
