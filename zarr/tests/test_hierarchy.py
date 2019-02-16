@@ -41,7 +41,7 @@ class TestGroup(unittest.TestCase):
     @staticmethod
     def create_store():
         # can be overridden in sub-classes
-        return dict(), None
+        return DictStore(), None
 
     def create_group(self, store=None, path=None, read_only=False,
                      chunk_store=None, synchronizer=None):
@@ -948,7 +948,7 @@ class TestGroupWithChunkStore(TestGroup):
 
     @staticmethod
     def create_store():
-        return dict(), dict()
+        return DictStore(), DictStore()
 
     def test_chunk_store(self):
         # setup
@@ -979,7 +979,7 @@ class TestGroupWithStoreCache(TestGroup):
 
     @staticmethod
     def create_store():
-        store = LRUStoreCache(dict(), max_size=None)
+        store = LRUStoreCache(DictStore(), max_size=None)
         return store, None
 
 
@@ -993,13 +993,13 @@ def test_group():
     assert '/' == g.name
 
     # usage with custom store
-    store = dict()
+    store = DictStore()
     g = group(store=store)
     assert isinstance(g, Group)
     assert store is g.store
 
     # overwrite behaviour
-    store = dict()
+    store = DictStore()
     init_array(store, shape=100, chunks=10)
     with pytest.raises(ValueError):
         group(store)
