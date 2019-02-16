@@ -61,6 +61,11 @@ Bug fixes
 * Always use a ``tuple`` when indexing a NumPy ``ndarray``.
   By :user:`John Kirkham <jakirkham>`, :issue:`376`
 
+* Ensure when ``Array`` uses a ``dict``-based chunk store that it only contains
+  ``bytes`` to facilitate comparisons and protect against writes. Drop the copy
+  for the no filter/compressor case as this handles that case.
+  By :user:`John Kirkham <jakirkham>`, :issue:`359`
+
 Maintenance
 ~~~~~~~~~~~
 
