@@ -24,13 +24,12 @@ from zarr.storage import (init_array, array_meta_key, attrs_key, DictStore,
                           LMDBStore, SQLiteStore, MongoDBStore, RedisStore,
                           atexit_rmglob, LRUStoreCache, ConsolidatedMetadataStore)
 from zarr.meta import (decode_array_metadata, encode_array_metadata, ZARR_FORMAT,
-                       decode_group_metadata, encode_group_metadata, ensure_str)
+                       decode_group_metadata, encode_group_metadata)
 from zarr.compat import PY2
-from zarr.codecs import AsType, Zlib, Blosc, BZ2, LZ4, GZip
+from zarr.codecs import AsType, Zlib, Blosc, BZ2
 from zarr.errors import PermissionError, MetadataError
 from zarr.hierarchy import group
 from zarr.n5 import N5Store
-from zarr.core import Array
 from zarr.tests.util import CountingDict
 
 try:
