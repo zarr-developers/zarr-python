@@ -1822,6 +1822,26 @@ class TestArrayWithCustomMapping(TestArray):
         assert -1 == z.nbytes_stored
 
 
+class TestArrayWithCustomChunkStore(TestArray):
+
+    @staticmethod
+    def create_array(read_only=False, **kwargs):
+        store = CustomMapping()
+        kwargs["chunk_store"] = CustomMapping()
+        kwargs.setdefault('compressor', Zlib(1))
+        cache_metadata = kwargs.pop('cache_metadata', True)
+        cache_attrs = kwargs.pop('cache_attrs', True)
+        init_array(store, **kwargs)
+        return Array(store, read_only=read_only, cache_metadata=cache_metadata,
+                     cache_attrs=cache_attrs)
+
+    def test_nbytes_stored(self):
+        z = self.create_array(shape=1000, chunks=100)
+        assert -1 == z.nbytes_stored
+        z[:] = 42
+        assert -1 == z.nbytes_stored
+
+
 class TestArrayNoCache(TestArray):
 
     @staticmethod
