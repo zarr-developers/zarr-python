@@ -872,67 +872,6 @@ class TestN5Store(TestNestedDirectoryStore, unittest.TestCase):
             with error:
                 init_array(store, shape=1000, chunks=100, filters=filters)
 
-    def test_compressors(self):
-        compressors = [
-            None, BZ2(), Blosc(), LZ4(), Zlib(), GZip()
-        ]
-        if LZMA:
-            compressors.append(LZMA())
-        for compressor in compressors:
-            store = self.create_store()
-            init_array(
-                store,
-                shape=1000,
-                chunks=100,
-                compressor=compressor,
-                path='a')
-            a = Array(store, path='a')
-            a[0:100] = 1
-            a[:] = 1
-            a[0:100]
-            a[:]
-
-    def test_endian(self):
-        store = self.create_store()
-        dtype = np.dtype('float32')
-        init_array(
-            store,
-            shape=1000,
-            chunks=100,
-            dtype=dtype.newbyteorder('<'),
-            path='a')
-        a = Array(store, path='a')
-        a[:] = 1
-        x = a[:]
-        store = self.create_store()
-        init_array(
-            store,
-            shape=1000,
-            chunks=100,
-            dtype=dtype.newbyteorder('>'),
-            path='a')
-        a = Array(store, path='a')
-        a[:] = 1
-        y = a[:]
-        assert_array_equal(x, y)
-
-    def test_attributes(self):
-        store = self.create_store()
-        init_array(
-            store,
-            shape=10,
-            chunks=10,
-            dtype='i8',
-            path='a')
-        a = Array(store, path='a')
-        a.attrs['foo'] = 'bar'
-        attrs = json.loads(ensure_str(store['a/.zattrs']))
-        assert 'foo' in attrs and attrs['foo'] == 'bar'
-        a.attrs['bar'] = 'foo'
-        attrs = json.loads(ensure_str(store['a/.zattrs']))
-        assert 'foo' in attrs and attrs['foo'] == 'bar'
-        assert 'bar' in attrs and attrs['bar'] == 'foo'
-
 
 class TestTempStore(StoreTests, unittest.TestCase):
 
