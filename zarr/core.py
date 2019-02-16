@@ -108,6 +108,9 @@ class Array(object):
         # N.B., expect at this point store is fully initialized with all
         # configuration metadata fully specified and normalized
 
+        if isinstance(store, dict):
+            raise TypeError("Please use Zarr's DictStore instead")
+
         self._store = store
         self._chunk_store = chunk_store
         self._path = normalize_storage_path(path)
