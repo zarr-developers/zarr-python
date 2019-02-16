@@ -1781,10 +1781,6 @@ class Array(object):
         else:
             cdata = chunk
 
-        # ensure in-memory data is immutable and easy to compare
-        if isinstance(self.chunk_store, dict):
-            cdata = ensure_bytes(cdata)
-
         return cdata
 
     def __repr__(self):
