@@ -19,7 +19,7 @@ from zarr.tests.test_hierarchy import TestGroup
 from zarr.sync import ThreadSynchronizer, ProcessSynchronizer
 from zarr.core import Array
 from zarr.attrs import Attributes
-from zarr.storage import init_array, DirectoryStore, init_group, atexit_rmtree
+from zarr.storage import init_array, DictStore, DirectoryStore, init_group, atexit_rmtree
 from zarr.hierarchy import Group
 
 
@@ -100,7 +100,7 @@ class MixinArraySyncTests(object):
 class TestArrayWithThreadSynchronizer(TestArray, MixinArraySyncTests):
 
     def create_array(self, read_only=False, **kwargs):
-        store = dict()
+        store = DictStore()
         cache_metadata = kwargs.pop('cache_metadata', True)
         cache_attrs = kwargs.pop('cache_attrs', True)
         init_array(store, **kwargs)
