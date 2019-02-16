@@ -1299,10 +1299,6 @@ class TestArrayWithPath(TestArray):
                                    if k.startswith('foo/bar/'))
         assert expect_nbytes_stored == z.nbytes_stored
 
-        # mess with store
-        z.store[z._key_prefix + 'foo'] = list(range(10))
-        assert -1 == z.nbytes_stored
-
 
 class TestArrayWithChunkStore(TestArray):
 
@@ -1352,10 +1348,6 @@ class TestArrayWithChunkStore(TestArray):
         expect_nbytes_stored += sum(buffer_size(v)
                                     for v in z.chunk_store.values())
         assert expect_nbytes_stored == z.nbytes_stored
-
-        # mess with store
-        z.chunk_store[z._key_prefix + 'foo'] = list(range(10))
-        assert -1 == z.nbytes_stored
 
 
 class TestArrayWithDirectoryStore(TestArray):
