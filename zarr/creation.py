@@ -98,7 +98,7 @@ def create(shape, chunks=True, dtype=None, compressor='default',
     Example with some filters, and also storing chunks separately from metadata::
 
         >>> from numcodecs import Quantize, Adler32
-        >>> store, chunk_store = dict(), dict()
+        >>> store, chunk_store = DictStore(), DictStore()
         >>> z = zarr.create((10000, 10000), chunks=(1000, 1000), dtype='f8',
         ...                 filters=[Quantize(digits=2, dtype='f8'), Adler32()],
         ...                 store=store, chunk_store=chunk_store)
