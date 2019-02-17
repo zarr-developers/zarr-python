@@ -9,7 +9,7 @@ import numcodecs
 def test_info():
 
     # setup
-    g = zarr.group(store=dict(), chunk_store=dict(),
+    g = zarr.group(store=zarr.DictStore(), chunk_store=zarr.DictStore(),
                    synchronizer=zarr.ThreadSynchronizer())
     g.create_group('foo')
     z = g.zeros('bar', shape=10, filters=[numcodecs.Adler32()])
