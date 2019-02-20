@@ -21,11 +21,19 @@ Storage (``zarr.storage``)
     .. automethod:: close
     .. automethod:: flush
 
+.. autoclass:: SQLiteStore
+
+    .. automethod:: close
+
+.. autoclass:: MongoDBStore
+.. autoclass:: RedisStore
 .. autoclass:: LRUStoreCache
 
     .. automethod:: invalidate
     .. automethod:: invalidate_values
     .. automethod:: invalidate_keys
+
+.. autoclass:: ConsolidatedMetadataStore
 
 .. autofunction:: init_array
 .. autofunction:: init_group

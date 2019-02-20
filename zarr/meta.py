@@ -5,34 +5,58 @@ import base64
 
 
 import numpy as np
+from numcodecs.compat import ensure_bytes
 
 
-from zarr.compat import PY2, binary_type
+from zarr.compat import PY2, Mapping
 from zarr.errors import MetadataError
 
 
 ZARR_FORMAT = 2
 
 
-def _ensure_str(s):
-    if PY2:  # pragma: py3 no cover
-        # noinspection PyUnresolvedReferences
-        if isinstance(s, buffer):  # noqa
-            s = str(s)
-    else:  # pragma: py2 no cover
-        if isinstance(s, memoryview):
-            s = s.tobytes()
-        if isinstance(s, binary_type):
+def ensure_str(s):
+    if not isinstance(s, str):
+        s = ensure_bytes(s)
+        if not PY2:  # pragma: py2 no cover
             s = s.decode('ascii')
     return s
 
 
+def json_dumps(o):
+    """Write JSON in a consistent, human-readable way."""
+    return json.dumps(o, indent=4, sort_keys=True, ensure_ascii=True,
+                      separators=(',', ': '))
+
+
+def parse_metadata(s):
+
+    # Here we allow that a store may return an already-parsed metadata object,
+    # or a string of JSON that we will parse here. We allow for an already-parsed
+    # object to accommodate a consolidated metadata store, where all the metadata for
+    # all groups and arrays will already have been parsed from JSON.
+
+    if isinstance(s, Mapping):
+        # assume metadata has already been parsed into a mapping object
+        meta = s
+
+    else:
+        # assume metadata needs to be parsed as JSON
+        s = ensure_str(s)
+        meta = json.loads(s)
+
+    return meta
+
+
 def decode_array_metadata(s):
-    s = _ensure_str(s)
-    meta = json.loads(s)
+    meta = parse_metadata(s)
+
+    # check metadata format
     zarr_format = meta.get('zarr_format', None)
     if zarr_format != ZARR_FORMAT:
         raise MetadataError('unsupported zarr format: %s' % zarr_format)
+
+    # extract array metadata fields
     try:
         dtype = decode_dtype(meta['dtype'])
         fill_value = decode_fill_value(meta['fill_value'], dtype)
@@ -67,8 +91,7 @@ def encode_array_metadata(meta):
         order=meta['order'],
         filters=meta['filters'],
     )
-    s = json.dumps(meta, indent=4, sort_keys=True, ensure_ascii=True,
-                   separators=(',', ': '))
+    s = json_dumps(meta)
     b = s.encode('ascii')
     return b
 
@@ -98,14 +121,14 @@ def decode_dtype(d):
 
 
 def decode_group_metadata(s):
-    s = _ensure_str(s)
-    meta = json.loads(s)
+    meta = parse_metadata(s)
+
+    # check metadata format version
     zarr_format = meta.get('zarr_format', None)
     if zarr_format != ZARR_FORMAT:
         raise MetadataError('unsupported zarr format: %s' % zarr_format)
-    meta = dict(
-        zarr_format=ZARR_FORMAT,
-    )
+
+    meta = dict(zarr_format=zarr_format)
     return meta
 
 
@@ -115,7 +138,7 @@ def encode_group_metadata(meta=None):
     meta = dict(
         zarr_format=ZARR_FORMAT,
     )
-    s = json.dumps(meta, indent=4, sort_keys=True, ensure_ascii=True)
+    s = json_dumps(meta)
     b = s.encode('ascii')
     return b
 
@@ -186,6 +209,6 @@ def encode_fill_value(v, dtype):
     elif dtype.kind == 'U':
         return v
     elif dtype.kind in 'mM':
-        return int(v.view('u8'))
+        return int(v.view('i8'))
     else:
         return v

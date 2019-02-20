@@ -18,6 +18,7 @@ path) and a `getsize` method (return the size in bytes of a given value).
 from __future__ import absolute_import, print_function, division
 from collections import MutableMapping, OrderedDict
 import os
+import operator
 import tempfile
 import zipfile
 import shutil
@@ -25,23 +26,23 @@ import atexit
 import errno
 import re
 import sys
+import json
 import multiprocessing
+from pickle import PicklingError
 from threading import Lock, RLock
 import glob
 import warnings
-
-
-import numpy as np
 
 
 from zarr.util import (normalize_shape, normalize_chunks, normalize_order,
                        normalize_storage_path, buffer_size,
                        normalize_fill_value, nolock, normalize_dtype)
 from zarr.meta import encode_array_metadata, encode_group_metadata
-from zarr.compat import PY2, binary_type, OrderedDict_move_to_end
+from zarr.compat import PY2, OrderedDict_move_to_end, binary_type
 from numcodecs.registry import codec_registry
+from numcodecs.compat import ensure_bytes, ensure_contiguous_ndarray
 from zarr.errors import (err_contains_group, err_contains_array, err_bad_compressor,
-                         err_fspath_exists_notdir, err_read_only)
+                         err_fspath_exists_notdir, err_read_only, MetadataError)
 
 
 array_meta_key = '.zarray'
@@ -54,6 +55,15 @@ try:
 except ImportError:  # pragma: no cover
     from zarr.codecs import Zlib
     default_compressor = Zlib()
+
+# Find which function to use for atomic replace
+if sys.version_info >= (3, 3):
+    from os import replace
+elif sys.platform == "win32":  # pragma: no cover
+    from osreplace import replace
+else:  # pragma: no cover
+    # POSIX rename() is always atomic
+    from os import rename as replace
 
 
 def _path_to_prefix(path):
@@ -444,23 +454,6 @@ def _init_group_metadata(store, overwrite=False, path=None, chunk_store=None):
     store[key] = encode_group_metadata(meta)
 
 
-def ensure_bytes(s):
-    if isinstance(s, binary_type):
-        return s
-    if isinstance(s, np.ndarray):
-        if PY2:  # pragma: py3 no cover
-            # noinspection PyArgumentList
-            return s.tostring(order='A')
-        else:  # pragma: py2 no cover
-            # noinspection PyArgumentList
-            return s.tobytes(order='A')
-    if hasattr(s, 'tobytes'):
-        return s.tobytes()
-    if PY2 and hasattr(s, 'tostring'):  # pragma: py3 no cover
-        return s.tostring()
-    return memoryview(s).tobytes()
-
-
 def _dict_store_keys(d, prefix='', cls=dict):
     for k in d.keys():
         v = d[k]
@@ -554,6 +547,7 @@ class DictStore(MutableMapping):
     def __setitem__(self, item, value):
         with self.write_mutex:
             parent, key = self._require_parent(item)
+            value = ensure_bytes(value)
             parent[key] = value
 
     def __delitem__(self, item):
@@ -652,17 +646,11 @@ class DictStore(MutableMapping):
             size = 0
             for v in value.values():
                 if not isinstance(v, self.cls):
-                    try:
-                        size += buffer_size(v)
-                    except TypeError:
-                        return -1
+                    size += buffer_size(v)
             return size
 
         else:
-            try:
-                return buffer_size(value)
-            except TypeError:
-                return -1
+            return buffer_size(value)
 
     def clear(self):
         with self.write_mutex:
@@ -741,9 +729,8 @@ class DirectoryStore(MutableMapping):
 
     def __setitem__(self, key, value):
 
-        # handle F-contiguous numpy arrays
-        if isinstance(value, np.ndarray) and value.flags.f_contiguous:
-            value = ensure_bytes(value)
+        # coerce to flat, contiguous array (ideally without copying)
+        value = ensure_contiguous_ndarray(value)
 
         # destination path for key
         file_path = os.path.join(self.path, key)
@@ -775,13 +762,11 @@ class DirectoryStore(MutableMapping):
                 f.write(value)
 
             # move temporary file into place
-            if os.path.exists(file_path):
-                os.remove(file_path)
-            os.rename(temp_path, file_path)
+            replace(temp_path, file_path)
 
         finally:
             # clean up if temp file still exists for whatever reason
-            if temp_path is not None and os.path.exists(temp_path):
+            if temp_path is not None and os.path.exists(temp_path):  # pragma: no cover
                 os.remove(temp_path)
 
     def __delitem__(self, key):
@@ -1195,7 +1180,7 @@ class ZipStore(MutableMapping):
     def __setitem__(self, key, value):
         if self.mode == 'r':
             err_read_only()
-        value = ensure_bytes(value)
+        value = ensure_contiguous_ndarray(value)
         with self.mutex:
             self.zf.writestr(key, value)
 
@@ -1468,7 +1453,7 @@ class DBMStore(MutableMapping):
         if self.flag[0] != 'r':
             with self.write_mutex:
                 if hasattr(self.db, 'sync'):
-                        self.db.sync()
+                    self.db.sync()
                 else:
                     # fall-back, close and re-open, needed for ndbm
                     flag = self.flag
@@ -1896,3 +1881,477 @@ class LRUStoreCache(MutableMapping):
         with self._mutex:
             self._invalidate_keys()
             self._invalidate_value(key)
+
+
+class SQLiteStore(MutableMapping):
+    """Storage class using SQLite.
+
+    Parameters
+    ----------
+    path : string
+        Location of database file.
+    **kwargs
+        Keyword arguments passed through to the `sqlite3.connect` function.
+
+    Examples
+    --------
+    Store a single array::
+
+        >>> import zarr
+        >>> store = zarr.SQLiteStore('data/array.sqldb')
+        >>> z = zarr.zeros((10, 10), chunks=(5, 5), store=store, overwrite=True)
+        >>> z[...] = 42
+        >>> store.close()  # don't forget to call this when you're done
+
+    Store a group::
+
+        >>> store = zarr.SQLiteStore('data/group.sqldb')
+        >>> root = zarr.group(store=store, overwrite=True)
+        >>> foo = root.create_group('foo')
+        >>> bar = foo.zeros('bar', shape=(10, 10), chunks=(5, 5))
+        >>> bar[...] = 42
+        >>> store.close()  # don't forget to call this when you're done
+    """
+
+    def __init__(self, path, **kwargs):
+        import sqlite3
+
+        # normalize path
+        if path != ':memory:':
+            path = os.path.abspath(path)
+
+        # store properties
+        self.path = path
+        self.kwargs = kwargs
+
+        # allow threading if SQLite connections are thread-safe
+        #
+        # ref: https://www.sqlite.org/releaselog/3_3_1.html
+        # ref: https://bugs.python.org/issue27190
+        check_same_thread = True
+        if sqlite3.sqlite_version_info >= (3, 3, 1):
+            check_same_thread = False
+
+        # keep a lock for serializing mutable operations
+        self.lock = Lock()
+
+        # open database
+        self.db = sqlite3.connect(
+            self.path,
+            detect_types=0,
+            isolation_level=None,
+            check_same_thread=check_same_thread,
+            **self.kwargs
+        )
+
+        # handle keys as `str`s
+        self.db.text_factory = str
+
+        # get a cursor to read/write to the database
+        self.cursor = self.db.cursor()
+
+        # initialize database with our table if missing
+        with self.lock:
+            self.cursor.execute(
+                'CREATE TABLE IF NOT EXISTS zarr(k TEXT PRIMARY KEY, v BLOB)'
+            )
+
+    def __getstate__(self):
+        if self.path == ':memory:':
+            raise PicklingError('Cannot pickle in-memory SQLite databases')
+        return self.path, self.kwargs
+
+    def __setstate__(self, state):
+        path, kwargs = state
+        self.__init__(path=path, **kwargs)
+
+    def close(self):
+        """Closes the underlying database."""
+
+        # close cursor and db objects
+        self.cursor.close()
+        self.db.close()
+
+    def __getitem__(self, key):
+        value = self.cursor.execute('SELECT v FROM zarr WHERE (k = ?)', (key,))
+        for v, in value:
+            return v
+        raise KeyError(key)
+
+    def __setitem__(self, key, value):
+        self.update({key: value})
+
+    def __delitem__(self, key):
+        with self.lock:
+            self.cursor.execute('DELETE FROM zarr WHERE (k = ?)', (key,))
+            if self.cursor.rowcount < 1:
+                raise KeyError(key)
+
+    def __contains__(self, key):
+        cs = self.cursor.execute(
+            'SELECT COUNT(*) FROM zarr WHERE (k = ?)', (key,)
+        )
+        for has, in cs:
+            has = bool(has)
+            return has
+
+    def items(self):
+        kvs = self.cursor.execute('SELECT k, v FROM zarr')
+        for k, v in kvs:
+            yield k, v
+
+    def keys(self):
+        ks = self.cursor.execute('SELECT k FROM zarr')
+        for k, in ks:
+            yield k
+
+    def values(self):
+        vs = self.cursor.execute('SELECT v FROM zarr')
+        for v, in vs:
+            yield v
+
+    def __iter__(self):
+        return self.keys()
+
+    def __len__(self):
+        cs = self.cursor.execute('SELECT COUNT(*) FROM zarr')
+        for c, in cs:
+            return c
+
+    def update(self, *args, **kwargs):
+        args += (kwargs,)
+
+        kv_list = []
+        for dct in args:
+            for k, v in dct.items():
+                # Python 2 cannot store `memoryview`s, but it can store
+                # `buffer`s. However Python 2 won't return `bytes` then. So we
+                # coerce to `bytes`, which are handled correctly. Python 3
+                # doesn't have these issues.
+                if PY2:  # pragma: py3 no cover
+                    v = ensure_bytes(v)
+                else:  # pragma: py2 no cover
+                    v = ensure_contiguous_ndarray(v)
+
+                # Accumulate key-value pairs for storage
+                kv_list.append((k, v))
+
+        with self.lock:
+            self.cursor.executemany('REPLACE INTO zarr VALUES (?, ?)', kv_list)
+
+    def listdir(self, path=None):
+        path = normalize_storage_path(path)
+        keys = self.cursor.execute(
+            '''
+            SELECT DISTINCT SUBSTR(m, 0, INSTR(m, "/")) AS l FROM (
+                SELECT LTRIM(SUBSTR(k, LENGTH(?) + 1), "/") || "/" AS m
+                FROM zarr WHERE k LIKE (? || "_%")
+            ) ORDER BY l ASC
+            ''',
+            (path, path)
+        )
+        keys = list(map(operator.itemgetter(0), keys))
+        return keys
+
+    def getsize(self, path=None):
+        path = normalize_storage_path(path)
+        size = self.cursor.execute(
+            '''
+            SELECT COALESCE(SUM(LENGTH(v)), 0) FROM zarr
+            WHERE k LIKE (? || "%") AND
+                  0 == INSTR(LTRIM(SUBSTR(k, LENGTH(?) + 1), "/"), "/")
+            ''',
+            (path, path)
+        )
+        for s, in size:
+            return s
+
+    def rmdir(self, path=None):
+        path = normalize_storage_path(path)
+        if path:
+            with self.lock:
+                self.cursor.execute(
+                    'DELETE FROM zarr WHERE k LIKE (? || "_%")', (path,)
+                )
+        else:
+            self.clear()
+
+    def clear(self):
+        with self.lock:
+            self.cursor.executescript(
+                '''
+                BEGIN TRANSACTION;
+                    DROP TABLE zarr;
+                    CREATE TABLE zarr(k TEXT PRIMARY KEY, v BLOB);
+                COMMIT TRANSACTION;
+                '''
+            )
+
+
+class MongoDBStore(MutableMapping):
+    """Storage class using MongoDB.
+
+    .. note:: This is an experimental feature.
+
+    Requires the `pymongo <https://api.mongodb.com/python/current/>`_
+    package to be installed.
+
+    Parameters
+    ----------
+    database : string
+        Name of database
+    collection : string
+        Name of collection
+    **kwargs
+        Keyword arguments passed through to the `pymongo.MongoClient` function.
+
+    Examples
+    --------
+    Store a single array::
+
+        >>> import zarr
+        >>> store = zarr.MongoDBStore('localhost')
+        >>> z = zarr.zeros((10, 10), chunks=(5, 5), store=store, overwrite=True)
+        >>> z[...] = 42
+        >>> store.close()
+
+    Store a group::
+
+        >>> store = zarr.MongoDBStore('localhost')
+        >>> root = zarr.group(store=store, overwrite=True)
+        >>> foo = root.create_group('foo')
+        >>> bar = foo.zeros('bar', shape=(10, 10), chunks=(5, 5))
+        >>> bar[...] = 42
+        >>> store.close()
+
+    Notes
+    -----
+    The maximum chunksize in MongoDB documents is 16 MB.
+
+    """
+
+    _key = 'key'
+    _value = 'value'
+
+    def __init__(self, database='mongodb_zarr', collection='zarr_collection',
+                 **kwargs):
+        import pymongo
+
+        self._database = database
+        self._collection = collection
+        self._kwargs = kwargs
+
+        self.client = pymongo.MongoClient(**self._kwargs)
+        self.db = self.client.get_database(self._database)
+        self.collection = self.db.get_collection(self._collection)
+
+    def __getitem__(self, key):
+        doc = self.collection.find_one({self._key: key})
+
+        if doc is None:
+            raise KeyError(key)
+        else:
+            value = doc[self._value]
+
+            # Coerce `bson.Binary` to `bytes` type on Python 2.
+            # PyMongo handles this conversion for us on Python 3.
+            # ref: http://api.mongodb.com/python/current/python3.html#id3
+            if PY2:  # pragma: py3 no cover
+                value = binary_type(value)
+
+            return value
+
+    def __setitem__(self, key, value):
+        value = ensure_bytes(value)
+        self.collection.replace_one({self._key: key},
+                                    {self._key: key, self._value: value},
+                                    upsert=True)
+
+    def __delitem__(self, key):
+        result = self.collection.delete_many({self._key: key})
+        if not result.deleted_count == 1:
+            raise KeyError(key)
+
+    def __iter__(self):
+        for f in self.collection.find({}):
+            yield f[self._key]
+
+    def __len__(self):
+        return self.collection.count_documents({})
+
+    def __getstate__(self):
+        return self._database, self._collection, self._kwargs
+
+    def __setstate__(self, state):
+        database, collection, kwargs = state
+        self.__init__(database=database, collection=collection, **kwargs)
+
+    def close(self):
+        """Cleanup client resources and disconnect from MongoDB."""
+        self.client.close()
+
+    def clear(self):
+        """Remove all items from store."""
+        self.collection.delete_many({})
+
+
+class RedisStore(MutableMapping):
+    """Storage class using Redis.
+
+    .. note:: This is an experimental feature.
+
+    Requires the `redis <https://redis-py.readthedocs.io/>`_
+    package to be installed.
+
+    Parameters
+    ----------
+    prefix : string
+        Name of prefix for Redis keys
+    **kwargs
+        Keyword arguments passed through to the `redis.Redis` function.
+
+    Examples
+    --------
+    Store a single array::
+
+        >>> import zarr
+        >>> store = zarr.RedisStore(port=6379)
+        >>> z = zarr.zeros((10, 10), chunks=(5, 5), store=store, overwrite=True)
+        >>> z[...] = 42
+
+    Store a group::
+
+        >>> store = zarr.RedisStore(port=6379)
+        >>> root = zarr.group(store=store, overwrite=True)
+        >>> foo = root.create_group('foo')
+        >>> bar = foo.zeros('bar', shape=(10, 10), chunks=(5, 5))
+        >>> bar[...] = 42
+
+    """
+    def __init__(self, prefix='zarr', **kwargs):
+        import redis
+        self._prefix = prefix
+        self._kwargs = kwargs
+
+        self.client = redis.Redis(**kwargs)
+
+    def _key(self, key):
+        return '{prefix}:{key}'.format(prefix=self._prefix, key=key)
+
+    def __getitem__(self, key):
+        return self.client[self._key(key)]
+
+    def __setitem__(self, key, value):
+        value = ensure_bytes(value)
+        self.client[self._key(key)] = value
+
+    def __delitem__(self, key):
+        count = self.client.delete(self._key(key))
+        if not count:
+            raise KeyError(key)
+
+    def keylist(self):
+        offset = len(self._key(''))  # length of prefix
+        return [key[offset:].decode('utf-8')
+                for key in self.client.keys(self._key('*'))]
+
+    def keys(self):
+        for key in self.keylist():
+            yield key
+
+    def __iter__(self):
+        for key in self.keys():
+            yield key
+
+    def __len__(self):
+        return len(self.keylist())
+
+    def __getstate__(self):
+        return self._prefix, self._kwargs
+
+    def __setstate__(self, state):
+        prefix, kwargs = state
+        self.__init__(prefix=prefix, **kwargs)
+
+    def clear(self):
+        for key in self.keys():
+            del self[key]
+
+
+class ConsolidatedMetadataStore(MutableMapping):
+    """A layer over other storage, where the metadata has been consolidated into
+    a single key.
+
+    The purpose of this class, is to be able to get all of the metadata for
+    a given dataset in a single read operation from the underlying storage.
+    See :func:`zarr.convenience.consolidate_metadata` for how to create this
+    single metadata key.
+
+    This class loads from the one key, and stores the data in a dict, so that
+    accessing the keys no longer requires operations on the backend store.
+
+    This class is read-only, and attempts to change the dataset metadata will
+    fail, but changing the data is possible. If the backend storage is changed
+    directly, then the metadata stored here could become obsolete, and
+    :func:`zarr.convenience.consolidate_metadata` should be called again and the class
+    re-invoked. The use case is for write once, read many times.
+
+    .. versionadded:: 2.3
+
+    .. note:: This is an experimental feature.
+
+    Parameters
+    ----------
+    store: MutableMapping
+        Containing the zarr dataset.
+    metadata_key: str
+        The target in the store where all of the metadata are stored. We
+        assume JSON encoding.
+
+    See Also
+    --------
+    zarr.convenience.consolidate_metadata, zarr.convenience.open_consolidated
+
+    """
+    def __init__(self, store, metadata_key='.zmetadata'):
+        self.store = store
+
+        # retrieve consolidated metadata
+        if sys.version_info.major == 3 and sys.version_info.minor < 6:
+            d = store[metadata_key].decode()  # pragma: no cover
+        else:  # pragma: no cover
+            d = store[metadata_key]
+        meta = json.loads(d)
+
+        # check format of consolidated metadata
+        consolidated_format = meta.get('zarr_consolidated_format', None)
+        if consolidated_format != 1:
+            raise MetadataError('unsupported zarr consolidated metadata format: %s' %
+                                consolidated_format)
+
+        # decode metadata
+        self.meta_store = meta['metadata']
+
+    def __getitem__(self, key):
+        return self.meta_store[key]
+
+    def __contains__(self, item):
+        return item in self.meta_store
+
+    def __iter__(self):
+        return iter(self.meta_store)
+
+    def __len__(self):
+        return len(self.meta_store)
+
+    def __delitem__(self, key):
+        err_read_only()
+
+    def __setitem__(self, key, value):
+        err_read_only()
+
+    def getsize(self, path):
+        return getsize(self.meta_store, path)
+
+    def listdir(self, path):
+        return listdir(self.meta_store, path)

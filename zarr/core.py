@@ -8,6 +8,7 @@ import re
 
 
 import numpy as np
+from numcodecs.compat import ensure_bytes, ensure_ndarray
 
 
 from zarr.util import (is_total_slice, human_readable_size, normalize_resize_args,
@@ -422,6 +423,18 @@ class Array(object):
         if args:
             a = a.astype(args[0])
         return a
+
+    def __iter__(self):
+        if len(self.shape) == 0:
+            # Same error as numpy
+            raise TypeError("iteration over a 0-d array")
+        # Avoid repeatedly decompressing chunks by iterating over the chunks
+        # in the first dimension.
+        chunk_size = self.chunks[0]
+        for j in range(self.shape[0]):
+            if j % chunk_size == 0:
+                chunk = self[j: j + chunk_size]
+            yield chunk[j % chunk_size]
 
     def __len__(self):
         if self.shape:
@@ -1530,6 +1543,7 @@ class Array(object):
                     item = [slice(None)] * self.ndim
                     for a in indexer.drop_axes:
                         item[a] = np.newaxis
+                    item = tuple(item)
                     chunk_value = chunk_value[item]
 
             # put data
@@ -1600,10 +1614,7 @@ class Array(object):
                     if self._compressor:
                         self._compressor.decode(cdata, dest)
                     else:
-                        if isinstance(cdata, np.ndarray):
-                            chunk = cdata.view(self._dtype)
-                        else:
-                            chunk = np.frombuffer(cdata, dtype=self._dtype)
+                        chunk = ensure_ndarray(cdata).view(self._dtype)
                         chunk = chunk.reshape(self._chunks, order=self._order)
                         np.copyto(dest, chunk)
                     return
@@ -1666,21 +1677,11 @@ class Array(object):
 
             else:
 
-                if not self._compressor and not self._filters:
-
-                    # https://github.com/alimanfoo/zarr/issues/79
-                    # Ensure a copy is taken so we don't end up storing
-                    # a view into someone else's array.
-                    # N.B., this assumes that filters or compressor always
-                    # take a copy and never attempt to apply encoding in-place.
-                    chunk = np.array(value, dtype=self._dtype, order=self._order)
-
+                # ensure array is contiguous
+                if self._order == 'F':
+                    chunk = np.asfortranarray(value, dtype=self._dtype)
                 else:
-                    # ensure array is contiguous
-                    if self._order == 'F':
-                        chunk = np.asfortranarray(value, dtype=self._dtype)
-                    else:
-                        chunk = np.ascontiguousarray(value, dtype=self._dtype)
+                    chunk = np.ascontiguousarray(value, dtype=self._dtype)
 
         else:
             # partially replace the contents of this chunk
@@ -1737,21 +1738,25 @@ class Array(object):
 
         # apply filters
         if self._filters:
-            for f in self._filters[::-1]:
+            for f in reversed(self._filters):
                 chunk = f.decode(chunk)
 
-        # view as correct dtype
-        if self._dtype == object:
-            if isinstance(chunk, np.ndarray):
-                chunk = chunk.astype(self._dtype)
-            else:
-                raise RuntimeError('cannot read object array without object codec')
-        elif isinstance(chunk, np.ndarray):
+        # view as numpy array with correct dtype
+        chunk = ensure_ndarray(chunk)
+        # special case object dtype, because incorrect handling can lead to
+        # segfaults and other bad things happening
+        if self._dtype != object:
             chunk = chunk.view(self._dtype)
-        else:
-            chunk = np.frombuffer(chunk, dtype=self._dtype)
+        elif chunk.dtype != object:
+            # If we end up here, someone must have hacked around with the filters.
+            # We cannot deal with object arrays unless there is an object
+            # codec in the filter chain, i.e., a filter that converts from object
+            # array to something else during encoding, and converts back to object
+            # array during decoding.
+            raise RuntimeError('cannot read object array without object codec')
 
-        # reshape
+        # ensure correct chunk shape
+        chunk = chunk.reshape(-1, order='A')
         chunk = chunk.reshape(self._chunks, order=self._order)
 
         return chunk
@@ -1772,6 +1777,10 @@ class Array(object):
             cdata = self._compressor.encode(chunk)
         else:
             cdata = chunk
+
+        # ensure in-memory data is immutable and easy to compare
+        if isinstance(self.chunk_store, dict):
+            cdata = ensure_bytes(cdata)
 
         return cdata
 
@@ -1921,7 +1930,7 @@ class Array(object):
         checksum = binascii.hexlify(self.digest(hashname=hashname))
 
         # This is a bytes object on Python 3 and we want a str.
-        if type(checksum) is not str:
+        if type(checksum) is not str:  # pragma: py2 no cover
             checksum = checksum.decode('utf8')
 
         return checksum

@@ -178,8 +178,8 @@ print some diagnostics, e.g.::
                        : blocksize=0)
     Store type         : builtins.dict
     No. bytes          : 400000000 (381.5M)
-    No. bytes stored   : 3242241 (3.1M)
-    Storage ratio      : 123.4
+    No. bytes stored   : 3379344 (3.2M)
+    Storage ratio      : 118.4
     Chunks initialized : 100/100
 
 If you don't specify a compressor, by default Zarr uses the Blosc
@@ -729,6 +729,23 @@ group (requires `lmdb <http://lmdb.readthedocs.io/>`_ to be installed)::
     >>> z[:] = 42
     >>> store.close()
 
+In Zarr version 2.3 is the :class:`zarr.storage.SQLiteStore` class which
+enables the SQLite database to be used for storing an array or group (requires
+Python is built with SQLite support)::
+
+    >>> store = zarr.SQLiteStore('data/example.sqldb')
+    >>> root = zarr.group(store=store, overwrite=True)
+    >>> z = root.zeros('foo/bar', shape=(1000, 1000), chunks=(100, 100), dtype='i4')
+    >>> z[:] = 42
+    >>> store.close()
+
+Also added in Zarr version 2.3 are two storage classes for interfacing with server-client
+databases. The :class:`zarr.storage.RedisStore` class interfaces `Redis <https://redis.io/>`_
+(an in memory data structure store), and the :class:`zarr.storage.MongoDB` class interfaces
+with `MongoDB <https://www.mongodb.com/>`_ (an oject oriented NoSQL database). These stores
+respectively require the `redis <https://redis-py.readthedocs.io>`_ and
+`pymongo <https://api.mongodb.com/python/current/>`_ packages to be installed. 
+
 Distributed/cloud storage
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -778,9 +795,11 @@ chunk size, which will reduce the number of chunks and thus reduce the number of
 round-trips required to retrieve data for an array (and thus reduce the impact of network
 latency). Another option is to try to increase the compression ratio by changing
 compression options or trying a different compressor (which will reduce the impact of
-limited network bandwidth). As of version 2.2, Zarr also provides the
-:class:`zarr.storage.LRUStoreCache` which can be used to implement a local in-memory cache
-layer over a remote store. E.g.::
+limited network bandwidth).
+
+As of version 2.2, Zarr also provides the :class:`zarr.storage.LRUStoreCache`
+which can be used to implement a local in-memory cache layer over a remote
+store. E.g.::
 
     >>> s3 = s3fs.S3FileSystem(anon=True, client_kwargs=dict(region_name='eu-west-2'))
     >>> store = s3fs.S3Map(root='zarr-demo/store', s3=s3, check=False)
@@ -797,12 +816,50 @@ layer over a remote store. E.g.::
     b'Hello from the cloud!'
     0.0009490990014455747
 
-If you are still experiencing poor performance with distributed/cloud storage, please
-raise an issue on the GitHub issue tracker with any profiling data you can provide, as
-there may be opportunities to optimise further either within Zarr or within the mapping
-interface to the storage.
+If you are still experiencing poor performance with distributed/cloud storage,
+please raise an issue on the GitHub issue tracker with any profiling data you
+can provide, as there may be opportunities to optimise further either within
+Zarr or within the mapping interface to the storage.
 
 .. _tutorial_copy:
+
+Consolidating metadata
+~~~~~~~~~~~~~~~~~~~~~~
+
+(This is an experimental feature.)
+
+Since there is a significant overhead for every connection to a cloud object
+store such as S3, the pattern described in the previous section may incur
+significant latency while scanning the metadata of the dataset hierarchy, even
+though each individual metadata object is small.  For cases such as these, once
+the data are static and can be regarded as read-only, at least for the
+metadata/structure of the dataset hierarchy, the many metadata objects can be
+consolidated into a single one via
+:func:`zarr.convenience.consolidate_metadata`. Doing this can greatly increase
+the speed of reading the dataset metadata, e.g.::
+
+   >>> zarr.consolidate_metadata(store)  # doctest: +SKIP
+
+This creates a special key with a copy of all of the metadata from all of the
+metadata objects in the store.
+
+Later, to open a Zarr store with consolidated metadata, use
+:func:`zarr.convenience.open_consolidated`, e.g.::
+
+   >>> root = zarr.open_consolidated(store)  # doctest: +SKIP
+
+This uses the special key to read all of the metadata in a single call to the
+backend storage.
+
+Note that, the hierarchy could still be opened in the normal way and altered,
+causing the consolidated metadata to become out of sync with the real state of
+the dataset hierarchy. In this case,
+:func:`zarr.convenience.consolidate_metadata` would need to be called again.
+
+To protect against consolidated metadata accidentally getting out of sync, the
+root group returned by :func:`zarr.convenience.open_consolidated` is read-only
+for the metadata, meaning that no new groups or arrays can be created, and
+arrays cannot be resized. However, data values with arrays can still be updated.
 
 Copying/migrating data
 ----------------------

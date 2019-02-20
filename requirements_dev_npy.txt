@@ -1,0 +1,4 @@
+# Break this out into a separate file to allow testing against
+# different versions of numpy. This file should pin to the latest
+# numpy version.
+numpy==1.15.4

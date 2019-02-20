@@ -8,6 +8,7 @@ import json
 import array
 import shutil
 import os
+from pickle import PicklingError
 
 
 import numpy as np
@@ -19,12 +20,13 @@ from zarr.storage import (init_array, array_meta_key, attrs_key, DictStore,
                           DirectoryStore, ZipStore, init_group, group_meta_key,
                           getsize, migrate_1to2, TempStore, atexit_rmtree,
                           NestedDirectoryStore, default_compressor, DBMStore,
-                          LMDBStore, atexit_rmglob, LRUStoreCache)
+                          LMDBStore, SQLiteStore, MongoDBStore, RedisStore,
+                          atexit_rmglob, LRUStoreCache, ConsolidatedMetadataStore)
 from zarr.meta import (decode_array_metadata, encode_array_metadata, ZARR_FORMAT,
                        decode_group_metadata, encode_group_metadata)
 from zarr.compat import PY2
 from zarr.codecs import Zlib, Blosc, BZ2
-from zarr.errors import PermissionError
+from zarr.errors import PermissionError, MetadataError
 from zarr.hierarchy import group
 from zarr.tests.util import CountingDict
 
@@ -62,6 +64,12 @@ class StoreTests(object):
                 # noinspection PyStatementEffect
                 del store['foo']
 
+    def test_set_invalid_content(self):
+        store = self.create_store()
+
+        with pytest.raises(TypeError):
+            store['baz'] = list(range(5))
+
     def test_clear(self):
         store = self.create_store()
         store['foo'] = b'bar'
@@ -85,6 +93,22 @@ class StoreTests(object):
         assert len(store) == 0
         with pytest.raises(KeyError):
             store.pop('xxx')
+        v = store.pop('xxx', b'default')
+        assert v == b'default'
+        v = store.pop('xxx', b'')
+        assert v == b''
+        v = store.pop('xxx', None)
+        assert v is None
+
+    def test_popitem(self):
+        store = self.create_store()
+        store['foo'] = b'bar'
+        k, v = store.popitem()
+        assert k == 'foo'
+        assert v == b'bar'
+        assert len(store) == 0
+        with pytest.raises(KeyError):
+            store.popitem()
 
     def test_writeable_values(self):
         store = self.create_store()
@@ -585,6 +609,10 @@ class TestMappingStore(StoreTests, unittest.TestCase):
     def create_store(self):
         return dict()
 
+    def test_set_invalid_content(self):
+        # Generic mappings support non-buffer types
+        pass
+
 
 def setdel_hierarchy_checks(store):
     # these tests are for stores that are aware of hierarchy levels; this
@@ -628,17 +656,14 @@ class TestDictStore(StoreTests, unittest.TestCase):
     def create_store(self):
         return DictStore()
 
+    def test_store_contains_bytes(self):
+        store = self.create_store()
+        store['foo'] = np.array([97, 98, 99, 100, 101], dtype=np.uint8)
+        assert store['foo'] == b'abcde'
+
     def test_setdel(self):
         store = self.create_store()
         setdel_hierarchy_checks(store)
-
-    def test_getsize_ext(self):
-        store = self.create_store()
-        store['a'] = list(range(10))
-        store['b/c'] = list(range(10))
-        assert -1 == store.getsize()
-        assert -1 == store.getsize('a')
-        assert -1 == store.getsize('b')
 
 
 class TestDirectoryStore(StoreTests, unittest.TestCase):
@@ -754,6 +779,13 @@ class TestZipStore(StoreTests, unittest.TestCase):
         with pytest.raises(NotImplementedError):
             store.pop('foo')
 
+    def test_popitem(self):
+        # override because not implemented
+        store = self.create_store()
+        store['foo'] = b'bar'
+        with pytest.raises(NotImplementedError):
+            store.popitem()
+
 
 class TestDBMStore(StoreTests, unittest.TestCase):
 
@@ -861,6 +893,87 @@ class TestLMDBStore(StoreTests, unittest.TestCase):
             store['foo'] = b'bar'
             store['baz'] = b'qux'
             assert 2 == len(store)
+
+
+try:
+    import sqlite3
+except ImportError:  # pragma: no cover
+    sqlite3 = None
+
+try:
+    import pymongo
+    from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError
+    try:
+        client = pymongo.MongoClient(host='127.0.0.1',
+                                     serverSelectionTimeoutMS=1e3)
+        client.server_info()
+    except (ConnectionFailure, ServerSelectionTimeoutError):  # pragma: no cover
+        pymongo = None
+except ImportError:  # pragma: no cover
+    pymongo = None
+
+try:
+    import redis
+    from redis import ConnectionError
+    try:
+        rs = redis.Redis("localhost", port=6379)
+        rs.ping()
+    except ConnectionError:  # pragma: no cover
+        redis = None
+except ImportError:  # pragma: no cover
+    redis = None
+
+
+@unittest.skipIf(sqlite3 is None, 'python built without sqlite')
+class TestSQLiteStore(StoreTests, unittest.TestCase):
+
+    def create_store(self):
+        path = tempfile.mktemp(suffix='.db')
+        atexit.register(atexit_rmtree, path)
+        store = SQLiteStore(path)
+        return store
+
+
+@unittest.skipIf(sqlite3 is None, 'python built without sqlite')
+class TestSQLiteStoreInMemory(TestSQLiteStore, unittest.TestCase):
+
+    def create_store(self):
+        store = SQLiteStore(':memory:')
+        return store
+
+    def test_pickle(self):
+
+        # setup store
+        store = self.create_store()
+        store['foo'] = b'bar'
+        store['baz'] = b'quux'
+
+        # round-trip through pickle
+        with pytest.raises(PicklingError):
+            pickle.dumps(store)
+
+
+@unittest.skipIf(pymongo is None, 'test requires pymongo')
+class TestMongoDBStore(StoreTests, unittest.TestCase):
+
+    def create_store(self):
+        store = MongoDBStore(host='127.0.0.1', database='zarr_tests',
+                             collection='zarr_tests')
+        # start with an empty store
+        store.clear()
+        return store
+
+
+@unittest.skipIf(redis is None, 'test requires redis')
+class TestRedisStore(StoreTests, unittest.TestCase):
+
+    def create_store(self):
+        # TODO: this is the default host for Redis on Travis,
+        # we probably want to generalize this though
+        store = RedisStore(host='localhost', port=6379)
+        # start with an empty store
+        store.clear()
+        return store
 
 
 class TestLRUStoreCache(StoreTests, unittest.TestCase):
@@ -1095,6 +1208,10 @@ def test_getsize():
     assert 7 == getsize(store)
     assert 5 == getsize(store, 'baz')
 
+    store = dict()
+    store['boo'] = None
+    assert -1 == getsize(store)
+
 
 def test_migrate_1to2():
     from zarr import meta_v1
@@ -1251,3 +1368,49 @@ def test_format_compatibility():
             else:
                 assert compressor.codec_id == z.compressor.codec_id
                 assert compressor.get_config() == z.compressor.get_config()
+
+
+class TestConsolidatedMetadataStore(unittest.TestCase):
+
+    def test_bad_format(self):
+
+        # setup store with consolidated metdata
+        store = dict()
+        consolidated = {
+            # bad format version
+            'zarr_consolidated_format': 0,
+        }
+        store['.zmetadata'] = json.dumps(consolidated).encode()
+
+        # check appropriate error is raised
+        with pytest.raises(MetadataError):
+            ConsolidatedMetadataStore(store)
+
+    def test_read_write(self):
+
+        # setup store with consolidated metdata
+        store = dict()
+        consolidated = {
+            'zarr_consolidated_format': 1,
+            'metadata': {
+                'foo': 'bar',
+                'baz': 42,
+            }
+        }
+        store['.zmetadata'] = json.dumps(consolidated).encode()
+
+        # create consolidated store
+        cs = ConsolidatedMetadataStore(store)
+
+        # test __contains__, __getitem__
+        for key, value in consolidated['metadata'].items():
+            assert key in cs
+            assert value == cs[key]
+
+        # test __delitem__, __setitem__
+        with pytest.raises(PermissionError):
+            del cs['foo']
+        with pytest.raises(PermissionError):
+            cs['bar'] = 0
+        with pytest.raises(PermissionError):
+            cs['spam'] = 'eggs'

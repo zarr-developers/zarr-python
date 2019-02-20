@@ -3,6 +3,7 @@ from __future__ import absolute_import, print_function, division
 import tempfile
 import shutil
 import atexit
+import os.path
 
 
 import numpy as np
@@ -134,6 +135,12 @@ def test_full():
     z = full(100, chunks=10, fill_value=np.nan, dtype='f8')
     assert np.all(np.isnan(z[:]))
 
+    # NaT
+    z = full(100, chunks=10, fill_value='NaT', dtype='M8[s]')
+    assert np.all(np.isnat(z[:]))
+    z = full(100, chunks=10, fill_value='NaT', dtype='m8[s]')
+    assert np.all(np.isnat(z[:]))
+
     # byte string dtype
     v = b'xxx'
     z = full(100, chunks=10, fill_value=v, dtype='S3')
@@ -239,6 +246,14 @@ def test_open_array():
     z = open_array(store, shape=100, path='foo/bar', mode='w')
     assert isinstance(z, Array)
     assert 'foo/bar' == z.path
+
+    # with chunk store
+    meta_store = 'data/meta.zarr'
+    chunk_store = 'data/chunks.zarr'
+    z = open_array(store=meta_store, chunk_store=chunk_store, shape=11, mode='w')
+    z[:] = 42
+    assert os.path.abspath(meta_store) == z.store.path
+    assert os.path.abspath(chunk_store) == z.chunk_store.path
 
 
 def test_empty_like():

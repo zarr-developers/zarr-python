@@ -1,0 +1,11 @@
+coverage
+coveralls
+cython
+flake8
+h5py
+msgpack-python
+pytest
+pytest-cov
+s3fs
+setuptools-scm
+tox
