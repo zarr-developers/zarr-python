@@ -31,7 +31,6 @@ from pickle import PicklingError
 from threading import Lock, RLock
 import glob
 import warnings
-import io
 
 
 from zarr.util import (normalize_shape, normalize_chunks, normalize_order,
