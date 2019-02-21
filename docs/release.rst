@@ -78,6 +78,9 @@ Maintenance
 * Start using pyup.io to maintain dependencies.
   :user:`Alistair Miles <alimanfoo>`, :issue:`326`.
 
+* Configure flake8 line limit generally.
+  :user:`John Kirkham <jakirkham>`, :issue:`335`.
+
 Acknowledgments
 ~~~~~~~~~~~~~~~
 
