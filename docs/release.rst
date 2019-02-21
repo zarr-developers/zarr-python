@@ -73,6 +73,9 @@ Maintenance
 * CI and test environments have been upgraded to include Python 3.7, drop Python 3.4, and
   upgrade all pinned package requirements. :user:`Alistair Miles <alimanfoo>`, :issue:`308`.
 
+* Start using pyup.io to maintain dependencies.
+  :user:`Alistair Miles <alimanfoo>`, :issue:`326`.
+
 Acknowledgments
 ~~~~~~~~~~~~~~~
 
