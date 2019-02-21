@@ -42,6 +42,9 @@ Enhancements
 * Include tests for different compressors, endianness, and attributes.
   By :user:`John Kirkham <jakirkham>`, :issue:`378`, :issue:`380`.
 
+* Test validity of stores' contents.
+  By :user:`John Kirkham <jakirkham>`, :issue:`359`, :issue:`408`.
+
 Bug fixes
 ~~~~~~~~~
 
