@@ -1953,8 +1953,7 @@ class ABSStore(MutableMapping):
     def __setitem__(self, key, value):
         value = ensure_bytes(value)
         blob_name = '/'.join([self.prefix, key])
-        buffer = io.BytesIO(value)
-        self.client.create_blob_from_stream(self.container, blob_name, buffer)
+        self.client.create_blob_from_bytes(self.container, blob_name, value)
 
     def __delitem__(self, key):
         from azure.common import AzureMissingResourceHttpError
