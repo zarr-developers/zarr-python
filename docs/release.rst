@@ -16,7 +16,7 @@ Enhancements
   cut down the number of calls to the storage backend, and so remove a lot of overhead
   for reading remote data.
   By :user:`Martin Durant <martindurant>`, :user:`Alistair Miles <alimanfoo>`,
-  :issue:`268`, :issue:`332`.
+  :user:`Ryan Abernathey <rabernat>`, :issue:`268`, :issue:`332`, :issue:`338`.
 
 * Support has been added for structured arrays with sub-array shape and/or nested fields. By
   :user:`Tarik Onalan <onalant>`, :issue:`111`, :issue:`296`.
