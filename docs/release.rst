@@ -36,6 +36,9 @@ Enhancements
   MongoDB database to be used as the backing store for an array or group.
   By :user:`Joe Hamman <jhamman>`, :issue:`299`, :issue:`372`.
 
+* Include tests for stores' ``popitem`` and ``pop`` methods.
+  By :user:`John Kirkham <jakirkham>`, :issue:`378`, :issue:`380`.
+
 Bug fixes
 ~~~~~~~~~
 
