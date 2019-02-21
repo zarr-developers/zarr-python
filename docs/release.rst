@@ -50,6 +50,9 @@ Bug fixes
 * Failing tests related to pickling/unpickling have been fixed. By :user:`Ryan Williams <ryan-williams>`,
   :issue:`273`, :issue:`308`.
 
+* Corrects handling of ``NaT`` in ``datetime64`` and ``timedelta64`` in various
+  compressors (by :user:`John Kirkham <jakirkham>`; :issue:`344`).
+
 * Ensure ``DictStore`` contains only ``bytes`` to facilitate comparisons and protect against writes.
   By :user:`John Kirkham <jakirkham>`, :issue:`350`
 
@@ -66,9 +69,6 @@ Maintenance
 
 * CI and test environments have been upgraded to include Python 3.7, drop Python 3.4, and
   upgrade all pinned package requirements. :issue:`308`.
-
-* Corrects handling of ``NaT`` in ``datetime64`` and ``timedelta64`` in various
-  compressors (by :user:`John Kirkham <jakirkham>`; :issue:`344`).
 
 Acknowledgments
 ~~~~~~~~~~~~~~~
