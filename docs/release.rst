@@ -67,6 +67,9 @@ Bug fixes
 Maintenance
 ~~~~~~~~~~~
 
+* Simplify directory creation and removal in ``DirectoryStore.rename``.
+  By :user:`John Kirkham <jakirkham>`, :issue:`249`
+
 * CI and test environments have been upgraded to include Python 3.7, drop Python 3.4, and
   upgrade all pinned package requirements. :issue:`308`.
 
