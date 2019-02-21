@@ -82,7 +82,7 @@ Maintenance
   :user:`John Kirkham <jakirkham>`, :issue:`335`.
 
 * Add missing coverage pragmas.
-  :user:`John Kirkham <jakirkham>`, :issue:`343`.
+  :user:`John Kirkham <jakirkham>`, :issue:`343`, :issue:`355`.
 
 * Fix missing backslash in docs.
   :user:`John Kirkham <jakirkham>`, :issue:`254`, :issue:`353`.
