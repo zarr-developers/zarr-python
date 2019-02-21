@@ -39,6 +39,9 @@ Enhancements
 * Include tests for stores' ``popitem`` and ``pop`` methods.
   By :user:`John Kirkham <jakirkham>`, :issue:`378`, :issue:`380`.
 
+* Include tests for different compressors, endianness, and attributes.
+  By :user:`John Kirkham <jakirkham>`, :issue:`378`, :issue:`380`.
+
 Bug fixes
 ~~~~~~~~~
 
