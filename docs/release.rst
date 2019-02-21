@@ -81,6 +81,9 @@ Maintenance
 * Configure flake8 line limit generally.
   :user:`John Kirkham <jakirkham>`, :issue:`335`.
 
+* Add missing coverage pragmas.
+  :user:`John Kirkham <jakirkham>`, :issue:`343`.
+
 Acknowledgments
 ~~~~~~~~~~~~~~~
 
