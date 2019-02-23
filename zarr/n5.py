@@ -416,7 +416,7 @@ def compressor_config_to_n5(compressor_config):
 
     elif codec_id == 'blosc':
 
-        logger.warn(
+        logger.warning(
             "Not all N5 implementations support blosc compression (yet). You "
             "might not be able to open the dataset with another N5 library.")
 
@@ -432,7 +432,7 @@ def compressor_config_to_n5(compressor_config):
 
     elif codec_id == 'lzma':
 
-        logger.warn(
+        logger.warning(
             "Not all N5 implementations support lzma compression (yet). You "
             "might not be able to open the dataset with another N5 library.")
 
