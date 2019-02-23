@@ -424,8 +424,8 @@ def compressor_config_to_n5(compressor_config):
         n5_config['codec'] = compressor_config['cname']
         n5_config['level'] = compressor_config['clevel']
         n5_config['shuffle'] = compressor_config['shuffle']
-        if compressor_config['blocksize'] != 0:
-            raise ValueError("blosc block size needs to be 0 for N5 containers.")
+        assert compressor_config['blocksize'] == 0, \
+            "blosc block size needs to be 0 for N5 containers."
 
     elif codec_id == 'lz4':
 
