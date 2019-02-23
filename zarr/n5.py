@@ -13,7 +13,6 @@ from numcodecs.abc import Codec
 from numcodecs.compat import ndarray_copy
 from numcodecs.registry import register_codec, get_codec
 import json
-import logging
 import numpy as np
 import struct
 import sys
