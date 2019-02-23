@@ -23,7 +23,7 @@ from zarr.errors import PermissionError
 from zarr.compat import PY2, text_type, binary_type, zip_longest
 from zarr.meta import ensure_str
 from zarr.util import buffer_size
-from zarr.n5 import N5Store
+from zarr.n5 import n5_keywords, N5Store
 from numcodecs import (Delta, FixedScaleOffset, LZ4, GZip, Zlib, Blosc, BZ2, MsgPack, Pickle,
                        Categorize, JSON, VLenUTF8, VLenBytes, VLenArray)
 from numcodecs.compat import ensure_bytes, ensure_ndarray
@@ -1576,6 +1576,12 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
     def test_object_arrays_danger(self):
         # Cannot hacking out object codec as N5 doesn't allow object codecs
         pass
+
+    def test_attrs_n5_keywords(self):
+        z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
+        for k in n5_keywords:
+            with pytest.raises(ValueError):
+                z.attrs[k] = u""
 
     def test_compressors(self):
         compressors = [
