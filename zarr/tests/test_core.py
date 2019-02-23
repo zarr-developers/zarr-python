@@ -1460,8 +1460,23 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
             z[...] = np.array([1, 2, 3])
 
     def test_array_1d_fill_value(self):
-        # N5 does not support fill values != 0
-        pass
+        nvalues = 1050
+        dtype = np.int32
+        for fill_value in 0, None:
+            a = np.arange(nvalues, dtype=dtype)
+            f = np.empty_like(a)
+            f.fill(fill_value or 0)
+            z = self.create_array(shape=a.shape, chunks=100, dtype=a.dtype,
+                                  fill_value=fill_value)
+            z[190:310] = a[190:310]
+
+            assert_array_equal(f[:190], z[:190])
+            assert_array_equal(a[190:310], z[190:310])
+            assert_array_equal(f[310:], z[310:])
+
+        with pytest.raises(ValueError):
+            z = self.create_array(shape=(nvalues,), chunks=100, dtype=dtype,
+                                  fill_value=1)
 
     def test_array_order(self):
 
