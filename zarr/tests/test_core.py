@@ -1577,6 +1577,30 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
         # Cannot hacking out object codec as N5 doesn't allow object codecs
         pass
 
+    def test_compressors(self):
+        compressors = [
+            None, BZ2(), LZ4(), Zlib(), GZip()
+        ]
+        for compressor in compressors:
+            a1 = self.create_array(shape=1000, chunks=100, compressor=compressor)
+            a1[0:100] = 1
+            assert np.all(a1[0:100] == 1)
+            a1[:] = 1
+            assert np.all(a1[:] == 1)
+
+        compressors_warn = [
+            Blosc()
+        ]
+        if LZMA:
+            compressors_warn.append(LZMA())
+        for compressor in compressors_warn:
+            with pytest.warns(RuntimeWarning):
+                a2 = self.create_array(shape=1000, chunks=100, compressor=compressor)
+                a2[0:100] = 1
+                assert np.all(a2[0:100] == 1)
+                a2[:] = 1
+                assert np.all(a2[:] == 1)
+
     def test_hexdigest(self):
         # Check basic 1-D array
         z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
