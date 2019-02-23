@@ -864,7 +864,7 @@ class TestN5Store(TestNestedDirectoryStore, unittest.TestCase):
         all_filters, all_errors = zip(*[
             (None, does_not_raise()),
             ([], does_not_raise()),
-            ([AsType('f4', 'f8')], pytest.raises(AssertionError)),
+            ([AsType('f4', 'f8')], pytest.raises(ValueError)),
         ])
         for filters, error in zip(all_filters, all_errors):
             store = self.create_store()

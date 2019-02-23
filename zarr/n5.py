@@ -129,9 +129,8 @@ class N5Store(NestedDirectoryStore):
             zarr_attrs = json.loads(value)
 
             for k in n5_keywords:
-                assert k not in zarr_attrs.keys(), (
-                    "Can not set attribute %s, this is a reserved N5 "
-                    "keyword" % k)
+                if k in zarr_attrs.keys():
+                    raise ValueError("Can not set attribute %s, this is a reserved N5 keyword" % k)
 
             # replace previous user attributes
             for k in list(n5_attrs.keys()):
@@ -339,22 +338,18 @@ def array_metadata_to_n5(array_metadata):
     array_metadata['blockSize'] = array_metadata['blockSize'][::-1]
 
     if 'fill_value' in array_metadata:
-        assert (
-                array_metadata['fill_value'] == 0 or
-                array_metadata['fill_value'] is None), (
-            "N5 only supports fill_value==0 (for now)")
+        if array_metadata['fill_value'] != 0 and array_metadata['fill_value'] is not None:
+            raise ValueError("N5 only supports fill_value == 0 (for now)")
         del array_metadata['fill_value']
 
     if 'order' in array_metadata:
-        assert array_metadata['order'] == 'C', (
-            "zarr N5 storage only stores arrays in C order (for now)")
+        if array_metadata['order'] != 'C':
+            raise ValueError("zarr N5 storage only stores arrays in C order (for now)")
         del array_metadata['order']
 
     if 'filters' in array_metadata:
-        assert (
-                array_metadata['filters'] == [] or
-                array_metadata['filters'] is None), (
-            "N5 storage does not support zarr filters")
+        if array_metadata['filters'] != [] and array_metadata['filters'] is not None:
+            raise ValueError("N5 storage does not support zarr filters")
         del array_metadata['filters']
 
     assert 'compression' in array_metadata
@@ -428,8 +423,8 @@ def compressor_config_to_n5(compressor_config):
         n5_config['codec'] = compressor_config['cname']
         n5_config['level'] = compressor_config['clevel']
         n5_config['shuffle'] = compressor_config['shuffle']
-        assert compressor_config['blocksize'] == 0, (
-            "blosc block size needs to be 0 for N5 containers.")
+        if compressor_config['blocksize'] != 0:
+            raise ValueError("blosc block size needs to be 0 for N5 containers.")
 
     elif codec_id == 'lz4':
 
@@ -528,8 +523,8 @@ class N5ChunkWrapper(Codec):
         )
 
         if compressor:  # pragma: no cover
-            assert compressor_config is None, (
-                "Only one of compressor_config or compressor should be given.")
+            if compressor_config is not None:
+                raise ValueError("Only one of compressor_config or compressor should be given.")
             compressor_config = compressor.get_config()
 
         if (

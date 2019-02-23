@@ -1466,7 +1466,7 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
     def test_array_order(self):
 
         # N5 only supports 'C' at the moment
-        with pytest.raises(AssertionError):
+        with pytest.raises(ValueError):
             self.create_array(shape=(10, 11), chunks=(10, 11), dtype='i8',
                               order='F')
 
@@ -1526,23 +1526,23 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
 
         # an object_codec is required for object arrays, but allow to be provided via
         # filters to maintain API backwards compatibility
-        with pytest.raises(AssertionError):
+        with pytest.raises(ValueError):
             with pytest.warns(FutureWarning):
                 self.create_array(shape=10, chunks=3, dtype=object, filters=[MsgPack()])
 
         # create an object array using an object codec
-        with pytest.raises(AssertionError):
+        with pytest.raises(ValueError):
             self.create_array(shape=10, chunks=3, dtype=object, object_codec=MsgPack())
 
     def test_object_arrays_vlen_text(self):
 
         data = np.array(greetings * 1000, dtype=object)
 
-        with pytest.raises(AssertionError):
+        with pytest.raises(ValueError):
             self.create_array(shape=data.shape, dtype=object, object_codec=VLenUTF8())
 
         # convenience API
-        with pytest.raises(AssertionError):
+        with pytest.raises(ValueError):
             self.create_array(shape=data.shape, dtype=text_type)
 
     def test_object_arrays_vlen_bytes(self):
@@ -1550,11 +1550,11 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
         greetings_bytes = [g.encode('utf8') for g in greetings]
         data = np.array(greetings_bytes * 1000, dtype=object)
 
-        with pytest.raises(AssertionError):
+        with pytest.raises(ValueError):
             self.create_array(shape=data.shape, dtype=object, object_codec=VLenBytes())
 
         # convenience API
-        with pytest.raises(AssertionError):
+        with pytest.raises(ValueError):
             self.create_array(shape=data.shape, dtype=binary_type)
 
     def test_object_arrays_vlen_array(self):
@@ -1565,12 +1565,12 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
 
         codecs = VLenArray(int), VLenArray('<u4')
         for codec in codecs:
-            with pytest.raises(AssertionError):
+            with pytest.raises(ValueError):
                 self.create_array(shape=data.shape, dtype=object, object_codec=codec)
 
         # convenience API
         for item_type in 'int', '<u4':
-            with pytest.raises(AssertionError):
+            with pytest.raises(ValueError):
                 self.create_array(shape=data.shape, dtype='array:{}'.format(item_type))
 
     def test_object_arrays_danger(self):
