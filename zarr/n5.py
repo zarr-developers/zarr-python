@@ -18,8 +18,8 @@ import numpy as np
 import struct
 import sys
 import os
+import warnings
 
-logger = logging.getLogger(__name__)
 
 zarr_to_n5_keys = [
     ('chunks', 'blockSize'),
@@ -416,9 +416,11 @@ def compressor_config_to_n5(compressor_config):
 
     elif codec_id == 'blosc':
 
-        logger.warning(
+        warnings.warn(
             "Not all N5 implementations support blosc compression (yet). You "
-            "might not be able to open the dataset with another N5 library.")
+            "might not be able to open the dataset with another N5 library.",
+            RuntimeWarning
+        )
 
         n5_config['codec'] = compressor_config['cname']
         n5_config['level'] = compressor_config['clevel']
@@ -432,9 +434,11 @@ def compressor_config_to_n5(compressor_config):
 
     elif codec_id == 'lzma':
 
-        logger.warning(
+        warnings.warn(
             "Not all N5 implementations support lzma compression (yet). You "
-            "might not be able to open the dataset with another N5 library.")
+            "might not be able to open the dataset with another N5 library.",
+            RuntimeWarning
+        )
 
         n5_config['format'] = compressor_config['format']
         n5_config['check'] = compressor_config['check']
