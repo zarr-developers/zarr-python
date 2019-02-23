@@ -1596,10 +1596,10 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
         for compressor in compressors_warn:
             with pytest.warns(RuntimeWarning):
                 a2 = self.create_array(shape=1000, chunks=100, compressor=compressor)
-                a2[0:100] = 1
-                assert np.all(a2[0:100] == 1)
-                a2[:] = 1
-                assert np.all(a2[:] == 1)
+            a2[0:100] = 1
+            assert np.all(a2[0:100] == 1)
+            a2[:] = 1
+            assert np.all(a2[:] == 1)
 
     def test_hexdigest(self):
         # Check basic 1-D array
