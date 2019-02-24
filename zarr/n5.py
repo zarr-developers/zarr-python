@@ -433,16 +433,25 @@ def compressor_config_to_n5(compressor_config):
 
     elif codec_id == 'lzma':
 
-        warnings.warn(
-            "Not all N5 implementations support lzma compression (yet). You "
-            "might not be able to open the dataset with another N5 library.",
-            RuntimeWarning
-        )
+        # Switch to XZ for N5 if we are using the default XZ format.
+        # Note: 4 is the default, which is lzma.CHECK_CRC64.
+        if compressor_config['format'] == 1 and compressor_config['check'] in [-1, 4]:
+            n5_config['type'] = 'xz'
+        else:
+            warnings.warn(
+                "Not all N5 implementations support lzma compression (yet). You "
+                "might not be able to open the dataset with another N5 library.",
+                RuntimeWarning
+            )
+            n5_config['format'] = compressor_config['format']
+            n5_config['check'] = compressor_config['check']
+            n5_config['filters'] = compressor_config['filters']
 
-        n5_config['format'] = compressor_config['format']
-        n5_config['check'] = compressor_config['check']
-        n5_config['preset'] = compressor_config['preset']
-        n5_config['filters'] = compressor_config['filters']
+        # The default is lzma.PRESET_DEFAULT, which is 6.
+        if compressor_config['preset']:
+            n5_config['preset'] = compressor_config['preset']
+        else:
+            n5_config['preset'] = 6
 
     elif codec_id == 'zlib':
 
@@ -490,6 +499,14 @@ def compressor_config_to_zarr(compressor_config):
         zarr_config['check'] = compressor_config['check']
         zarr_config['preset'] = compressor_config['preset']
         zarr_config['filters'] = compressor_config['filters']
+
+    elif codec_id == 'xz':
+
+        zarr_config['id'] = 'lzma'
+        zarr_config['format'] = 1  # lzma.FORMAT_XZ
+        zarr_config['check'] = -1
+        zarr_config['preset'] = compressor_config['preset']
+        zarr_config['filters'] = None
 
     elif codec_id == 'gzip':
 
