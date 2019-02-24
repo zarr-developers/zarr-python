@@ -427,10 +427,6 @@ def compressor_config_to_n5(compressor_config):
         assert compressor_config['blocksize'] == 0, \
             "blosc block size needs to be 0 for N5 containers."
 
-    elif codec_id == 'lz4':
-
-        n5_config['blockSize'] = compressor_config['acceleration']
-
     elif codec_id == 'lzma':
 
         # Switch to XZ for N5 if we are using the default XZ format.
@@ -488,10 +484,6 @@ def compressor_config_to_zarr(compressor_config):
         zarr_config['clevel'] = compressor_config['level']
         zarr_config['shuffle'] = compressor_config['shuffle']
         zarr_config['blocksize'] = 0
-
-    elif codec_id == 'lz4':
-
-        zarr_config['acceleration'] = compressor_config['blockSize']
 
     elif codec_id == 'lzma':
 
