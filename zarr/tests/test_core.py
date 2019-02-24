@@ -87,6 +87,21 @@ class TestArray(unittest.TestCase):
         return Array(store, read_only=read_only, cache_metadata=cache_metadata,
                      cache_attrs=cache_attrs)
 
+    def test_store_has_text_keys(self):
+        # Initialize array
+        np.random.seed(42)
+        z = self.create_array(shape=(1050,), chunks=100, dtype='f8', compressor=[])
+        z[:] = np.random.random(z.shape)
+
+        if PY2:  # pragma: py3 no cover
+            expected_type = (str, text_type)
+        else:    # pragma: py2 no cover
+            expected_type = text_type
+
+        for k in z.chunk_store.keys():
+            if not isinstance(k, expected_type):  # pragma: no cover
+                pytest.fail("Non-text key: %s" % repr(k))
+
     def test_store_has_binary_values(self):
         # Initialize array
         np.random.seed(42)
