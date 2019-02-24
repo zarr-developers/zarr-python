@@ -1602,6 +1602,10 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
         compressors = [
             None, BZ2(), LZ4(), Zlib(), GZip()
         ]
+        if LZMA:
+            compressors.append(LZMA())
+            compressors.append(LZMA(preset=1))
+            compressors.append(LZMA(preset=6))
         for compressor in compressors:
             a1 = self.create_array(shape=1000, chunks=100, compressor=compressor)
             a1[0:100] = 1
@@ -1613,7 +1617,7 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
             Blosc()
         ]
         if LZMA:
-            compressors_warn.append(LZMA())
+            compressors_warn.append(LZMA(2))  # Try lzma.FORMAT_ALONE, which N5 doesn't support.
         for compressor in compressors_warn:
             with pytest.warns(RuntimeWarning):
                 a2 = self.create_array(shape=1000, chunks=100, compressor=compressor)
