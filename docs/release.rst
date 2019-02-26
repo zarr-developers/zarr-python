@@ -46,6 +46,11 @@ Enhancements
 * Test validity of stores' contents.
   By :user:`John Kirkham <jakirkham>`, :issue:`359`, :issue:`408`.
 
+* **New storage class for N5 containers**. The :class:`zarr.n5.N5Store` has been
+  added, which uses :class:`zarr.storage.NestedDirectoryStore` to support
+  reading and writing from and to N5 containers.
+  By :user:`Jan Funke <funkey>` and :user:`John Kirkham <jakirkham>`
+
 Bug fixes
 ~~~~~~~~~
 

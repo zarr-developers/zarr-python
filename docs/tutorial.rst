@@ -746,6 +746,20 @@ with `MongoDB <https://www.mongodb.com/>`_ (an oject oriented NoSQL database). T
 respectively require the `redis <https://redis-py.readthedocs.io>`_ and
 `pymongo <https://api.mongodb.com/python/current/>`_ packages to be installed. 
 
+For compatibility with the `N5<https://github.com/saalfeldlab/n5`_ data format, Zarr also provides
+an N5 backend (this is currently an experimental feature). Similar to the zip storage class, an
+:class:`zarr.n5.N5Store` can be instantiated directly::
+
+    >>> store = zarr.N5Store('data/example.n5')
+    >>> root = zarr.group(store=store)
+    >>> z = root.zeros('foo/bar', shape=(1000, 1000), chunks=(100, 100), dtype='i4')
+    >>> z[:] = 42
+
+For convenience, the N5 backend will automatically be chosen when the filename
+ends with `.n5`::
+
+    >>> root = zarr.open('data/example.n5', mode='w')
+
 Distributed/cloud storage
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 

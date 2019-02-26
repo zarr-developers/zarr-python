@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, print_function, division
+from contextlib import contextmanager
 import unittest
 import tempfile
 import atexit
@@ -25,10 +26,21 @@ from zarr.storage import (init_array, array_meta_key, attrs_key, DictStore,
 from zarr.meta import (decode_array_metadata, encode_array_metadata, ZARR_FORMAT,
                        decode_group_metadata, encode_group_metadata)
 from zarr.compat import PY2
-from zarr.codecs import Zlib, Blosc, BZ2
+from zarr.codecs import AsType, Zlib, Blosc, BZ2
 from zarr.errors import PermissionError, MetadataError
 from zarr.hierarchy import group
+from zarr.n5 import N5Store
 from zarr.tests.util import CountingDict
+
+try:
+    from zarr.codecs import LZMA
+except ImportError:  # pragma: no cover
+    LZMA = None
+
+
+@contextmanager
+def does_not_raise():
+    yield
 
 
 class StoreTests(object):
@@ -345,6 +357,24 @@ class StoreTests(object):
         assert meta['fill_value'] is None
 
     def test_init_array_overwrite(self):
+        self._test_init_array_overwrite('F')
+
+    def test_init_array_overwrite_path(self):
+        self._test_init_array_overwrite_path('F')
+
+    def test_init_array_overwrite_chunk_store(self):
+        self._test_init_array_overwrite_chunk_store('F')
+
+    def test_init_group_overwrite(self):
+        self._test_init_group_overwrite('F')
+
+    def test_init_group_overwrite_path(self):
+        self._test_init_group_overwrite_path('F')
+
+    def test_init_group_overwrite_chunk_store(self):
+        self._test_init_group_overwrite_chunk_store('F')
+
+    def _test_init_array_overwrite(self, order):
         # setup
         store = self.create_store()
         store[array_meta_key] = encode_array_metadata(
@@ -353,7 +383,7 @@ class StoreTests(object):
                  dtype=np.dtype('u1'),
                  compressor=Zlib(1).get_config(),
                  fill_value=0,
-                 order='F',
+                 order=order,
                  filters=None)
         )
 
@@ -391,7 +421,7 @@ class StoreTests(object):
         assert default_compressor.get_config() == meta['compressor']
         assert meta['fill_value'] is None
 
-    def test_init_array_overwrite_path(self):
+    def _test_init_array_overwrite_path(self, order):
         # setup
         path = 'foo/bar'
         store = self.create_store()
@@ -400,7 +430,7 @@ class StoreTests(object):
                     dtype=np.dtype('u1'),
                     compressor=Zlib(1).get_config(),
                     fill_value=0,
-                    order='F',
+                    order=order,
                     filters=None)
         store[array_meta_key] = encode_array_metadata(meta)
         store[path + '/' + array_meta_key] = encode_array_metadata(meta)
@@ -451,7 +481,7 @@ class StoreTests(object):
             assert (100,) == meta['chunks']
             assert np.dtype('i4') == meta['dtype']
 
-    def test_init_array_overwrite_chunk_store(self):
+    def _test_init_array_overwrite_chunk_store(self, order):
         # setup
         store = self.create_store()
         chunk_store = self.create_store()
@@ -462,7 +492,7 @@ class StoreTests(object):
                  compressor=None,
                  fill_value=0,
                  filters=None,
-                 order='F')
+                 order=order)
         )
         chunk_store['0'] = b'aaa'
         chunk_store['1'] = b'bbb'
@@ -502,7 +532,7 @@ class StoreTests(object):
         meta = decode_group_metadata(store[group_meta_key])
         assert ZARR_FORMAT == meta['zarr_format']
 
-    def test_init_group_overwrite(self):
+    def _test_init_group_overwrite(self, order):
         # setup
         store = self.create_store()
         store[array_meta_key] = encode_array_metadata(
@@ -511,7 +541,7 @@ class StoreTests(object):
                  dtype=np.dtype('u1'),
                  compressor=None,
                  fill_value=0,
-                 order='F',
+                 order=order,
                  filters=None)
         )
 
@@ -534,7 +564,7 @@ class StoreTests(object):
         with pytest.raises(ValueError):
             init_group(store)
 
-    def test_init_group_overwrite_path(self):
+    def _test_init_group_overwrite_path(self, order):
         # setup
         path = 'foo/bar'
         store = self.create_store()
@@ -543,7 +573,7 @@ class StoreTests(object):
                     dtype=np.dtype('u1'),
                     compressor=None,
                     fill_value=0,
-                    order='F',
+                    order=order,
                     filters=None)
         store[array_meta_key] = encode_array_metadata(meta)
         store[path + '/' + array_meta_key] = encode_array_metadata(meta)
@@ -566,7 +596,7 @@ class StoreTests(object):
             meta = decode_group_metadata(store[path + '/' + group_meta_key])
             assert ZARR_FORMAT == meta['zarr_format']
 
-    def test_init_group_overwrite_chunk_store(self):
+    def _test_init_group_overwrite_chunk_store(self, order):
         # setup
         store = self.create_store()
         chunk_store = self.create_store()
@@ -577,7 +607,7 @@ class StoreTests(object):
                  compressor=None,
                  fill_value=0,
                  filters=None,
-                 order='F')
+                 order=order)
         )
         chunk_store['foo'] = b'bar'
         chunk_store['baz'] = b'quux'
@@ -727,6 +757,119 @@ class TestNestedDirectoryStore(TestDirectoryStore, unittest.TestCase):
         assert b'yyy' == store['foo/10/20/30']
         store['42'] = b'zzz'
         assert b'zzz' == store['42']
+
+
+class TestN5Store(TestNestedDirectoryStore, unittest.TestCase):
+
+    def create_store(self):
+        path = tempfile.mkdtemp(suffix='.n5')
+        atexit.register(atexit_rmtree, path)
+        store = N5Store(path)
+        return store
+
+    def test_equal(self):
+        store_a = self.create_store()
+        store_b = N5Store(store_a.path)
+        assert store_a == store_b
+
+    def test_chunk_nesting(self):
+        store = self.create_store()
+        store['0.0'] = b'xxx'
+        assert '0.0' in store
+        assert b'xxx' == store['0.0']
+        assert b'xxx' == store['0/0']
+        store['foo/10.20.30'] = b'yyy'
+        assert 'foo/10.20.30' in store
+        assert b'yyy' == store['foo/10.20.30']
+        # N5 reverses axis order
+        assert b'yyy' == store['foo/30/20/10']
+        store['42'] = b'zzz'
+        assert '42' in store
+        assert b'zzz' == store['42']
+
+    def test_init_array(self):
+        store = self.create_store()
+        init_array(store, shape=1000, chunks=100)
+
+        # check metadata
+        assert array_meta_key in store
+        meta = decode_array_metadata(store[array_meta_key])
+        assert ZARR_FORMAT == meta['zarr_format']
+        assert (1000,) == meta['shape']
+        assert (100,) == meta['chunks']
+        assert np.dtype(None) == meta['dtype']
+        # N5Store wraps the actual compressor
+        compressor_config = meta['compressor']['compressor_config']
+        assert default_compressor.get_config() == compressor_config
+        # N5Store always has a fill value of 0
+        assert meta['fill_value'] == 0
+
+    def test_init_array_path(self):
+        path = 'foo/bar'
+        store = self.create_store()
+        init_array(store, shape=1000, chunks=100, path=path)
+
+        # check metadata
+        key = path + '/' + array_meta_key
+        assert key in store
+        meta = decode_array_metadata(store[key])
+        assert ZARR_FORMAT == meta['zarr_format']
+        assert (1000,) == meta['shape']
+        assert (100,) == meta['chunks']
+        assert np.dtype(None) == meta['dtype']
+        # N5Store wraps the actual compressor
+        compressor_config = meta['compressor']['compressor_config']
+        assert default_compressor.get_config() == compressor_config
+        # N5Store always has a fill value of 0
+        assert meta['fill_value'] == 0
+
+    def test_init_array_compat(self):
+        store = self.create_store()
+        init_array(store, shape=1000, chunks=100, compressor='none')
+        meta = decode_array_metadata(store[array_meta_key])
+        # N5Store wraps the actual compressor
+        compressor_config = meta['compressor']['compressor_config']
+        assert compressor_config is None
+
+    def test_init_array_overwrite(self):
+        self._test_init_array_overwrite('C')
+
+    def test_init_array_overwrite_path(self):
+        self._test_init_array_overwrite_path('C')
+
+    def test_init_array_overwrite_chunk_store(self):
+        self._test_init_array_overwrite_chunk_store('C')
+
+    def test_init_group_overwrite(self):
+        self._test_init_group_overwrite('C')
+
+    def test_init_group_overwrite_path(self):
+        self._test_init_group_overwrite_path('C')
+
+    def test_init_group_overwrite_chunk_store(self):
+        self._test_init_group_overwrite_chunk_store('C')
+
+    def test_init_group(self):
+        store = self.create_store()
+        init_group(store)
+
+        # check metadata
+        assert group_meta_key in store
+        assert group_meta_key in store.listdir()
+        assert group_meta_key in store.listdir('')
+        meta = decode_group_metadata(store[group_meta_key])
+        assert ZARR_FORMAT == meta['zarr_format']
+
+    def test_filters(self):
+        all_filters, all_errors = zip(*[
+            (None, does_not_raise()),
+            ([], does_not_raise()),
+            ([AsType('f4', 'f8')], pytest.raises(ValueError)),
+        ])
+        for filters, error in zip(all_filters, all_errors):
+            store = self.create_store()
+            with error:
+                init_array(store, shape=1000, chunks=100, filters=filters)
 
 
 class TestTempStore(StoreTests, unittest.TestCase):
