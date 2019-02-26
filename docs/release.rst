@@ -37,15 +37,6 @@ Enhancements
   By :user:`Joe Hamman <jhamman>`, :user:`John Kirkham <jakirkham>`,
   :issue:`299`, :issue:`372`, :issue:`401`.
 
-* Include tests for stores' ``popitem`` and ``pop`` methods.
-  By :user:`John Kirkham <jakirkham>`, :issue:`378`, :issue:`380`.
-
-* Include tests for different compressors, endianness, and attributes.
-  By :user:`John Kirkham <jakirkham>`, :issue:`378`, :issue:`380`.
-
-* Test validity of stores' contents.
-  By :user:`John Kirkham <jakirkham>`, :issue:`359`, :issue:`408`.
-
 * **New storage class for N5 containers**. The :class:`zarr.n5.N5Store` has been
   added, which uses :class:`zarr.storage.NestedDirectoryStore` to support
   reading and writing from and to N5 containers.
@@ -101,6 +92,15 @@ Maintenance
 
 * Fix missing backslash in docs.
   :user:`John Kirkham <jakirkham>`, :issue:`254`, :issue:`353`.
+
+* Include tests for stores' ``popitem`` and ``pop`` methods.
+  By :user:`John Kirkham <jakirkham>`, :issue:`378`, :issue:`380`.
+
+* Include tests for different compressors, endianness, and attributes.
+  By :user:`John Kirkham <jakirkham>`, :issue:`378`, :issue:`380`.
+
+* Test validity of stores' contents.
+  By :user:`John Kirkham <jakirkham>`, :issue:`359`, :issue:`408`.
 
 Acknowledgments
 ~~~~~~~~~~~~~~~
