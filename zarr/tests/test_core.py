@@ -993,6 +993,15 @@ class TestArray(unittest.TestCase):
             z[:] = a
             assert_array_almost_equal(a, z[:])
 
+        # complex
+        for dtype in 'c8', 'c16':
+            z = self.create_array(shape=10, chunks=3, dtype=dtype)
+            assert z.dtype == np.dtype(dtype)
+            a = np.linspace(0, 1, z.shape[0], dtype=dtype)
+            a -= 1j * a
+            z[:] = a
+            assert_array_almost_equal(a, z[:])
+
         # datetime, timedelta
         for base_type in 'Mm':
             for resolution in 'D', 'us', 'ns':
