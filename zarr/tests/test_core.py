@@ -1557,6 +1557,30 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
         with pytest.raises(TypeError):
             self.check_structured_array(d, fill_values)
 
+    def test_dtypes(self):
+
+        # integers
+        for dtype in 'u1', 'u2', 'u4', 'u8', 'i1', 'i2', 'i4', 'i8':
+            z = self.create_array(shape=10, chunks=3, dtype=dtype)
+            assert z.dtype == np.dtype(dtype)
+            a = np.arange(z.shape[0], dtype=dtype)
+            z[:] = a
+            assert_array_equal(a, z[:])
+
+        # floats
+        for dtype in 'f2', 'f4', 'f8':
+            z = self.create_array(shape=10, chunks=3, dtype=dtype)
+            assert z.dtype == np.dtype(dtype)
+            a = np.linspace(0, 1, z.shape[0], dtype=dtype)
+            z[:] = a
+            assert_array_almost_equal(a, z[:])
+
+        # check that datetime generic units are not allowed
+        with pytest.raises(ValueError):
+            self.create_array(shape=100, dtype='M8')
+        with pytest.raises(ValueError):
+            self.create_array(shape=100, dtype='m8')
+
     def test_object_arrays(self):
 
         # an object_codec is required for object arrays
