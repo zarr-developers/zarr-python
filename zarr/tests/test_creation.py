@@ -16,6 +16,7 @@ from zarr.creation import (array, empty, zeros, ones, full, open_array, empty_li
 from zarr.sync import ThreadSynchronizer
 from zarr.core import Array
 from zarr.storage import DirectoryStore
+from zarr.n5 import N5Store
 from zarr.hierarchy import open_group
 from zarr.errors import PermissionError
 from zarr.codecs import Zlib
@@ -254,6 +255,16 @@ def test_open_array():
     z[:] = 42
     assert os.path.abspath(meta_store) == z.store.path
     assert os.path.abspath(chunk_store) == z.chunk_store.path
+
+    # for N5 store
+    store = 'data/array.n5'
+    z = open_array(store, mode='w', shape=100, chunks=10)
+    z[:] = 42
+    assert isinstance(z, Array)
+    assert isinstance(z.store, N5Store)
+    assert (100,) == z.shape
+    assert (10,) == z.chunks
+    assert_array_equal(np.full(100, fill_value=42), z[:])
 
 
 def test_empty_like():

@@ -34,6 +34,11 @@ Enhancements
   MongoDB database to be used as the backing store for an array or group.
   By :user:`Joe Hamman <jhamman>`, :issue:`299`, :issue:`372`.
 
+* **New storage class for N5 containers**. The :class:`zarr.n5.N5Store` has been
+  added, which uses :class:`zarr.storage.NestedDirectoryStore` to support
+  reading and writing from and to N5 containers.
+  By :user:`Jan Funke <funkey>` and :user:`John Kirkham <jakirkham>`
+
 Bug fixes
 ~~~~~~~~~
 
