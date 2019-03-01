@@ -1895,11 +1895,11 @@ class ABSStore(MutableMapping):
         The Azure blob storage account access key.
     blob_service_kwargs : dictionary
         Extra arguments to be passed into the azure blob client, for e.g. when
-        using the emulator, pass in blob_service_kwargs={'is_emulated': True}
+        using the emulator, pass in blob_service_kwargs={'is_emulated': True}.
 
     Notes
     -----
-    In order to use this store, you must install the Microsoft Azure Storage SDK for Python
+    In order to use this store, you must install the Microsoft Azure Storage SDK for Python.
     """
 
     def __init__(self, container, prefix, account_name=None, account_key=None,
