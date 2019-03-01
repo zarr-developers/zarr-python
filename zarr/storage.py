@@ -1879,6 +1879,153 @@ class LRUStoreCache(MutableMapping):
             self._invalidate_value(key)
 
 
+class ABSStore(MutableMapping):
+    """Storage class using Azure Blob Storage (ABS).
+
+    Parameters
+    ----------
+    container : string
+        The name of the ABS container to use.
+    prefix : string
+        Location of the "directory" to use as the root of the storage hierarchy
+        within the container.
+    account_name : string
+        The Azure blob storage account name.
+    account_key : string
+        The Azure blob storage account access key.
+    blob_service_kwargs : dictionary
+        Extra arguments to be passed into the azure blob client, for e.g. when
+        using the emulator, pass in blob_service_kwargs={'is_emulated': True}.
+
+    Notes
+    -----
+    In order to use this store, you must install the Microsoft Azure Storage SDK for Python.
+    """
+
+    def __init__(self, container, prefix, account_name=None, account_key=None,
+                 blob_service_kwargs=None):
+        from azure.storage.blob import BlockBlobService
+        self.container = container
+        self.prefix = normalize_storage_path(prefix)
+        self.account_name = account_name
+        self.account_key = account_key
+        if blob_service_kwargs is not None:
+            self.blob_service_kwargs = blob_service_kwargs
+        else:  # pragma: no cover
+            self.blob_service_kwargs = dict()
+        self.client = BlockBlobService(self.account_name, self.account_key,
+                                       **self.blob_service_kwargs)
+
+    # needed for pickling
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        del state['client']
+        return state
+
+    def __setstate__(self, state):
+        from azure.storage.blob import BlockBlobService
+        self.__dict__.update(state)
+        self.client = BlockBlobService(self.account_name, self.account_key,
+                                       **self.blob_service_kwargs)
+
+    @staticmethod
+    def _append_path_to_prefix(path, prefix):
+        return '/'.join([normalize_storage_path(prefix),
+                         normalize_storage_path(path)])
+
+    @staticmethod
+    def _strip_prefix_from_path(path, prefix):
+        # normalized things will not have any leading or trailing slashes
+        path_norm = normalize_storage_path(path)
+        prefix_norm = normalize_storage_path(prefix)
+        return path_norm[(len(prefix_norm)+1):]
+
+    def __getitem__(self, key):
+        from azure.common import AzureMissingResourceHttpError
+        blob_name = '/'.join([self.prefix, key])
+        try:
+            blob = self.client.get_blob_to_bytes(self.container, blob_name)
+            return blob.content
+        except AzureMissingResourceHttpError:
+            raise KeyError('Blob %s not found' % blob_name)
+
+    def __setitem__(self, key, value):
+        value = ensure_bytes(value)
+        blob_name = '/'.join([self.prefix, key])
+        self.client.create_blob_from_bytes(self.container, blob_name, value)
+
+    def __delitem__(self, key):
+        from azure.common import AzureMissingResourceHttpError
+        try:
+            self.client.delete_blob(self.container, '/'.join([self.prefix, key]))
+        except AzureMissingResourceHttpError:
+            raise KeyError('Blob %s not found' % key)
+
+    def __eq__(self, other):
+        return (
+            isinstance(other, ABSStore) and
+            self.container == other.container and
+            self.prefix == other.prefix
+        )
+
+    def keys(self):
+        return list(self.__iter__())
+
+    def __iter__(self):
+        for blob in self.client.list_blobs(self.container, self.prefix + '/'):
+            yield self._strip_prefix_from_path(blob.name, self.prefix)
+
+    def __len__(self):
+        return len(self.keys())
+
+    def __contains__(self, key):
+        blob_name = '/'.join([self.prefix, key])
+        if self.client.exists(self.container, blob_name):
+            return True
+        else:
+            return False
+
+    def listdir(self, path=None):
+        store_path = normalize_storage_path(path)
+        # prefix is normalized to not have a trailing slash
+        dir_path = self.prefix
+        if store_path:
+            dir_path = dir_path + '/' + store_path
+        dir_path += '/'
+        items = list()
+        for blob in self.client.list_blobs(self.container, prefix=dir_path, delimiter='/'):
+            if '/' in blob.name[len(dir_path):]:
+                items.append(self._strip_prefix_from_path(
+                    blob.name[:blob.name.find('/', len(dir_path))], dir_path))
+            else:
+                items.append(self._strip_prefix_from_path(blob.name, dir_path))
+        return items
+
+    def rmdir(self, path=None):
+        dir_path = normalize_storage_path(self._append_path_to_prefix(path, self.prefix)) + '/'
+        for blob in self.client.list_blobs(self.container, prefix=dir_path):
+            self.client.delete_blob(self.container, blob.name)
+
+    def getsize(self, path=None):
+        store_path = normalize_storage_path(path)
+        fs_path = self.prefix
+        if store_path:
+            fs_path = self._append_path_to_prefix(store_path, self.prefix)
+        if self.client.exists(self.container, fs_path):
+            return self.client.get_blob_properties(self.container,
+                                                   fs_path).properties.content_length
+        else:
+            size = 0
+            for blob in self.client.list_blobs(self.container, prefix=fs_path + '/',
+                                               delimiter='/'):
+                if '/' not in blob.name[len(fs_path + '/'):]:
+                    size += blob.properties.content_length
+            return size
+
+    def clear(self):
+        self.rmdir()
+
+
 class SQLiteStore(MutableMapping):
     """Storage class using SQLite.
 
