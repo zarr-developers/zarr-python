@@ -13,12 +13,13 @@ import warnings
 import numpy as np
 from numpy.testing import assert_array_equal
 import pytest
+from azure.storage.blob import BlockBlobService
 
 
 from zarr.storage import (DictStore, DirectoryStore, ZipStore, init_group, init_array,
                           array_meta_key, group_meta_key, atexit_rmtree,
                           NestedDirectoryStore, DBMStore, LMDBStore, SQLiteStore,
-                          atexit_rmglob, LRUStoreCache)
+                          ABSStore, atexit_rmglob, LRUStoreCache)
 from zarr.core import Array
 from zarr.compat import PY2, text_type
 from zarr.hierarchy import Group, group, open_group
@@ -861,6 +862,19 @@ class TestGroupWithDirectoryStore(TestGroup):
         path = tempfile.mkdtemp()
         atexit.register(atexit_rmtree, path)
         store = DirectoryStore(path)
+        return store, None
+
+
+class TestGroupWithABSStore(TestGroup):
+
+    @staticmethod
+    def create_store():
+        blob_client = BlockBlobService(is_emulated=True)
+        blob_client.delete_container('test')
+        blob_client.create_container('test')
+        store = ABSStore(container='test', prefix='zarrtesting/', account_name='foo',
+                         account_key='bar', blob_service_kwargs={'is_emulated': True})
+        store.rmdir()
         return store, None
 
 

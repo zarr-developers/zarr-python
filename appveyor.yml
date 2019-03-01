@@ -2,6 +2,10 @@ branches:
   only:
     - master
 
+# the VS C++ compiler path, doesn't seem to exist in the PATH environment variable of
+# the Visual Studio 2017 build VM, due to which the pyosreplace package fails to build
+image: Visual Studio 2015
+
 environment:
 
   global:
@@ -9,6 +13,7 @@ environment:
     # /E:ON and /V:ON options are not enabled in the batch script intepreter
     # See: http://stackoverflow.com/a/13751649/163740
     CMD_IN_ENV: "cmd /E:ON /V:ON /C .\\build.cmd"
+    EMULATOR_LOC: C:\\Program Files (x86)\\Microsoft SDKs\\Azure\\Storage Emulator\\AzureStorageEmulator.exe
 
   matrix:
 
@@ -36,5 +41,11 @@ install:
 
 build: off
 
+before_test:
+  - '"%EMULATOR_LOC%" start'
+
 test_script:
   - "%CMD_IN_ENV% python -m pytest -v --pyargs zarr"
+
+after_test:
+  - '"%EMULATOR_LOC%" stop'

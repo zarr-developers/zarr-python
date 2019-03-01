@@ -13,11 +13,12 @@ import warnings
 import numpy as np
 from numpy.testing import assert_array_equal, assert_array_almost_equal
 import pytest
+from azure.storage.blob import BlockBlobService
 
 
 from zarr.storage import (DirectoryStore, init_array, init_group, NestedDirectoryStore,
-                          DBMStore, LMDBStore, SQLiteStore, atexit_rmtree, atexit_rmglob,
-                          LRUStoreCache)
+                          DBMStore, LMDBStore, SQLiteStore, ABSStore, atexit_rmtree,
+                          atexit_rmglob, LRUStoreCache)
 from zarr.core import Array
 from zarr.errors import PermissionError
 from zarr.compat import PY2, text_type, binary_type, zip_longest
@@ -1406,6 +1407,28 @@ class TestArrayWithDirectoryStore(TestArray):
         z[:] = 42
         expect_nbytes_stored = sum(buffer_size(v) for v in z.store.values())
         assert expect_nbytes_stored == z.nbytes_stored
+
+
+class TestArrayWithABSStore(TestArray):
+
+    @staticmethod
+    def absstore():
+        blob_client = BlockBlobService(is_emulated=True)
+        blob_client.delete_container('test')
+        blob_client.create_container('test')
+        store = ABSStore(container='test', prefix='zarrtesting/', account_name='foo',
+                         account_key='bar', blob_service_kwargs={'is_emulated': True})
+        store.rmdir()
+        return store
+
+    def create_array(self, read_only=False, **kwargs):
+        store = self.absstore()
+        kwargs.setdefault('compressor', Zlib(1))
+        cache_metadata = kwargs.pop('cache_metadata', True)
+        cache_attrs = kwargs.pop('cache_attrs', True)
+        init_array(store, **kwargs)
+        return Array(store, read_only=read_only, cache_metadata=cache_metadata,
+                     cache_attrs=cache_attrs)
 
 
 class TestArrayWithNestedDirectoryStore(TestArrayWithDirectoryStore):

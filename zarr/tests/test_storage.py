@@ -15,14 +15,15 @@ from pickle import PicklingError
 import numpy as np
 from numpy.testing import assert_array_equal, assert_array_almost_equal
 import pytest
+from azure.storage.blob import BlockBlobService
 
 
 from zarr.storage import (init_array, array_meta_key, attrs_key, DictStore,
                           DirectoryStore, ZipStore, init_group, group_meta_key,
                           getsize, migrate_1to2, TempStore, atexit_rmtree,
                           NestedDirectoryStore, default_compressor, DBMStore,
-                          LMDBStore, SQLiteStore, MongoDBStore, RedisStore,
-                          atexit_rmglob, LRUStoreCache, ConsolidatedMetadataStore)
+                          LMDBStore, SQLiteStore, ABSStore, atexit_rmglob, LRUStoreCache,
+                          ConsolidatedMetadataStore, MongoDBStore, RedisStore)
 from zarr.meta import (decode_array_metadata, encode_array_metadata, ZARR_FORMAT,
                        decode_group_metadata, encode_group_metadata)
 from zarr.compat import PY2
@@ -1511,6 +1512,18 @@ def test_format_compatibility():
             else:
                 assert compressor.codec_id == z.compressor.codec_id
                 assert compressor.get_config() == z.compressor.get_config()
+
+
+class TestABSStore(StoreTests, unittest.TestCase):
+
+    def create_store(self):
+        blob_client = BlockBlobService(is_emulated=True)
+        blob_client.delete_container('test')
+        blob_client.create_container('test')
+        store = ABSStore(container='test', prefix='zarrtesting/', account_name='foo',
+                         account_key='bar', blob_service_kwargs={'is_emulated': True})
+        store.rmdir()
+        return store
 
 
 class TestConsolidatedMetadataStore(unittest.TestCase):
