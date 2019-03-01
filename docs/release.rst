@@ -10,7 +10,7 @@ Enhancements
 ~~~~~~~~~~~~
 
 * New storage backend, backed by Azure Blob Storage, class :class:`zarr.storage.ABSStore`.
-  All data is stored as Block blobs.
+  All data is stored as block blobs. By :user:`Shikhar Goenka <shikarsg>` and :user:`Tim Crone <tjcrone>`, :issue:`345`.
 
 * Add "consolidated" metadata as an experimental feature: use
   :func:`zarr.convenience.consolidate_metadata` to copy all metadata from the various
