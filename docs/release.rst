@@ -9,6 +9,10 @@ Release notes
 Enhancements
 ~~~~~~~~~~~~
 
+* New storage backend, backed by Azure Blob Storage, class :class:`zarr.storage.ABSStore`.
+  All data is stored as block blobs. By :user:`Shikhar Goenka <shikarsg>`, 
+  :user:`Tim Crone <tjcrone>` and :user:`Zain Patel <mzjp2>`; :issue:`345`.
+
 * Add "consolidated" metadata as an experimental feature: use
   :func:`zarr.convenience.consolidate_metadata` to copy all metadata from the various
   metadata keys within a dataset hierarchy under a single key, and
@@ -34,6 +38,11 @@ Enhancements
   MongoDB database to be used as the backing store for an array or group.
   By :user:`Joe Hamman <jhamman>`, :issue:`299`, :issue:`372`.
 
+* **New storage class for N5 containers**. The :class:`zarr.n5.N5Store` has been
+  added, which uses :class:`zarr.storage.NestedDirectoryStore` to support
+  reading and writing from and to N5 containers.
+  By :user:`Jan Funke <funkey>` and :user:`John Kirkham <jakirkham>`
+
 Bug fixes
 ~~~~~~~~~
 
@@ -53,8 +62,16 @@ Bug fixes
 * Ensure ``DictStore`` contains only ``bytes`` to facilitate comparisons and protect against writes.
   By :user:`John Kirkham <jakirkham>`, :issue:`350`
 
+* Test and fix an issue (w.r.t. fill values) when storing complex data to ``Array``.
+  By :user:`John Kirkham <jakirkham>`, :issue:`363`
+
 * Always use a ``tuple`` when indexing a NumPy ``ndarray``.
   By :user:`John Kirkham <jakirkham>`, :issue:`376`
+
+* Ensure when ``Array`` uses a ``dict``-based chunk store that it only contains
+  ``bytes`` to facilitate comparisons and protect against writes. Drop the copy
+  for the no filter/compressor case as this handles that case.
+  By :user:`John Kirkham <jakirkham>`, :issue:`359`
 
 Maintenance
 ~~~~~~~~~~~

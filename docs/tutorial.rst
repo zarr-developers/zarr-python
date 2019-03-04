@@ -746,6 +746,20 @@ with `MongoDB <https://www.mongodb.com/>`_ (an oject oriented NoSQL database). T
 respectively require the `redis <https://redis-py.readthedocs.io>`_ and
 `pymongo <https://api.mongodb.com/python/current/>`_ packages to be installed. 
 
+For compatibility with the `N5<https://github.com/saalfeldlab/n5`_ data format, Zarr also provides
+an N5 backend (this is currently an experimental feature). Similar to the zip storage class, an
+:class:`zarr.n5.N5Store` can be instantiated directly::
+
+    >>> store = zarr.N5Store('data/example.n5')
+    >>> root = zarr.group(store=store)
+    >>> z = root.zeros('foo/bar', shape=(1000, 1000), chunks=(100, 100), dtype='i4')
+    >>> z[:] = 42
+
+For convenience, the N5 backend will automatically be chosen when the filename
+ends with `.n5`::
+
+    >>> root = zarr.open('data/example.n5', mode='w')
+
 Distributed/cloud storage
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -786,6 +800,21 @@ Here is an example using S3Map to read an array created previously::
           dtype='|S1')
     >>> z[:].tostring()
     b'Hello from the cloud!'
+
+Zarr now also has a builtin storage backend for Azure Blob Storage.
+The class is :class:`zarr.storage.ABSStore` (requires
+ `azure-storage-blob <https://docs.microsoft.com/en-us/azure/storage/blobs/storage-quickstart-blobs-python>`_
+to be installed)::
+
+    >>> store = zarr.ABSStore(container='test', prefix='zarr-testing', blob_service_kwargs={'is_emulated': True})
+    >>> root = zarr.group(store=store, overwrite=True)
+    >>> z = root.zeros('foo/bar', shape=(1000, 1000), chunks=(100, 100), dtype='i4')
+    >>> z[:] = 42
+
+When using an actual storage account, provide ``account_name`` and
+``account_key`` arguments to :class:`zarr.storage.ABSStore`, the
+above client is just testing against the emulator. Please also note
+that this is an experimental feature.
 
 Note that retrieving data from a remote service via the network can be significantly
 slower than retrieving data from a local file system, and will depend on network latency
