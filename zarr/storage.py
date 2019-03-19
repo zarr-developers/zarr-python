@@ -23,6 +23,7 @@ import tempfile
 import zipfile
 import shutil
 import atexit
+import errno
 import re
 import sys
 import json
@@ -745,8 +746,9 @@ class DirectoryStore(MutableMapping):
         if not os.path.exists(dir_path):
             try:
                 os.makedirs(dir_path)
-            except Exception:
-                raise KeyError(key)
+            except OSError as e:
+                if e.errno != errno.EEXIST:
+                    raise KeyError(key)
 
         # write to temporary file
         temp_path = None
