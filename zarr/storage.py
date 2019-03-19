@@ -749,8 +749,6 @@ class DirectoryStore(MutableMapping):
             except OSError as e:
                 if e.errno != errno.EEXIST:
                     raise KeyError(key)
-            except Exception:
-                raise KeyError(key)
 
         # write to temporary file
         temp_path = None
