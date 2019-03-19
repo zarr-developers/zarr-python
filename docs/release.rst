@@ -54,6 +54,9 @@ Bug fixes
   transiently missing during a write operation. By :user:`sbalmer <sbalmer>`, :issue:`327`,
   :issue:`263`.
 
+* Avoid raising in :class:`zarr.storage.DirectoryStore`'s ``__setitem__`` when file already exists.
+  By :user:`Justin Swaney <jmswaney>`, :issue:`272`, :issue:`318`
+
 * The required version of the `numcodecs <http://numcodecs.rtfd.io>`_ package has been upgraded
   to 0.6.2, which has enabled some code simplification and fixes a failing test involving
   msgpack encoding. By :user:`John Kirkham <jakirkham>`, :issue:`361`, :issue:`360`, :issue:`352`,
