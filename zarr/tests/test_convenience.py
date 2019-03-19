@@ -1,5 +1,4 @@
 import atexit
-import os
 import tempfile
 import unittest
 from numbers import Integral
@@ -683,17 +682,16 @@ class TestCopy:
         assert 0 == n_bytes_copied
         assert_array_equal(baz, dest['foo/bar/baz'])
 
-    def test_logging(self, source, dest):
+    def test_logging(self, source, dest, tmpdir):
         # callable log
         copy(source['foo'], dest, dry_run=True, log=print)
 
         # file name
-        fn = tempfile.mktemp()
-        atexit.register(os.remove, fn)
+        fn = str(tmpdir.join('log_name'))
         copy(source['foo'], dest, dry_run=True, log=fn)
 
         # file
-        with tempfile.TemporaryFile(mode='w') as f:
+        with tmpdir.join('log_file').open(mode='w') as f:
             copy(source['foo'], dest, dry_run=True, log=f)
 
         # bad option
