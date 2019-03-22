@@ -18,7 +18,9 @@ Enhancements
   metadata keys within a dataset hierarchy under a single key, and
   :func:`zarr.convenience.open_consolidated` to use this single key. This can greatly
   cut down the number of calls to the storage backend, and so remove a lot of overhead
-  for reading remote data. By :user:`Martin Durant <martindurant>`, :issue:`268`.
+  for reading remote data.
+  By :user:`Martin Durant <martindurant>`, :user:`Alistair Miles <alimanfoo>`,
+  :user:`Ryan Abernathey <rabernat>`, :issue:`268`, :issue:`332`, :issue:`338`.
 
 * Support has been added for structured arrays with sub-array shape and/or nested fields. By
   :user:`Tarik Onalan <onalant>`, :issue:`111`, :issue:`296`.
@@ -36,7 +38,8 @@ Enhancements
 
 * Adds the MongoDB-backed :class:`zarr.storage.MongoDBStore` class enabling a
   MongoDB database to be used as the backing store for an array or group.
-  By :user:`Joe Hamman <jhamman>`, :issue:`299`, :issue:`372`.
+  By :user:`Noah D Brenowitz <nbren12>`, :user:`Joe Hamman <jhamman>`,
+  :issue:`299`, :issue:`372`, :issue:`401`.
 
 * **New storage class for N5 containers**. The :class:`zarr.n5.N5Store` has been
   added, which uses :class:`zarr.storage.NestedDirectoryStore` to support
@@ -51,6 +54,9 @@ Bug fixes
   transiently missing during a write operation. By :user:`sbalmer <sbalmer>`, :issue:`327`,
   :issue:`263`.
 
+* Avoid raising in :class:`zarr.storage.DirectoryStore`'s ``__setitem__`` when file already exists.
+  By :user:`Justin Swaney <jmswaney>`, :issue:`272`, :issue:`318`
+
 * The required version of the `numcodecs <http://numcodecs.rtfd.io>`_ package has been upgraded
   to 0.6.2, which has enabled some code simplification and fixes a failing test involving
   msgpack encoding. By :user:`John Kirkham <jakirkham>`, :issue:`361`, :issue:`360`, :issue:`352`,
@@ -58,6 +64,9 @@ Bug fixes
 
 * Failing tests related to pickling/unpickling have been fixed. By :user:`Ryan Williams <ryan-williams>`,
   :issue:`273`, :issue:`308`.
+
+* Corrects handling of ``NaT`` in ``datetime64`` and ``timedelta64`` in various
+  compressors (by :user:`John Kirkham <jakirkham>`; :issue:`344`).
 
 * Ensure ``DictStore`` contains only ``bytes`` to facilitate comparisons and protect against writes.
   By :user:`John Kirkham <jakirkham>`, :issue:`350`
@@ -76,11 +85,32 @@ Bug fixes
 Maintenance
 ~~~~~~~~~~~
 
-* CI and test environments have been upgraded to include Python 3.7, drop Python 3.4, and
-  upgrade all pinned package requirements. :issue:`308`.
+* Simplify directory creation and removal in ``DirectoryStore.rename``.
+  By :user:`John Kirkham <jakirkham>`, :issue:`249`
 
-* Corrects handling of ``NaT`` in ``datetime64`` and ``timedelta64`` in various
-  compressors (by :user:`John Kirkham <jakirkham>`; :issue:`344`).
+* CI and test environments have been upgraded to include Python 3.7, drop Python 3.4, and
+  upgrade all pinned package requirements. :user:`Alistair Miles <alimanfoo>`, :issue:`308`.
+
+* Start using pyup.io to maintain dependencies.
+  :user:`Alistair Miles <alimanfoo>`, :issue:`326`.
+
+* Configure flake8 line limit generally.
+  :user:`John Kirkham <jakirkham>`, :issue:`335`.
+
+* Add missing coverage pragmas.
+  :user:`John Kirkham <jakirkham>`, :issue:`343`, :issue:`355`.
+
+* Fix missing backslash in docs.
+  :user:`John Kirkham <jakirkham>`, :issue:`254`, :issue:`353`.
+
+* Include tests for stores' ``popitem`` and ``pop`` methods.
+  By :user:`John Kirkham <jakirkham>`, :issue:`378`, :issue:`380`.
+
+* Include tests for different compressors, endianness, and attributes.
+  By :user:`John Kirkham <jakirkham>`, :issue:`378`, :issue:`380`.
+
+* Test validity of stores' contents.
+  By :user:`John Kirkham <jakirkham>`, :issue:`359`, :issue:`408`.
 
 Acknowledgments
 ~~~~~~~~~~~~~~~
