@@ -1,6 +1,18 @@
 Release notes
 =============
 
+.. _release_2.3.1:
+
+2.3.1
+-----
+
+Bug fixes
+~~~~~~~~~
+
+* Makes ``azure-storage-blob`` optional for testing.
+  By :user:`John Kirkham <jakirkham>`; :issue:`419`, :issue:`420`
+
+
 .. _release_2.3.0:
 
 2.3.0
