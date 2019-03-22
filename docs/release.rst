@@ -3,8 +3,8 @@ Release notes
 
 .. _release_2.3.0:
 
-2.3.0 (Work in Progress)
-------------------------
+2.3.0
+-----
 
 Enhancements
 ~~~~~~~~~~~~
