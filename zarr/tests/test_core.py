@@ -13,7 +13,11 @@ import warnings
 import numpy as np
 from numpy.testing import assert_array_equal, assert_array_almost_equal
 import pytest
-from azure.storage.blob import BlockBlobService
+
+try:
+    import azure.storage.blob as asb
+except ImportError:
+    asb = None
 
 
 from zarr.storage import (DirectoryStore, init_array, init_group, NestedDirectoryStore,
@@ -1409,11 +1413,13 @@ class TestArrayWithDirectoryStore(TestArray):
         assert expect_nbytes_stored == z.nbytes_stored
 
 
+@pytest.mark.skipif(asb is None,
+                    reason="azure-blob-storage could not be imported")
 class TestArrayWithABSStore(TestArray):
 
     @staticmethod
     def absstore():
-        blob_client = BlockBlobService(is_emulated=True)
+        blob_client = asb.BlockBlobService(is_emulated=True)
         blob_client.delete_container('test')
         blob_client.create_container('test')
         store = ABSStore(container='test', prefix='zarrtesting/', account_name='foo',
