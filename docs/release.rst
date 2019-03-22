@@ -38,7 +38,7 @@ Enhancements
 
 * Adds the MongoDB-backed :class:`zarr.storage.MongoDBStore` class enabling a
   MongoDB database to be used as the backing store for an array or group.
-  By :user:`Joe Hamman <jhamman>`, :user:`John Kirkham <jakirkham>`,
+  By :user:`Noah D Brenowitz <nbren12>`, :user:`Joe Hamman <jhamman>`,
   :issue:`299`, :issue:`372`, :issue:`401`.
 
 * **New storage class for N5 containers**. The :class:`zarr.n5.N5Store` has been
