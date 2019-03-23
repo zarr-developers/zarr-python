@@ -18,7 +18,7 @@ import pytest
 
 try:
     import azure.storage.blob as asb
-except ImportError:
+except ImportError:  # pragma: no cover
     asb = None
 
 
