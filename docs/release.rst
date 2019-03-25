@@ -10,7 +10,7 @@ Bug fixes
 ~~~~~~~~~
 
 * Makes ``azure-storage-blob`` optional for testing.
-  By :user:`John Kirkham <jakirkham>`; :issue:`419`, :issue:`420`
+  By :user:`John Kirkham <jakirkham>`; :issue:`419`, :issue:`420`.
 
 
 .. _release_2.3.0:
@@ -56,7 +56,7 @@ Enhancements
 * **New storage class for N5 containers**. The :class:`zarr.n5.N5Store` has been
   added, which uses :class:`zarr.storage.NestedDirectoryStore` to support
   reading and writing from and to N5 containers.
-  By :user:`Jan Funke <funkey>` and :user:`John Kirkham <jakirkham>`
+  By :user:`Jan Funke <funkey>` and :user:`John Kirkham <jakirkham>`.
 
 Bug fixes
 ~~~~~~~~~
@@ -67,7 +67,7 @@ Bug fixes
   :issue:`263`.
 
 * Avoid raising in :class:`zarr.storage.DirectoryStore`'s ``__setitem__`` when file already exists.
-  By :user:`Justin Swaney <jmswaney>`, :issue:`272`, :issue:`318`
+  By :user:`Justin Swaney <jmswaney>`, :issue:`272`, :issue:`318`.
 
 * The required version of the `numcodecs <http://numcodecs.rtfd.io>`_ package has been upgraded
   to 0.6.2, which has enabled some code simplification and fixes a failing test involving
@@ -81,24 +81,24 @@ Bug fixes
   compressors (by :user:`John Kirkham <jakirkham>`; :issue:`344`).
 
 * Ensure ``DictStore`` contains only ``bytes`` to facilitate comparisons and protect against writes.
-  By :user:`John Kirkham <jakirkham>`, :issue:`350`
+  By :user:`John Kirkham <jakirkham>`, :issue:`350`.
 
 * Test and fix an issue (w.r.t. fill values) when storing complex data to ``Array``.
-  By :user:`John Kirkham <jakirkham>`, :issue:`363`
+  By :user:`John Kirkham <jakirkham>`, :issue:`363`.
 
 * Always use a ``tuple`` when indexing a NumPy ``ndarray``.
-  By :user:`John Kirkham <jakirkham>`, :issue:`376`
+  By :user:`John Kirkham <jakirkham>`, :issue:`376`.
 
 * Ensure when ``Array`` uses a ``dict``-based chunk store that it only contains
   ``bytes`` to facilitate comparisons and protect against writes. Drop the copy
   for the no filter/compressor case as this handles that case.
-  By :user:`John Kirkham <jakirkham>`, :issue:`359`
+  By :user:`John Kirkham <jakirkham>`, :issue:`359`.
 
 Maintenance
 ~~~~~~~~~~~
 
 * Simplify directory creation and removal in ``DirectoryStore.rename``.
-  By :user:`John Kirkham <jakirkham>`, :issue:`249`
+  By :user:`John Kirkham <jakirkham>`, :issue:`249`.
 
 * CI and test environments have been upgraded to include Python 3.7, drop Python 3.4, and
   upgrade all pinned package requirements. :user:`Alistair Miles <alimanfoo>`, :issue:`308`.
@@ -124,8 +124,6 @@ Maintenance
 * Test validity of stores' contents.
   By :user:`John Kirkham <jakirkham>`, :issue:`359`, :issue:`408`.
 
-Acknowledgments
-~~~~~~~~~~~~~~~
 
 .. _release_2.2.0:
 
