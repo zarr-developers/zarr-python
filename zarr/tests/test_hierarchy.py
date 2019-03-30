@@ -13,7 +13,11 @@ import warnings
 import numpy as np
 from numpy.testing import assert_array_equal
 import pytest
-from azure.storage.blob import BlockBlobService
+
+try:
+    import azure.storage.blob as asb
+except ImportError:  # pragma: no cover
+    asb = None
 
 
 from zarr.storage import (DictStore, DirectoryStore, ZipStore, init_group, init_array,
@@ -865,11 +869,13 @@ class TestGroupWithDirectoryStore(TestGroup):
         return store, None
 
 
+@pytest.mark.skipif(asb is None,
+                    reason="azure-blob-storage could not be imported")
 class TestGroupWithABSStore(TestGroup):
 
     @staticmethod
     def create_store():
-        blob_client = BlockBlobService(is_emulated=True)
+        blob_client = asb.BlockBlobService(is_emulated=True)
         blob_client.delete_container('test')
         blob_client.create_container('test')
         store = ABSStore(container='test', prefix='zarrtesting/', account_name='foo',

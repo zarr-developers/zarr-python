@@ -15,7 +15,11 @@ from pickle import PicklingError
 import numpy as np
 from numpy.testing import assert_array_equal, assert_array_almost_equal
 import pytest
-from azure.storage.blob import BlockBlobService
+
+try:
+    import azure.storage.blob as asb
+except ImportError:  # pragma: no cover
+    asb = None
 
 
 from zarr.storage import (init_array, array_meta_key, attrs_key, DictStore,
@@ -1710,10 +1714,12 @@ def test_format_compatibility():
                 assert compressor.get_config() == z.compressor.get_config()
 
 
+@pytest.mark.skipif(asb is None,
+                    reason="azure-blob-storage could not be imported")
 class TestABSStore(StoreTests, unittest.TestCase):
 
     def create_store(self):
-        blob_client = BlockBlobService(is_emulated=True)
+        blob_client = asb.BlockBlobService(is_emulated=True)
         blob_client.delete_container('test')
         blob_client.create_container('test')
         store = ABSStore(container='test', prefix='zarrtesting/', account_name='foo',
