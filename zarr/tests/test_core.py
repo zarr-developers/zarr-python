@@ -48,7 +48,7 @@ class TestArray(unittest.TestCase):
 
         # normal initialization
         store = dict()
-        init_array(store, shape=100, chunks=10)
+        init_array(store, shape=100, chunks=10, dtype='<f8')
         a = Array(store)
         assert isinstance(a, Array)
         assert (100,) == a.shape
@@ -61,7 +61,7 @@ class TestArray(unittest.TestCase):
 
         # initialize at path
         store = dict()
-        init_array(store, shape=100, chunks=10, path='foo/bar')
+        init_array(store, shape=100, chunks=10, path='foo/bar', dtype='<f8')
         a = Array(store, path='foo/bar')
         assert isinstance(a, Array)
         assert (100,) == a.shape
@@ -504,24 +504,24 @@ class TestArray(unittest.TestCase):
 
     def test_hexdigest(self):
         # Check basic 1-D array
-        z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
+        z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
         assert '063b02ff8d9d3bab6da932ad5828b506ef0a6578' == z.hexdigest()
 
         # Check basic 1-D array with different type
-        z = self.create_array(shape=(1050,), chunks=100, dtype='f4')
+        z = self.create_array(shape=(1050,), chunks=100, dtype='<f4')
         assert 'f97b84dc9ffac807415f750100108764e837bb82' == z.hexdigest()
 
         # Check basic 2-D array
-        z = self.create_array(shape=(20, 35,), chunks=10, dtype='i4')
+        z = self.create_array(shape=(20, 35,), chunks=10, dtype='<i4')
         assert '4f797d7bdad0fa1c9fa8c80832efb891a68de104' == z.hexdigest()
 
         # Check basic 1-D array with some data
-        z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
+        z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
         z[200:400] = np.arange(200, 400, dtype='i4')
         assert '14470724dca6c1837edddedc490571b6a7f270bc' == z.hexdigest()
 
         # Check basic 1-D array with attributes
-        z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
+        z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
         z.attrs['foo'] = 'bar'
         assert '2a1046dd99b914459b3e86be9dde05027a07d209' == z.hexdigest()
 
@@ -1294,24 +1294,24 @@ class TestArrayWithPath(TestArray):
 
     def test_hexdigest(self):
         # Check basic 1-D array
-        z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
+        z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
         assert 'f710da18d45d38d4aaf2afd7fb822fdd73d02957' == z.hexdigest()
 
         # Check basic 1-D array with different type
-        z = self.create_array(shape=(1050,), chunks=100, dtype='f4')
+        z = self.create_array(shape=(1050,), chunks=100, dtype='<f4')
         assert '1437428e69754b1e1a38bd7fc9e43669577620db' == z.hexdigest()
 
         # Check basic 2-D array
-        z = self.create_array(shape=(20, 35,), chunks=10, dtype='i4')
+        z = self.create_array(shape=(20, 35,), chunks=10, dtype='<i4')
         assert 'dde44c72cc530bd6aae39b629eb15a2da627e5f9' == z.hexdigest()
 
         # Check basic 1-D array with some data
-        z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
+        z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
         z[200:400] = np.arange(200, 400, dtype='i4')
         assert '4c0a76fb1222498e09dcd92f7f9221d6cea8b40e' == z.hexdigest()
 
         # Check basic 1-D array with attributes
-        z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
+        z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
         z.attrs['foo'] = 'bar'
         assert '05b0663ffe1785f38d3a459dec17e57a18f254af' == z.hexdigest()
 
@@ -1349,24 +1349,24 @@ class TestArrayWithChunkStore(TestArray):
 
     def test_hexdigest(self):
         # Check basic 1-D array
-        z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
+        z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
         assert 'f710da18d45d38d4aaf2afd7fb822fdd73d02957' == z.hexdigest()
 
         # Check basic 1-D array with different type
-        z = self.create_array(shape=(1050,), chunks=100, dtype='f4')
+        z = self.create_array(shape=(1050,), chunks=100, dtype='<f4')
         assert '1437428e69754b1e1a38bd7fc9e43669577620db' == z.hexdigest()
 
         # Check basic 2-D array
-        z = self.create_array(shape=(20, 35,), chunks=10, dtype='i4')
+        z = self.create_array(shape=(20, 35,), chunks=10, dtype='<i4')
         assert 'dde44c72cc530bd6aae39b629eb15a2da627e5f9' == z.hexdigest()
 
         # Check basic 1-D array with some data
-        z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
+        z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
         z[200:400] = np.arange(200, 400, dtype='i4')
         assert '4c0a76fb1222498e09dcd92f7f9221d6cea8b40e' == z.hexdigest()
 
         # Check basic 1-D array with attributes
-        z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
+        z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
         z.attrs['foo'] = 'bar'
         assert '05b0663ffe1785f38d3a459dec17e57a18f254af' == z.hexdigest()
 
@@ -1705,24 +1705,24 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
 
     def test_hexdigest(self):
         # Check basic 1-D array
-        z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
+        z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
         assert 'c6b83adfad999fbd865057531d749d87cf138f58' == z.hexdigest()
 
         # Check basic 1-D array with different type
-        z = self.create_array(shape=(1050,), chunks=100, dtype='f4')
+        z = self.create_array(shape=(1050,), chunks=100, dtype='<f4')
         assert 'a3d6d187536ecc3a9dd6897df55d258e2f52f9c5' == z.hexdigest()
 
         # Check basic 2-D array
-        z = self.create_array(shape=(20, 35,), chunks=10, dtype='i4')
+        z = self.create_array(shape=(20, 35,), chunks=10, dtype='<i4')
         assert '189690c5701d33a41cd7ce9aa0ac8dac49a69c51' == z.hexdigest()
 
         # Check basic 1-D array with some data
-        z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
+        z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
         z[200:400] = np.arange(200, 400, dtype='i4')
         assert 'b63f031031dcd5248785616edcb2d6fe68203c28' == z.hexdigest()
 
         # Check basic 1-D array with attributes
-        z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
+        z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
         z.attrs['foo'] = 'bar'
         assert '0cfc673215a8292a87f3c505e2402ce75243c601' == z.hexdigest()
 
@@ -1855,24 +1855,24 @@ class TestArrayWithNoCompressor(TestArray):
 
     def test_hexdigest(self):
         # Check basic 1-D array
-        z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
+        z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
         assert 'd3da3d485de4a5fcc6d91f9dfc6a7cba9720c561' == z.hexdigest()
 
         # Check basic 1-D array with different type
-        z = self.create_array(shape=(1050,), chunks=100, dtype='f4')
+        z = self.create_array(shape=(1050,), chunks=100, dtype='<f4')
         assert '443b8dee512e42946cb63ff01d28e9bee8105a5f' == z.hexdigest()
 
         # Check basic 2-D array
-        z = self.create_array(shape=(20, 35,), chunks=10, dtype='i4')
+        z = self.create_array(shape=(20, 35,), chunks=10, dtype='<i4')
         assert 'de841ca276042993da53985de1e7769f5d0fc54d' == z.hexdigest()
 
         # Check basic 1-D array with some data
-        z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
+        z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
         z[200:400] = np.arange(200, 400, dtype='i4')
         assert '42b6ae0d50ec361628736ab7e68fe5fefca22136' == z.hexdigest()
 
         # Check basic 1-D array with attributes
-        z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
+        z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
         z.attrs['foo'] = 'bar'
         assert 'a0535f31c130f5e5ac66ba0713d1c1ceaebd089b' == z.hexdigest()
 
@@ -1891,24 +1891,24 @@ class TestArrayWithBZ2Compressor(TestArray):
 
     def test_hexdigest(self):
         # Check basic 1-D array
-        z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
+        z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
         assert '33141032439fb1df5e24ad9891a7d845b6c668c8' == z.hexdigest()
 
         # Check basic 1-D array with different type
-        z = self.create_array(shape=(1050,), chunks=100, dtype='f4')
+        z = self.create_array(shape=(1050,), chunks=100, dtype='<f4')
         assert '44d719da065c88a412d609a5500ff41e07b331d6' == z.hexdigest()
 
         # Check basic 2-D array
-        z = self.create_array(shape=(20, 35,), chunks=10, dtype='i4')
+        z = self.create_array(shape=(20, 35,), chunks=10, dtype='<i4')
         assert 'f57a9a73a4004490fe1b871688651b8a298a5db7' == z.hexdigest()
 
         # Check basic 1-D array with some data
-        z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
+        z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
         z[200:400] = np.arange(200, 400, dtype='i4')
         assert '1e1bcaac63e4ef3c4a68f11672537131c627f168' == z.hexdigest()
 
         # Check basic 1-D array with attributes
-        z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
+        z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
         z.attrs['foo'] = 'bar'
         assert '86d7b9bf22dccbeaa22f340f38be506b55e76ff2' == z.hexdigest()
 
@@ -1927,24 +1927,24 @@ class TestArrayWithBloscCompressor(TestArray):
 
     def test_hexdigest(self):
         # Check basic 1-D array
-        z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
+        z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
         assert '7ff2ae8511eac915fad311647c168ccfe943e788' == z.hexdigest()
 
         # Check basic 1-D array with different type
-        z = self.create_array(shape=(1050,), chunks=100, dtype='f4')
+        z = self.create_array(shape=(1050,), chunks=100, dtype='<f4')
         assert '962705c861863495e9ccb7be7735907aa15e85b5' == z.hexdigest()
 
         # Check basic 2-D array
-        z = self.create_array(shape=(20, 35,), chunks=10, dtype='i4')
+        z = self.create_array(shape=(20, 35,), chunks=10, dtype='<i4')
         assert 'deb675ff91dd26dba11b65aab5f19a1f21a5645b' == z.hexdigest()
 
         # Check basic 1-D array with some data
-        z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
+        z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
         z[200:400] = np.arange(200, 400, dtype='i4')
         assert '90e30bdab745a9641cd0eb605356f531bc8ec1c3' == z.hexdigest()
 
         # Check basic 1-D array with attributes
-        z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
+        z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
         z.attrs['foo'] = 'bar'
         assert '95d40c391f167db8b1290e3c39d9bf741edacdf6' == z.hexdigest()
 
@@ -1970,24 +1970,24 @@ class TestArrayWithLZMACompressor(TestArray):
 
     def test_hexdigest(self):
         # Check basic 1-D array
-        z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
+        z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
         assert '93ecaa530a1162a9d48a3c1dcee4586ccfc59bae' == z.hexdigest()
 
         # Check basic 1-D array with different type
-        z = self.create_array(shape=(1050,), chunks=100, dtype='f4')
+        z = self.create_array(shape=(1050,), chunks=100, dtype='<f4')
         assert '04a9755a0cd638683531b7816c7fa4fbb6f577f2' == z.hexdigest()
 
         # Check basic 2-D array
-        z = self.create_array(shape=(20, 35,), chunks=10, dtype='i4')
+        z = self.create_array(shape=(20, 35,), chunks=10, dtype='<i4')
         assert 'b93b163a21e8500519250a6defb821d03eb5d9e0' == z.hexdigest()
 
         # Check basic 1-D array with some data
-        z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
+        z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
         z[200:400] = np.arange(200, 400, dtype='i4')
         assert 'cde499f3dc945b4e97197ff8e3cf8188a1262c35' == z.hexdigest()
 
         # Check basic 1-D array with attributes
-        z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
+        z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
         z.attrs['foo'] = 'bar'
         assert 'e2cf3afbf66ad0e28a2b6b68b1b07817c69aaee2' == z.hexdigest()
 
@@ -2013,24 +2013,24 @@ class TestArrayWithFilters(TestArray):
 
     def test_hexdigest(self):
         # Check basic 1-D array
-        z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
+        z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
         assert 'b80367c5599d47110d42bd8886240c2f46620dba' == z.hexdigest()
 
         # Check basic 1-D array with different type
-        z = self.create_array(shape=(1050,), chunks=100, dtype='f4')
+        z = self.create_array(shape=(1050,), chunks=100, dtype='<f4')
         assert '95a7b2471225e73199c9716d21e8d3dd6e5f6f2a' == z.hexdigest()
 
         # Check basic 2-D array
-        z = self.create_array(shape=(20, 35,), chunks=10, dtype='i4')
+        z = self.create_array(shape=(20, 35,), chunks=10, dtype='<i4')
         assert '9abf3ad54413ab11855d88a5e0087cd416657e02' == z.hexdigest()
 
         # Check basic 1-D array with some data
-        z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
+        z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
         z[200:400] = np.arange(200, 400, dtype='i4')
         assert 'c649ad229bc5720258b934ea958570c2f354c2eb' == z.hexdigest()
 
         # Check basic 1-D array with attributes
-        z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
+        z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
         z.attrs['foo'] = 'bar'
         assert '62fc9236d78af18a5ec26c12eea1d33bce52501e' == z.hexdigest()
 
