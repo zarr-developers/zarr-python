@@ -743,9 +743,9 @@ class Array(object):
             else:
                 chunk = self._decode_chunk(cdata)
 
-        # cache decoded chunk
-        if self._chunk_cache is not None:
-            self._chunk_cache[ckey] = chunk
+            # cache decoded chunk
+            if self._chunk_cache is not None:
+                self._chunk_cache[ckey] = chunk
 
         # handle fields
         if fields:
@@ -1609,78 +1609,83 @@ class Array(object):
         # obtain key for chunk
         ckey = self._chunk_key(chunk_coords)
 
-        try:
+        # setup variable to hold decoded chunk
+        chunk = None
 
-            cdata, chunk = None, None
+        # check for cached chunk
+        if self._chunk_cache is not None:
+            try:
+                chunk = self._chunk_cache[ckey]
+            except KeyError:
+                pass
 
-            # first try getting from cache (if one has been provided)
-            if self._chunk_cache is not None:
-                try:
-                    chunk = self._chunk_cache[ckey]
-                except KeyError:
-                    pass
+        if chunk is None:
 
-            # obtain compressed data for chunk
-            if chunk is None:
+            try:
+                # obtain compressed data for chunk
                 cdata = self.chunk_store[ckey]
 
-        except KeyError:
-            # chunk not initialized
-            if self._fill_value is not None:
-                if fields:
-                    fill_value = self._fill_value[fields]
-                else:
-                    fill_value = self._fill_value
-                out[out_selection] = fill_value
-
-        else:
-
-            if (isinstance(out, np.ndarray) and
-                    not fields and
-                    is_contiguous_selection(out_selection) and
-                    is_total_slice(chunk_selection, self._chunks) and
-                    not self._filters and
-                    self._dtype != object):
-
-                dest = out[out_selection]
-                write_direct = (
-                    dest.flags.writeable and (
-                        (self._order == 'C' and dest.flags.c_contiguous) or
-                        (self._order == 'F' and dest.flags.f_contiguous)
-                    )
-                )
-
-                if write_direct:
-
-                    # optimization: we want the whole chunk, and the destination is
-                    # contiguous, so we can decompress directly from the chunk
-                    # into the destination array
-
-                    if chunk is not None:
-                        np.copyto(dest, chunk)
-                    elif self._compressor:
-                        self._compressor.decode(cdata, dest)
+            except KeyError:
+                # chunk not initialized
+                if self._fill_value is not None:
+                    if fields:
+                        fill_value = self._fill_value[fields]
                     else:
-                        chunk = ensure_ndarray(cdata).view(self._dtype)
-                        chunk = chunk.reshape(self._chunks, order=self._order)
-                        np.copyto(dest, chunk)
-                    return
+                        fill_value = self._fill_value
+                    out[out_selection] = fill_value
+                return
 
-            # decode chunk
-            if chunk is None:
+            else:
+
+                # look for a possible optimisation where data can be decompressed directly
+                # into destination, which avoids a memory copy
+                if (isinstance(out, np.ndarray) and
+                        not fields and
+                        is_contiguous_selection(out_selection) and
+                        is_total_slice(chunk_selection, self._chunks) and
+                        not self._filters and
+                        self._dtype != object):
+
+                    dest = out[out_selection]
+                    write_direct = (
+                        dest.flags.writeable and (
+                            (self._order == 'C' and dest.flags.c_contiguous) or
+                            (self._order == 'F' and dest.flags.f_contiguous)
+                        )
+                    )
+
+                    if write_direct:
+
+                        # optimization: we want the whole chunk, and the destination is
+                        # contiguous, so we can decompress directly from the chunk
+                        # into the destination array
+
+                        if self._compressor:
+                            self._compressor.decode(cdata, dest)
+                        else:
+                            if isinstance(cdata, np.ndarray):
+                                chunk = cdata.view(self._dtype)
+                            else:
+                                chunk = np.frombuffer(cdata, dtype=self._dtype)
+                            chunk = chunk.reshape(self._chunks, order=self._order)
+                            np.copyto(dest, chunk)
+                        return
+
+                # decode chunk
                 chunk = self._decode_chunk(cdata)
                 if self._chunk_cache is not None:
-                    self._chunk_cache[ckey] = np.copy(chunk)
+                    # cache the decoded chunk
+                    self._chunk_cache[ckey] = chunk
 
-            # select data from chunk
-            if fields:
-                chunk = chunk[fields]
-            tmp = chunk[chunk_selection]
-            if drop_axes:
-                tmp = np.squeeze(tmp, axis=drop_axes)
+        # select data from chunk
+        if fields:
+            chunk = chunk[fields]
+        tmp = chunk[chunk_selection]
+        if drop_axes:
+            tmp = np.squeeze(tmp, axis=drop_axes)
 
-            # store selected data in output
-            out[out_selection] = tmp
+        # store selected data in output
+        out[out_selection] = tmp
 
     def _chunk_setitem(self, chunk_coords, chunk_selection, value, fields=None):
         """Replace part or whole of a chunk.
