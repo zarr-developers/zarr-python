@@ -2296,8 +2296,7 @@ class MongoDBStore(MutableMapping):
         if doc is None:
             raise KeyError(key)
         else:
-            value = doc[self._value]
-            return value
+            return doc[self._value]
 
     def __setitem__(self, key, value):
         value = ensure_bytes(value)
