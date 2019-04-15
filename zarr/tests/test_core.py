@@ -26,7 +26,7 @@ from zarr.storage import (DirectoryStore, init_array, init_group, NestedDirector
 from zarr.core import Array
 from zarr.errors import PermissionError
 from zarr.compat import PY2, text_type, binary_type, zip_longest
-from zarr.meta import ensure_str
+from zarr.meta import ensure_text_type
 from zarr.util import buffer_size
 from zarr.n5 import n5_keywords, N5Store
 from numcodecs import (Delta, FixedScaleOffset, LZ4, GZip, Zlib, Blosc, BZ2, MsgPack, Pickle,
@@ -1273,10 +1273,10 @@ class TestArray(unittest.TestCase):
     def test_attributes(self):
         a = self.create_array(shape=10, chunks=10, dtype='i8')
         a.attrs['foo'] = 'bar'
-        attrs = json.loads(ensure_str(a.store[a.attrs.key]))
+        attrs = json.loads(ensure_text_type(a.store[a.attrs.key]))
         assert 'foo' in attrs and attrs['foo'] == 'bar'
         a.attrs['bar'] = 'foo'
-        attrs = json.loads(ensure_str(a.store[a.attrs.key]))
+        attrs = json.loads(ensure_text_type(a.store[a.attrs.key]))
         assert 'foo' in attrs and attrs['foo'] == 'bar'
         assert 'bar' in attrs and attrs['bar'] == 'foo'
 
