@@ -2297,13 +2297,6 @@ class MongoDBStore(MutableMapping):
             raise KeyError(key)
         else:
             value = doc[self._value]
-
-            # Coerce `bson.Binary` to `bytes` type on Python 2.
-            # PyMongo handles this conversion for us on Python 3.
-            # ref: http://api.mongodb.com/python/current/python3.html#id3
-            if PY2:  # pragma: py3 no cover
-                value = binary_type(value)
-
             return value
 
     def __setitem__(self, key, value):
