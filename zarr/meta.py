@@ -29,6 +29,11 @@ def json_dumps(o):
                       separators=(',', ': '))
 
 
+def json_loads(s):
+    """Read JSON in a consistent way."""
+    return json.loads(ensure_text_type(s))
+
+
 def parse_metadata(s):
 
     # Here we allow that a store may return an already-parsed metadata object,
