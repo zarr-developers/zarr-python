@@ -47,8 +47,7 @@ def parse_metadata(s):
 
     else:
         # assume metadata needs to be parsed as JSON
-        s = ensure_text_type(s)
-        meta = json.loads(s)
+        meta = json_loads(s)
 
     return meta
 
