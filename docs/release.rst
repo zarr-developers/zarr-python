@@ -1,6 +1,18 @@
 Release notes
 =============
 
+.. _release_2.3.2:
+
+2.3.2
+-----
+
+Bug fixes
+~~~~~~~~~
+
+* Coerce data to text for JSON parsing.
+  By :user:`John Kirkham <jakirkham>`; :issue:`429`
+
+
 .. _release_2.3.1:
 
 2.3.1
