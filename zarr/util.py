@@ -39,6 +39,11 @@ def json_dumps(o):
                       separators=(',', ': '))
 
 
+def json_loads(s):
+    """Read JSON in a consistent way."""
+    return json.loads(ensure_text_type(s))
+
+
 def normalize_shape(shape):
     """Convenience function to normalize the `shape` argument."""
 

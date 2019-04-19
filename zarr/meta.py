@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, print_function, division
-import json
 import base64
 
 
@@ -9,15 +8,10 @@ import numpy as np
 
 from zarr.compat import PY2, Mapping
 from zarr.errors import MetadataError
-from zarr.util import ensure_text_type, json_dumps
+from zarr.util import json_dumps, json_loads
 
 
 ZARR_FORMAT = 2
-
-
-def json_loads(s):
-    """Read JSON in a consistent way."""
-    return json.loads(ensure_text_type(s))
 
 
 def parse_metadata(s):
