@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, print_function, division
 from textwrap import TextWrapper, dedent
+import codecs
 import numbers
 import uuid
 import inspect
@@ -9,7 +10,7 @@ import inspect
 from asciitree import BoxStyle, LeftAligned
 from asciitree.traversal import Traversal
 import numpy as np
-from numcodecs.compat import ensure_ndarray
+from numcodecs.compat import ensure_ndarray, ensure_contiguous_ndarray
 from numcodecs.registry import codec_registry
 
 
@@ -22,6 +23,13 @@ object_codecs = {
     binary_type.__name__: 'vlen-bytes',
     'array': 'vlen-array',
 }
+
+
+def ensure_text_type(s):
+    if not isinstance(s, text_type):
+        s = ensure_contiguous_ndarray(s)
+        s = codecs.decode(s, 'ascii')
+    return s
 
 
 def normalize_shape(shape):

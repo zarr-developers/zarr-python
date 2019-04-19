@@ -2,25 +2,17 @@
 from __future__ import absolute_import, print_function, division
 import json
 import base64
-import codecs
 
 
 import numpy as np
-from numcodecs.compat import ensure_contiguous_ndarray
 
 
-from zarr.compat import PY2, Mapping, text_type
+from zarr.compat import PY2, Mapping
 from zarr.errors import MetadataError
+from zarr.util import ensure_text_type
 
 
 ZARR_FORMAT = 2
-
-
-def ensure_text_type(s):
-    if not isinstance(s, text_type):
-        s = ensure_contiguous_ndarray(s)
-        s = codecs.decode(s, 'ascii')
-    return s
 
 
 def json_dumps(o):
