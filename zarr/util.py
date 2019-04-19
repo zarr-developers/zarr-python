@@ -36,7 +36,7 @@ def ensure_text_type(s):
 def json_dumps(o):
     """Write JSON in a consistent, human-readable way."""
     return json.dumps(o, indent=4, sort_keys=True, ensure_ascii=True,
-                      separators=(',', ': '))
+                      separators=(',', ': ')).encode('ascii')
 
 
 def json_loads(s):
