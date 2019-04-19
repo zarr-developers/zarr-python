@@ -2,24 +2,24 @@
 from __future__ import absolute_import, print_function, division
 import json
 import base64
+import codecs
 
 
 import numpy as np
-from numcodecs.compat import ensure_bytes
+from numcodecs.compat import ensure_contiguous_ndarray
 
 
-from zarr.compat import PY2, Mapping
+from zarr.compat import PY2, Mapping, text_type
 from zarr.errors import MetadataError
 
 
 ZARR_FORMAT = 2
 
 
-def ensure_str(s):
-    if not isinstance(s, str):
-        s = ensure_bytes(s)
-        if not PY2:  # pragma: py2 no cover
-            s = s.decode('ascii')
+def ensure_text_type(s):
+    if not isinstance(s, text_type):
+        s = ensure_contiguous_ndarray(s)
+        s = codecs.decode(s, 'ascii')
     return s
 
 
@@ -27,6 +27,11 @@ def json_dumps(o):
     """Write JSON in a consistent, human-readable way."""
     return json.dumps(o, indent=4, sort_keys=True, ensure_ascii=True,
                       separators=(',', ': '))
+
+
+def json_loads(s):
+    """Read JSON in a consistent way."""
+    return json.loads(ensure_text_type(s))
 
 
 def parse_metadata(s):
@@ -42,8 +47,7 @@ def parse_metadata(s):
 
     else:
         # assume metadata needs to be parsed as JSON
-        s = ensure_str(s)
-        meta = json.loads(s)
+        meta = json_loads(s)
 
     return meta
 

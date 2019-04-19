@@ -38,7 +38,7 @@ from zarr.util import (normalize_shape, normalize_chunks, normalize_order,
                        normalize_storage_path, buffer_size,
                        normalize_fill_value, nolock, normalize_dtype)
 from zarr.meta import encode_array_metadata, encode_group_metadata
-from zarr.compat import PY2, OrderedDict_move_to_end, binary_type
+from zarr.compat import PY2, OrderedDict_move_to_end
 from numcodecs.registry import codec_registry
 from numcodecs.compat import ensure_bytes, ensure_contiguous_ndarray
 from zarr.errors import (err_contains_group, err_contains_array, err_bad_compressor,
@@ -2296,15 +2296,7 @@ class MongoDBStore(MutableMapping):
         if doc is None:
             raise KeyError(key)
         else:
-            value = doc[self._value]
-
-            # Coerce `bson.Binary` to `bytes` type on Python 2.
-            # PyMongo handles this conversion for us on Python 3.
-            # ref: http://api.mongodb.com/python/current/python3.html#id3
-            if PY2:  # pragma: py3 no cover
-                value = binary_type(value)
-
-            return value
+            return doc[self._value]
 
     def __setitem__(self, key, value):
         value = ensure_bytes(value)
