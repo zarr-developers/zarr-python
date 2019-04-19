@@ -9,16 +9,10 @@ import numpy as np
 
 from zarr.compat import PY2, Mapping
 from zarr.errors import MetadataError
-from zarr.util import ensure_text_type
+from zarr.util import ensure_text_type, json_dumps
 
 
 ZARR_FORMAT = 2
-
-
-def json_dumps(o):
-    """Write JSON in a consistent, human-readable way."""
-    return json.dumps(o, indent=4, sort_keys=True, ensure_ascii=True,
-                      separators=(',', ': '))
 
 
 def json_loads(s):

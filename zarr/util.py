@@ -2,6 +2,7 @@
 from __future__ import absolute_import, print_function, division
 from textwrap import TextWrapper, dedent
 import codecs
+import json
 import numbers
 import uuid
 import inspect
@@ -30,6 +31,12 @@ def ensure_text_type(s):
         s = ensure_contiguous_ndarray(s)
         s = codecs.decode(s, 'ascii')
     return s
+
+
+def json_dumps(o):
+    """Write JSON in a consistent, human-readable way."""
+    return json.dumps(o, indent=4, sort_keys=True, ensure_ascii=True,
+                      separators=(',', ': '))
 
 
 def normalize_shape(shape):
