@@ -75,8 +75,7 @@ def encode_array_metadata(meta):
         order=meta['order'],
         filters=meta['filters'],
     )
-    s = json_dumps(meta)
-    b = s.encode('ascii')
+    b = json_dumps(meta)
     return b
 
 
@@ -122,8 +121,7 @@ def encode_group_metadata(meta=None):
     meta = dict(
         zarr_format=ZARR_FORMAT,
     )
-    s = json_dumps(meta)
-    b = s.encode('ascii')
+    b = json_dumps(meta)
     return b
 
 
