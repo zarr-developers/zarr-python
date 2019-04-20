@@ -75,8 +75,7 @@ def encode_array_metadata(meta):
         order=meta['order'],
         filters=meta['filters'],
     )
-    b = json_dumps(meta)
-    return b
+    return json_dumps(meta)
 
 
 def encode_dtype(d):
@@ -121,8 +120,7 @@ def encode_group_metadata(meta=None):
     meta = dict(
         zarr_format=ZARR_FORMAT,
     )
-    b = json_dumps(meta)
-    return b
+    return json_dumps(meta)
 
 
 FLOAT_FILLS = {

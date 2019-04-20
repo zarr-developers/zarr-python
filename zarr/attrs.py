@@ -113,8 +113,7 @@ class Attributes(MutableMapping):
         self._write_op(self._put_nosync, d)
 
     def _put_nosync(self, d):
-        b = json_dumps(d)
-        self.store[self.key] = b
+        self.store[self.key] = json_dumps(d)
         if self.cache:
             self._cached_asdict = d
 
