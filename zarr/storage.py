@@ -38,7 +38,7 @@ from zarr.util import (normalize_shape, normalize_chunks, normalize_order,
                        normalize_storage_path, buffer_size,
                        normalize_fill_value, nolock, normalize_dtype)
 from zarr.meta import encode_array_metadata, encode_group_metadata
-from zarr.compat import PY2, OrderedDict_move_to_end
+from zarr.compat import PY2, OrderedDict_move_to_end, scandir
 from numcodecs.registry import codec_registry
 from numcodecs.compat import ensure_bytes, ensure_contiguous_ndarray
 from zarr.errors import (err_contains_group, err_contains_array, err_bad_compressor,
@@ -847,12 +847,10 @@ class DirectoryStore(MutableMapping):
         if os.path.isfile(fs_path):
             return os.path.getsize(fs_path)
         elif os.path.isdir(fs_path):
-            children = os.listdir(fs_path)
             size = 0
-            for child in children:
-                child_fs_path = os.path.join(fs_path, child)
-                if os.path.isfile(child_fs_path):
-                    size += os.path.getsize(child_fs_path)
+            for child in scandir(fs_path):
+                if child.is_file():
+                    size += child.stat().st_size
             return size
         else:
             return 0
