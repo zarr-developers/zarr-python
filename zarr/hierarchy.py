@@ -1,12 +1,11 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, print_function, division
-from collections import MutableMapping
 from itertools import islice
 
 import numpy as np
 
 
-from zarr.compat import PY2
+from zarr.compat import PY2, MutableMapping
 from zarr.attrs import Attributes
 from zarr.core import Array
 from zarr.storage import (contains_array, contains_group, init_group,
