@@ -12,6 +12,9 @@ Bug fixes
 * Coerce data to text for JSON parsing.
   By :user:`John Kirkham <jakirkham>`; :issue:`429`
 
+* Fix `collections`'s `DeprecationWarning`s.
+  By :user:`John Kirkham <jakirkham>`; :issue:`432`
+
 
 .. _release_2.3.1:
 
