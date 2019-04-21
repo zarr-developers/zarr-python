@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, print_function, division
 import collections
+from zarr.compat import MutableMapping
 
 
-class CountingDict(collections.MutableMapping):
+class CountingDict(MutableMapping):
 
     def __init__(self):
         self.wrapped = dict()
