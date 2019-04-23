@@ -26,7 +26,6 @@ import atexit
 import errno
 import re
 import sys
-import json
 import multiprocessing
 from pickle import PicklingError
 from threading import Lock, RLock
@@ -34,7 +33,7 @@ import glob
 import warnings
 
 
-from zarr.util import (normalize_shape, normalize_chunks, normalize_order,
+from zarr.util import (json_loads, normalize_shape, normalize_chunks, normalize_order,
                        normalize_storage_path, buffer_size,
                        normalize_fill_value, nolock, normalize_dtype)
 from zarr.meta import encode_array_metadata, encode_group_metadata
@@ -2458,7 +2457,7 @@ class ConsolidatedMetadataStore(MutableMapping):
             d = store[metadata_key].decode()  # pragma: no cover
         else:  # pragma: no cover
             d = store[metadata_key]
-        meta = json.loads(d)
+        meta = json_loads(d)
 
         # check format of consolidated metadata
         consolidated_format = meta.get('zarr_consolidated_format', None)

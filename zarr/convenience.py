@@ -1124,7 +1124,7 @@ def consolidate_metadata(store, metadata_key='.zmetadata'):
             for key in store if is_zarr_key(key)
         }
     }
-    store[metadata_key] = json_dumps(out).encode()
+    store[metadata_key] = json_dumps(out)
     return open_consolidated(store, metadata_key=metadata_key)
 
 
