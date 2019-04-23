@@ -20,7 +20,7 @@ if PY2:  # pragma: py3 no cover
     def OrderedDict_move_to_end(od, key):
         od[key] = od.pop(key)
 
-    from collections import Mapping
+    from collections import Mapping, MutableMapping
     from scandir import scandir
 
 
@@ -35,5 +35,5 @@ else:  # pragma: py2 no cover
     def OrderedDict_move_to_end(od, key):
         od.move_to_end(key)
 
-    from collections.abc import Mapping
+    from collections.abc import Mapping, MutableMapping
     from os import scandir
