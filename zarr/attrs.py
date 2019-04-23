@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, print_function, division
-from collections import MutableMapping
 
 
+from zarr.compat import MutableMapping
 from zarr.errors import PermissionError
 from zarr.meta import parse_metadata
 from zarr.util import json_dumps

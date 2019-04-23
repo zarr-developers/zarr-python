@@ -12,6 +12,9 @@ Bug fixes
 * Add and use utility functions to simplify reading and writing JSON.
   By :user:`John Kirkham <jakirkham>`; :issue:`429`, :issue:`430`
 
+* Fix `collections`'s `DeprecationWarning`s.
+  By :user:`John Kirkham <jakirkham>`; :issue:`432`
+
 
 .. _release_2.3.1:
 

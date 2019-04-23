@@ -16,7 +16,7 @@ path) and a `getsize` method (return the size in bytes of a given value).
 
 """
 from __future__ import absolute_import, print_function, division
-from collections import MutableMapping, OrderedDict
+from collections import OrderedDict
 import os
 import operator
 import tempfile
@@ -37,7 +37,7 @@ from zarr.util import (json_loads, normalize_shape, normalize_chunks, normalize_
                        normalize_storage_path, buffer_size,
                        normalize_fill_value, nolock, normalize_dtype)
 from zarr.meta import encode_array_metadata, encode_group_metadata
-from zarr.compat import PY2, OrderedDict_move_to_end
+from zarr.compat import PY2, MutableMapping, OrderedDict_move_to_end
 from numcodecs.registry import codec_registry
 from numcodecs.compat import ensure_bytes, ensure_contiguous_ndarray
 from zarr.errors import (err_contains_group, err_contains_array, err_bad_compressor,

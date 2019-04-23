@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 """Convenience functions for storing and loading data."""
 from __future__ import absolute_import, print_function, division
-from collections import Mapping
 import io
 import re
 import itertools
@@ -14,7 +13,7 @@ from zarr.hierarchy import open_group, group as _create_group, Group
 from zarr.storage import contains_array, contains_group
 from zarr.errors import err_path_not_found, CopyError
 from zarr.util import normalize_storage_path, TreeViewer, buffer_size
-from zarr.compat import PY2, text_type
+from zarr.compat import Mapping, PY2, text_type
 from zarr.meta import json_dumps, json_loads
 
 
