@@ -6,6 +6,12 @@ Release notes
 2.3.2
 -----
 
+Enhancements
+~~~~~~~~~~~~
+
+* Use `scandir` in `DirectoryStore`'s `getsize` method.
+  By :user:`John Kirkham <jakirkham>`; :issue:`431`
+
 Bug fixes
 ~~~~~~~~~
 
