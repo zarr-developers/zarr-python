@@ -17,6 +17,8 @@ dependencies = [
     'numcodecs>=0.6.2',
 ]
 
+if sys.version_info < (3, 5):
+    dependencies.append('scandir')
 if sys.version_info < (3, 3) and sys.platform == "win32":
     dependencies.append('pyosreplace')
 

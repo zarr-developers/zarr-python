@@ -21,6 +21,7 @@ if PY2:  # pragma: py3 no cover
         od[key] = od.pop(key)
 
     from collections import Mapping, MutableMapping
+    from scandir import scandir
 
 
 else:  # pragma: py2 no cover
@@ -35,3 +36,4 @@ else:  # pragma: py2 no cover
         od.move_to_end(key)
 
     from collections.abc import Mapping, MutableMapping
+    from os import scandir
