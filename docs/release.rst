@@ -9,7 +9,7 @@ Release notes
 Enhancements
 ~~~~~~~~~~~~
 
-* Use `scandir` in `DirectoryStore`'s `getsize` method.
+* Use ``scandir`` in ``DirectoryStore``'s ``getsize`` method.
   By :user:`John Kirkham <jakirkham>`; :issue:`431`
 
 Bug fixes
@@ -18,7 +18,7 @@ Bug fixes
 * Add and use utility functions to simplify reading and writing JSON.
   By :user:`John Kirkham <jakirkham>`; :issue:`429`, :issue:`430`
 
-* Fix `collections`'s `DeprecationWarning`s.
+* Fix ``collections``'s ``DeprecationWarning``s.
   By :user:`John Kirkham <jakirkham>`; :issue:`432`
 
 
