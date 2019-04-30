@@ -30,7 +30,7 @@ def test_encode_decode_array_1():
     meta = dict(
         shape=(100,),
         chunks=(10,),
-        dtype=np.dtype('f8'),
+        dtype=np.dtype('<f8'),
         compressor=Zlib(1).get_config(),
         fill_value=None,
         filters=None,
@@ -67,9 +67,9 @@ def test_encode_decode_array_1():
 def test_encode_decode_array_2():
 
     # some variations
-    df = Delta(astype='u2', dtype='V14')
+    df = Delta(astype='<u2', dtype='V14')
     compressor = Blosc(cname='lz4', clevel=3, shuffle=2)
-    dtype = np.dtype([('a', 'i4'), ('b', 'S10')])
+    dtype = np.dtype([('a', '<i4'), ('b', 'S10')])
     fill_value = np.zeros((), dtype=dtype)[()]
     meta = dict(
         shape=(100, 100),
@@ -229,7 +229,7 @@ def test_encode_decode_array_dtype_shape():
     meta = dict(
         shape=(100,),
         chunks=(10,),
-        dtype=np.dtype('(10, 10)f8'),
+        dtype=np.dtype('(10, 10)<f8'),
         compressor=Zlib(1).get_config(),
         fill_value=None,
         filters=None,
@@ -270,7 +270,7 @@ def test_encode_decode_array_structured():
     meta = dict(
         shape=(100,),
         chunks=(10,),
-        dtype=np.dtype('i8, (10, 10)f8, (5, 10, 15)u1'),
+        dtype=np.dtype('<i8, (10, 10)<f8, (5, 10, 15)u1'),
         compressor=Zlib(1).get_config(),
         fill_value=None,
         filters=None,
@@ -319,7 +319,7 @@ def test_encode_decode_fill_values_nan():
         meta = dict(
             shape=(100,),
             chunks=(10,),
-            dtype=np.dtype('f8'),
+            dtype=np.dtype('<f8'),
             compressor=Zlib(1).get_config(),
             fill_value=v,
             filters=None,
