@@ -1128,10 +1128,13 @@ class TestRedisStore(StoreTests, unittest.TestCase):
         return store
 
 
-class TestLRUStoreCache(StoreTests, unittest.TestCase):
+class CacheTests(unittest.TestCase):
 
-    def create_store(self):
-        return LRUStoreCache(dict(), max_size=2**27)
+    def create_store(self):  # pragma: no cover
+        raise NotImplementedError
+
+    def create_cache(self, store, max_size=None):  # pragma: no cover
+        raise NotImplementedError
 
     def test_cache_values_no_max_size(self):
 
@@ -1145,7 +1148,7 @@ class TestLRUStoreCache(StoreTests, unittest.TestCase):
         assert 1 == store.counter['__setitem__', 'bar']
 
         # setup cache
-        cache = LRUStoreCache(store, max_size=None)
+        cache = self.create_cache(store)
         assert 0 == cache.hits
         assert 0 == cache.misses
 
@@ -1184,19 +1187,6 @@ class TestLRUStoreCache(StoreTests, unittest.TestCase):
         assert 3 == store.counter['__getitem__', 'foo']
         assert 2 == store.counter['__setitem__', 'foo']
 
-        # test __delitem__
-        del cache['foo']
-        with pytest.raises(KeyError):
-            # noinspection PyStatementEffect
-            cache['foo']
-        with pytest.raises(KeyError):
-            # noinspection PyStatementEffect
-            store['foo']
-
-        # verify other keys untouched
-        assert 0 == store.counter['__getitem__', 'bar']
-        assert 1 == store.counter['__setitem__', 'bar']
-
     def test_cache_values_with_max_size(self):
 
         # setup store
@@ -1206,7 +1196,7 @@ class TestLRUStoreCache(StoreTests, unittest.TestCase):
         assert 0 == store.counter['__getitem__', 'foo']
         assert 0 == store.counter['__getitem__', 'bar']
         # setup cache - can only hold one item
-        cache = LRUStoreCache(store, max_size=5)
+        cache = self.create_cache(store, max_size=5)
         assert 0 == cache.hits
         assert 0 == cache.misses
 
@@ -1293,6 +1283,35 @@ class TestLRUStoreCache(StoreTests, unittest.TestCase):
         assert 4 == cache.hits
         assert 2 == cache.misses
 
+class TestLRUStoreCache(StoreTests, CacheTests):
+
+    def create_store(self):
+        return LRUStoreCache(dict(), max_size=2**27)
+
+    def create_cache(self, store, max_size=None):
+        return LRUStoreCache(store=store, max_size=max_size)
+
+    def test_delitem(self):
+        # setup store
+        store = CountingDict()
+        store['foo'] = b'xxx'
+        store['bar'] = b'yyy'
+
+        # setup cache
+        cache = self.create_cache(store)
+
+        del cache['foo']
+        with pytest.raises(KeyError):
+            # noinspection PyStatementEffect
+            cache['foo']
+        with pytest.raises(KeyError):
+            # noinspection PyStatementEffect
+            store['foo']
+
+        # verify other keys untouched
+        assert 0 == store.counter['__getitem__', 'bar']
+        assert 1 == store.counter['__setitem__', 'bar']
+
     def test_cache_keys(self):
 
         # setup
@@ -1302,7 +1321,7 @@ class TestLRUStoreCache(StoreTests, unittest.TestCase):
         assert 0 == store.counter['__contains__', 'foo']
         assert 0 == store.counter['__iter__']
         assert 0 == store.counter['keys']
-        cache = LRUStoreCache(store, max_size=None)
+        cache = self.create_cache(store, max_size=None)
 
         # keys should be cached on first call
         keys = sorted(cache.keys())
@@ -1352,196 +1371,68 @@ class TestLRUStoreCache(StoreTests, unittest.TestCase):
         assert 1 == store.counter['__iter__']
 
 
-class TestLRUChunkCache(MutableMappingStoreTests, unittest.TestCase):
+class TestLRUChunkCache(MutableMappingStoreTests, CacheTests):
 
+    # mock test object that will act as both the cache and the array
     class MockChunkCacheArray(object):
 
         def __init__(self, chunk_cache, store):
-            self._chunk_cache = chunk_cache
+            self.chunk_cache = chunk_cache
             self._store = store
+            self.hits = 0
+            self.misses = 0
 
         def __setitem__(self, key, value):
             self._store[key] = value
-            self._chunk_cache[key] = value
+            self.chunk_cache[key] = value
+            self._reset_hits_misses()
 
         def __getitem__(self, item):
             try:
-                return self._chunk_cache[item]
+                value = self.chunk_cache[item]
             except KeyError:
                 value = self._store[item]
-                self._chunk_cache[item] = value
-                return value
+                self.chunk_cache[item] = value
+            self._reset_hits_misses()
+            return value
+
+        def __delitem__(self, key):
+            self.chunk_cache.__delitem__(key)
+
+        def _reset_hits_misses(self):
+            self.hits = self.chunk_cache.hits
+            self.misses = self.chunk_cache.misses
+
+        def invalidate(self):
+            self.chunk_cache.invalidate()
+
+        def invalidate_values(self):
+            self.chunk_cache.invalidate_values()
 
     def create_store(self):
-        return LRUChunkCache(max_size=None)
+        return LRUChunkCache(max_size=2**27)
 
-    def test_cache_values_no_max_size(self):
+    def create_cache(self, store, max_size=None):
+        return self.MockChunkCacheArray(LRUChunkCache(max_size=max_size), store=store)
 
+    def test_delitem(self):
         # setup store
         store = CountingDict()
         store['foo'] = b'xxx'
         store['bar'] = b'yyy'
-        assert 0 == store.counter['__getitem__', 'foo']
-        assert 1 == store.counter['__setitem__', 'foo']
-        assert 0 == store.counter['__getitem__', 'bar']
-        assert 1 == store.counter['__setitem__', 'bar']
 
         # setup cache
-        cache = LRUChunkCache(max_size=None)
-        assert 0 == cache.hits
-        assert 0 == cache.misses
+        cache = self.create_cache(store)
 
-        # setup array with cache and store
-        z = self.MockChunkCacheArray(cache, store)
-
-        # test first __getitem__, cache miss
-        assert b'xxx' == z['foo']
-        assert 1 == store.counter['__getitem__', 'foo']
-        assert 1 == store.counter['__setitem__', 'foo']
-        assert 0 == cache.hits
-        assert 1 == cache.misses
-
-        # test second __getitem__, cache hit
-        assert b'xxx' == z['foo']
-        assert 1 == store.counter['__getitem__', 'foo']
-        assert 1 == store.counter['__setitem__', 'foo']
-        assert 1 == cache.hits
-        assert 1 == cache.misses
-
-        # test __setitem__, __getitem__
-        z['foo'] = b'zzz'
-        assert 1 == store.counter['__getitem__', 'foo']
-        assert 2 == store.counter['__setitem__', 'foo']
-        # should be a cache hit
-        assert b'zzz' == z['foo']
-        assert 1 == store.counter['__getitem__', 'foo']
-        assert 2 == store.counter['__setitem__', 'foo']
-        assert 2 == cache.hits
-        assert 1 == cache.misses
-
-        # manually invalidate all cached values
-        cache.invalidate_values()
-        assert b'zzz' == z['foo']
-        assert 2 == store.counter['__getitem__', 'foo']
-        assert 2 == store.counter['__setitem__', 'foo']
-        cache.invalidate()
-        assert b'zzz' == z['foo']
-        assert 3 == store.counter['__getitem__', 'foo']
-        assert 2 == store.counter['__setitem__', 'foo']
-
-        # test __delitem__
+        cache['foo']
         del cache['foo']
         with pytest.raises(KeyError):
             # noinspection PyStatementEffect
-            cache['foo']
+            cache.chunk_cache['foo']
 
         # verify other keys untouched
         assert 0 == store.counter['__getitem__', 'bar']
         assert 1 == store.counter['__setitem__', 'bar']
-
-    def test_cache_values_with_max_size(self):
-
-        # setup store
-        store = CountingDict()
-        store['foo'] = b'xxx'
-        store['bar'] = b'yyy'
-        assert 0 == store.counter['__getitem__', 'foo']
-        assert 0 == store.counter['__getitem__', 'bar']
-
-        # setup cache can only hold one item
-        cache = LRUChunkCache(max_size=5)
-        assert 0 == cache.hits
-        assert 0 == cache.misses
-
-        # setup array with cache and store
-        z = self.MockChunkCacheArray(cache, store)
-
-        # test first 'foo' __getitem__, cache miss
-        assert b'xxx' == z['foo']
-        assert 1 == store.counter['__getitem__', 'foo']
-        assert 0 == cache.hits
-        assert 1 == cache.misses
-
-        # test second 'foo' __getitem__, cache hit
-        assert b'xxx' == z['foo']
-        assert 1 == store.counter['__getitem__', 'foo']
-        assert 1 == cache.hits
-        assert 1 == cache.misses
-
-        # test first 'bar' __getitem__, cache miss
-        assert b'yyy' == z['bar']
-        assert 1 == store.counter['__getitem__', 'bar']
-        assert 1 == cache.hits
-        assert 2 == cache.misses
-
-        # test second 'bar' __getitem__, cache hit
-        assert b'yyy' == z['bar']
-        assert 1 == store.counter['__getitem__', 'bar']
-        assert 2 == cache.hits
-        assert 2 == cache.misses
-
-        # test 'foo' __getitem__, should have been evicted, cache miss
-        assert b'xxx' == z['foo']
-        assert 2 == store.counter['__getitem__', 'foo']
-        assert 2 == cache.hits
-        assert 3 == cache.misses
-
-        # test 'bar' __getitem__, should have been evicted, cache miss
-        assert b'yyy' == z['bar']
-        assert 2 == store.counter['__getitem__', 'bar']
-        assert 2 == cache.hits
-        assert 4 == cache.misses
-
-        # setup store
-        store = CountingDict()
-        store['foo'] = b'xxx'
-        store['bar'] = b'yyy'
-        assert 0 == store.counter['__getitem__', 'foo']
-        assert 0 == store.counter['__getitem__', 'bar']
-
-        # setup cache can hold 2 items
-        cache = LRUChunkCache(max_size=6)
-        assert 0 == cache.hits
-        assert 0 == cache.misses
-
-        # setup array with cache and store
-        z = self.MockChunkCacheArray(cache, store)
-
-        # test first 'foo' __getitem__, cache miss
-        assert b'xxx' == z['foo']
-        assert 1 == store.counter['__getitem__', 'foo']
-        assert 0 == cache.hits
-        assert 1 == cache.misses
-
-        # test second 'foo' __getitem__, cache hit
-        assert b'xxx' == z['foo']
-        assert 1 == store.counter['__getitem__', 'foo']
-        assert 1 == cache.hits
-        assert 1 == cache.misses
-
-        # test first 'bar' __getitem__, cache miss
-        assert b'yyy' == z['bar']
-        assert 1 == store.counter['__getitem__', 'bar']
-        assert 1 == cache.hits
-        assert 2 == cache.misses
-
-        # test second 'bar' __getitem__, cache hit
-        assert b'yyy' == z['bar']
-        assert 1 == store.counter['__getitem__', 'bar']
-        assert 2 == cache.hits
-        assert 2 == cache.misses
-
-        # test 'foo' __getitem__, should still be cached
-        assert b'xxx' == z['foo']
-        assert 1 == store.counter['__getitem__', 'foo']
-        assert 3 == cache.hits
-        assert 2 == cache.misses
-
-        # test 'bar' __getitem__, should still be cached
-        assert b'yyy' == z['bar']
-        assert 1 == store.counter['__getitem__', 'bar']
-        assert 4 == cache.hits
-        assert 2 == cache.misses
 
 
 def test_getsize():
