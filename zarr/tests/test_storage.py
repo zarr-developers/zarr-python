@@ -1283,6 +1283,7 @@ class CacheTests(object):
         assert 4 == cache.hits
         assert 2 == cache.misses
 
+
 class TestLRUStoreCache(StoreTests, CacheTests, unittest.TestCase):
 
     def create_store(self):
