@@ -1,32 +1,17 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, print_function, division
-import json
 import base64
 
 
 import numpy as np
-from numcodecs.compat import ensure_bytes
 
 
 from zarr.compat import PY2, Mapping
 from zarr.errors import MetadataError
+from zarr.util import json_dumps, json_loads
 
 
 ZARR_FORMAT = 2
-
-
-def ensure_str(s):
-    if not isinstance(s, str):
-        s = ensure_bytes(s)
-        if not PY2:  # pragma: py2 no cover
-            s = s.decode('ascii')
-    return s
-
-
-def json_dumps(o):
-    """Write JSON in a consistent, human-readable way."""
-    return json.dumps(o, indent=4, sort_keys=True, ensure_ascii=True,
-                      separators=(',', ': '))
 
 
 def parse_metadata(s):
@@ -42,8 +27,7 @@ def parse_metadata(s):
 
     else:
         # assume metadata needs to be parsed as JSON
-        s = ensure_str(s)
-        meta = json.loads(s)
+        meta = json_loads(s)
 
     return meta
 
@@ -91,9 +75,7 @@ def encode_array_metadata(meta):
         order=meta['order'],
         filters=meta['filters'],
     )
-    s = json_dumps(meta)
-    b = s.encode('ascii')
-    return b
+    return json_dumps(meta)
 
 
 def encode_dtype(d):
@@ -138,9 +120,7 @@ def encode_group_metadata(meta=None):
     meta = dict(
         zarr_format=ZARR_FORMAT,
     )
-    s = json_dumps(meta)
-    b = s.encode('ascii')
-    return b
+    return json_dumps(meta)
 
 
 FLOAT_FILLS = {

@@ -2,7 +2,7 @@
 """This module contains a storage class and codec to support the N5 format.
 """
 from __future__ import absolute_import, division
-from .meta import ZARR_FORMAT, ensure_str, json_dumps
+from .meta import ZARR_FORMAT, json_dumps, json_loads
 from .storage import (
         NestedDirectoryStore,
         group_meta_key as zarr_group_meta_key,
@@ -12,7 +12,6 @@ from .storage import (
 from numcodecs.abc import Codec
 from numcodecs.compat import ndarray_copy
 from numcodecs.registry import register_codec, get_codec
-import json
 import numpy as np
 import struct
 import sys
@@ -72,14 +71,14 @@ class N5Store(NestedDirectoryStore):
             key = key.replace(zarr_group_meta_key, n5_attrs_key)
             value = group_metadata_to_zarr(self._load_n5_attrs(key))
 
-            return json_dumps(value).encode('ascii')
+            return json_dumps(value)
 
         elif key.endswith(zarr_array_meta_key):
 
             key = key.replace(zarr_array_meta_key, n5_attrs_key)
             value = array_metadata_to_zarr(self._load_n5_attrs(key))
 
-            return json_dumps(value).encode('ascii')
+            return json_dumps(value)
 
         elif key.endswith(zarr_attrs_key):
 
@@ -89,7 +88,7 @@ class N5Store(NestedDirectoryStore):
             if len(value) == 0:
                 raise KeyError(key)
             else:
-                return json_dumps(value).encode('ascii')
+                return json_dumps(value)
 
         elif is_chunk_key(key):
 
@@ -103,29 +102,26 @@ class N5Store(NestedDirectoryStore):
 
             key = key.replace(zarr_group_meta_key, n5_attrs_key)
 
-            value = ensure_str(value)
             n5_attrs = self._load_n5_attrs(key)
-            n5_attrs.update(**group_metadata_to_n5(json.loads(value)))
+            n5_attrs.update(**group_metadata_to_n5(json_loads(value)))
 
-            value = json_dumps(n5_attrs).encode('ascii')
+            value = json_dumps(n5_attrs)
 
         elif key.endswith(zarr_array_meta_key):
 
             key = key.replace(zarr_array_meta_key, n5_attrs_key)
 
-            value = ensure_str(value)
             n5_attrs = self._load_n5_attrs(key)
-            n5_attrs.update(**array_metadata_to_n5(json.loads(value)))
+            n5_attrs.update(**array_metadata_to_n5(json_loads(value)))
 
-            value = json_dumps(n5_attrs).encode('ascii')
+            value = json_dumps(n5_attrs)
 
         elif key.endswith(zarr_attrs_key):
 
             key = key.replace(zarr_attrs_key, n5_attrs_key)
 
-            value = ensure_str(value)
             n5_attrs = self._load_n5_attrs(key)
-            zarr_attrs = json.loads(value)
+            zarr_attrs = json_loads(value)
 
             for k in n5_keywords:
                 if k in zarr_attrs.keys():
@@ -139,7 +135,7 @@ class N5Store(NestedDirectoryStore):
             # add new user attributes
             n5_attrs.update(**zarr_attrs)
 
-            value = json_dumps(n5_attrs).encode('ascii')
+            value = json_dumps(n5_attrs)
 
         elif is_chunk_key(key):
 
@@ -246,8 +242,7 @@ class N5Store(NestedDirectoryStore):
     def _load_n5_attrs(self, path):
         try:
             s = super(N5Store, self).__getitem__(path)
-            s = ensure_str(s)
-            return json.loads(s)
+            return json_loads(s)
         except KeyError:
             return {}
 

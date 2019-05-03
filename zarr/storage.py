@@ -16,7 +16,7 @@ path) and a `getsize` method (return the size in bytes of a given value).
 
 """
 from __future__ import absolute_import, print_function, division
-from collections import MutableMapping, OrderedDict
+from collections import OrderedDict
 import os
 import operator
 import tempfile
@@ -26,7 +26,6 @@ import atexit
 import errno
 import re
 import sys
-import json
 import multiprocessing
 from pickle import PicklingError
 from threading import Lock, RLock
@@ -34,11 +33,11 @@ import glob
 import warnings
 
 
-from zarr.util import (normalize_shape, normalize_chunks, normalize_order,
+from zarr.util import (json_loads, normalize_shape, normalize_chunks, normalize_order,
                        normalize_storage_path, buffer_size,
                        normalize_fill_value, nolock, normalize_dtype)
 from zarr.meta import encode_array_metadata, encode_group_metadata
-from zarr.compat import PY2, OrderedDict_move_to_end, binary_type
+from zarr.compat import PY2, MutableMapping, OrderedDict_move_to_end, scandir
 from numcodecs.registry import codec_registry
 from numcodecs.compat import ensure_bytes, ensure_contiguous_ndarray
 from zarr.errors import (err_contains_group, err_contains_array, err_bad_compressor,
@@ -847,12 +846,10 @@ class DirectoryStore(MutableMapping):
         if os.path.isfile(fs_path):
             return os.path.getsize(fs_path)
         elif os.path.isdir(fs_path):
-            children = os.listdir(fs_path)
             size = 0
-            for child in children:
-                child_fs_path = os.path.join(fs_path, child)
-                if os.path.isfile(child_fs_path):
-                    size += os.path.getsize(child_fs_path)
+            for child in scandir(fs_path):
+                if child.is_file():
+                    size += child.stat().st_size
             return size
         else:
             return 0
@@ -2316,15 +2313,7 @@ class MongoDBStore(MutableMapping):
         if doc is None:
             raise KeyError(key)
         else:
-            value = doc[self._value]
-
-            # Coerce `bson.Binary` to `bytes` type on Python 2.
-            # PyMongo handles this conversion for us on Python 3.
-            # ref: http://api.mongodb.com/python/current/python3.html#id3
-            if PY2:  # pragma: py3 no cover
-                value = binary_type(value)
-
-            return value
+            return doc[self._value]
 
     def __setitem__(self, key, value):
         value = ensure_bytes(value)
@@ -2486,7 +2475,7 @@ class ConsolidatedMetadataStore(MutableMapping):
             d = store[metadata_key].decode()  # pragma: no cover
         else:  # pragma: no cover
             d = store[metadata_key]
-        meta = json.loads(d)
+        meta = json_loads(d)
 
         # check format of consolidated metadata
         consolidated_format = meta.get('zarr_consolidated_format', None)
