@@ -1128,7 +1128,7 @@ class TestRedisStore(StoreTests, unittest.TestCase):
         return store
 
 
-class CacheTests(unittest.TestCase):
+class CacheTests(object):
 
     def create_store(self):  # pragma: no cover
         raise NotImplementedError
@@ -1283,7 +1283,7 @@ class CacheTests(unittest.TestCase):
         assert 4 == cache.hits
         assert 2 == cache.misses
 
-class TestLRUStoreCache(StoreTests, CacheTests):
+class TestLRUStoreCache(StoreTests, CacheTests, unittest.TestCase):
 
     def create_store(self):
         return LRUStoreCache(dict(), max_size=2**27)
@@ -1371,7 +1371,7 @@ class TestLRUStoreCache(StoreTests, CacheTests):
         assert 1 == store.counter['__iter__']
 
 
-class TestLRUChunkCache(MutableMappingStoreTests, CacheTests):
+class TestLRUChunkCache(MutableMappingStoreTests, CacheTests, unittest.TestCase):
 
     # mock test object that will act as both the cache and the array
     class MockChunkCacheArray(object):
