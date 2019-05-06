@@ -810,6 +810,30 @@ class DirectoryStore(MutableMapping):
     def __len__(self):
         return sum(1 for _ in self.keys())
 
+    __marker = object()
+
+    def pop(self, key, default=__marker):
+        try:
+            value = ensure_bytes(self[key])
+        except KeyError:
+            if default is self.__marker:
+                raise
+            else:
+                return default
+        else:
+            del self[key]
+            return value
+
+    def popitem(self):
+        try:
+            key = next(self.keys())
+        except StopIteration:
+            raise KeyError("Store empty")
+        else:
+            value = ensure_bytes(self[key])
+            del self[key]
+            return (key, value)
+
     def dir_path(self, path=None):
         store_path = normalize_storage_path(path)
         dir_path = self.path
