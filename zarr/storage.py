@@ -32,6 +32,7 @@ from threading import Lock, RLock
 import glob
 import warnings
 
+import numpy as np
 
 from zarr.util import (json_loads, normalize_shape, normalize_chunks, normalize_order,
                        normalize_storage_path, buffer_size,
@@ -709,7 +710,7 @@ class DirectoryStore(MutableMapping):
 
     """
 
-    def __init__(self, path):
+    def __init__(self, path, memmap=False):
 
         # guard conditions
         path = os.path.abspath(path)
@@ -717,12 +718,16 @@ class DirectoryStore(MutableMapping):
             err_fspath_exists_notdir(path)
 
         self.path = path
+        self.memmap = memmap
 
     def __getitem__(self, key):
         filepath = os.path.join(self.path, key)
         if os.path.isfile(filepath):
-            with open(filepath, 'rb') as f:
-                return f.read()
+            if self.memmap:
+                return np.memmap(filepath, mode='r')
+            else:
+                with open(filepath, 'rb') as f:
+                    return f.read()
         else:
             raise KeyError(key)
 
