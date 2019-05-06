@@ -813,16 +813,16 @@ class DirectoryStore(MutableMapping):
     __marker = object()
 
     def pop(self, key, default=__marker):
-        try:
-            value = ensure_bytes(self[key])
-        except KeyError:
-            if default is self.__marker:
-                raise
-            else:
-                return default
-        else:
-            del self[key]
+        filepath = os.path.join(self.path, key)
+        if os.path.isfile(filepath):
+            with open(filepath, 'rb') as f:
+                value = f.read()
+            os.remove(filepath)
             return value
+        elif default is self.__marker:
+            raise KeyError(key)
+        else:
+            return default
 
     def popitem(self):
         try:
