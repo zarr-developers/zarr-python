@@ -901,10 +901,10 @@ class TempStore(DirectoryStore):
     """
 
     # noinspection PyShadowingBuiltins
-    def __init__(self, suffix='', prefix='zarr', dir=None):
+    def __init__(self, suffix='', prefix='zarr', dir=None, memmap=False):
         path = tempfile.mkdtemp(suffix=suffix, prefix=prefix, dir=dir)
         atexit.register(atexit_rmtree, path)
-        super(TempStore, self).__init__(path)
+        super(TempStore, self).__init__(path, memmap=memmap)
 
 
 _prog_ckey = re.compile(r'^(\d+)(\.\d+)+$')
@@ -987,8 +987,8 @@ class NestedDirectoryStore(DirectoryStore):
 
     """
 
-    def __init__(self, path):
-        super(NestedDirectoryStore, self).__init__(path)
+    def __init__(self, path, memmap=False):
+        super(NestedDirectoryStore, self).__init__(path, memmap=memmap)
 
     def __getitem__(self, key):
         key = _nested_map_ckey(key)
