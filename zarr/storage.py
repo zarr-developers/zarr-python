@@ -830,8 +830,7 @@ class DirectoryStore(MutableMapping):
         except StopIteration:
             raise KeyError("Store empty")
         else:
-            value = ensure_bytes(self[key])
-            del self[key]
+            value = self.pop(key)
             return (key, value)
 
     def dir_path(self, path=None):
