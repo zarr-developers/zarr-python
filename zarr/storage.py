@@ -1035,6 +1035,10 @@ class NestedDirectoryStore(DirectoryStore):
             self.path == other.path
         )
 
+    def pop(self, key, *args, **kwargs):
+        key = _nested_map_ckey(key)
+        return super(NestedDirectoryStore, self).pop(key, *args, **kwargs)
+
     def listdir(self, path=None):
         children = super(NestedDirectoryStore, self).listdir(path=path)
         if array_meta_key in children:
