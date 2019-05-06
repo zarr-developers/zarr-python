@@ -744,6 +744,15 @@ class TestDirectoryStore(StoreTests, unittest.TestCase):
         setdel_hierarchy_checks(store)
 
 
+class TestDirectoryStoreMemmap(TestDirectoryStore, unittest.TestCase):
+
+    def create_store(self):
+        path = tempfile.mkdtemp()
+        atexit.register(atexit_rmtree, path)
+        store = DirectoryStore(path, memmap=True)
+        return store
+
+
 class TestNestedDirectoryStore(TestDirectoryStore, unittest.TestCase):
 
     def create_store(self):
