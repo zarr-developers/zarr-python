@@ -724,7 +724,7 @@ class DirectoryStore(MutableMapping):
         filepath = os.path.join(self.path, key)
         if os.path.isfile(filepath):
             if self.memmap:
-                return np.memmap(filepath, mode='r')
+                return memoryview(np.memmap(filepath, mode='r'))
             else:
                 with open(filepath, 'rb') as f:
                     return f.read()
