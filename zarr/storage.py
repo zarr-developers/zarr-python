@@ -2183,7 +2183,7 @@ class SQLiteStore(MutableMapping):
 
     def listdir(self, path=None):
         path = normalize_storage_path(path)
-        sep = '_' if path=='' else '/'
+        sep = '_' if path == '' else '/'
         keys = self.cursor.execute(
             f'''
             SELECT DISTINCT SUBSTR(m, 0, INSTR(m, "/")) AS l FROM (
