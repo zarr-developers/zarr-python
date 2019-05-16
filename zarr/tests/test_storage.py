@@ -1080,6 +1080,15 @@ class TestSQLiteStore(StoreTests, unittest.TestCase):
         atexit.register(atexit_rmtree, path)
         store = SQLiteStore(path)
         return store
+    
+    def test_underscore_in_name(self):
+        path = tempfile.mktemp(suffix='.db')
+        atexit.register(atexit_rmtree, path)
+        store = SQLiteStore(path)
+        store['a'] = b'aaa'
+        store['a_b'] = b'aa_bb'
+        store.rm_dir('a')
+        assert 'a_b' in store
 
 
 @unittest.skipIf(sqlite3 is None, 'python built without sqlite')
