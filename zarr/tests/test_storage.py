@@ -1087,7 +1087,7 @@ class TestSQLiteStore(StoreTests, unittest.TestCase):
         store = SQLiteStore(path)
         store['a'] = b'aaa'
         store['a_b'] = b'aa_bb'
-        store.rm_dir('a')
+        store.rmdir('a')
         assert 'a_b' in store
 
 
