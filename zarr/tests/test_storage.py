@@ -1080,7 +1080,7 @@ class TestSQLiteStore(StoreTests, unittest.TestCase):
         atexit.register(atexit_rmtree, path)
         store = SQLiteStore(path)
         return store
-    
+
     def test_underscore_in_name(self):
         path = tempfile.mktemp(suffix='.db')
         atexit.register(atexit_rmtree, path)
