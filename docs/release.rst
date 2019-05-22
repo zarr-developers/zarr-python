@@ -21,6 +21,9 @@ Bug fixes
 * Fix ``collections``'s ``DeprecationWarning``\ s.
   By :user:`John Kirkham <jakirkham>`; :issue:`432`
 
+* Fix tests on big endian machines.
+  By :user:`Elliott Sales de Andrade <QuLogic>`; :issue:`427`
+
 
 .. _release_2.3.1:
 
