@@ -10,6 +10,8 @@ Next release
 * Improve error message in Jupyter when trying to use the ``ipytree`` widget
   without ``ipytree`` installed.
   By :user:`Zain Patel <mzjp2>; :issue:`537`
+* Explicitly close stores during testing.
+  By :user:`Elliott Sales de Andrade <QuLogic>`; :issue:`442`
 
 
 .. _release_2.4.0:
