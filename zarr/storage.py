@@ -74,6 +74,14 @@ def _path_to_prefix(path):
     return prefix
 
 
+def _NamedTemporaryFileUmask(*args, **kargs):
+    fdesc = tempfile.NamedTemporaryFile(*args, **kargs)
+    umask = os.umask(0)
+    os.umask(umask)
+    os.chmod(fdesc.name, 0o666 & ~umask)
+    return fdesc
+
+
 def contains_array(store, path=None):
     """Return True if the store contains an array at the given logical path."""
     path = normalize_storage_path(path)
@@ -752,9 +760,9 @@ class DirectoryStore(MutableMapping):
         # write to temporary file
         temp_path = None
         try:
-            with tempfile.NamedTemporaryFile(mode='wb', delete=False, dir=dir_path,
-                                             prefix=file_name + '.',
-                                             suffix='.partial') as f:
+            with _NamedTemporaryFileUmask(mode='wb', delete=False, dir=dir_path,
+                                          prefix=file_name + '.',
+                                          suffix='.partial') as f:
                 temp_path = f.name
                 f.write(value)
 
