@@ -1772,7 +1772,7 @@ class LRUStoreCache(MutableMapping):
                 # the below 2 if statements are not done together
                 # as an 'and' because we can possibly avoid one expensive
                 # __contains__ call to the underlying store
-                if not key in self._contains_cache:
+                if key not in self._contains_cache:
                     if key in self._store:
                         self._contains_cache.add(key)
             else:
