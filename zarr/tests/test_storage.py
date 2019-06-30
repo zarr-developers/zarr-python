@@ -1337,13 +1337,13 @@ class TestLRUStoreCache(StoreTests, unittest.TestCase):
         assert 0 == store.counter['__iter__']
         cache.invalidate_keys()
         assert 'foo' in cache
-        assert 5 == store.counter['keys']
-        assert 0 == store.counter['__contains__', 'foo']
+        assert 4 == store.counter['keys']
+        assert 1 == store.counter['__contains__', 'foo']
         assert 0 == store.counter['__iter__']
 
         # check these would get counted if called directly
         assert 'foo' in store
-        assert 1 == store.counter['__contains__', 'foo']
+        assert 2 == store.counter['__contains__', 'foo']
         assert keys == sorted(store)
         assert 1 == store.counter['__iter__']
 

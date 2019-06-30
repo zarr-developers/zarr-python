@@ -1763,8 +1763,22 @@ class LRUStoreCache(MutableMapping):
 
     def __contains__(self, key):
         with self._mutex:
-            if self._contains_cache is None:
-                self._contains_cache = set(self._keys())
+            # first check the keys cache since it has ALL the keys,
+            # then check the contains cache, else create a new
+            # contains cache
+            if self._keys_cache:
+                self._contains_cache = self._keys_cache
+            elif self._contains_cache:
+                # the below 2 if statements are not done together
+                # as an 'and' because we can possibly avoid one expensive
+                # __contains__ call to the underlying store
+                if not key in self._contains_cache:
+                    if key in self._store:
+                        self._contains_cache.add(key)
+            else:
+                self._contains_cache = set()
+                if key in self._store:
+                    self._contains_cache.add(key)
             return key in self._contains_cache
 
     def clear(self):
