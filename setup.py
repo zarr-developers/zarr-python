@@ -35,6 +35,11 @@ setup(
         'setuptools>18.0',
         'setuptools-scm>1.5.4'
     ],
+    extras_require={
+        'jupyter': [
+            'ipytree',
+        ],
+    },
     install_requires=dependencies,
     package_dir={'': '.'},
     packages=['zarr', 'zarr.tests'],
