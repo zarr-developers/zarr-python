@@ -415,11 +415,8 @@ class TreeTraversal(Traversal):
         return node.get_text()
 
 
-tree_group_icon = 'fa fa-folder'
-tree_array_icon = 'fa fa-table'
-# alternatives...
-# tree_group_icon: 'jstree-folder'
-# tree_array_icon: 'jstree-file'
+tree_group_icon = 'folder'
+tree_array_icon = 'table'
 
 
 def tree_html_sublist(node, root=False, expand=False):
