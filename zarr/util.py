@@ -415,6 +415,13 @@ class TreeTraversal(Traversal):
         return node.get_text()
 
 
+tree_group_icon = 'fa fa-folder'
+tree_array_icon = 'fa fa-table'
+# alternatives...
+# tree_group_icon: 'jstree-folder'
+# tree_array_icon: 'jstree-file'
+
+
 def tree_html_sublist(node, root=False, expand=False):
     result = ''
     data_jstree = '{"type": "%s"}' % node.get_type()
@@ -485,13 +492,6 @@ def tree_html(group, expand, level):
     """ % (node_id, tree_group_icon, tree_array_icon))
 
     return result
-
-
-tree_group_icon = 'fa fa-folder'
-tree_array_icon = 'fa fa-table'
-# alternatives...
-# tree_group_icon: 'jstree-folder'
-# tree_array_icon: 'jstree-file'
 
 
 class TreeViewer(object):
