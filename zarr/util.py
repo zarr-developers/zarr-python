@@ -419,6 +419,15 @@ tree_group_icon = 'folder'
 tree_array_icon = 'table'
 
 
+def tree_get_icon(stype):
+    if stype == "Array":
+        return tree_array_icon
+    elif stype == "Group":
+        return tree_group_icon
+    else:
+        raise ValueError("Unknown type: %s" % stype)
+
+
 def tree_html_sublist(node, root=False, expand=False):
     result = ''
     data_jstree = '{"type": "%s"}' % node.get_type()
