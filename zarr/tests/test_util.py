@@ -9,7 +9,8 @@ import pytest
 from zarr.util import (normalize_shape, normalize_chunks, is_total_slice,
                        normalize_resize_args, human_readable_size, normalize_order,
                        guess_chunks, info_html_report, info_text_report,
-                       normalize_fill_value)
+                       normalize_fill_value, tree_array_icon, tree_group_icon,
+                       tree_get_icon)
 
 
 def test_normalize_shape():
@@ -155,3 +156,10 @@ def test_info_html_report():
     actual = info_html_report(items)
     assert '<table' == actual[:6]
     assert '</table>' == actual[-8:]
+
+
+def test_tree_get_icon():
+    assert tree_get_icon("Array") == tree_array_icon
+    assert tree_get_icon("Group") == tree_group_icon
+    with pytest.raises(ValueError):
+        tree_get_icon("Baz")
