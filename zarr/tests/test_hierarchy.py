@@ -19,6 +19,11 @@ try:
 except ImportError:  # pragma: no cover
     asb = None
 
+try:
+    import ipytree
+except ImportError:  # pragma: no cover
+    ipytree = None
+
 
 from zarr.storage import (DictStore, DirectoryStore, ZipStore, init_group, init_array,
                           array_meta_key, group_meta_key, atexit_rmtree,
@@ -1190,6 +1195,10 @@ def _check_tree(g, expect_bytes, expect_text):
     if PY2:  # pragma: py3 no cover
         expect_repr = expect_bytes
     assert expect_repr == repr(g.tree())
+    if ipytree:
+        # noinspection PyProtectedMember
+        widget = g.tree()._ipython_display_()
+        isinstance(widget, ipytree.Tree)
 
 
 def test_tree():
