@@ -510,7 +510,9 @@ class TreeViewer(object):
             return self.__unicode__()
 
     def _ipython_display_(self):
-        return tree_widget(self.group, expand=self.expand, level=self.level)._ipython_display_()
+        tree = tree_widget(self.group, expand=self.expand, level=self.level)
+        tree._ipython_display_()
+        return tree
 
 
 def check_array_shape(param, array, shape):
