@@ -1190,11 +1190,6 @@ def _check_tree(g, expect_bytes, expect_text):
     if PY2:  # pragma: py3 no cover
         expect_repr = expect_bytes
     assert expect_repr == repr(g.tree())
-    # test _repr_html_ lightly
-    # noinspection PyProtectedMember
-    html = g.tree()._repr_html_().strip()
-    assert html.startswith('<link')
-    assert html.endswith('</script>')
 
 
 def test_tree():
