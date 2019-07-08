@@ -60,7 +60,7 @@ extensions = [
 
 numpydoc_show_class_members = False
 numpydoc_class_members_toctree = False
-issues_github_path = 'zarr-developers/zarr'
+issues_github_path = 'zarr-developers/zarr-python'
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']

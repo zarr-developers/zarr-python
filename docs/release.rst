@@ -161,7 +161,7 @@ Enhancements
   properties that enable a selection of items in an array to be retrieved or
   updated. See the :ref:`tutorial_indexing` tutorial section for more
   information. There is also a `notebook
-  <https://github.com/zarr-developers/zarr/blob/master/notebooks/advanced_indexing.ipynb>`_
+  <https://github.com/zarr-developers/zarr-python/blob/master/notebooks/advanced_indexing.ipynb>`_
   with extended examples and performance benchmarks. :issue:`78`, :issue:`89`,
   :issue:`112`, :issue:`172`.
 
@@ -574,7 +574,7 @@ Thanks to :user:`Matthew Rocklin <mrocklin>`, :user:`Stephan Hoyer <shoyer>`,
 -----
 
 See `v0.4.0 release notes on GitHub
-<https://github.com/zarr-developers/zarr/releases/tag/v0.4.0>`_.
+<https://github.com/zarr-developers/zarr-python/releases/tag/v0.4.0>`_.
 
 .. _release_0.3.0:
 
@@ -582,6 +582,6 @@ See `v0.4.0 release notes on GitHub
 -----
 
 See `v0.3.0 release notes on GitHub
-<https://github.com/zarr-developers/zarr/releases/tag/v0.3.0>`_.
+<https://github.com/zarr-developers/zarr-python/releases/tag/v0.3.0>`_.
 
 .. _NumCodecs: http://numcodecs.readthedocs.io/
