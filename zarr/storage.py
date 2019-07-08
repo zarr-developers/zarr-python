@@ -2451,11 +2451,7 @@ class ConsolidatedMetadataStore(MutableMapping):
         self.store = store
 
         # retrieve consolidated metadata
-        if sys.version_info.major == 3 and sys.version_info.minor < 6:
-            d = store[metadata_key].decode()  # pragma: no cover
-        else:  # pragma: no cover
-            d = store[metadata_key]
-        meta = json_loads(d)
+        meta = json_loads(store[metadata_key])
 
         # check format of consolidated metadata
         consolidated_format = meta.get('zarr_consolidated_format', None)
