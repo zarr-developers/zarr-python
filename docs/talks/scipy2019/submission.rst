@@ -93,7 +93,7 @@ References
 ~~~~~~~~~~
 
 .. _1: https://zarr.readthedocs.io/en/stable/spec/v2.html
-.. _2: https://github.com/zarr-developers/zarr
+.. _2: https://github.com/zarr-developers/zarr-python
 .. _3: https://github.com/zarr-developers/numcodecs
 .. _4: https://www.hdfgroup.org/solutions/hdf5/
 .. _5: https://pangeo.io/

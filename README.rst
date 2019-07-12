@@ -12,11 +12,11 @@ more information.
 .. image:: https://readthedocs.org/projects/zarr/badge/?version=latest
     :target: http://zarr.readthedocs.io/en/latest/?badge=latest
 
-.. image:: https://travis-ci.org/zarr-developers/zarr.svg?branch=master
-    :target: https://travis-ci.org/zarr-developers/zarr
+.. image:: https://travis-ci.org/zarr-developers/zarr-python.svg?branch=master
+    :target: https://travis-ci.org/zarr-developers/zarr-python
 
 .. image:: https://ci.appveyor.com/api/projects/status/7d4iko59k8hpbbik?svg=true
-    :target: https://ci.appveyor.com/project/zarr-developers/zarr
+    :target: https://ci.appveyor.com/project/zarr-developers/zarr-python
 
-.. image:: https://coveralls.io/repos/github/zarr-developers/zarr/badge.svg?branch=master
-    :target: https://coveralls.io/github/zarr-developers/zarr?branch=master
+.. image:: https://coveralls.io/repos/github/zarr-developers/zarr-python/badge.svg?branch=master
+    :target: https://coveralls.io/github/zarr-developers/zarr-python?branch=master

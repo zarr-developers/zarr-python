@@ -56,6 +56,6 @@ setup(
     ],
     maintainer='Alistair Miles',
     maintainer_email='alimanfoo@googlemail.com',
-    url='https://github.com/zarr-developers/zarr',
+    url='https://github.com/zarr-developers/zarr-python',
     license='MIT',
 )
