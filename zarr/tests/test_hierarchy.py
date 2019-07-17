@@ -20,7 +20,7 @@ except ImportError:  # pragma: no cover
     asb = None
 
 
-from zarr.storage import (DictStore, DirectoryStore, ZipStore, init_group, init_array,
+from zarr.storage import (MemoryStore, DirectoryStore, ZipStore, init_group, init_array,
                           array_meta_key, group_meta_key, atexit_rmtree,
                           NestedDirectoryStore, DBMStore, LMDBStore, SQLiteStore,
                           ABSStore, atexit_rmglob, LRUStoreCache)
@@ -852,11 +852,11 @@ class TestGroup(unittest.TestCase):
         assert isinstance(g2['foo/bar'], Array)
 
 
-class TestGroupWithDictStore(TestGroup):
+class TestGroupWithMemoryStore(TestGroup):
 
     @staticmethod
     def create_store():
-        return DictStore(), None
+        return MemoryStore(), None
 
 
 class TestGroupWithDirectoryStore(TestGroup):
