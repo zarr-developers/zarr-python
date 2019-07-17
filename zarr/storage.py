@@ -656,6 +656,16 @@ class MemoryStore(MutableMapping):
             self.root.clear()
 
 
+class DictStore(MemoryStore):
+
+    def __init__(self, *args, **kwargs):
+        warnings.warn("DictStore has been renamed to MemoryStore and will be "
+                      "removed in the future. Please use MemoryStore.",
+                      DeprecationWarning,
+                      stacklevel=2)
+        super(DictStore, self).__init__(*args, **kwargs)
+
+
 class DirectoryStore(MutableMapping):
     """Storage class using directories and files on a standard file system.
 

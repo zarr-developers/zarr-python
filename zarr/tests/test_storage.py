@@ -22,7 +22,7 @@ except ImportError:  # pragma: no cover
     asb = None
 
 
-from zarr.storage import (init_array, array_meta_key, attrs_key, MemoryStore,
+from zarr.storage import (init_array, array_meta_key, attrs_key, DictStore, MemoryStore,
                           DirectoryStore, ZipStore, init_group, group_meta_key,
                           getsize, migrate_1to2, TempStore, atexit_rmtree,
                           NestedDirectoryStore, default_compressor, DBMStore,
@@ -699,6 +699,17 @@ class TestMemoryStore(StoreTests, unittest.TestCase):
     def test_setdel(self):
         store = self.create_store()
         setdel_hierarchy_checks(store)
+
+
+class TestDictStore(StoreTests, unittest.TestCase):
+
+    def create_store(self):
+        return DictStore()
+
+    def test_deprecated(self):
+        with pytest.warns(DeprecationWarning):
+            store = self.create_store()
+        assert isinstance(store, MemoryStore)
 
 
 class TestDirectoryStore(StoreTests, unittest.TestCase):
