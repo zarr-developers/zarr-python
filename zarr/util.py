@@ -128,7 +128,7 @@ def normalize_chunks(chunks, shape, typesize):
 
     # handle 1D convenience form
     if isinstance(chunks, numbers.Integral):
-        chunks = (int(chunks),)
+        chunks = tuple(int(chunks) for _ in shape)
 
     # handle bad dimensionality
     if len(chunks) > len(shape):

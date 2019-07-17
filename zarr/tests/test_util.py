@@ -29,7 +29,7 @@ def test_normalize_chunks():
     assert (10, 10) == normalize_chunks((10, 10), (100, 10), 1)
     assert (10, 10) == normalize_chunks(10, (100, 10), 1)
     assert (10, 10) == normalize_chunks((10, None), (100, 10), 1)
-    assert (30, 20, 10) == normalize_chunks(30, (100, 20, 10), 1)
+    assert (30, 30, 30) == normalize_chunks(30, (100, 20, 10), 1)
     assert (30, 20, 10) == normalize_chunks((30,), (100, 20, 10), 1)
     assert (30, 20, 10) == normalize_chunks((30, None), (100, 20, 10), 1)
     assert (30, 20, 10) == normalize_chunks((30, None, None), (100, 20, 10), 1)
