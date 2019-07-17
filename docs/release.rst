@@ -1,6 +1,13 @@
 Release notes
 =============
 
+Upcoming Release
+----------------
+
+* Rename ``DictStore`` to ``MemoryStore``.
+  By :user:`James Bourbeau <jrbourbeau>`; :issue:`455`
+
+
 .. _release_2.3.2:
 
 2.3.2
