@@ -22,7 +22,7 @@ except ImportError:  # pragma: no cover
     asb = None
 
 
-from zarr.storage import (init_array, array_meta_key, attrs_key, DictStore,
+from zarr.storage import (init_array, array_meta_key, attrs_key, MemoryStore,
                           DirectoryStore, ZipStore, init_group, group_meta_key,
                           getsize, migrate_1to2, TempStore, atexit_rmtree,
                           NestedDirectoryStore, default_compressor, DBMStore,
@@ -652,7 +652,7 @@ class TestMappingStore(StoreTests, unittest.TestCase):
 def setdel_hierarchy_checks(store):
     # these tests are for stores that are aware of hierarchy levels; this
     # behaviour is not stricly required by Zarr but these tests are included
-    # to define behaviour of DictStore and DirectoryStore classes
+    # to define behaviour of MemoryStore and DirectoryStore classes
 
     # check __setitem__ and __delitem__ blocked by leaf
 
@@ -686,10 +686,10 @@ def setdel_hierarchy_checks(store):
     assert 'r/s' not in store
 
 
-class TestDictStore(StoreTests, unittest.TestCase):
+class TestMemoryStore(StoreTests, unittest.TestCase):
 
     def create_store(self):
-        return DictStore()
+        return MemoryStore()
 
     def test_store_contains_bytes(self):
         store = self.create_store()

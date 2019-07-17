@@ -15,7 +15,7 @@ import pytest
 
 from zarr.convenience import (open, save, save_group, load, copy_store, copy,
                               consolidate_metadata, open_consolidated)
-from zarr.storage import atexit_rmtree, DictStore, getsize, ConsolidatedMetadataStore
+from zarr.storage import atexit_rmtree, MemoryStore, getsize, ConsolidatedMetadataStore
 from zarr.core import Array
 from zarr.hierarchy import Group, group
 from zarr.errors import CopyError, PermissionError
@@ -96,7 +96,7 @@ def test_lazy_loader():
 def test_consolidate_metadata():
 
     # setup initial data
-    store = DictStore()
+    store = MemoryStore()
     z = group(store)
     z.create_group('g1')
     g2 = z.create_group('g2')
