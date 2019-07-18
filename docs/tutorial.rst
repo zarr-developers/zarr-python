@@ -791,7 +791,7 @@ Here is an example using S3Map to read an array created previously::
     Order              : C
     Read-only          : False
     Compressor         : Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
-    Store type         : s3fs.mapping.S3Map
+    Store type         : fsspec.mapping.FSMap
     No. bytes          : 21
     Chunks initialized : 3/3
     >>> z[:]
