@@ -463,7 +463,7 @@ def _dict_store_keys(d, prefix='', cls=dict):
             yield prefix + k
 
 
-class DictStore(MutableMapping):
+class MemoryStore(MutableMapping):
     """Store class that uses a hierarchy of :class:`dict` objects, thus all data
     will be held in main memory.
 
@@ -474,7 +474,7 @@ class DictStore(MutableMapping):
         >>> import zarr
         >>> g = zarr.group()
         >>> type(g.store)
-        <class 'zarr.storage.DictStore'>
+        <class 'zarr.storage.MemoryStore'>
 
     Note that the default class when creating an array is the built-in
     :class:`dict` class, i.e.::
@@ -568,7 +568,7 @@ class DictStore(MutableMapping):
 
     def __eq__(self, other):
         return (
-            isinstance(other, DictStore) and
+            isinstance(other, MemoryStore) and
             self.root == other.root and
             self.cls == other.cls
         )
@@ -654,6 +654,16 @@ class DictStore(MutableMapping):
     def clear(self):
         with self.write_mutex:
             self.root.clear()
+
+
+class DictStore(MemoryStore):
+
+    def __init__(self, *args, **kwargs):
+        warnings.warn("DictStore has been renamed to MemoryStore and will be "
+                      "removed in the future. Please use MemoryStore.",
+                      DeprecationWarning,
+                      stacklevel=2)
+        super(DictStore, self).__init__(*args, **kwargs)
 
 
 class DirectoryStore(MutableMapping):

@@ -367,7 +367,7 @@ property. E.g.::
     Name        : /
     Type        : zarr.hierarchy.Group
     Read-only   : False
-    Store type  : zarr.storage.DictStore
+    Store type  : zarr.storage.MemoryStore
     No. members : 1
     No. arrays  : 0
     No. groups  : 1
@@ -377,7 +377,7 @@ property. E.g.::
     Name        : /foo
     Type        : zarr.hierarchy.Group
     Read-only   : False
-    Store type  : zarr.storage.DictStore
+    Store type  : zarr.storage.MemoryStore
     No. members : 2
     No. arrays  : 2
     No. groups  : 0
@@ -392,7 +392,7 @@ property. E.g.::
     Order              : C
     Read-only          : False
     Compressor         : Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
-    Store type         : zarr.storage.DictStore
+    Store type         : zarr.storage.MemoryStore
     No. bytes          : 8000000 (7.6M)
     No. bytes stored   : 33240 (32.5K)
     Storage ratio      : 240.7
@@ -407,7 +407,7 @@ property. E.g.::
     Order              : C
     Read-only          : False
     Compressor         : Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
-    Store type         : zarr.storage.DictStore
+    Store type         : zarr.storage.MemoryStore
     No. bytes          : 4000000 (3.8M)
     No. bytes stored   : 23943 (23.4K)
     Storage ratio      : 167.1
@@ -1333,7 +1333,7 @@ module can be pickled, as can the built-in ``dict`` class which can also be used
 storage.
 
 Note that if an array or group is backed by an in-memory store like a ``dict`` or
-:class:`zarr.storage.DictStore`, then when it is pickled all of the store data will be
+:class:`zarr.storage.MemoryStore`, then when it is pickled all of the store data will be
 included in the pickled data. However, if an array or group is backed by a persistent
 store like a :class:`zarr.storage.DirectoryStore`, :class:`zarr.storage.ZipStore` or
 :class:`zarr.storage.DBMStore` then the store data **are not** pickled. The only thing
