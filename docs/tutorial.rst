@@ -1170,7 +1170,7 @@ better performance, at least when using the Blosc compression library.
 The optimal chunk shape will depend on how you want to access the data. E.g.,
 for a 2-dimensional array, if you only ever take slices along the first
 dimension, then chunk across the second dimenson. If you know you want to chunk
-across an entire dimension you can use ``None`` within the ``chunks`` argument,
+across an entire dimension you can use ``None`` or ``-1``within the ``chunks`` argument,
 e.g.::
 
     >>> z1 = zarr.zeros((10000, 10000), chunks=(100, None), dtype='i4')
