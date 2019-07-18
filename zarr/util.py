@@ -128,7 +128,7 @@ def normalize_chunks(chunks, shape, typesize):
 
     # handle 1D convenience form
     if isinstance(chunks, numbers.Integral):
-        return tuple(int(chunks) for _ in shape)
+        chunks = tuple(int(chunks) for _ in shape)
 
     # handle bad dimensionality
     if len(chunks) > len(shape):
@@ -139,11 +139,12 @@ def normalize_chunks(chunks, shape, typesize):
         # assume chunks across remaining dimensions
         chunks += shape[len(chunks):]
 
-    # handle None in chunks
-    chunks = tuple(s if c is None else int(c)
-                   for s, c in zip(shape, chunks))
+    # handle None or -1 in chunks
+    if -1 in chunks or None in chunks:
+        chunks = tuple(s if c == -1 or c is None else int(c)
+                       for s, c in zip(shape, chunks))
 
-    return chunks
+    return tuple(chunks)
 
 
 def normalize_dtype(dtype, object_codec):

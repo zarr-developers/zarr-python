@@ -41,8 +41,9 @@ def test_normalize_chunks():
         normalize_chunks((100, 10), (100,), 1)
 
     # test auto-chunking
-    chunks = normalize_chunks(None, (100,), 1)
-    assert (100,) == chunks
+    assert (100,) == normalize_chunks(None, (100,), 1)
+    assert (100,) == normalize_chunks(-1, (100,), 1)
+    assert (30, 20, 10) == normalize_chunks((30, -1, None), (100, 20, 10), 1)
 
 
 def test_is_total_slice():
