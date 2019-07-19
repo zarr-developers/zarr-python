@@ -791,7 +791,7 @@ Here is an example using S3Map to read an array created previously::
     Order              : C
     Read-only          : False
     Compressor         : Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
-    Store type         : s3fs.mapping.S3Map
+    Store type         : fsspec.mapping.FSMap
     No. bytes          : 21
     Chunks initialized : 3/3
     >>> z[:]
@@ -1170,8 +1170,8 @@ better performance, at least when using the Blosc compression library.
 The optimal chunk shape will depend on how you want to access the data. E.g.,
 for a 2-dimensional array, if you only ever take slices along the first
 dimension, then chunk across the second dimenson. If you know you want to chunk
-across an entire dimension you can use ``None`` within the ``chunks`` argument,
-e.g.::
+across an entire dimension you can use ``None`` or ``-1`` within the ``chunks``
+argument, e.g.::
 
     >>> z1 = zarr.zeros((10000, 10000), chunks=(100, None), dtype='i4')
     >>> z1.chunks

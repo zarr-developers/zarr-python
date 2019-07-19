@@ -124,7 +124,7 @@ class TestArrayWithThreadSynchronizer(TestArray, MixinArraySyncTests):
 
         # Check basic 2-D array
         z = self.create_array(shape=(20, 35,), chunks=10, dtype='<i4')
-        assert 'dde44c72cc530bd6aae39b629eb15a2da627e5f9' == z.hexdigest()
+        assert '6c530b6b9d73e108cc5ee7b6be3d552cc994bdbe' == z.hexdigest()
 
         # Check basic 1-D array with some data
         z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
@@ -168,7 +168,7 @@ class TestArrayWithProcessSynchronizer(TestArray, MixinArraySyncTests):
 
         # Check basic 2-D array
         z = self.create_array(shape=(20, 35,), chunks=10, dtype='<i4')
-        assert 'dde44c72cc530bd6aae39b629eb15a2da627e5f9' == z.hexdigest()
+        assert '6c530b6b9d73e108cc5ee7b6be3d552cc994bdbe' == z.hexdigest()
 
         # Check basic 1-D array with some data
         z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')

@@ -4,6 +4,10 @@ Release notes
 Upcoming Release
 ----------------
 
+* Use uniform chunking for all dimensions when specifying ``chunks`` as an integer.
+  Also adds support for specifying ``-1`` to chunk across an entire dimension.
+  By :user:`James Bourbeau <jrbourbeau>`; :issue:`456`
+
 * Rename ``DictStore`` to ``MemoryStore``.
   By :user:`James Bourbeau <jrbourbeau>`; :issue:`455`
 
