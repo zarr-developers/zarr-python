@@ -410,8 +410,15 @@ class Group(MutableMapping):
                                  cache_attrs=self.attrs.cache,
                                  synchronizer=self._synchronizer)
 
-    def array_keys(self):
+    def array_keys(self, recurse=False):
         """Return an iterator over member names for arrays only.
+
+        Parameters
+        ----------
+        recurse : recurse, optional
+            Option to return member names for all arrays, even from groups
+            below the current one. If False, only member names for arrays in
+            the current group will be returned. Default value is False.
 
         Examples
         --------
@@ -425,13 +432,19 @@ class Group(MutableMapping):
         ['baz', 'quux']
 
         """
-        for key in sorted(listdir(self._store, self._path)):
-            path = self._key_prefix + key
-            if contains_array(self._store, path):
-                yield key
+        return self._array_iter(keys_only=True,
+                                method='array_keys',
+                                recurse=recurse)
 
-    def arrays(self):
+    def arrays(self, recurse=False):
         """Return an iterator over (name, value) pairs for arrays only.
+
+        Parameters
+        ----------
+        recurse : recurse, optional
+            Option to return (name, value) pairs for all arrays, even from groups
+            below the current one. If False, only (name, value) pairs for arrays in
+            the current group will be returned. Default value is False.
 
         Examples
         --------
@@ -447,13 +460,19 @@ class Group(MutableMapping):
         quux <class 'zarr.core.Array'>
 
         """
+        return self._array_iter(keys_only=False,
+                                method='arrays',
+                                recurse=recurse)
+
+    def _array_iter(self, keys_only, method, recurse):
         for key in sorted(listdir(self._store, self._path)):
             path = self._key_prefix + key
             if contains_array(self._store, path):
-                yield key, Array(self._store, path=path, read_only=self._read_only,
-                                 chunk_store=self._chunk_store,
-                                 cache_attrs=self.attrs.cache,
-                                 synchronizer=self._synchronizer)
+                yield key if keys_only else (key, self[key])
+            elif recurse and contains_group(self._store, path):
+                group = self[key]
+                for i in getattr(group, method)(recurse=recurse):
+                    yield i
 
     def visitvalues(self, func):
         """Run ``func`` on each object.
