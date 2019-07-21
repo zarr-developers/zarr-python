@@ -37,6 +37,11 @@ class N5Store(NestedDirectoryStore):
     ----------
     path : string
         Location of directory to use as the root of the storage hierarchy.
+    normalize_keys : bool, optional
+        If True, all store keys will be normalized to use lower case characters
+        (e.g. 'foo' and 'FOO' will be treated as equivalent). This can be
+        useful to avoid potential discrepancies between case-senstive and
+        case-insensitive file system. Default value is False.
 
     Examples
     --------

@@ -673,6 +673,11 @@ class DirectoryStore(MutableMapping):
     ----------
     path : string
         Location of directory to use as the root of the storage hierarchy.
+    normalize_keys : bool, optional
+        If True, all store keys will be normalized to use lower case characters
+        (e.g. 'foo' and 'FOO' will be treated as equivalent). This can be
+        useful to avoid potential discrepancies between case-senstive and
+        case-insensitive file system. Default value is False.
 
     Examples
     --------
@@ -719,7 +724,7 @@ class DirectoryStore(MutableMapping):
 
     """
 
-    def __init__(self, path):
+    def __init__(self, path, normalize_keys=False):
 
         # guard conditions
         path = os.path.abspath(path)
@@ -727,8 +732,13 @@ class DirectoryStore(MutableMapping):
             err_fspath_exists_notdir(path)
 
         self.path = path
+        self.normalize_keys = normalize_keys
+
+    def _normalize_key(self, key):
+        return key.lower() if self.normalize_keys else key
 
     def __getitem__(self, key):
+        key = self._normalize_key(key)
         filepath = os.path.join(self.path, key)
         if os.path.isfile(filepath):
             with open(filepath, 'rb') as f:
@@ -737,6 +747,7 @@ class DirectoryStore(MutableMapping):
             raise KeyError(key)
 
     def __setitem__(self, key, value):
+        key = self._normalize_key(key)
 
         # coerce to flat, contiguous array (ideally without copying)
         value = ensure_contiguous_ndarray(value)
@@ -777,6 +788,7 @@ class DirectoryStore(MutableMapping):
                 os.remove(temp_path)
 
     def __delitem__(self, key):
+        key = self._normalize_key(key)
         path = os.path.join(self.path, key)
         if os.path.isfile(path):
             os.remove(path)
@@ -788,6 +800,7 @@ class DirectoryStore(MutableMapping):
             raise KeyError(key)
 
     def __contains__(self, key):
+        key = self._normalize_key(key)
         file_path = os.path.join(self.path, key)
         return os.path.isfile(file_path)
 
@@ -902,14 +915,19 @@ class TempStore(DirectoryStore):
         Prefix for the temporary directory name.
     dir : string, optional
         Path to parent directory in which to create temporary directory.
+    normalize_keys : bool, optional
+        If True, all store keys will be normalized to use lower case characters
+        (e.g. 'foo' and 'FOO' will be treated as equivalent). This can be
+        useful to avoid potential discrepancies between case-senstive and
+        case-insensitive file system. Default value is False.
 
     """
 
     # noinspection PyShadowingBuiltins
-    def __init__(self, suffix='', prefix='zarr', dir=None):
+    def __init__(self, suffix='', prefix='zarr', dir=None, normalize_keys=False):
         path = tempfile.mkdtemp(suffix=suffix, prefix=prefix, dir=dir)
         atexit.register(atexit_rmtree, path)
-        super(TempStore, self).__init__(path)
+        super(TempStore, self).__init__(path, normalize_keys=normalize_keys)
 
 
 _prog_ckey = re.compile(r'^(\d+)(\.\d+)+$')
@@ -936,6 +954,11 @@ class NestedDirectoryStore(DirectoryStore):
     ----------
     path : string
         Location of directory to use as the root of the storage hierarchy.
+    normalize_keys : bool, optional
+        If True, all store keys will be normalized to use lower case characters
+        (e.g. 'foo' and 'FOO' will be treated as equivalent). This can be
+        useful to avoid potential discrepancies between case-senstive and
+        case-insensitive file system. Default value is False.
 
     Examples
     --------
@@ -992,8 +1015,8 @@ class NestedDirectoryStore(DirectoryStore):
 
     """
 
-    def __init__(self, path):
-        super(NestedDirectoryStore, self).__init__(path)
+    def __init__(self, path, normalize_keys=False):
+        super(NestedDirectoryStore, self).__init__(path, normalize_keys=normalize_keys)
 
     def __getitem__(self, key):
         key = _nested_map_ckey(key)
