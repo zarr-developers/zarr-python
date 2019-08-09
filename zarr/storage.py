@@ -409,7 +409,7 @@ def _init_array_metadata(store, shape, chunks=None, dtype=None, compressor='defa
 init_store = init_array
 
 
-def init_group(store, overwrite=False, path=None, chunk_store=None, 
+def init_group(store, overwrite=False, path=None, chunk_store=None,
                require_parent=True, check_exists=True):
     """Initialize a group store. Note that this is a low-level function and there should be no
     need to call this directly from user code.
