@@ -206,7 +206,8 @@ def _require_parent_group(path, store, chunk_store, overwrite):
 
 def init_array(store, shape, chunks=True, dtype=None, compressor='default',
                fill_value=None, order='C', overwrite=False, path=None,
-               chunk_store=None, filters=None, object_codec=None, require_parent=True, check_exists=True):
+               chunk_store=None, filters=None, object_codec=None,
+               require_parent=True, check_exists=True):
     """Initialize an array store with the given configuration. Note that this is a low-level
     function and there should be no need to call this directly from user code.
 
@@ -408,7 +409,8 @@ def _init_array_metadata(store, shape, chunks=None, dtype=None, compressor='defa
 init_store = init_array
 
 
-def init_group(store, overwrite=False, path=None, chunk_store=None, require_parent=True, check_exists=True):
+def init_group(store, overwrite=False, path=None, chunk_store=None, 
+               require_parent=True, check_exists=True):
     """Initialize a group store. Note that this is a low-level function and there should be no
     need to call this directly from user code.
 

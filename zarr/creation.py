@@ -359,7 +359,8 @@ def array(data, **kwargs):
 def open_array(store=None, mode='a', shape=None, chunks=True, dtype=None,
                compressor='default', fill_value=0, order='C', synchronizer=None,
                filters=None, cache_metadata=True, cache_attrs=True, path=None,
-               object_codec=None, chunk_store=None, require_parent=True, check_exists=True, **kwargs):
+               object_codec=None, chunk_store=None, require_parent=True,
+               check_exists=True, **kwargs):
     """Open an array using file-mode-like semantics.
 
     Parameters
