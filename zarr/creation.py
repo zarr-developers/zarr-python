@@ -18,7 +18,7 @@ def create(shape, chunks=True, dtype=None, compressor='default',
            fill_value=0, order='C', store=None, synchronizer=None,
            overwrite=False, path=None, chunk_store=None, filters=None,
            cache_metadata=True, cache_attrs=True, read_only=False,
-           object_codec=None, **kwargs):
+           object_codec=None, require_parent=True, check_exists=True, **kwargs):
     """Create an array.
 
     Parameters
@@ -65,6 +65,10 @@ def create(shape, chunks=True, dtype=None, compressor='default',
         True if array should be protected against modification.
     object_codec : Codec, optional
         A codec to encode object arrays, only needed if dtype=object.
+    require_parent : bool, optional
+        If False, no check is done to ensure that the parent group exists.
+    check_exists : bool, optional
+        If False, no check is done to see if the array or group already exists.
 
     Returns
     -------
@@ -119,7 +123,8 @@ def create(shape, chunks=True, dtype=None, compressor='default',
     # initialize array metadata
     init_array(store, shape=shape, chunks=chunks, dtype=dtype, compressor=compressor,
                fill_value=fill_value, order=order, overwrite=overwrite, path=path,
-               chunk_store=chunk_store, filters=filters, object_codec=object_codec)
+               chunk_store=chunk_store, filters=filters, object_codec=object_codec,
+               require_parent=require_parent, check_exists=check_exists)
 
     # instantiate array
     z = Array(store, path=path, chunk_store=chunk_store, synchronizer=synchronizer,
@@ -354,7 +359,7 @@ def array(data, **kwargs):
 def open_array(store=None, mode='a', shape=None, chunks=True, dtype=None,
                compressor='default', fill_value=0, order='C', synchronizer=None,
                filters=None, cache_metadata=True, cache_attrs=True, path=None,
-               object_codec=None, chunk_store=None, **kwargs):
+               object_codec=None, chunk_store=None, require_parent=True, check_exists=True, **kwargs):
     """Open an array using file-mode-like semantics.
 
     Parameters
@@ -400,6 +405,10 @@ def open_array(store=None, mode='a', shape=None, chunks=True, dtype=None,
         A codec to encode object arrays, only needed if dtype=object.
     chunk_store : MutableMapping or string, optional
         Store or path to directory in file system or name of zip file.
+    require_parent : bool, optional
+        If False, no check is done to ensure that the parent group exists.
+    check_exists : bool, optional
+        If False, no check is done to see if the array or group already exists.
 
     Returns
     -------
@@ -460,7 +469,8 @@ def open_array(store=None, mode='a', shape=None, chunks=True, dtype=None,
         init_array(store, shape=shape, chunks=chunks, dtype=dtype,
                    compressor=compressor, fill_value=fill_value,
                    order=order, filters=filters, overwrite=True, path=path,
-                   object_codec=object_codec, chunk_store=chunk_store)
+                   object_codec=object_codec, chunk_store=chunk_store,
+                   require_parent=require_parent, check_exists=check_exists)
 
     elif mode == 'a':
         if contains_group(store, path=path):
