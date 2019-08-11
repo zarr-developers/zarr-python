@@ -10,7 +10,7 @@ class can be used as a compressor for a Zarr array::
 
     >>> import zarr
     >>> from numcodecs import Blosc
-    >>> z = zarr.zeros(1000000, compressor=Blosc(cname='zstd', clevel=1, shuffle=Blosc.SHUFFLE)
+    >>> z = zarr.zeros(1000000, compressor=Blosc(cname='zstd', clevel=1, shuffle=Blosc.SHUFFLE))
 
 Codec classes can also be used as filters. See the tutorial section on :ref:`tutorial_filters`
 for more information.
