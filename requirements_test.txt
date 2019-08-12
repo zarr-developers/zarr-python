@@ -9,4 +9,3 @@ pytest-cov
 s3fs
 setuptools-scm
 tox
-azure-storage-blob
