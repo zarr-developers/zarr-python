@@ -4,7 +4,7 @@ numcodecs==0.6.2
 azure-storage-blob==2.1.0
 pyosreplace==0.1; python_version < '3.3' and sys_platform == 'win32'
 # These packages are currently not available on Windows.
-bsddb3==6.2.6; sys_platform == 'linux'
-lmdb==0.94; sys_platform == 'linux'
-redis==3.0.1; sys_platform == 'linux'
-pymongo==3.7.1; sys_platform == 'linux'
+bsddb3==6.2.6; sys_platform != 'win32'
+lmdb==0.94; sys_platform != 'win32'
+redis==3.0.1; sys_platform != 'win32'
+pymongo==3.7.1; sys_platform != 'win32'
