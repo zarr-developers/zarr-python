@@ -1,7 +1,7 @@
 asciitree==0.3.3
 fasteners==0.15
 numcodecs==0.6.3
-azure-storage-blob==2.1.0
+azure-storage-blob==2.0.1
 pyosreplace==0.1; python_version < '3.3' and sys_platform == 'win32'
 # These packages are currently not available on Windows.
 bsddb3==6.2.6; sys_platform != 'win32'
