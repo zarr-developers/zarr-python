@@ -2,6 +2,10 @@ branches:
   only:
     - master
 
+# the VS C++ compiler path, doesn't seem to exist in the PATH environment variable of
+# the Visual Studio 2017 build VM, due to which the pyosreplace package fails to build
+image: Visual Studio 2015
+
 environment:
 
   global:
@@ -16,21 +20,15 @@ environment:
     - PYTHON: "C:\\Python27-x64"
       PYTHON_VERSION: "2.7"
       DISTUTILS_USE_SDK: "1"
-      # the VS C++ compiler path, doesn't seem to exist in the PATH environment variable of
-      # the Visual Studio 2017 build VM, due to which the pyosreplace package fails to build
-      APPVEYOR_BUILD_WORKER_IMAGE: Visual Studio 2015
 
     - PYTHON: "C:\\Python35-x64"
       PYTHON_VERSION: "3.5"
-      APPVEYOR_BUILD_WORKER_IMAGE: Visual Studio 2017
 
     - PYTHON: "C:\\Python36-x64"
       PYTHON_VERSION: "3.6"
-      APPVEYOR_BUILD_WORKER_IMAGE: Visual Studio 2017
 
     - PYTHON: "C:\\Python37-x64"
       PYTHON_VERSION: "3.7"
-      APPVEYOR_BUILD_WORKER_IMAGE: Visual Studio 2017
 
 install:
   - "SET PATH=%PYTHON%;%PYTHON%\\Scripts;%PATH%"
@@ -45,6 +43,7 @@ build: off
 
 before_test:
   - '"%EMULATOR_LOC%" start'
+  - '"%EMULATOR_LOC%" status'
 
 test_script:
   - "%CMD_IN_ENV% python -m pytest -v --pyargs zarr"
