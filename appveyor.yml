@@ -33,9 +33,7 @@ environment:
 install:
   - "SET PATH=%PYTHON%;%PYTHON%\\Scripts;%PATH%"
   - "%CMD_IN_ENV% python -m pip install -U pip setuptools wheel"
-  - "%CMD_IN_ENV% python -m pip install -rrequirements_test.txt"
-  - "%CMD_IN_ENV% python -m pip install -rrequirements_dev_npy.txt"
-  - "%CMD_IN_ENV% python -m pip install --no-binary=numcodecs -rrequirements_dev.txt"
+  - "%CMD_IN_ENV% python -m pip install -r requirements_dev_numpy.txt -r requirements_dev_minimal.txt -r requirements_dev_optional.txt -r requirements_dev_service.txt"
   - "%CMD_IN_ENV% python setup.py install"
   - "%CMD_IN_ENV% python -m pip freeze"
 

@@ -44,6 +44,14 @@ from zarr.errors import (err_contains_group, err_contains_array, err_bad_compres
                          err_fspath_exists_notdir, err_read_only, MetadataError)
 
 
+__doctest_requires__ = {
+    ('RedisStore', 'RedisStore.*'): ['redis'],
+    ('MongoDBStore', 'MongoDBStore.*'): ['pymongo'],
+    ('ABSStore', 'ABSStore.*'): ['azure.storage.blob'],
+    ('LRUStoreCache', 'LRUStoreCache.*'): ['s3fs'],
+}
+
+
 array_meta_key = '.zarray'
 group_meta_key = '.zgroup'
 attrs_key = '.zattrs'
@@ -1099,8 +1107,10 @@ class ZipStore(MutableMapping):
 
         >>> store = zarr.ZipStore('data/example.zip', mode='w')
         >>> z = zarr.zeros(100, chunks=10, store=store)
-        >>> z[...] = 42  # first write OK
-        >>> z[...] = 42  # second write generates warnings
+        >>> # first write OK
+        ... z[...] = 42
+        >>> # second write generates warnings
+        ... z[...] = 42  # doctest: +SKIP
         >>> store.close()
 
     This can also happen in a more subtle situation, where data are written only
@@ -1110,7 +1120,8 @@ class ZipStore(MutableMapping):
         >>> store = zarr.ZipStore('data/example.zip', mode='w')
         >>> z = zarr.zeros(100, chunks=10, store=store)
         >>> z[5:15] = 42
-        >>> z[15:25] = 42  # write overlaps chunk previously written, generates warnings
+        >>> # write overlaps chunk previously written, generates warnings
+        ... z[15:25] = 42  # doctest: +SKIP
 
     To avoid creating duplicate entries, only write data once, and align writes
     with chunk boundaries. This alignment is done automatically if you call
