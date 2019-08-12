@@ -1740,8 +1740,8 @@ class LRUStoreCache(MutableMapping):
         >>> s3 = s3fs.S3FileSystem(anon=True, client_kwargs=dict(region_name='eu-west-2'))
         >>> store = s3fs.S3Map(root='zarr-demo/store', s3=s3, check=False)
         >>> cache = zarr.LRUStoreCache(store, max_size=2**28)
-        >>> root = zarr.group(store=cache)
-        >>> z = root['foo/bar/baz']
+        >>> root = zarr.group(store=cache)  # doctest: +REMOTE_DATA
+        >>> z = root['foo/bar/baz']  # doctest: +REMOTE_DATA
         >>> from timeit import timeit
         >>> # first data access is relatively slow, retrieved from store
         ... timeit('print(z[:].tostring())', number=1, globals=globals())  # doctest: +SKIP
