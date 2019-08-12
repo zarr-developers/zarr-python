@@ -4,9 +4,6 @@
 schedule: every month
 
 requirements:
-  - requirements.txt:
-      pin: False
-      update: False
   - requirements_test.txt:
       pin: False
       update: False
