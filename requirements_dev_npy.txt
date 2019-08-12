@@ -1,4 +1,5 @@
 # Break this out into a separate file to allow testing against
 # different versions of numpy. This file should pin to the latest
 # numpy version.
-numpy==1.17.0
+numpy==1.16.4; python_version < '3.0'
+numpy==1.17.0; python_version > '3.0'
