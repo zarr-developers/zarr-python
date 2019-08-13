@@ -6,11 +6,14 @@ Upcoming Release
 
 * Use uniform chunking for all dimensions when specifying ``chunks`` as an integer.
   Also adds support for specifying ``-1`` to chunk across an entire dimension.
-  By :user:`James Bourbeau <jrbourbeau>`; :issue:`456`
+  By :user:`James Bourbeau <jrbourbeau>`; :issue:`456`.
 
 * Rename ``DictStore`` to ``MemoryStore``.
-  By :user:`James Bourbeau <jrbourbeau>`; :issue:`455`
+  By :user:`James Bourbeau <jrbourbeau>`; :issue:`455`.
 
+* Upgrade dependencies in the test matrices and resolve a
+  compatibility issue with testing against the Azure Storage
+  Emulator. By :user:`alimanfoo`; :issue:`468`, :issue:`467`.
 
 .. _release_2.3.2:
 
@@ -21,19 +24,19 @@ Enhancements
 ~~~~~~~~~~~~
 
 * Use ``scandir`` in ``DirectoryStore``'s ``getsize`` method.
-  By :user:`John Kirkham <jakirkham>`; :issue:`431`
+  By :user:`John Kirkham <jakirkham>`; :issue:`431`.
 
 Bug fixes
 ~~~~~~~~~
 
 * Add and use utility functions to simplify reading and writing JSON.
-  By :user:`John Kirkham <jakirkham>`; :issue:`429`, :issue:`430`
+  By :user:`John Kirkham <jakirkham>`; :issue:`429`, :issue:`430`.
 
 * Fix ``collections``'s ``DeprecationWarning``\ s.
-  By :user:`John Kirkham <jakirkham>`; :issue:`432`
+  By :user:`John Kirkham <jakirkham>`; :issue:`432`.
 
 * Fix tests on big endian machines.
-  By :user:`Elliott Sales de Andrade <QuLogic>`; :issue:`427`
+  By :user:`Elliott Sales de Andrade <QuLogic>`; :issue:`427`.
 
 
 .. _release_2.3.1:

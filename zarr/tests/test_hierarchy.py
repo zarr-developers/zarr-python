@@ -34,6 +34,11 @@ from zarr.util import InfoReporter
 from numcodecs import Zlib
 
 
+# also check for environment variables indicating whether tests requiring
+# services should be run
+ZARR_TEST_ABS = os.environ.get('ZARR_TEST_ABS', '0')
+
+
 # needed for PY2/PY3 consistent behaviour
 if PY2:  # pragma: py3 no cover
     warnings.resetwarnings()
@@ -869,8 +874,9 @@ class TestGroupWithDirectoryStore(TestGroup):
         return store, None
 
 
-@pytest.mark.skipif(asb is None,
-                    reason="azure-blob-storage could not be imported")
+@pytest.mark.skipif(asb is None or ZARR_TEST_ABS == '0',
+                    reason="azure-blob-storage could not be imported or tests not enabled"
+                           "via environment variable")
 class TestGroupWithABSStore(TestGroup):
 
     @staticmethod
