@@ -1523,6 +1523,7 @@ def _lmdb_decode_key_buffer(key):
     # assume buffers=True
     return key.tobytes().decode('ascii')
 
+
 def _lmdb_decode_key_bytes(key):
     # assume buffers=False
     return key.decode('ascii')

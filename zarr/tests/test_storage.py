@@ -1015,6 +1015,7 @@ try:
 except ImportError:  # pragma: no cover
     ndbm = None
 
+
 @unittest.skipIf(ndbm is None, reason='ndbm is not installed')
 class TestDBMStoreNDBM(TestDBMStore):
 
