@@ -12,9 +12,10 @@ addons:
     - libdb-dev
 
 env:
-  - ZARR_TEST_ABS=1
-  - ZARR_TEST_MONGO=1
-  - ZARR_TEST_REDIS=1
+  global:
+    - ZARR_TEST_ABS=1
+    - ZARR_TEST_MONGO=1
+    - ZARR_TEST_REDIS=1
 
 services:
   - docker
