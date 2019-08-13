@@ -693,7 +693,11 @@ class CoordinateIndexer(object):
         self.chunk_rixs = np.nonzero(self.chunk_nitems)[0]
 
         # unravel chunk indices
-        self.chunk_mixs = np.unravel_index(self.chunk_rixs, shape=array._cdata_shape)
+        if tuple(map(int, np.__version__.split('.')[:2])) < (1, 16):
+            self.chunk_mixs = np.unravel_index(self.chunk_rixs, dims=array._cdata_shape)
+        else:
+            # deal with change dims->shape in arguments as of numpy 1.16
+            self.chunk_mixs = np.unravel_index(self.chunk_rixs, shape=array._cdata_shape)
 
     def __iter__(self):
 
