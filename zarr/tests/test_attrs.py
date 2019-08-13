@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-from __future__ import absolute_import, print_function, division
 import json
 import unittest
 
@@ -9,7 +8,6 @@ import pytest
 
 from zarr.attrs import Attributes
 from zarr.compat import binary_type, text_type
-from zarr.errors import PermissionError
 from zarr.tests.util import CountingDict
 
 

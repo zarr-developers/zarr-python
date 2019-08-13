@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 """This module contains a storage class and codec to support the N5 format.
 """
-from __future__ import absolute_import, division
 from .meta import ZARR_FORMAT, json_dumps, json_loads
 from .storage import (
         NestedDirectoryStore,
@@ -571,7 +570,7 @@ class N5ChunkWrapper(Codec):
 
             # out should only be used if we read a complete chunk
             assert chunk_shape == self.chunk_shape, (
-                "Expected chunk of shape %s, found %s" % (
+                "Expected chunk of shape {}, found {}".format(
                     self.chunk_shape,
                     chunk_shape))
 

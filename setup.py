@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-from __future__ import absolute_import, print_function, division
 from setuptools import setup
 import sys
 
@@ -16,11 +15,6 @@ dependencies = [
     'fasteners',
     'numcodecs>=0.6.2',
 ]
-
-if sys.version_info < (3, 5):
-    dependencies.append('scandir')
-if sys.version_info < (3, 3) and sys.platform == "win32":
-    dependencies.append('pyosreplace')
 
 setup(
     name='zarr',

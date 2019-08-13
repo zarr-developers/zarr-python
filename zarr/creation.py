@@ -1,10 +1,7 @@
 # -*- coding: utf-8 -*-
-from __future__ import absolute_import, print_function, division
 from warnings import warn
 
-
 import numpy as np
-
 
 from zarr.core import Array
 from zarr.storage import (DirectoryStore, init_array, contains_array, contains_group,

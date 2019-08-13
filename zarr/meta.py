@@ -1,12 +1,11 @@
 # -*- coding: utf-8 -*-
-from __future__ import absolute_import, print_function, division
 import base64
 
 
 import numpy as np
 
 
-from zarr.compat import PY2, Mapping
+from zarr.compat import Mapping
 from zarr.errors import MetadataError
 from zarr.util import json_dumps, json_loads
 
@@ -89,11 +88,7 @@ def _decode_dtype_descr(d):
     # need to convert list of lists to list of tuples
     if isinstance(d, list):
         # recurse to handle nested structures
-        if PY2:  # pragma: py3 no cover
-            # under PY2 numpy rejects unicode field names
-            d = [(k[0].encode("ascii"), _decode_dtype_descr(k[1])) + tuple(k[2:]) for k in d]
-        else:  # pragma: py2 no cover
-            d = [(k[0], _decode_dtype_descr(k[1])) + tuple(k[2:]) for k in d]
+        d = [(k[0], _decode_dtype_descr(k[1])) + tuple(k[2:]) for k in d]
     return d
 
 
@@ -191,9 +186,7 @@ def encode_fill_value(v, dtype):
              encode_fill_value(v.imag, dtype.type().imag.dtype))
         return v
     elif dtype.kind in 'SV':
-        v = base64.standard_b64encode(v)
-        if not PY2:  # pragma: py2 no cover
-            v = str(v, 'ascii')
+        v = str(base64.standard_b64encode(v), 'ascii')
         return v
     elif dtype.kind == 'U':
         return v

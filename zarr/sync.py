@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-from __future__ import absolute_import, print_function, division
 from threading import Lock
 from collections import defaultdict
 import os

@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-from __future__ import absolute_import, print_function, division
 import unittest
 from tempfile import mkdtemp, mktemp
 import atexit
@@ -23,8 +22,7 @@ from zarr.storage import (DirectoryStore, init_array, init_group, NestedDirector
                           DBMStore, LMDBStore, SQLiteStore, ABSStore, atexit_rmtree,
                           atexit_rmglob, LRUStoreCache)
 from zarr.core import Array
-from zarr.errors import PermissionError
-from zarr.compat import PY2, text_type, binary_type, zip_longest
+from zarr.compat import text_type, binary_type, zip_longest
 from zarr.meta import json_loads
 from zarr.util import buffer_size
 from zarr.n5 import n5_keywords, N5Store
@@ -37,12 +35,6 @@ from numcodecs.tests.common import greetings
 # also check for environment variables indicating whether tests requiring
 # services should be run
 ZARR_TEST_ABS = os.environ.get('ZARR_TEST_ABS', '0')
-
-
-# needed for PY2/PY3 consistent behaviour
-if PY2:  # pragma: py3 no cover
-    warnings.resetwarnings()
-    warnings.simplefilter('always')
 
 
 # noinspection PyMethodMayBeStatic
@@ -102,10 +94,7 @@ class TestArray(unittest.TestCase):
         z = self.create_array(shape=(1050,), chunks=100, dtype='f8', compressor=[])
         z[:] = np.random.random(z.shape)
 
-        if PY2:  # pragma: py3 no cover
-            expected_type = (str, text_type)
-        else:    # pragma: py2 no cover
-            expected_type = text_type
+        expected_type = text_type
 
         for k in z.chunk_store.keys():
             if not isinstance(k, expected_type):  # pragma: no cover

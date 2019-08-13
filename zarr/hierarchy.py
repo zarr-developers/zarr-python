@@ -1,11 +1,10 @@
 # -*- coding: utf-8 -*-
-from __future__ import absolute_import, print_function, division
 from itertools import islice
 
 import numpy as np
 
 
-from zarr.compat import PY2, MutableMapping
+from zarr.compat import MutableMapping
 from zarr.attrs import Attributes
 from zarr.core import Array
 from zarr.storage import (contains_array, contains_group, init_group,
@@ -218,7 +217,7 @@ class Group(MutableMapping):
 
     def __repr__(self):
         t = type(self)
-        r = '<%s.%s' % (t.__module__, t.__name__)
+        r = '<{}.{}'.format(t.__module__, t.__name__)
         if self.name:
             r += ' %r' % self.name
         if self._read_only:
@@ -229,7 +228,7 @@ class Group(MutableMapping):
     def info_items(self):
 
         def typestr(o):
-            return '%s.%s' % (type(o).__module__, type(o).__name__)
+            return '{}.{}'.format(type(o).__module__, type(o).__name__)
 
         items = []
 
@@ -353,11 +352,8 @@ class Group(MutableMapping):
             raise AttributeError
 
     def __dir__(self):
-        if PY2:  # pragma: py3 no cover
-            base = instance_dir(self)
-        else:  # pragma: py2 no cover
-            # noinspection PyUnresolvedReferences
-            base = super().__dir__()
+        # noinspection PyUnresolvedReferences
+        base = super().__dir__()
         keys = sorted(set(base + list(self)))
         keys = [k for k in keys if is_valid_python_name(k)]
         return keys

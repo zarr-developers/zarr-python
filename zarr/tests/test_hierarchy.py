@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-from __future__ import absolute_import, print_function, division
 import unittest
 import tempfile
 import atexit
@@ -25,10 +24,9 @@ from zarr.storage import (MemoryStore, DirectoryStore, ZipStore, init_group, ini
                           NestedDirectoryStore, DBMStore, LMDBStore, SQLiteStore,
                           ABSStore, atexit_rmglob, LRUStoreCache)
 from zarr.core import Array
-from zarr.compat import PY2, text_type
+from zarr.compat import text_type
 from zarr.hierarchy import Group, group, open_group
 from zarr.attrs import Attributes
-from zarr.errors import PermissionError
 from zarr.creation import open_array
 from zarr.util import InfoReporter
 from numcodecs import Zlib
@@ -37,12 +35,6 @@ from numcodecs import Zlib
 # also check for environment variables indicating whether tests requiring
 # services should be run
 ZARR_TEST_ABS = os.environ.get('ZARR_TEST_ABS', '0')
-
-
-# needed for PY2/PY3 consistent behaviour
-if PY2:  # pragma: py3 no cover
-    warnings.resetwarnings()
-    warnings.simplefilter('always')
 
 
 # noinspection PyStatementEffect
@@ -1193,8 +1185,6 @@ def _check_tree(g, expect_bytes, expect_text):
     assert expect_bytes == bytes(g.tree())
     assert expect_text == text_type(g.tree())
     expect_repr = expect_text
-    if PY2:  # pragma: py3 no cover
-        expect_repr = expect_bytes
     assert expect_repr == repr(g.tree())
     # test _repr_html_ lightly
     # noinspection PyProtectedMember

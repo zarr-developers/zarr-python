@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-from __future__ import absolute_import, print_function, division
 import json
 import base64
 
@@ -8,7 +7,7 @@ import numpy as np
 import pytest
 
 
-from zarr.compat import binary_type, text_type, PY2
+from zarr.compat import binary_type, text_type
 from zarr.meta import (decode_array_metadata, encode_dtype, decode_dtype, ZARR_FORMAT,
                        decode_group_metadata, encode_array_metadata)
 from zarr.errors import MetadataError
@@ -368,8 +367,7 @@ def test_encode_decode_fill_values_bytes():
 
         # define expected metadata encoded as JSON
         s = base64.standard_b64encode(v)
-        if not PY2:
-            s = s.decode()
+        s = s.decode()
         meta_json = '''{
             "chunks": [10],
             "compressor": {"id": "zlib", "level": 1},

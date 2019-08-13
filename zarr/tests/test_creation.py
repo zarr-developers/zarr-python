@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-from __future__ import absolute_import, print_function, division
 import tempfile
 import shutil
 import atexit
@@ -18,9 +17,7 @@ from zarr.core import Array
 from zarr.storage import DirectoryStore
 from zarr.n5 import N5Store
 from zarr.hierarchy import open_group
-from zarr.errors import PermissionError
 from zarr.codecs import Zlib
-from zarr.compat import PY2
 
 
 # something bcolz-like
@@ -162,17 +159,8 @@ def test_full():
 
     # bytes fill value / unicode dtype
     v = b'xxx'
-    if PY2:  # pragma: py3 no cover
-        # allow this on PY2
-        z = full(100, chunks=10, fill_value=v, dtype='U3')
-        a = z[...]
-        assert z.dtype == a.dtype
-        assert v == a[0]
-        assert np.all(a == v)
-    else:  # pragma: py2 no cover
-        # be strict on PY3
-        with pytest.raises(ValueError):
-            full(100, chunks=10, fill_value=v, dtype='U3')
+    with pytest.raises(ValueError):
+        full(100, chunks=10, fill_value=v, dtype='U3')
 
 
 def test_open_array():
@@ -476,15 +464,12 @@ def test_compression_args():
     assert 'zlib' == z.compressor.codec_id
     assert 9 == z.compressor.level
 
-    # cannot get warning tests to work on PY2
-    if not PY2:  # pragma: py2 no cover
-
-        with pytest.warns(UserWarning):
-            # 'compressor' overrides 'compression'
-            create(100, compressor=Zlib(9), compression='bz2', compression_opts=1)
-        with pytest.warns(UserWarning):
-            # 'compressor' ignores 'compression_opts'
-            create(100, compressor=Zlib(9), compression_opts=1)
+    with pytest.warns(UserWarning):
+        # 'compressor' overrides 'compression'
+        create(100, compressor=Zlib(9), compression='bz2', compression_opts=1)
+    with pytest.warns(UserWarning):
+        # 'compressor' ignores 'compression_opts'
+        create(100, compressor=Zlib(9), compression_opts=1)
 
 
 def test_create_read_only():

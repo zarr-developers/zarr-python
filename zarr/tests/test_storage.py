@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-from __future__ import absolute_import, print_function, division
 from contextlib import contextmanager
 import unittest
 import tempfile
@@ -44,9 +43,8 @@ from zarr.storage import (init_array, array_meta_key, attrs_key, DictStore, Memo
                           ConsolidatedMetadataStore, MongoDBStore, RedisStore)
 from zarr.meta import (decode_array_metadata, encode_array_metadata, ZARR_FORMAT,
                        decode_group_metadata, encode_group_metadata)
-from zarr.compat import PY2
 from zarr.codecs import AsType, Zlib, Blosc, BZ2
-from zarr.errors import PermissionError, MetadataError
+from zarr.errors import MetadataError
 from zarr.hierarchy import group
 from zarr.n5 import N5Store
 from zarr.tests.util import CountingDict
@@ -988,19 +986,14 @@ class TestDBMStoreDumb(TestDBMStore):
     def create_store(self):
         path = tempfile.mktemp(suffix='.dumbdbm')
         atexit.register(atexit_rmglob, path + '*')
-        if PY2:  # pragma: py3 no cover
-            import dumbdbm
-        else:  # pragma: py2 no cover
-            import dbm.dumb as dumbdbm
+
+        import dbm.dumb as dumbdbm
         store = DBMStore(path, flag='n', open=dumbdbm.open)
         return store
 
 
 try:
-    if PY2:  # pragma: py3 no cover
-        import gdbm
-    else:  # pragma: py2 no cover
-        import dbm.gnu as gdbm
+    import dbm.gnu as gdbm
 except ImportError:  # pragma: no cover
     gdbm = None
 
@@ -1015,20 +1008,19 @@ class TestDBMStoreGnu(TestDBMStore):
         return store
 
 
-if not PY2:  # pragma: py2 no cover
-    try:
-        import dbm.ndbm as ndbm
-    except ImportError:  # pragma: no cover
-        ndbm = None
+try:
+    import dbm.ndbm as ndbm
+except ImportError:  # pragma: no cover
+    ndbm = None
 
-    @unittest.skipIf(ndbm is None, reason='ndbm is not installed')
-    class TestDBMStoreNDBM(TestDBMStore):
+@unittest.skipIf(ndbm is None, reason='ndbm is not installed')
+class TestDBMStoreNDBM(TestDBMStore):
 
-        def create_store(self):
-            path = tempfile.mktemp(suffix='.ndbm')
-            atexit.register(atexit_rmglob, path + '*')
-            store = DBMStore(path, flag='n', open=ndbm.open)
-            return store
+    def create_store(self):
+        path = tempfile.mktemp(suffix='.ndbm')
+        atexit.register(atexit_rmglob, path + '*')
+        store = DBMStore(path, flag='n', open=ndbm.open)
+        return store
 
 
 try:
@@ -1059,12 +1051,7 @@ class TestLMDBStore(StoreTests, unittest.TestCase):
     def create_store(self):
         path = tempfile.mktemp(suffix='.lmdb')
         atexit.register(atexit_rmtree, path)
-        if PY2:  # pragma: py3 no cover
-            # don't use buffers, otherwise would have to rewrite tests as bytes and
-            # buffer don't compare equal in PY2
-            buffers = False
-        else:  # pragma: py2 no cover
-            buffers = True
+        buffers = True
         store = LMDBStore(path, buffers=buffers)
         return store
 

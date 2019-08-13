@@ -1,9 +1,4 @@
 # -*- coding: utf-8 -*-
-from __future__ import absolute_import, print_function, division
-
-
-from zarr.compat import PermissionError
-
 
 class MetadataError(Exception):
     pass

@@ -1,12 +1,11 @@
 # -*- coding: utf-8 -*-
-from __future__ import absolute_import, print_function, division
 import json
 
 
 import numpy as np
 
 
-from zarr.compat import PY2, text_type
+from zarr.compat import text_type
 from zarr.errors import MetadataError
 
 
@@ -60,12 +59,7 @@ def _decode_dtype_descr(d):
     # need to convert list of lists to list of tuples
     if isinstance(d, list):
         # recurse to handle nested structures
-        if PY2:
-            # under PY2 numpy rejects unicode field names
-            d = [(f.encode('ascii'), _decode_dtype_descr(v))
-                 for f, v in d]
-        else:
-            d = [(f, _decode_dtype_descr(v)) for f, v in d]
+        d = [(f, _decode_dtype_descr(v)) for f, v in d]
     return d
 
 
