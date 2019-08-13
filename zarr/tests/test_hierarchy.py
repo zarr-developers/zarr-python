@@ -6,7 +6,6 @@ import shutil
 import tempfile
 import textwrap
 import unittest
-import warnings
 
 import numpy as np
 import pytest
@@ -28,8 +27,6 @@ try:
     import azure.storage.blob as asb
 except ImportError:  # pragma: no cover
     asb = None
-
-
 
 
 # also check for environment variables indicating whether tests requiring

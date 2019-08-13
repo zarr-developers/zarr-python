@@ -4,7 +4,6 @@ import os
 import pickle
 import shutil
 import unittest
-import warnings
 from itertools import zip_longest
 from tempfile import mkdtemp, mktemp
 
@@ -29,8 +28,6 @@ try:
     import azure.storage.blob as asb
 except ImportError:  # pragma: no cover
     asb = None
-
-
 
 
 # also check for environment variables indicating whether tests requiring
