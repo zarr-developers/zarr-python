@@ -141,12 +141,13 @@ Running the test suite
 Zarr includes a suite of unit tests, as well as doctests included in
 function and class docstrings and in the tutorial and storage
 spec. The simplest way to run the unit tests is to activate your
-development environment and invoke::
+development environment (see `creating a development environment`_ above)
+and invoke::
 
     $ pytest -v zarr
 
 Some tests require optional dependencies to be installed, otherwise
-the tests will be skipped. To install optional dependencies, run::
+the tests will be skipped. To install all optional dependencies, run::
 
     $ pip install -r requirements_dev_optional.txt
 
@@ -161,14 +162,12 @@ optional dependencies to be installed), run::
     $ python -m doctest -o NORMALIZE_WHITESPACE -o ELLIPSIS docs/tutorial.rst docs/spec/v2.rst
 
 Note that some tests also require storage services to be running
-locally. For example, testing the Azure Blob Storage functionality
-requires a storage emulator service to be running locally. The
-appropriate client library for the service must also be installed,
-otherwise the test will be skipped. See the file
-``requirements_dev_service.txt`` for a list of client libraries that
-are needed to run tests against services. See the documentation for
-the service for information on how to run the service (or service
-emulator) locally.
+locally. To run the Azure Blob Service storage tests, run an Azure
+storage emulator (e.g., azurite) and set the environment variable
+``ZARR_TEST_ABS=1``. To run the Mongo DB storage tests, run a Mongo
+server locally and set the environment variable ``ZARR_TEST_MONGO=1``.
+To run the Redis storage tests, run a Redis server locally on port
+6379 and set the environment variable ``ZARR_TEST_REDIS=1``.
 
 All tests are automatically run via Travis (Linux) and AppVeyor
 (Windows) continuous integration services for every pull
@@ -177,7 +176,6 @@ can be accepted. Test coverage is also collected automatically via the
 Coveralls service, and total coverage over all builds must be 100%
 (although individual builds may be lower due to Python 2/3 or other
 differences).
-
 
 Code standards
 ~~~~~~~~~~~~~~
