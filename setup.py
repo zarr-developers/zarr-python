@@ -35,6 +35,7 @@ setup(
         'setuptools>18.0',
         'setuptools-scm>1.5.4'
     ],
+    python_requires='>=3.5',
     install_requires=dependencies,
     package_dir={'': '.'},
     packages=['zarr', 'zarr.tests'],
@@ -47,8 +48,6 @@ setup(
         'Programming Language :: Python',
         'Topic :: Software Development :: Libraries :: Python Modules',
         'Operating System :: Unix',
-        'Programming Language :: Python :: 2',
-        'Programming Language :: Python :: 2.7',
         'Programming Language :: Python :: 3',
         'Programming Language :: Python :: 3.5',
         'Programming Language :: Python :: 3.6',
