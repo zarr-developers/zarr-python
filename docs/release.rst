@@ -15,6 +15,9 @@ Upcoming Release
   compatibility issue with testing against the Azure Storage
   Emulator. By :user:`alimanfoo`; :issue:`468`, :issue:`467`.
 
+* Removed support for Python 2.
+  By :user:`jhamman`; :issue:`393`, :issue:`470`.
+
 .. _release_2.3.2:
 
 2.3.2
