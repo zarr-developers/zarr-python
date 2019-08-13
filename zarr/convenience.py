@@ -1,19 +1,20 @@
 # -*- coding: utf-8 -*-
 """Convenience functions for storing and loading data."""
 import io
-import re
 import itertools
-
+import re
+from collections.abc import Mapping
 
 from zarr.core import Array
-from zarr.creation import (open_array, normalize_store_arg,
-                           array as _create_array)
-from zarr.hierarchy import open_group, group as _create_group, Group
-from zarr.storage import contains_array, contains_group
-from zarr.errors import err_path_not_found, CopyError
-from zarr.util import normalize_storage_path, TreeViewer, buffer_size
-from zarr.compat import Mapping, text_type
+from zarr.creation import array as _create_array
+from zarr.creation import normalize_store_arg, open_array
+from zarr.errors import CopyError, err_path_not_found
+from zarr.hierarchy import Group
+from zarr.hierarchy import group as _create_group
+from zarr.hierarchy import open_group
 from zarr.meta import json_dumps, json_loads
+from zarr.storage import contains_array, contains_group
+from zarr.util import TreeViewer, buffer_size, normalize_storage_path
 
 
 # noinspection PyShadowingBuiltins

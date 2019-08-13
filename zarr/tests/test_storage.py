@@ -1,19 +1,34 @@
 # -*- coding: utf-8 -*-
-from contextlib import contextmanager
-import unittest
-import tempfile
-import atexit
-import pickle
-import json
 import array
-import shutil
+import atexit
+import json
 import os
+import pickle
+import shutil
+import tempfile
+import unittest
+from contextlib import contextmanager
 from pickle import PicklingError
 
-
 import numpy as np
-from numpy.testing import assert_array_equal, assert_array_almost_equal
 import pytest
+from numpy.testing import assert_array_almost_equal, assert_array_equal
+
+from zarr.codecs import BZ2, AsType, Blosc, Zlib
+from zarr.errors import MetadataError
+from zarr.hierarchy import group
+from zarr.meta import (ZARR_FORMAT, decode_array_metadata,
+                       decode_group_metadata, encode_array_metadata,
+                       encode_group_metadata)
+from zarr.n5 import N5Store
+from zarr.storage import (ABSStore, ConsolidatedMetadataStore, DBMStore,
+                          DictStore, DirectoryStore, LMDBStore, LRUStoreCache,
+                          MemoryStore, MongoDBStore, NestedDirectoryStore,
+                          RedisStore, SQLiteStore, TempStore, ZipStore,
+                          array_meta_key, atexit_rmglob, atexit_rmtree,
+                          attrs_key, default_compressor, getsize,
+                          group_meta_key, init_array, init_group, migrate_1to2)
+from zarr.tests.util import CountingDict
 
 try:
     import sqlite3
@@ -35,19 +50,6 @@ try:
 except ImportError:  # pragma: no cover
     redis = None
 
-from zarr.storage import (init_array, array_meta_key, attrs_key, DictStore, MemoryStore,
-                          DirectoryStore, ZipStore, init_group, group_meta_key,
-                          getsize, migrate_1to2, TempStore, atexit_rmtree,
-                          NestedDirectoryStore, default_compressor, DBMStore,
-                          LMDBStore, SQLiteStore, ABSStore, atexit_rmglob, LRUStoreCache,
-                          ConsolidatedMetadataStore, MongoDBStore, RedisStore)
-from zarr.meta import (decode_array_metadata, encode_array_metadata, ZARR_FORMAT,
-                       decode_group_metadata, encode_group_metadata)
-from zarr.codecs import AsType, Zlib, Blosc, BZ2
-from zarr.errors import MetadataError
-from zarr.hierarchy import group
-from zarr.n5 import N5Store
-from zarr.tests.util import CountingDict
 
 try:
     from zarr.codecs import LZMA

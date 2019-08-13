@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
-from zarr.compat import MutableMapping
-from zarr.errors import PermissionError
+from collections.abc import MutableMapping
+
 from zarr.meta import parse_metadata
 from zarr.util import json_dumps
 

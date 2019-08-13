@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
-import zarr
 import numcodecs
+
+import zarr
 
 
 def test_info():

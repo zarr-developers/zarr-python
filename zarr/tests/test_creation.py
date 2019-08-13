@@ -1,23 +1,22 @@
 # -*- coding: utf-8 -*-
-import tempfile
-import shutil
 import atexit
 import os.path
-
+import shutil
+import tempfile
 
 import numpy as np
-from numpy.testing import assert_array_equal
 import pytest
+from numpy.testing import assert_array_equal
 
-
-from zarr.creation import (array, empty, zeros, ones, full, open_array, empty_like,
-                           zeros_like, ones_like, full_like, open_like, create)
-from zarr.sync import ThreadSynchronizer
-from zarr.core import Array
-from zarr.storage import DirectoryStore
-from zarr.n5 import N5Store
-from zarr.hierarchy import open_group
 from zarr.codecs import Zlib
+from zarr.core import Array
+from zarr.creation import (array, create, empty, empty_like, full, full_like,
+                           ones, ones_like, open_array, open_like, zeros,
+                           zeros_like)
+from zarr.hierarchy import open_group
+from zarr.n5 import N5Store
+from zarr.storage import DirectoryStore
+from zarr.sync import ThreadSynchronizer
 
 
 # something bcolz-like

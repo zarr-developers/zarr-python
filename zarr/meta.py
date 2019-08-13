@@ -1,14 +1,11 @@
 # -*- coding: utf-8 -*-
 import base64
-
+from collections.abc import Mapping
 
 import numpy as np
 
-
-from zarr.compat import Mapping
 from zarr.errors import MetadataError
 from zarr.util import json_dumps, json_loads
-
 
 ZARR_FORMAT = 2
 

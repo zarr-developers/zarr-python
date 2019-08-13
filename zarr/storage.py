@@ -15,33 +15,34 @@ classes may also optionally implement a `rename` method (rename all members unde
 path) and a `getsize` method (return the size in bytes of a given value).
 
 """
-from collections import OrderedDict
-import os
-import operator
-import tempfile
-import zipfile
-import shutil
 import atexit
 import errno
-import re
-import sys
+import glob
 import multiprocessing
+import operator
+import os
+import re
+import shutil
+import sys
+import tempfile
+import warnings
+import zipfile
+from collections import OrderedDict
+from collections.abc import MutableMapping
+from os import scandir
 from pickle import PicklingError
 from threading import Lock, RLock
-import glob
-import warnings
 
-
-from zarr.util import (json_loads, normalize_shape, normalize_chunks, normalize_order,
-                       normalize_storage_path, buffer_size,
-                       normalize_fill_value, nolock, normalize_dtype)
-from zarr.meta import encode_array_metadata, encode_group_metadata
-from zarr.compat import MutableMapping, OrderedDict_move_to_end, scandir
-from numcodecs.registry import codec_registry
 from numcodecs.compat import ensure_bytes, ensure_contiguous_ndarray
-from zarr.errors import (err_contains_group, err_contains_array, err_bad_compressor,
-                         err_fspath_exists_notdir, err_read_only, MetadataError)
+from numcodecs.registry import codec_registry
 
+from zarr.errors import (MetadataError, err_bad_compressor, err_contains_array,
+                         err_contains_group, err_fspath_exists_notdir,
+                         err_read_only)
+from zarr.meta import encode_array_metadata, encode_group_metadata
+from zarr.util import (buffer_size, json_loads, nolock, normalize_chunks,
+                       normalize_dtype, normalize_fill_value, normalize_order,
+                       normalize_shape, normalize_storage_path)
 
 __doctest_requires__ = {
     ('RedisStore', 'RedisStore.*'): ['redis'],
@@ -1855,7 +1856,7 @@ class LRUStoreCache(MutableMapping):
                 # cache hit if no KeyError is raised
                 self.hits += 1
                 # treat the end as most recently used
-                OrderedDict_move_to_end(self._values_cache, key)
+                self._values_cache.move_to_end(key)
 
         except KeyError:
             # cache miss, retrieve value from the store

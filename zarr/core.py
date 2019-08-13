@@ -1,27 +1,28 @@
 # -*- coding: utf-8 -*-
 import binascii
-import operator
-import itertools
 import hashlib
+import itertools
+import operator
 import re
+from functools import reduce
 
 import numpy as np
 from numcodecs.compat import ensure_bytes, ensure_ndarray
 
-
-from zarr.util import (is_total_slice, human_readable_size, normalize_resize_args,
-                       normalize_storage_path, normalize_shape, normalize_chunks,
-                       InfoReporter, check_array_shape, nolock)
-from zarr.storage import array_meta_key, attrs_key, listdir, getsize
-from zarr.meta import decode_array_metadata, encode_array_metadata
 from zarr.attrs import Attributes
-from zarr.errors import err_read_only, err_array_not_found
-from zarr.compat import reduce
 from zarr.codecs import AsType, get_codec
-from zarr.indexing import (OIndex, OrthogonalIndexer, BasicIndexer, VIndex,
-                           CoordinateIndexer, MaskIndexer, check_fields, pop_fields,
-                           ensure_tuple, is_scalar, is_contiguous_selection,
-                           err_too_many_indices, check_no_multi_fields)
+from zarr.errors import err_array_not_found, err_read_only
+from zarr.indexing import (BasicIndexer, CoordinateIndexer, MaskIndexer,
+                           OIndex, OrthogonalIndexer, VIndex, check_fields,
+                           check_no_multi_fields, ensure_tuple,
+                           err_too_many_indices, is_contiguous_selection,
+                           is_scalar, pop_fields)
+from zarr.meta import decode_array_metadata, encode_array_metadata
+from zarr.storage import array_meta_key, attrs_key, getsize, listdir
+from zarr.util import (InfoReporter, check_array_shape, human_readable_size,
+                       is_total_slice, nolock, normalize_chunks,
+                       normalize_resize_args, normalize_shape,
+                       normalize_storage_path)
 
 
 # noinspection PyUnresolvedReferences

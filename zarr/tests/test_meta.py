@@ -1,24 +1,22 @@
 # -*- coding: utf-8 -*-
-import json
 import base64
-
+import json
 
 import numpy as np
 import pytest
 
-
-from zarr.compat import binary_type, text_type
-from zarr.meta import (decode_array_metadata, encode_dtype, decode_dtype, ZARR_FORMAT,
-                       decode_group_metadata, encode_array_metadata)
+from zarr.codecs import Blosc, Delta, Zlib
 from zarr.errors import MetadataError
-from zarr.codecs import Delta, Zlib, Blosc
+from zarr.meta import (ZARR_FORMAT, decode_array_metadata, decode_dtype,
+                       decode_group_metadata, encode_array_metadata,
+                       encode_dtype)
 
 
 def assert_json_equal(expect, actual):
-    if isinstance(expect, binary_type):  # pragma: py3 no cover
-        expect = text_type(expect, 'ascii')
-    if isinstance(actual, binary_type):
-        actual = text_type(actual, 'ascii')
+    if isinstance(expect, bytes):  # pragma: py3 no cover
+        expect = str(expect, 'ascii')
+    if isinstance(actual, bytes):
+        actual = str(actual, 'ascii')
     ej = json.loads(expect)
     aj = json.loads(actual)
     assert ej == aj

@@ -1,16 +1,13 @@
 # -*- coding: utf-8 -*-
 import json
 
-
 import numpy as np
 
-
-from zarr.compat import text_type
 from zarr.errors import MetadataError
 
 
 def decode_metadata(b):
-    s = text_type(b, 'ascii')
+    s = str(b, 'ascii')
     meta = json.loads(s)
     zarr_format = meta.get('zarr_format', None)
     if zarr_format != 1:

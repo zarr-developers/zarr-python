@@ -1,8 +1,7 @@
 # -*- coding: utf-8 -*-
-from threading import Lock
-from collections import defaultdict
 import os
-
+from collections import defaultdict
+from threading import Lock
 
 import fasteners
 

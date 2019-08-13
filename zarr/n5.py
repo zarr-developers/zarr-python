@@ -1,22 +1,21 @@
 # -*- coding: utf-8 -*-
 """This module contains a storage class and codec to support the N5 format.
 """
-from .meta import ZARR_FORMAT, json_dumps, json_loads
-from .storage import (
-        NestedDirectoryStore,
-        group_meta_key as zarr_group_meta_key,
-        array_meta_key as zarr_array_meta_key,
-        attrs_key as zarr_attrs_key,
-        _prog_ckey, _prog_number)
-from numcodecs.abc import Codec
-from numcodecs.compat import ndarray_copy
-from numcodecs.registry import register_codec, get_codec
-import numpy as np
+import os
 import struct
 import sys
-import os
 import warnings
 
+import numpy as np
+from numcodecs.abc import Codec
+from numcodecs.compat import ndarray_copy
+from numcodecs.registry import get_codec, register_codec
+
+from .meta import ZARR_FORMAT, json_dumps, json_loads
+from .storage import NestedDirectoryStore, _prog_ckey, _prog_number
+from .storage import array_meta_key as zarr_array_meta_key
+from .storage import attrs_key as zarr_attrs_key
+from .storage import group_meta_key as zarr_group_meta_key
 
 zarr_to_n5_keys = [
     ('chunks', 'blockSize'),

@@ -1,14 +1,12 @@
 # -*- coding: utf-8 -*-
-import numbers
-import itertools
 import collections
-
+import itertools
+import numbers
 
 import numpy as np
 
-
-from zarr.errors import (err_too_many_indices, err_boundscheck, err_negative_step,
-                         err_vindex_invalid_selection)
+from zarr.errors import (err_boundscheck, err_negative_step,
+                         err_too_many_indices, err_vindex_invalid_selection)
 
 
 def is_integer(x):

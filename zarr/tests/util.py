@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import collections
-from zarr.compat import MutableMapping
+from collections.abc import MutableMapping
 
 
 class CountingDict(MutableMapping):

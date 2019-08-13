@@ -1,32 +1,27 @@
 # -*- coding: utf-8 -*-
-from textwrap import TextWrapper, dedent
 import codecs
+import inspect
 import json
 import numbers
 import uuid
-import inspect
+from textwrap import TextWrapper, dedent
 
-
+import numpy as np
 from asciitree import BoxStyle, LeftAligned
 from asciitree.traversal import Traversal
-import numpy as np
-from numcodecs.compat import ensure_ndarray, ensure_contiguous_ndarray
+from numcodecs.compat import ensure_contiguous_ndarray, ensure_ndarray
 from numcodecs.registry import codec_registry
-
-
-from zarr.compat import text_type, binary_type
-
 
 # codecs to use for object dtype convenience API
 object_codecs = {
-    text_type.__name__: 'vlen-utf8',
-    binary_type.__name__: 'vlen-bytes',
+    str.__name__: 'vlen-utf8',
+    bytes.__name__: 'vlen-bytes',
     'array': 'vlen-array',
 }
 
 
-def ensure_text_type(s):
-    if not isinstance(s, text_type):
+def ensure_str(s):
+    if not isinstance(s, str):
         s = ensure_contiguous_ndarray(s)
         s = codecs.decode(s, 'ascii')
     return s
@@ -40,7 +35,7 @@ def json_dumps(o):
 
 def json_loads(s):
     """Read JSON in a consistent way."""
-    return json.loads(ensure_text_type(s))
+    return json.loads(ensure_str(s))
 
 
 def normalize_shape(shape):
@@ -264,13 +259,13 @@ def normalize_fill_value(fill_value, dtype):
         # special case unicode because of encoding issues on Windows if passed through numpy
         # https://github.com/alimanfoo/zarr/pull/172#issuecomment-343782713
 
-        if not isinstance(fill_value, text_type):
+        if not isinstance(fill_value, str):
             raise ValueError('fill_value {!r} is not valid for dtype {}; must be a '
                              'unicode string'.format(fill_value, dtype))
 
     else:
         try:
-            if isinstance(fill_value, binary_type) and dtype.kind == 'V':
+            if isinstance(fill_value, bytes) and dtype.kind == 'V':
                 # special case for numpy 1.14 compatibility
                 fill_value = np.array(fill_value, dtype=dtype.str).view(dtype)[()]
             else:

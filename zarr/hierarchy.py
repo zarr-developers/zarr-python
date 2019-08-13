@@ -1,22 +1,22 @@
 # -*- coding: utf-8 -*-
+from collections.abc import MutableMapping
 from itertools import islice
 
 import numpy as np
 
-
-from zarr.compat import MutableMapping
 from zarr.attrs import Attributes
 from zarr.core import Array
-from zarr.storage import (contains_array, contains_group, init_group,
-                          MemoryStore, group_meta_key, attrs_key, listdir, rename, rmdir)
-from zarr.creation import (array, create, empty, zeros, ones, full,
-                           empty_like, zeros_like, ones_like, full_like,
-                           normalize_store_arg)
-from zarr.util import (normalize_storage_path, normalize_shape, InfoReporter, TreeViewer,
-                       is_valid_python_name, instance_dir, nolock)
-from zarr.errors import (err_contains_array, err_contains_group, err_group_not_found,
-                         err_read_only)
+from zarr.creation import (array, create, empty, empty_like, full, full_like,
+                           normalize_store_arg, ones, ones_like, zeros,
+                           zeros_like)
+from zarr.errors import (err_contains_array, err_contains_group,
+                         err_group_not_found, err_read_only)
 from zarr.meta import decode_group_metadata
+from zarr.storage import (MemoryStore, attrs_key, contains_array,
+                          contains_group, group_meta_key, init_group, listdir,
+                          rename, rmdir)
+from zarr.util import (InfoReporter, TreeViewer, is_valid_python_name, nolock,
+                       normalize_shape, normalize_storage_path)
 
 
 class Group(MutableMapping):

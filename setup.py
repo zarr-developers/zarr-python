@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
-from setuptools import setup
 import sys
 
+from setuptools import setup
 
 DESCRIPTION = 'An implementation of chunked, compressed, ' \
               'N-dimensional arrays for Python.'
