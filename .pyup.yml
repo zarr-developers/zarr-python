@@ -7,12 +7,12 @@ requirements:
   - requirements_dev_minimal.txt:
       pin: True
       update: all
-  - requirements_rtfd.txt:
-      pin: False
-      update: False
   - requirements_dev_numpy.txt:
       pin: True
       update: all
   - requirements_dev_optional.txt:
       pin: True
       update: all
+  - requirements_rtfd.txt:
+      pin: False
+      update: False
