@@ -9,7 +9,7 @@ from zarr.compat import PY2, MutableMapping
 from zarr.attrs import Attributes
 from zarr.core import Array
 from zarr.storage import (contains_array, contains_group, init_group,
-                          DictStore, group_meta_key, attrs_key, listdir, rename, rmdir)
+                          MemoryStore, group_meta_key, attrs_key, listdir, rename, rmdir)
 from zarr.creation import (array, create, empty, zeros, ones, full,
                            empty_like, zeros_like, ones_like, full_like,
                            normalize_store_arg)
@@ -996,7 +996,7 @@ class Group(MutableMapping):
 
 
 def _normalize_store_arg(store, clobber=False):
-    return normalize_store_arg(store, clobber=clobber, default=DictStore)
+    return normalize_store_arg(store, clobber=clobber, default=MemoryStore)
 
 
 def group(store=None, overwrite=False, chunk_store=None,

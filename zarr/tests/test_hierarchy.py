@@ -20,7 +20,7 @@ except ImportError:  # pragma: no cover
     asb = None
 
 
-from zarr.storage import (DictStore, DirectoryStore, ZipStore, init_group, init_array,
+from zarr.storage import (MemoryStore, DirectoryStore, ZipStore, init_group, init_array,
                           array_meta_key, group_meta_key, atexit_rmtree,
                           NestedDirectoryStore, DBMStore, LMDBStore, SQLiteStore,
                           ABSStore, atexit_rmglob, LRUStoreCache)
@@ -32,6 +32,11 @@ from zarr.errors import PermissionError
 from zarr.creation import open_array
 from zarr.util import InfoReporter
 from numcodecs import Zlib
+
+
+# also check for environment variables indicating whether tests requiring
+# services should be run
+ZARR_TEST_ABS = os.environ.get('ZARR_TEST_ABS', '0')
 
 
 # needed for PY2/PY3 consistent behaviour
@@ -852,11 +857,11 @@ class TestGroup(unittest.TestCase):
         assert isinstance(g2['foo/bar'], Array)
 
 
-class TestGroupWithDictStore(TestGroup):
+class TestGroupWithMemoryStore(TestGroup):
 
     @staticmethod
     def create_store():
-        return DictStore(), None
+        return MemoryStore(), None
 
 
 class TestGroupWithDirectoryStore(TestGroup):
@@ -869,8 +874,9 @@ class TestGroupWithDirectoryStore(TestGroup):
         return store, None
 
 
-@pytest.mark.skipif(asb is None,
-                    reason="azure-blob-storage could not be imported")
+@pytest.mark.skipif(asb is None or ZARR_TEST_ABS == '0',
+                    reason="azure-blob-storage could not be imported or tests not enabled"
+                           "via environment variable")
 class TestGroupWithABSStore(TestGroup):
 
     @staticmethod

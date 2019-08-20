@@ -11,7 +11,7 @@ Asking for help
 If you have a question about how to use Zarr, please post your question on
 StackOverflow using the `"zarr" tag <https://stackoverflow.com/questions/tagged/zarr>`_.
 If you don't get a response within a day or two, feel free to raise a `GitHub issue
-<https://github.com/zarr-developers/zarr/issues/new>`_ including a link to your StackOverflow
+<https://github.com/zarr-developers/zarr-python/issues/new>`_ including a link to your StackOverflow
 question. We will try to respond to questions as quickly as possible, but please bear
 in mind that there may be periods where we have limited time to answer questions
 due to other commitments.
@@ -20,7 +20,7 @@ Bug reports
 -----------
 
 If you find a bug, please raise a `GitHub issue
-<https://github.com/zarr-developers/zarr/issues/new>`_. Please include the following items in
+<https://github.com/zarr-developers/zarr-python/issues/new>`_. Please include the following items in
 a bug report:
 
 1. A minimal, self-contained snippet of Python code reproducing the problem. You can
@@ -53,7 +53,7 @@ Enhancement proposals
 ---------------------
 
 If you have an idea about a new feature or some other improvement to Zarr, please raise a
-`GitHub issue <https://github.com/zarr-developers/zarr/issues/new>`_ first to discuss.
+`GitHub issue <https://github.com/zarr-developers/zarr-python/issues/new>`_ first to discuss.
 
 We very much welcome ideas and suggestions for how to improve Zarr, but please bear in
 mind that we are likely to be conservative in accepting proposals for new features. The
@@ -70,14 +70,14 @@ Forking the repository
 
 The Zarr source code is hosted on GitHub at the following location:
 
-* `https://github.com/zarr-developers/zarr <https://github.com/zarr-developers/zarr>`_
+* `https://github.com/zarr-developers/zarr-python <https://github.com/zarr-developers/zarr-python>`_
 
 You will need your own fork to work on the code. Go to the link above and hit
 the "Fork" button. Then clone your fork to your local machine::
 
     $ git clone git@github.com:your-user-name/zarr.git
     $ cd zarr
-    $ git remote add upstream git@github.com:zarr-developers/zarr.git
+    $ git remote add upstream git@github.com:zarr-developers/zarr-python.git
 
 Creating a development environment
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -90,10 +90,9 @@ you have cloned the Zarr source code and your current working directory is the r
 the repository, you can do something like the following::
 
     $ mkdir -p ~/pyenv/zarr-dev
-    $ virtualenv --no-site-packages --python=/usr/bin/python3.6 ~/pyenv/zarr-dev
+    $ virtualenv --no-site-packages --python=/usr/bin/python3.7 ~/pyenv/zarr-dev
     $ source ~/pyenv/zarr-dev/bin/activate
-    $ pip install -r requirements_dev.txt
-    $ pip install -r requirements_dev_optional.txt
+    $ pip install -r requirements_dev_minimal.txt -r requirements_dev_numpy.txt
     $ pip install -e .
 
 To verify that your development environment is working, you can run the unit tests::
@@ -139,34 +138,44 @@ Again, any conflicts need to be resolved before submitting a pull request.
 Running the test suite
 ~~~~~~~~~~~~~~~~~~~~~~
 
-Zarr includes a suite of unit tests, as well as doctests included in function and class
-docstrings and in the tutorial and storage spec. The simplest way to run the unit tests
-is to invoke::
+Zarr includes a suite of unit tests, as well as doctests included in
+function and class docstrings and in the tutorial and storage
+spec. The simplest way to run the unit tests is to activate your
+development environment (see `creating a development environment`_ above)
+and invoke::
 
     $ pytest -v zarr
 
-To also run the doctests within docstrings, run::
+Some tests require optional dependencies to be installed, otherwise
+the tests will be skipped. To install all optional dependencies, run::
 
-    $ pytest -v --doctest-modules zarr
+    $ pip install -r requirements_dev_optional.txt
 
-To run the doctests within the tutorial and storage spec, run::
+To also run the doctests within docstrings (requires optional
+depencies to be installed), run::
+
+    $ pytest -v --doctest-plus zarr
+
+To run the doctests within the tutorial and storage spec (requires
+optional dependencies to be installed), run::
 
     $ python -m doctest -o NORMALIZE_WHITESPACE -o ELLIPSIS docs/tutorial.rst docs/spec/v2.rst
 
-Tests can be run under different Python versions using tox. E.g. (assuming you have the
-corresponding Python interpreters installed on your system)::
+Note that some tests also require storage services to be running
+locally. To run the Azure Blob Service storage tests, run an Azure
+storage emulator (e.g., azurite) and set the environment variable
+``ZARR_TEST_ABS=1``. To run the Mongo DB storage tests, run a Mongo
+server locally and set the environment variable ``ZARR_TEST_MONGO=1``.
+To run the Redis storage tests, run a Redis server locally on port
+6379 and set the environment variable ``ZARR_TEST_REDIS=1``.
 
-    $ tox -e py27,py34,py35,py36
-
-Zarr currently supports Python 2.7 and Python 3.4-3.6, so the above command must
-succeed before code can be accepted into the main code base. Note that only the py36
-tox environment runs the doctests, i.e., doctests only need to succeed under Python 3.6.
-
-All tests are automatically run via Travis (Linux) and AppVeyor (Windows) continuous
-integration services for every pull request. Tests must pass under both services before
-code can be accepted. Test coverage is also collected automatically via the Coveralls
-service, and total coverage over all builds must be 100% (although individual builds
-may be lower due to Python 2/3 or other differences).
+All tests are automatically run via Travis (Linux) and AppVeyor
+(Windows) continuous integration services for every pull
+request. Tests must pass under both Travis and Appveyor before code
+can be accepted. Test coverage is also collected automatically via the
+Coveralls service, and total coverage over all builds must be 100%
+(although individual builds may be lower due to Python 2/3 or other
+differences).
 
 Code standards
 ~~~~~~~~~~~~~~
@@ -176,8 +185,6 @@ characters are allowed, although please try to keep under 90 wherever possible.
 Conformance can be checked by running::
 
     $ flake8 --max-line-length=100 zarr
-
-This is automatically run when invoking ``tox -e py36``.
 
 Test coverage
 ~~~~~~~~~~~~~
@@ -195,10 +202,15 @@ request. Coveralls coverage must also be 100% before code can be accepted.
 Documentation
 ~~~~~~~~~~~~~
 
-Docstrings for user-facing classes and functions should follow the `numpydoc
-<https://github.com/numpy/numpy/blob/master/doc/HOWTO_DOCUMENT.rst.txt>`_ standard,
-including sections for Parameters and Examples. All examples should run and pass as doctests
-under Python 3.6 only.
+Docstrings for user-facing classes and functions should follow the
+`numpydoc
+<https://github.com/numpy/numpy/blob/master/doc/HOWTO_DOCUMENT.rst.txt>`_
+standard, including sections for Parameters and Examples. All examples
+should run and pass as doctests under Python 3.7. To run doctests,
+activate your development environment, install optional requirements,
+and run::
+
+    $ pytest -v --doctest-plus zarr
 
 Zarr uses Sphinx for documentation, hosted on readthedocs.org. Documentation is
 written in the RestructuredText markup language (.rst files) in the ``docs`` folder.
@@ -208,7 +220,7 @@ folder. Any new features or important usage information should be included in th
 tutorial (``docs/tutorial.rst``). Any changes should also be included in the release
 notes (``docs/release.rst``).
 
-The documentation can be built by running::
+The documentation can be built locally by running::
 
     $ tox -e docs
 

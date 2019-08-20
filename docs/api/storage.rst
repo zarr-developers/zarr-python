@@ -2,7 +2,7 @@ Storage (``zarr.storage``)
 ==========================
 .. automodule:: zarr.storage
 
-.. autoclass:: DictStore
+.. autoclass:: MemoryStore
 .. autoclass:: DirectoryStore
 .. autoclass:: TempStore
 .. autoclass:: NestedDirectoryStore

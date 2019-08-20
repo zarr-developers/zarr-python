@@ -34,6 +34,11 @@ from numcodecs.compat import ensure_bytes, ensure_ndarray
 from numcodecs.tests.common import greetings
 
 
+# also check for environment variables indicating whether tests requiring
+# services should be run
+ZARR_TEST_ABS = os.environ.get('ZARR_TEST_ABS', '0')
+
+
 # needed for PY2/PY3 consistent behaviour
 if PY2:  # pragma: py3 no cover
     warnings.resetwarnings()
@@ -512,7 +517,7 @@ class TestArray(unittest.TestCase):
 
         # Check basic 2-D array
         z = self.create_array(shape=(20, 35,), chunks=10, dtype='<i4')
-        assert '4f797d7bdad0fa1c9fa8c80832efb891a68de104' == z.hexdigest()
+        assert 'c7190ad2bea1e9d2e73eaa2d3ca9187be1ead261' == z.hexdigest()
 
         # Check basic 1-D array with some data
         z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
@@ -1302,7 +1307,7 @@ class TestArrayWithPath(TestArray):
 
         # Check basic 2-D array
         z = self.create_array(shape=(20, 35,), chunks=10, dtype='<i4')
-        assert 'dde44c72cc530bd6aae39b629eb15a2da627e5f9' == z.hexdigest()
+        assert '6c530b6b9d73e108cc5ee7b6be3d552cc994bdbe' == z.hexdigest()
 
         # Check basic 1-D array with some data
         z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
@@ -1357,7 +1362,7 @@ class TestArrayWithChunkStore(TestArray):
 
         # Check basic 2-D array
         z = self.create_array(shape=(20, 35,), chunks=10, dtype='<i4')
-        assert 'dde44c72cc530bd6aae39b629eb15a2da627e5f9' == z.hexdigest()
+        assert '6c530b6b9d73e108cc5ee7b6be3d552cc994bdbe' == z.hexdigest()
 
         # Check basic 1-D array with some data
         z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
@@ -1412,8 +1417,9 @@ class TestArrayWithDirectoryStore(TestArray):
         assert expect_nbytes_stored == z.nbytes_stored
 
 
-@pytest.mark.skipif(asb is None,
-                    reason="azure-blob-storage could not be imported")
+@pytest.mark.skipif(asb is None or ZARR_TEST_ABS == '0',
+                    reason="azure-blob-storage could not be imported or tests not"
+                           "enabled via environment variable")
 class TestArrayWithABSStore(TestArray):
 
     @staticmethod
@@ -1713,7 +1719,7 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
 
         # Check basic 2-D array
         z = self.create_array(shape=(20, 35,), chunks=10, dtype='<i4')
-        assert '189690c5701d33a41cd7ce9aa0ac8dac49a69c51' == z.hexdigest()
+        assert 'ec2e008525ae09616dbc1d2408cbdb42532005c8' == z.hexdigest()
 
         # Check basic 1-D array with some data
         z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
@@ -1863,7 +1869,7 @@ class TestArrayWithNoCompressor(TestArray):
 
         # Check basic 2-D array
         z = self.create_array(shape=(20, 35,), chunks=10, dtype='<i4')
-        assert 'de841ca276042993da53985de1e7769f5d0fc54d' == z.hexdigest()
+        assert 'b75eb90f68aa8ee1e29f2c542e851d3945066c54' == z.hexdigest()
 
         # Check basic 1-D array with some data
         z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
@@ -1899,7 +1905,7 @@ class TestArrayWithBZ2Compressor(TestArray):
 
         # Check basic 2-D array
         z = self.create_array(shape=(20, 35,), chunks=10, dtype='<i4')
-        assert 'f57a9a73a4004490fe1b871688651b8a298a5db7' == z.hexdigest()
+        assert '37c7c46e5730bba37da5e518c9d75f0d774c5098' == z.hexdigest()
 
         # Check basic 1-D array with some data
         z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
@@ -1935,7 +1941,7 @@ class TestArrayWithBloscCompressor(TestArray):
 
         # Check basic 2-D array
         z = self.create_array(shape=(20, 35,), chunks=10, dtype='<i4')
-        assert 'deb675ff91dd26dba11b65aab5f19a1f21a5645b' == z.hexdigest()
+        assert '74ed339cfe84d544ac023d085ea0cd6a63f56c4b' == z.hexdigest()
 
         # Check basic 1-D array with some data
         z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
@@ -1978,7 +1984,7 @@ class TestArrayWithLZMACompressor(TestArray):
 
         # Check basic 2-D array
         z = self.create_array(shape=(20, 35,), chunks=10, dtype='<i4')
-        assert 'b93b163a21e8500519250a6defb821d03eb5d9e0' == z.hexdigest()
+        assert '9de97b5c49b38e68583ed701d7e8f4c94b6a8406' == z.hexdigest()
 
         # Check basic 1-D array with some data
         z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
@@ -2021,7 +2027,7 @@ class TestArrayWithFilters(TestArray):
 
         # Check basic 2-D array
         z = self.create_array(shape=(20, 35,), chunks=10, dtype='<i4')
-        assert '9abf3ad54413ab11855d88a5e0087cd416657e02' == z.hexdigest()
+        assert '7300f1eb130cff5891630038fd99c28ef23d3a01' == z.hexdigest()
 
         # Check basic 1-D array with some data
         z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
