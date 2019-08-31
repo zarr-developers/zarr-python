@@ -14,6 +14,7 @@ environment:
     # See: http://stackoverflow.com/a/13751649/163740
     CMD_IN_ENV: "cmd /E:ON /V:ON /C .\\build.cmd"
     EMULATOR_LOC: C:\\Program Files (x86)\\Microsoft SDKs\\Azure\\Storage Emulator\\AzureStorageEmulator.exe
+    ZARR_TEST_ABS: 1
 
   matrix:
 
@@ -33,9 +34,7 @@ environment:
 install:
   - "SET PATH=%PYTHON%;%PYTHON%\\Scripts;%PATH%"
   - "%CMD_IN_ENV% python -m pip install -U pip setuptools wheel"
-  - "%CMD_IN_ENV% python -m pip install -rrequirements_test.txt"
-  - "%CMD_IN_ENV% python -m pip install -rrequirements_dev_npy.txt"
-  - "%CMD_IN_ENV% python -m pip install --no-binary=numcodecs -rrequirements_dev.txt"
+  - "%CMD_IN_ENV% python -m pip install -r requirements_dev_numpy.txt -r requirements_dev_minimal.txt -r requirements_dev_optional.txt"
   - "%CMD_IN_ENV% python setup.py install"
   - "%CMD_IN_ENV% python -m pip freeze"
 
@@ -43,6 +42,7 @@ build: off
 
 before_test:
   - '"%EMULATOR_LOC%" start'
+  - '"%EMULATOR_LOC%" status'
 
 test_script:
   - "%CMD_IN_ENV% python -m pytest -v --pyargs zarr"

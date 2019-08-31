@@ -44,6 +44,14 @@ from zarr.errors import (err_contains_group, err_contains_array, err_bad_compres
                          err_fspath_exists_notdir, err_read_only, MetadataError)
 
 
+__doctest_requires__ = {
+    ('RedisStore', 'RedisStore.*'): ['redis'],
+    ('MongoDBStore', 'MongoDBStore.*'): ['pymongo'],
+    ('ABSStore', 'ABSStore.*'): ['azure.storage.blob'],
+    ('LRUStoreCache', 'LRUStoreCache.*'): ['s3fs'],
+}
+
+
 array_meta_key = '.zarray'
 group_meta_key = '.zgroup'
 attrs_key = '.zattrs'
@@ -1099,8 +1107,10 @@ class ZipStore(MutableMapping):
 
         >>> store = zarr.ZipStore('data/example.zip', mode='w')
         >>> z = zarr.zeros(100, chunks=10, store=store)
-        >>> z[...] = 42  # first write OK
-        >>> z[...] = 42  # second write generates warnings
+        >>> # first write OK
+        ... z[...] = 42
+        >>> # second write generates warnings
+        ... z[...] = 42  # doctest: +SKIP
         >>> store.close()
 
     This can also happen in a more subtle situation, where data are written only
@@ -1110,7 +1120,8 @@ class ZipStore(MutableMapping):
         >>> store = zarr.ZipStore('data/example.zip', mode='w')
         >>> z = zarr.zeros(100, chunks=10, store=store)
         >>> z[5:15] = 42
-        >>> z[15:25] = 42  # write overlaps chunk previously written, generates warnings
+        >>> # write overlaps chunk previously written, generates warnings
+        ... z[15:25] = 42  # doctest: +SKIP
 
     To avoid creating duplicate entries, only write data once, and align writes
     with chunk boundaries. This alignment is done automatically if you call
@@ -1729,8 +1740,8 @@ class LRUStoreCache(MutableMapping):
         >>> s3 = s3fs.S3FileSystem(anon=True, client_kwargs=dict(region_name='eu-west-2'))
         >>> store = s3fs.S3Map(root='zarr-demo/store', s3=s3, check=False)
         >>> cache = zarr.LRUStoreCache(store, max_size=2**28)
-        >>> root = zarr.group(store=cache)
-        >>> z = root['foo/bar/baz']
+        >>> root = zarr.group(store=cache)  # doctest: +REMOTE_DATA
+        >>> z = root['foo/bar/baz']  # doctest: +REMOTE_DATA
         >>> from timeit import timeit
         >>> # first data access is relatively slow, retrieved from store
         ... timeit('print(z[:].tostring())', number=1, globals=globals())  # doctest: +SKIP
@@ -2257,25 +2268,6 @@ class MongoDBStore(MutableMapping):
     **kwargs
         Keyword arguments passed through to the `pymongo.MongoClient` function.
 
-    Examples
-    --------
-    Store a single array::
-
-        >>> import zarr
-        >>> store = zarr.MongoDBStore('localhost')
-        >>> z = zarr.zeros((10, 10), chunks=(5, 5), store=store, overwrite=True)
-        >>> z[...] = 42
-        >>> store.close()
-
-    Store a group::
-
-        >>> store = zarr.MongoDBStore('localhost')
-        >>> root = zarr.group(store=store, overwrite=True)
-        >>> foo = root.create_group('foo')
-        >>> bar = foo.zeros('bar', shape=(10, 10), chunks=(5, 5))
-        >>> bar[...] = 42
-        >>> store.close()
-
     Notes
     -----
     The maximum chunksize in MongoDB documents is 16 MB.
@@ -2353,23 +2345,6 @@ class RedisStore(MutableMapping):
         Name of prefix for Redis keys
     **kwargs
         Keyword arguments passed through to the `redis.Redis` function.
-
-    Examples
-    --------
-    Store a single array::
-
-        >>> import zarr
-        >>> store = zarr.RedisStore(port=6379)
-        >>> z = zarr.zeros((10, 10), chunks=(5, 5), store=store, overwrite=True)
-        >>> z[...] = 42
-
-    Store a group::
-
-        >>> store = zarr.RedisStore(port=6379)
-        >>> root = zarr.group(store=store, overwrite=True)
-        >>> foo = root.create_group('foo')
-        >>> bar = foo.zeros('bar', shape=(10, 10), chunks=(5, 5))
-        >>> bar[...] = 42
 
     """
     def __init__(self, prefix='zarr', **kwargs):
