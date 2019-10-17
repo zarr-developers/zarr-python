@@ -14,6 +14,9 @@ Upcoming Release
 * Upgrade dependencies in the test matrices and resolve a
   compatibility issue with testing against the Azure Storage
   Emulator. By :user:`alimanfoo`; :issue:`468`, :issue:`467`.
+  
+* Do not rename Blosc parameters in n5 backend and add `blocksize` parameter,
+  compatible with n5-blosc.
 
 .. _release_2.3.2:
 
