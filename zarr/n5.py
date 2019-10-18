@@ -416,11 +416,10 @@ def compressor_config_to_n5(compressor_config):
             RuntimeWarning
         )
 
-        n5_config['codec'] = compressor_config['cname']
-        n5_config['level'] = compressor_config['clevel']
+        n5_config['cname'] = compressor_config['cname']
+        n5_config['clevel'] = compressor_config['clevel']
         n5_config['shuffle'] = compressor_config['shuffle']
-        assert compressor_config['blocksize'] == 0, \
-            "blosc block size needs to be 0 for N5 containers."
+        n5_config['blocksize'] = compressor_config['blocksize']
 
     elif codec_id == 'lzma':
 
@@ -475,10 +474,10 @@ def compressor_config_to_zarr(compressor_config):
 
     elif codec_id == 'blosc':
 
-        zarr_config['cname'] = compressor_config['codec']
-        zarr_config['clevel'] = compressor_config['level']
+        zarr_config['cname'] = compressor_config['cname']
+        zarr_config['clevel'] = compressor_config['clevel']
         zarr_config['shuffle'] = compressor_config['shuffle']
-        zarr_config['blocksize'] = 0
+        zarr_config['blocksize'] = compressor_config['blocksize']
 
     elif codec_id == 'lzma':
 
