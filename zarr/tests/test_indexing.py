@@ -1,15 +1,11 @@
 # -*- coding: utf-8 -*-
-from __future__ import absolute_import, print_function, division
-
-
 import numpy as np
-from numpy.testing import assert_array_equal
 import pytest
+from numpy.testing import assert_array_equal
 
-
-from zarr.indexing import (normalize_integer_selection, replace_ellipsis, oindex,
-                           oindex_set)
 import zarr
+from zarr.indexing import (normalize_integer_selection, oindex, oindex_set,
+                           replace_ellipsis)
 
 
 def test_normalize_integer_selection():

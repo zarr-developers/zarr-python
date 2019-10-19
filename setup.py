@@ -1,8 +1,7 @@
 # -*- coding: utf-8 -*-
-from __future__ import absolute_import, print_function, division
-from setuptools import setup
 import sys
 
+from setuptools import setup
 
 DESCRIPTION = 'An implementation of chunked, compressed, ' \
               'N-dimensional arrays for Python.'
@@ -17,11 +16,6 @@ dependencies = [
     'numcodecs>=0.6.2',
 ]
 
-if sys.version_info < (3, 5):
-    dependencies.append('scandir')
-if sys.version_info < (3, 3) and sys.platform == "win32":
-    dependencies.append('pyosreplace')
-
 setup(
     name='zarr',
     description=DESCRIPTION,
@@ -35,6 +29,7 @@ setup(
         'setuptools>18.0',
         'setuptools-scm>1.5.4'
     ],
+    python_requires='>=3.5',
     install_requires=dependencies,
     package_dir={'': '.'},
     packages=['zarr', 'zarr.tests'],
@@ -47,8 +42,6 @@ setup(
         'Programming Language :: Python',
         'Topic :: Software Development :: Libraries :: Python Modules',
         'Operating System :: Unix',
-        'Programming Language :: Python :: 2',
-        'Programming Language :: Python :: 2.7',
         'Programming Language :: Python :: 3',
         'Programming Language :: Python :: 3.5',
         'Programming Language :: Python :: 3.6',

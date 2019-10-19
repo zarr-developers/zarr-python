@@ -14,27 +14,15 @@
 # serve to show the default.
 
 
-import sys
 import os
-from mock import Mock as MagicMock
+import sys
 
-
-PY2 = sys.version_info[0] == 2
-
-
-class Mock(MagicMock):
-    @classmethod
-    def __getattr__(cls, name):
-        return Mock()
-
-
-MOCK_MODULES = []
-if PY2:
-    MOCK_MODULES.append('lzma')
-
-
-sys.modules.update((mod_name, Mock()) for mod_name in MOCK_MODULES)
-
+# The version info for the project you're documenting, acts as replacement for
+# |version| and |release|, also used in various other places throughout the
+# built documents.
+#
+# The short X.Y version.
+import zarr
 
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
@@ -81,12 +69,6 @@ project = 'zarr'
 copyright = '2018, Zarr Developers'
 author = 'Zarr Developers'
 
-# The version info for the project you're documenting, acts as replacement for
-# |version| and |release|, also used in various other places throughout the
-# built documents.
-#
-# The short X.Y version.
-import zarr
 version = zarr.__version__
 # The full version, including alpha/beta/rc tags.
 release = zarr.__version__

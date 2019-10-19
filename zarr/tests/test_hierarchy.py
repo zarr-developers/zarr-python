@@ -1,18 +1,27 @@
 # -*- coding: utf-8 -*-
-from __future__ import absolute_import, print_function, division
-import unittest
-import tempfile
 import atexit
-import shutil
-import textwrap
 import os
 import pickle
-import warnings
-
+import shutil
+import tempfile
+import textwrap
+import unittest
 
 import numpy as np
-from numpy.testing import assert_array_equal
 import pytest
+from numcodecs import Zlib
+from numpy.testing import assert_array_equal
+
+from zarr.attrs import Attributes
+from zarr.core import Array
+from zarr.creation import open_array
+from zarr.hierarchy import Group, group, open_group
+from zarr.storage import (ABSStore, DBMStore, DirectoryStore, LMDBStore,
+                          LRUStoreCache, MemoryStore, NestedDirectoryStore,
+                          SQLiteStore, ZipStore, array_meta_key, atexit_rmglob,
+                          atexit_rmtree, group_meta_key, init_array,
+                          init_group)
+from zarr.util import InfoReporter
 
 try:
     import azure.storage.blob as asb
@@ -20,29 +29,9 @@ except ImportError:  # pragma: no cover
     asb = None
 
 
-from zarr.storage import (MemoryStore, DirectoryStore, ZipStore, init_group, init_array,
-                          array_meta_key, group_meta_key, atexit_rmtree,
-                          NestedDirectoryStore, DBMStore, LMDBStore, SQLiteStore,
-                          ABSStore, atexit_rmglob, LRUStoreCache)
-from zarr.core import Array
-from zarr.compat import PY2, text_type
-from zarr.hierarchy import Group, group, open_group
-from zarr.attrs import Attributes
-from zarr.errors import PermissionError
-from zarr.creation import open_array
-from zarr.util import InfoReporter
-from numcodecs import Zlib
-
-
 # also check for environment variables indicating whether tests requiring
 # services should be run
 ZARR_TEST_ABS = os.environ.get('ZARR_TEST_ABS', '0')
-
-
-# needed for PY2/PY3 consistent behaviour
-if PY2:  # pragma: py3 no cover
-    warnings.resetwarnings()
-    warnings.simplefilter('always')
 
 
 # noinspection PyStatementEffect
@@ -1191,10 +1180,8 @@ def test_group_key_completions():
 
 def _check_tree(g, expect_bytes, expect_text):
     assert expect_bytes == bytes(g.tree())
-    assert expect_text == text_type(g.tree())
+    assert expect_text == str(g.tree())
     expect_repr = expect_text
-    if PY2:  # pragma: py3 no cover
-        expect_repr = expect_bytes
     assert expect_repr == repr(g.tree())
     # test _repr_html_ lightly
     # noinspection PyProtectedMember

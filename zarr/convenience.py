@@ -1,20 +1,20 @@
 # -*- coding: utf-8 -*-
 """Convenience functions for storing and loading data."""
-from __future__ import absolute_import, print_function, division
 import io
-import re
 import itertools
-
+import re
+from collections.abc import Mapping
 
 from zarr.core import Array
-from zarr.creation import (open_array, normalize_store_arg,
-                           array as _create_array)
-from zarr.hierarchy import open_group, group as _create_group, Group
-from zarr.storage import contains_array, contains_group
-from zarr.errors import err_path_not_found, CopyError
-from zarr.util import normalize_storage_path, TreeViewer, buffer_size
-from zarr.compat import Mapping, PY2, text_type
+from zarr.creation import array as _create_array
+from zarr.creation import normalize_store_arg, open_array
+from zarr.errors import CopyError, err_path_not_found
+from zarr.hierarchy import Group
+from zarr.hierarchy import group as _create_group
+from zarr.hierarchy import open_group
 from zarr.meta import json_dumps, json_loads
+from zarr.storage import contains_array, contains_group
+from zarr.util import TreeViewer, buffer_size, normalize_storage_path
 
 
 # noinspection PyShadowingBuiltins
@@ -451,9 +451,6 @@ class _LogWriter(object):
     def __call__(self, *args, **kwargs):
         if self.log_file is not None:
             kwargs['file'] = self.log_file
-            if PY2:  # pragma: py3 no cover
-                # expect file opened in text mode, need to adapt message
-                args = [text_type(a) for a in args]
             print(*args, **kwargs)
             if hasattr(self.log_file, 'flush'):
                 # get immediate feedback

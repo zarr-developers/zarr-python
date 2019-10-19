@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
-from __future__ import absolute_import, print_function, division
 import collections
-from zarr.compat import MutableMapping
+from collections.abc import MutableMapping
 
 
 class CountingDict(MutableMapping):

@@ -18,6 +18,9 @@ Upcoming Release
 * Do not rename Blosc parameters in n5 backend and add `blocksize` parameter,
   compatible with n5-blosc.
 
+* Removed support for Python 2.
+  By :user:`jhamman`; :issue:`393`, :issue:`470`.
+
 .. _release_2.3.2:
 
 2.3.2

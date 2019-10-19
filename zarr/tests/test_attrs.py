@@ -1,15 +1,10 @@
 # -*- coding: utf-8 -*-
-from __future__ import absolute_import, print_function, division
 import json
 import unittest
 
-
 import pytest
 
-
 from zarr.attrs import Attributes
-from zarr.compat import binary_type, text_type
-from zarr.errors import PermissionError
 from zarr.tests.util import CountingDict
 
 
@@ -29,8 +24,8 @@ class TestAttributes(unittest.TestCase):
         a['foo'] = 'bar'
         a['baz'] = 42
         assert 'attrs' in store
-        assert isinstance(store['attrs'], binary_type)
-        d = json.loads(text_type(store['attrs'], 'ascii'))
+        assert isinstance(store['attrs'], bytes)
+        d = json.loads(str(store['attrs'], 'ascii'))
         assert dict(foo='bar', baz=42) == d
 
     def test_get_set_del_contains(self):

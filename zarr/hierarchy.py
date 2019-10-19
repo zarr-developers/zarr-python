@@ -1,23 +1,22 @@
 # -*- coding: utf-8 -*-
-from __future__ import absolute_import, print_function, division
+from collections.abc import MutableMapping
 from itertools import islice
 
 import numpy as np
 
-
-from zarr.compat import PY2, MutableMapping
 from zarr.attrs import Attributes
 from zarr.core import Array
-from zarr.storage import (contains_array, contains_group, init_group,
-                          MemoryStore, group_meta_key, attrs_key, listdir, rename, rmdir)
-from zarr.creation import (array, create, empty, zeros, ones, full,
-                           empty_like, zeros_like, ones_like, full_like,
-                           normalize_store_arg)
-from zarr.util import (normalize_storage_path, normalize_shape, InfoReporter, TreeViewer,
-                       is_valid_python_name, instance_dir, nolock)
-from zarr.errors import (err_contains_array, err_contains_group, err_group_not_found,
-                         err_read_only)
+from zarr.creation import (array, create, empty, empty_like, full, full_like,
+                           normalize_store_arg, ones, ones_like, zeros,
+                           zeros_like)
+from zarr.errors import (err_contains_array, err_contains_group,
+                         err_group_not_found, err_read_only)
 from zarr.meta import decode_group_metadata
+from zarr.storage import (MemoryStore, attrs_key, contains_array,
+                          contains_group, group_meta_key, init_group, listdir,
+                          rename, rmdir)
+from zarr.util import (InfoReporter, TreeViewer, is_valid_python_name, nolock,
+                       normalize_shape, normalize_storage_path)
 
 
 class Group(MutableMapping):
@@ -218,7 +217,7 @@ class Group(MutableMapping):
 
     def __repr__(self):
         t = type(self)
-        r = '<%s.%s' % (t.__module__, t.__name__)
+        r = '<{}.{}'.format(t.__module__, t.__name__)
         if self.name:
             r += ' %r' % self.name
         if self._read_only:
@@ -229,7 +228,7 @@ class Group(MutableMapping):
     def info_items(self):
 
         def typestr(o):
-            return '%s.%s' % (type(o).__module__, type(o).__name__)
+            return '{}.{}'.format(type(o).__module__, type(o).__name__)
 
         items = []
 
@@ -353,11 +352,8 @@ class Group(MutableMapping):
             raise AttributeError
 
     def __dir__(self):
-        if PY2:  # pragma: py3 no cover
-            base = instance_dir(self)
-        else:  # pragma: py2 no cover
-            # noinspection PyUnresolvedReferences
-            base = super().__dir__()
+        # noinspection PyUnresolvedReferences
+        base = super().__dir__()
         keys = sorted(set(base + list(self)))
         keys = [k for k in keys if is_valid_python_name(k)]
         return keys

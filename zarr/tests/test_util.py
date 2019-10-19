@@ -1,15 +1,11 @@
 # -*- coding: utf-8 -*-
-from __future__ import absolute_import, print_function, division
-
-
 import numpy as np
 import pytest
 
-
-from zarr.util import (normalize_shape, normalize_chunks, is_total_slice,
-                       normalize_resize_args, human_readable_size, normalize_order,
-                       guess_chunks, info_html_report, info_text_report,
-                       normalize_fill_value)
+from zarr.util import (guess_chunks, human_readable_size, info_html_report,
+                       info_text_report, is_total_slice, normalize_chunks,
+                       normalize_fill_value, normalize_order,
+                       normalize_resize_args, normalize_shape)
 
 
 def test_normalize_shape():
