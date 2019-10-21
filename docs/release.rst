@@ -16,7 +16,7 @@ Upcoming Release
   Emulator. By :user:`alimanfoo`; :issue:`468`, :issue:`467`.
   
 * Do not rename Blosc parameters in n5 backend and add `blocksize` parameter,
-  compatible with n5-blosc.
+  compatible with n5-blosc. By :user:`axtimwalde`, :issue:`485`.
 
 * Removed support for Python 2.
   By :user:`jhamman`; :issue:`393`, :issue:`470`.
