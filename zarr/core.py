@@ -1385,7 +1385,7 @@ class Array(object):
         Parameters
         ----------
         fill_missing_chunk : bool
-            Wether Zarr is supposed to fill missing chunks or not.  Defaults to True.
+            Whether Zarr is supposed to fill missing chunks.  Defaults to True.
 
         """
 
