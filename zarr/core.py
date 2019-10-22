@@ -93,6 +93,7 @@ class Array(object):
     set_mask_selection
     get_coordinate_selection
     set_coordinate_selection
+    set_options
     digest
     hexdigest
     resize
@@ -710,6 +711,8 @@ class Array(object):
             cdata = self.chunk_store[ckey]
 
         except KeyError:
+            if not self._fill_missing_chunk:
+                raise
             # chunk not initialized
             chunk = np.zeros((), dtype=self._dtype)
             if self._fill_value is not None:
@@ -1376,6 +1379,18 @@ class Array(object):
 
         self._set_selection(indexer, value, fields=fields)
 
+    def set_options(self, fill_missing_chunk=True):
+        """Set options.
+
+        Parameters
+        ----------
+        fill_missing_chunk : bool
+            Wether Zarr is supposed to fill missing chunks or not.  Defaults to True.
+
+        """
+
+        self._fill_missing_chunk = fill_missing_chunk
+
     def set_mask_selection(self, selection, value, fields=None):
         """Modify a selection of individual items, by providing a Boolean array of the
         same shape as the array against which the selection is being made, where True
@@ -1472,6 +1487,8 @@ class Array(object):
             cdata = self.chunk_store[ckey]
 
         except KeyError:
+            if not self._fill_missing_chunk:
+                raise
             # chunk not initialized
             chunk = np.zeros((), dtype=self._dtype)
             if self._fill_value is not None:
@@ -1579,6 +1596,8 @@ class Array(object):
             cdata = self.chunk_store[ckey]
 
         except KeyError:
+            if not self._fill_missing_chunk:
+                raise
             # chunk not initialized
             if self._fill_value is not None:
                 if fields:
@@ -1691,6 +1710,9 @@ class Array(object):
                 cdata = self.chunk_store[ckey]
 
             except KeyError:
+
+                if not self._fill_missing_chunk:
+                    raise
 
                 # chunk not initialized
                 if self._fill_value is not None:
