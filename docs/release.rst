@@ -6,15 +6,27 @@ Upcoming Release
 
 * Add key normalization option for ``DirectoryStore``, ``NestedDirectoryStore``,
   ``TempStore``, and ``N5Store``.
-  By :user:`James Bourbeau <jrbourbeau>`; :issue:`459`
+  By :user:`James Bourbeau <jrbourbeau>`; :issue:`459`.
+
+* Add ``recurse`` keyword to ``Group.array_keys`` and ``Group.arrays`` methods.
+  By :user:`James Bourbeau <jrbourbeau>`; :issue:`458`.
 
 * Use uniform chunking for all dimensions when specifying ``chunks`` as an integer.
   Also adds support for specifying ``-1`` to chunk across an entire dimension.
-  By :user:`James Bourbeau <jrbourbeau>`; :issue:`456`
+  By :user:`James Bourbeau <jrbourbeau>`; :issue:`456`.
 
 * Rename ``DictStore`` to ``MemoryStore``.
-  By :user:`James Bourbeau <jrbourbeau>`; :issue:`455`
+  By :user:`James Bourbeau <jrbourbeau>`; :issue:`455`.
 
+* Upgrade dependencies in the test matrices and resolve a
+  compatibility issue with testing against the Azure Storage
+  Emulator. By :user:`alimanfoo`; :issue:`468`, :issue:`467`.
+  
+* Do not rename Blosc parameters in n5 backend and add `blocksize` parameter,
+  compatible with n5-blosc. By :user:`axtimwalde`, :issue:`485`.
+
+* Removed support for Python 2.
+  By :user:`jhamman`; :issue:`393`, :issue:`470`.
 
 .. _release_2.3.2:
 
@@ -25,19 +37,19 @@ Enhancements
 ~~~~~~~~~~~~
 
 * Use ``scandir`` in ``DirectoryStore``'s ``getsize`` method.
-  By :user:`John Kirkham <jakirkham>`; :issue:`431`
+  By :user:`John Kirkham <jakirkham>`; :issue:`431`.
 
 Bug fixes
 ~~~~~~~~~
 
 * Add and use utility functions to simplify reading and writing JSON.
-  By :user:`John Kirkham <jakirkham>`; :issue:`429`, :issue:`430`
+  By :user:`John Kirkham <jakirkham>`; :issue:`429`, :issue:`430`.
 
 * Fix ``collections``'s ``DeprecationWarning``\ s.
-  By :user:`John Kirkham <jakirkham>`; :issue:`432`
+  By :user:`John Kirkham <jakirkham>`; :issue:`432`.
 
 * Fix tests on big endian machines.
-  By :user:`Elliott Sales de Andrade <QuLogic>`; :issue:`427`
+  By :user:`Elliott Sales de Andrade <QuLogic>`; :issue:`427`.
 
 
 .. _release_2.3.1:

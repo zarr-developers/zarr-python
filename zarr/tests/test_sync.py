@@ -1,26 +1,23 @@
 # -*- coding: utf-8 -*-
-from __future__ import absolute_import, print_function, division
-from tempfile import mkdtemp
 import atexit
 import shutil
-from multiprocessing.pool import ThreadPool
+import tempfile
 from multiprocessing import Pool as ProcessPool
 from multiprocessing import cpu_count
-import tempfile
-
+from multiprocessing.pool import ThreadPool
+from tempfile import mkdtemp
 
 import numpy as np
 from numpy.testing import assert_array_equal
 
-
+from zarr.attrs import Attributes
+from zarr.core import Array
+from zarr.hierarchy import Group
+from zarr.storage import DirectoryStore, atexit_rmtree, init_array, init_group
+from zarr.sync import ProcessSynchronizer, ThreadSynchronizer
 from zarr.tests.test_attrs import TestAttributes
 from zarr.tests.test_core import TestArray
 from zarr.tests.test_hierarchy import TestGroup
-from zarr.sync import ThreadSynchronizer, ProcessSynchronizer
-from zarr.core import Array
-from zarr.attrs import Attributes
-from zarr.storage import init_array, DirectoryStore, init_group, atexit_rmtree
-from zarr.hierarchy import Group
 
 
 class TestAttributesWithThreadSynchronizer(TestAttributes):

@@ -1,0 +1,32 @@
+
+/* Sidebar background color */
+.wy-nav-side, div.wy-side-nav-search {
+  background-color: rgb(38, 34, 98);
+}
+
+/* Sidebar link click color */
+.wy-menu-vertical .toctree-l1 > a:active {
+  background-color: rgb(38, 34, 98);
+  color: rgb(252, 252, 252);
+}
+
+/* Link color is darker to make hovering more clear */
+.wy-menu-vertical .toctree-l1 > a:hover {
+  background-color: rgb(25, 22, 65);
+  color: rgb(252, 252, 252);
+}
+
+.wy-menu-vertical li.current > a:hover, .wy-menu-vertical li.current > a:active {
+  color: #404040;
+  background-color: #F5F5F5;
+}
+
+/* On hover over logo */
+.wy-side-nav-search > a:hover, .wy-side-nav-search .wy-dropdown > a:hover {
+  background: inherit;
+}
+
+/* Border around search box */
+.wy-side-nav-search input[type="text"] {
+  border: 0px;
+}

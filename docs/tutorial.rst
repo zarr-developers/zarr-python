@@ -746,7 +746,7 @@ with `MongoDB <https://www.mongodb.com/>`_ (an oject oriented NoSQL database). T
 respectively require the `redis <https://redis-py.readthedocs.io>`_ and
 `pymongo <https://api.mongodb.com/python/current/>`_ packages to be installed. 
 
-For compatibility with the `N5<https://github.com/saalfeldlab/n5`_ data format, Zarr also provides
+For compatibility with the `N5 <https://github.com/saalfeldlab/n5>`_ data format, Zarr also provides
 an N5 backend (this is currently an experimental feature). Similar to the zip storage class, an
 :class:`zarr.n5.N5Store` can be instantiated directly::
 
@@ -806,10 +806,10 @@ The class is :class:`zarr.storage.ABSStore` (requires
  `azure-storage-blob <https://docs.microsoft.com/en-us/azure/storage/blobs/storage-quickstart-blobs-python>`_
 to be installed)::
 
-    >>> store = zarr.ABSStore(container='test', prefix='zarr-testing', blob_service_kwargs={'is_emulated': True})
-    >>> root = zarr.group(store=store, overwrite=True)
-    >>> z = root.zeros('foo/bar', shape=(1000, 1000), chunks=(100, 100), dtype='i4')
-    >>> z[:] = 42
+    >>> store = zarr.ABSStore(container='test', prefix='zarr-testing', blob_service_kwargs={'is_emulated': True})  # doctest: +SKIP
+    >>> root = zarr.group(store=store, overwrite=True)  # doctest: +SKIP
+    >>> z = root.zeros('foo/bar', shape=(1000, 1000), chunks=(100, 100), dtype='i4')  # doctest: +SKIP
+    >>> z[:] = 42  # doctest: +SKIP
 
 When using an actual storage account, provide ``account_name`` and
 ``account_key`` arguments to :class:`zarr.storage.ABSStore`, the

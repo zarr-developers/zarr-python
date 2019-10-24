@@ -1,18 +1,27 @@
 # -*- coding: utf-8 -*-
-from __future__ import absolute_import, print_function, division
-import unittest
-import tempfile
 import atexit
-import shutil
-import textwrap
 import os
 import pickle
-import warnings
-
+import shutil
+import tempfile
+import textwrap
+import unittest
 
 import numpy as np
-from numpy.testing import assert_array_equal
 import pytest
+from numcodecs import Zlib
+from numpy.testing import assert_array_equal
+
+from zarr.attrs import Attributes
+from zarr.core import Array
+from zarr.creation import open_array
+from zarr.hierarchy import Group, group, open_group
+from zarr.storage import (ABSStore, DBMStore, DirectoryStore, LMDBStore,
+                          LRUStoreCache, MemoryStore, NestedDirectoryStore,
+                          SQLiteStore, ZipStore, array_meta_key, atexit_rmglob,
+                          atexit_rmtree, group_meta_key, init_array,
+                          init_group)
+from zarr.util import InfoReporter
 
 try:
     import azure.storage.blob as asb
@@ -20,24 +29,9 @@ except ImportError:  # pragma: no cover
     asb = None
 
 
-from zarr.storage import (MemoryStore, DirectoryStore, ZipStore, init_group, init_array,
-                          array_meta_key, group_meta_key, atexit_rmtree,
-                          NestedDirectoryStore, DBMStore, LMDBStore, SQLiteStore,
-                          ABSStore, atexit_rmglob, LRUStoreCache)
-from zarr.core import Array
-from zarr.compat import PY2, text_type
-from zarr.hierarchy import Group, group, open_group
-from zarr.attrs import Attributes
-from zarr.errors import PermissionError
-from zarr.creation import open_array
-from zarr.util import InfoReporter
-from numcodecs import Zlib
-
-
-# needed for PY2/PY3 consistent behaviour
-if PY2:  # pragma: py3 no cover
-    warnings.resetwarnings()
-    warnings.simplefilter('always')
+# also check for environment variables indicating whether tests requiring
+# services should be run
+ZARR_TEST_ABS = os.environ.get('ZARR_TEST_ABS', '0')
 
 
 # noinspection PyStatementEffect
@@ -642,6 +636,30 @@ class TestGroup(unittest.TestCase):
         assert 0 == len(g)
         assert 'foo' not in g
 
+    def test_iterators_recurse(self):
+        # setup
+        g1 = self.create_group()
+        g2 = g1.create_group('foo/bar')
+        d1 = g2.create_dataset('/a/b/c', shape=1000, chunks=100)
+        d1[:] = np.arange(1000)
+        d2 = g1.create_dataset('foo/baz', shape=3000, chunks=300)
+        d2[:] = np.arange(3000)
+        d3 = g2.create_dataset('zab', shape=2000, chunks=200)
+        d3[:] = np.arange(2000)
+
+        # test recursive array_keys
+        array_keys = list(g1['foo'].array_keys(recurse=False))
+        array_keys_recurse = list(g1['foo'].array_keys(recurse=True))
+        assert len(array_keys_recurse) > len(array_keys)
+        assert sorted(array_keys_recurse) == ['baz', 'zab']
+
+        # test recursive arrays
+        arrays = list(g1['foo'].arrays(recurse=False))
+        arrays_recurse = list(g1['foo'].arrays(recurse=True))
+        assert len(arrays_recurse) > len(arrays)
+        assert 'zab' == arrays_recurse[0][0]
+        assert g1['foo']['bar']['zab'] == arrays_recurse[0][1]
+
     def test_getattr(self):
         # setup
         g1 = self.create_group()
@@ -869,8 +887,9 @@ class TestGroupWithDirectoryStore(TestGroup):
         return store, None
 
 
-@pytest.mark.skipif(asb is None,
-                    reason="azure-blob-storage could not be imported")
+@pytest.mark.skipif(asb is None or ZARR_TEST_ABS == '0',
+                    reason="azure-blob-storage could not be imported or tests not enabled"
+                           "via environment variable")
 class TestGroupWithABSStore(TestGroup):
 
     @staticmethod
@@ -1185,10 +1204,8 @@ def test_group_key_completions():
 
 def _check_tree(g, expect_bytes, expect_text):
     assert expect_bytes == bytes(g.tree())
-    assert expect_text == text_type(g.tree())
+    assert expect_text == str(g.tree())
     expect_repr = expect_text
-    if PY2:  # pragma: py3 no cover
-        expect_repr = expect_bytes
     assert expect_repr == repr(g.tree())
     # test _repr_html_ lightly
     # noinspection PyProtectedMember

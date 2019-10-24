@@ -1,46 +1,67 @@
 # -*- coding: utf-8 -*-
-from __future__ import absolute_import, print_function, division
-from contextlib import contextmanager
-import unittest
-import tempfile
-import atexit
-import pickle
-import json
 import array
-import shutil
+import atexit
+import json
 import os
+import pickle
+import shutil
+import tempfile
+import unittest
+from contextlib import contextmanager
 from pickle import PicklingError
 
-
 import numpy as np
-from numpy.testing import assert_array_equal, assert_array_almost_equal
 import pytest
+from numpy.testing import assert_array_almost_equal, assert_array_equal
+
+from zarr.codecs import BZ2, AsType, Blosc, Zlib
+from zarr.errors import MetadataError
+from zarr.hierarchy import group
+from zarr.meta import (ZARR_FORMAT, decode_array_metadata,
+                       decode_group_metadata, encode_array_metadata,
+                       encode_group_metadata)
+from zarr.n5 import N5Store
+from zarr.storage import (ABSStore, ConsolidatedMetadataStore, DBMStore,
+                          DictStore, DirectoryStore, LMDBStore, LRUStoreCache,
+                          MemoryStore, MongoDBStore, NestedDirectoryStore,
+                          RedisStore, SQLiteStore, TempStore, ZipStore,
+                          array_meta_key, atexit_rmglob, atexit_rmtree,
+                          attrs_key, default_compressor, getsize,
+                          group_meta_key, init_array, init_group, migrate_1to2)
+from zarr.tests.util import CountingDict
+
+try:
+    import sqlite3
+except ImportError:  # pragma: no cover
+    sqlite3 = None
 
 try:
     import azure.storage.blob as asb
 except ImportError:  # pragma: no cover
     asb = None
 
+try:
+    import pymongo
+except ImportError:  # pragma: no cover
+    pymongo = None
 
-from zarr.storage import (init_array, array_meta_key, attrs_key, DictStore, MemoryStore,
-                          DirectoryStore, ZipStore, init_group, group_meta_key,
-                          getsize, migrate_1to2, TempStore, atexit_rmtree,
-                          NestedDirectoryStore, default_compressor, DBMStore,
-                          LMDBStore, SQLiteStore, ABSStore, atexit_rmglob, LRUStoreCache,
-                          ConsolidatedMetadataStore, MongoDBStore, RedisStore)
-from zarr.meta import (decode_array_metadata, encode_array_metadata, ZARR_FORMAT,
-                       decode_group_metadata, encode_group_metadata)
-from zarr.compat import PY2
-from zarr.codecs import AsType, Zlib, Blosc, BZ2
-from zarr.errors import PermissionError, MetadataError
-from zarr.hierarchy import group
-from zarr.n5 import N5Store
-from zarr.tests.util import CountingDict
+try:
+    import redis
+except ImportError:  # pragma: no cover
+    redis = None
+
 
 try:
     from zarr.codecs import LZMA
 except ImportError:  # pragma: no cover
     LZMA = None
+
+
+# also check for environment variables indicating whether tests requiring
+# services should be run
+ZARR_TEST_ABS = os.environ.get('ZARR_TEST_ABS', '0')
+ZARR_TEST_MONGO = os.environ.get('ZARR_TEST_MONGO', '0')
+ZARR_TEST_REDIS = os.environ.get('ZARR_TEST_REDIS', '0')
 
 
 @contextmanager
@@ -973,24 +994,19 @@ class TestDBMStoreDumb(TestDBMStore):
     def create_store(self):
         path = tempfile.mktemp(suffix='.dumbdbm')
         atexit.register(atexit_rmglob, path + '*')
-        if PY2:  # pragma: py3 no cover
-            import dumbdbm
-        else:  # pragma: py2 no cover
-            import dbm.dumb as dumbdbm
+
+        import dbm.dumb as dumbdbm
         store = DBMStore(path, flag='n', open=dumbdbm.open)
         return store
 
 
 try:
-    if PY2:  # pragma: py3 no cover
-        import gdbm
-    else:  # pragma: py2 no cover
-        import dbm.gnu as gdbm
+    import dbm.gnu as gdbm
 except ImportError:  # pragma: no cover
     gdbm = None
 
 
-@unittest.skipIf(gdbm is None, 'gdbm is not installed')
+@unittest.skipIf(gdbm is None, reason='gdbm is not installed')
 class TestDBMStoreGnu(TestDBMStore):
 
     def create_store(self):
@@ -1000,20 +1016,20 @@ class TestDBMStoreGnu(TestDBMStore):
         return store
 
 
-if not PY2:  # pragma: py2 no cover
-    try:
-        import dbm.ndbm as ndbm
-    except ImportError:  # pragma: no cover
-        ndbm = None
+try:
+    import dbm.ndbm as ndbm
+except ImportError:  # pragma: no cover
+    ndbm = None
 
-    @unittest.skipIf(ndbm is None, 'ndbm is not installed')
-    class TestDBMStoreNDBM(TestDBMStore):
 
-        def create_store(self):
-            path = tempfile.mktemp(suffix='.ndbm')
-            atexit.register(atexit_rmglob, path + '*')
-            store = DBMStore(path, flag='n', open=ndbm.open)
-            return store
+@unittest.skipIf(ndbm is None, reason='ndbm is not installed')
+class TestDBMStoreNDBM(TestDBMStore):
+
+    def create_store(self):
+        path = tempfile.mktemp(suffix='.ndbm')
+        atexit.register(atexit_rmglob, path + '*')
+        store = DBMStore(path, flag='n', open=ndbm.open)
+        return store
 
 
 try:
@@ -1022,7 +1038,7 @@ except ImportError:  # pragma: no cover
     bsddb3 = None
 
 
-@unittest.skipIf(bsddb3 is None, 'bsddb3 is not installed')
+@unittest.skipIf(bsddb3 is None, reason='bsddb3 is not installed')
 class TestDBMStoreBerkeleyDB(TestDBMStore):
 
     def create_store(self):
@@ -1038,18 +1054,13 @@ except ImportError:  # pragma: no cover
     lmdb = None
 
 
-@unittest.skipIf(lmdb is None, 'lmdb is not installed')
+@unittest.skipIf(lmdb is None, reason='lmdb is not installed')
 class TestLMDBStore(StoreTests, unittest.TestCase):
 
     def create_store(self):
         path = tempfile.mktemp(suffix='.lmdb')
         atexit.register(atexit_rmtree, path)
-        if PY2:  # pragma: py3 no cover
-            # don't use buffers, otherwise would have to rewrite tests as bytes and
-            # buffer don't compare equal in PY2
-            buffers = False
-        else:  # pragma: py2 no cover
-            buffers = True
+        buffers = True
         store = LMDBStore(path, buffers=buffers)
         return store
 
@@ -1060,36 +1071,7 @@ class TestLMDBStore(StoreTests, unittest.TestCase):
             assert 2 == len(store)
 
 
-try:
-    import sqlite3
-except ImportError:  # pragma: no cover
-    sqlite3 = None
-
-try:
-    import pymongo
-    from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError
-    try:
-        client = pymongo.MongoClient(host='127.0.0.1',
-                                     serverSelectionTimeoutMS=1e3)
-        client.server_info()
-    except (ConnectionFailure, ServerSelectionTimeoutError):  # pragma: no cover
-        pymongo = None
-except ImportError:  # pragma: no cover
-    pymongo = None
-
-try:
-    import redis
-    from redis import ConnectionError
-    try:
-        rs = redis.Redis("localhost", port=6379)
-        rs.ping()
-    except ConnectionError:  # pragma: no cover
-        redis = None
-except ImportError:  # pragma: no cover
-    redis = None
-
-
-@unittest.skipIf(sqlite3 is None, 'python built without sqlite')
+@unittest.skipIf(sqlite3 is None, reason='python built without sqlite')
 class TestSQLiteStore(StoreTests, unittest.TestCase):
 
     def create_store(self):
@@ -1099,7 +1081,7 @@ class TestSQLiteStore(StoreTests, unittest.TestCase):
         return store
 
 
-@unittest.skipIf(sqlite3 is None, 'python built without sqlite')
+@unittest.skipIf(sqlite3 is None, reason='python built without sqlite')
 class TestSQLiteStoreInMemory(TestSQLiteStore, unittest.TestCase):
 
     def create_store(self):
@@ -1118,7 +1100,9 @@ class TestSQLiteStoreInMemory(TestSQLiteStore, unittest.TestCase):
             pickle.dumps(store)
 
 
-@unittest.skipIf(pymongo is None, 'test requires pymongo')
+@unittest.skipIf(pymongo is None or ZARR_TEST_MONGO == '0',
+                 reason='pymongo client library not installed or tests not enabled'
+                        'via environment variable')
 class TestMongoDBStore(StoreTests, unittest.TestCase):
 
     def create_store(self):
@@ -1129,7 +1113,9 @@ class TestMongoDBStore(StoreTests, unittest.TestCase):
         return store
 
 
-@unittest.skipIf(redis is None, 'test requires redis')
+@unittest.skipIf(redis is None or ZARR_TEST_REDIS == '0',
+                 reason='redis client library not installed or tests not enabled'
+                        'via environment variable')
 class TestRedisStore(StoreTests, unittest.TestCase):
 
     def create_store(self):
@@ -1535,8 +1521,9 @@ def test_format_compatibility():
                 assert compressor.get_config() == z.compressor.get_config()
 
 
-@pytest.mark.skipif(asb is None,
-                    reason="azure-blob-storage could not be imported")
+@pytest.mark.skipif(asb is None or ZARR_TEST_ABS == '0',
+                    reason='azure blob storage client library not available or tests '
+                           'not enabled via environment variable')
 class TestABSStore(StoreTests, unittest.TestCase):
 
     def create_store(self):

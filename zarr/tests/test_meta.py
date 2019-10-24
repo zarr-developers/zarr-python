@@ -1,25 +1,22 @@
 # -*- coding: utf-8 -*-
-from __future__ import absolute_import, print_function, division
-import json
 import base64
-
+import json
 
 import numpy as np
 import pytest
 
-
-from zarr.compat import binary_type, text_type, PY2
-from zarr.meta import (decode_array_metadata, encode_dtype, decode_dtype, ZARR_FORMAT,
-                       decode_group_metadata, encode_array_metadata)
+from zarr.codecs import Blosc, Delta, Zlib
 from zarr.errors import MetadataError
-from zarr.codecs import Delta, Zlib, Blosc
+from zarr.meta import (ZARR_FORMAT, decode_array_metadata, decode_dtype,
+                       decode_group_metadata, encode_array_metadata,
+                       encode_dtype)
 
 
 def assert_json_equal(expect, actual):
-    if isinstance(expect, binary_type):  # pragma: py3 no cover
-        expect = text_type(expect, 'ascii')
-    if isinstance(actual, binary_type):
-        actual = text_type(actual, 'ascii')
+    if isinstance(expect, bytes):  # pragma: py3 no cover
+        expect = str(expect, 'ascii')
+    if isinstance(actual, bytes):
+        actual = str(actual, 'ascii')
     ej = json.loads(expect)
     aj = json.loads(actual)
     assert ej == aj
@@ -368,8 +365,7 @@ def test_encode_decode_fill_values_bytes():
 
         # define expected metadata encoded as JSON
         s = base64.standard_b64encode(v)
-        if not PY2:
-            s = s.decode()
+        s = s.decode()
         meta_json = '''{
             "chunks": [10],
             "compressor": {"id": "zlib", "level": 1},

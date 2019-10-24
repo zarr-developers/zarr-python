@@ -1,23 +1,22 @@
 # -*- coding: utf-8 -*-
-from __future__ import absolute_import, print_function, division
+from collections.abc import MutableMapping
 from itertools import islice
 
 import numpy as np
 
-
-from zarr.compat import PY2, MutableMapping
 from zarr.attrs import Attributes
 from zarr.core import Array
-from zarr.storage import (contains_array, contains_group, init_group,
-                          MemoryStore, group_meta_key, attrs_key, listdir, rename, rmdir)
-from zarr.creation import (array, create, empty, zeros, ones, full,
-                           empty_like, zeros_like, ones_like, full_like,
-                           normalize_store_arg)
-from zarr.util import (normalize_storage_path, normalize_shape, InfoReporter, TreeViewer,
-                       is_valid_python_name, instance_dir, nolock)
-from zarr.errors import (err_contains_array, err_contains_group, err_group_not_found,
-                         err_read_only)
+from zarr.creation import (array, create, empty, empty_like, full, full_like,
+                           normalize_store_arg, ones, ones_like, zeros,
+                           zeros_like)
+from zarr.errors import (err_contains_array, err_contains_group,
+                         err_group_not_found, err_read_only)
 from zarr.meta import decode_group_metadata
+from zarr.storage import (MemoryStore, attrs_key, contains_array,
+                          contains_group, group_meta_key, init_group, listdir,
+                          rename, rmdir)
+from zarr.util import (InfoReporter, TreeViewer, is_valid_python_name, nolock,
+                       normalize_shape, normalize_storage_path)
 
 
 class Group(MutableMapping):
@@ -218,7 +217,7 @@ class Group(MutableMapping):
 
     def __repr__(self):
         t = type(self)
-        r = '<%s.%s' % (t.__module__, t.__name__)
+        r = '<{}.{}'.format(t.__module__, t.__name__)
         if self.name:
             r += ' %r' % self.name
         if self._read_only:
@@ -229,7 +228,7 @@ class Group(MutableMapping):
     def info_items(self):
 
         def typestr(o):
-            return '%s.%s' % (type(o).__module__, type(o).__name__)
+            return '{}.{}'.format(type(o).__module__, type(o).__name__)
 
         items = []
 
@@ -353,11 +352,8 @@ class Group(MutableMapping):
             raise AttributeError
 
     def __dir__(self):
-        if PY2:  # pragma: py3 no cover
-            base = instance_dir(self)
-        else:  # pragma: py2 no cover
-            # noinspection PyUnresolvedReferences
-            base = super().__dir__()
+        # noinspection PyUnresolvedReferences
+        base = super().__dir__()
         keys = sorted(set(base + list(self)))
         keys = [k for k in keys if is_valid_python_name(k)]
         return keys
@@ -410,8 +406,15 @@ class Group(MutableMapping):
                                  cache_attrs=self.attrs.cache,
                                  synchronizer=self._synchronizer)
 
-    def array_keys(self):
+    def array_keys(self, recurse=False):
         """Return an iterator over member names for arrays only.
+
+        Parameters
+        ----------
+        recurse : recurse, optional
+            Option to return member names for all arrays, even from groups
+            below the current one. If False, only member names for arrays in
+            the current group will be returned. Default value is False.
 
         Examples
         --------
@@ -425,13 +428,19 @@ class Group(MutableMapping):
         ['baz', 'quux']
 
         """
-        for key in sorted(listdir(self._store, self._path)):
-            path = self._key_prefix + key
-            if contains_array(self._store, path):
-                yield key
+        return self._array_iter(keys_only=True,
+                                method='array_keys',
+                                recurse=recurse)
 
-    def arrays(self):
+    def arrays(self, recurse=False):
         """Return an iterator over (name, value) pairs for arrays only.
+
+        Parameters
+        ----------
+        recurse : recurse, optional
+            Option to return (name, value) pairs for all arrays, even from groups
+            below the current one. If False, only (name, value) pairs for arrays in
+            the current group will be returned. Default value is False.
 
         Examples
         --------
@@ -447,13 +456,19 @@ class Group(MutableMapping):
         quux <class 'zarr.core.Array'>
 
         """
+        return self._array_iter(keys_only=False,
+                                method='arrays',
+                                recurse=recurse)
+
+    def _array_iter(self, keys_only, method, recurse):
         for key in sorted(listdir(self._store, self._path)):
             path = self._key_prefix + key
             if contains_array(self._store, path):
-                yield key, Array(self._store, path=path, read_only=self._read_only,
-                                 chunk_store=self._chunk_store,
-                                 cache_attrs=self.attrs.cache,
-                                 synchronizer=self._synchronizer)
+                yield key if keys_only else (key, self[key])
+            elif recurse and contains_group(self._store, path):
+                group = self[key]
+                for i in getattr(group, method)(recurse=recurse):
+                    yield i
 
     def visitvalues(self, func):
         """Run ``func`` on each object.

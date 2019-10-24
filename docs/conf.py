@@ -14,27 +14,15 @@
 # serve to show the default.
 
 
-import sys
 import os
-from mock import Mock as MagicMock
+import sys
 
-
-PY2 = sys.version_info[0] == 2
-
-
-class Mock(MagicMock):
-    @classmethod
-    def __getattr__(cls, name):
-        return Mock()
-
-
-MOCK_MODULES = []
-if PY2:
-    MOCK_MODULES.append('lzma')
-
-
-sys.modules.update((mod_name, Mock()) for mod_name in MOCK_MODULES)
-
+# The version info for the project you're documenting, acts as replacement for
+# |version| and |release|, also used in various other places throughout the
+# built documents.
+#
+# The short X.Y version.
+import zarr
 
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
@@ -81,12 +69,6 @@ project = 'zarr'
 copyright = '2018, Zarr Developers'
 author = 'Zarr Developers'
 
-# The version info for the project you're documenting, acts as replacement for
-# |version| and |release|, also used in various other places throughout the
-# built documents.
-#
-# The short X.Y version.
-import zarr
 version = zarr.__version__
 # The full version, including alpha/beta/rc tags.
 release = zarr.__version__
@@ -141,12 +123,12 @@ todo_include_todos = False
 
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
-html_theme = 'default'
+html_theme = 'sphinx_rtd_theme'
 
 # Theme options are theme-specific and customize the look and feel of a theme
 # further.  For a list of options available for each theme, see the
 # documentation.
-#html_theme_options = {}
+html_theme_options = {'logo_only': True}
 
 # Add any paths that contain custom themes here, relative to this directory.
 #html_theme_path = []
@@ -160,7 +142,11 @@ html_theme = 'default'
 
 # The name of an image file (relative to this directory) to place at the top
 # of the sidebar.
-#html_logo = None
+html_logo = '_static/logo1.png'
+
+# Add custom css
+def setup(app):
+    app.add_stylesheet('custom.css')
 
 # The name of an image file (relative to this directory) to use as a favicon of
 # the docs.  This file should be a Windows icon file (.ico) being 16x16 or 32x32

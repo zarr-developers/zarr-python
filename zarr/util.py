@@ -1,33 +1,27 @@
 # -*- coding: utf-8 -*-
-from __future__ import absolute_import, print_function, division
-from textwrap import TextWrapper, dedent
 import codecs
+import inspect
 import json
 import numbers
 import uuid
-import inspect
+from textwrap import TextWrapper, dedent
 
-
+import numpy as np
 from asciitree import BoxStyle, LeftAligned
 from asciitree.traversal import Traversal
-import numpy as np
-from numcodecs.compat import ensure_ndarray, ensure_contiguous_ndarray
+from numcodecs.compat import ensure_contiguous_ndarray, ensure_ndarray
 from numcodecs.registry import codec_registry
-
-
-from zarr.compat import PY2, text_type, binary_type
-
 
 # codecs to use for object dtype convenience API
 object_codecs = {
-    text_type.__name__: 'vlen-utf8',
-    binary_type.__name__: 'vlen-bytes',
+    str.__name__: 'vlen-utf8',
+    bytes.__name__: 'vlen-bytes',
     'array': 'vlen-array',
 }
 
 
-def ensure_text_type(s):
-    if not isinstance(s, text_type):
+def ensure_str(s):
+    if not isinstance(s, str):
         s = ensure_contiguous_ndarray(s)
         s = codecs.decode(s, 'ascii')
     return s
@@ -41,7 +35,7 @@ def json_dumps(o):
 
 def json_loads(s):
     """Read JSON in a consistent way."""
-    return json.loads(ensure_text_type(s))
+    return json.loads(ensure_str(s))
 
 
 def normalize_shape(shape):
@@ -265,17 +259,13 @@ def normalize_fill_value(fill_value, dtype):
         # special case unicode because of encoding issues on Windows if passed through numpy
         # https://github.com/alimanfoo/zarr/pull/172#issuecomment-343782713
 
-        if PY2 and isinstance(fill_value, binary_type):  # pragma: py3 no cover
-            # this is OK on PY2, can be written as JSON
-            pass
-
-        elif not isinstance(fill_value, text_type):
+        if not isinstance(fill_value, str):
             raise ValueError('fill_value {!r} is not valid for dtype {}; must be a '
                              'unicode string'.format(fill_value, dtype))
 
     else:
         try:
-            if isinstance(fill_value, binary_type) and dtype.kind == 'V':
+            if isinstance(fill_value, bytes) and dtype.kind == 'V':
                 # special case for numpy 1.14 compatibility
                 fill_value = np.array(fill_value, dtype=dtype.str).view(dtype)[()]
             else:
@@ -292,7 +282,7 @@ def normalize_fill_value(fill_value, dtype):
 def normalize_storage_path(path):
 
     # handle bytes
-    if not PY2 and isinstance(path, bytes):  # pragma: py2 no cover
+    if isinstance(path, bytes):
         path = str(path, 'ascii')
 
     # ensure str
@@ -533,8 +523,7 @@ class TreeViewer(object):
 
         # Unicode characters slip in on Python 3.
         # So we need to straighten that out first.
-        if not PY2:
-            result = result.encode()
+        result = result.encode()
 
         return result
 
@@ -547,10 +536,7 @@ class TreeViewer(object):
         return drawer(root)
 
     def __repr__(self):
-        if PY2:  # pragma: py3 no cover
-            return self.__bytes__()
-        else:  # pragma: py2 no cover
-            return self.__unicode__()
+        return self.__unicode__()
 
     def _repr_html_(self):
         return tree_html(self.group, expand=self.expand, level=self.level)
@@ -566,28 +552,8 @@ def check_array_shape(param, array, shape):
 
 
 def is_valid_python_name(name):
-    if PY2:  # pragma: py3 no cover
-        import ast
-        # noinspection PyBroadException
-        try:
-            ast.parse('"".{};'.format(name))
-        except Exception:
-            return False
-        else:
-            return True
-    else:  # pragma: py2 no cover
-        from keyword import iskeyword
-        return name.isidentifier() and not iskeyword(name)
-
-
-def instance_dir(obj):  # pragma: py3 no cover
-    """Vanilla implementation of built-in dir() for PY2 to help with overriding __dir__.
-    Based on implementation of dir() in pypy."""
-    d = dict()
-    d.update(obj.__dict__)
-    d.update(class_dir(obj.__class__))
-    result = sorted(d.keys())
-    return result
+    from keyword import iskeyword
+    return name.isidentifier() and not iskeyword(name)
 
 
 def class_dir(klass):  # pragma: py3 no cover

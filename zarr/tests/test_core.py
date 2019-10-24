@@ -1,17 +1,28 @@
 # -*- coding: utf-8 -*-
-from __future__ import absolute_import, print_function, division
-import unittest
-from tempfile import mkdtemp, mktemp
 import atexit
-import shutil
-import pickle
 import os
-import warnings
-
+import pickle
+import shutil
+import unittest
+from itertools import zip_longest
+from tempfile import mkdtemp, mktemp
 
 import numpy as np
-from numpy.testing import assert_array_equal, assert_array_almost_equal
 import pytest
+from numcodecs import (BZ2, JSON, LZ4, Blosc, Categorize, Delta,
+                       FixedScaleOffset, GZip, MsgPack, Pickle, VLenArray,
+                       VLenBytes, VLenUTF8, Zlib)
+from numcodecs.compat import ensure_bytes, ensure_ndarray
+from numcodecs.tests.common import greetings
+from numpy.testing import assert_array_almost_equal, assert_array_equal
+
+from zarr.core import Array
+from zarr.meta import json_loads
+from zarr.n5 import N5Store, n5_keywords
+from zarr.storage import (ABSStore, DBMStore, DirectoryStore, LMDBStore,
+                          LRUStoreCache, NestedDirectoryStore, SQLiteStore,
+                          atexit_rmglob, atexit_rmtree, init_array, init_group)
+from zarr.util import buffer_size
 
 try:
     import azure.storage.blob as asb
@@ -19,25 +30,9 @@ except ImportError:  # pragma: no cover
     asb = None
 
 
-from zarr.storage import (DirectoryStore, init_array, init_group, NestedDirectoryStore,
-                          DBMStore, LMDBStore, SQLiteStore, ABSStore, atexit_rmtree,
-                          atexit_rmglob, LRUStoreCache)
-from zarr.core import Array
-from zarr.errors import PermissionError
-from zarr.compat import PY2, text_type, binary_type, zip_longest
-from zarr.meta import json_loads
-from zarr.util import buffer_size
-from zarr.n5 import n5_keywords, N5Store
-from numcodecs import (Delta, FixedScaleOffset, LZ4, GZip, Zlib, Blosc, BZ2, MsgPack, Pickle,
-                       Categorize, JSON, VLenUTF8, VLenBytes, VLenArray)
-from numcodecs.compat import ensure_bytes, ensure_ndarray
-from numcodecs.tests.common import greetings
-
-
-# needed for PY2/PY3 consistent behaviour
-if PY2:  # pragma: py3 no cover
-    warnings.resetwarnings()
-    warnings.simplefilter('always')
+# also check for environment variables indicating whether tests requiring
+# services should be run
+ZARR_TEST_ABS = os.environ.get('ZARR_TEST_ABS', '0')
 
 
 # noinspection PyMethodMayBeStatic
@@ -97,10 +92,7 @@ class TestArray(unittest.TestCase):
         z = self.create_array(shape=(1050,), chunks=100, dtype='f8', compressor=[])
         z[:] = np.random.random(z.shape)
 
-        if PY2:  # pragma: py3 no cover
-            expected_type = (str, text_type)
-        else:    # pragma: py2 no cover
-            expected_type = text_type
+        expected_type = str
 
         for k in z.chunk_store.keys():
             if not isinstance(k, expected_type):  # pragma: no cover
@@ -129,7 +121,7 @@ class TestArray(unittest.TestCase):
         z[:] = np.random.random(z.shape)
 
         # Check in-memory array only contains `bytes`
-        assert all([isinstance(v, binary_type) for v in z.chunk_store.values()])
+        assert all([isinstance(v, bytes) for v in z.chunk_store.values()])
 
     def test_nbytes_stored(self):
 
@@ -1097,7 +1089,7 @@ class TestArray(unittest.TestCase):
         assert_array_equal(data, a)
 
         # convenience API
-        z = self.create_array(shape=data.shape, dtype=text_type)
+        z = self.create_array(shape=data.shape, dtype=str)
         assert z.dtype == object
         assert isinstance(z.filters[0], VLenUTF8)
         z[:] = data
@@ -1138,7 +1130,7 @@ class TestArray(unittest.TestCase):
         assert_array_equal(data, a)
 
         # convenience API
-        z = self.create_array(shape=data.shape, dtype=binary_type)
+        z = self.create_array(shape=data.shape, dtype=bytes)
         assert z.dtype == object
         assert isinstance(z.filters[0], VLenBytes)
         z[:] = data
@@ -1412,8 +1404,9 @@ class TestArrayWithDirectoryStore(TestArray):
         assert expect_nbytes_stored == z.nbytes_stored
 
 
-@pytest.mark.skipif(asb is None,
-                    reason="azure-blob-storage could not be imported")
+@pytest.mark.skipif(asb is None or ZARR_TEST_ABS == '0',
+                    reason="azure-blob-storage could not be imported or tests not"
+                           "enabled via environment variable")
 class TestArrayWithABSStore(TestArray):
 
     @staticmethod
@@ -1634,7 +1627,7 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
 
         # convenience API
         with pytest.raises(ValueError):
-            self.create_array(shape=data.shape, dtype=text_type)
+            self.create_array(shape=data.shape, dtype=str)
 
     def test_object_arrays_vlen_bytes(self):
 
@@ -1646,7 +1639,7 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
 
         # convenience API
         with pytest.raises(ValueError):
-            self.create_array(shape=data.shape, dtype=binary_type)
+            self.create_array(shape=data.shape, dtype=bytes)
 
     def test_object_arrays_vlen_array(self):
 

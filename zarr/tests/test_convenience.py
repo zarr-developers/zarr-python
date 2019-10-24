@@ -1,24 +1,22 @@
 # -*- coding: utf-8 -*-
-from __future__ import absolute_import, print_function, division
-import tempfile
 import atexit
 import os
+import tempfile
 import unittest
 from numbers import Integral
 
-
 import numpy as np
-from numpy.testing import assert_array_equal
-from numcodecs import Zlib, Adler32
 import pytest
+from numcodecs import Adler32, Zlib
+from numpy.testing import assert_array_equal
 
-
-from zarr.convenience import (open, save, save_group, load, copy_store, copy,
-                              consolidate_metadata, open_consolidated)
-from zarr.storage import atexit_rmtree, MemoryStore, getsize, ConsolidatedMetadataStore
+from zarr.convenience import (consolidate_metadata, copy, copy_store, load,
+                              open, open_consolidated, save, save_group)
 from zarr.core import Array
+from zarr.errors import CopyError
 from zarr.hierarchy import Group, group
-from zarr.errors import CopyError, PermissionError
+from zarr.storage import (ConsolidatedMetadataStore, MemoryStore,
+                          atexit_rmtree, getsize)
 
 
 def test_open_array():
