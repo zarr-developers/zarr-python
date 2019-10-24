@@ -636,6 +636,30 @@ class TestGroup(unittest.TestCase):
         assert 0 == len(g)
         assert 'foo' not in g
 
+    def test_iterators_recurse(self):
+        # setup
+        g1 = self.create_group()
+        g2 = g1.create_group('foo/bar')
+        d1 = g2.create_dataset('/a/b/c', shape=1000, chunks=100)
+        d1[:] = np.arange(1000)
+        d2 = g1.create_dataset('foo/baz', shape=3000, chunks=300)
+        d2[:] = np.arange(3000)
+        d3 = g2.create_dataset('zab', shape=2000, chunks=200)
+        d3[:] = np.arange(2000)
+
+        # test recursive array_keys
+        array_keys = list(g1['foo'].array_keys(recurse=False))
+        array_keys_recurse = list(g1['foo'].array_keys(recurse=True))
+        assert len(array_keys_recurse) > len(array_keys)
+        assert sorted(array_keys_recurse) == ['baz', 'zab']
+
+        # test recursive arrays
+        arrays = list(g1['foo'].arrays(recurse=False))
+        arrays_recurse = list(g1['foo'].arrays(recurse=True))
+        assert len(arrays_recurse) > len(arrays)
+        assert 'zab' == arrays_recurse[0][0]
+        assert g1['foo']['bar']['zab'] == arrays_recurse[0][1]
+
     def test_getattr(self):
         # setup
         g1 = self.create_group()
