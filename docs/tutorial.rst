@@ -367,7 +367,7 @@ property. E.g.::
     Name        : /
     Type        : zarr.hierarchy.Group
     Read-only   : False
-    Store type  : zarr.storage.DictStore
+    Store type  : zarr.storage.MemoryStore
     No. members : 1
     No. arrays  : 0
     No. groups  : 1
@@ -377,7 +377,7 @@ property. E.g.::
     Name        : /foo
     Type        : zarr.hierarchy.Group
     Read-only   : False
-    Store type  : zarr.storage.DictStore
+    Store type  : zarr.storage.MemoryStore
     No. members : 2
     No. arrays  : 2
     No. groups  : 0
@@ -392,7 +392,7 @@ property. E.g.::
     Order              : C
     Read-only          : False
     Compressor         : Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
-    Store type         : zarr.storage.DictStore
+    Store type         : zarr.storage.MemoryStore
     No. bytes          : 8000000 (7.6M)
     No. bytes stored   : 33240 (32.5K)
     Storage ratio      : 240.7
@@ -407,7 +407,7 @@ property. E.g.::
     Order              : C
     Read-only          : False
     Compressor         : Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
-    Store type         : zarr.storage.DictStore
+    Store type         : zarr.storage.MemoryStore
     No. bytes          : 4000000 (3.8M)
     No. bytes stored   : 23943 (23.4K)
     Storage ratio      : 167.1
@@ -423,7 +423,7 @@ Groups also have the :func:`zarr.hierarchy.Group.tree` method, e.g.::
 
 If you're using Zarr within a Jupyter notebook, calling ``tree()`` will generate an
 interactive tree representation, see the `repr_tree.ipynb notebook
-<http://nbviewer.jupyter.org/github/zarr-developers/zarr/blob/master/notebooks/repr_tree.ipynb>`_
+<http://nbviewer.jupyter.org/github/zarr-developers/zarr-python/blob/master/notebooks/repr_tree.ipynb>`_
 for more examples.
 
 .. _tutorial_attrs:
@@ -746,7 +746,7 @@ with `MongoDB <https://www.mongodb.com/>`_ (an oject oriented NoSQL database). T
 respectively require the `redis <https://redis-py.readthedocs.io>`_ and
 `pymongo <https://api.mongodb.com/python/current/>`_ packages to be installed. 
 
-For compatibility with the `N5<https://github.com/saalfeldlab/n5`_ data format, Zarr also provides
+For compatibility with the `N5 <https://github.com/saalfeldlab/n5>`_ data format, Zarr also provides
 an N5 backend (this is currently an experimental feature). Similar to the zip storage class, an
 :class:`zarr.n5.N5Store` can be instantiated directly::
 
@@ -791,7 +791,7 @@ Here is an example using S3Map to read an array created previously::
     Order              : C
     Read-only          : False
     Compressor         : Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
-    Store type         : s3fs.mapping.S3Map
+    Store type         : fsspec.mapping.FSMap
     No. bytes          : 21
     Chunks initialized : 3/3
     >>> z[:]
@@ -806,10 +806,10 @@ The class is :class:`zarr.storage.ABSStore` (requires
  `azure-storage-blob <https://docs.microsoft.com/en-us/azure/storage/blobs/storage-quickstart-blobs-python>`_
 to be installed)::
 
-    >>> store = zarr.ABSStore(container='test', prefix='zarr-testing', blob_service_kwargs={'is_emulated': True})
-    >>> root = zarr.group(store=store, overwrite=True)
-    >>> z = root.zeros('foo/bar', shape=(1000, 1000), chunks=(100, 100), dtype='i4')
-    >>> z[:] = 42
+    >>> store = zarr.ABSStore(container='test', prefix='zarr-testing', blob_service_kwargs={'is_emulated': True})  # doctest: +SKIP
+    >>> root = zarr.group(store=store, overwrite=True)  # doctest: +SKIP
+    >>> z = root.zeros('foo/bar', shape=(1000, 1000), chunks=(100, 100), dtype='i4')  # doctest: +SKIP
+    >>> z[:] = 42  # doctest: +SKIP
 
 When using an actual storage account, provide ``account_name`` and
 ``account_key`` arguments to :class:`zarr.storage.ABSStore`, the
@@ -1170,8 +1170,8 @@ better performance, at least when using the Blosc compression library.
 The optimal chunk shape will depend on how you want to access the data. E.g.,
 for a 2-dimensional array, if you only ever take slices along the first
 dimension, then chunk across the second dimenson. If you know you want to chunk
-across an entire dimension you can use ``None`` within the ``chunks`` argument,
-e.g.::
+across an entire dimension you can use ``None`` or ``-1`` within the ``chunks``
+argument, e.g.::
 
     >>> z1 = zarr.zeros((10000, 10000), chunks=(100, None), dtype='i4')
     >>> z1.chunks
@@ -1333,7 +1333,7 @@ module can be pickled, as can the built-in ``dict`` class which can also be used
 storage.
 
 Note that if an array or group is backed by an in-memory store like a ``dict`` or
-:class:`zarr.storage.DictStore`, then when it is pickled all of the store data will be
+:class:`zarr.storage.MemoryStore`, then when it is pickled all of the store data will be
 included in the pickled data. However, if an array or group is backed by a persistent
 store like a :class:`zarr.storage.DirectoryStore`, :class:`zarr.storage.ZipStore` or
 :class:`zarr.storage.DBMStore` then the store data **are not** pickled. The only thing
@@ -1416,7 +1416,7 @@ compression and decompression. By default, Blosc uses up to 8
 internal threads. The number of Blosc threads can be changed to increase or
 decrease this number, e.g.::
 
-    >>> from zarr import blosc
+    >>> from numcodecs import blosc
     >>> blosc.set_nthreads(2)  # doctest: +SKIP
     8
 

@@ -1,23 +1,21 @@
 # -*- coding: utf-8 -*-
 """This module contains a storage class and codec to support the N5 format.
 """
-from __future__ import absolute_import, division
-from .meta import ZARR_FORMAT, json_dumps, json_loads
-from .storage import (
-        NestedDirectoryStore,
-        group_meta_key as zarr_group_meta_key,
-        array_meta_key as zarr_array_meta_key,
-        attrs_key as zarr_attrs_key,
-        _prog_ckey, _prog_number)
-from numcodecs.abc import Codec
-from numcodecs.compat import ndarray_copy
-from numcodecs.registry import register_codec, get_codec
-import numpy as np
+import os
 import struct
 import sys
-import os
 import warnings
 
+import numpy as np
+from numcodecs.abc import Codec
+from numcodecs.compat import ndarray_copy
+from numcodecs.registry import get_codec, register_codec
+
+from .meta import ZARR_FORMAT, json_dumps, json_loads
+from .storage import NestedDirectoryStore, _prog_ckey, _prog_number
+from .storage import array_meta_key as zarr_array_meta_key
+from .storage import attrs_key as zarr_attrs_key
+from .storage import group_meta_key as zarr_group_meta_key
 
 zarr_to_n5_keys = [
     ('chunks', 'blockSize'),
@@ -416,11 +414,10 @@ def compressor_config_to_n5(compressor_config):
             RuntimeWarning
         )
 
-        n5_config['codec'] = compressor_config['cname']
-        n5_config['level'] = compressor_config['clevel']
+        n5_config['cname'] = compressor_config['cname']
+        n5_config['clevel'] = compressor_config['clevel']
         n5_config['shuffle'] = compressor_config['shuffle']
-        assert compressor_config['blocksize'] == 0, \
-            "blosc block size needs to be 0 for N5 containers."
+        n5_config['blocksize'] = compressor_config['blocksize']
 
     elif codec_id == 'lzma':
 
@@ -475,10 +472,10 @@ def compressor_config_to_zarr(compressor_config):
 
     elif codec_id == 'blosc':
 
-        zarr_config['cname'] = compressor_config['codec']
-        zarr_config['clevel'] = compressor_config['level']
+        zarr_config['cname'] = compressor_config['cname']
+        zarr_config['clevel'] = compressor_config['clevel']
         zarr_config['shuffle'] = compressor_config['shuffle']
-        zarr_config['blocksize'] = 0
+        zarr_config['blocksize'] = compressor_config['blocksize']
 
     elif codec_id == 'lzma':
 
@@ -571,7 +568,7 @@ class N5ChunkWrapper(Codec):
 
             # out should only be used if we read a complete chunk
             assert chunk_shape == self.chunk_shape, (
-                "Expected chunk of shape %s, found %s" % (
+                "Expected chunk of shape {}, found {}".format(
                     self.chunk_shape,
                     chunk_shape))
 

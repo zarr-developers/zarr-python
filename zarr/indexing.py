@@ -1,15 +1,12 @@
 # -*- coding: utf-8 -*-
-from __future__ import absolute_import, print_function, division
-import numbers
-import itertools
 import collections
-
+import itertools
+import numbers
 
 import numpy as np
 
-
-from zarr.errors import (err_too_many_indices, err_boundscheck, err_negative_step,
-                         err_vindex_invalid_selection)
+from zarr.errors import (err_boundscheck, err_negative_step,
+                         err_too_many_indices, err_vindex_invalid_selection)
 
 
 def is_integer(x):
@@ -693,7 +690,11 @@ class CoordinateIndexer(object):
         self.chunk_rixs = np.nonzero(self.chunk_nitems)[0]
 
         # unravel chunk indices
-        self.chunk_mixs = np.unravel_index(self.chunk_rixs, dims=array._cdata_shape)
+        if tuple(map(int, np.__version__.split('.')[:2])) < (1, 16):
+            self.chunk_mixs = np.unravel_index(self.chunk_rixs, dims=array._cdata_shape)
+        else:
+            # deal with change dims->shape in arguments as of numpy 1.16
+            self.chunk_mixs = np.unravel_index(self.chunk_rixs, shape=array._cdata_shape)
 
     def __iter__(self):
 

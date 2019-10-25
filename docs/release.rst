@@ -1,6 +1,29 @@
 Release notes
 =============
 
+Upcoming Release
+----------------
+
+* Add ``recurse`` keyword to ``Group.array_keys`` and ``Group.arrays`` methods.
+  By :user:`James Bourbeau <jrbourbeau>`; :issue:`458`
+
+* Use uniform chunking for all dimensions when specifying ``chunks`` as an integer.
+  Also adds support for specifying ``-1`` to chunk across an entire dimension.
+  By :user:`James Bourbeau <jrbourbeau>`; :issue:`456`.
+
+* Rename ``DictStore`` to ``MemoryStore``.
+  By :user:`James Bourbeau <jrbourbeau>`; :issue:`455`.
+
+* Upgrade dependencies in the test matrices and resolve a
+  compatibility issue with testing against the Azure Storage
+  Emulator. By :user:`alimanfoo`; :issue:`468`, :issue:`467`.
+  
+* Do not rename Blosc parameters in n5 backend and add `blocksize` parameter,
+  compatible with n5-blosc. By :user:`axtimwalde`, :issue:`485`.
+
+* Removed support for Python 2.
+  By :user:`jhamman`; :issue:`393`, :issue:`470`.
+
 .. _release_2.3.2:
 
 2.3.2
@@ -10,19 +33,19 @@ Enhancements
 ~~~~~~~~~~~~
 
 * Use ``scandir`` in ``DirectoryStore``'s ``getsize`` method.
-  By :user:`John Kirkham <jakirkham>`; :issue:`431`
+  By :user:`John Kirkham <jakirkham>`; :issue:`431`.
 
 Bug fixes
 ~~~~~~~~~
 
 * Add and use utility functions to simplify reading and writing JSON.
-  By :user:`John Kirkham <jakirkham>`; :issue:`429`, :issue:`430`
+  By :user:`John Kirkham <jakirkham>`; :issue:`429`, :issue:`430`.
 
 * Fix ``collections``'s ``DeprecationWarning``\ s.
-  By :user:`John Kirkham <jakirkham>`; :issue:`432`
+  By :user:`John Kirkham <jakirkham>`; :issue:`432`.
 
 * Fix tests on big endian machines.
-  By :user:`Elliott Sales de Andrade <QuLogic>`; :issue:`427`
+  By :user:`Elliott Sales de Andrade <QuLogic>`; :issue:`427`.
 
 
 .. _release_2.3.1:
@@ -161,7 +184,7 @@ Enhancements
   properties that enable a selection of items in an array to be retrieved or
   updated. See the :ref:`tutorial_indexing` tutorial section for more
   information. There is also a `notebook
-  <https://github.com/zarr-developers/zarr/blob/master/notebooks/advanced_indexing.ipynb>`_
+  <https://github.com/zarr-developers/zarr-python/blob/master/notebooks/advanced_indexing.ipynb>`_
   with extended examples and performance benchmarks. :issue:`78`, :issue:`89`,
   :issue:`112`, :issue:`172`.
 
@@ -574,7 +597,7 @@ Thanks to :user:`Matthew Rocklin <mrocklin>`, :user:`Stephan Hoyer <shoyer>`,
 -----
 
 See `v0.4.0 release notes on GitHub
-<https://github.com/zarr-developers/zarr/releases/tag/v0.4.0>`_.
+<https://github.com/zarr-developers/zarr-python/releases/tag/v0.4.0>`_.
 
 .. _release_0.3.0:
 
@@ -582,6 +605,6 @@ See `v0.4.0 release notes on GitHub
 -----
 
 See `v0.3.0 release notes on GitHub
-<https://github.com/zarr-developers/zarr/releases/tag/v0.3.0>`_.
+<https://github.com/zarr-developers/zarr-python/releases/tag/v0.3.0>`_.
 
 .. _NumCodecs: http://numcodecs.readthedocs.io/
