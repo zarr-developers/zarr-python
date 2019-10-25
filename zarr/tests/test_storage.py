@@ -754,6 +754,7 @@ class TestDirectoryStore(StoreTests, unittest.TestCase):
         assert os.path.isdir(path)
 
         # check correct permissions
+        # regression test for https://github.com/zarr-developers/zarr-python/issues/325
         stat = os.stat(path)
         mode = stat.st_mode & 0o666
         umask = os.umask(0)
