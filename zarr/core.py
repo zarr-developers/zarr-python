@@ -135,6 +135,9 @@ class Array(object):
         self._oindex = OIndex(self)
         self._vindex = VIndex(self)
 
+        # initialize options
+        self.set_options()
+
     def _load_metadata(self):
         """(Re)load metadata from store."""
         if self._synchronizer is None:
