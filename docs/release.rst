@@ -24,6 +24,9 @@ Upcoming Release
 * Removed support for Python 2.
   By :user:`jhamman`; :issue:`393`, :issue:`470`.
 
+* Updates tests to use ``pytest.importorskip``.
+  By :user:`James Bourbeau <jrbourbeau>`; :issue:`492`
+
 .. _release_2.3.2:
 
 2.3.2
