@@ -654,6 +654,7 @@ except ImportError:  # pragma: no cover
 
 
 def temp_h5f():
+    h5py = pytest.importorskip("h5py")
     fn = tempfile.mktemp()
     atexit.register(os.remove, fn)
     h5f = h5py.File(fn, mode='w')
@@ -661,7 +662,6 @@ def temp_h5f():
     return h5f
 
 
-@unittest.skipIf(h5py is None, 'h5py is not installed')
 class TestCopyHDF5ToZarr(TestCopy):
 
     def __init__(self, *args, **kwargs):
@@ -672,7 +672,6 @@ class TestCopyHDF5ToZarr(TestCopy):
         self.new_dest = group
 
 
-@unittest.skipIf(h5py is None, 'h5py is not installed')
 class TestCopyZarrToHDF5(TestCopy):
 
     def __init__(self, *args, **kwargs):
@@ -683,7 +682,6 @@ class TestCopyZarrToHDF5(TestCopy):
         self.new_dest = temp_h5f
 
 
-@unittest.skipIf(h5py is None, 'h5py is not installed')
 class TestCopyHDF5ToHDF5(TestCopy):
 
     def __init__(self, *args, **kwargs):

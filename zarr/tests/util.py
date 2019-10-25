@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 import collections
 from collections.abc import MutableMapping
+import os
+
+import pytest
 
 
 class CountingDict(MutableMapping):
@@ -36,3 +39,10 @@ class CountingDict(MutableMapping):
     def __delitem__(self, key):
         self.counter['__delitem__', key] += 1
         del self.wrapped[key]
+
+
+def skip_test_env_var(name):
+    """ Checks for environment variables indicating whether tests requiring services should be run
+    """
+    value = os.environ.get(name, '0')
+    return pytest.mark.skipif(value == '0', reason='Tests not enabled via environment variable')
