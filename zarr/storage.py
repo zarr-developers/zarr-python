@@ -34,6 +34,8 @@ from pickle import PicklingError
 from threading import Lock, RLock
 import uuid
 
+import numpy
+
 from numcodecs.compat import ensure_bytes, ensure_contiguous_ndarray
 from numcodecs.registry import codec_registry
 
@@ -741,7 +743,7 @@ class DirectoryStore(MutableMapping):
         filepath = os.path.join(self.path, key)
         if os.path.isfile(filepath):
             with open(filepath, 'rb') as f:
-                return f.read()
+                return numpy.fromfile(f, dtype='u1')
         else:
             raise KeyError(key)
 
@@ -774,7 +776,7 @@ class DirectoryStore(MutableMapping):
         temp_path = os.path.join(dir_path, temp_name)
         try:
             with open(temp_path, mode='wb') as f:
-                f.write(value)
+                value.tofile(f)
 
             # move temporary file into place
             replace(temp_path, file_path)
