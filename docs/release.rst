@@ -24,6 +24,9 @@ Upcoming Release
 * Removed support for Python 2.
   By :user:`jhamman`; :issue:`393`, :issue:`470`.
 
+* Update ``DirectoryStore`` to create files with more permissive permissions.
+  By :user:`Eduardo Gonzalez <eddienko>` and :user:`James Bourbeau <jrbourbeau>`; :issue:`493`
+
 .. _release_2.3.2:
 
 2.3.2
