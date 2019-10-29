@@ -23,3 +23,6 @@ more information.
     
 .. image:: https://badge.fury.io/py/zarr.svg
     :target: https://badge.fury.io/py/zarr
+
+.. image:: https://pepy.tech/badge/zarr
+     :target: (https://pepy.tech/project/zarr)
