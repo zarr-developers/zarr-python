@@ -20,3 +20,6 @@ more information.
 
 .. image:: https://coveralls.io/repos/github/zarr-developers/zarr-python/badge.svg?branch=master
     :target: https://coveralls.io/github/zarr-developers/zarr-python?branch=master
+    
+.. image:: https://badge.fury.io/py/zarr.svg
+    :target: https://badge.fury.io/py/zarr
