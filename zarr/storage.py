@@ -15,34 +15,34 @@ classes may also optionally implement a `rename` method (rename all members unde
 path) and a `getsize` method (return the size in bytes of a given value).
 
 """
-from __future__ import absolute_import, print_function, division
-from collections import OrderedDict
-import os
-import operator
-import tempfile
-import zipfile
-import shutil
 import atexit
 import errno
-import re
-import sys
+import glob
 import multiprocessing
+import operator
+import os
+import re
+import shutil
+import sys
+import tempfile
+import warnings
+import zipfile
+from collections import OrderedDict
+from collections.abc import MutableMapping
+from os import scandir
 from pickle import PicklingError
 from threading import Lock, RLock
-import glob
-import warnings
 
-
-from zarr.util import (json_loads, normalize_shape, normalize_chunks, normalize_order,
-                       normalize_storage_path, buffer_size,
-                       normalize_fill_value, nolock, normalize_dtype)
-from zarr.meta import encode_array_metadata, encode_group_metadata
-from zarr.compat import PY2, MutableMapping, OrderedDict_move_to_end, scandir
-from numcodecs.registry import codec_registry
 from numcodecs.compat import ensure_bytes, ensure_contiguous_ndarray
-from zarr.errors import (err_contains_group, err_contains_array, err_bad_compressor,
-                         err_fspath_exists_notdir, err_read_only, MetadataError)
+from numcodecs.registry import codec_registry
 
+from zarr.errors import (MetadataError, err_bad_compressor, err_contains_array,
+                         err_contains_group, err_fspath_exists_notdir,
+                         err_read_only)
+from zarr.meta import encode_array_metadata, encode_group_metadata
+from zarr.util import (buffer_size, json_loads, nolock, normalize_chunks,
+                       normalize_dtype, normalize_fill_value, normalize_order,
+                       normalize_shape, normalize_storage_path)
 
 __doctest_requires__ = {
     ('RedisStore', 'RedisStore.*'): ['redis'],
@@ -1420,12 +1420,8 @@ class DBMStore(MutableMapping):
     def __init__(self, path, flag='c', mode=0o666, open=None, write_lock=True,
                  **open_kwargs):
         if open is None:
-            if PY2:  # pragma: py3 no cover
-                import anydbm
-                open = anydbm.open
-            else:  # pragma: py2 no cover
-                import dbm
-                open = dbm.open
+            import dbm
+            open = dbm.open
         path = os.path.abspath(path)
         # noinspection PyArgumentList
         self.db = open(path, flag, mode, **open_kwargs)
@@ -1444,7 +1440,7 @@ class DBMStore(MutableMapping):
 
     def __getstate__(self):
         try:
-            self.flush()  # needed for py2 and ndbm
+            self.flush()  # needed for ndbm
         except Exception:
             # flush may fail if db has already been closed
             pass
@@ -1523,24 +1519,14 @@ class DBMStore(MutableMapping):
         return key in self.db
 
 
-if PY2:  # pragma: py3 no cover
+def _lmdb_decode_key_buffer(key):
+    # assume buffers=True
+    return key.tobytes().decode('ascii')
 
-    def _lmdb_decode_key_buffer(key):
-        # assume buffers=True
-        return str(key)
 
-    def _lmdb_decode_key_bytes(key):
-        return key
-
-else:  # pragma: py2 no cover
-
-    def _lmdb_decode_key_buffer(key):
-        # assume buffers=True
-        return key.tobytes().decode('ascii')
-
-    def _lmdb_decode_key_bytes(key):
-        # assume buffers=False
-        return key.decode('ascii')
+def _lmdb_decode_key_bytes(key):
+    # assume buffers=False
+    return key.decode('ascii')
 
 
 class LMDBStore(MutableMapping):
@@ -1891,7 +1877,7 @@ class LRUStoreCache(LRUMappingCache):
                 # cache hit if no KeyError is raised
                 self.hits += 1
                 # treat the end as most recently used
-                OrderedDict_move_to_end(self._values_cache, key)
+                self._values_cache.move_to_end(key)
 
         except KeyError:
             # cache miss, retrieve value from the store
@@ -2207,14 +2193,7 @@ class SQLiteStore(MutableMapping):
         kv_list = []
         for dct in args:
             for k, v in dct.items():
-                # Python 2 cannot store `memoryview`s, but it can store
-                # `buffer`s. However Python 2 won't return `bytes` then. So we
-                # coerce to `bytes`, which are handled correctly. Python 3
-                # doesn't have these issues.
-                if PY2:  # pragma: py3 no cover
-                    v = ensure_bytes(v)
-                else:  # pragma: py2 no cover
-                    v = ensure_contiguous_ndarray(v)
+                v = ensure_contiguous_ndarray(v)
 
                 # Accumulate key-value pairs for storage
                 kv_list.append((k, v))
@@ -2572,7 +2551,7 @@ class LRUChunkCache(LRUMappingCache):
                 # cache hit if no KeyError is raised
                 self.hits += 1
                 # treat the end as most recently used
-                OrderedDict_move_to_end(self._values_cache, key)
+                self._values_cache.move_to_end(key)
 
         except KeyError:
             # cache miss

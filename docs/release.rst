@@ -4,6 +4,9 @@ Release notes
 Upcoming Release
 ----------------
 
+* Add ``recurse`` keyword to ``Group.array_keys`` and ``Group.arrays`` methods.
+  By :user:`James Bourbeau <jrbourbeau>`; :issue:`458`
+
 * Use uniform chunking for all dimensions when specifying ``chunks`` as an integer.
   Also adds support for specifying ``-1`` to chunk across an entire dimension.
   By :user:`James Bourbeau <jrbourbeau>`; :issue:`456`.
@@ -14,6 +17,12 @@ Upcoming Release
 * Upgrade dependencies in the test matrices and resolve a
   compatibility issue with testing against the Azure Storage
   Emulator. By :user:`alimanfoo`; :issue:`468`, :issue:`467`.
+  
+* Do not rename Blosc parameters in n5 backend and add `blocksize` parameter,
+  compatible with n5-blosc. By :user:`axtimwalde`, :issue:`485`.
+
+* Removed support for Python 2.
+  By :user:`jhamman`; :issue:`393`, :issue:`470`.
 
 .. _release_2.3.2:
 

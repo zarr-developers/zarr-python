@@ -1,15 +1,10 @@
 # -*- coding: utf-8 -*-
-from __future__ import absolute_import, print_function, division
-
-
 import numpy as np
-from numpy.testing import assert_array_equal, assert_array_almost_equal
+from numcodecs import (BZ2, AsType, Blosc, Categorize, Delta, FixedScaleOffset,
+                       PackBits, Quantize, Zlib)
+from numpy.testing import assert_array_almost_equal, assert_array_equal
 
-
-from numcodecs import (AsType, Delta, FixedScaleOffset, PackBits, Categorize, Zlib, Blosc,
-                       BZ2, Quantize)
 from zarr.creation import array
-
 
 compressors = [
     None,

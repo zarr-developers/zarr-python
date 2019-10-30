@@ -1,20 +1,19 @@
 # -*- coding: utf-8 -*-
 # flake8: noqa
-from __future__ import absolute_import, print_function, division
-
-
-from zarr.core import Array
-from zarr.creation import (empty, zeros, ones, full, array, empty_like, zeros_like,
-                           ones_like, full_like, open_array, open_like, create)
-from zarr.storage import (DictStore, MemoryStore, DirectoryStore, ZipStore, TempStore,
-                          NestedDirectoryStore, DBMStore, LMDBStore, SQLiteStore,
-                          LRUStoreCache, ABSStore, RedisStore, MongoDBStore, LRUChunkCache)
-from zarr.hierarchy import group, open_group, Group
-from zarr.sync import ThreadSynchronizer, ProcessSynchronizer
 from zarr.codecs import *
-from zarr.convenience import (open, save, save_array, save_group, load, copy_store,
-                              copy, copy_all, tree, consolidate_metadata,
-                              open_consolidated)
+from zarr.convenience import (consolidate_metadata, copy, copy_all, copy_store,
+                              load, open, open_consolidated, save, save_array,
+                              save_group, tree)
+from zarr.core import Array
+from zarr.creation import (array, create, empty, empty_like, full, full_like,
+                           ones, ones_like, open_array, open_like, zeros,
+                           zeros_like)
+from zarr.errors import CopyError, MetadataError
+from zarr.hierarchy import Group, group, open_group
 from zarr.n5 import N5Store
-from zarr.errors import CopyError, MetadataError, PermissionError
+from zarr.storage import (ABSStore, DBMStore, DictStore, DirectoryStore,
+                          LMDBStore, LRUStoreCache, MemoryStore, MongoDBStore,
+                          NestedDirectoryStore, RedisStore, SQLiteStore,
+                          TempStore, ZipStore, LRUChunkCache)
+from zarr.sync import ProcessSynchronizer, ThreadSynchronizer
 from zarr.version import version as __version__
