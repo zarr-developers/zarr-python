@@ -86,32 +86,16 @@ Zarr is a Python package providing an implementation of compressed, chunked, N-d
 
 ## Where to get it
 
-Zarr depends on NumPy. It is generally best to [install NumPy](https://docs.scipy.org/doc/numpy/user/install.html) first using whatever method is most appropriate for you operating system and Python distribution. Other dependencies should be installed automatically if using one of the installation methods below.
-
-Install Zarr from PyPI:
+Zarr can be installed from PyPI using `pip`:
 
 ```bash
 pip install zarr
 ```
 
-Alternatively, install Zarr via `conda`:
+or via `conda`:
 
 ```bash
 conda install -c conda-forge zarr
 ```
 
-## Installation from sources
-
-To install the latest development version of Zarr, you can use pip with the latest GitHub master:
-
-```bash
-pip install git+https://github.com/zarr-developers/zarr.git
-```
-
-or for installing in [development mode](https://pip.pypa.io/en/latest/reference/pip_install.html#editable-installs):
-
-```bash
-git clone --recursive https://github.com/zarr-developers/zarr.git
-cd zarr
-python setup.py install
-```
+For more details, including how to install from source, see the [installation documentation](https://zarr.readthedocs.io/en/stable/#installation)
