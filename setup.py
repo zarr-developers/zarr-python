@@ -20,13 +20,14 @@ setup(
     name='zarr',
     description=DESCRIPTION,
     long_description=LONG_DESCRIPTION,
+    long_description_content_type='text/markdown',
     use_scm_version={
         'version_scheme': 'guess-next-dev',
         'local_scheme': 'dirty-tag',
         'write_to': 'zarr/version.py'
     },
     setup_requires=[
-        'setuptools>18.0',
+        'setuptools>=38.6.0',
         'setuptools-scm>1.5.4'
     ],
     python_requires='>=3.5',
