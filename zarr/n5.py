@@ -8,6 +8,7 @@ import warnings
 
 import numpy as np
 from numcodecs.abc import Codec
+from numcodecs.blosc import get_nthreads
 from numcodecs.compat import ndarray_copy
 from numcodecs.registry import get_codec, register_codec
 
@@ -418,6 +419,7 @@ def compressor_config_to_n5(compressor_config):
         n5_config['clevel'] = compressor_config['clevel']
         n5_config['shuffle'] = compressor_config['shuffle']
         n5_config['blocksize'] = compressor_config['blocksize']
+        n5_config['nthreads'] = get_nthreads()
 
     elif codec_id == 'lzma':
 
