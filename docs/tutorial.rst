@@ -270,8 +270,8 @@ Here is an example using a delta filter with the Blosc compressor::
     Compressor         : Blosc(cname='zstd', clevel=1, shuffle=SHUFFLE, blocksize=0)
     Store type         : builtins.dict
     No. bytes          : 400000000 (381.5M)
-    No. bytes stored   : 648605 (633.4K)
-    Storage ratio      : 616.7
+    No. bytes stored   : 1290562 (1.2M)
+    Storage ratio      : 309.9
     Chunks initialized : 100/100
 
 For more information about available filter codecs, see the `Numcodecs
