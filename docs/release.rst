@@ -27,7 +27,7 @@ Upcoming Release
 * Update ``DirectoryStore`` to create files with more permissive permissions.
   By :user:`Eduardo Gonzalez <eddienko>` and :user:`James Bourbeau <jrbourbeau>`; :issue:`493`
 
-* Bump Numcodecs requirement to 0.6.4 use text handling functionality from it.
+* Require Numcodecs 0.6.4+ to use text handling functionality from it.
   By :user:`John Kirkham <jakirkham>`; :issue:`497`.
 
 .. _release_2.3.2:
