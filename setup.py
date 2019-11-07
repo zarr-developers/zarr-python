@@ -13,7 +13,7 @@ dependencies = [
     'asciitree',
     'numpy>=1.7',
     'fasteners',
-    'numcodecs>=0.6.2',
+    'numcodecs>=0.6.4',
 ]
 
 setup(
