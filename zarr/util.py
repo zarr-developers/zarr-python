@@ -20,13 +20,6 @@ object_codecs = {
 }
 
 
-def ensure_str(s):
-    if not isinstance(s, str):
-        s = ensure_contiguous_ndarray(s)
-        s = codecs.decode(s, 'ascii')
-    return s
-
-
 def json_dumps(o):
     """Write JSON in a consistent, human-readable way."""
     return json.dumps(o, indent=4, sort_keys=True, ensure_ascii=True,
