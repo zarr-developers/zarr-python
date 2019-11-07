@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-import codecs
 import inspect
 import json
 import numbers
@@ -9,7 +8,7 @@ from textwrap import TextWrapper, dedent
 import numpy as np
 from asciitree import BoxStyle, LeftAligned
 from asciitree.traversal import Traversal
-from numcodecs.compat import ensure_contiguous_ndarray, ensure_ndarray, ensure_text
+from numcodecs.compat import ensure_ndarray, ensure_text
 from numcodecs.registry import codec_registry
 
 # codecs to use for object dtype convenience API
