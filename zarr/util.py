@@ -9,7 +9,7 @@ from textwrap import TextWrapper, dedent
 import numpy as np
 from asciitree import BoxStyle, LeftAligned
 from asciitree.traversal import Traversal
-from numcodecs.compat import ensure_contiguous_ndarray, ensure_ndarray
+from numcodecs.compat import ensure_contiguous_ndarray, ensure_ndarray, ensure_text
 from numcodecs.registry import codec_registry
 
 # codecs to use for object dtype convenience API
@@ -35,7 +35,7 @@ def json_dumps(o):
 
 def json_loads(s):
     """Read JSON in a consistent way."""
-    return json.loads(ensure_str(s))
+    return json.loads(ensure_text(s, 'ascii'))
 
 
 def normalize_shape(shape):
