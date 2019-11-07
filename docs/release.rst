@@ -27,6 +27,9 @@ Upcoming Release
 * Updates tests to use ``pytest.importorskip``.
   By :user:`James Bourbeau <jrbourbeau>`; :issue:`492`
 
+* Update ``DirectoryStore`` to create files with more permissive permissions.
+  By :user:`Eduardo Gonzalez <eddienko>` and :user:`James Bourbeau <jrbourbeau>`; :issue:`493`
+
 .. _release_2.3.2:
 
 2.3.2

@@ -1416,7 +1416,7 @@ compression and decompression. By default, Blosc uses up to 8
 internal threads. The number of Blosc threads can be changed to increase or
 decrease this number, e.g.::
 
-    >>> from zarr import blosc
+    >>> from numcodecs import blosc
     >>> blosc.set_nthreads(2)  # doctest: +SKIP
     8
 

@@ -32,6 +32,7 @@ from collections.abc import MutableMapping
 from os import scandir
 from pickle import PicklingError
 from threading import Lock, RLock
+import uuid
 
 from numcodecs.compat import ensure_bytes, ensure_contiguous_ndarray
 from numcodecs.registry import codec_registry
@@ -768,12 +769,11 @@ class DirectoryStore(MutableMapping):
                     raise KeyError(key)
 
         # write to temporary file
-        temp_path = None
+        # note we're not using tempfile.NamedTemporaryFile to avoid restrictive file permissions
+        temp_name = file_name + '.' + uuid.uuid4().hex + '.partial'
+        temp_path = os.path.join(dir_path, temp_name)
         try:
-            with tempfile.NamedTemporaryFile(mode='wb', delete=False, dir=dir_path,
-                                             prefix=file_name + '.',
-                                             suffix='.partial') as f:
-                temp_path = f.name
+            with open(temp_path, mode='wb') as f:
                 f.write(value)
 
             # move temporary file into place
@@ -781,7 +781,7 @@ class DirectoryStore(MutableMapping):
 
         finally:
             # clean up if temp file still exists for whatever reason
-            if temp_path is not None and os.path.exists(temp_path):  # pragma: no cover
+            if os.path.exists(temp_path):  # pragma: no cover
                 os.remove(temp_path)
 
     def __delitem__(self, key):
