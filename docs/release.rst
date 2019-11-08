@@ -30,6 +30,9 @@ Upcoming Release
 * Require Numcodecs 0.6.4+ to use text handling functionality from it.
   By :user:`John Kirkham <jakirkham>`; :issue:`497`.
 
+* Use ``math.ceil`` for scalars.
+  By :user:`John Kirkham <jakirkham>`; :issue:`500`.
+
 .. _release_2.3.2:
 
 2.3.2
