@@ -746,6 +746,14 @@ class DirectoryStore(MutableMapping):
     def _normalize_key(self, key):
         return key.lower() if self.normalize_keys else key
 
+    def _fromfile(self, fn):
+        with open(filepath, 'rb') as f:
+            return f.read()
+
+    def _tofile(self, a, fn):
+        with open(fn, mode='wb') as f:
+            return f.write(a)
+
     def __getitem__(self, key):
         key = self._normalize_key(key)
         filepath = os.path.join(self.path, key)
