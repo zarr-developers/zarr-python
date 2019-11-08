@@ -4,8 +4,12 @@ Release notes
 Upcoming Release
 ----------------
 
+* Add key normalization option for ``DirectoryStore``, ``NestedDirectoryStore``,
+  ``TempStore``, and ``N5Store``.
+  By :user:`James Bourbeau <jrbourbeau>`; :issue:`459`.
+
 * Add ``recurse`` keyword to ``Group.array_keys`` and ``Group.arrays`` methods.
-  By :user:`James Bourbeau <jrbourbeau>`; :issue:`458`
+  By :user:`James Bourbeau <jrbourbeau>`; :issue:`458`.
 
 * Use uniform chunking for all dimensions when specifying ``chunks`` as an integer.
   Also adds support for specifying ``-1`` to chunk across an entire dimension.

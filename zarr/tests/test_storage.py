@@ -735,10 +735,10 @@ class TestDictStore(StoreTests, unittest.TestCase):
 
 class TestDirectoryStore(StoreTests, unittest.TestCase):
 
-    def create_store(self):
+    def create_store(self, normalize_keys=False):
         path = tempfile.mkdtemp()
         atexit.register(atexit_rmtree, path)
-        store = DirectoryStore(path)
+        store = DirectoryStore(path, normalize_keys=normalize_keys)
         return store
 
     def test_filesystem_path(self):
@@ -782,13 +782,19 @@ class TestDirectoryStore(StoreTests, unittest.TestCase):
         store = self.create_store()
         setdel_hierarchy_checks(store)
 
+    def test_normalize_keys(self):
+        store = self.create_store(normalize_keys=True)
+        store['FOO'] = b'bar'
+        assert 'FOO' in store
+        assert 'foo' in store
+
 
 class TestNestedDirectoryStore(TestDirectoryStore, unittest.TestCase):
 
-    def create_store(self):
+    def create_store(self, normalize_keys=False):
         path = tempfile.mkdtemp()
         atexit.register(atexit_rmtree, path)
-        store = NestedDirectoryStore(path)
+        store = NestedDirectoryStore(path, normalize_keys=normalize_keys)
         return store
 
     def test_chunk_nesting(self):
@@ -806,10 +812,10 @@ class TestNestedDirectoryStore(TestDirectoryStore, unittest.TestCase):
 
 class TestN5Store(TestNestedDirectoryStore, unittest.TestCase):
 
-    def create_store(self):
+    def create_store(self, normalize_keys=False):
         path = tempfile.mkdtemp(suffix='.n5')
         atexit.register(atexit_rmtree, path)
-        store = N5Store(path)
+        store = N5Store(path, normalize_keys=normalize_keys)
         return store
 
     def test_equal(self):
