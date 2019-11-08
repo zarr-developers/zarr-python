@@ -92,7 +92,7 @@ class IntDimIndexer(object):
 
 
 def ceildiv(a, b):
-    return int(math.ceil(a / b))
+    return math.ceil(a / b)
 
 
 class SliceDimIndexer(object):
