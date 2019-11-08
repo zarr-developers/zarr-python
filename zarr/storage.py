@@ -758,8 +758,7 @@ class DirectoryStore(MutableMapping):
         key = self._normalize_key(key)
         filepath = os.path.join(self.path, key)
         if os.path.isfile(filepath):
-            with open(filepath, 'rb') as f:
-                return f.read()
+            return self._fromfile(filepath)
         else:
             raise KeyError(key)
 
@@ -792,8 +791,7 @@ class DirectoryStore(MutableMapping):
         temp_name = file_name + '.' + uuid.uuid4().hex + '.partial'
         temp_path = os.path.join(dir_path, temp_name)
         try:
-            with open(temp_path, mode='wb') as f:
-                f.write(value)
+            self._tofile(value, temp_path)
 
             # move temporary file into place
             replace(temp_path, file_path)
