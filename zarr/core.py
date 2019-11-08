@@ -356,7 +356,7 @@ class Array(object):
         if self._shape == ():
             return 1,
         else:
-            return tuple(int(math.ceil(s / c))
+            return tuple(math.ceil(s / c)
                          for s, c in zip(self._shape, self._chunks))
 
     @property
