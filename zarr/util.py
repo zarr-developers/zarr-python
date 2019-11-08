@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import inspect
 import json
+import math
 import numbers
 import uuid
 from textwrap import TextWrapper, dedent
@@ -92,7 +93,7 @@ def guess_chunks(shape, typesize):
         if np.product(chunks) == 1:
             break  # Element size larger than CHUNK_MAX
 
-        chunks[idx % ndims] = np.ceil(chunks[idx % ndims] / 2.0)
+        chunks[idx % ndims] = math.ceil(chunks[idx % ndims] / 2.0)
         idx += 1
 
     return tuple(int(x) for x in chunks)
