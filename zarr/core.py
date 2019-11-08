@@ -2008,7 +2008,7 @@ class Array(object):
 
         # determine the new number and arrangement of chunks
         chunks = self._chunks
-        new_cdata_shape = tuple(int(math.ceil(s / c))
+        new_cdata_shape = tuple(math.ceil(s / c)
                                 for s, c in zip(new_shape, chunks))
 
         # remove any chunks not within range
