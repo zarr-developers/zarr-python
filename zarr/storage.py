@@ -380,7 +380,7 @@ def _init_array_metadata(store, shape, chunks=None, dtype=None, compressor='defa
         filters_config = []
 
     # deal with object encoding
-    if dtype == object:
+    if dtype.hasobject:
         if object_codec is None:
             if not filters:
                 # there are no filters so we can be sure there is no object codec

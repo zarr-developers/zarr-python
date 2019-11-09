@@ -15,6 +15,7 @@ from numcodecs import (BZ2, JSON, LZ4, Blosc, Categorize, Delta,
 from numcodecs.compat import ensure_bytes, ensure_ndarray
 from numcodecs.tests.common import greetings
 from numpy.testing import assert_array_almost_equal, assert_array_equal
+from pkg_resources import parse_version
 
 from zarr.core import Array
 from zarr.meta import json_loads
@@ -1195,6 +1196,41 @@ class TestArray(unittest.TestCase):
             # provide object_codec, but not object dtype
             self.create_array(shape=10, chunks=5, dtype='i4', object_codec=JSON())
 
+    @unittest.skipIf(parse_version(np.__version__) < parse_version('1.14.0'),
+                     "unsupported numpy version")
+    def test_structured_array_contain_object(self):
+
+        # ----------- creation --------------
+
+        structured_dtype = [('c_obj', object), ('c_int', np.int)]
+        a = np.array([(b'aaa', 1),
+                      (b'bbb', 2)], dtype=structured_dtype)
+
+        # zarr-array with structured dtype require object codec
+        with pytest.raises(ValueError):
+            self.create_array(shape=a.shape, dtype=structured_dtype)
+
+        # create zarr-array by np-array
+        za = self.create_array(shape=a.shape, dtype=structured_dtype, object_codec=Pickle())
+        za[:] = a
+
+        # must be equal
+        assert_array_equal(a, za[:])
+
+        # ---------- indexing ---------------
+
+        assert za[0] == a[0]
+
+        za[0] = (b'ccc', 3)
+        za[1:2] = np.array([(b'ddd', 4)], dtype=structured_dtype)  # ToDo: not work with list
+        assert_array_equal(za[:], np.array([(b'ccc', 3), (b'ddd', 4)], dtype=structured_dtype))
+
+        za['c_obj'] = [b'eee', b'fff']
+        za['c_obj', 0] = b'ggg'
+        assert_array_equal(za[:], np.array([(b'ggg', 3), (b'fff', 4)], dtype=structured_dtype))
+        assert za['c_obj', 0] == b'ggg'
+        assert za[1, 'c_int'] == 4
+
     def test_zero_d_iter(self):
         a = np.array(1, dtype=int)
         z = self.create_array(shape=a.shape, dtype=int)
@@ -1651,6 +1687,10 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
         # Cannot hacking out object codec as N5 doesn't allow object codecs
         pass
 
+    def test_structured_array_contain_object(self):
+        # skip this one, this data type not supported by N5
+        pass
+
     def test_attrs_n5_keywords(self):
         z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
         for k in n5_keywords:
@@ -2070,6 +2110,10 @@ class TestArrayWithFilters(TestArray):
 
     def test_object_arrays_danger(self):
         # skip this one, cannot use delta with objects
+        pass
+
+    def test_structured_array_contain_object(self):
+        # skip this one, cannot use delta on structured array
         pass
 
 
