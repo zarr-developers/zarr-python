@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import collections
 import itertools
+import math
 import numbers
 
 import numpy as np
@@ -91,7 +92,7 @@ class IntDimIndexer(object):
 
 
 def ceildiv(a, b):
-    return int(np.ceil(a / b))
+    return math.ceil(a / b)
 
 
 class SliceDimIndexer(object):

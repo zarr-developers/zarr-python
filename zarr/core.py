@@ -2,6 +2,7 @@
 import binascii
 import hashlib
 import itertools
+import math
 import operator
 import re
 from functools import reduce
@@ -355,7 +356,7 @@ class Array(object):
         if self._shape == ():
             return 1,
         else:
-            return tuple(int(np.ceil(s / c))
+            return tuple(math.ceil(s / c)
                          for s, c in zip(self._shape, self._chunks))
 
     @property
@@ -2007,7 +2008,7 @@ class Array(object):
 
         # determine the new number and arrangement of chunks
         chunks = self._chunks
-        new_cdata_shape = tuple(int(np.ceil(s / c))
+        new_cdata_shape = tuple(math.ceil(s / c)
                                 for s, c in zip(new_shape, chunks))
 
         # remove any chunks not within range
