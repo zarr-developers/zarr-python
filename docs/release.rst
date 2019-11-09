@@ -28,6 +28,9 @@ Upcoming Release
 * Removed support for Python 2.
   By :user:`jhamman`; :issue:`393`, :issue:`470`.
 
+* Updates tests to use ``pytest.importorskip``.
+  By :user:`James Bourbeau <jrbourbeau>`; :issue:`492`
+
 * Update ``DirectoryStore`` to create files with more permissive permissions.
   By :user:`Eduardo Gonzalez <eddienko>` and :user:`James Bourbeau <jrbourbeau>`; :issue:`493`
 
