@@ -1769,7 +1769,7 @@ class Array(object):
                 chunk = f.encode(chunk)
 
         # check object encoding
-        if isinstance(chunk, np.ndarray) and chunk.dtype == object:
+        if ensure_ndarray(chunk).dtype == object:
             raise RuntimeError('cannot write object array without object codec')
 
         # compress
