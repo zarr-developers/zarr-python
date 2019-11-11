@@ -28,11 +28,17 @@ Upcoming Release
 * Removed support for Python 2.
   By :user:`jhamman`; :issue:`393`, :issue:`470`.
 
+* Updates tests to use ``pytest.importorskip``.
+  By :user:`James Bourbeau <jrbourbeau>`; :issue:`492`
+
 * Update ``DirectoryStore`` to create files with more permissive permissions.
   By :user:`Eduardo Gonzalez <eddienko>` and :user:`James Bourbeau <jrbourbeau>`; :issue:`493`
 
 * Require Numcodecs 0.6.4+ to use text handling functionality from it.
   By :user:`John Kirkham <jakirkham>`; :issue:`497`.
+
+* Use ``math.ceil`` for scalars.
+  By :user:`John Kirkham <jakirkham>`; :issue:`500`.
 
 .. _release_2.3.2:
 

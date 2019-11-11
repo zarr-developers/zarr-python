@@ -28,40 +28,7 @@ from zarr.storage import (ABSStore, ConsolidatedMetadataStore, DBMStore,
                           array_meta_key, atexit_rmglob, atexit_rmtree,
                           attrs_key, default_compressor, getsize,
                           group_meta_key, init_array, init_group, migrate_1to2)
-from zarr.tests.util import CountingDict
-
-try:
-    import sqlite3
-except ImportError:  # pragma: no cover
-    sqlite3 = None
-
-try:
-    import azure.storage.blob as asb
-except ImportError:  # pragma: no cover
-    asb = None
-
-try:
-    import pymongo
-except ImportError:  # pragma: no cover
-    pymongo = None
-
-try:
-    import redis
-except ImportError:  # pragma: no cover
-    redis = None
-
-
-try:
-    from zarr.codecs import LZMA
-except ImportError:  # pragma: no cover
-    LZMA = None
-
-
-# also check for environment variables indicating whether tests requiring
-# services should be run
-ZARR_TEST_ABS = os.environ.get('ZARR_TEST_ABS', '0')
-ZARR_TEST_MONGO = os.environ.get('ZARR_TEST_MONGO', '0')
-ZARR_TEST_REDIS = os.environ.get('ZARR_TEST_REDIS', '0')
+from zarr.tests.util import CountingDict, skip_test_env_var
 
 
 @contextmanager
@@ -1008,64 +975,40 @@ class TestDBMStoreDumb(TestDBMStore):
         return store
 
 
-try:
-    import dbm.gnu as gdbm
-except ImportError:  # pragma: no cover
-    gdbm = None
-
-
-@unittest.skipIf(gdbm is None, reason='gdbm is not installed')
 class TestDBMStoreGnu(TestDBMStore):
 
     def create_store(self):
+        gdbm = pytest.importorskip("dbm.gnu")
         path = tempfile.mktemp(suffix='.gdbm')
         atexit.register(os.remove, path)
         store = DBMStore(path, flag='n', open=gdbm.open, write_lock=False)
         return store
 
 
-try:
-    import dbm.ndbm as ndbm
-except ImportError:  # pragma: no cover
-    ndbm = None
-
-
-@unittest.skipIf(ndbm is None, reason='ndbm is not installed')
 class TestDBMStoreNDBM(TestDBMStore):
 
     def create_store(self):
+        ndbm = pytest.importorskip("dbm.ndbm")
         path = tempfile.mktemp(suffix='.ndbm')
         atexit.register(atexit_rmglob, path + '*')
         store = DBMStore(path, flag='n', open=ndbm.open)
         return store
 
 
-try:
-    import bsddb3
-except ImportError:  # pragma: no cover
-    bsddb3 = None
-
-
-@unittest.skipIf(bsddb3 is None, reason='bsddb3 is not installed')
 class TestDBMStoreBerkeleyDB(TestDBMStore):
 
     def create_store(self):
+        bsddb3 = pytest.importorskip("bsddb3")
         path = tempfile.mktemp(suffix='.dbm')
         atexit.register(os.remove, path)
         store = DBMStore(path, flag='n', open=bsddb3.btopen, write_lock=False)
         return store
 
 
-try:
-    import lmdb
-except ImportError:  # pragma: no cover
-    lmdb = None
-
-
-@unittest.skipIf(lmdb is None, reason='lmdb is not installed')
 class TestLMDBStore(StoreTests, unittest.TestCase):
 
     def create_store(self):
+        pytest.importorskip("lmdb")
         path = tempfile.mktemp(suffix='.lmdb')
         atexit.register(atexit_rmtree, path)
         buffers = True
@@ -1079,20 +1022,20 @@ class TestLMDBStore(StoreTests, unittest.TestCase):
             assert 2 == len(store)
 
 
-@unittest.skipIf(sqlite3 is None, reason='python built without sqlite')
 class TestSQLiteStore(StoreTests, unittest.TestCase):
 
     def create_store(self):
+        pytest.importorskip("sqlite3")
         path = tempfile.mktemp(suffix='.db')
         atexit.register(atexit_rmtree, path)
         store = SQLiteStore(path)
         return store
 
 
-@unittest.skipIf(sqlite3 is None, reason='python built without sqlite')
 class TestSQLiteStoreInMemory(TestSQLiteStore, unittest.TestCase):
 
     def create_store(self):
+        pytest.importorskip("sqlite3")
         store = SQLiteStore(':memory:')
         return store
 
@@ -1108,12 +1051,11 @@ class TestSQLiteStoreInMemory(TestSQLiteStore, unittest.TestCase):
             pickle.dumps(store)
 
 
-@unittest.skipIf(pymongo is None or ZARR_TEST_MONGO == '0',
-                 reason='pymongo client library not installed or tests not enabled'
-                        'via environment variable')
+@skip_test_env_var("ZARR_TEST_MONGO")
 class TestMongoDBStore(StoreTests, unittest.TestCase):
 
     def create_store(self):
+        pytest.importorskip("pymongo")
         store = MongoDBStore(host='127.0.0.1', database='zarr_tests',
                              collection='zarr_tests')
         # start with an empty store
@@ -1121,14 +1063,13 @@ class TestMongoDBStore(StoreTests, unittest.TestCase):
         return store
 
 
-@unittest.skipIf(redis is None or ZARR_TEST_REDIS == '0',
-                 reason='redis client library not installed or tests not enabled'
-                        'via environment variable')
+@skip_test_env_var("ZARR_TEST_REDIS")
 class TestRedisStore(StoreTests, unittest.TestCase):
 
     def create_store(self):
         # TODO: this is the default host for Redis on Travis,
         # we probably want to generalize this though
+        pytest.importorskip("redis")
         store = RedisStore(host='localhost', port=6379)
         # start with an empty store
         store.clear()
@@ -1529,12 +1470,11 @@ def test_format_compatibility():
                 assert compressor.get_config() == z.compressor.get_config()
 
 
-@pytest.mark.skipif(asb is None or ZARR_TEST_ABS == '0',
-                    reason='azure blob storage client library not available or tests '
-                           'not enabled via environment variable')
+@skip_test_env_var("ZARR_TEST_ABS")
 class TestABSStore(StoreTests, unittest.TestCase):
 
     def create_store(self):
+        asb = pytest.importorskip("azure.storage.blob")
         blob_client = asb.BlockBlobService(is_emulated=True)
         blob_client.delete_container('test')
         blob_client.create_container('test')
