@@ -1570,6 +1570,7 @@ class Array(object):
 
         """
 
+        out = ensure_ndarray(out)
         assert len(chunk_coords) == len(self._cdata_shape)
 
         # obtain key for chunk
@@ -1590,8 +1591,7 @@ class Array(object):
 
         else:
 
-            if (isinstance(out, np.ndarray) and
-                    not fields and
+            if (not fields and
                     is_contiguous_selection(out_selection) and
                     is_total_slice(chunk_selection, self._chunks) and
                     not self._filters and
