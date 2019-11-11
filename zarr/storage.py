@@ -779,7 +779,7 @@ class DirectoryStore(MutableMapping):
         file writing logic.
         """
         with open(fn, mode='wb') as f:
-            return f.write(a)
+            f.write(a)
 
     def __getitem__(self, key):
         key = self._normalize_key(key)
