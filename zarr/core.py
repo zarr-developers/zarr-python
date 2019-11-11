@@ -1570,8 +1570,13 @@ class Array(object):
 
         """
 
-        out = ensure_ndarray(out)
         assert len(chunk_coords) == len(self._cdata_shape)
+
+        out_is_ndarray = True
+        try:
+            out = ensure_ndarray(out)
+        except TypeError:
+            out_is_ndarray = False
 
         # obtain key for chunk
         ckey = self._chunk_key(chunk_coords)
@@ -1591,7 +1596,8 @@ class Array(object):
 
         else:
 
-            if (not fields and
+            if (out_is_ndarray and
+                    not fields and
                     is_contiguous_selection(out_selection) and
                     is_total_slice(chunk_selection, self._chunks) and
                     not self._filters and
