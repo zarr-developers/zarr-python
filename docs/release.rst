@@ -40,6 +40,9 @@ Upcoming Release
 * Use ``math.ceil`` for scalars.
   By :user:`John Kirkham <jakirkham>`; :issue:`500`.
 
+* Use ``ensure_ndarray`` in a few more places.
+  By :user:`John Kirkham <jakirkham>`; :issue:`506`.
+
 * Refactor out ``_tofile``/``_fromfile`` from ``DirectoryStore``.
   By :user:`John Kirkham <jakirkham>`; :issue:`503`.
 
