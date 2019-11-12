@@ -746,12 +746,46 @@ class DirectoryStore(MutableMapping):
     def _normalize_key(self, key):
         return key.lower() if self.normalize_keys else key
 
+    def _fromfile(self, fn):
+        """ Read data from a file
+
+        Parameters
+        ----------
+        fn: str
+            Filepath to open and read from.
+
+        Notes
+        -----
+        Subclasses should overload this method to specify any custom
+        file reading logic.
+        """
+        with open(fn, 'rb') as f:
+            return f.read()
+
+    def _tofile(self, a, fn):
+        """ Write data to a file
+
+        Parameters
+        ----------
+        a: array-like
+            Data to write into the file.
+
+        fn: str
+            Filepath to open and write to.
+
+        Notes
+        -----
+        Subclasses should overload this method to specify any custom
+        file writing logic.
+        """
+        with open(fn, mode='wb') as f:
+            f.write(a)
+
     def __getitem__(self, key):
         key = self._normalize_key(key)
         filepath = os.path.join(self.path, key)
         if os.path.isfile(filepath):
-            with open(filepath, 'rb') as f:
-                return f.read()
+            return self._fromfile(filepath)
         else:
             raise KeyError(key)
 
@@ -784,8 +818,7 @@ class DirectoryStore(MutableMapping):
         temp_name = file_name + '.' + uuid.uuid4().hex + '.partial'
         temp_path = os.path.join(dir_path, temp_name)
         try:
-            with open(temp_path, mode='wb') as f:
-                f.write(value)
+            self._tofile(value, temp_path)
 
             # move temporary file into place
             replace(temp_path, file_path)
