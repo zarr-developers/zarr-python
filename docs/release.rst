@@ -40,6 +40,9 @@ Upcoming Release
 * Use ``math.ceil`` for scalars.
   By :user:`John Kirkham <jakirkham>`; :issue:`500`.
 
+* Refactor out ``_tofile``/``_fromfile`` from ``DirectoryStore``.
+  By :user:`John Kirkham <jakirkham>`; :issue:`503`.
+
 .. _release_2.3.2:
 
 2.3.2
