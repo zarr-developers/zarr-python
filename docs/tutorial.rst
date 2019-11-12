@@ -803,7 +803,7 @@ Here is an example using S3Map to read an array created previously::
 
 Zarr now also has a builtin storage backend for Azure Blob Storage.
 The class is :class:`zarr.storage.ABSStore` (requires
- `azure-storage-blob <https://docs.microsoft.com/en-us/azure/storage/blobs/storage-quickstart-blobs-python>`_
+`azure-storage-blob <https://docs.microsoft.com/en-us/azure/storage/blobs/storage-quickstart-blobs-python>`_
 to be installed)::
 
     >>> store = zarr.ABSStore(container='test', prefix='zarr-testing', blob_service_kwargs={'is_emulated': True})  # doctest: +SKIP
