@@ -346,6 +346,9 @@ sub-directories, e.g.::
     >>> z
     <zarr.core.Array '/foo/bar/baz' (10000, 10000) int32>
 
+Groups can be used as context managers (in a ``with`` statement).
+If the underlying store has a ``close`` method, it will be called on exit.
+
 For more information on groups see the :mod:`zarr.hierarchy` and
 :mod:`zarr.convenience` API docs.
 
@@ -744,7 +747,7 @@ databases. The :class:`zarr.storage.RedisStore` class interfaces `Redis <https:/
 (an in memory data structure store), and the :class:`zarr.storage.MongoDB` class interfaces
 with `MongoDB <https://www.mongodb.com/>`_ (an oject oriented NoSQL database). These stores
 respectively require the `redis <https://redis-py.readthedocs.io>`_ and
-`pymongo <https://api.mongodb.com/python/current/>`_ packages to be installed. 
+`pymongo <https://api.mongodb.com/python/current/>`_ packages to be installed.
 
 For compatibility with the `N5 <https://github.com/saalfeldlab/n5>`_ data format, Zarr also provides
 an N5 backend (this is currently an experimental feature). Similar to the zip storage class, an

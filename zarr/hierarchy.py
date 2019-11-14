@@ -59,6 +59,8 @@ class Group(MutableMapping):
     __iter__
     __contains__
     __getitem__
+    __enter__
+    __exit__
     group_keys
     groups
     array_keys
@@ -228,9 +230,11 @@ class Group(MutableMapping):
         return r
 
     def __enter__(self):
+        """Return the Group for use as a context manager."""
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
+        """If the underlying Store has a ``close`` method, call it."""
         try:
             self.store.close()
         except AttributeError:
