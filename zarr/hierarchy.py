@@ -26,6 +26,8 @@ class Group(MutableMapping):
     ----------
     store : MutableMapping
         Group store, already initialized.
+        If the Group is used in a context manager, and the store has a ``close`` method,
+        it will be called on exit.
     path : string, optional
         Group path.
     read_only : bool, optional
@@ -224,6 +226,15 @@ class Group(MutableMapping):
             r += ' read-only'
         r += '>'
         return r
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        try:
+            self.store.close()
+        except AttributeError:
+            pass
 
     def info_items(self):
 

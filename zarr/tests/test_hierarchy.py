@@ -3,6 +3,7 @@ import atexit
 import os
 import pickle
 import shutil
+import sys
 import tempfile
 import textwrap
 import unittest
@@ -860,6 +861,12 @@ class TestGroup(unittest.TestCase):
         assert isinstance(g2['foo'], Group)
         assert isinstance(g2['foo/bar'], Array)
 
+    def test_context_manager(self):
+
+        with self.create_group() as g:
+            d = g.create_dataset('foo/bar', shape=100, chunks=10)
+            d[:] = np.arange(100)
+
 
 class TestGroupWithMemoryStore(TestGroup):
 
@@ -911,6 +918,19 @@ class TestGroupWithZipStore(TestGroup):
         atexit.register(os.remove, path)
         store = ZipStore(path)
         return store, None
+
+    def test_context_manager(self):
+
+        with self.create_group() as g:
+            store = g.store
+            d = g.create_dataset('foo/bar', shape=100, chunks=10)
+            d[:] = np.arange(100)
+
+        # Check that exiting the context manager closes the store,
+        # and therefore the underlying ZipFile.
+        error = ValueError if sys.version_info >= (3, 6) else RuntimeError
+        with pytest.raises(error):
+            store.zf.extractall()
 
 
 class TestGroupWithDBMStore(TestGroup):
