@@ -39,6 +39,8 @@ class Group(MutableMapping):
         to all attribute read operations.
     synchronizer : object, optional
         Array synchronizer.
+    meta_array : array, optional
+        An array to base allocations off of.
 
     Attributes
     ----------
@@ -88,7 +90,7 @@ class Group(MutableMapping):
     """
 
     def __init__(self, store, path=None, read_only=False, chunk_store=None,
-                 cache_attrs=True, synchronizer=None):
+                 cache_attrs=True, synchronizer=None, meta_array=None):
         self._store = store
         self._chunk_store = chunk_store
         self._path = normalize_storage_path(path)
@@ -98,6 +100,10 @@ class Group(MutableMapping):
             self._key_prefix = ''
         self._read_only = read_only
         self._synchronizer = synchronizer
+        if meta_array is not None:
+            self._meta_array = np.empty_like(meta_array)
+        else:
+            self._meta_array = np.empty(())
 
         # guard conditions
         if contains_array(store, path=self._path):
