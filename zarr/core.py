@@ -1614,7 +1614,7 @@ class Array(object):
 
                 dest = out[out_selection]
                 write_direct = (
-                    dest.flags.writeable and (
+                    getattr(getattr(dest, "flags", None), "writeable", True) and (
                         (self._order == 'C' and dest.flags.c_contiguous) or
                         (self._order == 'F' and dest.flags.f_contiguous)
                     )
@@ -1723,7 +1723,7 @@ class Array(object):
 
                 # decode chunk
                 chunk = self._decode_chunk(cdata)
-                if not chunk.flags.writeable:
+                if not getattr(getattr(chunk, "flags", None), "writeable", True):
                     chunk = chunk.copy(order='K')
 
             # modify
