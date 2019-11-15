@@ -720,7 +720,7 @@ class Array(object):
 
         except KeyError:
             # chunk not initialized
-            chunk = np.zeros((), dtype=self._dtype)
+            chunk = np.zeros_like(self._meta_array, shape=(), dtype=self._dtype)
             if self._fill_value is not None:
                 chunk.fill(self._fill_value)
 
@@ -1024,7 +1024,8 @@ class Array(object):
 
         # setup output array
         if out is None:
-            out = np.empty(out_shape, dtype=out_dtype, order=self._order)
+            out = np.empty_like(self._meta_array, shape=out_shape,
+                                dtype=out_dtype, order=self._order)
         else:
             check_array_shape('out', out, out_shape)
 
@@ -1482,7 +1483,7 @@ class Array(object):
 
         except KeyError:
             # chunk not initialized
-            chunk = np.zeros((), dtype=self._dtype)
+            chunk = np.zeros_like(self._meta_array, shape=(), dtype=self._dtype)
             if self._fill_value is not None:
                 chunk.fill(self._fill_value)
 
@@ -1686,7 +1687,8 @@ class Array(object):
             if is_scalar(value, self._dtype):
 
                 # setup array filled with value
-                chunk = np.empty(self._chunks, dtype=self._dtype, order=self._order)
+                chunk = np.empty_like(self._meta_array, shape=self._chunks,
+                                      dtype=self._dtype, order=self._order)
                 chunk.fill(value)
 
             else:
@@ -1706,14 +1708,16 @@ class Array(object):
 
                 # chunk not initialized
                 if self._fill_value is not None:
-                    chunk = np.empty(self._chunks, dtype=self._dtype, order=self._order)
+                    chunk = np.empty_like(self._meta_array, shape=self._chunks,
+                                          dtype=self._dtype, order=self._order)
                     chunk.fill(self._fill_value)
                 elif self._dtype == object:
                     chunk = np.empty(self._chunks, dtype=self._dtype, order=self._order)
                 else:
                     # N.B., use zeros here so any region beyond the array has consistent
                     # and compressible data
-                    chunk = np.zeros(self._chunks, dtype=self._dtype, order=self._order)
+                    chunk = np.zeros_like(self._meta_array, shape=self._chunks,
+                                          dtype=self._dtype, order=self._order)
 
             else:
 
