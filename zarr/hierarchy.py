@@ -328,11 +328,13 @@ class Group(MutableMapping):
         if contains_array(self._store, path):
             return Array(self._store, read_only=self._read_only, path=path,
                          chunk_store=self._chunk_store,
-                         synchronizer=self._synchronizer, cache_attrs=self.attrs.cache)
+                         synchronizer=self._synchronizer, cache_attrs=self.attrs.cache,
+                         meta_array=self._meta_array)
         elif contains_group(self._store, path):
             return Group(self._store, read_only=self._read_only, path=path,
                          chunk_store=self._chunk_store, cache_attrs=self.attrs.cache,
-                         synchronizer=self._synchronizer)
+                         synchronizer=self._synchronizer,
+                         meta_array=self._meta_array)
         else:
             raise KeyError(item)
 
@@ -844,7 +846,8 @@ class Group(MutableMapping):
             cache_attrs = kwargs.get('cache_attrs', self.attrs.cache)
             a = Array(self._store, path=path, read_only=self._read_only,
                       chunk_store=self._chunk_store, synchronizer=synchronizer,
-                      cache_metadata=cache_metadata, cache_attrs=cache_attrs)
+                      cache_metadata=cache_metadata, cache_attrs=cache_attrs,
+                      meta_array=self._meta_array)
             shape = normalize_shape(shape)
             if shape != a.shape:
                 raise TypeError('shape do not match existing array; expected {}, got {}'
