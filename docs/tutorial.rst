@@ -743,7 +743,7 @@ Also added in Zarr version 2.3 are two storage classes for interfacing with serv
 databases. The :class:`zarr.storage.RedisStore` class interfaces `Redis <https://redis.io/>`_
 (an in memory data structure store), and the :class:`zarr.storage.MongoDB` class interfaces
 with `MongoDB <https://www.mongodb.com/>`_ (an oject oriented NoSQL database). These stores
-respectively require the `redis <https://redis-py.readthedocs.io>`_ and
+respectively require the `redis-py <https://redis-py.readthedocs.io>`_ and
 `pymongo <https://api.mongodb.com/python/current/>`_ packages to be installed. 
 
 For compatibility with the `N5 <https://github.com/saalfeldlab/n5>`_ data format, Zarr also provides
