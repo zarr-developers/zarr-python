@@ -1507,7 +1507,7 @@ class Array(object):
         # necessary data from the value array and storing into the chunk array.
 
         # N.B., it is an important optimisation that we only visit chunks which overlap
-        # the selection. This minimises the nuimber of iterations in the main for loop.
+        # the selection. This minimises the number of iterations in the main for loop.
 
         # check fields are sensible
         check_fields(fields, self._dtype)
@@ -1572,6 +1572,12 @@ class Array(object):
 
         assert len(chunk_coords) == len(self._cdata_shape)
 
+        out_is_ndarray = True
+        try:
+            out = ensure_ndarray(out)
+        except TypeError:
+            out_is_ndarray = False
+
         # obtain key for chunk
         ckey = self._chunk_key(chunk_coords)
 
@@ -1590,7 +1596,7 @@ class Array(object):
 
         else:
 
-            if (isinstance(out, np.ndarray) and
+            if (out_is_ndarray and
                     not fields and
                     is_contiguous_selection(out_selection) and
                     is_total_slice(chunk_selection, self._chunks) and
@@ -1678,10 +1684,7 @@ class Array(object):
             else:
 
                 # ensure array is contiguous
-                if self._order == 'F':
-                    chunk = np.asfortranarray(value, dtype=self._dtype)
-                else:
-                    chunk = np.ascontiguousarray(value, dtype=self._dtype)
+                chunk = value.astype(self._dtype, order=self._order, copy=False)
 
         else:
             # partially replace the contents of this chunk
@@ -1769,7 +1772,7 @@ class Array(object):
                 chunk = f.encode(chunk)
 
         # check object encoding
-        if isinstance(chunk, np.ndarray) and chunk.dtype == object:
+        if ensure_ndarray(chunk).dtype == object:
             raise RuntimeError('cannot write object array without object codec')
 
         # compress

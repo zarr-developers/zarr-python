@@ -40,6 +40,15 @@ Upcoming Release
 * Use ``math.ceil`` for scalars.
   By :user:`John Kirkham <jakirkham>`; :issue:`500`.
 
+* Use ``ensure_ndarray`` in a few more places.
+  By :user:`John Kirkham <jakirkham>`; :issue:`506`.
+
+* Ensure contiguous data using ``astype``.
+  By :user:`John Kirkham <jakirkham>`; :issue:`513`.
+
+* Refactor out ``_tofile``/``_fromfile`` from ``DirectoryStore``.
+  By :user:`John Kirkham <jakirkham>`; :issue:`503`.
+
 .. _release_2.3.2:
 
 2.3.2
