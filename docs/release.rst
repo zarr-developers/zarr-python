@@ -4,6 +4,10 @@ Release notes
 Upcoming Release
 ----------------
 
+* Add intermediate step (using ``zipfile.ZipInfo`` object) to write
+  inside ``ZipStore`` to solve too restrictive permission issue.
+  By :user:`Raphael Dussin <raphaeldussin`; :issue:`505`.
+
 * Add key normalization option for ``DirectoryStore``, ``NestedDirectoryStore``,
   ``TempStore``, and ``N5Store``.
   By :user:`James Bourbeau <jrbourbeau>`; :issue:`459`.
@@ -21,7 +25,7 @@ Upcoming Release
 * Upgrade dependencies in the test matrices and resolve a
   compatibility issue with testing against the Azure Storage
   Emulator. By :user:`alimanfoo`; :issue:`468`, :issue:`467`.
-  
+
 * Do not rename Blosc parameters in n5 backend and add `blocksize` parameter,
   compatible with n5-blosc. By :user:`axtimwalde`, :issue:`485`.
 
@@ -94,7 +98,7 @@ Enhancements
 ~~~~~~~~~~~~
 
 * New storage backend, backed by Azure Blob Storage, class :class:`zarr.storage.ABSStore`.
-  All data is stored as block blobs. By :user:`Shikhar Goenka <shikarsg>`, 
+  All data is stored as block blobs. By :user:`Shikhar Goenka <shikarsg>`,
   :user:`Tim Crone <tjcrone>` and :user:`Zain Patel <mzjp2>`; :issue:`345`.
 
 * Add "consolidated" metadata as an experimental feature: use
