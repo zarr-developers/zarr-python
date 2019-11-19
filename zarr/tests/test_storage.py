@@ -9,6 +9,7 @@ import tempfile
 import unittest
 from contextlib import contextmanager
 from pickle import PicklingError
+from zipfile import ZipFile
 
 import numpy as np
 import pytest
@@ -946,6 +947,21 @@ class TestZipStore(StoreTests, unittest.TestCase):
         store['foo'] = b'bar'
         with pytest.raises(NotImplementedError):
             store.popitem()
+
+    def test_permissions(self):
+        store = ZipStore('data/store.zip', mode='w')
+        store['foo'] = b'bar'
+        store['baz/'] = b''
+        store.flush()
+        store.close()
+        z = ZipFile('data/store.zip', 'r')
+        info = z.getinfo('foo')
+        perm = oct( info.external_attr >> 16 )
+        assert perm == '0o644'
+        info = z.getinfo('baz/')
+        perm = oct( info.external_attr >> 16 )
+        assert perm == '0o40775'
+        z.close()
 
 
 class TestDBMStore(StoreTests, unittest.TestCase):
