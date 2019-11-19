@@ -956,10 +956,10 @@ class TestZipStore(StoreTests, unittest.TestCase):
         store.close()
         z = ZipFile('data/store.zip', 'r')
         info = z.getinfo('foo')
-        perm = oct( info.external_attr >> 16 )
+        perm = oct(info.external_attr >> 16)
         assert perm == '0o644'
         info = z.getinfo('baz/')
-        perm = oct( info.external_attr >> 16 )
+        perm = oct(info.external_attr >> 16)
         assert perm == '0o40775'
         z.close()
 
