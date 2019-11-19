@@ -960,7 +960,11 @@ class TestZipStore(StoreTests, unittest.TestCase):
         assert perm == '0o644'
         info = z.getinfo('baz/')
         perm = oct(info.external_attr >> 16)
-        assert perm == '0o40775'
+        # windows/unix os dependent
+        if os.name == 'posix':
+            assert perm == '0o40775'
+        else:
+            assert perm == '0o644'
         z.close()
 
 
