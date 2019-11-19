@@ -1267,9 +1267,6 @@ class ZipStore(MutableMapping):
             else:
                 keyinfo.external_attr = 0o644 << 16     # ?rw-r--r--
 
-            if isinstance(value, str):
-                value = value.encode("utf-8")
-
             self.zf.writestr(keyinfo, value)
 
     def __delitem__(self, key):
