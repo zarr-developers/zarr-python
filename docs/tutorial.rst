@@ -270,8 +270,8 @@ Here is an example using a delta filter with the Blosc compressor::
     Compressor         : Blosc(cname='zstd', clevel=1, shuffle=SHUFFLE, blocksize=0)
     Store type         : builtins.dict
     No. bytes          : 400000000 (381.5M)
-    No. bytes stored   : 648605 (633.4K)
-    Storage ratio      : 616.7
+    No. bytes stored   : 1290562 (1.2M)
+    Storage ratio      : 309.9
     Chunks initialized : 100/100
 
 For more information about available filter codecs, see the `Numcodecs
@@ -803,7 +803,7 @@ Here is an example using S3Map to read an array created previously::
 
 Zarr now also has a builtin storage backend for Azure Blob Storage.
 The class is :class:`zarr.storage.ABSStore` (requires
- `azure-storage-blob <https://docs.microsoft.com/en-us/azure/storage/blobs/storage-quickstart-blobs-python>`_
+`azure-storage-blob <https://docs.microsoft.com/en-us/azure/storage/blobs/storage-quickstart-blobs-python>`_
 to be installed)::
 
     >>> store = zarr.ABSStore(container='test', prefix='zarr-testing', blob_service_kwargs={'is_emulated': True})  # doctest: +SKIP

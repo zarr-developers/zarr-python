@@ -6,27 +6,28 @@ from setuptools import setup
 DESCRIPTION = 'An implementation of chunked, compressed, ' \
               'N-dimensional arrays for Python.'
 
-with open('README.rst') as f:
+with open('README.md') as f:
     LONG_DESCRIPTION = f.read()
 
 dependencies = [
     'asciitree',
     'numpy>=1.7',
     'fasteners',
-    'numcodecs>=0.6.2',
+    'numcodecs>=0.6.4',
 ]
 
 setup(
     name='zarr',
     description=DESCRIPTION,
     long_description=LONG_DESCRIPTION,
+    long_description_content_type='text/markdown',
     use_scm_version={
         'version_scheme': 'guess-next-dev',
         'local_scheme': 'dirty-tag',
         'write_to': 'zarr/version.py'
     },
     setup_requires=[
-        'setuptools>18.0',
+        'setuptools>=38.6.0',
         'setuptools-scm>1.5.4'
     ],
     python_requires='>=3.5',

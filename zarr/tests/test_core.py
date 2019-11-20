@@ -24,15 +24,7 @@ from zarr.storage import (ABSStore, DBMStore, DirectoryStore, LMDBStore,
                           LRUChunkCache, atexit_rmglob, atexit_rmtree,
                           init_array, init_group)
 from zarr.util import buffer_size
-
-try:
-    import azure.storage.blob as asb
-except ImportError:  # pragma: no cover
-    asb = None
-
-# also check for environment variables indicating whether tests requiring
-# services should be run
-ZARR_TEST_ABS = os.environ.get('ZARR_TEST_ABS', '0')
+from zarr.tests.util import skip_test_env_var
 
 
 # noinspection PyMethodMayBeStatic
@@ -1404,13 +1396,12 @@ class TestArrayWithDirectoryStore(TestArray):
         assert expect_nbytes_stored == z.nbytes_stored
 
 
-@pytest.mark.skipif(asb is None or ZARR_TEST_ABS == '0',
-                    reason="azure-blob-storage could not be imported or tests not"
-                           "enabled via environment variable")
+@skip_test_env_var("ZARR_TEST_ABS")
 class TestArrayWithABSStore(TestArray):
 
     @staticmethod
     def absstore():
+        asb = pytest.importorskip("azure.storage.blob")
         blob_client = asb.BlockBlobService(is_emulated=True)
         blob_client.delete_container('test')
         blob_client.create_container('test')
@@ -1737,17 +1728,11 @@ class TestArrayWithDBMStore(TestArray):
         pass  # not implemented
 
 
-try:
-    import bsddb3
-except ImportError:  # pragma: no cover
-    bsddb3 = None
-
-
-@unittest.skipIf(bsddb3 is None, 'bsddb3 is not installed')
 class TestArrayWithDBMStoreBerkeleyDB(TestArray):
 
     @staticmethod
     def create_array(read_only=False, **kwargs):
+        bsddb3 = pytest.importorskip("bsddb3")
         path = mktemp(suffix='.dbm')
         atexit.register(os.remove, path)
         store = DBMStore(path, flag='n', open=bsddb3.btopen)
@@ -1762,17 +1747,11 @@ class TestArrayWithDBMStoreBerkeleyDB(TestArray):
         pass  # not implemented
 
 
-try:
-    import lmdb
-except ImportError:  # pragma: no cover
-    lmdb = None
-
-
-@unittest.skipIf(lmdb is None, 'lmdb is not installed')
 class TestArrayWithLMDBStore(TestArray):
 
     @staticmethod
     def create_array(read_only=False, **kwargs):
+        pytest.importorskip("lmdb")
         path = mktemp(suffix='.lmdb')
         atexit.register(atexit_rmtree, path)
         store = LMDBStore(path, buffers=True)
@@ -1790,11 +1769,11 @@ class TestArrayWithLMDBStore(TestArray):
         pass  # not implemented
 
 
-@unittest.skipIf(lmdb is None, 'lmdb is not installed')
 class TestArrayWithLMDBStoreNoBuffers(TestArray):
 
     @staticmethod
     def create_array(read_only=False, **kwargs):
+        pytest.importorskip("lmdb")
         path = mktemp(suffix='.lmdb')
         atexit.register(atexit_rmtree, path)
         store = LMDBStore(path, buffers=False)
@@ -1809,17 +1788,11 @@ class TestArrayWithLMDBStoreNoBuffers(TestArray):
         pass  # not implemented
 
 
-try:
-    import sqlite3
-except ImportError:  # pragma: no cover
-    sqlite3 = None
-
-
-@unittest.skipIf(sqlite3 is None, 'python built without sqlite')
 class TestArrayWithSQLiteStore(TestArray):
 
     @staticmethod
     def create_array(read_only=False, **kwargs):
+        pytest.importorskip("sqlite3")
         path = mktemp(suffix='.db')
         atexit.register(atexit_rmtree, path)
         store = SQLiteStore(path)

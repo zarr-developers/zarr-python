@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
-import codecs
 import inspect
 import json
+import math
 import numbers
 import uuid
 from textwrap import TextWrapper, dedent
@@ -9,7 +9,7 @@ from textwrap import TextWrapper, dedent
 import numpy as np
 from asciitree import BoxStyle, LeftAligned
 from asciitree.traversal import Traversal
-from numcodecs.compat import ensure_contiguous_ndarray, ensure_ndarray
+from numcodecs.compat import ensure_ndarray, ensure_text
 from numcodecs.registry import codec_registry
 
 # codecs to use for object dtype convenience API
@@ -20,13 +20,6 @@ object_codecs = {
 }
 
 
-def ensure_str(s):
-    if not isinstance(s, str):
-        s = ensure_contiguous_ndarray(s)
-        s = codecs.decode(s, 'ascii')
-    return s
-
-
 def json_dumps(o):
     """Write JSON in a consistent, human-readable way."""
     return json.dumps(o, indent=4, sort_keys=True, ensure_ascii=True,
@@ -35,7 +28,7 @@ def json_dumps(o):
 
 def json_loads(s):
     """Read JSON in a consistent way."""
-    return json.loads(ensure_str(s))
+    return json.loads(ensure_text(s, 'ascii'))
 
 
 def normalize_shape(shape):
@@ -100,7 +93,7 @@ def guess_chunks(shape, typesize):
         if np.product(chunks) == 1:
             break  # Element size larger than CHUNK_MAX
 
-        chunks[idx % ndims] = np.ceil(chunks[idx % ndims] / 2.0)
+        chunks[idx % ndims] = math.ceil(chunks[idx % ndims] / 2.0)
         idx += 1
 
     return tuple(int(x) for x in chunks)

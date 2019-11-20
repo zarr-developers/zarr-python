@@ -4,8 +4,12 @@ Release notes
 Upcoming Release
 ----------------
 
+* Add key normalization option for ``DirectoryStore``, ``NestedDirectoryStore``,
+  ``TempStore``, and ``N5Store``.
+  By :user:`James Bourbeau <jrbourbeau>`; :issue:`459`.
+
 * Add ``recurse`` keyword to ``Group.array_keys`` and ``Group.arrays`` methods.
-  By :user:`James Bourbeau <jrbourbeau>`; :issue:`458`
+  By :user:`James Bourbeau <jrbourbeau>`; :issue:`458`.
 
 * Use uniform chunking for all dimensions when specifying ``chunks`` as an integer.
   Also adds support for specifying ``-1`` to chunk across an entire dimension.
@@ -23,6 +27,27 @@ Upcoming Release
 
 * Removed support for Python 2.
   By :user:`jhamman`; :issue:`393`, :issue:`470`.
+
+* Updates tests to use ``pytest.importorskip``.
+  By :user:`James Bourbeau <jrbourbeau>`; :issue:`492`
+
+* Update ``DirectoryStore`` to create files with more permissive permissions.
+  By :user:`Eduardo Gonzalez <eddienko>` and :user:`James Bourbeau <jrbourbeau>`; :issue:`493`
+
+* Require Numcodecs 0.6.4+ to use text handling functionality from it.
+  By :user:`John Kirkham <jakirkham>`; :issue:`497`.
+
+* Use ``math.ceil`` for scalars.
+  By :user:`John Kirkham <jakirkham>`; :issue:`500`.
+
+* Use ``ensure_ndarray`` in a few more places.
+  By :user:`John Kirkham <jakirkham>`; :issue:`506`.
+
+* Ensure contiguous data using ``astype``.
+  By :user:`John Kirkham <jakirkham>`; :issue:`513`.
+
+* Refactor out ``_tofile``/``_fromfile`` from ``DirectoryStore``.
+  By :user:`John Kirkham <jakirkham>`; :issue:`503`.
 
 .. _release_2.3.2:
 
