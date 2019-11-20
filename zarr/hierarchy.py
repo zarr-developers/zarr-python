@@ -88,9 +88,10 @@ class Group(MutableMapping):
     """
 
     def __init__(self, store, path=None, read_only=False, chunk_store=None,
-                 cache_attrs=True, synchronizer=None):
+                 cache_attrs=True, synchronizer=None, chunk_cache=None):
         self._store = store
         self._chunk_store = chunk_store
+        self._chunk_cache = chunk_cache
         self._path = normalize_storage_path(path)
         if self._path:
             self._key_prefix = self._path + '/'
@@ -321,7 +322,7 @@ class Group(MutableMapping):
         path = self._item_path(item)
         if contains_array(self._store, path):
             return Array(self._store, read_only=self._read_only, path=path,
-                         chunk_store=self._chunk_store,
+                         chunk_store=self._chunk_store, chunk_cache=self._chunk_cache,
                          synchronizer=self._synchronizer, cache_attrs=self.attrs.cache)
         elif contains_group(self._store, path):
             return Group(self._store, read_only=self._read_only, path=path,
