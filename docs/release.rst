@@ -49,6 +49,9 @@ Upcoming Release
 * Refactor out ``_tofile``/``_fromfile`` from ``DirectoryStore``.
   By :user:`John Kirkham <jakirkham>`; :issue:`503`.
 
+* Add documentation build to CI.
+  By :user:`James Bourbeau <jrbourbeau>`; :issue:`516`.
+
 .. _release_2.3.2:
 
 2.3.2
