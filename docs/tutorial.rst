@@ -346,6 +346,9 @@ sub-directories, e.g.::
     >>> z
     <zarr.core.Array '/foo/bar/baz' (10000, 10000) int32>
 
+Groups can be used as context managers (in a ``with`` statement).
+If the underlying store has a ``close`` method, it will be called on exit.
+
 For more information on groups see the :mod:`zarr.hierarchy` and
 :mod:`zarr.convenience` API docs.
 

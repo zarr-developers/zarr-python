@@ -21,7 +21,7 @@ Upcoming Release
 * Upgrade dependencies in the test matrices and resolve a
   compatibility issue with testing against the Azure Storage
   Emulator. By :user:`alimanfoo`; :issue:`468`, :issue:`467`.
-  
+
 * Do not rename Blosc parameters in n5 backend and add `blocksize` parameter,
   compatible with n5-blosc. By :user:`axtimwalde`, :issue:`485`.
 
@@ -48,6 +48,9 @@ Upcoming Release
 
 * Refactor out ``_tofile``/``_fromfile`` from ``DirectoryStore``.
   By :user:`John Kirkham <jakirkham>`; :issue:`503`.
+
+* Add ``__enter__``/``__exit__`` methods to ``Group`` for ``h5py.File`` compatibility.
+  By :user:`Chris Barnes <clbarnes>`; :issue:`509`.
 
 * Add documentation build to CI.
   By :user:`James Bourbeau <jrbourbeau>`; :issue:`516`.
@@ -97,7 +100,7 @@ Enhancements
 ~~~~~~~~~~~~
 
 * New storage backend, backed by Azure Blob Storage, class :class:`zarr.storage.ABSStore`.
-  All data is stored as block blobs. By :user:`Shikhar Goenka <shikarsg>`, 
+  All data is stored as block blobs. By :user:`Shikhar Goenka <shikarsg>`,
   :user:`Tim Crone <tjcrone>` and :user:`Zain Patel <mzjp2>`; :issue:`345`.
 
 * Add "consolidated" metadata as an experimental feature: use
