@@ -1507,7 +1507,7 @@ class Array(object):
         # necessary data from the value array and storing into the chunk array.
 
         # N.B., it is an important optimisation that we only visit chunks which overlap
-        # the selection. This minimises the nuimber of iterations in the main for loop.
+        # the selection. This minimises the number of iterations in the main for loop.
 
         # check fields are sensible
         check_fields(fields, self._dtype)
@@ -1684,10 +1684,7 @@ class Array(object):
             else:
 
                 # ensure array is contiguous
-                if self._order == 'F':
-                    chunk = np.asfortranarray(value, dtype=self._dtype)
-                else:
-                    chunk = np.ascontiguousarray(value, dtype=self._dtype)
+                chunk = value.astype(self._dtype, order=self._order, copy=False)
 
         else:
             # partially replace the contents of this chunk
