@@ -3,6 +3,7 @@ import atexit
 import os
 import pickle
 import shutil
+import sys
 import tempfile
 import textwrap
 import unittest
@@ -22,16 +23,7 @@ from zarr.storage import (ABSStore, DBMStore, DirectoryStore, LMDBStore,
                           atexit_rmtree, group_meta_key, init_array,
                           init_group)
 from zarr.util import InfoReporter
-
-try:
-    import azure.storage.blob as asb
-except ImportError:  # pragma: no cover
-    asb = None
-
-
-# also check for environment variables indicating whether tests requiring
-# services should be run
-ZARR_TEST_ABS = os.environ.get('ZARR_TEST_ABS', '0')
+from zarr.tests.util import skip_test_env_var
 
 
 # noinspection PyStatementEffect
@@ -869,6 +861,12 @@ class TestGroup(unittest.TestCase):
         assert isinstance(g2['foo'], Group)
         assert isinstance(g2['foo/bar'], Array)
 
+    def test_context_manager(self):
+
+        with self.create_group() as g:
+            d = g.create_dataset('foo/bar', shape=100, chunks=10)
+            d[:] = np.arange(100)
+
 
 class TestGroupWithMemoryStore(TestGroup):
 
@@ -887,13 +885,12 @@ class TestGroupWithDirectoryStore(TestGroup):
         return store, None
 
 
-@pytest.mark.skipif(asb is None or ZARR_TEST_ABS == '0',
-                    reason="azure-blob-storage could not be imported or tests not enabled"
-                           "via environment variable")
+@skip_test_env_var("ZARR_TEST_ABS")
 class TestGroupWithABSStore(TestGroup):
 
     @staticmethod
     def create_store():
+        asb = pytest.importorskip("azure.storage.blob")
         blob_client = asb.BlockBlobService(is_emulated=True)
         blob_client.delete_container('test')
         blob_client.create_container('test')
@@ -922,6 +919,19 @@ class TestGroupWithZipStore(TestGroup):
         store = ZipStore(path)
         return store, None
 
+    def test_context_manager(self):
+
+        with self.create_group() as g:
+            store = g.store
+            d = g.create_dataset('foo/bar', shape=100, chunks=10)
+            d[:] = np.arange(100)
+
+        # Check that exiting the context manager closes the store,
+        # and therefore the underlying ZipFile.
+        error = ValueError if sys.version_info >= (3, 6) else RuntimeError
+        with pytest.raises(error):
+            store.zf.extractall()
+
 
 class TestGroupWithDBMStore(TestGroup):
 
@@ -933,50 +943,32 @@ class TestGroupWithDBMStore(TestGroup):
         return store, None
 
 
-try:
-    import bsddb3
-except ImportError:  # pragma: no cover
-    bsddb3 = None
-
-
-@unittest.skipIf(bsddb3 is None, 'bsddb3 is not installed')
 class TestGroupWithDBMStoreBerkeleyDB(TestGroup):
 
     @staticmethod
     def create_store():
+        bsddb3 = pytest.importorskip("bsddb3")
         path = tempfile.mktemp(suffix='.dbm')
         atexit.register(os.remove, path)
         store = DBMStore(path, flag='n', open=bsddb3.btopen)
         return store, None
 
 
-try:
-    import lmdb
-except ImportError:  # pragma: no cover
-    lmdb = None
-
-
-@unittest.skipIf(lmdb is None, 'lmdb is not installed')
 class TestGroupWithLMDBStore(TestGroup):
 
     @staticmethod
     def create_store():
+        pytest.importorskip("lmdb")
         path = tempfile.mktemp(suffix='.lmdb')
         atexit.register(atexit_rmtree, path)
         store = LMDBStore(path)
         return store, None
 
 
-try:
-    import sqlite3
-except ImportError:  # pragma: no cover
-    sqlite3 = None
-
-
-@unittest.skipIf(sqlite3 is None, 'python built without sqlite')
 class TestGroupWithSQLiteStore(TestGroup):
 
     def create_store(self):
+        pytest.importorskip("sqlite3")
         path = tempfile.mktemp(suffix='.db')
         atexit.register(atexit_rmtree, path)
         store = SQLiteStore(path)
