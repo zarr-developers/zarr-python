@@ -2057,16 +2057,17 @@ class ABSStore(MutableMapping):
             return False
 
     def listdir(self, path=None):
+        from azure.storage.blob import Blob
         dir_path = normalize_storage_path(self._append_path_to_prefix(path))
         if dir_path:
             dir_path += '/'
         items = list()
         for blob in self.client.list_blobs(self.container, prefix=dir_path, delimiter='/'):
-            if '/' in blob.name[len(dir_path):]:
+            if type(blob) == Blob:
+                items.append(self._strip_prefix_from_path(blob.name, dir_path))
+            else:
                 items.append(self._strip_prefix_from_path(
                     blob.name[:blob.name.find('/', len(dir_path))], dir_path))
-            else:
-                items.append(self._strip_prefix_from_path(blob.name, dir_path))
         return items
 
     def rmdir(self, path=None):
@@ -2077,7 +2078,7 @@ class ABSStore(MutableMapping):
             self.client.delete_blob(self.container, blob.name)
 
     def getsize(self, path=None):
-        from azure.storage.blob.models import Blob
+        from azure.storage.blob import Blob
         store_path = normalize_storage_path(path)
         fs_path = self.prefix
         if store_path:
