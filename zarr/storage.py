@@ -1964,7 +1964,7 @@ class ABSStore(MutableMapping):
     In order to use this store, you must install the Microsoft Azure Storage SDK for Python.
     """
 
-    def __init__(self, container, prefix=None, account_name=None, account_key=None,
+    def __init__(self, container, prefix='', account_name=None, account_key=None,
                  blob_service_kwargs=None):
         from azure.storage.blob import BlockBlobService
         self.container = container
@@ -1994,8 +1994,7 @@ class ABSStore(MutableMapping):
         if self.prefix == '':
             return normalize_storage_path(path)
         else:
-            return '/'.join([normalize_storage_path(self.prefix),
-                             normalize_storage_path(path)])
+            return '/'.join([self.prefix, normalize_storage_path(path)])
 
     @staticmethod
     def _strip_prefix_from_path(path, prefix):
