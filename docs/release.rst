@@ -55,6 +55,13 @@ Upcoming Release
 * Add documentation build to CI.
   By :user:`James Bourbeau <jrbourbeau>`; :issue:`516`.
 
+Bug fixes
+~~~~~~~~~
+
+* Fix '/' prepend bug in ``ABSStore``.
+  By :user:`Shikhar Goenka <shikharsg>`; :issue:`525`.
+
+
 .. _release_2.3.2:
 
 2.3.2
