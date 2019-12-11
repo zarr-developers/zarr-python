@@ -1484,28 +1484,29 @@ class TestABSStore(StoreTests, unittest.TestCase):
         return store
 
     def test_iterators_with_prefix(self):
-        store = self.create_store(prefix='test_prefix')
+        for prefix in ['test_prefix', '/test_prefix', 'test_prefix/', 'test/prefix', '', None]:
+            store = self.create_store(prefix=prefix)
 
-        # test iterator methods on empty store
-        assert 0 == len(store)
-        assert set() == set(store)
-        assert set() == set(store.keys())
-        assert set() == set(store.values())
-        assert set() == set(store.items())
+            # test iterator methods on empty store
+            assert 0 == len(store)
+            assert set() == set(store)
+            assert set() == set(store.keys())
+            assert set() == set(store.values())
+            assert set() == set(store.items())
 
-        # setup some values
-        store['a'] = b'aaa'
-        store['b'] = b'bbb'
-        store['c/d'] = b'ddd'
-        store['c/e/f'] = b'fff'
+            # setup some values
+            store['a'] = b'aaa'
+            store['b'] = b'bbb'
+            store['c/d'] = b'ddd'
+            store['c/e/f'] = b'fff'
 
-        # test iterators on store with data
-        assert 4 == len(store)
-        assert {'a', 'b', 'c/d', 'c/e/f'} == set(store)
-        assert {'a', 'b', 'c/d', 'c/e/f'} == set(store.keys())
-        assert {b'aaa', b'bbb', b'ddd', b'fff'} == set(store.values())
-        assert ({('a', b'aaa'), ('b', b'bbb'), ('c/d', b'ddd'), ('c/e/f', b'fff')} ==
-                set(store.items()))
+            # test iterators on store with data
+            assert 4 == len(store)
+            assert {'a', 'b', 'c/d', 'c/e/f'} == set(store)
+            assert {'a', 'b', 'c/d', 'c/e/f'} == set(store.keys())
+            assert {b'aaa', b'bbb', b'ddd', b'fff'} == set(store.values())
+            assert ({('a', b'aaa'), ('b', b'bbb'), ('c/d', b'ddd'), ('c/e/f', b'fff')} ==
+                    set(store.items()))
 
 
 class TestConsolidatedMetadataStore(unittest.TestCase):
