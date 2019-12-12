@@ -21,7 +21,7 @@ Upcoming Release
 * Upgrade dependencies in the test matrices and resolve a
   compatibility issue with testing against the Azure Storage
   Emulator. By :user:`alimanfoo`; :issue:`468`, :issue:`467`.
-  
+
 * Do not rename Blosc parameters in n5 backend and add `blocksize` parameter,
   compatible with n5-blosc. By :user:`axtimwalde`, :issue:`485`.
 
@@ -48,6 +48,19 @@ Upcoming Release
 
 * Refactor out ``_tofile``/``_fromfile`` from ``DirectoryStore``.
   By :user:`John Kirkham <jakirkham>`; :issue:`503`.
+
+* Add ``__enter__``/``__exit__`` methods to ``Group`` for ``h5py.File`` compatibility.
+  By :user:`Chris Barnes <clbarnes>`; :issue:`509`.
+
+* Add documentation build to CI.
+  By :user:`James Bourbeau <jrbourbeau>`; :issue:`516`.
+
+Bug fixes
+~~~~~~~~~
+
+* Fix '/' prepend bug in ``ABSStore``.
+  By :user:`Shikhar Goenka <shikharsg>`; :issue:`525`.
+
 
 .. _release_2.3.2:
 
@@ -94,7 +107,7 @@ Enhancements
 ~~~~~~~~~~~~
 
 * New storage backend, backed by Azure Blob Storage, class :class:`zarr.storage.ABSStore`.
-  All data is stored as block blobs. By :user:`Shikhar Goenka <shikarsg>`, 
+  All data is stored as block blobs. By :user:`Shikhar Goenka <shikarsg>`,
   :user:`Tim Crone <tjcrone>` and :user:`Zain Patel <mzjp2>`; :issue:`345`.
 
 * Add "consolidated" metadata as an experimental feature: use
@@ -141,7 +154,7 @@ Bug fixes
 * Avoid raising in :class:`zarr.storage.DirectoryStore`'s ``__setitem__`` when file already exists.
   By :user:`Justin Swaney <jmswaney>`, :issue:`272`, :issue:`318`.
 
-* The required version of the `numcodecs <http://numcodecs.rtfd.io>`_ package has been upgraded
+* The required version of the `Numcodecs`_ package has been upgraded
   to 0.6.2, which has enabled some code simplification and fixes a failing test involving
   msgpack encoding. By :user:`John Kirkham <jakirkham>`, :issue:`361`, :issue:`360`, :issue:`352`,
   :issue:`355`, :issue:`324`.
@@ -215,10 +228,10 @@ Enhancements
 
 * **New package for compressor and filter codecs**. The classes previously
   defined in the :mod:`zarr.codecs` module have been factored out into a
-  separate package called NumCodecs_. The NumCodecs_ package also includes
+  separate package called `Numcodecs`_. The `Numcodecs`_ package also includes
   several new codec classes not previously available in Zarr, including
   compressor codecs for Zstd and LZ4. This change is backwards-compatible with
-  existing code, as all codec classes defined by NumCodecs are imported into the
+  existing code, as all codec classes defined by Numcodecs are imported into the
   :mod:`zarr.codecs` namespace. However, it is recommended to import codecs from
   the new package, see the tutorial sections on :ref:`tutorial_compress` and
   :ref:`tutorial_filters` for examples. With contributions by
@@ -632,4 +645,4 @@ See `v0.4.0 release notes on GitHub
 See `v0.3.0 release notes on GitHub
 <https://github.com/zarr-developers/zarr-python/releases/tag/v0.3.0>`_.
 
-.. _NumCodecs: http://numcodecs.readthedocs.io/
+.. _Numcodecs: http://numcodecs.readthedocs.io/
