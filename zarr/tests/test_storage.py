@@ -1473,15 +1473,40 @@ def test_format_compatibility():
 @skip_test_env_var("ZARR_TEST_ABS")
 class TestABSStore(StoreTests, unittest.TestCase):
 
-    def create_store(self):
+    def create_store(self, prefix=None):
         asb = pytest.importorskip("azure.storage.blob")
         blob_client = asb.BlockBlobService(is_emulated=True)
         blob_client.delete_container('test')
         blob_client.create_container('test')
-        store = ABSStore(container='test', prefix='zarrtesting/', account_name='foo',
+        store = ABSStore(container='test', prefix=prefix, account_name='foo',
                          account_key='bar', blob_service_kwargs={'is_emulated': True})
         store.rmdir()
         return store
+
+    def test_iterators_with_prefix(self):
+        for prefix in ['test_prefix', '/test_prefix', 'test_prefix/', 'test/prefix', '', None]:
+            store = self.create_store(prefix=prefix)
+
+            # test iterator methods on empty store
+            assert 0 == len(store)
+            assert set() == set(store)
+            assert set() == set(store.keys())
+            assert set() == set(store.values())
+            assert set() == set(store.items())
+
+            # setup some values
+            store['a'] = b'aaa'
+            store['b'] = b'bbb'
+            store['c/d'] = b'ddd'
+            store['c/e/f'] = b'fff'
+
+            # test iterators on store with data
+            assert 4 == len(store)
+            assert {'a', 'b', 'c/d', 'c/e/f'} == set(store)
+            assert {'a', 'b', 'c/d', 'c/e/f'} == set(store.keys())
+            assert {b'aaa', b'bbb', b'ddd', b'fff'} == set(store.values())
+            assert ({('a', b'aaa'), ('b', b'bbb'), ('c/d', b'ddd'), ('c/e/f', b'fff')} ==
+                    set(store.items()))
 
 
 class TestConsolidatedMetadataStore(unittest.TestCase):
