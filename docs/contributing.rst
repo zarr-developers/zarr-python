@@ -190,8 +190,8 @@ Test coverage
 ~~~~~~~~~~~~~
 
 Zarr maintains 100% test coverage under the latest Python stable release (currently
-Python 3.6). Both unit tests and docstring doctests are included when computing
-coverage. Running ``tox -e py36`` will automatically run the test suite with coverage
+Python 3.8). Both unit tests and docstring doctests are included when computing
+coverage. Running ``tox -e py38`` will automatically run the test suite with coverage
 and produce a coverage report. This should be 100% before code can be accepted into the
 main code base.
 
