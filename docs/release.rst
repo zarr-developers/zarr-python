@@ -37,6 +37,9 @@ Upcoming Release
 * Require Numcodecs 0.6.4+ to use text handling functionality from it.
   By :user:`John Kirkham <jakirkham>`; :issue:`497`.
 
+* Support Python 3.8.
+  By :user:`John Kirkham <jakirkham>`; :issue:`499`.
+
 * Use ``math.ceil`` for scalars.
   By :user:`John Kirkham <jakirkham>`; :issue:`500`.
 
