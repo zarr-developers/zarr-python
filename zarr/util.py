@@ -421,7 +421,7 @@ def tree_widget_sublist(node, root=False, expand=False):
     else:
         result.opened = False
     result.name = node.get_text()
-    result.nodes = [tree_widget_sublist(c, expand) for c in node.get_children()]
+    result.nodes = [tree_widget_sublist(c, expand=expand) for c in node.get_children()]
     result.disabled = True
 
     return result
