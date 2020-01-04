@@ -1,48 +1,35 @@
 # -*- coding: utf-8 -*-
-from __future__ import absolute_import, print_function, division
-import unittest
-import tempfile
 import atexit
-import shutil
-import textwrap
 import os
 import pickle
-import warnings
-
+import shutil
+import sys
+import tempfile
+import textwrap
+import unittest
 
 import numpy as np
-from numpy.testing import assert_array_equal
 import pytest
-
-try:
-    import azure.storage.blob as asb
-except ImportError:  # pragma: no cover
-    asb = None
 
 try:
     import ipytree
 except ImportError:  # pragma: no cover
     ipytree = None
 
-
-from zarr.storage import (DictStore, DirectoryStore, ZipStore, init_group, init_array,
-                          array_meta_key, group_meta_key, atexit_rmtree,
-                          NestedDirectoryStore, DBMStore, LMDBStore, SQLiteStore,
-                          ABSStore, atexit_rmglob, LRUStoreCache)
-from zarr.core import Array
-from zarr.compat import PY2, text_type
-from zarr.hierarchy import Group, group, open_group
-from zarr.attrs import Attributes
-from zarr.errors import PermissionError
-from zarr.creation import open_array
-from zarr.util import InfoReporter
 from numcodecs import Zlib
+from numpy.testing import assert_array_equal
 
-
-# needed for PY2/PY3 consistent behaviour
-if PY2:  # pragma: py3 no cover
-    warnings.resetwarnings()
-    warnings.simplefilter('always')
+from zarr.attrs import Attributes
+from zarr.core import Array
+from zarr.creation import open_array
+from zarr.hierarchy import Group, group, open_group
+from zarr.storage import (ABSStore, DBMStore, DirectoryStore, LMDBStore,
+                          LRUStoreCache, MemoryStore, NestedDirectoryStore,
+                          SQLiteStore, ZipStore, array_meta_key, atexit_rmglob,
+                          atexit_rmtree, group_meta_key, init_array,
+                          init_group)
+from zarr.util import InfoReporter
+from zarr.tests.util import skip_test_env_var
 
 
 # noinspection PyStatementEffect
@@ -647,6 +634,30 @@ class TestGroup(unittest.TestCase):
         assert 0 == len(g)
         assert 'foo' not in g
 
+    def test_iterators_recurse(self):
+        # setup
+        g1 = self.create_group()
+        g2 = g1.create_group('foo/bar')
+        d1 = g2.create_dataset('/a/b/c', shape=1000, chunks=100)
+        d1[:] = np.arange(1000)
+        d2 = g1.create_dataset('foo/baz', shape=3000, chunks=300)
+        d2[:] = np.arange(3000)
+        d3 = g2.create_dataset('zab', shape=2000, chunks=200)
+        d3[:] = np.arange(2000)
+
+        # test recursive array_keys
+        array_keys = list(g1['foo'].array_keys(recurse=False))
+        array_keys_recurse = list(g1['foo'].array_keys(recurse=True))
+        assert len(array_keys_recurse) > len(array_keys)
+        assert sorted(array_keys_recurse) == ['baz', 'zab']
+
+        # test recursive arrays
+        arrays = list(g1['foo'].arrays(recurse=False))
+        arrays_recurse = list(g1['foo'].arrays(recurse=True))
+        assert len(arrays_recurse) > len(arrays)
+        assert 'zab' == arrays_recurse[0][0]
+        assert g1['foo']['bar']['zab'] == arrays_recurse[0][1]
+
     def test_getattr(self):
         # setup
         g1 = self.create_group()
@@ -856,12 +867,18 @@ class TestGroup(unittest.TestCase):
         assert isinstance(g2['foo'], Group)
         assert isinstance(g2['foo/bar'], Array)
 
+    def test_context_manager(self):
 
-class TestGroupWithDictStore(TestGroup):
+        with self.create_group() as g:
+            d = g.create_dataset('foo/bar', shape=100, chunks=10)
+            d[:] = np.arange(100)
+
+
+class TestGroupWithMemoryStore(TestGroup):
 
     @staticmethod
     def create_store():
-        return DictStore(), None
+        return MemoryStore(), None
 
 
 class TestGroupWithDirectoryStore(TestGroup):
@@ -874,17 +891,17 @@ class TestGroupWithDirectoryStore(TestGroup):
         return store, None
 
 
-@pytest.mark.skipif(asb is None,
-                    reason="azure-blob-storage could not be imported")
+@skip_test_env_var("ZARR_TEST_ABS")
 class TestGroupWithABSStore(TestGroup):
 
     @staticmethod
     def create_store():
+        asb = pytest.importorskip("azure.storage.blob")
         blob_client = asb.BlockBlobService(is_emulated=True)
         blob_client.delete_container('test')
         blob_client.create_container('test')
-        store = ABSStore(container='test', prefix='zarrtesting/', account_name='foo',
-                         account_key='bar', blob_service_kwargs={'is_emulated': True})
+        store = ABSStore(container='test', account_name='foo', account_key='bar',
+                         blob_service_kwargs={'is_emulated': True})
         store.rmdir()
         return store, None
 
@@ -908,6 +925,19 @@ class TestGroupWithZipStore(TestGroup):
         store = ZipStore(path)
         return store, None
 
+    def test_context_manager(self):
+
+        with self.create_group() as g:
+            store = g.store
+            d = g.create_dataset('foo/bar', shape=100, chunks=10)
+            d[:] = np.arange(100)
+
+        # Check that exiting the context manager closes the store,
+        # and therefore the underlying ZipFile.
+        error = ValueError if sys.version_info >= (3, 6) else RuntimeError
+        with pytest.raises(error):
+            store.zf.extractall()
+
 
 class TestGroupWithDBMStore(TestGroup):
 
@@ -919,50 +949,32 @@ class TestGroupWithDBMStore(TestGroup):
         return store, None
 
 
-try:
-    import bsddb3
-except ImportError:  # pragma: no cover
-    bsddb3 = None
-
-
-@unittest.skipIf(bsddb3 is None, 'bsddb3 is not installed')
 class TestGroupWithDBMStoreBerkeleyDB(TestGroup):
 
     @staticmethod
     def create_store():
+        bsddb3 = pytest.importorskip("bsddb3")
         path = tempfile.mktemp(suffix='.dbm')
         atexit.register(os.remove, path)
         store = DBMStore(path, flag='n', open=bsddb3.btopen)
         return store, None
 
 
-try:
-    import lmdb
-except ImportError:  # pragma: no cover
-    lmdb = None
-
-
-@unittest.skipIf(lmdb is None, 'lmdb is not installed')
 class TestGroupWithLMDBStore(TestGroup):
 
     @staticmethod
     def create_store():
+        pytest.importorskip("lmdb")
         path = tempfile.mktemp(suffix='.lmdb')
         atexit.register(atexit_rmtree, path)
         store = LMDBStore(path)
         return store, None
 
 
-try:
-    import sqlite3
-except ImportError:  # pragma: no cover
-    sqlite3 = None
-
-
-@unittest.skipIf(sqlite3 is None, 'python built without sqlite')
 class TestGroupWithSQLiteStore(TestGroup):
 
     def create_store(self):
+        pytest.importorskip("sqlite3")
         path = tempfile.mktemp(suffix='.db')
         atexit.register(atexit_rmtree, path)
         store = SQLiteStore(path)
@@ -1190,10 +1202,8 @@ def test_group_key_completions():
 
 def _check_tree(g, expect_bytes, expect_text):
     assert expect_bytes == bytes(g.tree())
-    assert expect_text == text_type(g.tree())
+    assert expect_text == str(g.tree())
     expect_repr = expect_text
-    if PY2:  # pragma: py3 no cover
-        expect_repr = expect_bytes
     assert expect_repr == repr(g.tree())
     if ipytree:
         # noinspection PyProtectedMember

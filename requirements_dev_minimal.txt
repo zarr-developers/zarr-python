@@ -1,0 +1,10 @@
+# library requirements
+asciitree==0.3.3
+fasteners==0.15
+numcodecs==0.6.4
+msgpack-python==0.5.6
+setuptools-scm==3.3.3
+# test requirements
+pytest==5.2.0; python_version > '3.0'
+# don't let pyup change this, needed until we drop support for py27
+pytest==4.6.5; python_version < '3.0' # pyup: ignore

@@ -1,29 +1,29 @@
 # -*- coding: utf-8 -*-
-from __future__ import absolute_import, print_function, division
 import binascii
-import operator
-import itertools
 import hashlib
+import itertools
+import math
+import operator
 import re
-
+from functools import reduce
 
 import numpy as np
 from numcodecs.compat import ensure_bytes, ensure_ndarray
 
-
-from zarr.util import (is_total_slice, human_readable_size, normalize_resize_args,
-                       normalize_storage_path, normalize_shape, normalize_chunks,
-                       InfoReporter, check_array_shape, nolock)
-from zarr.storage import array_meta_key, attrs_key, listdir, getsize
-from zarr.meta import decode_array_metadata, encode_array_metadata
 from zarr.attrs import Attributes
-from zarr.errors import PermissionError, err_read_only, err_array_not_found
-from zarr.compat import reduce
 from zarr.codecs import AsType, get_codec
-from zarr.indexing import (OIndex, OrthogonalIndexer, BasicIndexer, VIndex,
-                           CoordinateIndexer, MaskIndexer, check_fields, pop_fields,
-                           ensure_tuple, is_scalar, is_contiguous_selection,
-                           err_too_many_indices, check_no_multi_fields)
+from zarr.errors import err_array_not_found, err_read_only
+from zarr.indexing import (BasicIndexer, CoordinateIndexer, MaskIndexer,
+                           OIndex, OrthogonalIndexer, VIndex, check_fields,
+                           check_no_multi_fields, ensure_tuple,
+                           err_too_many_indices, is_contiguous_selection,
+                           is_scalar, pop_fields)
+from zarr.meta import decode_array_metadata, encode_array_metadata
+from zarr.storage import array_meta_key, attrs_key, getsize, listdir
+from zarr.util import (InfoReporter, check_array_shape, human_readable_size,
+                       is_total_slice, nolock, normalize_chunks,
+                       normalize_resize_args, normalize_shape,
+                       normalize_storage_path)
 
 
 # noinspection PyUnresolvedReferences
@@ -356,7 +356,7 @@ class Array(object):
         if self._shape == ():
             return 1,
         else:
-            return tuple(int(np.ceil(s / c))
+            return tuple(math.ceil(s / c)
                          for s, c in zip(self._shape, self._chunks))
 
     @property
@@ -1507,7 +1507,7 @@ class Array(object):
         # necessary data from the value array and storing into the chunk array.
 
         # N.B., it is an important optimisation that we only visit chunks which overlap
-        # the selection. This minimises the nuimber of iterations in the main for loop.
+        # the selection. This minimises the number of iterations in the main for loop.
 
         # check fields are sensible
         check_fields(fields, self._dtype)
@@ -1572,6 +1572,12 @@ class Array(object):
 
         assert len(chunk_coords) == len(self._cdata_shape)
 
+        out_is_ndarray = True
+        try:
+            out = ensure_ndarray(out)
+        except TypeError:
+            out_is_ndarray = False
+
         # obtain key for chunk
         ckey = self._chunk_key(chunk_coords)
 
@@ -1590,7 +1596,7 @@ class Array(object):
 
         else:
 
-            if (isinstance(out, np.ndarray) and
+            if (out_is_ndarray and
                     not fields and
                     is_contiguous_selection(out_selection) and
                     is_total_slice(chunk_selection, self._chunks) and
@@ -1678,10 +1684,7 @@ class Array(object):
             else:
 
                 # ensure array is contiguous
-                if self._order == 'F':
-                    chunk = np.asfortranarray(value, dtype=self._dtype)
-                else:
-                    chunk = np.ascontiguousarray(value, dtype=self._dtype)
+                chunk = value.astype(self._dtype, order=self._order, copy=False)
 
         else:
             # partially replace the contents of this chunk
@@ -1769,7 +1772,7 @@ class Array(object):
                 chunk = f.encode(chunk)
 
         # check object encoding
-        if isinstance(chunk, np.ndarray) and chunk.dtype == object:
+        if ensure_ndarray(chunk).dtype == object:
             raise RuntimeError('cannot write object array without object codec')
 
         # compress
@@ -1786,7 +1789,7 @@ class Array(object):
 
     def __repr__(self):
         t = type(self)
-        r = '<%s.%s' % (t.__module__, t.__name__)
+        r = '<{}.{}'.format(t.__module__, t.__name__)
         if self.name:
             r += ' %r' % self.name
         r += ' %s' % str(self.shape)
@@ -1827,11 +1830,11 @@ class Array(object):
     def _info_items_nosync(self):
 
         def typestr(o):
-            return '%s.%s' % (type(o).__module__, type(o).__name__)
+            return '{}.{}'.format(type(o).__module__, type(o).__name__)
 
         def bytestr(n):
             if n > 2**10:
-                return '%s (%s)' % (n, human_readable_size(n))
+                return '{} ({})'.format(n, human_readable_size(n))
             else:
                 return str(n)
 
@@ -1872,7 +1875,7 @@ class Array(object):
                 ('Storage ratio', '%.1f' % (self.nbytes / self.nbytes_stored)),
             ]
         items += [
-            ('Chunks initialized', '%s/%s' % (self.nchunks_initialized, self.nchunks))
+            ('Chunks initialized', '{}/{}'.format(self.nchunks_initialized, self.nchunks))
         ]
 
         return items
@@ -1930,7 +1933,7 @@ class Array(object):
         checksum = binascii.hexlify(self.digest(hashname=hashname))
 
         # This is a bytes object on Python 3 and we want a str.
-        if type(checksum) is not str:  # pragma: py2 no cover
+        if type(checksum) is not str:
             checksum = checksum.decode('utf8')
 
         return checksum
@@ -2008,7 +2011,7 @@ class Array(object):
 
         # determine the new number and arrangement of chunks
         chunks = self._chunks
-        new_cdata_shape = tuple(int(np.ceil(s / c))
+        new_cdata_shape = tuple(math.ceil(s / c)
                                 for s, c in zip(new_shape, chunks))
 
         # remove any chunks not within range

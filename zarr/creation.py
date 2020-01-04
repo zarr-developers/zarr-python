@@ -1,17 +1,16 @@
 # -*- coding: utf-8 -*-
-from __future__ import absolute_import, print_function, division
 from warnings import warn
 
-
 import numpy as np
-
+from numcodecs.registry import codec_registry
 
 from zarr.core import Array
-from zarr.storage import (DirectoryStore, init_array, contains_array, contains_group,
-                          default_compressor, normalize_storage_path, ZipStore)
+from zarr.errors import (err_array_not_found, err_contains_array,
+                         err_contains_group)
 from zarr.n5 import N5Store
-from numcodecs.registry import codec_registry
-from zarr.errors import err_contains_array, err_contains_group, err_array_not_found
+from zarr.storage import (DirectoryStore, ZipStore, contains_array,
+                          contains_group, default_compressor, init_array,
+                          normalize_storage_path)
 
 
 def create(shape, chunks=True, dtype=None, compressor='default',
@@ -28,6 +27,8 @@ def create(shape, chunks=True, dtype=None, compressor='default',
     chunks : int or tuple of ints, optional
         Chunk shape. If True, will be guessed from `shape` and `dtype`. If
         False, will be set to `shape`, i.e., single chunk for the whole array.
+        If an int, the chunk size in each dimension will be given by the value
+        of `chunks`. Default is True.
     dtype : string or dtype, optional
         NumPy dtype.
     compressor : Codec, optional
@@ -369,6 +370,8 @@ def open_array(store=None, mode='a', shape=None, chunks=True, dtype=None,
     chunks : int or tuple of ints, optional
         Chunk shape. If True, will be guessed from `shape` and `dtype`. If
         False, will be set to `shape`, i.e., single chunk for the whole array.
+        If an int, the chunk size in each dimension will be given by the value
+        of `chunks`. Default is True.
     dtype : string or dtype, optional
         NumPy dtype.
     compressor : Codec, optional

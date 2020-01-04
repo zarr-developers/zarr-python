@@ -1,16 +1,12 @@
 # -*- coding: utf-8 -*-
-from __future__ import absolute_import, print_function, division
-
-
 import numpy as np
 import pytest
 
-
-from zarr.util import (normalize_shape, normalize_chunks, is_total_slice,
-                       normalize_resize_args, human_readable_size, normalize_order,
-                       guess_chunks, info_html_report, info_text_report,
-                       normalize_fill_value, tree_array_icon, tree_group_icon,
-                       tree_get_icon)
+from zarr.util import (guess_chunks, human_readable_size, info_html_report,
+                       info_text_report, is_total_slice, normalize_chunks,
+                       normalize_fill_value, normalize_order,
+                       normalize_resize_args, normalize_shape,
+                       tree_array_icon, tree_group_icon, tree_get_icon)
 
 
 def test_normalize_shape():
@@ -30,7 +26,7 @@ def test_normalize_chunks():
     assert (10, 10) == normalize_chunks((10, 10), (100, 10), 1)
     assert (10, 10) == normalize_chunks(10, (100, 10), 1)
     assert (10, 10) == normalize_chunks((10, None), (100, 10), 1)
-    assert (30, 20, 10) == normalize_chunks(30, (100, 20, 10), 1)
+    assert (30, 30, 30) == normalize_chunks(30, (100, 20, 10), 1)
     assert (30, 20, 10) == normalize_chunks((30,), (100, 20, 10), 1)
     assert (30, 20, 10) == normalize_chunks((30, None), (100, 20, 10), 1)
     assert (30, 20, 10) == normalize_chunks((30, None, None), (100, 20, 10), 1)
@@ -42,8 +38,9 @@ def test_normalize_chunks():
         normalize_chunks((100, 10), (100,), 1)
 
     # test auto-chunking
-    chunks = normalize_chunks(None, (100,), 1)
-    assert (100,) == chunks
+    assert (100,) == normalize_chunks(None, (100,), 1)
+    assert (100,) == normalize_chunks(-1, (100,), 1)
+    assert (30, 20, 10) == normalize_chunks((30, -1, None), (100, 20, 10), 1)
 
 
 def test_is_total_slice():

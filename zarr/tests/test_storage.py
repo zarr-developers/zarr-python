@@ -1,46 +1,34 @@
 # -*- coding: utf-8 -*-
-from __future__ import absolute_import, print_function, division
-from contextlib import contextmanager
-import unittest
-import tempfile
-import atexit
-import pickle
-import json
 import array
-import shutil
+import atexit
+import json
 import os
+import pickle
+import shutil
+import tempfile
+import unittest
+from contextlib import contextmanager
 from pickle import PicklingError
 
-
 import numpy as np
-from numpy.testing import assert_array_equal, assert_array_almost_equal
 import pytest
+from numpy.testing import assert_array_almost_equal, assert_array_equal
 
-try:
-    import azure.storage.blob as asb
-except ImportError:  # pragma: no cover
-    asb = None
-
-
-from zarr.storage import (init_array, array_meta_key, attrs_key, DictStore,
-                          DirectoryStore, ZipStore, init_group, group_meta_key,
-                          getsize, migrate_1to2, TempStore, atexit_rmtree,
-                          NestedDirectoryStore, default_compressor, DBMStore,
-                          LMDBStore, SQLiteStore, ABSStore, atexit_rmglob, LRUStoreCache,
-                          ConsolidatedMetadataStore, MongoDBStore, RedisStore)
-from zarr.meta import (decode_array_metadata, encode_array_metadata, ZARR_FORMAT,
-                       decode_group_metadata, encode_group_metadata)
-from zarr.compat import PY2
-from zarr.codecs import AsType, Zlib, Blosc, BZ2
-from zarr.errors import PermissionError, MetadataError
+from zarr.codecs import BZ2, AsType, Blosc, Zlib
+from zarr.errors import MetadataError
 from zarr.hierarchy import group
+from zarr.meta import (ZARR_FORMAT, decode_array_metadata,
+                       decode_group_metadata, encode_array_metadata,
+                       encode_group_metadata)
 from zarr.n5 import N5Store
-from zarr.tests.util import CountingDict
-
-try:
-    from zarr.codecs import LZMA
-except ImportError:  # pragma: no cover
-    LZMA = None
+from zarr.storage import (ABSStore, ConsolidatedMetadataStore, DBMStore,
+                          DictStore, DirectoryStore, LMDBStore, LRUStoreCache,
+                          MemoryStore, MongoDBStore, NestedDirectoryStore,
+                          RedisStore, SQLiteStore, TempStore, ZipStore,
+                          array_meta_key, atexit_rmglob, atexit_rmtree,
+                          attrs_key, default_compressor, getsize,
+                          group_meta_key, init_array, init_group, migrate_1to2)
+from zarr.tests.util import CountingDict, skip_test_env_var
 
 
 @contextmanager
@@ -652,7 +640,7 @@ class TestMappingStore(StoreTests, unittest.TestCase):
 def setdel_hierarchy_checks(store):
     # these tests are for stores that are aware of hierarchy levels; this
     # behaviour is not stricly required by Zarr but these tests are included
-    # to define behaviour of DictStore and DirectoryStore classes
+    # to define behaviour of MemoryStore and DirectoryStore classes
 
     # check __setitem__ and __delitem__ blocked by leaf
 
@@ -686,10 +674,10 @@ def setdel_hierarchy_checks(store):
     assert 'r/s' not in store
 
 
-class TestDictStore(StoreTests, unittest.TestCase):
+class TestMemoryStore(StoreTests, unittest.TestCase):
 
     def create_store(self):
-        return DictStore()
+        return MemoryStore()
 
     def test_store_contains_bytes(self):
         store = self.create_store()
@@ -701,12 +689,23 @@ class TestDictStore(StoreTests, unittest.TestCase):
         setdel_hierarchy_checks(store)
 
 
-class TestDirectoryStore(StoreTests, unittest.TestCase):
+class TestDictStore(StoreTests, unittest.TestCase):
 
     def create_store(self):
+        return DictStore()
+
+    def test_deprecated(self):
+        with pytest.warns(DeprecationWarning):
+            store = self.create_store()
+        assert isinstance(store, MemoryStore)
+
+
+class TestDirectoryStore(StoreTests, unittest.TestCase):
+
+    def create_store(self, normalize_keys=False):
         path = tempfile.mkdtemp()
         atexit.register(atexit_rmtree, path)
-        store = DirectoryStore(path)
+        store = DirectoryStore(path, normalize_keys=normalize_keys)
         return store
 
     def test_filesystem_path(self):
@@ -720,6 +719,14 @@ class TestDirectoryStore(StoreTests, unittest.TestCase):
         assert not os.path.exists(path)
         store['foo'] = b'bar'
         assert os.path.isdir(path)
+
+        # check correct permissions
+        # regression test for https://github.com/zarr-developers/zarr-python/issues/325
+        stat = os.stat(path)
+        mode = stat.st_mode & 0o666
+        umask = os.umask(0)
+        os.umask(umask)
+        assert mode == (0o666 & ~umask)
 
         # test behaviour with file path
         with tempfile.NamedTemporaryFile() as f:
@@ -742,13 +749,19 @@ class TestDirectoryStore(StoreTests, unittest.TestCase):
         store = self.create_store()
         setdel_hierarchy_checks(store)
 
+    def test_normalize_keys(self):
+        store = self.create_store(normalize_keys=True)
+        store['FOO'] = b'bar'
+        assert 'FOO' in store
+        assert 'foo' in store
+
 
 class TestNestedDirectoryStore(TestDirectoryStore, unittest.TestCase):
 
-    def create_store(self):
+    def create_store(self, normalize_keys=False):
         path = tempfile.mkdtemp()
         atexit.register(atexit_rmtree, path)
-        store = NestedDirectoryStore(path)
+        store = NestedDirectoryStore(path, normalize_keys=normalize_keys)
         return store
 
     def test_chunk_nesting(self):
@@ -766,10 +779,10 @@ class TestNestedDirectoryStore(TestDirectoryStore, unittest.TestCase):
 
 class TestN5Store(TestNestedDirectoryStore, unittest.TestCase):
 
-    def create_store(self):
+    def create_store(self, normalize_keys=False):
         path = tempfile.mkdtemp(suffix='.n5')
         atexit.register(atexit_rmtree, path)
-        store = N5Store(path)
+        store = N5Store(path, normalize_keys=normalize_keys)
         return store
 
     def test_equal(self):
@@ -956,83 +969,49 @@ class TestDBMStoreDumb(TestDBMStore):
     def create_store(self):
         path = tempfile.mktemp(suffix='.dumbdbm')
         atexit.register(atexit_rmglob, path + '*')
-        if PY2:  # pragma: py3 no cover
-            import dumbdbm
-        else:  # pragma: py2 no cover
-            import dbm.dumb as dumbdbm
+
+        import dbm.dumb as dumbdbm
         store = DBMStore(path, flag='n', open=dumbdbm.open)
         return store
 
 
-try:
-    if PY2:  # pragma: py3 no cover
-        import gdbm
-    else:  # pragma: py2 no cover
-        import dbm.gnu as gdbm
-except ImportError:  # pragma: no cover
-    gdbm = None
-
-
-@unittest.skipIf(gdbm is None, 'gdbm is not installed')
 class TestDBMStoreGnu(TestDBMStore):
 
     def create_store(self):
+        gdbm = pytest.importorskip("dbm.gnu")
         path = tempfile.mktemp(suffix='.gdbm')
         atexit.register(os.remove, path)
         store = DBMStore(path, flag='n', open=gdbm.open, write_lock=False)
         return store
 
 
-if not PY2:  # pragma: py2 no cover
-    try:
-        import dbm.ndbm as ndbm
-    except ImportError:  # pragma: no cover
-        ndbm = None
+class TestDBMStoreNDBM(TestDBMStore):
 
-    @unittest.skipIf(ndbm is None, 'ndbm is not installed')
-    class TestDBMStoreNDBM(TestDBMStore):
-
-        def create_store(self):
-            path = tempfile.mktemp(suffix='.ndbm')
-            atexit.register(atexit_rmglob, path + '*')
-            store = DBMStore(path, flag='n', open=ndbm.open)
-            return store
+    def create_store(self):
+        ndbm = pytest.importorskip("dbm.ndbm")
+        path = tempfile.mktemp(suffix='.ndbm')
+        atexit.register(atexit_rmglob, path + '*')
+        store = DBMStore(path, flag='n', open=ndbm.open)
+        return store
 
 
-try:
-    import bsddb3
-except ImportError:  # pragma: no cover
-    bsddb3 = None
-
-
-@unittest.skipIf(bsddb3 is None, 'bsddb3 is not installed')
 class TestDBMStoreBerkeleyDB(TestDBMStore):
 
     def create_store(self):
+        bsddb3 = pytest.importorskip("bsddb3")
         path = tempfile.mktemp(suffix='.dbm')
         atexit.register(os.remove, path)
         store = DBMStore(path, flag='n', open=bsddb3.btopen, write_lock=False)
         return store
 
 
-try:
-    import lmdb
-except ImportError:  # pragma: no cover
-    lmdb = None
-
-
-@unittest.skipIf(lmdb is None, 'lmdb is not installed')
 class TestLMDBStore(StoreTests, unittest.TestCase):
 
     def create_store(self):
+        pytest.importorskip("lmdb")
         path = tempfile.mktemp(suffix='.lmdb')
         atexit.register(atexit_rmtree, path)
-        if PY2:  # pragma: py3 no cover
-            # don't use buffers, otherwise would have to rewrite tests as bytes and
-            # buffer don't compare equal in PY2
-            buffers = False
-        else:  # pragma: py2 no cover
-            buffers = True
+        buffers = True
         store = LMDBStore(path, buffers=buffers)
         return store
 
@@ -1043,49 +1022,20 @@ class TestLMDBStore(StoreTests, unittest.TestCase):
             assert 2 == len(store)
 
 
-try:
-    import sqlite3
-except ImportError:  # pragma: no cover
-    sqlite3 = None
-
-try:
-    import pymongo
-    from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError
-    try:
-        client = pymongo.MongoClient(host='127.0.0.1',
-                                     serverSelectionTimeoutMS=1e3)
-        client.server_info()
-    except (ConnectionFailure, ServerSelectionTimeoutError):  # pragma: no cover
-        pymongo = None
-except ImportError:  # pragma: no cover
-    pymongo = None
-
-try:
-    import redis
-    from redis import ConnectionError
-    try:
-        rs = redis.Redis("localhost", port=6379)
-        rs.ping()
-    except ConnectionError:  # pragma: no cover
-        redis = None
-except ImportError:  # pragma: no cover
-    redis = None
-
-
-@unittest.skipIf(sqlite3 is None, 'python built without sqlite')
 class TestSQLiteStore(StoreTests, unittest.TestCase):
 
     def create_store(self):
+        pytest.importorskip("sqlite3")
         path = tempfile.mktemp(suffix='.db')
         atexit.register(atexit_rmtree, path)
         store = SQLiteStore(path)
         return store
 
 
-@unittest.skipIf(sqlite3 is None, 'python built without sqlite')
 class TestSQLiteStoreInMemory(TestSQLiteStore, unittest.TestCase):
 
     def create_store(self):
+        pytest.importorskip("sqlite3")
         store = SQLiteStore(':memory:')
         return store
 
@@ -1101,10 +1051,11 @@ class TestSQLiteStoreInMemory(TestSQLiteStore, unittest.TestCase):
             pickle.dumps(store)
 
 
-@unittest.skipIf(pymongo is None, 'test requires pymongo')
+@skip_test_env_var("ZARR_TEST_MONGO")
 class TestMongoDBStore(StoreTests, unittest.TestCase):
 
     def create_store(self):
+        pytest.importorskip("pymongo")
         store = MongoDBStore(host='127.0.0.1', database='zarr_tests',
                              collection='zarr_tests')
         # start with an empty store
@@ -1112,12 +1063,13 @@ class TestMongoDBStore(StoreTests, unittest.TestCase):
         return store
 
 
-@unittest.skipIf(redis is None, 'test requires redis')
+@skip_test_env_var("ZARR_TEST_REDIS")
 class TestRedisStore(StoreTests, unittest.TestCase):
 
     def create_store(self):
         # TODO: this is the default host for Redis on Travis,
         # we probably want to generalize this though
+        pytest.importorskip("redis")
         store = RedisStore(host='localhost', port=6379)
         # start with an empty store
         store.clear()
@@ -1518,18 +1470,43 @@ def test_format_compatibility():
                 assert compressor.get_config() == z.compressor.get_config()
 
 
-@pytest.mark.skipif(asb is None,
-                    reason="azure-blob-storage could not be imported")
+@skip_test_env_var("ZARR_TEST_ABS")
 class TestABSStore(StoreTests, unittest.TestCase):
 
-    def create_store(self):
+    def create_store(self, prefix=None):
+        asb = pytest.importorskip("azure.storage.blob")
         blob_client = asb.BlockBlobService(is_emulated=True)
         blob_client.delete_container('test')
         blob_client.create_container('test')
-        store = ABSStore(container='test', prefix='zarrtesting/', account_name='foo',
+        store = ABSStore(container='test', prefix=prefix, account_name='foo',
                          account_key='bar', blob_service_kwargs={'is_emulated': True})
         store.rmdir()
         return store
+
+    def test_iterators_with_prefix(self):
+        for prefix in ['test_prefix', '/test_prefix', 'test_prefix/', 'test/prefix', '', None]:
+            store = self.create_store(prefix=prefix)
+
+            # test iterator methods on empty store
+            assert 0 == len(store)
+            assert set() == set(store)
+            assert set() == set(store.keys())
+            assert set() == set(store.values())
+            assert set() == set(store.items())
+
+            # setup some values
+            store['a'] = b'aaa'
+            store['b'] = b'bbb'
+            store['c/d'] = b'ddd'
+            store['c/e/f'] = b'fff'
+
+            # test iterators on store with data
+            assert 4 == len(store)
+            assert {'a', 'b', 'c/d', 'c/e/f'} == set(store)
+            assert {'a', 'b', 'c/d', 'c/e/f'} == set(store.keys())
+            assert {b'aaa', b'bbb', b'ddd', b'fff'} == set(store.values())
+            assert ({('a', b'aaa'), ('b', b'bbb'), ('c/d', b'ddd'), ('c/e/f', b'fff')} ==
+                    set(store.items()))
 
 
 class TestConsolidatedMetadataStore(unittest.TestCase):
