@@ -4,6 +4,10 @@ Release notes
 Upcoming Release
 ----------------
 
+* Add intermediate step (using ``zipfile.ZipInfo`` object) to write
+  inside ``ZipStore`` to solve too restrictive permission issue.
+  By :user:`Raphael Dussin <raphaeldussin>`; :issue:`505`.
+
 * Add key normalization option for ``DirectoryStore``, ``NestedDirectoryStore``,
   ``TempStore``, and ``N5Store``.
   By :user:`James Bourbeau <jrbourbeau>`; :issue:`459`.
