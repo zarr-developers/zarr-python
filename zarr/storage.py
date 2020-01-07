@@ -33,6 +33,7 @@ from os import scandir
 from pickle import PicklingError
 from threading import Lock, RLock
 import uuid
+import time
 
 from numcodecs.compat import ensure_bytes, ensure_contiguous_ndarray
 from numcodecs.registry import codec_registry
@@ -1254,7 +1255,19 @@ class ZipStore(MutableMapping):
             err_read_only()
         value = ensure_contiguous_ndarray(value)
         with self.mutex:
-            self.zf.writestr(key, value)
+            # writestr(key, value) writes with default permissions from
+            # zipfile (600) that are too restrictive, build ZipInfo for
+            # the key to work around limitation
+            keyinfo = zipfile.ZipInfo(filename=key,
+                                      date_time=time.localtime(time.time())[:6])
+            keyinfo.compress_type = self.compression
+            if keyinfo.filename[-1] == os.sep:
+                keyinfo.external_attr = 0o40775 << 16   # drwxrwxr-x
+                keyinfo.external_attr |= 0x10           # MS-DOS directory flag
+            else:
+                keyinfo.external_attr = 0o644 << 16     # ?rw-r--r--
+
+            self.zf.writestr(keyinfo, value)
 
     def __delitem__(self, key):
         raise NotImplementedError
