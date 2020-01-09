@@ -18,6 +18,10 @@ Upcoming Release
 * Rename ``DictStore`` to ``MemoryStore``.
   By :user:`James Bourbeau <jrbourbeau>`; :issue:`455`.
 
+* Rewrite ``.tree()`` pretty representation to use ipytree.
+  Allows it to work in both the Jupyter Notebook and JupyterLab.
+  By :user:`John Kirkham <jakirkham>`; :issue:`450`.
+
 * Upgrade dependencies in the test matrices and resolve a
   compatibility issue with testing against the Azure Storage
   Emulator. By :user:`alimanfoo`; :issue:`468`, :issue:`467`.
