@@ -68,6 +68,9 @@ Bug fixes
 * Fix Sqlite Store Wrong Modification.
   By :user:`potter420 <potter420>`; :issue:`440`.
 
+* Fixing permissions for files inside a ZipStore.
+  By :user:`Raphael Dussin <raphaeldussin>`; :issue:`517`.
+
 * Fix '/' prepend bug in ``ABSStore``.
   By :user:`Shikhar Goenka <shikharsg>`; :issue:`525`.
 
