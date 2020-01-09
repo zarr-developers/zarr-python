@@ -55,7 +55,7 @@
 <tr>
   <td>Downloads</td>
   <td>
-    <a href="https://zarr-developers.github.io">
+    <a href="https://zarr.readthedocs.io">
     <img src="https://pepy.tech/badge/zarr" alt="pypi downloads" />
     </a>
   </td>
