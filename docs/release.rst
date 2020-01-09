@@ -65,6 +65,9 @@ Upcoming Release
 Bug fixes
 ~~~~~~~~~
 
+* Fix Sqlite Store Wrong Modification.
+  By :user:`potter420 <potter420>`; :issue:`440`.
+
 * Fix '/' prepend bug in ``ABSStore``.
   By :user:`Shikhar Goenka <shikharsg>`; :issue:`525`.
 
