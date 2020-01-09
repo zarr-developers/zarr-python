@@ -1049,6 +1049,15 @@ class TestSQLiteStore(StoreTests, unittest.TestCase):
         store = SQLiteStore(path)
         return store
 
+    def test_underscore_in_name(self):
+        path = tempfile.mktemp(suffix='.db')
+        atexit.register(atexit_rmtree, path)
+        store = SQLiteStore(path)
+        store['a'] = b'aaa'
+        store['a_b'] = b'aa_bb'
+        store.rmdir('a')
+        assert 'a_b' in store
+
 
 class TestSQLiteStoreInMemory(TestSQLiteStore, unittest.TestCase):
 
