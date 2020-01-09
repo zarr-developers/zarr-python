@@ -10,6 +10,12 @@ import unittest
 
 import numpy as np
 import pytest
+
+try:
+    import ipytree
+except ImportError:  # pragma: no cover
+    ipytree = None
+
 from numcodecs import Zlib
 from numpy.testing import assert_array_equal
 
@@ -1199,11 +1205,10 @@ def _check_tree(g, expect_bytes, expect_text):
     assert expect_text == str(g.tree())
     expect_repr = expect_text
     assert expect_repr == repr(g.tree())
-    # test _repr_html_ lightly
-    # noinspection PyProtectedMember
-    html = g.tree()._repr_html_().strip()
-    assert html.startswith('<link')
-    assert html.endswith('</script>')
+    if ipytree:
+        # noinspection PyProtectedMember
+        widget = g.tree()._ipython_display_()
+        isinstance(widget, ipytree.Tree)
 
 
 def test_tree():

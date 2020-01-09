@@ -1,6 +1,8 @@
 # optional library requirements
 bsddb3==6.2.6; sys_platform != 'win32'
 lmdb==0.97; sys_platform != 'win32'
+# optional library requirements for Jupyter
+ipytree==0.1.3
 # optional library requirements for services
 # don't let pyup change pinning for azure-storage-blob, need to pin to older
 # version to get compatibility with azure storage emulator on appveyor
