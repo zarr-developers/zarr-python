@@ -4,6 +4,9 @@ Release notes
 Upcoming Release
 ----------------
 
+Enhancements
+~~~~~~~~~~~~
+
 * Add key normalization option for ``DirectoryStore``, ``NestedDirectoryStore``,
   ``TempStore``, and ``N5Store``.
   By :user:`James Bourbeau <jrbourbeau>`; :issue:`459`.
@@ -18,37 +21,18 @@ Upcoming Release
 * Rename ``DictStore`` to ``MemoryStore``.
   By :user:`James Bourbeau <jrbourbeau>`; :issue:`455`.
 
-* Rewrite ``.tree()`` pretty representation to use ipytree.
+* Rewrite ``.tree()`` pretty representation to use ``ipytree``.
   Allows it to work in both the Jupyter Notebook and JupyterLab.
   By :user:`John Kirkham <jakirkham>`; :issue:`450`.
-
-* Upgrade dependencies in the test matrices and resolve a
-  compatibility issue with testing against the Azure Storage
-  Emulator. By :user:`alimanfoo`; :issue:`468`, :issue:`467`.
 
 * Do not rename Blosc parameters in n5 backend and add `blocksize` parameter,
   compatible with n5-blosc. By :user:`axtimwalde`, :issue:`485`.
 
-* Removed support for Python 2.
-  By :user:`jhamman`; :issue:`393`, :issue:`470`.
-
-* Updates tests to use ``pytest.importorskip``.
-  By :user:`James Bourbeau <jrbourbeau>`; :issue:`492`
-
 * Update ``DirectoryStore`` to create files with more permissive permissions.
   By :user:`Eduardo Gonzalez <eddienko>` and :user:`James Bourbeau <jrbourbeau>`; :issue:`493`
 
-* Require Numcodecs 0.6.4+ to use text handling functionality from it.
-  By :user:`John Kirkham <jakirkham>`; :issue:`497`.
-
-* Support Python 3.8.
-  By :user:`John Kirkham <jakirkham>`; :issue:`499`.
-
 * Use ``math.ceil`` for scalars.
   By :user:`John Kirkham <jakirkham>`; :issue:`500`.
-
-* Use ``ensure_ndarray`` in a few more places.
-  By :user:`John Kirkham <jakirkham>`; :issue:`506`.
 
 * Ensure contiguous data using ``astype``.
   By :user:`John Kirkham <jakirkham>`; :issue:`513`.
@@ -58,9 +42,6 @@ Upcoming Release
 
 * Add ``__enter__``/``__exit__`` methods to ``Group`` for ``h5py.File`` compatibility.
   By :user:`Chris Barnes <clbarnes>`; :issue:`509`.
-
-* Add documentation build to CI.
-  By :user:`James Bourbeau <jrbourbeau>`; :issue:`516`.
 
 Bug fixes
 ~~~~~~~~~
@@ -74,6 +55,31 @@ Bug fixes
 
 * Fix '/' prepend bug in ``ABSStore``.
   By :user:`Shikhar Goenka <shikharsg>`; :issue:`525`.
+
+Maintenance
+~~~~~~~~~~~
+
+* Add documentation build to CI.
+  By :user:`James Bourbeau <jrbourbeau>`; :issue:`516`.
+
+* Use ``ensure_ndarray`` in a few more places.
+  By :user:`John Kirkham <jakirkham>`; :issue:`506`.
+
+* Support Python 3.8.
+  By :user:`John Kirkham <jakirkham>`; :issue:`499`.
+
+* Require Numcodecs 0.6.4+ to use text handling functionality from it.
+  By :user:`John Kirkham <jakirkham>`; :issue:`497`.
+
+* Updates tests to use ``pytest.importorskip``.
+  By :user:`James Bourbeau <jrbourbeau>`; :issue:`492`
+
+* Removed support for Python 2.
+  By :user:`jhamman`; :issue:`393`, :issue:`470`.
+
+* Upgrade dependencies in the test matrices and resolve a
+  compatibility issue with testing against the Azure Storage
+  Emulator. By :user:`alimanfoo`; :issue:`468`, :issue:`467`.
 
 
 .. _release_2.3.2:
