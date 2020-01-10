@@ -56,6 +56,35 @@ Bug fixes
 * Fix '/' prepend bug in ``ABSStore``.
   By :user:`Shikhar Goenka <shikharsg>`; :issue:`525`.
 
+Documentation
+~~~~~~~~~~~~~
+* Fix hyperlink in ``README.md``.
+  By :user:`Anderson Banihirwe <andersy005>`; :issue:`531`.
+
+* Replace "nuimber" with "number".
+  By :user:`John Kirkham <jakirkham>`; :issue:`512`.
+
+* Fix azure link rendering in tutorial.
+  By :user:`James Bourbeau <jrbourbeau>`; :issue:`507`.
+
+* Update ``README`` file to be more detailed.
+  By :user:`Zain Patel <mzjp2>`; :issue:`495`.
+
+* Import blosc from numcodecs in tutorial.
+  By :user:`James Bourbeau <jrbourbeau>`; :issue:`491`.
+
+* Adds logo to docs.
+  By :user:`James Bourbeau <jrbourbeau>`; :issue:`462`.
+
+* Fix N5 link in tutorial.
+  By :user:`James Bourbeau <jrbourbeau>`; :issue:`480`.
+
+* Fix typo in code snippet.
+  By :user:`Joe Jevnik <llllllllll>`; :issue:`461`.
+
+* Fix URLs to point to zarr-python
+  By :user:`John Kirkham <jakirkham>`; :issue:`453`.
+
 Maintenance
 ~~~~~~~~~~~
 
@@ -80,6 +109,12 @@ Maintenance
 * Upgrade dependencies in the test matrices and resolve a
   compatibility issue with testing against the Azure Storage
   Emulator. By :user:`alimanfoo`; :issue:`468`, :issue:`467`.
+
+* Use ``unittest.mock`` on Python 3.
+  By :user:`Elliott Sales de Andrade <QuLogic>`; :issue:`426`.
+
+* Drop ``decode`` from ``ConsolidatedMetadataStore``.
+  By :user:`John Kirkham <jakirkham>`; :issue:`452`.
 
 
 .. _release_2.3.2:
