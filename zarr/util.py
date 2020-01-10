@@ -3,8 +3,7 @@ import inspect
 import json
 import math
 import numbers
-import uuid
-from textwrap import TextWrapper, dedent
+from textwrap import TextWrapper
 
 import numpy as np
 from asciitree import BoxStyle, LeftAligned
@@ -399,83 +398,43 @@ class TreeTraversal(Traversal):
         return node.get_text()
 
 
-def tree_html_sublist(node, root=False, expand=False):
-    result = ''
-    data_jstree = '{"type": "%s"}' % node.get_type()
-    if root or (expand is True) or (isinstance(expand, int) and node.depth < expand):
-        css_class = 'jstree-open'
+tree_group_icon = 'folder'
+tree_array_icon = 'table'
+
+
+def tree_get_icon(stype):
+    if stype == "Array":
+        return tree_array_icon
+    elif stype == "Group":
+        return tree_group_icon
     else:
-        css_class = ''
-    result += "<li data-jstree='{}' class='{}'>".format(data_jstree, css_class)
-    result += '<span>{}</span>'.format(node.get_text())
-    children = node.get_children()
-    if children:
-        result += '<ul>'
-        for c in children:
-            result += tree_html_sublist(c, expand=expand)
-        result += '</ul>'
-    result += '</li>'
+        raise ValueError("Unknown type: %s" % stype)
+
+
+def tree_widget_sublist(node, root=False, expand=False):
+    import ipytree
+
+    result = ipytree.Node()
+    result.icon = tree_get_icon(node.get_type())
+    if root or (expand is True) or (isinstance(expand, int) and node.depth < expand):
+        result.opened = True
+    else:
+        result.opened = False
+    result.name = node.get_text()
+    result.nodes = [tree_widget_sublist(c, expand=expand) for c in node.get_children()]
+    result.disabled = True
+
     return result
 
 
-def tree_html(group, expand, level):
+def tree_widget(group, expand, level):
+    import ipytree
 
-    result = ''
-
-    # include CSS for jstree default theme
-    css_url = '//cdnjs.cloudflare.com/ajax/libs/jstree/3.3.3/themes/default/style.min.css'
-    result += '<link rel="stylesheet" href="{}"/>'.format(css_url)
-
-    # construct the tree as HTML nested lists
-    node_id = uuid.uuid4()
-    result += '<div id="{}" class="zarr-tree">'.format(node_id)
-    result += '<ul>'
+    result = ipytree.Tree()
     root = TreeNode(group, level=level)
-    result += tree_html_sublist(root, root=True, expand=expand)
-    result += '</ul>'
-    result += '</div>'
-
-    # construct javascript
-    result += dedent("""
-        <script>
-            if (!require.defined('jquery')) {
-                require.config({
-                    paths: {
-                        jquery: '//cdnjs.cloudflare.com/ajax/libs/jquery/1.12.1/jquery.min'
-                    },
-                });
-            }
-            if (!require.defined('jstree')) {
-                require.config({
-                    paths: {
-                        jstree: '//cdnjs.cloudflare.com/ajax/libs/jstree/3.3.3/jstree.min'
-                    },
-                });
-            }
-            require(['jstree'], function() {
-                $('#%s').jstree({
-                    types: {
-                        Group: {
-                            icon: "%s"
-                        },
-                        Array: {
-                            icon: "%s"
-                        }
-                    },
-                    plugins: ["types"]
-                });
-            });
-        </script>
-    """ % (node_id, tree_group_icon, tree_array_icon))
+    result.add_node(tree_widget_sublist(root, root=True, expand=expand))
 
     return result
-
-
-tree_group_icon = 'fa fa-folder'
-tree_array_icon = 'fa fa-table'
-# alternatives...
-# tree_group_icon: 'jstree-folder'
-# tree_array_icon: 'jstree-file'
 
 
 class TreeViewer(object):
@@ -531,8 +490,10 @@ class TreeViewer(object):
     def __repr__(self):
         return self.__unicode__()
 
-    def _repr_html_(self):
-        return tree_html(self.group, expand=self.expand, level=self.level)
+    def _ipython_display_(self):
+        tree = tree_widget(self.group, expand=self.expand, level=self.level)
+        tree._ipython_display_()
+        return tree
 
 
 def check_array_shape(param, array, shape):
