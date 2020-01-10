@@ -66,7 +66,7 @@ Bug fixes
 ~~~~~~~~~
 
 * Fix Sqlite Store Wrong Modification.
-  By :user:`potter420 <potter420>`; :issue:`440`.
+  By :user:`Tommy Tran <potter420>`; :issue:`440`.
 
 * Add intermediate step (using ``zipfile.ZipInfo`` object) to write
   inside ``ZipStore`` to solve too restrictive permission issue.
