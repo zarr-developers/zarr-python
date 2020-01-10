@@ -1,8 +1,10 @@
 Release notes
 =============
 
-Upcoming Release
-----------------
+.. _release_2.4.0:
+
+2.4.0
+-----
 
 Enhancements
 ~~~~~~~~~~~~
