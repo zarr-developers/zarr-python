@@ -1,12 +1,13 @@
 Release notes
 =============
 
-Upcoming Release
-----------------
+.. _release_2.4.0:
 
-* Add intermediate step (using ``zipfile.ZipInfo`` object) to write
-  inside ``ZipStore`` to solve too restrictive permission issue.
-  By :user:`Raphael Dussin <raphaeldussin>`; :issue:`505`.
+2.4.0
+-----
+
+Enhancements
+~~~~~~~~~~~~
 
 * Add key normalization option for ``DirectoryStore``, ``NestedDirectoryStore``,
   ``TempStore``, and ``N5Store``.
@@ -22,33 +23,18 @@ Upcoming Release
 * Rename ``DictStore`` to ``MemoryStore``.
   By :user:`James Bourbeau <jrbourbeau>`; :issue:`455`.
 
-* Upgrade dependencies in the test matrices and resolve a
-  compatibility issue with testing against the Azure Storage
-  Emulator. By :user:`alimanfoo`; :issue:`468`, :issue:`467`.
+* Rewrite ``.tree()`` pretty representation to use ``ipytree``.
+  Allows it to work in both the Jupyter Notebook and JupyterLab.
+  By :user:`John Kirkham <jakirkham>`; :issue:`450`.
 
 * Do not rename Blosc parameters in n5 backend and add `blocksize` parameter,
   compatible with n5-blosc. By :user:`axtimwalde`, :issue:`485`.
 
-* Removed support for Python 2.
-  By :user:`jhamman`; :issue:`393`, :issue:`470`.
-
-* Updates tests to use ``pytest.importorskip``.
-  By :user:`James Bourbeau <jrbourbeau>`; :issue:`492`
-
 * Update ``DirectoryStore`` to create files with more permissive permissions.
   By :user:`Eduardo Gonzalez <eddienko>` and :user:`James Bourbeau <jrbourbeau>`; :issue:`493`
 
-* Require Numcodecs 0.6.4+ to use text handling functionality from it.
-  By :user:`John Kirkham <jakirkham>`; :issue:`497`.
-
-* Support Python 3.8.
-  By :user:`John Kirkham <jakirkham>`; :issue:`499`.
-
 * Use ``math.ceil`` for scalars.
   By :user:`John Kirkham <jakirkham>`; :issue:`500`.
-
-* Use ``ensure_ndarray`` in a few more places.
-  By :user:`John Kirkham <jakirkham>`; :issue:`506`.
 
 * Ensure contiguous data using ``astype``.
   By :user:`John Kirkham <jakirkham>`; :issue:`513`.
@@ -59,14 +45,78 @@ Upcoming Release
 * Add ``__enter__``/``__exit__`` methods to ``Group`` for ``h5py.File`` compatibility.
   By :user:`Chris Barnes <clbarnes>`; :issue:`509`.
 
-* Add documentation build to CI.
-  By :user:`James Bourbeau <jrbourbeau>`; :issue:`516`.
-
 Bug fixes
 ~~~~~~~~~
 
+* Fix Sqlite Store Wrong Modification.
+  By :user:`Tommy Tran <potter420>`; :issue:`440`.
+
+* Add intermediate step (using ``zipfile.ZipInfo`` object) to write
+  inside ``ZipStore`` to solve too restrictive permission issue.
+  By :user:`Raphael Dussin <raphaeldussin>`; :issue:`505`.
+
 * Fix '/' prepend bug in ``ABSStore``.
   By :user:`Shikhar Goenka <shikharsg>`; :issue:`525`.
+
+Documentation
+~~~~~~~~~~~~~
+* Fix hyperlink in ``README.md``.
+  By :user:`Anderson Banihirwe <andersy005>`; :issue:`531`.
+
+* Replace "nuimber" with "number".
+  By :user:`John Kirkham <jakirkham>`; :issue:`512`.
+
+* Fix azure link rendering in tutorial.
+  By :user:`James Bourbeau <jrbourbeau>`; :issue:`507`.
+
+* Update ``README`` file to be more detailed.
+  By :user:`Zain Patel <mzjp2>`; :issue:`495`.
+
+* Import blosc from numcodecs in tutorial.
+  By :user:`James Bourbeau <jrbourbeau>`; :issue:`491`.
+
+* Adds logo to docs.
+  By :user:`James Bourbeau <jrbourbeau>`; :issue:`462`.
+
+* Fix N5 link in tutorial.
+  By :user:`James Bourbeau <jrbourbeau>`; :issue:`480`.
+
+* Fix typo in code snippet.
+  By :user:`Joe Jevnik <llllllllll>`; :issue:`461`.
+
+* Fix URLs to point to zarr-python
+  By :user:`John Kirkham <jakirkham>`; :issue:`453`.
+
+Maintenance
+~~~~~~~~~~~
+
+* Add documentation build to CI.
+  By :user:`James Bourbeau <jrbourbeau>`; :issue:`516`.
+
+* Use ``ensure_ndarray`` in a few more places.
+  By :user:`John Kirkham <jakirkham>`; :issue:`506`.
+
+* Support Python 3.8.
+  By :user:`John Kirkham <jakirkham>`; :issue:`499`.
+
+* Require Numcodecs 0.6.4+ to use text handling functionality from it.
+  By :user:`John Kirkham <jakirkham>`; :issue:`497`.
+
+* Updates tests to use ``pytest.importorskip``.
+  By :user:`James Bourbeau <jrbourbeau>`; :issue:`492`
+
+* Removed support for Python 2.
+  By :user:`jhamman`; :issue:`393`, :issue:`470`.
+
+* Upgrade dependencies in the test matrices and resolve a
+  compatibility issue with testing against the Azure Storage
+  Emulator. By :user:`alimanfoo`; :issue:`468`, :issue:`467`.
+
+* Use ``unittest.mock`` on Python 3.
+  By :user:`Elliott Sales de Andrade <QuLogic>`; :issue:`426`.
+
+* Drop ``decode`` from ``ConsolidatedMetadataStore``.
+  By :user:`John Kirkham <jakirkham>`; :issue:`452`.
 
 
 .. _release_2.3.2:
