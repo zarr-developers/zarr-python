@@ -33,6 +33,7 @@ from os import scandir
 from pickle import PicklingError
 from threading import Lock, RLock
 import uuid
+import time
 
 from numcodecs.compat import ensure_bytes, ensure_contiguous_ndarray
 from numcodecs.registry import codec_registry
@@ -746,12 +747,46 @@ class DirectoryStore(MutableMapping):
     def _normalize_key(self, key):
         return key.lower() if self.normalize_keys else key
 
+    def _fromfile(self, fn):
+        """ Read data from a file
+
+        Parameters
+        ----------
+        fn: str
+            Filepath to open and read from.
+
+        Notes
+        -----
+        Subclasses should overload this method to specify any custom
+        file reading logic.
+        """
+        with open(fn, 'rb') as f:
+            return f.read()
+
+    def _tofile(self, a, fn):
+        """ Write data to a file
+
+        Parameters
+        ----------
+        a: array-like
+            Data to write into the file.
+
+        fn: str
+            Filepath to open and write to.
+
+        Notes
+        -----
+        Subclasses should overload this method to specify any custom
+        file writing logic.
+        """
+        with open(fn, mode='wb') as f:
+            f.write(a)
+
     def __getitem__(self, key):
         key = self._normalize_key(key)
         filepath = os.path.join(self.path, key)
         if os.path.isfile(filepath):
-            with open(filepath, 'rb') as f:
-                return f.read()
+            return self._fromfile(filepath)
         else:
             raise KeyError(key)
 
@@ -784,8 +819,7 @@ class DirectoryStore(MutableMapping):
         temp_name = file_name + '.' + uuid.uuid4().hex + '.partial'
         temp_path = os.path.join(dir_path, temp_name)
         try:
-            with open(temp_path, mode='wb') as f:
-                f.write(value)
+            self._tofile(value, temp_path)
 
             # move temporary file into place
             replace(temp_path, file_path)
@@ -1221,7 +1255,19 @@ class ZipStore(MutableMapping):
             err_read_only()
         value = ensure_contiguous_ndarray(value)
         with self.mutex:
-            self.zf.writestr(key, value)
+            # writestr(key, value) writes with default permissions from
+            # zipfile (600) that are too restrictive, build ZipInfo for
+            # the key to work around limitation
+            keyinfo = zipfile.ZipInfo(filename=key,
+                                      date_time=time.localtime(time.time())[:6])
+            keyinfo.compress_type = self.compression
+            if keyinfo.filename[-1] == os.sep:
+                keyinfo.external_attr = 0o40775 << 16   # drwxrwxr-x
+                keyinfo.external_attr |= 0x10           # MS-DOS directory flag
+            else:
+                keyinfo.external_attr = 0o644 << 16     # ?rw-r--r--
+
+            self.zf.writestr(keyinfo, value)
 
     def __delitem__(self, key):
         raise NotImplementedError
@@ -1931,7 +1977,7 @@ class ABSStore(MutableMapping):
     In order to use this store, you must install the Microsoft Azure Storage SDK for Python.
     """
 
-    def __init__(self, container, prefix, account_name=None, account_key=None,
+    def __init__(self, container, prefix='', account_name=None, account_key=None,
                  blob_service_kwargs=None):
         from azure.storage.blob import BlockBlobService
         self.container = container
@@ -1957,21 +2003,25 @@ class ABSStore(MutableMapping):
         self.client = BlockBlobService(self.account_name, self.account_key,
                                        **self.blob_service_kwargs)
 
-    @staticmethod
-    def _append_path_to_prefix(path, prefix):
-        return '/'.join([normalize_storage_path(prefix),
-                         normalize_storage_path(path)])
+    def _append_path_to_prefix(self, path):
+        if self.prefix == '':
+            return normalize_storage_path(path)
+        else:
+            return '/'.join([self.prefix, normalize_storage_path(path)])
 
     @staticmethod
     def _strip_prefix_from_path(path, prefix):
         # normalized things will not have any leading or trailing slashes
         path_norm = normalize_storage_path(path)
         prefix_norm = normalize_storage_path(prefix)
-        return path_norm[(len(prefix_norm)+1):]
+        if prefix:
+            return path_norm[(len(prefix_norm)+1):]
+        else:
+            return path_norm
 
     def __getitem__(self, key):
         from azure.common import AzureMissingResourceHttpError
-        blob_name = '/'.join([self.prefix, key])
+        blob_name = self._append_path_to_prefix(key)
         try:
             blob = self.client.get_blob_to_bytes(self.container, blob_name)
             return blob.content
@@ -1980,13 +2030,13 @@ class ABSStore(MutableMapping):
 
     def __setitem__(self, key, value):
         value = ensure_bytes(value)
-        blob_name = '/'.join([self.prefix, key])
+        blob_name = self._append_path_to_prefix(key)
         self.client.create_blob_from_bytes(self.container, blob_name, value)
 
     def __delitem__(self, key):
         from azure.common import AzureMissingResourceHttpError
         try:
-            self.client.delete_blob(self.container, '/'.join([self.prefix, key]))
+            self.client.delete_blob(self.container, self._append_path_to_prefix(key))
         except AzureMissingResourceHttpError:
             raise KeyError('Blob %s not found' % key)
 
@@ -2001,53 +2051,62 @@ class ABSStore(MutableMapping):
         return list(self.__iter__())
 
     def __iter__(self):
-        for blob in self.client.list_blobs(self.container, self.prefix + '/'):
+        if self.prefix:
+            list_blobs_prefix = self.prefix + '/'
+        else:
+            list_blobs_prefix = None
+        for blob in self.client.list_blobs(self.container, list_blobs_prefix):
             yield self._strip_prefix_from_path(blob.name, self.prefix)
 
     def __len__(self):
         return len(self.keys())
 
     def __contains__(self, key):
-        blob_name = '/'.join([self.prefix, key])
+        blob_name = self._append_path_to_prefix(key)
         if self.client.exists(self.container, blob_name):
             return True
         else:
             return False
 
     def listdir(self, path=None):
-        store_path = normalize_storage_path(path)
-        # prefix is normalized to not have a trailing slash
-        dir_path = self.prefix
-        if store_path:
-            dir_path = dir_path + '/' + store_path
-        dir_path += '/'
+        from azure.storage.blob import Blob
+        dir_path = normalize_storage_path(self._append_path_to_prefix(path))
+        if dir_path:
+            dir_path += '/'
         items = list()
         for blob in self.client.list_blobs(self.container, prefix=dir_path, delimiter='/'):
-            if '/' in blob.name[len(dir_path):]:
+            if type(blob) == Blob:
+                items.append(self._strip_prefix_from_path(blob.name, dir_path))
+            else:
                 items.append(self._strip_prefix_from_path(
                     blob.name[:blob.name.find('/', len(dir_path))], dir_path))
-            else:
-                items.append(self._strip_prefix_from_path(blob.name, dir_path))
         return items
 
     def rmdir(self, path=None):
-        dir_path = normalize_storage_path(self._append_path_to_prefix(path, self.prefix)) + '/'
+        dir_path = normalize_storage_path(self._append_path_to_prefix(path))
+        if dir_path:
+            dir_path += '/'
         for blob in self.client.list_blobs(self.container, prefix=dir_path):
             self.client.delete_blob(self.container, blob.name)
 
     def getsize(self, path=None):
+        from azure.storage.blob import Blob
         store_path = normalize_storage_path(path)
         fs_path = self.prefix
         if store_path:
-            fs_path = self._append_path_to_prefix(store_path, self.prefix)
+            fs_path = self._append_path_to_prefix(store_path)
         if self.client.exists(self.container, fs_path):
             return self.client.get_blob_properties(self.container,
                                                    fs_path).properties.content_length
         else:
             size = 0
-            for blob in self.client.list_blobs(self.container, prefix=fs_path + '/',
+            if fs_path == '':
+                fs_path = None
+            else:
+                fs_path += '/'
+            for blob in self.client.list_blobs(self.container, prefix=fs_path,
                                                delimiter='/'):
-                if '/' not in blob.name[len(fs_path + '/'):]:
+                if type(blob) == Blob:
                     size += blob.properties.content_length
             return size
 
@@ -2206,13 +2265,14 @@ class SQLiteStore(MutableMapping):
 
     def listdir(self, path=None):
         path = normalize_storage_path(path)
+        sep = '_' if path == '' else '/'
         keys = self.cursor.execute(
             '''
             SELECT DISTINCT SUBSTR(m, 0, INSTR(m, "/")) AS l FROM (
                 SELECT LTRIM(SUBSTR(k, LENGTH(?) + 1), "/") || "/" AS m
-                FROM zarr WHERE k LIKE (? || "_%")
+                FROM zarr WHERE k LIKE (? || "{sep}%")
             ) ORDER BY l ASC
-            ''',
+            '''.format(sep=sep),
             (path, path)
         )
         keys = list(map(operator.itemgetter(0), keys))
@@ -2236,7 +2296,7 @@ class SQLiteStore(MutableMapping):
         if path:
             with self.lock:
                 self.cursor.execute(
-                    'DELETE FROM zarr WHERE k LIKE (? || "_%")', (path,)
+                    'DELETE FROM zarr WHERE k LIKE (? || "/%")', (path,)
                 )
         else:
             self.clear()

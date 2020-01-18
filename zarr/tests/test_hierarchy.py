@@ -3,12 +3,19 @@ import atexit
 import os
 import pickle
 import shutil
+import sys
 import tempfile
 import textwrap
 import unittest
 
 import numpy as np
 import pytest
+
+try:
+    import ipytree
+except ImportError:  # pragma: no cover
+    ipytree = None
+
 from numcodecs import Zlib
 from numpy.testing import assert_array_equal
 
@@ -860,6 +867,12 @@ class TestGroup(unittest.TestCase):
         assert isinstance(g2['foo'], Group)
         assert isinstance(g2['foo/bar'], Array)
 
+    def test_context_manager(self):
+
+        with self.create_group() as g:
+            d = g.create_dataset('foo/bar', shape=100, chunks=10)
+            d[:] = np.arange(100)
+
 
 class TestGroupWithMemoryStore(TestGroup):
 
@@ -887,8 +900,8 @@ class TestGroupWithABSStore(TestGroup):
         blob_client = asb.BlockBlobService(is_emulated=True)
         blob_client.delete_container('test')
         blob_client.create_container('test')
-        store = ABSStore(container='test', prefix='zarrtesting/', account_name='foo',
-                         account_key='bar', blob_service_kwargs={'is_emulated': True})
+        store = ABSStore(container='test', account_name='foo', account_key='bar',
+                         blob_service_kwargs={'is_emulated': True})
         store.rmdir()
         return store, None
 
@@ -911,6 +924,19 @@ class TestGroupWithZipStore(TestGroup):
         atexit.register(os.remove, path)
         store = ZipStore(path)
         return store, None
+
+    def test_context_manager(self):
+
+        with self.create_group() as g:
+            store = g.store
+            d = g.create_dataset('foo/bar', shape=100, chunks=10)
+            d[:] = np.arange(100)
+
+        # Check that exiting the context manager closes the store,
+        # and therefore the underlying ZipFile.
+        error = ValueError if sys.version_info >= (3, 6) else RuntimeError
+        with pytest.raises(error):
+            store.zf.extractall()
 
 
 class TestGroupWithDBMStore(TestGroup):
@@ -1179,11 +1205,10 @@ def _check_tree(g, expect_bytes, expect_text):
     assert expect_text == str(g.tree())
     expect_repr = expect_text
     assert expect_repr == repr(g.tree())
-    # test _repr_html_ lightly
-    # noinspection PyProtectedMember
-    html = g.tree()._repr_html_().strip()
-    assert html.startswith('<link')
-    assert html.endswith('</script>')
+    if ipytree:
+        # noinspection PyProtectedMember
+        widget = g.tree()._ipython_display_()
+        isinstance(widget, ipytree.Tree)
 
 
 def test_tree():

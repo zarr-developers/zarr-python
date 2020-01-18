@@ -30,6 +30,11 @@ setup(
         'setuptools>=38.6.0',
         'setuptools-scm>1.5.4'
     ],
+    extras_require={
+        'jupyter': [
+            'ipytree',
+        ],
+    },
     python_requires='>=3.5',
     install_requires=dependencies,
     package_dir={'': '.'},
@@ -47,6 +52,7 @@ setup(
         'Programming Language :: Python :: 3.5',
         'Programming Language :: Python :: 3.6',
         'Programming Language :: Python :: 3.7',
+        'Programming Language :: Python :: 3.8',
     ],
     maintainer='Alistair Miles',
     maintainer_email='alimanfoo@googlemail.com',

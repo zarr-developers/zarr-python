@@ -346,6 +346,9 @@ sub-directories, e.g.::
     >>> z
     <zarr.core.Array '/foo/bar/baz' (10000, 10000) int32>
 
+Groups can be used as context managers (in a ``with`` statement).
+If the underlying store has a ``close`` method, it will be called on exit.
+
 For more information on groups see the :mod:`zarr.hierarchy` and
 :mod:`zarr.convenience` API docs.
 
@@ -421,7 +424,8 @@ Groups also have the :func:`zarr.hierarchy.Group.tree` method, e.g.::
          ├── bar (1000000,) int64
          └── baz (1000, 1000) float32
 
-If you're using Zarr within a Jupyter notebook, calling ``tree()`` will generate an
+If you're using Zarr within a Jupyter notebook (requires
+`ipytree <https://github.com/QuantStack/ipytree>`_), calling ``tree()`` will generate an
 interactive tree representation, see the `repr_tree.ipynb notebook
 <http://nbviewer.jupyter.org/github/zarr-developers/zarr-python/blob/master/notebooks/repr_tree.ipynb>`_
 for more examples.
@@ -743,7 +747,7 @@ Also added in Zarr version 2.3 are two storage classes for interfacing with serv
 databases. The :class:`zarr.storage.RedisStore` class interfaces `Redis <https://redis.io/>`_
 (an in memory data structure store), and the :class:`zarr.storage.MongoDB` class interfaces
 with `MongoDB <https://www.mongodb.com/>`_ (an oject oriented NoSQL database). These stores
-respectively require the `redis <https://redis-py.readthedocs.io>`_ and
+respectively require the `redis-py <https://redis-py.readthedocs.io>`_ and
 `pymongo <https://api.mongodb.com/python/current/>`_ packages to be installed. 
 
 For compatibility with the `N5 <https://github.com/saalfeldlab/n5>`_ data format, Zarr also provides
@@ -803,7 +807,7 @@ Here is an example using S3Map to read an array created previously::
 
 Zarr now also has a builtin storage backend for Azure Blob Storage.
 The class is :class:`zarr.storage.ABSStore` (requires
- `azure-storage-blob <https://docs.microsoft.com/en-us/azure/storage/blobs/storage-quickstart-blobs-python>`_
+`azure-storage-blob <https://docs.microsoft.com/en-us/azure/storage/blobs/storage-quickstart-blobs-python>`_
 to be installed)::
 
     >>> store = zarr.ABSStore(container='test', prefix='zarr-testing', blob_service_kwargs={'is_emulated': True})  # doctest: +SKIP

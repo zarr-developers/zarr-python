@@ -1,5 +1,6 @@
 For bug reports, please follow the template below. For enhancement proposals, feel free
-to use whatever template makes sense.
+to use whatever template makes sense (major new features should be discussed in the
+Zarr specifications repository https://github.com/zarr-developers/zarr-specs).
 
 #### Minimal, reproducible code sample, a copy-pastable example if possible
 

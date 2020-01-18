@@ -27,6 +27,9 @@ environment:
     - PYTHON: "C:\\Python37-x64"
       PYTHON_VERSION: "3.7"
 
+    - PYTHON: "C:\\Python38-x64"
+      PYTHON_VERSION: "3.8"
+
 install:
   - "SET PATH=%PYTHON%;%PYTHON%\\Scripts;%PATH%"
   - "%CMD_IN_ENV% python -m pip install -U pip setuptools wheel"
