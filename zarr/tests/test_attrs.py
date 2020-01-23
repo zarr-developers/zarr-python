@@ -4,6 +4,7 @@ import unittest
 
 import pytest
 
+import numpy as np
 from zarr.attrs import Attributes
 from zarr.tests.util import CountingDict
 
@@ -218,3 +219,15 @@ class TestAttributes(unittest.TestCase):
         assert 'spam' not in a
         assert 10 == store.counter['__getitem__', 'attrs']
         assert 3 == store.counter['__setitem__', 'attrs']
+
+    def test_special_values(self):
+        a = self.init_attributes(dict())
+
+        a['nan'] = np.nan
+        assert np.isnan(a['nan'])
+
+        a['pinf'] = np.PINF
+        assert np.isposinf(a['pinf'])
+
+        a['ninf'] = np.NINF
+        assert np.isneginf(a['ninf'])

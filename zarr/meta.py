@@ -166,6 +166,9 @@ def encode_fill_value(v, dtype):
     if v is None:
         return v
     if dtype.kind == 'f':
+        # these cases are handled in the ZarrJsonEncoder now,
+        # but there may be cases where the metadata was not parsed
+        # with this encoder (?), so better to leave it here
         if np.isnan(v):
             return 'NaN'
         elif np.isposinf(v):

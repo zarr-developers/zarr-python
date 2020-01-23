@@ -19,15 +19,44 @@ object_codecs = {
 }
 
 
+class ZarrJsonEncoder(json.JSONEncoder):
+    """Encode json input
+    """
+    def default(self, obj):
+        if np.isnan(obj):
+            return "NaN"
+        elif np.isposinf(obj):
+            return "Infinity"
+        elif np.isneginf(obj):
+            return "-Infinity"
+        # we could also allow for passing numpy dtypes:
+        # if isinstance(obj, np.dtype):
+        #    return obj.item()
+        return super().default(obj)
+
+
+class ZarrJsonDecoder(json.JSONDecoder):
+    """Decode json input
+    """
+    def default(self, obj):
+        if obj == "NaN":
+            return np.nan
+        elif obj == "Infinity":
+            return np.PINF
+        elif obj == "-Infinity":
+            return np.NINF
+        return super().default(obj)
+
+
 def json_dumps(o):
     """Write JSON in a consistent, human-readable way."""
     return json.dumps(o, indent=4, sort_keys=True, ensure_ascii=True,
-                      separators=(',', ': ')).encode('ascii')
+                      separators=(',', ': '), cls=ZarrJsonEncoder).encode('ascii')
 
 
 def json_loads(s):
     """Read JSON in a consistent way."""
-    return json.loads(ensure_text(s, 'ascii'))
+    return json.loads(ensure_text(s, 'ascii'), cls=ZarrJsonDecoder)
 
 
 def normalize_shape(shape):
