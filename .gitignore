@@ -74,3 +74,5 @@ zarr/version.py
 #doesnotexist
 #test_sync*
 data/*
+
+venv/*
