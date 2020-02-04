@@ -571,7 +571,7 @@ class Array(object):
         fields, selection = pop_fields(selection)
         return self.get_basic_selection(selection, fields=fields)
 
-    def get_basic_selection(self, selection=Ellipsis, out=None, fields=None):
+    def get_basic_selection(self, selection=Ellipsis, out=None, fields=None, executor=None):
         """Retrieve data for an item or region of the array.
 
         Parameters
@@ -584,6 +584,9 @@ class Array(object):
         fields : str or sequence of str, optional
             For arrays with a structured dtype, one or more fields can be specified to
             extract data for.
+        executor : concurrent.futures.Executor or None, optional
+            An executor for submitting tasks to run concurrently. If not
+            provided, work will be executed serially.
 
         Returns
         -------
@@ -695,7 +698,7 @@ class Array(object):
                                                 fields=fields)
         else:
             return self._get_basic_selection_nd(selection=selection, out=out,
-                                                fields=fields)
+                                                fields=fields, executor=executor)
 
     def _get_basic_selection_zd(self, selection, out=None, fields=None):
         # special case basic selection for zero-dimensional array
@@ -731,15 +734,20 @@ class Array(object):
 
         return out
 
-    def _get_basic_selection_nd(self, selection, out=None, fields=None):
+    def _get_basic_selection_nd(self, selection, out=None, fields=None, executor=None):
         # implementation of basic selection for array with at least one dimension
 
         # setup indexer
         indexer = BasicIndexer(selection, self)
 
-        return self._get_selection(indexer=indexer, out=out, fields=fields)
+        return self._get_selection(
+            indexer=indexer,
+            out=out,
+            fields=fields,
+            executor=executor,
+        )
 
-    def get_orthogonal_selection(self, selection, out=None, fields=None):
+    def get_orthogonal_selection(self, selection, out=None, fields=None, executor=None):
         """Retrieve data by making a selection for each dimension of the array. For
         example, if an array has 2 dimensions, allows selecting specific rows and/or
         columns. The selection for each dimension can be either an integer (indexing a
@@ -756,6 +764,9 @@ class Array(object):
         fields : str or sequence of str, optional
             For arrays with a structured dtype, one or more fields can be specified to
             extract data for.
+        executor : concurrent.futures.Executor or None, optional
+            An executor for submitting tasks to run concurrently. If not
+            provided, work will be executed serially.
 
         Returns
         -------
@@ -848,9 +859,14 @@ class Array(object):
         # setup indexer
         indexer = OrthogonalIndexer(selection, self)
 
-        return self._get_selection(indexer=indexer, out=out, fields=fields)
+        return self._get_selection(
+            indexer=indexer,
+            out=out,
+            fields=fields,
+            executor=executor,
+        )
 
-    def get_coordinate_selection(self, selection, out=None, fields=None):
+    def get_coordinate_selection(self, selection, out=None, fields=None, executor=None):
         """Retrieve a selection of individual items, by providing the indices
         (coordinates) for each selected item.
 
@@ -863,6 +879,9 @@ class Array(object):
         fields : str or sequence of str, optional
             For arrays with a structured dtype, one or more fields can be specified to
             extract data for.
+        executor : concurrent.futures.Executor or None, optional
+            An executor for submitting tasks to run concurrently. If not
+            provided, work will be executed serially.
 
         Returns
         -------
@@ -923,14 +942,19 @@ class Array(object):
         if out is not None:
             out = out.reshape(-1)
 
-        out = self._get_selection(indexer=indexer, out=out, fields=fields)
+        out = self._get_selection(
+            indexer=indexer,
+            out=out,
+            fields=fields,
+            executor=executor,
+        )
 
         # restore shape
         out = out.reshape(indexer.sel_shape)
 
         return out
 
-    def get_mask_selection(self, selection, out=None, fields=None):
+    def get_mask_selection(self, selection, out=None, fields=None, executor=None):
         """Retrieve a selection of individual items, by providing a Boolean array of the
         same shape as the array against which the selection is being made, where True
         values indicate a selected item.
@@ -945,6 +969,9 @@ class Array(object):
         fields : str or sequence of str, optional
             For arrays with a structured dtype, one or more fields can be specified to
             extract data for.
+        executor : concurrent.futures.Executor or None, optional
+            An executor for submitting tasks to run concurrently. If not
+            provided, work will be executed serially.
 
         Returns
         -------
@@ -997,9 +1024,14 @@ class Array(object):
         # setup indexer
         indexer = MaskIndexer(selection, self)
 
-        return self._get_selection(indexer=indexer, out=out, fields=fields)
+        return self._get_selection(
+            indexer=indexer,
+            out=out,
+            fields=fields,
+            executor=executor,
+        )
 
-    def _get_selection(self, indexer, out=None, fields=None):
+    def _get_selection(self, indexer, out=None, fields=None, executor=None):
 
         # We iterate over all chunks which overlap the selection and thus contain data
         # that needs to be extracted. Each chunk is processed in turn, extracting the
@@ -1020,12 +1052,25 @@ class Array(object):
         else:
             check_array_shape('out', out, out_shape)
 
-        # iterate over chunks
-        for chunk_coords, chunk_selection, out_selection in indexer:
+        def f(item):
+            chunk_coords, chunk_selection, out_selection = item
+            return self._chunk_getitem(
+                chunk_coords,
+                chunk_selection,
+                out,
+                out_selection,
+                drop_axes=indexer.drop_axes,
+                fields=fields,
+            )
 
-            # load chunk selection into output array
-            self._chunk_getitem(chunk_coords, chunk_selection, out, out_selection,
-                                drop_axes=indexer.drop_axes, fields=fields)
+        if executor is None:
+            map_ = map
+        else:
+            map_ = executor.map
+
+        # iterate over chunks
+        for _ in map_(f, indexer):
+            pass
 
         if out.shape:
             return out
@@ -1114,7 +1159,7 @@ class Array(object):
         fields, selection = pop_fields(selection)
         self.set_basic_selection(selection, value, fields=fields)
 
-    def set_basic_selection(self, selection, value, fields=None):
+    def set_basic_selection(self, selection, value, fields=None, executor=None):
         """Modify data for an item or region of the array.
 
         Parameters
@@ -1127,6 +1172,9 @@ class Array(object):
         fields : str or sequence of str, optional
             For arrays with a structured dtype, one or more fields can be specified to set
             data for.
+        executor : concurrent.futures.Executor or None, optional
+            An executor for submitting tasks to run concurrently. If not
+            provided, work will be executed serially.
 
         Examples
         --------
@@ -1207,9 +1255,14 @@ class Array(object):
         if self._shape == ():
             return self._set_basic_selection_zd(selection, value, fields=fields)
         else:
-            return self._set_basic_selection_nd(selection, value, fields=fields)
+            return self._set_basic_selection_nd(
+                selection,
+                value,
+                fields=fields,
+                executor=executor,
+            )
 
-    def set_orthogonal_selection(self, selection, value, fields=None):
+    def set_orthogonal_selection(self, selection, value, fields=None, executor=None):
         """Modify data via a selection for each dimension of the array.
 
         Parameters
@@ -1222,6 +1275,9 @@ class Array(object):
         fields : str or sequence of str, optional
             For arrays with a structured dtype, one or more fields can be specified to set
             data for.
+        executor : concurrent.futures.Executor or None, optional
+            An executor for submitting tasks to run concurrently. If not
+            provided, work will be executed serially.
 
         Examples
         --------
@@ -1297,9 +1353,9 @@ class Array(object):
         # setup indexer
         indexer = OrthogonalIndexer(selection, self)
 
-        self._set_selection(indexer, value, fields=fields)
+        self._set_selection(indexer, value, fields=fields, executor=executor)
 
-    def set_coordinate_selection(self, selection, value, fields=None):
+    def set_coordinate_selection(self, selection, value, fields=None, executor=None):
         """Modify a selection of individual items, by providing the indices (coordinates)
         for each item to be modified.
 
@@ -1312,6 +1368,9 @@ class Array(object):
         fields : str or sequence of str, optional
             For arrays with a structured dtype, one or more fields can be specified to set
             data for.
+        executor : concurrent.futures.Executor or None, optional
+            An executor for submitting tasks to run concurrently. If not
+            provided, work will be executed serially.
 
         Examples
         --------
@@ -1375,9 +1434,9 @@ class Array(object):
         if hasattr(value, 'shape') and len(value.shape) > 1:
             value = value.reshape(-1)
 
-        self._set_selection(indexer, value, fields=fields)
+        self._set_selection(indexer, value, fields=fields, executor=executor)
 
-    def set_mask_selection(self, selection, value, fields=None):
+    def set_mask_selection(self, selection, value, fields=None, executor=None):
         """Modify a selection of individual items, by providing a Boolean array of the
         same shape as the array against which the selection is being made, where True
         values indicate a selected item.
@@ -1392,6 +1451,9 @@ class Array(object):
         fields : str or sequence of str, optional
             For arrays with a structured dtype, one or more fields can be specified to set
             data for.
+        executor : concurrent.futures.Executor or None, optional
+            An executor for submitting tasks to run concurrently. If not
+            provided, work will be executed serially.
 
         Examples
         --------
@@ -1450,7 +1512,7 @@ class Array(object):
         # setup indexer
         indexer = MaskIndexer(selection, self)
 
-        self._set_selection(indexer, value, fields=fields)
+        self._set_selection(indexer, value, fields=fields, executor=executor)
 
     def _set_basic_selection_zd(self, selection, value, fields=None):
         # special case __setitem__ for zero-dimensional array
@@ -1492,15 +1554,15 @@ class Array(object):
         cdata = self._encode_chunk(chunk)
         self.chunk_store[ckey] = cdata
 
-    def _set_basic_selection_nd(self, selection, value, fields=None):
+    def _set_basic_selection_nd(self, selection, value, fields=None, executor=None):
         # implementation of __setitem__ for array with at least one dimension
 
         # setup indexer
         indexer = BasicIndexer(selection, self)
 
-        self._set_selection(indexer, value, fields=fields)
+        self._set_selection(indexer, value, fields=fields, executor=executor)
 
-    def _set_selection(self, indexer, value, fields=None):
+    def _set_selection(self, indexer, value, fields=None, executor=None):
 
         # We iterate over all chunks which overlap the selection and thus contain data
         # that needs to be replaced. Each chunk is processed in turn, extracting the
@@ -1528,8 +1590,8 @@ class Array(object):
                 value = np.asanyarray(value)
             check_array_shape('value', value, sel_shape)
 
-        # iterate over chunks in range
-        for chunk_coords, chunk_selection, out_selection in indexer:
+        def f(item):
+            chunk_coords, chunk_selection, out_selection = item
 
             # extract data to store
             if sel_shape == ():
@@ -1548,6 +1610,15 @@ class Array(object):
 
             # put data
             self._chunk_setitem(chunk_coords, chunk_selection, chunk_value, fields=fields)
+
+        if executor is None:
+            map_ = map
+        else:
+            map_ = executor.map
+
+        # iterate over chunks in range
+        for _ in map_(f, indexer):
+            pass
 
     def _chunk_getitem(self, chunk_coords, chunk_selection, out, out_selection,
                        drop_axes=None, fields=None):
