@@ -165,6 +165,7 @@ def test_tree_get_icon():
     with pytest.raises(ValueError):
         tree_get_icon("Baz")
 
+
 @mock.patch.dict("sys.modules", {"ipytree": None})
 def test_tree_widget_missing_ipytree():
     pattern = (
