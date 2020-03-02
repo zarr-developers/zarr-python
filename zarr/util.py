@@ -433,7 +433,8 @@ def tree_widget(group, expand, level):
     except ImportError as error:
         raise ImportError(
             "{}: Run `pip install zarr[jupyter]` to get the required ipytree "
-            "dependency for displaying the tree widget.".format(error)
+            "dependency for displaying the tree widget. If using jupyterlab, "
+            "you also need to run `jupyter labextension install ipytree`".format(error)
         )
 
     result = ipytree.Tree()
