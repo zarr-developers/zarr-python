@@ -49,4 +49,4 @@ script:
   - if [[ $BUILD_DOCS == 'true' ]]; then tox -e docs; fi
 
 after_success:
-  - coveralls
+  - coveralls --service=travis-pro
