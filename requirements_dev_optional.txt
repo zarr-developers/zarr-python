@@ -11,7 +11,7 @@ redis==3.3.8
 pymongo==3.9.0
 # optional test requirements
 tox==3.14.0
-coverage==4.5.4
+coverage==5.0.3
 coveralls==1.8.2
 flake8==3.7.8
 pytest-cov==2.7.1
