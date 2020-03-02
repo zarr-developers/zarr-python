@@ -32,7 +32,7 @@ setup(
     ],
     extras_require={
         'jupyter': [
-            'jupyter',
+            'notebook',
             'ipytree',
         ],
     },
