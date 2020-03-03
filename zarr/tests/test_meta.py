@@ -13,8 +13,6 @@ from zarr.meta import (ZARR_FORMAT, decode_array_metadata, decode_dtype,
 
 
 def assert_json_equal(expect, actual):
-    if isinstance(expect, bytes):  # pragma: py3 no cover
-        expect = str(expect, 'ascii')
     if isinstance(actual, bytes):
         actual = str(actual, 'ascii')
     ej = json.loads(expect)
