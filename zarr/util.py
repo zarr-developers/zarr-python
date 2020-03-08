@@ -510,15 +510,6 @@ def is_valid_python_name(name):
     return name.isidentifier() and not iskeyword(name)
 
 
-def class_dir(klass):  # pragma: py3 no cover
-    d = dict()
-    d.update(klass.__dict__)
-    bases = klass.__bases__
-    for base in bases:
-        d.update(class_dir(base))
-    return d
-
-
 class NoLock(object):
     """A lock that doesn't lock."""
 
