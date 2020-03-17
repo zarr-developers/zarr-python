@@ -946,6 +946,87 @@ def atexit_rmglob(path,
             rmtree(p)
 
 
+class FSStore(MutableMapping):
+
+    def __init__(self, url, normalize_keys=True, key_separator='.',
+                 **storage_options):
+        import fsspec
+        self.path = url
+        self.normalize_keys = normalize_keys
+        self.key_separator = key_separator
+        self.map = fsspec.get_mapper(url, **storage_options)
+        self.fs = self.map.fs  # for direct operations
+
+    def _normalize_key(self, key):
+        key = normalize_storage_path(key)
+        if key:
+            *bits, end = key.split('/')
+            key = '/'.join(bits + [end.replace('.', self.key_separator)])
+        return key.lower() if self.normalize_keys else key
+
+    def __getitem__(self, key):
+        key = self._normalize_key(key)
+        return self.map[key]
+
+    def __setitem__(self, key, value):
+        key = self._normalize_key(key)
+        path = self.dir_path(key)
+        value = ensure_contiguous_ndarray(value)
+        try:
+            if self.fs.isdir(path):
+                self.fs.rm(path, recursive=True)
+            self.map[key] = value
+        except IOError:
+            raise KeyError(key)
+
+    def __delitem__(self, key):
+        key = self._normalize_key(key)
+        path = self.dir_path(key)
+        if self.fs.isdir(path):
+            self.fs.rm(path, recursive=True)
+        else:
+            del self.map[key]
+
+    def __contains__(self, key):
+        key = self._normalize_key(key)
+        return key in self.map
+
+    def __eq__(self, other):
+        return type(self) == type(other) and self.map == other.map
+
+    def keys(self):
+        return iter(self.map)
+
+    def __iter__(self):
+        return self.keys()
+
+    def __len__(self):
+        return len(list(self.keys()))
+
+    def dir_path(self, path=None):
+        store_path = normalize_storage_path(path)
+        return self.map._key_to_str(store_path)
+
+    def listdir(self, path=None):
+        dir_path = self.dir_path(path)
+        try:
+            return sorted(p.rsplit('/', 1)[-1] for p in self.fs.ls(dir_path))
+        except IOError:
+            return []
+
+    def rmdir(self, path=None):
+        store_path = self.dir_path(path)
+        if self.fs.isdir(store_path):
+            self.fs.rm(store_path, recursive=True)
+
+    def getsize(self, path=None):
+        store_path = self.dir_path(path)
+        return self.fs.du(store_path, True, True)
+
+    def clear(self):
+        self.map.clear()
+
+
 class TempStore(DirectoryStore):
     """Directory store using a temporary directory for storage.
 

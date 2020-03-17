@@ -29,6 +29,7 @@ from zarr.storage import (ABSStore, ConsolidatedMetadataStore, DBMStore,
                           array_meta_key, atexit_rmglob, atexit_rmtree,
                           attrs_key, default_compressor, getsize,
                           group_meta_key, init_array, init_group, migrate_1to2)
+from zarr.storage import FSStore as NestedDirectoryStore
 from zarr.tests.util import CountingDict, skip_test_env_var
 
 
@@ -762,7 +763,8 @@ class TestNestedDirectoryStore(TestDirectoryStore, unittest.TestCase):
     def create_store(self, normalize_keys=False):
         path = tempfile.mkdtemp()
         atexit.register(atexit_rmtree, path)
-        store = NestedDirectoryStore(path, normalize_keys=normalize_keys)
+        store = NestedDirectoryStore(path, normalize_keys=normalize_keys,
+                                     key_separator='/', auto_mkdir=True)
         return store
 
     def test_chunk_nesting(self):
