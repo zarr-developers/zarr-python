@@ -112,7 +112,6 @@ class Array(object):
         # N.B., expect at this point store is fully initialized with all
         # configuration metadata fully specified and normalized
 
-        self._store = store
         self._chunk_store = chunk_store
         self._path = normalize_storage_path(path)
         if self._path:
@@ -122,17 +121,12 @@ class Array(object):
         self._read_only = bool(read_only)
         self._synchronizer = synchronizer
         self._cache_metadata = cache_metadata
+        self._cache_attrs = cache_attrs
         self._is_view = False
         self._meta = None
 
-        # initialize metadata
-        if init_metadata:
-            self._load_metadata()
-
-        # initialize attributes
-        akey = self._key_prefix + attrs_key
-        self._attrs = Attributes(store, key=akey, read_only=read_only,
-                                 synchronizer=synchronizer, cache=cache_attrs)
+        # initialize store and attributes
+        self._set_store_attrs(store, load_metadata=init_metadata)
 
         # initialize info reporter
         self._info_reporter = InfoReporter(self)
@@ -140,6 +134,13 @@ class Array(object):
         # initialize indexing helpers
         self._oindex = OIndex(self)
         self._vindex = VIndex(self)
+
+    def _set_store_attrs(self, store, load_metadata):
+        self._store = store
+        if load_metadata:
+            self._load_metadata()
+        self._attrs = Attributes(store, key=self._key_prefix + attrs_key, cache=self._cache_attrs,
+                                 read_only=self._read_only, synchronizer=self._synchronizer)
 
     def _load_metadata(self):
         """(Re)load metadata from store."""
@@ -213,6 +214,10 @@ class Array(object):
     def store(self):
         """A MutableMapping providing the underlying storage for the array."""
         return self._store
+
+    @store.setter
+    def store(self, value):
+        self._set_store_attrs(value, load_metadata=True)
 
     @property
     def path(self):

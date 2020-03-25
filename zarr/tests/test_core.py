@@ -1272,6 +1272,26 @@ class TestArray(unittest.TestCase):
         assert 'foo' in attrs and attrs['foo'] == 'bar'
         assert 'bar' in attrs and attrs['bar'] == 'foo'
 
+    def test_store_reset(self):
+        a = self.create_array(shape=20, chunks=10, dtype='i4')
+        a.attrs['foo'] = 'bar'
+        assert a.shape == (20,)
+        assert a.chunks == (10,)
+        assert a.dtype == np.dtype('i4')
+        attrs = json_loads(a.store[a.attrs.key])
+        assert 'foo' in attrs and attrs['foo'] == 'bar'
+
+        store = dict()
+        init_array(store, shape=100, chunks=20, dtype='i8', path=a.path)
+        assert a.store is not store
+
+        a.store = store
+        assert a.store is store
+        assert a.shape == (100,)
+        assert a.chunks == (20,)
+        assert a.dtype == np.dtype('i8')
+        assert a.attrs.key not in a.store
+
 
 class TestArrayWithPath(TestArray):
 
@@ -1382,17 +1402,39 @@ class TestArrayWithChunkStore(TestArray):
 
 class TestArrayWithDirectoryStore(TestArray):
 
-    @staticmethod
-    def create_array(read_only=False, **kwargs):
+    store_class = DirectoryStore
+
+    @classmethod
+    def create_array(cls, read_only=False, **kwargs):
         path = mkdtemp()
         atexit.register(shutil.rmtree, path)
-        store = DirectoryStore(path)
+        store = cls.store_class(path)
         cache_metadata = kwargs.pop('cache_metadata', True)
         cache_attrs = kwargs.pop('cache_attrs', True)
         kwargs.setdefault('compressor', Zlib(1))
         init_array(store, **kwargs)
         return Array(store, read_only=read_only, cache_metadata=cache_metadata,
                      cache_attrs=cache_attrs)
+
+    def test_move_store(self):
+        a = np.random.random(20)
+        z = self.create_array(shape=a.shape, chunks=10, cache_metadata=False)
+        z[:] = a
+        assert_array_equal(a, z)
+
+        # move the contents of the store to a new directory
+        newpath = mkdtemp()
+        atexit.register(shutil.rmtree, newpath)
+        for f in os.listdir(z.store.path):
+            shutil.move(os.path.join(z.store.path, f), newpath)
+
+        # cannot access the original store anymore
+        with pytest.raises(ValueError):
+            assert_array_equal(a, z)
+
+        # create a new store pointing to new path
+        z.store = self.store_class(newpath)
+        assert_array_equal(a, z)
 
     def test_nbytes_stored(self):
 
@@ -1431,32 +1473,12 @@ class TestArrayWithABSStore(TestArray):
 
 class TestArrayWithNestedDirectoryStore(TestArrayWithDirectoryStore):
 
-    @staticmethod
-    def create_array(read_only=False, **kwargs):
-        path = mkdtemp()
-        atexit.register(shutil.rmtree, path)
-        store = NestedDirectoryStore(path)
-        cache_metadata = kwargs.pop('cache_metadata', True)
-        cache_attrs = kwargs.pop('cache_attrs', True)
-        kwargs.setdefault('compressor', Zlib(1))
-        init_array(store, **kwargs)
-        return Array(store, read_only=read_only, cache_metadata=cache_metadata,
-                     cache_attrs=cache_attrs)
+    store_class = NestedDirectoryStore
 
 
 class TestArrayWithN5Store(TestArrayWithDirectoryStore):
 
-    @staticmethod
-    def create_array(read_only=False, **kwargs):
-        path = mkdtemp()
-        atexit.register(shutil.rmtree, path)
-        store = N5Store(path)
-        cache_metadata = kwargs.pop('cache_metadata', True)
-        cache_attrs = kwargs.pop('cache_attrs', True)
-        kwargs.setdefault('compressor', Zlib(1))
-        init_array(store, **kwargs)
-        return Array(store, read_only=read_only, cache_metadata=cache_metadata,
-                     cache_attrs=cache_attrs)
+    store_class = N5Store
 
     def test_array_0d(self):
         # test behaviour for array with 0 dimensions
