@@ -52,6 +52,10 @@ class Array(object):
         If True (default), user attributes will be cached for attribute read
         operations. If False, user attributes are reloaded from the store prior
         to all attribute read operations.
+    init_metadata : bool, optional
+        If True (default), array configuration metadata will be loaded from the
+        store at initialization. If False, array metadata will be loaded prior
+        to the first data access or modification operation.
 
     Attributes
     ----------
@@ -104,7 +108,7 @@ class Array(object):
     """
 
     def __init__(self, store, path=None, read_only=False, chunk_store=None,
-                 synchronizer=None, cache_metadata=True, cache_attrs=True):
+                 synchronizer=None, cache_metadata=True, cache_attrs=True, init_metadata=True):
         # N.B., expect at this point store is fully initialized with all
         # configuration metadata fully specified and normalized
 
@@ -119,9 +123,11 @@ class Array(object):
         self._synchronizer = synchronizer
         self._cache_metadata = cache_metadata
         self._is_view = False
+        self._meta = None
 
         # initialize metadata
-        self._load_metadata()
+        if init_metadata:
+            self._load_metadata()
 
         # initialize attributes
         akey = self._key_prefix + attrs_key
@@ -174,8 +180,12 @@ class Array(object):
                 filters = [get_codec(config) for config in filters]
             self._filters = filters
 
+    def _ensure_metadata(self):
+        if self._meta is None:
+            self._load_metadata()
+
     def _refresh_metadata(self, sync=True):
-        if not self._cache_metadata:
+        if self._meta is None or not self._cache_metadata:
             if sync:
                 self._load_metadata()
             else:
@@ -261,32 +271,38 @@ class Array(object):
     def chunks(self):
         """A tuple of integers describing the length of each dimension of a
         chunk of the array."""
+        self._ensure_metadata()
         return self._chunks
 
     @property
     def dtype(self):
         """The NumPy data type."""
+        self._ensure_metadata()
         return self._dtype
 
     @property
     def compressor(self):
         """Primary compression codec."""
+        self._ensure_metadata()
         return self._compressor
 
     @property
     def fill_value(self):
         """A value used for uninitialized portions of the array."""
+        self._ensure_metadata()
         return self._fill_value
 
     @property
     def order(self):
         """A string indicating the order in which bytes are arranged within
         chunks of the array."""
+        self._ensure_metadata()
         return self._order
 
     @property
     def filters(self):
         """One or more codecs used to transform data prior to compression."""
+        self._ensure_metadata()
         return self._filters
 
     @property
@@ -1934,7 +1950,7 @@ class Array(object):
                 self._synchronizer, self._cache_metadata, self._attrs.cache)
 
     def __setstate__(self, state):
-        self.__init__(*state)
+        self.__init__(*state, init_metadata=False)
 
     def _synchronized_op(self, f, *args, **kwargs):
 
@@ -2216,12 +2232,12 @@ class Array(object):
 
         # allow override of some properties
         if dtype is None:
-            dtype = self._dtype
+            dtype = self.dtype
         else:
             dtype = np.dtype(dtype)
             a._dtype = dtype
         if shape is None:
-            shape = self._shape
+            shape = self.shape
         else:
             shape = normalize_shape(shape)
             a._shape = shape

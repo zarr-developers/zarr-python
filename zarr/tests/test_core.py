@@ -4,6 +4,7 @@ import os
 import pickle
 import shutil
 import unittest
+from functools import partial
 from itertools import zip_longest
 from tempfile import mkdtemp, mktemp
 
@@ -697,6 +698,8 @@ class TestArray(unittest.TestCase):
         if z.compressor:
             compressor_config = z.compressor.get_config()
         fill_value = z.fill_value
+        order = z.order
+        filters = z.filters
         cache_metadata = z._cache_metadata
         attrs_cache = z.attrs.cache
         a = np.random.randint(0, 1000, 1000)
@@ -708,18 +711,22 @@ class TestArray(unittest.TestCase):
         # store before can round-trip through pickle
         if hasattr(z.store, 'close'):
             z.store.close()
-        z2 = pickle.loads(dump)
+        unpickle = partial(pickle.loads, dump)
 
         # verify
-        assert shape == z2.shape
-        assert chunks == z2.chunks
-        assert dtype == z2.dtype
-        if z2.compressor:
-            assert compressor_config == z2.compressor.get_config()
-        assert fill_value == z2.fill_value
-        assert cache_metadata == z2._cache_metadata
-        assert attrs_cache == z2.attrs.cache
-        assert_array_equal(a, z2[:])
+        assert shape == unpickle().shape
+        assert chunks == unpickle().chunks
+        assert dtype == unpickle().dtype
+        if compressor_config:
+            assert compressor_config == unpickle().compressor.get_config()
+        else:
+            assert unpickle().compressor is None
+        assert fill_value == unpickle().fill_value
+        assert order == unpickle().order
+        assert filters == unpickle().filters
+        assert cache_metadata == unpickle()._cache_metadata
+        assert attrs_cache == unpickle().attrs.cache
+        assert_array_equal(a, unpickle()[:])
 
     def test_np_ufuncs(self):
         z = self.create_array(shape=(100, 100), chunks=(10, 10))
