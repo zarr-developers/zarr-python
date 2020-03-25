@@ -174,13 +174,12 @@ class Array(object):
                 filters = [get_codec(config) for config in filters]
             self._filters = filters
 
-    def _refresh_metadata(self):
+    def _refresh_metadata(self, sync=True):
         if not self._cache_metadata:
-            self._load_metadata()
-
-    def _refresh_metadata_nosync(self):
-        if not self._cache_metadata and not self._is_view:
-            self._load_metadata_nosync()
+            if sync:
+                self._load_metadata()
+            else:
+                self._load_metadata_nosync()
 
     def _flush_metadata_nosync(self):
         if self._is_view:
@@ -683,8 +682,7 @@ class Array(object):
         """
 
         # refresh metadata
-        if not self._cache_metadata:
-            self._load_metadata()
+        self._refresh_metadata()
 
         # check args
         check_fields(fields, self._dtype)
@@ -839,8 +837,7 @@ class Array(object):
         """
 
         # refresh metadata
-        if not self._cache_metadata:
-            self._load_metadata()
+        self._refresh_metadata()
 
         # check args
         check_fields(fields, self._dtype)
@@ -910,8 +907,7 @@ class Array(object):
         """
 
         # refresh metadata
-        if not self._cache_metadata:
-            self._load_metadata()
+        self._refresh_metadata()
 
         # check args
         check_fields(fields, self._dtype)
@@ -988,8 +984,7 @@ class Array(object):
         """
 
         # refresh metadata
-        if not self._cache_metadata:
-            self._load_metadata()
+        self._refresh_metadata()
 
         # check args
         check_fields(fields, self._dtype)
@@ -1200,8 +1195,7 @@ class Array(object):
             err_read_only()
 
         # refresh metadata
-        if not self._cache_metadata:
-            self._load_metadata_nosync()
+        self._refresh_metadata(sync=False)
 
         # handle zero-dimensional arrays
         if self._shape == ():
@@ -1291,8 +1285,7 @@ class Array(object):
             err_read_only()
 
         # refresh metadata
-        if not self._cache_metadata:
-            self._load_metadata_nosync()
+        self._refresh_metadata(sync=False)
 
         # setup indexer
         indexer = OrthogonalIndexer(selection, self)
@@ -1363,8 +1356,7 @@ class Array(object):
             err_read_only()
 
         # refresh metadata
-        if not self._cache_metadata:
-            self._load_metadata_nosync()
+        self._refresh_metadata(sync=False)
 
         # setup indexer
         indexer = CoordinateIndexer(selection, self)
@@ -1444,8 +1436,7 @@ class Array(object):
             err_read_only()
 
         # refresh metadata
-        if not self._cache_metadata:
-            self._load_metadata_nosync()
+        self._refresh_metadata(sync=False)
 
         # setup indexer
         indexer = MaskIndexer(selection, self)
@@ -1957,7 +1948,7 @@ class Array(object):
             lock = self._synchronizer[mkey]
 
         with lock:
-            self._refresh_metadata_nosync()
+            self._refresh_metadata(sync=False)
             result = f(*args, **kwargs)
 
         return result
