@@ -1255,9 +1255,12 @@ class TestArray(unittest.TestCase):
     def test_attributes(self):
         a = self.create_array(shape=10, chunks=10, dtype='i8')
         a.attrs['foo'] = 'bar'
+        assert a.attrs.key in a.store
         attrs = json_loads(a.store[a.attrs.key])
         assert 'foo' in attrs and attrs['foo'] == 'bar'
+
         a.attrs['bar'] = 'foo'
+        assert a.attrs.key in a.store
         attrs = json_loads(a.store[a.attrs.key])
         assert 'foo' in attrs and attrs['foo'] == 'bar'
         assert 'bar' in attrs and attrs['bar'] == 'foo'
