@@ -1,6 +1,14 @@
 Release notes
 =============
 
+
+Next release
+------------
+
+* Fix minor bug in `N5Store`. 
+  By :user:`gsakkis`, :issue:`550`.
+
+
 .. _release_2.4.0:
 
 2.4.0
