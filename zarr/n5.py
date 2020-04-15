@@ -175,9 +175,9 @@ class N5Store(NestedDirectoryStore):
             # array if attributes contain 'dimensions'
             return 'dimensions' in self._load_n5_attrs(key)
 
-        elif key.endswith(zarr_attrs_key):  # pragma: no cover
+        elif key.endswith(zarr_attrs_key):
 
-            key = key.replace(zarr_array_meta_key, n5_attrs_key)
+            key = key.replace(zarr_attrs_key, n5_attrs_key)
             return self._contains_attrs(key)
 
         elif is_chunk_key(key):
