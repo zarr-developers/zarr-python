@@ -1,4 +1,7 @@
 # -*- coding: utf-8 -*-
+import re
+from unittest import mock
+
 import numpy as np
 import pytest
 
@@ -6,7 +9,8 @@ from zarr.util import (guess_chunks, human_readable_size, info_html_report,
                        info_text_report, is_total_slice, normalize_chunks,
                        normalize_fill_value, normalize_order,
                        normalize_resize_args, normalize_shape,
-                       tree_array_icon, tree_group_icon, tree_get_icon)
+                       tree_array_icon, tree_group_icon, tree_get_icon,
+                       tree_widget)
 
 
 def test_normalize_shape():
@@ -160,3 +164,15 @@ def test_tree_get_icon():
     assert tree_get_icon("Group") == tree_group_icon
     with pytest.raises(ValueError):
         tree_get_icon("Baz")
+
+
+@mock.patch.dict("sys.modules", {"ipytree": None})
+def test_tree_widget_missing_ipytree():
+    pattern = (
+        "Run `pip install zarr[jupyter]` or `conda install ipytree`"
+        "to get the required ipytree dependency for displaying the tree "
+        "widget. If using jupyterlab, you also need to run "
+        "`jupyter labextension install ipytree`"
+        )
+    with pytest.raises(ImportError, match=re.escape(pattern)):
+        tree_widget(None, None, None)
