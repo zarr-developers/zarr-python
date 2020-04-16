@@ -1010,7 +1010,8 @@ class FSStore(MutableMapping):
     def listdir(self, path=None):
         dir_path = self.dir_path(path)
         try:
-            return sorted(p.rsplit('/', 1)[-1] for p in self.fs.ls(dir_path))
+            return sorted(p.rsplit('/', 1)[-1]
+                          for p in self.fs.ls(dir_path, detail=False))
         except IOError:
             return []
 
