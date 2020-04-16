@@ -959,7 +959,7 @@ class FSStore(MutableMapping):
         self.mode = mode
 
     def _normalize_key(self, key):
-        key = normalize_storage_path(key)
+        key = normalize_storage_path(key).lstrip('/')
         if key:
             *bits, end = key.split('/')
             key = '/'.join(bits + [end.replace('.', self.key_separator)])
@@ -1015,8 +1015,9 @@ class FSStore(MutableMapping):
     def listdir(self, path=None):
         dir_path = self.dir_path(path)
         try:
-            return sorted(p.rsplit('/', 1)[-1]
+            out = sorted(p.rstrip('/').rsplit('/', 1)[-1]
                           for p in self.fs.ls(dir_path, detail=False))
+            return out
         except IOError:
             return []
 
