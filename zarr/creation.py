@@ -10,7 +10,7 @@ from zarr.errors import (err_array_not_found, err_contains_array,
 from zarr.n5 import N5Store
 from zarr.storage import (DirectoryStore, ZipStore, contains_array,
                           contains_group, default_compressor, init_array,
-                          normalize_storage_path)
+                          normalize_storage_path, FSStore)
 
 
 def create(shape, chunks=True, dtype=None, compressor='default',
@@ -131,8 +131,10 @@ def normalize_store_arg(store, clobber=False, default=dict):
     if store is None:
         return default()
     elif isinstance(store, str):
+        mode = 'w' if clobber else 'r'
+        if "://" in store:
+            return FSStore(store)
         if store.endswith('.zip'):
-            mode = 'w' if clobber else 'r'
             return ZipStore(store, mode=mode)
         elif store.endswith('.n5'):
             return N5Store(store)

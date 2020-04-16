@@ -949,13 +949,14 @@ def atexit_rmglob(path,
 class FSStore(MutableMapping):
 
     def __init__(self, url, normalize_keys=True, key_separator='.',
-                 **storage_options):
+                 mode='r', **storage_options):
         import fsspec
         self.path = url
         self.normalize_keys = normalize_keys
         self.key_separator = key_separator
         self.map = fsspec.get_mapper(url, **storage_options)
         self.fs = self.map.fs  # for direct operations
+        self.mode = mode
 
     def _normalize_key(self, key):
         key = normalize_storage_path(key)
@@ -969,6 +970,8 @@ class FSStore(MutableMapping):
         return self.map[key]
 
     def __setitem__(self, key, value):
+        if self.mode == 'r':
+            raise PermissionError
         key = self._normalize_key(key)
         path = self.dir_path(key)
         value = ensure_contiguous_ndarray(value)
@@ -980,6 +983,8 @@ class FSStore(MutableMapping):
             raise KeyError(key)
 
     def __delitem__(self, key):
+        if self.mode == 'r':
+            raise PermissionError
         key = self._normalize_key(key)
         path = self.dir_path(key)
         if self.fs.isdir(path):
