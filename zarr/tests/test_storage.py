@@ -70,11 +70,17 @@ class StoreTests(object):
                 # noinspection PyStatementEffect
                 del store['foo']
 
+        if hasattr(store, 'close'):
+            store.close()
+
     def test_set_invalid_content(self):
         store = self.create_store()
 
         with pytest.raises(TypeError):
             store['baz'] = list(range(5))
+
+        if hasattr(store, 'close'):
+            store.close()
 
     def test_clear(self):
         store = self.create_store()
@@ -85,6 +91,9 @@ class StoreTests(object):
         assert len(store) == 0
         assert 'foo' not in store
         assert 'baz' not in store
+
+        if hasattr(store, 'close'):
+            store.close()
 
     def test_pop(self):
         store = self.create_store()
@@ -106,6 +115,9 @@ class StoreTests(object):
         v = store.pop('xxx', None)
         assert v is None
 
+        if hasattr(store, 'close'):
+            store.close()
+
     def test_popitem(self):
         store = self.create_store()
         store['foo'] = b'bar'
@@ -116,6 +128,9 @@ class StoreTests(object):
         with pytest.raises(KeyError):
             store.popitem()
 
+        if hasattr(store, 'close'):
+            store.close()
+
     def test_writeable_values(self):
         store = self.create_store()
 
@@ -125,6 +140,9 @@ class StoreTests(object):
         store['foo3'] = array.array('B', b'bar')
         store['foo4'] = np.frombuffer(b'bar', dtype='u1')
 
+        if hasattr(store, 'close'):
+            store.close()
+
     def test_update(self):
         store = self.create_store()
         assert 'foo' not in store
@@ -132,6 +150,9 @@ class StoreTests(object):
         store.update(foo=b'bar', baz=b'quux')
         assert b'bar' == store['foo']
         assert b'quux' == store['baz']
+
+        if hasattr(store, 'close'):
+            store.close()
 
     def test_iterators(self):
         store = self.create_store()
@@ -156,6 +177,9 @@ class StoreTests(object):
         assert {b'aaa', b'bbb', b'ddd', b'fff'} == set(store.values())
         assert ({('a', b'aaa'), ('b', b'bbb'), ('c/d', b'ddd'), ('c/e/f', b'fff')} ==
                 set(store.items()))
+
+        if hasattr(store, 'close'):
+            store.close()
 
     def test_pickle(self):
 
@@ -182,6 +206,9 @@ class StoreTests(object):
         assert b'bar' == store2['foo']
         assert b'quux' == store2['baz']
 
+        if hasattr(store2, 'close'):
+            store2.close()
+
     def test_getsize(self):
         store = self.create_store()
         if isinstance(store, dict) or hasattr(store, 'getsize'):
@@ -201,6 +228,9 @@ class StoreTests(object):
             store['spong'] = np.frombuffer(b'zzzzz', dtype='u1')
             assert 15 == getsize(store)
             assert 5 == getsize(store, 'spong')
+
+        if hasattr(store, 'close'):
+            store.close()
 
     # noinspection PyStatementEffect
     def test_hierarchy(self):
@@ -336,6 +366,9 @@ class StoreTests(object):
             assert 'c/d' in store
             assert 'c/e/f' in store
 
+        if hasattr(store, 'close'):
+            store.close()
+
     def test_init_array(self):
         store = self.create_store()
         init_array(store, shape=1000, chunks=100)
@@ -349,6 +382,9 @@ class StoreTests(object):
         assert np.dtype(None) == meta['dtype']
         assert default_compressor.get_config() == meta['compressor']
         assert meta['fill_value'] is None
+
+        if hasattr(store, 'close'):
+            store.close()
 
     def test_init_array_overwrite(self):
         self._test_init_array_overwrite('F')
@@ -399,6 +435,9 @@ class StoreTests(object):
             assert (100,) == meta['chunks']
             assert np.dtype('i4') == meta['dtype']
 
+        if hasattr(store, 'close'):
+            store.close()
+
     def test_init_array_path(self):
         path = 'foo/bar'
         store = self.create_store()
@@ -414,6 +453,9 @@ class StoreTests(object):
         assert np.dtype(None) == meta['dtype']
         assert default_compressor.get_config() == meta['compressor']
         assert meta['fill_value'] is None
+
+        if hasattr(store, 'close'):
+            store.close()
 
     def _test_init_array_overwrite_path(self, order):
         # setup
@@ -450,6 +492,9 @@ class StoreTests(object):
             assert (100,) == meta['chunks']
             assert np.dtype('i4') == meta['dtype']
 
+        if hasattr(store, 'close'):
+            store.close()
+
     def test_init_array_overwrite_group(self):
         # setup
         path = 'foo/bar'
@@ -474,6 +519,9 @@ class StoreTests(object):
             assert (1000,) == meta['shape']
             assert (100,) == meta['chunks']
             assert np.dtype('i4') == meta['dtype']
+
+        if hasattr(store, 'close'):
+            store.close()
 
     def _test_init_array_overwrite_chunk_store(self, order):
         # setup
@@ -511,11 +559,19 @@ class StoreTests(object):
             assert '0' not in chunk_store
             assert '1' not in chunk_store
 
+        if hasattr(store, 'close'):
+            store.close()
+        if hasattr(chunk_store, 'close'):
+            chunk_store.close()
+
     def test_init_array_compat(self):
         store = self.create_store()
         init_array(store, shape=1000, chunks=100, compressor='none')
         meta = decode_array_metadata(store[array_meta_key])
         assert meta['compressor'] is None
+
+        if hasattr(store, 'close'):
+            store.close()
 
     def test_init_group(self):
         store = self.create_store()
@@ -525,6 +581,9 @@ class StoreTests(object):
         assert group_meta_key in store
         meta = decode_group_metadata(store[group_meta_key])
         assert ZARR_FORMAT == meta['zarr_format']
+
+        if hasattr(store, 'close'):
+            store.close()
 
     def _test_init_group_overwrite(self, order):
         # setup
@@ -558,6 +617,9 @@ class StoreTests(object):
         with pytest.raises(ValueError):
             init_group(store)
 
+        if hasattr(store, 'close'):
+            store.close()
+
     def _test_init_group_overwrite_path(self, order):
         # setup
         path = 'foo/bar'
@@ -589,6 +651,9 @@ class StoreTests(object):
             # should have been overwritten
             meta = decode_group_metadata(store[path + '/' + group_meta_key])
             assert ZARR_FORMAT == meta['zarr_format']
+
+        if hasattr(store, 'close'):
+            store.close()
 
     def _test_init_group_overwrite_chunk_store(self, order):
         # setup
@@ -626,6 +691,11 @@ class StoreTests(object):
         # don't overwrite group
         with pytest.raises(ValueError):
             init_group(store)
+
+        if hasattr(store, 'close'):
+            store.close()
+        if hasattr(chunk_store, 'close'):
+            chunk_store.close()
 
 
 class TestMappingStore(StoreTests, unittest.TestCase):

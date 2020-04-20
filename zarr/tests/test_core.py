@@ -89,6 +89,9 @@ class TestArray(unittest.TestCase):
             if not isinstance(k, expected_type):  # pragma: no cover
                 pytest.fail("Non-text key: %s" % repr(k))
 
+        if hasattr(z.store, 'close'):
+            z.store.close()
+
     def test_store_has_binary_values(self):
         # Initialize array
         np.random.seed(42)
@@ -100,6 +103,9 @@ class TestArray(unittest.TestCase):
                 ensure_ndarray(v)
             except TypeError:  # pragma: no cover
                 pytest.fail("Non-bytes-like value: %s" % repr(v))
+
+        if hasattr(z.store, 'close'):
+            z.store.close()
 
     def test_store_has_bytes_values(self):
         # Test that many stores do hold bytes values.
@@ -113,6 +119,9 @@ class TestArray(unittest.TestCase):
 
         # Check in-memory array only contains `bytes`
         assert all([isinstance(v, bytes) for v in z.chunk_store.values()])
+
+        if hasattr(z.store, 'close'):
+            z.store.close()
 
     def test_nbytes_stored(self):
 
@@ -130,6 +139,9 @@ class TestArray(unittest.TestCase):
             assert -1 == z.nbytes_stored
         except TypeError:
             pass
+
+        if hasattr(z.store, 'close'):
+            z.store.close()
 
     # noinspection PyStatementEffect
     def test_array_1d(self):
@@ -212,6 +224,9 @@ class TestArray(unittest.TestCase):
         assert_array_equal(b[190:310], z[190:310])
         assert_array_equal(a[310:], z[310:])
 
+        if hasattr(z.store, 'close'):
+            z.store.close()
+
     def test_array_1d_fill_value(self):
         for fill_value in -1, 0, 1, 10:
 
@@ -225,6 +240,9 @@ class TestArray(unittest.TestCase):
             assert_array_equal(f[:190], z[:190])
             assert_array_equal(a[190:310], z[190:310])
             assert_array_equal(f[310:], z[310:])
+
+            if hasattr(z.store, 'close'):
+                z.store.close()
 
     def test_array_1d_set_scalar(self):
         # test setting the contents of an array with a scalar value
@@ -242,6 +260,9 @@ class TestArray(unittest.TestCase):
             a[:] = value
             z[:] = value
             assert_array_equal(a, z[:])
+
+        if hasattr(z.store, 'close'):
+            z.store.close()
 
     def test_array_1d_selections(self):
         # light test here, full tests in test_indexing
@@ -284,6 +305,9 @@ class TestArray(unittest.TestCase):
         assert_array_equal(8, z.vindex[bix])
         z.oindex[bix] = 9
         assert_array_equal(9, z.oindex[bix])
+
+        if hasattr(z.store, 'close'):
+            z.store.close()
 
     # noinspection PyStatementEffect
     def test_array_2d(self):
@@ -393,6 +417,9 @@ class TestArray(unittest.TestCase):
         assert_array_equal(a[310:], z[310:])
         assert_array_equal(a[:, 7:], z[:, 7:])
 
+        if hasattr(z.store, 'close'):
+            z.store.close()
+
     def test_array_2d_edge_case(self):
         # this fails with filters - chunks extend beyond edge of array, messes with delta
         # filter if no fill value?
@@ -404,6 +431,9 @@ class TestArray(unittest.TestCase):
         expect = np.zeros(shape, dtype=dtype)
         actual = z[:]
         assert_array_equal(expect, actual)
+
+        if hasattr(z.store, 'close'):
+            z.store.close()
 
     def test_array_2d_partial(self):
         z = self.create_array(shape=(1000, 10), chunks=(100, 2), dtype='i4',
@@ -445,6 +475,9 @@ class TestArray(unittest.TestCase):
         assert -1 == z[2, 2]
         assert -1 == z[-1, -1]
 
+        if hasattr(z.store, 'close'):
+            z.store.close()
+
     def test_array_order(self):
 
         # 1D
@@ -460,6 +493,9 @@ class TestArray(unittest.TestCase):
             z[:] = a
             assert_array_equal(a, z[:])
 
+            if hasattr(z.store, 'close'):
+                z.store.close()
+
         # 2D
         a = np.arange(10000).reshape((100, 100))
         for order in 'C', 'F':
@@ -474,6 +510,9 @@ class TestArray(unittest.TestCase):
             actual = z[:]
             assert_array_equal(a, actual)
 
+            if hasattr(z.store, 'close'):
+                z.store.close()
+
     def test_setitem_data_not_shared(self):
         # check that data don't end up being shared with another array
         # https://github.com/alimanfoo/zarr/issues/79
@@ -483,29 +522,41 @@ class TestArray(unittest.TestCase):
         assert_array_equal(z[:], np.arange(20, dtype='i4'))
         a[:] = 0
         assert_array_equal(z[:], np.arange(20, dtype='i4'))
+        if hasattr(z.store, 'close'):
+            z.store.close()
 
     def test_hexdigest(self):
         # Check basic 1-D array
         z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
         assert '063b02ff8d9d3bab6da932ad5828b506ef0a6578' == z.hexdigest()
+        if hasattr(z.store, 'close'):
+            z.store.close()
 
         # Check basic 1-D array with different type
         z = self.create_array(shape=(1050,), chunks=100, dtype='<f4')
         assert 'f97b84dc9ffac807415f750100108764e837bb82' == z.hexdigest()
+        if hasattr(z.store, 'close'):
+            z.store.close()
 
         # Check basic 2-D array
         z = self.create_array(shape=(20, 35,), chunks=10, dtype='<i4')
         assert 'c7190ad2bea1e9d2e73eaa2d3ca9187be1ead261' == z.hexdigest()
+        if hasattr(z.store, 'close'):
+            z.store.close()
 
         # Check basic 1-D array with some data
         z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
         z[200:400] = np.arange(200, 400, dtype='i4')
         assert '14470724dca6c1837edddedc490571b6a7f270bc' == z.hexdigest()
+        if hasattr(z.store, 'close'):
+            z.store.close()
 
         # Check basic 1-D array with attributes
         z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
         z.attrs['foo'] = 'bar'
         assert '2a1046dd99b914459b3e86be9dde05027a07d209' == z.hexdigest()
+        if hasattr(z.store, 'close'):
+            z.store.close()
 
     def test_resize_1d(self):
 
@@ -541,6 +592,9 @@ class TestArray(unittest.TestCase):
         z.shape = (105,)
         assert (105,) == z.shape
         assert (105,) == z[:].shape
+
+        if hasattr(z.store, 'close'):
+            z.store.close()
 
     def test_resize_2d(self):
 
@@ -586,6 +640,9 @@ class TestArray(unittest.TestCase):
         assert (105, 105) == z.shape
         assert (105, 105) == z[:].shape
 
+        if hasattr(z.store, 'close'):
+            z.store.close()
+
     def test_append_1d(self):
 
         a = np.arange(105)
@@ -613,6 +670,9 @@ class TestArray(unittest.TestCase):
         assert (10,) == z.chunks
         assert_array_equal(f, z[:])
 
+        if hasattr(z.store, 'close'):
+            z.store.close()
+
     def test_append_2d(self):
 
         a = np.arange(105*105, dtype='i4').reshape((105, 105))
@@ -633,6 +693,9 @@ class TestArray(unittest.TestCase):
         actual = z[:]
         assert_array_equal(e, actual)
 
+        if hasattr(z.store, 'close'):
+            z.store.close()
+
     def test_append_2d_axis(self):
 
         a = np.arange(105*105, dtype='i4').reshape((105, 105))
@@ -651,6 +714,9 @@ class TestArray(unittest.TestCase):
         assert (10, 10) == z.chunks
         assert_array_equal(e, z[:])
 
+        if hasattr(z.store, 'close'):
+            z.store.close()
+
     def test_append_bad_shape(self):
         a = np.arange(100)
         z = self.create_array(shape=a.shape, chunks=10, dtype=a.dtype)
@@ -658,11 +724,15 @@ class TestArray(unittest.TestCase):
         b = a.reshape(10, 10)
         with pytest.raises(ValueError):
             z.append(b)
+        if hasattr(z.store, 'close'):
+            z.store.close()
 
     def test_read_only(self):
 
         z = self.create_array(shape=1000, chunks=100)
         assert not z.read_only
+        if hasattr(z.store, 'close'):
+            z.store.close()
 
         z = self.create_array(shape=1000, chunks=100, read_only=True)
         assert z.read_only
@@ -684,6 +754,9 @@ class TestArray(unittest.TestCase):
             z.vindex[[0, 1, 2]] = 42
         with pytest.raises(PermissionError):
             z.set_mask_selection(np.ones(z.shape, dtype=bool), 42)
+
+        if hasattr(z.store, 'close'):
+            z.store.close()
 
     def test_pickle(self):
 
@@ -721,6 +794,9 @@ class TestArray(unittest.TestCase):
         assert attrs_cache == z2.attrs.cache
         assert_array_equal(a, z2[:])
 
+        if hasattr(z2.store, 'close'):
+            z2.store.close()
+
     def test_np_ufuncs(self):
         z = self.create_array(shape=(100, 100), chunks=(10, 10))
         a = np.arange(10000).reshape(100, 100)
@@ -737,18 +813,26 @@ class TestArray(unittest.TestCase):
         assert_array_equal(np.take(a, indices, axis=1),
                            np.take(z, indices, axis=1))
 
+        if hasattr(z.store, 'close'):
+            z.store.close()
+
         # use zarr array as indices or condition
         zc = self.create_array(shape=condition.shape, dtype=condition.dtype,
                                chunks=10, filters=None)
         zc[:] = condition
         assert_array_equal(np.compress(condition, a, axis=0),
                            np.compress(zc, a, axis=0))
+        if hasattr(zc.store, 'close'):
+            zc.store.close()
+
         zi = self.create_array(shape=indices.shape, dtype=indices.dtype,
                                chunks=10, filters=None)
         zi[:] = indices
         # this triggers __array__() call with dtype argument
         assert_array_equal(np.take(a, indices, axis=1),
                            np.take(a, zi, axis=1))
+        if hasattr(zi.store, 'close'):
+            zi.store.close()
 
     # noinspection PyStatementEffect
     def test_0len_dim_1d(self):
@@ -782,6 +866,9 @@ class TestArray(unittest.TestCase):
         # this should error
         with pytest.raises(IndexError):
             z[0] = 42
+
+        if hasattr(z.store, 'close'):
+            z.store.close()
 
     # noinspection PyStatementEffect
     def test_0len_dim_2d(self):
@@ -819,6 +906,9 @@ class TestArray(unittest.TestCase):
         # this should error
         with pytest.raises(IndexError):
             z[:, 0] = 42
+
+        if hasattr(z.store, 'close'):
+            z.store.close()
 
     # noinspection PyStatementEffect
     def test_array_0d(self):
@@ -867,6 +957,9 @@ class TestArray(unittest.TestCase):
         with pytest.raises(ValueError):
             z[...] = np.array([1, 2, 3])
 
+        if hasattr(z.store, 'close'):
+            z.store.close()
+
     def test_nchunks_initialized(self):
 
         z = self.create_array(shape=100, chunks=10)
@@ -876,6 +969,9 @@ class TestArray(unittest.TestCase):
         assert 0 == z.nchunks_initialized
         z[:] = 42
         assert 10 == z.nchunks_initialized
+
+        if hasattr(z.store, 'close'):
+            z.store.close()
 
     def test_array_dtype_shape(self):
 
@@ -897,6 +993,8 @@ class TestArray(unittest.TestCase):
                     assert fill_value == z.fill_value
                 z[...] = a
                 assert_array_equal(a, z[...])
+                if hasattr(z.store, 'close'):
+                    z.store.close()
 
     def check_structured_array(self, d, fill_values):
         for a in (d, d[:0]):
@@ -937,6 +1035,9 @@ class TestArray(unittest.TestCase):
                     for f in a.dtype.names:
                         assert_array_equal(a[f], z[f])
 
+                if hasattr(z.store, 'close'):
+                    z.store.close()
+
     def test_structured_array(self):
         d = np.array([(b'aaa', 1, 4.2),
                       (b'bbb', 2, 8.4),
@@ -971,6 +1072,8 @@ class TestArray(unittest.TestCase):
             a = np.arange(z.shape[0], dtype=dtype)
             z[:] = a
             assert_array_equal(a, z[:])
+            if hasattr(z.store, 'close'):
+                z.store.close()
 
         # floats
         for dtype in 'f2', 'f4', 'f8':
@@ -979,6 +1082,8 @@ class TestArray(unittest.TestCase):
             a = np.linspace(0, 1, z.shape[0], dtype=dtype)
             z[:] = a
             assert_array_almost_equal(a, z[:])
+            if hasattr(z.store, 'close'):
+                z.store.close()
 
         # complex
         for dtype in 'c8', 'c16':
@@ -988,6 +1093,8 @@ class TestArray(unittest.TestCase):
             a -= 1j * a
             z[:] = a
             assert_array_almost_equal(a, z[:])
+            if hasattr(z.store, 'close'):
+                z.store.close()
 
         # datetime, timedelta
         for base_type in 'Mm':
@@ -1000,6 +1107,8 @@ class TestArray(unittest.TestCase):
                                       dtype='i8').view(dtype)
                 z[:] = a
                 assert_array_equal(a, z[:])
+                if hasattr(z.store, 'close'):
+                    z.store.close()
 
         # check that datetime generic units are not allowed
         with pytest.raises(ValueError):
@@ -1016,7 +1125,9 @@ class TestArray(unittest.TestCase):
         # an object_codec is required for object arrays, but allow to be provided via
         # filters to maintain API backwards compatibility
         with pytest.warns(FutureWarning):
-            self.create_array(shape=10, chunks=3, dtype=object, filters=[MsgPack()])
+            z = self.create_array(shape=10, chunks=3, dtype=object, filters=[MsgPack()])
+        if hasattr(z.store, 'close'):
+            z.store.close()
 
         # create an object array using msgpack
         z = self.create_array(shape=10, chunks=3, dtype=object, object_codec=MsgPack())
@@ -1032,6 +1143,8 @@ class TestArray(unittest.TestCase):
         assert z[4] == {'a': 'b', 'c': 'd'}
         a = z[:]
         assert a.dtype == object
+        if hasattr(z.store, 'close'):
+            z.store.close()
 
         # create an object array using pickle
         z = self.create_array(shape=10, chunks=3, dtype=object, object_codec=Pickle())
@@ -1047,6 +1160,8 @@ class TestArray(unittest.TestCase):
         assert z[4] == {'a': 'b', 'c': 'd'}
         a = z[:]
         assert a.dtype == object
+        if hasattr(z.store, 'close'):
+            z.store.close()
 
         # create an object array using JSON
         z = self.create_array(shape=10, chunks=3, dtype=object, object_codec=JSON())
@@ -1062,6 +1177,8 @@ class TestArray(unittest.TestCase):
         assert z[4] == {'a': 'b', 'c': 'd'}
         a = z[:]
         assert a.dtype == object
+        if hasattr(z.store, 'close'):
+            z.store.close()
 
     def test_object_arrays_vlen_text(self):
 
@@ -1078,6 +1195,8 @@ class TestArray(unittest.TestCase):
         a = z[:]
         assert a.dtype == object
         assert_array_equal(data, a)
+        if hasattr(z.store, 'close'):
+            z.store.close()
 
         # convenience API
         z = self.create_array(shape=data.shape, dtype=str)
@@ -1085,23 +1204,33 @@ class TestArray(unittest.TestCase):
         assert isinstance(z.filters[0], VLenUTF8)
         z[:] = data
         assert_array_equal(data, z[:])
+        if hasattr(z.store, 'close'):
+            z.store.close()
 
         z = self.create_array(shape=data.shape, dtype=object, object_codec=MsgPack())
         z[:] = data
         assert_array_equal(data, z[:])
+        if hasattr(z.store, 'close'):
+            z.store.close()
 
         z = self.create_array(shape=data.shape, dtype=object, object_codec=JSON())
         z[:] = data
         assert_array_equal(data, z[:])
+        if hasattr(z.store, 'close'):
+            z.store.close()
 
         z = self.create_array(shape=data.shape, dtype=object, object_codec=Pickle())
         z[:] = data
         assert_array_equal(data, z[:])
+        if hasattr(z.store, 'close'):
+            z.store.close()
 
         z = self.create_array(shape=data.shape, dtype=object,
                               object_codec=Categorize(greetings, dtype=object))
         z[:] = data
         assert_array_equal(data, z[:])
+        if hasattr(z.store, 'close'):
+            z.store.close()
 
     def test_object_arrays_vlen_bytes(self):
 
@@ -1119,6 +1248,8 @@ class TestArray(unittest.TestCase):
         a = z[:]
         assert a.dtype == object
         assert_array_equal(data, a)
+        if hasattr(z.store, 'close'):
+            z.store.close()
 
         # convenience API
         z = self.create_array(shape=data.shape, dtype=bytes)
@@ -1126,10 +1257,14 @@ class TestArray(unittest.TestCase):
         assert isinstance(z.filters[0], VLenBytes)
         z[:] = data
         assert_array_equal(data, z[:])
+        if hasattr(z.store, 'close'):
+            z.store.close()
 
         z = self.create_array(shape=data.shape, dtype=object, object_codec=Pickle())
         z[:] = data
         assert_array_equal(data, z[:])
+        if hasattr(z.store, 'close'):
+            z.store.close()
 
     def test_object_arrays_vlen_array(self):
 
@@ -1155,6 +1290,8 @@ class TestArray(unittest.TestCase):
             a = z[:]
             assert a.dtype == object
             compare_arrays(data, a, codec.dtype)
+            if hasattr(z.store, 'close'):
+                z.store.close()
 
         # convenience API
         for item_type in 'int', '<u4':
@@ -1164,6 +1301,8 @@ class TestArray(unittest.TestCase):
             assert z.filters[0].dtype == np.dtype(item_type)
             z[:] = data
             compare_arrays(data, z[:], np.dtype(item_type))
+            if hasattr(z.store, 'close'):
+                z.store.close()
 
     def test_object_arrays_danger(self):
 
@@ -1175,6 +1314,8 @@ class TestArray(unittest.TestCase):
             z[0] = 'foo'
         with pytest.raises(RuntimeError):
             z[:] = 42
+        if hasattr(z.store, 'close'):
+            z.store.close()
 
         # do something else dangerous
         data = greetings * 10
@@ -1188,12 +1329,16 @@ class TestArray(unittest.TestCase):
             with pytest.raises(RuntimeError):
                 # noinspection PyStatementEffect
                 v[:]
+            if hasattr(z.store, 'close'):
+                z.store.close()
 
     def test_object_codec_warnings(self):
 
         with pytest.warns(UserWarning):
             # provide object_codec, but not object dtype
-            self.create_array(shape=10, chunks=5, dtype='i4', object_codec=JSON())
+            z = self.create_array(shape=10, chunks=5, dtype='i4', object_codec=JSON())
+        if hasattr(z.store, 'close'):
+            z.store.close()
 
     def test_zero_d_iter(self):
         a = np.array(1, dtype=int)
@@ -1205,6 +1350,8 @@ class TestArray(unittest.TestCase):
         with pytest.raises(TypeError):
             # noinspection PyStatementEffect
             list(z)
+        if hasattr(z.store, 'close'):
+            z.store.close()
 
     def test_iter(self):
         params = (
@@ -1228,6 +1375,8 @@ class TestArray(unittest.TestCase):
             z[:] = a
             for expect, actual in zip_longest(a, z):
                 assert_array_equal(expect, actual)
+            if hasattr(z.store, 'close'):
+                z.store.close()
 
     def test_compressors(self):
         compressors = [
@@ -1241,6 +1390,8 @@ class TestArray(unittest.TestCase):
             assert np.all(a[0:100] == 1)
             a[:] = 1
             assert np.all(a[:] == 1)
+            if hasattr(a.store, 'close'):
+                a.store.close()
 
     def test_endian(self):
         dtype = np.dtype('float32')
@@ -1251,6 +1402,10 @@ class TestArray(unittest.TestCase):
         a2[:] = 1
         x2 = a2[:]
         assert_array_equal(x1, x2)
+        if hasattr(a1.store, 'close'):
+            a1.store.close()
+        if hasattr(a2.store, 'close'):
+            a2.store.close()
 
     def test_attributes(self):
         a = self.create_array(shape=10, chunks=10, dtype='i8')
@@ -1264,6 +1419,8 @@ class TestArray(unittest.TestCase):
         attrs = json_loads(a.store[a.attrs.key])
         assert 'foo' in attrs and attrs['foo'] == 'bar'
         assert 'bar' in attrs and attrs['bar'] == 'foo'
+        if hasattr(a.store, 'close'):
+            a.store.close()
 
 
 class TestArrayWithPath(TestArray):
