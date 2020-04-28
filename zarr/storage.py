@@ -21,6 +21,7 @@ import glob
 import multiprocessing
 import operator
 import os
+import json
 import re
 import shutil
 import sys
@@ -949,7 +950,7 @@ def atexit_rmglob(path,
 class FSStore(MutableMapping):
 
     def __init__(self, url, normalize_keys=True, key_separator='.',
-                 mode='w', **storage_options):
+                 mode='w', consolidated=False, metadata_key='.zmetadata', **storage_options):
         import fsspec
         self.path = url
         self.normalize_keys = normalize_keys
@@ -957,6 +958,24 @@ class FSStore(MutableMapping):
         self.map = fsspec.get_mapper(url, **storage_options)
         self.fs = self.map.fs  # for direct operations
         self.mode = mode
+        # TODO: should warn if consolidated and write mode?
+        if self.fs.exists(url) and not self.fs.isdir(url):
+            err_fspath_exists_notdir(url)
+        self.consolidated = consolidated
+        self.metadata_key = metadata_key
+        if consolidated:
+            self.meta = json.loads(self.map.get(metadata_key, b"{}").decode())
+            if mode == 'r' or 'zarr_consolidated_format' in self.meta:
+                consolidated_format = self.meta.get('zarr_consolidated_format', None)
+                if consolidated_format != 1:
+                    raise MetadataError('unsupported zarr consolidated metadata format: %s' %
+                                        consolidated_format)
+            else:
+                self.meta['zarr_consolidated_format'] = 1
+
+    @staticmethod
+    def _is_meta(key):
+        return key.split('/')[-1] in [attrs_key, group_meta_key, array_meta_key]
 
     def _normalize_key(self, key):
         key = normalize_storage_path(key).lstrip('/')
@@ -966,12 +985,17 @@ class FSStore(MutableMapping):
         return key.lower() if self.normalize_keys else key
 
     def __getitem__(self, key):
+        if self.consolidated and self._is_meta(key):
+            return self.meta[key]
         key = self._normalize_key(key)
         return self.map[key]
 
     def __setitem__(self, key, value):
         if self.mode == 'r':
-            raise PermissionError
+            err_read_only()
+        if self.consolidated and self._is_meta(key):
+            self.meta[key] = value.decode()
+            self.map[self.metadata_key] = json.dumps(self.meta).encode()
         key = self._normalize_key(key)
         path = self.dir_path(key)
         value = ensure_contiguous_ndarray(value)
@@ -984,7 +1008,10 @@ class FSStore(MutableMapping):
 
     def __delitem__(self, key):
         if self.mode == 'r':
-            raise PermissionError
+            err_read_only()
+        if self.consolidated and self._is_meta(key):
+            del self.meta[key]
+            self.map[self.metadata_key] = json.dumps(self.meta).encode()
         key = self._normalize_key(key)
         path = self.dir_path(key)
         if self.fs.isdir(path):
@@ -993,6 +1020,8 @@ class FSStore(MutableMapping):
             del self.map[key]
 
     def __contains__(self, key):
+        if self.consolidated and self._is_meta(key):
+            return key in self.meta
         key = self._normalize_key(key)
         return key in self.map
 
@@ -1022,6 +1051,8 @@ class FSStore(MutableMapping):
             return []
 
     def rmdir(self, path=None):
+        if self.mode == 'r':
+            err_read_only()
         store_path = self.dir_path(path)
         if self.fs.isdir(store_path):
             self.fs.rm(store_path, recursive=True)
@@ -1031,6 +1062,10 @@ class FSStore(MutableMapping):
         return self.fs.du(store_path, True, True)
 
     def clear(self):
+        if self.mode == 'r':
+            err_read_only()
+        if self.consolidated:
+            self.meta = {}
         self.map.clear()
 
 

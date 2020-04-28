@@ -30,6 +30,7 @@ from zarr.storage import (ABSStore, ConsolidatedMetadataStore, DBMStore,
                           attrs_key, default_compressor, getsize,
                           group_meta_key, init_array, init_group, migrate_1to2)
 from zarr.storage import FSStore as NestedDirectoryStore
+from zarr.storage import FSStore as DirectoryStore
 from zarr.tests.util import CountingDict, skip_test_env_var
 
 
