@@ -68,6 +68,15 @@
 		</a>
 	</td>
 </tr>
+<tr>
+	<td>Citation</td>
+	<td>
+		<a href="https://doi.org/10.5281/zenodo.3773450">
+			<img src="https://zenodo.org/badge/DOI/10.5281/zenodo.3773450.svg" alt="DOI">
+		</a>
+	</td>
+</tr>
+
 </table>
 
 ## What is it?

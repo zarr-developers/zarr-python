@@ -428,7 +428,15 @@ def tree_widget_sublist(node, root=False, expand=False):
 
 
 def tree_widget(group, expand, level):
-    import ipytree
+    try:
+        import ipytree
+    except ImportError as error:
+        raise ImportError(
+            "{}: Run `pip install zarr[jupyter]` or `conda install ipytree`"
+            "to get the required ipytree dependency for displaying the tree "
+            "widget. If using jupyterlab, you also need to run "
+            "`jupyter labextension install ipytree`".format(error)
+        )
 
     result = ipytree.Tree()
     root = TreeNode(group, level=level)
