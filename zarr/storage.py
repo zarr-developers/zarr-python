@@ -949,7 +949,7 @@ def atexit_rmglob(path,
 class FSStore(MutableMapping):
 
     def __init__(self, url, normalize_keys=True, key_separator='.',
-                 mode='r', **storage_options):
+                 mode='w', **storage_options):
         import fsspec
         self.path = url
         self.normalize_keys = normalize_keys
