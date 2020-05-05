@@ -762,7 +762,7 @@ class TestMemoryStore(StoreTests, unittest.TestCase):
 
 
 class TestDictStore(StoreTests, unittest.TestCase):
- 
+
     def create_store(self):
         with pytest.warns(DeprecationWarning):
             return DictStore()
