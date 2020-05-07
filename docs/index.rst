@@ -4,7 +4,7 @@
 Zarr
 ====
 
-Zarr is format for the storage of chunked, compressed, N-dimensional arrays.
+Zarr is a format for the storage of chunked, compressed, N-dimensional arrays.
 These documents describe the Zarr format and its Python implementation.
 
 Highlights
