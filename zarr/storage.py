@@ -845,15 +845,27 @@ class DirectoryStore(MutableMapping):
 
     def keys(self):
         if os.path.exists(self.path):
-            directories = [(self.path, '')]
-            while directories:
-                dir_name, prefix = directories.pop()
-                for name in os.listdir(dir_name):
-                    path = os.path.join(dir_name, name)
-                    if os.path.isfile(path):
-                        yield prefix + name
-                    elif os.path.isdir(path):
-                        directories.append((path, prefix + name + '/'))
+            yield from self._keys_fast(self.path)
+
+    @staticmethod
+    def _keys_fast(path, walker=os.walk):
+        """
+
+        Faster logic on platform where the separator is `/` and using
+        `os.walk()` to decrease the number of stats.call.
+
+        """
+        it = iter(walker(path))
+        d0, dirnames, filenames = next(it)
+        if d0.endswith('/'):
+            root_len = len(d0)
+        else:
+            root_len = len(d0)+1
+        for f in filenames:
+            yield f
+        for dirpath, _, filenames in it:
+            for f in filenames:
+                yield dirpath[root_len:].replace('\\', '/')+'/'+f
 
     def __iter__(self):
         return self.keys()
