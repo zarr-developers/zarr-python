@@ -166,7 +166,7 @@ def decode_dtype_v3(d):
     return np.dtype(d)
 
 
-def decode_group_metadata(s: Union[MappingType, str]) -> MappingType[str, Any]:
+def decode_group_metadata_v3(s: Union[MappingType, str]) -> MappingType[str, Any]:
     return json.loads(s)
 
 

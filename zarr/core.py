@@ -33,7 +33,7 @@ from zarr.meta import (
     encode_array_metadata,
     decode_array_metadata_v3,
 )
-from iarr.storage import array_meta_key, attrs_key, getsize, listdir
+from zarr.storage import array_meta_key, attrs_key, getsize, listdir
 from zarr.util import (InfoReporter, check_array_shape, human_readable_size,
                        is_total_slice, nolock, normalize_chunks,
                        normalize_resize_args, normalize_shape,
