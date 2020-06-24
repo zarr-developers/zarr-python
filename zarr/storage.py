@@ -1656,7 +1656,7 @@ class LMDBStore(MutableMapping):
         import lmdb
 
         # set default memory map size to something larger than the lmdb default, which is
-        # very likely to be too small for any moderate dataset (logic copied from zict)
+        # very likely to be too small for any moderate array (logic copied from zict)
         map_size = (2**40 if sys.maxsize >= 2**32 else 2**28)
         kwargs.setdefault('map_size', map_size)
 
@@ -2464,14 +2464,14 @@ class ConsolidatedMetadataStore(MutableMapping):
     a single key.
 
     The purpose of this class, is to be able to get all of the metadata for
-    a given dataset in a single read operation from the underlying storage.
+    a given array in a single read operation from the underlying storage.
     See :func:`zarr.convenience.consolidate_metadata` for how to create this
     single metadata key.
 
     This class loads from the one key, and stores the data in a dict, so that
     accessing the keys no longer requires operations on the backend store.
 
-    This class is read-only, and attempts to change the dataset metadata will
+    This class is read-only, and attempts to change the array metadata will
     fail, but changing the data is possible. If the backend storage is changed
     directly, then the metadata stored here could become obsolete, and
     :func:`zarr.convenience.consolidate_metadata` should be called again and the class
@@ -2484,7 +2484,7 @@ class ConsolidatedMetadataStore(MutableMapping):
     Parameters
     ----------
     store: MutableMapping
-        Containing the zarr dataset.
+        Containing the zarr array.
     metadata_key: str
         The target in the store where all of the metadata are stored. We
         assume JSON encoding.
