@@ -54,7 +54,7 @@ CHUNK_MAX = 64*1024*1024  # Hard upper limit
 
 def guess_chunks(shape, typesize):
     """
-    Guess an appropriate chunk layout for a dataset, given its shape and
+    Guess an appropriate chunk layout for an array, given its shape and
     the size of each element in bytes.  Will allocate chunks only as large
     as MAX_SIZE.  Chunks are generally close to some power-of-2 fraction of
     each axis, slightly favoring bigger values for the last index.

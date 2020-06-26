@@ -746,6 +746,9 @@ class Group(MutableMapping):
     def create_dataset(self, name, **kwargs):
         """Create an array.
 
+        Arrays are known as "datasets" in HDF5 terminology. For compatibility
+        with h5py, Zarr groups also implement the require_dataset() method.
+
         Parameters
         ----------
         name : string
@@ -819,8 +822,12 @@ class Group(MutableMapping):
         return a
 
     def require_dataset(self, name, shape, dtype=None, exact=False, **kwargs):
-        """Obtain an array, creating if it doesn't exist. Other `kwargs` are
-        as per :func:`zarr.hierarchy.Group.create_dataset`.
+        """Obtain an array, creating if it doesn't exist.
+
+        Arrays are known as "datasets" in HDF5 terminology. For compatibility
+        with h5py, Zarr groups also implement the create_dataset() method.
+
+        Other `kwargs` are as per :func:`zarr.hierarchy.Group.create_dataset`.
 
         Parameters
         ----------
