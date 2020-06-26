@@ -7,11 +7,17 @@ Next release
 
 * Fix minor bug in `N5Store`. 
   By :user:`gsakkis`, :issue:`550`.
+
 * Improve error message in Jupyter when trying to use the ``ipytree`` widget
   without ``ipytree`` installed.
-  By :user:`Zain Patel <mzjp2>; :issue:`537`
+  By :user:`Zain Patel <mzjp2>`; :issue:`537`
+
 * Explicitly close stores during testing.
   By :user:`Elliott Sales de Andrade <QuLogic>`; :issue:`442`
+
+* Improve consistency of terminology regarding arrays and datasets in the 
+  documentation.
+  By :user:`Josh Moore <joshmoore>`; :issue:`571`.
 
 
 .. _release_2.4.0:
