@@ -5,6 +5,11 @@ Release notes
 Next release
 ------------
 
+* For consistency across stores, the `ConsolidatedMetadataStore` will return
+  bytes instead of objects for metadata. Internally zarr tries to be more type
+  stable and attempt to always pass bytes-likes object when storing objects on
+  stores.
+
 * Fix minor bug in `N5Store`. 
   By :user:`gsakkis`, :issue:`550`.
 

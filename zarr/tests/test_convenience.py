@@ -697,12 +697,6 @@ class TestCopy(unittest.TestCase):
             copy(source['foo'], dest, dry_run=True, log=True)
 
 
-try:
-    import h5py
-except ImportError:  # pragma: no cover
-    h5py = None
-
-
 def temp_h5f():
     h5py = pytest.importorskip("h5py")
     fn = tempfile.mktemp()

@@ -1489,7 +1489,7 @@ class Array(object):
             chunk[selection] = value
 
         # encode and store
-        cdata = self._encode_chunk(chunk)
+        cdata = ensure_bytes(self._encode_chunk(chunk))
         self.chunk_store[ckey] = cdata
 
     def _set_basic_selection_nd(self, selection, value, fields=None):

@@ -30,6 +30,7 @@ from zarr.storage import (ABSStore, ConsolidatedMetadataStore, DBMStore,
                           attrs_key, default_compressor, getsize,
                           group_meta_key, init_array, init_group, migrate_1to2)
 from zarr.tests.util import CountingDict, skip_test_env_var
+from zarr.util import json_dumps
 
 
 @contextmanager
@@ -1627,11 +1628,26 @@ class TestConsolidatedMetadataStore(unittest.TestCase):
         # setup store with consolidated metdata
         store = dict()
         consolidated = {
-            'zarr_consolidated_format': 1,
-            'metadata': {
-                'foo': 'bar',
-                'baz': 42,
-            }
+            "zarr_consolidated_format": 1,
+            "metadata": {
+                ".zgroup": {"zarr_format": 2},
+                "g2/arr/.zarray": {
+                    "chunks": [5, 5],
+                    "compressor": {
+                        "blocksize": 0,
+                        "clevel": 5,
+                        "cname": "lz4",
+                        "id": "blosc",
+                        "shuffle": 1,
+                    },
+                    "dtype": "<f8",
+                    "fill_value": 0.0,
+                    "filters": None,
+                    "order": "C",
+                    "shape": [20, 20],
+                    "zarr_format": 2,
+                },
+            },
         }
         store['.zmetadata'] = json.dumps(consolidated).encode()
 
@@ -1641,7 +1657,7 @@ class TestConsolidatedMetadataStore(unittest.TestCase):
         # test __contains__, __getitem__
         for key, value in consolidated['metadata'].items():
             assert key in cs
-            assert value == cs[key]
+            assert json_dumps(value) == cs[key]
 
         # test __delitem__, __setitem__
         with pytest.raises(PermissionError):

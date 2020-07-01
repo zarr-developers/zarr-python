@@ -424,15 +424,15 @@ def test_encode_decode_dtype():
 def test_decode_group():
 
     # typical
-    b = '''{
+    b = b'''{
         "zarr_format": %s
-    }''' % ZARR_FORMAT
+    }''' % str(ZARR_FORMAT).encode()
     meta = decode_group_metadata(b)
     assert ZARR_FORMAT == meta['zarr_format']
 
     # unsupported format
-    b = '''{
+    b = b'''{
         "zarr_format": %s
-    }''' % (ZARR_FORMAT - 1)
+    }''' % str(ZARR_FORMAT - 1).encode()
     with pytest.raises(MetadataError):
         decode_group_metadata(b)

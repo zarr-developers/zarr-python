@@ -44,7 +44,7 @@ from zarr.errors import (MetadataError, err_bad_compressor, err_contains_array,
 from zarr.meta import encode_array_metadata, encode_group_metadata
 from zarr.util import (buffer_size, json_loads, nolock, normalize_chunks,
                        normalize_dtype, normalize_fill_value, normalize_order,
-                       normalize_shape, normalize_storage_path)
+                       normalize_shape, normalize_storage_path, json_dumps)
 
 __doctest_requires__ = {
     ('RedisStore', 'RedisStore.*'): ['redis'],
@@ -2479,6 +2479,10 @@ class ConsolidatedMetadataStore(MutableMapping):
 
     .. versionadded:: 2.3
 
+    .. versionchanged:: 2.5
+
+        __getitem__ will now return bytes for metadata for consistency across stores.
+
     .. note:: This is an experimental feature.
 
     Parameters
@@ -2507,7 +2511,9 @@ class ConsolidatedMetadataStore(MutableMapping):
                                 consolidated_format)
 
         # decode metadata
-        self.meta_store = meta['metadata']
+        self.meta_store = {}
+        for k, v in meta["metadata"].items():
+            self.meta_store[k] = json_dumps(v)
 
     def __getitem__(self, key):
         return self.meta_store[key]
