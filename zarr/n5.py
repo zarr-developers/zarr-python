@@ -468,6 +468,7 @@ def compressor_config_to_n5(compressor_config):
 def compressor_config_to_zarr(compressor_config):
 
     codec_id = compressor_config['type']
+    compressor_config.pop('type')
     zarr_config = {'id': codec_id}
 
     if codec_id == 'bzip2':
@@ -511,8 +512,8 @@ def compressor_config_to_zarr(compressor_config):
         return None
 
     else:  # pragma: no cover
-
-        raise RuntimeError("Unknown compressor with id %s" % codec_id)
+        zarr_config.update(compressor_config)
+        
 
     return zarr_config
 
