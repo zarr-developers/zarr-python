@@ -460,7 +460,7 @@ def compressor_config_to_n5(compressor_config):
 
     else:  # pragma: no cover
 
-        n5_config.update({k: v for k,v in compressor_config.items() if k != 'type'})
+        n5_config.update({k: v for k, v in compressor_config.items() if k != 'type'})
 
     return n5_config
 
@@ -512,7 +512,7 @@ def compressor_config_to_zarr(compressor_config):
 
     else:  # pragma: no cover
 
-        zarr_config.update({k: v for k,v in compressor_config.items() if k != 'type'})
+        zarr_config.update({k: v for k, v in compressor_config.items() if k != 'type'})
 
     return zarr_config
 
