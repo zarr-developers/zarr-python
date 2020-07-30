@@ -515,7 +515,6 @@ def compressor_config_to_zarr(compressor_config):
     else:  # pragma: no cover
 
         zarr_config.update(compressor_config)
-        
 
     return zarr_config
 
