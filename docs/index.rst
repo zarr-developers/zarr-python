@@ -49,7 +49,7 @@ latest GitHub master::
 To work with Zarr source code in development, install from GitHub::
 
     $ git clone --recursive https://github.com/zarr-developers/zarr-python.git
-    $ cd zarr
+    $ cd zarr-python
     $ python setup.py install
 
 To verify that Zarr has been fully installed, run the test suite::
