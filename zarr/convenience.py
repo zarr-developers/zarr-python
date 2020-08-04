@@ -3,6 +3,7 @@
 import io
 import itertools
 import re
+import pathlib
 from collections.abc import Mapping
 
 from zarr.core import Array
@@ -71,6 +72,10 @@ def open(store=None, mode='a', **kwargs):
 
     """
 
+    if isinstance(store, pathlib.Path):
+        raise TypeError("zarr.open does not support pathlib.Path object for the store argument for now. Use str instead."
+                       "\nFor more information, checkout https://github.com/zarr-developers/zarr-python/issues/261")
+        
     path = kwargs.get('path', None)
     # handle polymorphic store arg
     clobber = mode == 'w'
