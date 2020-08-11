@@ -844,7 +844,7 @@ class PartialChunkIterator(object):
         self.arr = arr
         self.selection = list(selection)
 
-        for i, dim_shape in enumerate(self.arr.shape[slice(None, None, -1)]):
+        for i, dim_shape in enumerate(self.arr.shape[::-1]):
             index = len(self.arr.shape) - (i+1)
             if index <= len(selection)-1:
                 slice_nitems = len(range(*selection[index].indices(len(self.arr))))
@@ -880,4 +880,3 @@ class PartialChunkIterator(object):
                 start += sl.start * np.prod(self.arr.shape[i+1:])
             nitems = (chunk_selection[-1].stop - chunk_selection[-1].start) * np.prod(self.arr.shape[len(chunk_selection):])
             yield start, nitems, out_selection
-
