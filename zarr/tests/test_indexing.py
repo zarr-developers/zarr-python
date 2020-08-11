@@ -5,7 +5,7 @@ from numpy.testing import assert_array_equal
 
 import zarr
 from zarr.indexing import (normalize_integer_selection, oindex, oindex_set,
-                           replace_ellipsis)
+                           replace_ellipsis, PartialChunkIterator)
 
 
 def test_normalize_integer_selection():
@@ -1289,3 +1289,29 @@ def test_set_selections_with_fields():
             a[key][ix] = v[key][ix]
             z.set_mask_selection(ix, v[key][ix], fields=fields)
             assert_array_equal(a, z[:])
+
+
+@pytest.mark.parametrize('selection, expected', [
+    ((slice(5, 8, 1), slice(2, 4, 1), slice(0, 100, 1)),
+     [(5200, 200, (slice(0, 1, 1), slice(0, 2, 1))),
+      (6200, 200, (slice(1, 2, 1), slice(0, 2, 1))),
+      (7200, 200, (slice(2, 3, 1), slice(0, 2, 1)))]),
+    ((slice(5, 8, 1), slice(2, 4, 1), slice(0, 5, 1)),
+     [(5200.0, 5.0, (slice(0, 1, 1), slice(0, 1, 1), slice(0, 5, 1))),
+      (5300.0, 5.0, (slice(0, 1, 1), slice(1, 2, 1), slice(0, 5, 1))),
+      (6200.0, 5.0, (slice(1, 2, 1), slice(0, 1, 1), slice(0, 5, 1))),
+      (6300.0, 5.0, (slice(1, 2, 1), slice(1, 2, 1), slice(0, 5, 1))),
+      (7200.0, 5.0, (slice(2, 3, 1), slice(0, 1, 1), slice(0, 5, 1))),
+      (7300.0, 5.0, (slice(2, 3, 1), slice(1, 2, 1), slice(0, 5, 1)))]),
+    ((slice(5, 8, 1), slice(2, 4, 1)),
+     [(5200, 200, (slice(0, 1, 1), slice(0, 2, 1))),
+      (6200, 200, (slice(1, 2, 1), slice(0, 2, 1))),
+      (7200, 200, (slice(2, 3, 1), slice(0, 2, 1)))])
+])
+def test_PartialChunkIterator(selection, expected):
+    arr = np.arange(2, 100002).reshape((100, 10, 100))
+    print(selection)
+    PCI = PartialChunkIterator(selection, arr)
+    results = list(PCI)
+    assert(results == expected)
+
