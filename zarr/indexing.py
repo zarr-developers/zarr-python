@@ -838,7 +838,7 @@ def selection_size(selection, arr):
     return tuple(selection_shape)
 
 
-class PartialChunkIterator(object):
+class PartialChunkIterator:
 
     def __init__(self, selection, arr):
         self.arr = arr
