@@ -1291,12 +1291,14 @@ def test_set_selections_with_fields():
             assert_array_equal(a, z[:])
 
 
-@pytest.mark.parametrize('selection, expected', [
+@pytest.mark.parametrize('selection, arr, expected', [
     ((slice(5, 8, 1), slice(2, 4, 1), slice(0, 100, 1)),
+     np.arange(2, 100_002).reshape((100, 10, 100)),
      [(5200, 200, (slice(0, 1, 1), slice(0, 2, 1))),
       (6200, 200, (slice(1, 2, 1), slice(0, 2, 1))),
       (7200, 200, (slice(2, 3, 1), slice(0, 2, 1)))]),
     ((slice(5, 8, 1), slice(2, 4, 1), slice(0, 5, 1)),
+     np.arange(2, 100_002).reshape((100, 10, 100)),
      [(5200.0, 5.0, (slice(0, 1, 1), slice(0, 1, 1), slice(0, 5, 1))),
       (5300.0, 5.0, (slice(0, 1, 1), slice(1, 2, 1), slice(0, 5, 1))),
       (6200.0, 5.0, (slice(1, 2, 1), slice(0, 1, 1), slice(0, 5, 1))),
@@ -1304,14 +1306,24 @@ def test_set_selections_with_fields():
       (7200.0, 5.0, (slice(2, 3, 1), slice(0, 1, 1), slice(0, 5, 1))),
       (7300.0, 5.0, (slice(2, 3, 1), slice(1, 2, 1), slice(0, 5, 1)))]),
     ((slice(5, 8, 1), slice(2, 4, 1)),
+     np.arange(2, 100_002).reshape((100, 10, 100)),
      [(5200, 200, (slice(0, 1, 1), slice(0, 2, 1))),
       (6200, 200, (slice(1, 2, 1), slice(0, 2, 1))),
-      (7200, 200, (slice(2, 3, 1), slice(0, 2, 1)))])
+      (7200, 200, (slice(2, 3, 1), slice(0, 2, 1)))]),
+    pytest.param((slice(5, 8, 1), slice(2, 4, 1), slice(0, 5, 1)),
+                 np.arange(2, 100002).reshape((10, 1, 10000)),
+                 None,
+    #            marks=[pytest.mark.xfail(reason='slice 2 is out of range')]
+    ),
+    pytest.param((slice(5, 8, 1), slice(2, 4, 1), slice(0, 5, 1)),
+                 np.arange(2, 100_002).reshape((10, 10_000)),
+                 None,
+    #            marks=[pytest.mark.xfail(reason='slice 2 is out of range')]
+    ),
 ])
-def test_PartialChunkIterator(selection, expected):
-    arr = np.arange(2, 100002).reshape((100, 10, 100))
+def test_PartialChunkIterator(selection, arr, expected):
     print(selection)
-    PCI = PartialChunkIterator(selection, arr)
+    PCI = PartialChunkIterator(selection, arr.shape)
     results = list(PCI)
     assert(results == expected)
 
