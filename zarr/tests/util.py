@@ -51,7 +51,10 @@ def skip_test_env_var(name):
 
 
 try:
-    import fsspec  # noqa: F401
-    have_fsspec = LooseVersion(sys.version) >= LooseVersion("3.6")
+    if LooseVersion(sys.version) >= LooseVersion("3.6"):
+        import fsspec  # noqa: F401
+        have_fsspec = True
+    else:
+        have_fsspec = False
 except ImportError:
     have_fsspec = False
