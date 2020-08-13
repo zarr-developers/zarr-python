@@ -1096,7 +1096,7 @@ def group(store=None, overwrite=False, chunk_store=None,
 
 
 def open_group(store=None, mode='a', cache_attrs=True, synchronizer=None, path=None,
-               chunk_store=None):
+               chunk_store=None, storage_options=None):
     """Open a group using file-mode-like semantics.
 
     Parameters
@@ -1140,9 +1140,9 @@ def open_group(store=None, mode='a', cache_attrs=True, synchronizer=None, path=N
     """
 
     # handle polymorphic store arg
-    store = _normalize_store_arg(store)
+    store = _normalize_store_arg(store, storage_options=storage_options)
     if chunk_store is not None:
-        chunk_store = _normalize_store_arg(chunk_store)
+        chunk_store = _normalize_store_arg(chunk_store, storage_options=storage_options)
     path = normalize_storage_path(path)
 
     # ensure store is initialized

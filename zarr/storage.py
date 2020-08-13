@@ -1045,7 +1045,7 @@ class FSStore(MutableMapping):
         dir_path = self.dir_path(path)
         try:
             out = sorted(p.rstrip('/').rsplit('/', 1)[-1]
-                          for p in self.fs.ls(dir_path, detail=False))
+                         for p in self.fs.ls(dir_path, detail=False))
             return out
         except IOError:
             return []

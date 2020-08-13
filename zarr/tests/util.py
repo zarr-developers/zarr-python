@@ -46,3 +46,10 @@ def skip_test_env_var(name):
     """
     value = os.environ.get(name, '0')
     return pytest.mark.skipif(value == '0', reason='Tests not enabled via environment variable')
+
+
+try:
+    import fsspec  # noqa: F401
+    have_fsspec = True
+except ImportError:
+    have_fsspec = False

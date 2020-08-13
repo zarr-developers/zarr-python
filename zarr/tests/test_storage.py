@@ -30,7 +30,7 @@ from zarr.storage import (ABSStore, ConsolidatedMetadataStore, DBMStore,
                           attrs_key, default_compressor, getsize,
                           group_meta_key, init_array, init_group, migrate_1to2)
 from zarr.storage import FSStore
-from zarr.tests.util import CountingDict, skip_test_env_var
+from zarr.tests.util import CountingDict, have_fsspec, skip_test_env_var
 
 
 @contextmanager
@@ -828,6 +828,7 @@ class TestDirectoryStore(StoreTests, unittest.TestCase):
         assert 'foo' in store
 
 
+@pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
 class TestFSStore(StoreTests, unittest.TestCase):
 
     def create_store(self, normalize_keys=False):
@@ -857,8 +858,7 @@ class TestNestedDirectoryStore(TestDirectoryStore, unittest.TestCase):
     def create_store(self, normalize_keys=False):
         path = tempfile.mkdtemp()
         atexit.register(atexit_rmtree, path)
-        store = NestedDirectoryStore(path, normalize_keys=normalize_keys,
-                                     key_separator='/', auto_mkdir=True)
+        store = NestedDirectoryStore(path, normalize_keys=normalize_keys)
         return store
 
     def test_chunk_nesting(self):
@@ -987,6 +987,7 @@ class TestN5Store(TestNestedDirectoryStore, unittest.TestCase):
                 init_array(store, shape=1000, chunks=100, filters=filters)
 
 
+@pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
 class TestNestedFSStore(TestNestedDirectoryStore):
 
     def create_store(self, normalize_keys=False):
