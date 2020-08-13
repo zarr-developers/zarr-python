@@ -133,7 +133,7 @@ def normalize_store_arg(store, clobber=False, default=dict, storage_options=None
     elif isinstance(store, str):
         mode = 'w' if clobber else 'r'
         if "://" in store or "::" in store:
-            return FSStore(store, **(storage_options or {}))
+            return FSStore(store, mode=mode, **(storage_options or {}))
         elif storage_options:
             raise ValueError("storage_options passed with non-fsspec path")
         if store.endswith('.zip'):

@@ -871,6 +871,12 @@ class TestFSStore(StoreTests, unittest.TestCase):
             store2[".zarray"] = b"{{}}"
         with pytest.raises(PermissionError):
             del store2[".zarray"]
+        with pytest.raises(PermissionError):
+            store2.clear()
+        with pytest.raises(PermissionError):
+            store2.rmdir("any")
+        with pytest.raises(ValueError):
+            FSStore(os.path.join(path, ".zmetadata"))
 
         store.clear()
         assert ".zmetadata" not in store
@@ -882,6 +888,7 @@ class TestFSStore(StoreTests, unittest.TestCase):
             zarr.open_array(path, mode='w', storage_options={"some": "kwargs"})
         with pytest.raises(ValueError, match="storage_options"):
             zarr.open_group(path, mode='w', storage_options={"some": "kwargs"})
+        zarr.open_array("file://" + path, mode='w', shape=(1,), dtype="f8")
 
 
 class TestNestedDirectoryStore(TestDirectoryStore, unittest.TestCase):
