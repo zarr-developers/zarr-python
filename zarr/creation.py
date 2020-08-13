@@ -127,13 +127,15 @@ def create(shape, chunks=True, dtype=None, compressor='default',
     return z
 
 
-def normalize_store_arg(store, clobber=False, default=dict):
+def normalize_store_arg(store, clobber=False, default=dict, storage_options=None):
     if store is None:
         return default()
     elif isinstance(store, str):
         mode = 'w' if clobber else 'r'
-        if "://" in store:
-            return FSStore(store)
+        if "://" in store or "::" in store:
+            return FSStore(store, **(storage_options or {}))
+        elif storage_options:
+            raise ValueError("storage_options passed with non-fsspec path")
         if store.endswith('.zip'):
             return ZipStore(store, mode=mode)
         elif store.endswith('.n5'):
@@ -437,9 +439,11 @@ def open_array(store=None, mode='a', shape=None, chunks=True, dtype=None,
 
     # handle polymorphic store arg
     clobber = mode == 'w'
-    store = normalize_store_arg(store, clobber=clobber)
+    storage_options = kwargs.pop("storage_options", None)
+    store = normalize_store_arg(store, clobber=clobber, storage_options=storage_options)
     if chunk_store is not None:
-        chunk_store = normalize_store_arg(chunk_store, clobber=clobber)
+        chunk_store = normalize_store_arg(chunk_store, clobber=clobber,
+                                          storage_options=storage_options)
     path = normalize_storage_path(path)
 
     # API compatibility with h5py

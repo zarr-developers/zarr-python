@@ -1032,8 +1032,9 @@ class Group(MutableMapping):
         self._write_op(self._move_nosync, source, dest)
 
 
-def _normalize_store_arg(store, clobber=False):
-    return normalize_store_arg(store, clobber=clobber, default=MemoryStore)
+def _normalize_store_arg(store, clobber=False, storage_options=None):
+    return normalize_store_arg(store, clobber=clobber, default=MemoryStore,
+                               storage_options=storage_options)
 
 
 def group(store=None, overwrite=False, chunk_store=None,

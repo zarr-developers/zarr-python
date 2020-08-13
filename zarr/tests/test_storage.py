@@ -29,8 +29,7 @@ from zarr.storage import (ABSStore, ConsolidatedMetadataStore, DBMStore,
                           array_meta_key, atexit_rmglob, atexit_rmtree,
                           attrs_key, default_compressor, getsize,
                           group_meta_key, init_array, init_group, migrate_1to2)
-from zarr.storage import FSStore as NestedDirectoryStore
-from zarr.storage import FSStore as DirectoryStore
+from zarr.storage import FSStore
 from zarr.tests.util import CountingDict, skip_test_env_var
 
 
@@ -829,6 +828,30 @@ class TestDirectoryStore(StoreTests, unittest.TestCase):
         assert 'foo' in store
 
 
+class TestFSStore(StoreTests, unittest.TestCase):
+
+    def create_store(self, normalize_keys=False):
+        path = tempfile.mkdtemp()
+        atexit.register(atexit_rmtree, path)
+        store = FSStore(path, normalize_keys=normalize_keys)
+        return store
+
+    def test_complex(self):
+        path1 = tempfile.mkdtemp()
+        path2 = tempfile.mkdtemp()
+        store = FSStore("simplecache::file://" + path1,
+                        simplecache={"same_names": True, "cache_storage": path2})
+        assert not store
+        assert not os.listdir(path1)
+        assert not os.listdir(path2)
+        store['foo'] = b"hello"
+        assert 'foo' in os.listdir(path1)
+        assert 'foo' in store
+        assert not os.listdir(path2)
+        assert store["foo"] == b"hello"
+        assert 'foo' in os.listdir(path2)
+
+
 class TestNestedDirectoryStore(TestDirectoryStore, unittest.TestCase):
 
     def create_store(self, normalize_keys=False):
@@ -962,6 +985,16 @@ class TestN5Store(TestNestedDirectoryStore, unittest.TestCase):
             store = self.create_store()
             with error:
                 init_array(store, shape=1000, chunks=100, filters=filters)
+
+
+class TestNestedFSStore(TestNestedDirectoryStore):
+
+    def create_store(self, normalize_keys=False):
+        path = tempfile.mkdtemp()
+        atexit.register(atexit_rmtree, path)
+        store = FSStore(path, normalize_keys=normalize_keys,
+                        key_separator='/', auto_mkdir=True)
+        return store
 
 
 class TestTempStore(StoreTests, unittest.TestCase):
