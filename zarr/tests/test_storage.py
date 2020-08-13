@@ -857,12 +857,31 @@ class TestFSStore(StoreTests, unittest.TestCase):
         store = FSStore(path, consolidated=True)
         store[".zarray"] = b"{}"
         assert ".zmetadata" in os.listdir(path)
+        del store[".zarray"]
+        with pytest.raises(KeyError):
+            store[".zarray"]
+        store[".zarray"] = b"{}"
+
+        os.remove(os.path.join(path, ".zarray"))
+        store2 = FSStore(path, mode='r', consolidated=True)
+        assert store != store2
+        assert ".zarray" in store2
+        assert store2[".zarray"] == b"{}"
+        with pytest.raises(PermissionError):
+            store2[".zarray"] = b"{{}}"
+        with pytest.raises(PermissionError):
+            del store2[".zarray"]
+
+        store.clear()
+        assert ".zmetadata" not in store
 
     def test_not_fsspec(self):
         import zarr
         path = tempfile.mkdtemp()
         with pytest.raises(ValueError, match="storage_options"):
             zarr.open_array(path, mode='w', storage_options={"some": "kwargs"})
+        with pytest.raises(ValueError, match="storage_options"):
+            zarr.open_group(path, mode='w', storage_options={"some": "kwargs"})
 
 
 class TestNestedDirectoryStore(TestDirectoryStore, unittest.TestCase):

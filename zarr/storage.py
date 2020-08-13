@@ -970,7 +970,7 @@ class FSStore(MutableMapping):
             self.meta = json.loads(self.map.get(metadata_key, b"{}").decode())
             if mode == 'r' or 'zarr_consolidated_format' in self.meta:
                 consolidated_format = self.meta.get('zarr_consolidated_format', None)
-                if consolidated_format != 1:
+                if consolidated_format != 1:  # pragma: no cover
                     raise MetadataError('unsupported zarr consolidated metadata format: %s' %
                                         consolidated_format)
             else:
@@ -989,11 +989,11 @@ class FSStore(MutableMapping):
 
     def __getitem__(self, key):
         if self.consolidated and self._is_meta(key):
-            return self.meta[key]
+            return self.meta[key].encode()  # expect bytes out
         key = self._normalize_key(key)
         try:
             return self.map[key]
-        except self.exceptions  as e:
+        except self.exceptions as e:
             raise KeyError(key) from e
 
     def __setitem__(self, key, value):
@@ -1032,7 +1032,8 @@ class FSStore(MutableMapping):
         return key in self.map
 
     def __eq__(self, other):
-        return type(self) == type(other) and self.map == other.map
+        return (type(self) == type(other) and self.map == other.map
+                and self.mode == other.mode)
 
     def keys(self):
         return iter(self.map)
