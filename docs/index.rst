@@ -4,8 +4,8 @@
 Zarr
 ====
 
-Zarr is a Python package providing an implementation of chunked,
-compressed, N-dimensional arrays.
+Zarr is a format for the storage of chunked, compressed, N-dimensional arrays.
+These documents describe the Zarr format and its Python implementation.
 
 Highlights
 ----------
@@ -40,8 +40,8 @@ Install Zarr from PyPI::
 Alternatively, install Zarr via conda::
 
     $ conda install -c conda-forge zarr
-    
-To install the latest development version of Zarr, you can use pip with the 
+
+To install the latest development version of Zarr, you can use pip with the
 latest GitHub master::
 
     $ pip install git+https://github.com/zarr-developers/zarr-python.git
@@ -49,7 +49,7 @@ latest GitHub master::
 To work with Zarr source code in development, install from GitHub::
 
     $ git clone --recursive https://github.com/zarr-developers/zarr-python.git
-    $ cd zarr
+    $ cd zarr-python
     $ python setup.py install
 
 To verify that Zarr has been fully installed, run the test suite::
