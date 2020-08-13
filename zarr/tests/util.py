@@ -54,7 +54,7 @@ try:
     if LooseVersion(sys.version) >= LooseVersion("3.6"):
         import fsspec  # noqa: F401
         have_fsspec = True
-    else:
+    else:  # pragma: no cover
         have_fsspec = False
-except ImportError:
+except ImportError:  # pragma: no cover
     have_fsspec = False

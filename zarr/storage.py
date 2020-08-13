@@ -950,7 +950,9 @@ def atexit_rmglob(path,
 class FSStore(MutableMapping):
 
     def __init__(self, url, normalize_keys=True, key_separator='.',
-                 mode='w', consolidated=False, metadata_key='.zmetadata', **storage_options):
+                 mode='w', consolidated=False, metadata_key='.zmetadata',
+                 exceptions=(KeyError, PermissionError, IOError),
+                 **storage_options):
         import fsspec
         self.path = url
         self.normalize_keys = normalize_keys
@@ -958,6 +960,7 @@ class FSStore(MutableMapping):
         self.map = fsspec.get_mapper(url, **storage_options)
         self.fs = self.map.fs  # for direct operations
         self.mode = mode
+        self.exceptions = exceptions
         # TODO: should warn if consolidated and write mode?
         if self.fs.exists(url) and not self.fs.isdir(url):
             err_fspath_exists_notdir(url)
@@ -988,7 +991,10 @@ class FSStore(MutableMapping):
         if self.consolidated and self._is_meta(key):
             return self.meta[key]
         key = self._normalize_key(key)
-        return self.map[key]
+        try:
+            return self.map[key]
+        except self.exceptions  as e:
+            raise KeyError(key) from e
 
     def __setitem__(self, key, value):
         if self.mode == 'r':
@@ -1003,8 +1009,8 @@ class FSStore(MutableMapping):
             if self.fs.isdir(path):
                 self.fs.rm(path, recursive=True)
             self.map[key] = value
-        except IOError:
-            raise KeyError(key)
+        except self.exceptions as e:
+            raise KeyError(key) from e
 
     def __delitem__(self, key):
         if self.mode == 'r':
