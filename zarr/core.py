@@ -12,9 +12,10 @@ from numcodecs.compat import ensure_bytes, ensure_ndarray
 
 from zarr.attrs import Attributes
 from zarr.codecs import AsType, get_codec
-from zarr.errors import err_array_not_found, err_read_only
+from zarr.errors import ArrayIndexError, err_array_not_found, err_read_only
 from zarr.indexing import (BasicIndexer, CoordinateIndexer, MaskIndexer,
-                           OIndex, OrthogonalIndexer, VIndex, check_fields,
+                           OIndex, OrthogonalIndexer, VIndex, PartialChunkIterator,
+                           check_fields,
                            check_no_multi_fields, ensure_tuple,
                            err_too_many_indices, is_contiguous_selection,
                            is_scalar, pop_fields)
@@ -1626,18 +1627,33 @@ class Array(object):
                     return
 
             # decode chunk
-            print(is_contiguous_selection(chunk_selection))
-            print(self.chunks)
-            print(chunk_selection)
-            if self._compressor.codec_id == 'blosc':
+            try:
+                if self._compressor and self._compressor.codec_id == 'blosc' and not fields and self.dtype != object:
+                    index_selection = PartialChunkIterator(chunk_selection, self.chunks)
+                    if len(index_selection) < 10:
+                        for start, nitems, partial_out_selection in index_selection:
+                            expected_shape = [
+                                len(range(*partial_out_selection[i].indices(self.chunks[0]+1)))
+                                if i < len(partial_out_selection) else dim
+                                for i, dim in enumerate(self.chunks)]
+                            chunk_partial = self._decode_chunk(
+                                cdata, start=start, nitems=nitems,
+                                expected_shape=expected_shape)
+                            # if isinstance(out_selection, slice) or len(out_selection) < len(partial_out_selection):
+                            #     out[out_selection] = chunk_partial
+                            if out[out_selection].size == chunk_partial.size:
+                                out[out_selection] = chunk_partial
+                            else:
+                                out[out_selection][partial_out_selection] = chunk_partial
+                        return
+            except ArrayIndexError:
                 pass
             chunk = self._decode_chunk(cdata)
-            
+
             # select data from chunk
             if fields:
                 chunk = chunk[fields]
             tmp = chunk[chunk_selection]
-            print(tmp)
             if drop_axes:
                 tmp = np.squeeze(tmp, axis=drop_axes)
 
@@ -1737,7 +1753,7 @@ class Array(object):
     def _chunk_key(self, chunk_coords):
         return self._key_prefix + '.'.join(map(str, chunk_coords))
 
-    def _decode_chunk(self, cdata, start=None, nitems=None):    
+    def _decode_chunk(self, cdata, start=None, nitems=None, expected_shape=None):    
 
         # decompress
         if self._compressor:
@@ -1771,7 +1787,7 @@ class Array(object):
 
         # ensure correct chunk shape
         chunk = chunk.reshape(-1, order='A')
-        chunk = chunk.reshape(self._chunks, order=self._order)
+        chunk = chunk.reshape(expected_shape or self._chunks, order=self._order)
 
         return chunk
 

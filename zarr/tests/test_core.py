@@ -184,7 +184,6 @@ class TestArray(unittest.TestCase):
         # noinspection PyTypeChecker
         assert_array_equal(a, z[slice(None)])
         assert_array_equal(a[:10], z[:10])
-        assert False
         assert_array_equal(a[10:20], z[10:20])
         assert_array_equal(a[-10:], z[-10:])
         assert_array_equal(a[:10, ...], z[:10, ...])
@@ -279,6 +278,7 @@ class TestArray(unittest.TestCase):
         ix = [99, 100, 101]
         bix = np.zeros_like(a, dtype=bool)
         bix[ix] = True
+        print(a[ix])
         assert_array_equal(a[ix], z.get_orthogonal_selection(ix))
         assert_array_equal(a[ix], z.oindex[ix])
         assert_array_equal(a[ix], z.get_coordinate_selection(ix))
@@ -375,7 +375,6 @@ class TestArray(unittest.TestCase):
         # slicing across chunk boundaries
         assert_array_equal(a[:110], z[:110])
         assert_array_equal(a[190:310], z[190:310])
-        assert False
         assert_array_equal(a[-110:], z[-110:])
         assert_array_equal(a[:110, :], z[:110, :])
         assert_array_equal(a[190:310, :], z[190:310, :])
