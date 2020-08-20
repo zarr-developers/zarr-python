@@ -901,4 +901,4 @@ class PartialChunkIterator(object):
             start = 0
             for i, sl in enumerate(chunk_selection):
                 start += sl.start * np.prod(self.arr_shape[i+1:])
-            yield start, nitems, chunk_selection
+            yield int(start), int(nitems), chunk_selection
