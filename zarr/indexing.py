@@ -868,11 +868,10 @@ class PartialChunkIterator(object):
                              'selection dimensions = {len(self.selection)\n'
                              'array dimensions = {len(self.arr_shape)}')
 
-        # any selection can not be out of the range of the chunk and
+        # any selection can not be out of the range of the chunk
         self.selection_shape = np.empty(self.arr_shape)[self.selection].shape
-        if any(
-                [selection_dim < 0 or selection_dim > arr_dim for selection_dim, arr_dim
-                 in zip(self.selection_shape, self.arr_shape)]):
+        if any([selection_dim < 0 or selection_dim > arr_dim for selection_dim, arr_dim
+                in zip(self.selection_shape, self.arr_shape)]):
             raise IndexError('a selection index is out of range for the dimension')
 
         for i, dim_size in enumerate(self.arr_shape[::-1]):
@@ -884,32 +883,23 @@ class PartialChunkIterator(object):
                 else:
                     break
 
-        out_slices = []
         chunk_loc_slices = []
         last_dim_slice = None if self.selection[-1].step > 1 else self.selection.pop()
         for i, sl in enumerate(self.selection):
-            dim_out_slices = []
             dim_chunk_loc_slices = []
             for i, x in enumerate(slice_to_range(sl, arr_shape[i])):
-                dim_out_slices.append(slice(i, i+1, 1))
                 dim_chunk_loc_slices.append(slice(x, x+1, 1))
-            out_slices.append(dim_out_slices)
             chunk_loc_slices.append(dim_chunk_loc_slices)
         if last_dim_slice:
-            out_slices.append(
-                [slice(0, last_dim_slice.stop - last_dim_slice.start, 1)])
             chunk_loc_slices.append([last_dim_slice])
 
-        self.out_slices = itertools.product(*out_slices)
         self.chunk_loc_slices = list(itertools.product(*chunk_loc_slices))
 
-    def __len__(self):
-        return len(self.chunk_loc_slices)
 
     def __iter__(self):
-        for out_selection, chunk_selection in zip(self.out_slices, self.chunk_loc_slices):
+        for chunk_selection in self.chunk_loc_slices:
             start = 0
             for i, sl in enumerate(chunk_selection):
                 start += sl.start * np.prod(self.arr_shape[i+1:])
             nitems = (chunk_selection[-1].stop - chunk_selection[-1].start) * np.prod(self.arr_shape[len(chunk_selection):])
-            yield start, nitems, out_selection
+            yield start, nitems, chunk_selection
