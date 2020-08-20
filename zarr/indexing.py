@@ -892,14 +892,13 @@ class PartialChunkIterator(object):
             chunk_loc_slices.append(dim_chunk_loc_slices)
         if last_dim_slice:
             chunk_loc_slices.append([last_dim_slice])
-
         self.chunk_loc_slices = list(itertools.product(*chunk_loc_slices))
 
-
     def __iter__(self):
+        chunk1 = self.chunk_loc_slices[0]
+        nitems = (chunk1[-1].stop - chunk1[-1].start) * np.prod(self.arr_shape[len(chunk1):])
         for chunk_selection in self.chunk_loc_slices:
             start = 0
             for i, sl in enumerate(chunk_selection):
                 start += sl.start * np.prod(self.arr_shape[i+1:])
-            nitems = (chunk_selection[-1].stop - chunk_selection[-1].start) * np.prod(self.arr_shape[len(chunk_selection):])
             yield start, nitems, chunk_selection
