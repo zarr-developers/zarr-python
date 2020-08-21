@@ -28,7 +28,7 @@ import warnings
 import zipfile
 from collections import OrderedDict
 from collections.abc import MutableMapping
-from os import scandir, replace
+from os import scandir
 from pickle import PicklingError
 from threading import Lock, RLock
 import uuid
@@ -68,6 +68,7 @@ try:
 except ImportError:  # pragma: no cover
     from zarr.codecs import Zlib
     default_compressor = Zlib()
+
 
 def _path_to_prefix(path):
     # assume path already normalized
@@ -815,7 +816,7 @@ class DirectoryStore(MutableMapping):
             self._tofile(value, temp_path)
 
             # move temporary file into place
-            replace(temp_path, file_path)
+            os.replace(temp_path, file_path)
 
         finally:
             # clean up if temp file still exists for whatever reason
