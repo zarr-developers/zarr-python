@@ -1277,14 +1277,14 @@ def test_tree():
     g5.create_dataset('baz', shape=100, chunks=10)
 
     # test root group
-    expect_bytes = textwrap.dedent(u"""\
+    expect_bytes = textwrap.dedent("""\
     /
      +-- bar
      |   +-- baz
      |   +-- quux
      |       +-- baz (100,) float64
      +-- foo""").encode()
-    expect_text = textwrap.dedent(u"""\
+    expect_text = textwrap.dedent("""\
     /
      ├── bar
      │   ├── baz
@@ -1294,19 +1294,19 @@ def test_tree():
     _check_tree(g1, expect_bytes, expect_text)
 
     # test different group
-    expect_bytes = textwrap.dedent(u"""\
+    expect_bytes = textwrap.dedent("""\
     foo""").encode()
-    expect_text = textwrap.dedent(u"""\
+    expect_text = textwrap.dedent("""\
     foo""")
     _check_tree(g2, expect_bytes, expect_text)
 
     # test different group
-    expect_bytes = textwrap.dedent(u"""\
+    expect_bytes = textwrap.dedent("""\
     bar
      +-- baz
      +-- quux
          +-- baz (100,) float64""").encode()
-    expect_text = textwrap.dedent(u"""\
+    expect_text = textwrap.dedent("""\
     bar
      ├── baz
      └── quux

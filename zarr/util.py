@@ -466,10 +466,10 @@ class TreeViewer(object):
         )
 
         self.unicode_kwargs = dict(
-            UP_AND_RIGHT=u"\u2514",
-            HORIZONTAL=u"\u2500",
-            VERTICAL=u"\u2502",
-            VERTICAL_AND_RIGHT=u"\u251C"
+            UP_AND_RIGHT="\u2514",
+            HORIZONTAL="\u2500",
+            VERTICAL="\u2502",
+            VERTICAL_AND_RIGHT="\u251C"
         )
 
     def __bytes__(self):
