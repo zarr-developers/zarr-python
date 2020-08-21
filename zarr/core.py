@@ -1756,7 +1756,7 @@ class Array(object):
         if self._compressor:
             # only decode requested items
             if (all([x is not None for x in [start, nitems]])
-                and self._compressor.codec_id == 'blosc'):
+                and self._compressor.codec_id == 'blosc') and hasattr(self._compressor, 'decode_partial'):
                 chunk = self._compressor.decode_partial(cdata, start, nitems)
             else:
                 chunk = self._compressor.decode(cdata)
