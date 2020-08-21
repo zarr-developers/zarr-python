@@ -69,7 +69,6 @@ except ImportError:  # pragma: no cover
     from zarr.codecs import Zlib
     default_compressor = Zlib()
 
-
 def _path_to_prefix(path):
     # assume path already normalized
     if path:
