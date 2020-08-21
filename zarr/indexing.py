@@ -740,7 +740,7 @@ class MaskIndexer(CoordinateIndexer):
         selection = np.nonzero(selection[0])
 
         # delegate the rest to superclass
-        super(MaskIndexer, self).__init__(selection, array)
+        super().__init__(selection, array)
 
 
 class VIndex(object):

@@ -426,7 +426,7 @@ def check_copied_group(original, copied, without_attrs=False, expect_props=None,
 class TestCopy(unittest.TestCase):
 
     def __init__(self, *args, **kwargs):
-        super(TestCopy, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self.source_h5py = False
         self.dest_h5py = False
         self.new_source = group
@@ -715,7 +715,7 @@ def temp_h5f():
 class TestCopyHDF5ToZarr(TestCopy):
 
     def __init__(self, *args, **kwargs):
-        super(TestCopyHDF5ToZarr, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self.source_h5py = True
         self.dest_h5py = False
         self.new_source = temp_h5f
@@ -725,7 +725,7 @@ class TestCopyHDF5ToZarr(TestCopy):
 class TestCopyZarrToHDF5(TestCopy):
 
     def __init__(self, *args, **kwargs):
-        super(TestCopyZarrToHDF5, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self.source_h5py = False
         self.dest_h5py = True
         self.new_source = group
@@ -735,7 +735,7 @@ class TestCopyZarrToHDF5(TestCopy):
 class TestCopyHDF5ToHDF5(TestCopy):
 
     def __init__(self, *args, **kwargs):
-        super(TestCopyHDF5ToHDF5, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self.source_h5py = True
         self.dest_h5py = True
         self.new_source = temp_h5f
