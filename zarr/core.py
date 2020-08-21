@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 import binascii
 import hashlib
 import itertools

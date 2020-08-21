@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 #
 # zarr documentation build configuration file, created by
 # sphinx-quickstart on Mon May  2 21:40:09 2016.

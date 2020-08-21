@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Convenience functions for storing and loading data."""
 import io
 import itertools

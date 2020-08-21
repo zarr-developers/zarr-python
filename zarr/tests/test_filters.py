@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 import numpy as np
 from numcodecs import (BZ2, AsType, Blosc, Categorize, Delta, FixedScaleOffset,
                        PackBits, Quantize, Zlib)

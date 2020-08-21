@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """This module contains storage classes for use with Zarr arrays and groups.
 
 Note that any object implementing the :class:`MutableMapping` interface from the
