@@ -7,10 +7,12 @@ import numpy as np
 from zarr.errors import MetadataError
 from zarr.util import json_dumps, json_loads
 
+from typing import Union, Any, List, Mapping as MappingType
+
 ZARR_FORMAT = 2
 
 
-def parse_metadata(s):
+def parse_metadata(s: Union[MappingType, str]) -> MappingType[str, Any]:
 
     # Here we allow that a store may return an already-parsed metadata object,
     # or a string of JSON that we will parse here. We allow for an already-parsed
@@ -28,7 +30,7 @@ def parse_metadata(s):
     return meta
 
 
-def decode_array_metadata(s):
+def decode_array_metadata(s: Union[MappingType, str]) -> MappingType[str, Any]:
     meta = parse_metadata(s)
 
     # check metadata format
@@ -56,7 +58,7 @@ def decode_array_metadata(s):
         return meta
 
 
-def encode_array_metadata(meta):
+def encode_array_metadata(meta: MappingType[str, Any]) -> bytes:
     dtype = meta['dtype']
     sdshape = ()
     if dtype.subdtype is not None:
@@ -74,14 +76,14 @@ def encode_array_metadata(meta):
     return json_dumps(meta)
 
 
-def encode_dtype(d):
+def encode_dtype(d: np.dtype) -> str:
     if d.fields is None:
         return d.str
     else:
         return d.descr
 
 
-def _decode_dtype_descr(d):
+def _decode_dtype_descr(d) -> List[Any]:
     # need to convert list of lists to list of tuples
     if isinstance(d, list):
         # recurse to handle nested structures
@@ -89,12 +91,12 @@ def _decode_dtype_descr(d):
     return d
 
 
-def decode_dtype(d):
+def decode_dtype(d) -> np.dtype:
     d = _decode_dtype_descr(d)
     return np.dtype(d)
 
 
-def decode_group_metadata(s):
+def decode_group_metadata(s: Union[MappingType, str]) -> MappingType[str, Any]:
     meta = parse_metadata(s)
 
     # check metadata format version
@@ -108,7 +110,7 @@ def decode_group_metadata(s):
 
 # N.B., keep `meta` parameter as a placeholder for future
 # noinspection PyUnusedLocal
-def encode_group_metadata(meta=None):
+def encode_group_metadata(meta=None) -> bytes:
     meta = dict(
         zarr_format=ZARR_FORMAT,
     )
@@ -161,7 +163,7 @@ def decode_fill_value(v, dtype):
         return np.array(v, dtype=dtype)[()]
 
 
-def encode_fill_value(v, dtype):
+def encode_fill_value(v: Any, dtype: np.dtype) -> Any:
     # early out
     if v is None:
         return v

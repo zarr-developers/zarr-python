@@ -468,7 +468,7 @@ class IntArrayDimIndexer(object):
             yield ChunkDimProjection(dim_chunk_ix, dim_chunk_sel, dim_out_sel)
 
 
-def slice_to_range(s, l):
+def slice_to_range(s, l):  # noqa: E741
     return range(*s.indices(l))
 
 

@@ -11,6 +11,8 @@ from asciitree.traversal import Traversal
 from numcodecs.compat import ensure_ndarray, ensure_text
 from numcodecs.registry import codec_registry
 
+from typing import Any, Dict, Tuple, Union
+
 # codecs to use for object dtype convenience API
 object_codecs = {
     str.__name__: 'vlen-utf8',
@@ -19,18 +21,18 @@ object_codecs = {
 }
 
 
-def json_dumps(o):
+def json_dumps(o: Any) -> bytes:
     """Write JSON in a consistent, human-readable way."""
     return json.dumps(o, indent=4, sort_keys=True, ensure_ascii=True,
                       separators=(',', ': ')).encode('ascii')
 
 
-def json_loads(s):
+def json_loads(s: str) -> Dict[str, Any]:
     """Read JSON in a consistent way."""
     return json.loads(ensure_text(s, 'ascii'))
 
 
-def normalize_shape(shape):
+def normalize_shape(shape) -> Tuple[int]:
     """Convenience function to normalize the `shape` argument."""
 
     if shape is None:
@@ -52,7 +54,7 @@ CHUNK_MIN = 128*1024  # Soft lower limit (128k)
 CHUNK_MAX = 64*1024*1024  # Hard upper limit
 
 
-def guess_chunks(shape, typesize):
+def guess_chunks(shape: Tuple[int, ...], typesize: int) -> Tuple[int, ...]:
     """
     Guess an appropriate chunk layout for an array, given its shape and
     the size of each element in bytes.  Will allocate chunks only as large
@@ -98,7 +100,9 @@ def guess_chunks(shape, typesize):
     return tuple(int(x) for x in chunks)
 
 
-def normalize_chunks(chunks, shape, typesize):
+def normalize_chunks(
+    chunks: Any, shape: Tuple[int, ...], typesize: int
+) -> Tuple[int, ...]:
     """Convenience function to normalize the `chunks` argument for an array
     with the given `shape`."""
 
@@ -133,11 +137,11 @@ def normalize_chunks(chunks, shape, typesize):
     return tuple(chunks)
 
 
-def normalize_dtype(dtype, object_codec):
+def normalize_dtype(dtype: Union[str, np.dtype], object_codec) -> Tuple[np.dtype, Any]:
 
     # convenience API for object arrays
     if inspect.isclass(dtype):
-        dtype = dtype.__name__
+        dtype = dtype.__name__  # type: ignore
     if isinstance(dtype, str):
         # allow ':' to delimit class from codec arguments
         tokens = dtype.split(':')
@@ -149,7 +153,7 @@ def normalize_dtype(dtype, object_codec):
                 if len(tokens) > 1:
                     args = tokens[1].split(',')
                 else:
-                    args = ()
+                    args = []
                 try:
                     object_codec = codec_registry[codec_id](*args)
                 except KeyError:  # pragma: no cover
@@ -169,7 +173,7 @@ def normalize_dtype(dtype, object_codec):
 
 
 # noinspection PyTypeChecker
-def is_total_slice(item, shape):
+def is_total_slice(item, shape: Tuple[int]) -> bool:
     """Determine whether `item` specifies a complete slice of array with the
     given `shape`. Used to optimize __setitem__ operations on the Chunk
     class."""
@@ -214,7 +218,7 @@ def normalize_resize_args(old_shape, *args):
     return new_shape
 
 
-def human_readable_size(size):
+def human_readable_size(size) -> str:
     if size < 2**10:
         return '%s' % size
     elif size < 2**20:
@@ -229,14 +233,14 @@ def human_readable_size(size):
         return '%.1fP' % (size / float(2**50))
 
 
-def normalize_order(order):
+def normalize_order(order: str) -> str:
     order = str(order).upper()
     if order not in ['C', 'F']:
         raise ValueError("order must be either 'C' or 'F', found: %r" % order)
     return order
 
 
-def normalize_fill_value(fill_value, dtype):
+def normalize_fill_value(fill_value, dtype: np.dtype):
 
     if fill_value is None:
         # no fill value
@@ -271,7 +275,7 @@ def normalize_fill_value(fill_value, dtype):
     return fill_value
 
 
-def normalize_storage_path(path):
+def normalize_storage_path(path: Union[str, bytes, None]) -> str:
 
     # handle bytes
     if isinstance(path, bytes):
@@ -316,11 +320,11 @@ def normalize_storage_path(path):
     return path
 
 
-def buffer_size(v):
+def buffer_size(v) -> int:
     return ensure_ndarray(v).nbytes
 
 
-def info_text_report(items):
+def info_text_report(items: Dict[Any, Any]) -> str:
     keys = [k for k, v in items]
     max_key_len = max(len(k) for k in keys)
     report = ''
@@ -333,7 +337,7 @@ def info_text_report(items):
     return report
 
 
-def info_html_report(items):
+def info_html_report(items) -> str:
     report = '<table class="zarr-info">'
     report += '<tbody>'
     for k, v in items:
@@ -402,7 +406,7 @@ tree_group_icon = 'folder'
 tree_array_icon = 'table'
 
 
-def tree_get_icon(stype):
+def tree_get_icon(stype: str) -> str:
     if stype == "Array":
         return tree_array_icon
     elif stype == "Group":
