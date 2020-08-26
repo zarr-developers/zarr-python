@@ -106,12 +106,8 @@ def decode_group_metadata(s):
     return meta
 
 
-# N.B., keep `meta` parameter as a placeholder for future
-# noinspection PyUnusedLocal
-def encode_group_metadata(meta=None):
-    meta = dict(
-        zarr_format=ZARR_FORMAT,
-    )
+def encode_group_metadata(meta):
+    meta["zarr_format"] = ZARR_FORMAT
     return json_dumps(meta)
 
 

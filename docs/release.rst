@@ -20,6 +20,9 @@ Next release
   By :user:`Josh Moore <joshmoore>`; :issue:`571`.
 
 
+* ``encode_group_metadata`` metadata parameter is now mandatory.
+
+
 .. _release_2.4.0:
 
 2.4.0

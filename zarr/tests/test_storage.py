@@ -499,7 +499,7 @@ class StoreTests(object):
         # setup
         path = 'foo/bar'
         store = self.create_store()
-        store[path + '/' + group_meta_key] = encode_group_metadata()
+        store[path + "/" + group_meta_key] = encode_group_metadata({})
 
         # don't overwrite
         with pytest.raises(ValueError):
