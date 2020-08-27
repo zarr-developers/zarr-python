@@ -9,8 +9,12 @@ from zarr.core import Array
 from zarr.creation import (array, create, empty, empty_like, full, full_like,
                            normalize_store_arg, ones, ones_like, zeros,
                            zeros_like)
-from zarr.errors import (err_contains_array, err_contains_group,
-                         err_group_not_found, err_read_only)
+from zarr.errors import (
+    ContainsArrayError,
+    ContainsGroupError,
+    GroupNotFoundError,
+    ReadOnlyError,
+)
 from zarr.meta import decode_group_metadata
 from zarr.storage import (MemoryStore, attrs_key, contains_array,
                           contains_group, group_meta_key, init_group, listdir,
@@ -105,14 +109,14 @@ class Group(MutableMapping):
 
         # guard conditions
         if contains_array(store, path=self._path):
-            err_contains_array(path)
+            raise ContainsArrayError(path)
 
         # initialize metadata
         try:
             mkey = self._key_prefix + group_meta_key
             meta_bytes = store[mkey]
         except KeyError:
-            err_group_not_found(path)
+            raise GroupNotFoundError(path)
         else:
             meta = decode_group_metadata(meta_bytes)
             self._meta = meta
@@ -645,7 +649,7 @@ class Group(MutableMapping):
 
         # guard condition
         if self._read_only:
-            err_read_only()
+            raise ReadOnlyError()
 
         if self._synchronizer is None:
             # no synchronization
@@ -1154,24 +1158,24 @@ def open_group(store=None, mode='a', cache_attrs=True, synchronizer=None, path=N
 
     if mode in ['r', 'r+']:
         if contains_array(store, path=path):
-            err_contains_array(path)
+            raise ContainsArrayError(path)
         elif not contains_group(store, path=path):
-            err_group_not_found(path)
+            raise GroupNotFoundError(path)
 
     elif mode == 'w':
         init_group(store, overwrite=True, path=path, chunk_store=chunk_store)
 
     elif mode == 'a':
         if contains_array(store, path=path):
-            err_contains_array(path)
+            raise ContainsArrayError(path)
         if not contains_group(store, path=path):
             init_group(store, path=path, chunk_store=chunk_store)
 
     elif mode in ['w-', 'x']:
         if contains_array(store, path=path):
-            err_contains_array(path)
+            raise ContainsArrayError(path)
         elif contains_group(store, path=path):
-            err_contains_group(path)
+            raise ContainsGroupError(path)
         else:
             init_group(store, path=path, chunk_store=chunk_store)
 

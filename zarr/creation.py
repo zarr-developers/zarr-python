@@ -5,8 +5,11 @@ import numpy as np
 from numcodecs.registry import codec_registry
 
 from zarr.core import Array
-from zarr.errors import (err_array_not_found, err_contains_array,
-                         err_contains_group)
+from zarr.errors import (
+    ArrayNotFoundError,
+    ContainsArrayError,
+    ContainsGroupError,
+)
 from zarr.n5 import N5Store
 from zarr.storage import (DirectoryStore, ZipStore, contains_array,
                           contains_group, default_compressor, init_array,
@@ -460,9 +463,9 @@ def open_array(store=None, mode='a', shape=None, chunks=True, dtype=None,
 
     if mode in ['r', 'r+']:
         if contains_group(store, path=path):
-            err_contains_group(path)
+            raise ContainsGroupError(path)
         elif not contains_array(store, path=path):
-            err_array_not_found(path)
+            raise ArrayNotFoundError(path)
 
     elif mode == 'w':
         init_array(store, shape=shape, chunks=chunks, dtype=dtype,
@@ -472,7 +475,7 @@ def open_array(store=None, mode='a', shape=None, chunks=True, dtype=None,
 
     elif mode == 'a':
         if contains_group(store, path=path):
-            err_contains_group(path)
+            raise ContainsGroupError(path)
         elif not contains_array(store, path=path):
             init_array(store, shape=shape, chunks=chunks, dtype=dtype,
                        compressor=compressor, fill_value=fill_value,
@@ -481,9 +484,9 @@ def open_array(store=None, mode='a', shape=None, chunks=True, dtype=None,
 
     elif mode in ['w-', 'x']:
         if contains_group(store, path=path):
-            err_contains_group(path)
+            raise ContainsGroupError(path)
         elif contains_array(store, path=path):
-            err_contains_array(path)
+            raise ContainsArrayError(path)
         else:
             init_array(store, shape=shape, chunks=chunks, dtype=dtype,
                        compressor=compressor, fill_value=fill_value,
