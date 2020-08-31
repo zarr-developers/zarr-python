@@ -127,12 +127,13 @@ def create(shape, chunks=True, dtype=None, compressor='default',
     return z
 
 
-def normalize_store_arg(store, clobber=False, default=dict):
+def normalize_store_arg(store, clobber=False, default=dict, mode=None):
     if store is None:
         return default()
     elif isinstance(store, str):
         if store.endswith('.zip'):
-            mode = 'w' if clobber else 'r'
+            if mode is None:
+                mode = 'w' if clobber else 'r'
             return ZipStore(store, mode=mode)
         elif store.endswith('.n5'):
             return N5Store(store)
