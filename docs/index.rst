@@ -29,7 +29,7 @@ Installation
 ------------
 
 Zarr depends on NumPy. It is generally best to `install NumPy
-<http://docs.scipy.org/doc/numpy/user/install.html>`_ first using whatever method is most
+<https://numpy.org/doc/stable/user/install.html>`_ first using whatever method is most
 appropriate for you operating system and Python distribution. Other dependencies should be
 installed automatically if using one of the installation methods below.
 
