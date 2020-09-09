@@ -12,6 +12,10 @@ Next release
   without ``ipytree`` installed.
   By :user:`Zain Patel <mzjp2>`; :issue:`537`
 
+* ``mode`` parameter used in ``open_group`` is now passed along to ZipStore
+  creation.
+  By :user:`Mark Harfouche <hmaarrfk>`;
+
 * Explicitly close stores during testing.
   By :user:`Elliott Sales de Andrade <QuLogic>`; :issue:`442`
 
