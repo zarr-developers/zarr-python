@@ -21,7 +21,6 @@ import glob
 import multiprocessing
 import operator
 import os
-import json
 import re
 import shutil
 import sys

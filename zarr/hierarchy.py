@@ -1146,7 +1146,8 @@ def open_group(store=None, mode='a', cache_attrs=True, synchronizer=None, path=N
     clobber = mode != 'r'
     store = _normalize_store_arg(store, clobber=clobber, storage_options=storage_options)
     if chunk_store is not None:
-        chunk_store = _normalize_store_arg(chunk_store, clobber=clobber, storage_options=storage_options)
+        chunk_store = _normalize_store_arg(chunk_store, clobber=clobber,
+                                           storage_options=storage_options)
     path = normalize_storage_path(path)
 
     # ensure store is initialized
