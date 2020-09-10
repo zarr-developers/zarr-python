@@ -29,7 +29,7 @@ import warnings
 import zipfile
 from collections import OrderedDict
 from collections.abc import MutableMapping
-from os import scandir
+from os import scandir, replace
 from pickle import PicklingError
 from threading import Lock, RLock
 import uuid
@@ -64,15 +64,6 @@ try:
 except ImportError:  # pragma: no cover
     from zarr.codecs import Zlib
     default_compressor = Zlib()
-
-# Find which function to use for atomic replace
-if sys.version_info >= (3, 3):
-    from os import replace
-elif sys.platform == "win32":  # pragma: no cover
-    from osreplace import replace
-else:  # pragma: no cover
-    # POSIX rename() is always atomic
-    from os import rename as replace
 
 
 def _path_to_prefix(path):
