@@ -1118,6 +1118,9 @@ def open_group(store=None, mode='a', cache_attrs=True, synchronizer=None, path=N
         Group path within store.
     chunk_store : MutableMapping or string, optional
         Store or path to directory in file system or name of zip file.
+    storage_options : dict
+        If using an fsspec URL to create the store, these will be passed to
+        the backend implementation. Ignored otherwise.
 
     Returns
     -------
@@ -1140,9 +1143,10 @@ def open_group(store=None, mode='a', cache_attrs=True, synchronizer=None, path=N
     """
 
     # handle polymorphic store arg
-    store = _normalize_store_arg(store, storage_options=storage_options)
+    clobber = mode != 'r'
+    store = _normalize_store_arg(store, clobber=clobber, storage_options=storage_options)
     if chunk_store is not None:
-        chunk_store = _normalize_store_arg(chunk_store, storage_options=storage_options)
+        chunk_store = _normalize_store_arg(chunk_store, clobber=clobber, storage_options=storage_options)
     path = normalize_storage_path(path)
 
     # ensure store is initialized

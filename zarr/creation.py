@@ -357,7 +357,8 @@ def array(data, **kwargs):
 def open_array(store=None, mode='a', shape=None, chunks=True, dtype=None,
                compressor='default', fill_value=0, order='C', synchronizer=None,
                filters=None, cache_metadata=True, cache_attrs=True, path=None,
-               object_codec=None, chunk_store=None, **kwargs):
+               object_codec=None, chunk_store=None, storage_options=None,
+               **kwargs):
     """Open an array using file-mode-like semantics.
 
     Parameters
@@ -403,6 +404,9 @@ def open_array(store=None, mode='a', shape=None, chunks=True, dtype=None,
         A codec to encode object arrays, only needed if dtype=object.
     chunk_store : MutableMapping or string, optional
         Store or path to directory in file system or name of zip file.
+    storage_options : dict
+        If using an fsspec URL to create the store, these will be passed to
+        the backend implementation. Ignored otherwise.
 
     Returns
     -------
@@ -439,7 +443,6 @@ def open_array(store=None, mode='a', shape=None, chunks=True, dtype=None,
 
     # handle polymorphic store arg
     clobber = mode == 'w'
-    storage_options = kwargs.pop("storage_options", None)
     store = normalize_store_arg(store, clobber=clobber, storage_options=storage_options)
     if chunk_store is not None:
         chunk_store = normalize_store_arg(chunk_store, clobber=clobber,

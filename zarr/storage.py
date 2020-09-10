@@ -948,9 +948,30 @@ def atexit_rmglob(path,
 
 
 class FSStore(MutableMapping):
+    """Wraps an fsspec.FSMap to give access to arbitrary filesystems
+
+    Requires that ``fsspec`` is installed, as well as any additional
+    requirements for the protocol chosen.
+
+    Parameters
+    ----------
+    url : str
+        The destination to map. Should include protocol and path,
+        like "s3://bucket/root"
+    normalize_keys : bool
+    key_separator : str
+        Character to use when constructing the target path strings
+        for data keys
+    mode : str
+        "w" for writable, "r" for read-only
+    exceptions : list of Exception subclasses
+        When accessing data, any of these exceptions will be treated
+        as a missing key
+    storage_options : passed to the fsspec implementation
+    """
 
     def __init__(self, url, normalize_keys=True, key_separator='.',
-                 mode='w', consolidated=False, metadata_key='.zmetadata',
+                 mode='w',
                  exceptions=(KeyError, PermissionError, IOError),
                  **storage_options):
         import fsspec
@@ -961,24 +982,8 @@ class FSStore(MutableMapping):
         self.fs = self.map.fs  # for direct operations
         self.mode = mode
         self.exceptions = exceptions
-        # TODO: should warn if consolidated and write mode?
         if self.fs.exists(url) and not self.fs.isdir(url):
             err_fspath_exists_notdir(url)
-        self.consolidated = consolidated
-        self.metadata_key = metadata_key
-        if consolidated:
-            self.meta = json.loads(self.map.get(metadata_key, b"{}").decode())
-            if mode == 'r' or 'zarr_consolidated_format' in self.meta:
-                consolidated_format = self.meta.get('zarr_consolidated_format', None)
-                if consolidated_format != 1:  # pragma: no cover
-                    raise MetadataError('unsupported zarr consolidated metadata format: %s' %
-                                        consolidated_format)
-            else:
-                self.meta['zarr_consolidated_format'] = 1
-
-    @staticmethod
-    def _is_meta(key):
-        return key.split('/')[-1] in [attrs_key, group_meta_key, array_meta_key]
 
     def _normalize_key(self, key):
         key = normalize_storage_path(key).lstrip('/')
@@ -988,8 +993,6 @@ class FSStore(MutableMapping):
         return key.lower() if self.normalize_keys else key
 
     def __getitem__(self, key):
-        if self.consolidated and self._is_meta(key):
-            return self.meta[key].encode()  # expect bytes out
         key = self._normalize_key(key)
         try:
             return self.map[key]
@@ -999,9 +1002,6 @@ class FSStore(MutableMapping):
     def __setitem__(self, key, value):
         if self.mode == 'r':
             err_read_only()
-        if self.consolidated and self._is_meta(key):
-            self.meta[key] = value.decode()
-            self.map[self.metadata_key] = json.dumps(self.meta).encode()
         key = self._normalize_key(key)
         path = self.dir_path(key)
         value = ensure_contiguous_ndarray(value)
@@ -1015,9 +1015,6 @@ class FSStore(MutableMapping):
     def __delitem__(self, key):
         if self.mode == 'r':
             err_read_only()
-        if self.consolidated and self._is_meta(key):
-            del self.meta[key]
-            self.map[self.metadata_key] = json.dumps(self.meta).encode()
         key = self._normalize_key(key)
         path = self.dir_path(key)
         if self.fs.isdir(path):
@@ -1026,8 +1023,6 @@ class FSStore(MutableMapping):
             del self.map[key]
 
     def __contains__(self, key):
-        if self.consolidated and self._is_meta(key):
-            return key in self.meta
         key = self._normalize_key(key)
         return key in self.map
 
@@ -1071,8 +1066,6 @@ class FSStore(MutableMapping):
     def clear(self):
         if self.mode == 'r':
             err_read_only()
-        if self.consolidated:
-            self.meta = {}
         self.map.clear()
 
 

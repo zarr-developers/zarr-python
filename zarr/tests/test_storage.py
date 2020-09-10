@@ -852,35 +852,6 @@ class TestFSStore(StoreTests, unittest.TestCase):
         assert store["foo"] == b"hello"
         assert 'foo' in os.listdir(path2)
 
-    def test_consolidated(self):
-        path = tempfile.mkdtemp()
-        store = FSStore(path, consolidated=True)
-        store[".zarray"] = b"{}"
-        assert ".zmetadata" in os.listdir(path)
-        del store[".zarray"]
-        with pytest.raises(KeyError):
-            store[".zarray"]
-        store[".zarray"] = b"{}"
-
-        os.remove(os.path.join(path, ".zarray"))
-        store2 = FSStore(path, mode='r', consolidated=True)
-        assert store != store2
-        assert ".zarray" in store2
-        assert store2[".zarray"] == b"{}"
-        with pytest.raises(PermissionError):
-            store2[".zarray"] = b"{{}}"
-        with pytest.raises(PermissionError):
-            del store2[".zarray"]
-        with pytest.raises(PermissionError):
-            store2.clear()
-        with pytest.raises(PermissionError):
-            store2.rmdir("any")
-        with pytest.raises(ValueError):
-            FSStore(os.path.join(path, ".zmetadata"))
-
-        store.clear()
-        assert ".zmetadata" not in store
-
     def test_not_fsspec(self):
         import zarr
         path = tempfile.mkdtemp()
@@ -889,6 +860,24 @@ class TestFSStore(StoreTests, unittest.TestCase):
         with pytest.raises(ValueError, match="storage_options"):
             zarr.open_group(path, mode='w', storage_options={"some": "kwargs"})
         zarr.open_array("file://" + path, mode='w', shape=(1,), dtype="f8")
+
+    def test_create(self):
+        import zarr
+        path1 = tempfile.mkdtemp()
+        path2 = tempfile.mkdtemp()
+        g = zarr.open_group("file://" + path1, mode='w',
+                            storage_options={"auto_mkdir": True})
+        a = g.create_dataset("data", shape=(8,))
+        a[:4] = [0, 1, 2, 3]
+        assert "data" in os.listdir(path1)
+        assert ".zgroup" in os.listdir(path1)
+
+        g = zarr.open_group("simplecache::file://" + path1, mode='r',
+                            storage_options={"cache_storage": path2,
+                                             "same_names": True})
+        assert g.data[:].tolist() == [0, 1, 2, 3, 0, 0, 0, 0]
+        with pytest.raises(PermissionError):
+            g.data[:] = 1
 
 
 class TestNestedDirectoryStore(TestDirectoryStore, unittest.TestCase):
