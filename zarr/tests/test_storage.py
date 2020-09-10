@@ -879,6 +879,37 @@ class TestFSStore(StoreTests, unittest.TestCase):
         with pytest.raises(PermissionError):
             g.data[:] = 1
 
+    def test_read_only(self):
+        path = tempfile.mkdtemp()
+        atexit.register(atexit_rmtree, path)
+        store = FSStore(path)
+        store['foo'] = b"bar"
+
+        store = FSStore(path, mode='r')
+
+        with pytest.raises(PermissionError):
+            store['foo'] = b"hex"
+
+        with pytest.raises(PermissionError):
+            del store['foo']
+
+        with pytest.raises(PermissionError):
+            store.clear()
+
+        with pytest.raises(PermissionError):
+            store.rmdir("anydir")
+
+        assert store['foo'] == b"bar"
+
+        filepath = os.path.join(path, "foo")
+        with pytest.raises(ValueError):
+            FSStore(filepath, mode='r')
+
+    def test_eq(self):
+        store1 = FSStore("anypath")
+        store2 = FSStore("anypath")
+        assert store1 == store2
+
 
 class TestNestedDirectoryStore(TestDirectoryStore, unittest.TestCase):
 
