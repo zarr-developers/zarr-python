@@ -910,6 +910,58 @@ class TestFSStore(StoreTests, unittest.TestCase):
         store2 = FSStore("anypath")
         assert store1 == store2
 
+    @pytest.mark.usefixtures("s3")
+    def test_s3(self):
+        import zarr
+        g = zarr.open_group("s3://test/out.zarr", mode='w',
+                            storage_options=self.s3so)
+        a = g.create_dataset("data", shape=(8,))
+        a[:4] = [0, 1, 2, 3]
+
+        g = zarr.open_group("s3://test/out.zarr", mode='r',
+                            storage_options=self.s3so)
+
+        assert g.data[:].tolist() == [0, 1, 2, 3, 0, 0, 0, 0]
+
+
+@pytest.fixture()
+def s3(request):
+    # writable local S3 system
+    import shlex
+    import subprocess
+    import time
+    if "BOTO_CONFIG" not in os.environ:  # pragma: no cover
+        os.environ["BOTO_CONFIG"] = "/dev/null"
+    if "AWS_ACCESS_KEY_ID" not in os.environ:  # pragma: no cover
+        os.environ["AWS_ACCESS_KEY_ID"] = "foo"
+    if "AWS_SECRET_ACCESS_KEY" not in os.environ:  # pragma: no cover
+        os.environ["AWS_SECRET_ACCESS_KEY"] = "bar"
+    requests = pytest.importorskip("requests")
+    s3fs = pytest.importorskip("s3fs")
+    pytest.importorskip("moto")
+
+    port = 5555
+    endpoint_uri = 'http://127.0.0.1:%s/' % port
+    proc = subprocess.Popen(shlex.split("moto_server s3 -p %s" % port))
+
+    timeout = 5
+    while timeout > 0:
+        try:
+            r = requests.get(endpoint_uri)
+            if r.ok:
+                break
+        except Exception:  # pragma: no cover
+            pass
+        timeout -= 0.1  # pragma: no cover
+        time.sleep(0.1)  # pragma: no cover
+    s3so = dict(client_kwargs={'endpoint_url': endpoint_uri})
+    s3 = s3fs.S3FileSystem(anon=False, **s3so)
+    s3.mkdir("test")
+    request.cls.s3so = s3so
+    yield
+    proc.terminate()
+    proc.wait()
+
 
 class TestNestedDirectoryStore(TestDirectoryStore, unittest.TestCase):
 
