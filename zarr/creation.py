@@ -153,12 +153,18 @@ def _kwargs_compat(compressor, fill_value, kwargs):
 
     if compressor != 'default':
         # 'compressor' overrides 'compression'
-        if 'compression' in kwargs:
-            warn("'compression' keyword argument overridden by 'compressor'")
-            del kwargs['compression']
-        if 'compression_opts' in kwargs:
-            warn("'compression_opts' keyword argument overridden by 'compressor'")
-            del kwargs['compression_opts']
+        if "compression" in kwargs:
+            warn(
+                "'compression' keyword argument overridden by 'compressor'",
+                stacklevel=3,
+            )
+            del kwargs["compression"]
+        if "compression_opts" in kwargs:
+            warn(
+                "'compression_opts' keyword argument overridden by 'compressor'",
+                stacklevel=3,
+            )
+            del kwargs["compression_opts"]
 
     elif 'compression' in kwargs:
         compression = kwargs.pop('compression')
