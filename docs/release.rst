@@ -5,6 +5,8 @@ Release notes
 Next release
 ------------
 
+* `DirectoryStore` now uses `os.scandir`, which should make listing large store
+  faster, :issue:`563`
 * Fix minor bug in `N5Store`. 
   By :user:`gsakkis`, :issue:`550`.
 
