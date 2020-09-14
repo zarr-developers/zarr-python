@@ -10,7 +10,7 @@ from zarr.errors import (err_array_not_found, err_contains_array,
 from zarr.n5 import N5Store
 from zarr.storage import (DirectoryStore, ZipStore, contains_array,
                           contains_group, default_compressor, init_array,
-                          normalize_storage_path)
+                          normalize_storage_path, FSStore)
 
 
 def create(shape, chunks=True, dtype=None, compressor='default',
@@ -127,12 +127,16 @@ def create(shape, chunks=True, dtype=None, compressor='default',
     return z
 
 
-def normalize_store_arg(store, clobber=False, default=dict):
+def normalize_store_arg(store, clobber=False, default=dict, storage_options=None):
     if store is None:
         return default()
     elif isinstance(store, str):
+        mode = 'w' if clobber else 'r'
+        if "://" in store or "::" in store:
+            return FSStore(store, mode=mode, **(storage_options or {}))
+        elif storage_options:
+            raise ValueError("storage_options passed with non-fsspec path")
         if store.endswith('.zip'):
-            mode = 'w' if clobber else 'r'
             return ZipStore(store, mode=mode)
         elif store.endswith('.n5'):
             return N5Store(store)
@@ -353,7 +357,8 @@ def array(data, **kwargs):
 def open_array(store=None, mode='a', shape=None, chunks=True, dtype=None,
                compressor='default', fill_value=0, order='C', synchronizer=None,
                filters=None, cache_metadata=True, cache_attrs=True, path=None,
-               object_codec=None, chunk_store=None, **kwargs):
+               object_codec=None, chunk_store=None, storage_options=None,
+               **kwargs):
     """Open an array using file-mode-like semantics.
 
     Parameters
@@ -399,6 +404,9 @@ def open_array(store=None, mode='a', shape=None, chunks=True, dtype=None,
         A codec to encode object arrays, only needed if dtype=object.
     chunk_store : MutableMapping or string, optional
         Store or path to directory in file system or name of zip file.
+    storage_options : dict
+        If using an fsspec URL to create the store, these will be passed to
+        the backend implementation. Ignored otherwise.
 
     Returns
     -------
@@ -435,9 +443,10 @@ def open_array(store=None, mode='a', shape=None, chunks=True, dtype=None,
 
     # handle polymorphic store arg
     clobber = mode == 'w'
-    store = normalize_store_arg(store, clobber=clobber)
+    store = normalize_store_arg(store, clobber=clobber, storage_options=storage_options)
     if chunk_store is not None:
-        chunk_store = normalize_store_arg(chunk_store, clobber=clobber)
+        chunk_store = normalize_store_arg(chunk_store, clobber=clobber,
+                                          storage_options=storage_options)
     path = normalize_storage_path(path)
 
     # API compatibility with h5py

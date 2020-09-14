@@ -937,6 +937,128 @@ def atexit_rmglob(path,
             rmtree(p)
 
 
+class FSStore(MutableMapping):
+    """Wraps an fsspec.FSMap to give access to arbitrary filesystems
+
+    Requires that ``fsspec`` is installed, as well as any additional
+    requirements for the protocol chosen.
+
+    Parameters
+    ----------
+    url : str
+        The destination to map. Should include protocol and path,
+        like "s3://bucket/root"
+    normalize_keys : bool
+    key_separator : str
+        Character to use when constructing the target path strings
+        for data keys
+    mode : str
+        "w" for writable, "r" for read-only
+    exceptions : list of Exception subclasses
+        When accessing data, any of these exceptions will be treated
+        as a missing key
+    storage_options : passed to the fsspec implementation
+    """
+
+    def __init__(self, url, normalize_keys=True, key_separator='.',
+                 mode='w',
+                 exceptions=(KeyError, PermissionError, IOError),
+                 **storage_options):
+        import fsspec
+        self.path = url
+        self.normalize_keys = normalize_keys
+        self.key_separator = key_separator
+        self.map = fsspec.get_mapper(url, **storage_options)
+        self.fs = self.map.fs  # for direct operations
+        self.mode = mode
+        self.exceptions = exceptions
+        if self.fs.exists(url) and not self.fs.isdir(url):
+            err_fspath_exists_notdir(url)
+
+    def _normalize_key(self, key):
+        key = normalize_storage_path(key).lstrip('/')
+        if key:
+            *bits, end = key.split('/')
+            key = '/'.join(bits + [end.replace('.', self.key_separator)])
+        return key.lower() if self.normalize_keys else key
+
+    def __getitem__(self, key):
+        key = self._normalize_key(key)
+        try:
+            return self.map[key]
+        except self.exceptions as e:
+            raise KeyError(key) from e
+
+    def __setitem__(self, key, value):
+        if self.mode == 'r':
+            err_read_only()
+        key = self._normalize_key(key)
+        path = self.dir_path(key)
+        value = ensure_contiguous_ndarray(value)
+        try:
+            if self.fs.isdir(path):
+                self.fs.rm(path, recursive=True)
+            self.map[key] = value
+        except self.exceptions as e:
+            raise KeyError(key) from e
+
+    def __delitem__(self, key):
+        if self.mode == 'r':
+            err_read_only()
+        key = self._normalize_key(key)
+        path = self.dir_path(key)
+        if self.fs.isdir(path):
+            self.fs.rm(path, recursive=True)
+        else:
+            del self.map[key]
+
+    def __contains__(self, key):
+        key = self._normalize_key(key)
+        return key in self.map
+
+    def __eq__(self, other):
+        return (type(self) == type(other) and self.map == other.map
+                and self.mode == other.mode)
+
+    def keys(self):
+        return iter(self.map)
+
+    def __iter__(self):
+        return self.keys()
+
+    def __len__(self):
+        return len(list(self.keys()))
+
+    def dir_path(self, path=None):
+        store_path = normalize_storage_path(path)
+        return self.map._key_to_str(store_path)
+
+    def listdir(self, path=None):
+        dir_path = self.dir_path(path)
+        try:
+            out = sorted(p.rstrip('/').rsplit('/', 1)[-1]
+                         for p in self.fs.ls(dir_path, detail=False))
+            return out
+        except IOError:
+            return []
+
+    def rmdir(self, path=None):
+        if self.mode == 'r':
+            err_read_only()
+        store_path = self.dir_path(path)
+        if self.fs.isdir(store_path):
+            self.fs.rm(store_path, recursive=True)
+
+    def getsize(self, path=None):
+        store_path = self.dir_path(path)
+        return self.fs.du(store_path, True, True)
+
+    def clear(self):
+        if self.mode == 'r':
+            err_read_only()
+        self.map.clear()
+
+
 class TempStore(DirectoryStore):
     """Directory store using a temporary directory for storage.
 

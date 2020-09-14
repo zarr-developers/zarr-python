@@ -29,7 +29,8 @@ from zarr.storage import (ABSStore, ConsolidatedMetadataStore, DBMStore,
                           array_meta_key, atexit_rmglob, atexit_rmtree,
                           attrs_key, default_compressor, getsize,
                           group_meta_key, init_array, init_group, migrate_1to2)
-from zarr.tests.util import CountingDict, skip_test_env_var
+from zarr.storage import FSStore
+from zarr.tests.util import CountingDict, have_fsspec, skip_test_env_var
 
 
 @contextmanager
@@ -827,6 +828,141 @@ class TestDirectoryStore(StoreTests, unittest.TestCase):
         assert 'foo' in store
 
 
+@pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
+class TestFSStore(StoreTests, unittest.TestCase):
+
+    def create_store(self, normalize_keys=False):
+        path = tempfile.mkdtemp()
+        atexit.register(atexit_rmtree, path)
+        store = FSStore(path, normalize_keys=normalize_keys)
+        return store
+
+    def test_complex(self):
+        path1 = tempfile.mkdtemp()
+        path2 = tempfile.mkdtemp()
+        store = FSStore("simplecache::file://" + path1,
+                        simplecache={"same_names": True, "cache_storage": path2})
+        assert not store
+        assert not os.listdir(path1)
+        assert not os.listdir(path2)
+        store['foo'] = b"hello"
+        assert 'foo' in os.listdir(path1)
+        assert 'foo' in store
+        assert not os.listdir(path2)
+        assert store["foo"] == b"hello"
+        assert 'foo' in os.listdir(path2)
+
+    def test_not_fsspec(self):
+        import zarr
+        path = tempfile.mkdtemp()
+        with pytest.raises(ValueError, match="storage_options"):
+            zarr.open_array(path, mode='w', storage_options={"some": "kwargs"})
+        with pytest.raises(ValueError, match="storage_options"):
+            zarr.open_group(path, mode='w', storage_options={"some": "kwargs"})
+        zarr.open_array("file://" + path, mode='w', shape=(1,), dtype="f8")
+
+    def test_create(self):
+        import zarr
+        path1 = tempfile.mkdtemp()
+        path2 = tempfile.mkdtemp()
+        g = zarr.open_group("file://" + path1, mode='w',
+                            storage_options={"auto_mkdir": True})
+        a = g.create_dataset("data", shape=(8,))
+        a[:4] = [0, 1, 2, 3]
+        assert "data" in os.listdir(path1)
+        assert ".zgroup" in os.listdir(path1)
+
+        g = zarr.open_group("simplecache::file://" + path1, mode='r',
+                            storage_options={"cache_storage": path2,
+                                             "same_names": True})
+        assert g.data[:].tolist() == [0, 1, 2, 3, 0, 0, 0, 0]
+        with pytest.raises(PermissionError):
+            g.data[:] = 1
+
+    def test_read_only(self):
+        path = tempfile.mkdtemp()
+        atexit.register(atexit_rmtree, path)
+        store = FSStore(path)
+        store['foo'] = b"bar"
+
+        store = FSStore(path, mode='r')
+
+        with pytest.raises(PermissionError):
+            store['foo'] = b"hex"
+
+        with pytest.raises(PermissionError):
+            del store['foo']
+
+        with pytest.raises(PermissionError):
+            store.clear()
+
+        with pytest.raises(PermissionError):
+            store.rmdir("anydir")
+
+        assert store['foo'] == b"bar"
+
+        filepath = os.path.join(path, "foo")
+        with pytest.raises(ValueError):
+            FSStore(filepath, mode='r')
+
+    def test_eq(self):
+        store1 = FSStore("anypath")
+        store2 = FSStore("anypath")
+        assert store1 == store2
+
+    @pytest.mark.usefixtures("s3")
+    def test_s3(self):
+        import zarr
+        g = zarr.open_group("s3://test/out.zarr", mode='w',
+                            storage_options=self.s3so)
+        a = g.create_dataset("data", shape=(8,))
+        a[:4] = [0, 1, 2, 3]
+
+        g = zarr.open_group("s3://test/out.zarr", mode='r',
+                            storage_options=self.s3so)
+
+        assert g.data[:].tolist() == [0, 1, 2, 3, 0, 0, 0, 0]
+
+
+@pytest.fixture()
+def s3(request):
+    # writable local S3 system
+    import shlex
+    import subprocess
+    import time
+    if "BOTO_CONFIG" not in os.environ:  # pragma: no cover
+        os.environ["BOTO_CONFIG"] = "/dev/null"
+    if "AWS_ACCESS_KEY_ID" not in os.environ:  # pragma: no cover
+        os.environ["AWS_ACCESS_KEY_ID"] = "foo"
+    if "AWS_SECRET_ACCESS_KEY" not in os.environ:  # pragma: no cover
+        os.environ["AWS_SECRET_ACCESS_KEY"] = "bar"
+    requests = pytest.importorskip("requests")
+    s3fs = pytest.importorskip("s3fs")
+    pytest.importorskip("moto")
+
+    port = 5555
+    endpoint_uri = 'http://127.0.0.1:%s/' % port
+    proc = subprocess.Popen(shlex.split("moto_server s3 -p %s" % port))
+
+    timeout = 5
+    while timeout > 0:
+        try:
+            r = requests.get(endpoint_uri)
+            if r.ok:
+                break
+        except Exception:  # pragma: no cover
+            pass
+        timeout -= 0.1  # pragma: no cover
+        time.sleep(0.1)  # pragma: no cover
+    s3so = dict(client_kwargs={'endpoint_url': endpoint_uri})
+    s3 = s3fs.S3FileSystem(anon=False, **s3so)
+    s3.mkdir("test")
+    request.cls.s3so = s3so
+    yield
+    proc.terminate()
+    proc.wait()
+
+
 class TestNestedDirectoryStore(TestDirectoryStore, unittest.TestCase):
 
     def create_store(self, normalize_keys=False):
@@ -959,6 +1095,17 @@ class TestN5Store(TestNestedDirectoryStore, unittest.TestCase):
             store = self.create_store()
             with error:
                 init_array(store, shape=1000, chunks=100, filters=filters)
+
+
+@pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
+class TestNestedFSStore(TestNestedDirectoryStore):
+
+    def create_store(self, normalize_keys=False):
+        path = tempfile.mkdtemp()
+        atexit.register(atexit_rmtree, path)
+        store = FSStore(path, normalize_keys=normalize_keys,
+                        key_separator='/', auto_mkdir=True)
+        return store
 
 
 class TestTempStore(StoreTests, unittest.TestCase):

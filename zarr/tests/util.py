@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
 import collections
+from distutils.version import LooseVersion
 from collections.abc import MutableMapping
 import os
+import sys
 
 import pytest
 
@@ -46,3 +48,13 @@ def skip_test_env_var(name):
     """
     value = os.environ.get(name, '0')
     return pytest.mark.skipif(value == '0', reason='Tests not enabled via environment variable')
+
+
+try:
+    if LooseVersion(sys.version) >= LooseVersion("3.6"):
+        import fsspec  # noqa: F401
+        have_fsspec = True
+    else:  # pragma: no cover
+        have_fsspec = False
+except ImportError:  # pragma: no cover
+    have_fsspec = False

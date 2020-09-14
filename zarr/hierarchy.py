@@ -1032,8 +1032,9 @@ class Group(MutableMapping):
         self._write_op(self._move_nosync, source, dest)
 
 
-def _normalize_store_arg(store, clobber=False):
-    return normalize_store_arg(store, clobber=clobber, default=MemoryStore)
+def _normalize_store_arg(store, clobber=False, storage_options=None):
+    return normalize_store_arg(store, clobber=clobber, default=MemoryStore,
+                               storage_options=storage_options)
 
 
 def group(store=None, overwrite=False, chunk_store=None,
@@ -1095,7 +1096,7 @@ def group(store=None, overwrite=False, chunk_store=None,
 
 
 def open_group(store=None, mode='a', cache_attrs=True, synchronizer=None, path=None,
-               chunk_store=None):
+               chunk_store=None, storage_options=None):
     """Open a group using file-mode-like semantics.
 
     Parameters
@@ -1117,6 +1118,9 @@ def open_group(store=None, mode='a', cache_attrs=True, synchronizer=None, path=N
         Group path within store.
     chunk_store : MutableMapping or string, optional
         Store or path to directory in file system or name of zip file.
+    storage_options : dict
+        If using an fsspec URL to create the store, these will be passed to
+        the backend implementation. Ignored otherwise.
 
     Returns
     -------
@@ -1139,9 +1143,11 @@ def open_group(store=None, mode='a', cache_attrs=True, synchronizer=None, path=N
     """
 
     # handle polymorphic store arg
-    store = _normalize_store_arg(store)
+    clobber = mode != 'r'
+    store = _normalize_store_arg(store, clobber=clobber, storage_options=storage_options)
     if chunk_store is not None:
-        chunk_store = _normalize_store_arg(chunk_store)
+        chunk_store = _normalize_store_arg(chunk_store, clobber=clobber,
+                                           storage_options=storage_options)
     path = normalize_storage_path(path)
 
     # ensure store is initialized
