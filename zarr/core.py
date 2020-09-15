@@ -1549,6 +1549,51 @@ class Array(object):
             # put data
             self._chunk_setitem(chunk_coords, chunk_selection, chunk_value, fields=fields)
 
+    def _process_chunk(self, out, cdata, chunk_selection, drop_axes,
+                       out_is_ndarray):
+        if (out_is_ndarray and
+                not fields and
+                is_contiguous_selection(out_selection) and
+                is_total_slice(chunk_selection, self._chunks) and
+                not self._filters and
+                self._dtype != object):
+
+            dest = out[out_selection]
+            write_direct = (
+                dest.flags.writeable and
+                (
+                    (self._order == 'C' and dest.flags.c_contiguous) or
+                    (self._order == 'F' and dest.flags.f_contiguous)
+                )
+            )
+
+            if write_direct:
+
+                # optimization: we want the whole chunk, and the destination is
+                # contiguous, so we can decompress directly from the chunk
+                # into the destination array
+
+                if self._compressor:
+                    self._compressor.decode(cdata, dest)
+                else:
+                    chunk = ensure_ndarray(cdata).view(self._dtype)
+                    chunk = chunk.reshape(self._chunks, order=self._order)
+                    np.copyto(dest, chunk)
+                return
+
+        # decode chunk
+        chunk = self._decode_chunk(cdata)
+
+        # select data from chunk
+        if fields:
+            chunk = chunk[fields]
+        tmp = chunk[chunk_selection]
+        if drop_axes:
+            tmp = np.squeeze(tmp, axis=drop_axes)
+
+        # store selected data in output
+        out[out_selection] = tmp
+
     def _chunk_getitem(self, chunk_coords, chunk_selection, out, out_selection,
                        drop_axes=None, fields=None):
         """Obtain part or whole of a chunk.
@@ -1572,12 +1617,6 @@ class Array(object):
 
         assert len(chunk_coords) == len(self._cdata_shape)
 
-        out_is_ndarray = True
-        try:
-            out = ensure_ndarray(out)
-        except TypeError:
-            out_is_ndarray = False
-
         # obtain key for chunk
         ckey = self._chunk_key(chunk_coords)
 
@@ -1595,48 +1634,31 @@ class Array(object):
                 out[out_selection] = fill_value
 
         else:
+            self._process_chunk(out, cdata, chunk_selection, drop_axes,
+                                out_is_ndarray)
 
-            if (out_is_ndarray and
-                    not fields and
-                    is_contiguous_selection(out_selection) and
-                    is_total_slice(chunk_selection, self._chunks) and
-                    not self._filters and
-                    self._dtype != object):
+    def _chunk_getitems(self, lchunk_coords, lchunk_selection, out, lout_selection,
+                        drop_axes=None, fields=None):
+        out_is_ndarray = True
+        try:
+            out = ensure_ndarray(out)
+        except TypeError:
+            out_is_ndarray = False
 
-                dest = out[out_selection]
-                write_direct = (
-                    dest.flags.writeable and (
-                        (self._order == 'C' and dest.flags.c_contiguous) or
-                        (self._order == 'F' and dest.flags.f_contiguous)
-                    )
-                )
-
-                if write_direct:
-
-                    # optimization: we want the whole chunk, and the destination is
-                    # contiguous, so we can decompress directly from the chunk
-                    # into the destination array
-
-                    if self._compressor:
-                        self._compressor.decode(cdata, dest)
+        ckeys = [self._chunk_key(ch) for ch in lchunk_coords]
+        cdatas = self.chunk_store.getitems(ckeys)
+        for ckey, chunk_select, out_select in zip(ckeys, lchunk_selection, lout_selection):
+            if ckey in cdatas:
+                self._process_chunk(out, cdatas[ckey], chunk_select, drop_axes,
+                                    out_is_ndarray)
+            else:
+                # check exception type
+                if self._fill_value is not None:
+                    if fields:
+                        fill_value = self._fill_value[fields]
                     else:
-                        chunk = ensure_ndarray(cdata).view(self._dtype)
-                        chunk = chunk.reshape(self._chunks, order=self._order)
-                        np.copyto(dest, chunk)
-                    return
-
-            # decode chunk
-            chunk = self._decode_chunk(cdata)
-
-            # select data from chunk
-            if fields:
-                chunk = chunk[fields]
-            tmp = chunk[chunk_selection]
-            if drop_axes:
-                tmp = np.squeeze(tmp, axis=drop_axes)
-
-            # store selected data in output
-            out[out_selection] = tmp
+                        fill_value = self._fill_value
+                    out[out_select] = fill_value
 
     def _chunk_setitem(self, chunk_coords, chunk_selection, value, fields=None):
         """Replace part or whole of a chunk.
