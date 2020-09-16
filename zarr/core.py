@@ -1021,11 +1021,16 @@ class Array(object):
             check_array_shape('out', out, out_shape)
 
         # iterate over chunks
-        for chunk_coords, chunk_selection, out_selection in indexer:
+        if not hasattr(self.store, "getitems"):
+            for chunk_coords, chunk_selection, out_selection in indexer:
 
-            # load chunk selection into output array
-            self._chunk_getitem(chunk_coords, chunk_selection, out, out_selection,
-                                drop_axes=indexer.drop_axes, fields=fields)
+                # load chunk selection into output array
+                self._chunk_getitem(chunk_coords, chunk_selection, out, out_selection,
+                                    drop_axes=indexer.drop_axes, fields=fields)
+        else:
+            lchunk_coords, lchunk_selection, lout_selection = zip(*indexer)
+            self._chunk_getitems(lchunk_coords, lchunk_selection, out, lout_selection,
+                                 drop_axes=indexer.drop_axes, fields=fields)
 
         if out.shape:
             return out
@@ -1550,7 +1555,7 @@ class Array(object):
             self._chunk_setitem(chunk_coords, chunk_selection, chunk_value, fields=fields)
 
     def _process_chunk(self, out, cdata, chunk_selection, drop_axes,
-                       out_is_ndarray):
+                       out_is_ndarray, fields, out_selection):
         if (out_is_ndarray and
                 not fields and
                 is_contiguous_selection(out_selection) and
@@ -1614,6 +1619,11 @@ class Array(object):
             TODO
 
         """
+        out_is_ndarray = True
+        try:
+            out = ensure_ndarray(out)
+        except TypeError:
+            out_is_ndarray = False
 
         assert len(chunk_coords) == len(self._cdata_shape)
 
@@ -1635,7 +1645,7 @@ class Array(object):
 
         else:
             self._process_chunk(out, cdata, chunk_selection, drop_axes,
-                                out_is_ndarray)
+                                out_is_ndarray, fields, out_selection)
 
     def _chunk_getitems(self, lchunk_coords, lchunk_selection, out, lout_selection,
                         drop_axes=None, fields=None):
@@ -1650,7 +1660,7 @@ class Array(object):
         for ckey, chunk_select, out_select in zip(ckeys, lchunk_selection, lout_selection):
             if ckey in cdatas:
                 self._process_chunk(out, cdatas[ckey], chunk_select, drop_axes,
-                                    out_is_ndarray)
+                                    out_is_ndarray, fields, out_select)
             else:
                 # check exception type
                 if self._fill_value is not None:
