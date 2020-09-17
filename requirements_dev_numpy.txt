@@ -2,6 +2,3 @@
 # different versions of numpy. This file should pin to the latest
 # numpy version.
 numpy==1.19.2; python_version >= '3.6'
-numpy==1.17.2; python_version < '3.6'
-# don't let pyup change this, needed until we drop support for py27
-numpy==1.16.4; python_version < '3.0' # pyup: ignore
