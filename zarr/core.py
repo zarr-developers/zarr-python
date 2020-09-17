@@ -1022,12 +1022,14 @@ class Array(object):
 
         # iterate over chunks
         if not hasattr(self.store, "getitems"):
+            # sequentially get one key at a time from storage
             for chunk_coords, chunk_selection, out_selection in indexer:
 
                 # load chunk selection into output array
                 self._chunk_getitem(chunk_coords, chunk_selection, out, out_selection,
                                     drop_axes=indexer.drop_axes, fields=fields)
         else:
+            # allow storage to get multiple items at once
             lchunk_coords, lchunk_selection, lout_selection = zip(*indexer)
             self._chunk_getitems(lchunk_coords, lchunk_selection, out, lout_selection,
                                  drop_axes=indexer.drop_axes, fields=fields)
@@ -1556,6 +1558,7 @@ class Array(object):
 
     def _process_chunk(self, out, cdata, chunk_selection, drop_axes,
                        out_is_ndarray, fields, out_selection):
+        """Take binary data from storage and fill output array"""
         if (out_is_ndarray and
                 not fields and
                 is_contiguous_selection(out_selection) and
@@ -1649,6 +1652,11 @@ class Array(object):
 
     def _chunk_getitems(self, lchunk_coords, lchunk_selection, out, lout_selection,
                         drop_axes=None, fields=None):
+        """As _chunk_getitem, but for lists of chunks
+
+        This gets called where the storage supports ``getitems``, so that
+        it can decide how to fetch the keys, allowing concurrency.
+        """
         out_is_ndarray = True
         try:
             out = ensure_ndarray(out)
