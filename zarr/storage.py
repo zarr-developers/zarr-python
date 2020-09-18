@@ -743,7 +743,7 @@ class DirectoryStore(MutableMapping):
 
         Parameters
         ----------
-        fn: str
+        fn : str
             Filepath to open and read from.
 
         Notes
@@ -759,10 +759,9 @@ class DirectoryStore(MutableMapping):
 
         Parameters
         ----------
-        a: array-like
+        a : array-like
             Data to write into the file.
-
-        fn: str
+        fn : str
             Filepath to open and write to.
 
         Notes
