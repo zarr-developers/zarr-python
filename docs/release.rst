@@ -17,6 +17,10 @@ Next release
 * Explicitly close stores during testing.
   By :user:`Elliott Sales de Andrade <QuLogic>`; :issue:`442`
 
+* Many of the convenience functions to emit errors (``err_*`` from
+  ``zarr.errors``  have been replaced by ``ValueError`` subclasses. The
+  functions are deprecated and will be removed in the future. :issue:`590` )
+
 * Improve consistency of terminology regarding arrays and datasets in the 
   documentation.
   By :user:`Josh Moore <joshmoore>`; :issue:`571`.

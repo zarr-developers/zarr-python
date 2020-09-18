@@ -38,9 +38,14 @@ import time
 from numcodecs.compat import ensure_bytes, ensure_contiguous_ndarray
 from numcodecs.registry import codec_registry
 
-from zarr.errors import (MetadataError, err_bad_compressor, err_contains_array,
-                         err_contains_group, err_fspath_exists_notdir,
-                         err_read_only)
+from zarr.errors import (
+    MetadataError,
+    err_bad_compressor,
+    ContainsArrayError,
+    ContainsGroupError,
+    FSPathExistNotDir,
+    ReadOnlyError,
+)
 from zarr.meta import encode_array_metadata, encode_group_metadata
 from zarr.util import (buffer_size, json_loads, nolock, normalize_chunks,
                        normalize_dtype, normalize_fill_value, normalize_order,
@@ -335,9 +340,9 @@ def _init_array_metadata(store, shape, chunks=None, dtype=None, compressor='defa
         if chunk_store is not None:
             rmdir(chunk_store, path)
     elif contains_array(store, path):
-        err_contains_array(path)
+        raise ContainsArrayError(path)
     elif contains_group(store, path):
-        err_contains_group(path)
+        raise ContainsGroupError(path)
 
     # normalize metadata
     dtype, object_codec = normalize_dtype(dtype, object_codec)
@@ -442,9 +447,9 @@ def _init_group_metadata(store, overwrite=False, path=None, chunk_store=None):
         if chunk_store is not None:
             rmdir(chunk_store, path)
     elif contains_array(store, path):
-        err_contains_array(path)
+        raise ContainsArrayError(path)
     elif contains_group(store, path):
-        err_contains_group(path)
+        raise ContainsGroupError(path)
 
     # initialize metadata
     # N.B., currently no metadata properties are needed, however there may
@@ -730,7 +735,7 @@ class DirectoryStore(MutableMapping):
         # guard conditions
         path = os.path.abspath(path)
         if os.path.exists(path) and not os.path.isdir(path):
-            err_fspath_exists_notdir(path)
+            raise FSPathExistNotDir(path)
 
         self.path = path
         self.normalize_keys = normalize_keys
@@ -984,7 +989,7 @@ class FSStore(MutableMapping):
         self.mode = mode
         self.exceptions = exceptions
         if self.fs.exists(url) and not self.fs.isdir(url):
-            err_fspath_exists_notdir(url)
+            raise FSPathExistNotDir(url)
 
     def _normalize_key(self, key):
         key = normalize_storage_path(key).lstrip('/')
@@ -1002,7 +1007,7 @@ class FSStore(MutableMapping):
 
     def __setitem__(self, key, value):
         if self.mode == 'r':
-            err_read_only()
+            raise ReadOnlyError()
         key = self._normalize_key(key)
         path = self.dir_path(key)
         value = ensure_contiguous_ndarray(value)
@@ -1015,7 +1020,7 @@ class FSStore(MutableMapping):
 
     def __delitem__(self, key):
         if self.mode == 'r':
-            err_read_only()
+            raise ReadOnlyError()
         key = self._normalize_key(key)
         path = self.dir_path(key)
         if self.fs.isdir(path):
@@ -1055,7 +1060,7 @@ class FSStore(MutableMapping):
 
     def rmdir(self, path=None):
         if self.mode == 'r':
-            err_read_only()
+            raise ReadOnlyError()
         store_path = self.dir_path(path)
         if self.fs.isdir(store_path):
             self.fs.rm(store_path, recursive=True)
@@ -1066,7 +1071,7 @@ class FSStore(MutableMapping):
 
     def clear(self):
         if self.mode == 'r':
-            err_read_only()
+            raise ReadOnlyError()
         self.map.clear()
 
 
@@ -1376,7 +1381,7 @@ class ZipStore(MutableMapping):
 
     def __setitem__(self, key, value):
         if self.mode == 'r':
-            err_read_only()
+            raise ReadOnlyError()
         value = ensure_contiguous_ndarray(value)
         with self.mutex:
             # writestr(key, value) writes with default permissions from
@@ -1460,7 +1465,7 @@ class ZipStore(MutableMapping):
 
     def clear(self):
         if self.mode == 'r':
-            err_read_only()
+            raise ReadOnlyError()
         with self.mutex:
             self.close()
             os.remove(self.path)
@@ -2646,10 +2651,10 @@ class ConsolidatedMetadataStore(MutableMapping):
         return len(self.meta_store)
 
     def __delitem__(self, key):
-        err_read_only()
+        raise ReadOnlyError()
 
     def __setitem__(self, key, value):
-        err_read_only()
+        raise ReadOnlyError()
 
     def getsize(self, path):
         return getsize(self.meta_store, path)
