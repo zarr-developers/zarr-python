@@ -1660,7 +1660,7 @@ class Array(object):
         out_is_ndarray = True
         try:
             out = ensure_ndarray(out)
-        except TypeError:
+        except TypeError:  # pragma: no cover
             out_is_ndarray = False
 
         ckeys = [self._chunk_key(ch) for ch in lchunk_coords]

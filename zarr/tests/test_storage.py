@@ -931,12 +931,12 @@ class TestFSStore(StoreTests, unittest.TestCase):
         expected = np.empty((8, 8, 8), dtype='int64')
         expected[:] = -1
         a = g.create_dataset("data", shape=(8, 8, 8),
-                             fill_value=-1)
+                             fill_value=-1, chunks=(1, 1, 1))
         expected[0] = 0
         expected[3] = 3
         a[:4] = expected[:4]
 
-        a = g.create_dataset("data_f", shape=(8, ),
+        a = g.create_dataset("data_f", shape=(8, ), chunks=(1,),
                              dtype=[('foo', 'S3'), ('bar', 'i4')])
         a['foo'] = b"aaa"
         g = zarr.open_group("s3://test/out.zarr", mode='r',
