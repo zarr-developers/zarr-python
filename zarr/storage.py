@@ -660,8 +660,8 @@ class MemoryStore(MutableMapping):
 class DictStore(MemoryStore):
 
     def __init__(self, *args, **kwargs):
-        warnings.warn("DictStore has been renamed to MemoryStore and will be "
-                      "removed in the future. Please use MemoryStore.",
+        warnings.warn("DictStore has been renamed to MemoryStore in 2.4.0 and "
+                      "will be removed in the future. Please use MemoryStore.",
                       DeprecationWarning,
                       stacklevel=2)
         super(DictStore, self).__init__(*args, **kwargs)

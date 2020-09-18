@@ -764,12 +764,17 @@ class TestMemoryStore(StoreTests, unittest.TestCase):
 class TestDictStore(StoreTests, unittest.TestCase):
 
     def create_store(self):
-        return DictStore()
+        with pytest.warns(DeprecationWarning):
+            return DictStore()
 
     def test_deprecated(self):
-        with pytest.warns(DeprecationWarning):
-            store = self.create_store()
+        store = self.create_store()
         assert isinstance(store, MemoryStore)
+
+    def test_pickle(self):
+        with pytest.warns(DeprecationWarning):
+            # pickle.load() will also trigger deprecation warning
+            super().test_pickle()
 
 
 class TestDirectoryStore(StoreTests, unittest.TestCase):
