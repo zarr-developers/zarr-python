@@ -32,6 +32,7 @@ from collections.abc import MutableMapping
 from os import scandir, replace
 from pickle import PicklingError
 from threading import Lock, RLock
+from typing import Optional, Union, List, Tuple, Dict
 import uuid
 import time
 
@@ -71,7 +72,10 @@ except ImportError:  # pragma: no cover
     default_compressor = Zlib()
 
 
-def _path_to_prefix(path):
+Path = Union[str, bytes, None]
+
+
+def _path_to_prefix(path: Optional[str]) -> str:
     # assume path already normalized
     if path:
         prefix = path + '/'
@@ -80,7 +84,7 @@ def _path_to_prefix(path):
     return prefix
 
 
-def contains_array(store, path=None):
+def contains_array(store: MutableMapping, path: Path = None) -> bool:
     """Return True if the store contains an array at the given logical path."""
     path = normalize_storage_path(path)
     prefix = _path_to_prefix(path)
@@ -88,7 +92,7 @@ def contains_array(store, path=None):
     return key in store
 
 
-def contains_group(store, path=None):
+def contains_group(store: MutableMapping, path: Path = None) -> bool:
     """Return True if the store contains a group at the given logical path."""
     path = normalize_storage_path(path)
     prefix = _path_to_prefix(path)
@@ -96,7 +100,7 @@ def contains_group(store, path=None):
     return key in store
 
 
-def _rmdir_from_keys(store, path=None):
+def _rmdir_from_keys(store: MutableMapping, path: Optional[str] = None) -> None:
     # assume path already normalized
     prefix = _path_to_prefix(path)
     for key in list(store.keys()):
@@ -104,7 +108,7 @@ def _rmdir_from_keys(store, path=None):
             del store[key]
 
 
-def rmdir(store, path=None):
+def rmdir(store, path: Path = None):
     """Remove all items under the given path. If `store` provides a `rmdir` method,
     this will be called, otherwise will fall back to implementation via the
     `MutableMapping` interface."""
@@ -117,7 +121,7 @@ def rmdir(store, path=None):
         _rmdir_from_keys(store, path)
 
 
-def _rename_from_keys(store, src_path, dst_path):
+def _rename_from_keys(store: MutableMapping, src_path: str, dst_path: str) -> None:
     # assume path already normalized
     src_prefix = _path_to_prefix(src_path)
     dst_prefix = _path_to_prefix(dst_path)
@@ -127,7 +131,7 @@ def _rename_from_keys(store, src_path, dst_path):
             store[new_key] = store.pop(key)
 
 
-def rename(store, src_path, dst_path):
+def rename(store, src_path: Path, dst_path: Path):
     """Rename all items under the given path. If `store` provides a `rename` method,
     this will be called, otherwise will fall back to implementation via the
     `MutableMapping` interface."""
@@ -141,7 +145,7 @@ def rename(store, src_path, dst_path):
         _rename_from_keys(store, src_path, dst_path)
 
 
-def _listdir_from_keys(store, path=None):
+def _listdir_from_keys(store: MutableMapping, path: Optional[str] = None) -> List[str]:
     # assume path already normalized
     prefix = _path_to_prefix(path)
     children = set()
@@ -153,7 +157,7 @@ def _listdir_from_keys(store, path=None):
     return sorted(children)
 
 
-def listdir(store, path=None):
+def listdir(store, path: Path = None):
     """Obtain a directory listing for the given path. If `store` provides a `listdir`
     method, this will be called, otherwise will fall back to implementation via the
     `MutableMapping` interface."""
@@ -166,7 +170,7 @@ def listdir(store, path=None):
         return _listdir_from_keys(store, path)
 
 
-def getsize(store, path=None):
+def getsize(store, path: Path = None) -> int:
     """Compute size of stored items for a given path. If `store` provides a `getsize`
     method, this will be called, otherwise will return -1."""
     path = normalize_storage_path(path)
@@ -197,7 +201,12 @@ def getsize(store, path=None):
         return -1
 
 
-def _require_parent_group(path, store, chunk_store, overwrite):
+def _require_parent_group(
+    path: Optional[str],
+    store: MutableMapping,
+    chunk_store: Optional[MutableMapping],
+    overwrite: bool,
+):
     # assume path is normalized
     if path:
         segments = path.split('/')
@@ -210,9 +219,20 @@ def _require_parent_group(path, store, chunk_store, overwrite):
                 _init_group_metadata(store, path=p, chunk_store=chunk_store)
 
 
-def init_array(store, shape, chunks=True, dtype=None, compressor='default',
-               fill_value=None, order='C', overwrite=False, path=None,
-               chunk_store=None, filters=None, object_codec=None):
+def init_array(
+    store: MutableMapping,
+    shape: Tuple[int, ...],
+    chunks: Union[bool, int, Tuple[int, ...]] = True,
+    dtype=None,
+    compressor="default",
+    fill_value=None,
+    order: str = "C",
+    overwrite: bool = False,
+    path: Path = None,
+    chunk_store: MutableMapping = None,
+    filters=None,
+    object_codec=None,
+):
     """Initialize an array store with the given configuration. Note that this is a low-level
     function and there should be no need to call this directly from user code.
 
@@ -222,7 +242,7 @@ def init_array(store, shape, chunks=True, dtype=None, compressor='default',
         A mapping that supports string keys and bytes-like values.
     shape : int or tuple of ints
         Array shape.
-    chunks : int or tuple of ints, optional
+    chunks : bool, int or tuple of ints, optional
         Chunk shape. If True, will be guessed from `shape` and `dtype`. If
         False, will be set to `shape`, i.e., single chunk for the whole array.
     dtype : string or dtype, optional
@@ -235,7 +255,7 @@ def init_array(store, shape, chunks=True, dtype=None, compressor='default',
         Memory layout to be used within each chunk.
     overwrite : bool, optional
         If True, erase all data in `store` prior to initialisation.
-    path : string, optional
+    path : string, bytes, optional
         Path under which array is stored.
     chunk_store : MutableMapping, optional
         Separate storage for chunks. If not provided, `store` will be used
@@ -329,9 +349,20 @@ def init_array(store, shape, chunks=True, dtype=None, compressor='default',
                          object_codec=object_codec)
 
 
-def _init_array_metadata(store, shape, chunks=None, dtype=None, compressor='default',
-                         fill_value=None, order='C', overwrite=False, path=None,
-                         chunk_store=None, filters=None, object_codec=None):
+def _init_array_metadata(
+    store,
+    shape,
+    chunks=None,
+    dtype=None,
+    compressor="default",
+    fill_value=None,
+    order="C",
+    overwrite=False,
+    path: Optional[str] = None,
+    chunk_store=None,
+    filters=None,
+    object_codec=None,
+):
 
     # guard conditions
     if overwrite:
@@ -394,7 +425,7 @@ def _init_array_metadata(store, shape, chunks=None, dtype=None, compressor='defa
 
     # use null to indicate no filters
     if not filters_config:
-        filters_config = None
+        filters_config = None  # type: ignore
 
     # initialize metadata
     meta = dict(shape=shape, chunks=chunks, dtype=dtype,
@@ -408,7 +439,12 @@ def _init_array_metadata(store, shape, chunks=None, dtype=None, compressor='defa
 init_store = init_array
 
 
-def init_group(store, overwrite=False, path=None, chunk_store=None):
+def init_group(
+    store: MutableMapping,
+    overwrite: bool = False,
+    path: Path = None,
+    chunk_store: MutableMapping = None,
+):
     """Initialize a group store. Note that this is a low-level function and there should be no
     need to call this directly from user code.
 
@@ -438,7 +474,12 @@ def init_group(store, overwrite=False, path=None, chunk_store=None):
                          chunk_store=chunk_store)
 
 
-def _init_group_metadata(store, overwrite=False, path=None, chunk_store=None):
+def _init_group_metadata(
+    store: MutableMapping,
+    overwrite: Optional[bool] = False,
+    path: Optional[str] = None,
+    chunk_store: MutableMapping = None,
+):
 
     # guard conditions
     if overwrite:
@@ -454,12 +495,12 @@ def _init_group_metadata(store, overwrite=False, path=None, chunk_store=None):
     # initialize metadata
     # N.B., currently no metadata properties are needed, however there may
     # be in future
-    meta = dict()
+    meta = dict()  # type: ignore
     key = _path_to_prefix(path) + group_meta_key
     store[key] = encode_group_metadata(meta)
 
 
-def _dict_store_keys(d, prefix='', cls=dict):
+def _dict_store_keys(d: Dict, prefix="", cls=dict):
     for k in d.keys():
         v = d[k]
         if isinstance(v, cls):
@@ -510,7 +551,7 @@ class MemoryStore(MutableMapping):
         root, cls = state
         self.__init__(root=root, cls=cls)
 
-    def _get_parent(self, item):
+    def _get_parent(self, item: str):
         parent = self.root
         # split the item
         segments = item.split('/')
@@ -537,7 +578,7 @@ class MemoryStore(MutableMapping):
                     raise KeyError(item)
         return parent, segments[-1]
 
-    def __getitem__(self, item):
+    def __getitem__(self, item: str):
         parent, key = self._get_parent(item)
         try:
             value = parent[key]
@@ -549,13 +590,13 @@ class MemoryStore(MutableMapping):
             else:
                 return value
 
-    def __setitem__(self, item, value):
+    def __setitem__(self, item: str, value):
         with self.write_mutex:
             parent, key = self._require_parent(item)
             value = ensure_bytes(value)
             parent[key] = value
 
-    def __delitem__(self, item):
+    def __delitem__(self, item: str):
         with self.write_mutex:
             parent, key = self._get_parent(item)
             try:
@@ -563,7 +604,7 @@ class MemoryStore(MutableMapping):
             except KeyError:
                 raise KeyError(item)
 
-    def __contains__(self, item):
+    def __contains__(self, item: str):  # type: ignore[override]
         try:
             parent, key = self._get_parent(item)
             value = parent[key]
@@ -586,10 +627,10 @@ class MemoryStore(MutableMapping):
     def __iter__(self):
         return self.keys()
 
-    def __len__(self):
+    def __len__(self) -> int:
         return sum(1 for _ in self.keys())
 
-    def listdir(self, path=None):
+    def listdir(self, path: Path = None) -> List[str]:
         path = normalize_storage_path(path)
         if path:
             try:
@@ -604,7 +645,7 @@ class MemoryStore(MutableMapping):
         else:
             return []
 
-    def rename(self, src_path, dst_path):
+    def rename(self, src_path: Path, dst_path: Path):
         src_path = normalize_storage_path(src_path)
         dst_path = normalize_storage_path(dst_path)
 
@@ -613,7 +654,7 @@ class MemoryStore(MutableMapping):
 
         dst_parent[dst_key] = src_parent.pop(src_key)
 
-    def rmdir(self, path=None):
+    def rmdir(self, path: Path = None):
         path = normalize_storage_path(path)
         if path:
             try:
@@ -628,7 +669,7 @@ class MemoryStore(MutableMapping):
             # clear out root
             self.root = self.cls()
 
-    def getsize(self, path=None):
+    def getsize(self, path: Path = None):
         path = normalize_storage_path(path)
 
         # obtain value to return size of

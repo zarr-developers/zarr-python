@@ -14,6 +14,8 @@ Next release
   without ``ipytree`` installed.
   By :user:`Zain Patel <mzjp2>`; :issue:`537`
 
+* Add typing informations to many of the core functions :issue:`589`
+
 * Explicitly close stores during testing.
   By :user:`Elliott Sales de Andrade <QuLogic>`; :issue:`442`
 
