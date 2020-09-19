@@ -1,11 +1,12 @@
 import collections
-from collections.abc import MutableMapping
 import os
+
+from zarr.storage import Store
 
 import pytest
 
 
-class CountingDict(MutableMapping):
+class CountingDict(Store):
 
     def __init__(self):
         self.wrapped = dict()

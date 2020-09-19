@@ -2,6 +2,7 @@ from warnings import warn
 
 import numpy as np
 from numcodecs.registry import codec_registry
+from collections.abc import MutableMapping
 
 from zarr.core import Array
 from zarr.errors import (
@@ -10,9 +11,18 @@ from zarr.errors import (
     ContainsGroupError,
 )
 from zarr.n5 import N5Store
-from zarr.storage import (DirectoryStore, ZipStore, contains_array,
-                          contains_group, default_compressor, init_array,
-                          normalize_storage_path, FSStore)
+from zarr.storage import (
+    DirectoryStore,
+    ZipStore,
+    KVStore,
+    contains_array,
+    contains_group,
+    default_compressor,
+    init_array,
+    normalize_storage_path,
+    FSStore,
+    Store,
+)
 
 
 def create(shape, chunks=True, dtype=None, compressor='default',
@@ -129,9 +139,9 @@ def create(shape, chunks=True, dtype=None, compressor='default',
     return z
 
 
-def normalize_store_arg(store, clobber=False, storage_options=None, mode='w'):
+def normalize_store_arg(store, clobber=False, storage_options=None, mode="w") -> Store:
     if store is None:
-        return dict()
+        return Store._ensure_store(dict())
     elif isinstance(store, str):
         mode = mode if clobber else "r"
         if "://" in store or "::" in store:
@@ -145,6 +155,8 @@ def normalize_store_arg(store, clobber=False, storage_options=None, mode='w'):
         else:
             return DirectoryStore(store)
     else:
+        if not isinstance(store, Store) and isinstance(store, MutableMapping):
+            store = KVStore(store)
         return store
 
 
