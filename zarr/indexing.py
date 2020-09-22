@@ -6,8 +6,12 @@ import numbers
 
 import numpy as np
 
-from zarr.errors import (err_boundscheck, err_negative_step,
-                         err_too_many_indices, err_vindex_invalid_selection)
+from zarr.errors import (
+    err_negative_step,
+    err_too_many_indices,
+    err_vindex_invalid_selection,
+    BoundsCheckError,
+)
 
 
 def is_integer(x):
@@ -47,7 +51,7 @@ def normalize_integer_selection(dim_sel, dim_len):
 
     # handle out of bounds
     if dim_sel >= dim_len or dim_sel < 0:
-        err_boundscheck(dim_len)
+        raise BoundsCheckError(dim_len)
 
     return dim_sel
 
@@ -386,7 +390,7 @@ def wraparound_indices(x, dim_len):
 
 def boundscheck_indices(x, dim_len):
     if np.any(x < 0) or np.any(x >= dim_len):
-        err_boundscheck(dim_len)
+        raise BoundsCheckError(dim_len)
 
 
 class IntArrayDimIndexer(object):
