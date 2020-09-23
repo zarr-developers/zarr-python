@@ -9,7 +9,7 @@ import numpy as np
 from zarr.errors import (
     NegativeStepError,
     err_too_many_indices,
-    err_vindex_invalid_selection,
+    VindexInvalidSelectionError,
     BoundsCheckError,
 )
 
@@ -761,7 +761,7 @@ class VIndex(object):
         elif is_mask_selection(selection, self.array):
             return self.array.get_mask_selection(selection, fields=fields)
         else:
-            err_vindex_invalid_selection(selection)
+            raise VindexInvalidSelectionError(selection)
 
     def __setitem__(self, selection, value):
         fields, selection = pop_fields(selection)
@@ -772,7 +772,7 @@ class VIndex(object):
         elif is_mask_selection(selection, self.array):
             self.array.set_mask_selection(selection, value, fields=fields)
         else:
-            err_vindex_invalid_selection(selection)
+            raise VindexInvalidSelectionError(selection)
 
 
 def check_fields(fields, dtype):

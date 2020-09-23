@@ -70,7 +70,9 @@ def err_too_many_indices(selection, shape):
                      .format(len(shape), len(selection)))
 
 
-def err_vindex_invalid_selection(selection):
-    raise IndexError('unsupported selection type for vectorized indexing; only '
-                     'coordinate selection (tuple of integer arrays) and mask selection '
-                     '(single Boolean array) are supported; got {!r}'.format(selection))
+class VindexInvalidSelectionError(_BaseZarrIndexError):
+    _msg = (
+        "unsupported selection type for vectorized indexing; only "
+        "coordinate selection (tuple of integer arrays) and mask selection "
+        "(single Boolean array) are supported; got {0!r}"
+    )
