@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 import binascii
 import hashlib
 import itertools
@@ -12,7 +11,7 @@ from numcodecs.compat import ensure_bytes, ensure_ndarray
 
 from zarr.attrs import Attributes
 from zarr.codecs import AsType, get_codec
-from zarr.errors import err_array_not_found, err_read_only
+from zarr.errors import ArrayNotFoundError, ReadOnlyError
 from zarr.indexing import (BasicIndexer, CoordinateIndexer, MaskIndexer,
                            OIndex, OrthogonalIndexer, VIndex, check_fields,
                            check_no_multi_fields, ensure_tuple,
@@ -149,7 +148,7 @@ class Array(object):
             mkey = self._key_prefix + array_meta_key
             meta_bytes = self._store[mkey]
         except KeyError:
-            err_array_not_found(self._path)
+            raise ArrayNotFoundError(self._path)
         else:
 
             # decode and store metadata as instance members
@@ -1204,7 +1203,7 @@ class Array(object):
 
         # guard conditions
         if self._read_only:
-            err_read_only()
+            raise ReadOnlyError()
 
         # refresh metadata
         if not self._cache_metadata:
@@ -1295,7 +1294,7 @@ class Array(object):
 
         # guard conditions
         if self._read_only:
-            err_read_only()
+            raise ReadOnlyError()
 
         # refresh metadata
         if not self._cache_metadata:
@@ -1367,7 +1366,7 @@ class Array(object):
 
         # guard conditions
         if self._read_only:
-            err_read_only()
+            raise ReadOnlyError()
 
         # refresh metadata
         if not self._cache_metadata:
@@ -1448,7 +1447,7 @@ class Array(object):
 
         # guard conditions
         if self._read_only:
-            err_read_only()
+            raise ReadOnlyError()
 
         # refresh metadata
         if not self._cache_metadata:
@@ -2006,7 +2005,7 @@ class Array(object):
 
         # guard condition
         if self._read_only:
-            err_read_only()
+            raise ReadOnlyError()
 
         return self._synchronized_op(f, *args, **kwargs)
 

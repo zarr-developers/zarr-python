@@ -5,6 +5,12 @@ Release notes
 Next release
 ------------
 
+* `DirectoryStore` now uses `os.scandir`, which should make listing large store
+  faster, :issue:`563`
+  
+* Remove a few remaining Python 2-isms.
+  By :user:`Poruri Sai Rahul <rahulporuri>`; :issue:`393`.
+
 * Fix minor bug in `N5Store`. 
   By :user:`gsakkis`, :issue:`550`.
 
@@ -12,8 +18,14 @@ Next release
   without ``ipytree`` installed.
   By :user:`Zain Patel <mzjp2>`; :issue:`537`
 
+* Add typing informations to many of the core functions :issue:`589`
+
 * Explicitly close stores during testing.
   By :user:`Elliott Sales de Andrade <QuLogic>`; :issue:`442`
+
+* Many of the convenience functions to emit errors (``err_*`` from
+  ``zarr.errors``  have been replaced by ``ValueError`` subclasses. The
+  functions are deprecated and will be removed in the future. :issue:`590` )
 
 * Improve consistency of terminology regarding arrays and datasets in the 
   documentation.

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 import array
 import atexit
 import json
@@ -764,12 +763,17 @@ class TestMemoryStore(StoreTests, unittest.TestCase):
 class TestDictStore(StoreTests, unittest.TestCase):
 
     def create_store(self):
-        return DictStore()
+        with pytest.warns(DeprecationWarning):
+            return DictStore()
 
     def test_deprecated(self):
-        with pytest.warns(DeprecationWarning):
-            store = self.create_store()
+        store = self.create_store()
         assert isinstance(store, MemoryStore)
+
+    def test_pickle(self):
+        with pytest.warns(DeprecationWarning):
+            # pickle.load() will also trigger deprecation warning
+            super().test_pickle()
 
 
 class TestDirectoryStore(StoreTests, unittest.TestCase):
@@ -826,6 +830,34 @@ class TestDirectoryStore(StoreTests, unittest.TestCase):
         store['FOO'] = b'bar'
         assert 'FOO' in store
         assert 'foo' in store
+
+    def test_listing_keys_slash(self):
+
+        def mock_walker_slash(_path):
+            yield from [
+                # trailing slash in first key
+                ('root_with_slash/', ['d1', 'g1'], ['.zgroup']),
+                ('root_with_slash/d1', [], ['.zarray']),
+                ('root_with_slash/g1', [], ['.zgroup'])
+            ]
+
+        res = set(DirectoryStore._keys_fast('root_with_slash/', walker=mock_walker_slash))
+        assert res == {'.zgroup', 'g1/.zgroup', 'd1/.zarray'}
+
+    def test_listing_keys_no_slash(self):
+
+        def mock_walker_no_slash(_path):
+            yield from [
+                # no trainling slash in first key
+                ('root_with_no_slash', ['d1', 'g1'], ['.zgroup']),
+                ('root_with_no_slash/d1', [], ['.zarray']),
+                ('root_with_no_slash/g1', [], ['.zgroup'])
+            ]
+
+        res = set(
+            DirectoryStore._keys_fast('root_with_no_slash', mock_walker_no_slash)
+                )
+        assert res == {'.zgroup', 'g1/.zgroup', 'd1/.zarray'}
 
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")

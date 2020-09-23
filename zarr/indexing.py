@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 import collections
 import itertools
 import math
@@ -468,7 +467,7 @@ class IntArrayDimIndexer(object):
             yield ChunkDimProjection(dim_chunk_ix, dim_chunk_sel, dim_out_sel)
 
 
-def slice_to_range(s, l):
+def slice_to_range(s, l):  # noqa: E741
     return range(*s.indices(l))
 
 
@@ -740,7 +739,7 @@ class MaskIndexer(CoordinateIndexer):
         selection = np.nonzero(selection[0])
 
         # delegate the rest to superclass
-        super(MaskIndexer, self).__init__(selection, array)
+        super().__init__(selection, array)
 
 
 class VIndex(object):
