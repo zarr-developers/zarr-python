@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """This module contains a storage class and codec to support the N5 format.
 """
 import os
@@ -97,7 +96,7 @@ class N5Store(NestedDirectoryStore):
 
             key = invert_chunk_coords(key)
 
-        return super(N5Store, self).__getitem__(key)
+        return super().__getitem__(key)
 
     def __setitem__(self, key, value):
 
@@ -144,7 +143,7 @@ class N5Store(NestedDirectoryStore):
 
             key = invert_chunk_coords(key)
 
-        super(N5Store, self).__setitem__(key, value)
+        super().__setitem__(key, value)
 
     def __delitem__(self, key):
 
@@ -157,7 +156,7 @@ class N5Store(NestedDirectoryStore):
         elif is_chunk_key(key):
             key = invert_chunk_coords(key)
 
-        super(N5Store, self).__delitem__(key)
+        super().__delitem__(key)
 
     def __contains__(self, key):
 
@@ -184,7 +183,7 @@ class N5Store(NestedDirectoryStore):
 
             key = invert_chunk_coords(key)
 
-        return super(N5Store, self).__contains__(key)
+        return super().__contains__(key)
 
     def __eq__(self, other):
         return (
@@ -200,7 +199,7 @@ class N5Store(NestedDirectoryStore):
         # We can't use NestedDirectoryStore's listdir, as it requires
         # array_meta_key to be present in array directories, which this store
         # doesn't provide.
-        children = super(NestedDirectoryStore, self).listdir(path=path)
+        children = super().listdir(path=path)
 
         if self._is_array(path):
 
@@ -244,7 +243,7 @@ class N5Store(NestedDirectoryStore):
 
     def _load_n5_attrs(self, path):
         try:
-            s = super(N5Store, self).__getitem__(path)
+            s = super().__getitem__(path)
             return json_loads(s)
         except KeyError:
             return {}

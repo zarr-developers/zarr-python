@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """This module contains storage classes for use with Zarr arrays and groups.
 
 Note that any object implementing the :class:`MutableMapping` interface from the
@@ -29,7 +28,7 @@ import warnings
 import zipfile
 from collections import OrderedDict
 from collections.abc import MutableMapping
-from os import scandir, replace
+from os import scandir
 from pickle import PicklingError
 from threading import Lock, RLock
 from typing import Optional, Union, List, Tuple, Dict
@@ -710,7 +709,7 @@ class DictStore(MemoryStore):
                       "will be removed in the future. Please use MemoryStore.",
                       DeprecationWarning,
                       stacklevel=2)
-        super(DictStore, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
 
 
 class DirectoryStore(MutableMapping):
@@ -858,7 +857,7 @@ class DirectoryStore(MutableMapping):
             self._tofile(value, temp_path)
 
             # move temporary file into place
-            replace(temp_path, file_path)
+            os.replace(temp_path, file_path)
 
         finally:
             # clean up if temp file still exists for whatever reason
@@ -1139,7 +1138,7 @@ class TempStore(DirectoryStore):
     def __init__(self, suffix='', prefix='zarr', dir=None, normalize_keys=False):
         path = tempfile.mkdtemp(suffix=suffix, prefix=prefix, dir=dir)
         atexit.register(atexit_rmtree, path)
-        super(TempStore, self).__init__(path, normalize_keys=normalize_keys)
+        super().__init__(path, normalize_keys=normalize_keys)
 
 
 _prog_ckey = re.compile(r'^(\d+)(\.\d+)+$')
@@ -1228,23 +1227,23 @@ class NestedDirectoryStore(DirectoryStore):
     """
 
     def __init__(self, path, normalize_keys=False):
-        super(NestedDirectoryStore, self).__init__(path, normalize_keys=normalize_keys)
+        super().__init__(path, normalize_keys=normalize_keys)
 
     def __getitem__(self, key):
         key = _nested_map_ckey(key)
-        return super(NestedDirectoryStore, self).__getitem__(key)
+        return super().__getitem__(key)
 
     def __setitem__(self, key, value):
         key = _nested_map_ckey(key)
-        super(NestedDirectoryStore, self).__setitem__(key, value)
+        super().__setitem__(key, value)
 
     def __delitem__(self, key):
         key = _nested_map_ckey(key)
-        super(NestedDirectoryStore, self).__delitem__(key)
+        super().__delitem__(key)
 
     def __contains__(self, key):
         key = _nested_map_ckey(key)
-        return super(NestedDirectoryStore, self).__contains__(key)
+        return super().__contains__(key)
 
     def __eq__(self, other):
         return (
@@ -1253,7 +1252,7 @@ class NestedDirectoryStore(DirectoryStore):
         )
 
     def listdir(self, path=None):
-        children = super(NestedDirectoryStore, self).listdir(path=path)
+        children = super().listdir(path=path)
         if array_meta_key in children:
             # special handling of directories containing an array to map nested chunk
             # keys back to standard chunk keys

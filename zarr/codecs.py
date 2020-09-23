@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # flake8: noqa
 from numcodecs import *
 from numcodecs import get_codec, Blosc, Zlib, Delta, AsType, BZ2

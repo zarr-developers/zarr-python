@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 import atexit
 import os.path
 import shutil
@@ -148,7 +147,7 @@ def test_full():
     assert np.all(a == v)
 
     # unicode string dtype
-    v = u'xxx'
+    v = 'xxx'
     z = full(100, chunks=10, fill_value=v, dtype='U3')
     assert v == z[0]
     a = z[...]

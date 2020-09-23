@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 import collections
 from distutils.version import LooseVersion
 from collections.abc import MutableMapping

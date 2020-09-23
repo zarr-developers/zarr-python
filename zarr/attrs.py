@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 from collections.abc import MutableMapping
 
 from zarr.meta import parse_metadata

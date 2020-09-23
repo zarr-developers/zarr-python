@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # flake8: noqa
 from zarr.codecs import *
 from zarr.convenience import (consolidate_metadata, copy, copy_all, copy_store,

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 import array
 import atexit
 import json
