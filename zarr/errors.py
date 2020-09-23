@@ -16,6 +16,13 @@ class _BaseZarrError(ValueError):
         super().__init__(self._msg.format(*args))
 
 
+class _BaseZarrIndexError(IndexError):
+    _msg = ""
+
+    def __init__(self, *args):
+        super().__init__(self._msg.format(*args))
+
+
 class ContainsGroupError(_BaseZarrError):
     _msg = "path {0!r} contains a group"
 
@@ -49,12 +56,13 @@ class ReadOnlyError(PermissionError):
         super().__init__("object is read-only")
 
 
-class BoundsCheckError(_BaseZarrError):
+class BoundsCheckError(_BaseZarrIndexError):
     _msg = "index out of bounds for dimension with length {0}"
 
 
-def err_negative_step():
-    raise IndexError('only slices with step >= 1 are supported')
+class NegativeStepError(IndexError):
+    def __init__(self):
+        super().__init__("only slices with step >= 1 are supported")
 
 
 def err_too_many_indices(selection, shape):

@@ -7,7 +7,7 @@ import numbers
 import numpy as np
 
 from zarr.errors import (
-    err_negative_step,
+    NegativeStepError,
     err_too_many_indices,
     err_vindex_invalid_selection,
     BoundsCheckError,
@@ -106,7 +106,7 @@ class SliceDimIndexer(object):
         # normalize
         self.start, self.stop, self.step = dim_sel.indices(dim_len)
         if self.step < 1:
-            err_negative_step()
+            raise NegativeStepError()
 
         # store attributes
         self.dim_len = dim_len
