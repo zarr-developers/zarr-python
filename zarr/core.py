@@ -423,17 +423,30 @@ class Array(object):
             a = a.astype(args[0])
         return a
 
-    def __iter__(self):
+    def islice(self, start=None, end=None):
         if len(self.shape) == 0:
             # Same error as numpy
             raise TypeError("iteration over a 0-d array")
+        if start is None:
+            start = 0
+        if end is None:
+            end = self.shape[0]
         # Avoid repeatedly decompressing chunks by iterating over the chunks
         # in the first dimension.
         chunk_size = self.chunks[0]
-        for j in range(self.shape[0]):
+        chunk = None
+        for j in range(self.shape[0], start, end):
             if j % chunk_size == 0:
                 chunk = self[j: j + chunk_size]
+            # init chunk if we start offset of chunk borders
+            elif chunk is None:
+                chunk_start = j - j % chunk_size
+                chunk_end = chunk_start + chunk_size
+                chunk = self[chunk_start:chunk_end]
             yield chunk[j % chunk_size]
+
+    def __iter__(self):
+        return self.islice()
 
     def __len__(self):
         if self.shape:
