@@ -435,7 +435,7 @@ class Array(object):
         # in the first dimension.
         chunk_size = self.chunks[0]
         chunk = None
-        for j in range(self.shape[0], start, end):
+        for j in range(start, end):
             if j % chunk_size == 0:
                 chunk = self[j: j + chunk_size]
             # init chunk if we start offset of chunk borders
