@@ -1377,6 +1377,32 @@ class TestArray(unittest.TestCase):
             if hasattr(z.store, 'close'):
                 z.store.close()
 
+    def test_islice(self):
+        params = (
+            ((1,), (1,), 0, 1),
+            ((2,), (1,), 0, 1),
+            ((1,), (2,), 0, 1),
+            ((3,), (3,), 1, 2),
+            ((1000,), (100,), 150, 750),
+            ((100,), (1000,), 25, 75),
+            ((1, 100), (1, 1), 0, 1),
+            # ((1, 0), (1, 1), 0, 0),
+            # ((0, 1), (1, 1), 0, 0),
+            # ((0, 1), (2, 1), 0, 0),
+            ((100, 1), (3, 1), 56, 100),
+            ((100, 100), (10, 10), 13, 99),
+            ((10, 10, 10), (3, 3, 3), 2, 4),
+        )
+        for shape, chunks, start, end in params:
+            z = self.create_array(shape=shape, chunks=chunks, dtype=int)
+            a = np.arange(np.product(shape)).reshape(shape)
+            z[:] = a
+            for expect, actual in zip_longest(a[start:end],
+                                              z.islice(start, end)):
+                assert_array_equal(expect, actual)
+            if hasattr(z.store, 'close'):
+                z.store.close()
+
     def test_compressors(self):
         compressors = [
             None, BZ2(), Blosc(), LZ4(), Zlib(), GZip()
