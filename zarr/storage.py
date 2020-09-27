@@ -2148,17 +2148,18 @@ class ABSStore(MutableMapping):
 
     def __init__(self, container, prefix='', account_name=None, account_key=None,
                  blob_service_kwargs=None):
-        from azure.storage.blob import BlockBlobService
+        from azure.storage.blob import ContainerClient
         self.container = container
         self.prefix = normalize_storage_path(prefix)
         self.account_name = account_name
+        self.account_account_url = f"https://{self.account_name}.blob.core.windows.net"
         self.account_key = account_key
         if blob_service_kwargs is not None:
             self.blob_service_kwargs = blob_service_kwargs
         else:  # pragma: no cover
             self.blob_service_kwargs = dict()
-        self.client = BlockBlobService(self.account_name, self.account_key,
-                                       **self.blob_service_kwargs)
+        self.client = ContainerClient(self.account_account_url, self.container,
+                                      credential=self.account_key, **self.blob_service_kwargs)
 
     # needed for pickling
     def __getstate__(self):
@@ -2167,10 +2168,10 @@ class ABSStore(MutableMapping):
         return state
 
     def __setstate__(self, state):
-        from azure.storage.blob import BlockBlobService
+        from azure.storage.blob import ContainerClient
         self.__dict__.update(state)
-        self.client = BlockBlobService(self.account_name, self.account_key,
-                                       **self.blob_service_kwargs)
+        self.client = ContainerClient(self.account_account_url, self.container,
+                                      credential=self.account_key, **self.blob_service_kwargs)
 
     def _append_path_to_prefix(self, path):
         if self.prefix == '':
@@ -2189,24 +2190,23 @@ class ABSStore(MutableMapping):
             return path_norm
 
     def __getitem__(self, key):
-        from azure.common import AzureMissingResourceHttpError
+        from azure.core.exceptions import ResourceNotFoundError
         blob_name = self._append_path_to_prefix(key)
         try:
-            blob = self.client.get_blob_to_bytes(self.container, blob_name)
-            return blob.content
-        except AzureMissingResourceHttpError:
+            return self.client.download_blob(blob_name).readall()
+        except ResourceNotFoundError:
             raise KeyError('Blob %s not found' % blob_name)
 
     def __setitem__(self, key, value):
         value = ensure_bytes(value)
         blob_name = self._append_path_to_prefix(key)
-        self.client.create_blob_from_bytes(self.container, blob_name, value)
+        self.client.upload_blob(blob_name, value)
 
     def __delitem__(self, key):
-        from azure.common import AzureMissingResourceHttpError
+        from azure.core.exceptions import ResourceNotFoundError
         try:
-            self.client.delete_blob(self.container, self._append_path_to_prefix(key))
-        except AzureMissingResourceHttpError:
+            self.client.delete_blob(self._append_path_to_prefix(key))
+        except ResourceNotFoundError:
             raise KeyError('Blob %s not found' % key)
 
     def __eq__(self, other):
@@ -2224,7 +2224,7 @@ class ABSStore(MutableMapping):
             list_blobs_prefix = self.prefix + '/'
         else:
             list_blobs_prefix = None
-        for blob in self.client.list_blobs(self.container, list_blobs_prefix):
+        for blob in self.client.list_blobs(list_blobs_prefix):
             yield self._strip_prefix_from_path(blob.name, self.prefix)
 
     def __len__(self):
@@ -2232,19 +2232,17 @@ class ABSStore(MutableMapping):
 
     def __contains__(self, key):
         blob_name = self._append_path_to_prefix(key)
-        if self.client.exists(self.container, blob_name):
-            return True
-        else:
-            return False
+        return self.client.get_blob_client(blob_name).exists()
 
     def listdir(self, path=None):
-        from azure.storage.blob import Blob
+        # from azure.storage.blob import Blob
         dir_path = normalize_storage_path(self._append_path_to_prefix(path))
         if dir_path:
             dir_path += '/'
         items = list()
-        for blob in self.client.list_blobs(self.container, prefix=dir_path, delimiter='/'):
-            if type(blob) == Blob:
+        for blob in self.client.list_blobs(name_starts_with=dir_path):
+            # items.append(self._strip_prefix_from_path(blob.name, dir_path))
+            if '/' not in blob.name:  # what is this doing?
                 items.append(self._strip_prefix_from_path(blob.name, dir_path))
             else:
                 items.append(self._strip_prefix_from_path(
@@ -2255,29 +2253,32 @@ class ABSStore(MutableMapping):
         dir_path = normalize_storage_path(self._append_path_to_prefix(path))
         if dir_path:
             dir_path += '/'
-        for blob in self.client.list_blobs(self.container, prefix=dir_path):
-            self.client.delete_blob(self.container, blob.name)
+        for blob in self.client.list_blobs(name_starts_with=dir_path):
+            self.client.delete_blob(blob)
 
-    def getsize(self, path=None):
-        from azure.storage.blob import Blob
-        store_path = normalize_storage_path(path)
-        fs_path = self.prefix
-        if store_path:
-            fs_path = self._append_path_to_prefix(store_path)
-        if self.client.exists(self.container, fs_path):
-            return self.client.get_blob_properties(self.container,
-                                                   fs_path).properties.content_length
-        else:
-            size = 0
-            if fs_path == '':
-                fs_path = None
-            else:
-                fs_path += '/'
-            for blob in self.client.list_blobs(self.container, prefix=fs_path,
-                                               delimiter='/'):
-                if type(blob) == Blob:
-                    size += blob.properties.content_length
-            return size
+    # It is possible azure.store.blob doesn't provide the content_length attribute on
+    # the blob propoeries object anymore. Something to look into.
+    #
+    # def getsize(self, path=None):
+    #     from azure.storage.blob import Blob
+    #     store_path = normalize_storage_path(path)
+    #     fs_path = self.prefix
+    #     if store_path:
+    #         fs_path = self._append_path_to_prefix(store_path)
+    #     if self.client.get_blob_client(fs_path).exists():
+    #         return self.client.get_blob_properties(self.container,
+    #                                                fs_path).properties.content_length
+    #     else:
+    #         size = 0
+    #         if fs_path == '':
+    #             fs_path = None
+    #         else:
+    #             fs_path += '/'
+    #         for blob in self.client.list_blobs(self.container, prefix=fs_path,
+    #                                            delimiter='/'):
+    #             if type(blob) == Blob:
+    #                 size += blob.properties.content_length
+    #         return size
 
     def clear(self):
         self.rmdir()
