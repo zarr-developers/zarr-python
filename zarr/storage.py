@@ -2235,18 +2235,12 @@ class ABSStore(MutableMapping):
         return self.client.get_blob_client(blob_name).exists()
 
     def listdir(self, path=None):
-        # from azure.storage.blob import Blob
         dir_path = normalize_storage_path(self._append_path_to_prefix(path))
         if dir_path:
             dir_path += '/'
-        items = list()
-        for blob in self.client.list_blobs(name_starts_with=dir_path):
-            # items.append(self._strip_prefix_from_path(blob.name, dir_path))
-            if '/' not in blob.name:  # what is this doing?
-                items.append(self._strip_prefix_from_path(blob.name, dir_path))
-            else:
-                items.append(self._strip_prefix_from_path(
-                    blob.name[:blob.name.find('/', len(dir_path))], dir_path))
+        items = set()
+        for blob in self.client.walk_blobs(name_starts_with=dir_path, delimiter='/'):
+            items.add(self._strip_prefix_from_path(blob.name, dir_path))
         return items
 
     def rmdir(self, path=None):
@@ -2256,29 +2250,23 @@ class ABSStore(MutableMapping):
         for blob in self.client.list_blobs(name_starts_with=dir_path):
             self.client.delete_blob(blob)
 
-    # It is possible azure.store.blob doesn't provide the content_length attribute on
-    # the blob propoeries object anymore. Something to look into.
-    #
-    # def getsize(self, path=None):
-    #     from azure.storage.blob import Blob
-    #     store_path = normalize_storage_path(path)
-    #     fs_path = self.prefix
-    #     if store_path:
-    #         fs_path = self._append_path_to_prefix(store_path)
-    #     if self.client.get_blob_client(fs_path).exists():
-    #         return self.client.get_blob_properties(self.container,
-    #                                                fs_path).properties.content_length
-    #     else:
-    #         size = 0
-    #         if fs_path == '':
-    #             fs_path = None
-    #         else:
-    #             fs_path += '/'
-    #         for blob in self.client.list_blobs(self.container, prefix=fs_path,
-    #                                            delimiter='/'):
-    #             if type(blob) == Blob:
-    #                 size += blob.properties.content_length
-    #         return size
+    def getsize(self, path=None):
+        store_path = normalize_storage_path(path)
+        fs_path = self._append_path_to_prefix(store_path)
+        blob_client = self.client.get_blob_client(fs_path)
+        if blob_client.exists():
+            return blob_client.get_blob_properties().size
+        else:
+            size = 0
+            if fs_path == '':
+                fs_path = None
+            elif not fs_path.endswith('/'):
+                fs_path += '/'
+            for blob in self.client.walk_blobs(name_starts_with=fs_path, delimiter='/'):
+                blob_client = self.client.get_blob_client(blob)
+                if blob_client.exists():
+                    size += blob_client.get_blob_properties().size
+            return size
 
     def clear(self):
         self.rmdir()
