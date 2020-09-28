@@ -955,6 +955,29 @@ class TestFSStore(StoreTests, unittest.TestCase):
 
         assert g.data[:].tolist() == [0, 1, 2, 3, 0, 0, 0, 0]
 
+    @pytest.mark.usefixtures("s3")
+    def test_s3_complex(self):
+        import zarr
+        g = zarr.open_group("s3://test/out.zarr", mode='w',
+                            storage_options=self.s3so)
+        expected = np.empty((8, 8, 8), dtype='int64')
+        expected[:] = -1
+        a = g.create_dataset("data", shape=(8, 8, 8),
+                             fill_value=-1, chunks=(1, 1, 1))
+        expected[0] = 0
+        expected[3] = 3
+        a[:4] = expected[:4]
+
+        a = g.create_dataset("data_f", shape=(8, ), chunks=(1,),
+                             dtype=[('foo', 'S3'), ('bar', 'i4')],
+                             fill_value=(b"b", 1))
+        a[:4] = (b"aaa", 2)
+        g = zarr.open_group("s3://test/out.zarr", mode='r',
+                            storage_options=self.s3so)
+
+        assert (g.data[:] == expected).all()
+        assert g.data_f['foo'].tolist() == [b"aaa"] * 4 + [b"b"] * 4
+
 
 @pytest.fixture()
 def s3(request):

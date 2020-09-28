@@ -31,6 +31,17 @@ Next release
   documentation.
   By :user:`Josh Moore <joshmoore>`; :issue:`571`.
 
+* Added support for generic URL opening by ``fsspec``, where the URLs have the
+  form "protocol://[server]/path" or can be chained URls with "::" separators.
+  The additional argument ``storage_options`` is passed to the backend, see
+  the ``fsspec`` docs.
+  By :user:`Martin Durant <martindurant>`; :issue:`546`
+
+* Added support for fetching multiple items via ``getitems`` method of a
+  store, if it exists. This allows for concurrent fetching of data blocks
+  from stores that implement this; presently HTTP, S3, GCS. Currently only
+  applies to reading.
+  By :user:`Martin Durant <martindurant>`; :issue:`606`
 
 .. _release_2.4.0:
 
