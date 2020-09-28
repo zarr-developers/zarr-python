@@ -40,6 +40,11 @@ before_script:
 
 install:
   - pip install -U pip setuptools wheel tox-travis coveralls mypy
+  - pip install trio pytest-trio pytest-asyncio
+  - |
+    if [[ "$TRAVIS_PYTHON_VERSION" == "3.7" ]] || [[ "$TRAVIS_PYTHON_VERSION" == "3.8" ]]; then
+      pip install -U pip redio
+    fi
 
 script:
   - tox

@@ -13,13 +13,27 @@ from numcodecs.compat import ensure_bytes, ensure_ndarray
 from zarr.attrs import Attributes
 from zarr.codecs import AsType, get_codec
 from zarr.errors import ArrayNotFoundError, ReadOnlyError
-from zarr.indexing import (BasicIndexer, CoordinateIndexer, MaskIndexer,
-                           OIndex, OrthogonalIndexer, VIndex, check_fields,
-                           check_no_multi_fields, ensure_tuple,
-                           err_too_many_indices, is_contiguous_selection,
-                           is_scalar, pop_fields)
-from zarr.meta import decode_array_metadata, encode_array_metadata
-from zarr.storage import array_meta_key, attrs_key, getsize, listdir
+from zarr.indexing import (
+    BasicIndexer,
+    CoordinateIndexer,
+    MaskIndexer,
+    OIndex,
+    OrthogonalIndexer,
+    VIndex,
+    check_fields,
+    check_no_multi_fields,
+    ensure_tuple,
+    err_too_many_indices,
+    is_contiguous_selection,
+    is_scalar,
+    pop_fields,
+)
+from zarr.meta import (
+    decode_array_metadata,
+    encode_array_metadata,
+    decode_array_metadata_v3,
+)
+from iarr.storage import array_meta_key, attrs_key, getsize, listdir
 from zarr.util import (InfoReporter, check_array_shape, human_readable_size,
                        is_total_slice, nolock, normalize_chunks,
                        normalize_resize_args, normalize_shape,
@@ -111,6 +125,7 @@ class Array(object):
         self._store = store
         self._chunk_store = chunk_store
         self._path = normalize_storage_path(path)
+        self._version = getattr(store, "_store_version", 2)
         if self._path:
             self._key_prefix = self._path + '/'
         else:
@@ -124,7 +139,14 @@ class Array(object):
         self._load_metadata()
 
         # initialize attributes
-        akey = self._key_prefix + attrs_key
+        if self._version == 2:
+            akey = self._key_prefix + attrs_key
+        else:
+            if self._key_prefix:
+                mkey = "meta/root/" + self._key_prefix + ".array"
+            else:
+                mkey = "meta/root.array"
+            akey = mkey
         self._attrs = Attributes(store, key=akey, read_only=read_only,
                                  synchronizer=synchronizer, cache=cache_attrs)
 
@@ -146,20 +168,32 @@ class Array(object):
 
     def _load_metadata_nosync(self):
         try:
-            mkey = self._key_prefix + array_meta_key
+            if self._version == 2:
+                mkey = self._key_prefix + array_meta_key
+            elif self._version == 3:
+                mkey = "meta/root/" + self._key_prefix + ".array"
             meta_bytes = self._store[mkey]
         except KeyError:
             raise ArrayNotFoundError(self._path)
         else:
 
             # decode and store metadata as instance members
-            meta = decode_array_metadata(meta_bytes)
-            self._meta = meta
-            self._shape = meta['shape']
-            self._chunks = meta['chunks']
-            self._dtype = meta['dtype']
-            self._fill_value = meta['fill_value']
-            self._order = meta['order']
+            if self._version == 2:
+                meta = decode_array_metadata(meta_bytes)
+                self._meta = meta
+                self._shape = meta["shape"]
+                self._dtype = meta["dtype"]
+                self._chunks = meta["chunks"]
+                self._fill_value = meta["fill_value"]
+                self._order = meta["order"]
+            elif self._version == 3:
+                meta = decode_array_metadata_v3(meta_bytes)
+                self._meta = meta
+                self._shape = meta["shape"]
+                self._chunks = meta["chunk_grid"]
+                self._dtype = meta["data_type"]
+                self._fill_value = meta["fill_value"]
+                self._order = meta["chunk_memory_layout"]
 
             # setup compressor
             config = meta['compressor']
@@ -169,7 +203,7 @@ class Array(object):
                 self._compressor = get_codec(config)
 
             # setup filters
-            filters = meta['filters']
+            filters = meta.get("filters", [])
             if filters:
                 filters = [get_codec(config) for config in filters]
             self._filters = filters
@@ -1583,7 +1617,10 @@ class Array(object):
 
         try:
             # obtain compressed data for chunk
-            cdata = self.chunk_store[ckey]
+            if self._version == 2:
+                cdata = self.chunk_store[ckey]
+            elif self._version == 3:
+                cdata = self.chunk_store["data/root/" + ckey]
 
         except KeyError:
             # chunk not initialized

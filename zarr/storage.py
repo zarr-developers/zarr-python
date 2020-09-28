@@ -47,7 +47,13 @@ from zarr.errors import (
     FSPathExistNotDir,
     ReadOnlyError,
 )
-from zarr.meta import encode_array_metadata, encode_group_metadata
+
+from zarr.meta import (
+    encode_array_metadata,
+    encode_array_metadata_v3,
+    encode_group_metadata,
+    encode_group_metadata_v3,
+)
 from zarr.util import (buffer_size, json_loads, nolock, normalize_chunks,
                        normalize_dtype, normalize_fill_value, normalize_order,
                        normalize_shape, normalize_storage_path)
@@ -86,9 +92,17 @@ def _path_to_prefix(path: Optional[str]) -> str:
 
 def contains_array(store: MutableMapping, path: Path = None) -> bool:
     """Return True if the store contains an array at the given logical path."""
+    if path:
+        assert not path.startswith("meta/")
     path = normalize_storage_path(path)
     prefix = _path_to_prefix(path)
-    key = prefix + array_meta_key
+    if getattr(store, "_store_version", 2) == 3:
+        if prefix:
+            key = "meta/root/" + prefix + ".array"
+        else:
+            key = "meta/root.array"
+    else:
+        key = prefix + array_meta_key
     return key in store
 
 
@@ -97,6 +111,13 @@ def contains_group(store: MutableMapping, path: Path = None) -> bool:
     path = normalize_storage_path(path)
     prefix = _path_to_prefix(path)
     key = prefix + group_meta_key
+    if getattr(store, "_store_version", 2) == 3:
+        if prefix:
+            key = "meta/root/" + prefix + ".group"
+        else:
+            key = "meta/root.group"
+    else:
+        key = prefix + group_meta_key
     return key in store
 
 
@@ -157,11 +178,29 @@ def _listdir_from_keys(store: MutableMapping, path: Optional[str] = None) -> Lis
     return sorted(children)
 
 
+def _norm(k):
+    if k.endswith(".group"):
+        return k[:-6] + "/"
+    if k.endswith(".array"):
+        return k[:-6]
+    return k
+
+
 def listdir(store, path: Path = None):
     """Obtain a directory listing for the given path. If `store` provides a `listdir`
     method, this will be called, otherwise will fall back to implementation via the
     `MutableMapping` interface."""
     path = normalize_storage_path(path)
+    if getattr(store, "_store_version", None) == 3:
+        if not path.endswith("/"):
+            path = path + "/"
+        assert path.startswith("/")
+
+        res = {_norm(k[10:]) for k in store.list_dir("meta/root" + path)}
+        for r in res:
+            assert not r.startswith("meta/")
+        return res
+
     if hasattr(store, 'listdir'):
         # pass through
         return store.listdir(path)
@@ -432,7 +471,11 @@ def _init_array_metadata(
                 compressor=compressor_config, fill_value=fill_value,
                 order=order, filters=filters_config)
     key = _path_to_prefix(path) + array_meta_key
-    store[key] = encode_array_metadata(meta)
+
+    if getattr(store, "_store_version", 2) == 3:
+        store[key] = encode_array_metadata_v3(meta)
+    else:
+        store[key] = encode_array_metadata(meta)
 
 
 # backwards compatibility
@@ -466,8 +509,10 @@ def init_group(
     path = normalize_storage_path(path)
 
     # ensure parent group initialized
-    _require_parent_group(path, store=store, chunk_store=chunk_store,
-                          overwrite=overwrite)
+    if getattr(store, "_store_version", 2) != 3:
+        _require_parent_group(
+            path, store=store, chunk_store=chunk_store, overwrite=overwrite
+        )
 
     # initialise metadata
     _init_group_metadata(store=store, overwrite=overwrite, path=path,
@@ -496,8 +541,18 @@ def _init_group_metadata(
     # N.B., currently no metadata properties are needed, however there may
     # be in future
     meta = dict()  # type: ignore
-    key = _path_to_prefix(path) + group_meta_key
-    store[key] = encode_group_metadata(meta)
+    prefix = _path_to_prefix(path)
+    if getattr(store, "_store_version", 2) == 3:
+        if prefix:
+            key = "meta/root/" + prefix + ".group"
+        else:
+            key = "meta/root.group"
+    else:
+        key = prefix + group_meta_key
+    if getattr(store, "_store_version", 2) == 2:
+        store[key] = encode_group_metadata(meta)
+    else:
+        store[key] = encode_group_metadata_v3(meta)
 
 
 def _dict_store_keys(d: Dict, prefix="", cls=dict):

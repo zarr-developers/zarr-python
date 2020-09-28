@@ -68,6 +68,7 @@ Contents
     spec
     release
     contributing
+    v3
 
 Projects using Zarr
 -------------------

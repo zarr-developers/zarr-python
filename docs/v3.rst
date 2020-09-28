@@ -1,0 +1,28 @@
+Zarr Spec V3
+============
+
+See `zarr v3 specification <https://zarr-specs.readthedocs.io/en/core-protocol-v3.0-dev/>`__
+
+Using current development branch, you can import new Store an utilities from ``zarr.v3``
+
+
+V3 stores
+---------
+
+- SyncV3RedisStore
+- SyncV3MemoryStore
+- SyncV3DirectoryStore
+
+Those 3 stores can be use to directly talk to a v3 archive using the v3 api.
+
+``V2from3Adapter`` Can be used to wrap a v3 store instance to expose a v2 API, for libraries that might directly manipulate a v2 store::
+
+    zarr.open(V2from3Adapter(SyncV3DirectoryStore('v3.zarr'))
+
+
+``StoreComparer`` can be use to wrap two stores and check that all operation on the resulting object give identical results::
+
+   mystore = StoreComparer(MemoryStore(), V2from3Adapter(SyncV3MemoryStore()))
+   mystore['group']  
+
+The first store is assumed to be reference store and the second the tested store.

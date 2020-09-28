@@ -1,15 +1,39 @@
 # -*- coding: utf-8 -*-
 import base64
+import json
 from collections.abc import Mapping
 
 import numpy as np
 
 from zarr.errors import MetadataError
 from zarr.util import json_dumps, json_loads
+import zarr.util
 
 from typing import Union, Any, List, Mapping as MappingType
 
 ZARR_FORMAT = 2
+ZARR_FORMAT_v3 = "3"
+
+_v3_core_type = {
+    "bool",
+    "i1",
+    "<i2",
+    "<i4",
+    "<i8",
+    ">i2",
+    ">i4",
+    ">i8",
+    "u1",
+    "<u2",
+    "<u4",
+    "<u8",
+    "<f2",
+    "<f4",
+    "<f8",
+    ">f2",
+    ">f4",
+    ">f8",
+}
 
 
 def parse_metadata(s: Union[MappingType, str]) -> MappingType[str, Any]:
@@ -18,15 +42,31 @@ def parse_metadata(s: Union[MappingType, str]) -> MappingType[str, Any]:
     # or a string of JSON that we will parse here. We allow for an already-parsed
     # object to accommodate a consolidated metadata store, where all the metadata for
     # all groups and arrays will already have been parsed from JSON.
-
     if isinstance(s, Mapping):
         # assume metadata has already been parsed into a mapping object
         meta = s
-
     else:
         # assume metadata needs to be parsed as JSON
         meta = json_loads(s)
 
+    return meta
+
+
+def decode_array_metadata_v3(s):
+    meta = parse_metadata(s)
+
+    # check metadata format
+    # extract array metadata fields
+    dtype = decode_dtype_v3(meta["data_type"])
+    fill_value = decode_fill_value(meta["fill_value"], dtype)
+    meta = dict(
+        shape=tuple(meta["shape"]),
+        chunk_grid=tuple(meta["chunk_grid"]["chunk_shape"]),
+        data_type=dtype,
+        compressor=meta["compressor"],
+        fill_value=fill_value,
+        chunk_memory_layout=meta["chunk_memory_layout"],
+    )
     return meta
 
 
@@ -53,12 +93,30 @@ def decode_array_metadata(s: Union[MappingType, str]) -> MappingType[str, Any]:
             filters=meta['filters'],
         )
     except Exception as e:
-        raise MetadataError('error decoding metadata: %s' % e)
+        raise MetadataError("error decoding metadata") from e
     else:
         return meta
 
 
 def encode_array_metadata(meta: MappingType[str, Any]) -> bytes:
+    dtype = meta["dtype"]
+    sdshape = ()
+    if dtype.subdtype is not None:
+        dtype, sdshape = dtype.subdtype
+    meta = dict(
+        zarr_format=ZARR_FORMAT,
+        shape=meta["shape"] + sdshape,
+        chunks=meta["chunks"],
+        dtype=encode_dtype(dtype),
+        compressor=meta["compressor"],
+        fill_value=encode_fill_value(meta["fill_value"], dtype),
+        order=meta["order"],
+        filters=meta["filters"],
+    )
+    return json_dumps(meta)
+
+
+def encode_array_metadata_v3(meta):
     dtype = meta['dtype']
     sdshape = ()
     if dtype.subdtype is not None:
@@ -67,13 +125,20 @@ def encode_array_metadata(meta: MappingType[str, Any]) -> bytes:
         zarr_format=ZARR_FORMAT,
         shape=meta['shape'] + sdshape,
         chunks=meta['chunks'],
-        dtype=encode_dtype(dtype),
+        dtype=encode_dtype_v3(dtype),
         compressor=meta['compressor'],
         fill_value=encode_fill_value(meta['fill_value'], dtype),
         order=meta['order'],
-        filters=meta['filters'],
     )
     return json_dumps(meta)
+
+
+def encode_dtype_v3(d: np.dtype) -> str:
+    s = encode_dtype(d)
+    if s == "|b1":
+        return "bool"
+    assert s in _v3_core_type
+    return s
 
 
 def encode_dtype(d: np.dtype) -> str:
@@ -96,7 +161,16 @@ def decode_dtype(d) -> np.dtype:
     return np.dtype(d)
 
 
+def decode_dtype_v3(d):
+    assert d in _v3_core_type
+    return np.dtype(d)
+
+
 def decode_group_metadata(s: Union[MappingType, str]) -> MappingType[str, Any]:
+    return json.loads(s)
+
+
+def decode_group_metadata(s):
     meta = parse_metadata(s)
 
     # check metadata format version
@@ -117,11 +191,11 @@ def encode_group_metadata(meta=None) -> bytes:
     return json_dumps(meta)
 
 
-FLOAT_FILLS = {
-    'NaN': np.nan,
-    'Infinity': np.PINF,
-    '-Infinity': np.NINF
-}
+def encode_group_metadata_v3(meta):
+    return json_dumps(meta)
+
+
+FLOAT_FILLS = {"NaN": np.nan, "Infinity": np.PINF, "-Infinity": np.NINF}
 
 
 def decode_fill_value(v, dtype):
