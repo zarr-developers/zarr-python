@@ -4,12 +4,10 @@ on: [push, pull_request]
 
 jobs:
   build_artifacts:
-    name: Build wheel on ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
+    name: Build wheel on ubuntu-latest
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-      matrix:
-        os: [ubuntu-18.04]
     env:
       CIBW_TEST_COMMAND: pytest --pyargs zarr
       CIBW_TEST_REQUIRES: pytest
