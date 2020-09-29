@@ -429,8 +429,16 @@ class Array(object):
             raise TypeError("iteration over a 0-d array")
         if start is None:
             start = 0
-        if end is None:
+        if end is None or end > self.shape[0]:
             end = self.shape[0]
+
+        if (not isinstance(start, int)
+                or not isinstance(end, int)
+                or start < 0
+                or end < 0):
+
+            raise ValueError('start and end must be nonnegative integers')
+
         # Avoid repeatedly decompressing chunks by iterating over the chunks
         # in the first dimension.
         chunk_size = self.chunks[0]
