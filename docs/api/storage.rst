@@ -35,6 +35,8 @@ Storage (``zarr.storage``)
 
 .. autoclass:: ABSStore
 
+.. autoclass:: FSStore
+
 .. autoclass:: ConsolidatedMetadataStore
 
 .. autoclass:: LRUChunkCache

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 import numpy as np
 from numcodecs import (BZ2, AsType, Blosc, Categorize, Delta, FixedScaleOffset,
                        PackBits, Quantize, Zlib)
@@ -164,8 +163,8 @@ def test_array_with_packbits_filter():
 def test_array_with_categorize_filter():
 
     # setup
-    data = np.random.choice([u'foo', u'bar', u'baz'], size=100)
-    flt = Categorize(dtype=data.dtype, labels=[u'foo', u'bar', u'baz'])
+    data = np.random.choice(['foo', 'bar', 'baz'], size=100)
+    flt = Categorize(dtype=data.dtype, labels=['foo', 'bar', 'baz'])
     filters = [flt]
 
     for compressor in compressors:

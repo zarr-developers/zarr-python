@@ -90,7 +90,7 @@ you have cloned the Zarr source code and your current working directory is the r
 the repository, you can do something like the following::
 
     $ mkdir -p ~/pyenv/zarr-dev
-    $ virtualenv --no-site-packages --python=/usr/bin/python3.7 ~/pyenv/zarr-dev
+    $ virtualenv --no-site-packages --python=/usr/bin/python3.8 ~/pyenv/zarr-dev
     $ source ~/pyenv/zarr-dev/bin/activate
     $ pip install -r requirements_dev_minimal.txt -r requirements_dev_numpy.txt
     $ pip install -e .
@@ -190,8 +190,8 @@ Test coverage
 ~~~~~~~~~~~~~
 
 Zarr maintains 100% test coverage under the latest Python stable release (currently
-Python 3.6). Both unit tests and docstring doctests are included when computing
-coverage. Running ``tox -e py36`` will automatically run the test suite with coverage
+Python 3.8). Both unit tests and docstring doctests are included when computing
+coverage. Running ``tox -e py38`` will automatically run the test suite with coverage
 and produce a coverage report. This should be 100% before code can be accepted into the
 main code base.
 
@@ -206,7 +206,7 @@ Docstrings for user-facing classes and functions should follow the
 `numpydoc
 <https://github.com/numpy/numpy/blob/master/doc/HOWTO_DOCUMENT.rst.txt>`_
 standard, including sections for Parameters and Examples. All examples
-should run and pass as doctests under Python 3.7. To run doctests,
+should run and pass as doctests under Python 3.8. To run doctests,
 activate your development environment, install optional requirements,
 and run::
 

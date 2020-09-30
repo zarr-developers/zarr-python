@@ -1,16 +1,16 @@
-# -*- coding: utf-8 -*-
 import inspect
 import json
 import math
 import numbers
-import uuid
-from textwrap import TextWrapper, dedent
+from textwrap import TextWrapper
 
 import numpy as np
 from asciitree import BoxStyle, LeftAligned
 from asciitree.traversal import Traversal
 from numcodecs.compat import ensure_ndarray, ensure_text
 from numcodecs.registry import codec_registry
+
+from typing import Any, Dict, Tuple, Union
 
 # codecs to use for object dtype convenience API
 object_codecs = {
@@ -20,18 +20,18 @@ object_codecs = {
 }
 
 
-def json_dumps(o):
+def json_dumps(o: Any) -> bytes:
     """Write JSON in a consistent, human-readable way."""
     return json.dumps(o, indent=4, sort_keys=True, ensure_ascii=True,
                       separators=(',', ': ')).encode('ascii')
 
 
-def json_loads(s):
+def json_loads(s: str) -> Dict[str, Any]:
     """Read JSON in a consistent way."""
     return json.loads(ensure_text(s, 'ascii'))
 
 
-def normalize_shape(shape):
+def normalize_shape(shape) -> Tuple[int]:
     """Convenience function to normalize the `shape` argument."""
 
     if shape is None:
@@ -53,9 +53,9 @@ CHUNK_MIN = 128*1024  # Soft lower limit (128k)
 CHUNK_MAX = 64*1024*1024  # Hard upper limit
 
 
-def guess_chunks(shape, typesize):
+def guess_chunks(shape: Tuple[int, ...], typesize: int) -> Tuple[int, ...]:
     """
-    Guess an appropriate chunk layout for a dataset, given its shape and
+    Guess an appropriate chunk layout for an array, given its shape and
     the size of each element in bytes.  Will allocate chunks only as large
     as MAX_SIZE.  Chunks are generally close to some power-of-2 fraction of
     each axis, slightly favoring bigger values for the last index.
@@ -99,7 +99,9 @@ def guess_chunks(shape, typesize):
     return tuple(int(x) for x in chunks)
 
 
-def normalize_chunks(chunks, shape, typesize):
+def normalize_chunks(
+    chunks: Any, shape: Tuple[int, ...], typesize: int
+) -> Tuple[int, ...]:
     """Convenience function to normalize the `chunks` argument for an array
     with the given `shape`."""
 
@@ -134,11 +136,11 @@ def normalize_chunks(chunks, shape, typesize):
     return tuple(chunks)
 
 
-def normalize_dtype(dtype, object_codec):
+def normalize_dtype(dtype: Union[str, np.dtype], object_codec) -> Tuple[np.dtype, Any]:
 
     # convenience API for object arrays
     if inspect.isclass(dtype):
-        dtype = dtype.__name__
+        dtype = dtype.__name__  # type: ignore
     if isinstance(dtype, str):
         # allow ':' to delimit class from codec arguments
         tokens = dtype.split(':')
@@ -150,7 +152,7 @@ def normalize_dtype(dtype, object_codec):
                 if len(tokens) > 1:
                     args = tokens[1].split(',')
                 else:
-                    args = ()
+                    args = []
                 try:
                     object_codec = codec_registry[codec_id](*args)
                 except KeyError:  # pragma: no cover
@@ -170,7 +172,7 @@ def normalize_dtype(dtype, object_codec):
 
 
 # noinspection PyTypeChecker
-def is_total_slice(item, shape):
+def is_total_slice(item, shape: Tuple[int]) -> bool:
     """Determine whether `item` specifies a complete slice of array with the
     given `shape`. Used to optimize __setitem__ operations on the Chunk
     class."""
@@ -215,7 +217,7 @@ def normalize_resize_args(old_shape, *args):
     return new_shape
 
 
-def human_readable_size(size):
+def human_readable_size(size) -> str:
     if size < 2**10:
         return '%s' % size
     elif size < 2**20:
@@ -230,14 +232,14 @@ def human_readable_size(size):
         return '%.1fP' % (size / float(2**50))
 
 
-def normalize_order(order):
+def normalize_order(order: str) -> str:
     order = str(order).upper()
     if order not in ['C', 'F']:
         raise ValueError("order must be either 'C' or 'F', found: %r" % order)
     return order
 
 
-def normalize_fill_value(fill_value, dtype):
+def normalize_fill_value(fill_value, dtype: np.dtype):
 
     if fill_value is None:
         # no fill value
@@ -272,7 +274,7 @@ def normalize_fill_value(fill_value, dtype):
     return fill_value
 
 
-def normalize_storage_path(path):
+def normalize_storage_path(path: Union[str, bytes, None]) -> str:
 
     # handle bytes
     if isinstance(path, bytes):
@@ -317,11 +319,11 @@ def normalize_storage_path(path):
     return path
 
 
-def buffer_size(v):
+def buffer_size(v) -> int:
     return ensure_ndarray(v).nbytes
 
 
-def info_text_report(items):
+def info_text_report(items: Dict[Any, Any]) -> str:
     keys = [k for k, v in items]
     max_key_len = max(len(k) for k in keys)
     report = ''
@@ -334,7 +336,7 @@ def info_text_report(items):
     return report
 
 
-def info_html_report(items):
+def info_html_report(items) -> str:
     report = '<table class="zarr-info">'
     report += '<tbody>'
     for k, v in items:
@@ -399,83 +401,51 @@ class TreeTraversal(Traversal):
         return node.get_text()
 
 
-def tree_html_sublist(node, root=False, expand=False):
-    result = ''
-    data_jstree = '{"type": "%s"}' % node.get_type()
-    if root or (expand is True) or (isinstance(expand, int) and node.depth < expand):
-        css_class = 'jstree-open'
+tree_group_icon = 'folder'
+tree_array_icon = 'table'
+
+
+def tree_get_icon(stype: str) -> str:
+    if stype == "Array":
+        return tree_array_icon
+    elif stype == "Group":
+        return tree_group_icon
     else:
-        css_class = ''
-    result += "<li data-jstree='{}' class='{}'>".format(data_jstree, css_class)
-    result += '<span>{}</span>'.format(node.get_text())
-    children = node.get_children()
-    if children:
-        result += '<ul>'
-        for c in children:
-            result += tree_html_sublist(c, expand=expand)
-        result += '</ul>'
-    result += '</li>'
+        raise ValueError("Unknown type: %s" % stype)
+
+
+def tree_widget_sublist(node, root=False, expand=False):
+    import ipytree
+
+    result = ipytree.Node()
+    result.icon = tree_get_icon(node.get_type())
+    if root or (expand is True) or (isinstance(expand, int) and node.depth < expand):
+        result.opened = True
+    else:
+        result.opened = False
+    result.name = node.get_text()
+    result.nodes = [tree_widget_sublist(c, expand=expand) for c in node.get_children()]
+    result.disabled = True
+
     return result
 
 
-def tree_html(group, expand, level):
+def tree_widget(group, expand, level):
+    try:
+        import ipytree
+    except ImportError as error:
+        raise ImportError(
+            "{}: Run `pip install zarr[jupyter]` or `conda install ipytree`"
+            "to get the required ipytree dependency for displaying the tree "
+            "widget. If using jupyterlab, you also need to run "
+            "`jupyter labextension install ipytree`".format(error)
+        )
 
-    result = ''
-
-    # include CSS for jstree default theme
-    css_url = '//cdnjs.cloudflare.com/ajax/libs/jstree/3.3.3/themes/default/style.min.css'
-    result += '<link rel="stylesheet" href="{}"/>'.format(css_url)
-
-    # construct the tree as HTML nested lists
-    node_id = uuid.uuid4()
-    result += '<div id="{}" class="zarr-tree">'.format(node_id)
-    result += '<ul>'
+    result = ipytree.Tree()
     root = TreeNode(group, level=level)
-    result += tree_html_sublist(root, root=True, expand=expand)
-    result += '</ul>'
-    result += '</div>'
-
-    # construct javascript
-    result += dedent("""
-        <script>
-            if (!require.defined('jquery')) {
-                require.config({
-                    paths: {
-                        jquery: '//cdnjs.cloudflare.com/ajax/libs/jquery/1.12.1/jquery.min'
-                    },
-                });
-            }
-            if (!require.defined('jstree')) {
-                require.config({
-                    paths: {
-                        jstree: '//cdnjs.cloudflare.com/ajax/libs/jstree/3.3.3/jstree.min'
-                    },
-                });
-            }
-            require(['jstree'], function() {
-                $('#%s').jstree({
-                    types: {
-                        Group: {
-                            icon: "%s"
-                        },
-                        Array: {
-                            icon: "%s"
-                        }
-                    },
-                    plugins: ["types"]
-                });
-            });
-        </script>
-    """ % (node_id, tree_group_icon, tree_array_icon))
+    result.add_node(tree_widget_sublist(root, root=True, expand=expand))
 
     return result
-
-
-tree_group_icon = 'fa fa-folder'
-tree_array_icon = 'fa fa-table'
-# alternatives...
-# tree_group_icon: 'jstree-folder'
-# tree_array_icon: 'jstree-file'
 
 
 class TreeViewer(object):
@@ -500,10 +470,10 @@ class TreeViewer(object):
         )
 
         self.unicode_kwargs = dict(
-            UP_AND_RIGHT=u"\u2514",
-            HORIZONTAL=u"\u2500",
-            VERTICAL=u"\u2502",
-            VERTICAL_AND_RIGHT=u"\u251C"
+            UP_AND_RIGHT="\u2514",
+            HORIZONTAL="\u2500",
+            VERTICAL="\u2502",
+            VERTICAL_AND_RIGHT="\u251C"
         )
 
     def __bytes__(self):
@@ -531,8 +501,10 @@ class TreeViewer(object):
     def __repr__(self):
         return self.__unicode__()
 
-    def _repr_html_(self):
-        return tree_html(self.group, expand=self.expand, level=self.level)
+    def _ipython_display_(self):
+        tree = tree_widget(self.group, expand=self.expand, level=self.level)
+        tree._ipython_display_()
+        return tree
 
 
 def check_array_shape(param, array, shape):
@@ -547,15 +519,6 @@ def check_array_shape(param, array, shape):
 def is_valid_python_name(name):
     from keyword import iskeyword
     return name.isidentifier() and not iskeyword(name)
-
-
-def class_dir(klass):  # pragma: py3 no cover
-    d = dict()
-    d.update(klass.__dict__)
-    bases = klass.__bases__
-    for base in bases:
-        d.update(class_dir(base))
-    return d
 
 
 class NoLock(object):

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 import atexit
 import os
 import pickle
@@ -10,6 +9,12 @@ import unittest
 
 import numpy as np
 import pytest
+
+try:
+    import ipytree
+except ImportError:  # pragma: no cover
+    ipytree = None
+
 from numcodecs import Zlib
 from numpy.testing import assert_array_equal
 
@@ -62,6 +67,8 @@ class TestGroup(unittest.TestCase):
         assert isinstance(g.info, InfoReporter)
         assert isinstance(repr(g.info), str)
         assert isinstance(g.info._repr_html_(), str)
+        if hasattr(store, 'close'):
+            store.close()
 
     def test_group_init_2(self):
         store, chunk_store = self.create_store()
@@ -73,12 +80,16 @@ class TestGroup(unittest.TestCase):
         assert '/foo/bar' == g.name
         assert 'bar' == g.basename
         assert isinstance(g.attrs, Attributes)
+        if hasattr(store, 'close'):
+            store.close()
 
     def test_group_init_errors_1(self):
         store, chunk_store = self.create_store()
         # group metadata not initialized
         with pytest.raises(ValueError):
             Group(store, chunk_store=chunk_store)
+        if hasattr(store, 'close'):
+            store.close()
 
     def test_group_init_errors_2(self):
         store, chunk_store = self.create_store()
@@ -86,6 +97,8 @@ class TestGroup(unittest.TestCase):
         # array blocks group
         with pytest.raises(ValueError):
             Group(store, chunk_store=chunk_store)
+        if hasattr(store, 'close'):
+            store.close()
 
     def test_create_group(self):
         g1 = self.create_group()
@@ -156,6 +169,9 @@ class TestGroup(unittest.TestCase):
         assert isinstance(g7, Group)
         assert g7.path == 'z'
 
+        if hasattr(g1.store, 'close'):
+            g1.store.close()
+
     def test_require_group(self):
         g1 = self.create_group()
 
@@ -196,6 +212,9 @@ class TestGroup(unittest.TestCase):
         assert g6.path == 'y'
         assert isinstance(g7, Group)
         assert g7.path == 'z'
+
+        if hasattr(g1.store, 'close'):
+            g1.store.close()
 
     def test_create_dataset(self):
         g = self.create_group()
@@ -271,6 +290,9 @@ class TestGroup(unittest.TestCase):
         assert d.compressor.codec_id == 'zlib'
         assert 1 == d.compressor.level
 
+        if hasattr(g.store, 'close'):
+            g.store.close()
+
     def test_require_dataset(self):
         g = self.create_group()
 
@@ -314,6 +336,9 @@ class TestGroup(unittest.TestCase):
             # can cast but not exact match
             g.require_dataset('foo', shape=1000, chunks=100, dtype='i2',
                               exact=True)
+
+        if hasattr(g.store, 'close'):
+            g.store.close()
 
     def test_create_errors(self):
         g = self.create_group()
@@ -368,6 +393,9 @@ class TestGroup(unittest.TestCase):
         with pytest.raises(PermissionError):
             g.require_dataset('zzz', shape=100, chunks=10)
 
+        if hasattr(g.store, 'close'):
+            g.store.close()
+
     def test_create_overwrite(self):
         try:
             for method_name in 'create_dataset', 'create', 'empty', 'zeros', \
@@ -391,6 +419,9 @@ class TestGroup(unittest.TestCase):
                                             overwrite=True)
                 assert (400,) == d.shape
                 assert isinstance(g['foo'], Group)
+
+                if hasattr(g.store, 'close'):
+                    g.store.close()
         except NotImplementedError:
             pass
 
@@ -618,6 +649,9 @@ class TestGroup(unittest.TestCase):
         assert g1.visitvalues(visitor1) is True
         assert g1.visititems(visitor1) is True
 
+        if hasattr(g1.store, 'close'):
+            g1.store.close()
+
     def test_empty_getitem_contains_iterators(self):
         # setup
         g = self.create_group()
@@ -627,6 +661,9 @@ class TestGroup(unittest.TestCase):
         assert [] == list(g.keys())
         assert 0 == len(g)
         assert 'foo' not in g
+
+        if hasattr(g.store, 'close'):
+            g.store.close()
 
     def test_iterators_recurse(self):
         # setup
@@ -652,6 +689,9 @@ class TestGroup(unittest.TestCase):
         assert 'zab' == arrays_recurse[0][0]
         assert g1['foo']['bar']['zab'] == arrays_recurse[0][1]
 
+        if hasattr(g1.store, 'close'):
+            g1.store.close()
+
     def test_getattr(self):
         # setup
         g1 = self.create_group()
@@ -663,6 +703,9 @@ class TestGroup(unittest.TestCase):
         assert g2['bar'] == g2.bar
         # test that hasattr returns False instead of an exception (issue #88)
         assert not hasattr(g1, 'unexistingattribute')
+
+        if hasattr(g1.store, 'close'):
+            g1.store.close()
 
     def test_setitem(self):
         g = self.create_group()
@@ -679,6 +722,8 @@ class TestGroup(unittest.TestCase):
             assert 42 == g['foo'][()]
         except NotImplementedError:
             pass
+        if hasattr(g.store, 'close'):
+            g.store.close()
 
     def test_delitem(self):
         g = self.create_group()
@@ -697,6 +742,8 @@ class TestGroup(unittest.TestCase):
             assert 'foo' in g
             assert 'bar' not in g
             assert 'bar/baz' not in g
+        if hasattr(g.store, 'close'):
+            g.store.close()
 
     def test_move(self):
         g = self.create_group()
@@ -744,6 +791,9 @@ class TestGroup(unittest.TestCase):
         except NotImplementedError:
             pass
 
+        if hasattr(g.store, 'close'):
+            g.store.close()
+
     def test_array_creation(self):
         grp = self.create_group()
 
@@ -779,6 +829,9 @@ class TestGroup(unittest.TestCase):
         assert isinstance(j, Array)
         assert_array_equal(np.arange(100), j[:])
 
+        if hasattr(grp.store, 'close'):
+            grp.store.close()
+
         grp = self.create_group(read_only=True)
         with pytest.raises(PermissionError):
             grp.create('aa', shape=100, chunks=10)
@@ -802,6 +855,9 @@ class TestGroup(unittest.TestCase):
             grp.ones_like('aa', a)
         with pytest.raises(PermissionError):
             grp.full_like('aa', a)
+
+        if hasattr(grp.store, 'close'):
+            grp.store.close()
 
     def test_paths(self):
         g1 = self.create_group()
@@ -834,6 +890,9 @@ class TestGroup(unittest.TestCase):
         with pytest.raises(ValueError):
             g1['foo/../bar']
 
+        if hasattr(g1.store, 'close'):
+            g1.store.close()
+
     def test_pickle(self):
 
         # setup group
@@ -860,6 +919,9 @@ class TestGroup(unittest.TestCase):
         assert keys == list(g2)
         assert isinstance(g2['foo'], Group)
         assert isinstance(g2['foo/bar'], Array)
+
+        if hasattr(g2.store, 'close'):
+            g2.store.close()
 
     def test_context_manager(self):
 
@@ -1199,11 +1261,10 @@ def _check_tree(g, expect_bytes, expect_text):
     assert expect_text == str(g.tree())
     expect_repr = expect_text
     assert expect_repr == repr(g.tree())
-    # test _repr_html_ lightly
-    # noinspection PyProtectedMember
-    html = g.tree()._repr_html_().strip()
-    assert html.startswith('<link')
-    assert html.endswith('</script>')
+    if ipytree:
+        # noinspection PyProtectedMember
+        widget = g.tree()._ipython_display_()
+        isinstance(widget, ipytree.Tree)
 
 
 def test_tree():
@@ -1216,14 +1277,14 @@ def test_tree():
     g5.create_dataset('baz', shape=100, chunks=10)
 
     # test root group
-    expect_bytes = textwrap.dedent(u"""\
+    expect_bytes = textwrap.dedent("""\
     /
      +-- bar
      |   +-- baz
      |   +-- quux
      |       +-- baz (100,) float64
      +-- foo""").encode()
-    expect_text = textwrap.dedent(u"""\
+    expect_text = textwrap.dedent("""\
     /
      ├── bar
      │   ├── baz
@@ -1233,19 +1294,19 @@ def test_tree():
     _check_tree(g1, expect_bytes, expect_text)
 
     # test different group
-    expect_bytes = textwrap.dedent(u"""\
+    expect_bytes = textwrap.dedent("""\
     foo""").encode()
-    expect_text = textwrap.dedent(u"""\
+    expect_text = textwrap.dedent("""\
     foo""")
     _check_tree(g2, expect_bytes, expect_text)
 
     # test different group
-    expect_bytes = textwrap.dedent(u"""\
+    expect_bytes = textwrap.dedent("""\
     bar
      +-- baz
      +-- quux
          +-- baz (100,) float64""").encode()
-    expect_text = textwrap.dedent(u"""\
+    expect_text = textwrap.dedent("""\
     bar
      ├── baz
      └── quux

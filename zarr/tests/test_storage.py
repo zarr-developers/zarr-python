@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 import array
 import atexit
 import json
@@ -9,6 +8,7 @@ import tempfile
 import unittest
 from contextlib import contextmanager
 from pickle import PicklingError
+from zipfile import ZipFile
 
 import numpy as np
 import pytest
@@ -28,7 +28,8 @@ from zarr.storage import (ABSStore, ConsolidatedMetadataStore, DBMStore,
                           TempStore, ZipStore, array_meta_key, atexit_rmglob,
                           atexit_rmtree, attrs_key, default_compressor, getsize,
                           group_meta_key, init_array, init_group, migrate_1to2)
-from zarr.tests.util import CountingDict, skip_test_env_var
+from zarr.storage import FSStore
+from zarr.tests.util import CountingDict, have_fsspec, skip_test_env_var
 
 
 @contextmanager
@@ -69,11 +70,17 @@ class MutableMappingStoreTests(object):
                 # noinspection PyStatementEffect
                 del store['foo']
 
+        if hasattr(store, 'close'):
+            store.close()
+
     def test_set_invalid_content(self):
         store = self.create_store()
 
         with pytest.raises(TypeError):
             store['baz'] = list(range(5))
+
+        if hasattr(store, 'close'):
+            store.close()
 
     def test_clear(self):
         store = self.create_store()
@@ -84,6 +91,9 @@ class MutableMappingStoreTests(object):
         assert len(store) == 0
         assert 'foo' not in store
         assert 'baz' not in store
+
+        if hasattr(store, 'close'):
+            store.close()
 
     def test_pop(self):
         store = self.create_store()
@@ -105,6 +115,9 @@ class MutableMappingStoreTests(object):
         v = store.pop('xxx', None)
         assert v is None
 
+        if hasattr(store, 'close'):
+            store.close()
+
     def test_popitem(self):
         store = self.create_store()
         store['foo'] = b'bar'
@@ -115,6 +128,9 @@ class MutableMappingStoreTests(object):
         with pytest.raises(KeyError):
             store.popitem()
 
+        if hasattr(store, 'close'):
+            store.close()
+
     def test_writeable_values(self):
         store = self.create_store()
 
@@ -124,6 +140,9 @@ class MutableMappingStoreTests(object):
         store['foo3'] = array.array('B', b'bar')
         store['foo4'] = np.frombuffer(b'bar', dtype='u1')
 
+        if hasattr(store, 'close'):
+            store.close()
+
     def test_update(self):
         store = self.create_store()
         assert 'foo' not in store
@@ -131,6 +150,9 @@ class MutableMappingStoreTests(object):
         store.update(foo=b'bar', baz=b'quux')
         assert b'bar' == store['foo']
         assert b'quux' == store['baz']
+
+        if hasattr(store, 'close'):
+            store.close()
 
     def test_iterators(self):
         store = self.create_store()
@@ -155,6 +177,9 @@ class MutableMappingStoreTests(object):
         assert {b'aaa', b'bbb', b'ddd', b'fff'} == set(store.values())
         assert ({('a', b'aaa'), ('b', b'bbb'), ('c/d', b'ddd'), ('c/e/f', b'fff')} ==
                 set(store.items()))
+
+        if hasattr(store, 'close'):
+            store.close()
 
     def test_pickle(self):
 
@@ -181,6 +206,9 @@ class MutableMappingStoreTests(object):
         assert b'bar' == store2['foo']
         assert b'quux' == store2['baz']
 
+        if hasattr(store2, 'close'):
+            store2.close()
+
     def test_getsize(self):
         store = self.create_store()
         if isinstance(store, dict) or hasattr(store, 'getsize'):
@@ -200,6 +228,9 @@ class MutableMappingStoreTests(object):
             store['spong'] = np.frombuffer(b'zzzzz', dtype='u1')
             assert 15 == getsize(store)
             assert 5 == getsize(store, 'spong')
+
+        if hasattr(store, 'close'):
+            store.close()
 
 
 class StoreTests(MutableMappingStoreTests):
@@ -339,6 +370,9 @@ class StoreTests(MutableMappingStoreTests):
             assert 'c/d' in store
             assert 'c/e/f' in store
 
+        if hasattr(store, 'close'):
+            store.close()
+
     def test_init_array(self):
         store = self.create_store()
         init_array(store, shape=1000, chunks=100)
@@ -352,6 +386,9 @@ class StoreTests(MutableMappingStoreTests):
         assert np.dtype(None) == meta['dtype']
         assert default_compressor.get_config() == meta['compressor']
         assert meta['fill_value'] is None
+
+        if hasattr(store, 'close'):
+            store.close()
 
     def test_init_array_overwrite(self):
         self._test_init_array_overwrite('F')
@@ -402,6 +439,9 @@ class StoreTests(MutableMappingStoreTests):
             assert (100,) == meta['chunks']
             assert np.dtype('i4') == meta['dtype']
 
+        if hasattr(store, 'close'):
+            store.close()
+
     def test_init_array_path(self):
         path = 'foo/bar'
         store = self.create_store()
@@ -417,6 +457,9 @@ class StoreTests(MutableMappingStoreTests):
         assert np.dtype(None) == meta['dtype']
         assert default_compressor.get_config() == meta['compressor']
         assert meta['fill_value'] is None
+
+        if hasattr(store, 'close'):
+            store.close()
 
     def _test_init_array_overwrite_path(self, order):
         # setup
@@ -453,6 +496,9 @@ class StoreTests(MutableMappingStoreTests):
             assert (100,) == meta['chunks']
             assert np.dtype('i4') == meta['dtype']
 
+        if hasattr(store, 'close'):
+            store.close()
+
     def test_init_array_overwrite_group(self):
         # setup
         path = 'foo/bar'
@@ -477,6 +523,9 @@ class StoreTests(MutableMappingStoreTests):
             assert (1000,) == meta['shape']
             assert (100,) == meta['chunks']
             assert np.dtype('i4') == meta['dtype']
+
+        if hasattr(store, 'close'):
+            store.close()
 
     def _test_init_array_overwrite_chunk_store(self, order):
         # setup
@@ -514,11 +563,19 @@ class StoreTests(MutableMappingStoreTests):
             assert '0' not in chunk_store
             assert '1' not in chunk_store
 
+        if hasattr(store, 'close'):
+            store.close()
+        if hasattr(chunk_store, 'close'):
+            chunk_store.close()
+
     def test_init_array_compat(self):
         store = self.create_store()
         init_array(store, shape=1000, chunks=100, compressor='none')
         meta = decode_array_metadata(store[array_meta_key])
         assert meta['compressor'] is None
+
+        if hasattr(store, 'close'):
+            store.close()
 
     def test_init_group(self):
         store = self.create_store()
@@ -528,6 +585,9 @@ class StoreTests(MutableMappingStoreTests):
         assert group_meta_key in store
         meta = decode_group_metadata(store[group_meta_key])
         assert ZARR_FORMAT == meta['zarr_format']
+
+        if hasattr(store, 'close'):
+            store.close()
 
     def _test_init_group_overwrite(self, order):
         # setup
@@ -561,6 +621,9 @@ class StoreTests(MutableMappingStoreTests):
         with pytest.raises(ValueError):
             init_group(store)
 
+        if hasattr(store, 'close'):
+            store.close()
+
     def _test_init_group_overwrite_path(self, order):
         # setup
         path = 'foo/bar'
@@ -592,6 +655,9 @@ class StoreTests(MutableMappingStoreTests):
             # should have been overwritten
             meta = decode_group_metadata(store[path + '/' + group_meta_key])
             assert ZARR_FORMAT == meta['zarr_format']
+
+        if hasattr(store, 'close'):
+            store.close()
 
     def _test_init_group_overwrite_chunk_store(self, order):
         # setup
@@ -629,6 +695,11 @@ class StoreTests(MutableMappingStoreTests):
         # don't overwrite group
         with pytest.raises(ValueError):
             init_group(store)
+
+        if hasattr(store, 'close'):
+            store.close()
+        if hasattr(chunk_store, 'close'):
+            chunk_store.close()
 
 
 class TestMappingStore(StoreTests, unittest.TestCase):
@@ -696,12 +767,17 @@ class TestMemoryStore(StoreTests, unittest.TestCase):
 class TestDictStore(StoreTests, unittest.TestCase):
 
     def create_store(self):
-        return DictStore()
+        with pytest.warns(DeprecationWarning):
+            return DictStore()
 
     def test_deprecated(self):
-        with pytest.warns(DeprecationWarning):
-            store = self.create_store()
+        store = self.create_store()
         assert isinstance(store, MemoryStore)
+
+    def test_pickle(self):
+        with pytest.warns(DeprecationWarning):
+            # pickle.load() will also trigger deprecation warning
+            super().test_pickle()
 
 
 class TestDirectoryStore(StoreTests, unittest.TestCase):
@@ -758,6 +834,192 @@ class TestDirectoryStore(StoreTests, unittest.TestCase):
         store['FOO'] = b'bar'
         assert 'FOO' in store
         assert 'foo' in store
+
+    def test_listing_keys_slash(self):
+
+        def mock_walker_slash(_path):
+            yield from [
+                # trailing slash in first key
+                ('root_with_slash/', ['d1', 'g1'], ['.zgroup']),
+                ('root_with_slash/d1', [], ['.zarray']),
+                ('root_with_slash/g1', [], ['.zgroup'])
+            ]
+
+        res = set(DirectoryStore._keys_fast('root_with_slash/', walker=mock_walker_slash))
+        assert res == {'.zgroup', 'g1/.zgroup', 'd1/.zarray'}
+
+    def test_listing_keys_no_slash(self):
+
+        def mock_walker_no_slash(_path):
+            yield from [
+                # no trainling slash in first key
+                ('root_with_no_slash', ['d1', 'g1'], ['.zgroup']),
+                ('root_with_no_slash/d1', [], ['.zarray']),
+                ('root_with_no_slash/g1', [], ['.zgroup'])
+            ]
+
+        res = set(
+            DirectoryStore._keys_fast('root_with_no_slash', mock_walker_no_slash)
+                )
+        assert res == {'.zgroup', 'g1/.zgroup', 'd1/.zarray'}
+
+
+@pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
+class TestFSStore(StoreTests, unittest.TestCase):
+
+    def create_store(self, normalize_keys=False):
+        path = tempfile.mkdtemp()
+        atexit.register(atexit_rmtree, path)
+        store = FSStore(path, normalize_keys=normalize_keys)
+        return store
+
+    def test_complex(self):
+        path1 = tempfile.mkdtemp()
+        path2 = tempfile.mkdtemp()
+        store = FSStore("simplecache::file://" + path1,
+                        simplecache={"same_names": True, "cache_storage": path2})
+        assert not store
+        assert not os.listdir(path1)
+        assert not os.listdir(path2)
+        store['foo'] = b"hello"
+        assert 'foo' in os.listdir(path1)
+        assert 'foo' in store
+        assert not os.listdir(path2)
+        assert store["foo"] == b"hello"
+        assert 'foo' in os.listdir(path2)
+
+    def test_not_fsspec(self):
+        import zarr
+        path = tempfile.mkdtemp()
+        with pytest.raises(ValueError, match="storage_options"):
+            zarr.open_array(path, mode='w', storage_options={"some": "kwargs"})
+        with pytest.raises(ValueError, match="storage_options"):
+            zarr.open_group(path, mode='w', storage_options={"some": "kwargs"})
+        zarr.open_array("file://" + path, mode='w', shape=(1,), dtype="f8")
+
+    def test_create(self):
+        import zarr
+        path1 = tempfile.mkdtemp()
+        path2 = tempfile.mkdtemp()
+        g = zarr.open_group("file://" + path1, mode='w',
+                            storage_options={"auto_mkdir": True})
+        a = g.create_dataset("data", shape=(8,))
+        a[:4] = [0, 1, 2, 3]
+        assert "data" in os.listdir(path1)
+        assert ".zgroup" in os.listdir(path1)
+
+        g = zarr.open_group("simplecache::file://" + path1, mode='r',
+                            storage_options={"cache_storage": path2,
+                                             "same_names": True})
+        assert g.data[:].tolist() == [0, 1, 2, 3, 0, 0, 0, 0]
+        with pytest.raises(PermissionError):
+            g.data[:] = 1
+
+    def test_read_only(self):
+        path = tempfile.mkdtemp()
+        atexit.register(atexit_rmtree, path)
+        store = FSStore(path)
+        store['foo'] = b"bar"
+
+        store = FSStore(path, mode='r')
+
+        with pytest.raises(PermissionError):
+            store['foo'] = b"hex"
+
+        with pytest.raises(PermissionError):
+            del store['foo']
+
+        with pytest.raises(PermissionError):
+            store.clear()
+
+        with pytest.raises(PermissionError):
+            store.rmdir("anydir")
+
+        assert store['foo'] == b"bar"
+
+        filepath = os.path.join(path, "foo")
+        with pytest.raises(ValueError):
+            FSStore(filepath, mode='r')
+
+    def test_eq(self):
+        store1 = FSStore("anypath")
+        store2 = FSStore("anypath")
+        assert store1 == store2
+
+    @pytest.mark.usefixtures("s3")
+    def test_s3(self):
+        import zarr
+        g = zarr.open_group("s3://test/out.zarr", mode='w',
+                            storage_options=self.s3so)
+        a = g.create_dataset("data", shape=(8,))
+        a[:4] = [0, 1, 2, 3]
+
+        g = zarr.open_group("s3://test/out.zarr", mode='r',
+                            storage_options=self.s3so)
+
+        assert g.data[:].tolist() == [0, 1, 2, 3, 0, 0, 0, 0]
+
+    @pytest.mark.usefixtures("s3")
+    def test_s3_complex(self):
+        import zarr
+        g = zarr.open_group("s3://test/out.zarr", mode='w',
+                            storage_options=self.s3so)
+        expected = np.empty((8, 8, 8), dtype='int64')
+        expected[:] = -1
+        a = g.create_dataset("data", shape=(8, 8, 8),
+                             fill_value=-1, chunks=(1, 1, 1))
+        expected[0] = 0
+        expected[3] = 3
+        a[:4] = expected[:4]
+
+        a = g.create_dataset("data_f", shape=(8, ), chunks=(1,),
+                             dtype=[('foo', 'S3'), ('bar', 'i4')],
+                             fill_value=(b"b", 1))
+        a[:4] = (b"aaa", 2)
+        g = zarr.open_group("s3://test/out.zarr", mode='r',
+                            storage_options=self.s3so)
+
+        assert (g.data[:] == expected).all()
+        assert g.data_f['foo'].tolist() == [b"aaa"] * 4 + [b"b"] * 4
+
+
+@pytest.fixture()
+def s3(request):
+    # writable local S3 system
+    import shlex
+    import subprocess
+    import time
+    if "BOTO_CONFIG" not in os.environ:  # pragma: no cover
+        os.environ["BOTO_CONFIG"] = "/dev/null"
+    if "AWS_ACCESS_KEY_ID" not in os.environ:  # pragma: no cover
+        os.environ["AWS_ACCESS_KEY_ID"] = "foo"
+    if "AWS_SECRET_ACCESS_KEY" not in os.environ:  # pragma: no cover
+        os.environ["AWS_SECRET_ACCESS_KEY"] = "bar"
+    requests = pytest.importorskip("requests")
+    s3fs = pytest.importorskip("s3fs")
+    pytest.importorskip("moto")
+
+    port = 5555
+    endpoint_uri = 'http://127.0.0.1:%s/' % port
+    proc = subprocess.Popen(shlex.split("moto_server s3 -p %s" % port))
+
+    timeout = 5
+    while timeout > 0:
+        try:
+            r = requests.get(endpoint_uri)
+            if r.ok:
+                break
+        except Exception:  # pragma: no cover
+            pass
+        timeout -= 0.1  # pragma: no cover
+        time.sleep(0.1)  # pragma: no cover
+    s3so = dict(client_kwargs={'endpoint_url': endpoint_uri})
+    s3 = s3fs.S3FileSystem(anon=False, **s3so)
+    s3.mkdir("test")
+    request.cls.s3so = s3so
+    yield
+    proc.terminate()
+    proc.wait()
 
 
 class TestNestedDirectoryStore(TestDirectoryStore, unittest.TestCase):
@@ -894,6 +1156,17 @@ class TestN5Store(TestNestedDirectoryStore, unittest.TestCase):
                 init_array(store, shape=1000, chunks=100, filters=filters)
 
 
+@pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
+class TestNestedFSStore(TestNestedDirectoryStore):
+
+    def create_store(self, normalize_keys=False):
+        path = tempfile.mkdtemp()
+        atexit.register(atexit_rmtree, path)
+        store = FSStore(path, normalize_keys=normalize_keys,
+                        key_separator='/', auto_mkdir=True)
+        return store
+
+
 class TestTempStore(StoreTests, unittest.TestCase):
 
     def create_store(self):
@@ -950,6 +1223,23 @@ class TestZipStore(StoreTests, unittest.TestCase):
         store['foo'] = b'bar'
         with pytest.raises(NotImplementedError):
             store.popitem()
+
+    def test_permissions(self):
+        store = ZipStore('data/store.zip', mode='w')
+        store['foo'] = b'bar'
+        store['baz/'] = b''
+        store.flush()
+        store.close()
+        z = ZipFile('data/store.zip', 'r')
+        info = z.getinfo('foo')
+        perm = oct(info.external_attr >> 16)
+        assert perm == '0o644'
+        info = z.getinfo('baz/')
+        perm = oct(info.external_attr >> 16)
+        # only for posix platforms
+        if os.name == 'posix':
+            assert perm == '0o40775'
+        z.close()
 
 
 class TestDBMStore(StoreTests, unittest.TestCase):
@@ -1034,6 +1324,15 @@ class TestSQLiteStore(StoreTests, unittest.TestCase):
         atexit.register(atexit_rmtree, path)
         store = SQLiteStore(path)
         return store
+
+    def test_underscore_in_name(self):
+        path = tempfile.mktemp(suffix='.db')
+        atexit.register(atexit_rmtree, path)
+        store = SQLiteStore(path)
+        store['a'] = b'aaa'
+        store['a_b'] = b'aa_bb'
+        store.rmdir('a')
+        assert 'a_b' in store
 
 
 class TestSQLiteStoreInMemory(TestSQLiteStore, unittest.TestCase):

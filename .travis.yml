@@ -1,9 +1,5 @@
 language: python
 
-branches:
-  only:
-    - master
-
 sudo: false
 
 addons:
@@ -30,6 +26,10 @@ matrix:
     - python: 3.7
       dist: xenial
       sudo: true
+    - python: 3.8
+      dist: xenial
+      sudo: true
+      env: MYPY_CHECK='true'
 
 before_install:
   - docker pull arafato/azurite
@@ -39,11 +39,12 @@ before_script:
     - mongo mydb_test --eval 'db.createUser({user:"travis",pwd:"test",roles:["readWrite"]});'
 
 install:
-  - pip install -U pip setuptools wheel tox-travis coveralls
+  - pip install -U pip setuptools wheel tox-travis coveralls mypy
 
 script:
   - tox
   - if [[ $BUILD_DOCS == 'true' ]]; then tox -e docs; fi
+  - if [[ $MYPY_CHECK == 'true' ]]; then mypy zarr; fi
 
 after_success:
-  - coveralls
+  - coveralls --service=travis-pro
