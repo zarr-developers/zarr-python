@@ -2747,7 +2747,7 @@ class LRUChunkCache(LRUMappingCache):
         >>> import zarr
         >>> from numcodecs import LZMA
         >>> import numpy as np
-        >>> store = zarr.DictStore()
+        >>> store = zarr.MemoryStore()
         >>> z = zarr.array(np.random.randn(1000000).reshape(1000,1000), chunks=(100,100),
         ...                store=store, compressor=LZMA())
         >>> from timeit import timeit
