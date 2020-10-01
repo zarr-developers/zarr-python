@@ -424,6 +424,36 @@ class Array(object):
         return a
 
     def islice(self, start=None, end=None):
+        """
+        Yield a generator for iterating over the entire or parts of the
+        array.
+
+        Parameters
+        ----------
+        start : int, optional
+            Start index for the generator to start at. Defaults to 0.
+        end : int, optional
+            End index for the generator to stop at. Defaults to self.shape[0].
+
+        Yields
+        ------
+        out : generator
+            A generator that can be used to iterate over the requested region
+            the array.
+
+        Examples
+        --------
+        Setup a 1-dimensional array::
+
+            >>> import zarr
+            >>> import numpy as np
+            >>> z = zarr.array(np.arange(100))
+
+        Iterate over part of the array:
+            >>> for value in z.islice(25, 75):
+            >>>     print(value)
+        """
+
         if len(self.shape) == 0:
             # Same error as numpy
             raise TypeError("iteration over a 0-d array")
@@ -432,12 +462,11 @@ class Array(object):
         if end is None or end > self.shape[0]:
             end = self.shape[0]
 
-        if (not isinstance(start, int)
-                or not isinstance(end, int)
-                or start < 0
-                or end < 0):
+        if not isinstance(start, int) or start < 0:
+            raise ValueError('start must be a nonnegative integer')
 
-            raise ValueError('start and end must be nonnegative integers')
+        if not isinstance(end, int) or end < 0:
+            raise ValueError('end must be a nonnegative integer')
 
         # Avoid repeatedly decompressing chunks by iterating over the chunks
         # in the first dimension.
