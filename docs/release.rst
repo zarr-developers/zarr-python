@@ -43,6 +43,10 @@ Next release
   applies to reading.
   By :user:`Martin Durant <martindurant>`; :issue:`606`
 
+* Efficient iteration expanded with option to pass start and stop index via
+  ``array.islice``.
+  By :user:`Sebastian Grill <yetyetanotherusername>`, :issue:`615`.
+
 .. _release_2.4.0:
 
 2.4.0
