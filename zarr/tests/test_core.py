@@ -1368,6 +1368,9 @@ class TestArray(unittest.TestCase):
                 # noinspection PyStatementEffect
                 list(z.islice(start, end))
 
+        # check behavior for start > end
+        assert [] == list(z.islice(6, 5))
+
         if hasattr(z.store, 'close'):
             z.store.close()
 
