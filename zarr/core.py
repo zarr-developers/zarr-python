@@ -1535,25 +1535,31 @@ class Array(object):
             check_array_shape('value', value, sel_shape)
 
         # iterate over chunks in range
-        for chunk_coords, chunk_selection, out_selection in indexer:
+        if not hasattr(self.store, "setitems") or self._synchronizer is not None:
+            # iterative approach
+            for chunk_coords, chunk_selection, out_selection in indexer:
 
-            # extract data to store
-            if sel_shape == ():
-                chunk_value = value
-            elif is_scalar(value, self._dtype):
-                chunk_value = value
-            else:
-                chunk_value = value[out_selection]
-                # handle missing singleton dimensions
-                if indexer.drop_axes:
-                    item = [slice(None)] * self.ndim
-                    for a in indexer.drop_axes:
-                        item[a] = np.newaxis
-                    item = tuple(item)
-                    chunk_value = chunk_value[item]
+                # extract data to store
+                if sel_shape == ():
+                    chunk_value = value
+                elif is_scalar(value, self._dtype):
+                    chunk_value = value
+                else:
+                    chunk_value = value[out_selection]
+                    # handle missing singleton dimensions
+                    if indexer.drop_axes:
+                        item = [slice(None)] * self.ndim
+                        for a in indexer.drop_axes:
+                            item[a] = np.newaxis
+                        item = tuple(item)
+                        chunk_value = chunk_value[item]
 
-            # put data
-            self._chunk_setitem(chunk_coords, chunk_selection, chunk_value, fields=fields)
+                # put data
+                self._chunk_setitem(chunk_coords, chunk_selection, chunk_value, fields=fields)
+        else:
+            lchunk_coords, lchunk_selection, lout_selection = zip(*indexer)
+            self._chunk_setitems(lchunk_coords, lchunk_selection, out, lout_selection,
+                                 fields=fields)
 
     def _process_chunk(self, out, cdata, chunk_selection, drop_axes,
                        out_is_ndarray, fields, out_selection):

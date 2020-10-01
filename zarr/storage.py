@@ -1054,13 +1054,19 @@ class FSStore(MutableMapping):
             raise ReadOnlyError()
         key = self._normalize_key(key)
         path = self.dir_path(key)
-        value = ensure_contiguous_ndarray(value)
         try:
             if self.fs.isdir(path):
                 self.fs.rm(path, recursive=True)
             self.map[key] = value
+            self.fs.invalidate_cache(self.fs._parent(path))
         except self.exceptions as e:
             raise KeyError(key) from e
+
+    def setitems(self, values):
+        if self.mode == 'r':
+            raise ReadOnlyError()
+        values2 = {self._normalize_key(k): v for k, v in values.items()}
+        self.map.setitems(values2)
 
     def __delitem__(self, key):
         if self.mode == 'r':
@@ -1071,6 +1077,12 @@ class FSStore(MutableMapping):
             self.fs.rm(path, recursive=True)
         else:
             del self.map[key]
+
+    def delitems(self, keys):
+        if self.mode == 'r':
+            raise ReadOnlyError()
+        keys = [self._normalize_key(k) for k in keys]
+        self.map.delitems(keys)
 
     def __contains__(self, key):
         key = self._normalize_key(key)
