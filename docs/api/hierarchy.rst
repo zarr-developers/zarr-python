@@ -39,4 +39,3 @@ Groups (``zarr.hierarchy``)
     .. automethod:: ones_like
     .. automethod:: full_like
     .. automethod:: move
-    .. automethod:: islice
