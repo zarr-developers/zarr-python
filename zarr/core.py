@@ -426,7 +426,7 @@ class Array(object):
     def islice(self, start=None, end=None):
         """
         Yield a generator for iterating over the entire or parts of the
-        array.
+        array. Uses a cache so chunks only have to be decompressed once.
 
         Parameters
         ----------
@@ -450,8 +450,12 @@ class Array(object):
             >>> z = zarr.array(np.arange(100))
 
         Iterate over part of the array:
-            >>> for value in z.islice(25, 75):
-            >>>     print(value)
+            >>> for value in z.islice(25, 30): value;
+            25
+            26
+            27
+            28
+            29
         """
 
         if len(self.shape) == 0:
