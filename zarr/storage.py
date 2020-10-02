@@ -40,7 +40,7 @@ from numcodecs.registry import codec_registry
 
 from zarr.errors import (
     MetadataError,
-    err_bad_compressor,
+    BadCompressorError,
     ContainsArrayError,
     ContainsGroupError,
     FSPathExistNotDir,
@@ -397,8 +397,8 @@ def _init_array_metadata(
     if compressor:
         try:
             compressor_config = compressor.get_config()
-        except AttributeError:
-            err_bad_compressor(compressor)
+        except AttributeError as e:
+            raise BadCompressorError(compressor) from e
 
     # obtain filters config
     if filters:
