@@ -8,10 +8,6 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-    env:
-      CIBW_TEST_COMMAND: pytest --pyargs zarr
-      CIBW_TEST_REQUIRES: pytest
-      CIBW_SKIP: "*27* pp*"
 
     steps:
       - uses: actions/checkout@v1
