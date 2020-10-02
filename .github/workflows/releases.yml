@@ -23,7 +23,7 @@ jobs:
         with:
           python-version: '3.8'
 
-      - name: Install PyBuil
+      - name: Install PyBuild
         run: |
           python -m pip install build
 
