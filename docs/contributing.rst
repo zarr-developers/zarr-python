@@ -330,6 +330,11 @@ compatibility in some way.
 Release procedure
 ~~~~~~~~~~~~~~~~~
 
+.. note:: 
+
+   Most of the release process is now handled by github workflow which should
+   automatically push a release to PyPI if a tag is pushed. 
+
 Checkout and update the master branch::
 
     $ git checkout master
@@ -347,7 +352,6 @@ Tag the version (where "X.X.X" stands for the version number, e.g., "2.2.0")::
 
 Release source code to PyPI::
 
-    $ python setup.py register sdist
     $ twine upload dist/zarr-${version}.tar.gz
 
 Obtain checksum for release to conda-forge::
