@@ -17,8 +17,6 @@ This release will be the last to support Python 3.5, next version of Zarr will b
 * Fix minor bug in `N5Store`. 
   By :user:`gsakkis`, :issue:`550`.
 
-* add new `FSStore` to open any ``fsspec`` supported protocol :issue:`546`
-
 * Improve error message in Jupyter when trying to use the ``ipytree`` widget
   without ``ipytree`` installed.
   By :user:`Zain Patel <mzjp2>`; :issue:`537`
