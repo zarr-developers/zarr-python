@@ -50,6 +50,10 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && startsWith(github.event.ref, 'refs/tags/v')
     steps:
+      - uses: actions/download-artifact@v1
+        with:
+          name: releases
+          path: dist
       - uses: pypa/gh-action-pypi-publish@master
         with:
           user: __token__
