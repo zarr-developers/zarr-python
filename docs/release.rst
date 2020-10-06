@@ -2,6 +2,12 @@ Release notes
 =============
 
 
+Next Release
+------------
+
+This release will be the first release of Zarr not supporting Python 3.5.
+
+
 2.5.0
 -----
 
