@@ -38,7 +38,7 @@ before_script:
     - mongo mydb_test --eval 'db.createUser({user:"travis",pwd:"test",roles:["readWrite"]});'
 
 install:
-  - pip install -U pip setuptools wheel tox-travis coveralls mypy
+  - pip install -U pip setuptools wheel tox-travis coveralls mypy codecov
 
 script:
   - tox
@@ -47,3 +47,4 @@ script:
 
 after_success:
   - coveralls --service=travis-pro
+  - codecov
