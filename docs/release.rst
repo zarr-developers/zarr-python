@@ -7,6 +7,8 @@ Next Release
 
 This release will be the first release of Zarr not supporting Python 3.5.
 
+* End Python 3.5 support.
+  By :user:`Chris Barnes <clbarnes>`; :issue:`602`.
 
 2.5.0
 -----
@@ -20,7 +22,7 @@ This release will be the last to support Python 3.5, next version of Zarr will b
 * Remove a few remaining Python 2-isms.
   By :user:`Poruri Sai Rahul <rahulporuri>`; :issue:`393`.
 
-* Fix minor bug in `N5Store`. 
+* Fix minor bug in `N5Store`.
   By :user:`gsakkis`, :issue:`550`.
 
 * Improve error message in Jupyter when trying to use the ``ipytree`` widget
