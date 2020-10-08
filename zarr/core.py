@@ -1558,7 +1558,24 @@ class Array(object):
                 self._chunk_setitem(chunk_coords, chunk_selection, chunk_value, fields=fields)
         else:
             lchunk_coords, lchunk_selection, lout_selection = zip(*indexer)
-            self._chunk_setitems(lchunk_coords, lchunk_selection, out, lout_selection,
+            chunk_values = []
+            for out_selection in lout_selection:
+                if sel_shape == ():
+                    chunk_values.append(value)
+                elif is_scalar(value, self._dtype):
+                    chunk_values.append(value)
+                else:
+                    cv = value[out_selection]
+                    # handle missing singleton dimensions
+                    if indexer.drop_axes:
+                        item = [slice(None)] * self.ndim
+                        for a in indexer.drop_axes:
+                            item[a] = np.newaxis
+                        item = tuple(item)
+                        cv = chunk_value[item]
+                    chunk_values.append(cv)
+
+            self._chunk_setitems(lchunk_coords, lchunk_selection, chunk_values,
                                  fields=fields)
 
     def _process_chunk(self, out, cdata, chunk_selection, drop_axes,
@@ -1683,6 +1700,12 @@ class Array(object):
                         fill_value = self._fill_value
                     out[out_select] = fill_value
 
+    def _chunk_setitems(self, lchunk_coords, lchunk_selection, values, fields=None):
+        ckeys = [self._chunk_key(co) for co in lchunk_coords]
+        cdatas = [self._process_for_setitem(sel, val, fields=fields)
+                  for sel, val in zip(lchunk_selection, values)]
+        self.chunk_store.setitems({k: v for k, v in zip(ckeys, cdatas)})
+
     def _chunk_setitem(self, chunk_coords, chunk_selection, value, fields=None):
         """Replace part or whole of a chunk.
 
@@ -1710,10 +1733,12 @@ class Array(object):
                                        fields=fields)
 
     def _chunk_setitem_nosync(self, chunk_coords, chunk_selection, value, fields=None):
-
-        # obtain key for chunk storage
         ckey = self._chunk_key(chunk_coords)
+        cdata = self._process_for_setitem(chunk_selection, value, fields=fields)
+        # store
+        self.chunk_store[ckey] = cdata
 
+    def _process_for_setitem(self, chunk_selection, value, fields=None):
         if is_total_slice(chunk_selection, self._chunks) and not fields:
             # totally replace chunk
 
@@ -1768,10 +1793,7 @@ class Array(object):
                 chunk[chunk_selection] = value
 
         # encode chunk
-        cdata = self._encode_chunk(chunk)
-
-        # store
-        self.chunk_store[ckey] = cdata
+        return self._encode_chunk(chunk)
 
     def _chunk_key(self, chunk_coords):
         return self._key_prefix + '.'.join(map(str, chunk_coords))
