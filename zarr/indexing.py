@@ -5,8 +5,12 @@ import numbers
 
 import numpy as np
 
-from zarr.errors import (err_boundscheck, err_negative_step,
-                         err_too_many_indices, err_vindex_invalid_selection)
+from zarr.errors import (
+    NegativeStepError,
+    err_too_many_indices,
+    VindexInvalidSelectionError,
+    BoundsCheckError,
+)
 
 
 def is_integer(x):
@@ -46,7 +50,7 @@ def normalize_integer_selection(dim_sel, dim_len):
 
     # handle out of bounds
     if dim_sel >= dim_len or dim_sel < 0:
-        err_boundscheck(dim_len)
+        raise BoundsCheckError(dim_len)
 
     return dim_sel
 
@@ -101,7 +105,7 @@ class SliceDimIndexer(object):
         # normalize
         self.start, self.stop, self.step = dim_sel.indices(dim_len)
         if self.step < 1:
-            err_negative_step()
+            raise NegativeStepError()
 
         # store attributes
         self.dim_len = dim_len
@@ -385,7 +389,7 @@ def wraparound_indices(x, dim_len):
 
 def boundscheck_indices(x, dim_len):
     if np.any(x < 0) or np.any(x >= dim_len):
-        err_boundscheck(dim_len)
+        raise BoundsCheckError(dim_len)
 
 
 class IntArrayDimIndexer(object):
@@ -756,7 +760,7 @@ class VIndex(object):
         elif is_mask_selection(selection, self.array):
             return self.array.get_mask_selection(selection, fields=fields)
         else:
-            err_vindex_invalid_selection(selection)
+            raise VindexInvalidSelectionError(selection)
 
     def __setitem__(self, selection, value):
         fields, selection = pop_fields(selection)
@@ -767,7 +771,7 @@ class VIndex(object):
         elif is_mask_selection(selection, self.array):
             self.array.set_mask_selection(selection, value, fields=fields)
         else:
-            err_vindex_invalid_selection(selection)
+            raise VindexInvalidSelectionError(selection)
 
 
 def check_fields(fields, dtype):

@@ -2,8 +2,19 @@ Release notes
 =============
 
 
-Next release
+Next Release
 ------------
+
+This release will be the first release of Zarr not supporting Python 3.5.
+
+* End Python 3.5 support.
+  By :user:`Chris Barnes <clbarnes>`; :issue:`602`.
+
+2.5.0
+-----
+
+
+This release will be the last to support Python 3.5, next version of Zarr will be Python 3.6+.
 
 * `DirectoryStore` now uses `os.scandir`, which should make listing large store
   faster, :issue:`563`
@@ -11,7 +22,7 @@ Next release
 * Remove a few remaining Python 2-isms.
   By :user:`Poruri Sai Rahul <rahulporuri>`; :issue:`393`.
 
-* Fix minor bug in `N5Store`. 
+* Fix minor bug in `N5Store`.
   By :user:`gsakkis`, :issue:`550`.
 
 * Improve error message in Jupyter when trying to use the ``ipytree`` widget
@@ -24,8 +35,8 @@ Next release
   By :user:`Elliott Sales de Andrade <QuLogic>`; :issue:`442`
 
 * Many of the convenience functions to emit errors (``err_*`` from
-  ``zarr.errors``  have been replaced by ``ValueError`` subclasses. The
-  functions are deprecated and will be removed in the future. :issue:`590` )
+  ``zarr.errors``  have been replaced by ``ValueError`` subclasses. The corresponding
+  ``err_*`` function have been removed. :issue:`590`, :issue:`614`)
 
 * Improve consistency of terminology regarding arrays and datasets in the 
   documentation.

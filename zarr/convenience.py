@@ -82,12 +82,8 @@ def open(store=None, mode='a', **kwargs):
         else:
             return open_group(store, mode=mode, **kwargs)
 
-    elif mode == 'a':
-        if contains_array(store, path):
-            return open_array(store, mode=mode, **kwargs)
-        elif contains_group(store, path):
-            return open_group(store, mode=mode, **kwargs)
-        elif 'shape' in kwargs:
+    elif mode == "a":
+        if "shape" in kwargs or contains_array(store, path):
             return open_array(store, mode=mode, **kwargs)
         else:
             return open_group(store, mode=mode, **kwargs)
