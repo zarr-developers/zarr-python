@@ -1702,8 +1702,8 @@ class Array(object):
 
     def _chunk_setitems(self, lchunk_coords, lchunk_selection, values, fields=None):
         ckeys = [self._chunk_key(co) for co in lchunk_coords]
-        cdatas = [self._process_for_setitem(sel, val, fields=fields)
-                  for sel, val in zip(lchunk_selection, values)]
+        cdatas = [self._process_for_setitem(key, sel, val, fields=fields)
+                  for key, sel, val in zip(ckeys, lchunk_selection, values)]
         self.chunk_store.setitems({k: v for k, v in zip(ckeys, cdatas)})
 
     def _chunk_setitem(self, chunk_coords, chunk_selection, value, fields=None):
@@ -1734,11 +1734,11 @@ class Array(object):
 
     def _chunk_setitem_nosync(self, chunk_coords, chunk_selection, value, fields=None):
         ckey = self._chunk_key(chunk_coords)
-        cdata = self._process_for_setitem(chunk_selection, value, fields=fields)
+        cdata = self._process_for_setitem(ckey, chunk_selection, value, fields=fields)
         # store
         self.chunk_store[ckey] = cdata
 
-    def _process_for_setitem(self, chunk_selection, value, fields=None):
+    def _process_for_setitem(self, ckey, chunk_selection, value, fields=None):
         if is_total_slice(chunk_selection, self._chunks) and not fields:
             # totally replace chunk
 
