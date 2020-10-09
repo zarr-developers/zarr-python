@@ -968,15 +968,25 @@ class TestFSStore(StoreTests, unittest.TestCase):
         expected[3] = 3
         a[:4] = expected[:4]
 
-        a = g.create_dataset("data_f", shape=(8, ), chunks=(1,),
+        b = g.create_dataset("data_f", shape=(8, ), chunks=(1,),
                              dtype=[('foo', 'S3'), ('bar', 'i4')],
                              fill_value=(b"b", 1))
-        a[:4] = (b"aaa", 2)
-        g = zarr.open_group("s3://test/out.zarr", mode='r',
-                            storage_options=self.s3so)
+        b[:4] = (b"aaa", 2)
+        g2 = zarr.open_group("s3://test/out.zarr", mode='r',
+                             storage_options=self.s3so)
 
-        assert (g.data[:] == expected).all()
-        assert g.data_f['foo'].tolist() == [b"aaa"] * 4 + [b"b"] * 4
+        assert (g2.data[:] == expected).all()
+        assert g2.data_f['foo'].tolist() == [b"aaa"] * 4 + [b"b"] * 4
+        with pytest.raises(PermissionError):
+            g2.data[:] = 5
+        with pytest.raises(PermissionError):
+            # even though overwrite=True, store is read-only, so fails
+            g2.create_dataset("data", shape=(8, 8, 8), mode='w',
+                              fill_value=-1, chunks=(1, 1, 1), overwrite=True)
+
+        a = g.create_dataset("data", shape=(8, 8, 8), mode='w',
+                             fill_value=-1, chunks=(1, 1, 1), overwrite=True)
+        assert (a[:] == -np.ones((8, 8, 8))).all()
 
 
 @pytest.fixture()
