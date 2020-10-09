@@ -1068,12 +1068,6 @@ class FSStore(MutableMapping):
         except self.exceptions as e:
             raise KeyError(key) from e
 
-    def setitems(self, values):
-        if self.mode == 'r':
-            raise ReadOnlyError()
-        values2 = {self._normalize_key(k): v for k, v in values.items()}
-        self.map.setitems(values2)
-
     def __delitem__(self, key):
         if self.mode == 'r':
             raise ReadOnlyError()
