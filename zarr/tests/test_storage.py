@@ -976,9 +976,17 @@ class TestFSStore(StoreTests, unittest.TestCase):
                              storage_options=self.s3so)
 
         assert (g2.data[:] == expected).all()
+
+        g2.data[:] = 5  # write with scalar
+        assert (g2.data[:] == 5).all()
+
         assert g2.data_f['foo'].tolist() == [b"aaa"] * 4 + [b"b"] * 4
         with pytest.raises(PermissionError):
             g2.data[:] = 5
+
+        with pytest.raises(PermissionError):
+            g2.store.setitems({})
+
         with pytest.raises(PermissionError):
             # even though overwrite=True, store is read-only, so fails
             g2.create_dataset("data", shape=(8, 8, 8), mode='w',

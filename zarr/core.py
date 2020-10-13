@@ -1567,7 +1567,7 @@ class Array(object):
                 else:
                     cv = value[out_selection]
                     # handle missing singleton dimensions
-                    if indexer.drop_axes:
+                    if indexer.drop_axes:  # pragma: no cover
                         item = [slice(None)] * self.ndim
                         for a in indexer.drop_axes:
                             item[a] = np.newaxis
