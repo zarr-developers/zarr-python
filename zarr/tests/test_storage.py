@@ -977,8 +977,8 @@ class TestFSStore(StoreTests, unittest.TestCase):
 
         assert (g2.data[:] == expected).all()
 
-        g2.data[:] = 5  # write with scalar
-        assert (g2.data[:] == 5).all()
+        b[:] = 5  # write with scalar
+        assert (b[:] == 5).all()
 
         assert g2.data_f['foo'].tolist() == [b"aaa"] * 4 + [b"b"] * 4
         with pytest.raises(PermissionError):
@@ -1015,7 +1015,8 @@ def s3(request):
 
     port = 5555
     endpoint_uri = 'http://127.0.0.1:%s/' % port
-    proc = subprocess.Popen(shlex.split("moto_server s3 -p %s" % port))
+    proc = subprocess.Popen(shlex.split("moto_server s3 -p %s" % port),
+                            stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
 
     timeout = 5
     while timeout > 0:
