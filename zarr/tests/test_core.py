@@ -139,9 +139,6 @@ class TestArray(unittest.TestCase):
         except TypeError:
             pass
 
-        if hasattr(z.store, 'close'):
-            z.store.close()
-
     # noinspection PyStatementEffect
     def test_array_1d(self):
         a = np.arange(1050)
