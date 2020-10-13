@@ -977,8 +977,8 @@ class TestFSStore(StoreTests, unittest.TestCase):
 
         assert (g2.data[:] == expected).all()
 
-        b[:] = 5  # write with scalar
-        assert (b[:] == 5).all()
+        a[:] = 5  # write with scalar
+        assert (a[:] == 5).all()
 
         assert g2.data_f['foo'].tolist() == [b"aaa"] * 4 + [b"b"] * 4
         with pytest.raises(PermissionError):
