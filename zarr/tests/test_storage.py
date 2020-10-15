@@ -966,6 +966,8 @@ class TestFSStore(StoreTests, unittest.TestCase):
                              fill_value=-1, chunks=(1, 1, 1))
         expected[0] = 0
         expected[3] = 3
+        expected[6, 6, 6] = 6
+        a[6, 6, 6] = 6
         a[:4] = expected[:4]
 
         b = g.create_dataset("data_f", shape=(8, ), chunks=(1,),
