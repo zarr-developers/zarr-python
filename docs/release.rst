@@ -2,23 +2,57 @@ Release notes
 =============
 
 
-Next release
+Next Release
 ------------
 
-* Fix minor bug in `N5Store`. 
+This release will be the first release of Zarr not supporting Python 3.5.
+
+* End Python 3.5 support.
+  By :user:`Chris Barnes <clbarnes>`; :issue:`602`.
+
+2.5.0
+-----
+
+
+This release will be the last to support Python 3.5, next version of Zarr will be Python 3.6+.
+
+* `DirectoryStore` now uses `os.scandir`, which should make listing large store
+  faster, :issue:`563`
+  
+* Remove a few remaining Python 2-isms.
+  By :user:`Poruri Sai Rahul <rahulporuri>`; :issue:`393`.
+
+* Fix minor bug in `N5Store`.
   By :user:`gsakkis`, :issue:`550`.
 
 * Improve error message in Jupyter when trying to use the ``ipytree`` widget
   without ``ipytree`` installed.
   By :user:`Zain Patel <mzjp2>`; :issue:`537`
 
+* Add typing informations to many of the core functions :issue:`589`
+
 * Explicitly close stores during testing.
   By :user:`Elliott Sales de Andrade <QuLogic>`; :issue:`442`
+
+* Many of the convenience functions to emit errors (``err_*`` from
+  ``zarr.errors``  have been replaced by ``ValueError`` subclasses. The corresponding
+  ``err_*`` function have been removed. :issue:`590`, :issue:`614`)
 
 * Improve consistency of terminology regarding arrays and datasets in the 
   documentation.
   By :user:`Josh Moore <joshmoore>`; :issue:`571`.
 
+* Added support for generic URL opening by ``fsspec``, where the URLs have the
+  form "protocol://[server]/path" or can be chained URls with "::" separators.
+  The additional argument ``storage_options`` is passed to the backend, see
+  the ``fsspec`` docs.
+  By :user:`Martin Durant <martindurant>`; :issue:`546`
+
+* Added support for fetching multiple items via ``getitems`` method of a
+  store, if it exists. This allows for concurrent fetching of data blocks
+  from stores that implement this; presently HTTP, S3, GCS. Currently only
+  applies to reading.
+  By :user:`Martin Durant <martindurant>`; :issue:`606`
 
 .. _release_2.4.0:
 

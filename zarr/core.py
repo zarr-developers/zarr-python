@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 import binascii
 import hashlib
 import itertools
@@ -12,7 +11,7 @@ from numcodecs.compat import ensure_bytes, ensure_ndarray
 
 from zarr.attrs import Attributes
 from zarr.codecs import AsType, get_codec
-from zarr.errors import ArrayIndexError, err_array_not_found, err_read_only
+from zarr.errors import ArrayNotFoundError, ReadOnlyError, ArrayIndexError
 from zarr.indexing import (BasicIndexer, CoordinateIndexer, MaskIndexer,
                            OIndex, OrthogonalIndexer, VIndex, PartialChunkIterator,
                            check_fields,
@@ -150,7 +149,7 @@ class Array(object):
             mkey = self._key_prefix + array_meta_key
             meta_bytes = self._store[mkey]
         except KeyError:
-            err_array_not_found(self._path)
+            raise ArrayNotFoundError(self._path)
         else:
 
             # decode and store metadata as instance members
@@ -1022,11 +1021,18 @@ class Array(object):
             check_array_shape('out', out, out_shape)
 
         # iterate over chunks
-        for chunk_coords, chunk_selection, out_selection in indexer:
+        if not hasattr(self.chunk_store, "getitems"):
+            # sequentially get one key at a time from storage
+            for chunk_coords, chunk_selection, out_selection in indexer:
 
-            # load chunk selection into output array
-            self._chunk_getitem(chunk_coords, chunk_selection, out, out_selection,
-                                drop_axes=indexer.drop_axes, fields=fields)
+                # load chunk selection into output array
+                self._chunk_getitem(chunk_coords, chunk_selection, out, out_selection,
+                                    drop_axes=indexer.drop_axes, fields=fields)
+        else:
+            # allow storage to get multiple items at once
+            lchunk_coords, lchunk_selection, lout_selection = zip(*indexer)
+            self._chunk_getitems(lchunk_coords, lchunk_selection, out, lout_selection,
+                                 drop_axes=indexer.drop_axes, fields=fields)
 
         if out.shape:
             return out
@@ -1198,7 +1204,7 @@ class Array(object):
 
         # guard conditions
         if self._read_only:
-            err_read_only()
+            raise ReadOnlyError()
 
         # refresh metadata
         if not self._cache_metadata:
@@ -1289,7 +1295,7 @@ class Array(object):
 
         # guard conditions
         if self._read_only:
-            err_read_only()
+            raise ReadOnlyError()
 
         # refresh metadata
         if not self._cache_metadata:
@@ -1361,7 +1367,7 @@ class Array(object):
 
         # guard conditions
         if self._read_only:
-            err_read_only()
+            raise ReadOnlyError()
 
         # refresh metadata
         if not self._cache_metadata:
@@ -1442,7 +1448,7 @@ class Array(object):
 
         # guard conditions
         if self._read_only:
-            err_read_only()
+            raise ReadOnlyError()
 
         # refresh metadata
         if not self._cache_metadata:
@@ -1550,81 +1556,38 @@ class Array(object):
             # put data
             self._chunk_setitem(chunk_coords, chunk_selection, chunk_value, fields=fields)
 
-    def _chunk_getitem(self, chunk_coords, chunk_selection, out, out_selection,
-                       drop_axes=None, fields=None):
-        """Obtain part or whole of a chunk.
+    def _process_chunk(self, out, cdata, chunk_selection, drop_axes,
+                       out_is_ndarray, fields, out_selection):
+        """Take binary data from storage and fill output array"""
+        if (out_is_ndarray and
+                not fields and
+                is_contiguous_selection(out_selection) and
+                is_total_slice(chunk_selection, self._chunks) and
+                not self._filters and
+                self._dtype != object):
 
-        Parameters
-        ----------
-        chunk_coords : tuple of ints
-            Indices of the chunk.
-        chunk_selection : selection
-            Location of region within the chunk to extract.
-        out : ndarray
-            Array to store result in.
-        out_selection : selection
-            Location of region within output array to store results in.
-        drop_axes : tuple of ints
-            Axes to squeeze out of the chunk.
-        fields
-            TODO
-
-        """
-
-        assert len(chunk_coords) == len(self._cdata_shape)
-
-        out_is_ndarray = True
-        try:
-            out = ensure_ndarray(out)
-        except TypeError:
-            out_is_ndarray = False
-
-        # obtain key for chunk
-        ckey = self._chunk_key(chunk_coords)
-
-        try:
-            # obtain compressed data for chunk
-            cdata = self.chunk_store[ckey]
-
-        except KeyError:
-            # chunk not initialized
-            if self._fill_value is not None:
-                if fields:
-                    fill_value = self._fill_value[fields]
-                else:
-                    fill_value = self._fill_value
-                out[out_selection] = fill_value
-
-        else:
-
-            if (out_is_ndarray and
-                    not fields and
-                    is_contiguous_selection(out_selection) and
-                    is_total_slice(chunk_selection, self._chunks) and
-                    not self._filters and
-                    self._dtype != object):
-
-                dest = out[out_selection]
-                write_direct = (
-                    dest.flags.writeable and (
-                        (self._order == 'C' and dest.flags.c_contiguous) or
-                        (self._order == 'F' and dest.flags.f_contiguous)
-                    )
+            dest = out[out_selection]
+            write_direct = (
+                dest.flags.writeable and
+                (
+                    (self._order == 'C' and dest.flags.c_contiguous) or
+                    (self._order == 'F' and dest.flags.f_contiguous)
                 )
+            )
 
-                if write_direct:
+            if write_direct:
 
-                    # optimization: we want the whole chunk, and the destination is
-                    # contiguous, so we can decompress directly from the chunk
-                    # into the destination array
+                # optimization: we want the whole chunk, and the destination is
+                # contiguous, so we can decompress directly from the chunk
+                # into the destination array
 
-                    if self._compressor:
-                        self._compressor.decode(cdata, dest)
-                    else:
-                        chunk = ensure_ndarray(cdata).view(self._dtype)
-                        chunk = chunk.reshape(self._chunks, order=self._order)
-                        np.copyto(dest, chunk)
-                    return
+                if self._compressor:
+                    self._compressor.decode(cdata, dest)
+                else:
+                    chunk = ensure_ndarray(cdata).view(self._dtype)
+                    chunk = chunk.reshape(self._chunks, order=self._order)
+                    np.copyto(dest, chunk)
+                return
 
             # decode chunk
             try:
@@ -1656,6 +1619,82 @@ class Array(object):
 
             # store selected data in output
             out[out_selection] = tmp
+
+    def _chunk_getitem(self, chunk_coords, chunk_selection, out, out_selection,
+                       drop_axes=None, fields=None):
+        """Obtain part or whole of a chunk.
+
+        Parameters
+        ----------
+        chunk_coords : tuple of ints
+            Indices of the chunk.
+        chunk_selection : selection
+            Location of region within the chunk to extract.
+        out : ndarray
+            Array to store result in.
+        out_selection : selection
+            Location of region within output array to store results in.
+        drop_axes : tuple of ints
+            Axes to squeeze out of the chunk.
+        fields
+            TODO
+
+        """
+        out_is_ndarray = True
+        try:
+            out = ensure_ndarray(out)
+        except TypeError:
+            out_is_ndarray = False
+
+        assert len(chunk_coords) == len(self._cdata_shape)
+
+        # obtain key for chunk
+        ckey = self._chunk_key(chunk_coords)
+
+        try:
+            # obtain compressed data for chunk
+            cdata = self.chunk_store[ckey]
+
+        except KeyError:
+            # chunk not initialized
+            if self._fill_value is not None:
+                if fields:
+                    fill_value = self._fill_value[fields]
+                else:
+                    fill_value = self._fill_value
+                out[out_selection] = fill_value
+
+        else:
+            self._process_chunk(out, cdata, chunk_selection, drop_axes,
+                                out_is_ndarray, fields, out_selection)
+
+    def _chunk_getitems(self, lchunk_coords, lchunk_selection, out, lout_selection,
+                        drop_axes=None, fields=None):
+        """As _chunk_getitem, but for lists of chunks
+
+        This gets called where the storage supports ``getitems``, so that
+        it can decide how to fetch the keys, allowing concurrency.
+        """
+        out_is_ndarray = True
+        try:
+            out = ensure_ndarray(out)
+        except TypeError:  # pragma: no cover
+            out_is_ndarray = False
+
+        ckeys = [self._chunk_key(ch) for ch in lchunk_coords]
+        cdatas = self.chunk_store.getitems(ckeys)
+        for ckey, chunk_select, out_select in zip(ckeys, lchunk_selection, lout_selection):
+            if ckey in cdatas:
+                self._process_chunk(out, cdatas[ckey], chunk_select, drop_axes,
+                                    out_is_ndarray, fields, out_select)
+            else:
+                # check exception type
+                if self._fill_value is not None:
+                    if fields:
+                        fill_value = self._fill_value[fields]
+                    else:
+                        fill_value = self._fill_value
+                    out[out_select] = fill_value
 
     def _chunk_setitem(self, chunk_coords, chunk_selection, value, fields=None):
         """Replace part or whole of a chunk.
@@ -1990,7 +2029,7 @@ class Array(object):
 
         # guard condition
         if self._read_only:
-            err_read_only()
+            raise ReadOnlyError()
 
         return self._synchronized_op(f, *args, **kwargs)
 

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 import collections
 from collections.abc import MutableMapping
 import os
@@ -46,3 +45,11 @@ def skip_test_env_var(name):
     """
     value = os.environ.get(name, '0')
     return pytest.mark.skipif(value == '0', reason='Tests not enabled via environment variable')
+
+
+try:
+    import fsspec  # noqa: F401
+
+    have_fsspec = True
+except ImportError:  # pragma: no cover
+    have_fsspec = False

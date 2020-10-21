@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Convenience functions for storing and loading data."""
 import io
 import itertools
@@ -8,7 +7,7 @@ from collections.abc import Mapping
 from zarr.core import Array
 from zarr.creation import array as _create_array
 from zarr.creation import normalize_store_arg, open_array
-from zarr.errors import CopyError, err_path_not_found
+from zarr.errors import CopyError, PathNotFoundError
 from zarr.hierarchy import Group
 from zarr.hierarchy import group as _create_group
 from zarr.hierarchy import open_group
@@ -83,12 +82,8 @@ def open(store=None, mode='a', **kwargs):
         else:
             return open_group(store, mode=mode, **kwargs)
 
-    elif mode == 'a':
-        if contains_array(store, path):
-            return open_array(store, mode=mode, **kwargs)
-        elif contains_group(store, path):
-            return open_group(store, mode=mode, **kwargs)
-        elif 'shape' in kwargs:
+    elif mode == "a":
+        if "shape" in kwargs or contains_array(store, path):
             return open_array(store, mode=mode, **kwargs)
         else:
             return open_group(store, mode=mode, **kwargs)
@@ -99,7 +94,7 @@ def open(store=None, mode='a', **kwargs):
         elif contains_group(store, path):
             return open_group(store, mode=mode, **kwargs)
         else:
-            err_path_not_found(path)
+            raise PathNotFoundError(path)
 
 
 def save_array(store, arr, **kwargs):

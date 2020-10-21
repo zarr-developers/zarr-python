@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """This module contains storage classes for use with Zarr arrays and groups.
 
 Note that any object implementing the :class:`MutableMapping` interface from the
@@ -32,15 +31,21 @@ from collections.abc import MutableMapping
 from os import scandir
 from pickle import PicklingError
 from threading import Lock, RLock
+from typing import Optional, Union, List, Tuple, Dict
 import uuid
 import time
 
 from numcodecs.compat import ensure_bytes, ensure_contiguous_ndarray
 from numcodecs.registry import codec_registry
 
-from zarr.errors import (MetadataError, err_bad_compressor, err_contains_array,
-                         err_contains_group, err_fspath_exists_notdir,
-                         err_read_only)
+from zarr.errors import (
+    MetadataError,
+    BadCompressorError,
+    ContainsArrayError,
+    ContainsGroupError,
+    FSPathExistNotDir,
+    ReadOnlyError,
+)
 from zarr.meta import encode_array_metadata, encode_group_metadata
 from zarr.util import (buffer_size, json_loads, nolock, normalize_chunks,
                        normalize_dtype, normalize_fill_value, normalize_order,
@@ -65,17 +70,11 @@ except ImportError:  # pragma: no cover
     from zarr.codecs import Zlib
     default_compressor = Zlib()
 
-# Find which function to use for atomic replace
-if sys.version_info >= (3, 3):
-    from os import replace
-elif sys.platform == "win32":  # pragma: no cover
-    from osreplace import replace
-else:  # pragma: no cover
-    # POSIX rename() is always atomic
-    from os import rename as replace
+
+Path = Union[str, bytes, None]
 
 
-def _path_to_prefix(path):
+def _path_to_prefix(path: Optional[str]) -> str:
     # assume path already normalized
     if path:
         prefix = path + '/'
@@ -84,7 +83,7 @@ def _path_to_prefix(path):
     return prefix
 
 
-def contains_array(store, path=None):
+def contains_array(store: MutableMapping, path: Path = None) -> bool:
     """Return True if the store contains an array at the given logical path."""
     path = normalize_storage_path(path)
     prefix = _path_to_prefix(path)
@@ -92,7 +91,7 @@ def contains_array(store, path=None):
     return key in store
 
 
-def contains_group(store, path=None):
+def contains_group(store: MutableMapping, path: Path = None) -> bool:
     """Return True if the store contains a group at the given logical path."""
     path = normalize_storage_path(path)
     prefix = _path_to_prefix(path)
@@ -100,7 +99,7 @@ def contains_group(store, path=None):
     return key in store
 
 
-def _rmdir_from_keys(store, path=None):
+def _rmdir_from_keys(store: MutableMapping, path: Optional[str] = None) -> None:
     # assume path already normalized
     prefix = _path_to_prefix(path)
     for key in list(store.keys()):
@@ -108,7 +107,7 @@ def _rmdir_from_keys(store, path=None):
             del store[key]
 
 
-def rmdir(store, path=None):
+def rmdir(store, path: Path = None):
     """Remove all items under the given path. If `store` provides a `rmdir` method,
     this will be called, otherwise will fall back to implementation via the
     `MutableMapping` interface."""
@@ -121,7 +120,7 @@ def rmdir(store, path=None):
         _rmdir_from_keys(store, path)
 
 
-def _rename_from_keys(store, src_path, dst_path):
+def _rename_from_keys(store: MutableMapping, src_path: str, dst_path: str) -> None:
     # assume path already normalized
     src_prefix = _path_to_prefix(src_path)
     dst_prefix = _path_to_prefix(dst_path)
@@ -131,7 +130,7 @@ def _rename_from_keys(store, src_path, dst_path):
             store[new_key] = store.pop(key)
 
 
-def rename(store, src_path, dst_path):
+def rename(store, src_path: Path, dst_path: Path):
     """Rename all items under the given path. If `store` provides a `rename` method,
     this will be called, otherwise will fall back to implementation via the
     `MutableMapping` interface."""
@@ -145,7 +144,7 @@ def rename(store, src_path, dst_path):
         _rename_from_keys(store, src_path, dst_path)
 
 
-def _listdir_from_keys(store, path=None):
+def _listdir_from_keys(store: MutableMapping, path: Optional[str] = None) -> List[str]:
     # assume path already normalized
     prefix = _path_to_prefix(path)
     children = set()
@@ -157,7 +156,7 @@ def _listdir_from_keys(store, path=None):
     return sorted(children)
 
 
-def listdir(store, path=None):
+def listdir(store, path: Path = None):
     """Obtain a directory listing for the given path. If `store` provides a `listdir`
     method, this will be called, otherwise will fall back to implementation via the
     `MutableMapping` interface."""
@@ -170,7 +169,7 @@ def listdir(store, path=None):
         return _listdir_from_keys(store, path)
 
 
-def getsize(store, path=None):
+def getsize(store, path: Path = None) -> int:
     """Compute size of stored items for a given path. If `store` provides a `getsize`
     method, this will be called, otherwise will return -1."""
     path = normalize_storage_path(path)
@@ -201,7 +200,12 @@ def getsize(store, path=None):
         return -1
 
 
-def _require_parent_group(path, store, chunk_store, overwrite):
+def _require_parent_group(
+    path: Optional[str],
+    store: MutableMapping,
+    chunk_store: Optional[MutableMapping],
+    overwrite: bool,
+):
     # assume path is normalized
     if path:
         segments = path.split('/')
@@ -214,9 +218,20 @@ def _require_parent_group(path, store, chunk_store, overwrite):
                 _init_group_metadata(store, path=p, chunk_store=chunk_store)
 
 
-def init_array(store, shape, chunks=True, dtype=None, compressor='default',
-               fill_value=None, order='C', overwrite=False, path=None,
-               chunk_store=None, filters=None, object_codec=None):
+def init_array(
+    store: MutableMapping,
+    shape: Tuple[int, ...],
+    chunks: Union[bool, int, Tuple[int, ...]] = True,
+    dtype=None,
+    compressor="default",
+    fill_value=None,
+    order: str = "C",
+    overwrite: bool = False,
+    path: Path = None,
+    chunk_store: MutableMapping = None,
+    filters=None,
+    object_codec=None,
+):
     """Initialize an array store with the given configuration. Note that this is a low-level
     function and there should be no need to call this directly from user code.
 
@@ -226,7 +241,7 @@ def init_array(store, shape, chunks=True, dtype=None, compressor='default',
         A mapping that supports string keys and bytes-like values.
     shape : int or tuple of ints
         Array shape.
-    chunks : int or tuple of ints, optional
+    chunks : bool, int or tuple of ints, optional
         Chunk shape. If True, will be guessed from `shape` and `dtype`. If
         False, will be set to `shape`, i.e., single chunk for the whole array.
     dtype : string or dtype, optional
@@ -239,7 +254,7 @@ def init_array(store, shape, chunks=True, dtype=None, compressor='default',
         Memory layout to be used within each chunk.
     overwrite : bool, optional
         If True, erase all data in `store` prior to initialisation.
-    path : string, optional
+    path : string, bytes, optional
         Path under which array is stored.
     chunk_store : MutableMapping, optional
         Separate storage for chunks. If not provided, `store` will be used
@@ -333,9 +348,20 @@ def init_array(store, shape, chunks=True, dtype=None, compressor='default',
                          object_codec=object_codec)
 
 
-def _init_array_metadata(store, shape, chunks=None, dtype=None, compressor='default',
-                         fill_value=None, order='C', overwrite=False, path=None,
-                         chunk_store=None, filters=None, object_codec=None):
+def _init_array_metadata(
+    store,
+    shape,
+    chunks=None,
+    dtype=None,
+    compressor="default",
+    fill_value=None,
+    order="C",
+    overwrite=False,
+    path: Optional[str] = None,
+    chunk_store=None,
+    filters=None,
+    object_codec=None,
+):
 
     # guard conditions
     if overwrite:
@@ -344,9 +370,9 @@ def _init_array_metadata(store, shape, chunks=None, dtype=None, compressor='defa
         if chunk_store is not None:
             rmdir(chunk_store, path)
     elif contains_array(store, path):
-        err_contains_array(path)
+        raise ContainsArrayError(path)
     elif contains_group(store, path):
-        err_contains_group(path)
+        raise ContainsGroupError(path)
 
     # normalize metadata
     dtype, object_codec = normalize_dtype(dtype, object_codec)
@@ -371,8 +397,8 @@ def _init_array_metadata(store, shape, chunks=None, dtype=None, compressor='defa
     if compressor:
         try:
             compressor_config = compressor.get_config()
-        except AttributeError:
-            err_bad_compressor(compressor)
+        except AttributeError as e:
+            raise BadCompressorError(compressor) from e
 
     # obtain filters config
     if filters:
@@ -398,7 +424,7 @@ def _init_array_metadata(store, shape, chunks=None, dtype=None, compressor='defa
 
     # use null to indicate no filters
     if not filters_config:
-        filters_config = None
+        filters_config = None  # type: ignore
 
     # initialize metadata
     meta = dict(shape=shape, chunks=chunks, dtype=dtype,
@@ -412,7 +438,12 @@ def _init_array_metadata(store, shape, chunks=None, dtype=None, compressor='defa
 init_store = init_array
 
 
-def init_group(store, overwrite=False, path=None, chunk_store=None):
+def init_group(
+    store: MutableMapping,
+    overwrite: bool = False,
+    path: Path = None,
+    chunk_store: MutableMapping = None,
+):
     """Initialize a group store. Note that this is a low-level function and there should be no
     need to call this directly from user code.
 
@@ -442,7 +473,12 @@ def init_group(store, overwrite=False, path=None, chunk_store=None):
                          chunk_store=chunk_store)
 
 
-def _init_group_metadata(store, overwrite=False, path=None, chunk_store=None):
+def _init_group_metadata(
+    store: MutableMapping,
+    overwrite: Optional[bool] = False,
+    path: Optional[str] = None,
+    chunk_store: MutableMapping = None,
+):
 
     # guard conditions
     if overwrite:
@@ -451,19 +487,19 @@ def _init_group_metadata(store, overwrite=False, path=None, chunk_store=None):
         if chunk_store is not None:
             rmdir(chunk_store, path)
     elif contains_array(store, path):
-        err_contains_array(path)
+        raise ContainsArrayError(path)
     elif contains_group(store, path):
-        err_contains_group(path)
+        raise ContainsGroupError(path)
 
     # initialize metadata
     # N.B., currently no metadata properties are needed, however there may
     # be in future
-    meta = dict()
+    meta = dict()  # type: ignore
     key = _path_to_prefix(path) + group_meta_key
     store[key] = encode_group_metadata(meta)
 
 
-def _dict_store_keys(d, prefix='', cls=dict):
+def _dict_store_keys(d: Dict, prefix="", cls=dict):
     for k in d.keys():
         v = d[k]
         if isinstance(v, cls):
@@ -514,7 +550,7 @@ class MemoryStore(MutableMapping):
         root, cls = state
         self.__init__(root=root, cls=cls)
 
-    def _get_parent(self, item):
+    def _get_parent(self, item: str):
         parent = self.root
         # split the item
         segments = item.split('/')
@@ -541,7 +577,7 @@ class MemoryStore(MutableMapping):
                     raise KeyError(item)
         return parent, segments[-1]
 
-    def __getitem__(self, item):
+    def __getitem__(self, item: str):
         parent, key = self._get_parent(item)
         try:
             value = parent[key]
@@ -553,13 +589,13 @@ class MemoryStore(MutableMapping):
             else:
                 return value
 
-    def __setitem__(self, item, value):
+    def __setitem__(self, item: str, value):
         with self.write_mutex:
             parent, key = self._require_parent(item)
             value = ensure_bytes(value)
             parent[key] = value
 
-    def __delitem__(self, item):
+    def __delitem__(self, item: str):
         with self.write_mutex:
             parent, key = self._get_parent(item)
             try:
@@ -567,7 +603,7 @@ class MemoryStore(MutableMapping):
             except KeyError:
                 raise KeyError(item)
 
-    def __contains__(self, item):
+    def __contains__(self, item: str):  # type: ignore[override]
         try:
             parent, key = self._get_parent(item)
             value = parent[key]
@@ -590,10 +626,10 @@ class MemoryStore(MutableMapping):
     def __iter__(self):
         return self.keys()
 
-    def __len__(self):
+    def __len__(self) -> int:
         return sum(1 for _ in self.keys())
 
-    def listdir(self, path=None):
+    def listdir(self, path: Path = None) -> List[str]:
         path = normalize_storage_path(path)
         if path:
             try:
@@ -608,7 +644,7 @@ class MemoryStore(MutableMapping):
         else:
             return []
 
-    def rename(self, src_path, dst_path):
+    def rename(self, src_path: Path, dst_path: Path):
         src_path = normalize_storage_path(src_path)
         dst_path = normalize_storage_path(dst_path)
 
@@ -617,7 +653,7 @@ class MemoryStore(MutableMapping):
 
         dst_parent[dst_key] = src_parent.pop(src_key)
 
-    def rmdir(self, path=None):
+    def rmdir(self, path: Path = None):
         path = normalize_storage_path(path)
         if path:
             try:
@@ -632,7 +668,7 @@ class MemoryStore(MutableMapping):
             # clear out root
             self.root = self.cls()
 
-    def getsize(self, path=None):
+    def getsize(self, path: Path = None):
         path = normalize_storage_path(path)
 
         # obtain value to return size of
@@ -669,11 +705,11 @@ class MemoryStore(MutableMapping):
 class DictStore(MemoryStore):
 
     def __init__(self, *args, **kwargs):
-        warnings.warn("DictStore has been renamed to MemoryStore and will be "
-                      "removed in the future. Please use MemoryStore.",
+        warnings.warn("DictStore has been renamed to MemoryStore in 2.4.0 and "
+                      "will be removed in the future. Please use MemoryStore.",
                       DeprecationWarning,
                       stacklevel=2)
-        super(DictStore, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
 
 
 class DirectoryStore(MutableMapping):
@@ -739,7 +775,7 @@ class DirectoryStore(MutableMapping):
         # guard conditions
         path = os.path.abspath(path)
         if os.path.exists(path) and not os.path.isdir(path):
-            err_fspath_exists_notdir(path)
+            raise FSPathExistNotDir(path)
 
         self.path = path
         self.normalize_keys = normalize_keys
@@ -752,7 +788,7 @@ class DirectoryStore(MutableMapping):
 
         Parameters
         ----------
-        fn: str
+        fn : str
             Filepath to open and read from.
 
         Notes
@@ -768,10 +804,9 @@ class DirectoryStore(MutableMapping):
 
         Parameters
         ----------
-        a: array-like
+        a : array-like
             Data to write into the file.
-
-        fn: str
+        fn : str
             Filepath to open and write to.
 
         Notes
@@ -822,7 +857,7 @@ class DirectoryStore(MutableMapping):
             self._tofile(value, temp_path)
 
             # move temporary file into place
-            replace(temp_path, file_path)
+            os.replace(temp_path, file_path)
 
         finally:
             # clean up if temp file still exists for whatever reason
@@ -854,15 +889,27 @@ class DirectoryStore(MutableMapping):
 
     def keys(self):
         if os.path.exists(self.path):
-            directories = [(self.path, '')]
-            while directories:
-                dir_name, prefix = directories.pop()
-                for name in os.listdir(dir_name):
-                    path = os.path.join(dir_name, name)
-                    if os.path.isfile(path):
-                        yield prefix + name
-                    elif os.path.isdir(path):
-                        directories.append((path, prefix + name + '/'))
+            yield from self._keys_fast(self.path)
+
+    @staticmethod
+    def _keys_fast(path, walker=os.walk):
+        """
+
+        Faster logic on platform where the separator is `/` and using
+        `os.walk()` to decrease the number of stats.call.
+
+        """
+        it = iter(walker(path))
+        d0, dirnames, filenames = next(it)
+        if d0.endswith('/'):
+            root_len = len(d0)
+        else:
+            root_len = len(d0)+1
+        for f in filenames:
+            yield f
+        for dirpath, _, filenames in it:
+            for f in filenames:
+                yield dirpath[root_len:].replace('\\', '/')+'/'+f
 
     def __iter__(self):
         return self.keys()
@@ -946,6 +993,132 @@ def atexit_rmglob(path,
             rmtree(p)
 
 
+class FSStore(MutableMapping):
+    """Wraps an fsspec.FSMap to give access to arbitrary filesystems
+
+    Requires that ``fsspec`` is installed, as well as any additional
+    requirements for the protocol chosen.
+
+    Parameters
+    ----------
+    url : str
+        The destination to map. Should include protocol and path,
+        like "s3://bucket/root"
+    normalize_keys : bool
+    key_separator : str
+        Character to use when constructing the target path strings
+        for data keys
+    mode : str
+        "w" for writable, "r" for read-only
+    exceptions : list of Exception subclasses
+        When accessing data, any of these exceptions will be treated
+        as a missing key
+    storage_options : passed to the fsspec implementation
+    """
+
+    def __init__(self, url, normalize_keys=True, key_separator='.',
+                 mode='w',
+                 exceptions=(KeyError, PermissionError, IOError),
+                 **storage_options):
+        import fsspec
+        self.path = url
+        self.normalize_keys = normalize_keys
+        self.key_separator = key_separator
+        self.map = fsspec.get_mapper(url, **storage_options)
+        self.fs = self.map.fs  # for direct operations
+        self.mode = mode
+        self.exceptions = exceptions
+        if self.fs.exists(url) and not self.fs.isdir(url):
+            raise FSPathExistNotDir(url)
+
+    def _normalize_key(self, key):
+        key = normalize_storage_path(key).lstrip('/')
+        if key:
+            *bits, end = key.split('/')
+            key = '/'.join(bits + [end.replace('.', self.key_separator)])
+        return key.lower() if self.normalize_keys else key
+
+    def getitems(self, keys):
+        keys = [self._normalize_key(key) for key in keys]
+        return self.map.getitems(keys, on_error="omit")
+
+    def __getitem__(self, key):
+        key = self._normalize_key(key)
+        try:
+            return self.map[key]
+        except self.exceptions as e:
+            raise KeyError(key) from e
+
+    def __setitem__(self, key, value):
+        if self.mode == 'r':
+            raise ReadOnlyError()
+        key = self._normalize_key(key)
+        path = self.dir_path(key)
+        value = ensure_contiguous_ndarray(value)
+        try:
+            if self.fs.isdir(path):
+                self.fs.rm(path, recursive=True)
+            self.map[key] = value
+        except self.exceptions as e:
+            raise KeyError(key) from e
+
+    def __delitem__(self, key):
+        if self.mode == 'r':
+            raise ReadOnlyError()
+        key = self._normalize_key(key)
+        path = self.dir_path(key)
+        if self.fs.isdir(path):
+            self.fs.rm(path, recursive=True)
+        else:
+            del self.map[key]
+
+    def __contains__(self, key):
+        key = self._normalize_key(key)
+        return key in self.map
+
+    def __eq__(self, other):
+        return (type(self) == type(other) and self.map == other.map
+                and self.mode == other.mode)
+
+    def keys(self):
+        return iter(self.map)
+
+    def __iter__(self):
+        return self.keys()
+
+    def __len__(self):
+        return len(list(self.keys()))
+
+    def dir_path(self, path=None):
+        store_path = normalize_storage_path(path)
+        return self.map._key_to_str(store_path)
+
+    def listdir(self, path=None):
+        dir_path = self.dir_path(path)
+        try:
+            out = sorted(p.rstrip('/').rsplit('/', 1)[-1]
+                         for p in self.fs.ls(dir_path, detail=False))
+            return out
+        except IOError:
+            return []
+
+    def rmdir(self, path=None):
+        if self.mode == 'r':
+            raise ReadOnlyError()
+        store_path = self.dir_path(path)
+        if self.fs.isdir(store_path):
+            self.fs.rm(store_path, recursive=True)
+
+    def getsize(self, path=None):
+        store_path = self.dir_path(path)
+        return self.fs.du(store_path, True, True)
+
+    def clear(self):
+        if self.mode == 'r':
+            raise ReadOnlyError()
+        self.map.clear()
+
+
 class TempStore(DirectoryStore):
     """Directory store using a temporary directory for storage.
 
@@ -969,7 +1142,7 @@ class TempStore(DirectoryStore):
     def __init__(self, suffix='', prefix='zarr', dir=None, normalize_keys=False):
         path = tempfile.mkdtemp(suffix=suffix, prefix=prefix, dir=dir)
         atexit.register(atexit_rmtree, path)
-        super(TempStore, self).__init__(path, normalize_keys=normalize_keys)
+        super().__init__(path, normalize_keys=normalize_keys)
 
 
 _prog_ckey = re.compile(r'^(\d+)(\.\d+)+$')
@@ -1058,23 +1231,23 @@ class NestedDirectoryStore(DirectoryStore):
     """
 
     def __init__(self, path, normalize_keys=False):
-        super(NestedDirectoryStore, self).__init__(path, normalize_keys=normalize_keys)
+        super().__init__(path, normalize_keys=normalize_keys)
 
     def __getitem__(self, key):
         key = _nested_map_ckey(key)
-        return super(NestedDirectoryStore, self).__getitem__(key)
+        return super().__getitem__(key)
 
     def __setitem__(self, key, value):
         key = _nested_map_ckey(key)
-        super(NestedDirectoryStore, self).__setitem__(key, value)
+        super().__setitem__(key, value)
 
     def __delitem__(self, key):
         key = _nested_map_ckey(key)
-        super(NestedDirectoryStore, self).__delitem__(key)
+        super().__delitem__(key)
 
     def __contains__(self, key):
         key = _nested_map_ckey(key)
-        return super(NestedDirectoryStore, self).__contains__(key)
+        return super().__contains__(key)
 
     def __eq__(self, other):
         return (
@@ -1083,7 +1256,7 @@ class NestedDirectoryStore(DirectoryStore):
         )
 
     def listdir(self, path=None):
-        children = super(NestedDirectoryStore, self).listdir(path=path)
+        children = super().listdir(path=path)
         if array_meta_key in children:
             # special handling of directories containing an array to map nested chunk
             # keys back to standard chunk keys
@@ -1252,7 +1425,7 @@ class ZipStore(MutableMapping):
 
     def __setitem__(self, key, value):
         if self.mode == 'r':
-            err_read_only()
+            raise ReadOnlyError()
         value = ensure_contiguous_ndarray(value)
         with self.mutex:
             # writestr(key, value) writes with default permissions from
@@ -1336,7 +1509,7 @@ class ZipStore(MutableMapping):
 
     def clear(self):
         if self.mode == 'r':
-            err_read_only()
+            raise ReadOnlyError()
         with self.mutex:
             self.close()
             os.remove(self.path)
@@ -2522,10 +2695,10 @@ class ConsolidatedMetadataStore(MutableMapping):
         return len(self.meta_store)
 
     def __delitem__(self, key):
-        err_read_only()
+        raise ReadOnlyError()
 
     def __setitem__(self, key, value):
-        err_read_only()
+        raise ReadOnlyError()
 
     def getsize(self, path):
         return getsize(self.meta_store, path)

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 import atexit
 import os
 import pickle
@@ -139,9 +138,6 @@ class TestArray(unittest.TestCase):
             assert -1 == z.nbytes_stored
         except TypeError:
             pass
-
-        if hasattr(z.store, 'close'):
-            z.store.close()
 
     # noinspection PyStatementEffect
     def test_array_1d(self):
@@ -1186,12 +1182,12 @@ class TestArray(unittest.TestCase):
         data = np.array(greetings * 1000, dtype=object)
 
         z = self.create_array(shape=data.shape, dtype=object, object_codec=VLenUTF8())
-        z[0] = u'foo'
-        assert z[0] == u'foo'
-        z[1] = u'bar'
-        assert z[1] == u'bar'
-        z[2] = u'baz'
-        assert z[2] == u'baz'
+        z[0] = 'foo'
+        assert z[0] == 'foo'
+        z[1] = 'bar'
+        assert z[1] == 'bar'
+        z[2] = 'baz'
+        assert z[2] == 'baz'
         z[:] = data
         a = z[:]
         assert a.dtype == object
@@ -1816,7 +1812,7 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
         z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
         for k in n5_keywords:
             with pytest.raises(ValueError):
-                z.attrs[k] = u""
+                z.attrs[k] = ""
 
     def test_compressors(self):
         compressors = [

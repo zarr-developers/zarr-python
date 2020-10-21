@@ -1,6 +1,3 @@
-# -*- coding: utf-8 -*-
-import sys
-
 from setuptools import setup
 
 DESCRIPTION = 'An implementation of chunked, compressed, ' \
@@ -36,7 +33,7 @@ setup(
             'ipytree',
         ],
     },
-    python_requires='>=3.5',
+    python_requires='>=3.6, <4',
     install_requires=dependencies,
     package_dir={'': '.'},
     packages=['zarr', 'zarr.tests'],
@@ -50,7 +47,6 @@ setup(
         'Topic :: Software Development :: Libraries :: Python Modules',
         'Operating System :: Unix',
         'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.5',
         'Programming Language :: Python :: 3.6',
         'Programming Language :: Python :: 3.7',
         'Programming Language :: Python :: 3.8',
