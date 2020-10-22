@@ -797,12 +797,14 @@ Here is an example using S3Map to read an array created previously::
     Compressor         : Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
     Store type         : fsspec.mapping.FSMap
     No. bytes          : 21
+    No. bytes stored   : 382
+    Storage ratio      : 0.1
     Chunks initialized : 3/3
     >>> z[:]
     array([b'H', b'e', b'l', b'l', b'o', b' ', b'f', b'r', b'o', b'm', b' ',
            b't', b'h', b'e', b' ', b'c', b'l', b'o', b'u', b'd', b'!'],
           dtype='|S1')
-    >>> z[:].tostring()
+    >>> z[:].tobytes()
     b'Hello from the cloud!'
 
 Zarr now also has a builtin storage backend for Azure Blob Storage.
@@ -841,11 +843,11 @@ store. E.g.::
     >>> z = root['foo/bar/baz']
     >>> from timeit import timeit
     >>> # first data access is relatively slow, retrieved from store
-    ... timeit('print(z[:].tostring())', number=1, globals=globals())  # doctest: +SKIP
+    ... timeit('print(z[:].tobytes())', number=1, globals=globals())  # doctest: +SKIP
     b'Hello from the cloud!'
     0.1081731989979744
     >>> # second data access is faster, uses cache
-    ... timeit('print(z[:].tostring())', number=1, globals=globals())  # doctest: +SKIP
+    ... timeit('print(z[:].tobytes())', number=1, globals=globals())  # doctest: +SKIP
     b'Hello from the cloud!'
     0.0009490990014455747
 
