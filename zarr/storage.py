@@ -1021,14 +1021,14 @@ class FSStore(MutableMapping):
                  exceptions=(KeyError, PermissionError, IOError),
                  **storage_options):
         import fsspec
-        self.path = url
         self.normalize_keys = normalize_keys
         self.key_separator = key_separator
         self.map = fsspec.get_mapper(url, **storage_options)
         self.fs = self.map.fs  # for direct operations
+        self.path = self.fs._strip_protocol(url)
         self.mode = mode
         self.exceptions = exceptions
-        if self.fs.exists(url) and not self.fs.isdir(url):
+        if self.fs.exists(self.path) and not self.fs.isdir(self.path):
             raise FSPathExistNotDir(url)
 
     def _normalize_key(self, key):
