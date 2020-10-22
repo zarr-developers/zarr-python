@@ -2,6 +2,7 @@ import atexit
 import os.path
 import shutil
 import tempfile
+import warnings
 
 import numpy as np
 import pytest
@@ -445,29 +446,33 @@ def test_create():
 
 def test_compression_args():
 
-    z = create(100, compression='zlib', compression_opts=9)
-    assert isinstance(z, Array)
-    assert 'zlib' == z.compressor.codec_id
-    assert 9 == z.compressor.level
+    with warnings.catch_warnings():
+        warnings.simplefilter("default")
+        z = create(100, compression='zlib', compression_opts=9)
+        assert isinstance(z, Array)
+        assert 'zlib' == z.compressor.codec_id
+        assert 9 == z.compressor.level
 
-    # 'compressor' overrides 'compression'
-    z = create(100, compressor=Zlib(9), compression='bz2', compression_opts=1)
-    assert isinstance(z, Array)
-    assert 'zlib' == z.compressor.codec_id
-    assert 9 == z.compressor.level
-
-    # 'compressor' ignores 'compression_opts'
-    z = create(100, compressor=Zlib(9), compression_opts=1)
-    assert isinstance(z, Array)
-    assert 'zlib' == z.compressor.codec_id
-    assert 9 == z.compressor.level
-
-    with pytest.warns(UserWarning):
         # 'compressor' overrides 'compression'
-        create(100, compressor=Zlib(9), compression='bz2', compression_opts=1)
-    with pytest.warns(UserWarning):
+        with pytest.warns(UserWarning):
+            z = create(100, compressor=Zlib(9), compression="bz2", compression_opts=1)
+        assert isinstance(z, Array)
+        assert 'zlib' == z.compressor.codec_id
+        assert 9 == z.compressor.level
+
         # 'compressor' ignores 'compression_opts'
-        create(100, compressor=Zlib(9), compression_opts=1)
+        with pytest.warns(UserWarning):
+            z = create(100, compressor=Zlib(9), compression_opts=1)
+        assert isinstance(z, Array)
+        assert 'zlib' == z.compressor.codec_id
+        assert 9 == z.compressor.level
+
+        with pytest.warns(UserWarning):
+            # 'compressor' overrides 'compression'
+            create(100, compressor=Zlib(9), compression='bz2', compression_opts=1)
+        with pytest.warns(UserWarning):
+            # 'compressor' ignores 'compression_opts'
+            create(100, compressor=Zlib(9), compression_opts=1)
 
 
 def test_create_read_only():
