@@ -863,20 +863,20 @@ for all of the backend storage implementations `supported by fsspec`_,
 you can skip importing and configuring the storage explicitly.
 For example::
 
-    >>> g = zarr.open_group("s3://zarr-demo/store", storage_options={'anon': True})
-    >>> g['foo/bar/baz'][:].tobytes()
+    >>> g = zarr.open_group("s3://zarr-demo/store", storage_options={'anon': True})   # doctest: +SKIP
+    >>> g['foo/bar/baz'][:].tobytes()  # doctest: +SKIP
     b'Hello from the cloud!'
 
 The provision of the protocol specifier "s3://" will select the correct backend.
 Notice the kwargs ``storage_options``, used to pass parameters to that backend.
 
-As of version 2.6, write mode and complex URLs are also supported, such that in::
+As of version 2.6, write mode and complex URLs are also supported, such as::
 
     >>> g = zarr.open_group("simplecache::s3://zarr-demo/store",
-    ...                     storage_options={"s3": {'anon': True}})
-    >>> g['foo/bar/baz'][:].tobytes()  # downloads target file
+    ...                     storage_options={"s3": {'anon': True}})  # doctest: +SKIP
+    >>> g['foo/bar/baz'][:].tobytes()  # downloads target file  # doctest: +SKIP
     b'Hello from the cloud!'
-    >>> g['foo/bar/baz'][:].tobytes()  # uses cached file
+    >>> g['foo/bar/baz'][:].tobytes()  # uses cached file  # doctest: +SKIP
     b'Hello from the cloud!'
 
 The second invocation here will be much faster. Note that the ``storage_options``
