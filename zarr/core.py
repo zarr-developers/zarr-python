@@ -5,6 +5,7 @@ import math
 import operator
 import re
 from functools import reduce
+from collections.abc import MutableMapping
 
 import numpy as np
 from numcodecs.compat import ensure_bytes, ensure_ndarray
@@ -1821,7 +1822,7 @@ class Array(object):
             cdata = chunk
 
         # ensure in-memory data is immutable and easy to compare
-        if isinstance(self.chunk_store, dict):
+        if isinstance(self.chunk_store, MutableMapping):
             cdata = ensure_bytes(cdata)
 
         return cdata
