@@ -1588,25 +1588,25 @@ class Array(object):
                     np.copyto(dest, chunk)
                 return
 
-            # decode chunk
-            # try:
-            #     if self._compressor and self._compressor.codec_id == 'blosc' \
-            #        and not fields and self.dtype != object:
-            #         tmp = np.empty(self._chunks, dtype=self.dtype)
-            #         index_selection = PartialChunkIterator(chunk_selection, self.chunks)
-            #         for start, nitems, partial_out_selection in index_selection:
-            #             expected_shape = [
-            #                 len(range(*partial_out_selection[i].indices(self.chunks[0]+1)))
-            #                 if i < len(partial_out_selection) else dim
-            #                 for i, dim in enumerate(self.chunks)]
-            #             chunk_partial = self._decode_chunk(
-            #                 cdata, start=start, nitems=nitems,
-            #                 expected_shape=expected_shape)
-            #             tmp[partial_out_selection] = chunk_partial
-            #         out[out_selection] = tmp[chunk_selection]
-            #         return
-            # except ArrayIndexError:
-            #     pass
+        # decode chunk
+        try:
+            if self._compressor and self._compressor.codec_id == 'blosc' \
+               and not fields and self.dtype != object:
+                tmp = np.empty(self._chunks, dtype=self.dtype)
+                index_selection = PartialChunkIterator(chunk_selection, self.chunks)
+                for start, nitems, partial_out_selection in index_selection:
+                    expected_shape = [
+                        len(range(*partial_out_selection[i].indices(self.chunks[0]+1)))
+                        if i < len(partial_out_selection) else dim
+                        for i, dim in enumerate(self.chunks)]
+                    chunk_partial = self._decode_chunk(
+                        cdata, start=start, nitems=nitems,
+                        expected_shape=expected_shape)
+                    tmp[partial_out_selection] = chunk_partial
+                out[out_selection] = tmp[chunk_selection]
+                return
+        except ArrayIndexError:
+            pass
         chunk = self._decode_chunk(cdata)
 
             # select data from chunk
