@@ -59,3 +59,26 @@ jobs:
           user: __token__
           password: ${{ secrets.pypi_password }}
           # To test: repository_url: https://test.pypi.org/legacy/
+  build_artifacts:
+    name: Linting with flake8
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+
+    steps:
+      - uses: actions/checkout@v1
+        with:
+          submodules: true
+
+      - uses: actions/setup-python@v1
+        name: Install Python
+        with:
+          python-version: '3.8'
+
+      - name: Install pyflakes
+        run: |
+          python -m pip install pyflakes
+      - name: run pyflakes
+        run: |
+          pyflakes zarr
+
