@@ -129,9 +129,9 @@ def create(shape, chunks=True, dtype=None, compressor='default',
     return z
 
 
-def normalize_store_arg(store, clobber=False, default=dict, storage_options=None):
+def normalize_store_arg(store, clobber=False, storage_options=None):
     if store is None:
-        return default()
+        return dict()
     elif isinstance(store, str):
         mode = 'w' if clobber else 'r'
         if "://" in store or "::" in store:
