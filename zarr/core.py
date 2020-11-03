@@ -1020,7 +1020,7 @@ class Array(object):
             check_array_shape('out', out, out_shape)
 
         # iterate over chunks
-        if not hasattr(self.chunk_store, "getitems"):
+        if not hasattr(self.chunk_store, "getitems") or not all(map(lambda x: x != 0, self.shape)):
             # sequentially get one key at a time from storage
             for chunk_coords, chunk_selection, out_selection in indexer:
 
