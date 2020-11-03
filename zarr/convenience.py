@@ -1165,12 +1165,12 @@ def open_consolidated(store, metadata_key='.zmetadata', mode='r+', **kwargs):
     from .storage import ConsolidatedMetadataStore
 
     # normalize parameters
-    store = normalize_store_arg(store)
+    store = normalize_store_arg(store, storage_options=kwargs.get("storage_options", None))
     if mode not in {'r', 'r+'}:
         raise ValueError("invalid mode, expected either 'r' or 'r+'; found {!r}"
                          .format(mode))
 
-    # setup metadata sotre
+    # setup metadata store
     meta_store = ConsolidatedMetadataStore(store, metadata_key=metadata_key)
 
     # pass through
