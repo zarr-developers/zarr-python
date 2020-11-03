@@ -20,10 +20,11 @@ from zarr.meta import json_loads
 from zarr.n5 import N5Store, n5_keywords
 from zarr.storage import (ABSStore, DBMStore, DirectoryStore, LMDBStore,
                           LRUStoreCache, NestedDirectoryStore, SQLiteStore,
-                          atexit_rmglob, atexit_rmtree, init_array, init_group,
-                          FSStore)
+                          FSStore, atexit_rmglob, atexit_rmtree, init_array,
+                          init_group
+                          )
 from zarr.util import buffer_size
-from zarr.tests.util import skip_test_env_var
+from zarr.tests.util import skip_test_env_var, have_fsspec
 
 
 # noinspection PyMethodMayBeStatic
@@ -2369,6 +2370,7 @@ class TestArrayWithStoreCache(TestArray):
         pass
 
 
+@pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
 class TestArrayWithFSStore(TestArray):
 
     @staticmethod
