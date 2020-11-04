@@ -11,7 +11,7 @@ This release will be the first release of Zarr not supporting Python 3.5.
   By :user:`Chris Barnes <clbarnes>`; :issue:`602`.
 
 * Add `Array` tests for FSStore.
-  By :user:`Andrew Fulton <andrewfulton9>`; :issue: ``.
+  By :user:`Andrew Fulton <andrewfulton9>`; :issue: `644`.
 
 2.5.0
 -----
