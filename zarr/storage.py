@@ -1113,7 +1113,9 @@ class FSStore(MutableMapping):
             raise ReadOnlyError()
         store_path = self.dir_path(path)
         if self.fs.isdir(store_path):
-            self.fs.rm(store_path, recursive=True)
+            # sometimes doesn't delete on first try with S3
+            while self.fs.exists(store_path):
+                self.fs.rm(store_path, recursive=True)
 
     def getsize(self, path=None):
         store_path = self.dir_path(path)
