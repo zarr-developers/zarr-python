@@ -2407,4 +2407,3 @@ class TestArrayWithFSStore(TestArray):
         z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
         z.attrs['foo'] = 'bar'
         assert '05b0663ffe1785f38d3a459dec17e57a18f254af' == z.hexdigest()
-
