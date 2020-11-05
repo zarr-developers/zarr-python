@@ -1021,7 +1021,7 @@ class Array(object):
 
         # iterate over chunks
         if not hasattr(self.chunk_store, "getitems") or \
-           not all(map(lambda x: x != 0, self.shape)):
+           any(map(lambda x: x == 0, self.shape)):
             # sequentially get one key at a time from storage
             for chunk_coords, chunk_selection, out_selection in indexer:
 
@@ -1537,7 +1537,7 @@ class Array(object):
 
         # iterate over chunks in range
         if not hasattr(self.store, "setitems") or self._synchronizer is not None \
-           or not all(map(lambda x: x != 0, self.shape)):
+           or any(map(lambda x: x == 0, self.shape)):
             # iterative approach
             for chunk_coords, chunk_selection, out_selection in indexer:
 
