@@ -1036,7 +1036,9 @@ class Group(MutableMapping):
 
 
 def _normalize_store_arg(store, clobber=False, storage_options=None):
-    return normalize_store_arg(store, clobber=clobber, default=MemoryStore,
+    if store is None:
+        return MemoryStore()
+    return normalize_store_arg(store, clobber=clobber,
                                storage_options=storage_options)
 
 
