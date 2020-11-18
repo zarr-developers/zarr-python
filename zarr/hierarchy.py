@@ -802,11 +802,13 @@ class Group(MutableMapping):
         <zarr.core.Array '/bar/baz/qux' (100, 100, 100) float64>
 
         """
+        assert "mode" not in kwargs
 
         return self._write_op(self._create_dataset_nosync, name, **kwargs)
 
     def _create_dataset_nosync(self, name, data=None, **kwargs):
 
+        assert "mode" not in kwargs
         path = self._item_path(name)
 
         # determine synchronizer

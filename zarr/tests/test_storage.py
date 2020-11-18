@@ -991,11 +991,13 @@ class TestFSStore(StoreTests, unittest.TestCase):
 
         with pytest.raises(PermissionError):
             # even though overwrite=True, store is read-only, so fails
-            g2.create_dataset("data", shape=(8, 8, 8), mode='w',
-                              fill_value=-1, chunks=(1, 1, 1), overwrite=True)
+            g2.create_dataset(
+                "data", shape=(8, 8, 8), fill_value=-1, chunks=(1, 1, 1), overwrite=True
+            )
 
-        a = g.create_dataset("data", shape=(8, 8, 8), mode='w',
-                             fill_value=-1, chunks=(1, 1, 1), overwrite=True)
+        a = g.create_dataset(
+            "data", shape=(8, 8, 8), fill_value=-1, chunks=(1, 1, 1), overwrite=True
+        )
         assert (a[:] == -np.ones((8, 8, 8))).all()
 
 
