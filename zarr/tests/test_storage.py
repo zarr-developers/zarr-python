@@ -1030,7 +1030,8 @@ def s3(request):
             pass
         timeout -= 0.1  # pragma: no cover
         time.sleep(0.1)  # pragma: no cover
-    s3so = dict(client_kwargs={'endpoint_url': endpoint_uri})
+    s3so = dict(client_kwargs={'endpoint_url': endpoint_uri},
+                use_listings_cache=False)
     s3 = s3fs.S3FileSystem(anon=False, **s3so)
     s3.mkdir("test")
     request.cls.s3so = s3so
