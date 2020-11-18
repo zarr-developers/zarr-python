@@ -955,6 +955,11 @@ class TestFSStore(StoreTests, unittest.TestCase):
 
         assert g.data[:].tolist() == [0, 1, 2, 3, 0, 0, 0, 0]
 
+        # test via convenience
+        g = zarr.open("s3://test/out.zarr", mode='r',
+                      storage_options=self.s3so)
+        assert g.data[:].tolist() == [0, 1, 2, 3, 0, 0, 0, 0]
+
     @pytest.mark.usefixtures("s3")
     def test_s3_complex(self):
         import zarr

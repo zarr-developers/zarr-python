@@ -73,7 +73,10 @@ def open(store=None, mode='a', **kwargs):
     path = kwargs.get('path', None)
     # handle polymorphic store arg
     clobber = mode == 'w'
-    store = normalize_store_arg(store, clobber=clobber)
+    # we pass storage options explicitly, since normalize_store_arg might construct
+    # a store if the input is a fsspec-compatible URL
+    store = normalize_store_arg(store, clobber=clobber,
+                                storage_options=kwargs.pop("storage_options", {}))
     path = normalize_storage_path(path)
 
     if mode in {'w', 'w-', 'x'}:

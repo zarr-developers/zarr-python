@@ -1688,7 +1688,7 @@ class Array(object):
             out_is_ndarray = False
 
         ckeys = [self._chunk_key(ch) for ch in lchunk_coords]
-        cdatas = self.chunk_store.getitems(ckeys)
+        cdatas = self.chunk_store.getitems(ckeys, on_error="omit")
         for ckey, chunk_select, out_select in zip(ckeys, lchunk_selection, lout_selection):
             if ckey in cdatas:
                 self._process_chunk(out, cdatas[ckey], chunk_select, drop_axes,
