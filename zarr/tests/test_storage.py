@@ -955,6 +955,54 @@ class TestFSStore(StoreTests, unittest.TestCase):
 
         assert g.data[:].tolist() == [0, 1, 2, 3, 0, 0, 0, 0]
 
+        # test via convenience
+        g = zarr.open("s3://test/out.zarr", mode='r',
+                      storage_options=self.s3so)
+        assert g.data[:].tolist() == [0, 1, 2, 3, 0, 0, 0, 0]
+
+    @pytest.mark.usefixtures("s3")
+    def test_s3_complex(self):
+        import zarr
+        g = zarr.open_group("s3://test/out.zarr", mode='w',
+                            storage_options=self.s3so)
+        expected = np.empty((8, 8, 8), dtype='int64')
+        expected[:] = -1
+        a = g.create_dataset("data", shape=(8, 8, 8),
+                             fill_value=-1, chunks=(1, 1, 1))
+        expected[0] = 0
+        expected[3] = 3
+        expected[6, 6, 6] = 6
+        a[6, 6, 6] = 6
+        a[:4] = expected[:4]
+
+        b = g.create_dataset("data_f", shape=(8, ), chunks=(1,),
+                             dtype=[('foo', 'S3'), ('bar', 'i4')],
+                             fill_value=(b"b", 1))
+        b[:4] = (b"aaa", 2)
+        g2 = zarr.open_group("s3://test/out.zarr", mode='r',
+                             storage_options=self.s3so)
+
+        assert (g2.data[:] == expected).all()
+
+        a[:] = 5  # write with scalar
+        assert (a[:] == 5).all()
+
+        assert g2.data_f['foo'].tolist() == [b"aaa"] * 4 + [b"b"] * 4
+        with pytest.raises(PermissionError):
+            g2.data[:] = 5
+
+        with pytest.raises(PermissionError):
+            g2.store.setitems({})
+
+        with pytest.raises(PermissionError):
+            # even though overwrite=True, store is read-only, so fails
+            g2.create_dataset("data", shape=(8, 8, 8), mode='w',
+                              fill_value=-1, chunks=(1, 1, 1), overwrite=True)
+
+        a = g.create_dataset("data", shape=(8, 8, 8), mode='w',
+                             fill_value=-1, chunks=(1, 1, 1), overwrite=True)
+        assert (a[:] == -np.ones((8, 8, 8))).all()
+
 
 @pytest.fixture()
 def s3(request):
@@ -974,7 +1022,8 @@ def s3(request):
 
     port = 5555
     endpoint_uri = 'http://127.0.0.1:%s/' % port
-    proc = subprocess.Popen(shlex.split("moto_server s3 -p %s" % port))
+    proc = subprocess.Popen(shlex.split("moto_server s3 -p %s" % port),
+                            stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
 
     timeout = 5
     while timeout > 0:
@@ -986,7 +1035,8 @@ def s3(request):
             pass
         timeout -= 0.1  # pragma: no cover
         time.sleep(0.1)  # pragma: no cover
-    s3so = dict(client_kwargs={'endpoint_url': endpoint_uri})
+    s3so = dict(client_kwargs={'endpoint_url': endpoint_uri},
+                use_listings_cache=False)
     s3 = s3fs.S3FileSystem(anon=False, **s3so)
     s3.mkdir("test")
     request.cls.s3so = s3so

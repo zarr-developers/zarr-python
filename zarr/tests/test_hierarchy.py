@@ -2,7 +2,6 @@ import atexit
 import os
 import pickle
 import shutil
-import sys
 import tempfile
 import textwrap
 import unittest
@@ -990,8 +989,7 @@ class TestGroupWithZipStore(TestGroup):
 
         # Check that exiting the context manager closes the store,
         # and therefore the underlying ZipFile.
-        error = ValueError if sys.version_info >= (3, 6) else RuntimeError
-        with pytest.raises(error):
+        with pytest.raises(ValueError):
             store.zf.extractall()
 
 

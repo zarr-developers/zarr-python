@@ -40,7 +40,7 @@ from numcodecs.registry import codec_registry
 
 from zarr.errors import (
     MetadataError,
-    err_bad_compressor,
+    BadCompressorError,
     ContainsArrayError,
     ContainsGroupError,
     FSPathExistNotDir,
@@ -397,8 +397,8 @@ def _init_array_metadata(
     if compressor:
         try:
             compressor_config = compressor.get_config()
-        except AttributeError:
-            err_bad_compressor(compressor)
+        except AttributeError as e:
+            raise BadCompressorError(compressor) from e
 
     # obtain filters config
     if filters:
@@ -1021,14 +1021,14 @@ class FSStore(MutableMapping):
                  exceptions=(KeyError, PermissionError, IOError),
                  **storage_options):
         import fsspec
-        self.path = url
         self.normalize_keys = normalize_keys
         self.key_separator = key_separator
         self.map = fsspec.get_mapper(url, **storage_options)
         self.fs = self.map.fs  # for direct operations
+        self.path = self.fs._strip_protocol(url)
         self.mode = mode
         self.exceptions = exceptions
-        if self.fs.exists(url) and not self.fs.isdir(url):
+        if self.fs.exists(self.path) and not self.fs.isdir(self.path):
             raise FSPathExistNotDir(url)
 
     def _normalize_key(self, key):
@@ -1038,6 +1038,10 @@ class FSStore(MutableMapping):
             key = '/'.join(bits + [end.replace('.', self.key_separator)])
         return key.lower() if self.normalize_keys else key
 
+    def getitems(self, keys, **kwargs):
+        keys = [self._normalize_key(key) for key in keys]
+        return self.map.getitems(keys, on_error="omit")
+
     def __getitem__(self, key):
         key = self._normalize_key(key)
         try:
@@ -1045,16 +1049,22 @@ class FSStore(MutableMapping):
         except self.exceptions as e:
             raise KeyError(key) from e
 
+    def setitems(self, values):
+        if self.mode == 'r':
+            raise ReadOnlyError()
+        values = {self._normalize_key(key): val for key, val in values.items()}
+        self.map.setitems(values)
+
     def __setitem__(self, key, value):
         if self.mode == 'r':
             raise ReadOnlyError()
         key = self._normalize_key(key)
         path = self.dir_path(key)
-        value = ensure_contiguous_ndarray(value)
         try:
             if self.fs.isdir(path):
                 self.fs.rm(path, recursive=True)
             self.map[key] = value
+            self.fs.invalidate_cache(self.fs._parent(path))
         except self.exceptions as e:
             raise KeyError(key) from e
 

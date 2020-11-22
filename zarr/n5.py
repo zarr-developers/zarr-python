@@ -304,13 +304,15 @@ def invert_chunk_coords(key):
 def group_metadata_to_n5(group_metadata):
     '''Convert group metadata from zarr to N5 format.'''
     del group_metadata['zarr_format']
+    # TODO: This should only exist at the top-level
     group_metadata['n5'] = '2.0.0'
     return group_metadata
 
 
 def group_metadata_to_zarr(group_metadata):
     '''Convert group metadata from N5 to zarr format.'''
-    del group_metadata['n5']
+    # This only exists at the top level
+    group_metadata.pop('n5', None)
     group_metadata['zarr_format'] = ZARR_FORMAT
     return group_metadata
 
