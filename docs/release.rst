@@ -10,6 +10,9 @@ This release will be the first release of Zarr not supporting Python 3.5.
 * End Python 3.5 support.
   By :user:`Chris Barnes <clbarnes>`; :issue:`602`.
 
+* Fix ``open_group/open_array`` to allow opening of readonly store with
+  ``mode='r'`` :issue:`269`
+
 * Add `Array` tests for FSStore.
   By :user:`Andrew Fulton <andrewfulton9>`; :issue: `644`.
 
