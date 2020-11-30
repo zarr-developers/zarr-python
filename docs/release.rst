@@ -13,6 +13,8 @@ This release will be the first release of Zarr not supporting Python 3.5.
 * Add `Array` tests for FSStore.
   By :user:`Andrew Fulton <andrewfulton9>`; :issue: `644`.
 
+* fix a bug in which ``attrs`` would not be copied on the root when using ``copy_all``; :issue:`613`
+
 2.5.0
 -----
 
