@@ -14,6 +14,7 @@ import numpy as np
 import pytest
 from numpy.testing import assert_array_almost_equal, assert_array_equal
 
+import zarr
 from zarr.codecs import BZ2, AsType, Blosc, Zlib
 from zarr.errors import MetadataError
 from zarr.hierarchy import group
@@ -1878,4 +1879,19 @@ class TestConsolidatedMetadataStore(unittest.TestCase):
         with pytest.raises(PermissionError):
             cs['bar'] = 0
         with pytest.raises(PermissionError):
-            cs['spam'] = 'eggs'
+            cs["spam"] = "eggs"
+
+
+## standalone test we do not want to run on each stores.
+
+
+def test_fill_value_change(self):
+    a = zarr.create((10, 10), dtype=int)
+
+    assert a[0, 0] == 0
+
+    a.fill_value = 1
+
+    assert a[0, 0] == 1
+
+    assert json.loads(a.store[".zarray"])["fill_value"] == 1

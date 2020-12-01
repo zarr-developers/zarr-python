@@ -278,6 +278,11 @@ class Array(object):
         """A value used for uninitialized portions of the array."""
         return self._fill_value
 
+    @fill_value.setter
+    def fill_value(self, new):
+        self._fill_value = new
+        self._flush_metadata_nosync()
+
     @property
     def order(self):
         """A string indicating the order in which bytes are arranged within
