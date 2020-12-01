@@ -129,11 +129,11 @@ def create(shape, chunks=True, dtype=None, compressor='default',
     return z
 
 
-def normalize_store_arg(store, clobber=False, storage_options=None):
+def normalize_store_arg(store, clobber=False, storage_options=None, mode='w'):
     if store is None:
         return dict()
     elif isinstance(store, str):
-        mode = 'w' if clobber else 'r'
+        mode = mode if clobber else "r"
         if "://" in store or "::" in store:
             return FSStore(store, mode=mode, **(storage_options or {}))
         elif storage_options:
@@ -450,8 +450,8 @@ def open_array(store=None, mode='a', shape=None, chunks=True, dtype=None,
     # a : read/write if exists, create otherwise (default)
 
     # handle polymorphic store arg
-    clobber = mode == 'w'
-    store = normalize_store_arg(store, clobber=clobber, storage_options=storage_options)
+    clobber = (mode == 'w')
+    store = normalize_store_arg(store, clobber=clobber, storage_options=storage_options, mode=mode)
     if chunk_store is not None:
         chunk_store = normalize_store_arg(chunk_store, clobber=clobber,
                                           storage_options=storage_options)
