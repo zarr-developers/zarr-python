@@ -47,8 +47,8 @@
 <tr>
   <td>Coverage</td>
   <td>
-    <a href="https://coveralls.io/github/zarr-developers/zarr-python?branch=master">
-    <img src="https://coveralls.io/repos/github/zarr-developers/zarr-python/badge.svg?branch=master" alt="coverage" />
+    <a href="https://codecov.io/gh/zarr-developers/zarr-python">
+    <img src="https://codecov.io/gh/zarr-developers/zarr-python/branch/master/graph/badge.svg"/ alt="coverage">
     </a>
   </td>
 </tr>
