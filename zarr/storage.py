@@ -1577,12 +1577,6 @@ def migrate_1to2(store):
     del store['attrs']
 
 
-def _dbm_encode_key(key):
-    if hasattr(key, 'encode'):
-        key = key.encode('ascii')
-    return key
-
-
 # noinspection PyShadowingBuiltins
 class DBMStore(MutableMapping):
     """Storage class using a DBM-style database.
@@ -1728,17 +1722,20 @@ class DBMStore(MutableMapping):
         self.close()
 
     def __getitem__(self, key):
-        key = _dbm_encode_key(key)
+        if isinstance(key, str):
+            key = key.encode("ascii")
         return self.db[key]
 
     def __setitem__(self, key, value):
-        key = _dbm_encode_key(key)
+        if isinstance(key, str):
+            key = key.encode("ascii")
         value = ensure_bytes(value)
         with self.write_mutex:
             self.db[key] = value
 
     def __delitem__(self, key):
-        key = _dbm_encode_key(key)
+        if isinstance(key, str):
+            key = key.encode("ascii")
         with self.write_mutex:
             del self.db[key]
 
@@ -1761,7 +1758,8 @@ class DBMStore(MutableMapping):
         return sum(1 for _ in self.keys())
 
     def __contains__(self, key):
-        key = _dbm_encode_key(key)
+        if isinstance(key, str):
+            key = key.encode("ascii")
         return key in self.db
 
 
@@ -1885,7 +1883,8 @@ class LMDBStore(MutableMapping):
         self.close()
 
     def __getitem__(self, key):
-        key = _dbm_encode_key(key)
+        if isinstance(key, str):
+            key = key.encode("ascii")
         # use the buffers option, should avoid a memory copy
         with self.db.begin(buffers=self.buffers) as txn:
             value = txn.get(key)
@@ -1894,18 +1893,21 @@ class LMDBStore(MutableMapping):
         return value
 
     def __setitem__(self, key, value):
-        key = _dbm_encode_key(key)
+        if isinstance(key, str):
+            key = key.encode("ascii")
         with self.db.begin(write=True, buffers=self.buffers) as txn:
             txn.put(key, value)
 
     def __delitem__(self, key):
-        key = _dbm_encode_key(key)
+        if isinstance(key, str):
+            key = key.encode("ascii")
         with self.db.begin(write=True) as txn:
             if not txn.delete(key):
                 raise KeyError(key)
 
     def __contains__(self, key):
-        key = _dbm_encode_key(key)
+        if isinstance(key, str):
+            key = key.encode("ascii")
         with self.db.begin(buffers=self.buffers) as txn:
             with txn.cursor() as cursor:
                 return cursor.set_key(key)
