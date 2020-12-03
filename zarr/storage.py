@@ -35,7 +35,10 @@ from typing import Optional, Union, List, Tuple, Dict
 import uuid
 import time
 
-from numcodecs.compat import ensure_bytes, ensure_contiguous_ndarray
+from numcodecs.compat import (
+    ensure_bytes,
+    ensure_contiguous_ndarray
+)
 from numcodecs.registry import codec_registry
 
 from zarr.errors import (
