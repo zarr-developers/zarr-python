@@ -37,6 +37,7 @@ import time
 
 from numcodecs.compat import (
     ensure_bytes,
+    ensure_text,
     ensure_contiguous_ndarray
 )
 from numcodecs.registry import codec_registry
@@ -1770,16 +1771,6 @@ class DBMStore(MutableMapping):
         return key in self.db
 
 
-def _lmdb_decode_key_buffer(key):
-    # assume buffers=True
-    return key.tobytes().decode('ascii')
-
-
-def _lmdb_decode_key_bytes(key):
-    # assume buffers=False
-    return key.decode('ascii')
-
-
 class LMDBStore(MutableMapping):
     """Storage class using LMDB. Requires the `lmdb <http://lmdb.readthedocs.io/>`_
     package to be installed.
@@ -1869,10 +1860,6 @@ class LMDBStore(MutableMapping):
         self.db = lmdb.open(path, **kwargs)
 
         # store properties
-        if buffers:
-            self.decode_key = _lmdb_decode_key_buffer
-        else:
-            self.decode_key = _lmdb_decode_key_bytes
         self.buffers = buffers
         self.path = path
         self.kwargs = kwargs
@@ -1933,13 +1920,13 @@ class LMDBStore(MutableMapping):
         with self.db.begin(buffers=self.buffers) as txn:
             with txn.cursor() as cursor:
                 for k, v in cursor.iternext(keys=True, values=True):
-                    yield self.decode_key(k), v
+                    yield ensure_text(k, "ascii"), v
 
     def keys(self):
         with self.db.begin(buffers=self.buffers) as txn:
             with txn.cursor() as cursor:
                 for k in cursor.iternext(keys=True, values=False):
-                    yield self.decode_key(k)
+                    yield ensure_text(k, "ascii")
 
     def values(self):
         with self.db.begin(buffers=self.buffers) as txn:
