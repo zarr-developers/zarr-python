@@ -1583,12 +1583,6 @@ def _dbm_encode_key(key):
     return key
 
 
-def _dbm_decode_key(key):
-    if hasattr(key, 'decode'):
-        key = key.decode('ascii')
-    return key
-
-
 # noinspection PyShadowingBuiltins
 class DBMStore(MutableMapping):
     """Storage class using a DBM-style database.
@@ -1758,7 +1752,7 @@ class DBMStore(MutableMapping):
         )
 
     def keys(self):
-        return (_dbm_decode_key(k) for k in iter(self.db.keys()))
+        return (ensure_text(k, "ascii") for k in iter(self.db.keys()))
 
     def __iter__(self):
         return self.keys()
