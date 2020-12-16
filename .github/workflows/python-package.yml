@@ -15,8 +15,8 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: [3.7]
-        numpy_version: ['==1.16.4']
+        python-version: ['3.6.9' , 3.7, 3.8]
+        numpy_version: ['==1.16.4', '']
     steps:
     - uses: actions/checkout@v2
       with: 
@@ -41,6 +41,7 @@ jobs:
         python -m pip install -U pip setuptools wheel codecov
         python -m pip install -rrequirements_dev_minimal.txt numpy${{ matrix.numpy_version}} -rrequirements_dev_optional.txt
         python -m pip install -e . 
+        python -m pip freeze
     - name: Tests
       shell: "bash -l {0}"
       run: |
