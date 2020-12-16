@@ -44,6 +44,8 @@ jobs:
         python -m pip freeze
     - name: Tests
       shell: "bash -l {0}"
+      env: 
+        COVERAGE_FILE: .coverage.${{matrix.python-version}}.${{matrix.numpy_version}}
       run: |
         conda activate zarr-env
         pytest --cov=zarr --cov-config=.coveragerc --doctest-plus --cov-report xml --cov=./ 
