@@ -1794,6 +1794,7 @@ def test_format_compatibility():
             else:
                 assert compressor.codec_id == z.compressor.codec_id
                 assert compressor.get_config() == z.compressor.get_config()
+    fixture.clear()
 
 
 @skip_test_env_var("ZARR_TEST_ABS")
