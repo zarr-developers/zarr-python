@@ -47,7 +47,9 @@ jobs:
     - name: Create Conda environment with the rights deps
       shell: "bash -l {0}"
       run: |
-        conda create -n zarr-env python==${{matrix.python-version}} bsddb3 numcodecs==0.6.4 lmdb pip
+        conda create -n zarr-env python==${{matrix.python-version}} bsddb3 numcodecs==0.6.4 lmdb pip nodejs
+        conda activate zarr-env
+        npm install -g azurite
     - name: Install dependencies
       shell: "bash -l {0}"
       run: |
@@ -61,12 +63,14 @@ jobs:
       shell: "bash -l {0}"
       env: 
         COVERAGE_FILE: .coverage.${{matrix.python-version}}.${{matrix.numpy_version}}
-        ZARR_TEST_ABS: 0
+        ZARR_TEST_ABS: 1
         ZARR_TEST_MONGO: 1
         ZARR_TEST_REDIS: 1
       run: |
         conda activate zarr-env
-        pytest --cov=zarr --cov-config=.coveragerc --doctest-plus --cov-report xml --cov=./ 
+        mkdir ~/blob_emulator
+        azurite -l ~/blob_emulator --debug debug.log 2>&1 > stdouterr.log &
+        pytest --cov=zarr --cov-config=.coveragerc --doctest-plus --cov-report xml --cov=./
     - uses: codecov/codecov-action@v1
       with:
         #token: ${{ secrets.CODECOV_TOKEN }} # not required for public repos
