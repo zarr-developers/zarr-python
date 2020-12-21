@@ -17,6 +17,11 @@ jobs:
       matrix:
         python-version: ['3.6.9' , 3.7, 3.8]
         numpy_version: ['==1.16.4', '']
+    services:
+      mongodb:
+        image: mongo:3.4.23
+        ports:
+          - 27017:27017
     steps:
     - uses: actions/checkout@v2
       with: 
@@ -39,13 +44,16 @@ jobs:
         conda activate zarr-env
         python -m pip install --upgrade pip
         python -m pip install -U pip setuptools wheel codecov
-        python -m pip install -rrequirements_dev_minimal.txt numpy${{ matrix.numpy_version}} -rrequirements_dev_optional.txt
+        python -m pip install -rrequirements_dev_minimal.txt numpy${{ matrix.numpy_version}} -rrequirements_dev_optional.txt pymongo
         python -m pip install -e . 
         python -m pip freeze
     - name: Tests
       shell: "bash -l {0}"
       env: 
         COVERAGE_FILE: .coverage.${{matrix.python-version}}.${{matrix.numpy_version}}
+        ZARR_TEST_ABS: 0
+        ZARR_TEST_MONGO: 1
+        ZARR_TEST_REDIS: 0
       run: |
         conda activate zarr-env
         pytest --cov=zarr --cov-config=.coveragerc --doctest-plus --cov-report xml --cov=./ 
