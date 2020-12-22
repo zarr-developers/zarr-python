@@ -17,7 +17,6 @@ environment:
     ZARR_TEST_ABS: 1
 
   matrix:
-
     - PYTHON: "C:\\Python36-x64"
       PYTHON_VERSION: "3.6"
 
@@ -45,3 +44,6 @@ test_script:
 
 after_test:
   - '"%EMULATOR_LOC%" stop'
+  
+matrix:
+  fast_finish: true
