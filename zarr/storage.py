@@ -1706,7 +1706,10 @@ class DBMStore(MutableMapping):
             with self.write_mutex:
                 if hasattr(self.db, 'sync'):
                     self.db.sync()
-                else:
+                else:  # pragma: no cover
+                    # we don't cover this branch anymore as ndbm (oracle) is not packaged
+                    # by conda-forge on non-mac OS:
+                    # https://github.com/conda-forge/staged-recipes/issues/4476
                     # fall-back, close and re-open, needed for ndbm
                     flag = self.flag
                     if flag[0] == 'n':
