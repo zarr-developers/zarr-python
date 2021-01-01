@@ -1576,6 +1576,10 @@ class TestArrayWithABSStore(TestArray):
         return Array(store, read_only=read_only, cache_metadata=cache_metadata,
                      cache_attrs=cache_attrs)
 
+    @pytest.mark.xfail
+    def test_nbytes_stored(self):
+        return super().test_nbytes_stored()
+
 
 class TestArrayWithNestedDirectoryStore(TestArrayWithDirectoryStore):
 
