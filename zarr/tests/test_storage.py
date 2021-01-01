@@ -1306,10 +1306,10 @@ class TestDBMStoreNDBM(TestDBMStore):
 
     def create_store(self):
         ndbm = pytest.importorskip("dbm.ndbm")
-        path = tempfile.mktemp(suffix='.ndbm')
-        atexit.register(atexit_rmglob, path + '*')
-        store = DBMStore(path, flag='n', open=ndbm.open)
-        return store
+        path = tempfile.mktemp(suffix=".ndbm")  # pragma: no cover
+        atexit.register(atexit_rmglob, path + "*")  # pragma: no cover
+        store = DBMStore(path, flag="n", open=ndbm.open)  # pragma: no cover
+        return store  # pragma: no cover
 
 
 class TestDBMStoreBerkeleyDB(TestDBMStore):
