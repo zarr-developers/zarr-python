@@ -1296,10 +1296,12 @@ class TestDBMStoreGnu(TestDBMStore):
 
     def create_store(self):
         gdbm = pytest.importorskip("dbm.gnu")
-        path = tempfile.mktemp(suffix='.gdbm')
-        atexit.register(os.remove, path)
-        store = DBMStore(path, flag='n', open=gdbm.open, write_lock=False)
-        return store
+        path = tempfile.mktemp(suffix=".gdbm")  # pragma: no cover
+        atexit.register(os.remove, path)  # pragma: no cover
+        store = DBMStore(
+            path, flag="n", open=gdbm.open, write_lock=False
+        )  # pragma: no cover
+        return store  # pragma: no cover
 
 
 class TestDBMStoreNDBM(TestDBMStore):
@@ -1839,11 +1841,9 @@ class TestABSStore(StoreTests, unittest.TestCase):
             assert ({('a', b'aaa'), ('b', b'bbb'), ('c/d', b'ddd'), ('c/e/f', b'fff')} ==
                     set(store.items()))
 
-    @pytest.mark.xfail
     def test_getsize(self):
         return super().test_getsize()
 
-    @pytest.mark.xfail
     def test_hierarchy(self):
         return super().test_hierarchy()
 
