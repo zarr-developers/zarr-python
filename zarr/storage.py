@@ -2231,6 +2231,7 @@ class ABSStore(MutableMapping):
 
     def __contains__(self, key):
         blob_name = self._append_path_to_prefix(key)
+        assert len(blob_name) >= 1
         if self.client.exists(self.container, blob_name):
             return True
         else:
@@ -2255,6 +2256,7 @@ class ABSStore(MutableMapping):
         if dir_path:
             dir_path += '/'
         for blob in self.client.list_blobs(self.container, prefix=dir_path):
+            assert len(blob.name) >= 1
             self.client.delete_blob(self.container, blob.name)
 
     def getsize(self, path=None):
@@ -2263,9 +2265,11 @@ class ABSStore(MutableMapping):
         fs_path = self.prefix
         if store_path:
             fs_path = self._append_path_to_prefix(store_path)
-        if self.client.exists(self.container, fs_path):
-            return self.client.get_blob_properties(self.container,
-                                                   fs_path).properties.content_length
+
+        if fs_path != "" and self.client.exists(self.container, fs_path):
+            return self.client.get_blob_properties(
+                self.container, fs_path
+            ).properties.content_length
         else:
             size = 0
             if fs_path == '':
