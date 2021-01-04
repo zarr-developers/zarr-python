@@ -1065,6 +1065,7 @@ def copy_all(source, dest, shallow=False, without_attrs=False, log=None,
             n_copied += c
             n_skipped += s
             n_bytes_copied += b
+        dest.attrs.update(**source.attrs)
 
         # log a final message with a summary of what happened
         _log_copy_summary(log, dry_run, n_copied, n_skipped, n_bytes_copied)
