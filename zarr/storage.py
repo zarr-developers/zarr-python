@@ -2199,7 +2199,7 @@ class ABSStore(MutableMapping):
     def __setitem__(self, key, value):
         value = ensure_bytes(value)
         blob_name = self._append_path_to_prefix(key)
-        self.client.upload_blob(blob_name, value)
+        self.client.upload_blob(blob_name, value, overwrite=True)
 
     def __delitem__(self, key):
         from azure.core.exceptions import ResourceNotFoundError
