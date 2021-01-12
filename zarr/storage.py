@@ -116,8 +116,10 @@ def rmdir(store, path: Path = None):
     this will be called, otherwise will fall back to implementation via the
     `MutableMapping` interface."""
     path = normalize_storage_path(path)
-    if hasattr(store.fs, 'rmdir'):
+    if hasattr(store, 'rmdir'):
         # pass through
+        store.rmdir(path)
+    elif hasattr(store.fs, 'rmdir'):
         store.fs.rmdir(path)
     else:
         # slow version, delete one key at a time
