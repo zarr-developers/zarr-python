@@ -1147,7 +1147,7 @@ class Array:
 
         See Also
         --------
-        basic_selection, set_basic_selection, get_mask_selection, set_mask_selection,
+        get_basic_selection, set_basic_selection, get_mask_selection, set_mask_selection,
         get_coordinate_selection, set_coordinate_selection, get_orthogonal_selection,
         set_orthogonal_selection, vindex, oindex, __getitem__
 
