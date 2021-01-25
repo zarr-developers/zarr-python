@@ -967,8 +967,9 @@ class TestFSStore(StoreTests, unittest.TestCase):
                             storage_options=self.s3so)
         expected = np.empty((8, 8, 8), dtype='int64')
         expected[:] = -1
-        a = g.create_dataset("data", shape=(8, 8, 8),
-                             fill_value=-1, chunks=(1, 1, 1))
+        a = g.create_dataset(
+            "data", shape=(8, 8, 8), fill_value=-1, chunks=(1, 1, 1), overwrite=True
+        )
         expected[0] = 0
         expected[3] = 3
         expected[6, 6, 6] = 6
@@ -983,8 +984,8 @@ class TestFSStore(StoreTests, unittest.TestCase):
                              storage_options=self.s3so)
 
         assert (g2.data[:] == expected).all()
-
-        a[:] = 5  # write with scalar
+        a.chunk_store.fs.invalidate_cache("test/out.zarr/data")
+        a[:] = 5
         assert (a[:] == 5).all()
 
         assert g2.data_f['foo'].tolist() == [b"aaa"] * 4 + [b"b"] * 4
@@ -1846,6 +1847,7 @@ class TestABSStore(StoreTests, unittest.TestCase):
 
     def test_hierarchy(self):
         return super().test_hierarchy()
+
 
 class TestConsolidatedMetadataStore(unittest.TestCase):
 
