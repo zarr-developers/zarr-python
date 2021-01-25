@@ -933,10 +933,10 @@ class PartialChunkIterator(object):
     def __iter__(self):
         chunk1 = self.chunk_loc_slices[0]
         nitems = (chunk1[-1].stop - chunk1[-1].start) * np.prod(
-            self.arr_shape[len(chunk1) :], dtype=int
+            self.arr_shape[len(chunk1):], dtype=int
         )
         for partial_out_selection in self.chunk_loc_slices:
             start = 0
             for i, sl in enumerate(partial_out_selection):
-                start += sl.start * np.prod(self.arr_shape[i + 1 :], dtype=int)
+                start += sl.start * np.prod(self.arr_shape[i + 1:], dtype=int)
             yield start, nitems, partial_out_selection

@@ -2427,7 +2427,6 @@ class TestArrayWithFSStorePartialRead(TestArray):
     def create_array(read_only=False, **kwargs):
         path = mkdtemp()
         atexit.register(shutil.rmtree, path)
-        #use_listings_cache=kwargs.pop("use_listings_cache", True)
         store = FSStore(path)
         cache_metadata = kwargs.pop("cache_metadata", True)
         cache_attrs = kwargs.pop("cache_attrs", True)

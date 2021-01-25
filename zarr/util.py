@@ -575,7 +575,7 @@ class PartialReadBuffer:
             start_points_buffer, count=self.nblocks, dtype=np.int32
         )
         self.start_points_max = self.start_points.max()
-        self.buff[16 : (16 + (self.nblocks * 4))] = start_points_buffer
+        self.buff[16: (16 + (self.nblocks * 4))] = start_points_buffer
         self.n_per_block = blocksize / typesize
 
     def read_part(self, start, nitems):
