@@ -83,7 +83,7 @@ jobs:
       shell: "bash -l {0}"
       run: |
         conda activate zarr-env
-        flake8
+        flake8 zarr
         mypy
 
     
