@@ -746,7 +746,7 @@ Python is built with SQLite support)::
 Also added in Zarr version 2.3 are two storage classes for interfacing with server-client
 databases. The :class:`zarr.storage.RedisStore` class interfaces `Redis <https://redis.io/>`_
 (an in memory data structure store), and the :class:`zarr.storage.MongoDB` class interfaces
-with `MongoDB <https://www.mongodb.com/>`_ (an oject oriented NoSQL database). These stores
+with `MongoDB <https://www.mongodb.com/>`_ (an object oriented NoSQL database). These stores
 respectively require the `redis-py <https://redis-py.readthedocs.io>`_ and
 `pymongo <https://api.mongodb.com/python/current/>`_ packages to be installed. 
 
@@ -854,12 +854,43 @@ please raise an issue on the GitHub issue tracker with any profiling data you
 can provide, as there may be opportunities to optimise further either within
 Zarr or within the mapping interface to the storage.
 
+IO with ``fsspec``
+~~~~~~~~~~~~~~~~~~
+
+As of version 2.5, zarr supports passing URLs directly to `fsspec`_,
+and having it create the "mapping" instance automatically. This means, that
+for all of the backend storage implementations `supported by fsspec`_,
+you can skip importing and configuring the storage explicitly.
+For example::
+
+    >>> g = zarr.open_group("s3://zarr-demo/store", storage_options={'anon': True})   # doctest: +SKIP
+    >>> g['foo/bar/baz'][:].tobytes()  # doctest: +SKIP
+    b'Hello from the cloud!'
+
+The provision of the protocol specifier "s3://" will select the correct backend.
+Notice the kwargs ``storage_options``, used to pass parameters to that backend.
+
+As of version 2.6, write mode and complex URLs are also supported, such as::
+
+    >>> g = zarr.open_group("simplecache::s3://zarr-demo/store",
+    ...                     storage_options={"s3": {'anon': True}})  # doctest: +SKIP
+    >>> g['foo/bar/baz'][:].tobytes()  # downloads target file  # doctest: +SKIP
+    b'Hello from the cloud!'
+    >>> g['foo/bar/baz'][:].tobytes()  # uses cached file  # doctest: +SKIP
+    b'Hello from the cloud!'
+
+The second invocation here will be much faster. Note that the ``storage_options``
+have become more complex here, to account for the two parts of the supplied
+URL.
+
+.. _fsspec: https://filesystem-spec.readthedocs.io/en/latest/
+
+.. _supported by fsspec: https://filesystem-spec.readthedocs.io/en/latest/api.html#built-in-implementations
+
 .. _tutorial_copy:
 
 Consolidating metadata
 ~~~~~~~~~~~~~~~~~~~~~~
-
-(This is an experimental feature.)
 
 Since there is a significant overhead for every connection to a cloud object
 store such as S3, the pattern described in the previous section may incur
