@@ -868,7 +868,7 @@ class DirectoryStore(MutableMapping):
                     # move temporary file into place
                     os.replace(temp_path, file_path)
                     break
-                except PermissionError as e:
+                except PermissionError:
                     # wait for file lock to release before attempting again
                     time.sleep(0.1)
                     attempts += 1
