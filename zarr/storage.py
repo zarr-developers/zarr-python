@@ -861,7 +861,17 @@ class DirectoryStore(MutableMapping):
             self._tofile(value, temp_path)
 
             # move temporary file into place
-            os.replace(temp_path, file_path)
+            e = None
+            attempts = 0
+            while attempts < 10:
+                try:
+                    os.replace(temp_path, file_path)
+                    break
+                except PermissionError as e:
+                    time.sleep(0.1)
+                    attempts += 1
+            if attempts == 10:
+                raise e
 
         finally:
             # clean up if temp file still exists for whatever reason
