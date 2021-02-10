@@ -861,7 +861,7 @@ class DirectoryStore(MutableMapping):
             self._tofile(value, temp_path)
 
             # make several attempts at writing the temporary file to get past
-            # antivirus file locking issues
+            # potential antivirus file locking issues
             attempts = 0
             while attempts < 10:
                 try:
