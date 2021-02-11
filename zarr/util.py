@@ -13,7 +13,7 @@ from numcodecs.compat import ensure_ndarray, ensure_text
 from numcodecs.registry import codec_registry
 from numcodecs.blosc import cbuffer_sizes, cbuffer_metainfo
 
-from typing import Any, Callable, Dict, Tuple, Union, Optional
+from typing import Any, Callable, Dict, Tuple, Union
 
 
 # codecs to use for object dtype convenience API
