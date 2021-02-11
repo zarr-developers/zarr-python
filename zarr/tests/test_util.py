@@ -7,7 +7,7 @@ import pytest
 from zarr.util import (guess_chunks, human_readable_size, info_html_report,
                        info_text_report, is_total_slice, normalize_chunks,
                        normalize_fill_value, normalize_order,
-                       normalize_resize_args, normalize_shape,
+                       normalize_resize_args, normalize_shape, retry_call,
                        tree_array_icon, tree_group_icon, tree_get_icon,
                        tree_widget)
 
@@ -175,3 +175,19 @@ def test_tree_widget_missing_ipytree():
         )
     with pytest.raises(ImportError, match=re.escape(pattern)):
         tree_widget(None, None, None)
+
+
+def test_retry_call():
+    class F:
+        def __init__(self):
+            self.c = 0
+
+        def __call__(self):
+            self.c += 1
+            if self.c == 1:
+                raise PermissionError()
+
+    retry_call(F(), exceptions=(PermissionError,), wait=0)
+
+    pytest.raises(PermissionError,
+                  retry_call, F(), exceptions=(NotImplementedError,), wait=0)
