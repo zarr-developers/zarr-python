@@ -15,6 +15,7 @@ from numcodecs.blosc import cbuffer_sizes, cbuffer_metainfo
 
 from typing import Any, Callable, Dict, Tuple, Union, Optional
 
+
 # codecs to use for object dtype convenience API
 object_codecs = {
     str.__name__: 'vlen-utf8',
@@ -616,8 +617,8 @@ def retry_call(callabl: Callable,
                args=None,
                kwargs=None,
                exceptions: Tuple[Any, ...] = (),
-               retries: Int = 10,
-               wait: Int = 0.1) -> Any:
+               retries: int = 10,
+               wait: int = 0.1) -> Any:
     """
     Make several attempts to invoke the callable. If one of the given exceptions
     is raised, wait the given period of time and retry up to the given number of
