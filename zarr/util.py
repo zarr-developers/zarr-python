@@ -13,7 +13,7 @@ from numcodecs.compat import ensure_ndarray, ensure_text
 from numcodecs.registry import codec_registry
 from numcodecs.blosc import cbuffer_sizes, cbuffer_metainfo
 
-from typing import Any, Callable, Dict, Tuple, Union
+from typing import Any, Callable, Dict, Tuple, Union, Optional
 
 # codecs to use for object dtype convenience API
 object_codecs = {
@@ -614,8 +614,8 @@ class PartialReadBuffer:
 
 def retry_call(
         callabl: Callable,
-        args: Tuple[Any] = None,
-        kwargs: Dict[Any, Any] = None,
+        args: Optional[Tuple[Any]] = None,
+        kwargs: Optional[Dict[Any, Any]] = None,
         exceptions=(),
         retries=10,
         wait=0.1,) -> Any:
