@@ -618,7 +618,7 @@ def retry_call(callabl: Callable,
                kwargs=None,
                exceptions: Tuple[Any, ...] = (),
                retries: int = 10,
-               wait: int = 0.1) -> Any:
+               wait: float = 0.1) -> Any:
     """
     Make several attempts to invoke the callable. If one of the given exceptions
     is raised, wait the given period of time and retry up to the given number of
