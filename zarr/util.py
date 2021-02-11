@@ -612,13 +612,12 @@ class PartialReadBuffer:
         return self.chunk_store[self.store_key]
 
 
-def retry_call(
-        callabl: Callable,
-        args: Optional[Tuple[Any]] = None,
-        kwargs: Optional[Dict[Any, Any]] = None,
-        exceptions=(),
-        retries=10,
-        wait=0.1,) -> Any:
+def retry_call(callabl: Callable,
+               args=None,
+               kwargs=None,
+               exceptions: Tuple[Any, ...] = (),
+               retries: Int = 10,
+               wait: Int = 0.1) -> Any:
     """
     Make several attempts to invoke the callable. If one of the given exceptions
     is raised, wait the given period of time and retry up to the given number of
