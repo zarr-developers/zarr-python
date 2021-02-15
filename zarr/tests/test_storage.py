@@ -863,11 +863,26 @@ class TestDirectoryStore(StoreTests, unittest.TestCase):
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
 class TestFSStore(StoreTests, unittest.TestCase):
 
-    def create_store(self, normalize_keys=False):
+    def create_store(self, normalize_keys=False, key_separator="."):
         path = tempfile.mkdtemp()
         atexit.register(atexit_rmtree, path)
-        store = FSStore(path, normalize_keys=normalize_keys)
+        store = FSStore(
+            path,
+            normalize_keys=normalize_keys,
+            key_separator=key_separator)
         return store
+
+    def test_key_separator(self):
+        for x in (".", "/"):
+            store = self.create_store(key_separator=x)
+            norm = store._normalize_key
+            assert ".zarray" == norm(".zarray")
+            assert ".zarray" == norm("/.zarray")
+            assert ".zgroup" == norm("/.zgroup")
+            assert "group/.zarray" == norm("group/.zarray")
+            assert "group/.zgroup" == norm("group/.zgroup")
+            assert "group/.zarray" == norm("/group/.zarray")
+            assert "group/.zgroup" == norm("/group/.zgroup")
 
     def test_complex(self):
         path1 = tempfile.mkdtemp()
@@ -1182,12 +1197,26 @@ class TestN5Store(TestNestedDirectoryStore, unittest.TestCase):
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
 class TestNestedFSStore(TestNestedDirectoryStore):
 
-    def create_store(self, normalize_keys=False):
-        path = tempfile.mkdtemp()
+    def create_store(self, normalize_keys=False, path=None):
+        if path is None:
+            path = tempfile.mkdtemp()
         atexit.register(atexit_rmtree, path)
         store = FSStore(path, normalize_keys=normalize_keys,
                         key_separator='/', auto_mkdir=True)
         return store
+
+    def test_numbered_groups(self):
+        import zarr
+
+        # Create an array
+        store = self.create_store()
+        group = zarr.group(store=store)
+        arr = group.create_dataset('0', shape=(10, 10))
+        arr[1] = 1
+
+        # Read it back
+        store = self.create_store(path=store.path)
+        zarr.open_group(store.path)["0"]
 
 
 class TestTempStore(StoreTests, unittest.TestCase):
