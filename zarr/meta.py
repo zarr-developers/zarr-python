@@ -6,7 +6,7 @@ import numpy as np
 from zarr.errors import MetadataError
 from zarr.util import json_dumps, json_loads
 
-from typing import Union, Any, List, Mapping as MappingType
+from typing import cast, Union, Any, List, Mapping as MappingType
 
 ZARR_FORMAT = 2
 
@@ -79,7 +79,12 @@ def encode_dtype(d: np.dtype) -> str:
     if d.fields is None:
         return d.str
     else:
-        return d.descr
+        if isinstance(d.descr, str):
+            return d.descr
+        else:
+            # Newer numpy for __array_interfaace__. Assume only one entry
+            assert len(d.descr) == 1
+            return d.descr[0][1]
 
 
 def _decode_dtype_descr(d) -> List[Any]:
@@ -180,8 +185,9 @@ def encode_fill_value(v: Any, dtype: np.dtype) -> Any:
     elif dtype.kind == 'b':
         return bool(v)
     elif dtype.kind in 'c':
-        v = (encode_fill_value(v.real, dtype.type().real.dtype),
-             encode_fill_value(v.imag, dtype.type().imag.dtype))
+        c = cast(np.complex128, np.dtype(complex).type())
+        v = (encode_fill_value(v.real, c.real.dtype),
+             encode_fill_value(v.imag, c.imag.dtype))
         return v
     elif dtype.kind in 'SV':
         v = str(base64.standard_b64encode(v), 'ascii')
