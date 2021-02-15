@@ -75,16 +75,11 @@ def encode_array_metadata(meta: MappingType[str, Any]) -> bytes:
     return json_dumps(meta)
 
 
-def encode_dtype(d: np.dtype) -> str:
+def encode_dtype(d: np.dtype):
     if d.fields is None:
         return d.str
     else:
-        if isinstance(d.descr, str):
-            return d.descr
-        else:
-            # Newer numpy for __array_interfaace__. Assume only one entry
-            assert len(d.descr) == 1
-            return d.descr[0][1]
+        return d.descr
 
 
 def _decode_dtype_descr(d) -> List[Any]:
