@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 from collections.abc import MutableMapping
 from itertools import islice
 
@@ -9,8 +8,12 @@ from zarr.core import Array
 from zarr.creation import (array, create, empty, empty_like, full, full_like,
                            normalize_store_arg, ones, ones_like, zeros,
                            zeros_like)
-from zarr.errors import (err_contains_array, err_contains_group,
-                         err_group_not_found, err_read_only)
+from zarr.errors import (
+    ContainsArrayError,
+    ContainsGroupError,
+    GroupNotFoundError,
+    ReadOnlyError,
+)
 from zarr.meta import decode_group_metadata
 from zarr.storage import (MemoryStore, attrs_key, contains_array,
                           contains_group, group_meta_key, init_group, listdir,
@@ -26,6 +29,8 @@ class Group(MutableMapping):
     ----------
     store : MutableMapping
         Group store, already initialized.
+        If the Group is used in a context manager, and the store has a ``close`` method,
+        it will be called on exit.
     path : string, optional
         Group path.
     read_only : bool, optional
@@ -57,6 +62,8 @@ class Group(MutableMapping):
     __iter__
     __contains__
     __getitem__
+    __enter__
+    __exit__
     group_keys
     groups
     array_keys
@@ -101,14 +108,14 @@ class Group(MutableMapping):
 
         # guard conditions
         if contains_array(store, path=self._path):
-            err_contains_array(path)
+            raise ContainsArrayError(path)
 
         # initialize metadata
         try:
             mkey = self._key_prefix + group_meta_key
             meta_bytes = store[mkey]
         except KeyError:
-            err_group_not_found(path)
+            raise GroupNotFoundError(path)
         else:
             meta = decode_group_metadata(meta_bytes)
             self._meta = meta
@@ -224,6 +231,17 @@ class Group(MutableMapping):
             r += ' read-only'
         r += '>'
         return r
+
+    def __enter__(self):
+        """Return the Group for use as a context manager."""
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """If the underlying Store has a ``close`` method, call it."""
+        try:
+            self.store.close()
+        except AttributeError:
+            pass
 
     def info_items(self):
 
@@ -630,7 +648,7 @@ class Group(MutableMapping):
 
         # guard condition
         if self._read_only:
-            err_read_only()
+            raise ReadOnlyError()
 
         if self._synchronizer is None:
             # no synchronization
@@ -731,6 +749,9 @@ class Group(MutableMapping):
     def create_dataset(self, name, **kwargs):
         """Create an array.
 
+        Arrays are known as "datasets" in HDF5 terminology. For compatibility
+        with h5py, Zarr groups also implement the require_dataset() method.
+
         Parameters
         ----------
         name : string
@@ -804,8 +825,12 @@ class Group(MutableMapping):
         return a
 
     def require_dataset(self, name, shape, dtype=None, exact=False, **kwargs):
-        """Obtain an array, creating if it doesn't exist. Other `kwargs` are
-        as per :func:`zarr.hierarchy.Group.create_dataset`.
+        """Obtain an array, creating if it doesn't exist.
+
+        Arrays are known as "datasets" in HDF5 terminology. For compatibility
+        with h5py, Zarr groups also implement the create_dataset() method.
+
+        Other `kwargs` are as per :func:`zarr.hierarchy.Group.create_dataset`.
 
         Parameters
         ----------
@@ -1010,8 +1035,11 @@ class Group(MutableMapping):
         self._write_op(self._move_nosync, source, dest)
 
 
-def _normalize_store_arg(store, clobber=False):
-    return normalize_store_arg(store, clobber=clobber, default=MemoryStore)
+def _normalize_store_arg(store, *, clobber=False, storage_options=None, mode=None):
+    if store is None:
+        return MemoryStore()
+    return normalize_store_arg(store, clobber=clobber,
+                               storage_options=storage_options, mode=mode)
 
 
 def group(store=None, overwrite=False, chunk_store=None,
@@ -1073,7 +1101,7 @@ def group(store=None, overwrite=False, chunk_store=None,
 
 
 def open_group(store=None, mode='a', cache_attrs=True, synchronizer=None, path=None,
-               chunk_store=None):
+               chunk_store=None, storage_options=None):
     """Open a group using file-mode-like semantics.
 
     Parameters
@@ -1095,6 +1123,9 @@ def open_group(store=None, mode='a', cache_attrs=True, synchronizer=None, path=N
         Group path within store.
     chunk_store : MutableMapping or string, optional
         Store or path to directory in file system or name of zip file.
+    storage_options : dict
+        If using an fsspec URL to create the store, these will be passed to
+        the backend implementation. Ignored otherwise.
 
     Returns
     -------
@@ -1117,33 +1148,37 @@ def open_group(store=None, mode='a', cache_attrs=True, synchronizer=None, path=N
     """
 
     # handle polymorphic store arg
-    store = _normalize_store_arg(store)
+    clobber = mode != "r"
+    store = _normalize_store_arg(
+        store, clobber=clobber, storage_options=storage_options, mode=mode
+    )
     if chunk_store is not None:
-        chunk_store = _normalize_store_arg(chunk_store)
+        chunk_store = _normalize_store_arg(chunk_store, clobber=clobber,
+                                           storage_options=storage_options)
     path = normalize_storage_path(path)
 
     # ensure store is initialized
 
     if mode in ['r', 'r+']:
         if contains_array(store, path=path):
-            err_contains_array(path)
+            raise ContainsArrayError(path)
         elif not contains_group(store, path=path):
-            err_group_not_found(path)
+            raise GroupNotFoundError(path)
 
     elif mode == 'w':
         init_group(store, overwrite=True, path=path, chunk_store=chunk_store)
 
     elif mode == 'a':
         if contains_array(store, path=path):
-            err_contains_array(path)
+            raise ContainsArrayError(path)
         if not contains_group(store, path=path):
             init_group(store, path=path, chunk_store=chunk_store)
 
     elif mode in ['w-', 'x']:
         if contains_array(store, path=path):
-            err_contains_array(path)
+            raise ContainsArrayError(path)
         elif contains_group(store, path=path):
-            err_contains_group(path)
+            raise ContainsGroupError(path)
         else:
             init_group(store, path=path, chunk_store=chunk_store)
 

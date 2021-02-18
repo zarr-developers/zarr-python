@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # flake8: noqa
 from zarr.codecs import *
 from zarr.convenience import (consolidate_metadata, copy, copy_all, copy_store,
@@ -17,3 +16,6 @@ from zarr.storage import (ABSStore, DBMStore, DictStore, DirectoryStore,
                           TempStore, ZipStore)
 from zarr.sync import ProcessSynchronizer, ThreadSynchronizer
 from zarr.version import version as __version__
+
+# in case setuptools scm screw up and find version to be 0.0.0
+assert not __version__.startswith("0.0.0")
