@@ -1896,7 +1896,7 @@ class TestConsolidatedMetadataStore(unittest.TestCase):
             cs["spam"] = "eggs"
 
 
-## standalone test we do not want to run on each stores.
+# standalone test we do not want to run on each store.
 
 
 def test_fill_value_change():
