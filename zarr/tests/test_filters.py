@@ -1,15 +1,9 @@
-# -*- coding: utf-8 -*-
-from __future__ import absolute_import, print_function, division
-
-
 import numpy as np
-from numpy.testing import assert_array_equal, assert_array_almost_equal
+from numcodecs import (BZ2, AsType, Blosc, Categorize, Delta, FixedScaleOffset,
+                       PackBits, Quantize, Zlib)
+from numpy.testing import assert_array_almost_equal, assert_array_equal
 
-
-from numcodecs import (AsType, Delta, FixedScaleOffset, PackBits, Categorize, Zlib, Blosc,
-                       BZ2, Quantize)
 from zarr.creation import array
-
 
 compressors = [
     None,
@@ -169,8 +163,8 @@ def test_array_with_packbits_filter():
 def test_array_with_categorize_filter():
 
     # setup
-    data = np.random.choice([u'foo', u'bar', u'baz'], size=100)
-    flt = Categorize(dtype=data.dtype, labels=[u'foo', u'bar', u'baz'])
+    data = np.random.choice(['foo', 'bar', 'baz'], size=100)
+    flt = Categorize(dtype=data.dtype, labels=['foo', 'bar', 'baz'])
     filters = [flt]
 
     for compressor in compressors:

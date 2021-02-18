@@ -1,43 +1,33 @@
-# -*- coding: utf-8 -*-
-from __future__ import absolute_import, print_function, division
-import unittest
-import tempfile
 import atexit
-import shutil
-import textwrap
 import os
 import pickle
-import warnings
-
+import shutil
+import tempfile
+import textwrap
+import unittest
 
 import numpy as np
-from numpy.testing import assert_array_equal
 import pytest
 
 try:
-    import azure.storage.blob as asb
+    import ipytree
 except ImportError:  # pragma: no cover
-    asb = None
+    ipytree = None
 
-
-from zarr.storage import (MemoryStore, DirectoryStore, ZipStore, init_group, init_array,
-                          array_meta_key, group_meta_key, atexit_rmtree,
-                          NestedDirectoryStore, DBMStore, LMDBStore, SQLiteStore,
-                          ABSStore, atexit_rmglob, LRUStoreCache)
-from zarr.core import Array
-from zarr.compat import PY2, text_type
-from zarr.hierarchy import Group, group, open_group
-from zarr.attrs import Attributes
-from zarr.errors import PermissionError
-from zarr.creation import open_array
-from zarr.util import InfoReporter
 from numcodecs import Zlib
+from numpy.testing import assert_array_equal
 
-
-# needed for PY2/PY3 consistent behaviour
-if PY2:  # pragma: py3 no cover
-    warnings.resetwarnings()
-    warnings.simplefilter('always')
+from zarr.attrs import Attributes
+from zarr.core import Array
+from zarr.creation import open_array
+from zarr.hierarchy import Group, group, open_group
+from zarr.storage import (ABSStore, DBMStore, DirectoryStore, LMDBStore,
+                          LRUStoreCache, MemoryStore, NestedDirectoryStore,
+                          SQLiteStore, ZipStore, array_meta_key, atexit_rmglob,
+                          atexit_rmtree, group_meta_key, init_array,
+                          init_group)
+from zarr.util import InfoReporter
+from zarr.tests.util import skip_test_env_var
 
 
 # noinspection PyStatementEffect
@@ -76,6 +66,8 @@ class TestGroup(unittest.TestCase):
         assert isinstance(g.info, InfoReporter)
         assert isinstance(repr(g.info), str)
         assert isinstance(g.info._repr_html_(), str)
+        if hasattr(store, 'close'):
+            store.close()
 
     def test_group_init_2(self):
         store, chunk_store = self.create_store()
@@ -87,12 +79,16 @@ class TestGroup(unittest.TestCase):
         assert '/foo/bar' == g.name
         assert 'bar' == g.basename
         assert isinstance(g.attrs, Attributes)
+        if hasattr(store, 'close'):
+            store.close()
 
     def test_group_init_errors_1(self):
         store, chunk_store = self.create_store()
         # group metadata not initialized
         with pytest.raises(ValueError):
             Group(store, chunk_store=chunk_store)
+        if hasattr(store, 'close'):
+            store.close()
 
     def test_group_init_errors_2(self):
         store, chunk_store = self.create_store()
@@ -100,6 +96,8 @@ class TestGroup(unittest.TestCase):
         # array blocks group
         with pytest.raises(ValueError):
             Group(store, chunk_store=chunk_store)
+        if hasattr(store, 'close'):
+            store.close()
 
     def test_create_group(self):
         g1 = self.create_group()
@@ -170,6 +168,9 @@ class TestGroup(unittest.TestCase):
         assert isinstance(g7, Group)
         assert g7.path == 'z'
 
+        if hasattr(g1.store, 'close'):
+            g1.store.close()
+
     def test_require_group(self):
         g1 = self.create_group()
 
@@ -210,6 +211,9 @@ class TestGroup(unittest.TestCase):
         assert g6.path == 'y'
         assert isinstance(g7, Group)
         assert g7.path == 'z'
+
+        if hasattr(g1.store, 'close'):
+            g1.store.close()
 
     def test_create_dataset(self):
         g = self.create_group()
@@ -285,6 +289,9 @@ class TestGroup(unittest.TestCase):
         assert d.compressor.codec_id == 'zlib'
         assert 1 == d.compressor.level
 
+        if hasattr(g.store, 'close'):
+            g.store.close()
+
     def test_require_dataset(self):
         g = self.create_group()
 
@@ -328,6 +335,9 @@ class TestGroup(unittest.TestCase):
             # can cast but not exact match
             g.require_dataset('foo', shape=1000, chunks=100, dtype='i2',
                               exact=True)
+
+        if hasattr(g.store, 'close'):
+            g.store.close()
 
     def test_create_errors(self):
         g = self.create_group()
@@ -382,6 +392,9 @@ class TestGroup(unittest.TestCase):
         with pytest.raises(PermissionError):
             g.require_dataset('zzz', shape=100, chunks=10)
 
+        if hasattr(g.store, 'close'):
+            g.store.close()
+
     def test_create_overwrite(self):
         try:
             for method_name in 'create_dataset', 'create', 'empty', 'zeros', \
@@ -405,6 +418,9 @@ class TestGroup(unittest.TestCase):
                                             overwrite=True)
                 assert (400,) == d.shape
                 assert isinstance(g['foo'], Group)
+
+                if hasattr(g.store, 'close'):
+                    g.store.close()
         except NotImplementedError:
             pass
 
@@ -632,6 +648,9 @@ class TestGroup(unittest.TestCase):
         assert g1.visitvalues(visitor1) is True
         assert g1.visititems(visitor1) is True
 
+        if hasattr(g1.store, 'close'):
+            g1.store.close()
+
     def test_empty_getitem_contains_iterators(self):
         # setup
         g = self.create_group()
@@ -641,6 +660,36 @@ class TestGroup(unittest.TestCase):
         assert [] == list(g.keys())
         assert 0 == len(g)
         assert 'foo' not in g
+
+        if hasattr(g.store, 'close'):
+            g.store.close()
+
+    def test_iterators_recurse(self):
+        # setup
+        g1 = self.create_group()
+        g2 = g1.create_group('foo/bar')
+        d1 = g2.create_dataset('/a/b/c', shape=1000, chunks=100)
+        d1[:] = np.arange(1000)
+        d2 = g1.create_dataset('foo/baz', shape=3000, chunks=300)
+        d2[:] = np.arange(3000)
+        d3 = g2.create_dataset('zab', shape=2000, chunks=200)
+        d3[:] = np.arange(2000)
+
+        # test recursive array_keys
+        array_keys = list(g1['foo'].array_keys(recurse=False))
+        array_keys_recurse = list(g1['foo'].array_keys(recurse=True))
+        assert len(array_keys_recurse) > len(array_keys)
+        assert sorted(array_keys_recurse) == ['baz', 'zab']
+
+        # test recursive arrays
+        arrays = list(g1['foo'].arrays(recurse=False))
+        arrays_recurse = list(g1['foo'].arrays(recurse=True))
+        assert len(arrays_recurse) > len(arrays)
+        assert 'zab' == arrays_recurse[0][0]
+        assert g1['foo']['bar']['zab'] == arrays_recurse[0][1]
+
+        if hasattr(g1.store, 'close'):
+            g1.store.close()
 
     def test_getattr(self):
         # setup
@@ -653,6 +702,9 @@ class TestGroup(unittest.TestCase):
         assert g2['bar'] == g2.bar
         # test that hasattr returns False instead of an exception (issue #88)
         assert not hasattr(g1, 'unexistingattribute')
+
+        if hasattr(g1.store, 'close'):
+            g1.store.close()
 
     def test_setitem(self):
         g = self.create_group()
@@ -669,6 +721,8 @@ class TestGroup(unittest.TestCase):
             assert 42 == g['foo'][()]
         except NotImplementedError:
             pass
+        if hasattr(g.store, 'close'):
+            g.store.close()
 
     def test_delitem(self):
         g = self.create_group()
@@ -687,6 +741,8 @@ class TestGroup(unittest.TestCase):
             assert 'foo' in g
             assert 'bar' not in g
             assert 'bar/baz' not in g
+        if hasattr(g.store, 'close'):
+            g.store.close()
 
     def test_move(self):
         g = self.create_group()
@@ -734,6 +790,9 @@ class TestGroup(unittest.TestCase):
         except NotImplementedError:
             pass
 
+        if hasattr(g.store, 'close'):
+            g.store.close()
+
     def test_array_creation(self):
         grp = self.create_group()
 
@@ -769,6 +828,9 @@ class TestGroup(unittest.TestCase):
         assert isinstance(j, Array)
         assert_array_equal(np.arange(100), j[:])
 
+        if hasattr(grp.store, 'close'):
+            grp.store.close()
+
         grp = self.create_group(read_only=True)
         with pytest.raises(PermissionError):
             grp.create('aa', shape=100, chunks=10)
@@ -792,6 +854,9 @@ class TestGroup(unittest.TestCase):
             grp.ones_like('aa', a)
         with pytest.raises(PermissionError):
             grp.full_like('aa', a)
+
+        if hasattr(grp.store, 'close'):
+            grp.store.close()
 
     def test_paths(self):
         g1 = self.create_group()
@@ -824,6 +889,9 @@ class TestGroup(unittest.TestCase):
         with pytest.raises(ValueError):
             g1['foo/../bar']
 
+        if hasattr(g1.store, 'close'):
+            g1.store.close()
+
     def test_pickle(self):
 
         # setup group
@@ -851,6 +919,15 @@ class TestGroup(unittest.TestCase):
         assert isinstance(g2['foo'], Group)
         assert isinstance(g2['foo/bar'], Array)
 
+        if hasattr(g2.store, 'close'):
+            g2.store.close()
+
+    def test_context_manager(self):
+
+        with self.create_group() as g:
+            d = g.create_dataset('foo/bar', shape=100, chunks=10)
+            d[:] = np.arange(100)
+
 
 class TestGroupWithMemoryStore(TestGroup):
 
@@ -869,17 +946,17 @@ class TestGroupWithDirectoryStore(TestGroup):
         return store, None
 
 
-@pytest.mark.skipif(asb is None,
-                    reason="azure-blob-storage could not be imported")
+@skip_test_env_var("ZARR_TEST_ABS")
 class TestGroupWithABSStore(TestGroup):
 
     @staticmethod
     def create_store():
+        asb = pytest.importorskip("azure.storage.blob")
         blob_client = asb.BlockBlobService(is_emulated=True)
         blob_client.delete_container('test')
         blob_client.create_container('test')
-        store = ABSStore(container='test', prefix='zarrtesting/', account_name='foo',
-                         account_key='bar', blob_service_kwargs={'is_emulated': True})
+        store = ABSStore(container='test', account_name='foo', account_key='bar',
+                         blob_service_kwargs={'is_emulated': True})
         store.rmdir()
         return store, None
 
@@ -903,6 +980,18 @@ class TestGroupWithZipStore(TestGroup):
         store = ZipStore(path)
         return store, None
 
+    def test_context_manager(self):
+
+        with self.create_group() as g:
+            store = g.store
+            d = g.create_dataset('foo/bar', shape=100, chunks=10)
+            d[:] = np.arange(100)
+
+        # Check that exiting the context manager closes the store,
+        # and therefore the underlying ZipFile.
+        with pytest.raises(ValueError):
+            store.zf.extractall()
+
 
 class TestGroupWithDBMStore(TestGroup):
 
@@ -914,50 +1003,32 @@ class TestGroupWithDBMStore(TestGroup):
         return store, None
 
 
-try:
-    import bsddb3
-except ImportError:  # pragma: no cover
-    bsddb3 = None
-
-
-@unittest.skipIf(bsddb3 is None, 'bsddb3 is not installed')
 class TestGroupWithDBMStoreBerkeleyDB(TestGroup):
 
     @staticmethod
     def create_store():
+        bsddb3 = pytest.importorskip("bsddb3")
         path = tempfile.mktemp(suffix='.dbm')
         atexit.register(os.remove, path)
         store = DBMStore(path, flag='n', open=bsddb3.btopen)
         return store, None
 
 
-try:
-    import lmdb
-except ImportError:  # pragma: no cover
-    lmdb = None
-
-
-@unittest.skipIf(lmdb is None, 'lmdb is not installed')
 class TestGroupWithLMDBStore(TestGroup):
 
     @staticmethod
     def create_store():
+        pytest.importorskip("lmdb")
         path = tempfile.mktemp(suffix='.lmdb')
         atexit.register(atexit_rmtree, path)
         store = LMDBStore(path)
         return store, None
 
 
-try:
-    import sqlite3
-except ImportError:  # pragma: no cover
-    sqlite3 = None
-
-
-@unittest.skipIf(sqlite3 is None, 'python built without sqlite')
 class TestGroupWithSQLiteStore(TestGroup):
 
     def create_store(self):
+        pytest.importorskip("sqlite3")
         path = tempfile.mktemp(suffix='.db')
         atexit.register(atexit_rmtree, path)
         store = SQLiteStore(path)
@@ -1185,16 +1256,13 @@ def test_group_key_completions():
 
 def _check_tree(g, expect_bytes, expect_text):
     assert expect_bytes == bytes(g.tree())
-    assert expect_text == text_type(g.tree())
+    assert expect_text == str(g.tree())
     expect_repr = expect_text
-    if PY2:  # pragma: py3 no cover
-        expect_repr = expect_bytes
     assert expect_repr == repr(g.tree())
-    # test _repr_html_ lightly
-    # noinspection PyProtectedMember
-    html = g.tree()._repr_html_().strip()
-    assert html.startswith('<link')
-    assert html.endswith('</script>')
+    if ipytree:
+        # noinspection PyProtectedMember
+        widget = g.tree()._ipython_display_()
+        isinstance(widget, ipytree.Tree)
 
 
 def test_tree():
@@ -1207,14 +1275,14 @@ def test_tree():
     g5.create_dataset('baz', shape=100, chunks=10)
 
     # test root group
-    expect_bytes = textwrap.dedent(u"""\
+    expect_bytes = textwrap.dedent("""\
     /
      +-- bar
      |   +-- baz
      |   +-- quux
      |       +-- baz (100,) float64
      +-- foo""").encode()
-    expect_text = textwrap.dedent(u"""\
+    expect_text = textwrap.dedent("""\
     /
      ├── bar
      │   ├── baz
@@ -1224,19 +1292,19 @@ def test_tree():
     _check_tree(g1, expect_bytes, expect_text)
 
     # test different group
-    expect_bytes = textwrap.dedent(u"""\
+    expect_bytes = textwrap.dedent("""\
     foo""").encode()
-    expect_text = textwrap.dedent(u"""\
+    expect_text = textwrap.dedent("""\
     foo""")
     _check_tree(g2, expect_bytes, expect_text)
 
     # test different group
-    expect_bytes = textwrap.dedent(u"""\
+    expect_bytes = textwrap.dedent("""\
     bar
      +-- baz
      +-- quux
          +-- baz (100,) float64""").encode()
-    expect_text = textwrap.dedent(u"""\
+    expect_text = textwrap.dedent("""\
     bar
      ├── baz
      └── quux

@@ -1,10 +1,13 @@
-import numpy as np
 import sys
-sys.path.insert(0, '..')
-import zarr
-import line_profiler
 import timeit
+
+import numpy as np
+
+import line_profiler
+import zarr
 from zarr import blosc
+
+sys.path.insert(0, '..')
 
 # setup
 a = np.random.normal(2000, 1000, size=200000000).astype('u2')

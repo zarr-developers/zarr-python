@@ -1,24 +1,31 @@
-# -*- coding: utf-8 -*-
-from __future__ import absolute_import, print_function, division
-import tempfile
 import atexit
 import os
+import tempfile
 import unittest
 from numbers import Integral
 
-
 import numpy as np
-from numpy.testing import assert_array_equal
-from numcodecs import Zlib, Adler32
 import pytest
+from numcodecs import Adler32, Zlib
+from numpy.testing import assert_array_equal
 
-
-from zarr.convenience import (open, save, save_group, load, copy_store, copy,
-                              consolidate_metadata, open_consolidated)
-from zarr.storage import atexit_rmtree, MemoryStore, getsize, ConsolidatedMetadataStore
+import zarr
+from zarr.convenience import (
+    consolidate_metadata,
+    copy,
+    copy_store,
+    load,
+    open,
+    open_consolidated,
+    save,
+    save_group,
+    copy_all,
+)
 from zarr.core import Array
+from zarr.errors import CopyError
 from zarr.hierarchy import Group, group
-from zarr.errors import CopyError, PermissionError
+from zarr.storage import (ConsolidatedMetadataStore, MemoryStore,
+                          atexit_rmtree, getsize)
 
 
 def test_open_array():
@@ -165,6 +172,56 @@ def test_consolidate_metadata():
 
     # make sure keyword arguments are passed through without error
     open_consolidated(store, cache_attrs=True, synchronizer=None)
+
+
+def test_consolidated_with_chunk_store():
+    # setup initial data
+    store = MemoryStore()
+    chunk_store = MemoryStore()
+    z = group(store, chunk_store=chunk_store)
+    z.create_group('g1')
+    g2 = z.create_group('g2')
+    g2.attrs['hello'] = 'world'
+    arr = g2.create_dataset('arr', shape=(20, 20), chunks=(5, 5), dtype='f8')
+    assert 16 == arr.nchunks
+    assert 0 == arr.nchunks_initialized
+    arr.attrs['data'] = 1
+    arr[:] = 1.0
+    assert 16 == arr.nchunks_initialized
+
+    # perform consolidation
+    out = consolidate_metadata(store)
+    assert isinstance(out, Group)
+    assert '.zmetadata' in store
+    for key in ['.zgroup',
+                'g1/.zgroup',
+                'g2/.zgroup',
+                'g2/.zattrs',
+                'g2/arr/.zarray',
+                'g2/arr/.zattrs']:
+        del store[key]
+    # open consolidated
+    z2 = open_consolidated(store, chunk_store=chunk_store)
+    assert ['g1', 'g2'] == list(z2)
+    assert 'world' == z2.g2.attrs['hello']
+    assert 1 == z2.g2.arr.attrs['data']
+    assert (z2.g2.arr[:] == 1.0).all()
+    assert 16 == z2.g2.arr.nchunks
+    assert 16 == z2.g2.arr.nchunks_initialized
+
+    # test the data are writeable
+    z2.g2.arr[:] = 2
+    assert (z2.g2.arr[:] == 2).all()
+
+    # test invalid modes
+    with pytest.raises(ValueError):
+        open_consolidated(store, mode='a', chunk_store=chunk_store)
+    with pytest.raises(ValueError):
+        open_consolidated(store, mode='w', chunk_store=chunk_store)
+
+    # make sure keyword arguments are passed through without error
+    open_consolidated(store, cache_attrs=True, synchronizer=None,
+                      chunk_store=chunk_store)
 
 
 class TestCopyStore(unittest.TestCase):
@@ -374,11 +431,36 @@ def check_copied_group(original, copied, without_attrs=False, expect_props=None,
         assert sorted(original.attrs.items()) == sorted(copied.attrs.items())
 
 
+def test_copy_all():
+    """
+    https://github.com/zarr-developers/zarr-python/issues/269
+
+    copy_all used to not copy attributes as `.keys()` does not return hidden `.zattrs`.
+
+    """
+    original_group = zarr.group(store=MemoryStore(), overwrite=True)
+    original_group.attrs["info"] = "group attrs"
+    original_subgroup = original_group.create_group("subgroup")
+    original_subgroup.attrs["info"] = "sub attrs"
+
+    destination_group = zarr.group(store=MemoryStore(), overwrite=True)
+
+    # copy from memory to directory store
+    copy_all(
+        original_group,
+        destination_group,
+        dry_run=False,
+    )
+
+    assert destination_group.attrs["info"] == "group attrs"
+    assert destination_group.subgroup.attrs["info"] == "sub attrs"
+
+
 # noinspection PyAttributeOutsideInit
 class TestCopy(unittest.TestCase):
 
     def __init__(self, *args, **kwargs):
-        super(TestCopy, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self.source_h5py = False
         self.dest_h5py = False
         self.new_source = group
@@ -656,6 +738,7 @@ except ImportError:  # pragma: no cover
 
 
 def temp_h5f():
+    h5py = pytest.importorskip("h5py")
     fn = tempfile.mktemp()
     atexit.register(os.remove, fn)
     h5f = h5py.File(fn, mode='w')
@@ -663,33 +746,30 @@ def temp_h5f():
     return h5f
 
 
-@unittest.skipIf(h5py is None, 'h5py is not installed')
 class TestCopyHDF5ToZarr(TestCopy):
 
     def __init__(self, *args, **kwargs):
-        super(TestCopyHDF5ToZarr, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self.source_h5py = True
         self.dest_h5py = False
         self.new_source = temp_h5f
         self.new_dest = group
 
 
-@unittest.skipIf(h5py is None, 'h5py is not installed')
 class TestCopyZarrToHDF5(TestCopy):
 
     def __init__(self, *args, **kwargs):
-        super(TestCopyZarrToHDF5, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self.source_h5py = False
         self.dest_h5py = True
         self.new_source = group
         self.new_dest = temp_h5f
 
 
-@unittest.skipIf(h5py is None, 'h5py is not installed')
 class TestCopyHDF5ToHDF5(TestCopy):
 
     def __init__(self, *args, **kwargs):
-        super(TestCopyHDF5ToHDF5, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self.source_h5py = True
         self.dest_h5py = True
         self.new_source = temp_h5f

@@ -1,23 +1,20 @@
-# -*- coding: utf-8 -*-
 """This module contains a storage class and codec to support the N5 format.
 """
-from __future__ import absolute_import, division
-from .meta import ZARR_FORMAT, json_dumps, json_loads
-from .storage import (
-        NestedDirectoryStore,
-        group_meta_key as zarr_group_meta_key,
-        array_meta_key as zarr_array_meta_key,
-        attrs_key as zarr_attrs_key,
-        _prog_ckey, _prog_number)
-from numcodecs.abc import Codec
-from numcodecs.compat import ndarray_copy
-from numcodecs.registry import register_codec, get_codec
-import numpy as np
+import os
 import struct
 import sys
-import os
 import warnings
 
+import numpy as np
+from numcodecs.abc import Codec
+from numcodecs.compat import ndarray_copy
+from numcodecs.registry import get_codec, register_codec
+
+from .meta import ZARR_FORMAT, json_dumps, json_loads
+from .storage import NestedDirectoryStore, _prog_ckey, _prog_number
+from .storage import array_meta_key as zarr_array_meta_key
+from .storage import attrs_key as zarr_attrs_key
+from .storage import group_meta_key as zarr_group_meta_key
 
 zarr_to_n5_keys = [
     ('chunks', 'blockSize'),
@@ -37,6 +34,11 @@ class N5Store(NestedDirectoryStore):
     ----------
     path : string
         Location of directory to use as the root of the storage hierarchy.
+    normalize_keys : bool, optional
+        If True, all store keys will be normalized to use lower case characters
+        (e.g. 'foo' and 'FOO' will be treated as equivalent). This can be
+        useful to avoid potential discrepancies between case-senstive and
+        case-insensitive file system. Default value is False.
 
     Examples
     --------
@@ -94,7 +96,7 @@ class N5Store(NestedDirectoryStore):
 
             key = invert_chunk_coords(key)
 
-        return super(N5Store, self).__getitem__(key)
+        return super().__getitem__(key)
 
     def __setitem__(self, key, value):
 
@@ -141,7 +143,7 @@ class N5Store(NestedDirectoryStore):
 
             key = invert_chunk_coords(key)
 
-        super(N5Store, self).__setitem__(key, value)
+        super().__setitem__(key, value)
 
     def __delitem__(self, key):
 
@@ -154,7 +156,7 @@ class N5Store(NestedDirectoryStore):
         elif is_chunk_key(key):
             key = invert_chunk_coords(key)
 
-        super(N5Store, self).__delitem__(key)
+        super().__delitem__(key)
 
     def __contains__(self, key):
 
@@ -172,16 +174,16 @@ class N5Store(NestedDirectoryStore):
             # array if attributes contain 'dimensions'
             return 'dimensions' in self._load_n5_attrs(key)
 
-        elif key.endswith(zarr_attrs_key):  # pragma: no cover
+        elif key.endswith(zarr_attrs_key):
 
-            key = key.replace(zarr_array_meta_key, n5_attrs_key)
+            key = key.replace(zarr_attrs_key, n5_attrs_key)
             return self._contains_attrs(key)
 
         elif is_chunk_key(key):
 
             key = invert_chunk_coords(key)
 
-        return super(N5Store, self).__contains__(key)
+        return super().__contains__(key)
 
     def __eq__(self, other):
         return (
@@ -197,7 +199,7 @@ class N5Store(NestedDirectoryStore):
         # We can't use NestedDirectoryStore's listdir, as it requires
         # array_meta_key to be present in array directories, which this store
         # doesn't provide.
-        children = super(NestedDirectoryStore, self).listdir(path=path)
+        children = super().listdir(path=path)
 
         if self._is_array(path):
 
@@ -241,7 +243,7 @@ class N5Store(NestedDirectoryStore):
 
     def _load_n5_attrs(self, path):
         try:
-            s = super(N5Store, self).__getitem__(path)
+            s = super().__getitem__(path)
             return json_loads(s)
         except KeyError:
             return {}
@@ -302,13 +304,15 @@ def invert_chunk_coords(key):
 def group_metadata_to_n5(group_metadata):
     '''Convert group metadata from zarr to N5 format.'''
     del group_metadata['zarr_format']
+    # TODO: This should only exist at the top-level
     group_metadata['n5'] = '2.0.0'
     return group_metadata
 
 
 def group_metadata_to_zarr(group_metadata):
     '''Convert group metadata from N5 to zarr format.'''
-    del group_metadata['n5']
+    # This only exists at the top level
+    group_metadata.pop('n5', None)
     group_metadata['zarr_format'] = ZARR_FORMAT
     return group_metadata
 
@@ -416,11 +420,10 @@ def compressor_config_to_n5(compressor_config):
             RuntimeWarning
         )
 
-        n5_config['codec'] = compressor_config['cname']
-        n5_config['level'] = compressor_config['clevel']
+        n5_config['cname'] = compressor_config['cname']
+        n5_config['clevel'] = compressor_config['clevel']
         n5_config['shuffle'] = compressor_config['shuffle']
-        assert compressor_config['blocksize'] == 0, \
-            "blosc block size needs to be 0 for N5 containers."
+        n5_config['blocksize'] = compressor_config['blocksize']
 
     elif codec_id == 'lzma':
 
@@ -458,7 +461,7 @@ def compressor_config_to_n5(compressor_config):
 
     else:  # pragma: no cover
 
-        raise RuntimeError("Unknown compressor with id %s" % codec_id)
+        n5_config.update({k: v for k, v in compressor_config.items() if k != 'type'})
 
     return n5_config
 
@@ -475,10 +478,10 @@ def compressor_config_to_zarr(compressor_config):
 
     elif codec_id == 'blosc':
 
-        zarr_config['cname'] = compressor_config['codec']
-        zarr_config['clevel'] = compressor_config['level']
+        zarr_config['cname'] = compressor_config['cname']
+        zarr_config['clevel'] = compressor_config['clevel']
         zarr_config['shuffle'] = compressor_config['shuffle']
-        zarr_config['blocksize'] = 0
+        zarr_config['blocksize'] = compressor_config['blocksize']
 
     elif codec_id == 'lzma':
 
@@ -510,7 +513,7 @@ def compressor_config_to_zarr(compressor_config):
 
     else:  # pragma: no cover
 
-        raise RuntimeError("Unknown compressor with id %s" % codec_id)
+        zarr_config.update({k: v for k, v in compressor_config.items() if k != 'type'})
 
     return zarr_config
 
@@ -571,7 +574,7 @@ class N5ChunkWrapper(Codec):
 
             # out should only be used if we read a complete chunk
             assert chunk_shape == self.chunk_shape, (
-                "Expected chunk of shape %s, found %s" % (
+                "Expected chunk of shape {}, found {}".format(
                     self.chunk_shape,
                     chunk_shape))
 

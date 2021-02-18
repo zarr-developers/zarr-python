@@ -1,15 +1,17 @@
 language: python
 
-branches:
-  only:
-    - master
-
 sudo: false
 
 addons:
   apt:
     packages:
     - libdb-dev
+
+env:
+  global:
+    - ZARR_TEST_ABS=1
+    - ZARR_TEST_MONGO=1
+    - ZARR_TEST_REDIS=1
 
 services:
   - docker
@@ -18,12 +20,15 @@ services:
 
 matrix:
   include:
-    - python: 2.7
-    - python: 3.5
     - python: 3.6
+      env: BUILD_DOCS='true'
     - python: 3.7
       dist: xenial
       sudo: true
+    - python: 3.8
+      dist: xenial
+      sudo: true
+      env: MYPY_CHECK='true'
 
 before_install:
   - docker pull arafato/azurite
@@ -33,10 +38,12 @@ before_script:
     - mongo mydb_test --eval 'db.createUser({user:"travis",pwd:"test",roles:["readWrite"]});'
 
 install:
-  - pip install -U pip setuptools wheel tox-travis coveralls
+  - pip install -U pip setuptools wheel tox-travis mypy codecov
 
 script:
   - tox
+  - if [[ $BUILD_DOCS == 'true' ]]; then tox -e docs; fi
+  - if [[ $MYPY_CHECK == 'true' ]]; then mypy zarr; fi
 
 after_success:
-  - coveralls
+  - codecov
