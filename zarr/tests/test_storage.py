@@ -1899,7 +1899,7 @@ class TestConsolidatedMetadataStore(unittest.TestCase):
 ## standalone test we do not want to run on each stores.
 
 
-def test_fill_value_change(self):
+def test_fill_value_change():
     a = zarr.create((10, 10), dtype=int)
 
     assert a[0, 0] == 0
