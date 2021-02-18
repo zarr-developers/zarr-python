@@ -36,6 +36,18 @@ This release od Zarr Python is is the first release of Zarr to not supporting Py
 See `this link <https://github.com/zarr-developers/zarr-python/milestone/11?closed=1>` for the full list of closed and
 merged PR tagged with the 2.6 milestone.
 
+* Add ability to partially read and decompress arrays, see :issue:`667`. It is
+  only available to chunks stored using fs-spec and using bloc as a compressor.
+
+  For certain analysis case when only a small portion of chunks is needed it can
+  be advantageous to only access and decompress part of the chunks. Doing
+  partial read and decompression add high latency to many of the operation so
+  should be used only when the subset of the data is small compared to the full
+  chunks and is stored contiguously (that is to say either last dimensions for C
+  layout, firsts for F). Pass ``partial_decompress=True`` as argument when
+  creating an ``Array``, or when using ``open_array``. No option exists yet to
+  apply partial read and decompress on a per-operation basis.
+
 2.5.0
 -----
 
