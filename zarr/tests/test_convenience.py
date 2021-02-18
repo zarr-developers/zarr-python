@@ -9,8 +9,18 @@ import pytest
 from numcodecs import Adler32, Zlib
 from numpy.testing import assert_array_equal
 
-from zarr.convenience import (consolidate_metadata, copy, copy_store, load,
-                              open, open_consolidated, save, save_group)
+import zarr
+from zarr.convenience import (
+    consolidate_metadata,
+    copy,
+    copy_store,
+    load,
+    open,
+    open_consolidated,
+    save,
+    save_group,
+    copy_all,
+)
 from zarr.core import Array
 from zarr.errors import CopyError
 from zarr.hierarchy import Group, group
@@ -419,6 +429,31 @@ def check_copied_group(original, copied, without_attrs=False, expect_props=None,
             assert k not in copied.attrs
     else:
         assert sorted(original.attrs.items()) == sorted(copied.attrs.items())
+
+
+def test_copy_all():
+    """
+    https://github.com/zarr-developers/zarr-python/issues/269
+
+    copy_all used to not copy attributes as `.keys()` does not return hidden `.zattrs`.
+
+    """
+    original_group = zarr.group(store=MemoryStore(), overwrite=True)
+    original_group.attrs["info"] = "group attrs"
+    original_subgroup = original_group.create_group("subgroup")
+    original_subgroup.attrs["info"] = "sub attrs"
+
+    destination_group = zarr.group(store=MemoryStore(), overwrite=True)
+
+    # copy from memory to directory store
+    copy_all(
+        original_group,
+        destination_group,
+        dry_run=False,
+    )
+
+    assert destination_group.attrs["info"] == "group attrs"
+    assert destination_group.subgroup.attrs["info"] == "sub attrs"
 
 
 # noinspection PyAttributeOutsideInit
