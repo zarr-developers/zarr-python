@@ -270,8 +270,8 @@ Here is an example using a delta filter with the Blosc compressor::
     Compressor         : Blosc(cname='zstd', clevel=1, shuffle=SHUFFLE, blocksize=0)
     Store type         : builtins.dict
     No. bytes          : 400000000 (381.5M)
-    No. bytes stored   : 648605 (633.4K)
-    Storage ratio      : 616.7
+    No. bytes stored   : 1290562 (1.2M)
+    Storage ratio      : 309.9
     Chunks initialized : 100/100
 
 For more information about available filter codecs, see the `Numcodecs
@@ -345,6 +345,9 @@ sub-directories, e.g.::
     >>> z = root.zeros('foo/bar/baz', shape=(10000, 10000), chunks=(1000, 1000), dtype='i4')
     >>> z
     <zarr.core.Array '/foo/bar/baz' (10000, 10000) int32>
+
+Groups can be used as context managers (in a ``with`` statement).
+If the underlying store has a ``close`` method, it will be called on exit.
 
 For more information on groups see the :mod:`zarr.hierarchy` and
 :mod:`zarr.convenience` API docs.
@@ -421,7 +424,8 @@ Groups also have the :func:`zarr.hierarchy.Group.tree` method, e.g.::
          ├── bar (1000000,) int64
          └── baz (1000, 1000) float32
 
-If you're using Zarr within a Jupyter notebook, calling ``tree()`` will generate an
+If you're using Zarr within a Jupyter notebook (requires
+`ipytree <https://github.com/QuantStack/ipytree>`_), calling ``tree()`` will generate an
 interactive tree representation, see the `repr_tree.ipynb notebook
 <http://nbviewer.jupyter.org/github/zarr-developers/zarr-python/blob/master/notebooks/repr_tree.ipynb>`_
 for more examples.
@@ -742,8 +746,8 @@ Python is built with SQLite support)::
 Also added in Zarr version 2.3 are two storage classes for interfacing with server-client
 databases. The :class:`zarr.storage.RedisStore` class interfaces `Redis <https://redis.io/>`_
 (an in memory data structure store), and the :class:`zarr.storage.MongoDB` class interfaces
-with `MongoDB <https://www.mongodb.com/>`_ (an oject oriented NoSQL database). These stores
-respectively require the `redis <https://redis-py.readthedocs.io>`_ and
+with `MongoDB <https://www.mongodb.com/>`_ (an object oriented NoSQL database). These stores
+respectively require the `redis-py <https://redis-py.readthedocs.io>`_ and
 `pymongo <https://api.mongodb.com/python/current/>`_ packages to be installed. 
 
 For compatibility with the `N5 <https://github.com/saalfeldlab/n5>`_ data format, Zarr also provides
@@ -803,7 +807,7 @@ Here is an example using S3Map to read an array created previously::
 
 Zarr now also has a builtin storage backend for Azure Blob Storage.
 The class is :class:`zarr.storage.ABSStore` (requires
- `azure-storage-blob <https://docs.microsoft.com/en-us/azure/storage/blobs/storage-quickstart-blobs-python>`_
+`azure-storage-blob <https://docs.microsoft.com/en-us/azure/storage/blobs/storage-quickstart-blobs-python>`_
 to be installed)::
 
     >>> store = zarr.ABSStore(container='test', prefix='zarr-testing', blob_service_kwargs={'is_emulated': True})  # doctest: +SKIP
@@ -850,22 +854,53 @@ please raise an issue on the GitHub issue tracker with any profiling data you
 can provide, as there may be opportunities to optimise further either within
 Zarr or within the mapping interface to the storage.
 
+IO with ``fsspec``
+~~~~~~~~~~~~~~~~~~
+
+As of version 2.5, zarr supports passing URLs directly to `fsspec`_,
+and having it create the "mapping" instance automatically. This means, that
+for all of the backend storage implementations `supported by fsspec`_,
+you can skip importing and configuring the storage explicitly.
+For example::
+
+    >>> g = zarr.open_group("s3://zarr-demo/store", storage_options={'anon': True})   # doctest: +SKIP
+    >>> g['foo/bar/baz'][:].tobytes()  # doctest: +SKIP
+    b'Hello from the cloud!'
+
+The provision of the protocol specifier "s3://" will select the correct backend.
+Notice the kwargs ``storage_options``, used to pass parameters to that backend.
+
+As of version 2.6, write mode and complex URLs are also supported, such as::
+
+    >>> g = zarr.open_group("simplecache::s3://zarr-demo/store",
+    ...                     storage_options={"s3": {'anon': True}})  # doctest: +SKIP
+    >>> g['foo/bar/baz'][:].tobytes()  # downloads target file  # doctest: +SKIP
+    b'Hello from the cloud!'
+    >>> g['foo/bar/baz'][:].tobytes()  # uses cached file  # doctest: +SKIP
+    b'Hello from the cloud!'
+
+The second invocation here will be much faster. Note that the ``storage_options``
+have become more complex here, to account for the two parts of the supplied
+URL.
+
+.. _fsspec: https://filesystem-spec.readthedocs.io/en/latest/
+
+.. _supported by fsspec: https://filesystem-spec.readthedocs.io/en/latest/api.html#built-in-implementations
+
 .. _tutorial_copy:
 
 Consolidating metadata
 ~~~~~~~~~~~~~~~~~~~~~~
 
-(This is an experimental feature.)
-
 Since there is a significant overhead for every connection to a cloud object
 store such as S3, the pattern described in the previous section may incur
-significant latency while scanning the metadata of the dataset hierarchy, even
+significant latency while scanning the metadata of the array hierarchy, even
 though each individual metadata object is small.  For cases such as these, once
 the data are static and can be regarded as read-only, at least for the
-metadata/structure of the dataset hierarchy, the many metadata objects can be
+metadata/structure of the array hierarchy, the many metadata objects can be
 consolidated into a single one via
 :func:`zarr.convenience.consolidate_metadata`. Doing this can greatly increase
-the speed of reading the dataset metadata, e.g.::
+the speed of reading the array metadata, e.g.::
 
    >>> zarr.consolidate_metadata(store)  # doctest: +SKIP
 
@@ -882,7 +917,7 @@ backend storage.
 
 Note that, the hierarchy could still be opened in the normal way and altered,
 causing the consolidated metadata to become out of sync with the real state of
-the dataset hierarchy. In this case,
+the array hierarchy. In this case,
 :func:`zarr.convenience.consolidate_metadata` would need to be called again.
 
 To protect against consolidated metadata accidentally getting out of sync, the
@@ -926,8 +961,8 @@ copying a group named 'foo' from an HDF5 file to a Zarr group::
              └── baz (100,) int64
     >>> source.close()
 
-If rather than copying a single group or dataset you would like to copy all
-groups and datasets, use :func:`zarr.convenience.copy_all`, e.g.::
+If rather than copying a single group or array you would like to copy all
+groups and arrays, use :func:`zarr.convenience.copy_all`, e.g.::
 
     >>> source = h5py.File('data/example.h5', mode='r')
     >>> dest = zarr.open_group('data/example2.zarr', mode='w')
@@ -1000,7 +1035,7 @@ String arrays
 There are several options for storing arrays of strings.
 
 If your strings are all ASCII strings, and you know the maximum length of the string in
-your dataset, then you can use an array with a fixed-length bytes dtype. E.g.::
+your array, then you can use an array with a fixed-length bytes dtype. E.g.::
 
     >>> z = zarr.zeros(10, dtype='S6')
     >>> z
@@ -1416,7 +1451,7 @@ compression and decompression. By default, Blosc uses up to 8
 internal threads. The number of Blosc threads can be changed to increase or
 decrease this number, e.g.::
 
-    >>> from zarr import blosc
+    >>> from numcodecs import blosc
     >>> blosc.set_nthreads(2)  # doctest: +SKIP
     8
 

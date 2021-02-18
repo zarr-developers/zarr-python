@@ -3,5 +3,6 @@ setuptools
 setuptools_scm
 sphinx
 sphinx-issues
+sphinx-rtd-theme
 numpydoc
 numpy
