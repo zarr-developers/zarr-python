@@ -15,6 +15,10 @@ class _BaseZarrError(ValueError):
         super().__init__(self._msg.format(*args))
 
 
+class ArrayIndexError(IndexError):
+    pass
+
+
 class _BaseZarrIndexError(IndexError):
     _msg = ""
 
