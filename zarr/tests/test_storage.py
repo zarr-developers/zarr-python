@@ -14,6 +14,8 @@ import numpy as np
 import pytest
 from numpy.testing import assert_array_almost_equal, assert_array_equal
 
+from numcodecs.compat import ensure_bytes
+
 from zarr.codecs import BZ2, AsType, Blosc, Zlib
 from zarr.errors import MetadataError
 from zarr.hierarchy import group
@@ -54,7 +56,7 @@ class StoreTests(object):
             store['foo']
         store['foo'] = b'bar'
         assert 'foo' in store
-        assert b'bar' == store['foo']
+        assert b'bar' == ensure_bytes(store['foo'])
 
         # test __delitem__ (optional)
         try:
@@ -101,10 +103,10 @@ class StoreTests(object):
         store['baz'] = b'qux'
         assert len(store) == 2
         v = store.pop('foo')
-        assert v == b'bar'
+        assert ensure_bytes(v) == b'bar'
         assert len(store) == 1
         v = store.pop('baz')
-        assert v == b'qux'
+        assert ensure_bytes(v) == b'qux'
         assert len(store) == 0
         with pytest.raises(KeyError):
             store.pop('xxx')
@@ -123,7 +125,7 @@ class StoreTests(object):
         store['foo'] = b'bar'
         k, v = store.popitem()
         assert k == 'foo'
-        assert v == b'bar'
+        assert ensure_bytes(v) == b'bar'
         assert len(store) == 0
         with pytest.raises(KeyError):
             store.popitem()
@@ -148,8 +150,8 @@ class StoreTests(object):
         assert 'foo' not in store
         assert 'baz' not in store
         store.update(foo=b'bar', baz=b'quux')
-        assert b'bar' == store['foo']
-        assert b'quux' == store['baz']
+        assert b'bar' == ensure_bytes(store['foo'])
+        assert b'quux' == ensure_bytes(store['baz'])
 
         if hasattr(store, 'close'):
             store.close()
@@ -174,9 +176,9 @@ class StoreTests(object):
         assert 4 == len(store)
         assert {'a', 'b', 'c/d', 'c/e/f'} == set(store)
         assert {'a', 'b', 'c/d', 'c/e/f'} == set(store.keys())
-        assert {b'aaa', b'bbb', b'ddd', b'fff'} == set(store.values())
+        assert {b'aaa', b'bbb', b'ddd', b'fff'} == set(map(ensure_bytes, store.values()))
         assert ({('a', b'aaa'), ('b', b'bbb'), ('c/d', b'ddd'), ('c/e/f', b'fff')} ==
-                set(store.items()))
+                set(map(lambda kv: (kv[0], ensure_bytes(kv[1])), store.items())))
 
         if hasattr(store, 'close'):
             store.close()
@@ -203,8 +205,8 @@ class StoreTests(object):
         # verify
         assert n == len(store2)
         assert keys == sorted(store2.keys())
-        assert b'bar' == store2['foo']
-        assert b'quux' == store2['baz']
+        assert b'bar' == ensure_bytes(store2['foo'])
+        assert b'quux' == ensure_bytes(store2['baz'])
 
         if hasattr(store2, 'close'):
             store2.close()
@@ -730,10 +732,10 @@ def setdel_hierarchy_checks(store):
     # test __setitem__ overwrite level
     store['x/y/z'] = b'xxx'
     store['x/y'] = b'yyy'
-    assert b'yyy' == store['x/y']
+    assert b'yyy' == ensure_bytes(store['x/y'])
     assert 'x/y/z' not in store
     store['x'] = b'zzz'
-    assert b'zzz' == store['x']
+    assert b'zzz' == ensure_bytes(store['x'])
     assert 'x/y' not in store
 
     # test __delitem__ overwrite level
@@ -819,7 +821,7 @@ class TestDirectoryStore(StoreTests, unittest.TestCase):
         # check point to same underlying directory
         assert 'xxx' not in store
         store2['xxx'] = b'yyy'
-        assert b'yyy' == store['xxx']
+        assert b'yyy' == ensure_bytes(store['xxx'])
 
     def test_setdel(self):
         store = self.create_store()
@@ -863,11 +865,26 @@ class TestDirectoryStore(StoreTests, unittest.TestCase):
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
 class TestFSStore(StoreTests, unittest.TestCase):
 
-    def create_store(self, normalize_keys=False):
+    def create_store(self, normalize_keys=False, key_separator="."):
         path = tempfile.mkdtemp()
         atexit.register(atexit_rmtree, path)
-        store = FSStore(path, normalize_keys=normalize_keys)
+        store = FSStore(
+            path,
+            normalize_keys=normalize_keys,
+            key_separator=key_separator)
         return store
+
+    def test_key_separator(self):
+        for x in (".", "/"):
+            store = self.create_store(key_separator=x)
+            norm = store._normalize_key
+            assert ".zarray" == norm(".zarray")
+            assert ".zarray" == norm("/.zarray")
+            assert ".zgroup" == norm("/.zgroup")
+            assert "group/.zarray" == norm("group/.zarray")
+            assert "group/.zgroup" == norm("group/.zgroup")
+            assert "group/.zarray" == norm("/group/.zarray")
+            assert "group/.zgroup" == norm("/group/.zgroup")
 
     def test_complex(self):
         path1 = tempfile.mkdtemp()
@@ -955,6 +972,11 @@ class TestFSStore(StoreTests, unittest.TestCase):
 
         assert g.data[:].tolist() == [0, 1, 2, 3, 0, 0, 0, 0]
 
+        # test via convenience
+        g = zarr.open("s3://test/out.zarr", mode='r',
+                      storage_options=self.s3so)
+        assert g.data[:].tolist() == [0, 1, 2, 3, 0, 0, 0, 0]
+
     @pytest.mark.usefixtures("s3")
     def test_s3_complex(self):
         import zarr
@@ -962,21 +984,42 @@ class TestFSStore(StoreTests, unittest.TestCase):
                             storage_options=self.s3so)
         expected = np.empty((8, 8, 8), dtype='int64')
         expected[:] = -1
-        a = g.create_dataset("data", shape=(8, 8, 8),
-                             fill_value=-1, chunks=(1, 1, 1))
+        a = g.create_dataset(
+            "data", shape=(8, 8, 8), fill_value=-1, chunks=(1, 1, 1), overwrite=True
+        )
         expected[0] = 0
         expected[3] = 3
+        expected[6, 6, 6] = 6
+        a[6, 6, 6] = 6
         a[:4] = expected[:4]
 
-        a = g.create_dataset("data_f", shape=(8, ), chunks=(1,),
+        b = g.create_dataset("data_f", shape=(8, ), chunks=(1,),
                              dtype=[('foo', 'S3'), ('bar', 'i4')],
                              fill_value=(b"b", 1))
-        a[:4] = (b"aaa", 2)
-        g = zarr.open_group("s3://test/out.zarr", mode='r',
-                            storage_options=self.s3so)
+        b[:4] = (b"aaa", 2)
+        g2 = zarr.open_group("s3://test/out.zarr", mode='r',
+                             storage_options=self.s3so)
 
-        assert (g.data[:] == expected).all()
-        assert g.data_f['foo'].tolist() == [b"aaa"] * 4 + [b"b"] * 4
+        assert (g2.data[:] == expected).all()
+        a.chunk_store.fs.invalidate_cache("test/out.zarr/data")
+        a[:] = 5
+        assert (a[:] == 5).all()
+
+        assert g2.data_f['foo'].tolist() == [b"aaa"] * 4 + [b"b"] * 4
+        with pytest.raises(PermissionError):
+            g2.data[:] = 5
+
+        with pytest.raises(PermissionError):
+            g2.store.setitems({})
+
+        with pytest.raises(PermissionError):
+            # even though overwrite=True, store is read-only, so fails
+            g2.create_dataset("data", shape=(8, 8, 8), mode='w',
+                              fill_value=-1, chunks=(1, 1, 1), overwrite=True)
+
+        a = g.create_dataset("data", shape=(8, 8, 8), mode='w',
+                             fill_value=-1, chunks=(1, 1, 1), overwrite=True)
+        assert (a[:] == -np.ones((8, 8, 8))).all()
 
 
 @pytest.fixture()
@@ -997,7 +1040,8 @@ def s3(request):
 
     port = 5555
     endpoint_uri = 'http://127.0.0.1:%s/' % port
-    proc = subprocess.Popen(shlex.split("moto_server s3 -p %s" % port))
+    proc = subprocess.Popen(shlex.split("moto_server s3 -p %s" % port),
+                            stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
 
     timeout = 5
     while timeout > 0:
@@ -1009,7 +1053,8 @@ def s3(request):
             pass
         timeout -= 0.1  # pragma: no cover
         time.sleep(0.1)  # pragma: no cover
-    s3so = dict(client_kwargs={'endpoint_url': endpoint_uri})
+    s3so = dict(client_kwargs={'endpoint_url': endpoint_uri},
+                use_listings_cache=False)
     s3 = s3fs.S3FileSystem(anon=False, **s3so)
     s3.mkdir("test")
     request.cls.s3so = s3so
@@ -1155,12 +1200,26 @@ class TestN5Store(TestNestedDirectoryStore, unittest.TestCase):
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
 class TestNestedFSStore(TestNestedDirectoryStore):
 
-    def create_store(self, normalize_keys=False):
-        path = tempfile.mkdtemp()
+    def create_store(self, normalize_keys=False, path=None):
+        if path is None:
+            path = tempfile.mkdtemp()
         atexit.register(atexit_rmtree, path)
         store = FSStore(path, normalize_keys=normalize_keys,
                         key_separator='/', auto_mkdir=True)
         return store
+
+    def test_numbered_groups(self):
+        import zarr
+
+        # Create an array
+        store = self.create_store()
+        group = zarr.group(store=store)
+        arr = group.create_dataset('0', shape=(10, 10))
+        arr[1] = 1
+
+        # Read it back
+        store = self.create_store(path=store.path)
+        zarr.open_group(store.path)["0"]
 
 
 class TestTempStore(StoreTests, unittest.TestCase):
@@ -1269,20 +1328,22 @@ class TestDBMStoreGnu(TestDBMStore):
 
     def create_store(self):
         gdbm = pytest.importorskip("dbm.gnu")
-        path = tempfile.mktemp(suffix='.gdbm')
-        atexit.register(os.remove, path)
-        store = DBMStore(path, flag='n', open=gdbm.open, write_lock=False)
-        return store
+        path = tempfile.mktemp(suffix=".gdbm")  # pragma: no cover
+        atexit.register(os.remove, path)  # pragma: no cover
+        store = DBMStore(
+            path, flag="n", open=gdbm.open, write_lock=False
+        )  # pragma: no cover
+        return store  # pragma: no cover
 
 
 class TestDBMStoreNDBM(TestDBMStore):
 
     def create_store(self):
         ndbm = pytest.importorskip("dbm.ndbm")
-        path = tempfile.mktemp(suffix='.ndbm')
-        atexit.register(atexit_rmglob, path + '*')
-        store = DBMStore(path, flag='n', open=ndbm.open)
-        return store
+        path = tempfile.mktemp(suffix=".ndbm")  # pragma: no cover
+        atexit.register(atexit_rmglob, path + "*")  # pragma: no cover
+        store = DBMStore(path, flag="n", open=ndbm.open)  # pragma: no cover
+        return store  # pragma: no cover
 
 
 class TestDBMStoreBerkeleyDB(TestDBMStore):
@@ -1774,11 +1835,16 @@ class TestABSStore(StoreTests, unittest.TestCase):
 
     def create_store(self, prefix=None):
         asb = pytest.importorskip("azure.storage.blob")
-        blob_client = asb.BlockBlobService(is_emulated=True)
-        blob_client.delete_container('test')
-        blob_client.create_container('test')
-        store = ABSStore(container='test', prefix=prefix, account_name='foo',
-                         account_key='bar', blob_service_kwargs={'is_emulated': True})
+        blob_client = asb.BlockBlobService(is_emulated=True, socket_timeout=10)
+        blob_client.delete_container("test")
+        blob_client.create_container("test")
+        store = ABSStore(
+            container="test",
+            prefix=prefix,
+            account_name="foo",
+            account_key="bar",
+            blob_service_kwargs={"is_emulated": True, "socket_timeout": 10},
+        )
         store.rmdir()
         return store
 
@@ -1806,6 +1872,12 @@ class TestABSStore(StoreTests, unittest.TestCase):
             assert {b'aaa', b'bbb', b'ddd', b'fff'} == set(store.values())
             assert ({('a', b'aaa'), ('b', b'bbb'), ('c/d', b'ddd'), ('c/e/f', b'fff')} ==
                     set(store.items()))
+
+    def test_getsize(self):
+        return super().test_getsize()
+
+    def test_hierarchy(self):
+        return super().test_hierarchy()
 
 
 class TestConsolidatedMetadataStore(unittest.TestCase):
