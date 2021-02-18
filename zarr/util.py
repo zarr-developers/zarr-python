@@ -3,12 +3,14 @@ import json
 import math
 import numbers
 from textwrap import TextWrapper
+import mmap
 
 import numpy as np
 from asciitree import BoxStyle, LeftAligned
 from asciitree.traversal import Traversal
 from numcodecs.compat import ensure_ndarray, ensure_text
 from numcodecs.registry import codec_registry
+from numcodecs.blosc import cbuffer_sizes, cbuffer_metainfo
 
 from typing import Any, Dict, Tuple, Union
 
@@ -532,3 +534,78 @@ class NoLock(object):
 
 
 nolock = NoLock()
+
+
+class PartialReadBuffer:
+    def __init__(self, store_key, chunk_store):
+        self.chunk_store = chunk_store
+        # is it fsstore or an actual fsspec map object
+        assert hasattr(self.chunk_store, "map")
+        self.map = self.chunk_store.map
+        self.fs = self.chunk_store.fs
+        self.store_key = store_key
+        self.key_path = self.map._key_to_str(store_key)
+        self.buff = None
+        self.nblocks = None
+        self.start_points = None
+        self.n_per_block = None
+        self.start_points_max = None
+        self.read_blocks = set()
+
+    def prepare_chunk(self):
+        assert self.buff is None
+        header = self.fs.read_block(self.key_path, 0, 16)
+        nbytes, self.cbytes, blocksize = cbuffer_sizes(header)
+        typesize, _shuffle, _memcpyd = cbuffer_metainfo(header)
+        self.buff = mmap.mmap(-1, self.cbytes)
+        self.buff[0:16] = header
+        self.nblocks = nbytes / blocksize
+        self.nblocks = (
+            int(self.nblocks)
+            if self.nblocks == int(self.nblocks)
+            else int(self.nblocks + 1)
+        )
+        if self.nblocks == 1:
+            self.buff = self.read_full()
+            return
+        start_points_buffer = self.fs.read_block(
+            self.key_path, 16, int(self.nblocks * 4)
+        )
+        self.start_points = np.frombuffer(
+            start_points_buffer, count=self.nblocks, dtype=np.int32
+        )
+        self.start_points_max = self.start_points.max()
+        self.buff[16: (16 + (self.nblocks * 4))] = start_points_buffer
+        self.n_per_block = blocksize / typesize
+
+    def read_part(self, start, nitems):
+        assert self.buff is not None
+        if self.nblocks == 1:
+            return
+        blocks_to_decompress = nitems / self.n_per_block
+        blocks_to_decompress = (
+            blocks_to_decompress
+            if blocks_to_decompress == int(blocks_to_decompress)
+            else int(blocks_to_decompress + 1)
+        )
+        start_block = int(start / self.n_per_block)
+        wanted_decompressed = 0
+        while wanted_decompressed < nitems:
+            if start_block not in self.read_blocks:
+                start_byte = self.start_points[start_block]
+                if start_byte == self.start_points_max:
+                    stop_byte = self.cbytes
+                else:
+                    stop_byte = self.start_points[self.start_points > start_byte].min()
+                length = stop_byte - start_byte
+                data_buff = self.fs.read_block(self.key_path, start_byte, length)
+                self.buff[start_byte:stop_byte] = data_buff
+                self.read_blocks.add(start_block)
+            if wanted_decompressed == 0:
+                wanted_decompressed += ((start_block + 1) * self.n_per_block) - start
+            else:
+                wanted_decompressed += self.n_per_block
+            start_block += 1
+
+    def read_full(self):
+        return self.chunk_store[self.store_key]

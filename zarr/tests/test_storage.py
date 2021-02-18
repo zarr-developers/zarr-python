@@ -982,8 +982,9 @@ class TestFSStore(StoreTests, unittest.TestCase):
                             storage_options=self.s3so)
         expected = np.empty((8, 8, 8), dtype='int64')
         expected[:] = -1
-        a = g.create_dataset("data", shape=(8, 8, 8),
-                             fill_value=-1, chunks=(1, 1, 1))
+        a = g.create_dataset(
+            "data", shape=(8, 8, 8), fill_value=-1, chunks=(1, 1, 1), overwrite=True
+        )
         expected[0] = 0
         expected[3] = 3
         expected[6, 6, 6] = 6
@@ -998,8 +999,8 @@ class TestFSStore(StoreTests, unittest.TestCase):
                              storage_options=self.s3so)
 
         assert (g2.data[:] == expected).all()
-
-        a[:] = 5  # write with scalar
+        a.chunk_store.fs.invalidate_cache("test/out.zarr/data")
+        a[:] = 5
         assert (a[:] == 5).all()
 
         assert g2.data_f['foo'].tolist() == [b"aaa"] * 4 + [b"b"] * 4
@@ -1325,20 +1326,22 @@ class TestDBMStoreGnu(TestDBMStore):
 
     def create_store(self):
         gdbm = pytest.importorskip("dbm.gnu")
-        path = tempfile.mktemp(suffix='.gdbm')
-        atexit.register(os.remove, path)
-        store = DBMStore(path, flag='n', open=gdbm.open, write_lock=False)
-        return store
+        path = tempfile.mktemp(suffix=".gdbm")  # pragma: no cover
+        atexit.register(os.remove, path)  # pragma: no cover
+        store = DBMStore(
+            path, flag="n", open=gdbm.open, write_lock=False
+        )  # pragma: no cover
+        return store  # pragma: no cover
 
 
 class TestDBMStoreNDBM(TestDBMStore):
 
     def create_store(self):
         ndbm = pytest.importorskip("dbm.ndbm")
-        path = tempfile.mktemp(suffix='.ndbm')
-        atexit.register(atexit_rmglob, path + '*')
-        store = DBMStore(path, flag='n', open=ndbm.open)
-        return store
+        path = tempfile.mktemp(suffix=".ndbm")  # pragma: no cover
+        atexit.register(atexit_rmglob, path + "*")  # pragma: no cover
+        store = DBMStore(path, flag="n", open=ndbm.open)  # pragma: no cover
+        return store  # pragma: no cover
 
 
 class TestDBMStoreBerkeleyDB(TestDBMStore):
@@ -1830,11 +1833,16 @@ class TestABSStore(StoreTests, unittest.TestCase):
 
     def create_store(self, prefix=None):
         asb = pytest.importorskip("azure.storage.blob")
-        blob_client = asb.BlockBlobService(is_emulated=True)
-        blob_client.delete_container('test')
-        blob_client.create_container('test')
-        store = ABSStore(container='test', prefix=prefix, account_name='foo',
-                         account_key='bar', blob_service_kwargs={'is_emulated': True})
+        blob_client = asb.BlockBlobService(is_emulated=True, socket_timeout=10)
+        blob_client.delete_container("test")
+        blob_client.create_container("test")
+        store = ABSStore(
+            container="test",
+            prefix=prefix,
+            account_name="foo",
+            account_key="bar",
+            blob_service_kwargs={"is_emulated": True, "socket_timeout": 10},
+        )
         store.rmdir()
         return store
 
@@ -1862,6 +1870,12 @@ class TestABSStore(StoreTests, unittest.TestCase):
             assert {b'aaa', b'bbb', b'ddd', b'fff'} == set(store.values())
             assert ({('a', b'aaa'), ('b', b'bbb'), ('c/d', b'ddd'), ('c/e/f', b'fff')} ==
                     set(store.items()))
+
+    def test_getsize(self):
+        return super().test_getsize()
+
+    def test_hierarchy(self):
+        return super().test_hierarchy()
 
 
 class TestConsolidatedMetadataStore(unittest.TestCase):
