@@ -1,5 +1,4 @@
 coverage
-coveralls
 fasteners
 flake8
 monotonic

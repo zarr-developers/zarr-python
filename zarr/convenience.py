@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Convenience functions for storing and loading data."""
 import io
 import itertools
@@ -8,7 +7,7 @@ from collections.abc import Mapping
 from zarr.core import Array
 from zarr.creation import array as _create_array
 from zarr.creation import normalize_store_arg, open_array
-from zarr.errors import CopyError, err_path_not_found
+from zarr.errors import CopyError, PathNotFoundError
 from zarr.hierarchy import Group
 from zarr.hierarchy import group as _create_group
 from zarr.hierarchy import open_group
@@ -74,7 +73,10 @@ def open(store=None, mode='a', **kwargs):
     path = kwargs.get('path', None)
     # handle polymorphic store arg
     clobber = mode == 'w'
-    store = normalize_store_arg(store, clobber=clobber)
+    # we pass storage options explicitly, since normalize_store_arg might construct
+    # a store if the input is a fsspec-compatible URL
+    store = normalize_store_arg(store, clobber=clobber,
+                                storage_options=kwargs.pop("storage_options", {}))
     path = normalize_storage_path(path)
 
     if mode in {'w', 'w-', 'x'}:
@@ -83,12 +85,8 @@ def open(store=None, mode='a', **kwargs):
         else:
             return open_group(store, mode=mode, **kwargs)
 
-    elif mode == 'a':
-        if contains_array(store, path):
-            return open_array(store, mode=mode, **kwargs)
-        elif contains_group(store, path):
-            return open_group(store, mode=mode, **kwargs)
-        elif 'shape' in kwargs:
+    elif mode == "a":
+        if "shape" in kwargs or contains_array(store, path):
             return open_array(store, mode=mode, **kwargs)
         else:
             return open_group(store, mode=mode, **kwargs)
@@ -99,7 +97,7 @@ def open(store=None, mode='a', **kwargs):
         elif contains_group(store, path):
             return open_group(store, mode=mode, **kwargs)
         else:
-            err_path_not_found(path)
+            raise PathNotFoundError(path)
 
 
 def save_array(store, arr, **kwargs):
@@ -1067,6 +1065,7 @@ def copy_all(source, dest, shallow=False, without_attrs=False, log=None,
             n_copied += c
             n_skipped += s
             n_bytes_copied += b
+        dest.attrs.update(**source.attrs)
 
         # log a final message with a summary of what happened
         _log_copy_summary(log, dry_run, n_copied, n_skipped, n_bytes_copied)
@@ -1170,13 +1169,14 @@ def open_consolidated(store, metadata_key='.zmetadata', mode='r+', **kwargs):
     from .storage import ConsolidatedMetadataStore
 
     # normalize parameters
-    store = normalize_store_arg(store)
+    store = normalize_store_arg(store, storage_options=kwargs.get("storage_options", None))
     if mode not in {'r', 'r+'}:
         raise ValueError("invalid mode, expected either 'r' or 'r+'; found {!r}"
                          .format(mode))
 
-    # setup metadata sotre
+    # setup metadata store
     meta_store = ConsolidatedMetadataStore(store, metadata_key=metadata_key)
 
     # pass through
-    return open(store=meta_store, chunk_store=store, mode=mode, **kwargs)
+    chunk_store = kwargs.pop('chunk_store', None) or store
+    return open(store=meta_store, chunk_store=chunk_store, mode=mode, **kwargs)
