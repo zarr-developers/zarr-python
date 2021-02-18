@@ -178,16 +178,27 @@ def test_tree_widget_missing_ipytree():
 
 
 def test_retry_call():
-    class F:
-        def __init__(self):
+
+    class Fixture:
+
+        def __init__(self, pass_on=1):
             self.c = 0
+            self.pass_on = pass_on
 
         def __call__(self):
             self.c += 1
-            if self.c == 1:
+            if self.c != self.pass_on:
                 raise PermissionError()
 
-    retry_call(F(), exceptions=(PermissionError,), wait=0)
+    for x in range(1, 11):
+        # Any number of failures less than 10 will be accepted.
+        fixture = Fixture(pass_on=x)
+        retry_call(fixture, exceptions=(PermissionError,), wait=0)
+        assert fixture.c == x
 
-    pytest.raises(PermissionError,
-                  retry_call, F(), exceptions=(NotImplementedError,), wait=0)
+    def fail(x):
+        # Failures after 10 will cause an error to be raised.
+        retry_call(Fixture(pass_on=x), exceptions=(Exception,), wait=0)
+
+    for x in range(11, 15):
+        pytest.raises(PermissionError, fail, x)

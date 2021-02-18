@@ -630,12 +630,11 @@ def retry_call(callabl: Callable,
     if kwargs is None:
         kwargs = {}
 
-    attempts = 0
-    while attempts < retries:
+    for attempt in range(1, retries+1):
         try:
             return callabl(*args, **kwargs)
         except exceptions:
-            time.sleep(wait)
-            attempts += 1
-    if attempts == retries:
-        return callabl(*args, **kwargs)
+            if attempt < retries:
+                time.sleep(wait)
+            else:
+                raise
