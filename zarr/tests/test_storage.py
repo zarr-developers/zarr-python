@@ -14,6 +14,8 @@ import numpy as np
 import pytest
 from numpy.testing import assert_array_almost_equal, assert_array_equal
 
+from numcodecs.compat import ensure_bytes
+
 from zarr.codecs import BZ2, AsType, Blosc, Zlib
 from zarr.errors import MetadataError
 from zarr.hierarchy import group
@@ -54,7 +56,7 @@ class StoreTests(object):
             store['foo']
         store['foo'] = b'bar'
         assert 'foo' in store
-        assert b'bar' == store['foo']
+        assert b'bar' == ensure_bytes(store['foo'])
 
         # test __delitem__ (optional)
         try:
@@ -101,10 +103,10 @@ class StoreTests(object):
         store['baz'] = b'qux'
         assert len(store) == 2
         v = store.pop('foo')
-        assert v == b'bar'
+        assert ensure_bytes(v) == b'bar'
         assert len(store) == 1
         v = store.pop('baz')
-        assert v == b'qux'
+        assert ensure_bytes(v) == b'qux'
         assert len(store) == 0
         with pytest.raises(KeyError):
             store.pop('xxx')
@@ -123,7 +125,7 @@ class StoreTests(object):
         store['foo'] = b'bar'
         k, v = store.popitem()
         assert k == 'foo'
-        assert v == b'bar'
+        assert ensure_bytes(v) == b'bar'
         assert len(store) == 0
         with pytest.raises(KeyError):
             store.popitem()
@@ -148,8 +150,8 @@ class StoreTests(object):
         assert 'foo' not in store
         assert 'baz' not in store
         store.update(foo=b'bar', baz=b'quux')
-        assert b'bar' == store['foo']
-        assert b'quux' == store['baz']
+        assert b'bar' == ensure_bytes(store['foo'])
+        assert b'quux' == ensure_bytes(store['baz'])
 
         if hasattr(store, 'close'):
             store.close()
@@ -174,9 +176,9 @@ class StoreTests(object):
         assert 4 == len(store)
         assert {'a', 'b', 'c/d', 'c/e/f'} == set(store)
         assert {'a', 'b', 'c/d', 'c/e/f'} == set(store.keys())
-        assert {b'aaa', b'bbb', b'ddd', b'fff'} == set(store.values())
+        assert {b'aaa', b'bbb', b'ddd', b'fff'} == set(map(ensure_bytes, store.values()))
         assert ({('a', b'aaa'), ('b', b'bbb'), ('c/d', b'ddd'), ('c/e/f', b'fff')} ==
-                set(store.items()))
+                set(map(lambda kv: (kv[0], ensure_bytes(kv[1])), store.items())))
 
         if hasattr(store, 'close'):
             store.close()
@@ -203,8 +205,8 @@ class StoreTests(object):
         # verify
         assert n == len(store2)
         assert keys == sorted(store2.keys())
-        assert b'bar' == store2['foo']
-        assert b'quux' == store2['baz']
+        assert b'bar' == ensure_bytes(store2['foo'])
+        assert b'quux' == ensure_bytes(store2['baz'])
 
         if hasattr(store2, 'close'):
             store2.close()
@@ -730,10 +732,10 @@ def setdel_hierarchy_checks(store):
     # test __setitem__ overwrite level
     store['x/y/z'] = b'xxx'
     store['x/y'] = b'yyy'
-    assert b'yyy' == store['x/y']
+    assert b'yyy' == ensure_bytes(store['x/y'])
     assert 'x/y/z' not in store
     store['x'] = b'zzz'
-    assert b'zzz' == store['x']
+    assert b'zzz' == ensure_bytes(store['x'])
     assert 'x/y' not in store
 
     # test __delitem__ overwrite level
@@ -819,7 +821,7 @@ class TestDirectoryStore(StoreTests, unittest.TestCase):
         # check point to same underlying directory
         assert 'xxx' not in store
         store2['xxx'] = b'yyy'
-        assert b'yyy' == store['xxx']
+        assert b'yyy' == ensure_bytes(store['xxx'])
 
     def test_setdel(self):
         store = self.create_store()
