@@ -1,17 +1,46 @@
 Release notes
 =============
 
+2.6.0
+-----
 
-Next Release
-------------
-
-This release will be the first release of Zarr not supporting Python 3.5.
+This release od Zarr Python is is the first release of Zarr to not supporting Python 3.5.
 
 * End Python 3.5 support.
   By :user:`Chris Barnes <clbarnes>`; :issue:`602`.
 
+* Fix ``open_group/open_array`` to allow opening of read-only store with
+  ``mode='r'`` :issue:`269`
+
 * Add `Array` tests for FSStore.
   By :user:`Andrew Fulton <andrewfulton9>`; :issue: `644`.
+
+* fix a bug in which ``attrs`` would not be copied on the root when using ``copy_all``; :issue:`613`
+
+* Fix ``FileNotFoundError``  with dask/s3fs :issue:`649`
+
+* Fix flaky fixture in test_storage.py :issue:`652`
+
+* Fix FSStore getitems fails with arrays that have a 0 length shape dimension :issue:`644`
+
+* Use async to fetch/write result concurrently when possible. :issue:`536`, See `this comment
+  <https://github.com/zarr-developers/zarr-python/issues/536#issuecomment-721253094>`_ for some performance analysis
+  showing order of magnitude faster response in some benchmark.
+
+See `this link <https://github.com/zarr-developers/zarr-python/milestone/11?closed=1>` for the full list of closed and
+merged PR tagged with the 2.6 milestone.
+
+* Add ability to partially read and decompress arrays, see :issue:`667`. It is
+  only available to chunks stored using fs-spec and using bloc as a compressor.
+
+  For certain analysis case when only a small portion of chunks is needed it can
+  be advantageous to only access and decompress part of the chunks. Doing
+  partial read and decompression add high latency to many of the operation so
+  should be used only when the subset of the data is small compared to the full
+  chunks and is stored contiguously (that is to say either last dimensions for C
+  layout, firsts for F). Pass ``partial_decompress=True`` as argument when
+  creating an ``Array``, or when using ``open_array``. No option exists yet to
+  apply partial read and decompress on a per-operation basis.
 
 2.5.0
 -----

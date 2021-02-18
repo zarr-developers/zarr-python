@@ -129,11 +129,11 @@ def create(shape, chunks=True, dtype=None, compressor='default',
     return z
 
 
-def normalize_store_arg(store, clobber=False, storage_options=None):
+def normalize_store_arg(store, clobber=False, storage_options=None, mode='w'):
     if store is None:
         return dict()
     elif isinstance(store, str):
-        mode = 'w' if clobber else 'r'
+        mode = mode if clobber else "r"
         if "://" in store or "::" in store:
             return FSStore(store, mode=mode, **(storage_options or {}))
         elif storage_options:
@@ -362,11 +362,26 @@ def array(data, **kwargs):
     return z
 
 
-def open_array(store=None, mode='a', shape=None, chunks=True, dtype=None,
-               compressor='default', fill_value=0, order='C', synchronizer=None,
-               filters=None, cache_metadata=True, cache_attrs=True, path=None,
-               object_codec=None, chunk_store=None, storage_options=None,
-               **kwargs):
+def open_array(
+    store=None,
+    mode="a",
+    shape=None,
+    chunks=True,
+    dtype=None,
+    compressor="default",
+    fill_value=0,
+    order="C",
+    synchronizer=None,
+    filters=None,
+    cache_metadata=True,
+    cache_attrs=True,
+    path=None,
+    object_codec=None,
+    chunk_store=None,
+    storage_options=None,
+    partial_decompress=False,
+    **kwargs
+):
     """Open an array using file-mode-like semantics.
 
     Parameters
@@ -415,6 +430,12 @@ def open_array(store=None, mode='a', shape=None, chunks=True, dtype=None,
     storage_options : dict
         If using an fsspec URL to create the store, these will be passed to
         the backend implementation. Ignored otherwise.
+    partial_decompress : bool, optional
+        If True and while the chunk_store is a FSStore and the compresion used
+        is Blosc, when getting data from the array chunks will be partially
+        read and decompressed when possible.
+
+        .. versionadded:: 2.7
 
     Returns
     -------
@@ -450,8 +471,8 @@ def open_array(store=None, mode='a', shape=None, chunks=True, dtype=None,
     # a : read/write if exists, create otherwise (default)
 
     # handle polymorphic store arg
-    clobber = mode == 'w'
-    store = normalize_store_arg(store, clobber=clobber, storage_options=storage_options)
+    clobber = (mode == 'w')
+    store = normalize_store_arg(store, clobber=clobber, storage_options=storage_options, mode=mode)
     if chunk_store is not None:
         chunk_store = normalize_store_arg(chunk_store, clobber=clobber,
                                           storage_options=storage_options)

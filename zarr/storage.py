@@ -35,7 +35,11 @@ from typing import Optional, Union, List, Tuple, Dict
 import uuid
 import time
 
-from numcodecs.compat import ensure_bytes, ensure_contiguous_ndarray
+from numcodecs.compat import (
+    ensure_bytes,
+    ensure_text,
+    ensure_contiguous_ndarray
+)
 from numcodecs.registry import codec_registry
 
 from zarr.errors import (
@@ -1038,7 +1042,7 @@ class FSStore(MutableMapping):
             key = '/'.join(bits + [end.replace('.', self.key_separator)])
         return key.lower() if self.normalize_keys else key
 
-    def getitems(self, keys):
+    def getitems(self, keys, **kwargs):
         keys = [self._normalize_key(key) for key in keys]
         return self.map.getitems(keys, on_error="omit")
 
@@ -1113,9 +1117,7 @@ class FSStore(MutableMapping):
             raise ReadOnlyError()
         store_path = self.dir_path(path)
         if self.fs.isdir(store_path):
-            # sometimes doesn't delete on first try with S3
-            while self.fs.exists(store_path):
-                self.fs.rm(store_path, recursive=True)
+            self.fs.rm(store_path, recursive=True)
 
     def getsize(self, path=None):
         store_path = self.dir_path(path)
@@ -1575,18 +1577,6 @@ def migrate_1to2(store):
     del store['attrs']
 
 
-def _dbm_encode_key(key):
-    if hasattr(key, 'encode'):
-        key = key.encode('ascii')
-    return key
-
-
-def _dbm_decode_key(key):
-    if hasattr(key, 'decode'):
-        key = key.decode('ascii')
-    return key
-
-
 # noinspection PyShadowingBuiltins
 class DBMStore(MutableMapping):
     """Storage class using a DBM-style database.
@@ -1716,7 +1706,10 @@ class DBMStore(MutableMapping):
             with self.write_mutex:
                 if hasattr(self.db, 'sync'):
                     self.db.sync()
-                else:
+                else:  # pragma: no cover
+                    # we don't cover this branch anymore as ndbm (oracle) is not packaged
+                    # by conda-forge on non-mac OS:
+                    # https://github.com/conda-forge/staged-recipes/issues/4476
                     # fall-back, close and re-open, needed for ndbm
                     flag = self.flag
                     if flag[0] == 'n':
@@ -1732,17 +1725,20 @@ class DBMStore(MutableMapping):
         self.close()
 
     def __getitem__(self, key):
-        key = _dbm_encode_key(key)
+        if isinstance(key, str):
+            key = key.encode("ascii")
         return self.db[key]
 
     def __setitem__(self, key, value):
-        key = _dbm_encode_key(key)
+        if isinstance(key, str):
+            key = key.encode("ascii")
         value = ensure_bytes(value)
         with self.write_mutex:
             self.db[key] = value
 
     def __delitem__(self, key):
-        key = _dbm_encode_key(key)
+        if isinstance(key, str):
+            key = key.encode("ascii")
         with self.write_mutex:
             del self.db[key]
 
@@ -1756,7 +1752,7 @@ class DBMStore(MutableMapping):
         )
 
     def keys(self):
-        return (_dbm_decode_key(k) for k in iter(self.db.keys()))
+        return (ensure_text(k, "ascii") for k in iter(self.db.keys()))
 
     def __iter__(self):
         return self.keys()
@@ -1765,18 +1761,9 @@ class DBMStore(MutableMapping):
         return sum(1 for _ in self.keys())
 
     def __contains__(self, key):
-        key = _dbm_encode_key(key)
+        if isinstance(key, str):
+            key = key.encode("ascii")
         return key in self.db
-
-
-def _lmdb_decode_key_buffer(key):
-    # assume buffers=True
-    return key.tobytes().decode('ascii')
-
-
-def _lmdb_decode_key_bytes(key):
-    # assume buffers=False
-    return key.decode('ascii')
 
 
 class LMDBStore(MutableMapping):
@@ -1868,10 +1855,6 @@ class LMDBStore(MutableMapping):
         self.db = lmdb.open(path, **kwargs)
 
         # store properties
-        if buffers:
-            self.decode_key = _lmdb_decode_key_buffer
-        else:
-            self.decode_key = _lmdb_decode_key_bytes
         self.buffers = buffers
         self.path = path
         self.kwargs = kwargs
@@ -1903,7 +1886,8 @@ class LMDBStore(MutableMapping):
         self.close()
 
     def __getitem__(self, key):
-        key = _dbm_encode_key(key)
+        if isinstance(key, str):
+            key = key.encode("ascii")
         # use the buffers option, should avoid a memory copy
         with self.db.begin(buffers=self.buffers) as txn:
             value = txn.get(key)
@@ -1912,18 +1896,21 @@ class LMDBStore(MutableMapping):
         return value
 
     def __setitem__(self, key, value):
-        key = _dbm_encode_key(key)
+        if isinstance(key, str):
+            key = key.encode("ascii")
         with self.db.begin(write=True, buffers=self.buffers) as txn:
             txn.put(key, value)
 
     def __delitem__(self, key):
-        key = _dbm_encode_key(key)
+        if isinstance(key, str):
+            key = key.encode("ascii")
         with self.db.begin(write=True) as txn:
             if not txn.delete(key):
                 raise KeyError(key)
 
     def __contains__(self, key):
-        key = _dbm_encode_key(key)
+        if isinstance(key, str):
+            key = key.encode("ascii")
         with self.db.begin(buffers=self.buffers) as txn:
             with txn.cursor() as cursor:
                 return cursor.set_key(key)
@@ -1932,13 +1919,13 @@ class LMDBStore(MutableMapping):
         with self.db.begin(buffers=self.buffers) as txn:
             with txn.cursor() as cursor:
                 for k, v in cursor.iternext(keys=True, values=True):
-                    yield self.decode_key(k), v
+                    yield ensure_text(k, "ascii"), v
 
     def keys(self):
         with self.db.begin(buffers=self.buffers) as txn:
             with txn.cursor() as cursor:
                 for k in cursor.iternext(keys=True, values=False):
-                    yield self.decode_key(k)
+                    yield ensure_text(k, "ascii")
 
     def values(self):
         with self.db.begin(buffers=self.buffers) as txn:
@@ -2244,6 +2231,7 @@ class ABSStore(MutableMapping):
 
     def __contains__(self, key):
         blob_name = self._append_path_to_prefix(key)
+        assert len(blob_name) >= 1
         if self.client.exists(self.container, blob_name):
             return True
         else:
@@ -2268,6 +2256,7 @@ class ABSStore(MutableMapping):
         if dir_path:
             dir_path += '/'
         for blob in self.client.list_blobs(self.container, prefix=dir_path):
+            assert len(blob.name) >= 1
             self.client.delete_blob(self.container, blob.name)
 
     def getsize(self, path=None):
@@ -2276,9 +2265,11 @@ class ABSStore(MutableMapping):
         fs_path = self.prefix
         if store_path:
             fs_path = self._append_path_to_prefix(store_path)
-        if self.client.exists(self.container, fs_path):
-            return self.client.get_blob_properties(self.container,
-                                                   fs_path).properties.content_length
+
+        if fs_path != "" and self.client.exists(self.container, fs_path):
+            return self.client.get_blob_properties(
+                self.container, fs_path
+            ).properties.content_length
         else:
             size = 0
             if fs_path == '':
