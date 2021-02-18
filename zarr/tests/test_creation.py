@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 import atexit
 import os.path
 import shutil
@@ -148,7 +147,7 @@ def test_full():
     assert np.all(a == v)
 
     # unicode string dtype
-    v = u'xxx'
+    v = 'xxx'
     z = full(100, chunks=10, fill_value=v, dtype='U3')
     assert v == z[0]
     a = z[...]
@@ -252,6 +251,24 @@ def test_open_array():
     assert (100,) == z.shape
     assert (10,) == z.chunks
     assert_array_equal(np.full(100, fill_value=42), z[:])
+
+    store = 'data/group.n5'
+    z = open_group(store, mode='w')
+    i = z.create_group('inner')
+    a = i.zeros("array", shape=100, chunks=10)
+    a[:] = 42
+
+    # Edit inner/attributes.json to not include "n5"
+    with open('data/group.n5/inner/attributes.json', 'w') as o:
+        o.write("{}")
+
+    # Re-open
+    a = open_group(store)["inner"]["array"]
+    assert isinstance(a, Array)
+    assert isinstance(z.store, N5Store)
+    assert (100,) == a.shape
+    assert (10,) == a.chunks
+    assert_array_equal(np.full(100, fill_value=42), a[:])
 
 
 def test_empty_like():

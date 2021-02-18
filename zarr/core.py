@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 import binascii
 import hashlib
 import itertools
@@ -12,22 +11,41 @@ from numcodecs.compat import ensure_bytes, ensure_ndarray
 
 from zarr.attrs import Attributes
 from zarr.codecs import AsType, get_codec
-from zarr.errors import err_array_not_found, err_read_only
-from zarr.indexing import (BasicIndexer, CoordinateIndexer, MaskIndexer,
-                           OIndex, OrthogonalIndexer, VIndex, check_fields,
-                           check_no_multi_fields, ensure_tuple,
-                           err_too_many_indices, is_contiguous_selection,
-                           is_scalar, pop_fields)
+from zarr.errors import ArrayNotFoundError, ReadOnlyError, ArrayIndexError
+from zarr.indexing import (
+    BasicIndexer,
+    CoordinateIndexer,
+    MaskIndexer,
+    OIndex,
+    OrthogonalIndexer,
+    VIndex,
+    PartialChunkIterator,
+    check_fields,
+    check_no_multi_fields,
+    ensure_tuple,
+    err_too_many_indices,
+    is_contiguous_selection,
+    is_scalar,
+    pop_fields,
+)
 from zarr.meta import decode_array_metadata, encode_array_metadata
 from zarr.storage import array_meta_key, attrs_key, getsize, listdir
-from zarr.util import (InfoReporter, check_array_shape, human_readable_size,
-                       is_total_slice, nolock, normalize_chunks,
-                       normalize_resize_args, normalize_shape,
-                       normalize_storage_path)
+from zarr.util import (
+    InfoReporter,
+    check_array_shape,
+    human_readable_size,
+    is_total_slice,
+    nolock,
+    normalize_chunks,
+    normalize_resize_args,
+    normalize_shape,
+    normalize_storage_path,
+    PartialReadBuffer,
+)
 
 
 # noinspection PyUnresolvedReferences
-class Array(object):
+class Array:
     """Instantiate an array from an initialized store.
 
     Parameters
@@ -52,10 +70,15 @@ class Array(object):
         If True (default), user attributes will be cached for attribute read
         operations. If False, user attributes are reloaded from the store prior
         to all attribute read operations.
+    partial_decompress : bool, optional
+        If True and while the chunk_store is a FSStore and the compresion used
+        is Blosc, when getting data from the array chunks will be partially
+        read and decompressed when possible.
+
+        .. versionadded:: 2.7
     init_metadata : bool, optional
         If True (default), array configuration metadata will be loaded from the
         store at initialization. If False, array metadata will be loaded prior
-        to the first data access or modification operation.
 
     Attributes
     ----------
@@ -107,8 +130,18 @@ class Array(object):
 
     """
 
-    def __init__(self, store, path=None, read_only=False, chunk_store=None,
-                 synchronizer=None, cache_metadata=True, cache_attrs=True, init_metadata=True):
+    def __init__(
+        self,
+        store,
+        path=None,
+        read_only=False,
+        chunk_store=None,
+        synchronizer=None,
+        cache_metadata=True,
+        cache_attrs=True,
+        partial_decompress=False,
+        init_metadata=True
+    ):
         # N.B., expect at this point store is fully initialized with all
         # configuration metadata fully specified and normalized
 
@@ -123,6 +156,7 @@ class Array(object):
         self._cache_metadata = cache_metadata
         self._cache_attrs = cache_attrs
         self._is_view = False
+        self._partial_decompress = partial_decompress
         self._meta = None
 
         # initialize store and attributes
@@ -156,7 +190,7 @@ class Array(object):
             mkey = self._key_prefix + array_meta_key
             meta_bytes = self._store[mkey]
         except KeyError:
-            err_array_not_found(self._path)
+            raise ArrayNotFoundError(self._path)
         else:
 
             # decode and store metadata as instance members
@@ -1037,11 +1071,19 @@ class Array(object):
             check_array_shape('out', out, out_shape)
 
         # iterate over chunks
-        for chunk_coords, chunk_selection, out_selection in indexer:
+        if not hasattr(self.chunk_store, "getitems") or \
+           any(map(lambda x: x == 0, self.shape)):
+            # sequentially get one key at a time from storage
+            for chunk_coords, chunk_selection, out_selection in indexer:
 
-            # load chunk selection into output array
-            self._chunk_getitem(chunk_coords, chunk_selection, out, out_selection,
-                                drop_axes=indexer.drop_axes, fields=fields)
+                # load chunk selection into output array
+                self._chunk_getitem(chunk_coords, chunk_selection, out, out_selection,
+                                    drop_axes=indexer.drop_axes, fields=fields)
+        else:
+            # allow storage to get multiple items at once
+            lchunk_coords, lchunk_selection, lout_selection = zip(*indexer)
+            self._chunk_getitems(lchunk_coords, lchunk_selection, out, lout_selection,
+                                 drop_axes=indexer.drop_axes, fields=fields)
 
         if out.shape:
             return out
@@ -1213,7 +1255,7 @@ class Array(object):
 
         # guard conditions
         if self._read_only:
-            err_read_only()
+            raise ReadOnlyError()
 
         # refresh metadata
         self._refresh_metadata(sync=False)
@@ -1303,7 +1345,7 @@ class Array(object):
 
         # guard conditions
         if self._read_only:
-            err_read_only()
+            raise ReadOnlyError()
 
         # refresh metadata
         self._refresh_metadata(sync=False)
@@ -1374,7 +1416,7 @@ class Array(object):
 
         # guard conditions
         if self._read_only:
-            err_read_only()
+            raise ReadOnlyError()
 
         # refresh metadata
         self._refresh_metadata(sync=False)
@@ -1454,7 +1496,7 @@ class Array(object):
 
         # guard conditions
         if self._read_only:
-            err_read_only()
+            raise ReadOnlyError()
 
         # refresh metadata
         self._refresh_metadata(sync=False)
@@ -1541,25 +1583,132 @@ class Array(object):
             check_array_shape('value', value, sel_shape)
 
         # iterate over chunks in range
-        for chunk_coords, chunk_selection, out_selection in indexer:
+        if not hasattr(self.store, "setitems") or self._synchronizer is not None \
+           or any(map(lambda x: x == 0, self.shape)):
+            # iterative approach
+            for chunk_coords, chunk_selection, out_selection in indexer:
 
-            # extract data to store
-            if sel_shape == ():
-                chunk_value = value
-            elif is_scalar(value, self._dtype):
-                chunk_value = value
-            else:
-                chunk_value = value[out_selection]
-                # handle missing singleton dimensions
-                if indexer.drop_axes:
-                    item = [slice(None)] * self.ndim
-                    for a in indexer.drop_axes:
-                        item[a] = np.newaxis
-                    item = tuple(item)
-                    chunk_value = chunk_value[item]
+                # extract data to store
+                if sel_shape == ():
+                    chunk_value = value
+                elif is_scalar(value, self._dtype):
+                    chunk_value = value
+                else:
+                    chunk_value = value[out_selection]
+                    # handle missing singleton dimensions
+                    if indexer.drop_axes:
+                        item = [slice(None)] * self.ndim
+                        for a in indexer.drop_axes:
+                            item[a] = np.newaxis
+                        item = tuple(item)
+                        chunk_value = chunk_value[item]
 
-            # put data
-            self._chunk_setitem(chunk_coords, chunk_selection, chunk_value, fields=fields)
+                # put data
+                self._chunk_setitem(chunk_coords, chunk_selection, chunk_value, fields=fields)
+        else:
+            lchunk_coords, lchunk_selection, lout_selection = zip(*indexer)
+            chunk_values = []
+            for out_selection in lout_selection:
+                if sel_shape == ():
+                    chunk_values.append(value)
+                elif is_scalar(value, self._dtype):
+                    chunk_values.append(value)
+                else:
+                    cv = value[out_selection]
+                    # handle missing singleton dimensions
+                    if indexer.drop_axes:  # pragma: no cover
+                        item = [slice(None)] * self.ndim
+                        for a in indexer.drop_axes:
+                            item[a] = np.newaxis
+                        item = tuple(item)
+                        cv = chunk_value[item]
+                    chunk_values.append(cv)
+
+            self._chunk_setitems(lchunk_coords, lchunk_selection, chunk_values,
+                                 fields=fields)
+
+    def _process_chunk(
+        self,
+        out,
+        cdata,
+        chunk_selection,
+        drop_axes,
+        out_is_ndarray,
+        fields,
+        out_selection,
+        partial_read_decode=False,
+    ):
+        """Take binary data from storage and fill output array"""
+        if (out_is_ndarray and
+                not fields and
+                is_contiguous_selection(out_selection) and
+                is_total_slice(chunk_selection, self._chunks) and
+                not self._filters and
+                self._dtype != object):
+
+            dest = out[out_selection]
+            write_direct = (
+                dest.flags.writeable and
+                (
+                    (self._order == 'C' and dest.flags.c_contiguous) or
+                    (self._order == 'F' and dest.flags.f_contiguous)
+                )
+            )
+
+            if write_direct:
+
+                # optimization: we want the whole chunk, and the destination is
+                # contiguous, so we can decompress directly from the chunk
+                # into the destination array
+                if self._compressor:
+                    if isinstance(cdata, PartialReadBuffer):
+                        cdata = cdata.read_full()
+                    self._compressor.decode(cdata, dest)
+                else:
+                    chunk = ensure_ndarray(cdata).view(self._dtype)
+                    chunk = chunk.reshape(self._chunks, order=self._order)
+                    np.copyto(dest, chunk)
+                return
+
+        # decode chunk
+        try:
+            if partial_read_decode:
+                cdata.prepare_chunk()
+                # size of chunk
+                tmp = np.empty(self._chunks, dtype=self.dtype)
+                index_selection = PartialChunkIterator(chunk_selection, self.chunks)
+                for start, nitems, partial_out_selection in index_selection:
+                    expected_shape = [
+                        len(
+                            range(*partial_out_selection[i].indices(self.chunks[0] + 1))
+                        )
+                        if i < len(partial_out_selection)
+                        else dim
+                        for i, dim in enumerate(self.chunks)
+                    ]
+                    cdata.read_part(start, nitems)
+                    chunk_partial = self._decode_chunk(
+                        cdata.buff,
+                        start=start,
+                        nitems=nitems,
+                        expected_shape=expected_shape,
+                    )
+                    tmp[partial_out_selection] = chunk_partial
+                out[out_selection] = tmp[chunk_selection]
+                return
+        except ArrayIndexError:
+            cdata = cdata.read_full()
+        chunk = self._decode_chunk(cdata)
+
+        # select data from chunk
+        if fields:
+            chunk = chunk[fields]
+        tmp = chunk[chunk_selection]
+        if drop_axes:
+            tmp = np.squeeze(tmp, axis=drop_axes)
+
+        # store selected data in output
+        out[out_selection] = tmp
 
     def _chunk_getitem(self, chunk_coords, chunk_selection, out, out_selection,
                        drop_axes=None, fields=None):
@@ -1581,14 +1730,13 @@ class Array(object):
             TODO
 
         """
-
-        assert len(chunk_coords) == len(self._cdata_shape)
-
         out_is_ndarray = True
         try:
             out = ensure_ndarray(out)
         except TypeError:
             out_is_ndarray = False
+
+        assert len(chunk_coords) == len(self._cdata_shape)
 
         # obtain key for chunk
         ckey = self._chunk_key(chunk_coords)
@@ -1607,48 +1755,68 @@ class Array(object):
                 out[out_selection] = fill_value
 
         else:
+            self._process_chunk(out, cdata, chunk_selection, drop_axes,
+                                out_is_ndarray, fields, out_selection)
 
-            if (out_is_ndarray and
-                    not fields and
-                    is_contiguous_selection(out_selection) and
-                    is_total_slice(chunk_selection, self._chunks) and
-                    not self._filters and
-                    self._dtype != object):
+    def _chunk_getitems(self, lchunk_coords, lchunk_selection, out, lout_selection,
+                        drop_axes=None, fields=None):
+        """As _chunk_getitem, but for lists of chunks
 
-                dest = out[out_selection]
-                write_direct = (
-                    dest.flags.writeable and (
-                        (self._order == 'C' and dest.flags.c_contiguous) or
-                        (self._order == 'F' and dest.flags.f_contiguous)
-                    )
+        This gets called where the storage supports ``getitems``, so that
+        it can decide how to fetch the keys, allowing concurrency.
+        """
+        out_is_ndarray = True
+        try:
+            out = ensure_ndarray(out)
+        except TypeError:  # pragma: no cover
+            out_is_ndarray = False
+
+        ckeys = [self._chunk_key(ch) for ch in lchunk_coords]
+        if (
+            self._partial_decompress
+            and self._compressor
+            and self._compressor.codec_id == "blosc"
+            and hasattr(self._compressor, "decode_partial")
+            and not fields
+            and self.dtype != object
+            and hasattr(self.chunk_store, "getitems")
+        ):
+            partial_read_decode = True
+            cdatas = {
+                ckey: PartialReadBuffer(ckey, self.chunk_store)
+                for ckey in ckeys
+                if ckey in self.chunk_store
+            }
+        else:
+            partial_read_decode = False
+            cdatas = self.chunk_store.getitems(ckeys, on_error="omit")
+        for ckey, chunk_select, out_select in zip(ckeys, lchunk_selection, lout_selection):
+            if ckey in cdatas:
+                self._process_chunk(
+                    out,
+                    cdatas[ckey],
+                    chunk_select,
+                    drop_axes,
+                    out_is_ndarray,
+                    fields,
+                    out_select,
+                    partial_read_decode=partial_read_decode,
                 )
-
-                if write_direct:
-
-                    # optimization: we want the whole chunk, and the destination is
-                    # contiguous, so we can decompress directly from the chunk
-                    # into the destination array
-
-                    if self._compressor:
-                        self._compressor.decode(cdata, dest)
+            else:
+                # check exception type
+                if self._fill_value is not None:
+                    if fields:
+                        fill_value = self._fill_value[fields]
                     else:
-                        chunk = ensure_ndarray(cdata).view(self._dtype)
-                        chunk = chunk.reshape(self._chunks, order=self._order)
-                        np.copyto(dest, chunk)
-                    return
+                        fill_value = self._fill_value
+                    out[out_select] = fill_value
 
-            # decode chunk
-            chunk = self._decode_chunk(cdata)
-
-            # select data from chunk
-            if fields:
-                chunk = chunk[fields]
-            tmp = chunk[chunk_selection]
-            if drop_axes:
-                tmp = np.squeeze(tmp, axis=drop_axes)
-
-            # store selected data in output
-            out[out_selection] = tmp
+    def _chunk_setitems(self, lchunk_coords, lchunk_selection, values, fields=None):
+        ckeys = [self._chunk_key(co) for co in lchunk_coords]
+        cdatas = [self._process_for_setitem(key, sel, val, fields=fields)
+                  for key, sel, val in zip(ckeys, lchunk_selection, values)]
+        values = {k: v for k, v in zip(ckeys, cdatas)}
+        self.chunk_store.setitems(values)
 
     def _chunk_setitem(self, chunk_coords, chunk_selection, value, fields=None):
         """Replace part or whole of a chunk.
@@ -1677,10 +1845,12 @@ class Array(object):
                                        fields=fields)
 
     def _chunk_setitem_nosync(self, chunk_coords, chunk_selection, value, fields=None):
-
-        # obtain key for chunk storage
         ckey = self._chunk_key(chunk_coords)
+        cdata = self._process_for_setitem(ckey, chunk_selection, value, fields=fields)
+        # store
+        self.chunk_store[ckey] = cdata
 
+    def _process_for_setitem(self, ckey, chunk_selection, value, fields=None):
         if is_total_slice(chunk_selection, self._chunks) and not fields:
             # totally replace chunk
 
@@ -1735,19 +1905,22 @@ class Array(object):
                 chunk[chunk_selection] = value
 
         # encode chunk
-        cdata = self._encode_chunk(chunk)
-
-        # store
-        self.chunk_store[ckey] = cdata
+        return self._encode_chunk(chunk)
 
     def _chunk_key(self, chunk_coords):
         return self._key_prefix + '.'.join(map(str, chunk_coords))
 
-    def _decode_chunk(self, cdata):
-
+    def _decode_chunk(self, cdata, start=None, nitems=None, expected_shape=None):
         # decompress
         if self._compressor:
-            chunk = self._compressor.decode(cdata)
+            # only decode requested items
+            if (
+                all([x is not None for x in [start, nitems]])
+                and self._compressor.codec_id == "blosc"
+            ) and hasattr(self._compressor, "decode_partial"):
+                chunk = self._compressor.decode_partial(cdata, start, nitems)
+            else:
+                chunk = self._compressor.decode(cdata)
         else:
             chunk = cdata
 
@@ -1772,7 +1945,7 @@ class Array(object):
 
         # ensure correct chunk shape
         chunk = chunk.reshape(-1, order='A')
-        chunk = chunk.reshape(self._chunks, order=self._order)
+        chunk = chunk.reshape(expected_shape or self._chunks, order=self._order)
 
         return chunk
 
@@ -1978,7 +2151,7 @@ class Array(object):
 
         # guard condition
         if self._read_only:
-            err_read_only()
+            raise ReadOnlyError()
 
         return self._synchronized_op(f, *args, **kwargs)
 

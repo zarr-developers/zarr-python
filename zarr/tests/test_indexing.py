@@ -1,11 +1,15 @@
-# -*- coding: utf-8 -*-
 import numpy as np
 import pytest
 from numpy.testing import assert_array_equal
 
 import zarr
-from zarr.indexing import (normalize_integer_selection, oindex, oindex_set,
-                           replace_ellipsis)
+from zarr.indexing import (
+    normalize_integer_selection,
+    oindex,
+    oindex_set,
+    replace_ellipsis,
+    PartialChunkIterator,
+)
 
 
 def test_normalize_integer_selection():
@@ -1289,3 +1293,83 @@ def test_set_selections_with_fields():
             a[key][ix] = v[key][ix]
             z.set_mask_selection(ix, v[key][ix], fields=fields)
             assert_array_equal(a, z[:])
+
+
+@pytest.mark.parametrize(
+    "selection, arr, expected",
+    [
+        (
+            (slice(5, 8, 1), slice(2, 4, 1), slice(0, 100, 1)),
+            np.arange(2, 100_002).reshape((100, 10, 100)),
+            [
+                (5200, 200, (slice(5, 6, 1), slice(2, 4, 1))),
+                (6200, 200, (slice(6, 7, 1), slice(2, 4, 1))),
+                (7200, 200, (slice(7, 8, 1), slice(2, 4, 1))),
+            ],
+        ),
+        (
+            (slice(5, 8, 1), slice(2, 4, 1), slice(0, 5, 1)),
+            np.arange(2, 100_002).reshape((100, 10, 100)),
+            [
+                (5200.0, 5.0, (slice(5, 6, 1), slice(2, 3, 1), slice(0, 5, 1))),
+                (5300.0, 5.0, (slice(5, 6, 1), slice(3, 4, 1), slice(0, 5, 1))),
+                (6200.0, 5.0, (slice(6, 7, 1), slice(2, 3, 1), slice(0, 5, 1))),
+                (6300.0, 5.0, (slice(6, 7, 1), slice(3, 4, 1), slice(0, 5, 1))),
+                (7200.0, 5.0, (slice(7, 8, 1), slice(2, 3, 1), slice(0, 5, 1))),
+                (7300.0, 5.0, (slice(7, 8, 1), slice(3, 4, 1), slice(0, 5, 1))),
+            ],
+        ),
+        (
+            (slice(5, 8, 1), slice(2, 4, 1), slice(0, 5, 1)),
+            np.asfortranarray(np.arange(2, 100_002).reshape((100, 10, 100))),
+            [
+                (5200.0, 5.0, (slice(5, 6, 1), slice(2, 3, 1), slice(0, 5, 1))),
+                (5300.0, 5.0, (slice(5, 6, 1), slice(3, 4, 1), slice(0, 5, 1))),
+                (6200.0, 5.0, (slice(6, 7, 1), slice(2, 3, 1), slice(0, 5, 1))),
+                (6300.0, 5.0, (slice(6, 7, 1), slice(3, 4, 1), slice(0, 5, 1))),
+                (7200.0, 5.0, (slice(7, 8, 1), slice(2, 3, 1), slice(0, 5, 1))),
+                (7300.0, 5.0, (slice(7, 8, 1), slice(3, 4, 1), slice(0, 5, 1))),
+            ],
+        ),
+        (
+            (slice(5, 8, 1), slice(2, 4, 1)),
+            np.arange(2, 100_002).reshape((100, 10, 100)),
+            [
+                (5200, 200, (slice(5, 6, 1), slice(2, 4, 1))),
+                (6200, 200, (slice(6, 7, 1), slice(2, 4, 1))),
+                (7200, 200, (slice(7, 8, 1), slice(2, 4, 1))),
+            ],
+        ),
+        (
+            (slice(0, 10, 1),),
+            np.arange(0, 10).reshape((10)),
+            [(0, 10, (slice(0, 10, 1),))],
+        ),
+        ((0,), np.arange(0, 100).reshape((10, 10)), [(0, 10, (slice(0, 1, 1),))]),
+        (
+            (
+                0,
+                0,
+            ),
+            np.arange(0, 100).reshape((10, 10)),
+            [(0, 1, (slice(0, 1, 1), slice(0, 1, 1)))],
+        ),
+        ((0,), np.arange(0, 10).reshape((10)), [(0, 1, (slice(0, 1, 1),))]),
+        pytest.param(
+            (slice(5, 8, 1), slice(2, 4, 1), slice(0, 5, 1)),
+            np.arange(2, 100002).reshape((10, 1, 10000)),
+            None,
+            marks=[pytest.mark.xfail(reason="slice 2 is out of range")],
+        ),
+        pytest.param(
+            (slice(5, 8, 1), slice(2, 4, 1), slice(0, 5, 1)),
+            np.arange(2, 100_002).reshape((10, 10_000)),
+            None,
+            marks=[pytest.mark.xfail(reason="slice 2 is out of range")],
+        ),
+    ],
+)
+def test_PartialChunkIterator(selection, arr, expected):
+    PCI = PartialChunkIterator(selection, arr.shape)
+    results = list(PCI)
+    assert results == expected

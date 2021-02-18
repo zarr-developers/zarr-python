@@ -1,13 +1,90 @@
 Release notes
 =============
 
+2.6.0
+-----
 
-Next release
-------------
+This release od Zarr Python is is the first release of Zarr to not supporting Python 3.5.
 
-* Fix minor bug in `N5Store`. 
+* End Python 3.5 support.
+  By :user:`Chris Barnes <clbarnes>`; :issue:`602`.
+
+* Fix ``open_group/open_array`` to allow opening of read-only store with
+  ``mode='r'`` :issue:`269`
+
+* Add `Array` tests for FSStore.
+  By :user:`Andrew Fulton <andrewfulton9>`; :issue: `644`.
+
+* fix a bug in which ``attrs`` would not be copied on the root when using ``copy_all``; :issue:`613`
+
+* Fix ``FileNotFoundError``  with dask/s3fs :issue:`649`
+
+* Fix flaky fixture in test_storage.py :issue:`652`
+
+* Fix FSStore getitems fails with arrays that have a 0 length shape dimension :issue:`644`
+
+* Use async to fetch/write result concurrently when possible. :issue:`536`, See `this comment
+  <https://github.com/zarr-developers/zarr-python/issues/536#issuecomment-721253094>`_ for some performance analysis
+  showing order of magnitude faster response in some benchmark.
+
+See `this link <https://github.com/zarr-developers/zarr-python/milestone/11?closed=1>` for the full list of closed and
+merged PR tagged with the 2.6 milestone.
+
+* Add ability to partially read and decompress arrays, see :issue:`667`. It is
+  only available to chunks stored using fs-spec and using bloc as a compressor.
+
+  For certain analysis case when only a small portion of chunks is needed it can
+  be advantageous to only access and decompress part of the chunks. Doing
+  partial read and decompression add high latency to many of the operation so
+  should be used only when the subset of the data is small compared to the full
+  chunks and is stored contiguously (that is to say either last dimensions for C
+  layout, firsts for F). Pass ``partial_decompress=True`` as argument when
+  creating an ``Array``, or when using ``open_array``. No option exists yet to
+  apply partial read and decompress on a per-operation basis.
+
+2.5.0
+-----
+
+
+This release will be the last to support Python 3.5, next version of Zarr will be Python 3.6+.
+
+* `DirectoryStore` now uses `os.scandir`, which should make listing large store
+  faster, :issue:`563`
+  
+* Remove a few remaining Python 2-isms.
+  By :user:`Poruri Sai Rahul <rahulporuri>`; :issue:`393`.
+
+* Fix minor bug in `N5Store`.
   By :user:`gsakkis`, :issue:`550`.
 
+* Improve error message in Jupyter when trying to use the ``ipytree`` widget
+  without ``ipytree`` installed.
+  By :user:`Zain Patel <mzjp2>`; :issue:`537`
+
+* Add typing informations to many of the core functions :issue:`589`
+
+* Explicitly close stores during testing.
+  By :user:`Elliott Sales de Andrade <QuLogic>`; :issue:`442`
+
+* Many of the convenience functions to emit errors (``err_*`` from
+  ``zarr.errors``  have been replaced by ``ValueError`` subclasses. The corresponding
+  ``err_*`` function have been removed. :issue:`590`, :issue:`614`)
+
+* Improve consistency of terminology regarding arrays and datasets in the 
+  documentation.
+  By :user:`Josh Moore <joshmoore>`; :issue:`571`.
+
+* Added support for generic URL opening by ``fsspec``, where the URLs have the
+  form "protocol://[server]/path" or can be chained URls with "::" separators.
+  The additional argument ``storage_options`` is passed to the backend, see
+  the ``fsspec`` docs.
+  By :user:`Martin Durant <martindurant>`; :issue:`546`
+
+* Added support for fetching multiple items via ``getitems`` method of a
+  store, if it exists. This allows for concurrent fetching of data blocks
+  from stores that implement this; presently HTTP, S3, GCS. Currently only
+  applies to reading.
+  By :user:`Martin Durant <martindurant>`; :issue:`606`
 
 .. _release_2.4.0:
 

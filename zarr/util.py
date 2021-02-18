@@ -1,15 +1,18 @@
-# -*- coding: utf-8 -*-
 import inspect
 import json
 import math
 import numbers
 from textwrap import TextWrapper
+import mmap
 
 import numpy as np
 from asciitree import BoxStyle, LeftAligned
 from asciitree.traversal import Traversal
 from numcodecs.compat import ensure_ndarray, ensure_text
 from numcodecs.registry import codec_registry
+from numcodecs.blosc import cbuffer_sizes, cbuffer_metainfo
+
+from typing import Any, Dict, Tuple, Union
 
 # codecs to use for object dtype convenience API
 object_codecs = {
@@ -19,18 +22,18 @@ object_codecs = {
 }
 
 
-def json_dumps(o):
+def json_dumps(o: Any) -> bytes:
     """Write JSON in a consistent, human-readable way."""
     return json.dumps(o, indent=4, sort_keys=True, ensure_ascii=True,
                       separators=(',', ': ')).encode('ascii')
 
 
-def json_loads(s):
+def json_loads(s: str) -> Dict[str, Any]:
     """Read JSON in a consistent way."""
     return json.loads(ensure_text(s, 'ascii'))
 
 
-def normalize_shape(shape):
+def normalize_shape(shape) -> Tuple[int]:
     """Convenience function to normalize the `shape` argument."""
 
     if shape is None:
@@ -52,9 +55,9 @@ CHUNK_MIN = 128*1024  # Soft lower limit (128k)
 CHUNK_MAX = 64*1024*1024  # Hard upper limit
 
 
-def guess_chunks(shape, typesize):
+def guess_chunks(shape: Tuple[int, ...], typesize: int) -> Tuple[int, ...]:
     """
-    Guess an appropriate chunk layout for a dataset, given its shape and
+    Guess an appropriate chunk layout for an array, given its shape and
     the size of each element in bytes.  Will allocate chunks only as large
     as MAX_SIZE.  Chunks are generally close to some power-of-2 fraction of
     each axis, slightly favoring bigger values for the last index.
@@ -98,7 +101,9 @@ def guess_chunks(shape, typesize):
     return tuple(int(x) for x in chunks)
 
 
-def normalize_chunks(chunks, shape, typesize):
+def normalize_chunks(
+    chunks: Any, shape: Tuple[int, ...], typesize: int
+) -> Tuple[int, ...]:
     """Convenience function to normalize the `chunks` argument for an array
     with the given `shape`."""
 
@@ -133,11 +138,11 @@ def normalize_chunks(chunks, shape, typesize):
     return tuple(chunks)
 
 
-def normalize_dtype(dtype, object_codec):
+def normalize_dtype(dtype: Union[str, np.dtype], object_codec) -> Tuple[np.dtype, Any]:
 
     # convenience API for object arrays
     if inspect.isclass(dtype):
-        dtype = dtype.__name__
+        dtype = dtype.__name__  # type: ignore
     if isinstance(dtype, str):
         # allow ':' to delimit class from codec arguments
         tokens = dtype.split(':')
@@ -149,7 +154,7 @@ def normalize_dtype(dtype, object_codec):
                 if len(tokens) > 1:
                     args = tokens[1].split(',')
                 else:
-                    args = ()
+                    args = []
                 try:
                     object_codec = codec_registry[codec_id](*args)
                 except KeyError:  # pragma: no cover
@@ -169,7 +174,7 @@ def normalize_dtype(dtype, object_codec):
 
 
 # noinspection PyTypeChecker
-def is_total_slice(item, shape):
+def is_total_slice(item, shape: Tuple[int]) -> bool:
     """Determine whether `item` specifies a complete slice of array with the
     given `shape`. Used to optimize __setitem__ operations on the Chunk
     class."""
@@ -214,7 +219,7 @@ def normalize_resize_args(old_shape, *args):
     return new_shape
 
 
-def human_readable_size(size):
+def human_readable_size(size) -> str:
     if size < 2**10:
         return '%s' % size
     elif size < 2**20:
@@ -229,14 +234,14 @@ def human_readable_size(size):
         return '%.1fP' % (size / float(2**50))
 
 
-def normalize_order(order):
+def normalize_order(order: str) -> str:
     order = str(order).upper()
     if order not in ['C', 'F']:
         raise ValueError("order must be either 'C' or 'F', found: %r" % order)
     return order
 
 
-def normalize_fill_value(fill_value, dtype):
+def normalize_fill_value(fill_value, dtype: np.dtype):
 
     if fill_value is None:
         # no fill value
@@ -271,7 +276,7 @@ def normalize_fill_value(fill_value, dtype):
     return fill_value
 
 
-def normalize_storage_path(path):
+def normalize_storage_path(path: Union[str, bytes, None]) -> str:
 
     # handle bytes
     if isinstance(path, bytes):
@@ -316,11 +321,11 @@ def normalize_storage_path(path):
     return path
 
 
-def buffer_size(v):
+def buffer_size(v) -> int:
     return ensure_ndarray(v).nbytes
 
 
-def info_text_report(items):
+def info_text_report(items: Dict[Any, Any]) -> str:
     keys = [k for k, v in items]
     max_key_len = max(len(k) for k in keys)
     report = ''
@@ -333,7 +338,7 @@ def info_text_report(items):
     return report
 
 
-def info_html_report(items):
+def info_html_report(items) -> str:
     report = '<table class="zarr-info">'
     report += '<tbody>'
     for k, v in items:
@@ -402,7 +407,7 @@ tree_group_icon = 'folder'
 tree_array_icon = 'table'
 
 
-def tree_get_icon(stype):
+def tree_get_icon(stype: str) -> str:
     if stype == "Array":
         return tree_array_icon
     elif stype == "Group":
@@ -428,7 +433,15 @@ def tree_widget_sublist(node, root=False, expand=False):
 
 
 def tree_widget(group, expand, level):
-    import ipytree
+    try:
+        import ipytree
+    except ImportError as error:
+        raise ImportError(
+            "{}: Run `pip install zarr[jupyter]` or `conda install ipytree`"
+            "to get the required ipytree dependency for displaying the tree "
+            "widget. If using jupyterlab, you also need to run "
+            "`jupyter labextension install ipytree`".format(error)
+        )
 
     result = ipytree.Tree()
     root = TreeNode(group, level=level)
@@ -459,10 +472,10 @@ class TreeViewer(object):
         )
 
         self.unicode_kwargs = dict(
-            UP_AND_RIGHT=u"\u2514",
-            HORIZONTAL=u"\u2500",
-            VERTICAL=u"\u2502",
-            VERTICAL_AND_RIGHT=u"\u251C"
+            UP_AND_RIGHT="\u2514",
+            HORIZONTAL="\u2500",
+            VERTICAL="\u2502",
+            VERTICAL_AND_RIGHT="\u251C"
         )
 
     def __bytes__(self):
@@ -521,3 +534,78 @@ class NoLock(object):
 
 
 nolock = NoLock()
+
+
+class PartialReadBuffer:
+    def __init__(self, store_key, chunk_store):
+        self.chunk_store = chunk_store
+        # is it fsstore or an actual fsspec map object
+        assert hasattr(self.chunk_store, "map")
+        self.map = self.chunk_store.map
+        self.fs = self.chunk_store.fs
+        self.store_key = store_key
+        self.key_path = self.map._key_to_str(store_key)
+        self.buff = None
+        self.nblocks = None
+        self.start_points = None
+        self.n_per_block = None
+        self.start_points_max = None
+        self.read_blocks = set()
+
+    def prepare_chunk(self):
+        assert self.buff is None
+        header = self.fs.read_block(self.key_path, 0, 16)
+        nbytes, self.cbytes, blocksize = cbuffer_sizes(header)
+        typesize, _shuffle, _memcpyd = cbuffer_metainfo(header)
+        self.buff = mmap.mmap(-1, self.cbytes)
+        self.buff[0:16] = header
+        self.nblocks = nbytes / blocksize
+        self.nblocks = (
+            int(self.nblocks)
+            if self.nblocks == int(self.nblocks)
+            else int(self.nblocks + 1)
+        )
+        if self.nblocks == 1:
+            self.buff = self.read_full()
+            return
+        start_points_buffer = self.fs.read_block(
+            self.key_path, 16, int(self.nblocks * 4)
+        )
+        self.start_points = np.frombuffer(
+            start_points_buffer, count=self.nblocks, dtype=np.int32
+        )
+        self.start_points_max = self.start_points.max()
+        self.buff[16: (16 + (self.nblocks * 4))] = start_points_buffer
+        self.n_per_block = blocksize / typesize
+
+    def read_part(self, start, nitems):
+        assert self.buff is not None
+        if self.nblocks == 1:
+            return
+        blocks_to_decompress = nitems / self.n_per_block
+        blocks_to_decompress = (
+            blocks_to_decompress
+            if blocks_to_decompress == int(blocks_to_decompress)
+            else int(blocks_to_decompress + 1)
+        )
+        start_block = int(start / self.n_per_block)
+        wanted_decompressed = 0
+        while wanted_decompressed < nitems:
+            if start_block not in self.read_blocks:
+                start_byte = self.start_points[start_block]
+                if start_byte == self.start_points_max:
+                    stop_byte = self.cbytes
+                else:
+                    stop_byte = self.start_points[self.start_points > start_byte].min()
+                length = stop_byte - start_byte
+                data_buff = self.fs.read_block(self.key_path, start_byte, length)
+                self.buff[start_byte:stop_byte] = data_buff
+                self.read_blocks.add(start_block)
+            if wanted_decompressed == 0:
+                wanted_decompressed += ((start_block + 1) * self.n_per_block) - start
+            else:
+                wanted_decompressed += self.n_per_block
+            start_block += 1
+
+    def read_full(self):
+        return self.chunk_store[self.store_key]

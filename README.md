@@ -47,8 +47,8 @@
 <tr>
   <td>Coverage</td>
   <td>
-    <a href="https://coveralls.io/github/zarr-developers/zarr-python?branch=master">
-    <img src="https://coveralls.io/repos/github/zarr-developers/zarr-python/badge.svg?branch=master" alt="coverage" />
+    <a href="https://codecov.io/gh/zarr-developers/zarr-python">
+    <img src="https://codecov.io/gh/zarr-developers/zarr-python/branch/master/graph/badge.svg"/ alt="coverage">
     </a>
   </td>
 </tr>
@@ -68,6 +68,15 @@
 		</a>
 	</td>
 </tr>
+<tr>
+	<td>Citation</td>
+	<td>
+		<a href="https://doi.org/10.5281/zenodo.3773450">
+			<img src="https://zenodo.org/badge/DOI/10.5281/zenodo.3773450.svg" alt="DOI">
+		</a>
+	</td>
+</tr>
+
 </table>
 
 ## What is it?

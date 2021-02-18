@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 #
 # zarr documentation build configuration file, created by
 # sphinx-quickstart on Mon May  2 21:40:09 2016.
@@ -42,6 +41,7 @@ extensions = [
     'sphinx.ext.autodoc',
     'sphinx.ext.autosummary',
     'sphinx.ext.viewcode',
+    'sphinx.ext.intersphinx',
     'numpydoc',
     'sphinx_issues',
 ]
@@ -306,4 +306,7 @@ texinfo_documents = [
 
 
 # Example configuration for intersphinx: refer to the Python standard library.
-intersphinx_mapping = {'https://docs.python.org/': None}
+# use in refs e.g:
+# :ref:`comparison manual <python:comparisons>`
+intersphinx_mapping = { 'python':('https://docs.python.org/', None), 
+                        'numpy': ('https://numpy.org/doc/stable/', None)}
