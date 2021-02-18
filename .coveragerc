@@ -1,5 +1,7 @@
 [run]
-omit = zarr/meta_v1.py
+omit =
+    zarr/meta_v1.py
+    bench/compress_normal.py
 
 [report]
 exclude_lines =

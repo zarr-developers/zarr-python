@@ -14,18 +14,19 @@ environment:
     # See: http://stackoverflow.com/a/13751649/163740
     CMD_IN_ENV: "cmd /E:ON /V:ON /C .\\build.cmd"
     EMULATOR_LOC: C:\\Program Files (x86)\\Microsoft SDKs\\Azure\\Storage Emulator\\AzureStorageEmulator.exe
-    ZARR_TEST_ABS: 1
 
   matrix:
-
     - PYTHON: "C:\\Python36-x64"
       PYTHON_VERSION: "3.6"
+      ZARR_TEST_ABS: 0
 
     - PYTHON: "C:\\Python37-x64"
       PYTHON_VERSION: "3.7"
+      ZARR_TEST_ABS: 0
 
     - PYTHON: "C:\\Python38-x64"
       PYTHON_VERSION: "3.8"
+      ZARR_TEST_ABS: 1
 
 install:
   - "SET PATH=%PYTHON%;%PYTHON%\\Scripts;%PATH%"
@@ -45,3 +46,6 @@ test_script:
 
 after_test:
   - '"%EMULATOR_LOC%" stop'
+  
+matrix:
+  fast_finish: true
