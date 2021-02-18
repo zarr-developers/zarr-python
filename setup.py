@@ -1,6 +1,3 @@
-# -*- coding: utf-8 -*-
-import sys
-
 from setuptools import setup
 
 DESCRIPTION = 'An implementation of chunked, compressed, ' \
@@ -24,13 +21,19 @@ setup(
     use_scm_version={
         'version_scheme': 'guess-next-dev',
         'local_scheme': 'dirty-tag',
-        'write_to': 'zarr/version.py'
+        'write_to': 'zarr/version.py',
     },
     setup_requires=[
         'setuptools>=38.6.0',
-        'setuptools-scm>1.5.4'
+        'setuptools-scm>1.5.4',
     ],
-    python_requires='>=3.5',
+    extras_require={
+        'jupyter': [
+            'notebook',
+            'ipytree',
+        ],
+    },
+    python_requires='>=3.6, <4',
     install_requires=dependencies,
     package_dir={'': '.'},
     packages=['zarr', 'zarr.tests'],
@@ -44,9 +47,9 @@ setup(
         'Topic :: Software Development :: Libraries :: Python Modules',
         'Operating System :: Unix',
         'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.5',
         'Programming Language :: Python :: 3.6',
         'Programming Language :: Python :: 3.7',
+        'Programming Language :: Python :: 3.8',
     ],
     maintainer='Alistair Miles',
     maintainer_email='alimanfoo@googlemail.com',

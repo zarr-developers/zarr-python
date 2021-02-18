@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 import atexit
 import shutil
 import tempfile

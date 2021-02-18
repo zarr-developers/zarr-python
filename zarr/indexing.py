@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 import collections
 import itertools
 import math
@@ -6,8 +5,14 @@ import numbers
 
 import numpy as np
 
-from zarr.errors import (err_boundscheck, err_negative_step,
-                         err_too_many_indices, err_vindex_invalid_selection)
+
+from zarr.errors import (
+    ArrayIndexError,
+    NegativeStepError,
+    err_too_many_indices,
+    VindexInvalidSelectionError,
+    BoundsCheckError,
+)
 
 
 def is_integer(x):
@@ -47,7 +52,7 @@ def normalize_integer_selection(dim_sel, dim_len):
 
     # handle out of bounds
     if dim_sel >= dim_len or dim_sel < 0:
-        err_boundscheck(dim_len)
+        raise BoundsCheckError(dim_len)
 
     return dim_sel
 
@@ -102,7 +107,7 @@ class SliceDimIndexer(object):
         # normalize
         self.start, self.stop, self.step = dim_sel.indices(dim_len)
         if self.step < 1:
-            err_negative_step()
+            raise NegativeStepError()
 
         # store attributes
         self.dim_len = dim_len
@@ -386,7 +391,7 @@ def wraparound_indices(x, dim_len):
 
 def boundscheck_indices(x, dim_len):
     if np.any(x < 0) or np.any(x >= dim_len):
-        err_boundscheck(dim_len)
+        raise BoundsCheckError(dim_len)
 
 
 class IntArrayDimIndexer(object):
@@ -468,7 +473,7 @@ class IntArrayDimIndexer(object):
             yield ChunkDimProjection(dim_chunk_ix, dim_chunk_sel, dim_out_sel)
 
 
-def slice_to_range(s, l):
+def slice_to_range(s: slice, l: int):  # noqa: E741
     return range(*s.indices(l))
 
 
@@ -691,11 +696,7 @@ class CoordinateIndexer(object):
         self.chunk_rixs = np.nonzero(self.chunk_nitems)[0]
 
         # unravel chunk indices
-        if tuple(map(int, np.__version__.split('.')[:2])) < (1, 16):
-            self.chunk_mixs = np.unravel_index(self.chunk_rixs, dims=array._cdata_shape)
-        else:
-            # deal with change dims->shape in arguments as of numpy 1.16
-            self.chunk_mixs = np.unravel_index(self.chunk_rixs, shape=array._cdata_shape)
+        self.chunk_mixs = np.unravel_index(self.chunk_rixs, array._cdata_shape)
 
     def __iter__(self):
 
@@ -744,7 +745,7 @@ class MaskIndexer(CoordinateIndexer):
         selection = np.nonzero(selection[0])
 
         # delegate the rest to superclass
-        super(MaskIndexer, self).__init__(selection, array)
+        super().__init__(selection, array)
 
 
 class VIndex(object):
@@ -761,7 +762,7 @@ class VIndex(object):
         elif is_mask_selection(selection, self.array):
             return self.array.get_mask_selection(selection, fields=fields)
         else:
-            err_vindex_invalid_selection(selection)
+            raise VindexInvalidSelectionError(selection)
 
     def __setitem__(self, selection, value):
         fields, selection = pop_fields(selection)
@@ -772,7 +773,7 @@ class VIndex(object):
         elif is_mask_selection(selection, self.array):
             self.array.set_mask_selection(selection, value, fields=fields)
         else:
-            err_vindex_invalid_selection(selection)
+            raise VindexInvalidSelectionError(selection)
 
 
 def check_fields(fields, dtype):
@@ -826,3 +827,116 @@ def pop_fields(selection):
         selection = tuple(s for s in selection if not isinstance(s, str))
         selection = selection[0] if len(selection) == 1 else selection
     return fields, selection
+
+
+def make_slice_selection(selection):
+    ls = []
+    for dim_selection in selection:
+        if is_integer(dim_selection):
+            ls.append(slice(dim_selection, dim_selection + 1, 1))
+        elif isinstance(dim_selection, np.ndarray):
+            if len(dim_selection) == 1:
+                ls.append(slice(dim_selection[0], dim_selection[0] + 1, 1))
+            else:
+                raise ArrayIndexError()
+        else:
+            ls.append(dim_selection)
+    return ls
+
+
+class PartialChunkIterator(object):
+    """Iterator to retrieve the specific coordinates of requested data
+    from within a compressed chunk.
+
+    Parameters
+    ----------
+    selection : tuple
+        tuple of slice objects to take from the chunk
+    arr_shape : shape of chunk to select data from
+
+    Attributes
+    -----------
+    arr_shape
+    selection
+
+    Returns
+    -------
+    Tuple with 3 elements:
+
+    start: int
+        elements offset in the chunk to read from
+    nitems: int
+        number of elements to read in the chunk from start
+    partial_out_selection: list of slices
+        indices of a temporary empty array of size `Array._chunks` to assign
+        the decompressed data to after the partial read.
+
+    Notes
+    -----
+    An array is flattened when compressed with blosc, so this iterator takes
+    the wanted selection of an array and determines the wanted coordinates
+    of the flattened, compressed data to be read and then decompressed. The
+    decompressed data is then placed in a temporary empty array of size
+    `Array._chunks` at the indices yielded as partial_out_selection.
+    Once all the slices yielded by this iterator have been read, decompressed
+    and written to the temporary array, the wanted slice of the chunk can be
+    indexed from the temporary array and written to the out_selection slice
+    of the out array.
+
+    """
+
+    def __init__(self, selection, arr_shape):
+        selection = make_slice_selection(selection)
+        self.arr_shape = arr_shape
+
+        # number of selection dimensions can't be greater than the number of chunk dimensions
+        if len(selection) > len(self.arr_shape):
+            raise ValueError(
+                "Selection has more dimensions then the array:\n"
+                f"selection dimensions = {len(selection)}\n"
+                f"array dimensions = {len(self.arr_shape)}"
+            )
+
+        # any selection can not be out of the range of the chunk
+        selection_shape = np.empty(self.arr_shape)[tuple(selection)].shape
+        if any(
+            [
+                selection_dim < 0 or selection_dim > arr_dim
+                for selection_dim, arr_dim in zip(selection_shape, self.arr_shape)
+            ]
+        ):
+            raise IndexError(
+                "a selection index is out of range for the dimension"
+            )  # pragma: no cover
+
+        for i, dim_size in enumerate(self.arr_shape[::-1]):
+            index = len(self.arr_shape) - (i + 1)
+            if index <= len(selection) - 1:
+                slice_size = selection_shape[index]
+                if slice_size == dim_size and index > 0:
+                    selection.pop()
+                else:
+                    break
+
+        chunk_loc_slices = []
+        last_dim_slice = None if selection[-1].step > 1 else selection.pop()
+        for arr_shape_i, sl in zip(arr_shape, selection):
+            dim_chunk_loc_slices = []
+            assert isinstance(sl, slice)
+            for x in slice_to_range(sl, arr_shape_i):
+                dim_chunk_loc_slices.append(slice(x, x + 1, 1))
+            chunk_loc_slices.append(dim_chunk_loc_slices)
+        if last_dim_slice:
+            chunk_loc_slices.append([last_dim_slice])
+        self.chunk_loc_slices = list(itertools.product(*chunk_loc_slices))
+
+    def __iter__(self):
+        chunk1 = self.chunk_loc_slices[0]
+        nitems = (chunk1[-1].stop - chunk1[-1].start) * np.prod(
+            self.arr_shape[len(chunk1):], dtype=int
+        )
+        for partial_out_selection in self.chunk_loc_slices:
+            start = 0
+            for i, sl in enumerate(partial_out_selection):
+                start += sl.start * np.prod(self.arr_shape[i + 1:], dtype=int)
+            yield start, nitems, partial_out_selection
