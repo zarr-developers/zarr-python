@@ -1,8 +1,6 @@
 import collections
-from distutils.version import LooseVersion
 from collections.abc import MutableMapping
 import os
-import sys
 
 import pytest
 
@@ -50,10 +48,8 @@ def skip_test_env_var(name):
 
 
 try:
-    if LooseVersion(sys.version) >= LooseVersion("3.6"):
-        import fsspec  # noqa: F401
-        have_fsspec = True
-    else:  # pragma: no cover
-        have_fsspec = False
+    import fsspec  # noqa: F401
+
+    have_fsspec = True
 except ImportError:  # pragma: no cover
     have_fsspec = False

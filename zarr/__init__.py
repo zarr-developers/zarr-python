@@ -16,3 +16,6 @@ from zarr.storage import (ABSStore, DBMStore, DictStore, DirectoryStore,
                           TempStore, ZipStore, LRUChunkCache)
 from zarr.sync import ProcessSynchronizer, ThreadSynchronizer
 from zarr.version import version as __version__
+
+# in case setuptools scm screw up and find version to be 0.0.0
+assert not __version__.startswith("0.0.0")
