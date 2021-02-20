@@ -1650,7 +1650,6 @@ class Array:
             self._chunk_setitems(lchunk_coords, lchunk_selection, chunk_values,
                                  fields=fields)
 
-
     def _select_and_set_out(self, fields, chunk, chunk_selection, drop_axes,
                             out, out_selection):
         # select data from chunk
@@ -1955,7 +1954,7 @@ class Array:
                 chunk[chunk_selection] = value
 
         # encode chunk
-        return self._encode_chunk(chunk)
+        cdata = self._encode_chunk(chunk)
 
         # cache the chunk
         if self._chunk_cache is not None:
@@ -1963,6 +1962,8 @@ class Array:
             if self.dtype == object:
                 chunk = self._decode_chunk(cdata)
             self._chunk_cache[ckey] = np.copy(chunk)
+
+        return cdata
 
     def _chunk_key(self, chunk_coords):
         return self._key_prefix + '.'.join(map(str, chunk_coords))
