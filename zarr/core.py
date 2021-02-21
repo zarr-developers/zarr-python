@@ -758,10 +758,7 @@ class Array:
 
         # check for cached chunk
         if self._chunk_cache is not None:
-            try:
-                chunk = self._chunk_cache[ckey]
-            except KeyError:
-                pass
+            chunk = self._chunk_cache.get(ckey)
 
         if chunk is None:
             try:
