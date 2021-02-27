@@ -91,8 +91,7 @@ def test_coverage_rename():
 
 def test_deprecated_listdir_nosotre():
     store = dict()
-    with warnings.catch_warnings():
-        warnings.simplefilter("default")
+    with pytest.warns(UserWarning, match="has not `listdir`"):
         listdir(store)
 
 
