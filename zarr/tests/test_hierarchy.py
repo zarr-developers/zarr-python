@@ -1017,6 +1017,11 @@ class TestGroupWithZipStore(TestGroup):
         with pytest.raises(ValueError):
             store.zf.extractall()
 
+    def test_move(self):
+        # zip store is not erasable (can so far only append to a zip
+        # so we can't test for move.
+        pass
+
 
 class TestGroupWithDBMStore(TestGroup):
 
