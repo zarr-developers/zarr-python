@@ -226,7 +226,7 @@ def rmdir(store: Store, path: Path = None):
     this will be called, otherwise will fall back to implementation via the
     `Store` interface."""
     path = normalize_storage_path(path)
-    if hasattr(store, 'rmdir'):
+    if hasattr(store, "rmdir") and store.is_erasable():
         # pass through
         store.rmdir(path)  # type: ignore
     else:
