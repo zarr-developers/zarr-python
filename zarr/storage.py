@@ -146,18 +146,9 @@ class Store(MutableMapping):
         path = normalize_storage_path(path)
         _rmdir_from_keys(self, path)
 
-    # def getsize(self, path: Path = None):
-    #    pass
-
-    # def clear(self):
-    #    pass
-
     def close(self) -> None:
         """Do nothing by default"""
         pass
-
-    # def pop(self, key):
-    #    raise NotImplementedError
 
     @staticmethod
     def _ensure_store(store):
@@ -646,56 +637,37 @@ class KVStore(Store):
     """
 
     def __init__(self, mutablemapping):
-        self.mm = mutablemapping
+        self._mutable_mapping = mutablemapping
 
     def __getitem__(self, key):
-        return self.mm[key]
+        return self._mutable_mapping[key]
 
     def __setitem__(self, key, value):
-        # assert isinstance(value, bytes)
-        self.mm[key] = value
+        self._mutable_mapping[key] = value
 
     def __delitem__(self, key):
-        del self.mm[key]
+        del self._mutable_mapping[key]
 
     def get(self, key, default=None):
-        return self.mm.get(key, default)
+        return self._mutable_mapping.get(key, default)
 
     def values(self):
-        return self.mm.values()
+        return self._mutable_mapping.values()
 
     def __iter__(self):
-        return iter(self.mm)
+        return iter(self._mutable_mapping)
 
     def __len__(self):
-        return len(self.mm)
+        return len(self._mutable_mapping)
 
     def __repr__(self):
-        return f"<{self.__class__.__name__}: \n{repr(self.mm)}\n at {hex(id(self))}>"
+        return f"<{self.__class__.__name__}: \n{repr(self._mutable_mapping)}\n at {hex(id(self))}>"
 
     def __eq__(self, other):
         if isinstance(other, KVStore):
-            return self.mm == other.mm
+            return self._mutable_mapping == other._mutable_mapping
         else:
             return NotImplemented
-
-    # def __contains__(self, key):
-    #    return key in self.mm
-
-    # def pop(self):
-    #    return self.mm.pop()
-
-    # def popitem
-    # def clear
-    # def update
-    # def setdefault
-    # def __eq__
-    # def __ne__
-    # def __contains__
-    # def keys()
-    # def items()
-    # def values()
-    # def get
 
 
 class MemoryStore(Store):
