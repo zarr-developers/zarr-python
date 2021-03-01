@@ -1,10 +1,40 @@
 Release notes
 =============
 
+2.7.0
+-----
+
+* Compare test data's content generally
+  By :user:`John Kirkham <jakirkham>`; :issue:`436`.
+
+* Fix dtype usage in zarr/meta.py
+  By :user:`Josh Moore <joshmoore>`; :issue:`700`.
+
+* Fix FSStore key_seperator usage
+  By :user:`Josh Moore <joshmoore>`; :issue:`669`.
+
+* Add capability to partially read and decompress chunks
+  By :user:`Andrew Fulton <andrewfulton9>`; :issue:`667`.
+
+* Simplify text handling in DB Store
+  By :user:`John Kirkham <jakirkham>`; :issue:`670`.
+
+* GitHub Actions migration
+  By :user:`Matthias Bussonnier <Carreau>`;
+  :issue:`641`, :issue:`671`, :issue:`674`, :issue:`676`, :issue:`677`, :issue:`678`,
+  :issue:`679`, :issue:`680`, :issue:`682`, :issue:`684`, :issue:`685`, :issue:`686`,
+  :issue:`687`, :issue:`695`.
+
+2.6.1
+-----
+
+* Minor build fix
+  By :user:`Matthias Bussonnier <Carreau>`; :issue:`666`.
+
 2.6.0
 -----
 
-This release od Zarr Python is is the first release of Zarr to not supporting Python 3.5.
+This release of Zarr Python is is the first release of Zarr to not support Python 3.5.
 
 * End Python 3.5 support.
   By :user:`Chris Barnes <clbarnes>`; :issue:`602`.
