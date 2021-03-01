@@ -1022,6 +1022,8 @@ class FSStore(MutableMapping):
     storage_options : passed to the fsspec implementation
     """
 
+    _META_KEYS = (attrs_key, group_meta_key, array_meta_key)
+
     def __init__(self, url, normalize_keys=True, key_separator='.',
                  mode='w',
                  exceptions=(KeyError, PermissionError, IOError),
@@ -1041,7 +1043,11 @@ class FSStore(MutableMapping):
         key = normalize_storage_path(key).lstrip('/')
         if key:
             *bits, end = key.split('/')
-            key = '/'.join(bits + [end.replace('.', self.key_separator)])
+
+            if end not in FSStore._META_KEYS:
+                end = end.replace('.', self.key_separator)
+                key = '/'.join(bits + [end])
+
         return key.lower() if self.normalize_keys else key
 
     def getitems(self, keys, **kwargs):
