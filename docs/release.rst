@@ -1,8 +1,8 @@
 Release notes
 =============
 
-2.7.0
------
+Next release (e.g. 2.7.0)
+-------------------------
 
 * Compare test data's content generally
   By :user:`John Kirkham <jakirkham>`; :issue:`436`.
