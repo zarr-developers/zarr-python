@@ -863,7 +863,7 @@ class DirectoryStore(MutableMapping):
             # move temporary file into place;
             # make several attempts at writing the temporary file to get past
             # potential antivirus file locking issues
-            retry_call(os.replace, (temp_path, file_path))
+            retry_call(os.replace, (temp_path, file_path), exceptions=(PermissionError,))
 
         finally:
             # clean up if temp file still exists for whatever reason
