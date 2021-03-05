@@ -169,13 +169,11 @@ server locally and set the environment variable ``ZARR_TEST_MONGO=1``.
 To run the Redis storage tests, run a Redis server locally on port
 6379 and set the environment variable ``ZARR_TEST_REDIS=1``.
 
-All tests are automatically run via Travis (Linux) and AppVeyor
-(Windows) continuous integration services for every pull
-request. Tests must pass under both Travis and Appveyor before code
-can be accepted. Test coverage is also collected automatically via the
-Coveralls service, and total coverage over all builds must be 100%
-(although individual builds may be lower due to Python 2/3 or other
-differences).
+All tests are automatically run via GitHub Actions for every pull
+request and must pass before code can be accepted. Test coverage is
+also collected automatically via the Codecov service, and total
+coverage over all builds must be 100% (although individual builds
+may be lower due to Python 2/3 or other differences).
 
 Code standards
 ~~~~~~~~~~~~~~
@@ -196,8 +194,8 @@ and produce a coverage report. This should be 100% before code can be accepted i
 main code base.
 
 When submitting a pull request, coverage will also be collected across all supported
-Python versions via the Coveralls service, and will be reported back within the pull
-request. Coveralls coverage must also be 100% before code can be accepted.
+Python versions via the Codecov service, and will be reported back within the pull
+request. Codecov coverage must also be 100% before code can be accepted.
 
 Documentation
 ~~~~~~~~~~~~~
@@ -239,8 +237,8 @@ Pull requests submitted by an external contributor should be reviewed and approv
 one core developers before being merged. Ideally, pull requests submitted by a core developer
 should be reviewed and approved by at least one other core developers before being merged.
 
-Pull requests should not be merged until all CI checks have passed (Travis, AppVeyor,
-Coveralls) against code that has had the latest master merged in.
+Pull requests should not be merged until all CI checks have passed (GitHub Actions
+Codecov) against code that has had the latest master merged in.
 
 Compatibility and versioning policies
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
