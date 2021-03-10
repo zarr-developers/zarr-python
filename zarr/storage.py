@@ -136,14 +136,14 @@ class Store(MutableMapping):
         if not self.is_erasable():
             raise NotImplementedError(
                 f'{type(self)} is not erasable, cannot call "rmdir"'
-            )
+            )  # pragma: no cover
         _rename_from_keys(self, src_path, dst_path)
 
     def rmdir(self, path: str = "") -> None:
         if not self.is_erasable():
             raise NotImplementedError(
                 f'{type(self)} is not erasable, cannot call "rmdir"'
-            )
+            )  # pragma: no cover
         path = normalize_storage_path(path)
         _rmdir_from_keys(self, path)
 
