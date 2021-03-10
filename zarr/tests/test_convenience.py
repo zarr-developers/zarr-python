@@ -23,8 +23,12 @@ from zarr.convenience import (
 from zarr.core import Array
 from zarr.errors import CopyError
 from zarr.hierarchy import Group, group
-from zarr.storage import (ConsolidatedMetadataStore, MemoryStore,
-                          atexit_rmtree, getsize)
+from zarr.storage import (
+    ConsolidatedMetadataStore,
+    MemoryStore,
+    atexit_rmtree,
+    getsize,
+)
 
 
 def test_open_array():
