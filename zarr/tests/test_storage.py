@@ -9,7 +9,6 @@ import unittest
 from contextlib import contextmanager
 from pickle import PicklingError
 from zipfile import ZipFile
-import warnings
 
 import numpy as np
 import pytest
