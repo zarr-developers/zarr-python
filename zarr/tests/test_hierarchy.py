@@ -738,42 +738,39 @@ class TestGroup(unittest.TestCase):
         data = np.arange(100)
         g['foo'] = data
 
-        try:
-            g.move('foo', 'bar')
-            assert 'foo' not in g
-            assert 'bar' in g
-            assert_array_equal(data, g['bar'])
+        g.move("foo", "bar")
+        assert "foo" not in g
+        assert "bar" in g
+        assert_array_equal(data, g["bar"])
 
-            g.move('bar', 'foo/bar')
-            assert 'bar' not in g
-            assert 'foo' in g
-            assert 'foo/bar' in g
-            assert isinstance(g['foo'], Group)
-            assert_array_equal(data, g['foo/bar'])
+        g.move("bar", "foo/bar")
+        assert "bar" not in g
+        assert "foo" in g
+        assert "foo/bar" in g
+        assert isinstance(g["foo"], Group)
+        assert_array_equal(data, g["foo/bar"])
 
-            g.move('foo', 'foo2')
-            assert 'foo' not in g
-            assert 'foo/bar' not in g
-            assert 'foo2' in g
-            assert 'foo2/bar' in g
-            assert isinstance(g['foo2'], Group)
-            assert_array_equal(data, g['foo2/bar'])
+        g.move("foo", "foo2")
+        assert "foo" not in g
+        assert "foo/bar" not in g
+        assert "foo2" in g
+        assert "foo2/bar" in g
+        assert isinstance(g["foo2"], Group)
+        assert_array_equal(data, g["foo2/bar"])
 
-            g2 = g['foo2']
-            g2.move('bar', '/bar')
-            assert 'foo2' in g
-            assert 'foo2/bar' not in g
-            assert 'bar' in g
-            assert isinstance(g['foo2'], Group)
-            assert_array_equal(data, g['bar'])
+        g2 = g["foo2"]
+        g2.move("bar", "/bar")
+        assert "foo2" in g
+        assert "foo2/bar" not in g
+        assert "bar" in g
+        assert isinstance(g["foo2"], Group)
+        assert_array_equal(data, g["bar"])
 
-            with pytest.raises(ValueError):
-                g2.move('bar', 'bar2')
+        with pytest.raises(ValueError):
+            g2.move("bar", "bar2")
 
-            with pytest.raises(ValueError):
-                g.move('bar', 'boo')
-        except NotImplementedError:
-            pass
+        with pytest.raises(ValueError):
+            g.move("bar", "boo")
 
         g.store.close()
 
