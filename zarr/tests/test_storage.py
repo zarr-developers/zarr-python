@@ -1216,14 +1216,14 @@ class TestNestedFSStore(TestNestedDirectoryStore):
         store = self.create_store()
         group = zarr.group(store=store)
         arr = group.create_dataset('0', shape=(10, 10))
-        values = np.arange(100).reshape((10,10))
+        values = np.arange(100).reshape((10, 10))
         arr[:] = values
         assert_array_equal(arr, values)
 
         # Read it back
         store = self.create_store(path=store.path)
         assert_array_equal(zarr.open_group(store.path)["0"], values)
-        
+
 
 class TestTempStore(StoreTests, unittest.TestCase):
 
