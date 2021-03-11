@@ -1216,7 +1216,7 @@ class TestNestedFSStore(TestNestedDirectoryStore):
         group = zarr.group(store=store)
         arr = group.create_dataset('0', shape=(10, 10))
         arr[1] = 1
-        
+
         # Read it back
         store = self.create_store(path=store.path)
         zarr.open_group(store.path)["0"]
