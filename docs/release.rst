@@ -1,8 +1,24 @@
 Release notes
 =============
 
-Next release (e.g. 2.7.0)
--------------------------
+2.7.0
+-----
+
+Enhancements
+~~~~~~~~~~~~
+
+* Start stop for iterator (`islice()`)
+  By :user:`Sebastian Grill <yetyetanotherusername>`; :issue:`621`.
+
+* Add capability to partially read and decompress chunks
+  By :user:`Andrew Fulton <andrewfulton9>`; :issue:`667`.
+
+
+Bug fixes
+~~~~~~~~~
+
+* Make DirectoryStore __setitem__ resilient against antivirus file locking
+  By :user:`Eric Younkin <ericgyounkin>`; :issue:`698`.
 
 * Compare test data's content generally
   By :user:`John Kirkham <jakirkham>`; :issue:`436`.
@@ -13,9 +29,6 @@ Next release (e.g. 2.7.0)
 * Fix FSStore key_seperator usage
   By :user:`Josh Moore <joshmoore>`; :issue:`669`.
 
-* Add capability to partially read and decompress chunks
-  By :user:`Andrew Fulton <andrewfulton9>`; :issue:`667`.
-
 * Simplify text handling in DB Store
   By :user:`John Kirkham <jakirkham>`; :issue:`670`.
 
@@ -23,7 +36,7 @@ Next release (e.g. 2.7.0)
   By :user:`Matthias Bussonnier <Carreau>`;
   :issue:`641`, :issue:`671`, :issue:`674`, :issue:`676`, :issue:`677`, :issue:`678`,
   :issue:`679`, :issue:`680`, :issue:`682`, :issue:`684`, :issue:`685`, :issue:`686`,
-  :issue:`687`, :issue:`695`.
+  :issue:`687`, :issue:`695`, :issue:`706`.
 
 2.6.1
 -----
@@ -115,6 +128,10 @@ This release will be the last to support Python 3.5, next version of Zarr will b
   from stores that implement this; presently HTTP, S3, GCS. Currently only
   applies to reading.
   By :user:`Martin Durant <martindurant>`; :issue:`606`
+
+* Efficient iteration expanded with option to pass start and stop index via
+  ``array.islice``.
+  By :user:`Sebastian Grill <yetyetanotherusername>`, :issue:`615`.
 
 .. _release_2.4.0:
 

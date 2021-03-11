@@ -458,17 +458,71 @@ class Array:
             a = a.astype(args[0])
         return a
 
-    def __iter__(self):
+    def islice(self, start=None, end=None):
+        """
+        Yield a generator for iterating over the entire or parts of the
+        array. Uses a cache so chunks only have to be decompressed once.
+
+        Parameters
+        ----------
+        start : int, optional
+            Start index for the generator to start at. Defaults to 0.
+        end : int, optional
+            End index for the generator to stop at. Defaults to self.shape[0].
+
+        Yields
+        ------
+        out : generator
+            A generator that can be used to iterate over the requested region
+            the array.
+
+        Examples
+        --------
+        Setup a 1-dimensional array::
+
+            >>> import zarr
+            >>> import numpy as np
+            >>> z = zarr.array(np.arange(100))
+
+        Iterate over part of the array:
+            >>> for value in z.islice(25, 30): value;
+            25
+            26
+            27
+            28
+            29
+        """
+
         if len(self.shape) == 0:
             # Same error as numpy
             raise TypeError("iteration over a 0-d array")
+        if start is None:
+            start = 0
+        if end is None or end > self.shape[0]:
+            end = self.shape[0]
+
+        if not isinstance(start, int) or start < 0:
+            raise ValueError('start must be a nonnegative integer')
+
+        if not isinstance(end, int) or end < 0:
+            raise ValueError('end must be a nonnegative integer')
+
         # Avoid repeatedly decompressing chunks by iterating over the chunks
         # in the first dimension.
         chunk_size = self.chunks[0]
-        for j in range(self.shape[0]):
+        chunk = None
+        for j in range(start, end):
             if j % chunk_size == 0:
                 chunk = self[j: j + chunk_size]
+            # init chunk if we start offset of chunk borders
+            elif chunk is None:
+                chunk_start = j - j % chunk_size
+                chunk_end = chunk_start + chunk_size
+                chunk = self[chunk_start:chunk_end]
             yield chunk[j % chunk_size]
+
+    def __iter__(self):
+        return self.islice()
 
     def __len__(self):
         if self.shape:
