@@ -2435,7 +2435,8 @@ class TestArrayWithFSStore(TestArray):
     def create_array(read_only=False, **kwargs):
         path = mkdtemp()
         atexit.register(shutil.rmtree, path)
-        store = FSStore(path)
+        key_separator = kwargs.pop('key_separator', "/")
+        store = FSStore(path, key_separator=key_separator, auto_mkdir=True)
         cache_metadata = kwargs.pop('cache_metadata', True)
         cache_attrs = kwargs.pop('cache_attrs', True)
         kwargs.setdefault('compressor', Blosc())
