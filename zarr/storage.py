@@ -1051,8 +1051,11 @@ class FSStore(MutableMapping):
         return key.lower() if self.normalize_keys else key
 
     def getitems(self, keys, **kwargs):
-        keys = [self._normalize_key(key) for key in keys]
-        return self.map.getitems(keys, on_error="omit")
+        keys_transformed = [self._normalize_key(key) for key in keys]
+        results = self.map.getitems(keys_transformed, on_error="omit")
+        # The function calling this method may not recognize the transformed keys
+        # So we send the values returned by self.map.getitems back into the original key space.        
+        return {keys[keys_transformed.index(rk)]: rv for rk,rv in results.items()}
 
     def __getitem__(self, key):
         key = self._normalize_key(key)
