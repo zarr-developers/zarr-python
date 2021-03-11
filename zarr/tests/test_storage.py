@@ -1222,7 +1222,7 @@ class TestNestedFSStore(TestNestedDirectoryStore):
 
         # Read it back
         store = self.create_store(path=store.path)
-        assert_array_equal(zarr.open_group(store.path)["0"], values)
+        assert_array_equal(zarr.open_group(store=store)["0"], values)
 
 
 class TestTempStore(StoreTests, unittest.TestCase):
