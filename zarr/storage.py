@@ -1117,9 +1117,26 @@ class FSStore(MutableMapping):
     def listdir(self, path=None):
         dir_path = self.dir_path(path)
         try:
-            out = sorted(p.rstrip('/').rsplit('/', 1)[-1]
-                         for p in self.fs.ls(dir_path, detail=False))
-            return out
+            children = sorted(p.rstrip('/').rsplit('/', 1)[-1]
+                              for p in self.fs.ls(dir_path, detail=False))
+            if self.key_separator == '/':
+                if array_meta_key in children:
+                    # special handling of directories containing an array to map nested chunk
+                    # keys back to standard chunk keys
+                    new_children = []
+                    root_path = self.dir_path(path)
+                    for entry in children:
+                        entry_path = os.path.join(root_path, entry)
+                        if _prog_number.match(entry) and self.fs.isdir(entry_path):
+                            for dir_path, _, file_names in self.fs.walk(entry_path):
+                                for file_name in file_names:
+                                    file_path = os.path.join(dir_path, file_name)
+                                    rel_path = file_path.split(root_path)[1]
+                                    new_children.append(rel_path.replace(os.path.sep, '.'))
+                        else:
+                            new_children.append(entry)
+                    return sorted(new_children)
+            return children
         except IOError:
             return []
 
@@ -2592,6 +2609,7 @@ class RedisStore(MutableMapping):
         Keyword arguments passed through to the `redis.Redis` function.
 
     """
+
     def __init__(self, prefix='zarr', **kwargs):
         import redis
         self._prefix = prefix
@@ -2677,6 +2695,7 @@ class ConsolidatedMetadataStore(MutableMapping):
     zarr.convenience.consolidate_metadata, zarr.convenience.open_consolidated
 
     """
+
     def __init__(self, store, metadata_key='.zmetadata'):
         self.store = store
 
