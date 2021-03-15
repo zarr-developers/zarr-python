@@ -1119,7 +1119,9 @@ class FSStore(MutableMapping):
         try:
             children = sorted(p.rstrip('/').rsplit('/', 1)[-1]
                               for p in self.fs.ls(dir_path, detail=False))
-            if self.key_separator == '/':
+            if self.key_separator != "/":
+                return children
+            else:
                 if array_meta_key in children:
                     # special handling of directories containing an array to map nested chunk
                     # keys back to standard chunk keys
@@ -1136,7 +1138,8 @@ class FSStore(MutableMapping):
                         else:
                             new_children.append(entry)
                     return sorted(new_children)
-            return children
+                else:
+                    return children
         except IOError:
             return []
 
