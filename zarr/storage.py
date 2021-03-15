@@ -1130,11 +1130,10 @@ class FSStore(MutableMapping):
                     for entry in children:
                         entry_path = os.path.join(root_path, entry)
                         if _prog_number.match(entry) and self.fs.isdir(entry_path):
-                            for dir_path, _, file_names in self.fs.walk(entry_path):
-                                for file_name in file_names:
-                                    file_path = os.path.join(dir_path, file_name)
-                                    rel_path = file_path.split(root_path)[1]
-                                    new_children.append(rel_path.replace(os.path.sep, '.'))
+                            for file_name in self.fs.find(entry_path):
+                                file_path = os.path.join(dir_path, file_name)
+                                rel_path = file_path.split(root_path)[1]
+                                new_children.append(rel_path.replace(os.path.sep, '.'))
                         else:
                             new_children.append(entry)
                     return sorted(new_children)
