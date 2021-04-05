@@ -53,7 +53,7 @@ from zarr.errors import (
 from zarr.meta import encode_array_metadata, encode_group_metadata
 from zarr.util import (buffer_size, json_loads, nolock, normalize_chunks,
                        normalize_dtype, normalize_fill_value, normalize_order,
-                       normalize_shape, normalize_storage_path)
+                       normalize_shape, normalize_storage_path, retry_call)
 
 __doctest_requires__ = {
     ('RedisStore', 'RedisStore.*'): ['redis'],
@@ -860,8 +860,10 @@ class DirectoryStore(MutableMapping):
         try:
             self._tofile(value, temp_path)
 
-            # move temporary file into place
-            os.replace(temp_path, file_path)
+            # move temporary file into place;
+            # make several attempts at writing the temporary file to get past
+            # potential antivirus file locking issues
+            retry_call(os.replace, (temp_path, file_path), exceptions=(PermissionError,))
 
         finally:
             # clean up if temp file still exists for whatever reason

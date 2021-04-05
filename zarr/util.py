@@ -4,6 +4,7 @@ import math
 import numbers
 from textwrap import TextWrapper
 import mmap
+import time
 
 import numpy as np
 from asciitree import BoxStyle, LeftAligned
@@ -12,7 +13,8 @@ from numcodecs.compat import ensure_ndarray, ensure_text
 from numcodecs.registry import codec_registry
 from numcodecs.blosc import cbuffer_sizes, cbuffer_metainfo
 
-from typing import Any, Dict, Tuple, Union
+from typing import Any, Callable, Dict, Tuple, Union
+
 
 # codecs to use for object dtype convenience API
 object_codecs = {
@@ -609,3 +611,30 @@ class PartialReadBuffer:
 
     def read_full(self):
         return self.chunk_store[self.store_key]
+
+
+def retry_call(callabl: Callable,
+               args=None,
+               kwargs=None,
+               exceptions: Tuple[Any, ...] = (),
+               retries: int = 10,
+               wait: float = 0.1) -> Any:
+    """
+    Make several attempts to invoke the callable. If one of the given exceptions
+    is raised, wait the given period of time and retry up to the given number of
+    retries.
+    """
+
+    if args is None:
+        args = ()
+    if kwargs is None:
+        kwargs = {}
+
+    for attempt in range(1, retries+1):
+        try:
+            return callabl(*args, **kwargs)
+        except exceptions:
+            if attempt < retries:
+                time.sleep(wait)
+            else:
+                raise

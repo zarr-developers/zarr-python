@@ -7,7 +7,7 @@ import pytest
 from zarr.util import (guess_chunks, human_readable_size, info_html_report,
                        info_text_report, is_total_slice, normalize_chunks,
                        normalize_fill_value, normalize_order,
-                       normalize_resize_args, normalize_shape,
+                       normalize_resize_args, normalize_shape, retry_call,
                        tree_array_icon, tree_group_icon, tree_get_icon,
                        tree_widget)
 
@@ -175,3 +175,30 @@ def test_tree_widget_missing_ipytree():
         )
     with pytest.raises(ImportError, match=re.escape(pattern)):
         tree_widget(None, None, None)
+
+
+def test_retry_call():
+
+    class Fixture:
+
+        def __init__(self, pass_on=1):
+            self.c = 0
+            self.pass_on = pass_on
+
+        def __call__(self):
+            self.c += 1
+            if self.c != self.pass_on:
+                raise PermissionError()
+
+    for x in range(1, 11):
+        # Any number of failures less than 10 will be accepted.
+        fixture = Fixture(pass_on=x)
+        retry_call(fixture, exceptions=(PermissionError,), wait=0)
+        assert fixture.c == x
+
+    def fail(x):
+        # Failures after 10 will cause an error to be raised.
+        retry_call(Fixture(pass_on=x), exceptions=(Exception,), wait=0)
+
+    for x in range(11, 15):
+        pytest.raises(PermissionError, fail, x)
