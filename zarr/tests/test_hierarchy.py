@@ -992,7 +992,7 @@ class TestGroupWithFSStore(TestGroup):
         np.testing.assert_array_equal(h[name][:], data)
 
 
-class TestGroupWithNestedFSStore(TestGroup):
+class TestGroupWithNestedFSStore(TestGroupWithFSStore):
 
     @staticmethod
     def create_store():
@@ -1000,18 +1000,6 @@ class TestGroupWithNestedFSStore(TestGroup):
         atexit.register(atexit_rmtree, path)
         store = FSStore(path, key_separator='/', auto_mkdir=True)
         return store, None
-
-    def test_round_trip_nd(self):
-        # data must be >1D to test the key_separator
-        data = np.arange(1000).reshape(10, 10, 10)
-        name = 'raw'
-
-        store, _ = self.create_store()
-        f = open_group(store, mode='w')
-        f.create_dataset(name, data=data, chunks=(5, 5, 5),
-                         compressor=None)
-        h = open_group(store, mode='r')
-        np.testing.assert_array_equal(h[name][:], data)
 
 
 class TestGroupWithZipStore(TestGroup):
