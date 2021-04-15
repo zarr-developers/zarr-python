@@ -17,15 +17,16 @@ except ImportError:  # pragma: no cover
 from numcodecs import Zlib
 from numpy.testing import assert_array_equal
 
+import zarr
 from zarr.attrs import Attributes
 from zarr.core import Array
 from zarr.creation import open_array
 from zarr.hierarchy import Group, group, open_group
-from zarr.storage import (ABSStore, DBMStore, DirectoryStore, LMDBStore,
-                          LRUStoreCache, MemoryStore, NestedDirectoryStore,
-                          SQLiteStore, ZipStore, array_meta_key, atexit_rmglob,
-                          atexit_rmtree, group_meta_key, init_array,
-                          init_group)
+from zarr.storage import (ABSStore, DBMStore, DirectoryStore, FSStore,
+                          LMDBStore, LRUStoreCache, MemoryStore,
+                          NestedDirectoryStore, SQLiteStore, ZipStore,
+                          array_meta_key, atexit_rmglob, atexit_rmtree,
+                          group_meta_key, init_array, init_group)
 from zarr.util import InfoReporter
 from zarr.tests.util import skip_test_env_var
 
@@ -969,6 +970,49 @@ class TestGroupWithNestedDirectoryStore(TestGroup):
         atexit.register(atexit_rmtree, path)
         store = NestedDirectoryStore(path)
         return store, None
+
+
+class TestGroupWithFSStore(TestGroup):
+
+    @staticmethod
+    def create_store():
+        path = tempfile.mkdtemp()
+        atexit.register(atexit_rmtree, path)
+        store = FSStore(path)
+        return store, None
+
+    def test_round_trip_nd(self):
+        data = np.arange(1000).reshape(10, 10, 10)
+        name = 'raw'
+
+        store, _ = self.create_store()
+        f = zarr.open(store, mode='w')
+        f.create_dataset(name, data=data, chunks=(5, 5, 5),
+                         compressor=None)
+        h = zarr.open(store, mode='r')
+        np.testing.assert_array_equal(h[name][:], data)
+
+
+class TestGroupWithNestedFSStore(TestGroup):
+
+    @staticmethod
+    def create_store():
+        path = tempfile.mkdtemp()
+        atexit.register(atexit_rmtree, path)
+        store = FSStore(path, key_separator='/', auto_mkdir=True)
+        return store, None
+
+    def test_round_trip_nd(self):
+        # data must be >1D to test the key_separator
+        data = np.arange(1000).reshape(10, 10, 10)
+        name = 'raw'
+
+        store, _ = self.create_store()
+        f = zarr.open(store, mode='w')
+        f.create_dataset(name, data=data, chunks=(5, 5, 5),
+                         compressor=None)
+        h = zarr.open(store, mode='r')
+        np.testing.assert_array_equal(h[name][:], data)
 
 
 class TestGroupWithZipStore(TestGroup):
