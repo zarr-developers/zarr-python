@@ -52,6 +52,7 @@ from zarr.errors import (
 )
 from zarr.meta import encode_array_metadata, encode_group_metadata
 from zarr.util import (buffer_size, json_loads, nolock, normalize_chunks,
+                       normalize_dimension_separator,
                        normalize_dtype, normalize_fill_value, normalize_order,
                        normalize_shape, normalize_storage_path, retry_call)
 
@@ -235,6 +236,7 @@ def init_array(
     chunk_store: MutableMapping = None,
     filters=None,
     object_codec=None,
+    dimension_separator=None,
 ):
     """Initialize an array store with the given configuration. Note that this is a low-level
     function and there should be no need to call this directly from user code.
@@ -267,6 +269,8 @@ def init_array(
         Sequence of filters to use to encode chunk data prior to compression.
     object_codec : Codec, optional
         A codec to encode object arrays, only needed if dtype=object.
+    dimension_separator : {'.', '/'}, optional
+        Separator placed between the dimensions of a chunk.
 
     Examples
     --------
@@ -293,6 +297,7 @@ def init_array(
                 "id": "blosc",
                 "shuffle": 1
             },
+            "dimension_separator": ".",
             "dtype": "<f8",
             "fill_value": null,
             "filters": null,
@@ -322,6 +327,7 @@ def init_array(
                 "id": "blosc",
                 "shuffle": 1
             },
+            "dimension_separator": ".",
             "dtype": "|i1",
             "fill_value": null,
             "filters": null,
@@ -349,7 +355,8 @@ def init_array(
                          compressor=compressor, fill_value=fill_value,
                          order=order, overwrite=overwrite, path=path,
                          chunk_store=chunk_store, filters=filters,
-                         object_codec=object_codec)
+                         object_codec=object_codec,
+                         dimension_separator=dimension_separator)
 
 
 def _init_array_metadata(
@@ -365,6 +372,7 @@ def _init_array_metadata(
     chunk_store=None,
     filters=None,
     object_codec=None,
+    dimension_separator=None,
 ):
 
     # guard conditions
@@ -385,6 +393,11 @@ def _init_array_metadata(
     chunks = normalize_chunks(chunks, shape, dtype.itemsize)
     order = normalize_order(order)
     fill_value = normalize_fill_value(fill_value, dtype)
+
+    # optional array metadata
+    if dimension_separator is None:
+        dimension_separator = getattr(store, "_dimension_separator", ".")
+    dimension_separator = normalize_dimension_separator(dimension_separator)
 
     # compressor prep
     if shape == ():
@@ -433,7 +446,8 @@ def _init_array_metadata(
     # initialize metadata
     meta = dict(shape=shape, chunks=chunks, dtype=dtype,
                 compressor=compressor_config, fill_value=fill_value,
-                order=order, filters=filters_config)
+                order=order, filters=filters_config,
+                dimension_separator=dimension_separator)
     key = _path_to_prefix(path) + array_meta_key
     store[key] = encode_array_metadata(meta)
 
@@ -539,13 +553,14 @@ class MemoryStore(MutableMapping):
 
     """
 
-    def __init__(self, root=None, cls=dict):
+    def __init__(self, root=None, cls=dict, dimension_separator=None):
         if root is None:
             self.root = cls()
         else:
             self.root = root
         self.cls = cls
         self.write_mutex = Lock()
+        self._dimension_separator = dimension_separator
 
     def __getstate__(self):
         return self.root, self.cls
@@ -728,6 +743,8 @@ class DirectoryStore(MutableMapping):
         (e.g. 'foo' and 'FOO' will be treated as equivalent). This can be
         useful to avoid potential discrepancies between case-senstive and
         case-insensitive file system. Default value is False.
+    dimension_separator : {'.', '/'}, optional
+        Separator placed between the dimensions of a chunk.
 
     Examples
     --------
@@ -774,7 +791,7 @@ class DirectoryStore(MutableMapping):
 
     """
 
-    def __init__(self, path, normalize_keys=False):
+    def __init__(self, path, normalize_keys=False, dimension_separator=None):
 
         # guard conditions
         path = os.path.abspath(path)
@@ -783,6 +800,7 @@ class DirectoryStore(MutableMapping):
 
         self.path = path
         self.normalize_keys = normalize_keys
+        self._dimension_separator = dimension_separator
 
     def _normalize_key(self, key):
         return key.lower() if self.normalize_keys else key
@@ -1011,31 +1029,46 @@ class FSStore(MutableMapping):
         The destination to map. Should include protocol and path,
         like "s3://bucket/root"
     normalize_keys : bool
-    key_separator : str
-        Character to use when constructing the target path strings
-        for data keys
+    key_separator : str (deprecated)
+        See dimension_separator
     mode : str
         "w" for writable, "r" for read-only
     exceptions : list of Exception subclasses
         When accessing data, any of these exceptions will be treated
         as a missing key
+    dimension_separator : {'.', '/'}, optional
+        Separator placed between the dimensions of a chunk.
     storage_options : passed to the fsspec implementation
     """
 
     _META_KEYS = (attrs_key, group_meta_key, array_meta_key)
 
-    def __init__(self, url, normalize_keys=True, key_separator='.',
+    def __init__(self, url, normalize_keys=True, key_separator=None,
                  mode='w',
                  exceptions=(KeyError, PermissionError, IOError),
+                 dimension_separator='.',
                  **storage_options):
         import fsspec
         self.normalize_keys = normalize_keys
-        self.key_separator = key_separator
         self.map = fsspec.get_mapper(url, **storage_options)
         self.fs = self.map.fs  # for direct operations
         self.path = self.fs._strip_protocol(url)
         self.mode = mode
         self.exceptions = exceptions
+
+        # Handle deprecated properties
+        if key_separator is not None:
+            warnings.warn(
+                "key_separator has been replaced by dimension_separator "
+                "in 2.8.0", DeprecationWarning)
+            dimension_separator = key_separator
+
+        # For backwards compatibility
+        self.key_separator = dimension_separator
+
+        # Pass attributes to array creation
+        self._dimension_separator = dimension_separator
+
         if self.fs.exists(self.path) and not self.fs.isdir(self.path):
             raise FSPathExistNotDir(url)
 
@@ -1045,7 +1078,7 @@ class FSStore(MutableMapping):
             *bits, end = key.split('/')
 
             if end not in FSStore._META_KEYS:
-                end = end.replace('.', self.key_separator)
+                end = end.replace('.', self._dimension_separator)
                 key = '/'.join(bits + [end])
 
         return key.lower() if self.normalize_keys else key
@@ -1153,11 +1186,13 @@ class TempStore(DirectoryStore):
         (e.g. 'foo' and 'FOO' will be treated as equivalent). This can be
         useful to avoid potential discrepancies between case-senstive and
         case-insensitive file system. Default value is False.
-
+    dimension_separator : {'.', '/'}, optional
+        Separator placed between the dimensions of a chunk.
     """
 
     # noinspection PyShadowingBuiltins
-    def __init__(self, suffix='', prefix='zarr', dir=None, normalize_keys=False):
+    def __init__(self, suffix='', prefix='zarr', dir=None, normalize_keys=False,
+                 dimension_separator=None):
         path = tempfile.mkdtemp(suffix=suffix, prefix=prefix, dir=dir)
         atexit.register(atexit_rmtree, path)
         super().__init__(path, normalize_keys=normalize_keys)
@@ -1192,6 +1227,9 @@ class NestedDirectoryStore(DirectoryStore):
         (e.g. 'foo' and 'FOO' will be treated as equivalent). This can be
         useful to avoid potential discrepancies between case-senstive and
         case-insensitive file system. Default value is False.
+    dimension_separator : {'.', '/'}, optional
+        Separator placed between the dimensions of a chunk.
+        Defaults to "/" unlike other implementations.
 
     Examples
     --------
@@ -1248,8 +1286,9 @@ class NestedDirectoryStore(DirectoryStore):
 
     """
 
-    def __init__(self, path, normalize_keys=False):
+    def __init__(self, path, normalize_keys=False, dimension_separator="/"):
         super().__init__(path, normalize_keys=normalize_keys)
+        self._dimension_separator = dimension_separator
 
     def __getitem__(self, key):
         key = _nested_map_ckey(key)
@@ -1314,6 +1353,8 @@ class ZipStore(MutableMapping):
         One of 'r' to read an existing file, 'w' to truncate and write a new
         file, 'a' to append to an existing file, or 'x' to exclusively create
         and write a new file.
+    dimension_separator : {'.', '/'}, optional
+        Separator placed between the dimensions of a chunk.
 
     Examples
     --------
@@ -1382,7 +1423,8 @@ class ZipStore(MutableMapping):
 
     """
 
-    def __init__(self, path, compression=zipfile.ZIP_STORED, allowZip64=True, mode='a'):
+    def __init__(self, path, compression=zipfile.ZIP_STORED, allowZip64=True, mode='a',
+                 dimension_separator=None):
 
         # store properties
         path = os.path.abspath(path)
@@ -1390,6 +1432,7 @@ class ZipStore(MutableMapping):
         self.compression = compression
         self.allowZip64 = allowZip64
         self.mode = mode
+        self._dimension_separator = dimension_separator
 
         # Current understanding is that zipfile module in stdlib is not thread-safe,
         # and so locking is required for both read and write. However, this has not
@@ -1602,6 +1645,8 @@ class DBMStore(MutableMapping):
         used on Python 3, and :func:`anydbm.open` will be used on Python 2.
     write_lock: bool, optional
         Use a lock to prevent concurrent writes from multiple threads (True by default).
+    dimension_separator : {'.', '/'}, optional
+        Separator placed between the dimensions of a chunk.
     **open_kwargs
         Keyword arguments to pass the `open` function.
 
@@ -1666,6 +1711,7 @@ class DBMStore(MutableMapping):
     """
 
     def __init__(self, path, flag='c', mode=0o666, open=None, write_lock=True,
+                 dimension_separator=None,
                  **open_kwargs):
         if open is None:
             import dbm
@@ -1685,6 +1731,7 @@ class DBMStore(MutableMapping):
         else:
             self.write_mutex = nolock
         self.open_kwargs = open_kwargs
+        self._dimension_separator = dimension_separator
 
     def __getstate__(self):
         try:
@@ -2147,6 +2194,8 @@ class ABSStore(MutableMapping):
     blob_service_kwargs : dictionary
         Extra arguments to be passed into the azure blob client, for e.g. when
         using the emulator, pass in blob_service_kwargs={'is_emulated': True}.
+    dimension_separator : {'.', '/'}, optional
+        Separator placed between the dimensions of a chunk.
 
     Notes
     -----
@@ -2154,12 +2203,13 @@ class ABSStore(MutableMapping):
     """
 
     def __init__(self, container, prefix='', account_name=None, account_key=None,
-                 blob_service_kwargs=None):
+                 blob_service_kwargs=None, dimension_separator=None):
         from azure.storage.blob import BlockBlobService
         self.container = container
         self.prefix = normalize_storage_path(prefix)
         self.account_name = account_name
         self.account_key = account_key
+        self._dimension_separator = dimension_separator
         if blob_service_kwargs is not None:
             self.blob_service_kwargs = blob_service_kwargs
         else:  # pragma: no cover
@@ -2301,6 +2351,8 @@ class SQLiteStore(MutableMapping):
     ----------
     path : string
         Location of database file.
+    dimension_separator : {'.', '/'}, optional
+        Separator placed between the dimensions of a chunk.
     **kwargs
         Keyword arguments passed through to the `sqlite3.connect` function.
 
@@ -2324,8 +2376,10 @@ class SQLiteStore(MutableMapping):
         >>> store.close()  # don't forget to call this when you're done
     """
 
-    def __init__(self, path, **kwargs):
+    def __init__(self, path, dimension_separator=None, **kwargs):
         import sqlite3
+
+        self._dimension_separator = dimension_separator
 
         # normalize path
         if path != ':memory:':
@@ -2507,6 +2561,8 @@ class MongoDBStore(MutableMapping):
         Name of database
     collection : string
         Name of collection
+    dimension_separator : {'.', '/'}, optional
+        Separator placed between the dimensions of a chunk.
     **kwargs
         Keyword arguments passed through to the `pymongo.MongoClient` function.
 
@@ -2520,11 +2576,12 @@ class MongoDBStore(MutableMapping):
     _value = 'value'
 
     def __init__(self, database='mongodb_zarr', collection='zarr_collection',
-                 **kwargs):
+                 dimension_separator=None, **kwargs):
         import pymongo
 
         self._database = database
         self._collection = collection
+        self._dimension_separator = dimension_separator
         self._kwargs = kwargs
 
         self.client = pymongo.MongoClient(**self._kwargs)
@@ -2585,14 +2642,17 @@ class RedisStore(MutableMapping):
     ----------
     prefix : string
         Name of prefix for Redis keys
+    dimension_separator : {'.', '/'}, optional
+        Separator placed between the dimensions of a chunk.
     **kwargs
         Keyword arguments passed through to the `redis.Redis` function.
 
     """
-    def __init__(self, prefix='zarr', **kwargs):
+    def __init__(self, prefix='zarr', dimension_separator=None, **kwargs):
         import redis
         self._prefix = prefix
         self._kwargs = kwargs
+        self._dimension_separator = dimension_separator
 
         self.client = redis.Redis(**kwargs)
 

@@ -89,6 +89,7 @@ class Array:
     dtype
     compression
     compression_opts
+    dimension_separator
     fill_value
     order
     synchronizer
@@ -194,6 +195,7 @@ class Array:
             self._dtype = meta['dtype']
             self._fill_value = meta['fill_value']
             self._order = meta['order']
+            self._dimension_separator = meta.get('dimension_separator', '.')
 
             # setup compressor
             config = meta['compressor']

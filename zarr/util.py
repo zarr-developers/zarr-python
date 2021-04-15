@@ -13,7 +13,7 @@ from numcodecs.compat import ensure_ndarray, ensure_text
 from numcodecs.registry import codec_registry
 from numcodecs.blosc import cbuffer_sizes, cbuffer_metainfo
 
-from typing import Any, Callable, Dict, Tuple, Union
+from typing import Any, Callable, Dict, Optional, Tuple, Union
 
 
 # codecs to use for object dtype convenience API
@@ -241,6 +241,16 @@ def normalize_order(order: str) -> str:
     if order not in ['C', 'F']:
         raise ValueError("order must be either 'C' or 'F', found: %r" % order)
     return order
+
+
+def normalize_dimension_separator(sep: Optional[str]) -> str:
+    if sep is None:
+        return "."
+    elif sep not in (".", "/"):
+        raise ValueError(
+            "dimension_separator must be either '.' or '/', found: %r" % sep)
+    else:
+        return sep
 
 
 def normalize_fill_value(fill_value, dtype: np.dtype):
