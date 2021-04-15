@@ -1838,6 +1838,8 @@ class LMDBStore(MutableMapping):
     buffers : bool, optional
         If True (default) use support for buffers, which should increase performance by
         reducing memory copies.
+    dimension_separator : {'.', '/'}, optional
+        Separator placed between the dimensions of a chunk.
     **kwargs
         Keyword arguments passed through to the `lmdb.open` function.
 
@@ -1880,7 +1882,7 @@ class LMDBStore(MutableMapping):
 
     """
 
-    def __init__(self, path, buffers=True, **kwargs):
+    def __init__(self, path, buffers=True, dimension_separator=None, **kwargs):
         import lmdb
 
         # set default memory map size to something larger than the lmdb default, which is
@@ -1918,6 +1920,7 @@ class LMDBStore(MutableMapping):
         self.buffers = buffers
         self.path = path
         self.kwargs = kwargs
+        self._dimension_separator = dimension_separator
 
     def __getstate__(self):
         try:
