@@ -909,7 +909,7 @@ class TestFSStore(StoreTests):
         assert (1000,) == meta['shape']
         assert (100,) == meta['chunks']
         assert np.dtype(None) == meta['dtype']
-        assert meta['dimension_separator'] is "."
+        assert meta['dimension_separator'] == "."
 
     def test_dimension_separator(self):
         for x in (".", "/"):
