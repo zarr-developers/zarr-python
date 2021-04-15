@@ -17,7 +17,6 @@ except ImportError:  # pragma: no cover
 from numcodecs import Zlib
 from numpy.testing import assert_array_equal
 
-import zarr
 from zarr.attrs import Attributes
 from zarr.core import Array
 from zarr.creation import open_array
@@ -986,10 +985,10 @@ class TestGroupWithFSStore(TestGroup):
         name = 'raw'
 
         store, _ = self.create_store()
-        f = zarr.open(store, mode='w')
+        f = open_group(store, mode='w')
         f.create_dataset(name, data=data, chunks=(5, 5, 5),
                          compressor=None)
-        h = zarr.open(store, mode='r')
+        h = open_group(store, mode='r')
         np.testing.assert_array_equal(h[name][:], data)
 
 
@@ -1008,10 +1007,10 @@ class TestGroupWithNestedFSStore(TestGroup):
         name = 'raw'
 
         store, _ = self.create_store()
-        f = zarr.open(store, mode='w')
+        f = open_group(store, mode='w')
         f.create_dataset(name, data=data, chunks=(5, 5, 5),
                          compressor=None)
-        h = zarr.open(store, mode='r')
+        h = open_group(store, mode='r')
         np.testing.assert_array_equal(h[name][:], data)
 
 
