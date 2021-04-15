@@ -1119,14 +1119,15 @@ def s3(request):
 
 class TestNestedDirectoryStore(TestDirectoryStore):
 
-    def create_store(self, normalize_keys=False):
+    def create_store(self, normalize_keys=False, **kwargs):
         path = tempfile.mkdtemp()
         atexit.register(atexit_rmtree, path)
-        store = NestedDirectoryStore(path, normalize_keys=normalize_keys)
+        store = NestedDirectoryStore(path, normalize_keys=normalize_keys, **kwargs)
         return store
 
     def test_init_array(self):
         store = self.create_store()
+        assert store._dimension_separator == "/"
         init_array(store, shape=1000, chunks=100)
 
         # check metadata
@@ -1136,7 +1137,7 @@ class TestNestedDirectoryStore(TestDirectoryStore):
         assert (1000,) == meta['shape']
         assert (100,) == meta['chunks']
         assert np.dtype(None) == meta['dtype']
-        assert meta['dimension_separator'] is "/"
+        assert meta['dimension_separator'] == "/"
 
     def test_chunk_nesting(self):
         store = self.create_store()

@@ -396,7 +396,7 @@ def _init_array_metadata(
 
     # optional array metadata
     if dimension_separator is None:
-        dimension_separator = getattr(store, "_dimension_separator", ".")
+        dimension_separator = getattr(store, "_dimension_separator", None)
     dimension_separator = normalize_dimension_separator(dimension_separator)
 
     # compressor prep
@@ -1046,7 +1046,7 @@ class FSStore(MutableMapping):
     def __init__(self, url, normalize_keys=True, key_separator=None,
                  mode='w',
                  exceptions=(KeyError, PermissionError, IOError),
-                 dimension_separator='.',
+                 dimension_separator=None,
                  **storage_options):
         import fsspec
         self.normalize_keys = normalize_keys
@@ -1063,8 +1063,10 @@ class FSStore(MutableMapping):
                 "in 2.8.0", DeprecationWarning)
             dimension_separator = key_separator
 
-        # For backwards compatibility
+        # For backwards compatibility. Guaranteed to be non-None
         self.key_separator = dimension_separator
+        if self.key_separator is None:
+            self.key_separator = "."
 
         # Pass attributes to array creation
         self._dimension_separator = dimension_separator
@@ -1078,7 +1080,7 @@ class FSStore(MutableMapping):
             *bits, end = key.split('/')
 
             if end not in FSStore._META_KEYS:
-                end = end.replace('.', self._dimension_separator)
+                end = end.replace('.', self.key_separator)
                 key = '/'.join(bits + [end])
 
         return key.lower() if self.normalize_keys else key
@@ -1227,9 +1229,9 @@ class NestedDirectoryStore(DirectoryStore):
         (e.g. 'foo' and 'FOO' will be treated as equivalent). This can be
         useful to avoid potential discrepancies between case-senstive and
         case-insensitive file system. Default value is False.
-    dimension_separator : {'.', '/'}, optional
+    dimension_separator : {'/'}, optional
         Separator placed between the dimensions of a chunk.
-        Defaults to "/" unlike other implementations.
+        Only supports "/" unlike other implementations.
 
     Examples
     --------
@@ -1288,6 +1290,11 @@ class NestedDirectoryStore(DirectoryStore):
 
     def __init__(self, path, normalize_keys=False, dimension_separator="/"):
         super().__init__(path, normalize_keys=normalize_keys)
+        if dimension_separator is None:
+            dimension_separator = "/"
+        elif dimension_separator != "/":
+            raise ValueError(
+                "NestedDirectoryStore only supports '/' as dimension_separator")
         self._dimension_separator = dimension_separator
 
     def __getitem__(self, key):

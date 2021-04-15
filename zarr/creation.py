@@ -123,7 +123,7 @@ def create(shape, chunks=True, dtype=None, compressor='default',
 
     # optional array metadata
     if dimension_separator is None:
-        dimension_separator = getattr(store, "_dimension_separator", ".")
+        dimension_separator = getattr(store, "_dimension_separator", None)
     dimension_separator = normalize_dimension_separator(dimension_separator)
 
     # initialize array metadata

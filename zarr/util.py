@@ -243,9 +243,9 @@ def normalize_order(order: str) -> str:
     return order
 
 
-def normalize_dimension_separator(sep: Optional[str]) -> str:
+def normalize_dimension_separator(sep: Optional[str]) -> Optional[str]:
     if sep is None:
-        return "."
+        return None
     elif sep not in (".", "/"):
         raise ValueError(
             "dimension_separator must be either '.' or '/', found: %r" % sep)
