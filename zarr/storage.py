@@ -297,7 +297,6 @@ def init_array(
                 "id": "blosc",
                 "shuffle": 1
             },
-            "dimension_separator": ".",
             "dtype": "<f8",
             "fill_value": null,
             "filters": null,
@@ -327,7 +326,6 @@ def init_array(
                 "id": "blosc",
                 "shuffle": 1
             },
-            "dimension_separator": ".",
             "dtype": "|i1",
             "fill_value": null,
             "filters": null,
