@@ -81,11 +81,12 @@ filters
 The following keys MAY be present within the object:
 
 dimension_separator
-    A string, optimally of length 1, which defines the separator placed
+    If present, either the string ``"."`` or ``"/""`` definining the separator placed
     between the dimensions of a chunk. If the value is not set, then the
-    default MUST be assumed to ``"."``, leading to chunk keys of the form "0.0".
-    The most common non-default value is ``"/"``, which leads to nested keys of
-    the form "0/0" that in most implementations produces a directory structure.
+    default MUST be assumed to be ``"."``, leading to chunk keys of the form "0.0".
+    Arrays defined with ``"/"`` as the dimension separator can be considered to have
+    nested, or hierarchical, keys of the form "0/0" that SHOULD where possible
+    produce a directory-like structure.
 
 Other keys MUST NOT be present within the metadata object.
 
