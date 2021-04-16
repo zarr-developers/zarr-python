@@ -1,6 +1,19 @@
 Release notes
 =============
 
+.. _release_2.7.1:
+
+2.7.1
+-----
+
+Bug fixes
+~~~~~~~~~
+
+* Update Array to respect FSStore's key_separator  (#718)
+  By :user:`Gregory R. Lee <grlee77>`; :issue:`718`.
+
+.. _release_2.7.0:
+
 2.7.0
 -----
 
@@ -12,7 +25,6 @@ Enhancements
 
 * Add capability to partially read and decompress chunks
   By :user:`Andrew Fulton <andrewfulton9>`; :issue:`667`.
-
 
 Bug fixes
 ~~~~~~~~~
@@ -38,11 +50,15 @@ Bug fixes
   :issue:`679`, :issue:`680`, :issue:`682`, :issue:`684`, :issue:`685`, :issue:`686`,
   :issue:`687`, :issue:`695`, :issue:`706`.
 
+.. _release_2.6.1:
+
 2.6.1
 -----
 
 * Minor build fix
   By :user:`Matthias Bussonnier <Carreau>`; :issue:`666`.
+
+.. _release_2.6.0:
 
 2.6.0
 -----
@@ -85,9 +101,10 @@ merged PR tagged with the 2.6 milestone.
   creating an ``Array``, or when using ``open_array``. No option exists yet to
   apply partial read and decompress on a per-operation basis.
 
+.. _release_2.5.0:
+
 2.5.0
 -----
-
 
 This release will be the last to support Python 3.5, next version of Zarr will be Python 3.6+.
 
