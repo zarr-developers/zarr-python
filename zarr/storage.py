@@ -1027,8 +1027,9 @@ class FSStore(MutableMapping):
         The destination to map. Should include protocol and path,
         like "s3://bucket/root"
     normalize_keys : bool
-    key_separator : str (deprecated)
-        See dimension_separator
+    key_separator : str
+        public API for accessing dimension_separator. Never `None`
+        See dimension_separator for more informatino.
     mode : str
         "w" for writable, "r" for read-only
     exceptions : list of Exception subclasses
@@ -1054,14 +1055,10 @@ class FSStore(MutableMapping):
         self.mode = mode
         self.exceptions = exceptions
 
-        # Handle deprecated properties
+        # For backwards compatibility. Guaranteed to be non-None
         if key_separator is not None:
-            warnings.warn(
-                "key_separator has been replaced by dimension_separator "
-                "in 2.8.0", DeprecationWarning)
             dimension_separator = key_separator
 
-        # For backwards compatibility. Guaranteed to be non-None
         self.key_separator = dimension_separator
         if self.key_separator is None:
             self.key_separator = "."
@@ -1651,7 +1648,7 @@ class DBMStore(MutableMapping):
     write_lock: bool, optional
         Use a lock to prevent concurrent writes from multiple threads (True by default).
     dimension_separator : {'.', '/'}, optional
-        Separator placed between the dimensions of a chunk.
+        Separator placed between the dimensions of a chunk.e
     **open_kwargs
         Keyword arguments to pass the `open` function.
 

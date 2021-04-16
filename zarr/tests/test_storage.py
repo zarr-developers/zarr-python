@@ -1069,11 +1069,10 @@ class TestFSStoreWithKeySeparator(StoreTests):
 
         path = tempfile.mkdtemp()
         atexit.register(atexit_rmtree, path)
-        with pytest.warns(DeprecationWarning):
-            return FSStore(
-                path,
-                normalize_keys=normalize_keys,
-                key_separator=key_separator)
+        return FSStore(
+            path,
+            normalize_keys=normalize_keys,
+            key_separator=key_separator)
 
 
 @pytest.fixture()
