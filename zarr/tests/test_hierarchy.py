@@ -27,7 +27,7 @@ from zarr.storage import (ABSStore, DBMStore, DirectoryStore, FSStore,
                           array_meta_key, atexit_rmglob, atexit_rmtree,
                           group_meta_key, init_array, init_group)
 from zarr.util import InfoReporter
-from zarr.tests.util import skip_test_env_var
+from zarr.tests.util import skip_test_env_var, have_fsspec
 
 
 # noinspection PyStatementEffect
@@ -971,6 +971,7 @@ class TestGroupWithNestedDirectoryStore(TestGroup):
         return store, None
 
 
+@pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
 class TestGroupWithFSStore(TestGroup):
 
     @staticmethod
@@ -992,6 +993,7 @@ class TestGroupWithFSStore(TestGroup):
         np.testing.assert_array_equal(h[name][:], data)
 
 
+@pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
 class TestGroupWithNestedFSStore(TestGroupWithFSStore):
 
     @staticmethod
