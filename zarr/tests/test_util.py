@@ -6,10 +6,19 @@ import pytest
 
 from zarr.util import (guess_chunks, human_readable_size, info_html_report,
                        info_text_report, is_total_slice, normalize_chunks,
+                       normalize_dimension_separator,
                        normalize_fill_value, normalize_order,
                        normalize_resize_args, normalize_shape, retry_call,
                        tree_array_icon, tree_group_icon, tree_get_icon,
                        tree_widget)
+
+
+def test_normalize_dimension_separator():
+    assert None is normalize_dimension_separator(None)
+    assert '/' == normalize_dimension_separator('/')
+    assert '.' == normalize_dimension_separator('.')
+    with pytest.raises(ValueError):
+        normalize_shape('X')
 
 
 def test_normalize_shape():
