@@ -1677,14 +1677,6 @@ class TestArrayWithNestedDirectoryStore(TestArrayWithDirectoryStore):
 
 class TestArrayWithN5Store(TestArrayWithDirectoryStore):
 
-    DIGESTS = (
-        "453feae4fa9c7086da9e77982e313a45180e4954",
-        "35e50e63ec4443b6f73094daee51af9a28b8702f",
-        "8946a49684c3ca9432c896c6129cb00e5d70ad80",
-        "c71ad4699147c54cde28a54d23ea83e4c80b14b6",
-        "eb997d6507c5bf9ab994b75b28e24ad2a99fa3d6",
-    )
-
     @staticmethod
     def create_array(read_only=False, **kwargs):
         path = mkdtemp()
@@ -1935,27 +1927,37 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
             assert np.all(a2[:] == 1)
 
     def test_hexdigest(self):
+        expecting = [
+            'c6b83adfad999fbd865057531d749d87cf138f58',
+            'a3d6d187536ecc3a9dd6897df55d258e2f52f9c5',
+            'ec2e008525ae09616dbc1d2408cbdb42532005c8',
+            'b63f031031dcd5248785616edcb2d6fe68203c28',
+            '0cfc673215a8292a87f3c505e2402ce75243c601',
+        ]
+        found = []
         # Check basic 1-D array
         z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
-        assert self.DIGESTS[0] == z.hexdigest()
+        found.append(z.hexdigest())
 
         # Check basic 1-D array with different type
         z = self.create_array(shape=(1050,), chunks=100, dtype='<f4')
-        assert self.DIGESTS[1] == z.hexdigest()
+        found.append(z.hexdigest())
 
         # Check basic 2-D array
         z = self.create_array(shape=(20, 35,), chunks=10, dtype='<i4')
-        assert self.DIGESTS[2] == z.hexdigest()
+        found.append(z.hexdigest())
 
         # Check basic 1-D array with some data
         z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
         z[200:400] = np.arange(200, 400, dtype='i4')
-        assert self.DIGESTS[3] == z.hexdigest()
+        found.append(z.hexdigest())
 
         # Check basic 1-D array with attributes
         z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
         z.attrs['foo'] = 'bar'
-        assert self.DIGESTS[4] == z.hexdigest()
+        found.append(z.hexdigest())
+
+        assert expecting == found
 
 
 class TestArrayWithDBMStore(TestArray):
