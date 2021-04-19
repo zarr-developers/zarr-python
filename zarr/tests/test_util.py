@@ -18,7 +18,7 @@ def test_normalize_dimension_separator():
     assert '/' == normalize_dimension_separator('/')
     assert '.' == normalize_dimension_separator('.')
     with pytest.raises(ValueError):
-        normalize_shape('X')
+        normalize_dimension_separator('X')
 
 
 def test_normalize_shape():
