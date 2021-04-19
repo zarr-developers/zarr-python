@@ -1151,6 +1151,17 @@ class TestNestedDirectoryStore(TestDirectoryStore):
         assert b'zzz' == store['42']
 
 
+class TestNestedDirectoryStoreNone:
+
+    def test_value_error(self):
+        path = tempfile.mkdtemp()
+        atexit.register(atexit_rmtree, path)
+        store = NestedDirectoryStore(
+            path, normalize_keys=True,
+            dimension_separator=None)
+        assert store._dimension_separator == "/"
+
+
 class TestNestedDirectoryStoreWithWrongValue:
 
     def test_value_error(self):
