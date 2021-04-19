@@ -39,14 +39,6 @@ from zarr.tests.util import skip_test_env_var, have_fsspec
 # noinspection PyMethodMayBeStatic
 class TestArray(unittest.TestCase):
 
-    DIGESTS = (
-        "063b02ff8d9d3bab6da932ad5828b506ef0a6578",
-        "f97b84dc9ffac807415f750100108764e837bb82",
-        "c7190ad2bea1e9d2e73eaa2d3ca9187be1ead261",
-        "14470724dca6c1837edddedc490571b6a7f270bc",
-        "2a1046dd99b914459b3e86be9dde05027a07d209",
-    )
-
     def test_array_init(self):
 
         # normal initialization
@@ -540,38 +532,51 @@ class TestArray(unittest.TestCase):
         if hasattr(z.store, 'close'):
             z.store.close()
 
+    def expected(self):
+        return [
+            "063b02ff8d9d3bab6da932ad5828b506ef0a6578",
+            "f97b84dc9ffac807415f750100108764e837bb82",
+            "c7190ad2bea1e9d2e73eaa2d3ca9187be1ead261",
+            "14470724dca6c1837edddedc490571b6a7f270bc",
+            "2a1046dd99b914459b3e86be9dde05027a07d209",
+        ]
+
     def test_hexdigest(self):
+        found = []
+
         # Check basic 1-D array
         z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
-        assert self.DIGESTS[0] == z.hexdigest()
+        found.append(z.hexdigest())
         if hasattr(z.store, 'close'):
             z.store.close()
 
         # Check basic 1-D array with different type
         z = self.create_array(shape=(1050,), chunks=100, dtype='<f4')
-        assert self.DIGESTS[1] == z.hexdigest()
+        found.append(z.hexdigest())
         if hasattr(z.store, 'close'):
             z.store.close()
 
         # Check basic 2-D array
         z = self.create_array(shape=(20, 35,), chunks=10, dtype='<i4')
-        assert self.DIGESTS[2] == z.hexdigest()
+        found.append(z.hexdigest())
         if hasattr(z.store, 'close'):
             z.store.close()
 
         # Check basic 1-D array with some data
         z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
         z[200:400] = np.arange(200, 400, dtype='i4')
-        assert self.DIGESTS[3] == z.hexdigest()
+        found.append(z.hexdigest())
         if hasattr(z.store, 'close'):
             z.store.close()
 
         # Check basic 1-D array with attributes
         z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
         z.attrs['foo'] = 'bar'
-        assert self.DIGESTS[4] == z.hexdigest()
+        found.append(z.hexdigest())
         if hasattr(z.store, 'close'):
             z.store.close()
+
+        self.expected() == found
 
     def test_resize_1d(self):
 
@@ -1593,14 +1598,6 @@ class TestArrayWithChunkStore(TestArray):
 
 class TestArrayWithDirectoryStore(TestArray):
 
-    DIGESTS = (
-        "063b02ff8d9d3bab6da932ad5828b506ef0a6578",
-        "f97b84dc9ffac807415f750100108764e837bb82",
-        "c7190ad2bea1e9d2e73eaa2d3ca9187be1ead261",
-        "14470724dca6c1837edddedc490571b6a7f270bc",
-        "2a1046dd99b914459b3e86be9dde05027a07d209",
-    )
-
     @staticmethod
     def create_array(read_only=False, **kwargs):
         path = mkdtemp()
@@ -1654,14 +1651,6 @@ class TestArrayWithABSStore(TestArray):
 
 class TestArrayWithNestedDirectoryStore(TestArrayWithDirectoryStore):
 
-    DIGESTS = (
-        "d174aa384e660eb51c6061fc8d20850c1159141f",
-        "125f00eea40032f16016b292f6767aa3928c00a7",
-        "1b52ead0ed889a781ebd4db077a29e35d513c1f3",
-        "719a88b34e362ff65df30e8f8810c1146ab72bc1",
-        "6e0abf30daf45de51593c227fb907759ca725551",
-    )
-
     @staticmethod
     def create_array(read_only=False, **kwargs):
         path = mkdtemp()
@@ -1673,6 +1662,15 @@ class TestArrayWithNestedDirectoryStore(TestArrayWithDirectoryStore):
         init_array(store, **kwargs)
         return Array(store, read_only=read_only, cache_metadata=cache_metadata,
                      cache_attrs=cache_attrs)
+
+    def expected(self):
+        return [
+            "d174aa384e660eb51c6061fc8d20850c1159141f",
+            "125f00eea40032f16016b292f6767aa3928c00a7",
+            "1b52ead0ed889a781ebd4db077a29e35d513c1f3",
+            "719a88b34e362ff65df30e8f8810c1146ab72bc1",
+            "6e0abf30daf45de51593c227fb907759ca725551",
+        ]
 
 
 class TestArrayWithN5Store(TestArrayWithDirectoryStore):
@@ -1926,14 +1924,16 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
             a2[:] = 1
             assert np.all(a2[:] == 1)
 
-    def test_hexdigest(self):
-        expecting = [
+    def expected(self):
+        return [
             'c6b83adfad999fbd865057531d749d87cf138f58',
             'a3d6d187536ecc3a9dd6897df55d258e2f52f9c5',
             'ec2e008525ae09616dbc1d2408cbdb42532005c8',
             'b63f031031dcd5248785616edcb2d6fe68203c28',
             '0cfc673215a8292a87f3c505e2402ce75243c601',
         ]
+
+    def test_hexdigest(self):
         found = []
         # Check basic 1-D array
         z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
@@ -1957,7 +1957,7 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
         z.attrs['foo'] = 'bar'
         found.append(z.hexdigest())
 
-        assert expecting == found
+        assert self.expected() == found
 
 
 class TestArrayWithDBMStore(TestArray):
