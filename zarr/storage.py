@@ -1029,7 +1029,7 @@ class FSStore(MutableMapping):
     normalize_keys : bool
     key_separator : str
         public API for accessing dimension_separator. Never `None`
-        See dimension_separator for more informatino.
+        See dimension_separator for more information.
     mode : str
         "w" for writable, "r" for read-only
     exceptions : list of Exception subclasses
