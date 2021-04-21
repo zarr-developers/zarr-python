@@ -12,13 +12,17 @@ class TestArrayMissingKeys(unittest.TestCase):
         # pop first chunk
         a.chunk_store.pop("0")
 
-        # read from avaible chunk w/o error
-        b = a[-1]
-        c = a[-2:]
+        # read from missing chunk and make sure fill-value is returned
+        assert a.fill_value == a[0]
+        assert a.fill_value == a[1]
+
+        # read from avaible chunk w/o error        
+        assert 2 = a[2]
+        assert 3 = a[3]
 
         # reading missing chunk should raise
         with self.assertRaises(KeyError):
-            b = a[0]
+            a[0]
 
         with self.assertRaises(KeyError):
-            c = a[:2]
+            a[:2]
