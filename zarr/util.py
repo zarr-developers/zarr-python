@@ -244,13 +244,11 @@ def normalize_order(order: str) -> str:
 
 
 def normalize_dimension_separator(sep: Optional[str]) -> Optional[str]:
-    if sep is None:
-        return None
-    elif sep not in (".", "/"):
+    if sep in (".", "/", None):
+        return sep
+    else:
         raise ValueError(
             "dimension_separator must be either '.' or '/', found: %r" % sep)
-    else:
-        return sep
 
 
 def normalize_fill_value(fill_value, dtype: np.dtype):
