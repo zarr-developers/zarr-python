@@ -1587,8 +1587,6 @@ class Array:
             cdata = self.chunk_store[ckey]
 
         except KeyError:
-            if not self._fill_missing_chunk:
-                raise
             # chunk not initialized
             chunk = np.zeros((), dtype=self._dtype)
             if self._fill_value is not None:
