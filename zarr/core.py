@@ -516,10 +516,10 @@ class Array:
             end = self.shape[0]
 
         if not isinstance(start, int) or start < 0:
-            raise ValueError('start must be a nonnegative integer')
+            raise ValueError("start must be a nonnegative integer")
 
         if not isinstance(end, int) or end < 0:
-            raise ValueError('end must be a nonnegative integer')
+            raise ValueError("end must be a nonnegative integer")
 
         # Avoid repeatedly decompressing chunks by iterating over the chunks
         # in the first dimension.
@@ -527,7 +527,7 @@ class Array:
         chunk = None
         for j in range(start, end):
             if j % chunk_size == 0:
-                chunk = self[j: j + chunk_size]
+                chunk = self[j : j + chunk_size]
             # init chunk if we start offset of chunk borders
             elif chunk is None:
                 chunk_start = j - j % chunk_size
@@ -1997,6 +1997,7 @@ class Array:
                 cdata = self.chunk_store[ckey]
 
             except KeyError:
+
                 # chunk not initialized
                 if self._fill_value is not None:
                     chunk = np.empty(self._chunks, dtype=self._dtype, order=self._order)
@@ -2027,10 +2028,10 @@ class Array:
         return self._encode_chunk(chunk)
 
     def _chunk_key(self, chunk_coords):
-        if hasattr(self._store, 'key_separator'):
+        if hasattr(self._store, "key_separator"):
             separator = self._store.key_separator
         else:
-            separator = '.'
+            separator = "."
         return self._key_prefix + separator.join(map(str, chunk_coords))
 
     def _decode_chunk(self, cdata, start=None, nitems=None, expected_shape=None):
