@@ -16,7 +16,7 @@ class TestArrayMissingKeys(unittest.TestCase):
         assert a.fill_value == a[0]
         assert a.fill_value == a[1]
 
-        # read from avaible chunk w/o error        
+        # read from avaible chunk w/o error    
         assert 2 = a[2]
         assert 3 = a[3]
 
