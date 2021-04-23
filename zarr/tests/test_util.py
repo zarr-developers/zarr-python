@@ -170,7 +170,7 @@ def test_tree_widget_missing_ipytree():
     pattern = (
         "Run `pip install zarr[jupyter]` or `conda install ipytree`"
         "to get the required ipytree dependency for displaying the tree "
-        "widget. If using jupyterlab, you also need to run "
+        "widget. If using jupyterlab<3, you also need to run "
         "`jupyter labextension install ipytree`"
         )
     with pytest.raises(ImportError, match=re.escape(pattern)):
