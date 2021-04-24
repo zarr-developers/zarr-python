@@ -1,6 +1,20 @@
 Release notes
 =============
 
+.. _release_2.8.0:
+
+2.8.0
+-----
+
+V2 Specification Update
+~~~~~~~~~~~~~~~~~~~~~~~
+
+* Introduce optional dimension_separator .zarray key for nested chunks.
+  By :user:`Josh Moore <joshmoore>`; :issue:`715`, :issue:`716`.
+
+.. _release_2.7.0:
+
+
 .. _release_2.7.1:
 
 2.7.1
