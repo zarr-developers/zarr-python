@@ -124,6 +124,12 @@ def create(shape, chunks=True, dtype=None, compressor='default',
     # optional array metadata
     if dimension_separator is None:
         dimension_separator = getattr(store, "_dimension_separator", None)
+    else:
+        if getattr(store, "_dimension_separator", None) != dimension_separator:
+            raise ValueError(
+                f"Specified dimension_separtor: {dimension_separator}"
+                f"conflicts with store's separator: "
+                f"{store._dimension_separator}")
     dimension_separator = normalize_dimension_separator(dimension_separator)
 
     # initialize array metadata
