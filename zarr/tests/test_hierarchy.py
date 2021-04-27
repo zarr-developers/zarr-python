@@ -1003,6 +1003,18 @@ class TestGroupWithNestedFSStore(TestGroupWithFSStore):
         store = FSStore(path, key_separator='/', auto_mkdir=True)
         return store, None
 
+    def test_inconsistent_dimension_separator(self):
+        data = np.arange(1000).reshape(10, 10, 10)
+        name = 'raw'
+
+        store, _ = self.create_store()
+        f = open_group(store, mode='w')
+
+        # cannot specify dimension_separator that conflicts with the store
+        with pytest.raises(ValueError):
+            f.create_dataset(name, data=data, chunks=(5, 5, 5),
+                             compressor=None, dimension_separator='.')
+
 
 class TestGroupWithZipStore(TestGroup):
 
