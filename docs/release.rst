@@ -1,6 +1,17 @@
 Release notes
 =============
 
+.. _release_2.8.1:
+
+2.8.1
+-----
+
+Bug fixes
+~~~~~~~~~
+
+* raise an error if create_dataset's dimension_separator is inconsistent
+  By :user:`Gregory R. Lee <grlee77>`; :issue:`724`.
+
 .. _release_2.8.0:
 
 2.8.0
