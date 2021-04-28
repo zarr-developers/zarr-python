@@ -658,8 +658,12 @@ class Array:
 
         """
 
-        fields, selection = pop_fields(selection)
-        return self.get_basic_selection(selection, fields=fields)
+        fields, pure_selection = pop_fields(selection)
+        try:
+            result = self.get_basic_selection(pure_selection, fields=fields)
+        except IndexError:
+            result = self.vindex[selection]
+        return result
 
     def get_basic_selection(self, selection=Ellipsis, out=None, fields=None):
         """Retrieve data for an item or region of the array.
@@ -1209,8 +1213,11 @@ class Array:
 
         """
 
-        fields, selection = pop_fields(selection)
-        self.set_basic_selection(selection, value, fields=fields)
+        fields, pure_selection = pop_fields(selection)
+        try:
+            self.set_basic_selection(pure_selection, value, fields=fields)
+        except IndexError:
+            self.vindex[selection] = value
 
     def set_basic_selection(self, selection, value, fields=None):
         """Modify data for an item or region of the array.
