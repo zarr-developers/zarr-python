@@ -287,7 +287,7 @@ def test_get_basic_selection_2d():
 
 
 def test_fancy_indexing_fallback_on_get_setitem():
-    array  = zarr.zeros((20, 20))
+    array = zarr.zeros((20, 20))
     array[[1, 2, 3], [1, 2, 3]] = 1
     np.testing.assert_array_equal(
         array[:4, :4],
