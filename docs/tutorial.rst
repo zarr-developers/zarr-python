@@ -509,7 +509,7 @@ e.g.::
            [10, 11, 12, -2, 14]])
 
 For convenience, coordinate indexing is also available via the ``vindex``
-property, e.g.::
+property, as well as the square bracket operator, e.g.::
 
     >>> z.vindex[[0, 2], [1, 3]]
     array([-1, -2])
@@ -518,6 +518,16 @@ property, e.g.::
     array([[ 0, -3,  2,  3,  4],
            [ 5,  6,  7,  8,  9],
            [10, 11, 12, -4, 14]])
+    >>> z[[0, 2], [1, 3]]
+    array([-3, -4])
+
+When the indexing arrays have different shapes, they are broadcast together.
+That is, the following two calls are equivalent::
+
+    >>> z[1, [1, 3]]
+    array([5, 7])
+    >>> z[[1, 1], [1, 3]]
+    array([5, 7])
 
 Indexing with a mask array
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
