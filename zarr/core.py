@@ -646,9 +646,18 @@ class Array:
         -----
         Slices with step > 1 are supported, but slices with negative step are not.
 
-        Currently the implementation for __getitem__ is provided by
-        :func:`get_basic_selection`. For advanced ("fancy") indexing, see the methods
-        listed under See Also.
+        Currently the implementation for __setitem__ is provided by
+        :func:`set_basic_selection` and falls back on :func:`vindex`.
+        Effectively, this means that the following indexing modes are supported:
+
+           - integer indexing
+           - slice indexing
+           - mixed slice and integer indexing
+           - boolean indexing
+           - fancy indexing (vectorized list of integers)
+
+        For specific indexing options including outer indexing, see the
+        methods listed under See Also.
 
         See Also
         --------
@@ -1201,8 +1210,16 @@ class Array:
         Slices with step > 1 are supported, but slices with negative step are not.
 
         Currently the implementation for __setitem__ is provided by
-        :func:`set_basic_selection`, which means that only integers and slices are
-        supported within the selection. For advanced ("fancy") indexing, see the
+        :func:`set_basic_selection` and falls back on :func:`vindex`.
+        Effectively, this means that the following indexing modes are supported:
+
+           - integer indexing
+           - slice indexing
+           - mixed slice and integer indexing
+           - boolean indexing
+           - fancy indexing (vectorized list of integers)
+
+        For specific indexing options including outer indexing, see the
         methods listed under See Also.
 
         See Also
