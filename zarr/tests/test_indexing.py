@@ -198,14 +198,14 @@ def test_get_basic_selection_1d():
     for selection in basic_selections_1d:
         _test_get_basic_selection(a, z, selection)
 
-    bad_selections = basic_selections_1d_bad + [
-        [0, 1],  # fancy indexing
-    ]
-    for selection in bad_selections:
+    for selection in basic_selections_1d_bad:
         with pytest.raises(IndexError):
             z.get_basic_selection(selection)
         with pytest.raises(IndexError):
             z[selection]
+
+    with pytest.raises(IndexError):
+        z.get_basic_selection([1, 0])
 
 
 basic_selections_2d = [
