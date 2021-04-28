@@ -274,7 +274,6 @@ def test_get_basic_selection_2d():
     bad_selections = basic_selections_2d_bad + [
         # integer arrays
         [0, 1],
-        ([0, 1], [0, 1]),
         (slice(None), [0, 1]),
     ]
     for selection in bad_selections:
@@ -282,6 +281,9 @@ def test_get_basic_selection_2d():
             z.get_basic_selection(selection)
         with pytest.raises(IndexError):
             z[selection]
+    # check fallback on fancy indexing
+    fancy_selection = ([0, 1], [0, 1])
+    np.testing.assert_array_equal(z[fancy_selection], [0, 11])
 
 
 def test_set_basic_selection_0d():
