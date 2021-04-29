@@ -355,6 +355,9 @@ def array_metadata_to_n5(array_metadata):
     compressor_config = compressor_config_to_n5(compressor_config)
     array_metadata['compression'] = compressor_config
 
+    if 'dimension_separator' in array_metadata:
+        del array_metadata['dimension_separator']
+
     return array_metadata
 
 
