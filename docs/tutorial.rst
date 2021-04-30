@@ -1305,8 +1305,8 @@ with the desired chunking, e.g. ::
     >>> b = zarr.array(a, chunks=(100, 200), store='b.zarr')
 
 If the chunk shapes mismatch, however, a simple copy can lead to non-optimal data
-access patterns and a simple copy can incur a substantial performance hit when using
-file (rather than memory) based stores. One of the most pathological examples is
+access patterns and incur a substantial performance hit when using
+file based stores. One of the most pathological examples is
 switching from column-based chunking to row-based chunking e.g. ::
 
     >>> a = zarr.zeros((10000,10000), chunks=(10000, 1), dtype='uint16, store='a.zarr')
