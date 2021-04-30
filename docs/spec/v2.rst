@@ -78,7 +78,18 @@ filters
     filters are to be applied. Each codec configuration object MUST contain a
     ``"id"`` key identifying the codec to be used.
 
-Other keys MUST NOT be present within the metadata object.
+The following keys MAY be present within the object:
+
+dimension_separator
+    If present, either the string ``"."`` or ``"/""`` definining the separator placed
+    between the dimensions of a chunk. If the value is not set, then the
+    default MUST be assumed to be ``"."``, leading to chunk keys of the form "0.0".
+    Arrays defined with ``"/"`` as the dimension separator can be considered to have
+    nested, or hierarchical, keys of the form "0/0" that SHOULD where possible
+    produce a directory-like structure.
+
+Other keys SHOULD NOT be present within the metadata object and SHOULD be
+ignored by implementations.
 
 For example, the JSON object below defines a 2-dimensional array of 64-bit
 little-endian floating point numbers with 10000 rows and 10000 columns, divided
