@@ -213,6 +213,9 @@ Enhancements
 * Ensure contiguous data using ``astype``.
   By :user:`John Kirkham <jakirkham>`; :issue:`513`.
 
+* Ensure contiguous data using ``astype``.
+  By :user:`John Kirkham <jakirkham>`; :issue:`513`.
+
 * Refactor out ``_tofile``/``_fromfile`` from ``DirectoryStore``.
   By :user:`John Kirkham <jakirkham>`; :issue:`503`.
 

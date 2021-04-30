@@ -44,6 +44,8 @@ class Group(MutableMapping):
         to all attribute read operations.
     synchronizer : object, optional
         Array synchronizer.
+    meta_array : array, optional
+        An array to base allocations off of.
 
     Attributes
     ----------
@@ -95,7 +97,7 @@ class Group(MutableMapping):
     """
 
     def __init__(self, store, path=None, read_only=False, chunk_store=None,
-                 cache_attrs=True, synchronizer=None):
+                 cache_attrs=True, synchronizer=None, meta_array=None):
         self._store = store
         self._chunk_store = chunk_store
         self._path = normalize_storage_path(path)
@@ -105,6 +107,10 @@ class Group(MutableMapping):
             self._key_prefix = ''
         self._read_only = read_only
         self._synchronizer = synchronizer
+        if meta_array is not None:
+            self._meta_array = np.empty_like(meta_array)
+        else:
+            self._meta_array = np.empty(())
 
         # guard conditions
         if contains_array(store, path=self._path):
@@ -282,7 +288,7 @@ class Group(MutableMapping):
 
     def __getstate__(self):
         return (self._store, self._path, self._read_only, self._chunk_store,
-                self.attrs.cache, self._synchronizer)
+                self.attrs.cache, self._synchronizer, self._meta_array)
 
     def __setstate__(self, state):
         self.__init__(*state)
@@ -340,11 +346,13 @@ class Group(MutableMapping):
         if contains_array(self._store, path):
             return Array(self._store, read_only=self._read_only, path=path,
                          chunk_store=self._chunk_store,
-                         synchronizer=self._synchronizer, cache_attrs=self.attrs.cache)
+                         synchronizer=self._synchronizer, cache_attrs=self.attrs.cache,
+                         meta_array=self._meta_array)
         elif contains_group(self._store, path):
             return Group(self._store, read_only=self._read_only, path=path,
                          chunk_store=self._chunk_store, cache_attrs=self.attrs.cache,
-                         synchronizer=self._synchronizer)
+                         synchronizer=self._synchronizer,
+                         meta_array=self._meta_array)
         else:
             raise KeyError(item)
 
@@ -865,7 +873,8 @@ class Group(MutableMapping):
             cache_attrs = kwargs.get('cache_attrs', self.attrs.cache)
             a = Array(self._store, path=path, read_only=self._read_only,
                       chunk_store=self._chunk_store, synchronizer=synchronizer,
-                      cache_metadata=cache_metadata, cache_attrs=cache_attrs)
+                      cache_metadata=cache_metadata, cache_attrs=cache_attrs,
+                      meta_array=self._meta_array)
             shape = normalize_shape(shape)
             if shape != a.shape:
                 raise TypeError('shape do not match existing array; expected {}, got {}'

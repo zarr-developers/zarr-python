@@ -76,6 +76,9 @@ class Array:
         read and decompressed when possible.
 
         .. versionadded:: 2.7
+    meta_array : array, optional
+        An array instance to use for determining arrays to create and return
+        to users.
 
     Attributes
     ----------
@@ -138,6 +141,7 @@ class Array:
         cache_metadata=True,
         cache_attrs=True,
         partial_decompress=False,
+        meta_array=None
     ):
         # N.B., expect at this point store is fully initialized with all
         # configuration metadata fully specified and normalized
@@ -149,6 +153,10 @@ class Array:
             self._key_prefix = self._path + '/'
         else:
             self._key_prefix = ''
+        if meta_array is not None:
+            self._meta_array = np.empty_like(meta_array)
+        else:
+            self._meta_array = np.empty(())
         self._read_only = bool(read_only)
         self._synchronizer = synchronizer
         self._cache_metadata = cache_metadata
@@ -802,7 +810,7 @@ class Array:
 
         except KeyError:
             # chunk not initialized
-            chunk = np.zeros((), dtype=self._dtype)
+            chunk = np.zeros_like(self._meta_array, shape=(), dtype=self._dtype)
             if self._fill_value is not None:
                 chunk.fill(self._fill_value)
 
@@ -1106,7 +1114,8 @@ class Array:
 
         # setup output array
         if out is None:
-            out = np.empty(out_shape, dtype=out_dtype, order=self._order)
+            out = np.empty_like(self._meta_array, shape=out_shape,
+                                dtype=out_dtype, order=self._order)
         else:
             check_array_shape('out', out, out_shape)
 
@@ -1572,7 +1581,7 @@ class Array:
 
         except KeyError:
             # chunk not initialized
-            chunk = np.zeros((), dtype=self._dtype)
+            chunk = np.zeros_like(self._meta_array, shape=(), dtype=self._dtype)
             if self._fill_value is not None:
                 chunk.fill(self._fill_value)
 
@@ -1802,6 +1811,23 @@ class Array:
             self._process_chunk(out, cdata, chunk_selection, drop_axes,
                                 out_is_ndarray, fields, out_selection)
 
+            if (out_is_ndarray and
+                    not fields and
+                    is_contiguous_selection(out_selection) and
+                    is_total_slice(chunk_selection, self._chunks) and
+                    not self._filters and
+                    self._dtype != object):
+
+                dest = out[out_selection]
+                write_direct = (
+                    getattr(getattr(dest, "flags", None), "writeable", True) and (
+                        (self._order == 'C' and dest.flags.c_contiguous) or
+                        (self._order == 'F' and dest.flags.f_contiguous)
+                    )
+                )
+
+                if write_direct:
+
     def _chunk_getitems(self, lchunk_coords, lchunk_selection, out, lout_selection,
                         drop_axes=None, fields=None):
         """As _chunk_getitem, but for lists of chunks
@@ -1904,7 +1930,8 @@ class Array:
             if is_scalar(value, self._dtype):
 
                 # setup array filled with value
-                chunk = np.empty(self._chunks, dtype=self._dtype, order=self._order)
+                chunk = np.empty_like(self._meta_array, shape=self._chunks,
+                                      dtype=self._dtype, order=self._order)
                 chunk.fill(value)
 
             else:
@@ -1924,20 +1951,22 @@ class Array:
 
                 # chunk not initialized
                 if self._fill_value is not None:
-                    chunk = np.empty(self._chunks, dtype=self._dtype, order=self._order)
+                    chunk = np.empty_like(self._meta_array, shape=self._chunks,
+                                          dtype=self._dtype, order=self._order)
                     chunk.fill(self._fill_value)
                 elif self._dtype == object:
                     chunk = np.empty(self._chunks, dtype=self._dtype, order=self._order)
                 else:
                     # N.B., use zeros here so any region beyond the array has consistent
                     # and compressible data
-                    chunk = np.zeros(self._chunks, dtype=self._dtype, order=self._order)
+                    chunk = np.zeros_like(self._meta_array, shape=self._chunks,
+                                          dtype=self._dtype, order=self._order)
 
             else:
 
                 # decode chunk
                 chunk = self._decode_chunk(cdata)
-                if not chunk.flags.writeable:
+                if not getattr(getattr(chunk, "flags", None), "writeable", True):
                     chunk = chunk.copy(order='K')
 
             # modify
@@ -2169,7 +2198,8 @@ class Array:
 
     def __getstate__(self):
         return (self._store, self._path, self._read_only, self._chunk_store,
-                self._synchronizer, self._cache_metadata, self._attrs.cache)
+                self._synchronizer, self._cache_metadata, self._attrs.cache,
+                self._meta_array)
 
     def __setstate__(self, state):
         self.__init__(*state)
