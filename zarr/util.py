@@ -137,6 +137,10 @@ def normalize_chunks(
         chunks = tuple(s if c == -1 or c is None else int(c)
                        for s, c in zip(shape, chunks))
 
+    # raise for size 0 chunks
+    if 0 in chunks:
+        raise ValueError("Setting a chunk size of 0 is not supported")
+
     return tuple(chunks)
 
 
