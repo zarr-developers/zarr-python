@@ -120,6 +120,8 @@ def rmdir(store, path: Path = None):
     if hasattr(store, 'rmdir'):
         # pass through
         store.rmdir(path)
+    elif hasattr(store, 'fs') and hasattr(store.fs, 'rmdir'):
+        store.fs.rmdir(path)
     else:
         # slow version, delete one key at a time
         _rmdir_from_keys(store, path)
