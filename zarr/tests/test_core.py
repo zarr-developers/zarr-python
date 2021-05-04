@@ -2636,14 +2636,25 @@ class TestArrayWithFSStoreNestedPartialRead(TestArray):
             partial_decompress=True,
         )
 
+    def expected(self):
+        return [
+           "94884f29b41b9beb8fc99ad7bf9c0cbf0f2ab3c9",
+           "077aa3bd77b8d354f8f6c15dce5ae4f545788a72",
+           "22be95d83c097460adb339d80b2d7fe19c513c16",
+           "85131cec526fa46938fd2c4a6083a58ee11037ea",
+           "c3167010c162c6198cb2bf3c1da2c46b047c69a1",
+        ]
+
     def test_hexdigest(self):
+        found = []
+
         # Check basic 1-D array
         z = self.create_array(shape=(1050,), chunks=100, dtype="<i4")
-        assert "f710da18d45d38d4aaf2afd7fb822fdd73d02957" == z.hexdigest()
+        found.append(z.hexdigest())
 
         # Check basic 1-D array with different type
         z = self.create_array(shape=(1050,), chunks=100, dtype="<f4")
-        assert "1437428e69754b1e1a38bd7fc9e43669577620db" == z.hexdigest()
+        found.append(z.hexdigest())
 
         # Check basic 2-D array
         z = self.create_array(
@@ -2654,17 +2665,19 @@ class TestArrayWithFSStoreNestedPartialRead(TestArray):
             chunks=10,
             dtype="<i4",
         )
-        assert "6c530b6b9d73e108cc5ee7b6be3d552cc994bdbe" == z.hexdigest()
+        found.append(z.hexdigest())
 
         # Check basic 1-D array with some data
         z = self.create_array(shape=(1050,), chunks=100, dtype="<i4")
         z[200:400] = np.arange(200, 400, dtype="i4")
-        assert "4c0a76fb1222498e09dcd92f7f9221d6cea8b40e" == z.hexdigest()
+        found.append(z.hexdigest())
 
         # Check basic 1-D array with attributes
         z = self.create_array(shape=(1050,), chunks=100, dtype="<i4")
         z.attrs["foo"] = "bar"
-        assert "05b0663ffe1785f38d3a459dec17e57a18f254af" == z.hexdigest()
+        found.append(z.hexdigest())
+
+        assert self.expected() == found
 
     def test_non_cont(self):
         z = self.create_array(shape=(500, 500, 500), chunks=(50, 50, 50), dtype="<i4")
