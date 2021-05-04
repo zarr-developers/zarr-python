@@ -1081,8 +1081,11 @@ class FSStore(MutableMapping):
         return key.lower() if self.normalize_keys else key
 
     def getitems(self, keys, **kwargs):
-        keys = [self._normalize_key(key) for key in keys]
-        return self.map.getitems(keys, on_error="omit")
+        keys_transformed = [self._normalize_key(key) for key in keys]
+        results = self.map.getitems(keys_transformed, on_error="omit")
+        # The function calling this method may not recognize the transformed keys
+        # So we send the values returned by self.map.getitems back into the original key space.
+        return {keys[keys_transformed.index(rk)]: rv for rk, rv in results.items()}
 
     def __getitem__(self, key):
         key = self._normalize_key(key)
@@ -1144,9 +1147,28 @@ class FSStore(MutableMapping):
     def listdir(self, path=None):
         dir_path = self.dir_path(path)
         try:
-            out = sorted(p.rstrip('/').rsplit('/', 1)[-1]
-                         for p in self.fs.ls(dir_path, detail=False))
-            return out
+            children = sorted(p.rstrip('/').rsplit('/', 1)[-1]
+                              for p in self.fs.ls(dir_path, detail=False))
+            if self.key_separator != "/":
+                return children
+            else:
+                if array_meta_key in children:
+                    # special handling of directories containing an array to map nested chunk
+                    # keys back to standard chunk keys
+                    new_children = []
+                    root_path = self.dir_path(path)
+                    for entry in children:
+                        entry_path = os.path.join(root_path, entry)
+                        if _prog_number.match(entry) and self.fs.isdir(entry_path):
+                            for file_name in self.fs.find(entry_path):
+                                file_path = os.path.join(dir_path, file_name)
+                                rel_path = file_path.split(root_path)[1]
+                                new_children.append(rel_path.replace(os.path.sep, '.'))
+                        else:
+                            new_children.append(entry)
+                    return sorted(new_children)
+                else:
+                    return children
         except IOError:
             return []
 
@@ -2739,6 +2761,7 @@ class ConsolidatedMetadataStore(MutableMapping):
     zarr.convenience.consolidate_metadata, zarr.convenience.open_consolidated
 
     """
+
     def __init__(self, store, metadata_key='.zmetadata'):
         self.store = store
 
