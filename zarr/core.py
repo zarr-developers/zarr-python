@@ -646,9 +646,18 @@ class Array:
         -----
         Slices with step > 1 are supported, but slices with negative step are not.
 
-        Currently the implementation for __getitem__ is provided by
-        :func:`get_basic_selection`. For advanced ("fancy") indexing, see the methods
-        listed under See Also.
+        Currently the implementation for __setitem__ is provided by
+        :func:`set_basic_selection` and falls back on :func:`vindex`.
+        Effectively, this means that the following indexing modes are supported:
+
+           - integer indexing
+           - slice indexing
+           - mixed slice and integer indexing
+           - boolean indexing
+           - fancy indexing (vectorized list of integers)
+
+        For specific indexing options including outer indexing, see the
+        methods listed under See Also.
 
         See Also
         --------
@@ -658,8 +667,12 @@ class Array:
 
         """
 
-        fields, selection = pop_fields(selection)
-        return self.get_basic_selection(selection, fields=fields)
+        fields, pure_selection = pop_fields(selection)
+        try:
+            result = self.get_basic_selection(pure_selection, fields=fields)
+        except IndexError:
+            result = self.vindex[selection]
+        return result
 
     def get_basic_selection(self, selection=Ellipsis, out=None, fields=None):
         """Retrieve data for an item or region of the array.
@@ -1197,8 +1210,16 @@ class Array:
         Slices with step > 1 are supported, but slices with negative step are not.
 
         Currently the implementation for __setitem__ is provided by
-        :func:`set_basic_selection`, which means that only integers and slices are
-        supported within the selection. For advanced ("fancy") indexing, see the
+        :func:`set_basic_selection` and falls back on :func:`vindex`.
+        Effectively, this means that the following indexing modes are supported:
+
+           - integer indexing
+           - slice indexing
+           - mixed slice and integer indexing
+           - boolean indexing
+           - fancy indexing (vectorized list of integers)
+
+        For specific indexing options including outer indexing, see the
         methods listed under See Also.
 
         See Also
@@ -1209,8 +1230,11 @@ class Array:
 
         """
 
-        fields, selection = pop_fields(selection)
-        self.set_basic_selection(selection, value, fields=fields)
+        fields, pure_selection = pop_fields(selection)
+        try:
+            self.set_basic_selection(pure_selection, value, fields=fields)
+        except IndexError:
+            self.vindex[selection] = value
 
     def set_basic_selection(self, selection, value, fields=None):
         """Modify data for an item or region of the array.

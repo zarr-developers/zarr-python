@@ -198,14 +198,14 @@ def test_get_basic_selection_1d():
     for selection in basic_selections_1d:
         _test_get_basic_selection(a, z, selection)
 
-    bad_selections = basic_selections_1d_bad + [
-        [0, 1],  # fancy indexing
-    ]
-    for selection in bad_selections:
+    for selection in basic_selections_1d_bad:
         with pytest.raises(IndexError):
             z.get_basic_selection(selection)
         with pytest.raises(IndexError):
             z[selection]
+
+    with pytest.raises(IndexError):
+        z.get_basic_selection([1, 0])
 
 
 basic_selections_2d = [
@@ -274,7 +274,6 @@ def test_get_basic_selection_2d():
     bad_selections = basic_selections_2d_bad + [
         # integer arrays
         [0, 1],
-        ([0, 1], [0, 1]),
         (slice(None), [0, 1]),
     ]
     for selection in bad_selections:
@@ -282,6 +281,30 @@ def test_get_basic_selection_2d():
             z.get_basic_selection(selection)
         with pytest.raises(IndexError):
             z[selection]
+    # check fallback on fancy indexing
+    fancy_selection = ([0, 1], [0, 1])
+    np.testing.assert_array_equal(z[fancy_selection], [0, 11])
+
+
+def test_fancy_indexing_fallback_on_get_setitem():
+    z = zarr.zeros((20, 20))
+    z[[1, 2, 3], [1, 2, 3]] = 1
+    np.testing.assert_array_equal(
+        z[:4, :4],
+        [
+            [0, 0, 0, 0],
+            [0, 1, 0, 0],
+            [0, 0, 1, 0],
+            [0, 0, 0, 1],
+        ],
+    )
+    np.testing.assert_array_equal(
+        z[[1, 2, 3], [1, 2, 3]], 1
+    )
+    # test broadcasting
+    np.testing.assert_array_equal(
+        z[1, [1, 2, 3]], [1, 0, 0]
+    )
 
 
 def test_set_basic_selection_0d():
