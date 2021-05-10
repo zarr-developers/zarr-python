@@ -1596,6 +1596,20 @@ class TestArrayWithChunkStore(TestArray):
         assert -1 == z.nbytes_stored
 
 
+class TestArrayWithoutEmptyWrites(TestArray):
+
+    @staticmethod
+    def create_array(read_only=False, **kwargs):
+        path = mkdtemp()
+        atexit.register(shutil.rmtree, path)
+        store = DirectoryStore(path)
+        cache_metadata = kwargs.pop('cache_metadata', True)
+        cache_attrs = kwargs.pop('cache_attrs', True)
+        kwargs.setdefault('compressor', Zlib(1))
+        init_array(store, **kwargs)
+        return Array(store, read_only=read_only, cache_metadata=cache_metadata,
+                     cache_attrs=cache_attrs, write_empty_chunks=False)    
+
 class TestArrayWithDirectoryStore(TestArray):
 
     @staticmethod

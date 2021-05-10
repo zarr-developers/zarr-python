@@ -1968,7 +1968,7 @@ class Array:
                 chunk[chunk_selection] = value
 
         # clear chunk if it only contains the fill value
-        if self._write_empty_chunks and np.all(np.equal(chunk, self._fill_value)):
+        if not self._write_empty_chunks and np.all(np.array_equal(chunk, self._fill_value)):
             try:
                 del self.chunk_store[ckey]
                 return
