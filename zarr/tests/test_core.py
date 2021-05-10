@@ -1610,6 +1610,22 @@ class TestArrayWithoutEmptyWrites(TestArray):
         return Array(store, read_only=read_only, cache_metadata=cache_metadata,
                      cache_attrs=cache_attrs, write_empty_chunks=False)    
 
+        def test_nchunks_initialized(self):
+            for fill_value in -1, 0, 1, 10:
+                z = self.create_array(shape=100, chunks=10, fill_value=fill_value)
+                assert 0 == z.nchunks_initialized
+                # manually put something into the store to confuse matters
+                z.store['foo'] = b'bar'
+                assert 0 == z.nchunks_initialized
+                z[:] = 42
+                assert 10 == z.nchunks_initialized
+                z[:] = fill_value
+                assert 0 == z.nchunks_initialized
+                z[0] = 42
+                assert 1 == z.nchunks_initialized
+                if hasattr(z.store, 'close'):
+                    z.store.close()
+
 class TestArrayWithDirectoryStore(TestArray):
 
     @staticmethod
