@@ -1,11 +1,7 @@
-# -*- coding: utf-8 -*-
-from __future__ import absolute_import, print_function, division
-import json
-from collections import MutableMapping
+from collections.abc import MutableMapping
 
-
-from zarr.errors import PermissionError
 from zarr.meta import parse_metadata
+from zarr.util import json_dumps
 
 
 class Attributes(MutableMapping):
@@ -113,9 +109,7 @@ class Attributes(MutableMapping):
         self._write_op(self._put_nosync, d)
 
     def _put_nosync(self, d):
-        s = json.dumps(d, indent=4, sort_keys=True, ensure_ascii=True,
-                       separators=(',', ': '))
-        self.store[self.key] = s.encode('ascii')
+        self.store[self.key] = json_dumps(d)
         if self.cache:
             self._cached_asdict = d
 

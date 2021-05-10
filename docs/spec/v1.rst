@@ -108,7 +108,7 @@ Data type encoding
 Simple data types are encoded within the array metadata resource as a
 string, following the `NumPy array protocol type string (typestr)
 format
-<http://docs.scipy.org/doc/numpy/reference/arrays.interface.html>`_. The
+<numpy:arrays.interface>`_. The
 format consists of 3 parts: a character describing the byteorder of
 the data (``<``: little-endian, ``>``: big-endian, ``|``:
 not-relevant), a character code giving the basic type of the array,
@@ -119,7 +119,7 @@ order MUST be specified. E.g., ``"<f8"``, ``">i4"``, ``"|b1"`` and
 Structure data types (i.e., with multiple named fields) are encoded as
 a list of two-element lists, following `NumPy array protocol type
 descriptions (descr)
-<http://docs.scipy.org/doc/numpy/reference/arrays.interface.html#>`_.
+<numpy:arrays.interface>`_.
 For example, the JSON list ``[["r", "|u1"], ["g", "|u1"], ["b",
 "|u1"]]`` defines a data type composed of three single-byte unsigned
 integers labelled 'r', 'g' and 'b'.

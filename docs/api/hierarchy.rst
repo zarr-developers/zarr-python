@@ -11,6 +11,8 @@ Groups (``zarr.hierarchy``)
     .. automethod:: __iter__
     .. automethod:: __contains__
     .. automethod:: __getitem__
+    .. automethod:: __enter__
+    .. automethod:: __exit__
     .. automethod:: group_keys
     .. automethod:: groups
     .. automethod:: array_keys

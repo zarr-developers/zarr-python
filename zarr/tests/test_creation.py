@@ -1,25 +1,21 @@
-# -*- coding: utf-8 -*-
-from __future__ import absolute_import, print_function, division
-import tempfile
-import shutil
 import atexit
 import os.path
-
+import shutil
+import tempfile
 
 import numpy as np
-from numpy.testing import assert_array_equal
 import pytest
+from numpy.testing import assert_array_equal
 
-
-from zarr.creation import (array, empty, zeros, ones, full, open_array, empty_like,
-                           zeros_like, ones_like, full_like, open_like, create)
-from zarr.sync import ThreadSynchronizer
-from zarr.core import Array
-from zarr.storage import DirectoryStore
-from zarr.hierarchy import open_group
-from zarr.errors import PermissionError
 from zarr.codecs import Zlib
-from zarr.compat import PY2
+from zarr.core import Array
+from zarr.creation import (array, create, empty, empty_like, full, full_like,
+                           ones, ones_like, open_array, open_like, zeros,
+                           zeros_like)
+from zarr.hierarchy import open_group
+from zarr.n5 import N5Store
+from zarr.storage import DirectoryStore
+from zarr.sync import ThreadSynchronizer
 
 
 # something bcolz-like
@@ -151,7 +147,7 @@ def test_full():
     assert np.all(a == v)
 
     # unicode string dtype
-    v = u'xxx'
+    v = 'xxx'
     z = full(100, chunks=10, fill_value=v, dtype='U3')
     assert v == z[0]
     a = z[...]
@@ -161,17 +157,8 @@ def test_full():
 
     # bytes fill value / unicode dtype
     v = b'xxx'
-    if PY2:  # pragma: py3 no cover
-        # allow this on PY2
-        z = full(100, chunks=10, fill_value=v, dtype='U3')
-        a = z[...]
-        assert z.dtype == a.dtype
-        assert v == a[0]
-        assert np.all(a == v)
-    else:  # pragma: py2 no cover
-        # be strict on PY3
-        with pytest.raises(ValueError):
-            full(100, chunks=10, fill_value=v, dtype='U3')
+    with pytest.raises(ValueError):
+        full(100, chunks=10, fill_value=v, dtype='U3')
 
 
 def test_open_array():
@@ -254,6 +241,34 @@ def test_open_array():
     z[:] = 42
     assert os.path.abspath(meta_store) == z.store.path
     assert os.path.abspath(chunk_store) == z.chunk_store.path
+
+    # for N5 store
+    store = 'data/array.n5'
+    z = open_array(store, mode='w', shape=100, chunks=10)
+    z[:] = 42
+    assert isinstance(z, Array)
+    assert isinstance(z.store, N5Store)
+    assert (100,) == z.shape
+    assert (10,) == z.chunks
+    assert_array_equal(np.full(100, fill_value=42), z[:])
+
+    store = 'data/group.n5'
+    z = open_group(store, mode='w')
+    i = z.create_group('inner')
+    a = i.zeros("array", shape=100, chunks=10)
+    a[:] = 42
+
+    # Edit inner/attributes.json to not include "n5"
+    with open('data/group.n5/inner/attributes.json', 'w') as o:
+        o.write("{}")
+
+    # Re-open
+    a = open_group(store)["inner"]["array"]
+    assert isinstance(a, Array)
+    assert isinstance(z.store, N5Store)
+    assert (100,) == a.shape
+    assert (10,) == a.chunks
+    assert_array_equal(np.full(100, fill_value=42), a[:])
 
 
 def test_empty_like():
@@ -465,15 +480,12 @@ def test_compression_args():
     assert 'zlib' == z.compressor.codec_id
     assert 9 == z.compressor.level
 
-    # cannot get warning tests to work on PY2
-    if not PY2:  # pragma: py2 no cover
-
-        with pytest.warns(UserWarning):
-            # 'compressor' overrides 'compression'
-            create(100, compressor=Zlib(9), compression='bz2', compression_opts=1)
-        with pytest.warns(UserWarning):
-            # 'compressor' ignores 'compression_opts'
-            create(100, compressor=Zlib(9), compression_opts=1)
+    with pytest.warns(UserWarning):
+        # 'compressor' overrides 'compression'
+        create(100, compressor=Zlib(9), compression='bz2', compression_opts=1)
+    with pytest.warns(UserWarning):
+        # 'compressor' ignores 'compression_opts'
+        create(100, compressor=Zlib(9), compression_opts=1)
 
 
 def test_create_read_only():

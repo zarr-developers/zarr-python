@@ -1,23 +1,26 @@
-# -*- coding: utf-8 -*-
-from __future__ import absolute_import, print_function, division
 from warnings import warn
 
-
 import numpy as np
-
+from numcodecs.registry import codec_registry
 
 from zarr.core import Array
-from zarr.storage import (DirectoryStore, init_array, contains_array, contains_group,
-                          default_compressor, normalize_storage_path, ZipStore)
-from numcodecs.registry import codec_registry
-from zarr.errors import err_contains_array, err_contains_group, err_array_not_found
+from zarr.errors import (
+    ArrayNotFoundError,
+    ContainsArrayError,
+    ContainsGroupError,
+)
+from zarr.n5 import N5Store
+from zarr.storage import (DirectoryStore, ZipStore, contains_array,
+                          contains_group, default_compressor, init_array,
+                          normalize_storage_path, FSStore)
+from zarr.util import normalize_dimension_separator
 
 
 def create(shape, chunks=True, dtype=None, compressor='default',
            fill_value=0, order='C', store=None, synchronizer=None,
            overwrite=False, path=None, chunk_store=None, filters=None,
            cache_metadata=True, cache_attrs=True, read_only=False,
-           object_codec=None, **kwargs):
+           object_codec=None, dimension_separator=None, **kwargs):
     """Create an array.
 
     Parameters
@@ -27,6 +30,8 @@ def create(shape, chunks=True, dtype=None, compressor='default',
     chunks : int or tuple of ints, optional
         Chunk shape. If True, will be guessed from `shape` and `dtype`. If
         False, will be set to `shape`, i.e., single chunk for the whole array.
+        If an int, the chunk size in each dimension will be given by the value
+        of `chunks`. Default is True.
     dtype : string or dtype, optional
         NumPy dtype.
     compressor : Codec, optional
@@ -62,6 +67,9 @@ def create(shape, chunks=True, dtype=None, compressor='default',
         True if array should be protected against modification.
     object_codec : Codec, optional
         A codec to encode object arrays, only needed if dtype=object.
+    dimension_separator : {'.', '/'}, optional
+        Separator placed between the dimensions of a chunk.
+        .. versionadded:: 2.8
 
     Returns
     -------
@@ -113,10 +121,22 @@ def create(shape, chunks=True, dtype=None, compressor='default',
     # API compatibility with h5py
     compressor, fill_value = _kwargs_compat(compressor, fill_value, kwargs)
 
+    # optional array metadata
+    if dimension_separator is None:
+        dimension_separator = getattr(store, "_dimension_separator", None)
+    else:
+        if getattr(store, "_dimension_separator", None) != dimension_separator:
+            raise ValueError(
+                f"Specified dimension_separtor: {dimension_separator}"
+                f"conflicts with store's separator: "
+                f"{store._dimension_separator}")
+    dimension_separator = normalize_dimension_separator(dimension_separator)
+
     # initialize array metadata
     init_array(store, shape=shape, chunks=chunks, dtype=dtype, compressor=compressor,
                fill_value=fill_value, order=order, overwrite=overwrite, path=path,
-               chunk_store=chunk_store, filters=filters, object_codec=object_codec)
+               chunk_store=chunk_store, filters=filters, object_codec=object_codec,
+               dimension_separator=dimension_separator)
 
     # instantiate array
     z = Array(store, path=path, chunk_store=chunk_store, synchronizer=synchronizer,
@@ -125,13 +145,19 @@ def create(shape, chunks=True, dtype=None, compressor='default',
     return z
 
 
-def normalize_store_arg(store, clobber=False, default=dict):
+def normalize_store_arg(store, clobber=False, storage_options=None, mode='w'):
     if store is None:
-        return default()
+        return dict()
     elif isinstance(store, str):
+        mode = mode if clobber else "r"
+        if "://" in store or "::" in store:
+            return FSStore(store, mode=mode, **(storage_options or {}))
+        elif storage_options:
+            raise ValueError("storage_options passed with non-fsspec path")
         if store.endswith('.zip'):
-            mode = 'w' if clobber else 'a'
             return ZipStore(store, mode=mode)
+        elif store.endswith('.n5'):
+            return N5Store(store)
         else:
             return DirectoryStore(store)
     else:
@@ -145,12 +171,18 @@ def _kwargs_compat(compressor, fill_value, kwargs):
 
     if compressor != 'default':
         # 'compressor' overrides 'compression'
-        if 'compression' in kwargs:
-            warn("'compression' keyword argument overridden by 'compressor'")
-            del kwargs['compression']
-        if 'compression_opts' in kwargs:
-            warn("'compression_opts' keyword argument overridden by 'compressor'")
-            del kwargs['compression_opts']
+        if "compression" in kwargs:
+            warn(
+                "'compression' keyword argument overridden by 'compressor'",
+                stacklevel=3,
+            )
+            del kwargs["compression"]
+        if "compression_opts" in kwargs:
+            warn(
+                "'compression_opts' keyword argument overridden by 'compressor'",
+                stacklevel=3,
+            )
+            del kwargs["compression_opts"]
 
     elif 'compression' in kwargs:
         compression = kwargs.pop('compression')
@@ -346,10 +378,26 @@ def array(data, **kwargs):
     return z
 
 
-def open_array(store=None, mode='a', shape=None, chunks=True, dtype=None,
-               compressor='default', fill_value=0, order='C', synchronizer=None,
-               filters=None, cache_metadata=True, cache_attrs=True, path=None,
-               object_codec=None, chunk_store=None, **kwargs):
+def open_array(
+    store=None,
+    mode="a",
+    shape=None,
+    chunks=True,
+    dtype=None,
+    compressor="default",
+    fill_value=0,
+    order="C",
+    synchronizer=None,
+    filters=None,
+    cache_metadata=True,
+    cache_attrs=True,
+    path=None,
+    object_codec=None,
+    chunk_store=None,
+    storage_options=None,
+    partial_decompress=False,
+    **kwargs
+):
     """Open an array using file-mode-like semantics.
 
     Parameters
@@ -366,6 +414,8 @@ def open_array(store=None, mode='a', shape=None, chunks=True, dtype=None,
     chunks : int or tuple of ints, optional
         Chunk shape. If True, will be guessed from `shape` and `dtype`. If
         False, will be set to `shape`, i.e., single chunk for the whole array.
+        If an int, the chunk size in each dimension will be given by the value
+        of `chunks`. Default is True.
     dtype : string or dtype, optional
         NumPy dtype.
     compressor : Codec, optional
@@ -393,6 +443,15 @@ def open_array(store=None, mode='a', shape=None, chunks=True, dtype=None,
         A codec to encode object arrays, only needed if dtype=object.
     chunk_store : MutableMapping or string, optional
         Store or path to directory in file system or name of zip file.
+    storage_options : dict
+        If using an fsspec URL to create the store, these will be passed to
+        the backend implementation. Ignored otherwise.
+    partial_decompress : bool, optional
+        If True and while the chunk_store is a FSStore and the compresion used
+        is Blosc, when getting data from the array chunks will be partially
+        read and decompressed when possible.
+
+        .. versionadded:: 2.7
 
     Returns
     -------
@@ -428,10 +487,11 @@ def open_array(store=None, mode='a', shape=None, chunks=True, dtype=None,
     # a : read/write if exists, create otherwise (default)
 
     # handle polymorphic store arg
-    clobber = mode == 'w'
-    store = normalize_store_arg(store, clobber=clobber)
+    clobber = (mode == 'w')
+    store = normalize_store_arg(store, clobber=clobber, storage_options=storage_options, mode=mode)
     if chunk_store is not None:
-        chunk_store = normalize_store_arg(chunk_store, clobber=clobber)
+        chunk_store = normalize_store_arg(chunk_store, clobber=clobber,
+                                          storage_options=storage_options)
     path = normalize_storage_path(path)
 
     # API compatibility with h5py
@@ -445,9 +505,9 @@ def open_array(store=None, mode='a', shape=None, chunks=True, dtype=None,
 
     if mode in ['r', 'r+']:
         if contains_group(store, path=path):
-            err_contains_group(path)
+            raise ContainsGroupError(path)
         elif not contains_array(store, path=path):
-            err_array_not_found(path)
+            raise ArrayNotFoundError(path)
 
     elif mode == 'w':
         init_array(store, shape=shape, chunks=chunks, dtype=dtype,
@@ -457,7 +517,7 @@ def open_array(store=None, mode='a', shape=None, chunks=True, dtype=None,
 
     elif mode == 'a':
         if contains_group(store, path=path):
-            err_contains_group(path)
+            raise ContainsGroupError(path)
         elif not contains_array(store, path=path):
             init_array(store, shape=shape, chunks=chunks, dtype=dtype,
                        compressor=compressor, fill_value=fill_value,
@@ -466,9 +526,9 @@ def open_array(store=None, mode='a', shape=None, chunks=True, dtype=None,
 
     elif mode in ['w-', 'x']:
         if contains_group(store, path=path):
-            err_contains_group(path)
+            raise ContainsGroupError(path)
         elif contains_array(store, path=path):
-            err_contains_array(path)
+            raise ContainsArrayError(path)
         else:
             init_array(store, shape=shape, chunks=chunks, dtype=dtype,
                        compressor=compressor, fill_value=fill_value,

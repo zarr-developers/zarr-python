@@ -1,35 +1,17 @@
-# -*- coding: utf-8 -*-
-from __future__ import absolute_import, print_function, division
-import json
 import base64
-
+from collections.abc import Mapping
 
 import numpy as np
-from numcodecs.compat import ensure_bytes
 
-
-from zarr.compat import PY2, Mapping
 from zarr.errors import MetadataError
+from zarr.util import json_dumps, json_loads
 
+from typing import cast, Union, Any, List, Mapping as MappingType
 
 ZARR_FORMAT = 2
 
 
-def ensure_str(s):
-    if not isinstance(s, str):
-        s = ensure_bytes(s)
-        if not PY2:  # pragma: py2 no cover
-            s = s.decode('ascii')
-    return s
-
-
-def json_dumps(o):
-    """Write JSON in a consistent, human-readable way."""
-    return json.dumps(o, indent=4, sort_keys=True, ensure_ascii=True,
-                      separators=(',', ': '))
-
-
-def parse_metadata(s):
+def parse_metadata(s: Union[MappingType, str]) -> MappingType[str, Any]:
 
     # Here we allow that a store may return an already-parsed metadata object,
     # or a string of JSON that we will parse here. We allow for an already-parsed
@@ -42,13 +24,12 @@ def parse_metadata(s):
 
     else:
         # assume metadata needs to be parsed as JSON
-        s = ensure_str(s)
-        meta = json.loads(s)
+        meta = json_loads(s)
 
     return meta
 
 
-def decode_array_metadata(s):
+def decode_array_metadata(s: Union[MappingType, str]) -> MappingType[str, Any]:
     meta = parse_metadata(s)
 
     # check metadata format
@@ -69,18 +50,23 @@ def decode_array_metadata(s):
             fill_value=fill_value,
             order=meta['order'],
             filters=meta['filters'],
+            dimension_separator=meta.get('dimension_separator', '.'),
         )
+
     except Exception as e:
         raise MetadataError('error decoding metadata: %s' % e)
     else:
         return meta
 
 
-def encode_array_metadata(meta):
+def encode_array_metadata(meta: MappingType[str, Any]) -> bytes:
     dtype = meta['dtype']
     sdshape = ()
     if dtype.subdtype is not None:
         dtype, sdshape = dtype.subdtype
+
+    dimension_separator = meta.get('dimension_separator')
+
     meta = dict(
         zarr_format=ZARR_FORMAT,
         shape=meta['shape'] + sdshape,
@@ -91,36 +77,34 @@ def encode_array_metadata(meta):
         order=meta['order'],
         filters=meta['filters'],
     )
-    s = json_dumps(meta)
-    b = s.encode('ascii')
-    return b
+
+    if dimension_separator:
+        meta['dimension_separator'] = dimension_separator
+
+    return json_dumps(meta)
 
 
-def encode_dtype(d):
+def encode_dtype(d: np.dtype):
     if d.fields is None:
         return d.str
     else:
         return d.descr
 
 
-def _decode_dtype_descr(d):
+def _decode_dtype_descr(d) -> List[Any]:
     # need to convert list of lists to list of tuples
     if isinstance(d, list):
         # recurse to handle nested structures
-        if PY2:  # pragma: py3 no cover
-            # under PY2 numpy rejects unicode field names
-            d = [(k[0].encode("ascii"), _decode_dtype_descr(k[1])) + tuple(k[2:]) for k in d]
-        else:  # pragma: py2 no cover
-            d = [(k[0], _decode_dtype_descr(k[1])) + tuple(k[2:]) for k in d]
+        d = [(k[0], _decode_dtype_descr(k[1])) + tuple(k[2:]) for k in d]
     return d
 
 
-def decode_dtype(d):
+def decode_dtype(d) -> np.dtype:
     d = _decode_dtype_descr(d)
     return np.dtype(d)
 
 
-def decode_group_metadata(s):
+def decode_group_metadata(s: Union[MappingType, str]) -> MappingType[str, Any]:
     meta = parse_metadata(s)
 
     # check metadata format version
@@ -134,13 +118,11 @@ def decode_group_metadata(s):
 
 # N.B., keep `meta` parameter as a placeholder for future
 # noinspection PyUnusedLocal
-def encode_group_metadata(meta=None):
+def encode_group_metadata(meta=None) -> bytes:
     meta = dict(
         zarr_format=ZARR_FORMAT,
     )
-    s = json_dumps(meta)
-    b = s.encode('ascii')
-    return b
+    return json_dumps(meta)
 
 
 FLOAT_FILLS = {
@@ -163,6 +145,11 @@ def decode_fill_value(v, dtype):
             return np.NINF
         else:
             return np.array(v, dtype=dtype)[()]
+    elif dtype.kind in 'c':
+        v = (decode_fill_value(v[0], dtype.type().real.dtype),
+             decode_fill_value(v[1], dtype.type().imag.dtype))
+        v = v[0] + 1j * v[1]
+        return np.array(v, dtype=dtype)[()]
     elif dtype.kind == 'S':
         # noinspection PyBroadException
         try:
@@ -184,7 +171,7 @@ def decode_fill_value(v, dtype):
         return np.array(v, dtype=dtype)[()]
 
 
-def encode_fill_value(v, dtype):
+def encode_fill_value(v: Any, dtype: np.dtype) -> Any:
     # early out
     if v is None:
         return v
@@ -201,10 +188,13 @@ def encode_fill_value(v, dtype):
         return int(v)
     elif dtype.kind == 'b':
         return bool(v)
+    elif dtype.kind in 'c':
+        c = cast(np.complex128, np.dtype(complex).type())
+        v = (encode_fill_value(v.real, c.real.dtype),
+             encode_fill_value(v.imag, c.imag.dtype))
+        return v
     elif dtype.kind in 'SV':
-        v = base64.standard_b64encode(v)
-        if not PY2:  # pragma: py2 no cover
-            v = str(v, 'ascii')
+        v = str(base64.standard_b64encode(v), 'ascii')
         return v
     elif dtype.kind == 'U':
         return v

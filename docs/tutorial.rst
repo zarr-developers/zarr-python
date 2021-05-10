@@ -270,8 +270,8 @@ Here is an example using a delta filter with the Blosc compressor::
     Compressor         : Blosc(cname='zstd', clevel=1, shuffle=SHUFFLE, blocksize=0)
     Store type         : builtins.dict
     No. bytes          : 400000000 (381.5M)
-    No. bytes stored   : 648605 (633.4K)
-    Storage ratio      : 616.7
+    No. bytes stored   : 1290562 (1.2M)
+    Storage ratio      : 309.9
     Chunks initialized : 100/100
 
 For more information about available filter codecs, see the `Numcodecs
@@ -346,6 +346,9 @@ sub-directories, e.g.::
     >>> z
     <zarr.core.Array '/foo/bar/baz' (10000, 10000) int32>
 
+Groups can be used as context managers (in a ``with`` statement).
+If the underlying store has a ``close`` method, it will be called on exit.
+
 For more information on groups see the :mod:`zarr.hierarchy` and
 :mod:`zarr.convenience` API docs.
 
@@ -367,7 +370,7 @@ property. E.g.::
     Name        : /
     Type        : zarr.hierarchy.Group
     Read-only   : False
-    Store type  : zarr.storage.DictStore
+    Store type  : zarr.storage.MemoryStore
     No. members : 1
     No. arrays  : 0
     No. groups  : 1
@@ -377,7 +380,7 @@ property. E.g.::
     Name        : /foo
     Type        : zarr.hierarchy.Group
     Read-only   : False
-    Store type  : zarr.storage.DictStore
+    Store type  : zarr.storage.MemoryStore
     No. members : 2
     No. arrays  : 2
     No. groups  : 0
@@ -392,7 +395,7 @@ property. E.g.::
     Order              : C
     Read-only          : False
     Compressor         : Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
-    Store type         : zarr.storage.DictStore
+    Store type         : zarr.storage.MemoryStore
     No. bytes          : 8000000 (7.6M)
     No. bytes stored   : 33240 (32.5K)
     Storage ratio      : 240.7
@@ -407,7 +410,7 @@ property. E.g.::
     Order              : C
     Read-only          : False
     Compressor         : Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
-    Store type         : zarr.storage.DictStore
+    Store type         : zarr.storage.MemoryStore
     No. bytes          : 4000000 (3.8M)
     No. bytes stored   : 23943 (23.4K)
     Storage ratio      : 167.1
@@ -421,9 +424,10 @@ Groups also have the :func:`zarr.hierarchy.Group.tree` method, e.g.::
          ├── bar (1000000,) int64
          └── baz (1000, 1000) float32
 
-If you're using Zarr within a Jupyter notebook, calling ``tree()`` will generate an
+If you're using Zarr within a Jupyter notebook (requires
+`ipytree <https://github.com/QuantStack/ipytree>`_), calling ``tree()`` will generate an
 interactive tree representation, see the `repr_tree.ipynb notebook
-<http://nbviewer.jupyter.org/github/zarr-developers/zarr/blob/master/notebooks/repr_tree.ipynb>`_
+<http://nbviewer.jupyter.org/github/zarr-developers/zarr-python/blob/master/notebooks/repr_tree.ipynb>`_
 for more examples.
 
 .. _tutorial_attrs:
@@ -729,6 +733,37 @@ group (requires `lmdb <http://lmdb.readthedocs.io/>`_ to be installed)::
     >>> z[:] = 42
     >>> store.close()
 
+In Zarr version 2.3 is the :class:`zarr.storage.SQLiteStore` class which
+enables the SQLite database to be used for storing an array or group (requires
+Python is built with SQLite support)::
+
+    >>> store = zarr.SQLiteStore('data/example.sqldb')
+    >>> root = zarr.group(store=store, overwrite=True)
+    >>> z = root.zeros('foo/bar', shape=(1000, 1000), chunks=(100, 100), dtype='i4')
+    >>> z[:] = 42
+    >>> store.close()
+
+Also added in Zarr version 2.3 are two storage classes for interfacing with server-client
+databases. The :class:`zarr.storage.RedisStore` class interfaces `Redis <https://redis.io/>`_
+(an in memory data structure store), and the :class:`zarr.storage.MongoDB` class interfaces
+with `MongoDB <https://www.mongodb.com/>`_ (an object oriented NoSQL database). These stores
+respectively require the `redis-py <https://redis-py.readthedocs.io>`_ and
+`pymongo <https://api.mongodb.com/python/current/>`_ packages to be installed. 
+
+For compatibility with the `N5 <https://github.com/saalfeldlab/n5>`_ data format, Zarr also provides
+an N5 backend (this is currently an experimental feature). Similar to the zip storage class, an
+:class:`zarr.n5.N5Store` can be instantiated directly::
+
+    >>> store = zarr.N5Store('data/example.n5')
+    >>> root = zarr.group(store=store)
+    >>> z = root.zeros('foo/bar', shape=(1000, 1000), chunks=(100, 100), dtype='i4')
+    >>> z[:] = 42
+
+For convenience, the N5 backend will automatically be chosen when the filename
+ends with `.n5`::
+
+    >>> root = zarr.open('data/example.n5', mode='w')
+
 Distributed/cloud storage
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -760,7 +795,7 @@ Here is an example using S3Map to read an array created previously::
     Order              : C
     Read-only          : False
     Compressor         : Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
-    Store type         : s3fs.mapping.S3Map
+    Store type         : fsspec.mapping.FSMap
     No. bytes          : 21
     Chunks initialized : 3/3
     >>> z[:]
@@ -769,6 +804,21 @@ Here is an example using S3Map to read an array created previously::
           dtype='|S1')
     >>> z[:].tostring()
     b'Hello from the cloud!'
+
+Zarr now also has a builtin storage backend for Azure Blob Storage.
+The class is :class:`zarr.storage.ABSStore` (requires
+`azure-storage-blob <https://docs.microsoft.com/en-us/azure/storage/blobs/storage-quickstart-blobs-python>`_
+to be installed)::
+
+    >>> store = zarr.ABSStore(container='test', prefix='zarr-testing', blob_service_kwargs={'is_emulated': True})  # doctest: +SKIP
+    >>> root = zarr.group(store=store, overwrite=True)  # doctest: +SKIP
+    >>> z = root.zeros('foo/bar', shape=(1000, 1000), chunks=(100, 100), dtype='i4')  # doctest: +SKIP
+    >>> z[:] = 42  # doctest: +SKIP
+
+When using an actual storage account, provide ``account_name`` and
+``account_key`` arguments to :class:`zarr.storage.ABSStore`, the
+above client is just testing against the emulator. Please also note
+that this is an experimental feature.
 
 Note that retrieving data from a remote service via the network can be significantly
 slower than retrieving data from a local file system, and will depend on network latency
@@ -804,22 +854,53 @@ please raise an issue on the GitHub issue tracker with any profiling data you
 can provide, as there may be opportunities to optimise further either within
 Zarr or within the mapping interface to the storage.
 
+IO with ``fsspec``
+~~~~~~~~~~~~~~~~~~
+
+As of version 2.5, zarr supports passing URLs directly to `fsspec`_,
+and having it create the "mapping" instance automatically. This means, that
+for all of the backend storage implementations `supported by fsspec`_,
+you can skip importing and configuring the storage explicitly.
+For example::
+
+    >>> g = zarr.open_group("s3://zarr-demo/store", storage_options={'anon': True})   # doctest: +SKIP
+    >>> g['foo/bar/baz'][:].tobytes()  # doctest: +SKIP
+    b'Hello from the cloud!'
+
+The provision of the protocol specifier "s3://" will select the correct backend.
+Notice the kwargs ``storage_options``, used to pass parameters to that backend.
+
+As of version 2.6, write mode and complex URLs are also supported, such as::
+
+    >>> g = zarr.open_group("simplecache::s3://zarr-demo/store",
+    ...                     storage_options={"s3": {'anon': True}})  # doctest: +SKIP
+    >>> g['foo/bar/baz'][:].tobytes()  # downloads target file  # doctest: +SKIP
+    b'Hello from the cloud!'
+    >>> g['foo/bar/baz'][:].tobytes()  # uses cached file  # doctest: +SKIP
+    b'Hello from the cloud!'
+
+The second invocation here will be much faster. Note that the ``storage_options``
+have become more complex here, to account for the two parts of the supplied
+URL.
+
+.. _fsspec: https://filesystem-spec.readthedocs.io/en/latest/
+
+.. _supported by fsspec: https://filesystem-spec.readthedocs.io/en/latest/api.html#built-in-implementations
+
 .. _tutorial_copy:
 
 Consolidating metadata
 ~~~~~~~~~~~~~~~~~~~~~~
 
-(This is an experimental feature.)
-
 Since there is a significant overhead for every connection to a cloud object
 store such as S3, the pattern described in the previous section may incur
-significant latency while scanning the metadata of the dataset hierarchy, even
+significant latency while scanning the metadata of the array hierarchy, even
 though each individual metadata object is small.  For cases such as these, once
 the data are static and can be regarded as read-only, at least for the
-metadata/structure of the dataset hierarchy, the many metadata objects can be
+metadata/structure of the array hierarchy, the many metadata objects can be
 consolidated into a single one via
 :func:`zarr.convenience.consolidate_metadata`. Doing this can greatly increase
-the speed of reading the dataset metadata, e.g.::
+the speed of reading the array metadata, e.g.::
 
    >>> zarr.consolidate_metadata(store)  # doctest: +SKIP
 
@@ -836,7 +917,7 @@ backend storage.
 
 Note that, the hierarchy could still be opened in the normal way and altered,
 causing the consolidated metadata to become out of sync with the real state of
-the dataset hierarchy. In this case,
+the array hierarchy. In this case,
 :func:`zarr.convenience.consolidate_metadata` would need to be called again.
 
 To protect against consolidated metadata accidentally getting out of sync, the
@@ -880,8 +961,8 @@ copying a group named 'foo' from an HDF5 file to a Zarr group::
              └── baz (100,) int64
     >>> source.close()
 
-If rather than copying a single group or dataset you would like to copy all
-groups and datasets, use :func:`zarr.convenience.copy_all`, e.g.::
+If rather than copying a single group or array you would like to copy all
+groups and arrays, use :func:`zarr.convenience.copy_all`, e.g.::
 
     >>> source = h5py.File('data/example.h5', mode='r')
     >>> dest = zarr.open_group('data/example2.zarr', mode='w')
@@ -954,7 +1035,7 @@ String arrays
 There are several options for storing arrays of strings.
 
 If your strings are all ASCII strings, and you know the maximum length of the string in
-your dataset, then you can use an array with a fixed-length bytes dtype. E.g.::
+your array, then you can use an array with a fixed-length bytes dtype. E.g.::
 
     >>> z = zarr.zeros(10, dtype='S6')
     >>> z
@@ -1124,8 +1205,8 @@ better performance, at least when using the Blosc compression library.
 The optimal chunk shape will depend on how you want to access the data. E.g.,
 for a 2-dimensional array, if you only ever take slices along the first
 dimension, then chunk across the second dimenson. If you know you want to chunk
-across an entire dimension you can use ``None`` within the ``chunks`` argument,
-e.g.::
+across an entire dimension you can use ``None`` or ``-1`` within the ``chunks``
+argument, e.g.::
 
     >>> z1 = zarr.zeros((10000, 10000), chunks=(100, None), dtype='i4')
     >>> z1.chunks
@@ -1207,6 +1288,45 @@ bytes within chunks of an array may improve the compression ratio, depending on
 the structure of the data, the compression algorithm used, and which compression
 filters (e.g., byte-shuffle) have been applied.
 
+.. _tutorial_rechunking:
+
+Changing chunk shapes (rechunking)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Sometimes you are not free to choose the initial chunking of your input data, or
+you might have data saved with chunking which is not optimal for the analysis you
+have planned. In such cases it can be advantageous to re-chunk the data. For small
+datasets, or when the mismatch between input and output chunks is small
+such that only a few chunks of the input dataset need to be read to create each
+chunk in the output array, it is sufficient to simply copy the data to a new array
+with the desired chunking, e.g. ::
+
+    >>> a = zarr.zeros((10000, 10000), chunks=(100,100), dtype='uint16', store='a.zarr')
+    >>> b = zarr.array(a, chunks=(100, 200), store='b.zarr')
+
+If the chunk shapes mismatch, however, a simple copy can lead to non-optimal data
+access patterns and incur a substantial performance hit when using
+file based stores. One of the most pathological examples is
+switching from column-based chunking to row-based chunking e.g. ::
+
+    >>> a = zarr.zeros((10000,10000), chunks=(10000, 1), dtype='uint16, store='a.zarr')
+    >>> b = zarr.array(a, chunks=(1,10000), store='b.zarr')
+
+which will require every chunk in the input data set to be repeatedly read when creating
+each output chunk. If the entire array will fit within memory, this is simply resolved
+by forcing the entire input array into memory as a numpy array before converting
+back to zarr with the desired chunking. ::
+
+    >>> a = zarr.zeros((10000,10000), chunks=(10000, 1), dtype='uint16, store='a.zarr')
+    >>> b = a[...]
+    >>> c = zarr.array(b, chunks=(1,10000), store='c.zarr')
+
+For data sets which have mismatched chunks and which do not fit in memory, a
+more sophisticated approach to rechunking, such as offered by the
+`rechunker <https://github.com/pangeo-data/rechunker>`_ package and discussed
+`here <https://medium.com/pangeo/rechunker-the-missing-link-for-chunked-array-analytics-5b2359e9dc11>`_
+may offer a substantial improvement in performance.
+
 .. _tutorial_sync:
 
 Parallel computing and synchronization
@@ -1287,7 +1407,7 @@ module can be pickled, as can the built-in ``dict`` class which can also be used
 storage.
 
 Note that if an array or group is backed by an in-memory store like a ``dict`` or
-:class:`zarr.storage.DictStore`, then when it is pickled all of the store data will be
+:class:`zarr.storage.MemoryStore`, then when it is pickled all of the store data will be
 included in the pickled data. However, if an array or group is backed by a persistent
 store like a :class:`zarr.storage.DirectoryStore`, :class:`zarr.storage.ZipStore` or
 :class:`zarr.storage.DBMStore` then the store data **are not** pickled. The only thing
@@ -1370,7 +1490,7 @@ compression and decompression. By default, Blosc uses up to 8
 internal threads. The number of Blosc threads can be changed to increase or
 decrease this number, e.g.::
 
-    >>> from zarr import blosc
+    >>> from numcodecs import blosc
     >>> blosc.set_nthreads(2)  # doctest: +SKIP
     8
 

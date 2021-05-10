@@ -1,9 +1,11 @@
-# -*- coding: utf-8 -*-
-from __future__ import absolute_import, print_function, division
 import collections
+from collections.abc import MutableMapping
+import os
+
+import pytest
 
 
-class CountingDict(collections.MutableMapping):
+class CountingDict(MutableMapping):
 
     def __init__(self):
         self.wrapped = dict()
@@ -36,3 +38,18 @@ class CountingDict(collections.MutableMapping):
     def __delitem__(self, key):
         self.counter['__delitem__', key] += 1
         del self.wrapped[key]
+
+
+def skip_test_env_var(name):
+    """ Checks for environment variables indicating whether tests requiring services should be run
+    """
+    value = os.environ.get(name, '0')
+    return pytest.mark.skipif(value == '0', reason='Tests not enabled via environment variable')
+
+
+try:
+    import fsspec  # noqa: F401
+
+    have_fsspec = True
+except ImportError:  # pragma: no cover
+    have_fsspec = False

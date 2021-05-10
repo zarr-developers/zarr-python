@@ -1,6 +1,0 @@
-asciitree
-fasteners
-numcodecs
-numpy
-pytest
-pyosreplace; python_version < '3.3' and sys.platform == 'win32'

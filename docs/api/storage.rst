@@ -2,7 +2,7 @@ Storage (``zarr.storage``)
 ==========================
 .. automodule:: zarr.storage
 
-.. autoclass:: DictStore
+.. autoclass:: MemoryStore
 .. autoclass:: DirectoryStore
 .. autoclass:: TempStore
 .. autoclass:: NestedDirectoryStore
@@ -21,11 +21,21 @@ Storage (``zarr.storage``)
     .. automethod:: close
     .. automethod:: flush
 
+.. autoclass:: SQLiteStore
+
+    .. automethod:: close
+
+.. autoclass:: MongoDBStore
+.. autoclass:: RedisStore
 .. autoclass:: LRUStoreCache
 
     .. automethod:: invalidate
     .. automethod:: invalidate_values
     .. automethod:: invalidate_keys
+
+.. autoclass:: ABSStore
+
+.. autoclass:: FSStore
 
 .. autoclass:: ConsolidatedMetadataStore
 

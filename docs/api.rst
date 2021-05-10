@@ -8,6 +8,7 @@ API reference
     api/core
     api/hierarchy
     api/storage
+    api/n5
     api/convenience
     api/codecs
     api/attrs

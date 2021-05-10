@@ -1,0 +1,70 @@
+name: Wheels
+
+on: [push, pull_request]
+
+jobs:
+
+  build_artifacts:
+    name: Build wheel on ubuntu-latest
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+
+    steps:
+      - uses: actions/checkout@v1
+        with:
+          submodules: true
+
+      - uses: actions/setup-python@v1
+        name: Install Python
+        with:
+          python-version: '3.8'
+
+      - name: Install PyBuild
+        run: |
+          python -m pip install 'build!=0.1' setuptools-scm
+
+      - name: Build wheel and sdist
+        run: |
+          python -m build
+          git describe
+          pwd
+          if [ -f dist/zarr-0.0.0.tar.gz ]; then
+            echo "WRONG VERSION NUMBER"
+            exit 1
+          else
+            echo "All seem good"
+          fi
+      - uses: actions/upload-artifact@v1
+        with:
+          name: releases
+          path: dist
+
+  test_dist_pypi:
+    needs: [build_artifacts]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v1
+        with:
+          name: releases
+          path: dist
+
+      - name: test
+        run: |
+          ls
+          ls dist
+
+  upload_pypi:
+    needs: [build_artifacts]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && startsWith(github.event.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/download-artifact@v1
+        with:
+          name: releases
+          path: dist
+      - uses: pypa/gh-action-pypi-publish@master
+        with:
+          user: __token__
+          password: ${{ secrets.pypi_password }}
+          # To test: repository_url: https://test.pypi.org/legacy/

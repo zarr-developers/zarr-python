@@ -1,21 +1,19 @@
-# -*- coding: utf-8 -*-
 """Convenience functions for storing and loading data."""
-from __future__ import absolute_import, print_function, division
-from collections import Mapping
 import io
-import re
 import itertools
-
+import re
+from collections.abc import Mapping
 
 from zarr.core import Array
-from zarr.creation import (open_array, normalize_store_arg,
-                           array as _create_array)
-from zarr.hierarchy import open_group, group as _create_group, Group
+from zarr.creation import array as _create_array
+from zarr.creation import normalize_store_arg, open_array
+from zarr.errors import CopyError, PathNotFoundError
+from zarr.hierarchy import Group
+from zarr.hierarchy import group as _create_group
+from zarr.hierarchy import open_group
+from zarr.meta import json_dumps, json_loads
 from zarr.storage import contains_array, contains_group
-from zarr.errors import err_path_not_found, CopyError
-from zarr.util import normalize_storage_path, TreeViewer, buffer_size
-from zarr.compat import PY2, text_type
-from zarr.meta import ensure_str, json_dumps
+from zarr.util import TreeViewer, buffer_size, normalize_storage_path
 
 
 # noinspection PyShadowingBuiltins
@@ -75,7 +73,10 @@ def open(store=None, mode='a', **kwargs):
     path = kwargs.get('path', None)
     # handle polymorphic store arg
     clobber = mode == 'w'
-    store = normalize_store_arg(store, clobber=clobber)
+    # we pass storage options explicitly, since normalize_store_arg might construct
+    # a store if the input is a fsspec-compatible URL
+    store = normalize_store_arg(store, clobber=clobber,
+                                storage_options=kwargs.pop("storage_options", {}))
     path = normalize_storage_path(path)
 
     if mode in {'w', 'w-', 'x'}:
@@ -84,12 +85,8 @@ def open(store=None, mode='a', **kwargs):
         else:
             return open_group(store, mode=mode, **kwargs)
 
-    elif mode == 'a':
-        if contains_array(store, path):
-            return open_array(store, mode=mode, **kwargs)
-        elif contains_group(store, path):
-            return open_group(store, mode=mode, **kwargs)
-        elif 'shape' in kwargs:
+    elif mode == "a":
+        if "shape" in kwargs or contains_array(store, path):
             return open_array(store, mode=mode, **kwargs)
         else:
             return open_group(store, mode=mode, **kwargs)
@@ -100,7 +97,7 @@ def open(store=None, mode='a', **kwargs):
         elif contains_group(store, path):
             return open_group(store, mode=mode, **kwargs)
         else:
-            err_path_not_found(path)
+            raise PathNotFoundError(path)
 
 
 def save_array(store, arr, **kwargs):
@@ -452,9 +449,6 @@ class _LogWriter(object):
     def __call__(self, *args, **kwargs):
         if self.log_file is not None:
             kwargs['file'] = self.log_file
-            if PY2:  # pragma: py3 no cover
-                # expect file opened in text mode, need to adapt message
-                args = [text_type(a) for a in args]
             print(*args, **kwargs)
             if hasattr(self.log_file, 'flush'):
                 # get immediate feedback
@@ -1071,6 +1065,7 @@ def copy_all(source, dest, shallow=False, without_attrs=False, log=None,
             n_copied += c
             n_skipped += s
             n_bytes_copied += b
+        dest.attrs.update(**source.attrs)
 
         # log a final message with a summary of what happened
         _log_copy_summary(log, dry_run, n_copied, n_skipped, n_bytes_copied)
@@ -1112,8 +1107,6 @@ def consolidate_metadata(store, metadata_key='.zmetadata'):
     open_consolidated
 
     """
-    import json
-
     store = normalize_store_arg(store)
 
     def is_zarr_key(key):
@@ -1123,11 +1116,11 @@ def consolidate_metadata(store, metadata_key='.zmetadata'):
     out = {
         'zarr_consolidated_format': 1,
         'metadata': {
-            key: json.loads(ensure_str(store[key]))
+            key: json_loads(store[key])
             for key in store if is_zarr_key(key)
         }
     }
-    store[metadata_key] = json_dumps(out).encode()
+    store[metadata_key] = json_dumps(out)
     return open_consolidated(store, metadata_key=metadata_key)
 
 
@@ -1176,13 +1169,14 @@ def open_consolidated(store, metadata_key='.zmetadata', mode='r+', **kwargs):
     from .storage import ConsolidatedMetadataStore
 
     # normalize parameters
-    store = normalize_store_arg(store)
+    store = normalize_store_arg(store, storage_options=kwargs.get("storage_options", None))
     if mode not in {'r', 'r+'}:
         raise ValueError("invalid mode, expected either 'r' or 'r+'; found {!r}"
                          .format(mode))
 
-    # setup metadata sotre
+    # setup metadata store
     meta_store = ConsolidatedMetadataStore(store, metadata_key=metadata_key)
 
     # pass through
-    return open(store=meta_store, chunk_store=store, mode=mode, **kwargs)
+    chunk_store = kwargs.pop('chunk_store', None) or store
+    return open(store=meta_store, chunk_store=chunk_store, mode=mode, **kwargs)

@@ -78,7 +78,18 @@ filters
     filters are to be applied. Each codec configuration object MUST contain a
     ``"id"`` key identifying the codec to be used.
 
-Other keys MUST NOT be present within the metadata object.
+The following keys MAY be present within the object:
+
+dimension_separator
+    If present, either the string ``"."`` or ``"/""`` definining the separator placed
+    between the dimensions of a chunk. If the value is not set, then the
+    default MUST be assumed to be ``"."``, leading to chunk keys of the form "0.0".
+    Arrays defined with ``"/"`` as the dimension separator can be considered to have
+    nested, or hierarchical, keys of the form "0/0" that SHOULD where possible
+    produce a directory-like structure.
+
+Other keys SHOULD NOT be present within the metadata object and SHOULD be
+ignored by implementations.
 
 For example, the JSON object below defines a 2-dimensional array of 64-bit
 little-endian floating point numbers with 10000 rows and 10000 columns, divided
@@ -117,8 +128,8 @@ Data type encoding
 ~~~~~~~~~~~~~~~~~~
 
 Simple data types are encoded within the array metadata as a string,
-following the `NumPy array protocol type string (typestr) format
-<http://docs.scipy.org/doc/numpy/reference/arrays.interface.html>`_. The format
+following the :ref:`NumPy array protocol type string (typestr) format
+<numpy:arrays.interface>`. The format
 consists of 3 parts:
 
 * One character describing the byteorder of the data (``"<"``: little-endian;
@@ -136,14 +147,14 @@ The byte order MUST be specified. E.g., ``"<f8"``, ``">i4"``, ``"|b1"`` and
 
 For datetime64 ("M") and timedelta64 ("m") data types, these MUST also include the
 units within square brackets. A list of valid units and their definitions are given in
-the `NumPy documentation on Datetimes and Timedeltas
-<https://docs.scipy.org/doc/numpy/reference/arrays.datetime.html#datetime-units>`_.
+the :ref:`NumPy documentation on Datetimes and Timedeltas
+<numpy:arrays.dtypes.dateunits>`.
 For example, ``"<M8[ns]"`` specifies a datetime64 data type with nanosecond time units.
 
 Structured data types (i.e., with multiple named fields) are encoded
-as a list of lists, following `NumPy array protocol type descriptions
+as a list of lists, following :ref:`NumPy array protocol type descriptions
 (descr)
-<http://docs.scipy.org/doc/numpy/reference/arrays.interface.html#>`_. Each
+<numpy:arrays.interface>`. Each
 sub-list has the form ``[fieldname, datatype, shape]`` where ``shape``
 is optional. ``fieldname`` is a string, ``datatype`` is a string
 specifying a simple data type (see above), and ``shape`` is a list of

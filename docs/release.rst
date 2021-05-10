@@ -1,33 +1,391 @@
 Release notes
 =============
 
-.. _release_2.3.0:
+.. _release_2.8.1:
 
-2.3.0 (Work in Progress)
-------------------------
+2.8.1
+-----
+
+Bug fixes
+~~~~~~~~~
+
+* raise an error if create_dataset's dimension_separator is inconsistent
+  By :user:`Gregory R. Lee <grlee77>`; :issue:`724`.
+
+.. _release_2.8.0:
+
+2.8.0
+-----
+
+V2 Specification Update
+~~~~~~~~~~~~~~~~~~~~~~~
+
+* Introduce optional dimension_separator .zarray key for nested chunks.
+  By :user:`Josh Moore <joshmoore>`; :issue:`715`, :issue:`716`.
+
+.. _release_2.7.0:
+
+
+.. _release_2.7.1:
+
+2.7.1
+-----
+
+Bug fixes
+~~~~~~~~~
+
+* Update Array to respect FSStore's key_separator  (#718)
+  By :user:`Gregory R. Lee <grlee77>`; :issue:`718`.
+
+.. _release_2.7.0:
+
+2.7.0
+-----
 
 Enhancements
 ~~~~~~~~~~~~
+
+* Start stop for iterator (`islice()`)
+  By :user:`Sebastian Grill <yetyetanotherusername>`; :issue:`621`.
+
+* Add capability to partially read and decompress chunks
+  By :user:`Andrew Fulton <andrewfulton9>`; :issue:`667`.
+
+Bug fixes
+~~~~~~~~~
+
+* Make DirectoryStore __setitem__ resilient against antivirus file locking
+  By :user:`Eric Younkin <ericgyounkin>`; :issue:`698`.
+
+* Compare test data's content generally
+  By :user:`John Kirkham <jakirkham>`; :issue:`436`.
+
+* Fix dtype usage in zarr/meta.py
+  By :user:`Josh Moore <joshmoore>`; :issue:`700`.
+
+* Fix FSStore key_seperator usage
+  By :user:`Josh Moore <joshmoore>`; :issue:`669`.
+
+* Simplify text handling in DB Store
+  By :user:`John Kirkham <jakirkham>`; :issue:`670`.
+
+* GitHub Actions migration
+  By :user:`Matthias Bussonnier <Carreau>`;
+  :issue:`641`, :issue:`671`, :issue:`674`, :issue:`676`, :issue:`677`, :issue:`678`,
+  :issue:`679`, :issue:`680`, :issue:`682`, :issue:`684`, :issue:`685`, :issue:`686`,
+  :issue:`687`, :issue:`695`, :issue:`706`.
+
+.. _release_2.6.1:
+
+2.6.1
+-----
+
+* Minor build fix
+  By :user:`Matthias Bussonnier <Carreau>`; :issue:`666`.
+
+.. _release_2.6.0:
+
+2.6.0
+-----
+
+This release of Zarr Python is is the first release of Zarr to not support Python 3.5.
+
+* End Python 3.5 support.
+  By :user:`Chris Barnes <clbarnes>`; :issue:`602`.
+
+* Fix ``open_group/open_array`` to allow opening of read-only store with
+  ``mode='r'`` :issue:`269`
+
+* Add `Array` tests for FSStore.
+  By :user:`Andrew Fulton <andrewfulton9>`; :issue: `644`.
+
+* fix a bug in which ``attrs`` would not be copied on the root when using ``copy_all``; :issue:`613`
+
+* Fix ``FileNotFoundError``  with dask/s3fs :issue:`649`
+
+* Fix flaky fixture in test_storage.py :issue:`652`
+
+* Fix FSStore getitems fails with arrays that have a 0 length shape dimension :issue:`644`
+
+* Use async to fetch/write result concurrently when possible. :issue:`536`, See `this comment
+  <https://github.com/zarr-developers/zarr-python/issues/536#issuecomment-721253094>`_ for some performance analysis
+  showing order of magnitude faster response in some benchmark.
+
+See `this link <https://github.com/zarr-developers/zarr-python/milestone/11?closed=1>` for the full list of closed and
+merged PR tagged with the 2.6 milestone.
+
+* Add ability to partially read and decompress arrays, see :issue:`667`. It is
+  only available to chunks stored using fs-spec and using bloc as a compressor.
+
+  For certain analysis case when only a small portion of chunks is needed it can
+  be advantageous to only access and decompress part of the chunks. Doing
+  partial read and decompression add high latency to many of the operation so
+  should be used only when the subset of the data is small compared to the full
+  chunks and is stored contiguously (that is to say either last dimensions for C
+  layout, firsts for F). Pass ``partial_decompress=True`` as argument when
+  creating an ``Array``, or when using ``open_array``. No option exists yet to
+  apply partial read and decompress on a per-operation basis.
+
+.. _release_2.5.0:
+
+2.5.0
+-----
+
+This release will be the last to support Python 3.5, next version of Zarr will be Python 3.6+.
+
+* `DirectoryStore` now uses `os.scandir`, which should make listing large store
+  faster, :issue:`563`
+  
+* Remove a few remaining Python 2-isms.
+  By :user:`Poruri Sai Rahul <rahulporuri>`; :issue:`393`.
+
+* Fix minor bug in `N5Store`.
+  By :user:`gsakkis`, :issue:`550`.
+
+* Improve error message in Jupyter when trying to use the ``ipytree`` widget
+  without ``ipytree`` installed.
+  By :user:`Zain Patel <mzjp2>`; :issue:`537`
+
+* Add typing informations to many of the core functions :issue:`589`
+
+* Explicitly close stores during testing.
+  By :user:`Elliott Sales de Andrade <QuLogic>`; :issue:`442`
+
+* Many of the convenience functions to emit errors (``err_*`` from
+  ``zarr.errors``  have been replaced by ``ValueError`` subclasses. The corresponding
+  ``err_*`` function have been removed. :issue:`590`, :issue:`614`)
+
+* Improve consistency of terminology regarding arrays and datasets in the 
+  documentation.
+  By :user:`Josh Moore <joshmoore>`; :issue:`571`.
+
+* Added support for generic URL opening by ``fsspec``, where the URLs have the
+  form "protocol://[server]/path" or can be chained URls with "::" separators.
+  The additional argument ``storage_options`` is passed to the backend, see
+  the ``fsspec`` docs.
+  By :user:`Martin Durant <martindurant>`; :issue:`546`
+
+* Added support for fetching multiple items via ``getitems`` method of a
+  store, if it exists. This allows for concurrent fetching of data blocks
+  from stores that implement this; presently HTTP, S3, GCS. Currently only
+  applies to reading.
+  By :user:`Martin Durant <martindurant>`; :issue:`606`
+
+* Efficient iteration expanded with option to pass start and stop index via
+  ``array.islice``.
+  By :user:`Sebastian Grill <yetyetanotherusername>`, :issue:`615`.
+
+.. _release_2.4.0:
+
+2.4.0
+-----
+
+Enhancements
+~~~~~~~~~~~~
+
+* Add key normalization option for ``DirectoryStore``, ``NestedDirectoryStore``,
+  ``TempStore``, and ``N5Store``.
+  By :user:`James Bourbeau <jrbourbeau>`; :issue:`459`.
+
+* Add ``recurse`` keyword to ``Group.array_keys`` and ``Group.arrays`` methods.
+  By :user:`James Bourbeau <jrbourbeau>`; :issue:`458`.
+
+* Use uniform chunking for all dimensions when specifying ``chunks`` as an integer.
+  Also adds support for specifying ``-1`` to chunk across an entire dimension.
+  By :user:`James Bourbeau <jrbourbeau>`; :issue:`456`.
+
+* Rename ``DictStore`` to ``MemoryStore``.
+  By :user:`James Bourbeau <jrbourbeau>`; :issue:`455`.
+
+* Rewrite ``.tree()`` pretty representation to use ``ipytree``.
+  Allows it to work in both the Jupyter Notebook and JupyterLab.
+  By :user:`John Kirkham <jakirkham>`; :issue:`450`.
+
+* Do not rename Blosc parameters in n5 backend and add `blocksize` parameter,
+  compatible with n5-blosc. By :user:`axtimwalde`, :issue:`485`.
+
+* Update ``DirectoryStore`` to create files with more permissive permissions.
+  By :user:`Eduardo Gonzalez <eddienko>` and :user:`James Bourbeau <jrbourbeau>`; :issue:`493`
+
+* Use ``math.ceil`` for scalars.
+  By :user:`John Kirkham <jakirkham>`; :issue:`500`.
+
+* Ensure contiguous data using ``astype``.
+  By :user:`John Kirkham <jakirkham>`; :issue:`513`.
+
+* Refactor out ``_tofile``/``_fromfile`` from ``DirectoryStore``.
+  By :user:`John Kirkham <jakirkham>`; :issue:`503`.
+
+* Add ``__enter__``/``__exit__`` methods to ``Group`` for ``h5py.File`` compatibility.
+  By :user:`Chris Barnes <clbarnes>`; :issue:`509`.
+
+Bug fixes
+~~~~~~~~~
+
+* Fix Sqlite Store Wrong Modification.
+  By :user:`Tommy Tran <potter420>`; :issue:`440`.
+
+* Add intermediate step (using ``zipfile.ZipInfo`` object) to write
+  inside ``ZipStore`` to solve too restrictive permission issue.
+  By :user:`Raphael Dussin <raphaeldussin>`; :issue:`505`.
+
+* Fix '/' prepend bug in ``ABSStore``.
+  By :user:`Shikhar Goenka <shikharsg>`; :issue:`525`.
+
+Documentation
+~~~~~~~~~~~~~
+* Fix hyperlink in ``README.md``.
+  By :user:`Anderson Banihirwe <andersy005>`; :issue:`531`.
+
+* Replace "nuimber" with "number".
+  By :user:`John Kirkham <jakirkham>`; :issue:`512`.
+
+* Fix azure link rendering in tutorial.
+  By :user:`James Bourbeau <jrbourbeau>`; :issue:`507`.
+
+* Update ``README`` file to be more detailed.
+  By :user:`Zain Patel <mzjp2>`; :issue:`495`.
+
+* Import blosc from numcodecs in tutorial.
+  By :user:`James Bourbeau <jrbourbeau>`; :issue:`491`.
+
+* Adds logo to docs.
+  By :user:`James Bourbeau <jrbourbeau>`; :issue:`462`.
+
+* Fix N5 link in tutorial.
+  By :user:`James Bourbeau <jrbourbeau>`; :issue:`480`.
+
+* Fix typo in code snippet.
+  By :user:`Joe Jevnik <llllllllll>`; :issue:`461`.
+
+* Fix URLs to point to zarr-python
+  By :user:`John Kirkham <jakirkham>`; :issue:`453`.
+
+Maintenance
+~~~~~~~~~~~
+
+* Add documentation build to CI.
+  By :user:`James Bourbeau <jrbourbeau>`; :issue:`516`.
+
+* Use ``ensure_ndarray`` in a few more places.
+  By :user:`John Kirkham <jakirkham>`; :issue:`506`.
+
+* Support Python 3.8.
+  By :user:`John Kirkham <jakirkham>`; :issue:`499`.
+
+* Require Numcodecs 0.6.4+ to use text handling functionality from it.
+  By :user:`John Kirkham <jakirkham>`; :issue:`497`.
+
+* Updates tests to use ``pytest.importorskip``.
+  By :user:`James Bourbeau <jrbourbeau>`; :issue:`492`
+
+* Removed support for Python 2.
+  By :user:`jhamman`; :issue:`393`, :issue:`470`.
+
+* Upgrade dependencies in the test matrices and resolve a
+  compatibility issue with testing against the Azure Storage
+  Emulator. By :user:`alimanfoo`; :issue:`468`, :issue:`467`.
+
+* Use ``unittest.mock`` on Python 3.
+  By :user:`Elliott Sales de Andrade <QuLogic>`; :issue:`426`.
+
+* Drop ``decode`` from ``ConsolidatedMetadataStore``.
+  By :user:`John Kirkham <jakirkham>`; :issue:`452`.
+
+
+.. _release_2.3.2:
+
+2.3.2
+-----
+
+Enhancements
+~~~~~~~~~~~~
+
+* Use ``scandir`` in ``DirectoryStore``'s ``getsize`` method.
+  By :user:`John Kirkham <jakirkham>`; :issue:`431`.
+
+Bug fixes
+~~~~~~~~~
+
+* Add and use utility functions to simplify reading and writing JSON.
+  By :user:`John Kirkham <jakirkham>`; :issue:`429`, :issue:`430`.
+
+* Fix ``collections``'s ``DeprecationWarning``\ s.
+  By :user:`John Kirkham <jakirkham>`; :issue:`432`.
+
+* Fix tests on big endian machines.
+  By :user:`Elliott Sales de Andrade <QuLogic>`; :issue:`427`.
+
+
+.. _release_2.3.1:
+
+2.3.1
+-----
+
+Bug fixes
+~~~~~~~~~
+
+* Makes ``azure-storage-blob`` optional for testing.
+  By :user:`John Kirkham <jakirkham>`; :issue:`419`, :issue:`420`.
+
+
+.. _release_2.3.0:
+
+2.3.0
+-----
+
+Enhancements
+~~~~~~~~~~~~
+
+* New storage backend, backed by Azure Blob Storage, class :class:`zarr.storage.ABSStore`.
+  All data is stored as block blobs. By :user:`Shikhar Goenka <shikarsg>`,
+  :user:`Tim Crone <tjcrone>` and :user:`Zain Patel <mzjp2>`; :issue:`345`.
 
 * Add "consolidated" metadata as an experimental feature: use
   :func:`zarr.convenience.consolidate_metadata` to copy all metadata from the various
   metadata keys within a dataset hierarchy under a single key, and
   :func:`zarr.convenience.open_consolidated` to use this single key. This can greatly
   cut down the number of calls to the storage backend, and so remove a lot of overhead
-  for reading remote data. By :user:`Martin Durant <martindurant>`, :issue:`268`.
+  for reading remote data.
+  By :user:`Martin Durant <martindurant>`, :user:`Alistair Miles <alimanfoo>`,
+  :user:`Ryan Abernathey <rabernat>`, :issue:`268`, :issue:`332`, :issue:`338`.
 
 * Support has been added for structured arrays with sub-array shape and/or nested fields. By
   :user:`Tarik Onalan <onalant>`, :issue:`111`, :issue:`296`.
 
+* Adds the SQLite-backed :class:`zarr.storage.SQLiteStore` class enabling an
+  SQLite database to be used as the backing store for an array or group.
+  By :user:`John Kirkham <jakirkham>`, :issue:`368`, :issue:`365`.
+
+* Efficient iteration over arrays by decompressing chunkwise.
+  By :user:`Jerome Kelleher <jeromekelleher>`, :issue:`398`, :issue:`399`.
+
+* Adds the Redis-backed :class:`zarr.storage.RedisStore` class enabling a
+  Redis database to be used as the backing store for an array or group.
+  By :user:`Joe Hamman <jhamman>`, :issue:`299`, :issue:`372`.
+
+* Adds the MongoDB-backed :class:`zarr.storage.MongoDBStore` class enabling a
+  MongoDB database to be used as the backing store for an array or group.
+  By :user:`Noah D Brenowitz <nbren12>`, :user:`Joe Hamman <jhamman>`,
+  :issue:`299`, :issue:`372`, :issue:`401`.
+
+* **New storage class for N5 containers**. The :class:`zarr.n5.N5Store` has been
+  added, which uses :class:`zarr.storage.NestedDirectoryStore` to support
+  reading and writing from and to N5 containers.
+  By :user:`Jan Funke <funkey>` and :user:`John Kirkham <jakirkham>`.
+
 Bug fixes
 ~~~~~~~~~
 
-* The implementation of the :class:`zarr.storage.DirectoryStore` class has been modified to 
-  ensure that writes are atomic and there are no race conditions where a chunk might appear 
-  transiently missing during a write operation. By :user:`sbalmer <sbalmer>`, :issue:`327`, 
+* The implementation of the :class:`zarr.storage.DirectoryStore` class has been modified to
+  ensure that writes are atomic and there are no race conditions where a chunk might appear
+  transiently missing during a write operation. By :user:`sbalmer <sbalmer>`, :issue:`327`,
   :issue:`263`.
 
-* The required version of the `numcodecs <http://numcodecs.rtfd.io>`_ package has been upgraded 
+* Avoid raising in :class:`zarr.storage.DirectoryStore`'s ``__setitem__`` when file already exists.
+  By :user:`Justin Swaney <jmswaney>`, :issue:`272`, :issue:`318`.
+
+* The required version of the `Numcodecs`_ package has been upgraded
   to 0.6.2, which has enabled some code simplification and fixes a failing test involving
   msgpack encoding. By :user:`John Kirkham <jakirkham>`, :issue:`361`, :issue:`360`, :issue:`352`,
   :issue:`355`, :issue:`324`.
@@ -35,20 +393,53 @@ Bug fixes
 * Failing tests related to pickling/unpickling have been fixed. By :user:`Ryan Williams <ryan-williams>`,
   :issue:`273`, :issue:`308`.
 
+* Corrects handling of ``NaT`` in ``datetime64`` and ``timedelta64`` in various
+  compressors (by :user:`John Kirkham <jakirkham>`; :issue:`344`).
+
 * Ensure ``DictStore`` contains only ``bytes`` to facilitate comparisons and protect against writes.
-  By :user:`John Kirkham <jakirkham>`, :issue:`350`
+  By :user:`John Kirkham <jakirkham>`, :issue:`350`.
+
+* Test and fix an issue (w.r.t. fill values) when storing complex data to ``Array``.
+  By :user:`John Kirkham <jakirkham>`, :issue:`363`.
+
+* Always use a ``tuple`` when indexing a NumPy ``ndarray``.
+  By :user:`John Kirkham <jakirkham>`, :issue:`376`.
+
+* Ensure when ``Array`` uses a ``dict``-based chunk store that it only contains
+  ``bytes`` to facilitate comparisons and protect against writes. Drop the copy
+  for the no filter/compressor case as this handles that case.
+  By :user:`John Kirkham <jakirkham>`, :issue:`359`.
 
 Maintenance
 ~~~~~~~~~~~
 
+* Simplify directory creation and removal in ``DirectoryStore.rename``.
+  By :user:`John Kirkham <jakirkham>`, :issue:`249`.
+
 * CI and test environments have been upgraded to include Python 3.7, drop Python 3.4, and
-  upgrade all pinned package requirements. :issue:`308`.
+  upgrade all pinned package requirements. :user:`Alistair Miles <alimanfoo>`, :issue:`308`.
 
-* Corrects handling of ``NaT`` in ``datetime64`` and ``timedelta64`` in various
-  compressors (by :user:`John Kirkham <jakirkham>`; :issue:`344`).
+* Start using pyup.io to maintain dependencies.
+  :user:`Alistair Miles <alimanfoo>`, :issue:`326`.
 
-Acknowledgments
-~~~~~~~~~~~~~~~
+* Configure flake8 line limit generally.
+  :user:`John Kirkham <jakirkham>`, :issue:`335`.
+
+* Add missing coverage pragmas.
+  :user:`John Kirkham <jakirkham>`, :issue:`343`, :issue:`355`.
+
+* Fix missing backslash in docs.
+  :user:`John Kirkham <jakirkham>`, :issue:`254`, :issue:`353`.
+
+* Include tests for stores' ``popitem`` and ``pop`` methods.
+  By :user:`John Kirkham <jakirkham>`, :issue:`378`, :issue:`380`.
+
+* Include tests for different compressors, endianness, and attributes.
+  By :user:`John Kirkham <jakirkham>`, :issue:`378`, :issue:`380`.
+
+* Test validity of stores' contents.
+  By :user:`John Kirkham <jakirkham>`, :issue:`359`, :issue:`408`.
+
 
 .. _release_2.2.0:
 
@@ -62,16 +453,16 @@ Enhancements
   properties that enable a selection of items in an array to be retrieved or
   updated. See the :ref:`tutorial_indexing` tutorial section for more
   information. There is also a `notebook
-  <https://github.com/zarr-developers/zarr/blob/master/notebooks/advanced_indexing.ipynb>`_
+  <https://github.com/zarr-developers/zarr-python/blob/master/notebooks/advanced_indexing.ipynb>`_
   with extended examples and performance benchmarks. :issue:`78`, :issue:`89`,
   :issue:`112`, :issue:`172`.
 
 * **New package for compressor and filter codecs**. The classes previously
   defined in the :mod:`zarr.codecs` module have been factored out into a
-  separate package called NumCodecs_. The NumCodecs_ package also includes
+  separate package called `Numcodecs`_. The `Numcodecs`_ package also includes
   several new codec classes not previously available in Zarr, including
   compressor codecs for Zstd and LZ4. This change is backwards-compatible with
-  existing code, as all codec classes defined by NumCodecs are imported into the
+  existing code, as all codec classes defined by Numcodecs are imported into the
   :mod:`zarr.codecs` namespace. However, it is recommended to import codecs from
   the new package, see the tutorial sections on :ref:`tutorial_compress` and
   :ref:`tutorial_filters` for examples. With contributions by
@@ -475,7 +866,7 @@ Thanks to :user:`Matthew Rocklin <mrocklin>`, :user:`Stephan Hoyer <shoyer>`,
 -----
 
 See `v0.4.0 release notes on GitHub
-<https://github.com/zarr-developers/zarr/releases/tag/v0.4.0>`_.
+<https://github.com/zarr-developers/zarr-python/releases/tag/v0.4.0>`_.
 
 .. _release_0.3.0:
 
@@ -483,6 +874,6 @@ See `v0.4.0 release notes on GitHub
 -----
 
 See `v0.3.0 release notes on GitHub
-<https://github.com/zarr-developers/zarr/releases/tag/v0.3.0>`_.
+<https://github.com/zarr-developers/zarr-python/releases/tag/v0.3.0>`_.
 
-.. _NumCodecs: http://numcodecs.readthedocs.io/
+.. _Numcodecs: http://numcodecs.readthedocs.io/

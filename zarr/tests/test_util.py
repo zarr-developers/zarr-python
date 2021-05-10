@@ -1,15 +1,24 @@
-# -*- coding: utf-8 -*-
-from __future__ import absolute_import, print_function, division
-
+import re
+from unittest import mock
 
 import numpy as np
 import pytest
 
+from zarr.util import (guess_chunks, human_readable_size, info_html_report,
+                       info_text_report, is_total_slice, normalize_chunks,
+                       normalize_dimension_separator,
+                       normalize_fill_value, normalize_order,
+                       normalize_resize_args, normalize_shape, retry_call,
+                       tree_array_icon, tree_group_icon, tree_get_icon,
+                       tree_widget)
 
-from zarr.util import (normalize_shape, normalize_chunks, is_total_slice,
-                       normalize_resize_args, human_readable_size, normalize_order,
-                       guess_chunks, info_html_report, info_text_report,
-                       normalize_fill_value)
+
+def test_normalize_dimension_separator():
+    assert None is normalize_dimension_separator(None)
+    assert '/' == normalize_dimension_separator('/')
+    assert '.' == normalize_dimension_separator('.')
+    with pytest.raises(ValueError):
+        normalize_dimension_separator('X')
 
 
 def test_normalize_shape():
@@ -29,7 +38,7 @@ def test_normalize_chunks():
     assert (10, 10) == normalize_chunks((10, 10), (100, 10), 1)
     assert (10, 10) == normalize_chunks(10, (100, 10), 1)
     assert (10, 10) == normalize_chunks((10, None), (100, 10), 1)
-    assert (30, 20, 10) == normalize_chunks(30, (100, 20, 10), 1)
+    assert (30, 30, 30) == normalize_chunks(30, (100, 20, 10), 1)
     assert (30, 20, 10) == normalize_chunks((30,), (100, 20, 10), 1)
     assert (30, 20, 10) == normalize_chunks((30, None), (100, 20, 10), 1)
     assert (30, 20, 10) == normalize_chunks((30, None, None), (100, 20, 10), 1)
@@ -41,8 +50,9 @@ def test_normalize_chunks():
         normalize_chunks((100, 10), (100,), 1)
 
     # test auto-chunking
-    chunks = normalize_chunks(None, (100,), 1)
-    assert (100,) == chunks
+    assert (100,) == normalize_chunks(None, (100,), 1)
+    assert (100,) == normalize_chunks(-1, (100,), 1)
+    assert (30, 20, 10) == normalize_chunks((30, -1, None), (100, 20, 10), 1)
 
 
 def test_is_total_slice():
@@ -155,3 +165,49 @@ def test_info_html_report():
     actual = info_html_report(items)
     assert '<table' == actual[:6]
     assert '</table>' == actual[-8:]
+
+
+def test_tree_get_icon():
+    assert tree_get_icon("Array") == tree_array_icon
+    assert tree_get_icon("Group") == tree_group_icon
+    with pytest.raises(ValueError):
+        tree_get_icon("Baz")
+
+
+@mock.patch.dict("sys.modules", {"ipytree": None})
+def test_tree_widget_missing_ipytree():
+    pattern = (
+        "Run `pip install zarr[jupyter]` or `conda install ipytree`"
+        "to get the required ipytree dependency for displaying the tree "
+        "widget. If using jupyterlab<3, you also need to run "
+        "`jupyter labextension install ipytree`"
+        )
+    with pytest.raises(ImportError, match=re.escape(pattern)):
+        tree_widget(None, None, None)
+
+
+def test_retry_call():
+
+    class Fixture:
+
+        def __init__(self, pass_on=1):
+            self.c = 0
+            self.pass_on = pass_on
+
+        def __call__(self):
+            self.c += 1
+            if self.c != self.pass_on:
+                raise PermissionError()
+
+    for x in range(1, 11):
+        # Any number of failures less than 10 will be accepted.
+        fixture = Fixture(pass_on=x)
+        retry_call(fixture, exceptions=(PermissionError,), wait=0)
+        assert fixture.c == x
+
+    def fail(x):
+        # Failures after 10 will cause an error to be raised.
+        retry_call(Fixture(pass_on=x), exceptions=(Exception,), wait=0)
+
+    for x in range(11, 15):
+        pytest.raises(PermissionError, fail, x)
