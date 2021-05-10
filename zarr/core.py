@@ -74,7 +74,13 @@ class Array:
         If True and while the chunk_store is a FSStore and the compresion used
         is Blosc, when getting data from the array chunks will be partially
         read and decompressed when possible.
-
+    write_empty_chunks: bool, optional
+        Determines chunk writing behavior for chunks filled with `fill_value` ("empty" chunks). 
+        If True (default), all chunks will be written regardless of their contents. 
+        If False, empty chunks will not be written, and the `store` entry for 
+        the chunk key of an empty chunk will be deleted. Note that setting this option to False
+        will incur additional overhead per chunk write.   
+         
         .. versionadded:: 2.7
 
     Attributes
@@ -106,7 +112,7 @@ class Array:
     info
     vindex
     oindex
-
+    
     Methods
     -------
     __getitem__
@@ -138,6 +144,7 @@ class Array:
         cache_metadata=True,
         cache_attrs=True,
         partial_decompress=False,
+        write_empty_chunks=True,
     ):
         # N.B., expect at this point store is fully initialized with all
         # configuration metadata fully specified and normalized
@@ -154,6 +161,7 @@ class Array:
         self._cache_metadata = cache_metadata
         self._is_view = False
         self._partial_decompress = partial_decompress
+        self._write_empty_chunks = write_empty_chunks
 
         # initialize metadata
         self._load_metadata()
@@ -1960,7 +1968,7 @@ class Array:
                 chunk[chunk_selection] = value
 
         # clear chunk if it only contains the fill value
-        if np.all(np.equal(chunk, self._fill_value)):
+        if self._write_empty_chunks and np.all(np.equal(chunk, self._fill_value)):
             try:
                 del self.chunk_store[ckey]
                 return
