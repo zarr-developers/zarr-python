@@ -1233,7 +1233,16 @@ class Array:
         fields, pure_selection = pop_fields(selection)
         try:
             self.set_basic_selection(pure_selection, value, fields=fields)
-        except IndexError:
+        except IndexError as exc:
+            if (isinstance(pure_selection, tuple)
+                    and any(isinstance(elem, slice) for elem in pure_selection)
+            ):
+                # don't use mixed fancy indexing and slicing
+                msg = (
+                    'Mixing slices and array indices is not supported in '
+                    f'zarr.Array.__setitem__, got {selection}'
+                )
+                raise IndexError(msg) from exc
             self.vindex[selection] = value
 
     def set_basic_selection(self, selection, value, fields=None):

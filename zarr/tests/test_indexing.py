@@ -307,6 +307,12 @@ def test_fancy_indexing_fallback_on_get_setitem():
     )
 
 
+def test_fancy_indexing_doesnt_mix_with_slicing():
+    z = zarr.zeros((20, 20))
+    with pytest.raises(IndexError):
+        z[[1, 2, 3], :] = 2
+
+
 def test_set_basic_selection_0d():
 
     # setup
