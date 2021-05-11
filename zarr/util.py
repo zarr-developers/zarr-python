@@ -9,12 +9,19 @@ import time
 import numpy as np
 from asciitree import BoxStyle, LeftAligned
 from asciitree.traversal import Traversal
+from collections.abc import Iterable
 from numcodecs.compat import ensure_ndarray, ensure_text
 from numcodecs.registry import codec_registry
 from numcodecs.blosc import cbuffer_sizes, cbuffer_metainfo
 
 from typing import Any, Callable, Dict, Optional, Tuple, Union
 
+def flatten(arg: Iterable) -> Iterable:
+    for element in arg:
+        if isinstance(element, Iterable) and not isinstance(element, (str, bytes)):
+            yield from flatten(element)
+        else:
+            yield element
 
 # codecs to use for object dtype convenience API
 object_codecs = {
