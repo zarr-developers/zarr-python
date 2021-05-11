@@ -69,6 +69,11 @@ def is_pure_fancy_indexing(selection, ndim):
         True if the selection is a pure fancy indexing expression (ie not mixed
         with boolean or slices).
     """
+    if ndim == 1:
+        if is_integer_list(selection) or is_integer_array(selection):
+            return True
+        # if not, we go through the normal path below, because a 1-tuple
+        # of integers is also allowed.
     no_slicing = (
         isinstance(selection, tuple)
         and len(selection) == ndim
