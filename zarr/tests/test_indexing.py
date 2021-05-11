@@ -305,12 +305,43 @@ def test_fancy_indexing_fallback_on_get_setitem():
     np.testing.assert_array_equal(
         z[1, [1, 2, 3]], [1, 0, 0]
     )
+    # test 1D fancy indexing
+    z2 = zarr.zeros(5)
+    z2[[1, 2, 3]] = 1
+    np.testing.assert_array_equal(
+        z2, [0, 1, 1, 1, 0]
+    )
 
 
 def test_fancy_indexing_doesnt_mix_with_slicing():
     z = zarr.zeros((20, 20))
     with pytest.raises(IndexError):
         z[[1, 2, 3], :] = 2
+    with pytest.raises(IndexError):
+        np.testing.assert_array_equal(
+            z[[1, 2, 3], :], 0
+        )
+
+def test_fancy_indexing_doesnt_mix_with_implicit_slicing():
+    z2 = zarr.zeros((5, 5, 5))
+    with pytest.raises(IndexError):
+        z2[[1, 2, 3], [1, 2, 3]] = 2
+    with pytest.raises(IndexError):
+        np.testing.assert_array_equal(
+            z2[[1, 2, 3], [1, 2, 3]], 0
+        )
+    with pytest.raises(IndexError):
+        z2[[1, 2, 3]] = 2
+    with pytest.raises(IndexError):
+        np.testing.assert_array_equal(
+            z2[[1, 2, 3]], 0
+        )
+    with pytest.raises(IndexError):
+        z2[..., [1, 2, 3]] = 2
+    with pytest.raises(IndexError):
+        np.testing.assert_array_equal(
+            z2[..., [1, 2, 3]], 0
+        )
 
 
 def test_set_basic_selection_0d():
