@@ -33,6 +33,7 @@ from zarr.storage import array_meta_key, attrs_key, getsize, listdir
 from zarr.util import (
     InfoReporter,
     check_array_shape,
+    flatten,
     human_readable_size,
     is_total_slice,
     nolock,
@@ -74,12 +75,12 @@ class Array:
         If True and while the chunk_store is a FSStore and the compresion used
         is Blosc, when getting data from the array chunks will be partially
         read and decompressed when possible.
-    write_empty_chunks: bool, optional
+    write_empty_chunks : bool, optional
         Determines chunk writing behavior for chunks filled with `fill_value` ("empty" chunks). 
         If True (default), all chunks will be written regardless of their contents. 
         If False, empty chunks will not be written, and the `store` entry for 
         the chunk key of an empty chunk will be deleted. Note that setting this option to False
-        will incur additional overhead per chunk write.   
+        will incur additional overhead per chunk write.
          
         .. versionadded:: 2.7
 
@@ -1911,7 +1912,8 @@ class Array:
         ckey = self._chunk_key(chunk_coords)
         cdata = self._process_for_setitem(ckey, chunk_selection, value, fields=fields)
         # store
-        self.chunk_store[ckey] = cdata
+        if cdata is not None:
+            self.chunk_store[ckey] = cdata
 
     def _process_for_setitem(self, ckey, chunk_selection, value, fields=None):
         if is_total_slice(chunk_selection, self._chunks) and not fields:
@@ -1968,15 +1970,23 @@ class Array:
                 chunk[chunk_selection] = value
 
         # clear chunk if it only contains the fill value
-        if not self._write_empty_chunks and np.all(np.array_equal(chunk, self._fill_value)):
-            try:
-                del self.chunk_store[ckey]
-                return
-            except KeyError:
-                return
-            except Exception:
-                # deleting failed, fallback to overwriting
-                pass
+        if not self._write_empty_chunks:
+            if self.dtype == 'object':
+                # we have to flatten the result of np.equal to handle outputs like 
+                # [np.array([True,True]), True, True]
+                is_empty = all(flatten(np.equal(chunk, self.fill_value, dtype='object')))
+            else:
+                is_empty = np.all(chunk == self._fill_value)
+            
+            if is_empty:
+                try:
+                    del self.chunk_store[ckey]
+                    return
+                except KeyError:
+                    return
+                except Exception:
+                    # deleting failed, fallback to overwriting
+                    pass
 
         # encode chunk
         return self._encode_chunk(chunk)
