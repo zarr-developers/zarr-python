@@ -25,6 +25,7 @@ from zarr.indexing import (
     ensure_tuple,
     err_too_many_indices,
     is_contiguous_selection,
+    is_pure_fancy_indexing,
     is_scalar,
     pop_fields,
 )
@@ -646,8 +647,11 @@ class Array:
         -----
         Slices with step > 1 are supported, but slices with negative step are not.
 
-        Currently the implementation for __setitem__ is provided by
-        :func:`set_basic_selection` and falls back on :func:`vindex`.
+        Currently the implementation for __getitem__ is provided by
+        :func:`vindex` if the indexing is pure fancy indexing (ie a
+        broadcast-compatible tuple of integer array indices), or by
+        :func:`set_basic_selection` otherwise.
+
         Effectively, this means that the following indexing modes are supported:
 
            - integer indexing
@@ -666,12 +670,11 @@ class Array:
         set_orthogonal_selection, vindex, oindex, __setitem__
 
         """
-
         fields, pure_selection = pop_fields(selection)
-        try:
-            result = self.get_basic_selection(pure_selection, fields=fields)
-        except IndexError:
+        if is_pure_fancy_indexing(pure_selection, self.ndim):
             result = self.vindex[selection]
+        else:
+            result = self.get_basic_selection(pure_selection, fields=fields)
         return result
 
     def get_basic_selection(self, selection=Ellipsis, out=None, fields=None):
@@ -1210,7 +1213,10 @@ class Array:
         Slices with step > 1 are supported, but slices with negative step are not.
 
         Currently the implementation for __setitem__ is provided by
-        :func:`set_basic_selection` and falls back on :func:`vindex`.
+        :func:`vindex` if the indexing is pure fancy indexing (ie a
+        broadcast-compatible tuple of integer array indices), or by
+        :func:`set_basic_selection` otherwise.
+
         Effectively, this means that the following indexing modes are supported:
 
            - integer indexing
@@ -1229,21 +1235,11 @@ class Array:
         set_orthogonal_selection, vindex, oindex, __getitem__
 
         """
-
         fields, pure_selection = pop_fields(selection)
-        try:
-            self.set_basic_selection(pure_selection, value, fields=fields)
-        except IndexError as exc:
-            if (isinstance(pure_selection, tuple)
-                    and any(isinstance(elem, slice) for elem in pure_selection)
-            ):
-                # don't use mixed fancy indexing and slicing
-                msg = (
-                    'Mixing slices and array indices is not supported in '
-                    f'zarr.Array.__setitem__, got {selection}'
-                )
-                raise IndexError(msg) from exc
+        if is_pure_fancy_indexing(pure_selection, self.ndim):
             self.vindex[selection] = value
+        else:
+            self.set_basic_selection(pure_selection, value, fields=fields)
 
     def set_basic_selection(self, selection, value, fields=None):
         """Modify data for an item or region of the array.
