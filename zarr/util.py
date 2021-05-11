@@ -16,12 +16,14 @@ from numcodecs.blosc import cbuffer_sizes, cbuffer_metainfo
 
 from typing import Any, Callable, Dict, Optional, Tuple, Union
 
+
 def flatten(arg: Iterable) -> Iterable:
     for element in arg:
         if isinstance(element, Iterable) and not isinstance(element, (str, bytes)):
             yield from flatten(element)
         else:
             yield element
+
 
 # codecs to use for object dtype convenience API
 object_codecs = {

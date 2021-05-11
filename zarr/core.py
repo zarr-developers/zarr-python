@@ -76,12 +76,12 @@ class Array:
         is Blosc, when getting data from the array chunks will be partially
         read and decompressed when possible.
     write_empty_chunks : bool, optional
-        Determines chunk writing behavior for chunks filled with `fill_value` ("empty" chunks). 
-        If True (default), all chunks will be written regardless of their contents. 
-        If False, empty chunks will not be written, and the `store` entry for 
+        Determines chunk writing behavior for chunks filled with `fill_value` ("empty" chunks).
+        If True (default), all chunks will be written regardless of their contents.
+        If False, empty chunks will not be written, and the `store` entry for
         the chunk key of an empty chunk will be deleted. Note that setting this option to False
         will incur additional overhead per chunk write.
-         
+
         .. versionadded:: 2.7
 
     Attributes
@@ -113,7 +113,7 @@ class Array:
     info
     vindex
     oindex
-    
+
     Methods
     -------
     __getitem__
@@ -1972,12 +1972,12 @@ class Array:
         # clear chunk if it only contains the fill value
         if not self._write_empty_chunks:
             if self.dtype == 'object':
-                # we have to flatten the result of np.equal to handle outputs like 
+                # we have to flatten the result of np.equal to handle outputs like
                 # [np.array([True,True]), True, True]
                 is_empty = all(flatten(np.equal(chunk, self.fill_value, dtype='object')))
             else:
                 is_empty = np.all(chunk == self._fill_value)
-            
+
             if is_empty:
                 try:
                     del self.chunk_store[ckey]
@@ -1990,7 +1990,6 @@ class Array:
 
         # encode chunk
         return self._encode_chunk(chunk)
-
 
     def _chunk_key(self, chunk_coords):
         return self._key_prefix + '.'.join(map(str, chunk_coords))

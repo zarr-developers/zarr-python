@@ -71,9 +71,9 @@ def create(shape, chunks=True, dtype=None, compressor='default',
         Separator placed between the dimensions of a chunk.
         .. versionadded:: 2.8
     write_empty_chunks : bool, optional
-        Determines chunk writing behavior for chunks filled with `fill_value` ("empty" chunks). 
-        If True (default), all chunks will be written regardless of their contents. 
-        If False, empty chunks will not be written, and the `store` entry for 
+        Determines chunk writing behavior for chunks filled with `fill_value` ("empty" chunks).
+        If True (default), all chunks will be written regardless of their contents.
+        If False, empty chunks will not be written, and the `store` entry for
         the chunk key of an empty chunk will be deleted. Note that setting this option to False
         will incur additional overhead per chunk write.
 
@@ -146,7 +146,8 @@ def create(shape, chunks=True, dtype=None, compressor='default',
 
     # instantiate array
     z = Array(store, path=path, chunk_store=chunk_store, synchronizer=synchronizer,
-              cache_metadata=cache_metadata, cache_attrs=cache_attrs, read_only=read_only, write_empty_chunks=write_empty_chunks)
+              cache_metadata=cache_metadata, cache_attrs=cache_attrs, read_only=read_only,
+              write_empty_chunks=write_empty_chunks)
 
     return z
 
@@ -458,9 +459,9 @@ def open_array(
         is Blosc, when getting data from the array chunks will be partially
         read and decompressed when possible.
     write_empty_chunks : bool, optional
-        Determines chunk writing behavior for chunks filled with `fill_value` ("empty" chunks). 
-        If True (default), all chunks will be written regardless of their contents. 
-        If False, empty chunks will not be written, and the `store` entry for 
+        Determines chunk writing behavior for chunks filled with `fill_value` ("empty" chunks).
+        If True (default), all chunks will be written regardless of their contents.
+        If False, empty chunks will not be written, and the `store` entry for
         the chunk key of an empty chunk will be deleted. Note that setting this option to False
         will incur additional overhead per chunk write.
 
