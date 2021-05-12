@@ -1879,7 +1879,7 @@ class Array:
         ckeys = [self._chunk_key(co) for co in lchunk_coords]
         cdatas = [self._process_for_setitem(key, sel, val, fields=fields)
                   for key, sel, val in zip(ckeys, lchunk_selection, values)]
-        values = {k: v for k, v in zip(ckeys, cdatas)}
+        values = {k: v for k, v in zip(ckeys, cdatas) if v is not None}
         self.chunk_store.setitems(values)
 
     def _chunk_setitem(self, chunk_coords, chunk_selection, value, fields=None):
