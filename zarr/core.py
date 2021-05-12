@@ -2210,7 +2210,7 @@ class Array:
     def __getstate__(self):
         return (self._store, self._path, self._read_only, self._chunk_store,
                 self._synchronizer, self._cache_metadata, self._attrs.cache,
-                self._write_empty_chunks)
+                self._partial_decompress, self._write_empty_chunks)
 
     def __setstate__(self, state):
         self.__init__(*state)
