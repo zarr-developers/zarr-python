@@ -38,7 +38,7 @@ setup(
     package_dir={'': '.'},
     packages=['zarr', 'zarr.tests'],
     classifiers=[
-        'Development Status :: 4 - Beta',
+        'Development Status :: 6 - Mature',
         'Intended Audience :: Developers',
         'Intended Audience :: Information Technology',
         'Intended Audience :: Science/Research',
@@ -50,6 +50,7 @@ setup(
         'Programming Language :: Python :: 3.6',
         'Programming Language :: Python :: 3.7',
         'Programming Language :: Python :: 3.8',
+        'Programming Language :: Python :: 3.9',
     ],
     maintainer='Alistair Miles',
     maintainer_email='alimanfoo@googlemail.com',
