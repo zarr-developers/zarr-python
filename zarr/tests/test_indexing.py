@@ -322,6 +322,7 @@ def test_fancy_indexing_doesnt_mix_with_slicing():
             z[[1, 2, 3], :], 0
         )
 
+
 def test_fancy_indexing_doesnt_mix_with_implicit_slicing():
     z2 = zarr.zeros((5, 5, 5))
     with pytest.raises(IndexError):
