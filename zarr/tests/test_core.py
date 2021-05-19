@@ -35,8 +35,9 @@ from zarr.storage import (
 from zarr.util import buffer_size
 from zarr.tests.util import skip_test_env_var, have_fsspec
 
-
 # noinspection PyMethodMayBeStatic
+
+
 class TestArray(unittest.TestCase):
 
     def test_array_init(self):
@@ -1079,7 +1080,7 @@ class TestArray(unittest.TestCase):
                       (1, (1, ((1, 2), (2, 3), (3, 4)), 1), b'bbb'),
                       (2, (2, ((2, 3), (3, 4), (4, 5)), 2), b'ccc')],
                      dtype=[('foo', 'i8'), ('bar', [('foo', 'i4'), ('bar', '(3, 2)f4'),
-                            ('baz', 'u1')]), ('baz', 'S3')])
+                                                    ('baz', 'u1')]), ('baz', 'S3')])
         fill_values = None, b'', (0, (0, ((0, 0), (1, 1), (2, 2)), 0), b'zzz')
         self.check_structured_array(d, fill_values)
 
@@ -1802,7 +1803,7 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
                       (1, (1, ((1, 2), (2, 3), (3, 4)), 1), b'bbb'),
                       (2, (2, ((2, 3), (3, 4), (4, 5)), 2), b'ccc')],
                      dtype=[('foo', 'i8'), ('bar', [('foo', 'i4'), ('bar', '(3, 2)f4'),
-                            ('baz', 'u1')]), ('baz', 'S3')])
+                                                    ('baz', 'u1')]), ('baz', 'S3')])
         fill_values = None, b'', (0, (0, ((0, 0), (1, 1), (2, 2)), 0), b'zzz')
         with pytest.raises(TypeError):
             self.check_structured_array(d, fill_values)
@@ -2469,7 +2470,8 @@ class TestArrayWithFSStore(TestArray):
     def create_array(read_only=False, **kwargs):
         path = mkdtemp()
         atexit.register(shutil.rmtree, path)
-        store = FSStore(path)
+        key_separator = kwargs.pop('key_separator', ".")
+        store = FSStore(path, key_separator=key_separator, auto_mkdir=True)
         cache_metadata = kwargs.pop('cache_metadata', True)
         cache_attrs = kwargs.pop('cache_attrs', True)
         kwargs.setdefault('compressor', Blosc())
@@ -2477,28 +2479,41 @@ class TestArrayWithFSStore(TestArray):
         return Array(store, read_only=read_only, cache_metadata=cache_metadata,
                      cache_attrs=cache_attrs)
 
+    def expected(self):
+        return [
+           "ab753fc81df0878589535ca9bad2816ba88d91bc",
+           "c16261446f9436b1e9f962e57ce3e8f6074abe8a",
+           "c2ef3b2fb2bc9dcace99cd6dad1a7b66cc1ea058",
+           "6e52f95ac15b164a8e96843a230fcee0e610729b",
+           "091fa99bc60706095c9ce30b56ce2503e0223f56",
+        ]
+
     def test_hexdigest(self):
+        found = []
+
         # Check basic 1-D array
         z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
-        assert 'f710da18d45d38d4aaf2afd7fb822fdd73d02957' == z.hexdigest()
+        found.append(z.hexdigest())
 
         # Check basic 1-D array with different type
         z = self.create_array(shape=(1050,), chunks=100, dtype='<f4')
-        assert '1437428e69754b1e1a38bd7fc9e43669577620db' == z.hexdigest()
+        found.append(z.hexdigest())
 
         # Check basic 2-D array
         z = self.create_array(shape=(20, 35,), chunks=10, dtype='<i4')
-        assert '6c530b6b9d73e108cc5ee7b6be3d552cc994bdbe' == z.hexdigest()
+        found.append(z.hexdigest())
 
         # Check basic 1-D array with some data
         z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
         z[200:400] = np.arange(200, 400, dtype='i4')
-        assert '4c0a76fb1222498e09dcd92f7f9221d6cea8b40e' == z.hexdigest()
+        found.append(z.hexdigest())
 
         # Check basic 1-D array with attributes
         z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
         z.attrs['foo'] = 'bar'
-        assert '05b0663ffe1785f38d3a459dec17e57a18f254af' == z.hexdigest()
+        found.append(z.hexdigest())
+
+        assert self.expected() == found
 
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
@@ -2549,6 +2564,147 @@ class TestArrayWithFSStorePartialRead(TestArray):
         z = self.create_array(shape=(1050,), chunks=100, dtype="<i4")
         z.attrs["foo"] = "bar"
         assert "05b0663ffe1785f38d3a459dec17e57a18f254af" == z.hexdigest()
+
+    def test_non_cont(self):
+        z = self.create_array(shape=(500, 500, 500), chunks=(50, 50, 50), dtype="<i4")
+        z[:, :, :] = 1
+        # actually go through the partial read by accessing a single item
+        assert z[0, :, 0].any()
+
+    def test_read_nitems_less_than_blocksize_from_multiple_chunks(self):
+        '''Tests to make sure decompression doesn't fail when `nitems` is
+        less than a compressed block size, but covers multiple blocks
+        '''
+        z = self.create_array(shape=1000000, chunks=100_000)
+        z[40_000:80_000] = 1
+        b = Array(z.store, read_only=True, partial_decompress=True)
+        assert (b[40_000:80_000] == 1).all()
+
+    def test_read_from_all_blocks(self):
+        '''Tests to make sure `PartialReadBuffer.read_part` doesn't fail when
+        stop isn't in the `start_points` array
+        '''
+        z = self.create_array(shape=1000000, chunks=100_000)
+        z[2:99_000] = 1
+        b = Array(z.store, read_only=True, partial_decompress=True)
+        assert (b[2:99_000] == 1).all()
+
+
+@pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
+class TestArrayWithFSStoreNested(TestArray):
+
+    @staticmethod
+    def create_array(read_only=False, **kwargs):
+        path = mkdtemp()
+        atexit.register(shutil.rmtree, path)
+        key_separator = kwargs.pop('key_separator', "/")
+        store = FSStore(path, key_separator=key_separator, auto_mkdir=True)
+        cache_metadata = kwargs.pop('cache_metadata', True)
+        cache_attrs = kwargs.pop('cache_attrs', True)
+        kwargs.setdefault('compressor', Blosc())
+        init_array(store, **kwargs)
+        return Array(store, read_only=read_only, cache_metadata=cache_metadata,
+                     cache_attrs=cache_attrs)
+
+    def expected(self):
+        return [
+           "94884f29b41b9beb8fc99ad7bf9c0cbf0f2ab3c9",
+           "077aa3bd77b8d354f8f6c15dce5ae4f545788a72",
+           "22be95d83c097460adb339d80b2d7fe19c513c16",
+           "85131cec526fa46938fd2c4a6083a58ee11037ea",
+           "c3167010c162c6198cb2bf3c1da2c46b047c69a1",
+        ]
+
+    def test_hexdigest(self):
+        found = []
+
+        # Check basic 1-D array
+        z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
+        found.append(z.hexdigest())
+
+        # Check basic 1-D array with different type
+        z = self.create_array(shape=(1050,), chunks=100, dtype='<f4')
+        found.append(z.hexdigest())
+
+        # Check basic 2-D array
+        z = self.create_array(shape=(20, 35,), chunks=10, dtype='<i4')
+        found.append(z.hexdigest())
+
+        # Check basic 1-D array with some data
+        z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
+        z[200:400] = np.arange(200, 400, dtype='i4')
+        found.append(z.hexdigest())
+
+        # Check basic 1-D array with attributes
+        z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
+        z.attrs['foo'] = 'bar'
+        found.append(z.hexdigest())
+
+        assert self.expected() == found
+
+
+@pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
+class TestArrayWithFSStoreNestedPartialRead(TestArray):
+    @staticmethod
+    def create_array(read_only=False, **kwargs):
+        path = mkdtemp()
+        atexit.register(shutil.rmtree, path)
+        key_separator = kwargs.pop('key_separator', "/")
+        store = FSStore(path, key_separator=key_separator, auto_mkdir=True)
+        cache_metadata = kwargs.pop("cache_metadata", True)
+        cache_attrs = kwargs.pop("cache_attrs", True)
+        kwargs.setdefault("compressor", Blosc())
+        init_array(store, **kwargs)
+        return Array(
+            store,
+            read_only=read_only,
+            cache_metadata=cache_metadata,
+            cache_attrs=cache_attrs,
+            partial_decompress=True,
+        )
+
+    def expected(self):
+        return [
+           "94884f29b41b9beb8fc99ad7bf9c0cbf0f2ab3c9",
+           "077aa3bd77b8d354f8f6c15dce5ae4f545788a72",
+           "22be95d83c097460adb339d80b2d7fe19c513c16",
+           "85131cec526fa46938fd2c4a6083a58ee11037ea",
+           "c3167010c162c6198cb2bf3c1da2c46b047c69a1",
+        ]
+
+    def test_hexdigest(self):
+        found = []
+
+        # Check basic 1-D array
+        z = self.create_array(shape=(1050,), chunks=100, dtype="<i4")
+        found.append(z.hexdigest())
+
+        # Check basic 1-D array with different type
+        z = self.create_array(shape=(1050,), chunks=100, dtype="<f4")
+        found.append(z.hexdigest())
+
+        # Check basic 2-D array
+        z = self.create_array(
+            shape=(
+                20,
+                35,
+            ),
+            chunks=10,
+            dtype="<i4",
+        )
+        found.append(z.hexdigest())
+
+        # Check basic 1-D array with some data
+        z = self.create_array(shape=(1050,), chunks=100, dtype="<i4")
+        z[200:400] = np.arange(200, 400, dtype="i4")
+        found.append(z.hexdigest())
+
+        # Check basic 1-D array with attributes
+        z = self.create_array(shape=(1050,), chunks=100, dtype="<i4")
+        z.attrs["foo"] = "bar"
+        found.append(z.hexdigest())
+
+        assert self.expected() == found
 
     def test_non_cont(self):
         z = self.create_array(shape=(500, 500, 500), chunks=(50, 50, 50), dtype="<i4")
