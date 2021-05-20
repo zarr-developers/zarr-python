@@ -1,6 +1,17 @@
 Release notes
 =============
 
+.. _release_2.8.3:
+
+2.8.3
+-----
+
+Bug fixes
+~~~~~~~~~
+
+* FSStore: default to normalize_keys=False
+  By :user:`Josh Moore <joshmoore>`; :issue:`755`.
+
 .. _release_2.8.2:
 
 2.8.2
