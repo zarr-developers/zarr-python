@@ -50,7 +50,9 @@ def decode_array_metadata(s: Union[MappingType, str]) -> MappingType[str, Any]:
             fill_value=fill_value,
             order=meta['order'],
             filters=meta['filters'],
+            dimension_separator=meta.get('dimension_separator', '.'),
         )
+
     except Exception as e:
         raise MetadataError('error decoding metadata: %s' % e)
     else:
@@ -62,6 +64,9 @@ def encode_array_metadata(meta: MappingType[str, Any]) -> bytes:
     sdshape = ()
     if dtype.subdtype is not None:
         dtype, sdshape = dtype.subdtype
+
+    dimension_separator = meta.get('dimension_separator')
+
     meta = dict(
         zarr_format=ZARR_FORMAT,
         shape=meta['shape'] + sdshape,
@@ -72,6 +77,10 @@ def encode_array_metadata(meta: MappingType[str, Any]) -> bytes:
         order=meta['order'],
         filters=meta['filters'],
     )
+
+    if dimension_separator:
+        meta['dimension_separator'] = dimension_separator
+
     return json_dumps(meta)
 
 

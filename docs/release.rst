@@ -1,10 +1,132 @@
 Release notes
 =============
 
+.. _release_2.8.3:
+
+2.8.3
+-----
+
+Bug fixes
+~~~~~~~~~
+
+* FSStore: default to normalize_keys=False
+  By :user:`Josh Moore <joshmoore>`; :issue:`755`.
+
+.. _release_2.8.2:
+
+2.8.2
+-----
+
+Documentation
+~~~~~~~~~~~~~
+
+* Add section on rechunking to tutorial
+  By :user:`David Baddeley <David-Baddeley>`; :issue:`730`.
+
+Bug fixes
+~~~~~~~~~
+
+* Expand FSStore tests and fix implementation issues
+  By :user:`Davis Bennett <d-v-b>`; :issue:`709`.
+
+Maintenance
+~~~~~~~~~~~
+
+* Updated ipytree warning for jlab3
+  By :user:`Ian Hunt-Isaak <ianhi>`; :issue:`721`.
+
+* b170a48a - (issue-728, copy-nested) Updated ipytree warning for jlab3 (#721) (3 weeks ago) <Ian Hunt-Isaak>
+* Activate dependabot
+  By :user:`Josh Moore <joshmoore>`; :issue:`734`.
+
+* Update Python classifiers (Zarr is stable!)
+  By :user:`Josh Moore <joshmoore>`; :issue:`731`.
+
+.. _release_2.8.1:
+
+2.8.1
+-----
+
+Bug fixes
+~~~~~~~~~
+
+* raise an error if create_dataset's dimension_separator is inconsistent
+  By :user:`Gregory R. Lee <grlee77>`; :issue:`724`.
+
+.. _release_2.8.0:
+
+2.8.0
+-----
+
+V2 Specification Update
+~~~~~~~~~~~~~~~~~~~~~~~
+
+* Introduce optional dimension_separator .zarray key for nested chunks.
+  By :user:`Josh Moore <joshmoore>`; :issue:`715`, :issue:`716`.
+
+.. _release_2.7.1:
+
+2.7.1
+-----
+
+Bug fixes
+~~~~~~~~~
+
+* Update Array to respect FSStore's key_separator  (#718)
+  By :user:`Gregory R. Lee <grlee77>`; :issue:`718`.
+
+.. _release_2.7.0:
+
+2.7.0
+-----
+
+Enhancements
+~~~~~~~~~~~~
+
+* Start stop for iterator (`islice()`)
+  By :user:`Sebastian Grill <yetyetanotherusername>`; :issue:`621`.
+
+* Add capability to partially read and decompress chunks
+  By :user:`Andrew Fulton <andrewfulton9>`; :issue:`667`.
+
+Bug fixes
+~~~~~~~~~
+
+* Make DirectoryStore __setitem__ resilient against antivirus file locking
+  By :user:`Eric Younkin <ericgyounkin>`; :issue:`698`.
+
+* Compare test data's content generally
+  By :user:`John Kirkham <jakirkham>`; :issue:`436`.
+
+* Fix dtype usage in zarr/meta.py
+  By :user:`Josh Moore <joshmoore>`; :issue:`700`.
+
+* Fix FSStore key_seperator usage
+  By :user:`Josh Moore <joshmoore>`; :issue:`669`.
+
+* Simplify text handling in DB Store
+  By :user:`John Kirkham <jakirkham>`; :issue:`670`.
+
+* GitHub Actions migration
+  By :user:`Matthias Bussonnier <Carreau>`;
+  :issue:`641`, :issue:`671`, :issue:`674`, :issue:`676`, :issue:`677`, :issue:`678`,
+  :issue:`679`, :issue:`680`, :issue:`682`, :issue:`684`, :issue:`685`, :issue:`686`,
+  :issue:`687`, :issue:`695`, :issue:`706`.
+
+.. _release_2.6.1:
+
+2.6.1
+-----
+
+* Minor build fix
+  By :user:`Matthias Bussonnier <Carreau>`; :issue:`666`.
+
+.. _release_2.6.0:
+
 2.6.0
 -----
 
-This release od Zarr Python is is the first release of Zarr to not supporting Python 3.5.
+This release of Zarr Python is is the first release of Zarr to not support Python 3.5.
 
 * End Python 3.5 support.
   By :user:`Chris Barnes <clbarnes>`; :issue:`602`.
@@ -42,9 +164,10 @@ merged PR tagged with the 2.6 milestone.
   creating an ``Array``, or when using ``open_array``. No option exists yet to
   apply partial read and decompress on a per-operation basis.
 
+.. _release_2.5.0:
+
 2.5.0
 -----
-
 
 This release will be the last to support Python 3.5, next version of Zarr will be Python 3.6+.
 
@@ -85,6 +208,10 @@ This release will be the last to support Python 3.5, next version of Zarr will b
   from stores that implement this; presently HTTP, S3, GCS. Currently only
   applies to reading.
   By :user:`Martin Durant <martindurant>`; :issue:`606`
+
+* Efficient iteration expanded with option to pass start and stop index via
+  ``array.islice``.
+  By :user:`Sebastian Grill <yetyetanotherusername>`, :issue:`615`.
 
 .. _release_2.4.0:
 
