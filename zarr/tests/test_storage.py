@@ -30,7 +30,7 @@ from zarr.storage import (ABSStore, ConsolidatedMetadataStore, DBMStore,
                           attrs_key, default_compressor, getsize,
                           group_meta_key, init_array, init_group, migrate_1to2)
 from zarr.storage import FSStore
-from zarr.tests.util import CountingDict, have_fsspec, skip_test_env_var
+from zarr.tests.util import CountingDict, have_fsspec, skip_test_env_var, abs_container
 
 
 @contextmanager
@@ -1923,19 +1923,14 @@ def test_format_compatibility():
 
 
 @skip_test_env_var("ZARR_TEST_ABS")
+@pytest.mark.usefixtures("azurite")
 class TestABSStore(StoreTests):
 
     def create_store(self, prefix=None, **kwargs):
-        asb = pytest.importorskip("azure.storage.blob")
-        blob_client = asb.BlockBlobService(is_emulated=True, socket_timeout=10)
-        blob_client.delete_container("test")
-        blob_client.create_container("test")
+        container_client = abs_container()
         store = ABSStore(
-            container="test",
             prefix=prefix,
-            account_name="foo",
-            account_key="bar",
-            blob_service_kwargs={"is_emulated": True, "socket_timeout": 10},
+            client=container_client,
             **kwargs,
         )
         store.rmdir()

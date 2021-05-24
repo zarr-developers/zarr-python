@@ -27,7 +27,7 @@ from zarr.storage import (ABSStore, DBMStore, DirectoryStore, FSStore,
                           array_meta_key, atexit_rmglob, atexit_rmtree,
                           group_meta_key, init_array, init_group)
 from zarr.util import InfoReporter
-from zarr.tests.util import skip_test_env_var, have_fsspec
+from zarr.tests.util import skip_test_env_var, have_fsspec, abs_container
 
 
 # noinspection PyStatementEffect
@@ -947,16 +947,13 @@ class TestGroupWithDirectoryStore(TestGroup):
 
 
 @skip_test_env_var("ZARR_TEST_ABS")
+@pytest.mark.usefixtures("azurite")
 class TestGroupWithABSStore(TestGroup):
 
     @staticmethod
     def create_store():
-        asb = pytest.importorskip("azure.storage.blob")
-        blob_client = asb.BlockBlobService(is_emulated=True)
-        blob_client.delete_container('test')
-        blob_client.create_container('test')
-        store = ABSStore(container='test', account_name='foo', account_key='bar',
-                         blob_service_kwargs={'is_emulated': True})
+        container_client = abs_container()
+        store = ABSStore(container_client)
         store.rmdir()
         return store, None
 

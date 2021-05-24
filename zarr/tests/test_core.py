@@ -33,7 +33,7 @@ from zarr.storage import (
     init_group,
 )
 from zarr.util import buffer_size
-from zarr.tests.util import skip_test_env_var, have_fsspec
+from zarr.tests.util import abs_container, skip_test_env_var, have_fsspec
 
 # noinspection PyMethodMayBeStatic
 
@@ -1623,16 +1623,13 @@ class TestArrayWithDirectoryStore(TestArray):
 
 
 @skip_test_env_var("ZARR_TEST_ABS")
+@pytest.mark.usefixtures("azurite")
 class TestArrayWithABSStore(TestArray):
 
     @staticmethod
     def absstore():
-        asb = pytest.importorskip("azure.storage.blob")
-        blob_client = asb.BlockBlobService(is_emulated=True)
-        blob_client.delete_container('test')
-        blob_client.create_container('test')
-        store = ABSStore(container='test', account_name='foo', account_key='bar',
-                         blob_service_kwargs={'is_emulated': True})
+        client = abs_container()
+        store = ABSStore(client)
         store.rmdir()
         return store
 

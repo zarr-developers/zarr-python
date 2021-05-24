@@ -2211,51 +2211,45 @@ class ABSStore(MutableMapping):
     ----------
     container : string
         The name of the ABS container to use.
+        .. deprecated::
+           Use ``client`` instead.
     prefix : string
         Location of the "directory" to use as the root of the storage hierarchy
         within the container.
     account_name : string
         The Azure blob storage account name.
+        .. deprecated::
+           Use ``client`` instead.
     account_key : string
         The Azure blob storage account access key.
+        .. deprecated::
+           Use ``client`` instead.
     blob_service_kwargs : dictionary
         Extra arguments to be passed into the azure blob client, for e.g. when
         using the emulator, pass in blob_service_kwargs={'is_emulated': True}.
+        .. deprecated::
+           Use ``client`` instead.
     dimension_separator : {'.', '/'}, optional
         Separator placed between the dimensions of a chunk.
+    client : azure.storage.blob.ContainerClient, optional
+        And ``azure.storage.blob.ContainerClient`` to connect with. See
+        `here <https://docs.microsoft.com/en-us/python/api/azure-storage-blob/azure.storage.blob.containerclient?view=azure-python>`_
+        for more.
 
     Notes
     -----
-    In order to use this store, you must install the Microsoft Azure Storage SDK for Python.
+    In order to use this store, you must install the Microsoft Azure Storage SDK for Python,
+    ``azure-storage-blob>=12.5.0``.
     """
 
-    def __init__(self, container, prefix='', account_name=None, account_key=None,
-                 blob_service_kwargs=None, dimension_separator=None):
-        from azure.storage.blob import ContainerClient
-        self.container = container
-        self.prefix = normalize_storage_path(prefix)
-        self.account_name = account_name
-        self.account_account_url = f"https://{self.account_name}.blob.core.windows.net"
-        self.account_key = account_key
+    def __init__(self,
+                 client,
+                 prefix='',
+                 dimension_separator=None,
+                 ):
         self._dimension_separator = dimension_separator
-        if blob_service_kwargs is not None:
-            self.blob_service_kwargs = blob_service_kwargs
-        else:  # pragma: no cover
-            self.blob_service_kwargs = dict()
-        self.client = ContainerClient(self.account_account_url, self.container,
-                                      credential=self.account_key, **self.blob_service_kwargs)
-
-    # needed for pickling
-    def __getstate__(self):
-        state = self.__dict__.copy()
-        del state['client']
-        return state
-
-    def __setstate__(self, state):
-        from azure.storage.blob import ContainerClient
-        self.__dict__.update(state)
-        self.client = ContainerClient(self.account_account_url, self.container,
-                                      credential=self.account_key, **self.blob_service_kwargs)
+        self.prefix = normalize_storage_path(prefix)
+        self.client = client
 
     def _append_path_to_prefix(self, path):
         if self.prefix == '':
@@ -2296,7 +2290,7 @@ class ABSStore(MutableMapping):
     def __eq__(self, other):
         return (
             isinstance(other, ABSStore) and
-            self.container == other.container and
+            self.client == other.client and
             self.prefix == other.prefix
         )
 
@@ -2325,7 +2319,7 @@ class ABSStore(MutableMapping):
         items = set()
         for blob in self.client.walk_blobs(name_starts_with=dir_path, delimiter='/'):
             items.add(self._strip_prefix_from_path(blob.name, dir_path))
-        return items
+        return list(items)
 
     def rmdir(self, path=None):
         dir_path = normalize_storage_path(self._append_path_to_prefix(path))
@@ -2337,8 +2331,12 @@ class ABSStore(MutableMapping):
     def getsize(self, path=None):
         store_path = normalize_storage_path(path)
         fs_path = self._append_path_to_prefix(store_path)
-        blob_client = self.client.get_blob_client(fs_path)
-        if blob_client.exists():
+        if fs_path:
+            blob_client = self.client.get_blob_client(fs_path)
+        else:
+            blob_client = None
+
+        if blob_client and blob_client.exists():
             return blob_client.get_blob_properties().size
         else:
             size = 0
