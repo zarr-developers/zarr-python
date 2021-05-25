@@ -563,13 +563,18 @@ class PartialReadBuffer:
         self.map = self.chunk_store.map
         self.fs = self.chunk_store.fs
         self.store_key = store_key
-        self.key_path = self.map._key_to_str(store_key)
         self.buff = None
         self.nblocks = None
         self.start_points = None
         self.n_per_block = None
         self.start_points_max = None
         self.read_blocks = set()
+
+        _key_path = self.map._key_to_str(store_key)
+        _key_path = _key_path.split('/')
+        _chunk_path = [self.chunk_store._normalize_key(_key_path[-1])]
+        _key_path = '/'.join(_key_path[:-1] + _chunk_path)
+        self.key_path = _key_path
 
     def prepare_chunk(self):
         assert self.buff is None
