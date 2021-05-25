@@ -30,7 +30,8 @@ from zarr.storage import (ABSStore, ConsolidatedMetadataStore, DBMStore,
                           attrs_key, default_compressor, getsize,
                           group_meta_key, init_array, init_group, migrate_1to2)
 from zarr.storage import FSStore
-from zarr.tests.util import CountingDict, have_fsspec, skip_test_env_var, abs_container
+from zarr.tests.util import (CountingDict, have_fsspec, skip_not_py37, skip_test_env_var,
+                             abs_container)
 
 
 @contextmanager
@@ -1973,6 +1974,11 @@ class TestABSStore(StoreTests):
 
     def test_hierarchy(self):
         return super().test_hierarchy()
+
+    @skip_not_py37
+    def test_pickle(self):
+        # internal attribute on ContainerClient isn't serializable for py36 and earlier
+        super().test_pickle()
 
 
 class TestConsolidatedMetadataStore:

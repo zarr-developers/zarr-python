@@ -1,5 +1,6 @@
 import collections
 from collections.abc import MutableMapping
+import sys
 import os
 
 import pytest
@@ -45,6 +46,13 @@ def skip_test_env_var(name):
     """
     value = os.environ.get(name, '0')
     return pytest.mark.skipif(value == '0', reason='Tests not enabled via environment variable')
+
+
+def skip_not_py37(cls):
+    """
+    Skip for python 3.6 and earlier.
+    """
+    return pytest.mark.skipif(sys.version_info < (3, 7))
 
 
 try:

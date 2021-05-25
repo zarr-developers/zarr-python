@@ -27,7 +27,7 @@ from zarr.storage import (ABSStore, DBMStore, DirectoryStore, FSStore,
                           array_meta_key, atexit_rmglob, atexit_rmtree,
                           group_meta_key, init_array, init_group)
 from zarr.util import InfoReporter
-from zarr.tests.util import skip_test_env_var, have_fsspec, abs_container
+from zarr.tests.util import skip_not_py37, skip_test_env_var, have_fsspec, abs_container
 
 
 # noinspection PyStatementEffect
@@ -955,6 +955,11 @@ class TestGroupWithABSStore(TestGroup):
         store = ABSStore(client=container_client)
         store.rmdir()
         return store, None
+
+    @skip_not_py37
+    def test_pickle(self):
+        # internal attribute on ContainerClient isn't serializable for py36 and earlier
+        super().test_pickle()
 
 
 class TestGroupWithNestedDirectoryStore(TestGroup):

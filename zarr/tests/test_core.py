@@ -33,7 +33,7 @@ from zarr.storage import (
     init_group,
 )
 from zarr.util import buffer_size
-from zarr.tests.util import abs_container, skip_test_env_var, have_fsspec
+from zarr.tests.util import abs_container, skip_not_py37, skip_test_env_var, have_fsspec
 
 # noinspection PyMethodMayBeStatic
 
@@ -1644,6 +1644,11 @@ class TestArrayWithABSStore(TestArray):
     @pytest.mark.xfail
     def test_nbytes_stored(self):
         return super().test_nbytes_stored()
+
+    @skip_not_py37
+    def test_pickle(self):
+        # internal attribute on ContainerClient isn't serializable for py36 and earlier
+        super().test_pickle()
 
 
 class TestArrayWithNestedDirectoryStore(TestArrayWithDirectoryStore):
