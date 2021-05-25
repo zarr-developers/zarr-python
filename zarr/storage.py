@@ -2253,16 +2253,16 @@ class ABSStore(MutableMapping):
         if client is None:
             # deprecated option, try to construct the client for them
             msg = (
-                "Providing 'container', 'account_name', 'account_key', and 'blob_service_kwargs' is "
-                "deprecated. Provide and instance of 'azure.storage.blob.ContainerClient' as 'client' "
-                "instead."
+                "Providing 'container', 'account_name', 'account_key', and 'blob_service_kwargs'"
+                "is deprecated. Provide and instance of 'azure.storage.blob.ContainerClient' "
+                "'client' instead."
             )
             warnings.warn(msg, FutureWarning, stacklevel=2)
             from azure.storage.blob import ContainerClient
             blob_service_kwargs = blob_service_kwargs or {}
             client = ContainerClient(
-                "https://{}.blob.core.windows.net/".format(account_name), container, credential=account_key,
-                **blob_service_kwargs
+                "https://{}.blob.core.windows.net/".format(account_name), container,
+                credential=account_key, **blob_service_kwargs
                 )
 
         self.client = client
