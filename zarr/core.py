@@ -1878,7 +1878,7 @@ class Array:
     def _chunk_setitems(self, lchunk_coords, lchunk_selection, values, fields=None):
         ckeys = [self._chunk_key(co) for co in lchunk_coords]
         cdatas = [self._process_for_setitem(key, sel, val, fields=fields)
-                  for key, sel, val in zip(ckeys, lchunk_selection, values)]           
+                  for key, sel, val in zip(ckeys, lchunk_selection, values)]
         values = {}
         if not self._write_empty_chunks:
             for ckey, cdata in zip(ckeys, cdatas):
@@ -1899,7 +1899,7 @@ class Array:
 
     def _chunk_delitem(self, ckey):
         """
-        Attempt to delete the value associated with ckey. 
+        Attempt to delete the value associated with ckey.
         Returns True if deletion succeeds or KeyError is raised.
         Returns False if any other exception is raised.
         """
@@ -1910,7 +1910,6 @@ class Array:
             return True
         except Exception:
             return False
-
 
     def _chunk_setitem(self, chunk_coords, chunk_selection, value, fields=None):
         """Replace part or whole of a chunk.
@@ -1942,11 +1941,11 @@ class Array:
         do_store = True
         ckey = self._chunk_key(chunk_coords)
         cdata = self._process_for_setitem(ckey, chunk_selection, value, fields=fields)
-        
+
         # clear chunk if it only contains the fill value
         if (not self._write_empty_chunks) and self._chunk_isempty(cdata):
             do_store = not self._chunk_delitem(ckey)
-       
+
         # store
         if do_store:
             self.chunk_store[ckey] = self._encode_chunk(cdata)
