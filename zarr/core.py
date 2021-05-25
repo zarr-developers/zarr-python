@@ -1596,7 +1596,7 @@ class Array:
             chunk[selection] = value
 
         # clear chunk if it only contains the fill value
-        if np.all(np.equal(chunk, self._fill_value)):
+        if self._chunk_isempty(chunk):
             try:
                 del self.chunk_store[ckey]
                 return
@@ -1878,9 +1878,39 @@ class Array:
     def _chunk_setitems(self, lchunk_coords, lchunk_selection, values, fields=None):
         ckeys = [self._chunk_key(co) for co in lchunk_coords]
         cdatas = [self._process_for_setitem(key, sel, val, fields=fields)
-                  for key, sel, val in zip(ckeys, lchunk_selection, values)]
-        values = {k: v for k, v in zip(ckeys, cdatas) if v is not None}
+                  for key, sel, val in zip(ckeys, lchunk_selection, values)]           
+        values = {}
+        if not self._write_empty_chunks:
+            for ckey, cdata in zip(ckeys, cdatas):
+                if self._chunk_isempty(cdata) and not self._chunk_delitem(ckey):
+                    values[ckey] = self._encode_chunk(cdata)
+        else:
+            values = dict(zip(ckeys, map(self._encode_chunk, cdatas)))
         self.chunk_store.setitems(values)
+
+    def _chunk_isempty(self, chunk):
+        if self.dtype == 'object':
+            # we have to flatten the result of np.equal to handle outputs like
+            # [np.array([True,True]), True, True]
+            is_empty = all(flatten(np.equal(chunk, self.fill_value, dtype='object')))
+        else:
+            is_empty = np.all(chunk == self._fill_value)
+        return is_empty
+
+    def _chunk_delitem(self, ckey):
+        """
+        Attempt to delete the value associated with ckey. 
+        Returns True if deletion succeeds or KeyError is raised.
+        Returns False if any other exception is raised.
+        """
+        try:
+            del self.chunk_store[ckey]
+            return True
+        except KeyError:
+            return True
+        except Exception:
+            return False
+
 
     def _chunk_setitem(self, chunk_coords, chunk_selection, value, fields=None):
         """Replace part or whole of a chunk.
@@ -1909,11 +1939,17 @@ class Array:
                                        fields=fields)
 
     def _chunk_setitem_nosync(self, chunk_coords, chunk_selection, value, fields=None):
+        do_store = True
         ckey = self._chunk_key(chunk_coords)
         cdata = self._process_for_setitem(ckey, chunk_selection, value, fields=fields)
+        
+        # clear chunk if it only contains the fill value
+        if (not self._write_empty_chunks) and self._chunk_isempty(cdata):
+            do_store = not self._chunk_delitem(ckey)
+       
         # store
-        if cdata is not None:
-            self.chunk_store[ckey] = cdata
+        if do_store:
+            self.chunk_store[ckey] = self._encode_chunk(cdata)
 
     def _process_for_setitem(self, ckey, chunk_selection, value, fields=None):
         if is_total_slice(chunk_selection, self._chunks) and not fields:
@@ -1969,27 +2005,7 @@ class Array:
             else:
                 chunk[chunk_selection] = value
 
-        # clear chunk if it only contains the fill value
-        if not self._write_empty_chunks:
-            if self.dtype == 'object':
-                # we have to flatten the result of np.equal to handle outputs like
-                # [np.array([True,True]), True, True]
-                is_empty = all(flatten(np.equal(chunk, self.fill_value, dtype='object')))
-            else:
-                is_empty = np.all(chunk == self._fill_value)
-
-            if is_empty:
-                try:
-                    del self.chunk_store[ckey]
-                    return
-                except KeyError:
-                    return
-                except Exception:
-                    # deleting failed, fallback to overwriting
-                    pass
-
-        # encode chunk
-        return self._encode_chunk(chunk)
+        return chunk
 
     def _chunk_key(self, chunk_coords):
         return self._key_prefix + '.'.join(map(str, chunk_coords))
