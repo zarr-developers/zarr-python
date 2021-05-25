@@ -2355,10 +2355,11 @@ class ABSStore(MutableMapping):
         dir_path = normalize_storage_path(self._append_path_to_prefix(path))
         if dir_path:
             dir_path += '/'
-        items = set()
-        for blob in self.client.walk_blobs(name_starts_with=dir_path, delimiter='/'):
-            items.add(self._strip_prefix_from_path(blob.name, dir_path))
-        return list(items)
+        items = [
+            self._strip_prefix_from_path(blob.name, dir_path)
+            for blob in self.client.walk_blobs(name_starts_with=dir_path, delimiter='/')
+        ]
+        return items
 
     def rmdir(self, path=None):
         dir_path = normalize_storage_path(self._append_path_to_prefix(path))
