@@ -1629,7 +1629,7 @@ class TestArrayWithABSStore(TestArray):
     @staticmethod
     def absstore():
         client = abs_container()
-        store = ABSStore(client)
+        store = ABSStore(client=client)
         store.rmdir()
         return store
 

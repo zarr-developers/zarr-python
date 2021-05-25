@@ -2242,7 +2242,7 @@ class ABSStore(MutableMapping):
     ``azure-storage-blob>=12.5.0``.
     """
 
-    def __init__(self, container, prefix='', account_name=None, account_key=None,
+    def __init__(self, container=None, prefix='', account_name=None, account_key=None,
                  blob_service_kwargs=None, dimension_separator=None,
                  client=None,
                  ):
@@ -2250,7 +2250,10 @@ class ABSStore(MutableMapping):
         self.prefix = normalize_storage_path(prefix)
         if client is None:
             # deprecated option, try to construct the client for them
-            msg = "Providing 'container', 'account_name', 'account_key', and 'blob_service_kwargs' is deprecated. Provide and instance of 'azure.storage.blob.ContainerClient' as 'client' instead."
+            msg = (
+                "Providing 'container', 'account_name', 'account_key', and 'blob_service_kwargs' is deprecated. "
+                "Provide and instance of 'azure.storage.blob.ContainerClient' as 'client' instead."
+            )
             warnings.warn(msg, FutureWarning, stacklevel=2)
             from azure.storage.blob import ContainerClient
             blob_service_kwargs = blob_service_kwargs or {}
@@ -2262,7 +2265,8 @@ class ABSStore(MutableMapping):
         self._account_key = account_key
 
     def _warn_deprecated(self, property_):
-        msg = "The {} property is deprecated and will be removed in a future version. Get the property from 'ABSStore.client' instead."
+        msg = ("The {} property is deprecated and will be removed in a future
+               "version. Get the property from 'ABSStore.client' instead.")
         warnings.warn(msg.format(property_), FutureWarning, stacklevel=3)
 
     @property

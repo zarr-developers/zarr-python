@@ -953,7 +953,7 @@ class TestGroupWithABSStore(TestGroup):
     @staticmethod
     def create_store():
         container_client = abs_container()
-        store = ABSStore(container_client)
+        store = ABSStore(client=container_client)
         store.rmdir()
         return store, None
 
