@@ -810,6 +810,8 @@ The class is :class:`zarr.storage.ABSStore` (requires
 `azure-storage-blob <https://docs.microsoft.com/en-us/azure/storage/blobs/storage-quickstart-blobs-python>`_
 to be installed)::
 
+    >>> import azure.storage.blob
+    >>> container_client = azure.storage.blob.ContainerClient(...)  # doctest: +SKIP
     >>> store = zarr.ABSStore(client=container_client, prefix='zarr-testing')  # doctest: +SKIP
     >>> root = zarr.group(store=store, overwrite=True)  # doctest: +SKIP
     >>> z = root.zeros('foo/bar', shape=(1000, 1000), chunks=(100, 100), dtype='i4')  # doctest: +SKIP
