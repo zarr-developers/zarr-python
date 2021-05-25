@@ -2233,7 +2233,7 @@ class ABSStore(MutableMapping):
         Separator placed between the dimensions of a chunk.
     client : azure.storage.blob.ContainerClient, optional
         And ``azure.storage.blob.ContainerClient`` to connect with. See
-        `here <https://docs.microsoft.com/en-us/python/api/azure-storage-blob/azure.storage.blob.containerclient?view=azure-python>`_
+        `here <https://docs.microsoft.com/en-us/python/api/azure-storage-blob/azure.storage.blob.containerclient?view=azure-python>`_  # noqa
         for more.
 
         .. versionadded:: 2.8.3
@@ -2253,13 +2253,17 @@ class ABSStore(MutableMapping):
         if client is None:
             # deprecated option, try to construct the client for them
             msg = (
-                "Providing 'container', 'account_name', 'account_key', and 'blob_service_kwargs' is deprecated. "
-                "Provide and instance of 'azure.storage.blob.ContainerClient' as 'client' instead."
+                "Providing 'container', 'account_name', 'account_key', and 'blob_service_kwargs' is "
+                "deprecated. Provide and instance of 'azure.storage.blob.ContainerClient' as 'client' "
+                "instead."
             )
             warnings.warn(msg, FutureWarning, stacklevel=2)
             from azure.storage.blob import ContainerClient
             blob_service_kwargs = blob_service_kwargs or {}
-            client = ContainerClient("https://{}.blob.core.windows.net/".format(account_name), container, credential=account_key, **blob_service_kwargs)
+            client = ContainerClient(
+                "https://{}.blob.core.windows.net/".format(account_name), container, credential=account_key,
+                **blob_service_kwargs
+                )
 
         self.client = client
         self._container = container
