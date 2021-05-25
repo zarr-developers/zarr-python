@@ -947,7 +947,6 @@ class TestGroupWithDirectoryStore(TestGroup):
 
 
 @skip_test_env_var("ZARR_TEST_ABS")
-@pytest.mark.usefixtures("azurite")
 class TestGroupWithABSStore(TestGroup):
 
     @staticmethod

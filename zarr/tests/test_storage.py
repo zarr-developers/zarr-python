@@ -1923,7 +1923,6 @@ def test_format_compatibility():
 
 
 @skip_test_env_var("ZARR_TEST_ABS")
-@pytest.mark.usefixtures("azurite")
 class TestABSStore(StoreTests):
 
     def create_store(self, prefix=None, **kwargs):
