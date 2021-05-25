@@ -48,13 +48,6 @@ def skip_test_env_var(name):
     return pytest.mark.skipif(value == '0', reason='Tests not enabled via environment variable')
 
 
-def skip_not_py37(cls):
-    """
-    Skip for python 3.6 and earlier.
-    """
-    return pytest.mark.skipif(sys.version_info < (3, 7))
-
-
 try:
     import fsspec  # noqa: F401
 

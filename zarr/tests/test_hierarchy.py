@@ -1,5 +1,6 @@
 import atexit
 import os
+import sys
 import pickle
 import shutil
 import tempfile
@@ -27,7 +28,7 @@ from zarr.storage import (ABSStore, DBMStore, DirectoryStore, FSStore,
                           array_meta_key, atexit_rmglob, atexit_rmtree,
                           group_meta_key, init_array, init_group)
 from zarr.util import InfoReporter
-from zarr.tests.util import skip_not_py37, skip_test_env_var, have_fsspec, abs_container
+from zarr.tests.util import skip_test_env_var, have_fsspec, abs_container
 
 
 # noinspection PyStatementEffect
@@ -956,7 +957,7 @@ class TestGroupWithABSStore(TestGroup):
         store.rmdir()
         return store, None
 
-    @skip_not_py37
+    @pytest.mark.skipif(sys.version_info < (3, 7), reason="attr not serializable in py36")
     def test_pickle(self):
         # internal attribute on ContainerClient isn't serializable for py36 and earlier
         super().test_pickle()

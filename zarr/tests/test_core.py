@@ -1,5 +1,6 @@
 import atexit
 import os
+import sys
 import pickle
 import shutil
 import unittest
@@ -33,7 +34,7 @@ from zarr.storage import (
     init_group,
 )
 from zarr.util import buffer_size
-from zarr.tests.util import abs_container, skip_not_py37, skip_test_env_var, have_fsspec
+from zarr.tests.util import abs_container, skip_test_env_var, have_fsspec
 
 # noinspection PyMethodMayBeStatic
 
@@ -1645,7 +1646,7 @@ class TestArrayWithABSStore(TestArray):
     def test_nbytes_stored(self):
         return super().test_nbytes_stored()
 
-    @skip_not_py37
+    @pytest.mark.skipif(sys.version_info < (3, 7), reason="attr not serializable in py36")
     def test_pickle(self):
         # internal attribute on ContainerClient isn't serializable for py36 and earlier
         super().test_pickle()
