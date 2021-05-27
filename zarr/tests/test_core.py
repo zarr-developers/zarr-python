@@ -2792,3 +2792,35 @@ class TestArrayWithFSStoreNoEmptyWrites(TestArray):
             assert 1 == z.nchunks_initialized
             if hasattr(z.store, 'close'):
                 z.store.close()
+
+
+@pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
+class TestArrayWithFSStoreNestedNoEmptyWrites(TestArray):
+    @staticmethod
+    def create_array(read_only=False, **kwargs):
+        path = mkdtemp()
+        atexit.register(shutil.rmtree, path)
+        key_separator = kwargs.pop('key_separator', "/")
+        store = FSStore(path, key_separator=key_separator, auto_mkdir=True)
+        cache_metadata = kwargs.pop('cache_metadata', True)
+        cache_attrs = kwargs.pop('cache_attrs', True)
+        kwargs.setdefault('compressor', Blosc())
+        init_array(store, **kwargs)
+        return Array(store, read_only=read_only, cache_metadata=cache_metadata,
+                     cache_attrs=cache_attrs, write_empty_chunks=False)
+
+    def test_nchunks_initialized(self):
+        for fill_value in -1, 0, 1, 10:
+            z = self.create_array(shape=100, chunks=10, fill_value=fill_value)
+            assert 0 == z.nchunks_initialized
+            # manually put something into the store to confuse matters
+            z.store['foo'] = b'bar'
+            assert 0 == z.nchunks_initialized
+            z[:] = 42
+            assert 10 == z.nchunks_initialized
+            z[:] = fill_value
+            assert 0 == z.nchunks_initialized
+            z[0] = 42
+            assert 1 == z.nchunks_initialized
+            if hasattr(z.store, 'close'):
+                z.store.close()
