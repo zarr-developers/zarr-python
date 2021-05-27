@@ -2277,7 +2277,7 @@ class ABSStore(MutableMapping):
 
     @property
     def container(self):
-        return self._warn_deprecated("container")
+        self._warn_deprecated("container")
         return self._container
 
     @property
@@ -2288,7 +2288,7 @@ class ABSStore(MutableMapping):
     @property
     def account_key(self):
         self._warn_deprecated("account_key")
-        return self._account_name
+        return self._account_key
 
     def _append_path_to_prefix(self, path):
         if self.prefix == '':

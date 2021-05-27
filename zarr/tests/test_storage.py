@@ -1938,11 +1938,12 @@ class TestABSStore(StoreTests):
 
     def test_non_client_deprecated(self):
         with pytest.warns(FutureWarning, match='Providing'):
-            store = ABSStore("test", account_name="test", account_key="test")
+            store = ABSStore("container", account_name="account_name", account_key="account_key")
 
         for attr in ["container", "account_name", "account_key"]:
             with pytest.warns(FutureWarning, match=attr):
-                getattr(store, attr)
+                result = getattr(store, attr)
+            assert result == attr
 
     def test_iterators_with_prefix(self):
         for prefix in ['test_prefix', '/test_prefix', 'test_prefix/', 'test/prefix', '', None]:
