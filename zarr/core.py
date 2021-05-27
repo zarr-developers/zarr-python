@@ -1888,8 +1888,8 @@ class Array:
                 else:
                     values[ckey] = self._encode_chunk(cdata)
             if len(to_delete) > 0:
-                if hasattr(self.chunk_store.map, 'delitems'):
-                    self.chunk_store.map.delitems(to_delete)
+                if hasattr(self.chunk_store, 'delitems'):
+                    self.chunk_store.delitems(to_delete)
                 else:
                     [self._chunk_delitem(k) for k in to_delete]
         else:

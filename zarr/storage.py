@@ -1123,6 +1123,12 @@ class FSStore(MutableMapping):
         else:
             del self.map[key]
 
+    def delitems(self, keys):
+        if self.mode == 'r':
+            raise ReadOnlyError
+        nkeys = [self._normalize_key(key) for key in keys]
+        self.map.delitems(nkeys)
+
     def __contains__(self, key):
         key = self._normalize_key(key)
         return key in self.map
