@@ -2761,6 +2761,7 @@ class TestArrayWithFSStoreNestedPartialRead(TestArray):
         b = Array(z.store, read_only=True, partial_decompress=True)
         assert (b[2:99_000] == 1).all()
 
+
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
 class TestArrayWithFSStoreNoEmptyWrites(TestArray):
     @staticmethod
@@ -2775,7 +2776,6 @@ class TestArrayWithFSStoreNoEmptyWrites(TestArray):
         init_array(store, **kwargs)
         return Array(store, read_only=read_only, cache_metadata=cache_metadata,
                      cache_attrs=cache_attrs, write_empty_chunks=False)
-
 
     def test_nchunks_initialized(self):
         for fill_value in -1, 0, 1, 10:
