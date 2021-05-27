@@ -1881,9 +1881,17 @@ class Array:
                   for key, sel, val in zip(ckeys, lchunk_selection, values)]
         values = {}
         if not self._write_empty_chunks:
+            to_delete = []
             for ckey, cdata in zip(ckeys, cdatas):
-                if self._chunk_isempty(cdata) and not self._chunk_delitem(ckey):
+                if self._chunk_isempty(cdata):
+                    to_delete.append(ckey)
+                else:
                     values[ckey] = self._encode_chunk(cdata)
+            if len(to_delete) > 0:
+                if hasattr(self.chunk_store.map, 'delitems'):
+                    self.chunk_store.map.delitems(to_delete)
+                else:
+                    [self._chunk_delitem(k) for k in to_delete]
         else:
             values = dict(zip(ckeys, map(self._encode_chunk, cdatas)))
         self.chunk_store.setitems(values)
@@ -1900,16 +1908,12 @@ class Array:
     def _chunk_delitem(self, ckey):
         """
         Attempt to delete the value associated with ckey.
-        Returns True if deletion succeeds or KeyError is raised.
-        Returns False if any other exception is raised.
+        Silently handle keyerror.
         """
         try:
             del self.chunk_store[ckey]
-            return True
         except KeyError:
-            return True
-        except Exception:
-            return False
+            pass
 
     def _chunk_setitem(self, chunk_coords, chunk_selection, value, fields=None):
         """Replace part or whole of a chunk.
@@ -1938,16 +1942,13 @@ class Array:
                                        fields=fields)
 
     def _chunk_setitem_nosync(self, chunk_coords, chunk_selection, value, fields=None):
-        do_store = True
         ckey = self._chunk_key(chunk_coords)
         cdata = self._process_for_setitem(ckey, chunk_selection, value, fields=fields)
 
         # clear chunk if it only contains the fill value
         if (not self._write_empty_chunks) and self._chunk_isempty(cdata):
-            do_store = not self._chunk_delitem(ckey)
-
-        # store
-        if do_store:
+            self._chunk_delitem(ckey)
+        else:
             self.chunk_store[ckey] = self._encode_chunk(cdata)
 
     def _process_for_setitem(self, ckey, chunk_selection, value, fields=None):
