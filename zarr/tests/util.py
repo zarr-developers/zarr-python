@@ -1,6 +1,5 @@
 import collections
 from collections.abc import MutableMapping
-import sys
 import os
 
 import pytest
