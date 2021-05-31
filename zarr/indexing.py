@@ -890,10 +890,14 @@ def make_slice_selection(selection):
     ls = []
     for dim_selection in selection:
         if is_integer(dim_selection):
-            ls.append(slice(dim_selection, dim_selection + 1, 1))
+            ls.append(slice(int(dim_selection), int(dim_selection) + 1, 1))
         elif isinstance(dim_selection, np.ndarray):
             if len(dim_selection) == 1:
-                ls.append(slice(dim_selection[0], dim_selection[0] + 1, 1))
+                ls.append(
+                    slice(
+                        int(dim_selection[0]), int(dim_selection[0]) + 1, 1
+                    )
+                )
             else:
                 raise ArrayIndexError()
         else:
