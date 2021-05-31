@@ -4,6 +4,7 @@ from numpy.testing import assert_array_equal
 
 import zarr
 from zarr.indexing import (
+    make_slice_selection,
     normalize_integer_selection,
     oindex,
     oindex_set,
@@ -1434,3 +1435,10 @@ def test_PartialChunkIterator(selection, arr, expected):
     PCI = PartialChunkIterator(selection, arr.shape)
     results = list(PCI)
     assert results == expected
+
+
+def test_slice_selection_uints():
+    arr = np.arange(24).reshape((4, 6))
+    idx = np.uint64(3)
+    slice_sel = make_slice_selection((idx,))
+    assert arr[slice_sel].shape == (1, 6)
