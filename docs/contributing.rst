@@ -164,7 +164,7 @@ optional dependencies to be installed), run::
 Note that some tests also require storage services to be running
 locally. To run the Azure Blob Service storage tests, run an Azure
 storage emulator (e.g., azurite) and set the environment variable
-``ZARR_TEST_ABS=1``. If you're the Docker to run azurite, start the service with::
+``ZARR_TEST_ABS=1``. If you're using Docker to run azurite, start the service with::
 
     docker run --rm -p 10000:10000 mcr.microsoft.com/azure-storage/azurite azurite-blob --loose --blobHost 0.0.0.0 
 
