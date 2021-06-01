@@ -11,6 +11,9 @@ Bug fixes
 
 * FSStore: default to normalize_keys=False
   By :user:`Josh Moore <joshmoore>`; :issue:`755`.
+* ABSStore: compatibility with ``azure.storage.python>=12`` 
+  By :user:`Tom Augspurger <tomaugspurger>`; :issue:`618`
+
 
 .. _release_2.8.2:
 
