@@ -1442,6 +1442,10 @@ class ZipStore(MutableMapping):
 
     Alternatively, use a :class:`DirectoryStore` when writing the data, then
     manually Zip the directory and use the Zip file for subsequent reads.
+    Take note that the files in the Zip file must be relative to the root of the
+    Zarr archive. You may find it easier to create such a Zip file with ``7z``, e.g.::
+
+        7z a -tzip archive.zarr.zip archive.zarr/.
 
     Safe to write in multiple threads but not in multiple processes.
 
