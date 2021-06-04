@@ -20,7 +20,6 @@ import glob
 import multiprocessing
 import operator
 import os
-from pathlib import Path
 import re
 import shutil
 import sys
@@ -78,7 +77,7 @@ except ImportError:  # pragma: no cover
     default_compressor = Zlib()
 
 
-Path = Union[str, bytes, None]
+PathType = Union[str, bytes, None]
 
 
 def _path_to_prefix(path: Optional[str]) -> str:
@@ -90,7 +89,7 @@ def _path_to_prefix(path: Optional[str]) -> str:
     return prefix
 
 
-def contains_array(store: MutableMapping, path: Path = None) -> bool:
+def contains_array(store: MutableMapping, path: PathType = None) -> bool:
     """Return True if the store contains an array at the given logical path."""
     path = normalize_storage_path(path)
     prefix = _path_to_prefix(path)
@@ -98,7 +97,7 @@ def contains_array(store: MutableMapping, path: Path = None) -> bool:
     return key in store
 
 
-def contains_group(store: MutableMapping, path: Path = None) -> bool:
+def contains_group(store: MutableMapping, path: PathType = None) -> bool:
     """Return True if the store contains a group at the given logical path."""
     path = normalize_storage_path(path)
     prefix = _path_to_prefix(path)
@@ -114,7 +113,7 @@ def _rmdir_from_keys(store: MutableMapping, path: Optional[str] = None) -> None:
             del store[key]
 
 
-def rmdir(store, path: Path = None):
+def rmdir(store, path: PathType = None):
     """Remove all items under the given path. If `store` provides a `rmdir` method,
     this will be called, otherwise will fall back to implementation via the
     `MutableMapping` interface."""
@@ -137,7 +136,7 @@ def _rename_from_keys(store: MutableMapping, src_path: str, dst_path: str) -> No
             store[new_key] = store.pop(key)
 
 
-def rename(store, src_path: Path, dst_path: Path):
+def rename(store, src_path: PathType, dst_path: PathType):
     """Rename all items under the given path. If `store` provides a `rename` method,
     this will be called, otherwise will fall back to implementation via the
     `MutableMapping` interface."""
@@ -163,7 +162,7 @@ def _listdir_from_keys(store: MutableMapping, path: Optional[str] = None) -> Lis
     return sorted(children)
 
 
-def listdir(store, path: Path = None):
+def listdir(store, path: PathType = None):
     """Obtain a directory listing for the given path. If `store` provides a `listdir`
     method, this will be called, otherwise will fall back to implementation via the
     `MutableMapping` interface."""
@@ -176,7 +175,7 @@ def listdir(store, path: Path = None):
         return _listdir_from_keys(store, path)
 
 
-def getsize(store, path: Path = None) -> int:
+def getsize(store, path: PathType = None) -> int:
     """Compute size of stored items for a given path. If `store` provides a `getsize`
     method, this will be called, otherwise will return -1."""
     path = normalize_storage_path(path)
@@ -234,7 +233,7 @@ def init_array(
     fill_value=None,
     order: str = "C",
     overwrite: bool = False,
-    path: Path = None,
+    path: PathType = None,
     chunk_store: MutableMapping = None,
     filters=None,
     object_codec=None,
@@ -459,7 +458,7 @@ init_store = init_array
 def init_group(
     store: MutableMapping,
     overwrite: bool = False,
-    path: Path = None,
+    path: PathType = None,
     chunk_store: MutableMapping = None,
 ):
     """Initialize a group store. Note that this is a low-level function and there should be no
@@ -648,7 +647,7 @@ class MemoryStore(MutableMapping):
     def __len__(self) -> int:
         return sum(1 for _ in self.keys())
 
-    def listdir(self, path: Path = None) -> List[str]:
+    def listdir(self, path: PathType = None) -> List[str]:
         path = normalize_storage_path(path)
         if path:
             try:
@@ -663,7 +662,7 @@ class MemoryStore(MutableMapping):
         else:
             return []
 
-    def rename(self, src_path: Path, dst_path: Path):
+    def rename(self, src_path: PathType, dst_path: PathType):
         src_path = normalize_storage_path(src_path)
         dst_path = normalize_storage_path(dst_path)
 
@@ -672,7 +671,7 @@ class MemoryStore(MutableMapping):
 
         dst_parent[dst_key] = src_parent.pop(src_key)
 
-    def rmdir(self, path: Path = None):
+    def rmdir(self, path: PathType = None):
         path = normalize_storage_path(path)
         if path:
             try:
@@ -687,7 +686,7 @@ class MemoryStore(MutableMapping):
             # clear out root
             self.root = self.cls()
 
-    def getsize(self, path: Path = None):
+    def getsize(self, path: PathType = None):
         path = normalize_storage_path(path)
 
         # obtain value to return size of
