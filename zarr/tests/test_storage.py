@@ -2,6 +2,7 @@ import array
 import atexit
 import json
 import os
+from pathlib import Path
 import sys
 import pickle
 import shutil
@@ -835,6 +836,11 @@ class TestDirectoryStore(StoreTests):
         with tempfile.NamedTemporaryFile() as f:
             with pytest.raises(ValueError):
                 DirectoryStore(f.name)
+
+    def test_init_pathlib(self):
+        path = tempfile.mkdtemp()
+        atexit.register(atexit_rmtree, path)
+        DirectoryStore(Path(path))
 
     def test_pickle_ext(self):
         store = self.create_store()
