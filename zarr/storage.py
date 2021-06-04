@@ -20,6 +20,7 @@ import glob
 import multiprocessing
 import operator
 import os
+from pathlib import Path
 import re
 import shutil
 import sys
