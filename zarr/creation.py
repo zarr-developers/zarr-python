@@ -1,5 +1,4 @@
 import os
-from pathlib import Path
 from warnings import warn
 
 import numpy as np
@@ -150,7 +149,7 @@ def create(shape, chunks=True, dtype=None, compressor='default',
 def normalize_store_arg(store, clobber=False, storage_options=None, mode='w'):
     if store is None:
         return dict()
-    if isinstance(store, Path):
+    if isinstance(store, os.PathLike):
         store = os.fspath(store)
     if isinstance(store, str):
         mode = mode if clobber else "r"
