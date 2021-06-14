@@ -803,12 +803,16 @@ class TestDictStore(StoreTests):
 
 class TestDirectoryStore(StoreTests):
 
-    def create_store(self, normalize_keys=False, **kwargs):
-        skip_if_nested_chunks(**kwargs)
-
+    def create_store(self,
+                     normalize_keys=False,
+                     dimension_separator=".",
+                     **kwargs):
         path = tempfile.mkdtemp()
         atexit.register(atexit_rmtree, path)
-        store = DirectoryStore(path, normalize_keys=normalize_keys, **kwargs)
+        store = DirectoryStore(path,
+                               normalize_keys=normalize_keys,
+                               dimension_separator=dimension_separator,
+                               **kwargs)
         return store
 
     def test_filesystem_path(self):
