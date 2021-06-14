@@ -897,7 +897,7 @@ class TestDirectoryStore(StoreTests):
 
         store1 = NestedDirectoryStore(path)
         g1 = zarr.open(store=store1, mode="w")
-        data = g1.create_dataset("data", data=[[1, 2], [3, 4]])
+        g1.create_dataset("data", data=[[1, 2], [3, 4]])
 
         store2 = NestedDirectoryStore(path)
         g2 = zarr.open(store=store2)
