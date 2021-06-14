@@ -890,6 +890,23 @@ class TestDirectoryStore(StoreTests):
                 )
         assert res == {'.zgroup', 'g1/.zgroup', 'd1/.zarray'}
 
+    def test_read_nested(self):
+        import zarr
+        path = tempfile.mkdtemp()
+        atexit.register(atexit_rmtree, path)
+
+        store1 = NestedDirectoryStore(path)
+        g1 = zarr.open(store=store1, mode="w")
+        data = g1.create_dataset("data", data=[[1, 2], [3, 4]])
+
+        store2 = NestedDirectoryStore(path)
+        g2 = zarr.open(store=store2)
+        assert g2.data[0][0] == 1
+
+        store3 = DirectoryStore(path)
+        g3 = zarr.open(store=store3)
+        assert g3.data[0][0] == 1
+
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
 class TestFSStore(StoreTests):
