@@ -803,10 +803,6 @@ class DirectoryStore(MutableMapping):
     def _normalize_key(self, key):
         return key.lower() if self.normalize_keys else key
 
-    def _optionally_nested(self, key):
-        return self._dimension_separator == "/" and \
-            _nested_map_ckey(key) or key
-
     def _fromfile(self, fn):
         """ Read data from a file
 
@@ -842,7 +838,6 @@ class DirectoryStore(MutableMapping):
             f.write(a)
 
     def __getitem__(self, key):
-        key = self._optionally_nested(key)
         key = self._normalize_key(key)
         filepath = os.path.join(self.path, key)
         if os.path.isfile(filepath):
@@ -851,7 +846,6 @@ class DirectoryStore(MutableMapping):
             raise KeyError(key)
 
     def __setitem__(self, key, value):
-        key = self._optionally_nested(key)
         key = self._normalize_key(key)
 
         # coerce to flat, contiguous array (ideally without copying)
@@ -893,7 +887,6 @@ class DirectoryStore(MutableMapping):
                 os.remove(temp_path)
 
     def __delitem__(self, key):
-        key = self._optionally_nested(key)
         key = self._normalize_key(key)
         path = os.path.join(self.path, key)
         if os.path.isfile(path):
@@ -906,7 +899,6 @@ class DirectoryStore(MutableMapping):
             raise KeyError(key)
 
     def __contains__(self, key):
-        key = self._optionally_nested(key)
         key = self._normalize_key(key)
         file_path = os.path.join(self.path, key)
         return os.path.isfile(file_path)
