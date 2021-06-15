@@ -8,6 +8,7 @@ ipytree==0.2.1
 # version to get compatibility with azure storage emulator on appveyor (FIXME)
 azure-storage-blob==12.5.0 # pyup: ignore
 redis==3.5.3
+types-redis
 pymongo==3.11.4
 # optional test requirements
 tox==3.23.1
