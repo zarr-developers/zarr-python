@@ -56,7 +56,7 @@ from zarr.util import (buffer_size, json_loads, nolock, normalize_chunks,
                        normalize_dtype, normalize_fill_value, normalize_order,
                        normalize_shape, normalize_storage_path, retry_call)
 
-from zarr._storage.absstore import ABSStore
+from zarr._storage.absstore import ABSStore  # noqa: F401
 
 __doctest_requires__ = {
     ('RedisStore', 'RedisStore.*'): ['redis'],
