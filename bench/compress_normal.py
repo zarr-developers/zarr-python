@@ -13,7 +13,9 @@ if __name__ == "__main__":
 
     # setup
     a = np.random.normal(2000, 1000, size=200000000).astype('u2')
-    z = zarr.empty_like(a, chunks=1000000, compression='blosc', compression_opts=dict(cname='lz4', clevel=5, shuffle=2))
+    z = zarr.empty_like(a, chunks=1000000,
+                        compression='blosc',
+                        compression_opts=dict(cname='lz4', clevel=5, shuffle=2))
     print(z)
 
     print('*' * 79)
