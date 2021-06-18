@@ -326,11 +326,11 @@ under the logical paths "foo" and "foo/bar" and an array exists at logical path
 Attributes
 ----------
 
-An array or group can be associated with custom attributes, which are simple
-key/value items with application-specific meaning. Custom attributes are
-encoded as a JSON object and stored under the ".zattrs" key within an array
-store. The ".zattrs" key does not have to be present, and if it is absent the
-attributes should be treated as empty.
+An array or group can be associated with custom attributes, which are arbitrary
+key/value pairs with application-specific meaning. Custom attributes are encoded
+as a JSON object and stored under the ".zattrs" key within an array store. The
+".zattrs" key does not have to be present, and if it is absent the attributes
+should be treated as empty.
 
 For example, the JSON object below encodes three attributes named
 "foo", "bar" and "baz"::
@@ -545,6 +545,8 @@ initially published to clarify ambiguities and add some missing information.
   subarray shapes and/or with nested structured data types are encoded
   in array metadata (:issue:`111`, :issue:`296`).
 
+* Clarified the key/value pairs of custom attributes as "arbitrary" rather than
+  "simple".
 
 Changes from version 1 to version 2
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

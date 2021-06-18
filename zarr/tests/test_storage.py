@@ -2,6 +2,7 @@ import array
 import atexit
 import json
 import os
+import sys
 import pickle
 import shutil
 import tempfile
@@ -30,7 +31,7 @@ from zarr.storage import (ABSStore, ConsolidatedMetadataStore, DBMStore,
                           attrs_key, default_compressor, getsize,
                           group_meta_key, init_array, init_group, migrate_1to2)
 from zarr.storage import FSStore
-from zarr.tests.util import CountingDict, have_fsspec, skip_test_env_var
+from zarr.tests.util import CountingDict, have_fsspec, skip_test_env_var, abs_container
 
 
 @contextmanager
@@ -1926,20 +1927,23 @@ def test_format_compatibility():
 class TestABSStore(StoreTests):
 
     def create_store(self, prefix=None, **kwargs):
-        asb = pytest.importorskip("azure.storage.blob")
-        blob_client = asb.BlockBlobService(is_emulated=True, socket_timeout=10)
-        blob_client.delete_container("test")
-        blob_client.create_container("test")
+        container_client = abs_container()
         store = ABSStore(
-            container="test",
             prefix=prefix,
-            account_name="foo",
-            account_key="bar",
-            blob_service_kwargs={"is_emulated": True, "socket_timeout": 10},
+            client=container_client,
             **kwargs,
         )
         store.rmdir()
         return store
+
+    def test_non_client_deprecated(self):
+        with pytest.warns(FutureWarning, match='Providing'):
+            store = ABSStore("container", account_name="account_name", account_key="account_key")
+
+        for attr in ["container", "account_name", "account_key"]:
+            with pytest.warns(FutureWarning, match=attr):
+                result = getattr(store, attr)
+            assert result == attr
 
     def test_iterators_with_prefix(self):
         for prefix in ['test_prefix', '/test_prefix', 'test_prefix/', 'test/prefix', '', None]:
@@ -1971,6 +1975,11 @@ class TestABSStore(StoreTests):
 
     def test_hierarchy(self):
         return super().test_hierarchy()
+
+    @pytest.mark.skipif(sys.version_info < (3, 7), reason="attr not serializable in py36")
+    def test_pickle(self):
+        # internal attribute on ContainerClient isn't serializable for py36 and earlier
+        super().test_pickle()
 
 
 class TestConsolidatedMetadataStore:

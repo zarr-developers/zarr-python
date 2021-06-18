@@ -1,6 +1,11 @@
 Release notes
 =============
 
+Unreleased
+----------
+
+This release of Zarr Python is the first release of Zarr to not support Python 3.6.
+
 .. _release_2.8.3:
 
 2.8.3
@@ -11,6 +16,9 @@ Bug fixes
 
 * FSStore: default to normalize_keys=False
   By :user:`Josh Moore <joshmoore>`; :issue:`755`.
+* ABSStore: compatibility with ``azure.storage.python>=12`` 
+  By :user:`Tom Augspurger <tomaugspurger>`; :issue:`618`
+
 
 .. _release_2.8.2:
 
@@ -126,7 +134,7 @@ Bug fixes
 2.6.0
 -----
 
-This release of Zarr Python is is the first release of Zarr to not support Python 3.5.
+This release of Zarr Python is the first release of Zarr to not support Python 3.5.
 
 * End Python 3.5 support.
   By :user:`Chris Barnes <clbarnes>`; :issue:`602`.
