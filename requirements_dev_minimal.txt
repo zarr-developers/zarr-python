@@ -1,6 +1,6 @@
 # library requirements
 asciitree==0.3.3
-fasteners==0.16
+fasteners==0.16.3
 numcodecs==0.7.3
 msgpack-python==0.5.6
 setuptools-scm==6.0.1
