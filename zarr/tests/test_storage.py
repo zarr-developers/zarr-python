@@ -73,6 +73,7 @@ def test_capabilities():
     assert s.is_erasable()
     assert s.is_writeable()
 
+
 def test_getsize_non_implemented():
     assert getsize(object()) == -1
 
