@@ -176,7 +176,7 @@ print some diagnostics, e.g.::
     Read-only          : False
     Compressor         : Blosc(cname='zstd', clevel=3, shuffle=BITSHUFFLE,
                        : blocksize=0)
-    Store type         : builtins.dict
+    Store type         : zarr.storage.KVStore
     No. bytes          : 400000000 (381.5M)
     No. bytes stored   : 3379344 (3.2M)
     Storage ratio      : 118.4
@@ -268,7 +268,7 @@ Here is an example using a delta filter with the Blosc compressor::
     Read-only          : False
     Filter [0]         : Delta(dtype='<i4')
     Compressor         : Blosc(cname='zstd', clevel=1, shuffle=SHUFFLE, blocksize=0)
-    Store type         : builtins.dict
+    Store type         : zarr.storage.KVStore
     No. bytes          : 400000000 (381.5M)
     No. bytes stored   : 1290562 (1.2M)
     Storage ratio      : 309.9
@@ -795,8 +795,10 @@ Here is an example using S3Map to read an array created previously::
     Order              : C
     Read-only          : False
     Compressor         : Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
-    Store type         : fsspec.mapping.FSMap
+    Store type         : zarr.storage.KVStore
     No. bytes          : 21
+    No. bytes stored   : 382
+    Storage ratio      : 0.1
     Chunks initialized : 3/3
     >>> z[:]
     array([b'H', b'e', b'l', b'l', b'o', b' ', b'f', b'r', b'o', b'm', b' ',
@@ -1264,7 +1266,7 @@ ratios, depending on the correlation structure within the data. E.g.::
     Order              : C
     Read-only          : False
     Compressor         : Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
-    Store type         : builtins.dict
+    Store type         : zarr.storage.KVStore
     No. bytes          : 400000000 (381.5M)
     No. bytes stored   : 6696010 (6.4M)
     Storage ratio      : 59.7
@@ -1278,7 +1280,7 @@ ratios, depending on the correlation structure within the data. E.g.::
     Order              : F
     Read-only          : False
     Compressor         : Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
-    Store type         : builtins.dict
+    Store type         : zarr.storage.KVStore
     No. bytes          : 400000000 (381.5M)
     No. bytes stored   : 4684636 (4.5M)
     Storage ratio      : 85.4

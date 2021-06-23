@@ -31,7 +31,7 @@ from collections.abc import MutableMapping
 from os import scandir
 from pickle import PicklingError
 from threading import Lock, RLock
-from typing import Optional, Union, List, Tuple, Dict
+from typing import Optional, Union, List, Tuple, Dict, Any
 import uuid
 import time
 
@@ -79,6 +79,124 @@ except ImportError:  # pragma: no cover
 Path = Union[str, bytes, None]
 
 
+class Store(MutableMapping):
+    """Base class for stores implementation.
+
+
+    Provide a number of default method as well as other typing guaranties for mypy.
+
+    Stores cannot be mutable mapping as they do have a couple of other
+    requirements that would break Liskov substitution principle (stores only
+    allow strings as keys, mutable mapping are more generic).
+
+    And Stores do requires a few other method.
+
+    Having no-op base method also helps simplifying store usage and do not need
+    to check the presence of attributes and methods, like `close()`.
+
+    Stores can be used as context manager to make sure they close on exit.
+
+    .. added: 2.5.0
+
+    """
+
+    _readable = True
+    _writeable = True
+    _erasable = True
+    _listable = True
+
+    def is_readable(self):
+        return self._readable
+
+    def is_writeable(self):
+        return self._writeable
+
+    def is_listable(self):
+        return self._listable
+
+    def is_erasable(self):
+        return self._erasable
+
+    def __enter__(self):
+        if not hasattr(self, "_open_count"):
+            self._open_count = 0
+        self._open_count += 1
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self._open_count -= 1
+        if self._open_count == 0:
+            self.close()
+
+    def listdir(self, path: str = "") -> List[str]:
+        path = normalize_storage_path(path)
+        return _listdir_from_keys(self, path)
+
+    def rename(self, src_path: str, dst_path: str) -> None:
+        if not self.is_erasable():
+            raise NotImplementedError(
+                f'{type(self)} is not erasable, cannot call "rmdir"'
+            )
+        _rename_from_keys(self, src_path, dst_path)
+
+    def rmdir(self, path: str = "") -> None:
+        if not self.is_erasable():
+            raise NotImplementedError(
+                f'{type(self)} is not erasable, cannot call "rmdir"'
+            )
+        path = normalize_storage_path(path)
+        _rmdir_from_keys(self, path)
+
+    # def getsize(self, path: Path = None):
+    #    pass
+
+    # def clear(self):
+    #    pass
+
+    def close(self) -> None:
+        """Do nothing by default"""
+        pass
+
+    # def pop(self, key):
+    #    raise NotImplementedError
+
+    @staticmethod
+    def _ensure_store(store):
+        """
+        We want to make sure internally that zarr storage are internally always
+        a class with a specific interface derived from Store, which is slightly
+        different than mutable mapping.
+
+        We'll do this conversion in a few places automatically
+        """
+        if store is None:
+            return None
+        elif isinstance(store, Store):
+            return store
+        elif isinstance(store, MutableMapping):
+            return KVStore(store)
+        else:
+            for attr in [
+                "keys",
+                "values",
+                "get",
+                "__setitem__",
+                "__getitem__",
+                "__delitem__",
+                "__contains__",
+            ]:
+                if not hasattr(store, attr):
+                    break
+            else:
+                return KVStore(store)
+
+        raise ValueError(
+            "Starting with Zarr X.y.z, stores must be subclasses of Store, if "
+            "you store expose the MutableMapping interface wrap them in "
+            f"Zarr.storage.KVStore. Got {store}"
+        )
+
+
 def _path_to_prefix(path: Optional[str]) -> str:
     # assume path already normalized
     if path:
@@ -88,7 +206,7 @@ def _path_to_prefix(path: Optional[str]) -> str:
     return prefix
 
 
-def contains_array(store: MutableMapping, path: Path = None) -> bool:
+def contains_array(store: Store, path: Path = None) -> bool:
     """Return True if the store contains an array at the given logical path."""
     path = normalize_storage_path(path)
     prefix = _path_to_prefix(path)
@@ -96,7 +214,7 @@ def contains_array(store: MutableMapping, path: Path = None) -> bool:
     return key in store
 
 
-def contains_group(store: MutableMapping, path: Path = None) -> bool:
+def contains_group(store: Store, path: Path = None) -> bool:
     """Return True if the store contains a group at the given logical path."""
     path = normalize_storage_path(path)
     prefix = _path_to_prefix(path)
@@ -104,7 +222,7 @@ def contains_group(store: MutableMapping, path: Path = None) -> bool:
     return key in store
 
 
-def _rmdir_from_keys(store: MutableMapping, path: Optional[str] = None) -> None:
+def _rmdir_from_keys(store: Store, path: Optional[str] = None) -> None:
     # assume path already normalized
     prefix = _path_to_prefix(path)
     for key in list(store.keys()):
@@ -112,20 +230,20 @@ def _rmdir_from_keys(store: MutableMapping, path: Optional[str] = None) -> None:
             del store[key]
 
 
-def rmdir(store, path: Path = None):
+def rmdir(store: Store, path: Path = None):
     """Remove all items under the given path. If `store` provides a `rmdir` method,
     this will be called, otherwise will fall back to implementation via the
-    `MutableMapping` interface."""
+    `Store` interface."""
     path = normalize_storage_path(path)
     if hasattr(store, 'rmdir'):
         # pass through
-        store.rmdir(path)
+        store.rmdir(path)  # type: ignore
     else:
         # slow version, delete one key at a time
         _rmdir_from_keys(store, path)
 
 
-def _rename_from_keys(store: MutableMapping, src_path: str, dst_path: str) -> None:
+def _rename_from_keys(store: Store, src_path: str, dst_path: str) -> None:
     # assume path already normalized
     src_prefix = _path_to_prefix(src_path)
     dst_prefix = _path_to_prefix(dst_path)
@@ -135,10 +253,10 @@ def _rename_from_keys(store: MutableMapping, src_path: str, dst_path: str) -> No
             store[new_key] = store.pop(key)
 
 
-def rename(store, src_path: Path, dst_path: Path):
+def rename(store: Store, src_path: Path, dst_path: Path):
     """Rename all items under the given path. If `store` provides a `rename` method,
     this will be called, otherwise will fall back to implementation via the
-    `MutableMapping` interface."""
+    `Store` interface."""
     src_path = normalize_storage_path(src_path)
     dst_path = normalize_storage_path(dst_path)
     if hasattr(store, 'rename'):
@@ -149,7 +267,7 @@ def rename(store, src_path: Path, dst_path: Path):
         _rename_from_keys(store, src_path, dst_path)
 
 
-def _listdir_from_keys(store: MutableMapping, path: Optional[str] = None) -> List[str]:
+def _listdir_from_keys(store: Store, path: Optional[str] = None) -> List[str]:
     # assume path already normalized
     prefix = _path_to_prefix(path)
     children = set()
@@ -161,27 +279,32 @@ def _listdir_from_keys(store: MutableMapping, path: Optional[str] = None) -> Lis
     return sorted(children)
 
 
-def listdir(store, path: Path = None):
+def listdir(store: Store, path: Path = None):
     """Obtain a directory listing for the given path. If `store` provides a `listdir`
     method, this will be called, otherwise will fall back to implementation via the
     `MutableMapping` interface."""
     path = normalize_storage_path(path)
     if hasattr(store, 'listdir'):
         # pass through
-        return store.listdir(path)
+        return store.listdir(path)  # type: ignore
     else:
         # slow version, iterate through all keys
+        warnings.warn(
+            "Store {store} has not `listdir` method. From zarr 2.5 you may want"
+            "to inherit from `Store`.".format(store=store),
+            stacklevel=2,
+        )
         return _listdir_from_keys(store, path)
 
 
-def getsize(store, path: Path = None) -> int:
+def getsize(store: Store, path: Path = None) -> int:
     """Compute size of stored items for a given path. If `store` provides a `getsize`
     method, this will be called, otherwise will return -1."""
     path = normalize_storage_path(path)
     if hasattr(store, 'getsize'):
         # pass through
-        return store.getsize(path)
-    elif isinstance(store, dict):
+        return store.getsize(path)  # type: ignore
+    elif isinstance(store, MutableMapping):
         # compute from size of values
         if path in store:
             v = store[path]
@@ -207,8 +330,8 @@ def getsize(store, path: Path = None) -> int:
 
 def _require_parent_group(
     path: Optional[str],
-    store: MutableMapping,
-    chunk_store: Optional[MutableMapping],
+    store: Store,
+    chunk_store: Optional[Store],
     overwrite: bool,
 ):
     # assume path is normalized
@@ -224,7 +347,7 @@ def _require_parent_group(
 
 
 def init_array(
-    store: MutableMapping,
+    store: Store,
     shape: Tuple[int, ...],
     chunks: Union[bool, int, Tuple[int, ...]] = True,
     dtype=None,
@@ -233,7 +356,7 @@ def init_array(
     order: str = "C",
     overwrite: bool = False,
     path: Path = None,
-    chunk_store: MutableMapping = None,
+    chunk_store: Store = None,
     filters=None,
     object_codec=None,
     dimension_separator=None,
@@ -243,7 +366,7 @@ def init_array(
 
     Parameters
     ----------
-    store : MutableMapping
+    store : Store
         A mapping that supports string keys and bytes-like values.
     shape : int or tuple of ints
         Array shape.
@@ -262,7 +385,7 @@ def init_array(
         If True, erase all data in `store` prior to initialisation.
     path : string, bytes, optional
         Path under which array is stored.
-    chunk_store : MutableMapping, optional
+    chunk_store : Store, optional
         Separate storage for chunks. If not provided, `store` will be used
         for storage of both chunks and metadata.
     filters : sequence, optional
@@ -455,23 +578,23 @@ init_store = init_array
 
 
 def init_group(
-    store: MutableMapping,
+    store: Store,
     overwrite: bool = False,
     path: Path = None,
-    chunk_store: MutableMapping = None,
+    chunk_store: Store = None,
 ):
     """Initialize a group store. Note that this is a low-level function and there should be no
     need to call this directly from user code.
 
     Parameters
     ----------
-    store : MutableMapping
+    store : Store
         A mapping that supports string keys and byte sequence values.
     overwrite : bool, optional
         If True, erase all data in `store` prior to initialisation.
     path : string, optional
         Path under which array is stored.
-    chunk_store : MutableMapping, optional
+    chunk_store : Store, optional
         Separate storage for chunks. If not provided, `store` will be used
         for storage of both chunks and metadata.
 
@@ -490,10 +613,10 @@ def init_group(
 
 
 def _init_group_metadata(
-    store: MutableMapping,
+    store: Store,
     overwrite: Optional[bool] = False,
     path: Optional[str] = None,
-    chunk_store: MutableMapping = None,
+    chunk_store: Store = None,
 ):
 
     # guard conditions
@@ -525,7 +648,69 @@ def _dict_store_keys(d: Dict, prefix="", cls=dict):
             yield prefix + k
 
 
-class MemoryStore(MutableMapping):
+class KVStore(Store):
+    """
+    This provide an default implementation of a store interface around
+    a mutable mapping, to avoid having to test stores for presence of methods
+
+    This, for most method should just be a pass-through to the underlying KV
+    store which is likely to expose a MuttableMapping interface,
+    """
+
+    def __init__(self, mutablemapping):
+        self.mm = mutablemapping
+
+    def __getitem__(self, key):
+        return self.mm[key]
+
+    def __setitem__(self, key, value):
+        # assert isinstance(value, bytes)
+        self.mm[key] = value
+
+    def __delitem__(self, key):
+        del self.mm[key]
+
+    def get(self, key, default=None):
+        return self.mm.get(key, default)
+
+    def values(self):
+        return self.mm.values()
+
+    def __iter__(self):
+        return iter(self.mm)
+
+    def __len__(self):
+        return len(self.mm)
+
+    def __repr__(self):
+        return f"<{self.__class__.__name__}: \n{repr(self.mm)}\n at {hex(id(self))}>"
+
+    def __eq__(self, other):
+        if isinstance(other, KVStore):
+            return self.mm == other.mm
+        else:
+            return NotImplemented
+
+    # def __contains__(self, key):
+    #    return key in self.mm
+
+    # def pop(self):
+    #    return self.mm.pop()
+
+    # def popitem
+    # def clear
+    # def update
+    # def setdefault
+    # def __eq__
+    # def __ne__
+    # def __contains__
+    # def keys()
+    # def items()
+    # def values()
+    # def get
+
+
+class MemoryStore(Store):
     """Store class that uses a hierarchy of :class:`dict` objects, thus all data
     will be held in main memory.
 
@@ -543,7 +728,7 @@ class MemoryStore(MutableMapping):
 
         >>> z = zarr.zeros(100)
         >>> type(z.store)
-        <class 'dict'>
+        <class 'zarr.storage.KVStore'>
 
     Notes
     -----
@@ -729,7 +914,7 @@ class DictStore(MemoryStore):
         super().__init__(*args, **kwargs)
 
 
-class DirectoryStore(MutableMapping):
+class DirectoryStore(Store):
     """Storage class using directories and files on a standard file system.
 
     Parameters
@@ -1015,7 +1200,7 @@ def atexit_rmglob(path,
             rmtree(p)
 
 
-class FSStore(MutableMapping):
+class FSStore(Store):
     """Wraps an fsspec.FSMap to give access to arbitrary filesystems
 
     Requires that ``fsspec`` is installed, as well as any additional
@@ -1359,7 +1544,7 @@ class NestedDirectoryStore(DirectoryStore):
 
 
 # noinspection PyPep8Naming
-class ZipStore(MutableMapping):
+class ZipStore(Store):
     """Storage class using a Zip file.
 
     Parameters
@@ -1450,6 +1635,8 @@ class ZipStore(MutableMapping):
     Safe to write in multiple threads but not in multiple processes.
 
     """
+
+    _erasable = False
 
     def __init__(self, path, compression=zipfile.ZIP_STORED, allowZip64=True, mode='a',
                  dimension_separator=None):
@@ -1613,7 +1800,7 @@ def migrate_1to2(store):
 
     Parameters
     ----------
-    store : MutableMapping
+    store : Store
         Store to be migrated.
 
     Notes
@@ -1657,7 +1844,7 @@ def migrate_1to2(store):
 
 
 # noinspection PyShadowingBuiltins
-class DBMStore(MutableMapping):
+class DBMStore(Store):
     """Storage class using a DBM-style database.
 
     Parameters
@@ -1849,7 +2036,7 @@ class DBMStore(MutableMapping):
         return key in self.db
 
 
-class LMDBStore(MutableMapping):
+class LMDBStore(Store):
     """Storage class using LMDB. Requires the `lmdb <http://lmdb.readthedocs.io/>`_
     package to be installed.
 
@@ -2026,7 +2213,7 @@ class LMDBStore(MutableMapping):
         return self.db.stat()['entries']
 
 
-class LRUStoreCache(MutableMapping):
+class LRUStoreCache(Store):
     """Storage class that implements a least-recently-used (LRU) cache layer over
     some other store. Intended primarily for use with stores that can be slow to
     access, e.g., remote stores that require network communication to store and
@@ -2034,7 +2221,7 @@ class LRUStoreCache(MutableMapping):
 
     Parameters
     ----------
-    store : MutableMapping
+    store : Store
         The store containing the actual data to be cached.
     max_size : int
         The maximum size that the cache may grow to, in number of bytes. Provide `None`
@@ -2063,14 +2250,14 @@ class LRUStoreCache(MutableMapping):
 
     """
 
-    def __init__(self, store, max_size):
-        self._store = store
+    def __init__(self, store: Store, max_size: int):
+        self._store = Store._ensure_store(store)
         self._max_size = max_size
         self._current_size = 0
         self._keys_cache = None
         self._contains_cache = None
-        self._listdir_cache = dict()
-        self._values_cache = OrderedDict()
+        self._listdir_cache: Dict[Path, Any] = dict()
+        self._values_cache: Dict[Path, Any] = OrderedDict()
         self._mutex = Lock()
         self.hits = self.misses = 0
 
@@ -2110,7 +2297,7 @@ class LRUStoreCache(MutableMapping):
             self._keys_cache = list(self._store.keys())
         return self._keys_cache
 
-    def listdir(self, path=None):
+    def listdir(self, path: Path = None):
         with self._mutex:
             try:
                 return self._listdir_cache[path]
@@ -2119,7 +2306,7 @@ class LRUStoreCache(MutableMapping):
                 self._listdir_cache[path] = listing
                 return listing
 
-    def getsize(self, path=None):
+    def getsize(self, path=None) -> int:
         return getsize(self._store, path=path)
 
     def _pop_value(self):
@@ -2136,7 +2323,7 @@ class LRUStoreCache(MutableMapping):
             v = self._pop_value()
             self._current_size -= buffer_size(v)
 
-    def _cache_value(self, key, value):
+    def _cache_value(self, key: Path, value):
         # cache a value
         value_size = buffer_size(value)
         # check size of the value against max size, as if the value itself exceeds max
@@ -2208,7 +2395,7 @@ class LRUStoreCache(MutableMapping):
             self._invalidate_value(key)
 
 
-class ABSStore(MutableMapping):
+class ABSStore(Store):
     """Storage class using Azure Blob Storage (ABS).
 
     Parameters
@@ -2355,7 +2542,7 @@ class ABSStore(MutableMapping):
         blob_name = self._append_path_to_prefix(key)
         return self.client.get_blob_client(blob_name).exists()
 
-    def listdir(self, path=None):
+    def listdir(self, path: Path = None):
         dir_path = normalize_storage_path(self._append_path_to_prefix(path))
         if dir_path:
             dir_path += '/'
@@ -2398,7 +2585,7 @@ class ABSStore(MutableMapping):
         self.rmdir()
 
 
-class SQLiteStore(MutableMapping):
+class SQLiteStore(Store):
     """Storage class using SQLite.
 
     Parameters
@@ -2601,7 +2788,7 @@ class SQLiteStore(MutableMapping):
             )
 
 
-class MongoDBStore(MutableMapping):
+class MongoDBStore(Store):
     """Storage class using MongoDB.
 
     .. note:: This is an experimental feature.
@@ -2684,7 +2871,7 @@ class MongoDBStore(MutableMapping):
         self.collection.delete_many({})
 
 
-class RedisStore(MutableMapping):
+class RedisStore(Store):
     """Storage class using Redis.
 
     .. note:: This is an experimental feature.
@@ -2753,7 +2940,7 @@ class RedisStore(MutableMapping):
             del self[key]
 
 
-class ConsolidatedMetadataStore(MutableMapping):
+class ConsolidatedMetadataStore(Store):
     """A layer over other storage, where the metadata has been consolidated into
     a single key.
 
@@ -2777,7 +2964,7 @@ class ConsolidatedMetadataStore(MutableMapping):
 
     Parameters
     ----------
-    store: MutableMapping
+    store: Store
         Containing the zarr array.
     metadata_key: str
         The target in the store where all of the metadata are stored. We
@@ -2789,7 +2976,7 @@ class ConsolidatedMetadataStore(MutableMapping):
 
     """
 
-    def __init__(self, store, metadata_key='.zmetadata'):
+    def __init__(self, store: Store, metadata_key=".zmetadata"):
         self.store = store
 
         # retrieve consolidated metadata
@@ -2802,7 +2989,7 @@ class ConsolidatedMetadataStore(MutableMapping):
                                 consolidated_format)
 
         # decode metadata
-        self.meta_store = meta['metadata']
+        self.meta_store: Store = KVStore(meta["metadata"])
 
     def __getitem__(self, key):
         return self.meta_store[key]
