@@ -68,11 +68,10 @@ def test_invalid_store():
 
 def test_capabilities():
     s = KVStore(dict())
-    s.is_readable()
-    s.is_listable()
-    s.is_erasable()
-    s.is_writeable()
-
+    assert s.is_readable()
+    assert s.is_listable()
+    assert s.is_erasable()
+    assert s.is_writeable()
 
 def test_getsize_non_implemented():
     assert getsize(object()) == -1
@@ -90,7 +89,7 @@ def test_coverage_rename():
 
 def test_deprecated_listdir_nosotre():
     store = dict()
-    with pytest.warns(UserWarning, match="has not `listdir`"):
+    with pytest.warns(UserWarning, match="has no `listdir`"):
         listdir(store)
 
 

@@ -254,7 +254,7 @@ class Group(MutableMapping):
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        """If the underlying Store should always heave a ``close`` method, call it."""
+        """Call the close method of the underlying Store."""
         self.store.close()
 
     def info_items(self):

@@ -82,8 +82,8 @@ Path = Union[str, bytes, None]
 class Store(MutableMapping):
     """Base class for stores implementation.
 
-
-    Provide a number of default method as well as other typing guaranties for mypy.
+    Provide a number of default method as well as other typing guaranties for
+    mypy.
 
     Stores cannot be mutable mapping as they do have a couple of other
     requirements that would break Liskov substitution principle (stores only
@@ -96,7 +96,7 @@ class Store(MutableMapping):
 
     Stores can be used as context manager to make sure they close on exit.
 
-    .. added: 2.5.0
+    .. added: 2.9.0
 
     """
 
@@ -135,7 +135,7 @@ class Store(MutableMapping):
     def rename(self, src_path: str, dst_path: str) -> None:
         if not self.is_erasable():
             raise NotImplementedError(
-                f'{type(self)} is not erasable, cannot call "rmdir"'
+                f'{type(self)} is not erasable, cannot call "rename"'
             )  # pragma: no cover
         _rename_from_keys(self, src_path, dst_path)
 
@@ -154,9 +154,9 @@ class Store(MutableMapping):
     @staticmethod
     def _ensure_store(store):
         """
-        We want to make sure internally that zarr storage are internally always
-        a class with a specific interface derived from Store, which is slightly
-        different than mutable mapping.
+        We want to make sure internally that zarr stores are always a class
+        with a specific interface derived from ``Store``, which is slightly
+        different than ``MutableMapping``.
 
         We'll do this conversion in a few places automatically
         """
@@ -182,8 +182,8 @@ class Store(MutableMapping):
                 return KVStore(store)
 
         raise ValueError(
-            "Starting with Zarr X.y.z, stores must be subclasses of Store, if "
-            "you store expose the MutableMapping interface wrap them in "
+            "Starting with Zarr 2.9.0, stores must be subclasses of Store, if "
+            "your store exposes the MutableMapping interface wrap it in "
             f"Zarr.storage.KVStore. Got {store}"
         )
 
@@ -281,8 +281,8 @@ def listdir(store: Store, path: Path = None):
     else:
         # slow version, iterate through all keys
         warnings.warn(
-            "Store {store} has not `listdir` method. From zarr 2.5 you may want"
-            "to inherit from `Store`.".format(store=store),
+            f"Store {store} has no `listdir` method. From zarr 2.9 onwards "
+            "may want to inherit from `Store`.",
             stacklevel=2,
         )
         return _listdir_from_keys(store, path)
@@ -641,10 +641,10 @@ def _dict_store_keys(d: Dict, prefix="", cls=dict):
 
 class KVStore(Store):
     """
-    This provide an default implementation of a store interface around
-    a mutable mapping, to avoid having to test stores for presence of methods
+    This provides a default implementation of a store interface around
+    a mutable mapping, to avoid having to test stores for presence of methods.
 
-    This, for most method should just be a pass-through to the underlying KV
+    This, for most methods should just be a pass-through to the underlying KV
     store which is likely to expose a MuttableMapping interface,
     """
 
