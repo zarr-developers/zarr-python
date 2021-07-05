@@ -1019,14 +1019,15 @@ class FSStore(MutableMapping):
     exceptions : list of Exception subclasses
         When accessing data, any of these exceptions will be treated
         as a missing key
+    meta_keys : list or tuple of str
+        Defaults to the zarr meta keys, i.e. (".zarray", ".zgroup", ".zattrs").
     storage_options : passed to the fsspec implementation
     """
-
-    _META_KEYS = (attrs_key, group_meta_key, array_meta_key)
 
     def __init__(self, url, normalize_keys=True, key_separator='.',
                  mode='w',
                  exceptions=(KeyError, PermissionError, IOError),
+                 meta_keys=(array_meta_key, group_meta_key, attrs_key),
                  **storage_options):
         import fsspec
         self.normalize_keys = normalize_keys
@@ -1036,6 +1037,7 @@ class FSStore(MutableMapping):
         self.path = self.fs._strip_protocol(url)
         self.mode = mode
         self.exceptions = exceptions
+        self._META_KEYS = meta_keys
         if self.fs.exists(self.path) and not self.fs.isdir(self.path):
             raise FSPathExistNotDir(url)
 
@@ -1044,7 +1046,7 @@ class FSStore(MutableMapping):
         if key:
             *bits, end = key.split('/')
 
-            if end not in FSStore._META_KEYS:
+            if end not in self._META_KEYS:
                 end = end.replace('.', self.key_separator)
                 key = '/'.join(bits + [end])
 
@@ -1052,7 +1054,7 @@ class FSStore(MutableMapping):
 
     def getitems(self, keys, **kwargs):
         keys = [self._normalize_key(key) for key in keys]
-        return self.map.getitems(keys, on_error="omit")
+        return self.map.getitems(keys, **kwargs)
 
     def __getitem__(self, key):
         key = self._normalize_key(key)
