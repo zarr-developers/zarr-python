@@ -164,7 +164,11 @@ optional dependencies to be installed), run::
 Note that some tests also require storage services to be running
 locally. To run the Azure Blob Service storage tests, run an Azure
 storage emulator (e.g., azurite) and set the environment variable
-``ZARR_TEST_ABS=1``. To run the Mongo DB storage tests, run a Mongo
+``ZARR_TEST_ABS=1``. If you're using Docker to run azurite, start the service with::
+
+    docker run --rm -p 10000:10000 mcr.microsoft.com/azure-storage/azurite azurite-blob --loose --blobHost 0.0.0.0 
+
+To run the Mongo DB storage tests, run a Mongo
 server locally and set the environment variable ``ZARR_TEST_MONGO=1``.
 To run the Redis storage tests, run a Redis server locally on port
 6379 and set the environment variable ``ZARR_TEST_REDIS=1``.

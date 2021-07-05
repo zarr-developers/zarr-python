@@ -6,10 +6,19 @@ import pytest
 
 from zarr.util import (guess_chunks, human_readable_size, info_html_report,
                        info_text_report, is_total_slice, normalize_chunks,
+                       normalize_dimension_separator,
                        normalize_fill_value, normalize_order,
                        normalize_resize_args, normalize_shape, retry_call,
                        tree_array_icon, tree_group_icon, tree_get_icon,
                        tree_widget)
+
+
+def test_normalize_dimension_separator():
+    assert None is normalize_dimension_separator(None)
+    assert '/' == normalize_dimension_separator('/')
+    assert '.' == normalize_dimension_separator('.')
+    with pytest.raises(ValueError):
+        normalize_dimension_separator('X')
 
 
 def test_normalize_shape():
@@ -170,7 +179,7 @@ def test_tree_widget_missing_ipytree():
     pattern = (
         "Run `pip install zarr[jupyter]` or `conda install ipytree`"
         "to get the required ipytree dependency for displaying the tree "
-        "widget. If using jupyterlab, you also need to run "
+        "widget. If using jupyterlab<3, you also need to run "
         "`jupyter labextension install ipytree`"
         )
     with pytest.raises(ImportError, match=re.escape(pattern)):

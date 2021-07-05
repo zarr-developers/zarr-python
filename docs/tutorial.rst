@@ -810,7 +810,9 @@ The class is :class:`zarr.storage.ABSStore` (requires
 `azure-storage-blob <https://docs.microsoft.com/en-us/azure/storage/blobs/storage-quickstart-blobs-python>`_
 to be installed)::
 
-    >>> store = zarr.ABSStore(container='test', prefix='zarr-testing', blob_service_kwargs={'is_emulated': True})  # doctest: +SKIP
+    >>> import azure.storage.blob
+    >>> container_client = azure.storage.blob.ContainerClient(...)  # doctest: +SKIP
+    >>> store = zarr.ABSStore(client=container_client, prefix='zarr-testing')  # doctest: +SKIP
     >>> root = zarr.group(store=store, overwrite=True)  # doctest: +SKIP
     >>> z = root.zeros('foo/bar', shape=(1000, 1000), chunks=(100, 100), dtype='i4')  # doctest: +SKIP
     >>> z[:] = 42  # doctest: +SKIP
@@ -1287,6 +1289,45 @@ artifical example but illustrates the general point that changing the order of
 bytes within chunks of an array may improve the compression ratio, depending on
 the structure of the data, the compression algorithm used, and which compression
 filters (e.g., byte-shuffle) have been applied.
+
+.. _tutorial_rechunking:
+
+Changing chunk shapes (rechunking)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Sometimes you are not free to choose the initial chunking of your input data, or
+you might have data saved with chunking which is not optimal for the analysis you
+have planned. In such cases it can be advantageous to re-chunk the data. For small
+datasets, or when the mismatch between input and output chunks is small
+such that only a few chunks of the input dataset need to be read to create each
+chunk in the output array, it is sufficient to simply copy the data to a new array
+with the desired chunking, e.g. ::
+
+    >>> a = zarr.zeros((10000, 10000), chunks=(100,100), dtype='uint16', store='a.zarr')
+    >>> b = zarr.array(a, chunks=(100, 200), store='b.zarr')
+
+If the chunk shapes mismatch, however, a simple copy can lead to non-optimal data
+access patterns and incur a substantial performance hit when using
+file based stores. One of the most pathological examples is
+switching from column-based chunking to row-based chunking e.g. ::
+
+    >>> a = zarr.zeros((10000,10000), chunks=(10000, 1), dtype='uint16, store='a.zarr')
+    >>> b = zarr.array(a, chunks=(1,10000), store='b.zarr')
+
+which will require every chunk in the input data set to be repeatedly read when creating
+each output chunk. If the entire array will fit within memory, this is simply resolved
+by forcing the entire input array into memory as a numpy array before converting
+back to zarr with the desired chunking. ::
+
+    >>> a = zarr.zeros((10000,10000), chunks=(10000, 1), dtype='uint16, store='a.zarr')
+    >>> b = a[...]
+    >>> c = zarr.array(b, chunks=(1,10000), store='c.zarr')
+
+For data sets which have mismatched chunks and which do not fit in memory, a
+more sophisticated approach to rechunking, such as offered by the
+`rechunker <https://github.com/pangeo-data/rechunker>`_ package and discussed
+`here <https://medium.com/pangeo/rechunker-the-missing-link-for-chunked-array-analytics-5b2359e9dc11>`_
+may offer a substantial improvement in performance.
 
 .. _tutorial_sync:
 
