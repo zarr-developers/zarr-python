@@ -1288,7 +1288,7 @@ class TestN5Store(TestNestedDirectoryStore):
 
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
-class TestN5FSStore(TestFSStore, unittest.TestCase):
+class TestN5FSStore(TestFSStore):
     def create_store(self, normalize_keys=False):
         path = tempfile.mkdtemp(suffix='.n5')
         atexit.register(atexit_rmtree, path)
@@ -1362,7 +1362,7 @@ class TestN5FSStore(TestFSStore, unittest.TestCase):
     def test_init_group_overwrite_chunk_store(self):
         self._test_init_group_overwrite_chunk_store('C')
 
-    def test_key_separator(self):
+    def test_dimension_separator(self):
         with pytest.raises(TypeError):
             self.create_store(key_separator='.')
 
