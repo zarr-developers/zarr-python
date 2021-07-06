@@ -293,19 +293,24 @@ class N5FSStore(FSStore):
         (e.g. 'foo' and 'FOO' will be treated as equivalent). This can be
         useful to avoid potential discrepancies between case-senstive and
         case-insensitive file system. Default value is False.
+
     Examples
     --------
     Store a single array::
+
         >>> import zarr
-        >>> store = zarr.N5FSStore('data/array.n5')
+        >>> store = zarr.N5FSStore('data/array.n5', auto_mkdir=True)
         >>> z = zarr.zeros((10, 10), chunks=(5, 5), store=store, overwrite=True)
         >>> z[...] = 42
+
     Store a group::
-        >>> store = zarr.N5FSStore('data/group.n5')
+
+        >>> store = zarr.N5FSStore('data/group.n5', auto_mkdir=True)
         >>> root = zarr.group(store=store, overwrite=True)
         >>> foo = root.create_group('foo')
         >>> bar = foo.zeros('bar', shape=(10, 10), chunks=(5, 5))
         >>> bar[...] = 42
+
     Notes
     -----
     This is an experimental feature.
