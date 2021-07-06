@@ -1036,11 +1036,13 @@ class FSStore(MutableMapping):
         When accessing data, any of these exceptions will be treated
         as a missing key
     meta_keys : list or tuple of str
-        Defaults to the zarr meta keys, i.e. (".zarray", ".zgroup", ".zattrs").
+        Reserved keys for metadata.
+        Defaults to the zarr metatadata keys, i.e. (".zarray", ".zgroup", ".zattrs").
     dimension_separator : {'.', '/'}, optional
         Separator placed between the dimensions of a chunk.
     storage_options : passed to the fsspec implementation
-    def __init__(self, url, normalize_keys=True, key_separator='.',
+    """
+    def __init__(self, url, normalize_keys=True, key_separator=None,
                  mode='w',
                  exceptions=(KeyError, PermissionError, IOError),
                  meta_keys=(array_meta_key, group_meta_key, attrs_key),
@@ -1065,7 +1067,6 @@ class FSStore(MutableMapping):
 
         # Pass attributes to array creation
         self._dimension_separator = dimension_separator
-
         if self.fs.exists(self.path) and not self.fs.isdir(self.path):
             raise FSPathExistNotDir(url)
 
