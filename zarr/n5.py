@@ -313,9 +313,19 @@ class N5FSStore(FSStore):
     """
 
     def __init__(self, *args, **kwargs):
-        kwargs["key_separator"] = "/"
-        kwargs["meta_keys"] = ("attributes.json",)
-        super().__init__(*args, **kwargs)
+        if 'dimension_separator' in kwargs:
+            kwargs.pop('dimension_separator')
+            warnings.warn('Keyword argument `dimension_separator` will be ignored')
+        dimension_separator = "/"
+        
+        if 'meta_keys' in kwargs:
+            kwargs.pop('meta_keys')
+            warnings.warn('Keyword argument `meta_keys` will be ignored')
+        meta_keys = ("attributes.json",)
+        super().__init__(*args, 
+                        dimension_separator=dimension_separator, 
+                        meta_keys=meta_keys, 
+                        **kwargs)
 
     def _normalize_key(self, key):
         if is_chunk_key(key):
