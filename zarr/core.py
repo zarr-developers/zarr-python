@@ -1596,7 +1596,7 @@ class Array:
             chunk[selection] = value
 
         # clear chunk if it only contains the fill value
-        if self._chunk_isempty(chunk):
+        if self._chunk_is_empty(chunk):
             try:
                 del self.chunk_store[ckey]
                 return
@@ -1882,7 +1882,7 @@ class Array:
         values = {}
         if not self._write_empty_chunks:
             for ckey, cdata in zip(ckeys, cdatas):
-                if self._chunk_isempty(cdata):
+                if self._chunk_is_empty(cdata):
                     self._chunk_delitem(ckey)
                 else:
                     values[ckey] = self._encode_chunk(cdata)
@@ -1890,7 +1890,7 @@ class Array:
             values = dict(zip(ckeys, map(self._encode_chunk, cdatas)))
         self.chunk_store.setitems(values)
 
-    def _chunk_isempty(self, chunk):
+    def _chunk_is_empty(self, chunk):
         if self.dtype == 'object':
             # we have to flatten the result of np.equal to handle outputs like
             # [np.array([True,True]), True, True]
@@ -1942,16 +1942,13 @@ class Array:
                                        fields=fields)
 
     def _chunk_setitem_nosync(self, chunk_coords, chunk_selection, value, fields=None):
-        do_store = True
         ckey = self._chunk_key(chunk_coords)
         cdata = self._process_for_setitem(ckey, chunk_selection, value, fields=fields)
 
-        # clear chunk if it only contains the fill value
-        if (not self._write_empty_chunks) and self._chunk_isempty(cdata):
-            do_store = not self._chunk_delitem(ckey)
-
-        # store
-        if do_store:
+        # attempt to delete chunk if it only contains the fill value
+        if (not self._write_empty_chunks) and self._chunk_is_empty(cdata):
+            self._chunk_delitem(ckey)
+        else:
             self.chunk_store[ckey] = self._encode_chunk(cdata)
 
     def _process_for_setitem(self, ckey, chunk_selection, value, fields=None):
