@@ -4,7 +4,7 @@ from unittest import mock
 import numpy as np
 import pytest
 
-from zarr.util import (guess_chunks, human_readable_size, info_html_report,
+from zarr.util import (flatten, guess_chunks, human_readable_size, info_html_report,
                        info_text_report, is_total_slice, normalize_chunks,
                        normalize_dimension_separator,
                        normalize_fill_value, normalize_order,
@@ -211,3 +211,9 @@ def test_retry_call():
 
     for x in range(11, 15):
         pytest.raises(PermissionError, fail, x)
+
+
+def test_flatten():
+    assert list(flatten(['0', ['1', ['2', ['3', [4, ]]]]])) == ['0', '1', '2', '3', 4]
+    assert list(flatten('foo')) == ['f', 'o', 'o']
+    assert list(flatten(['foo'])) == ['foo']
