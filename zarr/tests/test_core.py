@@ -1598,7 +1598,7 @@ class TestArrayWithChunkStore(TestArray):
         assert -1 == z.nbytes_stored
 
 
-class TestArrayWithoutEmptyWrites(TestArray):
+class TestArrayNoEmptyWrites(TestArray):
 
     @staticmethod
     def create_array(read_only=False, **kwargs):
