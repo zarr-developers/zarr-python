@@ -20,7 +20,7 @@ def create(shape, chunks=True, dtype=None, compressor='default',
            fill_value=0, order='C', store=None, synchronizer=None,
            overwrite=False, path=None, chunk_store=None, filters=None,
            cache_metadata=True, cache_attrs=True, read_only=False,
-           object_codec=None, dimension_separator=None, write_empty_chunks=True, **kwargs):
+           object_codec=None, dimension_separator=None, write_empty_chunks=False, **kwargs):
     """Create an array.
 
     Parameters
@@ -72,10 +72,13 @@ def create(shape, chunks=True, dtype=None, compressor='default',
         .. versionadded:: 2.8
     write_empty_chunks : bool, optional
         Determines chunk writing behavior for chunks filled with `fill_value` ("empty" chunks).
-        If True (default), all chunks will be written regardless of their contents.
-        If False, empty chunks will not be written, and the `store` entry for
-        the chunk key of an empty chunk will be deleted. Note that setting this option to False
-        will incur additional overhead per chunk write.
+        If False (default), empty chunks will not be written, and the `store` entry for
+        the chunk key of an empty chunk will be deleted. Note that writings chunk with
+        `write_empty_chunks=False` will incur overhead associated with checking the contents
+        of each chunk. Use `write_empty_chunks=True` to avoid this overhead, at the expense of
+        potentially creating unnecessary objects in storage.
+
+
 
     Returns
     -------
@@ -403,7 +406,7 @@ def open_array(
     chunk_store=None,
     storage_options=None,
     partial_decompress=False,
-    write_empty_chunks=True,
+    write_empty_chunks=False,
     **kwargs
 ):
     """Open an array using file-mode-like semantics.

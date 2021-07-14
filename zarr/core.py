@@ -145,7 +145,7 @@ class Array:
         cache_metadata=True,
         cache_attrs=True,
         partial_decompress=False,
-        write_empty_chunks=True,
+        write_empty_chunks=False,
     ):
         # N.B., expect at this point store is fully initialized with all
         # configuration metadata fully specified and normalized
@@ -1881,17 +1881,11 @@ class Array:
                   for key, sel, val in zip(ckeys, lchunk_selection, values)]
         values = {}
         if not self._write_empty_chunks:
-            to_delete = []
             for ckey, cdata in zip(ckeys, cdatas):
                 if self._chunk_isempty(cdata):
-                    to_delete.append(ckey)
+                    self._chunk_delitem(ckey)
                 else:
                     values[ckey] = self._encode_chunk(cdata)
-            if len(to_delete) > 0:
-                if hasattr(self.chunk_store, 'delitems'):
-                    self.chunk_store.delitems(to_delete)
-                else:
-                    [self._chunk_delitem(k) for k in to_delete]
         else:
             values = dict(zip(ckeys, map(self._encode_chunk, cdatas)))
         self.chunk_store.setitems(values)
@@ -1905,15 +1899,21 @@ class Array:
             is_empty = np.all(chunk == self._fill_value)
         return is_empty
 
+    def _chunk_delitems(self, ckeys):
+        if isinstance(ckeys, str):
+            ckeys = [ckeys]
+        # todo: use the delitem method of fsstore.FSMap when it is better tested.
+        return tuple(map(self._chunk_delitem, ckeys))
+
     def _chunk_delitem(self, ckey):
         """
         Attempt to delete the value associated with ckey.
-        Silently handle keyerror.
         """
         try:
             del self.chunk_store[ckey]
+            return
         except KeyError:
-            pass
+            return
 
     def _chunk_setitem(self, chunk_coords, chunk_selection, value, fields=None):
         """Replace part or whole of a chunk.
@@ -1942,13 +1942,16 @@ class Array:
                                        fields=fields)
 
     def _chunk_setitem_nosync(self, chunk_coords, chunk_selection, value, fields=None):
+        do_store = True
         ckey = self._chunk_key(chunk_coords)
         cdata = self._process_for_setitem(ckey, chunk_selection, value, fields=fields)
 
         # clear chunk if it only contains the fill value
         if (not self._write_empty_chunks) and self._chunk_isempty(cdata):
-            self._chunk_delitem(ckey)
-        else:
+            do_store = not self._chunk_delitem(ckey)
+
+        # store
+        if do_store:
             self.chunk_store[ckey] = self._encode_chunk(cdata)
 
     def _process_for_setitem(self, ckey, chunk_selection, value, fields=None):
