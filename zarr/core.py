@@ -1876,19 +1876,22 @@ class Array:
                     out[out_select] = fill_value
 
     def _chunk_setitems(self, lchunk_coords, lchunk_selection, values, fields=None):
-        ckeys = [self._chunk_key(co) for co in lchunk_coords]
-        cdatas = [self._process_for_setitem(key, sel, val, fields=fields)
-                  for key, sel, val in zip(ckeys, lchunk_selection, values)]
-        values = {}
-        if not self._write_empty_chunks:
-            for ckey, cdata in zip(ckeys, cdatas):
-                if self._chunk_is_empty(cdata):
+        ckeys = map(self._chunk_key, lchunk_coords)
+        cdatas = {key: self._process_for_setitem(key, sel, val, fields=fields)
+                  for key, sel, val in zip(ckeys, lchunk_selection, values)}
+        to_store = {}
+        if not self._write_empty_chunks:          
+            empty_chunks = {k: v for k,v in cdatas.items() if self._chunk_is_empty(v)}
+            if hasattr(self.store, 'delitems'):
+                self.store.delitems(tuple(empty_chunks.keys()))
+            else:
+                for ckey in empty_chunks.keys():
                     self._chunk_delitem(ckey)
-                else:
-                    values[ckey] = self._encode_chunk(cdata)
+            nonempty_keys = cdatas.keys() - empty_chunks.keys()
+            to_store = {k: self._encode_chunk(cdatas[k]) for k in nonempty_keys} 
         else:
-            values = dict(zip(ckeys, map(self._encode_chunk, cdatas)))
-        self.chunk_store.setitems(values)
+            to_store = {k: self._encode_chunk(v) for k, v in cdatas.items()}
+        self.chunk_store.setitems(to_store)
 
     def _chunk_is_empty(self, chunk):
         if self.dtype == 'object':
@@ -1902,8 +1905,12 @@ class Array:
     def _chunk_delitems(self, ckeys):
         if isinstance(ckeys, str):
             ckeys = [ckeys]
-        # todo: use the delitem method of fsstore.FSMap when it is better tested.
-        return tuple(map(self._chunk_delitem, ckeys))
+
+        if hasattr(self.store, "delitems"):
+            del_op = self.store.delitems(ckeys)
+        else: 
+            del_op = tuple(map(self._chunk_delitem, ckeys))
+        return None
 
     def _chunk_delitem(self, ckey):
         """
