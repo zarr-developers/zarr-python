@@ -2765,7 +2765,7 @@ class TestArrayWithFSStoreNestedPartialRead(TestArray):
 
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
-class TestArrayWithFSStoreNoEmptyWrites(TestArray):
+class TestArrayWithFSStoreEmptyWrites(TestArray):
     @staticmethod
     def create_array(read_only=False, **kwargs):
         path = mkdtemp()
@@ -2777,7 +2777,7 @@ class TestArrayWithFSStoreNoEmptyWrites(TestArray):
         kwargs.setdefault('compressor', Blosc())
         init_array(store, **kwargs)
         return Array(store, read_only=read_only, cache_metadata=cache_metadata,
-                     cache_attrs=cache_attrs, write_empty_chunks=False)
+                     cache_attrs=cache_attrs, write_empty_chunks=True)
 
     def test_nchunks_initialized(self):
         for fill_value in -1, 0, 1, 10:
@@ -2789,15 +2789,13 @@ class TestArrayWithFSStoreNoEmptyWrites(TestArray):
             z[:] = 42
             assert 10 == z.nchunks_initialized
             z[:] = fill_value
-            assert 0 == z.nchunks_initialized
-            z[0] = 42
-            assert 1 == z.nchunks_initialized
+            assert 10 == z.nchunks_initialized
             if hasattr(z.store, 'close'):
                 z.store.close()
 
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
-class TestArrayWithFSStoreNestedNoEmptyWrites(TestArray):
+class TestArrayWithFSStoreNestedEmptyWrites(TestArray):
     @staticmethod
     def create_array(read_only=False, **kwargs):
         path = mkdtemp()
@@ -2809,7 +2807,7 @@ class TestArrayWithFSStoreNestedNoEmptyWrites(TestArray):
         kwargs.setdefault('compressor', Blosc())
         init_array(store, **kwargs)
         return Array(store, read_only=read_only, cache_metadata=cache_metadata,
-                     cache_attrs=cache_attrs, write_empty_chunks=False)
+                     cache_attrs=cache_attrs, write_empty_chunks=True)
 
     def test_nchunks_initialized(self):
         for fill_value in -1, 0, 1, 10:
@@ -2821,8 +2819,6 @@ class TestArrayWithFSStoreNestedNoEmptyWrites(TestArray):
             z[:] = 42
             assert 10 == z.nchunks_initialized
             z[:] = fill_value
-            assert 0 == z.nchunks_initialized
-            z[0] = 42
-            assert 1 == z.nchunks_initialized
+            assert 10 == z.nchunks_initialized
             if hasattr(z.store, 'close'):
                 z.store.close()
