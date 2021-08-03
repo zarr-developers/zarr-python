@@ -11,7 +11,7 @@ redis==3.5.3
 types-redis
 pymongo==3.11.4
 # optional test requirements
-tox==3.23.1
+tox==3.24.1
 coverage
 flake8==3.9.2
 pytest-cov==2.12.1
