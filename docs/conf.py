@@ -144,9 +144,11 @@ html_theme_options = {'logo_only': True}
 # of the sidebar.
 html_logo = '_static/logo1.png'
 
+
 # Add custom css
 def setup(app):
-    app.add_stylesheet('custom.css')
+    app.add_css_file('custom.css')
+
 
 # The name of an image file (relative to this directory) to use as a favicon of
 # the docs.  This file should be a Windows icon file (.ico) being 16x16 or 32x32
