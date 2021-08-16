@@ -6,12 +6,6 @@ Unreleased
 
 This release of Zarr Python is the first release of Zarr to not support Python 3.6.
 
-Bug fixes
-~~~~~~~~~
-
-* convenience: Allow ``os.PathLike`` s to be used for paths in convenience methods
-  By :user:`Chris Barnes <clbarnes>`; :issue:`261` :issue:`601`
-
 .. _release_2.8.3:
 
 2.8.3
@@ -22,7 +16,7 @@ Bug fixes
 
 * FSStore: default to normalize_keys=False
   By :user:`Josh Moore <joshmoore>`; :issue:`755`.
-* ABSStore: compatibility with ``azure.storage.python>=12``
+* ABSStore: compatibility with ``azure.storage.python>=12`` 
   By :user:`Tom Augspurger <tomaugspurger>`; :issue:`618`
 
 
@@ -187,7 +181,7 @@ This release will be the last to support Python 3.5, next version of Zarr will b
 
 * `DirectoryStore` now uses `os.scandir`, which should make listing large store
   faster, :issue:`563`
-
+  
 * Remove a few remaining Python 2-isms.
   By :user:`Poruri Sai Rahul <rahulporuri>`; :issue:`393`.
 
@@ -207,7 +201,7 @@ This release will be the last to support Python 3.5, next version of Zarr will b
   ``zarr.errors``  have been replaced by ``ValueError`` subclasses. The corresponding
   ``err_*`` function have been removed. :issue:`590`, :issue:`614`)
 
-* Improve consistency of terminology regarding arrays and datasets in the
+* Improve consistency of terminology regarding arrays and datasets in the 
   documentation.
   By :user:`Josh Moore <joshmoore>`; :issue:`571`.
 
