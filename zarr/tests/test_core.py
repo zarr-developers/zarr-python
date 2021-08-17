@@ -1367,6 +1367,9 @@ class TestArray(unittest.TestCase):
                      "unsupported numpy version")
     def test_structured_array_contain_object(self):
 
+        if "PartialRead" in self.__class__.__name__:
+            pytest.skip("partial reads of object arrays not supported")
+
         # ----------- creation --------------
 
         structured_dtype = [('c_obj', object), ('c_int', int)]
