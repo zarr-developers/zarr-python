@@ -1952,7 +1952,7 @@ class Array:
         return self._encode_chunk(chunk)
 
     def _chunk_key(self, chunk_coords):
-        return self._key_prefix + '.'.join(map(str, chunk_coords))
+        return self._key_prefix + self._dimension_separator.join(map(str, chunk_coords))
 
     def _decode_chunk(self, cdata, start=None, nitems=None, expected_shape=None):
         # decompress
