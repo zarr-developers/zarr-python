@@ -1061,16 +1061,17 @@ class FSStore(MutableMapping):
     exceptions : list of Exception subclasses
         When accessing data, any of these exceptions will be treated
         as a missing key
+    meta_keys : list or tuple of str
+        Reserved keys for metadata.
+        Defaults to the zarr metatadata keys, i.e. (".zarray", ".zgroup", ".zattrs").
     dimension_separator : {'.', '/'}, optional
         Separator placed between the dimensions of a chunk.
     storage_options : passed to the fsspec implementation
     """
-
-    _META_KEYS = (attrs_key, group_meta_key, array_meta_key)
-
-    def __init__(self, url, normalize_keys=False, key_separator=None,
+    def __init__(self, url, normalize_keys=True, key_separator=None,
                  mode='w',
                  exceptions=(KeyError, PermissionError, IOError),
+                 meta_keys=(array_meta_key, group_meta_key, attrs_key),
                  dimension_separator=None,
                  **storage_options):
         import fsspec
@@ -1080,6 +1081,7 @@ class FSStore(MutableMapping):
         self.path = self.fs._strip_protocol(url)
         self.mode = mode
         self.exceptions = exceptions
+        self._META_KEYS = meta_keys
 
         # For backwards compatibility. Guaranteed to be non-None
         if key_separator is not None:
@@ -1091,7 +1093,6 @@ class FSStore(MutableMapping):
 
         # Pass attributes to array creation
         self._dimension_separator = dimension_separator
-
         if self.fs.exists(self.path) and not self.fs.isdir(self.path):
             raise FSPathExistNotDir(url)
 
@@ -1100,7 +1101,7 @@ class FSStore(MutableMapping):
         if key:
             *bits, end = key.split('/')
 
-            if end not in FSStore._META_KEYS:
+            if end not in self._META_KEYS:
                 end = end.replace('.', self.key_separator)
                 key = '/'.join(bits + [end])
 

@@ -23,7 +23,7 @@ from zarr.hierarchy import group
 from zarr.meta import (ZARR_FORMAT, decode_array_metadata,
                        decode_group_metadata, encode_array_metadata,
                        encode_group_metadata)
-from zarr.n5 import N5Store
+from zarr.n5 import N5Store, N5FSStore
 from zarr.storage import (ABSStore, ConsolidatedMetadataStore, DBMStore,
                           DictStore, DirectoryStore, LMDBStore, LRUStoreCache,
                           MemoryStore, MongoDBStore, NestedDirectoryStore,
@@ -1295,6 +1295,86 @@ class TestN5Store(TestNestedDirectoryStore):
             store = self.create_store()
             with error:
                 init_array(store, shape=1000, chunks=100, filters=filters)
+
+
+@pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
+class TestN5FSStore(TestFSStore):
+    def create_store(self, normalize_keys=False):
+        path = tempfile.mkdtemp(suffix='.n5')
+        atexit.register(atexit_rmtree, path)
+        store = N5FSStore(path, normalize_keys=normalize_keys)
+        return store
+
+    def test_equal(self):
+        store_a = self.create_store()
+        store_b = N5FSStore(store_a.path)
+        assert store_a == store_b
+
+    def test_init_array(self):
+        store = self.create_store()
+        init_array(store, shape=1000, chunks=100)
+
+        # check metadata
+        assert array_meta_key in store
+        meta = decode_array_metadata(store[array_meta_key])
+        assert ZARR_FORMAT == meta['zarr_format']
+        assert (1000,) == meta['shape']
+        assert (100,) == meta['chunks']
+        assert np.dtype(None) == meta['dtype']
+        # N5Store wraps the actual compressor
+        compressor_config = meta['compressor']['compressor_config']
+        assert default_compressor.get_config() == compressor_config
+        # N5Store always has a fill value of 0
+        assert meta['fill_value'] == 0
+
+    def test_init_array_path(self):
+        path = 'foo/bar'
+        store = self.create_store()
+        init_array(store, shape=1000, chunks=100, path=path)
+
+        # check metadata
+        key = path + '/' + array_meta_key
+        assert key in store
+        meta = decode_array_metadata(store[key])
+        assert ZARR_FORMAT == meta['zarr_format']
+        assert (1000,) == meta['shape']
+        assert (100,) == meta['chunks']
+        assert np.dtype(None) == meta['dtype']
+        # N5Store wraps the actual compressor
+        compressor_config = meta['compressor']['compressor_config']
+        assert default_compressor.get_config() == compressor_config
+        # N5Store always has a fill value of 0
+        assert meta['fill_value'] == 0
+
+    def test_init_array_compat(self):
+        store = self.create_store()
+        init_array(store, shape=1000, chunks=100, compressor='none')
+        meta = decode_array_metadata(store[array_meta_key])
+        # N5Store wraps the actual compressor
+        compressor_config = meta['compressor']['compressor_config']
+        assert compressor_config is None
+
+    def test_init_array_overwrite(self):
+        self._test_init_array_overwrite('C')
+
+    def test_init_array_overwrite_path(self):
+        self._test_init_array_overwrite_path('C')
+
+    def test_init_array_overwrite_chunk_store(self):
+        self._test_init_array_overwrite_chunk_store('C')
+
+    def test_init_group_overwrite(self):
+        self._test_init_group_overwrite('C')
+
+    def test_init_group_overwrite_path(self):
+        self._test_init_group_overwrite_path('C')
+
+    def test_init_group_overwrite_chunk_store(self):
+        self._test_init_group_overwrite_chunk_store('C')
+
+    def test_dimension_separator(self):
+        with pytest.raises(TypeError):
+            self.create_store(key_separator='.')
 
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
