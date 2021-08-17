@@ -1369,7 +1369,7 @@ class TestArray(unittest.TestCase):
 
         # ----------- creation --------------
 
-        structured_dtype = [('c_obj', object), ('c_int', np.int)]
+        structured_dtype = [('c_obj', object), ('c_int', int)]
         a = np.array([(b'aaa', 1),
                       (b'bbb', 2)], dtype=structured_dtype)
 
