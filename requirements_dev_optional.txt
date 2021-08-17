@@ -9,6 +9,7 @@ ipytree==0.2.1
 azure-storage-blob==12.8.1 # pyup: ignore
 redis==3.5.3
 types-redis
+types-setuptools
 pymongo==3.12.0
 # optional test requirements
 tox==3.24.1
