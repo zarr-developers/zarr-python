@@ -1036,28 +1036,32 @@ class FSStore(MutableMapping):
     exceptions : list of Exception subclasses
         When accessing data, any of these exceptions will be treated
         as a missing key
-    meta_keys : list or tuple of str
-        Reserved keys for metadata.
-        Defaults to the zarr metatadata keys, i.e. (".zarray", ".zgroup", ".zattrs").
     dimension_separator : {'.', '/'}, optional
         Separator placed between the dimensions of a chunk.
     storage_options : passed to the fsspec implementation
     """
+    array_meta_key = array_meta_key
+    group_meta_key = group_meta_key
+    attrs_key = attrs_key
+
     def __init__(self, url, normalize_keys=True, key_separator=None,
                  mode='w',
                  exceptions=(KeyError, PermissionError, IOError),
-                 meta_keys=(array_meta_key, group_meta_key, attrs_key),
                  dimension_separator=None,
                  **storage_options):
         import fsspec
         self.normalize_keys = normalize_keys
+
+        protocol, _ = fsspec.core.split_protocol(url)
+        # set auto_mkdir to True for local file system
+        if protocol in (None, "file") and not storage_options.get("auto_mkdir"):
+            storage_options["auto_mkdir"] = True
+
         self.map = fsspec.get_mapper(url, **storage_options)
         self.fs = self.map.fs  # for direct operations
         self.path = self.fs._strip_protocol(url)
         self.mode = mode
         self.exceptions = exceptions
-        self._META_KEYS = meta_keys
-
         # For backwards compatibility. Guaranteed to be non-None
         if key_separator is not None:
             dimension_separator = key_separator
@@ -1076,7 +1080,7 @@ class FSStore(MutableMapping):
         if key:
             *bits, end = key.split('/')
 
-            if end not in self._META_KEYS:
+            if end not in (self.array_meta_key, self.group_meta_key, self.attrs_key):
                 end = end.replace('.', self.key_separator)
                 key = '/'.join(bits + [end])
 
@@ -1154,7 +1158,7 @@ class FSStore(MutableMapping):
             if self.key_separator != "/":
                 return children
             else:
-                if array_meta_key in children:
+                if self.array_meta_key in children:
                     # special handling of directories containing an array to map nested chunk
                     # keys back to standard chunk keys
                     new_children = []

@@ -1183,7 +1183,7 @@ class TestNestedDirectoryStoreWithWrongValue:
 class TestN5Store(TestNestedDirectoryStore):
 
     def create_store(self, normalize_keys=False):
-        path = tempfile.mkdtemp(suffix='.n5')
+        path = tempfile.mkdtemp()
         atexit.register(atexit_rmtree, path)
         store = N5Store(path, normalize_keys=normalize_keys)
         return store
@@ -1296,7 +1296,7 @@ class TestN5Store(TestNestedDirectoryStore):
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
 class TestN5FSStore(TestFSStore):
     def create_store(self, normalize_keys=False):
-        path = tempfile.mkdtemp(suffix='.n5')
+        path = tempfile.mkdtemp()
         atexit.register(atexit_rmtree, path)
         store = N5FSStore(path, normalize_keys=normalize_keys)
         return store

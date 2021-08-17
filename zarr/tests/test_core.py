@@ -18,7 +18,7 @@ from numpy.testing import assert_array_almost_equal, assert_array_equal
 
 from zarr.core import Array
 from zarr.meta import json_loads
-from zarr.n5 import N5Store, n5_keywords
+from zarr.n5 import N5Store, N5FSStore, n5_keywords
 from zarr.storage import (
     ABSStore,
     DBMStore,
@@ -1961,6 +1961,22 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
         found.append(z.hexdigest())
 
         assert self.expected() == found
+
+
+@pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
+class TestArrayWithN5FSStore(TestArrayWithN5Store):
+
+    @staticmethod
+    def create_array(read_only=False, **kwargs):
+        path = mkdtemp()
+        atexit.register(shutil.rmtree, path)
+        store = N5FSStore(path)
+        cache_metadata = kwargs.pop('cache_metadata', True)
+        cache_attrs = kwargs.pop('cache_attrs', True)
+        kwargs.setdefault('compressor', Zlib(1))
+        init_array(store, **kwargs)
+        return Array(store, read_only=read_only, cache_metadata=cache_metadata,
+                     cache_attrs=cache_attrs)
 
 
 class TestArrayWithDBMStore(TestArray):
