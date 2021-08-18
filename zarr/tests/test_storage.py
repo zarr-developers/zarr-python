@@ -1154,10 +1154,10 @@ class TestNestedDirectoryStore(TestDirectoryStore):
         # any path where last segment looks like a chunk key gets special handling
         store['0.0'] = b'xxx'
         assert b'xxx' == store['0.0']
-        # assert b'xxx' == store['0/0']
+        assert b'xxx' == store['0/0']
         store['foo/10.20.30'] = b'yyy'
         assert b'yyy' == store['foo/10.20.30']
-        # assert b'yyy' == store['foo/10/20/30']
+        assert b'yyy' == store['foo/10/20/30']
         store['42'] = b'zzz'
         assert b'zzz' == store['42']
 
@@ -1202,7 +1202,7 @@ class TestN5Store(TestNestedDirectoryStore):
         store['0.0'] = b'xxx'
         assert '0.0' in store
         assert b'xxx' == store['0.0']
-        # assert b'xxx' == store['0/0']
+        assert b'xxx' == store['0/0']
         store['foo/10.20.30'] = b'yyy'
         assert 'foo/10.20.30' in store
         assert b'yyy' == store['foo/10.20.30']
