@@ -627,6 +627,7 @@ def array_metadata_to_zarr(array_metadata):
     array_metadata['fill_value'] = 0  # also if None was requested
     array_metadata['order'] = 'C'
     array_metadata['filters'] = []
+    array_metadata['dimension_separator'] = '/'
 
     compressor_config = array_metadata['compressor']
     compressor_config = compressor_config_to_zarr(compressor_config)
