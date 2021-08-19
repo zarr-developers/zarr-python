@@ -1,7 +1,6 @@
 """This module contains a storage class and codec to support the N5 format.
 """
 import os
-import re
 import struct
 import sys
 import warnings
@@ -12,7 +11,7 @@ from numcodecs.compat import ndarray_copy
 from numcodecs.registry import get_codec, register_codec
 
 from .meta import ZARR_FORMAT, json_dumps, json_loads
-from .storage import NestedDirectoryStore, _prog_number, normalize_storage_path
+from .storage import NestedDirectoryStore, _prog_ckey, _prog_number, normalize_storage_path
 from .storage import array_meta_key as zarr_array_meta_key
 from .storage import attrs_key as zarr_attrs_key
 from .storage import group_meta_key as zarr_group_meta_key
@@ -25,9 +24,6 @@ zarr_to_n5_keys = [
 ]
 n5_attrs_key = 'attributes.json'
 n5_keywords = ['n5', 'dataType', 'dimensions', 'blockSize', 'compression']
-
-potential_key = re.compile(r'(.*?)/((\d+)(\/\d+)+)$')
-
 
 
 class N5Store(NestedDirectoryStore):
@@ -147,7 +143,6 @@ class N5Store(NestedDirectoryStore):
 
             key = invert_chunk_coords(key)
 
-        print(key, value)
         super().__setitem__(key, value)
 
     def __delitem__(self, key):
@@ -543,17 +538,22 @@ try:
             return len(attrs) > 0
 
     def is_chunk_key(key):
-        return potential_key.match(key)
+        segments = list(key.split('/'))
+        if segments:
+            last_segment = segments[-1]
+            return _prog_ckey.match(last_segment)
+        return False  # pragma: no cover
 
     def invert_chunk_coords(key):
-
-        m = is_chunk_key(key)
-        if m is None:
-            return key
-
-        first = m.group(1)
-        last = "/".join(m.group(2).split("/"))[::-1]  # Reverse
-        return f"{first}/{last}"
+        segments = list(key.split('/'))
+        if segments:
+            last_segment = segments[-1]
+            if _prog_ckey.match(last_segment):
+                coords = list(last_segment.split('.'))
+                last_segment = '.'.join(coords[::-1])
+                segments = segments[:-1] + [last_segment]
+                key = '/'.join(segments)
+        return key
 
     def group_metadata_to_n5(group_metadata):
         '''Convert group metadata from zarr to N5 format.'''

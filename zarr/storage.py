@@ -1248,7 +1248,7 @@ class TempStore(DirectoryStore):
         super().__init__(path, normalize_keys=normalize_keys)
 
 
-_prog_ckey = re.compile(r'.*?/((\d+)(\/\d+)+)$')
+_prog_ckey = re.compile(r'^(\d+)(\.\d+)+$')
 _prog_number = re.compile(r'^\d+$')
 
 
