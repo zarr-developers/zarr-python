@@ -327,7 +327,7 @@ try:
             if 'dimension_separator' in kwargs:
                 kwargs.pop('dimension_separator')
                 warnings.warn('Keyword argument `dimension_separator` will be ignored')
-            dimension_separator = "."
+            dimension_separator = "/"
             super().__init__(*args, dimension_separator=dimension_separator, **kwargs)
 
         def _normalize_key(self, key):
@@ -339,7 +339,7 @@ try:
                 *bits, end = key.split("/")
 
                 if end not in (self.array_meta_key, self.group_meta_key, self.attrs_key):
-                    end = end.replace(".", "/")  # Hard-code self.key_separator)
+                    end = end.replace(".", self.key_separator)
                     key = "/".join(bits + [end])
             return key.lower() if self.normalize_keys else key
 
@@ -627,7 +627,7 @@ def array_metadata_to_zarr(array_metadata):
     array_metadata['fill_value'] = 0  # also if None was requested
     array_metadata['order'] = 'C'
     array_metadata['filters'] = []
-    array_metadata['dimension_separator'] = '.'
+    array_metadata['dimension_separator'] = '/'
 
     compressor_config = array_metadata['compressor']
     compressor_config = compressor_config_to_zarr(compressor_config)
