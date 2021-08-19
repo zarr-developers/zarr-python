@@ -330,8 +330,7 @@ try:
             dimension_separator = "."
             super().__init__(*args, dimension_separator=dimension_separator, **kwargs)
 
-        def swap_separator(self, key):
-            old = key
+        def _swap_separator(self, key):
             segments = list(key.split('/'))
             if segments:
                 last_segment = segments[-1]
@@ -381,7 +380,7 @@ try:
                     return json_dumps(value)
 
             elif is_chunk_key(key):
-                key = self.swap_separator(key)
+                key = self._swap_separator(key)
 
             return super().__getitem__(key)
 
@@ -428,7 +427,7 @@ try:
                 value = json_dumps(n5_attrs)
 
             elif is_chunk_key(key):
-                key = self.swap_separator(key)
+                key = self._swap_separator(key)
 
             super().__setitem__(key, value)
 
@@ -441,7 +440,7 @@ try:
             elif key.endswith(zarr_attrs_key):  # pragma: no cover
                 key = key.replace(zarr_attrs_key, self.attrs_key)
             elif is_chunk_key(key):
-                key = self.swap_separator(key)
+                key = self._swap_separator(key)
 
             super().__delitem__(key)
 
@@ -466,7 +465,7 @@ try:
                 return self._contains_attrs(key)
 
             elif is_chunk_key(key):
-                key = self.swap_separator(key)
+                key = self._swap_separator(key)
 
             return super().__contains__(key)
 
@@ -474,7 +473,6 @@ try:
             return isinstance(other, N5FSStore) and self.path == other.path
 
         def listdir(self, path=None):
-
             if path is not None:
                 path = invert_chunk_coords(path)
 
@@ -560,84 +558,89 @@ try:
 
             attrs = attrs_to_zarr(self._load_n5_attrs(attrs_key))
             return len(attrs) > 0
-
-    def is_chunk_key(key):
-        rv = False
-        segments = list(key.split('/'))
-        if segments:
-            last_segment = segments[-1]
-            rv = _prog_ckey.match(last_segment)
-        return rv
-
-    def invert_chunk_coords(key):
-        segments = list(key.split('/'))
-        if segments:
-            last_segment = segments[-1]
-            if _prog_ckey.match(last_segment):
-                coords = list(last_segment.split('.'))
-                last_segment = '/'.join(coords[::-1])
-                segments = segments[:-1] + [last_segment]
-                key = '/'.join(segments)
-        return key
-
-    def group_metadata_to_n5(group_metadata):
-        '''Convert group metadata from zarr to N5 format.'''
-        del group_metadata['zarr_format']
-        # TODO: This should only exist at the top-level
-        group_metadata['n5'] = '2.0.0'
-        return group_metadata
-
-    def group_metadata_to_zarr(group_metadata):
-        '''Convert group metadata from N5 to zarr format.'''
-        # This only exists at the top level
-        group_metadata.pop('n5', None)
-        group_metadata['zarr_format'] = ZARR_FORMAT
-        return group_metadata
-
-    def array_metadata_to_n5(array_metadata):
-        '''Convert array metadata from zarr to N5 format.'''
-
-        for f, t in zarr_to_n5_keys:
-            array_metadata[t] = array_metadata[f]
-            del array_metadata[f]
-        del array_metadata['zarr_format']
-
-        try:
-            dtype = np.dtype(array_metadata['dataType'])
-        except TypeError:  # pragma: no cover
-            raise TypeError(
-                "data type %s not supported by N5" % array_metadata['dataType'])
-
-        array_metadata['dataType'] = dtype.name
-        array_metadata['dimensions'] = array_metadata['dimensions'][::-1]
-        array_metadata['blockSize'] = array_metadata['blockSize'][::-1]
-
-        if 'fill_value' in array_metadata:
-            if array_metadata['fill_value'] != 0 and array_metadata['fill_value'] is not None:
-                raise ValueError("N5 only supports fill_value == 0 (for now)")
-            del array_metadata['fill_value']
-
-        if 'order' in array_metadata:
-            if array_metadata['order'] != 'C':
-                raise ValueError("zarr N5 storage only stores arrays in C order (for now)")
-            del array_metadata['order']
-
-        if 'filters' in array_metadata:
-            if array_metadata['filters'] != [] and array_metadata['filters'] is not None:
-                raise ValueError("N5 storage does not support zarr filters")
-            del array_metadata['filters']
-
-        assert 'compression' in array_metadata
-        compressor_config = array_metadata['compression']
-        compressor_config = compressor_config_to_n5(compressor_config)
-        array_metadata['compression'] = compressor_config
-
-        if 'dimension_separator' in array_metadata:
-            del array_metadata['dimension_separator']
-
-        return array_metadata
 except ImportError:
     pass
+
+
+def is_chunk_key(key):
+    rv = False
+    segments = list(key.split('/'))
+    if segments:
+        last_segment = segments[-1]
+        rv = _prog_ckey.match(last_segment)
+    return rv
+
+
+def invert_chunk_coords(key):
+    segments = list(key.split('/'))
+    if segments:
+        last_segment = segments[-1]
+        if _prog_ckey.match(last_segment):
+            coords = list(last_segment.split('.'))
+            last_segment = '/'.join(coords[::-1])
+            segments = segments[:-1] + [last_segment]
+            key = '/'.join(segments)
+    return key
+
+
+def group_metadata_to_n5(group_metadata):
+    '''Convert group metadata from zarr to N5 format.'''
+    del group_metadata['zarr_format']
+    # TODO: This should only exist at the top-level
+    group_metadata['n5'] = '2.0.0'
+    return group_metadata
+
+
+def group_metadata_to_zarr(group_metadata):
+    '''Convert group metadata from N5 to zarr format.'''
+    # This only exists at the top level
+    group_metadata.pop('n5', None)
+    group_metadata['zarr_format'] = ZARR_FORMAT
+    return group_metadata
+
+
+def array_metadata_to_n5(array_metadata):
+    '''Convert array metadata from zarr to N5 format.'''
+
+    for f, t in zarr_to_n5_keys:
+        array_metadata[t] = array_metadata[f]
+        del array_metadata[f]
+    del array_metadata['zarr_format']
+
+    try:
+        dtype = np.dtype(array_metadata['dataType'])
+    except TypeError:  # pragma: no cover
+        raise TypeError(
+            "data type %s not supported by N5" % array_metadata['dataType'])
+
+    array_metadata['dataType'] = dtype.name
+    array_metadata['dimensions'] = array_metadata['dimensions'][::-1]
+    array_metadata['blockSize'] = array_metadata['blockSize'][::-1]
+
+    if 'fill_value' in array_metadata:
+        if array_metadata['fill_value'] != 0 and array_metadata['fill_value'] is not None:
+            raise ValueError("N5 only supports fill_value == 0 (for now)")
+        del array_metadata['fill_value']
+
+    if 'order' in array_metadata:
+        if array_metadata['order'] != 'C':
+            raise ValueError("zarr N5 storage only stores arrays in C order (for now)")
+        del array_metadata['order']
+
+    if 'filters' in array_metadata:
+        if array_metadata['filters'] != [] and array_metadata['filters'] is not None:
+            raise ValueError("N5 storage does not support zarr filters")
+        del array_metadata['filters']
+
+    assert 'compression' in array_metadata
+    compressor_config = array_metadata['compression']
+    compressor_config = compressor_config_to_n5(compressor_config)
+    array_metadata['compression'] = compressor_config
+
+    if 'dimension_separator' in array_metadata:
+        del array_metadata['dimension_separator']
+
+    return array_metadata
 
 
 def array_metadata_to_zarr(array_metadata):
