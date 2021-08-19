@@ -318,6 +318,20 @@ try:
         -----
         This is an experimental feature.
         Safe to write in multiple threads or processes.
+
+        Be advised that the `_dimension_separator` property of this store
+        (and arrays it creates) is ".", but chunks saved by this store will
+        in fact be "/" separated, as proscribed by the N5 format.
+
+        This is counter-intuitive (to say the least), but not arbitrary.
+        Chunks in N5 format are stored with reversed dimension order
+        relative to Zarr chunks: a chunk of a 3D Zarr array would be stored
+        on a file system as `/0/1/2`, but in N5 the same chunk would be
+        stored as `/2/1/0`. Therefore, stores targeting N5 must intercept
+        chunk keys and flip the order of the dimensions before writing to
+        storage, and this procedure requires chunk keys with "." separated
+        dimensions, hence the Zarr arrays targeting N5 have the deceptive
+        "." dimension separator.
         """
         array_meta_key = 'attributes.json'
         group_meta_key = 'attributes.json'
@@ -498,7 +512,7 @@ try:
                         for dir_path, _, file_names in self.fs.walk(entry_path):
                             for file_name in file_names:
                                 file_path = os.path.join(dir_path, file_name)
-                                rel_path = file_path.split(root_path + os.path.sep)[1]
+                                rel_path = file_path.split(root_path)[1]
                                 new_child = rel_path.replace(os.path.sep, ".")
                                 new_children.append(invert_chunk_coords(new_child))
                     else:
