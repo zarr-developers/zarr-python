@@ -327,8 +327,20 @@ try:
             if 'dimension_separator' in kwargs:
                 kwargs.pop('dimension_separator')
                 warnings.warn('Keyword argument `dimension_separator` will be ignored')
-            dimension_separator = "/"
+            dimension_separator = "."
             super().__init__(*args, dimension_separator=dimension_separator, **kwargs)
+
+        def swap_separator(self, key):
+            old = key
+            segments = list(key.split('/'))
+            if segments:
+                last_segment = segments[-1]
+                if _prog_ckey.match(last_segment):
+                    coords = list(last_segment.split('.'))
+                    last_segment = '/'.join(coords[::-1])
+                    segments = segments[:-1] + [last_segment]
+                    key = '/'.join(segments)
+            return key
 
         def _normalize_key(self, key):
             if is_chunk_key(key):
@@ -339,7 +351,7 @@ try:
                 *bits, end = key.split("/")
 
                 if end not in (self.array_meta_key, self.group_meta_key, self.attrs_key):
-                    end = end.replace(".", self.key_separator)
+                    end = end.replace(".", "/")
                     key = "/".join(bits + [end])
             return key.lower() if self.normalize_keys else key
 
@@ -367,6 +379,10 @@ try:
                     raise KeyError(key)
                 else:
                     return json_dumps(value)
+
+            elif is_chunk_key(key):
+                key = self.swap_separator(key)
+
             return super().__getitem__(key)
 
         def __setitem__(self, key, value):
@@ -411,6 +427,9 @@ try:
 
                 value = json_dumps(n5_attrs)
 
+            elif is_chunk_key(key):
+                key = self.swap_separator(key)
+
             super().__setitem__(key, value)
 
         def __delitem__(self, key):
@@ -421,6 +440,8 @@ try:
                 key = key.replace(zarr_array_meta_key, self.array_meta_key)
             elif key.endswith(zarr_attrs_key):  # pragma: no cover
                 key = key.replace(zarr_attrs_key, self.attrs_key)
+            elif is_chunk_key(key):
+                key = self.swap_separator(key)
 
             super().__delitem__(key)
 
@@ -443,6 +464,9 @@ try:
 
                 key = key.replace(zarr_attrs_key, self.attrs_key)
                 return self._contains_attrs(key)
+
+            elif is_chunk_key(key):
+                key = self.swap_separator(key)
 
             return super().__contains__(key)
 
@@ -538,11 +562,12 @@ try:
             return len(attrs) > 0
 
     def is_chunk_key(key):
+        rv = False
         segments = list(key.split('/'))
         if segments:
             last_segment = segments[-1]
-            return _prog_ckey.match(last_segment)
-        return False  # pragma: no cover
+            rv = _prog_ckey.match(last_segment)
+        return rv
 
     def invert_chunk_coords(key):
         segments = list(key.split('/'))
@@ -550,7 +575,7 @@ try:
             last_segment = segments[-1]
             if _prog_ckey.match(last_segment):
                 coords = list(last_segment.split('.'))
-                last_segment = '.'.join(coords[::-1])
+                last_segment = '/'.join(coords[::-1])
                 segments = segments[:-1] + [last_segment]
                 key = '/'.join(segments)
         return key
@@ -627,7 +652,7 @@ def array_metadata_to_zarr(array_metadata):
     array_metadata['fill_value'] = 0  # also if None was requested
     array_metadata['order'] = 'C'
     array_metadata['filters'] = []
-    array_metadata['dimension_separator'] = '/'
+    array_metadata['dimension_separator'] = '.'
 
     compressor_config = array_metadata['compressor']
     compressor_config = compressor_config_to_zarr(compressor_config)
