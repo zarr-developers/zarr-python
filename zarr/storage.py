@@ -1101,7 +1101,6 @@ class FSStore(MutableMapping):
             raise FSPathExistNotDir(url)
 
     def _normalize_key(self, key):
-        orig = key
         key = normalize_storage_path(key).lstrip('/')
         if key:
             *bits, end = key.split('/')
@@ -1110,9 +1109,7 @@ class FSStore(MutableMapping):
                 end = end.replace('.', self.key_separator)
                 key = '/'.join(bits + [end])
 
-        key = key.lower() if self.normalize_keys else key
-        print(f"Store: {orig} --> {key} ({self})")
-        return key
+        return key.lower() if self.normalize_keys else key
 
     def getitems(self, keys, **kwargs):
         keys_transformed = [self._normalize_key(key) for key in keys]
