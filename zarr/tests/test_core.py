@@ -2794,19 +2794,14 @@ class TestArrayWithFSStoreEmptyWrites(TestArrayEmptyWrites):
         return Array(store, read_only=read_only, cache_metadata=cache_metadata,
                      cache_attrs=cache_attrs, write_empty_chunks=True)
 
-    def test_nchunks_initialized(self):
-        for fill_value in -1, 0, 1, 10:
-            z = self.create_array(shape=100, chunks=10, fill_value=fill_value)
-            assert 0 == z.nchunks_initialized
-            # manually put something into the store to confuse matters
-            z.store['foo'] = b'bar'
-            assert 0 == z.nchunks_initialized
-            z[:] = 42
-            assert 10 == z.nchunks_initialized
-            z[:] = fill_value
-            assert 10 == z.nchunks_initialized
-            if hasattr(z.store, 'close'):
-                z.store.close()
+    def expected(self):
+        return [
+           "ab753fc81df0878589535ca9bad2816ba88d91bc",
+           "c16261446f9436b1e9f962e57ce3e8f6074abe8a",
+           "c2ef3b2fb2bc9dcace99cd6dad1a7b66cc1ea058",
+           "6e52f95ac15b164a8e96843a230fcee0e610729b",
+           "091fa99bc60706095c9ce30b56ce2503e0223f56",
+        ]
 
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
@@ -2823,3 +2818,12 @@ class TestArrayWithFSStoreNestedEmptyWrites(TestArrayEmptyWrites):
         init_array(store, **kwargs)
         return Array(store, read_only=read_only, cache_metadata=cache_metadata,
                      cache_attrs=cache_attrs, write_empty_chunks=True)
+
+    def expected(self):
+        return [
+           "94884f29b41b9beb8fc99ad7bf9c0cbf0f2ab3c9",
+           "077aa3bd77b8d354f8f6c15dce5ae4f545788a72",
+           "22be95d83c097460adb339d80b2d7fe19c513c16",
+           "85131cec526fa46938fd2c4a6083a58ee11037ea",
+           "c3167010c162c6198cb2bf3c1da2c46b047c69a1",
+        ]
