@@ -1490,6 +1490,14 @@ class TestArray(unittest.TestCase):
         if hasattr(a.store, 'close'):
             a.store.close()
 
+    def test_structured_with_object(self):
+        a = self.create_array(fill_value=(0.0, None),
+                              shape=10,
+                              chunks=10,
+                              dtype=[('x', float), ('y', object)],
+                              object_codec=Pickle(protocol=5))
+        assert tuple(a[0]) == (0.0, None)
+
 
 class TestArrayWithPath(TestArray):
 

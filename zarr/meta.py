@@ -147,12 +147,12 @@ def decode_fill_value(v, dtype, object_codec=None):
     # early out
     if v is None:
         return v
-    if dtype.hasobject:
+    if dtype.kind == 'V' and dtype.hasobject:
         v = base64.standard_b64decode(v)
         v = object_codec.decode(v)
         v = np.array(v, dtype=dtype)[()]
         return v
-    elif dtype.kind == 'f':
+    if dtype.kind == 'f':
         if v == 'NaN':
             return np.nan
         elif v == 'Infinity':
@@ -191,7 +191,7 @@ def encode_fill_value(v: Any, dtype: np.dtype, object_codec: Any = None) -> Any:
     # early out
     if v is None:
         return v
-    if dtype.hasobject:
+    if dtype.kind == 'V' and dtype.hasobject:
         v = object_codec.encode(v)
         v = str(base64.standard_b64encode(v), 'ascii')
         return v
