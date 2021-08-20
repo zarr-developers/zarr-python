@@ -1893,13 +1893,21 @@ class Array:
             to_store = {k: self._encode_chunk(v) for k, v in cdatas.items()}
         self.chunk_store.setitems(to_store)
 
-    def _chunk_is_empty(self, chunk):
-        if self.dtype == 'object':
-            # we have to flatten the result of np.equal to handle outputs like
-            # [np.array([True,True]), True, True]
-            is_empty = all(flatten(np.equal(chunk, self.fill_value, dtype='object')))
+    def _chunk_is_empty(self, chunk) -> bool:
+        if self._fill_value is None:
+            is_empty = False
         else:
-            is_empty = np.all(chunk == self._fill_value)
+            if self.dtype == 'object':
+                # we have to flatten the result of np.equal to handle outputs like
+                # [np.array([True,True]), True, True]
+                is_empty = all(flatten(np.equal(chunk, self.fill_value, dtype='object')))
+            else:
+                # Numpy errors if you call np.isnan on custom dtypes, so ensure
+                # we are working with floats before calling isnan
+                if isinstance(self._fill_value, float) and np.isnan(self._fill_value):
+                    is_empty = np.all(np.isnan(chunk))
+                else:
+                    is_empty = np.all(chunk == self._fill_value)
         return is_empty
 
     def _chunk_delitems(self, ckeys):
