@@ -6,6 +6,9 @@ Unreleased
 
 This release of Zarr Python is the first release of Zarr to not support Python 3.6.
 
+* Fix structured arrays that contain objects
+  By :user: `Attila Bergou <abergou>`; :issue: `806`
+
 .. _release_2.8.3:
 
 2.8.3
