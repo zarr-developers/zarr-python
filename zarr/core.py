@@ -76,11 +76,14 @@ class Array:
         is Blosc, when getting data from the array chunks will be partially
         read and decompressed when possible.
     write_empty_chunks : bool, optional
-        Determines chunk writing behavior for chunks filled with `fill_value` ("empty" chunks).
-        If True (default), all chunks will be written regardless of their contents.
-        If False, empty chunks will not be written, and the `store` entry for
-        the chunk key of an empty chunk will be deleted. Note that setting this option to False
-        will incur additional overhead per chunk write.
+        Sets chunk writing behavior for chunks filled with `fill_value`
+        ("empty" chunks). If False (default), empty chunks will not be written,
+        and the `store` entry for the chunk key of an empty chunk will be deleted.
+        This setting enables sparser storage, because only chunks with
+        non-fill-value data are be written to disk, at the expense of
+        computational overhead, because each chunk must be compared with
+        the array's fill_value before writing.
+        If True, all chunks will be written regardless of their contents.
 
         .. versionadded:: 2.7
 
