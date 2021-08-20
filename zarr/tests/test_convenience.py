@@ -27,10 +27,11 @@ from zarr.storage import (ConsolidatedMetadataStore, MemoryStore,
                           atexit_rmtree, getsize)
 
 
-def test_open_array():
+def test_open_array(path_type):
 
     store = tempfile.mkdtemp()
     atexit.register(atexit_rmtree, store)
+    store = path_type(store)
 
     # open array, create if doesn't exist
     z = open(store, mode='a', shape=100)
@@ -53,10 +54,11 @@ def test_open_array():
         open('doesnotexist', mode='r')
 
 
-def test_open_group():
+def test_open_group(path_type):
 
     store = tempfile.mkdtemp()
     atexit.register(atexit_rmtree, store)
+    store = path_type(store)
 
     # open group, create if doesn't exist
     g = open(store, mode='a')
