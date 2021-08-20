@@ -578,7 +578,7 @@ class TestArray(unittest.TestCase):
         if hasattr(z.store, 'close'):
             z.store.close()
 
-        self.expected() == found
+        assert self.expected() == found
 
     def test_resize_1d(self):
 
