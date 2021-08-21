@@ -182,7 +182,6 @@ def is_total_slice(item, shape: Tuple[int]) -> bool:
     class."""
 
     # N.B., assume shape is normalized
-
     if item == Ellipsis:
         return True
     if item == slice(None):
@@ -198,6 +197,20 @@ def is_total_slice(item, shape: Tuple[int]) -> bool:
         )
     else:
         raise TypeError('expected slice or tuple of slices, found %r' % item)
+
+
+def trim_chunks(chunk_shape: Tuple[int, ...],
+                chunk_coords: Tuple[int, ...],
+                array_shape: Tuple[int, ...]) -> Tuple[int, ...]:
+    """Reduce a chunk size to the size of the region that can be written to
+    it, given the dimensions of the array. This function assumes that all
+    the inputs have been previously validated.
+    """
+    chunk_boundary = (np.array(chunk_coords) + 1) * np.array(chunk_shape)
+    excess = chunk_boundary - np.array(array_shape)
+    # ensure that we don't increase the chunk shape
+    excess[excess < 0] = 0
+    return tuple(np.array(chunk_shape) - excess)
 
 
 def normalize_resize_args(old_shape, *args):

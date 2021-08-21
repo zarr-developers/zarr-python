@@ -10,7 +10,7 @@ from zarr.util import (guess_chunks, human_readable_size, info_html_report,
                        normalize_fill_value, normalize_order,
                        normalize_resize_args, normalize_shape, retry_call,
                        tree_array_icon, tree_group_icon, tree_get_icon,
-                       tree_widget)
+                       tree_widget, trim_chunks)
 
 
 def test_normalize_dimension_separator():
@@ -76,6 +76,19 @@ def test_is_total_slice():
 
     with pytest.raises(TypeError):
         is_total_slice('foo', (100,))
+
+
+def test_trim_chunks():
+
+    # 1D
+    assert trim_chunks((10,), (0,), (10,)) == (10,)
+    assert trim_chunks((10,), (0,), (9,)) == (9,)
+    assert trim_chunks((9,), (1,), (10,)) == (1,)
+
+    # 2D
+    assert trim_chunks((10, 10), (0, 0), (10, 10)) == (10, 10)
+    assert trim_chunks((10, 10), (0, 0), (9, 10)) == (9, 10)
+    assert trim_chunks((10, 9), (0, 1), (10, 10)) == (10, 1)
 
 
 def test_normalize_resize_args():

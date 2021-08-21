@@ -41,6 +41,7 @@ from zarr.util import (
     normalize_shape,
     normalize_storage_path,
     PartialReadBuffer,
+    trim_chunks,
 )
 
 
@@ -1857,8 +1858,8 @@ class Array:
 
     def _chunk_setitems(self, lchunk_coords, lchunk_selection, values, fields=None):
         ckeys = [self._chunk_key(co) for co in lchunk_coords]
-        cdatas = [self._process_for_setitem(key, sel, val, fields=fields)
-                  for key, sel, val in zip(ckeys, lchunk_selection, values)]
+        cdatas = [self._process_for_setitem(ccoords, key, sel, val, fields=fields)
+                  for ccoords, key, sel, val in zip(lchunk_coords, ckeys, lchunk_selection, values)]
         values = {k: v for k, v in zip(ckeys, cdatas)}
         self.chunk_store.setitems(values)
 
@@ -1890,28 +1891,29 @@ class Array:
 
     def _chunk_setitem_nosync(self, chunk_coords, chunk_selection, value, fields=None):
         ckey = self._chunk_key(chunk_coords)
-        cdata = self._process_for_setitem(ckey, chunk_selection, value, fields=fields)
+        cdata = self._process_for_setitem(chunk_coords, ckey, chunk_selection, value, fields=fields)
         # store
         self.chunk_store[ckey] = cdata
 
-    def _process_for_setitem(self, ckey, chunk_selection, value, fields=None):
-        if is_total_slice(chunk_selection, self._chunks) and not fields:
+    def _process_for_setitem(self, chunk_coords, ckey, chunk_selection, value, fields=None):
+        chunks_trimmed = trim_chunks(self._chunks, chunk_coords, self.shape)
+        if is_total_slice(chunk_selection, chunks_trimmed) and not fields:
             # totally replace chunk
 
             # optimization: we are completely replacing the chunk, so no need
             # to access the existing chunk data
-
+            chunk = np.empty(self._chunks, dtype=self._dtype, order=self._order)
             if is_scalar(value, self._dtype):
 
                 # setup array filled with value
-                chunk = np.empty(self._chunks, dtype=self._dtype, order=self._order)
                 chunk.fill(value)
 
             else:
-
+                if self.fill_value is not None:
+                    chunk.fill(self.fill_value)
+                index = tuple(slice(s) for s in value.shape)
                 # ensure array is contiguous
-                chunk = value.astype(self._dtype, order=self._order, copy=False)
-
+                chunk[index] = value.astype(self._dtype, order=self._order, copy=False)
         else:
             # partially replace the contents of this chunk
 
