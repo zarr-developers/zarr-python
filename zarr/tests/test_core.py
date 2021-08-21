@@ -1495,7 +1495,7 @@ class TestArray(unittest.TestCase):
                               shape=10,
                               chunks=10,
                               dtype=[('x', float), ('y', object)],
-                              object_codec=Pickle(protocol=5))
+                              object_codec=Pickle())
         assert tuple(a[0]) == (0.0, None)
 
 
@@ -1898,6 +1898,10 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
                 self.create_array(shape=data.shape, dtype='array:{}'.format(item_type))
 
     def test_object_arrays_danger(self):
+        # Cannot hacking out object codec as N5 doesn't allow object codecs
+        pass
+
+    def test_structured_with_object(self):
         # Cannot hacking out object codec as N5 doesn't allow object codecs
         pass
 
