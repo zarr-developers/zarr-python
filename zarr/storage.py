@@ -1063,6 +1063,12 @@ class FSStore(MutableMapping):
         as a missing key
     dimension_separator : {'.', '/'}, optional
         Separator placed between the dimensions of a chunk.
+    check: bool, optional
+        Whether to attempt to read from the location before instantiation, to
+        check that the mapping does exist. Default value is False.
+    create: bool, optional
+        Whether to make the directory corresponding to the root before
+        instantiating. Default value is False.
     storage_options : passed to the fsspec implementation
     """
 
@@ -1072,10 +1078,12 @@ class FSStore(MutableMapping):
                  mode='w',
                  exceptions=(KeyError, PermissionError, IOError),
                  dimension_separator=None,
+                 check=False,
+                 create=False,
                  **storage_options):
         import fsspec
         self.normalize_keys = normalize_keys
-        self.map = fsspec.get_mapper(url, **storage_options)
+        self.map = fsspec.get_mapper(url, check, create, **storage_options)
         self.fs = self.map.fs  # for direct operations
         self.path = self.fs._strip_protocol(url)
         self.mode = mode
