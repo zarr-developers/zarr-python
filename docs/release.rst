@@ -1,10 +1,58 @@
 Release notes
 =============
 
+.. _unreleased:
+
 Unreleased
 ----------
 
+.. _release_2.9.0:
+
+
 This release of Zarr Python is the first release of Zarr to not support Python 3.6.
+
+Enhancements
+~~~~~~~~~~~~
+
+* Update ABSStore for compatibility with newer `azure.storage.blob`.
+  By :user:`Tom Augspurger <TomAugspurger>`; :issue:`759`.
+
+* Pathlib support.
+  By :user:`Chris Barnes <clbarnes>`; :issue:`768`.
+
+Documentation
+~~~~~~~~~~~~~
+
+* Clarify that arbitrary key/value pairs are OK for attributes.
+  By :user:`Stephan Hoyer <shoyer>`; :issue:`751`.
+
+* Clarify how to manually convert a DirectoryStore to a ZipStore.
+  By :user:`pmav99 <pmav99>`; :issue:`763`.
+
+Bug fixes
+~~~~~~~~~
+
+* Fix dimension_separator support.
+  By :user:`Josh Moore <joshmoore>`; :issue:`775`.
+
+* Extract ABSStore to zarr._storage.absstore.
+  By :user:`Josh Moore <joshmoore>`; :issue:`781`.
+
+* avoid NumPy 1.21.0 due to https://github.com/numpy/numpy/issues/19325
+  By :user:`Greggory Lee <grlee77>`; :issue:`791`.
+
+Maintenance
+~~~~~~~~~~~
+
+* Drop 3.6 builds.
+  By :user:`Josh Moore <joshmoore>`; :issue:`774`, :issue:`778`.
+
+* Fix build with Sphinx 4.
+  By :user:`Elliott Sales de Andrade <QuLogic>`; :issue:`799`.
+
+* TST: add missing assert in test_hexdigest.
+  By :user:`Greggory Lee <grlee77>`; :issue:`801`.
+
 
 .. _release_2.8.3:
 
