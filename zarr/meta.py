@@ -148,6 +148,8 @@ def decode_fill_value(v, dtype, object_codec=None):
     if v is None:
         return v
     if dtype.kind == 'V' and dtype.hasobject:
+        if object_codec is None:
+            raise ValueError('missing object_codec for object array')
         v = base64.standard_b64decode(v)
         v = object_codec.decode(v)
         v = np.array(v, dtype=dtype)[()]
@@ -192,6 +194,8 @@ def encode_fill_value(v: Any, dtype: np.dtype, object_codec: Any = None) -> Any:
     if v is None:
         return v
     if dtype.kind == 'V' and dtype.hasobject:
+        if object_codec is None:
+            raise ValueError('missing object_codec for object array')
         v = object_codec.encode(v)
         v = str(base64.standard_b64encode(v), 'ascii')
         return v
