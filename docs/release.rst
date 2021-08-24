@@ -8,6 +8,9 @@ Unreleased
 
 .. _release_2.9.2:
 
+2.9.2
+-----
+
 Maintenance
 ~~~~~~~~~~~
 
@@ -17,6 +20,9 @@ Maintenance
 
 .. _release_2.9.1:
 
+2.9.1
+-----
+
 Maintenance
 ~~~~~~~~~~~
 
@@ -25,6 +31,8 @@ Maintenance
 
 .. _release_2.9.0:
 
+2.9.0
+-----
 
 This release of Zarr Python is the first release of Zarr to not support Python 3.6.
 
