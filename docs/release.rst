@@ -6,6 +6,14 @@ Release notes
 Unreleased
 ----------
 
+.. _release_2.9.1:
+
+Maintenance
+~~~~~~~~~~~
+
+* Correct conda-forge deployment of Zarr.
+  By :user:`Josh Moore <joshmoore>`; :issue:`XXX`.
+
 .. _release_2.9.0:
 
 
