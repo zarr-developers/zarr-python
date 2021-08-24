@@ -6,8 +6,33 @@ Release notes
 Unreleased
 ----------
 
+.. _release_2.9.2:
+
+2.9.2
+-----
+
+Maintenance
+~~~~~~~~~~~
+
+* Correct conda-forge deployment of Zarr by fixing some Zarr tests.
+  By :user:`Ben Williams <benjaminhwilliams>`; :issue:`821`.
+
+
+.. _release_2.9.1:
+
+2.9.1
+-----
+
+Maintenance
+~~~~~~~~~~~
+
+* Correct conda-forge deployment of Zarr.
+  By :user:`Josh Moore <joshmoore>`; :issue:`XXX`.
+
 .. _release_2.9.0:
 
+2.9.0
+-----
 
 This release of Zarr Python is the first release of Zarr to not support Python 3.6.
 
