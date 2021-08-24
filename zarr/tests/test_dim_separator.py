@@ -40,7 +40,7 @@ def dataset(tmpdir, request):
         store_class = NestedDirectoryStore
     else:
         if have_fsspec is False:
-            pytest.skip("no fsspec")
+            pytest.skip("no fsspec")  # pragma: no cover
         store_class = FSStore
         kwargs["mode"] = "w"
         kwargs["auto_mkdir"] = True
