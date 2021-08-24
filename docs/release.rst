@@ -9,7 +9,7 @@ Unreleased
 Maintenance
 ~~~~~~~~~~~
 
-* Mark the fact that some tests that require ``fsspec``, compromising the code coverage score.
+* Mark the fact that some tests that require ``fsspec``, without compromising the code coverage score.
   By :user:`Ben Williams <benjaminhwilliams>`; :issue:`823`.
 
 .. _release_2.9.2:
