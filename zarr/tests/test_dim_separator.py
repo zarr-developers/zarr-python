@@ -60,7 +60,7 @@ def verify(array):
 
 
 def test_open(dataset):
-    verify(zarr.open(dataset))
+    verify(zarr.open(dataset, "r"))
 
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
