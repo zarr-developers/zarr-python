@@ -1247,17 +1247,6 @@ _prog_ckey = re.compile(r'^(\d+)(\.\d+)+$')
 _prog_number = re.compile(r'^\d+$')
 
 
-def _nested_map_ckey(key):
-    segments = list(key.split('/'))
-    if segments:
-        last_segment = segments[-1]
-        if _prog_ckey.match(last_segment):
-            last_segment = last_segment.replace('.', '/')
-            segments = segments[:-1] + [last_segment]
-            key = '/'.join(segments)
-    return key
-
-
 class NestedDirectoryStore(DirectoryStore):
     """Storage class using directories and files on a standard file system, with
     special handling for chunk keys so that chunk files for multidimensional
