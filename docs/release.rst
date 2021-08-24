@@ -6,6 +6,12 @@ Release notes
 Unreleased
 ----------
 
+Maintenance
+~~~~~~~~~~~
+
+* Mark the fact that some tests that require ``fsspec``, compromising the code coverage score.
+  By :user:`Ben Williams <benjaminhwilliams>`; :issue:`823`.
+
 .. _release_2.9.2:
 
 2.9.2
