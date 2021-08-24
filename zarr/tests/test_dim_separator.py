@@ -33,9 +33,9 @@ def dataset(tmpdir, request):
     if which.startswith("static"):
         project_root = pathlib.Path(zarr.__file__).resolve().parent.parent
         if which.endswith("nested"):
-            return project_root / "fixture/nested"
+            return str(project_root / "fixture/nested")
         else:
-            return project_root / "fixture/flat"
+            return str(project_root / "fixture/flat")
 
     if which.startswith("directory"):
         store_class = DirectoryStore
