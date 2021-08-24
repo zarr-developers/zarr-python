@@ -9,6 +9,14 @@ Unreleased
 * Fix structured arrays that contain objects
   By :user: `Attila Bergou <abergou>`; :issue: `806`
 
+.. _release_2.9.1:
+
+Maintenance
+~~~~~~~~~~~
+
+* Correct conda-forge deployment of Zarr.
+  By :user:`Josh Moore <joshmoore>`; :issue:`XXX`.
+
 .. _release_2.9.0:
 
 This release of Zarr Python is the first release of Zarr to not support Python 3.6.

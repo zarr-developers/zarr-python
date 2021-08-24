@@ -63,6 +63,7 @@ def test_open(dataset):
     verify(zarr.open(dataset))
 
 
+@pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
 def test_fsstore(dataset):
     verify(Array(store=FSStore(dataset)))
 
