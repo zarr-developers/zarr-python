@@ -1,3 +1,5 @@
+import pathlib
+
 import pytest
 from numpy.testing import assert_array_equal
 
@@ -29,10 +31,11 @@ def dataset(tmpdir, request):
     kwargs = {}
 
     if which.startswith("static"):
+        project_root = pathlib.Path(zarr.__file__).resolve().parent.parent
         if which.endswith("nested"):
-            return "fixture/nested"
+            return project_root / "fixture/nested"
         else:
-            return "fixture/flat"
+            return project_root / "fixture/flat"
 
     if which.startswith("directory"):
         store_class = DirectoryStore
