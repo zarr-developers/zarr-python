@@ -9,6 +9,9 @@ from zarr.storage import (DirectoryStore, NestedDirectoryStore, FSStore)
 from zarr.tests.util import have_fsspec
 
 
+needs_fsspec = pytest.mark.skipif(not have_fsspec, reason="needs fsspec")
+
+
 @pytest.fixture(params=("static_nested",
                         "static_flat",
                         "directory_nested",
@@ -16,9 +19,9 @@ from zarr.tests.util import have_fsspec
                         "directory_default",
                         "nesteddirectory_nested",
                         "nesteddirectory_default",
-                        "fs_nested",
-                        "fs_flat",
-                        "fs_default"))
+                        pytest.param("fs_nested", marks=needs_fsspec),
+                        pytest.param("fs_flat", marks=needs_fsspec),
+                        pytest.param("fs_default", marks=needs_fsspec)))
 def dataset(tmpdir, request):
     """
     Generate a variety of different Zarrs using
@@ -42,8 +45,6 @@ def dataset(tmpdir, request):
     elif which.startswith("nested"):
         store_class = NestedDirectoryStore
     else:
-        if have_fsspec is False:
-            pytest.skip("no fsspec")  # pragma: no cover
         store_class = FSStore
         kwargs["mode"] = "w"
         kwargs["auto_mkdir"] = True
@@ -66,7 +67,7 @@ def test_open(dataset):
     verify(zarr.open(dataset, "r"))
 
 
-@pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
+@needs_fsspec
 def test_fsstore(dataset):
     verify(Array(store=FSStore(dataset)))
 

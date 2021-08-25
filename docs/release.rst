@@ -6,8 +6,17 @@ Release notes
 Unreleased
 ----------
 
+Bug fixes
+~~~~~~~~~
+
 * Fix structured arrays that contain objects
   By :user: `Attila Bergou <abergou>`; :issue: `806`
+
+Maintenance
+~~~~~~~~~~~
+
+* Mark the fact that some tests that require ``fsspec``, without compromising the code coverage score.
+  By :user:`Ben Williams <benjaminhwilliams>`; :issue:`823`.
 
 .. _release_2.9.2:
 
