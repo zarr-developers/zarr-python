@@ -6,7 +6,7 @@ import numpy as np
 from zarr.errors import MetadataError
 from zarr.util import json_dumps, json_loads
 
-from typing import Union, Any, List, Mapping as MappingType
+from typing import cast, Union, Any, List, Mapping as MappingType
 
 ZARR_FORMAT = 2
 
@@ -50,7 +50,9 @@ def decode_array_metadata(s: Union[MappingType, str]) -> MappingType[str, Any]:
             fill_value=fill_value,
             order=meta['order'],
             filters=meta['filters'],
+            dimension_separator=meta.get('dimension_separator', '.'),
         )
+
     except Exception as e:
         raise MetadataError('error decoding metadata: %s' % e)
     else:
@@ -62,6 +64,9 @@ def encode_array_metadata(meta: MappingType[str, Any]) -> bytes:
     sdshape = ()
     if dtype.subdtype is not None:
         dtype, sdshape = dtype.subdtype
+
+    dimension_separator = meta.get('dimension_separator')
+
     meta = dict(
         zarr_format=ZARR_FORMAT,
         shape=meta['shape'] + sdshape,
@@ -72,10 +77,14 @@ def encode_array_metadata(meta: MappingType[str, Any]) -> bytes:
         order=meta['order'],
         filters=meta['filters'],
     )
+
+    if dimension_separator:
+        meta['dimension_separator'] = dimension_separator
+
     return json_dumps(meta)
 
 
-def encode_dtype(d: np.dtype) -> str:
+def encode_dtype(d: np.dtype):
     if d.fields is None:
         return d.str
     else:
@@ -180,8 +189,9 @@ def encode_fill_value(v: Any, dtype: np.dtype) -> Any:
     elif dtype.kind == 'b':
         return bool(v)
     elif dtype.kind in 'c':
-        v = (encode_fill_value(v.real, dtype.type().real.dtype),
-             encode_fill_value(v.imag, dtype.type().imag.dtype))
+        c = cast(np.complex128, np.dtype(complex).type())
+        v = (encode_fill_value(v.real, c.real.dtype),
+             encode_fill_value(v.imag, c.imag.dtype))
         return v
     elif dtype.kind in 'SV':
         v = str(base64.standard_b64encode(v), 'ascii')

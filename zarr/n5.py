@@ -295,7 +295,7 @@ def invert_chunk_coords(key):
         last_segment = segments[-1]
         if _prog_ckey.match(last_segment):
             coords = list(last_segment.split('.'))
-            last_segment = '.'.join(coords[::-1])
+            last_segment = '/'.join(coords[::-1])
             segments = segments[:-1] + [last_segment]
             key = '/'.join(segments)
     return key
@@ -354,6 +354,9 @@ def array_metadata_to_n5(array_metadata):
     compressor_config = array_metadata['compression']
     compressor_config = compressor_config_to_n5(compressor_config)
     array_metadata['compression'] = compressor_config
+
+    if 'dimension_separator' in array_metadata:
+        del array_metadata['dimension_separator']
 
     return array_metadata
 

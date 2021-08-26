@@ -783,6 +783,8 @@ class Group(MutableMapping):
             lifetime of the object. If False, array metadata will be reloaded
             prior to all data access and modification operations (may incur
             overhead depending on storage and data access pattern).
+        dimension_separator : {'.', '/'}, optional
+            Separator placed between the dimensions of a chunk.
 
         Returns
         -------

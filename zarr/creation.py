@@ -1,3 +1,4 @@
+import os
 from warnings import warn
 
 import numpy as np
@@ -13,13 +14,14 @@ from zarr.n5 import N5Store
 from zarr.storage import (DirectoryStore, ZipStore, contains_array,
                           contains_group, default_compressor, init_array,
                           normalize_storage_path, FSStore)
+from zarr.util import normalize_dimension_separator
 
 
 def create(shape, chunks=True, dtype=None, compressor='default',
            fill_value=0, order='C', store=None, synchronizer=None,
            overwrite=False, path=None, chunk_store=None, filters=None,
            cache_metadata=True, cache_attrs=True, read_only=False,
-           object_codec=None, **kwargs):
+           object_codec=None, dimension_separator=None, **kwargs):
     """Create an array.
 
     Parameters
@@ -66,6 +68,9 @@ def create(shape, chunks=True, dtype=None, compressor='default',
         True if array should be protected against modification.
     object_codec : Codec, optional
         A codec to encode object arrays, only needed if dtype=object.
+    dimension_separator : {'.', '/'}, optional
+        Separator placed between the dimensions of a chunk.
+        .. versionadded:: 2.8
 
     Returns
     -------
@@ -117,10 +122,22 @@ def create(shape, chunks=True, dtype=None, compressor='default',
     # API compatibility with h5py
     compressor, fill_value = _kwargs_compat(compressor, fill_value, kwargs)
 
+    # optional array metadata
+    if dimension_separator is None:
+        dimension_separator = getattr(store, "_dimension_separator", None)
+    else:
+        if getattr(store, "_dimension_separator", None) != dimension_separator:
+            raise ValueError(
+                f"Specified dimension_separtor: {dimension_separator}"
+                f"conflicts with store's separator: "
+                f"{store._dimension_separator}")
+    dimension_separator = normalize_dimension_separator(dimension_separator)
+
     # initialize array metadata
     init_array(store, shape=shape, chunks=chunks, dtype=dtype, compressor=compressor,
                fill_value=fill_value, order=order, overwrite=overwrite, path=path,
-               chunk_store=chunk_store, filters=filters, object_codec=object_codec)
+               chunk_store=chunk_store, filters=filters, object_codec=object_codec,
+               dimension_separator=dimension_separator)
 
     # instantiate array
     z = Array(store, path=path, chunk_store=chunk_store, synchronizer=synchronizer,
@@ -132,7 +149,9 @@ def create(shape, chunks=True, dtype=None, compressor='default',
 def normalize_store_arg(store, clobber=False, storage_options=None, mode='w'):
     if store is None:
         return dict()
-    elif isinstance(store, str):
+    if isinstance(store, os.PathLike):
+        store = os.fspath(store)
+    if isinstance(store, str):
         mode = mode if clobber else "r"
         if "://" in store or "::" in store:
             return FSStore(store, mode=mode, **(storage_options or {}))
