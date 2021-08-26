@@ -46,7 +46,7 @@ def dataset(tmpdir, request):
             # store the data - should be one-time operation
             s = generator(str(static))
             a = zarr.open(store=s, mode="w", shape=(2, 2), dtype="<i8")
-            a[:] = [[1,2], [3,4]]
+            a[:] = [[1, 2], [3, 4]]
 
         return str(static)
 
