@@ -42,7 +42,7 @@ def dataset(tmpdir, request):
             static = project_root / "fixture/flat"
             generator = DirectoryStore
 
-        if not static.exists():
+        if not static.exists():  # pragma: no cover
             # store the data - should be one-time operation
             s = generator(str(static))
             a = zarr.open(store=s, mode="w", shape=(2, 2), dtype="<i8")
