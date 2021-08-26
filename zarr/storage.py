@@ -52,13 +52,15 @@ from zarr.errors import (
 )
 from zarr.meta import encode_array_metadata, encode_group_metadata
 from zarr.util import (buffer_size, json_loads, nolock, normalize_chunks,
+                       normalize_dimension_separator,
                        normalize_dtype, normalize_fill_value, normalize_order,
-                       normalize_shape, normalize_storage_path)
+                       normalize_shape, normalize_storage_path, retry_call)
+
+from zarr._storage.absstore import ABSStore  # noqa: F401
 
 __doctest_requires__ = {
     ('RedisStore', 'RedisStore.*'): ['redis'],
     ('MongoDBStore', 'MongoDBStore.*'): ['pymongo'],
-    ('ABSStore', 'ABSStore.*'): ['azure.storage.blob'],
     ('LRUStoreCache', 'LRUStoreCache.*'): ['s3fs'],
 }
 
@@ -237,6 +239,7 @@ def init_array(
     chunk_store: MutableMapping = None,
     filters=None,
     object_codec=None,
+    dimension_separator=None,
 ):
     """Initialize an array store with the given configuration. Note that this is a low-level
     function and there should be no need to call this directly from user code.
@@ -269,6 +272,8 @@ def init_array(
         Sequence of filters to use to encode chunk data prior to compression.
     object_codec : Codec, optional
         A codec to encode object arrays, only needed if dtype=object.
+    dimension_separator : {'.', '/'}, optional
+        Separator placed between the dimensions of a chunk.
 
     Examples
     --------
@@ -351,7 +356,8 @@ def init_array(
                          compressor=compressor, fill_value=fill_value,
                          order=order, overwrite=overwrite, path=path,
                          chunk_store=chunk_store, filters=filters,
-                         object_codec=object_codec)
+                         object_codec=object_codec,
+                         dimension_separator=dimension_separator)
 
 
 def _init_array_metadata(
@@ -367,6 +373,7 @@ def _init_array_metadata(
     chunk_store=None,
     filters=None,
     object_codec=None,
+    dimension_separator=None,
 ):
 
     # guard conditions
@@ -387,6 +394,11 @@ def _init_array_metadata(
     chunks = normalize_chunks(chunks, shape, dtype.itemsize)
     order = normalize_order(order)
     fill_value = normalize_fill_value(fill_value, dtype)
+
+    # optional array metadata
+    if dimension_separator is None:
+        dimension_separator = getattr(store, "_dimension_separator", None)
+    dimension_separator = normalize_dimension_separator(dimension_separator)
 
     # compressor prep
     if shape == ():
@@ -435,7 +447,8 @@ def _init_array_metadata(
     # initialize metadata
     meta = dict(shape=shape, chunks=chunks, dtype=dtype,
                 compressor=compressor_config, fill_value=fill_value,
-                order=order, filters=filters_config)
+                order=order, filters=filters_config,
+                dimension_separator=dimension_separator)
     key = _path_to_prefix(path) + array_meta_key
     store[key] = encode_array_metadata(meta)
 
@@ -541,13 +554,14 @@ class MemoryStore(MutableMapping):
 
     """
 
-    def __init__(self, root=None, cls=dict):
+    def __init__(self, root=None, cls=dict, dimension_separator=None):
         if root is None:
             self.root = cls()
         else:
             self.root = root
         self.cls = cls
         self.write_mutex = Lock()
+        self._dimension_separator = dimension_separator
 
     def __getstate__(self):
         return self.root, self.cls
@@ -730,6 +744,8 @@ class DirectoryStore(MutableMapping):
         (e.g. 'foo' and 'FOO' will be treated as equivalent). This can be
         useful to avoid potential discrepancies between case-senstive and
         case-insensitive file system. Default value is False.
+    dimension_separator : {'.', '/'}, optional
+        Separator placed between the dimensions of a chunk.
 
     Examples
     --------
@@ -776,7 +792,7 @@ class DirectoryStore(MutableMapping):
 
     """
 
-    def __init__(self, path, normalize_keys=False):
+    def __init__(self, path, normalize_keys=False, dimension_separator=None):
 
         # guard conditions
         path = os.path.abspath(path)
@@ -785,6 +801,7 @@ class DirectoryStore(MutableMapping):
 
         self.path = path
         self.normalize_keys = normalize_keys
+        self._dimension_separator = dimension_separator
 
     def _normalize_key(self, key):
         return key.lower() if self.normalize_keys else key
@@ -862,8 +879,10 @@ class DirectoryStore(MutableMapping):
         try:
             self._tofile(value, temp_path)
 
-            # move temporary file into place
-            os.replace(temp_path, file_path)
+            # move temporary file into place;
+            # make several attempts at writing the temporary file to get past
+            # potential antivirus file locking issues
+            retry_call(os.replace, (temp_path, file_path), exceptions=(PermissionError,))
 
         finally:
             # clean up if temp file still exists for whatever reason
@@ -931,11 +950,36 @@ class DirectoryStore(MutableMapping):
         return dir_path
 
     def listdir(self, path=None):
+        return self._dimension_separator == "/" and \
+            self._nested_listdir(path) or self._flat_listdir(path)
+
+    def _flat_listdir(self, path=None):
         dir_path = self.dir_path(path)
         if os.path.isdir(dir_path):
             return sorted(os.listdir(dir_path))
         else:
             return []
+
+    def _nested_listdir(self, path=None):
+        children = self._flat_listdir(path=path)
+        if array_meta_key in children:
+            # special handling of directories containing an array to map nested chunk
+            # keys back to standard chunk keys
+            new_children = []
+            root_path = self.dir_path(path)
+            for entry in children:
+                entry_path = os.path.join(root_path, entry)
+                if _prog_number.match(entry) and os.path.isdir(entry_path):
+                    for dir_path, _, file_names in os.walk(entry_path):
+                        for file_name in file_names:
+                            file_path = os.path.join(dir_path, file_name)
+                            rel_path = file_path.split(root_path + os.path.sep)[1]
+                            new_children.append(rel_path.replace(os.path.sep, '.'))
+                else:
+                    new_children.append(entry)
+            return sorted(new_children)
+        else:
+            return children
 
     def rename(self, src_path, dst_path):
         store_src_path = normalize_storage_path(src_path)
@@ -1012,30 +1056,44 @@ class FSStore(MutableMapping):
         like "s3://bucket/root"
     normalize_keys : bool
     key_separator : str
-        Character to use when constructing the target path strings
-        for data keys
+        public API for accessing dimension_separator. Never `None`
+        See dimension_separator for more information.
     mode : str
         "w" for writable, "r" for read-only
     exceptions : list of Exception subclasses
         When accessing data, any of these exceptions will be treated
         as a missing key
+    dimension_separator : {'.', '/'}, optional
+        Separator placed between the dimensions of a chunk.
     storage_options : passed to the fsspec implementation
     """
 
     _META_KEYS = (attrs_key, group_meta_key, array_meta_key)
 
-    def __init__(self, url, normalize_keys=True, key_separator='.',
+    def __init__(self, url, normalize_keys=False, key_separator=None,
                  mode='w',
                  exceptions=(KeyError, PermissionError, IOError),
+                 dimension_separator=None,
                  **storage_options):
         import fsspec
         self.normalize_keys = normalize_keys
-        self.key_separator = key_separator
         self.map = fsspec.get_mapper(url, **storage_options)
         self.fs = self.map.fs  # for direct operations
         self.path = self.fs._strip_protocol(url)
         self.mode = mode
         self.exceptions = exceptions
+
+        # For backwards compatibility. Guaranteed to be non-None
+        if key_separator is not None:
+            dimension_separator = key_separator
+
+        self.key_separator = dimension_separator
+        if self.key_separator is None:
+            self.key_separator = "."
+
+        # Pass attributes to array creation
+        self._dimension_separator = dimension_separator
+
         if self.fs.exists(self.path) and not self.fs.isdir(self.path):
             raise FSPathExistNotDir(url)
 
@@ -1051,8 +1109,11 @@ class FSStore(MutableMapping):
         return key.lower() if self.normalize_keys else key
 
     def getitems(self, keys, **kwargs):
-        keys = [self._normalize_key(key) for key in keys]
-        return self.map.getitems(keys, on_error="omit")
+        keys_transformed = [self._normalize_key(key) for key in keys]
+        results = self.map.getitems(keys_transformed, on_error="omit")
+        # The function calling this method may not recognize the transformed keys
+        # So we send the values returned by self.map.getitems back into the original key space.
+        return {keys[keys_transformed.index(rk)]: rv for rk, rv in results.items()}
 
     def __getitem__(self, key):
         key = self._normalize_key(key)
@@ -1114,9 +1175,28 @@ class FSStore(MutableMapping):
     def listdir(self, path=None):
         dir_path = self.dir_path(path)
         try:
-            out = sorted(p.rstrip('/').rsplit('/', 1)[-1]
-                         for p in self.fs.ls(dir_path, detail=False))
-            return out
+            children = sorted(p.rstrip('/').rsplit('/', 1)[-1]
+                              for p in self.fs.ls(dir_path, detail=False))
+            if self.key_separator != "/":
+                return children
+            else:
+                if array_meta_key in children:
+                    # special handling of directories containing an array to map nested chunk
+                    # keys back to standard chunk keys
+                    new_children = []
+                    root_path = self.dir_path(path)
+                    for entry in children:
+                        entry_path = os.path.join(root_path, entry)
+                        if _prog_number.match(entry) and self.fs.isdir(entry_path):
+                            for file_name in self.fs.find(entry_path):
+                                file_path = os.path.join(dir_path, file_name)
+                                rel_path = file_path.split(root_path)[1]
+                                new_children.append(rel_path.replace(os.path.sep, '.'))
+                        else:
+                            new_children.append(entry)
+                    return sorted(new_children)
+                else:
+                    return children
         except IOError:
             return []
 
@@ -1153,11 +1233,13 @@ class TempStore(DirectoryStore):
         (e.g. 'foo' and 'FOO' will be treated as equivalent). This can be
         useful to avoid potential discrepancies between case-senstive and
         case-insensitive file system. Default value is False.
-
+    dimension_separator : {'.', '/'}, optional
+        Separator placed between the dimensions of a chunk.
     """
 
     # noinspection PyShadowingBuiltins
-    def __init__(self, suffix='', prefix='zarr', dir=None, normalize_keys=False):
+    def __init__(self, suffix='', prefix='zarr', dir=None, normalize_keys=False,
+                 dimension_separator=None):
         path = tempfile.mkdtemp(suffix=suffix, prefix=prefix, dir=dir)
         atexit.register(atexit_rmtree, path)
         super().__init__(path, normalize_keys=normalize_keys)
@@ -1165,17 +1247,6 @@ class TempStore(DirectoryStore):
 
 _prog_ckey = re.compile(r'^(\d+)(\.\d+)+$')
 _prog_number = re.compile(r'^\d+$')
-
-
-def _nested_map_ckey(key):
-    segments = list(key.split('/'))
-    if segments:
-        last_segment = segments[-1]
-        if _prog_ckey.match(last_segment):
-            last_segment = last_segment.replace('.', '/')
-            segments = segments[:-1] + [last_segment]
-            key = '/'.join(segments)
-    return key
 
 
 class NestedDirectoryStore(DirectoryStore):
@@ -1192,6 +1263,9 @@ class NestedDirectoryStore(DirectoryStore):
         (e.g. 'foo' and 'FOO' will be treated as equivalent). This can be
         useful to avoid potential discrepancies between case-senstive and
         case-insensitive file system. Default value is False.
+    dimension_separator : {'/'}, optional
+        Separator placed between the dimensions of a chunk.
+        Only supports "/" unlike other implementations.
 
     Examples
     --------
@@ -1248,51 +1322,20 @@ class NestedDirectoryStore(DirectoryStore):
 
     """
 
-    def __init__(self, path, normalize_keys=False):
+    def __init__(self, path, normalize_keys=False, dimension_separator="/"):
         super().__init__(path, normalize_keys=normalize_keys)
-
-    def __getitem__(self, key):
-        key = _nested_map_ckey(key)
-        return super().__getitem__(key)
-
-    def __setitem__(self, key, value):
-        key = _nested_map_ckey(key)
-        super().__setitem__(key, value)
-
-    def __delitem__(self, key):
-        key = _nested_map_ckey(key)
-        super().__delitem__(key)
-
-    def __contains__(self, key):
-        key = _nested_map_ckey(key)
-        return super().__contains__(key)
+        if dimension_separator is None:
+            dimension_separator = "/"
+        elif dimension_separator != "/":
+            raise ValueError(
+                "NestedDirectoryStore only supports '/' as dimension_separator")
+        self._dimension_separator = dimension_separator
 
     def __eq__(self, other):
         return (
             isinstance(other, NestedDirectoryStore) and
             self.path == other.path
         )
-
-    def listdir(self, path=None):
-        children = super().listdir(path=path)
-        if array_meta_key in children:
-            # special handling of directories containing an array to map nested chunk
-            # keys back to standard chunk keys
-            new_children = []
-            root_path = self.dir_path(path)
-            for entry in children:
-                entry_path = os.path.join(root_path, entry)
-                if _prog_number.match(entry) and os.path.isdir(entry_path):
-                    for dir_path, _, file_names in os.walk(entry_path):
-                        for file_name in file_names:
-                            file_path = os.path.join(dir_path, file_name)
-                            rel_path = file_path.split(root_path + os.path.sep)[1]
-                            new_children.append(rel_path.replace(os.path.sep, '.'))
-                else:
-                    new_children.append(entry)
-            return sorted(new_children)
-        else:
-            return children
 
 
 # noinspection PyPep8Naming
@@ -1314,6 +1357,8 @@ class ZipStore(MutableMapping):
         One of 'r' to read an existing file, 'w' to truncate and write a new
         file, 'a' to append to an existing file, or 'x' to exclusively create
         and write a new file.
+    dimension_separator : {'.', '/'}, optional
+        Separator placed between the dimensions of a chunk.
 
     Examples
     --------
@@ -1377,12 +1422,17 @@ class ZipStore(MutableMapping):
 
     Alternatively, use a :class:`DirectoryStore` when writing the data, then
     manually Zip the directory and use the Zip file for subsequent reads.
+    Take note that the files in the Zip file must be relative to the root of the
+    Zarr archive. You may find it easier to create such a Zip file with ``7z``, e.g.::
+
+        7z a -tzip archive.zarr.zip archive.zarr/.
 
     Safe to write in multiple threads but not in multiple processes.
 
     """
 
-    def __init__(self, path, compression=zipfile.ZIP_STORED, allowZip64=True, mode='a'):
+    def __init__(self, path, compression=zipfile.ZIP_STORED, allowZip64=True, mode='a',
+                 dimension_separator=None):
 
         # store properties
         path = os.path.abspath(path)
@@ -1390,6 +1440,7 @@ class ZipStore(MutableMapping):
         self.compression = compression
         self.allowZip64 = allowZip64
         self.mode = mode
+        self._dimension_separator = dimension_separator
 
         # Current understanding is that zipfile module in stdlib is not thread-safe,
         # and so locking is required for both read and write. However, this has not
@@ -1602,6 +1653,8 @@ class DBMStore(MutableMapping):
         used on Python 3, and :func:`anydbm.open` will be used on Python 2.
     write_lock: bool, optional
         Use a lock to prevent concurrent writes from multiple threads (True by default).
+    dimension_separator : {'.', '/'}, optional
+        Separator placed between the dimensions of a chunk.e
     **open_kwargs
         Keyword arguments to pass the `open` function.
 
@@ -1666,6 +1719,7 @@ class DBMStore(MutableMapping):
     """
 
     def __init__(self, path, flag='c', mode=0o666, open=None, write_lock=True,
+                 dimension_separator=None,
                  **open_kwargs):
         if open is None:
             import dbm
@@ -1685,6 +1739,7 @@ class DBMStore(MutableMapping):
         else:
             self.write_mutex = nolock
         self.open_kwargs = open_kwargs
+        self._dimension_separator = dimension_separator
 
     def __getstate__(self):
         try:
@@ -1786,6 +1841,8 @@ class LMDBStore(MutableMapping):
     buffers : bool, optional
         If True (default) use support for buffers, which should increase performance by
         reducing memory copies.
+    dimension_separator : {'.', '/'}, optional
+        Separator placed between the dimensions of a chunk.
     **kwargs
         Keyword arguments passed through to the `lmdb.open` function.
 
@@ -1828,7 +1885,7 @@ class LMDBStore(MutableMapping):
 
     """
 
-    def __init__(self, path, buffers=True, **kwargs):
+    def __init__(self, path, buffers=True, dimension_separator=None, **kwargs):
         import lmdb
 
         # set default memory map size to something larger than the lmdb default, which is
@@ -1866,6 +1923,7 @@ class LMDBStore(MutableMapping):
         self.buffers = buffers
         self.path = path
         self.kwargs = kwargs
+        self._dimension_separator = dimension_separator
 
     def __getstate__(self):
         try:
@@ -2130,170 +2188,6 @@ class LRUStoreCache(MutableMapping):
             self._invalidate_value(key)
 
 
-class ABSStore(MutableMapping):
-    """Storage class using Azure Blob Storage (ABS).
-
-    Parameters
-    ----------
-    container : string
-        The name of the ABS container to use.
-    prefix : string
-        Location of the "directory" to use as the root of the storage hierarchy
-        within the container.
-    account_name : string
-        The Azure blob storage account name.
-    account_key : string
-        The Azure blob storage account access key.
-    blob_service_kwargs : dictionary
-        Extra arguments to be passed into the azure blob client, for e.g. when
-        using the emulator, pass in blob_service_kwargs={'is_emulated': True}.
-
-    Notes
-    -----
-    In order to use this store, you must install the Microsoft Azure Storage SDK for Python.
-    """
-
-    def __init__(self, container, prefix='', account_name=None, account_key=None,
-                 blob_service_kwargs=None):
-        from azure.storage.blob import BlockBlobService
-        self.container = container
-        self.prefix = normalize_storage_path(prefix)
-        self.account_name = account_name
-        self.account_key = account_key
-        if blob_service_kwargs is not None:
-            self.blob_service_kwargs = blob_service_kwargs
-        else:  # pragma: no cover
-            self.blob_service_kwargs = dict()
-        self.client = BlockBlobService(self.account_name, self.account_key,
-                                       **self.blob_service_kwargs)
-
-    # needed for pickling
-    def __getstate__(self):
-        state = self.__dict__.copy()
-        del state['client']
-        return state
-
-    def __setstate__(self, state):
-        from azure.storage.blob import BlockBlobService
-        self.__dict__.update(state)
-        self.client = BlockBlobService(self.account_name, self.account_key,
-                                       **self.blob_service_kwargs)
-
-    def _append_path_to_prefix(self, path):
-        if self.prefix == '':
-            return normalize_storage_path(path)
-        else:
-            return '/'.join([self.prefix, normalize_storage_path(path)])
-
-    @staticmethod
-    def _strip_prefix_from_path(path, prefix):
-        # normalized things will not have any leading or trailing slashes
-        path_norm = normalize_storage_path(path)
-        prefix_norm = normalize_storage_path(prefix)
-        if prefix:
-            return path_norm[(len(prefix_norm)+1):]
-        else:
-            return path_norm
-
-    def __getitem__(self, key):
-        from azure.common import AzureMissingResourceHttpError
-        blob_name = self._append_path_to_prefix(key)
-        try:
-            blob = self.client.get_blob_to_bytes(self.container, blob_name)
-            return blob.content
-        except AzureMissingResourceHttpError:
-            raise KeyError('Blob %s not found' % blob_name)
-
-    def __setitem__(self, key, value):
-        value = ensure_bytes(value)
-        blob_name = self._append_path_to_prefix(key)
-        self.client.create_blob_from_bytes(self.container, blob_name, value)
-
-    def __delitem__(self, key):
-        from azure.common import AzureMissingResourceHttpError
-        try:
-            self.client.delete_blob(self.container, self._append_path_to_prefix(key))
-        except AzureMissingResourceHttpError:
-            raise KeyError('Blob %s not found' % key)
-
-    def __eq__(self, other):
-        return (
-            isinstance(other, ABSStore) and
-            self.container == other.container and
-            self.prefix == other.prefix
-        )
-
-    def keys(self):
-        return list(self.__iter__())
-
-    def __iter__(self):
-        if self.prefix:
-            list_blobs_prefix = self.prefix + '/'
-        else:
-            list_blobs_prefix = None
-        for blob in self.client.list_blobs(self.container, list_blobs_prefix):
-            yield self._strip_prefix_from_path(blob.name, self.prefix)
-
-    def __len__(self):
-        return len(self.keys())
-
-    def __contains__(self, key):
-        blob_name = self._append_path_to_prefix(key)
-        assert len(blob_name) >= 1
-        if self.client.exists(self.container, blob_name):
-            return True
-        else:
-            return False
-
-    def listdir(self, path=None):
-        from azure.storage.blob import Blob
-        dir_path = normalize_storage_path(self._append_path_to_prefix(path))
-        if dir_path:
-            dir_path += '/'
-        items = list()
-        for blob in self.client.list_blobs(self.container, prefix=dir_path, delimiter='/'):
-            if type(blob) == Blob:
-                items.append(self._strip_prefix_from_path(blob.name, dir_path))
-            else:
-                items.append(self._strip_prefix_from_path(
-                    blob.name[:blob.name.find('/', len(dir_path))], dir_path))
-        return items
-
-    def rmdir(self, path=None):
-        dir_path = normalize_storage_path(self._append_path_to_prefix(path))
-        if dir_path:
-            dir_path += '/'
-        for blob in self.client.list_blobs(self.container, prefix=dir_path):
-            assert len(blob.name) >= 1
-            self.client.delete_blob(self.container, blob.name)
-
-    def getsize(self, path=None):
-        from azure.storage.blob import Blob
-        store_path = normalize_storage_path(path)
-        fs_path = self.prefix
-        if store_path:
-            fs_path = self._append_path_to_prefix(store_path)
-
-        if fs_path != "" and self.client.exists(self.container, fs_path):
-            return self.client.get_blob_properties(
-                self.container, fs_path
-            ).properties.content_length
-        else:
-            size = 0
-            if fs_path == '':
-                fs_path = None
-            else:
-                fs_path += '/'
-            for blob in self.client.list_blobs(self.container, prefix=fs_path,
-                                               delimiter='/'):
-                if type(blob) == Blob:
-                    size += blob.properties.content_length
-            return size
-
-    def clear(self):
-        self.rmdir()
-
-
 class SQLiteStore(MutableMapping):
     """Storage class using SQLite.
 
@@ -2301,6 +2195,8 @@ class SQLiteStore(MutableMapping):
     ----------
     path : string
         Location of database file.
+    dimension_separator : {'.', '/'}, optional
+        Separator placed between the dimensions of a chunk.
     **kwargs
         Keyword arguments passed through to the `sqlite3.connect` function.
 
@@ -2324,8 +2220,10 @@ class SQLiteStore(MutableMapping):
         >>> store.close()  # don't forget to call this when you're done
     """
 
-    def __init__(self, path, **kwargs):
+    def __init__(self, path, dimension_separator=None, **kwargs):
         import sqlite3
+
+        self._dimension_separator = dimension_separator
 
         # normalize path
         if path != ':memory:':
@@ -2507,6 +2405,8 @@ class MongoDBStore(MutableMapping):
         Name of database
     collection : string
         Name of collection
+    dimension_separator : {'.', '/'}, optional
+        Separator placed between the dimensions of a chunk.
     **kwargs
         Keyword arguments passed through to the `pymongo.MongoClient` function.
 
@@ -2520,11 +2420,12 @@ class MongoDBStore(MutableMapping):
     _value = 'value'
 
     def __init__(self, database='mongodb_zarr', collection='zarr_collection',
-                 **kwargs):
+                 dimension_separator=None, **kwargs):
         import pymongo
 
         self._database = database
         self._collection = collection
+        self._dimension_separator = dimension_separator
         self._kwargs = kwargs
 
         self.client = pymongo.MongoClient(**self._kwargs)
@@ -2585,14 +2486,17 @@ class RedisStore(MutableMapping):
     ----------
     prefix : string
         Name of prefix for Redis keys
+    dimension_separator : {'.', '/'}, optional
+        Separator placed between the dimensions of a chunk.
     **kwargs
         Keyword arguments passed through to the `redis.Redis` function.
 
     """
-    def __init__(self, prefix='zarr', **kwargs):
+    def __init__(self, prefix='zarr', dimension_separator=None, **kwargs):
         import redis
         self._prefix = prefix
         self._kwargs = kwargs
+        self._dimension_separator = dimension_separator
 
         self.client = redis.Redis(**kwargs)
 
@@ -2674,6 +2578,7 @@ class ConsolidatedMetadataStore(MutableMapping):
     zarr.convenience.consolidate_metadata, zarr.convenience.open_consolidated
 
     """
+
     def __init__(self, store, metadata_key='.zmetadata'):
         self.store = store
 
