@@ -98,6 +98,7 @@ class Array:
     dtype
     compression
     compression_opts
+    dimension_separator
     fill_value
     order
     synchronizer
@@ -205,6 +206,7 @@ class Array:
             self._dtype = meta['dtype']
             self._fill_value = meta['fill_value']
             self._order = meta['order']
+            self._dimension_separator = meta.get('dimension_separator', '.')
 
             # setup compressor
             config = meta['compressor']
@@ -2017,7 +2019,7 @@ class Array:
         return cdata
 
     def _chunk_key(self, chunk_coords):
-        return self._key_prefix + '.'.join(map(str, chunk_coords))
+        return self._key_prefix + self._dimension_separator.join(map(str, chunk_coords))
 
     def _decode_chunk(self, cdata, start=None, nitems=None, expected_shape=None):
         # decompress

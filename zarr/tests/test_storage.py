@@ -2,10 +2,11 @@ import array
 import atexit
 import json
 import os
+import pathlib
+import sys
 import pickle
 import shutil
 import tempfile
-import unittest
 from contextlib import contextmanager
 from pickle import PicklingError
 from zipfile import ZipFile
@@ -31,12 +32,26 @@ from zarr.storage import (ABSStore, ConsolidatedMetadataStore, DBMStore,
                           atexit_rmtree, attrs_key, default_compressor, getsize,
                           group_meta_key, init_array, init_group, migrate_1to2)
 from zarr.storage import FSStore
-from zarr.tests.util import CountingDict, have_fsspec, skip_test_env_var
+from zarr.tests.util import CountingDict, have_fsspec, skip_test_env_var, abs_container
 
 
 @contextmanager
 def does_not_raise():
     yield
+
+
+@pytest.fixture(params=[
+    (None, "."),
+    (".", "."),
+    ("/", "/"),
+])
+def dimension_separator_fixture(request):
+    return request.param
+
+
+def skip_if_nested_chunks(**kwargs):
+    if kwargs.get("dimension_separator") == "/":
+        pytest.skip("nested chunks are unsupported")
 
 
 class MutableMappingStoreTests(object):
@@ -375,8 +390,11 @@ class StoreTests(MutableMappingStoreTests):
         if hasattr(store, 'close'):
             store.close()
 
-    def test_init_array(self):
-        store = self.create_store()
+    def test_init_array(self, dimension_separator_fixture):
+
+        pass_dim_sep, want_dim_sep = dimension_separator_fixture
+
+        store = self.create_store(dimension_separator=pass_dim_sep)
         init_array(store, shape=1000, chunks=100)
 
         # check metadata
@@ -388,6 +406,8 @@ class StoreTests(MutableMappingStoreTests):
         assert np.dtype(None) == meta['dtype']
         assert default_compressor.get_config() == meta['compressor']
         assert meta['fill_value'] is None
+        # Missing MUST be assumed to be "."
+        assert meta.get('dimension_separator', ".") is want_dim_sep
 
         if hasattr(store, 'close'):
             store.close()
@@ -704,9 +724,10 @@ class StoreTests(MutableMappingStoreTests):
             chunk_store.close()
 
 
-class TestMappingStore(StoreTests, unittest.TestCase):
+class TestMappingStore(StoreTests):
 
-    def create_store(self):
+    def create_store(self, **kwargs):
+        skip_if_nested_chunks(**kwargs)
         return dict()
 
     def test_set_invalid_content(self):
@@ -751,10 +772,11 @@ def setdel_hierarchy_checks(store):
     assert 'r/s' not in store
 
 
-class TestMemoryStore(StoreTests, unittest.TestCase):
+class TestMemoryStore(StoreTests):
 
-    def create_store(self):
-        return MemoryStore()
+    def create_store(self, **kwargs):
+        skip_if_nested_chunks(**kwargs)
+        return MemoryStore(**kwargs)
 
     def test_store_contains_bytes(self):
         store = self.create_store()
@@ -766,11 +788,13 @@ class TestMemoryStore(StoreTests, unittest.TestCase):
         setdel_hierarchy_checks(store)
 
 
-class TestDictStore(StoreTests, unittest.TestCase):
+class TestDictStore(StoreTests):
 
-    def create_store(self):
+    def create_store(self, **kwargs):
+        skip_if_nested_chunks(**kwargs)
+
         with pytest.warns(DeprecationWarning):
-            return DictStore()
+            return DictStore(**kwargs)
 
     def test_deprecated(self):
         store = self.create_store()
@@ -782,12 +806,18 @@ class TestDictStore(StoreTests, unittest.TestCase):
             super().test_pickle()
 
 
-class TestDirectoryStore(StoreTests, unittest.TestCase):
+class TestDirectoryStore(StoreTests):
 
-    def create_store(self, normalize_keys=False):
+    def create_store(self,
+                     normalize_keys=False,
+                     dimension_separator=".",
+                     **kwargs):
         path = tempfile.mkdtemp()
         atexit.register(atexit_rmtree, path)
-        store = DirectoryStore(path, normalize_keys=normalize_keys)
+        store = DirectoryStore(path,
+                               normalize_keys=normalize_keys,
+                               dimension_separator=dimension_separator,
+                               **kwargs)
         return store
 
     def test_filesystem_path(self):
@@ -814,6 +844,11 @@ class TestDirectoryStore(StoreTests, unittest.TestCase):
         with tempfile.NamedTemporaryFile() as f:
             with pytest.raises(ValueError):
                 DirectoryStore(f.name)
+
+    def test_init_pathlib(self):
+        path = tempfile.mkdtemp()
+        atexit.register(atexit_rmtree, path)
+        DirectoryStore(pathlib.Path(path))
 
     def test_pickle_ext(self):
         store = self.create_store()
@@ -867,20 +902,33 @@ class TestDirectoryStore(StoreTests, unittest.TestCase):
 
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
-class TestFSStore(StoreTests, unittest.TestCase):
+class TestFSStore(StoreTests):
 
-    def create_store(self, normalize_keys=False, key_separator="."):
+    def create_store(self, normalize_keys=False, dimension_separator="."):
         path = tempfile.mkdtemp()
         atexit.register(atexit_rmtree, path)
         store = FSStore(
             path,
             normalize_keys=normalize_keys,
-            key_separator=key_separator)
+            dimension_separator=dimension_separator)
         return store
 
-    def test_key_separator(self):
+    def test_init_array(self):
+        store = self.create_store()
+        init_array(store, shape=1000, chunks=100)
+
+        # check metadata
+        assert array_meta_key in store
+        meta = decode_array_metadata(store[array_meta_key])
+        assert ZARR_FORMAT == meta['zarr_format']
+        assert (1000,) == meta['shape']
+        assert (100,) == meta['chunks']
+        assert np.dtype(None) == meta['dtype']
+        assert meta['dimension_separator'] == "."
+
+    def test_dimension_separator(self):
         for x in (".", "/"):
-            store = self.create_store(key_separator=x)
+            store = self.create_store(dimension_separator=x)
             norm = store._normalize_key
             assert ".zarray" == norm(".zarray")
             assert ".zarray" == norm("/.zarray")
@@ -1026,6 +1074,22 @@ class TestFSStore(StoreTests, unittest.TestCase):
         assert (a[:] == -np.ones((8, 8, 8))).all()
 
 
+@pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
+class TestFSStoreWithKeySeparator(StoreTests):
+
+    def create_store(self, normalize_keys=False, key_separator=".", **kwargs):
+
+        # Since the user is passing key_separator, that will take priority.
+        skip_if_nested_chunks(**kwargs)
+
+        path = tempfile.mkdtemp()
+        atexit.register(atexit_rmtree, path)
+        return FSStore(
+            path,
+            normalize_keys=normalize_keys,
+            key_separator=key_separator)
+
+
 @pytest.fixture()
 def s3(request):
     # writable local S3 system
@@ -1067,28 +1131,64 @@ def s3(request):
     proc.wait()
 
 
-class TestNestedDirectoryStore(TestDirectoryStore, unittest.TestCase):
+class TestNestedDirectoryStore(TestDirectoryStore):
 
-    def create_store(self, normalize_keys=False):
+    def create_store(self, normalize_keys=False, **kwargs):
         path = tempfile.mkdtemp()
         atexit.register(atexit_rmtree, path)
-        store = NestedDirectoryStore(path, normalize_keys=normalize_keys)
+        store = NestedDirectoryStore(path, normalize_keys=normalize_keys, **kwargs)
         return store
+
+    def test_init_array(self):
+        store = self.create_store()
+        assert store._dimension_separator == "/"
+        init_array(store, shape=1000, chunks=100)
+
+        # check metadata
+        assert array_meta_key in store
+        meta = decode_array_metadata(store[array_meta_key])
+        assert ZARR_FORMAT == meta['zarr_format']
+        assert (1000,) == meta['shape']
+        assert (100,) == meta['chunks']
+        assert np.dtype(None) == meta['dtype']
+        assert meta['dimension_separator'] == "/"
 
     def test_chunk_nesting(self):
         store = self.create_store()
         # any path where last segment looks like a chunk key gets special handling
         store['0.0'] = b'xxx'
         assert b'xxx' == store['0.0']
-        assert b'xxx' == store['0/0']
+        # assert b'xxx' == store['0/0']
         store['foo/10.20.30'] = b'yyy'
         assert b'yyy' == store['foo/10.20.30']
-        assert b'yyy' == store['foo/10/20/30']
+        # assert b'yyy' == store['foo/10/20/30']
         store['42'] = b'zzz'
         assert b'zzz' == store['42']
 
 
-class TestN5Store(TestNestedDirectoryStore, unittest.TestCase):
+class TestNestedDirectoryStoreNone:
+
+    def test_value_error(self):
+        path = tempfile.mkdtemp()
+        atexit.register(atexit_rmtree, path)
+        store = NestedDirectoryStore(
+            path, normalize_keys=True,
+            dimension_separator=None)
+        assert store._dimension_separator == "/"
+
+
+class TestNestedDirectoryStoreWithWrongValue:
+
+    def test_value_error(self):
+        path = tempfile.mkdtemp()
+        atexit.register(atexit_rmtree, path)
+        with pytest.raises(ValueError):
+            NestedDirectoryStore(
+                path, normalize_keys=True,
+                dimension_separator=".")
+
+
+class TestN5Store(TestNestedDirectoryStore):
 
     def create_store(self, normalize_keys=False):
         path = tempfile.mkdtemp(suffix='.n5')
@@ -1106,7 +1206,7 @@ class TestN5Store(TestNestedDirectoryStore, unittest.TestCase):
         store['0.0'] = b'xxx'
         assert '0.0' in store
         assert b'xxx' == store['0.0']
-        assert b'xxx' == store['0/0']
+        # assert b'xxx' == store['0/0']
         store['foo/10.20.30'] = b'yyy'
         assert 'foo/10.20.30' in store
         assert b'yyy' == store['foo/10.20.30']
@@ -1204,12 +1304,12 @@ class TestN5Store(TestNestedDirectoryStore, unittest.TestCase):
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
 class TestNestedFSStore(TestNestedDirectoryStore):
 
-    def create_store(self, normalize_keys=False, path=None):
+    def create_store(self, normalize_keys=False, path=None, **kwargs):
         if path is None:
             path = tempfile.mkdtemp()
         atexit.register(atexit_rmtree, path)
         store = FSStore(path, normalize_keys=normalize_keys,
-                        key_separator='/', auto_mkdir=True)
+                        dimension_separator='/', auto_mkdir=True, **kwargs)
         return store
 
     def test_numbered_groups(self):
@@ -1226,22 +1326,23 @@ class TestNestedFSStore(TestNestedDirectoryStore):
         zarr.open_group(store.path)["0"]
 
 
-class TestTempStore(StoreTests, unittest.TestCase):
+class TestTempStore(StoreTests):
 
-    def create_store(self):
-        return TempStore()
+    def create_store(self, **kwargs):
+        skip_if_nested_chunks(**kwargs)
+        return TempStore(**kwargs)
 
     def test_setdel(self):
         store = self.create_store()
         setdel_hierarchy_checks(store)
 
 
-class TestZipStore(StoreTests, unittest.TestCase):
+class TestZipStore(StoreTests):
 
-    def create_store(self):
+    def create_store(self, **kwargs):
         path = tempfile.mktemp(suffix='.zip')
         atexit.register(os.remove, path)
-        store = ZipStore(path, mode='w')
+        store = ZipStore(path, mode='w', **kwargs)
         return store
 
     def test_mode(self):
@@ -1301,13 +1402,13 @@ class TestZipStore(StoreTests, unittest.TestCase):
         z.close()
 
 
-class TestDBMStore(StoreTests, unittest.TestCase):
+class TestDBMStore(StoreTests):
 
-    def create_store(self):
+    def create_store(self, dimension_separator=None):
         path = tempfile.mktemp(suffix='.anydbm')
         atexit.register(atexit_rmglob, path + '*')
         # create store using default dbm implementation
-        store = DBMStore(path, flag='n')
+        store = DBMStore(path, flag='n', dimension_separator=dimension_separator)
         return store
 
     def test_context_manager(self):
@@ -1319,55 +1420,55 @@ class TestDBMStore(StoreTests, unittest.TestCase):
 
 class TestDBMStoreDumb(TestDBMStore):
 
-    def create_store(self):
+    def create_store(self, **kwargs):
         path = tempfile.mktemp(suffix='.dumbdbm')
         atexit.register(atexit_rmglob, path + '*')
 
         import dbm.dumb as dumbdbm
-        store = DBMStore(path, flag='n', open=dumbdbm.open)
+        store = DBMStore(path, flag='n', open=dumbdbm.open, **kwargs)
         return store
 
 
 class TestDBMStoreGnu(TestDBMStore):
 
-    def create_store(self):
+    def create_store(self, **kwargs):
         gdbm = pytest.importorskip("dbm.gnu")
         path = tempfile.mktemp(suffix=".gdbm")  # pragma: no cover
         atexit.register(os.remove, path)  # pragma: no cover
         store = DBMStore(
-            path, flag="n", open=gdbm.open, write_lock=False
+            path, flag="n", open=gdbm.open, write_lock=False, **kwargs
         )  # pragma: no cover
         return store  # pragma: no cover
 
 
 class TestDBMStoreNDBM(TestDBMStore):
 
-    def create_store(self):
+    def create_store(self, **kwargs):
         ndbm = pytest.importorskip("dbm.ndbm")
         path = tempfile.mktemp(suffix=".ndbm")  # pragma: no cover
         atexit.register(atexit_rmglob, path + "*")  # pragma: no cover
-        store = DBMStore(path, flag="n", open=ndbm.open)  # pragma: no cover
+        store = DBMStore(path, flag="n", open=ndbm.open, **kwargs)  # pragma: no cover
         return store  # pragma: no cover
 
 
 class TestDBMStoreBerkeleyDB(TestDBMStore):
 
-    def create_store(self):
+    def create_store(self, **kwargs):
         bsddb3 = pytest.importorskip("bsddb3")
         path = tempfile.mktemp(suffix='.dbm')
         atexit.register(os.remove, path)
-        store = DBMStore(path, flag='n', open=bsddb3.btopen, write_lock=False)
+        store = DBMStore(path, flag='n', open=bsddb3.btopen, write_lock=False, **kwargs)
         return store
 
 
-class TestLMDBStore(StoreTests, unittest.TestCase):
+class TestLMDBStore(StoreTests):
 
-    def create_store(self):
+    def create_store(self, **kwargs):
         pytest.importorskip("lmdb")
         path = tempfile.mktemp(suffix='.lmdb')
         atexit.register(atexit_rmtree, path)
         buffers = True
-        store = LMDBStore(path, buffers=buffers)
+        store = LMDBStore(path, buffers=buffers, **kwargs)
         return store
 
     def test_context_manager(self):
@@ -1377,13 +1478,13 @@ class TestLMDBStore(StoreTests, unittest.TestCase):
             assert 2 == len(store)
 
 
-class TestSQLiteStore(StoreTests, unittest.TestCase):
+class TestSQLiteStore(StoreTests):
 
-    def create_store(self):
+    def create_store(self, **kwargs):
         pytest.importorskip("sqlite3")
         path = tempfile.mktemp(suffix='.db')
         atexit.register(atexit_rmtree, path)
-        store = SQLiteStore(path)
+        store = SQLiteStore(path, **kwargs)
         return store
 
     def test_underscore_in_name(self):
@@ -1396,11 +1497,11 @@ class TestSQLiteStore(StoreTests, unittest.TestCase):
         assert 'a_b' in store
 
 
-class TestSQLiteStoreInMemory(TestSQLiteStore, unittest.TestCase):
+class TestSQLiteStoreInMemory(TestSQLiteStore):
 
-    def create_store(self):
+    def create_store(self, **kwargs):
         pytest.importorskip("sqlite3")
-        store = SQLiteStore(':memory:')
+        store = SQLiteStore(':memory:', **kwargs)
         return store
 
     def test_pickle(self):
@@ -1416,25 +1517,25 @@ class TestSQLiteStoreInMemory(TestSQLiteStore, unittest.TestCase):
 
 
 @skip_test_env_var("ZARR_TEST_MONGO")
-class TestMongoDBStore(StoreTests, unittest.TestCase):
+class TestMongoDBStore(StoreTests):
 
-    def create_store(self):
+    def create_store(self, **kwargs):
         pytest.importorskip("pymongo")
         store = MongoDBStore(host='127.0.0.1', database='zarr_tests',
-                             collection='zarr_tests')
+                             collection='zarr_tests', **kwargs)
         # start with an empty store
         store.clear()
         return store
 
 
 @skip_test_env_var("ZARR_TEST_REDIS")
-class TestRedisStore(StoreTests, unittest.TestCase):
+class TestRedisStore(StoreTests):
 
-    def create_store(self):
+    def create_store(self, **kwargs):
         # TODO: this is the default host for Redis on Travis,
         # we probably want to generalize this though
         pytest.importorskip("redis")
-        store = RedisStore(host='localhost', port=6379)
+        store = RedisStore(host='localhost', port=6379, **kwargs)
         # start with an empty store
         store.clear()
         return store
@@ -1598,7 +1699,9 @@ class CacheTests(object):
 
 class TestLRUStoreCache(StoreTests, CacheTests, unittest.TestCase):
 
-    def create_store(self):
+    def create_store(self, **kwargs):
+        # wrapper therefore no dimension_separator argument
+        skip_if_nested_chunks(**kwargs)
         return LRUStoreCache(dict(), max_size=2**27)
 
     def create_cache(self, store, max_size=None):
@@ -1919,22 +2022,26 @@ def test_format_compatibility():
 
 
 @skip_test_env_var("ZARR_TEST_ABS")
-class TestABSStore(StoreTests, unittest.TestCase):
+class TestABSStore(StoreTests):
 
-    def create_store(self, prefix=None):
-        asb = pytest.importorskip("azure.storage.blob")
-        blob_client = asb.BlockBlobService(is_emulated=True, socket_timeout=10)
-        blob_client.delete_container("test")
-        blob_client.create_container("test")
+    def create_store(self, prefix=None, **kwargs):
+        container_client = abs_container()
         store = ABSStore(
-            container="test",
             prefix=prefix,
-            account_name="foo",
-            account_key="bar",
-            blob_service_kwargs={"is_emulated": True, "socket_timeout": 10},
+            client=container_client,
+            **kwargs,
         )
         store.rmdir()
         return store
+
+    def test_non_client_deprecated(self):
+        with pytest.warns(FutureWarning, match='Providing'):
+            store = ABSStore("container", account_name="account_name", account_key="account_key")
+
+        for attr in ["container", "account_name", "account_key"]:
+            with pytest.warns(FutureWarning, match=attr):
+                result = getattr(store, attr)
+            assert result == attr
 
     def test_iterators_with_prefix(self):
         for prefix in ['test_prefix', '/test_prefix', 'test_prefix/', 'test/prefix', '', None]:
@@ -1967,8 +2074,13 @@ class TestABSStore(StoreTests, unittest.TestCase):
     def test_hierarchy(self):
         return super().test_hierarchy()
 
+    @pytest.mark.skipif(sys.version_info < (3, 7), reason="attr not serializable in py36")
+    def test_pickle(self):
+        # internal attribute on ContainerClient isn't serializable for py36 and earlier
+        super().test_pickle()
 
-class TestConsolidatedMetadataStore(unittest.TestCase):
+
+class TestConsolidatedMetadataStore:
 
     def test_bad_format(self):
 

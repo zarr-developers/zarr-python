@@ -1,6 +1,177 @@
 Release notes
 =============
 
+.. _unreleased:
+
+Unreleased
+----------
+
+.. _release_2.9.3:
+
+2.9.3
+-----
+
+Maintenance
+~~~~~~~~~~~
+
+* Mark the fact that some tests that require ``fsspec``, without compromising the code coverage score.
+  By :user:`Ben Williams <benjaminhwilliams>`; :issue:`823`.
+
+* Only inspect alternate node type if desired isn't present.
+  By :user:`Trevor Manz <manzt>`; :issue:`696`.
+
+.. _release_2.9.2:
+
+2.9.2
+-----
+
+Maintenance
+~~~~~~~~~~~
+
+* Correct conda-forge deployment of Zarr by fixing some Zarr tests.
+  By :user:`Ben Williams <benjaminhwilliams>`; :issue:`821`.
+
+
+.. _release_2.9.1:
+
+2.9.1
+-----
+
+Maintenance
+~~~~~~~~~~~
+
+* Correct conda-forge deployment of Zarr.
+  By :user:`Josh Moore <joshmoore>`; :issue:`XXX`.
+
+.. _release_2.9.0:
+
+2.9.0
+-----
+
+This release of Zarr Python is the first release of Zarr to not support Python 3.6.
+
+Enhancements
+~~~~~~~~~~~~
+
+* Update ABSStore for compatibility with newer `azure.storage.blob`.
+  By :user:`Tom Augspurger <TomAugspurger>`; :issue:`759`.
+
+* Pathlib support.
+  By :user:`Chris Barnes <clbarnes>`; :issue:`768`.
+
+Documentation
+~~~~~~~~~~~~~
+
+* Clarify that arbitrary key/value pairs are OK for attributes.
+  By :user:`Stephan Hoyer <shoyer>`; :issue:`751`.
+
+* Clarify how to manually convert a DirectoryStore to a ZipStore.
+  By :user:`pmav99 <pmav99>`; :issue:`763`.
+
+Bug fixes
+~~~~~~~~~
+
+* Fix dimension_separator support.
+  By :user:`Josh Moore <joshmoore>`; :issue:`775`.
+
+* Extract ABSStore to zarr._storage.absstore.
+  By :user:`Josh Moore <joshmoore>`; :issue:`781`.
+
+* avoid NumPy 1.21.0 due to https://github.com/numpy/numpy/issues/19325
+  By :user:`Greggory Lee <grlee77>`; :issue:`791`.
+
+Maintenance
+~~~~~~~~~~~
+
+* Drop 3.6 builds.
+  By :user:`Josh Moore <joshmoore>`; :issue:`774`, :issue:`778`.
+
+* Fix build with Sphinx 4.
+  By :user:`Elliott Sales de Andrade <QuLogic>`; :issue:`799`.
+
+* TST: add missing assert in test_hexdigest.
+  By :user:`Greggory Lee <grlee77>`; :issue:`801`.
+
+
+.. _release_2.8.3:
+
+2.8.3
+-----
+
+Bug fixes
+~~~~~~~~~
+
+* FSStore: default to normalize_keys=False
+  By :user:`Josh Moore <joshmoore>`; :issue:`755`.
+* ABSStore: compatibility with ``azure.storage.python>=12`` 
+  By :user:`Tom Augspurger <tomaugspurger>`; :issue:`618`
+
+
+.. _release_2.8.2:
+
+2.8.2
+-----
+
+Documentation
+~~~~~~~~~~~~~
+
+* Add section on rechunking to tutorial
+  By :user:`David Baddeley <David-Baddeley>`; :issue:`730`.
+
+Bug fixes
+~~~~~~~~~
+
+* Expand FSStore tests and fix implementation issues
+  By :user:`Davis Bennett <d-v-b>`; :issue:`709`.
+
+Maintenance
+~~~~~~~~~~~
+
+* Updated ipytree warning for jlab3
+  By :user:`Ian Hunt-Isaak <ianhi>`; :issue:`721`.
+
+* b170a48a - (issue-728, copy-nested) Updated ipytree warning for jlab3 (#721) (3 weeks ago) <Ian Hunt-Isaak>
+* Activate dependabot
+  By :user:`Josh Moore <joshmoore>`; :issue:`734`.
+
+* Update Python classifiers (Zarr is stable!)
+  By :user:`Josh Moore <joshmoore>`; :issue:`731`.
+
+.. _release_2.8.1:
+
+2.8.1
+-----
+
+Bug fixes
+~~~~~~~~~
+
+* raise an error if create_dataset's dimension_separator is inconsistent
+  By :user:`Gregory R. Lee <grlee77>`; :issue:`724`.
+
+.. _release_2.8.0:
+
+2.8.0
+-----
+
+V2 Specification Update
+~~~~~~~~~~~~~~~~~~~~~~~
+
+* Introduce optional dimension_separator .zarray key for nested chunks.
+  By :user:`Josh Moore <joshmoore>`; :issue:`715`, :issue:`716`.
+
+.. _release_2.7.1:
+
+2.7.1
+-----
+
+Bug fixes
+~~~~~~~~~
+
+* Update Array to respect FSStore's key_separator  (#718)
+  By :user:`Gregory R. Lee <grlee77>`; :issue:`718`.
+
+.. _release_2.7.0:
+
 2.7.0
 -----
 
@@ -12,7 +183,6 @@ Enhancements
 
 * Add capability to partially read and decompress chunks
   By :user:`Andrew Fulton <andrewfulton9>`; :issue:`667`.
-
 
 Bug fixes
 ~~~~~~~~~
@@ -38,16 +208,20 @@ Bug fixes
   :issue:`679`, :issue:`680`, :issue:`682`, :issue:`684`, :issue:`685`, :issue:`686`,
   :issue:`687`, :issue:`695`, :issue:`706`.
 
+.. _release_2.6.1:
+
 2.6.1
 -----
 
 * Minor build fix
   By :user:`Matthias Bussonnier <Carreau>`; :issue:`666`.
 
+.. _release_2.6.0:
+
 2.6.0
 -----
 
-This release of Zarr Python is is the first release of Zarr to not support Python 3.5.
+This release of Zarr Python is the first release of Zarr to not support Python 3.5.
 
 * End Python 3.5 support.
   By :user:`Chris Barnes <clbarnes>`; :issue:`602`.
@@ -85,9 +259,10 @@ merged PR tagged with the 2.6 milestone.
   creating an ``Array``, or when using ``open_array``. No option exists yet to
   apply partial read and decompress on a per-operation basis.
 
+.. _release_2.5.0:
+
 2.5.0
 -----
-
 
 This release will be the last to support Python 3.5, next version of Zarr will be Python 3.6+.
 
