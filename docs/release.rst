@@ -6,17 +6,30 @@ Release notes
 Unreleased
 ----------
 
+.. _release_2.9.4:
+
+2.9.4
+-----
+
 Bug fixes
 ~~~~~~~~~
 
 * Fix structured arrays that contain objects
   By :user: `Attila Bergou <abergou>`; :issue: `806`
 
+.. _release_2.9.3:
+
+2.9.3
+-----
+
 Maintenance
 ~~~~~~~~~~~
 
 * Mark the fact that some tests that require ``fsspec``, without compromising the code coverage score.
   By :user:`Ben Williams <benjaminhwilliams>`; :issue:`823`.
+
+* Only inspect alternate node type if desired isn't present.
+  By :user:`Trevor Manz <manzt>`; :issue:`696`.
 
 .. _release_2.9.2:
 
