@@ -1697,7 +1697,7 @@ class CacheTests(object):
         assert 2 == cache.misses
 
 
-class TestLRUStoreCache(StoreTests, CacheTests, unittest.TestCase):
+class TestLRUStoreCache(StoreTests, CacheTests):
 
     def create_store(self, **kwargs):
         # wrapper therefore no dimension_separator argument
@@ -1787,7 +1787,7 @@ class TestLRUStoreCache(StoreTests, CacheTests, unittest.TestCase):
         assert 1 == store.counter['__iter__']
 
 
-class TestLRUChunkCache(MutableMappingStoreTests, CacheTests, unittest.TestCase):
+class TestLRUChunkCache(MutableMappingStoreTests, CacheTests):
 
     # mock test object that will act as both the cache and the array
     class MockChunkCacheArray(object):
