@@ -76,6 +76,9 @@ class Array:
         read and decompressed when possible.
 
         .. versionadded:: 2.7
+    init_metadata : bool, optional
+        If True (default), array configuration metadata will be loaded from the
+        store at initialization. If False, array metadata will be loaded prior
 
     Attributes
     ----------
@@ -138,11 +141,11 @@ class Array:
         cache_metadata=True,
         cache_attrs=True,
         partial_decompress=False,
+        init_metadata=True
     ):
         # N.B., expect at this point store is fully initialized with all
         # configuration metadata fully specified and normalized
 
-        self._store = store
         self._chunk_store = chunk_store
         self._path = normalize_storage_path(path)
         if self._path:
@@ -152,16 +155,13 @@ class Array:
         self._read_only = bool(read_only)
         self._synchronizer = synchronizer
         self._cache_metadata = cache_metadata
+        self._cache_attrs = cache_attrs
         self._is_view = False
         self._partial_decompress = partial_decompress
+        self._meta = None
 
-        # initialize metadata
-        self._load_metadata()
-
-        # initialize attributes
-        akey = self._key_prefix + attrs_key
-        self._attrs = Attributes(store, key=akey, read_only=read_only,
-                                 synchronizer=synchronizer, cache=cache_attrs)
+        # initialize store and attributes
+        self._set_store_attrs(store, load_metadata=init_metadata)
 
         # initialize info reporter
         self._info_reporter = InfoReporter(self)
@@ -169,6 +169,13 @@ class Array:
         # initialize indexing helpers
         self._oindex = OIndex(self)
         self._vindex = VIndex(self)
+
+    def _set_store_attrs(self, store, load_metadata):
+        self._store = store
+        if load_metadata:
+            self._load_metadata()
+        self._attrs = Attributes(store, key=self._key_prefix + attrs_key, cache=self._cache_attrs,
+                                 read_only=self._read_only, synchronizer=self._synchronizer)
 
     def _load_metadata(self):
         """(Re)load metadata from store."""
@@ -210,13 +217,16 @@ class Array:
                 filters = [get_codec(config) for config in filters]
             self._filters = filters
 
-    def _refresh_metadata(self):
-        if not self._cache_metadata:
+    def _ensure_metadata(self):
+        if self._meta is None:
             self._load_metadata()
 
-    def _refresh_metadata_nosync(self):
-        if not self._cache_metadata and not self._is_view:
-            self._load_metadata_nosync()
+    def _refresh_metadata(self, sync=True):
+        if self._meta is None or not self._cache_metadata:
+            if sync:
+                self._load_metadata()
+            else:
+                self._load_metadata_nosync()
 
     def _flush_metadata_nosync(self):
         if self._is_view:
@@ -240,6 +250,10 @@ class Array:
     def store(self):
         """A MutableMapping providing the underlying storage for the array."""
         return self._store
+
+    @store.setter
+    def store(self, value):
+        self._set_store_attrs(value, load_metadata=True)
 
     @property
     def path(self):
@@ -298,32 +312,38 @@ class Array:
     def chunks(self):
         """A tuple of integers describing the length of each dimension of a
         chunk of the array."""
+        self._ensure_metadata()
         return self._chunks
 
     @property
     def dtype(self):
         """The NumPy data type."""
+        self._ensure_metadata()
         return self._dtype
 
     @property
     def compressor(self):
         """Primary compression codec."""
+        self._ensure_metadata()
         return self._compressor
 
     @property
     def fill_value(self):
         """A value used for uninitialized portions of the array."""
+        self._ensure_metadata()
         return self._fill_value
 
     @property
     def order(self):
         """A string indicating the order in which bytes are arranged within
         chunks of the array."""
+        self._ensure_metadata()
         return self._order
 
     @property
     def filters(self):
         """One or more codecs used to transform data prior to compression."""
+        self._ensure_metadata()
         return self._filters
 
     @property
@@ -773,8 +793,7 @@ class Array:
         """
 
         # refresh metadata
-        if not self._cache_metadata:
-            self._load_metadata()
+        self._refresh_metadata()
 
         # check args
         check_fields(fields, self._dtype)
@@ -929,8 +948,7 @@ class Array:
         """
 
         # refresh metadata
-        if not self._cache_metadata:
-            self._load_metadata()
+        self._refresh_metadata()
 
         # check args
         check_fields(fields, self._dtype)
@@ -1000,8 +1018,7 @@ class Array:
         """
 
         # refresh metadata
-        if not self._cache_metadata:
-            self._load_metadata()
+        self._refresh_metadata()
 
         # check args
         check_fields(fields, self._dtype)
@@ -1078,8 +1095,7 @@ class Array:
         """
 
         # refresh metadata
-        if not self._cache_metadata:
-            self._load_metadata()
+        self._refresh_metadata()
 
         # check args
         check_fields(fields, self._dtype)
@@ -1298,8 +1314,7 @@ class Array:
             raise ReadOnlyError()
 
         # refresh metadata
-        if not self._cache_metadata:
-            self._load_metadata_nosync()
+        self._refresh_metadata(sync=False)
 
         # handle zero-dimensional arrays
         if self._shape == ():
@@ -1389,8 +1404,7 @@ class Array:
             raise ReadOnlyError()
 
         # refresh metadata
-        if not self._cache_metadata:
-            self._load_metadata_nosync()
+        self._refresh_metadata(sync=False)
 
         # setup indexer
         indexer = OrthogonalIndexer(selection, self)
@@ -1461,8 +1475,7 @@ class Array:
             raise ReadOnlyError()
 
         # refresh metadata
-        if not self._cache_metadata:
-            self._load_metadata_nosync()
+        self._refresh_metadata(sync=False)
 
         # setup indexer
         indexer = CoordinateIndexer(selection, self)
@@ -1542,8 +1555,7 @@ class Array:
             raise ReadOnlyError()
 
         # refresh metadata
-        if not self._cache_metadata:
-            self._load_metadata_nosync()
+        self._refresh_metadata(sync=False)
 
         # setup indexer
         indexer = MaskIndexer(selection, self)
@@ -2172,7 +2184,7 @@ class Array:
                 self._synchronizer, self._cache_metadata, self._attrs.cache)
 
     def __setstate__(self, state):
-        self.__init__(*state)
+        self.__init__(*state, init_metadata=False)
 
     def _synchronized_op(self, f, *args, **kwargs):
 
@@ -2186,7 +2198,7 @@ class Array:
             lock = self._synchronizer[mkey]
 
         with lock:
-            self._refresh_metadata_nosync()
+            self._refresh_metadata(sync=False)
             result = f(*args, **kwargs)
 
         return result
@@ -2454,12 +2466,12 @@ class Array:
 
         # allow override of some properties
         if dtype is None:
-            dtype = self._dtype
+            dtype = self.dtype
         else:
             dtype = np.dtype(dtype)
             a._dtype = dtype
         if shape is None:
-            shape = self._shape
+            shape = self.shape
         else:
             shape = normalize_shape(shape)
             a._shape = shape
