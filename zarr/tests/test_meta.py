@@ -4,11 +4,12 @@ import json
 import numpy as np
 import pytest
 
-from zarr.codecs import Blosc, Delta, Zlib
+from zarr.codecs import Blosc, Delta, Pickle, Zlib
 from zarr.errors import MetadataError
 from zarr.meta import (ZARR_FORMAT, decode_array_metadata, decode_dtype,
                        decode_group_metadata, encode_array_metadata,
-                       encode_dtype)
+                       encode_dtype, encode_fill_value, decode_fill_value)
+from zarr.util import normalize_dtype, normalize_fill_value
 
 
 def assert_json_equal(expect, actual):
@@ -435,3 +436,69 @@ def test_decode_group():
     }''' % (ZARR_FORMAT - 1)
     with pytest.raises(MetadataError):
         decode_group_metadata(b)
+
+
+@pytest.mark.parametrize(
+    "fill_value,dtype,object_codec,result",
+    [
+        (
+            (0.0, None),
+            [('x', float), ('y', object)],
+            Pickle(),
+            True,  # Pass
+        ),
+        (
+            (0.0, None),
+            [('x', float), ('y', object)],
+            None,
+            False,  # Fail
+        ),
+    ],
+)
+def test_encode_fill_value(fill_value, dtype, object_codec, result):
+
+    # normalize metadata (copied from _init_array_metadata)
+    dtype, object_codec = normalize_dtype(dtype, object_codec)
+    dtype = dtype.base
+    fill_value = normalize_fill_value(fill_value, dtype)
+
+    # test
+    if result:
+        encode_fill_value(fill_value, dtype, object_codec)
+    else:
+        with pytest.raises(ValueError):
+            encode_fill_value(fill_value, dtype, object_codec)
+
+
+@pytest.mark.parametrize(
+    "fill_value,dtype,object_codec,result",
+    [
+        (
+            (0.0, None),
+            [('x', float), ('y', object)],
+            Pickle(),
+            True,  # Pass
+        ),
+        (
+            (0.0, None),
+            [('x', float), ('y', object)],
+            None,
+            False,  # Fail
+        ),
+    ],
+)
+def test_decode_fill_value(fill_value, dtype, object_codec, result):
+
+    # normalize metadata (copied from _init_array_metadata)
+    dtype, object_codec = normalize_dtype(dtype, object_codec)
+    dtype = dtype.base
+    fill_value = normalize_fill_value(fill_value, dtype)
+
+    # test
+    if result:
+        v = encode_fill_value(fill_value, dtype, object_codec)
+        decode_fill_value(v, dtype, object_codec)
+    else:
+        with pytest.raises(ValueError):
+            # No encoding is possible
+            decode_fill_value(fill_value, dtype, object_codec)
