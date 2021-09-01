@@ -56,10 +56,11 @@ from zarr.util import (buffer_size, json_loads, nolock, normalize_chunks,
                        normalize_dtype, normalize_fill_value, normalize_order,
                        normalize_shape, normalize_storage_path, retry_call)
 
+from zarr._storage.absstore import ABSStore  # noqa: F401
+
 __doctest_requires__ = {
     ('RedisStore', 'RedisStore.*'): ['redis'],
     ('MongoDBStore', 'MongoDBStore.*'): ['pymongo'],
-    ('ABSStore', 'ABSStore.*'): ['azure.storage.blob'],
     ('LRUStoreCache', 'LRUStoreCache.*'): ['s3fs'],
 }
 
@@ -422,7 +423,7 @@ def _init_array_metadata(
         filters_config = []
 
     # deal with object encoding
-    if dtype == object:
+    if dtype.hasobject:
         if object_codec is None:
             if not filters:
                 # there are no filters so we can be sure there is no object codec
@@ -947,11 +948,36 @@ class DirectoryStore(MutableMapping):
         return dir_path
 
     def listdir(self, path=None):
+        return self._dimension_separator == "/" and \
+            self._nested_listdir(path) or self._flat_listdir(path)
+
+    def _flat_listdir(self, path=None):
         dir_path = self.dir_path(path)
         if os.path.isdir(dir_path):
             return sorted(os.listdir(dir_path))
         else:
             return []
+
+    def _nested_listdir(self, path=None):
+        children = self._flat_listdir(path=path)
+        if array_meta_key in children:
+            # special handling of directories containing an array to map nested chunk
+            # keys back to standard chunk keys
+            new_children = []
+            root_path = self.dir_path(path)
+            for entry in children:
+                entry_path = os.path.join(root_path, entry)
+                if _prog_number.match(entry) and os.path.isdir(entry_path):
+                    for dir_path, _, file_names in os.walk(entry_path):
+                        for file_name in file_names:
+                            file_path = os.path.join(dir_path, file_name)
+                            rel_path = file_path.split(root_path + os.path.sep)[1]
+                            new_children.append(rel_path.replace(os.path.sep, '.'))
+                else:
+                    new_children.append(entry)
+            return sorted(new_children)
+        else:
+            return children
 
     def rename(self, src_path, dst_path):
         store_src_path = normalize_storage_path(src_path)
@@ -1221,17 +1247,6 @@ _prog_ckey = re.compile(r'^(\d+)(\.\d+)+$')
 _prog_number = re.compile(r'^\d+$')
 
 
-def _nested_map_ckey(key):
-    segments = list(key.split('/'))
-    if segments:
-        last_segment = segments[-1]
-        if _prog_ckey.match(last_segment):
-            last_segment = last_segment.replace('.', '/')
-            segments = segments[:-1] + [last_segment]
-            key = '/'.join(segments)
-    return key
-
-
 class NestedDirectoryStore(DirectoryStore):
     """Storage class using directories and files on a standard file system, with
     special handling for chunk keys so that chunk files for multidimensional
@@ -1314,48 +1329,11 @@ class NestedDirectoryStore(DirectoryStore):
                 "NestedDirectoryStore only supports '/' as dimension_separator")
         self._dimension_separator = dimension_separator
 
-    def __getitem__(self, key):
-        key = _nested_map_ckey(key)
-        return super().__getitem__(key)
-
-    def __setitem__(self, key, value):
-        key = _nested_map_ckey(key)
-        super().__setitem__(key, value)
-
-    def __delitem__(self, key):
-        key = _nested_map_ckey(key)
-        super().__delitem__(key)
-
-    def __contains__(self, key):
-        key = _nested_map_ckey(key)
-        return super().__contains__(key)
-
     def __eq__(self, other):
         return (
             isinstance(other, NestedDirectoryStore) and
             self.path == other.path
         )
-
-    def listdir(self, path=None):
-        children = super().listdir(path=path)
-        if array_meta_key in children:
-            # special handling of directories containing an array to map nested chunk
-            # keys back to standard chunk keys
-            new_children = []
-            root_path = self.dir_path(path)
-            for entry in children:
-                entry_path = os.path.join(root_path, entry)
-                if _prog_number.match(entry) and os.path.isdir(entry_path):
-                    for dir_path, _, file_names in os.walk(entry_path):
-                        for file_name in file_names:
-                            file_path = os.path.join(dir_path, file_name)
-                            rel_path = file_path.split(root_path + os.path.sep)[1]
-                            new_children.append(rel_path.replace(os.path.sep, '.'))
-                else:
-                    new_children.append(entry)
-            return sorted(new_children)
-        else:
-            return children
 
 
 # noinspection PyPep8Naming
@@ -2206,196 +2184,6 @@ class LRUStoreCache(MutableMapping):
         with self._mutex:
             self._invalidate_keys()
             self._invalidate_value(key)
-
-
-class ABSStore(MutableMapping):
-    """Storage class using Azure Blob Storage (ABS).
-
-    Parameters
-    ----------
-    container : string
-        The name of the ABS container to use.
-        .. deprecated::
-           Use ``client`` instead.
-    prefix : string
-        Location of the "directory" to use as the root of the storage hierarchy
-        within the container.
-    account_name : string
-        The Azure blob storage account name.
-        .. deprecated:: 2.8.3
-           Use ``client`` instead.
-    account_key : string
-        The Azure blob storage account access key.
-        .. deprecated:: 2.8.3
-           Use ``client`` instead.
-    blob_service_kwargs : dictionary
-        Extra arguments to be passed into the azure blob client, for e.g. when
-        using the emulator, pass in blob_service_kwargs={'is_emulated': True}.
-        .. deprecated:: 2.8.3
-           Use ``client`` instead.
-    dimension_separator : {'.', '/'}, optional
-        Separator placed between the dimensions of a chunk.
-    client : azure.storage.blob.ContainerClient, optional
-        And ``azure.storage.blob.ContainerClient`` to connect with. See
-        `here <https://docs.microsoft.com/en-us/python/api/azure-storage-blob/azure.storage.blob.containerclient?view=azure-python>`_  # noqa
-        for more.
-
-        .. versionadded:: 2.8.3
-
-    Notes
-    -----
-    In order to use this store, you must install the Microsoft Azure Storage SDK for Python,
-    ``azure-storage-blob>=12.5.0``.
-    """
-
-    def __init__(self, container=None, prefix='', account_name=None, account_key=None,
-                 blob_service_kwargs=None, dimension_separator=None,
-                 client=None,
-                 ):
-        self._dimension_separator = dimension_separator
-        self.prefix = normalize_storage_path(prefix)
-        if client is None:
-            # deprecated option, try to construct the client for them
-            msg = (
-                "Providing 'container', 'account_name', 'account_key', and 'blob_service_kwargs'"
-                "is deprecated. Provide and instance of 'azure.storage.blob.ContainerClient' "
-                "'client' instead."
-            )
-            warnings.warn(msg, FutureWarning, stacklevel=2)
-            from azure.storage.blob import ContainerClient
-            blob_service_kwargs = blob_service_kwargs or {}
-            client = ContainerClient(
-                "https://{}.blob.core.windows.net/".format(account_name), container,
-                credential=account_key, **blob_service_kwargs
-                )
-
-        self.client = client
-        self._container = container
-        self._account_name = account_name
-        self._account_key = account_key
-
-    def _warn_deprecated(self, property_):
-        msg = ("The {} property is deprecated and will be removed in a future "
-               "version. Get the property from 'ABSStore.client' instead.")
-        warnings.warn(msg.format(property_), FutureWarning, stacklevel=3)
-
-    @property
-    def container(self):
-        self._warn_deprecated("container")
-        return self._container
-
-    @property
-    def account_name(self):
-        self._warn_deprecated("account_name")
-        return self._account_name
-
-    @property
-    def account_key(self):
-        self._warn_deprecated("account_key")
-        return self._account_key
-
-    def _append_path_to_prefix(self, path):
-        if self.prefix == '':
-            return normalize_storage_path(path)
-        else:
-            return '/'.join([self.prefix, normalize_storage_path(path)])
-
-    @staticmethod
-    def _strip_prefix_from_path(path, prefix):
-        # normalized things will not have any leading or trailing slashes
-        path_norm = normalize_storage_path(path)
-        prefix_norm = normalize_storage_path(prefix)
-        if prefix:
-            return path_norm[(len(prefix_norm)+1):]
-        else:
-            return path_norm
-
-    def __getitem__(self, key):
-        from azure.core.exceptions import ResourceNotFoundError
-        blob_name = self._append_path_to_prefix(key)
-        try:
-            return self.client.download_blob(blob_name).readall()
-        except ResourceNotFoundError:
-            raise KeyError('Blob %s not found' % blob_name)
-
-    def __setitem__(self, key, value):
-        value = ensure_bytes(value)
-        blob_name = self._append_path_to_prefix(key)
-        self.client.upload_blob(blob_name, value, overwrite=True)
-
-    def __delitem__(self, key):
-        from azure.core.exceptions import ResourceNotFoundError
-        try:
-            self.client.delete_blob(self._append_path_to_prefix(key))
-        except ResourceNotFoundError:
-            raise KeyError('Blob %s not found' % key)
-
-    def __eq__(self, other):
-        return (
-            isinstance(other, ABSStore) and
-            self.client == other.client and
-            self.prefix == other.prefix
-        )
-
-    def keys(self):
-        return list(self.__iter__())
-
-    def __iter__(self):
-        if self.prefix:
-            list_blobs_prefix = self.prefix + '/'
-        else:
-            list_blobs_prefix = None
-        for blob in self.client.list_blobs(list_blobs_prefix):
-            yield self._strip_prefix_from_path(blob.name, self.prefix)
-
-    def __len__(self):
-        return len(self.keys())
-
-    def __contains__(self, key):
-        blob_name = self._append_path_to_prefix(key)
-        return self.client.get_blob_client(blob_name).exists()
-
-    def listdir(self, path=None):
-        dir_path = normalize_storage_path(self._append_path_to_prefix(path))
-        if dir_path:
-            dir_path += '/'
-        items = [
-            self._strip_prefix_from_path(blob.name, dir_path)
-            for blob in self.client.walk_blobs(name_starts_with=dir_path, delimiter='/')
-        ]
-        return items
-
-    def rmdir(self, path=None):
-        dir_path = normalize_storage_path(self._append_path_to_prefix(path))
-        if dir_path:
-            dir_path += '/'
-        for blob in self.client.list_blobs(name_starts_with=dir_path):
-            self.client.delete_blob(blob)
-
-    def getsize(self, path=None):
-        store_path = normalize_storage_path(path)
-        fs_path = self._append_path_to_prefix(store_path)
-        if fs_path:
-            blob_client = self.client.get_blob_client(fs_path)
-        else:
-            blob_client = None
-
-        if blob_client and blob_client.exists():
-            return blob_client.get_blob_properties().size
-        else:
-            size = 0
-            if fs_path == '':
-                fs_path = None
-            elif not fs_path.endswith('/'):
-                fs_path += '/'
-            for blob in self.client.walk_blobs(name_starts_with=fs_path, delimiter='/'):
-                blob_client = self.client.get_blob_client(blob)
-                if blob_client.exists():
-                    size += blob_client.get_blob_properties().size
-            return size
-
-    def clear(self):
-        self.rmdir()
 
 
 class SQLiteStore(MutableMapping):

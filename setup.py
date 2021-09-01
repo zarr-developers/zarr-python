@@ -36,7 +36,7 @@ setup(
     python_requires='>=3.7, <4',
     install_requires=dependencies,
     package_dir={'': '.'},
-    packages=['zarr', 'zarr.tests'],
+    packages=['zarr', 'zarr._storage', 'zarr.tests'],
     classifiers=[
         'Development Status :: 6 - Mature',
         'Intended Audience :: Developers',
