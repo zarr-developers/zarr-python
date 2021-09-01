@@ -6,6 +6,17 @@ Release notes
 Unreleased
 ----------
 
+.. _release_2.9.5:
+
+2.9.5
+-----
+
+Bug fixes
+~~~~~~~~~
+
+* Fix FSStore.listdir behavior for nested directories.
+  By :user:`Greggory Lee <grlee77>`; :issue:`802`.
+
 .. _release_2.9.4:
 
 2.9.4
