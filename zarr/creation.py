@@ -1,3 +1,4 @@
+import os
 from warnings import warn
 
 import numpy as np
@@ -148,7 +149,9 @@ def create(shape, chunks=True, dtype=None, compressor='default',
 def normalize_store_arg(store, clobber=False, storage_options=None, mode='w'):
     if store is None:
         return dict()
-    elif isinstance(store, str):
+    if isinstance(store, os.PathLike):
+        store = os.fspath(store)
+    if isinstance(store, str):
         mode = mode if clobber else "r"
         if "://" in store or "::" in store:
             return FSStore(store, mode=mode, **(storage_options or {}))
@@ -504,9 +507,9 @@ def open_array(
     # ensure store is initialized
 
     if mode in ['r', 'r+']:
-        if contains_group(store, path=path):
-            raise ContainsGroupError(path)
-        elif not contains_array(store, path=path):
+        if not contains_array(store, path=path):
+            if contains_group(store, path=path):
+                raise ContainsGroupError(path)
             raise ArrayNotFoundError(path)
 
     elif mode == 'w':
@@ -516,9 +519,9 @@ def open_array(
                    object_codec=object_codec, chunk_store=chunk_store)
 
     elif mode == 'a':
-        if contains_group(store, path=path):
-            raise ContainsGroupError(path)
-        elif not contains_array(store, path=path):
+        if not contains_array(store, path=path):
+            if contains_group(store, path=path):
+                raise ContainsGroupError(path)
             init_array(store, shape=shape, chunks=chunks, dtype=dtype,
                        compressor=compressor, fill_value=fill_value,
                        order=order, filters=filters, path=path,
