@@ -522,9 +522,9 @@ def open_array(
     # ensure store is initialized
 
     if mode in ['r', 'r+']:
-        if contains_group(store, path=path):
-            raise ContainsGroupError(path)
-        elif not contains_array(store, path=path):
+        if not contains_array(store, path=path):
+            if contains_group(store, path=path):
+                raise ContainsGroupError(path)
             raise ArrayNotFoundError(path)
 
     elif mode == 'w':
@@ -534,9 +534,9 @@ def open_array(
                    object_codec=object_codec, chunk_store=chunk_store)
 
     elif mode == 'a':
-        if contains_group(store, path=path):
-            raise ContainsGroupError(path)
-        elif not contains_array(store, path=path):
+        if not contains_array(store, path=path):
+            if contains_group(store, path=path):
+                raise ContainsGroupError(path)
             init_array(store, shape=shape, chunks=chunks, dtype=dtype,
                        compressor=compressor, fill_value=fill_value,
                        order=order, filters=filters, path=path,
