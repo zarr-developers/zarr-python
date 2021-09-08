@@ -164,18 +164,20 @@ optional dependencies to be installed), run::
 Note that some tests also require storage services to be running
 locally. To run the Azure Blob Service storage tests, run an Azure
 storage emulator (e.g., azurite) and set the environment variable
-``ZARR_TEST_ABS=1``. To run the Mongo DB storage tests, run a Mongo
+``ZARR_TEST_ABS=1``. If you're using Docker to run azurite, start the service with::
+
+    docker run --rm -p 10000:10000 mcr.microsoft.com/azure-storage/azurite azurite-blob --loose --blobHost 0.0.0.0 
+
+To run the Mongo DB storage tests, run a Mongo
 server locally and set the environment variable ``ZARR_TEST_MONGO=1``.
 To run the Redis storage tests, run a Redis server locally on port
 6379 and set the environment variable ``ZARR_TEST_REDIS=1``.
 
-All tests are automatically run via Travis (Linux) and AppVeyor
-(Windows) continuous integration services for every pull
-request. Tests must pass under both Travis and Appveyor before code
-can be accepted. Test coverage is also collected automatically via the
-Coveralls service, and total coverage over all builds must be 100%
-(although individual builds may be lower due to Python 2/3 or other
-differences).
+All tests are automatically run via GitHub Actions for every pull
+request and must pass before code can be accepted. Test coverage is
+also collected automatically via the Codecov service, and total
+coverage over all builds must be 100% (although individual builds
+may be lower due to Python 2/3 or other differences).
 
 Code standards
 ~~~~~~~~~~~~~~
@@ -196,8 +198,8 @@ and produce a coverage report. This should be 100% before code can be accepted i
 main code base.
 
 When submitting a pull request, coverage will also be collected across all supported
-Python versions via the Coveralls service, and will be reported back within the pull
-request. Coveralls coverage must also be 100% before code can be accepted.
+Python versions via the Codecov service, and will be reported back within the pull
+request. Codecov coverage must also be 100% before code can be accepted.
 
 Documentation
 ~~~~~~~~~~~~~
@@ -239,8 +241,8 @@ Pull requests submitted by an external contributor should be reviewed and approv
 one core developers before being merged. Ideally, pull requests submitted by a core developer
 should be reviewed and approved by at least one other core developers before being merged.
 
-Pull requests should not be merged until all CI checks have passed (Travis, AppVeyor,
-Coveralls) against code that has had the latest master merged in.
+Pull requests should not be merged until all CI checks have passed (GitHub Actions
+Codecov) against code that has had the latest master merged in.
 
 Compatibility and versioning policies
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -348,15 +350,7 @@ Tag the version (where "X.X.X" stands for the version number, e.g., "2.2.0")::
 
     $ version=X.X.X
     $ git tag -a v$version -m v$version
-    $ git push --tags
+    $ git push origin v$version
 
-Release source code to PyPI::
-
-    $ twine upload dist/zarr-${version}.tar.gz
-
-Obtain checksum for release to conda-forge::
-
-    $ openssl sha256 dist/zarr-${version}.tar.gz
-
-Release to conda-forge by making a pull request against the zarr-feedstock conda-forge
-repository, incrementing the version number.
+Create a GitHub release in order to generate the Zenodo DOI and
+review the automatically generated zarr-feedstock PR.

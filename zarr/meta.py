@@ -40,7 +40,14 @@ def decode_array_metadata(s: Union[MappingType, str]) -> MappingType[str, Any]:
     # extract array metadata fields
     try:
         dtype = decode_dtype(meta['dtype'])
-        fill_value = decode_fill_value(meta['fill_value'], dtype)
+
+        if dtype.hasobject:
+            import numcodecs
+            object_codec = numcodecs.get_codec(meta['filters'][0])
+        else:
+            object_codec = None
+
+        fill_value = decode_fill_value(meta['fill_value'], dtype, object_codec)
         meta = dict(
             zarr_format=meta['zarr_format'],
             shape=tuple(meta['shape']),
@@ -50,7 +57,9 @@ def decode_array_metadata(s: Union[MappingType, str]) -> MappingType[str, Any]:
             fill_value=fill_value,
             order=meta['order'],
             filters=meta['filters'],
+            dimension_separator=meta.get('dimension_separator', '.'),
         )
+
     except Exception as e:
         raise MetadataError('error decoding metadata: %s' % e)
     else:
@@ -62,16 +71,27 @@ def encode_array_metadata(meta: MappingType[str, Any]) -> bytes:
     sdshape = ()
     if dtype.subdtype is not None:
         dtype, sdshape = dtype.subdtype
+
+    dimension_separator = meta.get('dimension_separator')
+    if dtype.hasobject:
+        import numcodecs
+        object_codec = numcodecs.get_codec(meta['filters'][0])
+    else:
+        object_codec = None
     meta = dict(
         zarr_format=ZARR_FORMAT,
         shape=meta['shape'] + sdshape,
         chunks=meta['chunks'],
         dtype=encode_dtype(dtype),
         compressor=meta['compressor'],
-        fill_value=encode_fill_value(meta['fill_value'], dtype),
+        fill_value=encode_fill_value(meta['fill_value'], dtype, object_codec),
         order=meta['order'],
         filters=meta['filters'],
     )
+
+    if dimension_separator:
+        meta['dimension_separator'] = dimension_separator
+
     return json_dumps(meta)
 
 
@@ -123,9 +143,16 @@ FLOAT_FILLS = {
 }
 
 
-def decode_fill_value(v, dtype):
+def decode_fill_value(v, dtype, object_codec=None):
     # early out
     if v is None:
+        return v
+    if dtype.kind == 'V' and dtype.hasobject:
+        if object_codec is None:
+            raise ValueError('missing object_codec for object array')
+        v = base64.standard_b64decode(v)
+        v = object_codec.decode(v)
+        v = np.array(v, dtype=dtype)[()]
         return v
     if dtype.kind == 'f':
         if v == 'NaN':
@@ -162,9 +189,15 @@ def decode_fill_value(v, dtype):
         return np.array(v, dtype=dtype)[()]
 
 
-def encode_fill_value(v: Any, dtype: np.dtype) -> Any:
+def encode_fill_value(v: Any, dtype: np.dtype, object_codec: Any = None) -> Any:
     # early out
     if v is None:
+        return v
+    if dtype.kind == 'V' and dtype.hasobject:
+        if object_codec is None:
+            raise ValueError('missing object_codec for object array')
+        v = object_codec.encode(v)
+        v = str(base64.standard_b64encode(v), 'ascii')
         return v
     if dtype.kind == 'f':
         if np.isnan(v):
@@ -181,8 +214,8 @@ def encode_fill_value(v: Any, dtype: np.dtype) -> Any:
         return bool(v)
     elif dtype.kind in 'c':
         c = cast(np.complex128, np.dtype(complex).type())
-        v = (encode_fill_value(v.real, c.real.dtype),
-             encode_fill_value(v.imag, c.imag.dtype))
+        v = (encode_fill_value(v.real, c.real.dtype, object_codec),
+             encode_fill_value(v.imag, c.imag.dtype, object_codec))
         return v
     elif dtype.kind in 'SV':
         v = str(base64.standard_b64encode(v), 'ascii')
