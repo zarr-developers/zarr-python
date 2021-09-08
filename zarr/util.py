@@ -4,6 +4,7 @@ import math
 import numbers
 from textwrap import TextWrapper
 import mmap
+import time
 
 import numpy as np
 from asciitree import BoxStyle, LeftAligned
@@ -12,7 +13,8 @@ from numcodecs.compat import ensure_ndarray, ensure_text
 from numcodecs.registry import codec_registry
 from numcodecs.blosc import cbuffer_sizes, cbuffer_metainfo
 
-from typing import Any, Dict, Tuple, Union
+from typing import Any, Callable, Dict, Optional, Tuple, Union
+
 
 # codecs to use for object dtype convenience API
 object_codecs = {
@@ -241,12 +243,19 @@ def normalize_order(order: str) -> str:
     return order
 
 
+def normalize_dimension_separator(sep: Optional[str]) -> Optional[str]:
+    if sep in (".", "/", None):
+        return sep
+    else:
+        raise ValueError(
+            "dimension_separator must be either '.' or '/', found: %r" % sep)
+
+
 def normalize_fill_value(fill_value, dtype: np.dtype):
 
-    if fill_value is None:
+    if fill_value is None or dtype.hasobject:
         # no fill value
         pass
-
     elif fill_value == 0:
         # this should be compatible across numpy versions for any array type, including
         # structured arrays
@@ -439,7 +448,7 @@ def tree_widget(group, expand, level):
         raise ImportError(
             "{}: Run `pip install zarr[jupyter]` or `conda install ipytree`"
             "to get the required ipytree dependency for displaying the tree "
-            "widget. If using jupyterlab, you also need to run "
+            "widget. If using jupyterlab<3, you also need to run "
             "`jupyter labextension install ipytree`".format(error)
         )
 
@@ -544,13 +553,18 @@ class PartialReadBuffer:
         self.map = self.chunk_store.map
         self.fs = self.chunk_store.fs
         self.store_key = store_key
-        self.key_path = self.map._key_to_str(store_key)
         self.buff = None
         self.nblocks = None
         self.start_points = None
         self.n_per_block = None
         self.start_points_max = None
         self.read_blocks = set()
+
+        _key_path = self.map._key_to_str(store_key)
+        _key_path = _key_path.split('/')
+        _chunk_path = [self.chunk_store._normalize_key(_key_path[-1])]
+        _key_path = '/'.join(_key_path[:-1] + _chunk_path)
+        self.key_path = _key_path
 
     def prepare_chunk(self):
         assert self.buff is None
@@ -609,3 +623,30 @@ class PartialReadBuffer:
 
     def read_full(self):
         return self.chunk_store[self.store_key]
+
+
+def retry_call(callabl: Callable,
+               args=None,
+               kwargs=None,
+               exceptions: Tuple[Any, ...] = (),
+               retries: int = 10,
+               wait: float = 0.1) -> Any:
+    """
+    Make several attempts to invoke the callable. If one of the given exceptions
+    is raised, wait the given period of time and retry up to the given number of
+    retries.
+    """
+
+    if args is None:
+        args = ()
+    if kwargs is None:
+        kwargs = {}
+
+    for attempt in range(1, retries+1):
+        try:
+            return callabl(*args, **kwargs)
+        except exceptions:
+            if attempt < retries:
+                time.sleep(wait)
+            else:
+                raise
