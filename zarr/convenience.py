@@ -213,7 +213,7 @@ def save_group(store: StoreLike, *args, **kwargs):
         raise ValueError('at least one array must be provided')
     # handle polymorphic store arg
     may_need_closing = _might_close(store)
-    _store: Store  = normalize_store_arg(store, clobber=True)
+    _store: Store = normalize_store_arg(store, clobber=True)
     try:
         grp = _create_group(_store, overwrite=True)
         for i, arr in enumerate(args):
