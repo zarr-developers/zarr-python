@@ -1178,18 +1178,18 @@ def open_group(store=None, mode='a', cache_attrs=True, synchronizer=None, path=N
     # ensure store is initialized
 
     if mode in ['r', 'r+']:
-        if contains_array(store, path=path):
-            raise ContainsArrayError(path)
-        elif not contains_group(store, path=path):
+        if not contains_group(store, path=path):
+            if contains_array(store, path=path):
+                raise ContainsArrayError(path)
             raise GroupNotFoundError(path)
 
     elif mode == 'w':
         init_group(store, overwrite=True, path=path, chunk_store=chunk_store)
 
     elif mode == 'a':
-        if contains_array(store, path=path):
-            raise ContainsArrayError(path)
         if not contains_group(store, path=path):
+            if contains_array(store, path=path):
+                raise ContainsArrayError(path)
             init_group(store, path=path, chunk_store=chunk_store)
 
     elif mode in ['w-', 'x']:

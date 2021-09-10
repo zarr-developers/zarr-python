@@ -350,15 +350,7 @@ Tag the version (where "X.X.X" stands for the version number, e.g., "2.2.0")::
 
     $ version=X.X.X
     $ git tag -a v$version -m v$version
-    $ git push --tags
+    $ git push origin v$version
 
-Release source code to PyPI::
-
-    $ twine upload dist/zarr-${version}.tar.gz
-
-Obtain checksum for release to conda-forge::
-
-    $ openssl sha256 dist/zarr-${version}.tar.gz
-
-Release to conda-forge by making a pull request against the zarr-feedstock conda-forge
-repository, incrementing the version number.
+Create a GitHub release in order to generate the Zenodo DOI and
+review the automatically generated zarr-feedstock PR.

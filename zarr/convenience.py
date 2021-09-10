@@ -1,6 +1,7 @@
 """Convenience functions for storing and loading data."""
 import io
 import itertools
+import os
 import re
 from collections.abc import Mapping
 
@@ -105,6 +106,10 @@ def open(store: StoreLike = None, mode: str = "a", **kwargs):
             raise PathNotFoundError(path)
 
 
+def _might_close(path):
+    return isinstance(path, (str, os.PathLike))
+
+
 def save_array(store: StoreLike, arr, **kwargs):
     """Convenience function to save a NumPy array to the local file system, following a
     similar API to the NumPy save() function.
@@ -136,7 +141,7 @@ def save_array(store: StoreLike, arr, **kwargs):
         array([   0,    1,    2, ..., 9997, 9998, 9999])
 
     """
-    may_need_closing = isinstance(store, str)
+    may_need_closing = _might_close(store)
     _store: Store = normalize_store_arg(store, clobber=True)
     try:
         _create_array(arr, store=_store, overwrite=True, **kwargs)
@@ -207,8 +212,8 @@ def save_group(store: StoreLike, *args, **kwargs):
     if len(args) == 0 and len(kwargs) == 0:
         raise ValueError('at least one array must be provided')
     # handle polymorphic store arg
-    may_need_closing = isinstance(store, str)
-    _store: Store = normalize_store_arg(store, clobber=True)
+    may_need_closing = _might_close(store)
+    _store: Store  = normalize_store_arg(store, clobber=True)
     try:
         grp = _create_group(_store, overwrite=True)
         for i, arr in enumerate(args):

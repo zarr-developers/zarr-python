@@ -295,7 +295,7 @@ def invert_chunk_coords(key):
         last_segment = segments[-1]
         if _prog_ckey.match(last_segment):
             coords = list(last_segment.split('.'))
-            last_segment = '.'.join(coords[::-1])
+            last_segment = '/'.join(coords[::-1])
             segments = segments[:-1] + [last_segment]
             key = '/'.join(segments)
     return key
