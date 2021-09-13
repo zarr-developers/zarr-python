@@ -232,9 +232,9 @@ def test_consolidated_with_chunk_store():
     {"dimension_separator": None},
 ))
 def test_save_array_separator(tmpdir, options):
-    data = np.arange(6).reshape((3,2))
+    data = np.arange(6).reshape((3, 2))
     url = tmpdir.join("test.zarr")
-    zarr.save_array(url, data, **options)
+    save_array(url, data, **options)
 
 
 class TestCopyStore(unittest.TestCase):
