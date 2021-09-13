@@ -423,7 +423,7 @@ def _init_array_metadata(
         filters_config = []
 
     # deal with object encoding
-    if dtype == object:
+    if dtype.hasobject:
         if object_codec is None:
             if not filters:
                 # there are no filters so we can be sure there is no object codec
@@ -1194,7 +1194,8 @@ class FSStore(MutableMapping):
                             for file_name in self.fs.find(entry_path):
                                 file_path = os.path.join(dir_path, file_name)
                                 rel_path = file_path.split(root_path)[1]
-                                new_children.append(rel_path.replace(os.path.sep, '.'))
+                                rel_path = rel_path.lstrip('/')
+                                new_children.append(rel_path.replace('/', '.'))
                         else:
                             new_children.append(entry)
                     return sorted(new_children)
@@ -1250,17 +1251,6 @@ class TempStore(DirectoryStore):
 
 _prog_ckey = re.compile(r'^(\d+)(\.\d+)+$')
 _prog_number = re.compile(r'^\d+$')
-
-
-def _nested_map_ckey(key):
-    segments = list(key.split('/'))
-    if segments:
-        last_segment = segments[-1]
-        if _prog_ckey.match(last_segment):
-            last_segment = last_segment.replace('.', '/')
-            segments = segments[:-1] + [last_segment]
-            key = '/'.join(segments)
-    return key
 
 
 class NestedDirectoryStore(DirectoryStore):

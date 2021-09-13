@@ -253,10 +253,9 @@ def normalize_dimension_separator(sep: Optional[str]) -> Optional[str]:
 
 def normalize_fill_value(fill_value, dtype: np.dtype):
 
-    if fill_value is None:
+    if fill_value is None or dtype.hasobject:
         # no fill value
         pass
-
     elif fill_value == 0:
         # this should be compatible across numpy versions for any array type, including
         # structured arrays
