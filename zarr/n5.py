@@ -509,15 +509,13 @@ try:
                 for entry in children:
                     entry_path = os.path.join(root_path, entry)
                     if _prog_number.match(entry) and self.fs.isdir(entry_path):
-                        for dir_path, _, file_names in self.fs.walk(entry_path):
-                            for file_name in file_names:
-                                file_path = os.path.join(dir_path, file_name)
-                                rel_path = file_path.split(root_path)[1]
-                                new_child = rel_path.replace(os.path.sep, ".")
-                                new_children.append(invert_chunk_coords(new_child))
+                        for file_name in self.fs.find(entry_path):
+                            file_path = os.path.join(root_path, file_name)
+                            rel_path = file_path.split(root_path)[1]
+                            new_child = rel_path.lstrip('/').replace('/', ".")
+                            new_children.append(invert_chunk_coords(new_child))
                     else:
                         new_children.append(entry)
-
                 return sorted(new_children)
 
             elif self._is_group(path):
@@ -527,11 +525,8 @@ try:
                 children.append(zarr_group_meta_key)
                 if self._contains_attrs(path):  # pragma: no cover
                     children.append(zarr_attrs_key)
-
                 return sorted(children)
-
             else:
-
                 return children
 
         def _load_n5_attrs(self, path):
