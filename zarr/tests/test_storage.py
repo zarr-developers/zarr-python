@@ -1228,6 +1228,7 @@ class TestN5Store(TestNestedDirectoryStore):
         assert default_compressor.get_config() == compressor_config
         # N5Store always has a fill value of 0
         assert meta['fill_value'] == 0
+        assert meta['dimension_separator'] == '.'
 
     def test_init_array_path(self):
         path = 'foo/bar'
@@ -1326,6 +1327,7 @@ class TestN5FSStore(TestFSStore):
         assert default_compressor.get_config() == compressor_config
         # N5Store always has a fill value of 0
         assert meta['fill_value'] == 0
+        assert meta['dimension_separator'] == '.'
 
     def test_init_array_path(self):
         path = 'foo/bar'
