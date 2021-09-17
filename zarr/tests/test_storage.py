@@ -1336,6 +1336,24 @@ class TestN5FSStore(TestFSStore):
         store_b = N5FSStore(store_a.path)
         assert store_a == store_b
 
+    # This is copied wholesale from the N5Store tests. The same test could
+    # be run by making TestN5FSStore inherit from both TestFSStore and
+    # TestN5Store, but a direct copy is arguably more explicit.
+    def test_chunk_nesting(self):
+        store = self.create_store()
+        store['0.0'] = b'xxx'
+        assert '0.0' in store
+        assert b'xxx' == store['0.0']
+        # assert b'xxx' == store['0/0']
+        store['foo/10.20.30'] = b'yyy'
+        assert 'foo/10.20.30' in store
+        assert b'yyy' == store['foo/10.20.30']
+        # N5 reverses axis order
+        assert b'yyy' == store['foo/30/20/10']
+        store['42'] = b'zzz'
+        assert '42' in store
+        assert b'zzz' == store['42']
+
     def test_init_array(self):
         store = self.create_store()
         init_array(store, shape=1000, chunks=100)
