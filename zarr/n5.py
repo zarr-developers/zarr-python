@@ -567,7 +567,7 @@ try:
 
             attrs = attrs_to_zarr(self._load_n5_attrs(attrs_key))
             return len(attrs) > 0
-except ImportError:
+except ImportError: # pragma: no cover
     pass
 
 

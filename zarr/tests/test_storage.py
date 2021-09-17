@@ -900,13 +900,20 @@ class TestDirectoryStore(StoreTests):
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
 class TestFSStore(StoreTests):
 
-    def create_store(self, normalize_keys=False, dimension_separator="."):
-        path = tempfile.mkdtemp()
-        atexit.register(atexit_rmtree, path)
+    def create_store(self, normalize_keys=False,
+                     dimension_separator=".",
+                     path=None,
+                     **kwargs):
+
+        if path is None:
+            path = tempfile.mkdtemp()
+            atexit.register(atexit_rmtree, path)
+
         store = FSStore(
             path,
             normalize_keys=normalize_keys,
-            dimension_separator=dimension_separator)
+            dimension_separator=dimension_separator,
+            **kwargs)
         return store
 
     def test_init_array(self):
@@ -937,8 +944,9 @@ class TestFSStore(StoreTests):
     def test_complex(self):
         path1 = tempfile.mkdtemp()
         path2 = tempfile.mkdtemp()
-        store = FSStore("simplecache::file://" + path1,
-                        simplecache={"same_names": True, "cache_storage": path2})
+        store = self.create_store(path="simplecache::file://" + path1,
+                                  simplecache={"same_names": True,
+                                               "cache_storage": path2})
         assert not store
         assert not os.listdir(path1)
         assert not os.listdir(path2)
@@ -948,6 +956,20 @@ class TestFSStore(StoreTests):
         assert not os.listdir(path2)
         assert store["foo"] == b"hello"
         assert 'foo' in os.listdir(path2)
+
+    def test_deep_ndim(self):
+        import zarr
+
+        store = self.create_store()
+        foo = zarr.open_group(store=store)
+        bar = foo.create_group("bar")
+        baz = bar.create_dataset("baz",
+                                 shape=(4, 4, 4),
+                                 chunks=(2, 2, 2),
+                                 dtype="i8")
+        baz[:] = 1
+        assert set(store.listdir()) == set([".zgroup", "bar"])
+        assert foo["bar"]["baz"][(0, 0, 0)] == 1
 
     def test_not_fsspec(self):
         import zarr
@@ -979,10 +1001,10 @@ class TestFSStore(StoreTests):
     def test_read_only(self):
         path = tempfile.mkdtemp()
         atexit.register(atexit_rmtree, path)
-        store = FSStore(path)
+        store = self.create_store(path=path)
         store['foo'] = b"bar"
 
-        store = FSStore(path, mode='r')
+        store = self.create_store(path=path, mode='r')
 
         with pytest.raises(PermissionError):
             store['foo'] = b"hex"
@@ -1000,11 +1022,11 @@ class TestFSStore(StoreTests):
 
         filepath = os.path.join(path, "foo")
         with pytest.raises(ValueError):
-            FSStore(filepath, mode='r')
+            self.create_store(path=filepath, mode='r')
 
     def test_eq(self):
-        store1 = FSStore("anypath")
-        store2 = FSStore("anypath")
+        store1 = self.create_store(path="anypath")
+        store2 = self.create_store(path="anypath")
         assert store1 == store2
 
     @pytest.mark.usefixtures("s3")
@@ -1300,10 +1322,13 @@ class TestN5Store(TestNestedDirectoryStore):
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
 class TestN5FSStore(TestFSStore):
-    def create_store(self, normalize_keys=False):
-        path = tempfile.mkdtemp()
-        atexit.register(atexit_rmtree, path)
-        store = N5FSStore(path, normalize_keys=normalize_keys)
+    def create_store(self, normalize_keys=False, path=None, **kwargs):
+
+        if path is None:
+            path = tempfile.mkdtemp()
+            atexit.register(atexit_rmtree, path)
+
+        store = N5FSStore(path, normalize_keys=normalize_keys, **kwargs)
         return store
 
     def test_equal(self):
@@ -1375,8 +1400,9 @@ class TestN5FSStore(TestFSStore):
         self._test_init_group_overwrite_chunk_store('C')
 
     def test_dimension_separator(self):
-        with pytest.raises(TypeError):
-            self.create_store(key_separator='.')
+
+        with pytest.warns(UserWarning, match='dimension_separator'):
+            self.create_store(dimension_separator='/')
 
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
