@@ -1065,9 +1065,9 @@ class FSStore(MutableMapping):
         Separator placed between the dimensions of a chunk.
     storage_options : passed to the fsspec implementation
     """
-    array_meta_key = array_meta_key
-    group_meta_key = group_meta_key
-    attrs_key = attrs_key
+    _array_meta_key = array_meta_key
+    _group_meta_key = group_meta_key
+    _attrs_key = attrs_key
 
     def __init__(self, url, normalize_keys=True, key_separator=None,
                  mode='w',
@@ -1105,7 +1105,7 @@ class FSStore(MutableMapping):
         if key:
             *bits, end = key.split('/')
 
-            if end not in (self.array_meta_key, self.group_meta_key, self.attrs_key):
+            if end not in (self._array_meta_key, self._group_meta_key, self._attrs_key):
                 end = end.replace('.', self.key_separator)
                 key = '/'.join(bits + [end])
 
@@ -1183,7 +1183,7 @@ class FSStore(MutableMapping):
             if self.key_separator != "/":
                 return children
             else:
-                if self.array_meta_key in children:
+                if self._array_meta_key in children:
                     # special handling of directories containing an array to map nested chunk
                     # keys back to standard chunk keys
                     new_children = []

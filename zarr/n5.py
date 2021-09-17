@@ -333,9 +333,9 @@ try:
         dimensions, hence the Zarr arrays targeting N5 have the deceptive
         "." dimension separator.
         """
-        array_meta_key = 'attributes.json'
-        group_meta_key = 'attributes.json'
-        attrs_key = 'attributes.json'
+        _array_meta_key = 'attributes.json'
+        _group_meta_key = 'attributes.json'
+        _attrs_key = 'attributes.json'
 
         def __init__(self, *args, **kwargs):
             if 'dimension_separator' in kwargs:
@@ -363,7 +363,7 @@ try:
             if key:
                 *bits, end = key.split("/")
 
-                if end not in (self.array_meta_key, self.group_meta_key, self.attrs_key):
+                if end not in (self._array_meta_key, self._group_meta_key, self._attrs_key):
                     end = end.replace(".", "/")
                     key = "/".join(bits + [end])
             return key.lower() if self.normalize_keys else key
@@ -371,21 +371,21 @@ try:
         def __getitem__(self, key):
             if key.endswith(zarr_group_meta_key):
 
-                key = key.replace(zarr_group_meta_key, self.group_meta_key)
+                key = key.replace(zarr_group_meta_key, self._group_meta_key)
                 value = group_metadata_to_zarr(self._load_n5_attrs(key))
 
                 return json_dumps(value)
 
             elif key.endswith(zarr_array_meta_key):
 
-                key = key.replace(zarr_array_meta_key, self.array_meta_key)
+                key = key.replace(zarr_array_meta_key, self._array_meta_key)
                 value = array_metadata_to_zarr(self._load_n5_attrs(key))
 
                 return json_dumps(value)
 
             elif key.endswith(zarr_attrs_key):
 
-                key = key.replace(zarr_attrs_key, self.attrs_key)
+                key = key.replace(zarr_attrs_key, self._attrs_key)
                 value = attrs_to_zarr(self._load_n5_attrs(key))
 
                 if len(value) == 0:
@@ -401,7 +401,7 @@ try:
         def __setitem__(self, key, value):
             if key.endswith(zarr_group_meta_key):
 
-                key = key.replace(zarr_group_meta_key, self.group_meta_key)
+                key = key.replace(zarr_group_meta_key, self._group_meta_key)
 
                 n5_attrs = self._load_n5_attrs(key)
                 n5_attrs.update(**group_metadata_to_n5(json_loads(value)))
@@ -410,7 +410,7 @@ try:
 
             elif key.endswith(zarr_array_meta_key):
 
-                key = key.replace(zarr_array_meta_key, self.array_meta_key)
+                key = key.replace(zarr_array_meta_key, self._array_meta_key)
 
                 n5_attrs = self._load_n5_attrs(key)
                 n5_attrs.update(**array_metadata_to_n5(json_loads(value)))
@@ -419,7 +419,7 @@ try:
 
             elif key.endswith(zarr_attrs_key):
 
-                key = key.replace(zarr_attrs_key, self.attrs_key)
+                key = key.replace(zarr_attrs_key, self._attrs_key)
 
                 n5_attrs = self._load_n5_attrs(key)
                 zarr_attrs = json_loads(value)
@@ -448,11 +448,11 @@ try:
         def __delitem__(self, key):
 
             if key.endswith(zarr_group_meta_key):  # pragma: no cover
-                key = key.replace(zarr_group_meta_key, self.group_meta_key)
+                key = key.replace(zarr_group_meta_key, self._group_meta_key)
             elif key.endswith(zarr_array_meta_key):  # pragma: no cover
-                key = key.replace(zarr_array_meta_key, self.array_meta_key)
+                key = key.replace(zarr_array_meta_key, self._array_meta_key)
             elif key.endswith(zarr_attrs_key):  # pragma: no cover
-                key = key.replace(zarr_attrs_key, self.attrs_key)
+                key = key.replace(zarr_attrs_key, self._attrs_key)
             elif is_chunk_key(key):
                 key = self._swap_separator(key)
 
@@ -461,7 +461,7 @@ try:
         def __contains__(self, key):
             if key.endswith(zarr_group_meta_key):
 
-                key = key.replace(zarr_group_meta_key, self.group_meta_key)
+                key = key.replace(zarr_group_meta_key, self._group_meta_key)
                 if key not in self:
                     return False
                 # group if not a dataset (attributes do not contain 'dimensions')
@@ -469,13 +469,13 @@ try:
 
             elif key.endswith(zarr_array_meta_key):
 
-                key = key.replace(zarr_array_meta_key, self.array_meta_key)
+                key = key.replace(zarr_array_meta_key, self._array_meta_key)
                 # array if attributes contain 'dimensions'
                 return "dimensions" in self._load_n5_attrs(key)
 
             elif key.endswith(zarr_attrs_key):
 
-                key = key.replace(zarr_attrs_key, self.attrs_key)
+                key = key.replace(zarr_attrs_key, self._attrs_key)
                 return self._contains_attrs(key)
 
             elif is_chunk_key(key):
@@ -497,7 +497,7 @@ try:
             if self._is_array(path):
 
                 # replace n5 attribute file with respective zarr attribute files
-                children.remove(self.array_meta_key)
+                children.remove(self._array_meta_key)
                 children.append(zarr_array_meta_key)
                 if self._contains_attrs(path):
                     children.append(zarr_attrs_key)
@@ -521,7 +521,7 @@ try:
             elif self._is_group(path):
 
                 # replace n5 attribute file with respective zarr attribute files
-                children.remove(self.group_meta_key)
+                children.remove(self._group_meta_key)
                 children.append(zarr_group_meta_key)
                 if self._contains_attrs(path):  # pragma: no cover
                     children.append(zarr_attrs_key)
@@ -539,9 +539,9 @@ try:
         def _is_group(self, path):
 
             if path is None:
-                attrs_key = self.attrs_key
+                attrs_key = self._attrs_key
             else:
-                attrs_key = os.path.join(path, self.attrs_key)
+                attrs_key = os.path.join(path, self._attrs_key)
 
             n5_attrs = self._load_n5_attrs(attrs_key)
             return len(n5_attrs) > 0 and "dimensions" not in n5_attrs
@@ -549,19 +549,19 @@ try:
         def _is_array(self, path):
 
             if path is None:
-                attrs_key = self.attrs_key
+                attrs_key = self._attrs_key
             else:
-                attrs_key = os.path.join(path, self.attrs_key)
+                attrs_key = os.path.join(path, self._attrs_key)
 
             return "dimensions" in self._load_n5_attrs(attrs_key)
 
         def _contains_attrs(self, path):
 
             if path is None:
-                attrs_key = self.attrs_key
+                attrs_key = self._attrs_key
             else:
-                if not path.endswith(self.attrs_key):
-                    attrs_key = os.path.join(path, self.attrs_key)
+                if not path.endswith(self._attrs_key):
+                    attrs_key = os.path.join(path, self._attrs_key)
                 else:  # pragma: no cover
                     attrs_key = path
 
