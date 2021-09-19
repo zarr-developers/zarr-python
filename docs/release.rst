@@ -6,6 +6,23 @@ Release notes
 Unreleased
 ----------
 
+.. _release_2.10.0:
+
+2.10.0
+------
+
+Enhancements
+~~~~~~~~~~~~
+
+* Add N5FSStore.
+  By :user:`Davis Bennett <d-v-b>`; :issue:`793`.
+
+Bug fixes
+~~~~~~~~~
+
+* Ignore None dim_separators in save_array.
+  By :user:`Josh Moore <joshmoore>`; :issue:`831`.
+
 .. _release_2.9.5:
 
 2.9.5
