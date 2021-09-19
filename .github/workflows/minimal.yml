@@ -1,0 +1,28 @@
+# This workflow simulates the environment found during a conda-forge build
+# and makes sure that Zarr can run without fsspec and other additional libraries.
+name: Minimal installation
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: Setup Miniconda
+      uses: conda-incubator/setup-miniconda@master
+      with:
+          channels: conda-forge
+          environment-file: environment.yml
+          activate-environment: minimal
+    - name: Tests
+      shell: "bash -l {0}"
+      run: |
+        conda activate minimal
+        python -m pip install -e .
+        pytest -svx
