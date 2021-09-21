@@ -3,8 +3,8 @@ channels:
   - defaults
 dependencies:
   - wheel
-  - numcodecs
-  - numpy
+  - numcodecs >= 0.6.4
+  - numpy >= 1.7
   - pip
   - pip:
     - asciitree
