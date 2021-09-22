@@ -15,7 +15,7 @@ from zarr.creation import (array, create, empty, empty_like, full, full_like,
                            zeros_like)
 from zarr.hierarchy import open_group
 from zarr.n5 import N5Store
-from zarr.storage import DirectoryStore
+from zarr.storage import DirectoryStore, KVStore
 from zarr.sync import ThreadSynchronizer
 
 
@@ -270,6 +270,30 @@ def test_open_array():
     assert (100,) == a.shape
     assert (10,) == a.chunks
     assert_array_equal(np.full(100, fill_value=42), a[:])
+
+
+def test_open_array_dict_store():
+
+    # dict will become a KVStore
+    store = dict()
+
+    # mode == 'w'
+    z = open_array(store, mode='w', shape=100, chunks=10)
+    z[:] = 42
+    assert isinstance(z, Array)
+    assert isinstance(z.store, KVStore)
+    assert (100,) == z.shape
+    assert (10,) == z.chunks
+    assert_array_equal(np.full(100, fill_value=42), z[:])
+
+
+def test_create_in_dict():
+    for func in [empty, zeros, ones]:
+        a = func(100, store=dict())
+        assert isinstance(a.store, KVStore)
+
+    a = full(100, 5, store=dict())
+    assert isinstance(a.store, KVStore)
 
 
 def test_empty_like():
