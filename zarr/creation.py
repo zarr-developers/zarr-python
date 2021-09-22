@@ -167,7 +167,7 @@ def normalize_store_arg(store, clobber=False, storage_options=None, mode="w") ->
             return DirectoryStore(store)
     else:
         if not isinstance(store, Store) and isinstance(store, MutableMapping):
-            store = KVStore(store)
+            store = Store._ensure_store(store)
         return store
 
 
