@@ -23,7 +23,7 @@ from zarr.hierarchy import group
 from zarr.meta import (ZARR_FORMAT, decode_array_metadata,
                        decode_group_metadata, encode_array_metadata,
                        encode_group_metadata)
-from zarr.n5 import N5Store
+from zarr.n5 import N5Store, N5FSStore
 from zarr.storage import (ABSStore, ConsolidatedMetadataStore, DBMStore,
                           DictStore, DirectoryStore, KVStore, LMDBStore,
                           LRUStoreCache, MemoryStore, MongoDBStore,
@@ -919,13 +919,20 @@ class TestDirectoryStore(StoreTests):
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
 class TestFSStore(StoreTests):
 
-    def create_store(self, normalize_keys=False, dimension_separator="."):
-        path = tempfile.mkdtemp()
-        atexit.register(atexit_rmtree, path)
+    def create_store(self, normalize_keys=False,
+                     dimension_separator=".",
+                     path=None,
+                     **kwargs):
+
+        if path is None:
+            path = tempfile.mkdtemp()
+            atexit.register(atexit_rmtree, path)
+
         store = FSStore(
             path,
             normalize_keys=normalize_keys,
-            dimension_separator=dimension_separator)
+            dimension_separator=dimension_separator,
+            **kwargs)
         return store
 
     def test_init_array(self):
@@ -956,8 +963,9 @@ class TestFSStore(StoreTests):
     def test_complex(self):
         path1 = tempfile.mkdtemp()
         path2 = tempfile.mkdtemp()
-        store = FSStore("simplecache::file://" + path1,
-                        simplecache={"same_names": True, "cache_storage": path2})
+        store = self.create_store(path="simplecache::file://" + path1,
+                                  simplecache={"same_names": True,
+                                               "cache_storage": path2})
         assert not store
         assert not os.listdir(path1)
         assert not os.listdir(path2)
@@ -967,6 +975,20 @@ class TestFSStore(StoreTests):
         assert not os.listdir(path2)
         assert store["foo"] == b"hello"
         assert 'foo' in os.listdir(path2)
+
+    def test_deep_ndim(self):
+        import zarr
+
+        store = self.create_store()
+        foo = zarr.open_group(store=store)
+        bar = foo.create_group("bar")
+        baz = bar.create_dataset("baz",
+                                 shape=(4, 4, 4),
+                                 chunks=(2, 2, 2),
+                                 dtype="i8")
+        baz[:] = 1
+        assert set(store.listdir()) == set([".zgroup", "bar"])
+        assert foo["bar"]["baz"][(0, 0, 0)] == 1
 
     def test_not_fsspec(self):
         import zarr
@@ -998,10 +1020,10 @@ class TestFSStore(StoreTests):
     def test_read_only(self):
         path = tempfile.mkdtemp()
         atexit.register(atexit_rmtree, path)
-        store = FSStore(path)
+        store = self.create_store(path=path)
         store['foo'] = b"bar"
 
-        store = FSStore(path, mode='r')
+        store = self.create_store(path=path, mode='r')
 
         with pytest.raises(PermissionError):
             store['foo'] = b"hex"
@@ -1019,11 +1041,11 @@ class TestFSStore(StoreTests):
 
         filepath = os.path.join(path, "foo")
         with pytest.raises(ValueError):
-            FSStore(filepath, mode='r')
+            self.create_store(path=filepath, mode='r')
 
     def test_eq(self):
-        store1 = FSStore("anypath")
-        store2 = FSStore("anypath")
+        store1 = self.create_store(path="anypath")
+        store2 = self.create_store(path="anypath")
         assert store1 == store2
 
     @pytest.mark.usefixtures("s3")
@@ -1208,7 +1230,7 @@ class TestNestedDirectoryStoreWithWrongValue:
 class TestN5Store(TestNestedDirectoryStore):
 
     def create_store(self, normalize_keys=False):
-        path = tempfile.mkdtemp(suffix='.n5')
+        path = tempfile.mkdtemp()
         atexit.register(atexit_rmtree, path)
         store = N5Store(path, normalize_keys=normalize_keys)
         return store
@@ -1249,6 +1271,7 @@ class TestN5Store(TestNestedDirectoryStore):
         assert default_compressor.get_config() == compressor_config
         # N5Store always has a fill value of 0
         assert meta['fill_value'] == 0
+        assert meta['dimension_separator'] == '.'
 
     def test_init_array_path(self):
         path = 'foo/bar'
@@ -1316,6 +1339,109 @@ class TestN5Store(TestNestedDirectoryStore):
             store = self.create_store()
             with error:
                 init_array(store, shape=1000, chunks=100, filters=filters)
+
+
+@pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
+class TestN5FSStore(TestFSStore):
+    def create_store(self, normalize_keys=False, path=None, **kwargs):
+
+        if path is None:
+            path = tempfile.mkdtemp()
+            atexit.register(atexit_rmtree, path)
+
+        store = N5FSStore(path, normalize_keys=normalize_keys, **kwargs)
+        return store
+
+    def test_equal(self):
+        store_a = self.create_store()
+        store_b = N5FSStore(store_a.path)
+        assert store_a == store_b
+
+    # This is copied wholesale from the N5Store tests. The same test could
+    # be run by making TestN5FSStore inherit from both TestFSStore and
+    # TestN5Store, but a direct copy is arguably more explicit.
+    def test_chunk_nesting(self):
+        store = self.create_store()
+        store['0.0'] = b'xxx'
+        assert '0.0' in store
+        assert b'xxx' == store['0.0']
+        # assert b'xxx' == store['0/0']
+        store['foo/10.20.30'] = b'yyy'
+        assert 'foo/10.20.30' in store
+        assert b'yyy' == store['foo/10.20.30']
+        # N5 reverses axis order
+        assert b'yyy' == store['foo/30/20/10']
+        store['42'] = b'zzz'
+        assert '42' in store
+        assert b'zzz' == store['42']
+
+    def test_init_array(self):
+        store = self.create_store()
+        init_array(store, shape=1000, chunks=100)
+
+        # check metadata
+        assert array_meta_key in store
+        meta = decode_array_metadata(store[array_meta_key])
+        assert ZARR_FORMAT == meta['zarr_format']
+        assert (1000,) == meta['shape']
+        assert (100,) == meta['chunks']
+        assert np.dtype(None) == meta['dtype']
+        # N5Store wraps the actual compressor
+        compressor_config = meta['compressor']['compressor_config']
+        assert default_compressor.get_config() == compressor_config
+        # N5Store always has a fill value of 0
+        assert meta['fill_value'] == 0
+        assert meta['dimension_separator'] == '.'
+
+    def test_init_array_path(self):
+        path = 'foo/bar'
+        store = self.create_store()
+        init_array(store, shape=1000, chunks=100, path=path)
+
+        # check metadata
+        key = path + '/' + array_meta_key
+        assert key in store
+        meta = decode_array_metadata(store[key])
+        assert ZARR_FORMAT == meta['zarr_format']
+        assert (1000,) == meta['shape']
+        assert (100,) == meta['chunks']
+        assert np.dtype(None) == meta['dtype']
+        # N5Store wraps the actual compressor
+        compressor_config = meta['compressor']['compressor_config']
+        assert default_compressor.get_config() == compressor_config
+        # N5Store always has a fill value of 0
+        assert meta['fill_value'] == 0
+
+    def test_init_array_compat(self):
+        store = self.create_store()
+        init_array(store, shape=1000, chunks=100, compressor='none')
+        meta = decode_array_metadata(store[array_meta_key])
+        # N5Store wraps the actual compressor
+        compressor_config = meta['compressor']['compressor_config']
+        assert compressor_config is None
+
+    def test_init_array_overwrite(self):
+        self._test_init_array_overwrite('C')
+
+    def test_init_array_overwrite_path(self):
+        self._test_init_array_overwrite_path('C')
+
+    def test_init_array_overwrite_chunk_store(self):
+        self._test_init_array_overwrite_chunk_store('C')
+
+    def test_init_group_overwrite(self):
+        self._test_init_group_overwrite('C')
+
+    def test_init_group_overwrite_path(self):
+        self._test_init_group_overwrite_path('C')
+
+    def test_init_group_overwrite_chunk_store(self):
+        self._test_init_group_overwrite_chunk_store('C')
+
+    def test_dimension_separator(self):
+
+        with pytest.warns(UserWarning, match='dimension_separator'):
+            self.create_store(dimension_separator='/')
 
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
