@@ -1804,7 +1804,7 @@ def test_migrate_1to2():
     # concerned about migrating a single array at the root of the store
 
     # setup
-    store = dict()
+    store = KVStore(dict())
     meta = dict(
         shape=(100,),
         chunks=(10,),
@@ -1842,7 +1842,7 @@ def test_migrate_1to2():
     assert meta_migrated['compressor'] == Zlib(1).get_config()
 
     # check dict compression_opts
-    store = dict()
+    store = KVStore(dict())
     meta['compression'] = 'blosc'
     meta['compression_opts'] = dict(cname='lz4', clevel=5, shuffle=1)
     meta_json = meta_v1.encode_metadata(meta)
@@ -1856,7 +1856,7 @@ def test_migrate_1to2():
             Blosc(cname='lz4', clevel=5, shuffle=1).get_config())
 
     # check 'none' compression is migrated to None (null in JSON)
-    store = dict()
+    store = KVStore(dict())
     meta['compression'] = 'none'
     meta_json = meta_v1.encode_metadata(meta)
     store['meta'] = meta_json

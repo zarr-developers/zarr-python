@@ -30,6 +30,7 @@ from zarr.storage import (
     LRUStoreCache,
     NestedDirectoryStore,
     SQLiteStore,
+    Store,
     atexit_rmglob,
     atexit_rmtree,
     init_array,
@@ -73,18 +74,18 @@ class TestArray(unittest.TestCase):
         assert "8fecb7a17ea1493d9c1430d04437b4f5b0b34985" == a.hexdigest()
 
         # store not initialized
-        store = dict()
+        store = KVStore(dict())
         with pytest.raises(ValueError):
             Array(store)
 
         # group is in the way
-        store = dict()
+        store = KVStore(dict())
         init_group(store, path='baz')
         with pytest.raises(ValueError):
             Array(store, path='baz')
 
     def create_array(self, read_only=False, **kwargs):
-        store = dict()
+        store = KVStore(dict())
         kwargs.setdefault('compressor', Zlib(level=1))
         cache_metadata = kwargs.pop('cache_metadata', True)
         cache_attrs = kwargs.pop('cache_attrs', True)
@@ -1481,7 +1482,7 @@ class TestArrayWithPath(TestArray):
 
     @staticmethod
     def create_array(read_only=False, **kwargs):
-        store = dict()
+        store = KVStore(dict())
         cache_metadata = kwargs.pop('cache_metadata', True)
         cache_attrs = kwargs.pop('cache_attrs', True)
         init_array(store, path='foo/bar', **kwargs)
@@ -1537,9 +1538,9 @@ class TestArrayWithChunkStore(TestArray):
 
     @staticmethod
     def create_array(read_only=False, **kwargs):
-        store = dict()
+        store = KVStore(dict())
         # separate chunk store
-        chunk_store = dict()
+        chunk_store = KVStore(dict())
         cache_metadata = kwargs.pop('cache_metadata', True)
         cache_attrs = kwargs.pop('cache_attrs', True)
         init_array(store, chunk_store=chunk_store, **kwargs)
@@ -2060,7 +2061,7 @@ class TestArrayWithSQLiteStore(TestArray):
 class TestArrayWithNoCompressor(TestArray):
 
     def create_array(self, read_only=False, **kwargs):
-        store = dict()
+        store = KVStore(dict())
         kwargs.setdefault('compressor', None)
         cache_metadata = kwargs.pop('cache_metadata', True)
         cache_attrs = kwargs.pop('cache_attrs', True)
@@ -2095,7 +2096,7 @@ class TestArrayWithNoCompressor(TestArray):
 class TestArrayWithBZ2Compressor(TestArray):
 
     def create_array(self, read_only=False, **kwargs):
-        store = dict()
+        store = KVStore(dict())
         compressor = BZ2(level=1)
         kwargs.setdefault('compressor', compressor)
         cache_metadata = kwargs.pop('cache_metadata', True)
@@ -2131,7 +2132,7 @@ class TestArrayWithBZ2Compressor(TestArray):
 class TestArrayWithBloscCompressor(TestArray):
 
     def create_array(self, read_only=False, **kwargs):
-        store = dict()
+        store = KVStore(dict())
         compressor = Blosc(cname='zstd', clevel=1, shuffle=1)
         kwargs.setdefault('compressor', compressor)
         cache_metadata = kwargs.pop('cache_metadata', True)
@@ -2174,7 +2175,7 @@ except ImportError:  # pragma: no cover
 class TestArrayWithLZMACompressor(TestArray):
 
     def create_array(self, read_only=False, **kwargs):
-        store = dict()
+        store = KVStore(dict())
         compressor = LZMA(preset=1)
         kwargs.setdefault('compressor', compressor)
         cache_metadata = kwargs.pop('cache_metadata', True)
@@ -2211,7 +2212,7 @@ class TestArrayWithFilters(TestArray):
 
     @staticmethod
     def create_array(read_only=False, **kwargs):
-        store = dict()
+        store = KVStore(dict())
         dtype = kwargs.get('dtype', None)
         filters = [
             Delta(dtype=dtype),
@@ -2254,7 +2255,7 @@ class TestArrayWithFilters(TestArray):
         dtype = np.dtype(np.int8)
         astype = np.dtype(np.float32)
 
-        store = dict()
+        store = KVStore(dict())
         init_array(store, shape=shape, chunks=10, dtype=dtype)
 
         data = np.arange(np.prod(shape), dtype=dtype).reshape(shape)
@@ -2329,13 +2330,16 @@ class TestArrayWithFilters(TestArray):
 
 
 # custom store, does not support getsize()
-class CustomMapping(object):
+class CustomMapping(Store):
 
     def __init__(self):
-        self.inner = dict()
+        self.inner = KVStore(dict())
 
     def __iter__(self):
         return iter(self.keys())
+
+    def __len__(self):
+        return len(self.inner)
 
     def keys(self):
         return self.inner.keys()
@@ -2385,7 +2389,7 @@ class TestArrayNoCache(TestArray):
 
     @staticmethod
     def create_array(read_only=False, **kwargs):
-        store = dict()
+        store = KVStore(dict())
         kwargs.setdefault('compressor', Zlib(level=1))
         cache_metadata = kwargs.pop('cache_metadata', True)
         cache_attrs = kwargs.pop('cache_attrs', True)
