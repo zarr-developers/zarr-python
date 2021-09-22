@@ -2356,16 +2356,13 @@ class TestArrayWithFilters(TestArray):
 
 
 # custom store, does not support getsize()
-class CustomMapping(Store):
+class CustomMapping(object):
 
     def __init__(self):
         self.inner = KVStore(dict())
 
     def __iter__(self):
         return iter(self.keys())
-
-    def __len__(self):
-        return len(self.inner)
 
     def keys(self):
         return self.inner.keys()
