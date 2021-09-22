@@ -1065,22 +1065,28 @@ class FSStore(MutableMapping):
         Separator placed between the dimensions of a chunk.
     storage_options : passed to the fsspec implementation
     """
+    _array_meta_key = array_meta_key
+    _group_meta_key = group_meta_key
+    _attrs_key = attrs_key
 
-    _META_KEYS = (attrs_key, group_meta_key, array_meta_key)
-
-    def __init__(self, url, normalize_keys=False, key_separator=None,
+    def __init__(self, url, normalize_keys=True, key_separator=None,
                  mode='w',
                  exceptions=(KeyError, PermissionError, IOError),
                  dimension_separator=None,
                  **storage_options):
         import fsspec
         self.normalize_keys = normalize_keys
+
+        protocol, _ = fsspec.core.split_protocol(url)
+        # set auto_mkdir to True for local file system
+        if protocol in (None, "file") and not storage_options.get("auto_mkdir"):
+            storage_options["auto_mkdir"] = True
+
         self.map = fsspec.get_mapper(url, **storage_options)
         self.fs = self.map.fs  # for direct operations
         self.path = self.fs._strip_protocol(url)
         self.mode = mode
         self.exceptions = exceptions
-
         # For backwards compatibility. Guaranteed to be non-None
         if key_separator is not None:
             dimension_separator = key_separator
@@ -1091,7 +1097,6 @@ class FSStore(MutableMapping):
 
         # Pass attributes to array creation
         self._dimension_separator = dimension_separator
-
         if self.fs.exists(self.path) and not self.fs.isdir(self.path):
             raise FSPathExistNotDir(url)
 
@@ -1100,7 +1105,7 @@ class FSStore(MutableMapping):
         if key:
             *bits, end = key.split('/')
 
-            if end not in FSStore._META_KEYS:
+            if end not in (self._array_meta_key, self._group_meta_key, self._attrs_key):
                 end = end.replace('.', self.key_separator)
                 key = '/'.join(bits + [end])
 
@@ -1178,7 +1183,7 @@ class FSStore(MutableMapping):
             if self.key_separator != "/":
                 return children
             else:
-                if array_meta_key in children:
+                if self._array_meta_key in children:
                     # special handling of directories containing an array to map nested chunk
                     # keys back to standard chunk keys
                     new_children = []
