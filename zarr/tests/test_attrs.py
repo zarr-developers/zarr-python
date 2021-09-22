@@ -5,17 +5,23 @@ import pytest
 
 from zarr.attrs import Attributes
 from zarr.tests.util import CountingDict
+from zarr.storage import KVStore
 
 
-class TestAttributes(unittest.TestCase):
+class TestAttributes():
 
     def init_attributes(self, store, read_only=False, cache=True):
         return Attributes(store, key='attrs', read_only=read_only, cache=cache)
 
-    def test_storage(self):
+    @pytest.mark.parametrize('store_from_dict', [False, True])
+    def test_storage(self, store_from_dict):
 
-        store = dict()
+        if store_from_dict:
+            store = dict()
+        else:
+            store = KVStore(dict())
         a = Attributes(store=store, key='attrs')
+        assert isinstance(a.store, KVStore)
         assert 'foo' not in a
         assert 'bar' not in a
         assert dict() == a.asdict()
