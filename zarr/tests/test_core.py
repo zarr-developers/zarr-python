@@ -19,7 +19,7 @@ from pkg_resources import parse_version
 
 from zarr.core import Array
 from zarr.meta import json_loads
-from zarr.n5 import N5Store, n5_keywords
+from zarr.n5 import N5Store, N5FSStore, n5_keywords
 from zarr.storage import (
     ABSStore,
     DBMStore,
@@ -1926,12 +1926,12 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
 
     def expected(self):
         return [
-            'c6b83adfad999fbd865057531d749d87cf138f58',
-            'a3d6d187536ecc3a9dd6897df55d258e2f52f9c5',
-            'ec2e008525ae09616dbc1d2408cbdb42532005c8',
-            'b63f031031dcd5248785616edcb2d6fe68203c28',
-            '0cfc673215a8292a87f3c505e2402ce75243c601',
-        ]
+           '4e9cf910000506455f82a70938a272a3fce932e5',
+           'f9d4cbf1402901f63dea7acf764d2546e4b6aa38',
+           '1d8199f5f7b70d61aa0d29cc375212c3df07d50a',
+           '874880f91aa6736825584509144afe6b06b0c05c',
+           'e2258fedc74752196a8c8383db49e27193c995e2',
+           ]
 
     def test_hexdigest(self):
         found = []
@@ -1958,6 +1958,22 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
         found.append(z.hexdigest())
 
         assert self.expected() == found
+
+
+@pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
+class TestArrayWithN5FSStore(TestArrayWithN5Store):
+
+    @staticmethod
+    def create_array(read_only=False, **kwargs):
+        path = mkdtemp()
+        atexit.register(shutil.rmtree, path)
+        store = N5FSStore(path)
+        cache_metadata = kwargs.pop('cache_metadata', True)
+        cache_attrs = kwargs.pop('cache_attrs', True)
+        kwargs.setdefault('compressor', Zlib(1))
+        init_array(store, **kwargs)
+        return Array(store, read_only=read_only, cache_metadata=cache_metadata,
+                     cache_attrs=cache_attrs)
 
 
 class TestArrayWithDBMStore(TestArray):
