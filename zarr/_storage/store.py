@@ -26,7 +26,7 @@ class Store(MutableMapping):
 
     Stores can be used as context manager to make sure they close on exit.
 
-    .. added: 2.10.0
+    .. added: 2.11.0
 
     """
 
