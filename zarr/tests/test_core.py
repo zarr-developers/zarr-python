@@ -1613,6 +1613,16 @@ class TestArrayWithDirectoryStore(TestArray):
         assert expect_nbytes_stored == z.nbytes_stored
 
 
+def test_array_init_from_dict():
+    # initialization via non-Store MutableMapping
+    store = dict()
+    init_array(store, shape=100, chunks=10, dtype="<f8")
+    a = Array(store)
+    assert isinstance(a, Array)
+    assert a.store is not store
+    assert isinstance(a.store, KVStore)
+
+
 @skip_test_env_var("ZARR_TEST_ABS")
 class TestArrayWithABSStore(TestArray):
 
