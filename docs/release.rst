@@ -6,6 +6,45 @@ Release notes
 Unreleased
 ----------
 
+.. _release_2.10.0:
+
+2.10.0
+------
+
+Enhancements
+~~~~~~~~~~~~
+
+* Add N5FSStore.
+  By :user:`Davis Bennett <d-v-b>`; :issue:`793`.
+
+Bug fixes
+~~~~~~~~~
+
+* Ignore None dim_separators in save_array.
+  By :user:`Josh Moore <joshmoore>`; :issue:`831`.
+
+.. _release_2.9.5:
+
+2.9.5
+-----
+
+Bug fixes
+~~~~~~~~~
+
+* Fix FSStore.listdir behavior for nested directories.
+  By :user:`Greggory Lee <grlee77>`; :issue:`802`.
+
+.. _release_2.9.4:
+
+2.9.4
+-----
+
+Bug fixes
+~~~~~~~~~
+
+* Fix structured arrays that contain objects
+  By :user: `Attila Bergou <abergou>`; :issue: `806`
+
 .. _release_2.9.3:
 
 2.9.3
@@ -30,7 +69,6 @@ Maintenance
 
 * Correct conda-forge deployment of Zarr by fixing some Zarr tests.
   By :user:`Ben Williams <benjaminhwilliams>`; :issue:`821`.
-
 
 .. _release_2.9.1:
 
@@ -91,7 +129,6 @@ Maintenance
 
 * TST: add missing assert in test_hexdigest.
   By :user:`Greggory Lee <grlee77>`; :issue:`801`.
-
 
 .. _release_2.8.3:
 

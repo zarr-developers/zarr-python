@@ -15,10 +15,11 @@ from numcodecs import (BZ2, JSON, LZ4, Blosc, Categorize, Delta,
 from numcodecs.compat import ensure_bytes, ensure_ndarray
 from numcodecs.tests.common import greetings
 from numpy.testing import assert_array_almost_equal, assert_array_equal
+from pkg_resources import parse_version
 
 from zarr.core import Array
 from zarr.meta import json_loads
-from zarr.n5 import N5Store, n5_keywords
+from zarr.n5 import N5Store, N5FSStore, n5_keywords
 from zarr.storage import (
     ABSStore,
     DBMStore,
@@ -1363,6 +1364,44 @@ class TestArray(unittest.TestCase):
         if hasattr(z.store, 'close'):
             z.store.close()
 
+    @unittest.skipIf(parse_version(np.__version__) < parse_version('1.14.0'),
+                     "unsupported numpy version")
+    def test_structured_array_contain_object(self):
+
+        if "PartialRead" in self.__class__.__name__:
+            pytest.skip("partial reads of object arrays not supported")
+
+        # ----------- creation --------------
+
+        structured_dtype = [('c_obj', object), ('c_int', int)]
+        a = np.array([(b'aaa', 1),
+                      (b'bbb', 2)], dtype=structured_dtype)
+
+        # zarr-array with structured dtype require object codec
+        with pytest.raises(ValueError):
+            self.create_array(shape=a.shape, dtype=structured_dtype)
+
+        # create zarr-array by np-array
+        za = self.create_array(shape=a.shape, dtype=structured_dtype, object_codec=Pickle())
+        za[:] = a
+
+        # must be equal
+        assert_array_equal(a, za[:])
+
+        # ---------- indexing ---------------
+
+        assert za[0] == a[0]
+
+        za[0] = (b'ccc', 3)
+        za[1:2] = np.array([(b'ddd', 4)], dtype=structured_dtype)  # ToDo: not work with list
+        assert_array_equal(za[:], np.array([(b'ccc', 3), (b'ddd', 4)], dtype=structured_dtype))
+
+        za['c_obj'] = [b'eee', b'fff']
+        za['c_obj', 0] = b'ggg'
+        assert_array_equal(za[:], np.array([(b'ggg', 3), (b'fff', 4)], dtype=structured_dtype))
+        assert za['c_obj', 0] == b'ggg'
+        assert za[1, 'c_int'] == 4
+
     def test_iteration_exceptions(self):
         # zero d array
         a = np.array(1, dtype=int)
@@ -1490,6 +1529,14 @@ class TestArray(unittest.TestCase):
         assert 'bar' in attrs and attrs['bar'] == 'foo'
         if hasattr(a.store, 'close'):
             a.store.close()
+
+    def test_structured_with_object(self):
+        a = self.create_array(fill_value=(0.0, None),
+                              shape=10,
+                              chunks=10,
+                              dtype=[('x', float), ('y', object)],
+                              object_codec=Pickle())
+        assert tuple(a[0]) == (0.0, None)
 
 
 class TestArrayWithPath(TestArray):
@@ -1894,6 +1941,14 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
         # Cannot hacking out object codec as N5 doesn't allow object codecs
         pass
 
+    def test_structured_with_object(self):
+        # Cannot hacking out object codec as N5 doesn't allow object codecs
+        pass
+
+    def test_structured_array_contain_object(self):
+        # Cannot hacking out object codec as N5 doesn't allow object codecs
+        pass
+
     def test_attrs_n5_keywords(self):
         z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
         for k in n5_keywords:
@@ -1930,12 +1985,12 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
 
     def expected(self):
         return [
-            'c6b83adfad999fbd865057531d749d87cf138f58',
-            'a3d6d187536ecc3a9dd6897df55d258e2f52f9c5',
-            'ec2e008525ae09616dbc1d2408cbdb42532005c8',
-            'b63f031031dcd5248785616edcb2d6fe68203c28',
-            '0cfc673215a8292a87f3c505e2402ce75243c601',
-        ]
+           '4e9cf910000506455f82a70938a272a3fce932e5',
+           'f9d4cbf1402901f63dea7acf764d2546e4b6aa38',
+           '1d8199f5f7b70d61aa0d29cc375212c3df07d50a',
+           '874880f91aa6736825584509144afe6b06b0c05c',
+           'e2258fedc74752196a8c8383db49e27193c995e2',
+           ]
 
     def test_hexdigest(self):
         found = []
@@ -1962,6 +2017,22 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
         found.append(z.hexdigest())
 
         assert self.expected() == found
+
+
+@pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
+class TestArrayWithN5FSStore(TestArrayWithN5Store):
+
+    @staticmethod
+    def create_array(read_only=False, **kwargs):
+        path = mkdtemp()
+        atexit.register(shutil.rmtree, path)
+        store = N5FSStore(path)
+        cache_metadata = kwargs.pop('cache_metadata', True)
+        cache_attrs = kwargs.pop('cache_attrs', True)
+        kwargs.setdefault('compressor', Zlib(1))
+        init_array(store, **kwargs)
+        return Array(store, read_only=read_only, cache_metadata=cache_metadata,
+                     cache_attrs=cache_attrs)
 
 
 class TestArrayWithDBMStore(TestArray):
@@ -2325,6 +2396,10 @@ class TestArrayWithFilters(TestArray):
 
     def test_object_arrays_danger(self):
         # skip this one, cannot use delta with objects
+        pass
+
+    def test_structured_array_contain_object(self):
+        # skip this one, cannot use delta on structured array
         pass
 
 
