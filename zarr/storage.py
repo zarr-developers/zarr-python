@@ -446,7 +446,10 @@ def _init_array_metadata(
                 order=order, filters=filters_config,
                 dimension_separator=dimension_separator)
     key = _path_to_prefix(path) + array_meta_key
-    store[key] = encode_array_metadata(meta)
+    if hasattr(store, '_metadata_class'):
+        store[key] = store._metadata_class.encode_array_metadata(meta)
+    else:
+        store[key] = encode_array_metadata(meta)
 
 
 # backwards compatibility
@@ -511,7 +514,10 @@ def _init_group_metadata(
     # be in future
     meta = dict()  # type: ignore
     key = _path_to_prefix(path) + group_meta_key
-    store[key] = encode_group_metadata(meta)
+    if hasattr(store, '_metadata_class'):
+        store[key] = store._metadata_class.encode_group_metadata(meta)
+    else:
+        store[key] = encode_group_metadata(meta)
 
 
 def _dict_store_keys(d: Dict, prefix="", cls=dict):
@@ -1685,7 +1691,10 @@ def migrate_1to2(store):
     del meta['compression_opts']
 
     # store migrated metadata
-    store[array_meta_key] = encode_array_metadata(meta)
+    if hasattr(store, '_metadata_class'):
+        store[array_meta_key] = store._metadata_class.encode_array_metadata(meta)
+    else:
+        store[array_meta_key] = encode_array_metadata(meta)
 
     # migrate user attributes
     store[attrs_key] = store['attrs']
