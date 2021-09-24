@@ -1,6 +1,5 @@
 from collections.abc import MutableMapping
 
-from zarr.meta import parse_metadata
 from zarr._storage.store import Store
 from zarr.util import json_dumps
 

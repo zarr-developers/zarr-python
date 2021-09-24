@@ -14,7 +14,6 @@ from zarr.errors import (
     GroupNotFoundError,
     ReadOnlyError,
 )
-from zarr.meta import decode_group_metadata
 from zarr.storage import (
     BaseStore,
     MemoryStore,

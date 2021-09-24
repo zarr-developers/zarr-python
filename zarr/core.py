@@ -31,7 +31,6 @@ from zarr.indexing import (
     is_scalar,
     pop_fields,
 )
-from zarr.meta import decode_array_metadata, encode_array_metadata
 from zarr.storage import array_meta_key, attrs_key, getsize, listdir, BaseStore
 from zarr.util import (
     all_equal,
