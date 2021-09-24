@@ -20,9 +20,7 @@ from numcodecs.compat import ensure_bytes
 from zarr.codecs import BZ2, AsType, Blosc, Zlib
 from zarr.errors import MetadataError
 from zarr.hierarchy import group
-from zarr.meta import (ZARR_FORMAT, decode_array_metadata,
-                       decode_group_metadata, encode_array_metadata,
-                       encode_group_metadata)
+from zarr.meta import ZARR_FORMAT
 from zarr.n5 import N5Store, N5FSStore
 from zarr.storage import (ABSStore, ConsolidatedMetadataStore, DBMStore,
                           DictStore, DirectoryStore, KVStore, LMDBStore,
@@ -1387,7 +1385,7 @@ class TestN5FSStore(TestFSStore):
 
         # check metadata
         assert array_meta_key in store
-        meta = decode_array_metadata(store[array_meta_key])
+        meta = store._metadata_class.decode_array_metadata(store[array_meta_key])
         assert ZARR_FORMAT == meta['zarr_format']
         assert (1000,) == meta['shape']
         assert (100,) == meta['chunks']
@@ -1407,7 +1405,7 @@ class TestN5FSStore(TestFSStore):
         # check metadata
         key = path + '/' + array_meta_key
         assert key in store
-        meta = decode_array_metadata(store[key])
+        meta = store._metadata_class.decode_array_metadata(store[key])
         assert ZARR_FORMAT == meta['zarr_format']
         assert (1000,) == meta['shape']
         assert (100,) == meta['chunks']
@@ -1421,7 +1419,7 @@ class TestN5FSStore(TestFSStore):
     def test_init_array_compat(self):
         store = self.create_store()
         init_array(store, shape=1000, chunks=100, compressor='none')
-        meta = decode_array_metadata(store[array_meta_key])
+        meta = store._metadata_class.decode_array_metadata(store[array_meta_key])
         # N5Store wraps the actual compressor
         compressor_config = meta['compressor']['compressor_config']
         assert compressor_config is None
