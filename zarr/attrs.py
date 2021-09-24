@@ -40,11 +40,7 @@ class Attributes(MutableMapping):
         except KeyError:
             d = dict()
         else:
-            if hasattr(self.store, '_metadata_class'):
-                d = self.store._metadata_class.parse_metadata(data)
-            else:
-                # can remove this if we require self.store to be a Store
-                d = parse_metadata(data)
+            d = self.store._metadata_class.parse_metadata(data)
         return d
 
     def asdict(self):
