@@ -30,7 +30,6 @@ from zarr.storage import (
     LRUStoreCache,
     NestedDirectoryStore,
     SQLiteStore,
-    Store,
     atexit_rmglob,
     atexit_rmtree,
     init_array,

@@ -12,7 +12,7 @@ from zarr.errors import (
     ContainsGroupError,
 )
 from zarr.n5 import N5Store
-from zarr.storage import (DirectoryStore, ZipStore, KVStore, contains_array,
+from zarr.storage import (DirectoryStore, ZipStore, contains_array,
                           contains_group, default_compressor, init_array,
                           normalize_storage_path, FSStore, Store)
 from zarr.util import normalize_dimension_separator
