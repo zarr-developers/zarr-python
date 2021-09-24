@@ -20,7 +20,7 @@ from numcodecs.compat import ensure_bytes
 from zarr.codecs import BZ2, AsType, Blosc, Zlib
 from zarr.errors import MetadataError
 from zarr.hierarchy import group
-from zarr.meta import ZARR_FORMAT
+from zarr.meta import ZARR_FORMAT, decode_array_metadata
 from zarr.n5 import N5Store, N5FSStore
 from zarr.storage import (ABSStore, ConsolidatedMetadataStore, DBMStore,
                           DictStore, DirectoryStore, KVStore, LMDBStore,
@@ -1927,14 +1927,16 @@ def test_getsize():
     assert -1 == getsize(store)
 
 
-def test_migrate_1to2():
+@pytest.mark.parametrize('dict_store', [False, True])
+def test_migrate_1to2(dict_store):
     from zarr import meta_v1
 
     # N.B., version 1 did not support hierarchies, so we only have to be
     # concerned about migrating a single array at the root of the store
 
     # setup
-    store = KVStore(dict())
+    store = dict() if dict_store else KVStore(dict())
+
     meta = dict(
         shape=(100,),
         chunks=(10,),
@@ -1956,7 +1958,7 @@ def test_migrate_1to2():
     assert array_meta_key in store
     assert 'attrs' not in store
     assert attrs_key in store
-    meta_migrated = store._metadata_class.decode_array_metadata(store[array_meta_key])
+    meta_migrated = decode_array_metadata(store[array_meta_key])
     assert 2 == meta_migrated['zarr_format']
 
     # preserved fields
@@ -1972,27 +1974,27 @@ def test_migrate_1to2():
     assert meta_migrated['compressor'] == Zlib(1).get_config()
 
     # check dict compression_opts
-    store = KVStore(dict())
+    store = dict() if dict_store else KVStore(dict())
     meta['compression'] = 'blosc'
     meta['compression_opts'] = dict(cname='lz4', clevel=5, shuffle=1)
     meta_json = meta_v1.encode_metadata(meta)
     store['meta'] = meta_json
     store['attrs'] = json.dumps(dict()).encode('ascii')
     migrate_1to2(store)
-    meta_migrated = store._metadata_class.decode_array_metadata(store[array_meta_key])
+    meta_migrated = decode_array_metadata(store[array_meta_key])
     assert 'compression' not in meta_migrated
     assert 'compression_opts' not in meta_migrated
     assert (meta_migrated['compressor'] ==
             Blosc(cname='lz4', clevel=5, shuffle=1).get_config())
 
     # check 'none' compression is migrated to None (null in JSON)
-    store = KVStore(dict())
+    store = dict() if dict_store else KVStore(dict())
     meta['compression'] = 'none'
     meta_json = meta_v1.encode_metadata(meta)
     store['meta'] = meta_json
     store['attrs'] = json.dumps(dict()).encode('ascii')
     migrate_1to2(store)
-    meta_migrated = store._metadata_class.decode_array_metadata(store[array_meta_key])
+    meta_migrated = decode_array_metadata(store[array_meta_key])
     assert 'compression' not in meta_migrated
     assert 'compression_opts' not in meta_migrated
     assert meta_migrated['compressor'] is None
