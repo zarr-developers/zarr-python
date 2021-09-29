@@ -341,7 +341,7 @@ class Array:
     @property
     def ndim(self):
         """Number of dimensions."""
-        return len(self.shape)
+        return len(self._shape)
 
     @property
     def _size(self):
