@@ -6,6 +6,17 @@ Release notes
 Unreleased
 ----------
 
+.. _release_2.10.1:
+
+2.10.1
+------
+
+Bug fixes
+~~~~~~~~~
+
+* Fix regression by setting normalize_keys=False in fsstore constructor.
+  By :user:`Davis Bennett <d-v-b>`; :issue:`842`.
+
 .. _release_2.10.0:
 
 2.10.0
