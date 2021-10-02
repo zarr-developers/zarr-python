@@ -423,7 +423,7 @@ def _init_array_metadata(
         filters_config = []
 
     # deal with object encoding
-    if dtype == object:
+    if dtype.hasobject:
         if object_codec is None:
             if not filters:
                 # there are no filters so we can be sure there is no object codec
@@ -1065,8 +1065,9 @@ class FSStore(MutableMapping):
         Separator placed between the dimensions of a chunk.
     storage_options : passed to the fsspec implementation
     """
-
-    _META_KEYS = (attrs_key, group_meta_key, array_meta_key)
+    _array_meta_key = array_meta_key
+    _group_meta_key = group_meta_key
+    _attrs_key = attrs_key
 
     def __init__(self, url, normalize_keys=False, key_separator=None,
                  mode='w',
@@ -1075,12 +1076,17 @@ class FSStore(MutableMapping):
                  **storage_options):
         import fsspec
         self.normalize_keys = normalize_keys
+
+        protocol, _ = fsspec.core.split_protocol(url)
+        # set auto_mkdir to True for local file system
+        if protocol in (None, "file") and not storage_options.get("auto_mkdir"):
+            storage_options["auto_mkdir"] = True
+
         self.map = fsspec.get_mapper(url, **storage_options)
         self.fs = self.map.fs  # for direct operations
         self.path = self.fs._strip_protocol(url)
         self.mode = mode
         self.exceptions = exceptions
-
         # For backwards compatibility. Guaranteed to be non-None
         if key_separator is not None:
             dimension_separator = key_separator
@@ -1091,7 +1097,6 @@ class FSStore(MutableMapping):
 
         # Pass attributes to array creation
         self._dimension_separator = dimension_separator
-
         if self.fs.exists(self.path) and not self.fs.isdir(self.path):
             raise FSPathExistNotDir(url)
 
@@ -1100,7 +1105,7 @@ class FSStore(MutableMapping):
         if key:
             *bits, end = key.split('/')
 
-            if end not in FSStore._META_KEYS:
+            if end not in (self._array_meta_key, self._group_meta_key, self._attrs_key):
                 end = end.replace('.', self.key_separator)
                 key = '/'.join(bits + [end])
 
@@ -1187,7 +1192,7 @@ class FSStore(MutableMapping):
             if self.key_separator != "/":
                 return children
             else:
-                if array_meta_key in children:
+                if self._array_meta_key in children:
                     # special handling of directories containing an array to map nested chunk
                     # keys back to standard chunk keys
                     new_children = []
@@ -1197,8 +1202,14 @@ class FSStore(MutableMapping):
                         if _prog_number.match(entry) and self.fs.isdir(entry_path):
                             for file_name in self.fs.find(entry_path):
                                 file_path = os.path.join(dir_path, file_name)
+<<<<<<< HEAD
                                 rel_path = file_path.split(root_path)[1].strip(os.path.sep)
                                 new_children.append(rel_path.replace(os.path.sep, '.'))
+=======
+                                rel_path = file_path.split(root_path)[1]
+                                rel_path = rel_path.lstrip('/')
+                                new_children.append(rel_path.replace('/', '.'))
+>>>>>>> 0200365bf96fe829e2106b2888ea19d80d9e19ca
                         else:
                             new_children.append(entry)
                     return sorted(new_children)
@@ -1254,17 +1265,6 @@ class TempStore(DirectoryStore):
 
 _prog_ckey = re.compile(r'^(\d+)(\.\d+)+$')
 _prog_number = re.compile(r'^\d+$')
-
-
-def _nested_map_ckey(key):
-    segments = list(key.split('/'))
-    if segments:
-        last_segment = segments[-1]
-        if _prog_ckey.match(last_segment):
-            last_segment = last_segment.replace('.', '/')
-            segments = segments[:-1] + [last_segment]
-            key = '/'.join(segments)
-    return key
 
 
 class NestedDirectoryStore(DirectoryStore):
