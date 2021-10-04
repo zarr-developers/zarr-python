@@ -14,7 +14,6 @@ from numcodecs.compat import ensure_ndarray, ensure_text
 from numcodecs.registry import codec_registry
 from numcodecs.blosc import cbuffer_sizes, cbuffer_metainfo
 
-from numpy.typing import ArrayLike
 from typing import Any, Callable, Dict, Optional, Tuple, Union
 
 
@@ -662,7 +661,7 @@ def retry_call(callabl: Callable,
                 raise
 
 
-def all_equal(value: Any, array: ArrayLike) -> bool:
+def all_equal(value: Any, array: Any) -> bool:
     """
     Test if all the elements of an array are equivalent to a value.
     If `value` is None, then this function does not do any comparison and
