@@ -1,3 +1,5 @@
+import pathlib
+
 import pytest
 from numpy.testing import assert_array_equal
 
@@ -7,6 +9,9 @@ from zarr.storage import (DirectoryStore, NestedDirectoryStore, FSStore)
 from zarr.tests.util import have_fsspec
 
 
+needs_fsspec = pytest.mark.skipif(not have_fsspec, reason="needs fsspec")
+
+
 @pytest.fixture(params=("static_nested",
                         "static_flat",
                         "directory_nested",
@@ -14,9 +19,9 @@ from zarr.tests.util import have_fsspec
                         "directory_default",
                         "nesteddirectory_nested",
                         "nesteddirectory_default",
-                        "fs_nested",
-                        "fs_flat",
-                        "fs_default"))
+                        pytest.param("fs_nested", marks=needs_fsspec),
+                        pytest.param("fs_flat", marks=needs_fsspec),
+                        pytest.param("fs_default", marks=needs_fsspec)))
 def dataset(tmpdir, request):
     """
     Generate a variety of different Zarrs using
@@ -29,18 +34,27 @@ def dataset(tmpdir, request):
     kwargs = {}
 
     if which.startswith("static"):
+        project_root = pathlib.Path(zarr.__file__).resolve().parent.parent
         if which.endswith("nested"):
-            return "fixture/nested"
+            static = project_root / "fixture/nested"
+            generator = NestedDirectoryStore
         else:
-            return "fixture/flat"
+            static = project_root / "fixture/flat"
+            generator = DirectoryStore
+
+        if not static.exists():  # pragma: no cover
+            # store the data - should be one-time operation
+            s = generator(str(static))
+            a = zarr.open(store=s, mode="w", shape=(2, 2), dtype="<i8")
+            a[:] = [[1, 2], [3, 4]]
+
+        return str(static)
 
     if which.startswith("directory"):
         store_class = DirectoryStore
     elif which.startswith("nested"):
         store_class = NestedDirectoryStore
     else:
-        if have_fsspec is False:
-            pytest.skip("no fsspec")
         store_class = FSStore
         kwargs["mode"] = "w"
         kwargs["auto_mkdir"] = True
@@ -60,9 +74,10 @@ def verify(array):
 
 
 def test_open(dataset):
-    verify(zarr.open(dataset))
+    verify(zarr.open(dataset, "r"))
 
 
+@needs_fsspec
 def test_fsstore(dataset):
     verify(Array(store=FSStore(dataset)))
 

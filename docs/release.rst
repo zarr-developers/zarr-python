@@ -1,10 +1,145 @@
 Release notes
 =============
 
+.. _unreleased:
+
 Unreleased
 ----------
 
+.. _release_2.10.1:
+
+2.10.1
+------
+
+Bug fixes
+~~~~~~~~~
+
+* Fix regression by setting normalize_keys=False in fsstore constructor.
+  By :user:`Davis Bennett <d-v-b>`; :issue:`842`.
+
+.. _release_2.10.0:
+
+2.10.0
+------
+
+Enhancements
+~~~~~~~~~~~~
+
+* Add N5FSStore.
+  By :user:`Davis Bennett <d-v-b>`; :issue:`793`.
+
+Bug fixes
+~~~~~~~~~
+
+* Ignore None dim_separators in save_array.
+  By :user:`Josh Moore <joshmoore>`; :issue:`831`.
+
+.. _release_2.9.5:
+
+2.9.5
+-----
+
+Bug fixes
+~~~~~~~~~
+
+* Fix FSStore.listdir behavior for nested directories.
+  By :user:`Greggory Lee <grlee77>`; :issue:`802`.
+
+.. _release_2.9.4:
+
+2.9.4
+-----
+
+Bug fixes
+~~~~~~~~~
+
+* Fix structured arrays that contain objects
+  By :user: `Attila Bergou <abergou>`; :issue: `806`
+
+.. _release_2.9.3:
+
+2.9.3
+-----
+
+Maintenance
+~~~~~~~~~~~
+
+* Mark the fact that some tests that require ``fsspec``, without compromising the code coverage score.
+  By :user:`Ben Williams <benjaminhwilliams>`; :issue:`823`.
+
+* Only inspect alternate node type if desired isn't present.
+  By :user:`Trevor Manz <manzt>`; :issue:`696`.
+
+.. _release_2.9.2:
+
+2.9.2
+-----
+
+Maintenance
+~~~~~~~~~~~
+
+* Correct conda-forge deployment of Zarr by fixing some Zarr tests.
+  By :user:`Ben Williams <benjaminhwilliams>`; :issue:`821`.
+
+.. _release_2.9.1:
+
+2.9.1
+-----
+
+Maintenance
+~~~~~~~~~~~
+
+* Correct conda-forge deployment of Zarr.
+  By :user:`Josh Moore <joshmoore>`; :issue:`XXX`.
+
+.. _release_2.9.0:
+
+2.9.0
+-----
+
 This release of Zarr Python is the first release of Zarr to not support Python 3.6.
+
+Enhancements
+~~~~~~~~~~~~
+
+* Update ABSStore for compatibility with newer `azure.storage.blob`.
+  By :user:`Tom Augspurger <TomAugspurger>`; :issue:`759`.
+
+* Pathlib support.
+  By :user:`Chris Barnes <clbarnes>`; :issue:`768`.
+
+Documentation
+~~~~~~~~~~~~~
+
+* Clarify that arbitrary key/value pairs are OK for attributes.
+  By :user:`Stephan Hoyer <shoyer>`; :issue:`751`.
+
+* Clarify how to manually convert a DirectoryStore to a ZipStore.
+  By :user:`pmav99 <pmav99>`; :issue:`763`.
+
+Bug fixes
+~~~~~~~~~
+
+* Fix dimension_separator support.
+  By :user:`Josh Moore <joshmoore>`; :issue:`775`.
+
+* Extract ABSStore to zarr._storage.absstore.
+  By :user:`Josh Moore <joshmoore>`; :issue:`781`.
+
+* avoid NumPy 1.21.0 due to https://github.com/numpy/numpy/issues/19325
+  By :user:`Greggory Lee <grlee77>`; :issue:`791`.
+
+Maintenance
+~~~~~~~~~~~
+
+* Drop 3.6 builds.
+  By :user:`Josh Moore <joshmoore>`; :issue:`774`, :issue:`778`.
+
+* Fix build with Sphinx 4.
+  By :user:`Elliott Sales de Andrade <QuLogic>`; :issue:`799`.
+
+* TST: add missing assert in test_hexdigest.
+  By :user:`Greggory Lee <grlee77>`; :issue:`801`.
 
 .. _release_2.8.3:
 
