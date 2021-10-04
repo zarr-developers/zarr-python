@@ -1658,7 +1658,7 @@ class TestArrayWithChunkStore(TestArray):
         assert -1 == z.nbytes_stored
 
 
-class TestArrayEmptyWrites(TestArray):
+class TestArrayNoEmptyWrites(TestArray):
 
     @staticmethod
     def create_array(read_only=False, **kwargs):
@@ -1670,7 +1670,7 @@ class TestArrayEmptyWrites(TestArray):
         kwargs.setdefault('compressor', Zlib(1))
         init_array(store, **kwargs)
         return Array(store, read_only=read_only, cache_metadata=cache_metadata,
-                     cache_attrs=cache_attrs, write_empty_chunks=True)
+                     cache_attrs=cache_attrs, write_empty_chunks=False)
 
 
 class TestArrayWithDirectoryStore(TestArray):
@@ -1831,10 +1831,9 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
                                   fill_value=1)
 
     def test_nchunks_initialized(self):
-        fill_value = 0
         z = self.create_array(shape=100,
                               chunks=10,
-                              fill_value=fill_value)
+                              fill_value=0)
 
         assert 0 == z.nchunks_initialized
         # manually put something into the store to confuse matters
@@ -1843,10 +1842,10 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
         z[:] = 42
         assert 10 == z.nchunks_initialized
         z[:] = z.fill_value
-        assert 0 == z.nchunks_initialized
-
-        if hasattr(z.store, 'close'):
-            z.store.close()
+        if z.write_empty_chunks:
+            assert 10 == z.nchunks_initialized
+        else:
+            assert 0 == z.nchunks_initialized
 
     def test_array_order(self):
 
@@ -2855,7 +2854,7 @@ class TestArrayWithFSStoreNestedPartialRead(TestArray):
 
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
-class TestArrayWithFSStoreEmptyWrites(TestArrayEmptyWrites):
+class TestArrayWithFSStoreNoEmptyWrites(TestArrayNoEmptyWrites):
     @staticmethod
     def create_array(read_only=False, **kwargs):
         path = mkdtemp()
@@ -2867,7 +2866,7 @@ class TestArrayWithFSStoreEmptyWrites(TestArrayEmptyWrites):
         kwargs.setdefault('compressor', Blosc())
         init_array(store, **kwargs)
         return Array(store, read_only=read_only, cache_metadata=cache_metadata,
-                     cache_attrs=cache_attrs, write_empty_chunks=True)
+                     cache_attrs=cache_attrs, write_empty_chunks=False)
 
     def expected(self):
         return [
@@ -2880,7 +2879,7 @@ class TestArrayWithFSStoreEmptyWrites(TestArrayEmptyWrites):
 
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
-class TestArrayWithFSStoreNestedEmptyWrites(TestArrayEmptyWrites):
+class TestArrayWithFSStoreNestedNoEmptyWrites(TestArrayNoEmptyWrites):
     @staticmethod
     def create_array(read_only=False, **kwargs):
         path = mkdtemp()
@@ -2892,7 +2891,7 @@ class TestArrayWithFSStoreNestedEmptyWrites(TestArrayEmptyWrites):
         kwargs.setdefault('compressor', Blosc())
         init_array(store, **kwargs)
         return Array(store, read_only=read_only, cache_metadata=cache_metadata,
-                     cache_attrs=cache_attrs, write_empty_chunks=True)
+                     cache_attrs=cache_attrs, write_empty_chunks=False)
 
     def expected(self):
         return [

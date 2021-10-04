@@ -31,9 +31,9 @@ from zarr.indexing import (
 from zarr.meta import decode_array_metadata, encode_array_metadata
 from zarr.storage import array_meta_key, attrs_key, getsize, listdir
 from zarr.util import (
+    all_equal,
     InfoReporter,
     check_array_shape,
-    flatten,
     human_readable_size,
     is_total_slice,
     nolock,
@@ -76,14 +76,13 @@ class Array:
         is Blosc, when getting data from the array chunks will be partially
         read and decompressed when possible.
     write_empty_chunks : bool, optional
-        Sets chunk writing behavior for chunks filled with `fill_value`
-        ("empty" chunks). If False (default), empty chunks will not be written,
-        and the `store` entry for the chunk key of an empty chunk will be deleted.
-        This setting enables sparser storage, because only chunks with
-        non-fill-value data are be written to disk, at the expense of
-        computational overhead, because each chunk must be compared with
-        the array's fill_value before writing.
-        If True, all chunks will be written regardless of their contents.
+        If True (default), all chunks will be stored regardless of their
+        contents. If False, each chunk is compared to the array's fill
+        value prior to storing. If the chunk a uniformly equal to the fill
+        value, then that chunk is not be stored, and the store entry for
+        that chunk's key is deleted. This setting enables sparser storage
+        as only chunks with non-fill-value data are stored, at the expense
+        of overhead associated with checking the data of each chunk.
 
         .. versionadded:: 2.7
 
@@ -116,6 +115,7 @@ class Array:
     info
     vindex
     oindex
+    write_empty_chunks
 
     Methods
     -------
@@ -148,7 +148,7 @@ class Array:
         cache_metadata=True,
         cache_attrs=True,
         partial_decompress=False,
-        write_empty_chunks=False,
+        write_empty_chunks=True,
     ):
         # N.B., expect at this point store is fully initialized with all
         # configuration metadata fully specified and normalized
@@ -454,6 +454,13 @@ class Array:
         :func:`set_coordinate_selection`, :func:`get_mask_selection` and
         :func:`set_mask_selection` for documentation and examples."""
         return self._vindex
+
+    @property
+    def write_empty_chunks(self) -> bool:
+        """A Boolean, True if chunks composed of the array's fill value
+        will be stored. If False, such chunks will not be stored.
+        """
+        return self._write_empty_chunks
 
     def __eq__(self, other):
         return (
@@ -1599,7 +1606,7 @@ class Array:
             chunk[selection] = value
 
         # clear chunk if it only contains the fill value
-        if self._chunk_is_empty(chunk):
+        if all_equal(self.fill_value, chunk):
             try:
                 del self.chunk_store[ckey]
                 return
@@ -1883,8 +1890,8 @@ class Array:
         cdatas = {key: self._process_for_setitem(key, sel, val, fields=fields)
                   for key, sel, val in zip(ckeys, lchunk_selection, values)}
         to_store = {}
-        if not self._write_empty_chunks:
-            empty_chunks = {k: v for k, v in cdatas.items() if self._chunk_is_empty(v)}
+        if not self.write_empty_chunks:
+            empty_chunks = {k: v for k, v in cdatas.items() if all_equal(self.fill_value, v)}
             if hasattr(self.store, 'delitems'):
                 self.store.delitems(tuple(empty_chunks.keys()))
             else:
@@ -1895,23 +1902,6 @@ class Array:
         else:
             to_store = {k: self._encode_chunk(v) for k, v in cdatas.items()}
         self.chunk_store.setitems(to_store)
-
-    def _chunk_is_empty(self, chunk) -> bool:
-        if self._fill_value is None:
-            is_empty = False
-        else:
-            if self.dtype == 'object':
-                # we have to flatten the result of np.equal to handle outputs like
-                # [np.array([True,True]), True, True]
-                is_empty = all(flatten(np.equal(chunk, self.fill_value, dtype='object')))
-            else:
-                # Numpy errors if you call np.isnan on custom dtypes, so ensure
-                # we are working with floats before calling isnan
-                if isinstance(self._fill_value, float) and np.isnan(self._fill_value):
-                    is_empty = np.all(np.isnan(chunk))
-                else:
-                    is_empty = np.all(chunk == self._fill_value)
-        return is_empty
 
     def _chunk_delitems(self, ckeys):
         if isinstance(ckeys, str):
@@ -1964,7 +1954,7 @@ class Array:
         cdata = self._process_for_setitem(ckey, chunk_selection, value, fields=fields)
 
         # attempt to delete chunk if it only contains the fill value
-        if (not self._write_empty_chunks) and self._chunk_is_empty(cdata):
+        if (not self.write_empty_chunks) and all_equal(self.fill_value, cdata):
             self._chunk_delitem(ckey)
         else:
             self.chunk_store[ckey] = self._encode_chunk(cdata)
