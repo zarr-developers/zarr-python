@@ -1021,7 +1021,7 @@ class TestArray(unittest.TestCase):
             z[:] = 42
             assert 10 == z.nchunks_initialized
             # manually remove a chunk from the store
-            del z.chunk_store[os.path.join(z.path, '0')]
+            del z.chunk_store[z._chunk_key((0,))]
             assert 9 == z.nchunks_initialized
             z[:] = z.fill_value
             assert 0 == z.nchunks_initialized
@@ -1859,7 +1859,7 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
         z[:] = 42
         assert 10 == z.nchunks_initialized
         # manually remove a chunk from the store
-        del z.chunk_store[os.path.join(z.path, '0')]
+        del z.chunk_store[z._chunk_key((0,))]
         assert 9 == z.nchunks_initialized
 
         if hasattr(z.store, 'close'):
@@ -1875,7 +1875,7 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
         z[:] = 42
         assert 10 == z.nchunks_initialized
         # manually remove a chunk from the store
-        del z.chunk_store[os.path.join(z.path, '0')]
+        del z.chunk_store[z._chunk_key((0,))]
         assert 9 == z.nchunks_initialized
         z[:] = z.fill_value
         assert 0 == z.nchunks_initialized
