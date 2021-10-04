@@ -661,7 +661,7 @@ def retry_call(callabl: Callable,
                 raise
 
 
-def all_equal(value: Any, array: Any) -> bool:
+def all_equal(value: Any, array: Any):
     """
     Test if all the elements of an array are equivalent to a value.
     If `value` is None, then this function does not do any comparison and
