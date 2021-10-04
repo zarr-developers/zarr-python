@@ -1004,8 +1004,8 @@ class TestArray(unittest.TestCase):
             assert 0 == z.nchunks_initialized
             z[:] = 42
             assert 10 == z.nchunks_initialized
-            # manually remove a chunk from the store
-            del z.chunk_store[os.path.join(z.path, '0')]
+            # manually remove the first chunk from the store
+            del z.chunk_store[z._chunk_key((0,))]
             assert 9 == z.nchunks_initialized
 
             if hasattr(z.store, 'close'):
