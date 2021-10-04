@@ -1001,7 +1001,7 @@ class TestArray(unittest.TestCase):
             z[:] = 42
             assert 10 == z.nchunks_initialized
             z[:] = z.fill_value
-            if z._write_empty_chunks:
+            if z.write_empty_chunks:
                 assert 10 == z.nchunks_initialized
             else:
                 assert 0 == z.nchunks_initialized
