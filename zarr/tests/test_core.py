@@ -973,6 +973,8 @@ class TestArray(unittest.TestCase):
         assert 42 == z[()]
         z[()] = 43
         assert 43 == z[()]
+        z[()] = z.fill_value
+        assert z.fill_value == z[()]
         with pytest.raises(IndexError):
             z[0] = 42
         with pytest.raises(IndexError):
@@ -1000,6 +1002,9 @@ class TestArray(unittest.TestCase):
             assert 0 == z.nchunks_initialized
             z[:] = 42
             assert 10 == z.nchunks_initialized
+            # manually remove a chunk from the store
+            del z.chunk_store[os.path.join(z.path, '0')]
+            assert 9 == z.nchunks_initialized
             z[:] = z.fill_value
             if z.write_empty_chunks:
                 assert 10 == z.nchunks_initialized
@@ -1841,6 +1846,8 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
         assert 0 == z.nchunks_initialized
         z[:] = 42
         assert 10 == z.nchunks_initialized
+        del z.chunk_store[os.path.join(z.path, '0')]
+        assert 9 == z.nchunks_initialized
         z[:] = z.fill_value
         if z.write_empty_chunks:
             assert 10 == z.nchunks_initialized
