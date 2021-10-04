@@ -1605,20 +1605,18 @@ class Array:
         else:
             chunk[selection] = value
 
-        # clear chunk if it only contains the fill value
-        if all_equal(self.fill_value, chunk):
+        # remove chunk if write_empty_chunks is false and it only contains the fill value
+        if (not self.write_empty_chunks) and all_equal(self.fill_value, chunk):
             try:
                 del self.chunk_store[ckey]
                 return
-            except KeyError:
-                return
-            except Exception:
+            except Exception:  # pragma: no cover
                 # deleting failed, fallback to overwriting
                 pass
-
-        # encode and store
-        cdata = self._encode_chunk(chunk)
-        self.chunk_store[ckey] = cdata
+        else:
+            # encode and store
+            cdata = self._encode_chunk(chunk)
+            self.chunk_store[ckey] = cdata
 
     def _set_basic_selection_nd(self, selection, value, fields=None):
         # implementation of __setitem__ for array with at least one dimension
@@ -1892,11 +1890,7 @@ class Array:
         to_store = {}
         if not self.write_empty_chunks:
             empty_chunks = {k: v for k, v in cdatas.items() if all_equal(self.fill_value, v)}
-            if hasattr(self.store, 'delitems'):
-                self.store.delitems(tuple(empty_chunks.keys()))
-            else:
-                for ckey in empty_chunks.keys():
-                    self._chunk_delitem(ckey)
+            self._chunk_delitems(empty_chunks.keys())
             nonempty_keys = cdatas.keys() - empty_chunks.keys()
             to_store = {k: self._encode_chunk(cdatas[k]) for k in nonempty_keys}
         else:
@@ -1904,12 +1898,12 @@ class Array:
         self.chunk_store.setitems(to_store)
 
     def _chunk_delitems(self, ckeys):
-        if isinstance(ckeys, str):
-            ckeys = [ckeys]
-
         if hasattr(self.store, "delitems"):
             self.store.delitems(ckeys)
-        else:
+        else:  # pragma: no cover
+            # exempting this branch from coverage as there are no extant stores
+            # that will trigger this condition, but it's possible that they
+            # will be developed in the future.
             tuple(map(self._chunk_delitem, ckeys))
         return None
 
