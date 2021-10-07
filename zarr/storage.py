@@ -1156,7 +1156,7 @@ class FSStore(MutableMapping):
 
     def delitems(self, keys):
         if self.mode == 'r':
-            raise ReadOnlyError
+            raise ReadOnlyError()
         # only remove the keys that exist in the store
         nkeys = [self._normalize_key(key) for key in keys if key in self]
         # rm errors if you pass an empty collection
