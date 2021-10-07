@@ -74,9 +74,9 @@ def create(shape, chunks=True, dtype=None, compressor='default',
     write_empty_chunks : bool, optional
         If True (default), all chunks will be stored regardless of their
         contents. If False, each chunk is compared to the array's fill
-        value prior to storing. If the chunk a uniformly equal to the fill
+        value prior to storing. If a chunk is uniformly equal to the fill
         value, then that chunk is not be stored, and the store entry for
-        that chunk's key is deleted. This setting enables sparser storage
+        that chunk's key is deleted. This setting enables sparser storage,
         as only chunks with non-fill-value data are stored, at the expense
         of overhead associated with checking the data of each chunk.
 
@@ -410,7 +410,7 @@ def open_array(
     chunk_store=None,
     storage_options=None,
     partial_decompress=False,
-    write_empty_chunks=False,
+    write_empty_chunks=True,
     **kwargs
 ):
     """Open an array using file-mode-like semantics.
@@ -466,11 +466,13 @@ def open_array(
         is Blosc, when getting data from the array chunks will be partially
         read and decompressed when possible.
     write_empty_chunks : bool, optional
-        Determines chunk writing behavior for chunks filled with `fill_value` ("empty" chunks).
-        If True (default), all chunks will be written regardless of their contents.
-        If False, empty chunks will not be written, and the `store` entry for
-        the chunk key of an empty chunk will be deleted. Note that setting this option to False
-        will incur additional overhead per chunk write.
+        If True (default), all chunks will be stored regardless of their
+        contents. If False, each chunk is compared to the array's fill
+        value prior to storing. If a chunk is uniformly equal to the fill
+        value, then that chunk is not be stored, and the store entry for
+        that chunk's key is deleted. This setting enables sparser storage,
+        as only chunks with non-fill-value data are stored, at the expense
+        of overhead associated with checking the data of each chunk.
 
     Returns
     -------
