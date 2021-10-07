@@ -1862,9 +1862,6 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
         del z.chunk_store[z._chunk_key((0,))]
         assert 9 == z.nchunks_initialized
 
-        if hasattr(z.store, 'close'):
-            z.store.close()
-
         # second round of similar tests with write_empty_chunks set to
         # False
         z = self.create_array(shape=100,
@@ -1879,9 +1876,6 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
         assert 9 == z.nchunks_initialized
         z[:] = z.fill_value
         assert 0 == z.nchunks_initialized
-
-        if hasattr(z.store, 'close'):
-            z.store.close()
 
     def test_array_order(self):
 
