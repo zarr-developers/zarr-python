@@ -1069,7 +1069,7 @@ class FSStore(MutableMapping):
     _group_meta_key = group_meta_key
     _attrs_key = attrs_key
 
-    def __init__(self, url, normalize_keys=True, key_separator=None,
+    def __init__(self, url, normalize_keys=False, key_separator=None,
                  mode='w',
                  exceptions=(KeyError, PermissionError, IOError),
                  dimension_separator=None,
