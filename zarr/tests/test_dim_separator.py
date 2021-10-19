@@ -76,7 +76,7 @@ def dataset(tmpdir, request):
 def verify(array, expect_failure=False):
     try:
         assert_array_equal(array[:], [[1, 2], [3, 4]])
-    except:
+    except AssertionError:
         if expect_failure:
             pytest.xfail()
         else:
@@ -122,8 +122,8 @@ def test_nested(dataset):
     datasets without any metadata, NestedDirectoryStore will fail.
     """
     failure = (
-        "flat_legacy" in dataset or \
-        "directory_default" in dataset or \
+        "flat_legacy" in dataset or
+        "directory_default" in dataset or
         "fs_default" in dataset
     )
     verify(Array(store=NestedDirectoryStore(dataset)), failure)

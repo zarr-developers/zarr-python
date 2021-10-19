@@ -47,7 +47,7 @@ def decode_array_metadata(s: Union[MappingType, str]) -> MappingType[str, Any]:
         else:
             object_codec = None
 
-        dimension_separator=meta.get('dimension_separator', None)
+        dimension_separator = meta.get('dimension_separator', None)
         fill_value = decode_fill_value(meta['fill_value'], dtype, object_codec)
         meta = dict(
             zarr_format=meta['zarr_format'],
