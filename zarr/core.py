@@ -195,7 +195,18 @@ class Array:
             self._dtype = meta['dtype']
             self._fill_value = meta['fill_value']
             self._order = meta['order']
-            self._dimension_separator = meta.get('dimension_separator', '.')
+
+            dimension_separator = meta.get('dimension_separator', None)
+            if dimension_separator is None:
+                try:
+                    dimension_separator = self._store._dimension_separator
+                except (AttributeError, KeyError):
+                    pass
+
+                # Fallback for any stores which do not choose a default
+                if dimension_separator is None:
+                    dimension_separator = "."
+            self._dimension_separator = dimension_separator
 
             # setup compressor
             config = meta['compressor']
