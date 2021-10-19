@@ -200,7 +200,7 @@ class Array:
             if dimension_separator is None:
                 try:
                     dimension_separator = self._store._dimension_separator
-                except KeyError:
+                except (AttributeError, KeyError):
                     pass
 
                 # Fallback for any stores which do not choose a default
