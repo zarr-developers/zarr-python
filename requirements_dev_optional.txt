@@ -15,7 +15,7 @@ pymongo==3.12.0
 tox==3.24.4
 coverage
 flake8==3.9.2
-pytest-cov==2.12.1
+pytest-cov==3.0.0
 pytest-doctestplus==0.11.0
 pytest-timeout==1.4.2
 h5py==3.4.0
