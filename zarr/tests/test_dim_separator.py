@@ -80,7 +80,7 @@ def verify(array, expect_failure=False):
         if expect_failure:
             pytest.xfail()
         else:
-            raise
+            raise  # pragma: no cover
 
 
 def test_open(dataset):
