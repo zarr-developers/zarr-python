@@ -12,8 +12,10 @@ from zarr.tests.util import have_fsspec
 needs_fsspec = pytest.mark.skipif(not have_fsspec, reason="needs fsspec")
 
 
-@pytest.fixture(params=("static_nested",
-                        "static_flat",
+@pytest.fixture(params=("static_flat",
+                        "static_flat_legacy",
+                        "static_nested",
+                        "static_nested_legacy",
                         "directory_nested",
                         "directory_flat",
                         "directory_default",
@@ -35,14 +37,16 @@ def dataset(tmpdir, request):
 
     if which.startswith("static"):
         project_root = pathlib.Path(zarr.__file__).resolve().parent.parent
-        if which.endswith("nested"):
-            static = project_root / "fixture/nested"
-            generator = NestedDirectoryStore
-        else:
-            static = project_root / "fixture/flat"
-            generator = DirectoryStore
+        suffix = which[len("static_"):]
+        static = project_root / "fixture" / suffix
 
         if not static.exists():  # pragma: no cover
+
+            if "nested" in which:
+                generator = NestedDirectoryStore
+            else:
+                generator = DirectoryStore
+
             # store the data - should be one-time operation
             s = generator(str(static))
             a = zarr.open(store=s, mode="w", shape=(2, 2), dtype="<i8")
@@ -69,22 +73,57 @@ def dataset(tmpdir, request):
     return str(loc)
 
 
-def verify(array):
-    assert_array_equal(array[:], [[1, 2], [3, 4]])
+def verify(array, expect_failure=False):
+    try:
+        assert_array_equal(array[:], [[1, 2], [3, 4]])
+    except AssertionError:
+        if expect_failure:
+            pytest.xfail()
+        else:
+            raise  # pragma: no cover
 
 
 def test_open(dataset):
-    verify(zarr.open(dataset, "r"))
+    """
+    Use zarr.open to open the dataset fixture. Legacy nested datatsets
+    without the dimension_separator metadata are not expected to be
+    openable.
+    """
+    failure = "nested_legacy" in dataset
+    verify(zarr.open(dataset, "r"), failure)
 
 
 @needs_fsspec
 def test_fsstore(dataset):
-    verify(Array(store=FSStore(dataset)))
+    """
+    Use FSStore to open the dataset fixture. Legacy nested datatsets
+    without the dimension_separator metadata are not expected to be
+    openable.
+    """
+    failure = "nested_legacy" in dataset
+    verify(Array(store=FSStore(dataset)), failure)
 
 
 def test_directory(dataset):
-    verify(zarr.Array(store=DirectoryStore(dataset)))
+    """
+    Use DirectoryStore to open the dataset fixture. Legacy nested datatsets
+    without the dimension_separator metadata are not expected to be
+    openable.
+    """
+    failure = "nested_legacy" in dataset
+    verify(zarr.Array(store=DirectoryStore(dataset)), failure)
 
 
 def test_nested(dataset):
-    verify(Array(store=NestedDirectoryStore(dataset)))
+    """
+    Use NestedDirectoryStore to open the dataset fixture. This is the only
+    method that is expected to successfully open legacy nested datasets
+    without the dimension_separator metadata. However, for none-Nested
+    datasets without any metadata, NestedDirectoryStore will fail.
+    """
+    failure = (
+        "flat_legacy" in dataset or
+        "directory_default" in dataset or
+        "fs_default" in dataset
+    )
+    verify(Array(store=NestedDirectoryStore(dataset)), failure)
