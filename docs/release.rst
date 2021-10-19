@@ -12,6 +12,9 @@ Enhancements
 * array indexing with [] (getitem and setitem) now supports fancy indexing.
   By :user:`Juan Nunez-Iglesias <jni>`; :issue:`725`.
 
+* write_empty_chunks=False deletes chunks consisting of only fill_value.
+  By :user:`Davis Bennett <d-v-b>`; :issue:`738`.
+
 .. _release_2.10.2:
 
 2.10.2

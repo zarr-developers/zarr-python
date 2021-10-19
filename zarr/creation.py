@@ -21,7 +21,7 @@ def create(shape, chunks=True, dtype=None, compressor='default',
            fill_value=0, order='C', store=None, synchronizer=None,
            overwrite=False, path=None, chunk_store=None, filters=None,
            cache_metadata=True, cache_attrs=True, read_only=False,
-           object_codec=None, dimension_separator=None, **kwargs):
+           object_codec=None, dimension_separator=None, write_empty_chunks=True, **kwargs):
     """Create an array.
 
     Parameters
@@ -71,6 +71,15 @@ def create(shape, chunks=True, dtype=None, compressor='default',
     dimension_separator : {'.', '/'}, optional
         Separator placed between the dimensions of a chunk.
         .. versionadded:: 2.8
+    write_empty_chunks : bool, optional
+        If True (default), all chunks will be stored regardless of their
+        contents. If False, each chunk is compared to the array's fill
+        value prior to storing. If a chunk is uniformly equal to the fill
+        value, then that chunk is not be stored, and the store entry for
+        that chunk's key is deleted. This setting enables sparser storage,
+        as only chunks with non-fill-value data are stored, at the expense
+        of overhead associated with checking the data of each chunk.
+
 
     Returns
     -------
@@ -142,7 +151,8 @@ def create(shape, chunks=True, dtype=None, compressor='default',
 
     # instantiate array
     z = Array(store, path=path, chunk_store=chunk_store, synchronizer=synchronizer,
-              cache_metadata=cache_metadata, cache_attrs=cache_attrs, read_only=read_only)
+              cache_metadata=cache_metadata, cache_attrs=cache_attrs, read_only=read_only,
+              write_empty_chunks=write_empty_chunks)
 
     return z
 
@@ -400,6 +410,7 @@ def open_array(
     chunk_store=None,
     storage_options=None,
     partial_decompress=False,
+    write_empty_chunks=True,
     **kwargs
 ):
     """Open an array using file-mode-like semantics.
@@ -454,8 +465,14 @@ def open_array(
         If True and while the chunk_store is a FSStore and the compresion used
         is Blosc, when getting data from the array chunks will be partially
         read and decompressed when possible.
-
-        .. versionadded:: 2.7
+    write_empty_chunks : bool, optional
+        If True (default), all chunks will be stored regardless of their
+        contents. If False, each chunk is compared to the array's fill
+        value prior to storing. If a chunk is uniformly equal to the fill
+        value, then that chunk is not be stored, and the store entry for
+        that chunk's key is deleted. This setting enables sparser storage,
+        as only chunks with non-fill-value data are stored, at the expense
+        of overhead associated with checking the data of each chunk.
 
     Returns
     -------
@@ -545,7 +562,7 @@ def open_array(
     # instantiate array
     z = Array(store, read_only=read_only, synchronizer=synchronizer,
               cache_metadata=cache_metadata, cache_attrs=cache_attrs, path=path,
-              chunk_store=chunk_store)
+              chunk_store=chunk_store, write_empty_chunks=write_empty_chunks)
 
     return z
 

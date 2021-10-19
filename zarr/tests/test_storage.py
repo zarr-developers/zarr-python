@@ -1013,6 +1013,12 @@ class TestFSStore(StoreTests):
             del store['foo']
 
         with pytest.raises(PermissionError):
+            store.delitems(['foo'])
+
+        with pytest.raises(PermissionError):
+            store.setitems({'foo': b'baz'})
+
+        with pytest.raises(PermissionError):
             store.clear()
 
         with pytest.raises(PermissionError):
