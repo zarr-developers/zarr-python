@@ -6,6 +6,17 @@ Release notes
 Unreleased
 ----------
 
+.. _release_2.10.2:
+
+2.10.2
+------
+
+Bug fixes
+~~~~~~~~~
+
+* Fix NestedDirectoryStore datasets without dimension_separator metadata.
+  By :user:`Josh Moore <joshmoore>`; :issue:`850`.
+
 .. _release_2.10.1:
 
 2.10.1
