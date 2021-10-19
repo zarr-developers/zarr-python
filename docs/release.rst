@@ -6,6 +6,12 @@ Release notes
 Unreleased
 ----------
 
+Enhancements
+~~~~~~~~~~~~
+
+* array indexing with [] (getitem and setitem) now supports fancy indexing.
+  By :user:`Juan Nunez-Iglesias <jni>`; :issue:`725`.
+
 .. _release_2.10.2:
 
 2.10.2
