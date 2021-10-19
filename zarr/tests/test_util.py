@@ -4,7 +4,7 @@ from unittest import mock
 import numpy as np
 import pytest
 
-from zarr.util import (guess_chunks, human_readable_size, info_html_report,
+from zarr.util import (all_equal, flatten, guess_chunks, human_readable_size, info_html_report,
                        info_text_report, is_total_slice, normalize_chunks,
                        normalize_dimension_separator,
                        normalize_fill_value, normalize_order,
@@ -211,3 +211,30 @@ def test_retry_call():
 
     for x in range(11, 15):
         pytest.raises(PermissionError, fail, x)
+
+
+def test_flatten():
+    assert list(flatten(['0', ['1', ['2', ['3', [4, ]]]]])) == ['0', '1', '2', '3', 4]
+    assert list(flatten('foo')) == ['f', 'o', 'o']
+    assert list(flatten(['foo'])) == ['foo']
+
+
+def test_all_equal():
+    assert all_equal(0, np.zeros((10, 10, 10)))
+    assert not all_equal(1, np.zeros((10, 10, 10)))
+
+    assert all_equal(1, np.ones((10, 10, 10)))
+    assert not all_equal(1, 1 + np.ones((10, 10, 10)))
+
+    assert all_equal(np.nan, np.array([np.nan, np.nan]))
+    assert not all_equal(np.nan, np.array([np.nan, 1.0]))
+
+    assert all_equal({'a': -1}, np.array([{'a': -1}, {'a': -1}], dtype='object'))
+    assert not all_equal({'a': -1}, np.array([{'a': -1}, {'a': 2}], dtype='object'))
+
+    assert all_equal(np.timedelta64(999, 'D'), np.array([999, 999], dtype='timedelta64[D]'))
+    assert not all_equal(np.timedelta64(999, 'D'), np.array([999, 998], dtype='timedelta64[D]'))
+
+    # all_equal(None, *) always returns False
+    assert not all_equal(None, np.array([None, None]))
+    assert not all_equal(None, np.array([None, 10]))

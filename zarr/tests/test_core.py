@@ -88,9 +88,10 @@ class TestArray(unittest.TestCase):
         kwargs.setdefault('compressor', Zlib(level=1))
         cache_metadata = kwargs.pop('cache_metadata', True)
         cache_attrs = kwargs.pop('cache_attrs', True)
+        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
         init_array(store, **kwargs)
         return Array(store, read_only=read_only, cache_metadata=cache_metadata,
-                     cache_attrs=cache_attrs)
+                     cache_attrs=cache_attrs, write_empty_chunks=write_empty_chunks)
 
     def test_store_has_text_keys(self):
         # Initialize array
@@ -910,7 +911,7 @@ class TestArray(unittest.TestCase):
 
         # setup
         a = np.zeros(())
-        z = self.create_array(shape=(), dtype=a.dtype, fill_value=0)
+        z = self.create_array(shape=(), dtype=a.dtype, fill_value=0, write_empty_chunks=False)
 
         # check properties
         assert a.ndim == z.ndim
@@ -944,6 +945,8 @@ class TestArray(unittest.TestCase):
         assert 42 == z[()]
         z[()] = 43
         assert 43 == z[()]
+        z[()] = z.fill_value
+        assert z.fill_value == z[()]
         with pytest.raises(IndexError):
             z[0] = 42
         with pytest.raises(IndexError):
@@ -954,16 +957,28 @@ class TestArray(unittest.TestCase):
         z.store.close()
 
     def test_nchunks_initialized(self):
+        for fill_value in (0, 1.0, np.nan):
+            if isinstance(fill_value, int):
+                dtype = 'int'
+            else:
+                dtype = 'float'
+            z = self.create_array(shape=100,
+                                  chunks=10,
+                                  fill_value=fill_value,
+                                  dtype=dtype,
+                                  write_empty_chunks=True)
 
-        z = self.create_array(shape=100, chunks=10)
-        assert 0 == z.nchunks_initialized
-        # manually put something into the store to confuse matters
-        z.store['foo'] = b'bar'
-        assert 0 == z.nchunks_initialized
-        z[:] = 42
-        assert 10 == z.nchunks_initialized
+            assert 0 == z.nchunks_initialized
+            # manually put something into the store to confuse matters
+            z.store['foo'] = b'bar'
+            assert 0 == z.nchunks_initialized
+            z[:] = 42
+            assert 10 == z.nchunks_initialized
+            # manually remove the first chunk from the store
+            del z.chunk_store[z._chunk_key((0,))]
+            assert 9 == z.nchunks_initialized
 
-        z.store.close()
+            z.store.close()
 
     def test_array_dtype_shape(self):
 
@@ -1484,9 +1499,11 @@ class TestArrayWithPath(TestArray):
         store = KVStore(dict())
         cache_metadata = kwargs.pop('cache_metadata', True)
         cache_attrs = kwargs.pop('cache_attrs', True)
+        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
         init_array(store, path='foo/bar', **kwargs)
         return Array(store, path='foo/bar', read_only=read_only,
-                     cache_metadata=cache_metadata, cache_attrs=cache_attrs)
+                     cache_metadata=cache_metadata, cache_attrs=cache_attrs,
+                     write_empty_chunks=write_empty_chunks)
 
     def test_nchunks_initialized(self):
         pass
@@ -1542,9 +1559,11 @@ class TestArrayWithChunkStore(TestArray):
         chunk_store = KVStore(dict())
         cache_metadata = kwargs.pop('cache_metadata', True)
         cache_attrs = kwargs.pop('cache_attrs', True)
+        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
         init_array(store, chunk_store=chunk_store, **kwargs)
         return Array(store, read_only=read_only, chunk_store=chunk_store,
-                     cache_metadata=cache_metadata, cache_attrs=cache_attrs)
+                     cache_metadata=cache_metadata, cache_attrs=cache_attrs,
+                     write_empty_chunks=write_empty_chunks)
 
     def test_hexdigest(self):
         # Check basic 1-D array
@@ -1596,10 +1615,11 @@ class TestArrayWithDirectoryStore(TestArray):
         store = DirectoryStore(path)
         cache_metadata = kwargs.pop('cache_metadata', True)
         cache_attrs = kwargs.pop('cache_attrs', True)
+        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
         kwargs.setdefault('compressor', Zlib(1))
         init_array(store, **kwargs)
         return Array(store, read_only=read_only, cache_metadata=cache_metadata,
-                     cache_attrs=cache_attrs)
+                     cache_attrs=cache_attrs, write_empty_chunks=write_empty_chunks)
 
     def test_nbytes_stored(self):
 
@@ -1637,9 +1657,10 @@ class TestArrayWithABSStore(TestArray):
         kwargs.setdefault('compressor', Zlib(1))
         cache_metadata = kwargs.pop('cache_metadata', True)
         cache_attrs = kwargs.pop('cache_attrs', True)
+        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
         init_array(store, **kwargs)
         return Array(store, read_only=read_only, cache_metadata=cache_metadata,
-                     cache_attrs=cache_attrs)
+                     cache_attrs=cache_attrs, write_empty_chunks=write_empty_chunks)
 
     @pytest.mark.xfail
     def test_nbytes_stored(self):
@@ -1660,10 +1681,11 @@ class TestArrayWithNestedDirectoryStore(TestArrayWithDirectoryStore):
         store = NestedDirectoryStore(path)
         cache_metadata = kwargs.pop('cache_metadata', True)
         cache_attrs = kwargs.pop('cache_attrs', True)
+        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
         kwargs.setdefault('compressor', Zlib(1))
         init_array(store, **kwargs)
         return Array(store, read_only=read_only, cache_metadata=cache_metadata,
-                     cache_attrs=cache_attrs)
+                     cache_attrs=cache_attrs, write_empty_chunks=write_empty_chunks)
 
     def expected(self):
         return [
@@ -1684,10 +1706,11 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
         store = N5Store(path)
         cache_metadata = kwargs.pop('cache_metadata', True)
         cache_attrs = kwargs.pop('cache_attrs', True)
+        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
         kwargs.setdefault('compressor', Zlib(1))
         init_array(store, **kwargs)
         return Array(store, read_only=read_only, cache_metadata=cache_metadata,
-                     cache_attrs=cache_attrs)
+                     cache_attrs=cache_attrs, write_empty_chunks=write_empty_chunks)
 
     def test_array_0d(self):
         # test behaviour for array with 0 dimensions
@@ -1753,6 +1776,40 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
         with pytest.raises(ValueError):
             z = self.create_array(shape=(nvalues,), chunks=100, dtype=dtype,
                                   fill_value=1)
+
+    def test_nchunks_initialized(self):
+        fill_value = 0
+        dtype = 'int'
+        z = self.create_array(shape=100,
+                              chunks=10,
+                              fill_value=fill_value,
+                              dtype=dtype,
+                              write_empty_chunks=True)
+
+        assert 0 == z.nchunks_initialized
+        # manually put something into the store to confuse matters
+        z.store['foo'] = b'bar'
+        assert 0 == z.nchunks_initialized
+        z[:] = 42
+        assert 10 == z.nchunks_initialized
+        # manually remove a chunk from the store
+        del z.chunk_store[z._chunk_key((0,))]
+        assert 9 == z.nchunks_initialized
+
+        # second round of similar tests with write_empty_chunks set to
+        # False
+        z = self.create_array(shape=100,
+                              chunks=10,
+                              fill_value=fill_value,
+                              dtype=dtype,
+                              write_empty_chunks=False)
+        z[:] = 42
+        assert 10 == z.nchunks_initialized
+        # manually remove a chunk from the store
+        del z.chunk_store[z._chunk_key((0,))]
+        assert 9 == z.nchunks_initialized
+        z[:] = z.fill_value
+        assert 0 == z.nchunks_initialized
 
     def test_array_order(self):
 
@@ -1981,9 +2038,10 @@ class TestArrayWithN5FSStore(TestArrayWithN5Store):
         cache_metadata = kwargs.pop('cache_metadata', True)
         cache_attrs = kwargs.pop('cache_attrs', True)
         kwargs.setdefault('compressor', Zlib(1))
+        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
         init_array(store, **kwargs)
         return Array(store, read_only=read_only, cache_metadata=cache_metadata,
-                     cache_attrs=cache_attrs)
+                     cache_attrs=cache_attrs, write_empty_chunks=write_empty_chunks)
 
 
 class TestArrayWithDBMStore(TestArray):
@@ -1995,10 +2053,11 @@ class TestArrayWithDBMStore(TestArray):
         store = DBMStore(path, flag='n')
         cache_metadata = kwargs.pop('cache_metadata', True)
         cache_attrs = kwargs.pop('cache_attrs', True)
+        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
         kwargs.setdefault('compressor', Zlib(1))
         init_array(store, **kwargs)
         return Array(store, read_only=read_only, cache_attrs=cache_attrs,
-                     cache_metadata=cache_metadata)
+                     cache_metadata=cache_metadata, write_empty_chunks=write_empty_chunks)
 
     def test_nbytes_stored(self):
         pass  # not implemented
@@ -2014,10 +2073,11 @@ class TestArrayWithDBMStoreBerkeleyDB(TestArray):
         store = DBMStore(path, flag='n', open=bsddb3.btopen)
         cache_metadata = kwargs.pop('cache_metadata', True)
         cache_attrs = kwargs.pop('cache_attrs', True)
+        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
         kwargs.setdefault('compressor', Zlib(1))
         init_array(store, **kwargs)
         return Array(store, read_only=read_only, cache_metadata=cache_metadata,
-                     cache_attrs=cache_attrs)
+                     cache_attrs=cache_attrs, write_empty_chunks=write_empty_chunks)
 
     def test_nbytes_stored(self):
         pass  # not implemented
@@ -2033,10 +2093,11 @@ class TestArrayWithLMDBStore(TestArray):
         store = LMDBStore(path, buffers=True)
         cache_metadata = kwargs.pop('cache_metadata', True)
         cache_attrs = kwargs.pop('cache_attrs', True)
+        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
         kwargs.setdefault('compressor', Zlib(1))
         init_array(store, **kwargs)
         return Array(store, read_only=read_only, cache_metadata=cache_metadata,
-                     cache_attrs=cache_attrs)
+                     cache_attrs=cache_attrs, write_empty_chunks=write_empty_chunks)
 
     def test_store_has_bytes_values(self):
         pass  # returns values as memoryviews/buffers instead of bytes
@@ -2055,10 +2116,11 @@ class TestArrayWithLMDBStoreNoBuffers(TestArray):
         store = LMDBStore(path, buffers=False)
         cache_metadata = kwargs.pop('cache_metadata', True)
         cache_attrs = kwargs.pop('cache_attrs', True)
+        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
         kwargs.setdefault('compressor', Zlib(1))
         init_array(store, **kwargs)
         return Array(store, read_only=read_only, cache_metadata=cache_metadata,
-                     cache_attrs=cache_attrs)
+                     cache_attrs=cache_attrs, write_empty_chunks=write_empty_chunks)
 
     def test_nbytes_stored(self):
         pass  # not implemented
@@ -2074,10 +2136,11 @@ class TestArrayWithSQLiteStore(TestArray):
         store = SQLiteStore(path)
         cache_metadata = kwargs.pop('cache_metadata', True)
         cache_attrs = kwargs.pop('cache_attrs', True)
+        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
         kwargs.setdefault('compressor', Zlib(1))
         init_array(store, **kwargs)
         return Array(store, read_only=read_only, cache_metadata=cache_metadata,
-                     cache_attrs=cache_attrs)
+                     cache_attrs=cache_attrs, write_empty_chunks=write_empty_chunks)
 
     def test_nbytes_stored(self):
         pass  # not implemented
@@ -2090,9 +2153,10 @@ class TestArrayWithNoCompressor(TestArray):
         kwargs.setdefault('compressor', None)
         cache_metadata = kwargs.pop('cache_metadata', True)
         cache_attrs = kwargs.pop('cache_attrs', True)
+        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
         init_array(store, **kwargs)
         return Array(store, read_only=read_only, cache_metadata=cache_metadata,
-                     cache_attrs=cache_attrs)
+                     cache_attrs=cache_attrs, write_empty_chunks=write_empty_chunks)
 
     def test_hexdigest(self):
         # Check basic 1-D array
@@ -2126,9 +2190,10 @@ class TestArrayWithBZ2Compressor(TestArray):
         kwargs.setdefault('compressor', compressor)
         cache_metadata = kwargs.pop('cache_metadata', True)
         cache_attrs = kwargs.pop('cache_attrs', True)
+        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
         init_array(store, **kwargs)
         return Array(store, read_only=read_only, cache_metadata=cache_metadata,
-                     cache_attrs=cache_attrs)
+                     cache_attrs=cache_attrs, write_empty_chunks=write_empty_chunks)
 
     def test_hexdigest(self):
         # Check basic 1-D array
@@ -2162,9 +2227,10 @@ class TestArrayWithBloscCompressor(TestArray):
         kwargs.setdefault('compressor', compressor)
         cache_metadata = kwargs.pop('cache_metadata', True)
         cache_attrs = kwargs.pop('cache_attrs', True)
+        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
         init_array(store, **kwargs)
         return Array(store, read_only=read_only, cache_metadata=cache_metadata,
-                     cache_attrs=cache_attrs)
+                     cache_attrs=cache_attrs, write_empty_chunks=write_empty_chunks)
 
     def test_hexdigest(self):
         # Check basic 1-D array
@@ -2205,9 +2271,10 @@ class TestArrayWithLZMACompressor(TestArray):
         kwargs.setdefault('compressor', compressor)
         cache_metadata = kwargs.pop('cache_metadata', True)
         cache_attrs = kwargs.pop('cache_attrs', True)
+        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
         init_array(store, **kwargs)
         return Array(store, read_only=read_only, cache_metadata=cache_metadata,
-                     cache_attrs=cache_attrs)
+                     cache_attrs=cache_attrs, write_empty_chunks=write_empty_chunks)
 
     def test_hexdigest(self):
         # Check basic 1-D array
@@ -2248,9 +2315,10 @@ class TestArrayWithFilters(TestArray):
         kwargs.setdefault('compressor', compressor)
         cache_metadata = kwargs.pop('cache_metadata', True)
         cache_attrs = kwargs.pop('cache_attrs', True)
+        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
         init_array(store, **kwargs)
         return Array(store, read_only=read_only, cache_attrs=cache_attrs,
-                     cache_metadata=cache_metadata)
+                     cache_metadata=cache_metadata, write_empty_chunks=write_empty_chunks)
 
     def test_hexdigest(self):
         # Check basic 1-D array
@@ -2396,9 +2464,10 @@ class TestArrayWithCustomMapping(TestArray):
         kwargs.setdefault('compressor', Zlib(1))
         cache_metadata = kwargs.pop('cache_metadata', True)
         cache_attrs = kwargs.pop('cache_attrs', True)
+        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
         init_array(store, **kwargs)
         return Array(store, read_only=read_only, cache_metadata=cache_metadata,
-                     cache_attrs=cache_attrs)
+                     cache_attrs=cache_attrs, write_empty_chunks=write_empty_chunks)
 
     def test_nbytes_stored(self):
         z = self.create_array(shape=1000, chunks=100)
@@ -2415,9 +2484,10 @@ class TestArrayNoCache(TestArray):
         kwargs.setdefault('compressor', Zlib(level=1))
         cache_metadata = kwargs.pop('cache_metadata', True)
         cache_attrs = kwargs.pop('cache_attrs', True)
+        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
         init_array(store, **kwargs)
         return Array(store, read_only=read_only, cache_metadata=cache_metadata,
-                     cache_attrs=cache_attrs)
+                     cache_attrs=cache_attrs, write_empty_chunks=write_empty_chunks)
 
     def test_cache_metadata(self):
         a1 = self.create_array(shape=100, chunks=10, dtype='i1', cache_metadata=False)
@@ -2487,9 +2557,10 @@ class TestArrayWithStoreCache(TestArray):
         kwargs.setdefault('compressor', Zlib(level=1))
         cache_metadata = kwargs.pop('cache_metadata', True)
         cache_attrs = kwargs.pop('cache_attrs', True)
+        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
         init_array(store, **kwargs)
         return Array(store, read_only=read_only, cache_metadata=cache_metadata,
-                     cache_attrs=cache_attrs)
+                     cache_attrs=cache_attrs, write_empty_chunks=write_empty_chunks)
 
     def test_store_has_bytes_values(self):
         # skip as the cache has no control over how the store provides values
@@ -2506,10 +2577,11 @@ class TestArrayWithFSStore(TestArray):
         store = FSStore(path, key_separator=key_separator, auto_mkdir=True)
         cache_metadata = kwargs.pop('cache_metadata', True)
         cache_attrs = kwargs.pop('cache_attrs', True)
+        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
         kwargs.setdefault('compressor', Blosc())
         init_array(store, **kwargs)
         return Array(store, read_only=read_only, cache_metadata=cache_metadata,
-                     cache_attrs=cache_attrs)
+                     cache_attrs=cache_attrs, write_empty_chunks=write_empty_chunks)
 
     def expected(self):
         return [
@@ -2557,6 +2629,7 @@ class TestArrayWithFSStorePartialRead(TestArray):
         store = FSStore(path)
         cache_metadata = kwargs.pop("cache_metadata", True)
         cache_attrs = kwargs.pop("cache_attrs", True)
+        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
         kwargs.setdefault("compressor", Blosc())
         init_array(store, **kwargs)
         return Array(
@@ -2565,6 +2638,7 @@ class TestArrayWithFSStorePartialRead(TestArray):
             cache_metadata=cache_metadata,
             cache_attrs=cache_attrs,
             partial_decompress=True,
+            write_empty_chunks=write_empty_chunks
         )
 
     def test_hexdigest(self):
@@ -2633,10 +2707,11 @@ class TestArrayWithFSStoreNested(TestArray):
         store = FSStore(path, key_separator=key_separator, auto_mkdir=True)
         cache_metadata = kwargs.pop('cache_metadata', True)
         cache_attrs = kwargs.pop('cache_attrs', True)
+        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
         kwargs.setdefault('compressor', Blosc())
         init_array(store, **kwargs)
         return Array(store, read_only=read_only, cache_metadata=cache_metadata,
-                     cache_attrs=cache_attrs)
+                     cache_attrs=cache_attrs, write_empty_chunks=write_empty_chunks)
 
     def expected(self):
         return [
@@ -2685,6 +2760,7 @@ class TestArrayWithFSStoreNestedPartialRead(TestArray):
         store = FSStore(path, key_separator=key_separator, auto_mkdir=True)
         cache_metadata = kwargs.pop("cache_metadata", True)
         cache_attrs = kwargs.pop("cache_attrs", True)
+        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
         kwargs.setdefault("compressor", Blosc())
         init_array(store, **kwargs)
         return Array(
@@ -2693,6 +2769,7 @@ class TestArrayWithFSStoreNestedPartialRead(TestArray):
             cache_metadata=cache_metadata,
             cache_attrs=cache_attrs,
             partial_decompress=True,
+            write_empty_chunks=write_empty_chunks
         )
 
     def expected(self):

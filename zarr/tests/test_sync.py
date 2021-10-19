@@ -100,10 +100,11 @@ class TestArrayWithThreadSynchronizer(TestArray, MixinArraySyncTests):
         store = KVStore(dict())
         cache_metadata = kwargs.pop('cache_metadata', True)
         cache_attrs = kwargs.pop('cache_attrs', True)
+        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
         init_array(store, **kwargs)
         return Array(store, synchronizer=ThreadSynchronizer(),
                      read_only=read_only, cache_metadata=cache_metadata,
-                     cache_attrs=cache_attrs)
+                     cache_attrs=cache_attrs, write_empty_chunks=write_empty_chunks)
 
     # noinspection PyMethodMayBeStatic
     def create_pool(self):
@@ -142,12 +143,14 @@ class TestArrayWithProcessSynchronizer(TestArray, MixinArraySyncTests):
         store = DirectoryStore(path)
         cache_metadata = kwargs.pop('cache_metadata', False)
         cache_attrs = kwargs.pop('cache_attrs', False)
+        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
         init_array(store, **kwargs)
         sync_path = tempfile.mkdtemp()
         atexit.register(atexit_rmtree, sync_path)
         synchronizer = ProcessSynchronizer(sync_path)
         return Array(store, synchronizer=synchronizer, read_only=read_only,
-                     cache_metadata=cache_metadata, cache_attrs=cache_attrs)
+                     cache_metadata=cache_metadata, cache_attrs=cache_attrs,
+                     write_empty_chunks=write_empty_chunks)
 
     # noinspection PyMethodMayBeStatic
     def create_pool(self):

@@ -1083,7 +1083,7 @@ class FSStore(Store):
     _group_meta_key = group_meta_key
     _attrs_key = attrs_key
 
-    def __init__(self, url, normalize_keys=True, key_separator=None,
+    def __init__(self, url, normalize_keys=False, key_separator=None,
                  mode='w',
                  exceptions=(KeyError, PermissionError, IOError),
                  dimension_separator=None,
@@ -1167,6 +1167,15 @@ class FSStore(Store):
             self.fs.rm(path, recursive=True)
         else:
             del self.map[key]
+
+    def delitems(self, keys):
+        if self.mode == 'r':
+            raise ReadOnlyError()
+        # only remove the keys that exist in the store
+        nkeys = [self._normalize_key(key) for key in keys if key in self]
+        # rm errors if you pass an empty collection
+        if len(nkeys) > 0:
+            self.map.delitems(nkeys)
 
     def __contains__(self, key):
         key = self._normalize_key(key)
