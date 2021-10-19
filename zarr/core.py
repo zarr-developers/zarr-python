@@ -25,6 +25,7 @@ from zarr.indexing import (
     ensure_tuple,
     err_too_many_indices,
     is_contiguous_selection,
+    is_pure_fancy_indexing,
     is_scalar,
     pop_fields,
 )
@@ -207,7 +208,18 @@ class Array:
             self._dtype = meta['dtype']
             self._fill_value = meta['fill_value']
             self._order = meta['order']
-            self._dimension_separator = meta.get('dimension_separator', '.')
+
+            dimension_separator = meta.get('dimension_separator', None)
+            if dimension_separator is None:
+                try:
+                    dimension_separator = self._store._dimension_separator
+                except (AttributeError, KeyError):
+                    pass
+
+                # Fallback for any stores which do not choose a default
+                if dimension_separator is None:
+                    dimension_separator = "."
+            self._dimension_separator = dimension_separator
 
             # setup compressor
             config = meta['compressor']
@@ -352,7 +364,7 @@ class Array:
     @property
     def ndim(self):
         """Number of dimensions."""
-        return len(self.shape)
+        return len(self._shape)
 
     @property
     def _size(self):
@@ -666,8 +678,20 @@ class Array:
         Slices with step > 1 are supported, but slices with negative step are not.
 
         Currently the implementation for __getitem__ is provided by
-        :func:`get_basic_selection`. For advanced ("fancy") indexing, see the methods
-        listed under See Also.
+        :func:`vindex` if the indexing is pure fancy indexing (ie a
+        broadcast-compatible tuple of integer array indices), or by
+        :func:`set_basic_selection` otherwise.
+
+        Effectively, this means that the following indexing modes are supported:
+
+           - integer indexing
+           - slice indexing
+           - mixed slice and integer indexing
+           - boolean indexing
+           - fancy indexing (vectorized list of integers)
+
+        For specific indexing options including outer indexing, see the
+        methods listed under See Also.
 
         See Also
         --------
@@ -676,9 +700,12 @@ class Array:
         set_orthogonal_selection, vindex, oindex, __setitem__
 
         """
-
-        fields, selection = pop_fields(selection)
-        return self.get_basic_selection(selection, fields=fields)
+        fields, pure_selection = pop_fields(selection)
+        if is_pure_fancy_indexing(pure_selection, self.ndim):
+            result = self.vindex[selection]
+        else:
+            result = self.get_basic_selection(pure_selection, fields=fields)
+        return result
 
     def get_basic_selection(self, selection=Ellipsis, out=None, fields=None):
         """Retrieve data for an item or region of the array.
@@ -1216,8 +1243,19 @@ class Array:
         Slices with step > 1 are supported, but slices with negative step are not.
 
         Currently the implementation for __setitem__ is provided by
-        :func:`set_basic_selection`, which means that only integers and slices are
-        supported within the selection. For advanced ("fancy") indexing, see the
+        :func:`vindex` if the indexing is pure fancy indexing (ie a
+        broadcast-compatible tuple of integer array indices), or by
+        :func:`set_basic_selection` otherwise.
+
+        Effectively, this means that the following indexing modes are supported:
+
+           - integer indexing
+           - slice indexing
+           - mixed slice and integer indexing
+           - boolean indexing
+           - fancy indexing (vectorized list of integers)
+
+        For specific indexing options including outer indexing, see the
         methods listed under See Also.
 
         See Also
@@ -1227,9 +1265,11 @@ class Array:
         set_orthogonal_selection, vindex, oindex, __getitem__
 
         """
-
-        fields, selection = pop_fields(selection)
-        self.set_basic_selection(selection, value, fields=fields)
+        fields, pure_selection = pop_fields(selection)
+        if is_pure_fancy_indexing(pure_selection, self.ndim):
+            self.vindex[selection] = value
+        else:
+            self.set_basic_selection(pure_selection, value, fields=fields)
 
     def set_basic_selection(self, selection, value, fields=None):
         """Modify data for an item or region of the array.
