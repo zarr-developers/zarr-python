@@ -76,6 +76,9 @@ class Array:
         If True and while the chunk_store is a FSStore and the compresion used
         is Blosc, when getting data from the array chunks will be partially
         read and decompressed when possible.
+
+        .. versionadded:: 2.7
+
     write_empty_chunks : bool, optional
         If True (default), all chunks will be stored regardless of their
         contents. If False, each chunk is compared to the array's fill
@@ -85,7 +88,8 @@ class Array:
         as only chunks with non-fill-value data are stored, at the expense
         of overhead associated with checking the data of each chunk.
 
-        .. versionadded:: 2.7
+        .. versionadded:: 2.11
+
 
     Attributes
     ----------
