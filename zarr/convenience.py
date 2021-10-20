@@ -3,7 +3,7 @@ import io
 import itertools
 import os
 import re
-from collections.abc import Mapping
+from collections.abc import Mapping, MutableMapping
 
 from zarr.core import Array
 from zarr.creation import array as _create_array
@@ -13,12 +13,12 @@ from zarr.hierarchy import Group
 from zarr.hierarchy import group as _create_group
 from zarr.hierarchy import open_group
 from zarr.meta import json_dumps, json_loads
-from zarr.storage import contains_array, contains_group, Store
+from zarr.storage import contains_array, contains_group, BaseStore, Store
 from zarr.util import TreeViewer, buffer_size, normalize_storage_path
 
 from typing import Union
 
-StoreLike = Union[Store, str, None]
+StoreLike = Union[BaseStore, MutableMapping, str, None]
 
 
 # noinspection PyShadowingBuiltins
@@ -80,7 +80,7 @@ def open(store: StoreLike = None, mode: str = "a", **kwargs):
     clobber = mode == 'w'
     # we pass storage options explicitly, since normalize_store_arg might construct
     # a store if the input is a fsspec-compatible URL
-    _store: Store = normalize_store_arg(
+    _store: BaseStore = normalize_store_arg(
         store, clobber=clobber, storage_options=kwargs.pop("storage_options", {})
     )
     path = normalize_storage_path(path)
@@ -142,7 +142,7 @@ def save_array(store: StoreLike, arr, **kwargs):
 
     """
     may_need_closing = _might_close(store)
-    _store: Store = normalize_store_arg(store, clobber=True)
+    _store: BaseStore = normalize_store_arg(store, clobber=True)
     try:
         _create_array(arr, store=_store, overwrite=True, **kwargs)
     finally:
@@ -213,7 +213,7 @@ def save_group(store: StoreLike, *args, **kwargs):
         raise ValueError('at least one array must be provided')
     # handle polymorphic store arg
     may_need_closing = _might_close(store)
-    _store: Store = normalize_store_arg(store, clobber=True)
+    _store: BaseStore = normalize_store_arg(store, clobber=True)
     try:
         grp = _create_group(_store, overwrite=True)
         for i, arr in enumerate(args):
@@ -1083,7 +1083,7 @@ def copy_all(source, dest, shallow=False, without_attrs=False, log=None,
     return n_copied, n_skipped, n_bytes_copied
 
 
-def consolidate_metadata(store: Store, metadata_key=".zmetadata"):
+def consolidate_metadata(store: StoreLike, metadata_key=".zmetadata"):
     """
     Consolidate all metadata for groups and arrays within the given store
     into a single resource and put it under the given key.
@@ -1134,7 +1134,7 @@ def consolidate_metadata(store: Store, metadata_key=".zmetadata"):
     return open_consolidated(store, metadata_key=metadata_key)
 
 
-def open_consolidated(store: Store, metadata_key=".zmetadata", mode="r+", **kwargs):
+def open_consolidated(store: StoreLike, metadata_key=".zmetadata", mode="r+", **kwargs):
     """Open group using metadata previously consolidated into a single key.
 
     This is an optimised method for opening a Zarr group, where instead of

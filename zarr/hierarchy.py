@@ -16,6 +16,7 @@ from zarr.errors import (
 )
 from zarr.meta import decode_group_metadata
 from zarr.storage import (
+    BaseStore,
     MemoryStore,
     attrs_key,
     contains_array,
@@ -25,7 +26,6 @@ from zarr.storage import (
     listdir,
     rename,
     rmdir,
-    Store,
 )
 from zarr.util import (
     InfoReporter,
@@ -111,8 +111,8 @@ class Group(MutableMapping):
 
     def __init__(self, store, path=None, read_only=False, chunk_store=None,
                  cache_attrs=True, synchronizer=None):
-        store = Store._ensure_store(store)
-        chunk_store = Store._ensure_store(chunk_store)
+        store: BaseStore = BaseStore._ensure_store(store)
+        chunk_store: BaseStore = BaseStore._ensure_store(chunk_store)
         self._store = store
         self._chunk_store = chunk_store
         self._path = normalize_storage_path(path)

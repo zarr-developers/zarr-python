@@ -1,5 +1,6 @@
+from abc import abstractmethod
 from collections.abc import MutableMapping
-from typing import Optional, List
+from typing import Any, List, Optional, Union
 
 from zarr.util import normalize_storage_path
 
@@ -9,17 +10,15 @@ group_meta_key = '.zgroup'
 attrs_key = '.zattrs'
 
 
-class Store(MutableMapping):
-    """Base class for stores implementation.
+class BaseStore(MutableMapping):
+    """Abstract base class for store implementations.
 
-    Provide a number of default method as well as other typing guaranties for
-    mypy.
+    This is a thin wrapper over MutableMapping that provides methods to check
+    whether a store is readable, writeable, eraseable and or listable.
 
     Stores cannot be mutable mapping as they do have a couple of other
     requirements that would break Liskov substitution principle (stores only
     allow strings as keys, mutable mapping are more generic).
-
-    And Stores do requires a few other method.
 
     Having no-op base method also helps simplifying store usage and do not need
     to check the presence of attributes and methods, like `close()`.
@@ -58,9 +57,9 @@ class Store(MutableMapping):
         if self._open_count == 0:
             self.close()
 
-    def listdir(self, path: str = "") -> List[str]:
-        path = normalize_storage_path(path)
-        return _listdir_from_keys(self, path)
+    def close(self) -> None:
+        """Do nothing by default"""
+        pass
 
     def rename(self, src_path: str, dst_path: str) -> None:
         if not self.is_erasable():
@@ -69,23 +68,11 @@ class Store(MutableMapping):
             )  # pragma: no cover
         _rename_from_keys(self, src_path, dst_path)
 
-    def rmdir(self, path: str = "") -> None:
-        if not self.is_erasable():
-            raise NotImplementedError(
-                f'{type(self)} is not erasable, cannot call "rmdir"'
-            )  # pragma: no cover
-        path = normalize_storage_path(path)
-        _rmdir_from_keys(self, path)
-
-    def close(self) -> None:
-        """Do nothing by default"""
-        pass
-
     @staticmethod
-    def _ensure_store(store):
+    def _ensure_store(store: Any):
         """
         We want to make sure internally that zarr stores are always a class
-        with a specific interface derived from ``Store``, which is slightly
+        with a specific interface derived from ``BaseStore``, which is slightly
         different than ``MutableMapping``.
 
         We'll do this conversion in a few places automatically
@@ -94,7 +81,7 @@ class Store(MutableMapping):
 
         if store is None:
             return None
-        elif isinstance(store, Store):
+        elif isinstance(store, BaseStore):
             return store
         elif isinstance(store, MutableMapping):
             return KVStore(store)
@@ -114,10 +101,33 @@ class Store(MutableMapping):
                 return KVStore(store)
 
         raise ValueError(
-            "Starting with Zarr 2.11.0, stores must be subclasses of Store, if "
-            "your store exposes the MutableMapping interface wrap it in "
-            f"Zarr.storage.KVStore. Got {store}"
+            "Starting with Zarr 2.11.0, stores must be subclasses of "
+            "BaseStore, if your store exposes the MutableMapping interface "
+            f"wrap it in Zarr.storage.KVStore. Got {store}"
         )
+
+
+class Store(BaseStore):
+    """Abstract store class used by implementations following the Zarr v2 spec.
+
+    Adds public `listdir`, `rename`, and `rmdir` methods on top of BaseStore.
+
+    .. added: 2.11.0
+
+    """
+    def listdir(self, path: str = "") -> List[str]:
+        path = normalize_storage_path(path)
+        return _listdir_from_keys(self, path)
+
+
+    def rmdir(self, path: str = "") -> None:
+        if not self.is_erasable():
+            raise NotImplementedError(
+                f'{type(self)} is not erasable, cannot call "rmdir"'
+            )  # pragma: no cover
+        path = normalize_storage_path(path)
+        _rmdir_from_keys(self, path)
+
 
 
 def _path_to_prefix(path: Optional[str]) -> str:
@@ -129,7 +139,7 @@ def _path_to_prefix(path: Optional[str]) -> str:
     return prefix
 
 
-def _rename_from_keys(store: Store, src_path: str, dst_path: str) -> None:
+def _rename_from_keys(store: BaseStore, src_path: str, dst_path: str) -> None:
     # assume path already normalized
     src_prefix = _path_to_prefix(src_path)
     dst_prefix = _path_to_prefix(dst_path)
@@ -139,7 +149,7 @@ def _rename_from_keys(store: Store, src_path: str, dst_path: str) -> None:
             store[new_key] = store.pop(key)
 
 
-def _rmdir_from_keys(store: Store, path: Optional[str] = None) -> None:
+def _rmdir_from_keys(store: Union[BaseStore, MutableMapping], path: Optional[str] = None) -> None:
     # assume path already normalized
     prefix = _path_to_prefix(path)
     for key in list(store.keys()):
@@ -147,7 +157,7 @@ def _rmdir_from_keys(store: Store, path: Optional[str] = None) -> None:
             del store[key]
 
 
-def _listdir_from_keys(store: Store, path: Optional[str] = None) -> List[str]:
+def _listdir_from_keys(store: BaseStore, path: Optional[str] = None) -> List[str]:
     # assume path already normalized
     prefix = _path_to_prefix(path)
     children = set()

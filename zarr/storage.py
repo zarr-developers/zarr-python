@@ -64,6 +64,7 @@ from zarr._storage.store import (_listdir_from_keys,
                                  array_meta_key,
                                  group_meta_key,
                                  attrs_key,
+                                 BaseStore,
                                  Store)
 
 __doctest_requires__ = {
@@ -83,9 +84,11 @@ except ImportError:  # pragma: no cover
 
 
 Path = Union[str, bytes, None]
+# allow MutableMapping for backwards compatibility
+StoreLike = Union[BaseStore, MutableMapping]
 
 
-def contains_array(store: Store, path: Path = None) -> bool:
+def contains_array(store: StoreLike, path: Path = None) -> bool:
     """Return True if the store contains an array at the given logical path."""
     path = normalize_storage_path(path)
     prefix = _path_to_prefix(path)
@@ -93,7 +96,7 @@ def contains_array(store: Store, path: Path = None) -> bool:
     return key in store
 
 
-def contains_group(store: Store, path: Path = None) -> bool:
+def contains_group(store: StoreLike, path: Path = None) -> bool:
     """Return True if the store contains a group at the given logical path."""
     path = normalize_storage_path(path)
     prefix = _path_to_prefix(path)
@@ -101,12 +104,36 @@ def contains_group(store: Store, path: Path = None) -> bool:
     return key in store
 
 
-def rmdir(store: Store, path: Path = None):
+def normalize_store_arg(store: Any, clobber=False, storage_options=None, mode="w") -> BaseStore:
+    if store is None:
+        return BaseStore._ensure_store(dict())
+    elif isinstance(store, os.PathLike):
+        store = os.fspath(store)
+    if isinstance(store, str):
+        mode = mode if clobber else "r"
+        if "://" in store or "::" in store:
+            return FSStore(store, mode=mode, **(storage_options or {}))
+        elif storage_options:
+            raise ValueError("storage_options passed with non-fsspec path")
+        if store.endswith('.zip'):
+            return ZipStore(store, mode=mode)
+        elif store.endswith('.n5'):
+            from zarr.n5 import N5Store
+            return N5Store(store)
+        else:
+            return DirectoryStore(store)
+    else:
+        if not isinstance(store, BaseStore) and isinstance(store, MutableMapping):
+            store = BaseStore._ensure_store(store)
+        return store
+
+
+def rmdir(store: StoreLike, path: Path = None):
     """Remove all items under the given path. If `store` provides a `rmdir` method,
     this will be called, otherwise will fall back to implementation via the
     `Store` interface."""
     path = normalize_storage_path(path)
-    if hasattr(store, "rmdir") and store.is_erasable():
+    if hasattr(store, "rmdir"):
         # pass through
         store.rmdir(path)  # type: ignore
     else:
@@ -114,7 +141,7 @@ def rmdir(store: Store, path: Path = None):
         _rmdir_from_keys(store, path)
 
 
-def rename(store: Store, src_path: Path, dst_path: Path):
+def rename(store: BaseStore, src_path: Path, dst_path: Path):
     """Rename all items under the given path. If `store` provides a `rename` method,
     this will be called, otherwise will fall back to implementation via the
     `Store` interface."""
@@ -128,7 +155,7 @@ def rename(store: Store, src_path: Path, dst_path: Path):
         _rename_from_keys(store, src_path, dst_path)
 
 
-def listdir(store: Store, path: Path = None):
+def listdir(store: BaseStore, path: Path = None):
     """Obtain a directory listing for the given path. If `store` provides a `listdir`
     method, this will be called, otherwise will fall back to implementation via the
     `MutableMapping` interface."""
@@ -146,7 +173,7 @@ def listdir(store: Store, path: Path = None):
         return _listdir_from_keys(store, path)
 
 
-def getsize(store: Store, path: Path = None) -> int:
+def getsize(store: BaseStore, path: Path = None) -> int:
     """Compute size of stored items for a given path. If `store` provides a `getsize`
     method, this will be called, otherwise will return -1."""
     path = normalize_storage_path(path)
@@ -179,8 +206,8 @@ def getsize(store: Store, path: Path = None) -> int:
 
 def _require_parent_group(
     path: Optional[str],
-    store: Store,
-    chunk_store: Optional[Store],
+    store: StoreLike,
+    chunk_store: Optional[StoreLike],
     overwrite: bool,
 ):
     # assume path is normalized
@@ -196,7 +223,7 @@ def _require_parent_group(
 
 
 def init_array(
-    store: Store,
+    store: StoreLike,
     shape: Tuple[int, ...],
     chunks: Union[bool, int, Tuple[int, ...]] = True,
     dtype=None,
@@ -205,7 +232,7 @@ def init_array(
     order: str = "C",
     overwrite: bool = False,
     path: Path = None,
-    chunk_store: Store = None,
+    chunk_store: StoreLike = None,
     filters=None,
     object_codec=None,
     dimension_separator=None,
@@ -248,8 +275,8 @@ def init_array(
     --------
     Initialize an array store::
 
-        >>> from zarr.storage import init_array
-        >>> store = dict()
+        >>> from zarr.storage import init_array, KVStore
+        >>> store = KVStore(dict())
         >>> init_array(store, shape=(10000, 10000), chunks=(1000, 1000))
         >>> sorted(store.keys())
         ['.zarray']
@@ -282,7 +309,7 @@ def init_array(
 
     Initialize an array using a storage path::
 
-        >>> store = dict()
+        >>> store = KVStore(dict())
         >>> init_array(store, shape=100000000, chunks=1000000, dtype='i1', path='foo')
         >>> sorted(store.keys())
         ['.zgroup', 'foo/.zarray']
@@ -427,10 +454,10 @@ init_store = init_array
 
 
 def init_group(
-    store: Store,
+    store: StoreLike,
     overwrite: bool = False,
     path: Path = None,
-    chunk_store: Store = None,
+    chunk_store: StoreLike = None,
 ):
     """Initialize a group store. Note that this is a low-level function and there should be no
     need to call this directly from user code.
@@ -462,10 +489,10 @@ def init_group(
 
 
 def _init_group_metadata(
-    store: Store,
+    store: StoreLike,
     overwrite: Optional[bool] = False,
     path: Optional[str] = None,
-    chunk_store: Store = None,
+    chunk_store: StoreLike = None,
 ):
 
     # guard conditions
@@ -2608,8 +2635,8 @@ class ConsolidatedMetadataStore(Store):
 
     """
 
-    def __init__(self, store: Store, metadata_key=".zmetadata"):
-        self.store = store
+    def __init__(self, store: StoreLike, metadata_key=".zmetadata"):
+        self.store = Store._ensure_store(store)
 
         # retrieve consolidated metadata
         meta = json_loads(store[metadata_key])

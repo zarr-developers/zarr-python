@@ -32,7 +32,7 @@ from zarr.indexing import (
     pop_fields,
 )
 from zarr.meta import decode_array_metadata, encode_array_metadata
-from zarr.storage import array_meta_key, attrs_key, getsize, listdir, Store
+from zarr.storage import array_meta_key, attrs_key, getsize, listdir, BaseStore
 from zarr.util import (
     all_equal,
     InfoReporter,
@@ -143,7 +143,7 @@ class Array:
 
     def __init__(
         self,
-        store: Store,
+        store: BaseStore,
         path=None,
         read_only=False,
         chunk_store=None,
@@ -156,8 +156,8 @@ class Array:
         # N.B., expect at this point store is fully initialized with all
         # configuration metadata fully specified and normalized
 
-        store = Store._ensure_store(store)
-        chunk_store = Store._ensure_store(chunk_store)
+        store = BaseStore._ensure_store(store)
+        chunk_store = BaseStore._ensure_store(chunk_store)
 
         self._store = store
         self._chunk_store = chunk_store
