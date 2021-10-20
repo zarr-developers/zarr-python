@@ -59,6 +59,7 @@ from zarr.util import (buffer_size, json_loads, nolock, normalize_chunks,
 from zarr._storage.absstore import ABSStore  # noqa: F401
 from zarr._storage.store import (_listdir_from_keys,
                                  _path_to_prefix,
+                                 _prefix_to_attrs_key,  # noqa
                                  _rename_from_keys,
                                  _rmdir_from_keys,
                                  array_meta_key,
@@ -574,7 +575,7 @@ class KVStore(Store):
 
 
 class MemoryStore(Store):
-    """Store class that uses a hierarchy of :class:`dict` objects, thus all data
+    """Store class that uses a hierarchy of :class:`KVStore` objects, thus all data
     will be held in main memory.
 
     Examples
@@ -587,7 +588,7 @@ class MemoryStore(Store):
         <class 'zarr.storage.MemoryStore'>
 
     Note that the default class when creating an array is the built-in
-    :class:`dict` class, i.e.::
+    :class:`KVStore` class, i.e.::
 
         >>> z = zarr.zeros(100)
         >>> type(z.store)
@@ -2108,7 +2109,7 @@ class LRUStoreCache(Store):
 
     """
 
-    def __init__(self, store: Store, max_size: int):
+    def __init__(self, store: [Store, Any], max_size: int):
         self._store = Store._ensure_store(store)
         self._max_size = max_size
         self._current_size = 0
