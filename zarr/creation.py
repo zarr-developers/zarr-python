@@ -1,4 +1,3 @@
-import os
 from warnings import warn
 
 import numpy as np
@@ -10,10 +9,9 @@ from zarr.errors import (
     ContainsArrayError,
     ContainsGroupError,
 )
-from zarr.n5 import N5Store
-from zarr.storage import (DirectoryStore, ZipStore, contains_array,
-                          contains_group, default_compressor, init_array,
-                          normalize_storage_path, FSStore)
+from zarr.storage import (contains_array, contains_group, default_compressor,
+                          init_array, normalize_storage_path,
+                          normalize_store_arg)
 from zarr.util import normalize_dimension_separator
 
 
@@ -155,27 +153,6 @@ def create(shape, chunks=True, dtype=None, compressor='default',
               write_empty_chunks=write_empty_chunks)
 
     return z
-
-
-def normalize_store_arg(store, clobber=False, storage_options=None, mode='w'):
-    if store is None:
-        return dict()
-    if isinstance(store, os.PathLike):
-        store = os.fspath(store)
-    if isinstance(store, str):
-        mode = mode if clobber else "r"
-        if "://" in store or "::" in store:
-            return FSStore(store, mode=mode, **(storage_options or {}))
-        elif storage_options:
-            raise ValueError("storage_options passed with non-fsspec path")
-        if store.endswith('.zip'):
-            return ZipStore(store, mode=mode)
-        elif store.endswith('.n5'):
-            return N5Store(store)
-        else:
-            return DirectoryStore(store)
-    else:
-        return store
 
 
 def _kwargs_compat(compressor, fill_value, kwargs):

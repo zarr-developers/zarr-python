@@ -1,16 +1,16 @@
 """This module contains storage classes related to Azure Blob Storage (ABS)"""
 
 import warnings
-from collections.abc import MutableMapping
 from numcodecs.compat import ensure_bytes
 from zarr.util import normalize_storage_path
+from zarr._storage.store import Store
 
 __doctest_requires__ = {
     ('ABSStore', 'ABSStore.*'): ['azure.storage.blob'],
 }
 
 
-class ABSStore(MutableMapping):
+class ABSStore(Store):
     """Storage class using Azure Blob Storage (ABS).
 
     Parameters

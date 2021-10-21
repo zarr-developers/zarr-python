@@ -9,6 +9,8 @@ from functools import reduce
 import numpy as np
 from numcodecs.compat import ensure_bytes, ensure_ndarray
 
+from collections.abc import MutableMapping
+
 from zarr.attrs import Attributes
 from zarr.codecs import AsType, get_codec
 from zarr.errors import ArrayNotFoundError, ReadOnlyError, ArrayIndexError
@@ -30,7 +32,7 @@ from zarr.indexing import (
     pop_fields,
 )
 from zarr.meta import decode_array_metadata, encode_array_metadata
-from zarr.storage import array_meta_key, attrs_key, getsize, listdir
+from zarr.storage import array_meta_key, attrs_key, getsize, listdir, BaseStore
 from zarr.util import (
     all_equal,
     InfoReporter,
@@ -145,7 +147,7 @@ class Array:
 
     def __init__(
         self,
-        store,
+        store: BaseStore,
         path=None,
         read_only=False,
         chunk_store=None,
@@ -157,6 +159,9 @@ class Array:
     ):
         # N.B., expect at this point store is fully initialized with all
         # configuration metadata fully specified and normalized
+
+        store = BaseStore._ensure_store(store)
+        chunk_store = BaseStore._ensure_store(chunk_store)
 
         self._store = store
         self._chunk_store = chunk_store
@@ -2113,7 +2118,7 @@ class Array:
             cdata = chunk
 
         # ensure in-memory data is immutable and easy to compare
-        if isinstance(self.chunk_store, dict):
+        if isinstance(self.chunk_store, MutableMapping):
             cdata = ensure_bytes(cdata)
 
         return cdata
@@ -2146,10 +2151,10 @@ class Array:
         Order              : C
         Read-only          : False
         Compressor         : Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
-        Store type         : builtins.dict
+        Store type         : zarr.storage.KVStore
         No. bytes          : 4000000 (3.8M)
-        No. bytes stored   : ...
-        Storage ratio      : ...
+        No. bytes stored   : 320
+        Storage ratio      : 12500.0
         Chunks initialized : 0/10
 
         """
