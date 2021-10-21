@@ -16,6 +16,7 @@ class Metadata2:
 
     @classmethod
     def parse_metadata(cls, s: Union[MappingType, str]) -> MappingType[str, Any]:
+
         # Here we allow that a store may return an already-parsed metadata object,
         # or a string of JSON that we will parse here. We allow for an already-parsed
         # object to accommodate a consolidated metadata store, where all the metadata for
@@ -24,9 +25,11 @@ class Metadata2:
         if isinstance(s, Mapping):
             # assume metadata has already been parsed into a mapping object
             meta = s
+
         else:
             # assume metadata needs to be parsed as JSON
             meta = json_loads(s)
+
         return meta
 
     @classmethod
@@ -40,13 +43,14 @@ class Metadata2:
 
         # extract array metadata fields
         try:
-            # dimension_separator = meta.get("dimension_separator", None)
             dtype = cls.decode_dtype(meta["dtype"])
             if dtype.hasobject:
                 import numcodecs
                 object_codec = numcodecs.get_codec(meta['filters'][0])
             else:
                 object_codec = None
+
+            dimension_separator = meta.get("dimension_separator", None)
             fill_value = cls.decode_fill_value(meta['fill_value'], dtype, object_codec)
             meta = dict(
                 zarr_format=meta["zarr_format"],
@@ -57,8 +61,9 @@ class Metadata2:
                 fill_value=fill_value,
                 order=meta["order"],
                 filters=meta["filters"],
-                dimension_separator=meta.get("dimension_separator", "."),
             )
+            if dimension_separator:
+                meta['dimension_separator'] = dimension_separator
         except Exception as e:
             raise MetadataError("error decoding metadata") from e
         else:
