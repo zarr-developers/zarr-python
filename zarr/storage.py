@@ -2109,7 +2109,7 @@ class LRUStoreCache(Store):
     """
 
     def __init__(self, store: StoreLike, max_size: int):
-        self._store: BaseStore = Store._ensure_store(store)
+        self._store: BaseStore = BaseStore._ensure_store(store)
         self._max_size = max_size
         self._current_size = 0
         self._keys_cache = None

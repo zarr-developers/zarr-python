@@ -117,6 +117,7 @@ class Store(BaseStore):
     .. added: 2.11.0
 
     """
+
     def listdir(self, path: str = "") -> List[str]:
         path = normalize_storage_path(path)
         return _listdir_from_keys(self, path)

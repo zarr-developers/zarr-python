@@ -1936,7 +1936,6 @@ def test_migrate_1to2(dict_store):
 
     # setup
     store = dict() if dict_store else KVStore(dict())
-
     meta = dict(
         shape=(100,),
         chunks=(10,),
