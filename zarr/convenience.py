@@ -13,7 +13,7 @@ from zarr.hierarchy import Group
 from zarr.hierarchy import group as _create_group
 from zarr.hierarchy import open_group
 from zarr.meta import json_dumps, json_loads
-from zarr.storage import contains_array, contains_group, BaseStore, Store
+from zarr.storage import contains_array, contains_group, BaseStore
 from zarr.util import TreeViewer, buffer_size, normalize_storage_path
 
 from typing import Union
