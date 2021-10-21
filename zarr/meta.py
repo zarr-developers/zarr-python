@@ -10,12 +10,6 @@ from typing import cast, Union, Any, List, Mapping as MappingType
 
 ZARR_FORMAT = 2
 
-FLOAT_FILLS = {
-    'NaN': np.nan,
-    'Infinity': np.PINF,
-    '-Infinity': np.NINF
-}
-
 
 class Metadata2:
     ZARR_FORMAT = ZARR_FORMAT
