@@ -59,7 +59,6 @@ from zarr.util import (buffer_size, json_loads, nolock, normalize_chunks,
 from zarr._storage.absstore import ABSStore  # noqa: F401
 from zarr._storage.store import (_listdir_from_keys,
                                  _path_to_prefix,
-                                 _prefix_to_attrs_key,  # noqa
                                  _rename_from_keys,
                                  _rmdir_from_keys,
                                  array_meta_key,
