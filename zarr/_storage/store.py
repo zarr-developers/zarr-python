@@ -1,4 +1,3 @@
-from abc import abstractmethod
 from collections.abc import MutableMapping
 from typing import Any, List, Optional, Union
 
@@ -122,7 +121,6 @@ class Store(BaseStore):
         path = normalize_storage_path(path)
         return _listdir_from_keys(self, path)
 
-
     def rmdir(self, path: str = "") -> None:
         if not self.is_erasable():
             raise NotImplementedError(
@@ -130,7 +128,6 @@ class Store(BaseStore):
             )  # pragma: no cover
         path = normalize_storage_path(path)
         _rmdir_from_keys(self, path)
-
 
 
 def _path_to_prefix(path: Optional[str]) -> str:
