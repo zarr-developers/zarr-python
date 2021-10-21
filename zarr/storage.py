@@ -231,8 +231,8 @@ def init_array(
     fill_value=None,
     order: str = "C",
     overwrite: bool = False,
-    path: Path = None,
-    chunk_store: StoreLike = None,
+    path: Optional[Path] = None,
+    chunk_store: Optional[StoreLike] = None,
     filters=None,
     object_codec=None,
     dimension_separator=None,
@@ -357,7 +357,7 @@ def init_array(
 
 
 def _init_array_metadata(
-    store,
+    store: StoreLike,
     shape,
     chunks=None,
     dtype=None,
@@ -366,7 +366,7 @@ def _init_array_metadata(
     order="C",
     overwrite=False,
     path: Optional[str] = None,
-    chunk_store=None,
+    chunk_store: Optional[StoreLike] = None,
     filters=None,
     object_codec=None,
     dimension_separator=None,
@@ -447,7 +447,7 @@ def _init_array_metadata(
                 dimension_separator=dimension_separator)
     key = _path_to_prefix(path) + array_meta_key
     if hasattr(store, '_metadata_class'):
-        store[key] = store._metadata_class.encode_array_metadata(meta)
+        store[key] = store._metadata_class.encode_array_metadata(meta)  # type: ignore
     else:
         store[key] = encode_array_metadata(meta)
 
@@ -515,7 +515,7 @@ def _init_group_metadata(
     meta = dict()  # type: ignore
     key = _path_to_prefix(path) + group_meta_key
     if hasattr(store, '_metadata_class'):
-        store[key] = store._metadata_class.encode_group_metadata(meta)
+        store[key] = store._metadata_class.encode_group_metadata(meta)  # type: ignore
     else:
         store[key] = encode_group_metadata(meta)
 
@@ -2108,8 +2108,8 @@ class LRUStoreCache(Store):
 
     """
 
-    def __init__(self, store: [Store, Any], max_size: int):
-        self._store = Store._ensure_store(store)
+    def __init__(self, store: StoreLike, max_size: int):
+        self._store: BaseStore = Store._ensure_store(store)
         self._max_size = max_size
         self._current_size = 0
         self._keys_cache = None
