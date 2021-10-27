@@ -128,7 +128,7 @@ class N5Store(NestedDirectoryStore):
 
             for k in n5_keywords:
                 if k in zarr_attrs.keys():
-                    raise ValueError("Can not set attribute %s, this is a reserved N5 keyword" % k)
+                    print("Warning: you are setting attribute %s, this is a reserved N5 keyword" % k)
 
             # replace previous user attributes
             for k in list(n5_attrs.keys()):
@@ -424,9 +424,7 @@ class N5FSStore(FSStore):
 
             for k in n5_keywords:
                 if k in zarr_attrs.keys():
-                    raise ValueError(
-                        "Can not set attribute %s, this is a reserved N5 keyword" % k
-                    )
+                    print("Warning: you are setting attribute %s, this is a reserved N5 keyword" % k)
 
             # replace previous user attributes
             for k in list(n5_attrs.keys()):
