@@ -1699,10 +1699,6 @@ class TestArrayWithNestedDirectoryStore(TestArrayWithDirectoryStore):
 
 class TestArrayWithN5Store(TestArrayWithDirectoryStore):
 
-    @pytest.fixture(autouse=True)
-    def capsys(self, capsys):
-        self.capsys = capsys
-
     @staticmethod
     def create_array(read_only=False, **kwargs):
         path = mkdtemp()
@@ -1964,9 +1960,8 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
     def test_attrs_n5_keywords(self):
         z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
         for k in n5_keywords:
-            z.attrs[k] = ""
-            out, _ = self.capsys.readouterr()
-            assert "Warning: attribute" in out
+            with pytest.warns(UserWarning):
+                z.attrs[k] = ""
 
     def test_compressors(self):
         compressors = [
