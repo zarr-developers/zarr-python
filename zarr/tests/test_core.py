@@ -1965,8 +1965,8 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
         z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
         for k in n5_keywords:
             z.attrs[k] = ""
-            out, _  = self.capsys.readouterr()
-            assert "Warning: you are setting attribute" in out
+            out, _ = self.capsys.readouterr()
+            assert "Warning: attribute" in out
 
     def test_compressors(self):
         compressors = [
