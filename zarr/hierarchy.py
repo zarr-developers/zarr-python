@@ -15,11 +15,26 @@ from zarr.errors import (
     ReadOnlyError,
 )
 from zarr.meta import decode_group_metadata
-from zarr.storage import (MemoryStore, attrs_key, contains_array,
-                          contains_group, group_meta_key, init_group, listdir,
-                          rename, rmdir)
-from zarr.util import (InfoReporter, TreeViewer, is_valid_python_name, nolock,
-                       normalize_shape, normalize_storage_path)
+from zarr.storage import (
+    BaseStore,
+    MemoryStore,
+    attrs_key,
+    contains_array,
+    contains_group,
+    group_meta_key,
+    init_group,
+    listdir,
+    rename,
+    rmdir,
+)
+from zarr.util import (
+    InfoReporter,
+    TreeViewer,
+    is_valid_python_name,
+    nolock,
+    normalize_shape,
+    normalize_storage_path,
+)
 
 
 class Group(MutableMapping):
@@ -96,6 +111,8 @@ class Group(MutableMapping):
 
     def __init__(self, store, path=None, read_only=False, chunk_store=None,
                  cache_attrs=True, synchronizer=None):
+        store: BaseStore = BaseStore._ensure_store(store)
+        chunk_store: BaseStore = BaseStore._ensure_store(chunk_store)
         self._store = store
         self._chunk_store = chunk_store
         self._path = normalize_storage_path(path)
@@ -237,11 +254,8 @@ class Group(MutableMapping):
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        """If the underlying Store has a ``close`` method, call it."""
-        try:
-            self.store.close()
-        except AttributeError:
-            pass
+        """Call the close method of the underlying Store."""
+        self.store.close()
 
     def info_items(self):
 
@@ -804,11 +818,13 @@ class Group(MutableMapping):
         <zarr.core.Array '/bar/baz/qux' (100, 100, 100) float64>
 
         """
+        assert "mode" not in kwargs
 
         return self._write_op(self._create_dataset_nosync, name, **kwargs)
 
     def _create_dataset_nosync(self, name, data=None, **kwargs):
 
+        assert "mode" not in kwargs
         path = self._item_path(name)
 
         # determine synchronizer
