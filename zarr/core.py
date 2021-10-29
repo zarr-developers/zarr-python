@@ -5,7 +5,17 @@ import math
 import operator
 import re
 from functools import reduce
-from typing import Any, Callable, Dict, Generator, Iterable, List, Optional, Sequence, Tuple, TypeVar, Union
+from typing import (
+    Any,
+    Callable,
+    Generator,
+    Iterable,
+    List,
+    Optional,
+    Sequence,
+    Tuple,
+    TypeVar,
+    Union)
 
 import numpy as np
 import numpy.typing as npt

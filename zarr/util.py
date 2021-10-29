@@ -187,7 +187,7 @@ def normalize_dtype(dtype: Union[str, np.dtype], object_codec) -> Tuple[np.dtype
 
 
 # noinspection PyTypeChecker
-def is_total_slice(item, shape: Tuple[int, ...]) -> bool:
+def is_total_slice(item: Any, shape: Tuple[int, ...]) -> bool:
     """Determine whether `item` specifies a complete slice of array with the
     given `shape`. Used to optimize __setitem__ operations on the Chunk
     class."""
@@ -402,7 +402,7 @@ class InfoReporter():
 
 class TreeNode():
 
-    def __init__(self, obj: Any, depth: int=0, level: Union[int, None]=None):
+    def __init__(self, obj: Any, depth: int = 0, level: Union[int, None] = None):
         self.obj = obj
         self.depth = depth
         self.level = level
@@ -486,7 +486,7 @@ def tree_widget(group, expand, level):
 
 class TreeViewer(object):
 
-    def __init__(self, group: Any, expand: bool=False, level: Union[int, None]=None):
+    def __init__(self, group: Any, expand: bool = False, level: Union[int, None] = None):
 
         self.group = group
         self.expand = expand
