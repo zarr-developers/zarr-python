@@ -5,8 +5,10 @@ import math
 import operator
 import re
 from functools import reduce
+from typing import Any, Callable, Dict, Generator, Iterable, List, Optional, Sequence, Tuple, TypeVar, Union
 
 import numpy as np
+import numpy.typing as npt
 from numcodecs.compat import ensure_bytes, ensure_ndarray
 
 from collections.abc import MutableMapping
@@ -47,6 +49,8 @@ from zarr.util import (
     PartialReadBuffer,
     trim_chunks,
 )
+
+T = TypeVar('T')
 
 
 # noinspection PyUnresolvedReferences
@@ -148,15 +152,15 @@ class Array:
 
     def __init__(
         self,
-        store: BaseStore,
-        path=None,
-        read_only=False,
-        chunk_store=None,
-        synchronizer=None,
-        cache_metadata=True,
-        cache_attrs=True,
-        partial_decompress=False,
-        write_empty_chunks=True,
+        store: MutableMapping,
+        path: Optional[str] = None,
+        read_only: bool = False,
+        chunk_store: Optional[MutableMapping] = None,
+        synchronizer: Any = None,
+        cache_metadata: bool = True,
+        cache_attrs: bool = True,
+        partial_decompress: bool = False,
+        write_empty_chunks: bool = True,
     ):
         # N.B., expect at this point store is fully initialized with all
         # configuration metadata fully specified and normalized
@@ -167,6 +171,7 @@ class Array:
         self._store = store
         self._chunk_store = chunk_store
         self._path = normalize_storage_path(path)
+        self._key_prefix: str
         if self._path:
             self._key_prefix = self._path + '/'
         else:
@@ -193,7 +198,7 @@ class Array:
         self._oindex = OIndex(self)
         self._vindex = VIndex(self)
 
-    def _load_metadata(self):
+    def _load_metadata(self) -> None:
         """(Re)load metadata from store."""
         if self._synchronizer is None:
             self._load_metadata_nosync()
@@ -202,7 +207,7 @@ class Array:
             with self._synchronizer[mkey]:
                 self._load_metadata_nosync()
 
-    def _load_metadata_nosync(self):
+    def _load_metadata_nosync(self) -> None:
         try:
             mkey = self._key_prefix + array_meta_key
             meta_bytes = self._store[mkey]
@@ -244,15 +249,15 @@ class Array:
                 filters = [get_codec(config) for config in filters]
             self._filters = filters
 
-    def _refresh_metadata(self):
+    def _refresh_metadata(self) -> None:
         if not self._cache_metadata:
             self._load_metadata()
 
-    def _refresh_metadata_nosync(self):
+    def _refresh_metadata_nosync(self) -> None:
         if not self._cache_metadata and not self._is_view:
             self._load_metadata_nosync()
 
-    def _flush_metadata_nosync(self):
+    def _flush_metadata_nosync(self) -> None:
         if self._is_view:
             raise PermissionError('operation not permitted for views')
 
@@ -271,17 +276,17 @@ class Array:
         self._store[mkey] = encode_array_metadata(meta)
 
     @property
-    def store(self):
+    def store(self) -> BaseStore:
         """A MutableMapping providing the underlying storage for the array."""
         return self._store
 
     @property
-    def path(self):
+    def path(self) -> str:
         """Storage path."""
         return self._path
 
     @property
-    def name(self):
+    def name(self) -> Union[str, None]:
         """Array name following h5py convention."""
         if self.path:
             # follow h5py convention: add leading slash
@@ -292,23 +297,23 @@ class Array:
         return None
 
     @property
-    def basename(self):
+    def basename(self) -> Union[str, None]:
         """Final component of name."""
         if self.name is not None:
             return self.name.split('/')[-1]
         return None
 
     @property
-    def read_only(self):
+    def read_only(self) -> bool:
         """A boolean, True if modification operations are not permitted."""
         return self._read_only
 
     @read_only.setter
-    def read_only(self, value):
+    def read_only(self, value) -> None:
         self._read_only = bool(value)
 
     @property
-    def chunk_store(self):
+    def chunk_store(self) -> BaseStore:
         """A MutableMapping providing the underlying storage for array chunks."""
         if self._chunk_store is None:
             return self._store
@@ -316,7 +321,7 @@ class Array:
             return self._chunk_store
 
     @property
-    def shape(self):
+    def shape(self) -> Tuple[int, ...]:
         """A tuple of integers describing the length of each dimension of
         the array."""
         # N.B., shape may change if array is resized, hence need to refresh
@@ -325,63 +330,63 @@ class Array:
         return self._shape
 
     @shape.setter
-    def shape(self, value):
+    def shape(self, value: Sequence[int]) -> None:
         self.resize(value)
 
     @property
-    def chunks(self):
+    def chunks(self) -> Tuple[int, ...]:
         """A tuple of integers describing the length of each dimension of a
         chunk of the array."""
         return self._chunks
 
     @property
-    def dtype(self):
+    def dtype(self) -> npt.DTypeLike:
         """The NumPy data type."""
         return self._dtype
 
     @property
-    def compressor(self):
+    def compressor(self) -> Any:
         """Primary compression codec."""
         return self._compressor
 
     @property
-    def fill_value(self):
+    def fill_value(self) -> Any:
         """A value used for uninitialized portions of the array."""
         return self._fill_value
 
     @property
-    def order(self):
+    def order(self) -> str:
         """A string indicating the order in which bytes are arranged within
         chunks of the array."""
         return self._order
 
     @property
-    def filters(self):
+    def filters(self) -> Any:
         """One or more codecs used to transform data prior to compression."""
         return self._filters
 
     @property
-    def synchronizer(self):
+    def synchronizer(self) -> Any:
         """Object used to synchronize write access to the array."""
         return self._synchronizer
 
     @property
-    def attrs(self):
+    def attrs(self) -> MutableMapping:
         """A MutableMapping containing user-defined attributes. Note that
         attribute values must be JSON serializable."""
         return self._attrs
 
     @property
-    def ndim(self):
+    def ndim(self) -> int:
         """Number of dimensions."""
         return len(self._shape)
 
     @property
-    def _size(self):
+    def _size(self) -> int:
         return reduce(operator.mul, self._shape, 1)
 
     @property
-    def size(self):
+    def size(self) -> int:
         """The total number of elements in the array."""
         # N.B., this property depends on shape, and shape may change if array
         # is resized, hence need to refresh metadata
@@ -389,16 +394,16 @@ class Array:
         return self._size
 
     @property
-    def itemsize(self):
+    def itemsize(self) -> int:
         """The size in bytes of each item in the array."""
         return self.dtype.itemsize
 
     @property
-    def _nbytes(self):
+    def _nbytes(self) -> int:
         return self._size * self.itemsize
 
     @property
-    def nbytes(self):
+    def nbytes(self) -> int:
         """The total number of bytes that would be required to store the
         array without compression."""
         # N.B., this property depends on shape, and shape may change if array
@@ -407,7 +412,7 @@ class Array:
         return self._nbytes
 
     @property
-    def nbytes_stored(self):
+    def nbytes_stored(self) -> int:
         """The total number of stored bytes of data for the array. This
         includes storage required for configuration metadata and user
         attributes."""
@@ -422,32 +427,32 @@ class Array:
                 return m + n
 
     @property
-    def _cdata_shape(self):
+    def _cdata_shape(self) -> Tuple[int, ...]:
         if self._shape == ():
-            return 1,
+            return (1,)
         else:
             return tuple(math.ceil(s / c)
                          for s, c in zip(self._shape, self._chunks))
 
     @property
-    def cdata_shape(self):
+    def cdata_shape(self) -> Tuple[int, ...]:
         """A tuple of integers describing the number of chunks along each
         dimension of the array."""
         self._refresh_metadata()
         return self._cdata_shape
 
     @property
-    def _nchunks(self):
+    def _nchunks(self) -> int:
         return reduce(operator.mul, self._cdata_shape, 1)
 
     @property
-    def nchunks(self):
+    def nchunks(self) -> int:
         """Total number of chunks."""
         self._refresh_metadata()
         return self._nchunks
 
     @property
-    def nchunks_initialized(self):
+    def nchunks_initialized(self) -> int:
         """The number of chunks that have been initialized with some data."""
 
         # key pattern for chunk keys
@@ -460,7 +465,7 @@ class Array:
     initialized = nchunks_initialized
 
     @property
-    def is_view(self):
+    def is_view(self) -> bool:
         """A boolean, True if this array is a view on another array."""
         return self._is_view
 
@@ -484,7 +489,7 @@ class Array:
         """
         return self._write_empty_chunks
 
-    def __eq__(self, other):
+    def __eq__(self, other: Any) -> bool:
         return (
             isinstance(other, Array) and
             self.store == other.store and
@@ -501,7 +506,9 @@ class Array:
             a = a.astype(args[0])
         return a
 
-    def islice(self, start=None, end=None):
+    def islice(self,
+               start: Union[None, int] = None,
+               end: Union[None, int] = None) -> Generator[npt.ArrayLike, None, None]:
         """
         Yield a generator for iterating over the entire or parts of the
         array. Uses a cache so chunks only have to be decompressed once.
@@ -843,7 +850,10 @@ class Array:
             return self._get_basic_selection_nd(selection=selection, out=out,
                                                 fields=fields)
 
-    def _get_basic_selection_zd(self, selection, out=None, fields=None):
+    def _get_basic_selection_zd(self,
+                                selection: Tuple[slice, ...],
+                                out: Optional[np.ndarray] = None,
+                                fields: Any = None) -> npt.NDArray:
         # special case basic selection for zero-dimensional array
 
         # check selection is valid
@@ -1619,7 +1629,7 @@ class Array:
 
         self._set_selection(indexer, value, fields=fields)
 
-    def _set_basic_selection_zd(self, selection, value, fields=None):
+    def _set_basic_selection_zd(self, selection, value: npt.ArrayLike, fields=None):
         # special case __setitem__ for zero-dimensional array
 
         # check selection is valid
@@ -1668,7 +1678,7 @@ class Array:
             cdata = self._encode_chunk(chunk)
             self.chunk_store[ckey] = cdata
 
-    def _set_basic_selection_nd(self, selection, value, fields=None):
+    def _set_basic_selection_nd(self, selection, value: npt.ArrayLike, fields=None) -> None:
         # implementation of __setitem__ for array with at least one dimension
 
         # setup indexer
@@ -1676,7 +1686,7 @@ class Array:
 
         self._set_selection(indexer, value, fields=fields)
 
-    def _set_selection(self, indexer, value, fields=None):
+    def _set_selection(self, indexer, value: npt.ArrayLike, fields=None) -> None:
 
         # We iterate over all chunks which overlap the selection and thus contain data
         # that needs to be replaced. Each chunk is processed in turn, extracting the
@@ -1751,15 +1761,15 @@ class Array:
 
     def _process_chunk(
         self,
-        out,
-        cdata,
-        chunk_selection,
-        drop_axes,
-        out_is_ndarray,
-        fields,
-        out_selection,
-        partial_read_decode=False,
-    ):
+        out: npt.NDArray,
+        cdata: Union[bytes, PartialReadBuffer],
+        chunk_selection: Tuple[slice, ...],
+        drop_axes: Tuple[int, ...],
+        out_is_ndarray: bool,
+        fields: Any,
+        out_selection: Tuple[slice, ...],
+        partial_read_decode: bool = False,
+    ) -> None:
         """Take binary data from storage and fill output array"""
         if (out_is_ndarray and
                 not fields and
@@ -1832,8 +1842,13 @@ class Array:
         # store selected data in output
         out[out_selection] = tmp
 
-    def _chunk_getitem(self, chunk_coords, chunk_selection, out, out_selection,
-                       drop_axes=None, fields=None):
+    def _chunk_getitem(self,
+                       chunk_coords: Tuple[int, ...],
+                       chunk_selection: Tuple[slice, ...],
+                       out: Any,
+                       out_selection: Tuple[slice, ...],
+                       drop_axes: Optional[Tuple[int, ...]] = None,
+                       fields: Any = None) -> None:
         """Obtain part or whole of a chunk.
 
         Parameters
@@ -1880,8 +1895,13 @@ class Array:
             self._process_chunk(out, cdata, chunk_selection, drop_axes,
                                 out_is_ndarray, fields, out_selection)
 
-    def _chunk_getitems(self, lchunk_coords, lchunk_selection, out, lout_selection,
-                        drop_axes=None, fields=None):
+    def _chunk_getitems(self,
+                        lchunk_coords: Sequence[Tuple[int, ...]],
+                        lchunk_selection: Sequence[Tuple[slice, ...]],
+                        out: Any,
+                        lout_selection: Sequence[Tuple[slice, ...]],
+                        drop_axes: Optional[int] = None,
+                        fields=None) -> None:
         """As _chunk_getitem, but for lists of chunks
 
         This gets called where the storage supports ``getitems``, so that
@@ -1933,11 +1953,19 @@ class Array:
                         fill_value = self._fill_value
                     out[out_select] = fill_value
 
-    def _chunk_setitems(self, lchunk_coords, lchunk_selection, values, fields=None):
-        ckeys = map(self._chunk_key, lchunk_coords)
-        cdatas = {key: self._process_for_setitem(key, sel, val, fields=fields)
-                  for key, sel, val in zip(ckeys, lchunk_selection, values)}
+    def _chunk_setitems(self,
+                        lchunk_coords: Tuple[Tuple[int, ...], ...],
+                        lchunk_selection: Tuple[Tuple[slice, ...], ...],
+                        values: Sequence[Any],
+                        fields=None):
         to_store = {}
+        cdatas = {}
+        ckeys = map(self._chunk_key, lchunk_coords)
+        for idx, ckey in enumerate(ckeys):
+            coords = lchunk_coords[idx]
+            sel = lchunk_selection[idx]
+            val = values[idx]
+            cdatas[ckey] = self._process_for_setitem(ckey, coords, sel, val, fields=fields)
         if not self.write_empty_chunks:
             empty_chunks = {k: v for k, v in cdatas.items() if all_equal(self.fill_value, v)}
             self._chunk_delitems(empty_chunks.keys())
@@ -1947,7 +1975,7 @@ class Array:
             to_store = {k: self._encode_chunk(v) for k, v in cdatas.items()}
         self.chunk_store.setitems(to_store)
 
-    def _chunk_delitems(self, ckeys):
+    def _chunk_delitems(self, ckeys: Iterable[str]):
         if hasattr(self.store, "delitems"):
             self.store.delitems(ckeys)
         else:  # pragma: no cover
@@ -1957,7 +1985,7 @@ class Array:
             tuple(map(self._chunk_delitem, ckeys))
         return None
 
-    def _chunk_delitem(self, ckey):
+    def _chunk_delitem(self, ckey: str):
         """
         Attempt to delete the value associated with ckey.
         """
@@ -1967,7 +1995,11 @@ class Array:
         except KeyError:
             return
 
-    def _chunk_setitem(self, chunk_coords, chunk_selection, value, fields=None):
+    def _chunk_setitem(self,
+                       chunk_coords: Tuple[int, ...],
+                       chunk_selection: Tuple[slice, ...],
+                       value: Any,
+                       fields=None):
         """Replace part or whole of a chunk.
 
         Parameters
@@ -1995,7 +2027,7 @@ class Array:
 
     def _chunk_setitem_nosync(self, chunk_coords, chunk_selection, value, fields=None):
         ckey = self._chunk_key(chunk_coords)
-        cdata = self._process_for_setitem(ckey, chunk_selection, value, fields=fields)
+        cdata = self._process_for_setitem(ckey, chunk_coords, chunk_selection, value, fields=fields)
 
         # attempt to delete chunk if it only contains the fill value
         if (not self.write_empty_chunks) and all_equal(self.fill_value, cdata):
@@ -2003,11 +2035,15 @@ class Array:
         else:
             self.chunk_store[ckey] = self._encode_chunk(cdata)
 
-    def _process_for_setitem(self, chunk_coords, ckey, chunk_selection, value, fields=None):
+    def _process_for_setitem(self,
+                             ckey: str,
+                             chunk_coords: Tuple[int, ...],
+                             chunk_selection: Tuple[slice, ...],
+                             value: Any,
+                             fields=None) -> npt.NDArray:
         chunks_trimmed = trim_chunks(self._chunks, chunk_coords, self.shape)
         if is_total_slice(chunk_selection, chunks_trimmed) and not fields:
             # totally replace chunk
-
             # optimization: we are completely replacing the chunk, so no need
             # to access the existing chunk data
             chunk = np.empty(self._chunks, dtype=self._dtype, order=self._order)
@@ -2060,10 +2096,14 @@ class Array:
 
         return chunk
 
-    def _chunk_key(self, chunk_coords):
+    def _chunk_key(self, chunk_coords: Tuple[int, ...]) -> str:
         return self._key_prefix + self._dimension_separator.join(map(str, chunk_coords))
 
-    def _decode_chunk(self, cdata, start=None, nitems=None, expected_shape=None):
+    def _decode_chunk(self,
+                      cdata: bytes,
+                      start: Optional[int] = None,
+                      nitems: Optional[int] = None,
+                      expected_shape: Optional[Tuple[int, ...]] = None) -> npt.NDArray:
         # decompress
         if self._compressor:
             # only decode requested items
@@ -2102,7 +2142,7 @@ class Array:
 
         return chunk
 
-    def _encode_chunk(self, chunk):
+    def _encode_chunk(self, chunk: Union[bytes, npt.ArrayLike]) -> bytes:
 
         # apply filters
         if self._filters:
@@ -2125,7 +2165,7 @@ class Array:
 
         return cdata
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         t = type(self)
         r = '<{}.{}'.format(t.__module__, t.__name__)
         if self.name:
@@ -2162,15 +2202,15 @@ class Array:
         """
         return self._info_reporter
 
-    def info_items(self):
+    def info_items(self) -> List[Tuple[str, str]]:
         return self._synchronized_op(self._info_items_nosync)
 
-    def _info_items_nosync(self):
+    def _info_items_nosync(self) -> List[Tuple[str, str]]:
 
-        def typestr(o):
+        def typestr(o: Any) -> str:
             return '{}.{}'.format(type(o).__module__, type(o).__name__)
 
-        def bytestr(n):
+        def bytestr(n: int) -> str:
             if n > 2**10:
                 return '{} ({})'.format(n, human_readable_size(n))
             else:
@@ -2218,7 +2258,7 @@ class Array:
 
         return items
 
-    def digest(self, hashname="sha1"):
+    def digest(self, hashname: str = "sha1") -> bytes:
         """
         Compute a checksum for the data. Default uses sha1 for speed.
 
@@ -2281,10 +2321,13 @@ class Array:
                 self._synchronizer, self._cache_metadata, self._attrs.cache,
                 self._partial_decompress, self._write_empty_chunks)
 
-    def __setstate__(self, state):
+    def __setstate__(self, state) -> None:
         self.__init__(*state)
 
-    def _synchronized_op(self, f, *args, **kwargs):
+    def _synchronized_op(self,
+                         f: Callable[[Any], T],
+                         *args: Any,
+                         **kwargs: Any) -> T:
 
         if self._synchronizer is None:
             # no synchronization
@@ -2301,7 +2344,10 @@ class Array:
 
         return result
 
-    def _write_op(self, f, *args, **kwargs):
+    def _write_op(self,
+                  f: Callable[[Any], T],
+                  *args: Any,
+                  **kwargs: Any) -> T:
 
         # guard condition
         if self._read_only:
@@ -2309,7 +2355,7 @@ class Array:
 
         return self._synchronized_op(f, *args, **kwargs)
 
-    def resize(self, *args):
+    def resize(self, *args: int) -> None:
         """Change the shape of the array by growing or shrinking one or more
         dimensions.
 
@@ -2337,7 +2383,7 @@ class Array:
 
         return self._write_op(self._resize_nosync, *args)
 
-    def _resize_nosync(self, *args):
+    def _resize_nosync(self, *args: int) -> None:
 
         # normalize new shape argument
         old_shape = self._shape
@@ -2366,7 +2412,7 @@ class Array:
                     # chunk not initialized
                     pass
 
-    def append(self, data, axis=0):
+    def append(self, data: npt.ArrayLike, axis: int = 0) -> Tuple[int, ...]:
         """Append `data` to `axis`.
 
         Parameters
@@ -2403,7 +2449,9 @@ class Array:
         """
         return self._write_op(self._append_nosync, data, axis=axis)
 
-    def _append_nosync(self, data, axis=0):
+    def _append_nosync(self,
+                       data: Union[npt.ArrayLike, np.ndarray],
+                       axis: int = 0) -> Tuple[int, ...]:
 
         # ensure data is array-like
         if not hasattr(data, 'shape'):
@@ -2441,9 +2489,14 @@ class Array:
 
         return new_shape
 
-    def view(self, shape=None, chunks=None, dtype=None,
-             fill_value=None, filters=None, read_only=None,
-             synchronizer=None):
+    def view(self,
+             shape: Optional[Tuple[int, ...]] = None,
+             chunks: Optional[Tuple[int, ...]] = None,
+             dtype: Optional[np.dtype] = None,
+             fill_value: Any = None,
+             filters: Any = None,
+             read_only: Optional[bool] = None,
+             synchronizer: Any = None) -> 'Array':
         """Return an array sharing the same data.
 
         Parameters
@@ -2568,6 +2621,7 @@ class Array:
         else:
             dtype = np.dtype(dtype)
             a._dtype = dtype
+
         if shape is None:
             shape = self._shape
         else:
@@ -2583,7 +2637,7 @@ class Array:
 
         return a
 
-    def astype(self, dtype):
+    def astype(self, dtype: npt.DTypeLike) -> 'Array':
         """Returns a view that does on the fly type conversion of the underlying data.
 
         Parameters

@@ -2,6 +2,7 @@ import collections
 import itertools
 import math
 import numbers
+from typing import Any, List, Optional, Tuple, TypeVar, Union, overload
 
 import numpy as np
 
@@ -14,8 +15,11 @@ from zarr.errors import (
     BoundsCheckError,
 )
 
+T = TypeVar('T')
+U = TypeVar('U')
 
-def is_integer(x):
+
+def is_integer(x: Any) -> bool:
     """True if x is an integer (both pure Python or NumPy).
 
     Note that Python's bool is considered an integer too.
@@ -23,7 +27,7 @@ def is_integer(x):
     return isinstance(x, numbers.Integral)
 
 
-def is_integer_list(x):
+def is_integer_list(x: Any) -> bool:
     """True if x is a list of integers.
 
     This function assumes ie *does not check* that all elements of the list
@@ -33,21 +37,21 @@ def is_integer_list(x):
     return isinstance(x, list) and len(x) > 0 and is_integer(x[0])
 
 
-def is_integer_array(x, ndim=None):
+def is_integer_array(x: Any, ndim: Optional[int] = None) -> bool:
     t = hasattr(x, 'shape') and hasattr(x, 'dtype') and x.dtype.kind in 'ui'
     if ndim is not None:
         t = t and len(x.shape) == ndim
     return t
 
 
-def is_bool_array(x, ndim=None):
+def is_bool_array(x: Any, ndim: Optional[int] = None):
     t = hasattr(x, 'shape') and hasattr(x, 'dtype') and x.dtype == bool
     if ndim is not None:
         t = t and len(x.shape) == ndim
     return t
 
 
-def is_scalar(value, dtype):
+def is_scalar(value: Any, dtype: np.dtype) -> bool:
     if np.isscalar(value):
         return True
     if isinstance(value, tuple) and dtype.names and len(value) == len(dtype.names):
@@ -55,7 +59,8 @@ def is_scalar(value, dtype):
     return False
 
 
-def is_pure_fancy_indexing(selection, ndim):
+def is_pure_fancy_indexing(selection: Union[Tuple[int, ...], slice, int],
+                           ndim: Optional[Any]) -> bool:
     """Check whether a selection contains only scalars or integer array-likes.
 
     Parameters
@@ -268,6 +273,14 @@ def replace_lists(selection):
     )
 
 
+@overload
+def ensure_tuple(v: T) -> Tuple[T]: ...
+
+
+@overload
+def ensure_tuple(v: Tuple[T, ...]) -> Tuple[T, ...]: ...
+
+
 def ensure_tuple(v):
     if not isinstance(v, tuple):
         v = (v,)
@@ -294,7 +307,7 @@ out_selection
 """
 
 
-def is_slice(s):
+def is_slice(s: Any) -> bool:
     return isinstance(s, slice)
 
 
@@ -306,7 +319,7 @@ def is_positive_slice(s):
     return is_slice(s) and (s.step is None or s.step >= 1)
 
 
-def is_contiguous_selection(selection):
+def is_contiguous_selection(selection: Any) -> bool:
     selection = ensure_tuple(selection)
     return all([
         (is_integer_array(s) or is_contiguous_slice(s) or s == Ellipsis)
@@ -314,7 +327,7 @@ def is_contiguous_selection(selection):
     ])
 
 
-def is_basic_selection(selection):
+def is_basic_selection(selection) -> bool:
     selection = ensure_tuple(selection)
     return all([is_integer(s) or is_positive_slice(s) for s in selection])
 
@@ -833,7 +846,7 @@ class VIndex(object):
             raise VindexInvalidSelectionError(selection)
 
 
-def check_fields(fields, dtype):
+def check_fields(fields: Any, dtype: np.dtype) -> np.dtype:
     # early out
     if fields is None:
         return dtype
@@ -859,7 +872,7 @@ def check_fields(fields, dtype):
         return dtype
 
 
-def check_no_multi_fields(fields):
+def check_no_multi_fields(fields: Union[T, List[U]]) -> Union[T, U]:
     if isinstance(fields, list):
         if len(fields) == 1:
             return fields[0]
