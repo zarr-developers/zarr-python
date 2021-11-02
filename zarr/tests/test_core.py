@@ -1951,7 +1951,7 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
     def test_attrs_n5_keywords(self):
         z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
         for k in n5_keywords:
-            with pytest.raises(ValueError):
+            with pytest.warns(UserWarning):
                 z.attrs[k] = ""
 
     def test_compressors(self):
