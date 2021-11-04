@@ -1,6 +1,7 @@
 from collections.abc import MutableMapping
 from typing import Any, List, Optional, Union
 
+from zarr.meta import Metadata2
 from zarr.util import normalize_storage_path
 
 # v2 store keys
@@ -32,6 +33,8 @@ class BaseStore(MutableMapping):
     _writeable = True
     _erasable = True
     _listable = True
+    _store_version = 2
+    _metadata_class = Metadata2
 
     def is_readable(self):
         return self._readable
@@ -114,6 +117,7 @@ class Store(BaseStore):
     .. added: 2.11.0
 
     """
+
     def listdir(self, path: str = "") -> List[str]:
         path = normalize_storage_path(path)
         return _listdir_from_keys(self, path)

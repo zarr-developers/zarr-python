@@ -31,7 +31,6 @@ from zarr.indexing import (
     is_scalar,
     pop_fields,
 )
-from zarr.meta import decode_array_metadata, encode_array_metadata
 from zarr.storage import array_meta_key, attrs_key, getsize, listdir, BaseStore
 from zarr.util import (
     all_equal,
@@ -210,7 +209,7 @@ class Array:
         else:
 
             # decode and store metadata as instance members
-            meta = decode_array_metadata(meta_bytes)
+            meta = self._store._metadata_class.decode_array_metadata(meta_bytes)
             self._meta = meta
             self._shape = meta['shape']
             self._chunks = meta['chunks']
@@ -267,7 +266,7 @@ class Array:
                     compressor=compressor_config, fill_value=self._fill_value,
                     order=self._order, filters=filters_config)
         mkey = self._key_prefix + array_meta_key
-        self._store[mkey] = encode_array_metadata(meta)
+        self._store[mkey] = self._store._metadata_class.encode_array_metadata(meta)
 
     @property
     def store(self):

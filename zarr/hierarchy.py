@@ -14,7 +14,6 @@ from zarr.errors import (
     GroupNotFoundError,
     ReadOnlyError,
 )
-from zarr.meta import decode_group_metadata
 from zarr.storage import (
     BaseStore,
     MemoryStore,
@@ -134,8 +133,7 @@ class Group(MutableMapping):
         except KeyError:
             raise GroupNotFoundError(path)
         else:
-            meta = decode_group_metadata(meta_bytes)
-            self._meta = meta
+            self._meta = self._store._metadata_class.decode_group_metadata(meta_bytes)
 
         # setup attributes
         akey = self._key_prefix + attrs_key

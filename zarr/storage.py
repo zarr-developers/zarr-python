@@ -231,8 +231,8 @@ def init_array(
     fill_value=None,
     order: str = "C",
     overwrite: bool = False,
-    path: Path = None,
-    chunk_store: StoreLike = None,
+    path: Optional[Path] = None,
+    chunk_store: Optional[StoreLike] = None,
     filters=None,
     object_codec=None,
     dimension_separator=None,
@@ -357,7 +357,7 @@ def init_array(
 
 
 def _init_array_metadata(
-    store,
+    store: StoreLike,
     shape,
     chunks=None,
     dtype=None,
@@ -366,7 +366,7 @@ def _init_array_metadata(
     order="C",
     overwrite=False,
     path: Optional[str] = None,
-    chunk_store=None,
+    chunk_store: Optional[StoreLike] = None,
     filters=None,
     object_codec=None,
     dimension_separator=None,
@@ -446,7 +446,10 @@ def _init_array_metadata(
                 order=order, filters=filters_config,
                 dimension_separator=dimension_separator)
     key = _path_to_prefix(path) + array_meta_key
-    store[key] = encode_array_metadata(meta)
+    if hasattr(store, '_metadata_class'):
+        store[key] = store._metadata_class.encode_array_metadata(meta)  # type: ignore
+    else:
+        store[key] = encode_array_metadata(meta)
 
 
 # backwards compatibility
@@ -511,7 +514,10 @@ def _init_group_metadata(
     # be in future
     meta = dict()  # type: ignore
     key = _path_to_prefix(path) + group_meta_key
-    store[key] = encode_group_metadata(meta)
+    if hasattr(store, '_metadata_class'):
+        store[key] = store._metadata_class.encode_group_metadata(meta)  # type: ignore
+    else:
+        store[key] = encode_group_metadata(meta)
 
 
 def _dict_store_keys(d: Dict, prefix="", cls=dict):
@@ -568,7 +574,7 @@ class KVStore(Store):
 
 
 class MemoryStore(Store):
-    """Store class that uses a hierarchy of :class:`dict` objects, thus all data
+    """Store class that uses a hierarchy of :class:`KVStore` objects, thus all data
     will be held in main memory.
 
     Examples
@@ -581,7 +587,7 @@ class MemoryStore(Store):
         <class 'zarr.storage.MemoryStore'>
 
     Note that the default class when creating an array is the built-in
-    :class:`dict` class, i.e.::
+    :class:`KVStore` class, i.e.::
 
         >>> z = zarr.zeros(100)
         >>> type(z.store)
@@ -1685,7 +1691,10 @@ def migrate_1to2(store):
     del meta['compression_opts']
 
     # store migrated metadata
-    store[array_meta_key] = encode_array_metadata(meta)
+    if hasattr(store, '_metadata_class'):
+        store[array_meta_key] = store._metadata_class.encode_array_metadata(meta)
+    else:
+        store[array_meta_key] = encode_array_metadata(meta)
 
     # migrate user attributes
     store[attrs_key] = store['attrs']
@@ -2099,8 +2108,8 @@ class LRUStoreCache(Store):
 
     """
 
-    def __init__(self, store: Store, max_size: int):
-        self._store = Store._ensure_store(store)
+    def __init__(self, store: StoreLike, max_size: int):
+        self._store: BaseStore = BaseStore._ensure_store(store)
         self._max_size = max_size
         self._current_size = 0
         self._keys_cache = None
