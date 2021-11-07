@@ -2,7 +2,7 @@ import collections
 import itertools
 import math
 import numbers
-from typing import Any, List, Optional, Tuple, TypeVar, Union, overload
+from typing import Any, Iterable, List, Optional, Tuple, TypeVar, Union, overload
 
 import numpy as np
 
@@ -17,6 +17,7 @@ from zarr.errors import (
 
 T = TypeVar('T')
 U = TypeVar('U')
+SelectionArgs = Union[int, Ellipsis, slice, Tuple[Union[int, Ellipsis, slice], ...]]
 
 
 def is_integer(x: Any) -> bool:
@@ -223,12 +224,14 @@ class SliceDimIndexer(object):
             yield ChunkDimProjection(dim_chunk_ix, dim_chunk_sel, dim_out_sel)
 
 
-def check_selection_length(selection, shape):
+def check_selection_length(selection: Tuple[Union[int, slice, Ellipsis], ...],
+                           shape: Tuple[int, ...]):
     if len(selection) > len(shape):
         err_too_many_indices(selection, shape)
 
 
-def replace_ellipsis(selection, shape):
+def replace_ellipsis(selection: SelectionArgs,
+                     shape: Tuple[int, ...]):
 
     selection = ensure_tuple(selection)
 
@@ -266,7 +269,8 @@ def replace_ellipsis(selection, shape):
     return selection
 
 
-def replace_lists(selection):
+# This is a loose type annotation
+def replace_lists(selection: Iterable[Any]) -> Tuple[Any]:
     return tuple(
         np.asarray(dim_sel) if isinstance(dim_sel, list) else dim_sel
         for dim_sel in selection
@@ -274,11 +278,11 @@ def replace_lists(selection):
 
 
 @overload
-def ensure_tuple(v: T) -> Tuple[T]: ...
+def ensure_tuple(v: Tuple[T, ...]) -> Tuple[T, ...]: ...
 
 
 @overload
-def ensure_tuple(v: Tuple[T, ...]) -> Tuple[T, ...]: ...
+def ensure_tuple(v: T) -> Tuple[T]: ...
 
 
 def ensure_tuple(v):

@@ -15,7 +15,8 @@ from typing import (
     Sequence,
     Tuple,
     TypeVar,
-    Union)
+    Union,
+    cast)
 
 import numpy as np
 import numpy.typing as npt
@@ -479,13 +480,13 @@ class Array:
         return self._is_view
 
     @property
-    def oindex(self):
+    def oindex(self) -> OIndex:
         """Shortcut for orthogonal (outer) indexing, see :func:`get_orthogonal_selection` and
         :func:`set_orthogonal_selection` for documentation and examples."""
         return self._oindex
 
     @property
-    def vindex(self):
+    def vindex(self) -> VIndex:
         """Shortcut for vectorized (inner) indexing, see :func:`get_coordinate_selection`,
         :func:`set_coordinate_selection`, :func:`get_mask_selection` and
         :func:`set_mask_selection` for documentation and examples."""
@@ -509,7 +510,7 @@ class Array:
             # store comparison
         )
 
-    def __array__(self, *args):
+    def __array__(self, *args) -> np.ndarray:
         a = self[...]
         if args:
             a = a.astype(args[0])
@@ -896,7 +897,7 @@ class Array:
 
         return out
 
-    def _get_basic_selection_nd(self, selection, out=None, fields=None):
+    def _get_basic_selection_nd(self, selection, out=None, fields=None) -> np.ndarray:
         # implementation of basic selection for array with at least one dimension
 
         # setup indexer
@@ -1994,7 +1995,7 @@ class Array:
             tuple(map(self._chunk_delitem, ckeys))
         return None
 
-    def _chunk_delitem(self, ckey: str):
+    def _chunk_delitem(self, ckey: str) -> None:
         """
         Attempt to delete the value associated with ckey.
         """
@@ -2034,7 +2035,11 @@ class Array:
             self._chunk_setitem_nosync(chunk_coords, chunk_selection, value,
                                        fields=fields)
 
-    def _chunk_setitem_nosync(self, chunk_coords, chunk_selection, value, fields=None):
+    def _chunk_setitem_nosync(self,
+                              chunk_coords: Tuple[int, ...],
+                              chunk_selection: Tuple[slice, ...],
+                              value: np.ndarray,
+                              fields: Any = None) -> None:
         ckey = self._chunk_key(chunk_coords)
         cdata = self._process_for_setitem(ckey, chunk_coords, chunk_selection, value, fields=fields)
 
@@ -2112,7 +2117,7 @@ class Array:
                       cdata: bytes,
                       start: Optional[int] = None,
                       nitems: Optional[int] = None,
-                      expected_shape: Optional[Tuple[int, ...]] = None) -> npt.NDArray:
+                      expected_shape: Optional[Tuple[int, ...]] = None) -> npt.NDArray[Any]:
         # decompress
         if self._compressor:
             # only decode requested items
@@ -2187,7 +2192,7 @@ class Array:
         return r
 
     @property
-    def info(self):
+    def info(self) -> InfoReporter:
         """Report some diagnostic information about the array.
 
         Examples
@@ -2299,7 +2304,7 @@ class Array:
 
         return checksum
 
-    def hexdigest(self, hashname="sha1"):
+    def hexdigest(self, hashname: str = "sha1") -> str:
         """
         Compute a checksum for the data. Default uses sha1 for speed.
 
@@ -2325,12 +2330,14 @@ class Array:
 
         return checksum
 
-    def __getstate__(self):
+    def __getstate__(self) -> Tuple[BaseStore, str, bool, BaseStore, Any, bool, bool, bool, bool]:
         return (self._store, self._path, self._read_only, self._chunk_store,
                 self._synchronizer, self._cache_metadata, self._attrs.cache,
                 self._partial_decompress, self._write_empty_chunks)
 
-    def __setstate__(self, state) -> None:
+    def __setstate__(self,
+                     state: Tuple[BaseStore, str, bool, BaseStore, Any, bool, bool, bool, bool]
+                     ) -> None:
         self.__init__(*state)
 
     def _synchronized_op(self,
@@ -2392,7 +2399,7 @@ class Array:
 
         return self._write_op(self._resize_nosync, *args)
 
-    def _resize_nosync(self, *args: int) -> None:
+    def _resize_nosync(self, *args: Tuple[int, ...]) -> None:
 
         # normalize new shape argument
         old_shape = self._shape
@@ -2459,7 +2466,7 @@ class Array:
         return self._write_op(self._append_nosync, data, axis=axis)
 
     def _append_nosync(self,
-                       data: Union[npt.ArrayLike, np.ndarray],
+                       data: npt.NDArray[Any],
                        axis: int = 0) -> Tuple[int, ...]:
 
         # ensure data is array-like
@@ -2501,7 +2508,7 @@ class Array:
     def view(self,
              shape: Optional[Tuple[int, ...]] = None,
              chunks: Optional[Tuple[int, ...]] = None,
-             dtype: Optional[np.dtype] = None,
+             dtype: Optional[npt.DTypeLike] = None,
              fill_value: Any = None,
              filters: Any = None,
              read_only: Optional[bool] = None,
@@ -2630,7 +2637,7 @@ class Array:
         else:
             dtype = np.dtype(dtype)
             a._dtype = dtype
-
+        dtype = cast(np.dtype[Any], dtype)
         if shape is None:
             shape = self._shape
         else:
