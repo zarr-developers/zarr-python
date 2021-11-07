@@ -20,9 +20,7 @@ from numcodecs.compat import ensure_bytes
 from zarr.codecs import BZ2, AsType, Blosc, Zlib
 from zarr.errors import MetadataError
 from zarr.hierarchy import group
-from zarr.meta import (ZARR_FORMAT, decode_array_metadata,
-                       decode_group_metadata, encode_array_metadata,
-                       encode_group_metadata)
+from zarr.meta import ZARR_FORMAT, decode_array_metadata
 from zarr.n5 import N5Store, N5FSStore
 from zarr.storage import (ABSStore, ConsolidatedMetadataStore, DBMStore,
                           DictStore, DirectoryStore, KVStore, LMDBStore,
@@ -427,7 +425,7 @@ class StoreTests(object):
 
         # check metadata
         assert array_meta_key in store
-        meta = decode_array_metadata(store[array_meta_key])
+        meta = store._metadata_class.decode_array_metadata(store[array_meta_key])
         assert ZARR_FORMAT == meta['zarr_format']
         assert (1000,) == meta['shape']
         assert (100,) == meta['chunks']
@@ -460,7 +458,7 @@ class StoreTests(object):
     def _test_init_array_overwrite(self, order):
         # setup
         store = self.create_store()
-        store[array_meta_key] = encode_array_metadata(
+        store[array_meta_key] = store._metadata_class.encode_array_metadata(
             dict(shape=(2000,),
                  chunks=(200,),
                  dtype=np.dtype('u1'),
@@ -482,7 +480,7 @@ class StoreTests(object):
             pass
         else:
             assert array_meta_key in store
-            meta = decode_array_metadata(store[array_meta_key])
+            meta = store._metadata_class.decode_array_metadata(store[array_meta_key])
             assert ZARR_FORMAT == meta['zarr_format']
             assert (1000,) == meta['shape']
             assert (100,) == meta['chunks']
@@ -498,7 +496,7 @@ class StoreTests(object):
         # check metadata
         key = path + '/' + array_meta_key
         assert key in store
-        meta = decode_array_metadata(store[key])
+        meta = store._metadata_class.decode_array_metadata(store[key])
         assert ZARR_FORMAT == meta['zarr_format']
         assert (1000,) == meta['shape']
         assert (100,) == meta['chunks']
@@ -519,8 +517,8 @@ class StoreTests(object):
                     fill_value=0,
                     order=order,
                     filters=None)
-        store[array_meta_key] = encode_array_metadata(meta)
-        store[path + '/' + array_meta_key] = encode_array_metadata(meta)
+        store[array_meta_key] = store._metadata_class.encode_array_metadata(meta)
+        store[path + '/' + array_meta_key] = store._metadata_class.encode_array_metadata(meta)
 
         # don't overwrite
         with pytest.raises(ValueError):
@@ -537,7 +535,7 @@ class StoreTests(object):
             assert array_meta_key not in store
             assert (path + '/' + array_meta_key) in store
             # should have been overwritten
-            meta = decode_array_metadata(store[path + '/' + array_meta_key])
+            meta = store._metadata_class.decode_array_metadata(store[path + '/' + array_meta_key])
             assert ZARR_FORMAT == meta['zarr_format']
             assert (1000,) == meta['shape']
             assert (100,) == meta['chunks']
@@ -549,7 +547,7 @@ class StoreTests(object):
         # setup
         path = 'foo/bar'
         store = self.create_store()
-        store[path + '/' + group_meta_key] = encode_group_metadata()
+        store[path + '/' + group_meta_key] = store._metadata_class.encode_group_metadata()
 
         # don't overwrite
         with pytest.raises(ValueError):
@@ -564,7 +562,7 @@ class StoreTests(object):
         else:
             assert (path + '/' + group_meta_key) not in store
             assert (path + '/' + array_meta_key) in store
-            meta = decode_array_metadata(store[path + '/' + array_meta_key])
+            meta = store._metadata_class.decode_array_metadata(store[path + '/' + array_meta_key])
             assert ZARR_FORMAT == meta['zarr_format']
             assert (1000,) == meta['shape']
             assert (100,) == meta['chunks']
@@ -576,7 +574,7 @@ class StoreTests(object):
         # setup
         store = self.create_store()
         chunk_store = self.create_store()
-        store[array_meta_key] = encode_array_metadata(
+        store[array_meta_key] = store._metadata_class.encode_array_metadata(
             dict(shape=(2000,),
                  chunks=(200,),
                  dtype=np.dtype('u1'),
@@ -600,7 +598,7 @@ class StoreTests(object):
             pass
         else:
             assert array_meta_key in store
-            meta = decode_array_metadata(store[array_meta_key])
+            meta = store._metadata_class.decode_array_metadata(store[array_meta_key])
             assert ZARR_FORMAT == meta['zarr_format']
             assert (1000,) == meta['shape']
             assert (100,) == meta['chunks']
@@ -614,7 +612,7 @@ class StoreTests(object):
     def test_init_array_compat(self):
         store = self.create_store()
         init_array(store, shape=1000, chunks=100, compressor='none')
-        meta = decode_array_metadata(store[array_meta_key])
+        meta = store._metadata_class.decode_array_metadata(store[array_meta_key])
         assert meta['compressor'] is None
 
         store.close()
@@ -625,7 +623,7 @@ class StoreTests(object):
 
         # check metadata
         assert group_meta_key in store
-        meta = decode_group_metadata(store[group_meta_key])
+        meta = store._metadata_class.decode_group_metadata(store[group_meta_key])
         assert ZARR_FORMAT == meta['zarr_format']
 
         store.close()
@@ -633,7 +631,7 @@ class StoreTests(object):
     def _test_init_group_overwrite(self, order):
         # setup
         store = self.create_store()
-        store[array_meta_key] = encode_array_metadata(
+        store[array_meta_key] = store._metadata_class.encode_array_metadata(
             dict(shape=(2000,),
                  chunks=(200,),
                  dtype=np.dtype('u1'),
@@ -655,7 +653,7 @@ class StoreTests(object):
         else:
             assert array_meta_key not in store
             assert group_meta_key in store
-            meta = decode_group_metadata(store[group_meta_key])
+            meta = store._metadata_class.decode_group_metadata(store[group_meta_key])
             assert ZARR_FORMAT == meta['zarr_format']
 
         # don't overwrite group
@@ -675,8 +673,8 @@ class StoreTests(object):
                     fill_value=0,
                     order=order,
                     filters=None)
-        store[array_meta_key] = encode_array_metadata(meta)
-        store[path + '/' + array_meta_key] = encode_array_metadata(meta)
+        store[array_meta_key] = store._metadata_class.encode_array_metadata(meta)
+        store[path + '/' + array_meta_key] = store._metadata_class.encode_array_metadata(meta)
 
         # don't overwrite
         with pytest.raises(ValueError):
@@ -693,7 +691,7 @@ class StoreTests(object):
             assert (path + '/' + array_meta_key) not in store
             assert (path + '/' + group_meta_key) in store
             # should have been overwritten
-            meta = decode_group_metadata(store[path + '/' + group_meta_key])
+            meta = store._metadata_class.decode_group_metadata(store[path + '/' + group_meta_key])
             assert ZARR_FORMAT == meta['zarr_format']
 
         store.close()
@@ -702,7 +700,7 @@ class StoreTests(object):
         # setup
         store = self.create_store()
         chunk_store = self.create_store()
-        store[array_meta_key] = encode_array_metadata(
+        store[array_meta_key] = store._metadata_class.encode_array_metadata(
             dict(shape=(2000,),
                  chunks=(200,),
                  dtype=np.dtype('u1'),
@@ -726,7 +724,7 @@ class StoreTests(object):
         else:
             assert array_meta_key not in store
             assert group_meta_key in store
-            meta = decode_group_metadata(store[group_meta_key])
+            meta = store._metadata_class.decode_group_metadata(store[group_meta_key])
             assert ZARR_FORMAT == meta['zarr_format']
             assert 'foo' not in chunk_store
             assert 'baz' not in chunk_store
@@ -941,7 +939,7 @@ class TestFSStore(StoreTests):
 
         # check metadata
         assert array_meta_key in store
-        meta = decode_array_metadata(store[array_meta_key])
+        meta = store._metadata_class.decode_array_metadata(store[array_meta_key])
         assert ZARR_FORMAT == meta['zarr_format']
         assert (1000,) == meta['shape']
         assert (100,) == meta['chunks']
@@ -1191,7 +1189,7 @@ class TestNestedDirectoryStore(TestDirectoryStore):
 
         # check metadata
         assert array_meta_key in store
-        meta = decode_array_metadata(store[array_meta_key])
+        meta = store._metadata_class.decode_array_metadata(store[array_meta_key])
         assert ZARR_FORMAT == meta['zarr_format']
         assert (1000,) == meta['shape']
         assert (100,) == meta['chunks']
@@ -1267,7 +1265,7 @@ class TestN5Store(TestNestedDirectoryStore):
 
         # check metadata
         assert array_meta_key in store
-        meta = decode_array_metadata(store[array_meta_key])
+        meta = store._metadata_class.decode_array_metadata(store[array_meta_key])
         assert ZARR_FORMAT == meta['zarr_format']
         assert (1000,) == meta['shape']
         assert (100,) == meta['chunks']
@@ -1287,7 +1285,7 @@ class TestN5Store(TestNestedDirectoryStore):
         # check metadata
         key = path + '/' + array_meta_key
         assert key in store
-        meta = decode_array_metadata(store[key])
+        meta = store._metadata_class.decode_array_metadata(store[key])
         assert ZARR_FORMAT == meta['zarr_format']
         assert (1000,) == meta['shape']
         assert (100,) == meta['chunks']
@@ -1301,7 +1299,7 @@ class TestN5Store(TestNestedDirectoryStore):
     def test_init_array_compat(self):
         store = self.create_store()
         init_array(store, shape=1000, chunks=100, compressor='none')
-        meta = decode_array_metadata(store[array_meta_key])
+        meta = store._metadata_class.decode_array_metadata(store[array_meta_key])
         # N5Store wraps the actual compressor
         compressor_config = meta['compressor']['compressor_config']
         assert compressor_config is None
@@ -1332,7 +1330,7 @@ class TestN5Store(TestNestedDirectoryStore):
         assert group_meta_key in store
         assert group_meta_key in store.listdir()
         assert group_meta_key in store.listdir('')
-        meta = decode_group_metadata(store[group_meta_key])
+        meta = store._metadata_class.decode_group_metadata(store[group_meta_key])
         assert ZARR_FORMAT == meta['zarr_format']
 
     def test_filters(self):
@@ -1387,7 +1385,7 @@ class TestN5FSStore(TestFSStore):
 
         # check metadata
         assert array_meta_key in store
-        meta = decode_array_metadata(store[array_meta_key])
+        meta = store._metadata_class.decode_array_metadata(store[array_meta_key])
         assert ZARR_FORMAT == meta['zarr_format']
         assert (1000,) == meta['shape']
         assert (100,) == meta['chunks']
@@ -1407,7 +1405,7 @@ class TestN5FSStore(TestFSStore):
         # check metadata
         key = path + '/' + array_meta_key
         assert key in store
-        meta = decode_array_metadata(store[key])
+        meta = store._metadata_class.decode_array_metadata(store[key])
         assert ZARR_FORMAT == meta['zarr_format']
         assert (1000,) == meta['shape']
         assert (100,) == meta['chunks']
@@ -1421,7 +1419,7 @@ class TestN5FSStore(TestFSStore):
     def test_init_array_compat(self):
         store = self.create_store()
         init_array(store, shape=1000, chunks=100, compressor='none')
-        meta = decode_array_metadata(store[array_meta_key])
+        meta = store._metadata_class.decode_array_metadata(store[array_meta_key])
         # N5Store wraps the actual compressor
         compressor_config = meta['compressor']['compressor_config']
         assert compressor_config is None
@@ -1929,14 +1927,15 @@ def test_getsize():
     assert -1 == getsize(store)
 
 
-def test_migrate_1to2():
+@pytest.mark.parametrize('dict_store', [False, True])
+def test_migrate_1to2(dict_store):
     from zarr import meta_v1
 
     # N.B., version 1 did not support hierarchies, so we only have to be
     # concerned about migrating a single array at the root of the store
 
     # setup
-    store = KVStore(dict())
+    store = dict() if dict_store else KVStore(dict())
     meta = dict(
         shape=(100,),
         chunks=(10,),
@@ -1974,7 +1973,7 @@ def test_migrate_1to2():
     assert meta_migrated['compressor'] == Zlib(1).get_config()
 
     # check dict compression_opts
-    store = KVStore(dict())
+    store = dict() if dict_store else KVStore(dict())
     meta['compression'] = 'blosc'
     meta['compression_opts'] = dict(cname='lz4', clevel=5, shuffle=1)
     meta_json = meta_v1.encode_metadata(meta)
@@ -1988,7 +1987,7 @@ def test_migrate_1to2():
             Blosc(cname='lz4', clevel=5, shuffle=1).get_config())
 
     # check 'none' compression is migrated to None (null in JSON)
-    store = KVStore(dict())
+    store = dict() if dict_store else KVStore(dict())
     meta['compression'] = 'none'
     meta_json = meta_v1.encode_metadata(meta)
     store['meta'] = meta_json
