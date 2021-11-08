@@ -1,5 +1,8 @@
 
 
+from typing import Tuple
+
+
 class MetadataError(Exception):
     pass
 
@@ -22,7 +25,7 @@ class ArrayIndexError(IndexError):
 class _BaseZarrIndexError(IndexError):
     _msg = ""
 
-    def __init__(self, *args):
+    def __init__(self, *args: Tuple[Any]):
         super().__init__(self._msg.format(*args))
 
 

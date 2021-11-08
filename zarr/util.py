@@ -16,6 +16,8 @@ from numcodecs.registry import codec_registry
 from numcodecs.blosc import cbuffer_sizes, cbuffer_metainfo
 
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union, TypeVar
+
+from zarr._storage.store import BaseStore
 T = TypeVar('T')
 
 
@@ -543,7 +545,7 @@ class TreeViewer(object):
         return tree
 
 
-def check_array_shape(param, array, shape):
+def check_array_shape(param, array: Any, shape: Tuple[int, ...]) -> None:
     if not hasattr(array, 'shape'):
         raise TypeError('parameter {!r}: expected an array-like object, got {!r}'
                         .format(param, type(array)))
@@ -552,7 +554,7 @@ def check_array_shape(param, array, shape):
                          .format(param, shape, array.shape))
 
 
-def is_valid_python_name(name):
+def is_valid_python_name(name: str) -> bool:
     from keyword import iskeyword
     return name.isidentifier() and not iskeyword(name)
 
@@ -572,24 +574,24 @@ nolock = NoLock()
 
 class PartialReadBuffer:
     def __init__(self, store_key: str, chunk_store: Any):
-        self.chunk_store = chunk_store
+        self.chunk_store: BaseStore = chunk_store
         # is it fsstore or an actual fsspec map object
         assert hasattr(self.chunk_store, "map")
         self.map = self.chunk_store.map
         self.fs = self.chunk_store.fs
-        self.store_key = store_key
+        self.store_key: str = store_key
         self.buff = None
-        self.nblocks = None
+        self.nblocks: int = None
         self.start_points = None
-        self.n_per_block = None
+        self.n_per_block: int = None
         self.start_points_max = None
-        self.read_blocks = set()
+        self.read_blocks: set = set()
 
         _key_path = self.map._key_to_str(store_key)
         _key_path = _key_path.split('/')
         _chunk_path = [self.chunk_store._normalize_key(_key_path[-1])]
         _key_path = '/'.join(_key_path[:-1] + _chunk_path)
-        self.key_path = _key_path
+        self.key_path: str = _key_path
 
     def prepare_chunk(self) -> None:
         assert self.buff is None
@@ -646,7 +648,7 @@ class PartialReadBuffer:
                 wanted_decompressed += self.n_per_block
             start_block += 1
 
-    def read_full(self):
+    def read_full(self) -> bytes:
         return self.chunk_store[self.store_key]
 
 

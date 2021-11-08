@@ -162,10 +162,10 @@ class Array:
 
     def __init__(
         self,
-        store: MutableMapping,
+        store: Any,
         path: Optional[str] = None,
         read_only: bool = False,
-        chunk_store: Optional[MutableMapping] = None,
+        chunk_store: Any = None,
         synchronizer: Any = None,
         cache_metadata: bool = True,
         cache_attrs: bool = True,
@@ -176,7 +176,9 @@ class Array:
         # configuration metadata fully specified and normalized
 
         store = BaseStore._ensure_store(store)
+        cast(BaseStore, store)
         chunk_store = BaseStore._ensure_store(chunk_store)
+        cast(BaseStore, chunk_store)
 
         self._store = store
         self._chunk_store = chunk_store
@@ -202,11 +204,11 @@ class Array:
                                  synchronizer=synchronizer, cache=cache_attrs)
 
         # initialize info reporter
-        self._info_reporter = InfoReporter(self)
+        self._info_reporter: InfoReporter = InfoReporter(self)
 
         # initialize indexing helpers
-        self._oindex = OIndex(self)
-        self._vindex = VIndex(self)
+        self._oindex: OIndex = OIndex(self)
+        self._vindex: VIndex = VIndex(self)
 
     def _load_metadata(self) -> None:
         """(Re)load metadata from store."""
@@ -244,6 +246,7 @@ class Array:
                 # Fallback for any stores which do not choose a default
                 if dimension_separator is None:
                     dimension_separator = "."
+            cast(str, dimension_separator)
             self._dimension_separator = dimension_separator
 
             # setup compressor
@@ -510,7 +513,7 @@ class Array:
             # store comparison
         )
 
-    def __array__(self, *args) -> np.ndarray:
+    def __array__(self, *args) -> npt.NDArray[Any]:
         a = self[...]
         if args:
             a = a.astype(args[0])
@@ -591,7 +594,7 @@ class Array:
             # 0-dimensional array, same error message as numpy
             raise TypeError('len() of unsized object')
 
-    def __getitem__(self, selection):
+    def __getitem__(self, selection) -> npt.NDArray[Any]:
         """Retrieve data for an item or region of the array.
 
         Parameters
@@ -734,7 +737,7 @@ class Array:
             result = self.get_basic_selection(pure_selection, fields=fields)
         return result
 
-    def get_basic_selection(self, selection=Ellipsis, out=None, fields=None):
+    def get_basic_selection(self, selection=Ellipsis, out=None, fields=None) -> npt.NDArray[Any]:
         """Retrieve data for an item or region of the array.
 
         Parameters
@@ -897,7 +900,7 @@ class Array:
 
         return out
 
-    def _get_basic_selection_nd(self, selection, out=None, fields=None) -> np.ndarray:
+    def _get_basic_selection_nd(self, selection, out=None, fields=None) -> npt.NDArray[Any]:
         # implementation of basic selection for array with at least one dimension
 
         # setup indexer
@@ -905,7 +908,7 @@ class Array:
 
         return self._get_selection(indexer=indexer, out=out, fields=fields)
 
-    def get_orthogonal_selection(self, selection, out=None, fields=None):
+    def get_orthogonal_selection(self, selection, out=None, fields=None) -> npt.NDArray[Any]:
         """Retrieve data by making a selection for each dimension of the array. For
         example, if an array has 2 dimensions, allows selecting specific rows and/or
         columns. The selection for each dimension can be either an integer (indexing a
@@ -1016,7 +1019,7 @@ class Array:
 
         return self._get_selection(indexer=indexer, out=out, fields=fields)
 
-    def get_coordinate_selection(self, selection, out=None, fields=None):
+    def get_coordinate_selection(self, selection, out=None, fields=None) -> npt.NDArray[Any]:
         """Retrieve a selection of individual items, by providing the indices
         (coordinates) for each selected item.
 
@@ -1096,7 +1099,7 @@ class Array:
 
         return out
 
-    def get_mask_selection(self, selection, out=None, fields=None):
+    def get_mask_selection(self, selection, out=None, fields=None) -> npt.NDArray[Any]:
         """Retrieve a selection of individual items, by providing a Boolean array of the
         same shape as the array against which the selection is being made, where True
         values indicate a selected item.
@@ -1165,7 +1168,7 @@ class Array:
 
         return self._get_selection(indexer=indexer, out=out, fields=fields)
 
-    def _get_selection(self, indexer, out=None, fields=None):
+    def _get_selection(self, indexer, out=None, fields=None) -> npt.NDArray[Any]:
 
         # We iterate over all chunks which overlap the selection and thus contain data
         # that needs to be extracted. Each chunk is processed in turn, extracting the
@@ -1206,7 +1209,7 @@ class Array:
         else:
             return out[()]
 
-    def __setitem__(self, selection, value):
+    def __setitem__(self, selection, value) -> None:
         """Modify data for an item or region of the array.
 
         Parameters
@@ -1301,7 +1304,7 @@ class Array:
         else:
             self.set_basic_selection(pure_selection, value, fields=fields)
 
-    def set_basic_selection(self, selection, value, fields=None):
+    def set_basic_selection(self, selection, value, fields=None) -> None:
         """Modify data for an item or region of the array.
 
         Parameters
@@ -1396,7 +1399,7 @@ class Array:
         else:
             return self._set_basic_selection_nd(selection, value, fields=fields)
 
-    def set_orthogonal_selection(self, selection, value, fields=None):
+    def set_orthogonal_selection(self, selection, value, fields=None) -> None:
         """Modify data via a selection for each dimension of the array.
 
         Parameters
@@ -1486,7 +1489,7 @@ class Array:
 
         self._set_selection(indexer, value, fields=fields)
 
-    def set_coordinate_selection(self, selection, value, fields=None):
+    def set_coordinate_selection(self, selection, value, fields=None) -> None:
         """Modify a selection of individual items, by providing the indices (coordinates)
         for each item to be modified.
 
@@ -1564,7 +1567,7 @@ class Array:
 
         self._set_selection(indexer, value, fields=fields)
 
-    def set_mask_selection(self, selection, value, fields=None):
+    def set_mask_selection(self, selection, value, fields=None) -> None:
         """Modify a selection of individual items, by providing a Boolean array of the
         same shape as the array against which the selection is being made, where True
         values indicate a selected item.
@@ -1639,7 +1642,7 @@ class Array:
 
         self._set_selection(indexer, value, fields=fields)
 
-    def _set_basic_selection_zd(self, selection, value: npt.ArrayLike, fields=None):
+    def _set_basic_selection_zd(self, selection: Any, value: npt.ArrayLike[Any], fields=Optional[Union[str, List[str]]]) -> None:
         # special case __setitem__ for zero-dimensional array
 
         # check selection is valid
@@ -1696,7 +1699,7 @@ class Array:
 
         self._set_selection(indexer, value, fields=fields)
 
-    def _set_selection(self, indexer, value: npt.ArrayLike, fields=None) -> None:
+    def _set_selection(self, indexer: BasicIndexer, value: npt.ArrayLike, fields=None) -> None:
 
         # We iterate over all chunks which overlap the selection and thus contain data
         # that needs to be replaced. Each chunk is processed in turn, extracting the
@@ -1763,7 +1766,7 @@ class Array:
                         for a in indexer.drop_axes:
                             item[a] = np.newaxis
                         item = tuple(item)
-                        cv = chunk_value[item]
+                        cv = chunk_values[item]
                     chunk_values.append(cv)
 
             self._chunk_setitems(lchunk_coords, lchunk_selection, chunk_values,
@@ -1771,7 +1774,7 @@ class Array:
 
     def _process_chunk(
         self,
-        out: npt.NDArray,
+        out: npt.NDArray[Any],
         cdata: Union[bytes, PartialReadBuffer],
         chunk_selection: Tuple[slice, ...],
         drop_axes: Tuple[int, ...],
@@ -1815,6 +1818,7 @@ class Array:
         # decode chunk
         try:
             if partial_read_decode:
+                cast(PartialReadBuffer, cdata)
                 cdata.prepare_chunk()
                 # size of chunk
                 tmp = np.empty(self._chunks, dtype=self.dtype)
@@ -1911,7 +1915,7 @@ class Array:
                         out: Any,
                         lout_selection: Sequence[Tuple[slice, ...]],
                         drop_axes: Optional[int] = None,
-                        fields=None) -> None:
+                        fields: Optional[Union[str, List[str]]] = None) -> None:
         """As _chunk_getitem, but for lists of chunks
 
         This gets called where the storage supports ``getitems``, so that
@@ -1967,7 +1971,7 @@ class Array:
                         lchunk_coords: Tuple[Tuple[int, ...], ...],
                         lchunk_selection: Tuple[Tuple[slice, ...], ...],
                         values: Sequence[Any],
-                        fields=None):
+                        fields: Optional[Union[str, List[str]]] = None) -> None:
         to_store = {}
         cdatas = {}
         ckeys = map(self._chunk_key, lchunk_coords)
@@ -1985,7 +1989,7 @@ class Array:
             to_store = {k: self._encode_chunk(v) for k, v in cdatas.items()}
         self.chunk_store.setitems(to_store)
 
-    def _chunk_delitems(self, ckeys: Iterable[str]):
+    def _chunk_delitems(self, ckeys: Iterable[str]) -> None:
         if hasattr(self.store, "delitems"):
             self.store.delitems(ckeys)
         else:  # pragma: no cover
@@ -2009,7 +2013,7 @@ class Array:
                        chunk_coords: Tuple[int, ...],
                        chunk_selection: Tuple[slice, ...],
                        value: Any,
-                       fields=None):
+                       fields: Optional[Union[str, List[str]]] = None) -> None:
         """Replace part or whole of a chunk.
 
         Parameters
@@ -2038,7 +2042,7 @@ class Array:
     def _chunk_setitem_nosync(self,
                               chunk_coords: Tuple[int, ...],
                               chunk_selection: Tuple[slice, ...],
-                              value: np.ndarray,
+                              value: npt.NDArray[Any],
                               fields: Any = None) -> None:
         ckey = self._chunk_key(chunk_coords)
         cdata = self._process_for_setitem(ckey, chunk_coords, chunk_selection, value, fields=fields)
@@ -2054,7 +2058,7 @@ class Array:
                              chunk_coords: Tuple[int, ...],
                              chunk_selection: Tuple[slice, ...],
                              value: Any,
-                             fields=None) -> npt.NDArray:
+                             fields: Optional[Union[str, List[str]]] = None) -> npt.NDArray[Any]:
         chunks_trimmed = trim_chunks(self._chunks, chunk_coords, self.shape)
         if is_total_slice(chunk_selection, chunks_trimmed) and not fields:
             # totally replace chunk
@@ -2153,7 +2157,7 @@ class Array:
         # ensure correct chunk shape
         chunk = chunk.reshape(-1, order='A')
         chunk = chunk.reshape(expected_shape or self._chunks, order=self._order)
-
+        cast(npt.NDArray[Any], chunk)
         return chunk
 
     def _encode_chunk(self, chunk: Union[bytes, npt.ArrayLike]) -> bytes:
@@ -2371,7 +2375,7 @@ class Array:
 
         return self._synchronized_op(f, *args, **kwargs)
 
-    def resize(self, *args: int) -> None:
+    def resize(self, *args: Tuple[int, ...]) -> None:
         """Change the shape of the array by growing or shrinking one or more
         dimensions.
 
