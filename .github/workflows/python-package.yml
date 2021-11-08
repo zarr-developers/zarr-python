@@ -19,7 +19,7 @@ jobs:
         numpy_version: ['!=1.21.0', '==1.17.*']
         exclude:
           - python-version: 3.9
-          - numpy_version: '==1.17.*'
+            numpy_version: '==1.17.*'
     services:
       redis:
         image: redis
