@@ -2630,7 +2630,7 @@ class TestArrayWithFSStorePartialRead(TestArray):
         cache_metadata = kwargs.pop("cache_metadata", True)
         cache_attrs = kwargs.pop("cache_attrs", True)
         write_empty_chunks = kwargs.pop('write_empty_chunks', True)
-        kwargs.setdefault("compressor", Blosc())
+        kwargs.setdefault("compressor", Blosc(blocksize=256))
         init_array(store, **kwargs)
         return Array(
             store,
@@ -2644,11 +2644,11 @@ class TestArrayWithFSStorePartialRead(TestArray):
     def test_hexdigest(self):
         # Check basic 1-D array
         z = self.create_array(shape=(1050,), chunks=100, dtype="<i4")
-        assert "f710da18d45d38d4aaf2afd7fb822fdd73d02957" == z.hexdigest()
+        assert "dd7577d645c38767cf6f6d1ef8fd64002883a014" == z.hexdigest()
 
         # Check basic 1-D array with different type
         z = self.create_array(shape=(1050,), chunks=100, dtype="<f4")
-        assert "1437428e69754b1e1a38bd7fc9e43669577620db" == z.hexdigest()
+        assert "aa0de9892cf1ed3cda529efbf3233720b84489b7" == z.hexdigest()
 
         # Check basic 2-D array
         z = self.create_array(
@@ -2659,17 +2659,17 @@ class TestArrayWithFSStorePartialRead(TestArray):
             chunks=10,
             dtype="<i4",
         )
-        assert "6c530b6b9d73e108cc5ee7b6be3d552cc994bdbe" == z.hexdigest()
+        assert "e6191c44cf958576c29c41cef0f55b028a4dbdff" == z.hexdigest()
 
         # Check basic 1-D array with some data
         z = self.create_array(shape=(1050,), chunks=100, dtype="<i4")
         z[200:400] = np.arange(200, 400, dtype="i4")
-        assert "4c0a76fb1222498e09dcd92f7f9221d6cea8b40e" == z.hexdigest()
+        assert "88adeeabb819feecccadf50152293dbb42f9107e" == z.hexdigest()
 
         # Check basic 1-D array with attributes
         z = self.create_array(shape=(1050,), chunks=100, dtype="<i4")
         z.attrs["foo"] = "bar"
-        assert "05b0663ffe1785f38d3a459dec17e57a18f254af" == z.hexdigest()
+        assert "1426e084427f9920e29c9ec81b663d1005849455" == z.hexdigest()
 
     def test_non_cont(self):
         z = self.create_array(shape=(500, 500, 500), chunks=(50, 50, 50), dtype="<i4")
