@@ -12,6 +12,8 @@ echo =================================
 lscpu | grep Endian
 echo =================================
 
+export DEBIAN_FRONTEND=${DEBIAN_FRONTEND:-noninteractive}
+
 apt-get update -y
 apt-get install -y \
     python3 \
