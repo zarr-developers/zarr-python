@@ -19,6 +19,6 @@ jobs:
 
     - run: docker run --rm --privileged multiarch/qemu-user-static:register --reset
 
-    - uses: docker://s390x/ubuntu
+    - uses: docker://multiarch/ubuntu-core:s390x-bionic
       with:
         args: 'bash .github/workflows/bigendian.sh'
