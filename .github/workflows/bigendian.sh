@@ -27,5 +27,5 @@ apt-get install -y \
     python3-numcodecs \
     python3-asciitree
 
-python3 -m pip install .
+python3 -m pip install --no-deps .
 python3 -m pytest -sv
