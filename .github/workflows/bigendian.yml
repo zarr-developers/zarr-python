@@ -1,0 +1,24 @@
+# This workflow uses a docker image to simulate a big-endian
+# platform.
+name: Big-Endian Testing
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+    - uses: actions/checkout@v2
+
+    - run: docker run --rm --privileged multiarch/qemu-user-static:register --reset -p yes
+
+    - uses: docker://s390x/ubuntu
+      with:
+        args: 'bash .github/workflows/bigendian.sh'
