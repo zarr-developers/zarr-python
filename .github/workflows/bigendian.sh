@@ -19,6 +19,7 @@ apt-get install -y \
     git \
     python3 \
     python3-setuptools \
+    python3-setuptools-scm \
     python3-pip \
     python3-pytest \
     python3-msgpack \
