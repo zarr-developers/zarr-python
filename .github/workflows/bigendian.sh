@@ -29,5 +29,6 @@ apt-get install -y \
     python3-asciitree
 
 python3 setup.py build  # Generate version
+python3 -m pip install -U fsspec
 python3 -m pip install --no-deps .
-python3 -m pytest -sv
+python3 -m pytest -svk test_format_compatibility
