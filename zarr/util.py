@@ -596,12 +596,6 @@ class PartialReadBuffer:
         assert self.buff is not None
         if self.nblocks == 1:
             return
-        blocks_to_decompress = nitems / self.n_per_block
-        blocks_to_decompress = (
-            blocks_to_decompress
-            if blocks_to_decompress == int(blocks_to_decompress)
-            else int(blocks_to_decompress + 1)
-        )
         start_block = int(start / self.n_per_block)
         wanted_decompressed = 0
         while wanted_decompressed < nitems:
