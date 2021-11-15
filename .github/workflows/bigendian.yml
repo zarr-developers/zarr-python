@@ -16,6 +16,8 @@ jobs:
     steps:
 
     - uses: actions/checkout@v2
+      with:
+        fetch-depth: 0
 
     - run: docker run --rm --privileged multiarch/qemu-user-static:register --reset
 
