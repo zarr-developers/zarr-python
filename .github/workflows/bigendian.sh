@@ -7,6 +7,11 @@ set -x
 #
 # see: https://github.community/t/testing-against-multiple-architectures/17111/6
 #
+
+echo =================================
+lscpu | grep Endian
+echo =================================
+
 apt-get update -y
 apt-get install -y \
     python3 \
@@ -14,13 +19,13 @@ apt-get install -y \
     python3-pip \
     python3-pytest \
     python3-msgpack \
-    python3-fsspec \
-    python3-numcodecs \
-    python3-asciitree \
     python3-fasteners
-echo =================================
-lscpu | grep Endian
-echo =================================
+
+# These are not found in bionic ports
+python -m pip install \
+    fsspec \
+    numcodecs \
+    asciitree
 
 python -m pip install .
 pytest -sv
