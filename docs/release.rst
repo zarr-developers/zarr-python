@@ -15,6 +15,18 @@ Enhancements
 * write_empty_chunks=False deletes chunks consisting of only fill_value.
   By :user:`Davis Bennett <d-v-b>`; :issue:`738`.
 
+* Move metadata handling to a class.
+  By :user:`Greggory Lee <grlee77>`; :issue:`839`.
+
+* Create a Base store class for Zarr Store.
+  By :user:`Greggory Lee <grlee77>`; :issue:`789`.
+
+Bug fixes
+~~~~~~~~~
+
+* N5 keywords now emit UserWarning instead of raising a ValueError.
+  By :user:`Boaz Mohar <boazmohar>`; :issue:`860`.
+
 .. _release_2.10.2:
 
 2.10.2
