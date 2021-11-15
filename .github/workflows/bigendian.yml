@@ -17,7 +17,7 @@ jobs:
 
     - uses: actions/checkout@v2
 
-    - run: docker run --rm --privileged multiarch/qemu-user-static:register --reset -p yes
+    - run: docker run --rm --privileged multiarch/qemu-user-static:register --reset
 
     - uses: docker://s390x/ubuntu
       with:
