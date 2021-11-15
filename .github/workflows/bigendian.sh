@@ -19,13 +19,10 @@ apt-get install -y \
     python3-pip \
     python3-pytest \
     python3-msgpack \
-    python3-fasteners
-
-# These are not found in bionic ports
-python -m pip install \
-    fsspec \
-    numcodecs \
-    asciitree
+    python3-fasteners \
+    python3-fsspec \
+    python3-numcodecs \
+    python3-asciitree
 
 python -m pip install .
 pytest -sv
