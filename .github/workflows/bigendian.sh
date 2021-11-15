@@ -31,4 +31,4 @@ apt-get install -y \
 python3 setup.py build  # Generate version
 python3 -m pip install -U fsspec
 python3 -m pip install --no-deps .
-python3 -m pytest -svk test_format_compatibility
+python3 -m pytest -sv
