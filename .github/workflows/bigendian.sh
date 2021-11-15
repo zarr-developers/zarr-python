@@ -16,6 +16,7 @@ export DEBIAN_FRONTEND=${DEBIAN_FRONTEND:-noninteractive}
 
 apt-get update -y
 apt-get install -y \
+    git \
     python3 \
     python3-setuptools \
     python3-pip \
