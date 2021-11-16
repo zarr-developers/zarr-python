@@ -26,3 +26,10 @@ jobs:
         conda activate minimal
         python -m pip install .
         pytest -svx
+    - name: Fixture generation
+      shell: "bash -l {0}"
+      run: |
+        conda activate minimal
+        rm -rf fixture/
+        pytest -svx zarr/tests/test_dim_separator.py zarr/tests/test_storage.py
+        # This simulates fixture-less tests in conda and debian packaging
