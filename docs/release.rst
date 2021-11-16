@@ -6,6 +6,26 @@ Release notes
 Unreleased
 ----------
 
+.. _release_2.10.3:
+
+2.10.3
+------
+
+Bug fixes
+~~~~~~~~~
+
+* N5 keywords now emit UserWarning instead of raising a ValueError.
+  By :user:`Boaz Mohar <boazmohar>`; :issue:`860`.
+
+* blocks_to_decompress not used in read_part function.
+  By :user:`Boaz Mohar <boazmohar>`; :issue:`861`.
+
+* defines blocksize for array, updates hexdigest values.
+  By :user:`Andrew Fulton <andrewfulton9>`; :issue:`867`.
+
+* Fix test failure on Debian and conda-forge builds.
+  By :user:`Josh Moore <joshmoore>`; :issue:`871`.
+
 .. _release_2.10.2:
 
 2.10.2
