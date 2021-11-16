@@ -57,15 +57,19 @@ from zarr.util import (buffer_size, json_loads, nolock, normalize_chunks,
                        normalize_shape, normalize_storage_path, retry_call)
 
 from zarr._storage.absstore import ABSStore  # noqa: F401
-from zarr._storage.store import (_listdir_from_keys,
-                                 _path_to_prefix,
+from zarr._storage.store import (_get_hierarchy_metadata,
+                                 _listdir_from_keys,
                                  _rename_from_keys,
                                  _rmdir_from_keys,
+                                 _path_to_prefix,
+                                 _prefix_to_array_key,
+                                 _prefix_to_group_key,
                                  array_meta_key,
                                  group_meta_key,
                                  attrs_key,
                                  BaseStore,
-                                 Store)
+                                 Store,
+                                 StoreV3)
 
 __doctest_requires__ = {
     ('RedisStore', 'RedisStore.*'): ['redis'],
@@ -92,40 +96,95 @@ def contains_array(store: StoreLike, path: Path = None) -> bool:
     """Return True if the store contains an array at the given logical path."""
     path = normalize_storage_path(path)
     prefix = _path_to_prefix(path)
-    key = prefix + array_meta_key
+    key = _prefix_to_array_key(store, prefix)
     return key in store
 
 
-def contains_group(store: StoreLike, path: Path = None) -> bool:
+def contains_group(store: StoreLike, path: Path = None, explicit_only=True) -> bool:
     """Return True if the store contains a group at the given logical path."""
     path = normalize_storage_path(path)
     prefix = _path_to_prefix(path)
-    key = prefix + group_meta_key
-    return key in store
+    key = _prefix_to_group_key(store, prefix)
+    store_version = getattr(store, '_store_version', 2)
+    if store_version == 2 or explicit_only:
+        return key in store
+    else:
+        if key in store:
+            return True
+        # for v3, need to also handle implicit groups
+        sfx = _get_hierarchy_metadata(store)['metadata_key_suffix']
+        implicit_prefix = key.replace('.group' + sfx, '')
+        if not implicit_prefix.endswith('/'):
+            implicit_prefix += '/'
+        if store.list_prefix(implicit_prefix):  # type: ignore
+            return True
+        return False
 
 
-def normalize_store_arg(store: Any, clobber=False, storage_options=None, mode="w") -> BaseStore:
+def normalize_store_arg(store, clobber=False, storage_options=None, mode="w",
+                        *, zarr_version=None) -> Store:
+    if zarr_version is None:
+        # default to v2 store for backward compatibility
+        zarr_version = getattr(store, '_store_version', 2)
+    if zarr_version not in [2, 3]:
+        raise ValueError("zarr_version must be 2 or 3")
     if store is None:
-        return BaseStore._ensure_store(dict())
-    elif isinstance(store, os.PathLike):
+        if zarr_version == 2:
+            store = KVStore(dict())
+        else:
+            store = KVStoreV3(dict())
+            # add default zarr.json metadata
+            store['zarr.json'] = store._metadata_class.encode_hierarchy_metadata(None)
+        return store
+    if isinstance(store, os.PathLike):
         store = os.fspath(store)
     if isinstance(store, str):
         mode = mode if clobber else "r"
-        if "://" in store or "::" in store:
-            return FSStore(store, mode=mode, **(storage_options or {}))
-        elif storage_options:
-            raise ValueError("storage_options passed with non-fsspec path")
-        if store.endswith('.zip'):
-            return ZipStore(store, mode=mode)
-        elif store.endswith('.n5'):
-            from zarr.n5 import N5Store
-            return N5Store(store)
-        else:
-            return DirectoryStore(store)
-    else:
-        if not isinstance(store, BaseStore) and isinstance(store, MutableMapping):
-            store = BaseStore._ensure_store(store)
-        return store
+        if zarr_version == 2:
+            if "://" in store or "::" in store:
+                return FSStore(store, mode=mode, **(storage_options or {}))
+            elif storage_options:
+                raise ValueError("storage_options passed with non-fsspec path")
+            if store.endswith('.zip'):
+                return ZipStore(store, mode=mode)
+            elif store.endswith('.n5'):
+                from zarr.n5 import N5Store
+                return N5Store(store)
+            else:
+                return DirectoryStore(store)
+        elif zarr_version == 3:
+            if "://" in store or "::" in store:
+                store = FSStoreV3(store, mode=mode, **(storage_options or {}))
+            elif storage_options:
+                store = ValueError("storage_options passed with non-fsspec path")
+            if store.endswith('.zip'):
+                store = ZipStoreV3(store, mode=mode)
+            elif store.endswith('.n5'):
+                raise NotImplementedError("N5Store not yet implemented for V3")
+                # return N5StoreV3(store)
+            else:
+                store = DirectoryStoreV3(store)
+            # add default zarr.json metadata
+            store['zarr.json'] = store._metadata_class.encode_hierarchy_metadata(None)
+            return store
+    elif zarr_version == 2:
+        store = Store._ensure_store(store)
+        if getattr(store, '_store_version', 2) != 2:
+            raise ValueError(
+                "provided store does not match the specified zarr version.")
+        # if not isinstance(store, Store) and isinstance(store, MutableMapping):
+        #     store = KVStore(store)
+    elif zarr_version == 3:
+        store = StoreV3._ensure_store(store)
+        if getattr(store, '_store_version', 2) != 3:
+            raise ValueError(
+                "provided store does not match the specified zarr version.")
+        # if not isinstance(store, StoreV3) and isinstance(store, MutableMapping):
+        #     store = KVStoreV3(store)
+        if 'zarr.json' not in store:
+            # add default zarr.json metadata
+            store['zarr.json'] = store._metadata_class.encode_hierarchy_metadata(None)
+    return store
 
 
 def rmdir(store: StoreLike, path: Path = None):
@@ -133,15 +192,36 @@ def rmdir(store: StoreLike, path: Path = None):
     this will be called, otherwise will fall back to implementation via the
     `Store` interface."""
     path = normalize_storage_path(path)
-    if hasattr(store, "rmdir") and store.is_erasable():  # type: ignore
-        # pass through
-        store.rmdir(path)  # type: ignore
+    if getattr(store, '_store_version', 2) == 2:
+        if hasattr(store, "rmdir") and store.is_erasable():  # type: ignore
+            # pass through
+            store.rmdir(path)  # type: ignore
+        else:
+            # slow version, delete one key at a time
+            _rmdir_from_keys(store, path)
     else:
-        # slow version, delete one key at a time
-        _rmdir_from_keys(store, path)
+        # TODO: check behavior for v3 and fix in the Store class, deferring to
+        #       those by default
+
+        # remove metadata folder
+        meta_dir = 'meta/root/' + path
+        _rmdir_from_keys(store, meta_dir)
+
+        # remove data folder
+        data_dir = 'data/root/' + path
+        _rmdir_from_keys(store, data_dir)
+
+        # remove metadata files
+        sfx = _get_hierarchy_metadata(store)['metadata_key_suffix']
+        array_meta_file = meta_dir + '.array' + sfx
+        if array_meta_file in store:
+            store.erase(array_meta_file)  # type: ignore
+        group_meta_file = meta_dir + '.group' + sfx
+        if group_meta_file in store:
+            store.erase(group_meta_file)  # type: ignore
 
 
-def rename(store: BaseStore, src_path: Path, dst_path: Path):
+def rename(store: Store, src_path: Path, dst_path: Path):
     """Rename all items under the given path. If `store` provides a `rename` method,
     this will be called, otherwise will fall back to implementation via the
     `Store` interface."""
@@ -163,6 +243,27 @@ def listdir(store: BaseStore, path: Path = None):
     if hasattr(store, 'listdir'):
         # pass through
         return store.listdir(path)  # type: ignore
+    elif getattr(store, "_store_version", None) == 3:
+        meta_prefix = 'meta/root/'
+        dir_path = meta_prefix + path
+        path_start = len(meta_prefix)
+        meta_keys = []
+        include_meta_keys = False
+        if include_meta_keys:
+            sfx = _get_hierarchy_metadata(store)['metadata_key_suffix']
+            group_meta_key = dir_path + '.group' + sfx
+            if group_meta_key in store:
+                meta_keys.append(group_meta_key[path_start:])
+            array_meta_key = dir_path + '.array' + sfx
+            if array_meta_key in store:
+                meta_keys.append(array_meta_key[path_start:])
+        if not dir_path.endswith('/'):
+            dir_path += '/'
+        keys, prefixes = store.list_dir(dir_path)  # type: ignore
+        keys = [k[path_start:] for k in keys]
+        prefixes = [p[path_start:] for p in prefixes]
+        return meta_keys + keys + prefixes
+
     else:
         # slow version, iterate through all keys
         warnings.warn(
@@ -173,33 +274,45 @@ def listdir(store: BaseStore, path: Path = None):
         return _listdir_from_keys(store, path)
 
 
-def getsize(store: BaseStore, path: Path = None) -> int:
-    """Compute size of stored items for a given path. If `store` provides a `getsize`
-    method, this will be called, otherwise will return -1."""
-    path = normalize_storage_path(path)
-    if hasattr(store, 'getsize'):
-        # pass through
-        return store.getsize(path)  # type: ignore
-    elif isinstance(store, MutableMapping):
-        # compute from size of values
-        if path in store:
-            v = store[path]
-            size = buffer_size(v)
+def _getsize(store: BaseStore, path: Path = None) -> int:
+    # compute from size of values
+    if path and path in store:
+        v = store[path]
+        size = buffer_size(v)
+    else:
+        path = '' if path is None else normalize_storage_path(path)
+        size = 0
+        store_version = getattr(store, '_store_version', 2)
+        if store_version == 3:
+            members = store.list_prefix('data/root/' + path)  # type: ignore
+            members += store.list_prefix('meta/root/' + path)  # type: ignore
+            # members += ['zarr.json']
         else:
             members = listdir(store, path)
             prefix = _path_to_prefix(path)
-            size = 0
-            for k in members:
+            members = [prefix + k for k in members]
+        for k in members:
+            try:
+                v = store[k]
+            except KeyError:
+                pass
+            else:
                 try:
-                    v = store[prefix + k]
-                except KeyError:
-                    pass
-                else:
-                    try:
-                        size += buffer_size(v)
-                    except TypeError:
-                        return -1
-        return size
+                    size += buffer_size(v)
+                except TypeError:
+                    return -1
+    return size
+
+
+def getsize(store: BaseStore, path: Path = None) -> int:
+    """Compute size of stored items for a given path. If `store` provides a `getsize`
+    method, this will be called, otherwise will return -1."""
+    if hasattr(store, 'getsize'):
+        # pass through
+        path = normalize_storage_path(path)
+        return store.getsize(path)  # type: ignore
+    elif isinstance(store, MutableMapping):
+        return _getsize(store, path)
     else:
         return -1
 
@@ -346,7 +459,14 @@ def init_array(
     path = normalize_storage_path(path)
 
     # ensure parent group initialized
-    _require_parent_group(path, store=store, chunk_store=chunk_store, overwrite=overwrite)
+    store_version = getattr(store, "_store_version", 2)
+    if store_version < 3:
+        _require_parent_group(path, store=store, chunk_store=chunk_store,
+                              overwrite=overwrite)
+
+    if store_version == 3 and 'zarr.json' not in store:
+        # initialize with default zarr.json entry level metadata
+        store['zarr.json'] = store._metadata_class.encode_hierarchy_metadata(None)  # type: ignore
 
     _init_array_metadata(store, shape=shape, chunks=chunks, dtype=dtype,
                          compressor=compressor, fill_value=fill_value,
@@ -372,16 +492,50 @@ def _init_array_metadata(
     dimension_separator=None,
 ):
 
+    store_version = getattr(store, '_store_version', 2)
+
+    path = normalize_storage_path(path)
+
     # guard conditions
     if overwrite:
-        # attempt to delete any pre-existing items in store
-        rmdir(store, path)
-        if chunk_store is not None:
-            rmdir(chunk_store, path)
-    elif contains_array(store, path):
-        raise ContainsArrayError(path)
-    elif contains_group(store, path):
-        raise ContainsGroupError(path)
+        if store_version == 2:
+            # attempt to delete any pre-existing array in store
+            rmdir(store, path)
+            if chunk_store is not None:
+                rmdir(chunk_store, path)
+        else:
+            group_meta_key = _prefix_to_group_key(store, _path_to_prefix(path))
+            array_meta_key = _prefix_to_array_key(store, _path_to_prefix(path))
+            data_prefix = 'data/root/' + _path_to_prefix(path)
+
+            # attempt to delete any pre-existing array in store
+            if array_meta_key in store:
+                store.erase(array_meta_key)  # type: ignore
+            if group_meta_key in store:
+                store.erase(group_meta_key)  # type: ignore
+            store.erase_prefix(data_prefix)  # type: ignore
+            if chunk_store is not None:
+                chunk_store.erase_prefix(data_prefix)  # type: ignore
+
+            if '/' in path:
+                # path is a subfolder of an existing array, remove that array
+                parent_path = '/'.join(path.split('/')[:-1])
+                sfx = _get_hierarchy_metadata(store)['metadata_key_suffix']
+                array_key = 'meta/root/' + parent_path + '.array' + sfx
+                if array_key in store:
+                    store.erase(array_key)  # type: ignore
+
+    if not overwrite:
+        if contains_array(store, path):
+            raise ContainsArrayError(path)
+        elif contains_group(store, path, explicit_only=False):
+            raise ContainsGroupError(path)
+        elif store_version == 3:
+            if '/' in path:
+                # cannot create an array within an existing array path
+                parent_path = '/'.join(path.split('/')[:-1])
+                if contains_array(store, parent_path):
+                    raise ContainsArrayError(path)
 
     # normalize metadata
     dtype, object_codec = normalize_dtype(dtype, object_codec)
@@ -392,7 +546,7 @@ def _init_array_metadata(
     fill_value = normalize_fill_value(fill_value, dtype)
 
     # optional array metadata
-    if dimension_separator is None:
+    if dimension_separator is None and store_version == 2:
         dimension_separator = getattr(store, "_dimension_separator", None)
     dimension_separator = normalize_dimension_separator(dimension_separator)
 
@@ -416,6 +570,8 @@ def _init_array_metadata(
 
     # obtain filters config
     if filters:
+        # TODO: filters was removed from the metadata in v3
+        #       raise error here if store_version > 2?
         filters_config = [f.get_config() for f in filters]
     else:
         filters_config = []
@@ -441,11 +597,30 @@ def _init_array_metadata(
         filters_config = None  # type: ignore
 
     # initialize metadata
-    meta = dict(shape=shape, chunks=chunks, dtype=dtype,
-                compressor=compressor_config, fill_value=fill_value,
-                order=order, filters=filters_config,
+    # TODO: don't store redundant dimension_separator for v3?
+    meta = dict(shape=shape, compressor=compressor_config,
+                fill_value=fill_value,
                 dimension_separator=dimension_separator)
-    key = _path_to_prefix(path) + array_meta_key
+    if store_version < 3:
+        meta.update(dict(chunks=chunks, dtype=dtype, order=order,
+                         filters=filters_config))
+    else:
+        if dimension_separator is None:
+            dimension_separator = "/"
+        if filters_config:
+            attributes = {'filters': filters_config}
+        else:
+            attributes = {}
+        meta.update(
+            dict(chunk_grid=dict(type="regular",
+                                 chunk_shape=chunks,
+                                 separator=dimension_separator),
+                 chunk_memory_layout=order,
+                 data_type=dtype,
+                 attributes=attributes)
+        )
+
+    key = _prefix_to_array_key(store, _path_to_prefix(path))
     if hasattr(store, '_metadata_class'):
         store[key] = store._metadata_class.encode_array_metadata(meta)  # type: ignore
     else:
@@ -482,13 +657,25 @@ def init_group(
     # normalize path
     path = normalize_storage_path(path)
 
-    # ensure parent group initialized
-    _require_parent_group(path, store=store, chunk_store=chunk_store,
-                          overwrite=overwrite)
+    store_version = getattr(store, '_store_version', 2)
+    if store_version < 3:
+        # ensure parent group initialized
+        _require_parent_group(path, store=store, chunk_store=chunk_store,
+                              overwrite=overwrite)
+
+    if store_version == 3 and 'zarr.json' not in store:
+        # initialize with default zarr.json entry level metadata
+        store['zarr.json'] = store._metadata_class.encode_hierarchy_metadata(None)  # type: ignore
 
     # initialise metadata
     _init_group_metadata(store=store, overwrite=overwrite, path=path,
                          chunk_store=chunk_store)
+
+    if store_version == 3:
+        # TODO: Should initializing a v3 group also create a corresponding
+        #       empty folder under data/root/? I think probably not until there
+        #       is actual data written there.
+        pass
 
 
 def _init_group_metadata(
@@ -498,22 +685,51 @@ def _init_group_metadata(
     chunk_store: StoreLike = None,
 ):
 
+    store_version = getattr(store, '_store_version', 2)
+    path = normalize_storage_path(path)
+
     # guard conditions
     if overwrite:
-        # attempt to delete any pre-existing items in store
-        rmdir(store, path)
-        if chunk_store is not None:
-            rmdir(chunk_store, path)
-    elif contains_array(store, path):
-        raise ContainsArrayError(path)
-    elif contains_group(store, path):
-        raise ContainsGroupError(path)
+        if store_version == 2:
+            # attempt to delete any pre-existing items in store
+            rmdir(store, path)
+            if chunk_store is not None:
+                rmdir(chunk_store, path)
+        else:
+            group_meta_key = _prefix_to_group_key(store, _path_to_prefix(path))
+            array_meta_key = _prefix_to_array_key(store, _path_to_prefix(path))
+            data_prefix = 'data/root/' + _path_to_prefix(path)
+            meta_prefix = 'meta/root/' + _path_to_prefix(path)
+
+            # attempt to delete any pre-existing array in store
+            if array_meta_key in store:
+                store.erase(array_meta_key)  # type: ignore
+            if group_meta_key in store:
+                store.erase(group_meta_key)  # type: ignore
+            store.erase_prefix(data_prefix)  # type: ignore
+            store.erase_prefix(meta_prefix)  # type: ignore
+            if chunk_store is not None:
+                chunk_store.erase_prefix(data_prefix)  # type: ignore
+
+    if not overwrite:
+        if contains_array(store, path):
+            raise ContainsArrayError(path)
+        elif contains_group(store, path):
+            raise ContainsGroupError(path)
+        elif store_version == 3 and '/' in path:
+            # cannot create a group overlapping with an existing array name
+            parent_path = '/'.join(path.split('/')[:-1])
+            if contains_array(store, parent_path):
+                raise ContainsArrayError(path)
 
     # initialize metadata
     # N.B., currently no metadata properties are needed, however there may
     # be in future
-    meta = dict()  # type: ignore
-    key = _path_to_prefix(path) + group_meta_key
+    if store_version == 3:
+        meta = {'attributes': {}}  # type: ignore
+    else:
+        meta = {}  # type: ignore
+    key = _prefix_to_group_key(store, _path_to_prefix(path))
     if hasattr(store, '_metadata_class'):
         store[key] = store._metadata_class.encode_group_metadata(meta)  # type: ignore
     else:
@@ -1139,13 +1355,16 @@ class FSStore(Store):
             dimension_separator = key_separator
 
         self.key_separator = dimension_separator
-        if self.key_separator is None:
-            self.key_separator = "."
+        self._default_key_separator()
 
         # Pass attributes to array creation
         self._dimension_separator = dimension_separator
         if self.fs.exists(self.path) and not self.fs.isdir(self.path):
             raise FSPathExistNotDir(url)
+
+    def _default_key_separator(self):
+        if self.key_separator is None:
+            self.key_separator = "."
 
     def _normalize_key(self, key):
         key = normalize_storage_path(key).lstrip('/')
@@ -2647,6 +2866,10 @@ class ConsolidatedMetadataStore(Store):
     def __init__(self, store: StoreLike, metadata_key=".zmetadata"):
         self.store = Store._ensure_store(store)
 
+        if getattr(store, '_store_version', 2) != 2:
+            raise ValueError("Can only consolidate stores corresponding to "
+                             "the Zarr v2 spec.")
+
         # retrieve consolidated metadata
         meta = json_loads(store[metadata_key])
 
@@ -2682,3 +2905,351 @@ class ConsolidatedMetadataStore(Store):
 
     def listdir(self, path):
         return listdir(self.meta_store, path)
+
+
+""" versions of stores following the v3 protocol """
+
+
+def _get_files_and_dirs_from_path(store, path):
+    path = normalize_storage_path(path)
+
+    files = []
+    # add array metadata file if present
+    array_key = _prefix_to_array_key(store, path)
+    if array_key in store:
+        files.append(os.path.join(store.path, array_key))
+
+    # add group metadata file if present
+    group_key = _prefix_to_group_key(store, path)
+    if group_key in store:
+        files.append(os.path.join(store.path, group_key))
+
+    dirs = []
+    # add array and group folders if present
+    for d in ['data/root/' + path, 'meta/root/' + path]:
+        dir_path = os.path.join(store.path, d)
+        if os.path.exists(dir_path):
+            dirs.append(dir_path)
+    return files, dirs
+
+
+class KVStoreV3(KVStore, StoreV3):
+
+    def list(self):
+        return list(self._mutable_mapping.keys())
+
+
+KVStoreV3.__doc__ = KVStore.__doc__
+
+
+class FSStoreV3(FSStore, StoreV3):
+
+    # FSStoreV3 doesn't use this (FSStore uses it within _normalize_key)
+    _META_KEYS = ()
+
+    def _default_key_separator(self):
+        if self.key_separator is None:
+            self.key_separator = "/"
+
+    def list(self):
+        return list(self.keys())
+
+    def _normalize_key(self, key):
+        key = normalize_storage_path(key).lstrip('/')
+        return key.lower() if self.normalize_keys else key
+
+    def getsize(self, path=None):
+        size = 0
+        if path is None or path == '':
+            # size of both the data and meta subdirs
+            dirs = []
+            for d in ['data/root', 'meta/root']:
+                dir_path = os.path.join(self.path, d)
+                if os.path.exists(dir_path):
+                    dirs.append(dir_path)
+        else:
+            files, dirs = _get_files_and_dirs_from_path(self, path)
+            for file in files:
+                size += os.path.getsize(file)
+        for d in dirs:
+            size += self.fs.du(d, total=True, maxdepth=None)
+        return size
+
+    def setitems(self, values):
+        if self.mode == 'r':
+            raise ReadOnlyError()
+        values = {self._normalize_key(key): val for key, val in values.items()}
+
+        # initialize the /data/root/... folder corresponding to the array!
+        # Note: zarr.tests.test_core_v3.TestArrayWithFSStoreV3PartialRead fails
+        # without this explicit creation of directories
+        subdirectories = set([os.path.dirname(v) for v in values.keys()])
+        for subdirectory in subdirectories:
+            data_dir = os.path.join(self.path, subdirectory)
+            if not self.fs.exists(data_dir):
+                self.fs.mkdir(data_dir)
+
+        self.map.setitems(values)
+
+
+class MemoryStoreV3(MemoryStore, StoreV3):
+
+    def __init__(self, root=None, cls=dict, dimension_separator=None):
+        if root is None:
+            self.root = cls()
+        else:
+            self.root = root
+        self.cls = cls
+        self.write_mutex = Lock()
+        self._dimension_separator = dimension_separator  # TODO: modify for v3?
+
+    def __eq__(self, other):
+        return (
+            isinstance(other, MemoryStoreV3) and
+            self.root == other.root and
+            self.cls == other.cls
+        )
+
+    def list(self):
+        return list(self.keys())
+
+    def getsize(self, path: Path = None):
+        size = 0
+        path = normalize_storage_path(path)
+        members = self.list_prefix('data/root/' + path)
+        members += self.list_prefix('meta/root/' + path)
+        for k in members:
+            try:
+                v = self[k]
+            except KeyError:
+                pass
+            else:
+                try:
+                    size += buffer_size(v)
+                except TypeError:
+                    return -1
+        return size
+
+
+MemoryStoreV3.__doc__ = MemoryStore.__doc__
+
+
+class DirectoryStoreV3(DirectoryStore, StoreV3):
+
+    def list(self):
+        return list(self.keys())
+
+    def __eq__(self, other):
+        return (
+            isinstance(other, DirectoryStoreV3) and
+            self.path == other.path
+        )
+
+    # def getsize(self, path=None):
+    #     size = 0
+    #     if path is None or path == '':
+    #         # add array and group folders if present
+    #         dirs = []
+    #         for d in ['data/root', 'meta/root']:
+    #             dir_path = os.path.join(self.path, d)
+    #             if os.path.exists(dir_path):
+    #                 dirs.append(dir_path)
+    #         print(f"dirs={dirs}")
+    #     else:
+    #         files, dirs = _get_files_and_dirs_from_path(self, path)
+    #         for file in files:
+    #             size += os.path.getsize(file)
+    #     for d in dirs:
+    #         for child in scandir(d):
+    #             print(f"child={child}")
+    #             if child.is_file():
+    #                 size += child.stat().st_size
+    #     return size
+
+    def getsize(self, path: Path = None):
+        size = 0
+        path = normalize_storage_path(path)
+        members = self.list_prefix('data/root/' + path)
+        members += self.list_prefix('meta/root/' + path)
+        for k in members:
+            try:
+                v = self[k]
+            except KeyError:
+                pass
+            else:
+                try:
+                    size += buffer_size(v)
+                except TypeError:
+                    return -1
+        return size
+
+    def rename(self, src_path, dst_path, metadata_key_suffix='.json'):
+        store_src_path = normalize_storage_path(src_path)
+        store_dst_path = normalize_storage_path(dst_path)
+
+        dir_path = self.path
+        any_existed = False
+        for root_prefix in ['meta', 'data']:
+            src_path = os.path.join(dir_path, root_prefix, 'root', store_src_path)
+            if os.path.exists(src_path):
+                any_existed = True
+                dst_path = os.path.join(dir_path, root_prefix, 'root', store_dst_path)
+                os.renames(src_path, dst_path)
+
+        for suffix in ['.array' + metadata_key_suffix,
+                       '.group' + metadata_key_suffix]:
+            src_meta = os.path.join(dir_path, 'meta', 'root', store_src_path + suffix)
+            if os.path.exists(src_meta):
+                any_existed = True
+                dst_meta = os.path.join(dir_path, 'meta', 'root', store_dst_path + suffix)
+                dst_dir = os.path.dirname(dst_meta)
+                if not os.path.exists(dst_dir):
+                    os.makedirs(dst_dir)
+                os.rename(src_meta, dst_meta)
+        if not any_existed:
+            raise FileNotFoundError("nothing found at src_path")
+
+
+DirectoryStoreV3.__doc__ = DirectoryStore.__doc__
+
+
+class ZipStoreV3(ZipStore, StoreV3):
+
+    def list(self):
+        return list(self.keys())
+
+    def __eq__(self, other):
+        return (
+            isinstance(other, ZipStore) and
+            self.path == other.path and
+            self.compression == other.compression and
+            self.allowZip64 == other.allowZip64
+        )
+
+    def getsize(self, path=None):
+        path = normalize_storage_path(path)
+        with self.mutex:
+            children = self.list_prefix('data/root/' + path)
+            children += self.list_prefix('meta/root/' + path)
+            if children:
+                size = 0
+                for name in children:
+                    try:
+                        info = self.zf.getinfo(name)
+                    except KeyError:
+                        pass
+                    else:
+                        size += info.compress_size
+                return size
+            elif path:
+                try:
+                    info = self.zf.getinfo(path)
+                    return info.compress_size
+                except KeyError:
+                    return 0
+            else:
+                return 0
+
+
+ZipStoreV3.__doc__ = ZipStore.__doc__
+
+
+class NestedDirectoryStoreV3(NestedDirectoryStore, DirectoryStoreV3):
+
+    def list(self):
+        return list(self.keys())
+
+    def __eq__(self, other):
+        return (
+            isinstance(other, NestedDirectoryStoreV3) and
+            self.path == other.path
+        )
+
+
+NestedDirectoryStoreV3.__doc__ = NestedDirectoryStore.__doc__
+
+
+class RedisStoreV3(RedisStore, StoreV3):
+
+    def list(self):
+        return list(self.keys())
+
+
+RedisStoreV3.__doc__ = RedisStore.__doc__
+
+
+class MongoDBStoreV3(MongoDBStore, StoreV3):
+
+    def list(self):
+        return list(self.keys())
+
+
+MongoDBStoreV3.__doc__ = MongoDBStore.__doc__
+
+
+class DBMStoreV3(DBMStore, StoreV3):
+
+    def list(self):
+        return list(self.keys())
+
+
+DBMStoreV3.__doc__ = DBMStore.__doc__
+
+
+class LMDBStoreV3(LMDBStore, StoreV3):
+
+    def list(self):
+        return list(self.keys())
+
+
+LMDBStoreV3.__doc__ = LMDBStore.__doc__
+
+
+class SQLiteStoreV3(SQLiteStore, StoreV3):
+
+    def list(self):
+        return list(self.keys())
+
+    def getsize(self, path=None):
+        if path is None or path == '':
+            # TODO: why does the query below not work in this case?
+            #       For now fall back to the default _getsize implementation
+            return _getsize(self, path)
+        else:
+            path = normalize_storage_path(path)
+        size = 0
+        for _path in ['data/root/' + path, 'meta/root/' + path]:
+            c = self.cursor.execute(
+                '''
+                SELECT COALESCE(SUM(LENGTH(v)), 0) FROM zarr
+                WHERE k LIKE (? || "%") AND
+                      0 == INSTR(LTRIM(SUBSTR(k, LENGTH(?) + 1), "/"), "/")
+                ''',
+                (_path, _path)
+            )
+            for item_size, in c:
+                size += item_size
+        return size
+
+
+SQLiteStoreV3.__doc__ = SQLiteStore.__doc__
+
+
+class LRUStoreCacheV3(LRUStoreCache, StoreV3):
+
+    def __init__(self, store, max_size: int):
+        self._store = StoreV3._ensure_store(store)
+        self._max_size = max_size
+        self._current_size = 0
+        self._keys_cache = None
+        self._contains_cache = None
+        self._listdir_cache: Dict[Path, Any] = dict()
+        self._values_cache: Dict[Path, Any] = OrderedDict()
+        self._mutex = Lock()
+        self.hits = self.misses = 0
+
+    def list(self):
+        return list(self.keys())
+
+
+LRUStoreCacheV3.__doc__ = LRUStoreCache.__doc__

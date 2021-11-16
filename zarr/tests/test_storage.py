@@ -18,9 +18,9 @@ from numpy.testing import assert_array_almost_equal, assert_array_equal
 from numcodecs.compat import ensure_bytes
 
 from zarr.codecs import BZ2, AsType, Blosc, Zlib
-from zarr.errors import MetadataError
+from zarr.errors import ContainsArrayError, ContainsGroupError, MetadataError
 from zarr.hierarchy import group
-from zarr.meta import ZARR_FORMAT, decode_array_metadata
+from zarr.meta import ZARR_FORMAT, ZARR_FORMAT_v3, decode_array_metadata
 from zarr.n5 import N5Store, N5FSStore
 from zarr.storage import (ABSStore, ConsolidatedMetadataStore, DBMStore,
                           DictStore, DirectoryStore, KVStore, LMDBStore,
@@ -31,7 +31,12 @@ from zarr.storage import (ABSStore, ConsolidatedMetadataStore, DBMStore,
                           attrs_key, default_compressor, getsize,
                           group_meta_key, init_array, init_group, migrate_1to2)
 from zarr.storage import FSStore, rename, listdir
+from zarr.storage import (KVStoreV3, MemoryStoreV3, ZipStoreV3, FSStoreV3,
+                          DirectoryStoreV3, NestedDirectoryStoreV3,
+                          RedisStoreV3, MongoDBStoreV3, DBMStoreV3,
+                          LMDBStoreV3, SQLiteStoreV3, LRUStoreCacheV3)
 from zarr.tests.util import CountingDict, have_fsspec, skip_test_env_var, abs_container
+from zarr.tests.util import CountingDictV3
 
 
 @contextmanager
@@ -45,6 +50,15 @@ def does_not_raise():
     ("/", "/"),
 ])
 def dimension_separator_fixture(request):
+    return request.param
+
+
+@pytest.fixture(params=[
+    (None, "/"),
+    (".", "."),
+    ("/", "/"),
+])
+def dimension_separator_fixture_v3(request):
     return request.param
 
 

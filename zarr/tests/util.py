@@ -1,7 +1,7 @@
 import collections
 import os
 
-from zarr.storage import Store
+from zarr.storage import Store, StoreV3
 
 import pytest
 
@@ -39,6 +39,10 @@ class CountingDict(Store):
     def __delitem__(self, key):
         self.counter['__delitem__', key] += 1
         del self.wrapped[key]
+
+
+class CountingDictV3(CountingDict, StoreV3):
+    pass
 
 
 def skip_test_env_var(name):
