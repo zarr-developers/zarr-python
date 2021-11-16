@@ -2,7 +2,6 @@ import pathlib
 
 import pytest
 from numpy.testing import assert_array_equal
-from functools import partial
 
 import zarr
 from zarr.core import Array
@@ -44,16 +43,9 @@ def dataset(tmpdir, request):
         if not static.exists():  # pragma: no cover
 
             if "nested" in which:
-                # No way to reproduce the nested_legacy file via code
                 generator = NestedDirectoryStore
             else:
-                if "legacy" in suffix:
-                    # No dimension_separator metadata included
-                    generator = DirectoryStore
-                else:
-                    # Explicit dimension_separator metadata included
-                    generator = partial(DirectoryStore,
-                                        dimension_separator=".")
+                generator = DirectoryStore
 
             # store the data - should be one-time operation
             s = generator(str(static))
