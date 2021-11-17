@@ -592,7 +592,7 @@ class PartialReadBuffer:
         # is it fsstore or an actual fsspec map object
         assert hasattr(self.chunk_store, "map")
         self.map = self.chunk_store.map
-        # maybe use partial_read here also
+        # TODO maybe use partial_read here also
         self.fs = self.chunk_store.fs
         self.store_key = store_key
         self.buff = None
