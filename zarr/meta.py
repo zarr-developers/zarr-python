@@ -22,6 +22,12 @@ _v3_core_type = set(
 )
 _v3_core_type = {"bool", "i1", "u1"} | _v3_core_type
 
+# TODO: How do we want to handle dtypes not officially in the v3 spec?
+#       Those in _v3_core_type above are the only ones defined in the spec.
+#       However we currently support many other dtypes for v2. For now, I also
+#       allow all of these for v3 unless the user sets an environment variable
+#       ZARR_V3_CORE_DTYPES_ONLY=1, etc.
+
 ZARR_V3_CORE_DTYPES_ONLY = int(os.environ.get("ZARR_V3_CORE_DTYPES_ONLY", False))
 ZARR_V3_ALLOW_COMPLEX = int(os.environ.get("ZARR_V3_ALLOW_COMPLEX",
                                            not ZARR_V3_CORE_DTYPES_ONLY))
