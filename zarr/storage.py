@@ -54,7 +54,7 @@ from zarr.meta import encode_array_metadata, encode_group_metadata
 from zarr.util import (buffer_size, json_loads, nolock, normalize_chunks,
                        normalize_dimension_separator,
                        normalize_dtype, normalize_fill_value, normalize_order,
-                       normalize_shape, normalize_storage_path, retry_call)
+                       normalize_shape, normalize_shards, normalize_storage_path, retry_call)
 
 from zarr._storage.absstore import ABSStore  # noqa: F401
 from zarr._storage.store import (_listdir_from_keys,
@@ -236,6 +236,7 @@ def init_array(
     filters=None,
     object_codec=None,
     dimension_separator=None,
+    shards: Union[int, Tuple[int, ...], None]=None,
 ):
     """Initialize an array store with the given configuration. Note that this is a low-level
     function and there should be no need to call this directly from user code.
@@ -353,7 +354,8 @@ def init_array(
                          order=order, overwrite=overwrite, path=path,
                          chunk_store=chunk_store, filters=filters,
                          object_codec=object_codec,
-                         dimension_separator=dimension_separator)
+                         dimension_separator=dimension_separator,
+                         shards=shards)
 
 
 def _init_array_metadata(
@@ -370,6 +372,7 @@ def _init_array_metadata(
     filters=None,
     object_codec=None,
     dimension_separator=None,
+    shards:Union[int, Tuple[int, ...], None] = None,
 ):
 
     # guard conditions
@@ -388,6 +391,7 @@ def _init_array_metadata(
     shape = normalize_shape(shape) + dtype.shape
     dtype = dtype.base
     chunks = normalize_chunks(chunks, shape, dtype.itemsize)
+    shards = normalize_shards(shards, shape)
     order = normalize_order(order)
     fill_value = normalize_fill_value(fill_value, dtype)
 
@@ -445,6 +449,8 @@ def _init_array_metadata(
                 compressor=compressor_config, fill_value=fill_value,
                 order=order, filters=filters_config,
                 dimension_separator=dimension_separator)
+    if shards is not None:
+        meta["shards"] = shards
     key = _path_to_prefix(path) + array_meta_key
     if hasattr(store, '_metadata_class'):
         store[key] = store._metadata_class.encode_array_metadata(meta)  # type: ignore

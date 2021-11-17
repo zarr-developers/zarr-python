@@ -110,6 +110,7 @@ class BaseStore(MutableMapping):
 
 
 class Store(BaseStore):
+    # TODO: document methods which allow optimizations, e.g. delitems, setitems, getitems, listdir, …
     """Abstract store class used by implementations following the Zarr v2 spec.
 
     Adds public `listdir`, `rename`, and `rmdir` methods on top of BaseStore.

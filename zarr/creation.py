@@ -1,3 +1,4 @@
+from typing import Optional, Tuple, Union
 from warnings import warn
 
 import numpy as np
@@ -19,7 +20,8 @@ def create(shape, chunks=True, dtype=None, compressor='default',
            fill_value=0, order='C', store=None, synchronizer=None,
            overwrite=False, path=None, chunk_store=None, filters=None,
            cache_metadata=True, cache_attrs=True, read_only=False,
-           object_codec=None, dimension_separator=None, write_empty_chunks=True, **kwargs):
+           object_codec=None, dimension_separator=None, write_empty_chunks=True,
+           shards: Union[int, Tuple[int, ...], None]=None, **kwargs):
     """Create an array.
 
     Parameters
@@ -145,7 +147,7 @@ def create(shape, chunks=True, dtype=None, compressor='default',
     init_array(store, shape=shape, chunks=chunks, dtype=dtype, compressor=compressor,
                fill_value=fill_value, order=order, overwrite=overwrite, path=path,
                chunk_store=chunk_store, filters=filters, object_codec=object_codec,
-               dimension_separator=dimension_separator)
+               dimension_separator=dimension_separator, shards=shards)
 
     # instantiate array
     z = Array(store, path=path, chunk_store=chunk_store, synchronizer=synchronizer,

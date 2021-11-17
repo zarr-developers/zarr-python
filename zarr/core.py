@@ -10,6 +10,7 @@ import numpy as np
 from numcodecs.compat import ensure_bytes, ensure_ndarray
 
 from collections.abc import MutableMapping
+from zarr._storage.sharded_store import ShardedStore
 
 from zarr.attrs import Attributes
 from zarr.codecs import AsType, get_codec
@@ -213,6 +214,7 @@ class Array:
             self._meta = meta
             self._shape = meta['shape']
             self._chunks = meta['chunks']
+            self._shards = meta.get('shards')
             self._dtype = meta['dtype']
             self._fill_value = meta['fill_value']
             self._order = meta['order']
@@ -264,7 +266,9 @@ class Array:
             filters_config = None
         meta = dict(shape=self._shape, chunks=self._chunks, dtype=self._dtype,
                     compressor=compressor_config, fill_value=self._fill_value,
-                    order=self._order, filters=filters_config)
+                    order=self._order, filters=filters_config, shards=self._shards)
+        if self._shards is not None:
+            meta['shards'] = self._shards
         mkey = self._key_prefix + array_meta_key
         self._store[mkey] = self._store._metadata_class.encode_array_metadata(meta)
 
@@ -307,11 +311,26 @@ class Array:
 
     @property
     def chunk_store(self):
-        """A MutableMapping providing the underlying storage for array chunks."""
         if self._chunk_store is None:
-            return self._store
+            chunk_store = self._store
         else:
-            return self._chunk_store
+            chunk_store = self._chunk_store
+        """A MutableMapping providing the underlying storage for array chunks."""
+        if self._shards is None:
+            return chunk_store
+        else:
+            try:
+                return self._cached_sharded_store
+            except AttributeError:
+                self._cached_sharded_store = BaseStore._ensure_store(ShardedStore(
+                    chunk_store,
+                    shards=self._shards,
+                    dimension_separator=self._dimension_separator,
+                    chunk_has_constant_size = self._compressor is not None,  # TODO add exceptions, e.g. dtype==object
+                    fill_value = np.full(1, fill_value=self._fill_value or 0, dtype=self._dtype).tobytes(),
+                    value_len = reduce(operator.mul, self._chunks, 1),
+                ))
+                return self._cached_sharded_store
 
     @property
     def shape(self):
@@ -331,6 +350,12 @@ class Array:
         """A tuple of integers describing the length of each dimension of a
         chunk of the array."""
         return self._chunks
+
+    @property
+    def shards(self):
+        """A tuple of integers describing the number of chunks in each shard
+        of the array."""
+        return self._shards
 
     @property
     def dtype(self):
@@ -1899,7 +1924,7 @@ class Array:
             and hasattr(self._compressor, "decode_partial")
             and not fields
             and self.dtype != object
-            and hasattr(self.chunk_store, "getitems")
+            and hasattr(self.chunk_store, "getitems")  # TODO: this should rather check for read_block or similar
         ):
             partial_read_decode = True
             cdatas = {
@@ -2236,6 +2261,7 @@ class Array:
 
         h = hashlib.new(hashname)
 
+        # TODO: operate on shards here if available:
         for i in itertools.product(*[range(s) for s in self.cdata_shape]):
             h.update(self.chunk_store.get(self._chunk_key(i), b""))
 
@@ -2362,6 +2388,7 @@ class Array:
                 except KeyError:
                     # chunk not initialized
                     pass
+        # TODO: collect all chunks do delete and use _chunk_delitems
 
     def append(self, data, axis=0):
         """Append `data` to `axis`.

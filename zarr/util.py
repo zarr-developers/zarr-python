@@ -149,6 +149,38 @@ def normalize_chunks(
     return tuple(chunks)
 
 
+def normalize_shards(
+    shards: Optional[Tuple[int, ...]], shape: Tuple[int, ...],
+) -> Tuple[int, ...]:
+    """Convenience function to normalize the `shards` argument for an array
+    with the given `shape`."""
+
+    # N.B., expect shape already normalized
+
+    if shards is None:
+        return None
+
+    # handle 1D convenience form
+    if isinstance(shards, numbers.Integral):
+        shards = tuple(int(shards) for _ in shape)
+
+    # handle bad dimensionality
+    if len(shards) > len(shape):
+        raise ValueError('too many dimensions in shards')
+
+    # handle underspecified shards
+    if len(shards) < len(shape):
+        # assume single shards across remaining dimensions
+        shards += (1, ) * len(shape) - len(shards)
+
+    # handle None or -1 in shards
+    if -1 in shards or None in shards:
+        shards = tuple(s if c == -1 or c is None else int(c)
+                       for s, c in zip(shape, shards))
+
+    return tuple(shards)
+
+
 def normalize_dtype(dtype: Union[str, np.dtype], object_codec) -> Tuple[np.dtype, Any]:
 
     # convenience API for object arrays
@@ -560,6 +592,7 @@ class PartialReadBuffer:
         # is it fsstore or an actual fsspec map object
         assert hasattr(self.chunk_store, "map")
         self.map = self.chunk_store.map
+        # maybe use partial_read here also
         self.fs = self.chunk_store.fs
         self.store_key = store_key
         self.buff = None
