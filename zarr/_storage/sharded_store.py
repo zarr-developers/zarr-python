@@ -2,6 +2,8 @@ from functools import reduce
 from itertools import product
 from typing import Any, Iterable, Iterator, Optional, Tuple
 
+import numpy as np
+
 from zarr._storage.store import BaseStore, Store
 from zarr.storage import StoreLike, array_meta_key, attrs_key, group_meta_key
 
@@ -19,26 +21,28 @@ class ShardedStore(Store):
     but is added to an Array as a wrapper when needed automatically."""
 
     def __init__(
-        self, store:
-        StoreLike,
+        self,
+        store: StoreLike,
         shards: Tuple[int, ...],
         dimension_separator: str,
-        chunk_has_constant_size: bool,
-        fill_value: bytes,
-        value_len: Optional[int],
+        are_chunks_compressed: bool,
+        dtype: np.dtype,
+        fill_value: Any,
+        chunk_size: int,
     ) -> None:
         self._store: BaseStore = BaseStore._ensure_store(store)
         self._shards = shards
         # This defines C/F-order
-        self._shards_cumprod = tuple(_cum_prod(shards))
+        self._shard_strides = tuple(_cum_prod(shards))
         self._num_chunks_per_shard = reduce(lambda x, y: x*y, shards, 1)
         self._dimension_separator = dimension_separator
         # TODO: add jumptable for compressed data
-        assert not chunk_has_constant_size, "Currently only uncompressed data can be used."
+        chunk_has_constant_size = not are_chunks_compressed and not dtype == object
+        assert chunk_has_constant_size, "Currently only uncompressed, fixed-length data can be used."
         self._chunk_has_constant_size = chunk_has_constant_size
-        if not chunk_has_constant_size:
-            assert value_len is not None
-            self._fill_chunk = fill_value * value_len
+        if chunk_has_constant_size:
+            binary_fill_value = np.full(1, fill_value=fill_value or 0, dtype=dtype).tobytes()
+            self._fill_chunk = binary_fill_value * chunk_size
         else:
             self._fill_chunk = None
 
@@ -52,11 +56,11 @@ class ShardedStore(Store):
 
         shard_tuple, index_tuple = zip(*((subkey // shard_i, subkey % shard_i) for subkey, shard_i in zip(subkeys, self._shards)))
         shard_key = self._dimension_separator.join(map(str, shard_tuple))
-        index = sum(i * j for i, j in zip(index_tuple, self._shards_cumprod))
+        index = sum(i * j for i, j in zip(index_tuple, self._shard_strides))
         return shard_key, index
 
     def __get_chunk_slice__(self, shard_key: str, shard_index: int) -> Tuple[int, int]:
-        # TODO: here we would use the jumptable for compression
+        # TODO: here we would use the jumptable for compression, which uses shard_key
         start = shard_index * len(self._fill_chunk)
         return slice(start, start + len(self._fill_chunk))
 
@@ -86,8 +90,11 @@ class ShardedStore(Store):
     def __iter__(self) -> Iterator[str]:
         for shard_key in self._store.__iter__():
             if any(shard_key.endswith(i) for i in (array_meta_key, group_meta_key, attrs_key)):
+                # Special keys such as ".zarray" are passed on as-is
                 yield shard_key
             else:
+                # For each shard key in the wrapped store, all corresponding chunks are yielded.
+                # TODO: For compressed chunks we might yield only the actualy contained chunks by reading the jumptables.
                 # TODO: allow to be in a group (aka only use last parts for dimensions)
                 subkeys = tuple(map(int, shard_key.split(self._dimension_separator)))
                 for offset in product(*(range(i) for i in self._shards)):

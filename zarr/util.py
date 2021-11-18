@@ -150,8 +150,8 @@ def normalize_chunks(
 
 
 def normalize_shards(
-    shards: Optional[Tuple[int, ...]], shape: Tuple[int, ...],
-) -> Tuple[int, ...]:
+    shards: Optional[Tuple[Optional[int], ...]], shape: Tuple[int, ...],
+) -> Optional[Tuple[int, ...]]:
     """Convenience function to normalize the `shards` argument for an array
     with the given `shape`."""
 

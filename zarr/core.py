@@ -5,6 +5,7 @@ import math
 import operator
 import re
 from functools import reduce
+from typing import Optional, Tuple
 
 import numpy as np
 from numcodecs.compat import ensure_bytes, ensure_ndarray
@@ -192,6 +193,9 @@ class Array:
         self._oindex = OIndex(self)
         self._vindex = VIndex(self)
 
+        # the sharded store is only initialized when needed
+        self._cached_sharded_store = None
+
     def _load_metadata(self):
         """(Re)load metadata from store."""
         if self._synchronizer is None:
@@ -264,11 +268,11 @@ class Array:
             filters_config = [f.get_config() for f in self._filters]
         else:
             filters_config = None
+        # Possible (unrelated) bug:
+        # should the dimension_separator also be included in this dict?
         meta = dict(shape=self._shape, chunks=self._chunks, dtype=self._dtype,
                     compressor=compressor_config, fill_value=self._fill_value,
                     order=self._order, filters=filters_config, shards=self._shards)
-        if self._shards is not None:
-            meta['shards'] = self._shards
         mkey = self._key_prefix + array_meta_key
         self._store[mkey] = self._store._metadata_class.encode_array_metadata(meta)
 
@@ -311,26 +315,25 @@ class Array:
 
     @property
     def chunk_store(self):
+        """A MutableMapping providing the underlying storage for array chunks."""
         if self._chunk_store is None:
             chunk_store = self._store
         else:
             chunk_store = self._chunk_store
-        """A MutableMapping providing the underlying storage for array chunks."""
         if self._shards is None:
             return chunk_store
         else:
-            try:
-                return self._cached_sharded_store
-            except AttributeError:
-                self._cached_sharded_store = BaseStore._ensure_store(ShardedStore(
+            if self._cached_sharded_store is None:
+                self._cached_sharded_store = ShardedStore(
                     chunk_store,
                     shards=self._shards,
                     dimension_separator=self._dimension_separator,
-                    chunk_has_constant_size = self._compressor is not None,  # TODO add exceptions, e.g. dtype==object
-                    fill_value = np.full(1, fill_value=self._fill_value or 0, dtype=self._dtype).tobytes(),
-                    value_len = reduce(operator.mul, self._chunks, 1),
-                ))
-                return self._cached_sharded_store
+                    are_chunks_compressed=self._compressor is not None,
+                    dtype=self._dtype,
+                    fill_value=self._fill_value or 0,
+                    chunk_size=reduce(operator.mul, self._chunks, 1),
+                )
+            return self._cached_sharded_store
 
     @property
     def shape(self):
@@ -346,9 +349,9 @@ class Array:
         self.resize(value)
 
     @property
-    def chunks(self):
+    def chunks(self) -> Optional[Tuple[int, ...]]:
         """A tuple of integers describing the length of each dimension of a
-        chunk of the array."""
+        chunk of the array, or None."""
         return self._chunks
 
     @property
