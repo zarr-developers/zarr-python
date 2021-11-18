@@ -18,6 +18,6 @@ flake8==4.0.1
 pytest-cov==3.0.0
 pytest-doctestplus==0.11.1
 pytest-timeout==2.0.1
-h5py==3.5.0
+h5py==3.6.0
 fsspec[s3]==2021.11.0
 moto[server]>=1.3.14
