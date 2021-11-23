@@ -16,7 +16,21 @@ from zarr.errors import (
 
 
 def is_integer(x):
+    """True if x is an integer (both pure Python or NumPy).
+
+    Note that Python's bool is considered an integer too.
+    """
     return isinstance(x, numbers.Integral)
+
+
+def is_integer_list(x):
+    """True if x is a list of integers.
+
+    This function assumes ie *does not check* that all elements of the list
+    have the same type. Mixed type lists will result in other errors that will
+    bubble up anyway.
+    """
+    return isinstance(x, list) and len(x) > 0 and is_integer(x[0])
 
 
 def is_integer_array(x, ndim=None):
@@ -39,6 +53,49 @@ def is_scalar(value, dtype):
     if isinstance(value, tuple) and dtype.names and len(value) == len(dtype.names):
         return True
     return False
+
+
+def is_pure_fancy_indexing(selection, ndim):
+    """Check whether a selection contains only scalars or integer array-likes.
+
+    Parameters
+    ----------
+    selection : tuple, slice, or scalar
+        A valid selection value for indexing into arrays.
+
+    Returns
+    -------
+    is_pure : bool
+        True if the selection is a pure fancy indexing expression (ie not mixed
+        with boolean or slices).
+    """
+    if ndim == 1:
+        if is_integer_list(selection) or is_integer_array(selection):
+            return True
+        # if not, we go through the normal path below, because a 1-tuple
+        # of integers is also allowed.
+    no_slicing = (
+        isinstance(selection, tuple)
+        and len(selection) == ndim
+        and not (
+            any(isinstance(elem, slice) or elem is Ellipsis
+                for elem in selection)
+        )
+    )
+    return (
+        no_slicing and
+        all(
+            is_integer(elem)
+            or is_integer_list(elem)
+            or is_integer_array(elem)
+            for elem in selection
+        ) and
+        any(
+            is_integer_list(elem)
+            or is_integer_array(elem)
+            for elem in selection
+        )
+    )
 
 
 def normalize_integer_selection(dim_sel, dim_len):
@@ -833,10 +890,14 @@ def make_slice_selection(selection):
     ls = []
     for dim_selection in selection:
         if is_integer(dim_selection):
-            ls.append(slice(dim_selection, dim_selection + 1, 1))
+            ls.append(slice(int(dim_selection), int(dim_selection) + 1, 1))
         elif isinstance(dim_selection, np.ndarray):
             if len(dim_selection) == 1:
-                ls.append(slice(dim_selection[0], dim_selection[0] + 1, 1))
+                ls.append(
+                    slice(
+                        int(dim_selection[0]), int(dim_selection[0]) + 1, 1
+                    )
+                )
             else:
                 raise ArrayIndexError()
         else:

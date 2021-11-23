@@ -18,13 +18,18 @@ from zarr.convenience import (
     open_consolidated,
     save,
     save_group,
+    save_array,
     copy_all,
 )
 from zarr.core import Array
 from zarr.errors import CopyError
 from zarr.hierarchy import Group, group
-from zarr.storage import (ConsolidatedMetadataStore, MemoryStore,
-                          atexit_rmtree, getsize)
+from zarr.storage import (
+    ConsolidatedMetadataStore,
+    MemoryStore,
+    atexit_rmtree,
+    getsize,
+)
 
 
 def test_open_array(path_type):
@@ -223,6 +228,17 @@ def test_consolidated_with_chunk_store():
     # make sure keyword arguments are passed through without error
     open_consolidated(store, cache_attrs=True, synchronizer=None,
                       chunk_store=chunk_store)
+
+
+@pytest.mark.parametrize("options", (
+    {"dimension_separator": "/"},
+    {"dimension_separator": "."},
+    {"dimension_separator": None},
+))
+def test_save_array_separator(tmpdir, options):
+    data = np.arange(6).reshape((3, 2))
+    url = tmpdir.join("test.zarr")
+    save_array(url, data, **options)
 
 
 class TestCopyStore(unittest.TestCase):

@@ -9,11 +9,20 @@ import time
 import numpy as np
 from asciitree import BoxStyle, LeftAligned
 from asciitree.traversal import Traversal
+from collections.abc import Iterable
 from numcodecs.compat import ensure_ndarray, ensure_text
 from numcodecs.registry import codec_registry
 from numcodecs.blosc import cbuffer_sizes, cbuffer_metainfo
 
 from typing import Any, Callable, Dict, Optional, Tuple, Union
+
+
+def flatten(arg: Iterable) -> Iterable:
+    for element in arg:
+        if isinstance(element, Iterable) and not isinstance(element, (str, bytes)):
+            yield from flatten(element)
+        else:
+            yield element
 
 
 # codecs to use for object dtype convenience API
@@ -596,12 +605,6 @@ class PartialReadBuffer:
         assert self.buff is not None
         if self.nblocks == 1:
             return
-        blocks_to_decompress = nitems / self.n_per_block
-        blocks_to_decompress = (
-            blocks_to_decompress
-            if blocks_to_decompress == int(blocks_to_decompress)
-            else int(blocks_to_decompress + 1)
-        )
         start_block = int(start / self.n_per_block)
         wanted_decompressed = 0
         while wanted_decompressed < nitems:
@@ -650,3 +653,35 @@ def retry_call(callabl: Callable,
                 time.sleep(wait)
             else:
                 raise
+
+
+def all_equal(value: Any, array: Any):
+    """
+    Test if all the elements of an array are equivalent to a value.
+    If `value` is None, then this function does not do any comparison and
+    returns False.
+    """
+
+    if value is None:
+        return False
+    if not value:
+        # if `value` is falsey, then just 1 truthy value in `array`
+        # is sufficient to return False. We assume here that np.any is
+        # optimized to return on the first truthy value in `array`.
+        try:
+            return not np.any(array)
+        except TypeError:  # pragma: no cover
+            pass
+    if np.issubdtype(array.dtype, np.object_):
+        # we have to flatten the result of np.equal to handle outputs like
+        # [np.array([True,True]), True, True]
+        return all(flatten(np.equal(value, array, dtype=array.dtype)))
+    else:
+        # Numpy errors if you call np.isnan on custom dtypes, so ensure
+        # we are working with floats before calling isnan
+        if np.issubdtype(array.dtype, np.floating) and np.isnan(value):
+            return np.all(np.isnan(array))
+        else:
+            # using == raises warnings from numpy deprecated pattern, but
+            # using np.equal() raises type errors for structured dtypes...
+            return np.all(value == array)

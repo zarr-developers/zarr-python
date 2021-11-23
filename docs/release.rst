@@ -6,7 +6,81 @@ Release notes
 Unreleased
 ----------
 
+Enhancements
+~~~~~~~~~~~~
+
 * Allow to assign array ``fill_values`` and update metadata accordingly. :issue:`662`
+
+* array indexing with [] (getitem and setitem) now supports fancy indexing.
+  By :user:`Juan Nunez-Iglesias <jni>`; :issue:`725`.
+
+* write_empty_chunks=False deletes chunks consisting of only fill_value.
+  By :user:`Davis Bennett <d-v-b>`; :issue:`738`.
+
+* Move metadata handling to a class.
+  By :user:`Greggory Lee <grlee77>`; :issue:`839`.
+
+* Create a Base store class for Zarr Store.
+  By :user:`Greggory Lee <grlee77>`; :issue:`789`.
+
+.. _release_2.10.3:
+
+2.10.3
+------
+
+Bug fixes
+~~~~~~~~~
+
+* N5 keywords now emit UserWarning instead of raising a ValueError.
+  By :user:`Boaz Mohar <boazmohar>`; :issue:`860`.
+
+* blocks_to_decompress not used in read_part function.
+  By :user:`Boaz Mohar <boazmohar>`; :issue:`861`.
+
+* defines blocksize for array, updates hexdigest values.
+  By :user:`Andrew Fulton <andrewfulton9>`; :issue:`867`.
+
+* Fix test failure on Debian and conda-forge builds.
+  By :user:`Josh Moore <joshmoore>`; :issue:`871`.
+
+.. _release_2.10.2:
+
+2.10.2
+------
+
+Bug fixes
+~~~~~~~~~
+
+* Fix NestedDirectoryStore datasets without dimension_separator metadata.
+  By :user:`Josh Moore <joshmoore>`; :issue:`850`.
+
+.. _release_2.10.1:
+
+2.10.1
+------
+
+Bug fixes
+~~~~~~~~~
+
+* Fix regression by setting normalize_keys=False in fsstore constructor.
+  By :user:`Davis Bennett <d-v-b>`; :issue:`842`.
+
+.. _release_2.10.0:
+
+2.10.0
+------
+
+Enhancements
+~~~~~~~~~~~~
+
+* Add N5FSStore.
+  By :user:`Davis Bennett <d-v-b>`; :issue:`793`.
+
+Bug fixes
+~~~~~~~~~
+
+* Ignore None dim_separators in save_array.
+  By :user:`Josh Moore <joshmoore>`; :issue:`831`.
 
 .. _release_2.9.5:
 
