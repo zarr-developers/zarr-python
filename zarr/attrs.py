@@ -1,6 +1,6 @@
 from collections.abc import MutableMapping
 
-from zarr.meta import parse_metadata
+from zarr._storage.store import Store
 from zarr.util import json_dumps
 
 
@@ -26,7 +26,7 @@ class Attributes(MutableMapping):
 
     def __init__(self, store, key='.zattrs', read_only=False, cache=True,
                  synchronizer=None):
-        self.store = store
+        self.store = Store._ensure_store(store)
         self.key = key
         self.read_only = read_only
         self.cache = cache
@@ -39,7 +39,7 @@ class Attributes(MutableMapping):
         except KeyError:
             d = dict()
         else:
-            d = parse_metadata(data)
+            d = self.store._metadata_class.parse_metadata(data)
         return d
 
     def asdict(self):

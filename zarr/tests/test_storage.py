@@ -20,18 +20,17 @@ from numcodecs.compat import ensure_bytes
 from zarr.codecs import BZ2, AsType, Blosc, Zlib
 from zarr.errors import MetadataError
 from zarr.hierarchy import group
-from zarr.meta import (ZARR_FORMAT, decode_array_metadata,
-                       decode_group_metadata, encode_array_metadata,
-                       encode_group_metadata)
+from zarr.meta import ZARR_FORMAT, decode_array_metadata
 from zarr.n5 import N5Store, N5FSStore
 from zarr.storage import (ABSStore, ConsolidatedMetadataStore, DBMStore,
-                          DictStore, DirectoryStore, LMDBStore, LRUStoreCache,
-                          MemoryStore, MongoDBStore, NestedDirectoryStore,
-                          RedisStore, SQLiteStore, TempStore, ZipStore,
+                          DictStore, DirectoryStore, KVStore, LMDBStore,
+                          LRUStoreCache, MemoryStore, MongoDBStore,
+                          NestedDirectoryStore, RedisStore, SQLiteStore,
+                          Store, TempStore, ZipStore,
                           array_meta_key, atexit_rmglob, atexit_rmtree,
                           attrs_key, default_compressor, getsize,
                           group_meta_key, init_array, init_group, migrate_1to2)
-from zarr.storage import FSStore
+from zarr.storage import FSStore, rename, listdir
 from zarr.tests.util import CountingDict, have_fsspec, skip_test_env_var, abs_container
 
 
@@ -54,12 +53,56 @@ def skip_if_nested_chunks(**kwargs):
         pytest.skip("nested chunks are unsupported")
 
 
+def test_kvstore_repr():
+    repr(KVStore(dict()))
+
+
+def test_invalid_store():
+    class InvalidStore:
+        pass
+
+    with pytest.raises(ValueError):
+        Store._ensure_store(InvalidStore())
+
+
+def test_capabilities():
+    s = KVStore(dict())
+    assert s.is_readable()
+    assert s.is_listable()
+    assert s.is_erasable()
+    assert s.is_writeable()
+
+
+def test_getsize_non_implemented():
+    assert getsize(object()) == -1
+
+
+def test_kvstore_eq():
+    assert KVStore(dict()) != dict()
+
+
+def test_coverage_rename():
+    store = dict()
+    store['a'] = 1
+    rename(store, 'a', 'b')
+
+
+def test_deprecated_listdir_nosotre():
+    store = dict()
+    with pytest.warns(UserWarning, match="has no `listdir`"):
+        listdir(store)
+
+
 class StoreTests(object):
     """Abstract store tests."""
 
     def create_store(self, **kwargs):  # pragma: no cover
         # implement in sub-class
         raise NotImplementedError
+
+    def test_context_manager(self):
+        with self.create_store():
+            pass
 
     def test_get_set_del_contains(self):
         store = self.create_store()
@@ -87,8 +130,7 @@ class StoreTests(object):
                 # noinspection PyStatementEffect
                 del store['foo']
 
-        if hasattr(store, 'close'):
-            store.close()
+        store.close()
 
     def test_set_invalid_content(self):
         store = self.create_store()
@@ -96,8 +138,7 @@ class StoreTests(object):
         with pytest.raises(TypeError):
             store['baz'] = list(range(5))
 
-        if hasattr(store, 'close'):
-            store.close()
+        store.close()
 
     def test_clear(self):
         store = self.create_store()
@@ -109,8 +150,7 @@ class StoreTests(object):
         assert 'foo' not in store
         assert 'baz' not in store
 
-        if hasattr(store, 'close'):
-            store.close()
+        store.close()
 
     def test_pop(self):
         store = self.create_store()
@@ -132,8 +172,7 @@ class StoreTests(object):
         v = store.pop('xxx', None)
         assert v is None
 
-        if hasattr(store, 'close'):
-            store.close()
+        store.close()
 
     def test_popitem(self):
         store = self.create_store()
@@ -145,8 +184,7 @@ class StoreTests(object):
         with pytest.raises(KeyError):
             store.popitem()
 
-        if hasattr(store, 'close'):
-            store.close()
+        store.close()
 
     def test_writeable_values(self):
         store = self.create_store()
@@ -157,8 +195,7 @@ class StoreTests(object):
         store['foo3'] = array.array('B', b'bar')
         store['foo4'] = np.frombuffer(b'bar', dtype='u1')
 
-        if hasattr(store, 'close'):
-            store.close()
+        store.close()
 
     def test_update(self):
         store = self.create_store()
@@ -168,8 +205,7 @@ class StoreTests(object):
         assert b'bar' == ensure_bytes(store['foo'])
         assert b'quux' == ensure_bytes(store['baz'])
 
-        if hasattr(store, 'close'):
-            store.close()
+        store.close()
 
     def test_iterators(self):
         store = self.create_store()
@@ -195,8 +231,7 @@ class StoreTests(object):
         assert ({('a', b'aaa'), ('b', b'bbb'), ('c/d', b'ddd'), ('c/e/f', b'fff')} ==
                 set(map(lambda kv: (kv[0], ensure_bytes(kv[1])), store.items())))
 
-        if hasattr(store, 'close'):
-            store.close()
+        store.close()
 
     def test_pickle(self):
 
@@ -211,10 +246,9 @@ class StoreTests(object):
         dump = pickle.dumps(store)
         # some stores cannot be opened twice at the same time, need to close
         # store before can round-trip through pickle
-        if hasattr(store, 'close'):
-            store.close()
-            # check can still pickle after close
-            assert dump == pickle.dumps(store)
+        store.close()
+        # check can still pickle after close
+        assert dump == pickle.dumps(store)
         store2 = pickle.loads(dump)
 
         # verify
@@ -223,8 +257,7 @@ class StoreTests(object):
         assert b'bar' == ensure_bytes(store2['foo'])
         assert b'quux' == ensure_bytes(store2['baz'])
 
-        if hasattr(store2, 'close'):
-            store2.close()
+        store2.close()
 
     def test_getsize(self):
         store = self.create_store()
@@ -246,8 +279,7 @@ class StoreTests(object):
             assert 15 == getsize(store)
             assert 5 == getsize(store, 'spong')
 
-        if hasattr(store, 'close'):
-            store.close()
+        store.close()
 
     # noinspection PyStatementEffect
     def test_hierarchy(self):
@@ -312,59 +344,58 @@ class StoreTests(object):
             assert [] == store.listdir('c/e/f')
 
         # test rename (optional)
-        if hasattr(store, 'rename'):
-            store.rename('c/e', 'c/e2')
-            assert 'c/d' in store
-            assert 'c/e' not in store
-            assert 'c/e/f' not in store
-            assert 'c/e/g' not in store
-            assert 'c/e2' not in store
-            assert 'c/e2/f' in store
-            assert 'c/e2/g' in store
-            store.rename('c/e2', 'c/e')
-            assert 'c/d' in store
-            assert 'c/e2' not in store
-            assert 'c/e2/f' not in store
-            assert 'c/e2/g' not in store
-            assert 'c/e' not in store
-            assert 'c/e/f' in store
-            assert 'c/e/g' in store
-            store.rename('c', 'c1/c2/c3')
-            assert 'a' in store
-            assert 'c' not in store
-            assert 'c/d' not in store
-            assert 'c/e' not in store
-            assert 'c/e/f' not in store
-            assert 'c/e/g' not in store
-            assert 'c1' not in store
-            assert 'c1/c2' not in store
-            assert 'c1/c2/c3' not in store
-            assert 'c1/c2/c3/d' in store
-            assert 'c1/c2/c3/e' not in store
-            assert 'c1/c2/c3/e/f' in store
-            assert 'c1/c2/c3/e/g' in store
-            store.rename('c1/c2/c3', 'c')
-            assert 'c' not in store
-            assert 'c/d' in store
-            assert 'c/e' not in store
-            assert 'c/e/f' in store
-            assert 'c/e/g' in store
-            assert 'c1' not in store
-            assert 'c1/c2' not in store
-            assert 'c1/c2/c3' not in store
-            assert 'c1/c2/c3/d' not in store
-            assert 'c1/c2/c3/e' not in store
-            assert 'c1/c2/c3/e/f' not in store
-            assert 'c1/c2/c3/e/g' not in store
+        if store.is_erasable():
+            store.rename("c/e", "c/e2")
+            assert "c/d" in store
+            assert "c/e" not in store
+            assert "c/e/f" not in store
+            assert "c/e/g" not in store
+            assert "c/e2" not in store
+            assert "c/e2/f" in store
+            assert "c/e2/g" in store
+            store.rename("c/e2", "c/e")
+            assert "c/d" in store
+            assert "c/e2" not in store
+            assert "c/e2/f" not in store
+            assert "c/e2/g" not in store
+            assert "c/e" not in store
+            assert "c/e/f" in store
+            assert "c/e/g" in store
+            store.rename("c", "c1/c2/c3")
+            assert "a" in store
+            assert "c" not in store
+            assert "c/d" not in store
+            assert "c/e" not in store
+            assert "c/e/f" not in store
+            assert "c/e/g" not in store
+            assert "c1" not in store
+            assert "c1/c2" not in store
+            assert "c1/c2/c3" not in store
+            assert "c1/c2/c3/d" in store
+            assert "c1/c2/c3/e" not in store
+            assert "c1/c2/c3/e/f" in store
+            assert "c1/c2/c3/e/g" in store
+            store.rename("c1/c2/c3", "c")
+            assert "c" not in store
+            assert "c/d" in store
+            assert "c/e" not in store
+            assert "c/e/f" in store
+            assert "c/e/g" in store
+            assert "c1" not in store
+            assert "c1/c2" not in store
+            assert "c1/c2/c3" not in store
+            assert "c1/c2/c3/d" not in store
+            assert "c1/c2/c3/e" not in store
+            assert "c1/c2/c3/e/f" not in store
+            assert "c1/c2/c3/e/g" not in store
 
-        # test rmdir (optional)
-        if hasattr(store, 'rmdir'):
-            store.rmdir('c/e')
-            assert 'c/d' in store
-            assert 'c/e/f' not in store
-            assert 'c/e/g' not in store
-            store.rmdir('c')
-            assert 'c/d' not in store
+            # test rmdir (optional)
+            store.rmdir("c/e")
+            assert "c/d" in store
+            assert "c/e/f" not in store
+            assert "c/e/g" not in store
+            store.rmdir("c")
+            assert "c/d" not in store
             store.rmdir()
             assert 'a' not in store
             assert 'b' not in store
@@ -383,8 +414,7 @@ class StoreTests(object):
             assert 'c/d' in store
             assert 'c/e/f' in store
 
-        if hasattr(store, 'close'):
-            store.close()
+        store.close()
 
     def test_init_array(self, dimension_separator_fixture):
 
@@ -395,7 +425,7 @@ class StoreTests(object):
 
         # check metadata
         assert array_meta_key in store
-        meta = decode_array_metadata(store[array_meta_key])
+        meta = store._metadata_class.decode_array_metadata(store[array_meta_key])
         assert ZARR_FORMAT == meta['zarr_format']
         assert (1000,) == meta['shape']
         assert (100,) == meta['chunks']
@@ -405,8 +435,7 @@ class StoreTests(object):
         # Missing MUST be assumed to be "."
         assert meta.get('dimension_separator', ".") is want_dim_sep
 
-        if hasattr(store, 'close'):
-            store.close()
+        store.close()
 
     def test_init_array_overwrite(self):
         self._test_init_array_overwrite('F')
@@ -429,7 +458,7 @@ class StoreTests(object):
     def _test_init_array_overwrite(self, order):
         # setup
         store = self.create_store()
-        store[array_meta_key] = encode_array_metadata(
+        store[array_meta_key] = store._metadata_class.encode_array_metadata(
             dict(shape=(2000,),
                  chunks=(200,),
                  dtype=np.dtype('u1'),
@@ -451,14 +480,13 @@ class StoreTests(object):
             pass
         else:
             assert array_meta_key in store
-            meta = decode_array_metadata(store[array_meta_key])
+            meta = store._metadata_class.decode_array_metadata(store[array_meta_key])
             assert ZARR_FORMAT == meta['zarr_format']
             assert (1000,) == meta['shape']
             assert (100,) == meta['chunks']
             assert np.dtype('i4') == meta['dtype']
 
-        if hasattr(store, 'close'):
-            store.close()
+        store.close()
 
     def test_init_array_path(self):
         path = 'foo/bar'
@@ -468,7 +496,7 @@ class StoreTests(object):
         # check metadata
         key = path + '/' + array_meta_key
         assert key in store
-        meta = decode_array_metadata(store[key])
+        meta = store._metadata_class.decode_array_metadata(store[key])
         assert ZARR_FORMAT == meta['zarr_format']
         assert (1000,) == meta['shape']
         assert (100,) == meta['chunks']
@@ -476,8 +504,7 @@ class StoreTests(object):
         assert default_compressor.get_config() == meta['compressor']
         assert meta['fill_value'] is None
 
-        if hasattr(store, 'close'):
-            store.close()
+        store.close()
 
     def _test_init_array_overwrite_path(self, order):
         # setup
@@ -490,8 +517,8 @@ class StoreTests(object):
                     fill_value=0,
                     order=order,
                     filters=None)
-        store[array_meta_key] = encode_array_metadata(meta)
-        store[path + '/' + array_meta_key] = encode_array_metadata(meta)
+        store[array_meta_key] = store._metadata_class.encode_array_metadata(meta)
+        store[path + '/' + array_meta_key] = store._metadata_class.encode_array_metadata(meta)
 
         # don't overwrite
         with pytest.raises(ValueError):
@@ -508,20 +535,19 @@ class StoreTests(object):
             assert array_meta_key not in store
             assert (path + '/' + array_meta_key) in store
             # should have been overwritten
-            meta = decode_array_metadata(store[path + '/' + array_meta_key])
+            meta = store._metadata_class.decode_array_metadata(store[path + '/' + array_meta_key])
             assert ZARR_FORMAT == meta['zarr_format']
             assert (1000,) == meta['shape']
             assert (100,) == meta['chunks']
             assert np.dtype('i4') == meta['dtype']
 
-        if hasattr(store, 'close'):
-            store.close()
+        store.close()
 
     def test_init_array_overwrite_group(self):
         # setup
         path = 'foo/bar'
         store = self.create_store()
-        store[path + '/' + group_meta_key] = encode_group_metadata()
+        store[path + '/' + group_meta_key] = store._metadata_class.encode_group_metadata()
 
         # don't overwrite
         with pytest.raises(ValueError):
@@ -536,20 +562,19 @@ class StoreTests(object):
         else:
             assert (path + '/' + group_meta_key) not in store
             assert (path + '/' + array_meta_key) in store
-            meta = decode_array_metadata(store[path + '/' + array_meta_key])
+            meta = store._metadata_class.decode_array_metadata(store[path + '/' + array_meta_key])
             assert ZARR_FORMAT == meta['zarr_format']
             assert (1000,) == meta['shape']
             assert (100,) == meta['chunks']
             assert np.dtype('i4') == meta['dtype']
 
-        if hasattr(store, 'close'):
-            store.close()
+        store.close()
 
     def _test_init_array_overwrite_chunk_store(self, order):
         # setup
         store = self.create_store()
         chunk_store = self.create_store()
-        store[array_meta_key] = encode_array_metadata(
+        store[array_meta_key] = store._metadata_class.encode_array_metadata(
             dict(shape=(2000,),
                  chunks=(200,),
                  dtype=np.dtype('u1'),
@@ -573,7 +598,7 @@ class StoreTests(object):
             pass
         else:
             assert array_meta_key in store
-            meta = decode_array_metadata(store[array_meta_key])
+            meta = store._metadata_class.decode_array_metadata(store[array_meta_key])
             assert ZARR_FORMAT == meta['zarr_format']
             assert (1000,) == meta['shape']
             assert (100,) == meta['chunks']
@@ -581,19 +606,16 @@ class StoreTests(object):
             assert '0' not in chunk_store
             assert '1' not in chunk_store
 
-        if hasattr(store, 'close'):
-            store.close()
-        if hasattr(chunk_store, 'close'):
-            chunk_store.close()
+        store.close()
+        chunk_store.close()
 
     def test_init_array_compat(self):
         store = self.create_store()
         init_array(store, shape=1000, chunks=100, compressor='none')
-        meta = decode_array_metadata(store[array_meta_key])
+        meta = store._metadata_class.decode_array_metadata(store[array_meta_key])
         assert meta['compressor'] is None
 
-        if hasattr(store, 'close'):
-            store.close()
+        store.close()
 
     def test_init_group(self):
         store = self.create_store()
@@ -601,16 +623,15 @@ class StoreTests(object):
 
         # check metadata
         assert group_meta_key in store
-        meta = decode_group_metadata(store[group_meta_key])
+        meta = store._metadata_class.decode_group_metadata(store[group_meta_key])
         assert ZARR_FORMAT == meta['zarr_format']
 
-        if hasattr(store, 'close'):
-            store.close()
+        store.close()
 
     def _test_init_group_overwrite(self, order):
         # setup
         store = self.create_store()
-        store[array_meta_key] = encode_array_metadata(
+        store[array_meta_key] = store._metadata_class.encode_array_metadata(
             dict(shape=(2000,),
                  chunks=(200,),
                  dtype=np.dtype('u1'),
@@ -632,15 +653,14 @@ class StoreTests(object):
         else:
             assert array_meta_key not in store
             assert group_meta_key in store
-            meta = decode_group_metadata(store[group_meta_key])
+            meta = store._metadata_class.decode_group_metadata(store[group_meta_key])
             assert ZARR_FORMAT == meta['zarr_format']
 
         # don't overwrite group
         with pytest.raises(ValueError):
             init_group(store)
 
-        if hasattr(store, 'close'):
-            store.close()
+        store.close()
 
     def _test_init_group_overwrite_path(self, order):
         # setup
@@ -653,8 +673,8 @@ class StoreTests(object):
                     fill_value=0,
                     order=order,
                     filters=None)
-        store[array_meta_key] = encode_array_metadata(meta)
-        store[path + '/' + array_meta_key] = encode_array_metadata(meta)
+        store[array_meta_key] = store._metadata_class.encode_array_metadata(meta)
+        store[path + '/' + array_meta_key] = store._metadata_class.encode_array_metadata(meta)
 
         # don't overwrite
         with pytest.raises(ValueError):
@@ -671,17 +691,16 @@ class StoreTests(object):
             assert (path + '/' + array_meta_key) not in store
             assert (path + '/' + group_meta_key) in store
             # should have been overwritten
-            meta = decode_group_metadata(store[path + '/' + group_meta_key])
+            meta = store._metadata_class.decode_group_metadata(store[path + '/' + group_meta_key])
             assert ZARR_FORMAT == meta['zarr_format']
 
-        if hasattr(store, 'close'):
-            store.close()
+        store.close()
 
     def _test_init_group_overwrite_chunk_store(self, order):
         # setup
         store = self.create_store()
         chunk_store = self.create_store()
-        store[array_meta_key] = encode_array_metadata(
+        store[array_meta_key] = store._metadata_class.encode_array_metadata(
             dict(shape=(2000,),
                  chunks=(200,),
                  dtype=np.dtype('u1'),
@@ -705,7 +724,7 @@ class StoreTests(object):
         else:
             assert array_meta_key not in store
             assert group_meta_key in store
-            meta = decode_group_metadata(store[group_meta_key])
+            meta = store._metadata_class.decode_group_metadata(store[group_meta_key])
             assert ZARR_FORMAT == meta['zarr_format']
             assert 'foo' not in chunk_store
             assert 'baz' not in chunk_store
@@ -714,17 +733,15 @@ class StoreTests(object):
         with pytest.raises(ValueError):
             init_group(store)
 
-        if hasattr(store, 'close'):
-            store.close()
-        if hasattr(chunk_store, 'close'):
-            chunk_store.close()
+        store.close()
+        chunk_store.close()
 
 
 class TestMappingStore(StoreTests):
 
     def create_store(self, **kwargs):
         skip_if_nested_chunks(**kwargs)
-        return dict()
+        return KVStore(dict())
 
     def test_set_invalid_content(self):
         # Generic mappings support non-buffer types
@@ -922,7 +939,7 @@ class TestFSStore(StoreTests):
 
         # check metadata
         assert array_meta_key in store
-        meta = decode_array_metadata(store[array_meta_key])
+        meta = store._metadata_class.decode_array_metadata(store[array_meta_key])
         assert ZARR_FORMAT == meta['zarr_format']
         assert (1000,) == meta['shape']
         assert (100,) == meta['chunks']
@@ -1013,6 +1030,12 @@ class TestFSStore(StoreTests):
             del store['foo']
 
         with pytest.raises(PermissionError):
+            store.delitems(['foo'])
+
+        with pytest.raises(PermissionError):
+            store.setitems({'foo': b'baz'})
+
+        with pytest.raises(PermissionError):
             store.clear()
 
         with pytest.raises(PermissionError):
@@ -1084,11 +1107,13 @@ class TestFSStore(StoreTests):
 
         with pytest.raises(PermissionError):
             # even though overwrite=True, store is read-only, so fails
-            g2.create_dataset("data", shape=(8, 8, 8), mode='w',
-                              fill_value=-1, chunks=(1, 1, 1), overwrite=True)
+            g2.create_dataset(
+                "data", shape=(8, 8, 8), fill_value=-1, chunks=(1, 1, 1), overwrite=True
+            )
 
-        a = g.create_dataset("data", shape=(8, 8, 8), mode='w',
-                             fill_value=-1, chunks=(1, 1, 1), overwrite=True)
+        a = g.create_dataset(
+            "data", shape=(8, 8, 8), fill_value=-1, chunks=(1, 1, 1), overwrite=True
+        )
         assert (a[:] == -np.ones((8, 8, 8))).all()
 
 
@@ -1164,7 +1189,7 @@ class TestNestedDirectoryStore(TestDirectoryStore):
 
         # check metadata
         assert array_meta_key in store
-        meta = decode_array_metadata(store[array_meta_key])
+        meta = store._metadata_class.decode_array_metadata(store[array_meta_key])
         assert ZARR_FORMAT == meta['zarr_format']
         assert (1000,) == meta['shape']
         assert (100,) == meta['chunks']
@@ -1240,7 +1265,7 @@ class TestN5Store(TestNestedDirectoryStore):
 
         # check metadata
         assert array_meta_key in store
-        meta = decode_array_metadata(store[array_meta_key])
+        meta = store._metadata_class.decode_array_metadata(store[array_meta_key])
         assert ZARR_FORMAT == meta['zarr_format']
         assert (1000,) == meta['shape']
         assert (100,) == meta['chunks']
@@ -1260,7 +1285,7 @@ class TestN5Store(TestNestedDirectoryStore):
         # check metadata
         key = path + '/' + array_meta_key
         assert key in store
-        meta = decode_array_metadata(store[key])
+        meta = store._metadata_class.decode_array_metadata(store[key])
         assert ZARR_FORMAT == meta['zarr_format']
         assert (1000,) == meta['shape']
         assert (100,) == meta['chunks']
@@ -1274,7 +1299,7 @@ class TestN5Store(TestNestedDirectoryStore):
     def test_init_array_compat(self):
         store = self.create_store()
         init_array(store, shape=1000, chunks=100, compressor='none')
-        meta = decode_array_metadata(store[array_meta_key])
+        meta = store._metadata_class.decode_array_metadata(store[array_meta_key])
         # N5Store wraps the actual compressor
         compressor_config = meta['compressor']['compressor_config']
         assert compressor_config is None
@@ -1305,7 +1330,7 @@ class TestN5Store(TestNestedDirectoryStore):
         assert group_meta_key in store
         assert group_meta_key in store.listdir()
         assert group_meta_key in store.listdir('')
-        meta = decode_group_metadata(store[group_meta_key])
+        meta = store._metadata_class.decode_group_metadata(store[group_meta_key])
         assert ZARR_FORMAT == meta['zarr_format']
 
     def test_filters(self):
@@ -1360,7 +1385,7 @@ class TestN5FSStore(TestFSStore):
 
         # check metadata
         assert array_meta_key in store
-        meta = decode_array_metadata(store[array_meta_key])
+        meta = store._metadata_class.decode_array_metadata(store[array_meta_key])
         assert ZARR_FORMAT == meta['zarr_format']
         assert (1000,) == meta['shape']
         assert (100,) == meta['chunks']
@@ -1380,7 +1405,7 @@ class TestN5FSStore(TestFSStore):
         # check metadata
         key = path + '/' + array_meta_key
         assert key in store
-        meta = decode_array_metadata(store[key])
+        meta = store._metadata_class.decode_array_metadata(store[key])
         assert ZARR_FORMAT == meta['zarr_format']
         assert (1000,) == meta['shape']
         assert (100,) == meta['chunks']
@@ -1394,7 +1419,7 @@ class TestN5FSStore(TestFSStore):
     def test_init_array_compat(self):
         store = self.create_store()
         init_array(store, shape=1000, chunks=100, compressor='none')
-        meta = decode_array_metadata(store[array_meta_key])
+        meta = store._metadata_class.decode_array_metadata(store[array_meta_key])
         # N5Store wraps the actual compressor
         compressor_config = meta['compressor']['compressor_config']
         assert compressor_config is None
@@ -1890,26 +1915,27 @@ class TestLRUStoreCache(StoreTests):
 
 
 def test_getsize():
-    store = dict()
+    store = KVStore(dict())
     store['foo'] = b'aaa'
     store['bar'] = b'bbbb'
     store['baz/quux'] = b'ccccc'
     assert 7 == getsize(store)
     assert 5 == getsize(store, 'baz')
 
-    store = dict()
+    store = KVStore(dict())
     store['boo'] = None
     assert -1 == getsize(store)
 
 
-def test_migrate_1to2():
+@pytest.mark.parametrize('dict_store', [False, True])
+def test_migrate_1to2(dict_store):
     from zarr import meta_v1
 
     # N.B., version 1 did not support hierarchies, so we only have to be
     # concerned about migrating a single array at the root of the store
 
     # setup
-    store = dict()
+    store = dict() if dict_store else KVStore(dict())
     meta = dict(
         shape=(100,),
         chunks=(10,),
@@ -1947,7 +1973,7 @@ def test_migrate_1to2():
     assert meta_migrated['compressor'] == Zlib(1).get_config()
 
     # check dict compression_opts
-    store = dict()
+    store = dict() if dict_store else KVStore(dict())
     meta['compression'] = 'blosc'
     meta['compression_opts'] = dict(cname='lz4', clevel=5, shuffle=1)
     meta_json = meta_v1.encode_metadata(meta)
@@ -1961,7 +1987,7 @@ def test_migrate_1to2():
             Blosc(cname='lz4', clevel=5, shuffle=1).get_config())
 
     # check 'none' compression is migrated to None (null in JSON)
-    store = dict()
+    store = dict() if dict_store else KVStore(dict())
     meta['compression'] = 'none'
     meta_json = meta_v1.encode_metadata(meta)
     store['meta'] = meta_json
