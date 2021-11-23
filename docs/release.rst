@@ -9,6 +9,8 @@ Unreleased
 Enhancements
 ~~~~~~~~~~~~
 
+* Allow to assign array ``fill_values`` and update metadata accordingly. :issue:`662`
+
 * array indexing with [] (getitem and setitem) now supports fancy indexing.
   By :user:`Juan Nunez-Iglesias <jni>`; :issue:`725`.
 
