@@ -1,8 +1,9 @@
 """Convenience functions for storing and loading data."""
 import io
 import itertools
+import os
 import re
-from collections.abc import Mapping
+from collections.abc import Mapping, MutableMapping
 
 from zarr.core import Array
 from zarr.creation import array as _create_array
@@ -12,17 +13,21 @@ from zarr.hierarchy import Group
 from zarr.hierarchy import group as _create_group
 from zarr.hierarchy import open_group
 from zarr.meta import json_dumps, json_loads
-from zarr.storage import contains_array, contains_group
+from zarr.storage import contains_array, contains_group, BaseStore
 from zarr.util import TreeViewer, buffer_size, normalize_storage_path
+
+from typing import Union
+
+StoreLike = Union[BaseStore, MutableMapping, str, None]
 
 
 # noinspection PyShadowingBuiltins
-def open(store=None, mode='a', **kwargs):
+def open(store: StoreLike = None, mode: str = "a", **kwargs):
     """Convenience function to open a group or array using file-mode-like semantics.
 
     Parameters
     ----------
-    store : MutableMapping or string, optional
+    store : Store or string, optional
         Store or path to directory in file system or name of zip file.
     mode : {'r', 'r+', 'a', 'w', 'w-'}, optional
         Persistence mode: 'r' means read only (must exist); 'r+' means
@@ -75,32 +80,37 @@ def open(store=None, mode='a', **kwargs):
     clobber = mode == 'w'
     # we pass storage options explicitly, since normalize_store_arg might construct
     # a store if the input is a fsspec-compatible URL
-    store = normalize_store_arg(store, clobber=clobber,
-                                storage_options=kwargs.pop("storage_options", {}))
+    _store: BaseStore = normalize_store_arg(
+        store, clobber=clobber, storage_options=kwargs.pop("storage_options", {})
+    )
     path = normalize_storage_path(path)
 
     if mode in {'w', 'w-', 'x'}:
         if 'shape' in kwargs:
-            return open_array(store, mode=mode, **kwargs)
+            return open_array(_store, mode=mode, **kwargs)
         else:
-            return open_group(store, mode=mode, **kwargs)
+            return open_group(_store, mode=mode, **kwargs)
 
     elif mode == "a":
-        if "shape" in kwargs or contains_array(store, path):
-            return open_array(store, mode=mode, **kwargs)
+        if "shape" in kwargs or contains_array(_store, path):
+            return open_array(_store, mode=mode, **kwargs)
         else:
-            return open_group(store, mode=mode, **kwargs)
+            return open_group(_store, mode=mode, **kwargs)
 
     else:
-        if contains_array(store, path):
-            return open_array(store, mode=mode, **kwargs)
-        elif contains_group(store, path):
-            return open_group(store, mode=mode, **kwargs)
+        if contains_array(_store, path):
+            return open_array(_store, mode=mode, **kwargs)
+        elif contains_group(_store, path):
+            return open_group(_store, mode=mode, **kwargs)
         else:
             raise PathNotFoundError(path)
 
 
-def save_array(store, arr, **kwargs):
+def _might_close(path):
+    return isinstance(path, (str, os.PathLike))
+
+
+def save_array(store: StoreLike, arr, **kwargs):
     """Convenience function to save a NumPy array to the local file system, following a
     similar API to the NumPy save() function.
 
@@ -131,17 +141,17 @@ def save_array(store, arr, **kwargs):
         array([   0,    1,    2, ..., 9997, 9998, 9999])
 
     """
-    may_need_closing = isinstance(store, str)
-    store = normalize_store_arg(store, clobber=True)
+    may_need_closing = _might_close(store)
+    _store: BaseStore = normalize_store_arg(store, clobber=True)
     try:
-        _create_array(arr, store=store, overwrite=True, **kwargs)
+        _create_array(arr, store=_store, overwrite=True, **kwargs)
     finally:
-        if may_need_closing and hasattr(store, 'close'):
+        if may_need_closing:
             # needed to ensure zip file records are written
-            store.close()
+            _store.close()
 
 
-def save_group(store, *args, **kwargs):
+def save_group(store: StoreLike, *args, **kwargs):
     """Convenience function to save several NumPy arrays to the local file system, following a
     similar API to the NumPy savez()/savez_compressed() functions.
 
@@ -202,22 +212,22 @@ def save_group(store, *args, **kwargs):
     if len(args) == 0 and len(kwargs) == 0:
         raise ValueError('at least one array must be provided')
     # handle polymorphic store arg
-    may_need_closing = isinstance(store, str)
-    store = normalize_store_arg(store, clobber=True)
+    may_need_closing = _might_close(store)
+    _store: BaseStore = normalize_store_arg(store, clobber=True)
     try:
-        grp = _create_group(store, overwrite=True)
+        grp = _create_group(_store, overwrite=True)
         for i, arr in enumerate(args):
             k = 'arr_{}'.format(i)
             grp.create_dataset(k, data=arr, overwrite=True)
         for k, arr in kwargs.items():
             grp.create_dataset(k, data=arr, overwrite=True)
     finally:
-        if may_need_closing and hasattr(store, 'close'):
+        if may_need_closing:
             # needed to ensure zip file records are written
-            store.close()
+            _store.close()
 
 
-def save(store, *args, **kwargs):
+def save(store: StoreLike, *args, **kwargs):
     """Convenience function to save an array or group of arrays to the local file system.
 
     Parameters
@@ -327,7 +337,7 @@ class LazyLoader(Mapping):
         return r
 
 
-def load(store):
+def load(store: StoreLike):
     """Load data from an array or group into memory.
 
     Parameters
@@ -353,11 +363,11 @@ def load(store):
 
     """
     # handle polymorphic store arg
-    store = normalize_store_arg(store)
-    if contains_array(store, path=None):
-        return Array(store=store, path=None)[...]
-    elif contains_group(store, path=None):
-        grp = Group(store=store, path=None)
+    _store = normalize_store_arg(store)
+    if contains_array(_store, path=None):
+        return Array(store=_store, path=None)[...]
+    elif contains_group(_store, path=None):
+        grp = Group(store=_store, path=None)
         return LazyLoader(grp)
 
 
@@ -1073,7 +1083,7 @@ def copy_all(source, dest, shallow=False, without_attrs=False, log=None,
     return n_copied, n_skipped, n_bytes_copied
 
 
-def consolidate_metadata(store, metadata_key='.zmetadata'):
+def consolidate_metadata(store: StoreLike, metadata_key=".zmetadata"):
     """
     Consolidate all metadata for groups and arrays within the given store
     into a single resource and put it under the given key.
@@ -1124,7 +1134,7 @@ def consolidate_metadata(store, metadata_key='.zmetadata'):
     return open_consolidated(store, metadata_key=metadata_key)
 
 
-def open_consolidated(store, metadata_key='.zmetadata', mode='r+', **kwargs):
+def open_consolidated(store: StoreLike, metadata_key=".zmetadata", mode="r+", **kwargs):
     """Open group using metadata previously consolidated into a single key.
 
     This is an optimised method for opening a Zarr group, where instead of

@@ -9,6 +9,8 @@ from functools import reduce
 import numpy as np
 from numcodecs.compat import ensure_bytes, ensure_ndarray
 
+from collections.abc import MutableMapping
+
 from zarr.attrs import Attributes
 from zarr.codecs import AsType, get_codec
 from zarr.errors import ArrayNotFoundError, ReadOnlyError, ArrayIndexError
@@ -25,12 +27,13 @@ from zarr.indexing import (
     ensure_tuple,
     err_too_many_indices,
     is_contiguous_selection,
+    is_pure_fancy_indexing,
     is_scalar,
     pop_fields,
 )
-from zarr.meta import decode_array_metadata, encode_array_metadata
-from zarr.storage import array_meta_key, attrs_key, getsize, listdir
+from zarr.storage import array_meta_key, attrs_key, getsize, listdir, BaseStore
 from zarr.util import (
+    all_equal,
     InfoReporter,
     check_array_shape,
     human_readable_size,
@@ -77,6 +80,18 @@ class Array:
 
         .. versionadded:: 2.7
 
+    write_empty_chunks : bool, optional
+        If True (default), all chunks will be stored regardless of their
+        contents. If False, each chunk is compared to the array's fill
+        value prior to storing. If a chunk is uniformly equal to the fill
+        value, then that chunk is not be stored, and the store entry for
+        that chunk's key is deleted. This setting enables sparser storage,
+        as only chunks with non-fill-value data are stored, at the expense
+        of overhead associated with checking the data of each chunk.
+
+        .. versionadded:: 2.11
+
+
     Attributes
     ----------
     store
@@ -89,6 +104,7 @@ class Array:
     dtype
     compression
     compression_opts
+    dimension_separator
     fill_value
     order
     synchronizer
@@ -105,6 +121,7 @@ class Array:
     info
     vindex
     oindex
+    write_empty_chunks
 
     Methods
     -------
@@ -129,7 +146,7 @@ class Array:
 
     def __init__(
         self,
-        store,
+        store: BaseStore,
         path=None,
         read_only=False,
         chunk_store=None,
@@ -137,9 +154,13 @@ class Array:
         cache_metadata=True,
         cache_attrs=True,
         partial_decompress=False,
+        write_empty_chunks=True,
     ):
         # N.B., expect at this point store is fully initialized with all
         # configuration metadata fully specified and normalized
+
+        store = BaseStore._ensure_store(store)
+        chunk_store = BaseStore._ensure_store(chunk_store)
 
         self._store = store
         self._chunk_store = chunk_store
@@ -153,6 +174,7 @@ class Array:
         self._cache_metadata = cache_metadata
         self._is_view = False
         self._partial_decompress = partial_decompress
+        self._write_empty_chunks = write_empty_chunks
 
         # initialize metadata
         self._load_metadata()
@@ -187,13 +209,25 @@ class Array:
         else:
 
             # decode and store metadata as instance members
-            meta = decode_array_metadata(meta_bytes)
+            meta = self._store._metadata_class.decode_array_metadata(meta_bytes)
             self._meta = meta
             self._shape = meta['shape']
             self._chunks = meta['chunks']
             self._dtype = meta['dtype']
             self._fill_value = meta['fill_value']
             self._order = meta['order']
+
+            dimension_separator = meta.get('dimension_separator', None)
+            if dimension_separator is None:
+                try:
+                    dimension_separator = self._store._dimension_separator
+                except (AttributeError, KeyError):
+                    pass
+
+                # Fallback for any stores which do not choose a default
+                if dimension_separator is None:
+                    dimension_separator = "."
+            self._dimension_separator = dimension_separator
 
             # setup compressor
             config = meta['compressor']
@@ -232,7 +266,7 @@ class Array:
                     compressor=compressor_config, fill_value=self._fill_value,
                     order=self._order, filters=filters_config)
         mkey = self._key_prefix + array_meta_key
-        self._store[mkey] = encode_array_metadata(meta)
+        self._store[mkey] = self._store._metadata_class.encode_array_metadata(meta)
 
     @property
     def store(self):
@@ -338,7 +372,7 @@ class Array:
     @property
     def ndim(self):
         """Number of dimensions."""
-        return len(self.shape)
+        return len(self._shape)
 
     @property
     def _size(self):
@@ -441,6 +475,13 @@ class Array:
         :func:`set_mask_selection` for documentation and examples."""
         return self._vindex
 
+    @property
+    def write_empty_chunks(self) -> bool:
+        """A Boolean, True if chunks composed of the array's fill value
+        will be stored. If False, such chunks will not be stored.
+        """
+        return self._write_empty_chunks
+
     def __eq__(self, other):
         return (
             isinstance(other, Array) and
@@ -458,17 +499,71 @@ class Array:
             a = a.astype(args[0])
         return a
 
-    def __iter__(self):
+    def islice(self, start=None, end=None):
+        """
+        Yield a generator for iterating over the entire or parts of the
+        array. Uses a cache so chunks only have to be decompressed once.
+
+        Parameters
+        ----------
+        start : int, optional
+            Start index for the generator to start at. Defaults to 0.
+        end : int, optional
+            End index for the generator to stop at. Defaults to self.shape[0].
+
+        Yields
+        ------
+        out : generator
+            A generator that can be used to iterate over the requested region
+            the array.
+
+        Examples
+        --------
+        Setup a 1-dimensional array::
+
+            >>> import zarr
+            >>> import numpy as np
+            >>> z = zarr.array(np.arange(100))
+
+        Iterate over part of the array:
+            >>> for value in z.islice(25, 30): value;
+            25
+            26
+            27
+            28
+            29
+        """
+
         if len(self.shape) == 0:
             # Same error as numpy
             raise TypeError("iteration over a 0-d array")
+        if start is None:
+            start = 0
+        if end is None or end > self.shape[0]:
+            end = self.shape[0]
+
+        if not isinstance(start, int) or start < 0:
+            raise ValueError('start must be a nonnegative integer')
+
+        if not isinstance(end, int) or end < 0:
+            raise ValueError('end must be a nonnegative integer')
+
         # Avoid repeatedly decompressing chunks by iterating over the chunks
         # in the first dimension.
         chunk_size = self.chunks[0]
-        for j in range(self.shape[0]):
+        chunk = None
+        for j in range(start, end):
             if j % chunk_size == 0:
                 chunk = self[j: j + chunk_size]
+            # init chunk if we start offset of chunk borders
+            elif chunk is None:
+                chunk_start = j - j % chunk_size
+                chunk_end = chunk_start + chunk_size
+                chunk = self[chunk_start:chunk_end]
             yield chunk[j % chunk_size]
+
+    def __iter__(self):
+        return self.islice()
 
     def __len__(self):
         if self.shape:
@@ -591,8 +686,20 @@ class Array:
         Slices with step > 1 are supported, but slices with negative step are not.
 
         Currently the implementation for __getitem__ is provided by
-        :func:`get_basic_selection`. For advanced ("fancy") indexing, see the methods
-        listed under See Also.
+        :func:`vindex` if the indexing is pure fancy indexing (ie a
+        broadcast-compatible tuple of integer array indices), or by
+        :func:`set_basic_selection` otherwise.
+
+        Effectively, this means that the following indexing modes are supported:
+
+           - integer indexing
+           - slice indexing
+           - mixed slice and integer indexing
+           - boolean indexing
+           - fancy indexing (vectorized list of integers)
+
+        For specific indexing options including outer indexing, see the
+        methods listed under See Also.
 
         See Also
         --------
@@ -601,9 +708,12 @@ class Array:
         set_orthogonal_selection, vindex, oindex, __setitem__
 
         """
-
-        fields, selection = pop_fields(selection)
-        return self.get_basic_selection(selection, fields=fields)
+        fields, pure_selection = pop_fields(selection)
+        if is_pure_fancy_indexing(pure_selection, self.ndim):
+            result = self.vindex[selection]
+        else:
+            result = self.get_basic_selection(pure_selection, fields=fields)
+        return result
 
     def get_basic_selection(self, selection=Ellipsis, out=None, fields=None):
         """Retrieve data for an item or region of the array.
@@ -1141,8 +1251,19 @@ class Array:
         Slices with step > 1 are supported, but slices with negative step are not.
 
         Currently the implementation for __setitem__ is provided by
-        :func:`set_basic_selection`, which means that only integers and slices are
-        supported within the selection. For advanced ("fancy") indexing, see the
+        :func:`vindex` if the indexing is pure fancy indexing (ie a
+        broadcast-compatible tuple of integer array indices), or by
+        :func:`set_basic_selection` otherwise.
+
+        Effectively, this means that the following indexing modes are supported:
+
+           - integer indexing
+           - slice indexing
+           - mixed slice and integer indexing
+           - boolean indexing
+           - fancy indexing (vectorized list of integers)
+
+        For specific indexing options including outer indexing, see the
         methods listed under See Also.
 
         See Also
@@ -1152,9 +1273,11 @@ class Array:
         set_orthogonal_selection, vindex, oindex, __getitem__
 
         """
-
-        fields, selection = pop_fields(selection)
-        self.set_basic_selection(selection, value, fields=fields)
+        fields, pure_selection = pop_fields(selection)
+        if is_pure_fancy_indexing(pure_selection, self.ndim):
+            self.vindex[selection] = value
+        else:
+            self.set_basic_selection(pure_selection, value, fields=fields)
 
     def set_basic_selection(self, selection, value, fields=None):
         """Modify data for an item or region of the array.
@@ -1530,9 +1653,18 @@ class Array:
         else:
             chunk[selection] = value
 
-        # encode and store
-        cdata = self._encode_chunk(chunk)
-        self.chunk_store[ckey] = cdata
+        # remove chunk if write_empty_chunks is false and it only contains the fill value
+        if (not self.write_empty_chunks) and all_equal(self.fill_value, chunk):
+            try:
+                del self.chunk_store[ckey]
+                return
+            except Exception:  # pragma: no cover
+                # deleting failed, fallback to overwriting
+                pass
+        else:
+            # encode and store
+            cdata = self._encode_chunk(chunk)
+            self.chunk_store[ckey] = cdata
 
     def _set_basic_selection_nd(self, selection, value, fields=None):
         # implementation of __setitem__ for array with at least one dimension
@@ -1800,11 +1932,38 @@ class Array:
                     out[out_select] = fill_value
 
     def _chunk_setitems(self, lchunk_coords, lchunk_selection, values, fields=None):
-        ckeys = [self._chunk_key(co) for co in lchunk_coords]
-        cdatas = [self._process_for_setitem(key, sel, val, fields=fields)
-                  for key, sel, val in zip(ckeys, lchunk_selection, values)]
-        values = {k: v for k, v in zip(ckeys, cdatas)}
-        self.chunk_store.setitems(values)
+        ckeys = map(self._chunk_key, lchunk_coords)
+        cdatas = {key: self._process_for_setitem(key, sel, val, fields=fields)
+                  for key, sel, val in zip(ckeys, lchunk_selection, values)}
+        to_store = {}
+        if not self.write_empty_chunks:
+            empty_chunks = {k: v for k, v in cdatas.items() if all_equal(self.fill_value, v)}
+            self._chunk_delitems(empty_chunks.keys())
+            nonempty_keys = cdatas.keys() - empty_chunks.keys()
+            to_store = {k: self._encode_chunk(cdatas[k]) for k in nonempty_keys}
+        else:
+            to_store = {k: self._encode_chunk(v) for k, v in cdatas.items()}
+        self.chunk_store.setitems(to_store)
+
+    def _chunk_delitems(self, ckeys):
+        if hasattr(self.store, "delitems"):
+            self.store.delitems(ckeys)
+        else:  # pragma: no cover
+            # exempting this branch from coverage as there are no extant stores
+            # that will trigger this condition, but it's possible that they
+            # will be developed in the future.
+            tuple(map(self._chunk_delitem, ckeys))
+        return None
+
+    def _chunk_delitem(self, ckey):
+        """
+        Attempt to delete the value associated with ckey.
+        """
+        try:
+            del self.chunk_store[ckey]
+            return
+        except KeyError:
+            return
 
     def _chunk_setitem(self, chunk_coords, chunk_selection, value, fields=None):
         """Replace part or whole of a chunk.
@@ -1835,8 +1994,12 @@ class Array:
     def _chunk_setitem_nosync(self, chunk_coords, chunk_selection, value, fields=None):
         ckey = self._chunk_key(chunk_coords)
         cdata = self._process_for_setitem(ckey, chunk_selection, value, fields=fields)
-        # store
-        self.chunk_store[ckey] = cdata
+
+        # attempt to delete chunk if it only contains the fill value
+        if (not self.write_empty_chunks) and all_equal(self.fill_value, cdata):
+            self._chunk_delitem(ckey)
+        else:
+            self.chunk_store[ckey] = self._encode_chunk(cdata)
 
     def _process_for_setitem(self, ckey, chunk_selection, value, fields=None):
         if is_total_slice(chunk_selection, self._chunks) and not fields:
@@ -1892,11 +2055,10 @@ class Array:
             else:
                 chunk[chunk_selection] = value
 
-        # encode chunk
-        return self._encode_chunk(chunk)
+        return chunk
 
     def _chunk_key(self, chunk_coords):
-        return self._key_prefix + '.'.join(map(str, chunk_coords))
+        return self._key_prefix + self._dimension_separator.join(map(str, chunk_coords))
 
     def _decode_chunk(self, cdata, start=None, nitems=None, expected_shape=None):
         # decompress
@@ -1955,7 +2117,7 @@ class Array:
             cdata = chunk
 
         # ensure in-memory data is immutable and easy to compare
-        if isinstance(self.chunk_store, dict):
+        if isinstance(self.chunk_store, MutableMapping):
             cdata = ensure_bytes(cdata)
 
         return cdata
@@ -1988,10 +2150,10 @@ class Array:
         Order              : C
         Read-only          : False
         Compressor         : Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
-        Store type         : builtins.dict
+        Store type         : zarr.storage.KVStore
         No. bytes          : 4000000 (3.8M)
-        No. bytes stored   : ...
-        Storage ratio      : ...
+        No. bytes stored   : 320
+        Storage ratio      : 12500.0
         Chunks initialized : 0/10
 
         """
@@ -2113,7 +2275,8 @@ class Array:
 
     def __getstate__(self):
         return (self._store, self._path, self._read_only, self._chunk_store,
-                self._synchronizer, self._cache_metadata, self._attrs.cache)
+                self._synchronizer, self._cache_metadata, self._attrs.cache,
+                self._partial_decompress, self._write_empty_chunks)
 
     def __setstate__(self, state):
         self.__init__(*state)

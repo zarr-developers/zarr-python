@@ -15,8 +15,11 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ['3.6.9' , 3.7, 3.8]
-        numpy_version: ['==1.16.4', '']
+        python-version: [3.7, 3.8, 3.9]
+        numpy_version: ['!=1.21.0', '==1.17.*']
+        exclude:
+          - python-version: 3.9
+            numpy_version: '==1.17.*'
     services:
       redis:
         image: redis
@@ -47,7 +50,7 @@ jobs:
     - name: Create Conda environment with the rights deps
       shell: "bash -l {0}"
       run: |
-        conda create -n zarr-env python==${{matrix.python-version}} bsddb3 numcodecs==0.6.4 lmdb pip nodejs flake8 mypy
+        conda create -n zarr-env python==${{matrix.python-version}} bsddb3 numcodecs lmdb pip nodejs flake8 mypy
         conda activate zarr-env
         npm install -g azurite
     - name: Install dependencies
@@ -55,9 +58,9 @@ jobs:
       run: |
         conda activate zarr-env
         python -m pip install --upgrade pip
-        python -m pip install -U pip setuptools wheel codecov
+        python -m pip install -U pip setuptools wheel codecov line_profiler
         python -m pip install -rrequirements_dev_minimal.txt numpy${{ matrix.numpy_version}} -rrequirements_dev_optional.txt pymongo redis
-        python -m pip install -e . 
+        python -m pip install .
         python -m pip freeze
     - name: Tests
       shell: "bash -l {0}"

@@ -176,7 +176,7 @@ print some diagnostics, e.g.::
     Read-only          : False
     Compressor         : Blosc(cname='zstd', clevel=3, shuffle=BITSHUFFLE,
                        : blocksize=0)
-    Store type         : builtins.dict
+    Store type         : zarr.storage.KVStore
     No. bytes          : 400000000 (381.5M)
     No. bytes stored   : 3379344 (3.2M)
     Storage ratio      : 118.4
@@ -268,7 +268,7 @@ Here is an example using a delta filter with the Blosc compressor::
     Read-only          : False
     Filter [0]         : Delta(dtype='<i4')
     Compressor         : Blosc(cname='zstd', clevel=1, shuffle=SHUFFLE, blocksize=0)
-    Store type         : builtins.dict
+    Store type         : zarr.storage.KVStore
     No. bytes          : 400000000 (381.5M)
     No. bytes stored   : 1290562 (1.2M)
     Storage ratio      : 309.9
@@ -509,7 +509,7 @@ e.g.::
            [10, 11, 12, -2, 14]])
 
 For convenience, coordinate indexing is also available via the ``vindex``
-property, e.g.::
+property, as well as the square bracket operator, e.g.::
 
     >>> z.vindex[[0, 2], [1, 3]]
     array([-1, -2])
@@ -518,6 +518,16 @@ property, e.g.::
     array([[ 0, -3,  2,  3,  4],
            [ 5,  6,  7,  8,  9],
            [10, 11, 12, -4, 14]])
+    >>> z[[0, 2], [1, 3]]
+    array([-3, -4])
+
+When the indexing arrays have different shapes, they are broadcast together.
+That is, the following two calls are equivalent::
+
+    >>> z[1, [1, 3]]
+    array([5, 7])
+    >>> z[[1, 1], [1, 3]]
+    array([5, 7])
 
 Indexing with a mask array
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -795,8 +805,10 @@ Here is an example using S3Map to read an array created previously::
     Order              : C
     Read-only          : False
     Compressor         : Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
-    Store type         : fsspec.mapping.FSMap
+    Store type         : zarr.storage.KVStore
     No. bytes          : 21
+    No. bytes stored   : 382
+    Storage ratio      : 0.1
     Chunks initialized : 3/3
     >>> z[:]
     array([b'H', b'e', b'l', b'l', b'o', b' ', b'f', b'r', b'o', b'm', b' ',
@@ -810,7 +822,9 @@ The class is :class:`zarr.storage.ABSStore` (requires
 `azure-storage-blob <https://docs.microsoft.com/en-us/azure/storage/blobs/storage-quickstart-blobs-python>`_
 to be installed)::
 
-    >>> store = zarr.ABSStore(container='test', prefix='zarr-testing', blob_service_kwargs={'is_emulated': True})  # doctest: +SKIP
+    >>> import azure.storage.blob
+    >>> container_client = azure.storage.blob.ContainerClient(...)  # doctest: +SKIP
+    >>> store = zarr.ABSStore(client=container_client, prefix='zarr-testing')  # doctest: +SKIP
     >>> root = zarr.group(store=store, overwrite=True)  # doctest: +SKIP
     >>> z = root.zeros('foo/bar', shape=(1000, 1000), chunks=(100, 100), dtype='i4')  # doctest: +SKIP
     >>> z[:] = 42  # doctest: +SKIP
@@ -1262,7 +1276,7 @@ ratios, depending on the correlation structure within the data. E.g.::
     Order              : C
     Read-only          : False
     Compressor         : Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
-    Store type         : builtins.dict
+    Store type         : zarr.storage.KVStore
     No. bytes          : 400000000 (381.5M)
     No. bytes stored   : 6696010 (6.4M)
     Storage ratio      : 59.7
@@ -1276,7 +1290,7 @@ ratios, depending on the correlation structure within the data. E.g.::
     Order              : F
     Read-only          : False
     Compressor         : Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
-    Store type         : builtins.dict
+    Store type         : zarr.storage.KVStore
     No. bytes          : 400000000 (381.5M)
     No. bytes stored   : 4684636 (4.5M)
     Storage ratio      : 85.4
@@ -1287,6 +1301,45 @@ artifical example but illustrates the general point that changing the order of
 bytes within chunks of an array may improve the compression ratio, depending on
 the structure of the data, the compression algorithm used, and which compression
 filters (e.g., byte-shuffle) have been applied.
+
+.. _tutorial_rechunking:
+
+Changing chunk shapes (rechunking)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Sometimes you are not free to choose the initial chunking of your input data, or
+you might have data saved with chunking which is not optimal for the analysis you
+have planned. In such cases it can be advantageous to re-chunk the data. For small
+datasets, or when the mismatch between input and output chunks is small
+such that only a few chunks of the input dataset need to be read to create each
+chunk in the output array, it is sufficient to simply copy the data to a new array
+with the desired chunking, e.g. ::
+
+    >>> a = zarr.zeros((10000, 10000), chunks=(100,100), dtype='uint16', store='a.zarr')
+    >>> b = zarr.array(a, chunks=(100, 200), store='b.zarr')
+
+If the chunk shapes mismatch, however, a simple copy can lead to non-optimal data
+access patterns and incur a substantial performance hit when using
+file based stores. One of the most pathological examples is
+switching from column-based chunking to row-based chunking e.g. ::
+
+    >>> a = zarr.zeros((10000,10000), chunks=(10000, 1), dtype='uint16, store='a.zarr')
+    >>> b = zarr.array(a, chunks=(1,10000), store='b.zarr')
+
+which will require every chunk in the input data set to be repeatedly read when creating
+each output chunk. If the entire array will fit within memory, this is simply resolved
+by forcing the entire input array into memory as a numpy array before converting
+back to zarr with the desired chunking. ::
+
+    >>> a = zarr.zeros((10000,10000), chunks=(10000, 1), dtype='uint16, store='a.zarr')
+    >>> b = a[...]
+    >>> c = zarr.array(b, chunks=(1,10000), store='c.zarr')
+
+For data sets which have mismatched chunks and which do not fit in memory, a
+more sophisticated approach to rechunking, such as offered by the
+`rechunker <https://github.com/pangeo-data/rechunker>`_ package and discussed
+`here <https://medium.com/pangeo/rechunker-the-missing-link-for-chunked-array-analytics-5b2359e9dc11>`_
+may offer a substantial improvement in performance.
 
 .. _tutorial_sync:
 
