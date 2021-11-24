@@ -751,7 +751,7 @@ class TestMappingStore(StoreTests):
 
 def setdel_hierarchy_checks(store):
     # these tests are for stores that are aware of hierarchy levels; this
-    # behaviour is not stricly required by Zarr but these tests are included
+    # behaviour is not strictly required by Zarr but these tests are included
     # to define behaviour of MemoryStore and DirectoryStore classes
 
     # check __setitem__ and __delitem__ blocked by leaf
@@ -903,7 +903,7 @@ class TestDirectoryStore(StoreTests):
 
         def mock_walker_no_slash(_path):
             yield from [
-                # no trainling slash in first key
+                # no trailing slash in first key
                 ('root_with_no_slash', ['d1', 'g1'], ['.zgroup']),
                 ('root_with_no_slash/d1', [], ['.zarray']),
                 ('root_with_no_slash/g1', [], ['.zgroup'])
@@ -2149,7 +2149,7 @@ class TestConsolidatedMetadataStore:
 
     def test_bad_format(self):
 
-        # setup store with consolidated metdata
+        # setup store with consolidated metadata
         store = dict()
         consolidated = {
             # bad format version
@@ -2163,7 +2163,7 @@ class TestConsolidatedMetadataStore:
 
     def test_read_write(self):
 
-        # setup store with consolidated metdata
+        # setup store with consolidated metadata
         store = dict()
         consolidated = {
             'zarr_consolidated_format': 1,

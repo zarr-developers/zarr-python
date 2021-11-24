@@ -344,7 +344,7 @@ See `this link <https://github.com/zarr-developers/zarr-python/milestone/11?clos
 merged PR tagged with the 2.6 milestone.
 
 * Add ability to partially read and decompress arrays, see :issue:`667`. It is
-  only available to chunks stored using fs-spec and using bloc as a compressor.
+  only available to chunks stored using fsspec and using Blosc as a compressor.
 
   For certain analysis case when only a small portion of chunks is needed it can
   be advantageous to only access and decompress part of the chunks. Doing
@@ -375,7 +375,7 @@ This release will be the last to support Python 3.5, next version of Zarr will b
   without ``ipytree`` installed.
   By :user:`Zain Patel <mzjp2>`; :issue:`537`
 
-* Add typing informations to many of the core functions :issue:`589`
+* Add typing information to many of the core functions :issue:`589`
 
 * Explicitly close stores during testing.
   By :user:`Elliott Sales de Andrade <QuLogic>`; :issue:`442`

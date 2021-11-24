@@ -150,7 +150,7 @@ and columns 4000-5000 and is stored under the key '2.4'; etc.
 
 There is no need for all chunks to be present within an array
 store. If a chunk is not present then it is considered to be in an
-uninitialized state.  An unitialized chunk MUST be treated as if it
+uninitialized state.  An uninitialized chunk MUST be treated as if it
 was uniformly filled with the value of the 'fill_value' field in the
 array metadata. If the 'fill_value' field is ``null`` then the
 contents of the chunk are undefined.

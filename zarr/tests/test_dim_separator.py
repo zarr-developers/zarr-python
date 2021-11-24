@@ -93,7 +93,7 @@ def verify(array, expect_failure=False):
 
 def test_open(dataset):
     """
-    Use zarr.open to open the dataset fixture. Legacy nested datatsets
+    Use zarr.open to open the dataset fixture. Legacy nested datasets
     without the dimension_separator metadata are not expected to be
     openable.
     """
@@ -104,7 +104,7 @@ def test_open(dataset):
 @needs_fsspec
 def test_fsstore(dataset):
     """
-    Use FSStore to open the dataset fixture. Legacy nested datatsets
+    Use FSStore to open the dataset fixture. Legacy nested datasets
     without the dimension_separator metadata are not expected to be
     openable.
     """
@@ -114,7 +114,7 @@ def test_fsstore(dataset):
 
 def test_directory(dataset):
     """
-    Use DirectoryStore to open the dataset fixture. Legacy nested datatsets
+    Use DirectoryStore to open the dataset fixture. Legacy nested datasets
     without the dimension_separator metadata are not expected to be
     openable.
     """

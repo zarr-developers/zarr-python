@@ -152,7 +152,7 @@ the tests will be skipped. To install all optional dependencies, run::
     $ pip install -r requirements_dev_optional.txt
 
 To also run the doctests within docstrings (requires optional
-depencies to be installed), run::
+dependencies to be installed), run::
 
     $ pytest -v --doctest-plus zarr
 

@@ -74,7 +74,7 @@ class Array:
         operations. If False, user attributes are reloaded from the store prior
         to all attribute read operations.
     partial_decompress : bool, optional
-        If True and while the chunk_store is a FSStore and the compresion used
+        If True and while the chunk_store is a FSStore and the compression used
         is Blosc, when getting data from the array chunks will be partially
         read and decompressed when possible.
 
@@ -459,7 +459,7 @@ class Array:
         # count chunk keys
         return sum(1 for k in listdir(self.chunk_store, self._path) if prog.match(k))
 
-    # backwards compability
+    # backwards compatibility
     initialized = nchunks_initialized
 
     @property
@@ -1108,7 +1108,7 @@ class Array:
             >>> import numpy as np
             >>> z = zarr.array(np.arange(100).reshape(10, 10))
 
-        Retrieve items by specifying a maks::
+        Retrieve items by specifying a mask::
 
             >>> sel = np.zeros_like(z, dtype=bool)
             >>> sel[1, 1] = True
