@@ -146,7 +146,7 @@ def test_guess_chunks():
         assert isinstance(chunks, tuple)
         assert len(chunks) == len(shape)
         # doesn't make any sense to allow chunks to have zero length dimension
-        assert all([0 < c <= max(s, 1) for c, s in zip(chunks, shape)])
+        assert all(0 < c <= max(s, 1) for c, s in zip(chunks, shape))
 
     # ludicrous itemsize
     chunks = guess_chunks((1000000,), 40000000000)

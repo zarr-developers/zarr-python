@@ -308,15 +308,15 @@ def is_positive_slice(s):
 
 def is_contiguous_selection(selection):
     selection = ensure_tuple(selection)
-    return all([
+    return all(
         (is_integer_array(s) or is_contiguous_slice(s) or s == Ellipsis)
         for s in selection
-    ])
+    )
 
 
 def is_basic_selection(selection):
     selection = ensure_tuple(selection)
-    return all([is_integer(s) or is_positive_slice(s) for s in selection])
+    return all(is_integer(s) or is_positive_slice(s) for s in selection)
 
 
 # noinspection PyProtectedMember
@@ -671,8 +671,8 @@ class OIndex(object):
 def is_coordinate_selection(selection, array):
     return (
         (len(selection) == len(array._shape)) and
-        all([is_integer(dim_sel) or is_integer_array(dim_sel)
-             for dim_sel in selection])
+        all(is_integer(dim_sel) or is_integer_array(dim_sel)
+            for dim_sel in selection)
     )
 
 
