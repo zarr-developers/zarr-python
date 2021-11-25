@@ -128,7 +128,7 @@ class TestGroup(unittest.TestCase):
         assert '/a/b/c' == g5.name
 
         # test non-str keys
-        class Foo(object):
+        class Foo:
 
             def __init__(self, s):
                 self.s = s

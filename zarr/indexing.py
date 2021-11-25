@@ -132,7 +132,7 @@ dim_out_sel
 """
 
 
-class IntDimIndexer(object):
+class IntDimIndexer:
 
     def __init__(self, dim_sel, dim_len, dim_chunk_len):
 
@@ -157,7 +157,7 @@ def ceildiv(a, b):
     return math.ceil(a / b)
 
 
-class SliceDimIndexer(object):
+class SliceDimIndexer:
 
     def __init__(self, dim_sel, dim_len, dim_chunk_len):
 
@@ -320,7 +320,7 @@ def is_basic_selection(selection):
 
 
 # noinspection PyProtectedMember
-class BasicIndexer(object):
+class BasicIndexer:
 
     def __init__(self, selection, array):
 
@@ -361,7 +361,7 @@ class BasicIndexer(object):
             yield ChunkProjection(chunk_coords, chunk_selection, out_selection)
 
 
-class BoolArrayDimIndexer(object):
+class BoolArrayDimIndexer:
 
     def __init__(self, dim_sel, dim_len, dim_chunk_len):
 
@@ -451,7 +451,7 @@ def boundscheck_indices(x, dim_len):
         raise BoundsCheckError(dim_len)
 
 
-class IntArrayDimIndexer(object):
+class IntArrayDimIndexer:
     """Integer array selection against a single dimension."""
 
     def __init__(self, dim_sel, dim_len, dim_chunk_len, wraparound=True, boundscheck=True,
@@ -579,7 +579,7 @@ def oindex_set(a, selection, value):
 
 
 # noinspection PyProtectedMember
-class OrthogonalIndexer(object):
+class OrthogonalIndexer:
 
     def __init__(self, selection, array):
 
@@ -649,7 +649,7 @@ class OrthogonalIndexer(object):
             yield ChunkProjection(chunk_coords, chunk_selection, out_selection)
 
 
-class OIndex(object):
+class OIndex:
 
     def __init__(self, array):
         self.array = array
@@ -686,7 +686,7 @@ def is_mask_selection(selection, array):
 
 
 # noinspection PyProtectedMember
-class CoordinateIndexer(object):
+class CoordinateIndexer:
 
     def __init__(self, selection, array):
 
@@ -805,7 +805,7 @@ class MaskIndexer(CoordinateIndexer):
         super().__init__(selection, array)
 
 
-class VIndex(object):
+class VIndex:
 
     def __init__(self, array):
         self.array = array
@@ -905,7 +905,7 @@ def make_slice_selection(selection):
     return ls
 
 
-class PartialChunkIterator(object):
+class PartialChunkIterator:
     """Iterator to retrieve the specific coordinates of requested data
     from within a compressed chunk.
 

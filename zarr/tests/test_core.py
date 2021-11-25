@@ -2423,7 +2423,7 @@ class TestArrayWithFilters(TestArray):
 
 
 # custom store, does not support getsize()
-class CustomMapping(object):
+class CustomMapping:
 
     def __init__(self):
         self.inner = KVStore(dict())
