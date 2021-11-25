@@ -38,7 +38,7 @@ class N5Store(NestedDirectoryStore):
     normalize_keys : bool, optional
         If True, all store keys will be normalized to use lower case characters
         (e.g. 'foo' and 'FOO' will be treated as equivalent). This can be
-        useful to avoid potential discrepancies between case-senstive and
+        useful to avoid potential discrepancies between case-sensitive and
         case-insensitive file system. Default value is False.
 
     Examples
@@ -283,8 +283,9 @@ class N5Store(NestedDirectoryStore):
 
 
 class N5FSStore(FSStore):
-    """Implentation of the N5 format (https://github.com/saalfeldlab/n5) using `fsspec`,
-    which allows storage on a variety of filesystems. Based on `zarr.N5Store`.
+    """Implementation of the N5 format (https://github.com/saalfeldlab/n5)
+    using `fsspec`, which allows storage on a variety of filesystems. Based
+    on `zarr.N5Store`.
     Parameters
     ----------
     path : string
@@ -292,7 +293,7 @@ class N5FSStore(FSStore):
     normalize_keys : bool, optional
         If True, all store keys will be normalized to use lower case characters
         (e.g. 'foo' and 'FOO' will be treated as equivalent). This can be
-        useful to avoid potential discrepancies between case-senstive and
+        useful to avoid potential discrepancies between case-sensitive and
         case-insensitive file system. Default value is False.
 
     Examples

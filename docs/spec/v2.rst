@@ -81,7 +81,7 @@ filters
 The following keys MAY be present within the object:
 
 dimension_separator
-    If present, either the string ``"."`` or ``"/""`` definining the separator placed
+    If present, either the string ``"."`` or ``"/""`` defining the separator placed
     between the dimensions of a chunk. If the value is not set, then the
     default MUST be assumed to be ``"."``, leading to chunk keys of the form "0.0".
     Arrays defined with ``"/"`` as the dimension separator can be considered to have
@@ -222,7 +222,7 @@ columns 4000-5000 and is stored under the key "2.4"; etc.
 
 There is no need for all chunks to be present within an array store. If a chunk
 is not present then it is considered to be in an uninitialized state.  An
-unitialized chunk MUST be treated as if it was uniformly filled with the value
+uninitialized chunk MUST be treated as if it was uniformly filled with the value
 of the "fill_value" field in the array metadata. If the "fill_value" field is
 ``null`` then the contents of the chunk are undefined.
 
