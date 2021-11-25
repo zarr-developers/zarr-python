@@ -851,7 +851,8 @@ class DirectoryStore(Store):
     def _normalize_key(self, key):
         return key.lower() if self.normalize_keys else key
 
-    def _fromfile(self, fn):
+    @staticmethod
+    def _fromfile(fn):
         """ Read data from a file
 
         Parameters
@@ -867,7 +868,8 @@ class DirectoryStore(Store):
         with open(fn, 'rb') as f:
             return f.read()
 
-    def _tofile(self, a, fn):
+    @staticmethod
+    def _tofile(a, fn):
         """ Write data to a file
 
         Parameters

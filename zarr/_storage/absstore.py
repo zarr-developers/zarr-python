@@ -76,7 +76,8 @@ class ABSStore(Store):
         self._account_name = account_name
         self._account_key = account_key
 
-    def _warn_deprecated(self, property_):
+    @staticmethod
+    def _warn_deprecated(property_):
         msg = ("The {} property is deprecated and will be removed in a future "
                "version. Get the property from 'ABSStore.client' instead.")
         warnings.warn(msg.format(property_), FutureWarning, stacklevel=3)

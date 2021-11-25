@@ -343,7 +343,8 @@ class N5FSStore(FSStore):
         dimension_separator = "."
         super().__init__(*args, dimension_separator=dimension_separator, **kwargs)
 
-    def _swap_separator(self, key):
+    @staticmethod
+    def _swap_separator(key):
         segments = list(key.split('/'))
         if segments:
             last_segment = segments[-1]
@@ -898,7 +899,8 @@ class N5ChunkWrapper(Codec):
 
             return chunk
 
-    def _create_header(self, chunk):
+    @staticmethod
+    def _create_header(chunk):
 
         mode = struct.pack('>H', 0)
         num_dims = struct.pack('>H', len(chunk.shape))
@@ -909,7 +911,8 @@ class N5ChunkWrapper(Codec):
 
         return mode + num_dims + shape
 
-    def _read_header(self, chunk):
+    @staticmethod
+    def _read_header(chunk):
 
         num_dims = struct.unpack('>H', chunk[2:4])[0]
         shape = tuple(
