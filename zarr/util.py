@@ -7,6 +7,7 @@ import mmap
 import time
 
 import numpy as np
+import numpy.typing as npt
 from asciitree import BoxStyle, LeftAligned
 from asciitree.traversal import Traversal
 from collections.abc import Iterable
@@ -14,7 +15,10 @@ from numcodecs.compat import ensure_ndarray, ensure_text
 from numcodecs.registry import codec_registry
 from numcodecs.blosc import cbuffer_sizes, cbuffer_metainfo
 
-from typing import Any, Callable, Dict, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union, TypeVar
+
+from zarr._storage.store import BaseStore
+T = TypeVar('T')
 
 
 def flatten(arg: Iterable) -> Iterable:
@@ -185,13 +189,12 @@ def normalize_dtype(dtype: Union[str, np.dtype], object_codec) -> Tuple[np.dtype
 
 
 # noinspection PyTypeChecker
-def is_total_slice(item, shape: Tuple[int]) -> bool:
+def is_total_slice(item: Any, shape: Tuple[int, ...]) -> bool:
     """Determine whether `item` specifies a complete slice of array with the
     given `shape`. Used to optimize __setitem__ operations on the Chunk
     class."""
 
     # N.B., assume shape is normalized
-
     if item == Ellipsis:
         return True
     if item == slice(None):
@@ -209,7 +212,22 @@ def is_total_slice(item, shape: Tuple[int]) -> bool:
         raise TypeError('expected slice or tuple of slices, found %r' % item)
 
 
-def normalize_resize_args(old_shape, *args):
+def trim_chunks(chunk_shape: Tuple[int, ...],
+                chunk_coords: Tuple[int, ...],
+                array_shape: Tuple[int, ...]) -> Tuple[int, ...]:
+    """Reduce a chunk size to the size of the region that can be written to
+    it, given the dimensions of the array. This function assumes that all
+    the inputs have been previously validated.
+    """
+    chunk_boundary = (np.array(chunk_coords) + 1) * np.array(chunk_shape)
+    excess = chunk_boundary - np.array(array_shape)
+    # ensure that we don't increase the chunk shape
+    excess[excess < 0] = 0
+    # python ints, not numpy ints
+    return tuple(map(int, np.array(chunk_shape) - excess))
+
+
+def normalize_resize_args(old_shape: Tuple[int, ...], *args: Tuple[int, ...]) -> Tuple[int, ...]:
 
     # normalize new shape argument
     if len(args) == 1:
@@ -230,7 +248,7 @@ def normalize_resize_args(old_shape, *args):
     return new_shape
 
 
-def human_readable_size(size) -> str:
+def human_readable_size(size: int) -> str:
     if size < 2**10:
         return '%s' % size
     elif size < 2**20:
@@ -260,7 +278,7 @@ def normalize_dimension_separator(sep: Optional[str]) -> Optional[str]:
             "dimension_separator must be either '.' or '/', found: %r" % sep)
 
 
-def normalize_fill_value(fill_value, dtype: np.dtype):
+def normalize_fill_value(fill_value: Any, dtype: npt.DTypeLike):
 
     if fill_value is None or dtype.hasobject:
         # no fill value
@@ -339,7 +357,7 @@ def normalize_storage_path(path: Union[str, bytes, None]) -> str:
     return path
 
 
-def buffer_size(v) -> int:
+def buffer_size(v: npt.ArrayLike) -> int:
     return ensure_ndarray(v).nbytes
 
 
@@ -356,7 +374,7 @@ def info_text_report(items: Dict[Any, Any]) -> str:
     return report
 
 
-def info_html_report(items) -> str:
+def info_html_report(items: Dict[str, str]) -> str:
     report = '<table class="zarr-info">'
     report += '<tbody>'
     for k, v in items:
@@ -370,9 +388,9 @@ def info_html_report(items) -> str:
     return report
 
 
-class InfoReporter(object):
+class InfoReporter():
 
-    def __init__(self, obj):
+    def __init__(self, obj: Any):
         self.obj = obj
 
     def __repr__(self):
@@ -384,14 +402,14 @@ class InfoReporter(object):
         return info_html_report(items)
 
 
-class TreeNode(object):
+class TreeNode():
 
-    def __init__(self, obj, depth=0, level=None):
+    def __init__(self, obj: Any, depth: int = 0, level: Union[int, None] = None):
         self.obj = obj
         self.depth = depth
         self.level = level
 
-    def get_children(self):
+    def get_children(self) -> List['TreeNode']:
         if hasattr(self.obj, 'values'):
             if self.level is None or self.depth < self.level:
                 depth = self.depth + 1
@@ -399,7 +417,7 @@ class TreeNode(object):
                         for o in self.obj.values()]
         return []
 
-    def get_text(self):
+    def get_text(self) -> str:
         name = self.obj.name.split("/")[-1] or "/"
         if hasattr(self.obj, 'shape'):
             name += ' {} {}'.format(self.obj.shape, self.obj.dtype)
@@ -470,7 +488,7 @@ def tree_widget(group, expand, level):
 
 class TreeViewer(object):
 
-    def __init__(self, group, expand=False, level=None):
+    def __init__(self, group: Any, expand: bool = False, level: Union[int, None] = None):
 
         self.group = group
         self.expand = expand
@@ -527,7 +545,7 @@ class TreeViewer(object):
         return tree
 
 
-def check_array_shape(param, array, shape):
+def check_array_shape(param, array: Any, shape: Tuple[int, ...]) -> None:
     if not hasattr(array, 'shape'):
         raise TypeError('parameter {!r}: expected an array-like object, got {!r}'
                         .format(param, type(array)))
@@ -536,12 +554,12 @@ def check_array_shape(param, array, shape):
                          .format(param, shape, array.shape))
 
 
-def is_valid_python_name(name):
+def is_valid_python_name(name: str) -> bool:
     from keyword import iskeyword
     return name.isidentifier() and not iskeyword(name)
 
 
-class NoLock(object):
+class NoLock():
     """A lock that doesn't lock."""
 
     def __enter__(self):
@@ -555,27 +573,27 @@ nolock = NoLock()
 
 
 class PartialReadBuffer:
-    def __init__(self, store_key, chunk_store):
-        self.chunk_store = chunk_store
+    def __init__(self, store_key: str, chunk_store: Any):
+        self.chunk_store: BaseStore = chunk_store
         # is it fsstore or an actual fsspec map object
         assert hasattr(self.chunk_store, "map")
         self.map = self.chunk_store.map
         self.fs = self.chunk_store.fs
-        self.store_key = store_key
+        self.store_key: str = store_key
         self.buff = None
-        self.nblocks = None
+        self.nblocks: int = None
         self.start_points = None
-        self.n_per_block = None
+        self.n_per_block: int = None
         self.start_points_max = None
-        self.read_blocks = set()
+        self.read_blocks: set = set()
 
         _key_path = self.map._key_to_str(store_key)
         _key_path = _key_path.split('/')
         _chunk_path = [self.chunk_store._normalize_key(_key_path[-1])]
         _key_path = '/'.join(_key_path[:-1] + _chunk_path)
-        self.key_path = _key_path
+        self.key_path: str = _key_path
 
-    def prepare_chunk(self):
+    def prepare_chunk(self) -> None:
         assert self.buff is None
         header = self.fs.read_block(self.key_path, 0, 16)
         nbytes, self.cbytes, blocksize = cbuffer_sizes(header)
@@ -601,7 +619,7 @@ class PartialReadBuffer:
         self.buff[16: (16 + (self.nblocks * 4))] = start_points_buffer
         self.n_per_block = blocksize / typesize
 
-    def read_part(self, start, nitems):
+    def read_part(self, start: int, nitems: int) -> None:
         assert self.buff is not None
         if self.nblocks == 1:
             return
@@ -624,16 +642,16 @@ class PartialReadBuffer:
                 wanted_decompressed += self.n_per_block
             start_block += 1
 
-    def read_full(self):
+    def read_full(self) -> bytes:
         return self.chunk_store[self.store_key]
 
 
-def retry_call(callabl: Callable,
-               args=None,
-               kwargs=None,
+def retry_call(callabl: Callable[[Any], T],
+               args: Optional[List[Any]] = None,
+               kwargs: Optional[Dict[Any, Any]] = None,
                exceptions: Tuple[Any, ...] = (),
                retries: int = 10,
-               wait: float = 0.1) -> Any:
+               wait: float = 0.1) -> T:
     """
     Make several attempts to invoke the callable. If one of the given exceptions
     is raised, wait the given period of time and retry up to the given number of
@@ -655,7 +673,7 @@ def retry_call(callabl: Callable,
                 raise
 
 
-def all_equal(value: Any, array: Any):
+def all_equal(value: Any, array: Any) -> bool:
     """
     Test if all the elements of an array are equivalent to a value.
     If `value` is None, then this function does not do any comparison and
@@ -680,8 +698,8 @@ def all_equal(value: Any, array: Any):
         # Numpy errors if you call np.isnan on custom dtypes, so ensure
         # we are working with floats before calling isnan
         if np.issubdtype(array.dtype, np.floating) and np.isnan(value):
-            return np.all(np.isnan(array))
+            return bool(np.all(np.isnan(array)))
         else:
             # using == raises warnings from numpy deprecated pattern, but
             # using np.equal() raises type errors for structured dtypes...
-            return np.all(value == array)
+            return bool(np.all(value == array))

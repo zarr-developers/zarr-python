@@ -2,9 +2,10 @@ import collections
 import itertools
 import math
 import numbers
+from typing import Any, Iterable, List, Optional, Tuple, TypeVar, Union, overload
 
 import numpy as np
-
+import numpy.typing as npt
 
 from zarr.errors import (
     ArrayIndexError,
@@ -14,8 +15,12 @@ from zarr.errors import (
     BoundsCheckError,
 )
 
+T = TypeVar('T')
+U = TypeVar('U')
+SelectionArgs = Union[int, Ellipsis, slice, Tuple[Union[int, Ellipsis, slice], ...]]
 
-def is_integer(x):
+
+def is_integer(x: Any) -> bool:
     """True if x is an integer (both pure Python or NumPy).
 
     Note that Python's bool is considered an integer too.
@@ -23,7 +28,7 @@ def is_integer(x):
     return isinstance(x, numbers.Integral)
 
 
-def is_integer_list(x):
+def is_integer_list(x: Any) -> bool:
     """True if x is a list of integers.
 
     This function assumes ie *does not check* that all elements of the list
@@ -33,21 +38,21 @@ def is_integer_list(x):
     return isinstance(x, list) and len(x) > 0 and is_integer(x[0])
 
 
-def is_integer_array(x, ndim=None):
+def is_integer_array(x: Any, ndim: Optional[int] = None) -> bool:
     t = hasattr(x, 'shape') and hasattr(x, 'dtype') and x.dtype.kind in 'ui'
     if ndim is not None:
         t = t and len(x.shape) == ndim
     return t
 
 
-def is_bool_array(x, ndim=None):
+def is_bool_array(x: Any, ndim: Optional[int] = None) -> bool:
     t = hasattr(x, 'shape') and hasattr(x, 'dtype') and x.dtype == bool
     if ndim is not None:
         t = t and len(x.shape) == ndim
     return t
 
 
-def is_scalar(value, dtype):
+def is_scalar(value: Any, dtype: np.dtype) -> bool:
     if np.isscalar(value):
         return True
     if isinstance(value, tuple) and dtype.names and len(value) == len(dtype.names):
@@ -55,7 +60,8 @@ def is_scalar(value, dtype):
     return False
 
 
-def is_pure_fancy_indexing(selection, ndim):
+def is_pure_fancy_indexing(selection: Union[Tuple[int, ...], slice, int],
+                           ndim: Optional[Any]) -> bool:
     """Check whether a selection contains only scalars or integer array-likes.
 
     Parameters
@@ -98,7 +104,7 @@ def is_pure_fancy_indexing(selection, ndim):
     )
 
 
-def normalize_integer_selection(dim_sel, dim_len):
+def normalize_integer_selection(dim_sel: Any, dim_len: int) -> int:
 
     # normalize type to int
     dim_sel = int(dim_sel)
@@ -134,15 +140,15 @@ dim_out_sel
 
 class IntDimIndexer(object):
 
-    def __init__(self, dim_sel, dim_len, dim_chunk_len):
+    def __init__(self, dim_sel: Any, dim_len: int, dim_chunk_len: int):
 
         # normalize
         dim_sel = normalize_integer_selection(dim_sel, dim_len)
 
         # store attributes
-        self.dim_sel = dim_sel
-        self.dim_len = dim_len
-        self.dim_chunk_len = dim_chunk_len
+        self.dim_sel: int = dim_sel
+        self.dim_len: int = dim_len
+        self.dim_chunk_len: int = dim_chunk_len
         self.nitems = 1
 
     def __iter__(self):
@@ -153,13 +159,13 @@ class IntDimIndexer(object):
         yield ChunkDimProjection(dim_chunk_ix, dim_chunk_sel, dim_out_sel)
 
 
-def ceildiv(a, b):
+def ceildiv(a: int, b: int) -> int:
     return math.ceil(a / b)
 
 
 class SliceDimIndexer(object):
 
-    def __init__(self, dim_sel, dim_len, dim_chunk_len):
+    def __init__(self, dim_sel: slice, dim_len: int, dim_chunk_len: int):
 
         # normalize
         self.start, self.stop, self.step = dim_sel.indices(dim_len)
@@ -218,12 +224,14 @@ class SliceDimIndexer(object):
             yield ChunkDimProjection(dim_chunk_ix, dim_chunk_sel, dim_out_sel)
 
 
-def check_selection_length(selection, shape):
+def check_selection_length(selection: Tuple[Union[int, slice, Ellipsis], ...],
+                           shape: Tuple[int, ...]):
     if len(selection) > len(shape):
         err_too_many_indices(selection, shape)
 
 
-def replace_ellipsis(selection, shape):
+def replace_ellipsis(selection: SelectionArgs,
+                     shape: Tuple[int, ...]) -> Tuple[Union[int, slice], ...]:
 
     selection = ensure_tuple(selection)
 
@@ -261,11 +269,20 @@ def replace_ellipsis(selection, shape):
     return selection
 
 
-def replace_lists(selection):
+# This is a loose type annotation
+def replace_lists(selection: Iterable[Any]) -> Tuple[Any]:
     return tuple(
         np.asarray(dim_sel) if isinstance(dim_sel, list) else dim_sel
         for dim_sel in selection
     )
+
+
+@overload
+def ensure_tuple(v: Tuple[T, ...]) -> Tuple[T, ...]: ...
+
+
+@overload
+def ensure_tuple(v: T) -> Tuple[T]: ...
 
 
 def ensure_tuple(v):
@@ -294,19 +311,19 @@ out_selection
 """
 
 
-def is_slice(s):
+def is_slice(s: Any) -> bool:
     return isinstance(s, slice)
 
 
-def is_contiguous_slice(s):
+def is_contiguous_slice(s: Any) -> bool:
     return is_slice(s) and (s.step is None or s.step == 1)
 
 
-def is_positive_slice(s):
+def is_positive_slice(s: Any) -> bool:
     return is_slice(s) and (s.step is None or s.step >= 1)
 
 
-def is_contiguous_selection(selection):
+def is_contiguous_selection(selection: Any) -> bool:
     selection = ensure_tuple(selection)
     return all([
         (is_integer_array(s) or is_contiguous_slice(s) or s == Ellipsis)
@@ -314,7 +331,7 @@ def is_contiguous_selection(selection):
     ])
 
 
-def is_basic_selection(selection):
+def is_basic_selection(selection: Any) -> bool:
     selection = ensure_tuple(selection)
     return all([is_integer(s) or is_positive_slice(s) for s in selection])
 
@@ -322,7 +339,7 @@ def is_basic_selection(selection):
 # noinspection PyProtectedMember
 class BasicIndexer(object):
 
-    def __init__(self, selection, array):
+    def __init__(self, selection: SelectionArgs, array):
 
         # handle ellipsis
         selection = replace_ellipsis(selection, array._shape)
@@ -345,10 +362,10 @@ class BasicIndexer(object):
 
             dim_indexers.append(dim_indexer)
 
-        self.dim_indexers = dim_indexers
-        self.shape = tuple(s.nitems for s in self.dim_indexers
+        self.dim_indexers: List[Union[IntDimIndexer, SliceDimIndexer]] = dim_indexers
+        self.shape: Tuple[int, ...] = tuple(s.nitems for s in self.dim_indexers
                            if not isinstance(s, IntDimIndexer))
-        self.drop_axes = None
+        self.drop_axes: Optional[Tuple[int, ...]] = None
 
     def __iter__(self):
         for dim_projections in itertools.product(*self.dim_indexers):
@@ -363,7 +380,7 @@ class BasicIndexer(object):
 
 class BoolArrayDimIndexer(object):
 
-    def __init__(self, dim_sel, dim_len, dim_chunk_len):
+    def __init__(self, dim_sel: npt.NDArray[np.bool8], dim_len: int, dim_chunk_len: int):
 
         # check number of dimensions
         if not is_bool_array(dim_sel, 1):
@@ -440,13 +457,13 @@ class Order:
         return order
 
 
-def wraparound_indices(x, dim_len):
+def wraparound_indices(x, dim_len: int) -> None:
     loc_neg = x < 0
     if np.any(loc_neg):
         x[loc_neg] = x[loc_neg] + dim_len
 
 
-def boundscheck_indices(x, dim_len):
+def boundscheck_indices(x, dim_len: int) -> None:
     if np.any(x < 0) or np.any(x >= dim_len):
         raise BoundsCheckError(dim_len)
 
@@ -454,7 +471,7 @@ def boundscheck_indices(x, dim_len):
 class IntArrayDimIndexer(object):
     """Integer array selection against a single dimension."""
 
-    def __init__(self, dim_sel, dim_len, dim_chunk_len, wraparound=True, boundscheck=True,
+    def __init__(self, dim_sel, dim_len: int, dim_chunk_len: int, wraparound=True, boundscheck=True,
                  order=Order.UNKNOWN):
 
         # ensure 1d array
@@ -654,7 +671,7 @@ class OIndex(object):
     def __init__(self, array):
         self.array = array
 
-    def __getitem__(self, selection):
+    def __getitem__(self, selection) -> npt.NDArray[Any]:
         fields, selection = pop_fields(selection)
         selection = ensure_tuple(selection)
         selection = replace_lists(selection)
@@ -833,7 +850,7 @@ class VIndex(object):
             raise VindexInvalidSelectionError(selection)
 
 
-def check_fields(fields, dtype):
+def check_fields(fields: Any, dtype: np.dtype) -> np.dtype:
     # early out
     if fields is None:
         return dtype
@@ -859,7 +876,7 @@ def check_fields(fields, dtype):
         return dtype
 
 
-def check_no_multi_fields(fields):
+def check_no_multi_fields(fields: Union[T, List[U]]) -> Union[T, U]:
     if isinstance(fields, list):
         if len(fields) == 1:
             return fields[0]
