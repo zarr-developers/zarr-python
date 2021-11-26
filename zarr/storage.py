@@ -997,8 +997,8 @@ class DirectoryStore(Store):
         return dir_path
 
     def listdir(self, path=None):
-        return self._dimension_separator == "/" and \
-            self._nested_listdir(path) or self._flat_listdir(path)
+        return self._nested_listdir(path) if self._dimension_separator == "/" else \
+            self._flat_listdir(path)
 
     def _flat_listdir(self, path=None):
         dir_path = self.dir_path(path)
