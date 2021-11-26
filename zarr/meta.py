@@ -52,6 +52,7 @@ class Metadata2:
 
             dimension_separator = meta.get("dimension_separator", None)
             shards = meta.get("shards", None)
+            shard_format = meta.get("shard_format", None)
             fill_value = cls.decode_fill_value(meta['fill_value'], dtype, object_codec)
             meta = dict(
                 zarr_format=meta["zarr_format"],
@@ -67,6 +68,8 @@ class Metadata2:
                 meta['dimension_separator'] = dimension_separator
             if shards:
                 meta['shards'] = tuple(shards)
+                assert shard_format is not None
+                meta['shard_format'] = shard_format
         except Exception as e:
             raise MetadataError("error decoding metadata") from e
         else:
@@ -81,6 +84,7 @@ class Metadata2:
 
         dimension_separator = meta.get("dimension_separator")
         shards = meta.get("shards")
+        shard_format = meta.get("shard_format")
         if dtype.hasobject:
             import numcodecs
             object_codec = numcodecs.get_codec(meta['filters'][0])
@@ -99,9 +103,10 @@ class Metadata2:
         )
         if dimension_separator:
             meta['dimension_separator'] = dimension_separator
-
         if shards:
             meta['shards'] = shards
+            assert shard_format is not None
+            meta['shard_format'] = shard_format
 
         return json_dumps(meta)
 

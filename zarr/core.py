@@ -11,7 +11,7 @@ import numpy as np
 from numcodecs.compat import ensure_bytes, ensure_ndarray
 
 from collections.abc import MutableMapping
-from zarr._storage.sharded_store import ShardedStore
+from zarr._storage.sharded_store import SHARDED_STORES
 
 from zarr.attrs import Attributes
 from zarr.codecs import AsType, get_codec
@@ -219,6 +219,7 @@ class Array:
             self._shape = meta['shape']
             self._chunks = meta['chunks']
             self._shards = meta.get('shards')
+            self._shard_format = meta.get('shard_format')
             self._dtype = meta['dtype']
             self._fill_value = meta['fill_value']
             self._order = meta['order']
@@ -272,7 +273,8 @@ class Array:
         # should the dimension_separator also be included in this dict?
         meta = dict(shape=self._shape, chunks=self._chunks, dtype=self._dtype,
                     compressor=compressor_config, fill_value=self._fill_value,
-                    order=self._order, filters=filters_config, shards=self._shards)
+                    order=self._order, filters=filters_config,
+                    shards=self._shards, shard_format=self._shard_format)
         mkey = self._key_prefix + array_meta_key
         self._store[mkey] = self._store._metadata_class.encode_array_metadata(meta)
 
@@ -324,7 +326,7 @@ class Array:
             return chunk_store
         else:
             if self._cached_sharded_store is None:
-                self._cached_sharded_store = ShardedStore(
+                self._cached_sharded_store = SHARDED_STORES[self._shard_format](
                     chunk_store,
                     shards=self._shards,
                     dimension_separator=self._dimension_separator,
@@ -1731,7 +1733,7 @@ class Array:
             check_array_shape('value', value, sel_shape)
 
         # iterate over chunks in range
-        if not hasattr(self.store, "setitems") or self._synchronizer is not None \
+        if not hasattr(self.chunk_store, "setitems") or self._synchronizer is not None \
            or any(map(lambda x: x == 0, self.shape)):
             # iterative approach
             for chunk_coords, chunk_selection, out_selection in indexer:
@@ -1974,8 +1976,8 @@ class Array:
         self.chunk_store.setitems(to_store)
 
     def _chunk_delitems(self, ckeys):
-        if hasattr(self.store, "delitems"):
-            self.store.delitems(ckeys)
+        if hasattr(self.chunk_store, "delitems"):
+            self.chunk_store.delitems(ckeys)
         else:  # pragma: no cover
             # exempting this branch from coverage as there are no extant stores
             # that will trigger this condition, but it's possible that they

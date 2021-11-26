@@ -237,6 +237,7 @@ def init_array(
     object_codec=None,
     dimension_separator=None,
     shards: Union[int, Tuple[int, ...], None]=None,
+    shard_format: Optional[str]=None,
 ):
     """Initialize an array store with the given configuration. Note that this is a low-level
     function and there should be no need to call this directly from user code.
@@ -355,7 +356,7 @@ def init_array(
                          chunk_store=chunk_store, filters=filters,
                          object_codec=object_codec,
                          dimension_separator=dimension_separator,
-                         shards=shards)
+                         shards=shards, shard_format=shard_format)
 
 
 def _init_array_metadata(
@@ -373,6 +374,7 @@ def _init_array_metadata(
     object_codec=None,
     dimension_separator=None,
     shards:Union[int, Tuple[int, ...], None] = None,
+    shard_format: Optional[str]=None,
 ):
 
     # guard conditions
@@ -392,6 +394,7 @@ def _init_array_metadata(
     dtype = dtype.base
     chunks = normalize_chunks(chunks, shape, dtype.itemsize)
     shards = normalize_shards(shards, shape)
+    shard_format = shard_format or "morton_order"
     order = normalize_order(order)
     fill_value = normalize_fill_value(fill_value, dtype)
 
@@ -451,6 +454,7 @@ def _init_array_metadata(
                 dimension_separator=dimension_separator)
     if shards is not None:
         meta["shards"] = shards
+        meta["shard_format"] = shard_format
     key = _path_to_prefix(path) + array_meta_key
     if hasattr(store, '_metadata_class'):
         store[key] = store._metadata_class.encode_array_metadata(meta)  # type: ignore
