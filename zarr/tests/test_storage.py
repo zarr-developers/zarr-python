@@ -94,7 +94,7 @@ def test_deprecated_listdir_nosotre():
         listdir(store)
 
 
-class StoreTests(object):
+class StoreTests:
     """Abstract store tests."""
 
     def create_store(self, **kwargs):  # pragma: no cover

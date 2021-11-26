@@ -57,7 +57,7 @@ def _set_arange(arg):
     return i
 
 
-class MixinArraySyncTests(object):
+class MixinArraySyncTests:
 
     def test_parallel_setitem(self):
         n = 100
@@ -197,7 +197,7 @@ def _require_group(arg):
     return h.name
 
 
-class MixinGroupSyncTests(object):
+class MixinGroupSyncTests:
 
     def test_parallel_create_group(self):
 

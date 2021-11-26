@@ -20,7 +20,7 @@ from zarr.sync import ThreadSynchronizer
 
 
 # something bcolz-like
-class MockBcolzArray(object):
+class MockBcolzArray:
 
     def __init__(self, data, chunklen):
         self.data = data
@@ -34,7 +34,7 @@ class MockBcolzArray(object):
 
 
 # something h5py-like
-class MockH5pyDataset(object):
+class MockH5pyDataset:
 
     def __init__(self, data, chunks):
         self.data = data

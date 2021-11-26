@@ -370,7 +370,7 @@ def info_html_report(items) -> str:
     return report
 
 
-class InfoReporter(object):
+class InfoReporter:
 
     def __init__(self, obj):
         self.obj = obj
@@ -384,7 +384,7 @@ class InfoReporter(object):
         return info_html_report(items)
 
 
-class TreeNode(object):
+class TreeNode:
 
     def __init__(self, obj, depth=0, level=None):
         self.obj = obj
@@ -468,7 +468,7 @@ def tree_widget(group, expand, level):
     return result
 
 
-class TreeViewer(object):
+class TreeViewer:
 
     def __init__(self, group, expand=False, level=None):
 
@@ -541,7 +541,7 @@ def is_valid_python_name(name):
     return name.isidentifier() and not iskeyword(name)
 
 
-class NoLock(object):
+class NoLock:
     """A lock that doesn't lock."""
 
     def __enter__(self):
