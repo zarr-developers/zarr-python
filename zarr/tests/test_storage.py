@@ -986,7 +986,7 @@ class TestFSStore(StoreTests):
                                  chunks=(2, 2, 2),
                                  dtype="i8")
         baz[:] = 1
-        assert set(store.listdir()) == set([".zgroup", "bar"])
+        assert set(store.listdir()) == {".zgroup", "bar"}
         assert foo["bar"]["baz"][(0, 0, 0)] == 1
 
     def test_not_fsspec(self):
