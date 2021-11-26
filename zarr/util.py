@@ -330,7 +330,7 @@ def normalize_storage_path(path: Union[str, bytes, None]) -> str:
 
         # don't allow path segments with just '.' or '..'
         segments = path.split('/')
-        if any([s in {'.', '..'} for s in segments]):
+        if any(s in {'.', '..'} for s in segments):
             raise ValueError("path containing '.' or '..' segment not allowed")
 
     else:

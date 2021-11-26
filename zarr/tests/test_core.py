@@ -132,7 +132,7 @@ class TestArray(unittest.TestCase):
         z[:] = np.random.random(z.shape)
 
         # Check in-memory array only contains `bytes`
-        assert all([isinstance(v, bytes) for v in z.chunk_store.values()])
+        assert all(isinstance(v, bytes) for v in z.chunk_store.values())
 
         z.store.close()
 
