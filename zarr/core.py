@@ -1958,7 +1958,6 @@ class Array:
             # that will trigger this condition, but it's possible that they
             # will be developed in the future.
             tuple(map(self._chunk_delitem, ckeys))
-        return None
 
     def _chunk_delitem(self, ckey):
         """
@@ -1966,9 +1965,8 @@ class Array:
         """
         try:
             del self.chunk_store[ckey]
-            return
         except KeyError:
-            return
+            pass
 
     def _chunk_setitem(self, chunk_coords, chunk_selection, value, fields=None):
         """Replace part or whole of a chunk.
