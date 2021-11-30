@@ -74,7 +74,7 @@ class Array:
         operations. If False, user attributes are reloaded from the store prior
         to all attribute read operations.
     partial_decompress : bool, optional
-        If True and while the chunk_store is a FSStore and the compresion used
+        If True and while the chunk_store is a FSStore and the compression used
         is Blosc, when getting data from the array chunks will be partially
         read and decompressed when possible.
 
@@ -347,6 +347,11 @@ class Array:
         """A value used for uninitialized portions of the array."""
         return self._fill_value
 
+    @fill_value.setter
+    def fill_value(self, new):
+        self._fill_value = new
+        self._flush_metadata_nosync()
+
     @property
     def order(self):
         """A string indicating the order in which bytes are arranged within
@@ -454,7 +459,7 @@ class Array:
         # count chunk keys
         return sum(1 for k in listdir(self.chunk_store, self._path) if prog.match(k))
 
-    # backwards compability
+    # backwards compatibility
     initialized = nchunks_initialized
 
     @property
@@ -1103,7 +1108,7 @@ class Array:
             >>> import numpy as np
             >>> z = zarr.array(np.arange(100).reshape(10, 10))
 
-        Retrieve items by specifying a maks::
+        Retrieve items by specifying a mask::
 
             >>> sel = np.zeros_like(z, dtype=bool)
             >>> sel[1, 1] = True
@@ -1953,7 +1958,6 @@ class Array:
             # that will trigger this condition, but it's possible that they
             # will be developed in the future.
             tuple(map(self._chunk_delitem, ckeys))
-        return None
 
     def _chunk_delitem(self, ckey):
         """
@@ -1961,9 +1965,8 @@ class Array:
         """
         try:
             del self.chunk_store[ckey]
-            return
         except KeyError:
-            return
+            pass
 
     def _chunk_setitem(self, chunk_coords, chunk_selection, value, fields=None):
         """Replace part or whole of a chunk.
@@ -2065,7 +2068,7 @@ class Array:
         if self._compressor:
             # only decode requested items
             if (
-                all([x is not None for x in [start, nitems]])
+                all(x is not None for x in [start, nitems])
                 and self._compressor.codec_id == "blosc"
             ) and hasattr(self._compressor, "decode_partial"):
                 chunk = self._compressor.decode_partial(cdata, start, nitems)

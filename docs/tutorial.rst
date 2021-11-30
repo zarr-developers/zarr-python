@@ -1297,7 +1297,7 @@ ratios, depending on the correlation structure within the data. E.g.::
     Chunks initialized : 100/100
 
 In the above example, Fortran order gives a better compression ratio. This is an
-artifical example but illustrates the general point that changing the order of
+artificial example but illustrates the general point that changing the order of
 bytes within chunks of an array may improve the compression ratio, depending on
 the structure of the data, the compression algorithm used, and which compression
 filters (e.g., byte-shuffle) have been applied.

@@ -17,6 +17,7 @@ from numpy.testing import assert_array_almost_equal, assert_array_equal
 
 from numcodecs.compat import ensure_bytes
 
+import zarr
 from zarr.codecs import BZ2, AsType, Blosc, Zlib
 from zarr.errors import MetadataError
 from zarr.hierarchy import group
@@ -102,7 +103,7 @@ def test_deprecated_listdir_nosotre():
         listdir(store)
 
 
-class StoreTests(object):
+class StoreTests:
     """Abstract store tests."""
 
     def create_store(self, **kwargs):  # pragma: no cover
@@ -759,7 +760,7 @@ class TestMappingStore(StoreTests):
 
 def setdel_hierarchy_checks(store):
     # these tests are for stores that are aware of hierarchy levels; this
-    # behaviour is not stricly required by Zarr but these tests are included
+    # behaviour is not strictly required by Zarr but these tests are included
     # to define behaviour of MemoryStore and DirectoryStore classes
 
     # check __setitem__ and __delitem__ blocked by leaf
@@ -911,7 +912,7 @@ class TestDirectoryStore(StoreTests):
 
         def mock_walker_no_slash(_path):
             yield from [
-                # no trainling slash in first key
+                # no trailing slash in first key
                 ('root_with_no_slash', ['d1', 'g1'], ['.zgroup']),
                 ('root_with_no_slash/d1', [], ['.zarray']),
                 ('root_with_no_slash/g1', [], ['.zgroup'])
@@ -994,7 +995,7 @@ class TestFSStore(StoreTests):
                                  chunks=(2, 2, 2),
                                  dtype="i8")
         baz[:] = 1
-        assert set(store.listdir()) == set([".zgroup", "bar"])
+        assert set(store.listdir()) == {".zgroup", "bar"}
         assert foo["bar"]["baz"][(0, 0, 0)] == 1
 
     def test_not_fsspec(self):
@@ -2157,7 +2158,7 @@ class TestConsolidatedMetadataStore:
 
     def test_bad_format(self):
 
-        # setup store with consolidated metdata
+        # setup store with consolidated metadata
         store = dict()
         consolidated = {
             # bad format version
@@ -2171,7 +2172,7 @@ class TestConsolidatedMetadataStore:
 
     def test_read_write(self):
 
-        # setup store with consolidated metdata
+        # setup store with consolidated metadata
         store = dict()
         consolidated = {
             'zarr_consolidated_format': 1,
@@ -2196,4 +2197,19 @@ class TestConsolidatedMetadataStore:
         with pytest.raises(PermissionError):
             cs['bar'] = 0
         with pytest.raises(PermissionError):
-            cs['spam'] = 'eggs'
+            cs["spam"] = "eggs"
+
+
+# standalone test we do not want to run on each store.
+
+
+def test_fill_value_change():
+    a = zarr.create((10, 10), dtype=int)
+
+    assert a[0, 0] == 0
+
+    a.fill_value = 1
+
+    assert a[0, 0] == 1
+
+    assert json.loads(a.store[".zarray"])["fill_value"] == 1

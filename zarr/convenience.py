@@ -428,7 +428,7 @@ def tree(grp, expand=False, level=None):
     return TreeViewer(grp, expand=expand, level=level)
 
 
-class _LogWriter(object):
+class _LogWriter:
 
     def __init__(self, log):
         self.log_func = None

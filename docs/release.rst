@@ -9,6 +9,8 @@ Unreleased
 Enhancements
 ~~~~~~~~~~~~
 
+* Allow to assign array ``fill_values`` and update metadata accordingly. :issue:`662`
+
 * array indexing with [] (getitem and setitem) now supports fancy indexing.
   By :user:`Juan Nunez-Iglesias <jni>`; :issue:`725`.
 
@@ -21,11 +23,25 @@ Enhancements
 * Create a Base store class for Zarr Store.
   By :user:`Greggory Lee <grlee77>`; :issue:`789`.
 
+.. _release_2.10.3:
+
+2.10.3
+------
+
 Bug fixes
 ~~~~~~~~~
 
 * N5 keywords now emit UserWarning instead of raising a ValueError.
   By :user:`Boaz Mohar <boazmohar>`; :issue:`860`.
+
+* blocks_to_decompress not used in read_part function.
+  By :user:`Boaz Mohar <boazmohar>`; :issue:`861`.
+
+* defines blocksize for array, updates hexdigest values.
+  By :user:`Andrew Fulton <andrewfulton9>`; :issue:`867`.
+
+* Fix test failure on Debian and conda-forge builds.
+  By :user:`Josh Moore <joshmoore>`; :issue:`871`.
 
 .. _release_2.10.2:
 
@@ -328,7 +344,7 @@ See `this link <https://github.com/zarr-developers/zarr-python/milestone/11?clos
 merged PR tagged with the 2.6 milestone.
 
 * Add ability to partially read and decompress arrays, see :issue:`667`. It is
-  only available to chunks stored using fs-spec and using bloc as a compressor.
+  only available to chunks stored using fsspec and using Blosc as a compressor.
 
   For certain analysis case when only a small portion of chunks is needed it can
   be advantageous to only access and decompress part of the chunks. Doing
@@ -359,7 +375,7 @@ This release will be the last to support Python 3.5, next version of Zarr will b
   without ``ipytree`` installed.
   By :user:`Zain Patel <mzjp2>`; :issue:`537`
 
-* Add typing informations to many of the core functions :issue:`589`
+* Add typing information to many of the core functions :issue:`589`
 
 * Explicitly close stores during testing.
   By :user:`Elliott Sales de Andrade <QuLogic>`; :issue:`442`

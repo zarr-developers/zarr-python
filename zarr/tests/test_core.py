@@ -132,7 +132,7 @@ class TestArray(unittest.TestCase):
         z[:] = np.random.random(z.shape)
 
         # Check in-memory array only contains `bytes`
-        assert all([isinstance(v, bytes) for v in z.chunk_store.values()])
+        assert all(isinstance(v, bytes) for v in z.chunk_store.values())
 
         z.store.close()
 
@@ -2423,7 +2423,7 @@ class TestArrayWithFilters(TestArray):
 
 
 # custom store, does not support getsize()
-class CustomMapping(object):
+class CustomMapping:
 
     def __init__(self):
         self.inner = KVStore(dict())
