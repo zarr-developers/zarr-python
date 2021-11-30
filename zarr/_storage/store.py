@@ -1,4 +1,3 @@
-import json
 import sys
 from collections.abc import MutableMapping
 from string import ascii_letters, digits

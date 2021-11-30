@@ -6,8 +6,6 @@ import tempfile
 import numpy as np
 import pytest
 
-from numcodecs.compat import ensure_bytes
-
 from zarr.codecs import Zlib
 from zarr.errors import ContainsArrayError, ContainsGroupError
 from zarr.meta import ZARR_FORMAT, ZARR_FORMAT_v3
@@ -25,8 +23,10 @@ from .test_storage import (StoreTests, TestMemoryStore, TestDirectoryStore,
                            TestDBMStoreNDBM, TestDBMStoreBerkeleyDB,
                            TestLMDBStore, TestSQLiteStore,
                            TestSQLiteStoreInMemory, TestLRUStoreCache,
-                           dimension_separator_fixture, s3,
                            skip_if_nested_chunks)
+
+# pytest will fail to run if the following fixtures aren't imported here
+from .test_storage import dimension_separator_fixture, s3  # noqa
 
 
 @pytest.fixture(params=[
