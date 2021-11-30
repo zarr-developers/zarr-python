@@ -43,6 +43,8 @@ from zarr.tests.util import abs_container, skip_test_env_var, have_fsspec
 
 class TestArray(unittest.TestCase):
 
+    _version = 2
+
     def test_array_init(self):
 
         # normal initialization
@@ -1180,7 +1182,6 @@ class TestArray(unittest.TestCase):
     def test_object_arrays_vlen_text(self):
 
         data = np.array(greetings * 1000, dtype=object)
-
         z = self.create_array(shape=data.shape, dtype=object, object_codec=VLenUTF8())
         z[0] = 'foo'
         assert z[0] == 'foo'
