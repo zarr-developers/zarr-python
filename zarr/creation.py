@@ -19,7 +19,8 @@ def create(shape, chunks=True, dtype=None, compressor='default',
            fill_value=0, order='C', store=None, synchronizer=None,
            overwrite=False, path=None, chunk_store=None, filters=None,
            cache_metadata=True, cache_attrs=True, read_only=False,
-           object_codec=None, dimension_separator=None, write_empty_chunks=True, **kwargs):
+           object_codec=None, dimension_separator=None, write_empty_chunks=True, *,
+           zarr_version=None, **kwargs):
     """Create an array.
 
     Parameters
@@ -77,7 +78,10 @@ def create(shape, chunks=True, dtype=None, compressor='default',
         that chunk's key is deleted. This setting enables sparser storage,
         as only chunks with non-fill-value data are stored, at the expense
         of overhead associated with checking the data of each chunk.
-
+    zarr_version : {None, 2, 3}, optional
+        The zarr protocol version of the created array. If None, it will be
+        inferred from ``store`` or ``chunk_store`` if they are provided,
+        otherwise defaulting to 2.
 
     Returns
     -------
@@ -122,9 +126,12 @@ def create(shape, chunks=True, dtype=None, compressor='default',
         <zarr.core.Array (10000, 10000) float64>
 
     """
+    if zarr_version is None and store is None:
+        zarr_version = getattr(chunk_store, '_store_version', 2)
 
     # handle polymorphic store arg
-    store = normalize_store_arg(store)
+    store = normalize_store_arg(store, zarr_version=zarr_version)
+    zarr_version = getattr(store, '_store_version', 2)
 
     # API compatibility with h5py
     compressor, fill_value = _kwargs_compat(compressor, fill_value, kwargs)
@@ -140,6 +147,9 @@ def create(shape, chunks=True, dtype=None, compressor='default',
                 f"conflicts with store's separator: "
                 f"{store_separator}")
     dimension_separator = normalize_dimension_separator(dimension_separator)
+
+    if zarr_version > 2 and path is None:
+        raise ValueError("path must be supplied to initialize a zarr v3 array")
 
     # initialize array metadata
     init_array(store, shape=shape, chunks=chunks, dtype=dtype, compressor=compressor,
@@ -388,6 +398,8 @@ def open_array(
     storage_options=None,
     partial_decompress=False,
     write_empty_chunks=True,
+    *,
+    zarr_version=None,
     **kwargs
 ):
     """Open an array using file-mode-like semantics.
@@ -450,6 +462,10 @@ def open_array(
         that chunk's key is deleted. This setting enables sparser storage,
         as only chunks with non-fill-value data are stored, at the expense
         of overhead associated with checking the data of each chunk.
+    zarr_version : {None, 2, 3}, optional
+        The zarr protocol version of the array to be opened. If None, it will
+        be inferred from ``store`` or ``chunk_store`` if they are provided,
+        otherwise defaulting to 2.
 
     Returns
     -------
@@ -484,12 +500,21 @@ def open_array(
     # w- or x : create, fail if exists
     # a : read/write if exists, create otherwise (default)
 
+    if zarr_version is None and store is None:
+        zarr_version = getattr(chunk_store, '_store_version', 2)
+
     # handle polymorphic store arg
     clobber = (mode == 'w')
-    store = normalize_store_arg(store, clobber=clobber, storage_options=storage_options, mode=mode)
+    store = normalize_store_arg(store, clobber=clobber, storage_options=storage_options,
+                                mode=mode, zarr_version=zarr_version)
+    zarr_version = getattr(store, '_store_version', 2)
     if chunk_store is not None:
         chunk_store = normalize_store_arg(chunk_store, clobber=clobber,
-                                          storage_options=storage_options)
+                                          storage_options=storage_options,
+                                          zarr_version=zarr_version)
+
+    if zarr_version == 3 and path is None:
+        path = 'array'  # TODO: raise ValueError instead?
     path = normalize_storage_path(path)
 
     # API compatibility with h5py
@@ -559,6 +584,7 @@ def _like_args(a, kwargs):
         kwargs.setdefault('compressor', a.compressor)
         kwargs.setdefault('order', a.order)
         kwargs.setdefault('filters', a.filters)
+        kwargs.setdefault('zarr_version', a._version)
     else:
         kwargs.setdefault('compressor', 'default')
         kwargs.setdefault('order', 'C')
