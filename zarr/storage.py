@@ -968,7 +968,7 @@ class DirectoryStore(Store):
         for dirpath, _, filenames in walker(path):
             dirpath = os.path.relpath(dirpath, path).replace("\\", "/")
             for f in filenames:
-                if dirpath == ".":
+                if dirpath == os.curdir:
                     yield f
                 else:
                     yield dirpath + "/" + f
