@@ -2305,7 +2305,7 @@ class TestArrayWithFilters(TestArray):
     @staticmethod
     def create_array(read_only=False, **kwargs):
         store = KVStore(dict())
-        dtype = kwargs.get('dtype', None)
+        dtype = kwargs.get('dtype')
         filters = [
             Delta(dtype=dtype),
             FixedScaleOffset(dtype=dtype, scale=1, offset=0),
