@@ -27,29 +27,44 @@ from zarr.hierarchy import Group, group
 from zarr.storage import (
     ConsolidatedMetadataStore,
     MemoryStore,
+    MemoryStoreV3,
     atexit_rmtree,
     getsize,
 )
 
 
-def test_open_array(path_type):
+def _init_creation_kwargs(zarr_version):
+    kwargs = {'zarr_version': zarr_version}
+    if zarr_version == 3:
+        kwargs['path'] = 'dataset'
+    return kwargs
+
+
+@pytest.mark.parametrize('zarr_version', [2, 3])
+def test_open_array(path_type, zarr_version):
 
     store = tempfile.mkdtemp()
     atexit.register(atexit_rmtree, store)
     store = path_type(store)
+    kwargs = _init_creation_kwargs(zarr_version)
 
     # open array, create if doesn't exist
-    z = open(store, mode='a', shape=100)
+    z = open(store, mode='a', shape=100, **kwargs)
     assert isinstance(z, Array)
     assert z.shape == (100,)
 
     # open array, overwrite
-    z = open(store, mode='w', shape=200)
+    z = open(store, mode='w', shape=200, **kwargs)
     assert isinstance(z, Array)
     assert z.shape == (200,)
 
+    if zarr_version == 3:
+        # cannot open a v3 array without path
+        with pytest.raises(ValueError):
+            open(store, mode='w', shape=200, zarr_version=3)
+
     # open array, read-only
-    z = open(store, mode='r')
+    z = open(store, mode='r', **kwargs)
     assert isinstance(z, Array)
     assert z.shape == (200,)
     assert z.read_only
@@ -59,44 +74,70 @@ def test_open_array(path_type):
         open('doesnotexist', mode='r')
 
 
-def test_open_group(path_type):
+@pytest.mark.parametrize("zarr_version", [2, 3])
+def test_open_group(path_type, zarr_version):
 
     store = tempfile.mkdtemp()
     atexit.register(atexit_rmtree, store)
     store = path_type(store)
+    kwargs = _init_creation_kwargs(zarr_version)
 
     # open group, create if doesn't exist
-    g = open(store, mode='a')
+    g = open(store, mode='a', **kwargs)
     g.create_group('foo')
     assert isinstance(g, Group)
     assert 'foo' in g
 
     # open group, overwrite
-    g = open(store, mode='w')
+    g = open(store, mode='w', **kwargs)
     assert isinstance(g, Group)
     assert 'foo' not in g
 
+    if zarr_version == 3:
+        # cannot open a v3 group without path
+        with pytest.raises(ValueError):
+            open(store, mode='w', zarr_version=3)
+
     # open group, read-only
-    g = open(store, mode='r')
+    g = open(store, mode='r', **kwargs)
     assert isinstance(g, Group)
     assert g.read_only
 
 
-def test_save_errors():
+@pytest.mark.parametrize("zarr_version", [2, 3])
+def test_save_errors(zarr_version):
     with pytest.raises(ValueError):
         # no arrays provided
-        save_group('data/group.zarr')
+        save_group('data/group.zarr', zarr_version=zarr_version)
+    with pytest.raises(TypeError):
+        # no array provided
+        save_array('data/group.zarr', zarr_version=zarr_version)
     with pytest.raises(ValueError):
         # no arrays provided
-        save('data/group.zarr')
+        save('data/group.zarr', zarr_version=zarr_version)
 
 
-def test_lazy_loader():
+def test_zarr_v3_save_errors():
+    x = np.ones(8)
+    with pytest.raises(ValueError):
+        # no path provided
+        save_group('data/group.zr3', x, zarr_version=3)
+    with pytest.raises(ValueError):
+        # no path provided
+        save_array('data/group.zr3', x, zarr_version=3)
+    with pytest.raises(ValueError):
+        # no path provided
+        save('data/group.zr3', x, zarr_version=3)
+
+
+@pytest.mark.parametrize("zarr_version", [2, 3])
+def test_lazy_loader(zarr_version):
     foo = np.arange(100)
     bar = np.arange(100, 0, -1)
-    store = 'data/group.zarr'
-    save(store, foo=foo, bar=bar)
-    loader = load(store)
+    store = 'data/group.zarr' if zarr_version == 2 else 'data/group.zr3'
+    kwargs = _init_creation_kwargs(zarr_version)
+    save(store, foo=foo, bar=bar, **kwargs)
+    loader = load(store, **kwargs)
     assert 'foo' in loader
     assert 'bar' in loader
     assert 'baz' not in loader
@@ -105,6 +146,8 @@ def test_lazy_loader():
     assert_array_equal(foo, loader['foo'])
     assert_array_equal(bar, loader['bar'])
 
+
+# TODO: consolidated metadata currently only supported for v2
 
 def test_consolidate_metadata():
 
@@ -250,9 +293,12 @@ class TestCopyStore(unittest.TestCase):
         source['bar/qux'] = b'zzz'
         self.source = source
 
+    def _get_dest_store(self):
+        return dict()
+
     def test_no_paths(self):
         source = self.source
-        dest = dict()
+        dest = self._get_dest_store()
         copy_store(source, dest)
         assert len(source) == len(dest)
         for key in source:
@@ -262,7 +308,7 @@ class TestCopyStore(unittest.TestCase):
         source = self.source
         # paths should be normalized
         for source_path in 'bar', 'bar/', '/bar', '/bar/':
-            dest = dict()
+            dest = self._get_dest_store()
             copy_store(source, dest, source_path=source_path)
             assert 2 == len(dest)
             for key in source:
@@ -276,7 +322,7 @@ class TestCopyStore(unittest.TestCase):
         source = self.source
         # paths should be normalized
         for dest_path in 'new', 'new/', '/new', '/new/':
-            dest = dict()
+            dest = self._get_dest_store()
             copy_store(source, dest, dest_path=dest_path)
             assert len(source) == len(dest)
             for key in source:
@@ -288,7 +334,7 @@ class TestCopyStore(unittest.TestCase):
         # paths should be normalized
         for source_path in 'bar', 'bar/', '/bar', '/bar/':
             for dest_path in 'new', 'new/', '/new', '/new/':
-                dest = dict()
+                dest = self._get_dest_store()
                 copy_store(source, dest, source_path=source_path,
                            dest_path=dest_path)
                 assert 2 == len(dest)
@@ -304,14 +350,14 @@ class TestCopyStore(unittest.TestCase):
         source = self.source
 
         # single excludes
-        dest = dict()
+        dest = self._get_dest_store()
         excludes = 'f.*'
         copy_store(source, dest, excludes=excludes)
         assert len(dest) == 2
         assert 'foo' not in dest
 
         # multiple excludes
-        dest = dict()
+        dest = self._get_dest_store()
         excludes = 'b.z', '.*x'
         copy_store(source, dest, excludes=excludes)
         assert len(dest) == 1
@@ -320,7 +366,7 @@ class TestCopyStore(unittest.TestCase):
         assert 'bar/qux' not in dest
 
         # excludes and includes
-        dest = dict()
+        dest = self._get_dest_store()
         excludes = 'b.*'
         includes = '.*x'
         copy_store(source, dest, excludes=excludes, includes=includes)
@@ -331,13 +377,13 @@ class TestCopyStore(unittest.TestCase):
 
     def test_dry_run(self):
         source = self.source
-        dest = dict()
+        dest = self._get_dest_store()
         copy_store(source, dest, dry_run=True)
         assert 0 == len(dest)
 
     def test_if_exists(self):
         source = self.source
-        dest = dict()
+        dest = self._get_dest_store()
         dest['bar/baz'] = b'mmm'
 
         # default ('raise')
@@ -415,7 +461,14 @@ def check_copied_array(original, copied, without_attrs=False,
         for k in original.attrs.keys():
             assert k not in copied.attrs
     else:
-        assert sorted(original.attrs.items()) == sorted(copied.attrs.items())
+        if dest_h5py and 'filters' in original.attrs:
+            # special case in v3 (storing filters metadata under attributes)
+            # we explicitly do not copy this info over to HDF5
+            original_attrs = original.attrs.asdict().copy()
+            original_attrs.pop('filters')
+        else:
+            original_attrs = original.attrs
+        assert sorted(original_attrs.items()) == sorted(copied.attrs.items())
 
 
 def check_copied_group(original, copied, without_attrs=False, expect_props=None,
@@ -469,8 +522,30 @@ def test_copy_all():
         dry_run=False,
     )
 
+    assert 'subgroup' in destination_group
     assert destination_group.attrs["info"] == "group attrs"
     assert destination_group.subgroup.attrs["info"] == "sub attrs"
+
+
+def test_copy_all_v3():
+    """
+    https://github.com/zarr-developers/zarr-python/issues/269
+
+    copy_all used to not copy attributes as `.keys()`
+
+    """
+    original_group = zarr.group(store=MemoryStoreV3(), path='group1', overwrite=True)
+    original_group.create_group("subgroup")
+
+    destination_group = zarr.group(store=MemoryStoreV3(), path='group2', overwrite=True)
+
+    # copy from memory to directory store
+    copy_all(
+        original_group,
+        destination_group,
+        dry_run=False,
+    )
+    assert 'subgroup' in destination_group
 
 
 class TestCopy:
@@ -715,3 +790,68 @@ class TestCopy:
         # bad option
         with pytest.raises(TypeError):
             copy(source['foo'], dest, dry_run=True, log=True)
+
+
+class TestCopyV3(TestCopy):
+
+    @pytest.fixture(params=[False, True], ids=['zarr', 'hdf5'])
+    def source(self, request, tmpdir):
+        def prep_source(source):
+            foo = source.create_group('foo')
+            foo.attrs['experiment'] = 'weird science'
+            baz = foo.create_dataset('bar/baz', data=np.arange(100), chunks=(50,))
+            baz.attrs['units'] = 'metres'
+            if request.param:
+                extra_kws = dict(compression='gzip', compression_opts=3, fillvalue=84,
+                                 shuffle=True, fletcher32=True)
+            else:
+                extra_kws = dict(compressor=Zlib(3), order='F', fill_value=42, filters=[Adler32()])
+            source.create_dataset('spam', data=np.arange(100, 200).reshape(20, 5),
+                                  chunks=(10, 2), dtype='i2', **extra_kws)
+            return source
+
+        if request.param:
+            h5py = pytest.importorskip('h5py')
+            fn = tmpdir.join('source.h5')
+            with h5py.File(str(fn), mode='w') as h5f:
+                yield prep_source(h5f)
+        else:
+            yield prep_source(group(path='group1', zarr_version=3))
+
+    @pytest.fixture(params=[False, True], ids=['zarr', 'hdf5'])
+    def dest(self, request, tmpdir):
+        if request.param:
+            h5py = pytest.importorskip('h5py')
+            fn = tmpdir.join('dest.h5')
+            with h5py.File(str(fn), mode='w') as h5f:
+                yield h5f
+        else:
+            yield group(path='group2', zarr_version=3)
+
+    def test_copy_array_create_options(self, source, dest):
+        dest_h5py = dest.__module__.startswith('h5py.')
+
+        # copy array, provide creation options
+        compressor = Zlib(9)
+        create_kws = dict(chunks=(10,))
+        if dest_h5py:
+            create_kws.update(compression='gzip', compression_opts=9,
+                              shuffle=True, fletcher32=True, fillvalue=42)
+        else:
+            # v3 case has no filters argument in zarr create_kws
+            create_kws.update(compressor=compressor, fill_value=42, order='F')
+        copy(source['foo/bar/baz'], dest, without_attrs=True, **create_kws)
+        check_copied_array(source['foo/bar/baz'], dest['baz'],
+                           without_attrs=True, expect_props=create_kws)
+
+    def test_copy_group_no_name(self, source, dest):
+        if source.__module__.startswith('h5py'):
+            with pytest.raises(TypeError):
+                copy(source, dest)
+        else:
+            # For v3, dest.name will be inferred from source.name
+            copy(source, dest)
+            check_copied_group(source, dest[source.name.lstrip('/')])
+
+        copy(source, dest, name='root')
+        check_copied_group(source, dest['root'])
