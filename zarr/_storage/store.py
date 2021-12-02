@@ -118,11 +118,11 @@ class Store(BaseStore):
 
     """
 
-    def listdir(self, path: str = "") -> List[str]:
+    def listdir(self, path: str = None) -> List[str]:
         path = normalize_storage_path(path)
         return _listdir_from_keys(self, path)
 
-    def rmdir(self, path: str = "") -> None:
+    def rmdir(self, path: str = None) -> None:
         if not self.is_erasable():
             raise NotImplementedError(
                 f'{type(self)} is not erasable, cannot call "rmdir"'
@@ -150,14 +150,6 @@ def _rename_from_keys(store: BaseStore, src_path: str, dst_path: str) -> None:
             store[new_key] = store.pop(key)
 
 
-def _rmdir_from_keys(store: Union[BaseStore, MutableMapping], path: Optional[str] = None) -> None:
-    # assume path already normalized
-    prefix = _path_to_prefix(path)
-    for key in list(store.keys()):
-        if key.startswith(prefix):
-            del store[key]
-
-
 def _listdir_from_keys(store: BaseStore, path: Optional[str] = None) -> List[str]:
     # assume path already normalized
     prefix = _path_to_prefix(path)
@@ -168,3 +160,11 @@ def _listdir_from_keys(store: BaseStore, path: Optional[str] = None) -> List[str
             child = suffix.split('/')[0]
             children.add(child)
     return sorted(children)
+
+
+def _rmdir_from_keys(store: Union[BaseStore, MutableMapping], path: Optional[str] = None) -> None:
+    # assume path already normalized
+    prefix = _path_to_prefix(path)
+    for key in list(store.keys()):
+        if key.startswith(prefix):
+            del store[key]
