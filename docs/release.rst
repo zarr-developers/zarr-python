@@ -9,6 +9,9 @@ Unreleased
 Enhancements
 ~~~~~~~~~~~~
 
+* write_empty_chunks defaults to False.
+  By :user:`Juan Nunez-Iglesias <jni>`; :issue:`853`.
+
 * Allow to assign array ``fill_values`` and update metadata accordingly. :issue:`662`
 
 * array indexing with [] (getitem and setitem) now supports fancy indexing.
