@@ -339,7 +339,7 @@ def array(data, **kwargs):
         data = np.asanyarray(data)
 
     # setup dtype
-    kw_dtype = kwargs.get('dtype', None)
+    kw_dtype = kwargs.get('dtype')
     if kw_dtype is None:
         kwargs['dtype'] = data.dtype
     else:
@@ -348,7 +348,7 @@ def array(data, **kwargs):
     # setup shape and chunks
     data_shape, data_chunks = _get_shape_chunks(data)
     kwargs['shape'] = data_shape
-    kw_chunks = kwargs.get('chunks', None)
+    kw_chunks = kwargs.get('chunks')
     if kw_chunks is None:
         kwargs['chunks'] = data_chunks
     else:
