@@ -1,7 +1,7 @@
 from collections import defaultdict
 from functools import reduce
-import math
-from typing import Any, Dict, Iterable, Iterator, List, Tuple, Union
+from itertools import product
+from typing import Dict, Iterable, Iterator, List, NamedTuple, Optional, Tuple, Union
 
 import numpy as np
 
@@ -9,15 +9,45 @@ from zarr._storage.store import BaseStore, Store
 from zarr.storage import StoreLike, array_meta_key, attrs_key, group_meta_key
 
 
-def _cum_prod(x: Iterable[int]) -> Iterable[int]:
-    prod = 1
-    yield prod
-    for i in x[:-1]:
-        prod *= i
-        yield prod
+class _ShardIndex(NamedTuple):
+    store: "IndexedShardedStore"
+    offsets_and_lengths: np.ndarray  # dtype uint64, shape (shards_0, _shards_1, ..., 2)
+
+    def __localize_chunk__(self, chunk: Tuple[int, ...]) -> Tuple[int, ...]:
+        return tuple(chunk_i % shard_i for chunk_i, shard_i in zip(chunk, self.store._shards))
+
+    def get_chunk_slice(self, chunk: Tuple[int, ...]) -> Optional[slice]:
+        localized_chunk = self.__localize_chunk__(chunk)
+        chunk_start, chunk_len = self.offsets_and_lengths[localized_chunk]
+        if chunk_len == 0:
+            return None
+        else:
+            return slice(chunk_start, chunk_start + chunk_len)
+
+    def set_chunk_slice(self, chunk: Tuple[int, ...], chunk_slice: Optional[slice]) -> None:
+        localized_chunk = self.__localize_chunk__(chunk)
+        if chunk_slice is None:
+            self.offsets_and_lengths[localized_chunk] = (0, 0)
+        else:
+            self.offsets_and_lengths[localized_chunk] = (chunk_slice.start, chunk_slice.stop - chunk_slice.start)
+
+    def to_bytes(self) -> bytes:
+        return self.offsets_and_lengths.tobytes(order='C')
+
+    @classmethod
+    def from_bytes(cls, buffer: Union[bytes, bytearray], store: "IndexedShardedStore") -> "_ShardIndex":
+        return cls(
+            store=store,
+            offsets_and_lengths=np.frombuffer(bytearray(buffer), dtype=">u8").reshape(*store._shards, 2, order="C")
+        )
+
+    @classmethod
+    def create_empty(cls, store: "IndexedShardedStore"):
+        # reserving 2*64bit per chunk for offset and length:
+        return cls.from_bytes(b"\x00" * (16 * store._num_chunks_per_shard), store=store)
 
 
-class MortonOrderShardedStore(Store):
+class IndexedShardedStore(Store):
     """This class should not be used directly,
     but is added to an Array as a wrapper when needed automatically."""
 
@@ -26,63 +56,39 @@ class MortonOrderShardedStore(Store):
         store: StoreLike,
         shards: Tuple[int, ...],
         dimension_separator: str,
-        are_chunks_compressed: bool,
-        dtype: np.dtype,
-        fill_value: Any,
-        chunk_size: int,
     ) -> None:
         self._store: BaseStore = BaseStore._ensure_store(store)
         self._shards = shards
         self._num_chunks_per_shard = reduce(lambda x, y: x*y, shards, 1)
         self._dimension_separator = dimension_separator
 
-        chunk_has_constant_size = not are_chunks_compressed and not dtype == object
-        assert chunk_has_constant_size, "Currently only uncompressed, fixed-length data can be used."
-        self._chunk_has_constant_size = chunk_has_constant_size
-        if chunk_has_constant_size:
-            binary_fill_value = np.full(1, fill_value=fill_value or 0, dtype=dtype).tobytes()
-            self._fill_chunk = binary_fill_value * chunk_size
-            self._emtpy_meta = b"\x00" * math.ceil(self._num_chunks_per_shard / 8)
-
-        # unused when using Morton order
-        self._shard_strides = tuple(_cum_prod(shards))
-
         # TODO: add warnings for ineffective reads/writes:
         # * warn if partial reads are not available
         # * optionally warn on unaligned writes if no partial writes are available
 
-    def __get_meta__(self, shard_content: Union[bytes, bytearray]) -> int:
-        return int.from_bytes(shard_content[-len(self._emtpy_meta):], byteorder="big")
-
-    def __set_meta__(self, shard_content: bytearray, meta: int) -> None:
-        shard_content[-len(self._emtpy_meta):] = meta.to_bytes(len(self._emtpy_meta), byteorder="big")
-
-    # The following two methods define the order of the chunks in a shard
-    # TODO use morton order
-    def __chunk_key_to_shard_key_and_index__(self, chunk_key: str) -> Tuple[str, int]:
-        # TODO: allow to be in a group (aka only use last parts for dimensions)
-        chunk_subkeys = map(int, chunk_key.split(self._dimension_separator))
-
-        shard_tuple, index_tuple = zip(*((subkey // shard_i, subkey % shard_i) for subkey, shard_i in zip(chunk_subkeys, self._shards)))
-        shard_key = self._dimension_separator.join(map(str, shard_tuple))
-        index = sum(i * j for i, j in zip(index_tuple, self._shard_strides))
-        return shard_key, index
-
-    def __shard_key_and_index_to_chunk_key__(self, shard_key_tuple: Tuple[int, ...], shard_index: int) -> str:
-        offset = tuple(shard_index % s2 // s1 for s1, s2 in zip(self._shard_strides, self._shard_strides[1:] + (self._num_chunks_per_shard,)))
-        original_key = (shard_key_i * shards_i + offset_i for shard_key_i, offset_i, shards_i in zip(shard_key_tuple, offset, self._shards))
-        return self._dimension_separator.join(map(str, original_key))
-
     def __keys_to_shard_groups__(self, keys: Iterable[str]) -> Dict[str, List[Tuple[str, str]]]:
         shard_indices_per_shard_key = defaultdict(list)
         for chunk_key in keys:
-            shard_key, shard_index = self.__chunk_key_to_shard_key_and_index__(chunk_key)
-            shard_indices_per_shard_key[shard_key].append((shard_index, chunk_key))
+            # TODO: allow to be in a group (aka only use last parts for dimensions)
+            chunk_subkeys = tuple(map(int, chunk_key.split(self._dimension_separator)))
+            shard_key_tuple = (subkey // shard_i for subkey, shard_i in zip(chunk_subkeys, self._shards))
+            shard_key = self._dimension_separator.join(map(str, shard_key_tuple))
+            shard_indices_per_shard_key[shard_key].append((chunk_key, chunk_subkeys))
         return shard_indices_per_shard_key
 
-    def __get_chunk_slice__(self, shard_index: int) -> Tuple[int, int]:
-        start = shard_index * len(self._fill_chunk)
-        return slice(start, start + len(self._fill_chunk))
+    def __get_index__(self, buffer: Union[bytes, bytearray]) -> _ShardIndex:
+        # At the end of each shard 2*64bit per chunk for offset and length define the index:
+        return _ShardIndex.from_bytes(buffer[-16 * self._num_chunks_per_shard:], self)
+
+    def __get_chunks_in_shard(self, shard_key: str) -> Iterator[Tuple[int, ...]]:
+        # TODO: allow to be in a group (aka only use last parts for dimensions)
+        shard_key_tuple = tuple(map(int, shard_key.split(self._dimension_separator)))
+        for chunk_offset in product(*(range(i) for i in self._shards)):
+            yield tuple(
+                shard_key_i * shards_i + offset_i
+                for shard_key_i, offset_i, shards_i
+                in zip(shard_key_tuple, chunk_offset, self._shards)
+            )
 
     def __getitem__(self, key: str) -> bytes:
         return self.getitems([key])[key]
@@ -90,11 +96,13 @@ class MortonOrderShardedStore(Store):
     def getitems(self, keys: Iterable[str], **kwargs) -> Dict[str, bytes]:
         result = {}
         for shard_key, chunks_in_shard in self.__keys_to_shard_groups__(keys).items():
-            # TODO use partial reads if available
+            # TODO use partial read if available
             full_shard_value = self._store[shard_key]
-            # TODO omit items if they don't exist
-            for shard_index, chunk_key in chunks_in_shard:
-                result[chunk_key] = full_shard_value[self.__get_chunk_slice__(shard_index)]
+            index = self.__get_index__(full_shard_value)
+            for chunk_key, chunk_subkeys in chunks_in_shard:
+                chunk_slice = index.get_chunk_slice(chunk_subkeys)
+                if chunk_slice is not None:
+                    result[chunk_key] = full_shard_value[chunk_slice]
         return result
 
     def __setitem__(self, key: str, value: bytes) -> None:
@@ -102,24 +110,36 @@ class MortonOrderShardedStore(Store):
 
     def setitems(self, values: Dict[str, bytes]) -> None:
         for shard_key, chunks_in_shard in self.__keys_to_shard_groups__(values.keys()).items():
-            if len(chunks_in_shard) == self._num_chunks_per_shard:
-                # TODO shards at a non-dataset-size aligned surface are not captured here yet
-                full_shard_value = b"".join(
-                    values[chunk_key] for _, chunk_key in sorted(chunks_in_shard)
-                ) + b"\xff" * len(self._emtpy_meta)
-                self._store[shard_key] = full_shard_value
+            all_chunks = set(self.__get_chunks_in_shard(shard_key))
+            chunks_to_set = set(chunk_subkeys for _chunk_key, chunk_subkeys in chunks_in_shard)
+            chunks_to_read = all_chunks - chunks_to_set
+            new_content = {chunk_subkeys: values[chunk_key] for chunk_key, chunk_subkeys in chunks_in_shard}
+            try:
+                # TODO use partial read if available
+                full_shard_value = self._store[shard_key]
+            except KeyError:
+                index = _ShardIndex.create_empty(self)
+                for chunk_to_read in chunks_to_read:
+                    new_content[chunk_to_read] = b""
             else:
-                # TODO use partial writes if available
-                try:
-                    full_shard_value = bytearray(self._store[shard_key])
-                except KeyError:
-                    full_shard_value = bytearray(self._fill_chunk * self._num_chunks_per_shard + self._emtpy_meta)
-                chunk_mask = self.__get_meta__(full_shard_value)
-                for shard_index, chunk_key in chunks_in_shard:
-                    chunk_mask |= 1 << shard_index
-                    full_shard_value[self.__get_chunk_slice__(shard_index)] = values[chunk_key]
-                self.__set_meta__(full_shard_value, chunk_mask)
-                self._store[shard_key] = full_shard_value
+                index = self.__get_index__(full_shard_value)
+                for chunk_to_read in chunks_to_read:
+                    chunk_slice = index.get_chunk_slice(chunk_to_read)
+                    if chunk_slice is None:
+                        new_content[chunk_to_read] = b""
+                    else:
+                        new_content[chunk_to_read] = full_shard_value[chunk_slice]
+
+            # TODO use partial write if available and possible (e.g. at the end)
+            shard_content = b""
+            # TODO: order the chunks in the shard:
+            for chunk_subkeys, chunk_content in new_content.items():
+                chunk_slice = slice(len(shard_content), len(shard_content) + len(chunk_content))
+                index.set_chunk_slice(chunk_subkeys, chunk_slice)
+                shard_content += chunk_content
+            # Appending the index at the end of the shard:
+            shard_content += index.to_bytes()
+            self._store[shard_key] = shard_content
 
     def __delitem__(self, key) -> None:
         # TODO not implemented yet, also delitems
@@ -133,20 +153,17 @@ class MortonOrderShardedStore(Store):
                 yield shard_key
             else:
                 # For each shard key in the wrapped store, all corresponding chunks are yielded.
-                # TODO: allow to be in a group (aka only use last parts for dimensions)
-                shard_key_tuple = tuple(map(int, shard_key.split(self._dimension_separator)))
-                mask = self.__get_meta__(self._store[shard_key])
-                for i in range(self._num_chunks_per_shard):
-                    if mask == 0:
-                        break
-                    if mask & 1:
-                        yield self.__shard_key_and_index_to_chunk_key__(shard_key_tuple, i)
-                    mask >>= 1
+                # TODO: use partial read if available:
+                index = self.__get_index__(self._store[shard_key])
+                for chunk_tuple in self.__get_chunks_in_shard(shard_key):
+                    if index.get_chunk_slice(chunk_tuple) is not None:
+                        # TODO: if shard is in a group, prepend group-prefix to chunk
+                        yield self._dimension_separator.join(map(str, chunk_tuple))
 
     def __len__(self) -> int:
         return sum(1 for _ in self.keys())
 
 
 SHARDED_STORES = {
-    "morton_order": MortonOrderShardedStore,
+    "indexed": IndexedShardedStore,
 }

@@ -330,10 +330,6 @@ class Array:
                     chunk_store,
                     shards=self._shards,
                     dimension_separator=self._dimension_separator,
-                    are_chunks_compressed=self._compressor is not None,
-                    dtype=self._dtype,
-                    fill_value=self._fill_value or 0,
-                    chunk_size=reduce(operator.mul, self._chunks, 1),
                 )
             return self._cached_sharded_store
 

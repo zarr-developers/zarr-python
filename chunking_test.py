@@ -25,7 +25,7 @@ print(store[".zarray"].decode())
 #         20,
 #         3
 #     ],
-#     "shard_format": "morton_order",
+#     "shard_format": "indexed",
 #     "shards": [
 #         2,
 #         2
@@ -42,6 +42,10 @@ print("CHUNKSTORE (SHARDED)", sorted(z.chunk_store))
 # ONDISK ['.zarray', '0.0', '1.0', '2.0', '3.0']
 # STORE ['.zarray', '0.0', '1.0', '2.0', '3.0']
 # CHUNKSTORE (SHARDED) ['.zarray', '0.0', '0.1', '1.0', '1.1', '2.0', '2.1', '3.0', '3.1', '5.0', '6.1']
+
+index_bytes = z.store["0.0"][-2*2*16:]
+print("INDEX 0.0", [int.from_bytes(index_bytes[i:i+8], byteorder="big") for i in range(0, len(index_bytes), 8)])
+# INDEX 0.0 [0, 48, 48, 48, 96, 48, 144, 48]
 
 z_reopened = zarr.open("data/chunking_test.zarr")
 assert z_reopened.shards == (2, 2)
