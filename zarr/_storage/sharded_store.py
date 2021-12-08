@@ -9,6 +9,9 @@ from zarr._storage.store import BaseStore, Store
 from zarr.storage import StoreLike, array_meta_key, attrs_key, group_meta_key
 
 
+MAX_UINT_64 = 2 ** 64 - 1
+
+
 class _ShardIndex(NamedTuple):
     store: "IndexedShardedStore"
     offsets_and_lengths: np.ndarray  # dtype uint64, shape (shards_0, _shards_1, ..., 2)
@@ -19,7 +22,7 @@ class _ShardIndex(NamedTuple):
     def get_chunk_slice(self, chunk: Tuple[int, ...]) -> Optional[slice]:
         localized_chunk = self.__localize_chunk__(chunk)
         chunk_start, chunk_len = self.offsets_and_lengths[localized_chunk]
-        if chunk_len == 0:
+        if (chunk_start, chunk_len) == (MAX_UINT_64, MAX_UINT_64):
             return None
         else:
             return slice(chunk_start, chunk_start + chunk_len)
@@ -27,7 +30,7 @@ class _ShardIndex(NamedTuple):
     def set_chunk_slice(self, chunk: Tuple[int, ...], chunk_slice: Optional[slice]) -> None:
         localized_chunk = self.__localize_chunk__(chunk)
         if chunk_slice is None:
-            self.offsets_and_lengths[localized_chunk] = (0, 0)
+            self.offsets_and_lengths[localized_chunk] = (MAX_UINT_64, MAX_UINT_64)
         else:
             self.offsets_and_lengths[localized_chunk] = (chunk_slice.start, chunk_slice.stop - chunk_slice.start)
 
@@ -38,13 +41,13 @@ class _ShardIndex(NamedTuple):
     def from_bytes(cls, buffer: Union[bytes, bytearray], store: "IndexedShardedStore") -> "_ShardIndex":
         return cls(
             store=store,
-            offsets_and_lengths=np.frombuffer(bytearray(buffer), dtype=">u8").reshape(*store._shards, 2, order="C")
+            offsets_and_lengths=np.frombuffer(bytearray(buffer), dtype="<u8").reshape(*store._shards, 2, order="C")
         )
 
     @classmethod
     def create_empty(cls, store: "IndexedShardedStore"):
         # reserving 2*64bit per chunk for offset and length:
-        return cls.from_bytes(b"\x00" * (16 * store._num_chunks_per_shard), store=store)
+        return cls.from_bytes(MAX_UINT_64.to_bytes(8, byteorder="little") * (2 * store._num_chunks_per_shard), store=store)
 
 
 class IndexedShardedStore(Store):
@@ -119,15 +122,11 @@ class IndexedShardedStore(Store):
                 full_shard_value = self._store[shard_key]
             except KeyError:
                 index = _ShardIndex.create_empty(self)
-                for chunk_to_read in chunks_to_read:
-                    new_content[chunk_to_read] = b""
             else:
                 index = self.__get_index__(full_shard_value)
                 for chunk_to_read in chunks_to_read:
                     chunk_slice = index.get_chunk_slice(chunk_to_read)
-                    if chunk_slice is None:
-                        new_content[chunk_to_read] = b""
-                    else:
+                    if chunk_slice is not None:
                         new_content[chunk_to_read] = full_shard_value[chunk_slice]
 
             # TODO use partial write if available and possible (e.g. at the end)
