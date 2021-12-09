@@ -966,12 +966,14 @@ class DirectoryStore(Store):
     @staticmethod
     def _keys_fast(path, walker=os.walk):
         for dirpath, _, filenames in walker(path):
-            dirpath = os.path.relpath(dirpath, path).replace("\\", "/")
-            for f in filenames:
-                if dirpath == os.curdir:
+            dirpath = os.path.relpath(dirpath, path)
+            if dirpath == os.curdir:
+                for f in filenames:
                     yield f
-                else:
-                    yield dirpath + "/" + f
+            else:
+                dirpath = dirpath.replace("\\", "/")
+                for f in filenames:
+                    yield "/".join((dirpath, f))
 
     def __iter__(self):
         return self.keys()
