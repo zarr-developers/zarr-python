@@ -1488,9 +1488,9 @@ class TestTempStore(StoreTests):
 class TestZipStore(StoreTests):
 
     def create_store(self, **kwargs):
-        path = tempfile.mktemp(suffix='.zip')
+        fd, path = tempfile.mkstemp(suffix='.zip')
         atexit.register(os.remove, path)
-        store = ZipStore(path, mode='w', **kwargs)
+        store = ZipStore(fd, mode='w', **kwargs)
         return store
 
     def test_mode(self):
@@ -1553,7 +1553,7 @@ class TestZipStore(StoreTests):
 class TestDBMStore(StoreTests):
 
     def create_store(self, dimension_separator=None):
-        path = tempfile.mktemp(suffix='.anydbm')
+        fd, path = tempfile.mkstemp(suffix='.anydbm')
         atexit.register(atexit_rmglob, path + '*')
         # create store using default dbm implementation
         store = DBMStore(path, flag='n', dimension_separator=dimension_separator)
@@ -1569,7 +1569,7 @@ class TestDBMStore(StoreTests):
 class TestDBMStoreDumb(TestDBMStore):
 
     def create_store(self, **kwargs):
-        path = tempfile.mktemp(suffix='.dumbdbm')
+        fd, path = tempfile.mkstemp(suffix='.dumbdbm')
         atexit.register(atexit_rmglob, path + '*')
 
         import dbm.dumb as dumbdbm
@@ -1581,7 +1581,7 @@ class TestDBMStoreGnu(TestDBMStore):
 
     def create_store(self, **kwargs):
         gdbm = pytest.importorskip("dbm.gnu")
-        path = tempfile.mktemp(suffix=".gdbm")  # pragma: no cover
+        fd, path = tempfile.mkstemp(suffix=".gdbm")  # pragma: no cover
         atexit.register(os.remove, path)  # pragma: no cover
         store = DBMStore(
             path, flag="n", open=gdbm.open, write_lock=False, **kwargs
@@ -1593,7 +1593,7 @@ class TestDBMStoreNDBM(TestDBMStore):
 
     def create_store(self, **kwargs):
         ndbm = pytest.importorskip("dbm.ndbm")
-        path = tempfile.mktemp(suffix=".ndbm")  # pragma: no cover
+        fd, path = tempfile.mkstemp(suffix=".ndbm")  # pragma: no cover
         atexit.register(atexit_rmglob, path + "*")  # pragma: no cover
         store = DBMStore(path, flag="n", open=ndbm.open, **kwargs)  # pragma: no cover
         return store  # pragma: no cover
@@ -1603,7 +1603,7 @@ class TestDBMStoreBerkeleyDB(TestDBMStore):
 
     def create_store(self, **kwargs):
         bsddb3 = pytest.importorskip("bsddb3")
-        path = tempfile.mktemp(suffix='.dbm')
+        fd, path = tempfile.mkstemp(suffix='.dbm')
         atexit.register(os.remove, path)
         store = DBMStore(path, flag='n', open=bsddb3.btopen, write_lock=False, **kwargs)
         return store
@@ -1613,7 +1613,7 @@ class TestLMDBStore(StoreTests):
 
     def create_store(self, **kwargs):
         pytest.importorskip("lmdb")
-        path = tempfile.mktemp(suffix='.lmdb')
+        fd, path = tempfile.mkstemp(suffix='.lmdb')
         atexit.register(atexit_rmtree, path)
         buffers = True
         store = LMDBStore(path, buffers=buffers, **kwargs)
@@ -1630,13 +1630,13 @@ class TestSQLiteStore(StoreTests):
 
     def create_store(self, **kwargs):
         pytest.importorskip("sqlite3")
-        path = tempfile.mktemp(suffix='.db')
+        fd, path = tempfile.mkstemp(suffix='.db')
         atexit.register(atexit_rmtree, path)
         store = SQLiteStore(path, **kwargs)
         return store
 
     def test_underscore_in_name(self):
-        path = tempfile.mktemp(suffix='.db')
+        fd, path = tempfile.mkstemp(suffix='.db')
         atexit.register(atexit_rmtree, path)
         store = SQLiteStore(path)
         store['a'] = b'aaa'

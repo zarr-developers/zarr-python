@@ -1013,9 +1013,9 @@ class TestGroupWithZipStore(TestGroup):
 
     @staticmethod
     def create_store():
-        path = tempfile.mktemp(suffix='.zip')
+        fd, path = tempfile.mkstemp(suffix='.zip')
         atexit.register(os.remove, path)
-        store = ZipStore(path)
+        store = ZipStore(fd)
         return store, None
 
     def test_context_manager(self):
@@ -1040,7 +1040,7 @@ class TestGroupWithDBMStore(TestGroup):
 
     @staticmethod
     def create_store():
-        path = tempfile.mktemp(suffix='.anydbm')
+        fd, path = tempfile.mkstemp(suffix='.anydbm')
         atexit.register(atexit_rmglob, path + '*')
         store = DBMStore(path, flag='n')
         return store, None
@@ -1051,7 +1051,7 @@ class TestGroupWithDBMStoreBerkeleyDB(TestGroup):
     @staticmethod
     def create_store():
         bsddb3 = pytest.importorskip("bsddb3")
-        path = tempfile.mktemp(suffix='.dbm')
+        fd, path = tempfile.mkstemp(suffix='.dbm')
         atexit.register(os.remove, path)
         store = DBMStore(path, flag='n', open=bsddb3.btopen)
         return store, None
@@ -1062,7 +1062,7 @@ class TestGroupWithLMDBStore(TestGroup):
     @staticmethod
     def create_store():
         pytest.importorskip("lmdb")
-        path = tempfile.mktemp(suffix='.lmdb')
+        fd, path = tempfile.mkstemp(suffix='.lmdb')
         atexit.register(atexit_rmtree, path)
         store = LMDBStore(path)
         return store, None
@@ -1072,7 +1072,7 @@ class TestGroupWithSQLiteStore(TestGroup):
 
     def create_store(self):
         pytest.importorskip("sqlite3")
-        path = tempfile.mktemp(suffix='.db')
+        fd, path = tempfile.mkstemp(suffix='.db')
         atexit.register(atexit_rmtree, path)
         store = SQLiteStore(path)
         return store, None

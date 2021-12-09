@@ -402,7 +402,7 @@ def test_full_like():
 
 def test_open_like():
     # zarr array
-    path = tempfile.mktemp()
+    fd, path = tempfile.mkstemp()
     atexit.register(shutil.rmtree, path)
     z = full(100, chunks=10, dtype='f4', compressor=Zlib(5),
              fill_value=42, order='F')
@@ -414,7 +414,7 @@ def test_open_like():
     assert z.fill_value == z2.fill_value
     assert z.order == z2.order
     # numpy array
-    path = tempfile.mktemp()
+    fd, path = tempfile.mkstemp()
     atexit.register(shutil.rmtree, path)
     a = np.empty(100, dtype='f4')
     z3 = open_like(a, path, chunks=10)
