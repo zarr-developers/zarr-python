@@ -965,23 +965,15 @@ class DirectoryStore(Store):
 
     @staticmethod
     def _keys_fast(path, walker=os.walk):
-        """
-
-        Faster logic on platform where the separator is `/` and using
-        `os.walk()` to decrease the number of stats.call.
-
-        """
-        it = iter(walker(path))
-        d0, dirnames, filenames = next(it)
-        if d0.endswith('/'):
-            root_len = len(d0)
-        else:
-            root_len = len(d0)+1
-        for f in filenames:
-            yield f
-        for dirpath, _, filenames in it:
-            for f in filenames:
-                yield dirpath[root_len:].replace('\\', '/')+'/'+f
+        for dirpath, _, filenames in walker(path):
+            dirpath = os.path.relpath(dirpath, path)
+            if dirpath == os.curdir:
+                for f in filenames:
+                    yield f
+            else:
+                dirpath = dirpath.replace("\\", "/")
+                for f in filenames:
+                    yield "/".join((dirpath, f))
 
     def __iter__(self):
         return self.keys()
