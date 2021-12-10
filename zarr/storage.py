@@ -2092,11 +2092,11 @@ class LRUStoreCache(Store):
         >>> z = root['foo/bar/baz']  # doctest: +REMOTE_DATA
         >>> from timeit import timeit
         >>> # first data access is relatively slow, retrieved from store
-        ... timeit('print(z[:].tostring())', number=1, globals=globals())  # doctest: +SKIP
+        ... timeit('print(z[:].tobytes())', number=1, globals=globals())  # doctest: +SKIP
         b'Hello from the cloud!'
         0.1081731989979744
         >>> # second data access is faster, uses cache
-        ... timeit('print(z[:].tostring())', number=1, globals=globals())  # doctest: +SKIP
+        ... timeit('print(z[:].tobytes())', number=1, globals=globals())  # doctest: +SKIP
         b'Hello from the cloud!'
         0.0009490990014455747
 
