@@ -1326,7 +1326,7 @@ class FSStore(Store):
                 raise ValueError("Cannot specify both fs and storage_options")
             self.fs = fs
             self.path = self.fs._strip_protocol(url)
-            self.map = self.fs.get_mapper(path)
+            self.map = self.fs.get_mapper(self.path)
 
         self.normalize_keys = normalize_keys
         self.mode = mode

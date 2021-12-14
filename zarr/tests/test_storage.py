@@ -1338,6 +1338,35 @@ class TestFSStoreWithKeySeparator(StoreTests):
             key_separator=key_separator)
 
 
+@pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
+class TestFSStoreFromFilesystem(StoreTests):
+
+    def create_store(self, normalize_keys=False,
+                     dimension_separator=".",
+                     path=None,
+                     **kwargs):
+        import fsspec
+        fs = fsspec.filesystem("file")
+
+        if path is None:
+            path = tempfile.mkdtemp()
+            atexit.register(atexit_rmtree, path)
+
+        with pytest.raises(ValueError):
+            # can't specify storage_options when passing an
+            # existing fs object
+            _ = FSStore(path, fs=fs, auto_mkdir=True)
+
+        store = FSStore(
+            path,
+            normalize_keys=normalize_keys,
+            dimension_separator=dimension_separator,
+            fs=fs,
+            **kwargs)
+
+        return store
+
+
 @pytest.fixture()
 def s3(request):
     # writable local S3 system
