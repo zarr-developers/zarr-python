@@ -1282,8 +1282,9 @@ class FSStore(Store):
     Parameters
     ----------
     url : str
-        The destination to map. Should include protocol and path,
-        like "s3://bucket/root"
+        The destination to map. If no fs is provided, should include protocol
+        and path, like "s3://bucket/root". If an fs is provided, can be a path
+        within that filesystem, like "bucket/root"
     normalize_keys : bool
     key_separator : str
         public API for accessing dimension_separator. Never `None`
@@ -1295,7 +1296,10 @@ class FSStore(Store):
         as a missing key
     dimension_separator : {'.', '/'}, optional
         Separator placed between the dimensions of a chunk.
-    storage_options : passed to the fsspec implementation
+    fs : fsspec.spec.AbstractFileSystem, optional
+        An existing filesystem to use for the store.
+    storage_options : passed to the fsspec implementation. Cannot be used
+        together with fs.
     """
     _array_meta_key = array_meta_key
     _group_meta_key = group_meta_key
@@ -1305,18 +1309,26 @@ class FSStore(Store):
                  mode='w',
                  exceptions=(KeyError, PermissionError, IOError),
                  dimension_separator=None,
+                 fs=None,
                  **storage_options):
         import fsspec
+
+        if fs is None:
+            protocol, _ = fsspec.core.split_protocol(url)
+            # set auto_mkdir to True for local file system
+            if protocol in (None, "file") and not storage_options.get("auto_mkdir"):
+                storage_options["auto_mkdir"] = True
+            self.map = fsspec.get_mapper(url, **storage_options)
+            self.fs = self.map.fs  # for direct operations
+            self.path = self.fs._strip_protocol(url)
+        else:
+            if storage_options:
+                raise ValueError("Cannot specify both fs and storage_options")
+            self.fs = fs
+            self.path = self.fs._strip_protocol(url)
+            self.map = self.fs.get_mapper(path)
+
         self.normalize_keys = normalize_keys
-
-        protocol, _ = fsspec.core.split_protocol(url)
-        # set auto_mkdir to True for local file system
-        if protocol in (None, "file") and not storage_options.get("auto_mkdir"):
-            storage_options["auto_mkdir"] = True
-
-        self.map = fsspec.get_mapper(url, **storage_options)
-        self.fs = self.map.fs  # for direct operations
-        self.path = self.fs._strip_protocol(url)
         self.mode = mode
         self.exceptions = exceptions
         # For backwards compatibility. Guaranteed to be non-None
