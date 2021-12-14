@@ -1302,6 +1302,25 @@ bytes within chunks of an array may improve the compression ratio, depending on
 the structure of the data, the compression algorithm used, and which compression
 filters (e.g., byte-shuffle) have been applied.
 
+.. _tutorial_chunks_empty_chunks:
+
+Empty chunks
+~~~~~~~~~~~~
+ 
+As of version 2.11, it is possible to configure how Zarr handles the storage of
+chunks that are "empty" (i.e., every element in the chunk is equal to the array's fill value).
+When creating an array with ``write_empty_chunks=False`` (the default), 
+Zarr will check whether a chunk is empty before compression and storage. If a chunk is empty,
+then Zarr does not store it, and instead deletes the chunk from storage 
+if the chunk had been previously stored. 
+
+This optimization prevents storing redundant objects and can speed up reads, but the cost is 
+added computation during array writes, since the contents of 
+each chunk must be compared to the fill value, and these advantages are contingent on the content of the array. 
+If you know that your data will form chunks that are almost always non-empty, then there is no advantage to the optimization described above. 
+In this case, creating an array with ``write_empty_chunks=True`` will instruct Zarr to write every chunk without checking for emptiness.
+
+
 .. _tutorial_rechunking:
 
 Changing chunk shapes (rechunking)
