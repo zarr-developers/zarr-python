@@ -1,7 +1,5 @@
 import base64
 import itertools
-import os
-from collections import namedtuple
 from collections.abc import Mapping
 
 import numpy as np
@@ -37,7 +35,10 @@ _v3_complex_types = set(
 # see: https://numpy.org/doc/stable/reference/arrays.datetime.html#datetime-units
 _date_units = ["Y", "M", "W", "D"]
 _time_units = ["h", "m", "s", "ms", "us", "μs", "ns", "ps", "fs", "as"]
-_v3_datetime_types = set(f"{end}{kind}8[{unit}]" for end, unit, kind in itertools.product("<>", _date_units + _time_units, ('m', 'M')))
+_v3_datetime_types = set(
+    f"{end}{kind}8[{unit}]"
+    for end, unit, kind in itertools.product("<>", _date_units + _time_units, ('m', 'M'))
+)
 
 
 def get_extended_dtype_info(dtype):
@@ -322,7 +323,7 @@ class Metadata3(Metadata2):
         d = cls._decode_dtype_descr(d)
         dtype = np.dtype(d)
         if validate:
-            if dtype.str in (_v3_core_types  | {"|b1", "|u1", "|i1"}):
+            if dtype.str in (_v3_core_types | {"|b1", "|u1", "|i1"}):
                 # it is a core dtype of the v3 spec
                 pass
             else:
