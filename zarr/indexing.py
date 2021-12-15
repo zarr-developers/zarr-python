@@ -961,10 +961,8 @@ class PartialChunkIterator:
         # any selection can not be out of the range of the chunk
         selection_shape = np.empty(self.arr_shape)[tuple(selection)].shape
         if any(
-            [
-                selection_dim < 0 or selection_dim > arr_dim
-                for selection_dim, arr_dim in zip(selection_shape, self.arr_shape)
-            ]
+            selection_dim < 0 or selection_dim > arr_dim
+            for selection_dim, arr_dim in zip(selection_shape, self.arr_shape)
         ):
             raise IndexError(
                 "a selection index is out of range for the dimension"
