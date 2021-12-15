@@ -28,9 +28,9 @@ _v3_core_types = set(
 )
 _v3_core_types = {"bool", "i1", "u1"} | _v3_core_types
 
-# The set of complex types allowed ({"<c4", "<c8", ">c4", ">c8"})
+# The set of complex types allowed ({"<c8", "<c16", ">c8", ">c16"})
 _v3_complex_types = set(
-    f"{end}c{_bytes}" for end, _bytes in itertools.product("<>", ("4", "8"))
+    f"{end}c{_bytes}" for end, _bytes in itertools.product("<>", ("8", "16"))
 )
 
 # All dtype.str values corresponding to datetime64 and timedelta64
@@ -310,13 +310,24 @@ class Metadata3(Metadata2):
     ZARR_FORMAT = ZARR_FORMAT_v3
 
     @classmethod
-    def decode_dtype(cls, d):
+    def decode_dtype(cls, d, validate=True):
         if isinstance(d, dict):
             # extract the type from the extension info
-            info = get_extended_dtype_info(d)
-            d = info['type']
+            try:
+                d = d['type']
+            except KeyError:
+                raise KeyError(
+                    "Extended dtype info must provide a key named 'type'."
+                )
         d = cls._decode_dtype_descr(d)
         dtype = np.dtype(d)
+        if validate:
+            if dtype.str in (_v3_core_types  | {"|b1", "|u1", "|i1"}):
+                # it is a core dtype of the v3 spec
+                pass
+            else:
+                # will raise if this is not a recognized extended dtype
+                get_extended_dtype_info(dtype)
         return dtype
 
     @classmethod
