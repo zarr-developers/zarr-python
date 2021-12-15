@@ -1,6 +1,7 @@
 import base64
 import itertools
 import os
+from collections import namedtuple
 from collections.abc import Mapping
 
 import numpy as np
@@ -13,41 +14,71 @@ from typing import cast, Union, Any, List, Mapping as MappingType
 ZARR_FORMAT = 2
 ZARR_FORMAT_v3 = 3
 
-FLOAT_FILLS = {"NaN": np.nan, "Infinity": np.PINF, "-Infinity": np.NINF}
-
-
-_v3_core_type = set(
-    "".join(d)
-    for d in itertools.product("<>", ("u", "i", "f"), ("2", "4", "8"))
-)
-_v3_core_type = {"bool", "i1", "u1"} | _v3_core_type
-
-# TODO: How do we want to handle dtypes not officially in the v3 spec?
-#       Those in _v3_core_type above are the only ones defined in the spec.
-#       However we currently support many other dtypes for v2. For now, I also
-#       allow all of these for v3 unless the user sets an environment variable
-#       ZARR_V3_CORE_DTYPES_ONLY=1, etc.
-
-ZARR_V3_CORE_DTYPES_ONLY = int(os.environ.get("ZARR_V3_CORE_DTYPES_ONLY", False))
-ZARR_V3_ALLOW_COMPLEX = int(os.environ.get("ZARR_V3_ALLOW_COMPLEX",
-                                           not ZARR_V3_CORE_DTYPES_ONLY))
-ZARR_V3_ALLOW_DATETIME = int(os.environ.get("ZARR_V3_ALLOW_DATETIME",
-                                            not ZARR_V3_CORE_DTYPES_ONLY))
-ZARR_V3_ALLOW_STRUCTURED = int(os.environ.get("ZARR_V3_ALLOW_STRUCTURED",
-                                              not ZARR_V3_CORE_DTYPES_ONLY))
-ZARR_V3_ALLOW_OBJECTARRAY = int(os.environ.get("ZARR_V3_ALLOW_OBJECTARRAY",
-                                               not ZARR_V3_CORE_DTYPES_ONLY))
-ZARR_V3_ALLOW_BYTES_ARRAY = int(os.environ.get("ZARR_V3_ALLOW_BYTES_ARRAY",
-                                               not ZARR_V3_CORE_DTYPES_ONLY))
-ZARR_V3_ALLOW_UNICODE_ARRAY = int(os.environ.get("ZARR_V3_ALLOW_UNICODE_ARRAY",
-                                                 not ZARR_V3_CORE_DTYPES_ONLY))
+# FLOAT_FILLS = {"NaN": np.nan, "Infinity": np.PINF, "-Infinity": np.NINF}
 
 _default_entry_point_metadata_v3 = {
-    'zarr_format': "https://purl.org/zarr/spec/protocol/core/3.0",
-    'metadata_encoding': "https://purl.org/zarr/spec/protocol/core/3.0",
-    'metadata_key_suffix': '.json',
+    "zarr_format": "https://purl.org/zarr/spec/protocol/core/3.0",
+    "metadata_encoding": "https://purl.org/zarr/spec/protocol/core/3.0",
+    "metadata_key_suffix": ".json",
     "extensions": [],
 }
+
+_v3_core_types = set(
+    "".join(d) for d in itertools.product("<>", ("u", "i", "f"), ("2", "4", "8"))
+)
+_v3_core_types = {"bool", "i1", "u1"} | _v3_core_types
+
+# The set of complex types allowed ({"<c4", "<c8", ">c4", ">c8"})
+_v3_complex_types = set(
+    f"{end}c{_bytes}" for end, _bytes in itertools.product("<>", ("4", "8"))
+)
+
+# All dtype.str values corresponding to datetime64 and timedelta64
+# see: https://numpy.org/doc/stable/reference/arrays.datetime.html#datetime-units
+_date_units = ["Y", "M", "W", "D"]
+_time_units = ["h", "m", "s", "ms", "us", "μs", "ns", "ps", "fs", "as"]
+_v3_datetime_types = set(f"{end}{kind}8[{unit}]" for end, unit, kind in itertools.product("<>", _date_units + _time_units, ('m', 'M')))
+
+
+def get_extended_dtype_info(dtype):
+    if dtype.str in _v3_complex_types:
+        return dict(
+            extension="https://zarr-specs.readthedocs.io/en/core-protocol-v3.0-dev/protocol/extensions/complex-dtypes/v1.0.html",  # noqa
+            type=dtype.str,
+            fallback=None,
+        )
+    elif dtype.str == "|O":
+        return dict(
+            extension="TODO: object array protocol URL",  # noqa
+            type=dtype.str,
+            fallback=None,
+        )
+    elif dtype.str.startswith("|S"):
+        return dict(
+            extension="TODO: bytestring array protocol URL",  # noqa
+            type=dtype.str,
+            fallback=None,
+        )
+    elif dtype.str.startswith("|U"):
+        return dict(
+            extension="TODO: unicode array protocol URL",  # noqa
+            type=dtype.str,
+            fallback=None,
+        )
+    elif dtype.str.startswith("|V"):
+        return dict(
+            extension="TODO: structured array protocol URL",  # noqa
+            type=dtype.descr,
+            fallback=None,
+        )
+    elif dtype.str in _v3_datetime_types:
+        return dict(
+            extension="https://zarr-specs.readthedocs.io/en/core-protocol-v3.0-dev/protocol/extensions/datetime-dtypes/v1.0.html",  # noqa
+            type=dtype.str,
+            fallback=None,
+        )
+    else:
+        raise ValueError(f"Unsupport dtype: {dtype}")
 
 
 class Metadata2:
@@ -85,12 +116,13 @@ class Metadata2:
             dtype = cls.decode_dtype(meta["dtype"])
             if dtype.hasobject:
                 import numcodecs
-                object_codec = numcodecs.get_codec(meta['filters'][0])
+
+                object_codec = numcodecs.get_codec(meta["filters"][0])
             else:
                 object_codec = None
 
             dimension_separator = meta.get("dimension_separator", None)
-            fill_value = cls.decode_fill_value(meta['fill_value'], dtype, object_codec)
+            fill_value = cls.decode_fill_value(meta["fill_value"], dtype, object_codec)
             meta = dict(
                 zarr_format=meta["zarr_format"],
                 shape=tuple(meta["shape"]),
@@ -102,7 +134,7 @@ class Metadata2:
                 filters=meta["filters"],
             )
             if dimension_separator:
-                meta['dimension_separator'] = dimension_separator
+                meta["dimension_separator"] = dimension_separator
         except Exception as e:
             raise MetadataError("error decoding metadata") from e
         else:
@@ -118,7 +150,8 @@ class Metadata2:
         dimension_separator = meta.get("dimension_separator")
         if dtype.hasobject:
             import numcodecs
-            object_codec = numcodecs.get_codec(meta['filters'][0])
+
+            object_codec = numcodecs.get_codec(meta["filters"][0])
         else:
             object_codec = None
 
@@ -133,7 +166,7 @@ class Metadata2:
             filters=meta["filters"],
         )
         if dimension_separator:
-            meta['dimension_separator'] = dimension_separator
+            meta["dimension_separator"] = dimension_separator
 
         if dimension_separator:
             meta["dimension_separator"] = dimension_separator
@@ -180,13 +213,15 @@ class Metadata2:
         return json_dumps(meta)
 
     @classmethod
-    def decode_fill_value(cls, v: Any, dtype: np.dtype, object_codec: Any = None) -> Any:
+    def decode_fill_value(
+        cls, v: Any, dtype: np.dtype, object_codec: Any = None
+    ) -> Any:
         # early out
         if v is None:
             return v
-        if dtype.kind == 'V' and dtype.hasobject:
+        if dtype.kind == "V" and dtype.hasobject:
             if object_codec is None:
-                raise ValueError('missing object_codec for object array')
+                raise ValueError("missing object_codec for object array")
             v = base64.standard_b64decode(v)
             v = object_codec.decode(v)
             v = np.array(v, dtype=dtype)[()]
@@ -228,15 +263,17 @@ class Metadata2:
             return np.array(v, dtype=dtype)[()]
 
     @classmethod
-    def encode_fill_value(cls, v: Any, dtype: np.dtype, object_codec: Any = None) -> Any:
+    def encode_fill_value(
+        cls, v: Any, dtype: np.dtype, object_codec: Any = None
+    ) -> Any:
         # early out
         if v is None:
             return v
-        if dtype.kind == 'V' and dtype.hasobject:
+        if dtype.kind == "V" and dtype.hasobject:
             if object_codec is None:
-                raise ValueError('missing object_codec for object array')
+                raise ValueError("missing object_codec for object array")
             v = object_codec.encode(v)
-            v = str(base64.standard_b64encode(v), 'ascii')
+            v = str(base64.standard_b64encode(v), "ascii")
             return v
         if dtype.kind == "f":
             if np.isnan(v):
@@ -253,8 +290,10 @@ class Metadata2:
             return bool(v)
         elif dtype.kind in "c":
             c = cast(np.complex128, np.dtype(complex).type())
-            v = (cls.encode_fill_value(v.real, c.real.dtype, object_codec),
-                 cls.encode_fill_value(v.imag, c.imag.dtype, object_codec))
+            v = (
+                cls.encode_fill_value(v.real, c.real.dtype, object_codec),
+                cls.encode_fill_value(v.imag, c.imag.dtype, object_codec),
+            )
             return v
         elif dtype.kind in "SV":
             v = str(base64.standard_b64encode(v), "ascii")
@@ -272,74 +311,29 @@ class Metadata3(Metadata2):
 
     @classmethod
     def decode_dtype(cls, d):
+        if isinstance(d, dict):
+            # extract the type from the extension info
+            info = get_extended_dtype_info(d)
+            d = info['type']
         d = cls._decode_dtype_descr(d)
         dtype = np.dtype(d)
-        if dtype.kind == 'c':
-            if not ZARR_V3_ALLOW_COMPLEX:
-                raise ValueError("complex-valued arrays not supported")
-        elif dtype.kind in 'mM':
-            if not ZARR_V3_ALLOW_DATETIME:
-                raise ValueError(
-                    "datetime64 and timedelta64 arrays not supported"
-                )
-        elif dtype.kind == 'O':
-            if not ZARR_V3_ALLOW_OBJECTARRAY:
-                raise ValueError("object arrays not supported")
-        elif dtype.kind == 'V':
-            if not ZARR_V3_ALLOW_STRUCTURED:
-                raise ValueError("structured arrays not supported")
-        elif dtype.kind == 'U':
-            if not ZARR_V3_ALLOW_UNICODE_ARRAY:
-                raise ValueError("unicode arrays not supported")
-        elif dtype.kind == 'S':
-            if not ZARR_V3_ALLOW_BYTES_ARRAY:
-                raise ValueError("bytes arrays not supported")
-        else:
-            assert d in _v3_core_type
         return dtype
 
     @classmethod
     def encode_dtype(cls, d):
-        s = Metadata2.encode_dtype(d)
+        s = d.str
         if s == "|b1":
             return "bool"
         elif s == "|u1":
             return "u1"
         elif s == "|i1":
             return "i1"
-        dtype = np.dtype(d)
-        if dtype.kind == "c":
-            if not ZARR_V3_ALLOW_COMPLEX:
-                raise ValueError(
-                    "complex-valued arrays not part of the base v3 spec"
-                )
-        elif dtype.kind in "mM":
-            if not ZARR_V3_ALLOW_DATETIME:
-                raise ValueError(
-                    "datetime64 and timedelta64 not part of the base v3 "
-                    "spec"
-                )
-        elif dtype.kind == "O":
-            if not ZARR_V3_ALLOW_OBJECTARRAY:
-                raise ValueError(
-                    "object dtypes are not part of the base v3 spec"
-                )
-        elif dtype.kind == "V":
-            if not ZARR_V3_ALLOW_STRUCTURED:
-                raise ValueError(
-                    "structured arrays are not part of the base v3 spec"
-                )
-        elif dtype.kind == 'U':
-            if not ZARR_V3_ALLOW_UNICODE_ARRAY:
-                raise ValueError("unicode dtypes are not part of the base v3 "
-                                 "spec")
-        elif dtype.kind == 'S':
-            if not ZARR_V3_ALLOW_BYTES_ARRAY:
-                raise ValueError("bytes dtypes are not part of the base v3 "
-                                 "spec")
+        elif s in _v3_core_types:
+            return Metadata2.encode_dtype(d)
         else:
-            assert s in _v3_core_type
-        return s
+            # Check if this dtype corresponds to a supported extension to
+            # the v3 protocol.
+            return get_extended_dtype_info(np.dtype(d))
 
     @classmethod
     def decode_group_metadata(cls, s: Union[MappingType, str]) -> MappingType[str, Any]:
@@ -350,7 +344,7 @@ class Metadata3(Metadata2):
         # if zarr_format != cls.ZARR_FORMAT:
         #     raise MetadataError("unsupported zarr format: %s" % zarr_format)
 
-        assert 'attributes' in meta
+        assert "attributes" in meta
         # meta = dict(attributes=meta['attributes'])
         return meta
 
@@ -362,7 +356,7 @@ class Metadata3(Metadata2):
         # entry point metadata instead
         # meta = dict(zarr_format=cls.ZARR_FORMAT)
         if meta is None:
-            meta = {'attributes': {}}
+            meta = {"attributes": {}}
         meta = dict(attributes=meta.get("attributes", {}))
         return json_dumps(meta)
 
@@ -371,26 +365,28 @@ class Metadata3(Metadata2):
         if meta is None:
             meta = _default_entry_point_metadata_v3
         elif set(meta.keys()) != {
-                "zarr_format",
-                "metadata_encoding",
-                "metadata_key_suffix",
-                "extensions",
+            "zarr_format",
+            "metadata_encoding",
+            "metadata_key_suffix",
+            "extensions",
         }:
             raise ValueError(f"Unexpected keys in metadata. meta={meta}")
         return json_dumps(meta)
 
     @classmethod
-    def decode_hierarchy_metadata(cls, s: Union[MappingType, str]) -> MappingType[str, Any]:
+    def decode_hierarchy_metadata(
+        cls, s: Union[MappingType, str]
+    ) -> MappingType[str, Any]:
         meta = cls.parse_metadata(s)
         # check metadata format
         # zarr_format = meta.get("zarr_format", None)
         # if zarr_format != "https://purl.org/zarr/spec/protocol/core/3.0":
         #     raise MetadataError("unsupported zarr format: %s" % zarr_format)
         if set(meta.keys()) != {
-                "zarr_format",
-                "metadata_encoding",
-                "metadata_key_suffix",
-                "extensions",
+            "zarr_format",
+            "metadata_encoding",
+            "metadata_key_suffix",
+            "extensions",
         }:
             raise ValueError(f"Unexpected keys in metdata. meta={meta}")
         return meta
@@ -409,7 +405,8 @@ class Metadata3(Metadata2):
             dtype = cls.decode_dtype(meta["data_type"])
             if dtype.hasobject:
                 import numcodecs
-                object_codec = numcodecs.get_codec(meta['attributes']['filters'][0])
+
+                object_codec = numcodecs.get_codec(meta["attributes"]["filters"][0])
             else:
                 object_codec = None
             fill_value = cls.decode_fill_value(meta["fill_value"], dtype, object_codec)
@@ -446,7 +443,8 @@ class Metadata3(Metadata2):
         dimension_separator = meta.get("dimension_separator")
         if dtype.hasobject:
             import numcodecs
-            object_codec = numcodecs.get_codec(meta['attributes']['filters'][0])
+
+            object_codec = numcodecs.get_codec(meta["attributes"]["filters"][0])
         else:
             object_codec = None
         meta = dict(
