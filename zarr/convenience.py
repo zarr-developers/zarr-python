@@ -28,7 +28,7 @@ def _check_and_update_path(store: BaseStore, path):
 
 
 # noinspection PyShadowingBuiltins
-def open(store: StoreLike = None, mode: str = "a", *, zarr_version=2, path=None, **kwargs):
+def open(store: StoreLike = None, mode: str = "a", *, zarr_version=None, path=None, **kwargs):
     """Convenience function to open a group or array using file-mode-like semantics.
 
     Parameters
@@ -40,9 +40,11 @@ def open(store: StoreLike = None, mode: str = "a", *, zarr_version=2, path=None,
         read/write (must exist); 'a' means read/write (create if doesn't
         exist); 'w' means create (overwrite if exists); 'w-' means create
         (fail if exists).
-    zarr_version : {2, 3}
-        The zarr protocol version to use.
-    path : str
+    zarr_version : {2, 3, None}, optional
+        The zarr protocol version to use. The default value of None will attempt
+        to infer the version from `store` if possible, otherwise it will fall
+        back to 2.
+    path : str or None, optional
         The path within the store to open.
     **kwargs
         Additional parameters are passed through to :func:`zarr.creation.open_array` or
@@ -93,7 +95,8 @@ def open(store: StoreLike = None, mode: str = "a", *, zarr_version=2, path=None,
         store, clobber=clobber, storage_options=kwargs.pop("storage_options", {}),
         zarr_version=zarr_version,
     )
-    path = _check_and_update_path(_store, path)
+    # path = _check_and_update_path(_store, path)
+    path = normalize_storage_path(path)
     kwargs['path'] = path
 
     if mode in {'w', 'w-', 'x'}:
@@ -121,7 +124,7 @@ def _might_close(path):
     return isinstance(path, (str, os.PathLike))
 
 
-def save_array(store: StoreLike, arr, *, zarr_version=2, path=None, **kwargs):
+def save_array(store: StoreLike, arr, *, zarr_version=None, path=None, **kwargs):
     """Convenience function to save a NumPy array to the local file system, following a
     similar API to the NumPy save() function.
 
@@ -131,9 +134,11 @@ def save_array(store: StoreLike, arr, *, zarr_version=2, path=None, **kwargs):
         Store or path to directory in file system or name of zip file.
     arr : ndarray
         NumPy array with data to save.
-    zarr_version : {2, 3}
-        The zarr protocol version to use when saving.
-    path : str
+    zarr_version : {2, 3, None}, optional
+        The zarr protocol version to use when saving. The default value of None
+        will attempt to infer the version from `store` if possible, otherwise
+        it will fall back to 2.
+    path : str or None, optional
         The path within the store where the array will be saved.
     kwargs
         Passed through to :func:`create`, e.g., compressor.
@@ -168,7 +173,7 @@ def save_array(store: StoreLike, arr, *, zarr_version=2, path=None, **kwargs):
             _store.close()
 
 
-def save_group(store: StoreLike, *args, zarr_version=2, path=None, **kwargs):
+def save_group(store: StoreLike, *args, zarr_version=None, path=None, **kwargs):
     """Convenience function to save several NumPy arrays to the local file system, following a
     similar API to the NumPy savez()/savez_compressed() functions.
 
@@ -178,9 +183,11 @@ def save_group(store: StoreLike, *args, zarr_version=2, path=None, **kwargs):
         Store or path to directory in file system or name of zip file.
     args : ndarray
         NumPy arrays with data to save.
-    zarr_version : {2, 3}
-        The zarr protocol version to use when saving.
-    path : str
+    zarr_version : {2, 3, None}, optional
+        The zarr protocol version to use when saving. The default value of None
+        will attempt to infer the version from `store` if possible, otherwise
+        it will fall back to 2.
+    path : str or None, optional
         Path within the store where the group will be saved.
     kwargs
         NumPy arrays with data to save.
@@ -249,7 +256,7 @@ def save_group(store: StoreLike, *args, zarr_version=2, path=None, **kwargs):
             _store.close()
 
 
-def save(store: StoreLike, *args, zarr_version=2, path=None, **kwargs):
+def save(store: StoreLike, *args, zarr_version=None, path=None, **kwargs):
     """Convenience function to save an array or group of arrays to the local file system.
 
     Parameters
@@ -258,9 +265,11 @@ def save(store: StoreLike, *args, zarr_version=2, path=None, **kwargs):
         Store or path to directory in file system or name of zip file.
     args : ndarray
         NumPy arrays with data to save.
-    zarr_version : {2, 3}
-        The zarr protocol version to use when saving.
-    path : str
+    zarr_version : {2, 3, None}, optional
+        The zarr protocol version to use when saving. The default value of None
+        will attempt to infer the version from `store` if possible, otherwise
+        it will fall back to 2.
+    path : str or None, optional
         The path within the group where the arrays will be saved.
     kwargs
         NumPy arrays with data to save.
@@ -364,13 +373,19 @@ class LazyLoader(Mapping):
         return r
 
 
-def load(store: StoreLike, zarr_version=2, path=None):
+def load(store: StoreLike, zarr_version=None, path=None):
     """Load data from an array or group into memory.
 
     Parameters
     ----------
     store : MutableMapping or string
         Store or path to directory in file system or name of zip file.
+    zarr_version : {2, 3, None}, optional
+        The zarr protocol version to use when loading. The default value of
+        None will attempt to infer the version from `store` if possible,
+        otherwise it will fall back to 2.
+    path : str or None, optional
+        The path within the store from which to load.
 
     Returns
     -------
