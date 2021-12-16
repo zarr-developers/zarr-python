@@ -187,14 +187,16 @@ def test_full_additional_dtypes(zarr_version):
         full(100, chunks=10, fill_value=v, dtype='U3')
 
 
+@pytest.mark.parametrize('dimension_separator', ['.', '/', None])
 @pytest.mark.parametrize('zarr_version', [None, 2, 3])
-def test_open_array(zarr_version):
+def test_open_array(zarr_version, dimension_separator):
 
     store = 'data/array.zarr'
     kwargs = _init_creation_kwargs(zarr_version)
 
     # mode == 'w'
-    z = open_array(store, mode='w', shape=100, chunks=10, **kwargs)
+    z = open_array(store, mode='w', shape=100, chunks=10,
+                   dimension_separator=dimension_separator, **kwargs)
     z[:] = 42
     assert isinstance(z, Array)
     if z._store._store_version == 2:
@@ -204,6 +206,11 @@ def test_open_array(zarr_version):
     assert (100,) == z.shape
     assert (10,) == z.chunks
     assert_array_equal(np.full(100, fill_value=42), z[:])
+
+    if dimension_separator is None:
+        assert z._dimension_separator == '/' if zarr_version == 3 else '.'
+    else:
+        assert z._dimension_separator == dimension_separator
 
     # mode in 'r', 'r+'
     group_kwargs = kwargs.copy()
@@ -297,6 +304,37 @@ def test_open_array(zarr_version):
     z[:] = 42
     assert os.path.abspath(meta_store) == z.store.path
     assert os.path.abspath(chunk_store) == z.chunk_store.path
+
+
+@pytest.mark.parametrize('dimension_separator', ['.', '/', None])
+@pytest.mark.parametrize('zarr_version', [2, 3])
+def test_open_array_infer_separator_from_store(zarr_version, dimension_separator):
+
+    if zarr_version == 3:
+        StoreClass = DirectoryStoreV3
+        path = 'data'
+    else:
+        StoreClass = DirectoryStore
+        path = None
+    store = StoreClass('data/array.zarr', dimension_separator=dimension_separator)
+
+    # Note: no dimension_separator kwarg to open_array
+    #       we are testing here that it gets inferred from store
+    z = open_array(store, path=path, mode='w', shape=100, chunks=10)
+    z[:] = 42
+    assert isinstance(z, Array)
+    if z._store._store_version == 2:
+        assert isinstance(z.store, DirectoryStore)
+    else:
+        assert isinstance(z.store, DirectoryStoreV3)
+    assert (100,) == z.shape
+    assert (10,) == z.chunks
+    assert_array_equal(np.full(100, fill_value=42), z[:])
+
+    if dimension_separator is None:
+        assert z._dimension_separator == '/' if zarr_version == 3 else '.'
+    else:
+        assert z._dimension_separator == dimension_separator
 
 
 # TODO: N5 support for v3
