@@ -169,9 +169,6 @@ class Metadata2:
         if dimension_separator:
             meta["dimension_separator"] = dimension_separator
 
-        if dimension_separator:
-            meta["dimension_separator"] = dimension_separator
-
         return json_dumps(meta)
 
     @classmethod
