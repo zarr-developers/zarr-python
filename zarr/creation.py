@@ -400,6 +400,7 @@ def open_array(
     write_empty_chunks=True,
     *,
     zarr_version=None,
+    dimension_separator=None,
     **kwargs
 ):
     """Open an array using file-mode-like semantics.
@@ -466,6 +467,11 @@ def open_array(
         The zarr protocol version of the array to be opened. If None, it will
         be inferred from ``store`` or ``chunk_store`` if they are provided,
         otherwise defaulting to 2.
+    zarr_version : {None, '.', '/'}, optional
+        Can be used to specify whether the array is in a flat ('.') or nested
+        ('/') format. If None, the appropriate value will be read from `store`
+        when present. Otherwise, defaults to '.' when ``zarr_version == 2``
+        and `/` otherwise.
 
     Returns
     -------
@@ -513,6 +519,13 @@ def open_array(
                                           storage_options=storage_options,
                                           zarr_version=zarr_version)
 
+    # respect the dimension separator specified in a store, if present
+    if dimension_separator is None:
+        if hasattr(store, '_dimension_separator'):
+            dimension_separator = store._dimension_separator
+        else:
+            dimension_separator = '.' if zarr_version == 2 else '/'
+
     if zarr_version == 3 and path is None:
         path = 'array'  # TODO: raise ValueError instead?
     path = normalize_storage_path(path)
@@ -536,7 +549,8 @@ def open_array(
         init_array(store, shape=shape, chunks=chunks, dtype=dtype,
                    compressor=compressor, fill_value=fill_value,
                    order=order, filters=filters, overwrite=True, path=path,
-                   object_codec=object_codec, chunk_store=chunk_store)
+                   object_codec=object_codec, chunk_store=chunk_store,
+                   dimension_separator=dimension_separator)
 
     elif mode == 'a':
         if not contains_array(store, path=path):
@@ -545,7 +559,8 @@ def open_array(
             init_array(store, shape=shape, chunks=chunks, dtype=dtype,
                        compressor=compressor, fill_value=fill_value,
                        order=order, filters=filters, path=path,
-                       object_codec=object_codec, chunk_store=chunk_store)
+                       object_codec=object_codec, chunk_store=chunk_store,
+                       dimension_separator=dimension_separator)
 
     elif mode in ['w-', 'x']:
         if contains_group(store, path=path):
@@ -556,7 +571,8 @@ def open_array(
             init_array(store, shape=shape, chunks=chunks, dtype=dtype,
                        compressor=compressor, fill_value=fill_value,
                        order=order, filters=filters, path=path,
-                       object_codec=object_codec, chunk_store=chunk_store)
+                       object_codec=object_codec, chunk_store=chunk_store,
+                       dimension_separator=dimension_separator)
 
     # determine read only status
     read_only = mode == 'r'
