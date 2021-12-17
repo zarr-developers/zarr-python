@@ -476,6 +476,7 @@ class Metadata3(Metadata2):
             # TODO: remove dimension_separator?
 
             compressor = cls._decode_codec_metadata(meta.get("compressor", None))
+            extensions = meta.get("extensions", [])
             meta = dict(
                 shape=tuple(meta["shape"]),
                 chunk_grid=dict(
@@ -488,6 +489,7 @@ class Metadata3(Metadata2):
                 chunk_memory_layout=meta["chunk_memory_layout"],
                 dimension_separator=meta.get("dimension_separator", "/"),
                 attributes=meta["attributes"],
+                extensions=extensions,
             )
             # compressor field should be absent when there is no compression
             if compressor:
@@ -515,6 +517,7 @@ class Metadata3(Metadata2):
         else:
             object_codec = None
         compressor = cls._encode_codec_metadata(meta.get("compressor", None))
+        extensions = meta.get("extensions", [])
         meta = dict(
             shape=meta["shape"] + sdshape,
             chunk_grid=dict(
@@ -526,6 +529,7 @@ class Metadata3(Metadata2):
             fill_value=encode_fill_value(meta["fill_value"], dtype, object_codec),
             chunk_memory_layout=meta["chunk_memory_layout"],
             attributes=meta.get("attributes", {}),
+            extensions=extensions,
         )
         if compressor:
             meta["compressor"] = compressor
