@@ -487,7 +487,6 @@ class Metadata3(Metadata2):
                 data_type=dtype,
                 fill_value=fill_value,
                 chunk_memory_layout=meta["chunk_memory_layout"],
-                dimension_separator=meta.get("dimension_separator", "/"),
                 attributes=meta["attributes"],
                 extensions=extensions,
             )
@@ -495,9 +494,6 @@ class Metadata3(Metadata2):
             if compressor:
                 meta['compressor'] = compressor
 
-            # dimension_separator = meta.get("dimension_separator", None)
-            # if dimension_separator:
-            #     meta["dimension_separator"] = dimension_separator
         except Exception as e:
             raise MetadataError("error decoding metadata: %s" % e)
         else:
