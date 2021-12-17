@@ -98,7 +98,6 @@ class StoreV3Tests(StoreTests):
         assert default_compressor == meta['compressor']
         assert meta['fill_value'] is None
         # Missing MUST be assumed to be "/"
-        assert meta.get('dimension_separator', "/") is want_dim_sep
         assert meta['chunk_grid']['separator'] is want_dim_sep
         store.close()
 
