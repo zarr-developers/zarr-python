@@ -28,14 +28,14 @@ from zarr.storage import (
     init_array,
     init_group,
 )
-from zarr.tests.test_core import TestArrayWithPath
+from zarr.tests.test_core import TestArrayWithPath as _TestArrayWithPath
 from zarr.tests.util import have_fsspec
 from zarr.util import buffer_size
 
 
 # Start with TestArrayWithPathV3 not TestArrayV3 since path must be supplied
 
-class TestArrayWithPathV3(TestArrayWithPath):
+class TestArrayWithPathV3(_TestArrayWithPath):
 
     _version = 3
 
