@@ -95,7 +95,7 @@ class StoreV3Tests(StoreTests):
         assert (1000,) == meta['shape']
         assert (100,) == meta['chunk_grid']['chunk_shape']
         assert np.dtype(None) == meta['data_type']
-        assert default_compressor.get_config() == meta['compressor']
+        assert default_compressor == meta['compressor']
         assert meta['fill_value'] is None
         # Missing MUST be assumed to be "/"
         assert meta.get('dimension_separator', "/") is want_dim_sep
@@ -118,7 +118,7 @@ class StoreV3Tests(StoreTests):
                                  chunk_shape=(200,),
                                  separator=('/')),
                  data_type=np.dtype('u1'),
-                 compressor=Zlib(1).get_config(),
+                 compressor=Zlib(1),
                  fill_value=0,
                  chunk_memory_layout=order,
                  filters=None)
@@ -165,7 +165,7 @@ class StoreV3Tests(StoreTests):
         assert (1000,) == meta['shape']
         assert (100,) == meta['chunk_grid']['chunk_shape']
         assert np.dtype(None) == meta['data_type']
-        assert default_compressor.get_config() == meta['compressor']
+        assert default_compressor == meta['compressor']
         assert meta['fill_value'] is None
 
         store.close()
@@ -179,7 +179,7 @@ class StoreV3Tests(StoreTests):
                                     chunk_shape=(200,),
                                     separator=('/')),
                     data_type=np.dtype('u1'),
-                    compressor=Zlib(1).get_config(),
+                    compressor=Zlib(1),
                     fill_value=0,
                     chunk_memory_layout=order,
                     filters=None)

@@ -562,7 +562,7 @@ def _init_array_metadata(
 
     # obtain compressor config
     compressor_config = None
-    if compressor:
+    if store_version == 2 and compressor:
         try:
             compressor_config = compressor.get_config()
         except AttributeError as e:
@@ -598,7 +598,8 @@ def _init_array_metadata(
 
     # initialize metadata
     # TODO: don't store redundant dimension_separator for v3?
-    meta = dict(shape=shape, compressor=compressor_config,
+    _compressor = compressor_config if store_version == 2 else compressor
+    meta = dict(shape=shape, compressor=_compressor,
                 fill_value=fill_value,
                 dimension_separator=dimension_separator)
     if store_version < 3:

@@ -2,12 +2,14 @@ import base64
 import itertools
 from collections.abc import Mapping
 
+import numcodecs
 import numpy as np
+from numcodecs.abc import Codec
 
 from zarr.errors import MetadataError
 from zarr.util import json_dumps, json_loads
 
-from typing import cast, Union, Any, List, Mapping as MappingType
+from typing import cast, Union, Any, List, Mapping as MappingType, Optional
 
 ZARR_FORMAT = 2
 ZARR_FORMAT_v3 = 3
@@ -401,6 +403,48 @@ class Metadata3(Metadata2):
         return meta
 
     @classmethod
+    def _encode_codec_metadata(cls, codec: Codec) -> Optional[Mapping]:
+        if codec is None:
+            return None
+
+        # only support gzip for now
+        config = codec.get_config()
+        del config["id"]
+        uri = 'https://purl.org/zarr/spec/codec/'
+        if isinstance(codec, numcodecs.GZip):
+            uri = uri + "gzip/1.0"
+        elif isinstance(codec, numcodecs.Zlib):
+            uri = uri + "zlib/1.0"
+        elif isinstance(codec, numcodecs.Blosc):
+            uri = uri + "blosc/1.0"
+        meta = {
+            "codec": uri,
+            "configuration": config,
+        }
+        return meta
+
+    @classmethod
+    def _decode_codec_metadata(cls, meta: Optional[Mapping]) -> Optional[Codec]:
+        if meta is None:
+            return None
+
+        uri = 'https://purl.org/zarr/spec/codec/'
+        conf = meta['configuration']
+        if meta['codec'].startswith(uri + 'gzip/'):
+            codec = numcodecs.GZip(level=conf['level'])
+        elif meta['codec'].startswith(uri + 'zlib/'):
+            codec = numcodecs.Zlib()
+        elif meta['codec'].startswith(uri + 'blosc/'):
+            codec = numcodecs.Blosc(clevel=conf['clevel'],
+                                    shuffle=conf['shuffle'],
+                                    blocksize=conf['blocksize'],
+                                    cname=conf['cname'])
+        else:
+            raise NotImplementedError
+
+        return codec
+
+    @classmethod
     def decode_array_metadata(cls, s: Union[MappingType, str]) -> MappingType[str, Any]:
         meta = cls.parse_metadata(s)
 
@@ -416,7 +460,7 @@ class Metadata3(Metadata2):
             fill_value = cls.decode_fill_value(meta["fill_value"], dtype, object_codec)
             # TODO: remove dimension_separator?
 
-            compressor = meta.get("compressor", None)
+            compressor = cls._decode_codec_metadata(meta.get("compressor", None))
             meta = dict(
                 shape=tuple(meta["shape"]),
                 chunk_grid=dict(
@@ -455,7 +499,7 @@ class Metadata3(Metadata2):
             object_codec = numcodecs.get_codec(meta["attributes"]["filters"][0])
         else:
             object_codec = None
-        compressor = meta.get("compressor", None)
+        compressor = cls._encode_codec_metadata(meta.get("compressor", None))
         meta = dict(
             shape=meta["shape"] + sdshape,
             chunk_grid=dict(
