@@ -417,6 +417,12 @@ class Metadata3(Metadata2):
             uri = uri + "zlib/1.0"
         elif isinstance(codec, numcodecs.Blosc):
             uri = uri + "blosc/1.0"
+        elif isinstance(codec, numcodecs.BZ2):
+            uri = uri + "bz2/1.0"
+        elif isinstance(codec, numcodecs.LZ4):
+            uri = uri + "lz4/1.0"
+        elif isinstance(codec, numcodecs.LZMA):
+            uri = uri + "lzma/1.0"
         meta = {
             "codec": uri,
             "configuration": config,
@@ -433,12 +439,21 @@ class Metadata3(Metadata2):
         if meta['codec'].startswith(uri + 'gzip/'):
             codec = numcodecs.GZip(level=conf['level'])
         elif meta['codec'].startswith(uri + 'zlib/'):
-            codec = numcodecs.Zlib()
+            codec = numcodecs.Zlib(level=conf['level'])
         elif meta['codec'].startswith(uri + 'blosc/'):
             codec = numcodecs.Blosc(clevel=conf['clevel'],
                                     shuffle=conf['shuffle'],
                                     blocksize=conf['blocksize'],
                                     cname=conf['cname'])
+        elif meta['codec'].startswith(uri + 'bz2/'):
+            codec = numcodecs.BZ2(level=conf['level'])
+        elif meta['codec'].startswith(uri + 'lz4/'):
+            codec = numcodecs.LZ4(acceleration=conf['acceleration'])
+        elif meta['codec'].startswith(uri + 'lzma/'):
+            codec = numcodecs.LZMA(format=conf['format'],
+                                   check=conf['check'],
+                                   preset=conf['preset'],
+                                   filters=conf['filters'])
         else:
             raise NotImplementedError
 
