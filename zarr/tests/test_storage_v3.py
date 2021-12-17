@@ -8,7 +8,7 @@ import pytest
 
 from zarr.codecs import Zlib
 from zarr.errors import ContainsArrayError, ContainsGroupError
-from zarr.meta import ZARR_FORMAT, ZARR_FORMAT_v3
+from zarr.meta import ZARR_FORMAT
 from zarr.storage import (array_meta_key, atexit_rmglob, atexit_rmtree,
                           default_compressor, getsize, init_array, init_group)
 from zarr.storage import (KVStoreV3, MemoryStoreV3, ZipStoreV3, FSStoreV3,
@@ -92,7 +92,6 @@ class StoreV3Tests(StoreTests):
         meta = store._metadata_class.decode_array_metadata(store[mkey])
         # TODO: zarr_format already stored at the heirarchy level should we
         #       also keep it in the .array.json?
-        assert ZARR_FORMAT_v3 == meta['zarr_format']
         assert (1000,) == meta['shape']
         assert (100,) == meta['chunk_grid']['chunk_shape']
         assert np.dtype(None) == meta['data_type']
@@ -146,7 +145,6 @@ class StoreV3Tests(StoreTests):
                 assert (100,) == meta['chunks']
                 assert np.dtype('i4') == meta['dtype']
             elif store._store_version == 3:
-                assert ZARR_FORMAT_v3 == meta['zarr_format']
                 assert (100,) == meta['chunk_grid']['chunk_shape']
                 assert np.dtype('i4') == meta['data_type']
             else:
@@ -164,7 +162,6 @@ class StoreV3Tests(StoreTests):
         mkey = 'meta/root/' + path + '.array.json'
         assert mkey in store
         meta = store._metadata_class.decode_array_metadata(store[mkey])
-        assert ZARR_FORMAT_v3 == meta['zarr_format']
         assert (1000,) == meta['shape']
         assert (100,) == meta['chunk_grid']['chunk_shape']
         assert np.dtype(None) == meta['data_type']
@@ -203,7 +200,6 @@ class StoreV3Tests(StoreTests):
             assert mkey in store
             # should have been overwritten
             meta = store._metadata_class.decode_array_metadata(store[mkey])
-            assert ZARR_FORMAT_v3 == meta['zarr_format']
             assert (1000,) == meta['shape']
             assert (100,) == meta['chunk_grid']['chunk_shape']
             assert np.dtype('i4') == meta['data_type']
@@ -233,7 +229,6 @@ class StoreV3Tests(StoreTests):
             meta = store._metadata_class.decode_array_metadata(
                 store[array_key]
             )
-            assert ZARR_FORMAT_v3 == meta['zarr_format']
             assert (1000,) == meta['shape']
             assert (100,) == meta['chunk_grid']['chunk_shape']
             assert np.dtype('i4') == meta['data_type']
@@ -277,7 +272,6 @@ class StoreV3Tests(StoreTests):
         else:
             assert mkey in store
             meta = store._metadata_class.decode_array_metadata(store[mkey])
-            assert ZARR_FORMAT_v3 == meta['zarr_format']
             assert (1000,) == meta['shape']
             assert (100,) == meta['chunk_grid']['chunk_shape']
             assert np.dtype('i4') == meta['data_type']
@@ -295,7 +289,7 @@ class StoreV3Tests(StoreTests):
         meta = store._metadata_class.decode_array_metadata(
             store[mkey]
         )
-        assert meta['compressor'] is None
+        assert 'compressor' not in meta
 
         store.close()
 
@@ -350,7 +344,6 @@ class StoreV3Tests(StoreTests):
             assert group_key in store
             # should have been overwritten
             meta = store._metadata_class.decode_group_metadata(store[group_key])
-            # assert ZARR_FORMAT == meta['zarr_format']
             assert meta == {'attributes': {}}
 
         store.close()
@@ -418,7 +411,6 @@ class TestFSStoreV3(TestFSStore, StoreV3Tests):
         array_meta_key = 'meta/root/' + path + '.array.json'
         assert array_meta_key in store
         meta = store._metadata_class.decode_array_metadata(store[array_meta_key])
-        assert ZARR_FORMAT_v3 == meta['zarr_format']
         assert (1000,) == meta['shape']
         assert (100,) == meta['chunk_grid']['chunk_shape']
         assert np.dtype(None) == meta['data_type']
@@ -479,7 +471,6 @@ class TestNestedDirectoryStoreV3(TestNestedDirectoryStore,
         array_meta_key = 'meta/root/' + path + '.array.json'
         assert array_meta_key in store
         meta = store._metadata_class.decode_array_metadata(store[array_meta_key])
-        assert ZARR_FORMAT_v3 == meta['zarr_format']
         assert (1000,) == meta['shape']
         assert (100,) == meta['chunk_grid']['chunk_shape']
         assert np.dtype(None) == meta['data_type']

@@ -404,11 +404,6 @@ class Metadata3(Metadata2):
     def decode_array_metadata(cls, s: Union[MappingType, str]) -> MappingType[str, Any]:
         meta = cls.parse_metadata(s)
 
-        # check metadata format
-        zarr_format = meta.get("zarr_format", None)
-        if zarr_format != cls.ZARR_FORMAT:
-            raise MetadataError("unsupported zarr format: %s" % zarr_format)
-
         # extract array metadata fields
         try:
             dtype = cls.decode_dtype(meta["data_type"])
@@ -420,8 +415,9 @@ class Metadata3(Metadata2):
                 object_codec = None
             fill_value = cls.decode_fill_value(meta["fill_value"], dtype, object_codec)
             # TODO: remove dimension_separator?
+
+            compressor = meta.get("compressor", None)
             meta = dict(
-                zarr_format=meta["zarr_format"],
                 shape=tuple(meta["shape"]),
                 chunk_grid=dict(
                     type=meta["chunk_grid"]["type"],
@@ -429,12 +425,15 @@ class Metadata3(Metadata2):
                     separator=meta["chunk_grid"]["separator"],
                 ),
                 data_type=dtype,
-                compressor=meta["compressor"],
                 fill_value=fill_value,
                 chunk_memory_layout=meta["chunk_memory_layout"],
                 dimension_separator=meta.get("dimension_separator", "/"),
                 attributes=meta["attributes"],
             )
+            # compressor field should be absent when there is no compression
+            if compressor:
+                meta['compressor'] = compressor
+
             # dimension_separator = meta.get("dimension_separator", None)
             # if dimension_separator:
             #     meta["dimension_separator"] = dimension_separator
@@ -456,8 +455,8 @@ class Metadata3(Metadata2):
             object_codec = numcodecs.get_codec(meta["attributes"]["filters"][0])
         else:
             object_codec = None
+        compressor = meta.get("compressor", None)
         meta = dict(
-            zarr_format=cls.ZARR_FORMAT,
             shape=meta["shape"] + sdshape,
             chunk_grid=dict(
                 type=meta["chunk_grid"]["type"],
@@ -465,11 +464,12 @@ class Metadata3(Metadata2):
                 separator=meta["chunk_grid"]["separator"],
             ),
             data_type=cls.encode_dtype(dtype),
-            compressor=meta["compressor"],
             fill_value=encode_fill_value(meta["fill_value"], dtype, object_codec),
             chunk_memory_layout=meta["chunk_memory_layout"],
             attributes=meta.get("attributes", {}),
         )
+        if compressor:
+            meta["compressor"] = compressor
         if dimension_separator:
             meta["dimension_separator"] = dimension_separator
         return json_dumps(meta)
