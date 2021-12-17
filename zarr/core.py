@@ -264,7 +264,7 @@ class Array:
             self._dimension_separator = dimension_separator
 
             # setup compressor
-            config = meta['compressor']
+            config = meta.get('compressor', None)
             if config is None:
                 self._compressor = None
             else:
