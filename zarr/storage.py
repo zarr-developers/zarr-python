@@ -35,6 +35,7 @@ from typing import Optional, Union, List, Tuple, Dict, Any
 import uuid
 import time
 
+from numcodecs.abc import Codec
 from numcodecs.compat import (
     ensure_bytes,
     ensure_text,
@@ -565,11 +566,17 @@ def _init_array_metadata(
 
     # obtain compressor config
     compressor_config = None
-    if store_version == 2 and compressor:
-        try:
-            compressor_config = compressor.get_config()
-        except AttributeError as e:
-            raise BadCompressorError(compressor) from e
+    if compressor:
+        if store_version == 2:
+            try:
+                compressor_config = compressor.get_config()
+            except AttributeError as e:
+                raise BadCompressorError(compressor) from e
+        elif not isinstance(compressor, Codec):
+            raise ValueError("expected a numcodecs Codec for compressor")
+            # TODO: alternatively, could autoconvert str to a Codec
+            #       e.g. 'zlib' -> numcodec.Zlib object
+            # compressor = numcodecs.get_codec({'id': compressor})
 
     # obtain filters config
     if filters:

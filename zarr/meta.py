@@ -512,6 +512,7 @@ class Metadata3(Metadata2):
             object_codec = numcodecs.get_codec(meta["attributes"]["filters"][0])
         else:
             object_codec = None
+
         compressor = cls._encode_codec_metadata(meta.get("compressor", None))
         extensions = meta.get("extensions", [])
         meta = dict(
