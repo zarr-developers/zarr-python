@@ -255,11 +255,12 @@ class Array:
                 self._chunks = meta['chunk_grid']['chunk_shape']
                 self._dtype = meta['data_type']
                 self._order = meta['chunk_memory_layout']
+                chunk_separator = meta['chunk_grid']['separator']
                 if dimension_separator is None:
                     # TODO: omit attribute in v3?
-                    dimension_separator = meta.get('dimension_separator', '/')
-                chunk_separator = meta['chunk_grid']['separator']
-                assert chunk_separator == dimension_separator
+                    dimension_separator = meta.get('dimension_separator', chunk_separator)
+                else:
+                    assert chunk_separator == dimension_separator
 
             self._dimension_separator = dimension_separator
 
