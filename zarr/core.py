@@ -269,7 +269,7 @@ class Array:
             if compressor is None:
                 self._compressor = None
             elif self._version == 2:
-                    self._compressor = get_codec(compressor)
+                self._compressor = get_codec(compressor)
             else:
                 self._compressor = compressor
 
