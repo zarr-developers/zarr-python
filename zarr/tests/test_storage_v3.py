@@ -17,13 +17,23 @@ from zarr.storage import (KVStoreV3, MemoryStoreV3, ZipStoreV3, FSStoreV3,
                           LMDBStoreV3, SQLiteStoreV3, LRUStoreCacheV3)
 from zarr.tests.util import CountingDictV3, have_fsspec, skip_test_env_var
 
-from .test_storage import (StoreTests, TestMemoryStore, TestDirectoryStore,
-                           TestFSStore, TestNestedDirectoryStore, TestZipStore,
-                           TestDBMStore, TestDBMStoreDumb, TestDBMStoreGnu,
-                           TestDBMStoreNDBM, TestDBMStoreBerkeleyDB,
-                           TestLMDBStore, TestSQLiteStore,
-                           TestSQLiteStoreInMemory, TestLRUStoreCache,
-                           skip_if_nested_chunks)
+from .test_storage import (
+    StoreTests,
+    TestMemoryStore as _TestMemoryStore,
+    TestDirectoryStore as _TestDirectoryStore,
+    TestFSStore as _TestFSStore,
+    TestNestedDirectoryStore as _TestNestedDirectoryStore,
+    TestZipStore as _TestZipStore,
+    TestDBMStore as _TestDBMStore,
+    TestDBMStoreDumb as _TestDBMStoreDumb,
+    TestDBMStoreGnu as _TestDBMStoreGnu,
+    TestDBMStoreNDBM as _TestDBMStoreNDBM,
+    TestDBMStoreBerkeleyDB as _TestDBMStoreBerkeleyDB,
+    TestLMDBStore as _TestLMDBStore,
+    TestSQLiteStore as _TestSQLiteStore,
+    TestSQLiteStoreInMemory as _TestSQLiteStoreInMemory,
+    TestLRUStoreCache as _TestLRUStoreCache,
+    skip_if_nested_chunks)
 
 # pytest will fail to run if the following fixtures aren't imported here
 from .test_storage import dimension_separator_fixture, s3  # noqa
@@ -363,14 +373,14 @@ class TestMappingStoreV3(StoreV3Tests):
         pass
 
 
-class TestMemoryStoreV3(TestMemoryStore, StoreV3Tests):
+class TestMemoryStoreV3(_TestMemoryStore, StoreV3Tests):
 
     def create_store(self, **kwargs):
         skip_if_nested_chunks(**kwargs)
         return MemoryStoreV3(**kwargs)
 
 
-class TestDirectoryStoreV3(TestDirectoryStore, StoreV3Tests):
+class TestDirectoryStoreV3(_TestDirectoryStore, StoreV3Tests):
 
     def create_store(self, normalize_keys=False, **kwargs):
         # For v3, don't have to skip if nested.
@@ -383,7 +393,7 @@ class TestDirectoryStoreV3(TestDirectoryStore, StoreV3Tests):
 
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
-class TestFSStoreV3(TestFSStore, StoreV3Tests):
+class TestFSStoreV3(_TestFSStore, StoreV3Tests):
 
     def create_store(self, normalize_keys=False,
                      dimension_separator=".",
@@ -451,7 +461,7 @@ class TestFSStoreV3WithKeySeparator(StoreV3Tests):
 
 
 # TODO: remove NestedDirectoryStoreV3?
-class TestNestedDirectoryStoreV3(TestNestedDirectoryStore,
+class TestNestedDirectoryStoreV3(_TestNestedDirectoryStore,
                                  TestDirectoryStoreV3):
 
     def create_store(self, normalize_keys=False, **kwargs):
@@ -478,10 +488,10 @@ class TestNestedDirectoryStoreV3(TestNestedDirectoryStore,
 
 # TODO: enable once N5StoreV3 has been implemented
 # @pytest.mark.skipif(True, reason="N5StoreV3 not yet fully implemented")
-# class TestN5StoreV3(TestN5Store, TestNestedDirectoryStoreV3, StoreV3Tests):
+# class TestN5StoreV3(_TestN5Store, TestNestedDirectoryStoreV3, StoreV3Tests):
 
 
-class TestZipStoreV3(TestZipStore, StoreV3Tests):
+class TestZipStoreV3(_TestZipStore, StoreV3Tests):
 
     def create_store(self, **kwargs):
         path = tempfile.mktemp(suffix='.zip')
@@ -499,7 +509,7 @@ class TestZipStoreV3(TestZipStore, StoreV3Tests):
             store.clear()
 
 
-class TestDBMStoreV3(TestDBMStore, StoreV3Tests):
+class TestDBMStoreV3(_TestDBMStore, StoreV3Tests):
 
     def create_store(self, dimension_separator=None):
         path = tempfile.mktemp(suffix='.anydbm')
@@ -509,7 +519,7 @@ class TestDBMStoreV3(TestDBMStore, StoreV3Tests):
         return store
 
 
-class TestDBMStoreV3Dumb(TestDBMStoreDumb, StoreV3Tests):
+class TestDBMStoreV3Dumb(_TestDBMStoreDumb, StoreV3Tests):
 
     def create_store(self, **kwargs):
         path = tempfile.mktemp(suffix='.dumbdbm')
@@ -520,7 +530,7 @@ class TestDBMStoreV3Dumb(TestDBMStoreDumb, StoreV3Tests):
         return store
 
 
-class TestDBMStoreV3Gnu(TestDBMStoreGnu, StoreV3Tests):
+class TestDBMStoreV3Gnu(_TestDBMStoreGnu, StoreV3Tests):
 
     def create_store(self, **kwargs):
         gdbm = pytest.importorskip("dbm.gnu")
@@ -532,7 +542,7 @@ class TestDBMStoreV3Gnu(TestDBMStoreGnu, StoreV3Tests):
         return store  # pragma: no cover
 
 
-class TestDBMStoreV3NDBM(TestDBMStoreNDBM, StoreV3Tests):
+class TestDBMStoreV3NDBM(_TestDBMStoreNDBM, StoreV3Tests):
 
     def create_store(self, **kwargs):
         ndbm = pytest.importorskip("dbm.ndbm")
@@ -542,7 +552,7 @@ class TestDBMStoreV3NDBM(TestDBMStoreNDBM, StoreV3Tests):
         return store  # pragma: no cover
 
 
-class TestDBMStoreV3BerkeleyDB(TestDBMStoreBerkeleyDB, StoreV3Tests):
+class TestDBMStoreV3BerkeleyDB(_TestDBMStoreBerkeleyDB, StoreV3Tests):
 
     def create_store(self, **kwargs):
         bsddb3 = pytest.importorskip("bsddb3")
@@ -552,7 +562,7 @@ class TestDBMStoreV3BerkeleyDB(TestDBMStoreBerkeleyDB, StoreV3Tests):
         return store
 
 
-class TestLMDBStoreV3(TestLMDBStore, StoreV3Tests):
+class TestLMDBStoreV3(_TestLMDBStore, StoreV3Tests):
 
     def create_store(self, **kwargs):
         pytest.importorskip("lmdb")
@@ -563,7 +573,7 @@ class TestLMDBStoreV3(TestLMDBStore, StoreV3Tests):
         return store
 
 
-class TestSQLiteStoreV3(TestSQLiteStore, StoreV3Tests):
+class TestSQLiteStoreV3(_TestSQLiteStore, StoreV3Tests):
 
     def create_store(self, **kwargs):
         pytest.importorskip("sqlite3")
@@ -573,7 +583,7 @@ class TestSQLiteStoreV3(TestSQLiteStore, StoreV3Tests):
         return store
 
 
-class TestSQLiteStoreV3InMemory(TestSQLiteStoreInMemory, StoreV3Tests):
+class TestSQLiteStoreV3InMemory(_TestSQLiteStoreInMemory, StoreV3Tests):
 
     def create_store(self, **kwargs):
         pytest.importorskip("sqlite3")
@@ -606,7 +616,7 @@ class TestRedisStoreV3(StoreV3Tests):
         return store
 
 
-class TestLRUStoreCacheV3(TestLRUStoreCache, StoreV3Tests):
+class TestLRUStoreCacheV3(_TestLRUStoreCache, StoreV3Tests):
 
     def create_store(self, **kwargs):
         # wrapper therefore no dimension_separator argument
@@ -834,4 +844,4 @@ class TestLRUStoreCacheV3(TestLRUStoreCache, StoreV3Tests):
 
 # TODO: implement ABSStoreV3
 # @skip_test_env_var("ZARR_TEST_ABS")
-# class TestABSStoreV3(TestABSStore, StoreV3Tests):
+# class TestABSStoreV3(_TestABSStore, StoreV3Tests):
