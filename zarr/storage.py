@@ -468,6 +468,9 @@ def init_array(
         # initialize with default zarr.json entry level metadata
         store['zarr.json'] = store._metadata_class.encode_hierarchy_metadata(None)  # type: ignore
 
+    if not compressor:
+        # compatibility with legacy tests using compressor=[]
+        compressor = None
     _init_array_metadata(store, shape=shape, chunks=chunks, dtype=dtype,
                          compressor=compressor, fill_value=fill_value,
                          order=order, overwrite=overwrite, path=path,

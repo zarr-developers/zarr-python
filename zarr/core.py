@@ -264,11 +264,13 @@ class Array:
             self._dimension_separator = dimension_separator
 
             # setup compressor
-            config = meta.get('compressor', None)
-            if config is None:
+            compressor = meta.get('compressor', None)
+            if compressor is None:
                 self._compressor = None
+            elif self._version == 2:
+                    self._compressor = get_codec(compressor)
             else:
-                self._compressor = get_codec(config)
+                self._compressor = compressor
 
             # setup filters
             if self._version == 2:
@@ -301,7 +303,8 @@ class Array:
             filters_config = [f.get_config() for f in self._filters]
         else:
             filters_config = None
-        meta = dict(shape=self._shape, compressor=compressor_config,
+        _compressor = compressor_config if self._version == 2 else self._compressor
+        meta = dict(shape=self._shape, compressor=_compressor,
                     fill_value=self._fill_value, filters=filters_config)
         if getattr(self._store, '_store_version', 2) == 2:
             meta.update(
