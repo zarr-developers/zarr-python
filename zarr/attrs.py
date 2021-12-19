@@ -30,9 +30,6 @@ class Attributes(MutableMapping):
         self._version = getattr(store, '_store_version', 2)
         assert key
 
-        if self._version == 3 and '.z' in key:
-            raise ValueError('invalid v3 key')
-
         _Store = Store if self._version == 2 else StoreV3
         self.store = _Store._ensure_store(store)
         self.key = key
@@ -170,8 +167,6 @@ class Attributes(MutableMapping):
         if self._version == 2:
             d.update(*args, **kwargs)
         else:
-            if 'attributes' not in d:
-                d['attributes'] = {}
             d['attributes'].update(*args, **kwargs)
 
         # _put modified data
