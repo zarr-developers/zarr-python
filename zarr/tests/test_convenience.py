@@ -28,6 +28,8 @@ from zarr.storage import (
     ConsolidatedMetadataStore,
     MemoryStore,
     MemoryStoreV3,
+    KVStore,
+    KVStoreV3,
     atexit_rmtree,
     getsize,
 )
@@ -319,6 +321,8 @@ def test_save_array_separator(tmpdir, options):
 
 class TestCopyStore(unittest.TestCase):
 
+    _version = 2
+
     def setUp(self):
         source = dict()
         source['foo'] = b'xxx'
@@ -359,7 +363,10 @@ class TestCopyStore(unittest.TestCase):
             copy_store(source, dest, dest_path=dest_path)
             assert len(source) == len(dest)
             for key in source:
-                dest_key = 'new/' + key
+                if self._version == 3:
+                    dest_key = key[:10] + 'new/' + key[10:]
+                else:
+                    dest_key = 'new/' + key
                 assert source[key] == dest[dest_key]
 
     def test_source_dest_path(self):
@@ -387,16 +394,18 @@ class TestCopyStore(unittest.TestCase):
         excludes = 'f.*'
         copy_store(source, dest, excludes=excludes)
         assert len(dest) == 2
-        assert 'foo' not in dest
+
+        root = '' if self._version == 2 else 'meta/root/'
+        assert root + 'foo' not in dest
 
         # multiple excludes
         dest = self._get_dest_store()
         excludes = 'b.z', '.*x'
         copy_store(source, dest, excludes=excludes)
         assert len(dest) == 1
-        assert 'foo' in dest
-        assert 'bar/baz' not in dest
-        assert 'bar/qux' not in dest
+        assert root + 'foo' in dest
+        assert root + 'bar/baz' not in dest
+        assert root + 'bar/qux' not in dest
 
         # excludes and includes
         dest = self._get_dest_store()
@@ -404,9 +413,9 @@ class TestCopyStore(unittest.TestCase):
         includes = '.*x'
         copy_store(source, dest, excludes=excludes, includes=includes)
         assert len(dest) == 2
-        assert 'foo' in dest
-        assert 'bar/baz' not in dest
-        assert 'bar/qux' in dest
+        assert root + 'foo' in dest
+        assert root + 'bar/baz' not in dest
+        assert root + 'bar/qux' in dest
 
     def test_dry_run(self):
         source = self.source
@@ -417,7 +426,8 @@ class TestCopyStore(unittest.TestCase):
     def test_if_exists(self):
         source = self.source
         dest = self._get_dest_store()
-        dest['bar/baz'] = b'mmm'
+        root = '' if self._version == 2 else 'meta/root/'
+        dest[root + 'bar/baz'] = b'mmm'
 
         # default ('raise')
         with pytest.raises(CopyError):
@@ -430,20 +440,41 @@ class TestCopyStore(unittest.TestCase):
         # skip
         copy_store(source, dest, if_exists='skip')
         assert 3 == len(dest)
-        assert dest['foo'] == b'xxx'
-        assert dest['bar/baz'] == b'mmm'
-        assert dest['bar/qux'] == b'zzz'
+        assert dest[root + 'foo'] == b'xxx'
+        assert dest[root + 'bar/baz'] == b'mmm'
+        assert dest[root + 'bar/qux'] == b'zzz'
 
         # replace
         copy_store(source, dest, if_exists='replace')
         assert 3 == len(dest)
-        assert dest['foo'] == b'xxx'
-        assert dest['bar/baz'] == b'yyy'
-        assert dest['bar/qux'] == b'zzz'
+        assert dest[root + 'foo'] == b'xxx'
+        assert dest[root + 'bar/baz'] == b'yyy'
+        assert dest[root + 'bar/qux'] == b'zzz'
 
         # invalid option
         with pytest.raises(ValueError):
             copy_store(source, dest, if_exists='foobar')
+
+
+class TestCopyStoreV3(TestCopyStore):
+
+    _version = 3
+
+    def setUp(self):
+        source = KVStoreV3(dict())
+        source['meta/root/foo'] = b'xxx'
+        source['meta/root/bar/baz'] = b'yyy'
+        source['meta/root/bar/qux'] = b'zzz'
+        self.source = source
+
+    def _get_dest_store(self):
+        return KVStoreV3(dict())
+
+    def test_mismatched_store_versions(self):
+        # cannot copy between stores of mixed Zarr versions
+        dest = KVStore(dict())
+        with pytest.raises(ValueError):
+            copy_store(self.source, dest)
 
 
 def check_copied_array(original, copied, without_attrs=False,

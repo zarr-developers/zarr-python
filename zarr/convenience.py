@@ -648,10 +648,6 @@ def copy_store(source, dest, source_path='', dest_path='', excludes=None,
     dest_store_version = getattr(dest, '_store_version', 2)
     if source_store_version != dest_store_version:
         raise ValueError("zarr stores must share the same protocol version")
-    if source_store_version > 2:
-        if not source_path or not dest_path:
-            raise ValueError("v3 stores require specifying a non-empty "
-                             "source_path and dest_path")
 
     # setup logging
     with _LogWriter(log) as log:
