@@ -17,6 +17,7 @@ from zarr.storage import (
     DBMStoreV3,
     DirectoryStoreV3,
     FSStoreV3,
+    KVStore,
     KVStoreV3,
     LMDBStoreV3,
     LRUStoreCacheV3,
@@ -901,3 +902,22 @@ class TestArrayWithFSStoreV3NestedPartialRead(TestArrayWithPathV3):
         z[2:99_000] = 1
         b = Array(z.store, path=z.path, read_only=True, partial_decompress=True)
         assert (b[2:99_000] == 1).all()
+
+
+def test_array_mismatched_store_versions():
+    store_v3 = KVStoreV3(dict())
+    store_v2 = KVStore(dict())
+
+    # separate chunk store
+    chunk_store_v2 = KVStore(dict())
+    chunk_store_v3 = KVStoreV3(dict())
+
+    init_kwargs = dict(shape=100, chunks=10, dtype="<f8")
+    init_array(store_v2, path='dataset', chunk_store=chunk_store_v2, **init_kwargs)
+    init_array(store_v3, path='dataset', chunk_store=chunk_store_v3, **init_kwargs)
+
+    # store and chunk_store must have the same zarr protocol version
+    with pytest.raises(ValueError):
+        Array(store_v3, path='dataset', read_only=False, chunk_store=chunk_store_v2)
+    with pytest.raises(ValueError):
+        Array(store_v2, path='dataset', read_only=False, chunk_store=chunk_store_v3)

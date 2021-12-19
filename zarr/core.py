@@ -169,15 +169,11 @@ class Array:
 
         store = normalize_store_arg(store, zarr_version=zarr_version)
         if zarr_version is None:
-            zarr_version = getattr(store, '_store_version', 2)
+            zarr_version = store._store_version
 
         if chunk_store is not None:
             chunk_store = normalize_store_arg(chunk_store,
                                               zarr_version=zarr_version)
-            if not getattr(chunk_store, '_store_version', 2) == zarr_version:
-                raise ValueError(
-                    "zarr_version of store and chunk_store must match"
-                )
 
         self._store = store
         self._chunk_store = chunk_store

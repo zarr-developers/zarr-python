@@ -137,6 +137,12 @@ def normalize_store_arg(store, clobber=False, storage_options=None, mode="w",
             # add default zarr.json metadata
             store['zarr.json'] = store._metadata_class.encode_hierarchy_metadata(None)
         return store
+    elif hasattr(store, '_store_version') and store._store_version != zarr_version:
+            raise ValueError(
+                f"store is a zarr v{store._store_version} store which conflicts "
+                f"with the specified zarr_version ({zarr_version})."
+            )
+
     if isinstance(store, os.PathLike):
         store = os.fspath(store)
     if isinstance(store, str):
