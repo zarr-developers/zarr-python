@@ -2943,6 +2943,11 @@ class KVStoreV3(KVStore, StoreV3):
     def list(self):
         return list(self._mutable_mapping.keys())
 
+    def __eq__(self, other):
+        return (
+            isinstance(other, KVStoreV3) and
+            self._mutable_mapping == other._mutable_mapping
+        )
 
 KVStoreV3.__doc__ = KVStore.__doc__
 

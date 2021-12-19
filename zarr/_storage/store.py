@@ -254,11 +254,7 @@ class StoreV3(BaseStore):
         self.erase_prefix("/")
 
     def __eq__(self, other):
-        from zarr.storage import KVStoreV3  # avoid circular import
-        if isinstance(other, KVStoreV3):
-            return self._mutable_mapping == other._mutable_mapping
-        else:
-            return NotImplemented
+        return NotImplemented
 
     @staticmethod
     def _ensure_store(store):
