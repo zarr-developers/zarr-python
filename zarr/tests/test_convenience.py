@@ -148,6 +148,25 @@ def test_lazy_loader(zarr_version):
     assert 'LazyLoader: ' in repr(loader)
 
 
+@pytest.mark.parametrize("zarr_version", [2, 3])
+def test_load_array(zarr_version):
+    foo = np.arange(100)
+    bar = np.arange(100, 0, -1)
+    store = 'data/group.zarr' if zarr_version == 2 else 'data/group.zr3'
+    kwargs = _init_creation_kwargs(zarr_version)
+    save(store, foo=foo, bar=bar, **kwargs)
+
+    # can also load arrays directly into a numpy array
+    for array_name in ['foo', 'bar']:
+        array_path = 'dataset/' + array_name if zarr_version == 3 else array_name
+        array = load(store, path=array_path, zarr_version=zarr_version)
+        assert isinstance(array, np.ndarray)
+        if array_name == 'foo':
+            assert_array_equal(foo, array)
+        else:
+            assert_array_equal(bar, array)
+
+
 # TODO: consolidated metadata currently only supported for v2
 
 def test_consolidate_metadata():
