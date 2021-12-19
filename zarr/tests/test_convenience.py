@@ -145,6 +145,7 @@ def test_lazy_loader(zarr_version):
     assert sorted(loader) == ['bar', 'foo']
     assert_array_equal(foo, loader['foo'])
     assert_array_equal(bar, loader['bar'])
+    assert 'LazyLoader: ' in repr(loader)
 
 
 # TODO: consolidated metadata currently only supported for v2
