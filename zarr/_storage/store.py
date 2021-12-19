@@ -133,6 +133,9 @@ class Store(BaseStore):
         _rmdir_from_keys(self, path)
 
 
+_valid_key_characters = set(ascii_letters + digits + "/.-_")
+
+
 class StoreV3(BaseStore):
     _store_version = 3
     _metadata_class = Metadata3
@@ -145,17 +148,32 @@ class StoreV3(BaseStore):
         A key is any string containing only character in the range a-z, A-Z,
         0-9, or in the set /.-_ it will return True if that's the case, False
         otherwise.
-
-        In addition, in spec v3, keys can only start with the prefix meta/,
-        data/ or be exactly zarr.json and should not end with /. This should
-        not be exposed to the user, and is a store implementation detail, so
-        this method will raise a ValueError in that case.
         """
-        if sys.version_info > (3, 7):
-            if not key.isascii():
-                return False
-        if set(key) - set(ascii_letters + digits + "/.-_"):
+        if not isinstance(key, str) or not key.isascii():
             return False
+        if set(key) - _valid_key_characters:
+            return False
+        return True
+
+    @staticmethod
+    def _validate_key(key: str):
+        """
+        Verify that a key conforms to the v3 specification.
+
+        A key is any string containing only character in the range a-z, A-Z,
+        0-9, or in the set /.-_ it will return True if that's the case, False
+        otherwise.
+
+        In spec v3, keys can only start with the prefix meta/, data/ or be
+        exactly zarr.json and should not end with /. This should not be exposed
+        to the user, and is a store implementation detail, so this method will
+        raise a ValueError in that case.
+        """
+        if not StoreV3._valid_key(key):
+            raise ValueError(
+                f"Keys must be ascii strings and may only contain the "
+                f"characters {''.join(sorted(_valid_key_characters))}"
+            )
 
         if (
             not key.startswith("data/")
@@ -166,8 +184,6 @@ class StoreV3(BaseStore):
 
         if key.endswith('/'):
             raise ValueError("keys may not end in /")
-
-        return True
 
     def list_prefix(self, prefix):
         if prefix.startswith('/'):
@@ -214,34 +230,24 @@ class StoreV3(BaseStore):
             "The list method has not been implemented for this store type."
         )
 
-    # TODO: Remove listdir? This method is just to match the current V2 stores
-    # The v3 spec mentions: list, list_dir, list_prefix
-    def listdir(self, path: str = ""):
-        if path and not path.endswith("/"):
-            path = path + "/"
-        keys, prefixes = self.list_dir(path)
-        prefixes = [p[len(path):].rstrip("/") for p in prefixes]
-        keys = [k[len(path):] for k in keys]
-        return keys + prefixes
-
-    # TODO: rmdir here is identical to the rmdir on Store so could potentially
-    #       move to BaseStore instead.
-    def rmdir(self, path: str = "") -> None:
-        if not self.is_erasable():
-            raise NotImplementedError(
-                f'{type(self)} is not erasable, cannot call "rmdir"'
-            )  # pragma: no cover
-        path = normalize_storage_path(path)
-        _rmdir_from_keys(self, path)
-
     def __contains__(self, key):
-        # TODO: re-enable this check?
-        # if not key.startswith(("meta/", "data/")):
-        #     raise ValueError(
-        #         f'Key must start with either "meta/" or "data/". '
-        #         f'Got {key}'
-        #     )
         return key in self.list()
+
+    def __setitem__(self, key, value):
+        """Set a value.
+
+        Here we validate the key name prior to calling __setitem__
+        """
+        self._validate_key(key)
+        return super().__setitem__(key, value)
+
+    def __getitem__(self, key):
+        """Get a value.
+
+        Here we validate the key name prior to calling __getitem__
+        """
+        self._validate_key(key)
+        return super().__getitem__(key)
 
     def clear(self):
         """Remove all items from store."""

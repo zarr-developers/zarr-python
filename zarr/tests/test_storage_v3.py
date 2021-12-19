@@ -6,6 +6,7 @@ import tempfile
 import numpy as np
 import pytest
 
+from zarr._storage.store import _valid_key_characters
 from zarr.codecs import Zlib
 from zarr.errors import ContainsArrayError, ContainsGroupError
 from zarr.meta import ZARR_FORMAT
@@ -14,7 +15,8 @@ from zarr.storage import (array_meta_key, atexit_rmglob, atexit_rmtree,
 from zarr.storage import (KVStoreV3, MemoryStoreV3, ZipStoreV3, FSStoreV3,
                           DirectoryStoreV3, NestedDirectoryStoreV3,
                           RedisStoreV3, MongoDBStoreV3, DBMStoreV3,
-                          LMDBStoreV3, SQLiteStoreV3, LRUStoreCacheV3)
+                          LMDBStoreV3, SQLiteStoreV3, LRUStoreCacheV3,
+                          StoreV3)
 from zarr.tests.util import CountingDictV3, have_fsspec, skip_test_env_var
 
 from .test_storage import (
@@ -46,6 +48,55 @@ from .test_storage import dimension_separator_fixture, s3  # noqa
 ])
 def dimension_separator_fixture_v3(request):
     return request.param
+
+
+def test_ensure_store_v3():
+    class InvalidStore:
+        pass
+
+    with pytest.raises(ValueError):
+        StoreV3._ensure_store(InvalidStore())
+
+    assert StoreV3._ensure_store(None) is None
+
+
+def test_valid_key():
+    store = KVStoreV3(dict)
+
+    # only ascii keys are valid
+    assert not store._valid_key(5)
+    assert not store._valid_key(2.8)
+
+    for key in _valid_key_characters:
+        assert store._valid_key(key)
+
+    # other characters not in _valid_key_characters are not allowed
+    assert not store._valid_key('*')
+    assert not store._valid_key('~')
+    assert not store._valid_key('^')
+
+
+def test_validate_key():
+    store = KVStoreV3(dict)
+
+    # zarr.json is a valid key
+    store._validate_key('zarr.json')
+    # but other keys not starting with meta/ or data/ are not
+    with pytest.raises(ValueError):
+        store._validate_key('zar.json')
+
+    # valid ascii keys
+    for valid in ['meta/root/arr1.array.json',
+                  'data/root/arr1.array.json',
+                  'meta/root/subfolder/item_1-0.group.json']:
+        store._validate_key(valid)
+        # but otherwise valid keys cannot end in /
+        with pytest.raises(ValueError):
+            assert store._validate_key(valid + '/')
+
+    for invalid in [0, '*', '~', '^', '&']:
+        with pytest.raises(ValueError):
+            store._validate_key(invalid)
 
 
 class StoreV3Tests(StoreTests):

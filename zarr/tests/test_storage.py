@@ -67,12 +67,14 @@ def test_kvstore_repr():
     repr(KVStore(dict()))
 
 
-def test_invalid_store():
+def test_ensure_store():
     class InvalidStore:
         pass
 
     with pytest.raises(ValueError):
         Store._ensure_store(InvalidStore())
+
+    assert Store._ensure_store(None) is None
 
 
 def test_capabilities():
