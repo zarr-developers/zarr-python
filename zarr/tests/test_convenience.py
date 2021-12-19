@@ -167,6 +167,19 @@ def test_load_array(zarr_version):
             assert_array_equal(bar, array)
 
 
+@pytest.mark.parametrize("zarr_version", [2, 3])
+def test_tree(zarr_version):
+    kwargs = _init_creation_kwargs(zarr_version)
+    g1 = zarr.group(**kwargs)
+    g2 = g1.create_group('foo')
+    g3 = g1.create_group('bar')
+    g4 = g3.create_group('baz')
+    g5 = g3.create_group('qux')
+    d1 = g5.create_dataset('baz', shape=100, chunks=10)
+    assert repr(zarr.tree(g1)) == repr(g1.tree())
+    assert str(zarr.tree(g1)) == str(g1.tree())
+
+
 # TODO: consolidated metadata currently only supported for v2
 
 def test_consolidate_metadata():
