@@ -95,6 +95,11 @@ class TestArrayWithPathV3(_TestArrayWithPath):
         assert group_key not in store
         assert ('meta/root/' + path + '.array.json') in store
 
+    def test_array_no_path(self):
+        # passing path=None to init_array will raise an exception
+        with pytest.raises(ValueError):
+            self.create_array(shape=1000, chunks=100, array_path=None)
+
     def test_nbytes_stored(self):
 
         # dict as store
