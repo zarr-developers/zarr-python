@@ -50,6 +50,37 @@ def dimension_separator_fixture_v3(request):
     return request.param
 
 
+class DummyStore():
+    # contains all methods expected of Mutable Mapping
+
+    def keys(self):
+        pass
+
+    def values(self):
+        pass
+
+    def get(self, value, default=None):
+        pass
+
+    def __setitem__(self, key, value):
+        pass
+
+    def __getitem__(self, key):
+        pass
+
+    def __delitem__(self, key):
+        pass
+
+    def __contains__(self, key):
+        pass
+
+
+class InvalidDummyStore():
+    # does not contain expected methods of a MutableMapping
+
+    def keys(self):
+        pass
+
 def test_ensure_store_v3():
     class InvalidStore:
         pass
@@ -58,6 +89,13 @@ def test_ensure_store_v3():
         StoreV3._ensure_store(InvalidStore())
 
     assert StoreV3._ensure_store(None) is None
+
+    # class with all methods of a MutableMapping will become a KVStoreV3
+    assert isinstance(StoreV3._ensure_store(DummyStore), KVStoreV3)
+
+    with pytest.raises(ValueError):
+        # does not have the methods expected of a MutableMapping
+        StoreV3._ensure_store(InvalidDummyStore)
 
 
 def test_valid_key():
