@@ -28,8 +28,6 @@ class Attributes(MutableMapping):
                  synchronizer=None):
 
         self._version = getattr(store, '_store_version', 2)
-        assert key
-
         _Store = Store if self._version == 2 else StoreV3
         self.store = _Store._ensure_store(store)
         self.key = key
@@ -63,10 +61,10 @@ class Attributes(MutableMapping):
     def refresh(self):
         """Refresh cached attributes from the store."""
         if self.cache:
-            if self._version == 3:
-                self._cached_asdict = self._get_nosync()['attributes']
-            else:
+            if self._version == 2:
                 self._cached_asdict = self._get_nosync()
+            else:
+                self._cached_asdict = self._get_nosync()['attributes']
 
     def __contains__(self, x):
         return x in self.asdict()

@@ -21,13 +21,16 @@ def _init_store(version):
 
 class TestAttributes():
 
-    def init_attributes(self, store, read_only=False, cache=True):
-        return Attributes(store, key='attrs', read_only=read_only, cache=cache)
+    def init_attributes(self, store, read_only=False, cache=True, zarr_version=2):
+        root = '.z' if zarr_version == 2 else 'meta/root/'
+        return Attributes(store, key=root + 'attrs', read_only=read_only, cache=cache)
 
     def test_storage(self, zarr_version):
 
         store = _init_store(zarr_version)
-        a = Attributes(store=store, key='attrs')
+        root = '.z' if zarr_version == 2 else 'meta/root/'
+        attrs_key = root + 'attrs'
+        a = Attributes(store=store, key=attrs_key)
         assert isinstance(a.store, KVStore)
         assert 'foo' not in a
         assert 'bar' not in a
@@ -35,9 +38,9 @@ class TestAttributes():
 
         a['foo'] = 'bar'
         a['baz'] = 42
-        assert 'attrs' in store
-        assert isinstance(store['attrs'], bytes)
-        d = json.loads(str(store['attrs'], 'ascii'))
+        assert attrs_key in store
+        assert isinstance(store[attrs_key], bytes)
+        d = json.loads(str(store[attrs_key], 'ascii'))
         if zarr_version == 3:
             d = d['attributes']
         assert dict(foo='bar', baz=42) == d
@@ -45,7 +48,7 @@ class TestAttributes():
     def test_get_set_del_contains(self, zarr_version):
 
         store = _init_store(zarr_version)
-        a = self.init_attributes(store)
+        a = self.init_attributes(store, zarr_version=zarr_version)
         assert 'foo' not in a
         a['foo'] = 'bar'
         a['baz'] = 42
@@ -62,7 +65,7 @@ class TestAttributes():
     def test_update_put(self, zarr_version):
 
         store = _init_store(zarr_version)
-        a = self.init_attributes(store)
+        a = self.init_attributes(store, zarr_version=zarr_version)
         assert 'foo' not in a
         assert 'bar' not in a
         assert 'baz' not in a
@@ -80,7 +83,7 @@ class TestAttributes():
     def test_iterators(self, zarr_version):
 
         store = _init_store(zarr_version)
-        a = self.init_attributes(store)
+        a = self.init_attributes(store, zarr_version=zarr_version)
         assert 0 == len(a)
         assert set() == set(a)
         assert set() == set(a.keys())
@@ -98,11 +101,11 @@ class TestAttributes():
 
     def test_read_only(self, zarr_version):
         store = _init_store(zarr_version)
-        a = self.init_attributes(store, read_only=True)
+        a = self.init_attributes(store, read_only=True, zarr_version=zarr_version)
         if zarr_version == 2:
-            store['attrs'] = json.dumps(dict(foo='bar', baz=42)).encode('ascii')
+            store['.zattrs'] = json.dumps(dict(foo='bar', baz=42)).encode('ascii')
         else:
-            store['attrs'] = json.dumps(dict(attributes=dict(foo='bar', baz=42))).encode('ascii')
+            store['meta/root/attrs'] = json.dumps(dict(attributes=dict(foo='bar', baz=42))).encode('ascii')
         assert a['foo'] == 'bar'
         assert a['baz'] == 42
         with pytest.raises(PermissionError):
@@ -114,7 +117,7 @@ class TestAttributes():
 
     def test_key_completions(self, zarr_version):
         store = _init_store(zarr_version)
-        a = self.init_attributes(store)
+        a = self.init_attributes(store, zarr_version=zarr_version)
         d = a._ipython_key_completions_()
         assert 'foo' not in d
         assert '123' not in d
@@ -134,128 +137,130 @@ class TestAttributes():
 
         # setup store
         store = CountingDict() if zarr_version == 2 else CountingDictV3()
-        assert 0 == store.counter['__getitem__', 'attrs']
-        assert 0 == store.counter['__setitem__', 'attrs']
+        attrs_key = '.zattrs' if zarr_version == 2 else 'meta/root/attrs'
+        assert 0 == store.counter['__getitem__', attrs_key]
+        assert 0 == store.counter['__setitem__', attrs_key]
         if zarr_version == 2:
-            store['attrs'] = json.dumps(dict(foo='xxx', bar=42)).encode('ascii')
+            store[attrs_key] = json.dumps(dict(foo='xxx', bar=42)).encode('ascii')
         else:
-            store['attrs'] = json.dumps(dict(attributes=dict(foo='xxx', bar=42))).encode('ascii')
-        assert 0 == store.counter['__getitem__', 'attrs']
-        assert 1 == store.counter['__setitem__', 'attrs']
+            store[attrs_key] = json.dumps(dict(attributes=dict(foo='xxx', bar=42))).encode('ascii')
+        assert 0 == store.counter['__getitem__', attrs_key]
+        assert 1 == store.counter['__setitem__', attrs_key]
 
         # setup attributes
-        a = self.init_attributes(store)
+        a = self.init_attributes(store, zarr_version=zarr_version)
 
         # test __getitem__ causes all attributes to be cached
         assert a['foo'] == 'xxx'
-        assert 1 == store.counter['__getitem__', 'attrs']
+        assert 1 == store.counter['__getitem__', attrs_key]
         assert a['bar'] == 42
-        assert 1 == store.counter['__getitem__', 'attrs']
+        assert 1 == store.counter['__getitem__', attrs_key]
         assert a['foo'] == 'xxx'
-        assert 1 == store.counter['__getitem__', 'attrs']
+        assert 1 == store.counter['__getitem__', attrs_key]
 
         # test __setitem__ updates the cache
         a['foo'] = 'yyy'
         get_cnt = 2 if zarr_version == 2 else 3
-        assert get_cnt == store.counter['__getitem__', 'attrs']
-        assert 2 == store.counter['__setitem__', 'attrs']
+        assert get_cnt == store.counter['__getitem__', attrs_key]
+        assert 2 == store.counter['__setitem__', attrs_key]
         assert a['foo'] == 'yyy'
-        assert get_cnt == store.counter['__getitem__', 'attrs']
-        assert 2 == store.counter['__setitem__', 'attrs']
+        assert get_cnt == store.counter['__getitem__', attrs_key]
+        assert 2 == store.counter['__setitem__', attrs_key]
 
         # test update() updates the cache
         a.update(foo='zzz', bar=84)
         get_cnt = 3 if zarr_version == 2 else 5
-        assert get_cnt == store.counter['__getitem__', 'attrs']
-        assert 3 == store.counter['__setitem__', 'attrs']
+        assert get_cnt == store.counter['__getitem__', attrs_key]
+        assert 3 == store.counter['__setitem__', attrs_key]
         assert a['foo'] == 'zzz'
         assert a['bar'] == 84
-        assert get_cnt == store.counter['__getitem__', 'attrs']
-        assert 3 == store.counter['__setitem__', 'attrs']
+        assert get_cnt == store.counter['__getitem__', attrs_key]
+        assert 3 == store.counter['__setitem__', attrs_key]
 
         # test __contains__ uses the cache
         assert 'foo' in a
-        assert get_cnt == store.counter['__getitem__', 'attrs']
-        assert 3 == store.counter['__setitem__', 'attrs']
+        assert get_cnt == store.counter['__getitem__', attrs_key]
+        assert 3 == store.counter['__setitem__', attrs_key]
         assert 'spam' not in a
-        assert get_cnt == store.counter['__getitem__', 'attrs']
-        assert 3 == store.counter['__setitem__', 'attrs']
+        assert get_cnt == store.counter['__getitem__', attrs_key]
+        assert 3 == store.counter['__setitem__', attrs_key]
 
         # test __delitem__ updates the cache
         del a['bar']
         get_cnt = 4 if zarr_version == 2 else 7
-        assert get_cnt == store.counter['__getitem__', 'attrs']
-        assert 4 == store.counter['__setitem__', 'attrs']
+        assert get_cnt == store.counter['__getitem__', attrs_key]
+        assert 4 == store.counter['__setitem__', attrs_key]
         assert 'bar' not in a
-        assert get_cnt == store.counter['__getitem__', 'attrs']
-        assert 4 == store.counter['__setitem__', 'attrs']
+        assert get_cnt == store.counter['__getitem__', attrs_key]
+        assert 4 == store.counter['__setitem__', attrs_key]
 
         # test refresh()
         if zarr_version == 2:
-            store['attrs'] = json.dumps(dict(foo='xxx', bar=42)).encode('ascii')
+            store[attrs_key] = json.dumps(dict(foo='xxx', bar=42)).encode('ascii')
         else:
-            store['attrs'] = json.dumps(dict(attributes=dict(foo='xxx', bar=42))).encode('ascii')
-        assert get_cnt == store.counter['__getitem__', 'attrs']
+            store[attrs_key] = json.dumps(dict(attributes=dict(foo='xxx', bar=42))).encode('ascii')
+        assert get_cnt == store.counter['__getitem__', attrs_key]
         a.refresh()
         get_cnt = 5 if zarr_version == 2 else 8
-        assert get_cnt == store.counter['__getitem__', 'attrs']
+        assert get_cnt == store.counter['__getitem__', attrs_key]
         assert a['foo'] == 'xxx'
-        assert get_cnt == store.counter['__getitem__', 'attrs']
+        assert get_cnt == store.counter['__getitem__', attrs_key]
         assert a['bar'] == 42
-        assert get_cnt == store.counter['__getitem__', 'attrs']
+        assert get_cnt == store.counter['__getitem__', attrs_key]
 
     def test_caching_off(self, zarr_version):
 
         # setup store
         store = CountingDict() if zarr_version == 2 else CountingDictV3()
-        assert 0 == store.counter['__getitem__', 'attrs']
-        assert 0 == store.counter['__setitem__', 'attrs']
+        attrs_key = '.zattrs' if zarr_version == 2 else 'meta/root/attrs'
+        assert 0 == store.counter['__getitem__', attrs_key]
+        assert 0 == store.counter['__setitem__', attrs_key]
 
         if zarr_version == 2:
-            store['attrs'] = json.dumps(dict(foo='xxx', bar=42)).encode('ascii')
+            store[attrs_key] = json.dumps(dict(foo='xxx', bar=42)).encode('ascii')
         else:
-            store['attrs'] = json.dumps(dict(attributes=dict(foo='xxx', bar=42))).encode('ascii')
-        assert 0 == store.counter['__getitem__', 'attrs']
-        assert 1 == store.counter['__setitem__', 'attrs']
+            store[attrs_key] = json.dumps(dict(attributes=dict(foo='xxx', bar=42))).encode('ascii')
+        assert 0 == store.counter['__getitem__', attrs_key]
+        assert 1 == store.counter['__setitem__', attrs_key]
 
         # setup attributes
-        a = self.init_attributes(store, cache=False)
+        a = self.init_attributes(store, cache=False, zarr_version=zarr_version)
 
         # test __getitem__
         assert a['foo'] == 'xxx'
-        assert 1 == store.counter['__getitem__', 'attrs']
+        assert 1 == store.counter['__getitem__', attrs_key]
         assert a['bar'] == 42
-        assert 2 == store.counter['__getitem__', 'attrs']
+        assert 2 == store.counter['__getitem__', attrs_key]
         assert a['foo'] == 'xxx'
-        assert 3 == store.counter['__getitem__', 'attrs']
+        assert 3 == store.counter['__getitem__', attrs_key]
 
         # test __setitem__
         a['foo'] = 'yyy'
         get_cnt = 4 if zarr_version == 2 else 5
-        assert get_cnt == store.counter['__getitem__', 'attrs']
-        assert 2 == store.counter['__setitem__', 'attrs']
+        assert get_cnt == store.counter['__getitem__', attrs_key]
+        assert 2 == store.counter['__setitem__', attrs_key]
         assert a['foo'] == 'yyy'
         get_cnt = 5 if zarr_version == 2 else 6
-        assert get_cnt == store.counter['__getitem__', 'attrs']
-        assert 2 == store.counter['__setitem__', 'attrs']
+        assert get_cnt == store.counter['__getitem__', attrs_key]
+        assert 2 == store.counter['__setitem__', attrs_key]
 
         # test update()
         a.update(foo='zzz', bar=84)
         get_cnt = 6 if zarr_version == 2 else 8
-        assert get_cnt == store.counter['__getitem__', 'attrs']
-        assert 3 == store.counter['__setitem__', 'attrs']
+        assert get_cnt == store.counter['__getitem__', attrs_key]
+        assert 3 == store.counter['__setitem__', attrs_key]
         assert a['foo'] == 'zzz'
         assert a['bar'] == 84
         get_cnt = 8 if zarr_version == 2 else 10
-        assert get_cnt == store.counter['__getitem__', 'attrs']
-        assert 3 == store.counter['__setitem__', 'attrs']
+        assert get_cnt == store.counter['__getitem__', attrs_key]
+        assert 3 == store.counter['__setitem__', attrs_key]
 
         # test __contains__
         assert 'foo' in a
         get_cnt = 9 if zarr_version == 2 else 11
-        assert get_cnt == store.counter['__getitem__', 'attrs']
-        assert 3 == store.counter['__setitem__', 'attrs']
+        assert get_cnt == store.counter['__getitem__', attrs_key]
+        assert 3 == store.counter['__setitem__', attrs_key]
         assert 'spam' not in a
         get_cnt = 10 if zarr_version == 2 else 12
-        assert get_cnt == store.counter['__getitem__', 'attrs']
-        assert 3 == store.counter['__setitem__', 'attrs']
+        assert get_cnt == store.counter['__getitem__', attrs_key]
+        assert 3 == store.counter['__setitem__', attrs_key]
