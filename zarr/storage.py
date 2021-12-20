@@ -200,7 +200,7 @@ def rmdir(store: StoreLike, path: Path = None):
     this will be called, otherwise will fall back to implementation via the
     `Store` interface."""
     path = normalize_storage_path(path)
-    store_version = getattr(store, '_store_version', 2) == 2
+    store_version = getattr(store, '_store_version', 2)
     if hasattr(store, "rmdir") and store.is_erasable():  # type: ignore
         # pass through
         store.rmdir(path)  # type: ignore
@@ -2109,7 +2109,7 @@ class DBMStore(Store):
 
     def rmdir(self, path: str = "") -> None:
         path = normalize_storage_path(path)
-        _rmdir_from_keys_v3(self, path)
+        _rmdir_from_keys(self, path)
 
 
 class LMDBStore(Store):
@@ -3016,6 +3016,16 @@ class FSStoreV3(FSStore, StoreV3):
                 store_path = self.dir_path(base + path)
                 if self.fs.isdir(store_path):
                     self.fs.rm(store_path, recursive=True)
+
+            # remove any associated metadata files
+            sfx = _get_hierarchy_metadata(self)['metadata_key_suffix']
+            meta_dir = ('meta/root/' + path).rstrip('/')
+            array_meta_file = meta_dir + '.array' + sfx
+            if array_meta_file in self:
+                self.fs.rm(array_meta_file)  # type: ignore
+            group_meta_file = meta_dir + '.group' + sfx
+            if group_meta_file in self:
+                self.fs.rm(group_meta_file)  # type: ignore
         else:
             store_path = self.dir_path(path)
             if self.fs.isdir(store_path):
@@ -3087,10 +3097,20 @@ class MemoryStoreV3(MemoryStore, StoreV3):
                     parent, key = self._get_parent(base + path)
                     value = parent[key]
                 except KeyError:
-                    return
+                    continue
                 else:
                     if isinstance(value, self.cls):
                         del parent[key]
+
+            # remove any associated metadata files
+            sfx = _get_hierarchy_metadata(self)['metadata_key_suffix']
+            meta_dir = ('meta/root/' + path).rstrip('/')
+            array_meta_file = meta_dir + '.array' + sfx
+            if array_meta_file in self:
+                self.erase(array_meta_file)  # type: ignore
+            group_meta_file = meta_dir + '.group' + sfx
+            if group_meta_file in self:
+                self.erase(group_meta_file)  # type: ignore
         else:
             # clear out root
             self.root = self.cls()
@@ -3165,7 +3185,19 @@ class DirectoryStoreV3(DirectoryStore, StoreV3):
                 dir_path = os.path.join(dir_path, base + store_path)
                 if os.path.isdir(dir_path):
                     shutil.rmtree(dir_path)
-            # TODO: also remove any residual .array.json or .group.json files?
+
+            # remove any associated metadata files
+            sfx = _get_hierarchy_metadata(self)['metadata_key_suffix']
+            meta_dir = ('meta/root/' + path).rstrip('/')
+            array_meta_file = meta_dir + '.array' + sfx
+            if array_meta_file in self:
+                file_path = os.path.join(dir_path, array_meta_file)
+                os.remove(file_path)
+            group_meta_file = meta_dir + '.group' + sfx
+            if group_meta_file in self:
+                file_path = os.path.join(dir_path, group_meta_file)
+                os.remove(file_path)
+
         elif os.path.isdir(dir_path):
             shutil.rmtree(dir_path)
 
@@ -3345,6 +3377,21 @@ class SQLiteStoreV3(SQLiteStore, StoreV3):
                 with self.lock:
                     self.cursor.execute(
                         'DELETE FROM zarr WHERE k LIKE (? || "/%")', (base + path,)
+                    )
+            # remove any associated metadata files
+            sfx = _get_hierarchy_metadata(self)['metadata_key_suffix']
+            meta_dir = ('meta/root/' + path).rstrip('/')
+            array_meta_file = meta_dir + '.array' + sfx
+            if array_meta_file in self:
+                with self.lock:
+                    self.cursor.execute(
+                        'DELETE FROM zarr WHERE k LIKE (? || "/%")', (array_meta_file,)
+                    )
+            group_meta_file = meta_dir + '.group' + sfx
+            if group_meta_file in self:
+                with self.lock:
+                    self.cursor.execute(
+                        'DELETE FROM zarr WHERE k LIKE (? || "/%")', (group_meta_file,)
                     )
         else:
             self.clear()
