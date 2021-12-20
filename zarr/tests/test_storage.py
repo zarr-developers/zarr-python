@@ -1515,6 +1515,8 @@ class TestTempStore(StoreTests):
 
 class TestZipStore(StoreTests):
 
+    ZipStoreClass = ZipStore
+
     def create_store(self, **kwargs):
         path = tempfile.mktemp(suffix='.zip')
         atexit.register(os.remove, path)
@@ -1522,22 +1524,22 @@ class TestZipStore(StoreTests):
         return store
 
     def test_mode(self):
-        with ZipStore('data/store.zip', mode='w') as store:
-            store['foo'] = b'bar'
-        store = ZipStore('data/store.zip', mode='r')
+        with self.ZipStoreClass('data/store.zip', mode='w') as store:
+            store[self.root + 'foo'] = b'bar'
+        store = self.ZipStoreClass('data/store.zip', mode='r')
         with pytest.raises(PermissionError):
-            store['foo'] = b'bar'
+            store[self.root + 'foo'] = b'bar'
         with pytest.raises(PermissionError):
             store.clear()
 
     def test_flush(self):
-        store = ZipStore('data/store.zip', mode='w')
-        store['foo'] = b'bar'
+        store = self.ZipStoreClass('data/store.zip', mode='w')
+        store[self.root + 'foo'] = b'bar'
         store.flush()
-        assert store['foo'] == b'bar'
+        assert store[self.root + 'foo'] == b'bar'
         store.close()
 
-        store = ZipStore('data/store.zip', mode='r')
+        store = self.ZipStoreClass('data/store.zip', mode='r')
         store.flush()  # no-op
 
     def test_context_manager(self):
@@ -1549,32 +1551,41 @@ class TestZipStore(StoreTests):
     def test_pop(self):
         # override because not implemented
         store = self.create_store()
-        store['foo'] = b'bar'
+        store[self.root + 'foo'] = b'bar'
         with pytest.raises(NotImplementedError):
-            store.pop('foo')
+            store.pop(self.root + 'foo')
 
     def test_popitem(self):
         # override because not implemented
         store = self.create_store()
-        store['foo'] = b'bar'
+        store[self.root + 'foo'] = b'bar'
         with pytest.raises(NotImplementedError):
             store.popitem()
 
     def test_permissions(self):
-        store = ZipStore('data/store.zip', mode='w')
-        store['foo'] = b'bar'
-        store['baz/'] = b''
+        store = self.ZipStoreClass('data/store.zip', mode='w')
+        foo_key = 'foo' if self.version == 2 else self.root + 'foo'
+        # TODO: cannot provide key ending in / for v3
+        #       how to create an empty folder in that case?
+        baz_key = 'baz/' if self.version == 2 else self.root + 'baz'
+        store[foo_key] = b'bar'
+        store[baz_key] = b''
+
         store.flush()
         store.close()
         z = ZipFile('data/store.zip', 'r')
-        info = z.getinfo('foo')
+        info = z.getinfo(foo_key)
         perm = oct(info.external_attr >> 16)
         assert perm == '0o644'
-        info = z.getinfo('baz/')
+        info = z.getinfo(baz_key)
         perm = oct(info.external_attr >> 16)
         # only for posix platforms
         if os.name == 'posix':
-            assert perm == '0o40775'
+            if self.version == 2:
+                assert perm == '0o40775'
+            else:
+                # baz/ on v2, but baz on v3, so not a directory
+                assert perm == '0o644'
         z.close()
 
 

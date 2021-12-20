@@ -741,20 +741,13 @@ class TestNestedDirectoryStoreV3(_TestNestedDirectoryStore,
 
 class TestZipStoreV3(_TestZipStore, StoreV3Tests):
 
+    ZipStoreClass = ZipStoreV3
+
     def create_store(self, **kwargs):
         path = tempfile.mktemp(suffix='.zip')
         atexit.register(os.remove, path)
         store = ZipStoreV3(path, mode='w', **kwargs)
         return store
-
-    def test_mode(self):
-        with ZipStoreV3('data/store.zip', mode='w') as store:
-            store['foo'] = b'bar'
-        store = ZipStoreV3('data/store.zip', mode='r')
-        with pytest.raises(PermissionError):
-            store['foo'] = b'bar'
-        with pytest.raises(PermissionError):
-            store.clear()
 
 
 class TestDBMStoreV3(_TestDBMStore, StoreV3Tests):

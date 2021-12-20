@@ -62,6 +62,7 @@ from zarr._storage.store import (_get_hierarchy_metadata,
                                  _listdir_from_keys,
                                  _rename_from_keys,
                                  _rmdir_from_keys,
+                                 _rmdir_from_keys_v3,
                                  _path_to_prefix,
                                  _prefix_to_array_key,
                                  _prefix_to_group_key,
@@ -199,33 +200,16 @@ def rmdir(store: StoreLike, path: Path = None):
     this will be called, otherwise will fall back to implementation via the
     `Store` interface."""
     path = normalize_storage_path(path)
-    if getattr(store, '_store_version', 2) == 2:
-        if hasattr(store, "rmdir") and store.is_erasable():  # type: ignore
-            # pass through
-            store.rmdir(path)  # type: ignore
-        else:
-            # slow version, delete one key at a time
-            _rmdir_from_keys(store, path)
+    store_version = getattr(store, '_store_version', 2) == 2
+    if hasattr(store, "rmdir") and store.is_erasable():  # type: ignore
+        # pass through
+        store.rmdir(path)  # type: ignore
     else:
-        # TODO: check behavior for v3 and fix in the Store class, deferring to
-        #       those by default
-
-        # remove metadata folder
-        meta_dir = 'meta/root/' + path
-        _rmdir_from_keys(store, meta_dir)
-
-        # remove data folder
-        data_dir = 'data/root/' + path
-        _rmdir_from_keys(store, data_dir)
-
-        # remove metadata files
-        sfx = _get_hierarchy_metadata(store)['metadata_key_suffix']
-        array_meta_file = meta_dir + '.array' + sfx
-        if array_meta_file in store:
-            store.erase(array_meta_file)  # type: ignore
-        group_meta_file = meta_dir + '.group' + sfx
-        if group_meta_file in store:
-            store.erase(group_meta_file)  # type: ignore
+        # slow version, delete one key at a time
+        if  store_version == 2:
+            _rmdir_from_keys(store, path)
+        else:
+            _rmdir_from_keys_v3(store, path)
 
 
 def rename(store: Store, src_path: Path, dst_path: Path):
@@ -2958,6 +2942,10 @@ class KVStoreV3(KVStore, StoreV3):
             isinstance(other, KVStoreV3) and
             self._mutable_mapping == other._mutable_mapping
         )
+
+    def rmdir(self, path: str = "") -> None:
+        path = normalize_storage_path(path)
+        _rmdir_from_keys_v3(self, path)
 
 
 KVStoreV3.__doc__ = KVStore.__doc__

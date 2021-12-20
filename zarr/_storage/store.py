@@ -132,7 +132,6 @@ class Store(BaseStore):
         path = normalize_storage_path(path)
         _rmdir_from_keys(self, path)
 
-
 _valid_key_characters = set(ascii_letters + digits + "/.-_")
 
 
@@ -287,6 +286,14 @@ class StoreV3(BaseStore):
             f"Zarr.storage.KVStoreV3. Got {store}"
         )
 
+    def rmdir(self, path: str = "") -> None:
+        if not self.is_erasable():
+            raise NotImplementedError(
+                f'{type(self)} is not erasable, cannot call "rmdir"'
+            )  # pragma: no cover
+        path = normalize_storage_path(path)
+        _rmdir_from_keys_v3(self, path)
+
 
 # allow MutableMapping for backwards compatibility
 StoreLike = Union[BaseStore, MutableMapping]
@@ -350,6 +357,27 @@ def _rmdir_from_keys(store: StoreLike, path: Optional[str] = None) -> None:
     for key in list(store.keys()):
         if key.startswith(prefix):
             del store[key]
+
+
+def _rmdir_from_keys_v3(store: BaseStore, path: Optional[str]="") -> None:
+
+    meta_dir = 'meta/root/' + path
+    meta_dir = meta_dir.rstrip('/')
+    _rmdir_from_keys(store, meta_dir)
+
+    # remove data folder
+    data_dir = 'data/root/' + path
+    data_dir = data_dir.rstrip('/')
+    _rmdir_from_keys(store, data_dir)
+
+    # remove metadata files
+    sfx = _get_hierarchy_metadata(store)['metadata_key_suffix']
+    array_meta_file = meta_dir + '.array' + sfx
+    if array_meta_file in store:
+        store.erase(array_meta_file)  # type: ignore
+    group_meta_file = meta_dir + '.group' + sfx
+    if group_meta_file in store:
+        store.erase(group_meta_file)  # type: ignore
 
 
 def _listdir_from_keys(store: BaseStore, path: Optional[str] = None) -> List[str]:
