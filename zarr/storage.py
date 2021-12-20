@@ -2107,6 +2107,10 @@ class DBMStore(Store):
             key = key.encode("ascii")
         return key in self.db
 
+    def rmdir(self, path: str = "") -> None:
+        path = normalize_storage_path(path)
+        _rmdir_from_keys_v3(self, path)
+
 
 class LMDBStore(Store):
     """Storage class using LMDB. Requires the `lmdb <http://lmdb.readthedocs.io/>`_
@@ -3210,6 +3214,10 @@ class ZipStoreV3(ZipStore, StoreV3):
             else:
                 return 0
 
+    def rmdir(self, path: str = "") -> None:
+        path = normalize_storage_path(path)
+        _rmdir_from_keys_v3(self, path)
+
 
 ZipStoreV3.__doc__ = ZipStore.__doc__
 
@@ -3242,6 +3250,10 @@ class RedisStoreV3(RedisStore, StoreV3):
         self._validate_key(key)
         super().__setitem__(key, value)
 
+    def rmdir(self, path: str = "") -> None:
+        path = normalize_storage_path(path)
+        _rmdir_from_keys_v3(self, path)
+
 
 RedisStoreV3.__doc__ = RedisStore.__doc__
 
@@ -3254,6 +3266,10 @@ class MongoDBStoreV3(MongoDBStore, StoreV3):
     def __setitem__(self, key, value):
         self._validate_key(key)
         super().__setitem__(key, value)
+
+    def rmdir(self, path: str = "") -> None:
+        path = normalize_storage_path(path)
+        _rmdir_from_keys_v3(self, path)
 
 
 MongoDBStoreV3.__doc__ = MongoDBStore.__doc__
@@ -3268,6 +3284,10 @@ class DBMStoreV3(DBMStore, StoreV3):
         self._validate_key(key)
         super().__setitem__(key, value)
 
+    def rmdir(self, path: str = "") -> None:
+        path = normalize_storage_path(path)
+        _rmdir_from_keys_v3(self, path)
+
 
 DBMStoreV3.__doc__ = DBMStore.__doc__
 
@@ -3280,6 +3300,10 @@ class LMDBStoreV3(LMDBStore, StoreV3):
     def __setitem__(self, key, value):
         self._validate_key(key)
         super().__setitem__(key, value)
+
+    def rmdir(self, path: str = "") -> None:
+        path = normalize_storage_path(path)
+        _rmdir_from_keys_v3(self, path)
 
 
 LMDBStoreV3.__doc__ = LMDBStore.__doc__
@@ -3348,6 +3372,10 @@ class LRUStoreCacheV3(LRUStoreCache, StoreV3):
     def __setitem__(self, key, value):
         self._validate_key(key)
         super().__setitem__(key, value)
+
+    def rmdir(self, path: str = "") -> None:
+        path = normalize_storage_path(path)
+        _rmdir_from_keys_v3(self, path)
 
 
 LRUStoreCacheV3.__doc__ = LRUStoreCache.__doc__
