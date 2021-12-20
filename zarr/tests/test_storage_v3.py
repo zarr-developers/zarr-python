@@ -81,6 +81,7 @@ class InvalidDummyStore():
     def keys(self):
         pass
 
+
 def test_ensure_store_v3():
     class InvalidStore:
         pass
