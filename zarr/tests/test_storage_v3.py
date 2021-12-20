@@ -610,7 +610,6 @@ class StoreV3Tests(_StoreTests):
             store.list_prefix(prefix='/meta/root')
 
 
-
 class TestMappingStoreV3(StoreV3Tests):
 
     def create_store(self, **kwargs):

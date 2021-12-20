@@ -105,7 +105,9 @@ class TestAttributes():
         if zarr_version == 2:
             store['.zattrs'] = json.dumps(dict(foo='bar', baz=42)).encode('ascii')
         else:
-            store['meta/root/attrs'] = json.dumps(dict(attributes=dict(foo='bar', baz=42))).encode('ascii')
+            store['meta/root/attrs'] = json.dumps(
+                    dict(attributes=dict(foo='bar', baz=42))
+            ).encode('ascii')
         assert a['foo'] == 'bar'
         assert a['baz'] == 42
         with pytest.raises(PermissionError):

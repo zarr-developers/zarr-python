@@ -206,7 +206,7 @@ def rmdir(store: StoreLike, path: Path = None):
         store.rmdir(path)  # type: ignore
     else:
         # slow version, delete one key at a time
-        if  store_version == 2:
+        if store_version == 2:
             _rmdir_from_keys(store, path)
         else:
             _rmdir_from_keys_v3(store, path)

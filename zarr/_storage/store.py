@@ -132,6 +132,7 @@ class Store(BaseStore):
         path = normalize_storage_path(path)
         _rmdir_from_keys(self, path)
 
+
 _valid_key_characters = set(ascii_letters + digits + "/.-_")
 
 
@@ -359,7 +360,7 @@ def _rmdir_from_keys(store: StoreLike, path: Optional[str] = None) -> None:
             del store[key]
 
 
-def _rmdir_from_keys_v3(store: BaseStore, path: Optional[str]="") -> None:
+def _rmdir_from_keys_v3(store: BaseStore, path: Optional[str] = "") -> None:
 
     meta_dir = 'meta/root/' + path
     meta_dir = meta_dir.rstrip('/')
