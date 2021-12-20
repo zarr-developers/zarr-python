@@ -1,5 +1,4 @@
 import abc
-import sys
 from collections.abc import MutableMapping
 from string import ascii_letters, digits
 from typing import Any, List, Optional, Union

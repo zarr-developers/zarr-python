@@ -138,10 +138,10 @@ def normalize_store_arg(store, clobber=False, storage_options=None, mode="w",
             store['zarr.json'] = store._metadata_class.encode_hierarchy_metadata(None)
         return store
     elif hasattr(store, '_store_version') and store._store_version != zarr_version:
-            raise ValueError(
-                f"store is a zarr v{store._store_version} store which conflicts "
-                f"with the specified zarr_version ({zarr_version})."
-            )
+        raise ValueError(
+            f"store is a zarr v{store._store_version} store which conflicts "
+            f"with the specified zarr_version ({zarr_version})."
+        )
 
     if isinstance(store, os.PathLike):
         store = os.fspath(store)
@@ -2960,6 +2960,7 @@ class KVStoreV3(KVStore, StoreV3):
             self._mutable_mapping == other._mutable_mapping
         )
 
+
 KVStoreV3.__doc__ = KVStore.__doc__
 
 
@@ -3103,6 +3104,7 @@ class MemoryStoreV3(MemoryStore, StoreV3):
             # clear out root
             self.root = self.cls()
 
+
 MemoryStoreV3.__doc__ = MemoryStore.__doc__
 
 
@@ -3175,6 +3177,7 @@ class DirectoryStoreV3(DirectoryStore, StoreV3):
             # TODO: also remove any residual .array.json or .group.json files?
         elif os.path.isdir(dir_path):
             shutil.rmtree(dir_path)
+
 
 DirectoryStoreV3.__doc__ = DirectoryStore.__doc__
 
