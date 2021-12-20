@@ -2667,11 +2667,10 @@ class SQLiteStore(Store):
     def rmdir(self, path=None):
         path = normalize_storage_path(path)
         if path:
-            for base in ['meta/root/', 'data/root/']:
-                with self.lock:
-                    self.cursor.execute(
-                        'DELETE FROM zarr WHERE k LIKE (? || "/%")', (base + path,)
-                    )
+            with self.lock:
+                self.cursor.execute(
+                    'DELETE FROM zarr WHERE k LIKE (? || "/%")', (path,)
+                )
         else:
             self.clear()
 
@@ -3326,6 +3325,17 @@ class SQLiteStoreV3(SQLiteStore, StoreV3):
     def __setitem__(self, key, value):
         self._validate_key(key)
         super().__setitem__(key, value)
+
+    def rmdir(self, path=None):
+        path = normalize_storage_path(path)
+        if path:
+            for base in ['meta/root/', 'data/root/']:
+                with self.lock:
+                    self.cursor.execute(
+                        'DELETE FROM zarr WHERE k LIKE (? || "/%")', (base + path,)
+                    )
+        else:
+            self.clear()
 
 
 SQLiteStoreV3.__doc__ = SQLiteStore.__doc__
