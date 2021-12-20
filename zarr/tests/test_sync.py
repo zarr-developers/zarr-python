@@ -23,8 +23,8 @@ from zarr.tests.test_hierarchy import TestGroup
 
 class TestAttributesWithThreadSynchronizer(TestAttributes):
 
-    def init_attributes(self, store, read_only=False, cache=True):
-        key = 'attrs'
+    def init_attributes(self, store, read_only=False, cache=True, zarr_version=zarr_version):
+        key = '.zattrs' if zarr_version == 2 else 'meta/root/attrs'
         synchronizer = ThreadSynchronizer()
         return Attributes(store, synchronizer=synchronizer, key=key,
                           read_only=read_only, cache=cache)
@@ -32,8 +32,8 @@ class TestAttributesWithThreadSynchronizer(TestAttributes):
 
 class TestAttributesProcessSynchronizer(TestAttributes):
 
-    def init_attributes(self, store, read_only=False, cache=True):
-        key = 'attrs'
+    def init_attributes(self, store, read_only=False, cache=True, zarr_version=zarr_version):
+        key = '.zattrs' if zarr_version == 2 else 'meta/root/attrs'
         sync_path = mkdtemp()
         atexit.register(shutil.rmtree, sync_path)
         synchronizer = ProcessSynchronizer(sync_path)
