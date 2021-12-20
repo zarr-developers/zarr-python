@@ -1629,7 +1629,12 @@ def test_group_key_completions(zarr_version):
     g.zeros('yyy', shape=100)
     g.zeros('zzz', shape=100)
     g.zeros('456', shape=100)
-    g.zeros('asdf;', shape=100)
+    if zarr_version == 2:
+        g.zeros('asdf;', shape=100)
+    else:
+        # cannot have ; in key name for v3
+        with pytest.raises(ValueError):
+            g.zeros('asdf;', shape=100)
 
     d = dir(g)
     # noinspection PyProtectedMember
@@ -1644,7 +1649,8 @@ def test_group_key_completions(zarr_version):
     assert 'zzz' in d
     assert '123' not in d  # not valid identifier
     assert '456' not in d  # not valid identifier
-    assert 'asdf;' not in d  # not valid identifier
+    if zarr_version == 2:
+        assert 'asdf;' not in d  # not valid identifier
 
     assert 'foo' in k
     assert 'bar' in k
@@ -1655,7 +1661,8 @@ def test_group_key_completions(zarr_version):
     assert 'zzz' in k
     assert '123' in k
     assert '456' in k
-    assert 'asdf;' in k
+    if zarr_version == 2:
+        assert 'asdf;' in k
 
 
 def _check_tree(g, expect_bytes, expect_text):
