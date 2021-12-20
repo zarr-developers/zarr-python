@@ -2667,10 +2667,11 @@ class SQLiteStore(Store):
     def rmdir(self, path=None):
         path = normalize_storage_path(path)
         if path:
-            with self.lock:
-                self.cursor.execute(
-                    'DELETE FROM zarr WHERE k LIKE (? || "/%")', (path,)
-                )
+            for base in ['meta/root/', 'data/root/']:
+                with self.lock:
+                    self.cursor.execute(
+                        'DELETE FROM zarr WHERE k LIKE (? || "/%")', (base + path,)
+                    )
         else:
             self.clear()
 
@@ -2949,6 +2950,10 @@ class KVStoreV3(KVStore, StoreV3):
     def list(self):
         return list(self._mutable_mapping.keys())
 
+    def __setitem__(self, key, value):
+        self._validate_key(key)
+        super().__setitem__(key, value)
+
     def __eq__(self, other):
         return (
             isinstance(other, KVStoreV3) and
@@ -2962,6 +2967,10 @@ class FSStoreV3(FSStore, StoreV3):
 
     # FSStoreV3 doesn't use this (FSStore uses it within _normalize_key)
     _META_KEYS = ()
+
+    def __setitem__(self, key, value):
+        self._validate_key(key)
+        super().__setitem__(key, value)
 
     def _default_key_separator(self):
         if self.key_separator is None:
@@ -3007,6 +3016,19 @@ class FSStoreV3(FSStore, StoreV3):
 
         self.map.setitems(values)
 
+    def rmdir(self, path=None):
+        if self.mode == 'r':
+            raise ReadOnlyError()
+        if path:
+            for base in ['meta/root/', 'data/root/']:
+                store_path = self.dir_path(base + path)
+                if self.fs.isdir(store_path):
+                    self.fs.rm(store_path, recursive=True)
+        else:
+            store_path = self.dir_path(path)
+            if self.fs.isdir(store_path):
+                self.fs.rm(store_path, recursive=True)
+
 
 class MemoryStoreV3(MemoryStore, StoreV3):
 
@@ -3025,6 +3047,10 @@ class MemoryStoreV3(MemoryStore, StoreV3):
             self.root == other.root and
             self.cls == other.cls
         )
+
+    def __setitem__(self, key, value):
+        self._validate_key(key)
+        super().__setitem__(key, value)
 
     def list(self):
         return list(self.keys())
@@ -3046,6 +3072,36 @@ class MemoryStoreV3(MemoryStore, StoreV3):
                     return -1
         return size
 
+    def rename(self, src_path: Path, dst_path: Path):
+        src_path = normalize_storage_path(src_path)
+        dst_path = normalize_storage_path(dst_path)
+
+        any_renamed = False
+        for base in ['meta/root/', 'data/root/']:
+            if self.list_prefix(base + src_path):
+                src_parent, src_key = self._get_parent(base + src_path)
+                dst_parent, dst_key = self._require_parent(base + dst_path)
+
+                dst_parent[dst_key] = src_parent.pop(src_key)
+                any_renamed = True
+        if not any_renamed:
+            raise ValueError(f"no item {src_path} found to rename")
+
+    def rmdir(self, path: Path = None):
+        path = normalize_storage_path(path)
+        if path:
+            for base in ['meta/root/', 'data/root/']:
+                try:
+                    parent, key = self._get_parent(base + path)
+                    value = parent[key]
+                except KeyError:
+                    return
+                else:
+                    if isinstance(value, self.cls):
+                        del parent[key]
+        else:
+            # clear out root
+            self.root = self.cls()
 
 MemoryStoreV3.__doc__ = MemoryStore.__doc__
 
@@ -3061,26 +3117,9 @@ class DirectoryStoreV3(DirectoryStore, StoreV3):
             self.path == other.path
         )
 
-    # def getsize(self, path=None):
-    #     size = 0
-    #     if path is None or path == '':
-    #         # add array and group folders if present
-    #         dirs = []
-    #         for d in ['data/root', 'meta/root']:
-    #             dir_path = os.path.join(self.path, d)
-    #             if os.path.exists(dir_path):
-    #                 dirs.append(dir_path)
-    #         print(f"dirs={dirs}")
-    #     else:
-    #         files, dirs = _get_files_and_dirs_from_path(self, path)
-    #         for file in files:
-    #             size += os.path.getsize(file)
-    #     for d in dirs:
-    #         for child in scandir(d):
-    #             print(f"child={child}")
-    #             if child.is_file():
-    #                 size += child.stat().st_size
-    #     return size
+    def __setitem__(self, key, value):
+        self._validate_key(key)
+        super().__setitem__(key, value)
 
     def getsize(self, path: Path = None):
         size = 0
@@ -3125,6 +3164,17 @@ class DirectoryStoreV3(DirectoryStore, StoreV3):
         if not any_existed:
             raise FileNotFoundError("nothing found at src_path")
 
+    def rmdir(self, path=None):
+        store_path = normalize_storage_path(path)
+        dir_path = self.path
+        if store_path:
+            for base in ['meta/root/', 'data/root/']:
+                dir_path = os.path.join(dir_path, base + store_path)
+                if os.path.isdir(dir_path):
+                    shutil.rmtree(dir_path)
+            # TODO: also remove any residual .array.json or .group.json files?
+        elif os.path.isdir(dir_path):
+            shutil.rmtree(dir_path)
 
 DirectoryStoreV3.__doc__ = DirectoryStore.__doc__
 
@@ -3141,6 +3191,10 @@ class ZipStoreV3(ZipStore, StoreV3):
             self.compression == other.compression and
             self.allowZip64 == other.allowZip64
         )
+
+    def __setitem__(self, key, value):
+        self._validate_key(key)
+        super().__setitem__(key, value)
 
     def getsize(self, path=None):
         path = normalize_storage_path(path)
@@ -3181,6 +3235,10 @@ class NestedDirectoryStoreV3(NestedDirectoryStore, DirectoryStoreV3):
             self.path == other.path
         )
 
+    def __setitem__(self, key, value):
+        self._validate_key(key)
+        super().__setitem__(key, value)
+
 
 NestedDirectoryStoreV3.__doc__ = NestedDirectoryStore.__doc__
 
@@ -3189,6 +3247,10 @@ class RedisStoreV3(RedisStore, StoreV3):
 
     def list(self):
         return list(self.keys())
+
+    def __setitem__(self, key, value):
+        self._validate_key(key)
+        super().__setitem__(key, value)
 
 
 RedisStoreV3.__doc__ = RedisStore.__doc__
@@ -3199,6 +3261,10 @@ class MongoDBStoreV3(MongoDBStore, StoreV3):
     def list(self):
         return list(self.keys())
 
+    def __setitem__(self, key, value):
+        self._validate_key(key)
+        super().__setitem__(key, value)
+
 
 MongoDBStoreV3.__doc__ = MongoDBStore.__doc__
 
@@ -3208,6 +3274,10 @@ class DBMStoreV3(DBMStore, StoreV3):
     def list(self):
         return list(self.keys())
 
+    def __setitem__(self, key, value):
+        self._validate_key(key)
+        super().__setitem__(key, value)
+
 
 DBMStoreV3.__doc__ = DBMStore.__doc__
 
@@ -3216,6 +3286,10 @@ class LMDBStoreV3(LMDBStore, StoreV3):
 
     def list(self):
         return list(self.keys())
+
+    def __setitem__(self, key, value):
+        self._validate_key(key)
+        super().__setitem__(key, value)
 
 
 LMDBStoreV3.__doc__ = LMDBStore.__doc__
@@ -3227,25 +3301,28 @@ class SQLiteStoreV3(SQLiteStore, StoreV3):
         return list(self.keys())
 
     def getsize(self, path=None):
-        if path is None or path == '':
-            # TODO: why does the query below not work in this case?
-            #       For now fall back to the default _getsize implementation
-            return _getsize(self, path)
-        else:
-            path = normalize_storage_path(path)
-        size = 0
-        for _path in ['data/root/' + path, 'meta/root/' + path]:
-            c = self.cursor.execute(
-                '''
-                SELECT COALESCE(SUM(LENGTH(v)), 0) FROM zarr
-                WHERE k LIKE (? || "%") AND
-                      0 == INSTR(LTRIM(SUBSTR(k, LENGTH(?) + 1), "/"), "/")
-                ''',
-                (_path, _path)
-            )
-            for item_size, in c:
-                size += item_size
-        return size
+        # TODO: why does the query below not work in this case?
+        #       For now fall back to the default _getsize implementation
+        # size = 0
+        # for _path in ['data/root/' + path, 'meta/root/' + path]:
+        #     c = self.cursor.execute(
+        #         '''
+        #         SELECT COALESCE(SUM(LENGTH(v)), 0) FROM zarr
+        #         WHERE k LIKE (? || "%") AND
+        #               0 == INSTR(LTRIM(SUBSTR(k, LENGTH(?) + 1), "/"), "/")
+        #         ''',
+        #         (_path, _path)
+        #     )
+        #     for item_size, in c:
+        #         size += item_size
+        # return size
+
+        # fallback to default implementation for now
+        return _getsize(self, path)
+
+    def __setitem__(self, key, value):
+        self._validate_key(key)
+        super().__setitem__(key, value)
 
 
 SQLiteStoreV3.__doc__ = SQLiteStore.__doc__
@@ -3266,6 +3343,10 @@ class LRUStoreCacheV3(LRUStoreCache, StoreV3):
 
     def list(self):
         return list(self.keys())
+
+    def __setitem__(self, key, value):
+        self._validate_key(key)
+        super().__setitem__(key, value)
 
 
 LRUStoreCacheV3.__doc__ = LRUStoreCache.__doc__

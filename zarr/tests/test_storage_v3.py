@@ -20,7 +20,7 @@ from zarr.storage import (KVStoreV3, MemoryStoreV3, ZipStoreV3, FSStoreV3,
 from zarr.tests.util import CountingDictV3, have_fsspec, skip_test_env_var
 
 from .test_storage import (
-    StoreTests,
+    StoreTests as _StoreTests,
     TestMemoryStore as _TestMemoryStore,
     TestDirectoryStore as _TestDirectoryStore,
     TestFSStore as _TestFSStore,
@@ -137,7 +137,10 @@ def test_validate_key():
             store._validate_key(invalid)
 
 
-class StoreV3Tests(StoreTests):
+class StoreV3Tests(_StoreTests):
+
+    version = 3
+    root = 'meta/root/'
 
     def test_getsize(self):
         # TODO: determine proper getsize() behavior for v3
@@ -172,9 +175,147 @@ class StoreV3Tests(StoreTests):
 
         store.close()
 
+    # Note: Except for a couple of getsize results this method could be moved
+    #       back to the v2 class. Determine what is the correct behavior here.
+
     # noinspection PyStatementEffect
     def test_hierarchy(self):
-        pytest.skip("TODO: adapt v2 test_hierarchy tests to v3")
+        # setup
+
+        store = self.create_store()
+        store[self.root + 'a'] = b'aaa'
+        store[self.root + 'b'] = b'bbb'
+        store[self.root + 'c/d'] = b'ddd'
+        store[self.root + 'c/e/f'] = b'fff'
+        store[self.root + 'c/e/g'] = b'ggg'
+
+        # check keys
+        assert self.root + 'a' in store
+        assert self.root + 'b' in store
+        assert self.root + 'c/d' in store
+        assert self.root + 'c/e/f' in store
+        assert self.root + 'c/e/g' in store
+        assert self.root + 'c' not in store
+        assert self.root + 'c/' not in store
+        assert self.root + 'c/e' not in store
+        assert self.root + 'c/e/' not in store
+        assert self.root + 'c/d/x' not in store
+
+        # check __getitem__
+        with pytest.raises(KeyError):
+            store[self.root + 'c']
+        with pytest.raises(KeyError):
+            store[self.root + 'c/e']
+        with pytest.raises(KeyError):
+            store[self.root + 'c/d/x']
+
+        # test getsize (optional)
+        if hasattr(store, 'getsize'):
+            # TODO: proper behavior of getsize?
+            #       v3 returns size of all nested arrays, not just the
+            #       size of the arrays in the current folder.
+            assert 15 == store.getsize()  # == 6 for v2
+            assert 3 == store.getsize('a')
+            assert 3 == store.getsize('b')
+            assert 9 == store.getsize('c')  # == 3 for v2
+            assert 3 == store.getsize('c/d')
+            assert 6 == store.getsize('c/e')
+            assert 3 == store.getsize('c/e/f')
+            assert 3 == store.getsize('c/e/g')
+            # non-existent paths
+            assert 0 == store.getsize('x')
+            assert 0 == store.getsize('a/x')
+            assert 0 == store.getsize('c/x')
+            assert 0 == store.getsize('c/x/y')
+            assert 0 == store.getsize('c/d/y')
+            assert 0 == store.getsize('c/d/y/z')
+
+        # test listdir (optional)
+        if hasattr(store, 'listdir'):
+            assert {'a', 'b', 'c'} == set(store.listdir(self.root))
+            assert {'d', 'e'} == set(store.listdir(self.root + 'c'))
+            assert {'f', 'g'} == set(store.listdir(self.root + 'c/e'))
+            # no exception raised if path does not exist or is leaf
+            assert [] == store.listdir(self.root + 'x')
+            assert [] == store.listdir(self.root + 'a/x')
+            assert [] == store.listdir(self.root + 'c/x')
+            assert [] == store.listdir(self.root + 'c/x/y')
+            assert [] == store.listdir(self.root + 'c/d/y')
+            assert [] == store.listdir(self.root + 'c/d/y/z')
+            assert [] == store.listdir(self.root + 'c/e/f')
+
+        # test rename (optional)
+        if store.is_erasable():
+            store.rename("c/e", "c/e2")
+            assert self.root + "c/d" in store
+            assert self.root + "c/e" not in store
+            assert self.root + "c/e/f" not in store
+            assert self.root + "c/e/g" not in store
+            assert self.root + "c/e2" not in store
+            assert self.root + "c/e2/f" in store
+            assert self.root + "c/e2/g" in store
+            store.rename("c/e2", "c/e")
+            assert self.root + "c/d" in store
+            assert self.root + "c/e2" not in store
+            assert self.root + "c/e2/f" not in store
+            assert self.root + "c/e2/g" not in store
+            assert self.root + "c/e" not in store
+            assert self.root + "c/e/f" in store
+            assert self.root + "c/e/g" in store
+            store.rename("c", "c1/c2/c3")
+            assert self.root + "a" in store
+            assert self.root + "c" not in store
+            assert self.root + "c/d" not in store
+            assert self.root + "c/e" not in store
+            assert self.root + "c/e/f" not in store
+            assert self.root + "c/e/g" not in store
+            assert self.root + "c1" not in store
+            assert self.root + "c1/c2" not in store
+            assert self.root + "c1/c2/c3" not in store
+            assert self.root + "c1/c2/c3/d" in store
+            assert self.root + "c1/c2/c3/e" not in store
+            assert self.root + "c1/c2/c3/e/f" in store
+            assert self.root + "c1/c2/c3/e/g" in store
+            store.rename("c1/c2/c3", "c")
+            assert self.root + "c" not in store
+            assert self.root + "c/d" in store
+            assert self.root + "c/e" not in store
+            assert self.root + "c/e/f" in store
+            assert self.root + "c/e/g" in store
+            assert self.root + "c1" not in store
+            assert self.root + "c1/c2" not in store
+            assert self.root + "c1/c2/c3" not in store
+            assert self.root + "c1/c2/c3/d" not in store
+            assert self.root + "c1/c2/c3/e" not in store
+            assert self.root + "c1/c2/c3/e/f" not in store
+            assert self.root + "c1/c2/c3/e/g" not in store
+
+            # test rmdir (optional)
+            store.rmdir("c/e")
+            assert self.root + "c/d" in store
+            assert self.root + "c/e/f" not in store
+            assert self.root + "c/e/g" not in store
+            store.rmdir("c")
+            assert self.root + "c/d" not in store
+            store.rmdir()
+            assert self.root + 'a' not in store
+            assert self.root + 'b' not in store
+            store[self.root + 'a'] = b'aaa'
+            store[self.root + 'c/d'] = b'ddd'
+            store[self.root + 'c/e/f'] = b'fff'
+            # no exceptions raised if path does not exist or is leaf
+            store.rmdir('x')
+            store.rmdir('a/x')
+            store.rmdir('c/x')
+            store.rmdir('c/x/y')
+            store.rmdir('c/d/y')
+            store.rmdir('c/d/y/z')
+            store.rmdir('c/e/f')
+            assert self.root + 'a' in store
+            assert self.root + 'c/d' in store
+            assert self.root + 'c/e/f' in store
+
+        store.close()
 
     def test_init_array(self, dimension_separator_fixture_v3):
 
@@ -451,6 +592,23 @@ class StoreV3Tests(StoreTests):
             "In v3 array and group names cannot overlap"
         )
 
+    def test_list_prefix(self):
+
+        store = self.create_store()
+        path = 'arr1'
+        init_array(store, path=path, shape=1000, chunks=100)
+
+        expected = ['meta/root/arr1.array.json', 'zarr.json']
+        assert sorted(store.list_prefix('')) == expected
+
+        expected = ['meta/root/arr1.array.json']
+        assert sorted(store.list_prefix('meta/root')) == expected
+
+        # cannot start prefix with '/'
+        with pytest.raises(ValueError):
+            store.list_prefix(prefix='/meta/root')
+
+
 
 class TestMappingStoreV3(StoreV3Tests):
 
@@ -566,7 +724,7 @@ class TestNestedDirectoryStoreV3(_TestNestedDirectoryStore,
         init_array(store, path=path, shape=1000, chunks=100)
 
         # check metadata
-        array_meta_key = 'meta/root/' + path + '.array.json'
+        array_meta_key = self.root + path + '.array.json'
         assert array_meta_key in store
         meta = store._metadata_class.decode_array_metadata(store[array_meta_key])
         assert (1000,) == meta['shape']
@@ -707,228 +865,8 @@ class TestRedisStoreV3(StoreV3Tests):
 
 class TestLRUStoreCacheV3(_TestLRUStoreCache, StoreV3Tests):
 
-    def create_store(self, **kwargs):
-        # wrapper therefore no dimension_separator argument
-        skip_if_nested_chunks(**kwargs)
-        return LRUStoreCacheV3(dict(), max_size=2**27)
-
-    def test_cache_values_no_max_size(self):
-
-        # setup store
-        store = CountingDictV3()
-        store['foo'] = b'xxx'
-        store['bar'] = b'yyy'
-        assert 0 == store.counter['__getitem__', 'foo']
-        assert 1 == store.counter['__setitem__', 'foo']
-        assert 0 == store.counter['__getitem__', 'bar']
-        assert 1 == store.counter['__setitem__', 'bar']
-
-        # setup cache
-        cache = LRUStoreCacheV3(store, max_size=None)
-        assert 0 == cache.hits
-        assert 0 == cache.misses
-
-        # test first __getitem__, cache miss
-        assert b'xxx' == cache['foo']
-        assert 1 == store.counter['__getitem__', 'foo']
-        assert 1 == store.counter['__setitem__', 'foo']
-        assert 0 == cache.hits
-        assert 1 == cache.misses
-
-        # test second __getitem__, cache hit
-        assert b'xxx' == cache['foo']
-        assert 1 == store.counter['__getitem__', 'foo']
-        assert 1 == store.counter['__setitem__', 'foo']
-        assert 1 == cache.hits
-        assert 1 == cache.misses
-
-        # test __setitem__, __getitem__
-        cache['foo'] = b'zzz'
-        assert 1 == store.counter['__getitem__', 'foo']
-        assert 2 == store.counter['__setitem__', 'foo']
-        # should be a cache hit
-        assert b'zzz' == cache['foo']
-        assert 1 == store.counter['__getitem__', 'foo']
-        assert 2 == store.counter['__setitem__', 'foo']
-        assert 2 == cache.hits
-        assert 1 == cache.misses
-
-        # manually invalidate all cached values
-        cache.invalidate_values()
-        assert b'zzz' == cache['foo']
-        assert 2 == store.counter['__getitem__', 'foo']
-        assert 2 == store.counter['__setitem__', 'foo']
-        cache.invalidate()
-        assert b'zzz' == cache['foo']
-        assert 3 == store.counter['__getitem__', 'foo']
-        assert 2 == store.counter['__setitem__', 'foo']
-
-        # test __delitem__
-        del cache['foo']
-        with pytest.raises(KeyError):
-            # noinspection PyStatementEffect
-            cache['foo']
-        with pytest.raises(KeyError):
-            # noinspection PyStatementEffect
-            store['foo']
-
-        # verify other keys untouched
-        assert 0 == store.counter['__getitem__', 'bar']
-        assert 1 == store.counter['__setitem__', 'bar']
-
-    def test_cache_values_with_max_size(self):
-
-        # setup store
-        store = CountingDictV3()
-        store['foo'] = b'xxx'
-        store['bar'] = b'yyy'
-        assert 0 == store.counter['__getitem__', 'foo']
-        assert 0 == store.counter['__getitem__', 'bar']
-        # setup cache - can only hold one item
-        cache = LRUStoreCacheV3(store, max_size=5)
-        assert 0 == cache.hits
-        assert 0 == cache.misses
-
-        # test first 'foo' __getitem__, cache miss
-        assert b'xxx' == cache['foo']
-        assert 1 == store.counter['__getitem__', 'foo']
-        assert 0 == cache.hits
-        assert 1 == cache.misses
-
-        # test second 'foo' __getitem__, cache hit
-        assert b'xxx' == cache['foo']
-        assert 1 == store.counter['__getitem__', 'foo']
-        assert 1 == cache.hits
-        assert 1 == cache.misses
-
-        # test first 'bar' __getitem__, cache miss
-        assert b'yyy' == cache['bar']
-        assert 1 == store.counter['__getitem__', 'bar']
-        assert 1 == cache.hits
-        assert 2 == cache.misses
-
-        # test second 'bar' __getitem__, cache hit
-        assert b'yyy' == cache['bar']
-        assert 1 == store.counter['__getitem__', 'bar']
-        assert 2 == cache.hits
-        assert 2 == cache.misses
-
-        # test 'foo' __getitem__, should have been evicted, cache miss
-        assert b'xxx' == cache['foo']
-        assert 2 == store.counter['__getitem__', 'foo']
-        assert 2 == cache.hits
-        assert 3 == cache.misses
-
-        # test 'bar' __getitem__, should have been evicted, cache miss
-        assert b'yyy' == cache['bar']
-        assert 2 == store.counter['__getitem__', 'bar']
-        assert 2 == cache.hits
-        assert 4 == cache.misses
-
-        # setup store
-        store = CountingDictV3()
-        store['foo'] = b'xxx'
-        store['bar'] = b'yyy'
-        assert 0 == store.counter['__getitem__', 'foo']
-        assert 0 == store.counter['__getitem__', 'bar']
-        # setup cache - can hold two items
-        cache = LRUStoreCacheV3(store, max_size=6)
-        assert 0 == cache.hits
-        assert 0 == cache.misses
-
-        # test first 'foo' __getitem__, cache miss
-        assert b'xxx' == cache['foo']
-        assert 1 == store.counter['__getitem__', 'foo']
-        assert 0 == cache.hits
-        assert 1 == cache.misses
-
-        # test second 'foo' __getitem__, cache hit
-        assert b'xxx' == cache['foo']
-        assert 1 == store.counter['__getitem__', 'foo']
-        assert 1 == cache.hits
-        assert 1 == cache.misses
-
-        # test first 'bar' __getitem__, cache miss
-        assert b'yyy' == cache['bar']
-        assert 1 == store.counter['__getitem__', 'bar']
-        assert 1 == cache.hits
-        assert 2 == cache.misses
-
-        # test second 'bar' __getitem__, cache hit
-        assert b'yyy' == cache['bar']
-        assert 1 == store.counter['__getitem__', 'bar']
-        assert 2 == cache.hits
-        assert 2 == cache.misses
-
-        # test 'foo' __getitem__, should still be cached
-        assert b'xxx' == cache['foo']
-        assert 1 == store.counter['__getitem__', 'foo']
-        assert 3 == cache.hits
-        assert 2 == cache.misses
-
-        # test 'bar' __getitem__, should still be cached
-        assert b'yyy' == cache['bar']
-        assert 1 == store.counter['__getitem__', 'bar']
-        assert 4 == cache.hits
-        assert 2 == cache.misses
-
-    def test_cache_keys(self):
-
-        # setup
-        store = CountingDictV3()
-        store['foo'] = b'xxx'
-        store['bar'] = b'yyy'
-        assert 0 == store.counter['__contains__', 'foo']
-        assert 0 == store.counter['__iter__']
-        assert 0 == store.counter['keys']
-        cache = LRUStoreCacheV3(store, max_size=None)
-
-        # keys should be cached on first call
-        keys = sorted(cache.keys())
-        assert keys == ['bar', 'foo']
-        assert 1 == store.counter['keys']
-        # keys should now be cached
-        assert keys == sorted(cache.keys())
-        assert 1 == store.counter['keys']
-        assert 'foo' in cache
-        assert 0 == store.counter['__contains__', 'foo']
-        assert keys == sorted(cache)
-        assert 0 == store.counter['__iter__']
-        assert 1 == store.counter['keys']
-
-        # cache should be cleared if store is modified - crude but simple for now
-        cache['baz'] = b'zzz'
-        keys = sorted(cache.keys())
-        assert keys == ['bar', 'baz', 'foo']
-        assert 2 == store.counter['keys']
-        # keys should now be cached
-        assert keys == sorted(cache.keys())
-        assert 2 == store.counter['keys']
-
-        # manually invalidate keys
-        cache.invalidate_keys()
-        keys = sorted(cache.keys())
-        assert keys == ['bar', 'baz', 'foo']
-        assert 3 == store.counter['keys']
-        assert 0 == store.counter['__contains__', 'foo']
-        assert 0 == store.counter['__iter__']
-        cache.invalidate_keys()
-        keys = sorted(cache)
-        assert keys == ['bar', 'baz', 'foo']
-        assert 4 == store.counter['keys']
-        assert 0 == store.counter['__contains__', 'foo']
-        assert 0 == store.counter['__iter__']
-        cache.invalidate_keys()
-        assert 'foo' in cache
-        assert 5 == store.counter['keys']
-        assert 0 == store.counter['__contains__', 'foo']
-        assert 0 == store.counter['__iter__']
-
-        # check these would get counted if called directly
-        assert 'foo' in store
-        assert 1 == store.counter['__contains__', 'foo']
-        assert keys == sorted(store)
-        assert 1 == store.counter['__iter__']
+    CountingClass = CountingDictV3
+    LRUStoreClass = LRUStoreCacheV3
 
 
 # TODO: implement ABSStoreV3

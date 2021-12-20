@@ -1,3 +1,4 @@
+import abc
 import sys
 from collections.abc import MutableMapping
 from string import ascii_letters, digits
@@ -233,21 +234,15 @@ class StoreV3(BaseStore):
     def __contains__(self, key):
         return key in self.list()
 
+    @abc.abstractmethod
     def __setitem__(self, key, value):
-        """Set a value.
+        """Set a value."""
+        return
 
-        Here we validate the key name prior to calling __setitem__
-        """
-        self._validate_key(key)
-        return super().__setitem__(key, value)
-
+    @abc.abstractmethod
     def __getitem__(self, key):
-        """Get a value.
-
-        Here we validate the key name prior to calling __getitem__
-        """
-        self._validate_key(key)
-        return super().__getitem__(key)
+        """Get a value."""
+        return
 
     def clear(self):
         """Remove all items from store."""
@@ -327,17 +322,18 @@ def _rename_from_keys(store: BaseStore, src_path: str, dst_path: str) -> None:
     dst_prefix = _path_to_prefix(dst_path)
     version = getattr(store, '_store_version', 2)
     if version == 2:
-        root_prefixes = ['']
-    elif version == 3:
-        root_prefixes = ['meta/root/', 'data/root/']
-    for root_prefix in root_prefixes:
-        _src_prefix = root_prefix + src_prefix
-        _dst_prefix = root_prefix + dst_prefix
         for key in list(store.keys()):
-            if key.startswith(_src_prefix):
-                new_key = _dst_prefix + key.lstrip(_src_prefix)
+            if key.startswith(src_prefix):
+                new_key = dst_prefix + key.lstrip(src_prefix)
                 store[new_key] = store.pop(key)
-    if version == 3:
+    else:
+        for root_prefix in ['meta/root/', 'data/root/']:
+            _src_prefix = root_prefix + src_prefix
+            _dst_prefix = root_prefix + dst_prefix
+            for key in store.list_prefix(_src_prefix):
+                new_key = _dst_prefix + key[len(_src_prefix):]
+                store[new_key] = store.pop(key)
+
         sfx = _get_hierarchy_metadata(store)['metadata_key_suffix']
         _src_array_json = 'meta/root/' + src_prefix[:-1] + '.array' + sfx
         if _src_array_json in store:
