@@ -240,7 +240,7 @@ class TestArrayWithPathV3(_TestArrayWithPath):
         z = self.create_array(shape=100, chunks=10)
         assert 0 == z.nchunks_initialized
         # manually put something into the store to confuse matters
-        z.store['foo'] = b'bar'
+        z.store['meta/root/foo'] = b'bar'
         assert 0 == z.nchunks_initialized
         z[:] = 42
         assert 10 == z.nchunks_initialized
