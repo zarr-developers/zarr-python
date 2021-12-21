@@ -13,7 +13,7 @@ from zarr.storage import (KVStoreV3, MemoryStoreV3, ZipStoreV3, FSStoreV3,
                           DirectoryStoreV3, NestedDirectoryStoreV3,
                           RedisStoreV3, MongoDBStoreV3, DBMStoreV3,
                           LMDBStoreV3, SQLiteStoreV3, LRUStoreCacheV3,
-                          StoreV3, normalize_store_arg, KVStore)
+                          StoreV3, normalize_store_arg, KVStore, listdir)
 from zarr.tests.util import CountingDictV3, have_fsspec, skip_test_env_var
 
 from .test_storage import (
@@ -209,6 +209,14 @@ class StoreV3Tests(_StoreTests):
         with pytest.raises(ValueError):
             store.list_prefix(prefix='/meta/root')
 
+    def test_equal(self):
+        store = self.create_store()
+        assert store == store
+
+    def test_rename_nonexisting(self):
+        store = self.create_store()
+        with pytest.raises(ValueError):
+            store.rename('meta/root/a', 'meta/root/b')
 
 class TestMappingStoreV3(StoreV3Tests):
 
@@ -237,6 +245,11 @@ class TestDirectoryStoreV3(_TestDirectoryStore, StoreV3Tests):
         atexit.register(atexit_rmtree, path)
         store = DirectoryStoreV3(path, normalize_keys=normalize_keys, **kwargs)
         return store
+
+    def test_rename_nonexisting(self):
+        store = self.create_store()
+        with pytest.raises(FileNotFoundError):
+            store.rename('meta/root/a', 'meta/root/b')
 
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")

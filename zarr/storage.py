@@ -234,27 +234,6 @@ def listdir(store: BaseStore, path: Path = None):
     if hasattr(store, 'listdir'):
         # pass through
         return store.listdir(path)  # type: ignore
-    elif getattr(store, "_store_version", None) == 3:
-        meta_prefix = 'meta/root/'
-        dir_path = meta_prefix + path
-        path_start = len(meta_prefix)
-        meta_keys = []
-        include_meta_keys = False
-        if include_meta_keys:
-            sfx = _get_hierarchy_metadata(store)['metadata_key_suffix']
-            group_meta_key = dir_path + '.group' + sfx
-            if group_meta_key in store:
-                meta_keys.append(group_meta_key[path_start:])
-            array_meta_key = dir_path + '.array' + sfx
-            if array_meta_key in store:
-                meta_keys.append(array_meta_key[path_start:])
-        if not dir_path.endswith('/'):
-            dir_path += '/'
-        keys, prefixes = store.list_dir(dir_path)  # type: ignore
-        keys = [k[path_start:] for k in keys]
-        prefixes = [p[path_start:] for p in prefixes]
-        return meta_keys + keys + prefixes
-
     else:
         # slow version, iterate through all keys
         warnings.warn(
@@ -3060,21 +3039,7 @@ class MemoryStoreV3(MemoryStore, StoreV3):
         return list(self.keys())
 
     def getsize(self, path: Path = None):
-        size = 0
-        path = normalize_storage_path(path)
-        members = self.list_prefix('data/root/' + path)
-        members += self.list_prefix('meta/root/' + path)
-        for k in members:
-            try:
-                v = self[k]
-            except KeyError:
-                pass
-            else:
-                try:
-                    size += buffer_size(v)
-                except TypeError:
-                    return -1
-        return size
+        return _getsize(self, path)
 
     def rename(self, src_path: Path, dst_path: Path):
         src_path = normalize_storage_path(src_path)
@@ -3135,21 +3100,7 @@ class DirectoryStoreV3(DirectoryStore, StoreV3):
         super().__setitem__(key, value)
 
     def getsize(self, path: Path = None):
-        size = 0
-        path = normalize_storage_path(path)
-        members = self.list_prefix('data/root/' + path)
-        members += self.list_prefix('meta/root/' + path)
-        for k in members:
-            try:
-                v = self[k]
-            except KeyError:
-                pass
-            else:
-                try:
-                    size += buffer_size(v)
-                except TypeError:
-                    return -1
-        return size
+        return _getsize(self, path)
 
     def rename(self, src_path, dst_path, metadata_key_suffix='.json'):
         store_src_path = normalize_storage_path(src_path)

@@ -28,7 +28,7 @@ from zarr.storage import (ABSStore, ConsolidatedMetadataStore, DBMStore,
                           DictStore, DirectoryStore, KVStore, LMDBStore,
                           LRUStoreCache, MemoryStore, MongoDBStore,
                           NestedDirectoryStore, RedisStore, SQLiteStore,
-                          Store, TempStore, ZipStore,
+                          Store, TempStore, ZipStore, KVStoreV3,
                           array_meta_key, atexit_rmglob, atexit_rmtree,
                           attrs_key, default_compressor, getsize,
                           group_meta_key, init_array, init_group, migrate_1to2,
@@ -2346,6 +2346,11 @@ class TestConsolidatedMetadataStore:
         # check appropriate error is raised
         with pytest.raises(MetadataError):
             ConsolidatedMetadataStore(store)
+
+    def test_bad_store_version(self):
+        with pytest.raises(MetadataError):
+            ConsolidatedMetadataStore(KVStoreV3(dict()))
+
 
     def test_read_write(self):
 
