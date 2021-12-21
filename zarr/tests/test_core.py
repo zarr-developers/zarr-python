@@ -43,7 +43,7 @@ from zarr.tests.util import abs_container, skip_test_env_var, have_fsspec
 
 class TestArray(unittest.TestCase):
 
-    _version = 2
+    version = 2
 
     def test_array_init(self):
 
@@ -530,6 +530,8 @@ class TestArray(unittest.TestCase):
         z.store.close()
 
     def expected(self):
+        # tests for array without path will not be run for v3 stores
+        assert self.version == 2
         return [
             "063b02ff8d9d3bab6da932ad5828b506ef0a6578",
             "f97b84dc9ffac807415f750100108764e837bb82",
@@ -1113,6 +1115,19 @@ class TestArray(unittest.TestCase):
                 assert_array_equal(a, z[:])
                 z.store.close()
 
+        # unicode and bytestring dtypes
+        for dtype in ['S4', 'S6', 'U5', 'U5']:
+            n = 10
+            z = self.create_array(shape=n, chunks=3, dtype=dtype)
+            assert z.dtype == np.dtype(dtype)
+            if dtype.startswith('S'):
+                a = np.asarray([b'name'] * n, dtype=dtype)
+            else:
+                a = np.asarray(['§Æ¥¿é'] * n, dtype=dtype)
+            z[:] = a
+            np.all(a == z[:])
+            z.store.close()
+
         # check that datetime generic units are not allowed
         with pytest.raises(ValueError):
             self.create_array(shape=100, dtype='M8')
@@ -1475,11 +1490,17 @@ class TestArray(unittest.TestCase):
         a.attrs['foo'] = 'bar'
         assert a.attrs.key in a.store
         attrs = json_loads(a.store[a.attrs.key])
+        if self.version > 2:
+            # in v3, attributes are in a sub-dictionary of the metadata
+            attrs = attrs['attributes']
         assert 'foo' in attrs and attrs['foo'] == 'bar'
 
         a.attrs['bar'] = 'foo'
         assert a.attrs.key in a.store
         attrs = json_loads(a.store[a.attrs.key])
+        if self.version > 2:
+            # in v3, attributes are in a sub-dictionary of the metadata
+            attrs = attrs['attributes']
         assert 'foo' in attrs and attrs['foo'] == 'bar'
         assert 'bar' in attrs and attrs['bar'] == 'foo'
         a.store.close()
@@ -1509,28 +1530,14 @@ class TestArrayWithPath(TestArray):
     def test_nchunks_initialized(self):
         pass
 
-    def test_hexdigest(self):
-        # Check basic 1-D array
-        z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
-        assert 'f710da18d45d38d4aaf2afd7fb822fdd73d02957' == z.hexdigest()
-
-        # Check basic 1-D array with different type
-        z = self.create_array(shape=(1050,), chunks=100, dtype='<f4')
-        assert '1437428e69754b1e1a38bd7fc9e43669577620db' == z.hexdigest()
-
-        # Check basic 2-D array
-        z = self.create_array(shape=(20, 35,), chunks=10, dtype='<i4')
-        assert '6c530b6b9d73e108cc5ee7b6be3d552cc994bdbe' == z.hexdigest()
-
-        # Check basic 1-D array with some data
-        z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
-        z[200:400] = np.arange(200, 400, dtype='i4')
-        assert '4c0a76fb1222498e09dcd92f7f9221d6cea8b40e' == z.hexdigest()
-
-        # Check basic 1-D array with attributes
-        z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
-        z.attrs['foo'] = 'bar'
-        assert '05b0663ffe1785f38d3a459dec17e57a18f254af' == z.hexdigest()
+    def expected(self):
+        return [
+            "f710da18d45d38d4aaf2afd7fb822fdd73d02957",
+            "1437428e69754b1e1a38bd7fc9e43669577620db",
+            "6c530b6b9d73e108cc5ee7b6be3d552cc994bdbe",
+            "4c0a76fb1222498e09dcd92f7f9221d6cea8b40e",
+            "05b0663ffe1785f38d3a459dec17e57a18f254af"
+        ]
 
     def test_nbytes_stored(self):
 
@@ -1566,28 +1573,14 @@ class TestArrayWithChunkStore(TestArray):
                      cache_metadata=cache_metadata, cache_attrs=cache_attrs,
                      write_empty_chunks=write_empty_chunks)
 
-    def test_hexdigest(self):
-        # Check basic 1-D array
-        z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
-        assert 'f710da18d45d38d4aaf2afd7fb822fdd73d02957' == z.hexdigest()
-
-        # Check basic 1-D array with different type
-        z = self.create_array(shape=(1050,), chunks=100, dtype='<f4')
-        assert '1437428e69754b1e1a38bd7fc9e43669577620db' == z.hexdigest()
-
-        # Check basic 2-D array
-        z = self.create_array(shape=(20, 35,), chunks=10, dtype='<i4')
-        assert '6c530b6b9d73e108cc5ee7b6be3d552cc994bdbe' == z.hexdigest()
-
-        # Check basic 1-D array with some data
-        z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
-        z[200:400] = np.arange(200, 400, dtype='i4')
-        assert '4c0a76fb1222498e09dcd92f7f9221d6cea8b40e' == z.hexdigest()
-
-        # Check basic 1-D array with attributes
-        z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
-        z.attrs['foo'] = 'bar'
-        assert '05b0663ffe1785f38d3a459dec17e57a18f254af' == z.hexdigest()
+    def expected(self):
+        return [
+            "f710da18d45d38d4aaf2afd7fb822fdd73d02957",
+            "1437428e69754b1e1a38bd7fc9e43669577620db",
+            "6c530b6b9d73e108cc5ee7b6be3d552cc994bdbe",
+            "4c0a76fb1222498e09dcd92f7f9221d6cea8b40e",
+            "05b0663ffe1785f38d3a459dec17e57a18f254af"
+        ]
 
     def test_nbytes_stored(self):
 
@@ -2001,32 +1994,6 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
            'e2258fedc74752196a8c8383db49e27193c995e2',
            ]
 
-    def test_hexdigest(self):
-        found = []
-        # Check basic 1-D array
-        z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
-        found.append(z.hexdigest())
-
-        # Check basic 1-D array with different type
-        z = self.create_array(shape=(1050,), chunks=100, dtype='<f4')
-        found.append(z.hexdigest())
-
-        # Check basic 2-D array
-        z = self.create_array(shape=(20, 35,), chunks=10, dtype='<i4')
-        found.append(z.hexdigest())
-
-        # Check basic 1-D array with some data
-        z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
-        z[200:400] = np.arange(200, 400, dtype='i4')
-        found.append(z.hexdigest())
-
-        # Check basic 1-D array with attributes
-        z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
-        z.attrs['foo'] = 'bar'
-        found.append(z.hexdigest())
-
-        assert self.expected() == found
-
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
 class TestArrayWithN5FSStore(TestArrayWithN5Store):
@@ -2159,28 +2126,14 @@ class TestArrayWithNoCompressor(TestArray):
         return Array(store, read_only=read_only, cache_metadata=cache_metadata,
                      cache_attrs=cache_attrs, write_empty_chunks=write_empty_chunks)
 
-    def test_hexdigest(self):
-        # Check basic 1-D array
-        z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
-        assert 'd3da3d485de4a5fcc6d91f9dfc6a7cba9720c561' == z.hexdigest()
-
-        # Check basic 1-D array with different type
-        z = self.create_array(shape=(1050,), chunks=100, dtype='<f4')
-        assert '443b8dee512e42946cb63ff01d28e9bee8105a5f' == z.hexdigest()
-
-        # Check basic 2-D array
-        z = self.create_array(shape=(20, 35,), chunks=10, dtype='<i4')
-        assert 'b75eb90f68aa8ee1e29f2c542e851d3945066c54' == z.hexdigest()
-
-        # Check basic 1-D array with some data
-        z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
-        z[200:400] = np.arange(200, 400, dtype='i4')
-        assert '42b6ae0d50ec361628736ab7e68fe5fefca22136' == z.hexdigest()
-
-        # Check basic 1-D array with attributes
-        z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
-        z.attrs['foo'] = 'bar'
-        assert 'a0535f31c130f5e5ac66ba0713d1c1ceaebd089b' == z.hexdigest()
+    def expected(self):
+        return [
+            "d3da3d485de4a5fcc6d91f9dfc6a7cba9720c561",
+            "443b8dee512e42946cb63ff01d28e9bee8105a5f",
+            "b75eb90f68aa8ee1e29f2c542e851d3945066c54",
+            "42b6ae0d50ec361628736ab7e68fe5fefca22136",
+            "a0535f31c130f5e5ac66ba0713d1c1ceaebd089b",
+        ]
 
 
 class TestArrayWithBZ2Compressor(TestArray):
@@ -2196,28 +2149,14 @@ class TestArrayWithBZ2Compressor(TestArray):
         return Array(store, read_only=read_only, cache_metadata=cache_metadata,
                      cache_attrs=cache_attrs, write_empty_chunks=write_empty_chunks)
 
-    def test_hexdigest(self):
-        # Check basic 1-D array
-        z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
-        assert '33141032439fb1df5e24ad9891a7d845b6c668c8' == z.hexdigest()
-
-        # Check basic 1-D array with different type
-        z = self.create_array(shape=(1050,), chunks=100, dtype='<f4')
-        assert '44d719da065c88a412d609a5500ff41e07b331d6' == z.hexdigest()
-
-        # Check basic 2-D array
-        z = self.create_array(shape=(20, 35,), chunks=10, dtype='<i4')
-        assert '37c7c46e5730bba37da5e518c9d75f0d774c5098' == z.hexdigest()
-
-        # Check basic 1-D array with some data
-        z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
-        z[200:400] = np.arange(200, 400, dtype='i4')
-        assert '1e1bcaac63e4ef3c4a68f11672537131c627f168' == z.hexdigest()
-
-        # Check basic 1-D array with attributes
-        z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
-        z.attrs['foo'] = 'bar'
-        assert '86d7b9bf22dccbeaa22f340f38be506b55e76ff2' == z.hexdigest()
+    def expected(self):
+        return [
+            "33141032439fb1df5e24ad9891a7d845b6c668c8",
+            "44d719da065c88a412d609a5500ff41e07b331d6",
+            "37c7c46e5730bba37da5e518c9d75f0d774c5098",
+            "1e1bcaac63e4ef3c4a68f11672537131c627f168",
+            "86d7b9bf22dccbeaa22f340f38be506b55e76ff2",
+        ]
 
 
 class TestArrayWithBloscCompressor(TestArray):
@@ -2233,28 +2172,14 @@ class TestArrayWithBloscCompressor(TestArray):
         return Array(store, read_only=read_only, cache_metadata=cache_metadata,
                      cache_attrs=cache_attrs, write_empty_chunks=write_empty_chunks)
 
-    def test_hexdigest(self):
-        # Check basic 1-D array
-        z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
-        assert '7ff2ae8511eac915fad311647c168ccfe943e788' == z.hexdigest()
-
-        # Check basic 1-D array with different type
-        z = self.create_array(shape=(1050,), chunks=100, dtype='<f4')
-        assert '962705c861863495e9ccb7be7735907aa15e85b5' == z.hexdigest()
-
-        # Check basic 2-D array
-        z = self.create_array(shape=(20, 35,), chunks=10, dtype='<i4')
-        assert '74ed339cfe84d544ac023d085ea0cd6a63f56c4b' == z.hexdigest()
-
-        # Check basic 1-D array with some data
-        z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
-        z[200:400] = np.arange(200, 400, dtype='i4')
-        assert '90e30bdab745a9641cd0eb605356f531bc8ec1c3' == z.hexdigest()
-
-        # Check basic 1-D array with attributes
-        z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
-        z.attrs['foo'] = 'bar'
-        assert '95d40c391f167db8b1290e3c39d9bf741edacdf6' == z.hexdigest()
+    def expected(self):
+        return [
+            "7ff2ae8511eac915fad311647c168ccfe943e788",
+            "962705c861863495e9ccb7be7735907aa15e85b5",
+            "74ed339cfe84d544ac023d085ea0cd6a63f56c4b",
+            "90e30bdab745a9641cd0eb605356f531bc8ec1c3",
+            "95d40c391f167db8b1290e3c39d9bf741edacdf6",
+        ]
 
 
 try:
@@ -2277,28 +2202,14 @@ class TestArrayWithLZMACompressor(TestArray):
         return Array(store, read_only=read_only, cache_metadata=cache_metadata,
                      cache_attrs=cache_attrs, write_empty_chunks=write_empty_chunks)
 
-    def test_hexdigest(self):
-        # Check basic 1-D array
-        z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
-        assert '93ecaa530a1162a9d48a3c1dcee4586ccfc59bae' == z.hexdigest()
-
-        # Check basic 1-D array with different type
-        z = self.create_array(shape=(1050,), chunks=100, dtype='<f4')
-        assert '04a9755a0cd638683531b7816c7fa4fbb6f577f2' == z.hexdigest()
-
-        # Check basic 2-D array
-        z = self.create_array(shape=(20, 35,), chunks=10, dtype='<i4')
-        assert '9de97b5c49b38e68583ed701d7e8f4c94b6a8406' == z.hexdigest()
-
-        # Check basic 1-D array with some data
-        z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
-        z[200:400] = np.arange(200, 400, dtype='i4')
-        assert 'cde499f3dc945b4e97197ff8e3cf8188a1262c35' == z.hexdigest()
-
-        # Check basic 1-D array with attributes
-        z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
-        z.attrs['foo'] = 'bar'
-        assert 'e2cf3afbf66ad0e28a2b6b68b1b07817c69aaee2' == z.hexdigest()
+    def expected(self):
+        return [
+            "93ecaa530a1162a9d48a3c1dcee4586ccfc59bae",
+            "04a9755a0cd638683531b7816c7fa4fbb6f577f2",
+            "9de97b5c49b38e68583ed701d7e8f4c94b6a8406",
+            "cde499f3dc945b4e97197ff8e3cf8188a1262c35",
+            "e2cf3afbf66ad0e28a2b6b68b1b07817c69aaee2",
+        ]
 
 
 class TestArrayWithFilters(TestArray):
@@ -2321,28 +2232,15 @@ class TestArrayWithFilters(TestArray):
         return Array(store, read_only=read_only, cache_attrs=cache_attrs,
                      cache_metadata=cache_metadata, write_empty_chunks=write_empty_chunks)
 
-    def test_hexdigest(self):
-        # Check basic 1-D array
-        z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
-        assert 'b80367c5599d47110d42bd8886240c2f46620dba' == z.hexdigest()
 
-        # Check basic 1-D array with different type
-        z = self.create_array(shape=(1050,), chunks=100, dtype='<f4')
-        assert '95a7b2471225e73199c9716d21e8d3dd6e5f6f2a' == z.hexdigest()
-
-        # Check basic 2-D array
-        z = self.create_array(shape=(20, 35,), chunks=10, dtype='<i4')
-        assert '7300f1eb130cff5891630038fd99c28ef23d3a01' == z.hexdigest()
-
-        # Check basic 1-D array with some data
-        z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
-        z[200:400] = np.arange(200, 400, dtype='i4')
-        assert 'c649ad229bc5720258b934ea958570c2f354c2eb' == z.hexdigest()
-
-        # Check basic 1-D array with attributes
-        z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
-        z.attrs['foo'] = 'bar'
-        assert '62fc9236d78af18a5ec26c12eea1d33bce52501e' == z.hexdigest()
+    def expected(self):
+        return [
+            "b80367c5599d47110d42bd8886240c2f46620dba",
+            "95a7b2471225e73199c9716d21e8d3dd6e5f6f2a",
+            "7300f1eb130cff5891630038fd99c28ef23d3a01",
+            "c649ad229bc5720258b934ea958570c2f354c2eb",
+            "62fc9236d78af18a5ec26c12eea1d33bce52501e",
+        ]
 
     def test_astype_no_filters(self):
         shape = (100,)
@@ -2593,33 +2491,6 @@ class TestArrayWithFSStore(TestArray):
            "091fa99bc60706095c9ce30b56ce2503e0223f56",
         ]
 
-    def test_hexdigest(self):
-        found = []
-
-        # Check basic 1-D array
-        z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
-        found.append(z.hexdigest())
-
-        # Check basic 1-D array with different type
-        z = self.create_array(shape=(1050,), chunks=100, dtype='<f4')
-        found.append(z.hexdigest())
-
-        # Check basic 2-D array
-        z = self.create_array(shape=(20, 35,), chunks=10, dtype='<i4')
-        found.append(z.hexdigest())
-
-        # Check basic 1-D array with some data
-        z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
-        z[200:400] = np.arange(200, 400, dtype='i4')
-        found.append(z.hexdigest())
-
-        # Check basic 1-D array with attributes
-        z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
-        z.attrs['foo'] = 'bar'
-        found.append(z.hexdigest())
-
-        assert self.expected() == found
-
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
 class TestArrayWithFSStorePartialRead(TestArray):
@@ -2642,35 +2513,14 @@ class TestArrayWithFSStorePartialRead(TestArray):
             write_empty_chunks=write_empty_chunks
         )
 
-    def test_hexdigest(self):
-        # Check basic 1-D array
-        z = self.create_array(shape=(1050,), chunks=100, dtype="<i4")
-        assert "dd7577d645c38767cf6f6d1ef8fd64002883a014" == z.hexdigest()
-
-        # Check basic 1-D array with different type
-        z = self.create_array(shape=(1050,), chunks=100, dtype="<f4")
-        assert "aa0de9892cf1ed3cda529efbf3233720b84489b7" == z.hexdigest()
-
-        # Check basic 2-D array
-        z = self.create_array(
-            shape=(
-                20,
-                35,
-            ),
-            chunks=10,
-            dtype="<i4",
-        )
-        assert "e6191c44cf958576c29c41cef0f55b028a4dbdff" == z.hexdigest()
-
-        # Check basic 1-D array with some data
-        z = self.create_array(shape=(1050,), chunks=100, dtype="<i4")
-        z[200:400] = np.arange(200, 400, dtype="i4")
-        assert "88adeeabb819feecccadf50152293dbb42f9107e" == z.hexdigest()
-
-        # Check basic 1-D array with attributes
-        z = self.create_array(shape=(1050,), chunks=100, dtype="<i4")
-        z.attrs["foo"] = "bar"
-        assert "1426e084427f9920e29c9ec81b663d1005849455" == z.hexdigest()
+    def expected(self):
+        return [
+           "dd7577d645c38767cf6f6d1ef8fd64002883a014",
+           "aa0de9892cf1ed3cda529efbf3233720b84489b7",
+           "e6191c44cf958576c29c41cef0f55b028a4dbdff",
+           "88adeeabb819feecccadf50152293dbb42f9107e",
+           "1426e084427f9920e29c9ec81b663d1005849455",
+        ]
 
     def test_non_cont(self):
         z = self.create_array(shape=(500, 500, 500), chunks=(50, 50, 50), dtype="<i4")
@@ -2723,33 +2573,6 @@ class TestArrayWithFSStoreNested(TestArray):
            "c3167010c162c6198cb2bf3c1da2c46b047c69a1",
         ]
 
-    def test_hexdigest(self):
-        found = []
-
-        # Check basic 1-D array
-        z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
-        found.append(z.hexdigest())
-
-        # Check basic 1-D array with different type
-        z = self.create_array(shape=(1050,), chunks=100, dtype='<f4')
-        found.append(z.hexdigest())
-
-        # Check basic 2-D array
-        z = self.create_array(shape=(20, 35,), chunks=10, dtype='<i4')
-        found.append(z.hexdigest())
-
-        # Check basic 1-D array with some data
-        z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
-        z[200:400] = np.arange(200, 400, dtype='i4')
-        found.append(z.hexdigest())
-
-        # Check basic 1-D array with attributes
-        z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
-        z.attrs['foo'] = 'bar'
-        found.append(z.hexdigest())
-
-        assert self.expected() == found
-
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
 class TestArrayWithFSStoreNestedPartialRead(TestArray):
@@ -2781,40 +2604,6 @@ class TestArrayWithFSStoreNestedPartialRead(TestArray):
            "85131cec526fa46938fd2c4a6083a58ee11037ea",
            "c3167010c162c6198cb2bf3c1da2c46b047c69a1",
         ]
-
-    def test_hexdigest(self):
-        found = []
-
-        # Check basic 1-D array
-        z = self.create_array(shape=(1050,), chunks=100, dtype="<i4")
-        found.append(z.hexdigest())
-
-        # Check basic 1-D array with different type
-        z = self.create_array(shape=(1050,), chunks=100, dtype="<f4")
-        found.append(z.hexdigest())
-
-        # Check basic 2-D array
-        z = self.create_array(
-            shape=(
-                20,
-                35,
-            ),
-            chunks=10,
-            dtype="<i4",
-        )
-        found.append(z.hexdigest())
-
-        # Check basic 1-D array with some data
-        z = self.create_array(shape=(1050,), chunks=100, dtype="<i4")
-        z[200:400] = np.arange(200, 400, dtype="i4")
-        found.append(z.hexdigest())
-
-        # Check basic 1-D array with attributes
-        z = self.create_array(shape=(1050,), chunks=100, dtype="<i4")
-        z.attrs["foo"] = "bar"
-        found.append(z.hexdigest())
-
-        assert self.expected() == found
 
     def test_non_cont(self):
         z = self.create_array(shape=(500, 500, 500), chunks=(50, 50, 50), dtype="<i4")

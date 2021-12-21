@@ -62,7 +62,7 @@ def get_extended_dtype_info(dtype):
             type=dtype.str,
             fallback=None,
         )
-    elif dtype.str.startswith("|U"):
+    elif dtype.str.startswith("<U") or dtype.str.startswith(">U"):
         return dict(
             extension="TODO: unicode array protocol URL",  # noqa
             type=dtype.str,
