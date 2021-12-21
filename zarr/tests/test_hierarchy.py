@@ -1780,4 +1780,3 @@ def test_group_mismatched_store_versions():
         Group(store_v3, path='group2', read_only=True, chunk_store=chunk_store_v3)
     with pytest.raises(ValueError):
         Group(store_v3, path='group2', read_only=True, chunk_store=chunk_store_v3)
-

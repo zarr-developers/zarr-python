@@ -40,5 +40,3 @@ def test_info(array_size):
     # can also get a string representation of info via the info attribute
     assert isinstance(z.info, InfoReporter)
     assert "Type" in repr(z.info)
-
-
