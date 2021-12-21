@@ -36,6 +36,7 @@ from zarr.storage import (
     atexit_rmtree,
     getsize,
 )
+from zarr.tests.util import have_fsspec
 
 
 def _init_creation_kwargs(zarr_version):
@@ -897,16 +898,13 @@ class TestCopyV3(TestCopy):
                 yield prep_source(h5f)
         elif request.param == 'zarr':
             yield prep_source(group(path='group1', zarr_version=3))
-        elif request.param == 'zarr_fsstore':
-            fn = tmpdir.join('source.zr3')
-            store = FSStoreV3(str(fn), auto_mkdir=True)
-            yield prep_source(group(store, path='group1', zarr_version=3))
 
     # Test with various destination StoreV3 types as TestCopyV3 covers rmdir
-    @pytest.fixture(
-        params=['zarr', 'zarr_fsstore', 'zarr_kvstore', 'zarr_directorystore',
-                'zarr_sqlitestore', 'hdf5']
-    )
+    destinations = ['zarr', 'zarr_fsstore', 'zarr_kvstore', 'zarr_directorystore',
+                    'zarr_sqlitestore', 'hdf5']
+    if have_fsspec:
+        destinations += ['zarr_fsstore']
+    @pytest.fixture(params=destinations)
     def dest(self, request, tmpdir):
         if request.param == 'hdf5':
             h5py = pytest.importorskip('h5py')
