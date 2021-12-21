@@ -1160,8 +1160,8 @@ def s3(request):
     pytest.importorskip("moto")
 
     port = 5555
-    endpoint_uri = 'http://127.0.0.1:%s/' % port
-    proc = subprocess.Popen(shlex.split("moto_server s3 -p %s" % port),
+    endpoint_uri = 'http://127.0.0.1:%d/' % port
+    proc = subprocess.Popen(shlex.split("moto_server s3 -p %d" % port),
                             stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
 
     timeout = 5
