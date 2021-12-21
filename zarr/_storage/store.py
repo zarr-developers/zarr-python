@@ -337,7 +337,7 @@ def _rename_from_keys(store: BaseStore, src_path: str, dst_path: str) -> None:
         for root_prefix in ['meta/root/', 'data/root/']:
             _src_prefix = root_prefix + src_prefix
             _dst_prefix = root_prefix + dst_prefix
-            for key in store.list_prefix(_src_prefix):
+            for key in store.list_prefix(_src_prefix):  # type: ignore
                 new_key = _dst_prefix + key[len(_src_prefix):]
                 store[new_key] = store.pop(key)
 
@@ -360,7 +360,7 @@ def _rmdir_from_keys(store: StoreLike, path: Optional[str] = None) -> None:
             del store[key]
 
 
-def _rmdir_from_keys_v3(store: BaseStore, path: Optional[str] = "") -> None:
+def _rmdir_from_keys_v3(store: StoreV3, path: str = "") -> None:
 
     meta_dir = 'meta/root/' + path
     meta_dir = meta_dir.rstrip('/')

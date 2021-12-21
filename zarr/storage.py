@@ -209,7 +209,7 @@ def rmdir(store: StoreLike, path: Path = None):
         if store_version == 2:
             _rmdir_from_keys(store, path)
         else:
-            _rmdir_from_keys_v3(store, path)
+            _rmdir_from_keys_v3(store, path)  # type: ignore
 
 
 def rename(store: Store, src_path: Path, dst_path: Path):
