@@ -31,7 +31,8 @@ from zarr.storage import (ABSStore, ConsolidatedMetadataStore, DBMStore,
                           Store, TempStore, ZipStore,
                           array_meta_key, atexit_rmglob, atexit_rmtree,
                           attrs_key, default_compressor, getsize,
-                          group_meta_key, init_array, init_group, migrate_1to2)
+                          group_meta_key, init_array, init_group, migrate_1to2,
+                          normalize_store_arg)
 from zarr.storage import FSStore, rename, listdir
 from zarr.tests.util import CountingDict, have_fsspec, skip_test_env_var, abs_container
 
@@ -2395,3 +2396,18 @@ def test_get_hierarchy_metadata_v2():
     # v2 stores do not have hierarchy metadata (i.e. zarr.json)
     with pytest.raises(ValueError):
         _get_hierarchy_metadata(KVStore(dict))
+
+
+def test_normalize_store_arg(tmpdir):
+    with pytest.raises(ValueError):
+        normalize_store_arg(dict(), zarr_version=4)
+
+    for ext, Class in [('.zip', ZipStore), ('.n5', N5Store)]:
+        fn = tmpdir.join('store' + ext)
+        store = normalize_store_arg(str(fn), zarr_version=2, mode='w', clobber=True)
+        assert isinstance(store, Class)
+
+    if have_fsspec:
+        path = tempfile.mkdtemp()
+        store = normalize_store_arg("file://" + path, zarr_version=2, mode='w', clobber=True)
+        assert isinstance(store, FSStore)

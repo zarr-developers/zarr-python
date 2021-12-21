@@ -165,7 +165,7 @@ def normalize_store_arg(store, clobber=False, storage_options=None, mode="w",
                 store = FSStoreV3(store, mode=mode, **(storage_options or {}))
             elif storage_options:
                 store = ValueError("storage_options passed with non-fsspec path")
-            if store.endswith('.zip'):
+            elif store.endswith('.zip'):
                 store = ZipStoreV3(store, mode=mode)
             elif store.endswith('.n5'):
                 raise NotImplementedError("N5Store not yet implemented for V3")

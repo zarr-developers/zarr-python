@@ -13,7 +13,7 @@ from zarr.storage import (KVStoreV3, MemoryStoreV3, ZipStoreV3, FSStoreV3,
                           DirectoryStoreV3, NestedDirectoryStoreV3,
                           RedisStoreV3, MongoDBStoreV3, DBMStoreV3,
                           LMDBStoreV3, SQLiteStoreV3, LRUStoreCacheV3,
-                          StoreV3)
+                          StoreV3, normalize_store_arg, KVStore)
 from zarr.tests.util import CountingDictV3, have_fsspec, skip_test_env_var
 
 from .test_storage import (
@@ -447,3 +447,28 @@ class TestLRUStoreCacheV3(_TestLRUStoreCache, StoreV3Tests):
 # TODO: implement ABSStoreV3
 # @skip_test_env_var("ZARR_TEST_ABS")
 # class TestABSStoreV3(_TestABSStore, StoreV3Tests):
+
+def test_normalize_store_arg_v3(tmpdir):
+
+    fn = tmpdir.join('store.zip')
+    store = normalize_store_arg(str(fn), zarr_version=3, mode='w', clobber=True)
+    assert isinstance(store, ZipStoreV3)
+    assert 'zarr.json' in store
+
+    if have_fsspec:
+        path = tempfile.mkdtemp()
+        store = normalize_store_arg("file://" + path, zarr_version=3, mode='w', clobber=True)
+        assert isinstance(store, FSStoreV3)
+        assert 'zarr.json' in store
+
+    fn = tmpdir.join('store.n5')
+    with pytest.raises(NotImplementedError):
+        normalize_store_arg(str(fn), zarr_version=3, mode='w', clobber=True)
+
+    # error on zarr_version=3 with a v2 store
+    with pytest.raises(ValueError):
+        normalize_store_arg(KVStore(dict()), zarr_version=3, mode='w', clobber=True)
+
+    # error on zarr_version=2 with a v3 store
+    with pytest.raises(ValueError):
+        normalize_store_arg(KVStoreV3(dict()), zarr_version=2, mode='w', clobber=True)
