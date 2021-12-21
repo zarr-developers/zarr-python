@@ -122,6 +122,19 @@ def test_save_errors(zarr_version):
         save('data/group.zarr', zarr_version=zarr_version)
 
 
+def test_zarr_v3_save_multiple_unnamed():
+    x = np.ones(8)
+    y = np.zeros(8)
+    store = KVStoreV3(dict())
+    # no path provided
+    save_group(store, x, y, path='dataset', zarr_version=3)
+    # names become arr_{i} for unnamed *args
+    assert 'data/root/dataset/arr_0/c0' in store
+    assert 'data/root/dataset/arr_1/c0' in store
+    assert 'meta/root/dataset/arr_0.array.json' in store
+    assert 'meta/root/dataset/arr_1.array.json' in store
+
+
 def test_zarr_v3_save_errors():
     x = np.ones(8)
     with pytest.raises(ValueError):
