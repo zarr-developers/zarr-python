@@ -224,11 +224,7 @@ class StoreV3(BaseStore):
         return keys, list(set(prefixes))
 
     def list(self):
-        if hasattr(self, 'keys'):
-            return list(self.keys())
-        raise NotImplementedError(
-            "The list method has not been implemented for this store type."
-        )
+        return list(self.keys())
 
     def __contains__(self, key):
         return key in self.list()
