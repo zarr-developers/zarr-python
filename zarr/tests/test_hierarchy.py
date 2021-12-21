@@ -92,6 +92,11 @@ class TestGroup(unittest.TestCase):
             Group(store, chunk_store=chunk_store)
         store.close()
 
+    def test_group_repr(self):
+        store, chunk_store = self.create_store()
+        g = self.create_group(store, chunk_store=chunk_store)
+        assert g.name in repr(g)
+
     def test_group_init_errors_2(self):
         store, chunk_store = self.create_store()
         init_array(store, shape=1000, chunks=100, chunk_store=chunk_store)
@@ -762,9 +767,6 @@ class TestGroup(unittest.TestCase):
         d3 = g2.create_dataset('zab', shape=2000, chunks=200)
         d3[:] = np.arange(2000)
 
-        if g1._version == 3:
-            pytest.skip("TODO: fix for V3")
-
         # test recursive array_keys
         array_keys = list(g1['foo'].array_keys(recurse=False))
         array_keys_recurse = list(g1['foo'].array_keys(recurse=True))
@@ -1173,6 +1175,7 @@ class TestGroupWithFSStore(TestGroup):
         f = open_group(store, mode='w')
         f.create_dataset(name, data=data, chunks=(5, 5, 5),
                          compressor=None)
+        assert name in f
         h = open_group(store, mode='r')
         np.testing.assert_array_equal(h[name][:], data)
 
@@ -1461,6 +1464,9 @@ def test_group(zarr_version):
         assert '/' == g.name
     else:
         g = group(path='group1', zarr_version=zarr_version)
+        with pytest.raises(ValueError):
+            # must supply path for v3 groups
+            group(zarr_version=3)
         assert 'group1' == g.path
         assert '/group1' == g.name
     assert isinstance(g, Group)
@@ -1741,3 +1747,37 @@ def test_tree(zarr_version):
      └── quux
          └── baz (100,) float64""")
     _check_tree(g3, expect_bytes, expect_text)
+
+
+def test_group_mismatched_store_versions():
+    store_v3 = KVStoreV3(dict())
+    store_v2 = KVStore(dict())
+
+    # separate chunk store
+    chunk_store_v2 = KVStore(dict())
+    chunk_store_v3 = KVStoreV3(dict())
+
+    init_group(store_v2, path='group1', chunk_store=chunk_store_v2)
+    init_group(store_v3, path='group1', chunk_store=chunk_store_v3)
+
+    g1_v3 = Group(store_v3, path='group1', read_only=True, chunk_store=chunk_store_v3)
+    assert isinstance(g1_v3._store, KVStoreV3)
+    g1_v2 = Group(store_v2, path='group1', read_only=True, chunk_store=chunk_store_v2)
+    assert isinstance(g1_v2._store, KVStore)
+
+    # store and chunk_store must have the same zarr protocol version
+    with pytest.raises(ValueError):
+        Group(store_v3, path='group1', read_only=False, chunk_store=chunk_store_v2)
+    with pytest.raises(ValueError):
+        Group(store_v2, path='group1', read_only=False, chunk_store=chunk_store_v3)
+    with pytest.raises(ValueError):
+        open_group(store_v2, path='group1', chunk_store=chunk_store_v3)
+    with pytest.raises(ValueError):
+        open_group(store_v3, path='group1', chunk_store=chunk_store_v2)
+
+    # raises Value if read_only and path is not a pre-existing group
+    with pytest.raises(ValueError):
+        Group(store_v3, path='group2', read_only=True, chunk_store=chunk_store_v3)
+    with pytest.raises(ValueError):
+        Group(store_v3, path='group2', read_only=True, chunk_store=chunk_store_v3)
+

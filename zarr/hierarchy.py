@@ -116,9 +116,6 @@ class Group(MutableMapping):
         store: BaseStore = _normalize_store_arg(store, zarr_version=zarr_version)
         if zarr_version is None:
             zarr_version = getattr(store, '_store_version', 2)
-        if zarr_version > 2 and path:
-            if path.startswith(("meta/", "data/")):
-                raise ValueError("path must note start with 'meta/' or 'data/'")
         if chunk_store is not None:
             chunk_store: BaseStore = _normalize_store_arg(chunk_store, zarr_version=zarr_version)
             if not getattr(chunk_store, '_store_version', 2) == zarr_version:
@@ -154,8 +151,6 @@ class Group(MutableMapping):
                 raise GroupNotFoundError(path)
             else:
                 implicit_prefix = 'meta/root/' + self._key_prefix
-                if not implicit_prefix.endswith('/'):
-                    implicit_prefix += '/'
                 if self._store.list_prefix(implicit_prefix):
                     # implicit group does not have any metadata
                     self._meta = None
@@ -382,8 +377,6 @@ class Group(MutableMapping):
         False
 
         """
-        if self._version > 2 and item.startswith('meta/'):
-            raise ValueError("meta/ must not be in item")
         path = self._item_path(item)
         return contains_array(self._store, path) or \
             contains_group(self._store, path, explicit_only=False)
