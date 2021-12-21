@@ -13,7 +13,7 @@ from zarr.storage import (KVStoreV3, MemoryStoreV3, ZipStoreV3, FSStoreV3,
                           DirectoryStoreV3, NestedDirectoryStoreV3,
                           RedisStoreV3, MongoDBStoreV3, DBMStoreV3,
                           LMDBStoreV3, SQLiteStoreV3, LRUStoreCacheV3,
-                          StoreV3, normalize_store_arg, KVStore, listdir)
+                          StoreV3, normalize_store_arg, KVStore)
 from zarr.tests.util import CountingDictV3, have_fsspec, skip_test_env_var
 
 from .test_storage import (
@@ -217,6 +217,7 @@ class StoreV3Tests(_StoreTests):
         store = self.create_store()
         with pytest.raises(ValueError):
             store.rename('meta/root/a', 'meta/root/b')
+
 
 class TestMappingStoreV3(StoreV3Tests):
 

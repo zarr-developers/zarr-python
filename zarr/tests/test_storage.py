@@ -2351,7 +2351,6 @@ class TestConsolidatedMetadataStore:
         with pytest.raises(MetadataError):
             ConsolidatedMetadataStore(KVStoreV3(dict()))
 
-
     def test_read_write(self):
 
         # setup store with consolidated metadata

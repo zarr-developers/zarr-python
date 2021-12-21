@@ -904,6 +904,7 @@ class TestCopyV3(TestCopy):
                     'zarr_sqlitestore', 'hdf5']
     if have_fsspec:
         destinations += ['zarr_fsstore']
+
     @pytest.fixture(params=destinations)
     def dest(self, request, tmpdir):
         if request.param == 'hdf5':
