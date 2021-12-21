@@ -43,7 +43,7 @@ _v3_datetime_types = set(
 )
 
 
-def get_extended_dtype_info(dtype):
+def get_extended_dtype_info(dtype) -> dict:
     if dtype.str in _v3_complex_types:
         return dict(
             extension="https://zarr-specs.readthedocs.io/en/core-protocol-v3.0-dev/protocol/extensions/complex-dtypes/v1.0.html",  # noqa
