@@ -90,7 +90,7 @@ you have cloned the Zarr source code and your current working directory is the r
 the repository, you can do something like the following::
 
     $ mkdir -p ~/pyenv/zarr-dev
-    $ virtualenv --no-site-packages --python=/usr/bin/python3.8 ~/pyenv/zarr-dev
+    $ virtualenv --no-site-packages --python=/usr/bin/python ~/pyenv/zarr-dev
     $ source ~/pyenv/zarr-dev/bin/activate
     $ pip install -r requirements_dev_minimal.txt -r requirements_dev_numpy.txt
     $ pip install -e .
