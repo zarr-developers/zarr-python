@@ -2780,6 +2780,29 @@ class TestArrayWithPathV3(TestArrayWithPath):
 
         z.store.close()
 
+    def test_view(self):
+
+        # dict as store
+        z = self.create_array(shape=1005, chunks=100, dtype=float)
+
+        # with with different dtype
+        x = z.view(dtype=bytes)
+        assert x.is_view
+        assert x.dtype == bytes
+
+        new_shape = (1, z.shape[0])
+        x = z.view(shape=new_shape)
+        assert x.is_view
+        assert x.shape == new_shape
+
+        x = z.view(chunks=10)
+        assert x.is_view
+        assert x.chunks == (10,)
+
+        x = z.view(fill_value=5)
+        assert x.is_view
+        assert x[-1] == 5
+
     def test_nchunks_initialized(self):
         # copied from TestArray so the empty version from TestArrayWithPath is
         # not used
