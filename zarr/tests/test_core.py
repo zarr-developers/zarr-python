@@ -2715,6 +2715,7 @@ class TestArrayWithPathV3(TestArrayWithPath):
         path = 'foo/bar'
         init_array(store, shape=100, chunks=10, path=path, dtype='<f8')
         a = Array(store, path=path)
+        assert not a.is_view
         assert isinstance(a, Array)
         assert (100,) == a.shape
         assert (10,) == a.chunks
