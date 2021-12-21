@@ -118,8 +118,6 @@ class Group(MutableMapping):
             zarr_version = getattr(store, '_store_version', 2)
         if chunk_store is not None:
             chunk_store: BaseStore = _normalize_store_arg(chunk_store, zarr_version=zarr_version)
-            if not getattr(chunk_store, '_store_version', 2) == zarr_version:
-                raise ValueError("zarr_version of store and chunk_store must match")
         self._store = store
         self._chunk_store = chunk_store
         self._path = normalize_storage_path(path)
