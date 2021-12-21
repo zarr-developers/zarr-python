@@ -138,7 +138,7 @@ def create(shape, chunks=True, dtype=None, compressor='default',
         store_separator = getattr(store, "_dimension_separator", None)
         if store_separator not in (None, dimension_separator):
             raise ValueError(
-                f"Specified dimension_separtor: {dimension_separator}"
+                f"Specified dimension_separator: {dimension_separator}"
                 f"conflicts with store's separator: "
                 f"{store_separator}")
     dimension_separator = normalize_dimension_separator(dimension_separator)
@@ -341,7 +341,7 @@ def array(data, **kwargs):
         data = np.asanyarray(data)
 
     # setup dtype
-    kw_dtype = kwargs.get('dtype', None)
+    kw_dtype = kwargs.get('dtype')
     if kw_dtype is None:
         kwargs['dtype'] = data.dtype
     else:
@@ -350,7 +350,7 @@ def array(data, **kwargs):
     # setup shape and chunks
     data_shape, data_chunks = _get_shape_chunks(data)
     kwargs['shape'] = data_shape
-    kw_chunks = kwargs.get('chunks', None)
+    kw_chunks = kwargs.get('chunks')
     if kw_chunks is None:
         kwargs['chunks'] = data_chunks
     else:
@@ -441,7 +441,7 @@ def open_array(
         If using an fsspec URL to create the store, these will be passed to
         the backend implementation. Ignored otherwise.
     partial_decompress : bool, optional
-        If True and while the chunk_store is a FSStore and the compresion used
+        If True and while the chunk_store is a FSStore and the compression used
         is Blosc, when getting data from the array chunks will be partially
         read and decompressed when possible.
     write_empty_chunks : bool, optional

@@ -15,8 +15,11 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: [3.7, 3.8]
+        python-version: [3.7, 3.8, 3.9]
         numpy_version: ['!=1.21.0', '==1.17.*']
+        exclude:
+          - python-version: 3.9
+            numpy_version: '==1.17.*'
     services:
       redis:
         image: redis
@@ -47,7 +50,7 @@ jobs:
     - name: Create Conda environment with the rights deps
       shell: "bash -l {0}"
       run: |
-        conda create -n zarr-env python==${{matrix.python-version}} bsddb3 numcodecs==0.6.4 lmdb pip nodejs flake8 mypy
+        conda create -n zarr-env python==${{matrix.python-version}} bsddb3 numcodecs lmdb pip nodejs flake8 mypy
         conda activate zarr-env
         npm install -g azurite
     - name: Install dependencies

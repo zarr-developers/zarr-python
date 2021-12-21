@@ -797,7 +797,7 @@ class DirectoryStore(Store):
     normalize_keys : bool, optional
         If True, all store keys will be normalized to use lower case characters
         (e.g. 'foo' and 'FOO' will be treated as equivalent). This can be
-        useful to avoid potential discrepancies between case-senstive and
+        useful to avoid potential discrepancies between case-sensitive and
         case-insensitive file system. Default value is False.
     dimension_separator : {'.', '/'}, optional
         Separator placed between the dimensions of a chunk.
@@ -861,7 +861,8 @@ class DirectoryStore(Store):
     def _normalize_key(self, key):
         return key.lower() if self.normalize_keys else key
 
-    def _fromfile(self, fn):
+    @staticmethod
+    def _fromfile(fn):
         """ Read data from a file
 
         Parameters
@@ -877,7 +878,8 @@ class DirectoryStore(Store):
         with open(fn, 'rb') as f:
             return f.read()
 
-    def _tofile(self, a, fn):
+    @staticmethod
+    def _tofile(a, fn):
         """ Write data to a file
 
         Parameters
@@ -973,23 +975,15 @@ class DirectoryStore(Store):
 
     @staticmethod
     def _keys_fast(path, walker=os.walk):
-        """
-
-        Faster logic on platform where the separator is `/` and using
-        `os.walk()` to decrease the number of stats.call.
-
-        """
-        it = iter(walker(path))
-        d0, dirnames, filenames = next(it)
-        if d0.endswith('/'):
-            root_len = len(d0)
-        else:
-            root_len = len(d0)+1
-        for f in filenames:
-            yield f
-        for dirpath, _, filenames in it:
-            for f in filenames:
-                yield dirpath[root_len:].replace('\\', '/')+'/'+f
+        for dirpath, _, filenames in walker(path):
+            dirpath = os.path.relpath(dirpath, path)
+            if dirpath == os.curdir:
+                for f in filenames:
+                    yield f
+            else:
+                dirpath = dirpath.replace("\\", "/")
+                for f in filenames:
+                    yield "/".join((dirpath, f))
 
     def __iter__(self):
         return self.keys()
@@ -1005,8 +999,8 @@ class DirectoryStore(Store):
         return dir_path
 
     def listdir(self, path=None):
-        return self._dimension_separator == "/" and \
-            self._nested_listdir(path) or self._flat_listdir(path)
+        return self._nested_listdir(path) if self._dimension_separator == "/" else \
+            self._flat_listdir(path)
 
     def _flat_listdir(self, path=None):
         dir_path = self.dir_path(path)
@@ -1301,7 +1295,7 @@ class TempStore(DirectoryStore):
     normalize_keys : bool, optional
         If True, all store keys will be normalized to use lower case characters
         (e.g. 'foo' and 'FOO' will be treated as equivalent). This can be
-        useful to avoid potential discrepancies between case-senstive and
+        useful to avoid potential discrepancies between case-sensitive and
         case-insensitive file system. Default value is False.
     dimension_separator : {'.', '/'}, optional
         Separator placed between the dimensions of a chunk.
@@ -1331,7 +1325,7 @@ class NestedDirectoryStore(DirectoryStore):
     normalize_keys : bool, optional
         If True, all store keys will be normalized to use lower case characters
         (e.g. 'foo' and 'FOO' will be treated as equivalent). This can be
-        useful to avoid potential discrepancies between case-senstive and
+        useful to avoid potential discrepancies between case-sensitive and
         case-insensitive file system. Default value is False.
     dimension_separator : {'/'}, optional
         Separator placed between the dimensions of a chunk.
@@ -2108,11 +2102,11 @@ class LRUStoreCache(Store):
         >>> z = root['foo/bar/baz']  # doctest: +REMOTE_DATA
         >>> from timeit import timeit
         >>> # first data access is relatively slow, retrieved from store
-        ... timeit('print(z[:].tostring())', number=1, globals=globals())  # doctest: +SKIP
+        ... timeit('print(z[:].tobytes())', number=1, globals=globals())  # doctest: +SKIP
         b'Hello from the cloud!'
         0.1081731989979744
         >>> # second data access is faster, uses cache
-        ... timeit('print(z[:].tostring())', number=1, globals=globals())  # doctest: +SKIP
+        ... timeit('print(z[:].tobytes())', number=1, globals=globals())  # doctest: +SKIP
         b'Hello from the cloud!'
         0.0009490990014455747
 

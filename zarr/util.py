@@ -362,7 +362,7 @@ def normalize_storage_path(path: Union[str, bytes, None]) -> str:
 
         # don't allow path segments with just '.' or '..'
         segments = path.split('/')
-        if any([s in {'.', '..'} for s in segments]):
+        if any(s in {'.', '..'} for s in segments):
             raise ValueError("path containing '.' or '..' segment not allowed")
 
     else:
@@ -402,7 +402,7 @@ def info_html_report(items) -> str:
     return report
 
 
-class InfoReporter(object):
+class InfoReporter:
 
     def __init__(self, obj):
         self.obj = obj
@@ -416,7 +416,7 @@ class InfoReporter(object):
         return info_html_report(items)
 
 
-class TreeNode(object):
+class TreeNode:
 
     def __init__(self, obj, depth=0, level=None):
         self.obj = obj
@@ -500,7 +500,7 @@ def tree_widget(group, expand, level):
     return result
 
 
-class TreeViewer(object):
+class TreeViewer:
 
     def __init__(self, group, expand=False, level=None):
 
@@ -573,7 +573,7 @@ def is_valid_python_name(name):
     return name.isidentifier() and not iskeyword(name)
 
 
-class NoLock(object):
+class NoLock:
     """A lock that doesn't lock."""
 
     def __enter__(self):
@@ -638,12 +638,6 @@ class PartialReadBuffer:
         assert self.buff is not None
         if self.nblocks == 1:
             return
-        blocks_to_decompress = nitems / self.n_per_block
-        blocks_to_decompress = (
-            blocks_to_decompress
-            if blocks_to_decompress == int(blocks_to_decompress)
-            else int(blocks_to_decompress + 1)
-        )
         start_block = int(start / self.n_per_block)
         wanted_decompressed = 0
         while wanted_decompressed < nitems:

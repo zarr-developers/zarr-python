@@ -75,7 +75,7 @@ def open(store: StoreLike = None, mode: str = "a", **kwargs):
 
     """
 
-    path = kwargs.get('path', None)
+    path = kwargs.get('path')
     # handle polymorphic store arg
     clobber = mode == 'w'
     # we pass storage options explicitly, since normalize_store_arg might construct
@@ -428,7 +428,7 @@ def tree(grp, expand=False, level=None):
     return TreeViewer(grp, expand=expand, level=level)
 
 
-class _LogWriter(object):
+class _LogWriter:
 
     def __init__(self, log):
         self.log_func = None
@@ -1179,7 +1179,7 @@ def open_consolidated(store: StoreLike, metadata_key=".zmetadata", mode="r+", **
     from .storage import ConsolidatedMetadataStore
 
     # normalize parameters
-    store = normalize_store_arg(store, storage_options=kwargs.get("storage_options", None))
+    store = normalize_store_arg(store, storage_options=kwargs.get("storage_options"))
     if mode not in {'r', 'r+'}:
         raise ValueError("invalid mode, expected either 'r' or 'r+'; found {!r}"
                          .format(mode))

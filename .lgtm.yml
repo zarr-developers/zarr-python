@@ -1,0 +1,7 @@
+# Config for LGTM.com static code analysis
+# https://lgtm.com/projects/g/zarr-developers/zarr-python
+
+extraction:
+  python:
+    python_setup:
+      version: 3
