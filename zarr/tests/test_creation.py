@@ -306,6 +306,14 @@ def test_open_array(zarr_version, dimension_separator):
     assert os.path.abspath(chunk_store) == z.chunk_store.path
 
 
+def test_open_array_none():
+
+    # open with both store and zarr_version = None
+    z = open_array(mode='w', shape=100, chunks=10)
+    assert isinstance(z, Array)
+    assert z._version == 2
+
+
 @pytest.mark.parametrize('dimension_separator', ['.', '/', None])
 @pytest.mark.parametrize('zarr_version', [2, 3])
 def test_open_array_infer_separator_from_store(zarr_version, dimension_separator):
@@ -579,6 +587,10 @@ def test_create(zarr_version):
 
     # defaults
     z = create(100, **kwargs)
+    if zarr_version == 3:
+        with pytest.raises(ValueError):
+            # cannot create without specifying a path
+            z = create(100, zarr_version=3)
     assert isinstance(z, Array)
     assert (100,) == z.shape
     assert (100,) == z.chunks  # auto-chunks
