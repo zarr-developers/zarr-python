@@ -97,7 +97,7 @@ the repository, you can do something like the following::
 
 To verify that your development environment is working, you can run the unit tests::
 
-    $ pytest -v zarr
+    $ python -m pytest -v zarr
 
 Creating a branch
 ~~~~~~~~~~~~~~~~~
