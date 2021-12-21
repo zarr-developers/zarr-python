@@ -2803,6 +2803,9 @@ class TestArrayWithPathV3(TestArrayWithPath):
         assert x.is_view
         assert x[-1] == 5
 
+        with pytest.raises(PermissionError):
+            x.fill_value = 8
+
     def test_nchunks_initialized(self):
         # copied from TestArray so the empty version from TestArrayWithPath is
         # not used
