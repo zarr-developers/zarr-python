@@ -232,12 +232,10 @@ class StoreV3(BaseStore):
     @abc.abstractmethod
     def __setitem__(self, key, value):
         """Set a value."""
-        return
 
     @abc.abstractmethod
     def __getitem__(self, key):
         """Get a value."""
-        return
 
     def clear(self):
         """Remove all items from store."""
@@ -282,14 +280,6 @@ class StoreV3(BaseStore):
             "if your store exposes the MutableMapping interface wrap it in "
             f"Zarr.storage.KVStoreV3. Got {store}"
         )
-
-    def rmdir(self, path: str = "") -> None:
-        if not self.is_erasable():
-            raise NotImplementedError(
-                f'{type(self)} is not erasable, cannot call "rmdir"'
-            )  # pragma: no cover
-        path = normalize_storage_path(path)
-        _rmdir_from_keys_v3(self, path)
 
 
 # allow MutableMapping for backwards compatibility

@@ -2932,7 +2932,15 @@ def _get_files_and_dirs_from_path(store, path):
     return files, dirs
 
 
-class KVStoreV3(KVStore, StoreV3):
+class RmdirV3():
+    """Mixin class that can be used to ensure override of v2 rmdir class."""
+
+    def rmdir(self, path: str = "") -> None:
+        path = normalize_storage_path(path)
+        _rmdir_from_keys_v3(self, path)
+
+
+class KVStoreV3(RmdirV3, KVStore, StoreV3):
 
     def list(self):
         return list(self._mutable_mapping.keys())
@@ -2946,10 +2954,6 @@ class KVStoreV3(KVStore, StoreV3):
             isinstance(other, KVStoreV3) and
             self._mutable_mapping == other._mutable_mapping
         )
-
-    def rmdir(self, path: str = "") -> None:
-        path = normalize_storage_path(path)
-        _rmdir_from_keys_v3(self, path)
 
 
 KVStoreV3.__doc__ = KVStore.__doc__
@@ -3021,11 +3025,9 @@ class FSStoreV3(FSStore, StoreV3):
             sfx = _get_hierarchy_metadata(self)['metadata_key_suffix']
             meta_dir = ('meta/root/' + path).rstrip('/')
             array_meta_file = meta_dir + '.array' + sfx
-            if array_meta_file in self:
-                self.fs.rm(array_meta_file)  # type: ignore
+            self.pop(array_meta_file, None)
             group_meta_file = meta_dir + '.group' + sfx
-            if group_meta_file in self:
-                self.fs.rm(group_meta_file)  # type: ignore
+            self.pop(group_meta_file, None)
         else:
             store_path = self.dir_path(path)
             if self.fs.isdir(store_path):
@@ -3106,11 +3108,9 @@ class MemoryStoreV3(MemoryStore, StoreV3):
             sfx = _get_hierarchy_metadata(self)['metadata_key_suffix']
             meta_dir = ('meta/root/' + path).rstrip('/')
             array_meta_file = meta_dir + '.array' + sfx
-            if array_meta_file in self:
-                self.erase(array_meta_file)  # type: ignore
+            self.pop(array_meta_file, None)
             group_meta_file = meta_dir + '.group' + sfx
-            if group_meta_file in self:
-                self.erase(group_meta_file)  # type: ignore
+            self.pop(group_meta_file, None)
         else:
             # clear out root
             self.root = self.cls()
@@ -3190,13 +3190,9 @@ class DirectoryStoreV3(DirectoryStore, StoreV3):
             sfx = _get_hierarchy_metadata(self)['metadata_key_suffix']
             meta_dir = ('meta/root/' + path).rstrip('/')
             array_meta_file = meta_dir + '.array' + sfx
-            if array_meta_file in self:
-                file_path = os.path.join(dir_path, array_meta_file)
-                os.remove(file_path)
+            self.pop(array_meta_file, None)
             group_meta_file = meta_dir + '.group' + sfx
-            if group_meta_file in self:
-                file_path = os.path.join(dir_path, group_meta_file)
-                os.remove(file_path)
+            self.pop(group_meta_file, None)
 
         elif os.path.isdir(dir_path):
             shutil.rmtree(dir_path)
@@ -3246,10 +3242,6 @@ class ZipStoreV3(ZipStore, StoreV3):
             else:
                 return 0
 
-    def rmdir(self, path: str = "") -> None:
-        path = normalize_storage_path(path)
-        _rmdir_from_keys_v3(self, path)
-
 
 ZipStoreV3.__doc__ = ZipStore.__doc__
 
@@ -3273,7 +3265,7 @@ class NestedDirectoryStoreV3(NestedDirectoryStore, DirectoryStoreV3):
 NestedDirectoryStoreV3.__doc__ = NestedDirectoryStore.__doc__
 
 
-class RedisStoreV3(RedisStore, StoreV3):
+class RedisStoreV3(RmdirV3, RedisStore, StoreV3):
 
     def list(self):
         return list(self.keys())
@@ -3281,16 +3273,12 @@ class RedisStoreV3(RedisStore, StoreV3):
     def __setitem__(self, key, value):
         self._validate_key(key)
         super().__setitem__(key, value)
-
-    def rmdir(self, path: str = "") -> None:
-        path = normalize_storage_path(path)
-        _rmdir_from_keys_v3(self, path)
 
 
 RedisStoreV3.__doc__ = RedisStore.__doc__
 
 
-class MongoDBStoreV3(MongoDBStore, StoreV3):
+class MongoDBStoreV3(RmdirV3, MongoDBStore, StoreV3):
 
     def list(self):
         return list(self.keys())
@@ -3298,16 +3286,12 @@ class MongoDBStoreV3(MongoDBStore, StoreV3):
     def __setitem__(self, key, value):
         self._validate_key(key)
         super().__setitem__(key, value)
-
-    def rmdir(self, path: str = "") -> None:
-        path = normalize_storage_path(path)
-        _rmdir_from_keys_v3(self, path)
 
 
 MongoDBStoreV3.__doc__ = MongoDBStore.__doc__
 
 
-class DBMStoreV3(DBMStore, StoreV3):
+class DBMStoreV3(RmdirV3, DBMStore, StoreV3):
 
     def list(self):
         return list(self.keys())
@@ -3315,16 +3299,12 @@ class DBMStoreV3(DBMStore, StoreV3):
     def __setitem__(self, key, value):
         self._validate_key(key)
         super().__setitem__(key, value)
-
-    def rmdir(self, path: str = "") -> None:
-        path = normalize_storage_path(path)
-        _rmdir_from_keys_v3(self, path)
 
 
 DBMStoreV3.__doc__ = DBMStore.__doc__
 
 
-class LMDBStoreV3(LMDBStore, StoreV3):
+class LMDBStoreV3(RmdirV3, LMDBStore, StoreV3):
 
     def list(self):
         return list(self.keys())
@@ -3332,10 +3312,6 @@ class LMDBStoreV3(LMDBStore, StoreV3):
     def __setitem__(self, key, value):
         self._validate_key(key)
         super().__setitem__(key, value)
-
-    def rmdir(self, path: str = "") -> None:
-        path = normalize_storage_path(path)
-        _rmdir_from_keys_v3(self, path)
 
 
 LMDBStoreV3.__doc__ = LMDBStore.__doc__
@@ -3382,17 +3358,9 @@ class SQLiteStoreV3(SQLiteStore, StoreV3):
             sfx = _get_hierarchy_metadata(self)['metadata_key_suffix']
             meta_dir = ('meta/root/' + path).rstrip('/')
             array_meta_file = meta_dir + '.array' + sfx
-            if array_meta_file in self:
-                with self.lock:
-                    self.cursor.execute(
-                        'DELETE FROM zarr WHERE k LIKE (? || "/%")', (array_meta_file,)
-                    )
+            self.pop(array_meta_file, None)
             group_meta_file = meta_dir + '.group' + sfx
-            if group_meta_file in self:
-                with self.lock:
-                    self.cursor.execute(
-                        'DELETE FROM zarr WHERE k LIKE (? || "/%")', (group_meta_file,)
-                    )
+            self.pop(group_meta_file, None)
         else:
             self.clear()
 
@@ -3400,7 +3368,7 @@ class SQLiteStoreV3(SQLiteStore, StoreV3):
 SQLiteStoreV3.__doc__ = SQLiteStore.__doc__
 
 
-class LRUStoreCacheV3(LRUStoreCache, StoreV3):
+class LRUStoreCacheV3(RmdirV3, LRUStoreCache, StoreV3):
 
     def __init__(self, store, max_size: int):
         self._store = StoreV3._ensure_store(store)
@@ -3419,10 +3387,6 @@ class LRUStoreCacheV3(LRUStoreCache, StoreV3):
     def __setitem__(self, key, value):
         self._validate_key(key)
         super().__setitem__(key, value)
-
-    def rmdir(self, path: str = "") -> None:
-        path = normalize_storage_path(path)
-        _rmdir_from_keys_v3(self, path)
 
 
 LRUStoreCacheV3.__doc__ = LRUStoreCache.__doc__

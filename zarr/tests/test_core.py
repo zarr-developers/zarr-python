@@ -17,6 +17,11 @@ from numcodecs.tests.common import greetings
 from numpy.testing import assert_array_almost_equal, assert_array_equal
 from pkg_resources import parse_version
 
+from zarr._storage.store import (
+    _prefix_to_array_key,
+    _prefix_to_attrs_key,
+    _prefix_to_group_key
+)
 from zarr.core import Array
 from zarr.errors import ArrayNotFoundError, ContainsGroupError
 from zarr.meta import json_loads
@@ -2651,6 +2656,36 @@ class TestArrayWithFSStoreNestedPartialRead(TestArray):
 ####
 
 # Start with TestArrayWithPathV3 not TestArrayV3 since path must be supplied
+
+
+class TestArrayV3(unittest.TestCase):
+
+    version = 3
+
+    def test_array_init(self):
+
+        # normal initialization
+        store = KVStoreV3(dict())
+        with pytest.raises(ValueError):
+            # cannot init_array for v3 without a path
+            init_array(store, shape=100, chunks=10, dtype="<f8")
+
+        init_array(store, path='x', shape=100, chunks=10, dtype="<f8")
+        with pytest.raises(ValueError):
+            # cannot initialize a v3 array without a path
+            Array(store)
+
+    def test_prefix_exceptions(self):
+        store = KVStoreV3(dict())
+        with pytest.raises(ValueError):
+            _prefix_to_array_key(store, '')
+
+        with pytest.raises(ValueError):
+            _prefix_to_group_key(store, '')
+
+        with pytest.raises(ValueError):
+            _prefix_to_attrs_key(store, '')
+
 
 class TestArrayWithPathV3(TestArrayWithPath):
 

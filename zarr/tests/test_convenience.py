@@ -26,10 +26,13 @@ from zarr.errors import CopyError
 from zarr.hierarchy import Group, group
 from zarr.storage import (
     ConsolidatedMetadataStore,
-    MemoryStore,
-    MemoryStoreV3,
+    DirectoryStoreV3,
+    FSStoreV3,
     KVStore,
     KVStoreV3,
+    MemoryStore,
+    MemoryStoreV3,
+    SQLiteStoreV3,
     atexit_rmtree,
     getsize,
 )
@@ -858,14 +861,14 @@ class TestCopy:
 
 class TestCopyV3(TestCopy):
 
-    @pytest.fixture(params=[False, True], ids=['zarr', 'hdf5'])
+    @pytest.fixture(params=['zarr', 'hdf5'])
     def source(self, request, tmpdir):
         def prep_source(source):
             foo = source.create_group('foo')
             foo.attrs['experiment'] = 'weird science'
             baz = foo.create_dataset('bar/baz', data=np.arange(100), chunks=(50,))
             baz.attrs['units'] = 'metres'
-            if request.param:
+            if request.param == 'hdf5':
                 extra_kws = dict(compression='gzip', compression_opts=3, fillvalue=84,
                                  shuffle=True, fletcher32=True)
             else:
@@ -874,23 +877,46 @@ class TestCopyV3(TestCopy):
                                   chunks=(10, 2), dtype='i2', **extra_kws)
             return source
 
-        if request.param:
+        if request.param == 'hdf5':
             h5py = pytest.importorskip('h5py')
             fn = tmpdir.join('source.h5')
             with h5py.File(str(fn), mode='w') as h5f:
                 yield prep_source(h5f)
-        else:
+        elif request.param == 'zarr':
             yield prep_source(group(path='group1', zarr_version=3))
+        elif request.param == 'zarr_fsstore':
+            fn = tmpdir.join('source.zr3')
+            store = FSStoreV3(str(fn), auto_mkdir=True)
+            yield prep_source(group(store, path='group1', zarr_version=3))
 
-    @pytest.fixture(params=[False, True], ids=['zarr', 'hdf5'])
+    # Test with various destination StoreV3 types as TestCopyV3 covers rmdir
+    @pytest.fixture(
+        params=['zarr', 'zarr_fsstore', 'zarr_kvstore', 'zarr_directorystore',
+                'zarr_sqlitestore', 'hdf5']
+    )
     def dest(self, request, tmpdir):
-        if request.param:
+        if request.param == 'hdf5':
             h5py = pytest.importorskip('h5py')
             fn = tmpdir.join('dest.h5')
             with h5py.File(str(fn), mode='w') as h5f:
                 yield h5f
-        else:
+        elif request.param == 'zarr':
             yield group(path='group2', zarr_version=3)
+        elif request.param == 'zarr_kvstore':
+            store = KVStoreV3(dict())
+            yield group(store, path='group2', zarr_version=3)
+        elif request.param == 'zarr_fsstore':
+            fn = tmpdir.join('dest.zr3')
+            store = FSStoreV3(str(fn), auto_mkdir=True)
+            yield group(store, path='group2', zarr_version=3)
+        elif request.param == 'zarr_directorystore':
+            fn = tmpdir.join('dest.zr3')
+            store = DirectoryStoreV3(str(fn))
+            yield group(store, path='group2', zarr_version=3)
+        elif request.param == 'zarr_sqlitestore':
+            fn = tmpdir.join('dest.db')
+            store = SQLiteStoreV3(str(fn))
+            yield group(store, path='group2', zarr_version=3)
 
     def test_copy_array_create_options(self, source, dest):
         dest_h5py = dest.__module__.startswith('h5py.')
