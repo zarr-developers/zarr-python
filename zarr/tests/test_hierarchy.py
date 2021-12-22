@@ -841,7 +841,11 @@ class TestGroup(unittest.TestCase):
         data = np.arange(100)
         g['foo'] = data
 
+        if g._store._store_version == 3:
+            print(f"before move: {g._store.list()}")
         g.move("foo", "bar")
+        if g._store._store_version == 3:
+            print(f"after move: {g._store.list()}")
         assert "foo" not in g
         assert "bar" in g
         assert_array_equal(data, g["bar"])

@@ -309,7 +309,6 @@ def _get_hierarchy_metadata(store=None):
     return meta
 
 
-
 def _rename_metadata_v3(store: StoreV3, src_path: str, dst_path: str) -> bool:
     """Rename source or group metadata file associated with src_path."""
     any_renamed = False
@@ -321,7 +320,7 @@ def _rename_metadata_v3(store: StoreV3, src_path: str, dst_path: str) -> bool:
         new_key = 'meta/root/' + dst_path + '.array' + sfx
         store[new_key] = store.pop(_src_array_json)
         any_renamed = True
-    _src_group_json = 'meta/root/' + dst_path + '.group' + sfx
+    _src_group_json = 'meta/root/' + src_path + '.group' + sfx
     if _src_group_json in store:
         new_key = 'meta/root/' + dst_path + '.group' + sfx
         store[new_key] = store.pop(_src_group_json)
@@ -348,7 +347,7 @@ def _rename_from_keys(store: BaseStore, src_path: str, dst_path: str) -> None:
                 new_key = _dst_prefix + key[len(_src_prefix):]
                 store[new_key] = store.pop(key)
                 any_renamed = True
-        any_renamed = any_renamed or _rename_metadata_v3(store, src_path, dst_path)
+        any_renamed =  _rename_metadata_v3(store, src_path, dst_path) or any_renamed
         if not any_renamed:
             raise ValueError(f"no item {src_path} found to rename")
 
