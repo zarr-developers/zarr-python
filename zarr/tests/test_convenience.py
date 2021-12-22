@@ -900,8 +900,7 @@ class TestCopyV3(TestCopy):
             yield prep_source(group(path='group1', zarr_version=3))
 
     # Test with various destination StoreV3 types as TestCopyV3 covers rmdir
-    destinations = ['zarr', 'zarr_fsstore', 'zarr_kvstore', 'zarr_directorystore',
-                    'zarr_sqlitestore', 'hdf5']
+    destinations = ['hdf5', 'zarr', 'zarr_kvstore', 'zarr_directorystore', 'zarr_sqlitestore']
     if have_fsspec:
         destinations += ['zarr_fsstore']
 
