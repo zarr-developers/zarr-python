@@ -3096,6 +3096,12 @@ class TestArrayWithCustomMappingV3(TestArrayWithPathV3, TestArrayWithCustomMappi
         expect_nbytes_stored = sum(buffer_size(v) for k, v in z.store.items() if k != 'zarr.json')
         assert expect_nbytes_stored == z.nbytes_stored
 
+    def test_len(self):
+
+        # dict as store
+        z = self.create_array(shape=1000, chunks=100)
+        assert len(z._store) == 2
+
 
 class TestArrayNoCacheV3(TestArrayWithPathV3, TestArrayNoCache):
 

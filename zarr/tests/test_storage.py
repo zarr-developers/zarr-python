@@ -51,15 +51,6 @@ def dimension_separator_fixture(request):
     return request.param
 
 
-@pytest.fixture(params=[
-    (None, "/"),
-    (".", "."),
-    ("/", "/"),
-])
-def dimension_separator_fixture_v3(request):
-    return request.param
-
-
 def skip_if_nested_chunks(**kwargs):
     if kwargs.get("dimension_separator") == "/":
         pytest.skip("nested chunks are unsupported")
@@ -346,8 +337,6 @@ class StoreTests:
             # TODO: proper behavior of getsize?
             #       v3 returns size of all nested arrays, not just the
             #       size of the arrays in the current folder.
-            if isinstance(store, ZipStoreV3):
-                1 / 0
             if self.version == 2:
                 assert 6 == store.getsize()
             else:
@@ -369,6 +358,9 @@ class StoreTests:
             assert 0 == store.getsize('c/x/y')
             assert 0 == store.getsize('c/d/y')
             assert 0 == store.getsize('c/d/y/z')
+
+            # access item via full path
+            assert 3 == store.getsize(self.root + 'a')
 
         # test listdir (optional)
         if hasattr(store, 'listdir'):

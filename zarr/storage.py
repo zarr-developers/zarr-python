@@ -2958,6 +2958,9 @@ class FSStoreV3(FSStore, StoreV3):
                 dir_path = os.path.join(self.path, d)
                 if os.path.exists(dir_path):
                     dirs.append(dir_path)
+        elif path in self:
+            # access individual element by full path
+            return buffer_size(self[path])
         else:
             files, dirs = _get_files_and_dirs_from_path(self, path)
             for file in files:
@@ -3166,18 +3169,16 @@ class ZipStoreV3(ZipStore, StoreV3):
         with self.mutex:
             children = self.list_prefix('data/root/' + path)
             children += self.list_prefix('meta/root/' + path)
+            print(f"path={path}, children={children}")
             if children:
                 size = 0
                 for name in children:
                     info = self.zf.getinfo(name)
                     size += info.compress_size
                 return size
-            elif path:
-                try:
-                    info = self.zf.getinfo(path)
-                    return info.compress_size
-                except KeyError:
-                    return 0
+            elif path in self:
+                info = self.zf.getinfo(path)
+                return info.compress_size
             else:
                 return 0
 

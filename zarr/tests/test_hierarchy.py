@@ -107,14 +107,7 @@ class TestGroup(unittest.TestCase):
 
     def _subgroup_path(self, group, path):
         path = path.rstrip('/')
-        absolute = path.startswith('/')
-        if absolute:
-            group_path = path
-        else:
-            if path:
-                group_path = '/'.join([group.path, path])
-            else:
-                group_path = path
+        group_path = '/'.join([group.path, path])
         group_path = group_path.lstrip('/')
         group_name = '/' + group_path
         return group_path, group_name
@@ -132,6 +125,7 @@ class TestGroup(unittest.TestCase):
 
         # create level 1 child group
         g2 = g1.create_group('foo')
+        # check with relative path
         path, name = self._subgroup_path(g1, 'foo')
         assert isinstance(g2, Group)
         assert path == g2.path

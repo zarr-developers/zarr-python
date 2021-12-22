@@ -51,32 +51,32 @@ class DummyStore():
     # contains all methods expected of Mutable Mapping
 
     def keys(self):
-        pass
+        """keys"""
 
     def values(self):
-        pass
+        """values"""
 
     def get(self, value, default=None):
-        pass
+        """get"""
 
     def __setitem__(self, key, value):
-        pass
+        """__setitem__"""
 
     def __getitem__(self, key):
-        pass
+        """__getitem__"""
 
     def __delitem__(self, key):
-        pass
+        """__delitem__"""
 
     def __contains__(self, key):
-        pass
+        """__contains__"""
 
 
 class InvalidDummyStore():
     # does not contain expected methods of a MutableMapping
 
     def keys(self):
-        pass
+        """keys"""
 
 
 def test_ensure_store_v3():

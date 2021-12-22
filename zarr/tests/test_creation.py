@@ -364,8 +364,8 @@ def test_open_array_n5(zarr_version):
 
     store = 'data/group.n5'
     group_kwargs = kwargs.copy()
-    if zarr_version == 3:
-        group_kwargs['path'] = 'group'
+    # if zarr_version == 3:
+    #     group_kwargs['path'] = 'group'
     z = open_group(store, mode='w', **group_kwargs)
     i = z.create_group('inner')
     a = i.zeros("array", shape=100, chunks=10)
