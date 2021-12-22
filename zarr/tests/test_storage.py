@@ -346,6 +346,8 @@ class StoreTests:
             # TODO: proper behavior of getsize?
             #       v3 returns size of all nested arrays, not just the
             #       size of the arrays in the current folder.
+            if isinstance(store, ZipStoreV3):
+                1 / 0
             if self.version == 2:
                 assert 6 == store.getsize()
             else:

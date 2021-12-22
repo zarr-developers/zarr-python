@@ -473,6 +473,11 @@ def test_normalize_store_arg_v3(tmpdir):
     assert isinstance(store, ZipStoreV3)
     assert 'zarr.json' in store
 
+    # can't pass storage_options to non-fsspec store
+    with pytest.raises(ValueError):
+        normalize_store_arg(str(fn), zarr_version=3, mode='w', clobber=True,
+                            storage_options={"some": "kwargs"})
+
     if have_fsspec:
         path = tempfile.mkdtemp()
         store = normalize_store_arg("file://" + path, zarr_version=3, mode='w', clobber=True)

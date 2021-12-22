@@ -31,7 +31,7 @@ from zarr.storage import (KVStoreV3, DirectoryStoreV3,  # MemoryStoreV3
                           FSStoreV3, NestedDirectoryStoreV3, ZipStoreV3,
                           DBMStoreV3, LMDBStoreV3, SQLiteStoreV3,
                           LRUStoreCacheV3)
-from zarr.util import InfoReporter
+from zarr.util import InfoReporter, buffer_size
 from zarr.tests.util import skip_test_env_var, have_fsspec, abs_container
 
 
@@ -1185,7 +1185,6 @@ class TestGroupV3WithFSStore(TestGroupWithFSStore, TestGroupV3):
 
     @staticmethod
     def create_store():
-        pytest.skip("TODO: Fix for V3")
         path = tempfile.mkdtemp()
         atexit.register(atexit_rmtree, path)
         store = FSStoreV3(path)
@@ -1201,6 +1200,18 @@ class TestGroupV3WithFSStore(TestGroupWithFSStore, TestGroupV3):
                          compressor=None)
         h = open_group(store, path='group', mode='r')
         np.testing.assert_array_equal(h[name][:], data)
+
+        f = open_group(store, path='group2', mode='w')
+
+        data_size = data.nbytes
+        group_meta_size = buffer_size(store['meta/root/group.group.json'])
+        group2_meta_size = buffer_size(store['meta/root/group2.group.json'])
+        array_meta_size = buffer_size(store['meta/root/group/raw.array.json'])
+        assert store.getsize() == data_size + group_meta_size + group2_meta_size + array_meta_size
+        # added case with path to complete coverage
+        assert store.getsize('group') == data_size + group_meta_size + array_meta_size
+        assert store.getsize('group2') == group2_meta_size
+        assert store.getsize('group/raw') == data_size + array_meta_size
 
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
@@ -1231,7 +1242,6 @@ class TestGroupV3WithNestedFSStore(TestGroupV3WithFSStore):
 
     @staticmethod
     def create_store():
-        pytest.skip("TODO: Fix for V3")
         path = tempfile.mkdtemp()
         atexit.register(atexit_rmtree, path)
         store = FSStoreV3(path, key_separator='/', auto_mkdir=True)

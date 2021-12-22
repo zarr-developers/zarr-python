@@ -165,7 +165,7 @@ def normalize_store_arg(store, clobber=False, storage_options=None, mode="w",
             if "://" in store or "::" in store:
                 store = FSStoreV3(store, mode=mode, **(storage_options or {}))
             elif storage_options:
-                store = ValueError("storage_options passed with non-fsspec path")
+                raise ValueError("storage_options passed with non-fsspec path")
             elif store.endswith('.zip'):
                 store = ZipStoreV3(store, mode=mode)
             elif store.endswith('.n5'):
@@ -3169,12 +3169,8 @@ class ZipStoreV3(ZipStore, StoreV3):
             if children:
                 size = 0
                 for name in children:
-                    try:
-                        info = self.zf.getinfo(name)
-                    except KeyError:
-                        pass
-                    else:
-                        size += info.compress_size
+                    info = self.zf.getinfo(name)
+                    size += info.compress_size
                 return size
             elif path:
                 try:
