@@ -347,7 +347,7 @@ def _rename_from_keys(store: BaseStore, src_path: str, dst_path: str) -> None:
                 new_key = _dst_prefix + key[len(_src_prefix):]
                 store[new_key] = store.pop(key)
                 any_renamed = True
-        any_renamed =  _rename_metadata_v3(store, src_path, dst_path) or any_renamed
+        any_renamed = _rename_metadata_v3(store, src_path, dst_path) or any_renamed
         if not any_renamed:
             raise ValueError(f"no item {src_path} found to rename")
 

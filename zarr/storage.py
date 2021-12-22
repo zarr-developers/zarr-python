@@ -3054,7 +3054,7 @@ class MemoryStoreV3(MemoryStore, StoreV3):
 
                 dst_parent[dst_key] = src_parent.pop(src_key)
                 any_renamed = True
-        any_renamed =  _rename_metadata_v3(self, src_path, dst_path) or any_renamed
+        any_renamed = _rename_metadata_v3(self, src_path, dst_path) or any_renamed
         if not any_renamed:
             raise ValueError(f"no item {src_path} found to rename")
 

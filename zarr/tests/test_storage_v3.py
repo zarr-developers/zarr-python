@@ -222,6 +222,7 @@ class StoreV3Tests(_StoreTests):
             with pytest.raises(NotImplementedError):
                 store.rename('a', 'b')
 
+
 class TestMappingStoreV3(StoreV3Tests):
 
     def create_store(self, **kwargs):
