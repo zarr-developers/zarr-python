@@ -178,18 +178,8 @@ def normalize_store_arg(store, clobber=False, storage_options=None, mode="w",
             return store
     elif zarr_version == 2:
         store = Store._ensure_store(store)
-        if getattr(store, '_store_version', 2) != 2:
-            raise ValueError(
-                "provided store does not match the specified zarr version.")
-        # if not isinstance(store, Store) and isinstance(store, MutableMapping):
-        #     store = KVStore(store)
     elif zarr_version == 3:
         store = StoreV3._ensure_store(store)
-        if getattr(store, '_store_version', 2) != 3:
-            raise ValueError(
-                "provided store does not match the specified zarr version.")
-        # if not isinstance(store, StoreV3) and isinstance(store, MutableMapping):
-        #     store = KVStoreV3(store)
         if 'zarr.json' not in store:
             # add default zarr.json metadata
             store['zarr.json'] = store._metadata_class.encode_hierarchy_metadata(None)
