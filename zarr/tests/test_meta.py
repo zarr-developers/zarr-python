@@ -563,7 +563,11 @@ def test_get_extended_dtype_info():
     extended_types += ['|S4', '|S8', '>U4', '<U4', '|O', '|V16']
 
     for dtype in extended_types:
-        info = get_extended_dtype_info(np.asarray([], dtype=dtype).dtype)
+        try:
+            info = get_extended_dtype_info(np.asarray([], dtype=dtype).dtype)
+        except TypeError:
+            # skip any numpy dtypes not supported by a particular architecture
+            pass
         assert 'extension' in info
         assert 'type' in info
         assert 'fallback' in info
