@@ -14,7 +14,7 @@ from numcodecs.compat import ensure_ndarray, ensure_text
 from numcodecs.registry import codec_registry
 from numcodecs.blosc import cbuffer_sizes, cbuffer_metainfo
 
-from typing import Any, Callable, Dict, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Optional, Tuple, Union, cast
 
 
 def flatten(arg: Iterable) -> Iterable:
@@ -150,7 +150,7 @@ def normalize_chunks(
 
 
 def normalize_shards(
-    shards: Optional[Tuple[Optional[int], ...]], shape: Tuple[int, ...],
+    shards: Union[int, Tuple[Optional[int], ...], None], shape: Tuple[int, ...],
 ) -> Optional[Tuple[int, ...]]:
     """Convenience function to normalize the `shards` argument for an array
     with the given `shape`."""
@@ -163,6 +163,7 @@ def normalize_shards(
     # handle 1D convenience form
     if isinstance(shards, numbers.Integral):
         shards = tuple(int(shards) for _ in shape)
+    shards = cast(Tuple[Optional[int]], shards)
 
     # handle bad dimensionality
     if len(shards) > len(shape):
@@ -171,13 +172,14 @@ def normalize_shards(
     # handle underspecified shards
     if len(shards) < len(shape):
         # assume single shards across remaining dimensions
-        shards += (1, ) * len(shape) - len(shards)
+        shards += (1, ) * (len(shape) - len(shards))
 
     # handle None or -1 in shards
     if -1 in shards or None in shards:
         shards = tuple(s if c == -1 or c is None else int(c)
                        for s, c in zip(shape, shards))
 
+    shards = cast(Tuple[int], shards)
     return tuple(shards)
 
 

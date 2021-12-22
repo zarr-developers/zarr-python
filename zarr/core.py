@@ -1930,7 +1930,8 @@ class Array:
             and hasattr(self._compressor, "decode_partial")
             and not fields
             and self.dtype != object
-            and hasattr(self.chunk_store, "getitems")  # TODO: this should rather check for read_block or similar
+            # TODO: this should rather check for read_block or similar
+            and hasattr(self.chunk_store, "getitems")
         ):
             partial_read_decode = True
             cdatas = {

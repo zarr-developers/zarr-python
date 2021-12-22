@@ -236,8 +236,8 @@ def init_array(
     filters=None,
     object_codec=None,
     dimension_separator=None,
-    shards: Union[int, Tuple[int, ...], None]=None,
-    shard_format: Optional[str]=None,
+    shards: Union[int, Tuple[int, ...], None] = None,
+    shard_format: Optional[str] = None,
 ):
     """Initialize an array store with the given configuration. Note that this is a low-level
     function and there should be no need to call this directly from user code.
@@ -373,8 +373,8 @@ def _init_array_metadata(
     filters=None,
     object_codec=None,
     dimension_separator=None,
-    shards:Union[int, Tuple[int, ...], None] = None,
-    shard_format: Optional[str]=None,
+    shards: Union[int, Tuple[int, ...], None] = None,
+    shard_format: Optional[str] = None,
 ):
 
     # guard conditions

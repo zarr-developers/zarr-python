@@ -32,22 +32,32 @@ class _ShardIndex(NamedTuple):
         if chunk_slice is None:
             self.offsets_and_lengths[localized_chunk] = (MAX_UINT_64, MAX_UINT_64)
         else:
-            self.offsets_and_lengths[localized_chunk] = (chunk_slice.start, chunk_slice.stop - chunk_slice.start)
+            self.offsets_and_lengths[localized_chunk] = (
+                chunk_slice.start,
+                chunk_slice.stop - chunk_slice.start
+            )
 
     def to_bytes(self) -> bytes:
         return self.offsets_and_lengths.tobytes(order='C')
 
     @classmethod
-    def from_bytes(cls, buffer: Union[bytes, bytearray], store: "IndexedShardedStore") -> "_ShardIndex":
+    def from_bytes(
+        cls, buffer: Union[bytes, bytearray], store: "IndexedShardedStore"
+    ) -> "_ShardIndex":
         return cls(
             store=store,
-            offsets_and_lengths=np.frombuffer(bytearray(buffer), dtype="<u8").reshape(*store._shards, 2, order="C")
+            offsets_and_lengths=np.frombuffer(
+                bytearray(buffer), dtype="<u8"
+            ).reshape(*store._shards, 2, order="C")
         )
 
     @classmethod
     def create_empty(cls, store: "IndexedShardedStore"):
         # reserving 2*64bit per chunk for offset and length:
-        return cls.from_bytes(MAX_UINT_64.to_bytes(8, byteorder="little") * (2 * store._num_chunks_per_shard), store=store)
+        return cls.from_bytes(
+            MAX_UINT_64.to_bytes(8, byteorder="little") * (2 * store._num_chunks_per_shard),
+            store=store
+        )
 
 
 class IndexedShardedStore(Store):
@@ -69,12 +79,16 @@ class IndexedShardedStore(Store):
         # * warn if partial reads are not available
         # * optionally warn on unaligned writes if no partial writes are available
 
-    def __keys_to_shard_groups__(self, keys: Iterable[str]) -> Dict[str, List[Tuple[str, str]]]:
+    def __keys_to_shard_groups__(
+        self, keys: Iterable[str]
+    ) -> Dict[str, List[Tuple[str, Tuple[int, ...]]]]:
         shard_indices_per_shard_key = defaultdict(list)
         for chunk_key in keys:
             # TODO: allow to be in a group (aka only use last parts for dimensions)
             chunk_subkeys = tuple(map(int, chunk_key.split(self._dimension_separator)))
-            shard_key_tuple = (subkey // shard_i for subkey, shard_i in zip(chunk_subkeys, self._shards))
+            shard_key_tuple = (
+                subkey // shard_i for subkey, shard_i in zip(chunk_subkeys, self._shards)
+            )
             shard_key = self._dimension_separator.join(map(str, shard_key_tuple))
             shard_indices_per_shard_key[shard_key].append((chunk_key, chunk_subkeys))
         return shard_indices_per_shard_key
@@ -116,7 +130,9 @@ class IndexedShardedStore(Store):
             all_chunks = set(self.__get_chunks_in_shard(shard_key))
             chunks_to_set = set(chunk_subkeys for _chunk_key, chunk_subkeys in chunks_in_shard)
             chunks_to_read = all_chunks - chunks_to_set
-            new_content = {chunk_subkeys: values[chunk_key] for chunk_key, chunk_subkeys in chunks_in_shard}
+            new_content = {
+                chunk_subkeys: values[chunk_key] for chunk_key, chunk_subkeys in chunks_in_shard
+            }
             try:
                 # TODO use partial read if available
                 full_shard_value = self._store[shard_key]
