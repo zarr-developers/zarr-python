@@ -2913,11 +2913,11 @@ def _get_files_and_dirs_from_path(store, path):
 
 
 class RmdirV3():
-    """Mixin class that can be used to ensure override of v2 rmdir class."""
+    """Mixin class that can be used to ensure override of any existing v2 rmdir class."""
 
     def rmdir(self, path: str = "") -> None:
         path = normalize_storage_path(path)
-        _rmdir_from_keys_v3(self, path)
+        _rmdir_from_keys_v3(self, path)  # type: ignore
 
 
 class KVStoreV3(RmdirV3, KVStore, StoreV3):
