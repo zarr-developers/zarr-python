@@ -309,6 +309,26 @@ def _get_hierarchy_metadata(store=None):
     return meta
 
 
+
+def _rename_metadata_v3(store: StoreV3, src_path: str, dst_path: str) -> bool:
+    """Rename source or group metadata file associated with src_path."""
+    any_renamed = False
+    sfx = _get_hierarchy_metadata(store)['metadata_key_suffix']
+    src_path = src_path.rstrip('/')
+    dst_path = dst_path.rstrip('/')
+    _src_array_json = 'meta/root/' + src_path + '.array' + sfx
+    if _src_array_json in store:
+        new_key = 'meta/root/' + dst_path + '.array' + sfx
+        store[new_key] = store.pop(_src_array_json)
+        any_renamed = True
+    _src_group_json = 'meta/root/' + dst_path + '.group' + sfx
+    if _src_group_json in store:
+        new_key = 'meta/root/' + dst_path + '.group' + sfx
+        store[new_key] = store.pop(_src_group_json)
+        any_renamed = True
+    return any_renamed
+
+
 def _rename_from_keys(store: BaseStore, src_path: str, dst_path: str) -> None:
     # assume path already normalized
     src_prefix = _path_to_prefix(src_path)
@@ -320,22 +340,17 @@ def _rename_from_keys(store: BaseStore, src_path: str, dst_path: str) -> None:
                 new_key = dst_prefix + key.lstrip(src_prefix)
                 store[new_key] = store.pop(key)
     else:
+        any_renamed = False
         for root_prefix in ['meta/root/', 'data/root/']:
             _src_prefix = root_prefix + src_prefix
             _dst_prefix = root_prefix + dst_prefix
             for key in store.list_prefix(_src_prefix):  # type: ignore
                 new_key = _dst_prefix + key[len(_src_prefix):]
                 store[new_key] = store.pop(key)
-
-        sfx = _get_hierarchy_metadata(store)['metadata_key_suffix']
-        _src_array_json = 'meta/root/' + src_prefix[:-1] + '.array' + sfx
-        if _src_array_json in store:
-            new_key = 'meta/root/' + dst_prefix[:-1] + '.array' + sfx
-            store[new_key] = store.pop(_src_array_json)
-        _src_group_json = 'meta/root/' + src_prefix[:-1] + '.group' + sfx
-        if _src_group_json in store:
-            new_key = 'meta/root/' + dst_prefix[:-1] + '.group' + sfx
-            store[new_key] = store.pop(_src_group_json)
+                any_renamed = True
+        any_renamed = any_renamed or _rename_metadata_v3(store, src_path, dst_path)
+        if not any_renamed:
+            raise ValueError(f"no item {src_path} found to rename")
 
 
 def _rmdir_from_keys(store: StoreLike, path: Optional[str] = None) -> None:

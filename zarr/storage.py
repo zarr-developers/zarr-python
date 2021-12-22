@@ -61,6 +61,7 @@ from zarr._storage.absstore import ABSStore  # noqa: F401
 from zarr._storage.store import (_get_hierarchy_metadata,
                                  _listdir_from_keys,
                                  _rename_from_keys,
+                                 _rename_metadata_v3,
                                  _rmdir_from_keys,
                                  _rmdir_from_keys_v3,
                                  _path_to_prefix,
@@ -3053,6 +3054,7 @@ class MemoryStoreV3(MemoryStore, StoreV3):
 
                 dst_parent[dst_key] = src_parent.pop(src_key)
                 any_renamed = True
+        any_renamed = any_renamed or _rename_metadata_v3(self, src_path, dst_path)
         if not any_renamed:
             raise ValueError(f"no item {src_path} found to rename")
 

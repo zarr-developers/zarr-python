@@ -2348,7 +2348,7 @@ class TestConsolidatedMetadataStore:
             ConsolidatedMetadataStore(store)
 
     def test_bad_store_version(self):
-        with pytest.raises(MetadataError):
+        with pytest.raises(ValueError):
             ConsolidatedMetadataStore(KVStoreV3(dict()))
 
     def test_read_write(self):

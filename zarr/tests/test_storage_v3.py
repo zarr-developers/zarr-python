@@ -215,9 +215,12 @@ class StoreV3Tests(_StoreTests):
 
     def test_rename_nonexisting(self):
         store = self.create_store()
-        with pytest.raises(ValueError):
-            store.rename('meta/root/a', 'meta/root/b')
-
+        if store.is_erasable():
+            with pytest.raises(ValueError):
+                store.rename('a', 'b')
+        else:
+            with pytest.raises(NotImplementedError):
+                store.rename('a', 'b')
 
 class TestMappingStoreV3(StoreV3Tests):
 
