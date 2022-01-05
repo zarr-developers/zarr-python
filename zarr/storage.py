@@ -1551,7 +1551,7 @@ class ZipStore(Store):
     def __setitem__(self, key, value):
         if self.mode == 'r':
             raise ReadOnlyError()
-        value = ensure_contiguous_ndarray(value)
+        value = ensure_contiguous_ndarray(value).view("u1")
         with self.mutex:
             # writestr(key, value) writes with default permissions from
             # zipfile (600) that are too restrictive, build ZipInfo for
@@ -1565,7 +1565,7 @@ class ZipStore(Store):
             else:
                 keyinfo.external_attr = 0o644 << 16     # ?rw-r--r--
 
-            self.zf.writestr(keyinfo, value.tobytes())
+            self.zf.writestr(keyinfo, value)
 
     def __delitem__(self, key):
         raise NotImplementedError

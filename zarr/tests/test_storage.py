@@ -1549,6 +1549,13 @@ class TestZipStore(StoreTests):
             assert perm == '0o40775'
         z.close()
 
+    def test_store_and_retrieve_ndarray(self):
+        store = ZipStore('data/store.zip')
+        x = np.array([[1, 2], [3, 4]])
+        store['foo'] = x
+        y = np.frombuffer(store['foo'], dtype=x.dtype).reshape(x.shape)
+        assert np.array_equiv(y, x)
+
 
 class TestDBMStore(StoreTests):
 
