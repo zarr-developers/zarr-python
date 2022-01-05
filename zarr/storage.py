@@ -1565,7 +1565,7 @@ class ZipStore(Store):
             else:
                 keyinfo.external_attr = 0o644 << 16     # ?rw-r--r--
 
-            self.zf.writestr(keyinfo, value)
+            self.zf.writestr(keyinfo, value.tobytes())
 
     def __delitem__(self, key):
         raise NotImplementedError
