@@ -1320,6 +1320,59 @@ each chunk must be compared to the fill value, and these advantages are continge
 If you know that your data will form chunks that are almost always non-empty, then there is no advantage to the optimization described above. 
 In this case, creating an array with ``write_empty_chunks=True`` will instruct Zarr to write every chunk without checking for emptiness.
 
+The following example illustrates the effect of the ``write_empty_chunks`` flag on
+the time required to write an array with different values.::
+
+    >>> import zarr
+    >>> import numpy as np
+    >>> import time
+    >>> from tempfile import TemporaryDirectory
+
+    >>> def timed_write(write_empty_chunks):
+            """
+            Measure the time required and number of objects created when writing 
+            to a Zarr array with random ints or fill value.
+            """
+            chunks = (8192,)
+            shape = (chunks[0] * 1024,)
+            data = np.random.randint(0, 255, shape)
+            dtype = 'uint8'
+
+            with TemporaryDirectory() as store:
+                arr = zarr.open(store,
+                                shape=shape,
+                                chunks=chunks,
+                                dtype=dtype,
+                                write_empty_chunks=write_empty_chunks,
+                                fill_value=0,
+                                mode='w')
+                # initialize all chunks
+                arr[:] = 100
+                result = []
+                for value in (data, arr.fill_value):
+                    start = time.time()
+                    arr[:] = value
+                    elapsed = time.time() - start
+                    result.append((elapsed, arr.nchunks_initialized))
+
+                return result
+
+
+    >>> for write_empty_chunks in (True, False):
+            full, empty = timed_write(write_empty_chunks)
+            print(f'\nwrite_empty_chunks={write_empty_chunks}:\n\tRandom Data: {full[0]:.4f}s, {full[1]} objects stored\n\t Empty Data: {empty[0]:.4f}s, {empty[1]} objects stored\n')
+
+    write_empty_chunks=True:
+            Random Data: 0.1252s, 1024 objects stored
+            Empty Data: 0.1060s, 1024 objects stored
+
+
+    write_empty_chunks=False:
+            Random Data: 0.1359s, 1024 objects stored
+            Empty Data: 0.0301s, 0 objects stored
+
+In this example, writing random data is slightly slower with ``write_empty_chunks=True``, 
+but writing empty data is substantially faster and generates far fewer objects in storage.   
 
 .. _tutorial_rechunking:
 
