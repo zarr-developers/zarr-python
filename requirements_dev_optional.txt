@@ -12,7 +12,7 @@ types-redis
 types-setuptools
 pymongo==3.12.1
 # optional test requirements
-tox==3.24.4
+tox==3.24.5
 coverage
 flake8==4.0.1
 pytest-cov==3.0.0
