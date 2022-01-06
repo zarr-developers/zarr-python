@@ -20,6 +20,7 @@ from numcodecs.compat import ensure_bytes
 import zarr
 from zarr._storage.store import _get_hierarchy_metadata
 from zarr.codecs import BZ2, AsType, Blosc, Zlib
+from zarr.convenience import consolidate_metadata
 from zarr.errors import ContainsArrayError, ContainsGroupError, MetadataError
 from zarr.hierarchy import group
 from zarr.meta import ZARR_FORMAT, decode_array_metadata
@@ -1168,6 +1169,10 @@ class TestFSStore(StoreTests):
         assert "data" in os.listdir(path1)
         assert ".zgroup" in os.listdir(path1)
 
+        # consolidated metadata (GH#915)
+        consolidate_metadata("file://" + path1)
+        assert ".zmetadata" in os.listdir(path1)
+
         g = zarr.open_group("simplecache::file://" + path1, mode='r',
                             storage_options={"cache_storage": path2,
                                              "same_names": True})
@@ -1718,6 +1723,13 @@ class TestZipStore(StoreTests):
                 # baz/ on v2, but baz on v3, so not a directory
                 assert perm == '0o644'
         z.close()
+
+    def test_store_and_retrieve_ndarray(self):
+        store = ZipStore('data/store.zip')
+        x = np.array([[1, 2], [3, 4]])
+        store['foo'] = x
+        y = np.frombuffer(store['foo'], dtype=x.dtype).reshape(x.shape)
+        assert np.array_equiv(y, x)
 
 
 class TestDBMStore(StoreTests):

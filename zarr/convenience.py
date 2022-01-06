@@ -1187,7 +1187,7 @@ def consolidate_metadata(store: BaseStore, metadata_key=".zmetadata"):
     open_consolidated
 
     """
-    store = normalize_store_arg(store)
+    store = normalize_store_arg(store, clobber=True)
 
     def is_zarr_key(key):
         return (key.endswith('.zarray') or key.endswith('.zgroup') or
