@@ -179,6 +179,8 @@ class StoreV3(BaseStore):
             not key.startswith("data/")
             and (not key.startswith("meta/"))
             and (not key == "zarr.json")
+            # TODO: Possibly allow key == ".zmetadata" too if we write a
+            #       consolidated metadata spec corresponding to this?
         ):
             raise ValueError("keys starts with unexpected value: `{}`".format(key))
 

@@ -26,6 +26,7 @@ from zarr.errors import CopyError
 from zarr.hierarchy import Group, group
 from zarr.storage import (
     ConsolidatedMetadataStore,
+    ConsolidatedMetadataStoreV3,
     DirectoryStoreV3,
     FSStoreV3,
     KVStore,
@@ -201,11 +202,21 @@ def test_tree(zarr_version):
 
 # TODO: consolidated metadata currently only supported for v2
 
-def test_consolidate_metadata():
+@pytest.mark.parametrize('zarr_version', [2, 3])
+@pytest.mark.parametrize('with_chunk_store', [False, True], ids=['default', 'with_chunk_store'])
+def test_consolidate_metadata(with_chunk_store, zarr_version):
+
+    if zarr_version == 2:
+        MemoryStoreClass = MemoryStore
+        path = ''
+    else:
+        MemoryStoreClass = MemoryStoreV3
+        path = 'dataset'
 
     # setup initial data
-    store = MemoryStore()
-    z = group(store)
+    store = MemoryStoreClass()
+    chunk_store = MemoryStoreClass() if with_chunk_store else None
+    z = group(store, chunk_store=chunk_store, path=path)
     z.create_group('g1')
     g2 = z.create_group('g2')
     g2.attrs['hello'] = 'world'
@@ -217,19 +228,32 @@ def test_consolidate_metadata():
     assert 16 == arr.nchunks_initialized
 
     # perform consolidation
-    out = consolidate_metadata(store)
+    out = consolidate_metadata(store, path=path)
     assert isinstance(out, Group)
-    assert '.zmetadata' in store
-    for key in ['.zgroup',
-                'g1/.zgroup',
-                'g2/.zgroup',
-                'g2/.zattrs',
-                'g2/arr/.zarray',
-                'g2/arr/.zattrs']:
+    assert ['g1', 'g2'] == list(out)
+    if zarr_version == 2:
+        assert isinstance(out._store, ConsolidatedMetadataStore)
+        assert '.zmetadata' in store
+        meta_keys = ['.zgroup',
+                     'g1/.zgroup',
+                     'g2/.zgroup',
+                     'g2/.zattrs',
+                     'g2/arr/.zarray',
+                     'g2/arr/.zattrs']
+    else:
+        assert isinstance(out._store, ConsolidatedMetadataStoreV3)
+        assert 'meta/root/consolidated/.zmetadata' in store
+        meta_keys = ['zarr.json',
+                     'meta/root/dataset.group.json',
+                     'meta/root/dataset/g1.group.json',
+                     'meta/root/dataset/g2.group.json',
+                     'meta/root/dataset/g2/arr.array.json',
+                     'meta/root/consolidated.group.json']
+    for key in meta_keys:
         del store[key]
 
     # open consolidated
-    z2 = open_consolidated(store)
+    z2 = open_consolidated(store, chunk_store=chunk_store, path=path)
     assert ['g1', 'g2'] == list(z2)
     assert 'world' == z2.g2.attrs['hello']
     assert 1 == z2.g2.arr.attrs['data']
@@ -238,11 +262,18 @@ def test_consolidate_metadata():
     assert 16 == z2.g2.arr.nchunks_initialized
 
     # tests del/write on the store
-    cmd = ConsolidatedMetadataStore(store)
-    with pytest.raises(PermissionError):
-        del cmd['.zgroup']
-    with pytest.raises(PermissionError):
-        cmd['.zgroup'] = None
+    if zarr_version == 2:
+        cmd = ConsolidatedMetadataStore(store)
+        with pytest.raises(PermissionError):
+            del cmd['.zgroup']
+        with pytest.raises(PermissionError):
+            cmd['.zgroup'] = None
+    else:
+        cmd = ConsolidatedMetadataStoreV3(store)
+        with pytest.raises(PermissionError):
+            del cmd['meta/root/dataset.group.json']
+        with pytest.raises(PermissionError):
+            cmd['meta/root/dataset.group.json'] = None
 
     # test getsize on the store
     assert isinstance(getsize(cmd), Integral)
@@ -267,62 +298,14 @@ def test_consolidate_metadata():
 
     # test invalid modes
     with pytest.raises(ValueError):
-        open_consolidated(store, mode='a')
+        open_consolidated(store, chunk_store=chunk_store, mode='a', path=path)
     with pytest.raises(ValueError):
-        open_consolidated(store, mode='w')
+        open_consolidated(store, chunk_store=chunk_store, mode='w', path=path)
 
     # make sure keyword arguments are passed through without error
-    open_consolidated(store, cache_attrs=True, synchronizer=None)
-
-
-def test_consolidated_with_chunk_store():
-    # setup initial data
-    store = MemoryStore()
-    chunk_store = MemoryStore()
-    z = group(store, chunk_store=chunk_store)
-    z.create_group('g1')
-    g2 = z.create_group('g2')
-    g2.attrs['hello'] = 'world'
-    arr = g2.create_dataset('arr', shape=(20, 20), chunks=(5, 5), dtype='f8')
-    assert 16 == arr.nchunks
-    assert 0 == arr.nchunks_initialized
-    arr.attrs['data'] = 1
-    arr[:] = 1.0
-    assert 16 == arr.nchunks_initialized
-
-    # perform consolidation
-    out = consolidate_metadata(store)
-    assert isinstance(out, Group)
-    assert '.zmetadata' in store
-    for key in ['.zgroup',
-                'g1/.zgroup',
-                'g2/.zgroup',
-                'g2/.zattrs',
-                'g2/arr/.zarray',
-                'g2/arr/.zattrs']:
-        del store[key]
-    # open consolidated
-    z2 = open_consolidated(store, chunk_store=chunk_store)
-    assert ['g1', 'g2'] == list(z2)
-    assert 'world' == z2.g2.attrs['hello']
-    assert 1 == z2.g2.arr.attrs['data']
-    assert (z2.g2.arr[:] == 1.0).all()
-    assert 16 == z2.g2.arr.nchunks
-    assert 16 == z2.g2.arr.nchunks_initialized
-
-    # test the data are writeable
-    z2.g2.arr[:] = 2
-    assert (z2.g2.arr[:] == 2).all()
-
-    # test invalid modes
-    with pytest.raises(ValueError):
-        open_consolidated(store, mode='a', chunk_store=chunk_store)
-    with pytest.raises(ValueError):
-        open_consolidated(store, mode='w', chunk_store=chunk_store)
-
-    # make sure keyword arguments are passed through without error
-    open_consolidated(store, cache_attrs=True, synchronizer=None,
-                      chunk_store=chunk_store)
+    open_consolidated(
+        store, chunk_store=chunk_store, path=path, cache_attrs=True, synchronizer=None
+    )
 
 
 @pytest.mark.parametrize("options", (

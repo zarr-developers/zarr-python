@@ -13,7 +13,9 @@ from zarr.hierarchy import Group
 from zarr.hierarchy import group as _create_group
 from zarr.hierarchy import open_group
 from zarr.meta import json_dumps, json_loads
-from zarr.storage import contains_array, contains_group, normalize_store_arg, BaseStore
+from zarr.storage import (_get_hierarchy_metadata, contains_array, contains_group,
+                          normalize_store_arg, BaseStore, ConsolidatedMetadataStore,
+                          ConsolidatedMetadataStoreV3)
 from zarr.util import TreeViewer, buffer_size, normalize_storage_path
 
 from typing import Union
@@ -916,6 +918,8 @@ def _copy(log, source, dest, name, root, shallow, without_attrs, if_exists,
                 # clear the way
                 if exists:
                     del dest[name]
+                    if name in dest:
+                        1 / 0
 
                 # setup creation keyword arguments
                 kws = create_kws.copy()
@@ -1153,7 +1157,7 @@ def copy_all(source, dest, shallow=False, without_attrs=False, log=None,
     return n_copied, n_skipped, n_bytes_copied
 
 
-def consolidate_metadata(store: BaseStore, metadata_key=".zmetadata"):
+def consolidate_metadata(store: BaseStore, metadata_key=".zmetadata", *, path=''):
     """
     Consolidate all metadata for groups and arrays within the given store
     into a single resource and put it under the given key.
@@ -1176,6 +1180,9 @@ def consolidate_metadata(store: BaseStore, metadata_key=".zmetadata"):
         Store or path to directory in file system or name of zip file.
     metadata_key : str
         Key to put the consolidated metadata under.
+    path : str or None
+        Path corresponding to the group that is being consolidated. Not required
+        for zarr v2 stores.
 
     Returns
     -------
@@ -1187,11 +1194,31 @@ def consolidate_metadata(store: BaseStore, metadata_key=".zmetadata"):
     open_consolidated
 
     """
-    store = normalize_store_arg(store, clobber=True)
+    store = normalize_store_arg(store)
 
-    def is_zarr_key(key):
-        return (key.endswith('.zarray') or key.endswith('.zgroup') or
-                key.endswith('.zattrs'))
+    version = store._store_version
+    if version > 2:
+        sfx = _get_hierarchy_metadata(store)['metadata_key_suffix']
+
+    if version == 2:
+
+        def is_zarr_key(key):
+            return (key.endswith('.zarray') or key.endswith('.zgroup') or
+                    key.endswith('.zattrs'))
+
+    else:
+
+        def is_zarr_key(key, sfx=sfx):
+            return (key.endswith('.array' + sfx) or key.endswith('.group' + sfx) or
+                    key == 'zarr.json')
+
+        # cannot create a group without a path in v3
+        # so create /meta/root/consolidated group to store the metadata
+        if 'consolidated' not in store:
+            _create_group(store, path='consolidated')
+        if not metadata_key.startswith('meta/root/'):
+            metadata_key = 'meta/root/consolidated/' + metadata_key
+        # path = 'consolidated'
 
     out = {
         'zarr_consolidated_format': 1,
@@ -1201,7 +1228,7 @@ def consolidate_metadata(store: BaseStore, metadata_key=".zmetadata"):
         }
     }
     store[metadata_key] = json_dumps(out)
-    return open_consolidated(store, metadata_key=metadata_key)
+    return open_consolidated(store, metadata_key=metadata_key, path=path)
 
 
 def open_consolidated(store: StoreLike, metadata_key=".zmetadata", mode="r+", **kwargs):
@@ -1246,17 +1273,28 @@ def open_consolidated(store: StoreLike, metadata_key=".zmetadata", mode="r+", **
 
     """
 
-    from .storage import ConsolidatedMetadataStore
-
     # normalize parameters
     store = normalize_store_arg(store, storage_options=kwargs.get("storage_options"))
     if mode not in {'r', 'r+'}:
         raise ValueError("invalid mode, expected either 'r' or 'r+'; found {!r}"
                          .format(mode))
 
+    path = kwargs.pop('path', None)
+    if store._store_version == 2:
+        ConsolidatedStoreClass = ConsolidatedMetadataStore
+    else:
+        ConsolidatedStoreClass = ConsolidatedMetadataStoreV3
+        # default is to store within 'consolidated' group on v3
+        if not metadata_key.startswith('meta/root/'):
+            metadata_key = 'meta/root/consolidated/' + metadata_key
+        if not path:
+            raise ValueError(
+                "path must be provided to open a Zarr 3.x consolidated store"
+            )
+
     # setup metadata store
-    meta_store = ConsolidatedMetadataStore(store, metadata_key=metadata_key)
+    meta_store = ConsolidatedStoreClass(store, metadata_key=metadata_key)
 
     # pass through
     chunk_store = kwargs.pop('chunk_store', None) or store
-    return open(store=meta_store, chunk_store=chunk_store, mode=mode, **kwargs)
+    return open(store=meta_store, chunk_store=chunk_store, mode=mode, path=path, **kwargs)

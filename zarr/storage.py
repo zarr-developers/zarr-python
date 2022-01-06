@@ -2835,10 +2835,6 @@ class ConsolidatedMetadataStore(Store):
     def __init__(self, store: StoreLike, metadata_key=".zmetadata"):
         self.store = Store._ensure_store(store)
 
-        if getattr(store, '_store_version', 2) != 2:
-            raise ValueError("Can only consolidate stores corresponding to "
-                             "the Zarr v2 spec.")
-
         # retrieve consolidated metadata
         meta = json_loads(store[metadata_key])
 
@@ -3330,3 +3326,59 @@ class LRUStoreCacheV3(RmdirV3, LRUStoreCache, StoreV3):
 
 
 LRUStoreCacheV3.__doc__ = LRUStoreCache.__doc__
+
+
+class ConsolidatedMetadataStoreV3(ConsolidatedMetadataStore, StoreV3):
+    """A layer over other storage, where the metadata has been consolidated into
+    a single key.
+
+    The purpose of this class, is to be able to get all of the metadata for
+    a given array in a single read operation from the underlying storage.
+    See :func:`zarr.convenience.consolidate_metadata` for how to create this
+    single metadata key.
+
+    This class loads from the one key, and stores the data in a dict, so that
+    accessing the keys no longer requires operations on the backend store.
+
+    This class is read-only, and attempts to change the array metadata will
+    fail, but changing the data is possible. If the backend storage is changed
+    directly, then the metadata stored here could become obsolete, and
+    :func:`zarr.convenience.consolidate_metadata` should be called again and the class
+    re-invoked. The use case is for write once, read many times.
+
+    .. note:: This is an experimental feature.
+
+    Parameters
+    ----------
+    store: Store
+        Containing the zarr array.
+    metadata_key: str
+        The target in the store where all of the metadata are stored. We
+        assume JSON encoding.
+
+    See Also
+    --------
+    zarr.convenience.consolidate_metadata, zarr.convenience.open_consolidated
+
+    """
+
+    def __init__(self, store: StoreLike, metadata_key="meta/root/consolidated/.zmetadata"):
+        self.store = Store._ensure_store(store)
+
+        # retrieve consolidated metadata
+        meta = json_loads(store[metadata_key])
+
+        # check format of consolidated metadata
+        consolidated_format = meta.get('zarr_consolidated_format', None)
+        if consolidated_format != 1:
+            raise MetadataError('unsupported zarr consolidated metadata format: %s' %
+                                consolidated_format)
+
+        # decode metadata
+        self.meta_store: Store = KVStoreV3(meta["metadata"])
+
+    def rmdir(self, key):
+        raise ReadOnlyError()
+
+    # def __setitem__(self, key, value):
+    #     raise ReadOnlyError()
