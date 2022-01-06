@@ -16,7 +16,7 @@ jobs:
     strategy:
       fail-fast: True
       matrix:
-        python-version: ["3.8"]
+        python-version: ["3.8", "3.9"]
     steps:
       - uses: actions/checkout@v2
         with:
@@ -31,7 +31,7 @@ jobs:
       - name: Create Conda environment with the rights deps
         shell: bash -l {0}
         run: |
-          conda create -n zarr-env python==${{matrix.python-version}} numcodecs==0.6.4 pip nodejs
+          conda create -n zarr-env python==${{matrix.python-version}} numcodecs pip nodejs
       - name: Install dependencies
         shell: bash -l {0}
         run: |
@@ -39,7 +39,7 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -U pip setuptools wheel
           python -m pip install -r requirements_dev_numpy.txt -r requirements_dev_minimal.txt -r requirements_dev_optional.txt
-          python -m pip install -e .
+          python -m pip install .
           python -m pip freeze
           npm install -g azurite
       - name: Run Tests
@@ -48,7 +48,7 @@ jobs:
           conda activate zarr-env
           mkdir ~/blob_emulator
           azurite -l ~/blob_emulator --debug debug.log 2>&1 > stdouterr.log &
-          pytest
+          pytest -sv --timeout=300
         env:
           ZARR_TEST_ABS: 1
       - name: Conda info

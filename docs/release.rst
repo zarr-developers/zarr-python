@@ -1,6 +1,260 @@
 Release notes
 =============
 
+.. _unreleased:
+
+Unreleased
+----------
+
+Enhancements
+~~~~~~~~~~~~
+
+* Allow to assign array ``fill_values`` and update metadata accordingly. :issue:`662`
+
+* array indexing with [] (getitem and setitem) now supports fancy indexing.
+  By :user:`Juan Nunez-Iglesias <jni>`; :issue:`725`.
+
+* write_empty_chunks=False deletes chunks consisting of only fill_value.
+  By :user:`Davis Bennett <d-v-b>`; :issue:`738`.
+
+* Move metadata handling to a class.
+  By :user:`Greggory Lee <grlee77>`; :issue:`839`.
+
+* Create a Base store class for Zarr Store.
+  By :user:`Greggory Lee <grlee77>`; :issue:`789`.
+
+.. _release_2.10.3:
+
+2.10.3
+------
+
+Bug fixes
+~~~~~~~~~
+
+* N5 keywords now emit UserWarning instead of raising a ValueError.
+  By :user:`Boaz Mohar <boazmohar>`; :issue:`860`.
+
+* blocks_to_decompress not used in read_part function.
+  By :user:`Boaz Mohar <boazmohar>`; :issue:`861`.
+
+* defines blocksize for array, updates hexdigest values.
+  By :user:`Andrew Fulton <andrewfulton9>`; :issue:`867`.
+
+* Fix test failure on Debian and conda-forge builds.
+  By :user:`Josh Moore <joshmoore>`; :issue:`871`.
+
+.. _release_2.10.2:
+
+2.10.2
+------
+
+Bug fixes
+~~~~~~~~~
+
+* Fix NestedDirectoryStore datasets without dimension_separator metadata.
+  By :user:`Josh Moore <joshmoore>`; :issue:`850`.
+
+.. _release_2.10.1:
+
+2.10.1
+------
+
+Bug fixes
+~~~~~~~~~
+
+* Fix regression by setting normalize_keys=False in fsstore constructor.
+  By :user:`Davis Bennett <d-v-b>`; :issue:`842`.
+
+.. _release_2.10.0:
+
+2.10.0
+------
+
+Enhancements
+~~~~~~~~~~~~
+
+* Add N5FSStore.
+  By :user:`Davis Bennett <d-v-b>`; :issue:`793`.
+
+Bug fixes
+~~~~~~~~~
+
+* Ignore None dim_separators in save_array.
+  By :user:`Josh Moore <joshmoore>`; :issue:`831`.
+
+.. _release_2.9.5:
+
+2.9.5
+-----
+
+Bug fixes
+~~~~~~~~~
+
+* Fix FSStore.listdir behavior for nested directories.
+  By :user:`Greggory Lee <grlee77>`; :issue:`802`.
+
+.. _release_2.9.4:
+
+2.9.4
+-----
+
+Bug fixes
+~~~~~~~~~
+
+* Fix structured arrays that contain objects
+  By :user: `Attila Bergou <abergou>`; :issue: `806`
+
+.. _release_2.9.3:
+
+2.9.3
+-----
+
+Maintenance
+~~~~~~~~~~~
+
+* Mark the fact that some tests that require ``fsspec``, without compromising the code coverage score.
+  By :user:`Ben Williams <benjaminhwilliams>`; :issue:`823`.
+
+* Only inspect alternate node type if desired isn't present.
+  By :user:`Trevor Manz <manzt>`; :issue:`696`.
+
+.. _release_2.9.2:
+
+2.9.2
+-----
+
+Maintenance
+~~~~~~~~~~~
+
+* Correct conda-forge deployment of Zarr by fixing some Zarr tests.
+  By :user:`Ben Williams <benjaminhwilliams>`; :issue:`821`.
+
+.. _release_2.9.1:
+
+2.9.1
+-----
+
+Maintenance
+~~~~~~~~~~~
+
+* Correct conda-forge deployment of Zarr.
+  By :user:`Josh Moore <joshmoore>`; :issue:`XXX`.
+
+.. _release_2.9.0:
+
+2.9.0
+-----
+
+This release of Zarr Python is the first release of Zarr to not support Python 3.6.
+
+Enhancements
+~~~~~~~~~~~~
+
+* Update ABSStore for compatibility with newer `azure.storage.blob`.
+  By :user:`Tom Augspurger <TomAugspurger>`; :issue:`759`.
+
+* Pathlib support.
+  By :user:`Chris Barnes <clbarnes>`; :issue:`768`.
+
+Documentation
+~~~~~~~~~~~~~
+
+* Clarify that arbitrary key/value pairs are OK for attributes.
+  By :user:`Stephan Hoyer <shoyer>`; :issue:`751`.
+
+* Clarify how to manually convert a DirectoryStore to a ZipStore.
+  By :user:`pmav99 <pmav99>`; :issue:`763`.
+
+Bug fixes
+~~~~~~~~~
+
+* Fix dimension_separator support.
+  By :user:`Josh Moore <joshmoore>`; :issue:`775`.
+
+* Extract ABSStore to zarr._storage.absstore.
+  By :user:`Josh Moore <joshmoore>`; :issue:`781`.
+
+* avoid NumPy 1.21.0 due to https://github.com/numpy/numpy/issues/19325
+  By :user:`Greggory Lee <grlee77>`; :issue:`791`.
+
+Maintenance
+~~~~~~~~~~~
+
+* Drop 3.6 builds.
+  By :user:`Josh Moore <joshmoore>`; :issue:`774`, :issue:`778`.
+
+* Fix build with Sphinx 4.
+  By :user:`Elliott Sales de Andrade <QuLogic>`; :issue:`799`.
+
+* TST: add missing assert in test_hexdigest.
+  By :user:`Greggory Lee <grlee77>`; :issue:`801`.
+
+.. _release_2.8.3:
+
+2.8.3
+-----
+
+Bug fixes
+~~~~~~~~~
+
+* FSStore: default to normalize_keys=False
+  By :user:`Josh Moore <joshmoore>`; :issue:`755`.
+* ABSStore: compatibility with ``azure.storage.python>=12`` 
+  By :user:`Tom Augspurger <tomaugspurger>`; :issue:`618`
+
+
+.. _release_2.8.2:
+
+2.8.2
+-----
+
+Documentation
+~~~~~~~~~~~~~
+
+* Add section on rechunking to tutorial
+  By :user:`David Baddeley <David-Baddeley>`; :issue:`730`.
+
+Bug fixes
+~~~~~~~~~
+
+* Expand FSStore tests and fix implementation issues
+  By :user:`Davis Bennett <d-v-b>`; :issue:`709`.
+
+Maintenance
+~~~~~~~~~~~
+
+* Updated ipytree warning for jlab3
+  By :user:`Ian Hunt-Isaak <ianhi>`; :issue:`721`.
+
+* b170a48a - (issue-728, copy-nested) Updated ipytree warning for jlab3 (#721) (3 weeks ago) <Ian Hunt-Isaak>
+* Activate dependabot
+  By :user:`Josh Moore <joshmoore>`; :issue:`734`.
+
+* Update Python classifiers (Zarr is stable!)
+  By :user:`Josh Moore <joshmoore>`; :issue:`731`.
+
+.. _release_2.8.1:
+
+2.8.1
+-----
+
+Bug fixes
+~~~~~~~~~
+
+* raise an error if create_dataset's dimension_separator is inconsistent
+  By :user:`Gregory R. Lee <grlee77>`; :issue:`724`.
+
+.. _release_2.8.0:
+
+2.8.0
+-----
+
+V2 Specification Update
+~~~~~~~~~~~~~~~~~~~~~~~
+
+* Introduce optional dimension_separator .zarray key for nested chunks.
+  By :user:`Josh Moore <joshmoore>`; :issue:`715`, :issue:`716`.
+
 .. _release_2.7.1:
 
 2.7.1
@@ -63,7 +317,7 @@ Bug fixes
 2.6.0
 -----
 
-This release of Zarr Python is is the first release of Zarr to not support Python 3.5.
+This release of Zarr Python is the first release of Zarr to not support Python 3.5.
 
 * End Python 3.5 support.
   By :user:`Chris Barnes <clbarnes>`; :issue:`602`.
@@ -90,7 +344,7 @@ See `this link <https://github.com/zarr-developers/zarr-python/milestone/11?clos
 merged PR tagged with the 2.6 milestone.
 
 * Add ability to partially read and decompress arrays, see :issue:`667`. It is
-  only available to chunks stored using fs-spec and using bloc as a compressor.
+  only available to chunks stored using fsspec and using Blosc as a compressor.
 
   For certain analysis case when only a small portion of chunks is needed it can
   be advantageous to only access and decompress part of the chunks. Doing
@@ -121,7 +375,7 @@ This release will be the last to support Python 3.5, next version of Zarr will b
   without ``ipytree`` installed.
   By :user:`Zain Patel <mzjp2>`; :issue:`537`
 
-* Add typing informations to many of the core functions :issue:`589`
+* Add typing information to many of the core functions :issue:`589`
 
 * Explicitly close stores during testing.
   By :user:`Elliott Sales de Andrade <QuLogic>`; :issue:`442`

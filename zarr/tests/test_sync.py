@@ -12,7 +12,8 @@ from numpy.testing import assert_array_equal
 from zarr.attrs import Attributes
 from zarr.core import Array
 from zarr.hierarchy import Group
-from zarr.storage import DirectoryStore, atexit_rmtree, init_array, init_group
+from zarr.storage import (DirectoryStore, KVStore, atexit_rmtree, init_array,
+                          init_group)
 from zarr.sync import ProcessSynchronizer, ThreadSynchronizer
 from zarr.tests.test_attrs import TestAttributes
 from zarr.tests.test_core import TestArray
@@ -56,7 +57,7 @@ def _set_arange(arg):
     return i
 
 
-class MixinArraySyncTests(object):
+class MixinArraySyncTests:
 
     def test_parallel_setitem(self):
         n = 100
@@ -96,13 +97,14 @@ class MixinArraySyncTests(object):
 class TestArrayWithThreadSynchronizer(TestArray, MixinArraySyncTests):
 
     def create_array(self, read_only=False, **kwargs):
-        store = dict()
+        store = KVStore(dict())
         cache_metadata = kwargs.pop('cache_metadata', True)
         cache_attrs = kwargs.pop('cache_attrs', True)
+        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
         init_array(store, **kwargs)
         return Array(store, synchronizer=ThreadSynchronizer(),
                      read_only=read_only, cache_metadata=cache_metadata,
-                     cache_attrs=cache_attrs)
+                     cache_attrs=cache_attrs, write_empty_chunks=write_empty_chunks)
 
     # noinspection PyMethodMayBeStatic
     def create_pool(self):
@@ -141,12 +143,14 @@ class TestArrayWithProcessSynchronizer(TestArray, MixinArraySyncTests):
         store = DirectoryStore(path)
         cache_metadata = kwargs.pop('cache_metadata', False)
         cache_attrs = kwargs.pop('cache_attrs', False)
+        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
         init_array(store, **kwargs)
         sync_path = tempfile.mkdtemp()
         atexit.register(atexit_rmtree, sync_path)
         synchronizer = ProcessSynchronizer(sync_path)
         return Array(store, synchronizer=synchronizer, read_only=read_only,
-                     cache_metadata=cache_metadata, cache_attrs=cache_attrs)
+                     cache_metadata=cache_metadata, cache_attrs=cache_attrs,
+                     write_empty_chunks=write_empty_chunks)
 
     # noinspection PyMethodMayBeStatic
     def create_pool(self):
@@ -193,7 +197,7 @@ def _require_group(arg):
     return h.name
 
 
-class MixinGroupSyncTests(object):
+class MixinGroupSyncTests:
 
     def test_parallel_create_group(self):
 

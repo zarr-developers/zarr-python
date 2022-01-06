@@ -2,6 +2,7 @@ import atexit
 import os.path
 import shutil
 import tempfile
+import warnings
 
 import numpy as np
 import pytest
@@ -14,12 +15,12 @@ from zarr.creation import (array, create, empty, empty_like, full, full_like,
                            zeros_like)
 from zarr.hierarchy import open_group
 from zarr.n5 import N5Store
-from zarr.storage import DirectoryStore
+from zarr.storage import DirectoryStore, KVStore
 from zarr.sync import ThreadSynchronizer
 
 
 # something bcolz-like
-class MockBcolzArray(object):
+class MockBcolzArray:
 
     def __init__(self, data, chunklen):
         self.data = data
@@ -33,7 +34,7 @@ class MockBcolzArray(object):
 
 
 # something h5py-like
-class MockH5pyDataset(object):
+class MockH5pyDataset:
 
     def __init__(self, data, chunks):
         self.data = data
@@ -271,6 +272,30 @@ def test_open_array():
     assert_array_equal(np.full(100, fill_value=42), a[:])
 
 
+def test_open_array_dict_store():
+
+    # dict will become a KVStore
+    store = dict()
+
+    # mode == 'w'
+    z = open_array(store, mode='w', shape=100, chunks=10)
+    z[:] = 42
+    assert isinstance(z, Array)
+    assert isinstance(z.store, KVStore)
+    assert (100,) == z.shape
+    assert (10,) == z.chunks
+    assert_array_equal(np.full(100, fill_value=42), z[:])
+
+
+def test_create_in_dict():
+    for func in [empty, zeros, ones]:
+        a = func(100, store=dict())
+        assert isinstance(a.store, KVStore)
+
+    a = full(100, 5, store=dict())
+    assert isinstance(a.store, KVStore)
+
+
 def test_empty_like():
 
     # zarr array
@@ -463,29 +488,33 @@ def test_create():
 
 def test_compression_args():
 
-    z = create(100, compression='zlib', compression_opts=9)
-    assert isinstance(z, Array)
-    assert 'zlib' == z.compressor.codec_id
-    assert 9 == z.compressor.level
+    with warnings.catch_warnings():
+        warnings.simplefilter("default")
+        z = create(100, compression="zlib", compression_opts=9)
+        assert isinstance(z, Array)
+        assert "zlib" == z.compressor.codec_id
+        assert 9 == z.compressor.level
 
-    # 'compressor' overrides 'compression'
-    z = create(100, compressor=Zlib(9), compression='bz2', compression_opts=1)
-    assert isinstance(z, Array)
-    assert 'zlib' == z.compressor.codec_id
-    assert 9 == z.compressor.level
-
-    # 'compressor' ignores 'compression_opts'
-    z = create(100, compressor=Zlib(9), compression_opts=1)
-    assert isinstance(z, Array)
-    assert 'zlib' == z.compressor.codec_id
-    assert 9 == z.compressor.level
-
-    with pytest.warns(UserWarning):
         # 'compressor' overrides 'compression'
-        create(100, compressor=Zlib(9), compression='bz2', compression_opts=1)
-    with pytest.warns(UserWarning):
+        with pytest.warns(UserWarning):
+            z = create(100, compressor=Zlib(9), compression="bz2", compression_opts=1)
+        assert isinstance(z, Array)
+        assert "zlib" == z.compressor.codec_id
+        assert 9 == z.compressor.level
+
         # 'compressor' ignores 'compression_opts'
-        create(100, compressor=Zlib(9), compression_opts=1)
+        with pytest.warns(UserWarning):
+            z = create(100, compressor=Zlib(9), compression_opts=1)
+        assert isinstance(z, Array)
+        assert "zlib" == z.compressor.codec_id
+        assert 9 == z.compressor.level
+
+        with pytest.warns(UserWarning):
+            # 'compressor' overrides 'compression'
+            create(100, compressor=Zlib(9), compression="bz2", compression_opts=1)
+        with pytest.warns(UserWarning):
+            # 'compressor' ignores 'compression_opts'
+            create(100, compressor=Zlib(9), compression_opts=1)
 
 
 def test_create_read_only():

@@ -9,11 +9,20 @@ import time
 import numpy as np
 from asciitree import BoxStyle, LeftAligned
 from asciitree.traversal import Traversal
+from collections.abc import Iterable
 from numcodecs.compat import ensure_ndarray, ensure_text
 from numcodecs.registry import codec_registry
 from numcodecs.blosc import cbuffer_sizes, cbuffer_metainfo
 
-from typing import Any, Callable, Dict, Tuple, Union
+from typing import Any, Callable, Dict, Optional, Tuple, Union
+
+
+def flatten(arg: Iterable) -> Iterable:
+    for element in arg:
+        if isinstance(element, Iterable) and not isinstance(element, (str, bytes)):
+            yield from flatten(element)
+        else:
+            yield element
 
 
 # codecs to use for object dtype convenience API
@@ -243,12 +252,19 @@ def normalize_order(order: str) -> str:
     return order
 
 
+def normalize_dimension_separator(sep: Optional[str]) -> Optional[str]:
+    if sep in (".", "/", None):
+        return sep
+    else:
+        raise ValueError(
+            "dimension_separator must be either '.' or '/', found: %r" % sep)
+
+
 def normalize_fill_value(fill_value, dtype: np.dtype):
 
-    if fill_value is None:
+    if fill_value is None or dtype.hasobject:
         # no fill value
         pass
-
     elif fill_value == 0:
         # this should be compatible across numpy versions for any array type, including
         # structured arrays
@@ -314,7 +330,7 @@ def normalize_storage_path(path: Union[str, bytes, None]) -> str:
 
         # don't allow path segments with just '.' or '..'
         segments = path.split('/')
-        if any([s in {'.', '..'} for s in segments]):
+        if any(s in {'.', '..'} for s in segments):
             raise ValueError("path containing '.' or '..' segment not allowed")
 
     else:
@@ -354,7 +370,7 @@ def info_html_report(items) -> str:
     return report
 
 
-class InfoReporter(object):
+class InfoReporter:
 
     def __init__(self, obj):
         self.obj = obj
@@ -368,7 +384,7 @@ class InfoReporter(object):
         return info_html_report(items)
 
 
-class TreeNode(object):
+class TreeNode:
 
     def __init__(self, obj, depth=0, level=None):
         self.obj = obj
@@ -441,7 +457,7 @@ def tree_widget(group, expand, level):
         raise ImportError(
             "{}: Run `pip install zarr[jupyter]` or `conda install ipytree`"
             "to get the required ipytree dependency for displaying the tree "
-            "widget. If using jupyterlab, you also need to run "
+            "widget. If using jupyterlab<3, you also need to run "
             "`jupyter labextension install ipytree`".format(error)
         )
 
@@ -452,7 +468,7 @@ def tree_widget(group, expand, level):
     return result
 
 
-class TreeViewer(object):
+class TreeViewer:
 
     def __init__(self, group, expand=False, level=None):
 
@@ -525,7 +541,7 @@ def is_valid_python_name(name):
     return name.isidentifier() and not iskeyword(name)
 
 
-class NoLock(object):
+class NoLock:
     """A lock that doesn't lock."""
 
     def __enter__(self):
@@ -546,13 +562,18 @@ class PartialReadBuffer:
         self.map = self.chunk_store.map
         self.fs = self.chunk_store.fs
         self.store_key = store_key
-        self.key_path = self.map._key_to_str(store_key)
         self.buff = None
         self.nblocks = None
         self.start_points = None
         self.n_per_block = None
         self.start_points_max = None
         self.read_blocks = set()
+
+        _key_path = self.map._key_to_str(store_key)
+        _key_path = _key_path.split('/')
+        _chunk_path = [self.chunk_store._normalize_key(_key_path[-1])]
+        _key_path = '/'.join(_key_path[:-1] + _chunk_path)
+        self.key_path = _key_path
 
     def prepare_chunk(self):
         assert self.buff is None
@@ -584,12 +605,6 @@ class PartialReadBuffer:
         assert self.buff is not None
         if self.nblocks == 1:
             return
-        blocks_to_decompress = nitems / self.n_per_block
-        blocks_to_decompress = (
-            blocks_to_decompress
-            if blocks_to_decompress == int(blocks_to_decompress)
-            else int(blocks_to_decompress + 1)
-        )
         start_block = int(start / self.n_per_block)
         wanted_decompressed = 0
         while wanted_decompressed < nitems:
@@ -638,3 +653,35 @@ def retry_call(callabl: Callable,
                 time.sleep(wait)
             else:
                 raise
+
+
+def all_equal(value: Any, array: Any):
+    """
+    Test if all the elements of an array are equivalent to a value.
+    If `value` is None, then this function does not do any comparison and
+    returns False.
+    """
+
+    if value is None:
+        return False
+    if not value:
+        # if `value` is falsey, then just 1 truthy value in `array`
+        # is sufficient to return False. We assume here that np.any is
+        # optimized to return on the first truthy value in `array`.
+        try:
+            return not np.any(array)
+        except TypeError:  # pragma: no cover
+            pass
+    if np.issubdtype(array.dtype, np.object_):
+        # we have to flatten the result of np.equal to handle outputs like
+        # [np.array([True,True]), True, True]
+        return all(flatten(np.equal(value, array, dtype=array.dtype)))
+    else:
+        # Numpy errors if you call np.isnan on custom dtypes, so ensure
+        # we are working with floats before calling isnan
+        if np.issubdtype(array.dtype, np.floating) and np.isnan(value):
+            return np.all(np.isnan(array))
+        else:
+            # using == raises warnings from numpy deprecated pattern, but
+            # using np.equal() raises type errors for structured dtypes...
+            return np.all(value == array)

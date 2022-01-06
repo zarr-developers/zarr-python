@@ -16,7 +16,21 @@ from zarr.errors import (
 
 
 def is_integer(x):
+    """True if x is an integer (both pure Python or NumPy).
+
+    Note that Python's bool is considered an integer too.
+    """
     return isinstance(x, numbers.Integral)
+
+
+def is_integer_list(x):
+    """True if x is a list of integers.
+
+    This function assumes ie *does not check* that all elements of the list
+    have the same type. Mixed type lists will result in other errors that will
+    bubble up anyway.
+    """
+    return isinstance(x, list) and len(x) > 0 and is_integer(x[0])
 
 
 def is_integer_array(x, ndim=None):
@@ -39,6 +53,49 @@ def is_scalar(value, dtype):
     if isinstance(value, tuple) and dtype.names and len(value) == len(dtype.names):
         return True
     return False
+
+
+def is_pure_fancy_indexing(selection, ndim):
+    """Check whether a selection contains only scalars or integer array-likes.
+
+    Parameters
+    ----------
+    selection : tuple, slice, or scalar
+        A valid selection value for indexing into arrays.
+
+    Returns
+    -------
+    is_pure : bool
+        True if the selection is a pure fancy indexing expression (ie not mixed
+        with boolean or slices).
+    """
+    if ndim == 1:
+        if is_integer_list(selection) or is_integer_array(selection):
+            return True
+        # if not, we go through the normal path below, because a 1-tuple
+        # of integers is also allowed.
+    no_slicing = (
+        isinstance(selection, tuple)
+        and len(selection) == ndim
+        and not (
+            any(isinstance(elem, slice) or elem is Ellipsis
+                for elem in selection)
+        )
+    )
+    return (
+        no_slicing and
+        all(
+            is_integer(elem)
+            or is_integer_list(elem)
+            or is_integer_array(elem)
+            for elem in selection
+        ) and
+        any(
+            is_integer_list(elem)
+            or is_integer_array(elem)
+            for elem in selection
+        )
+    )
 
 
 def normalize_integer_selection(dim_sel, dim_len):
@@ -75,7 +132,7 @@ dim_out_sel
 """
 
 
-class IntDimIndexer(object):
+class IntDimIndexer:
 
     def __init__(self, dim_sel, dim_len, dim_chunk_len):
 
@@ -100,7 +157,7 @@ def ceildiv(a, b):
     return math.ceil(a / b)
 
 
-class SliceDimIndexer(object):
+class SliceDimIndexer:
 
     def __init__(self, dim_sel, dim_len, dim_chunk_len):
 
@@ -251,19 +308,19 @@ def is_positive_slice(s):
 
 def is_contiguous_selection(selection):
     selection = ensure_tuple(selection)
-    return all([
+    return all(
         (is_integer_array(s) or is_contiguous_slice(s) or s == Ellipsis)
         for s in selection
-    ])
+    )
 
 
 def is_basic_selection(selection):
     selection = ensure_tuple(selection)
-    return all([is_integer(s) or is_positive_slice(s) for s in selection])
+    return all(is_integer(s) or is_positive_slice(s) for s in selection)
 
 
 # noinspection PyProtectedMember
-class BasicIndexer(object):
+class BasicIndexer:
 
     def __init__(self, selection, array):
 
@@ -304,7 +361,7 @@ class BasicIndexer(object):
             yield ChunkProjection(chunk_coords, chunk_selection, out_selection)
 
 
-class BoolArrayDimIndexer(object):
+class BoolArrayDimIndexer:
 
     def __init__(self, dim_sel, dim_len, dim_chunk_len):
 
@@ -394,7 +451,7 @@ def boundscheck_indices(x, dim_len):
         raise BoundsCheckError(dim_len)
 
 
-class IntArrayDimIndexer(object):
+class IntArrayDimIndexer:
     """Integer array selection against a single dimension."""
 
     def __init__(self, dim_sel, dim_len, dim_chunk_len, wraparound=True, boundscheck=True,
@@ -522,7 +579,7 @@ def oindex_set(a, selection, value):
 
 
 # noinspection PyProtectedMember
-class OrthogonalIndexer(object):
+class OrthogonalIndexer:
 
     def __init__(self, selection, array):
 
@@ -592,7 +649,7 @@ class OrthogonalIndexer(object):
             yield ChunkProjection(chunk_coords, chunk_selection, out_selection)
 
 
-class OIndex(object):
+class OIndex:
 
     def __init__(self, array):
         self.array = array
@@ -614,8 +671,8 @@ class OIndex(object):
 def is_coordinate_selection(selection, array):
     return (
         (len(selection) == len(array._shape)) and
-        all([is_integer(dim_sel) or is_integer_array(dim_sel)
-             for dim_sel in selection])
+        all(is_integer(dim_sel) or is_integer_array(dim_sel)
+            for dim_sel in selection)
     )
 
 
@@ -629,7 +686,7 @@ def is_mask_selection(selection, array):
 
 
 # noinspection PyProtectedMember
-class CoordinateIndexer(object):
+class CoordinateIndexer:
 
     def __init__(self, selection, array):
 
@@ -748,7 +805,7 @@ class MaskIndexer(CoordinateIndexer):
         super().__init__(selection, array)
 
 
-class VIndex(object):
+class VIndex:
 
     def __init__(self, array):
         self.array = array
@@ -833,10 +890,14 @@ def make_slice_selection(selection):
     ls = []
     for dim_selection in selection:
         if is_integer(dim_selection):
-            ls.append(slice(dim_selection, dim_selection + 1, 1))
+            ls.append(slice(int(dim_selection), int(dim_selection) + 1, 1))
         elif isinstance(dim_selection, np.ndarray):
             if len(dim_selection) == 1:
-                ls.append(slice(dim_selection[0], dim_selection[0] + 1, 1))
+                ls.append(
+                    slice(
+                        int(dim_selection[0]), int(dim_selection[0]) + 1, 1
+                    )
+                )
             else:
                 raise ArrayIndexError()
         else:
@@ -844,7 +905,7 @@ def make_slice_selection(selection):
     return ls
 
 
-class PartialChunkIterator(object):
+class PartialChunkIterator:
     """Iterator to retrieve the specific coordinates of requested data
     from within a compressed chunk.
 
@@ -900,10 +961,8 @@ class PartialChunkIterator(object):
         # any selection can not be out of the range of the chunk
         selection_shape = np.empty(self.arr_shape)[tuple(selection)].shape
         if any(
-            [
-                selection_dim < 0 or selection_dim > arr_dim
-                for selection_dim, arr_dim in zip(selection_shape, self.arr_shape)
-            ]
+            selection_dim < 0 or selection_dim > arr_dim
+            for selection_dim, arr_dim in zip(selection_shape, self.arr_shape)
         ):
             raise IndexError(
                 "a selection index is out of range for the dimension"

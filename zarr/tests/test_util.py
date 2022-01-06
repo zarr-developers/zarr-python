@@ -4,12 +4,21 @@ from unittest import mock
 import numpy as np
 import pytest
 
-from zarr.util import (guess_chunks, human_readable_size, info_html_report,
+from zarr.util import (all_equal, flatten, guess_chunks, human_readable_size, info_html_report,
                        info_text_report, is_total_slice, normalize_chunks,
+                       normalize_dimension_separator,
                        normalize_fill_value, normalize_order,
                        normalize_resize_args, normalize_shape, retry_call,
                        tree_array_icon, tree_group_icon, tree_get_icon,
                        tree_widget)
+
+
+def test_normalize_dimension_separator():
+    assert None is normalize_dimension_separator(None)
+    assert '/' == normalize_dimension_separator('/')
+    assert '.' == normalize_dimension_separator('.')
+    with pytest.raises(ValueError):
+        normalize_dimension_separator('X')
 
 
 def test_normalize_shape():
@@ -137,7 +146,7 @@ def test_guess_chunks():
         assert isinstance(chunks, tuple)
         assert len(chunks) == len(shape)
         # doesn't make any sense to allow chunks to have zero length dimension
-        assert all([0 < c <= max(s, 1) for c, s in zip(chunks, shape)])
+        assert all(0 < c <= max(s, 1) for c, s in zip(chunks, shape))
 
     # ludicrous itemsize
     chunks = guess_chunks((1000000,), 40000000000)
@@ -170,7 +179,7 @@ def test_tree_widget_missing_ipytree():
     pattern = (
         "Run `pip install zarr[jupyter]` or `conda install ipytree`"
         "to get the required ipytree dependency for displaying the tree "
-        "widget. If using jupyterlab, you also need to run "
+        "widget. If using jupyterlab<3, you also need to run "
         "`jupyter labextension install ipytree`"
         )
     with pytest.raises(ImportError, match=re.escape(pattern)):
@@ -202,3 +211,30 @@ def test_retry_call():
 
     for x in range(11, 15):
         pytest.raises(PermissionError, fail, x)
+
+
+def test_flatten():
+    assert list(flatten(['0', ['1', ['2', ['3', [4, ]]]]])) == ['0', '1', '2', '3', 4]
+    assert list(flatten('foo')) == ['f', 'o', 'o']
+    assert list(flatten(['foo'])) == ['foo']
+
+
+def test_all_equal():
+    assert all_equal(0, np.zeros((10, 10, 10)))
+    assert not all_equal(1, np.zeros((10, 10, 10)))
+
+    assert all_equal(1, np.ones((10, 10, 10)))
+    assert not all_equal(1, 1 + np.ones((10, 10, 10)))
+
+    assert all_equal(np.nan, np.array([np.nan, np.nan]))
+    assert not all_equal(np.nan, np.array([np.nan, 1.0]))
+
+    assert all_equal({'a': -1}, np.array([{'a': -1}, {'a': -1}], dtype='object'))
+    assert not all_equal({'a': -1}, np.array([{'a': -1}, {'a': 2}], dtype='object'))
+
+    assert all_equal(np.timedelta64(999, 'D'), np.array([999, 999], dtype='timedelta64[D]'))
+    assert not all_equal(np.timedelta64(999, 'D'), np.array([999, 998], dtype='timedelta64[D]'))
+
+    # all_equal(None, *) always returns False
+    assert not all_equal(None, np.array([None, None]))
+    assert not all_equal(None, np.array([None, 10]))
