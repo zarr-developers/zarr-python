@@ -26,7 +26,7 @@ from zarr.hierarchy import group
 from zarr.meta import ZARR_FORMAT, decode_array_metadata
 from zarr.n5 import N5Store, N5FSStore
 from zarr.storage import (ABSStore, ConsolidatedMetadataStore, DBMStore,
-                          DictStore, DirectoryStore, KVStore, LMDBStore,
+                          DictStore, DirectoryStore, KVStore, KVStoreV3, LMDBStore,
                           LRUStoreCache, MemoryStore, MongoDBStore,
                           NestedDirectoryStore, RedisStore, SQLiteStore,
                           Store, TempStore, ZipStore, KVStoreV3,
@@ -67,6 +67,10 @@ def test_ensure_store():
 
     with pytest.raises(ValueError):
         Store._ensure_store(InvalidStore())
+
+    # cannot initialize with a store from a different Zarr version
+    with pytest.raises(ValueError):
+        Store._ensure_store(KVStoreV3(dict()))
 
     assert Store._ensure_store(None) is None
 
@@ -2339,6 +2343,13 @@ class TestABSStore(StoreTests):
 
 class TestConsolidatedMetadataStore:
 
+    version = 2
+    ConsolidatedMetadataClass = ConsolidatedMetadataStore
+
+    @property
+    def metadata_key(self):
+        return '.zmetadata'
+
     def test_bad_format(self):
 
         # setup store with consolidated metadata
@@ -2347,15 +2358,15 @@ class TestConsolidatedMetadataStore:
             # bad format version
             'zarr_consolidated_format': 0,
         }
-        store['.zmetadata'] = json.dumps(consolidated).encode()
+        store[self.metadata_key] = json.dumps(consolidated).encode()
 
         # check appropriate error is raised
         with pytest.raises(MetadataError):
-            ConsolidatedMetadataStore(store)
+            self.ConsolidatedMetadataClass(store)
 
     def test_bad_store_version(self):
         with pytest.raises(ValueError):
-            ConsolidatedMetadataStore(KVStoreV3(dict()))
+            self.ConsolidatedMetadataClass(KVStoreV3(dict()))
 
     def test_read_write(self):
 
@@ -2368,10 +2379,10 @@ class TestConsolidatedMetadataStore:
                 'baz': 42,
             }
         }
-        store['.zmetadata'] = json.dumps(consolidated).encode()
+        store[self.metadata_key] = json.dumps(consolidated).encode()
 
         # create consolidated store
-        cs = ConsolidatedMetadataStore(store)
+        cs = self.ConsolidatedMetadataClass(store)
 
         # test __contains__, __getitem__
         for key, value in consolidated['metadata'].items():

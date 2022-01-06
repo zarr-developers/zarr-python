@@ -2836,7 +2836,7 @@ class ConsolidatedMetadataStore(Store):
         self.store = Store._ensure_store(store)
 
         # retrieve consolidated metadata
-        meta = json_loads(store[metadata_key])
+        meta = json_loads(self.store[metadata_key])
 
         # check format of consolidated metadata
         consolidated_format = meta.get('zarr_consolidated_format', None)
@@ -3363,10 +3363,10 @@ class ConsolidatedMetadataStoreV3(ConsolidatedMetadataStore, StoreV3):
     """
 
     def __init__(self, store: StoreLike, metadata_key="meta/root/consolidated/.zmetadata"):
-        self.store = Store._ensure_store(store)
+        self.store = StoreV3._ensure_store(store)
 
         # retrieve consolidated metadata
-        meta = json_loads(store[metadata_key])
+        meta = json_loads(self.store[metadata_key])
 
         # check format of consolidated metadata
         consolidated_format = meta.get('zarr_consolidated_format', None)

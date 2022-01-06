@@ -86,6 +86,10 @@ class BaseStore(MutableMapping):
         if store is None:
             return None
         elif isinstance(store, BaseStore):
+            if not store._store_version == 2:
+                raise ValueError(
+                    f"cannot initialize a v2 store with a v{store._store_version} store"
+                )
             return store
         elif isinstance(store, MutableMapping):
             return KVStore(store)
@@ -260,6 +264,10 @@ class StoreV3(BaseStore):
             return None
         elif isinstance(store, StoreV3):
             return store
+        elif isinstance(store, Store):
+            raise ValueError(
+                f"cannot initialize a v3 store with a v{store._store_version} store"
+            )
         elif isinstance(store, MutableMapping):
             return KVStoreV3(store)
         else:

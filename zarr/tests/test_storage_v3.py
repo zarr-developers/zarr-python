@@ -1,41 +1,41 @@
 import array
 import atexit
+import json
 import os
 import tempfile
 
 import numpy as np
 import pytest
-
 from zarr._storage.store import _valid_key_characters
-from zarr.storage import (atexit_rmglob, atexit_rmtree, default_compressor,
-                          getsize, init_array)
-from zarr.storage import (KVStoreV3, MemoryStoreV3, ZipStoreV3, FSStoreV3,
-                          DirectoryStoreV3, NestedDirectoryStoreV3,
-                          RedisStoreV3, MongoDBStoreV3, DBMStoreV3,
-                          LMDBStoreV3, SQLiteStoreV3, LRUStoreCacheV3,
-                          StoreV3, normalize_store_arg, KVStore)
+from zarr.errors import MetadataError
+from zarr.storage import (ConsolidatedMetadataStoreV3, DBMStoreV3,
+                          DirectoryStoreV3, FSStoreV3, KVStore, KVStoreV3,
+                          LMDBStoreV3, LRUStoreCacheV3, MemoryStoreV3,
+                          MongoDBStoreV3, NestedDirectoryStoreV3, RedisStoreV3,
+                          SQLiteStoreV3, StoreV3, ZipStoreV3, atexit_rmglob,
+                          atexit_rmtree, default_compressor, getsize,
+                          init_array, normalize_store_arg)
 from zarr.tests.util import CountingDictV3, have_fsspec, skip_test_env_var
 
-from .test_storage import (
-    StoreTests as _StoreTests,
-    TestMemoryStore as _TestMemoryStore,
-    TestDirectoryStore as _TestDirectoryStore,
-    TestFSStore as _TestFSStore,
-    TestNestedDirectoryStore as _TestNestedDirectoryStore,
-    TestZipStore as _TestZipStore,
-    TestDBMStore as _TestDBMStore,
-    TestDBMStoreDumb as _TestDBMStoreDumb,
-    TestDBMStoreGnu as _TestDBMStoreGnu,
-    TestDBMStoreNDBM as _TestDBMStoreNDBM,
-    TestDBMStoreBerkeleyDB as _TestDBMStoreBerkeleyDB,
-    TestLMDBStore as _TestLMDBStore,
-    TestSQLiteStore as _TestSQLiteStore,
-    TestSQLiteStoreInMemory as _TestSQLiteStoreInMemory,
-    TestLRUStoreCache as _TestLRUStoreCache,
-    skip_if_nested_chunks)
-
 # pytest will fail to run if the following fixtures aren't imported here
-from .test_storage import dimension_separator_fixture, s3  # noqa
+from .test_storage import StoreTests as _StoreTests
+from .test_storage import TestConsolidatedMetadataStore as _TestConsolidatedMetadataStore
+from .test_storage import TestDBMStore as _TestDBMStore
+from .test_storage import TestDBMStoreBerkeleyDB as _TestDBMStoreBerkeleyDB
+from .test_storage import TestDBMStoreDumb as _TestDBMStoreDumb
+from .test_storage import TestDBMStoreGnu as _TestDBMStoreGnu
+from .test_storage import TestDBMStoreNDBM as _TestDBMStoreNDBM
+from .test_storage import TestDirectoryStore as _TestDirectoryStore
+from .test_storage import TestFSStore as _TestFSStore
+from .test_storage import TestLMDBStore as _TestLMDBStore
+from .test_storage import TestLRUStoreCache as _TestLRUStoreCache
+from .test_storage import TestMemoryStore as _TestMemoryStore
+from .test_storage import TestNestedDirectoryStore as _TestNestedDirectoryStore
+from .test_storage import TestSQLiteStore as _TestSQLiteStore
+from .test_storage import TestSQLiteStoreInMemory as _TestSQLiteStoreInMemory
+from .test_storage import TestZipStore as _TestZipStore
+from .test_storage import (dimension_separator_fixture, s3,  # noqa
+                           skip_if_nested_chunks)
 
 
 @pytest.fixture(params=[
@@ -85,6 +85,10 @@ def test_ensure_store_v3():
 
     with pytest.raises(ValueError):
         StoreV3._ensure_store(InvalidStore())
+
+    # cannot initialize with a store from a different Zarr version
+    with pytest.raises(ValueError):
+        StoreV3._ensure_store(KVStore(dict()))
 
     assert StoreV3._ensure_store(None) is None
 
@@ -495,3 +499,17 @@ def test_normalize_store_arg_v3(tmpdir):
     # error on zarr_version=2 with a v3 store
     with pytest.raises(ValueError):
         normalize_store_arg(KVStoreV3(dict()), zarr_version=2, mode='w', clobber=True)
+
+
+class TestConsolidatedMetadataStoreV3(_TestConsolidatedMetadataStore):
+
+    version = 3
+    ConsolidatedMetadataClass = ConsolidatedMetadataStoreV3
+
+    @property
+    def metadata_key(self):
+        return 'meta/root/consolidated/.zmetadata'
+
+    def test_bad_store_version(self):
+        with pytest.raises(ValueError):
+            self.ConsolidatedMetadataClass(KVStore(dict()))
