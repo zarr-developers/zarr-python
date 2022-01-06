@@ -17,26 +17,36 @@ class ABSStore(Store):
     ----------
     container : string
         The name of the ABS container to use.
+
         .. deprecated::
            Use ``client`` instead.
+
     prefix : string
         Location of the "directory" to use as the root of the storage hierarchy
         within the container.
+
     account_name : string
         The Azure blob storage account name.
+
         .. deprecated:: 2.8.3
            Use ``client`` instead.
+
     account_key : string
         The Azure blob storage account access key.
+
         .. deprecated:: 2.8.3
            Use ``client`` instead.
+
     blob_service_kwargs : dictionary
         Extra arguments to be passed into the azure blob client, for e.g. when
         using the emulator, pass in blob_service_kwargs={'is_emulated': True}.
+
         .. deprecated:: 2.8.3
            Use ``client`` instead.
+
     dimension_separator : {'.', '/'}, optional
         Separator placed between the dimensions of a chunk.
+
     client : azure.storage.blob.ContainerClient, optional
         And ``azure.storage.blob.ContainerClient`` to connect with. See
         `here <https://docs.microsoft.com/en-us/python/api/azure-storage-blob/azure.storage.blob.containerclient?view=azure-python>`_  # noqa
