@@ -19,6 +19,7 @@ from numcodecs.compat import ensure_bytes
 
 import zarr
 from zarr.codecs import BZ2, AsType, Blosc, Zlib
+from zarr.convenience import consolidate_metadata
 from zarr.errors import MetadataError
 from zarr.hierarchy import group
 from zarr.meta import ZARR_FORMAT, decode_array_metadata
@@ -1008,6 +1009,10 @@ class TestFSStore(StoreTests):
         a[:4] = [0, 1, 2, 3]
         assert "data" in os.listdir(path1)
         assert ".zgroup" in os.listdir(path1)
+
+        # consolidated metadata (GH#915)
+        consolidate_metadata("file://" + path1)
+        assert ".zmetadata" in os.listdir(path1)
 
         g = zarr.open_group("simplecache::file://" + path1, mode='r',
                             storage_options={"cache_storage": path2,
