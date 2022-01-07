@@ -918,8 +918,6 @@ def _copy(log, source, dest, name, root, shallow, without_attrs, if_exists,
                 # clear the way
                 if exists:
                     del dest[name]
-                    if name in dest:
-                        1 / 0
 
                 # setup creation keyword arguments
                 kws = create_kws.copy()
