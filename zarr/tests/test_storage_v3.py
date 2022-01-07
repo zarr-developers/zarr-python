@@ -1,13 +1,11 @@
 import array
 import atexit
-import json
 import os
 import tempfile
 
 import numpy as np
 import pytest
 from zarr._storage.store import _valid_key_characters
-from zarr.errors import MetadataError
 from zarr.storage import (ConsolidatedMetadataStoreV3, DBMStoreV3,
                           DirectoryStoreV3, FSStoreV3, KVStore, KVStoreV3,
                           LMDBStoreV3, LRUStoreCacheV3, MemoryStoreV3,
