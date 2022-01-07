@@ -565,9 +565,9 @@ def test_get_extended_dtype_info():
     for dtype in extended_types:
         try:
             info = get_extended_dtype_info(np.asarray([], dtype=dtype).dtype)
-        except TypeError:
+        except TypeError:  # pragma: no cover
             # skip any numpy dtypes not supported by a particular architecture
-            pass
+            pass  # pragma: no cover
         assert 'extension' in info
         assert 'type' in info
         assert 'fallback' in info
