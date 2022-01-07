@@ -227,6 +227,14 @@ def test_consolidate_metadata(with_chunk_store, zarr_version):
     arr[:] = 1.0
     assert 16 == arr.nchunks_initialized
 
+    if zarr_version == 3:
+        # error on v3 if path not provided
+        with pytest.raises(ValueError):
+            consolidate_metadata(store, path=None)
+
+        with pytest.raises(ValueError):
+            consolidate_metadata(store, path='')
+
     # perform consolidation
     out = consolidate_metadata(store, path=path)
     assert isinstance(out, Group)
