@@ -1192,7 +1192,7 @@ def consolidate_metadata(store: BaseStore, metadata_key=".zmetadata", *, path=''
     open_consolidated
 
     """
-    store = normalize_store_arg(store)
+    store = normalize_store_arg(store, clobber=True)
 
     version = store._store_version
     if version > 2:
