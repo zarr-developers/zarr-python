@@ -1195,8 +1195,6 @@ def consolidate_metadata(store: BaseStore, metadata_key=".zmetadata", *, path=''
     store = normalize_store_arg(store, clobber=True)
 
     version = store._store_version
-    if version > 2:
-        sfx = _get_hierarchy_metadata(store)['metadata_key_suffix']
 
     if version == 2:
 
@@ -1206,7 +1204,9 @@ def consolidate_metadata(store: BaseStore, metadata_key=".zmetadata", *, path=''
 
     else:
 
-        def is_zarr_key(key, sfx=sfx):
+        sfx = _get_hierarchy_metadata(store)['metadata_key_suffix']
+
+        def is_zarr_key(key):
             return (key.endswith('.array' + sfx) or key.endswith('.group' + sfx) or
                     key == 'zarr.json')
 
