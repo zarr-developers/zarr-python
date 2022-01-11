@@ -59,6 +59,12 @@ class Group(MutableMapping):
     synchronizer : object, optional
         Array synchronizer.
 
+    meta_array : array-like, optional
+        An array instance to use for determining arrays to create and return
+        to users. Use `numpy.empty(())` by default.
+
+        .. versionadded:: 2.12
+
     Attributes
     ----------
     store
@@ -69,6 +75,7 @@ class Group(MutableMapping):
     synchronizer
     attrs
     info
+    meta_array
 
     Methods
     -------
@@ -109,7 +116,7 @@ class Group(MutableMapping):
     """
 
     def __init__(self, store, path=None, read_only=False, chunk_store=None,
-                 cache_attrs=True, synchronizer=None):
+                 cache_attrs=True, synchronizer=None, meta_array=None):
         store: BaseStore = BaseStore._ensure_store(store)
         chunk_store: BaseStore = BaseStore._ensure_store(chunk_store)
         self._store = store
@@ -121,6 +128,11 @@ class Group(MutableMapping):
             self._key_prefix = ''
         self._read_only = read_only
         self._synchronizer = synchronizer
+        self._meta_array = meta_array
+        if meta_array is not None:
+            self._meta_array = np.empty_like(meta_array)
+        else:
+            self._meta_array = np.empty(())
 
         # guard conditions
         if contains_array(store, path=self._path):
@@ -197,6 +209,13 @@ class Group(MutableMapping):
     def info(self):
         """Return diagnostic information about the group."""
         return self._info
+
+    @property
+    def meta_array(self):
+        """An array-like instance to use for determining arrays to create and return
+        to users.
+        """
+        return self._meta_array
 
     def __eq__(self, other):
         return (
@@ -1117,7 +1136,7 @@ def group(store=None, overwrite=False, chunk_store=None,
 
 
 def open_group(store=None, mode='a', cache_attrs=True, synchronizer=None, path=None,
-               chunk_store=None, storage_options=None):
+               chunk_store=None, storage_options=None, meta_array=None):
     """Open a group using file-mode-like semantics.
 
     Parameters
@@ -1142,6 +1161,11 @@ def open_group(store=None, mode='a', cache_attrs=True, synchronizer=None, path=N
     storage_options : dict
         If using an fsspec URL to create the store, these will be passed to
         the backend implementation. Ignored otherwise.
+    meta_array : array-like, optional
+        An array instance to use for determining arrays to create and return
+        to users. Use `numpy.empty(())` by default.
+
+        .. versionadded:: 2.12
 
     Returns
     -------
@@ -1202,4 +1226,5 @@ def open_group(store=None, mode='a', cache_attrs=True, synchronizer=None, path=N
     read_only = mode == 'r'
 
     return Group(store, read_only=read_only, cache_attrs=cache_attrs,
-                 synchronizer=synchronizer, path=path, chunk_store=chunk_store)
+                 synchronizer=synchronizer, path=path, chunk_store=chunk_store,
+                 meta_array=meta_array)

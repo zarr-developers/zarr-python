@@ -2,8 +2,10 @@ import numpy as np
 import pytest
 
 import zarr.codecs
+from zarr.core import Array
 from zarr.creation import array, empty, full, ones, zeros
 from zarr.cupy import CuPyCPUCompressor
+from zarr.hierarchy import open_group
 from zarr.storage import DirectoryStore, MemoryStore, Store, ZipStore
 
 cupy = pytest.importorskip("cupy")
@@ -120,3 +122,16 @@ def test_full(compressor):
         meta_array=cupy.empty(()),
     )
     assert np.all(np.isnan(z[:]))
+
+
+@pytest.mark.parametrize("compressor", [None, "Zlib", "Blosc"])
+@pytest.mark.parametrize("store_type", [None, DirectoryStore, MemoryStore, ZipStore])
+def test_group(tmp_path, compressor, store_type):
+    store = init_store(tmp_path, store_type)
+    g = open_group(store, meta_array=cupy.empty(()))
+    g.ones("data", shape=(10, 11), dtype=int, compressor=init_compressor(compressor))
+    a = g["data"]
+    assert a.shape == (10, 11)
+    assert a.dtype == int
+    assert isinstance(a, Array)
+    assert (a[:] == 1).all()
