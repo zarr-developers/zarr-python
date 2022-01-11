@@ -19,7 +19,9 @@ def create(shape, chunks=True, dtype=None, compressor='default',
            fill_value=0, order='C', store=None, synchronizer=None,
            overwrite=False, path=None, chunk_store=None, filters=None,
            cache_metadata=True, cache_attrs=True, read_only=False,
-           object_codec=None, dimension_separator=None, write_empty_chunks=True, **kwargs):
+           object_codec=None, dimension_separator=None, write_empty_chunks=True,
+           meta_array=None,
+           **kwargs):
     """Create an array.
 
     Parameters
@@ -80,6 +82,13 @@ def create(shape, chunks=True, dtype=None, compressor='default',
         as only chunks with non-fill-value data are stored, at the expense
         of overhead associated with checking the data of each chunk.
 
+        .. versionadded:: 2.11
+
+    meta_array : array-like, optional
+        An array instance to use for determining arrays to create and return
+        to users. Use `numpy.empty(())` by default.
+
+        .. versionadded:: 2.12
 
     Returns
     -------
@@ -152,7 +161,7 @@ def create(shape, chunks=True, dtype=None, compressor='default',
     # instantiate array
     z = Array(store, path=path, chunk_store=chunk_store, synchronizer=synchronizer,
               cache_metadata=cache_metadata, cache_attrs=cache_attrs, read_only=read_only,
-              write_empty_chunks=write_empty_chunks)
+              write_empty_chunks=write_empty_chunks, meta_array=meta_array)
 
     return z
 

@@ -37,8 +37,7 @@ import time
 
 from numcodecs.compat import (
     ensure_bytes,
-    ensure_text,
-    ensure_contiguous_ndarray
+    ensure_text
 )
 from numcodecs.registry import codec_registry
 
@@ -54,7 +53,8 @@ from zarr.meta import encode_array_metadata, encode_group_metadata
 from zarr.util import (buffer_size, json_loads, nolock, normalize_chunks,
                        normalize_dimension_separator,
                        normalize_dtype, normalize_fill_value, normalize_order,
-                       normalize_shape, normalize_storage_path, retry_call)
+                       normalize_shape, normalize_storage_path, retry_call,
+                       ensure_contiguous_ndarray)
 
 from zarr._storage.absstore import ABSStore  # noqa: F401
 from zarr._storage.store import (_listdir_from_keys,

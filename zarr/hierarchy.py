@@ -768,7 +768,7 @@ class Group(MutableMapping):
         ----------
         name : string
             Array name.
-        data : array_like, optional
+        data : array-like, optional
             Initial data.
         shape : int or tuple of ints
             Array shape.
