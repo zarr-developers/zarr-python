@@ -1,17 +1,17 @@
 import binascii
+from collections import defaultdict
 import hashlib
 import itertools
 import math
 import operator
 import re
 from functools import reduce
-from typing import Optional, Tuple
+from typing import Dict, Iterable, Iterator, List, Optional, Tuple, NamedTuple, Union
 
 import numpy as np
 from numcodecs.compat import ensure_bytes, ensure_ndarray
 
 from collections.abc import MutableMapping
-from zarr._storage.sharded_store import SHARDED_STORES
 
 from zarr.attrs import Attributes
 from zarr.codecs import AsType, get_codec
@@ -48,6 +48,55 @@ from zarr.util import (
     PartialReadBuffer,
 )
 
+
+MAX_UINT_64 = 2 ** 64 - 1
+
+class _ShardIndex(NamedTuple):
+    array: "Array"
+    offsets_and_lengths: np.ndarray  # dtype uint64, shape (shards_0, _shards_1, ..., 2)
+
+    def __localize_chunk__(self, chunk: Tuple[int, ...]) -> Tuple[int, ...]:
+        return tuple(chunk_i % shard_i for chunk_i, shard_i in zip(chunk, self.array._shards))
+
+    def get_chunk_slice(self, chunk: Tuple[int, ...]) -> Optional[slice]:
+        localized_chunk = self.__localize_chunk__(chunk)
+        chunk_start, chunk_len = self.offsets_and_lengths[localized_chunk]
+        if (chunk_start, chunk_len) == (MAX_UINT_64, MAX_UINT_64):
+            return None
+        else:
+            return slice(chunk_start, chunk_start + chunk_len)
+
+    def set_chunk_slice(self, chunk: Tuple[int, ...], chunk_slice: Optional[slice]) -> None:
+        localized_chunk = self.__localize_chunk__(chunk)
+        if chunk_slice is None:
+            self.offsets_and_lengths[localized_chunk] = (MAX_UINT_64, MAX_UINT_64)
+        else:
+            self.offsets_and_lengths[localized_chunk] = (
+                chunk_slice.start,
+                chunk_slice.stop - chunk_slice.start
+            )
+
+    def to_bytes(self) -> bytes:
+        return self.offsets_and_lengths.tobytes(order='C')
+
+    @classmethod
+    def from_bytes(
+        cls, buffer: Union[bytes, bytearray], array: "Array"
+    ) -> "_ShardIndex":
+        return cls(
+            array=array,
+            offsets_and_lengths=np.frombuffer(
+                bytearray(buffer), dtype="<u8"
+            ).reshape(*array._shards, 2, order="C")
+        )
+
+    @classmethod
+    def create_empty(cls, array: "Array"):
+        # reserving 2*64bit per chunk for offset and length:
+        return cls.from_bytes(
+            MAX_UINT_64.to_bytes(8, byteorder="little") * (2 * array._num_chunks_per_shard),
+            array=array
+        )
 
 # noinspection PyUnresolvedReferences
 class Array:
@@ -319,19 +368,9 @@ class Array:
     def chunk_store(self):
         """A MutableMapping providing the underlying storage for array chunks."""
         if self._chunk_store is None:
-            chunk_store = self._store
+            return self._store
         else:
-            chunk_store = self._chunk_store
-        if self._shards is None:
-            return chunk_store
-        else:
-            if self._cached_sharded_store is None:
-                self._cached_sharded_store = SHARDED_STORES[self._shard_format](
-                    chunk_store,
-                    shards=self._shards,
-                    dimension_separator=self._dimension_separator,
-                )
-            return self._cached_sharded_store
+            return self._chunk_store
 
     @property
     def shape(self):
@@ -512,6 +551,38 @@ class Array:
         will be stored. If False, such chunks will not be stored.
         """
         return self._write_empty_chunks
+
+    @property
+    def _num_chunks_per_shard(self) -> int:
+        return reduce(lambda x, y: x*y, self._shards, 1)
+
+    def __keys_to_shard_groups__(
+        self, keys: Iterable[str]
+    ) -> Dict[str, List[Tuple[str, Tuple[int, ...]]]]:
+        shard_indices_per_shard_key = defaultdict(list)
+        for chunk_key in keys:
+            # TODO: allow to be in a group (aka only use last parts for dimensions)
+            chunk_subkeys = tuple(map(int, chunk_key.split(self._dimension_separator)))
+            shard_key_tuple = (
+                subkey // shard_i for subkey, shard_i in zip(chunk_subkeys, self._shards)
+            )
+            shard_key = self._dimension_separator.join(map(str, shard_key_tuple))
+            shard_indices_per_shard_key[shard_key].append((chunk_key, chunk_subkeys))
+        return shard_indices_per_shard_key
+
+    def __get_index__(self, buffer: Union[bytes, bytearray]) -> _ShardIndex:
+        # At the end of each shard 2*64bit per chunk for offset and length define the index:
+        return _ShardIndex.from_bytes(buffer[-16 * self._num_chunks_per_shard:], self)
+
+    def __get_chunks_in_shard(self, shard_key: str) -> Iterator[Tuple[int, ...]]:
+        # TODO: allow to be in a group (aka only use last parts for dimensions)
+        shard_key_tuple = tuple(map(int, shard_key.split(self._dimension_separator)))
+        for chunk_offset in itertools.product(*(range(i) for i in self._shards)):
+            yield tuple(
+                shard_key_i * shards_i + offset_i
+                for shard_key_i, offset_i, shards_i
+                in zip(shard_key_tuple, chunk_offset, self._shards)
+            )
 
     def __eq__(self, other):
         return (
@@ -883,7 +954,7 @@ class Array:
         try:
             # obtain encoded data for chunk
             ckey = self._chunk_key((0,))
-            cdata = self.chunk_store[ckey]
+            cdata = self._read_single_possibly_sharded(ckey)
 
         except KeyError:
             # chunk not initialized
@@ -1196,8 +1267,10 @@ class Array:
             check_array_shape('out', out, out_shape)
 
         # iterate over chunks
-        if not hasattr(self.chunk_store, "getitems") or \
-           any(map(lambda x: x == 0, self.shape)):
+        if self._shards is None and (
+            not hasattr(self.chunk_store, "getitems")
+            or any(map(lambda x: x == 0, self.shape))
+        ):
             # sequentially get one key at a time from storage
             for chunk_coords, chunk_selection, out_selection in indexer:
 
@@ -1666,7 +1739,7 @@ class Array:
         # setup chunk
         try:
             # obtain compressed data for chunk
-            cdata = self.chunk_store[ckey]
+            cdata = self._read_single_possibly_sharded(ckey)
 
         except KeyError:
             # chunk not initialized
@@ -1734,8 +1807,11 @@ class Array:
             check_array_shape('value', value, sel_shape)
 
         # iterate over chunks in range
-        if not hasattr(self.chunk_store, "setitems") or self._synchronizer is not None \
-           or any(map(lambda x: x == 0, self.shape)):
+        if self._shards is None and (
+            not hasattr(self.chunk_store, "setitems")
+            or self._synchronizer is not None
+            or any(map(lambda x: x == 0, self.shape))
+        ):
             # iterative approach
             for chunk_coords, chunk_selection, out_selection in indexer:
 
@@ -1909,6 +1985,21 @@ class Array:
             self._process_chunk(out, cdata, chunk_selection, drop_axes,
                                 out_is_ndarray, fields, out_selection)
 
+    def _read_single_possibly_sharded(self, ckey):
+        if self._shards is None:
+            return self.chunk_store[ckey]
+        else:
+            shard_key, chunks_in_shard = next(iter(self.__keys_to_shard_groups__([ckey]).items()))
+            # TODO use partial read if available
+            full_shard_value = self.chunk_store[shard_key]
+            index = self.__get_index__(full_shard_value)
+            for _chunk_key, chunk_subkeys in chunks_in_shard:
+                chunk_slice = index.get_chunk_slice(chunk_subkeys)
+                if chunk_slice is None:
+                    raise KeyError
+                else:
+                    return full_shard_value[chunk_slice]
+
     def _chunk_getitems(self, lchunk_coords, lchunk_selection, out, lout_selection,
                         drop_axes=None, fields=None):
         """As _chunk_getitem, but for lists of chunks
@@ -1941,7 +2032,16 @@ class Array:
             }
         else:
             partial_read_decode = False
-            cdatas = self.chunk_store.getitems(ckeys, on_error="omit")
+            cdatas = {}
+            for shard_key, chunks_in_shard in self.__keys_to_shard_groups__(ckeys).items():
+                # TODO use partial read if available
+                full_shard_value = self.chunk_store[shard_key]
+                index = self.__get_index__(full_shard_value)
+                for chunk_key, chunk_subkeys in chunks_in_shard:
+                    chunk_slice = index.get_chunk_slice(chunk_subkeys)
+                    if chunk_slice is not None:
+                        cdatas[chunk_key] = full_shard_value[chunk_slice]
+
         for ckey, chunk_select, out_select in zip(ckeys, lchunk_selection, lout_selection):
             if ckey in cdatas:
                 self._process_chunk(
@@ -1975,7 +2075,36 @@ class Array:
             to_store = {k: self._encode_chunk(cdatas[k]) for k in nonempty_keys}
         else:
             to_store = {k: self._encode_chunk(v) for k, v in cdatas.items()}
-        self.chunk_store.setitems(to_store)
+
+        for shard_key, chunks_in_shard in self.__keys_to_shard_groups__(to_store.keys()).items():
+            all_chunks = set(self.__get_chunks_in_shard(shard_key))
+            chunks_to_set = set(chunk_subkeys for _chunk_key, chunk_subkeys in chunks_in_shard)
+            chunks_to_read = all_chunks - chunks_to_set
+            new_content = {
+                chunk_subkeys: to_store[chunk_key] for chunk_key, chunk_subkeys in chunks_in_shard
+            }
+            try:
+                # TODO use partial read if available
+                full_shard_value = self.chunk_store[shard_key]
+            except KeyError:
+                index = _ShardIndex.create_empty(self)
+            else:
+                index = self.__get_index__(full_shard_value)
+                for chunk_to_read in chunks_to_read:
+                    chunk_slice = index.get_chunk_slice(chunk_to_read)
+                    if chunk_slice is not None:
+                        new_content[chunk_to_read] = full_shard_value[chunk_slice]
+
+            # TODO use partial write if available and possible (e.g. at the end)
+            shard_content = b""
+            # TODO: order the chunks in the shard:
+            for chunk_subkeys, chunk_content in new_content.items():
+                chunk_slice = slice(len(shard_content), len(shard_content) + len(chunk_content))
+                index.set_chunk_slice(chunk_subkeys, chunk_slice)
+                shard_content += chunk_content
+            # Appending the index at the end of the shard:
+            shard_content += index.to_bytes()
+            self.chunk_store[shard_key] = shard_content
 
     def _chunk_delitems(self, ckeys):
         if hasattr(self.chunk_store, "delitems"):
@@ -2055,7 +2184,7 @@ class Array:
             try:
 
                 # obtain compressed data for chunk
-                cdata = self.chunk_store[ckey]
+                cdata = self._read_single_possibly_sharded(ckey)
 
             except KeyError:
 
