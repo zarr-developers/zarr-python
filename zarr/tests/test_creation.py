@@ -540,3 +540,8 @@ def test_create_read_only():
     assert z.read_only
     with pytest.raises(PermissionError):
         z[:] = 42
+
+
+def test_json_dumps_chunks_numpy_dtype():
+    z = zeros((10,), chunks=(np.int64(2),))
+    assert np.all(z[...] == 0)

@@ -4,8 +4,10 @@ from unittest import mock
 import numpy as np
 import pytest
 
-from zarr.util import (all_equal, flatten, guess_chunks, human_readable_size, info_html_report,
-                       info_text_report, is_total_slice, normalize_chunks,
+from zarr.core import Array
+from zarr.util import (all_equal, flatten, guess_chunks, human_readable_size,
+                       info_html_report, info_text_report, is_total_slice,
+                       json_dumps, normalize_chunks,
                        normalize_dimension_separator,
                        normalize_fill_value, normalize_order,
                        normalize_resize_args, normalize_shape, retry_call,
@@ -238,3 +240,12 @@ def test_all_equal():
     # all_equal(None, *) always returns False
     assert not all_equal(None, np.array([None, None]))
     assert not all_equal(None, np.array([None, 10]))
+
+
+def test_json_dumps_numpy_dtype():
+    assert json_dumps(np.int64(0)) == json_dumps(0)
+    assert json_dumps(np.float64(0)) == json_dumps(float(0))
+    assert json_dumps(np.array([0, 1])) == json_dumps([0, 1])
+    # Check that we raise the error of the superclass for unsupported object
+    with pytest.raises(TypeError):
+        json_dumps(Array)
