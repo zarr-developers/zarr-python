@@ -41,7 +41,7 @@ print("CHUNKSTORE (SHARDED)", sorted(z.chunk_store))
 
 # ONDISK ['.zarray', '0.0', '1.0', '2.0', '3.0']
 # STORE ['.zarray', '0.0', '1.0', '2.0', '3.0']
-# CHUNKSTORE (SHARDED) ['.zarray', '0.0', '0.1', '1.0', '1.1', '2.0', '2.1', '3.0', '3.1', '5.0', '6.1']
+# CHUNKSTORE (SHARDED) ['.zarray', '0.0', '1.0', '2.0', '3.0']
 
 index_bytes = z.store["0.0"][-2*2*16:]
 print("INDEX 0.0", [int.from_bytes(index_bytes[i:i+8], byteorder="little") for i in range(0, len(index_bytes), 8)])
