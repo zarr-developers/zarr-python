@@ -20,9 +20,9 @@ from typing import Any, Callable, Dict, Optional, Tuple, Union
 
 
 # TODO: move the function to numcodecs
-def ensure_ndarray(buf, allow_copy=False, like=np.empty(())):
-    """Convenience function to coerce `buf` to numpy array like, if it is not already
-    numpy array like.
+def ensure_ndarray(buf):
+    """Convenience function to coerce `buf` to numpy array-like, if it is not
+    already a numpy array-like.
 
     Parameters
     ----------
@@ -31,12 +31,13 @@ def ensure_ndarray(buf, allow_copy=False, like=np.empty(())):
 
     Returns
     -------
-    arr : ndarray-like
-        A numpy array-like, sharing memory with `buf`.
+    arr : array-like
+        A numpy array-like array that shares memory with `buf`.
 
     Notes
     -----
-    This function will not create a copy under any circumstances if `allow_copy=False`.
+    This function will not create a copy under any circumstances, it is guaranteed to
+    return a view on memory exported by `buf`.
     """
 
     if isinstance(buf, np.ndarray):
@@ -71,11 +72,13 @@ def ensure_ndarray(buf, allow_copy=False, like=np.empty(())):
 
 # TODO: move the function to numcodecs
 def ensure_contiguous_ndarray(buf, max_buffer_size=None):
-    """Convenience function to coerce `buf` to a numpy array, if it is not already a
-    numpy array. Also ensures that the returned value exports fully contiguous memory,
-    and supports the new-style buffer interface. If the optional max_buffer_size is
-    provided, raise a ValueError if the number of bytes consumed by the returned
-    array exceeds this value.
+    """Convenience function to coerce `buf` to numpy array-like, if it is not already
+    numpy array-like.
+
+    Also ensures that the returned value exports fully contiguous memory, and supports
+    the new-style buffer interface. If the optional max_buffer_size is provided, raise
+    a ValueError if the number of bytes consumed by the returned array exceeds this
+    value.
 
     Parameters
     ----------
@@ -87,8 +90,8 @@ def ensure_contiguous_ndarray(buf, max_buffer_size=None):
 
     Returns
     -------
-    arr : ndarray
-        A numpy array, sharing memory with `buf`.
+    arr : array-like
+        A numpy array-like array that shares memory with `buf`.
 
     Notes
     -----
