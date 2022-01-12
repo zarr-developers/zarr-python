@@ -31,7 +31,7 @@ from zarr.indexing import (
     is_scalar,
     pop_fields,
 )
-from zarr.storage import array_meta_key, attrs_key, getsize, listdir, BaseStore
+from zarr.storage import KVStore, array_meta_key, attrs_key, getsize, listdir, BaseStore
 from zarr.util import (
     all_equal,
     InfoReporter,
@@ -2153,7 +2153,7 @@ class Array:
             cdata = chunk
 
         # ensure in-memory data is immutable and easy to compare
-        if isinstance(self.chunk_store, MutableMapping):
+        if isinstance(self.chunk_store, KVStore):
             cdata = ensure_bytes(cdata)
 
         return cdata
