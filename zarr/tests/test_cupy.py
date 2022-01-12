@@ -1,3 +1,4 @@
+from typing import Optional
 import numpy as np
 import pytest
 
@@ -17,7 +18,7 @@ def init_compressor(compressor) -> CuPyCPUCompressor:
     return CuPyCPUCompressor(compressor)
 
 
-def init_store(tmp_path, store_type) -> Store:
+def init_store(tmp_path, store_type) -> Optional[Store]:
     if store_type is DirectoryStore:
         return store_type(str(tmp_path / "store"))
     if store_type is MemoryStore:
