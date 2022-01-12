@@ -9,8 +9,6 @@ from functools import reduce
 import numpy as np
 from numcodecs.compat import ensure_bytes
 
-from collections.abc import MutableMapping
-
 from zarr.attrs import Attributes
 from zarr.codecs import AsType, get_codec
 from zarr.errors import ArrayNotFoundError, ReadOnlyError, ArrayIndexError
