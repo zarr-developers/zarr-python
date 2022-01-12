@@ -20,5 +20,5 @@ pytest-doctestplus==0.11.2
 pytest-timeout==2.0.2
 h5py==3.6.0
 fsspec==2021.11.1
-s3fs==2021.11.1
+s3fs==2022.1.0
 moto[server]>=1.3.14
