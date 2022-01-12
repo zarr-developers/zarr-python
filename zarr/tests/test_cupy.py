@@ -135,4 +135,5 @@ def test_group(tmp_path, compressor, store_type):
     assert a.shape == (10, 11)
     assert a.dtype == int
     assert isinstance(a, Array)
+    assert isinstance(a[:], cupy.ndarray)
     assert (a[:] == 1).all()
