@@ -68,7 +68,9 @@ def create(shape, chunks=True, dtype=None, compressor='default',
         A codec to encode object arrays, only needed if dtype=object.
     dimension_separator : {'.', '/'}, optional
         Separator placed between the dimensions of a chunk.
+
         .. versionadded:: 2.8
+
     write_empty_chunks : bool, optional
         If True (default), all chunks will be stored regardless of their
         contents. If False, each chunk is compared to the array's fill
