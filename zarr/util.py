@@ -11,9 +11,8 @@ import numpy as np
 from asciitree import BoxStyle, LeftAligned
 from asciitree.traversal import Traversal
 from collections.abc import Iterable
-from numcodecs.abc import Codec
 from numcodecs.compat import ensure_text
-from numcodecs.registry import codec_registry, get_codec, register_codec
+from numcodecs.registry import codec_registry
 from numcodecs.blosc import cbuffer_sizes, cbuffer_metainfo
 
 from typing import Any, Callable, Dict, Optional, Tuple, Union

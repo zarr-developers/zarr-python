@@ -2041,7 +2041,9 @@ class Array:
             if is_scalar(value, self._dtype):
 
                 # setup array filled with value
-                chunk = np.empty(self._chunks, dtype=self._dtype, order=self._order, like=self._meta_array)
+                chunk = np.empty(
+                    self._chunks, dtype=self._dtype, order=self._order, like=self._meta_array
+                )
                 chunk.fill(value)
 
             else:
@@ -2061,14 +2063,18 @@ class Array:
 
                 # chunk not initialized
                 if self._fill_value is not None:
-                    chunk = np.empty(self._chunks, dtype=self._dtype, order=self._order, like=self._meta_array)
+                    chunk = np.empty(
+                        self._chunks, dtype=self._dtype, order=self._order, like=self._meta_array
+                    )
                     chunk.fill(self._fill_value)
                 elif self._dtype == object:
                     chunk = np.empty(self._chunks, dtype=self._dtype, order=self._order)
                 else:
                     # N.B., use zeros here so any region beyond the array has consistent
                     # and compressible data
-                    chunk = np.zeros(self._chunks, dtype=self._dtype, order=self._order, like=self._meta_array)
+                    chunk = np.zeros(
+                        self._chunks, dtype=self._dtype, order=self._order, like=self._meta_array
+                    )
 
             else:
 
