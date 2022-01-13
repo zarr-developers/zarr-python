@@ -36,7 +36,7 @@ from zarr.storage import (
     LRUStoreCache,
     NestedDirectoryStore,
     SQLiteStore,
-    # ABSStoreV3,
+    ABSStoreV3,
     DBMStoreV3,
     DirectoryStoreV3,
     FSStoreV3,
@@ -2889,9 +2889,25 @@ class TestArrayWithDirectoryStoreV3(TestArrayWithDirectoryStore, TestArrayWithPa
         assert expect_nbytes_stored == z.nbytes_stored
 
 
-# TODO: TestArrayWithABSStoreV3
-# @skip_test_env_var("ZARR_TEST_ABS")
-# class TestArrayWithABSStoreV3(TestArrayWithPathV3):
+@skip_test_env_var("ZARR_TEST_ABS")
+class TestArrayWithABSStoreV3(TestArrayWithABSStore, TestArrayWithPathV3):
+
+    @staticmethod
+    def absstore():
+        client = abs_container()
+        store = ABSStoreV3(client=client)
+        store.rmdir()
+        return store
+
+    def create_array(self, array_path='arr1', read_only=False, **kwargs):
+        store = self.absstore()
+        kwargs.setdefault('compressor', Zlib(1))
+        cache_metadata = kwargs.pop('cache_metadata', True)
+        cache_attrs = kwargs.pop('cache_attrs', True)
+        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
+        init_array(store, path=array_path, **kwargs)
+        return Array(store, path=array_path, read_only=read_only, cache_metadata=cache_metadata,
+                     cache_attrs=cache_attrs, write_empty_chunks=write_empty_chunks)
 
 
 class TestArrayWithNestedDirectoryStoreV3(TestArrayWithNestedDirectoryStore,

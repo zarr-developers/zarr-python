@@ -26,10 +26,10 @@ from zarr.hierarchy import group
 from zarr.meta import ZARR_FORMAT, decode_array_metadata
 from zarr.n5 import N5Store, N5FSStore
 from zarr.storage import (ABSStore, ConsolidatedMetadataStore, DBMStore,
-                          DictStore, DirectoryStore, KVStore, KVStoreV3, LMDBStore,
+                          DictStore, DirectoryStore, KVStore, LMDBStore,
                           LRUStoreCache, MemoryStore, MongoDBStore,
                           NestedDirectoryStore, RedisStore, SQLiteStore,
-                          Store, TempStore, ZipStore,
+                          Store, TempStore, ZipStore, KVStoreV3,
                           array_meta_key, atexit_rmglob, atexit_rmtree,
                           attrs_key, default_compressor, getsize,
                           group_meta_key, init_array, init_group, migrate_1to2,
@@ -2285,9 +2285,11 @@ def test_format_compatibility():
 @skip_test_env_var("ZARR_TEST_ABS")
 class TestABSStore(StoreTests):
 
+    ABSStoreClass = ABSStore
+
     def create_store(self, prefix=None, **kwargs):
         container_client = abs_container()
-        store = ABSStore(
+        store = self.ABSStoreClass(
             prefix=prefix,
             client=container_client,
             **kwargs,
@@ -2297,7 +2299,7 @@ class TestABSStore(StoreTests):
 
     def test_non_client_deprecated(self):
         with pytest.warns(FutureWarning, match='Providing'):
-            store = ABSStore("container", account_name="account_name", account_key="account_key")
+            store = self.ABSStoreClass("container", account_name="account_name", account_key="account_key")
 
         for attr in ["container", "account_name", "account_key"]:
             with pytest.warns(FutureWarning, match=attr):
@@ -2305,7 +2307,13 @@ class TestABSStore(StoreTests):
             assert result == attr
 
     def test_iterators_with_prefix(self):
-        for prefix in ['test_prefix', '/test_prefix', 'test_prefix/', 'test/prefix', '', None]:
+        prefixes = ['test_prefix', '/test_prefix', 'test_prefix/', 'test/prefix']
+
+        if self.version < 3:
+            # empty prefix not allowed in v3
+            prefixes += ['', None]
+
+        for prefix in prefixes:
             store = self.create_store(prefix=prefix)
 
             # test iterator methods on empty store
@@ -2315,19 +2323,22 @@ class TestABSStore(StoreTests):
             assert set() == set(store.values())
             assert set() == set(store.items())
 
+            prefix = 'meta/root/' if self.version > 2 else ''
             # setup some values
-            store['a'] = b'aaa'
-            store['b'] = b'bbb'
-            store['c/d'] = b'ddd'
-            store['c/e/f'] = b'fff'
+            store[prefix + 'a'] = b'aaa'
+            store[prefix + 'b'] = b'bbb'
+            store[prefix + 'c/d'] = b'ddd'
+            store[prefix + 'c/e/f'] = b'fff'
 
             # test iterators on store with data
             assert 4 == len(store)
-            assert {'a', 'b', 'c/d', 'c/e/f'} == set(store)
-            assert {'a', 'b', 'c/d', 'c/e/f'} == set(store.keys())
-            assert {b'aaa', b'bbb', b'ddd', b'fff'} == set(store.values())
-            assert ({('a', b'aaa'), ('b', b'bbb'), ('c/d', b'ddd'), ('c/e/f', b'fff')} ==
-                    set(store.items()))
+            keys = [prefix + 'a', prefix + 'b', prefix + 'c/d', prefix + 'c/e/f']
+            values = [b'aaa', b'bbb', b'ddd', b'fff']
+            items = [(k, v) for k, v in zip(keys, values)]
+            assert set(keys) == set(store)
+            assert set(keys) == set(store.keys())
+            assert set(values) == set(store.values())
+            assert set(items) == set(store.items())
 
     def test_getsize(self):
         return super().test_getsize()

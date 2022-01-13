@@ -27,7 +27,7 @@ from zarr.storage import (ABSStore, DBMStore, KVStore, DirectoryStore, FSStore,
                           NestedDirectoryStore, SQLiteStore, ZipStore,
                           array_meta_key, atexit_rmglob, atexit_rmtree,
                           group_meta_key, init_array, init_group)
-from zarr.storage import (KVStoreV3, DirectoryStoreV3,  # MemoryStoreV3
+from zarr.storage import (ABSStoreV3, KVStoreV3, DirectoryStoreV3,  # MemoryStoreV3
                           FSStoreV3, NestedDirectoryStoreV3, ZipStoreV3,
                           DBMStoreV3, LMDBStoreV3, SQLiteStoreV3,
                           LRUStoreCacheV3)
@@ -1128,7 +1128,21 @@ class TestGroupWithABSStore(TestGroup):
         # internal attribute on ContainerClient isn't serializable for py36 and earlier
         super().test_pickle()
 
-# TODO TestGroupV3WithABSStore(TestGroup):
+
+@skip_test_env_var("ZARR_TEST_ABS")
+class TestGroupWithABSStoreV3(TestGroupV3):
+
+    @staticmethod
+    def create_store():
+        container_client = abs_container()
+        store = ABSStoreV3(client=container_client)
+        store.rmdir()
+        return store, None
+
+    @pytest.mark.skipif(sys.version_info < (3, 7), reason="attr not serializable in py36")
+    def test_pickle(self):
+        # internal attribute on ContainerClient isn't serializable for py36 and earlier
+        super().test_pickle()
 
 
 class TestGroupWithNestedDirectoryStore(TestGroup):

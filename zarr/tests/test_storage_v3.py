@@ -6,17 +6,18 @@ import tempfile
 import numpy as np
 import pytest
 from zarr._storage.store import _valid_key_characters
-from zarr.storage import (ConsolidatedMetadataStoreV3, DBMStoreV3,
+from zarr.storage import (ABSStoreV3, ConsolidatedMetadataStoreV3, DBMStoreV3,
                           DirectoryStoreV3, FSStoreV3, KVStore, KVStoreV3,
                           LMDBStoreV3, LRUStoreCacheV3, MemoryStoreV3,
                           MongoDBStoreV3, NestedDirectoryStoreV3, RedisStoreV3,
                           SQLiteStoreV3, StoreV3, ZipStoreV3, atexit_rmglob,
                           atexit_rmtree, default_compressor, getsize,
                           init_array, normalize_store_arg)
-from zarr.tests.util import CountingDictV3, have_fsspec, skip_test_env_var
+from zarr.tests.util import CountingDictV3, have_fsspec, skip_test_env_var, abs_container
 
 # pytest will fail to run if the following fixtures aren't imported here
 from .test_storage import StoreTests as _StoreTests
+from .test_storage import TestABSStore as _TestABSStore
 from .test_storage import TestConsolidatedMetadataStore as _TestConsolidatedMetadataStore
 from .test_storage import TestDBMStore as _TestDBMStore
 from .test_storage import TestDBMStoreBerkeleyDB as _TestDBMStoreBerkeleyDB
@@ -464,9 +465,11 @@ class TestLRUStoreCacheV3(_TestLRUStoreCache, StoreV3Tests):
     LRUStoreClass = LRUStoreCacheV3
 
 
-# TODO: implement ABSStoreV3
-# @skip_test_env_var("ZARR_TEST_ABS")
-# class TestABSStoreV3(_TestABSStore, StoreV3Tests):
+@skip_test_env_var("ZARR_TEST_ABS")
+class TestABSStoreV3(_TestABSStore, StoreV3Tests):
+
+    ABSStoreClass = ABSStoreV3
+
 
 def test_normalize_store_arg_v3(tmpdir):
 

@@ -57,7 +57,7 @@ from zarr.util import (buffer_size, json_loads, nolock, normalize_chunks,
                        normalize_dtype, normalize_fill_value, normalize_order,
                        normalize_shape, normalize_storage_path, retry_call)
 
-from zarr._storage.absstore import ABSStore  # noqa: F401
+from zarr._storage.absstore import ABSStore, ABSStoreV3  # noqa: F401
 from zarr._storage.store import (_get_hierarchy_metadata,
                                  _listdir_from_keys,
                                  _rename_from_keys,
