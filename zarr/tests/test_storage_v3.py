@@ -13,7 +13,7 @@ from zarr.storage import (ABSStoreV3, ConsolidatedMetadataStoreV3, DBMStoreV3,
                           SQLiteStoreV3, StoreV3, ZipStoreV3, atexit_rmglob,
                           atexit_rmtree, default_compressor, getsize,
                           init_array, normalize_store_arg)
-from zarr.tests.util import CountingDictV3, have_fsspec, skip_test_env_var, abs_container
+from zarr.tests.util import CountingDictV3, have_fsspec, skip_test_env_var
 
 # pytest will fail to run if the following fixtures aren't imported here
 from .test_storage import StoreTests as _StoreTests

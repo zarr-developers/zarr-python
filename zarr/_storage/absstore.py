@@ -3,7 +3,7 @@
 import warnings
 from numcodecs.compat import ensure_bytes
 from zarr.util import normalize_storage_path
-from zarr._storage.store import Store, StoreV3, _get_hierarchy_metadata, _rmdir_from_keys_v3
+from zarr._storage.store import Store, StoreV3, _get_hierarchy_metadata
 
 __doctest_requires__ = {
     ('ABSStore', 'ABSStore.*'): ['azure.storage.blob'],
@@ -247,38 +247,11 @@ class ABSStoreV3(ABSStore, StoreV3):
         if group_meta_file in self:
             del self[group_meta_file]
 
+    # TODO: adapt the v2 getsize method to work for v3
+    #       For now, calling the generic keys-based _getsize
     def getsize(self, path=None):
         from zarr.storage import _getsize  # avoid circular import
         return _getsize(self, path)
-
-    # # TODO: adapt the v2 getsize method to work for v3
-    # def getsize(self, path=None):
-    #     path = '' if path is None else path
-    #     size = 0
-    #     size += self._getsize('meta/root/' + path)
-    #     size += self._getsize('data/root/' + path)
-    #     return size
-
-    # def _getsize(self, path=None):
-    #     store_path = normalize_storage_path(path)
-    #     fs_path = self._append_path_to_prefix(store_path)
-    #     if fs_path:
-    #         blob_client = self.client.get_blob_client(fs_path)
-    #     else:
-    #         blob_client = None
-    #     if blob_client and blob_client.exists():
-    #         return blob_client.get_blob_properties().size
-    #     else:
-    #         size = 0
-    #         if fs_path == '':
-    #             fs_path = None
-    #         elif not fs_path.endswith('/'):
-    #             fs_path += '/'
-    #         for blob in self.client.walk_blobs(name_starts_with=fs_path, delimiter='/'):
-    #             blob_client = self.client.get_blob_client(blob)
-    #             if blob_client.exists():
-    #                 size += blob_client.get_blob_properties().size
-    #         return size
 
 
 ABSStoreV3.__doc__ = ABSStore.__doc__
