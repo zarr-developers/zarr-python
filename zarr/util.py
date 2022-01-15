@@ -33,23 +33,22 @@ object_codecs = {
 }
 
 
-class NumpyEncoder(json.JSONEncoder):
+class NumberEncoder(json.JSONEncoder):
 
     def default(self, o):
         # See json.JSONEncoder.default docstring for explanation
-        if isinstance(o, np.integer):
+        # This is necessary to encode numpy dtype
+        if isinstance(o, numbers.Integral):
             return int(o)
-        if isinstance(o, np.floating):
+        if isinstance(o, numbers.Real):
             return float(o)
-        if isinstance(o, np.ndarray):
-            return o.tolist()
         return json.JSONEncoder.default(self, o)
 
 
 def json_dumps(o: Any) -> bytes:
     """Write JSON in a consistent, human-readable way."""
     return json.dumps(o, indent=4, sort_keys=True, ensure_ascii=True,
-                      separators=(',', ': '), cls=NumpyEncoder).encode('ascii')
+                      separators=(',', ': '), cls=NumberEncoder).encode('ascii')
 
 
 def json_loads(s: str) -> Dict[str, Any]:

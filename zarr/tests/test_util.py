@@ -244,8 +244,7 @@ def test_all_equal():
 
 def test_json_dumps_numpy_dtype():
     assert json_dumps(np.int64(0)) == json_dumps(0)
-    assert json_dumps(np.float64(0)) == json_dumps(float(0))
-    assert json_dumps(np.array([0, 1])) == json_dumps([0, 1])
+    assert json_dumps(np.float32(0)) == json_dumps(float(0))
     # Check that we raise the error of the superclass for unsupported object
     with pytest.raises(TypeError):
         json_dumps(Array)
