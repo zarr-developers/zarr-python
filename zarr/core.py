@@ -1796,6 +1796,8 @@ class Array:
                 self._dtype != object):
 
             dest = out[out_selection]
+            # Assume that array-like objects that doesn't have a
+            # `writeable` flag is writable.
             dest_is_writable = getattr(dest, "writeable", True)
             write_direct = (
                 dest_is_writable and
