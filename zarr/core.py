@@ -1728,7 +1728,7 @@ class Array:
             pass
         else:
             if not hasattr(value, 'shape'):
-                value = np.array(value, like=self._meta_array)
+                value = np.asanyarray(value, like=self._meta_array)
             check_array_shape('value', value, sel_shape)
 
         # iterate over chunks in range
@@ -2039,8 +2039,8 @@ class Array:
             if is_scalar(value, self._dtype):
 
                 # setup array filled with value
-                chunk = np.empty(
-                    self._chunks, dtype=self._dtype, order=self._order, like=self._meta_array
+                chunk = np.empty_like(
+                    self._meta_array, shape=self._chunks, dtype=self._dtype, order=self._order
                 )
                 chunk.fill(value)
 
@@ -2061,8 +2061,8 @@ class Array:
 
                 # chunk not initialized
                 if self._fill_value is not None:
-                    chunk = np.empty(
-                        self._chunks, dtype=self._dtype, order=self._order, like=self._meta_array
+                    chunk = np.empty_like(
+                        self._meta_array, shape=self._chunks, dtype=self._dtype, order=self._order
                     )
                     chunk.fill(self._fill_value)
                 elif self._dtype == object:
@@ -2070,8 +2070,8 @@ class Array:
                 else:
                     # N.B., use zeros here so any region beyond the array has consistent
                     # and compressible data
-                    chunk = np.zeros(
-                        self._chunks, dtype=self._dtype, order=self._order, like=self._meta_array
+                    chunk = np.zeros_like(
+                        self._meta_array, shape=self._chunks, dtype=self._dtype, order=self._order
                     )
 
             else:
@@ -2438,7 +2438,7 @@ class Array:
 
         # ensure data is array-like
         if not hasattr(data, 'shape'):
-            data = np.array(data, like=self._meta_array)
+            data = np.asanyarray(data, like=self._meta_array)
 
         # ensure shapes are compatible for non-append dimensions
         self_shape_preserved = tuple(s for i, s in enumerate(self._shape)

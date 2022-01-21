@@ -130,7 +130,7 @@ class Group(MutableMapping):
         self._synchronizer = synchronizer
         self._meta_array = meta_array
         if meta_array is not None:
-            self._meta_array = np.empty_like(meta_array)
+            self._meta_array = np.empty_like(meta_array, shape=())
         else:
             self._meta_array = np.empty(())
 
