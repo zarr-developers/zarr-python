@@ -1825,7 +1825,7 @@ class Array:
             if partial_read_decode:
                 cdata.prepare_chunk()
                 # size of chunk
-                tmp = np.empty(self._chunks, dtype=self.dtype, like=self._meta_array)
+                tmp = np.empty_like(self._meta_array, shape=self._chunks, dtype=self.dtype)
                 index_selection = PartialChunkIterator(chunk_selection, self.chunks)
                 for start, nitems, partial_out_selection in index_selection:
                     expected_shape = [
