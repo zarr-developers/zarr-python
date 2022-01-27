@@ -4,6 +4,6 @@ flake8
 monotonic
 msgpack-python
 numcodecs
-numpy==1.20.3
+numpy==1.22.0
 setuptools_scm
 twine
