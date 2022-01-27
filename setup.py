@@ -9,7 +9,7 @@ with open('README.md') as f:
 dependencies = [
     'asciitree',
     'numpy>=1.7',
-    'fasteners==0.17.1',
+    'fasteners==0.16.3',
     'numcodecs>=0.6.4',
 ]
 
