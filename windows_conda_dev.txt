@@ -1,5 +1,5 @@
 coverage
-fasteners !=0.17.3
+fasteners <0.17
 flake8
 monotonic
 msgpack-python
