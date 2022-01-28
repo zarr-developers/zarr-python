@@ -48,7 +48,7 @@ jobs:
           conda activate zarr-env
           mkdir ~/blob_emulator
           azurite -l ~/blob_emulator --debug debug.log 2>&1 > stdouterr.log &
-          pytest -sv --timeout=300
+          pytest -svvv --timeout=300
         env:
           ZARR_TEST_ABS: 1
       - name: Conda info
