@@ -8,6 +8,6 @@ dependencies:
   - pip
   - pip:
     - asciitree
-    - fasteners <0.17
+    - fasteners
     - pytest
     - setuptools_scm

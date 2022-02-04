@@ -73,7 +73,7 @@ jobs:
         conda activate zarr-env
         mkdir ~/blob_emulator
         azurite -l ~/blob_emulator --debug debug.log 2>&1 > stdouterr.log &
-        pytest -vvv --cov=zarr --cov-config=.coveragerc --doctest-plus --cov-report xml --cov=./
+        pytest --cov=zarr --cov-config=.coveragerc --doctest-plus --cov-report xml --cov=./
     - uses: codecov/codecov-action@v1
       with:
         #token: ${{ secrets.CODECOV_TOKEN }} # not required for public repos
