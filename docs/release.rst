@@ -6,6 +6,9 @@ Release notes
 Unreleased
 ----------
 
+This release of Zarr Python introduces a new ``BaseStore`` class that all provided store classes implemented in Zarr Python now inherit from. This is done as part of refactoring to enable future support of the Zarr version 3 spec. Existing third-party stores that are a MutableMapping (e.g. dict) can be converted to a new-style key/value store inheriting from ``BaseStore`` by passing them as the argument to the new ``zarr.storage.KVStore`` class. For backwards compatibility, various higher-level array creation and convenience functions still accept plain Python dicts or other mutable mappings for the ``store`` argument, but will internally convert these to a ``KVStore``.
+
+
 Enhancements
 ~~~~~~~~~~~~
 
