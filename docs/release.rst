@@ -98,17 +98,17 @@ Maintenance
 
   - Unnecessary comprehension (:issue:`899`)
 
-  - Unnecessary ``NoneP` provided as default (:issue:`900`)
+  - Unnecessary ``None`` provided as default (:issue:`900`)
 
   - use an if ``expression`` instead of `and`/`or` (:issue:`888`)
 
-  - iRemove unnecessary literal (:issue:`891`)
+  - Remove unnecessary literal (:issue:`891`)
 
   - Decorate a few method with `@staticmethod` (:issue:`885`)
 
-  - Useless ``return`` (:issue:`884`)
+  - Drop unneeded ``return`` (:issue:`884`)
 
-  - In Python 3, all classes implicitly inherit from object (:issue:`886`)
+  - Drop explicit ``object`` inheritance from ``class``es (:issue:`886`)
 
   - Unnecessary comprehension (:issue:`883`)
 
