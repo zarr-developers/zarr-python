@@ -14,23 +14,23 @@ Unreleased
 Enhancements
 ~~~~~~~~~~~~
 
+* **Sparse changes with performance impact!** One of the advantages of the Zarr
+  format is that it is sparse, which means that chunks with no data (more
+  precisely, with data equal to the fill value, which is usually 0) don't need
+  to be written to disk at all. They will simply be assumed to be empty at read
+  time. However, until this release, the Zarr library would write these empty
+  chunks to disk anyway. This changes in this version: a small performance
+  penalty at write time leads to significant speedups at read time and in
+  filesystem operations in the case of sparse arrays. To revert to the old
+  behavior, pass the argument ``write_empty_chunks=True`` to the array creation
+  function. By :user:`Juan Nunez-Iglesias <jni>`; :issue:`853` and
+  :user:`Davis Bennett <d-v-b>`; :issue:`738`.
+
+
 * **Fancy indexing**. Zarr arrays now support NumPy-style fancy indexing with
   arrays of integer coordinates. This is equivalent to using zarr.Array.vindex.
   Mixing slices and integer arrays is not supported.
   By :user:`Juan Nunez-Iglesias <jni>`; :issue:`725`.
-
-
-* **Sparse changes!**. One of the advantages of the Zarr format is that it is
-  sparse, which means that chunks with no data (more precisely, with data equal
-  to the fill value, which is usually 0) don't need to be written to disk at
-  all. They will simply be assumed to be empty at read time. However, until
-  this release, the Zarr library would write these empty chunks to disk anyway.
-  This changes in this version: a small performance penalty at write time leads
-  to significant speedups at read time and in filesystem operations in the case
-  of sparse arrays. To revert to the old behavior, pass the argument
-  write_empty_chunks=True to the array creation function.
-  By :user:`Juan Nunez-Iglesias <jni>`; :issue:`853` and
-  :user:`Davis Bennett <d-v-b>`; :issue:`738`.
 
 * **New base class**. This release of Zarr Python introduces a new
   ``BaseStore`` class that all provided store classes implemented in Zarr
@@ -71,7 +71,7 @@ Documentation
 * Update docs creation of dev env.
   By :user:`Ray Bell <raybellwaves>` :issue:`921`.
 
-* Update docs to use `python -m pytest`.
+* Update docs to use ``python -m pytest``.
   By :user:`Ray Bell <raybellwaves>` :issue:`923`.
 
 * Fix versionadded tag in zarr.core.Array docstring.
@@ -101,21 +101,33 @@ Maintenance
 * Activate Python 3.9 in GitHub Actions.
   By :user:`Josh Moore <joshmoore>` :issue:`859`.
 
-* Drop shortcut `fsspec[s3]` for dependency.
+* Drop shortcut ``fsspec[s3]`` for dependency.
   By :user:`Josh Moore <joshmoore>` :issue:`920`.
 
 * and a swath of code-linting improvements by :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>`:
+
   - Unnecessary comprehension (:issue:`899`)
-  - Unnecessary `None` provided as default (:issue:`900`)
-  - use an if `expression` instead of `and`/`or` (:issue:`888`)
+
+  - Unnecessary ``NoneP` provided as default (:issue:`900`)
+
+  - use an if ``expression`` instead of `and`/`or` (:issue:`888`)
+
   - iRemove unnecessary literal (:issue:`891`)
+
   - Decorate a few method with `@staticmethod` (:issue:`885`)
-  - Useless `return` (:issue:`884`)
+
+  - Useless ``return`` (:issue:`884`)
+
   - In Python 3, all classes implicitly inherit from object (:issue:`886`)
+
   - Unnecessary comprehension (:issue:`883`)
+
   - Codespell configuration (:issue:`882`)
+
   - Fix typos found by codespell (:issue:`880`)
+
   - Proper C-style formatting for integer (:issue:`913`)
+
   - Add LGTM.com / DeepSource.io configuration files (:issue:`909`)
 
 .. _release_2.10.3:
