@@ -26,7 +26,6 @@ Enhancements
   function. By :user:`Juan Nunez-Iglesias <jni>`; :issue:`853` and
   :user:`Davis Bennett <d-v-b>`; :issue:`738`.
 
-
 * **Fancy indexing**. Zarr arrays now support NumPy-style fancy indexing with
   arrays of integer coordinates. This is equivalent to using zarr.Array.vindex.
   Mixing slices and integer arrays is not supported.
@@ -62,9 +61,6 @@ Bug fixes
 * Unguarded next inside generator.
   By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`889`.
 
-* Fix: N5 keywords now emit UserWarning instead of raising a ValueError
-  By :user:`Boaz Mohar <boazmohar>` :issue:`860`.
-
 Documentation
 ~~~~~~~~~~~~~
 
@@ -88,12 +84,6 @@ Maintenance
 
 * Upgrade MongoDB in test env.
   By :user:`Joe Hamman <jhamman>` :issue:`939`.
-
-* Define blocksize for array, updates hexdigest values.
-  By :user:`Andrew Fulton <andrewfulton9>` :issue:`867`.
-
-* blocks_to_decompress not used in read_part function.
-  By :user:`Boaz Mohar <boazmohar>` :issue:`861`.
 
 * Pass dimension_separator on fixture generation.
   By :user:`Josh Moore <joshmoore>` :issue:`858`.
