@@ -81,13 +81,13 @@ class Array:
         .. versionadded:: 2.7
 
     write_empty_chunks : bool, optional
-        If True (default), all chunks will be stored regardless of their
-        contents. If False, each chunk is compared to the array's fill
-        value prior to storing. If a chunk is uniformly equal to the fill
-        value, then that chunk is not be stored, and the store entry for
-        that chunk's key is deleted. This setting enables sparser storage,
-        as only chunks with non-fill-value data are stored, at the expense
-        of overhead associated with checking the data of each chunk.
+        If True, all chunks will be stored regardless of their contents. If
+        False (default), each chunk is compared to the array's fill value prior
+        to storing. If a chunk is uniformly equal to the fill value, then that
+        chunk is not be stored, and the store entry for that chunk's key is
+        deleted. This setting enables sparser storage, as only chunks with
+        non-fill-value data are stored, at the expense of overhead associated
+        with checking the data of each chunk.
 
         .. versionadded:: 2.11
 
@@ -154,7 +154,7 @@ class Array:
         cache_metadata=True,
         cache_attrs=True,
         partial_decompress=False,
-        write_empty_chunks=True,
+        write_empty_chunks=False,
     ):
         # N.B., expect at this point store is fully initialized with all
         # configuration metadata fully specified and normalized

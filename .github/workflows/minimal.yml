@@ -9,7 +9,7 @@ on:
     branches: [ master ]
 
 jobs:
-  build:
+  minimum_build:
 
     runs-on: ubuntu-latest
     steps:
@@ -25,11 +25,11 @@ jobs:
       run: |
         conda activate minimal
         python -m pip install .
-        pytest -svx
+        pytest -svx --timeout=300
     - name: Fixture generation
       shell: "bash -l {0}"
       run: |
         conda activate minimal
         rm -rf fixture/
-        pytest -svx zarr/tests/test_dim_separator.py zarr/tests/test_storage.py
+        pytest -svx --timeout=300 zarr/tests/test_dim_separator.py zarr/tests/test_storage.py
         # This simulates fixture-less tests in conda and debian packaging
