@@ -10,4 +10,5 @@ dependencies:
     - asciitree
     - fasteners
     - pytest
+    - pytest-timeout
     - setuptools_scm
