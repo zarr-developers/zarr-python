@@ -1,4 +1,3 @@
-import array
 import inspect
 import json
 import math
@@ -11,119 +10,11 @@ import numpy as np
 from asciitree import BoxStyle, LeftAligned
 from asciitree.traversal import Traversal
 from collections.abc import Iterable
-from numcodecs.compat import ensure_text
+from numcodecs.compat import ensure_text, ensure_ndarray_like
 from numcodecs.registry import codec_registry
 from numcodecs.blosc import cbuffer_sizes, cbuffer_metainfo
 
 from typing import Any, Callable, Dict, Optional, Tuple, Union
-
-
-# TODO: move the function to numcodecs
-def ensure_ndarray(buf):
-    """Convenience function to coerce `buf` to numpy array-like, if it is not
-    already a numpy array-like.
-
-    Parameters
-    ----------
-    buf : array-like or bytes-like
-        A numpy array or any object exporting a buffer interface.
-
-    Returns
-    -------
-    arr : array-like
-        A numpy array-like array that shares memory with `buf`.
-
-    Notes
-    -----
-    This function will not create a copy under any circumstances, it is guaranteed to
-    return a view on memory exported by `buf`.
-    """
-
-    if isinstance(buf, np.ndarray):
-        # already a numpy array
-        arr = buf
-
-    elif isinstance(buf, array.array) and buf.typecode in 'cu':
-        # Guard condition, do not support array.array with unicode type, this is
-        # problematic because numpy does not support it on all platforms. Also do not
-        # support char as it was removed in Python 3.
-        raise TypeError('array.array with char or unicode type is not supported')
-
-    else:
-
-        # TODO: make it possible to register array-like types lazily.
-        try:
-            import cupy
-            if isinstance(buf, cupy.ndarray):
-                return buf
-        except ImportError:
-            pass
-
-        # N.B., first take a memoryview to make sure that we subsequently create a
-        # numpy array from a memory buffer with no copy
-        mem = memoryview(buf)
-
-        # instantiate array from memoryview, ensures no copy
-        arr = np.array(mem, copy=False)
-
-    return arr
-
-
-# TODO: move the function to numcodecs
-def ensure_contiguous_ndarray(buf, max_buffer_size=None):
-    """Convenience function to coerce `buf` to numpy array-like, if it is not already
-    numpy array-like.
-
-    Also ensures that the returned value exports fully contiguous memory, and supports
-    the new-style buffer interface. If the optional max_buffer_size is provided, raise
-    a ValueError if the number of bytes consumed by the returned array exceeds this
-    value.
-
-    Parameters
-    ----------
-    buf : array-like or bytes-like
-        A numpy array or any object exporting a buffer interface.
-    max_buffer_size : int
-        If specified, the largest allowable value of arr.nbytes, where arr
-        is the returned array.
-
-    Returns
-    -------
-    arr : array-like
-        A numpy array-like array that shares memory with `buf`.
-
-    Notes
-    -----
-    This function will not create a copy under any circumstances, it is guaranteed to
-    return a view on memory exported by `buf`.
-
-    """
-
-    # ensure input is a numpy array
-    arr = ensure_ndarray(buf)
-
-    # check for object arrays, these are just memory pointers, actual memory holding
-    # item data is scattered elsewhere
-    if arr.dtype == object:
-        raise TypeError('object arrays are not supported')
-
-    # check for datetime or timedelta ndarray, the buffer interface doesn't support those
-    if arr.dtype.kind in 'Mm':
-        arr = arr.view(np.int64)
-
-    # check memory is contiguous, if so flatten
-    if arr.flags.c_contiguous or arr.flags.f_contiguous:
-        # can flatten without copy
-        arr = arr.reshape(-1, order='A')
-
-    else:
-        raise ValueError('an array with contiguous memory is required')
-
-    if max_buffer_size is not None and arr.nbytes > max_buffer_size:
-        msg = "Codec does not support buffers of > {} bytes".format(max_buffer_size)
-        raise ValueError(msg)
-
-    return arr
 
 
 def flatten(arg: Iterable) -> Iterable:
@@ -449,7 +340,7 @@ def normalize_storage_path(path: Union[str, bytes, None]) -> str:
 
 
 def buffer_size(v) -> int:
-    return ensure_ndarray(v).nbytes
+    return ensure_ndarray_like(v).nbytes
 
 
 def info_text_report(items: Dict[Any, Any]) -> str:

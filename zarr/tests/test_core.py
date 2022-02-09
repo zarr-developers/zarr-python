@@ -12,7 +12,7 @@ import pytest
 from numcodecs import (BZ2, JSON, LZ4, Blosc, Categorize, Delta,
                        FixedScaleOffset, GZip, MsgPack, Pickle, VLenArray,
                        VLenBytes, VLenUTF8, Zlib)
-from numcodecs.compat import ensure_bytes
+from numcodecs.compat import ensure_bytes, ensure_ndarray
 from numcodecs.tests.common import greetings
 from numpy.testing import assert_array_almost_equal, assert_array_equal
 from pkg_resources import parse_version
@@ -35,7 +35,7 @@ from zarr.storage import (
     init_array,
     init_group,
 )
-from zarr.util import buffer_size, ensure_ndarray
+from zarr.util import buffer_size
 from zarr.tests.util import abs_container, skip_test_env_var, have_fsspec
 
 # noinspection PyMethodMayBeStatic

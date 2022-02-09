@@ -42,7 +42,7 @@ from zarr.util import (
     normalize_shape,
     normalize_storage_path,
     PartialReadBuffer,
-    ensure_ndarray
+    ensure_ndarray_like
 )
 
 
@@ -1562,7 +1562,7 @@ class Array:
         # handle value - need ndarray-like flatten value
         if not is_scalar(value, self._dtype):
             try:
-                value = ensure_ndarray(value)
+                value = ensure_ndarray_like(value)
             except TypeError:
                 # Handle types like `list` or `tuple`
                 value = np.array(value, like=self._meta_array)
@@ -1817,7 +1817,7 @@ class Array:
                         cdata = cdata.read_full()
                     self._compressor.decode(cdata, dest)
                 else:
-                    chunk = ensure_ndarray(cdata).view(self._dtype)
+                    chunk = ensure_ndarray_like(cdata).view(self._dtype)
                     chunk = chunk.reshape(self._chunks, order=self._order)
                     np.copyto(dest, chunk)
                 return
@@ -1884,7 +1884,7 @@ class Array:
         """
         out_is_ndarray = True
         try:
-            out = ensure_ndarray(out)
+            out = ensure_ndarray_like(out)
         except TypeError:
             out_is_ndarray = False
 
@@ -1919,7 +1919,7 @@ class Array:
         """
         out_is_ndarray = True
         try:
-            out = ensure_ndarray(out)
+            out = ensure_ndarray_like(out)
         except TypeError:  # pragma: no cover
             out_is_ndarray = False
 
@@ -2116,7 +2116,7 @@ class Array:
                 chunk = f.decode(chunk)
 
         # view as numpy array with correct dtype
-        chunk = ensure_ndarray(chunk)
+        chunk = ensure_ndarray_like(chunk)
         # special case object dtype, because incorrect handling can lead to
         # segfaults and other bad things happening
         if self._dtype != object:
@@ -2143,7 +2143,7 @@ class Array:
                 chunk = f.encode(chunk)
 
         # check object encoding
-        if ensure_ndarray(chunk).dtype == object:
+        if ensure_ndarray_like(chunk).dtype == object:
             raise RuntimeError('cannot write object array without object codec')
 
         # compress

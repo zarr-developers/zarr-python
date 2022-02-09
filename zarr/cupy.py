@@ -1,7 +1,6 @@
 from numcodecs.abc import Codec
+from numcodecs.compat import ensure_contiguous_ndarray_like
 from numcodecs.registry import get_codec, register_codec
-
-from .util import ensure_contiguous_ndarray
 
 
 class CuPyCPUCompressor(Codec):
@@ -24,7 +23,7 @@ class CuPyCPUCompressor(Codec):
     def encode(self, buf):
         import cupy
 
-        buf = cupy.asnumpy(ensure_contiguous_ndarray(buf))
+        buf = cupy.asnumpy(ensure_contiguous_ndarray_like(buf))
         if self.compressor:
             buf = self.compressor.encode(buf)
         return buf
@@ -36,7 +35,7 @@ class CuPyCPUCompressor(Codec):
             cpu_out = None if out is None else cupy.asnumpy(out)
             chunk = self.compressor.decode(chunk, cpu_out)
 
-        chunk = cupy.asarray(ensure_contiguous_ndarray(chunk))
+        chunk = cupy.asarray(ensure_contiguous_ndarray_like(chunk))
         if out is not None:
             cupy.copyto(out, chunk.view(dtype=out.dtype), casting="no")
             chunk = out
