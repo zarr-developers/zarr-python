@@ -779,7 +779,7 @@ def all_equal(value: Any, array: Any):
         # optimized to return on the first truthy value in `array`.
         try:
             return not np.any(array)
-        except TypeError:  # pragma: no cover
+        except (TypeError, ValueError):  # pragma: no cover
             pass
     if np.issubdtype(array.dtype, np.object_):
         # we have to flatten the result of np.equal to handle outputs like
