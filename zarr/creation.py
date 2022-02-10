@@ -522,10 +522,15 @@ def open_array(
         if not contains_array(store, path=path):
             if contains_group(store, path=path):
                 raise ContainsGroupError(path)
-            init_array(store, shape=shape, chunks=chunks, dtype=dtype,
-                       compressor=compressor, fill_value=fill_value,
-                       order=order, filters=filters, path=path,
-                       object_codec=object_codec, chunk_store=chunk_store)
+            try:
+                init_array(store, shape=shape, chunks=chunks, dtype=dtype,
+                           compressor=compressor, fill_value=fill_value,
+                           order=order, filters=filters, path=path,
+                           object_codec=object_codec, chunk_store=chunk_store)
+            except ContainsArrayError:
+                # Array must have been created betwen the `contains_array`
+                # and the `init_array` call, so just swallow the error
+                pass
 
     elif mode in ['w-', 'x']:
         if contains_group(store, path=path):
