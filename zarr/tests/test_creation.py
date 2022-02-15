@@ -433,7 +433,7 @@ def test_create():
     assert (100,) == z.chunks  # auto-chunks
     assert np.dtype(None) == z.dtype
     assert 'blosc' == z.compressor.codec_id
-    assert 0 == z.fill_value
+    assert None == z.fill_value
 
     # all specified
     z = create(100, chunks=10, dtype='i4', compressor=Zlib(1),

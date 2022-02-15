@@ -2207,7 +2207,7 @@ class TestConsolidatedMetadataStore:
 
 
 def test_fill_value_change():
-    a = zarr.create((10, 10), dtype=int)
+    a = zarr.create((10, 10), dtype=int, fill_value=0)
 
     assert a[0, 0] == 0
 

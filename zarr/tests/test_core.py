@@ -18,6 +18,7 @@ from numpy.testing import assert_array_almost_equal, assert_array_equal
 from pkg_resources import parse_version
 
 from zarr.core import Array
+from zarr.creation import create
 from zarr.meta import json_loads
 from zarr.n5 import N5Store, N5FSStore, n5_keywords
 from zarr.storage import (
@@ -1247,6 +1248,14 @@ class TestArray(unittest.TestCase):
         assert isinstance(z.filters[0], VLenBytes)
         z[:] = data
         assert_array_equal(data, z[:])
+        z.store.close()
+
+        # Zero-length bytes
+        z = create(shape=(1,), dtype=bytes)
+        assert z.dtype == object
+        assert isinstance(z.filters[0], VLenBytes)
+        z[0] = b''
+        assert z[0] == b''
         z.store.close()
 
         z = self.create_array(shape=data.shape, dtype=object, object_codec=Pickle())
