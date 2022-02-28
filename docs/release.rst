@@ -6,6 +6,13 @@ Release notes
 Unreleased
 ----------
 
+Bug fixes
+~~~~~~~~~
+
+* Fix bug where indexing with a scalar numpy value returned a single-value array.
+  By :user:`Ben Jeffery <benjeffery>` :issue:`967`.
+
+
 .. _release_2.11.0:
 
 2.11.0
