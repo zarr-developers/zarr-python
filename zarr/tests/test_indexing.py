@@ -1444,9 +1444,11 @@ def test_slice_selection_uints():
     slice_sel = make_slice_selection((idx,))
     assert arr[slice_sel].shape == (1, 6)
 
+    
 def test_numpy_int_indexing():
     a = np.arange(1050)
     z = zarr.create(shape=1050, chunks=100, dtype=a.dtype)
     z[:] = a
     assert a[42] == z[42]
     assert a[numpy.int64(42)] == z[numpy.int64(42)]
+    
