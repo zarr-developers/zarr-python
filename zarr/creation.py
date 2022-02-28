@@ -19,8 +19,8 @@ def create(shape, chunks=True, dtype=None, compressor='default',
            fill_value=0, order='C', store=None, synchronizer=None,
            overwrite=False, path=None, chunk_store=None, filters=None,
            cache_metadata=True, cache_attrs=True, read_only=False,
-           object_codec=None, dimension_separator=None, write_empty_chunks=True, *,
-           zarr_version=None, **kwargs):
+           object_codec=None, dimension_separator=None, write_empty_chunks=True,
+           *, zarr_version=None, **kwargs):
     """Create an array.
 
     Parameters
@@ -69,15 +69,20 @@ def create(shape, chunks=True, dtype=None, compressor='default',
         A codec to encode object arrays, only needed if dtype=object.
     dimension_separator : {'.', '/'}, optional
         Separator placed between the dimensions of a chunk.
+
         .. versionadded:: 2.8
+
     write_empty_chunks : bool, optional
-        If True (default), all chunks will be stored regardless of their
-        contents. If False, each chunk is compared to the array's fill
-        value prior to storing. If a chunk is uniformly equal to the fill
-        value, then that chunk is not be stored, and the store entry for
-        that chunk's key is deleted. This setting enables sparser storage,
-        as only chunks with non-fill-value data are stored, at the expense
-        of overhead associated with checking the data of each chunk.
+        If True, all chunks will be stored regardless of their contents. If
+        False (default), each chunk is compared to the array's fill value prior
+        to storing. If a chunk is uniformly equal to the fill value, then that
+        chunk is not be stored, and the store entry for that chunk's key is
+        deleted. This setting enables sparser storage, as only chunks with
+        non-fill-value data are stored, at the expense of overhead associated
+        with checking the data of each chunk.
+
+        .. versionadded:: 2.11
+
     zarr_version : {None, 2, 3}, optional
         The zarr protocol version of the created array. If None, it will be
         inferred from ``store`` or ``chunk_store`` if they are provided,
@@ -397,7 +402,7 @@ def open_array(
     chunk_store=None,
     storage_options=None,
     partial_decompress=False,
-    write_empty_chunks=True,
+    write_empty_chunks=False,
     *,
     zarr_version=None,
     dimension_separator=None,
@@ -456,18 +461,21 @@ def open_array(
         is Blosc, when getting data from the array chunks will be partially
         read and decompressed when possible.
     write_empty_chunks : bool, optional
-        If True (default), all chunks will be stored regardless of their
-        contents. If False, each chunk is compared to the array's fill
-        value prior to storing. If a chunk is uniformly equal to the fill
-        value, then that chunk is not be stored, and the store entry for
-        that chunk's key is deleted. This setting enables sparser storage,
-        as only chunks with non-fill-value data are stored, at the expense
-        of overhead associated with checking the data of each chunk.
+        If True, all chunks will be stored regardless of their contents. If
+        False (default), each chunk is compared to the array's fill value prior
+        to storing. If a chunk is uniformly equal to the fill value, then that
+        chunk is not be stored, and the store entry for that chunk's key is
+        deleted. This setting enables sparser storage, as only chunks with
+        non-fill-value data are stored, at the expense of overhead associated
+        with checking the data of each chunk.
+
+        .. versionadded:: 2.11
+
     zarr_version : {None, 2, 3}, optional
         The zarr protocol version of the array to be opened. If None, it will
         be inferred from ``store`` or ``chunk_store`` if they are provided,
         otherwise defaulting to 2.
-    zarr_version : {None, '.', '/'}, optional
+    dimension_separator : {None, '.', '/'}, optional
         Can be used to specify whether the array is in a flat ('.') or nested
         ('/') format. If None, the appropriate value will be read from `store`
         when present. Otherwise, defaults to '.' when ``zarr_version == 2``

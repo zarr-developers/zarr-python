@@ -6,22 +6,119 @@ Release notes
 Unreleased
 ----------
 
+.. _release_2.11.0:
+
+2.11.0
+------
+
 Enhancements
 ~~~~~~~~~~~~
 
-* Allow to assign array ``fill_values`` and update metadata accordingly. :issue:`662`
+* **Sparse changes with performance impact!** One of the advantages of the Zarr
+  format is that it is sparse, which means that chunks with no data (more
+  precisely, with data equal to the fill value, which is usually 0) don't need
+  to be written to disk at all. They will simply be assumed to be empty at read
+  time. However, until this release, the Zarr library would write these empty
+  chunks to disk anyway. This changes in this version: a small performance
+  penalty at write time leads to significant speedups at read time and in
+  filesystem operations in the case of sparse arrays. To revert to the old
+  behavior, pass the argument ``write_empty_chunks=True`` to the array creation
+  function. By :user:`Juan Nunez-Iglesias <jni>`; :issue:`853` and
+  :user:`Davis Bennett <d-v-b>`; :issue:`738`.
 
-* array indexing with [] (getitem and setitem) now supports fancy indexing.
+* **Fancy indexing**. Zarr arrays now support NumPy-style fancy indexing with
+  arrays of integer coordinates. This is equivalent to using zarr.Array.vindex.
+  Mixing slices and integer arrays is not supported.
   By :user:`Juan Nunez-Iglesias <jni>`; :issue:`725`.
 
-* write_empty_chunks=False deletes chunks consisting of only fill_value.
-  By :user:`Davis Bennett <d-v-b>`; :issue:`738`.
+* **New base class**. This release of Zarr Python introduces a new
+  ``BaseStore`` class that all provided store classes implemented in Zarr
+  Python now inherit from. This is done as part of refactoring to enable future
+  support of the Zarr version 3 spec. Existing third-party stores that are a
+  MutableMapping (e.g. dict) can be converted to a new-style key/value store
+  inheriting from ``BaseStore`` by passing them as the argument to the new
+  ``zarr.storage.KVStore`` class. For backwards compatibility, various
+  higher-level array creation and convenience functions still accept plain
+  Python dicts or other mutable mappings for the ``store`` argument, but will
+  internally convert these to a ``KVStore``.
+  By :user:`Greggory Lee <grlee77>`; :issue:`839`, :issue:`789`, and :issue:`950`.
 
-* Move metadata handling to a class.
-  By :user:`Greggory Lee <grlee77>`; :issue:`839`.
+* Allow to assign array ``fill_values`` and update metadata accordingly.
+  By :user:`Ryan Abernathey <rabernat>`, :issue:`662`.
 
-* Create a Base store class for Zarr Store.
-  By :user:`Greggory Lee <grlee77>`; :issue:`789`.
+* Allow to update array fill_values
+  By :user:`Matthias Bussonnier <Carreau>` :issue:`665`.
+
+Bug fixes
+~~~~~~~~~
+
+* Fix bug where the checksum of zipfiles is wrong
+  By :user:`Oren Watson <orenwatson>` :issue:`930`.
+
+* Fix consolidate_metadata with FSStore.
+  By :user:`Joe Hamman <jhamman>` :issue:`916`.
+
+* Unguarded next inside generator.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`889`.
+
+Documentation
+~~~~~~~~~~~~~
+
+* Update docs creation of dev env.
+  By :user:`Ray Bell <raybellwaves>` :issue:`921`.
+
+* Update docs to use ``python -m pytest``.
+  By :user:`Ray Bell <raybellwaves>` :issue:`923`.
+
+* Fix versionadded tag in zarr.core.Array docstring.
+  By :user:`Juan Nunez-Iglesias <jni>` :issue:`852`.
+
+* Doctest seem to be stricter now, updating tostring() to tobytes().
+  By :user:`John Kirkham <jakirkham>` :issue:`907`.
+
+* Minor doc fix.
+  By :user:`Mads R. B. Kristensen <madsbk>` :issue:`937`.
+
+Maintenance
+~~~~~~~~~~~
+
+* Upgrade MongoDB in test env.
+  By :user:`Joe Hamman <jhamman>` :issue:`939`.
+
+* Pass dimension_separator on fixture generation.
+  By :user:`Josh Moore <joshmoore>` :issue:`858`.
+
+* Activate Python 3.9 in GitHub Actions.
+  By :user:`Josh Moore <joshmoore>` :issue:`859`.
+
+* Drop shortcut ``fsspec[s3]`` for dependency.
+  By :user:`Josh Moore <joshmoore>` :issue:`920`.
+
+* and a swath of code-linting improvements by :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>`:
+
+  - Unnecessary comprehension (:issue:`899`)
+
+  - Unnecessary ``None`` provided as default (:issue:`900`)
+
+  - use an if ``expression`` instead of `and`/`or` (:issue:`888`)
+
+  - Remove unnecessary literal (:issue:`891`)
+
+  - Decorate a few method with `@staticmethod` (:issue:`885`)
+
+  - Drop unneeded ``return`` (:issue:`884`)
+
+  - Drop explicit ``object`` inheritance from ``class``es (:issue:`886`)
+
+  - Unnecessary comprehension (:issue:`883`)
+
+  - Codespell configuration (:issue:`882`)
+
+  - Fix typos found by codespell (:issue:`880`)
+
+  - Proper C-style formatting for integer (:issue:`913`)
+
+  - Add LGTM.com / DeepSource.io configuration files (:issue:`909`)
 
 .. _release_2.10.3:
 
@@ -138,7 +235,7 @@ Maintenance
 ~~~~~~~~~~~
 
 * Correct conda-forge deployment of Zarr.
-  By :user:`Josh Moore <joshmoore>`; :issue:`XXX`.
+  By :user:`Josh Moore <joshmoore>`; :issue:`819`.
 
 .. _release_2.9.0:
 
@@ -340,8 +437,8 @@ This release of Zarr Python is the first release of Zarr to not support Python 3
   <https://github.com/zarr-developers/zarr-python/issues/536#issuecomment-721253094>`_ for some performance analysis
   showing order of magnitude faster response in some benchmark.
 
-See `this link <https://github.com/zarr-developers/zarr-python/milestone/11?closed=1>` for the full list of closed and
-merged PR tagged with the 2.6 milestone.
+See `this link <https://github.com/zarr-developers/zarr-python/milestone/11?closed=1>`_
+for the full list of closed and merged PR tagged with the 2.6 milestone.
 
 * Add ability to partially read and decompress arrays, see :issue:`667`. It is
   only available to chunks stored using fsspec and using Blosc as a compressor.
