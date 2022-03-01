@@ -18,6 +18,7 @@ except ImportError:  # pragma: no cover
 from numcodecs import Zlib
 from numpy.testing import assert_array_equal
 
+from zarr._storage.store import _get_hierarchy_metadata
 from zarr.attrs import Attributes
 from zarr.core import Array
 from zarr.creation import open_array
@@ -244,6 +245,34 @@ class TestGroup(unittest.TestCase):
         assert g7.path == self._subgroup_path(g1, 'z')[0]
 
         g1.store.close()
+
+    def test_rmdir_group_and_array_metadata_files(self):
+        """Test group.store's rmdir method.
+
+        This test case was added to complete test coverage of `ABSStore.rmdir`.
+        """
+        g1 = self.create_group()
+        # create a dataset
+        g1.create_dataset('arr1', shape=(100,), chunks=(10,), dtype=np.uint8)
+
+        # create level 1 child group
+        g2 = g1.create_group('foo')
+        g1.create_dataset('arr2', shape=(100,), chunks=(10,), dtype=np.uint8)
+
+        if g1._version > 2 and g1.store.is_erasable():
+            arr_path = os.path.join(g1.path, 'arr1')
+            sfx = _get_hierarchy_metadata(g1.store)['metadata_key_suffix']
+            array_meta_file = 'meta/root/' + arr_path + '.array' + sfx
+            assert array_meta_file in g1.store
+            group_meta_file = 'meta/root/' + g2.path + '.group' + sfx
+            assert group_meta_file in g1.store
+
+            # rmdir on the array path should also remove the metadata file
+            g1.store.rmdir(arr_path)
+            assert array_meta_file not in g1.store
+            # rmdir on the group path should also remove its metadata file
+            g1.store.rmdir(g2.path)
+            assert group_meta_file not in g1.store
 
     def _dataset_path(self, group, path):
         path = path.rstrip('/')

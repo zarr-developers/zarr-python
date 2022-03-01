@@ -2299,7 +2299,9 @@ class TestABSStore(StoreTests):
 
     def test_non_client_deprecated(self):
         with pytest.warns(FutureWarning, match='Providing'):
-            store = self.ABSStoreClass("container", account_name="account_name", account_key="account_key")
+            store = self.ABSStoreClass(
+                "container", account_name="account_name", account_key="account_key"
+            )
 
         for attr in ["container", "account_name", "account_key"]:
             with pytest.warns(FutureWarning, match=attr):
