@@ -1021,6 +1021,19 @@ class TestFSStore(StoreTests):
         with pytest.raises(PermissionError):
             g.data[:] = 1
 
+    def test_modify_consolidated(self):
+        import zarr
+        url = "file://" + tempfile.mkdtemp()
+
+        # create
+        root = zarr.open_group(url, mode="w")
+        root.zeros('baz', shape=(10000, 10000), chunks=(1000, 1000), dtype='i4')
+        zarr.consolidate_metadata(url)
+
+        # reopen and modify
+        root = zarr.open_consolidated(url, mode="r+")
+        root["baz"][0, 0] = 7
+
     def test_read_only(self):
         path = tempfile.mkdtemp()
         atexit.register(atexit_rmtree, path)
