@@ -260,7 +260,7 @@ class TestGroup(unittest.TestCase):
         g1.create_dataset('arr2', shape=(100,), chunks=(10,), dtype=np.uint8)
 
         if g1._version > 2 and g1.store.is_erasable():
-            arr_path = os.path.join(g1.path, 'arr1')
+            arr_path = g1.path + '/arr1'
             sfx = _get_hierarchy_metadata(g1.store)['metadata_key_suffix']
             array_meta_file = 'meta/root/' + arr_path + '.array' + sfx
             assert array_meta_file in g1.store
