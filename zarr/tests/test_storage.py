@@ -1034,6 +1034,9 @@ class TestFSStore(StoreTests):
         root = zarr.open_consolidated(url, mode="r+")
         root["baz"][0, 0] = 7
 
+        root = zarr.open_consolidated(url, mode="r")
+        assert root["baz"][0, 0] == 7
+
     def test_read_only(self):
         path = tempfile.mkdtemp()
         atexit.register(atexit_rmtree, path)
