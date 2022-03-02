@@ -1021,7 +1021,8 @@ class TestFSStore(StoreTests):
         with pytest.raises(PermissionError):
             g.data[:] = 1
 
-    def test_modify_consolidated(self):
+    @pytest.mark.parametrize('mode,allowed', [("r", False), ("r+", True)])
+    def test_modify_consolidated(self, mode, allowed):
         import zarr
         url = "file://" + tempfile.mkdtemp()
 
@@ -1031,11 +1032,15 @@ class TestFSStore(StoreTests):
         zarr.consolidate_metadata(url)
 
         # reopen and modify
-        root = zarr.open_consolidated(url, mode="r+")
-        root["baz"][0, 0] = 7
+        root = zarr.open_consolidated(url, mode=mode)
+        if allowed:
+            root["baz"][0, 0] = 7
 
-        root = zarr.open_consolidated(url, mode="r")
-        assert root["baz"][0, 0] == 7
+            root = zarr.open_consolidated(url, mode="r")
+            assert root["baz"][0, 0] == 7
+        else:
+            with pytest.raises(zarr.errors.ReadOnlyError):
+                root["baz"][0, 0] = 7
 
     @pytest.mark.parametrize('mode', ["r", "r+"])
     def test_modify_consolidated_metadata_raises(self, mode):
