@@ -2474,10 +2474,10 @@ def test_normalize_store_arg(tmpdir):
 
     for ext, Class in [('.zip', ZipStore), ('.n5', N5Store)]:
         fn = tmpdir.join('store' + ext)
-        store = normalize_store_arg(str(fn), zarr_version=2, mode='w', clobber=True)
+        store = normalize_store_arg(str(fn), zarr_version=2, mode='w')
         assert isinstance(store, Class)
 
     if have_fsspec:
         path = tempfile.mkdtemp()
-        store = normalize_store_arg("file://" + path, zarr_version=2, mode='w', clobber=True)
+        store = normalize_store_arg("file://" + path, zarr_version=2, mode='w')
         assert isinstance(store, FSStore)

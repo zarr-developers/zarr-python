@@ -368,7 +368,6 @@ def test_consolidated_with_chunk_store():
     # make sure keyword arguments are passed through without error
     open_consolidated(store, cache_attrs=True, synchronizer=None,
                       chunk_store=chunk_store)
->>>>>>> upstream/master
 
 
 @pytest.mark.parametrize("options", (
