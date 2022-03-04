@@ -29,8 +29,7 @@ from zarr.storage import (ABSStore, DBMStore, KVStore, DirectoryStore, FSStore,
                           array_meta_key, atexit_rmglob, atexit_rmtree,
                           group_meta_key, init_array, init_group)
 from zarr.storage import (ABSStoreV3, KVStoreV3, DirectoryStoreV3,  # MemoryStoreV3
-                          FSStoreV3, NestedDirectoryStoreV3, ZipStoreV3,
-                          DBMStoreV3, LMDBStoreV3, SQLiteStoreV3,
+                          FSStoreV3, ZipStoreV3, DBMStoreV3, LMDBStoreV3, SQLiteStoreV3,
                           LRUStoreCacheV3)
 from zarr.util import InfoReporter, buffer_size
 from zarr.tests.util import skip_test_env_var, have_fsspec, abs_container
@@ -1181,16 +1180,6 @@ class TestGroupWithNestedDirectoryStore(TestGroup):
         path = tempfile.mkdtemp()
         atexit.register(atexit_rmtree, path)
         store = NestedDirectoryStore(path)
-        return store, None
-
-
-class TestGroupV3WithNestedDirectoryStore(TestGroupWithNestedDirectoryStore, TestGroupV3):
-
-    @staticmethod
-    def create_store():
-        path = tempfile.mkdtemp()
-        atexit.register(atexit_rmtree, path)
-        store = NestedDirectoryStoreV3(path)
         return store, None
 
 

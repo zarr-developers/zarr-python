@@ -3181,25 +3181,6 @@ class ZipStoreV3(ZipStore, StoreV3):
 ZipStoreV3.__doc__ = ZipStore.__doc__
 
 
-class NestedDirectoryStoreV3(NestedDirectoryStore, DirectoryStoreV3):
-
-    def list(self):
-        return list(self.keys())
-
-    def __eq__(self, other):
-        return (
-            isinstance(other, NestedDirectoryStoreV3) and
-            self.path == other.path
-        )
-
-    def __setitem__(self, key, value):
-        self._validate_key(key)
-        super().__setitem__(key, value)
-
-
-NestedDirectoryStoreV3.__doc__ = NestedDirectoryStore.__doc__
-
-
 class RedisStoreV3(RmdirV3, RedisStore, StoreV3):
 
     def list(self):

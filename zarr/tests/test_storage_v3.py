@@ -9,10 +9,9 @@ from zarr._storage.store import _valid_key_characters
 from zarr.storage import (ABSStoreV3, ConsolidatedMetadataStoreV3, DBMStoreV3,
                           DirectoryStoreV3, FSStoreV3, KVStore, KVStoreV3,
                           LMDBStoreV3, LRUStoreCacheV3, MemoryStoreV3,
-                          MongoDBStoreV3, NestedDirectoryStoreV3, RedisStoreV3,
-                          SQLiteStoreV3, StoreV3, ZipStoreV3, atexit_rmglob,
-                          atexit_rmtree, default_compressor, getsize,
-                          init_array, normalize_store_arg)
+                          MongoDBStoreV3, RedisStoreV3, SQLiteStoreV3, StoreV3,
+                          ZipStoreV3, atexit_rmglob, atexit_rmtree,
+                          default_compressor, getsize, init_array, normalize_store_arg)
 from zarr.tests.util import CountingDictV3, have_fsspec, skip_test_env_var
 
 # pytest will fail to run if the following fixtures aren't imported here
@@ -310,35 +309,9 @@ class TestFSStoreV3WithKeySeparator(StoreV3Tests):
             key_separator=key_separator)
 
 
-# TODO: remove NestedDirectoryStoreV3?
-class TestNestedDirectoryStoreV3(_TestNestedDirectoryStore,
-                                 TestDirectoryStoreV3):
-
-    def create_store(self, normalize_keys=False, **kwargs):
-        path = tempfile.mkdtemp()
-        atexit.register(atexit_rmtree, path)
-        store = NestedDirectoryStoreV3(path, normalize_keys=normalize_keys, **kwargs)
-        return store
-
-    def test_init_array(self):
-        store = self.create_store()
-        # assert store._dimension_separator == "/"
-        path = 'arr1'
-        init_array(store, path=path, shape=1000, chunks=100)
-
-        # check metadata
-        mkey = self.root + path + '.array.json'
-        assert mkey in store
-        meta = store._metadata_class.decode_array_metadata(store[mkey])
-        assert (1000,) == meta['shape']
-        assert (100,) == meta['chunk_grid']['chunk_shape']
-        assert np.dtype(None) == meta['data_type']
-        # assert meta['dimension_separator'] == "/"
-        assert meta['chunk_grid']['separator'] == "/"
-
 # TODO: enable once N5StoreV3 has been implemented
 # @pytest.mark.skipif(True, reason="N5StoreV3 not yet fully implemented")
-# class TestN5StoreV3(_TestN5Store, TestNestedDirectoryStoreV3, StoreV3Tests):
+# class TestN5StoreV3(_TestN5Store, TestDirectoryStoreV3, StoreV3Tests):
 
 
 class TestZipStoreV3(_TestZipStore, StoreV3Tests):
@@ -484,21 +457,21 @@ def test_normalize_store_arg_v3(tmpdir):
 
     if have_fsspec:
         path = tempfile.mkdtemp()
-        store = normalize_store_arg("file://" + path, zarr_version=3, mode='w', clobber=True)
+        store = normalize_store_arg("file://" + path, zarr_version=3, mode='w')
         assert isinstance(store, FSStoreV3)
         assert 'zarr.json' in store
 
     fn = tmpdir.join('store.n5')
     with pytest.raises(NotImplementedError):
-        normalize_store_arg(str(fn), zarr_version=3, mode='w', clobber=True)
+        normalize_store_arg(str(fn), zarr_version=3, mode='w')
 
     # error on zarr_version=3 with a v2 store
     with pytest.raises(ValueError):
-        normalize_store_arg(KVStore(dict()), zarr_version=3, mode='w', clobber=True)
+        normalize_store_arg(KVStore(dict()), zarr_version=3, mode='w')
 
     # error on zarr_version=2 with a v3 store
     with pytest.raises(ValueError):
-        normalize_store_arg(KVStoreV3(dict()), zarr_version=2, mode='w', clobber=True)
+        normalize_store_arg(KVStoreV3(dict()), zarr_version=2, mode='w')
 
 
 class TestConsolidatedMetadataStoreV3(_TestConsolidatedMetadataStore):

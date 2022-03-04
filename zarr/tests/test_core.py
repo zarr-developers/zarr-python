@@ -43,7 +43,6 @@ from zarr.storage import (
     KVStoreV3,
     LMDBStoreV3,
     LRUStoreCacheV3,
-    NestedDirectoryStoreV3,
     SQLiteStoreV3,
     StoreV3,
     atexit_rmglob,
@@ -2908,32 +2907,6 @@ class TestArrayWithABSStoreV3(TestArrayWithABSStore, TestArrayWithPathV3):
         init_array(store, path=array_path, **kwargs)
         return Array(store, path=array_path, read_only=read_only, cache_metadata=cache_metadata,
                      cache_attrs=cache_attrs, write_empty_chunks=write_empty_chunks)
-
-
-class TestArrayWithNestedDirectoryStoreV3(TestArrayWithNestedDirectoryStore,
-                                          TestArrayWithDirectoryStoreV3):
-
-    @staticmethod
-    def create_array(array_path='arr1', read_only=False, **kwargs):
-        path = mkdtemp()
-        atexit.register(shutil.rmtree, path)
-        store = NestedDirectoryStoreV3(path)
-        cache_metadata = kwargs.pop('cache_metadata', True)
-        cache_attrs = kwargs.pop('cache_attrs', True)
-        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
-        kwargs.setdefault('compressor', Zlib(1))
-        init_array(store, path=array_path, **kwargs)
-        return Array(store, path=array_path, read_only=read_only, cache_metadata=cache_metadata,
-                     cache_attrs=cache_attrs, write_empty_chunks=write_empty_chunks)
-
-    def expected(self):
-        return [
-            "73ab8ace56719a5c9308c3754f5e2d57bc73dc20",
-            "5fb3d02b8f01244721582929b3cad578aec5cea5",
-            "26b098bedb640846e18dc2fbc1c27684bb02b532",
-            "799a458c287d431d747bec0728987ca4fe764549",
-            "c780221df84eb91cb62f633f12d3f1eaa9cee6bd",
-        ]
 
 
 # TODO: TestArrayWithN5StoreV3
