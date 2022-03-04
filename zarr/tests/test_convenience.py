@@ -175,6 +175,8 @@ def test_consolidate_metadata():
         open_consolidated(store, mode='a')
     with pytest.raises(ValueError):
         open_consolidated(store, mode='w')
+    with pytest.raises(ValueError):
+        open_consolidated(store, mode='w-')
 
     # make sure keyword arguments are passed through without error
     open_consolidated(store, cache_attrs=True, synchronizer=None)
@@ -224,6 +226,8 @@ def test_consolidated_with_chunk_store():
         open_consolidated(store, mode='a', chunk_store=chunk_store)
     with pytest.raises(ValueError):
         open_consolidated(store, mode='w', chunk_store=chunk_store)
+    with pytest.raises(ValueError):
+        open_consolidated(store, mode='w-', chunk_store=chunk_store)
 
     # make sure keyword arguments are passed through without error
     open_consolidated(store, cache_attrs=True, synchronizer=None,

@@ -1051,10 +1051,10 @@ class Group(MutableMapping):
         self._write_op(self._move_nosync, source, dest)
 
 
-def _normalize_store_arg(store, *, clobber=False, storage_options=None, mode=None):
+def _normalize_store_arg(store, *, storage_options=None, mode="r"):
     if store is None:
         return MemoryStore()
-    return normalize_store_arg(store, clobber=clobber,
+    return normalize_store_arg(store,
                                storage_options=storage_options, mode=mode)
 
 
@@ -1164,13 +1164,13 @@ def open_group(store=None, mode='a', cache_attrs=True, synchronizer=None, path=N
     """
 
     # handle polymorphic store arg
-    clobber = mode != "r"
     store = _normalize_store_arg(
-        store, clobber=clobber, storage_options=storage_options, mode=mode
+        store, storage_options=storage_options, mode=mode
     )
     if chunk_store is not None:
-        chunk_store = _normalize_store_arg(chunk_store, clobber=clobber,
-                                           storage_options=storage_options)
+        chunk_store = _normalize_store_arg(chunk_store,
+                                           storage_options=storage_options,
+                                           mode=mode)
     path = normalize_storage_path(path)
 
     # ensure store is initialized
