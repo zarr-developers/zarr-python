@@ -1451,4 +1451,3 @@ def test_numpy_int_indexing():
     z[:] = a
     assert a[42] == z[42]
     assert a[numpy.int64(42)] == z[numpy.int64(42)]
-
