@@ -518,7 +518,6 @@ def open_array(
         zarr_version = getattr(chunk_store, '_store_version', 2)
 
     # handle polymorphic store arg
-    clobber = (mode == 'w')
     store = normalize_store_arg(store, storage_options=storage_options,
                                 mode=mode, zarr_version=zarr_version)
     zarr_version = getattr(store, '_store_version', 2)

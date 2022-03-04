@@ -28,7 +28,6 @@ from .test_storage import TestFSStore as _TestFSStore
 from .test_storage import TestLMDBStore as _TestLMDBStore
 from .test_storage import TestLRUStoreCache as _TestLRUStoreCache
 from .test_storage import TestMemoryStore as _TestMemoryStore
-from .test_storage import TestNestedDirectoryStore as _TestNestedDirectoryStore
 from .test_storage import TestSQLiteStore as _TestSQLiteStore
 from .test_storage import TestSQLiteStoreInMemory as _TestSQLiteStoreInMemory
 from .test_storage import TestZipStore as _TestZipStore
