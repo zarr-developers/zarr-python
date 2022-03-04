@@ -182,7 +182,6 @@ class Array:
         self._is_view = False
         self._partial_decompress = partial_decompress
         self._write_empty_chunks = write_empty_chunks
-        self._meta_array = meta_array
         if meta_array is not None:
             self._meta_array = np.empty_like(meta_array, shape=())
         else:
