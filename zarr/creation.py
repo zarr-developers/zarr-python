@@ -519,12 +519,13 @@ def open_array(
 
     # handle polymorphic store arg
     clobber = (mode == 'w')
-    store = normalize_store_arg(store, clobber=clobber, storage_options=storage_options,
+    store = normalize_store_arg(store, storage_options=storage_options,
                                 mode=mode, zarr_version=zarr_version)
     zarr_version = getattr(store, '_store_version', 2)
     if chunk_store is not None:
-        chunk_store = normalize_store_arg(chunk_store, clobber=clobber,
+        chunk_store = normalize_store_arg(chunk_store,
                                           storage_options=storage_options,
+                                          mode=mode,
                                           zarr_version=zarr_version)
 
     # respect the dimension separator specified in a store, if present
@@ -536,6 +537,7 @@ def open_array(
 
     if zarr_version == 3 and path is None:
         path = 'array'  # TODO: raise ValueError instead?
+
     path = normalize_storage_path(path)
 
     # API compatibility with h5py

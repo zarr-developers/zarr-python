@@ -90,11 +90,10 @@ def open(store: StoreLike = None, mode: str = "a", *, zarr_version=None, path=No
     """
 
     # handle polymorphic store arg
-    clobber = mode == 'w'
     # we pass storage options explicitly, since normalize_store_arg might construct
     # a store if the input is a fsspec-compatible URL
     _store: BaseStore = normalize_store_arg(
-        store, clobber=clobber, storage_options=kwargs.pop("storage_options", {}),
+        store, storage_options=kwargs.pop("storage_options", {}), mode=mode,
         zarr_version=zarr_version,
     )
     # path = _check_and_update_path(_store, path)
@@ -164,7 +163,7 @@ def save_array(store: StoreLike, arr, *, zarr_version=None, path=None, **kwargs)
 
     """
     may_need_closing = _might_close(store)
-    _store: BaseStore = normalize_store_arg(store, clobber=True, zarr_version=zarr_version)
+    _store: BaseStore = normalize_store_arg(store, mode="w", zarr_version=zarr_version)
     path = _check_and_update_path(_store, path)
     try:
         _create_array(arr, store=_store, overwrite=True, zarr_version=zarr_version, path=path,
@@ -243,7 +242,7 @@ def save_group(store: StoreLike, *args, zarr_version=None, path=None, **kwargs):
         raise ValueError('at least one array must be provided')
     # handle polymorphic store arg
     may_need_closing = _might_close(store)
-    _store: BaseStore = normalize_store_arg(store, clobber=True, zarr_version=zarr_version)
+    _store: BaseStore = normalize_store_arg(store, mode="w", zarr_version=zarr_version)
     path = _check_and_update_path(_store, path)
     try:
         grp = _create_group(_store, path=path, overwrite=True, zarr_version=zarr_version)
@@ -1192,7 +1191,7 @@ def consolidate_metadata(store: BaseStore, metadata_key=".zmetadata", *, path=''
     open_consolidated
 
     """
-    store = normalize_store_arg(store, clobber=True)
+    store = normalize_store_arg(store, mode="w")
 
     version = store._store_version
 
@@ -1272,7 +1271,7 @@ def open_consolidated(store: StoreLike, metadata_key=".zmetadata", mode="r+", **
     """
 
     # normalize parameters
-    store = normalize_store_arg(store, storage_options=kwargs.get("storage_options"))
+    store = normalize_store_arg(store, storage_options=kwargs.get("storage_options"), mode=mode)
     if mode not in {'r', 'r+'}:
         raise ValueError("invalid mode, expected either 'r' or 'r+'; found {!r}"
                          .format(mode))

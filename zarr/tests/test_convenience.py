@@ -309,11 +309,66 @@ def test_consolidate_metadata(with_chunk_store, zarr_version):
         open_consolidated(store, chunk_store=chunk_store, mode='a', path=path)
     with pytest.raises(ValueError):
         open_consolidated(store, chunk_store=chunk_store, mode='w', path=path)
+    with pytest.raises(ValueError):
+        open_consolidated(store, chunk_store=chunk_store, mode='w-', path=path)
 
     # make sure keyword arguments are passed through without error
     open_consolidated(
         store, chunk_store=chunk_store, path=path, cache_attrs=True, synchronizer=None
     )
+
+
+def test_consolidated_with_chunk_store():
+    # setup initial data
+    store = MemoryStore()
+    chunk_store = MemoryStore()
+    z = group(store, chunk_store=chunk_store)
+    z.create_group('g1')
+    g2 = z.create_group('g2')
+    g2.attrs['hello'] = 'world'
+    arr = g2.create_dataset('arr', shape=(20, 20), chunks=(5, 5), dtype='f8')
+    assert 16 == arr.nchunks
+    assert 0 == arr.nchunks_initialized
+    arr.attrs['data'] = 1
+    arr[:] = 1.0
+    assert 16 == arr.nchunks_initialized
+
+    # perform consolidation
+    out = consolidate_metadata(store)
+    assert isinstance(out, Group)
+    assert '.zmetadata' in store
+    for key in ['.zgroup',
+                'g1/.zgroup',
+                'g2/.zgroup',
+                'g2/.zattrs',
+                'g2/arr/.zarray',
+                'g2/arr/.zattrs']:
+        del store[key]
+    # open consolidated
+    z2 = open_consolidated(store, chunk_store=chunk_store)
+    assert ['g1', 'g2'] == list(z2)
+    assert 'world' == z2.g2.attrs['hello']
+    assert 1 == z2.g2.arr.attrs['data']
+    assert (z2.g2.arr[:] == 1.0).all()
+    assert 16 == z2.g2.arr.nchunks
+    assert 16 == z2.g2.arr.nchunks_initialized
+
+    # test the data are writeable
+    z2.g2.arr[:] = 2
+    assert (z2.g2.arr[:] == 2).all()
+
+    # test invalid modes
+    with pytest.raises(ValueError):
+        open_consolidated(store, mode='a', chunk_store=chunk_store)
+    with pytest.raises(ValueError):
+        open_consolidated(store, mode='w', chunk_store=chunk_store)
+    with pytest.raises(ValueError):
+        open_consolidated(store, mode='w-', chunk_store=chunk_store)
+
+    # make sure keyword arguments are passed through without error
+    open_consolidated(store, cache_attrs=True, synchronizer=None,
+                      chunk_store=chunk_store)
+>>>>>>> upstream/master
 
 
 @pytest.mark.parametrize("options", (

@@ -124,8 +124,8 @@ def contains_group(store: StoreLike, path: Path = None, explicit_only=True) -> b
         return False
 
 
-def normalize_store_arg(store, clobber=False, storage_options=None, mode="w",
-                        *, zarr_version=None) -> Store:
+def normalize_store_arg(store: Any, storage_options=None, mode="r", *,
+                        zarr_version=None) -> BaseStore:
     if zarr_version is None:
         # default to v2 store for backward compatibility
         zarr_version = getattr(store, '_store_version', 2)
@@ -148,7 +148,6 @@ def normalize_store_arg(store, clobber=False, storage_options=None, mode="w",
     if isinstance(store, os.PathLike):
         store = os.fspath(store)
     if isinstance(store, str):
-        mode = mode if clobber else "r"
         if zarr_version == 2:
             if "://" in store or "::" in store:
                 return FSStore(store, mode=mode, **(storage_options or {}))
