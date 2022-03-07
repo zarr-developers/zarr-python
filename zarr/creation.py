@@ -490,11 +490,11 @@ def open_array(
     # a : read/write if exists, create otherwise (default)
 
     # handle polymorphic store arg
-    clobber = (mode == 'w')
-    store = normalize_store_arg(store, clobber=clobber, storage_options=storage_options, mode=mode)
+    store = normalize_store_arg(store, storage_options=storage_options, mode=mode)
     if chunk_store is not None:
-        chunk_store = normalize_store_arg(chunk_store, clobber=clobber,
-                                          storage_options=storage_options)
+        chunk_store = normalize_store_arg(chunk_store,
+                                          storage_options=storage_options,
+                                          mode=mode)
     path = normalize_storage_path(path)
 
     # API compatibility with h5py

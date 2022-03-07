@@ -6,12 +6,20 @@ Release notes
 Unreleased
 ----------
 
+.. _release_2.11.1:
+
+2.11.1
+------
+
 Bug fixes
 ~~~~~~~~~
 
 * Fix bug where indexing with a scalar numpy value returned a single-value array.
   By :user:`Ben Jeffery <benjeffery>` :issue:`967`.
 
+* Removed `clobber` argument from `normalize_store_arg`. This enables to change
+  data within a opened consolidated group using mode `"r+"` (i.e region write).
+  By :user:`Tobias Kölling <d70-t>` :issue:`975`.
 
 .. _release_2.11.0:
 

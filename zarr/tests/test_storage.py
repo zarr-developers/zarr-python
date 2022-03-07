@@ -1021,6 +1021,42 @@ class TestFSStore(StoreTests):
         with pytest.raises(PermissionError):
             g.data[:] = 1
 
+    @pytest.mark.parametrize('mode,allowed', [("r", False), ("r+", True)])
+    def test_modify_consolidated(self, mode, allowed):
+        import zarr
+        url = "file://" + tempfile.mkdtemp()
+
+        # create
+        root = zarr.open_group(url, mode="w")
+        root.zeros('baz', shape=(10000, 10000), chunks=(1000, 1000), dtype='i4')
+        zarr.consolidate_metadata(url)
+
+        # reopen and modify
+        root = zarr.open_consolidated(url, mode=mode)
+        if allowed:
+            root["baz"][0, 0] = 7
+
+            root = zarr.open_consolidated(url, mode="r")
+            assert root["baz"][0, 0] == 7
+        else:
+            with pytest.raises(zarr.errors.ReadOnlyError):
+                root["baz"][0, 0] = 7
+
+    @pytest.mark.parametrize('mode', ["r", "r+"])
+    def test_modify_consolidated_metadata_raises(self, mode):
+        import zarr
+        url = "file://" + tempfile.mkdtemp()
+
+        # create
+        root = zarr.open_group(url, mode="w")
+        root.zeros('baz', shape=(10000, 10000), chunks=(1000, 1000), dtype='i4')
+        zarr.consolidate_metadata(url)
+
+        # reopen and modify
+        root = zarr.open_consolidated(url, mode=mode)
+        with pytest.raises(zarr.errors.ReadOnlyError):
+            root["baz"].resize(100, 100)
+
     def test_read_only(self):
         path = tempfile.mkdtemp()
         atexit.register(atexit_rmtree, path)
