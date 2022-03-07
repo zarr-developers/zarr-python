@@ -97,7 +97,7 @@ the repository, you can do something like the following::
 
 To verify that your development environment is working, you can run the unit tests::
 
-    $ pytest -v zarr
+    $ python -m pytest -v zarr
 
 Creating a branch
 ~~~~~~~~~~~~~~~~~
@@ -144,7 +144,7 @@ spec. The simplest way to run the unit tests is to activate your
 development environment (see `creating a development environment`_ above)
 and invoke::
 
-    $ pytest -v zarr
+    $ python -m pytest -v zarr
 
 Some tests require optional dependencies to be installed, otherwise
 the tests will be skipped. To install all optional dependencies, run::
@@ -154,7 +154,7 @@ the tests will be skipped. To install all optional dependencies, run::
 To also run the doctests within docstrings (requires optional
 dependencies to be installed), run::
 
-    $ pytest -v --doctest-plus zarr
+    $ python -m pytest -v --doctest-plus zarr
 
 To run the doctests within the tutorial and storage spec (requires
 optional dependencies to be installed), run::
@@ -186,7 +186,7 @@ All code must conform to the PEP8 standard. Regarding line length, lines up to 1
 characters are allowed, although please try to keep under 90 wherever possible.
 Conformance can be checked by running::
 
-    $ flake8 --max-line-length=100 zarr
+    $ python -m flake8 --max-line-length=100 zarr
 
 Test coverage
 ~~~~~~~~~~~~~
@@ -212,7 +212,7 @@ should run and pass as doctests under Python 3.8. To run doctests,
 activate your development environment, install optional requirements,
 and run::
 
-    $ pytest -v --doctest-plus zarr
+    $ python -m pytest -v --doctest-plus zarr
 
 Zarr uses Sphinx for documentation, hosted on readthedocs.org. Documentation is
 written in the RestructuredText markup language (.rst files) in the ``docs`` folder.
