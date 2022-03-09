@@ -47,8 +47,10 @@ from zarr.storage import (
     StoreV3,
     atexit_rmglob,
     atexit_rmtree,
+    data_root,
     init_array,
     init_group,
+    meta_root,
 )
 from zarr.util import buffer_size
 from zarr.tests.util import abs_container, skip_test_env_var, have_fsspec
@@ -2739,13 +2741,13 @@ class TestArrayWithPathV3(TestArrayWithPath):
         # can't open at same path as an existing group
         with pytest.raises(ContainsGroupError):
             init_array(store, shape=100, chunks=10, path=path, dtype='<f8')
-        group_key = 'meta/root/' + path + '.group.json'
+        group_key = meta_root + path + '.group.json'
         assert group_key in store
         del store[group_key]
         init_array(store, shape=100, chunks=10, path=path, dtype='<f8')
         Array(store, path=path)
         assert group_key not in store
-        assert ('meta/root/' + path + '.array.json') in store
+        assert (meta_root + path + '.array.json') in store
 
     def test_array_no_path(self):
         # passing path=None to init_array will raise an exception
@@ -2774,7 +2776,7 @@ class TestArrayWithPathV3(TestArrayWithPath):
 
         # mess with store
         if not isinstance(z.store, (LRUStoreCacheV3, FSStoreV3)):
-            z.store['data/root/' + z._key_prefix + 'foo'] = list(range(10))
+            z.store[data_root + z._key_prefix + 'foo'] = list(range(10))
             assert -1 == z.nbytes_stored
 
         z.store.close()
@@ -2858,7 +2860,7 @@ class TestArrayWithChunkStoreV3(TestArrayWithChunkStore, TestArrayWithPathV3):
         assert expect_nbytes_stored == z.nbytes_stored
 
         # mess with store
-        z.chunk_store['data/root/' + z._key_prefix + 'foo'] = list(range(10))
+        z.chunk_store[data_root + z._key_prefix + 'foo'] = list(range(10))
         assert -1 == z.nbytes_stored
 
 

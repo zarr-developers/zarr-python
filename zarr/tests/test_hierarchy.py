@@ -26,8 +26,8 @@ from zarr.hierarchy import Group, group, open_group
 from zarr.storage import (ABSStore, DBMStore, KVStore, DirectoryStore, FSStore,
                           LMDBStore, LRUStoreCache, MemoryStore,
                           NestedDirectoryStore, SQLiteStore, ZipStore,
-                          array_meta_key, atexit_rmglob, atexit_rmtree,
-                          group_meta_key, init_array, init_group)
+                          array_meta_key, atexit_rmglob, atexit_rmtree, data_root,
+                          group_meta_key, init_array, init_group, meta_root)
 from zarr.storage import (ABSStoreV3, KVStoreV3, DirectoryStoreV3,  # MemoryStoreV3
                           FSStoreV3, ZipStoreV3, DBMStoreV3, LMDBStoreV3, SQLiteStoreV3,
                           LRUStoreCacheV3)
@@ -261,9 +261,9 @@ class TestGroup(unittest.TestCase):
         if g1._version > 2 and g1.store.is_erasable():
             arr_path = g1.path + '/arr1'
             sfx = _get_hierarchy_metadata(g1.store)['metadata_key_suffix']
-            array_meta_file = 'meta/root/' + arr_path + '.array' + sfx
+            array_meta_file = meta_root + arr_path + '.array' + sfx
             assert array_meta_file in g1.store
-            group_meta_file = 'meta/root/' + g2.path + '.group' + sfx
+            group_meta_file = meta_root + g2.path + '.group' + sfx
             assert group_meta_file in g1.store
 
             # rmdir on the array path should also remove the metadata file
@@ -1230,9 +1230,9 @@ class TestGroupV3WithFSStore(TestGroupWithFSStore, TestGroupV3):
         f = open_group(store, path='group2', mode='w')
 
         data_size = data.nbytes
-        group_meta_size = buffer_size(store['meta/root/group.group.json'])
-        group2_meta_size = buffer_size(store['meta/root/group2.group.json'])
-        array_meta_size = buffer_size(store['meta/root/group/raw.array.json'])
+        group_meta_size = buffer_size(store[meta_root + 'group.group.json'])
+        group2_meta_size = buffer_size(store[meta_root + 'group2.group.json'])
+        array_meta_size = buffer_size(store[meta_root + 'group/raw.array.json'])
         assert store.getsize() == data_size + group_meta_size + group2_meta_size + array_meta_size
         # added case with path to complete coverage
         assert store.getsize('group') == data_size + group_meta_size + array_meta_size
@@ -1462,12 +1462,12 @@ class TestGroupV3WithChunkStore(TestGroupWithChunkStore, TestGroupV3):
         assert_array_equal(np.arange(100), a[:])
 
         # check store keys
-        group_key = 'meta/root/' + path + '.group.json'
-        array_key = 'meta/root/' + path + '/foo' + '.array.json'
+        group_key = meta_root + path + '.group.json'
+        array_key = meta_root + path + '/foo' + '.array.json'
         expect = sorted([group_key, array_key, 'zarr.json'])
         actual = sorted(store.keys())
         assert expect == actual
-        expect = ['data/root/' + path + '/foo/c' + str(i) for i in range(10)]
+        expect = [data_root + path + '/foo/c' + str(i) for i in range(10)]
         expect += ['zarr.json']
         actual = sorted(chunk_store.keys())
         assert expect == actual

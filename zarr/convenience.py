@@ -5,6 +5,7 @@ import os
 import re
 from collections.abc import Mapping, MutableMapping
 
+from zarr._storage.store import data_root, meta_root
 from zarr.core import Array
 from zarr.creation import array as _create_array
 from zarr.creation import open_array
@@ -650,6 +651,11 @@ def copy_store(source, dest, source_path='', dest_path='', excludes=None,
     if source_store_version != dest_store_version:
         raise ValueError("zarr stores must share the same protocol version")
 
+    if source_store_version > 2:
+        nchar_root = len(meta_root)
+        # code below assumes len(meta_root) === len(data_root)
+        assert len(data_root) == nchar_root
+
     # setup logging
     with _LogWriter(log) as log:
 
@@ -661,8 +667,8 @@ def copy_store(source, dest, source_path='', dest_path='', excludes=None,
                 if not source_key.startswith(source_path):
                     continue
             elif source_store_version == 3:
-                # 'meta/root/' or 'data/root/' have length 10
-                if not source_key[10:].startswith(source_path):
+                # skip 'meta/root/' or 'data/root/' at start of source_key
+                if not source_key[nchar_root:].startswith(source_path):
                     continue
 
             # process excludes and includes
@@ -684,9 +690,9 @@ def copy_store(source, dest, source_path='', dest_path='', excludes=None,
                 key_suffix = source_key[len(source_path):]
                 dest_key = dest_path + key_suffix
             elif source_store_version == 3:
-                # 10 is length of 'meta/root/' or 'data/root/'
-                key_suffix = source_key[10 + len(source_path):]
-                dest_key = source_key[:10] + dest_path + key_suffix
+                # nchar_root is length of 'meta/root/' or 'data/root/'
+                key_suffix = source_key[nchar_root + len(source_path):]
+                dest_key = source_key[:nchar_root] + dest_path + key_suffix
 
             # create a descriptive label for this operation
             descr = source_key

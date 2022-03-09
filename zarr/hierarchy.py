@@ -3,6 +3,7 @@ from itertools import islice
 
 import numpy as np
 
+from zarr._storage.store import data_root, meta_root
 from zarr.attrs import Attributes
 from zarr.core import Array
 from zarr.creation import (array, create, empty, empty_like, full, full_like,
@@ -130,8 +131,8 @@ class Group(MutableMapping):
         self._version = zarr_version
 
         if self._version == 3:
-            self._data_key_prefix = 'data/root/' + self._key_prefix
-            self._data_path = 'data/root/' + self._path
+            self._data_key_prefix = data_root + self._key_prefix
+            self._data_path = data_root + self._path
             self._hierarchy_metadata = _get_hierarchy_metadata(store=None)
             self._metadata_key_suffix = self._hierarchy_metadata['metadata_key_suffix']
 
@@ -148,7 +149,7 @@ class Group(MutableMapping):
             if self._version == 2:
                 raise GroupNotFoundError(path)
             else:
-                implicit_prefix = 'meta/root/' + self._key_prefix
+                implicit_prefix = meta_root + self._key_prefix
                 if self._store.list_prefix(implicit_prefix):
                     # implicit group does not have any metadata
                     self._meta = None
@@ -264,7 +265,7 @@ class Group(MutableMapping):
             # TODO: Should this iterate over data folders and/or metadata
             #       folders and/or metadata files
 
-            dir_path = 'meta/root/' + self._key_prefix
+            dir_path = meta_root + self._key_prefix
             name_start = len(dir_path)
             keys, prefixes = self._store.list_dir(dir_path)
 
@@ -411,7 +412,7 @@ class Group(MutableMapping):
                          chunk_store=self._chunk_store, cache_attrs=self.attrs.cache,
                          synchronizer=self._synchronizer, zarr_version=self._version)
         elif self._version == 3:
-            implicit_group = 'meta/root/' + path + '/'
+            implicit_group = meta_root + path + '/'
             # non-empty folder in the metadata path implies an implicit group
             if self._store.list_prefix(implicit_group):
                 return Group(self._store, read_only=self._read_only, path=path,
@@ -474,7 +475,7 @@ class Group(MutableMapping):
                 if contains_group(self._store, path):
                     yield key
         else:
-            dir_name = 'meta/root/' + self._path
+            dir_name = meta_root + self._path
             sfx = _get_hierarchy_metadata(self._store)['metadata_key_suffix']
             group_sfx = '.group' + sfx
             for key in sorted(listdir(self._store, dir_name)):
@@ -518,7 +519,7 @@ class Group(MutableMapping):
                         zarr_version=self._version)
 
         else:
-            dir_name = 'meta/root/' + self._path
+            dir_name = meta_root + self._path
             sfx = _get_hierarchy_metadata(self._store)['metadata_key_suffix']
             group_sfx = '.group' + sfx
             for key in sorted(listdir(self._store, dir_name)):
@@ -605,7 +606,7 @@ class Group(MutableMapping):
                     for i in getattr(group, method)(recurse=recurse):
                         yield i
         else:
-            dir_name = 'meta/root/' + self._path
+            dir_name = meta_root + self._path
             sfx = _get_hierarchy_metadata(self._store)['metadata_key_suffix']
             array_sfx = '.array' + sfx
             for key in sorted(listdir(self._store, dir_name)):

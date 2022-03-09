@@ -31,9 +31,9 @@ from zarr.storage import (ABSStore, ConsolidatedMetadataStore, DBMStore,
                           NestedDirectoryStore, RedisStore, SQLiteStore,
                           Store, TempStore, ZipStore, KVStoreV3,
                           array_meta_key, atexit_rmglob, atexit_rmtree,
-                          attrs_key, default_compressor, getsize,
+                          attrs_key, data_root, default_compressor, getsize,
                           group_meta_key, init_array, init_group, migrate_1to2,
-                          normalize_store_arg)
+                          meta_root, normalize_store_arg)
 from zarr.storage import FSStore, rename, listdir
 from zarr.tests.util import CountingDict, have_fsspec, skip_test_env_var, abs_container
 
@@ -508,7 +508,7 @@ class StoreTests:
                         filters=None)
         else:
             path = 'arr1'  # no default, have to specify for v3
-            mkey = 'meta/root/' + path + '.array.json'
+            mkey = meta_root + path + '.array.json'
             meta = dict(shape=(2000,),
                         chunk_grid=dict(type='regular',
                                         chunk_shape=(200,),
@@ -553,7 +553,7 @@ class StoreTests:
         if self.version == 2:
             mkey = path + '/' + array_meta_key
         else:
-            mkey = 'meta/root/' + path + '.array.json'
+            mkey = meta_root + path + '.array.json'
         assert mkey in store
         meta = store._metadata_class.decode_array_metadata(store[mkey])
         if self.version == 2:
@@ -584,7 +584,7 @@ class StoreTests:
                         order=order,
                         filters=None)
         else:
-            mkey = 'meta/root/' + path + '.array.json'
+            mkey = meta_root + path + '.array.json'
             meta = dict(shape=(2000,),
                         chunk_grid=dict(type='regular',
                                         chunk_shape=(200,),
@@ -632,8 +632,8 @@ class StoreTests:
             array_key = path + '/' + array_meta_key
             group_key = path + '/' + group_meta_key
         else:
-            array_key = 'meta/root/' + path + '.array.json'
-            group_key = 'meta/root/' + path + '.group.json'
+            array_key = meta_root + path + '.array.json'
+            group_key = meta_root + path + '.group.json'
         store[group_key] = store._metadata_class.encode_group_metadata()
 
         # don't overwrite
@@ -679,8 +679,8 @@ class StoreTests:
                         order=order)
         else:
             path = 'arr1'
-            data_path = 'data/root/arr1/'
-            mkey = 'meta/root/' + path + '.array.json'
+            data_path = data_root + 'arr1/'
+            mkey = meta_root + path + '.array.json'
             meta = dict(shape=(2000,),
                         chunk_grid=dict(type='regular',
                                         chunk_shape=(200,),
@@ -730,7 +730,7 @@ class StoreTests:
             mkey = array_meta_key
         else:
             path = 'arr1'
-            mkey = 'meta/root/' + path + '.array.json'
+            mkey = meta_root + path + '.array.json'
         init_array(store, path=path, shape=1000, chunks=100, compressor='none')
         meta = store._metadata_class.decode_array_metadata(store[mkey])
         if self.version == 2:
@@ -746,7 +746,7 @@ class StoreTests:
             mkey = group_meta_key
         else:
             path = 'foo'
-            mkey = 'meta/root/' + path + '.group.json'
+            mkey = meta_root + path + '.group.json'
         init_group(store, path=path)
 
         # check metadata
@@ -823,8 +823,8 @@ class StoreTests:
                 filters=None,
                 chunk_memory_layout=order,
             )
-            array_key = 'meta/root/' + path + '.array.json'
-            group_key = 'meta/root/' + path + '.group.json'
+            array_key = meta_root + path + '.array.json'
+            group_key = meta_root + path + '.group.json'
         store[array_key] = store._metadata_class.encode_array_metadata(meta)
 
         # don't overwrite
@@ -2361,7 +2361,7 @@ class TestABSStore(StoreTests):
             assert set() == set(store.values())
             assert set() == set(store.items())
 
-            prefix = 'meta/root/' if self.version > 2 else ''
+            prefix = meta_root if self.version > 2 else ''
             # setup some values
             store[prefix + 'a'] = b'aaa'
             store[prefix + 'b'] = b'bbb'

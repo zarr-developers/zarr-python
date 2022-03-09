@@ -68,8 +68,10 @@ from zarr._storage.store import (_get_hierarchy_metadata,
                                  _prefix_to_array_key,
                                  _prefix_to_group_key,
                                  array_meta_key,
-                                 group_meta_key,
                                  attrs_key,
+                                 data_root,
+                                 group_meta_key,
+                                 meta_root,
                                  BaseStore,
                                  Store,
                                  StoreV3)
@@ -244,8 +246,8 @@ def _getsize(store: BaseStore, path: Path = None) -> int:
         size = 0
         store_version = getattr(store, '_store_version', 2)
         if store_version == 3:
-            members = store.list_prefix('data/root/' + path)  # type: ignore
-            members += store.list_prefix('meta/root/' + path)  # type: ignore
+            members = store.list_prefix(data_root + path)  # type: ignore
+            members += store.list_prefix(meta_root + path)  # type: ignore
             # members += ['zarr.json']
         else:
             members = listdir(store, path)
@@ -469,7 +471,7 @@ def _init_array_metadata(
         else:
             group_meta_key = _prefix_to_group_key(store, _path_to_prefix(path))
             array_meta_key = _prefix_to_array_key(store, _path_to_prefix(path))
-            data_prefix = 'data/root/' + _path_to_prefix(path)
+            data_prefix = data_root + _path_to_prefix(path)
 
             # attempt to delete any pre-existing array in store
             if array_meta_key in store:
@@ -484,7 +486,7 @@ def _init_array_metadata(
                 # path is a subfolder of an existing array, remove that array
                 parent_path = '/'.join(path.split('/')[:-1])
                 sfx = _get_hierarchy_metadata(store)['metadata_key_suffix']
-                array_key = 'meta/root/' + parent_path + '.array' + sfx
+                array_key = meta_root + parent_path + '.array' + sfx
                 if array_key in store:
                     store.erase(array_key)  # type: ignore
 
@@ -668,8 +670,8 @@ def _init_group_metadata(
         else:
             group_meta_key = _prefix_to_group_key(store, _path_to_prefix(path))
             array_meta_key = _prefix_to_array_key(store, _path_to_prefix(path))
-            data_prefix = 'data/root/' + _path_to_prefix(path)
-            meta_prefix = 'meta/root/' + _path_to_prefix(path)
+            data_prefix = data_root + _path_to_prefix(path)
+            meta_prefix = meta_root + _path_to_prefix(path)
 
             # attempt to delete any pre-existing array in store
             if array_meta_key in store:
@@ -2890,7 +2892,7 @@ def _get_files_and_dirs_from_path(store, path):
 
     dirs = []
     # add array and group folders if present
-    for d in ['data/root/' + path, 'meta/root/' + path]:
+    for d in [data_root + path, meta_root + path]:
         dir_path = os.path.join(store.path, d)
         if os.path.exists(dir_path):
             dirs.append(dir_path)
@@ -2984,14 +2986,14 @@ class FSStoreV3(FSStore, StoreV3):
         if self.mode == 'r':
             raise ReadOnlyError()
         if path:
-            for base in ['meta/root/', 'data/root/']:
+            for base in [meta_root, data_root]:
                 store_path = self.dir_path(base + path)
                 if self.fs.isdir(store_path):
                     self.fs.rm(store_path, recursive=True)
 
             # remove any associated metadata files
             sfx = _get_hierarchy_metadata(self)['metadata_key_suffix']
-            meta_dir = ('meta/root/' + path).rstrip('/')
+            meta_dir = (meta_root + path).rstrip('/')
             array_meta_file = meta_dir + '.array' + sfx
             self.pop(array_meta_file, None)
             group_meta_file = meta_dir + '.group' + sfx
@@ -3035,7 +3037,7 @@ class MemoryStoreV3(MemoryStore, StoreV3):
         dst_path = normalize_storage_path(dst_path)
 
         any_renamed = False
-        for base in ['meta/root/', 'data/root/']:
+        for base in [meta_root, data_root]:
             if self.list_prefix(base + src_path):
                 src_parent, src_key = self._get_parent(base + src_path)
                 dst_parent, dst_key = self._require_parent(base + dst_path)
@@ -3049,7 +3051,7 @@ class MemoryStoreV3(MemoryStore, StoreV3):
     def rmdir(self, path: Path = None):
         path = normalize_storage_path(path)
         if path:
-            for base in ['meta/root/', 'data/root/']:
+            for base in [meta_root, data_root]:
                 try:
                     parent, key = self._get_parent(base + path)
                     value = parent[key]
@@ -3061,7 +3063,7 @@ class MemoryStoreV3(MemoryStore, StoreV3):
 
             # remove any associated metadata files
             sfx = _get_hierarchy_metadata(self)['metadata_key_suffix']
-            meta_dir = ('meta/root/' + path).rstrip('/')
+            meta_dir = (meta_root + path).rstrip('/')
             array_meta_file = meta_dir + '.array' + sfx
             self.pop(array_meta_file, None)
             group_meta_file = meta_dir + '.group' + sfx
@@ -3122,14 +3124,14 @@ class DirectoryStoreV3(DirectoryStore, StoreV3):
         store_path = normalize_storage_path(path)
         dir_path = self.path
         if store_path:
-            for base in ['meta/root/', 'data/root/']:
+            for base in [meta_root, data_root]:
                 dir_path = os.path.join(dir_path, base + store_path)
                 if os.path.isdir(dir_path):
                     shutil.rmtree(dir_path)
 
             # remove any associated metadata files
             sfx = _get_hierarchy_metadata(self)['metadata_key_suffix']
-            meta_dir = ('meta/root/' + path).rstrip('/')
+            meta_dir = (meta_root + path).rstrip('/')
             array_meta_file = meta_dir + '.array' + sfx
             self.pop(array_meta_file, None)
             group_meta_file = meta_dir + '.group' + sfx
@@ -3162,8 +3164,8 @@ class ZipStoreV3(ZipStore, StoreV3):
     def getsize(self, path=None):
         path = normalize_storage_path(path)
         with self.mutex:
-            children = self.list_prefix('data/root/' + path)
-            children += self.list_prefix('meta/root/' + path)
+            children = self.list_prefix(data_root + path)
+            children += self.list_prefix(meta_root + path)
             print(f"path={path}, children={children}")
             if children:
                 size = 0
@@ -3242,7 +3244,7 @@ class SQLiteStoreV3(SQLiteStore, StoreV3):
         # TODO: why does the query below not work in this case?
         #       For now fall back to the default _getsize implementation
         # size = 0
-        # for _path in ['data/root/' + path, 'meta/root/' + path]:
+        # for _path in [data_root + path, meta_root + path]:
         #     c = self.cursor.execute(
         #         '''
         #         SELECT COALESCE(SUM(LENGTH(v)), 0) FROM zarr
@@ -3265,14 +3267,14 @@ class SQLiteStoreV3(SQLiteStore, StoreV3):
     def rmdir(self, path=None):
         path = normalize_storage_path(path)
         if path:
-            for base in ['meta/root/', 'data/root/']:
+            for base in [meta_root, data_root]:
                 with self.lock:
                     self.cursor.execute(
                         'DELETE FROM zarr WHERE k LIKE (? || "/%")', (base + path,)
                     )
             # remove any associated metadata files
             sfx = _get_hierarchy_metadata(self)['metadata_key_suffix']
-            meta_dir = ('meta/root/' + path).rstrip('/')
+            meta_dir = (meta_root + path).rstrip('/')
             array_meta_file = meta_dir + '.array' + sfx
             self.pop(array_meta_file, None)
             group_meta_file = meta_dir + '.group' + sfx
@@ -3342,7 +3344,7 @@ class ConsolidatedMetadataStoreV3(ConsolidatedMetadataStore, StoreV3):
 
     """
 
-    def __init__(self, store: StoreLike, metadata_key="meta/root/consolidated/.zmetadata"):
+    def __init__(self, store: StoreLike, metadata_key=meta_root + "consolidated/.zmetadata"):
         self.store = StoreV3._ensure_store(store)
 
         # retrieve consolidated metadata

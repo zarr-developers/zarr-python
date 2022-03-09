@@ -11,6 +11,10 @@ array_meta_key = '.zarray'
 group_meta_key = '.zgroup'
 attrs_key = '.zattrs'
 
+# v3 paths
+meta_root = 'meta/root/'
+data_root = 'data/root/'
+
 
 class BaseStore(MutableMapping):
     """Abstract base class for store implementations.
@@ -325,14 +329,14 @@ def _rename_metadata_v3(store: StoreV3, src_path: str, dst_path: str) -> bool:
     sfx = _get_hierarchy_metadata(store)['metadata_key_suffix']
     src_path = src_path.rstrip('/')
     dst_path = dst_path.rstrip('/')
-    _src_array_json = 'meta/root/' + src_path + '.array' + sfx
+    _src_array_json = meta_root + src_path + '.array' + sfx
     if _src_array_json in store:
-        new_key = 'meta/root/' + dst_path + '.array' + sfx
+        new_key = meta_root + dst_path + '.array' + sfx
         store[new_key] = store.pop(_src_array_json)
         any_renamed = True
-    _src_group_json = 'meta/root/' + src_path + '.group' + sfx
+    _src_group_json = meta_root + src_path + '.group' + sfx
     if _src_group_json in store:
-        new_key = 'meta/root/' + dst_path + '.group' + sfx
+        new_key = meta_root + dst_path + '.group' + sfx
         store[new_key] = store.pop(_src_group_json)
         any_renamed = True
     return any_renamed
@@ -350,7 +354,7 @@ def _rename_from_keys(store: BaseStore, src_path: str, dst_path: str) -> None:
                 store[new_key] = store.pop(key)
     else:
         any_renamed = False
-        for root_prefix in ['meta/root/', 'data/root/']:
+        for root_prefix in [meta_root, data_root]:
             _src_prefix = root_prefix + src_prefix
             _dst_prefix = root_prefix + dst_prefix
             for key in store.list_prefix(_src_prefix):  # type: ignore
@@ -374,12 +378,12 @@ def _rmdir_from_keys(store: StoreLike, path: Optional[str] = None) -> None:
 
 def _rmdir_from_keys_v3(store: StoreV3, path: str = "") -> None:
 
-    meta_dir = 'meta/root/' + path
+    meta_dir = meta_root + path
     meta_dir = meta_dir.rstrip('/')
     _rmdir_from_keys(store, meta_dir)
 
     # remove data folder
-    data_dir = 'data/root/' + path
+    data_dir = data_root + path
     data_dir = data_dir.rstrip('/')
     _rmdir_from_keys(store, data_dir)
 
@@ -409,7 +413,7 @@ def _prefix_to_array_key(store: StoreLike, prefix: str) -> str:
     if getattr(store, "_store_version", 2) == 3:
         if prefix:
             sfx = _get_hierarchy_metadata(store)['metadata_key_suffix']
-            key = "meta/root/" + prefix.rstrip("/") + ".array" + sfx
+            key = meta_root + prefix.rstrip("/") + ".array" + sfx
         else:
             raise ValueError("prefix must be supplied to get a v3 array key")
     else:
@@ -421,7 +425,7 @@ def _prefix_to_group_key(store: StoreLike, prefix: str) -> str:
     if getattr(store, "_store_version", 2) == 3:
         if prefix:
             sfx = _get_hierarchy_metadata(store)['metadata_key_suffix']
-            key = "meta/root/" + prefix.rstrip('/') + ".group" + sfx
+            key = meta_root + prefix.rstrip('/') + ".group" + sfx
         else:
             raise ValueError("prefix must be supplied to get a v3 group key")
     else:
@@ -434,7 +438,7 @@ def _prefix_to_attrs_key(store: StoreLike, prefix: str) -> str:
         # for v3, attributes are stored in the array metadata
         sfx = _get_hierarchy_metadata(store)['metadata_key_suffix']
         if prefix:
-            key = "meta/root/" + prefix.rstrip('/') + ".array" + sfx
+            key = meta_root + prefix.rstrip('/') + ".array" + sfx
         else:
             raise ValueError("prefix must be supplied to get a v3 array key")
     else:

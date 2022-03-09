@@ -5,13 +5,13 @@ import tempfile
 
 import numpy as np
 import pytest
-from zarr._storage.store import _valid_key_characters
 from zarr.storage import (ABSStoreV3, ConsolidatedMetadataStoreV3, DBMStoreV3,
                           DirectoryStoreV3, FSStoreV3, KVStore, KVStoreV3,
                           LMDBStoreV3, LRUStoreCacheV3, MemoryStoreV3,
                           MongoDBStoreV3, RedisStoreV3, SQLiteStoreV3, StoreV3,
-                          ZipStoreV3, atexit_rmglob, atexit_rmtree,
-                          default_compressor, getsize, init_array, normalize_store_arg)
+                          ZipStoreV3, atexit_rmglob, atexit_rmtree, data_root,
+                          default_compressor, getsize, init_array, meta_root,
+                          normalize_store_arg)
 from zarr.tests.util import CountingDictV3, have_fsspec, skip_test_env_var
 
 # pytest will fail to run if the following fixtures aren't imported here
@@ -104,10 +104,10 @@ def test_valid_key():
     assert not store._valid_key(5)
     assert not store._valid_key(2.8)
 
-    for key in _valid_key_characters:
+    for key in store._valid_key_characters:
         assert store._valid_key(key)
 
-    # other characters not in _valid_key_characters are not allowed
+    # other characters not in store._valid_key_characters are not allowed
     assert not store._valid_key('*')
     assert not store._valid_key('~')
     assert not store._valid_key('^')
@@ -123,9 +123,9 @@ def test_validate_key():
         store._validate_key('zar.json')
 
     # valid ascii keys
-    for valid in ['meta/root/arr1.array.json',
-                  'data/root/arr1.array.json',
-                  'meta/root/subfolder/item_1-0.group.json']:
+    for valid in [meta_root + 'arr1.array.json',
+                  data_root + 'arr1.array.json',
+                  meta_root + 'subfolder/item_1-0.group.json']:
         store._validate_key(valid)
         # but otherwise valid keys cannot end in /
         with pytest.raises(ValueError):
@@ -139,7 +139,7 @@ def test_validate_key():
 class StoreV3Tests(_StoreTests):
 
     version = 3
-    root = 'meta/root/'
+    root = meta_root
 
     def test_getsize(self):
         # TODO: determine proper getsize() behavior for v3
@@ -151,23 +151,23 @@ class StoreV3Tests(_StoreTests):
         store = self.create_store()
         if isinstance(store, dict) or hasattr(store, 'getsize'):
             assert 0 == getsize(store, 'zarr.json')
-            store['meta/root/foo/a'] = b'x'
+            store[meta_root + 'foo/a'] = b'x'
             assert 1 == getsize(store)
             assert 1 == getsize(store, 'foo')
-            store['meta/root/foo/b'] = b'x'
+            store[meta_root + 'foo/b'] = b'x'
             assert 2 == getsize(store, 'foo')
             assert 1 == getsize(store, 'foo/b')
-            store['meta/root/bar/a'] = b'yy'
+            store[meta_root + 'bar/a'] = b'yy'
             assert 2 == getsize(store, 'bar')
-            store['data/root/bar/a'] = b'zzz'
+            store[data_root + 'bar/a'] = b'zzz'
             assert 5 == getsize(store, 'bar')
-            store['data/root/baz/a'] = b'zzz'
+            store[data_root + 'baz/a'] = b'zzz'
             assert 3 == getsize(store, 'baz')
             assert 10 == getsize(store)
-            store['data/root/quux'] = array.array('B', b'zzzz')
+            store[data_root + 'quux'] = array.array('B', b'zzzz')
             assert 14 == getsize(store)
             assert 4 == getsize(store, 'quux')
-            store['data/root/spong'] = np.frombuffer(b'zzzzz', dtype='u1')
+            store[data_root + 'spong'] = np.frombuffer(b'zzzzz', dtype='u1')
             assert 19 == getsize(store)
             assert 5 == getsize(store, 'spong')
         store.close()
@@ -182,7 +182,7 @@ class StoreV3Tests(_StoreTests):
                    dimension_separator=pass_dim_sep)
 
         # check metadata
-        mkey = 'meta/root/' + path + '.array.json'
+        mkey = meta_root + path + '.array.json'
         assert mkey in store
         meta = store._metadata_class.decode_array_metadata(store[mkey])
         assert (1000,) == meta['shape']
@@ -200,15 +200,15 @@ class StoreV3Tests(_StoreTests):
         path = 'arr1'
         init_array(store, path=path, shape=1000, chunks=100)
 
-        expected = ['meta/root/arr1.array.json', 'zarr.json']
+        expected = [meta_root + 'arr1.array.json', 'zarr.json']
         assert sorted(store.list_prefix('')) == expected
 
-        expected = ['meta/root/arr1.array.json']
-        assert sorted(store.list_prefix('meta/root')) == expected
+        expected = [meta_root + 'arr1.array.json']
+        assert sorted(store.list_prefix(meta_root.rstrip('/'))) == expected
 
         # cannot start prefix with '/'
         with pytest.raises(ValueError):
-            store.list_prefix(prefix='/meta/root')
+            store.list_prefix(prefix='/' + meta_root.rstrip('/'))
 
     def test_equal(self):
         store = self.create_store()
@@ -255,7 +255,7 @@ class TestDirectoryStoreV3(_TestDirectoryStore, StoreV3Tests):
     def test_rename_nonexisting(self):
         store = self.create_store()
         with pytest.raises(FileNotFoundError):
-            store.rename('meta/root/a', 'meta/root/b')
+            store.rename(meta_root + 'a', meta_root + 'b')
 
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
@@ -283,7 +283,7 @@ class TestFSStoreV3(_TestFSStore, StoreV3Tests):
         init_array(store, path=path, shape=1000, chunks=100)
 
         # check metadata
-        mkey = 'meta/root/' + path + '.array.json'
+        mkey = meta_root + path + '.array.json'
         assert mkey in store
         meta = store._metadata_class.decode_array_metadata(store[mkey])
         assert (1000,) == meta['shape']
@@ -480,7 +480,7 @@ class TestConsolidatedMetadataStoreV3(_TestConsolidatedMetadataStore):
 
     @property
     def metadata_key(self):
-        return 'meta/root/consolidated/.zmetadata'
+        return meta_root + 'consolidated/.zmetadata'
 
     def test_bad_store_version(self):
         with pytest.raises(ValueError):

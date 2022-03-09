@@ -2,6 +2,7 @@ import json
 
 import pytest
 
+from zarr._storage.store import meta_root
 from zarr.attrs import Attributes
 from zarr.storage import KVStore, KVStoreV3
 from zarr.tests.util import CountingDict, CountingDictV3
@@ -22,13 +23,13 @@ def _init_store(version):
 class TestAttributes():
 
     def init_attributes(self, store, read_only=False, cache=True, zarr_version=2):
-        root = '.z' if zarr_version == 2 else 'meta/root/'
+        root = '.z' if zarr_version == 2 else meta_root
         return Attributes(store, key=root + 'attrs', read_only=read_only, cache=cache)
 
     def test_storage(self, zarr_version):
 
         store = _init_store(zarr_version)
-        root = '.z' if zarr_version == 2 else 'meta/root/'
+        root = '.z' if zarr_version == 2 else meta_root
         attrs_key = root + 'attrs'
         a = Attributes(store=store, key=attrs_key)
         assert isinstance(a.store, KVStore)

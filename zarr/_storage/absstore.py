@@ -3,7 +3,7 @@
 import warnings
 from numcodecs.compat import ensure_bytes
 from zarr.util import normalize_storage_path
-from zarr._storage.store import Store, StoreV3, _get_hierarchy_metadata
+from zarr._storage.store import _get_hierarchy_metadata, data_root, meta_root, Store, StoreV3
 
 __doctest_requires__ = {
     ('ABSStore', 'ABSStore.*'): ['azure.storage.blob'],
@@ -237,12 +237,12 @@ class ABSStoreV3(ABSStore, StoreV3):
             ABSStore.rmdir(self, '')
             return
 
-        meta_dir = 'meta/root/' + path
+        meta_dir = meta_root + path
         meta_dir = meta_dir.rstrip('/')
         ABSStore.rmdir(self, meta_dir)
 
         # remove data folder
-        data_dir = 'data/root/' + path
+        data_dir = data_root + path
         data_dir = data_dir.rstrip('/')
         ABSStore.rmdir(self, data_dir)
 

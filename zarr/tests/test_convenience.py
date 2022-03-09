@@ -35,6 +35,8 @@ from zarr.storage import (
     MemoryStoreV3,
     SQLiteStoreV3,
     atexit_rmtree,
+    data_root,
+    meta_root,
     getsize,
 )
 from zarr.tests.util import have_fsspec
@@ -131,10 +133,10 @@ def test_zarr_v3_save_multiple_unnamed():
     # no path provided
     save_group(store, x, y, path='dataset', zarr_version=3)
     # names become arr_{i} for unnamed *args
-    assert 'data/root/dataset/arr_0/c0' in store
-    assert 'data/root/dataset/arr_1/c0' in store
-    assert 'meta/root/dataset/arr_0.array.json' in store
-    assert 'meta/root/dataset/arr_1.array.json' in store
+    assert data_root + 'dataset/arr_0/c0' in store
+    assert data_root + 'dataset/arr_1/c0' in store
+    assert meta_root + 'dataset/arr_0.array.json' in store
+    assert meta_root + 'dataset/arr_1.array.json' in store
 
 
 def test_zarr_v3_save_errors():
@@ -252,10 +254,10 @@ def test_consolidate_metadata(with_chunk_store, zarr_version):
         assert isinstance(out._store, ConsolidatedMetadataStoreV3)
         assert 'meta/root/consolidated/.zmetadata' in store
         meta_keys = ['zarr.json',
-                     'meta/root/dataset.group.json',
-                     'meta/root/dataset/g1.group.json',
-                     'meta/root/dataset/g2.group.json',
-                     'meta/root/dataset/g2/arr.array.json',
+                     meta_root + 'dataset.group.json',
+                     meta_root + 'dataset/g1.group.json',
+                     meta_root + 'dataset/g2.group.json',
+                     meta_root + 'dataset/g2/arr.array.json',
                      'meta/root/consolidated.group.json']
     for key in meta_keys:
         del store[key]
@@ -279,9 +281,9 @@ def test_consolidate_metadata(with_chunk_store, zarr_version):
     else:
         cmd = ConsolidatedMetadataStoreV3(store)
         with pytest.raises(PermissionError):
-            del cmd['meta/root/dataset.group.json']
+            del cmd[meta_root + 'dataset.group.json']
         with pytest.raises(PermissionError):
-            cmd['meta/root/dataset.group.json'] = None
+            cmd[meta_root + 'dataset.group.json'] = None
 
     # test getsize on the store
     assert isinstance(getsize(cmd), Integral)
@@ -457,7 +459,7 @@ class TestCopyStore(unittest.TestCase):
         copy_store(source, dest, excludes=excludes)
         assert len(dest) == 2
 
-        root = '' if self._version == 2 else 'meta/root/'
+        root = '' if self._version == 2 else meta_root
         assert root + 'foo' not in dest
 
         # multiple excludes
@@ -488,7 +490,7 @@ class TestCopyStore(unittest.TestCase):
     def test_if_exists(self):
         source = self.source
         dest = self._get_dest_store()
-        root = '' if self._version == 2 else 'meta/root/'
+        root = '' if self._version == 2 else meta_root
         dest[root + 'bar/baz'] = b'mmm'
 
         # default ('raise')
