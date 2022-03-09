@@ -141,15 +141,12 @@ class Store(BaseStore):
         _rmdir_from_keys(self, path)
 
 
-_valid_key_characters = set(ascii_letters + digits + "/.-_")
-
-
 class StoreV3(BaseStore):
     _store_version = 3
     _metadata_class = Metadata3
+    _valid_key_characters = set(ascii_letters + digits + "/.-_")
 
-    @staticmethod
-    def _valid_key(key: str) -> bool:
+    def _valid_key(self, key: str) -> bool:
         """
         Verify that a key conforms to the specification.
 
@@ -159,12 +156,11 @@ class StoreV3(BaseStore):
         """
         if not isinstance(key, str) or not key.isascii():
             return False
-        if set(key) - _valid_key_characters:
+        if set(key) - self._valid_key_characters:
             return False
         return True
 
-    @staticmethod
-    def _validate_key(key: str):
+    def _validate_key(self, key: str):
         """
         Verify that a key conforms to the v3 specification.
 
@@ -177,10 +173,10 @@ class StoreV3(BaseStore):
         to the user, and is a store implementation detail, so this method will
         raise a ValueError in that case.
         """
-        if not StoreV3._valid_key(key):
+        if not self._valid_key(key):
             raise ValueError(
                 f"Keys must be ascii strings and may only contain the "
-                f"characters {''.join(sorted(_valid_key_characters))}"
+                f"characters {''.join(sorted(se_valid_key_characters))}"
             )
 
         if (
