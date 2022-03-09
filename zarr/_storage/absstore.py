@@ -179,7 +179,11 @@ class ABSStore(Store):
         return items
 
     def rmdir(self, path=None):
-        rmdir_abs(self, path)
+        dir_path = normalize_storage_path(self._append_path_to_prefix(path))
+        if dir_path:
+            dir_path += '/'
+        for blob in self.client.list_blobs(name_starts_with=dir_path):
+            self.client.delete_blob(blob)
 
     def getsize(self, path=None):
         store_path = normalize_storage_path(path)
@@ -207,14 +211,6 @@ class ABSStore(Store):
         self.rmdir()
 
 
-def rmdir_abs(store: ABSStore, path=None):
-    dir_path = normalize_storage_path(store._append_path_to_prefix(path))
-    if dir_path:
-        dir_path += '/'
-    for blob in store.client.list_blobs(name_starts_with=dir_path):
-        store.client.delete_blob(blob)
-
-
 class ABSStoreV3(ABSStore, StoreV3):
 
     def list(self):
@@ -232,21 +228,23 @@ class ABSStoreV3(ABSStore, StoreV3):
         super().__setitem__(key, value)
 
     def rmdir(self, path=None):
+
         if not path:
             # Currently allowing clear to delete everything as in v2
 
             # If we disallow an empty path then we will need to modify
             # TestABSStoreV3 to have the create_store method use a prefix.
-            rmdir_abs(self, '')
+            ABSStore.rmdir(self, '')
             return
+
         meta_dir = 'meta/root/' + path
         meta_dir = meta_dir.rstrip('/')
-        rmdir_abs(self, meta_dir)
+        ABSStore.rmdir(self, meta_dir)
 
         # remove data folder
         data_dir = 'data/root/' + path
         data_dir = data_dir.rstrip('/')
-        rmdir_abs(self, data_dir)
+        ABSStore.rmdir(self, data_dir)
 
         # remove metadata files
         sfx = _get_hierarchy_metadata(self)['metadata_key_suffix']
