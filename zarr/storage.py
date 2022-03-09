@@ -58,7 +58,8 @@ from zarr.util import (buffer_size, json_loads, nolock, normalize_chunks,
                        normalize_shape, normalize_storage_path, retry_call)
 
 from zarr._storage.absstore import ABSStore, ABSStoreV3  # noqa: F401
-from zarr._storage.store import (_get_hierarchy_metadata,
+from zarr._storage.store import (_get_hierarchy_metadata,  # noqa: F401
+                                 _get_metadata_suffix,
                                  _listdir_from_keys,
                                  _rename_from_keys,
                                  _rename_metadata_v3,
@@ -117,7 +118,8 @@ def contains_group(store: StoreLike, path: Path = None, explicit_only=True) -> b
         if key in store:
             return True
         # for v3, need to also handle implicit groups
-        sfx = _get_hierarchy_metadata(store)['metadata_key_suffix']
+
+        sfx = _get_metadata_suffix(store)
         implicit_prefix = key.replace('.group' + sfx, '')
         if not implicit_prefix.endswith('/'):
             implicit_prefix += '/'
@@ -485,7 +487,7 @@ def _init_array_metadata(
             if '/' in path:
                 # path is a subfolder of an existing array, remove that array
                 parent_path = '/'.join(path.split('/')[:-1])
-                sfx = _get_hierarchy_metadata(store)['metadata_key_suffix']
+                sfx = _get_metadata_suffix(store)
                 array_key = meta_root + parent_path + '.array' + sfx
                 if array_key in store:
                     store.erase(array_key)  # type: ignore
@@ -2992,7 +2994,7 @@ class FSStoreV3(FSStore, StoreV3):
                     self.fs.rm(store_path, recursive=True)
 
             # remove any associated metadata files
-            sfx = _get_hierarchy_metadata(self)['metadata_key_suffix']
+            sfx = _get_metadata_suffix(self)
             meta_dir = (meta_root + path).rstrip('/')
             array_meta_file = meta_dir + '.array' + sfx
             self.pop(array_meta_file, None)
@@ -3062,7 +3064,7 @@ class MemoryStoreV3(MemoryStore, StoreV3):
                         del parent[key]
 
             # remove any associated metadata files
-            sfx = _get_hierarchy_metadata(self)['metadata_key_suffix']
+            sfx = _get_metadata_suffix(self)
             meta_dir = (meta_root + path).rstrip('/')
             array_meta_file = meta_dir + '.array' + sfx
             self.pop(array_meta_file, None)
@@ -3130,7 +3132,7 @@ class DirectoryStoreV3(DirectoryStore, StoreV3):
                     shutil.rmtree(dir_path)
 
             # remove any associated metadata files
-            sfx = _get_hierarchy_metadata(self)['metadata_key_suffix']
+            sfx = _get_metadata_suffix(self)
             meta_dir = (meta_root + path).rstrip('/')
             array_meta_file = meta_dir + '.array' + sfx
             self.pop(array_meta_file, None)
@@ -3273,7 +3275,7 @@ class SQLiteStoreV3(SQLiteStore, StoreV3):
                         'DELETE FROM zarr WHERE k LIKE (? || "/%")', (base + path,)
                     )
             # remove any associated metadata files
-            sfx = _get_hierarchy_metadata(self)['metadata_key_suffix']
+            sfx = _get_metadata_suffix(self)
             meta_dir = (meta_root + path).rstrip('/')
             array_meta_file = meta_dir + '.array' + sfx
             self.pop(array_meta_file, None)

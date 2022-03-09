@@ -1,9 +1,9 @@
 import abc
 from collections.abc import MutableMapping
 from string import ascii_letters, digits
-from typing import Any, List, Optional, Union
+from typing import Any, List, Mapping, Optional, Union
 
-from zarr.meta import Metadata2, Metadata3, _default_entry_point_metadata_v3
+from zarr.meta import Metadata2, Metadata3
 from zarr.util import normalize_storage_path
 
 # v2 store keys
@@ -176,7 +176,7 @@ class StoreV3(BaseStore):
         if not self._valid_key(key):
             raise ValueError(
                 f"Keys must be ascii strings and may only contain the "
-                f"characters {''.join(sorted(se_valid_key_characters))}"
+                f"characters {''.join(sorted(self._valid_key_characters))}"
             )
 
         if (
@@ -212,7 +212,7 @@ class StoreV3(BaseStore):
 
     def list_dir(self, prefix):
         """
-        Note: carefully test this with trailing/leading slashes
+        TODO: carefully test this with trailing/leading slashes
         """
         if prefix:  # allow prefix = "" ?
             assert prefix.endswith("/")
@@ -305,24 +305,26 @@ def _path_to_prefix(path: Optional[str]) -> str:
     return prefix
 
 
-# TODO: Should this return default metadata or raise an Error if zarr.json
-#       is absent?
-def _get_hierarchy_metadata(store=None):
-    meta = _default_entry_point_metadata_v3
-    if store is not None:
-        version = getattr(store, '_store_version', 2)
-        if version < 3:
-            raise ValueError("zarr.json hierarchy metadata not stored for "
-                             f"zarr v{version} stores")
-        if 'zarr.json' in store:
-            meta = store._metadata_class.decode_hierarchy_metadata(store['zarr.json'])
-    return meta
+def _get_hierarchy_metadata(store: StoreV3) -> Mapping[str, Any]:
+    version = getattr(store, '_store_version', 2)
+    if version < 3:
+        raise ValueError("zarr.json hierarchy metadata not stored for "
+                         f"zarr v{version} stores")
+    if 'zarr.json' not in store:
+        raise ValueError("zarr.json metadata not found in store")
+    return store._metadata_class.decode_hierarchy_metadata(store['zarr.json'])
+
+
+def _get_metadata_suffix(store: StoreV3) -> str:
+    if 'zarr.json' in store:
+        return _get_hierarchy_metadata(store)['metadata_key_suffix']
+    return '.json'
 
 
 def _rename_metadata_v3(store: StoreV3, src_path: str, dst_path: str) -> bool:
     """Rename source or group metadata file associated with src_path."""
     any_renamed = False
-    sfx = _get_hierarchy_metadata(store)['metadata_key_suffix']
+    sfx = _get_metadata_suffix(store)
     src_path = src_path.rstrip('/')
     dst_path = dst_path.rstrip('/')
     _src_array_json = meta_root + src_path + '.array' + sfx
@@ -384,7 +386,7 @@ def _rmdir_from_keys_v3(store: StoreV3, path: str = "") -> None:
     _rmdir_from_keys(store, data_dir)
 
     # remove metadata files
-    sfx = _get_hierarchy_metadata(store)['metadata_key_suffix']
+    sfx = _get_metadata_suffix(store)
     array_meta_file = meta_dir + '.array' + sfx
     if array_meta_file in store:
         store.erase(array_meta_file)  # type: ignore
@@ -408,7 +410,7 @@ def _listdir_from_keys(store: BaseStore, path: Optional[str] = None) -> List[str
 def _prefix_to_array_key(store: StoreLike, prefix: str) -> str:
     if getattr(store, "_store_version", 2) == 3:
         if prefix:
-            sfx = _get_hierarchy_metadata(store)['metadata_key_suffix']
+            sfx = _get_metadata_suffix(store)
             key = meta_root + prefix.rstrip("/") + ".array" + sfx
         else:
             raise ValueError("prefix must be supplied to get a v3 array key")
@@ -420,7 +422,7 @@ def _prefix_to_array_key(store: StoreLike, prefix: str) -> str:
 def _prefix_to_group_key(store: StoreLike, prefix: str) -> str:
     if getattr(store, "_store_version", 2) == 3:
         if prefix:
-            sfx = _get_hierarchy_metadata(store)['metadata_key_suffix']
+            sfx = _get_metadata_suffix(store)
             key = meta_root + prefix.rstrip('/') + ".group" + sfx
         else:
             raise ValueError("prefix must be supplied to get a v3 group key")
@@ -432,7 +434,7 @@ def _prefix_to_group_key(store: StoreLike, prefix: str) -> str:
 def _prefix_to_attrs_key(store: StoreLike, prefix: str) -> str:
     if getattr(store, "_store_version", 2) == 3:
         # for v3, attributes are stored in the array metadata
-        sfx = _get_hierarchy_metadata(store)['metadata_key_suffix']
+        sfx = _get_metadata_suffix(store)
         if prefix:
             key = meta_root + prefix.rstrip('/') + ".array" + sfx
         else:

@@ -18,7 +18,7 @@ except ImportError:  # pragma: no cover
 from numcodecs import Zlib
 from numpy.testing import assert_array_equal
 
-from zarr._storage.store import _get_hierarchy_metadata
+from zarr._storage.store import _get_metadata_suffix
 from zarr.attrs import Attributes
 from zarr.core import Array
 from zarr.creation import open_array
@@ -260,7 +260,7 @@ class TestGroup(unittest.TestCase):
 
         if g1._version > 2 and g1.store.is_erasable():
             arr_path = g1.path + '/arr1'
-            sfx = _get_hierarchy_metadata(g1.store)['metadata_key_suffix']
+            sfx = _get_metadata_suffix(g1.store)
             array_meta_file = meta_root + arr_path + '.array' + sfx
             assert array_meta_file in g1.store
             group_meta_file = meta_root + g2.path + '.group' + sfx

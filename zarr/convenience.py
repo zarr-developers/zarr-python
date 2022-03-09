@@ -14,7 +14,7 @@ from zarr.hierarchy import Group
 from zarr.hierarchy import group as _create_group
 from zarr.hierarchy import open_group
 from zarr.meta import json_dumps, json_loads
-from zarr.storage import (_get_hierarchy_metadata, contains_array, contains_group,
+from zarr.storage import (_get_metadata_suffix, contains_array, contains_group,
                           normalize_store_arg, BaseStore, ConsolidatedMetadataStore,
                           ConsolidatedMetadataStoreV3)
 from zarr.util import TreeViewer, buffer_size, normalize_storage_path
@@ -1209,7 +1209,7 @@ def consolidate_metadata(store: BaseStore, metadata_key=".zmetadata", *, path=''
 
     else:
 
-        sfx = _get_hierarchy_metadata(store)['metadata_key_suffix']
+        sfx = _get_metadata_suffix(store)
 
         def is_zarr_key(key):
             return (key.endswith('.array' + sfx) or key.endswith('.group' + sfx) or

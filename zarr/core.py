@@ -32,6 +32,7 @@ from zarr.indexing import (
     is_scalar,
     pop_fields,
 )
+from zarr.meta import _default_entry_point_metadata_v3
 from zarr.storage import (
     _get_hierarchy_metadata,
     _prefix_to_array_key,
@@ -193,7 +194,10 @@ class Array:
         if self._version == 3:
             self._data_key_prefix = 'data/root/' + self._key_prefix
             self._data_path = 'data/root/' + self._path
-            self._hierarchy_metadata = _get_hierarchy_metadata(store=None)
+            if 'zarr.json' not in self._store:
+                self._hierarchy_metadata = _default_entry_point_metadata_v3
+            else:
+                self._hierarchy_metadata = _get_hierarchy_metadata(store=self._store)
             self._metadata_key_suffix = self._hierarchy_metadata['metadata_key_suffix']
 
         # initialize metadata
