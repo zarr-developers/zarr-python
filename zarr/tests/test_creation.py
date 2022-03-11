@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 from numpy.testing import assert_array_equal
 
+from zarr._storage.store import DEFAULT_ZARR_VERSION
 from zarr.codecs import Zlib
 from zarr.core import Array
 from zarr.creation import (array, create, empty, empty_like, full, full_like,
@@ -57,7 +58,7 @@ def _init_creation_kwargs(zarr_version):
 @pytest.mark.parametrize('zarr_version', [None, 2, 3])
 def test_array(zarr_version):
 
-    expected_zarr_version = 2 if zarr_version is None else zarr_version
+    expected_zarr_version = DEFAULT_ZARR_VERSION if zarr_version is None else zarr_version
     kwargs = _init_creation_kwargs(zarr_version)
 
     # with numpy array
@@ -418,7 +419,7 @@ def test_create_in_dict(zarr_version):
 @pytest.mark.parametrize('zarr_version', [None, 2, 3])
 def test_empty_like(zarr_version):
     kwargs = _init_creation_kwargs(zarr_version)
-    expected_zarr_version = 2 if zarr_version is None else zarr_version
+    expected_zarr_version = DEFAULT_ZARR_VERSION if zarr_version is None else zarr_version
 
     # zarr array
     z = empty(100, chunks=10, dtype='f4', compressor=Zlib(5),
@@ -468,7 +469,7 @@ def test_empty_like(zarr_version):
 def test_zeros_like(zarr_version):
 
     kwargs = _init_creation_kwargs(zarr_version)
-    expected_zarr_version = 2 if zarr_version is None else zarr_version
+    expected_zarr_version = DEFAULT_ZARR_VERSION if zarr_version is None else zarr_version
 
     # zarr array
     z = zeros(100, chunks=10, dtype='f4', compressor=Zlib(5),
@@ -495,7 +496,7 @@ def test_zeros_like(zarr_version):
 def test_ones_like(zarr_version):
 
     kwargs = _init_creation_kwargs(zarr_version)
-    expected_zarr_version = 2 if zarr_version is None else zarr_version
+    expected_zarr_version = DEFAULT_ZARR_VERSION if zarr_version is None else zarr_version
 
     # zarr array
     z = ones(100, chunks=10, dtype='f4', compressor=Zlib(5),
@@ -523,7 +524,7 @@ def test_ones_like(zarr_version):
 def test_full_like(zarr_version):
 
     kwargs = _init_creation_kwargs(zarr_version)
-    expected_zarr_version = 2 if zarr_version is None else zarr_version
+    expected_zarr_version = DEFAULT_ZARR_VERSION if zarr_version is None else zarr_version
 
     z = full(100, chunks=10, dtype='f4', compressor=Zlib(5),
              fill_value=42, order='F', **kwargs)
@@ -552,7 +553,7 @@ def test_full_like(zarr_version):
 @pytest.mark.parametrize('zarr_version', [None, 2, 3])
 def test_open_like(zarr_version):
     kwargs = _init_creation_kwargs(zarr_version)
-    expected_zarr_version = 2 if zarr_version is None else zarr_version
+    expected_zarr_version = DEFAULT_ZARR_VERSION if zarr_version is None else zarr_version
 
     # zarr array
     path = tempfile.mktemp()
@@ -583,7 +584,7 @@ def test_open_like(zarr_version):
 @pytest.mark.parametrize('zarr_version', [None, 2, 3])
 def test_create(zarr_version):
     kwargs = _init_creation_kwargs(zarr_version)
-    expected_zarr_version = 2 if zarr_version is None else zarr_version
+    expected_zarr_version = DEFAULT_ZARR_VERSION if zarr_version is None else zarr_version
 
     # defaults
     z = create(100, **kwargs)

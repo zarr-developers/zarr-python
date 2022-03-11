@@ -15,6 +15,8 @@ attrs_key = '.zattrs'
 meta_root = 'meta/root/'
 data_root = 'data/root/'
 
+DEFAULT_ZARR_VERSION = 2
+
 
 class BaseStore(MutableMapping):
     """Abstract base class for store implementations.

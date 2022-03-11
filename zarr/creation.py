@@ -3,6 +3,7 @@ from warnings import warn
 import numpy as np
 from numcodecs.registry import codec_registry
 
+from zarr._storage.store import DEFAULT_ZARR_VERSION
 from zarr.core import Array
 from zarr.errors import (
     ArrayNotFoundError,
@@ -132,11 +133,11 @@ def create(shape, chunks=True, dtype=None, compressor='default',
 
     """
     if zarr_version is None and store is None:
-        zarr_version = getattr(chunk_store, '_store_version', 2)
+        zarr_version = getattr(chunk_store, '_store_version', DEFAULT_ZARR_VERSION)
 
     # handle polymorphic store arg
     store = normalize_store_arg(store, zarr_version=zarr_version)
-    zarr_version = getattr(store, '_store_version', 2)
+    zarr_version = getattr(store, '_store_version', DEFAULT_ZARR_VERSION)
 
     # API compatibility with h5py
     compressor, fill_value = _kwargs_compat(compressor, fill_value, kwargs)
@@ -515,12 +516,12 @@ def open_array(
     # a : read/write if exists, create otherwise (default)
 
     if zarr_version is None and store is None:
-        zarr_version = getattr(chunk_store, '_store_version', 2)
+        zarr_version = getattr(chunk_store, '_store_version', DEFAULT_ZARR_VERSION)
 
     # handle polymorphic store arg
     store = normalize_store_arg(store, storage_options=storage_options,
                                 mode=mode, zarr_version=zarr_version)
-    zarr_version = getattr(store, '_store_version', 2)
+    zarr_version = getattr(store, '_store_version', DEFAULT_ZARR_VERSION)
     if chunk_store is not None:
         chunk_store = normalize_store_arg(chunk_store,
                                           storage_options=storage_options,

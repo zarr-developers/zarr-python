@@ -43,6 +43,7 @@ from numcodecs.compat import (
 )
 from numcodecs.registry import codec_registry
 
+from zarr._storage.store import DEFAULT_ZARR_VERSION
 from zarr.errors import (
     MetadataError,
     BadCompressorError,
@@ -132,7 +133,7 @@ def normalize_store_arg(store: Any, storage_options=None, mode="r", *,
                         zarr_version=None) -> BaseStore:
     if zarr_version is None:
         # default to v2 store for backward compatibility
-        zarr_version = getattr(store, '_store_version', 2)
+        zarr_version = getattr(store, '_store_version', DEFAULT_ZARR_VERSION)
     if zarr_version not in [2, 3]:
         raise ValueError("zarr_version must be 2 or 3")
     if store is None:
