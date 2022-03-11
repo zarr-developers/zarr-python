@@ -14,7 +14,6 @@ from zarr.errors import (
     GroupNotFoundError,
     ReadOnlyError,
 )
-from zarr.meta import _default_entry_point_metadata_v3
 from zarr.storage import (
     _get_hierarchy_metadata,
     _prefix_to_group_key,
@@ -134,10 +133,7 @@ class Group(MutableMapping):
         if self._version == 3:
             self._data_key_prefix = data_root + self._key_prefix
             self._data_path = data_root + self._path
-            if 'zarr.json' not in self._store:
-                self._hierarchy_metadata = _default_entry_point_metadata_v3
-            else:
-                self._hierarchy_metadata = _get_hierarchy_metadata(store=self._store)
+            self._hierarchy_metadata = _get_hierarchy_metadata(store=self._store)
             self._metadata_key_suffix = _get_metadata_suffix(store=self._store)
 
         # guard conditions
