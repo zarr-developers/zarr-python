@@ -1,10 +1,13 @@
 import array
 import atexit
+import copy
 import os
 import tempfile
 
 import numpy as np
 import pytest
+from zarr._storage.store import _get_hierarchy_metadata
+from zarr.meta import _default_entry_point_metadata_v3
 from zarr.storage import (ABSStoreV3, ConsolidatedMetadataStoreV3, DBMStoreV3,
                           DirectoryStoreV3, FSStoreV3, KVStore, KVStoreV3,
                           LMDBStoreV3, LRUStoreCacheV3, MemoryStoreV3,
@@ -485,3 +488,26 @@ class TestConsolidatedMetadataStoreV3(_TestConsolidatedMetadataStore):
     def test_bad_store_version(self):
         with pytest.raises(ValueError):
             self.ConsolidatedMetadataClass(KVStore(dict()))
+
+
+def test_get_hierarchy_metadata():
+    store = KVStoreV3({})
+
+    # error raised if 'jarr.json' is not in the store
+    with pytest.raises(ValueError):
+        _get_hierarchy_metadata(store)
+
+    store['zarr.json'] = _default_entry_point_metadata_v3
+    assert _get_hierarchy_metadata(store) == _default_entry_point_metadata_v3
+
+    # ValueError if only a subset of keys are present
+    store['zarr.json'] = {'zarr_format': 'https://purl.org/zarr/spec/protocol/core/3.0'}
+    with pytest.raises(ValueError):
+        _get_hierarchy_metadata(store)
+
+    # ValueError if any unexpected keys are present
+    extra_metadata = copy.copy(_default_entry_point_metadata_v3)
+    extra_metadata['extra_key'] = 'value'
+    store['zarr.json'] = extra_metadata
+    with pytest.raises(ValueError):
+        _get_hierarchy_metadata(store)
