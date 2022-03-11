@@ -6,7 +6,7 @@ import operator
 import re
 from collections.abc import MutableMapping
 from functools import reduce
-from typing import Any
+from typing import Any, Mapping
 
 import numpy as np
 from numcodecs.compat import ensure_bytes, ensure_ndarray
@@ -194,6 +194,7 @@ class Array:
         if self._version == 3:
             self._data_key_prefix = 'data/root/' + self._key_prefix
             self._data_path = 'data/root/' + self._path
+            self._hierarchy_metadata: Mapping[str, Any]
             if 'zarr.json' not in self._store:
                 self._hierarchy_metadata = _default_entry_point_metadata_v3
             else:

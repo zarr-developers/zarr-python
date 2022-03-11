@@ -1209,7 +1209,7 @@ def consolidate_metadata(store: BaseStore, metadata_key=".zmetadata", *, path=''
 
     else:
 
-        sfx = _get_metadata_suffix(store)
+        sfx = _get_metadata_suffix(store)  # type: ignore
 
         def is_zarr_key(key):
             return (key.endswith('.array' + sfx) or key.endswith('.group' + sfx) or

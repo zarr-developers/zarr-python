@@ -119,7 +119,7 @@ def contains_group(store: StoreLike, path: Path = None, explicit_only=True) -> b
             return True
         # for v3, need to also handle implicit groups
 
-        sfx = _get_metadata_suffix(store)
+        sfx = _get_metadata_suffix(store)  # type: ignore
         implicit_prefix = key.replace('.group' + sfx, '')
         if not implicit_prefix.endswith('/'):
             implicit_prefix += '/'
@@ -487,7 +487,7 @@ def _init_array_metadata(
             if '/' in path:
                 # path is a subfolder of an existing array, remove that array
                 parent_path = '/'.join(path.split('/')[:-1])
-                sfx = _get_metadata_suffix(store)
+                sfx = _get_metadata_suffix(store)  # type: ignore
                 array_key = meta_root + parent_path + '.array' + sfx
                 if array_key in store:
                     store.erase(array_key)  # type: ignore
