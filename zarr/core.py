@@ -6,7 +6,7 @@ import operator
 import re
 from collections.abc import MutableMapping
 from functools import reduce
-from typing import Any, Mapping
+from typing import Any
 
 import numpy as np
 from numcodecs.compat import ensure_bytes, ensure_ndarray
