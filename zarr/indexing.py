@@ -34,7 +34,10 @@ def is_integer_list(x):
 
 
 def is_integer_array(x, ndim=None):
-    t = hasattr(x, 'shape') and hasattr(x, 'dtype') and x.dtype.kind in 'ui'
+    t = not np.isscalar(x) and \
+        hasattr(x, 'shape') and \
+        hasattr(x, 'dtype') and \
+        x.dtype.kind in 'ui'
     if ndim is not None:
         t = t and len(x.shape) == ndim
     return t
