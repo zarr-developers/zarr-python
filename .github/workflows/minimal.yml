@@ -24,7 +24,6 @@ jobs:
       shell: "bash -l {0}"
       run: |
         conda activate minimal
-        python -m pip install git+https://github.com/madsbk/numcodecs.git@ndarray_like --no-deps
         python -m pip install .
         pytest -svx --timeout=300
     - name: Fixture generation
