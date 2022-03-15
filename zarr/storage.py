@@ -105,13 +105,12 @@ def contains_group(store: StoreLike, path: Path = None) -> bool:
     return key in store
 
 
-def normalize_store_arg(store: Any, clobber=False, storage_options=None, mode="w") -> BaseStore:
+def normalize_store_arg(store: Any, storage_options=None, mode="r") -> BaseStore:
     if store is None:
         return BaseStore._ensure_store(dict())
     elif isinstance(store, os.PathLike):
         store = os.fspath(store)
     if isinstance(store, str):
-        mode = mode if clobber else "r"
         if "://" in store or "::" in store:
             return FSStore(store, mode=mode, **(storage_options or {}))
         elif storage_options:

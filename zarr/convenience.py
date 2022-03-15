@@ -77,11 +77,10 @@ def open(store: StoreLike = None, mode: str = "a", **kwargs):
 
     path = kwargs.get('path')
     # handle polymorphic store arg
-    clobber = mode == 'w'
     # we pass storage options explicitly, since normalize_store_arg might construct
     # a store if the input is a fsspec-compatible URL
     _store: BaseStore = normalize_store_arg(
-        store, clobber=clobber, storage_options=kwargs.pop("storage_options", {})
+        store, storage_options=kwargs.pop("storage_options", {}), mode=mode
     )
     path = normalize_storage_path(path)
 
@@ -142,7 +141,7 @@ def save_array(store: StoreLike, arr, **kwargs):
 
     """
     may_need_closing = _might_close(store)
-    _store: BaseStore = normalize_store_arg(store, clobber=True)
+    _store: BaseStore = normalize_store_arg(store, mode="w")
     try:
         _create_array(arr, store=_store, overwrite=True, **kwargs)
     finally:
@@ -213,7 +212,7 @@ def save_group(store: StoreLike, *args, **kwargs):
         raise ValueError('at least one array must be provided')
     # handle polymorphic store arg
     may_need_closing = _might_close(store)
-    _store: BaseStore = normalize_store_arg(store, clobber=True)
+    _store: BaseStore = normalize_store_arg(store, mode="w")
     try:
         grp = _create_group(_store, overwrite=True)
         for i, arr in enumerate(args):
@@ -1117,7 +1116,7 @@ def consolidate_metadata(store: StoreLike, metadata_key=".zmetadata"):
     open_consolidated
 
     """
-    store = normalize_store_arg(store, clobber=True)
+    store = normalize_store_arg(store, mode="w")
 
     def is_zarr_key(key):
         return (key.endswith('.zarray') or key.endswith('.zgroup') or
@@ -1179,7 +1178,7 @@ def open_consolidated(store: StoreLike, metadata_key=".zmetadata", mode="r+", **
     from .storage import ConsolidatedMetadataStore
 
     # normalize parameters
-    store = normalize_store_arg(store, storage_options=kwargs.get("storage_options"))
+    store = normalize_store_arg(store, storage_options=kwargs.get("storage_options"), mode=mode)
     if mode not in {'r', 'r+'}:
         raise ValueError("invalid mode, expected either 'r' or 'r+'; found {!r}"
                          .format(mode))
