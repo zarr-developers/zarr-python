@@ -163,8 +163,8 @@ class Metadata2:
                 return np.array(v, dtype=dtype)[()]
         elif dtype.kind in "c":
             v = (
-                cls.decode_fill_value(v[0], dtype.type().real.dtype),
-                cls.decode_fill_value(v[1], dtype.type().imag.dtype),
+                cls.decode_fill_value(v[0], dtype.type().real.dtype),  # type: ignore
+                cls.decode_fill_value(v[1], dtype.type().imag.dtype),  # type: ignore
             )
             v = v[0] + 1j * v[1]
             return np.array(v, dtype=dtype)[()]
