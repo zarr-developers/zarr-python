@@ -16,10 +16,7 @@ jobs:
     strategy:
       matrix:
         python-version: [3.7, 3.8, 3.9]
-        numpy_version: ['!=1.21.0', '==1.20.*']
-        exclude:
-          - python-version: 3.9
-            numpy_version: '==1.20.*'
+        numpy_version: ['>=1.22.0', '==1.20.*']
     services:
       redis:
         image: redis
