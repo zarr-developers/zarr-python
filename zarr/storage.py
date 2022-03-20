@@ -127,7 +127,7 @@ def normalize_store_arg(store: Any, storage_options=None, mode="r") -> BaseStore
         return store
 
 
-def rmdir(store: StoreLike, path: Path = None):
+def rmdir(store: StoreLike, path: str = None):
     """Remove all items under the given path. If `store` provides a `rmdir` method,
     this will be called, otherwise will fall back to implementation via the
     `Store` interface."""
@@ -154,7 +154,7 @@ def rename(store: BaseStore, src_path: Path, dst_path: Path):
         _rename_from_keys(store, src_path, dst_path)
 
 
-def listdir(store: BaseStore, path: Path = None):
+def listdir(store: BaseStore, path: str = None):
     """Obtain a directory listing for the given path. If `store` provides a `listdir`
     method, this will be called, otherwise will fall back to implementation via the
     `MutableMapping` interface."""
@@ -693,7 +693,7 @@ class MemoryStore(Store):
     def __len__(self) -> int:
         return sum(1 for _ in self.keys())
 
-    def listdir(self, path: Path = None) -> List[str]:
+    def listdir(self, path: str = None) -> List[str]:
         path = normalize_storage_path(path)
         if path:
             try:
@@ -717,7 +717,7 @@ class MemoryStore(Store):
 
         dst_parent[dst_key] = src_parent.pop(src_key)
 
-    def rmdir(self, path: Path = None):
+    def rmdir(self, path: str = None):
         path = normalize_storage_path(path)
         if path:
             try:
@@ -2148,7 +2148,7 @@ class LRUStoreCache(Store):
             self._keys_cache = list(self._store.keys())
         return self._keys_cache
 
-    def listdir(self, path: Path = None):
+    def listdir(self, path: str = None) -> List[str]:
         with self._mutex:
             try:
                 return self._listdir_cache[path]
@@ -2673,5 +2673,5 @@ class ConsolidatedMetadataStore(Store):
     def getsize(self, path):
         return getsize(self.meta_store, path)
 
-    def listdir(self, path):
+    def listdir(self, path=None):
         return listdir(self.meta_store, path)
