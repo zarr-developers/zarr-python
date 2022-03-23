@@ -1442,7 +1442,7 @@ def test_slice_selection_uints():
     arr = np.arange(24).reshape((4, 6))
     idx = np.uint64(3)
     slice_sel = make_slice_selection((idx,))
-    assert arr[slice_sel].shape == (1, 6)
+    assert arr[tuple(slice_sel)].shape == (1, 6)
 
 
 def test_numpy_int_indexing():
