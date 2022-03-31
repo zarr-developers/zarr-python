@@ -44,8 +44,6 @@ extensions = [
     'sphinx.ext.intersphinx',
     'numpydoc',
     'sphinx_issues',
-    'nbsphinx',
-    'myst_nb',
 ]
 
 numpydoc_show_class_members = False
@@ -314,4 +312,3 @@ texinfo_documents = [
 # :ref:`comparison manual <python:comparisons>`
 intersphinx_mapping = { 'python':('https://docs.python.org/', None), 
                         'numpy': ('https://numpy.org/doc/stable/', None)}
-jupyter_execute_notebooks = "force"
