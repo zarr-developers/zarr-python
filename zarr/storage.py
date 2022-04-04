@@ -1298,6 +1298,15 @@ class FSStore(Store):
         Separator placed between the dimensions of a chunk.
     fs : fsspec.spec.AbstractFileSystem, optional
         An existing filesystem to use for the store.
+    check : bool, optional
+        If True, performs a touch at the root location, to check for write access.
+        Passed to `fsspec.mapping.FSMap` constructor.
+    create : bool, optional
+        If True, performs a mkdir at the rool location.
+        Passed to `fsspec.mapping.FSMap` constructor.
+    missing_exceptions : sequence of Exceptions, optional
+        Exceptions classes to associate with missing files.
+        Passed to `fsspec.mapping.FSMap` constructor.
     storage_options : passed to the fsspec implementation. Cannot be used
         together with fs.
     """
@@ -1310,6 +1319,9 @@ class FSStore(Store):
                  exceptions=(KeyError, PermissionError, IOError),
                  dimension_separator=None,
                  fs=None,
+                 check=False,
+                 create=False,
+                 missing_exceptions=None,
                  **storage_options):
         import fsspec
 
@@ -1318,7 +1330,13 @@ class FSStore(Store):
             # set auto_mkdir to True for local file system
             if protocol in (None, "file") and not storage_options.get("auto_mkdir"):
                 storage_options["auto_mkdir"] = True
-            self.map = fsspec.get_mapper(url, **storage_options)
+            self.map = fsspec.get_mapper(
+                url,
+                check=check,
+                create=create,
+                missing_exceptions=missing_exceptions,
+                **storage_options
+            )
             self.fs = self.map.fs  # for direct operations
             self.path = self.fs._strip_protocol(url)
         else:
@@ -1326,7 +1344,12 @@ class FSStore(Store):
                 raise ValueError("Cannot specify both fs and storage_options")
             self.fs = fs
             self.path = self.fs._strip_protocol(url)
-            self.map = self.fs.get_mapper(self.path)
+            self.map = self.fs.get_mapper(
+                self.path,
+                check=check,
+                create=create,
+                missing_exceptions=missing_exceptions
+            )
 
         self.normalize_keys = normalize_keys
         self.mode = mode
