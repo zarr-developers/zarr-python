@@ -6,6 +6,11 @@ Release notes
 Unreleased
 ----------
 
+.. _release_2.11.2:
+
+2.11.2
+------
+
 Bug fixes
 ~~~~~~~~~
 
