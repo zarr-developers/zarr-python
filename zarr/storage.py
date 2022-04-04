@@ -1340,8 +1340,6 @@ class FSStore(Store):
 
         # Pass attributes to array creation
         self._dimension_separator = dimension_separator
-        if self.fs.exists(self.path) and not self.fs.isdir(self.path):
-            raise FSPathExistNotDir(url)
 
     def _default_key_separator(self):
         if self.key_separator is None:

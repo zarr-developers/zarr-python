@@ -1248,10 +1248,6 @@ class TestFSStore(StoreTests):
 
         assert store[self.root + 'foo'] == b"bar"
 
-        filepath = os.path.join(path, self.root + "foo")
-        with pytest.raises(ValueError):
-            self.create_store(path=filepath, mode='r')
-
     def test_eq(self):
         store1 = self.create_store(path="anypath")
         store2 = self.create_store(path="anypath")
