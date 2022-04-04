@@ -161,7 +161,7 @@ class Array:
         cache_metadata=True,
         cache_attrs=True,
         partial_decompress=False,
-        write_empty_chunks=False,
+        write_empty_chunks=True,
         zarr_version=None,
     ):
         # N.B., expect at this point store is fully initialized with all
