@@ -1325,18 +1325,19 @@ class FSStore(Store):
                  **storage_options):
         import fsspec
 
+        mapper_options = {"check": check, "create": create}
+        # Workaround for https://github.com/zarr-developers/zarr-python/pull/911#discussion_r841926292
+        # Some fsspec implementations don't accept missing_exceptions. This will
+        # avoid passing it in the most common scenarios.
+        if missing_exceptions is not None:
+            mapper_options["missing_exceptions"] = missing_exceptions
+
         if fs is None:
             protocol, _ = fsspec.core.split_protocol(url)
             # set auto_mkdir to True for local file system
             if protocol in (None, "file") and not storage_options.get("auto_mkdir"):
                 storage_options["auto_mkdir"] = True
-            self.map = fsspec.get_mapper(
-                url,
-                check=check,
-                create=create,
-                missing_exceptions=missing_exceptions,
-                **storage_options
-            )
+            self.map = fsspec.get_mapper(url, **{**mapper_options, **storage_options})
             self.fs = self.map.fs  # for direct operations
             self.path = self.fs._strip_protocol(url)
         else:
@@ -1344,12 +1345,7 @@ class FSStore(Store):
                 raise ValueError("Cannot specify both fs and storage_options")
             self.fs = fs
             self.path = self.fs._strip_protocol(url)
-            self.map = self.fs.get_mapper(
-                self.path,
-                check=check,
-                create=create,
-                missing_exceptions=missing_exceptions
-            )
+            self.map = self.fs.get_mapper(self.path, **mapper_options)
 
         self.normalize_keys = normalize_keys
         self.mode = mode
