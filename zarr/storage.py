@@ -1326,9 +1326,9 @@ class FSStore(Store):
         import fsspec
 
         mapper_options = {"check": check, "create": create}
-        # Workaround for https://github.com/zarr-developers/zarr-python/pull/911#discussion_r841926292
-        # Some fsspec implementations don't accept missing_exceptions. This will
-        # avoid passing it in the most common scenarios.
+        # https://github.com/zarr-developers/zarr-python/pull/911#discussion_r841926292
+        # Some fsspec implementations don't accept missing_exceptions.
+        # This is a workaround to avoid passing it in the most common scenarios.
         if missing_exceptions is not None:
             mapper_options["missing_exceptions"] = missing_exceptions
 
