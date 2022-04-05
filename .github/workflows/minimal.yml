@@ -4,9 +4,9 @@ name: Minimal installation
 
 on:
   push:
-    branches: [ master ]
+    branches: [ master, 2_11 ]
   pull_request:
-    branches: [ master ]
+    branches: [ master, 2_11 ]
 
 jobs:
   minimum_build:

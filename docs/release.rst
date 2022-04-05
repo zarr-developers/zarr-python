@@ -6,6 +6,19 @@ Release notes
 Unreleased
 ----------
 
+.. _release_2.11.2:
+
+2.11.2
+------
+
+Bug fixes
+~~~~~~~~~
+
+* Changes the default value of ``write_empty_chunks`` to ``True`` to prevent
+  unanticipated data losses when the data types do not have a proper default
+  value when empty chunks are read back in.
+  By :user:`Vyas Ramasubramani <vyasr>`; :issue:`965`.
+
 .. _release_2.11.1:
 
 2.11.1
