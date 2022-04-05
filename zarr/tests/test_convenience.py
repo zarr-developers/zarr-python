@@ -28,6 +28,7 @@ from zarr.storage import (
     ConsolidatedMetadataStore,
     ConsolidatedMetadataStoreV3,
     DirectoryStoreV3,
+    FSStore,
     FSStoreV3,
     KVStore,
     KVStoreV3,
@@ -205,8 +206,11 @@ def test_tree(zarr_version):
 # TODO: consolidated metadata currently only supported for v2
 
 @pytest.mark.parametrize('zarr_version', [2, 3])
-@pytest.mark.parametrize('with_chunk_store', [False, True], ids=['default', 'with_chunk_store'])
-def test_consolidate_metadata(with_chunk_store, zarr_version):
+@pytest.mark.parametrize('with_chunk_store,listable',
+    [(False, True), (True, True), (False, False)],
+    ids=['default-listable', 'with_chunk_store-listable', 'default-unlistable']
+)
+def test_consolidate_metadata(with_chunk_store, zarr_version, listable, monkeypatch):
 
     if zarr_version == 2:
         MemoryStoreClass = MemoryStore
@@ -262,14 +266,34 @@ def test_consolidate_metadata(with_chunk_store, zarr_version):
     for key in meta_keys:
         del store[key]
 
+
+    # https://github.com/zarr-developers/zarr-python/issues/993
+    # Make sure we can still open consolidated on an unlistable store:
+    if not listable:
+        fs_memory = pytest.importorskip("fsspec.implementations.memory")
+        monkeypatch.setattr(fs_memory.MemoryFileSystem, "isdir", lambda x, y: False)
+        monkeypatch.delattr(fs_memory.MemoryFileSystem, "ls")
+        fs = fs_memory.MemoryFileSystem()
+        if zarr_version == 2:
+            store_to_open = FSStore("", fs=fs)
+        else:
+            store_to_open = FSStoreV3("", fs=fs)
+        store_to_open.update(store)  # copy original store to new unlistable store
+    else:
+        store_to_open = store
+
     # open consolidated
-    z2 = open_consolidated(store, chunk_store=chunk_store, path=path)
+    z2 = open_consolidated(store_to_open, chunk_store=chunk_store, path=path)
     assert ['g1', 'g2'] == list(z2)
     assert 'world' == z2.g2.attrs['hello']
     assert 1 == z2.g2.arr.attrs['data']
     assert (z2.g2.arr[:] == 1.0).all()
     assert 16 == z2.g2.arr.nchunks
-    assert 16 == z2.g2.arr.nchunks_initialized
+    if listable:
+        assert 16 == z2.g2.arr.nchunks_initialized
+    else:
+        with pytest.raises(NotImplementedError):
+            _ = z2.g2.arr.nchunks_initialized
 
     # tests del/write on the store
     if zarr_version == 2:
