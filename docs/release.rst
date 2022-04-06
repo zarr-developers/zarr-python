@@ -6,6 +6,17 @@ Release notes
 Unreleased
 ----------
 
+.. _release_2.11.3:
+
+2.11.3
+------
+
+Bug fixes
+~~~~~~~~~
+
+* Fix missing case to fully revert change to default write_empty_chunks.
+  By :user:`Tom White <tomwhite>`; :issue:`1005`.
+
 .. _release_2.11.2:
 
 2.11.2
