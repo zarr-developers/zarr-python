@@ -206,7 +206,8 @@ def test_tree(zarr_version):
 # TODO: consolidated metadata currently only supported for v2
 
 @pytest.mark.parametrize('zarr_version', [2, 3])
-@pytest.mark.parametrize('with_chunk_store,listable',
+@pytest.mark.parametrize(
+    'with_chunk_store,listable',
     [(False, True), (True, True), (False, False)],
     ids=['default-listable', 'with_chunk_store-listable', 'default-unlistable']
 )
@@ -265,7 +266,6 @@ def test_consolidate_metadata(with_chunk_store, zarr_version, listable, monkeypa
                      'meta/root/consolidated.group.json']
     for key in meta_keys:
         del store[key]
-
 
     # https://github.com/zarr-developers/zarr-python/issues/993
     # Make sure we can still open consolidated on an unlistable store:
