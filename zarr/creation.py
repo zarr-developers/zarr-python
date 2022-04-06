@@ -20,7 +20,7 @@ def create(shape, chunks=True, dtype=None, compressor='default',
            overwrite=False, path=None, chunk_store=None, filters=None,
            cache_metadata=True, cache_attrs=True, read_only=False,
            object_codec=None, dimension_separator=None,
-           write_empty_chunks=False, **kwargs):
+           write_empty_chunks=True, **kwargs):
     """Create an array.
 
     Parameters
