@@ -2484,6 +2484,13 @@ class TestArrayWithStoreCache(TestArray):
         pass
 
 
+fsspec_mapper_kwargs = {
+    "check": True,
+    "create": True,
+    "missing_exceptions": None
+}
+
+
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
 class TestArrayWithFSStore(TestArray):
     @staticmethod
@@ -2491,7 +2498,7 @@ class TestArrayWithFSStore(TestArray):
         path = mkdtemp()
         atexit.register(shutil.rmtree, path)
         key_separator = kwargs.pop('key_separator', ".")
-        store = FSStore(path, key_separator=key_separator, auto_mkdir=True)
+        store = FSStore(path, key_separator=key_separator, auto_mkdir=True, **fsspec_mapper_kwargs)
         cache_metadata = kwargs.pop('cache_metadata', True)
         cache_attrs = kwargs.pop('cache_attrs', True)
         write_empty_chunks = kwargs.pop('write_empty_chunks', True)
@@ -2511,7 +2518,7 @@ class TestArrayWithFSStore(TestArray):
 
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
-class TestArrayWithFSStoreExistingFS(TestArray):
+class TestArrayWithFSStoreFromFilesystem(TestArray):
     @staticmethod
     def create_array(read_only=False, **kwargs):
         from fsspec.implementations.local import LocalFileSystem
@@ -2519,7 +2526,7 @@ class TestArrayWithFSStoreExistingFS(TestArray):
         path = mkdtemp()
         atexit.register(shutil.rmtree, path)
         key_separator = kwargs.pop('key_separator', ".")
-        store = FSStore(path, fs=fs, key_separator=key_separator, create=True, check=True)
+        store = FSStore(path, fs=fs, key_separator=key_separator, **fsspec_mapper_kwargs)
         cache_metadata = kwargs.pop('cache_metadata', True)
         cache_attrs = kwargs.pop('cache_attrs', True)
         write_empty_chunks = kwargs.pop('write_empty_chunks', True)
@@ -3165,7 +3172,12 @@ class TestArrayWithFSStoreV3(TestArrayWithPathV3, TestArrayWithFSStore):
         path = mkdtemp()
         atexit.register(shutil.rmtree, path)
         key_separator = kwargs.pop('key_separator', ".")
-        store = FSStoreV3(path, key_separator=key_separator, auto_mkdir=True)
+        store = FSStoreV3(
+            path,
+            key_separator=key_separator,
+            auto_mkdir=True,
+            **fsspec_mapper_kwargs
+        )
         cache_metadata = kwargs.pop('cache_metadata', True)
         cache_attrs = kwargs.pop('cache_attrs', True)
         write_empty_chunks = kwargs.pop('write_empty_chunks', True)
@@ -3185,7 +3197,7 @@ class TestArrayWithFSStoreV3(TestArrayWithPathV3, TestArrayWithFSStore):
 
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
-class TestArrayWithFSStoreV3ExistingFS(TestArrayWithPathV3, TestArrayWithFSStore):
+class TestArrayWithFSStoreV3FromFilesystem(TestArrayWithPathV3, TestArrayWithFSStore):
     @staticmethod
     def create_array(array_path='arr1', read_only=False, **kwargs):
         from fsspec.implementations.local import LocalFileSystem
@@ -3193,7 +3205,7 @@ class TestArrayWithFSStoreV3ExistingFS(TestArrayWithPathV3, TestArrayWithFSStore
         path = mkdtemp()
         atexit.register(shutil.rmtree, path)
         key_separator = kwargs.pop('key_separator', ".")
-        store = FSStoreV3(path, fs=fs, key_separator=key_separator, create=True, check=True)
+        store = FSStoreV3(path, fs=fs, key_separator=key_separator, **fsspec_mapper_kwargs)
         cache_metadata = kwargs.pop('cache_metadata', True)
         cache_attrs = kwargs.pop('cache_attrs', True)
         write_empty_chunks = kwargs.pop('write_empty_chunks', True)

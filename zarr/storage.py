@@ -1329,8 +1329,9 @@ class FSStore(Store):
         # https://github.com/zarr-developers/zarr-python/pull/911#discussion_r841926292
         # Some fsspec implementations don't accept missing_exceptions.
         # This is a workaround to avoid passing it in the most common scenarios.
+        # Remove this and add missing_exceptions to mapper_options when fsspec is released.
         if missing_exceptions is not None:
-            mapper_options["missing_exceptions"] = missing_exceptions
+            mapper_options["missing_exceptions"] = missing_exceptions  # pragma: no cover
 
         if fs is None:
             protocol, _ = fsspec.core.split_protocol(url)
