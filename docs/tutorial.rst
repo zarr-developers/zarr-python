@@ -758,7 +758,7 @@ databases. The :class:`zarr.storage.RedisStore` class interfaces `Redis <https:/
 (an in memory data structure store), and the :class:`zarr.storage.MongoDB` class interfaces
 with `MongoDB <https://www.mongodb.com/>`_ (an object oriented NoSQL database). These stores
 respectively require the `redis-py <https://redis-py.readthedocs.io>`_ and
-`pymongo <https://api.mongodb.com/python/current/>`_ packages to be installed. 
+`pymongo <https://api.mongodb.com/python/current/>`_ packages to be installed.
 
 For compatibility with the `N5 <https://github.com/saalfeldlab/n5>`_ data format, Zarr also provides
 an N5 backend (this is currently an experimental feature). Similar to the zip storage class, an
@@ -896,6 +896,18 @@ As of version 2.6, write mode and complex URLs are also supported, such as::
 The second invocation here will be much faster. Note that the ``storage_options``
 have become more complex here, to account for the two parts of the supplied
 URL.
+
+It is also possible to initialize the filesytem outside of Zarr and then pass
+it through. This requires creating an :class:`zarr.storage.FSStore` object
+explicitly. For example::
+
+    >>> import s3fs  * doctest: +SKIP
+    >>> fs = s3fs.S3FileSystem(anon=True)  # doctest: +SKIP
+    >>> store = zarr.storage.FSStore('/zarr-demo/store', fs=fs)  # doctest: +SKIP
+    >>> g = zarr.open_group(store)  # doctest: +SKIP
+
+This is useful in cases where you want to also use the same fsspec filesystem object
+separately from Zarr.
 
 .. _fsspec: https://filesystem-spec.readthedocs.io/en/latest/
 
@@ -1306,18 +1318,18 @@ filters (e.g., byte-shuffle) have been applied.
 
 Empty chunks
 ~~~~~~~~~~~~
- 
+
 As of version 2.11, it is possible to configure how Zarr handles the storage of
 chunks that are "empty" (i.e., every element in the chunk is equal to the array's fill value).
-When creating an array with ``write_empty_chunks=False``, 
+When creating an array with ``write_empty_chunks=False``,
 Zarr will check whether a chunk is empty before compression and storage. If a chunk is empty,
-then Zarr does not store it, and instead deletes the chunk from storage 
-if the chunk had been previously stored. 
+then Zarr does not store it, and instead deletes the chunk from storage
+if the chunk had been previously stored.
 
-This optimization prevents storing redundant objects and can speed up reads, but the cost is 
-added computation during array writes, since the contents of 
-each chunk must be compared to the fill value, and these advantages are contingent on the content of the array. 
-If you know that your data will form chunks that are almost always non-empty, then there is no advantage to the optimization described above. 
+This optimization prevents storing redundant objects and can speed up reads, but the cost is
+added computation during array writes, since the contents of
+each chunk must be compared to the fill value, and these advantages are contingent on the content of the array.
+If you know that your data will form chunks that are almost always non-empty, then there is no advantage to the optimization described above.
 In this case, creating an array with ``write_empty_chunks=True`` (the default) will instruct Zarr to write every chunk without checking for emptiness.
 
 The following example illustrates the effect of the ``write_empty_chunks`` flag on
@@ -1329,7 +1341,7 @@ the time required to write an array with different values.::
     >>> from tempfile import TemporaryDirectory
     >>> def timed_write(write_empty_chunks):
     ...     """
-    ...     Measure the time required and number of objects created when writing 
+    ...     Measure the time required and number of objects created when writing
     ...     to a Zarr array with random ints or fill value.
     ...     """
     ...     chunks = (8192,)
@@ -1368,8 +1380,8 @@ the time required to write an array with different values.::
             Random Data: 0.1359s, 1024 objects stored
             Empty Data: 0.0301s, 0 objects stored
 
-In this example, writing random data is slightly slower with ``write_empty_chunks=True``, 
-but writing empty data is substantially faster and generates far fewer objects in storage.   
+In this example, writing random data is slightly slower with ``write_empty_chunks=True``,
+but writing empty data is substantially faster and generates far fewer objects in storage.
 
 .. _tutorial_rechunking:
 

@@ -9,6 +9,27 @@ Unreleased
 Bug fixes
 ~~~~~~~~~
 
+* Fix bug that made it impossible to create an ``FSStore`` on unlistable filesystems
+  (e.g. some HTTP servers).
+  By :user:`Ryan Abernathey <rabernat>`; :issue:`993`.
+
+Enhancements
+~~~~~~~~~~~~
+
+* **Create FSStore from an existing fsspec filesystem**. If you have created
+  an fsspec filesystem outside of Zarr, you can now pass it as a keyword
+  argument to ``FSStore``.
+  By :user:`Ryan Abernathey <rabernat>`.
+
+
+.. _release_2.11.1:
+
+2.11.3
+------
+
+Bug fixes
+~~~~~~~~~
+
 * Changes the default value of ``write_empty_chunks`` to ``True`` to prevent
   unanticipated data losses when the data types do not have a proper default
   value when empty chunks are read back in.
@@ -319,7 +340,7 @@ Bug fixes
 
 * FSStore: default to normalize_keys=False
   By :user:`Josh Moore <joshmoore>`; :issue:`755`.
-* ABSStore: compatibility with ``azure.storage.python>=12`` 
+* ABSStore: compatibility with ``azure.storage.python>=12``
   By :user:`Tom Augspurger <tomaugspurger>`; :issue:`618`
 
 
@@ -484,7 +505,7 @@ This release will be the last to support Python 3.5, next version of Zarr will b
 
 * `DirectoryStore` now uses `os.scandir`, which should make listing large store
   faster, :issue:`563`
-  
+
 * Remove a few remaining Python 2-isms.
   By :user:`Poruri Sai Rahul <rahulporuri>`; :issue:`393`.
 
@@ -504,7 +525,7 @@ This release will be the last to support Python 3.5, next version of Zarr will b
   ``zarr.errors``  have been replaced by ``ValueError`` subclasses. The corresponding
   ``err_*`` function have been removed. :issue:`590`, :issue:`614`)
 
-* Improve consistency of terminology regarding arrays and datasets in the 
+* Improve consistency of terminology regarding arrays and datasets in the
   documentation.
   By :user:`Josh Moore <joshmoore>`; :issue:`571`.
 
