@@ -22,7 +22,7 @@ Enhancements
   By :user:`Ryan Abernathey <rabernat>`.
 
 
-.. _release_2.11.1:
+.. _release_2.11.3:
 
 2.11.3
 ------
