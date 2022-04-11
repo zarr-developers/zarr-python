@@ -6,7 +6,9 @@ import tempfile
 
 import numpy as np
 import pytest
-from zarr._storage.store import _get_hierarchy_metadata
+
+import zarr
+from zarr._storage.store import _get_hierarchy_metadata, v3_api_available
 from zarr.meta import _default_entry_point_metadata_v3
 from zarr.storage import (ABSStoreV3, ConsolidatedMetadataStoreV3, DBMStoreV3,
                           DirectoryStoreV3, FSStoreV3, KVStore, KVStoreV3,
@@ -511,3 +513,13 @@ def test_get_hierarchy_metadata():
     store['zarr.json'] = extra_metadata
     with pytest.raises(ValueError):
         _get_hierarchy_metadata(store)
+
+
+def test_top_level_imports():
+    for store_name in ['ABSStoreV3', 'DBMStoreV3', 'KVStoreV3', 'DirectoryStoreV3',
+                       'LMDBStoreV3', 'LRUStoreCacheV3', 'MemoryStoreV3', 'MongoDBStoreV3',
+                       'RedisStoreV3', 'SQLiteStoreV3', 'ZipStoreV3']:
+        if v3_api_available:
+            assert hasattr(zarr, store_name)
+        else:
+            assert not hasattr(zarr, store_name)
