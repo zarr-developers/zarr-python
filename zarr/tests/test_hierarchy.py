@@ -1024,7 +1024,7 @@ class TestGroup(unittest.TestCase):
                     g1[path]
 
             # For v3 a prefix must be supplied
-            for path in ['/', '//', '///',]:
+            for path in ['/', '//', '///']:
                 with pytest.raises(ValueError):
                     g2[path]
 
