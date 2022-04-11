@@ -15,8 +15,8 @@ from zarr.hierarchy import group as _create_group
 from zarr.hierarchy import open_group
 from zarr.meta import json_dumps, json_loads
 from zarr.storage import (_get_metadata_suffix, contains_array, contains_group,
-                          normalize_store_arg, BaseStore, ConsolidatedMetadataStore,
-                          ConsolidatedMetadataStoreV3)
+                          normalize_store_arg, BaseStore, ConsolidatedMetadataStore)
+from zarr.storage_v3 import ConsolidatedMetadataStoreV3
 from zarr.util import TreeViewer, buffer_size, normalize_storage_path
 
 from typing import Union

@@ -26,18 +26,20 @@ from zarr.errors import CopyError
 from zarr.hierarchy import Group, group
 from zarr.storage import (
     ConsolidatedMetadataStore,
-    ConsolidatedMetadataStoreV3,
-    DirectoryStoreV3,
-    FSStoreV3,
     KVStore,
-    KVStoreV3,
     MemoryStore,
-    MemoryStoreV3,
-    SQLiteStoreV3,
     atexit_rmtree,
     data_root,
     meta_root,
     getsize,
+)
+from zarr.storage_v3 import (
+    ConsolidatedMetadataStoreV3,
+    DirectoryStoreV3,
+    FSStoreV3,
+    KVStoreV3,
+    MemoryStoreV3,
+    SQLiteStoreV3,
 )
 from zarr.tests.util import have_fsspec
 

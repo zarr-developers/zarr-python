@@ -10,13 +10,14 @@ import pytest
 import zarr
 from zarr._storage.store import _get_hierarchy_metadata, v3_api_available
 from zarr.meta import _default_entry_point_metadata_v3
-from zarr.storage import (ABSStoreV3, ConsolidatedMetadataStoreV3, DBMStoreV3,
-                          DirectoryStoreV3, FSStoreV3, KVStore, KVStoreV3,
-                          LMDBStoreV3, LRUStoreCacheV3, MemoryStoreV3,
-                          MongoDBStoreV3, RedisStoreV3, SQLiteStoreV3, StoreV3,
-                          ZipStoreV3, atexit_rmglob, atexit_rmtree, data_root,
+from zarr.storage import (atexit_rmglob, atexit_rmtree, data_root,
                           default_compressor, getsize, init_array, meta_root,
                           normalize_store_arg)
+from zarr.storage_v3 import (ABSStoreV3, ConsolidatedMetadataStoreV3, DBMStoreV3,
+                             DirectoryStoreV3, FSStoreV3, KVStore, KVStoreV3,
+                             LMDBStoreV3, LRUStoreCacheV3, MemoryStoreV3,
+                             MongoDBStoreV3, RedisStoreV3, SQLiteStoreV3, StoreV3,
+                             ZipStoreV3)
 from zarr.tests.util import CountingDictV3, have_fsspec, skip_test_env_var
 
 # pytest will fail to run if the following fixtures aren't imported here

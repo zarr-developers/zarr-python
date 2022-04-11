@@ -16,7 +16,8 @@ from zarr.creation import (array, create, empty, empty_like, full, full_like,
                            zeros_like)
 from zarr.hierarchy import open_group
 from zarr.n5 import N5Store
-from zarr.storage import DirectoryStore, DirectoryStoreV3, KVStore, KVStoreV3
+from zarr.storage import DirectoryStore, KVStore
+from zarr.storage_v3 import DirectoryStoreV3, KVStoreV3
 from zarr.sync import ThreadSynchronizer
 
 

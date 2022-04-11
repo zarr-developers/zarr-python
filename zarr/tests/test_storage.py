@@ -29,12 +29,13 @@ from zarr.storage import (ABSStore, ConsolidatedMetadataStore, DBMStore,
                           DictStore, DirectoryStore, KVStore, LMDBStore,
                           LRUStoreCache, MemoryStore, MongoDBStore,
                           NestedDirectoryStore, RedisStore, SQLiteStore,
-                          Store, TempStore, ZipStore, KVStoreV3,
+                          Store, TempStore, ZipStore,
                           array_meta_key, atexit_rmglob, atexit_rmtree,
                           attrs_key, data_root, default_compressor, getsize,
                           group_meta_key, init_array, init_group, migrate_1to2,
                           meta_root, normalize_store_arg)
 from zarr.storage import FSStore, rename, listdir
+from zarr.storage_v3 import KVStoreV3
 from zarr.tests.util import CountingDict, have_fsspec, skip_test_env_var, abs_container
 
 

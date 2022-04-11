@@ -28,9 +28,9 @@ from zarr.storage import (ABSStore, DBMStore, KVStore, DirectoryStore, FSStore,
                           NestedDirectoryStore, SQLiteStore, ZipStore,
                           array_meta_key, atexit_rmglob, atexit_rmtree, data_root,
                           group_meta_key, init_array, init_group, meta_root)
-from zarr.storage import (ABSStoreV3, KVStoreV3, DirectoryStoreV3,  # MemoryStoreV3
-                          FSStoreV3, ZipStoreV3, DBMStoreV3, LMDBStoreV3, SQLiteStoreV3,
-                          LRUStoreCacheV3)
+from zarr.storage_v3 import (ABSStoreV3, KVStoreV3, DirectoryStoreV3,  # MemoryStoreV3
+                             FSStoreV3, ZipStoreV3, DBMStoreV3, LMDBStoreV3, SQLiteStoreV3,
+                             LRUStoreCacheV3)
 from zarr.util import InfoReporter, buffer_size
 from zarr.tests.util import skip_test_env_var, have_fsspec, abs_container
 

@@ -36,6 +36,14 @@ from zarr.storage import (
     LRUStoreCache,
     NestedDirectoryStore,
     SQLiteStore,
+    atexit_rmglob,
+    atexit_rmtree,
+    data_root,
+    init_array,
+    init_group,
+    meta_root,
+)
+from zarr.storage_v3 import (
     ABSStoreV3,
     DBMStoreV3,
     DirectoryStoreV3,
@@ -45,12 +53,6 @@ from zarr.storage import (
     LRUStoreCacheV3,
     SQLiteStoreV3,
     StoreV3,
-    atexit_rmglob,
-    atexit_rmtree,
-    data_root,
-    init_array,
-    init_group,
-    meta_root,
 )
 from zarr.util import buffer_size
 from zarr.tests.util import abs_container, skip_test_env_var, have_fsspec

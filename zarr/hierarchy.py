@@ -19,7 +19,6 @@ from zarr.storage import (
     _prefix_to_group_key,
     BaseStore,
     MemoryStore,
-    MemoryStoreV3,
     attrs_key,
     contains_array,
     contains_group,
@@ -30,6 +29,7 @@ from zarr.storage import (
     rename,
     rmdir,
 )
+from zarr.storage_v3 import MemoryStoreV3
 from zarr.util import (
     InfoReporter,
     TreeViewer,

@@ -264,7 +264,7 @@ class StoreV3(BaseStore):
 
         We'll do this conversion in a few places automatically
         """
-        from zarr.storage import KVStoreV3  # avoid circular import
+        from zarr.storage_v3 import KVStoreV3  # avoid circular import
         if store is None:
             return None
         elif isinstance(store, StoreV3):
