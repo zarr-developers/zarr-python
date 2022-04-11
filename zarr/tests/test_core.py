@@ -2720,8 +2720,8 @@ class TestArrayWithPathV3(TestArrayWithPath):
         assert isinstance(a, Array)
         assert (100,) == a.shape
         assert (10,) == a.chunks
-        assert path == a.path  # TODO: should this include meta/root?
-        assert '/' + path == a.name  # TODO: should this include meta/root?
+        assert path == a.path
+        assert '/' + path == a.name
         assert 'bar' == a.basename
         assert store is a.store
         assert "968dccbbfc0139f703ead2fd1d503ad6e44db307" == a.hexdigest()
@@ -2772,7 +2772,7 @@ class TestArrayWithPathV3(TestArrayWithPath):
         z[:] = 42
         expect_nbytes_stored = sum(buffer_size(v) for k, v in z.store.items() if k != 'zarr.json')
         assert expect_nbytes_stored == z.nbytes_stored
-        assert z.nchunks_initialized == 10  # TODO: added temporarily for testing, can remove
+        assert z.nchunks_initialized == 10
 
         # mess with store
         if not isinstance(z.store, (LRUStoreCacheV3, FSStoreV3)):

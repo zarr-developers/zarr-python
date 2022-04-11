@@ -202,8 +202,6 @@ def test_tree(zarr_version):
     assert str(zarr.tree(g1)) == str(g1.tree())
 
 
-# TODO: consolidated metadata currently only supported for v2
-
 @pytest.mark.parametrize('zarr_version', [2, 3])
 @pytest.mark.parametrize('with_chunk_store', [False, True], ids=['default', 'with_chunk_store'])
 def test_consolidate_metadata(with_chunk_store, zarr_version):
