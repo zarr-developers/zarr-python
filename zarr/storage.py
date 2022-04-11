@@ -73,7 +73,6 @@ from zarr._storage.store import (_get_hierarchy_metadata,  # noqa: F401
                                  data_root,
                                  group_meta_key,
                                  meta_root,
-                                 v3_enabled,
                                  DEFAULT_ZARR_VERSION,
                                  BaseStore,
                                  Store)
