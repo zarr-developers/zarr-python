@@ -1852,3 +1852,15 @@ def test_group_mismatched_store_versions():
         Group(store_v3, path='group2', read_only=True, chunk_store=chunk_store_v3)
     with pytest.raises(ValueError):
         Group(store_v3, path='group2', read_only=True, chunk_store=chunk_store_v3)
+
+
+@pytest.mark.parametrize('zarr_version', [2, 3])
+def test_open_group_from_paths(zarr_version):
+    """Verify zarr_version is applied to both the store and chunk_store."""
+    store = tempfile.mkdtemp()
+    chunk_store = tempfile.mkdtemp()
+    atexit.register(atexit_rmtree, store)
+    atexit.register(atexit_rmtree, chunk_store)
+    path = 'g1'
+    g = open_group(store, path=path, chunk_store=chunk_store, zarr_version=zarr_version)
+    assert g._store._store_version == g._chunk_store._store_version == zarr_version
