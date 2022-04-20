@@ -3045,7 +3045,20 @@ class MemoryStoreV3(MemoryStore, StoreV3):
                 src_parent, src_key = self._get_parent(base + src_path)
                 dst_parent, dst_key = self._require_parent(base + dst_path)
 
-                dst_parent[dst_key] = src_parent.pop(src_key)
+                if src_key in src_parent:
+                    dst_parent[dst_key] = src_parent.pop(src_key)
+
+                if base == meta_root:
+                    # check for and move corresponding metadata
+                    sfx = _get_metadata_suffix(self)
+                    src_meta = src_key + '.array' + sfx
+                    if src_meta in src_parent:
+                        dst_meta = dst_key + '.array' + sfx
+                        dst_parent[dst_meta] = src_parent.pop(src_meta)
+                    src_meta = src_key + '.group' + sfx
+                    if src_meta in src_parent:
+                        dst_meta = dst_key + '.group' + sfx
+                        dst_parent[dst_meta] = src_parent.pop(src_meta)
                 any_renamed = True
         any_renamed = _rename_metadata_v3(self, src_path, dst_path) or any_renamed
         if not any_renamed:
