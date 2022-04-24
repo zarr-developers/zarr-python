@@ -2429,6 +2429,26 @@ class Array:
 
         # remove any chunks not within range
         chunk_store = self.chunk_store
+        old_cdata_shape_working_list = list(old_cdata_shape)
+        for idx_cdata, (val_old_cdata, val_new_cdata) in enumerate(
+            zip(old_cdata_shape_working_list, new_cdata_shape)
+        ):
+            for cidx in itertools.product(
+                *[
+                    range(n_new, n_old) if (idx == idx_cdata) else range(n_old)
+                    for idx, (n_old, n_new) in enumerate(
+                        zip(old_cdata_shape_working_list, new_cdata_shape)
+                    )
+                ]
+            ):
+                key = self._chunk_key(cidx)
+                try:
+                    del chunk_store[key]
+                except KeyError:
+                    # chunk not initialized
+                    pass
+            old_cdata_shape_working_list[idx_cdata] = min(val_old_cdata, val_new_cdata)
+        '''
         for cidx in itertools.product(*[range(n) for n in old_cdata_shape]):
             if all(i < c for i, c in zip(cidx, new_cdata_shape)):
                 pass  # keep the chunk
@@ -2439,6 +2459,7 @@ class Array:
                 except KeyError:
                     # chunk not initialized
                     pass
+        '''
 
     def append(self, data, axis=0):
         """Append `data` to `axis`.
