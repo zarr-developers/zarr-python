@@ -2448,18 +2448,6 @@ class Array:
                     # chunk not initialized
                     pass
             old_cdata_shape_working_list[idx_cdata] = min(val_old_cdata, val_new_cdata)
-        '''
-        for cidx in itertools.product(*[range(n) for n in old_cdata_shape]):
-            if all(i < c for i, c in zip(cidx, new_cdata_shape)):
-                pass  # keep the chunk
-            else:
-                key = self._chunk_key(cidx)
-                try:
-                    del chunk_store[key]
-                except KeyError:
-                    # chunk not initialized
-                    pass
-        '''
 
     def append(self, data, axis=0):
         """Append `data` to `axis`.
