@@ -2429,7 +2429,10 @@ class Array:
 
         # remove any chunks not within range
         #   The idea is that, along each dimension,
-        #   find and remove the chunk slices that only exist in 'old_cdata_shape'.
+        #     only find and remove the chunk slices that exist in 'old' but not 'new' data.
+        #   Note that a mutable list ('old_cdata_shape_working_list') is introduced here
+        #     to dynamically adjust the number of chunks along the already-processed dimensions
+        #     in order to avoid duplicate chunk removal. 
         chunk_store = self.chunk_store
         old_cdata_shape_working_list = list(old_cdata_shape)
         for idx_cdata, (val_old_cdata, val_new_cdata) in enumerate(
