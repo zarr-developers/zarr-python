@@ -2428,6 +2428,8 @@ class Array:
                                 for s, c in zip(new_shape, chunks))
 
         # remove any chunks not within range
+        #   The idea is that, along each dimension,
+        #   find and remove the chunk slices that only exist in 'old_cdata_shape'.
         chunk_store = self.chunk_store
         old_cdata_shape_working_list = list(old_cdata_shape)
         for idx_cdata, (val_old_cdata, val_new_cdata) in enumerate(
