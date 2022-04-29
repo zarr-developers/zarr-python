@@ -12,7 +12,7 @@ from zarr.hierarchy import Group, group, open_group
 from zarr.n5 import N5Store, N5FSStore
 from zarr._storage.store import v3_api_available
 from zarr.storage import (ABSStore, DBMStore, DictStore, DirectoryStore,
-                          LMDBStore, LRUStoreCache, MemoryStore, MongoDBStore,
+                          KVStore, LMDBStore, LRUStoreCache, MemoryStore, MongoDBStore,
                           NestedDirectoryStore, RedisStore, SQLiteStore,
                           TempStore, ZipStore)
 from zarr.sync import ProcessSynchronizer, ThreadSynchronizer
