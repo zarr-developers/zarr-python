@@ -165,7 +165,8 @@ def normalize_store_arg(store: Any, storage_options=None, mode="r", *,
     if zarr_version == 2:
         normalize_store = _normalize_store_arg_v2
     elif zarr_version == 3:
-        from zarr._storage.v3 import _normalize_store_arg_v3 as normalize_store
+        from zarr._storage.v3 import _normalize_store_arg_v3
+        normalize_store = _normalize_store_arg_v3
     return normalize_store(store, storage_options, mode)
 
 
