@@ -2,7 +2,7 @@ import collections
 import os
 
 from zarr.storage import Store
-from zarr.storage_v3 import StoreV3
+from zarr._storage.v3 import StoreV3
 
 import pytest
 

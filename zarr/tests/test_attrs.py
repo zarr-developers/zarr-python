@@ -5,7 +5,7 @@ import pytest
 from zarr._storage.store import meta_root
 from zarr.attrs import Attributes
 from zarr.storage import KVStore
-from zarr.storage_v3 import KVStoreV3
+from zarr._storage.v3 import KVStoreV3
 from zarr.tests.util import CountingDict, CountingDictV3
 
 

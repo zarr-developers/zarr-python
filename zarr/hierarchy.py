@@ -29,7 +29,7 @@ from zarr.storage import (
     rename,
     rmdir,
 )
-from zarr.storage_v3 import MemoryStoreV3
+from zarr._storage.v3 import MemoryStoreV3
 from zarr.util import (
     InfoReporter,
     TreeViewer,

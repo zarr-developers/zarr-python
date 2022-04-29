@@ -33,7 +33,7 @@ from zarr.storage import (
     meta_root,
     getsize,
 )
-from zarr.storage_v3 import (
+from zarr._storage.v3 import (
     ConsolidatedMetadataStoreV3,
     DirectoryStoreV3,
     FSStoreV3,

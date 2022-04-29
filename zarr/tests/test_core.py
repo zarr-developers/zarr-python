@@ -43,7 +43,7 @@ from zarr.storage import (
     init_group,
     meta_root,
 )
-from zarr.storage_v3 import (
+from zarr._storage.v3 import (
     ABSStoreV3,
     DBMStoreV3,
     DirectoryStoreV3,

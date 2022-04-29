@@ -35,7 +35,7 @@ from zarr.storage import (ABSStore, ConsolidatedMetadataStore, DBMStore,
                           group_meta_key, init_array, init_group, migrate_1to2,
                           meta_root, normalize_store_arg)
 from zarr.storage import FSStore, rename, listdir
-from zarr.storage_v3 import KVStoreV3
+from zarr._storage.v3 import KVStoreV3
 from zarr.tests.util import CountingDict, have_fsspec, skip_test_env_var, abs_container
 
 

@@ -22,6 +22,6 @@ from zarr.version import version as __version__
 assert not __version__.startswith("0.0.0")
 
 if v3_api_available:
-    from zarr.storage_v3 import (ABSStoreV3, DBMStoreV3, KVStoreV3, DirectoryStoreV3,
-                                 LMDBStoreV3, LRUStoreCacheV3, MemoryStoreV3, MongoDBStoreV3,
-                                 RedisStoreV3, SQLiteStoreV3, ZipStoreV3)
+    from zarr._storage.v3 import (ABSStoreV3, DBMStoreV3, KVStoreV3, DirectoryStoreV3,
+                                  LMDBStoreV3, LRUStoreCacheV3, MemoryStoreV3, MongoDBStoreV3,
+                                  RedisStoreV3, SQLiteStoreV3, ZipStoreV3)
