@@ -521,6 +521,6 @@ def test_top_level_imports():
                        'LMDBStoreV3', 'LRUStoreCacheV3', 'MemoryStoreV3', 'MongoDBStoreV3',
                        'RedisStoreV3', 'SQLiteStoreV3', 'ZipStoreV3']:
         if v3_api_available:
-            assert hasattr(zarr, store_name)
+            assert hasattr(zarr, store_name)  # pragma: no cover
         else:
-            assert not hasattr(zarr, store_name)
+            assert not hasattr(zarr, store_name)  # pragma: no cover
