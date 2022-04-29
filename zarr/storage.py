@@ -2853,4 +2853,3 @@ class ConsolidatedMetadataStore(Store):
 
     def listdir(self, path):
         return listdir(self.meta_store, path)
-
