@@ -69,6 +69,7 @@ jobs:
         ZARR_TEST_ABS: 1
         ZARR_TEST_MONGO: 1
         ZARR_TEST_REDIS: 1
+        ZARR_V3_API_AVAILABLE: 1
       run: |
         conda activate zarr-env
         mkdir ~/blob_emulator
