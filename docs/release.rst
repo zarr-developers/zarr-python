@@ -6,6 +6,32 @@ Release notes
 Unreleased
 ----------
 
+Bug fixes
+~~~~~~~~~
+
+* Changes the default value of ``write_empty_chunks`` to ``True`` to prevent
+  unanticipated data losses when the data types do not have a proper default
+  value when empty chunks are read back in.
+  By :user:`Vyas Ramasubramani <vyasr>`; :issue:`965`.
+
+* Add number encoder for ``json.dumps`` to support numpy intergers in
+  ``chunks`` arguments. By :user:`Eric Prestat <ericpre>` :issue:`697`.
+
+.. _release_2.11.1:
+
+2.11.1
+------
+
+Bug fixes
+~~~~~~~~~
+
+* Fix bug where indexing with a scalar numpy value returned a single-value array.
+  By :user:`Ben Jeffery <benjeffery>` :issue:`967`.
+
+* Removed `clobber` argument from `normalize_store_arg`. This enables to change
+  data within a opened consolidated group using mode `"r+"` (i.e region write).
+  By :user:`Tobias Kölling <d70-t>` :issue:`975`.
+
 .. _release_2.11.0:
 
 2.11.0

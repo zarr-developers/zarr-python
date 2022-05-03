@@ -13,17 +13,18 @@ from zarr.attrs import Attributes
 from zarr.core import Array
 from zarr.hierarchy import Group
 from zarr.storage import (DirectoryStore, KVStore, atexit_rmtree, init_array,
-                          init_group)
+                          init_group, meta_root)
 from zarr.sync import ProcessSynchronizer, ThreadSynchronizer
-from zarr.tests.test_attrs import TestAttributes
+# zarr_version fixture must be imported although not used directly here
+from zarr.tests.test_attrs import TestAttributes, zarr_version  # noqa
 from zarr.tests.test_core import TestArray
 from zarr.tests.test_hierarchy import TestGroup
 
 
 class TestAttributesWithThreadSynchronizer(TestAttributes):
 
-    def init_attributes(self, store, read_only=False, cache=True):
-        key = 'attrs'
+    def init_attributes(self, store, read_only=False, cache=True, zarr_version=zarr_version):
+        key = '.zattrs' if zarr_version == 2 else meta_root + 'attrs'
         synchronizer = ThreadSynchronizer()
         return Attributes(store, synchronizer=synchronizer, key=key,
                           read_only=read_only, cache=cache)
@@ -31,8 +32,8 @@ class TestAttributesWithThreadSynchronizer(TestAttributes):
 
 class TestAttributesProcessSynchronizer(TestAttributes):
 
-    def init_attributes(self, store, read_only=False, cache=True):
-        key = 'attrs'
+    def init_attributes(self, store, read_only=False, cache=True, zarr_version=zarr_version):
+        key = '.zattrs' if zarr_version == 2 else meta_root + 'attrs'
         sync_path = mkdtemp()
         atexit.register(shutil.rmtree, sync_path)
         synchronizer = ProcessSynchronizer(sync_path)
