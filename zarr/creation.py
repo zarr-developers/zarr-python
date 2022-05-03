@@ -575,7 +575,7 @@ def open_array(
             except ContainsArrayError:
                 # Array must have been created betwen the `contains_array`
                 # and the `init_array` call, so just swallow the error
-                pass
+                warn("race condition on init_array in open_array")
 
     elif mode in ['w-', 'x']:
         if contains_group(store, path=path):
