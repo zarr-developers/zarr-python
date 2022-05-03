@@ -730,7 +730,6 @@ def test_open_array_race_condition(path_type, zarr_version):
     """
 
     kwargs = _init_creation_kwargs(zarr_version)
-    expected_zarr_version = DEFAULT_ZARR_VERSION if zarr_version is None else zarr_version
 
     path = tempfile.mktemp()
     store = path_type(path)
