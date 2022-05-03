@@ -2,6 +2,7 @@ import atexit
 import os.path
 import shutil
 import tempfile
+import threading
 import warnings
 
 import numpy as np
@@ -720,3 +721,53 @@ def test_create_read_only(zarr_version):
 def test_json_dumps_chunks_numpy_dtype():
     z = zeros((10,), chunks=(np.int64(2),))
     assert np.all(z[...] == 0)
+
+
+@pytest.mark.parametrize('zarr_version', [2, 3])
+def test_open_array_race_condition(path_type, zarr_version):
+    """
+    see: https://github.com/zarr-developers/zarr-python/pull/963
+    """
+
+    kwargs = _init_creation_kwargs(zarr_version)
+    expected_zarr_version = DEFAULT_ZARR_VERSION if zarr_version is None else zarr_version
+
+    path = tempfile.mktemp()
+    store = path_type(path)
+    atexit.register(shutil.rmtree, path)
+
+    event = threading.Event()
+
+    def func(mode="a"):
+        z = open_array(store, mode=mode, shape=10, **kwargs)
+        assert isinstance(z, Array)
+        assert z.shape == (10,)
+
+    func(mode="w")
+
+    class Thread(threading.Thread):
+
+        def __init__(self, event):
+            threading.Thread.__init__(self)
+            self.event = event
+            self.error = None
+
+        def run(self):
+            self.event.wait()
+            try:
+                func()
+            except Exception as e:
+                self.error = e
+
+    # Setup all threads to wait on the event
+    threads = [Thread(event) for i in range(100)]
+    for t in threads:
+        t.start()
+
+    # All threads should call func() together
+    event.set()
+
+    # Wait on all threads to complete and check for errors
+    for t in threads:
+        t.join()
+    assert not t.error, t.error
