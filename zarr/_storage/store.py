@@ -1,4 +1,5 @@
 import abc
+import os
 from collections.abc import MutableMapping
 from string import ascii_letters, digits
 from typing import Any, List, Mapping, Optional, Union
@@ -16,6 +17,8 @@ meta_root = 'meta/root/'
 data_root = 'data/root/'
 
 DEFAULT_ZARR_VERSION = 2
+
+v3_api_available = os.environ.get('ZARR_V3_API_AVAILABLE', '0').lower() not in ['0', 'false']
 
 
 class BaseStore(MutableMapping):
@@ -261,7 +264,7 @@ class StoreV3(BaseStore):
 
         We'll do this conversion in a few places automatically
         """
-        from zarr.storage import KVStoreV3  # avoid circular import
+        from zarr._storage.v3 import KVStoreV3  # avoid circular import
         if store is None:
             return None
         elif isinstance(store, StoreV3):
