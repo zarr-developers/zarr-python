@@ -212,14 +212,11 @@ def test_tree(zarr_version):
     [(False, True), (True, True), (False, False)],
     ids=['default-listable', 'with_chunk_store-listable', 'default-unlistable']
 )
-def test_consolidate_metadata(with_chunk_store, zarr_version, listable, monkeypatch, stores_from_path):
-
-    if zarr_version == 2:
-        MemoryStoreClass = MemoryStore
-        path = ''
-    else:
-        MemoryStoreClass = MemoryStoreV3
-        path = 'dataset'
+def test_consolidate_metadata(with_chunk_store,
+                              zarr_version,
+                              listable,
+                              monkeypatch,
+                              stores_from_path):
 
     # setup initial data
     if stores_from_path:
