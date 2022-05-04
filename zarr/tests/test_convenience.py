@@ -26,6 +26,7 @@ from zarr.errors import CopyError
 from zarr.hierarchy import Group, group
 from zarr.storage import (
     ConsolidatedMetadataStore,
+    FSStore,
     KVStore,
     MemoryStore,
     atexit_rmtree,
@@ -205,9 +206,18 @@ def test_tree(zarr_version):
 
 
 @pytest.mark.parametrize('zarr_version', [2, 3])
-@pytest.mark.parametrize('with_chunk_store', [False, True], ids=['default', 'with_chunk_store'])
 @pytest.mark.parametrize('stores_from_path', [False, True])
-def test_consolidate_metadata(with_chunk_store, zarr_version, stores_from_path):
+@pytest.mark.parametrize(
+    'with_chunk_store,listable',
+    [(False, True), (True, True), (False, False)],
+    ids=['default-listable', 'with_chunk_store-listable', 'default-unlistable']
+)
+def test_consolidate_metadata(with_chunk_store,
+                              zarr_version,
+                              listable,
+                              monkeypatch,
+                              stores_from_path):
+
     # setup initial data
     if stores_from_path:
         store = tempfile.mkdtemp()
@@ -228,6 +238,10 @@ def test_consolidate_metadata(with_chunk_store, zarr_version, stores_from_path):
         version_kwarg = {}
     path = 'dataset' if zarr_version == 3 else None
     z = group(store, chunk_store=chunk_store, path=path, **version_kwarg)
+
+    # Reload the actual store implementation in case str
+    store_to_copy = z.store
+
     z.create_group('g1')
     g2 = z.create_group('g2')
     g2.attrs['hello'] = 'world'
@@ -278,14 +292,36 @@ def test_consolidate_metadata(with_chunk_store, zarr_version, stores_from_path):
         for key in meta_keys:
             del store[key]
 
+    # https://github.com/zarr-developers/zarr-python/issues/993
+    # Make sure we can still open consolidated on an unlistable store:
+    if not listable:
+        fs_memory = pytest.importorskip("fsspec.implementations.memory")
+        monkeypatch.setattr(fs_memory.MemoryFileSystem, "isdir", lambda x, y: False)
+        monkeypatch.delattr(fs_memory.MemoryFileSystem, "ls")
+        fs = fs_memory.MemoryFileSystem()
+        if zarr_version == 2:
+            store_to_open = FSStore("", fs=fs)
+        else:
+            store_to_open = FSStoreV3("", fs=fs)
+
+        # copy original store to new unlistable store
+        store_to_open.update(store_to_copy)
+
+    else:
+        store_to_open = store
+
     # open consolidated
-    z2 = open_consolidated(store, chunk_store=chunk_store, path=path, **version_kwarg)
+    z2 = open_consolidated(store_to_open, chunk_store=chunk_store, path=path, **version_kwarg)
     assert ['g1', 'g2'] == list(z2)
     assert 'world' == z2.g2.attrs['hello']
     assert 1 == z2.g2.arr.attrs['data']
     assert (z2.g2.arr[:] == 1.0).all()
     assert 16 == z2.g2.arr.nchunks
-    assert 16 == z2.g2.arr.nchunks_initialized
+    if listable:
+        assert 16 == z2.g2.arr.nchunks_initialized
+    else:
+        with pytest.raises(NotImplementedError):
+            _ = z2.g2.arr.nchunks_initialized
 
     if stores_from_path:
         # path string is note a BaseStore subclass so cannot be used to
