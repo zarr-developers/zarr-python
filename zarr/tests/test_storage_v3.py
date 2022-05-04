@@ -504,7 +504,7 @@ def test_get_hierarchy_metadata():
     assert _get_hierarchy_metadata(store) == _default_entry_point_metadata_v3
 
     # ValueError if only a subset of keys are present
-    store['zarr.json'] = {'zarr_format': 'https://purl.org/zarr/spec/protocol/core/3.0'}
+    store['zarr.json'] = {'zarr_format': 'https://purl.org/zarr/spec/protocol/core/3.0-dev'}
     with pytest.raises(ValueError):
         _get_hierarchy_metadata(store)
 

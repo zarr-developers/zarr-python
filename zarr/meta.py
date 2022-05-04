@@ -17,8 +17,8 @@ ZARR_FORMAT_v3 = 3
 # FLOAT_FILLS = {"NaN": np.nan, "Infinity": np.PINF, "-Infinity": np.NINF}
 
 _default_entry_point_metadata_v3 = {
-    "zarr_format": "https://purl.org/zarr/spec/protocol/core/3.0",
-    "metadata_encoding": "https://purl.org/zarr/spec/protocol/core/3.0",
+    "zarr_format": "https://purl.org/zarr/spec/protocol/core/3.0-dev",
+    "metadata_encoding": "https://purl.org/zarr/spec/protocol/core/3.0-dev",
     "metadata_key_suffix": ".json",
     "extensions": [],
 }
@@ -391,7 +391,7 @@ class Metadata3(Metadata2):
         meta = cls.parse_metadata(s)
         # check metadata format
         # zarr_format = meta.get("zarr_format", None)
-        # if zarr_format != "https://purl.org/zarr/spec/protocol/core/3.0":
+        # if zarr_format != "https://purl.org/zarr/spec/protocol/core/3.0-dev":
         #     raise MetadataError("unsupported zarr format: %s" % zarr_format)
         if set(meta.keys()) != {
             "zarr_format",
