@@ -667,6 +667,15 @@ class TestArray(unittest.TestCase):
         assert (10, 10) == z.chunks
         assert_array_equal(a[:55, :1], z[:])
 
+        z.resize((1, 55))
+        assert (1, 55) == z.shape
+        assert (1, 55) == z[:].shape
+        assert np.dtype('i4') == z.dtype
+        assert np.dtype('i4') == z[:].dtype
+        assert (10, 10) == z.chunks
+        assert_array_equal(a[:1, :10], z[:, :10])
+        assert_array_equal(np.zeros((1, 55-10), dtype='i4'), z[:, 10:55])
+
         # via shape setter
         z.shape = (105, 105)
         assert (105, 105) == z.shape
