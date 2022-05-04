@@ -241,6 +241,10 @@ def test_consolidate_metadata(with_chunk_store, zarr_version, listable, monkeypa
         version_kwarg = {}
     path = 'dataset' if zarr_version == 3 else None
     z = group(store, chunk_store=chunk_store, path=path, **version_kwarg)
+
+    # Reload the actual store implementation in case str
+    store_to_copy = z.store
+
     z.create_group('g1')
     g2 = z.create_group('g2')
     g2.attrs['hello'] = 'world'
@@ -302,7 +306,10 @@ def test_consolidate_metadata(with_chunk_store, zarr_version, listable, monkeypa
             store_to_open = FSStore("", fs=fs)
         else:
             store_to_open = FSStoreV3("", fs=fs)
-        store_to_open.update(store)  # copy original store to new unlistable store
+
+        # copy original store to new unlistable store
+        store_to_open.update(store_to_copy)
+
     else:
         store_to_open = store
 
