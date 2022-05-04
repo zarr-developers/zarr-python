@@ -36,6 +36,14 @@ from zarr.storage import (
     LRUStoreCache,
     NestedDirectoryStore,
     SQLiteStore,
+    atexit_rmglob,
+    atexit_rmtree,
+    data_root,
+    init_array,
+    init_group,
+    meta_root,
+)
+from zarr._storage.v3 import (
     ABSStoreV3,
     DBMStoreV3,
     DirectoryStoreV3,
@@ -45,12 +53,6 @@ from zarr.storage import (
     LRUStoreCacheV3,
     SQLiteStoreV3,
     StoreV3,
-    atexit_rmglob,
-    atexit_rmtree,
-    data_root,
-    init_array,
-    init_group,
-    meta_root,
 )
 from zarr.util import buffer_size
 from zarr.tests.util import abs_container, skip_test_env_var, have_fsspec
@@ -664,6 +666,15 @@ class TestArray(unittest.TestCase):
         assert np.dtype('i4') == z[:].dtype
         assert (10, 10) == z.chunks
         assert_array_equal(a[:55, :1], z[:])
+
+        z.resize((1, 55))
+        assert (1, 55) == z.shape
+        assert (1, 55) == z[:].shape
+        assert np.dtype('i4') == z.dtype
+        assert np.dtype('i4') == z[:].dtype
+        assert (10, 10) == z.chunks
+        assert_array_equal(a[:1, :10], z[:, :10])
+        assert_array_equal(np.zeros((1, 55-10), dtype='i4'), z[:, 10:55])
 
         # via shape setter
         z.shape = (105, 105)
@@ -2755,8 +2766,8 @@ class TestArrayWithPathV3(TestArrayWithPath):
         assert isinstance(a, Array)
         assert (100,) == a.shape
         assert (10,) == a.chunks
-        assert path == a.path  # TODO: should this include meta/root?
-        assert '/' + path == a.name  # TODO: should this include meta/root?
+        assert path == a.path
+        assert '/' + path == a.name
         assert 'bar' == a.basename
         assert store is a.store
         assert "968dccbbfc0139f703ead2fd1d503ad6e44db307" == a.hexdigest()
@@ -2807,7 +2818,7 @@ class TestArrayWithPathV3(TestArrayWithPath):
         z[:] = 42
         expect_nbytes_stored = sum(buffer_size(v) for k, v in z.store.items() if k != 'zarr.json')
         assert expect_nbytes_stored == z.nbytes_stored
-        assert z.nchunks_initialized == 10  # TODO: added temporarily for testing, can remove
+        assert z.nchunks_initialized == 10
 
         # mess with store
         if not isinstance(z.store, (LRUStoreCacheV3, FSStoreV3)):

@@ -16,7 +16,8 @@ from zarr.creation import (array, create, empty, empty_like, full, full_like,
                            zeros_like)
 from zarr.hierarchy import open_group
 from zarr.n5 import N5Store
-from zarr.storage import DirectoryStore, DirectoryStoreV3, KVStore, KVStoreV3
+from zarr.storage import DirectoryStore, KVStore
+from zarr._storage.v3 import DirectoryStoreV3, KVStoreV3
 from zarr.sync import ThreadSynchronizer
 
 
@@ -714,3 +715,8 @@ def test_create_read_only(zarr_version):
     assert z.read_only
     with pytest.raises(PermissionError):
         z[:] = 42
+
+
+def test_json_dumps_chunks_numpy_dtype():
+    z = zeros((10,), chunks=(np.int64(2),))
+    assert np.all(z[...] == 0)

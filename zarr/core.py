@@ -2428,17 +2428,31 @@ class Array:
                                 for s, c in zip(new_shape, chunks))
 
         # remove any chunks not within range
+        #   The idea is that, along each dimension,
+        #     only find and remove the chunk slices that exist in 'old' but not 'new' data.
+        #   Note that a mutable list ('old_cdata_shape_working_list') is introduced here
+        #     to dynamically adjust the number of chunks along the already-processed dimensions
+        #     in order to avoid duplicate chunk removal.
         chunk_store = self.chunk_store
-        for cidx in itertools.product(*[range(n) for n in old_cdata_shape]):
-            if all(i < c for i, c in zip(cidx, new_cdata_shape)):
-                pass  # keep the chunk
-            else:
+        old_cdata_shape_working_list = list(old_cdata_shape)
+        for idx_cdata, (val_old_cdata, val_new_cdata) in enumerate(
+            zip(old_cdata_shape_working_list, new_cdata_shape)
+        ):
+            for cidx in itertools.product(
+                *[
+                    range(n_new, n_old) if (idx == idx_cdata) else range(n_old)
+                    for idx, (n_old, n_new) in enumerate(
+                        zip(old_cdata_shape_working_list, new_cdata_shape)
+                    )
+                ]
+            ):
                 key = self._chunk_key(cidx)
                 try:
                     del chunk_store[key]
                 except KeyError:
                     # chunk not initialized
                     pass
+            old_cdata_shape_working_list[idx_cdata] = min(val_old_cdata, val_new_cdata)
 
     def append(self, data, axis=0):
         """Append `data` to `axis`.

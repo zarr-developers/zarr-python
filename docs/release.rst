@@ -35,6 +35,9 @@ Bug fixes
   value when empty chunks are read back in.
   By :user:`Vyas Ramasubramani <vyasr>`; :issue:`965`.
 
+* Add number encoder for ``json.dumps`` to support numpy intergers in
+  ``chunks`` arguments. By :user:`Eric Prestat <ericpre>` :issue:`697`.
+
 .. _release_2.11.1:
 
 2.11.1

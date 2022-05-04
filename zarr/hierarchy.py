@@ -19,7 +19,6 @@ from zarr.storage import (
     _prefix_to_group_key,
     BaseStore,
     MemoryStore,
-    MemoryStoreV3,
     attrs_key,
     contains_array,
     contains_group,
@@ -30,6 +29,7 @@ from zarr.storage import (
     rename,
     rmdir,
 )
+from zarr._storage.v3 import MemoryStoreV3
 from zarr.util import (
     InfoReporter,
     TreeViewer,
@@ -1308,7 +1308,8 @@ def open_group(store=None, mode='a', cache_attrs=True, synchronizer=None, path=N
     if chunk_store is not None:
         chunk_store = _normalize_store_arg(chunk_store,
                                            storage_options=storage_options,
-                                           mode=mode)
+                                           mode=mode,
+                                           zarr_version=zarr_version)
         if not getattr(chunk_store, '_store_version', DEFAULT_ZARR_VERSION) == zarr_version:
             raise ValueError(
                 "zarr_version of store and chunk_store must match"
