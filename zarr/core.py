@@ -2409,7 +2409,7 @@ class Array:
         However, it is noteworthy that the chunks partially falling inside the new array
         (i.e. boundary chunks) will remain intact, and therefore,
         the data falling outside the new array but inside the boundary chunks
-        would be restored by subsequent resize operation that grows the array size.
+        would be restored by a subsequent resize operation that grows the array size.
 
         """
 
