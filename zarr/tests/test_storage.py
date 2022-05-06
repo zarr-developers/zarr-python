@@ -17,8 +17,11 @@ from numpy.testing import assert_array_almost_equal, assert_array_equal
 
 from numcodecs.compat import ensure_bytes
 
+import zarr
+from zarr._storage.store import _get_hierarchy_metadata
 from zarr.codecs import BZ2, AsType, Blosc, Zlib
-from zarr.errors import MetadataError
+from zarr.convenience import consolidate_metadata
+from zarr.errors import ContainsArrayError, ContainsGroupError, MetadataError
 from zarr.hierarchy import group
 from zarr.meta import ZARR_FORMAT, decode_array_metadata
 from zarr.n5 import N5Store, N5FSStore
@@ -28,9 +31,11 @@ from zarr.storage import (ABSStore, ConsolidatedMetadataStore, DBMStore,
                           NestedDirectoryStore, RedisStore, SQLiteStore,
                           Store, TempStore, ZipStore,
                           array_meta_key, atexit_rmglob, atexit_rmtree,
-                          attrs_key, default_compressor, getsize,
-                          group_meta_key, init_array, init_group, migrate_1to2)
+                          attrs_key, data_root, default_compressor, getsize,
+                          group_meta_key, init_array, init_group, migrate_1to2,
+                          meta_root, normalize_store_arg)
 from zarr.storage import FSStore, rename, listdir
+from zarr._storage.v3 import KVStoreV3
 from zarr.tests.util import CountingDict, have_fsspec, skip_test_env_var, abs_container
 
 
@@ -57,12 +62,18 @@ def test_kvstore_repr():
     repr(KVStore(dict()))
 
 
-def test_invalid_store():
+def test_ensure_store():
     class InvalidStore:
         pass
 
     with pytest.raises(ValueError):
         Store._ensure_store(InvalidStore())
+
+    # cannot initialize with a store from a different Zarr version
+    with pytest.raises(ValueError):
+        Store._ensure_store(KVStoreV3(dict()))
+
+    assert Store._ensure_store(None) is None
 
 
 def test_capabilities():
@@ -93,8 +104,11 @@ def test_deprecated_listdir_nosotre():
         listdir(store)
 
 
-class StoreTests(object):
+class StoreTests:
     """Abstract store tests."""
+
+    version = 2
+    root = ''
 
     def create_store(self, **kwargs):  # pragma: no cover
         # implement in sub-class
@@ -108,27 +122,28 @@ class StoreTests(object):
         store = self.create_store()
 
         # test __contains__, __getitem__, __setitem__
-        assert 'foo' not in store
+        key = self.root + 'foo'
+        assert key not in store
         with pytest.raises(KeyError):
             # noinspection PyStatementEffect
-            store['foo']
-        store['foo'] = b'bar'
-        assert 'foo' in store
-        assert b'bar' == ensure_bytes(store['foo'])
+            store[key]
+        store[key] = b'bar'
+        assert key in store
+        assert b'bar' == ensure_bytes(store[key])
 
         # test __delitem__ (optional)
         try:
-            del store['foo']
+            del store[key]
         except NotImplementedError:
             pass
         else:
-            assert 'foo' not in store
+            assert key not in store
             with pytest.raises(KeyError):
                 # noinspection PyStatementEffect
-                store['foo']
+                store[key]
             with pytest.raises(KeyError):
                 # noinspection PyStatementEffect
-                del store['foo']
+                del store[key]
 
         store.close()
 
@@ -136,49 +151,49 @@ class StoreTests(object):
         store = self.create_store()
 
         with pytest.raises(TypeError):
-            store['baz'] = list(range(5))
+            store[self.root + 'baz'] = list(range(5))
 
         store.close()
 
     def test_clear(self):
         store = self.create_store()
-        store['foo'] = b'bar'
-        store['baz'] = b'qux'
+        store[self.root + 'foo'] = b'bar'
+        store[self.root + 'baz'] = b'qux'
         assert len(store) == 2
         store.clear()
         assert len(store) == 0
-        assert 'foo' not in store
-        assert 'baz' not in store
+        assert self.root + 'foo' not in store
+        assert self.root + 'baz' not in store
 
         store.close()
 
     def test_pop(self):
         store = self.create_store()
-        store['foo'] = b'bar'
-        store['baz'] = b'qux'
+        store[self.root + 'foo'] = b'bar'
+        store[self.root + 'baz'] = b'qux'
         assert len(store) == 2
-        v = store.pop('foo')
+        v = store.pop(self.root + 'foo')
         assert ensure_bytes(v) == b'bar'
         assert len(store) == 1
-        v = store.pop('baz')
+        v = store.pop(self.root + 'baz')
         assert ensure_bytes(v) == b'qux'
         assert len(store) == 0
         with pytest.raises(KeyError):
-            store.pop('xxx')
-        v = store.pop('xxx', b'default')
+            store.pop(self.root + 'xxx')
+        v = store.pop(self.root + 'xxx', b'default')
         assert v == b'default'
-        v = store.pop('xxx', b'')
+        v = store.pop(self.root + 'xxx', b'')
         assert v == b''
-        v = store.pop('xxx', None)
+        v = store.pop(self.root + 'xxx', None)
         assert v is None
 
         store.close()
 
     def test_popitem(self):
         store = self.create_store()
-        store['foo'] = b'bar'
+        store[self.root + 'foo'] = b'bar'
         k, v = store.popitem()
-        assert k == 'foo'
+        assert k == self.root + 'foo'
         assert ensure_bytes(v) == b'bar'
         assert len(store) == 0
         with pytest.raises(KeyError):
@@ -190,20 +205,27 @@ class StoreTests(object):
         store = self.create_store()
 
         # __setitem__ should accept any value that implements buffer interface
-        store['foo1'] = b'bar'
-        store['foo2'] = bytearray(b'bar')
-        store['foo3'] = array.array('B', b'bar')
-        store['foo4'] = np.frombuffer(b'bar', dtype='u1')
+        store[self.root + 'foo1'] = b'bar'
+        store[self.root + 'foo2'] = bytearray(b'bar')
+        store[self.root + 'foo3'] = array.array('B', b'bar')
+        store[self.root + 'foo4'] = np.frombuffer(b'bar', dtype='u1')
 
         store.close()
 
     def test_update(self):
         store = self.create_store()
-        assert 'foo' not in store
-        assert 'baz' not in store
-        store.update(foo=b'bar', baz=b'quux')
-        assert b'bar' == ensure_bytes(store['foo'])
-        assert b'quux' == ensure_bytes(store['baz'])
+        assert self.root + 'foo' not in store
+        assert self.root + 'baz' not in store
+
+        if self.version == 2:
+            store.update(foo=b'bar', baz=b'quux')
+        else:
+            kv = {self.root + 'foo': b'bar',
+                  self.root + 'baz': b'quux'}
+            store.update(kv)
+
+        assert b'bar' == ensure_bytes(store[self.root + 'foo'])
+        assert b'quux' == ensure_bytes(store[self.root + 'baz'])
 
         store.close()
 
@@ -218,18 +240,23 @@ class StoreTests(object):
         assert set() == set(store.items())
 
         # setup some values
-        store['a'] = b'aaa'
-        store['b'] = b'bbb'
-        store['c/d'] = b'ddd'
-        store['c/e/f'] = b'fff'
+        store[self.root + 'a'] = b'aaa'
+        store[self.root + 'b'] = b'bbb'
+        store[self.root + 'c/d'] = b'ddd'
+        store[self.root + 'c/e/f'] = b'fff'
 
         # test iterators on store with data
         assert 4 == len(store)
-        assert {'a', 'b', 'c/d', 'c/e/f'} == set(store)
-        assert {'a', 'b', 'c/d', 'c/e/f'} == set(store.keys())
+        expected = set(self.root + k for k in ['a', 'b', 'c/d', 'c/e/f'])
+        assert expected == set(store)
+        assert expected == set(store.keys())
         assert {b'aaa', b'bbb', b'ddd', b'fff'} == set(map(ensure_bytes, store.values()))
-        assert ({('a', b'aaa'), ('b', b'bbb'), ('c/d', b'ddd'), ('c/e/f', b'fff')} ==
-                set(map(lambda kv: (kv[0], ensure_bytes(kv[1])), store.items())))
+        assert ({(self.root + 'a', b'aaa'),
+                 (self.root + 'b', b'bbb'),
+                 (self.root + 'c/d', b'ddd'),
+                 (self.root + 'c/e/f', b'fff')} == set(
+                    map(lambda kv: (kv[0], ensure_bytes(kv[1])), store.items()))
+                )
 
         store.close()
 
@@ -237,8 +264,8 @@ class StoreTests(object):
 
         # setup store
         store = self.create_store()
-        store['foo'] = b'bar'
-        store['baz'] = b'quux'
+        store[self.root + 'foo'] = b'bar'
+        store[self.root + 'baz'] = b'quux'
         n = len(store)
         keys = sorted(store.keys())
 
@@ -254,8 +281,8 @@ class StoreTests(object):
         # verify
         assert n == len(store2)
         assert keys == sorted(store2.keys())
-        assert b'bar' == ensure_bytes(store2['foo'])
-        assert b'quux' == ensure_bytes(store2['baz'])
+        assert b'bar' == ensure_bytes(store2[self.root + 'foo'])
+        assert b'quux' == ensure_bytes(store2[self.root + 'baz'])
 
         store2.close()
 
@@ -285,38 +312,47 @@ class StoreTests(object):
     def test_hierarchy(self):
         # setup
         store = self.create_store()
-        store['a'] = b'aaa'
-        store['b'] = b'bbb'
-        store['c/d'] = b'ddd'
-        store['c/e/f'] = b'fff'
-        store['c/e/g'] = b'ggg'
+        store[self.root + 'a'] = b'aaa'
+        store[self.root + 'b'] = b'bbb'
+        store[self.root + 'c/d'] = b'ddd'
+        store[self.root + 'c/e/f'] = b'fff'
+        store[self.root + 'c/e/g'] = b'ggg'
 
         # check keys
-        assert 'a' in store
-        assert 'b' in store
-        assert 'c/d' in store
-        assert 'c/e/f' in store
-        assert 'c/e/g' in store
-        assert 'c' not in store
-        assert 'c/' not in store
-        assert 'c/e' not in store
-        assert 'c/e/' not in store
-        assert 'c/d/x' not in store
+        assert self.root + 'a' in store
+        assert self.root + 'b' in store
+        assert self.root + 'c/d' in store
+        assert self.root + 'c/e/f' in store
+        assert self.root + 'c/e/g' in store
+        assert self.root + 'c' not in store
+        assert self.root + 'c/' not in store
+        assert self.root + 'c/e' not in store
+        assert self.root + 'c/e/' not in store
+        assert self.root + 'c/d/x' not in store
 
         # check __getitem__
         with pytest.raises(KeyError):
-            store['c']
+            store[self.root + 'c']
         with pytest.raises(KeyError):
-            store['c/e']
+            store[self.root + 'c/e']
         with pytest.raises(KeyError):
-            store['c/d/x']
+            store[self.root + 'c/d/x']
 
         # test getsize (optional)
         if hasattr(store, 'getsize'):
-            assert 6 == store.getsize()
+            # TODO: proper behavior of getsize?
+            #       v3 returns size of all nested arrays, not just the
+            #       size of the arrays in the current folder.
+            if self.version == 2:
+                assert 6 == store.getsize()
+            else:
+                assert 15 == store.getsize()
             assert 3 == store.getsize('a')
             assert 3 == store.getsize('b')
-            assert 3 == store.getsize('c')
+            if self.version == 2:
+                assert 3 == store.getsize('c')
+            else:
+                assert 9 == store.getsize('c')
             assert 3 == store.getsize('c/d')
             assert 6 == store.getsize('c/e')
             assert 3 == store.getsize('c/e/f')
@@ -329,79 +365,82 @@ class StoreTests(object):
             assert 0 == store.getsize('c/d/y')
             assert 0 == store.getsize('c/d/y/z')
 
+            # access item via full path
+            assert 3 == store.getsize(self.root + 'a')
+
         # test listdir (optional)
         if hasattr(store, 'listdir'):
-            assert {'a', 'b', 'c'} == set(store.listdir())
-            assert {'d', 'e'} == set(store.listdir('c'))
-            assert {'f', 'g'} == set(store.listdir('c/e'))
+            assert {'a', 'b', 'c'} == set(store.listdir(self.root))
+            assert {'d', 'e'} == set(store.listdir(self.root + 'c'))
+            assert {'f', 'g'} == set(store.listdir(self.root + 'c/e'))
             # no exception raised if path does not exist or is leaf
-            assert [] == store.listdir('x')
-            assert [] == store.listdir('a/x')
-            assert [] == store.listdir('c/x')
-            assert [] == store.listdir('c/x/y')
-            assert [] == store.listdir('c/d/y')
-            assert [] == store.listdir('c/d/y/z')
-            assert [] == store.listdir('c/e/f')
+            assert [] == store.listdir(self.root + 'x')
+            assert [] == store.listdir(self.root + 'a/x')
+            assert [] == store.listdir(self.root + 'c/x')
+            assert [] == store.listdir(self.root + 'c/x/y')
+            assert [] == store.listdir(self.root + 'c/d/y')
+            assert [] == store.listdir(self.root + 'c/d/y/z')
+            assert [] == store.listdir(self.root + 'c/e/f')
 
         # test rename (optional)
         if store.is_erasable():
             store.rename("c/e", "c/e2")
-            assert "c/d" in store
-            assert "c/e" not in store
-            assert "c/e/f" not in store
-            assert "c/e/g" not in store
-            assert "c/e2" not in store
-            assert "c/e2/f" in store
-            assert "c/e2/g" in store
+            assert self.root + "c/d" in store
+            assert self.root + "c/e" not in store
+            assert self.root + "c/e/f" not in store
+            assert self.root + "c/e/g" not in store
+            assert self.root + "c/e2" not in store
+            assert self.root + "c/e2/f" in store
+            assert self.root + "c/e2/g" in store
             store.rename("c/e2", "c/e")
-            assert "c/d" in store
-            assert "c/e2" not in store
-            assert "c/e2/f" not in store
-            assert "c/e2/g" not in store
-            assert "c/e" not in store
-            assert "c/e/f" in store
-            assert "c/e/g" in store
+            assert self.root + "c/d" in store
+            assert self.root + "c/e2" not in store
+            assert self.root + "c/e2/f" not in store
+            assert self.root + "c/e2/g" not in store
+            assert self.root + "c/e" not in store
+            assert self.root + "c/e/f" in store
+            assert self.root + "c/e/g" in store
             store.rename("c", "c1/c2/c3")
-            assert "a" in store
-            assert "c" not in store
-            assert "c/d" not in store
-            assert "c/e" not in store
-            assert "c/e/f" not in store
-            assert "c/e/g" not in store
-            assert "c1" not in store
-            assert "c1/c2" not in store
-            assert "c1/c2/c3" not in store
-            assert "c1/c2/c3/d" in store
-            assert "c1/c2/c3/e" not in store
-            assert "c1/c2/c3/e/f" in store
-            assert "c1/c2/c3/e/g" in store
+            assert self.root + "a" in store
+            assert self.root + "c" not in store
+            assert self.root + "c/d" not in store
+            assert self.root + "c/e" not in store
+            assert self.root + "c/e/f" not in store
+            assert self.root + "c/e/g" not in store
+            assert self.root + "c1" not in store
+            assert self.root + "c1/c2" not in store
+            assert self.root + "c1/c2/c3" not in store
+            assert self.root + "c1/c2/c3/d" in store
+            assert self.root + "c1/c2/c3/e" not in store
+            assert self.root + "c1/c2/c3/e/f" in store
+            assert self.root + "c1/c2/c3/e/g" in store
             store.rename("c1/c2/c3", "c")
-            assert "c" not in store
-            assert "c/d" in store
-            assert "c/e" not in store
-            assert "c/e/f" in store
-            assert "c/e/g" in store
-            assert "c1" not in store
-            assert "c1/c2" not in store
-            assert "c1/c2/c3" not in store
-            assert "c1/c2/c3/d" not in store
-            assert "c1/c2/c3/e" not in store
-            assert "c1/c2/c3/e/f" not in store
-            assert "c1/c2/c3/e/g" not in store
+            assert self.root + "c" not in store
+            assert self.root + "c/d" in store
+            assert self.root + "c/e" not in store
+            assert self.root + "c/e/f" in store
+            assert self.root + "c/e/g" in store
+            assert self.root + "c1" not in store
+            assert self.root + "c1/c2" not in store
+            assert self.root + "c1/c2/c3" not in store
+            assert self.root + "c1/c2/c3/d" not in store
+            assert self.root + "c1/c2/c3/e" not in store
+            assert self.root + "c1/c2/c3/e/f" not in store
+            assert self.root + "c1/c2/c3/e/g" not in store
 
             # test rmdir (optional)
             store.rmdir("c/e")
-            assert "c/d" in store
-            assert "c/e/f" not in store
-            assert "c/e/g" not in store
+            assert self.root + "c/d" in store
+            assert self.root + "c/e/f" not in store
+            assert self.root + "c/e/g" not in store
             store.rmdir("c")
-            assert "c/d" not in store
+            assert self.root + "c/d" not in store
             store.rmdir()
-            assert 'a' not in store
-            assert 'b' not in store
-            store['a'] = b'aaa'
-            store['c/d'] = b'ddd'
-            store['c/e/f'] = b'fff'
+            assert self.root + 'a' not in store
+            assert self.root + 'b' not in store
+            store[self.root + 'a'] = b'aaa'
+            store[self.root + 'c/d'] = b'ddd'
+            store[self.root + 'c/e/f'] = b'fff'
             # no exceptions raised if path does not exist or is leaf
             store.rmdir('x')
             store.rmdir('a/x')
@@ -410,9 +449,9 @@ class StoreTests(object):
             store.rmdir('c/d/y')
             store.rmdir('c/d/y/z')
             store.rmdir('c/e/f')
-            assert 'a' in store
-            assert 'c/d' in store
-            assert 'c/e/f' in store
+            assert self.root + 'a' in store
+            assert self.root + 'c/d' in store
+            assert self.root + 'c/e/f' in store
 
         store.close()
 
@@ -458,33 +497,51 @@ class StoreTests(object):
     def _test_init_array_overwrite(self, order):
         # setup
         store = self.create_store()
-        store[array_meta_key] = store._metadata_class.encode_array_metadata(
-            dict(shape=(2000,),
-                 chunks=(200,),
-                 dtype=np.dtype('u1'),
-                 compressor=Zlib(1).get_config(),
-                 fill_value=0,
-                 order=order,
-                 filters=None)
-        )
+        if self.version == 2:
+            path = None
+            mkey = array_meta_key
+            meta = dict(shape=(2000,),
+                        chunks=(200,),
+                        dtype=np.dtype('u1'),
+                        compressor=Zlib(1).get_config(),
+                        fill_value=0,
+                        order=order,
+                        filters=None)
+        else:
+            path = 'arr1'  # no default, have to specify for v3
+            mkey = meta_root + path + '.array.json'
+            meta = dict(shape=(2000,),
+                        chunk_grid=dict(type='regular',
+                                        chunk_shape=(200,),
+                                        separator=('/')),
+                        data_type=np.dtype('u1'),
+                        compressor=Zlib(1),
+                        fill_value=0,
+                        chunk_memory_layout=order,
+                        filters=None)
+        store[mkey] = store._metadata_class.encode_array_metadata(meta)
 
         # don't overwrite (default)
-        with pytest.raises(ValueError):
-            init_array(store, shape=1000, chunks=100)
+        with pytest.raises(ContainsArrayError):
+            init_array(store, shape=1000, chunks=100, path=path)
 
         # do overwrite
         try:
             init_array(store, shape=1000, chunks=100, dtype='i4',
-                       overwrite=True)
+                       overwrite=True, path=path)
         except NotImplementedError:
             pass
         else:
-            assert array_meta_key in store
-            meta = store._metadata_class.decode_array_metadata(store[array_meta_key])
-            assert ZARR_FORMAT == meta['zarr_format']
+            assert mkey in store
+            meta = store._metadata_class.decode_array_metadata(store[mkey])
+            if self.version == 2:
+                assert ZARR_FORMAT == meta['zarr_format']
+                assert (100,) == meta['chunks']
+                assert np.dtype('i4') == meta['dtype']
+            else:
+                assert (100,) == meta['chunk_grid']['chunk_shape']
+                assert np.dtype('i4') == meta['data_type']
             assert (1000,) == meta['shape']
-            assert (100,) == meta['chunks']
-            assert np.dtype('i4') == meta['dtype']
 
         store.close()
 
@@ -494,14 +551,22 @@ class StoreTests(object):
         init_array(store, shape=1000, chunks=100, path=path)
 
         # check metadata
-        key = path + '/' + array_meta_key
-        assert key in store
-        meta = store._metadata_class.decode_array_metadata(store[key])
-        assert ZARR_FORMAT == meta['zarr_format']
+        if self.version == 2:
+            mkey = path + '/' + array_meta_key
+        else:
+            mkey = meta_root + path + '.array.json'
+        assert mkey in store
+        meta = store._metadata_class.decode_array_metadata(store[mkey])
+        if self.version == 2:
+            assert ZARR_FORMAT == meta['zarr_format']
+            assert (100,) == meta['chunks']
+            assert np.dtype(None) == meta['dtype']
+            assert default_compressor.get_config() == meta['compressor']
+        else:
+            assert (100,) == meta['chunk_grid']['chunk_shape']
+            assert np.dtype(None) == meta['data_type']
+            assert default_compressor == meta['compressor']
         assert (1000,) == meta['shape']
-        assert (100,) == meta['chunks']
-        assert np.dtype(None) == meta['dtype']
-        assert default_compressor.get_config() == meta['compressor']
         assert meta['fill_value'] is None
 
         store.close()
@@ -510,18 +575,30 @@ class StoreTests(object):
         # setup
         path = 'foo/bar'
         store = self.create_store()
-        meta = dict(shape=(2000,),
-                    chunks=(200,),
-                    dtype=np.dtype('u1'),
-                    compressor=Zlib(1).get_config(),
-                    fill_value=0,
-                    order=order,
-                    filters=None)
-        store[array_meta_key] = store._metadata_class.encode_array_metadata(meta)
-        store[path + '/' + array_meta_key] = store._metadata_class.encode_array_metadata(meta)
+        if self.version == 2:
+            mkey = path + '/' + array_meta_key
+            meta = dict(shape=(2000,),
+                        chunks=(200,),
+                        dtype=np.dtype('u1'),
+                        compressor=Zlib(1).get_config(),
+                        fill_value=0,
+                        order=order,
+                        filters=None)
+        else:
+            mkey = meta_root + path + '.array.json'
+            meta = dict(shape=(2000,),
+                        chunk_grid=dict(type='regular',
+                                        chunk_shape=(200,),
+                                        separator=('/')),
+                        data_type=np.dtype('u1'),
+                        compressor=Zlib(1),
+                        fill_value=0,
+                        chunk_memory_layout=order,
+                        filters=None)
+        store[mkey] = store._metadata_class.encode_array_metadata(meta)
 
         # don't overwrite
-        with pytest.raises(ValueError):
+        with pytest.raises(ContainsArrayError):
             init_array(store, shape=1000, chunks=100, path=path)
 
         # do overwrite
@@ -531,15 +608,20 @@ class StoreTests(object):
         except NotImplementedError:
             pass
         else:
-            assert group_meta_key in store
-            assert array_meta_key not in store
-            assert (path + '/' + array_meta_key) in store
+            if self.version == 2:
+                assert group_meta_key in store
+                assert array_meta_key not in store
+            assert mkey in store
             # should have been overwritten
-            meta = store._metadata_class.decode_array_metadata(store[path + '/' + array_meta_key])
-            assert ZARR_FORMAT == meta['zarr_format']
+            meta = store._metadata_class.decode_array_metadata(store[mkey])
+            if self.version == 2:
+                assert ZARR_FORMAT == meta['zarr_format']
+                assert (100,) == meta['chunks']
+                assert np.dtype('i4') == meta['dtype']
+            else:
+                assert (100,) == meta['chunk_grid']['chunk_shape']
+                assert np.dtype('i4') == meta['data_type']
             assert (1000,) == meta['shape']
-            assert (100,) == meta['chunks']
-            assert np.dtype('i4') == meta['dtype']
 
         store.close()
 
@@ -547,10 +629,16 @@ class StoreTests(object):
         # setup
         path = 'foo/bar'
         store = self.create_store()
-        store[path + '/' + group_meta_key] = store._metadata_class.encode_group_metadata()
+        if self.version == 2:
+            array_key = path + '/' + array_meta_key
+            group_key = path + '/' + group_meta_key
+        else:
+            array_key = meta_root + path + '.array.json'
+            group_key = meta_root + path + '.group.json'
+        store[group_key] = store._metadata_class.encode_group_metadata()
 
         # don't overwrite
-        with pytest.raises(ValueError):
+        with pytest.raises(ContainsGroupError):
             init_array(store, shape=1000, chunks=100, path=path)
 
         # do overwrite
@@ -560,13 +648,17 @@ class StoreTests(object):
         except NotImplementedError:
             pass
         else:
-            assert (path + '/' + group_meta_key) not in store
-            assert (path + '/' + array_meta_key) in store
-            meta = store._metadata_class.decode_array_metadata(store[path + '/' + array_meta_key])
-            assert ZARR_FORMAT == meta['zarr_format']
+            assert group_key not in store
+            assert array_key in store
+            meta = store._metadata_class.decode_array_metadata(store[array_key])
+            if self.version == 2:
+                assert ZARR_FORMAT == meta['zarr_format']
+                assert (100,) == meta['chunks']
+                assert np.dtype('i4') == meta['dtype']
+            else:
+                assert (100,) == meta['chunk_grid']['chunk_shape']
+                assert np.dtype('i4') == meta['data_type']
             assert (1000,) == meta['shape']
-            assert (100,) == meta['chunks']
-            assert np.dtype('i4') == meta['dtype']
 
         store.close()
 
@@ -574,61 +666,105 @@ class StoreTests(object):
         # setup
         store = self.create_store()
         chunk_store = self.create_store()
-        store[array_meta_key] = store._metadata_class.encode_array_metadata(
-            dict(shape=(2000,),
-                 chunks=(200,),
-                 dtype=np.dtype('u1'),
-                 compressor=None,
-                 fill_value=0,
-                 filters=None,
-                 order=order)
-        )
-        chunk_store['0'] = b'aaa'
-        chunk_store['1'] = b'bbb'
+
+        if self.version == 2:
+            path = None
+            data_path = ''
+            mkey = array_meta_key
+            meta = dict(shape=(2000,),
+                        chunks=(200,),
+                        dtype=np.dtype('u1'),
+                        compressor=None,
+                        fill_value=0,
+                        filters=None,
+                        order=order)
+        else:
+            path = 'arr1'
+            data_path = data_root + 'arr1/'
+            mkey = meta_root + path + '.array.json'
+            meta = dict(shape=(2000,),
+                        chunk_grid=dict(type='regular',
+                                        chunk_shape=(200,),
+                                        separator=('/')),
+                        data_type=np.dtype('u1'),
+                        compressor=None,
+                        fill_value=0,
+                        filters=None,
+                        chunk_memory_layout=order)
+
+        store[mkey] = store._metadata_class.encode_array_metadata(meta)
+
+        chunk_store[data_path + '0'] = b'aaa'
+        chunk_store[data_path + '1'] = b'bbb'
 
         # don't overwrite (default)
-        with pytest.raises(ValueError):
-            init_array(store, shape=1000, chunks=100, chunk_store=chunk_store)
+        with pytest.raises(ContainsArrayError):
+            init_array(store, path=path, shape=1000, chunks=100, chunk_store=chunk_store)
 
         # do overwrite
         try:
-            init_array(store, shape=1000, chunks=100, dtype='i4',
+            init_array(store, path=path, shape=1000, chunks=100, dtype='i4',
                        overwrite=True, chunk_store=chunk_store)
         except NotImplementedError:
             pass
         else:
-            assert array_meta_key in store
-            meta = store._metadata_class.decode_array_metadata(store[array_meta_key])
-            assert ZARR_FORMAT == meta['zarr_format']
+            assert mkey in store
+            meta = store._metadata_class.decode_array_metadata(store[mkey])
+            if self.version == 2:
+                assert ZARR_FORMAT == meta['zarr_format']
+                assert (100,) == meta['chunks']
+                assert np.dtype('i4') == meta['dtype']
+            else:
+                assert (100,) == meta['chunk_grid']['chunk_shape']
+                assert np.dtype('i4') == meta['data_type']
             assert (1000,) == meta['shape']
-            assert (100,) == meta['chunks']
-            assert np.dtype('i4') == meta['dtype']
-            assert '0' not in chunk_store
-            assert '1' not in chunk_store
+            assert data_path + '0' not in chunk_store
+            assert data_path + '1' not in chunk_store
 
         store.close()
         chunk_store.close()
 
     def test_init_array_compat(self):
         store = self.create_store()
-        init_array(store, shape=1000, chunks=100, compressor='none')
-        meta = store._metadata_class.decode_array_metadata(store[array_meta_key])
-        assert meta['compressor'] is None
-
+        if self.version == 2:
+            path = None
+            mkey = array_meta_key
+        else:
+            path = 'arr1'
+            mkey = meta_root + path + '.array.json'
+        init_array(store, path=path, shape=1000, chunks=100, compressor='none')
+        meta = store._metadata_class.decode_array_metadata(store[mkey])
+        if self.version == 2:
+            assert meta['compressor'] is None
+        else:
+            assert 'compressor' not in meta
         store.close()
 
     def test_init_group(self):
         store = self.create_store()
-        init_group(store)
+        if self.version == 2:
+            path = None
+            mkey = group_meta_key
+        else:
+            path = 'foo'
+            mkey = meta_root + path + '.group.json'
+        init_group(store, path=path)
 
         # check metadata
-        assert group_meta_key in store
-        meta = store._metadata_class.decode_group_metadata(store[group_meta_key])
-        assert ZARR_FORMAT == meta['zarr_format']
+        assert mkey in store
+        meta = store._metadata_class.decode_group_metadata(store[mkey])
+        if self.version == 2:
+            assert ZARR_FORMAT == meta['zarr_format']
+        else:
+            assert meta == {'attributes': {}}
 
         store.close()
 
     def _test_init_group_overwrite(self, order):
+        if self.version == 3:
+            pytest.skip(
+                "In v3 array and group names cannot overlap"
+            )
         # setup
         store = self.create_store()
         store[array_meta_key] = store._metadata_class.encode_array_metadata(
@@ -642,7 +778,7 @@ class StoreTests(object):
         )
 
         # don't overwrite array (default)
-        with pytest.raises(ValueError):
+        with pytest.raises(ContainsArrayError):
             init_group(store)
 
         # do overwrite
@@ -666,15 +802,31 @@ class StoreTests(object):
         # setup
         path = 'foo/bar'
         store = self.create_store()
-        meta = dict(shape=(2000,),
-                    chunks=(200,),
-                    dtype=np.dtype('u1'),
-                    compressor=None,
-                    fill_value=0,
-                    order=order,
-                    filters=None)
-        store[array_meta_key] = store._metadata_class.encode_array_metadata(meta)
-        store[path + '/' + array_meta_key] = store._metadata_class.encode_array_metadata(meta)
+        if self.version == 2:
+            meta = dict(shape=(2000,),
+                        chunks=(200,),
+                        dtype=np.dtype('u1'),
+                        compressor=None,
+                        fill_value=0,
+                        order=order,
+                        filters=None)
+            array_key = path + '/' + array_meta_key
+            group_key = path + '/' + group_meta_key
+        else:
+            meta = dict(
+                shape=(2000,),
+                chunk_grid=dict(type='regular',
+                                chunk_shape=(200,),
+                                separator=('/')),
+                data_type=np.dtype('u1'),
+                compressor=None,
+                fill_value=0,
+                filters=None,
+                chunk_memory_layout=order,
+            )
+            array_key = meta_root + path + '.array.json'
+            group_key = meta_root + path + '.group.json'
+        store[array_key] = store._metadata_class.encode_array_metadata(meta)
 
         # don't overwrite
         with pytest.raises(ValueError):
@@ -686,17 +838,25 @@ class StoreTests(object):
         except NotImplementedError:
             pass
         else:
-            assert array_meta_key not in store
-            assert group_meta_key in store
-            assert (path + '/' + array_meta_key) not in store
-            assert (path + '/' + group_meta_key) in store
+            if self.version == 2:
+                assert array_meta_key not in store
+                assert group_meta_key in store
+            assert array_key not in store
+            assert group_key in store
             # should have been overwritten
-            meta = store._metadata_class.decode_group_metadata(store[path + '/' + group_meta_key])
-            assert ZARR_FORMAT == meta['zarr_format']
+            meta = store._metadata_class.decode_group_metadata(store[group_key])
+            if self.version == 2:
+                assert ZARR_FORMAT == meta['zarr_format']
+            else:
+                assert meta == {'attributes': {}}
 
         store.close()
 
     def _test_init_group_overwrite_chunk_store(self, order):
+        if self.version == 3:
+            pytest.skip(
+                "In v3 array and group names cannot overlap"
+            )
         # setup
         store = self.create_store()
         chunk_store = self.create_store()
@@ -748,41 +908,41 @@ class TestMappingStore(StoreTests):
         pass
 
 
-def setdel_hierarchy_checks(store):
+def setdel_hierarchy_checks(store, root=''):
     # these tests are for stores that are aware of hierarchy levels; this
-    # behaviour is not stricly required by Zarr but these tests are included
+    # behaviour is not strictly required by Zarr but these tests are included
     # to define behaviour of MemoryStore and DirectoryStore classes
 
     # check __setitem__ and __delitem__ blocked by leaf
 
-    store['a/b'] = b'aaa'
+    store[root + 'a/b'] = b'aaa'
     with pytest.raises(KeyError):
-        store['a/b/c'] = b'xxx'
+        store[root + 'a/b/c'] = b'xxx'
     with pytest.raises(KeyError):
-        del store['a/b/c']
+        del store[root + 'a/b/c']
 
-    store['d'] = b'ddd'
+    store[root + 'd'] = b'ddd'
     with pytest.raises(KeyError):
-        store['d/e/f'] = b'xxx'
+        store[root + 'd/e/f'] = b'xxx'
     with pytest.raises(KeyError):
-        del store['d/e/f']
+        del store[root + 'd/e/f']
 
     # test __setitem__ overwrite level
-    store['x/y/z'] = b'xxx'
-    store['x/y'] = b'yyy'
-    assert b'yyy' == ensure_bytes(store['x/y'])
-    assert 'x/y/z' not in store
-    store['x'] = b'zzz'
-    assert b'zzz' == ensure_bytes(store['x'])
-    assert 'x/y' not in store
+    store[root + 'x/y/z'] = b'xxx'
+    store[root + 'x/y'] = b'yyy'
+    assert b'yyy' == ensure_bytes(store[root + 'x/y'])
+    assert root + 'x/y/z' not in store
+    store[root + 'x'] = b'zzz'
+    assert b'zzz' == ensure_bytes(store[root + 'x'])
+    assert root + 'x/y' not in store
 
     # test __delitem__ overwrite level
-    store['r/s/t'] = b'xxx'
-    del store['r/s']
-    assert 'r/s/t' not in store
-    store['r/s'] = b'xxx'
-    del store['r']
-    assert 'r/s' not in store
+    store[root + 'r/s/t'] = b'xxx'
+    del store[root + 'r/s']
+    assert root + 'r/s/t' not in store
+    store[root + 'r/s'] = b'xxx'
+    del store[root + 'r']
+    assert root + 'r/s' not in store
 
 
 class TestMemoryStore(StoreTests):
@@ -793,12 +953,12 @@ class TestMemoryStore(StoreTests):
 
     def test_store_contains_bytes(self):
         store = self.create_store()
-        store['foo'] = np.array([97, 98, 99, 100, 101], dtype=np.uint8)
-        assert store['foo'] == b'abcde'
+        store[self.root + 'foo'] = np.array([97, 98, 99, 100, 101], dtype=np.uint8)
+        assert store[self.root + 'foo'] == b'abcde'
 
     def test_setdel(self):
         store = self.create_store()
-        setdel_hierarchy_checks(store)
+        setdel_hierarchy_checks(store, self.root)
 
 
 class TestDictStore(StoreTests):
@@ -871,19 +1031,19 @@ class TestDirectoryStore(StoreTests):
         assert store.path == store2.path
 
         # check point to same underlying directory
-        assert 'xxx' not in store
-        store2['xxx'] = b'yyy'
-        assert b'yyy' == ensure_bytes(store['xxx'])
+        assert self.root + 'xxx' not in store
+        store2[self.root + 'xxx'] = b'yyy'
+        assert b'yyy' == ensure_bytes(store[self.root + 'xxx'])
 
     def test_setdel(self):
         store = self.create_store()
-        setdel_hierarchy_checks(store)
+        setdel_hierarchy_checks(store, self.root)
 
     def test_normalize_keys(self):
         store = self.create_store(normalize_keys=True)
-        store['FOO'] = b'bar'
-        assert 'FOO' in store
-        assert 'foo' in store
+        store[self.root + 'FOO'] = b'bar'
+        assert self.root + 'FOO' in store
+        assert self.root + 'foo' in store
 
     def test_listing_keys_slash(self):
 
@@ -902,7 +1062,7 @@ class TestDirectoryStore(StoreTests):
 
         def mock_walker_no_slash(_path):
             yield from [
-                # no trainling slash in first key
+                # no trailing slash in first key
                 ('root_with_no_slash', ['d1', 'g1'], ['.zgroup']),
                 ('root_with_no_slash/d1', [], ['.zarray']),
                 ('root_with_no_slash/g1', [], ['.zgroup'])
@@ -967,25 +1127,31 @@ class TestFSStore(StoreTests):
         assert not store
         assert not os.listdir(path1)
         assert not os.listdir(path2)
-        store['foo'] = b"hello"
-        assert 'foo' in os.listdir(path1)
-        assert 'foo' in store
-        assert not os.listdir(path2)
-        assert store["foo"] == b"hello"
-        assert 'foo' in os.listdir(path2)
+        store[self.root + 'foo'] = b"hello"
+        assert 'foo' in os.listdir(str(path1) + '/' + self.root)
+        assert self.root + 'foo' in store
+        assert not os.listdir(str(path2))
+        assert store[self.root + "foo"] == b"hello"
+        assert 'foo' in os.listdir(str(path2))
 
     def test_deep_ndim(self):
         import zarr
 
         store = self.create_store()
-        foo = zarr.open_group(store=store)
+        path = None if self.version == 2 else 'group1'
+        foo = zarr.open_group(store=store, path=path)
         bar = foo.create_group("bar")
         baz = bar.create_dataset("baz",
                                  shape=(4, 4, 4),
                                  chunks=(2, 2, 2),
                                  dtype="i8")
         baz[:] = 1
-        assert set(store.listdir()) == set([".zgroup", "bar"])
+        if self.version == 2:
+            assert set(store.listdir()) == {".zgroup", "bar"}
+        else:
+            assert set(store.listdir()) == set(["data", "meta", "zarr.json"])
+            assert set(store.listdir("meta/root/" + path)) == set(["bar", "bar.group.json"])
+            assert set(store.listdir("data/root/" + path)) == set(["bar"])
         assert foo["bar"]["baz"][(0, 0, 0)] == 1
 
     def test_not_fsspec(self):
@@ -1008,6 +1174,10 @@ class TestFSStore(StoreTests):
         assert "data" in os.listdir(path1)
         assert ".zgroup" in os.listdir(path1)
 
+        # consolidated metadata (GH#915)
+        consolidate_metadata("file://" + path1)
+        assert ".zmetadata" in os.listdir(path1)
+
         g = zarr.open_group("simplecache::file://" + path1, mode='r',
                             storage_options={"cache_storage": path2,
                                              "same_names": True})
@@ -1015,37 +1185,69 @@ class TestFSStore(StoreTests):
         with pytest.raises(PermissionError):
             g.data[:] = 1
 
+    @pytest.mark.parametrize('mode,allowed', [("r", False), ("r+", True)])
+    def test_modify_consolidated(self, mode, allowed):
+        import zarr
+        url = "file://" + tempfile.mkdtemp()
+
+        # create
+        root = zarr.open_group(url, mode="w")
+        root.zeros('baz', shape=(10000, 10000), chunks=(1000, 1000), dtype='i4')
+        zarr.consolidate_metadata(url)
+
+        # reopen and modify
+        root = zarr.open_consolidated(url, mode=mode)
+        if allowed:
+            root["baz"][0, 0] = 7
+
+            root = zarr.open_consolidated(url, mode="r")
+            assert root["baz"][0, 0] == 7
+        else:
+            with pytest.raises(zarr.errors.ReadOnlyError):
+                root["baz"][0, 0] = 7
+
+    @pytest.mark.parametrize('mode', ["r", "r+"])
+    def test_modify_consolidated_metadata_raises(self, mode):
+        import zarr
+        url = "file://" + tempfile.mkdtemp()
+
+        # create
+        root = zarr.open_group(url, mode="w")
+        root.zeros('baz', shape=(10000, 10000), chunks=(1000, 1000), dtype='i4')
+        zarr.consolidate_metadata(url)
+
+        # reopen and modify
+        root = zarr.open_consolidated(url, mode=mode)
+        with pytest.raises(zarr.errors.ReadOnlyError):
+            root["baz"].resize(100, 100)
+
     def test_read_only(self):
         path = tempfile.mkdtemp()
         atexit.register(atexit_rmtree, path)
         store = self.create_store(path=path)
-        store['foo'] = b"bar"
+        store[self.root + 'foo'] = b"bar"
 
         store = self.create_store(path=path, mode='r')
 
         with pytest.raises(PermissionError):
-            store['foo'] = b"hex"
+            store[self.root + 'foo'] = b"hex"
 
         with pytest.raises(PermissionError):
-            del store['foo']
+            del store[self.root + 'foo']
 
         with pytest.raises(PermissionError):
-            store.delitems(['foo'])
+            store.delitems([self.root + 'foo'])
 
         with pytest.raises(PermissionError):
-            store.setitems({'foo': b'baz'})
+            store.setitems({self.root + 'foo': b'baz'})
 
         with pytest.raises(PermissionError):
             store.clear()
 
         with pytest.raises(PermissionError):
-            store.rmdir("anydir")
+            store.rmdir(self.root + "anydir")
 
-        assert store['foo'] == b"bar"
-
-        filepath = os.path.join(path, "foo")
-        with pytest.raises(ValueError):
-            self.create_store(path=filepath, mode='r')
+        assert store[self.root + 'foo'] == b"bar"
 
     def test_eq(self):
         store1 = self.create_store(path="anypath")
@@ -1133,6 +1335,35 @@ class TestFSStoreWithKeySeparator(StoreTests):
             key_separator=key_separator)
 
 
+@pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
+class TestFSStoreFromFilesystem(StoreTests):
+
+    def create_store(self, normalize_keys=False,
+                     dimension_separator=".",
+                     path=None,
+                     **kwargs):
+        import fsspec
+        fs = fsspec.filesystem("file")
+
+        if path is None:
+            path = tempfile.mkdtemp()
+            atexit.register(atexit_rmtree, path)
+
+        with pytest.raises(ValueError):
+            # can't specify storage_options when passing an
+            # existing fs object
+            _ = FSStore(path, fs=fs, auto_mkdir=True)
+
+        store = FSStore(
+            path,
+            normalize_keys=normalize_keys,
+            dimension_separator=dimension_separator,
+            fs=fs,
+            **kwargs)
+
+        return store
+
+
 @pytest.fixture()
 def s3(request):
     # writable local S3 system
@@ -1150,8 +1381,8 @@ def s3(request):
     pytest.importorskip("moto")
 
     port = 5555
-    endpoint_uri = 'http://127.0.0.1:%s/' % port
-    proc = subprocess.Popen(shlex.split("moto_server s3 -p %s" % port),
+    endpoint_uri = 'http://127.0.0.1:%d/' % port
+    proc = subprocess.Popen(shlex.split("moto_server s3 -p %d" % port),
                             stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
 
     timeout = 5
@@ -1199,14 +1430,14 @@ class TestNestedDirectoryStore(TestDirectoryStore):
     def test_chunk_nesting(self):
         store = self.create_store()
         # any path where last segment looks like a chunk key gets special handling
-        store['0.0'] = b'xxx'
-        assert b'xxx' == store['0.0']
+        store[self.root + '0.0'] = b'xxx'
+        assert b'xxx' == store[self.root + '0.0']
         # assert b'xxx' == store['0/0']
-        store['foo/10.20.30'] = b'yyy'
-        assert b'yyy' == store['foo/10.20.30']
+        store[self.root + 'foo/10.20.30'] = b'yyy'
+        assert b'yyy' == store[self.root + 'foo/10.20.30']
         # assert b'yyy' == store['foo/10/20/30']
-        store['42'] = b'zzz'
-        assert b'zzz' == store['42']
+        store[self.root + '42'] = b'zzz'
+        assert b'zzz' == store[self.root + '42']
 
 
 class TestNestedDirectoryStoreNone:
@@ -1481,10 +1712,12 @@ class TestTempStore(StoreTests):
 
     def test_setdel(self):
         store = self.create_store()
-        setdel_hierarchy_checks(store)
+        setdel_hierarchy_checks(store, self.root)
 
 
 class TestZipStore(StoreTests):
+
+    ZipStoreClass = ZipStore
 
     def create_store(self, **kwargs):
         path = tempfile.mktemp(suffix='.zip')
@@ -1493,60 +1726,76 @@ class TestZipStore(StoreTests):
         return store
 
     def test_mode(self):
-        with ZipStore('data/store.zip', mode='w') as store:
-            store['foo'] = b'bar'
-        store = ZipStore('data/store.zip', mode='r')
+        with self.ZipStoreClass('data/store.zip', mode='w') as store:
+            store[self.root + 'foo'] = b'bar'
+        store = self.ZipStoreClass('data/store.zip', mode='r')
         with pytest.raises(PermissionError):
-            store['foo'] = b'bar'
+            store[self.root + 'foo'] = b'bar'
         with pytest.raises(PermissionError):
             store.clear()
 
     def test_flush(self):
-        store = ZipStore('data/store.zip', mode='w')
-        store['foo'] = b'bar'
+        store = self.ZipStoreClass('data/store.zip', mode='w')
+        store[self.root + 'foo'] = b'bar'
         store.flush()
-        assert store['foo'] == b'bar'
+        assert store[self.root + 'foo'] == b'bar'
         store.close()
 
-        store = ZipStore('data/store.zip', mode='r')
+        store = self.ZipStoreClass('data/store.zip', mode='r')
         store.flush()  # no-op
 
     def test_context_manager(self):
         with self.create_store() as store:
-            store['foo'] = b'bar'
-            store['baz'] = b'qux'
+            store[self.root + 'foo'] = b'bar'
+            store[self.root + 'baz'] = b'qux'
             assert 2 == len(store)
 
     def test_pop(self):
         # override because not implemented
         store = self.create_store()
-        store['foo'] = b'bar'
+        store[self.root + 'foo'] = b'bar'
         with pytest.raises(NotImplementedError):
-            store.pop('foo')
+            store.pop(self.root + 'foo')
 
     def test_popitem(self):
         # override because not implemented
         store = self.create_store()
-        store['foo'] = b'bar'
+        store[self.root + 'foo'] = b'bar'
         with pytest.raises(NotImplementedError):
             store.popitem()
 
     def test_permissions(self):
-        store = ZipStore('data/store.zip', mode='w')
-        store['foo'] = b'bar'
-        store['baz/'] = b''
+        store = self.ZipStoreClass('data/store.zip', mode='w')
+        foo_key = 'foo' if self.version == 2 else self.root + 'foo'
+        # TODO: cannot provide key ending in / for v3
+        #       how to create an empty folder in that case?
+        baz_key = 'baz/' if self.version == 2 else self.root + 'baz'
+        store[foo_key] = b'bar'
+        store[baz_key] = b''
+
         store.flush()
         store.close()
         z = ZipFile('data/store.zip', 'r')
-        info = z.getinfo('foo')
+        info = z.getinfo(foo_key)
         perm = oct(info.external_attr >> 16)
         assert perm == '0o644'
-        info = z.getinfo('baz/')
+        info = z.getinfo(baz_key)
         perm = oct(info.external_attr >> 16)
         # only for posix platforms
         if os.name == 'posix':
-            assert perm == '0o40775'
+            if self.version == 2:
+                assert perm == '0o40775'
+            else:
+                # baz/ on v2, but baz on v3, so not a directory
+                assert perm == '0o644'
         z.close()
+
+    def test_store_and_retrieve_ndarray(self):
+        store = ZipStore('data/store.zip')
+        x = np.array([[1, 2], [3, 4]])
+        store['foo'] = x
+        y = np.frombuffer(store['foo'], dtype=x.dtype).reshape(x.shape)
+        assert np.array_equiv(y, x)
 
 
 class TestDBMStore(StoreTests):
@@ -1560,8 +1809,8 @@ class TestDBMStore(StoreTests):
 
     def test_context_manager(self):
         with self.create_store() as store:
-            store['foo'] = b'bar'
-            store['baz'] = b'qux'
+            store[self.root + 'foo'] = b'bar'
+            store[self.root + 'baz'] = b'qux'
             assert 2 == len(store)
 
 
@@ -1620,8 +1869,8 @@ class TestLMDBStore(StoreTests):
 
     def test_context_manager(self):
         with self.create_store() as store:
-            store['foo'] = b'bar'
-            store['baz'] = b'qux'
+            store[self.root + 'foo'] = b'bar'
+            store[self.root + 'baz'] = b'qux'
             assert 2 == len(store)
 
 
@@ -1655,8 +1904,8 @@ class TestSQLiteStoreInMemory(TestSQLiteStore):
 
         # setup store
         store = self.create_store()
-        store['foo'] = b'bar'
-        store['baz'] = b'quux'
+        store[self.root + 'foo'] = b'bar'
+        store[self.root + 'baz'] = b'quux'
 
         # round-trip through pickle
         with pytest.raises(PicklingError):
@@ -1690,199 +1939,209 @@ class TestRedisStore(StoreTests):
 
 class TestLRUStoreCache(StoreTests):
 
+    CountingClass = CountingDict
+    LRUStoreClass = LRUStoreCache
+
     def create_store(self, **kwargs):
         # wrapper therefore no dimension_separator argument
         skip_if_nested_chunks(**kwargs)
-        return LRUStoreCache(dict(), max_size=2**27)
+        return self.LRUStoreClass(dict(), max_size=2**27)
 
     def test_cache_values_no_max_size(self):
 
         # setup store
-        store = CountingDict()
-        store['foo'] = b'xxx'
-        store['bar'] = b'yyy'
-        assert 0 == store.counter['__getitem__', 'foo']
-        assert 1 == store.counter['__setitem__', 'foo']
-        assert 0 == store.counter['__getitem__', 'bar']
-        assert 1 == store.counter['__setitem__', 'bar']
+        store = self.CountingClass()
+        foo_key = self.root + 'foo'
+        bar_key = self.root + 'bar'
+        store[foo_key] = b'xxx'
+        store[bar_key] = b'yyy'
+        assert 0 == store.counter['__getitem__', foo_key]
+        assert 1 == store.counter['__setitem__', foo_key]
+        assert 0 == store.counter['__getitem__', bar_key]
+        assert 1 == store.counter['__setitem__', bar_key]
 
         # setup cache
-        cache = LRUStoreCache(store, max_size=None)
+        cache = self.LRUStoreClass(store, max_size=None)
         assert 0 == cache.hits
         assert 0 == cache.misses
 
         # test first __getitem__, cache miss
-        assert b'xxx' == cache['foo']
-        assert 1 == store.counter['__getitem__', 'foo']
-        assert 1 == store.counter['__setitem__', 'foo']
+        assert b'xxx' == cache[foo_key]
+        assert 1 == store.counter['__getitem__', foo_key]
+        assert 1 == store.counter['__setitem__', foo_key]
         assert 0 == cache.hits
         assert 1 == cache.misses
 
         # test second __getitem__, cache hit
-        assert b'xxx' == cache['foo']
-        assert 1 == store.counter['__getitem__', 'foo']
-        assert 1 == store.counter['__setitem__', 'foo']
+        assert b'xxx' == cache[foo_key]
+        assert 1 == store.counter['__getitem__', foo_key]
+        assert 1 == store.counter['__setitem__', foo_key]
         assert 1 == cache.hits
         assert 1 == cache.misses
 
         # test __setitem__, __getitem__
-        cache['foo'] = b'zzz'
-        assert 1 == store.counter['__getitem__', 'foo']
-        assert 2 == store.counter['__setitem__', 'foo']
+        cache[foo_key] = b'zzz'
+        assert 1 == store.counter['__getitem__', foo_key]
+        assert 2 == store.counter['__setitem__', foo_key]
         # should be a cache hit
-        assert b'zzz' == cache['foo']
-        assert 1 == store.counter['__getitem__', 'foo']
-        assert 2 == store.counter['__setitem__', 'foo']
+        assert b'zzz' == cache[foo_key]
+        assert 1 == store.counter['__getitem__', foo_key]
+        assert 2 == store.counter['__setitem__', foo_key]
         assert 2 == cache.hits
         assert 1 == cache.misses
 
         # manually invalidate all cached values
         cache.invalidate_values()
-        assert b'zzz' == cache['foo']
-        assert 2 == store.counter['__getitem__', 'foo']
-        assert 2 == store.counter['__setitem__', 'foo']
+        assert b'zzz' == cache[foo_key]
+        assert 2 == store.counter['__getitem__', foo_key]
+        assert 2 == store.counter['__setitem__', foo_key]
         cache.invalidate()
-        assert b'zzz' == cache['foo']
-        assert 3 == store.counter['__getitem__', 'foo']
-        assert 2 == store.counter['__setitem__', 'foo']
+        assert b'zzz' == cache[foo_key]
+        assert 3 == store.counter['__getitem__', foo_key]
+        assert 2 == store.counter['__setitem__', foo_key]
 
         # test __delitem__
-        del cache['foo']
+        del cache[foo_key]
         with pytest.raises(KeyError):
             # noinspection PyStatementEffect
-            cache['foo']
+            cache[foo_key]
         with pytest.raises(KeyError):
             # noinspection PyStatementEffect
-            store['foo']
+            store[foo_key]
 
         # verify other keys untouched
-        assert 0 == store.counter['__getitem__', 'bar']
-        assert 1 == store.counter['__setitem__', 'bar']
+        assert 0 == store.counter['__getitem__', bar_key]
+        assert 1 == store.counter['__setitem__', bar_key]
 
     def test_cache_values_with_max_size(self):
 
         # setup store
-        store = CountingDict()
-        store['foo'] = b'xxx'
-        store['bar'] = b'yyy'
-        assert 0 == store.counter['__getitem__', 'foo']
-        assert 0 == store.counter['__getitem__', 'bar']
+        store = self.CountingClass()
+        foo_key = self.root + 'foo'
+        bar_key = self.root + 'bar'
+        store[foo_key] = b'xxx'
+        store[bar_key] = b'yyy'
+        assert 0 == store.counter['__getitem__', foo_key]
+        assert 0 == store.counter['__getitem__', bar_key]
         # setup cache - can only hold one item
-        cache = LRUStoreCache(store, max_size=5)
+        cache = self.LRUStoreClass(store, max_size=5)
         assert 0 == cache.hits
         assert 0 == cache.misses
 
         # test first 'foo' __getitem__, cache miss
-        assert b'xxx' == cache['foo']
-        assert 1 == store.counter['__getitem__', 'foo']
+        assert b'xxx' == cache[foo_key]
+        assert 1 == store.counter['__getitem__', foo_key]
         assert 0 == cache.hits
         assert 1 == cache.misses
 
         # test second 'foo' __getitem__, cache hit
-        assert b'xxx' == cache['foo']
-        assert 1 == store.counter['__getitem__', 'foo']
+        assert b'xxx' == cache[foo_key]
+        assert 1 == store.counter['__getitem__', foo_key]
         assert 1 == cache.hits
         assert 1 == cache.misses
 
         # test first 'bar' __getitem__, cache miss
-        assert b'yyy' == cache['bar']
-        assert 1 == store.counter['__getitem__', 'bar']
+        assert b'yyy' == cache[bar_key]
+        assert 1 == store.counter['__getitem__', bar_key]
         assert 1 == cache.hits
         assert 2 == cache.misses
 
         # test second 'bar' __getitem__, cache hit
-        assert b'yyy' == cache['bar']
-        assert 1 == store.counter['__getitem__', 'bar']
+        assert b'yyy' == cache[bar_key]
+        assert 1 == store.counter['__getitem__', bar_key]
         assert 2 == cache.hits
         assert 2 == cache.misses
 
         # test 'foo' __getitem__, should have been evicted, cache miss
-        assert b'xxx' == cache['foo']
-        assert 2 == store.counter['__getitem__', 'foo']
+        assert b'xxx' == cache[foo_key]
+        assert 2 == store.counter['__getitem__', foo_key]
         assert 2 == cache.hits
         assert 3 == cache.misses
 
         # test 'bar' __getitem__, should have been evicted, cache miss
-        assert b'yyy' == cache['bar']
-        assert 2 == store.counter['__getitem__', 'bar']
+        assert b'yyy' == cache[bar_key]
+        assert 2 == store.counter['__getitem__', bar_key]
         assert 2 == cache.hits
         assert 4 == cache.misses
 
         # setup store
-        store = CountingDict()
-        store['foo'] = b'xxx'
-        store['bar'] = b'yyy'
-        assert 0 == store.counter['__getitem__', 'foo']
-        assert 0 == store.counter['__getitem__', 'bar']
+        store = self.CountingClass()
+        store[foo_key] = b'xxx'
+        store[bar_key] = b'yyy'
+        assert 0 == store.counter['__getitem__', foo_key]
+        assert 0 == store.counter['__getitem__', bar_key]
         # setup cache - can hold two items
-        cache = LRUStoreCache(store, max_size=6)
+        cache = self.LRUStoreClass(store, max_size=6)
         assert 0 == cache.hits
         assert 0 == cache.misses
 
         # test first 'foo' __getitem__, cache miss
-        assert b'xxx' == cache['foo']
-        assert 1 == store.counter['__getitem__', 'foo']
+        assert b'xxx' == cache[foo_key]
+        assert 1 == store.counter['__getitem__', foo_key]
         assert 0 == cache.hits
         assert 1 == cache.misses
 
         # test second 'foo' __getitem__, cache hit
-        assert b'xxx' == cache['foo']
-        assert 1 == store.counter['__getitem__', 'foo']
+        assert b'xxx' == cache[foo_key]
+        assert 1 == store.counter['__getitem__', foo_key]
         assert 1 == cache.hits
         assert 1 == cache.misses
 
         # test first 'bar' __getitem__, cache miss
-        assert b'yyy' == cache['bar']
-        assert 1 == store.counter['__getitem__', 'bar']
+        assert b'yyy' == cache[bar_key]
+        assert 1 == store.counter['__getitem__', bar_key]
         assert 1 == cache.hits
         assert 2 == cache.misses
 
         # test second 'bar' __getitem__, cache hit
-        assert b'yyy' == cache['bar']
-        assert 1 == store.counter['__getitem__', 'bar']
+        assert b'yyy' == cache[bar_key]
+        assert 1 == store.counter['__getitem__', bar_key]
         assert 2 == cache.hits
         assert 2 == cache.misses
 
         # test 'foo' __getitem__, should still be cached
-        assert b'xxx' == cache['foo']
-        assert 1 == store.counter['__getitem__', 'foo']
+        assert b'xxx' == cache[foo_key]
+        assert 1 == store.counter['__getitem__', foo_key]
         assert 3 == cache.hits
         assert 2 == cache.misses
 
         # test 'bar' __getitem__, should still be cached
-        assert b'yyy' == cache['bar']
-        assert 1 == store.counter['__getitem__', 'bar']
+        assert b'yyy' == cache[bar_key]
+        assert 1 == store.counter['__getitem__', bar_key]
         assert 4 == cache.hits
         assert 2 == cache.misses
 
     def test_cache_keys(self):
 
         # setup
-        store = CountingDict()
-        store['foo'] = b'xxx'
-        store['bar'] = b'yyy'
-        assert 0 == store.counter['__contains__', 'foo']
+        store = self.CountingClass()
+        foo_key = self.root + 'foo'
+        bar_key = self.root + 'bar'
+        baz_key = self.root + 'baz'
+        store[foo_key] = b'xxx'
+        store[bar_key] = b'yyy'
+        assert 0 == store.counter['__contains__', foo_key]
         assert 0 == store.counter['__iter__']
         assert 0 == store.counter['keys']
-        cache = LRUStoreCache(store, max_size=None)
+        cache = self.LRUStoreClass(store, max_size=None)
 
         # keys should be cached on first call
         keys = sorted(cache.keys())
-        assert keys == ['bar', 'foo']
+        assert keys == [bar_key, foo_key]
         assert 1 == store.counter['keys']
         # keys should now be cached
         assert keys == sorted(cache.keys())
         assert 1 == store.counter['keys']
-        assert 'foo' in cache
-        assert 0 == store.counter['__contains__', 'foo']
+        assert foo_key in cache
+        assert 0 == store.counter['__contains__', foo_key]
         assert keys == sorted(cache)
         assert 0 == store.counter['__iter__']
         assert 1 == store.counter['keys']
 
         # cache should be cleared if store is modified - crude but simple for now
-        cache['baz'] = b'zzz'
+        cache[baz_key] = b'zzz'
         keys = sorted(cache.keys())
-        assert keys == ['bar', 'baz', 'foo']
+        assert keys == [bar_key, baz_key, foo_key]
         assert 2 == store.counter['keys']
         # keys should now be cached
         assert keys == sorted(cache.keys())
@@ -1891,25 +2150,25 @@ class TestLRUStoreCache(StoreTests):
         # manually invalidate keys
         cache.invalidate_keys()
         keys = sorted(cache.keys())
-        assert keys == ['bar', 'baz', 'foo']
+        assert keys == [bar_key, baz_key, foo_key]
         assert 3 == store.counter['keys']
-        assert 0 == store.counter['__contains__', 'foo']
+        assert 0 == store.counter['__contains__', foo_key]
         assert 0 == store.counter['__iter__']
         cache.invalidate_keys()
         keys = sorted(cache)
-        assert keys == ['bar', 'baz', 'foo']
+        assert keys == [bar_key, baz_key, foo_key]
         assert 4 == store.counter['keys']
-        assert 0 == store.counter['__contains__', 'foo']
+        assert 0 == store.counter['__contains__', foo_key]
         assert 0 == store.counter['__iter__']
         cache.invalidate_keys()
-        assert 'foo' in cache
+        assert foo_key in cache
         assert 5 == store.counter['keys']
-        assert 0 == store.counter['__contains__', 'foo']
+        assert 0 == store.counter['__contains__', foo_key]
         assert 0 == store.counter['__iter__']
 
         # check these would get counted if called directly
-        assert 'foo' in store
-        assert 1 == store.counter['__contains__', 'foo']
+        assert foo_key in store
+        assert 1 == store.counter['__contains__', foo_key]
         assert keys == sorted(store)
         assert 1 == store.counter['__iter__']
 
@@ -2088,9 +2347,11 @@ def test_format_compatibility():
 @skip_test_env_var("ZARR_TEST_ABS")
 class TestABSStore(StoreTests):
 
+    ABSStoreClass = ABSStore
+
     def create_store(self, prefix=None, **kwargs):
         container_client = abs_container()
-        store = ABSStore(
+        store = self.ABSStoreClass(
             prefix=prefix,
             client=container_client,
             **kwargs,
@@ -2100,7 +2361,9 @@ class TestABSStore(StoreTests):
 
     def test_non_client_deprecated(self):
         with pytest.warns(FutureWarning, match='Providing'):
-            store = ABSStore("container", account_name="account_name", account_key="account_key")
+            store = self.ABSStoreClass(
+                "container", account_name="account_name", account_key="account_key"
+            )
 
         for attr in ["container", "account_name", "account_key"]:
             with pytest.warns(FutureWarning, match=attr):
@@ -2108,7 +2371,13 @@ class TestABSStore(StoreTests):
             assert result == attr
 
     def test_iterators_with_prefix(self):
-        for prefix in ['test_prefix', '/test_prefix', 'test_prefix/', 'test/prefix', '', None]:
+        prefixes = ['test_prefix', '/test_prefix', 'test_prefix/', 'test/prefix']
+
+        if self.version < 3:
+            # empty prefix not allowed in v3
+            prefixes += ['', None]
+
+        for prefix in prefixes:
             store = self.create_store(prefix=prefix)
 
             # test iterator methods on empty store
@@ -2118,19 +2387,22 @@ class TestABSStore(StoreTests):
             assert set() == set(store.values())
             assert set() == set(store.items())
 
+            prefix = meta_root if self.version > 2 else ''
             # setup some values
-            store['a'] = b'aaa'
-            store['b'] = b'bbb'
-            store['c/d'] = b'ddd'
-            store['c/e/f'] = b'fff'
+            store[prefix + 'a'] = b'aaa'
+            store[prefix + 'b'] = b'bbb'
+            store[prefix + 'c/d'] = b'ddd'
+            store[prefix + 'c/e/f'] = b'fff'
 
             # test iterators on store with data
             assert 4 == len(store)
-            assert {'a', 'b', 'c/d', 'c/e/f'} == set(store)
-            assert {'a', 'b', 'c/d', 'c/e/f'} == set(store.keys())
-            assert {b'aaa', b'bbb', b'ddd', b'fff'} == set(store.values())
-            assert ({('a', b'aaa'), ('b', b'bbb'), ('c/d', b'ddd'), ('c/e/f', b'fff')} ==
-                    set(store.items()))
+            keys = [prefix + 'a', prefix + 'b', prefix + 'c/d', prefix + 'c/e/f']
+            values = [b'aaa', b'bbb', b'ddd', b'fff']
+            items = [(k, v) for k, v in zip(keys, values)]
+            assert set(keys) == set(store)
+            assert set(keys) == set(store.keys())
+            assert set(values) == set(store.values())
+            assert set(items) == set(store.items())
 
     def test_getsize(self):
         return super().test_getsize()
@@ -2146,23 +2418,34 @@ class TestABSStore(StoreTests):
 
 class TestConsolidatedMetadataStore:
 
+    version = 2
+    ConsolidatedMetadataClass = ConsolidatedMetadataStore
+
+    @property
+    def metadata_key(self):
+        return '.zmetadata'
+
     def test_bad_format(self):
 
-        # setup store with consolidated metdata
+        # setup store with consolidated metadata
         store = dict()
         consolidated = {
             # bad format version
             'zarr_consolidated_format': 0,
         }
-        store['.zmetadata'] = json.dumps(consolidated).encode()
+        store[self.metadata_key] = json.dumps(consolidated).encode()
 
         # check appropriate error is raised
         with pytest.raises(MetadataError):
-            ConsolidatedMetadataStore(store)
+            self.ConsolidatedMetadataClass(store)
+
+    def test_bad_store_version(self):
+        with pytest.raises(ValueError):
+            self.ConsolidatedMetadataClass(KVStoreV3(dict()))
 
     def test_read_write(self):
 
-        # setup store with consolidated metdata
+        # setup store with consolidated metadata
         store = dict()
         consolidated = {
             'zarr_consolidated_format': 1,
@@ -2171,10 +2454,10 @@ class TestConsolidatedMetadataStore:
                 'baz': 42,
             }
         }
-        store['.zmetadata'] = json.dumps(consolidated).encode()
+        store[self.metadata_key] = json.dumps(consolidated).encode()
 
         # create consolidated store
-        cs = ConsolidatedMetadataStore(store)
+        cs = self.ConsolidatedMetadataClass(store)
 
         # test __contains__, __getitem__
         for key, value in consolidated['metadata'].items():
@@ -2187,4 +2470,40 @@ class TestConsolidatedMetadataStore:
         with pytest.raises(PermissionError):
             cs['bar'] = 0
         with pytest.raises(PermissionError):
-            cs['spam'] = 'eggs'
+            cs["spam"] = "eggs"
+
+
+# standalone test we do not want to run on each store.
+
+
+def test_fill_value_change():
+    a = zarr.create((10, 10), dtype=int)
+
+    assert a[0, 0] == 0
+
+    a.fill_value = 1
+
+    assert a[0, 0] == 1
+
+    assert json.loads(a.store[".zarray"])["fill_value"] == 1
+
+
+def test_get_hierarchy_metadata_v2():
+    # v2 stores do not have hierarchy metadata (i.e. zarr.json)
+    with pytest.raises(ValueError):
+        _get_hierarchy_metadata(KVStore(dict))
+
+
+def test_normalize_store_arg(tmpdir):
+    with pytest.raises(ValueError):
+        normalize_store_arg(dict(), zarr_version=4)
+
+    for ext, Class in [('.zip', ZipStore), ('.n5', N5Store)]:
+        fn = tmpdir.join('store' + ext)
+        store = normalize_store_arg(str(fn), zarr_version=2, mode='w')
+        assert isinstance(store, Class)
+
+    if have_fsspec:
+        path = tempfile.mkdtemp()
+        store = normalize_store_arg("file://" + path, zarr_version=2, mode='w')
+        assert isinstance(store, FSStore)

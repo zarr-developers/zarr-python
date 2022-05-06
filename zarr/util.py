@@ -33,10 +33,22 @@ object_codecs = {
 }
 
 
+class NumberEncoder(json.JSONEncoder):
+
+    def default(self, o):
+        # See json.JSONEncoder.default docstring for explanation
+        # This is necessary to encode numpy dtype
+        if isinstance(o, numbers.Integral):
+            return int(o)
+        if isinstance(o, numbers.Real):
+            return float(o)
+        return json.JSONEncoder.default(self, o)
+
+
 def json_dumps(o: Any) -> bytes:
     """Write JSON in a consistent, human-readable way."""
     return json.dumps(o, indent=4, sort_keys=True, ensure_ascii=True,
-                      separators=(',', ': ')).encode('ascii')
+                      separators=(',', ': '), cls=NumberEncoder).encode('ascii')
 
 
 def json_loads(s: str) -> Dict[str, Any]:
@@ -330,7 +342,7 @@ def normalize_storage_path(path: Union[str, bytes, None]) -> str:
 
         # don't allow path segments with just '.' or '..'
         segments = path.split('/')
-        if any([s in {'.', '..'} for s in segments]):
+        if any(s in {'.', '..'} for s in segments):
             raise ValueError("path containing '.' or '..' segment not allowed")
 
     else:
@@ -370,7 +382,7 @@ def info_html_report(items) -> str:
     return report
 
 
-class InfoReporter(object):
+class InfoReporter:
 
     def __init__(self, obj):
         self.obj = obj
@@ -384,7 +396,7 @@ class InfoReporter(object):
         return info_html_report(items)
 
 
-class TreeNode(object):
+class TreeNode:
 
     def __init__(self, obj, depth=0, level=None):
         self.obj = obj
@@ -468,7 +480,7 @@ def tree_widget(group, expand, level):
     return result
 
 
-class TreeViewer(object):
+class TreeViewer:
 
     def __init__(self, group, expand=False, level=None):
 
@@ -541,7 +553,7 @@ def is_valid_python_name(name):
     return name.isidentifier() and not iskeyword(name)
 
 
-class NoLock(object):
+class NoLock:
     """A lock that doesn't lock."""
 
     def __enter__(self):
@@ -670,7 +682,7 @@ def all_equal(value: Any, array: Any):
         # optimized to return on the first truthy value in `array`.
         try:
             return not np.any(array)
-        except TypeError:  # pragma: no cover
+        except (TypeError, ValueError):  # pragma: no cover
             pass
     if np.issubdtype(array.dtype, np.object_):
         # we have to flatten the result of np.equal to handle outputs like

@@ -4,13 +4,14 @@ import itertools
 import math
 import operator
 import re
+from collections.abc import MutableMapping
 from functools import reduce
+from typing import Any
 
 import numpy as np
 from numcodecs.compat import ensure_bytes, ensure_ndarray
 
-from collections.abc import MutableMapping
-
+from zarr._storage.store import _prefix_to_attrs_key
 from zarr.attrs import Attributes
 from zarr.codecs import AsType, get_codec
 from zarr.errors import ArrayNotFoundError, ReadOnlyError, ArrayIndexError
@@ -31,7 +32,13 @@ from zarr.indexing import (
     is_scalar,
     pop_fields,
 )
-from zarr.storage import array_meta_key, attrs_key, getsize, listdir, BaseStore
+from zarr.storage import (
+    _get_hierarchy_metadata,
+    _prefix_to_array_key,
+    getsize,
+    listdir,
+    normalize_store_arg,
+)
 from zarr.util import (
     all_equal,
     InfoReporter,
@@ -74,20 +81,20 @@ class Array:
         operations. If False, user attributes are reloaded from the store prior
         to all attribute read operations.
     partial_decompress : bool, optional
-        If True and while the chunk_store is a FSStore and the compresion used
+        If True and while the chunk_store is a FSStore and the compression used
         is Blosc, when getting data from the array chunks will be partially
         read and decompressed when possible.
 
         .. versionadded:: 2.7
 
     write_empty_chunks : bool, optional
-        If True (default), all chunks will be stored regardless of their
-        contents. If False, each chunk is compared to the array's fill
-        value prior to storing. If a chunk is uniformly equal to the fill
-        value, then that chunk is not be stored, and the store entry for
-        that chunk's key is deleted. This setting enables sparser storage,
-        as only chunks with non-fill-value data are stored, at the expense
-        of overhead associated with checking the data of each chunk.
+        If True, all chunks will be stored regardless of their contents. If
+        False (default), each chunk is compared to the array's fill value prior
+        to storing. If a chunk is uniformly equal to the fill value, then that
+        chunk is not be stored, and the store entry for that chunk's key is
+        deleted. This setting enables sparser storage, as only chunks with
+        non-fill-value data are stored, at the expense of overhead associated
+        with checking the data of each chunk.
 
         .. versionadded:: 2.11
 
@@ -146,7 +153,7 @@ class Array:
 
     def __init__(
         self,
-        store: BaseStore,
+        store: Any,  # BaseStore not stricly required due to normalize_store_arg
         path=None,
         read_only=False,
         chunk_store=None,
@@ -155,12 +162,18 @@ class Array:
         cache_attrs=True,
         partial_decompress=False,
         write_empty_chunks=True,
+        zarr_version=None,
     ):
         # N.B., expect at this point store is fully initialized with all
         # configuration metadata fully specified and normalized
 
-        store = BaseStore._ensure_store(store)
-        chunk_store = BaseStore._ensure_store(chunk_store)
+        store = normalize_store_arg(store, zarr_version=zarr_version)
+        if zarr_version is None:
+            zarr_version = store._store_version
+
+        if chunk_store is not None:
+            chunk_store = normalize_store_arg(chunk_store,
+                                              zarr_version=zarr_version)
 
         self._store = store
         self._chunk_store = chunk_store
@@ -175,12 +188,19 @@ class Array:
         self._is_view = False
         self._partial_decompress = partial_decompress
         self._write_empty_chunks = write_empty_chunks
+        self._version = zarr_version
+
+        if self._version == 3:
+            self._data_key_prefix = 'data/root/' + self._key_prefix
+            self._data_path = 'data/root/' + self._path
+            self._hierarchy_metadata = _get_hierarchy_metadata(store=self._store)
+            self._metadata_key_suffix = self._hierarchy_metadata['metadata_key_suffix']
 
         # initialize metadata
         self._load_metadata()
 
         # initialize attributes
-        akey = self._key_prefix + attrs_key
+        akey = _prefix_to_attrs_key(self._store, self._key_prefix)
         self._attrs = Attributes(store, key=akey, read_only=read_only,
                                  synchronizer=synchronizer, cache=cache_attrs)
 
@@ -196,13 +216,13 @@ class Array:
         if self._synchronizer is None:
             self._load_metadata_nosync()
         else:
-            mkey = self._key_prefix + array_meta_key
+            mkey = _prefix_to_array_key(self._store, self._key_prefix)
             with self._synchronizer[mkey]:
                 self._load_metadata_nosync()
 
     def _load_metadata_nosync(self):
         try:
-            mkey = self._key_prefix + array_meta_key
+            mkey = _prefix_to_array_key(self._store, self._key_prefix)
             meta_bytes = self._store[mkey]
         except KeyError:
             raise ArrayNotFoundError(self._path)
@@ -212,32 +232,47 @@ class Array:
             meta = self._store._metadata_class.decode_array_metadata(meta_bytes)
             self._meta = meta
             self._shape = meta['shape']
-            self._chunks = meta['chunks']
-            self._dtype = meta['dtype']
             self._fill_value = meta['fill_value']
-            self._order = meta['order']
-
             dimension_separator = meta.get('dimension_separator', None)
-            if dimension_separator is None:
-                try:
-                    dimension_separator = self._store._dimension_separator
-                except (AttributeError, KeyError):
-                    pass
-
-                # Fallback for any stores which do not choose a default
+            if self._version == 2:
+                self._chunks = meta['chunks']
+                self._dtype = meta['dtype']
+                self._order = meta['order']
                 if dimension_separator is None:
-                    dimension_separator = "."
+                    try:
+                        dimension_separator = self._store._dimension_separator
+                    except (AttributeError, KeyError):
+                        pass
+
+                    # Fallback for any stores which do not choose a default
+                    if dimension_separator is None:
+                        dimension_separator = "."
+            else:
+                self._chunks = meta['chunk_grid']['chunk_shape']
+                self._dtype = meta['data_type']
+                self._order = meta['chunk_memory_layout']
+                chunk_separator = meta['chunk_grid']['separator']
+                if dimension_separator is None:
+                    dimension_separator = meta.get('dimension_separator', chunk_separator)
+
             self._dimension_separator = dimension_separator
 
             # setup compressor
-            config = meta['compressor']
-            if config is None:
+            compressor = meta.get('compressor', None)
+            if compressor is None:
                 self._compressor = None
+            elif self._version == 2:
+                self._compressor = get_codec(compressor)
             else:
-                self._compressor = get_codec(config)
+                self._compressor = compressor
 
             # setup filters
-            filters = meta['filters']
+            if self._version == 2:
+                filters = meta.get('filters', [])
+            else:
+                # TODO: storing filters under attributes for now since the v3
+                #       array metadata does not have a 'filters' attribute.
+                filters = meta['attributes'].get('filters', [])
             if filters:
                 filters = [get_codec(config) for config in filters]
             self._filters = filters
@@ -262,10 +297,23 @@ class Array:
             filters_config = [f.get_config() for f in self._filters]
         else:
             filters_config = None
-        meta = dict(shape=self._shape, chunks=self._chunks, dtype=self._dtype,
-                    compressor=compressor_config, fill_value=self._fill_value,
-                    order=self._order, filters=filters_config)
-        mkey = self._key_prefix + array_meta_key
+        _compressor = compressor_config if self._version == 2 else self._compressor
+        meta = dict(shape=self._shape, compressor=_compressor,
+                    fill_value=self._fill_value, filters=filters_config)
+        if getattr(self._store, '_store_version', 2) == 2:
+            meta.update(
+                dict(chunks=self._chunks, dtype=self._dtype, order=self._order)
+            )
+        else:
+            meta.update(
+                dict(chunk_grid=dict(type='regular',
+                                     chunk_shape=self._chunks,
+                                     separator=self._dimension_separator),
+                     data_type=self._dtype,
+                     chunk_memory_layout=self._order,
+                     attributes=self.attrs.asdict())
+            )
+        mkey = _prefix_to_array_key(self._store, self._key_prefix)
         self._store[mkey] = self._store._metadata_class.encode_array_metadata(meta)
 
     @property
@@ -346,6 +394,11 @@ class Array:
     def fill_value(self):
         """A value used for uninitialized portions of the array."""
         return self._fill_value
+
+    @fill_value.setter
+    def fill_value(self, new):
+        self._fill_value = new
+        self._flush_metadata_nosync()
 
     @property
     def order(self):
@@ -448,13 +501,30 @@ class Array:
     def nchunks_initialized(self):
         """The number of chunks that have been initialized with some data."""
 
-        # key pattern for chunk keys
-        prog = re.compile(r'\.'.join([r'\d+'] * min(1, self.ndim)))
-
         # count chunk keys
-        return sum(1 for k in listdir(self.chunk_store, self._path) if prog.match(k))
+        if self._version == 3:
+            # # key pattern for chunk keys
+            # prog = re.compile(r'\.'.join([r'c\d+'] * min(1, self.ndim)))
+            # # get chunk keys, excluding the prefix
+            # members = self.chunk_store.list_prefix(self._data_path)
+            # members = [k.split(self._data_key_prefix)[1] for k in members]
+            # # count the chunk keys
+            # return sum(1 for k in members if prog.match(k))
 
-    # backwards compability
+            # key pattern for chunk keys
+            prog = re.compile(self._data_key_prefix + r'c\d+')  # TODO: ndim == 0 case?
+            # get chunk keys, excluding the prefix
+            members = self.chunk_store.list_prefix(self._data_path)
+            # count the chunk keys
+            return sum(1 for k in members if prog.match(k))
+        else:
+            # key pattern for chunk keys
+            prog = re.compile(r'\.'.join([r'\d+'] * min(1, self.ndim)))
+
+            # count chunk keys
+            return sum(1 for k in listdir(self.chunk_store, self._path) if prog.match(k))
+
+    # backwards compatibility
     initialized = nchunks_initialized
 
     @property
@@ -1103,7 +1173,7 @@ class Array:
             >>> import numpy as np
             >>> z = zarr.array(np.arange(100).reshape(10, 10))
 
-        Retrieve items by specifying a maks::
+        Retrieve items by specifying a mask::
 
             >>> sel = np.zeros_like(z, dtype=bool)
             >>> sel[1, 1] = True
@@ -1953,7 +2023,6 @@ class Array:
             # that will trigger this condition, but it's possible that they
             # will be developed in the future.
             tuple(map(self._chunk_delitem, ckeys))
-        return None
 
     def _chunk_delitem(self, ckey):
         """
@@ -1961,9 +2030,8 @@ class Array:
         """
         try:
             del self.chunk_store[ckey]
-            return
         except KeyError:
-            return
+            pass
 
     def _chunk_setitem(self, chunk_coords, chunk_selection, value, fields=None):
         """Replace part or whole of a chunk.
@@ -2058,14 +2126,22 @@ class Array:
         return chunk
 
     def _chunk_key(self, chunk_coords):
-        return self._key_prefix + self._dimension_separator.join(map(str, chunk_coords))
+        if self._version == 3:
+            # _chunk_key() corresponds to data_key(P, i, j, ...) example in the spec
+            # where P = self._key_prefix,  i, j, ... = chunk_coords
+            # e.g. c0/2/3 for 3d array with chunk index (0, 2, 3)
+            # https://zarr-specs.readthedocs.io/en/core-protocol-v3.0-dev/protocol/core/v3.0.html#regular-grids
+            return ("data/root/" + self._key_prefix +
+                    "c" + self._dimension_separator.join(map(str, chunk_coords)))
+        else:
+            return self._key_prefix + self._dimension_separator.join(map(str, chunk_coords))
 
     def _decode_chunk(self, cdata, start=None, nitems=None, expected_shape=None):
         # decompress
         if self._compressor:
             # only decode requested items
             if (
-                all([x is not None for x in [start, nitems]])
+                all(x is not None for x in [start, nitems])
                 and self._compressor.codec_id == "blosc"
             ) and hasattr(self._compressor, "decode_partial"):
                 chunk = self._compressor.decode_partial(cdata, start, nitems)
@@ -2239,7 +2315,8 @@ class Array:
         for i in itertools.product(*[range(s) for s in self.cdata_shape]):
             h.update(self.chunk_store.get(self._chunk_key(i), b""))
 
-        h.update(self.store.get(self._key_prefix + array_meta_key, b""))
+        mkey = _prefix_to_array_key(self._store, self._key_prefix)
+        h.update(self.store.get(mkey, b""))
 
         h.update(self.store.get(self.attrs.key, b""))
 
@@ -2276,7 +2353,7 @@ class Array:
     def __getstate__(self):
         return (self._store, self._path, self._read_only, self._chunk_store,
                 self._synchronizer, self._cache_metadata, self._attrs.cache,
-                self._partial_decompress, self._write_empty_chunks)
+                self._partial_decompress, self._write_empty_chunks, self._version)
 
     def __setstate__(self, state):
         self.__init__(*state)
@@ -2289,7 +2366,7 @@ class Array:
 
         else:
             # synchronize on the array
-            mkey = self._key_prefix + array_meta_key
+            mkey = _prefix_to_array_key(self._store, self._key_prefix)
             lock = self._synchronizer[mkey]
 
         with lock:
@@ -2329,6 +2406,10 @@ class Array:
 
         If one or more dimensions are shrunk, any chunks falling outside the
         new array shape will be deleted from the underlying store.
+        However, it is noteworthy that the chunks partially falling inside the new array
+        (i.e. boundary chunks) will remain intact, and therefore,
+        the data falling outside the new array but inside the boundary chunks
+        would be restored by a subsequent resize operation that grows the array size.
 
         """
 
@@ -2351,17 +2432,31 @@ class Array:
                                 for s, c in zip(new_shape, chunks))
 
         # remove any chunks not within range
+        #   The idea is that, along each dimension,
+        #     only find and remove the chunk slices that exist in 'old' but not 'new' data.
+        #   Note that a mutable list ('old_cdata_shape_working_list') is introduced here
+        #     to dynamically adjust the number of chunks along the already-processed dimensions
+        #     in order to avoid duplicate chunk removal.
         chunk_store = self.chunk_store
-        for cidx in itertools.product(*[range(n) for n in old_cdata_shape]):
-            if all(i < c for i, c in zip(cidx, new_cdata_shape)):
-                pass  # keep the chunk
-            else:
+        old_cdata_shape_working_list = list(old_cdata_shape)
+        for idx_cdata, (val_old_cdata, val_new_cdata) in enumerate(
+            zip(old_cdata_shape_working_list, new_cdata_shape)
+        ):
+            for cidx in itertools.product(
+                *[
+                    range(n_new, n_old) if (idx == idx_cdata) else range(n_old)
+                    for idx, (n_old, n_new) in enumerate(
+                        zip(old_cdata_shape_working_list, new_cdata_shape)
+                    )
+                ]
+            ):
                 key = self._chunk_key(cidx)
                 try:
                     del chunk_store[key]
                 except KeyError:
                     # chunk not initialized
                     pass
+            old_cdata_shape_working_list[idx_cdata] = min(val_old_cdata, val_new_cdata)
 
     def append(self, data, axis=0):
         """Append `data` to `axis`.
@@ -2556,7 +2651,7 @@ class Array:
         if synchronizer is None:
             synchronizer = self._synchronizer
         a = Array(store=store, path=path, chunk_store=chunk_store, read_only=read_only,
-                  synchronizer=synchronizer, cache_metadata=True)
+                  synchronizer=synchronizer, cache_metadata=True, zarr_version=self._version)
         a._is_view = True
 
         # allow override of some properties

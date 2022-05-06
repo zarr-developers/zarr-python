@@ -34,7 +34,10 @@ def is_integer_list(x):
 
 
 def is_integer_array(x, ndim=None):
-    t = hasattr(x, 'shape') and hasattr(x, 'dtype') and x.dtype.kind in 'ui'
+    t = not np.isscalar(x) and \
+        hasattr(x, 'shape') and \
+        hasattr(x, 'dtype') and \
+        x.dtype.kind in 'ui'
     if ndim is not None:
         t = t and len(x.shape) == ndim
     return t
@@ -132,7 +135,7 @@ dim_out_sel
 """
 
 
-class IntDimIndexer(object):
+class IntDimIndexer:
 
     def __init__(self, dim_sel, dim_len, dim_chunk_len):
 
@@ -157,7 +160,7 @@ def ceildiv(a, b):
     return math.ceil(a / b)
 
 
-class SliceDimIndexer(object):
+class SliceDimIndexer:
 
     def __init__(self, dim_sel, dim_len, dim_chunk_len):
 
@@ -308,19 +311,19 @@ def is_positive_slice(s):
 
 def is_contiguous_selection(selection):
     selection = ensure_tuple(selection)
-    return all([
+    return all(
         (is_integer_array(s) or is_contiguous_slice(s) or s == Ellipsis)
         for s in selection
-    ])
+    )
 
 
 def is_basic_selection(selection):
     selection = ensure_tuple(selection)
-    return all([is_integer(s) or is_positive_slice(s) for s in selection])
+    return all(is_integer(s) or is_positive_slice(s) for s in selection)
 
 
 # noinspection PyProtectedMember
-class BasicIndexer(object):
+class BasicIndexer:
 
     def __init__(self, selection, array):
 
@@ -361,7 +364,7 @@ class BasicIndexer(object):
             yield ChunkProjection(chunk_coords, chunk_selection, out_selection)
 
 
-class BoolArrayDimIndexer(object):
+class BoolArrayDimIndexer:
 
     def __init__(self, dim_sel, dim_len, dim_chunk_len):
 
@@ -451,7 +454,7 @@ def boundscheck_indices(x, dim_len):
         raise BoundsCheckError(dim_len)
 
 
-class IntArrayDimIndexer(object):
+class IntArrayDimIndexer:
     """Integer array selection against a single dimension."""
 
     def __init__(self, dim_sel, dim_len, dim_chunk_len, wraparound=True, boundscheck=True,
@@ -579,7 +582,7 @@ def oindex_set(a, selection, value):
 
 
 # noinspection PyProtectedMember
-class OrthogonalIndexer(object):
+class OrthogonalIndexer:
 
     def __init__(self, selection, array):
 
@@ -649,7 +652,7 @@ class OrthogonalIndexer(object):
             yield ChunkProjection(chunk_coords, chunk_selection, out_selection)
 
 
-class OIndex(object):
+class OIndex:
 
     def __init__(self, array):
         self.array = array
@@ -671,8 +674,8 @@ class OIndex(object):
 def is_coordinate_selection(selection, array):
     return (
         (len(selection) == len(array._shape)) and
-        all([is_integer(dim_sel) or is_integer_array(dim_sel)
-             for dim_sel in selection])
+        all(is_integer(dim_sel) or is_integer_array(dim_sel)
+            for dim_sel in selection)
     )
 
 
@@ -686,7 +689,7 @@ def is_mask_selection(selection, array):
 
 
 # noinspection PyProtectedMember
-class CoordinateIndexer(object):
+class CoordinateIndexer:
 
     def __init__(self, selection, array):
 
@@ -805,7 +808,7 @@ class MaskIndexer(CoordinateIndexer):
         super().__init__(selection, array)
 
 
-class VIndex(object):
+class VIndex:
 
     def __init__(self, array):
         self.array = array
@@ -905,7 +908,7 @@ def make_slice_selection(selection):
     return ls
 
 
-class PartialChunkIterator(object):
+class PartialChunkIterator:
     """Iterator to retrieve the specific coordinates of requested data
     from within a compressed chunk.
 
@@ -961,10 +964,8 @@ class PartialChunkIterator(object):
         # any selection can not be out of the range of the chunk
         selection_shape = np.empty(self.arr_shape)[tuple(selection)].shape
         if any(
-            [
-                selection_dim < 0 or selection_dim > arr_dim
-                for selection_dim, arr_dim in zip(selection_shape, self.arr_shape)
-            ]
+            selection_dim < 0 or selection_dim > arr_dim
+            for selection_dim, arr_dim in zip(selection_shape, self.arr_shape)
         ):
             raise IndexError(
                 "a selection index is out of range for the dimension"

@@ -3,7 +3,7 @@
 import warnings
 from numcodecs.compat import ensure_bytes
 from zarr.util import normalize_storage_path
-from zarr._storage.store import Store
+from zarr._storage.store import _get_metadata_suffix, data_root, meta_root, Store, StoreV3
 
 __doctest_requires__ = {
     ('ABSStore', 'ABSStore.*'): ['azure.storage.blob'],
@@ -17,26 +17,36 @@ class ABSStore(Store):
     ----------
     container : string
         The name of the ABS container to use.
+
         .. deprecated::
            Use ``client`` instead.
+
     prefix : string
         Location of the "directory" to use as the root of the storage hierarchy
         within the container.
+
     account_name : string
         The Azure blob storage account name.
+
         .. deprecated:: 2.8.3
            Use ``client`` instead.
+
     account_key : string
         The Azure blob storage account access key.
+
         .. deprecated:: 2.8.3
            Use ``client`` instead.
+
     blob_service_kwargs : dictionary
         Extra arguments to be passed into the azure blob client, for e.g. when
         using the emulator, pass in blob_service_kwargs={'is_emulated': True}.
+
         .. deprecated:: 2.8.3
            Use ``client`` instead.
+
     dimension_separator : {'.', '/'}, optional
         Separator placed between the dimensions of a chunk.
+
     client : azure.storage.blob.ContainerClient, optional
         And ``azure.storage.blob.ContainerClient`` to connect with. See
         `here <https://docs.microsoft.com/en-us/python/api/azure-storage-blob/azure.storage.blob.containerclient?view=azure-python>`_  # noqa
@@ -76,7 +86,8 @@ class ABSStore(Store):
         self._account_name = account_name
         self._account_key = account_key
 
-    def _warn_deprecated(self, property_):
+    @staticmethod
+    def _warn_deprecated(property_):
         msg = ("The {} property is deprecated and will be removed in a future "
                "version. Get the property from 'ABSStore.client' instead.")
         warnings.warn(msg.format(property_), FutureWarning, stacklevel=3)
@@ -198,3 +209,57 @@ class ABSStore(Store):
 
     def clear(self):
         self.rmdir()
+
+
+class ABSStoreV3(ABSStore, StoreV3):
+
+    def list(self):
+        return list(self.keys())
+
+    def __eq__(self, other):
+        return (
+            isinstance(other, ABSStoreV3) and
+            self.client == other.client and
+            self.prefix == other.prefix
+        )
+
+    def __setitem__(self, key, value):
+        self._validate_key(key)
+        super().__setitem__(key, value)
+
+    def rmdir(self, path=None):
+
+        if not path:
+            # Currently allowing clear to delete everything as in v2
+
+            # If we disallow an empty path then we will need to modify
+            # TestABSStoreV3 to have the create_store method use a prefix.
+            ABSStore.rmdir(self, '')
+            return
+
+        meta_dir = meta_root + path
+        meta_dir = meta_dir.rstrip('/')
+        ABSStore.rmdir(self, meta_dir)
+
+        # remove data folder
+        data_dir = data_root + path
+        data_dir = data_dir.rstrip('/')
+        ABSStore.rmdir(self, data_dir)
+
+        # remove metadata files
+        sfx = _get_metadata_suffix(self)
+        array_meta_file = meta_dir + '.array' + sfx
+        if array_meta_file in self:
+            del self[array_meta_file]
+        group_meta_file = meta_dir + '.group' + sfx
+        if group_meta_file in self:
+            del self[group_meta_file]
+
+    # TODO: adapt the v2 getsize method to work for v3
+    #       For now, calling the generic keys-based _getsize
+    def getsize(self, path=None):
+        from zarr.storage import _getsize  # avoid circular import
+        return _getsize(self, path)
+
+
+ABSStoreV3.__doc__ = ABSStore.__doc__
