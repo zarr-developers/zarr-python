@@ -35,7 +35,7 @@ Enhancements
   By :user:`Eric Prestat <ericpre>`; :issue:`933`.
 
 * Appending performance improvement.
-  By :user:`hailiangzhang <hailiangzhang> `; :issue:`1014`.
+  By :user:`hailiangzhang <hailiangzhang>`; :issue:`1014`.
 
 * Add number encoder for ``json.dumps`` to support numpy intergers in
   ``chunks`` arguments. By :user:`Eric Prestat <ericpre>` :issue:`697`.
@@ -52,13 +52,13 @@ Documentation
 ~~~~~~~~~~~~~
 
 * Update resize doc to clarify surprising behavior.
-  By :user:`hailiangzhang <hailiangzhang> `; :issue:`1022`.
+  By :user:`hailiangzhang <hailiangzhang>`; :issue:`1022`.
 
 Maintenance
 ~~~~~~~~~~~
 
-Added Yaml Check in Pre-commit (#1016)
-Pre-commit configuration (#1015)
+* Added Pre-commit configuration, incl. Yaml Check.
+  By :user:`Shivank Chaudhary <Alt-Shivam>`; :issue:`1015`, :issue:`1016`.
 
 .. _release_2.11.3:
 
