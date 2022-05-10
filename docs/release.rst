@@ -34,7 +34,7 @@ Enhancements
 * Add numpy encoder class for json.dumps
   By :user:`Eric Prestat <ericpre>`; :issue:`933`.
 
-* Appending performance improvement.
+* Appending performance improvement to Zarr arrays, e.g., when writing to S3.
   By :user:`hailiangzhang <hailiangzhang>`; :issue:`1014`.
 
 * Add number encoder for ``json.dumps`` to support numpy intergers in
