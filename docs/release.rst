@@ -1,10 +1,44 @@
 Release notes
 =============
 
-.. _unreleased:
+..
+    # Unindent the section between releases in order
+    # to coument your changes. On releases it will be
+    # re-indented so that it does not show up in the notes.
 
-Unreleased
-----------
+    .. _unreleased:
+
+    Unreleased
+    ----------
+
+.. _release_2.12.0a1:
+
+2.12.0a1
+--------
+
+Enhancements
+~~~~~~~~~~~~
+
+* **Add support for reading and writing Zarr V3.** The new `zarr._store.v3`
+  package has the necessary classes and functions for evaluating Zarr V3.
+  Since the format is not yet finalized, the classes and functions are not
+  automatically imported into the regular `zarr` name space. Setting the
+  `ZARR_V3_API_AVAILABLE` environment variable will activate them.
+  By :user:`Greggory Lee <grlee77>`; :issue:`898`, :issue:`1006`, and :issue:`1007`.
+
+* **Create FSStore from an existing fsspec filesystem**. If you have created
+  an fsspec filesystem outside of Zarr, you can now pass it as a keyword
+  argument to ``FSStore``.
+  By :user:`Ryan Abernathey <rabernat>`; :issue:`911`.
+
+* Add numpy encoder class for json.dumps
+  By :user:`Eric Prestat <ericpre>`; :issue:`933`.
+
+* Appending performance improvement to Zarr arrays, e.g., when writing to S3.
+  By :user:`hailiangzhang <hailiangzhang>`; :issue:`1014`.
+
+* Add number encoder for ``json.dumps`` to support numpy intergers in
+  ``chunks`` arguments. By :user:`Eric Prestat <ericpre>` :issue:`697`.
 
 Bug fixes
 ~~~~~~~~~
@@ -13,14 +47,18 @@ Bug fixes
   (e.g. some HTTP servers).
   By :user:`Ryan Abernathey <rabernat>`; :issue:`993`.
 
-Enhancements
-~~~~~~~~~~~~
 
-* **Create FSStore from an existing fsspec filesystem**. If you have created
-  an fsspec filesystem outside of Zarr, you can now pass it as a keyword
-  argument to ``FSStore``.
-  By :user:`Ryan Abernathey <rabernat>`.
+Documentation
+~~~~~~~~~~~~~
 
+* Update resize doc to clarify surprising behavior.
+  By :user:`hailiangzhang <hailiangzhang>`; :issue:`1022`.
+
+Maintenance
+~~~~~~~~~~~
+
+* Added Pre-commit configuration, incl. Yaml Check.
+  By :user:`Shivank Chaudhary <Alt-Shivam>`; :issue:`1015`, :issue:`1016`.
 
 .. _release_2.11.3:
 
@@ -30,13 +68,22 @@ Enhancements
 Bug fixes
 ~~~~~~~~~
 
+* Fix missing case to fully revert change to default write_empty_chunks.
+  By :user:`Tom White <tomwhite>`; :issue:`1005`.
+
+
+.. _release_2.11.2:
+
+2.11.2
+------
+
+Bug fixes
+~~~~~~~~~
+
 * Changes the default value of ``write_empty_chunks`` to ``True`` to prevent
   unanticipated data losses when the data types do not have a proper default
   value when empty chunks are read back in.
-  By :user:`Vyas Ramasubramani <vyasr>`; :issue:`965`.
-
-* Add number encoder for ``json.dumps`` to support numpy intergers in
-  ``chunks`` arguments. By :user:`Eric Prestat <ericpre>` :issue:`697`.
+  By :user:`Vyas Ramasubramani <vyasr>`; :issue:`965`, :issue:`1001`.
 
 .. _release_2.11.1:
 
