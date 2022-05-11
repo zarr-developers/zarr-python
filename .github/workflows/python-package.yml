@@ -20,7 +20,7 @@ jobs:
         exclude:
           - python-version: 3.9
             numpy_version: '==1.17.*'
-          - python-version: 3.10
+          - python-version: '3.10'
             numpy_version: '==1.17.*'
           - python-version: '3.11.0-alpha - 3.11.0'
             numpy_version: '==1.17.*'
