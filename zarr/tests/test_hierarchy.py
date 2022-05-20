@@ -18,7 +18,7 @@ except ImportError:  # pragma: no cover
 from numcodecs import Zlib
 from numpy.testing import assert_array_equal
 
-from zarr._storage.store import _get_metadata_suffix
+from zarr._storage.store import _get_metadata_suffix, v3_api_available
 from zarr.attrs import Attributes
 from zarr.core import Array
 from zarr.creation import open_array
@@ -1095,6 +1095,7 @@ def test_group_init_from_dict(chunk_dict):
 
 
 # noinspection PyStatementEffect
+@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestGroupV3(TestGroup, unittest.TestCase):
 
     @staticmethod
