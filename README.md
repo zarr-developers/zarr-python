@@ -31,7 +31,7 @@
 <tr>
   <td>License</td>
   <td>
-    <a href="https://github.com/zarr-developers/zarr-python/blob/master/LICENSE">
+    <a href="https://github.com/zarr-developers/zarr-python/blob/main/LICENSE">
     <img src="https://img.shields.io/pypi/l/zarr.svg" alt="license" />
     </a>
 </td>
@@ -40,7 +40,7 @@
   <td>Build Status</td>
   <td>
     <a href="https://travis-ci.org/zarr-developers/zarr-python">
-    <img src="https://travis-ci.org/zarr-developers/zarr-python.svg?branch=master" alt="travis build status" />
+    <img src="https://travis-ci.org/zarr-developers/zarr-python.svg?branch=main" alt="travis build status" />
     </a>
   </td>
 </tr>
@@ -48,7 +48,7 @@
   <td>Coverage</td>
   <td>
     <a href="https://codecov.io/gh/zarr-developers/zarr-python">
-    <img src="https://codecov.io/gh/zarr-developers/zarr-python/branch/master/graph/badge.svg"/ alt="coverage">
+    <img src="https://codecov.io/gh/zarr-developers/zarr-python/branch/main/graph/badge.svg"/ alt="coverage">
     </a>
   </td>
 </tr>
