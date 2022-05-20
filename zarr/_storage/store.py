@@ -18,7 +18,15 @@ data_root = 'data/root/'
 
 DEFAULT_ZARR_VERSION = 2
 
-v3_api_available = os.environ.get('ZARR_V3_API_AVAILABLE', '0').lower() not in ['0', 'false']
+v3_api_available = os.environ.get('ZARR_V3_EXPERIMENTAL_API', '0').lower() not in ['0', 'false']
+
+
+def assert_zarr_v3_api_available():
+    if not v3_api_available:
+        raise NotImplementedError(
+            "# V3 reading and writing is experimental! To enable support, set:\n"
+            "ZARR_V3_EXPERIMENTAL_API=1"
+        )
 
 
 class BaseStore(MutableMapping):
