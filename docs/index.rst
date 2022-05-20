@@ -1,4 +1,4 @@
-.. zarr documentation master file, created by
+.. zarr documentation main file, created by
    sphinx-quickstart on Mon May  2 21:40:09 2016.
 
 Zarr
