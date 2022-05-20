@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="https://raw.githubusercontent.com/zarr-developers/community/master/logos/logo2.png"><br>
+  <img src="https://raw.githubusercontent.com/zarr-developers/community/main/logos/logo2.png"><br>
 </div>
 
 # Zarr
