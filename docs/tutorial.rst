@@ -427,7 +427,7 @@ Groups also have the :func:`zarr.hierarchy.Group.tree` method, e.g.::
 If you're using Zarr within a Jupyter notebook (requires
 `ipytree <https://github.com/QuantStack/ipytree>`_), calling ``tree()`` will generate an
 interactive tree representation, see the `repr_tree.ipynb notebook
-<http://nbviewer.jupyter.org/github/zarr-developers/zarr-python/blob/master/notebooks/repr_tree.ipynb>`_
+<http://nbviewer.jupyter.org/github/zarr-developers/zarr-python/blob/main/notebooks/repr_tree.ipynb>`_
 for more examples.
 
 .. _tutorial_attrs:
