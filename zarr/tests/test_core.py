@@ -18,6 +18,7 @@ from numpy.testing import assert_array_almost_equal, assert_array_equal
 from pkg_resources import parse_version
 
 from zarr._storage.store import (
+    v3_api_available,
     _prefix_to_array_key,
     _prefix_to_attrs_key,
     _prefix_to_group_key
@@ -666,6 +667,15 @@ class TestArray(unittest.TestCase):
         assert np.dtype('i4') == z[:].dtype
         assert (10, 10) == z.chunks
         assert_array_equal(a[:55, :1], z[:])
+
+        z.resize((1, 55))
+        assert (1, 55) == z.shape
+        assert (1, 55) == z[:].shape
+        assert np.dtype('i4') == z.dtype
+        assert np.dtype('i4') == z[:].dtype
+        assert (10, 10) == z.chunks
+        assert_array_equal(a[:1, :10], z[:, :10])
+        assert_array_equal(np.zeros((1, 55-10), dtype='i4'), z[:, 10:55])
 
         # via shape setter
         z.shape = (105, 105)
@@ -2486,6 +2496,13 @@ class TestArrayWithStoreCache(TestArray):
         pass
 
 
+fsspec_mapper_kwargs = {
+    "check": True,
+    "create": True,
+    "missing_exceptions": None
+}
+
+
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
 class TestArrayWithFSStore(TestArray):
     @staticmethod
@@ -2493,7 +2510,35 @@ class TestArrayWithFSStore(TestArray):
         path = mkdtemp()
         atexit.register(shutil.rmtree, path)
         key_separator = kwargs.pop('key_separator', ".")
-        store = FSStore(path, key_separator=key_separator, auto_mkdir=True)
+        store = FSStore(path, key_separator=key_separator, auto_mkdir=True, **fsspec_mapper_kwargs)
+        cache_metadata = kwargs.pop('cache_metadata', True)
+        cache_attrs = kwargs.pop('cache_attrs', True)
+        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
+        kwargs.setdefault('compressor', Blosc())
+        init_array(store, **kwargs)
+        return Array(store, read_only=read_only, cache_metadata=cache_metadata,
+                     cache_attrs=cache_attrs, write_empty_chunks=write_empty_chunks)
+
+    def expected(self):
+        return [
+           "ab753fc81df0878589535ca9bad2816ba88d91bc",
+           "c16261446f9436b1e9f962e57ce3e8f6074abe8a",
+           "c2ef3b2fb2bc9dcace99cd6dad1a7b66cc1ea058",
+           "6e52f95ac15b164a8e96843a230fcee0e610729b",
+           "091fa99bc60706095c9ce30b56ce2503e0223f56",
+        ]
+
+
+@pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
+class TestArrayWithFSStoreFromFilesystem(TestArray):
+    @staticmethod
+    def create_array(read_only=False, **kwargs):
+        from fsspec.implementations.local import LocalFileSystem
+        fs = LocalFileSystem(auto_mkdir=True)
+        path = mkdtemp()
+        atexit.register(shutil.rmtree, path)
+        key_separator = kwargs.pop('key_separator', ".")
+        store = FSStore(path, fs=fs, key_separator=key_separator, **fsspec_mapper_kwargs)
         cache_metadata = kwargs.pop('cache_metadata', True)
         cache_attrs = kwargs.pop('cache_attrs', True)
         write_empty_chunks = kwargs.pop('write_empty_chunks', True)
@@ -2660,7 +2705,7 @@ class TestArrayWithFSStoreNestedPartialRead(TestArray):
 
 # Start with TestArrayWithPathV3 not TestArrayV3 since path must be supplied
 
-
+@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestArrayV3(unittest.TestCase):
 
     version = 3
@@ -2690,6 +2735,7 @@ class TestArrayV3(unittest.TestCase):
             _prefix_to_attrs_key(store, '')
 
 
+@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestArrayWithPathV3(TestArrayWithPath):
 
     version = 3
@@ -2824,6 +2870,7 @@ class TestArrayWithPathV3(TestArrayWithPath):
         z.store.close()
 
 
+@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestArrayWithChunkStoreV3(TestArrayWithChunkStore, TestArrayWithPathV3):
 
     @staticmethod
@@ -2866,6 +2913,7 @@ class TestArrayWithChunkStoreV3(TestArrayWithChunkStore, TestArrayWithPathV3):
         assert -1 == z.nbytes_stored
 
 
+@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestArrayWithDirectoryStoreV3(TestArrayWithDirectoryStore, TestArrayWithPathV3):
 
     @staticmethod
@@ -2893,6 +2941,7 @@ class TestArrayWithDirectoryStoreV3(TestArrayWithDirectoryStore, TestArrayWithPa
 
 
 @skip_test_env_var("ZARR_TEST_ABS")
+@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestArrayWithABSStoreV3(TestArrayWithABSStore, TestArrayWithPathV3):
 
     @staticmethod
@@ -2917,6 +2966,7 @@ class TestArrayWithABSStoreV3(TestArrayWithABSStore, TestArrayWithPathV3):
 # class TestArrayWithN5StoreV3(TestArrayWithDirectoryStoreV3):
 
 
+@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestArrayWithDBMStoreV3(TestArrayWithDBMStore, TestArrayWithPathV3):
 
     @staticmethod
@@ -2936,6 +2986,7 @@ class TestArrayWithDBMStoreV3(TestArrayWithDBMStore, TestArrayWithPathV3):
         pass  # not implemented
 
 
+@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestArrayWithDBMStoreV3BerkeleyDB(TestArrayWithDBMStoreBerkeleyDB, TestArrayWithPathV3):
 
     @staticmethod
@@ -2956,6 +3007,7 @@ class TestArrayWithDBMStoreV3BerkeleyDB(TestArrayWithDBMStoreBerkeleyDB, TestArr
         pass  # not implemented
 
 
+@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestArrayWithLMDBStoreV3(TestArrayWithLMDBStore, TestArrayWithPathV3):
 
     @staticmethod
@@ -2979,6 +3031,7 @@ class TestArrayWithLMDBStoreV3(TestArrayWithLMDBStore, TestArrayWithPathV3):
         pass  # not implemented
 
 
+@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestArrayWithLMDBStoreV3NoBuffers(TestArrayWithLMDBStoreNoBuffers, TestArrayWithPathV3):
 
     @staticmethod
@@ -2999,6 +3052,7 @@ class TestArrayWithLMDBStoreV3NoBuffers(TestArrayWithLMDBStoreNoBuffers, TestArr
         pass  # not implemented
 
 
+@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestArrayWithSQLiteStoreV3(TestArrayWithPathV3, TestArrayWithSQLiteStore):
 
     @staticmethod
@@ -3032,6 +3086,7 @@ class TestArrayWithSQLiteStoreV3(TestArrayWithPathV3, TestArrayWithSQLiteStore):
 # custom store, does not support getsize()
 # Note: this custom mapping doesn't actually have all methods in the
 #       v3 spec (e.g. erase), but they aren't needed here.
+
 class CustomMappingV3(StoreV3):
 
     def __init__(self):
@@ -3068,6 +3123,7 @@ class CustomMappingV3(StoreV3):
         return item in self.inner
 
 
+@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestArrayWithCustomMappingV3(TestArrayWithPathV3, TestArrayWithCustomMapping):
 
     @staticmethod
@@ -3096,6 +3152,7 @@ class TestArrayWithCustomMappingV3(TestArrayWithPathV3, TestArrayWithCustomMappi
         assert len(z._store) == 2
 
 
+@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestArrayNoCacheV3(TestArrayWithPathV3, TestArrayNoCache):
 
     @staticmethod
@@ -3114,6 +3171,7 @@ class TestArrayNoCacheV3(TestArrayWithPathV3, TestArrayNoCache):
         pass
 
 
+@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestArrayWithStoreCacheV3(TestArrayWithPathV3, TestArrayWithStoreCache):
 
     @staticmethod
@@ -3133,13 +3191,19 @@ class TestArrayWithStoreCacheV3(TestArrayWithPathV3, TestArrayWithStoreCache):
 
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
+@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestArrayWithFSStoreV3(TestArrayWithPathV3, TestArrayWithFSStore):
     @staticmethod
     def create_array(array_path='arr1', read_only=False, **kwargs):
         path = mkdtemp()
         atexit.register(shutil.rmtree, path)
         key_separator = kwargs.pop('key_separator', ".")
-        store = FSStoreV3(path, key_separator=key_separator, auto_mkdir=True)
+        store = FSStoreV3(
+            path,
+            key_separator=key_separator,
+            auto_mkdir=True,
+            **fsspec_mapper_kwargs
+        )
         cache_metadata = kwargs.pop('cache_metadata', True)
         cache_attrs = kwargs.pop('cache_attrs', True)
         write_empty_chunks = kwargs.pop('write_empty_chunks', True)
@@ -3159,6 +3223,36 @@ class TestArrayWithFSStoreV3(TestArrayWithPathV3, TestArrayWithFSStore):
 
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
+@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
+class TestArrayWithFSStoreV3FromFilesystem(TestArrayWithPathV3, TestArrayWithFSStore):
+    @staticmethod
+    def create_array(array_path='arr1', read_only=False, **kwargs):
+        from fsspec.implementations.local import LocalFileSystem
+        fs = LocalFileSystem(auto_mkdir=True)
+        path = mkdtemp()
+        atexit.register(shutil.rmtree, path)
+        key_separator = kwargs.pop('key_separator', ".")
+        store = FSStoreV3(path, fs=fs, key_separator=key_separator, **fsspec_mapper_kwargs)
+        cache_metadata = kwargs.pop('cache_metadata', True)
+        cache_attrs = kwargs.pop('cache_attrs', True)
+        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
+        kwargs.setdefault('compressor', Blosc())
+        init_array(store, path=array_path, **kwargs)
+        return Array(store, path=array_path, read_only=read_only, cache_metadata=cache_metadata,
+                     cache_attrs=cache_attrs, write_empty_chunks=write_empty_chunks)
+
+    def expected(self):
+        return [
+            "1509abec4285494b61cd3e8d21f44adc3cf8ddf6",
+            "7cfb82ec88f7ecb7ab20ae3cb169736bc76332b8",
+            "b663857bb89a8ab648390454954a9cdd453aa24b",
+            "21e90fa927d09cbaf0e3b773130e2dc05d18ff9b",
+            "e8c1fdd18b5c2ee050b59d0c8c95d07db642459c",
+        ]
+
+
+@pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
+@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestArrayWithFSStoreV3PartialRead(TestArrayWithPathV3, TestArrayWithFSStorePartialRead):
 
     @staticmethod
@@ -3192,6 +3286,7 @@ class TestArrayWithFSStoreV3PartialRead(TestArrayWithPathV3, TestArrayWithFSStor
 
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
+@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestArrayWithFSStoreV3Nested(TestArrayWithPathV3, TestArrayWithFSStoreNested):
 
     @staticmethod
@@ -3219,6 +3314,7 @@ class TestArrayWithFSStoreV3Nested(TestArrayWithPathV3, TestArrayWithFSStoreNest
 
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
+@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestArrayWithFSStoreV3NestedPartialRead(TestArrayWithPathV3,
                                               TestArrayWithFSStoreNestedPartialRead):
     @staticmethod
@@ -3252,6 +3348,7 @@ class TestArrayWithFSStoreV3NestedPartialRead(TestArrayWithPathV3,
         ]
 
 
+@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 def test_array_mismatched_store_versions():
     store_v3 = KVStoreV3(dict())
     store_v2 = KVStore(dict())
