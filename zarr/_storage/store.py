@@ -26,7 +26,7 @@ def assert_zarr_v3_api_available():
         raise NotImplementedError(
             "# V3 reading and writing is experimental! To enable support, set:\n"
             "ZARR_V3_EXPERIMENTAL_API=1"
-        )
+        )  # pragma: no cover
 
 
 class BaseStore(MutableMapping):
