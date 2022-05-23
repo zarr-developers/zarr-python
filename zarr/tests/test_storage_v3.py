@@ -41,6 +41,12 @@ from .test_storage import (dimension_separator_fixture, s3,  # noqa
                            skip_if_nested_chunks)
 
 
+pytestmark = pytest.mark.skipif(
+    not v3_api_available,
+    reason="v3 api is not available"
+)
+
+
 @pytest.fixture(params=[
     (None, "/"),
     (".", "."),

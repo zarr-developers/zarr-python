@@ -1262,8 +1262,9 @@ class FSStore(Store):
     Parameters
     ----------
     url : str
-        The destination to map. Should include protocol and path,
-        like "s3://bucket/root"
+        The destination to map. If no fs is provided, should include protocol
+        and path, like "s3://bucket/root". If an fs is provided, can be a path
+        within that filesystem, like "bucket/root"
     normalize_keys : bool
     key_separator : str
         public API for accessing dimension_separator. Never `None`
@@ -1275,7 +1276,19 @@ class FSStore(Store):
         as a missing key
     dimension_separator : {'.', '/'}, optional
         Separator placed between the dimensions of a chunk.
-    storage_options : passed to the fsspec implementation
+    fs : fsspec.spec.AbstractFileSystem, optional
+        An existing filesystem to use for the store.
+    check : bool, optional
+        If True, performs a touch at the root location, to check for write access.
+        Passed to `fsspec.mapping.FSMap` constructor.
+    create : bool, optional
+        If True, performs a mkdir at the rool location.
+        Passed to `fsspec.mapping.FSMap` constructor.
+    missing_exceptions : sequence of Exceptions, optional
+        Exceptions classes to associate with missing files.
+        Passed to `fsspec.mapping.FSMap` constructor.
+    storage_options : passed to the fsspec implementation. Cannot be used
+        together with fs.
     """
     _array_meta_key = array_meta_key
     _group_meta_key = group_meta_key
@@ -1285,18 +1298,37 @@ class FSStore(Store):
                  mode='w',
                  exceptions=(KeyError, PermissionError, IOError),
                  dimension_separator=None,
+                 fs=None,
+                 check=False,
+                 create=False,
+                 missing_exceptions=None,
                  **storage_options):
         import fsspec
+
+        mapper_options = {"check": check, "create": create}
+        # https://github.com/zarr-developers/zarr-python/pull/911#discussion_r841926292
+        # Some fsspec implementations don't accept missing_exceptions.
+        # This is a workaround to avoid passing it in the most common scenarios.
+        # Remove this and add missing_exceptions to mapper_options when fsspec is released.
+        if missing_exceptions is not None:
+            mapper_options["missing_exceptions"] = missing_exceptions  # pragma: no cover
+
+        if fs is None:
+            protocol, _ = fsspec.core.split_protocol(url)
+            # set auto_mkdir to True for local file system
+            if protocol in (None, "file") and not storage_options.get("auto_mkdir"):
+                storage_options["auto_mkdir"] = True
+            self.map = fsspec.get_mapper(url, **{**mapper_options, **storage_options})
+            self.fs = self.map.fs  # for direct operations
+            self.path = self.fs._strip_protocol(url)
+        else:
+            if storage_options:
+                raise ValueError("Cannot specify both fs and storage_options")
+            self.fs = fs
+            self.path = self.fs._strip_protocol(url)
+            self.map = self.fs.get_mapper(self.path, **mapper_options)
+
         self.normalize_keys = normalize_keys
-
-        protocol, _ = fsspec.core.split_protocol(url)
-        # set auto_mkdir to True for local file system
-        if protocol in (None, "file") and not storage_options.get("auto_mkdir"):
-            storage_options["auto_mkdir"] = True
-
-        self.map = fsspec.get_mapper(url, **storage_options)
-        self.fs = self.map.fs  # for direct operations
-        self.path = self.fs._strip_protocol(url)
         self.mode = mode
         self.exceptions = exceptions
         # For backwards compatibility. Guaranteed to be non-None
@@ -1308,8 +1340,6 @@ class FSStore(Store):
 
         # Pass attributes to array creation
         self._dimension_separator = dimension_separator
-        if self.fs.exists(self.path) and not self.fs.isdir(self.path):
-            raise FSPathExistNotDir(url)
 
     def _default_key_separator(self):
         if self.key_separator is None:

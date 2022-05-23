@@ -4,9 +4,9 @@ name: Minimal installation
 
 on:
   push:
-    branches: [ master ]
+    branches: [ main ]
   pull_request:
-    branches: [ master ]
+    branches: [ main ]
 
 jobs:
   minimum_build:
@@ -22,12 +22,16 @@ jobs:
           activate-environment: minimal
     - name: Tests
       shell: "bash -l {0}"
+      env:
+        ZARR_V3_EXPERIMENTAL_API: 1
       run: |
         conda activate minimal
         python -m pip install .
         pytest -svx --timeout=300
     - name: Fixture generation
       shell: "bash -l {0}"
+      env:
+        ZARR_V3_EXPERIMENTAL_API: 1
       run: |
         conda activate minimal
         rm -rf fixture/

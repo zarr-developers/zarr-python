@@ -5,9 +5,9 @@ name: Python package
 
 on:
   push:
-    branches: [ master ]
+    branches: [ main ]
   pull_request:
-    branches: [ master ]
+    branches: [ main ]
 
 jobs:
   windows:
@@ -16,7 +16,7 @@ jobs:
     strategy:
       fail-fast: True
       matrix:
-        python-version: ["3.8", "3.9"]
+        python-version: ['3.8', '3.9', '3.10']
     steps:
       - uses: actions/checkout@v2
         with:
@@ -51,6 +51,7 @@ jobs:
           pytest -sv --timeout=300
         env:
           ZARR_TEST_ABS: 1
+          ZARR_V3_EXPERIMENTAL_API: 1
       - name: Conda info
         shell: bash -l {0}
         run: conda info
