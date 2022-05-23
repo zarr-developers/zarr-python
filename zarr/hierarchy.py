@@ -3,7 +3,8 @@ from itertools import islice
 
 import numpy as np
 
-from zarr._storage.store import _get_metadata_suffix, data_root, meta_root, DEFAULT_ZARR_VERSION
+from zarr._storage.store import (_get_metadata_suffix, data_root, meta_root,
+                                 DEFAULT_ZARR_VERSION, assert_zarr_v3_api_available)
 from zarr.attrs import Attributes
 from zarr.core import Array
 from zarr.creation import (array, create, empty, empty_like, full, full_like,
@@ -19,7 +20,6 @@ from zarr.storage import (
     _prefix_to_group_key,
     BaseStore,
     MemoryStore,
-    MemoryStoreV3,
     attrs_key,
     contains_array,
     contains_group,
@@ -30,6 +30,7 @@ from zarr.storage import (
     rename,
     rmdir,
 )
+from zarr._storage.v3 import MemoryStoreV3
 from zarr.util import (
     InfoReporter,
     TreeViewer,
@@ -117,6 +118,10 @@ class Group(MutableMapping):
         store: BaseStore = _normalize_store_arg(store, zarr_version=zarr_version)
         if zarr_version is None:
             zarr_version = getattr(store, '_store_version', DEFAULT_ZARR_VERSION)
+
+        if zarr_version != 2:
+            assert_zarr_v3_api_available()
+
         if chunk_store is not None:
             chunk_store: BaseStore = _normalize_store_arg(chunk_store, zarr_version=zarr_version)
         self._store = store
@@ -1178,6 +1183,10 @@ def _normalize_store_arg(store, *, storage_options=None, mode="r",
                          zarr_version=None):
     if zarr_version is None:
         zarr_version = getattr(store, '_store_version', DEFAULT_ZARR_VERSION)
+
+    if zarr_version != 2:
+        assert_zarr_v3_api_available()
+
     if store is None:
         return MemoryStore() if zarr_version == 2 else MemoryStoreV3()
     return normalize_store_arg(store,
@@ -1234,6 +1243,10 @@ def group(store=None, overwrite=False, chunk_store=None,
     store = _normalize_store_arg(store, zarr_version=zarr_version)
     if zarr_version is None:
         zarr_version = getattr(store, '_store_version', DEFAULT_ZARR_VERSION)
+
+    if zarr_version != 2:
+        assert_zarr_v3_api_available()
+
     if zarr_version == 3 and path is None:
         raise ValueError(f"path must be provided for a v{zarr_version} group")
     path = normalize_storage_path(path)
@@ -1305,10 +1318,15 @@ def open_group(store=None, mode='a', cache_attrs=True, synchronizer=None, path=N
         zarr_version=zarr_version)
     if zarr_version is None:
         zarr_version = getattr(store, '_store_version', DEFAULT_ZARR_VERSION)
+
+    if zarr_version != 2:
+        assert_zarr_v3_api_available()
+
     if chunk_store is not None:
         chunk_store = _normalize_store_arg(chunk_store,
                                            storage_options=storage_options,
-                                           mode=mode)
+                                           mode=mode,
+                                           zarr_version=zarr_version)
         if not getattr(chunk_store, '_store_version', DEFAULT_ZARR_VERSION) == zarr_version:
             raise ValueError(
                 "zarr_version of store and chunk_store must match"

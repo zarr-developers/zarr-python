@@ -1,4 +1,4 @@
-.. zarr documentation master file, created by
+.. zarr documentation main file, created by
    sphinx-quickstart on Mon May  2 21:40:09 2016.
 
 Zarr
@@ -42,7 +42,7 @@ Alternatively, install Zarr via conda::
     $ conda install -c conda-forge zarr
 
 To install the latest development version of Zarr, you can use pip with the
-latest GitHub master::
+latest GitHub main::
 
     $ pip install git+https://github.com/zarr-developers/zarr-python.git
 

@@ -11,7 +11,7 @@ from typing import Any
 import numpy as np
 from numcodecs.compat import ensure_bytes, ensure_ndarray
 
-from zarr._storage.store import _prefix_to_attrs_key
+from zarr._storage.store import _prefix_to_attrs_key, assert_zarr_v3_api_available
 from zarr.attrs import Attributes
 from zarr.codecs import AsType, get_codec
 from zarr.errors import ArrayNotFoundError, ReadOnlyError, ArrayIndexError
@@ -161,7 +161,7 @@ class Array:
         cache_metadata=True,
         cache_attrs=True,
         partial_decompress=False,
-        write_empty_chunks=False,
+        write_empty_chunks=True,
         zarr_version=None,
     ):
         # N.B., expect at this point store is fully initialized with all
@@ -170,6 +170,9 @@ class Array:
         store = normalize_store_arg(store, zarr_version=zarr_version)
         if zarr_version is None:
             zarr_version = store._store_version
+
+        if zarr_version != 2:
+            assert_zarr_v3_api_available()
 
         if chunk_store is not None:
             chunk_store = normalize_store_arg(chunk_store,
@@ -2406,6 +2409,10 @@ class Array:
 
         If one or more dimensions are shrunk, any chunks falling outside the
         new array shape will be deleted from the underlying store.
+        However, it is noteworthy that the chunks partially falling inside the new array
+        (i.e. boundary chunks) will remain intact, and therefore,
+        the data falling outside the new array but inside the boundary chunks
+        would be restored by a subsequent resize operation that grows the array size.
 
         """
 
@@ -2428,17 +2435,31 @@ class Array:
                                 for s, c in zip(new_shape, chunks))
 
         # remove any chunks not within range
+        #   The idea is that, along each dimension,
+        #     only find and remove the chunk slices that exist in 'old' but not 'new' data.
+        #   Note that a mutable list ('old_cdata_shape_working_list') is introduced here
+        #     to dynamically adjust the number of chunks along the already-processed dimensions
+        #     in order to avoid duplicate chunk removal.
         chunk_store = self.chunk_store
-        for cidx in itertools.product(*[range(n) for n in old_cdata_shape]):
-            if all(i < c for i, c in zip(cidx, new_cdata_shape)):
-                pass  # keep the chunk
-            else:
+        old_cdata_shape_working_list = list(old_cdata_shape)
+        for idx_cdata, (val_old_cdata, val_new_cdata) in enumerate(
+            zip(old_cdata_shape_working_list, new_cdata_shape)
+        ):
+            for cidx in itertools.product(
+                *[
+                    range(n_new, n_old) if (idx == idx_cdata) else range(n_old)
+                    for idx, (n_old, n_new) in enumerate(
+                        zip(old_cdata_shape_working_list, new_cdata_shape)
+                    )
+                ]
+            ):
                 key = self._chunk_key(cidx)
                 try:
                     del chunk_store[key]
                 except KeyError:
                     # chunk not initialized
                     pass
+            old_cdata_shape_working_list[idx_cdata] = min(val_old_cdata, val_new_cdata)
 
     def append(self, data, axis=0):
         """Append `data` to `axis`.

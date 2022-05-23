@@ -5,7 +5,7 @@ import os
 import re
 from collections.abc import Mapping, MutableMapping
 
-from zarr._storage.store import data_root, meta_root
+from zarr._storage.store import data_root, meta_root, assert_zarr_v3_api_available
 from zarr.core import Array
 from zarr.creation import array as _create_array
 from zarr.creation import open_array
@@ -15,8 +15,8 @@ from zarr.hierarchy import group as _create_group
 from zarr.hierarchy import open_group
 from zarr.meta import json_dumps, json_loads
 from zarr.storage import (_get_metadata_suffix, contains_array, contains_group,
-                          normalize_store_arg, BaseStore, ConsolidatedMetadataStore,
-                          ConsolidatedMetadataStoreV3)
+                          normalize_store_arg, BaseStore, ConsolidatedMetadataStore)
+from zarr._storage.v3 import ConsolidatedMetadataStoreV3
 from zarr.util import TreeViewer, buffer_size, normalize_storage_path
 
 from typing import Union
@@ -1209,6 +1209,8 @@ def consolidate_metadata(store: BaseStore, metadata_key=".zmetadata", *, path=''
 
     else:
 
+        assert_zarr_v3_api_available()
+
         sfx = _get_metadata_suffix(store)  # type: ignore
 
         def is_zarr_key(key):
@@ -1277,7 +1279,9 @@ def open_consolidated(store: StoreLike, metadata_key=".zmetadata", mode="r+", **
     """
 
     # normalize parameters
-    store = normalize_store_arg(store, storage_options=kwargs.get("storage_options"), mode=mode)
+    zarr_version = kwargs.get('zarr_version', None)
+    store = normalize_store_arg(store, storage_options=kwargs.get("storage_options"), mode=mode,
+                                zarr_version=zarr_version)
     if mode not in {'r', 'r+'}:
         raise ValueError("invalid mode, expected either 'r' or 'r+'; found {!r}"
                          .format(mode))
@@ -1286,6 +1290,7 @@ def open_consolidated(store: StoreLike, metadata_key=".zmetadata", mode="r+", **
     if store._store_version == 2:
         ConsolidatedStoreClass = ConsolidatedMetadataStore
     else:
+        assert_zarr_v3_api_available()
         ConsolidatedStoreClass = ConsolidatedMetadataStoreV3
         # default is to store within 'consolidated' group on v3
         if not metadata_key.startswith('meta/root/'):
