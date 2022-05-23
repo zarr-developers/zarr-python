@@ -51,6 +51,7 @@ jobs:
           pytest -sv --timeout=300
         env:
           ZARR_TEST_ABS: 1
+          ZARR_V3_EXPERIMENTAL_API: 1
       - name: Conda info
         shell: bash -l {0}
         run: conda info

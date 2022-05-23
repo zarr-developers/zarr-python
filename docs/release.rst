@@ -11,6 +11,26 @@ Release notes
     Unreleased
     ----------
 
+.. _release_2.12.0a2:
+
+2.12.0a2
+--------
+
+* Rename ZARR_V3_API_AVAILABLE to ZARR_V3_EXPERIMENTAL_API.
+  By :user:`Josh Moore <joshmoore>` :issue:`1032`.
+
+Maintenance
+~~~~~~~~~~~
+
+* Fix URL to renamed file in Blosc repo.
+  By :user:`Andrew Thomas <amcnicho>` :issue:`1028`.
+
+* Activate Py 3.10 builds.
+  By :user:`Josh Moore <joshmoore>` :issue:`1027`.
+
+* Make all unignored zarr warnings errors.
+  By :user:`Josh Moore <joshmoore>` :issue:`1021`.
+
 .. _release_2.12.0a1:
 
 2.12.0a1
@@ -23,7 +43,7 @@ Enhancements
   package has the necessary classes and functions for evaluating Zarr V3.
   Since the format is not yet finalized, the classes and functions are not
   automatically imported into the regular `zarr` name space. Setting the
-  `ZARR_V3_API_AVAILABLE` environment variable will activate them.
+  `ZARR_V3_EXPERIMENTAL_API` environment variable will activate them.
   By :user:`Greggory Lee <grlee77>`; :issue:`898`, :issue:`1006`, and :issue:`1007`.
 
 * **Create FSStore from an existing fsspec filesystem**. If you have created

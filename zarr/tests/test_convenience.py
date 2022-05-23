@@ -34,6 +34,7 @@ from zarr.storage import (
     meta_root,
     getsize,
 )
+from zarr._storage.store import v3_api_available
 from zarr._storage.v3 import (
     ConsolidatedMetadataStoreV3,
     DirectoryStoreV3,
@@ -44,6 +45,8 @@ from zarr._storage.v3 import (
 )
 from zarr.tests.util import have_fsspec
 
+_VERSIONS = v3_api_available and (2, 3) or (2,)
+
 
 def _init_creation_kwargs(zarr_version):
     kwargs = {'zarr_version': zarr_version}
@@ -52,7 +55,7 @@ def _init_creation_kwargs(zarr_version):
     return kwargs
 
 
-@pytest.mark.parametrize('zarr_version', [2, 3])
+@pytest.mark.parametrize('zarr_version', _VERSIONS)
 def test_open_array(path_type, zarr_version):
 
     store = tempfile.mkdtemp()
@@ -86,7 +89,7 @@ def test_open_array(path_type, zarr_version):
         open('doesnotexist', mode='r')
 
 
-@pytest.mark.parametrize("zarr_version", [2, 3])
+@pytest.mark.parametrize("zarr_version", _VERSIONS)
 def test_open_group(path_type, zarr_version):
 
     store = tempfile.mkdtemp()
@@ -116,7 +119,7 @@ def test_open_group(path_type, zarr_version):
     assert g.read_only
 
 
-@pytest.mark.parametrize("zarr_version", [2, 3])
+@pytest.mark.parametrize("zarr_version", _VERSIONS)
 def test_save_errors(zarr_version):
     with pytest.raises(ValueError):
         # no arrays provided
@@ -129,6 +132,7 @@ def test_save_errors(zarr_version):
         save('data/group.zarr', zarr_version=zarr_version)
 
 
+@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 def test_zarr_v3_save_multiple_unnamed():
     x = np.ones(8)
     y = np.zeros(8)
@@ -142,6 +146,7 @@ def test_zarr_v3_save_multiple_unnamed():
     assert meta_root + 'dataset/arr_1.array.json' in store
 
 
+@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 def test_zarr_v3_save_errors():
     x = np.ones(8)
     with pytest.raises(ValueError):
@@ -155,7 +160,7 @@ def test_zarr_v3_save_errors():
         save('data/group.zr3', x, zarr_version=3)
 
 
-@pytest.mark.parametrize("zarr_version", [2, 3])
+@pytest.mark.parametrize("zarr_version", _VERSIONS)
 def test_lazy_loader(zarr_version):
     foo = np.arange(100)
     bar = np.arange(100, 0, -1)
@@ -173,7 +178,7 @@ def test_lazy_loader(zarr_version):
     assert 'LazyLoader: ' in repr(loader)
 
 
-@pytest.mark.parametrize("zarr_version", [2, 3])
+@pytest.mark.parametrize("zarr_version", _VERSIONS)
 def test_load_array(zarr_version):
     foo = np.arange(100)
     bar = np.arange(100, 0, -1)
@@ -192,7 +197,7 @@ def test_load_array(zarr_version):
             assert_array_equal(bar, array)
 
 
-@pytest.mark.parametrize("zarr_version", [2, 3])
+@pytest.mark.parametrize("zarr_version", _VERSIONS)
 def test_tree(zarr_version):
     kwargs = _init_creation_kwargs(zarr_version)
     g1 = zarr.group(**kwargs)
@@ -205,7 +210,7 @@ def test_tree(zarr_version):
     assert str(zarr.tree(g1)) == str(g1.tree())
 
 
-@pytest.mark.parametrize('zarr_version', [2, 3])
+@pytest.mark.parametrize('zarr_version', _VERSIONS)
 @pytest.mark.parametrize('stores_from_path', [False, True])
 @pytest.mark.parametrize(
     'with_chunk_store,listable',
@@ -531,6 +536,7 @@ class TestCopyStore(unittest.TestCase):
             copy_store(source, dest, if_exists='foobar')
 
 
+@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestCopyStoreV3(TestCopyStore):
 
     _version = 3
@@ -666,6 +672,7 @@ def test_copy_all():
     assert destination_group.subgroup.attrs["info"] == "sub attrs"
 
 
+@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 def test_copy_all_v3():
     """
     https://github.com/zarr-developers/zarr-python/issues/269
@@ -931,6 +938,7 @@ class TestCopy:
             copy(source['foo'], dest, dry_run=True, log=True)
 
 
+@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestCopyV3(TestCopy):
 
     @pytest.fixture(params=['zarr', 'hdf5'])
