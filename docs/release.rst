@@ -11,7 +11,7 @@ Release notes
     Unreleased
     ----------
 
-.. _release_2.12.0a1:
+.. _release_2.12.0a2:
 
 2.12.0a2
 --------
@@ -23,7 +23,7 @@ Maintenance
 ~~~~~~~~~~~
 
 * Fix URL to renamed file in Blosc repo.
-  By :user:`Andrew Thomas <amcnicho` :issue:`1028`.
+  By :user:`Andrew Thomas <amcnicho>` :issue:`1028`.
 
 * Activate Py 3.10 builds.
   By :user:`Josh Moore <joshmoore>` :issue:`1027`.
