@@ -13,6 +13,26 @@ Release notes
 
 .. _release_2.12.0a1:
 
+2.12.0a2
+--------
+
+* Rename ZARR_V3_API_AVAILABLE to ZARR_V3_EXPERIMENTAL_API.
+  By :user:`Josh Moore <joshmoore>` :issue:`1032`.
+
+Maintenance
+~~~~~~~~~~~
+
+* Fix URL to renamed file in Blosc repo.
+  By :user:`Andrew Thomas <amcnicho` :issue:`1028`.
+
+* Activate Py 3.10 builds.
+  By :user:`Josh Moore <joshmoore>` :issue:`1027`.
+
+* Make all unignored zarr warnings errors.
+  By :user:`Josh Moore <joshmoore>` :issue:`1021`.
+
+.. _release_2.12.0a1:
+
 2.12.0a1
 --------
 
