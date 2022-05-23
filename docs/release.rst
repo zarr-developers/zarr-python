@@ -23,7 +23,7 @@ Enhancements
   package has the necessary classes and functions for evaluating Zarr V3.
   Since the format is not yet finalized, the classes and functions are not
   automatically imported into the regular `zarr` name space. Setting the
-  `ZARR_V3_API_AVAILABLE` environment variable will activate them.
+  `ZARR_V3_EXPERIMENTAL_API` environment variable will activate them.
   By :user:`Greggory Lee <grlee77>`; :issue:`898`, :issue:`1006`, and :issue:`1007`.
 
 * **Create FSStore from an existing fsspec filesystem**. If you have created
