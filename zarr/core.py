@@ -4,12 +4,11 @@ import itertools
 import math
 import operator
 import re
-from collections.abc import MutableMapping
 from functools import reduce
 from typing import Any
 
 import numpy as np
-from numcodecs.compat import ensure_bytes, ensure_ndarray
+from numcodecs.compat import ensure_bytes
 
 from zarr._storage.store import _prefix_to_attrs_key, assert_zarr_v3_api_available
 from zarr.attrs import Attributes
@@ -170,7 +169,6 @@ class Array:
         cache_metadata=True,
         cache_attrs=True,
         partial_decompress=False,
-        write_empty_chunks=False,
         write_empty_chunks=True,
         zarr_version=None,
         meta_array=None,
