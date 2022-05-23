@@ -3,7 +3,7 @@
 import warnings
 from numcodecs.compat import ensure_bytes
 from zarr.util import normalize_storage_path
-from zarr._storage.store import Store
+from zarr._storage.store import _get_metadata_suffix, data_root, meta_root, Store, StoreV3
 
 __doctest_requires__ = {
     ('ABSStore', 'ABSStore.*'): ['azure.storage.blob'],
@@ -209,3 +209,57 @@ class ABSStore(Store):
 
     def clear(self):
         self.rmdir()
+
+
+class ABSStoreV3(ABSStore, StoreV3):
+
+    def list(self):
+        return list(self.keys())
+
+    def __eq__(self, other):
+        return (
+            isinstance(other, ABSStoreV3) and
+            self.client == other.client and
+            self.prefix == other.prefix
+        )
+
+    def __setitem__(self, key, value):
+        self._validate_key(key)
+        super().__setitem__(key, value)
+
+    def rmdir(self, path=None):
+
+        if not path:
+            # Currently allowing clear to delete everything as in v2
+
+            # If we disallow an empty path then we will need to modify
+            # TestABSStoreV3 to have the create_store method use a prefix.
+            ABSStore.rmdir(self, '')
+            return
+
+        meta_dir = meta_root + path
+        meta_dir = meta_dir.rstrip('/')
+        ABSStore.rmdir(self, meta_dir)
+
+        # remove data folder
+        data_dir = data_root + path
+        data_dir = data_dir.rstrip('/')
+        ABSStore.rmdir(self, data_dir)
+
+        # remove metadata files
+        sfx = _get_metadata_suffix(self)
+        array_meta_file = meta_dir + '.array' + sfx
+        if array_meta_file in self:
+            del self[array_meta_file]
+        group_meta_file = meta_dir + '.group' + sfx
+        if group_meta_file in self:
+            del self[group_meta_file]
+
+    # TODO: adapt the v2 getsize method to work for v3
+    #       For now, calling the generic keys-based _getsize
+    def getsize(self, path=None):
+        from zarr.storage import _getsize  # avoid circular import
+        return _getsize(self, path)
+
+
+ABSStoreV3.__doc__ = ABSStore.__doc__
