@@ -18,7 +18,7 @@ except ImportError:  # pragma: no cover
 from numcodecs import Zlib
 from numpy.testing import assert_array_equal
 
-from zarr._storage.store import _get_metadata_suffix
+from zarr._storage.store import _get_metadata_suffix, v3_api_available
 from zarr.attrs import Attributes
 from zarr.core import Array
 from zarr.creation import open_array
@@ -35,7 +35,11 @@ from zarr.util import InfoReporter, buffer_size
 from zarr.tests.util import skip_test_env_var, have_fsspec, abs_container
 
 
+_VERSIONS = v3_api_available and (2, 3) or (2,)
+
 # noinspection PyStatementEffect
+
+
 class TestGroup(unittest.TestCase):
 
     @staticmethod
@@ -1095,6 +1099,7 @@ def test_group_init_from_dict(chunk_dict):
 
 
 # noinspection PyStatementEffect
+@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestGroupV3(TestGroup, unittest.TestCase):
 
     @staticmethod
@@ -1153,6 +1158,7 @@ class TestGroupWithMemoryStore(TestGroup):
 
 
 # noinspection PyStatementEffect
+@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestGroupV3WithMemoryStore(TestGroupWithMemoryStore, TestGroupV3):
 
     @staticmethod
@@ -1170,6 +1176,7 @@ class TestGroupWithDirectoryStore(TestGroup):
         return store, None
 
 
+@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestGroupV3WithDirectoryStore(TestGroupWithDirectoryStore, TestGroupV3):
 
     @staticmethod
@@ -1197,6 +1204,7 @@ class TestGroupWithABSStore(TestGroup):
 
 
 @skip_test_env_var("ZARR_TEST_ABS")
+@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestGroupV3WithABSStore(TestGroupV3):
 
     @staticmethod
@@ -1246,6 +1254,7 @@ class TestGroupWithFSStore(TestGroup):
 
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
+@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestGroupV3WithFSStore(TestGroupWithFSStore, TestGroupV3):
 
     @staticmethod
@@ -1303,6 +1312,7 @@ class TestGroupWithNestedFSStore(TestGroupWithFSStore):
 
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
+@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestGroupV3WithNestedFSStore(TestGroupV3WithFSStore):
 
     @staticmethod
@@ -1352,6 +1362,7 @@ class TestGroupWithZipStore(TestGroup):
         pass
 
 
+@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestGroupV3WithZipStore(TestGroupWithZipStore, TestGroupV3):
 
     @staticmethod
@@ -1372,6 +1383,7 @@ class TestGroupWithDBMStore(TestGroup):
         return store, None
 
 
+@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestGroupV3WithDBMStore(TestGroupWithDBMStore, TestGroupV3):
 
     @staticmethod
@@ -1393,6 +1405,7 @@ class TestGroupWithDBMStoreBerkeleyDB(TestGroup):
         return store, None
 
 
+@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestGroupV3WithDBMStoreBerkeleyDB(TestGroupWithDBMStoreBerkeleyDB, TestGroupV3):
 
     @staticmethod
@@ -1415,6 +1428,7 @@ class TestGroupWithLMDBStore(TestGroup):
         return store, None
 
 
+@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestGroupV3WithLMDBStore(TestGroupWithLMDBStore, TestGroupV3):
 
     @staticmethod
@@ -1436,6 +1450,7 @@ class TestGroupWithSQLiteStore(TestGroup):
         return store, None
 
 
+@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestGroupV3WithSQLiteStore(TestGroupWithSQLiteStore, TestGroupV3):
 
     def create_store(self):
@@ -1477,6 +1492,7 @@ class TestGroupWithChunkStore(TestGroup):
         assert expect == actual
 
 
+@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestGroupV3WithChunkStore(TestGroupWithChunkStore, TestGroupV3):
 
     @staticmethod
@@ -1520,6 +1536,7 @@ class TestGroupWithStoreCache(TestGroup):
         return store, None
 
 
+@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestGroupV3WithStoreCache(TestGroupWithStoreCache, TestGroupV3):
 
     @staticmethod
@@ -1528,7 +1545,7 @@ class TestGroupV3WithStoreCache(TestGroupWithStoreCache, TestGroupV3):
         return store, None
 
 
-@pytest.mark.parametrize('zarr_version', [2, 3])
+@pytest.mark.parametrize('zarr_version', _VERSIONS)
 def test_group(zarr_version):
     # test the group() convenience function
 
@@ -1572,7 +1589,7 @@ def test_group(zarr_version):
     assert store is g.store
 
 
-@pytest.mark.parametrize('zarr_version', [2, 3])
+@pytest.mark.parametrize('zarr_version', _VERSIONS)
 def test_open_group(zarr_version):
     # test the open_group() convenience function
 
@@ -1639,7 +1656,7 @@ def test_open_group(zarr_version):
     assert 'foo/bar' == g.path
 
 
-@pytest.mark.parametrize('zarr_version', [2, 3])
+@pytest.mark.parametrize('zarr_version', _VERSIONS)
 def test_group_completions(zarr_version):
     path = None if zarr_version == 2 else 'group1'
     g = group(path=path, zarr_version=zarr_version)
@@ -1670,7 +1687,7 @@ def test_group_completions(zarr_version):
     assert '456' not in d  # not valid identifier
 
 
-@pytest.mark.parametrize('zarr_version', [2, 3])
+@pytest.mark.parametrize('zarr_version', _VERSIONS)
 def test_group_key_completions(zarr_version):
     path = None if zarr_version == 2 else 'group1'
     g = group(path=path, zarr_version=zarr_version)
@@ -1754,7 +1771,7 @@ def _check_tree(g, expect_bytes, expect_text):
         isinstance(widget, ipytree.Tree)
 
 
-@pytest.mark.parametrize('zarr_version', [2, 3])
+@pytest.mark.parametrize('zarr_version', _VERSIONS)
 def test_tree(zarr_version):
     # setup
     path = None if zarr_version == 2 else 'group1'
@@ -1821,6 +1838,7 @@ def test_tree(zarr_version):
     _check_tree(g3, expect_bytes, expect_text)
 
 
+@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 def test_group_mismatched_store_versions():
     store_v3 = KVStoreV3(dict())
     store_v2 = KVStore(dict())
@@ -1854,7 +1872,7 @@ def test_group_mismatched_store_versions():
         Group(store_v3, path='group2', read_only=True, chunk_store=chunk_store_v3)
 
 
-@pytest.mark.parametrize('zarr_version', [2, 3])
+@pytest.mark.parametrize('zarr_version', _VERSIONS)
 def test_open_group_from_paths(zarr_version):
     """Verify zarr_version is applied to both the store and chunk_store."""
     store = tempfile.mkdtemp()
