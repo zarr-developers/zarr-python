@@ -217,7 +217,7 @@ Maintenance
 
   - Drop unneeded ``return`` (:issue:`884`)
 
-  - Drop explicit ``object`` inheritance from ``class``es (:issue:`886`)
+  - Drop explicit ``object`` inheritance from ``class``-es (:issue:`886`)
 
   - Unnecessary comprehension (:issue:`883`)
 
