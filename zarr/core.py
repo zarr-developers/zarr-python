@@ -1249,8 +1249,8 @@ class Array:
             # allow storage to get multiple items at once
             if all(map(lambda x: x > 0, indexer.shape)):
                 lchunk_coords, lchunk_selection, lout_selection = zip(*indexer)
-                self._chunkgetitems(lchunk_coords, lchunk_selection, out, lout_selection,
-                                    drop_axes=indexer.drop_axes, fields=fields)
+                self._chunk_getitems(lchunk_coords, lchunk_selection, out, lout_selection,
+                                     drop_axes=indexer.drop_axes, fields=fields)
 
         if out.shape:
             return out
@@ -1818,8 +1818,8 @@ class Array:
                             cv = cv[item]
                         chunk_values.append(cv)
 
-                self._chunksetitems(lchunk_coords, lchunk_selection, chunk_values,
-                                    fields=fields)
+                self._chunk_setitems(lchunk_coords, lchunk_selection, chunk_values,
+                                     fields=fields)
 
     def _process_chunk(
         self,
@@ -1952,7 +1952,7 @@ class Array:
             self._process_chunk(out, cdata, chunk_selection, drop_axes,
                                 out_is_ndarray, fields, out_selection)
 
-    def _chunkgetitems(self, lchunk_coords, lchunk_selection, out, lout_selection,
+    def _chunk_getitems(self, lchunk_coords, lchunk_selection, out, lout_selection,
                         drop_axes=None, fields=None):
         """As _chunk_getitem, but for lists of chunks
 
@@ -2004,7 +2004,7 @@ class Array:
                         fill_value = self._fill_value
                     out[out_select] = fill_value
 
-    def _chunksetitems(self, lchunk_coords, lchunk_selection, values, fields=None):
+    def _chunk_setitems(self, lchunk_coords, lchunk_selection, values, fields=None):
         ckeys = map(self._chunk_key, lchunk_coords)
         cdatas = {key: self._process_for_setitem(key, sel, val, fields=fields)
                   for key, sel, val in zip(ckeys, lchunk_selection, values)}

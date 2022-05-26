@@ -90,7 +90,7 @@ class BaseStore(MutableMapping):
         _rename_from_keys(self, src_path, dst_path)
 
     def getitems(self, keys: Iterable[Hashable]) -> Dict[Hashable, Any]:
-        result = {}        
+        result = {}
         for key in keys:
             try:
                 result[key] = self.__getitem__(key)
@@ -164,6 +164,7 @@ class Store(BaseStore):
             )  # pragma: no cover
         path = normalize_storage_path(path)
         _rmdir_from_keys(self, path)
+
 
 class StoreV3(BaseStore):
     _store_version = 3
