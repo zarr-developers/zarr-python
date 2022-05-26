@@ -11,7 +11,7 @@ from typing import Any
 import numpy as np
 from numcodecs.compat import ensure_bytes, ensure_ndarray
 
-from zarr._storage.store import _prefix_to_attrs_key
+from zarr._storage.store import _prefix_to_attrs_key, assert_zarr_v3_api_available
 from zarr.attrs import Attributes
 from zarr.codecs import AsType, get_codec
 from zarr.errors import ArrayNotFoundError, ReadOnlyError, ArrayIndexError
@@ -170,6 +170,9 @@ class Array:
         store = normalize_store_arg(store, zarr_version=zarr_version)
         if zarr_version is None:
             zarr_version = store._store_version
+
+        if zarr_version != 2:
+            assert_zarr_v3_api_available()
 
         if chunk_store is not None:
             chunk_store = normalize_store_arg(chunk_store,
