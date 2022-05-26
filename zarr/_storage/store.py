@@ -2,7 +2,7 @@ import abc
 import os
 from collections.abc import MutableMapping
 from string import ascii_letters, digits
-from typing import Any, List, Mapping, Optional, Union
+from typing import Any, Hashable, List, Mapping, Optional, Union, Dict, Iterable
 
 from zarr.meta import Metadata2, Metadata3
 from zarr.util import normalize_storage_path
@@ -81,6 +81,18 @@ class BaseStore(MutableMapping):
             )  # pragma: no cover
         _rename_from_keys(self, src_path, dst_path)
 
+    def getitems(self, keys: Iterable[Hashable]) -> Dict[Hashable, Any]:
+        result = {}        
+        for key in keys:
+            try:
+                result[key] = self.__getitem__(key)
+            except KeyError:
+                pass
+        return result
+
+    def setitems(self, items):
+        return tuple(self.__setitem__(key, value) for key, value in items.items())
+
     @staticmethod
     def _ensure_store(store: Any):
         """
@@ -144,7 +156,6 @@ class Store(BaseStore):
             )  # pragma: no cover
         path = normalize_storage_path(path)
         _rmdir_from_keys(self, path)
-
 
 class StoreV3(BaseStore):
     _store_version = 3

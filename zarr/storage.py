@@ -707,7 +707,7 @@ class KVStore(Store):
     a mutable mapping, to avoid having to test stores for presence of methods.
 
     This, for most methods should just be a pass-through to the underlying KV
-    store which is likely to expose a MuttableMapping interface,
+    store which is likely to expose a MutableMapping interface,
     """
 
     def __init__(self, mutablemapping):
@@ -1356,9 +1356,9 @@ class FSStore(Store):
 
         return key.lower() if self.normalize_keys else key
 
-    def getitems(self, keys, **kwargs):
+    def getitems(self, keys, on_error="omit"):
         keys_transformed = [self._normalize_key(key) for key in keys]
-        results = self.map.getitems(keys_transformed, on_error="omit")
+        results = self.map.getitems(keys_transformed, on_error=on_error)
         # The function calling this method may not recognize the transformed keys
         # So we send the values returned by self.map.getitems back into the original key space.
         return {keys[keys_transformed.index(rk)]: rv for rk, rv in results.items()}

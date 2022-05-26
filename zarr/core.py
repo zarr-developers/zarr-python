@@ -1235,8 +1235,7 @@ class Array:
             check_array_shape('out', out, out_shape)
 
         # iterate over chunks
-        if not hasattr(self.chunk_store, "getitems") or \
-           any(map(lambda x: x == 0, self.shape)):
+        if any(map(lambda x: x == 0, self.shape)):
             # sequentially get one key at a time from storage
             for chunk_coords, chunk_selection, out_selection in indexer:
 
@@ -1245,9 +1244,10 @@ class Array:
                                     drop_axes=indexer.drop_axes, fields=fields)
         else:
             # allow storage to get multiple items at once
-            lchunk_coords, lchunk_selection, lout_selection = zip(*indexer)
-            self._chunk_getitems(lchunk_coords, lchunk_selection, out, lout_selection,
-                                 drop_axes=indexer.drop_axes, fields=fields)
+            if all(map(lambda x: x > 0, indexer.shape)):
+                lchunk_coords, lchunk_selection, lout_selection = zip(*indexer)
+                self._chunkgetitems(lchunk_coords, lchunk_selection, out, lout_selection,
+                                    drop_axes=indexer.drop_axes, fields=fields)
 
         if out.shape:
             return out
@@ -1773,7 +1773,7 @@ class Array:
             check_array_shape('value', value, sel_shape)
 
         # iterate over chunks in range
-        if not hasattr(self.store, "setitems") or self._synchronizer is not None \
+        if self._synchronizer is not None \
            or any(map(lambda x: x == 0, self.shape)):
             # iterative approach
             for chunk_coords, chunk_selection, out_selection in indexer:
@@ -1796,26 +1796,27 @@ class Array:
                 # put data
                 self._chunk_setitem(chunk_coords, chunk_selection, chunk_value, fields=fields)
         else:
-            lchunk_coords, lchunk_selection, lout_selection = zip(*indexer)
-            chunk_values = []
-            for out_selection in lout_selection:
-                if sel_shape == ():
-                    chunk_values.append(value)
-                elif is_scalar(value, self._dtype):
-                    chunk_values.append(value)
-                else:
-                    cv = value[out_selection]
-                    # handle missing singleton dimensions
-                    if indexer.drop_axes:  # pragma: no cover
-                        item = [slice(None)] * self.ndim
-                        for a in indexer.drop_axes:
-                            item[a] = np.newaxis
-                        item = tuple(item)
-                        cv = chunk_value[item]
-                    chunk_values.append(cv)
+            if all(map(lambda x: x > 0, indexer.shape)):
+                lchunk_coords, lchunk_selection, lout_selection = zip(*indexer)
+                chunk_values = []
+                for out_selection in lout_selection:
+                    if sel_shape == ():
+                        chunk_values.append(value)
+                    elif is_scalar(value, self._dtype):
+                        chunk_values.append(value)
+                    else:
+                        cv = value[out_selection]
+                        # handle missing singleton dimensions
+                        if indexer.drop_axes:
+                            item = [slice(None)] * self.ndim
+                            for a in indexer.drop_axes:
+                                item[a] = np.newaxis
+                            item = tuple(item)
+                            cv = cv[item]
+                        chunk_values.append(cv)
 
-            self._chunk_setitems(lchunk_coords, lchunk_selection, chunk_values,
-                                 fields=fields)
+                self._chunksetitems(lchunk_coords, lchunk_selection, chunk_values,
+                                    fields=fields)
 
     def _process_chunk(
         self,
@@ -1948,7 +1949,7 @@ class Array:
             self._process_chunk(out, cdata, chunk_selection, drop_axes,
                                 out_is_ndarray, fields, out_selection)
 
-    def _chunk_getitems(self, lchunk_coords, lchunk_selection, out, lout_selection,
+    def _chunkgetitems(self, lchunk_coords, lchunk_selection, out, lout_selection,
                         drop_axes=None, fields=None):
         """As _chunk_getitem, but for lists of chunks
 
@@ -1969,7 +1970,6 @@ class Array:
             and hasattr(self._compressor, "decode_partial")
             and not fields
             and self.dtype != object
-            and hasattr(self.chunk_store, "getitems")
         ):
             partial_read_decode = True
             cdatas = {
@@ -1979,7 +1979,7 @@ class Array:
             }
         else:
             partial_read_decode = False
-            cdatas = self.chunk_store.getitems(ckeys, on_error="omit")
+            cdatas = self.chunk_store.getitems(ckeys)
         for ckey, chunk_select, out_select in zip(ckeys, lchunk_selection, lout_selection):
             if ckey in cdatas:
                 self._process_chunk(
@@ -2001,7 +2001,7 @@ class Array:
                         fill_value = self._fill_value
                     out[out_select] = fill_value
 
-    def _chunk_setitems(self, lchunk_coords, lchunk_selection, values, fields=None):
+    def _chunksetitems(self, lchunk_coords, lchunk_selection, values, fields=None):
         ckeys = map(self._chunk_key, lchunk_coords)
         cdatas = {key: self._process_for_setitem(key, sel, val, fields=fields)
                   for key, sel, val in zip(ckeys, lchunk_selection, values)}
