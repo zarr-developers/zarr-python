@@ -1799,7 +1799,7 @@ class Array:
                 # put data
                 self._chunk_setitem(chunk_coords, chunk_selection, chunk_value, fields=fields)
         else:
-            if all(map(lambda x: x > 0, indexer.shape)):
+            if all(map(lambda x: x > 0, sel_shape)):
                 lchunk_coords, lchunk_selection, lout_selection = zip(*indexer)
                 chunk_values = []
                 for out_selection in lout_selection:
