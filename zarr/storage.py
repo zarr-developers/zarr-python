@@ -1357,11 +1357,15 @@ class FSStore(Store):
         return key.lower() if self.normalize_keys else key
 
     def getitems(self, keys, on_error="omit"):
-        keys_transformed = [self._normalize_key(key) for key in keys]
-        results = self.map.getitems(keys_transformed, on_error=on_error)
+        key_map = {self._normalize_key(key): key for key in keys}
+        from_store = self.map.getitems(tuple(key_map.keys()), on_error=on_error)
         # The function calling this method may not recognize the transformed keys
         # So we send the values returned by self.map.getitems back into the original key space.
-        return {keys[keys_transformed.index(rk)]: rv for rk, rv in results.items()}
+        result = {}
+        for rk, rv in from_store.items():
+            input_key = key_map[rk]
+            result[input_key] = rv
+        return result
 
     def __getitem__(self, key):
         key = self._normalize_key(key)
