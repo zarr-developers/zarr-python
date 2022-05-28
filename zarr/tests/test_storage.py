@@ -132,7 +132,7 @@ class StoreTests:
         assert b'bar' == ensure_bytes(store[key])
 
         # test getitems, setitems
-        data = {'key_0': b'value_0', 'key_1': b'value_1'}
+        data = {self.root + 'key_0': b'value_0', self.root + 'key_1': b'value_1'}
         assert store.getitems(data.keys()) == {}
         store.setitems(data)
         assert store.getitems(data.keys()) == data
