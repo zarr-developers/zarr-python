@@ -5,9 +5,9 @@ name: Linux Testing
 
 on:
   push:
-    branches: [ master ]
+    branches: [ main ]
   pull_request:
-    branches: [ master ]
+    branches: [ main ]
 
 jobs:
   build:
@@ -15,10 +15,12 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: [3.7, 3.8, 3.9]
+        python-version: ['3.7', '3.8', '3.9', '3.10']
         numpy_version: ['!=1.21.0', '==1.20.*']
         exclude:
           - python-version: 3.9
+            numpy_version: '==1.20.*'
+          - python-version: '3.10'
             numpy_version: '==1.20.*'
     services:
       redis:
@@ -69,6 +71,7 @@ jobs:
         ZARR_TEST_ABS: 1
         ZARR_TEST_MONGO: 1
         ZARR_TEST_REDIS: 1
+        ZARR_V3_EXPERIMENTAL_API: 1
       run: |
         conda activate zarr-env
         mkdir ~/blob_emulator
