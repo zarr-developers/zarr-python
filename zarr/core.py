@@ -1255,6 +1255,7 @@ class Array:
             lchunk_coords, lchunk_selection, lout_selection = zip(*indexer_parts)
             self._chunk_getitems(lchunk_coords, lchunk_selection, out, lout_selection,
                                 drop_axes=indexer.drop_axes, fields=fields)
+        if out.shape:
             return out
         else:
             return out[()]
