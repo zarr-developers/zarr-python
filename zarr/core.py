@@ -1230,7 +1230,9 @@ class Array:
 
         # determine output shape
         out_shape = indexer.shape
-
+        
+        indexer_parts = tuple(i for i in indexer)
+        
         # setup output array
         if out is None:
             out = np.empty(out_shape, dtype=out_dtype, order=self._order)
@@ -1238,21 +1240,21 @@ class Array:
             check_array_shape('out', out, out_shape)
 
         # iterate over chunks
-        if any(map(lambda x: x == 0, self.shape)):
-            # sequentially get one key at a time from storage
-            for chunk_coords, chunk_selection, out_selection in indexer:
-
-                # load chunk selection into output array
-                self._chunk_getitem(chunk_coords, chunk_selection, out, out_selection,
-                                    drop_axes=indexer.drop_axes, fields=fields)
-        else:
+        #if any(map(lambda x: x == 0, self.shape)):
+        #    # sequentially get one key at a time from storage
+        #    for chunk_coords, chunk_selection, out_selection in indexer:
+        #
+        #        # load chunk selection into output array
+        #        self._chunk_getitem(chunk_coords, chunk_selection, out, out_selection,
+        #                            drop_axes=indexer.drop_axes, fields=fields)
+        #else:
             # allow storage to get multiple items at once
-            if all(map(lambda x: x > 0, indexer.shape)):
-                lchunk_coords, lchunk_selection, lout_selection = zip(*indexer)
-                self._chunk_getitems(lchunk_coords, lchunk_selection, out, lout_selection,
-                                     drop_axes=indexer.drop_axes, fields=fields)
-
-        if out.shape:
+        #    if all(map(lambda x: x > 0, out_shape)):
+        
+        if indexer_parts:
+            lchunk_coords, lchunk_selection, lout_selection = zip(*indexer_parts)
+            self._chunk_getitems(lchunk_coords, lchunk_selection, out, lout_selection,
+                                drop_axes=indexer.drop_axes, fields=fields)
             return out
         else:
             return out[()]
@@ -1983,16 +1985,17 @@ class Array:
         else:
             partial_read_decode = False
             cdatas = self.chunk_store.getitems(ckeys)
-        for ckey, chunk_select, out_select in zip(ckeys, lchunk_selection, lout_selection):
+        for ckey, chunk_selection, out_selection in zip(ckeys, lchunk_selection, lout_selection):
             if ckey in cdatas:
+                cdata = cdatas[ckey]
                 self._process_chunk(
                     out,
-                    cdatas[ckey],
-                    chunk_select,
+                    cdata,
+                    chunk_selection,
                     drop_axes,
                     out_is_ndarray,
                     fields,
-                    out_select,
+                    out_selection,
                     partial_read_decode=partial_read_decode,
                 )
             else:
@@ -2002,7 +2005,7 @@ class Array:
                         fill_value = self._fill_value[fields]
                     else:
                         fill_value = self._fill_value
-                    out[out_select] = fill_value
+                    out[out_selection] = fill_value
 
     def _chunk_setitems(self, lchunk_coords, lchunk_selection, values, fields=None):
         ckeys = map(self._chunk_key, lchunk_coords)
