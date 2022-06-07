@@ -1,0 +1,9 @@
+{
+    "arch": "x86_64",
+    "cpu": "Intel Xeon Processor (Skylake, IBRS)",
+    "machine": "zarr-asv",
+    "num_cpu": "4",
+    "os": "Linux 5.7.8-200.fc32.x86_64",
+    "ram": "8145244",
+    "version": 1
+}
