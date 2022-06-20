@@ -29,12 +29,13 @@ from zarr.storage import (ABSStore, ConsolidatedMetadataStore, DBMStore,
                           DictStore, DirectoryStore, KVStore, LMDBStore,
                           LRUStoreCache, MemoryStore, MongoDBStore,
                           NestedDirectoryStore, RedisStore, SQLiteStore,
-                          Store, TempStore, ZipStore, KVStoreV3,
+                          Store, TempStore, ZipStore,
                           array_meta_key, atexit_rmglob, atexit_rmtree,
                           attrs_key, data_root, default_compressor, getsize,
                           group_meta_key, init_array, init_group, migrate_1to2,
                           meta_root, normalize_store_arg)
 from zarr.storage import FSStore, rename, listdir
+from zarr._storage.v3 import KVStoreV3
 from zarr.tests.util import CountingDict, have_fsspec, skip_test_env_var, abs_container
 
 
@@ -1248,10 +1249,6 @@ class TestFSStore(StoreTests):
 
         assert store[self.root + 'foo'] == b"bar"
 
-        filepath = os.path.join(path, self.root + "foo")
-        with pytest.raises(ValueError):
-            self.create_store(path=filepath, mode='r')
-
     def test_eq(self):
         store1 = self.create_store(path="anypath")
         store2 = self.create_store(path="anypath")
@@ -1336,6 +1333,35 @@ class TestFSStoreWithKeySeparator(StoreTests):
             path,
             normalize_keys=normalize_keys,
             key_separator=key_separator)
+
+
+@pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
+class TestFSStoreFromFilesystem(StoreTests):
+
+    def create_store(self, normalize_keys=False,
+                     dimension_separator=".",
+                     path=None,
+                     **kwargs):
+        import fsspec
+        fs = fsspec.filesystem("file")
+
+        if path is None:
+            path = tempfile.mkdtemp()
+            atexit.register(atexit_rmtree, path)
+
+        with pytest.raises(ValueError):
+            # can't specify storage_options when passing an
+            # existing fs object
+            _ = FSStore(path, fs=fs, auto_mkdir=True)
+
+        store = FSStore(
+            path,
+            normalize_keys=normalize_keys,
+            dimension_separator=dimension_separator,
+            fs=fs,
+            **kwargs)
+
+        return store
 
 
 @pytest.fixture()

@@ -108,9 +108,9 @@ report the bug or propose the feature you'd like to add.
 It's best to synchronize your fork with the upstream repository, then create a
 new, separate branch for each piece of work you want to do. E.g.::
 
-    git checkout master
+    git checkout main
     git fetch upstream
-    git rebase upstream/master
+    git rebase upstream/main
     git push
     git checkout -b shiny-new-feature
     git push -u origin shiny-new-feature
@@ -120,18 +120,18 @@ this branch specific to one bug or feature so it is clear what the branch brings
 Zarr.
 
 To update this branch with latest code from Zarr, you can retrieve the changes from
-the master branch and perform a rebase::
+the main branch and perform a rebase::
 
     git fetch upstream
-    git rebase upstream/master
+    git rebase upstream/main
 
-This will replay your commits on top of the latest Zarr git master. If this leads to
+This will replay your commits on top of the latest Zarr git main. If this leads to
 merge conflicts, these need to be resolved before submitting a pull request.
-Alternatively, you can merge the changes in from upstream/master instead of rebasing,
+Alternatively, you can merge the changes in from upstream/main instead of rebasing,
 which can be simpler::
 
     git fetch upstream
-    git merge upstream/master
+    git merge upstream/main
 
 Again, any conflicts need to be resolved before submitting a pull request.
 
@@ -206,7 +206,7 @@ Documentation
 
 Docstrings for user-facing classes and functions should follow the
 `numpydoc
-<https://github.com/numpy/numpy/blob/master/doc/HOWTO_DOCUMENT.rst.txt>`_
+<https://github.com/numpy/numpy/blob/main/doc/HOWTO_DOCUMENT.rst.txt>`_
 standard, including sections for Parameters and Examples. All examples
 should run and pass as doctests under Python 3.8. To run doctests,
 activate your development environment, install optional requirements,
@@ -242,7 +242,7 @@ one core developers before being merged. Ideally, pull requests submitted by a c
 should be reviewed and approved by at least one other core developers before being merged.
 
 Pull requests should not be merged until all CI checks have passed (GitHub Actions
-Codecov) against code that has had the latest master merged in.
+Codecov) against code that has had the latest main merged in.
 
 Compatibility and versioning policies
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -337,9 +337,9 @@ Release procedure
    Most of the release process is now handled by github workflow which should
    automatically push a release to PyPI if a tag is pushed. 
 
-Checkout and update the master branch::
+Checkout and update the main branch::
 
-    $ git checkout master
+    $ git checkout main
     $ git pull
 
 Verify all tests pass on all supported Python versions, and docs build::

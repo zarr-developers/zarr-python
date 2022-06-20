@@ -1,0 +1,32 @@
+# This is a basic workflow to help you get started with Actions
+
+name: pre-commit
+
+# Controls when the workflow will run
+on:
+  # Triggers the workflow pull request events but only for the main branch
+  pull_request:
+  push:
+    branches: [main]
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+jobs:
+  # Using Ubuntu image with latest tag
+  pre-commit:
+    runs-on: ubuntu-latest
+
+    # Steps represent a sequence of tasks that will be executed as part of the job
+    steps:
+      - uses: actions/checkout@v3
+      #setting up Python v3.0.0
+      - uses: actions/setup-python@v3.0.0
+      #using pre-commit latest i.e v2.0.3
+      - uses: pre-commit/action@v2.0.3
+      #Running pre-commit for all files
+      - name: Pre-Commit-Run
+        run: |
+          pip install pre-commit
+          pre-commit run --all-files

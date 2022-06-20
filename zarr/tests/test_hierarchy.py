@@ -18,7 +18,7 @@ except ImportError:  # pragma: no cover
 from numcodecs import Zlib
 from numpy.testing import assert_array_equal
 
-from zarr._storage.store import _get_metadata_suffix
+from zarr._storage.store import _get_metadata_suffix, v3_api_available
 from zarr.attrs import Attributes
 from zarr.core import Array
 from zarr.creation import open_array
@@ -28,14 +28,18 @@ from zarr.storage import (ABSStore, DBMStore, KVStore, DirectoryStore, FSStore,
                           NestedDirectoryStore, SQLiteStore, ZipStore,
                           array_meta_key, atexit_rmglob, atexit_rmtree, data_root,
                           group_meta_key, init_array, init_group, meta_root)
-from zarr.storage import (ABSStoreV3, KVStoreV3, DirectoryStoreV3,  # MemoryStoreV3
-                          FSStoreV3, ZipStoreV3, DBMStoreV3, LMDBStoreV3, SQLiteStoreV3,
-                          LRUStoreCacheV3)
+from zarr._storage.v3 import (ABSStoreV3, KVStoreV3, DirectoryStoreV3, MemoryStoreV3,
+                              FSStoreV3, ZipStoreV3, DBMStoreV3, LMDBStoreV3, SQLiteStoreV3,
+                              LRUStoreCacheV3)
 from zarr.util import InfoReporter, buffer_size
 from zarr.tests.util import skip_test_env_var, have_fsspec, abs_container
 
 
+_VERSIONS = v3_api_available and (2, 3) or (2,)
+
 # noinspection PyStatementEffect
+
+
 class TestGroup(unittest.TestCase):
 
     @staticmethod
@@ -233,8 +237,14 @@ class TestGroup(unittest.TestCase):
 
         # test path normalization
         if g1._version == 2:
-            # TODO: expected behavior for v3
             assert g1.require_group('quux') == g1.require_group('/quux/')
+        elif g1._version:
+            # These are not equal in v3!
+            # 'quux' will be within the group:
+            #      meta/root/group/quux.group.json
+            # '/quux/' will be outside of the group at:
+            #      meta/root/quux.group.json
+            assert g1.require_group('quux') != g1.require_group('/quux/')
 
         # multi
         g6, g7 = g1.require_groups('y', 'z')
@@ -519,7 +529,7 @@ class TestGroup(unittest.TestCase):
             assert isinstance(g1['/foo/bar/'], Group)
         else:
             # start or end with / raises KeyError
-            # TODO: should we fix allow stripping of these on v3?
+            # TODO: should we allow stripping of these on v3?
             with pytest.raises(KeyError):
                 assert isinstance(g1['/foo/bar/'], Group)
         assert isinstance(g1['foo/baz'], Array)
@@ -547,9 +557,7 @@ class TestGroup(unittest.TestCase):
         assert 'baz' not in g1
         assert 'a/b/c/d' not in g1
         assert 'a/z' not in g1
-        if g1._version == 2:
-            # TODO: handle implicit group for v3 spec
-            assert 'quux' not in g1['foo']
+        assert 'quux' not in g1['foo']
 
         # test key errors
         with pytest.raises(KeyError):
@@ -888,12 +896,27 @@ class TestGroup(unittest.TestCase):
         assert "foo2" in g
         assert "foo2/bar" not in g
         if g2._version == 2:
-            # TODO: how to access element created outside of group.path in v3?
             assert "bar" in g
+        else:
+            # The `g2.move` call above moved bar to meta/root/bar and
+            # meta/data/bar. This is outside the `g` group located at
+            # /meta/root/group, so bar is no longer within `g`.
+            assert "bar" not in g
+            assert 'meta/root/bar.array.json' in g._store
+            if g._chunk_store:
+                assert 'data/root/bar/c0' in g._chunk_store
+            else:
+                assert 'data/root/bar/c0' in g._store
         assert isinstance(g["foo2"], Group)
         if g2._version == 2:
-            # TODO: how to access element created outside of group.path in v3?
             assert_array_equal(data, g["bar"])
+        else:
+            # TODO: How to access element created outside of group.path in v3?
+            #       One option is to make a Hierarchy class representing the
+            #       root. Currently Group requires specification of `path`,
+            #       but the path of the root would be just '' which is not
+            #       currently allowed.
+            pass
 
         with pytest.raises(ValueError):
             g2.move("bar", "bar2")
@@ -970,22 +993,44 @@ class TestGroup(unittest.TestCase):
         g1 = self.create_group()
         g2 = g1.create_group('foo/bar')
 
-        if g1._version == 3:
-            pytest.skip("TODO: update class for v3")
+        if g1._version == 2:
+            assert g1 == g1['/']
+            assert g1 == g1['//']
+            assert g1 == g1['///']
+            assert g1 == g2['/']
+            assert g1 == g2['//']
+            assert g1 == g2['///']
+            assert g2 == g1['foo/bar']
+            assert g2 == g1['/foo/bar']
+            assert g2 == g1['foo/bar/']
+            assert g2 == g1['//foo/bar']
+            assert g2 == g1['//foo//bar//']
+            assert g2 == g1['///foo///bar///']
+            assert g2 == g2['/foo/bar']
+        else:
+            # the expected key format gives a match
+            assert g2 == g1['foo/bar']
 
-        assert g1 == g1['/']
-        assert g1 == g1['//']
-        assert g1 == g1['///']
-        assert g1 == g2['/']
-        assert g1 == g2['//']
-        assert g1 == g2['///']
-        assert g2 == g1['foo/bar']
-        assert g2 == g1['/foo/bar']
-        assert g2 == g1['foo/bar/']
-        assert g2 == g1['//foo/bar']
-        assert g2 == g1['//foo//bar//']
-        assert g2 == g1['///foo///bar///']
-        assert g2 == g2['/foo/bar']
+            # TODO: Should presence of a trailing slash raise KeyError?
+            # The spec says "the final character is not a / character"
+            # but we currently strip trailing '/' as done for v2.
+            assert g2 == g1['foo/bar/']
+
+            # double slash also currently works (spec doesn't mention this
+            # case, but have kept it for v2 behavior compatibility)
+            assert g2 == g1['foo//bar']
+
+            # v3: leading / implies we are at the root, not within a group,
+            # so these all raise KeyError
+            for path in ['/foo/bar', '//foo/bar', '//foo//bar//',
+                         '///fooo///bar///']:
+                with pytest.raises(KeyError):
+                    g1[path]
+
+            # For v3 a prefix must be supplied
+            for path in ['/', '//', '///']:
+                with pytest.raises(ValueError):
+                    g2[path]
 
         with pytest.raises(ValueError):
             g1['.']
@@ -1025,9 +1070,7 @@ class TestGroup(unittest.TestCase):
         assert name == g2.name
         assert n == len(g2)
         assert keys == list(g2)
-        if g2._version == 2:
-            # TODO: handle implicit group for v3
-            assert isinstance(g2['foo'], Group)
+        assert isinstance(g2['foo'], Group)
         assert isinstance(g2['foo/bar'], Array)
 
         g2.store.close()
@@ -1056,6 +1099,7 @@ def test_group_init_from_dict(chunk_dict):
 
 
 # noinspection PyStatementEffect
+@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestGroupV3(TestGroup, unittest.TestCase):
 
     @staticmethod
@@ -1113,13 +1157,14 @@ class TestGroupWithMemoryStore(TestGroup):
         return MemoryStore(), None
 
 
-# TODO: fix MemoryStoreV3 _get_parent, etc.
-# # noinspection PyStatementEffect
-# class TestGroupV3WithMemoryStore(TestGroupWithMemoryStore, TestGroupV3):
+# noinspection PyStatementEffect
+@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
+class TestGroupV3WithMemoryStore(TestGroupWithMemoryStore, TestGroupV3):
 
-#     @staticmethod
-#     def create_store():
-#         return MemoryStoreV3(), None
+    @staticmethod
+    def create_store():
+        return MemoryStoreV3(), None
+
 
 class TestGroupWithDirectoryStore(TestGroup):
 
@@ -1131,6 +1176,7 @@ class TestGroupWithDirectoryStore(TestGroup):
         return store, None
 
 
+@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestGroupV3WithDirectoryStore(TestGroupWithDirectoryStore, TestGroupV3):
 
     @staticmethod
@@ -1158,7 +1204,8 @@ class TestGroupWithABSStore(TestGroup):
 
 
 @skip_test_env_var("ZARR_TEST_ABS")
-class TestGroupWithABSStoreV3(TestGroupV3):
+@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
+class TestGroupV3WithABSStore(TestGroupV3):
 
     @staticmethod
     def create_store():
@@ -1207,6 +1254,7 @@ class TestGroupWithFSStore(TestGroup):
 
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
+@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestGroupV3WithFSStore(TestGroupWithFSStore, TestGroupV3):
 
     @staticmethod
@@ -1264,6 +1312,7 @@ class TestGroupWithNestedFSStore(TestGroupWithFSStore):
 
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
+@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestGroupV3WithNestedFSStore(TestGroupV3WithFSStore):
 
     @staticmethod
@@ -1313,6 +1362,7 @@ class TestGroupWithZipStore(TestGroup):
         pass
 
 
+@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestGroupV3WithZipStore(TestGroupWithZipStore, TestGroupV3):
 
     @staticmethod
@@ -1333,6 +1383,7 @@ class TestGroupWithDBMStore(TestGroup):
         return store, None
 
 
+@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestGroupV3WithDBMStore(TestGroupWithDBMStore, TestGroupV3):
 
     @staticmethod
@@ -1354,6 +1405,7 @@ class TestGroupWithDBMStoreBerkeleyDB(TestGroup):
         return store, None
 
 
+@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestGroupV3WithDBMStoreBerkeleyDB(TestGroupWithDBMStoreBerkeleyDB, TestGroupV3):
 
     @staticmethod
@@ -1376,6 +1428,7 @@ class TestGroupWithLMDBStore(TestGroup):
         return store, None
 
 
+@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestGroupV3WithLMDBStore(TestGroupWithLMDBStore, TestGroupV3):
 
     @staticmethod
@@ -1397,6 +1450,7 @@ class TestGroupWithSQLiteStore(TestGroup):
         return store, None
 
 
+@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestGroupV3WithSQLiteStore(TestGroupWithSQLiteStore, TestGroupV3):
 
     def create_store(self):
@@ -1438,6 +1492,7 @@ class TestGroupWithChunkStore(TestGroup):
         assert expect == actual
 
 
+@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestGroupV3WithChunkStore(TestGroupWithChunkStore, TestGroupV3):
 
     @staticmethod
@@ -1481,6 +1536,7 @@ class TestGroupWithStoreCache(TestGroup):
         return store, None
 
 
+@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestGroupV3WithStoreCache(TestGroupWithStoreCache, TestGroupV3):
 
     @staticmethod
@@ -1489,7 +1545,7 @@ class TestGroupV3WithStoreCache(TestGroupWithStoreCache, TestGroupV3):
         return store, None
 
 
-@pytest.mark.parametrize('zarr_version', [2, 3])
+@pytest.mark.parametrize('zarr_version', _VERSIONS)
 def test_group(zarr_version):
     # test the group() convenience function
 
@@ -1533,7 +1589,7 @@ def test_group(zarr_version):
     assert store is g.store
 
 
-@pytest.mark.parametrize('zarr_version', [2, 3])
+@pytest.mark.parametrize('zarr_version', _VERSIONS)
 def test_open_group(zarr_version):
     # test the open_group() convenience function
 
@@ -1549,9 +1605,6 @@ def test_open_group(zarr_version):
     assert 0 == len(g)
     g.create_groups('foo', 'bar')
     assert 2 == len(g)
-
-    # TODO: update the r, r+ test case here for zarr_version == 3 after
-    #       open_array has StoreV3 support
 
     # mode in 'r', 'r+'
     open_array('data/array.zarr', shape=100, chunks=10, mode='w')
@@ -1603,7 +1656,7 @@ def test_open_group(zarr_version):
     assert 'foo/bar' == g.path
 
 
-@pytest.mark.parametrize('zarr_version', [2, 3])
+@pytest.mark.parametrize('zarr_version', _VERSIONS)
 def test_group_completions(zarr_version):
     path = None if zarr_version == 2 else 'group1'
     g = group(path=path, zarr_version=zarr_version)
@@ -1634,7 +1687,7 @@ def test_group_completions(zarr_version):
     assert '456' not in d  # not valid identifier
 
 
-@pytest.mark.parametrize('zarr_version', [2, 3])
+@pytest.mark.parametrize('zarr_version', _VERSIONS)
 def test_group_key_completions(zarr_version):
     path = None if zarr_version == 2 else 'group1'
     g = group(path=path, zarr_version=zarr_version)
@@ -1718,7 +1771,7 @@ def _check_tree(g, expect_bytes, expect_text):
         isinstance(widget, ipytree.Tree)
 
 
-@pytest.mark.parametrize('zarr_version', [2, 3])
+@pytest.mark.parametrize('zarr_version', _VERSIONS)
 def test_tree(zarr_version):
     # setup
     path = None if zarr_version == 2 else 'group1'
@@ -1785,6 +1838,7 @@ def test_tree(zarr_version):
     _check_tree(g3, expect_bytes, expect_text)
 
 
+@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 def test_group_mismatched_store_versions():
     store_v3 = KVStoreV3(dict())
     store_v2 = KVStore(dict())
@@ -1816,3 +1870,15 @@ def test_group_mismatched_store_versions():
         Group(store_v3, path='group2', read_only=True, chunk_store=chunk_store_v3)
     with pytest.raises(ValueError):
         Group(store_v3, path='group2', read_only=True, chunk_store=chunk_store_v3)
+
+
+@pytest.mark.parametrize('zarr_version', _VERSIONS)
+def test_open_group_from_paths(zarr_version):
+    """Verify zarr_version is applied to both the store and chunk_store."""
+    store = tempfile.mkdtemp()
+    chunk_store = tempfile.mkdtemp()
+    atexit.register(atexit_rmtree, store)
+    atexit.register(atexit_rmtree, chunk_store)
+    path = 'g1'
+    g = open_group(store, path=path, chunk_store=chunk_store, zarr_version=zarr_version)
+    assert g._store._store_version == g._chunk_store._store_version == zarr_version
