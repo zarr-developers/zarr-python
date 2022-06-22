@@ -1008,7 +1008,10 @@ class Group(MutableMapping[str, Union['Group', Array]]):
         Arrays are known as "datasets" in HDF5 terminology. For compatibility
         with h5py, Zarr groups also implement the create_dataset() method.
 
-        Other `kwargs` are as per :func:`zarr.hierarchy.Group.create_dataset`.
+        Other `kwargs` are as per :func:`zarr.hierarchy.Group.create_dataset`
+        if a new array is being created; if the array already exists, keyword
+        arguments for :func:`zarr.core.Array` are extracted from `kwargs`
+        and supplied to that constructor.
 
         Parameters
         ----------
