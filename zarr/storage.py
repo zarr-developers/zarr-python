@@ -27,7 +27,7 @@ import tempfile
 import warnings
 import zipfile
 from collections import OrderedDict
-from collections.abc import MutableMapping
+from typing import MutableMapping
 from os import scandir
 from pickle import PicklingError
 from threading import Lock, RLock
@@ -95,7 +95,7 @@ except ImportError:  # pragma: no cover
 
 Path = Union[str, bytes, None]
 # allow MutableMapping for backwards compatibility
-StoreLike = Union[BaseStore, MutableMapping]
+StoreLike = Union[BaseStore, MutableMapping[str, Any]]
 
 
 def contains_array(store: StoreLike, path: Path = None) -> bool:
@@ -282,7 +282,7 @@ def _require_parent_group(
 
 def init_array(
     store: StoreLike,
-    shape: Tuple[int, ...],
+    shape: Union[int, Tuple[int, ...]],
     chunks: Union[bool, int, Tuple[int, ...]] = True,
     dtype=None,
     compressor="default",
@@ -710,19 +710,19 @@ class KVStore(Store):
     store which is likely to expose a MuttableMapping interface,
     """
 
-    def __init__(self, mutablemapping):
+    def __init__(self, mutablemapping: MutableMapping[str, Any]):
         self._mutable_mapping = mutablemapping
 
-    def __getitem__(self, key):
+    def __getitem__(self, key: str):
         return self._mutable_mapping[key]
 
-    def __setitem__(self, key, value):
+    def __setitem__(self, key: str, value: Any):
         self._mutable_mapping[key] = value
 
-    def __delitem__(self, key):
+    def __delitem__(self, key: str):
         del self._mutable_mapping[key]
 
-    def get(self, key, default=None):
+    def get(self, key: str, default: Any = None):
         return self._mutable_mapping.get(key, default)
 
     def values(self):

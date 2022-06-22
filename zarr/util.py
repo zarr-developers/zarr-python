@@ -56,7 +56,7 @@ def json_loads(s: str) -> Dict[str, Any]:
     return json.loads(ensure_text(s, 'ascii'))
 
 
-def normalize_shape(shape) -> Tuple[int]:
+def normalize_shape(shape: Any) -> Tuple[int, ...]:
     """Convenience function to normalize the `shape` argument."""
 
     if shape is None:

@@ -1,6 +1,6 @@
 import abc
 import os
-from collections.abc import MutableMapping
+from typing import MutableMapping
 from string import ascii_letters, digits
 from typing import Any, List, Mapping, Optional, Union
 
@@ -29,7 +29,7 @@ def assert_zarr_v3_api_available():
         )  # pragma: no cover
 
 
-class BaseStore(MutableMapping):
+class BaseStore(MutableMapping[str, Any]):
     """Abstract base class for store implementations.
 
     This is a thin wrapper over MutableMapping that provides methods to check

@@ -6,7 +6,7 @@ import operator
 import re
 from collections.abc import MutableMapping
 from functools import reduce
-from typing import Any
+from typing import Any, Tuple
 
 import numpy as np
 from numcodecs.compat import ensure_bytes, ensure_ndarray
@@ -365,7 +365,7 @@ class Array:
             return self._chunk_store
 
     @property
-    def shape(self):
+    def shape(self) -> Tuple[int, ...]:
         """A tuple of integers describing the length of each dimension of
         the array."""
         # N.B., shape may change if array is resized, hence need to refresh

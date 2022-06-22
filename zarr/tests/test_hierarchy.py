@@ -5,6 +5,7 @@ import pickle
 import shutil
 import tempfile
 import textwrap
+from typing import Any, Optional, Tuple
 import unittest
 
 import numpy as np
@@ -25,7 +26,7 @@ from zarr.creation import open_array
 from zarr.hierarchy import Group, group, open_group
 from zarr.storage import (ABSStore, DBMStore, KVStore, DirectoryStore, FSStore,
                           LMDBStore, LRUStoreCache, MemoryStore,
-                          NestedDirectoryStore, SQLiteStore, ZipStore,
+                          NestedDirectoryStore, SQLiteStore, StoreLike, ZipStore,
                           array_meta_key, atexit_rmglob, atexit_rmtree, data_root,
                           group_meta_key, init_array, init_group, meta_root)
 from zarr._storage.v3 import (ABSStoreV3, KVStoreV3, DirectoryStoreV3, MemoryStoreV3,
@@ -47,8 +48,12 @@ class TestGroup(unittest.TestCase):
         # can be overridden in sub-classes
         return KVStore(dict()), None
 
-    def create_group(self, store=None, path=None, read_only=False,
-                     chunk_store=None, synchronizer=None):
+    def create_group(self,
+                     store: Optional[StoreLike] = None,
+                     path: Optional[str] = None,
+                     read_only: bool = False,
+                     chunk_store: Optional[StoreLike] = None,
+                     synchronizer: Any = None) -> Group:
         # can be overridden in sub-classes
         if store is None:
             store, chunk_store = self.create_store()
@@ -109,7 +114,7 @@ class TestGroup(unittest.TestCase):
             Group(store, chunk_store=chunk_store)
         store.close()
 
-    def _subgroup_path(self, group, path):
+    def _subgroup_path(self, group: Group, path: str) -> Tuple[str, str]:
         path = path.rstrip('/')
         group_path = '/'.join([group.path, path])
         group_path = group_path.lstrip('/')
@@ -283,7 +288,7 @@ class TestGroup(unittest.TestCase):
             g1.store.rmdir(g2.path)
             assert group_meta_file not in g1.store
 
-    def _dataset_path(self, group, path):
+    def _dataset_path(self, group: Group, path: str) -> Tuple[str, str]:
         path = path.rstrip('/')
         absolute = path.startswith('/')
         if absolute:
@@ -374,6 +379,10 @@ class TestGroup(unittest.TestCase):
         assert d.compressor.codec_id == 'zlib'
         assert 1 == d.compressor.level
 
+        # write_empty_chunks
+        d = g.create_dataset('fff', shape=1000, dtype='u1', write_empty_chunks=False)
+        assert d.write_empty_chunks is False
+
         g.store.close()
 
     def test_require_dataset(self):
@@ -421,6 +430,14 @@ class TestGroup(unittest.TestCase):
             # can cast but not exact match
             g.require_dataset('foo', shape=1000, chunks=100, dtype='i2',
                               exact=True)
+
+        # write_empty_chunks
+        d4 = g.require_dataset('baz', shape=1000, dtype='u1')
+        d5 = g.require_dataset('baz', shape=1000, dtype='u1', write_empty_chunks=False)
+        assert d5.write_empty_chunks is False
+
+        d6 = g.require_dataset('baz', shape=1000, dtype='u1', write_empty_chunks=True)
+        assert d6.write_empty_chunks is True
 
         g.store.close()
 
@@ -1083,7 +1100,7 @@ class TestGroup(unittest.TestCase):
 
 
 @pytest.mark.parametrize('chunk_dict', [False, True])
-def test_group_init_from_dict(chunk_dict):
+def test_group_init_from_dict(chunk_dict: bool):
     if chunk_dict:
         store, chunk_store = dict(), dict()
     else:
@@ -1590,7 +1607,7 @@ def test_group(zarr_version):
 
 
 @pytest.mark.parametrize('zarr_version', _VERSIONS)
-def test_open_group(zarr_version):
+def test_open_group(zarr_version: int):
     # test the open_group() convenience function
 
     store = 'data/group.zarr'
@@ -1657,7 +1674,7 @@ def test_open_group(zarr_version):
 
 
 @pytest.mark.parametrize('zarr_version', _VERSIONS)
-def test_group_completions(zarr_version):
+def test_group_completions(zarr_version: int):
     path = None if zarr_version == 2 else 'group1'
     g = group(path=path, zarr_version=zarr_version)
     d = dir(g)
@@ -1688,7 +1705,7 @@ def test_group_completions(zarr_version):
 
 
 @pytest.mark.parametrize('zarr_version', _VERSIONS)
-def test_group_key_completions(zarr_version):
+def test_group_key_completions(zarr_version: int):
     path = None if zarr_version == 2 else 'group1'
     g = group(path=path, zarr_version=zarr_version)
     d = dir(g)
@@ -1760,7 +1777,7 @@ def test_group_key_completions(zarr_version):
         assert 'asdf;' in k
 
 
-def _check_tree(g, expect_bytes, expect_text):
+def _check_tree(g, expect_bytes: bytes, expect_text: str):
     assert expect_bytes == bytes(g.tree())
     assert expect_text == str(g.tree())
     expect_repr = expect_text
@@ -1772,7 +1789,7 @@ def _check_tree(g, expect_bytes, expect_text):
 
 
 @pytest.mark.parametrize('zarr_version', _VERSIONS)
-def test_tree(zarr_version):
+def test_tree(zarr_version: int):
     # setup
     path = None if zarr_version == 2 else 'group1'
     g1 = group(path=path, zarr_version=zarr_version)
@@ -1873,7 +1890,7 @@ def test_group_mismatched_store_versions():
 
 
 @pytest.mark.parametrize('zarr_version', _VERSIONS)
-def test_open_group_from_paths(zarr_version):
+def test_open_group_from_paths(zarr_version: int):
     """Verify zarr_version is applied to both the store and chunk_store."""
     store = tempfile.mkdtemp()
     chunk_store = tempfile.mkdtemp()
