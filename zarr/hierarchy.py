@@ -4,13 +4,14 @@ from typing import (
     Callable,
     Generator,
     List,
-    Literal,
     Optional,
     Tuple,
     Union,
     cast,
     MutableMapping
 )
+
+from typing_extensions import Literal
 
 import numpy as np
 import numpy.typing as npt

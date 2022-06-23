@@ -432,7 +432,7 @@ class TestGroup(unittest.TestCase):
                               exact=True)
 
         # write_empty_chunks
-        d4 = g.require_dataset('baz', shape=1000, dtype='u1')
+        _ = g.require_dataset('baz', shape=1000, dtype='u1')
         d5 = g.require_dataset('baz', shape=1000, dtype='u1', write_empty_chunks=False)
         assert d5.write_empty_chunks is False
 
