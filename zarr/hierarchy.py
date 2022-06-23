@@ -14,7 +14,6 @@ from typing import (
 from typing_extensions import Literal
 
 import numpy as np
-import numpy.typing as npt
 
 from zarr._storage.store import (StoreV3, _get_metadata_suffix, data_root, meta_root,
                                  DEFAULT_ZARR_VERSION, assert_zarr_v3_api_available)
@@ -1001,7 +1000,7 @@ class Group(MutableMapping[str, Union['Group', Array]]):
     def require_dataset(self,
                         name: str,
                         shape: Union[int, Tuple[int, ...]],
-                        dtype: Optional[npt.DTypeLike] = None,
+                        dtype: Any = None,
                         exact: bool = False,
                         **kwargs: Any):
         """Obtain an array, creating if it doesn't exist.
@@ -1034,7 +1033,7 @@ class Group(MutableMapping[str, Union['Group', Array]]):
     def _require_dataset_nosync(self,
                                 name: str,
                                 shape: Tuple[int, ...],
-                                dtype: Optional[npt.DTypeLike] = None,
+                                dtype: Any = None,
                                 exact: bool = False,
                                 **kwargs: Any) -> Array:
 
