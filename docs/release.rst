@@ -3,7 +3,7 @@ Release notes
 
 ..
     # Unindent the section between releases in order
-    # to coument your changes. On releases it will be
+    # to document your changes. On releases it will be
     # re-indented so that it does not show up in the notes.
 
     .. _unreleased:
