@@ -16,10 +16,6 @@ Release notes
 2.12.0
 ------
 
-.. warning::
-
-    Pre-release
-
 Enhancements
 ~~~~~~~~~~~~
 
