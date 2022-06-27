@@ -2,9 +2,10 @@ import collections
 import itertools
 import math
 import numbers
+from typing import Any, Generator, Iterable, List, NamedTuple, Optional, Tuple, TypeVar, Union, cast, overload
 
 import numpy as np
-
+import numpy.typing as npt
 
 from zarr.errors import (
     ArrayIndexError,
@@ -15,7 +16,48 @@ from zarr.errors import (
 )
 
 
-def is_integer(x):
+
+class ChunkProjection(NamedTuple):
+    """A mapping of items from chunk to output array. Can be used to extract items from the
+    chunk array for loading into an output array. Can also be used to extract items from a
+    value array for setting/updating in a chunk array.
+
+    Parameters
+    ----------
+    chunk_coords
+        Indices of chunk.
+    chunk_selection
+        Selection of items from chunk array.
+    out_selection
+        Selection of items in target (output) array.
+    
+    """
+
+    chunk_coords: Tuple[int, ...] 
+    chunk_selection: Tuple[int, ...]
+    out_selection: Tuple[int, ...]
+
+
+class ChunkDimProjection(NamedTuple):
+    """A mapping from chunk to output array for a single dimension.
+
+    Parameters
+    ----------
+    dim_chunk_ix
+        Index of chunk.
+    dim_chunk_sel
+        Selection of items from chunk array.
+    dim_out_sel
+        Selection of items in target (output) array.
+
+    """
+    dim_chunk_ix: int
+    dim_chunk_sel: slice
+    dim_out_sel: slice
+
+
+
+def is_integer(x: Any) -> bool:
     """True if x is an integer (both pure Python or NumPy).
 
     Note that Python's bool is considered an integer too.
@@ -23,7 +65,7 @@ def is_integer(x):
     return isinstance(x, numbers.Integral)
 
 
-def is_integer_list(x):
+def is_integer_list(x: Any) -> bool:
     """True if x is a list of integers.
 
     This function assumes ie *does not check* that all elements of the list
@@ -33,7 +75,7 @@ def is_integer_list(x):
     return isinstance(x, list) and len(x) > 0 and is_integer(x[0])
 
 
-def is_integer_array(x, ndim=None):
+def is_integer_array(x: Any, ndim: Optional[int] = None) -> bool:
     t = not np.isscalar(x) and \
         hasattr(x, 'shape') and \
         hasattr(x, 'dtype') and \
@@ -43,14 +85,14 @@ def is_integer_array(x, ndim=None):
     return t
 
 
-def is_bool_array(x, ndim=None):
+def is_bool_array(x: Any, ndim: Optional[int] = None) -> bool:
     t = hasattr(x, 'shape') and hasattr(x, 'dtype') and x.dtype == bool
     if ndim is not None:
         t = t and len(x.shape) == ndim
     return t
 
 
-def is_scalar(value, dtype):
+def is_scalar(value: Any, dtype: np.dtype) -> bool:
     if np.isscalar(value):
         return True
     if isinstance(value, tuple) and dtype.names and len(value) == len(dtype.names):
@@ -58,7 +100,7 @@ def is_scalar(value, dtype):
     return False
 
 
-def is_pure_fancy_indexing(selection, ndim):
+def is_pure_fancy_indexing(selection, ndim: int) -> bool:
     """Check whether a selection contains only scalars or integer array-likes.
 
     Parameters
@@ -101,7 +143,7 @@ def is_pure_fancy_indexing(selection, ndim):
     )
 
 
-def normalize_integer_selection(dim_sel, dim_len):
+def normalize_integer_selection(dim_sel: Any, dim_len: int) -> int:
 
     # normalize type to int
     dim_sel = int(dim_sel)
@@ -117,27 +159,248 @@ def normalize_integer_selection(dim_sel, dim_len):
     return dim_sel
 
 
-ChunkDimProjection = collections.namedtuple(
-    'ChunkDimProjection',
-    ('dim_chunk_ix', 'dim_chunk_sel', 'dim_out_sel')
-)
-"""A mapping from chunk to output array for a single dimension.
+def ceildiv(a: float, b: float) -> int:
+    return math.ceil(a / b)
 
-Parameters
-----------
-dim_chunk_ix
-    Index of chunk.
-dim_chunk_sel
-    Selection of items from chunk array.
-dim_out_sel
-    Selection of items in target (output) array.
+def check_selection_length(selection, shape: Tuple[int, ...]):
+    if len(selection) > len(shape):
+        err_too_many_indices(selection, shape)
 
-"""
 
+def replace_ellipsis(selection: Any, shape: Tuple[int, ...]) -> Tuple[int, ...]:
+
+    sel_tuple = ensure_tuple(selection)
+
+    # count number of ellipsis present
+    n_ellipsis = sum(1 for i in sel_tuple if i is Ellipsis)
+
+    if n_ellipsis > 1:
+        # more than 1 is an error
+        raise IndexError("an index can only have a single ellipsis ('...')")
+
+    elif n_ellipsis == 1:
+        # locate the ellipsis, count how many items to left and right
+        n_items_l = sel_tuple.index(Ellipsis)  # items to left of ellipsis
+        n_items_r = len(sel_tuple) - (n_items_l + 1)  # items to right of ellipsis
+        n_items = len(sel_tuple) - 1  # all non-ellipsis items
+
+        if n_items >= len(shape):
+            # ellipsis does nothing, just remove it
+            sel_tuple = tuple(i for i in sel_tuple if i != Ellipsis)
+
+        else:
+            # replace ellipsis with as many slices are needed for number of dims
+            new_item = sel_tuple[:n_items_l] + ((slice(None),) * (len(shape) - n_items))
+            if n_items_r:
+                new_item += sel_tuple[-n_items_r:]
+            sel_tuple = new_item
+
+    # fill out selection if not completely specified
+    if len(sel_tuple) < len(shape):
+        sel_tuple += (slice(None),) * (len(shape) - len(sel_tuple))
+
+    # check selection not too long
+    check_selection_length(sel_tuple, shape)
+
+    return sel_tuple
+
+
+def replace_lists(selection: Iterable[Any]) -> Iterable[Any]:
+    return tuple(
+        np.asarray(dim_sel) if isinstance(dim_sel, list) else dim_sel
+        for dim_sel in selection
+    )
+
+ 
+T = TypeVar('T')
+
+@overload
+def ensure_tuple(v: Tuple[T, ...]) -> Tuple[T, ...]: ...
+
+@overload
+def ensure_tuple(v: T) -> Tuple[T, ...]: ...
+
+def ensure_tuple(v: T) -> Tuple[T, ...]:
+    if not isinstance(v, tuple):
+        return (v,)
+    else:
+        return v
+
+
+def is_slice(s: Any) -> bool:
+    return isinstance(s, slice)
+
+
+def is_contiguous_slice(s: Any) -> bool:
+    return is_slice(s) and (s.step is None or s.step == 1)
+
+
+def is_positive_slice(s: Any) -> bool:
+    return is_slice(s) and (s.step is None or s.step >= 1)
+
+
+def is_contiguous_selection(selection: Any) -> bool:
+    selection = ensure_tuple(selection)
+    return all(
+        (is_integer_array(s) or is_contiguous_slice(s) or s == Ellipsis)
+        for s in selection
+    )
+
+
+def is_basic_selection(selection: Any) -> bool:
+    selection = ensure_tuple(selection)
+    return all(is_integer(s) or is_positive_slice(s) for s in selection)
+
+
+def wraparound_indices(x: npt.NDArray, dim_len: int) -> None:
+    loc_neg = x < 0
+    if np.any(loc_neg):
+        x[loc_neg] = x[loc_neg] + dim_len
+
+
+def boundscheck_indices(x, dim_len):
+    if np.any(x < 0) or np.any(x >= dim_len):
+        raise BoundsCheckError(dim_len)
+
+# noinspection PyProtectedMember
+def is_coordinate_selection(selection, array):
+    return (
+        (len(selection) == len(array._shape)) and
+        all(is_integer(dim_sel) or is_integer_array(dim_sel)
+            for dim_sel in selection)
+    )
+
+
+# noinspection PyProtectedMember
+def is_mask_selection(selection, array):
+    return (
+        len(selection) == 1 and
+        is_bool_array(selection[0]) and
+        selection[0].shape == array._shape
+    )
+
+def slice_to_range(s: slice, l: int) -> range:  # noqa: E741
+    return range(*s.indices(l))
+
+
+def ix_(selection: Any, shape: Tuple[int, ...]) -> npt.NDArray[np.int_]:
+    """Convert an orthogonal selection to a numpy advanced (fancy) selection, like numpy.ix_
+    but with support for slices and single ints."""
+
+    # normalisation
+    selection = replace_ellipsis(selection, shape)
+
+    # replace slice and int as these are not supported by numpy.ix_
+    selection = [slice_to_range(dim_sel, dim_len) if isinstance(dim_sel, slice)
+                 else [dim_sel] if is_integer(dim_sel)
+                 else dim_sel
+                 for dim_sel, dim_len in zip(selection, shape)]
+
+    # now get numpy to convert to a coordinate selection
+    selection = np.ix_(*selection)
+
+    return selection
+
+
+def oindex(a, selection):
+    """Implementation of orthogonal indexing with slices and ints."""
+    selection = replace_ellipsis(selection, a.shape)
+    drop_axes = tuple([i for i, s in enumerate(selection) if is_integer(s)])
+    selection = ix_(selection, a.shape)
+    result = a[selection]
+    if drop_axes:
+        result = result.squeeze(axis=drop_axes)
+    return result
+
+
+def oindex_set(a, selection, value):
+    selection = replace_ellipsis(selection, a.shape)
+    drop_axes = tuple([i for i, s in enumerate(selection) if is_integer(s)])
+    selection = ix_(selection, a.shape)
+    if not np.isscalar(value) and drop_axes:
+        value = np.asanyarray(value)
+        value_selection = [slice(None)] * len(a.shape)
+        for i in drop_axes:
+            value_selection[i] = np.newaxis
+        value_selection = tuple(value_selection)
+        value = value[value_selection]
+    a[selection] = value
+
+
+def check_fields(fields, dtype):
+    # early out
+    if fields is None:
+        return dtype
+    # check type
+    if not isinstance(fields, (str, list, tuple)):
+        raise IndexError("'fields' argument must be a string or list of strings; found "
+                         "{!r}".format(type(fields)))
+    if fields:
+        if dtype.names is None:
+            raise IndexError("invalid 'fields' argument, array does not have any fields")
+        try:
+            if isinstance(fields, str):
+                # single field selection
+                out_dtype = dtype[fields]
+            else:
+                # multiple field selection
+                out_dtype = np.dtype([(f, dtype[f]) for f in fields])
+        except KeyError as e:
+            raise IndexError("invalid 'fields' argument, field not found: {!r}".format(e))
+        else:
+            return out_dtype
+    else:
+        return dtype
+
+
+def check_no_multi_fields(fields):
+    if isinstance(fields, list):
+        if len(fields) == 1:
+            return fields[0]
+        elif len(fields) > 1:
+            raise IndexError('multiple fields are not supported for this operation')
+    return fields
+
+
+def pop_fields(selection):
+    if isinstance(selection, str):
+        # single field selection
+        fields = selection
+        selection = ()
+    elif not isinstance(selection, tuple):
+        # single selection item, no fields
+        fields = None
+        # leave selection as-is
+    else:
+        # multiple items, split fields from selection items
+        fields = [f for f in selection if isinstance(f, str)]
+        fields = fields[0] if len(fields) == 1 else fields
+        selection = tuple(s for s in selection if not isinstance(s, str))
+        selection = selection[0] if len(selection) == 1 else selection
+    return fields, selection
+
+
+def make_slice_selection(selection: Tuple[Any, ...]) -> List[slice]:
+    ls = []
+    for dim_selection in selection:
+        if is_integer(dim_selection):
+            ls.append(slice(int(dim_selection), int(dim_selection) + 1, 1))
+        elif isinstance(dim_selection, np.ndarray):
+            if len(dim_selection) == 1:
+                ls.append(
+                    slice(
+                        int(dim_selection[0]), int(dim_selection[0]) + 1, 1
+                    )
+                )
+            else:
+                raise ArrayIndexError()
+        else:
+            ls.append(dim_selection)
+    return ls
 
 class IntDimIndexer:
 
-    def __init__(self, dim_sel, dim_len, dim_chunk_len):
+    def __init__(self, dim_sel: Any, dim_len: int, dim_chunk_len: int):
 
         # normalize
         dim_sel = normalize_integer_selection(dim_sel, dim_len)
@@ -148,7 +411,7 @@ class IntDimIndexer:
         self.dim_chunk_len = dim_chunk_len
         self.nitems = 1
 
-    def __iter__(self):
+    def __iter__(self) -> Generator[ChunkDimProjection, None, None]:
         dim_chunk_ix = self.dim_sel // self.dim_chunk_len
         dim_offset = dim_chunk_ix * self.dim_chunk_len
         dim_chunk_sel = self.dim_sel - dim_offset
@@ -156,13 +419,9 @@ class IntDimIndexer:
         yield ChunkDimProjection(dim_chunk_ix, dim_chunk_sel, dim_out_sel)
 
 
-def ceildiv(a, b):
-    return math.ceil(a / b)
-
-
 class SliceDimIndexer:
 
-    def __init__(self, dim_sel, dim_len, dim_chunk_len):
+    def __init__(self, dim_sel: slice, dim_len: int, dim_chunk_len: int):
 
         # normalize
         self.start, self.stop, self.step = dim_sel.indices(dim_len)
@@ -175,7 +434,7 @@ class SliceDimIndexer:
         self.nitems = max(0, ceildiv((self.stop - self.start), self.step))
         self.nchunks = ceildiv(self.dim_len, self.dim_chunk_len)
 
-    def __iter__(self):
+    def __iter__(self) -> Generator[ChunkDimProjection, None, None]:
 
         # figure out the range of chunks we need to visit
         dim_chunk_ix_from = self.start // self.dim_chunk_len
@@ -221,111 +480,10 @@ class SliceDimIndexer:
             yield ChunkDimProjection(dim_chunk_ix, dim_chunk_sel, dim_out_sel)
 
 
-def check_selection_length(selection, shape):
-    if len(selection) > len(shape):
-        err_too_many_indices(selection, shape)
-
-
-def replace_ellipsis(selection, shape):
-
-    selection = ensure_tuple(selection)
-
-    # count number of ellipsis present
-    n_ellipsis = sum(1 for i in selection if i is Ellipsis)
-
-    if n_ellipsis > 1:
-        # more than 1 is an error
-        raise IndexError("an index can only have a single ellipsis ('...')")
-
-    elif n_ellipsis == 1:
-        # locate the ellipsis, count how many items to left and right
-        n_items_l = selection.index(Ellipsis)  # items to left of ellipsis
-        n_items_r = len(selection) - (n_items_l + 1)  # items to right of ellipsis
-        n_items = len(selection) - 1  # all non-ellipsis items
-
-        if n_items >= len(shape):
-            # ellipsis does nothing, just remove it
-            selection = tuple(i for i in selection if i != Ellipsis)
-
-        else:
-            # replace ellipsis with as many slices are needed for number of dims
-            new_item = selection[:n_items_l] + ((slice(None),) * (len(shape) - n_items))
-            if n_items_r:
-                new_item += selection[-n_items_r:]
-            selection = new_item
-
-    # fill out selection if not completely specified
-    if len(selection) < len(shape):
-        selection += (slice(None),) * (len(shape) - len(selection))
-
-    # check selection not too long
-    check_selection_length(selection, shape)
-
-    return selection
-
-
-def replace_lists(selection):
-    return tuple(
-        np.asarray(dim_sel) if isinstance(dim_sel, list) else dim_sel
-        for dim_sel in selection
-    )
-
-
-def ensure_tuple(v):
-    if not isinstance(v, tuple):
-        v = (v,)
-    return v
-
-
-ChunkProjection = collections.namedtuple(
-    'ChunkProjection',
-    ('chunk_coords', 'chunk_selection', 'out_selection')
-)
-"""A mapping of items from chunk to output array. Can be used to extract items from the
-chunk array for loading into an output array. Can also be used to extract items from a
-value array for setting/updating in a chunk array.
-
-Parameters
-----------
-chunk_coords
-    Indices of chunk.
-chunk_selection
-    Selection of items from chunk array.
-out_selection
-    Selection of items in target (output) array.
-
-"""
-
-
-def is_slice(s):
-    return isinstance(s, slice)
-
-
-def is_contiguous_slice(s):
-    return is_slice(s) and (s.step is None or s.step == 1)
-
-
-def is_positive_slice(s):
-    return is_slice(s) and (s.step is None or s.step >= 1)
-
-
-def is_contiguous_selection(selection):
-    selection = ensure_tuple(selection)
-    return all(
-        (is_integer_array(s) or is_contiguous_slice(s) or s == Ellipsis)
-        for s in selection
-    )
-
-
-def is_basic_selection(selection):
-    selection = ensure_tuple(selection)
-    return all(is_integer(s) or is_positive_slice(s) for s in selection)
-
-
 # noinspection PyProtectedMember
 class BasicIndexer:
 
-    def __init__(self, selection, array):
+    def __init__(self, selection, array: Any):
 
         # handle ellipsis
         selection = replace_ellipsis(selection, array._shape)
@@ -334,7 +492,7 @@ class BasicIndexer:
         dim_indexers = []
         for dim_sel, dim_len, dim_chunk_len in \
                 zip(selection, array._shape, array._chunks):
-
+            dim_indexer: Union[SliceDimIndexer, IntDimIndexer]
             if is_integer(dim_sel):
                 dim_indexer = IntDimIndexer(dim_sel, dim_len, dim_chunk_len)
 
@@ -353,7 +511,7 @@ class BasicIndexer:
                            if not isinstance(s, IntDimIndexer))
         self.drop_axes = None
 
-    def __iter__(self):
+    def __iter__(self) -> Generator[ChunkProjection, None, None]:
         for dim_projections in itertools.product(*self.dim_indexers):
 
             chunk_coords = tuple(p.dim_chunk_ix for p in dim_projections)
@@ -366,7 +524,7 @@ class BasicIndexer:
 
 class BoolArrayDimIndexer:
 
-    def __init__(self, dim_sel, dim_len, dim_chunk_len):
+    def __init__(self, dim_sel: npt.NDArray[np.bool_], dim_len: int, dim_chunk_len: int):
 
         # check number of dimensions
         if not is_bool_array(dim_sel, 1):
@@ -443,21 +601,10 @@ class Order:
         return order
 
 
-def wraparound_indices(x, dim_len):
-    loc_neg = x < 0
-    if np.any(loc_neg):
-        x[loc_neg] = x[loc_neg] + dim_len
-
-
-def boundscheck_indices(x, dim_len):
-    if np.any(x < 0) or np.any(x >= dim_len):
-        raise BoundsCheckError(dim_len)
-
-
 class IntArrayDimIndexer:
     """Integer array selection against a single dimension."""
 
-    def __init__(self, dim_sel, dim_len, dim_chunk_len, wraparound=True, boundscheck=True,
+    def __init__(self, dim_sel: Tuple[int, ...], dim_len: int, dim_chunk_len: int, wraparound=True, boundscheck=True,
                  order=Order.UNKNOWN):
 
         # ensure 1d array
@@ -511,7 +658,7 @@ class IntArrayDimIndexer:
         # compute offsets into the output array
         self.chunk_nitems_cumsum = np.cumsum(self.chunk_nitems)
 
-    def __iter__(self):
+    def __iter__(self) -> Generator[ChunkDimProjection, None, None]:
 
         for dim_chunk_ix in self.dim_chunk_ixs:
 
@@ -531,54 +678,6 @@ class IntArrayDimIndexer:
             dim_chunk_sel = self.dim_sel[start:stop] - dim_offset
 
             yield ChunkDimProjection(dim_chunk_ix, dim_chunk_sel, dim_out_sel)
-
-
-def slice_to_range(s: slice, l: int):  # noqa: E741
-    return range(*s.indices(l))
-
-
-def ix_(selection, shape):
-    """Convert an orthogonal selection to a numpy advanced (fancy) selection, like numpy.ix_
-    but with support for slices and single ints."""
-
-    # normalisation
-    selection = replace_ellipsis(selection, shape)
-
-    # replace slice and int as these are not supported by numpy.ix_
-    selection = [slice_to_range(dim_sel, dim_len) if isinstance(dim_sel, slice)
-                 else [dim_sel] if is_integer(dim_sel)
-                 else dim_sel
-                 for dim_sel, dim_len in zip(selection, shape)]
-
-    # now get numpy to convert to a coordinate selection
-    selection = np.ix_(*selection)
-
-    return selection
-
-
-def oindex(a, selection):
-    """Implementation of orthogonal indexing with slices and ints."""
-    selection = replace_ellipsis(selection, a.shape)
-    drop_axes = tuple([i for i, s in enumerate(selection) if is_integer(s)])
-    selection = ix_(selection, a.shape)
-    result = a[selection]
-    if drop_axes:
-        result = result.squeeze(axis=drop_axes)
-    return result
-
-
-def oindex_set(a, selection, value):
-    selection = replace_ellipsis(selection, a.shape)
-    drop_axes = tuple([i for i, s in enumerate(selection) if is_integer(s)])
-    selection = ix_(selection, a.shape)
-    if not np.isscalar(value) and drop_axes:
-        value = np.asanyarray(value)
-        value_selection = [slice(None)] * len(a.shape)
-        for i in drop_axes:
-            value_selection[i] = np.newaxis
-        value_selection = tuple(value_selection)
-        value = value[value_selection]
-    a[selection] = value
 
 
 # noinspection PyProtectedMember
@@ -668,24 +767,6 @@ class OIndex:
         selection = ensure_tuple(selection)
         selection = replace_lists(selection)
         return self.array.set_orthogonal_selection(selection, value, fields=fields)
-
-
-# noinspection PyProtectedMember
-def is_coordinate_selection(selection, array):
-    return (
-        (len(selection) == len(array._shape)) and
-        all(is_integer(dim_sel) or is_integer_array(dim_sel)
-            for dim_sel in selection)
-    )
-
-
-# noinspection PyProtectedMember
-def is_mask_selection(selection, array):
-    return (
-        len(selection) == 1 and
-        is_bool_array(selection[0]) and
-        selection[0].shape == array._shape
-    )
 
 
 # noinspection PyProtectedMember
@@ -836,78 +917,6 @@ class VIndex:
             raise VindexInvalidSelectionError(selection)
 
 
-def check_fields(fields, dtype):
-    # early out
-    if fields is None:
-        return dtype
-    # check type
-    if not isinstance(fields, (str, list, tuple)):
-        raise IndexError("'fields' argument must be a string or list of strings; found "
-                         "{!r}".format(type(fields)))
-    if fields:
-        if dtype.names is None:
-            raise IndexError("invalid 'fields' argument, array does not have any fields")
-        try:
-            if isinstance(fields, str):
-                # single field selection
-                out_dtype = dtype[fields]
-            else:
-                # multiple field selection
-                out_dtype = np.dtype([(f, dtype[f]) for f in fields])
-        except KeyError as e:
-            raise IndexError("invalid 'fields' argument, field not found: {!r}".format(e))
-        else:
-            return out_dtype
-    else:
-        return dtype
-
-
-def check_no_multi_fields(fields):
-    if isinstance(fields, list):
-        if len(fields) == 1:
-            return fields[0]
-        elif len(fields) > 1:
-            raise IndexError('multiple fields are not supported for this operation')
-    return fields
-
-
-def pop_fields(selection):
-    if isinstance(selection, str):
-        # single field selection
-        fields = selection
-        selection = ()
-    elif not isinstance(selection, tuple):
-        # single selection item, no fields
-        fields = None
-        # leave selection as-is
-    else:
-        # multiple items, split fields from selection items
-        fields = [f for f in selection if isinstance(f, str)]
-        fields = fields[0] if len(fields) == 1 else fields
-        selection = tuple(s for s in selection if not isinstance(s, str))
-        selection = selection[0] if len(selection) == 1 else selection
-    return fields, selection
-
-
-def make_slice_selection(selection):
-    ls = []
-    for dim_selection in selection:
-        if is_integer(dim_selection):
-            ls.append(slice(int(dim_selection), int(dim_selection) + 1, 1))
-        elif isinstance(dim_selection, np.ndarray):
-            if len(dim_selection) == 1:
-                ls.append(
-                    slice(
-                        int(dim_selection[0]), int(dim_selection[0]) + 1, 1
-                    )
-                )
-            else:
-                raise ArrayIndexError()
-        else:
-            ls.append(dim_selection)
-    return ls
-
-
 class PartialChunkIterator:
     """Iterator to retrieve the specific coordinates of requested data
     from within a compressed chunk.
@@ -949,8 +958,9 @@ class PartialChunkIterator:
 
     """
 
-    def __init__(self, selection, arr_shape):
+    def __init__(self, selection: Any, arr_shape: Tuple[int, ...]):
         selection = make_slice_selection(selection)
+
         self.arr_shape = arr_shape
 
         # number of selection dimensions can't be greater than the number of chunk dimensions
