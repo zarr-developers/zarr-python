@@ -1237,12 +1237,8 @@ def _normalize_store_arg(store: Union[StoreLike, str, None],
     result: BaseStore
     if zarr_version is None:
         zarr_version = getattr(store, '_store_version', DEFAULT_ZARR_VERSION)
-    if zarr_version == 2:
-        pass
-    elif zarr_version == 3:
+    if zarr_version == 3:
         assert_zarr_v3_api_available()
-    else:
-        raise NotImplementedError(f"Zarr version must be 2 or 3, not {zarr_version}")
 
     if store is None:
         if zarr_version == 2:
