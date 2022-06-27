@@ -158,11 +158,11 @@ class Group(MutableMapping[str, Union['Group', Array]]):
         self._version = zarr_version
 
         if self._version == 3:
-            cast(StoreV3, self._store)
+            _store = cast(StoreV3, self._store)
             self._data_key_prefix = data_root + self._key_prefix
             self._data_path = data_root + self._path
-            self._hierarchy_metadata = _get_hierarchy_metadata(store=self._store)
-            self._metadata_key_suffix = _get_metadata_suffix(store=self._store)
+            self._hierarchy_metadata = _get_hierarchy_metadata(store=_store)
+            self._metadata_key_suffix = _get_metadata_suffix(store=_store)
 
         # guard conditions
         if contains_array(store, path=self._path):
@@ -177,9 +177,9 @@ class Group(MutableMapping[str, Union['Group', Array]]):
             if self._version == 2:
                 raise GroupNotFoundError(path)
             else:
-                cast(StoreV3, self._store)
+                _store = cast(StoreV3, self._store)
                 implicit_prefix = meta_root + self._key_prefix
-                if self._store.list_prefix(implicit_prefix):
+                if _store.list_prefix(implicit_prefix):
                     # implicit group does not have any metadata
                     self._meta = None
                 else:
@@ -295,6 +295,7 @@ class Group(MutableMapping[str, Union['Group', Array]]):
             # TODO: Should this iterate over data folders and/or metadata
             #       folders and/or metadata files
 
+            self._store = cast(StoreV3, self._store)
             dir_path = meta_root + self._key_prefix
             name_start = len(dir_path)
             keys, prefixes = self._store.list_dir(dir_path)
@@ -442,7 +443,7 @@ class Group(MutableMapping[str, Union['Group', Array]]):
                          chunk_store=self._chunk_store, cache_attrs=self.attrs.cache,
                          synchronizer=self._synchronizer, zarr_version=self._version)
         elif self._version == 3:
-            cast(StoreV3, self._store)
+            self._store = cast(StoreV3, self._store)
             implicit_group = meta_root + path + '/'
             # non-empty folder in the metadata path implies an implicit group
             if self._store.list_prefix(implicit_group):
@@ -477,7 +478,7 @@ class Group(MutableMapping[str, Union['Group', Array]]):
 
     def __dir__(self) -> List[str]:
         # noinspection PyUnresolvedReferences
-        base = super().__dir__()
+        base = list(super().__dir__())
         keys = sorted(set(base + list(self)))
         keys = [k for k in keys if is_valid_python_name(k)]
         return keys
@@ -1235,18 +1236,27 @@ def _normalize_store_arg(store: Optional[StoreLike],
                          *,
                          storage_options: Optional[Dict[str, Any]] = None,
                          mode: AccessModes = "r",
-                         zarr_version: Optional[int] = None):
+                         zarr_version: Optional[int] = None) -> BaseStore:
+    result: BaseStore
     if zarr_version is None:
         zarr_version = getattr(store, '_store_version', DEFAULT_ZARR_VERSION)
-
-    if zarr_version != 2:
+    if zarr_version == 2:
+        pass
+    elif zarr_version == 3:
         assert_zarr_v3_api_available()
+    else:
+        raise NotImplementedError(f"Zarr version must be 2 or 3, not {zarr_version}")
 
     if store is None:
-        return MemoryStore() if zarr_version == 2 else MemoryStoreV3()
-    return normalize_store_arg(store,
-                               storage_options=storage_options, mode=mode,
-                               zarr_version=zarr_version)
+        if zarr_version == 2:
+            result = MemoryStore()
+        else:
+            result = MemoryStoreV3()
+    else:
+        result = normalize_store_arg(store,
+                                     storage_options=storage_options, mode=mode,
+                                     zarr_version=zarr_version)
+    return result
 
 
 def group(store: Optional[StoreLike] = None,

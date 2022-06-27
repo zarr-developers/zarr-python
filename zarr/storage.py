@@ -18,7 +18,6 @@ import atexit
 import errno
 import glob
 import multiprocessing
-from multiprocessing.sharedctypes import Value
 import operator
 import os
 import re
@@ -28,8 +27,8 @@ import tempfile
 import warnings
 import zipfile
 from collections import OrderedDict
-from typing import Callable, Generator, MutableMapping
-from os import PathLike, scandir
+from typing import Generator, MutableMapping
+from os import scandir
 from pickle import PicklingError
 from threading import Lock, RLock
 from typing import Optional, Union, List, Tuple, Dict, Any
@@ -60,7 +59,7 @@ from zarr.util import (buffer_size, json_loads, nolock, normalize_chunks,
                        normalize_shape, normalize_storage_path, retry_call)
 
 from zarr._storage.absstore import ABSStore  # noqa: F401
-from zarr._storage.store import (_get_hierarchy_metadata,  # noqa: F401
+from zarr._storage.store import (StoreV3, _get_hierarchy_metadata,  # noqa: F401
                                  _get_metadata_suffix,
                                  _listdir_from_keys,
                                  _rename_from_keys,
@@ -130,7 +129,9 @@ def contains_group(store: StoreLike, path: Path = None, explicit_only=True) -> b
         return False
 
 
-def _normalize_store_arg_v2(store: Any, storage_options: Optional[Dict[str, Any]] = None, mode="r") -> BaseStore:
+def _normalize_store_arg_v2(store: Any,
+                            storage_options: Optional[Dict[str, Any]] = None,
+                            mode="r") -> BaseStore:
     # default to v2 store for backward compatibility
     zarr_version = getattr(store, '_store_version', 2)
     if zarr_version != 2:
@@ -162,7 +163,7 @@ def normalize_store_arg(store: StoreLike,
                         mode: AccessModes = "r", *,
                         zarr_version: Optional[int] = None) -> BaseStore:
 
-    result: BaseStore
+    result: Store
     if zarr_version is None:
         # default to v2 store for backward compatibility
         zarr_version = getattr(store, "_store_version", DEFAULT_ZARR_VERSION)
@@ -194,7 +195,7 @@ def rmdir(store: StoreLike, path: Path = None):
             _rmdir_from_keys_v3(store, path)  # type: ignore
 
 
-def rename(store: Store, src_path: Path, dst_path: Path):
+def rename(store: BaseStore, src_path: Path, dst_path: Path):
     """Rename all items under the given path. If `store` provides a `rename` method,
     this will be called, otherwise will fall back to implementation via the
     `Store` interface."""
