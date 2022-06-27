@@ -5,7 +5,7 @@ import pickle
 import shutil
 import tempfile
 import textwrap
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple, cast
 import unittest
 
 import numpy as np
@@ -32,7 +32,7 @@ from zarr.storage import (ABSStore, DBMStore, KVStore, DirectoryStore, FSStore,
 from zarr._storage.v3 import (ABSStoreV3, KVStoreV3, DirectoryStoreV3, MemoryStoreV3,
                               FSStoreV3, ZipStoreV3, DBMStoreV3, LMDBStoreV3, SQLiteStoreV3,
                               LRUStoreCacheV3)
-from zarr.util import InfoReporter, buffer_size
+from zarr.util import AccessModes, InfoReporter, buffer_size
 from zarr.tests.util import skip_test_env_var, have_fsspec, abs_container
 
 
@@ -1627,6 +1627,8 @@ def test_open_group(zarr_version: int):
     # mode in 'r', 'r+'
     open_array('data/array.zarr', shape=100, chunks=10, mode='w')
     for mode in 'r', 'r+':
+        # todo: figure out how to get mypy to understand subsets of literals
+        mode = cast(AccessModes, mode)
         with pytest.raises(ValueError):
             open_group('doesnotexist', mode=mode)
         with pytest.raises(ValueError):
@@ -1655,6 +1657,8 @@ def test_open_group(zarr_version: int):
 
     # mode in 'w-', 'x'
     for mode in 'w-', 'x':
+        # todo: figure out how to get mypy to understand subsets of literals
+        mode = cast(AccessModes, mode)
         shutil.rmtree(store)
         g = open_group(store, path=path, mode=mode, zarr_version=zarr_version)
         assert isinstance(g, Group)
