@@ -174,7 +174,7 @@ class Metadata2:
         return json_dumps(meta)
 
     @classmethod
-    def encode_dtype(cls, d: np.dtype[Any]):
+    def encode_dtype(cls, d: np.dtype):
         if d.fields is None:
             return d.str
         else:
@@ -189,7 +189,7 @@ class Metadata2:
         return d
 
     @classmethod
-    def decode_dtype(cls, d: Any) -> np.dtype[Any]:
+    def decode_dtype(cls, d: Any) -> np.dtype:
         d = cls._decode_dtype_descr(d)
         return np.dtype(d)
 
@@ -214,7 +214,7 @@ class Metadata2:
 
     @classmethod
     def decode_fill_value(
-        cls, v: Any, dtype: np.dtype[Any], object_codec: Any = None
+        cls, v: Any, dtype: np.dtype, object_codec: Any = None
     ) -> Any:
         # early out
         if v is None:
@@ -264,7 +264,7 @@ class Metadata2:
 
     @classmethod
     def encode_fill_value(
-        cls, v: Any, dtype: np.dtype[Any], object_codec: Any = None
+        cls, v: Any, dtype: np.dtype, object_codec: Any = None
     ) -> Any:
         # early out
         if v is None:

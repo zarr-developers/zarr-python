@@ -12,8 +12,6 @@ from typing import (
     MutableMapping
 )
 
-from typing_extensions import Literal
-
 import numpy as np
 
 from zarr._storage.store import (Store, StoreV3, _get_metadata_suffix, data_root, meta_root,
@@ -46,6 +44,7 @@ from zarr.storage import (
 )
 from zarr._storage.v3 import MemoryStoreV3
 from zarr.util import (
+    AccessModes,
     InfoReporter,
     TreeViewer,
     is_valid_python_name,
@@ -53,8 +52,6 @@ from zarr.util import (
     normalize_shape,
     normalize_storage_path,
 )
-
-AccessModes = Literal['r', 'r+', 'w', 'a', 'w-', 'x']
 
 
 class Group(MutableMapping[str, Union['Group', Array]]):

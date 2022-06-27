@@ -9,8 +9,7 @@ from zarr.errors import (
     MetadataError,
     ReadOnlyError,
 )
-from zarr.hierarchy import AccessModes
-from zarr.util import (buffer_size, json_loads, normalize_storage_path)
+from zarr.util import (buffer_size, json_loads, normalize_storage_path, AccessModes)
 
 from zarr._storage.absstore import ABSStoreV3  # noqa: F401
 from zarr._storage.store import (_get_hierarchy_metadata,  # noqa: F401

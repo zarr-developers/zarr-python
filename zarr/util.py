@@ -15,6 +15,9 @@ from numcodecs.registry import codec_registry
 from numcodecs.blosc import cbuffer_sizes, cbuffer_metainfo
 
 from typing import Any, Callable, Dict, Optional, Tuple, Union
+from typing_extensions import Literal
+
+AccessModes = Literal['r', 'r+', 'w', 'a', 'w-', 'x']
 
 
 def flatten(arg: Iterable) -> Iterable:

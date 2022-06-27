@@ -27,11 +27,12 @@ import tempfile
 import warnings
 import zipfile
 from collections import OrderedDict
-from typing import Generator, MutableMapping
+from typing import Generator, MutableMapping, cast
 from os import scandir
 from pickle import PicklingError
 from threading import Lock, RLock
 from typing import Optional, Union, List, Tuple, Dict, Any
+
 import uuid
 import time
 
@@ -51,12 +52,11 @@ from zarr.errors import (
     FSPathExistNotDir,
     ReadOnlyError,
 )
-from zarr.hierarchy import AccessModes
 from zarr.meta import encode_array_metadata, encode_group_metadata
 from zarr.util import (buffer_size, json_loads, nolock, normalize_chunks,
                        normalize_dimension_separator,
                        normalize_dtype, normalize_fill_value, normalize_order,
-                       normalize_shape, normalize_storage_path, retry_call)
+                       normalize_shape, normalize_storage_path, retry_call, AccessModes)
 
 from zarr._storage.absstore import ABSStore  # noqa: F401
 from zarr._storage.store import (StoreV3, _get_hierarchy_metadata,  # noqa: F401
@@ -92,7 +92,6 @@ try:
 except ImportError:  # pragma: no cover
     from zarr.codecs import Zlib
     default_compressor = Zlib()
-
 
 Path = Union[str, bytes, None]
 # allow MutableMapping for backwards compatibility
@@ -131,7 +130,7 @@ def contains_group(store: StoreLike, path: Path = None, explicit_only=True) -> b
 
 def _normalize_store_arg_v2(store: Any,
                             storage_options: Optional[Dict[str, Any]] = None,
-                            mode="r") -> BaseStore:
+                            mode="r") -> Store:
     # default to v2 store for backward compatibility
     zarr_version = getattr(store, '_store_version', 2)
     if zarr_version != 2:
@@ -163,7 +162,7 @@ def normalize_store_arg(store: StoreLike,
                         mode: AccessModes = "r", *,
                         zarr_version: Optional[int] = None) -> BaseStore:
 
-    result: Store
+    result: BaseStore
     if zarr_version is None:
         # default to v2 store for backward compatibility
         zarr_version = getattr(store, "_store_version", DEFAULT_ZARR_VERSION)
@@ -230,6 +229,7 @@ def listdir(store: BaseStore, path: Path = None):
 def _getsize(store: BaseStore, path: Path = None) -> int:
     # compute from size of values
     if path and path in store:
+        path = cast(str, path)
         v = store[path]
         size = buffer_size(v)
     else:

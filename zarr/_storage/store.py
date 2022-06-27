@@ -3,7 +3,6 @@ import os
 from typing import MutableMapping, Set, Tuple
 from string import ascii_letters, digits
 from typing import Any, List, Mapping, Optional, Union
-from zarr._storage.v3 import KVStoreV3
 
 from zarr.meta import Metadata2, Metadata3
 from zarr.util import normalize_storage_path
@@ -265,7 +264,7 @@ class StoreV3(BaseStore):
         return NotImplemented
 
     @staticmethod
-    def _ensure_store(store: Any) -> Union['StoreV3', 'KVStoreV3', None]:
+    def _ensure_store(store: Any) -> Union['StoreV3', None]:
         """
         We want to make sure internally that zarr stores are always a class
         with a specific interface derived from ``Store``, which is slightly
