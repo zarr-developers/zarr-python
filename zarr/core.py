@@ -6,7 +6,7 @@ import operator
 import re
 from collections.abc import MutableMapping
 from functools import reduce
-from typing import Any
+from typing import Any, Optional, Sequence, Union
 
 import numpy as np
 from numcodecs.compat import ensure_bytes, ensure_ndarray
@@ -788,7 +788,7 @@ class Array:
             result = self.get_basic_selection(pure_selection, fields=fields)
         return result
 
-    def get_basic_selection(self, selection=Ellipsis, out=None, fields=None):
+    def get_basic_selection(self, selection=Ellipsis, out=None, fields: Optional[Union[str, Sequence[str]]]=None):
         """Retrieve data for an item or region of the array.
 
         Parameters
@@ -1238,20 +1238,8 @@ class Array:
             out = np.empty(out_shape, dtype=out_dtype, order=self._order)
         else:
             check_array_shape('out', out, out_shape)
-
-        # iterate over chunks
-        #if any(map(lambda x: x == 0, self.shape)):
-        #    # sequentially get one key at a time from storage
-        #    for chunk_coords, chunk_selection, out_selection in indexer:
-        #
-        #        # load chunk selection into output array
-        #        self._chunk_getitem(chunk_coords, chunk_selection, out, out_selection,
-        #                            drop_axes=indexer.drop_axes, fields=fields)
-        #else:
-            # allow storage to get multiple items at once
-        #    if all(map(lambda x: x > 0, out_shape)):
         
-        if indexer_parts:
+        if len(indexer_parts) > 0:
             lchunk_coords, lchunk_selection, lout_selection = zip(*indexer_parts)
             self._chunk_getitems(lchunk_coords, lchunk_selection, out, lout_selection,
                                 drop_axes=indexer.drop_axes, fields=fields)
