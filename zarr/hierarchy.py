@@ -2,6 +2,7 @@ from itertools import islice
 from typing import (
     Any,
     Callable,
+    Dict,
     Generator,
     List,
     Optional,
@@ -15,7 +16,7 @@ from typing_extensions import Literal
 
 import numpy as np
 
-from zarr._storage.store import (StoreV3, _get_metadata_suffix, data_root, meta_root,
+from zarr._storage.store import (Store, StoreV3, _get_metadata_suffix, data_root, meta_root,
                                  DEFAULT_ZARR_VERSION, assert_zarr_v3_api_available)
 from zarr.attrs import Attributes
 from zarr.core import Array
@@ -129,7 +130,7 @@ class Group(MutableMapping[str, Union['Group', Array]]):
     """
 
     def __init__(self,
-                 store: BaseStore,
+                 store: StoreLike,
                  path: Optional[str] = None,
                  read_only: bool = False,
                  chunk_store: Optional[StoreLike] = None,
@@ -176,6 +177,7 @@ class Group(MutableMapping[str, Union['Group', Array]]):
             if self._version == 2:
                 raise GroupNotFoundError(path)
             else:
+                cast(StoreV3, self._store)
                 implicit_prefix = meta_root + self._key_prefix
                 if self._store.list_prefix(implicit_prefix):
                     # implicit group does not have any metadata
@@ -243,7 +245,7 @@ class Group(MutableMapping[str, Union['Group', Array]]):
         return self._synchronizer
 
     @property
-    def attrs(self) -> MutableMapping[str, Any]:
+    def attrs(self) -> Attributes:
         """A MutableMapping containing user-defined attributes. Note that
         attribute values must be JSON serializable."""
         return self._attrs
@@ -283,6 +285,7 @@ class Group(MutableMapping[str, Union['Group', Array]]):
 
         """
         if getattr(self._store, '_store_version', 2) == 2:
+            cast(Store, self._store)
             for key in sorted(listdir(self._store, self._path)):
                 path = self._key_prefix + key
                 if (contains_array(self._store, path) or
@@ -376,17 +379,17 @@ class Group(MutableMapping[str, Union['Group', Array]]):
         return (self._store, self._path, self._read_only, self._chunk_store,
                 self.attrs.cache, self._synchronizer)
 
-    def __setstate__(self, state):
+    def __setstate__(self, state: Tuple[Any, ...]):
         self.__init__(*state)
 
-    def _item_path(self, item: str) -> str:
+    def _item_path(self, item: Any) -> str:
         absolute = isinstance(item, str) and item and item[0] == '/'
         path = normalize_storage_path(item)
         if not absolute and self._path:
             path = self._key_prefix + path
         return path
 
-    def __contains__(self, item: str):
+    def __contains__(self, item: Any) -> bool:
         """Test for group membership.
 
         Examples
@@ -439,6 +442,7 @@ class Group(MutableMapping[str, Union['Group', Array]]):
                          chunk_store=self._chunk_store, cache_attrs=self.attrs.cache,
                          synchronizer=self._synchronizer, zarr_version=self._version)
         elif self._version == 3:
+            cast(StoreV3, self._store)
             implicit_group = meta_root + path + '/'
             # non-empty folder in the metadata path implies an implicit group
             if self._store.list_prefix(implicit_group):
@@ -450,13 +454,13 @@ class Group(MutableMapping[str, Union['Group', Array]]):
         else:
             raise KeyError(item)
 
-    def __setitem__(self, item, value):
+    def __setitem__(self, item: str, value: Any):
         self.array(item, value, overwrite=True)
 
-    def __delitem__(self, item):
+    def __delitem__(self, item: str):
         return self._write_op(self._delitem_nosync, item)
 
-    def _delitem_nosync(self, item):
+    def _delitem_nosync(self, item: str):
         path = self._item_path(item)
         if contains_array(self._store, path) or \
                 contains_group(self._store, path, explicit_only=False):
@@ -464,14 +468,14 @@ class Group(MutableMapping[str, Union['Group', Array]]):
         else:
             raise KeyError(item)
 
-    def __getattr__(self, item):
+    def __getattr__(self, item: str):
         # allow access to group members via dot notation
         try:
             return self.__getitem__(item)
         except KeyError:
             raise AttributeError
 
-    def __dir__(self):
+    def __dir__(self) -> List[str]:
         # noinspection PyUnresolvedReferences
         base = super().__dir__()
         keys = sorted(set(base + list(self)))
@@ -1227,10 +1231,10 @@ class Group(MutableMapping[str, Union['Group', Array]]):
         self._write_op(self._move_nosync, source, dest)
 
 
-def _normalize_store_arg(store: Optional[BaseStore],
+def _normalize_store_arg(store: Optional[StoreLike],
                          *,
-                         storage_options: Any = None,
-                         mode: str = "r",
+                         storage_options: Optional[Dict[str, Any]] = None,
+                         mode: AccessModes = "r",
                          zarr_version: Optional[int] = None):
     if zarr_version is None:
         zarr_version = getattr(store, '_store_version', DEFAULT_ZARR_VERSION)
@@ -1245,7 +1249,7 @@ def _normalize_store_arg(store: Optional[BaseStore],
                                zarr_version=zarr_version)
 
 
-def group(store: Optional[BaseStore] = None,
+def group(store: Optional[StoreLike] = None,
           overwrite: bool = False,
           chunk_store: Optional[StoreLike] = None,
           cache_attrs: bool = True,

@@ -18,6 +18,7 @@ import atexit
 import errno
 import glob
 import multiprocessing
+from multiprocessing.sharedctypes import Value
 import operator
 import os
 import re
@@ -27,8 +28,8 @@ import tempfile
 import warnings
 import zipfile
 from collections import OrderedDict
-from typing import MutableMapping
-from os import scandir
+from typing import Callable, Generator, MutableMapping
+from os import PathLike, scandir
 from pickle import PicklingError
 from threading import Lock, RLock
 from typing import Optional, Union, List, Tuple, Dict, Any
@@ -51,6 +52,7 @@ from zarr.errors import (
     FSPathExistNotDir,
     ReadOnlyError,
 )
+from zarr.hierarchy import AccessModes
 from zarr.meta import encode_array_metadata, encode_group_metadata
 from zarr.util import (buffer_size, json_loads, nolock, normalize_chunks,
                        normalize_dimension_separator,
@@ -128,7 +130,7 @@ def contains_group(store: StoreLike, path: Path = None, explicit_only=True) -> b
         return False
 
 
-def _normalize_store_arg_v2(store: Any, storage_options=None, mode="r") -> BaseStore:
+def _normalize_store_arg_v2(store: Any, storage_options: Optional[Dict[str, Any]] = None, mode="r") -> BaseStore:
     # default to v2 store for backward compatibility
     zarr_version = getattr(store, '_store_version', 2)
     if zarr_version != 2:
@@ -155,19 +157,24 @@ def _normalize_store_arg_v2(store: Any, storage_options=None, mode="r") -> BaseS
     return store
 
 
-def normalize_store_arg(store: Any, storage_options=None, mode="r", *,
-                        zarr_version=None) -> BaseStore:
+def normalize_store_arg(store: StoreLike,
+                        storage_options: Optional[Dict[str, Any]] = None,
+                        mode: AccessModes = "r", *,
+                        zarr_version: Optional[int] = None) -> BaseStore:
+
+    result: BaseStore
     if zarr_version is None:
         # default to v2 store for backward compatibility
         zarr_version = getattr(store, "_store_version", DEFAULT_ZARR_VERSION)
-    elif zarr_version not in [2, 3]:
-        raise ValueError("zarr_version must be either 2 or 3")
+
     if zarr_version == 2:
-        normalize_store = _normalize_store_arg_v2
+        result = _normalize_store_arg_v2(store, storage_options, mode)
     elif zarr_version == 3:
         from zarr._storage.v3 import _normalize_store_arg_v3
-        normalize_store = _normalize_store_arg_v3
-    return normalize_store(store, storage_options, mode)
+        result = _normalize_store_arg_v3(store, storage_options, mode)
+    else:
+        raise ValueError("zarr_version must be either 2 or 3")
+    return result
 
 
 def rmdir(store: StoreLike, path: Path = None):
@@ -590,7 +597,7 @@ def init_group(
     store: StoreLike,
     overwrite: bool = False,
     path: Path = None,
-    chunk_store: StoreLike = None,
+    chunk_store: Optional[StoreLike] = None,
 ):
     """Initialize a group store. Note that this is a low-level function and there should be no
     need to call this directly from user code.
@@ -637,7 +644,7 @@ def _init_group_metadata(
     store: StoreLike,
     overwrite: Optional[bool] = False,
     path: Optional[str] = None,
-    chunk_store: StoreLike = None,
+    chunk_store: Optional[StoreLike] = None,
 ):
 
     store_version = getattr(store, '_store_version', 2)
@@ -691,7 +698,7 @@ def _init_group_metadata(
         store[key] = encode_group_metadata(meta)
 
 
-def _dict_store_keys(d: Dict, prefix="", cls=dict):
+def _dict_store_keys(d: Dict[str, Any], prefix="", cls: Any = dict) -> Generator[Any, None, None]:
     for k in d.keys():
         v = d[k]
         if isinstance(v, cls):
@@ -770,7 +777,10 @@ class MemoryStore(Store):
 
     """
 
-    def __init__(self, root=None, cls=dict, dimension_separator=None):
+    def __init__(self,
+                 root: Any = None,
+                 cls: Any = dict,
+                 dimension_separator: Optional[str] = None):
         if root is None:
             self.root = cls()
         else:
@@ -779,10 +789,10 @@ class MemoryStore(Store):
         self.write_mutex = Lock()
         self._dimension_separator = dimension_separator
 
-    def __getstate__(self):
+    def __getstate__(self) -> Tuple[Any, Any]:
         return self.root, self.cls
 
-    def __setstate__(self, state):
+    def __setstate__(self, state: Tuple[Any, ...]):
         root, cls = state
         self.__init__(root=root, cls=cls)
 
@@ -797,7 +807,7 @@ class MemoryStore(Store):
                 raise KeyError(item)
         return parent, segments[-1]
 
-    def _require_parent(self, item):
+    def _require_parent(self, item: str):
         parent = self.root
         # split the item
         segments = item.split('/')
@@ -839,7 +849,7 @@ class MemoryStore(Store):
             except KeyError:
                 raise KeyError(item)
 
-    def __contains__(self, item: str):  # type: ignore[override]
+    def __contains__(self, item: str) -> bool:  # type: ignore[override]
         try:
             parent, key = self._get_parent(item)
             value = parent[key]
@@ -848,18 +858,18 @@ class MemoryStore(Store):
         else:
             return not isinstance(value, self.cls)
 
-    def __eq__(self, other):
+    def __eq__(self, other) -> bool:
         return (
             isinstance(other, MemoryStore) and
             self.root == other.root and
             self.cls == other.cls
         )
 
-    def keys(self):
+    def keys(self) -> Generator[str, None, None]:
         for k in _dict_store_keys(self.root, cls=self.cls):
             yield k
 
-    def __iter__(self):
+    def __iter__(self) -> Generator[str, None, None]:
         return self.keys()
 
     def __len__(self) -> int:
@@ -1008,7 +1018,10 @@ class DirectoryStore(Store):
 
     """
 
-    def __init__(self, path, normalize_keys=False, dimension_separator=None):
+    def __init__(self,
+                 path: str,
+                 normalize_keys: bool = False,
+                 dimension_separator: Optional[str] = None):
 
         # guard conditions
         path = os.path.abspath(path)
@@ -1019,11 +1032,11 @@ class DirectoryStore(Store):
         self.normalize_keys = normalize_keys
         self._dimension_separator = dimension_separator
 
-    def _normalize_key(self, key):
+    def _normalize_key(self, key: str):
         return key.lower() if self.normalize_keys else key
 
     @staticmethod
-    def _fromfile(fn):
+    def _fromfile(fn: str):
         """ Read data from a file
 
         Parameters
@@ -1040,7 +1053,7 @@ class DirectoryStore(Store):
             return f.read()
 
     @staticmethod
-    def _tofile(a, fn):
+    def _tofile(a: Any, fn: str):
         """ Write data to a file
 
         Parameters
@@ -1058,7 +1071,7 @@ class DirectoryStore(Store):
         with open(fn, mode='wb') as f:
             f.write(a)
 
-    def __getitem__(self, key):
+    def __getitem__(self, key: str):
         key = self._normalize_key(key)
         filepath = os.path.join(self.path, key)
         if os.path.isfile(filepath):
@@ -1066,7 +1079,7 @@ class DirectoryStore(Store):
         else:
             raise KeyError(key)
 
-    def __setitem__(self, key, value):
+    def __setitem__(self, key: str, value: Any):
         key = self._normalize_key(key)
 
         # coerce to flat, contiguous array (ideally without copying)

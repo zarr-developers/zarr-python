@@ -1,8 +1,9 @@
 import abc
 import os
-from typing import MutableMapping
+from typing import MutableMapping, Set, Tuple
 from string import ascii_letters, digits
 from typing import Any, List, Mapping, Optional, Union
+from zarr._storage.v3 import KVStoreV3
 
 from zarr.meta import Metadata2, Metadata3
 from zarr.util import normalize_storage_path
@@ -135,7 +136,7 @@ class BaseStore(MutableMapping[str, Any]):
 class Store(BaseStore):
     """Abstract store class used by implementations following the Zarr v2 spec.
 
-    Adds public `listdir`, `rename`, and `rmdir` methods on top of BaseStore.
+    Adds public `listdir` and `rmdir` methods on top of BaseStore.
 
     .. added: 2.11.0
 
@@ -155,11 +156,11 @@ class Store(BaseStore):
 
 
 class StoreV3(BaseStore):
-    _store_version = 3
+    _store_version: int = 3
     _metadata_class = Metadata3
     _valid_key_characters = set(ascii_letters + digits + "/.-_")
 
-    def _valid_key(self, key: str) -> bool:
+    def _valid_key(self, key: Any) -> bool:
         """
         Verify that a key conforms to the specification.
 
@@ -204,16 +205,16 @@ class StoreV3(BaseStore):
         if key.endswith('/'):
             raise ValueError("keys may not end in /")
 
-    def list_prefix(self, prefix):
+    def list_prefix(self, prefix: str) -> List[str]:
         if prefix.startswith('/'):
             raise ValueError("prefix must not begin with /")
         # TODO: force prefix to end with /?
         return [k for k in self.list() if k.startswith(prefix)]
 
-    def erase(self, key):
+    def erase(self, key: str):
         self.__delitem__(key)
 
-    def erase_prefix(self, prefix):
+    def erase_prefix(self, prefix: str):
         assert prefix.endswith("/")
 
         if prefix == "/":
@@ -223,7 +224,7 @@ class StoreV3(BaseStore):
         for key in all_keys:
             self.erase(key)
 
-    def list_dir(self, prefix):
+    def list_dir(self, prefix: str) -> Tuple[List[str], List[str]]:
         """
         TODO: carefully test this with trailing/leading slashes
         """
@@ -232,8 +233,8 @@ class StoreV3(BaseStore):
 
         all_keys = self.list_prefix(prefix)
         len_prefix = len(prefix)
-        keys = []
-        prefixes = []
+        keys: List[str] = []
+        prefixes: List[str] = []
         for k in all_keys:
             trail = k[len_prefix:]
             if "/" not in trail:
@@ -242,29 +243,29 @@ class StoreV3(BaseStore):
                 prefixes.append(prefix + trail.split("/", maxsplit=1)[0] + "/")
         return keys, list(set(prefixes))
 
-    def list(self):
+    def list(self) -> List[str]:
         return list(self.keys())
 
-    def __contains__(self, key):
+    def __contains__(self, key: Any) -> bool:
         return key in self.list()
 
     @abc.abstractmethod
-    def __setitem__(self, key, value):
+    def __setitem__(self, key: str, value: Any):
         """Set a value."""
 
     @abc.abstractmethod
-    def __getitem__(self, key):
+    def __getitem__(self, key: str) -> Any:
         """Get a value."""
 
     def clear(self):
         """Remove all items from store."""
         self.erase_prefix("/")
 
-    def __eq__(self, other):
+    def __eq__(self, other: Any):
         return NotImplemented
 
     @staticmethod
-    def _ensure_store(store):
+    def _ensure_store(store: Any) -> Union['StoreV3', 'KVStoreV3', None]:
         """
         We want to make sure internally that zarr stores are always a class
         with a specific interface derived from ``Store``, which is slightly
@@ -306,7 +307,7 @@ class StoreV3(BaseStore):
 
 
 # allow MutableMapping for backwards compatibility
-StoreLike = Union[BaseStore, MutableMapping]
+StoreLike = Union[BaseStore, MutableMapping[str, Any]]
 
 
 def _path_to_prefix(path: Optional[str]) -> str:
@@ -411,7 +412,7 @@ def _rmdir_from_keys_v3(store: StoreV3, path: str = "") -> None:
 def _listdir_from_keys(store: BaseStore, path: Optional[str] = None) -> List[str]:
     # assume path already normalized
     prefix = _path_to_prefix(path)
-    children = set()
+    children: Set[str] = set()
     for key in list(store.keys()):
         if key.startswith(prefix) and len(key) > len(prefix):
             suffix = key[len(prefix):]

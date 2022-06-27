@@ -9,7 +9,7 @@ from numcodecs.abc import Codec
 from zarr.errors import MetadataError
 from zarr.util import json_dumps, json_loads
 
-from typing import cast, Union, Any, List, Mapping as MappingType, Optional
+from typing import Dict, cast, Union, Any, List, Mapping as MappingType, Optional
 
 ZARR_FORMAT = 2
 ZARR_FORMAT_v3 = 3
@@ -88,7 +88,7 @@ class Metadata2:
     ZARR_FORMAT = ZARR_FORMAT
 
     @classmethod
-    def parse_metadata(cls, s: Union[MappingType, str]) -> MappingType[str, Any]:
+    def parse_metadata(cls, s: Union[MappingType[str, Any], str]) -> MappingType[str, Any]:
 
         # Here we allow that a store may return an already-parsed metadata object,
         # or a string of JSON that we will parse here. We allow for an already-parsed
@@ -106,7 +106,7 @@ class Metadata2:
         return meta
 
     @classmethod
-    def decode_array_metadata(cls, s: Union[MappingType, str]) -> MappingType[str, Any]:
+    def decode_array_metadata(cls, s: Union[MappingType[str, Any], str]) -> MappingType[str, Any]:
         meta = cls.parse_metadata(s)
 
         # check metadata format
@@ -174,14 +174,14 @@ class Metadata2:
         return json_dumps(meta)
 
     @classmethod
-    def encode_dtype(cls, d: np.dtype):
+    def encode_dtype(cls, d: np.dtype[Any]):
         if d.fields is None:
             return d.str
         else:
             return d.descr
 
     @classmethod
-    def _decode_dtype_descr(cls, d) -> List[Any]:
+    def _decode_dtype_descr(cls, d: Any) -> List[Any]:
         # need to convert list of lists to list of tuples
         if isinstance(d, list):
             # recurse to handle nested structures
@@ -189,12 +189,12 @@ class Metadata2:
         return d
 
     @classmethod
-    def decode_dtype(cls, d) -> np.dtype:
+    def decode_dtype(cls, d: Any) -> np.dtype[Any]:
         d = cls._decode_dtype_descr(d)
         return np.dtype(d)
 
     @classmethod
-    def decode_group_metadata(cls, s: Union[MappingType, str]) -> MappingType[str, Any]:
+    def decode_group_metadata(cls, s: Union[MappingType[str, Any], str]) -> MappingType[str, Any]:
         meta = cls.parse_metadata(s)
 
         # check metadata format version
@@ -208,13 +208,13 @@ class Metadata2:
     # N.B., keep `meta` parameter as a placeholder for future
     # noinspection PyUnusedLocal
     @classmethod
-    def encode_group_metadata(cls, meta=None) -> bytes:
+    def encode_group_metadata(cls, meta: Any = None) -> bytes:
         meta = dict(zarr_format=cls.ZARR_FORMAT)
         return json_dumps(meta)
 
     @classmethod
     def decode_fill_value(
-        cls, v: Any, dtype: np.dtype, object_codec: Any = None
+        cls, v: Any, dtype: np.dtype[Any], object_codec: Any = None
     ) -> Any:
         # early out
         if v is None:
@@ -264,7 +264,7 @@ class Metadata2:
 
     @classmethod
     def encode_fill_value(
-        cls, v: Any, dtype: np.dtype, object_codec: Any = None
+        cls, v: Any, dtype: np.dtype[Any], object_codec: Any = None
     ) -> Any:
         # early out
         if v is None:
@@ -347,7 +347,7 @@ class Metadata3(Metadata2):
             return get_extended_dtype_info(np.dtype(d))
 
     @classmethod
-    def decode_group_metadata(cls, s: Union[MappingType, str]) -> MappingType[str, Any]:
+    def decode_group_metadata(cls, s: Union[MappingType[str, Any], str]) -> MappingType[str, Any]:
         meta = cls.parse_metadata(s)
         # 1 / 0
         # # check metadata format version
@@ -386,7 +386,7 @@ class Metadata3(Metadata2):
 
     @classmethod
     def decode_hierarchy_metadata(
-        cls, s: Union[MappingType, str]
+        cls, s: Union[MappingType[str, Any], str]
     ) -> MappingType[str, Any]:
         meta = cls.parse_metadata(s)
         # check metadata format
@@ -403,7 +403,7 @@ class Metadata3(Metadata2):
         return meta
 
     @classmethod
-    def _encode_codec_metadata(cls, codec: Codec) -> Optional[Mapping]:
+    def _encode_codec_metadata(cls, codec: Codec) -> Optional[Dict[str, Any]]:
         if codec is None:
             return None
 
@@ -430,7 +430,7 @@ class Metadata3(Metadata2):
         return meta
 
     @classmethod
-    def _decode_codec_metadata(cls, meta: Optional[Mapping]) -> Optional[Codec]:
+    def _decode_codec_metadata(cls, meta: Optional[MappingType[str, Any]]) -> Optional[Codec]:
         if meta is None:
             return None
 
@@ -460,7 +460,7 @@ class Metadata3(Metadata2):
         return codec
 
     @classmethod
-    def decode_array_metadata(cls, s: Union[MappingType, str]) -> MappingType[str, Any]:
+    def decode_array_metadata(cls, s: Union[MappingType[str, Any], str]) -> MappingType[str, Any]:
         meta = cls.parse_metadata(s)
 
         # extract array metadata fields
