@@ -17,9 +17,9 @@ from zarr.meta import json_dumps, json_loads
 from zarr.storage import (_get_metadata_suffix, contains_array, contains_group,
                           normalize_store_arg, BaseStore, ConsolidatedMetadataStore)
 from zarr._storage.v3 import ConsolidatedMetadataStoreV3
-from zarr.util import TreeViewer, buffer_size, normalize_storage_path
+from zarr.util import AccessModes, TreeViewer, buffer_size, normalize_storage_path
 
-from typing import Union
+from typing import Any, Optional, Union
 
 StoreLike = Union[BaseStore, MutableMapping, str, None]
 
@@ -31,7 +31,12 @@ def _check_and_update_path(store: BaseStore, path):
 
 
 # noinspection PyShadowingBuiltins
-def open(store: StoreLike = None, mode: str = "a", *, zarr_version=None, path=None, **kwargs):
+def open(store: StoreLike = None,
+         mode: Optional[AccessModes] = "a",
+         *,
+         zarr_version: Optional[int] = None,
+         path: Optional[str] = None,
+         **kwargs: Any):
     """Convenience function to open a group or array using file-mode-like semantics.
 
     Parameters
@@ -93,7 +98,7 @@ def open(store: StoreLike = None, mode: str = "a", *, zarr_version=None, path=No
     # handle polymorphic store arg
     # we pass storage options explicitly, since normalize_store_arg might construct
     # a store if the input is a fsspec-compatible URL
-    _store: BaseStore = normalize_store_arg(
+    _store = normalize_store_arg(
         store, storage_options=kwargs.pop("storage_options", {}), mode=mode,
         zarr_version=zarr_version,
     )

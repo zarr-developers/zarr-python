@@ -565,10 +565,10 @@ def _normalize_store_arg_v3(store: StoreLike,
     if store is None:
         result = KVStoreV3(dict())
         # add default zarr.json metadata
-        result['zarr.json'] = store._metadata_class.encode_hierarchy_metadata(None)
+        result['zarr.json'] = result._metadata_class.encode_hierarchy_metadata(None)
         return result
     if isinstance(store, os.PathLike):
-        result = os.fspath(store)
+        store = os.fspath(store)
     if isinstance(store, str):
         if "://" in store or "::" in store:
             result = FSStoreV3(store, mode=mode, **(storage_options or {}))
@@ -588,5 +588,5 @@ def _normalize_store_arg_v3(store: StoreLike,
         result = StoreV3._ensure_store(store)
         if 'zarr.json' not in result:
             # add default zarr.json metadata
-            result['zarr.json'] = store._metadata_class.encode_hierarchy_metadata(None)
+            result['zarr.json'] = result._metadata_class.encode_hierarchy_metadata(None)
     return result

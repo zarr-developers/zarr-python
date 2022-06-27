@@ -264,7 +264,7 @@ class StoreV3(BaseStore):
         return NotImplemented
 
     @staticmethod
-    def _ensure_store(store: Any) -> Union['StoreV3', None]:
+    def _ensure_store(store: Any) -> Optional['StoreV3']:
         """
         We want to make sure internally that zarr stores are always a class
         with a specific interface derived from ``Store``, which is slightly
