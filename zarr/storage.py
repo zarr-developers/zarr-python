@@ -157,7 +157,7 @@ def _normalize_store_arg_v2(store: Any,
     return store
 
 
-def normalize_store_arg(store: StoreLike,
+def normalize_store_arg(store: Union[StoreLike, str, None],
                         storage_options: Optional[Dict[str, Any]] = None,
                         mode: AccessModes = "r", *,
                         zarr_version: Optional[int] = None) -> BaseStore:

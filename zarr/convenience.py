@@ -32,7 +32,7 @@ def _check_and_update_path(store: BaseStore, path):
 
 # noinspection PyShadowingBuiltins
 def open(store: StoreLike = None,
-         mode: Optional[AccessModes] = "a",
+         mode: AccessModes = "a",
          *,
          zarr_version: Optional[int] = None,
          path: Optional[str] = None,

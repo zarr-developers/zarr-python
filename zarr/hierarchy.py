@@ -1229,7 +1229,7 @@ class Group(MutableMapping[str, Union['Group', Array]]):
         self._write_op(self._move_nosync, source, dest)
 
 
-def _normalize_store_arg(store: Optional[StoreLike],
+def _normalize_store_arg(store: Union[StoreLike, str, None],
                          *,
                          storage_options: Optional[Dict[str, Any]] = None,
                          mode: AccessModes = "r",
@@ -1334,12 +1334,12 @@ def group(store: Optional[StoreLike] = None,
                  zarr_version=zarr_version)
 
 
-def open_group(store: Optional[StoreLike] = None,
+def open_group(store: Union[StoreLike, str, None] = None,
                mode: AccessModes = 'a',
                cache_attrs: bool = True,
                synchronizer: Any = None,
                path: Optional[str] = None,
-               chunk_store: Optional[StoreLike] = None,
+               chunk_store: Union[StoreLike, str, None] = None,
                storage_options: Any = None,
                *,
                zarr_version: Optional[int] = None) -> 'Group':

@@ -5,7 +5,7 @@ import pickle
 import shutil
 import tempfile
 import textwrap
-from typing import Any, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 import unittest
 
 import numpy as np
@@ -32,7 +32,7 @@ from zarr.storage import (ABSStore, DBMStore, KVStore, DirectoryStore, FSStore,
 from zarr._storage.v3 import (ABSStoreV3, KVStoreV3, DirectoryStoreV3, MemoryStoreV3,
                               FSStoreV3, ZipStoreV3, DBMStoreV3, LMDBStoreV3, SQLiteStoreV3,
                               LRUStoreCacheV3)
-from zarr.util import InfoReporter, buffer_size
+from zarr.util import AccessModes, InfoReporter, buffer_size
 from zarr.tests.util import skip_test_env_var, have_fsspec, abs_container
 
 
@@ -1101,6 +1101,8 @@ class TestGroup(unittest.TestCase):
 
 @pytest.mark.parametrize('chunk_dict', [False, True])
 def test_group_init_from_dict(chunk_dict: bool):
+    store: Dict[str, Any]
+    chunk_store: Optional[Dict[str, Any]]
     if chunk_dict:
         store, chunk_store = dict(), dict()
     else:
@@ -1613,7 +1615,6 @@ def test_open_group(zarr_version: int):
     store = 'data/group.zarr'
 
     expected_store_type = DirectoryStore if zarr_version == 2 else DirectoryStoreV3
-
     # mode == 'w'
     path = None if zarr_version == 2 else 'group1'
     g = open_group(store, path=path, mode='w', zarr_version=zarr_version)

@@ -3,7 +3,7 @@ import os
 import shutil
 from collections import OrderedDict
 from threading import Lock
-from typing import Optional, Union, Dict, Any
+from typing import Optional, Union, Dict, Any, cast
 
 from zarr.errors import (
     MetadataError,
@@ -554,7 +554,7 @@ class ConsolidatedMetadataStoreV3(ConsolidatedMetadataStore, StoreV3):
         raise ReadOnlyError()
 
 
-def _normalize_store_arg_v3(store: StoreLike,
+def _normalize_store_arg_v3(store: Union[StoreLike, str, None],
                             storage_options: Optional[Dict[str, Any]] = None,
                             mode: AccessModes = "r") -> StoreV3:
     result: StoreV3
@@ -585,7 +585,8 @@ def _normalize_store_arg_v3(store: StoreLike,
         result['zarr.json'] = result._metadata_class.encode_hierarchy_metadata(None)
         return result
     else:
-        result = StoreV3._ensure_store(store)
+        store_v3 = StoreV3._ensure_store(store)
+        result = cast(StoreV3, store_v3)
         if 'zarr.json' not in result:
             # add default zarr.json metadata
             result['zarr.json'] = result._metadata_class.encode_hierarchy_metadata(None)
