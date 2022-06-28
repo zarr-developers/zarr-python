@@ -5,7 +5,7 @@ import pickle
 import shutil
 import tempfile
 import textwrap
-from typing import Any, Dict, List, Optional, Tuple, cast
+from typing import Any, Dict, List, Optional, Tuple
 import unittest
 
 import numpy as np
