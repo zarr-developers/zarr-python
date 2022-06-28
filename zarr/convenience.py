@@ -17,7 +17,7 @@ from zarr.meta import json_dumps, json_loads
 from zarr.storage import (_get_metadata_suffix, contains_array, contains_group,
                           normalize_store_arg, BaseStore, ConsolidatedMetadataStore)
 from zarr._storage.v3 import ConsolidatedMetadataStoreV3
-from zarr.util import AccessModes, TreeViewer, buffer_size, normalize_storage_path
+from zarr.util import AccessMode, TreeViewer, buffer_size, normalize_storage_path
 
 from typing import Any, Optional, Union
 
@@ -32,7 +32,7 @@ def _check_and_update_path(store: BaseStore, path):
 
 # noinspection PyShadowingBuiltins
 def open(store: StoreLike = None,
-         mode: AccessModes = "a",
+         mode: AccessMode = "a",
          *,
          zarr_version: Optional[int] = None,
          path: Optional[str] = None,

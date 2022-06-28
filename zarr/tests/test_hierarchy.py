@@ -5,7 +5,7 @@ import pickle
 import shutil
 import tempfile
 import textwrap
-from typing import Any, Dict, Optional, Tuple, cast
+from typing import Any, Dict, List, Optional, Tuple, cast
 import unittest
 
 import numpy as np
@@ -32,7 +32,7 @@ from zarr.storage import (ABSStore, DBMStore, KVStore, DirectoryStore, FSStore,
 from zarr._storage.v3 import (ABSStoreV3, KVStoreV3, DirectoryStoreV3, MemoryStoreV3,
                               FSStoreV3, ZipStoreV3, DBMStoreV3, LMDBStoreV3, SQLiteStoreV3,
                               LRUStoreCacheV3)
-from zarr.util import AccessModes, InfoReporter, buffer_size
+from zarr.util import AccessMode, InfoReporter, buffer_size
 from zarr.tests.util import skip_test_env_var, have_fsspec, abs_container
 
 
@@ -1611,13 +1611,12 @@ def test_group(zarr_version):
 @pytest.mark.parametrize('zarr_version', _VERSIONS)
 def test_open_group(zarr_version: int):
     # test the open_group() convenience function
-
+    mode: AccessMode = 'w'
     store = 'data/group.zarr'
 
     expected_store_type = DirectoryStore if zarr_version == 2 else DirectoryStoreV3
-    # mode == 'w'
     path = None if zarr_version == 2 else 'group1'
-    g = open_group(store, path=path, mode='w', zarr_version=zarr_version)
+    g = open_group(store, path=path, mode=mode, zarr_version=zarr_version)
     assert isinstance(g, Group)
     assert isinstance(g.store, expected_store_type)
     assert 0 == len(g)
@@ -1625,10 +1624,10 @@ def test_open_group(zarr_version: int):
     assert 2 == len(g)
 
     # mode in 'r', 'r+'
-    open_array('data/array.zarr', shape=100, chunks=10, mode='w')
-    for mode in 'r', 'r+':
+    open_array('data/array.zarr', shape=100, chunks=10, mode=mode)
+    modes: List[AccessMode] = ['r', 'r+']
+    for mode in modes:
         # todo: figure out how to get mypy to understand subsets of literals
-        mode = cast(AccessModes, mode)
         with pytest.raises(ValueError):
             open_group('doesnotexist', mode=mode)
         with pytest.raises(ValueError):
@@ -1644,21 +1643,19 @@ def test_open_group(zarr_version: int):
     g.create_groups('baz', 'quux')
     assert 4 == len(g)
 
-    # mode == 'a'
+    mode = 'a'
     shutil.rmtree(store)
-    g = open_group(store, path=path, mode='a', zarr_version=zarr_version)
+    g = open_group(store, path=path, mode=mode, zarr_version=zarr_version)
     assert isinstance(g, Group)
     assert isinstance(g.store, expected_store_type)
     assert 0 == len(g)
     g.create_groups('foo', 'bar')
     assert 2 == len(g)
     with pytest.raises(ValueError):
-        open_group('data/array.zarr', mode='a', zarr_version=zarr_version)
+        open_group('data/array.zarr', mode=mode, zarr_version=zarr_version)
 
-    # mode in 'w-', 'x'
-    for mode in 'w-', 'x':
-        # todo: figure out how to get mypy to understand subsets of literals
-        mode = cast(AccessModes, mode)
+    modes = ['w-', 'x']
+    for mode in modes:
         shutil.rmtree(store)
         g = open_group(store, path=path, mode=mode, zarr_version=zarr_version)
         assert isinstance(g, Group)

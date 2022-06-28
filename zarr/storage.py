@@ -56,7 +56,7 @@ from zarr.meta import encode_array_metadata, encode_group_metadata
 from zarr.util import (buffer_size, json_loads, nolock, normalize_chunks,
                        normalize_dimension_separator,
                        normalize_dtype, normalize_fill_value, normalize_order,
-                       normalize_shape, normalize_storage_path, retry_call, AccessModes)
+                       normalize_shape, normalize_storage_path, retry_call, AccessMode)
 
 from zarr._storage.absstore import ABSStore  # noqa: F401
 from zarr._storage.store import (StoreV3, _get_hierarchy_metadata,  # noqa: F401
@@ -159,7 +159,7 @@ def _normalize_store_arg_v2(store: Any,
 
 def normalize_store_arg(store: Union[StoreLike, str, None],
                         storage_options: Optional[Dict[str, Any]] = None,
-                        mode: AccessModes = "r", *,
+                        mode: AccessMode = "r", *,
                         zarr_version: Optional[int] = None) -> BaseStore:
 
     result: BaseStore

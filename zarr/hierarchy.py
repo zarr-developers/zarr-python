@@ -44,7 +44,7 @@ from zarr.storage import (
 )
 from zarr._storage.v3 import MemoryStoreV3
 from zarr.util import (
-    AccessModes,
+    AccessMode,
     InfoReporter,
     TreeViewer,
     is_valid_python_name,
@@ -1232,7 +1232,7 @@ class Group(MutableMapping[str, Union['Group', Array]]):
 def _normalize_store_arg(store: Union[StoreLike, str, None],
                          *,
                          storage_options: Optional[Dict[str, Any]] = None,
-                         mode: AccessModes = "r",
+                         mode: AccessMode = "r",
                          zarr_version: Optional[int] = None) -> BaseStore:
     result: BaseStore
     if zarr_version is None:
@@ -1331,7 +1331,7 @@ def group(store: Optional[StoreLike] = None,
 
 
 def open_group(store: Union[StoreLike, str, None] = None,
-               mode: AccessModes = 'a',
+               mode: AccessMode = 'a',
                cache_attrs: bool = True,
                synchronizer: Any = None,
                path: Optional[str] = None,

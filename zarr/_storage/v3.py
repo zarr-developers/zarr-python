@@ -9,7 +9,7 @@ from zarr.errors import (
     MetadataError,
     ReadOnlyError,
 )
-from zarr.util import (buffer_size, json_loads, normalize_storage_path, AccessModes)
+from zarr.util import (buffer_size, json_loads, normalize_storage_path, AccessMode)
 
 from zarr._storage.absstore import ABSStoreV3  # noqa: F401
 from zarr._storage.store import (_get_hierarchy_metadata,  # noqa: F401
@@ -556,7 +556,7 @@ class ConsolidatedMetadataStoreV3(ConsolidatedMetadataStore, StoreV3):
 
 def _normalize_store_arg_v3(store: Union[StoreLike, str, None],
                             storage_options: Optional[Dict[str, Any]] = None,
-                            mode: AccessModes = "r") -> StoreV3:
+                            mode: AccessMode = "r") -> StoreV3:
     result: StoreV3
     # default to v2 store for backward compatibility
     zarr_version = getattr(store, '_store_version', 3)
