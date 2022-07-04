@@ -38,7 +38,7 @@ Enhancements
 * Appending performance improvement to Zarr arrays, e.g., when writing to S3.
   By :user:`hailiangzhang <hailiangzhang>`; :issue:`1014`.
 
-* Add number encoder for ``json.dumps`` to support numpy intergers in
+* Add number encoder for ``json.dumps`` to support numpy integers in
   ``chunks`` arguments. By :user:`Eric Prestat <ericpre>` :issue:`697`.
 
 Bug fixes
