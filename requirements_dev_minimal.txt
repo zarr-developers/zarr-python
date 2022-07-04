@@ -3,6 +3,6 @@ asciitree==0.3.3
 fasteners==0.17.3
 numcodecs==0.10.0
 msgpack-python==0.5.6
-setuptools-scm==7.0.1
+setuptools-scm==7.0.4
 # test requirements
 pytest==7.1.2
