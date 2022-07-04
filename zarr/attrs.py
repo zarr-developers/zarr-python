@@ -128,6 +128,11 @@ class Attributes(MutableMapping):
             self._write_op(self._put_nosync, dict(attributes=d))
 
     def _put_nosync(self, d):
+
+        d_to_check = d if self._version == 2 else d["attributes"]
+        if not all(isinstance(item, str) for item in d_to_check):
+            raise TypeError('attribute keys must be strings')
+
         if self._version == 2:
             self.store[self.key] = json_dumps(d)
             if self.cache:

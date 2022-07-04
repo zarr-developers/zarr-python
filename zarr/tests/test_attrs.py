@@ -268,3 +268,16 @@ class TestAttributes():
         get_cnt = 10 if zarr_version == 2 else 12
         assert get_cnt == store.counter['__getitem__', attrs_key]
         assert 3 == store.counter['__setitem__', attrs_key]
+
+    def test_wrong_keys(self, zarr_version):
+        store = _init_store(zarr_version)
+        a = self.init_attributes(store, zarr_version=zarr_version)
+
+        with pytest.raises(TypeError, match="attribute keys must be strings"):
+            a[1] = "foo"
+
+        with pytest.raises(TypeError, match="attribute keys must be strings"):
+            a.put({1: "foo"})
+
+        with pytest.raises(TypeError, match="attribute keys must be strings"):
+            a.update({1: "foo"})
