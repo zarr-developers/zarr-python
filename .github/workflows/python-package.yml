@@ -88,7 +88,6 @@ jobs:
       run: |
         conda activate zarr-env
         flake8 zarr
-        python -m pip install numpy>=1.21.*
         mypy zarr
 
 
