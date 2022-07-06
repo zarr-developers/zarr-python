@@ -3,7 +3,7 @@ Release notes
 
 ..
     # Unindent the section between releases in order
-    # to coument your changes. On releases it will be
+    # to document your changes. On releases it will be
     # re-indented so that it does not show up in the notes.
 
     .. _unreleased:
@@ -11,30 +11,10 @@ Release notes
     Unreleased
     ----------
 
-.. _release_2.12.0a2:
+.. _release_2.12.0:
 
-2.12.0a2
---------
-
-* Rename ZARR_V3_API_AVAILABLE to ZARR_V3_EXPERIMENTAL_API.
-  By :user:`Josh Moore <joshmoore>` :issue:`1032`.
-
-Maintenance
-~~~~~~~~~~~
-
-* Fix URL to renamed file in Blosc repo.
-  By :user:`Andrew Thomas <amcnicho>` :issue:`1028`.
-
-* Activate Py 3.10 builds.
-  By :user:`Josh Moore <joshmoore>` :issue:`1027`.
-
-* Make all unignored zarr warnings errors.
-  By :user:`Josh Moore <joshmoore>` :issue:`1021`.
-
-.. _release_2.12.0a1:
-
-2.12.0a1
---------
+2.12.0
+------
 
 Enhancements
 ~~~~~~~~~~~~
@@ -44,7 +24,8 @@ Enhancements
   Since the format is not yet finalized, the classes and functions are not
   automatically imported into the regular `zarr` name space. Setting the
   `ZARR_V3_EXPERIMENTAL_API` environment variable will activate them.
-  By :user:`Greggory Lee <grlee77>`; :issue:`898`, :issue:`1006`, and :issue:`1007`.
+  By :user:`Greggory Lee <grlee77>`; :issue:`898`, :issue:`1006`, and :issue:`1007`
+  as well as by :user:`Josh Moore <joshmoore>` :issue:`1032`.
 
 * **Create FSStore from an existing fsspec filesystem**. If you have created
   an fsspec filesystem outside of Zarr, you can now pass it as a keyword
@@ -57,7 +38,7 @@ Enhancements
 * Appending performance improvement to Zarr arrays, e.g., when writing to S3.
   By :user:`hailiangzhang <hailiangzhang>`; :issue:`1014`.
 
-* Add number encoder for ``json.dumps`` to support numpy intergers in
+* Add number encoder for ``json.dumps`` to support numpy integers in
   ``chunks`` arguments. By :user:`Eric Prestat <ericpre>` :issue:`697`.
 
 Bug fixes
@@ -79,6 +60,16 @@ Maintenance
 
 * Added Pre-commit configuration, incl. Yaml Check.
   By :user:`Shivank Chaudhary <Alt-Shivam>`; :issue:`1015`, :issue:`1016`.
+
+* Fix URL to renamed file in Blosc repo.
+  By :user:`Andrew Thomas <amcnicho>` :issue:`1028`.
+
+* Activate Py 3.10 builds.
+  By :user:`Josh Moore <joshmoore>` :issue:`1027`.
+
+* Make all unignored zarr warnings errors.
+  By :user:`Josh Moore <joshmoore>` :issue:`1021`.
+
 
 .. _release_2.11.3:
 
@@ -222,7 +213,7 @@ Maintenance
 
   - Drop unneeded ``return`` (:issue:`884`)
 
-  - Drop explicit ``object`` inheritance from ``class``es (:issue:`886`)
+  - Drop explicit ``object`` inheritance from ``class``-es (:issue:`886`)
 
   - Unnecessary comprehension (:issue:`883`)
 
