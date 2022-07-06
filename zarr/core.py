@@ -2387,12 +2387,22 @@ class Array:
         return checksum
 
     def __getstate__(self):
-        return (self._store, self._path, self._read_only, self._chunk_store,
-                self._synchronizer, self._cache_metadata, self._attrs.cache,
-                self._partial_decompress, self._write_empty_chunks, self._version)
+        return {
+            "store": self._store,
+            "path": self._path,
+            "read_only": self._read_only,
+            "chunk_store": self._chunk_store,
+            "synchronizer": self._synchronizer,
+            "cache_metadata": self._cache_metadata,
+            "cache_attrs": self._attrs.cache,
+            "partial_decompress": self._partial_decompress,
+            "write_empty_chunks": self._write_empty_chunks,
+            "zarr_version": self._version,
+            "meta_array": self._meta_array,
+        }
 
     def __setstate__(self, state):
-        self.__init__(*state)
+        self.__init__(**state)
 
     def _synchronized_op(self, f, *args, **kwargs):
 

@@ -369,11 +369,19 @@ class Group(MutableMapping):
         return items
 
     def __getstate__(self):
-        return (self._store, self._path, self._read_only, self._chunk_store,
-                self.attrs.cache, self._synchronizer, self._meta_array)
+        return {
+            "store": self._store,
+            "path": self._path,
+            "read_only": self._read_only,
+            "chunk_store": self._chunk_store,
+            "cache_attrs": self._attrs.cache,
+            "synchronizer": self._synchronizer,
+            "zarr_version": self._version,
+            "meta_array": self._meta_array,
+        }
 
     def __setstate__(self, state):
-        self.__init__(*state)
+        self.__init__(**state)
 
     def _item_path(self, item):
         absolute = isinstance(item, str) and item and item[0] == '/'
