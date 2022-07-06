@@ -1,7 +1,7 @@
 
 /* Sidebar background color */
 .wy-nav-side, div.wy-side-nav-search {
-  background-color: rgb(38, 34, 98);
+  background-color: rgb(38, 34, 98, 0); /* full alpha */
 }
 
 /* Sidebar link click color */

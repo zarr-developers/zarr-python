@@ -39,8 +39,8 @@
 <tr>
   <td>Build Status</td>
   <td>
-    <a href="https://travis-ci.org/zarr-developers/zarr-python">
-    <img src="https://travis-ci.org/zarr-developers/zarr-python.svg?branch=main" alt="travis build status" />
+    <a href="https://github.com/zarr-developers/zarr-python/blob/main/.github/workflows/python-package.yml">
+    <img src="https://github.com/zarr-developers/zarr-python/actions/workflows/python-package.yml/badge.svg" alt="license" />
     </a>
   </td>
 </tr>
