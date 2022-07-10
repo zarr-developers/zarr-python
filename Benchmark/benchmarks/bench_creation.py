@@ -9,9 +9,10 @@ import numpy as np
 class creation:
     
     def setup(self):
-        self.shape = np.zeros(shape=(3, 2))
+        self.shape = ([3, 2])
         self.chunks = (1000, 1000)
-        self.dtype = i4
+        self.dtype = "i4"
+        self.arr = np.array([])
         
     
     def time_create(self):
