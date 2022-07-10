@@ -13,6 +13,7 @@ class creation:
         self.chunks = (1000, 1000)
         self.dtype = "i4"
         self.arr = np.array([])
+        self.fill_value = 1 
         
     
     def time_create(self):
@@ -23,4 +24,4 @@ class creation:
         
     
     def time_full(self):
-        creation.full(self.shape)
+        creation.full(self.shape, self.fill_value)
