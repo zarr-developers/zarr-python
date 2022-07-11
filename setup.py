@@ -33,7 +33,7 @@ setup(
             'ipytree',
         ],
     },
-    python_requires='>=3.7, <4',
+    python_requires='>=3.8, <4',
     install_requires=dependencies,
     package_dir={'': '.'},
     packages=['zarr', 'zarr._storage', 'zarr.tests'],

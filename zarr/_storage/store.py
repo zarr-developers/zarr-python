@@ -100,9 +100,7 @@ class BaseStore(MutableMapping):
         """
         from zarr.storage import KVStore  # avoid circular import
 
-        if store is None:
-            return None
-        elif isinstance(store, BaseStore):
+        if isinstance(store, BaseStore):
             if not store._store_version == 2:
                 raise ValueError(
                     f"cannot initialize a v2 store with a v{store._store_version} store"
