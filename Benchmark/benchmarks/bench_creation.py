@@ -9,10 +9,9 @@ import numpy as np
 class creation:
     
     def setup(self):
-        self.shape = ([3, 2])
-        self.chunks = (1000, 1000)
+        self.shape = np.array((3, 2))
+        self.chunks = np.array((1000, 1000))
         self.dtype = "i4"
-        self.arr = np.array([])
         self.fill_value = 1 
         
     
