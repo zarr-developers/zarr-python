@@ -73,7 +73,9 @@ def test_ensure_store():
     with pytest.raises(ValueError):
         Store._ensure_store(KVStoreV3(dict()))
 
-    assert Store._ensure_store(None) is None
+    # cannot initialize without a store
+    with pytest.raises(ValueError):
+        Store._ensure_store(None)
 
 
 def test_capabilities():
