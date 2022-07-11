@@ -73,6 +73,10 @@ def test_ensure_store():
     with pytest.raises(ValueError):
         Store._ensure_store(KVStoreV3(dict()))
 
+    # cannot initialize without a store
+    with pytest.raises(ValueError):
+        Store._ensure_store(None)
+
 
 def test_capabilities():
     s = KVStore(dict())
