@@ -22,6 +22,7 @@ class creation:
 
     def time_ones(self, *n):
         self.array = zarr.ones(n)
+        
 
 if __name__ == "__main__":
     instance = creation()

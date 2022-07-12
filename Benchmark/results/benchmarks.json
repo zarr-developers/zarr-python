@@ -1,50 +1,142 @@
 {
     "bench_creation.creation.time_create": {
-        "code": "class creation:\n    def time_create(self):\n        creation.create(self.a, self.chunks, self.dtype)\n\n    def setup(self):\n        self.a = np.zeros(shape=(3, 2))\n        self.chunks = (1000, 1000)\n        self.dtype = i4",
+        "code": "class creation:\n    def time_create(self, *n):\n        self.array = zarr.create(n)",
         "min_run_count": 2,
         "name": "bench_creation.creation.time_create",
         "number": 0,
-        "param_names": [],
-        "params": [],
+        "param_names": [
+            "param1",
+            "param2"
+        ],
+        "params": [
+            [
+                "3 (0)",
+                "3 (1)"
+            ],
+            [
+                "1000 (0)",
+                "1000 (1)"
+            ]
+        ],
         "repeat": 0,
         "rounds": 2,
         "sample_time": 0.01,
         "timeout": 60.0,
         "type": "time",
         "unit": "seconds",
-        "version": "5a0303913fabb8f557d9de472a8d601b49b1ab9dd94034e77df19cda1c35d8b4",
+        "version": "9aca64da835e090f96df2b2acf699b77fa8346459434bf546e544fece8f117f1",
         "warmup_time": -1
     },
     "bench_creation.creation.time_empty": {
-        "code": "class creation:\n    def time_empty(self):\n        creation.empty(self.a)\n\n    def setup(self):\n        self.a = np.zeros(shape=(3, 2))\n        self.chunks = (1000, 1000)\n        self.dtype = i4",
+        "code": "class creation:\n    def time_empty(self, *n):\n        self.array = zarr.empty(n)",
         "min_run_count": 2,
         "name": "bench_creation.creation.time_empty",
         "number": 0,
-        "param_names": [],
-        "params": [],
+        "param_names": [
+            "param1",
+            "param2"
+        ],
+        "params": [
+            [
+                "3 (0)",
+                "3 (1)"
+            ],
+            [
+                "1000 (0)",
+                "1000 (1)"
+            ]
+        ],
         "repeat": 0,
         "rounds": 2,
         "sample_time": 0.01,
         "timeout": 60.0,
         "type": "time",
         "unit": "seconds",
-        "version": "e7eeb96bd74c61588b9f125185dff3d1b8fd664fbc76906c1f59e5ef3b388f07",
+        "version": "d9c6486c667a94f076cd618e932cf7b73c911612490749ff107fd771b4efba28",
         "warmup_time": -1
     },
     "bench_creation.creation.time_full": {
-        "code": "class creation:\n    def time_full(self):\n        creation.full(self.a)\n\n    def setup(self):\n        self.a = np.zeros(shape=(3, 2))\n        self.chunks = (1000, 1000)\n        self.dtype = i4",
+        "code": "class creation:\n    def time_full(self, *n):\n        self.array = zarr.full(n, fill_value = 2)",
         "min_run_count": 2,
         "name": "bench_creation.creation.time_full",
         "number": 0,
-        "param_names": [],
-        "params": [],
+        "param_names": [
+            "param1",
+            "param2"
+        ],
+        "params": [
+            [
+                "3 (0)",
+                "3 (1)"
+            ],
+            [
+                "1000 (0)",
+                "1000 (1)"
+            ]
+        ],
         "repeat": 0,
         "rounds": 2,
         "sample_time": 0.01,
         "timeout": 60.0,
         "type": "time",
         "unit": "seconds",
-        "version": "883900936ae984e82874fbf9300047f6539db4d639edfb354e77198574718542",
+        "version": "529dcc2ac6012a975ea4b64a2f2b055a62344bbc79dba00268b74ea0ad83f04f",
+        "warmup_time": -1
+    },
+    "bench_creation.creation.time_ones": {
+        "code": "class creation:\n    def time_ones(self, *n):\n        self.array = zarr.ones(n)",
+        "min_run_count": 2,
+        "name": "bench_creation.creation.time_ones",
+        "number": 0,
+        "param_names": [
+            "param1",
+            "param2"
+        ],
+        "params": [
+            [
+                "3 (0)",
+                "3 (1)"
+            ],
+            [
+                "1000 (0)",
+                "1000 (1)"
+            ]
+        ],
+        "repeat": 0,
+        "rounds": 2,
+        "sample_time": 0.01,
+        "timeout": 60.0,
+        "type": "time",
+        "unit": "seconds",
+        "version": "d107107706044fb809b29199043420395400506c4f437943726c82bc5bb0f657",
+        "warmup_time": -1
+    },
+    "bench_creation.creation.time_zeros": {
+        "code": "class creation:\n    def time_zeros(self, *n):\n        self.array = zarr.zeros(n)",
+        "min_run_count": 2,
+        "name": "bench_creation.creation.time_zeros",
+        "number": 0,
+        "param_names": [
+            "param1",
+            "param2"
+        ],
+        "params": [
+            [
+                "3 (0)",
+                "3 (1)"
+            ],
+            [
+                "1000 (0)",
+                "1000 (1)"
+            ]
+        ],
+        "repeat": 0,
+        "rounds": 2,
+        "sample_time": 0.01,
+        "timeout": 60.0,
+        "type": "time",
+        "unit": "seconds",
+        "version": "5095d3bbab7bd710a2d258fbef00aeaac67e230822c4d9bc1227c33d909bba9f",
         "warmup_time": -1
     },
     "benchmarks.MemSuite.mem_list": {
