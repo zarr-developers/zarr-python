@@ -1,3 +1,4 @@
+import warnings
 from collections.abc import MutableMapping
 
 from zarr._storage.store import Store, StoreV3
@@ -131,7 +132,13 @@ class Attributes(MutableMapping):
 
         d_to_check = d if self._version == 2 else d["attributes"]
         if not all(isinstance(item, str) for item in d_to_check):
-            raise TypeError('attribute keys must be strings')
+            warnings.warn(
+                "only attribute keys of type 'string' will be allowed in the future",
+                DeprecationWarning,
+                stacklevel=2
+                )
+            # TODO: Raise an error for non-string keys
+            # raise TypeError("attribute keys must be strings")
 
         if self._version == 2:
             self.store[self.key] = json_dumps(d)

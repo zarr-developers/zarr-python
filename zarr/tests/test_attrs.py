@@ -273,11 +273,16 @@ class TestAttributes():
         store = _init_store(zarr_version)
         a = self.init_attributes(store, zarr_version=zarr_version)
 
-        with pytest.raises(TypeError, match="attribute keys must be strings"):
+        warning_msg = "only attribute keys of type 'string' will be allowed in the future"
+
+        with pytest.warns(DeprecationWarning, match=warning_msg):
             a[1] = "foo"
 
-        with pytest.raises(TypeError, match="attribute keys must be strings"):
+        with pytest.warns(DeprecationWarning, match=warning_msg):
             a.put({1: "foo"})
 
-        with pytest.raises(TypeError, match="attribute keys must be strings"):
-            a.update({1: "foo"})
+        with pytest.warns(DeprecationWarning, match=warning_msg):
+            with pytest.raises(TypeError):
+                # TODO: This error is why keys of type string will be deprecated.
+                # See: https://github.com/zarr-developers/zarr-python/issues/1037
+                a.update({1: "foo"})
