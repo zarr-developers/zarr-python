@@ -2503,7 +2503,7 @@ class SQLiteStore(Store):
         # allow threading if SQLite connections are thread-safe
         #
         # ref: https://www.sqlite.org/releaselog/3_3_1.html
-        # ref: https://bugs.python.org/issue27190
+        # ref: https://github.com/python/cpython/issues/71377
         check_same_thread = True
         if sqlite3.sqlite_version_info >= (3, 3, 1):
             check_same_thread = False
