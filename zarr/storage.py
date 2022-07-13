@@ -2663,7 +2663,7 @@ class MongoDBStore(Store):
 
     .. note:: This is an experimental feature.
 
-    Requires the `pymongo <https://api.mongodb.com/python/current/>`_
+    Requires the `pymongo <https://pymongo.readthedocs.io/en/stable/>`_
     package to be installed.
 
     Parameters
