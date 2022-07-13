@@ -166,7 +166,7 @@ locally. To run the Azure Blob Service storage tests, run an Azure
 storage emulator (e.g., azurite) and set the environment variable
 ``ZARR_TEST_ABS=1``. If you're using Docker to run azurite, start the service with::
 
-    docker run --rm -p 10000:10000 mcr.microsoft.com/azure-storage/azurite azurite-blob --loose --blobHost 0.0.0.0 
+    docker run --rm -p 10000:10000 mcr.microsoft.com/azure-storage/azurite azurite-blob --loose --blobHost 0.0.0.0
 
 To run the Mongo DB storage tests, run a Mongo
 server locally and set the environment variable ``ZARR_TEST_MONGO=1``.
@@ -332,7 +332,7 @@ compatibility in some way.
 Release procedure
 ~~~~~~~~~~~~~~~~~
 
-.. note:: 
+.. note::
 
    Most of the release process is now handled by github workflow which should
    automatically push a release to PyPI if a tag is pushed.

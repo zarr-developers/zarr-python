@@ -174,8 +174,8 @@ Structured data types may also be nested, e.g., the following JSON
 list defines a data type with two fields "foo" and "bar", where "bar"
 has two sub-fields "baz" and "qux"::
 
-    [["foo", "<f4"], ["bar", [["baz", "<f4"], ["qux", "<i4"]]]] 
-    
+    [["foo", "<f4"], ["bar", [["baz", "<f4"], ["qux", "<i4"]]]]
+
 .. _spec_v2_array_fill_value:
 
 Fill value encoding

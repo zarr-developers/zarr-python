@@ -158,4 +158,3 @@ Line #      Hits         Time  Per Hit   % Time  Line Contents
    132                                               # handle errors
    133       200          128      0.6      0.1      if ret <= 0:
    134                                                   raise RuntimeError('error during blosc decompression: %d' % ret)
-
