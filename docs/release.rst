@@ -1307,4 +1307,4 @@ See `v0.4.0 release notes on GitHub
 See `v0.3.0 release notes on GitHub
 <https://github.com/zarr-developers/zarr-python/releases/tag/v0.3.0>`_.
 
-.. _Numcodecs: http://numcodecs.readthedocs.io/
+.. _Numcodecs: https://numcodecs.readthedocs.io/

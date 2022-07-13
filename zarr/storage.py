@@ -2097,7 +2097,7 @@ class DBMStore(Store):
 
 
 class LMDBStore(Store):
-    """Storage class using LMDB. Requires the `lmdb <http://lmdb.readthedocs.io/>`_
+    """Storage class using LMDB. Requires the `lmdb <https://lmdb.readthedocs.io/>`_
     package to be installed.
 
 
