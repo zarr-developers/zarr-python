@@ -1621,7 +1621,11 @@ def test_open_group(zarr_version):
     assert 0 == len(g)
     g.create_groups('foo', 'bar')
     assert 2 == len(g)
-    with pytest.raises(ValueError):
+    if zarr_version == 2:
+        with pytest.raises(ValueError):
+            open_group('data/array.zarr', mode='a', zarr_version=zarr_version)
+    else:
+        # TODO, root: should this raise an error?
         open_group('data/array.zarr', mode='a', zarr_version=zarr_version)
 
     # mode in 'w-', 'x'
