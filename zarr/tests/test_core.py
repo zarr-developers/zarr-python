@@ -2712,27 +2712,10 @@ class TestArrayV3(unittest.TestCase):
 
     def test_array_init(self):
 
-        # normal initialization
+        # normal initialization without path
         store = KVStoreV3(dict())
-        with pytest.raises(ValueError):
-            # cannot init_array for v3 without a path
-            init_array(store, shape=100, chunks=10, dtype="<f8")
-
-        init_array(store, path='x', shape=100, chunks=10, dtype="<f8")
-        with pytest.raises(ValueError):
-            # cannot initialize a v3 array without a path
-            Array(store)
-
-    def test_prefix_exceptions(self):
-        store = KVStoreV3(dict())
-        with pytest.raises(ValueError):
-            _prefix_to_array_key(store, '')
-
-        with pytest.raises(ValueError):
-            _prefix_to_group_key(store, '')
-
-        with pytest.raises(ValueError):
-            _prefix_to_attrs_key(store, '')
+        init_array(store, shape=100, chunks=10, dtype="<f8")
+        Array(store)
 
 
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
@@ -2754,10 +2737,19 @@ class TestArrayWithPathV3(TestArrayWithPath):
 
     def test_array_init(self):
 
-        # should not be able to initialize without a path in V3
         store = KVStoreV3(dict())
-        with pytest.raises(ValueError):
-            init_array(store, shape=100, chunks=10, dtype="<f8")
+        # can initialize an array without a path
+        init_array(store, shape=100, chunks=10, dtype="<f8")
+        b = Array(store)
+        assert not b.is_view
+        assert isinstance(b, Array)
+        assert (100,) == b.shape
+        assert (10,) == b.chunks
+        assert '' == b.path
+        assert b.name is None
+        assert b.basename is None
+        assert store is b.store
+        assert "968dccbbfc0139f703ead2fd1d503ad6e44db307" == b.hexdigest()
 
         # initialize at path
         store = KVStoreV3(dict())
@@ -2796,11 +2788,6 @@ class TestArrayWithPathV3(TestArrayWithPath):
         Array(store, path=path)
         assert group_key not in store
         assert (meta_root + path + '.array.json') in store
-
-    def test_array_no_path(self):
-        # passing path=None to init_array will raise an exception
-        with pytest.raises(ValueError):
-            self.create_array(shape=1000, chunks=100, array_path=None)
 
     def expected(self):
         return [

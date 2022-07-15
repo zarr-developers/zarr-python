@@ -316,9 +316,6 @@ def normalize_storage_path(path: Union[str, bytes, None]) -> str:
     if path is not None and not isinstance(path, str):
         path = str(path)
 
-    if path == '/':
-        return path
-
     if path:
 
         # convert backslash to forward slash

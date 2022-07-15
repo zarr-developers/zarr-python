@@ -73,11 +73,6 @@ def test_open_array(path_type, zarr_version):
     assert isinstance(z, Array)
     assert z.shape == (200,)
 
-    if zarr_version == 3:
-        # cannot open a v3 array without path
-        with pytest.raises(ValueError):
-            open(store, mode='w', shape=200, zarr_version=3)
-
     # open array, read-only
     z = open(store, mode='r', **kwargs)
     assert isinstance(z, Array)
@@ -107,11 +102,6 @@ def test_open_group(path_type, zarr_version):
     g = open(store, mode='w', **kwargs)
     assert isinstance(g, Group)
     assert 'foo' not in g
-
-    if zarr_version == 3:
-        # cannot open a v3 group without path
-        with pytest.raises(ValueError):
-            open(store, mode='w', zarr_version=3)
 
     # open group, read-only
     g = open(store, mode='r', **kwargs)
