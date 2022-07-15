@@ -155,7 +155,7 @@ def create(shape, chunks=True, dtype=None, compressor='default',
     dimension_separator = normalize_dimension_separator(dimension_separator)
 
     if zarr_version > 2 and path is None:
-        raise ValueError("path must be supplied to initialize a zarr v3 array")
+        path = '/'
 
     # initialize array metadata
     init_array(store, shape=shape, chunks=chunks, dtype=dtype, compressor=compressor,
