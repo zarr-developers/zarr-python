@@ -21,8 +21,8 @@ from zarr._storage.store import v3_api_available
 from zarr._storage.v3 import DirectoryStoreV3, KVStoreV3
 from zarr.sync import ThreadSynchronizer
 
-_VERSIONS = v3_api_available and (None, 2, 3) or (None, 2)
-_VERSIONS2 = v3_api_available and (2, 3) or (2,)
+_VERSIONS = ((None, 2, 3) if v3_api_available else (None, 2))
+_VERSIONS2 = ((2, 3) if v3_api_available else (2, ))
 
 
 # something bcolz-like
