@@ -430,7 +430,7 @@ def test_empty_like(zarr_version):
     z = empty(100, chunks=10, dtype='f4', compressor=Zlib(5),
               order='F', **kwargs)
     # zarr_version will be inferred from z, but have to specify a path in v3
-    z2 = empty_like(z, path=kwargs.get('path', None))
+    z2 = empty_like(z, path=kwargs.get('path'))
     assert z.shape == z2.shape
     assert z.chunks == z2.chunks
     assert z.dtype == z2.dtype
@@ -479,7 +479,7 @@ def test_zeros_like(zarr_version):
     # zarr array
     z = zeros(100, chunks=10, dtype='f4', compressor=Zlib(5),
               order='F', **kwargs)
-    z2 = zeros_like(z, path=kwargs.get('path', None))
+    z2 = zeros_like(z, path=kwargs.get('path'))
     assert z.shape == z2.shape
     assert z.chunks == z2.chunks
     assert z.dtype == z2.dtype
@@ -506,7 +506,7 @@ def test_ones_like(zarr_version):
     # zarr array
     z = ones(100, chunks=10, dtype='f4', compressor=Zlib(5),
              order='F', **kwargs)
-    z2 = ones_like(z, path=kwargs.get('path', None))
+    z2 = ones_like(z, path=kwargs.get('path'))
     assert z.shape == z2.shape
     assert z.chunks == z2.chunks
     assert z.dtype == z2.dtype
@@ -533,7 +533,7 @@ def test_full_like(zarr_version):
 
     z = full(100, chunks=10, dtype='f4', compressor=Zlib(5),
              fill_value=42, order='F', **kwargs)
-    z2 = full_like(z, path=kwargs.get('path', None))
+    z2 = full_like(z, path=kwargs.get('path'))
     assert z.shape == z2.shape
     assert z.chunks == z2.chunks
     assert z.dtype == z2.dtype

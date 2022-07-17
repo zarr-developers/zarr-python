@@ -16,6 +16,12 @@ Documentation
 
 * Typo fixes to close quotes. By :user:`Pavithra Eswaramoorthy <pavithraes>`
 
+Maintenance
+~~~~~~~~~~~
+
+* Fix a few DeepSource.io alerts
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1080`.
+
 
 .. _release_2.12.0:
 
