@@ -2729,8 +2729,7 @@ class TestArrayV3(TestArray):
             "c780221df84eb91cb62f633f12d3f1eaa9cee6bd"
         ]
 
-    def test_nbytes_stored(self):
-        pass  # TODO: fix
+    # TODO: fix test_nbytes_stored
 
 
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
