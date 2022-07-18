@@ -2398,6 +2398,7 @@ class LRUStoreCache(Store):
         with self._mutex:
             self._values_cache.clear()
             self._invalidate_keys()
+            self._current_size = 0
 
     def invalidate_values(self):
         """Clear the values cache."""
