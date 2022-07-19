@@ -1279,7 +1279,7 @@ def open_consolidated(store: StoreLike, metadata_key=".zmetadata", mode="r+", **
     """
 
     # normalize parameters
-    zarr_version = kwargs.get('zarr_version', None)
+    zarr_version = kwargs.get('zarr_version')
     store = normalize_store_arg(store, storage_options=kwargs.get("storage_options"), mode=mode,
                                 zarr_version=zarr_version)
     if mode not in {'r', 'r+'}:

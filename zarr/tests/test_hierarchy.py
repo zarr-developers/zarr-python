@@ -35,7 +35,7 @@ from zarr.util import InfoReporter, buffer_size
 from zarr.tests.util import skip_test_env_var, have_fsspec, abs_container
 
 
-_VERSIONS = v3_api_available and (2, 3) or (2,)
+_VERSIONS = ((2, 3) if v3_api_available else (2, ))
 
 # noinspection PyStatementEffect
 

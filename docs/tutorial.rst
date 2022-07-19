@@ -897,7 +897,7 @@ The second invocation here will be much faster. Note that the ``storage_options`
 have become more complex here, to account for the two parts of the supplied
 URL.
 
-It is also possible to initialize the filesytem outside of Zarr and then pass
+It is also possible to initialize the filesystem outside of Zarr and then pass
 it through. This requires creating an :class:`zarr.storage.FSStore` object
 explicitly. For example::
 
