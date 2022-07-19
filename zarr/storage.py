@@ -1413,7 +1413,7 @@ class FSStore(Store):
         return key in self.map
 
     def __eq__(self, other):
-        return (type(self) == type(other) and self.map == other.map
+        return (type(self) is type(other) and self.map == other.map
                 and self.mode == other.mode)
 
     def keys(self):
