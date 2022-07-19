@@ -170,15 +170,24 @@ class TestArray(unittest.TestCase):
 
         # dict as store
         z = self.create_array(shape=1000, chunks=100)
-        expect_nbytes_stored = sum(buffer_size(v) for v in z.store.values())
+        if self.version == 3:
+            expect_nbytes_stored = sum(buffer_size(v) for k, v in z.store.items() if k != 'zarr.json')
+        else:
+            expect_nbytes_stored = sum(buffer_size(v) for v in z.store.values())
         assert expect_nbytes_stored == z.nbytes_stored
         z[:] = 42
-        expect_nbytes_stored = sum(buffer_size(v) for v in z.store.values())
+        if self.version == 3:
+            expect_nbytes_stored = sum(buffer_size(v) for k, v in z.store.items() if k != 'zarr.json')
+        else:
+            expect_nbytes_stored = sum(buffer_size(v) for v in z.store.values())
         assert expect_nbytes_stored == z.nbytes_stored
 
         # mess with store
         try:
-            z.store[z._key_prefix + 'foo'] = list(range(10))
+            if self.version == 2:
+                z.store[z._key_prefix + 'foo'] = list(range(10))
+            else:
+                z.store['meta/root/foo'] = list(range(10))
             assert -1 == z.nbytes_stored
         except TypeError:
             pass
