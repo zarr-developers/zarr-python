@@ -22,6 +22,8 @@ Maintenance
 * Fix a few DeepSource.io alerts
   By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1080`.
 
+* Fix spelling.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>`, :issue:`1073`.
 
 .. _release_2.12.0:
 
