@@ -1330,7 +1330,6 @@ def open_group(store=None, mode='a', cache_attrs=True, synchronizer=None, path=N
                 "zarr_version of store and chunk_store must match"
             )
 
-    store_version = getattr(store, '_store_version', 2)
     path = normalize_storage_path(path)
 
     # ensure store is initialized
