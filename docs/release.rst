@@ -6,10 +6,16 @@ Release notes
     # to document your changes. On releases it will be
     # re-indented so that it does not show up in the notes.
 
-    .. _unreleased:
+.. _unreleased:
 
-    Unreleased
-    ----------
+Unreleased
+----------
+
+Documentation
+~~~~~~~~~~~~~
+
+* Typo fixes to close quotes. By :user:`Pavithra Eswaramoorthy <pavithraes>`
+
 
 .. _release_2.12.0:
 
