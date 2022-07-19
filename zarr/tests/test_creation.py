@@ -53,7 +53,7 @@ class MockH5pyDataset:
         return self.data[item]
 
 
-def _init_creation_kwargs(zarr_version, at_root=False):
+def _init_creation_kwargs(zarr_version, at_root=True):
     kwargs = {'zarr_version': zarr_version}
     if not at_root:
         kwargs['path'] = 'array'
