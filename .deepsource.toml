@@ -5,6 +5,3 @@ test_patterns = ["zarr/tests/test_*.py"]
 [[analyzers]]
 name = "python"
 enabled = true
-
-  [analyzers.meta]
-  runtime_version = "3.x.x"
