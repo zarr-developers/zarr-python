@@ -1,3 +1,4 @@
+blank_issues_enabled: true
 contact_links:
   - name: I want to discuss something
     url: https://gitter.im/zarr-developers/community
