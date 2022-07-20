@@ -1,5 +1,12 @@
 blank_issues_enabled: true
 contact_links:
-  - name: I want to discuss something
+  - name: I want to discuss something on gitter
     url: https://gitter.im/zarr-developers/community
-    about: For discussions, you can move to the gitter channel, or the discussion tab of Zarr! 
+    about: For questions like "How do I do X with Zarr?", you can move to our Gitter channel.
+  - name: I want to discuss something on GitHub Discussions 
+    url: https://github.com/zarr-developers/zarr-python/discussions
+    about: For questions like "How do I do X with Zarr?", you can move to GitHub Discussions.
+  - name: I want to propose a new major feature major
+    url: https://github.com/zarr-developers/zarr-specs
+    about: |
+      A new major feature should be discussed in the Zarr specifications repository.
