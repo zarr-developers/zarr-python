@@ -4,9 +4,11 @@
 import zarr
 import numpy as np
 
+
 class creation:
     
-    params = [[3, 3], [1000, 1000]]
+    params = [[3, 2], [10000, 10000]]
+    
     
     def time_full(self, *n):
         self.array = zarr.full(n, fill_value = 2)
