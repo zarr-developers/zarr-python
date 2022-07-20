@@ -139,15 +139,16 @@ class Attributes(MutableMapping):
                 DeprecationWarning,
                 stacklevel=2
                 )
+
             try:
-                # Stringify
                 d_to_check = {str(k): v for k, v in d_to_check.items()}
-                if self._version == 2:
-                    d = d_to_check
-                else:
-                    d["attributes"] = d_to_check
             except TypeError as ex:
                 raise TypeError("attribute keys can not be stringified") from ex
+
+            if self._version == 2:
+                d = d_to_check
+            else:
+                d["attributes"] = d_to_check
 
         if self._version == 2:
             self.store[self.key] = json_dumps(d)
