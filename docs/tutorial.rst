@@ -897,7 +897,7 @@ The second invocation here will be much faster. Note that the ``storage_options`
 have become more complex here, to account for the two parts of the supplied
 URL.
 
-It is also possible to initialize the filesytem outside of Zarr and then pass
+It is also possible to initialize the filesystem outside of Zarr and then pass
 it through. This requires creating an :class:`zarr.storage.FSStore` object
 explicitly. For example::
 
@@ -1404,7 +1404,7 @@ access patterns and incur a substantial performance hit when using
 file based stores. One of the most pathological examples is
 switching from column-based chunking to row-based chunking e.g. ::
 
-    >>> a = zarr.zeros((10000,10000), chunks=(10000, 1), dtype='uint16, store='a.zarr')
+    >>> a = zarr.zeros((10000,10000), chunks=(10000, 1), dtype='uint16', store='a.zarr')
     >>> b = zarr.array(a, chunks=(1,10000), store='b.zarr')
 
 which will require every chunk in the input data set to be repeatedly read when creating
@@ -1412,7 +1412,7 @@ each output chunk. If the entire array will fit within memory, this is simply re
 by forcing the entire input array into memory as a numpy array before converting
 back to zarr with the desired chunking. ::
 
-    >>> a = zarr.zeros((10000,10000), chunks=(10000, 1), dtype='uint16, store='a.zarr')
+    >>> a = zarr.zeros((10000,10000), chunks=(10000, 1), dtype='uint16', store='a.zarr')
     >>> b = a[...]
     >>> c = zarr.array(b, chunks=(1,10000), store='c.zarr')
 
