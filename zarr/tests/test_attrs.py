@@ -282,7 +282,4 @@ class TestAttributes():
             a.put({1: "foo"})
 
         with pytest.warns(DeprecationWarning, match=warning_msg):
-            with pytest.raises(TypeError):
-                # TODO: This error is why keys of type non-string will be deprecated.
-                # See: https://github.com/zarr-developers/zarr-python/issues/1037
-                a.update({1: "foo"})
+            a.update({1: "foo"})
