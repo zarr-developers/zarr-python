@@ -25,6 +25,10 @@ Maintenance
 * Fix spelling.
   By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>`, :issue:`1073`.
 
+* Update GitHub issue templates with `YAML` format.
+  By :user:`Saransh Chopra <Saransh-cpp>` :issue:`1079`.
+
+
 .. _release_2.12.0:
 
 2.12.0
