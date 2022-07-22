@@ -142,7 +142,7 @@ class Attributes(MutableMapping):
 
             try:
                 d_to_check = {str(k): v for k, v in d_to_check.items()}
-            except TypeError as ex:
+            except TypeError as ex:  # pragma: no cover
                 raise TypeError("attribute keys can not be stringified") from ex
 
             if self._version == 2:
