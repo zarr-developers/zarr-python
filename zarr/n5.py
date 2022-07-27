@@ -383,51 +383,51 @@ class N5FSStore(FSStore):
     def __getitem__(self, key: str) -> bytes:
         if key.endswith(zarr_group_meta_key):
 
-            new_key = key.replace(zarr_group_meta_key, self._group_meta_key)
-            value = group_metadata_to_zarr(self._load_n5_attrs(new_key))
+            key_new = key.replace(zarr_group_meta_key, self._group_meta_key)
+            value = group_metadata_to_zarr(self._load_n5_attrs(key_new))
 
             return json_dumps(value)
 
         elif key.endswith(zarr_array_meta_key):
 
-            new_key = key.replace(zarr_array_meta_key, self._array_meta_key)
-            value = array_metadata_to_zarr(self._load_n5_attrs(new_key))
+            key_new = key.replace(zarr_array_meta_key, self._array_meta_key)
+            value = array_metadata_to_zarr(self._load_n5_attrs(key_new))
 
             return json_dumps(value)
 
         elif key.endswith(zarr_attrs_key):
 
-            new_key = key.replace(zarr_attrs_key, self._attrs_key)
-            value = attrs_to_zarr(self._load_n5_attrs(new_key))
+            key_new = key.replace(zarr_attrs_key, self._attrs_key)
+            value = attrs_to_zarr(self._load_n5_attrs(key_new))
 
             if len(value) == 0:
-                raise KeyError(new_key)
+                raise KeyError(key_new)
             else:
                 return json_dumps(value)
 
         elif is_chunk_key(key):
-            new_key = self._swap_separator(key)
+            key_new = self._swap_separator(key)
 
         else:
-            new_key = key
+            key_new = key
 
-        return super().__getitem__(new_key)
+        return super().__getitem__(key_new)
 
     def __setitem__(self, key: str, value: Any):
         if key.endswith(zarr_group_meta_key):
 
-            new_key = key.replace(zarr_group_meta_key, self._group_meta_key)
+            key_new = key.replace(zarr_group_meta_key, self._group_meta_key)
 
-            n5_attrs = self._load_n5_attrs(new_key)
+            n5_attrs = self._load_n5_attrs(key_new)
             n5_attrs.update(**group_metadata_to_n5(json_loads(value)))
 
             value = json_dumps(n5_attrs)
 
         elif key.endswith(zarr_array_meta_key):
 
-            new_key = key.replace(zarr_array_meta_key, self._array_meta_key)
+            key_new = key.replace(zarr_array_meta_key, self._array_meta_key)
 
-            n5_attrs = self._load_n5_attrs(new_key)
+            n5_attrs = self._load_n5_attrs(key_new)
             n5_attrs.update(**array_metadata_to_n5(json_loads(value)))
             # ensure that top-level metadata contains the "n5" keyword
             if key == zarr_array_meta_key:
@@ -436,7 +436,7 @@ class N5FSStore(FSStore):
 
         elif key.endswith(zarr_attrs_key):
 
-            new_key = key.replace(zarr_attrs_key, self._attrs_key)
+            key_new = key.replace(zarr_attrs_key, self._attrs_key)
 
             n5_attrs = self._load_n5_attrs(key)
             zarr_attrs = json_loads(value)
@@ -456,53 +456,53 @@ class N5FSStore(FSStore):
             value = json_dumps(n5_attrs)
 
         elif is_chunk_key(key):
-            new_key = self._swap_separator(key)
+            key_new = self._swap_separator(key)
 
         else:
-            new_key = key
+            key_new = key
 
-        super().__setitem__(new_key, value)
+        super().__setitem__(key_new, value)
 
     def __delitem__(self, key: str):
 
         if key.endswith(zarr_group_meta_key):  # pragma: no cover
-            new_key = key.replace(zarr_group_meta_key, self._group_meta_key)
+            key_new = key.replace(zarr_group_meta_key, self._group_meta_key)
         elif key.endswith(zarr_array_meta_key):  # pragma: no cover
-            new_key = key.replace(zarr_array_meta_key, self._array_meta_key)
+            key_new = key.replace(zarr_array_meta_key, self._array_meta_key)
         elif key.endswith(zarr_attrs_key):  # pragma: no cover
-            new_key = key.replace(zarr_attrs_key, self._attrs_key)
+            key_new = key.replace(zarr_attrs_key, self._attrs_key)
         elif is_chunk_key(key):
-            new_key = self._swap_separator(key)
+            key_new = self._swap_separator(key)
         else:
-            new_key = key
-        super().__delitem__(new_key)
+            key_new = key
+        super().__delitem__(key_new)
 
     def __contains__(self, key: Any):
         if key.endswith(zarr_group_meta_key):
 
-            new_key = key.replace(zarr_group_meta_key, self._group_meta_key)
-            if new_key not in self:
+            key_new = key.replace(zarr_group_meta_key, self._group_meta_key)
+            if key_new not in self:
                 return False
             # group if not a dataset (attributes do not contain 'dimensions')
-            return "dimensions" not in self._load_n5_attrs(new_key)
+            return "dimensions" not in self._load_n5_attrs(key_new)
 
         elif key.endswith(zarr_array_meta_key):
 
-            new_key = key.replace(zarr_array_meta_key, self._array_meta_key)
+            key_new = key.replace(zarr_array_meta_key, self._array_meta_key)
             # array if attributes contain 'dimensions'
-            return "dimensions" in self._load_n5_attrs(new_key)
+            return "dimensions" in self._load_n5_attrs(key_new)
 
         elif key.endswith(zarr_attrs_key):
 
-            new_key = key.replace(zarr_attrs_key, self._attrs_key)
-            return self._contains_attrs(new_key)
+            key_new = key.replace(zarr_attrs_key, self._attrs_key)
+            return self._contains_attrs(key_new)
 
         elif is_chunk_key(key):
-            new_key = self._swap_separator(key)
+            key_new = self._swap_separator(key)
 
         else:
-            new_key = key
-        return super().__contains__(new_key)
+            key_new = key
+        return super().__contains__(key_new)
 
     def __eq__(self, other: Any):
         return isinstance(other, N5FSStore) and self.path == other.path
