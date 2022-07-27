@@ -24,7 +24,7 @@ from zarr.convenience import consolidate_metadata
 from zarr.errors import ContainsArrayError, ContainsGroupError, MetadataError
 from zarr.hierarchy import group
 from zarr.meta import ZARR_FORMAT, decode_array_metadata
-from zarr.n5 import N5Store, N5FSStore
+from zarr.n5 import N5Store, N5FSStore, N5_VERSION, n5_attrs_key
 from zarr.storage import (ABSStore, ConsolidatedMetadataStore, DBMStore,
                           DictStore, DirectoryStore, KVStore, LMDBStore,
                           LRUStoreCache, MemoryStore, MongoDBStore,
@@ -1509,6 +1509,10 @@ class TestN5Store(TestNestedDirectoryStore):
         # N5Store always has a fill value of 0
         assert meta['fill_value'] == 0
         assert meta['dimension_separator'] == '.'
+        # Top-level arrays or groups should have 
+        # the n5 keyword in metadata
+        raw_n5_meta = json.loads(store[n5_attrs_key])
+        assert raw_n5_meta.get('n5', None) == N5_VERSION
 
     def test_init_array_path(self):
         path = 'foo/bar'
@@ -1629,6 +1633,11 @@ class TestN5FSStore(TestFSStore):
         # N5Store always has a fill value of 0
         assert meta['fill_value'] == 0
         assert meta['dimension_separator'] == '.'
+        # Top-level arrays or groups should have 
+        # the n5 keyword in metadata
+        raw_n5_meta = json.loads(store[n5_attrs_key])
+        assert raw_n5_meta.get('n5', None) == N5_VERSION
+
 
     def test_init_array_path(self):
         path = 'foo/bar'
