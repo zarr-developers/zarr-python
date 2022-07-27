@@ -83,6 +83,9 @@ class N5Store(NestedDirectoryStore):
 
             key_new = key.replace(zarr_array_meta_key, n5_attrs_key)
             value = array_metadata_to_zarr(self._load_n5_attrs(key_new))
+            # remove n5 key from attrs if at the root node
+            if key == zarr_array_meta_key:
+                value.pop('n5')
 
             return json_dumps(value)
 
