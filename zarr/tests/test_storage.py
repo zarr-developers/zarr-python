@@ -2409,7 +2409,7 @@ class TestABSStore(StoreTests):
             assert 4 == len(store)
             keys = [prefix + 'a', prefix + 'b', prefix + 'c/d', prefix + 'c/e/f']
             values = [b'aaa', b'bbb', b'ddd', b'fff']
-            items = [(k, v) for k, v in zip(keys, values)]
+            items = list(zip(keys, values))
             assert set(keys) == set(store)
             assert set(keys) == set(store.keys())
             assert set(values) == set(store.values())

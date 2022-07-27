@@ -21,8 +21,8 @@ from zarr._storage.store import v3_api_available
 from zarr._storage.v3 import DirectoryStoreV3, KVStoreV3
 from zarr.sync import ThreadSynchronizer
 
-_VERSIONS = v3_api_available and (None, 2, 3) or (None, 2)
-_VERSIONS2 = v3_api_available and (2, 3) or (2,)
+_VERSIONS = ((None, 2, 3) if v3_api_available else (None, 2))
+_VERSIONS2 = ((2, 3) if v3_api_available else (2, ))
 
 
 # something bcolz-like
@@ -430,7 +430,7 @@ def test_empty_like(zarr_version):
     z = empty(100, chunks=10, dtype='f4', compressor=Zlib(5),
               order='F', **kwargs)
     # zarr_version will be inferred from z, but have to specify a path in v3
-    z2 = empty_like(z, path=kwargs.get('path', None))
+    z2 = empty_like(z, path=kwargs.get('path'))
     assert z.shape == z2.shape
     assert z.chunks == z2.chunks
     assert z.dtype == z2.dtype
@@ -479,7 +479,7 @@ def test_zeros_like(zarr_version):
     # zarr array
     z = zeros(100, chunks=10, dtype='f4', compressor=Zlib(5),
               order='F', **kwargs)
-    z2 = zeros_like(z, path=kwargs.get('path', None))
+    z2 = zeros_like(z, path=kwargs.get('path'))
     assert z.shape == z2.shape
     assert z.chunks == z2.chunks
     assert z.dtype == z2.dtype
@@ -506,7 +506,7 @@ def test_ones_like(zarr_version):
     # zarr array
     z = ones(100, chunks=10, dtype='f4', compressor=Zlib(5),
              order='F', **kwargs)
-    z2 = ones_like(z, path=kwargs.get('path', None))
+    z2 = ones_like(z, path=kwargs.get('path'))
     assert z.shape == z2.shape
     assert z.chunks == z2.chunks
     assert z.dtype == z2.dtype
@@ -533,7 +533,7 @@ def test_full_like(zarr_version):
 
     z = full(100, chunks=10, dtype='f4', compressor=Zlib(5),
              fill_value=42, order='F', **kwargs)
-    z2 = full_like(z, path=kwargs.get('path', None))
+    z2 = full_like(z, path=kwargs.get('path'))
     assert z.shape == z2.shape
     assert z.chunks == z2.chunks
     assert z.dtype == z2.dtype
