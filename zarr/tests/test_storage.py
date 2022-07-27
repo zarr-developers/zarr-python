@@ -1509,7 +1509,7 @@ class TestN5Store(TestNestedDirectoryStore):
         # N5Store always has a fill value of 0
         assert meta['fill_value'] == 0
         assert meta['dimension_separator'] == '.'
-        # Top-level arrays or groups should have 
+        # Top-level arrays or groups should have
         # the n5 keyword in metadata
         raw_n5_meta = json.loads(store[n5_attrs_key])
         assert raw_n5_meta.get('n5', None) == N5_VERSION
@@ -1633,11 +1633,10 @@ class TestN5FSStore(TestFSStore):
         # N5Store always has a fill value of 0
         assert meta['fill_value'] == 0
         assert meta['dimension_separator'] == '.'
-        # Top-level arrays or groups should have 
+        # Top-level arrays or groups should have
         # the n5 keyword in metadata
         raw_n5_meta = json.loads(store[n5_attrs_key])
         assert raw_n5_meta.get('n5', None) == N5_VERSION
-
 
     def test_init_array_path(self):
         path = 'foo/bar'
