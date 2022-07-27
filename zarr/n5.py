@@ -125,7 +125,7 @@ class N5Store(NestedDirectoryStore):
             n5_attrs.update(**array_metadata_to_n5(json_loads(value)))
             # ensure that top-level metadata contains the "n5" keyword
             if key == zarr_array_meta_key:
-                n5_attrs.update(**group_metadata_to_n5(json_loads(value)))
+                n5_attrs['n5'] = N5_VERSION
             value = json_dumps(n5_attrs)
 
         elif key.endswith(zarr_attrs_key):
@@ -395,7 +395,9 @@ class N5FSStore(FSStore):
 
             key_new = key.replace(zarr_array_meta_key, self._array_meta_key)
             value = array_metadata_to_zarr(self._load_n5_attrs(key_new))
-
+            # remove n5 key from attrs if at the root node
+            if key == zarr_array_meta_key:
+                value.pop('n5')
             return json_dumps(value)
 
         elif key.endswith(zarr_attrs_key):
@@ -434,7 +436,7 @@ class N5FSStore(FSStore):
             n5_attrs.update(**array_metadata_to_n5(json_loads(value)))
             # ensure that top-level metadata contains the "n5" keyword
             if key == zarr_array_meta_key:
-                n5_attrs.update(**group_metadata_to_n5(json_loads(value)))
+                n5_attrs['n5'] = N5_VERSION
             value = json_dumps(n5_attrs)
 
         elif key.endswith(zarr_attrs_key):
