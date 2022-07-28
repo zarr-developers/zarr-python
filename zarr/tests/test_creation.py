@@ -20,6 +20,7 @@ from zarr.storage import DirectoryStore, KVStore
 from zarr._storage.store import v3_api_available
 from zarr._storage.v3 import DirectoryStoreV3, KVStoreV3
 from zarr.sync import ThreadSynchronizer
+from zarr.tests.test_storage_v3 import DummyStorageTransfomer
 
 _VERSIONS = ((None, 2, 3) if v3_api_available else (None, 2))
 _VERSIONS2 = ((2, 3) if v3_api_available else (2, ))
@@ -724,3 +725,11 @@ def test_create_read_only(zarr_version):
 def test_json_dumps_chunks_numpy_dtype():
     z = zeros((10,), chunks=(np.int64(2),))
     assert np.all(z[...] == 0)
+
+
+def test_create_with_storage_transformers():
+    kwargs = _init_creation_kwargs(zarr_version=3)
+    transformer = DummyStorageTransfomer("dummy_type", test_value=DummyStorageTransfomer.TEST_CONSTANT)
+    z = create(1000000000, chunks=True, storage_transformers=[transformer], **kwargs)
+    assert isinstance(z._store, DummyStorageTransfomer)
+    assert z._store.test_value == DummyStorageTransfomer.TEST_CONSTANT

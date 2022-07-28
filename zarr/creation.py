@@ -21,7 +21,7 @@ def create(shape, chunks=True, dtype=None, compressor='default',
            overwrite=False, path=None, chunk_store=None, filters=None,
            cache_metadata=True, cache_attrs=True, read_only=False,
            object_codec=None, dimension_separator=None, write_empty_chunks=True,
-           *, zarr_version=None, **kwargs):
+           storage_transformers=None, *, zarr_version=None, **kwargs):
     """Create an array.
 
     Parameters
@@ -161,7 +161,7 @@ def create(shape, chunks=True, dtype=None, compressor='default',
     init_array(store, shape=shape, chunks=chunks, dtype=dtype, compressor=compressor,
                fill_value=fill_value, order=order, overwrite=overwrite, path=path,
                chunk_store=chunk_store, filters=filters, object_codec=object_codec,
-               dimension_separator=dimension_separator)
+               dimension_separator=dimension_separator, storage_transformers=storage_transformers)
 
     # instantiate array
     z = Array(store, path=path, chunk_store=chunk_store, synchronizer=synchronizer,

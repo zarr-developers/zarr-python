@@ -1,6 +1,8 @@
 import abc
 import os
+from collections import defaultdict
 from collections.abc import MutableMapping
+from copy import copy
 from string import ascii_letters, digits
 from typing import Any, List, Mapping, Optional, Union
 
@@ -254,6 +256,44 @@ class StoreV3(BaseStore):
     def __getitem__(self, key):
         """Get a value."""
 
+    def get_partial_values(self, key_ranges):
+        """Get multiple partial values.
+        key_ranges can be an iterable of key, range pairs,
+        where a range specifies two integers range_start and range_length
+        as a tuple, (range_start, range_length).
+        Length may be None to indicate to read until the end.
+        A key may occur multiple times with different ranges."""
+        results = [None] * len(key_ranges)
+        indexed_ranges_by_key = defaultdict(list)
+        for i, (key, range_) in enumerate(key_ranges):
+            indexed_ranges_by_key[key].append((i, range_))
+        for key, indexed_ranges in indexed_ranges_by_key.items():
+            value = self[key]
+            for i, (range_from, range_length) in indexed_ranges:
+                if range_length is None:
+                    results[i] = value[range_from:]
+                else:
+                    results[i] = value[range_from:range_from + range_length]
+        return results
+
+    def set_partial_values(self, key_start_values):
+        """Set multiple partial values.
+        key_start_values can be an iterable of key, start and value triplets
+        as tuples, (key, start, value), where start defines the offset in bytes.
+        A key may occur multiple times with different starts and non-overlapping values.
+        Also, start may only be beyond the current value if other values fill the gap."""
+        unique_keys = set(next(zip(*key_start_values)))
+        values = {key: bytearray(self.get(key)) for key in unique_keys}
+        for key, start, value in key_start_values:
+            if values[key] is None:
+                assert start == 0
+                values[key] = value
+            else:
+                assert start <= len(values[key])
+                values[key][start:start + len(value)] = value
+        for key, value in values.items():
+            self[key] = value
+
     def clear(self):
         """Remove all items from store."""
         self.erase_prefix("/")
@@ -301,6 +341,115 @@ class StoreV3(BaseStore):
             "if your store exposes the MutableMapping interface wrap it in "
             f"Zarr.storage.KVStoreV3. Got {store}"
         )
+
+
+class StorageTransformer(MutableMapping, abc.ABC):
+    def __init__(self, _type) -> None:
+        assert _type in self.valid_types
+        self.type = _type
+        self._inner_store = None
+
+    def _copy_for_array(self, inner_store):
+        transformer_copy = copy(self)
+        transformer_copy._inner_store = inner_store
+        return transformer_copy
+
+    @abc.abstractproperty
+    def extension_uri(self):
+        pass
+
+    @abc.abstractproperty
+    def valid_types(self):
+        pass
+
+    def get_config(self):
+        """Return a dictionary holding configuration parameters for this
+        storage transformer. All values must be compatible with JSON encoding."""
+        # Override in sub-class if need special encoding of config values.
+        # By default, assume all non-private members are configuration
+        # parameters except for type .
+        return {
+            k: v for k, v in self.__dict__.items()
+            if not k.startswith('_') and k != "type"
+        }
+
+    @classmethod
+    def from_config(cls, _type, config):
+        """Instantiate storage transformer from a configuration object."""
+        # override in sub-class if need special decoding of config values
+
+        # by default, assume constructor accepts configuration parameters as
+        # keyword arguments without any special decoding
+        return cls(_type, **config)
+
+    def is_readable(self):
+        return self._inner_store.is_readable()
+
+    def is_writeable(self):
+        return self._inner_store.is_writeable()
+
+    def is_listable(self):
+        return self._inner_store.is_listable()
+
+    def is_erasable(self):
+        return self._inner_store.is_erasable()
+
+    def __enter__(self):
+        return self._inner_store.__enter__()
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        return self._inner_store.__exit__(exc_type, exc_value, traceback)
+
+    def close(self) -> None:
+        return self._inner_store.close()
+
+    def rename(self, src_path: str, dst_path: str) -> None:
+        return self._inner_store.rename(src_path, dst_path)
+
+    def list_prefix(self, prefix):
+        return self._inner_store.list_prefix(prefix)
+
+    def erase(self, key):
+        return self._inner_store.erase(key)
+
+    def erase_prefix(self, prefix):
+        return self._inner_store.erase_prefix(prefix)
+
+    def list_dir(self, prefix):
+        return self._inner_store.list_dir(prefix)
+
+    def list(self):
+        return self._inner_store.list()
+
+    def __contains__(self, key):
+        return self._inner_store.__contains__(key)
+
+    def __setitem__(self, key, value):
+        return self._inner_store.__setitem__(key, value)
+
+    def __getitem__(self, key):
+        return self._inner_store.__getitem__(key)
+
+    def __delitem__(self, key):
+        return self._inner_store.__delitem__(key)
+
+    def __iter__(self):
+        return self._inner_store.__iter__()
+
+    def __len__(self):
+        return self._inner_store.__len__()
+
+    def get_partial_values(self, key_ranges):
+        return self._inner_store.get_partial_values(key_ranges)
+
+    def set_partial_values(self, key_start_values):
+        return self._inner_store.set_partial_values(key_start_values)
+
+    def clear(self):
+        return self._inner_store.clear()
+
+    def __eq__(self, other):
+        return self._inner_store.__eq__(other)
 
 
 # allow MutableMapping for backwards compatibility

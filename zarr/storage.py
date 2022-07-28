@@ -294,6 +294,7 @@ def init_array(
     filters=None,
     object_codec=None,
     dimension_separator=None,
+    storage_transformers=None,
 ):
     """Initialize an array store with the given configuration. Note that this is a low-level
     function and there should be no need to call this directly from user code.
@@ -421,7 +422,8 @@ def init_array(
                          order=order, overwrite=overwrite, path=path,
                          chunk_store=chunk_store, filters=filters,
                          object_codec=object_codec,
-                         dimension_separator=dimension_separator)
+                         dimension_separator=dimension_separator,
+                         storage_transformers=storage_transformers)
 
 
 def _init_array_metadata(
@@ -438,6 +440,7 @@ def _init_array_metadata(
     filters=None,
     object_codec=None,
     dimension_separator=None,
+    storage_transformers=None,
 ):
 
     store_version = getattr(store, '_store_version', 2)
@@ -559,6 +562,7 @@ def _init_array_metadata(
     if store_version < 3:
         meta.update(dict(chunks=chunks, dtype=dtype, order=order,
                          filters=filters_config))
+        assert not storage_transformers
     else:
         if dimension_separator is None:
             dimension_separator = "/"
@@ -572,7 +576,8 @@ def _init_array_metadata(
                                  separator=dimension_separator),
                  chunk_memory_layout=order,
                  data_type=dtype,
-                 attributes=attributes)
+                 attributes=attributes,
+                 storage_transformers=storage_transformers)
         )
 
     key = _prefix_to_array_key(store, _path_to_prefix(path))
