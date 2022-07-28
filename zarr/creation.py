@@ -84,6 +84,14 @@ def create(shape, chunks=True, dtype=None, compressor='default',
 
         .. versionadded:: 2.11
 
+    storage_transformers : sequence of StorageTransformers, optional
+        May only be set when using zarr_version 3.
+        Setting storage transformers, changing the storage structure and behaviour
+        of data coming in the underlying store. The transformers are applied in the
+        order of the given sequence.
+
+        .. versionadded:: 2.13
+
     zarr_version : {None, 2, 3}, optional
         The zarr protocol version of the created array. If None, it will be
         inferred from ``store`` or ``chunk_store`` if they are provided,

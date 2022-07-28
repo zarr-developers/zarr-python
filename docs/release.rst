@@ -11,6 +11,16 @@ Release notes
 Unreleased
 ----------
 
+Enhancements
+~~~~~~~~~~~~
+
+* **Improve Zarr V3 support, adding partial store read/write and storage transformers.**
+  Add two features of the [v3 spec](https://zarr-specs.readthedocs.io/en/latest/core/v3.0.html):
+  * storage transformers
+  * `get_partial_values` and `set_partial_values`
+  By :user:`Jonathan Striebel <jstriebel>`; :issue:`1096`.
+
+
 Documentation
 ~~~~~~~~~~~~~
 
