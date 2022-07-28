@@ -1,0 +1,67 @@
+name: 🐛 File a bug report
+description: X's behavior is deviating from its documented behavior.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please provide the following information.
+  - type: input
+    id: Zarr-version
+    attributes:
+      label: Zarr version
+      description: Value of ``zarr.__version__``
+      placeholder: v2.10.2, v2.11.3, v2.12.0, etc.
+    validations:
+      required: true
+  - type: input
+    id: Numcodecs-version
+    attributes:
+      label: Numcodecs version
+      description: Value of ``numcodecs.__version__``
+      placeholder: v0.8.1, v0.9.0, v0.10.0, etc.
+    validations:
+      required: true
+  - type: input
+    id: Python-version
+    attributes:
+      label: Python Version
+      description: Version of Python interpreter
+      placeholder: 3.8.5, 3.9, 3.10, etc.
+    validations:
+      required: true
+  - type: input
+    id: OS
+    attributes:
+      label: Operating System
+      description: Operating System
+      placeholder: (Linux/Windows/Mac)
+    validations:
+      required: true
+  - type: input
+    id: installation
+    attributes:
+      label: Installation
+      description: How was Zarr installed?
+      placeholder: e.g., "using pip into virtual environment", or "using conda"
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Explain why the current behavior is a problem, what the expected output/behaviour is, and why the expected output/behaviour is a better solution.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Minimal, reproducible code sample, a copy-pastable example if possible.
+    validations:
+      required: true
+  - type: textarea
+    id: additional-output
+    attributes:
+      label: Additional output
+      description: If you think it might be relevant, please provide the output from ``pip freeze`` or ``conda env export`` depending on which was used to install Zarr.
