@@ -18,7 +18,7 @@ from .storage import array_meta_key as zarr_array_meta_key
 from .storage import attrs_key as zarr_attrs_key
 from .storage import group_meta_key as zarr_group_meta_key
 
-N5_VERSION = '2.0.0'
+N5_FORMAT = '2.0.0'
 
 zarr_to_n5_keys = [
     ('chunks', 'blockSize'),
@@ -71,7 +71,6 @@ class N5Store(NestedDirectoryStore):
     """
 
     def __getitem__(self, key: str) -> bytes:
-
         if key.endswith(zarr_group_meta_key):
 
             key_new = key.replace(zarr_group_meta_key, n5_attrs_key)
@@ -82,11 +81,8 @@ class N5Store(NestedDirectoryStore):
         elif key.endswith(zarr_array_meta_key):
 
             key_new = key.replace(zarr_array_meta_key, n5_attrs_key)
-            value = array_metadata_to_zarr(self._load_n5_attrs(key_new))
-            # remove n5 key from attrs if at the root node
-            if key == zarr_array_meta_key:
-                value.pop('n5')
-
+            top_level = key == zarr_array_meta_key
+            value = array_metadata_to_zarr(self._load_n5_attrs(key_new), top_level=top_level)
             return json_dumps(value)
 
         elif key.endswith(zarr_attrs_key):
@@ -100,8 +96,8 @@ class N5Store(NestedDirectoryStore):
                 return json_dumps(value)
 
         elif is_chunk_key(key):
-
             key_new = invert_chunk_coords(key)
+
         else:
             key_new = key
 
@@ -121,11 +117,9 @@ class N5Store(NestedDirectoryStore):
         elif key.endswith(zarr_array_meta_key):
 
             key_new = key.replace(zarr_array_meta_key, n5_attrs_key)
+            top_level = key == zarr_array_meta_key
             n5_attrs = self._load_n5_attrs(key_new)
-            n5_attrs.update(**array_metadata_to_n5(json_loads(value)))
-            # ensure that top-level metadata contains the "n5" keyword
-            if key == zarr_array_meta_key:
-                n5_attrs['n5'] = N5_VERSION
+            n5_attrs.update(**array_metadata_to_n5(json_loads(value), top_level=top_level))
             value = json_dumps(n5_attrs)
 
         elif key.endswith(zarr_attrs_key):
@@ -136,10 +130,10 @@ class N5Store(NestedDirectoryStore):
             zarr_attrs = json_loads(value)
 
             for k in n5_keywords:
-                if k in zarr_attrs.keys():
-                    warnings.warn("attribute %s is a reserved N5 keyword" % k, UserWarning)
+                if k in zarr_attrs:
+                    warnings.warn(f"Attribute {k} is a reserved N5 keyword", UserWarning)
 
-            # replace previous user attributes
+            # remove previous user attributes
             for k in list(n5_attrs.keys()):
                 if k not in n5_keywords:
                     del n5_attrs[k]
@@ -159,11 +153,11 @@ class N5Store(NestedDirectoryStore):
 
     def __delitem__(self, key: str):
 
-        if key.endswith(zarr_group_meta_key):  # pragma: no cover
+        if key.endswith(zarr_group_meta_key):
             key_new = key.replace(zarr_group_meta_key, n5_attrs_key)
-        elif key.endswith(zarr_array_meta_key):  # pragma: no cover
+        elif key.endswith(zarr_array_meta_key):
             key_new = key.replace(zarr_array_meta_key, n5_attrs_key)
-        elif key.endswith(zarr_attrs_key):  # pragma: no cover
+        elif key.endswith(zarr_attrs_key):
             key_new = key.replace(zarr_attrs_key, n5_attrs_key)
         elif is_chunk_key(key):
             key_new = invert_chunk_coords(key)
@@ -257,7 +251,7 @@ class N5Store(NestedDirectoryStore):
 
             return children
 
-    def _load_n5_attrs(self, path: str):
+    def _load_n5_attrs(self, path: str) -> Dict[str, Any]:
         try:
             s = super().__getitem__(path)
             return json_loads(s)
@@ -290,7 +284,7 @@ class N5Store(NestedDirectoryStore):
         else:
             if not path.endswith(n5_attrs_key):
                 attrs_key = os.path.join(path, n5_attrs_key)
-            else:  # pragma: no cover
+            else:
                 attrs_key = path
 
         attrs = attrs_to_zarr(self._load_n5_attrs(attrs_key))
@@ -394,10 +388,8 @@ class N5FSStore(FSStore):
         elif key.endswith(zarr_array_meta_key):
 
             key_new = key.replace(zarr_array_meta_key, self._array_meta_key)
-            value = array_metadata_to_zarr(self._load_n5_attrs(key_new))
-            # remove n5 key from attrs if at the root node
-            if key == zarr_array_meta_key:
-                value.pop('n5')
+            top_level = key == zarr_array_meta_key
+            value = array_metadata_to_zarr(self._load_n5_attrs(key_new), top_level=top_level)
             return json_dumps(value)
 
         elif key.endswith(zarr_attrs_key):
@@ -431,24 +423,22 @@ class N5FSStore(FSStore):
         elif key.endswith(zarr_array_meta_key):
 
             key_new = key.replace(zarr_array_meta_key, self._array_meta_key)
-
+            top_level = key == zarr_array_meta_key
             n5_attrs = self._load_n5_attrs(key_new)
-            n5_attrs.update(**array_metadata_to_n5(json_loads(value)))
-            # ensure that top-level metadata contains the "n5" keyword
-            if key == zarr_array_meta_key:
-                n5_attrs['n5'] = N5_VERSION
+            n5_attrs.update(**array_metadata_to_n5(json_loads(value), top_level=top_level))
+
             value = json_dumps(n5_attrs)
 
         elif key.endswith(zarr_attrs_key):
 
             key_new = key.replace(zarr_attrs_key, self._attrs_key)
 
-            n5_attrs = self._load_n5_attrs(key)
+            n5_attrs = self._load_n5_attrs(key_new)
             zarr_attrs = json_loads(value)
 
             for k in n5_keywords:
                 if k in zarr_attrs.keys():
-                    warnings.warn("attribute %s is a reserved N5 keyword" % k, UserWarning)
+                    warnings.warn(f"Attribute {k} is a reserved N5 keyword", UserWarning)
 
             # replace previous user attributes
             for k in list(n5_attrs.keys()):
@@ -470,11 +460,11 @@ class N5FSStore(FSStore):
 
     def __delitem__(self, key: str):
 
-        if key.endswith(zarr_group_meta_key):  # pragma: no cover
+        if key.endswith(zarr_group_meta_key):
             key_new = key.replace(zarr_group_meta_key, self._group_meta_key)
-        elif key.endswith(zarr_array_meta_key):  # pragma: no cover
+        elif key.endswith(zarr_array_meta_key):
             key_new = key.replace(zarr_array_meta_key, self._array_meta_key)
-        elif key.endswith(zarr_attrs_key):  # pragma: no cover
+        elif key.endswith(zarr_attrs_key):
             key_new = key.replace(zarr_attrs_key, self._attrs_key)
         elif is_chunk_key(key):
             key_new = self._swap_separator(key)
@@ -549,7 +539,7 @@ class N5FSStore(FSStore):
             # replace n5 attribute file with respective zarr attribute files
             children.remove(self._group_meta_key)
             children.append(zarr_group_meta_key)
-            if self._contains_attrs(path):  # pragma: no cover
+            if self._contains_attrs(path):
                 children.append(zarr_attrs_key)
             return sorted(children)
         else:
@@ -588,7 +578,7 @@ class N5FSStore(FSStore):
         else:
             if not path.endswith(self._attrs_key):
                 attrs_key = os.path.join(path, self._attrs_key)
-            else:  # pragma: no cover
+            else:
                 attrs_key = path
 
         attrs = attrs_to_zarr(self._load_n5_attrs(attrs_key))
@@ -620,7 +610,7 @@ def group_metadata_to_n5(group_metadata: Dict[str, Any]) -> Dict[str, Any]:
     '''Convert group metadata from zarr to N5 format.'''
     del group_metadata['zarr_format']
     # TODO: This should only exist at the top-level
-    group_metadata['n5'] = N5_VERSION
+    group_metadata['n5'] = N5_FORMAT
     return group_metadata
 
 
@@ -632,19 +622,20 @@ def group_metadata_to_zarr(group_metadata: Dict[str, Any]) -> Dict[str, Any]:
     return group_metadata
 
 
-def array_metadata_to_n5(array_metadata: Dict[str, Any]) -> Dict[str, Any]:
-    '''Convert array metadata from zarr to N5 format.'''
+def array_metadata_to_n5(array_metadata: Dict[str, Any], top_level=False) -> Dict[str, Any]:
+    '''Convert array metadata from zarr to N5 format. If the `top_level` keyword argument is True,
+    then the `N5` : N5_FORMAT key : value pair will be inserted into the metadata.'''
 
     for f, t in zarr_to_n5_keys:
-        array_metadata[t] = array_metadata[f]
-        del array_metadata[f]
+        array_metadata[t] = array_metadata.pop(f)
     del array_metadata['zarr_format']
-
+    if top_level:
+        array_metadata['n5'] = N5_FORMAT
     try:
         dtype = np.dtype(array_metadata['dataType'])
-    except TypeError:  # pragma: no cover
+    except TypeError:
         raise TypeError(
-            "data type %s not supported by N5" % array_metadata['dataType'])
+            f"Data type {array_metadata['dataType']} is not supported by N5")
 
     array_metadata['dataType'] = dtype.name
     array_metadata['dimensions'] = array_metadata['dimensions'][::-1]
@@ -652,17 +643,24 @@ def array_metadata_to_n5(array_metadata: Dict[str, Any]) -> Dict[str, Any]:
 
     if 'fill_value' in array_metadata:
         if array_metadata['fill_value'] != 0 and array_metadata['fill_value'] is not None:
-            raise ValueError("N5 only supports fill_value == 0 (for now)")
+            raise ValueError(
+                f'''Received fill_value = {array_metadata['fill_value']},
+                but N5 only supports fill_value = 0'''
+                )
         del array_metadata['fill_value']
 
     if 'order' in array_metadata:
         if array_metadata['order'] != 'C':
-            raise ValueError("zarr N5 storage only stores arrays in C order (for now)")
+            raise ValueError(
+                f"Received order = {array_metadata['order']}, but N5 only supports order = C"
+                )
         del array_metadata['order']
 
     if 'filters' in array_metadata:
         if array_metadata['filters'] != [] and array_metadata['filters'] is not None:
-            raise ValueError("N5 storage does not support zarr filters")
+            raise ValueError(
+                "Received filters, but N5 storage does not support zarr filters"
+                )
         del array_metadata['filters']
 
     assert 'compression' in array_metadata
@@ -676,11 +674,14 @@ def array_metadata_to_n5(array_metadata: Dict[str, Any]) -> Dict[str, Any]:
     return array_metadata
 
 
-def array_metadata_to_zarr(array_metadata: Dict[str, Any]) -> Dict[str, Any]:
-    '''Convert array metadata from N5 to zarr format.'''
+def array_metadata_to_zarr(array_metadata: Dict[str, Any],
+                           top_level: bool = False) -> Dict[str, Any]:
+    '''Convert array metadata from N5 to zarr format.
+    If the `top_level` keyword argument is True, then the `N5` key will be removed from metadata'''
     for t, f in zarr_to_n5_keys:
-        array_metadata[t] = array_metadata[f]
-        del array_metadata[f]
+        array_metadata[t] = array_metadata.pop(f)
+    if top_level:
+        array_metadata.pop('n5')
     array_metadata['zarr_format'] = ZARR_FORMAT
 
     array_metadata['shape'] = array_metadata['shape'][::-1]
@@ -773,13 +774,13 @@ def compressor_config_to_n5(compressor_config: Optional[Dict[str, Any]]) -> Dict
         n5_config['level'] = compressor_config['level']
         n5_config['useZlib'] = True
 
-    elif codec_id == 'gzip':  # pragma: no cover
+    elif codec_id == 'gzip':
 
         n5_config['type'] = 'gzip'
         n5_config['level'] = compressor_config['level']
         n5_config['useZlib'] = False
 
-    else:  # pragma: no cover
+    else:
 
         n5_config.update({k: v for k, v in compressor_config.items() if k != 'type'})
 
@@ -823,7 +824,7 @@ def compressor_config_to_zarr(compressor_config: Dict[str, Any]) -> Optional[Dic
         if 'useZlib' in compressor_config and compressor_config['useZlib']:
             zarr_config['id'] = 'zlib'
             zarr_config['level'] = compressor_config['level']
-        else:  # pragma: no cover
+        else:
             zarr_config['id'] = 'gzip'
             zarr_config['level'] = compressor_config['level']
 
@@ -831,7 +832,7 @@ def compressor_config_to_zarr(compressor_config: Dict[str, Any]) -> Optional[Dic
 
         return None
 
-    else:  # pragma: no cover
+    else:
 
         zarr_config.update({k: v for k, v in compressor_config.items() if k != 'type'})
 
@@ -852,7 +853,7 @@ class N5ChunkWrapper(Codec):
             (self.dtype.byteorder == '=' and sys.byteorder == 'little')
         )
 
-        if compressor:  # pragma: no cover
+        if compressor:
             if compressor_config is not None:
                 raise ValueError("Only one of compressor_config or compressor should be given.")
             compressor_config = compressor.get_config()
@@ -918,7 +919,7 @@ class N5ChunkWrapper(Codec):
             chunk = self._from_big_endian(chunk)
 
             # read partial chunk
-            if chunk_shape != self.chunk_shape:  # pragma: no cover
+            if chunk_shape != self.chunk_shape:
                 chunk = np.frombuffer(chunk, dtype=self.dtype)
                 chunk = chunk.reshape(chunk_shape)
                 complete_chunk = np.zeros(self.chunk_shape, dtype=self.dtype)
