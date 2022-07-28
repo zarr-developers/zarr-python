@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 
 import zarr
-from zarr._storage.store import _get_hierarchy_metadata, v3_api_available, StorageTransformer, StoreV3
+from zarr._storage.store import _get_hierarchy_metadata, v3_api_available, StorageTransformer
 from zarr.meta import _default_entry_point_metadata_v3
 from zarr.storage import (atexit_rmglob, atexit_rmtree, data_root,
                           default_compressor, getsize, init_array, meta_root,
@@ -92,8 +92,8 @@ class InvalidDummyStore():
 class DummyStorageTransfomer(StorageTransformer):
     TEST_CONSTANT = "test1234"
 
-    extension_uri="https://purl.org/zarr/spec/storage_transformers/dummy/1.0"
-    valid_types=["dummy_type"]
+    extension_uri = "https://purl.org/zarr/spec/storage_transformers/dummy/1.0"
+    valid_types = ["dummy_type"]
 
     def __init__(self, _type, test_value) -> None:
         super().__init__(_type)
@@ -203,7 +203,9 @@ class StoreV3Tests(_StoreTests):
 
         store = self.create_store()
         path = 'arr1'
-        transformer = DummyStorageTransfomer("dummy_type", test_value=DummyStorageTransfomer.TEST_CONSTANT)
+        transformer = DummyStorageTransfomer(
+            "dummy_type", test_value=DummyStorageTransfomer.TEST_CONSTANT
+        )
         init_array(store, path=path, shape=1000, chunks=100,
                    dimension_separator=pass_dim_sep, storage_transformers=[transformer])
 

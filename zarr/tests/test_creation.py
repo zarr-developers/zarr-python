@@ -729,7 +729,10 @@ def test_json_dumps_chunks_numpy_dtype():
 
 def test_create_with_storage_transformers():
     kwargs = _init_creation_kwargs(zarr_version=3)
-    transformer = DummyStorageTransfomer("dummy_type", test_value=DummyStorageTransfomer.TEST_CONSTANT)
+    transformer = DummyStorageTransfomer(
+        "dummy_type",
+        test_value=DummyStorageTransfomer.TEST_CONSTANT
+    )
     z = create(1000000000, chunks=True, storage_transformers=[transformer], **kwargs)
     assert isinstance(z._store, DummyStorageTransfomer)
     assert z._store.test_value == DummyStorageTransfomer.TEST_CONSTANT

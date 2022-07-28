@@ -464,7 +464,10 @@ class Metadata3(Metadata2):
         return codec
 
     @classmethod
-    def _encode_storage_transformer_metadata(cls, storage_transformer: "StorageTransformer") -> Optional[Mapping]:
+    def _encode_storage_transformer_metadata(
+        cls,
+        storage_transformer: "StorageTransformer"
+    ) -> Optional[Mapping]:
         return {
             "extension": storage_transformer.extension_uri,
             "type": storage_transformer.type,
