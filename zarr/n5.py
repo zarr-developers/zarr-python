@@ -152,7 +152,6 @@ class N5Store(NestedDirectoryStore):
         super().__setitem__(key_new, value)
 
     def __delitem__(self, key: str):
-
         if key.endswith(zarr_group_meta_key):
             key_new = key.replace(zarr_group_meta_key, n5_attrs_key)
         elif key.endswith(zarr_array_meta_key):
@@ -242,7 +241,7 @@ class N5Store(NestedDirectoryStore):
             # replace n5 attribute file with respective zarr attribute files
             children.remove(n5_attrs_key)
             children.append(zarr_group_meta_key)
-            if self._contains_attrs(path):  # pragma: no cover
+            if self._contains_attrs(path):
                 children.append(zarr_attrs_key)
 
             return sorted(children)
@@ -886,7 +885,7 @@ class N5ChunkWrapper(Codec):
         else:
             return header + chunk.tobytes(order='A')
 
-    def decode(self, chunk, out=None):
+    def decode(self, chunk, out=None) -> bytes:
 
         len_header, chunk_shape = self._read_header(chunk)
         chunk = chunk[len_header:]
@@ -925,7 +924,7 @@ class N5ChunkWrapper(Codec):
                 complete_chunk = np.zeros(self.chunk_shape, dtype=self.dtype)
                 target_slices = tuple(slice(0, s) for s in chunk_shape)
                 complete_chunk[target_slices] = chunk
-                chunk = complete_chunk
+                chunk = complete_chunk.tobytes()
 
             return chunk
 
