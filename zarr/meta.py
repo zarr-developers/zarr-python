@@ -81,7 +81,7 @@ def get_extended_dtype_info(dtype) -> dict:
             fallback=None,
         )
     else:
-        raise ValueError(f"Unsupport dtype: {dtype}")
+        raise ValueError(f"Unsupported dtype: {dtype}")
 
 
 class Metadata2:
@@ -399,7 +399,7 @@ class Metadata3(Metadata2):
             "metadata_key_suffix",
             "extensions",
         }:
-            raise ValueError(f"Unexpected keys in metdata. meta={meta}")
+            raise ValueError(f"Unexpected keys in metadata. meta={meta}")
         return meta
 
     @classmethod
