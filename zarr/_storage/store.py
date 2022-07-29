@@ -347,6 +347,9 @@ class StorageTransformer(MutableMapping, abc.ABC):
     """Base class for storage transformers. The methods simply pass on the data as-is
     and should be overwritten by sub-classes."""
 
+    _store_version = 3
+    _metadata_class = Metadata3
+
     def __init__(self, _type) -> None:
         assert _type in self.valid_types
         self.type = _type

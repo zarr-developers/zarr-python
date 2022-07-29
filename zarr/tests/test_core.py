@@ -55,6 +55,7 @@ from zarr._storage.v3 import (
     SQLiteStoreV3,
     StoreV3,
 )
+from zarr.tests.test_storage_v3 import DummyStorageTransfomer
 from zarr.util import buffer_size
 from zarr.tests.util import abs_container, skip_test_env_var, have_fsspec
 
@@ -3345,6 +3346,35 @@ class TestArrayWithFSStoreV3NestedPartialRead(TestArrayWithPathV3,
             "b663857bb89a8ab648390454954a9cdd453aa24b",
             "21e90fa927d09cbaf0e3b773130e2dc05d18ff9b",
             "e8c1fdd18b5c2ee050b59d0c8c95d07db642459c",
+        ]
+
+
+@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
+class TestArrayWithStorageTransformersV3(TestArrayWithPathV3):
+
+    @staticmethod
+    def create_array(array_path='arr1', read_only=False, **kwargs):
+        store = KVStoreV3(dict())
+        kwargs.setdefault('compressor', Zlib(level=1))
+        cache_metadata = kwargs.pop('cache_metadata', True)
+        cache_attrs = kwargs.pop('cache_attrs', True)
+        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
+        dummy_storage_transformer = DummyStorageTransfomer(
+            "dummy_type", test_value=DummyStorageTransfomer.TEST_CONSTANT
+        )
+        init_array(store, path=array_path, storage_transformers=[dummy_storage_transformer],
+                   **kwargs)
+        return Array(store, path=array_path, read_only=read_only,
+                     cache_metadata=cache_metadata, cache_attrs=cache_attrs,
+                     write_empty_chunks=write_empty_chunks)
+
+    def expected(self):
+        return [
+            "0bc73a90578b908bfe8d5b90aaf79511cc0a5f18",
+            "ae4ce0caa648d312e9cbe09bc35a3d197945f648",
+            "c3a018158668c18a615e38f32b1ea3ce248f4d1f",
+            "aaa1558d072f3d7fc30959992dbd9923458c25ba",
+            "9587eb0d9662b6b6c1e1fa4a623b5facc1110e5f",
         ]
 
 
