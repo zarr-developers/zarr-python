@@ -289,7 +289,12 @@ class StoreV3(BaseStore):
                 assert start == 0
                 values[key] = value
             else:
-                assert start <= len(values[key])
+                if start > len(values[key]):
+                    raise ValueError(
+                        f"Cannot set value at start {start}, "
+                        + f"since it is beyond the data at key {key}, "
+                        + f"having length {len(values[key])}."
+                    )
                 values[key][start:start + len(value)] = value
         for key, value in values.items():
             self[key] = value
@@ -351,7 +356,11 @@ class StorageTransformer(MutableMapping, abc.ABC):
     _metadata_class = Metadata3
 
     def __init__(self, _type) -> None:
-        assert _type in self.valid_types
+        if _type not in self.valid_types:
+            raise ValueError(
+                f"Storage transformer cannot be initialized with type {_type}, "
+                + f"must be one of {list(self.valid_types)}."
+            )
         self.type = _type
         self._inner_store = None
 

@@ -263,13 +263,14 @@ class StoreV3Tests(_StoreTests):
                 (data_root + 'foo', (0, 1))
             ]
         )
-        assert [b'd', b'b', b'z', b'abc', b'defg'] == store.get_partial_values(
+        assert [b'd', b'b', b'z', b'abc', b'defg', b'defg'] == store.get_partial_values(
             [
                 (data_root + 'foo', (3, 1)),
                 (data_root + 'foo', (1, 1)),
                 (data_root + 'baz', (0, 1)),
                 (data_root + 'foo', (0, 3)),
                 (data_root + 'foo', (3, 4)),
+                (data_root + 'foo', (3, None)),
             ]
         )
 
