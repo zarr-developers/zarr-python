@@ -87,7 +87,9 @@ def create(shape, chunks=True, dtype=None, compressor='default',
     storage_transformers : sequence of StorageTransformers, optional
         Setting storage transformers, changes the storage structure and behaviour
         of data coming from the underlying store. The transformers are applied in the
-        order of the given sequence. May only be set when using zarr_version 3.
+        order of the given sequence. Supplying an empty sequence is the same as omitting
+        the argument or setting it to None. May only be set when using zarr_version 3.
+        Supplying an empty seq
 
         .. versionadded:: 2.13
 
