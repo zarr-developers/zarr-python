@@ -6,7 +6,7 @@ dependencies:
   - numcodecs >= 0.6.4
   - numpy >= 1.7
   - pip
-  - werkzeug<2.2.0
+  - werkzeug < 2.2.0
   - pip:
     - asciitree
     - fasteners
