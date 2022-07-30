@@ -718,19 +718,20 @@ def compressor_config_to_n5(compressor_config: Optional[Dict[str, Any]]) -> Dict
 
     if compressor_config is None:
         return {'type': 'raw'}
-    compressor_config = cast(Dict[str, Any], compressor_config)
+    else:
+        _compressor_config = compressor_config
 
     # peel wrapper, if present
-    if compressor_config['id'] == N5ChunkWrapper.codec_id:
-        compressor_config = compressor_config['compressor_config']
+    if _compressor_config['id'] == N5ChunkWrapper.codec_id:
+        _compressor_config = _compressor_config['compressor_config']
 
-    codec_id = compressor_config['id']
+    codec_id = _compressor_config['id']
     n5_config = {'type': codec_id}
 
     if codec_id == 'bz2':
 
         n5_config['type'] = 'bzip2'
-        n5_config['blockSize'] = compressor_config['level']
+        n5_config['blockSize'] = _compressor_config['level']
 
     elif codec_id == 'blosc':
 
@@ -740,16 +741,16 @@ def compressor_config_to_n5(compressor_config: Optional[Dict[str, Any]]) -> Dict
             RuntimeWarning
         )
 
-        n5_config['cname'] = compressor_config['cname']
-        n5_config['clevel'] = compressor_config['clevel']
-        n5_config['shuffle'] = compressor_config['shuffle']
-        n5_config['blocksize'] = compressor_config['blocksize']
+        n5_config['cname'] = _compressor_config['cname']
+        n5_config['clevel'] = _compressor_config['clevel']
+        n5_config['shuffle'] = _compressor_config['shuffle']
+        n5_config['blocksize'] = _compressor_config['blocksize']
 
     elif codec_id == 'lzma':
 
         # Switch to XZ for N5 if we are using the default XZ format.
         # Note: 4 is the default, which is lzma.CHECK_CRC64.
-        if compressor_config['format'] == 1 and compressor_config['check'] in [-1, 4]:
+        if _compressor_config['format'] == 1 and _compressor_config['check'] in [-1, 4]:
             n5_config['type'] = 'xz'
         else:
             warnings.warn(
@@ -757,31 +758,31 @@ def compressor_config_to_n5(compressor_config: Optional[Dict[str, Any]]) -> Dict
                 "might not be able to open the dataset with another N5 library.",
                 RuntimeWarning
             )
-            n5_config['format'] = compressor_config['format']
-            n5_config['check'] = compressor_config['check']
-            n5_config['filters'] = compressor_config['filters']
+            n5_config['format'] = _compressor_config['format']
+            n5_config['check'] = _compressor_config['check']
+            n5_config['filters'] = _compressor_config['filters']
 
         # The default is lzma.PRESET_DEFAULT, which is 6.
-        if compressor_config['preset']:
-            n5_config['preset'] = compressor_config['preset']
+        if _compressor_config['preset']:
+            n5_config['preset'] = _compressor_config['preset']
         else:
             n5_config['preset'] = 6
 
     elif codec_id == 'zlib':
 
         n5_config['type'] = 'gzip'
-        n5_config['level'] = compressor_config['level']
+        n5_config['level'] = _compressor_config['level']
         n5_config['useZlib'] = True
 
     elif codec_id == 'gzip':
 
         n5_config['type'] = 'gzip'
-        n5_config['level'] = compressor_config['level']
+        n5_config['level'] = _compressor_config['level']
         n5_config['useZlib'] = False
 
     else:
 
-        n5_config.update({k: v for k, v in compressor_config.items() if k != 'type'})
+        n5_config.update({k: v for k, v in _compressor_config.items() if k != 'type'})
 
     return n5_config
 
