@@ -294,7 +294,7 @@ def init_array(
     filters=None,
     object_codec=None,
     dimension_separator=None,
-    storage_transformers=None,
+    storage_transformers=(),
 ):
     """Initialize an array store with the given configuration. Note that this is a low-level
     function and there should be no need to call this directly from user code.
@@ -440,7 +440,7 @@ def _init_array_metadata(
     filters=None,
     object_codec=None,
     dimension_separator=None,
-    storage_transformers=None,
+    storage_transformers=(),
 ):
 
     store_version = getattr(store, '_store_version', 2)

@@ -510,11 +510,10 @@ class Metadata3(Metadata2):
             # TODO: remove dimension_separator?
 
             compressor = cls._decode_codec_metadata(meta.get("compressor", None))
-            storage_transformers = meta.get("storage_transformers", None)
-            if storage_transformers:
-                storage_transformers = [
-                    cls._decode_storage_transformer_metadata(i) for i in storage_transformers
-                ]
+            storage_transformers = meta.get("storage_transformers", ())
+            storage_transformers = [
+                cls._decode_storage_transformer_metadata(i) for i in storage_transformers
+            ]
             extensions = meta.get("extensions", [])
             meta = dict(
                 shape=tuple(meta["shape"]),
@@ -555,11 +554,10 @@ class Metadata3(Metadata2):
             object_codec = None
 
         compressor = cls._encode_codec_metadata(meta.get("compressor", None))
-        storage_transformers = meta.get("storage_transformers", None)
-        if storage_transformers:
-            storage_transformers = [
-                cls._encode_storage_transformer_metadata(i) for i in storage_transformers
-            ]
+        storage_transformers = meta.get("storage_transformers", ())
+        storage_transformers = [
+            cls._encode_storage_transformer_metadata(i) for i in storage_transformers
+        ]
         extensions = meta.get("extensions", [])
         meta = dict(
             shape=meta["shape"] + sdshape,
