@@ -52,6 +52,7 @@ from zarr._storage.v3 import (
     KVStoreV3,
     LMDBStoreV3,
     LRUStoreCacheV3,
+    RmdirV3,
     SQLiteStoreV3,
     StoreV3,
 )
@@ -3088,7 +3089,7 @@ class TestArrayWithSQLiteStoreV3(TestArrayWithPathV3, TestArrayWithSQLiteStore):
 # Note: this custom mapping doesn't actually have all methods in the
 #       v3 spec (e.g. erase), but they aren't needed here.
 
-class CustomMappingV3(StoreV3):
+class CustomMappingV3(RmdirV3, StoreV3):
 
     def __init__(self):
         self.inner = KVStoreV3(dict())
