@@ -256,6 +256,10 @@ class StoreV3(BaseStore):
     def __getitem__(self, key):
         """Get a value."""
 
+    @abc.abstractmethod
+    def rmdir(self, path=None):
+        pass
+
     def get_partial_values(self, key_ranges):
         """Get multiple partial values.
         key_ranges can be an iterable of key, range pairs,
@@ -283,13 +287,16 @@ class StoreV3(BaseStore):
         A key may occur multiple times with different starts and non-overlapping values.
         Also, start may only be beyond the current value if other values fill the gap."""
         unique_keys = set(next(zip(*key_start_values)))
-        values = {key: bytearray(self.get(key)) for key in unique_keys}
+        values = {}
+        for key in unique_keys:
+            old_value = self.get(key)
+            values[key] = None if old_value is None else bytearray(old_value)
         for key, start, value in key_start_values:
             if values[key] is None:
                 assert start == 0
                 values[key] = value
             else:
-                if start > len(values[key]):
+                if start > len(values[key]):  # pragma: no cover
                     raise ValueError(
                         f"Cannot set value at start {start}, "
                         + f"since it is beyond the data at key {key}, "
@@ -356,7 +363,7 @@ class StorageTransformer(MutableMapping, abc.ABC):
     _metadata_class = Metadata3
 
     def __init__(self, _type) -> None:
-        if _type not in self.valid_types:
+        if _type not in self.valid_types:  # pragma: no cover
             raise ValueError(
                 f"Storage transformer cannot be initialized with type {_type}, "
                 + f"must be one of {list(self.valid_types)}."
@@ -371,11 +378,11 @@ class StorageTransformer(MutableMapping, abc.ABC):
 
     @abc.abstractproperty
     def extension_uri(self):
-        pass
+        pass  # pragma: no cover
 
     @abc.abstractproperty
     def valid_types(self):
-        pass
+        pass  # pragma: no cover
 
     def get_config(self):
         """Return a dictionary holding configuration parameters for this
@@ -437,6 +444,9 @@ class StorageTransformer(MutableMapping, abc.ABC):
     def erase_prefix(self, prefix):
         return self.inner_store.erase_prefix(prefix)
 
+    def rmdir(self, path=None):
+        return self.inner_store.rmdir(path)
+
     def list_dir(self, prefix):
         return self.inner_store.list_dir(prefix)
 
@@ -471,7 +481,11 @@ class StorageTransformer(MutableMapping, abc.ABC):
         return self.inner_store.clear()
 
     def __eq__(self, other):
-        return self.inner_store.__eq__(other)
+        return (
+            type(self) == type(other) and
+            self._inner_store == other._inner_store and
+            self.get_config() == other.get_config()
+        )
 
 
 # allow MutableMapping for backwards compatibility

@@ -277,13 +277,19 @@ class StoreV3Tests(_StoreTests):
     def test_set_partial_values(self):
         store = self.create_store()
         store[data_root + 'foo'] = b'abcdefg'
-        store[data_root + 'baz'] = b'z'
         store.set_partial_values(
             [
                 (data_root + 'foo', 0, b'hey')
             ]
         )
         assert store[data_root + 'foo'] == b'heydefg'
+
+        store.set_partial_values(
+            [
+                (data_root + 'baz', 0, b'z')
+            ]
+        )
+        assert store[data_root + 'baz'] == b'z'
         store.set_partial_values(
             [
                 (data_root + 'foo', 1, b'oo'),
@@ -501,6 +507,16 @@ class TestRedisStoreV3(StoreV3Tests):
         # start with an empty store
         store.clear()
         return store
+
+
+class TestStorageTransformerV3(TestMappingStoreV3):
+
+    def create_store(self, **kwargs):
+        inner_store = super().create_store(**kwargs)
+        storage_transformer = DummyStorageTransfomer(
+            "dummy_type", test_value=DummyStorageTransfomer.TEST_CONSTANT
+        )
+        return storage_transformer._copy_for_array(inner_store)
 
 
 class TestLRUStoreCacheV3(_TestLRUStoreCache, StoreV3Tests):

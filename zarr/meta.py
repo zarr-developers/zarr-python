@@ -11,7 +11,7 @@ from zarr.util import json_dumps, json_loads
 
 from typing import cast, Union, Any, List, Mapping as MappingType, Optional, TYPE_CHECKING
 
-if TYPE_CHECKING:
+if TYPE_CHECKING:  # pragma: no cover
     from zarr._storage.store import StorageTransformer
 
 
@@ -488,7 +488,7 @@ class Metadata3(Metadata2):
         for StorageTransformerCls in KNOWN_STORAGE_TRANSFORMERS:
             if StorageTransformerCls.extension_uri == extension_uri:
                 break
-        else:
+        else:  # pragma: no cover
             raise NotImplementedError
 
         return StorageTransformerCls.from_config(transformer_type, conf)

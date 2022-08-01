@@ -3363,7 +3363,7 @@ class TestArrayWithStorageTransformersV3(TestArrayWithPathV3):
             "dummy_type", test_value=DummyStorageTransfomer.TEST_CONSTANT
         )
         init_array(store, path=array_path, storage_transformers=[dummy_storage_transformer],
-                   **kwargs)
+                   chunk_store=store, **kwargs)
         return Array(store, path=array_path, read_only=read_only,
                      cache_metadata=cache_metadata, cache_attrs=cache_attrs,
                      write_empty_chunks=write_empty_chunks)
