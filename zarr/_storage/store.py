@@ -397,74 +397,81 @@ class StorageTransformer(MutableMapping, abc.ABC):
         # keyword arguments without any special decoding
         return cls(_type, **config)
 
+    @property
+    def inner_store(self) -> Union["StorageTransformer", StoreV3]:
+        assert self._inner_store is not None, (
+            "inner_store is not initialized, first get a copy via _copy_for_array."
+        )
+        return self._inner_store
+
     def is_readable(self):
-        return self._inner_store.is_readable()
+        return self.inner_store.is_readable()
 
     def is_writeable(self):
-        return self._inner_store.is_writeable()
+        return self.inner_store.is_writeable()
 
     def is_listable(self):
-        return self._inner_store.is_listable()
+        return self.inner_store.is_listable()
 
     def is_erasable(self):
-        return self._inner_store.is_erasable()
+        return self.inner_store.is_erasable()
 
     def __enter__(self):
-        return self._inner_store.__enter__()
+        return self.inner_store.__enter__()
 
     def __exit__(self, exc_type, exc_value, traceback):
-        return self._inner_store.__exit__(exc_type, exc_value, traceback)
+        return self.inner_store.__exit__(exc_type, exc_value, traceback)
 
     def close(self) -> None:
-        return self._inner_store.close()
+        return self.inner_store.close()
 
     def rename(self, src_path: str, dst_path: str) -> None:
-        return self._inner_store.rename(src_path, dst_path)
+        return self.inner_store.rename(src_path, dst_path)
 
     def list_prefix(self, prefix):
-        return self._inner_store.list_prefix(prefix)
+        return self.inner_store.list_prefix(prefix)
 
     def erase(self, key):
-        return self._inner_store.erase(key)
+        return self.inner_store.erase(key)
 
     def erase_prefix(self, prefix):
-        return self._inner_store.erase_prefix(prefix)
+        return self.inner_store.erase_prefix(prefix)
 
     def list_dir(self, prefix):
-        return self._inner_store.list_dir(prefix)
+        return self.inner_store.list_dir(prefix)
 
     def list(self):
-        return self._inner_store.list()
+        return self.inner_store.list()
 
     def __contains__(self, key):
-        return self._inner_store.__contains__(key)
+        return self.inner_store.__contains__(key)
 
     def __setitem__(self, key, value):
-        return self._inner_store.__setitem__(key, value)
+        return self.inner_store.__setitem__(key, value)
 
     def __getitem__(self, key):
-        return self._inner_store.__getitem__(key)
+        return self.inner_store.__getitem__(key)
 
     def __delitem__(self, key):
-        return self._inner_store.__delitem__(key)
+        return self.inner_store.__delitem__(key)
 
     def __iter__(self):
-        return self._inner_store.__iter__()
+        return self.inner_store.__iter__()
 
     def __len__(self):
-        return self._inner_store.__len__()
+        return self.inner_store.__len__()
 
     def get_partial_values(self, key_ranges):
-        return self._inner_store.get_partial_values(key_ranges)
+        return self.inner_store.get_partial_values(key_ranges)
 
     def set_partial_values(self, key_start_values):
-        return self._inner_store.set_partial_values(key_start_values)
+        return self.inner_store.set_partial_values(key_start_values)
 
     def clear(self):
-        return self._inner_store.clear()
+        return self.inner_store.clear()
 
     def __eq__(self, other):
-        return self._inner_store.__eq__(other)
+        return self.inner_store.__eq__(other)
 
 
 # allow MutableMapping for backwards compatibility
