@@ -99,6 +99,7 @@ def test_array(tmp_path, compressor, store_type):
     assert a.shape == z.shape
     assert a.dtype == z.dtype
     assert isinstance(a, type(z[:]))
+    assert isinstance(z.meta_array, type(cupy.empty(())))
     cupy.testing.assert_array_equal(a, z[:])
 
     # with array-like
@@ -196,3 +197,4 @@ def test_group(tmp_path, compressor, store_type):
     assert isinstance(a, Array)
     assert isinstance(a[:], cupy.ndarray)
     assert (a[:] == 1).all()
+    assert isinstance(g.meta_array, type(cupy.empty(())))
