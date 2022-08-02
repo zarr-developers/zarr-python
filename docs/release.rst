@@ -6,10 +6,28 @@ Release notes
     # to document your changes. On releases it will be
     # re-indented so that it does not show up in the notes.
 
-    .. _unreleased:
+.. _unreleased:
 
-    Unreleased
-    ----------
+Unreleased
+----------
+
+Documentation
+~~~~~~~~~~~~~
+
+* Typo fixes to close quotes. By :user:`Pavithra Eswaramoorthy <pavithraes>`
+
+Maintenance
+~~~~~~~~~~~
+
+* Fix a few DeepSource.io alerts
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1080`.
+
+* Fix spelling.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>`, :issue:`1073`.
+
+* Update GitHub issue templates with `YAML` format.
+  By :user:`Saransh Chopra <Saransh-cpp>` :issue:`1079`.
+
 
 .. _release_2.12.0:
 

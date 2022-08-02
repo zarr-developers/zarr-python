@@ -73,7 +73,9 @@ def test_ensure_store():
     with pytest.raises(ValueError):
         Store._ensure_store(KVStoreV3(dict()))
 
-    assert Store._ensure_store(None) is None
+    # cannot initialize without a store
+    with pytest.raises(ValueError):
+        Store._ensure_store(None)
 
 
 def test_capabilities():
@@ -2398,7 +2400,7 @@ class TestABSStore(StoreTests):
             assert 4 == len(store)
             keys = [prefix + 'a', prefix + 'b', prefix + 'c/d', prefix + 'c/e/f']
             values = [b'aaa', b'bbb', b'ddd', b'fff']
-            items = [(k, v) for k, v in zip(keys, values)]
+            items = list(zip(keys, values))
             assert set(keys) == set(store)
             assert set(keys) == set(store.keys())
             assert set(values) == set(store.values())

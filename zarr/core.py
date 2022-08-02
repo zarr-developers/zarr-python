@@ -161,7 +161,7 @@ class Array:
 
     def __init__(
         self,
-        store: Any,  # BaseStore not stricly required due to normalize_store_arg
+        store: Any,  # BaseStore not strictly required due to normalize_store_arg
         path=None,
         read_only=False,
         chunk_store=None,
