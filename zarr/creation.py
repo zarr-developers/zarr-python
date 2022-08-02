@@ -95,7 +95,7 @@ def create(shape, chunks=True, dtype=None, compressor='default',
         An array instance to use for determining arrays to create and return
         to users. Use `numpy.empty(())` by default.
 
-        .. versionadded:: 2.12
+        .. versionadded:: 2.13
 
     Returns
     -------
