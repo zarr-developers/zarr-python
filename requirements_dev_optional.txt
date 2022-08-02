@@ -14,7 +14,7 @@ pymongo==4.2.0
 # optional test requirements
 tox==3.25.1
 coverage
-flake8==4.0.1
+flake8==5.0.3
 pytest-cov==3.0.0
 pytest-doctestplus==0.12.0
 pytest-timeout==2.1.0
