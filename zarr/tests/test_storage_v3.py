@@ -518,6 +518,21 @@ class TestStorageTransformerV3(TestMappingStoreV3):
         )
         return storage_transformer._copy_for_array(inner_store)
 
+    def test_method_forwarding(self):
+        store = self.create_store()
+        assert store.list() == store.inner_store.list()
+        assert store.list_dir(data_root) == store.inner_store.list_dir(data_root)
+
+        assert store.is_readable()
+        assert store.is_writeable()
+        assert store.is_listable()
+        store.inner_store._readable = False
+        store.inner_store._writeable = False
+        store.inner_store._listable = False
+        assert not store.is_readable()
+        assert not store.is_writeable()
+        assert not store.is_listable()
+
 
 class TestLRUStoreCacheV3(_TestLRUStoreCache, StoreV3Tests):
 

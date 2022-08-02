@@ -258,7 +258,8 @@ class StoreV3(BaseStore):
 
     @abc.abstractmethod
     def rmdir(self, path=None):
-        pass
+        """Remove a data path and all its subkeys and related metadata.
+        Expects a path without the data or meta root prefix."""
 
     def get_partial_values(self, key_ranges):
         """Get multiple partial values.
