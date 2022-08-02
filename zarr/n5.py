@@ -925,7 +925,7 @@ class N5ChunkWrapper(Codec):
                 complete_chunk = np.zeros(self.chunk_shape, dtype=self.dtype)
                 target_slices = tuple(slice(0, s) for s in chunk_shape)
                 complete_chunk[target_slices] = chunk
-                chunk = complete_chunk.tobytes()
+                chunk = complete_chunk
 
             return chunk
 
