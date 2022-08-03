@@ -118,10 +118,7 @@
     "include": [
         {
             "python": "3.9",
-            "numpy": "1.22.1",
-            "asciitree": "0.3.3",
-            "fasteners": "0.17.3",
-            "numcodecs": "0.9.1"
+            "zarr": "2.12.0"
         },
     ],
     "exclude": [
