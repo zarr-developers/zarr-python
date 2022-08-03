@@ -3351,32 +3351,32 @@ class TestArrayWithFSStoreV3NestedPartialRead(TestArrayWithPathV3,
 
 
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
-class TestArrayWithStorageTransformersV3(TestArrayWithPathV3):
+class TestArrayWithStorageTransformersV3(TestArrayWithChunkStoreV3):
 
     @staticmethod
     def create_array(array_path='arr1', read_only=False, **kwargs):
         store = KVStoreV3(dict())
+        # separate chunk store
         chunk_store = KVStoreV3(dict())
-        kwargs.setdefault('compressor', Zlib(level=1))
         cache_metadata = kwargs.pop('cache_metadata', True)
         cache_attrs = kwargs.pop('cache_attrs', True)
         write_empty_chunks = kwargs.pop('write_empty_chunks', True)
         dummy_storage_transformer = DummyStorageTransfomer(
             "dummy_type", test_value=DummyStorageTransfomer.TEST_CONSTANT
         )
-        init_array(store, path=array_path, storage_transformers=[dummy_storage_transformer],
-                   chunk_store=chunk_store, **kwargs)
+        init_array(store, path=array_path, chunk_store=chunk_store,
+                   storage_transformers=[dummy_storage_transformer], **kwargs)
         return Array(store, path=array_path, read_only=read_only,
-                     cache_metadata=cache_metadata, cache_attrs=cache_attrs,
-                     write_empty_chunks=write_empty_chunks, chunk_store=chunk_store)
+                     chunk_store=chunk_store, cache_metadata=cache_metadata,
+                     cache_attrs=cache_attrs, write_empty_chunks=write_empty_chunks)
 
     def expected(self):
         return [
-            "0bc73a90578b908bfe8d5b90aaf79511cc0a5f18",
-            "ae4ce0caa648d312e9cbe09bc35a3d197945f648",
-            "c3a018158668c18a615e38f32b1ea3ce248f4d1f",
-            "aaa1558d072f3d7fc30959992dbd9923458c25ba",
-            "9587eb0d9662b6b6c1e1fa4a623b5facc1110e5f",
+            "3fb9a4f8233b09ad02067b6b7fc9fd5caa405c7d",
+            "89c8eb364beb84919fc9153d2c1ed2696274ec18",
+            "73307055c3aec095dd1232c38d793ef82a06bd97",
+            "6152c09255a5efa43b1a115546e35affa00c138c",
+            "2f8802fc391f67f713302e84fad4fd8f1366d6c2",
         ]
 
 
