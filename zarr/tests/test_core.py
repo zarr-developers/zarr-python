@@ -3356,6 +3356,7 @@ class TestArrayWithStorageTransformersV3(TestArrayWithPathV3):
     @staticmethod
     def create_array(array_path='arr1', read_only=False, **kwargs):
         store = KVStoreV3(dict())
+        chunk_store = KVStoreV3(dict())
         kwargs.setdefault('compressor', Zlib(level=1))
         cache_metadata = kwargs.pop('cache_metadata', True)
         cache_attrs = kwargs.pop('cache_attrs', True)
@@ -3364,10 +3365,10 @@ class TestArrayWithStorageTransformersV3(TestArrayWithPathV3):
             "dummy_type", test_value=DummyStorageTransfomer.TEST_CONSTANT
         )
         init_array(store, path=array_path, storage_transformers=[dummy_storage_transformer],
-                   chunk_store=store, **kwargs)
+                   chunk_store=chunk_store, **kwargs)
         return Array(store, path=array_path, read_only=read_only,
                      cache_metadata=cache_metadata, cache_attrs=cache_attrs,
-                     write_empty_chunks=write_empty_chunks)
+                     write_empty_chunks=write_empty_chunks, chunk_store=chunk_store)
 
     def expected(self):
         return [
