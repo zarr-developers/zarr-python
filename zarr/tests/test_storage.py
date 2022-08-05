@@ -24,7 +24,7 @@ from zarr.convenience import consolidate_metadata
 from zarr.errors import ContainsArrayError, ContainsGroupError, MetadataError
 from zarr.hierarchy import group
 from zarr.meta import ZARR_FORMAT, decode_array_metadata
-from zarr.n5 import N5Store, N5FSStore
+from zarr.n5 import N5Store, N5FSStore, N5_FORMAT, n5_attrs_key
 from zarr.storage import (ABSStore, ConsolidatedMetadataStore, DBMStore,
                           DictStore, DirectoryStore, KVStore, LMDBStore,
                           LRUStoreCache, MemoryStore, MongoDBStore,
@@ -37,6 +37,7 @@ from zarr.storage import (ABSStore, ConsolidatedMetadataStore, DBMStore,
 from zarr.storage import FSStore, rename, listdir
 from zarr._storage.v3 import KVStoreV3
 from zarr.tests.util import CountingDict, have_fsspec, skip_test_env_var, abs_container
+from zarr.util import json_dumps
 
 
 @contextmanager
@@ -1477,6 +1478,13 @@ class TestN5Store(TestNestedDirectoryStore):
         store_b = N5Store(store_a.path)
         assert store_a == store_b
 
+    @pytest.mark.parametrize('zarr_meta_key', ['.zarray', '.zattrs', '.zgroup'])
+    def test_del_zarr_meta_key(self, zarr_meta_key):
+        store = self.create_store()
+        store[n5_attrs_key] = json_dumps({'foo': 'bar'})
+        del store[zarr_meta_key]
+        assert n5_attrs_key not in store
+
     def test_chunk_nesting(self):
         store = self.create_store()
         store['0.0'] = b'xxx'
@@ -1488,6 +1496,8 @@ class TestN5Store(TestNestedDirectoryStore):
         assert b'yyy' == store['foo/10.20.30']
         # N5 reverses axis order
         assert b'yyy' == store['foo/30/20/10']
+        del store['foo/10.20.30']
+        assert 'foo/30/20/10' not in store
         store['42'] = b'zzz'
         assert '42' in store
         assert b'zzz' == store['42']
@@ -1509,6 +1519,10 @@ class TestN5Store(TestNestedDirectoryStore):
         # N5Store always has a fill value of 0
         assert meta['fill_value'] == 0
         assert meta['dimension_separator'] == '.'
+        # Top-level groups AND arrays should have
+        # the n5 keyword in metadata
+        raw_n5_meta = json.loads(store[n5_attrs_key])
+        assert raw_n5_meta.get('n5', None) == N5_FORMAT
 
     def test_init_array_path(self):
         path = 'foo/bar'
@@ -1558,7 +1572,7 @@ class TestN5Store(TestNestedDirectoryStore):
     def test_init_group(self):
         store = self.create_store()
         init_group(store)
-
+        store['.zattrs'] = json_dumps({'foo': 'bar'})
         # check metadata
         assert group_meta_key in store
         assert group_meta_key in store.listdir()
@@ -1597,6 +1611,14 @@ class TestN5FSStore(TestFSStore):
     # This is copied wholesale from the N5Store tests. The same test could
     # be run by making TestN5FSStore inherit from both TestFSStore and
     # TestN5Store, but a direct copy is arguably more explicit.
+
+    @pytest.mark.parametrize('zarr_meta_key', ['.zarray', '.zattrs', '.zgroup'])
+    def test_del_zarr_meta_key(self, zarr_meta_key):
+        store = self.create_store()
+        store[n5_attrs_key] = json_dumps({'foo': 'bar'})
+        del store[zarr_meta_key]
+        assert n5_attrs_key not in store
+
     def test_chunk_nesting(self):
         store = self.create_store()
         store['0.0'] = b'xxx'
@@ -1608,6 +1630,8 @@ class TestN5FSStore(TestFSStore):
         assert b'yyy' == store['foo/10.20.30']
         # N5 reverses axis order
         assert b'yyy' == store['foo/30/20/10']
+        del store['foo/10.20.30']
+        assert 'foo/30/20/10' not in store
         store['42'] = b'zzz'
         assert '42' in store
         assert b'zzz' == store['42']
@@ -1629,6 +1653,10 @@ class TestN5FSStore(TestFSStore):
         # N5Store always has a fill value of 0
         assert meta['fill_value'] == 0
         assert meta['dimension_separator'] == '.'
+        # Top-level groups AND arrays should have
+        # the n5 keyword in metadata
+        raw_n5_meta = json.loads(store[n5_attrs_key])
+        assert raw_n5_meta.get('n5', None) == N5_FORMAT
 
     def test_init_array_path(self):
         path = 'foo/bar'
@@ -1679,6 +1707,28 @@ class TestN5FSStore(TestFSStore):
 
         with pytest.warns(UserWarning, match='dimension_separator'):
             self.create_store(dimension_separator='/')
+
+    def test_init_group(self):
+        store = self.create_store()
+        init_group(store)
+        store['.zattrs'] = json_dumps({'foo': 'bar'})
+        # check metadata
+        assert group_meta_key in store
+        assert group_meta_key in store.listdir()
+        assert group_meta_key in store.listdir('')
+        meta = store._metadata_class.decode_group_metadata(store[group_meta_key])
+        assert ZARR_FORMAT == meta['zarr_format']
+
+    def test_filters(self):
+        all_filters, all_errors = zip(*[
+            (None, does_not_raise()),
+            ([], does_not_raise()),
+            ([AsType('f4', 'f8')], pytest.raises(ValueError)),
+        ])
+        for filters, error in zip(all_filters, all_errors):
+            store = self.create_store()
+            with error:
+                init_array(store, shape=1000, chunks=100, filters=filters)
 
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
