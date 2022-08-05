@@ -1990,7 +1990,7 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
 
     def test_compressors(self):
         compressors = [
-            None, BZ2(), Zlib(), GZip()
+            None, BZ2(), Zlib(), GZip(), MsgPack()
         ]
         if LZMA:
             compressors.append(LZMA())
