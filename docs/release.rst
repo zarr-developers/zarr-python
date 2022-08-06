@@ -37,7 +37,7 @@ Bug fixes
   By :user:`Davis Bennett <d-v-b>`; :issue:`1092`.
 
 * Fix bug in LRUEStoreCache in which the current size wasn't reset on invalidation.
-  By :user:`BGCMHou <BGCMHou>` and `:user:`Josh Moore <joshmoore>` :issue:`1076`, :issue:`1077`.
+  By :user:`BGCMHou <BGCMHou>` and :user:`Josh Moore <joshmoore>` :issue:`1076`, :issue:`1077`.
 
 .. _release_2.12.0:
 
