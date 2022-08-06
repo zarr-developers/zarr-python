@@ -6,27 +6,23 @@ Release notes
     # to document your changes. On releases it will be
     # re-indented so that it does not show up in the notes.
 
-.. _unreleased:
+    .. _unreleased:
 
-Unreleased
-----------
+    Unreleased
+    ----------
 
-Documentation
+.. _release_2.13.0:
+
+2.13.0
+------
+.. warning::
+    Pre-release! Use `pip install --pre zarr` to evaluate this release.
+
+Major changes
 ~~~~~~~~~~~~~
 
-* Typo fixes to close quotes. By :user:`Pavithra Eswaramoorthy <pavithraes>`
-
-Maintenance
-~~~~~~~~~~~
-
-* Fix a few DeepSource.io alerts
-  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1080`.
-
-* Fix spelling.
-  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>`, :issue:`1073`.
-
-* Update GitHub issue templates with `YAML` format.
-  By :user:`Saransh Chopra <Saransh-cpp>` :issue:`1079`.
+* Remove support for Python 3.7 in concert with NumPy dependency.
+  By :user:`Davis Bennett <d-v-b>`; :issue:`1067`.
 
 Bug fixes
 ~~~~~~~~~
@@ -38,6 +34,35 @@ Bug fixes
 
 * Fix bug in LRUEStoreCache in which the current size wasn't reset on invalidation.
   By :user:`BGCMHou <BGCMHou>` and :user:`Josh Moore <joshmoore>` :issue:`1076`, :issue:`1077`.
+
+Documentation
+~~~~~~~~~~~~~
+
+* Typo fixes to close quotes. By :user:`Pavithra Eswaramoorthy <pavithraes>`
+
+Maintenance
+~~~~~~~~~~~
+
+* Pin werkzeug to prevent test hangs.
+  By :user:`Davis Bennett <d-v-b>`; :issue:`1098`.
+
+* Fix a few DeepSource.io alerts
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1080`.
+
+* Fix URLs.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>`, :issue:`1074`.
+
+* Fix spelling.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>`, :issue:`1073`.
+
+* Update GitHub issue templates with `YAML` format.
+  By :user:`Saransh Chopra <Saransh-cpp>` :issue:`1079`.
+
+* Remove option to return None from _ensure_store.
+  By :user:`Greggory Lee <grlee77>`; :issue:`1068`.
+
+* Fix a typo of "integers".
+  By :user:`Richard Scott <RichardScottOZ>`; :issue:`1056`.
 
 .. _release_2.12.0:
 
