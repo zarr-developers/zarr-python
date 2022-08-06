@@ -206,7 +206,7 @@ through the primary compression library to obtain a new sequence of bytes
 comprising the compressed chunk data. No header is added to the compressed
 bytes or any other modification made. The internal structure of the compressed
 bytes will depend on which primary compressor was used. For example, the `Blosc
-compressor <https://github.com/Blosc/c-blosc/blob/master/README_CHUNK_FORMAT.rst>`_
+compressor <https://github.com/Blosc/c-blosc/blob/main/README_CHUNK_FORMAT.rst>`_
 produces a sequence of bytes that begins with a 16-byte header followed by
 compressed data.
 
