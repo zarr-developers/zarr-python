@@ -45,7 +45,7 @@ from zarr._storage.v3 import (
 )
 from zarr.tests.util import have_fsspec
 
-_VERSIONS = v3_api_available and (2, 3) or (2,)
+_VERSIONS = ((2, 3) if v3_api_available else (2, ))
 
 
 def _init_creation_kwargs(zarr_version):

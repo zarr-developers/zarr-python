@@ -1413,7 +1413,7 @@ class FSStore(Store):
         return key in self.map
 
     def __eq__(self, other):
-        return (type(self) == type(other) and self.map == other.map
+        return (type(self) is type(other) and self.map == other.map
                 and self.mode == other.mode)
 
     def keys(self):
@@ -2097,7 +2097,7 @@ class DBMStore(Store):
 
 
 class LMDBStore(Store):
-    """Storage class using LMDB. Requires the `lmdb <http://lmdb.readthedocs.io/>`_
+    """Storage class using LMDB. Requires the `lmdb <https://lmdb.readthedocs.io/>`_
     package to be installed.
 
 
@@ -2504,7 +2504,7 @@ class SQLiteStore(Store):
         # allow threading if SQLite connections are thread-safe
         #
         # ref: https://www.sqlite.org/releaselog/3_3_1.html
-        # ref: https://bugs.python.org/issue27190
+        # ref: https://github.com/python/cpython/issues/71377
         check_same_thread = True
         if sqlite3.sqlite_version_info >= (3, 3, 1):
             check_same_thread = False
@@ -2664,7 +2664,7 @@ class MongoDBStore(Store):
 
     .. note:: This is an experimental feature.
 
-    Requires the `pymongo <https://api.mongodb.com/python/current/>`_
+    Requires the `pymongo <https://pymongo.readthedocs.io/en/stable/>`_
     package to be installed.
 
     Parameters

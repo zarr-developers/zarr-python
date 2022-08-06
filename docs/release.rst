@@ -6,10 +6,36 @@ Release notes
     # to document your changes. On releases it will be
     # re-indented so that it does not show up in the notes.
 
-    .. _unreleased:
+.. _unreleased:
 
-    Unreleased
-    ----------
+Unreleased
+----------
+
+Documentation
+~~~~~~~~~~~~~
+
+* Typo fixes to close quotes. By :user:`Pavithra Eswaramoorthy <pavithraes>`
+
+Maintenance
+~~~~~~~~~~~
+
+* Fix a few DeepSource.io alerts
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1080`.
+
+* Fix spelling.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>`, :issue:`1073`.
+
+* Update GitHub issue templates with `YAML` format.
+  By :user:`Saransh Chopra <Saransh-cpp>` :issue:`1079`.
+
+
+Bug fixes
+~~~~~~~~~
+
+* Fix bug in N5 storage that prevented arrays located in the root of the hierarchy from
+  bearing the `n5` keyword. Along with fixing this bug, new tests were added for N5 routines
+  that had previously been excluded from testing, and type annotations were added to the N5 codebase.
+  By :user:`Davis Bennett <d-v-b>`; :issue:`1092`.
 
 .. _release_2.12.0:
 
@@ -1307,4 +1333,4 @@ See `v0.4.0 release notes on GitHub
 See `v0.3.0 release notes on GitHub
 <https://github.com/zarr-developers/zarr-python/releases/tag/v0.3.0>`_.
 
-.. _Numcodecs: http://numcodecs.readthedocs.io/
+.. _Numcodecs: https://numcodecs.readthedocs.io/

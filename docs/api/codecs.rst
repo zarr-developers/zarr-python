@@ -16,8 +16,8 @@ Codec classes can also be used as filters. See the tutorial section on :ref:`tut
 for more information.
 
 Please note that it is also relatively straightforward to define and register custom codec
-classes. See the Numcodecs `codec API <http://numcodecs.readthedocs.io/en/latest/abc.html>`_ and
-`codec registry <http://numcodecs.readthedocs.io/en/latest/registry.html>`_ documentation for more
+classes. See the Numcodecs `codec API <https://numcodecs.readthedocs.io/en/latest/abc.html>`_ and
+`codec registry <https://numcodecs.readthedocs.io/en/latest/registry.html>`_ documentation for more
 information.
 
-.. _Numcodecs: http://numcodecs.readthedocs.io/
+.. _Numcodecs: https://numcodecs.readthedocs.io/
