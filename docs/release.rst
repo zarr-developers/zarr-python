@@ -28,7 +28,6 @@ Maintenance
 * Update GitHub issue templates with `YAML` format.
   By :user:`Saransh Chopra <Saransh-cpp>` :issue:`1079`.
 
-
 Bug fixes
 ~~~~~~~~~
 
@@ -36,6 +35,9 @@ Bug fixes
   bearing the `n5` keyword. Along with fixing this bug, new tests were added for N5 routines
   that had previously been excluded from testing, and type annotations were added to the N5 codebase.
   By :user:`Davis Bennett <d-v-b>`; :issue:`1092`.
+
+* Fix bug in LRUEStoreCache in which the current size wasn't reset on invalidation.
+  By :user:`BGCMHou <BGCMHou>` and `:user:`Josh Moore <joshmoore>` :issue:`1076`, :issue:`1077`.
 
 .. _release_2.12.0:
 
