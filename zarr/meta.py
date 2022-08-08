@@ -80,7 +80,7 @@ def get_extended_dtype_info(dtype) -> dict:
         )
     elif dtype.str in _v3_datetime_types:
         return dict(
-            extension="https://zarr-specs.readthedocs.io/en/core-protocol-v3.0-dev/protocol/extensions/datetime-dtypes/v1.0.html",  # noqa
+            extension="https://zarr-specs.readthedocs.io/en/latest/extensions/data-types/datetime/v1.0.html",  # noqa
             type=dtype.str,
             fallback=None,
         )
