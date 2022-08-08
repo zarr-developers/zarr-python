@@ -6,10 +6,34 @@ Release notes
     # to document your changes. On releases it will be
     # re-indented so that it does not show up in the notes.
 
-.. _unreleased:
+    .. _unreleased:
 
-Unreleased
-----------
+    Unreleased
+    ----------
+
+.. _release_2.13.0:
+
+2.13.0
+------
+.. warning::
+    Pre-release! Use `pip install --pre zarr` to evaluate this release.
+
+Major changes
+~~~~~~~~~~~~~
+
+* Remove support for Python 3.7 in concert with NumPy dependency.
+  By :user:`Davis Bennett <d-v-b>`; :issue:`1067`.
+
+Bug fixes
+~~~~~~~~~
+
+* Fix bug in N5 storage that prevented arrays located in the root of the hierarchy from
+  bearing the `n5` keyword. Along with fixing this bug, new tests were added for N5 routines
+  that had previously been excluded from testing, and type annotations were added to the N5 codebase.
+  By :user:`Davis Bennett <d-v-b>`; :issue:`1092`.
+
+* Fix bug in LRUEStoreCache in which the current size wasn't reset on invalidation.
+  By :user:`BGCMHou <BGCMHou>` and :user:`Josh Moore <joshmoore>` :issue:`1076`, :issue:`1077`.
 
 Documentation
 ~~~~~~~~~~~~~
@@ -19,8 +43,14 @@ Documentation
 Maintenance
 ~~~~~~~~~~~
 
+* Pin werkzeug to prevent test hangs.
+  By :user:`Davis Bennett <d-v-b>`; :issue:`1098`.
+
 * Fix a few DeepSource.io alerts
   By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1080`.
+
+* Fix URLs.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>`, :issue:`1074`.
 
 * Fix spelling.
   By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>`, :issue:`1073`.
@@ -28,6 +58,11 @@ Maintenance
 * Update GitHub issue templates with `YAML` format.
   By :user:`Saransh Chopra <Saransh-cpp>` :issue:`1079`.
 
+* Remove option to return None from _ensure_store.
+  By :user:`Greggory Lee <grlee77>`; :issue:`1068`.
+
+* Fix a typo of "integers".
+  By :user:`Richard Scott <RichardScottOZ>`; :issue:`1056`.
 
 .. _release_2.12.0:
 
@@ -1325,4 +1360,4 @@ See `v0.4.0 release notes on GitHub
 See `v0.3.0 release notes on GitHub
 <https://github.com/zarr-developers/zarr-python/releases/tag/v0.3.0>`_.
 
-.. _Numcodecs: http://numcodecs.readthedocs.io/
+.. _Numcodecs: https://numcodecs.readthedocs.io/
