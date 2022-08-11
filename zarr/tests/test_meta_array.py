@@ -104,13 +104,6 @@ def init_store(tmp_path, store_type) -> Optional[Store]:
     return None
 
 
-def ensure_cls(obj):
-    if isinstance(obj, str):
-        module, cls_name = obj.rsplit(".", maxsplit=1)
-        return getattr(pytest.importorskip(module), cls_name)
-    return obj
-
-
 def ensure_module(module):
     if isinstance(module, str):
         return pytest.importorskip(module)
