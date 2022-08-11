@@ -162,7 +162,7 @@ def test_empty(module, compressor):
     z = empty(
         100,
         chunks=10,
-        compressor=init_compressor(compressor),
+        compressor=compressor,
         meta_array=xp.empty(()),
     )
     assert (100,) == z.shape
@@ -175,7 +175,7 @@ def test_zeros(module, compressor):
     z = zeros(
         100,
         chunks=10,
-        compressor=init_compressor(compressor),
+        compressor=compressor,
         meta_array=xp.empty(()),
     )
     assert (100,) == z.shape
@@ -189,7 +189,7 @@ def test_ones(module, compressor):
     z = ones(
         100,
         chunks=10,
-        compressor=init_compressor(compressor),
+        compressor=compressor,
         meta_array=xp.empty(()),
     )
     assert (100,) == z.shape
@@ -205,7 +205,7 @@ def test_full(module, compressor):
         chunks=10,
         fill_value=42,
         dtype="i4",
-        compressor=init_compressor(compressor),
+        compressor=compressor,
         meta_array=xp.empty(()),
     )
     assert (100,) == z.shape
@@ -218,7 +218,7 @@ def test_full(module, compressor):
         chunks=10,
         fill_value=np.nan,
         dtype="f8",
-        compressor=init_compressor(compressor),
+        compressor=compressor,
         meta_array=xp.empty(()),
     )
     assert np.all(np.isnan(z[:]))
@@ -230,11 +230,11 @@ def test_group(tmp_path, module, compressor, store_type):
     xp = ensure_module(module)
     store = init_store(tmp_path, store_type)
     g = open_group(store, meta_array=xp.empty(()))
-    g.ones("data", shape=(10, 11), dtype=int, compressor=init_compressor(compressor))
+    g.ones("data", shape=(10, 11), dtype=int, compressor=compressor)
     a = g["data"]
     assert a.shape == (10, 11)
     assert a.dtype == int
     assert isinstance(a, Array)
-    assert isinstance(a[:], xp.ndarray)
+    assert isinstance(a[:], type(xp.empty(())))
     assert (a[:] == 1).all()
     assert isinstance(g.meta_array, type(xp.empty(())))
