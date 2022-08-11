@@ -13,7 +13,7 @@ from zarr.hierarchy import open_group
 from zarr.storage import DirectoryStore, MemoryStore, Store, ZipStore
 
 
-class CuPyCPUCompressor(Codec):
+class CuPyCPUCompressor(Codec):  # pragma: no cover
     """CPU compressor for CuPy arrays
 
     This compressor converts CuPy arrays host memory before compressing
