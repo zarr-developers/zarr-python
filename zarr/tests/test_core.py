@@ -23,6 +23,7 @@ from zarr._storage.store import (
     _prefix_to_attrs_key,
     _prefix_to_group_key
 )
+from .._storage.v3_storage_transformers import ShardingStorageTransformer
 from zarr.core import Array
 from zarr.errors import ArrayNotFoundError, ContainsGroupError
 from zarr.meta import json_loads
@@ -811,7 +812,6 @@ class TestArray(unittest.TestCase):
         attrs_cache = z.attrs.cache
         a = np.random.randint(0, 1000, 1000)
         z[:] = a
-
         # round trip through pickle
         dump = pickle.dumps(z)
         # some stores cannot be opened twice at the same time, need to close
@@ -3377,6 +3377,49 @@ class TestArrayWithStorageTransformersV3(TestArrayWithChunkStoreV3):
             "73307055c3aec095dd1232c38d793ef82a06bd97",
             "6152c09255a5efa43b1a115546e35affa00c138c",
             "2f8802fc391f67f713302e84fad4fd8f1366d6c2",
+        ]
+
+
+@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
+class TestArrayWithShardingStorageTransformerV3(TestArrayWithPathV3):
+
+    @staticmethod
+    def create_array(array_path='arr1', read_only=False, **kwargs):
+        store = KVStoreV3(dict())
+        cache_metadata = kwargs.pop('cache_metadata', True)
+        cache_attrs = kwargs.pop('cache_attrs', True)
+        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
+        num_dims = 1 if isinstance(kwargs["shape"], int) else len(kwargs["shape"])
+        sharding_transformer = ShardingStorageTransformer(
+            "indexed", chunks_per_shard=(2, ) * num_dims
+        )
+        init_array(store, path=array_path, storage_transformers=[sharding_transformer], **kwargs)
+        return Array(store, path=array_path, read_only=read_only,
+                     cache_metadata=cache_metadata,
+                     cache_attrs=cache_attrs, write_empty_chunks=write_empty_chunks)
+
+    # def test_nbytes_stored(self):
+    #     pass  # not implemented
+
+    def test_nbytes_stored(self):
+        z = self.create_array(shape=1000, chunks=100)
+        expect_nbytes_stored = sum(buffer_size(v) for k, v in z._store.items() if k != 'zarr.json')
+        assert expect_nbytes_stored == z.nbytes_stored
+        z[:] = 42
+        expect_nbytes_stored = sum(buffer_size(v) for k, v in z._store.items() if k != 'zarr.json')
+        assert expect_nbytes_stored == z.nbytes_stored
+
+        # mess with store
+        z.chunk_store[data_root + z._key_prefix + 'foo'] = list(range(10))
+        assert -1 == z.nbytes_stored
+
+    def expected(self):
+        return [
+            "b46294e25b1d816055e7937780265c0d8d5d6c47",
+            "5b52b03dde558c4c2313e55cf7ed9898d397e485",
+            "ef7f726387c1bc235ac205f77567276d28872477",
+            "fd944727c0d058e594d7b3800781a4786af5f0de",
+            "4ce1eebc42dc03690d917b7ff4363df6946c2745",
         ]
 
 

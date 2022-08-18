@@ -284,15 +284,15 @@ class Array:
                 storage_transformers = meta.get('storage_transformers', [])
                 transformed_store = self._store
                 for storage_transformer in storage_transformers:
-                    transformed_store = storage_transformer._copy_for_array(transformed_store)
-                self._store = transformed_store
+                    transformed_store = storage_transformer._copy_for_array(self, transformed_store)
+                self._transformed_store = transformed_store
                 if self._chunk_store is not None:
                     transformed_chunk_store = self._chunk_store
                     for storage_transformer in storage_transformers:
                         transformed_chunk_store = (
-                            storage_transformer._copy_for_array(transformed_chunk_store)
+                            storage_transformer._copy_for_array(self, transformed_chunk_store)
                         )
-                    self._chunk_store = transformed_chunk_store
+                    self._transformed_chunk_store = transformed_chunk_store
 
     def _refresh_metadata(self):
         if not self._cache_metadata:
@@ -336,7 +336,7 @@ class Array:
     @property
     def store(self):
         """A MutableMapping providing the underlying storage for the array."""
-        return self._store
+        return self._transformed_store
 
     @property
     def path(self):
@@ -376,7 +376,7 @@ class Array:
         if self._chunk_store is None:
             return self._store
         else:
-            return self._chunk_store
+            return self._transformed_chunk_store
 
     @property
     def shape(self):

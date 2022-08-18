@@ -263,7 +263,9 @@ class StoreV3Tests(_StoreTests):
                 (data_root + 'foo', (0, 1))
             ]
         )
-        assert [b'd', b'b', b'z', b'abc', b'defg', b'defg'] == store.get_partial_values(
+        assert [
+            b'd', b'b', b'z', b'abc', b'defg', b'defg', b'g', b'ef'
+        ] == store.get_partial_values(
             [
                 (data_root + 'foo', (3, 1)),
                 (data_root + 'foo', (1, 1)),
@@ -271,6 +273,8 @@ class StoreV3Tests(_StoreTests):
                 (data_root + 'foo', (0, 3)),
                 (data_root + 'foo', (3, 4)),
                 (data_root + 'foo', (3, None)),
+                (data_root + 'foo', (-1, None)),
+                (data_root + 'foo', (-3, 2)),
             ]
         )
 
@@ -300,6 +304,14 @@ class StoreV3Tests(_StoreTests):
         )
         assert store[data_root + 'foo'] == b'hoodefdone'
         assert store[data_root + 'baz'] == b'zzzzaaaa'
+        store.set_partial_values(
+            [
+                (data_root + 'foo', -2, b'NE'),
+                (data_root + 'baz', -5, b'q'),
+            ]
+        )
+        assert store[data_root + 'foo'] == b'hoodefdoNE'
+        assert store[data_root + 'baz'] == b'zzzq'
 
 
 class TestMappingStoreV3(StoreV3Tests):
