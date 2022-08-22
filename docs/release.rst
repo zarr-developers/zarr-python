@@ -38,11 +38,13 @@ Bug fixes
 Enhancements
 ~~~~~~~~~~~~
 
-* **Improve Zarr V3 support, adding partial store read/write and storage transformers.**
+* **Improve Zarr V3 support, adding partial store read/write, storage transformers and sharding.**
   Add two features of the [v3 spec](https://zarr-specs.readthedocs.io/en/latest/core/v3.0.html):
-  * storage transformers
   * `get_partial_values` and `set_partial_values`
-  By :user:`Jonathan Striebel <jstriebel>`; :issue:`1096`.
+  * efficient `get_partial_values` implementation for `FSStoreV3`
+  * storage transformers interface
+  * sharding storage transformer
+  By :user:`Jonathan Striebel <jstriebel>`; :issue:`1096`, :issue:`1111`.
 
 
 Documentation
