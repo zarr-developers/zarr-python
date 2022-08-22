@@ -180,6 +180,7 @@ class Array:
 
         self._store = store
         self._chunk_store = chunk_store
+        self._transformed_chunk_store = None
         self._path = normalize_storage_path(path)
         if self._path:
             self._key_prefix = self._path + '/'
@@ -282,17 +283,13 @@ class Array:
 
             if self._version == 3:
                 storage_transformers = meta.get('storage_transformers', [])
-                transformed_store = self._store
-                for storage_transformer in storage_transformers:
-                    transformed_store = storage_transformer._copy_for_array(transformed_store)
-                self._store = transformed_store
-                if self._chunk_store is not None:
-                    transformed_chunk_store = self._chunk_store
+                if storage_transformers:
+                    transformed_store = self._chunk_store or self._store
                     for storage_transformer in storage_transformers:
-                        transformed_chunk_store = (
-                            storage_transformer._copy_for_array(transformed_chunk_store)
+                        transformed_store = storage_transformer._copy_for_array(
+                            self, transformed_store
                         )
-                    self._chunk_store = transformed_chunk_store
+                    self._transformed_chunk_store = transformed_store
 
     def _refresh_metadata(self):
         if not self._cache_metadata:
@@ -373,10 +370,12 @@ class Array:
     @property
     def chunk_store(self):
         """A MutableMapping providing the underlying storage for array chunks."""
-        if self._chunk_store is None:
-            return self._store
-        else:
+        if self._transformed_chunk_store is not None:
+            return self._transformed_chunk_store
+        elif self._chunk_store is not None:
             return self._chunk_store
+        else:
+            return self._store
 
     @property
     def shape(self):
@@ -1790,7 +1789,7 @@ class Array:
             check_array_shape('value', value, sel_shape)
 
         # iterate over chunks in range
-        if not hasattr(self.store, "setitems") or self._synchronizer is not None \
+        if not hasattr(self.chunk_store, "setitems") or self._synchronizer is not None \
            or any(map(lambda x: x == 0, self.shape)):
             # iterative approach
             for chunk_coords, chunk_selection, out_selection in indexer:

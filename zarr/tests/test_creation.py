@@ -734,5 +734,5 @@ def test_create_with_storage_transformers():
         test_value=DummyStorageTransfomer.TEST_CONSTANT
     )
     z = create(1000000000, chunks=True, storage_transformers=[transformer], **kwargs)
-    assert isinstance(z._store, DummyStorageTransfomer)
-    assert z._store.test_value == DummyStorageTransfomer.TEST_CONSTANT
+    assert isinstance(z.chunk_store, DummyStorageTransfomer)
+    assert z.chunk_store.test_value == DummyStorageTransfomer.TEST_CONSTANT

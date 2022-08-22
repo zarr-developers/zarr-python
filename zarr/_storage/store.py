@@ -261,19 +261,28 @@ class StoreV3(BaseStore):
         """Remove a data path and all its subkeys and related metadata.
         Expects a path without the data or meta root prefix."""
 
+    def supports_efficient_get_partial_values(self):
+        return False
+
     def get_partial_values(self, key_ranges):
         """Get multiple partial values.
         key_ranges can be an iterable of key, range pairs,
         where a range specifies two integers range_start and range_length
         as a tuple, (range_start, range_length).
-        Length may be None to indicate to read until the end.
-        A key may occur multiple times with different ranges."""
+        range_length may be None to indicate to read until the end.
+        range_start may be negative to start reading range_start bytes
+        from the end of the file.
+        A key may occur multiple times with different ranges.
+        Inserts None for missing keys into the returned list."""
         results = [None] * len(key_ranges)
         indexed_ranges_by_key = defaultdict(list)
         for i, (key, range_) in enumerate(key_ranges):
             indexed_ranges_by_key[key].append((i, range_))
         for key, indexed_ranges in indexed_ranges_by_key.items():
-            value = self[key]
+            try:
+                value = self[key]
+            except KeyError:
+                continue
             for i, (range_from, range_length) in indexed_ranges:
                 if range_length is None:
                     results[i] = value[range_from:]
@@ -281,12 +290,17 @@ class StoreV3(BaseStore):
                     results[i] = value[range_from:range_from + range_length]
         return results
 
+    def supports_efficient_set_partial_values(self):
+        return False
+
     def set_partial_values(self, key_start_values):
         """Set multiple partial values.
         key_start_values can be an iterable of key, start and value triplets
         as tuples, (key, start, value), where start defines the offset in bytes.
         A key may occur multiple times with different starts and non-overlapping values.
-        Also, start may only be beyond the current value if other values fill the gap."""
+        Also, start may only be beyond the current value if other values fill the gap.
+        start may be negative to start writing start bytes from the current
+        end of the file, ending the file with the new value."""
         unique_keys = set(next(zip(*key_start_values)))
         values = {}
         for key in unique_keys:
@@ -303,7 +317,10 @@ class StoreV3(BaseStore):
                         + f"since it is beyond the data at key {key}, "
                         + f"having length {len(values[key])}."
                     )
-                values[key][start:start + len(value)] = value
+                if start < 0:
+                    values[key][start:] = value
+                else:
+                    values[key][start:start + len(value)] = value
         for key, value in values.items():
             self[key] = value
 
@@ -372,7 +389,7 @@ class StorageTransformer(MutableMapping, abc.ABC):
         self.type = _type
         self._inner_store = None
 
-    def _copy_for_array(self, inner_store):
+    def _copy_for_array(self, array, inner_store):
         transformer_copy = copy(self)
         transformer_copy._inner_store = inner_store
         return transformer_copy
@@ -412,6 +429,40 @@ class StorageTransformer(MutableMapping, abc.ABC):
         )
         return self._inner_store
 
+    # The following implementations are usually fine to keep as-is:
+
+    def __eq__(self, other):
+        return (
+            type(self) == type(other) and
+            self._inner_store == other._inner_store and
+            self.get_config() == other.get_config()
+        )
+
+    def erase(self, key):
+        self.__delitem__(key)
+
+    def list(self):
+        return list(self.keys())
+
+    def list_dir(self, prefix):
+        """
+        TODO: carefully test this with trailing/leading slashes
+        """
+        if prefix:  # allow prefix = "" ?
+            assert prefix.endswith("/")
+
+        all_keys = self.list_prefix(prefix)
+        len_prefix = len(prefix)
+        keys = []
+        prefixes = []
+        for k in all_keys:
+            trail = k[len_prefix:]
+            if "/" not in trail:
+                keys.append(prefix + trail)
+            else:
+                prefixes.append(prefix + trail.split("/", maxsplit=1)[0] + "/")
+        return keys, list(set(prefixes))
+
     def is_readable(self):
         return self.inner_store.is_readable()
 
@@ -424,6 +475,9 @@ class StorageTransformer(MutableMapping, abc.ABC):
     def is_erasable(self):
         return self.inner_store.is_erasable()
 
+    def clear(self):
+        return self.inner_store.clear()
+
     def __enter__(self):
         return self.inner_store.__enter__()
 
@@ -433,26 +487,20 @@ class StorageTransformer(MutableMapping, abc.ABC):
     def close(self) -> None:
         return self.inner_store.close()
 
+    # The following implementations might need to be re-implemented
+    # by subclasses implementing storage transformers:
+
     def rename(self, src_path: str, dst_path: str) -> None:
         return self.inner_store.rename(src_path, dst_path)
 
     def list_prefix(self, prefix):
         return self.inner_store.list_prefix(prefix)
 
-    def erase(self, key):
-        return self.inner_store.erase(key)
-
     def erase_prefix(self, prefix):
         return self.inner_store.erase_prefix(prefix)
 
     def rmdir(self, path=None):
         return self.inner_store.rmdir(path)
-
-    def list_dir(self, prefix):
-        return self.inner_store.list_dir(prefix)
-
-    def list(self):
-        return self.inner_store.list()
 
     def __contains__(self, key):
         return self.inner_store.__contains__(key)
@@ -472,21 +520,17 @@ class StorageTransformer(MutableMapping, abc.ABC):
     def __len__(self):
         return self.inner_store.__len__()
 
+    def supports_efficient_get_partial_values(self):
+        return self.inner_store.supports_efficient_get_partial_values()
+
     def get_partial_values(self, key_ranges):
         return self.inner_store.get_partial_values(key_ranges)
 
+    def supports_efficient_set_partial_values(self):
+        return self.inner_store.supports_efficient_set_partial_values()
+
     def set_partial_values(self, key_start_values):
         return self.inner_store.set_partial_values(key_start_values)
-
-    def clear(self):
-        return self.inner_store.clear()
-
-    def __eq__(self, other):
-        return (
-            type(self) == type(other) and
-            self._inner_store == other._inner_store and
-            self.get_config() == other.get_config()
-        )
 
 
 # allow MutableMapping for backwards compatibility
