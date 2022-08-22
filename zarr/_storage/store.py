@@ -281,7 +281,7 @@ class StoreV3(BaseStore):
         for key, indexed_ranges in indexed_ranges_by_key.items():
             try:
                 value = self[key]
-            except KeyError:
+            except KeyError:  # pragma: no cover
                 continue
             for i, (range_from, range_length) in indexed_ranges:
                 if range_length is None:
@@ -445,23 +445,7 @@ class StorageTransformer(MutableMapping, abc.ABC):
         return list(self.keys())
 
     def list_dir(self, prefix):
-        """
-        TODO: carefully test this with trailing/leading slashes
-        """
-        if prefix:  # allow prefix = "" ?
-            assert prefix.endswith("/")
-
-        all_keys = self.list_prefix(prefix)
-        len_prefix = len(prefix)
-        keys = []
-        prefixes = []
-        for k in all_keys:
-            trail = k[len_prefix:]
-            if "/" not in trail:
-                keys.append(prefix + trail)
-            else:
-                prefixes.append(prefix + trail.split("/", maxsplit=1)[0] + "/")
-        return keys, list(set(prefixes))
+        return StoreV3.list_dir(self, prefix)
 
     def is_readable(self):
         return self.inner_store.is_readable()
