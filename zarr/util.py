@@ -640,6 +640,25 @@ class PartialReadBuffer:
         return self.chunk_store[self.store_key]
 
 
+class UncompressedPartialReadBufferV3:
+    def __init__(self, store_key, chunk_store, itemsize):
+        assert chunk_store.supports_efficient_get_partial_values()
+        self.chunk_store = chunk_store
+        self.store_key = store_key
+        self.itemsize = itemsize
+
+    def prepare_chunk(self):
+        pass
+
+    def read_part(self, start, nitems):
+        return self.chunk_store.get_partial_values(
+            [(self.store_key, (start * self.itemsize, nitems * self.itemsize))]
+        )[0]
+
+    def read_full(self):
+        return self.chunk_store[self.store_key]
+
+
 def retry_call(callabl: Callable,
                args=None,
                kwargs=None,

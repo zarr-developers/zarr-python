@@ -272,13 +272,17 @@ class StoreV3(BaseStore):
         range_length may be None to indicate to read until the end.
         range_start may be negative to start reading range_start bytes
         from the end of the file.
-        A key may occur multiple times with different ranges."""
+        A key may occur multiple times with different ranges.
+        Inserts None for missing keys into the returned list."""
         results = [None] * len(key_ranges)
         indexed_ranges_by_key = defaultdict(list)
         for i, (key, range_) in enumerate(key_ranges):
             indexed_ranges_by_key[key].append((i, range_))
         for key, indexed_ranges in indexed_ranges_by_key.items():
-            value = self[key]
+            try:
+                value = self[key]
+            except KeyError:
+                continue
             for i, (range_from, range_length) in indexed_ranges:
                 if range_length is None:
                     results[i] = value[range_from:]

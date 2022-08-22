@@ -528,7 +528,7 @@ class TestStorageTransformerV3(TestMappingStoreV3):
         storage_transformer = DummyStorageTransfomer(
             "dummy_type", test_value=DummyStorageTransfomer.TEST_CONSTANT
         )
-        return storage_transformer._copy_for_array(inner_store)
+        return storage_transformer._copy_for_array(None, inner_store)
 
     def test_method_forwarding(self):
         store = self.create_store()

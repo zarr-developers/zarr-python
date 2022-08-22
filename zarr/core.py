@@ -51,6 +51,7 @@ from zarr.util import (
     normalize_shape,
     normalize_storage_path,
     PartialReadBuffer,
+    UncompressedPartialReadBufferV3,
 )
 
 
@@ -180,6 +181,7 @@ class Array:
 
         self._store = store
         self._chunk_store = chunk_store
+        self._transformed_chunk_store = None
         self._path = normalize_storage_path(path)
         if self._path:
             self._key_prefix = self._path + '/'
@@ -282,17 +284,13 @@ class Array:
 
             if self._version == 3:
                 storage_transformers = meta.get('storage_transformers', [])
-                transformed_store = self._store
-                for storage_transformer in storage_transformers:
-                    transformed_store = storage_transformer._copy_for_array(self, transformed_store)
-                self._transformed_store = transformed_store
-                if self._chunk_store is not None:
-                    transformed_chunk_store = self._chunk_store
+                if storage_transformers:
+                    transformed_store = self._chunk_store or self._store
                     for storage_transformer in storage_transformers:
-                        transformed_chunk_store = (
-                            storage_transformer._copy_for_array(self, transformed_chunk_store)
+                        transformed_store = storage_transformer._copy_for_array(
+                            self, transformed_store
                         )
-                    self._transformed_chunk_store = transformed_chunk_store
+                    self._transformed_chunk_store = transformed_store
 
     def _refresh_metadata(self):
         if not self._cache_metadata:
@@ -336,7 +334,7 @@ class Array:
     @property
     def store(self):
         """A MutableMapping providing the underlying storage for the array."""
-        return self._transformed_store
+        return self._store
 
     @property
     def path(self):
@@ -373,10 +371,12 @@ class Array:
     @property
     def chunk_store(self):
         """A MutableMapping providing the underlying storage for array chunks."""
-        if self._chunk_store is None:
-            return self._store
-        else:
+        if self._transformed_chunk_store is not None:
             return self._transformed_chunk_store
+        elif self._chunk_store is not None:
+            return self._chunk_store
+        else:
+            return self._store
 
     @property
     def shape(self):
@@ -1252,8 +1252,12 @@ class Array:
             check_array_shape('out', out, out_shape)
 
         # iterate over chunks
-        if not hasattr(self.chunk_store, "getitems") or \
-           any(map(lambda x: x == 0, self.shape)):
+        if (
+            not hasattr(self.chunk_store, "getitems") and not (
+                hasattr(self.chunk_store, "get_partial_values") and
+                self.chunk_store.supports_efficient_get_partial_values()
+            )
+        ) or any(map(lambda x: x == 0, self.shape)):
             # sequentially get one key at a time from storage
             for chunk_coords, chunk_selection, out_selection in indexer:
 
@@ -1790,7 +1794,7 @@ class Array:
             check_array_shape('value', value, sel_shape)
 
         # iterate over chunks in range
-        if not hasattr(self.store, "setitems") or self._synchronizer is not None \
+        if not hasattr(self.chunk_store, "setitems") or self._synchronizer is not None \
            or any(map(lambda x: x == 0, self.shape)):
             # iterative approach
             for chunk_coords, chunk_selection, out_selection in indexer:
@@ -1868,10 +1872,12 @@ class Array:
                 # contiguous, so we can decompress directly from the chunk
                 # into the destination array
                 if self._compressor:
-                    if isinstance(cdata, PartialReadBuffer):
+                    if isinstance(cdata, (PartialReadBuffer, UncompressedPartialReadBufferV3)):
                         cdata = cdata.read_full()
                     self._compressor.decode(cdata, dest)
                 else:
+                    if isinstance(cdata, UncompressedPartialReadBufferV3):
+                        cdata = cdata.read_full()
                     chunk = ensure_ndarray(cdata).view(self._dtype)
                     chunk = chunk.reshape(self._chunks, order=self._order)
                     np.copyto(dest, chunk)
@@ -1893,13 +1899,21 @@ class Array:
                         else dim
                         for i, dim in enumerate(self.chunks)
                     ]
-                    cdata.read_part(start, nitems)
-                    chunk_partial = self._decode_chunk(
-                        cdata.buff,
-                        start=start,
-                        nitems=nitems,
-                        expected_shape=expected_shape,
-                    )
+                    if isinstance(cdata, UncompressedPartialReadBufferV3):
+                        chunk_partial = self._decode_chunk(
+                            cdata.read_part(start, nitems),
+                            start=start,
+                            nitems=nitems,
+                            expected_shape=expected_shape,
+                        )
+                    else:
+                        cdata.read_part(start, nitems)
+                        chunk_partial = self._decode_chunk(
+                            cdata.buff,
+                            start=start,
+                            nitems=nitems,
+                            expected_shape=expected_shape,
+                        )
                     tmp[partial_out_selection] = chunk_partial
                 out[out_selection] = tmp[chunk_selection]
                 return
@@ -1994,9 +2008,29 @@ class Array:
                 for ckey in ckeys
                 if ckey in self.chunk_store
             }
+        elif (
+            self._partial_decompress
+            and not self._compressor
+            and not fields
+            and self.dtype != object
+            and hasattr(self.chunk_store, "get_partial_values")
+            and self.chunk_store.supports_efficient_get_partial_values()
+        ):
+            partial_read_decode = True
+            cdatas = {
+                ckey: UncompressedPartialReadBufferV3(
+                    ckey, self.chunk_store, itemsize=self.itemsize
+                )
+                for ckey in ckeys
+                if ckey in self.chunk_store
+            }
         else:
             partial_read_decode = False
-            cdatas = self.chunk_store.getitems(ckeys, on_error="omit")
+            if not hasattr(self.chunk_store, "getitems"):
+                values = self.chunk_store.get_partial_values([(ckey, (0, None)) for ckey in ckeys])
+                cdatas = {key: value for key, value in zip(ckeys, values) if value is not None}
+            else:
+                cdatas = self.chunk_store.getitems(ckeys, on_error="omit")
         for ckey, chunk_select, out_select in zip(ckeys, lchunk_selection, lout_selection):
             if ckey in cdatas:
                 self._process_chunk(

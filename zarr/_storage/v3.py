@@ -182,6 +182,37 @@ class FSStoreV3(FSStore, StoreV3):
             if self.fs.isdir(store_path):
                 self.fs.rm(store_path, recursive=True)
 
+    def supports_efficient_get_partial_values(self):
+        return True
+
+    def get_partial_values(self, key_ranges):
+        """Get multiple partial values.
+        key_ranges can be an iterable of key, range pairs,
+        where a range specifies two integers range_start and range_length
+        as a tuple, (range_start, range_length).
+        range_length may be None to indicate to read until the end.
+        range_start may be negative to start reading range_start bytes
+        from the end of the file.
+        A key may occur multiple times with different ranges.
+        Inserts None for missing keys into the returned list."""
+        results = []
+        for key, (range_start, range_length) in key_ranges:
+            key = self._normalize_key(key)
+            path = self.dir_path(key)
+            try:
+                if range_start < 0:
+                    if range_length is None:
+                        result = self.fs.tail(path, size=-range_start)
+                    else:
+                        size = self.fs.size(path)
+                        result = self.fs.read_block(path, size + range_start, range_length)
+                else:
+                    result = self.fs.read_block(path, range_start, range_length)
+            except self.map.missing_exceptions:
+                result = None
+            results.append(result)
+        return results
+
 
 class MemoryStoreV3(MemoryStore, StoreV3):
 

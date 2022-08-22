@@ -35,7 +35,7 @@ class _ShardIndex(NamedTuple):
         if (chunk_start, chunk_len) == (MAX_UINT_64, MAX_UINT_64):
             return None
         else:
-            return slice(chunk_start, chunk_start + chunk_len)
+            return slice(int(chunk_start), int(chunk_start + chunk_len))
 
     def set_chunk_slice(
         self, chunk: Tuple[int, ...], chunk_slice: Optional[slice]
@@ -126,10 +126,13 @@ class ShardingStorageTransformer(StorageTransformer):
 
     def _get_index_from_store(self, shard_key: str) -> _ShardIndex:
         # At the end of each shard 2*64bit per chunk for offset and length define the index:
+        index_bytes = self.inner_store.get_partial_values(
+            [(shard_key, (-16 * self._num_chunks_per_shard, None))]
+        )[0]
+        if index_bytes is None:
+            raise KeyError(shard_key)
         return _ShardIndex.from_bytes(
-            self.inner_store.get_partial_values(
-                [(shard_key, (-16 * self._num_chunks_per_shard, None))]
-            )[0],
+            index_bytes,
             self,
         )
 
@@ -156,7 +159,11 @@ class ShardingStorageTransformer(StorageTransformer):
         if _is_data_key(key):
             if self.supports_efficient_get_partial_values():
                 # Use the partial implementation, which fetches the index seperately
-                return self.get_partial_values([(key, (0, None))])[0]
+                value = self.get_partial_values([(key, (0, None))])[0]
+                if value is None:
+                    raise KeyError(key)
+                else:
+                    return value
             shard_key, chunk_subkey = self._key_to_shard(key)
             try:
                 full_shard_value = self.inner_store[shard_key]
@@ -254,7 +261,7 @@ class ShardingStorageTransformer(StorageTransformer):
                 del self.inner_store[shard_key]
             else:
                 index_bytes = index.to_bytes()
-                self.set_partial_values([(shard_key, -len(index_bytes), index_bytes)])
+                self.inner_store.set_partial_values([(shard_key, -len(index_bytes), index_bytes)])
         else:
             del self.inner_store[key]
 
@@ -281,22 +288,35 @@ class ShardingStorageTransformer(StorageTransformer):
         if self.supports_efficient_get_partial_values():
             transformed_key_ranges = []
             cached_indices = {}
-            for key, range_ in key_ranges:
+            none_indices = []
+            for i, (key, range_) in enumerate(key_ranges):
                 if _is_data_key(key):
                     shard_key, chunk_subkey = self._key_to_shard(key)
                     try:
                         index = cached_indices[shard_key]
                     except KeyError:
-                        index = self._get_index_from_store(shard_key)
+                        try:
+                            index = self._get_index_from_store(shard_key)
+                        except KeyError:
+                            none_indices.append(i)
+                            continue
                         cached_indices[shard_key] = index
                     chunk_slice = index.get_chunk_slice(chunk_subkey)
+                    if chunk_slice is None:
+                        none_indices.append(i)
+                        continue
                     range_start, range_length = range_
+                    if range_length is None:
+                        range_length = chunk_slice.stop - chunk_slice.start
                     transformed_key_ranges.append(
-                        (shard_key, (range_start + chunk_slice.satrt, range_length))
+                        (shard_key, (range_start + chunk_slice.start, range_length))
                     )
                 else:
                     transformed_key_ranges.append((key, range_))
-            return self.inner_store.get_partial_values(transformed_key_ranges)
+            values = self.inner_store.get_partial_values(transformed_key_ranges)
+            for i in none_indices:
+                values.insert(i, None)
+            return values
         else:
             return StoreV3.get_partial_values(self, key_ranges)
 
