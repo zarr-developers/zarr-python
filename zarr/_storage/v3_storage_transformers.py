@@ -76,7 +76,7 @@ class _ShardIndex(NamedTuple):
         )
 
 
-class ShardingStorageTransformer(StorageTransformer):
+class ShardingStorageTransformer(StorageTransformer):  # lgtm[py/missing-equals]
     extension_uri = "https://purl.org/zarr/spec/storage_transformers/sharding/1.0"
     valid_types = ["indexed"]
 
@@ -325,10 +325,10 @@ class ShardingStorageTransformer(StorageTransformer):
 
     def set_partial_values(self, key_start_values):
         # This does not yet implement efficient set_partial_values
-        return StoreV3.set_partial_values(self, key_start_values)
+        StoreV3.set_partial_values(self, key_start_values)
 
     def rename(self, src_path: str, dst_path: str) -> None:
-        return StoreV3.rename(self, src_path, dst_path)  # type: ignore[arg-type]
+        StoreV3.rename(self, src_path, dst_path)  # type: ignore[arg-type]
 
     def list_prefix(self, prefix):
         if _is_data_key(prefix):
@@ -338,9 +338,9 @@ class ShardingStorageTransformer(StorageTransformer):
 
     def erase_prefix(self, prefix):
         if _is_data_key(prefix):
-            return StoreV3.erase_prefix(self, prefix)
+            StoreV3.erase_prefix(self, prefix)
         else:
-            return self.inner_store.erase_prefix(prefix)
+            self.inner_store.erase_prefix(prefix)
 
     def rmdir(self, path=None):
         path = normalize_storage_path(path)
