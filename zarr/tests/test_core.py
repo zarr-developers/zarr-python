@@ -3481,11 +3481,11 @@ class TestArrayWithShardingStorageTransformerV3(TestArrayWithPathV3):
 
     def expected(self):
         return [
-            "b46294e25b1d816055e7937780265c0d8d5d6c47",
-            "5b52b03dde558c4c2313e55cf7ed9898d397e485",
-            "ef7f726387c1bc235ac205f77567276d28872477",
-            "fd944727c0d058e594d7b3800781a4786af5f0de",
-            "4ce1eebc42dc03690d917b7ff4363df6946c2745",
+            '90109fc2a4e17efbcb447003ea1c08828b91f71e',
+            '2b73519f7260dba3ddce0d2b70041888856fec6b',
+            'bca5798be2ed71d444f3045b05432d937682b7dd',
+            '9ff1084501e28520e577662a6e3073f1116c76a2',
+            '882a97cad42417f90f111d0cb916a21579650467',
         ]
 
 
