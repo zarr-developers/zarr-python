@@ -3325,6 +3325,11 @@ class TestArrayWithFSStoreV3PartialReadUncompressedSharded(
         expect_nbytes_stored = sum(buffer_size(v) for k, v in z._store.items() if k != 'zarr.json')
         assert expect_nbytes_stored == z.nbytes_stored
 
+    def test_supports_efficient_get_set_partial_values(self):
+        z = self.create_array(shape=100, chunks=10)
+        assert z.chunk_store.supports_efficient_get_partial_values()
+        assert not z.chunk_store.supports_efficient_set_partial_values()
+
     def expected(self):
         return [
             "90109fc2a4e17efbcb447003ea1c08828b91f71e",
@@ -3437,6 +3442,7 @@ class TestArrayWithShardingStorageTransformerV3(TestArrayWithPathV3):
         cache_metadata = kwargs.pop('cache_metadata', True)
         cache_attrs = kwargs.pop('cache_attrs', True)
         write_empty_chunks = kwargs.pop('write_empty_chunks', True)
+        kwargs.setdefault('compressor', None)
         num_dims = 1 if isinstance(kwargs["shape"], int) else len(kwargs["shape"])
         sharding_transformer = ShardingStorageTransformer(
             "indexed", chunks_per_shard=(2, ) * num_dims
@@ -3467,6 +3473,11 @@ class TestArrayWithShardingStorageTransformerV3(TestArrayWithPathV3):
         # inner store should have half the data keys,
         # since chunks_per_shard is 2:
         assert len(z._store.keys() - meta_keys) == 5
+
+    def test_supports_efficient_get_set_partial_values(self):
+        z = self.create_array(shape=100, chunks=10)
+        assert not z.chunk_store.supports_efficient_get_partial_values()
+        assert not z.chunk_store.supports_efficient_set_partial_values()
 
     def expected(self):
         return [

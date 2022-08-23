@@ -63,7 +63,7 @@ class _ShardIndex(NamedTuple):
                     *store.chunks_per_shard, 2, order="C"
                 ),
             )
-        except ValueError as e:
+        except ValueError as e:  # pragma: no cover
             raise RuntimeError from e
 
     @classmethod
@@ -244,7 +244,7 @@ class ShardingStorageTransformer(StorageTransformer):  # lgtm[py/missing-equals]
             # Appending the index at the end of the shard:
             shard_content += index.to_bytes()
             self.inner_store[shard_key] = shard_content
-        else:
+        else:  # pragma: no cover
             self.inner_store[key] = value
 
     def __delitem__(self, key):
@@ -262,7 +262,7 @@ class ShardingStorageTransformer(StorageTransformer):  # lgtm[py/missing-equals]
             else:
                 index_bytes = index.to_bytes()
                 self.inner_store.set_partial_values([(shard_key, -len(index_bytes), index_bytes)])
-        else:
+        else:  # pragma: no cover
             del self.inner_store[key]
 
     def _shard_key_to_original_keys(self, key: str) -> Iterator[str]:
@@ -311,7 +311,7 @@ class ShardingStorageTransformer(StorageTransformer):  # lgtm[py/missing-equals]
                     transformed_key_ranges.append(
                         (shard_key, (range_start + chunk_slice.start, range_length))
                     )
-                else:
+                else:  # pragma: no cover
                     transformed_key_ranges.append((key, range_))
             values = self.inner_store.get_partial_values(transformed_key_ranges)
             for i in none_indices:
