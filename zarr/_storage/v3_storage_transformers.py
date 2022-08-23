@@ -11,10 +11,6 @@ from zarr.util import normalize_storage_path
 MAX_UINT_64 = 2 ** 64 - 1
 
 
-def _is_data_key(key: str) -> bool:
-    return key.startswith("data/root")
-
-
 class _ShardIndex(NamedTuple):
     store: "ShardingStorageTransformer"
     # dtype uint64, shape (chunks_per_shard_0, chunks_per_shard_1, ..., 2)
@@ -77,23 +73,33 @@ class _ShardIndex(NamedTuple):
 
 
 class ShardingStorageTransformer(StorageTransformer):  # lgtm[py/missing-equals]
+    """Implements sharding as a storage transformer, as described in the spec:
+    https://zarr-specs.readthedocs.io/en/latest/extensions/storage-transformers/sharding/v1.0.html
+    https://purl.org/zarr/spec/storage_transformers/sharding/1.0
+    """
+
     extension_uri = "https://purl.org/zarr/spec/storage_transformers/sharding/1.0"
     valid_types = ["indexed"]
 
     def __init__(self, _type, chunks_per_shard) -> None:
         super().__init__(_type)
-        chunks_per_shard = tuple(int(i) for i in chunks_per_shard)
-        if chunks_per_shard == ():
-            chunks_per_shard = (1, )
-        self._dimension_separator = None
+        if isinstance(chunks_per_shard, int):
+            chunks_per_shard = (chunks_per_shard, )
+        else:
+            chunks_per_shard = tuple(int(i) for i in chunks_per_shard)
+            if chunks_per_shard == ():
+                chunks_per_shard = (1, )
         self.chunks_per_shard = chunks_per_shard
         self._num_chunks_per_shard = functools.reduce(
             lambda x, y: x * y, chunks_per_shard, 1
         )
+        self._dimension_separator = None
+        self._data_key_prefix = None
 
     def _copy_for_array(self, array, inner_store):
         transformer_copy = super()._copy_for_array(array, inner_store)
         transformer_copy._dimension_separator = array._dimension_separator
+        transformer_copy._data_key_prefix = array._data_key_prefix
         if len(array._shape) > len(self.chunks_per_shard):
             # The array shape might be longer when initialized with subdtypes.
             # subdtypes dimensions come last, therefore padding chunks_per_shard
@@ -109,6 +115,12 @@ class ShardingStorageTransformer(StorageTransformer):  # lgtm[py/missing-equals]
             "dimension_separator is not initialized, first get a copy via _copy_for_array."
         )
         return self._dimension_separator
+
+    def _is_data_key(self, key: str) -> bool:
+        assert self._data_key_prefix is not None, (
+            "data_key_prefix is not initialized, first get a copy via _copy_for_array."
+        )
+        return key.startswith(self._data_key_prefix)
 
     def _key_to_shard(self, chunk_key: str) -> Tuple[str, Tuple[int, ...]]:
         prefix, _, chunk_string = chunk_key.rpartition("c")
@@ -156,7 +168,7 @@ class ShardingStorageTransformer(StorageTransformer):  # lgtm[py/missing-equals]
             )
 
     def __getitem__(self, key):
-        if _is_data_key(key):
+        if self._is_data_key(key):
             if self.supports_efficient_get_partial_values():
                 # Use the partial implementation, which fetches the index seperately
                 value = self.get_partial_values([(key, (0, None))])[0]
@@ -179,7 +191,7 @@ class ShardingStorageTransformer(StorageTransformer):  # lgtm[py/missing-equals]
             return self.inner_store.__getitem__(key)
 
     def __setitem__(self, key, value):
-        if _is_data_key(key):
+        if self._is_data_key(key):
             shard_key, chunk_subkey = self._key_to_shard(key)
             chunks_to_read = set(self._get_chunks_in_shard(shard_key))
             chunks_to_read.remove(chunk_subkey)
@@ -248,7 +260,7 @@ class ShardingStorageTransformer(StorageTransformer):  # lgtm[py/missing-equals]
             self.inner_store[key] = value
 
     def __delitem__(self, key):
-        if _is_data_key(key):
+        if self._is_data_key(key):
             shard_key, chunk_subkey = self._key_to_shard(key)
             try:
                 index = self._get_index_from_store(shard_key)
@@ -266,7 +278,7 @@ class ShardingStorageTransformer(StorageTransformer):  # lgtm[py/missing-equals]
             del self.inner_store[key]
 
     def _shard_key_to_original_keys(self, key: str) -> Iterator[str]:
-        if _is_data_key(key):
+        if self._is_data_key(key):
             index = self._get_index_from_store(key)
             prefix, _, _ = key.rpartition("c")
             for chunk_tuple in self._get_chunks_in_shard(key):
@@ -290,7 +302,7 @@ class ShardingStorageTransformer(StorageTransformer):  # lgtm[py/missing-equals]
             cached_indices = {}
             none_indices = []
             for i, (key, range_) in enumerate(key_ranges):
-                if _is_data_key(key):
+                if self._is_data_key(key):
                     shard_key, chunk_subkey = self._key_to_shard(key)
                     try:
                         index = cached_indices[shard_key]
@@ -331,13 +343,10 @@ class ShardingStorageTransformer(StorageTransformer):  # lgtm[py/missing-equals]
         StoreV3.rename(self, src_path, dst_path)  # type: ignore[arg-type]
 
     def list_prefix(self, prefix):
-        if _is_data_key(prefix):
-            return StoreV3.list_prefix(self, prefix)
-        else:
-            return self.inner_store.list_prefix(prefix)
+        return StoreV3.list_prefix(self, prefix)
 
     def erase_prefix(self, prefix):
-        if _is_data_key(prefix):
+        if self._is_data_key(prefix):
             StoreV3.erase_prefix(self, prefix)
         else:
             self.inner_store.erase_prefix(prefix)
@@ -347,7 +356,7 @@ class ShardingStorageTransformer(StorageTransformer):  # lgtm[py/missing-equals]
         _rmdir_from_keys_v3(self, path)  # type: ignore
 
     def __contains__(self, key):
-        if _is_data_key(key):
+        if self._is_data_key(key):
             shard_key, chunk_subkeys = self._key_to_shard(key)
             try:
                 index = self._get_index_from_store(shard_key)
