@@ -286,7 +286,7 @@ class Array:
                 storage_transformers = meta.get('storage_transformers', [])
                 if storage_transformers:
                     transformed_store = self._chunk_store or self._store
-                    for storage_transformer in storage_transformers:
+                    for storage_transformer in storage_transformers[::-1]:
                         transformed_store = storage_transformer._copy_for_array(
                             self, transformed_store
                         )
