@@ -533,14 +533,14 @@ class TestStorageTransformerV3(TestMappingStoreV3):
             "dummy_type", test_value=DummyStorageTransfomer.TEST_CONSTANT
         )
         sharding_transformer = ShardingStorageTransformer(
-            "indexed", chunks_per_shard=(2, ),
+            "indexed", chunks_per_shard=2,
         )
         path = 'bla'
         init_array(inner_store, path=path, shape=1000, chunks=100,
                    dimension_separator=".",
                    storage_transformers=[dummy_transformer, sharding_transformer])
         store = Array(store=inner_store, path=path).chunk_store
-        store.clear()
+        store.erase_prefix("/")
         return store
 
     def test_method_forwarding(self):
