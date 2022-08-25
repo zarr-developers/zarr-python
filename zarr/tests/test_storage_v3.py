@@ -540,7 +540,8 @@ class TestStorageTransformerV3(TestMappingStoreV3):
                    dimension_separator=".",
                    storage_transformers=[dummy_transformer, sharding_transformer])
         store = Array(store=inner_store, path=path).chunk_store
-        store.erase_prefix("/")
+        store.erase_prefix("data/root/bla/")
+        store.clear()
         return store
 
     def test_method_forwarding(self):
