@@ -68,6 +68,7 @@ Contents
     spec
     release
     contributing
+    tutorial_nb
 
 Projects using Zarr
 -------------------
