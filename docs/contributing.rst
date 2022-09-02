@@ -335,22 +335,23 @@ Release procedure
 .. note:: 
 
    Most of the release process is now handled by github workflow which should
-   automatically push a release to PyPI if a tag is pushed. 
+   automatically push a release to PyPI if a tag is pushed.
 
-Checkout and update the main branch::
+Before releasing, make sure that all pull requests which will be
+included in the release have been properly documented in
+`docs/release.rst`.
 
-    $ git checkout main
-    $ git pull
+To make a new release, go to
+https://github.com/zarr-developers/zarr-python/releases and
+click "Draft a new release". Choose a version number prefixed
+with a `v` (e.g. `v0.0.0`) and set the description to:
 
-Verify all tests pass on all supported Python versions, and docs build::
+```
+See release notes https://zarr.readthedocs.io/en/stable/release.html#release-0-0-0
+```
 
-    $ tox
+replacing the correct version numbers. For pre-release versions,
+the URL should omit the pre-release suffix, e.g. "a1" or "rc1".
 
-Tag the version (where "X.X.X" stands for the version number, e.g., "2.2.0")::
-
-    $ version=X.X.X
-    $ git tag -a v$version -m v$version
-    $ git push origin v$version
-
-Create a GitHub release in order to generate the Zenodo DOI and
-review the automatically generated zarr-feedstock PR.
+Be sure to review and merge the https://github.com/conda-forge/zarr-feedstock
+pull request that will be automatically generated.
