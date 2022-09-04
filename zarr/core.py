@@ -2353,13 +2353,18 @@ class Array:
 
         return checksum
 
-    def __getstate__(self):
-        return (self._store, self._path, self._read_only, self._chunk_store,
-                self._synchronizer, self._cache_metadata, self._attrs.cache,
-                self._partial_decompress, self._write_empty_chunks, self._version)
-
-    def __setstate__(self, state):
-        self.__init__(*state)
+    def __reduce__(self):
+        args = (self.store,
+                self.path,
+                self.read_only,
+                self.chunk_store,
+                self.synchronizer,
+                self._cache_metadata,
+                self.attrs.cache,
+                self._partial_decompress,
+                self.write_empty_chunks,
+                self._version)
+        return (self.__class__, args)
 
     def _synchronized_op(self, f, *args, **kwargs):
 
