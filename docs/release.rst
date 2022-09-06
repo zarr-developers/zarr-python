@@ -39,6 +39,7 @@ Documentation
 ~~~~~~~~~~~~~
 
 * Typo fixes to close quotes. By :user:`Pavithra Eswaramoorthy <pavithraes>`
+* Added copy button to documentation :user:`Altay Sansal <tasansal>`
 
 Maintenance
 ~~~~~~~~~~~
