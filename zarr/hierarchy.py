@@ -600,7 +600,6 @@ class Group(MutableMapping):
         if self._version == 2:
             for key in sorted(listdir(self._store, self._path)):
                 path = self._key_prefix + key
-                assert not path.startswith("meta/")
                 if contains_array(self._store, path):
                     _key = key.rstrip("/")
                     yield _key if keys_only else (_key, self[key])
