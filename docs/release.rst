@@ -35,6 +35,9 @@ Bug fixes
 * Fix bug in LRUEStoreCache in which the current size wasn't reset on invalidation.
   By :user:`BGCMHou <BGCMHou>` and :user:`Josh Moore <joshmoore>` :issue:`1076`, :issue:`1077`.
 
+* Remove erroneous check that disallowed array keys starting with "meta".
+  By :user:`Gregory R. Lee <grlee77>`; :issue:`1105`.
+
 Documentation
 ~~~~~~~~~~~~~
 
