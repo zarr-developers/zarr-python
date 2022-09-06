@@ -44,6 +44,7 @@ extensions = [
     'sphinx.ext.intersphinx',
     'numpydoc',
     'sphinx_issues',
+    "sphinx_copybutton",
 ]
 
 numpydoc_show_class_members = False
@@ -312,3 +313,9 @@ texinfo_documents = [
 # :ref:`comparison manual <python:comparisons>`
 intersphinx_mapping = { 'python':('https://docs.python.org/', None), 
                         'numpy': ('https://numpy.org/doc/stable/', None)}
+
+
+# sphinx-copybutton configuration
+copybutton_prompt_text = r">>> |\.\.\. |\$ |In \[\d*\]: | {2,5}\.\.\.: | {5,8}: "
+copybutton_line_continuation_character = "\\"
+copybutton_prompt_is_regexp = True
