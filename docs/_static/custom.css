@@ -7,13 +7,13 @@
 /* Sidebar link click color */
 .wy-menu-vertical .toctree-l1 > a:active {
   background-color: rgb(38, 34, 98);
-  color: rgb(252, 252, 252);
+  color: #404040;
 }
 
 /* Link color is darker to make hovering more clear */
 .wy-menu-vertical .toctree-l1 > a:hover {
   background-color: rgb(25, 22, 65);
-  color: rgb(252, 252, 252);
+  color: #404040;
 }
 
 .wy-menu-vertical li.current > a:hover, .wy-menu-vertical li.current > a:active {
