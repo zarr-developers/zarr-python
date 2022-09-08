@@ -59,7 +59,7 @@ jobs:
         conda activate zarr-env
         python -m pip install --upgrade pip
         python -m pip install -U pip setuptools wheel codecov line_profiler
-        python -m pip install -rrequirements_dev_minimal.txt numpy${{ matrix.numpy_version}} -rrequirements_dev_optional.txt pymongo redis
+        python -m pip install -rrequirements_dev_minimal.txt numpy${{matrix.numpy_version}} -rrequirements_dev_optional.txt pymongo redis
         python -m pip install .
         python -m pip freeze
     - name: Tests

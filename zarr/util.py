@@ -10,7 +10,7 @@ import numpy as np
 from asciitree import BoxStyle, LeftAligned
 from asciitree.traversal import Traversal
 from collections.abc import Iterable
-from numcodecs.compat import ensure_ndarray, ensure_text
+from numcodecs.compat import ensure_text, ensure_ndarray_like
 from numcodecs.registry import codec_registry
 from numcodecs.blosc import cbuffer_sizes, cbuffer_metainfo
 
@@ -352,7 +352,7 @@ def normalize_storage_path(path: Union[str, bytes, None]) -> str:
 
 
 def buffer_size(v) -> int:
-    return ensure_ndarray(v).nbytes
+    return ensure_ndarray_like(v).nbytes
 
 
 def info_text_report(items: Dict[Any, Any]) -> str:

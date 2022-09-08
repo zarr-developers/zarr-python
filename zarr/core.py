@@ -4,12 +4,11 @@ import itertools
 import math
 import operator
 import re
-from collections.abc import MutableMapping
 from functools import reduce
 from typing import Any
 
 import numpy as np
-from numcodecs.compat import ensure_bytes, ensure_ndarray
+from numcodecs.compat import ensure_bytes
 
 from zarr._storage.store import _prefix_to_attrs_key, assert_zarr_v3_api_available
 from zarr.attrs import Attributes
@@ -35,6 +34,7 @@ from zarr.indexing import (
 from zarr.storage import (
     _get_hierarchy_metadata,
     _prefix_to_array_key,
+    KVStore,
     getsize,
     listdir,
     normalize_store_arg,
@@ -51,6 +51,7 @@ from zarr.util import (
     normalize_shape,
     normalize_storage_path,
     PartialReadBuffer,
+    ensure_ndarray_like
 )
 
 
@@ -98,6 +99,12 @@ class Array:
 
         .. versionadded:: 2.11
 
+    meta_array : array-like, optional
+        An array instance to use for determining arrays to create and return
+        to users. Use `numpy.empty(())` by default.
+
+        .. versionadded:: 2.13
+
 
     Attributes
     ----------
@@ -129,6 +136,7 @@ class Array:
     vindex
     oindex
     write_empty_chunks
+    meta_array
 
     Methods
     -------
@@ -163,6 +171,7 @@ class Array:
         partial_decompress=False,
         write_empty_chunks=True,
         zarr_version=None,
+        meta_array=None,
     ):
         # N.B., expect at this point store is fully initialized with all
         # configuration metadata fully specified and normalized
@@ -191,8 +200,11 @@ class Array:
         self._is_view = False
         self._partial_decompress = partial_decompress
         self._write_empty_chunks = write_empty_chunks
+        if meta_array is not None:
+            self._meta_array = np.empty_like(meta_array, shape=())
+        else:
+            self._meta_array = np.empty(())
         self._version = zarr_version
-
         if self._version == 3:
             self._data_key_prefix = 'data/root/' + self._key_prefix
             self._data_path = 'data/root/' + self._path
@@ -554,6 +566,13 @@ class Array:
         will be stored. If False, such chunks will not be stored.
         """
         return self._write_empty_chunks
+
+    @property
+    def meta_array(self):
+        """An array-like instance to use for determining arrays to create and return
+        to users.
+        """
+        return self._meta_array
 
     def __eq__(self, other):
         return (
@@ -929,7 +948,7 @@ class Array:
 
         except KeyError:
             # chunk not initialized
-            chunk = np.zeros((), dtype=self._dtype)
+            chunk = np.zeros_like(self._meta_array, shape=(), dtype=self._dtype)
             if self._fill_value is not None:
                 chunk.fill(self._fill_value)
 
@@ -1233,7 +1252,8 @@ class Array:
 
         # setup output array
         if out is None:
-            out = np.empty(out_shape, dtype=out_dtype, order=self._order)
+            out = np.empty_like(self._meta_array, shape=out_shape,
+                                dtype=out_dtype, order=self._order)
         else:
             check_array_shape('out', out, out_shape)
 
@@ -1607,9 +1627,13 @@ class Array:
         # setup indexer
         indexer = CoordinateIndexer(selection, self)
 
-        # handle value - need to flatten
+        # handle value - need ndarray-like flatten value
         if not is_scalar(value, self._dtype):
-            value = np.asanyarray(value)
+            try:
+                value = ensure_ndarray_like(value)
+            except TypeError:
+                # Handle types like `list` or `tuple`
+                value = np.array(value, like=self._meta_array)
         if hasattr(value, 'shape') and len(value.shape) > 1:
             value = value.reshape(-1)
 
@@ -1712,7 +1736,7 @@ class Array:
 
         except KeyError:
             # chunk not initialized
-            chunk = np.zeros((), dtype=self._dtype)
+            chunk = np.zeros_like(self._meta_array, shape=(), dtype=self._dtype)
             if self._fill_value is not None:
                 chunk.fill(self._fill_value)
 
@@ -1772,7 +1796,7 @@ class Array:
             pass
         else:
             if not hasattr(value, 'shape'):
-                value = np.asanyarray(value)
+                value = np.asanyarray(value, like=self._meta_array)
             check_array_shape('value', value, sel_shape)
 
         # iterate over chunks in range
@@ -1840,8 +1864,11 @@ class Array:
                 self._dtype != object):
 
             dest = out[out_selection]
+            # Assume that array-like objects that doesn't have a
+            # `writeable` flag is writable.
+            dest_is_writable = getattr(dest, "writeable", True)
             write_direct = (
-                dest.flags.writeable and
+                dest_is_writable and
                 (
                     (self._order == 'C' and dest.flags.c_contiguous) or
                     (self._order == 'F' and dest.flags.f_contiguous)
@@ -1858,7 +1885,7 @@ class Array:
                         cdata = cdata.read_full()
                     self._compressor.decode(cdata, dest)
                 else:
-                    chunk = ensure_ndarray(cdata).view(self._dtype)
+                    chunk = ensure_ndarray_like(cdata).view(self._dtype)
                     chunk = chunk.reshape(self._chunks, order=self._order)
                     np.copyto(dest, chunk)
                 return
@@ -1868,7 +1895,7 @@ class Array:
             if partial_read_decode:
                 cdata.prepare_chunk()
                 # size of chunk
-                tmp = np.empty(self._chunks, dtype=self.dtype)
+                tmp = np.empty_like(self._meta_array, shape=self._chunks, dtype=self.dtype)
                 index_selection = PartialChunkIterator(chunk_selection, self.chunks)
                 for start, nitems, partial_out_selection in index_selection:
                     expected_shape = [
@@ -1925,7 +1952,7 @@ class Array:
         """
         out_is_ndarray = True
         try:
-            out = ensure_ndarray(out)
+            out = ensure_ndarray_like(out)
         except TypeError:
             out_is_ndarray = False
 
@@ -1960,7 +1987,7 @@ class Array:
         """
         out_is_ndarray = True
         try:
-            out = ensure_ndarray(out)
+            out = ensure_ndarray_like(out)
         except TypeError:  # pragma: no cover
             out_is_ndarray = False
 
@@ -2082,7 +2109,9 @@ class Array:
             if is_scalar(value, self._dtype):
 
                 # setup array filled with value
-                chunk = np.empty(self._chunks, dtype=self._dtype, order=self._order)
+                chunk = np.empty_like(
+                    self._meta_array, shape=self._chunks, dtype=self._dtype, order=self._order
+                )
                 chunk.fill(value)
 
             else:
@@ -2102,14 +2131,18 @@ class Array:
 
                 # chunk not initialized
                 if self._fill_value is not None:
-                    chunk = np.empty(self._chunks, dtype=self._dtype, order=self._order)
+                    chunk = np.empty_like(
+                        self._meta_array, shape=self._chunks, dtype=self._dtype, order=self._order
+                    )
                     chunk.fill(self._fill_value)
                 elif self._dtype == object:
                     chunk = np.empty(self._chunks, dtype=self._dtype, order=self._order)
                 else:
                     # N.B., use zeros here so any region beyond the array has consistent
                     # and compressible data
-                    chunk = np.zeros(self._chunks, dtype=self._dtype, order=self._order)
+                    chunk = np.zeros_like(
+                        self._meta_array, shape=self._chunks, dtype=self._dtype, order=self._order
+                    )
 
             else:
 
@@ -2159,7 +2192,7 @@ class Array:
                 chunk = f.decode(chunk)
 
         # view as numpy array with correct dtype
-        chunk = ensure_ndarray(chunk)
+        chunk = ensure_ndarray_like(chunk)
         # special case object dtype, because incorrect handling can lead to
         # segfaults and other bad things happening
         if self._dtype != object:
@@ -2186,7 +2219,7 @@ class Array:
                 chunk = f.encode(chunk)
 
         # check object encoding
-        if ensure_ndarray(chunk).dtype == object:
+        if ensure_ndarray_like(chunk).dtype == object:
             raise RuntimeError('cannot write object array without object codec')
 
         # compress
@@ -2196,7 +2229,7 @@ class Array:
             cdata = chunk
 
         # ensure in-memory data is immutable and easy to compare
-        if isinstance(self.chunk_store, MutableMapping):
+        if isinstance(self.chunk_store, KVStore):
             cdata = ensure_bytes(cdata)
 
         return cdata
@@ -2354,12 +2387,22 @@ class Array:
         return checksum
 
     def __getstate__(self):
-        return (self._store, self._path, self._read_only, self._chunk_store,
-                self._synchronizer, self._cache_metadata, self._attrs.cache,
-                self._partial_decompress, self._write_empty_chunks, self._version)
+        return {
+            "store": self._store,
+            "path": self._path,
+            "read_only": self._read_only,
+            "chunk_store": self._chunk_store,
+            "synchronizer": self._synchronizer,
+            "cache_metadata": self._cache_metadata,
+            "cache_attrs": self._attrs.cache,
+            "partial_decompress": self._partial_decompress,
+            "write_empty_chunks": self._write_empty_chunks,
+            "zarr_version": self._version,
+            "meta_array": self._meta_array,
+        }
 
     def __setstate__(self, state):
-        self.__init__(*state)
+        self.__init__(**state)
 
     def _synchronized_op(self, f, *args, **kwargs):
 
@@ -2466,7 +2509,7 @@ class Array:
 
         Parameters
         ----------
-        data : array_like
+        data : array-like
             Data to be appended.
         axis : int
             Axis along which to append.
@@ -2502,7 +2545,7 @@ class Array:
 
         # ensure data is array-like
         if not hasattr(data, 'shape'):
-            data = np.asanyarray(data)
+            data = np.asanyarray(data, like=self._meta_array)
 
         # ensure shapes are compatible for non-append dimensions
         self_shape_preserved = tuple(s for i, s in enumerate(self._shape)
