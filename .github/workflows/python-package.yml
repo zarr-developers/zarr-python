@@ -89,5 +89,3 @@ jobs:
         conda activate zarr-env
         flake8 zarr
         mypy zarr
-
-
