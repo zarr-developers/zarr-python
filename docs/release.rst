@@ -21,11 +21,30 @@ Release notes
 Major changes
 ~~~~~~~~~~~~~
 
-* Remove support for Python 3.7 in concert with NumPy dependency.
+* **Support of alternative array classes* by introducing a new argument,
+  meta_array, that specifies the type/class of the underlying array. The
+  meta_array argument can be any class instance that can be used as the like
+  argument in NumPy (see `NEP 35
+  <https://numpy.org/neps/nep-0035-array-creation-dispatch-with-array-function.html>`_).
+  enables support for CuPy through, for example, the creation of a CuPyCPU
+  compressor.
+  By :user:`Mads R. B. Kristensen <madsbk>` :issue:`934`.
+
+* **Remove support for Python 3.7** in concert with NumPy dependency.
   By :user:`Davis Bennett <d-v-b>`; :issue:`1067`.
+
+* **Zarr v3: add support root path.**
+  By :user:`Gregory R. Lee <grlee77>`; :issue:`1085`.
+
 
 Bug fixes
 ~~~~~~~~~
+
+* Remove/relax erroneous "meta" path check (**regression**).
+  By :user:`Gregory R. Lee <grlee77>`; :issue:`1123`.
+
+* Cast all attribute keys to strings (and issue deprecation warning).
+  By :user:`Mattia Almansi <malmans2>`; :issue:`1066`.
 
 * Fix bug in N5 storage that prevented arrays located in the root of the hierarchy from
   bearing the `n5` keyword. Along with fixing this bug, new tests were added for N5 routines
@@ -46,6 +65,12 @@ Documentation
 
 Maintenance
 ~~~~~~~~~~~
+
+* Simplify release docs.
+  By :user:`Josh Moore <joshmoore>` :issue:`1119`.
+
+* Add copy button to documentation.
+  By :user:`Altay Sansal <tasansal>` :issue:`1124`.
 
 * Pin werkzeug to prevent test hangs.
   By :user:`Davis Bennett <d-v-b>`; :issue:`1098`.
