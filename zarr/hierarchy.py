@@ -628,7 +628,6 @@ class Group(MutableMapping):
         if self._version == 2:
             for key in sorted(listdir(self._store, self._path)):
                 path = self._key_prefix + key
-                assert not path.startswith("meta")
                 if contains_array(self._store, path):
                     _key = key.rstrip("/")
                     yield _key if keys_only else (_key, self[key])
@@ -643,7 +642,7 @@ class Group(MutableMapping):
                 if key.endswith(array_sfx):
                     key = key[:-len(array_sfx)]
                 path = self._key_prefix + key
-                assert not path.startswith("meta")
+                assert not path.startswith("meta/")
                 if key.endswith('.group' + self._metadata_key_suffix):
                     # skip group metadata keys
                     continue

@@ -2559,3 +2559,9 @@ def test_normalize_store_arg(tmpdir):
         path = tempfile.mkdtemp()
         store = normalize_store_arg("file://" + path, zarr_version=2, mode='w')
         assert isinstance(store, FSStore)
+
+
+def test_meta_prefix_6853():
+
+    fixture = group(store=DirectoryStore('fixture'))
+    assert list(fixture.arrays())
