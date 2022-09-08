@@ -16,7 +16,7 @@
 
 /* Link color is darker to make hovering more clear */
 .wy-menu-vertical .toctree-l1 > a:hover {
-  background-color: rgb(25, 22, 65);
+  background-color: rgb(198, 197, 213);
   color: rgb(0, 0, 0);
 }
 
