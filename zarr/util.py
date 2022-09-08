@@ -15,6 +15,9 @@ from numcodecs.registry import codec_registry
 from numcodecs.blosc import cbuffer_sizes, cbuffer_metainfo
 
 from typing import Any, Callable, Dict, Optional, Tuple, Union
+from typing_extensions import Literal
+
+AccessMode = Literal['r', 'r+', 'w', 'a', 'w-', 'x']
 
 
 def flatten(arg: Iterable) -> Iterable:
@@ -56,7 +59,7 @@ def json_loads(s: str) -> Dict[str, Any]:
     return json.loads(ensure_text(s, 'ascii'))
 
 
-def normalize_shape(shape) -> Tuple[int]:
+def normalize_shape(shape: Any) -> Tuple[int, ...]:
     """Convenience function to normalize the `shape` argument."""
 
     if shape is None:

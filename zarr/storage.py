@@ -27,11 +27,12 @@ import tempfile
 import warnings
 import zipfile
 from collections import OrderedDict
-from collections.abc import MutableMapping
+from typing import Generator, MutableMapping, cast
 from os import scandir
 from pickle import PicklingError
 from threading import Lock, RLock
 from typing import Optional, Union, List, Tuple, Dict, Any
+
 import uuid
 import time
 
@@ -55,10 +56,10 @@ from zarr.meta import encode_array_metadata, encode_group_metadata
 from zarr.util import (buffer_size, json_loads, nolock, normalize_chunks,
                        normalize_dimension_separator,
                        normalize_dtype, normalize_fill_value, normalize_order,
-                       normalize_shape, normalize_storage_path, retry_call)
+                       normalize_shape, normalize_storage_path, retry_call, AccessMode)
 
 from zarr._storage.absstore import ABSStore  # noqa: F401
-from zarr._storage.store import (_get_hierarchy_metadata,  # noqa: F401
+from zarr._storage.store import (StoreV3, _get_hierarchy_metadata,  # noqa: F401
                                  _get_metadata_suffix,
                                  _listdir_from_keys,
                                  _rename_from_keys,
@@ -92,10 +93,9 @@ except ImportError:  # pragma: no cover
     from zarr.codecs import Zlib
     default_compressor = Zlib()
 
-
 Path = Union[str, bytes, None]
 # allow MutableMapping for backwards compatibility
-StoreLike = Union[BaseStore, MutableMapping]
+StoreLike = Union[BaseStore, MutableMapping[str, Any]]
 
 
 def contains_array(store: StoreLike, path: Path = None) -> bool:
@@ -128,7 +128,9 @@ def contains_group(store: StoreLike, path: Path = None, explicit_only=True) -> b
         return False
 
 
-def _normalize_store_arg_v2(store: Any, storage_options=None, mode="r") -> BaseStore:
+def _normalize_store_arg_v2(store: Any,
+                            storage_options: Optional[Dict[str, Any]] = None,
+                            mode="r") -> Store:
     # default to v2 store for backward compatibility
     zarr_version = getattr(store, '_store_version', 2)
     if zarr_version != 2:
@@ -155,19 +157,24 @@ def _normalize_store_arg_v2(store: Any, storage_options=None, mode="r") -> BaseS
     return store
 
 
-def normalize_store_arg(store: Any, storage_options=None, mode="r", *,
-                        zarr_version=None) -> BaseStore:
+def normalize_store_arg(store: Union[StoreLike, str, None],
+                        storage_options: Optional[Dict[str, Any]] = None,
+                        mode: AccessMode = "r", *,
+                        zarr_version: Optional[int] = None) -> BaseStore:
+
+    result: BaseStore
     if zarr_version is None:
         # default to v2 store for backward compatibility
         zarr_version = getattr(store, "_store_version", DEFAULT_ZARR_VERSION)
-    elif zarr_version not in [2, 3]:
-        raise ValueError("zarr_version must be either 2 or 3")
+
     if zarr_version == 2:
-        normalize_store = _normalize_store_arg_v2
+        result = _normalize_store_arg_v2(store, storage_options, mode)
     elif zarr_version == 3:
         from zarr._storage.v3 import _normalize_store_arg_v3
-        normalize_store = _normalize_store_arg_v3
-    return normalize_store(store, storage_options, mode)
+        result = _normalize_store_arg_v3(store, storage_options, mode)
+    else:
+        raise ValueError("zarr_version must be either 2 or 3")
+    return result
 
 
 def rmdir(store: StoreLike, path: Path = None):
@@ -187,7 +194,7 @@ def rmdir(store: StoreLike, path: Path = None):
             _rmdir_from_keys_v3(store, path)  # type: ignore
 
 
-def rename(store: Store, src_path: Path, dst_path: Path):
+def rename(store: BaseStore, src_path: Path, dst_path: Path):
     """Rename all items under the given path. If `store` provides a `rename` method,
     this will be called, otherwise will fall back to implementation via the
     `Store` interface."""
@@ -222,6 +229,7 @@ def listdir(store: BaseStore, path: Path = None):
 def _getsize(store: BaseStore, path: Path = None) -> int:
     # compute from size of values
     if path and path in store:
+        path = cast(str, path)
         v = store[path]
         size = buffer_size(v)
     else:
@@ -282,7 +290,7 @@ def _require_parent_group(
 
 def init_array(
     store: StoreLike,
-    shape: Tuple[int, ...],
+    shape: Union[int, Tuple[int, ...]],
     chunks: Union[bool, int, Tuple[int, ...]] = True,
     dtype=None,
     compressor="default",
@@ -590,7 +598,7 @@ def init_group(
     store: StoreLike,
     overwrite: bool = False,
     path: Path = None,
-    chunk_store: StoreLike = None,
+    chunk_store: Optional[StoreLike] = None,
 ):
     """Initialize a group store. Note that this is a low-level function and there should be no
     need to call this directly from user code.
@@ -637,7 +645,7 @@ def _init_group_metadata(
     store: StoreLike,
     overwrite: Optional[bool] = False,
     path: Optional[str] = None,
-    chunk_store: StoreLike = None,
+    chunk_store: Optional[StoreLike] = None,
 ):
 
     store_version = getattr(store, '_store_version', 2)
@@ -691,7 +699,7 @@ def _init_group_metadata(
         store[key] = encode_group_metadata(meta)
 
 
-def _dict_store_keys(d: Dict, prefix="", cls=dict):
+def _dict_store_keys(d: Dict[str, Any], prefix="", cls: Any = dict) -> Generator[Any, None, None]:
     for k in d.keys():
         v = d[k]
         if isinstance(v, cls):
@@ -710,19 +718,19 @@ class KVStore(Store):
     store which is likely to expose a MuttableMapping interface,
     """
 
-    def __init__(self, mutablemapping):
+    def __init__(self, mutablemapping: MutableMapping[str, Any]):
         self._mutable_mapping = mutablemapping
 
-    def __getitem__(self, key):
+    def __getitem__(self, key: str):
         return self._mutable_mapping[key]
 
-    def __setitem__(self, key, value):
+    def __setitem__(self, key: str, value: Any):
         self._mutable_mapping[key] = value
 
-    def __delitem__(self, key):
+    def __delitem__(self, key: str):
         del self._mutable_mapping[key]
 
-    def get(self, key, default=None):
+    def get(self, key: str, default: Any = None):
         return self._mutable_mapping.get(key, default)
 
     def values(self):
@@ -770,7 +778,10 @@ class MemoryStore(Store):
 
     """
 
-    def __init__(self, root=None, cls=dict, dimension_separator=None):
+    def __init__(self,
+                 root: Any = None,
+                 cls: Any = dict,
+                 dimension_separator: Optional[str] = None):
         if root is None:
             self.root = cls()
         else:
@@ -779,10 +790,10 @@ class MemoryStore(Store):
         self.write_mutex = Lock()
         self._dimension_separator = dimension_separator
 
-    def __getstate__(self):
+    def __getstate__(self) -> Tuple[Any, Any]:
         return self.root, self.cls
 
-    def __setstate__(self, state):
+    def __setstate__(self, state: Tuple[Any, ...]):
         root, cls = state
         self.__init__(root=root, cls=cls)
 
@@ -797,7 +808,7 @@ class MemoryStore(Store):
                 raise KeyError(item)
         return parent, segments[-1]
 
-    def _require_parent(self, item):
+    def _require_parent(self, item: str):
         parent = self.root
         # split the item
         segments = item.split('/')
@@ -839,7 +850,7 @@ class MemoryStore(Store):
             except KeyError:
                 raise KeyError(item)
 
-    def __contains__(self, item: str):  # type: ignore[override]
+    def __contains__(self, item: str) -> bool:  # type: ignore[override]
         try:
             parent, key = self._get_parent(item)
             value = parent[key]
@@ -848,18 +859,18 @@ class MemoryStore(Store):
         else:
             return not isinstance(value, self.cls)
 
-    def __eq__(self, other):
+    def __eq__(self, other) -> bool:
         return (
             isinstance(other, MemoryStore) and
             self.root == other.root and
             self.cls == other.cls
         )
 
-    def keys(self):
+    def keys(self) -> Generator[str, None, None]:
         for k in _dict_store_keys(self.root, cls=self.cls):
             yield k
 
-    def __iter__(self):
+    def __iter__(self) -> Generator[str, None, None]:
         return self.keys()
 
     def __len__(self) -> int:
@@ -1008,7 +1019,10 @@ class DirectoryStore(Store):
 
     """
 
-    def __init__(self, path, normalize_keys=False, dimension_separator=None):
+    def __init__(self,
+                 path: str,
+                 normalize_keys: bool = False,
+                 dimension_separator: Optional[str] = None):
 
         # guard conditions
         path = os.path.abspath(path)
@@ -1019,11 +1033,11 @@ class DirectoryStore(Store):
         self.normalize_keys = normalize_keys
         self._dimension_separator = dimension_separator
 
-    def _normalize_key(self, key):
+    def _normalize_key(self, key: str):
         return key.lower() if self.normalize_keys else key
 
     @staticmethod
-    def _fromfile(fn):
+    def _fromfile(fn: str):
         """ Read data from a file
 
         Parameters
@@ -1040,7 +1054,7 @@ class DirectoryStore(Store):
             return f.read()
 
     @staticmethod
-    def _tofile(a, fn):
+    def _tofile(a: Any, fn: str):
         """ Write data to a file
 
         Parameters
@@ -1058,7 +1072,7 @@ class DirectoryStore(Store):
         with open(fn, mode='wb') as f:
             f.write(a)
 
-    def __getitem__(self, key):
+    def __getitem__(self, key: str):
         key = self._normalize_key(key)
         filepath = os.path.join(self.path, key)
         if os.path.isfile(filepath):
@@ -1066,7 +1080,7 @@ class DirectoryStore(Store):
         else:
             raise KeyError(key)
 
-    def __setitem__(self, key, value):
+    def __setitem__(self, key: str, value: Any):
         key = self._normalize_key(key)
 
         # coerce to flat, contiguous array (ideally without copying)

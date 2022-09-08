@@ -1,9 +1,20 @@
-from collections.abc import MutableMapping
 from itertools import islice
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Generator,
+    List,
+    Optional,
+    Tuple,
+    Union,
+    cast,
+    MutableMapping
+)
 
 import numpy as np
 
-from zarr._storage.store import (_get_metadata_suffix, data_root, meta_root,
+from zarr._storage.store import (Store, StoreV3, _get_metadata_suffix, data_root, meta_root,
                                  DEFAULT_ZARR_VERSION, assert_zarr_v3_api_available)
 from zarr.attrs import Attributes
 from zarr.core import Array
@@ -16,6 +27,7 @@ from zarr.errors import (
     ReadOnlyError,
 )
 from zarr.storage import (
+    StoreLike,
     _get_hierarchy_metadata,
     _prefix_to_group_key,
     BaseStore,
@@ -32,6 +44,7 @@ from zarr.storage import (
 )
 from zarr._storage.v3 import MemoryStoreV3
 from zarr.util import (
+    AccessMode,
     InfoReporter,
     TreeViewer,
     is_valid_python_name,
@@ -41,7 +54,7 @@ from zarr.util import (
 )
 
 
-class Group(MutableMapping):
+class Group(MutableMapping[str, Union['Group', Array]]):
     """Instantiate a group from an initialized store.
 
     Parameters
@@ -113,9 +126,15 @@ class Group(MutableMapping):
 
     """
 
-    def __init__(self, store, path=None, read_only=False, chunk_store=None,
-                 cache_attrs=True, synchronizer=None, zarr_version=None):
-        store: BaseStore = _normalize_store_arg(store, zarr_version=zarr_version)
+    def __init__(self,
+                 store: StoreLike,
+                 path: Optional[str] = None,
+                 read_only: bool = False,
+                 chunk_store: Optional[StoreLike] = None,
+                 cache_attrs: bool = True,
+                 synchronizer: Any = None,
+                 zarr_version: Optional[int] = None):
+        store = _normalize_store_arg(store, zarr_version=zarr_version)
         if zarr_version is None:
             zarr_version = getattr(store, '_store_version', DEFAULT_ZARR_VERSION)
 
@@ -123,7 +142,7 @@ class Group(MutableMapping):
             assert_zarr_v3_api_available()
 
         if chunk_store is not None:
-            chunk_store: BaseStore = _normalize_store_arg(chunk_store, zarr_version=zarr_version)
+            chunk_store = _normalize_store_arg(chunk_store, zarr_version=zarr_version)
         self._store = store
         self._chunk_store = chunk_store
         self._path = normalize_storage_path(path)
@@ -136,10 +155,11 @@ class Group(MutableMapping):
         self._version = zarr_version
 
         if self._version == 3:
+            _store = cast(StoreV3, self._store)
             self._data_key_prefix = data_root + self._key_prefix
             self._data_path = data_root + self._path
-            self._hierarchy_metadata = _get_hierarchy_metadata(store=self._store)
-            self._metadata_key_suffix = _get_metadata_suffix(store=self._store)
+            self._hierarchy_metadata = _get_hierarchy_metadata(store=_store)
+            self._metadata_key_suffix = _get_metadata_suffix(store=_store)
 
         # guard conditions
         if contains_array(store, path=self._path):
@@ -154,8 +174,9 @@ class Group(MutableMapping):
             if self._version == 2:
                 raise GroupNotFoundError(path)
             else:
+                _store = cast(StoreV3, self._store)
                 implicit_prefix = meta_root + self._key_prefix
-                if self._store.list_prefix(implicit_prefix):
+                if _store.list_prefix(implicit_prefix):
                     # implicit group does not have any metadata
                     self._meta = None
                 else:
@@ -182,12 +203,12 @@ class Group(MutableMapping):
         return self._store
 
     @property
-    def path(self):
+    def path(self) -> str:
         """Storage path."""
         return self._path
 
     @property
-    def name(self):
+    def name(self) -> str:
         """Group name following h5py convention."""
         if self._path:
             # follow h5py convention: add leading slash
@@ -198,17 +219,17 @@ class Group(MutableMapping):
         return '/'
 
     @property
-    def basename(self):
+    def basename(self) -> str:
         """Final component of name."""
         return self.name.split('/')[-1]
 
     @property
-    def read_only(self):
+    def read_only(self) -> bool:
         """A boolean, True if modification operations are not permitted."""
         return self._read_only
 
     @property
-    def chunk_store(self):
+    def chunk_store(self) -> StoreLike:
         """A MutableMapping providing the underlying storage for array chunks."""
         if self._chunk_store is None:
             return self._store
@@ -216,22 +237,22 @@ class Group(MutableMapping):
             return self._chunk_store
 
     @property
-    def synchronizer(self):
+    def synchronizer(self) -> Any:
         """Object used to synchronize write access to groups and arrays."""
         return self._synchronizer
 
     @property
-    def attrs(self):
+    def attrs(self) -> Attributes:
         """A MutableMapping containing user-defined attributes. Note that
         attribute values must be JSON serializable."""
         return self._attrs
 
     @property
-    def info(self):
+    def info(self) -> InfoReporter:
         """Return diagnostic information about the group."""
         return self._info
 
-    def __eq__(self, other):
+    def __eq__(self, other: Any) -> bool:
         return (
             isinstance(other, Group) and
             self._store == other.store and
@@ -241,7 +262,7 @@ class Group(MutableMapping):
             # store comparison
         )
 
-    def __iter__(self):
+    def __iter__(self) -> Generator[str, None, None]:
         """Return an iterator over group member names.
 
         Examples
@@ -261,6 +282,7 @@ class Group(MutableMapping):
 
         """
         if getattr(self._store, '_store_version', 2) == 2:
+            cast(Store, self._store)
             for key in sorted(listdir(self._store, self._path)):
                 path = self._key_prefix + key
                 if (contains_array(self._store, path) or
@@ -270,6 +292,7 @@ class Group(MutableMapping):
             # TODO: Should this iterate over data folders and/or metadata
             #       folders and/or metadata files
 
+            self._store = cast(StoreV3, self._store)
             dir_path = meta_root + self._key_prefix
             name_start = len(dir_path)
             keys, prefixes = self._store.list_dir(dir_path)
@@ -291,11 +314,11 @@ class Group(MutableMapping):
             # Note: omit data/root/ to avoid duplicate listings
             #       any group in data/root/ must has an entry in meta/root/
 
-    def __len__(self):
+    def __len__(self) -> int:
         """Number of members."""
         return sum(1 for _ in self)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         t = type(self)
         r = '<{}.{}'.format(t.__module__, t.__name__)
         if self.name:
@@ -313,12 +336,12 @@ class Group(MutableMapping):
         """Call the close method of the underlying Store."""
         self.store.close()
 
-    def info_items(self):
+    def info_items(self) -> List[Tuple[str, Union[str, int]]]:
 
-        def typestr(o):
+        def typestr(o: Any):
             return '{}.{}'.format(type(o).__module__, type(o).__name__)
 
-        items = []
+        items: List[Tuple[str, Union[int, str]]] = []
 
         # basic info
         if self.name is not None:
@@ -354,17 +377,17 @@ class Group(MutableMapping):
         return (self._store, self._path, self._read_only, self._chunk_store,
                 self.attrs.cache, self._synchronizer)
 
-    def __setstate__(self, state):
+    def __setstate__(self, state: Tuple[Any, ...]):
         self.__init__(*state)
 
-    def _item_path(self, item):
+    def _item_path(self, item: Any) -> str:
         absolute = isinstance(item, str) and item and item[0] == '/'
         path = normalize_storage_path(item)
         if not absolute and self._path:
             path = self._key_prefix + path
         return path
 
-    def __contains__(self, item):
+    def __contains__(self, item: Any) -> bool:
         """Test for group membership.
 
         Examples
@@ -385,7 +408,7 @@ class Group(MutableMapping):
         return contains_array(self._store, path) or \
             contains_group(self._store, path, explicit_only=False)
 
-    def __getitem__(self, item):
+    def __getitem__(self, item: str) -> Union['Group', Array]:
         """Obtain a group member.
 
         Parameters
@@ -417,6 +440,7 @@ class Group(MutableMapping):
                          chunk_store=self._chunk_store, cache_attrs=self.attrs.cache,
                          synchronizer=self._synchronizer, zarr_version=self._version)
         elif self._version == 3:
+            self._store = cast(StoreV3, self._store)
             implicit_group = meta_root + path + '/'
             # non-empty folder in the metadata path implies an implicit group
             if self._store.list_prefix(implicit_group):
@@ -428,13 +452,13 @@ class Group(MutableMapping):
         else:
             raise KeyError(item)
 
-    def __setitem__(self, item, value):
+    def __setitem__(self, item: str, value: Any):
         self.array(item, value, overwrite=True)
 
-    def __delitem__(self, item):
+    def __delitem__(self, item: str):
         return self._write_op(self._delitem_nosync, item)
 
-    def _delitem_nosync(self, item):
+    def _delitem_nosync(self, item: str):
         path = self._item_path(item)
         if contains_array(self._store, path) or \
                 contains_group(self._store, path, explicit_only=False):
@@ -442,16 +466,16 @@ class Group(MutableMapping):
         else:
             raise KeyError(item)
 
-    def __getattr__(self, item):
+    def __getattr__(self, item: str):
         # allow access to group members via dot notation
         try:
             return self.__getitem__(item)
         except KeyError:
             raise AttributeError
 
-    def __dir__(self):
+    def __dir__(self) -> List[str]:
         # noinspection PyUnresolvedReferences
-        base = super().__dir__()
+        base = list(super().__dir__())
         keys = sorted(set(base + list(self)))
         keys = [k for k in keys if is_valid_python_name(k)]
         return keys
@@ -542,7 +566,7 @@ class Group(MutableMapping):
                         synchronizer=self._synchronizer,
                         zarr_version=self._version)
 
-    def array_keys(self, recurse=False):
+    def array_keys(self, recurse: bool = False) -> Generator[str, None, None]:
         """Return an iterator over member names for arrays only.
 
         Parameters
@@ -596,7 +620,7 @@ class Group(MutableMapping):
                                 method='arrays',
                                 recurse=recurse)
 
-    def _array_iter(self, keys_only, method, recurse):
+    def _array_iter(self, keys_only: bool, method, recurse: bool) -> Generator[str, None, None]:
         if self._version == 2:
             for key in sorted(listdir(self._store, self._path)):
                 path = self._key_prefix + key
@@ -627,7 +651,7 @@ class Group(MutableMapping):
                     for i in getattr(group, method)(recurse=recurse):
                         yield i
 
-    def visitvalues(self, func):
+    def visitvalues(self, func: Callable[[Union['Group', Array]], Any]) -> Any:
         """Run ``func`` on each object.
 
         Note: If ``func`` returns ``None`` (or doesn't return),
@@ -655,7 +679,7 @@ class Group(MutableMapping):
 
         """
 
-        def _visit(obj):
+        def _visit(obj: Union['Group', Array]) -> Generator[Union['Group', Array], None, None]:
             yield obj
             keys = sorted(getattr(obj, "keys", lambda: [])())
             for k in keys:
@@ -667,7 +691,7 @@ class Group(MutableMapping):
             if value is not None:
                 return value
 
-    def visit(self, func):
+    def visit(self, func: Callable[[str], Any]):
         """Run ``func`` on each object's path.
 
         Note: If ``func`` returns ``None`` (or doesn't return),
@@ -704,7 +728,7 @@ class Group(MutableMapping):
 
         return self.visit(func)
 
-    def visititems(self, func):
+    def visititems(self, func: Callable[[str, Union['Group', Array]], Any]) -> Any:
         """Run ``func`` on each object's path and the object itself.
 
         Note: If ``func`` returns ``None`` (or doesn't return),
@@ -735,7 +759,7 @@ class Group(MutableMapping):
         base_len = len(self.name)
         return self.visitvalues(lambda o: func(o.name[base_len:].lstrip("/"), o))
 
-    def tree(self, expand=False, level=None):
+    def tree(self, expand: bool = False, level: Optional[int] = None):
         """Provide a ``print``-able display of the hierarchy.
 
         Parameters
@@ -783,7 +807,7 @@ class Group(MutableMapping):
 
         return TreeViewer(self, expand=expand, level=level)
 
-    def _write_op(self, f, *args, **kwargs):
+    def _write_op(self, f: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
 
         # guard condition
         if self._read_only:
@@ -799,7 +823,7 @@ class Group(MutableMapping):
         with lock:
             return f(*args, **kwargs)
 
-    def create_group(self, name, overwrite=False):
+    def create_group(self, name: str, overwrite: bool = False):
         """Create a sub-group.
 
         Parameters
@@ -825,7 +849,7 @@ class Group(MutableMapping):
 
         return self._write_op(self._create_group_nosync, name, overwrite=overwrite)
 
-    def _create_group_nosync(self, name, overwrite=False):
+    def _create_group_nosync(self, name: str, overwrite: bool = False):
         path = self._item_path(name)
 
         # create terminal group
@@ -836,11 +860,11 @@ class Group(MutableMapping):
                      chunk_store=self._chunk_store, cache_attrs=self.attrs.cache,
                      synchronizer=self._synchronizer, zarr_version=self._version)
 
-    def create_groups(self, *names, **kwargs):
+    def create_groups(self, *names: str, **kwargs: Any):
         """Convenience method to create multiple groups in a single call."""
         return tuple(self.create_group(name, **kwargs) for name in names)
 
-    def require_group(self, name, overwrite=False):
+    def require_group(self, name: str, overwrite: bool = False):
         """Obtain a sub-group, creating one if it doesn't exist.
 
         Parameters
@@ -868,7 +892,7 @@ class Group(MutableMapping):
         return self._write_op(self._require_group_nosync, name,
                               overwrite=overwrite)
 
-    def _require_group_nosync(self, name, overwrite=False):
+    def _require_group_nosync(self, name: str, overwrite: bool = False):
         path = self._item_path(name)
 
         # create terminal group if necessary
@@ -880,12 +904,12 @@ class Group(MutableMapping):
                      chunk_store=self._chunk_store, cache_attrs=self.attrs.cache,
                      synchronizer=self._synchronizer, zarr_version=self._version)
 
-    def require_groups(self, *names):
+    def require_groups(self, *names: str):
         """Convenience method to require multiple groups in a single call."""
         return tuple(self.require_group(name) for name in names)
 
     # noinspection PyIncorrectDocstring
-    def create_dataset(self, name, **kwargs):
+    def create_dataset(self, name: str, **kwargs: Any):
         """Create an array.
 
         Arrays are known as "datasets" in HDF5 terminology. For compatibility
@@ -924,6 +948,14 @@ class Group(MutableMapping):
             overhead depending on storage and data access pattern).
         dimension_separator : {'.', '/'}, optional
             Separator placed between the dimensions of a chunk.
+        write_empty_chunks : bool, optional
+            If True, all chunks will be stored regardless of their contents. If
+            False (default), each chunk is compared to the array's fill value prior
+            to storing. If a chunk is uniformly equal to the fill value, then that
+            chunk is not be stored, and the store entry for that chunk's key is
+            deleted. This setting enables sparser storage, as only chunks with
+            non-fill-value data are stored, at the expense of overhead associated
+            with checking the data of each chunk.
 
         Returns
         -------
@@ -947,7 +979,7 @@ class Group(MutableMapping):
 
         return self._write_op(self._create_dataset_nosync, name, **kwargs)
 
-    def _create_dataset_nosync(self, name, data=None, **kwargs):
+    def _create_dataset_nosync(self, name: str, data: Any = None, **kwargs: Any) -> Array:
 
         assert "mode" not in kwargs
         path = self._item_path(name)
@@ -967,13 +999,21 @@ class Group(MutableMapping):
 
         return a
 
-    def require_dataset(self, name, shape, dtype=None, exact=False, **kwargs):
+    def require_dataset(self,
+                        name: str,
+                        shape: Union[int, Tuple[int, ...]],
+                        dtype: Any = None,
+                        exact: bool = False,
+                        **kwargs: Any):
         """Obtain an array, creating if it doesn't exist.
 
         Arrays are known as "datasets" in HDF5 terminology. For compatibility
         with h5py, Zarr groups also implement the create_dataset() method.
 
-        Other `kwargs` are as per :func:`zarr.hierarchy.Group.create_dataset`.
+        Other `kwargs` are as per :func:`zarr.hierarchy.Group.create_dataset`
+        if a new array is being created; if the array already exists, keyword
+        arguments for :func:`zarr.core.Array` are extracted from `kwargs`
+        and supplied to that constructor.
 
         Parameters
         ----------
@@ -992,8 +1032,12 @@ class Group(MutableMapping):
         return self._write_op(self._require_dataset_nosync, name, shape=shape,
                               dtype=dtype, exact=exact, **kwargs)
 
-    def _require_dataset_nosync(self, name, shape, dtype=None, exact=False,
-                                **kwargs):
+    def _require_dataset_nosync(self,
+                                name: str,
+                                shape: Tuple[int, ...],
+                                dtype: Any = None,
+                                exact: bool = False,
+                                **kwargs: Any) -> Array:
 
         path = self._item_path(name)
 
@@ -1004,9 +1048,15 @@ class Group(MutableMapping):
             synchronizer = kwargs.get('synchronizer', self._synchronizer)
             cache_metadata = kwargs.get('cache_metadata', True)
             cache_attrs = kwargs.get('cache_attrs', self.attrs.cache)
-            a = Array(self._store, path=path, read_only=self._read_only,
-                      chunk_store=self._chunk_store, synchronizer=synchronizer,
-                      cache_metadata=cache_metadata, cache_attrs=cache_attrs)
+            write_empty_chunks = kwargs.get('write_empty_chunks', True)
+            a = Array(self._store,
+                      path=path,
+                      read_only=self._read_only,
+                      chunk_store=self._chunk_store,
+                      synchronizer=synchronizer,
+                      cache_metadata=cache_metadata,
+                      cache_attrs=cache_attrs,
+                      write_empty_chunks=write_empty_chunks)
             shape = normalize_shape(shape)
             if shape != a.shape:
                 raise TypeError('shape do not match existing array; expected {}, got {}'
@@ -1026,131 +1076,131 @@ class Group(MutableMapping):
             return self._create_dataset_nosync(name, shape=shape, dtype=dtype,
                                                **kwargs)
 
-    def create(self, name, **kwargs):
+    def create(self, name: str, **kwargs: Any) -> Array:
         """Create an array. Keyword arguments as per
         :func:`zarr.creation.create`."""
         return self._write_op(self._create_nosync, name, **kwargs)
 
-    def _create_nosync(self, name, **kwargs):
+    def _create_nosync(self, name: str, **kwargs: Any) -> Array:
         path = self._item_path(name)
         kwargs.setdefault('synchronizer', self._synchronizer)
         kwargs.setdefault('cache_attrs', self.attrs.cache)
         return create(store=self._store, path=path, chunk_store=self._chunk_store,
                       **kwargs)
 
-    def empty(self, name, **kwargs):
+    def empty(self, name: str, **kwargs: Any) -> Array:
         """Create an array. Keyword arguments as per
         :func:`zarr.creation.empty`."""
         return self._write_op(self._empty_nosync, name, **kwargs)
 
-    def _empty_nosync(self, name, **kwargs):
+    def _empty_nosync(self, name: str, **kwargs: Any) -> Array:
         path = self._item_path(name)
         kwargs.setdefault('synchronizer', self._synchronizer)
         kwargs.setdefault('cache_attrs', self.attrs.cache)
         return empty(store=self._store, path=path, chunk_store=self._chunk_store,
                      **kwargs)
 
-    def zeros(self, name, **kwargs):
+    def zeros(self, name: str, **kwargs: Any) -> Array:
         """Create an array. Keyword arguments as per
         :func:`zarr.creation.zeros`."""
         return self._write_op(self._zeros_nosync, name, **kwargs)
 
-    def _zeros_nosync(self, name, **kwargs):
+    def _zeros_nosync(self, name: str, **kwargs: Any) -> Array:
         path = self._item_path(name)
         kwargs.setdefault('synchronizer', self._synchronizer)
         kwargs.setdefault('cache_attrs', self.attrs.cache)
         return zeros(store=self._store, path=path, chunk_store=self._chunk_store,
                      **kwargs)
 
-    def ones(self, name, **kwargs):
+    def ones(self, name: str, **kwargs: Any) -> Array:
         """Create an array. Keyword arguments as per
         :func:`zarr.creation.ones`."""
         return self._write_op(self._ones_nosync, name, **kwargs)
 
-    def _ones_nosync(self, name, **kwargs):
+    def _ones_nosync(self, name: str, **kwargs: Any) -> Array:
         path = self._item_path(name)
         kwargs.setdefault('synchronizer', self._synchronizer)
         kwargs.setdefault('cache_attrs', self.attrs.cache)
         return ones(store=self._store, path=path, chunk_store=self._chunk_store, **kwargs)
 
-    def full(self, name, fill_value, **kwargs):
+    def full(self, name: str, fill_value: Any, **kwargs: Any) -> Array:
         """Create an array. Keyword arguments as per
         :func:`zarr.creation.full`."""
         return self._write_op(self._full_nosync, name, fill_value, **kwargs)
 
-    def _full_nosync(self, name, fill_value, **kwargs):
+    def _full_nosync(self, name: str, fill_value: Any, **kwargs: Any) -> Array:
         path = self._item_path(name)
         kwargs.setdefault('synchronizer', self._synchronizer)
         kwargs.setdefault('cache_attrs', self.attrs.cache)
         return full(store=self._store, path=path, chunk_store=self._chunk_store,
                     fill_value=fill_value, **kwargs)
 
-    def array(self, name, data, **kwargs):
+    def array(self, name: str, data: Any, **kwargs: Any) -> Array:
         """Create an array. Keyword arguments as per
         :func:`zarr.creation.array`."""
         return self._write_op(self._array_nosync, name, data, **kwargs)
 
-    def _array_nosync(self, name, data, **kwargs):
+    def _array_nosync(self, name: str, data: Any, **kwargs: Any) -> Array:
         path = self._item_path(name)
         kwargs.setdefault('synchronizer', self._synchronizer)
         kwargs.setdefault('cache_attrs', self.attrs.cache)
         return array(data, store=self._store, path=path, chunk_store=self._chunk_store,
                      **kwargs)
 
-    def empty_like(self, name, data, **kwargs):
+    def empty_like(self, name: str, data: Any, **kwargs: Any) -> Array:
         """Create an array. Keyword arguments as per
         :func:`zarr.creation.empty_like`."""
         return self._write_op(self._empty_like_nosync, name, data, **kwargs)
 
-    def _empty_like_nosync(self, name, data, **kwargs):
+    def _empty_like_nosync(self, name: str, data: Any, **kwargs: Any) -> Array:
         path = self._item_path(name)
         kwargs.setdefault('synchronizer', self._synchronizer)
         kwargs.setdefault('cache_attrs', self.attrs.cache)
         return empty_like(data, store=self._store, path=path,
                           chunk_store=self._chunk_store, **kwargs)
 
-    def zeros_like(self, name, data, **kwargs):
+    def zeros_like(self, name: str, data: Any, **kwargs: Any) -> Array:
         """Create an array. Keyword arguments as per
         :func:`zarr.creation.zeros_like`."""
         return self._write_op(self._zeros_like_nosync, name, data, **kwargs)
 
-    def _zeros_like_nosync(self, name, data, **kwargs):
+    def _zeros_like_nosync(self, name: str, data: Any, **kwargs: Any) -> Array:
         path = self._item_path(name)
         kwargs.setdefault('synchronizer', self._synchronizer)
         kwargs.setdefault('cache_attrs', self.attrs.cache)
         return zeros_like(data, store=self._store, path=path,
                           chunk_store=self._chunk_store, **kwargs)
 
-    def ones_like(self, name, data, **kwargs):
+    def ones_like(self, name: str, data: Any, **kwargs: Any) -> Array:
         """Create an array. Keyword arguments as per
         :func:`zarr.creation.ones_like`."""
         return self._write_op(self._ones_like_nosync, name, data, **kwargs)
 
-    def _ones_like_nosync(self, name, data, **kwargs):
+    def _ones_like_nosync(self, name: str, data: Any, **kwargs: Any) -> Array:
         path = self._item_path(name)
         kwargs.setdefault('synchronizer', self._synchronizer)
         kwargs.setdefault('cache_attrs', self.attrs.cache)
         return ones_like(data, store=self._store, path=path,
                          chunk_store=self._chunk_store, **kwargs)
 
-    def full_like(self, name, data, **kwargs):
+    def full_like(self, name: str, data: Any, **kwargs: Any) -> Array:
         """Create an array. Keyword arguments as per
         :func:`zarr.creation.full_like`."""
         return self._write_op(self._full_like_nosync, name, data, **kwargs)
 
-    def _full_like_nosync(self, name, data, **kwargs):
+    def _full_like_nosync(self, name: str, data: Any, **kwargs: Any) -> Array:
         path = self._item_path(name)
         kwargs.setdefault('synchronizer', self._synchronizer)
         kwargs.setdefault('cache_attrs', self.attrs.cache)
         return full_like(data, store=self._store, path=path,
                          chunk_store=self._chunk_store, **kwargs)
 
-    def _move_nosync(self, path, new_path):
+    def _move_nosync(self, path: str, new_path: str):
         rename(self._store, path, new_path)
         if self._chunk_store is not None:
             rename(self._chunk_store, path, new_path)
 
-    def move(self, source, dest):
+    def move(self, source: str, dest: str):
         """Move contents from one path to another relative to the Group.
 
         Parameters
@@ -1179,23 +1229,37 @@ class Group(MutableMapping):
         self._write_op(self._move_nosync, source, dest)
 
 
-def _normalize_store_arg(store, *, storage_options=None, mode="r",
-                         zarr_version=None):
+def _normalize_store_arg(store: Union[StoreLike, str, None],
+                         *,
+                         storage_options: Optional[Dict[str, Any]] = None,
+                         mode: AccessMode = "r",
+                         zarr_version: Optional[int] = None) -> BaseStore:
+    result: BaseStore
     if zarr_version is None:
         zarr_version = getattr(store, '_store_version', DEFAULT_ZARR_VERSION)
-
-    if zarr_version != 2:
+    if zarr_version == 3:
         assert_zarr_v3_api_available()
 
     if store is None:
-        return MemoryStore() if zarr_version == 2 else MemoryStoreV3()
-    return normalize_store_arg(store,
-                               storage_options=storage_options, mode=mode,
-                               zarr_version=zarr_version)
+        if zarr_version == 2:
+            result = MemoryStore()
+        else:
+            result = MemoryStoreV3()
+    else:
+        result = normalize_store_arg(store,
+                                     storage_options=storage_options, mode=mode,
+                                     zarr_version=zarr_version)
+    return result
 
 
-def group(store=None, overwrite=False, chunk_store=None,
-          cache_attrs=True, synchronizer=None, path=None, *, zarr_version=None):
+def group(store: Optional[StoreLike] = None,
+          overwrite: bool = False,
+          chunk_store: Optional[StoreLike] = None,
+          cache_attrs: bool = True,
+          synchronizer: Any = None,
+          path: Optional[str] = None,
+          *,
+          zarr_version: Optional[int] = None):
     """Create a group.
 
     Parameters
@@ -1251,6 +1315,7 @@ def group(store=None, overwrite=False, chunk_store=None,
         raise ValueError(f"path must be provided for a v{zarr_version} group")
     path = normalize_storage_path(path)
 
+    requires_init = True
     if zarr_version == 2:
         requires_init = overwrite or not contains_group(store)
     elif zarr_version == 3:
@@ -1265,8 +1330,15 @@ def group(store=None, overwrite=False, chunk_store=None,
                  zarr_version=zarr_version)
 
 
-def open_group(store=None, mode='a', cache_attrs=True, synchronizer=None, path=None,
-               chunk_store=None, storage_options=None, *, zarr_version=None):
+def open_group(store: Union[StoreLike, str, None] = None,
+               mode: AccessMode = 'a',
+               cache_attrs: bool = True,
+               synchronizer: Any = None,
+               path: Optional[str] = None,
+               chunk_store: Union[StoreLike, str, None] = None,
+               storage_options: Any = None,
+               *,
+               zarr_version: Optional[int] = None) -> 'Group':
     """Open a group using file-mode-like semantics.
 
     Parameters

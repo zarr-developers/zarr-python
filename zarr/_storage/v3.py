@@ -1,15 +1,15 @@
 import os
+
 import shutil
 from collections import OrderedDict
-from collections.abc import MutableMapping
 from threading import Lock
-from typing import Union, Dict, Any
+from typing import Optional, Union, Dict, Any, cast
 
 from zarr.errors import (
     MetadataError,
     ReadOnlyError,
 )
-from zarr.util import (buffer_size, json_loads, normalize_storage_path)
+from zarr.util import (buffer_size, json_loads, normalize_storage_path, AccessMode)
 
 from zarr._storage.absstore import ABSStoreV3  # noqa: F401
 from zarr._storage.store import (_get_hierarchy_metadata,  # noqa: F401
@@ -32,7 +32,7 @@ from zarr._storage.store import (_get_hierarchy_metadata,  # noqa: F401
                                  StoreV3)
 from zarr.storage import (DBMStore, ConsolidatedMetadataStore, DirectoryStore, FSStore, KVStore,
                           LMDBStore, LRUStoreCache, MemoryStore, MongoDBStore, RedisStore,
-                          SQLiteStore, ZipStore, _getsize)
+                          SQLiteStore, StoreLike, ZipStore, _getsize)
 
 __doctest_requires__ = {
     ('RedisStore', 'RedisStore.*'): ['redis'],
@@ -52,7 +52,6 @@ except ImportError:  # pragma: no cover
 
 Path = Union[str, bytes, None]
 # allow MutableMapping for backwards compatibility
-StoreLike = Union[BaseStore, MutableMapping]
 
 
 class RmdirV3():
@@ -480,7 +479,7 @@ SQLiteStoreV3.__doc__ = SQLiteStore.__doc__
 
 class LRUStoreCacheV3(RmdirV3, LRUStoreCache, StoreV3):
 
-    def __init__(self, store, max_size: int):
+    def __init__(self, store: Any, max_size: int):
         self._store = StoreV3._ensure_store(store)
         self._max_size = max_size
         self._current_size = 0
@@ -551,40 +550,44 @@ class ConsolidatedMetadataStoreV3(ConsolidatedMetadataStore, StoreV3):
         # decode metadata
         self.meta_store: Store = KVStoreV3(meta["metadata"])
 
-    def rmdir(self, key):
+    def rmdir(self, path: str = ""):
         raise ReadOnlyError()
 
 
-def _normalize_store_arg_v3(store: Any, storage_options=None, mode="r") -> BaseStore:
+def _normalize_store_arg_v3(store: Union[StoreLike, str, None],
+                            storage_options: Optional[Dict[str, Any]] = None,
+                            mode: AccessMode = "r") -> StoreV3:
+    result: StoreV3
     # default to v2 store for backward compatibility
     zarr_version = getattr(store, '_store_version', 3)
     if zarr_version != 3:
         raise ValueError("store must be a version 3 store")
     if store is None:
-        store = KVStoreV3(dict())
+        result = KVStoreV3(dict())
         # add default zarr.json metadata
-        store['zarr.json'] = store._metadata_class.encode_hierarchy_metadata(None)
-        return store
+        result['zarr.json'] = result._metadata_class.encode_hierarchy_metadata(None)
+        return result
     if isinstance(store, os.PathLike):
         store = os.fspath(store)
     if isinstance(store, str):
         if "://" in store or "::" in store:
-            store = FSStoreV3(store, mode=mode, **(storage_options or {}))
+            result = FSStoreV3(store, mode=mode, **(storage_options or {}))
         elif storage_options:
             raise ValueError("storage_options passed with non-fsspec path")
         elif store.endswith('.zip'):
-            store = ZipStoreV3(store, mode=mode)
+            result = ZipStoreV3(store, mode=mode)
         elif store.endswith('.n5'):
             raise NotImplementedError("N5Store not yet implemented for V3")
             # return N5StoreV3(store)
         else:
-            store = DirectoryStoreV3(store)
+            result = DirectoryStoreV3(store)
         # add default zarr.json metadata
-        store['zarr.json'] = store._metadata_class.encode_hierarchy_metadata(None)
-        return store
+        result['zarr.json'] = result._metadata_class.encode_hierarchy_metadata(None)
+        return result
     else:
-        store = StoreV3._ensure_store(store)
-        if 'zarr.json' not in store:
+        store_v3 = StoreV3._ensure_store(store)
+        result = cast(StoreV3, store_v3)
+        if 'zarr.json' not in result:
             # add default zarr.json metadata
-            store['zarr.json'] = store._metadata_class.encode_hierarchy_metadata(None)
-    return store
+            result['zarr.json'] = result._metadata_class.encode_hierarchy_metadata(None)
+    return result
