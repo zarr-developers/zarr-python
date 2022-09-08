@@ -99,7 +99,10 @@ class DummyStorageTransfomer(StorageTransformer):
 
     def __init__(self, _type, test_value) -> None:
         super().__init__(_type)
-        assert test_value == self.TEST_CONSTANT
+        if test_value != self.TEST_CONSTANT:
+            raise ValueError(
+                f"test_value must be {self.TEST_CONSTANT}, but is {test_value}"
+            )
         self.test_value = test_value
 
 

@@ -1872,7 +1872,7 @@ class Array:
                 # contiguous, so we can decompress directly from the chunk
                 # into the destination array
                 if self._compressor:
-                    if isinstance(cdata, (PartialReadBuffer, UncompressedPartialReadBufferV3)):
+                    if isinstance(cdata, PartialReadBuffer):
                         cdata = cdata.read_full()
                     self._compressor.decode(cdata, dest)
                 else:

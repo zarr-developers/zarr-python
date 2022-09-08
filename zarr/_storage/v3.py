@@ -200,14 +200,11 @@ class FSStoreV3(FSStore, StoreV3):
             key = self._normalize_key(key)
             path = self.dir_path(key)
             try:
-                if range_start < 0:
-                    if range_length is None:
-                        result = self.fs.tail(path, size=-range_start)
-                    else:
-                        size = self.fs.size(path)
-                        result = self.fs.read_block(path, size + range_start, range_length)
+                if range_start is None or range_length is None:
+                    end = None
                 else:
-                    result = self.fs.read_block(path, range_start, range_length)
+                    end = range_start + range_length
+                result = self.fs.cat_file(path, start=range_start, end=end)
             except self.map.missing_exceptions:
                 result = None
             results.append(result)
