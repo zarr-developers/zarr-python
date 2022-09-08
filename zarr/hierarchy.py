@@ -1276,8 +1276,6 @@ def group(store=None, overwrite=False, chunk_store=None,
     if zarr_version != 2:
         assert_zarr_v3_api_available()
 
-    if zarr_version == 3 and path is None:
-        raise ValueError(f"path must be provided for a v{zarr_version} group")
     path = normalize_storage_path(path)
 
     if zarr_version == 2:
@@ -1365,10 +1363,6 @@ def open_group(store=None, mode='a', cache_attrs=True, synchronizer=None, path=N
             raise ValueError(
                 "zarr_version of store and chunk_store must match"
             )
-
-    store_version = getattr(store, '_store_version', 2)
-    if store_version == 3 and path is None:
-        raise ValueError("path must be supplied to initialize a zarr v3 group")
 
     path = normalize_storage_path(path)
 

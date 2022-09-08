@@ -230,8 +230,14 @@ def _getsize(store: BaseStore, path: Path = None) -> int:
         size = 0
         store_version = getattr(store, '_store_version', 2)
         if store_version == 3:
-            members = store.list_prefix(data_root + path)  # type: ignore
-            members += store.list_prefix(meta_root + path)  # type: ignore
+            if path == '':
+                # have to list the root folders without trailing / in this case
+                members = store.list_prefix(data_root.rstrip('/'))   # type: ignore
+                members += store.list_prefix(meta_root.rstrip('/'))  # type: ignore
+            else:
+                members = store.list_prefix(data_root + path)  # type: ignore
+                members += store.list_prefix(meta_root + path)  # type: ignore
+            # also include zarr.json?
             # members += ['zarr.json']
         else:
             members = listdir(store, path)

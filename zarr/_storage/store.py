@@ -420,11 +420,11 @@ def _listdir_from_keys(store: BaseStore, path: Optional[str] = None) -> List[str
 
 def _prefix_to_array_key(store: StoreLike, prefix: str) -> str:
     if getattr(store, "_store_version", 2) == 3:
+        sfx = _get_metadata_suffix(store)  # type: ignore
         if prefix:
-            sfx = _get_metadata_suffix(store)  # type: ignore
             key = meta_root + prefix.rstrip("/") + ".array" + sfx
         else:
-            raise ValueError("prefix must be supplied to get a v3 array key")
+            key = meta_root[:-1] + '.array' + sfx
     else:
         key = prefix + array_meta_key
     return key
@@ -432,11 +432,11 @@ def _prefix_to_array_key(store: StoreLike, prefix: str) -> str:
 
 def _prefix_to_group_key(store: StoreLike, prefix: str) -> str:
     if getattr(store, "_store_version", 2) == 3:
+        sfx = _get_metadata_suffix(store)  # type: ignore
         if prefix:
-            sfx = _get_metadata_suffix(store)  # type: ignore
             key = meta_root + prefix.rstrip('/') + ".group" + sfx
         else:
-            raise ValueError("prefix must be supplied to get a v3 group key")
+            key = meta_root[:-1] + '.group' + sfx
     else:
         key = prefix + group_meta_key
     return key
@@ -449,7 +449,7 @@ def _prefix_to_attrs_key(store: StoreLike, prefix: str) -> str:
         if prefix:
             key = meta_root + prefix.rstrip('/') + ".array" + sfx
         else:
-            raise ValueError("prefix must be supplied to get a v3 array key")
+            key = meta_root[:-1] + '.array' + sfx
     else:
         key = prefix + attrs_key
     return key
