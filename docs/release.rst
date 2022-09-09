@@ -16,35 +16,64 @@ Release notes
 2.13.0
 ------
 .. warning::
-    Pre-release! Use `pip install --pre zarr` to evaluate this release.
+    Pre-release! Use :command:`pip install --pre zarr` to evaluate this release.
 
 Major changes
 ~~~~~~~~~~~~~
 
-* Remove support for Python 3.7 in concert with NumPy dependency.
-  By :user:`Davis Bennett <d-v-b>`; :issue:`1067`.
+* **Support of alternative array classes** by introducing a new argument,
+  meta_array, that specifies the type/class of the underlying array. The
+  meta_array argument can be any class instance that can be used as the like
+  argument in NumPy (see `NEP 35
+  <https://numpy.org/neps/nep-0035-array-creation-dispatch-with-array-function.html>`_).
+  enabling support for CuPy through, for example, the creation of a CuPy CPU
+  compressor.
+  By :user:`Mads R. B. Kristensen <madsbk>` :issue:`934`.
+
+* **Remove support for Python 3.7** in concert with NumPy dependency.
+  By :user:`Davis Bennett <d-v-b>` :issue:`1067`.
+
+* **Zarr v3: add support for the default root path** rather than requiring
+  that all API users pass an explicit path.
+  By :user:`Gregory R. Lee <grlee77>` :issue:`1085`.
+
 
 Bug fixes
 ~~~~~~~~~
 
+* Remove/relax erroneous "meta" path check (**regression**).
+  By :user:`Gregory R. Lee <grlee77>` :issue:`1123`.
+
+* Cast all attribute keys to strings (and issue deprecation warning).
+  By :user:`Mattia Almansi <malmans2>` :issue:`1066`.
+
 * Fix bug in N5 storage that prevented arrays located in the root of the hierarchy from
   bearing the `n5` keyword. Along with fixing this bug, new tests were added for N5 routines
   that had previously been excluded from testing, and type annotations were added to the N5 codebase.
-  By :user:`Davis Bennett <d-v-b>`; :issue:`1092`.
+  By :user:`Davis Bennett <d-v-b>` :issue:`1092`.
 
 * Fix bug in LRUEStoreCache in which the current size wasn't reset on invalidation.
   By :user:`BGCMHou <BGCMHou>` and :user:`Josh Moore <joshmoore>` :issue:`1076`, :issue:`1077`.
+
+* Remove erroneous check that disallowed array keys starting with "meta".
+  By :user:`Gregory R. Lee <grlee77>` :issue:`1105`.
 
 Documentation
 ~~~~~~~~~~~~~
 
 * Typo fixes to close quotes. By :user:`Pavithra Eswaramoorthy <pavithraes>`
 
+* Added copy button to documentation.
+  By :user:`Altay Sansal <tasansal>` :issue:`1124`.
+
 Maintenance
 ~~~~~~~~~~~
 
+* Simplify release docs.
+  By :user:`Josh Moore <joshmoore>` :issue:`1119`.
+
 * Pin werkzeug to prevent test hangs.
-  By :user:`Davis Bennett <d-v-b>`; :issue:`1098`.
+  By :user:`Davis Bennett <d-v-b>` :issue:`1098`.
 
 * Fix a few DeepSource.io alerts
   By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1080`.
@@ -59,10 +88,10 @@ Maintenance
   By :user:`Saransh Chopra <Saransh-cpp>` :issue:`1079`.
 
 * Remove option to return None from _ensure_store.
-  By :user:`Greggory Lee <grlee77>`; :issue:`1068`.
+  By :user:`Greggory Lee <grlee77>` :issue:`1068`.
 
 * Fix a typo of "integers".
-  By :user:`Richard Scott <RichardScottOZ>`; :issue:`1056`.
+  By :user:`Richard Scott <RichardScottOZ>` :issue:`1056`.
 
 .. _release_2.12.0:
 

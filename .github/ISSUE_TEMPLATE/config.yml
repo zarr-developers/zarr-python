@@ -6,6 +6,6 @@ contact_links:
   - name: ❓ Discuss something on gitter
     url: https://gitter.im/zarr-developers/community
     about: For questions like "How do I do X with Zarr?", you can move to our Gitter channel.
-  - name: ❓ Discuss something on GitHub Discussions 
+  - name: ❓ Discuss something on GitHub Discussions
     url: https://github.com/zarr-developers/zarr-python/discussions
     about: For questions like "How do I do X with Zarr?", you can move to GitHub Discussions.

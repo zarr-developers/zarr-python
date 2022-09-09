@@ -268,3 +268,18 @@ class TestAttributes():
         get_cnt = 10 if zarr_version == 2 else 12
         assert get_cnt == store.counter['__getitem__', attrs_key]
         assert 3 == store.counter['__setitem__', attrs_key]
+
+    def test_wrong_keys(self, zarr_version):
+        store = _init_store(zarr_version)
+        a = self.init_attributes(store, zarr_version=zarr_version)
+
+        warning_msg = "only attribute keys of type 'string' will be allowed in the future"
+
+        with pytest.warns(DeprecationWarning, match=warning_msg):
+            a[1] = "foo"
+
+        with pytest.warns(DeprecationWarning, match=warning_msg):
+            a.put({1: "foo"})
+
+        with pytest.warns(DeprecationWarning, match=warning_msg):
+            a.update({1: "foo"})
