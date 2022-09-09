@@ -574,11 +574,16 @@ def open_array(
         if not contains_array(store, path=path):
             if contains_group(store, path=path):
                 raise ContainsGroupError(path)
-            init_array(store, shape=shape, chunks=chunks, dtype=dtype,
-                       compressor=compressor, fill_value=fill_value,
-                       order=order, filters=filters, path=path,
-                       object_codec=object_codec, chunk_store=chunk_store,
-                       dimension_separator=dimension_separator)
+            try:
+                init_array(store, shape=shape, chunks=chunks, dtype=dtype,
+                           compressor=compressor, fill_value=fill_value,
+                           order=order, filters=filters, path=path,
+                           object_codec=object_codec, chunk_store=chunk_store,
+                           dimension_separator=dimension_separator)
+            except ContainsArrayError:
+                # Array must have been created betwen the `contains_array`
+                # and the `init_array` call, so just swallow the error
+                warn("race condition on init_array in open_array")
 
     elif mode in ['w-', 'x']:
         if contains_group(store, path=path):
