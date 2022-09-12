@@ -165,8 +165,13 @@ class BaseStore(MutableMapping):
         if on_error != "omit":
             raise ValueError(f"{self.__class__} doesn't support on_error='{on_error}'")
 
-        # Please overwrite `getitems` to support non-default values of `meta_array`
-        return {k: self[k] for k in keys if k in self}
+        ret = {}
+        for k in keys:
+            try:
+                ret[k] = self[k]
+            except Exception:
+                pass  # Omit keys that fails
+        return ret
 
 
 class Store(BaseStore):
