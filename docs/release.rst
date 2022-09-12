@@ -15,8 +15,10 @@ Release notes
 
 2.13.0
 ------
-.. warning::
-    Pre-release! Use :command:`pip install --pre zarr` to evaluate this release.
+
+..
+    # .. warning::
+    #    Pre-release! Use :command:`pip install --pre zarr` to evaluate this release.
 
 Major changes
 ~~~~~~~~~~~~~
