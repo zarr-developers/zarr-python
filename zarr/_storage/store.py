@@ -2,7 +2,9 @@ import abc
 import os
 from collections.abc import MutableMapping
 from string import ascii_letters, digits
-from typing import Any, List, Mapping, Optional, Union
+from typing import Any, Iterable, List, Mapping, Optional, Union
+
+from numcodecs.ndarray_like import NDArrayLike
 
 from zarr.meta import Metadata2, Metadata3
 from zarr.util import normalize_storage_path
@@ -128,6 +130,43 @@ class BaseStore(MutableMapping):
             "BaseStore, if your store exposes the MutableMapping interface "
             f"wrap it in Zarr.storage.KVStore. Got {store}"
         )
+
+    def getitems(
+        self, keys: Iterable[str], meta_array: NDArrayLike, *, on_error: str = "omit"
+    ) -> Mapping[str, Any]:
+        """Retrieve data from multiple keys.
+
+        Parameters
+        ----------
+        keys : Iterable[str]
+            The keys to retrieve
+        meta_array : array-like
+            An array instance to use for determining the output type. For now, this is
+            only a hint and can be ignore by the implementation, in which case the type
+            of the output is the same as calling __getitem__() for each key in keys.
+        on_error : str, optional
+            The policy on how to handle exceptions when retrieving keys. For now, the
+            only supported policy is "omit", which means that failing keys are omitted
+            from the returned result.
+
+        Returns
+        -------
+        Mapping
+            A collection mapping the input keys to their results.
+
+        Developer Notes
+        ---------------
+        This default implementation use __getitem__() to read each key sequential and
+        ignores the meta_array argument. Overwrite this method to implement concurrent
+        reads of multiple keys and/or to utilize the meta_array argument.
+        """
+
+        # Please overwrite `getitems` to support non-default values of `on_error`
+        if on_error != "omit":
+            raise ValueError(f"{self.__class__} doesn't support on_error='{on_error}'")
+
+        # Please overwrite `getitems` to support non-default values of `meta_array`
+        return {k: self[k] for k in keys if k in self}
 
 
 class Store(BaseStore):

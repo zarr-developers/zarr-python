@@ -1949,36 +1949,30 @@ class Array:
         except TypeError:  # pragma: no cover
             out_is_ndarray = False
 
+        if math.prod(self.shape) <= 0:
+            return
+
         # Keys to retrieve
         ckeys = [self._chunk_key(ch) for ch in lchunk_coords]
 
-        # Check if we should retrieve multiple keys at a time
-        use_getitems = (
-            hasattr(self.chunk_store, "getitems")
-            and math.prod(self.shape) > 0
-        )
-
         partial_read_decode = False
-        if use_getitems:
-            # Check if we can do a partial read
-            if (
-                self._partial_decompress
-                and self._compressor
-                and self._compressor.codec_id == "blosc"
-                and hasattr(self._compressor, "decode_partial")
-                and not fields
-                and self.dtype != object
-            ):
-                partial_read_decode = True
-                cdatas = {
-                    ckey: PartialReadBuffer(ckey, self.chunk_store)
-                    for ckey in ckeys
-                    if ckey in self.chunk_store
-                }
-            else:
-                cdatas = self.chunk_store.getitems(ckeys, on_error="omit")
+        # Check if we can do a partial read
+        if (
+            self._partial_decompress
+            and self._compressor
+            and self._compressor.codec_id == "blosc"
+            and hasattr(self._compressor, "decode_partial")
+            and not fields
+            and self.dtype != object
+        ):
+            partial_read_decode = True
+            cdatas = {
+                ckey: PartialReadBuffer(ckey, self.chunk_store)
+                for ckey in ckeys
+                if ckey in self.chunk_store
+            }
         else:
-            cdatas = {k: self.chunk_store[k] for k in ckeys if k in self.chunk_store}
+            cdatas = self.chunk_store.getitems(ckeys, meta_array=self._meta_array)
 
         for ckey, chunk_select, out_select in zip(ckeys, lchunk_selection, lout_selection):
             if ckey in cdatas:
