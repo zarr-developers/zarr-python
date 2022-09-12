@@ -1257,20 +1257,13 @@ class Array:
         else:
             check_array_shape('out', out, out_shape)
 
-        # iterate over chunks
-        if not hasattr(self.chunk_store, "getitems") or \
-           any(map(lambda x: x == 0, self.shape)):
-            # sequentially get one key at a time from storage
-            for chunk_coords, chunk_selection, out_selection in indexer:
-
-                # load chunk selection into output array
-                self._chunk_getitem(chunk_coords, chunk_selection, out, out_selection,
-                                    drop_axes=indexer.drop_axes, fields=fields)
-        else:
-            # allow storage to get multiple items at once
+        if math.prod(out_shape) > 0:
+            # get chunks
             lchunk_coords, lchunk_selection, lout_selection = zip(*indexer)
-            self._chunk_getitems(lchunk_coords, lchunk_selection, out, lout_selection,
-                                 drop_axes=indexer.drop_axes, fields=fields)
+            self._chunk_getitems(
+                lchunk_coords, lchunk_selection, out, lout_selection,
+                drop_axes=indexer.drop_axes, fields=fields
+            )
 
         if out.shape:
             return out
@@ -1930,86 +1923,63 @@ class Array:
         # store selected data in output
         out[out_selection] = tmp
 
-    def _chunk_getitem(self, chunk_coords, chunk_selection, out, out_selection,
-                       drop_axes=None, fields=None):
-        """Obtain part or whole of a chunk.
+    def _chunk_getitems(self, lchunk_coords, lchunk_selection, out, lout_selection,
+                        drop_axes=None, fields=None):
+        """Obtain part or whole of chunks.
 
         Parameters
         ----------
-        chunk_coords : tuple of ints
-            Indices of the chunk.
-        chunk_selection : selection
-            Location of region within the chunk to extract.
+        chunk_coords : list of tuple of ints
+            Indices of the chunks.
+        chunk_selection : list of selections
+            Location of region within the chunks to extract.
         out : ndarray
             Array to store result in.
-        out_selection : selection
-            Location of region within output array to store results in.
+        out_selection : list of selections
+            Location of regions within output array to store results in.
         drop_axes : tuple of ints
             Axes to squeeze out of the chunk.
         fields
             TODO
-
         """
-        out_is_ndarray = True
-        try:
-            out = ensure_ndarray_like(out)
-        except TypeError:
-            out_is_ndarray = False
 
-        assert len(chunk_coords) == len(self._cdata_shape)
-
-        # obtain key for chunk
-        ckey = self._chunk_key(chunk_coords)
-
-        try:
-            # obtain compressed data for chunk
-            cdata = self.chunk_store[ckey]
-
-        except KeyError:
-            # chunk not initialized
-            if self._fill_value is not None:
-                if fields:
-                    fill_value = self._fill_value[fields]
-                else:
-                    fill_value = self._fill_value
-                out[out_selection] = fill_value
-
-        else:
-            self._process_chunk(out, cdata, chunk_selection, drop_axes,
-                                out_is_ndarray, fields, out_selection)
-
-    def _chunk_getitems(self, lchunk_coords, lchunk_selection, out, lout_selection,
-                        drop_axes=None, fields=None):
-        """As _chunk_getitem, but for lists of chunks
-
-        This gets called where the storage supports ``getitems``, so that
-        it can decide how to fetch the keys, allowing concurrency.
-        """
         out_is_ndarray = True
         try:
             out = ensure_ndarray_like(out)
         except TypeError:  # pragma: no cover
             out_is_ndarray = False
 
+        # Keys to retrieve
         ckeys = [self._chunk_key(ch) for ch in lchunk_coords]
-        if (
-            self._partial_decompress
-            and self._compressor
-            and self._compressor.codec_id == "blosc"
-            and hasattr(self._compressor, "decode_partial")
-            and not fields
-            and self.dtype != object
-            and hasattr(self.chunk_store, "getitems")
-        ):
-            partial_read_decode = True
-            cdatas = {
-                ckey: PartialReadBuffer(ckey, self.chunk_store)
-                for ckey in ckeys
-                if ckey in self.chunk_store
-            }
+
+        # Check if we should retrieve multiple keys at a time
+        use_getitems = (
+            hasattr(self.chunk_store, "getitems")
+            and math.prod(self.shape) > 0
+        )
+
+        partial_read_decode = False
+        if use_getitems:
+            # Check if we can do a partial read
+            if (
+                self._partial_decompress
+                and self._compressor
+                and self._compressor.codec_id == "blosc"
+                and hasattr(self._compressor, "decode_partial")
+                and not fields
+                and self.dtype != object
+            ):
+                partial_read_decode = True
+                cdatas = {
+                    ckey: PartialReadBuffer(ckey, self.chunk_store)
+                    for ckey in ckeys
+                    if ckey in self.chunk_store
+                }
+            else:
+                cdatas = self.chunk_store.getitems(ckeys, on_error="omit")
         else:
-            partial_read_decode = False
-            cdatas = self.chunk_store.getitems(ckeys, on_error="omit")
+            cdatas = {k: self.chunk_store[k] for k in ckeys if k in self.chunk_store}
+
         for ckey, chunk_select, out_select in zip(ckeys, lchunk_selection, lout_selection):
             if ckey in cdatas:
                 self._process_chunk(
