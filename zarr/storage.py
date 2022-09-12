@@ -31,7 +31,7 @@ from collections.abc import MutableMapping
 from os import scandir
 from pickle import PicklingError
 from threading import Lock, RLock
-from typing import Optional, Union, List, Tuple, Dict, Any
+from typing import Iterable, Mapping, Optional, Union, List, Tuple, Dict, Any
 import uuid
 import time
 
@@ -41,6 +41,7 @@ from numcodecs.compat import (
     ensure_text,
     ensure_contiguous_ndarray_like
 )
+from numcodecs.ndarray_like import NDArrayLike
 from numcodecs.registry import codec_registry
 
 from zarr.errors import (
@@ -1363,9 +1364,15 @@ class FSStore(Store):
 
         return key.lower() if self.normalize_keys else key
 
-    def getitems(self, keys, **kwargs):
+    def getitems(
+        self, keys: Iterable[str], meta_array: NDArrayLike, *, on_error: str = "omit"
+    ) -> Mapping[str, Any]:
+
+        if on_error != "omit":
+            raise ValueError(f"{self.__class__} doesn't support on_error='{on_error}'")
+
         keys_transformed = [self._normalize_key(key) for key in keys]
-        results = self.map.getitems(keys_transformed, on_error="omit")
+        results = self.map.getitems(keys_transformed, on_error=on_error)
         # The function calling this method may not recognize the transformed keys
         # So we send the values returned by self.map.getitems back into the original key space.
         return {keys[keys_transformed.index(rk)]: rv for rk, rv in results.items()}
