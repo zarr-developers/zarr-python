@@ -344,14 +344,22 @@ included in the release have been properly documented in
 To make a new release, go to
 https://github.com/zarr-developers/zarr-python/releases and
 click "Draft a new release". Choose a version number prefixed
-with a `v` (e.g. `v0.0.0`) and set the description to:
+with a `v` (e.g. `v0.0.0`). For pre-releases, include the
+appropriate suffix (e.g. `v0.0.0a1` or `v0.0.0rc2`).
 
-```
-See release notes https://zarr.readthedocs.io/en/stable/release.html#release-0-0-0
-```
+
+Set the description of the release to::
+
+    See release notes https://zarr.readthedocs.io/en/stable/release.html#release-0-0-0
 
 replacing the correct version numbers. For pre-release versions,
 the URL should omit the pre-release suffix, e.g. "a1" or "rc1".
 
-Be sure to review and merge the https://github.com/conda-forge/zarr-feedstock
+After creating the release, the documentation will be built on
+https://readthedocs.io. Full releases will be available under
+`/stable <https://zarr.readthedocs.io/en/stable>`_ while
+pre-releases will be available under
+`/latest <https://zarr.readthedocs.io/en/latest>`_.
+
+Also review and merge the https://github.com/conda-forge/zarr-feedstock
 pull request that will be automatically generated.
