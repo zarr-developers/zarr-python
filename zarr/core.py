@@ -1949,9 +1949,6 @@ class Array:
         except TypeError:  # pragma: no cover
             out_is_ndarray = False
 
-        if math.prod(self.shape) <= 0:
-            return
-
         # Keys to retrieve
         ckeys = [self._chunk_key(ch) for ch in lchunk_coords]
 
