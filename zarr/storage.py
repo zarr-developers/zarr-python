@@ -31,7 +31,7 @@ from collections.abc import MutableMapping
 from os import scandir
 from pickle import PicklingError
 from threading import Lock, RLock
-from typing import Iterable, Mapping, Optional, Union, List, Tuple, Dict, Any
+from typing import Sequence, Mapping, Optional, Union, List, Tuple, Dict, Any
 import uuid
 import time
 
@@ -1365,7 +1365,7 @@ class FSStore(Store):
         return key.lower() if self.normalize_keys else key
 
     def getitems(
-        self, keys: Iterable[str], meta_array: NDArrayLike
+        self, keys: Sequence[str], meta_array: NDArrayLike
     ) -> Mapping[str, Any]:
 
         keys_transformed = [self._normalize_key(key) for key in keys]

@@ -2,7 +2,7 @@ import abc
 import os
 from collections.abc import MutableMapping
 from string import ascii_letters, digits
-from typing import Any, Iterable, List, Mapping, Optional, Union
+from typing import Any, Sequence, List, Mapping, Optional, Union
 
 from numcodecs.ndarray_like import NDArrayLike
 
@@ -131,7 +131,7 @@ class BaseStore(MutableMapping):
             f"wrap it in Zarr.storage.KVStore. Got {store}"
         )
 
-    def getitems(self, keys: Iterable[str], meta_array: NDArrayLike) -> Mapping[str, Any]:
+    def getitems(self, keys: Sequence[str], meta_array: NDArrayLike) -> Mapping[str, Any]:
         """Retrieve data from multiple keys.
 
         Parameters
