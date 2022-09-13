@@ -131,9 +131,7 @@ class BaseStore(MutableMapping):
             f"wrap it in Zarr.storage.KVStore. Got {store}"
         )
 
-    def getitems(
-        self, keys: Iterable[str], meta_array: NDArrayLike, *, on_error: str = "omit"
-    ) -> Mapping[str, Any]:
+    def getitems(self, keys: Iterable[str], meta_array: NDArrayLike) -> Mapping[str, Any]:
         """Retrieve data from multiple keys.
 
         Parameters
@@ -144,10 +142,6 @@ class BaseStore(MutableMapping):
             An array instance to use for determining the output type. For now, this is
             only a hint and can be ignore by the implementation, in which case the type
             of the output is the same as calling __getitem__() for each key in keys.
-        on_error : str, optional
-            The policy on how to handle exceptions when retrieving keys. For now, the
-            only supported policy is "omit", which means that failing keys are omitted
-            from the returned result.
 
         Returns
         -------
@@ -161,17 +155,7 @@ class BaseStore(MutableMapping):
         reads of multiple keys and/or to utilize the meta_array argument.
         """
 
-        # Please overwrite `getitems` to support non-default values of `on_error`
-        if on_error != "omit":
-            raise ValueError(f"{self.__class__} doesn't support on_error='{on_error}'")
-
-        ret = {}
-        for k in keys:
-            try:
-                ret[k] = self[k]
-            except Exception:
-                pass  # Omit keys that fails
-        return ret
+        return {k: self[k] for k in keys if k in self}
 
 
 class Store(BaseStore):
