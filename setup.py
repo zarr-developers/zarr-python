@@ -10,7 +10,7 @@ dependencies = [
     'asciitree',
     'numpy>=1.7',
     'fasteners',
-    'numcodecs>=0.6.4',
+    'numcodecs>=0.10.0',
 ]
 
 setup(
@@ -47,9 +47,9 @@ setup(
         'Topic :: Software Development :: Libraries :: Python Modules',
         'Operating System :: Unix',
         'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.7',
         'Programming Language :: Python :: 3.8',
         'Programming Language :: Python :: 3.9',
+        'Programming Language :: Python :: 3.10',
     ],
     maintainer='Alistair Miles',
     maintainer_email='alimanfoo@googlemail.com',
