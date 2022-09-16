@@ -559,7 +559,7 @@ def ix_(selection, shape):
 def oindex(a, selection):
     """Implementation of orthogonal indexing with slices and ints."""
     selection = replace_ellipsis(selection, a.shape)
-    drop_axes = tuple([i for i, s in enumerate(selection) if is_integer(s)])
+    drop_axes = tuple(i for i, s in enumerate(selection) if is_integer(s))
     selection = ix_(selection, a.shape)
     result = a[selection]
     if drop_axes:
@@ -569,7 +569,7 @@ def oindex(a, selection):
 
 def oindex_set(a, selection, value):
     selection = replace_ellipsis(selection, a.shape)
-    drop_axes = tuple([i for i, s in enumerate(selection) if is_integer(s)])
+    drop_axes = tuple(i for i, s in enumerate(selection) if is_integer(s))
     selection = ix_(selection, a.shape)
     if not np.isscalar(value) and drop_axes:
         value = np.asanyarray(value)
@@ -623,8 +623,8 @@ class OrthogonalIndexer:
                            if not isinstance(s, IntDimIndexer))
         self.is_advanced = not is_basic_selection(selection)
         if self.is_advanced:
-            self.drop_axes = tuple([i for i, dim_indexer in enumerate(self.dim_indexers)
-                                    if isinstance(dim_indexer, IntDimIndexer)])
+            self.drop_axes = tuple(i for i, dim_indexer in enumerate(self.dim_indexers)
+                                   if isinstance(dim_indexer, IntDimIndexer))
         else:
             self.drop_axes = None
 
