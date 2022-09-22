@@ -37,7 +37,7 @@ Major changes
 
 * **Zarr v3: add support for the default root path** rather than requiring
   that all API users pass an explicit path.
-  By :user:`Gregory R. Lee <grlee77>` :issue:`1085`.
+  By :user:`Gregory R. Lee <grlee77>` :issue:`1085`, :issue:`1142`.
 
 
 Bug fixes
