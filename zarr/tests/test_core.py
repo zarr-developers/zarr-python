@@ -5,7 +5,7 @@ import pickle
 import shutil
 import unittest
 from itertools import zip_longest
-from tempfile import mkdtemp, mktemp
+from tempfile import mkdtemp
 
 import numpy as np
 import pytest
@@ -53,7 +53,7 @@ from zarr._storage.v3 import (
     StoreV3,
 )
 from zarr.util import buffer_size
-from zarr.tests.util import abs_container, skip_test_env_var, have_fsspec
+from zarr.tests.util import abs_container, skip_test_env_var, have_fsspec, mktemp
 
 # noinspection PyMethodMayBeStatic
 

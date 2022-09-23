@@ -15,8 +15,10 @@ Release notes
 
 2.13.0
 ------
-.. warning::
-    Pre-release! Use :command:`pip install --pre zarr` to evaluate this release.
+
+..
+    # .. warning::
+    #    Pre-release! Use :command:`pip install --pre zarr` to evaluate this release.
 
 Major changes
 ~~~~~~~~~~~~~
@@ -35,7 +37,7 @@ Major changes
 
 * **Zarr v3: add support for the default root path** rather than requiring
   that all API users pass an explicit path.
-  By :user:`Gregory R. Lee <grlee77>` :issue:`1085`.
+  By :user:`Gregory R. Lee <grlee77>` :issue:`1085`, :issue:`1142`.
 
 
 Bug fixes
