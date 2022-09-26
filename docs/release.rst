@@ -21,7 +21,7 @@ Release notes
 
 * Fix test failure on conda-forge builds.
   By :user:`Josh Moore <joshmoore>`; see
-  `zarr-feedstock#65 <https://github.com/conda-forge/zarr-feedstock/pull/65>`.
+  `zarr-feedstock#65 <https://github.com/conda-forge/zarr-feedstock/pull/65>`_.
 
 .. _release_2.13.0:
 
