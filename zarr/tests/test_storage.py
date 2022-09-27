@@ -2563,11 +2563,12 @@ def test_normalize_store_arg(tmpdir):
 
 def test_meta_prefix_6853():
 
-    meta = pathlib.Path(zarr.__file__).resolve().parent.parent / "fixture" / "meta"
+    fixture = pathlib.Path(zarr.__file__).resolve().parent.parent / "fixture"
+    meta = fixture / "meta"
     if not meta.exists():   # pragma: no cover
         s = DirectoryStore(str(meta), dimension_separator=".")
         a = zarr.open(store=s, mode="w", shape=(2, 2), dtype="<i8")
         a[:] = [[1, 2], [3, 4]]
 
-    fixture = group(store=DirectoryStore('fixture'))
-    assert list(fixture.arrays())
+    fixtures = group(store=DirectoryStore(str(fixture)))
+    assert list(fixtures.arrays())
