@@ -16,7 +16,7 @@ tox==3.26.0
 coverage
 flake8==5.0.4
 pytest-cov==3.0.0
-pytest-doctestplus==0.12.0
+pytest-doctestplus==0.12.1
 pytest-timeout==2.1.0
 h5py==3.7.0
 fsspec==2022.8.2
