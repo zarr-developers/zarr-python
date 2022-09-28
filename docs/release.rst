@@ -10,15 +10,32 @@ Release notes
 
     Unreleased
     ----------
+..
+    # .. warning::
+    #    Pre-release! Use :command:`pip install --pre zarr` to evaluate this release.
+
+.. _release_2.13.2:
+
+2.13.2
+------
+
+* Fix test failure on conda-forge builds (again).
+  By :user:`Josh Moore <joshmoore>`; see
+  `zarr-feedstock#65 <https://github.com/conda-forge/zarr-feedstock/pull/65>`_.
+
+.. _release_2.13.1:
+
+2.13.1
+------
+
+* Fix test failure on conda-forge builds.
+  By :user:`Josh Moore <joshmoore>`; see
+  `zarr-feedstock#65 <https://github.com/conda-forge/zarr-feedstock/pull/65>`_.
 
 .. _release_2.13.0:
 
 2.13.0
 ------
-
-..
-    # .. warning::
-    #    Pre-release! Use :command:`pip install --pre zarr` to evaluate this release.
 
 Major changes
 ~~~~~~~~~~~~~
