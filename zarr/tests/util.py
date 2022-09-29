@@ -1,5 +1,6 @@
 import collections
 import os
+import tempfile
 
 from zarr.storage import Store
 from zarr._storage.v3 import StoreV3
@@ -80,3 +81,9 @@ def abs_container():
         container_client = blob_service_client.get_container_client("test")
 
     return container_client
+
+
+def mktemp(**kwargs):
+    f = tempfile.NamedTemporaryFile(**kwargs)
+    f.close()
+    return f.name

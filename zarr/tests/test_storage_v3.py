@@ -18,7 +18,7 @@ from zarr._storage.v3 import (ABSStoreV3, ConsolidatedMetadataStoreV3, DBMStoreV
                               LMDBStoreV3, LRUStoreCacheV3, MemoryStoreV3,
                               MongoDBStoreV3, RedisStoreV3, SQLiteStoreV3, StoreV3,
                               ZipStoreV3)
-from zarr.tests.util import CountingDictV3, have_fsspec, skip_test_env_var
+from zarr.tests.util import CountingDictV3, have_fsspec, skip_test_env_var, mktemp
 
 # pytest will fail to run if the following fixtures aren't imported here
 from .test_storage import StoreTests as _StoreTests
@@ -330,7 +330,7 @@ class TestZipStoreV3(_TestZipStore, StoreV3Tests):
     ZipStoreClass = ZipStoreV3
 
     def create_store(self, **kwargs):
-        path = tempfile.mktemp(suffix='.zip')
+        path = mktemp(suffix='.zip')
         atexit.register(os.remove, path)
         store = ZipStoreV3(path, mode='w', **kwargs)
         return store
@@ -339,7 +339,7 @@ class TestZipStoreV3(_TestZipStore, StoreV3Tests):
 class TestDBMStoreV3(_TestDBMStore, StoreV3Tests):
 
     def create_store(self, dimension_separator=None):
-        path = tempfile.mktemp(suffix='.anydbm')
+        path = mktemp(suffix='.anydbm')
         atexit.register(atexit_rmglob, path + '*')
         # create store using default dbm implementation
         store = DBMStoreV3(path, flag='n', dimension_separator=dimension_separator)
@@ -349,7 +349,7 @@ class TestDBMStoreV3(_TestDBMStore, StoreV3Tests):
 class TestDBMStoreV3Dumb(_TestDBMStoreDumb, StoreV3Tests):
 
     def create_store(self, **kwargs):
-        path = tempfile.mktemp(suffix='.dumbdbm')
+        path = mktemp(suffix='.dumbdbm')
         atexit.register(atexit_rmglob, path + '*')
 
         import dbm.dumb as dumbdbm
@@ -361,7 +361,7 @@ class TestDBMStoreV3Gnu(_TestDBMStoreGnu, StoreV3Tests):
 
     def create_store(self, **kwargs):
         gdbm = pytest.importorskip("dbm.gnu")
-        path = tempfile.mktemp(suffix=".gdbm")  # pragma: no cover
+        path = mktemp(suffix=".gdbm")  # pragma: no cover
         atexit.register(os.remove, path)  # pragma: no cover
         store = DBMStoreV3(
             path, flag="n", open=gdbm.open, write_lock=False, **kwargs
@@ -373,7 +373,7 @@ class TestDBMStoreV3NDBM(_TestDBMStoreNDBM, StoreV3Tests):
 
     def create_store(self, **kwargs):
         ndbm = pytest.importorskip("dbm.ndbm")
-        path = tempfile.mktemp(suffix=".ndbm")  # pragma: no cover
+        path = mktemp(suffix=".ndbm")  # pragma: no cover
         atexit.register(atexit_rmglob, path + "*")  # pragma: no cover
         store = DBMStoreV3(path, flag="n", open=ndbm.open, **kwargs)  # pragma: no cover
         return store  # pragma: no cover
@@ -383,7 +383,7 @@ class TestDBMStoreV3BerkeleyDB(_TestDBMStoreBerkeleyDB, StoreV3Tests):
 
     def create_store(self, **kwargs):
         bsddb3 = pytest.importorskip("bsddb3")
-        path = tempfile.mktemp(suffix='.dbm')
+        path = mktemp(suffix='.dbm')
         atexit.register(os.remove, path)
         store = DBMStoreV3(path, flag='n', open=bsddb3.btopen, write_lock=False, **kwargs)
         return store
@@ -393,7 +393,7 @@ class TestLMDBStoreV3(_TestLMDBStore, StoreV3Tests):
 
     def create_store(self, **kwargs):
         pytest.importorskip("lmdb")
-        path = tempfile.mktemp(suffix='.lmdb')
+        path = mktemp(suffix='.lmdb')
         atexit.register(atexit_rmtree, path)
         buffers = True
         store = LMDBStoreV3(path, buffers=buffers, **kwargs)
@@ -404,7 +404,7 @@ class TestSQLiteStoreV3(_TestSQLiteStore, StoreV3Tests):
 
     def create_store(self, **kwargs):
         pytest.importorskip("sqlite3")
-        path = tempfile.mktemp(suffix='.db')
+        path = mktemp(suffix='.db')
         atexit.register(atexit_rmtree, path)
         store = SQLiteStoreV3(path, **kwargs)
         return store

@@ -1,7 +1,6 @@
 import atexit
 import os.path
 import shutil
-import tempfile
 import warnings
 
 import numpy as np
@@ -20,6 +19,7 @@ from zarr.storage import DirectoryStore, KVStore
 from zarr._storage.store import v3_api_available
 from zarr._storage.v3 import DirectoryStoreV3, KVStoreV3
 from zarr.sync import ThreadSynchronizer
+from zarr.tests.util import mktemp
 
 _VERSIONS = ((None, 2, 3) if v3_api_available else (None, 2))
 _VERSIONS2 = ((2, 3) if v3_api_available else (2, ))
@@ -574,7 +574,7 @@ def test_open_like(zarr_version, at_root):
     expected_zarr_version = DEFAULT_ZARR_VERSION if zarr_version is None else zarr_version
 
     # zarr array
-    path = tempfile.mktemp()
+    path = mktemp()
     atexit.register(shutil.rmtree, path)
     z = full(100, chunks=10, dtype='f4', compressor=Zlib(5),
              fill_value=42, order='F', **kwargs)
@@ -588,7 +588,7 @@ def test_open_like(zarr_version, at_root):
     assert (z._store._store_version == z2._store._store_version ==
             expected_zarr_version)
     # numpy array
-    path = tempfile.mktemp()
+    path = mktemp()
     atexit.register(shutil.rmtree, path)
     a = np.empty(100, dtype='f4')
     z3 = open_like(a, path, chunks=10, zarr_version=zarr_version)
