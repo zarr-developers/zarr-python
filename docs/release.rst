@@ -21,7 +21,7 @@ Release notes
 
 * Improve performance of slice selections with steps by omitting chunks with no relevant
   data.
-  By :user:`J. Richard Moore <jrs65>` :issue:`843`.
+  By :user:`Richard Shaw <jrs65>` :issue:`843`.
 
 .. _release_2.13.2:
 
