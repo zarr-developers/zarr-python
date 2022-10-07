@@ -83,9 +83,3 @@ jobs:
           #name: codecov-umbrella # optional
           #fail_ci_if_error: true # optional (default = false)
         verbose: true # optional (default = false)
-    - name: Linting
-      shell: "bash -l {0}"
-      run: |
-        conda activate zarr-env
-        flake8 zarr
-        mypy zarr
