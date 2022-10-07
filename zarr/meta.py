@@ -76,12 +76,12 @@ def get_extended_dtype_info(dtype) -> dict:
         )
     elif dtype.str in _v3_datetime_types:
         return dict(
-            extension="https://zarr-specs.readthedocs.io/en/core-protocol-v3.0-dev/protocol/extensions/datetime-dtypes/v1.0.html",  # noqa
+            extension="https://zarr-specs.readthedocs.io/en/latest/extensions/data-types/datetime/v1.0.html",  # noqa
             type=dtype.str,
             fallback=None,
         )
     else:
-        raise ValueError(f"Unsupport dtype: {dtype}")
+        raise ValueError(f"Unsupported dtype: {dtype}")
 
 
 class Metadata2:
@@ -237,8 +237,8 @@ class Metadata2:
                 return np.array(v, dtype=dtype)[()]
         elif dtype.kind in "c":
             v = (
-                cls.decode_fill_value(v[0], dtype.type().real.dtype),
-                cls.decode_fill_value(v[1], dtype.type().imag.dtype),
+                cls.decode_fill_value(v[0], dtype.type().real.dtype),  # type: ignore
+                cls.decode_fill_value(v[1], dtype.type().imag.dtype),  # type: ignore
             )
             v = v[0] + 1j * v[1]
             return np.array(v, dtype=dtype)[()]
@@ -399,7 +399,7 @@ class Metadata3(Metadata2):
             "metadata_key_suffix",
             "extensions",
         }:
-            raise ValueError(f"Unexpected keys in metdata. meta={meta}")
+            raise ValueError(f"Unexpected keys in metadata. meta={meta}")
         return meta
 
     @classmethod

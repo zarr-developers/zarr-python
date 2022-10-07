@@ -3,38 +3,119 @@ Release notes
 
 ..
     # Unindent the section between releases in order
-    # to coument your changes. On releases it will be
+    # to document your changes. On releases it will be
     # re-indented so that it does not show up in the notes.
 
     .. _unreleased:
 
     Unreleased
     ----------
+..
+    # .. warning::
+    #    Pre-release! Use :command:`pip install --pre zarr` to evaluate this release.
 
-.. _release_2.12.0a2:
+.. _release_2.13.2:
 
-2.12.0a2
---------
+2.13.2
+------
 
-* Rename ZARR_V3_API_AVAILABLE to ZARR_V3_EXPERIMENTAL_API.
-  By :user:`Josh Moore <joshmoore>` :issue:`1032`.
+* Fix test failure on conda-forge builds (again).
+  By :user:`Josh Moore <joshmoore>`; see
+  `zarr-feedstock#65 <https://github.com/conda-forge/zarr-feedstock/pull/65>`_.
+
+.. _release_2.13.1:
+
+2.13.1
+------
+
+* Fix test failure on conda-forge builds.
+  By :user:`Josh Moore <joshmoore>`; see
+  `zarr-feedstock#65 <https://github.com/conda-forge/zarr-feedstock/pull/65>`_.
+
+.. _release_2.13.0:
+
+2.13.0
+------
+
+Major changes
+~~~~~~~~~~~~~
+
+* **Support of alternative array classes** by introducing a new argument,
+  meta_array, that specifies the type/class of the underlying array. The
+  meta_array argument can be any class instance that can be used as the like
+  argument in NumPy (see `NEP 35
+  <https://numpy.org/neps/nep-0035-array-creation-dispatch-with-array-function.html>`_).
+  enabling support for CuPy through, for example, the creation of a CuPy CPU
+  compressor.
+  By :user:`Mads R. B. Kristensen <madsbk>` :issue:`934`.
+
+* **Remove support for Python 3.7** in concert with NumPy dependency.
+  By :user:`Davis Bennett <d-v-b>` :issue:`1067`.
+
+* **Zarr v3: add support for the default root path** rather than requiring
+  that all API users pass an explicit path.
+  By :user:`Gregory R. Lee <grlee77>` :issue:`1085`, :issue:`1142`.
+
+
+Bug fixes
+~~~~~~~~~
+
+* Remove/relax erroneous "meta" path check (**regression**).
+  By :user:`Gregory R. Lee <grlee77>` :issue:`1123`.
+
+* Cast all attribute keys to strings (and issue deprecation warning).
+  By :user:`Mattia Almansi <malmans2>` :issue:`1066`.
+
+* Fix bug in N5 storage that prevented arrays located in the root of the hierarchy from
+  bearing the `n5` keyword. Along with fixing this bug, new tests were added for N5 routines
+  that had previously been excluded from testing, and type annotations were added to the N5 codebase.
+  By :user:`Davis Bennett <d-v-b>` :issue:`1092`.
+
+* Fix bug in LRUEStoreCache in which the current size wasn't reset on invalidation.
+  By :user:`BGCMHou <BGCMHou>` and :user:`Josh Moore <joshmoore>` :issue:`1076`, :issue:`1077`.
+
+* Remove erroneous check that disallowed array keys starting with "meta".
+  By :user:`Gregory R. Lee <grlee77>` :issue:`1105`.
+
+Documentation
+~~~~~~~~~~~~~
+
+* Typo fixes to close quotes. By :user:`Pavithra Eswaramoorthy <pavithraes>`
+
+* Added copy button to documentation.
+  By :user:`Altay Sansal <tasansal>` :issue:`1124`.
 
 Maintenance
 ~~~~~~~~~~~
 
-* Fix URL to renamed file in Blosc repo.
-  By :user:`Andrew Thomas <amcnicho>` :issue:`1028`.
+* Simplify release docs.
+  By :user:`Josh Moore <joshmoore>` :issue:`1119`.
 
-* Activate Py 3.10 builds.
-  By :user:`Josh Moore <joshmoore>` :issue:`1027`.
+* Pin werkzeug to prevent test hangs.
+  By :user:`Davis Bennett <d-v-b>` :issue:`1098`.
 
-* Make all unignored zarr warnings errors.
-  By :user:`Josh Moore <joshmoore>` :issue:`1021`.
+* Fix a few DeepSource.io alerts
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1080`.
 
-.. _release_2.12.0a1:
+* Fix URLs.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>`, :issue:`1074`.
 
-2.12.0a1
---------
+* Fix spelling.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>`, :issue:`1073`.
+
+* Update GitHub issue templates with `YAML` format.
+  By :user:`Saransh Chopra <Saransh-cpp>` :issue:`1079`.
+
+* Remove option to return None from _ensure_store.
+  By :user:`Greggory Lee <grlee77>` :issue:`1068`.
+
+* Fix a typo of "integers".
+  By :user:`Richard Scott <RichardScottOZ>` :issue:`1056`.
+
+.. _release_2.12.0:
+
+2.12.0
+------
 
 Enhancements
 ~~~~~~~~~~~~
@@ -44,7 +125,8 @@ Enhancements
   Since the format is not yet finalized, the classes and functions are not
   automatically imported into the regular `zarr` name space. Setting the
   `ZARR_V3_EXPERIMENTAL_API` environment variable will activate them.
-  By :user:`Greggory Lee <grlee77>`; :issue:`898`, :issue:`1006`, and :issue:`1007`.
+  By :user:`Greggory Lee <grlee77>`; :issue:`898`, :issue:`1006`, and :issue:`1007`
+  as well as by :user:`Josh Moore <joshmoore>` :issue:`1032`.
 
 * **Create FSStore from an existing fsspec filesystem**. If you have created
   an fsspec filesystem outside of Zarr, you can now pass it as a keyword
@@ -57,7 +139,7 @@ Enhancements
 * Appending performance improvement to Zarr arrays, e.g., when writing to S3.
   By :user:`hailiangzhang <hailiangzhang>`; :issue:`1014`.
 
-* Add number encoder for ``json.dumps`` to support numpy intergers in
+* Add number encoder for ``json.dumps`` to support numpy integers in
   ``chunks`` arguments. By :user:`Eric Prestat <ericpre>` :issue:`697`.
 
 Bug fixes
@@ -79,6 +161,16 @@ Maintenance
 
 * Added Pre-commit configuration, incl. Yaml Check.
   By :user:`Shivank Chaudhary <Alt-Shivam>`; :issue:`1015`, :issue:`1016`.
+
+* Fix URL to renamed file in Blosc repo.
+  By :user:`Andrew Thomas <amcnicho>` :issue:`1028`.
+
+* Activate Py 3.10 builds.
+  By :user:`Josh Moore <joshmoore>` :issue:`1027`.
+
+* Make all unignored zarr warnings errors.
+  By :user:`Josh Moore <joshmoore>` :issue:`1021`.
+
 
 .. _release_2.11.3:
 
@@ -222,7 +314,7 @@ Maintenance
 
   - Drop unneeded ``return`` (:issue:`884`)
 
-  - Drop explicit ``object`` inheritance from ``class``es (:issue:`886`)
+  - Drop explicit ``object`` inheritance from ``class``-es (:issue:`886`)
 
   - Unnecessary comprehension (:issue:`883`)
 
@@ -1316,4 +1408,4 @@ See `v0.4.0 release notes on GitHub
 See `v0.3.0 release notes on GitHub
 <https://github.com/zarr-developers/zarr-python/releases/tag/v0.3.0>`_.
 
-.. _Numcodecs: http://numcodecs.readthedocs.io/
+.. _Numcodecs: https://numcodecs.readthedocs.io/

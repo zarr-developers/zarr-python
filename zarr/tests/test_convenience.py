@@ -45,7 +45,7 @@ from zarr._storage.v3 import (
 )
 from zarr.tests.util import have_fsspec
 
-_VERSIONS = v3_api_available and (2, 3) or (2,)
+_VERSIONS = ((2, 3) if v3_api_available else (2, ))
 
 
 def _init_creation_kwargs(zarr_version):
@@ -72,11 +72,6 @@ def test_open_array(path_type, zarr_version):
     z = open(store, mode='w', shape=200, **kwargs)
     assert isinstance(z, Array)
     assert z.shape == (200,)
-
-    if zarr_version == 3:
-        # cannot open a v3 array without path
-        with pytest.raises(ValueError):
-            open(store, mode='w', shape=200, zarr_version=3)
 
     # open array, read-only
     z = open(store, mode='r', **kwargs)
@@ -107,11 +102,6 @@ def test_open_group(path_type, zarr_version):
     g = open(store, mode='w', **kwargs)
     assert isinstance(g, Group)
     assert 'foo' not in g
-
-    if zarr_version == 3:
-        # cannot open a v3 group without path
-        with pytest.raises(ValueError):
-            open(store, mode='w', zarr_version=3)
 
     # open group, read-only
     g = open(store, mode='r', **kwargs)

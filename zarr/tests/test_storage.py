@@ -24,7 +24,7 @@ from zarr.convenience import consolidate_metadata
 from zarr.errors import ContainsArrayError, ContainsGroupError, MetadataError
 from zarr.hierarchy import group
 from zarr.meta import ZARR_FORMAT, decode_array_metadata
-from zarr.n5 import N5Store, N5FSStore
+from zarr.n5 import N5Store, N5FSStore, N5_FORMAT, n5_attrs_key
 from zarr.storage import (ABSStore, ConsolidatedMetadataStore, DBMStore,
                           DictStore, DirectoryStore, KVStore, LMDBStore,
                           LRUStoreCache, MemoryStore, MongoDBStore,
@@ -36,7 +36,8 @@ from zarr.storage import (ABSStore, ConsolidatedMetadataStore, DBMStore,
                           meta_root, normalize_store_arg)
 from zarr.storage import FSStore, rename, listdir
 from zarr._storage.v3 import KVStoreV3
-from zarr.tests.util import CountingDict, have_fsspec, skip_test_env_var, abs_container
+from zarr.tests.util import CountingDict, have_fsspec, skip_test_env_var, abs_container, mktemp
+from zarr.util import json_dumps
 
 
 @contextmanager
@@ -73,7 +74,9 @@ def test_ensure_store():
     with pytest.raises(ValueError):
         Store._ensure_store(KVStoreV3(dict()))
 
-    assert Store._ensure_store(None) is None
+    # cannot initialize without a store
+    with pytest.raises(ValueError):
+        Store._ensure_store(None)
 
 
 def test_capabilities():
@@ -1475,6 +1478,13 @@ class TestN5Store(TestNestedDirectoryStore):
         store_b = N5Store(store_a.path)
         assert store_a == store_b
 
+    @pytest.mark.parametrize('zarr_meta_key', ['.zarray', '.zattrs', '.zgroup'])
+    def test_del_zarr_meta_key(self, zarr_meta_key):
+        store = self.create_store()
+        store[n5_attrs_key] = json_dumps({'foo': 'bar'})
+        del store[zarr_meta_key]
+        assert n5_attrs_key not in store
+
     def test_chunk_nesting(self):
         store = self.create_store()
         store['0.0'] = b'xxx'
@@ -1486,6 +1496,8 @@ class TestN5Store(TestNestedDirectoryStore):
         assert b'yyy' == store['foo/10.20.30']
         # N5 reverses axis order
         assert b'yyy' == store['foo/30/20/10']
+        del store['foo/10.20.30']
+        assert 'foo/30/20/10' not in store
         store['42'] = b'zzz'
         assert '42' in store
         assert b'zzz' == store['42']
@@ -1507,6 +1519,10 @@ class TestN5Store(TestNestedDirectoryStore):
         # N5Store always has a fill value of 0
         assert meta['fill_value'] == 0
         assert meta['dimension_separator'] == '.'
+        # Top-level groups AND arrays should have
+        # the n5 keyword in metadata
+        raw_n5_meta = json.loads(store[n5_attrs_key])
+        assert raw_n5_meta.get('n5', None) == N5_FORMAT
 
     def test_init_array_path(self):
         path = 'foo/bar'
@@ -1556,7 +1572,7 @@ class TestN5Store(TestNestedDirectoryStore):
     def test_init_group(self):
         store = self.create_store()
         init_group(store)
-
+        store['.zattrs'] = json_dumps({'foo': 'bar'})
         # check metadata
         assert group_meta_key in store
         assert group_meta_key in store.listdir()
@@ -1595,6 +1611,14 @@ class TestN5FSStore(TestFSStore):
     # This is copied wholesale from the N5Store tests. The same test could
     # be run by making TestN5FSStore inherit from both TestFSStore and
     # TestN5Store, but a direct copy is arguably more explicit.
+
+    @pytest.mark.parametrize('zarr_meta_key', ['.zarray', '.zattrs', '.zgroup'])
+    def test_del_zarr_meta_key(self, zarr_meta_key):
+        store = self.create_store()
+        store[n5_attrs_key] = json_dumps({'foo': 'bar'})
+        del store[zarr_meta_key]
+        assert n5_attrs_key not in store
+
     def test_chunk_nesting(self):
         store = self.create_store()
         store['0.0'] = b'xxx'
@@ -1606,6 +1630,8 @@ class TestN5FSStore(TestFSStore):
         assert b'yyy' == store['foo/10.20.30']
         # N5 reverses axis order
         assert b'yyy' == store['foo/30/20/10']
+        del store['foo/10.20.30']
+        assert 'foo/30/20/10' not in store
         store['42'] = b'zzz'
         assert '42' in store
         assert b'zzz' == store['42']
@@ -1627,6 +1653,10 @@ class TestN5FSStore(TestFSStore):
         # N5Store always has a fill value of 0
         assert meta['fill_value'] == 0
         assert meta['dimension_separator'] == '.'
+        # Top-level groups AND arrays should have
+        # the n5 keyword in metadata
+        raw_n5_meta = json.loads(store[n5_attrs_key])
+        assert raw_n5_meta.get('n5', None) == N5_FORMAT
 
     def test_init_array_path(self):
         path = 'foo/bar'
@@ -1678,6 +1708,28 @@ class TestN5FSStore(TestFSStore):
         with pytest.warns(UserWarning, match='dimension_separator'):
             self.create_store(dimension_separator='/')
 
+    def test_init_group(self):
+        store = self.create_store()
+        init_group(store)
+        store['.zattrs'] = json_dumps({'foo': 'bar'})
+        # check metadata
+        assert group_meta_key in store
+        assert group_meta_key in store.listdir()
+        assert group_meta_key in store.listdir('')
+        meta = store._metadata_class.decode_group_metadata(store[group_meta_key])
+        assert ZARR_FORMAT == meta['zarr_format']
+
+    def test_filters(self):
+        all_filters, all_errors = zip(*[
+            (None, does_not_raise()),
+            ([], does_not_raise()),
+            ([AsType('f4', 'f8')], pytest.raises(ValueError)),
+        ])
+        for filters, error in zip(all_filters, all_errors):
+            store = self.create_store()
+            with error:
+                init_array(store, shape=1000, chunks=100, filters=filters)
+
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
 class TestNestedFSStore(TestNestedDirectoryStore):
@@ -1720,7 +1772,7 @@ class TestZipStore(StoreTests):
     ZipStoreClass = ZipStore
 
     def create_store(self, **kwargs):
-        path = tempfile.mktemp(suffix='.zip')
+        path = mktemp(suffix='.zip')
         atexit.register(os.remove, path)
         store = ZipStore(path, mode='w', **kwargs)
         return store
@@ -1801,7 +1853,7 @@ class TestZipStore(StoreTests):
 class TestDBMStore(StoreTests):
 
     def create_store(self, dimension_separator=None):
-        path = tempfile.mktemp(suffix='.anydbm')
+        path = mktemp(suffix='.anydbm')
         atexit.register(atexit_rmglob, path + '*')
         # create store using default dbm implementation
         store = DBMStore(path, flag='n', dimension_separator=dimension_separator)
@@ -1817,7 +1869,7 @@ class TestDBMStore(StoreTests):
 class TestDBMStoreDumb(TestDBMStore):
 
     def create_store(self, **kwargs):
-        path = tempfile.mktemp(suffix='.dumbdbm')
+        path = mktemp(suffix='.dumbdbm')
         atexit.register(atexit_rmglob, path + '*')
 
         import dbm.dumb as dumbdbm
@@ -1829,7 +1881,7 @@ class TestDBMStoreGnu(TestDBMStore):
 
     def create_store(self, **kwargs):
         gdbm = pytest.importorskip("dbm.gnu")
-        path = tempfile.mktemp(suffix=".gdbm")  # pragma: no cover
+        path = mktemp(suffix=".gdbm")  # pragma: no cover
         atexit.register(os.remove, path)  # pragma: no cover
         store = DBMStore(
             path, flag="n", open=gdbm.open, write_lock=False, **kwargs
@@ -1841,7 +1893,7 @@ class TestDBMStoreNDBM(TestDBMStore):
 
     def create_store(self, **kwargs):
         ndbm = pytest.importorskip("dbm.ndbm")
-        path = tempfile.mktemp(suffix=".ndbm")  # pragma: no cover
+        path = mktemp(suffix=".ndbm")  # pragma: no cover
         atexit.register(atexit_rmglob, path + "*")  # pragma: no cover
         store = DBMStore(path, flag="n", open=ndbm.open, **kwargs)  # pragma: no cover
         return store  # pragma: no cover
@@ -1851,7 +1903,7 @@ class TestDBMStoreBerkeleyDB(TestDBMStore):
 
     def create_store(self, **kwargs):
         bsddb3 = pytest.importorskip("bsddb3")
-        path = tempfile.mktemp(suffix='.dbm')
+        path = mktemp(suffix='.dbm')
         atexit.register(os.remove, path)
         store = DBMStore(path, flag='n', open=bsddb3.btopen, write_lock=False, **kwargs)
         return store
@@ -1861,7 +1913,7 @@ class TestLMDBStore(StoreTests):
 
     def create_store(self, **kwargs):
         pytest.importorskip("lmdb")
-        path = tempfile.mktemp(suffix='.lmdb')
+        path = mktemp(suffix='.lmdb')
         atexit.register(atexit_rmtree, path)
         buffers = True
         store = LMDBStore(path, buffers=buffers, **kwargs)
@@ -1878,13 +1930,13 @@ class TestSQLiteStore(StoreTests):
 
     def create_store(self, **kwargs):
         pytest.importorskip("sqlite3")
-        path = tempfile.mktemp(suffix='.db')
+        path = mktemp(suffix='.db')
         atexit.register(atexit_rmtree, path)
         store = SQLiteStore(path, **kwargs)
         return store
 
     def test_underscore_in_name(self):
-        path = tempfile.mktemp(suffix='.db')
+        path = mktemp(suffix='.db')
         atexit.register(atexit_rmtree, path)
         store = SQLiteStore(path)
         store['a'] = b'aaa'
@@ -2398,7 +2450,7 @@ class TestABSStore(StoreTests):
             assert 4 == len(store)
             keys = [prefix + 'a', prefix + 'b', prefix + 'c/d', prefix + 'c/e/f']
             values = [b'aaa', b'bbb', b'ddd', b'fff']
-            items = [(k, v) for k, v in zip(keys, values)]
+            items = list(zip(keys, values))
             assert set(keys) == set(store)
             assert set(keys) == set(store.keys())
             assert set(values) == set(store.values())
@@ -2507,3 +2559,16 @@ def test_normalize_store_arg(tmpdir):
         path = tempfile.mkdtemp()
         store = normalize_store_arg("file://" + path, zarr_version=2, mode='w')
         assert isinstance(store, FSStore)
+
+
+def test_meta_prefix_6853():
+
+    fixture = pathlib.Path(zarr.__file__).resolve().parent.parent / "fixture"
+    meta = fixture / "meta"
+    if not meta.exists():   # pragma: no cover
+        s = DirectoryStore(str(meta), dimension_separator=".")
+        a = zarr.open(store=s, mode="w", shape=(2, 2), dtype="<i8")
+        a[:] = [[1, 2], [3, 4]]
+
+    fixtures = group(store=DirectoryStore(str(fixture)))
+    assert list(fixtures.arrays())

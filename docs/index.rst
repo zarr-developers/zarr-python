@@ -93,10 +93,10 @@ documentation, code reviews, comments and/or ideas:
 * :user:`Prakhar Goel <newt0311>`
 
 Zarr is inspired by `HDF5 <https://www.hdfgroup.org/HDF5/>`_, `h5py
-<http://www.h5py.org/>`_ and `bcolz <http://bcolz.blosc.org/>`_.
+<https://www.h5py.org/>`_ and `bcolz <https://bcolz.readthedocs.io/>`_.
 
 Development of Zarr is supported by the
-`MRC Centre for Genomics and Global Health <http://www.cggh.org>`_.
+`MRC Centre for Genomics and Global Health <https://www.cggh.org>`_.
 
 Indices and tables
 ------------------
@@ -105,4 +105,4 @@ Indices and tables
 * :ref:`modindex`
 * :ref:`search`
 
-.. _NumCodecs: http://numcodecs.readthedocs.io/
+.. _NumCodecs: https://numcodecs.readthedocs.io/

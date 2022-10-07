@@ -15,13 +15,11 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ['3.7', '3.8', '3.9', '3.10']
-        numpy_version: ['!=1.21.0', '==1.17.*']
+        python-version: ['3.8', '3.9', '3.10']
+        numpy_version: ['>=1.22.0', '==1.20.*']
         exclude:
-          - python-version: 3.9
-            numpy_version: '==1.17.*'
           - python-version: '3.10'
-            numpy_version: '==1.17.*'
+            numpy_version: '==1.20.*'
     services:
       redis:
         image: redis
@@ -39,7 +37,7 @@ jobs:
           - 27017:27017
     steps:
     - uses: actions/checkout@v2
-      with: 
+      with:
         fetch-depth: 0
     - name: Setup Miniconda
       uses: conda-incubator/setup-miniconda@master
@@ -61,12 +59,12 @@ jobs:
         conda activate zarr-env
         python -m pip install --upgrade pip
         python -m pip install -U pip setuptools wheel codecov line_profiler
-        python -m pip install -rrequirements_dev_minimal.txt numpy${{ matrix.numpy_version}} -rrequirements_dev_optional.txt pymongo redis
+        python -m pip install -rrequirements_dev_minimal.txt numpy${{matrix.numpy_version}} -rrequirements_dev_optional.txt pymongo redis
         python -m pip install .
         python -m pip freeze
     - name: Tests
       shell: "bash -l {0}"
-      env: 
+      env:
         COVERAGE_FILE: .coverage.${{matrix.python-version}}.${{matrix.numpy_version}}
         ZARR_TEST_ABS: 1
         ZARR_TEST_MONGO: 1
@@ -91,5 +89,3 @@ jobs:
         conda activate zarr-env
         flake8 zarr
         mypy zarr
-
-    
