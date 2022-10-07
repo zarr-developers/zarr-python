@@ -23,6 +23,12 @@ Release notes
   data.
   By :user:`Richard Shaw <jrs65>` :issue:`843`.
 
+Maintenance
+~~~~~~~~~~~
+
+* Migrate to ``pyproject.toml`` and remove redundant infrastructure.
+  By :user:`Saransh Chopra <Saransh-cpp>` :issue:`1158`.
+
 .. _release_2.13.2:
 
 2.13.2
