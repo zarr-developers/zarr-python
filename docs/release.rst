@@ -14,6 +14,15 @@ Release notes
     # .. warning::
     #    Pre-release! Use :command:`pip install --pre zarr` to evaluate this release.
 
+.. _release_2.13.3:
+
+2.13.3
+------
+
+* Improve performance of slice selections with steps by omitting chunks with no relevant
+  data.
+  By :user:`Richard Shaw <jrs65>` :issue:`843`.
+
 .. _release_2.13.2:
 
 2.13.2
