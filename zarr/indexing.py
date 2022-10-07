@@ -216,6 +216,11 @@ class SliceDimIndexer:
             dim_chunk_sel = slice(dim_chunk_sel_start, dim_chunk_sel_stop, self.step)
             dim_chunk_nitems = ceildiv((dim_chunk_sel_stop - dim_chunk_sel_start),
                                        self.step)
+
+            # If there are no elements on the selection within this chunk, then skip
+            if dim_chunk_nitems == 0:
+                continue
+
             dim_out_sel = slice(dim_out_offset, dim_out_offset + dim_chunk_nitems)
 
             yield ChunkDimProjection(dim_chunk_ix, dim_chunk_sel, dim_out_sel)
