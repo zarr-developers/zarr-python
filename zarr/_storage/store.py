@@ -150,7 +150,7 @@ class BaseStore(MutableMapping):
 
         Developer Notes
         ---------------
-        This default implementation use __getitem__() to read each key sequential and
+        This default implementation uses __getitem__() to read each key sequentially and
         ignores the meta_array argument. Overwrite this method to implement concurrent
         reads of multiple keys and/or to utilize the meta_array argument.
         """
