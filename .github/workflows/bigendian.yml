@@ -21,6 +21,6 @@ jobs:
 
     - run: docker run --rm --privileged multiarch/qemu-user-static:register --reset
 
-    - uses: docker://multiarch/ubuntu-core:s390x-hirsute
+    - uses: docker://multiarch/ubuntu-core:s390x-focal
       with:
         args: 'bash .github/workflows/bigendian.sh'
