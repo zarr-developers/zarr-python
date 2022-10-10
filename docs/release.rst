@@ -6,13 +6,19 @@ Release notes
     # to document your changes. On releases it will be
     # re-indented so that it does not show up in the notes.
 
-    .. _unreleased:
+.. _unreleased:
 
-    Unreleased
-    ----------
+Unreleased
+----------
 ..
     # .. warning::
     #    Pre-release! Use :command:`pip install --pre zarr` to evaluate this release.
+
+Maintenance
+~~~~~~~~~~~
+
+* Migrate to ``pyproject.toml`` and remove redundant infrastructure.
+  By :user:`Saransh Chopra <Saransh-cpp>` :issue:`1158`.
 
 .. _release_2.13.3:
 
@@ -22,12 +28,6 @@ Release notes
 * Improve performance of slice selections with steps by omitting chunks with no relevant
   data.
   By :user:`Richard Shaw <jrs65>` :issue:`843`.
-
-Maintenance
-~~~~~~~~~~~
-
-* Migrate to ``pyproject.toml`` and remove redundant infrastructure.
-  By :user:`Saransh Chopra <Saransh-cpp>` :issue:`1158`.
 
 .. _release_2.13.2:
 
