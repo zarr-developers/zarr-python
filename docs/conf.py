@@ -52,6 +52,8 @@ numpydoc_show_class_members = False
 numpydoc_class_members_toctree = False
 issues_github_path = 'zarr-developers/zarr-python'
 
+nbsphinx_execute = 'auto'
+
 #Handling errors with rendering notebook
 #nbsphinx_allow_errors = True
 
