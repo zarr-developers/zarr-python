@@ -53,7 +53,7 @@ numpydoc_class_members_toctree = False
 issues_github_path = 'zarr-developers/zarr-python'
 
 #Handling errors with rendering notebook
-nbsphinx_allow_errors = True
+#nbsphinx_allow_errors = True
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
