@@ -38,11 +38,12 @@ sys.path.append(os.path.abspath('..'))
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
 extensions = [
+    'nbsphinx',
     'sphinx.ext.autodoc',
     'sphinx.ext.autosummary',
     'sphinx.ext.viewcode',
     'sphinx.ext.intersphinx',
-    'numpydoc',
+    #'numpydoc',
     'sphinx_issues',
     "sphinx_copybutton",
 ]
@@ -50,6 +51,9 @@ extensions = [
 numpydoc_show_class_members = False
 numpydoc_class_members_toctree = False
 issues_github_path = 'zarr-developers/zarr-python'
+
+#Handling errors with rendering notebook
+nbsphinx_allow_errors = True
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
@@ -79,7 +83,7 @@ release = zarr.__version__
 #
 # This is also used if you do content translation via gettext catalogs.
 # Usually you set "language" from the command line for these cases.
-language = None
+language = 'en'
 
 # There are two options for replacing |today|: either, you set today to some
 # non-false value, then it is used:

@@ -64,6 +64,7 @@ Contents
     :maxdepth: 2
 
     tutorial
+    tutorial_nb.ipynb
     api
     spec
     release
