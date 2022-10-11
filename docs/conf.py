@@ -43,7 +43,7 @@ extensions = [
     'sphinx.ext.autosummary',
     'sphinx.ext.viewcode',
     'sphinx.ext.intersphinx',
-    #'numpydoc',
+    'numpydoc',
     'sphinx_issues',
     "sphinx_copybutton",
 ]
