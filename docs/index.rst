@@ -127,8 +127,8 @@ Contents
     tutorial
     api
     spec
-    release
     contributing
+    release
 
 Indices and tables
 ------------------
