@@ -26,7 +26,7 @@ jobs:
         with:
           python-version: '3.9'
       #using pre-commit latest i.e v2.0.3
-      - uses: pre-commit/action@v2.0.3
+      - uses: pre-commit/action@v3.0.0
       #Running pre-commit for all files
       - name: Pre-Commit-Run
         run: |
