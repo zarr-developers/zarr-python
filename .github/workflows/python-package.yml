@@ -75,7 +75,7 @@ jobs:
         mkdir ~/blob_emulator
         azurite -l ~/blob_emulator --debug debug.log 2>&1 > stdouterr.log &
         pytest --cov=zarr --cov-config=.coveragerc --doctest-plus --cov-report xml --cov=./ --timeout=300
-    - uses: codecov/codecov-action@v1
+    - uses: codecov/codecov-action@v3
       with:
         #token: ${{ secrets.CODECOV_TOKEN }} # not required for public repos
           #files: ./coverage1.xml,./coverage2.xml # optional
