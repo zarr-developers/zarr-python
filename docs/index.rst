@@ -8,7 +8,8 @@ Zarr is a format for the storage of chunked, compressed, N-dimensional arrays
 inspired by `HDF5 <https://www.hdfgroup.org/HDF5/>`_, `h5py
 <https://www.h5py.org/>`_ and `bcolz <https://bcolz.readthedocs.io/>`_.
 
-Development of Zarr is supported by the
+The project is fiscally sponsored by `NumFOCUS <https://numfocus.org/>`_, a US
+501(c)(3) public charity, and development is supported by the
 `MRC Centre for Genomics and Global Health <https://www.cggh.org>`_
 and the `Chan Zuckerberg Initiative <https://chanzuckerberg.com/>`_.
 
