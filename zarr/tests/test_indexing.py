@@ -1,15 +1,19 @@
+import numpy
 import numpy as np
 import pytest
 from numpy.testing import assert_array_equal
 
 import zarr
 from zarr.indexing import (
+    make_slice_selection,
     normalize_integer_selection,
     oindex,
     oindex_set,
     replace_ellipsis,
     PartialChunkIterator,
 )
+
+from zarr.tests.util import CountingDict
 
 
 def test_normalize_integer_selection():
@@ -198,14 +202,14 @@ def test_get_basic_selection_1d():
     for selection in basic_selections_1d:
         _test_get_basic_selection(a, z, selection)
 
-    bad_selections = basic_selections_1d_bad + [
-        [0, 1],  # fancy indexing
-    ]
-    for selection in bad_selections:
+    for selection in basic_selections_1d_bad:
         with pytest.raises(IndexError):
             z.get_basic_selection(selection)
         with pytest.raises(IndexError):
             z[selection]
+
+    with pytest.raises(IndexError):
+        z.get_basic_selection([1, 0])
 
 
 basic_selections_2d = [
@@ -274,7 +278,6 @@ def test_get_basic_selection_2d():
     bad_selections = basic_selections_2d_bad + [
         # integer arrays
         [0, 1],
-        ([0, 1], [0, 1]),
         (slice(None), [0, 1]),
     ]
     for selection in bad_selections:
@@ -282,6 +285,68 @@ def test_get_basic_selection_2d():
             z.get_basic_selection(selection)
         with pytest.raises(IndexError):
             z[selection]
+    # check fallback on fancy indexing
+    fancy_selection = ([0, 1], [0, 1])
+    np.testing.assert_array_equal(z[fancy_selection], [0, 11])
+
+
+def test_fancy_indexing_fallback_on_get_setitem():
+    z = zarr.zeros((20, 20))
+    z[[1, 2, 3], [1, 2, 3]] = 1
+    np.testing.assert_array_equal(
+        z[:4, :4],
+        [
+            [0, 0, 0, 0],
+            [0, 1, 0, 0],
+            [0, 0, 1, 0],
+            [0, 0, 0, 1],
+        ],
+    )
+    np.testing.assert_array_equal(
+        z[[1, 2, 3], [1, 2, 3]], 1
+    )
+    # test broadcasting
+    np.testing.assert_array_equal(
+        z[1, [1, 2, 3]], [1, 0, 0]
+    )
+    # test 1D fancy indexing
+    z2 = zarr.zeros(5)
+    z2[[1, 2, 3]] = 1
+    np.testing.assert_array_equal(
+        z2, [0, 1, 1, 1, 0]
+    )
+
+
+def test_fancy_indexing_doesnt_mix_with_slicing():
+    z = zarr.zeros((20, 20))
+    with pytest.raises(IndexError):
+        z[[1, 2, 3], :] = 2
+    with pytest.raises(IndexError):
+        np.testing.assert_array_equal(
+            z[[1, 2, 3], :], 0
+        )
+
+
+def test_fancy_indexing_doesnt_mix_with_implicit_slicing():
+    z2 = zarr.zeros((5, 5, 5))
+    with pytest.raises(IndexError):
+        z2[[1, 2, 3], [1, 2, 3]] = 2
+    with pytest.raises(IndexError):
+        np.testing.assert_array_equal(
+            z2[[1, 2, 3], [1, 2, 3]], 0
+        )
+    with pytest.raises(IndexError):
+        z2[[1, 2, 3]] = 2
+    with pytest.raises(IndexError):
+        np.testing.assert_array_equal(
+            z2[[1, 2, 3]], 0
+        )
+    with pytest.raises(IndexError):
+        z2[..., [1, 2, 3]] = 2
+    with pytest.raises(IndexError):
+        np.testing.assert_array_equal(
+            z2[..., [1, 2, 3]], 0
+        )
 
 
 def test_set_basic_selection_0d():
@@ -1373,3 +1438,90 @@ def test_PartialChunkIterator(selection, arr, expected):
     PCI = PartialChunkIterator(selection, arr.shape)
     results = list(PCI)
     assert results == expected
+
+
+def test_slice_selection_uints():
+    arr = np.arange(24).reshape((4, 6))
+    idx = np.uint64(3)
+    slice_sel = make_slice_selection((idx,))
+    assert arr[tuple(slice_sel)].shape == (1, 6)
+
+
+def test_numpy_int_indexing():
+    a = np.arange(1050)
+    z = zarr.create(shape=1050, chunks=100, dtype=a.dtype)
+    z[:] = a
+    assert a[42] == z[42]
+    assert a[numpy.int64(42)] == z[numpy.int64(42)]
+
+
+@pytest.mark.parametrize(
+    "shape, chunks, ops",
+    [
+        # 1D test cases
+        ((1070,), (50,), [("__getitem__", (slice(200, 400),))]),
+        ((1070,), (50,), [("__getitem__", (slice(200, 400, 100),))]),
+        ((1070,), (50,), [
+            ("__getitem__", (slice(200, 400),)),
+            ("__setitem__", (slice(200, 400, 100),)),
+        ]),
+
+        # 2D test cases
+        ((40, 50), (5, 8), [
+            ("__getitem__", (slice(6, 37, 13), (slice(4, 10)))),
+            ("__setitem__", (slice(None), (slice(None)))),
+        ]),
+    ]
+)
+def test_accessed_chunks(shape, chunks, ops):
+    # Test that only the required chunks are accessed during basic selection operations
+    # shape: array shape
+    # chunks: chunk size
+    # ops: list of tuples with (optype, tuple of slices)
+    # optype = "__getitem__" or "__setitem__", tuple length must match number of dims
+    import itertools
+
+    # Use a counting dict as the backing store so we can track the items access
+    store = CountingDict()
+    z = zarr.create(shape=shape, chunks=chunks, store=store)
+
+    for ii, (optype, slices) in enumerate(ops):
+
+        # Resolve the slices into the accessed chunks for each dimension
+        chunks_per_dim = []
+        for N, C, sl in zip(shape, chunks, slices):
+            chunk_ind = np.arange(N, dtype=int)[sl] // C
+            chunks_per_dim.append(np.unique(chunk_ind))
+
+        # Combine and generate the cartesian product to determine the chunks keys that
+        # will be accessed
+        chunks_accessed = []
+        for comb in itertools.product(*chunks_per_dim):
+            chunks_accessed.append(".".join([str(ci) for ci in comb]))
+
+        counts_before = store.counter.copy()
+
+        # Perform the operation
+        if optype == "__getitem__":
+            z[slices]
+        else:
+            z[slices] = ii
+
+        # Get the change in counts
+        delta_counts = store.counter - counts_before
+
+        # Check that the access counts for the operation have increased by one for all
+        # the chunks we expect to be included
+        for ci in chunks_accessed:
+            assert delta_counts.pop((optype, ci)) == 1
+
+            # If the chunk was partially written to it will also have been read once. We
+            # don't determine if the chunk was actually partial here, just that the
+            # counts are consistent that this might have happened
+            if optype == "__setitem__":
+                assert (
+                    ("__getitem__", ci) not in delta_counts or
+                    delta_counts.pop(("__getitem__", ci)) == 1
+                )
+        # Check that no other chunks were accessed
+        assert len(delta_counts) == 0

@@ -1,0 +1,39 @@
+# This workflow simulates the environment found during a conda-forge build
+# and makes sure that Zarr can run without fsspec and other additional libraries.
+name: Minimal installation
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  minimum_build:
+
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Setup Miniconda
+      uses: conda-incubator/setup-miniconda@master
+      with:
+          channels: conda-forge
+          environment-file: environment.yml
+          activate-environment: minimal
+    - name: Tests
+      shell: "bash -l {0}"
+      env:
+        ZARR_V3_EXPERIMENTAL_API: 1
+      run: |
+        conda activate minimal
+        python -m pip install .
+        pytest -svx --timeout=300
+    - name: Fixture generation
+      shell: "bash -l {0}"
+      env:
+        ZARR_V3_EXPERIMENTAL_API: 1
+      run: |
+        conda activate minimal
+        rm -rf fixture/
+        pytest -svx --timeout=300 zarr/tests/test_dim_separator.py zarr/tests/test_storage.py
+        # This simulates fixture-less tests in conda and debian packaging

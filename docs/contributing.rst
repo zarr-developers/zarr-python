@@ -75,8 +75,8 @@ The Zarr source code is hosted on GitHub at the following location:
 You will need your own fork to work on the code. Go to the link above and hit
 the "Fork" button. Then clone your fork to your local machine::
 
-    $ git clone git@github.com:your-user-name/zarr.git
-    $ cd zarr
+    $ git clone git@github.com:your-user-name/zarr-python.git
+    $ cd zarr-python
     $ git remote add upstream git@github.com:zarr-developers/zarr-python.git
 
 Creating a development environment
@@ -90,14 +90,14 @@ you have cloned the Zarr source code and your current working directory is the r
 the repository, you can do something like the following::
 
     $ mkdir -p ~/pyenv/zarr-dev
-    $ virtualenv --no-site-packages --python=/usr/bin/python3.8 ~/pyenv/zarr-dev
+    $ python -m venv ~/pyenv/zarr-dev
     $ source ~/pyenv/zarr-dev/bin/activate
     $ pip install -r requirements_dev_minimal.txt -r requirements_dev_numpy.txt
     $ pip install -e .
 
 To verify that your development environment is working, you can run the unit tests::
 
-    $ pytest -v zarr
+    $ python -m pytest -v zarr
 
 Creating a branch
 ~~~~~~~~~~~~~~~~~
@@ -108,9 +108,9 @@ report the bug or propose the feature you'd like to add.
 It's best to synchronize your fork with the upstream repository, then create a
 new, separate branch for each piece of work you want to do. E.g.::
 
-    git checkout master
+    git checkout main
     git fetch upstream
-    git rebase upstream/master
+    git rebase upstream/main
     git push
     git checkout -b shiny-new-feature
     git push -u origin shiny-new-feature
@@ -120,18 +120,18 @@ this branch specific to one bug or feature so it is clear what the branch brings
 Zarr.
 
 To update this branch with latest code from Zarr, you can retrieve the changes from
-the master branch and perform a rebase::
+the main branch and perform a rebase::
 
     git fetch upstream
-    git rebase upstream/master
+    git rebase upstream/main
 
-This will replay your commits on top of the latest Zarr git master. If this leads to
+This will replay your commits on top of the latest Zarr git main. If this leads to
 merge conflicts, these need to be resolved before submitting a pull request.
-Alternatively, you can merge the changes in from upstream/master instead of rebasing,
+Alternatively, you can merge the changes in from upstream/main instead of rebasing,
 which can be simpler::
 
     git fetch upstream
-    git merge upstream/master
+    git merge upstream/main
 
 Again, any conflicts need to be resolved before submitting a pull request.
 
@@ -144,7 +144,7 @@ spec. The simplest way to run the unit tests is to activate your
 development environment (see `creating a development environment`_ above)
 and invoke::
 
-    $ pytest -v zarr
+    $ python -m pytest -v zarr
 
 Some tests require optional dependencies to be installed, otherwise
 the tests will be skipped. To install all optional dependencies, run::
@@ -152,9 +152,9 @@ the tests will be skipped. To install all optional dependencies, run::
     $ pip install -r requirements_dev_optional.txt
 
 To also run the doctests within docstrings (requires optional
-depencies to be installed), run::
+dependencies to be installed), run::
 
-    $ pytest -v --doctest-plus zarr
+    $ python -m pytest -v --doctest-plus zarr
 
 To run the doctests within the tutorial and storage spec (requires
 optional dependencies to be installed), run::
@@ -164,18 +164,20 @@ optional dependencies to be installed), run::
 Note that some tests also require storage services to be running
 locally. To run the Azure Blob Service storage tests, run an Azure
 storage emulator (e.g., azurite) and set the environment variable
-``ZARR_TEST_ABS=1``. To run the Mongo DB storage tests, run a Mongo
+``ZARR_TEST_ABS=1``. If you're using Docker to run azurite, start the service with::
+
+    docker run --rm -p 10000:10000 mcr.microsoft.com/azure-storage/azurite azurite-blob --loose --blobHost 0.0.0.0
+
+To run the Mongo DB storage tests, run a Mongo
 server locally and set the environment variable ``ZARR_TEST_MONGO=1``.
 To run the Redis storage tests, run a Redis server locally on port
 6379 and set the environment variable ``ZARR_TEST_REDIS=1``.
 
-All tests are automatically run via Travis (Linux) and AppVeyor
-(Windows) continuous integration services for every pull
-request. Tests must pass under both Travis and Appveyor before code
-can be accepted. Test coverage is also collected automatically via the
-Coveralls service, and total coverage over all builds must be 100%
-(although individual builds may be lower due to Python 2/3 or other
-differences).
+All tests are automatically run via GitHub Actions for every pull
+request and must pass before code can be accepted. Test coverage is
+also collected automatically via the Codecov service, and total
+coverage over all builds must be 100% (although individual builds
+may be lower due to Python 2/3 or other differences).
 
 Code standards
 ~~~~~~~~~~~~~~
@@ -184,7 +186,7 @@ All code must conform to the PEP8 standard. Regarding line length, lines up to 1
 characters are allowed, although please try to keep under 90 wherever possible.
 Conformance can be checked by running::
 
-    $ flake8 --max-line-length=100 zarr
+    $ python -m flake8 --max-line-length=100 zarr
 
 Test coverage
 ~~~~~~~~~~~~~
@@ -196,21 +198,21 @@ and produce a coverage report. This should be 100% before code can be accepted i
 main code base.
 
 When submitting a pull request, coverage will also be collected across all supported
-Python versions via the Coveralls service, and will be reported back within the pull
-request. Coveralls coverage must also be 100% before code can be accepted.
+Python versions via the Codecov service, and will be reported back within the pull
+request. Codecov coverage must also be 100% before code can be accepted.
 
 Documentation
 ~~~~~~~~~~~~~
 
 Docstrings for user-facing classes and functions should follow the
 `numpydoc
-<https://github.com/numpy/numpy/blob/master/doc/HOWTO_DOCUMENT.rst.txt>`_
+<https://numpydoc.readthedocs.io/en/stable/format.html#docstring-standard>`_
 standard, including sections for Parameters and Examples. All examples
 should run and pass as doctests under Python 3.8. To run doctests,
 activate your development environment, install optional requirements,
 and run::
 
-    $ pytest -v --doctest-plus zarr
+    $ python -m pytest -v --doctest-plus zarr
 
 Zarr uses Sphinx for documentation, hosted on readthedocs.org. Documentation is
 written in the RestructuredText markup language (.rst files) in the ``docs`` folder.
@@ -239,8 +241,8 @@ Pull requests submitted by an external contributor should be reviewed and approv
 one core developers before being merged. Ideally, pull requests submitted by a core developer
 should be reviewed and approved by at least one other core developers before being merged.
 
-Pull requests should not be merged until all CI checks have passed (Travis, AppVeyor,
-Coveralls) against code that has had the latest master merged in.
+Pull requests should not be merged until all CI checks have passed (GitHub Actions
+Codecov) against code that has had the latest main merged in.
 
 Compatibility and versioning policies
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -330,33 +332,34 @@ compatibility in some way.
 Release procedure
 ~~~~~~~~~~~~~~~~~
 
-.. note:: 
+.. note::
 
    Most of the release process is now handled by github workflow which should
-   automatically push a release to PyPI if a tag is pushed. 
+   automatically push a release to PyPI if a tag is pushed.
 
-Checkout and update the master branch::
+Before releasing, make sure that all pull requests which will be
+included in the release have been properly documented in
+`docs/release.rst`.
 
-    $ git checkout master
-    $ git pull
+To make a new release, go to
+https://github.com/zarr-developers/zarr-python/releases and
+click "Draft a new release". Choose a version number prefixed
+with a `v` (e.g. `v0.0.0`). For pre-releases, include the
+appropriate suffix (e.g. `v0.0.0a1` or `v0.0.0rc2`).
 
-Verify all tests pass on all supported Python versions, and docs build::
 
-    $ tox
+Set the description of the release to::
 
-Tag the version (where "X.X.X" stands for the version number, e.g., "2.2.0")::
+    See release notes https://zarr.readthedocs.io/en/stable/release.html#release-0-0-0
 
-    $ version=X.X.X
-    $ git tag -a v$version -m v$version
-    $ git push --tags
+replacing the correct version numbers. For pre-release versions,
+the URL should omit the pre-release suffix, e.g. "a1" or "rc1".
 
-Release source code to PyPI::
+After creating the release, the documentation will be built on
+https://readthedocs.io. Full releases will be available under
+`/stable <https://zarr.readthedocs.io/en/stable>`_ while
+pre-releases will be available under
+`/latest <https://zarr.readthedocs.io/en/latest>`_.
 
-    $ twine upload dist/zarr-${version}.tar.gz
-
-Obtain checksum for release to conda-forge::
-
-    $ openssl sha256 dist/zarr-${version}.tar.gz
-
-Release to conda-forge by making a pull request against the zarr-feedstock conda-forge
-repository, incrementing the version number.
+Also review and merge the https://github.com/conda-forge/zarr-feedstock
+pull request that will be automatically generated.

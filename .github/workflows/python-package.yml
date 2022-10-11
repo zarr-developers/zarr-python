@@ -5,9 +5,9 @@ name: Linux Testing
 
 on:
   push:
-    branches: [ master ]
+    branches: [ main ]
   pull_request:
-    branches: [ master ]
+    branches: [ main ]
 
 jobs:
   build:
@@ -15,8 +15,11 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ['3.6.9' , 3.7, 3.8]
-        numpy_version: ['==1.16.4', '']
+        python-version: ['3.8', '3.9', '3.10']
+        numpy_version: ['>=1.22.0', '==1.20.*']
+        exclude:
+          - python-version: '3.10'
+            numpy_version: '==1.20.*'
     services:
       redis:
         image: redis
@@ -29,12 +32,12 @@ jobs:
         ports:
           - 6379:6379
       mongodb:
-        image: mongo:3.4.23
+        image: mongo:4.4.11
         ports:
           - 27017:27017
     steps:
-    - uses: actions/checkout@v2
-      with: 
+    - uses: actions/checkout@v3
+      with:
         fetch-depth: 0
     - name: Setup Miniconda
       uses: conda-incubator/setup-miniconda@master
@@ -47,7 +50,7 @@ jobs:
     - name: Create Conda environment with the rights deps
       shell: "bash -l {0}"
       run: |
-        conda create -n zarr-env python==${{matrix.python-version}} bsddb3 numcodecs==0.6.4 lmdb pip nodejs flake8 mypy
+        conda create -n zarr-env python==${{matrix.python-version}} bsddb3 numcodecs lmdb pip nodejs flake8 mypy
         conda activate zarr-env
         npm install -g azurite
     - name: Install dependencies
@@ -55,23 +58,24 @@ jobs:
       run: |
         conda activate zarr-env
         python -m pip install --upgrade pip
-        python -m pip install -U pip setuptools wheel codecov
-        python -m pip install -rrequirements_dev_minimal.txt numpy${{ matrix.numpy_version}} -rrequirements_dev_optional.txt pymongo redis
-        python -m pip install -e . 
+        python -m pip install -U pip setuptools wheel codecov line_profiler
+        python -m pip install -rrequirements_dev_minimal.txt numpy${{matrix.numpy_version}} -rrequirements_dev_optional.txt pymongo redis
+        python -m pip install .
         python -m pip freeze
     - name: Tests
       shell: "bash -l {0}"
-      env: 
+      env:
         COVERAGE_FILE: .coverage.${{matrix.python-version}}.${{matrix.numpy_version}}
         ZARR_TEST_ABS: 1
         ZARR_TEST_MONGO: 1
         ZARR_TEST_REDIS: 1
+        ZARR_V3_EXPERIMENTAL_API: 1
       run: |
         conda activate zarr-env
         mkdir ~/blob_emulator
         azurite -l ~/blob_emulator --debug debug.log 2>&1 > stdouterr.log &
-        pytest --cov=zarr --cov-config=.coveragerc --doctest-plus --cov-report xml --cov=./
-    - uses: codecov/codecov-action@v1
+        pytest --cov=zarr --cov-config=.coveragerc --doctest-plus --cov-report xml --cov=./ --timeout=300
+    - uses: codecov/codecov-action@v3
       with:
         #token: ${{ secrets.CODECOV_TOKEN }} # not required for public repos
           #files: ./coverage1.xml,./coverage2.xml # optional
@@ -85,5 +89,3 @@ jobs:
         conda activate zarr-env
         flake8 zarr
         mypy zarr
-
-    

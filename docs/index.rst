@@ -1,4 +1,4 @@
-.. zarr documentation master file, created by
+.. zarr documentation main file, created by
    sphinx-quickstart on Mon May  2 21:40:09 2016.
 
 Zarr
@@ -42,7 +42,7 @@ Alternatively, install Zarr via conda::
     $ conda install -c conda-forge zarr
 
 To install the latest development version of Zarr, you can use pip with the
-latest GitHub master::
+latest GitHub main::
 
     $ pip install git+https://github.com/zarr-developers/zarr-python.git
 
@@ -93,10 +93,10 @@ documentation, code reviews, comments and/or ideas:
 * :user:`Prakhar Goel <newt0311>`
 
 Zarr is inspired by `HDF5 <https://www.hdfgroup.org/HDF5/>`_, `h5py
-<http://www.h5py.org/>`_ and `bcolz <http://bcolz.blosc.org/>`_.
+<https://www.h5py.org/>`_ and `bcolz <https://bcolz.readthedocs.io/>`_.
 
 Development of Zarr is supported by the
-`MRC Centre for Genomics and Global Health <http://www.cggh.org>`_.
+`MRC Centre for Genomics and Global Health <https://www.cggh.org>`_.
 
 Indices and tables
 ------------------
@@ -105,4 +105,4 @@ Indices and tables
 * :ref:`modindex`
 * :ref:`search`
 
-.. _NumCodecs: http://numcodecs.readthedocs.io/
+.. _NumCodecs: https://numcodecs.readthedocs.io/

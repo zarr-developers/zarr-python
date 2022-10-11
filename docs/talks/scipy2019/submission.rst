@@ -118,7 +118,7 @@ Authors
 
 Project contributors are listed in alphabetical order by surname.
 
-* `Ryan Abernathey <https://github.com/rabernat>`_, Columbia University 
+* `Ryan Abernathey <https://github.com/rabernat>`_, Columbia University
 * `Stephan Balmer <https://github.com/sbalmer>`_, Meteotest
 * `Ambrose Carr <https://github.com/ambrosejcarr>`_, Chan Zuckerberg Initiative
 * `Tim Crone <https://github.com/tjcrone>`_, Columbia University

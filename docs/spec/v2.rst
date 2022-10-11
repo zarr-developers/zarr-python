@@ -78,7 +78,18 @@ filters
     filters are to be applied. Each codec configuration object MUST contain a
     ``"id"`` key identifying the codec to be used.
 
-Other keys MUST NOT be present within the metadata object.
+The following keys MAY be present within the object:
+
+dimension_separator
+    If present, either the string ``"."`` or ``"/""`` defining the separator placed
+    between the dimensions of a chunk. If the value is not set, then the
+    default MUST be assumed to be ``"."``, leading to chunk keys of the form "0.0".
+    Arrays defined with ``"/"`` as the dimension separator can be considered to have
+    nested, or hierarchical, keys of the form "0/0" that SHOULD where possible
+    produce a directory-like structure.
+
+Other keys SHOULD NOT be present within the metadata object and SHOULD be
+ignored by implementations.
 
 For example, the JSON object below defines a 2-dimensional array of 64-bit
 little-endian floating point numbers with 10000 rows and 10000 columns, divided
@@ -163,8 +174,8 @@ Structured data types may also be nested, e.g., the following JSON
 list defines a data type with two fields "foo" and "bar", where "bar"
 has two sub-fields "baz" and "qux"::
 
-    [["foo", "<f4"], ["bar", [["baz", "<f4"], ["qux", "<i4"]]]] 
-    
+    [["foo", "<f4"], ["bar", [["baz", "<f4"], ["qux", "<i4"]]]]
+
 .. _spec_v2_array_fill_value:
 
 Fill value encoding
@@ -195,7 +206,7 @@ through the primary compression library to obtain a new sequence of bytes
 comprising the compressed chunk data. No header is added to the compressed
 bytes or any other modification made. The internal structure of the compressed
 bytes will depend on which primary compressor was used. For example, the `Blosc
-compressor <https://github.com/Blosc/c-blosc/blob/master/README_HEADER.rst>`_
+compressor <https://github.com/Blosc/c-blosc/blob/main/README_CHUNK_FORMAT.rst>`_
 produces a sequence of bytes that begins with a 16-byte header followed by
 compressed data.
 
@@ -211,7 +222,7 @@ columns 4000-5000 and is stored under the key "2.4"; etc.
 
 There is no need for all chunks to be present within an array store. If a chunk
 is not present then it is considered to be in an uninitialized state.  An
-unitialized chunk MUST be treated as if it was uniformly filled with the value
+uninitialized chunk MUST be treated as if it was uniformly filled with the value
 of the "fill_value" field in the array metadata. If the "fill_value" field is
 ``null`` then the contents of the chunk are undefined.
 
@@ -315,11 +326,11 @@ under the logical paths "foo" and "foo/bar" and an array exists at logical path
 Attributes
 ----------
 
-An array or group can be associated with custom attributes, which are simple
-key/value items with application-specific meaning. Custom attributes are
-encoded as a JSON object and stored under the ".zattrs" key within an array
-store. The ".zattrs" key does not have to be present, and if it is absent the
-attributes should be treated as empty.
+An array or group can be associated with custom attributes, which are arbitrary
+key/value pairs with application-specific meaning. Custom attributes are encoded
+as a JSON object and stored under the ".zattrs" key within an array store. The
+".zattrs" key does not have to be present, and if it is absent the attributes
+should be treated as empty.
 
 For example, the JSON object below encodes three attributes named
 "foo", "bar" and "baz"::
@@ -534,6 +545,8 @@ initially published to clarify ambiguities and add some missing information.
   subarray shapes and/or with nested structured data types are encoded
   in array metadata (:issue:`111`, :issue:`296`).
 
+* Clarified the key/value pairs of custom attributes as "arbitrary" rather than
+  "simple".
 
 Changes from version 1 to version 2
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

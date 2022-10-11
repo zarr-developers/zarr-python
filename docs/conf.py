@@ -44,6 +44,7 @@ extensions = [
     'sphinx.ext.intersphinx',
     'numpydoc',
     'sphinx_issues',
+    "sphinx_copybutton",
 ]
 
 numpydoc_show_class_members = False
@@ -61,12 +62,12 @@ source_suffix = '.rst'
 # The encoding of source files.
 #source_encoding = 'utf-8-sig'
 
-# The master toctree document.
-master_doc = 'index'
+# The main toctree document.
+main_doc = 'index'
 
 # General information about the project.
 project = 'zarr'
-copyright = '2018, Zarr Developers'
+copyright = '2022, Zarr Developers'
 author = 'Zarr Developers'
 
 version = zarr.__version__
@@ -144,9 +145,11 @@ html_theme_options = {'logo_only': True}
 # of the sidebar.
 html_logo = '_static/logo1.png'
 
+
 # Add custom css
 def setup(app):
-    app.add_stylesheet('custom.css')
+    app.add_css_file('custom.css')
+
 
 # The name of an image file (relative to this directory) to use as a favicon of
 # the docs.  This file should be a Windows icon file (.ico) being 16x16 or 32x32
@@ -243,7 +246,7 @@ latex_elements = {
 # (source start file, target name, title,
 #  author, documentclass [howto, manual, or own class]).
 latex_documents = [
-    (master_doc, 'zarr.tex', 'zarr Documentation',
+    (main_doc, 'zarr.tex', 'zarr Documentation',
      'Zarr Developers', 'manual'),
 ]
 
@@ -273,7 +276,7 @@ latex_documents = [
 # One entry per manual page. List of tuples
 # (source start file, name, description, authors, manual section).
 man_pages = [
-    (master_doc, 'zarr', 'zarr Documentation',
+    (main_doc, 'zarr', 'zarr Documentation',
      [author], 1)
 ]
 
@@ -287,7 +290,7 @@ man_pages = [
 # (source start file, target name, title, author,
 #  dir menu entry, description, category)
 texinfo_documents = [
-    (master_doc, 'zarr', 'zarr Documentation',
+    (main_doc, 'zarr', 'zarr Documentation',
      author, 'zarr', 'One line description of project.',
      'Miscellaneous'),
 ]
@@ -308,5 +311,11 @@ texinfo_documents = [
 # Example configuration for intersphinx: refer to the Python standard library.
 # use in refs e.g:
 # :ref:`comparison manual <python:comparisons>`
-intersphinx_mapping = { 'python':('https://docs.python.org/', None), 
+intersphinx_mapping = { 'python':('https://docs.python.org/', None),
                         'numpy': ('https://numpy.org/doc/stable/', None)}
+
+
+# sphinx-copybutton configuration
+copybutton_prompt_text = r">>> |\.\.\. |\$ |In \[\d*\]: | {2,5}\.\.\.: | {5,8}: "
+copybutton_line_continuation_character = "\\"
+copybutton_prompt_is_regexp = True

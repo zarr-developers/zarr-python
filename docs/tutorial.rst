@@ -176,7 +176,7 @@ print some diagnostics, e.g.::
     Read-only          : False
     Compressor         : Blosc(cname='zstd', clevel=3, shuffle=BITSHUFFLE,
                        : blocksize=0)
-    Store type         : builtins.dict
+    Store type         : zarr.storage.KVStore
     No. bytes          : 400000000 (381.5M)
     No. bytes stored   : 3379344 (3.2M)
     Storage ratio      : 118.4
@@ -268,14 +268,14 @@ Here is an example using a delta filter with the Blosc compressor::
     Read-only          : False
     Filter [0]         : Delta(dtype='<i4')
     Compressor         : Blosc(cname='zstd', clevel=1, shuffle=SHUFFLE, blocksize=0)
-    Store type         : builtins.dict
+    Store type         : zarr.storage.KVStore
     No. bytes          : 400000000 (381.5M)
     No. bytes stored   : 1290562 (1.2M)
     Storage ratio      : 309.9
     Chunks initialized : 100/100
 
 For more information about available filter codecs, see the `Numcodecs
-<http://numcodecs.readthedocs.io/>`_ documentation.
+<https://numcodecs.readthedocs.io/>`_ documentation.
 
 .. _tutorial_groups:
 
@@ -293,7 +293,7 @@ To create a group, use the :func:`zarr.group` function::
     <zarr.hierarchy.Group '/'>
 
 Groups have a similar API to the Group class from `h5py
-<http://www.h5py.org/>`_.  For example, groups can contain other groups::
+<https://www.h5py.org/>`_.  For example, groups can contain other groups::
 
     >>> foo = root.create_group('foo')
     >>> bar = foo.create_group('bar')
@@ -427,7 +427,7 @@ Groups also have the :func:`zarr.hierarchy.Group.tree` method, e.g.::
 If you're using Zarr within a Jupyter notebook (requires
 `ipytree <https://github.com/QuantStack/ipytree>`_), calling ``tree()`` will generate an
 interactive tree representation, see the `repr_tree.ipynb notebook
-<http://nbviewer.jupyter.org/github/zarr-developers/zarr-python/blob/master/notebooks/repr_tree.ipynb>`_
+<https://nbviewer.org/github/zarr-developers/zarr-python/blob/main/notebooks/repr_tree.ipynb>`_
 for more examples.
 
 .. _tutorial_attrs:
@@ -509,7 +509,7 @@ e.g.::
            [10, 11, 12, -2, 14]])
 
 For convenience, coordinate indexing is also available via the ``vindex``
-property, e.g.::
+property, as well as the square bracket operator, e.g.::
 
     >>> z.vindex[[0, 2], [1, 3]]
     array([-1, -2])
@@ -518,6 +518,16 @@ property, e.g.::
     array([[ 0, -3,  2,  3,  4],
            [ 5,  6,  7,  8,  9],
            [10, 11, 12, -4, 14]])
+    >>> z[[0, 2], [1, 3]]
+    array([-3, -4])
+
+When the indexing arrays have different shapes, they are broadcast together.
+That is, the following two calls are equivalent::
+
+    >>> z[1, [1, 3]]
+    array([5, 7])
+    >>> z[[1, 1], [1, 3]]
+    array([5, 7])
 
 Indexing with a mask array
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -725,7 +735,7 @@ database for storage (requires `bsddb3
 
 Also added in Zarr version 2.2 is the :class:`zarr.storage.LMDBStore` class which
 enables the lightning memory-mapped database (LMDB) to be used for storing an array or
-group (requires `lmdb <http://lmdb.readthedocs.io/>`_ to be installed)::
+group (requires `lmdb <https://lmdb.readthedocs.io/>`_ to be installed)::
 
     >>> store = zarr.LMDBStore('data/example.lmdb')
     >>> root = zarr.group(store=store, overwrite=True)
@@ -748,7 +758,7 @@ databases. The :class:`zarr.storage.RedisStore` class interfaces `Redis <https:/
 (an in memory data structure store), and the :class:`zarr.storage.MongoDB` class interfaces
 with `MongoDB <https://www.mongodb.com/>`_ (an object oriented NoSQL database). These stores
 respectively require the `redis-py <https://redis-py.readthedocs.io>`_ and
-`pymongo <https://api.mongodb.com/python/current/>`_ packages to be installed. 
+`pymongo <https://api.mongodb.com/python/current/>`_ packages to be installed.
 
 For compatibility with the `N5 <https://github.com/saalfeldlab/n5>`_ data format, Zarr also provides
 an N5 backend (this is currently an experimental feature). Similar to the zip storage class, an
@@ -769,9 +779,9 @@ Distributed/cloud storage
 
 It is also possible to use distributed storage systems. The Dask project has
 implementations of the ``MutableMapping`` interface for Amazon S3 (`S3Map
-<http://s3fs.readthedocs.io/en/latest/api.html#s3fs.mapping.S3Map>`_), Hadoop
+<https://s3fs.readthedocs.io/en/latest/api.html#s3fs.mapping.S3Map>`_), Hadoop
 Distributed File System (`HDFSMap
-<http://hdfs3.readthedocs.io/en/latest/api.html#hdfs3.mapping.HDFSMap>`_) and
+<https://hdfs3.readthedocs.io/en/latest/api.html#hdfs3.mapping.HDFSMap>`_) and
 Google Cloud Storage (`GCSMap
 <http://gcsfs.readthedocs.io/en/latest/api.html#gcsfs.mapping.GCSMap>`_), which
 can be used with Zarr.
@@ -795,14 +805,16 @@ Here is an example using S3Map to read an array created previously::
     Order              : C
     Read-only          : False
     Compressor         : Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
-    Store type         : fsspec.mapping.FSMap
+    Store type         : zarr.storage.KVStore
     No. bytes          : 21
+    No. bytes stored   : 382
+    Storage ratio      : 0.1
     Chunks initialized : 3/3
     >>> z[:]
     array([b'H', b'e', b'l', b'l', b'o', b' ', b'f', b'r', b'o', b'm', b' ',
            b't', b'h', b'e', b' ', b'c', b'l', b'o', b'u', b'd', b'!'],
           dtype='|S1')
-    >>> z[:].tostring()
+    >>> z[:].tobytes()
     b'Hello from the cloud!'
 
 Zarr now also has a builtin storage backend for Azure Blob Storage.
@@ -810,7 +822,9 @@ The class is :class:`zarr.storage.ABSStore` (requires
 `azure-storage-blob <https://docs.microsoft.com/en-us/azure/storage/blobs/storage-quickstart-blobs-python>`_
 to be installed)::
 
-    >>> store = zarr.ABSStore(container='test', prefix='zarr-testing', blob_service_kwargs={'is_emulated': True})  # doctest: +SKIP
+    >>> import azure.storage.blob
+    >>> container_client = azure.storage.blob.ContainerClient(...)  # doctest: +SKIP
+    >>> store = zarr.ABSStore(client=container_client, prefix='zarr-testing')  # doctest: +SKIP
     >>> root = zarr.group(store=store, overwrite=True)  # doctest: +SKIP
     >>> z = root.zeros('foo/bar', shape=(1000, 1000), chunks=(100, 100), dtype='i4')  # doctest: +SKIP
     >>> z[:] = 42  # doctest: +SKIP
@@ -841,11 +855,11 @@ store. E.g.::
     >>> z = root['foo/bar/baz']
     >>> from timeit import timeit
     >>> # first data access is relatively slow, retrieved from store
-    ... timeit('print(z[:].tostring())', number=1, globals=globals())  # doctest: +SKIP
+    ... timeit('print(z[:].tobytes())', number=1, globals=globals())  # doctest: +SKIP
     b'Hello from the cloud!'
     0.1081731989979744
     >>> # second data access is faster, uses cache
-    ... timeit('print(z[:].tostring())', number=1, globals=globals())  # doctest: +SKIP
+    ... timeit('print(z[:].tobytes())', number=1, globals=globals())  # doctest: +SKIP
     b'Hello from the cloud!'
     0.0009490990014455747
 
@@ -882,6 +896,18 @@ As of version 2.6, write mode and complex URLs are also supported, such as::
 The second invocation here will be much faster. Note that the ``storage_options``
 have become more complex here, to account for the two parts of the supplied
 URL.
+
+It is also possible to initialize the filesystem outside of Zarr and then pass
+it through. This requires creating an :class:`zarr.storage.FSStore` object
+explicitly. For example::
+
+    >>> import s3fs  * doctest: +SKIP
+    >>> fs = s3fs.S3FileSystem(anon=True)  # doctest: +SKIP
+    >>> store = zarr.storage.FSStore('/zarr-demo/store', fs=fs)  # doctest: +SKIP
+    >>> g = zarr.open_group(store)  # doctest: +SKIP
+
+This is useful in cases where you want to also use the same fsspec filesystem object
+separately from Zarr.
 
 .. _fsspec: https://filesystem-spec.readthedocs.io/en/latest/
 
@@ -1262,7 +1288,7 @@ ratios, depending on the correlation structure within the data. E.g.::
     Order              : C
     Read-only          : False
     Compressor         : Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
-    Store type         : builtins.dict
+    Store type         : zarr.storage.KVStore
     No. bytes          : 400000000 (381.5M)
     No. bytes stored   : 6696010 (6.4M)
     Storage ratio      : 59.7
@@ -1276,17 +1302,125 @@ ratios, depending on the correlation structure within the data. E.g.::
     Order              : F
     Read-only          : False
     Compressor         : Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
-    Store type         : builtins.dict
+    Store type         : zarr.storage.KVStore
     No. bytes          : 400000000 (381.5M)
     No. bytes stored   : 4684636 (4.5M)
     Storage ratio      : 85.4
     Chunks initialized : 100/100
 
 In the above example, Fortran order gives a better compression ratio. This is an
-artifical example but illustrates the general point that changing the order of
+artificial example but illustrates the general point that changing the order of
 bytes within chunks of an array may improve the compression ratio, depending on
 the structure of the data, the compression algorithm used, and which compression
 filters (e.g., byte-shuffle) have been applied.
+
+.. _tutorial_chunks_empty_chunks:
+
+Empty chunks
+~~~~~~~~~~~~
+
+As of version 2.11, it is possible to configure how Zarr handles the storage of
+chunks that are "empty" (i.e., every element in the chunk is equal to the array's fill value).
+When creating an array with ``write_empty_chunks=False``,
+Zarr will check whether a chunk is empty before compression and storage. If a chunk is empty,
+then Zarr does not store it, and instead deletes the chunk from storage
+if the chunk had been previously stored.
+
+This optimization prevents storing redundant objects and can speed up reads, but the cost is
+added computation during array writes, since the contents of
+each chunk must be compared to the fill value, and these advantages are contingent on the content of the array.
+If you know that your data will form chunks that are almost always non-empty, then there is no advantage to the optimization described above.
+In this case, creating an array with ``write_empty_chunks=True`` (the default) will instruct Zarr to write every chunk without checking for emptiness.
+
+The following example illustrates the effect of the ``write_empty_chunks`` flag on
+the time required to write an array with different values.::
+
+    >>> import zarr
+    >>> import numpy as np
+    >>> import time
+    >>> from tempfile import TemporaryDirectory
+    >>> def timed_write(write_empty_chunks):
+    ...     """
+    ...     Measure the time required and number of objects created when writing
+    ...     to a Zarr array with random ints or fill value.
+    ...     """
+    ...     chunks = (8192,)
+    ...     shape = (chunks[0] * 1024,)
+    ...     data = np.random.randint(0, 255, shape)
+    ...     dtype = 'uint8'
+    ...
+    ...     with TemporaryDirectory() as store:
+    ...         arr = zarr.open(store,
+    ...                         shape=shape,
+    ...                         chunks=chunks,
+    ...                         dtype=dtype,
+    ...                         write_empty_chunks=write_empty_chunks,
+    ...                         fill_value=0,
+    ...                         mode='w')
+    ...         # initialize all chunks
+    ...         arr[:] = 100
+    ...         result = []
+    ...         for value in (data, arr.fill_value):
+    ...             start = time.time()
+    ...             arr[:] = value
+    ...             elapsed = time.time() - start
+    ...             result.append((elapsed, arr.nchunks_initialized))
+    ...
+    ...         return result
+    >>> for write_empty_chunks in (True, False):
+    ...     full, empty = timed_write(write_empty_chunks)
+    ...     print(f'\nwrite_empty_chunks={write_empty_chunks}:\n\tRandom Data: {full[0]:.4f}s, {full[1]} objects stored\n\t Empty Data: {empty[0]:.4f}s, {empty[1]} objects stored\n')
+
+    write_empty_chunks=True:
+            Random Data: 0.1252s, 1024 objects stored
+            Empty Data: 0.1060s, 1024 objects stored
+
+
+    write_empty_chunks=False:
+            Random Data: 0.1359s, 1024 objects stored
+            Empty Data: 0.0301s, 0 objects stored
+
+In this example, writing random data is slightly slower with ``write_empty_chunks=True``,
+but writing empty data is substantially faster and generates far fewer objects in storage.
+
+.. _tutorial_rechunking:
+
+Changing chunk shapes (rechunking)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Sometimes you are not free to choose the initial chunking of your input data, or
+you might have data saved with chunking which is not optimal for the analysis you
+have planned. In such cases it can be advantageous to re-chunk the data. For small
+datasets, or when the mismatch between input and output chunks is small
+such that only a few chunks of the input dataset need to be read to create each
+chunk in the output array, it is sufficient to simply copy the data to a new array
+with the desired chunking, e.g. ::
+
+    >>> a = zarr.zeros((10000, 10000), chunks=(100,100), dtype='uint16', store='a.zarr')
+    >>> b = zarr.array(a, chunks=(100, 200), store='b.zarr')
+
+If the chunk shapes mismatch, however, a simple copy can lead to non-optimal data
+access patterns and incur a substantial performance hit when using
+file based stores. One of the most pathological examples is
+switching from column-based chunking to row-based chunking e.g. ::
+
+    >>> a = zarr.zeros((10000,10000), chunks=(10000, 1), dtype='uint16', store='a.zarr')
+    >>> b = zarr.array(a, chunks=(1,10000), store='b.zarr')
+
+which will require every chunk in the input data set to be repeatedly read when creating
+each output chunk. If the entire array will fit within memory, this is simply resolved
+by forcing the entire input array into memory as a numpy array before converting
+back to zarr with the desired chunking. ::
+
+    >>> a = zarr.zeros((10000,10000), chunks=(10000, 1), dtype='uint16', store='a.zarr')
+    >>> b = a[...]
+    >>> c = zarr.array(b, chunks=(1,10000), store='c.zarr')
+
+For data sets which have mismatched chunks and which do not fit in memory, a
+more sophisticated approach to rechunking, such as offered by the
+`rechunker <https://github.com/pangeo-data/rechunker>`_ package and discussed
+`here <https://medium.com/pangeo/rechunker-the-missing-link-for-chunked-array-analytics-5b2359e9dc11>`_
+may offer a substantial improvement in performance.
 
 .. _tutorial_sync:
 

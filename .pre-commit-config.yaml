@@ -1,0 +1,17 @@
+default_stages: [commit, push]
+default_language_version:
+  python: python3.9
+repos:
+  - repo: https://github.com/PyCQA/flake8
+    rev: 3.8.2
+    hooks:
+    - id: flake8
+      args: [
+        --max-line-length=100
+      ]
+      exclude: ^(venv/|docs/)
+      types: ['python']
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v2.3.0
+    hooks:
+    - id: check-yaml

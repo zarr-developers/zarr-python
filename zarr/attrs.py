@@ -1,6 +1,7 @@
+import warnings
 from collections.abc import MutableMapping
 
-from zarr.meta import parse_metadata
+from zarr._storage.store import Store, StoreV3
 from zarr.util import json_dumps
 
 
@@ -26,7 +27,10 @@ class Attributes(MutableMapping):
 
     def __init__(self, store, key='.zattrs', read_only=False, cache=True,
                  synchronizer=None):
-        self.store = store
+
+        self._version = getattr(store, '_store_version', 2)
+        _Store = Store if self._version == 2 else StoreV3
+        self.store = _Store._ensure_store(store)
         self.key = key
         self.read_only = read_only
         self.cache = cache
@@ -38,8 +42,10 @@ class Attributes(MutableMapping):
             data = self.store[self.key]
         except KeyError:
             d = dict()
+            if self._version > 2:
+                d['attributes'] = {}
         else:
-            d = parse_metadata(data)
+            d = self.store._metadata_class.parse_metadata(data)
         return d
 
     def asdict(self):
@@ -47,6 +53,8 @@ class Attributes(MutableMapping):
         if self.cache and self._cached_asdict is not None:
             return self._cached_asdict
         d = self._get_nosync()
+        if self._version == 3:
+            d = d['attributes']
         if self.cache:
             self._cached_asdict = d
         return d
@@ -54,7 +62,10 @@ class Attributes(MutableMapping):
     def refresh(self):
         """Refresh cached attributes from the store."""
         if self.cache:
-            self._cached_asdict = self._get_nosync()
+            if self._version == 2:
+                self._cached_asdict = self._get_nosync()
+            else:
+                self._cached_asdict = self._get_nosync()['attributes']
 
     def __contains__(self, x):
         return x in self.asdict()
@@ -84,7 +95,10 @@ class Attributes(MutableMapping):
         d = self._get_nosync()
 
         # set key value
-        d[item] = value
+        if self._version == 2:
+            d[item] = value
+        else:
+            d['attributes'][item] = value
 
         # _put modified data
         self._put_nosync(d)
@@ -98,7 +112,10 @@ class Attributes(MutableMapping):
         d = self._get_nosync()
 
         # delete key value
-        del d[key]
+        if self._version == 2:
+            del d[key]
+        else:
+            del d['attributes'][key]
 
         # _put modified data
         self._put_nosync(d)
@@ -106,12 +123,55 @@ class Attributes(MutableMapping):
     def put(self, d):
         """Overwrite all attributes with the key/value pairs in the provided dictionary
         `d` in a single operation."""
-        self._write_op(self._put_nosync, d)
+        if self._version == 2:
+            self._write_op(self._put_nosync, d)
+        else:
+            self._write_op(self._put_nosync, dict(attributes=d))
 
     def _put_nosync(self, d):
-        self.store[self.key] = json_dumps(d)
-        if self.cache:
-            self._cached_asdict = d
+
+        d_to_check = d if self._version == 2 else d["attributes"]
+        if not all(isinstance(item, str) for item in d_to_check):
+            # TODO: Raise an error for non-string keys
+            # raise TypeError("attribute keys must be strings")
+            warnings.warn(
+                "only attribute keys of type 'string' will be allowed in the future",
+                DeprecationWarning,
+                stacklevel=2
+                )
+
+            try:
+                d_to_check = {str(k): v for k, v in d_to_check.items()}
+            except TypeError as ex:  # pragma: no cover
+                raise TypeError("attribute keys can not be stringified") from ex
+
+            if self._version == 2:
+                d = d_to_check
+            else:
+                d["attributes"] = d_to_check
+
+        if self._version == 2:
+            self.store[self.key] = json_dumps(d)
+            if self.cache:
+                self._cached_asdict = d
+        else:
+            if self.key in self.store:
+                # Cannot write the attributes directly to JSON, but have to
+                # store it within the pre-existing attributes key of the v3
+                # metadata.
+
+                # Note: this changes the store.counter result in test_caching_on!
+
+                meta = self.store._metadata_class.parse_metadata(self.store[self.key])
+                if 'attributes' in meta and 'filters' in meta['attributes']:
+                    # need to preserve any existing "filters" attribute
+                    d['attributes']['filters'] = meta['attributes']['filters']
+                meta['attributes'] = d['attributes']
+            else:
+                meta = d
+            self.store[self.key] = json_dumps(meta)
+            if self.cache:
+                self._cached_asdict = d['attributes']
 
     # noinspection PyMethodOverriding
     def update(self, *args, **kwargs):
@@ -124,7 +184,10 @@ class Attributes(MutableMapping):
         d = self._get_nosync()
 
         # update
-        d.update(*args, **kwargs)
+        if self._version == 2:
+            d.update(*args, **kwargs)
+        else:
+            d['attributes'].update(*args, **kwargs)
 
         # _put modified data
         self._put_nosync(d)
