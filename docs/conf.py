@@ -73,7 +73,7 @@ main_doc = 'index'
 
 # General information about the project.
 project = 'zarr'
-copyright = '2018, Zarr Developers'
+copyright = '2022, Zarr Developers'
 author = 'Zarr Developers'
 
 version = zarr.__version__
