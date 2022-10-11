@@ -63,6 +63,7 @@ Contents
 .. toctree::
     :maxdepth: 2
 
+    installation
     tutorial
     api
     spec
