@@ -25,6 +25,8 @@ Zarr is still a young project. Feedback and bug reports are very welcome, please
 the `GitHub issue tracker <https://github.com/zarr-developers/zarr-python/issues>`_. See
 :doc:`contributing` for further information about contributing to Zarr.
 
+.. _index_installation:
+
 Installation
 ------------
 
