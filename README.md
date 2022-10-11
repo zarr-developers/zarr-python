@@ -86,6 +86,18 @@ Zarr is a Python package providing an implementation of compressed, chunked, N-d
 ## Main Features
 
 - [**Create**](https://zarr.readthedocs.io/en/stable/tutorial.html#creating-an-array) N-dimensional arrays with any NumPy `dtype`.
+
+**You can create arrays in many different ways, this is a basic example**
+
+```python
+	import zarr
+	z = zarr.zeros((10000, 10000), chunks=(1000, 1000), dtype='i4')
+	z
+	<zarr.core.Array (10000, 10000) int32>
+```
+
+You can find the complete list of array creation routine [here](https://zarr.readthedocs.io/en/stable/api/creation.html#module-zarr.creation)
+	
 - [**Chunk arrays**](https://zarr.readthedocs.io/en/stable/tutorial.html#chunk-optimizations) along any dimension.
 - [**Compress**](https://zarr.readthedocs.io/en/stable/tutorial.html#compressors) and/or filter chunks using any NumCodecs codec.
 - [**Store arrays**](https://zarr.readthedocs.io/en/stable/tutorial.html#tutorial-storage) in memory, on disk, inside a zip file, on S3, etc...
