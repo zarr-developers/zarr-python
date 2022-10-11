@@ -37,15 +37,12 @@ Contents
 --------
 
 .. toctree::
-    :maxdepth: 2
+    :maxdepth: 1
 
     installation
     tutorial
     api
     spec
-
-.. toctree::
-    :maxdepth: 1
     release
     contributing
 
