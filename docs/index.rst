@@ -4,8 +4,16 @@
 Zarr
 ====
 
-Zarr is a format for the storage of chunked, compressed, N-dimensional arrays.
-These documents describe the Zarr format and its Python implementation.
+Zarr is a format for the storage of chunked, compressed, N-dimensional arrays
+inspired by `HDF5 <https://www.hdfgroup.org/HDF5/>`_, `h5py
+<https://www.h5py.org/>`_ and `bcolz <https://bcolz.readthedocs.io/>`_.
+
+Development of Zarr is supported by the
+`MRC Centre for Genomics and Global Health <https://www.cggh.org>`_
+and the `Chan Zuckerberg Initiative <https://chanzuckerberg.com/>`_.
+
+These documents describe the Zarr Python implementation. More information
+about the Zarr format can be found on the `main website <https://zarr.dev>`_.
 
 Highlights
 ----------
@@ -120,12 +128,6 @@ documentation, code reviews, comments and/or ideas:
 :user:`hailiangzhang <hailiangzhang>`
 :user:`pmav99 <pmav99>`
 :user:`sbalmer <sbalmer>`
-
-Zarr is inspired by `HDF5 <https://www.hdfgroup.org/HDF5/>`_, `h5py
-<https://www.h5py.org/>`_ and `bcolz <https://bcolz.readthedocs.io/>`_.
-
-Development of Zarr is supported by the
-`MRC Centre for Genomics and Global Health <https://www.cggh.org>`_.
 
 Indices and tables
 ------------------
