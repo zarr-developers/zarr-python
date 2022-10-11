@@ -75,8 +75,8 @@ The Zarr source code is hosted on GitHub at the following location:
 You will need your own fork to work on the code. Go to the link above and hit
 the "Fork" button. Then clone your fork to your local machine::
 
-    $ git clone git@github.com:your-user-name/zarr.git
-    $ cd zarr
+    $ git clone git@github.com:your-user-name/zarr-python.git
+    $ cd zarr-python
     $ git remote add upstream git@github.com:zarr-developers/zarr-python.git
 
 Creating a development environment
