@@ -18,13 +18,13 @@ about the Zarr format can be found on the `main website <https://zarr.dev>`_.
 Highlights
 ----------
 
-* Create N-dimensional arrays with any NumPy dtype.
-* Chunk arrays along any dimension.
-* Compress and/or filter chunks using any NumCodecs_ codec.
-* Store arrays in memory, on disk, inside a Zip file, on S3, ...
-* Read an array concurrently from multiple threads or processes.
-* Write to an array concurrently from multiple threads or processes.
-* Organize arrays into hierarchies via groups.
+ * Create N-dimensional arrays with any NumPy dtype.
+ * Chunk arrays along any dimension.
+ * Compress and/or filter chunks using any NumCodecs_ codec.
+ * Store arrays in memory, on disk, inside a Zip file, on S3, ...
+ * Read an array concurrently from multiple threads or processes.
+ * Write to an array concurrently from multiple threads or processes.
+ * Organize arrays into hierarchies via groups.
 
 Contributing
 ------------
@@ -32,19 +32,6 @@ Contributing
 Feedback and bug reports are very welcome, please get in touch via
 the `GitHub issue tracker <https://github.com/zarr-developers/zarr-python/issues>`_. See
 :doc:`contributing` for further information about contributing to Zarr.
-
-Contents
---------
-
-.. toctree::
-    :maxdepth: 1
-
-    installation
-    tutorial
-    api
-    spec
-    release
-    contributing
 
 Projects using Zarr
 -------------------
@@ -128,6 +115,19 @@ documentation, code reviews, comments and/or ideas:
 :user:`hailiangzhang <hailiangzhang>`
 :user:`pmav99 <pmav99>`
 :user:`sbalmer <sbalmer>`
+
+Contents
+--------
+
+.. toctree::
+    :maxdepth: 2
+
+    installation
+    tutorial
+    api
+    spec
+    release
+    contributing
 
 Indices and tables
 ------------------
