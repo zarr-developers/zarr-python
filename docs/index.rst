@@ -43,6 +43,9 @@ Contents
     tutorial
     api
     spec
+
+.. toctree::
+    :maxdepth: 1
     release
     contributing
 
