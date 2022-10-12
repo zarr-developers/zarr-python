@@ -6,7 +6,7 @@ ipytree==0.2.1
 # optional library requirements for services
 # don't let pyup change pinning for azure-storage-blob, need to pin to older
 # version to get compatibility with azure storage emulator on appveyor (FIXME)
-azure-storage-blob==12.13.1 # pyup: ignore
+azure-storage-blob==12.14.0 # pyup: ignore
 redis==4.3.4
 types-redis
 types-setuptools
