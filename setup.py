@@ -30,7 +30,8 @@ setup(
     extras_require={
         'jupyter': [
             'notebook',
-            'ipytree',
+            'ipytree>=0.2.2',
+            'ipywidgets>=8.0.0',
         ],
     },
     python_requires='>=3.8, <4',

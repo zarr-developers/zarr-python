@@ -533,10 +533,9 @@ class TreeViewer:
     def __repr__(self):
         return self.__unicode__()
 
-    def _ipython_display_(self):
+    def _repr_mimebundle_(self, **kwargs):
         tree = tree_widget(self.group, expand=self.expand, level=self.level)
-        tree._ipython_display_()
-        return tree
+        return tree._repr_mimebundle_(**kwargs)
 
 
 def check_array_shape(param, array, shape):
