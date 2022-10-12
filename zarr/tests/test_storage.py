@@ -9,6 +9,7 @@ import shutil
 import tempfile
 from contextlib import contextmanager
 from pickle import PicklingError
+from typing import Any, Mapping, Sequence
 from zipfile import ZipFile
 
 import numpy as np
@@ -2572,3 +2573,29 @@ def test_meta_prefix_6853():
 
     fixtures = group(store=DirectoryStore(str(fixture)))
     assert list(fixtures.arrays())
+
+
+def test_getitems_contexts():
+
+    class MyStore(CountingDict):
+        def __init__(self):
+            super().__init__()
+            self.last_contexts = None
+
+        def getitems(
+            self, keys: Sequence[str], contexts: Mapping[str, Mapping] = {}
+        ) -> Mapping[str, Any]:
+            self.last_contexts = contexts
+            return {k: self.wrapped[k] for k in keys if k in self.wrapped}
+
+    store = MyStore()
+    z = zarr.create(shape=(10,), store=store)
+
+    # By default, not contexts are given to the store's getitems()
+    z[0]
+    assert len(store.last_contexts) == 0
+
+    # Setting a non-default meta_array, will create contexts for the store's getitems()
+    z._meta_array = "my_meta_array"
+    z[0]
+    assert store.last_contexts == {'0': {'meta_array': 'my_meta_array'}}
