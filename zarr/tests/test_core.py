@@ -534,11 +534,12 @@ class TestArray(unittest.TestCase):
         ]
         for shape, chunks in shape_chunks_pairs:
             z = self.create_array(shape=shape, dtype=dtype, chunks=chunks)
+
             expect = np.zeros(shape, dtype=dtype)
             actual = z[:]
             assert_array_equal(expect, actual)
 
-        z.store.close()
+            z.store.close()
 
     def test_array_order(self):
 
