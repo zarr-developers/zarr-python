@@ -533,9 +533,9 @@ class TreeViewer:
     def __repr__(self):
         return self.__unicode__()
 
-    def _repr_mimebundle_(self):
+    def _repr_mimebundle_(self, **kwargs):
         tree = tree_widget(self.group, expand=self.expand, level=self.level)
-        tree._repr_mimebundle_()
+        tree._repr_mimebundle_(**kwargs)
         return tree
 
 
