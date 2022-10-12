@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools", "setuptools-scm", "wheel"]
+requires = ["setuptools>=40.8.0", "setuptools-scm", "wheel"]
 build-backend = "setuptools.build_meta"
 
 
@@ -7,7 +7,9 @@ build-backend = "setuptools.build_meta"
 name = "zarr"
 description = "An implementation of chunked, compressed, N-dimensional arrays for Python"
 readme = { file = "README.md", content-type = "text/markdown" }
-maintainers = [ {name = "Alistair Miles", email = "alimanfoo@googlemail.com"} ]
+maintainers = [
+    { name = "Alistair Miles", email = "alimanfoo@googlemail.com" }
+]
 requires-python = ">=3.8"
 dependencies = [
     'asciitree',
