@@ -36,7 +36,8 @@ classifiers = [
 [project.optional-dependencies]
 jupyter = [
     'notebook',
-    'ipytree',
+    'ipytree>=0.2.2',
+    'ipywidgets>=8.0.0',
 ]
 
 [project.urls]
