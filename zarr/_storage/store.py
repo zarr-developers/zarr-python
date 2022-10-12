@@ -4,8 +4,6 @@ from collections.abc import MutableMapping
 from string import ascii_letters, digits
 from typing import Any, Sequence, List, Mapping, Optional, Union
 
-from numcodecs.ndarray_like import NDArrayLike
-
 from zarr.meta import Metadata2, Metadata3
 from zarr.util import normalize_storage_path
 
@@ -131,28 +129,30 @@ class BaseStore(MutableMapping):
             f"wrap it in Zarr.storage.KVStore. Got {store}"
         )
 
-    def getitems(self, keys: Sequence[str], meta_array: NDArrayLike) -> Mapping[str, Any]:
+    def getitems(
+        self, keys: Sequence[str], contexts: Mapping[str, Mapping] = {}
+    ) -> Mapping[str, Any]:
         """Retrieve data from multiple keys.
 
         Parameters
         ----------
         keys : Iterable[str]
             The keys to retrieve
-        meta_array : array-like
-            An array instance to use for determining the output type. For now, this is
-            only a hint and can be ignore by the implementation, in which case the type
-            of the output is the same as calling __getitem__() for each key in keys.
+        contexts: Mapping[str, Mapping]
+            A mapping of keys to their context. Each context is a mapping of store
+            specific information. E.g. a context could be a dict telling the store
+            the preferred output array type: `{"meta_array": cupy.empty(())}`
 
         Returns
         -------
         Mapping
             A collection mapping the input keys to their results.
 
-        Developer Notes
-        ---------------
+        Notes
+        -----
         This default implementation uses __getitem__() to read each key sequentially and
-        ignores the meta_array argument. Overwrite this method to implement concurrent
-        reads of multiple keys and/or to utilize the meta_array argument.
+        ignores contexts. Overwrite this method to implement concurrent reads of multiple
+        keys and/or to utilize the contexts.
         """
 
         return {k: self[k] for k in keys if k in self}
