@@ -1760,7 +1760,7 @@ def _check_tree(g, expect_bytes, expect_text):
     assert expect_repr == repr(g.tree())
     if ipytree:
         # noinspection PyProtectedMember
-        widget = g.tree()._ipython_display_()
+        widget = g.tree()._repr_mimebundle_()
         isinstance(widget, ipytree.Tree)
 
 
