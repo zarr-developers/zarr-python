@@ -523,6 +523,23 @@ class TestArray(unittest.TestCase):
 
         z.store.close()
 
+    def test_array_empty(self):
+        dtype = 'f8'
+        shape_chunks_pairs = [
+            [(0,), (0,)],
+            [(0, 10), (0, 3)],
+            [(10, 0), (3, 0)],
+            [(10, 0, 12), (3, 0, 5)],
+            [(10, 0, 12), (3, 3, 5)],
+        ]
+        for shape, chunks in shape_chunks_pairs:
+            z = self.create_array(shape=shape, dtype=dtype, chunks=chunks)
+            expect = np.zeros(shape, dtype=dtype)
+            actual = z[:]
+            assert_array_equal(expect, actual)
+
+        z.store.close()
+
     def test_array_order(self):
 
         # 1D
