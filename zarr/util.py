@@ -535,8 +535,7 @@ class TreeViewer:
 
     def _repr_mimebundle_(self, **kwargs):
         tree = tree_widget(self.group, expand=self.expand, level=self.level)
-        tree._repr_mimebundle_(**kwargs)
-        return tree
+        return tree._repr_mimebundle_(**kwargs)
 
 
 def check_array_shape(param, array, shape):
