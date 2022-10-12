@@ -22,11 +22,11 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       #setting up Python v3.0.0
-      - uses: actions/setup-python@v3.0.0
+      - uses: actions/setup-python@v4.2.0
         with:
           python-version: '3.9'
       #using pre-commit latest i.e v2.0.3
-      - uses: pre-commit/action@v2.0.3
+      - uses: pre-commit/action@v3.0.0
       #Running pre-commit for all files
       - name: Pre-Commit-Run
         run: |
