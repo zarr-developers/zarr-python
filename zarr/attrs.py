@@ -133,13 +133,13 @@ class Attributes(MutableMapping):
         d_to_check = d if self._version == 2 else d["attributes"]
         if not all(isinstance(item, str) for item in d_to_check):
             # TODO: Raise an error for non-string keys
-            # raise TypeError("attribute keys must be strings")
-            warnings.warn(
-                "only attribute keys of type 'string' will be allowed in the future",
-                DeprecationWarning,
-                stacklevel=2
-                )
-
+            raise TypeError("attribute keys must be strings")
+            # warnings.warn(
+            #     "only attribute keys of type 'string' will be allowed in the future",
+            #     DeprecationWarning,
+            #     stacklevel=2
+            #     )
+            
             try:
                 d_to_check = {str(k): v for k, v in d_to_check.items()}
             except TypeError as ex:  # pragma: no cover
