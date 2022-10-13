@@ -107,4 +107,4 @@ or via `conda`:
 conda install -c conda-forge zarr
 ```
 
-For more details, including how to install from source, see the [installation documentation](https://zarr.readthedocs.io/en/latest/installation.html).
+For more details, including how to install from source, see the [installation documentation](https://zarr.readthedocs.io/en/stable/installation.html).
