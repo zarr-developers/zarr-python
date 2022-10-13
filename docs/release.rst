@@ -218,7 +218,7 @@ Bug fixes
   By :user:`Ben Jeffery <benjeffery>` :issue:`967`.
 
 * Removed `clobber` argument from `normalize_store_arg`. This enables to change
-  data within a opened consolidated group using mode `"r+"` (i.e region write).
+  data within an opened consolidated group using mode `"r+"` (i.e region write).
   By :user:`Tobias Kölling <d70-t>` :issue:`975`.
 
 .. _release_2.11.0:
