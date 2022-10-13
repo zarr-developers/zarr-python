@@ -278,7 +278,10 @@ class TestAttributes():
         with pytest.warns(DeprecationWarning, match=warning_msg):
             a[1] = "foo"
 
-        with pytest.warns(DeprecationWarning, match=warning_msg):
+        # with pytest.warns(DeprecationWarning, match=warning_msg):
+        #     a.put({1: "foo"})
+        
+        with pytest.raises(TypeError):
             a.put({1: "foo"})
 
         with pytest.warns(DeprecationWarning, match=warning_msg):
