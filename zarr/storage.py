@@ -1779,7 +1779,13 @@ class ZipStore(Store):
             self.zf.writestr(keyinfo, value)
 
     def __delitem__(self, key):
-        raise NotImplementedError
+        # raise NotImplementedError
+        try:
+            value = self[key]
+        except KeyError:
+            raise KeyError("Can not delete a nonexistent key")
+        
+        self[key] = b""
 
     def __eq__(self, other):
         return (
