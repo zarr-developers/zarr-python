@@ -1,0 +1,9 @@
+$PROJECT = "zarr"
+
+
+$ACTIVITIES = ['authors']
+
+$AUTHORS_FILENAME = 'AUTHORS'
+$AUTHORS_SORTBY = 'num_commits'
+$AUTHORS_INCLUDE_ORGS = False
+$AUTHORS_MAILMAP = '.mailmap'
