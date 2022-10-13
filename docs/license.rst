@@ -1,3 +1,6 @@
+License
+=======
+
 Copyright (c) 2015-2022 Zarr Developers <https://github.com/zarr-developers>
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
