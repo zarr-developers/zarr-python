@@ -28,4 +28,5 @@ To work with Zarr source code in development, install from GitHub::
 To verify that Zarr has been fully installed, run the test suite::
 
     $ pip install pytest
+    $ pip install msgpack
     $ python -m pytest -v --pyargs zarr
