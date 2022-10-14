@@ -1787,6 +1787,9 @@ class ZipStore(Store):
         
         self[key] = b""
 
+    def pop(self, key):
+        del self[key]
+        
     def __eq__(self, other):
         return (
             isinstance(other, ZipStore) and
