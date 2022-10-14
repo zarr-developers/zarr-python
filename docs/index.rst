@@ -129,6 +129,7 @@ Contents
     spec
     contributing
     release
+    license
 
 Indices and tables
 ------------------
