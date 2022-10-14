@@ -1780,16 +1780,13 @@ class ZipStore(Store):
 
     def __delitem__(self, key):
         # raise NotImplementedError
-        try:
-            value = self[key]
-        except KeyError:
+        if key not in self:
             raise KeyError("Can not delete a nonexistent key")
         
         self[key] = b""
 
     def pop(self, key):
-        del self[key]
-        
+        del self
     def __eq__(self, other):
         return (
             isinstance(other, ZipStore) and
