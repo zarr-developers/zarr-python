@@ -76,7 +76,9 @@ You will need your own fork to work on the code. Go to the link above and hit
 the "Fork" button. Then clone your fork to your local machine::
 
     $ git clone git@github.com:your-user-name/zarr-python.git
+    
     $ cd zarr-python
+    
     $ git remote add upstream git@github.com:zarr-developers/zarr-python.git
 
 Creating a development environment
@@ -90,9 +92,17 @@ you have cloned the Zarr source code and your current working directory is the r
 the repository, you can do something like the following::
 
     $ mkdir -p ~/pyenv/zarr-dev
+    
     $ python -m venv ~/pyenv/zarr-dev
+    
     $ source ~/pyenv/zarr-dev/bin/activate
+    
+For Windows, use::
+
+    $ source ~/pyenv/zarr-dev/Scripts/activate
+    
     $ pip install -r requirements_dev_minimal.txt -r requirements_dev_numpy.txt
+    
     $ pip install -e .
 
 To verify that your development environment is working, you can run the unit tests::
@@ -109,10 +119,15 @@ It's best to synchronize your fork with the upstream repository, then create a
 new, separate branch for each piece of work you want to do. E.g.::
 
     git checkout main
+    
     git fetch upstream
+    
     git rebase upstream/main
+    
     git push
+    
     git checkout -b shiny-new-feature
+    
     git push -u origin shiny-new-feature
 
 This changes your working directory to the 'shiny-new-feature' branch. Keep any changes in
@@ -123,6 +138,7 @@ To update this branch with latest code from Zarr, you can retrieve the changes f
 the main branch and perform a rebase::
 
     git fetch upstream
+    
     git rebase upstream/main
 
 This will replay your commits on top of the latest Zarr git main. If this leads to
