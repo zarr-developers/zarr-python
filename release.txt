@@ -4,5 +4,8 @@ echo $version
 git tag -a v$version -m v$version
 git push --tags
 # Install `build` if not present with `python -m pip install build` or similar
+# for building Zarr
 python -m build
+# Install `twine` if not present with `python -m pip install twine` or similar
+# for publishing Zarr to PyPI
 twine upload dist/zarr-${version}.tar.gz
