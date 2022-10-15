@@ -3,6 +3,6 @@ tox
 echo $version
 git tag -a v$version -m v$version
 git push --tags
-python -m pip install build
+# Install `build` if not present with `python -m pip install build` or similar
 python -m build
 twine upload dist/zarr-${version}.tar.gz
