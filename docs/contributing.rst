@@ -92,18 +92,33 @@ you have cloned the Zarr source code and your current working directory is the r
 the repository, you can do something like the following::
 
     $ mkdir -p ~/pyenv/zarr-dev
-    
-    $ python -m venv ~/pyenv/zarr-dev
-    
-    $ source ~/pyenv/zarr-dev/bin/activate
-    
-For Windows, use::
 
-    $ source ~/pyenv/zarr-dev/Scripts/activate
-    
+Create the virtual environment::
+    $ python -m venv ~/pyenv/zarr-dev
+
+Activate the virtual environemnt::  
+    $ source ~/pyenv/zarr-dev/bin/activate
+
+Install all the Zarr dependencies::    
     $ pip install -r requirements_dev_minimal.txt -r requirements_dev_numpy.txt
-    
+::
     $ pip install -e .
+
+For Windows, use::
+    mkdir -p ~/pyenv/zarr-dev
+
+::  
+    python -m venv ~/pyenv/zarr-dev
+    
+::    
+    source ~/pyenv/zarr-dev/Scripts/activate
+    
+::    
+    pip install -r requirements_dev_minimal.txt -r requirements_dev_numpy.txt
+    
+::    
+    pip install -e .
+
 
 To verify that your development environment is working, you can run the unit tests::
 
