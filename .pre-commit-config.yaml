@@ -18,7 +18,7 @@ repos:
     rev: v2.1.0
     hooks:
       - id: codespell
-        args: ["-L", "ba,ihs,kake,nd,noe,nwo,te"]
+        args: ["-L", "ba,ihs,kake,nd,noe,nwo,te", "-S", "fixture"]
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v2.3.0
     hooks:
