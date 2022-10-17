@@ -11,7 +11,6 @@ dependencies = [
     'numpy>=1.7',
     'fasteners',
     'numcodecs>=0.10.0',
-    'msgpack-python==0.5.6',
 ]
 
 setup(
