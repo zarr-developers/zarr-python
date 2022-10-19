@@ -1,6 +1,8 @@
 name: Wheels
 
 on: [push, pull_request]
+  tags:
+    - "v[0-9]+.[0-9]+.[0-9]+"
 
 jobs:
 
@@ -11,11 +13,19 @@ jobs:
       fail-fast: false
 
     steps:
+      release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create GitHub release
+        uses: Roang-zero1/github-create-release-action@v2
+        with:
+          version_regex: ^v[[:digit:]]+\.[[:digit:]]+\.[[:digit:]]+
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/checkout@v3
         with:
           submodules: true
           fetch-depth: 0
-
       - uses: actions/setup-python@v4.2.0
         name: Install Python
         with:
