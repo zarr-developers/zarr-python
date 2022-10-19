@@ -247,7 +247,7 @@ latex_elements = {
 #  author, documentclass [howto, manual, or own class]).
 latex_documents = [
     (main_doc, 'zarr.tex', 'zarr Documentation',
-     'Zarr Developers', 'manual'),
+     author, 'manual'),
 ]
 
 # The name of an image file (relative to this directory) to place at the top of
