@@ -311,8 +311,10 @@ texinfo_documents = [
 # Example configuration for intersphinx: refer to the Python standard library.
 # use in refs e.g:
 # :ref:`comparison manual <python:comparisons>`
-intersphinx_mapping = { 'python':('https://docs.python.org/', None),
-                        'numpy': ('https://numpy.org/doc/stable/', None)}
+intersphinx_mapping = {
+    'python': ('https://docs.python.org/', None),
+    'numpy': ('https://numpy.org/doc/stable/', None),
+}
 
 
 # sphinx-copybutton configuration
