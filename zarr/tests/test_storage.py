@@ -1808,19 +1808,16 @@ class TestZipStore(StoreTests):
         with self.create_store() as store:
             store[self.root + 'foo'] = b'bar'
             store[self.root + 'baz'] = b'qux'
-            assert 2 == len(store)
+            assert 2 == len(store)       
 
+    def test_pop(self):
+        # override because not implemented
+        store = self.create_store()
+        store[self.root + 'foo'] = b'bar'
 
-    # def test_pop(self):
-    #     # override because not implemented
-    #     store = self.create_store()
-    #     store[self.root + 'foo'] = b'bar'
+        store.pop(self.root + 'foo')
 
-    #     store.pop(self.root + 'foo')
-
-    #     assert store[self.root + 'foo'] == b""
-    #     # with pytest.raises(NotImplementedError):
-    #     #     store.pop(self.root + 'foo')
+        assert store[self.root + 'foo'] == b""
 
     def test_popitem(self):
         # override because not implemented

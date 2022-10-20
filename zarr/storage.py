@@ -1784,8 +1784,8 @@ class ZipStore(Store):
         try:
             with self.mutex:
                 self.zf.getinfo(key)
-                keyinfo = zipfile.ZipInfo(filename=key,
-                                      date_time=time.localtime(time.time())[:6])
+                keyinfo = zipfile.ZipInfo(filename=key, 
+                                          date_time=time.localtime(time.time())[:6])
                 keyinfo.compress_type = self.compression
                 if keyinfo.filename[-1] == os.sep:
                     keyinfo.external_attr = 0o40775 << 16   # drwxrwxr-x
@@ -1823,6 +1823,7 @@ class ZipStore(Store):
         try:
             with self.mutex:
                 self.zf.getinfo(key)
+
         except KeyError:
             return False
         else:
