@@ -1779,7 +1779,6 @@ class ZipStore(Store):
             self.zf.writestr(keyinfo, value)
 
     def __delitem__(self, key):
-        value = b""
         with self.mutex:
             try:
                 self.zf.getinfo(key)
@@ -1796,7 +1795,7 @@ class ZipStore(Store):
             else:
                 keyinfo.external_attr = 0o644 << 16     # ?rw-r--r--
 
-            self.zf.writestr(keyinfo, value)
+            self.zf.writestr(keyinfo, b"")
 
     def __eq__(self, other):
         return (
