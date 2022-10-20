@@ -1780,13 +1780,31 @@ class ZipStore(Store):
 
     def __delitem__(self, key):
         # raise NotImplementedError
-        if key not in self:
+        value = b""
+        try:
+            with self.mutex:
+                self.zf.getinfo(key)
+                keyinfo = zipfile.ZipInfo(filename=key,
+                                      date_time=time.localtime(time.time())[:6])
+                keyinfo.compress_type = self.compression
+                if keyinfo.filename[-1] == os.sep:
+                    keyinfo.external_attr = 0o40775 << 16   # drwxrwxr-x
+                    keyinfo.external_attr |= 0x10           # MS-DOS directory flag
+                else:
+                    keyinfo.external_attr = 0o644 << 16     # ?rw-r--r--
+
+                self.zf.writestr(keyinfo, value)
+        except KeyError:
             raise KeyError("Can not delete a nonexistent key")
         
-        self[key] = b""
+        # if key not in self:
+        #     
+        # with self.mutex:
+        #     self[key] = b""
 
     def pop(self, key):
-        del self
+        del self[key]
+        
     def __eq__(self, other):
         return (
             isinstance(other, ZipStore) and
