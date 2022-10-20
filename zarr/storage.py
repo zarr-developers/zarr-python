@@ -1786,7 +1786,7 @@ class ZipStore(Store):
             except KeyError:
                 raise KeyError("Cannot delete a non-existent key")
             keyinfo = zipfile.ZipInfo(
-                filename=key, 
+                filename=key,
                 date_time=time.localtime(time.time())[:6]
             )
             keyinfo.compress_type = self.compression
