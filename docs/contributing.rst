@@ -75,8 +75,8 @@ The Zarr source code is hosted on GitHub at the following location:
 You will need your own fork to work on the code. Go to the link above and hit
 the "Fork" button. Then clone your fork to your local machine::
 
-    $ git clone git@github.com:your-user-name/zarr.git
-    $ cd zarr
+    $ git clone git@github.com:your-user-name/zarr-python.git
+    $ cd zarr-python
     $ git remote add upstream git@github.com:zarr-developers/zarr-python.git
 
 Creating a development environment
@@ -166,7 +166,7 @@ locally. To run the Azure Blob Service storage tests, run an Azure
 storage emulator (e.g., azurite) and set the environment variable
 ``ZARR_TEST_ABS=1``. If you're using Docker to run azurite, start the service with::
 
-    docker run --rm -p 10000:10000 mcr.microsoft.com/azure-storage/azurite azurite-blob --loose --blobHost 0.0.0.0 
+    docker run --rm -p 10000:10000 mcr.microsoft.com/azure-storage/azurite azurite-blob --loose --blobHost 0.0.0.0
 
 To run the Mongo DB storage tests, run a Mongo
 server locally and set the environment variable ``ZARR_TEST_MONGO=1``.
@@ -179,14 +179,33 @@ also collected automatically via the Codecov service, and total
 coverage over all builds must be 100% (although individual builds
 may be lower due to Python 2/3 or other differences).
 
-Code standards
-~~~~~~~~~~~~~~
+Code standards - using pre-commit
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 All code must conform to the PEP8 standard. Regarding line length, lines up to 100
 characters are allowed, although please try to keep under 90 wherever possible.
-Conformance can be checked by running::
 
-    $ python -m flake8 --max-line-length=100 zarr
+``Zarr`` uses a set of ``pre-commit`` hooks and the ``pre-commit`` bot to format,
+type-check, and prettify the codebase. ``pre-commit`` can be installed locally by
+running::
+
+    $ python -m pip install pre-commit
+
+The hooks can be installed locally by running::
+
+    $ pre-commit install
+
+This would run the checks every time a commit is created locally. These checks will also run
+on every commit pushed to an open PR, resulting in some automatic styling fixes by the
+``pre-commit`` bot. The checks will by default only run on the files modified by a commit,
+but the checks can be triggered for all the files by running::
+
+    $ pre-commit run --all-files
+
+If you would like to skip the failing checks and push the code for further discussion, use
+the ``--no-verify`` option with ``git commit``.
+
+
 
 Test coverage
 ~~~~~~~~~~~~~
@@ -206,7 +225,7 @@ Documentation
 
 Docstrings for user-facing classes and functions should follow the
 `numpydoc
-<https://github.com/numpy/numpy/blob/main/doc/HOWTO_DOCUMENT.rst.txt>`_
+<https://numpydoc.readthedocs.io/en/stable/format.html#docstring-standard>`_
 standard, including sections for Parameters and Examples. All examples
 should run and pass as doctests under Python 3.8. To run doctests,
 activate your development environment, install optional requirements,
@@ -332,25 +351,34 @@ compatibility in some way.
 Release procedure
 ~~~~~~~~~~~~~~~~~
 
-.. note:: 
+.. note::
 
    Most of the release process is now handled by github workflow which should
-   automatically push a release to PyPI if a tag is pushed. 
+   automatically push a release to PyPI if a tag is pushed.
 
-Checkout and update the main branch::
+Before releasing, make sure that all pull requests which will be
+included in the release have been properly documented in
+`docs/release.rst`.
 
-    $ git checkout main
-    $ git pull
+To make a new release, go to
+https://github.com/zarr-developers/zarr-python/releases and
+click "Draft a new release". Choose a version number prefixed
+with a `v` (e.g. `v0.0.0`). For pre-releases, include the
+appropriate suffix (e.g. `v0.0.0a1` or `v0.0.0rc2`).
 
-Verify all tests pass on all supported Python versions, and docs build::
 
-    $ tox
+Set the description of the release to::
 
-Tag the version (where "X.X.X" stands for the version number, e.g., "2.2.0")::
+    See release notes https://zarr.readthedocs.io/en/stable/release.html#release-0-0-0
 
-    $ version=X.X.X
-    $ git tag -a v$version -m v$version
-    $ git push origin v$version
+replacing the correct version numbers. For pre-release versions,
+the URL should omit the pre-release suffix, e.g. "a1" or "rc1".
 
-Create a GitHub release in order to generate the Zenodo DOI and
-review the automatically generated zarr-feedstock PR.
+After creating the release, the documentation will be built on
+https://readthedocs.io. Full releases will be available under
+`/stable <https://zarr.readthedocs.io/en/stable>`_ while
+pre-releases will be available under
+`/latest <https://zarr.readthedocs.io/en/latest>`_.
+
+Also review and merge the https://github.com/conda-forge/zarr-feedstock
+pull request that will be automatically generated.

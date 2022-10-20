@@ -1,0 +1,7 @@
+.. _spec_v3:
+
+Zarr storage specification version 3 (under development)
+========================================================
+
+The v3 specification has been migrated to its own website,
+https://zarr-specs.readthedocs.io/.

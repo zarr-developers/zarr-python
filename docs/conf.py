@@ -44,6 +44,7 @@ extensions = [
     'sphinx.ext.intersphinx',
     'numpydoc',
     'sphinx_issues',
+    "sphinx_copybutton",
 ]
 
 numpydoc_show_class_members = False
@@ -66,7 +67,7 @@ main_doc = 'index'
 
 # General information about the project.
 project = 'zarr'
-copyright = '2018, Zarr Developers'
+copyright = '2022, Zarr Developers'
 author = 'Zarr Developers'
 
 version = zarr.__version__
@@ -78,7 +79,7 @@ release = zarr.__version__
 #
 # This is also used if you do content translation via gettext catalogs.
 # Usually you set "language" from the command line for these cases.
-language = None
+language = 'en'
 
 # There are two options for replacing |today|: either, you set today to some
 # non-false value, then it is used:
@@ -246,7 +247,7 @@ latex_elements = {
 #  author, documentclass [howto, manual, or own class]).
 latex_documents = [
     (main_doc, 'zarr.tex', 'zarr Documentation',
-     'Zarr Developers', 'manual'),
+     author, 'manual'),
 ]
 
 # The name of an image file (relative to this directory) to place at the top of
@@ -310,5 +311,13 @@ texinfo_documents = [
 # Example configuration for intersphinx: refer to the Python standard library.
 # use in refs e.g:
 # :ref:`comparison manual <python:comparisons>`
-intersphinx_mapping = { 'python':('https://docs.python.org/', None), 
-                        'numpy': ('https://numpy.org/doc/stable/', None)}
+intersphinx_mapping = {
+    'python': ('https://docs.python.org/', None),
+    'numpy': ('https://numpy.org/doc/stable/', None),
+}
+
+
+# sphinx-copybutton configuration
+copybutton_prompt_text = r">>> |\.\.\. |\$ |In \[\d*\]: | {2,5}\.\.\.: | {5,8}: "
+copybutton_line_continuation_character = "\\"
+copybutton_prompt_is_regexp = True

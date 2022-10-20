@@ -1295,10 +1295,6 @@ def open_consolidated(store: StoreLike, metadata_key=".zmetadata", mode="r+", **
         # default is to store within 'consolidated' group on v3
         if not metadata_key.startswith('meta/root/'):
             metadata_key = 'meta/root/consolidated/' + metadata_key
-        if not path:
-            raise ValueError(
-                "path must be provided to open a Zarr 3.x consolidated store"
-            )
 
     # setup metadata store
     meta_store = ConsolidatedStoreClass(store, metadata_key=metadata_key)

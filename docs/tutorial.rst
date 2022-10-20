@@ -275,7 +275,7 @@ Here is an example using a delta filter with the Blosc compressor::
     Chunks initialized : 100/100
 
 For more information about available filter codecs, see the `Numcodecs
-<http://numcodecs.readthedocs.io/>`_ documentation.
+<https://numcodecs.readthedocs.io/>`_ documentation.
 
 .. _tutorial_groups:
 
@@ -293,7 +293,7 @@ To create a group, use the :func:`zarr.group` function::
     <zarr.hierarchy.Group '/'>
 
 Groups have a similar API to the Group class from `h5py
-<http://www.h5py.org/>`_.  For example, groups can contain other groups::
+<https://www.h5py.org/>`_.  For example, groups can contain other groups::
 
     >>> foo = root.create_group('foo')
     >>> bar = foo.create_group('bar')
@@ -427,7 +427,7 @@ Groups also have the :func:`zarr.hierarchy.Group.tree` method, e.g.::
 If you're using Zarr within a Jupyter notebook (requires
 `ipytree <https://github.com/QuantStack/ipytree>`_), calling ``tree()`` will generate an
 interactive tree representation, see the `repr_tree.ipynb notebook
-<http://nbviewer.jupyter.org/github/zarr-developers/zarr-python/blob/main/notebooks/repr_tree.ipynb>`_
+<https://nbviewer.org/github/zarr-developers/zarr-python/blob/main/notebooks/repr_tree.ipynb>`_
 for more examples.
 
 .. _tutorial_attrs:
@@ -735,7 +735,7 @@ database for storage (requires `bsddb3
 
 Also added in Zarr version 2.2 is the :class:`zarr.storage.LMDBStore` class which
 enables the lightning memory-mapped database (LMDB) to be used for storing an array or
-group (requires `lmdb <http://lmdb.readthedocs.io/>`_ to be installed)::
+group (requires `lmdb <https://lmdb.readthedocs.io/>`_ to be installed)::
 
     >>> store = zarr.LMDBStore('data/example.lmdb')
     >>> root = zarr.group(store=store, overwrite=True)
@@ -779,9 +779,9 @@ Distributed/cloud storage
 
 It is also possible to use distributed storage systems. The Dask project has
 implementations of the ``MutableMapping`` interface for Amazon S3 (`S3Map
-<http://s3fs.readthedocs.io/en/latest/api.html#s3fs.mapping.S3Map>`_), Hadoop
+<https://s3fs.readthedocs.io/en/latest/api.html#s3fs.mapping.S3Map>`_), Hadoop
 Distributed File System (`HDFSMap
-<http://hdfs3.readthedocs.io/en/latest/api.html#hdfs3.mapping.HDFSMap>`_) and
+<https://hdfs3.readthedocs.io/en/latest/api.html#hdfs3.mapping.HDFSMap>`_) and
 Google Cloud Storage (`GCSMap
 <http://gcsfs.readthedocs.io/en/latest/api.html#gcsfs.mapping.GCSMap>`_), which
 can be used with Zarr.

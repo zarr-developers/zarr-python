@@ -26,7 +26,7 @@ class ThreadSynchronizer:
 
 class ProcessSynchronizer:
     """Provides synchronization using file locks via the
-    `fasteners <http://fasteners.readthedocs.io/en/latest/api/process_lock.html>`_
+    `fasteners <https://fasteners.readthedocs.io/en/latest/api/inter_process/>`_
     package.
 
     Parameters

@@ -39,7 +39,7 @@ from numcodecs.abc import Codec
 from numcodecs.compat import (
     ensure_bytes,
     ensure_text,
-    ensure_contiguous_ndarray
+    ensure_contiguous_ndarray_like
 )
 from numcodecs.registry import codec_registry
 
@@ -55,7 +55,8 @@ from zarr.meta import encode_array_metadata, encode_group_metadata
 from zarr.util import (buffer_size, json_loads, nolock, normalize_chunks,
                        normalize_dimension_separator,
                        normalize_dtype, normalize_fill_value, normalize_order,
-                       normalize_shape, normalize_storage_path, retry_call)
+                       normalize_shape, normalize_storage_path, retry_call
+                       )
 
 from zarr._storage.absstore import ABSStore  # noqa: F401
 from zarr._storage.store import (_get_hierarchy_metadata,  # noqa: F401
@@ -229,8 +230,14 @@ def _getsize(store: BaseStore, path: Path = None) -> int:
         size = 0
         store_version = getattr(store, '_store_version', 2)
         if store_version == 3:
-            members = store.list_prefix(data_root + path)  # type: ignore
-            members += store.list_prefix(meta_root + path)  # type: ignore
+            if path == '':
+                # have to list the root folders without trailing / in this case
+                members = store.list_prefix(data_root.rstrip('/'))   # type: ignore
+                members += store.list_prefix(meta_root.rstrip('/'))  # type: ignore
+            else:
+                members = store.list_prefix(data_root + path)  # type: ignore
+                members += store.list_prefix(meta_root + path)  # type: ignore
+            # also include zarr.json?
             # members += ['zarr.json']
         else:
             members = listdir(store, path)
@@ -1070,7 +1077,7 @@ class DirectoryStore(Store):
         key = self._normalize_key(key)
 
         # coerce to flat, contiguous array (ideally without copying)
-        value = ensure_contiguous_ndarray(value)
+        value = ensure_contiguous_ndarray_like(value)
 
         # destination path for key
         file_path = os.path.join(self.path, key)
@@ -1755,7 +1762,7 @@ class ZipStore(Store):
     def __setitem__(self, key, value):
         if self.mode == 'r':
             raise ReadOnlyError()
-        value = ensure_contiguous_ndarray(value).view("u1")
+        value = ensure_contiguous_ndarray_like(value).view("u1")
         with self.mutex:
             # writestr(key, value) writes with default permissions from
             # zipfile (600) that are too restrictive, build ZipInfo for
@@ -2097,7 +2104,7 @@ class DBMStore(Store):
 
 
 class LMDBStore(Store):
-    """Storage class using LMDB. Requires the `lmdb <http://lmdb.readthedocs.io/>`_
+    """Storage class using LMDB. Requires the `lmdb <https://lmdb.readthedocs.io/>`_
     package to be installed.
 
 
@@ -2398,6 +2405,7 @@ class LRUStoreCache(Store):
         with self._mutex:
             self._values_cache.clear()
             self._invalidate_keys()
+            self._current_size = 0
 
     def invalidate_values(self):
         """Clear the values cache."""
@@ -2503,7 +2511,7 @@ class SQLiteStore(Store):
         # allow threading if SQLite connections are thread-safe
         #
         # ref: https://www.sqlite.org/releaselog/3_3_1.html
-        # ref: https://bugs.python.org/issue27190
+        # ref: https://github.com/python/cpython/issues/71377
         check_same_thread = True
         if sqlite3.sqlite_version_info >= (3, 3, 1):
             check_same_thread = False
@@ -2600,7 +2608,7 @@ class SQLiteStore(Store):
         kv_list = []
         for dct in args:
             for k, v in dct.items():
-                v = ensure_contiguous_ndarray(v)
+                v = ensure_contiguous_ndarray_like(v)
 
                 # Accumulate key-value pairs for storage
                 kv_list.append((k, v))
@@ -2663,7 +2671,7 @@ class MongoDBStore(Store):
 
     .. note:: This is an experimental feature.
 
-    Requires the `pymongo <https://api.mongodb.com/python/current/>`_
+    Requires the `pymongo <https://pymongo.readthedocs.io/en/stable/>`_
     package to be installed.
 
     Parameters

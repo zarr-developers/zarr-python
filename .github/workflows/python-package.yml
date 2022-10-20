@@ -36,7 +36,7 @@ jobs:
         ports:
           - 27017:27017
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
       with:
         fetch-depth: 0
     - name: Setup Miniconda
@@ -59,7 +59,7 @@ jobs:
         conda activate zarr-env
         python -m pip install --upgrade pip
         python -m pip install -U pip setuptools wheel codecov line_profiler
-        python -m pip install -rrequirements_dev_minimal.txt numpy${{ matrix.numpy_version}} -rrequirements_dev_optional.txt pymongo redis
+        python -m pip install -rrequirements_dev_minimal.txt numpy${{matrix.numpy_version}} -rrequirements_dev_optional.txt pymongo redis
         python -m pip install .
         python -m pip freeze
     - name: Tests
@@ -75,7 +75,7 @@ jobs:
         mkdir ~/blob_emulator
         azurite -l ~/blob_emulator --debug debug.log 2>&1 > stdouterr.log &
         pytest --cov=zarr --cov-config=.coveragerc --doctest-plus --cov-report xml --cov=./ --timeout=300
-    - uses: codecov/codecov-action@v1
+    - uses: codecov/codecov-action@v3
       with:
         #token: ${{ secrets.CODECOV_TOKEN }} # not required for public repos
           #files: ./coverage1.xml,./coverage2.xml # optional
@@ -83,11 +83,3 @@ jobs:
           #name: codecov-umbrella # optional
           #fail_ci_if_error: true # optional (default = false)
         verbose: true # optional (default = false)
-    - name: Linting
-      shell: "bash -l {0}"
-      run: |
-        conda activate zarr-env
-        flake8 zarr
-        mypy zarr
-
-
