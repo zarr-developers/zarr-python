@@ -1795,12 +1795,7 @@ class ZipStore(Store):
 
                 self.zf.writestr(keyinfo, value)
         except KeyError:
-            raise KeyError("Can not delete a nonexistent key")
-        
-        # if key not in self:
-        #     
-        # with self.mutex:
-        #     self[key] = b""
+            raise KeyError("Cannot delete a non-existent key")
         
     def __eq__(self, other):
         return (
