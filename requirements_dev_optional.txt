@@ -23,4 +23,3 @@ h5py==3.7.0
 fsspec==2022.8.2
 s3fs==2022.8.2
 moto[server]>=1.3.14
-werkzeug<2.3.0
