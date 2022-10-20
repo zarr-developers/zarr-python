@@ -1800,7 +1800,7 @@ class TestZipStore(StoreTests):
         store.flush()
         assert store[self.root + 'foo'] == b'bar'
         store.close()
-
+        
         store = self.ZipStoreClass('data/store.zip', mode='r')
         store.flush()  # no-op
 
