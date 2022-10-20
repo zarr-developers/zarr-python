@@ -1801,9 +1801,6 @@ class ZipStore(Store):
         #     
         # with self.mutex:
         #     self[key] = b""
-
-    def pop(self, key):
-        del self[key]
         
     def __eq__(self, other):
         return (
