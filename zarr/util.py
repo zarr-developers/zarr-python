@@ -9,11 +9,20 @@ import time
 import numpy as np
 from asciitree import BoxStyle, LeftAligned
 from asciitree.traversal import Traversal
-from numcodecs.compat import ensure_ndarray, ensure_text
+from collections.abc import Iterable
+from numcodecs.compat import ensure_text, ensure_ndarray_like
 from numcodecs.registry import codec_registry
 from numcodecs.blosc import cbuffer_sizes, cbuffer_metainfo
 
 from typing import Any, Callable, Dict, Optional, Tuple, Union
+
+
+def flatten(arg: Iterable) -> Iterable:
+    for element in arg:
+        if isinstance(element, Iterable) and not isinstance(element, (str, bytes)):
+            yield from flatten(element)
+        else:
+            yield element
 
 
 # codecs to use for object dtype convenience API
@@ -24,10 +33,22 @@ object_codecs = {
 }
 
 
+class NumberEncoder(json.JSONEncoder):
+
+    def default(self, o):
+        # See json.JSONEncoder.default docstring for explanation
+        # This is necessary to encode numpy dtype
+        if isinstance(o, numbers.Integral):
+            return int(o)
+        if isinstance(o, numbers.Real):
+            return float(o)
+        return json.JSONEncoder.default(self, o)
+
+
 def json_dumps(o: Any) -> bytes:
     """Write JSON in a consistent, human-readable way."""
     return json.dumps(o, indent=4, sort_keys=True, ensure_ascii=True,
-                      separators=(',', ': ')).encode('ascii')
+                      separators=(',', ': '), cls=NumberEncoder).encode('ascii')
 
 
 def json_loads(s: str) -> Dict[str, Any]:
@@ -321,7 +342,7 @@ def normalize_storage_path(path: Union[str, bytes, None]) -> str:
 
         # don't allow path segments with just '.' or '..'
         segments = path.split('/')
-        if any([s in {'.', '..'} for s in segments]):
+        if any(s in {'.', '..'} for s in segments):
             raise ValueError("path containing '.' or '..' segment not allowed")
 
     else:
@@ -331,7 +352,7 @@ def normalize_storage_path(path: Union[str, bytes, None]) -> str:
 
 
 def buffer_size(v) -> int:
-    return ensure_ndarray(v).nbytes
+    return ensure_ndarray_like(v).nbytes
 
 
 def info_text_report(items: Dict[Any, Any]) -> str:
@@ -361,7 +382,7 @@ def info_html_report(items) -> str:
     return report
 
 
-class InfoReporter(object):
+class InfoReporter:
 
     def __init__(self, obj):
         self.obj = obj
@@ -375,7 +396,7 @@ class InfoReporter(object):
         return info_html_report(items)
 
 
-class TreeNode(object):
+class TreeNode:
 
     def __init__(self, obj, depth=0, level=None):
         self.obj = obj
@@ -459,7 +480,7 @@ def tree_widget(group, expand, level):
     return result
 
 
-class TreeViewer(object):
+class TreeViewer:
 
     def __init__(self, group, expand=False, level=None):
 
@@ -512,10 +533,9 @@ class TreeViewer(object):
     def __repr__(self):
         return self.__unicode__()
 
-    def _ipython_display_(self):
+    def _repr_mimebundle_(self, **kwargs):
         tree = tree_widget(self.group, expand=self.expand, level=self.level)
-        tree._ipython_display_()
-        return tree
+        return tree._repr_mimebundle_(**kwargs)
 
 
 def check_array_shape(param, array, shape):
@@ -532,7 +552,7 @@ def is_valid_python_name(name):
     return name.isidentifier() and not iskeyword(name)
 
 
-class NoLock(object):
+class NoLock:
     """A lock that doesn't lock."""
 
     def __enter__(self):
@@ -596,12 +616,6 @@ class PartialReadBuffer:
         assert self.buff is not None
         if self.nblocks == 1:
             return
-        blocks_to_decompress = nitems / self.n_per_block
-        blocks_to_decompress = (
-            blocks_to_decompress
-            if blocks_to_decompress == int(blocks_to_decompress)
-            else int(blocks_to_decompress + 1)
-        )
         start_block = int(start / self.n_per_block)
         wanted_decompressed = 0
         while wanted_decompressed < nitems:
@@ -650,3 +664,35 @@ def retry_call(callabl: Callable,
                 time.sleep(wait)
             else:
                 raise
+
+
+def all_equal(value: Any, array: Any):
+    """
+    Test if all the elements of an array are equivalent to a value.
+    If `value` is None, then this function does not do any comparison and
+    returns False.
+    """
+
+    if value is None:
+        return False
+    if not value:
+        # if `value` is falsey, then just 1 truthy value in `array`
+        # is sufficient to return False. We assume here that np.any is
+        # optimized to return on the first truthy value in `array`.
+        try:
+            return not np.any(array)
+        except (TypeError, ValueError):  # pragma: no cover
+            pass
+    if np.issubdtype(array.dtype, np.object_):
+        # we have to flatten the result of np.equal to handle outputs like
+        # [np.array([True,True]), True, True]
+        return all(flatten(np.equal(value, array, dtype=array.dtype)))
+    else:
+        # Numpy errors if you call np.isnan on custom dtypes, so ensure
+        # we are working with floats before calling isnan
+        if np.issubdtype(array.dtype, np.floating) and np.isnan(value):
+            return np.all(np.isnan(array))
+        else:
+            # using == raises warnings from numpy deprecated pattern, but
+            # using np.equal() raises type errors for structured dtypes...
+            return np.all(value == array)

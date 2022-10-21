@@ -1,11 +1,14 @@
 import collections
-from collections.abc import MutableMapping
 import os
+import tempfile
+
+from zarr.storage import Store
+from zarr._storage.v3 import StoreV3
 
 import pytest
 
 
-class CountingDict(MutableMapping):
+class CountingDict(Store):
 
     def __init__(self):
         self.wrapped = dict()
@@ -38,6 +41,10 @@ class CountingDict(MutableMapping):
     def __delitem__(self, key):
         self.counter['__delitem__', key] += 1
         del self.wrapped[key]
+
+
+class CountingDictV3(CountingDict, StoreV3):
+    pass
 
 
 def skip_test_env_var(name):
@@ -74,3 +81,9 @@ def abs_container():
         container_client = blob_service_client.get_container_client("test")
 
     return container_client
+
+
+def mktemp(**kwargs):
+    f = tempfile.NamedTemporaryFile(**kwargs)
+    f.close()
+    return f.name

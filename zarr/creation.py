@@ -1,19 +1,18 @@
-import os
 from warnings import warn
 
 import numpy as np
 from numcodecs.registry import codec_registry
 
+from zarr._storage.store import DEFAULT_ZARR_VERSION
 from zarr.core import Array
 from zarr.errors import (
     ArrayNotFoundError,
     ContainsArrayError,
     ContainsGroupError,
 )
-from zarr.n5 import N5Store
-from zarr.storage import (DirectoryStore, ZipStore, contains_array,
-                          contains_group, default_compressor, init_array,
-                          normalize_storage_path, FSStore)
+from zarr.storage import (contains_array, contains_group, default_compressor,
+                          init_array, normalize_storage_path,
+                          normalize_store_arg)
 from zarr.util import normalize_dimension_separator
 
 
@@ -21,8 +20,8 @@ def create(shape, chunks=True, dtype=None, compressor='default',
            fill_value=0, order='C', store=None, synchronizer=None,
            overwrite=False, path=None, chunk_store=None, filters=None,
            cache_metadata=True, cache_attrs=True, read_only=False,
-           object_codec=None, dimension_separator=None, chunk_cache=None,
-           **kwargs):
+           object_codec=None, dimension_separator=None, chunk_cache=None, write_empty_chunks=True,
+           *, zarr_version=None, meta_array=None, **kwargs):
     """Create an array.
 
     Parameters
@@ -80,7 +79,32 @@ def create(shape, chunks=True, dtype=None, compressor='default',
         A codec to encode object arrays, only needed if dtype=object.
     dimension_separator : {'.', '/'}, optional
         Separator placed between the dimensions of a chunk.
+
         .. versionadded:: 2.8
+
+    write_empty_chunks : bool, optional
+        If True (default), all chunks will be stored regardless of their
+        contents. If False, each chunk is compared to the array's fill value
+        prior to storing. If a chunk is uniformly equal to the fill value, then
+        that chunk is not be stored, and the store entry for that chunk's key
+        is deleted. This setting enables sparser storage, as only chunks with
+        non-fill-value data are stored, at the expense of overhead associated
+        with checking the data of each chunk.
+
+        .. versionadded:: 2.11
+
+    zarr_version : {None, 2, 3}, optional
+        The zarr protocol version of the created array. If None, it will be
+        inferred from ``store`` or ``chunk_store`` if they are provided,
+        otherwise defaulting to 2.
+
+        .. versionadded:: 2.12
+
+    meta_array : array-like, optional
+        An array instance to use for determining arrays to create and return
+        to users. Use `numpy.empty(())` by default.
+
+        .. versionadded:: 2.13
 
     Returns
     -------
@@ -125,9 +149,12 @@ def create(shape, chunks=True, dtype=None, compressor='default',
         <zarr.core.Array (10000, 10000) float64>
 
     """
+    if zarr_version is None and store is None:
+        zarr_version = getattr(chunk_store, '_store_version', DEFAULT_ZARR_VERSION)
 
     # handle polymorphic store arg
-    store = normalize_store_arg(store)
+    store = normalize_store_arg(store, zarr_version=zarr_version)
+    zarr_version = getattr(store, '_store_version', DEFAULT_ZARR_VERSION)
 
     # API compatibility with h5py
     compressor, fill_value = _kwargs_compat(compressor, fill_value, kwargs)
@@ -139,10 +166,13 @@ def create(shape, chunks=True, dtype=None, compressor='default',
         store_separator = getattr(store, "_dimension_separator", None)
         if store_separator not in (None, dimension_separator):
             raise ValueError(
-                f"Specified dimension_separtor: {dimension_separator}"
+                f"Specified dimension_separator: {dimension_separator}"
                 f"conflicts with store's separator: "
                 f"{store_separator}")
     dimension_separator = normalize_dimension_separator(dimension_separator)
+
+    if zarr_version > 2 and path is None:
+        path = '/'
 
     # initialize array metadata
     init_array(store, shape=shape, chunks=chunks, dtype=dtype, compressor=compressor,
@@ -153,30 +183,10 @@ def create(shape, chunks=True, dtype=None, compressor='default',
     # instantiate array
     z = Array(store, path=path, chunk_store=chunk_store, synchronizer=synchronizer,
               cache_metadata=cache_metadata, cache_attrs=cache_attrs, read_only=read_only,
-              chunk_cache=chunk_cache)
+              chunk_cache=chunk_cache, write_empty_chunks=write_empty_chunks, 
+              meta_array=meta_array)
 
     return z
-
-
-def normalize_store_arg(store, clobber=False, storage_options=None, mode='w'):
-    if store is None:
-        return dict()
-    if isinstance(store, os.PathLike):
-        store = os.fspath(store)
-    if isinstance(store, str):
-        mode = mode if clobber else "r"
-        if "://" in store or "::" in store:
-            return FSStore(store, mode=mode, **(storage_options or {}))
-        elif storage_options:
-            raise ValueError("storage_options passed with non-fsspec path")
-        if store.endswith('.zip'):
-            return ZipStore(store, mode=mode)
-        elif store.endswith('.n5'):
-            return N5Store(store)
-        else:
-            return DirectoryStore(store)
-    else:
-        return store
 
 
 def _kwargs_compat(compressor, fill_value, kwargs):
@@ -363,7 +373,7 @@ def array(data, **kwargs):
         data = np.asanyarray(data)
 
     # setup dtype
-    kw_dtype = kwargs.get('dtype', None)
+    kw_dtype = kwargs.get('dtype')
     if kw_dtype is None:
         kwargs['dtype'] = data.dtype
     else:
@@ -372,7 +382,7 @@ def array(data, **kwargs):
     # setup shape and chunks
     data_shape, data_chunks = _get_shape_chunks(data)
     kwargs['shape'] = data_shape
-    kw_chunks = kwargs.get('chunks', None)
+    kw_chunks = kwargs.get('chunks')
     if kw_chunks is None:
         kwargs['chunks'] = data_chunks
     else:
@@ -412,6 +422,10 @@ def open_array(
     storage_options=None,
     partial_decompress=False,
     chunk_cache=None,
+    write_empty_chunks=True,
+    *,
+    zarr_version=None,
+    dimension_separator=None,
     **kwargs
 ):
     """Open an array using file-mode-like semantics.
@@ -463,9 +477,17 @@ def open_array(
         If using an fsspec URL to create the store, these will be passed to
         the backend implementation. Ignored otherwise.
     partial_decompress : bool, optional
-        If True and while the chunk_store is a FSStore and the compresion used
+        If True and while the chunk_store is a FSStore and the compression used
         is Blosc, when getting data from the array chunks will be partially
         read and decompressed when possible.
+    write_empty_chunks : bool, optional
+        If True (default), all chunks will be stored regardless of their
+        contents. If False, each chunk is compared to the array's fill value
+        prior to storing. If a chunk is uniformly equal to the fill value, then
+        that chunk is not be stored, and the store entry for that chunk's key
+        is deleted. This setting enables sparser storage, as only chunks with
+        non-fill-value data are stored, at the expense of overhead associated
+        with checking the data of each chunk.
 
         .. versionadded:: 2.7
     chunk_cache: MutableMapping, optional
@@ -477,6 +499,17 @@ def open_array(
         chunk_cache provided) could result in a slight slowdown as some
         dtypes, like VLenArray, have to go through the encode-decode phase
         before having the correct dtype.
+        .. versionadded:: 2.11
+
+    zarr_version : {None, 2, 3}, optional
+        The zarr protocol version of the array to be opened. If None, it will
+        be inferred from ``store`` or ``chunk_store`` if they are provided,
+        otherwise defaulting to 2.
+    dimension_separator : {None, '.', '/'}, optional
+        Can be used to specify whether the array is in a flat ('.') or nested
+        ('/') format. If None, the appropriate value will be read from `store`
+        when present. Otherwise, defaults to '.' when ``zarr_version == 2``
+        and `/` otherwise.
 
     Returns
     -------
@@ -511,12 +544,29 @@ def open_array(
     # w- or x : create, fail if exists
     # a : read/write if exists, create otherwise (default)
 
+    if zarr_version is None and store is None:
+        zarr_version = getattr(chunk_store, '_store_version', DEFAULT_ZARR_VERSION)
+
     # handle polymorphic store arg
-    clobber = (mode == 'w')
-    store = normalize_store_arg(store, clobber=clobber, storage_options=storage_options, mode=mode)
+    store = normalize_store_arg(store, storage_options=storage_options,
+                                mode=mode, zarr_version=zarr_version)
+    zarr_version = getattr(store, '_store_version', DEFAULT_ZARR_VERSION)
     if chunk_store is not None:
-        chunk_store = normalize_store_arg(chunk_store, clobber=clobber,
-                                          storage_options=storage_options)
+        chunk_store = normalize_store_arg(chunk_store,
+                                          storage_options=storage_options,
+                                          mode=mode,
+                                          zarr_version=zarr_version)
+
+    # respect the dimension separator specified in a store, if present
+    if dimension_separator is None:
+        if hasattr(store, '_dimension_separator'):
+            dimension_separator = store._dimension_separator
+        else:
+            dimension_separator = '.' if zarr_version == 2 else '/'
+
+    if zarr_version == 3 and path is None:
+        path = 'array'  # TODO: raise ValueError instead?
+
     path = normalize_storage_path(path)
 
     # API compatibility with h5py
@@ -538,7 +588,8 @@ def open_array(
         init_array(store, shape=shape, chunks=chunks, dtype=dtype,
                    compressor=compressor, fill_value=fill_value,
                    order=order, filters=filters, overwrite=True, path=path,
-                   object_codec=object_codec, chunk_store=chunk_store)
+                   object_codec=object_codec, chunk_store=chunk_store,
+                   dimension_separator=dimension_separator)
 
     elif mode == 'a':
         if not contains_array(store, path=path):
@@ -547,7 +598,8 @@ def open_array(
             init_array(store, shape=shape, chunks=chunks, dtype=dtype,
                        compressor=compressor, fill_value=fill_value,
                        order=order, filters=filters, path=path,
-                       object_codec=object_codec, chunk_store=chunk_store)
+                       object_codec=object_codec, chunk_store=chunk_store,
+                       dimension_separator=dimension_separator)
 
     elif mode in ['w-', 'x']:
         if contains_group(store, path=path):
@@ -558,7 +610,8 @@ def open_array(
             init_array(store, shape=shape, chunks=chunks, dtype=dtype,
                        compressor=compressor, fill_value=fill_value,
                        order=order, filters=filters, path=path,
-                       object_codec=object_codec, chunk_store=chunk_store)
+                       object_codec=object_codec, chunk_store=chunk_store,
+                       dimension_separator=dimension_separator)
 
     # determine read only status
     read_only = mode == 'r'
@@ -566,7 +619,8 @@ def open_array(
     # instantiate array
     z = Array(store, read_only=read_only, synchronizer=synchronizer,
               cache_metadata=cache_metadata, cache_attrs=cache_attrs, path=path,
-              chunk_store=chunk_store, chunk_cache=chunk_cache)
+              chunk_store=chunk_store, chunk_cache=chunk_cache, 
+              write_empty_chunks=write_empty_chunks)
 
     return z
 
@@ -586,6 +640,7 @@ def _like_args(a, kwargs):
         kwargs.setdefault('compressor', a.compressor)
         kwargs.setdefault('order', a.order)
         kwargs.setdefault('filters', a.filters)
+        kwargs.setdefault('zarr_version', a._version)
     else:
         kwargs.setdefault('compressor', 'default')
         kwargs.setdefault('order', 'C')

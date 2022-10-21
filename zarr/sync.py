@@ -5,7 +5,7 @@ from threading import Lock
 import fasteners
 
 
-class ThreadSynchronizer(object):
+class ThreadSynchronizer:
     """Provides synchronization using thread locks."""
 
     def __init__(self):
@@ -24,9 +24,9 @@ class ThreadSynchronizer(object):
         self.__init__()
 
 
-class ProcessSynchronizer(object):
+class ProcessSynchronizer:
     """Provides synchronization using file locks via the
-    `fasteners <http://fasteners.readthedocs.io/en/latest/api/process_lock.html>`_
+    `fasteners <https://fasteners.readthedocs.io/en/latest/api/inter_process/>`_
     package.
 
     Parameters

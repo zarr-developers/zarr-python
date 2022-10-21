@@ -1,0 +1,7 @@
+version = 1
+
+test_patterns = ["zarr/tests/test_*.py"]
+
+[[analyzers]]
+name = "python"
+enabled = true

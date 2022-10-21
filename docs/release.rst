@@ -1,10 +1,387 @@
 Release notes
 =============
 
+..
+    # Unindent the section between releases in order
+    # to document your changes. On releases it will be
+    # re-indented so that it does not show up in the notes.
+
 .. _unreleased:
 
 Unreleased
 ----------
+..
+    # .. warning::
+    #    Pre-release! Use :command:`pip install --pre zarr` to evaluate this release.
+
+Maintenance
+~~~~~~~~~~~
+
+* Migrate to ``pyproject.toml`` and remove redundant infrastructure.
+  By :user:`Saransh Chopra <Saransh-cpp>` :issue:`1158`.
+
+.. _release_2.13.3:
+
+2.13.3
+------
+
+* Improve performance of slice selections with steps by omitting chunks with no relevant
+  data.
+  By :user:`Richard Shaw <jrs65>` :issue:`843`.
+
+.. _release_2.13.2:
+
+2.13.2
+------
+
+* Fix test failure on conda-forge builds (again).
+  By :user:`Josh Moore <joshmoore>`; see
+  `zarr-feedstock#65 <https://github.com/conda-forge/zarr-feedstock/pull/65>`_.
+
+.. _release_2.13.1:
+
+2.13.1
+------
+
+* Fix test failure on conda-forge builds.
+  By :user:`Josh Moore <joshmoore>`; see
+  `zarr-feedstock#65 <https://github.com/conda-forge/zarr-feedstock/pull/65>`_.
+
+.. _release_2.13.0:
+
+2.13.0
+------
+
+Major changes
+~~~~~~~~~~~~~
+
+* **Support of alternative array classes** by introducing a new argument,
+  meta_array, that specifies the type/class of the underlying array. The
+  meta_array argument can be any class instance that can be used as the like
+  argument in NumPy (see `NEP 35
+  <https://numpy.org/neps/nep-0035-array-creation-dispatch-with-array-function.html>`_).
+  enabling support for CuPy through, for example, the creation of a CuPy CPU
+  compressor.
+  By :user:`Mads R. B. Kristensen <madsbk>` :issue:`934`.
+
+* **Remove support for Python 3.7** in concert with NumPy dependency.
+  By :user:`Davis Bennett <d-v-b>` :issue:`1067`.
+
+* **Zarr v3: add support for the default root path** rather than requiring
+  that all API users pass an explicit path.
+  By :user:`Gregory R. Lee <grlee77>` :issue:`1085`, :issue:`1142`.
+
+
+Bug fixes
+~~~~~~~~~
+
+* Remove/relax erroneous "meta" path check (**regression**).
+  By :user:`Gregory R. Lee <grlee77>` :issue:`1123`.
+
+* Cast all attribute keys to strings (and issue deprecation warning).
+  By :user:`Mattia Almansi <malmans2>` :issue:`1066`.
+
+* Fix bug in N5 storage that prevented arrays located in the root of the hierarchy from
+  bearing the `n5` keyword. Along with fixing this bug, new tests were added for N5 routines
+  that had previously been excluded from testing, and type annotations were added to the N5 codebase.
+  By :user:`Davis Bennett <d-v-b>` :issue:`1092`.
+
+* Fix bug in LRUEStoreCache in which the current size wasn't reset on invalidation.
+  By :user:`BGCMHou <BGCMHou>` and :user:`Josh Moore <joshmoore>` :issue:`1076`, :issue:`1077`.
+
+* Remove erroneous check that disallowed array keys starting with "meta".
+  By :user:`Gregory R. Lee <grlee77>` :issue:`1105`.
+
+Documentation
+~~~~~~~~~~~~~
+
+* Typo fixes to close quotes. By :user:`Pavithra Eswaramoorthy <pavithraes>`
+
+* Added copy button to documentation.
+  By :user:`Altay Sansal <tasansal>` :issue:`1124`.
+
+Maintenance
+~~~~~~~~~~~
+
+* Simplify release docs.
+  By :user:`Josh Moore <joshmoore>` :issue:`1119`.
+
+* Pin werkzeug to prevent test hangs.
+  By :user:`Davis Bennett <d-v-b>` :issue:`1098`.
+
+* Fix a few DeepSource.io alerts
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1080`.
+
+* Fix URLs.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>`, :issue:`1074`.
+
+* Fix spelling.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>`, :issue:`1073`.
+
+* Update GitHub issue templates with `YAML` format.
+  By :user:`Saransh Chopra <Saransh-cpp>` :issue:`1079`.
+
+* Remove option to return None from _ensure_store.
+  By :user:`Greggory Lee <grlee77>` :issue:`1068`.
+
+* Fix a typo of "integers".
+  By :user:`Richard Scott <RichardScottOZ>` :issue:`1056`.
+
+.. _release_2.12.0:
+
+2.12.0
+------
+
+Enhancements
+~~~~~~~~~~~~
+
+* **Add support for reading and writing Zarr V3.** The new `zarr._store.v3`
+  package has the necessary classes and functions for evaluating Zarr V3.
+  Since the format is not yet finalized, the classes and functions are not
+  automatically imported into the regular `zarr` name space. Setting the
+  `ZARR_V3_EXPERIMENTAL_API` environment variable will activate them.
+  By :user:`Greggory Lee <grlee77>`; :issue:`898`, :issue:`1006`, and :issue:`1007`
+  as well as by :user:`Josh Moore <joshmoore>` :issue:`1032`.
+
+* **Create FSStore from an existing fsspec filesystem**. If you have created
+  an fsspec filesystem outside of Zarr, you can now pass it as a keyword
+  argument to ``FSStore``.
+  By :user:`Ryan Abernathey <rabernat>`; :issue:`911`.
+
+* Add numpy encoder class for json.dumps
+  By :user:`Eric Prestat <ericpre>`; :issue:`933`.
+
+* Appending performance improvement to Zarr arrays, e.g., when writing to S3.
+  By :user:`hailiangzhang <hailiangzhang>`; :issue:`1014`.
+
+* Add number encoder for ``json.dumps`` to support numpy integers in
+  ``chunks`` arguments. By :user:`Eric Prestat <ericpre>` :issue:`697`.
+
+Bug fixes
+~~~~~~~~~
+
+* Fix bug that made it impossible to create an ``FSStore`` on unlistable filesystems
+  (e.g. some HTTP servers).
+  By :user:`Ryan Abernathey <rabernat>`; :issue:`993`.
+
+
+Documentation
+~~~~~~~~~~~~~
+
+* Update resize doc to clarify surprising behavior.
+  By :user:`hailiangzhang <hailiangzhang>`; :issue:`1022`.
+
+Maintenance
+~~~~~~~~~~~
+
+* Added Pre-commit configuration, incl. Yaml Check.
+  By :user:`Shivank Chaudhary <Alt-Shivam>`; :issue:`1015`, :issue:`1016`.
+
+* Fix URL to renamed file in Blosc repo.
+  By :user:`Andrew Thomas <amcnicho>` :issue:`1028`.
+
+* Activate Py 3.10 builds.
+  By :user:`Josh Moore <joshmoore>` :issue:`1027`.
+
+* Make all unignored zarr warnings errors.
+  By :user:`Josh Moore <joshmoore>` :issue:`1021`.
+
+
+.. _release_2.11.3:
+
+2.11.3
+------
+
+Bug fixes
+~~~~~~~~~
+
+* Fix missing case to fully revert change to default write_empty_chunks.
+  By :user:`Tom White <tomwhite>`; :issue:`1005`.
+
+
+.. _release_2.11.2:
+
+2.11.2
+------
+
+Bug fixes
+~~~~~~~~~
+
+* Changes the default value of ``write_empty_chunks`` to ``True`` to prevent
+  unanticipated data losses when the data types do not have a proper default
+  value when empty chunks are read back in.
+  By :user:`Vyas Ramasubramani <vyasr>`; :issue:`965`, :issue:`1001`.
+
+.. _release_2.11.1:
+
+2.11.1
+------
+
+Bug fixes
+~~~~~~~~~
+
+* Fix bug where indexing with a scalar numpy value returned a single-value array.
+  By :user:`Ben Jeffery <benjeffery>` :issue:`967`.
+
+* Removed `clobber` argument from `normalize_store_arg`. This enables to change
+  data within an opened consolidated group using mode `"r+"` (i.e region write).
+  By :user:`Tobias Kölling <d70-t>` :issue:`975`.
+
+.. _release_2.11.0:
+
+2.11.0
+------
+
+Enhancements
+~~~~~~~~~~~~
+
+* **Sparse changes with performance impact!** One of the advantages of the Zarr
+  format is that it is sparse, which means that chunks with no data (more
+  precisely, with data equal to the fill value, which is usually 0) don't need
+  to be written to disk at all. They will simply be assumed to be empty at read
+  time. However, until this release, the Zarr library would write these empty
+  chunks to disk anyway. This changes in this version: a small performance
+  penalty at write time leads to significant speedups at read time and in
+  filesystem operations in the case of sparse arrays. To revert to the old
+  behavior, pass the argument ``write_empty_chunks=True`` to the array creation
+  function. By :user:`Juan Nunez-Iglesias <jni>`; :issue:`853` and
+  :user:`Davis Bennett <d-v-b>`; :issue:`738`.
+
+* **Fancy indexing**. Zarr arrays now support NumPy-style fancy indexing with
+  arrays of integer coordinates. This is equivalent to using zarr.Array.vindex.
+  Mixing slices and integer arrays is not supported.
+  By :user:`Juan Nunez-Iglesias <jni>`; :issue:`725`.
+
+* **New base class**. This release of Zarr Python introduces a new
+  ``BaseStore`` class that all provided store classes implemented in Zarr
+  Python now inherit from. This is done as part of refactoring to enable future
+  support of the Zarr version 3 spec. Existing third-party stores that are a
+  MutableMapping (e.g. dict) can be converted to a new-style key/value store
+  inheriting from ``BaseStore`` by passing them as the argument to the new
+  ``zarr.storage.KVStore`` class. For backwards compatibility, various
+  higher-level array creation and convenience functions still accept plain
+  Python dicts or other mutable mappings for the ``store`` argument, but will
+  internally convert these to a ``KVStore``.
+  By :user:`Greggory Lee <grlee77>`; :issue:`839`, :issue:`789`, and :issue:`950`.
+
+* Allow to assign array ``fill_values`` and update metadata accordingly.
+  By :user:`Ryan Abernathey <rabernat>`, :issue:`662`.
+
+* Allow to update array fill_values
+  By :user:`Matthias Bussonnier <Carreau>` :issue:`665`.
+
+Bug fixes
+~~~~~~~~~
+
+* Fix bug where the checksum of zipfiles is wrong
+  By :user:`Oren Watson <orenwatson>` :issue:`930`.
+
+* Fix consolidate_metadata with FSStore.
+  By :user:`Joe Hamman <jhamman>` :issue:`916`.
+
+* Unguarded next inside generator.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`889`.
+
+Documentation
+~~~~~~~~~~~~~
+
+* Update docs creation of dev env.
+  By :user:`Ray Bell <raybellwaves>` :issue:`921`.
+
+* Update docs to use ``python -m pytest``.
+  By :user:`Ray Bell <raybellwaves>` :issue:`923`.
+
+* Fix versionadded tag in zarr.core.Array docstring.
+  By :user:`Juan Nunez-Iglesias <jni>` :issue:`852`.
+
+* Doctest seem to be stricter now, updating tostring() to tobytes().
+  By :user:`John Kirkham <jakirkham>` :issue:`907`.
+
+* Minor doc fix.
+  By :user:`Mads R. B. Kristensen <madsbk>` :issue:`937`.
+
+Maintenance
+~~~~~~~~~~~
+
+* Upgrade MongoDB in test env.
+  By :user:`Joe Hamman <jhamman>` :issue:`939`.
+
+* Pass dimension_separator on fixture generation.
+  By :user:`Josh Moore <joshmoore>` :issue:`858`.
+
+* Activate Python 3.9 in GitHub Actions.
+  By :user:`Josh Moore <joshmoore>` :issue:`859`.
+
+* Drop shortcut ``fsspec[s3]`` for dependency.
+  By :user:`Josh Moore <joshmoore>` :issue:`920`.
+
+* and a swath of code-linting improvements by :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>`:
+
+  - Unnecessary comprehension (:issue:`899`)
+
+  - Unnecessary ``None`` provided as default (:issue:`900`)
+
+  - use an if ``expression`` instead of `and`/`or` (:issue:`888`)
+
+  - Remove unnecessary literal (:issue:`891`)
+
+  - Decorate a few method with `@staticmethod` (:issue:`885`)
+
+  - Drop unneeded ``return`` (:issue:`884`)
+
+  - Drop explicit ``object`` inheritance from ``class``-es (:issue:`886`)
+
+  - Unnecessary comprehension (:issue:`883`)
+
+  - Codespell configuration (:issue:`882`)
+
+  - Fix typos found by codespell (:issue:`880`)
+
+  - Proper C-style formatting for integer (:issue:`913`)
+
+  - Add LGTM.com / DeepSource.io configuration files (:issue:`909`)
+
+.. _release_2.10.3:
+
+2.10.3
+------
+
+Bug fixes
+~~~~~~~~~
+
+* N5 keywords now emit UserWarning instead of raising a ValueError.
+  By :user:`Boaz Mohar <boazmohar>`; :issue:`860`.
+
+* blocks_to_decompress not used in read_part function.
+  By :user:`Boaz Mohar <boazmohar>`; :issue:`861`.
+
+* defines blocksize for array, updates hexdigest values.
+  By :user:`Andrew Fulton <andrewfulton9>`; :issue:`867`.
+
+* Fix test failure on Debian and conda-forge builds.
+  By :user:`Josh Moore <joshmoore>`; :issue:`871`.
+
+.. _release_2.10.2:
+
+2.10.2
+------
+
+Bug fixes
+~~~~~~~~~
+
+* Fix NestedDirectoryStore datasets without dimension_separator metadata.
+  By :user:`Josh Moore <joshmoore>`; :issue:`850`.
+
+.. _release_2.10.1:
+
+2.10.1
+------
+
+Bug fixes
+~~~~~~~~~
+
+* Fix regression by setting normalize_keys=False in fsstore constructor.
+  By :user:`Davis Bennett <d-v-b>`; :issue:`842`.
 
 .. _release_2.10.0:
 
@@ -79,7 +456,7 @@ Maintenance
 ~~~~~~~~~~~
 
 * Correct conda-forge deployment of Zarr.
-  By :user:`Josh Moore <joshmoore>`; :issue:`XXX`.
+  By :user:`Josh Moore <joshmoore>`; :issue:`819`.
 
 .. _release_2.9.0:
 
@@ -140,7 +517,7 @@ Bug fixes
 
 * FSStore: default to normalize_keys=False
   By :user:`Josh Moore <joshmoore>`; :issue:`755`.
-* ABSStore: compatibility with ``azure.storage.python>=12`` 
+* ABSStore: compatibility with ``azure.storage.python>=12``
   By :user:`Tom Augspurger <tomaugspurger>`; :issue:`618`
 
 
@@ -281,11 +658,11 @@ This release of Zarr Python is the first release of Zarr to not support Python 3
   <https://github.com/zarr-developers/zarr-python/issues/536#issuecomment-721253094>`_ for some performance analysis
   showing order of magnitude faster response in some benchmark.
 
-See `this link <https://github.com/zarr-developers/zarr-python/milestone/11?closed=1>` for the full list of closed and
-merged PR tagged with the 2.6 milestone.
+See `this link <https://github.com/zarr-developers/zarr-python/milestone/11?closed=1>`_
+for the full list of closed and merged PR tagged with the 2.6 milestone.
 
 * Add ability to partially read and decompress arrays, see :issue:`667`. It is
-  only available to chunks stored using fs-spec and using bloc as a compressor.
+  only available to chunks stored using fsspec and using Blosc as a compressor.
 
   For certain analysis case when only a small portion of chunks is needed it can
   be advantageous to only access and decompress part of the chunks. Doing
@@ -305,7 +682,7 @@ This release will be the last to support Python 3.5, next version of Zarr will b
 
 * `DirectoryStore` now uses `os.scandir`, which should make listing large store
   faster, :issue:`563`
-  
+
 * Remove a few remaining Python 2-isms.
   By :user:`Poruri Sai Rahul <rahulporuri>`; :issue:`393`.
 
@@ -316,7 +693,7 @@ This release will be the last to support Python 3.5, next version of Zarr will b
   without ``ipytree`` installed.
   By :user:`Zain Patel <mzjp2>`; :issue:`537`
 
-* Add typing informations to many of the core functions :issue:`589`
+* Add typing information to many of the core functions :issue:`589`
 
 * Explicitly close stores during testing.
   By :user:`Elliott Sales de Andrade <QuLogic>`; :issue:`442`
@@ -325,7 +702,7 @@ This release will be the last to support Python 3.5, next version of Zarr will b
   ``zarr.errors``  have been replaced by ``ValueError`` subclasses. The corresponding
   ``err_*`` function have been removed. :issue:`590`, :issue:`614`)
 
-* Improve consistency of terminology regarding arrays and datasets in the 
+* Improve consistency of terminology regarding arrays and datasets in the
   documentation.
   By :user:`Josh Moore <joshmoore>`; :issue:`571`.
 
@@ -623,7 +1000,7 @@ Enhancements
   properties that enable a selection of items in an array to be retrieved or
   updated. See the :ref:`tutorial_indexing` tutorial section for more
   information. There is also a `notebook
-  <https://github.com/zarr-developers/zarr-python/blob/master/notebooks/advanced_indexing.ipynb>`_
+  <https://github.com/zarr-developers/zarr-python/blob/main/notebooks/advanced_indexing.ipynb>`_
   with extended examples and performance benchmarks. :issue:`78`, :issue:`89`,
   :issue:`112`, :issue:`172`.
 
@@ -1046,4 +1423,4 @@ See `v0.4.0 release notes on GitHub
 See `v0.3.0 release notes on GitHub
 <https://github.com/zarr-developers/zarr-python/releases/tag/v0.3.0>`_.
 
-.. _Numcodecs: http://numcodecs.readthedocs.io/
+.. _Numcodecs: https://numcodecs.readthedocs.io/

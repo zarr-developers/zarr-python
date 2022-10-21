@@ -4,10 +4,11 @@ channels:
 dependencies:
   - wheel
   - numcodecs >= 0.6.4
-  - numpy >= 1.7
+  - numpy >= 1.20
   - pip
   - pip:
     - asciitree
     - fasteners
     - pytest
+    - pytest-timeout
     - setuptools_scm

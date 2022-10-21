@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: ✨ Propose a new major feature
+    url: https://github.com/zarr-developers/zarr-specs
+    about: A new major feature should be discussed in the Zarr specifications repository.
+  - name: ❓ Discuss something on gitter
+    url: https://gitter.im/zarr-developers/community
+    about: For questions like "How do I do X with Zarr?", you can move to our Gitter channel.
+  - name: ❓ Discuss something on GitHub Discussions
+    url: https://github.com/zarr-developers/zarr-python/discussions
+    about: For questions like "How do I do X with Zarr?", you can move to GitHub Discussions.

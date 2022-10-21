@@ -1,15 +1,18 @@
 import numcodecs
+import pytest
 
 import zarr
+from zarr.util import InfoReporter
 
 
-def test_info():
+@pytest.mark.parametrize('array_size', [10, 15000])
+def test_info(array_size):
 
     # setup
     g = zarr.group(store=dict(), chunk_store=dict(),
                    synchronizer=zarr.ThreadSynchronizer())
     g.create_group('foo')
-    z = g.zeros('bar', shape=10, filters=[numcodecs.Adler32()])
+    z = g.zeros('bar', shape=array_size, filters=[numcodecs.Adler32()])
 
     # test group info
     items = g.info_items()
@@ -20,6 +23,10 @@ def test_info():
     ])
     assert expected_keys == keys
 
+    # can also get a string representation of info via the info attribute
+    assert isinstance(g.info, InfoReporter)
+    assert "Type" in repr(g.info)
+
     # test array info
     items = z.info_items()
     keys = sorted([k for k, _ in items])
@@ -29,3 +36,7 @@ def test_info():
         'No. bytes stored', 'Storage ratio', 'Chunks initialized', 'Name'
     ])
     assert expected_keys == keys
+
+    # can also get a string representation of info via the info attribute
+    assert isinstance(z.info, InfoReporter)
+    assert "Type" in repr(z.info)
