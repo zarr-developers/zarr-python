@@ -130,6 +130,7 @@ Contents
     contributing
     release
     license
+    Official Website<https://zarr.dev/>
 
 Indices and tables
 ------------------
