@@ -6,13 +6,19 @@ Release notes
     # to document your changes. On releases it will be
     # re-indented so that it does not show up in the notes.
 
-    .. _unreleased:
+.. _unreleased:
 
-    Unreleased
-    ----------
+Unreleased
+----------
 ..
     # .. warning::
     #    Pre-release! Use :command:`pip install --pre zarr` to evaluate this release.
+
+Maintenance
+~~~~~~~~~~~
+
+* Migrate to ``pyproject.toml`` and remove redundant infrastructure.
+  By :user:`Saransh Chopra <Saransh-cpp>` :issue:`1158`.
 
 .. _release_2.13.3:
 
@@ -218,7 +224,7 @@ Bug fixes
   By :user:`Ben Jeffery <benjeffery>` :issue:`967`.
 
 * Removed `clobber` argument from `normalize_store_arg`. This enables to change
-  data within a opened consolidated group using mode `"r+"` (i.e region write).
+  data within an opened consolidated group using mode `"r+"` (i.e region write).
   By :user:`Tobias Kölling <d70-t>` :issue:`975`.
 
 .. _release_2.11.0:

@@ -179,14 +179,33 @@ also collected automatically via the Codecov service, and total
 coverage over all builds must be 100% (although individual builds
 may be lower due to Python 2/3 or other differences).
 
-Code standards
-~~~~~~~~~~~~~~
+Code standards - using pre-commit
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 All code must conform to the PEP8 standard. Regarding line length, lines up to 100
 characters are allowed, although please try to keep under 90 wherever possible.
-Conformance can be checked by running::
 
-    $ python -m flake8 --max-line-length=100 zarr
+``Zarr`` uses a set of ``pre-commit`` hooks and the ``pre-commit`` bot to format,
+type-check, and prettify the codebase. ``pre-commit`` can be installed locally by
+running::
+
+    $ python -m pip install pre-commit
+
+The hooks can be installed locally by running::
+
+    $ pre-commit install
+
+This would run the checks every time a commit is created locally. These checks will also run
+on every commit pushed to an open PR, resulting in some automatic styling fixes by the
+``pre-commit`` bot. The checks will by default only run on the files modified by a commit,
+but the checks can be triggered for all the files by running::
+
+    $ pre-commit run --all-files
+
+If you would like to skip the failing checks and push the code for further discussion, use
+the ``--no-verify`` option with ``git commit``.
+
+
 
 Test coverage
 ~~~~~~~~~~~~~
