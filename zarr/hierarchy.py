@@ -441,9 +441,9 @@ class Group(MutableMapping):
                          zarr_version=self._version, meta_array=self._meta_array)
         elif contains_group(self._store, path, explicit_only=True):
             return Group(self._store, read_only=self._read_only, path=path,
-                         chunk_store=self._chunk_store, chunk_cache=self._chunk_cache, cache_attrs=self.attrs.cache,
-                         synchronizer=self._synchronizer, zarr_version=self._version,
-                         meta_array=self._meta_array)
+                         chunk_store=self._chunk_store, chunk_cache=self._chunk_cache,
+                         cache_attrs=self.attrs.cache, synchronizer=self._synchronizer,
+                         zarr_version=self._version, meta_array=self._meta_array)
         elif self._version == 3:
             implicit_group = meta_root + path + '/'
             # non-empty folder in the metadata path implies an implicit group
@@ -863,7 +863,8 @@ class Group(MutableMapping):
 
         return Group(self._store, path=path, read_only=self._read_only,
                      chunk_store=self._chunk_store, cache_attrs=self.attrs.cache,
-                     synchronizer=self._synchronizer, chunk_cache=self._chunk_cache, zarr_version=self._version)
+                     synchronizer=self._synchronizer, chunk_cache=self._chunk_cache,
+                     zarr_version=self._version)
 
     def create_groups(self, *names, **kwargs):
         """Convenience method to create multiple groups in a single call."""
@@ -907,7 +908,7 @@ class Group(MutableMapping):
 
         return Group(self._store, path=path, read_only=self._read_only,
                      chunk_store=self._chunk_store, cache_attrs=self.attrs.cache,
-                     synchronizer=self._synchronizer, chunk_cache=self._chunk_cache, 
+                     synchronizer=self._synchronizer, chunk_cache=self._chunk_cache,
                      zarr_version=self._version)
 
     def require_groups(self, *names):
@@ -1295,7 +1296,8 @@ def group(store=None, overwrite=False, chunk_store=None,
 
 
 def open_group(store=None, mode='a', cache_attrs=True, synchronizer=None, path=None,
-               chunk_store=None, storage_options=None, chunk_cache=None, *, zarr_version=None, meta_array=None):
+               chunk_store=None, storage_options=None, chunk_cache=None, *, zarr_version=None,
+               meta_array=None):
     """Open a group using file-mode-like semantics.
 
     Parameters

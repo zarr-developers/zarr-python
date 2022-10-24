@@ -2610,6 +2610,8 @@ class TestArrayWithLRUChunkCache(TestArray):
             z[:] = 42
         with pytest.raises(ValueError):
             z[...] = np.array([1, 2, 3])
+
+
 fsspec_mapper_kwargs = {
     "check": True,
     "create": True,

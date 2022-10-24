@@ -307,9 +307,10 @@ class MutableMappingStoreTests(object):
 
         store.close()
 
+
 class StoreTests(MutableMappingStoreTests):
     """Abstract store tests."""
-    
+
     def test_context_manager(self):
         with self.create_store():
             pass
@@ -1995,7 +1996,7 @@ class TestRedisStore(StoreTests):
 class CacheTests:
 
     CountingClass = CountingDict
-    
+
     def create_store(self):  # pragma: no cover
         raise NotImplementedError
 
@@ -2016,7 +2017,7 @@ class CacheTests:
         assert 1 == store.counter['__setitem__', bar_key]
 
         # setup cache
-        cache = self.create_cache(store, max_size=None)
+        cache = self.create_cache(store)
         assert 0 == cache.hits
         assert 0 == cache.misses
 
@@ -2199,7 +2200,7 @@ class TestLRUStoreCache(StoreTests, CacheTests):
         assert 0 == store.counter['__contains__', foo_key]
         assert 0 == store.counter['__iter__']
         assert 0 == store.counter['keys']
-        cache = self.create_cache(store=store, max_size=None)
+        cache = self.create_cache(store)
 
         # keys should be cached on first call
         keys = sorted(cache.keys())

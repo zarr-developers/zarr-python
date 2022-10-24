@@ -2158,9 +2158,6 @@ class Array:
         # attempt to delete chunk if it only contains the fill value
         if (not self.write_empty_chunks) and all_equal(self.fill_value, cdata):
             self._chunk_delitem(ckey)
-            if self._chunk_cache is not None:
-                #TODO christian
-                self._chunk_cache
         else:
             self.chunk_store[ckey] = self._encode_chunk(cdata)
 

@@ -183,7 +183,7 @@ def create(shape, chunks=True, dtype=None, compressor='default',
     # instantiate array
     z = Array(store, path=path, chunk_store=chunk_store, synchronizer=synchronizer,
               cache_metadata=cache_metadata, cache_attrs=cache_attrs, read_only=read_only,
-              chunk_cache=chunk_cache, write_empty_chunks=write_empty_chunks, 
+              chunk_cache=chunk_cache, write_empty_chunks=write_empty_chunks,
               meta_array=meta_array)
 
     return z
@@ -619,7 +619,7 @@ def open_array(
     # instantiate array
     z = Array(store, read_only=read_only, synchronizer=synchronizer,
               cache_metadata=cache_metadata, cache_attrs=cache_attrs, path=path,
-              chunk_store=chunk_store, chunk_cache=chunk_cache, 
+              chunk_store=chunk_store, chunk_cache=chunk_cache,
               write_empty_chunks=write_empty_chunks)
 
     return z
