@@ -3,10 +3,49 @@
 Tutorial
 ========
 
+.. _tutorial_what_is_zarr?:
+
+What is Zarr?
+-------------
+
+Zarr is a format used to create N-dimensional arrays with any NumPy `dtype <https://numpy.org/doc/stable/reference/arrays.dtypes.html#arrays-dtypes>`_
+
+- Chunk arrays along any dimension
+- Compress and/or filter chunks using any NumCodecs codec
+- Flexible storage of arrays
+- Read or write an array concurrently from multiple threads or processes
+
 Zarr provides classes and functions for working with N-dimensional arrays that
 behave like NumPy arrays but whose data is divided into chunks and each chunk is
 compressed. If you are already familiar with HDF5 then Zarr arrays provide
 similar functionality, but with some additional flexibility.
+
+.. _tutorial_prerequisites:
+
+Prerequisites
+-------------
+
+You'll need to know a bit of Python. For a refresher, see the `Python tutorial <https://docs.python.org/tutorial/>`_.
+
+You'll need to know a bit of linux command line. For a refresher, see the `Linux command line tutorial <https://ubuntu.com/tutorials/command-line-for-beginners#1-overview>`_
+
+Zarr depends on NumPy. You'll need to `install NumPy <https://numpy.org/doc/stable/user/install.html>`_.
+
+.. _tutorial_understanding_the_example_code:
+
+Understanding the Example Code
+------------------------------
+
+If you see ``>>>``, you're looking at an input, or the code that you would enter.
+Any line that doesn't start with ``>>>`` is an output, or the results of running the code entered.
+When running python on the command line, this is it's representation.
+
+.. _tutorial_what_is_an_n-dimensional_array?:
+
+What is an N-dimensional array?
+-------------------------------
+
+An ndarray is a (usually fixed-size) multidimensional container of items of the same type and size. The number of dimensions and items in an array is defined by its shape, which is a tuple of N positive integers that specify the sizes of each dimension. `Read more about N-dimensional arrays here <https://numpy.org/doc/stable/reference/arrays.ndarray.html>`_.
 
 .. _tutorial_create:
 
