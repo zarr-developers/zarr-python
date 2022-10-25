@@ -10,10 +10,10 @@ What is Zarr?
 
 Zarr is a format used to create N-dimensional arrays with any NumPy `dtype <https://numpy.org/doc/stable/reference/arrays.dtypes.html#arrays-dtypes>`_
 
-- Chunk arrays along any dimension
-- Compress and/or filter chunks using any NumCodecs codec
-- Flexible storage of arrays
-- Read or write an array concurrently from multiple threads or processes
+* Chunk arrays along any dimension
+* Compress and/or filter chunks using any NumCodecs codec
+* Flexible storage of arrays
+* Read or write an array concurrently from multiple threads or processes
 
 Zarr provides classes and functions for working with N-dimensional arrays that
 behave like NumPy arrays but whose data is divided into chunks and each chunk is
