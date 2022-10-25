@@ -6,7 +6,23 @@ Tutorial
 Zarr provides classes and functions for working with N-dimensional arrays that
 behave like NumPy arrays but whose data is divided into chunks and each chunk is
 compressed. If you are already familiar with HDF5 then Zarr arrays provide
-similar functionality, but with some additional flexibility.
+similar functionality, but with some additional flexibility. 
+
+Data types supported
+====================
+
+For Fixed item size we have
+     Floating point numbers.(Eg float16, float32, float64), Integers.(Eg int8, 
+     int16, int32, int64, unit8, unit16, unit32, unit64). Complex floating point numbers. 
+     (Eg complex64,complex128), Datetime, timedelta, Boolean, Fixed length byte or Unicode 
+     strings, Structured dtype
+For Variable item size
+    Objects
+•	Variable length byte string					           
+•	Variable length unicode strings
+•	Variable length 1D array of a primitive type
+
+
 
 .. _tutorial_create:
 
