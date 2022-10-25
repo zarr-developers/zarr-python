@@ -9,7 +9,6 @@ import shutil
 import tempfile
 from contextlib import contextmanager
 from pickle import PicklingError
-from xxlimited import foo
 from zipfile import ZipFile
 
 import numpy as np
