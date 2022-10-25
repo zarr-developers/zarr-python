@@ -1806,7 +1806,6 @@ class TestZipStore(StoreTests):
         store.flush()
         assert store[self.root + 'foo'] == b'bar'
         store.close()
-        
         store = self.ZipStoreClass('data/store.zip', mode='r')
         store.flush()  # no-op
 
@@ -1814,7 +1813,7 @@ class TestZipStore(StoreTests):
         with self.create_store() as store:
             store[self.root + 'foo'] = b'bar'
             store[self.root + 'baz'] = b'qux'
-            assert 2 == len(store)       
+            assert 2 == len(store)
 
     def test_pop(self):
         # override because not implemented
