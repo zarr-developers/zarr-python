@@ -9,6 +9,7 @@ import shutil
 import tempfile
 from contextlib import contextmanager
 from pickle import PicklingError
+from xxlimited import foo
 from zipfile import ZipFile
 
 import numpy as np
@@ -194,11 +195,16 @@ class StoreTests:
 
     def test_delitem(self):
         store = self.create_store()
-        store[self.root + 'foo'] = b'bar'
+        foo = self.root + 'foo'
+        store[foo] = b'bar'
 
-        del store[self.root + 'foo']
-
-        assert store[self.root + 'foo'] == b''
+        del store[foo]
+        
+        # if foo in store:
+        if isinstance(store, ZipStore):
+            assert store[foo] == b''
+        else:
+            assert foo not in store
 
     def test_popitem(self):
         store = self.create_store()
