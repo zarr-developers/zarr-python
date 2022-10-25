@@ -198,7 +198,6 @@ class StoreTests:
         store[foo] = b'bar'
 
         del store[foo]
-        
         # if foo in store:
         if isinstance(store, ZipStore):
             assert store[foo] == b''
