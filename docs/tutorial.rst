@@ -1,3 +1,4 @@
+.. _ipython_directive:
 .. _tutorial:
 
 Tutorial
@@ -13,12 +14,18 @@ similar functionality, but with some additional flexibility.
 Creating an array
 -----------------
 
-Zarr has several functions for creating arrays. For example::
+Zarr has several functions for creating arrays. For example
 
-    >>> import zarr
-    >>> z = zarr.zeros((10000, 10000), chunks=(1000, 1000), dtype='i4')
-    >>> z
-    <zarr.core.Array (10000, 10000) int32>
+
+
+.. ipython::
+
+    In [1]: import zarr
+    
+    In [2]: z = zarr.zeros((10000, 10000), chunks=(1000, 1000), dtype='i4')
+    
+    In [3]: z
+    
 
 The code above creates a 2-dimensional array of 32-bit integers with 10000 rows
 and 10000 columns, divided into chunks where each chunk has 1000 rows and 1000
@@ -33,35 +40,31 @@ Reading and writing data
 ------------------------
 
 Zarr arrays support a similar interface to NumPy arrays for reading and writing
-data. For example, the entire array can be filled with a scalar value::
+data. For example, the entire array can be filled with a scalar value
 
-    >>> z[:] = 42
+.. ipython::
 
-Regions of the array can also be written to, e.g.::
+    In [10]: z[:] = 42
 
-    >>> import numpy as np
-    >>> z[0, :] = np.arange(10000)
-    >>> z[:, 0] = np.arange(10000)
+Regions of the array can also be written to, e.g.
+
+
 
 The contents of the array can be retrieved by slicing, which will load the
-requested region into memory as a NumPy array, e.g.::
+requested region into memory as a NumPy array, e.g.
 
-    >>> z[0, 0]
-    0
-    >>> z[-1, -1]
-    42
-    >>> z[0, :]
-    array([   0,    1,    2, ..., 9997, 9998, 9999], dtype=int32)
-    >>> z[:, 0]
-    array([   0,    1,    2, ..., 9997, 9998, 9999], dtype=int32)
-    >>> z[:]
-    array([[   0,    1,    2, ..., 9997, 9998, 9999],
-           [   1,   42,   42, ...,   42,   42,   42],
-           [   2,   42,   42, ...,   42,   42,   42],
-           ...,
-           [9997,   42,   42, ...,   42,   42,   42],
-           [9998,   42,   42, ...,   42,   42,   42],
-           [9999,   42,   42, ...,   42,   42,   42]], dtype=int32)
+.. ipython::
+
+    In [10]: z[0, 0]
+    
+    In [11]: z[-1, -1]
+    
+    In [12]: z[0, :]
+    
+    In [13]: z[:, 0]
+    
+    In [14]: z[:]
+   
 
 .. _tutorial_persist:
 
@@ -70,10 +73,11 @@ Persistent arrays
 
 In the examples above, compressed data for each chunk of the array was stored in
 main memory. Zarr arrays can also be stored on a file system, enabling
-persistence of data between sessions. For example::
+persistence of data between sessions. For example
 
-    >>> z1 = zarr.open('data/example.zarr', mode='w', shape=(10000, 10000),
-    ...                chunks=(1000, 1000), dtype='i4')
+.. ipython::
+
+    In [13]: z1 = zarr.open('data/example.zarr', mode='w', shape=(10000, 10000), chunks=(1000, 1000), dtype='i4')
 
 The array above will store its configuration metadata and all compressed chunk
 data in a directory called 'data/example.zarr' relative to the current working
@@ -84,27 +88,35 @@ close an array: data are automatically flushed to disk, and files are
 automatically closed whenever an array is modified.
 
 Persistent arrays support the same interface for reading and writing data,
-e.g.::
+e.g.
 
-    >>> z1[:] = 42
-    >>> z1[0, :] = np.arange(10000)
-    >>> z1[:, 0] = np.arange(10000)
+.. ipython::
 
-Check that the data have been written and can be read again::
+    In [14]: z1[:] = 42
 
-    >>> z2 = zarr.open('data/example.zarr', mode='r')
-    >>> np.all(z1[:] == z2[:])
-    True
+    In [15]: z1[0, :] = np.arange(10000)
+
+    In [16]: z1[:, 0] = np.arange(10000)
+
+    #Check that the data have been written and can be read again
+
+    In [18]: z2 = zarr.open('data/example.zarr', mode='r')
+
+    In [18]: np.all(z1[:] == z2[:])
+    
 
 If you are just looking for a fast and convenient way to save NumPy arrays to
 disk then load back into memory later, the functions
 :func:`zarr.convenience.save` and :func:`zarr.convenience.load` may be
-useful. E.g.::
+useful. E.g.
 
-    >>> a = np.arange(10)
-    >>> zarr.save('data/example.zarr', a)
-    >>> zarr.load('data/example.zarr')
-    array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
+.. ipython::
+
+    In [0]: a = np.arange(10)
+
+    In [0]: zarr.save('data/example.zarr', a)
+
+    In [0]: zarr.load('data/example.zarr')
 
 Please note that there are a number of other options for persistent array
 storage, see the section on :ref:`tutorial_storage` below.
@@ -115,31 +127,39 @@ Resizing and appending
 ----------------------
 
 A Zarr array can be resized, which means that any of its dimensions can be
-increased or decreased in length. For example::
+increased or decreased in length. For example
 
-    >>> z = zarr.zeros(shape=(10000, 10000), chunks=(1000, 1000))
-    >>> z[:] = 42
-    >>> z.resize(20000, 10000)
-    >>> z.shape
-    (20000, 10000)
+.. ipython::
+
+
+    In [0]: z = zarr.zeros(shape=(10000, 10000), chunks=(1000, 1000))
+
+    In [0]: z[:] = 42
+    
+    In [0]: z.resize(20000, 10000)
+    
+    In [0]: z.shape
 
 Note that when an array is resized, the underlying data are not rearranged in
 any way. If one or more dimensions are shrunk, any chunks falling outside the
 new array shape will be deleted from the underlying store.
 
 For convenience, Zarr arrays also provide an ``append()`` method, which can be
-used to append data to any axis. E.g.::
+used to append data to any axis. E.g.
 
-    >>> a = np.arange(10000000, dtype='i4').reshape(10000, 1000)
-    >>> z = zarr.array(a, chunks=(1000, 100))
-    >>> z.shape
-    (10000, 1000)
-    >>> z.append(a)
-    (20000, 1000)
-    >>> z.append(np.vstack([a, a]), axis=1)
-    (20000, 2000)
-    >>> z.shape
-    (20000, 2000)
+.. ipython::
+
+    In [0]: a = np.arange(10000000, dtype='i4').reshape(10000, 1000)
+
+    In [0]: z = zarr.array(a, chunks=(1000, 100))
+    
+    In [0]: z.shape
+
+    In [0]: z.append(a)
+
+    In [0]: z.append(np.vstack([a, a]), axis=1)
+
+    In [0]: z.shape
 
 .. _tutorial_compress:
 
@@ -150,14 +170,20 @@ A number of different compressors can be used with Zarr. A separate package
 called NumCodecs_ is available which provides a common interface to various
 compressor libraries including Blosc, Zstandard, LZ4, Zlib, BZ2 and
 LZMA. Different compressors can be provided via the ``compressor`` keyword
-argument accepted by all array creation functions. For example::
+argument accepted by all array creation functions. For example
 
-    >>> from numcodecs import Blosc
-    >>> compressor = Blosc(cname='zstd', clevel=3, shuffle=Blosc.BITSHUFFLE)
-    >>> data = np.arange(100000000, dtype='i4').reshape(10000, 10000)
-    >>> z = zarr.array(data, chunks=(1000, 1000), compressor=compressor)
-    >>> z.compressor
-    Blosc(cname='zstd', clevel=3, shuffle=BITSHUFFLE, blocksize=0)
+.. ipython::
+
+    In [0]: from numcodecs import Blosc
+
+    In [0]: compressor = Blosc(cname='zstd', clevel=3, shuffle=Blosc.BITSHUFFLE)
+
+    In [0]: data = np.arange(100000000, dtype='i4').reshape(10000, 10000)
+  
+    In [0]: z = zarr.array(data, chunks=(1000, 1000), compressor=compressor)
+  
+    In [0]: z.compressor
+    
 
 This array above will use Blosc as the primary compressor, using the Zstandard
 algorithm (compression level 3) internally within Blosc, and with the
@@ -165,22 +191,12 @@ bit-shuffle filter applied.
 
 When using a compressor, it can be useful to get some diagnostics on the
 compression ratio. Zarr arrays provide a ``info`` property which can be used to
-print some diagnostics, e.g.::
+print some diagnostics, e.g.
 
-    >>> z.info
-    Type               : zarr.core.Array
-    Data type          : int32
-    Shape              : (10000, 10000)
-    Chunk shape        : (1000, 1000)
-    Order              : C
-    Read-only          : False
-    Compressor         : Blosc(cname='zstd', clevel=3, shuffle=BITSHUFFLE,
-                       : blocksize=0)
-    Store type         : zarr.storage.KVStore
-    No. bytes          : 400000000 (381.5M)
-    No. bytes stored   : 3379344 (3.2M)
-    Storage ratio      : 118.4
-    Chunks initialized : 100/100
+.. ipython::
+
+    In [0]: z.info
+    
 
 If you don't specify a compressor, by default Zarr uses the Blosc
 compressor. Blosc is generally very fast and can be configured in a variety of
@@ -189,52 +205,68 @@ fact a "meta-compressor", which means that it can use a number of different
 compression algorithms internally to compress the data. Blosc also provides
 highly optimized implementations of byte- and bit-shuffle filters, which can
 improve compression ratios for some data. A list of the internal compression
-libraries available within Blosc can be obtained via::
+libraries available within Blosc can be obtained via
 
-    >>> from numcodecs import blosc
-    >>> blosc.list_compressors()
-    ['blosclz', 'lz4', 'lz4hc', 'snappy', 'zlib', 'zstd']
+.. ipython::
 
+    In [0]: from numcodecs import blosc
+
+    In [0]: blosc.list_compressors()
+    
 In addition to Blosc, other compression libraries can also be used. For example,
-here is an array using Zstandard compression, level 1::
+here is an array using Zstandard compression, level 1
 
-    >>> from numcodecs import Zstd
-    >>> z = zarr.array(np.arange(100000000, dtype='i4').reshape(10000, 10000),
-    ...                chunks=(1000, 1000), compressor=Zstd(level=1))
-    >>> z.compressor
-    Zstd(level=1)
+.. ipython::
 
-Here is an example using LZMA with a custom filter pipeline including LZMA's
-built-in delta filter::
+    In [0]: from numcodecs import Zstd
 
-    >>> import lzma
-    >>> lzma_filters = [dict(id=lzma.FILTER_DELTA, dist=4),
-    ...                 dict(id=lzma.FILTER_LZMA2, preset=1)]
-    >>> from numcodecs import LZMA
-    >>> compressor = LZMA(filters=lzma_filters)
-    >>> z = zarr.array(np.arange(100000000, dtype='i4').reshape(10000, 10000),
-    ...                chunks=(1000, 1000), compressor=compressor)
-    >>> z.compressor
-    LZMA(format=1, check=-1, preset=None, filters=[{'dist': 4, 'id': 3}, {'id': 33, 'preset': 1}])
+    In [0]: z = zarr.array(np.arange(100000000, dtype='i4').reshape(10000, 10000),chunks=(1000, 1000), compressor=Zstd(level=1))
+    
+    In [0]: z.compressor
+
+    #Here is an example using LZMA with a custom filter pipeline including LZMA's built-in delta filter
+
+    In [0]: import lzma
+
+    In [0]: lzma_filters = [dict(id=lzma.FILTER_DELTA, dist=4), dict(id=lzma.FILTER_LZMA2, preset=1)]
+
+    In [0]: from numcodecs import LZMA
+    
+    In [0]: compressor = LZMA(filters=lzma_filters)
+    
+    In [0]: z = zarr.array(np.arange(100000000, dtype='i4').reshape(10000, 10000), chunks=(1000, 1000), compressor=compressor)
+    
+    In [0]: z.compressor
+    
 
 The default compressor can be changed by setting the value of the
-``zarr.storage.default_compressor`` variable, e.g.::
+``zarr.storage.default_compressor`` variable, e.g.
 
-    >>> import zarr.storage
-    >>> from numcodecs import Zstd, Blosc
-    >>> # switch to using Zstandard
+.. ipython::
+
+    In [0]: import zarr.storage
+
+    In [0]: from numcodecs import Zstd, Blosc
+
+    In [0]: # switch to using Zstandard
     ... zarr.storage.default_compressor = Zstd(level=1)
-    >>> z = zarr.zeros(100000000, chunks=1000000)
-    >>> z.compressor
-    Zstd(level=1)
-    >>> # switch back to Blosc defaults
+
+    In [0]: z = zarr.zeros(100000000, chunks=1000000)
+
+    In [0]: z.compressor
+    
+    
+    In [0]: # switch back to Blosc defaults
     ... zarr.storage.default_compressor = Blosc()
 
-To disable compression, set ``compressor=None`` when creating an array, e.g.::
+To disable compression, set ``compressor=None`` when creating an array, e.g.
 
-    >>> z = zarr.zeros(100000000, chunks=1000000, compressor=None)
-    >>> z.compressor is None
-    True
+.. ipython::
+
+    In [0]: z = zarr.zeros(100000000, chunks=1000000, compressor=None)
+    
+    In [0]: z.compressor is None
+    
 
 .. _tutorial_filters:
 
@@ -252,27 +284,22 @@ filter. However, to provide additional flexibility for implementing and using
 filters in combination with different compressors, Zarr also provides a
 mechanism for configuring filters outside of the primary compressor.
 
-Here is an example using a delta filter with the Blosc compressor::
+Here is an example using a delta filter with the Blosc compressor
 
-    >>> from numcodecs import Blosc, Delta
-    >>> filters = [Delta(dtype='i4')]
-    >>> compressor = Blosc(cname='zstd', clevel=1, shuffle=Blosc.SHUFFLE)
-    >>> data = np.arange(100000000, dtype='i4').reshape(10000, 10000)
-    >>> z = zarr.array(data, chunks=(1000, 1000), filters=filters, compressor=compressor)
-    >>> z.info
-    Type               : zarr.core.Array
-    Data type          : int32
-    Shape              : (10000, 10000)
-    Chunk shape        : (1000, 1000)
-    Order              : C
-    Read-only          : False
-    Filter [0]         : Delta(dtype='<i4')
-    Compressor         : Blosc(cname='zstd', clevel=1, shuffle=SHUFFLE, blocksize=0)
-    Store type         : zarr.storage.KVStore
-    No. bytes          : 400000000 (381.5M)
-    No. bytes stored   : 1290562 (1.2M)
-    Storage ratio      : 309.9
-    Chunks initialized : 100/100
+.. ipython::
+
+    In [0]: from numcodecs import Blosc, Delta
+
+    In [0]: filters = [Delta(dtype='i4')]
+
+    In [0]: compressor = Blosc(cname='zstd', clevel=1, shuffle=Blosc.SHUFFLE)
+
+    In [0]: data = np.arange(100000000, dtype='i4').reshape(10000, 10000)
+
+    In [0]: z = zarr.array(data, chunks=(1000, 1000), filters=filters, compressor=compressor)
+  
+    In [0]: z.info
+    
 
 For more information about available filter codecs, see the `Numcodecs
 <https://numcodecs.readthedocs.io/>`_ documentation.
@@ -286,65 +313,77 @@ Zarr supports hierarchical organization of arrays via groups. As with arrays,
 groups can be stored in memory, on disk, or via other storage systems that
 support a similar interface.
 
-To create a group, use the :func:`zarr.group` function::
+To create a group, use the :func:`zarr.group` function
 
-    >>> root = zarr.group()
-    >>> root
-    <zarr.hierarchy.Group '/'>
+.. ipython::
+
+    In [0]: root = zarr.group()
+
+    In [0]: root
 
 Groups have a similar API to the Group class from `h5py
-<https://www.h5py.org/>`_.  For example, groups can contain other groups::
+<https://www.h5py.org/>`_.  For example, groups can contain other groups
 
-    >>> foo = root.create_group('foo')
-    >>> bar = foo.create_group('bar')
+.. ipython::
 
-Groups can also contain arrays, e.g.::
+    In [0]: foo = root.create_group('foo')
 
-    >>> z1 = bar.zeros('baz', shape=(10000, 10000), chunks=(1000, 1000), dtype='i4')
-    >>> z1
-    <zarr.core.Array '/foo/bar/baz' (10000, 10000) int32>
+    In [0]: bar = foo.create_group('bar')
+
+Groups can also contain arrays, e.g.
+
+.. ipython::
+
+    In [0]: z1 = bar.zeros('baz', shape=(10000, 10000), chunks=(1000, 1000), dtype='i4')
+    In [0]: z1
 
 Arrays are known as "datasets" in HDF5 terminology. For compatibility with h5py,
 Zarr groups also implement the ``create_dataset()`` and ``require_dataset()``
-methods, e.g.::
+methods, e.g.
 
-    >>> z = bar.create_dataset('quux', shape=(10000, 10000), chunks=(1000, 1000), dtype='i4')
-    >>> z
-    <zarr.core.Array '/foo/bar/quux' (10000, 10000) int32>
+.. ipython::
 
-Members of a group can be accessed via the suffix notation, e.g.::
+    In [0]: z = bar.create_dataset('quux', shape=(10000, 10000), chunks=(1000, 1000), dtype='i4')
+    In [0]: z
 
-    >>> root['foo']
-    <zarr.hierarchy.Group '/foo'>
+Members of a group can be accessed via the suffix notation, e.g.
+
+.. ipython::
+
+    In [0]: root['foo']
 
 The '/' character can be used to access multiple levels of the hierarchy in one
-call, e.g.::
+call, e.g.
 
-    >>> root['foo/bar']
-    <zarr.hierarchy.Group '/foo/bar'>
-    >>> root['foo/bar/baz']
-    <zarr.core.Array '/foo/bar/baz' (10000, 10000) int32>
+.. ipython::
+
+    In [0]: root['foo/bar']
+    
+    In [0]: root['foo/bar/baz']
+    
 
 The :func:`zarr.hierarchy.Group.tree` method can be used to print a tree
-representation of the hierarchy, e.g.::
+representation of the hierarchy, e.g.
 
-    >>> root.tree()
-    /
-     └── foo
-         └── bar
-             ├── baz (10000, 10000) int32
-             └── quux (10000, 10000) int32
+.. ipython::
+
+    In [0]: root.tree()
+    
 
 The :func:`zarr.convenience.open` function provides a convenient way to create or
 re-open a group stored in a directory on the file-system, with sub-groups stored in
-sub-directories, e.g.::
+sub-directories, e.g.
 
-    >>> root = zarr.open('data/group.zarr', mode='w')
-    >>> root
-    <zarr.hierarchy.Group '/'>
-    >>> z = root.zeros('foo/bar/baz', shape=(10000, 10000), chunks=(1000, 1000), dtype='i4')
-    >>> z
-    <zarr.core.Array '/foo/bar/baz' (10000, 10000) int32>
+.. ipython::
+
+    In [0]: root = zarr.open('data/group.zarr', mode='w')
+
+    In [0]: root
+    
+    In [0]: z = root.zeros('foo/bar/baz', shape=(10000, 10000), chunks=(1000, 1000), dtype='i4')
+    
+    In [0]: z
+    
 
 Groups can be used as context managers (in a ``with`` statement).
 If the underlying store has a ``close`` method, it will be called on exit.
@@ -358,71 +397,35 @@ Array and group diagnostics
 ---------------------------
 
 Diagnostic information about arrays and groups is available via the ``info``
-property. E.g.::
+property. E.g.
 
-    >>> root = zarr.group()
-    >>> foo = root.create_group('foo')
-    >>> bar = foo.zeros('bar', shape=1000000, chunks=100000, dtype='i8')
-    >>> bar[:] = 42
-    >>> baz = foo.zeros('baz', shape=(1000, 1000), chunks=(100, 100), dtype='f4')
-    >>> baz[:] = 4.2
-    >>> root.info
-    Name        : /
-    Type        : zarr.hierarchy.Group
-    Read-only   : False
-    Store type  : zarr.storage.MemoryStore
-    No. members : 1
-    No. arrays  : 0
-    No. groups  : 1
-    Groups      : foo
+.. ipython::
 
-    >>> foo.info
-    Name        : /foo
-    Type        : zarr.hierarchy.Group
-    Read-only   : False
-    Store type  : zarr.storage.MemoryStore
-    No. members : 2
-    No. arrays  : 2
-    No. groups  : 0
-    Arrays      : bar, baz
+    In [0]: root = zarr.group()
 
-    >>> bar.info
-    Name               : /foo/bar
-    Type               : zarr.core.Array
-    Data type          : int64
-    Shape              : (1000000,)
-    Chunk shape        : (100000,)
-    Order              : C
-    Read-only          : False
-    Compressor         : Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
-    Store type         : zarr.storage.MemoryStore
-    No. bytes          : 8000000 (7.6M)
-    No. bytes stored   : 33240 (32.5K)
-    Storage ratio      : 240.7
-    Chunks initialized : 10/10
+    In [0]: foo = root.create_group('foo')
 
-    >>> baz.info
-    Name               : /foo/baz
-    Type               : zarr.core.Array
-    Data type          : float32
-    Shape              : (1000, 1000)
-    Chunk shape        : (100, 100)
-    Order              : C
-    Read-only          : False
-    Compressor         : Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
-    Store type         : zarr.storage.MemoryStore
-    No. bytes          : 4000000 (3.8M)
-    No. bytes stored   : 23943 (23.4K)
-    Storage ratio      : 167.1
-    Chunks initialized : 100/100
+    In [0]: bar = foo.zeros('bar', shape=1000000, chunks=100000, dtype='i8')
+ 
+    In [0]: bar[:] = 42
+  
+    In [0]: baz = foo.zeros('baz', shape=(1000, 1000), chunks=(100, 100), dtype='f4')
+   
+    In [0]: baz[:] = 4.2
+   
+    In [0]: root.info
 
-Groups also have the :func:`zarr.hierarchy.Group.tree` method, e.g.::
+    In [0]: foo.info
 
-    >>> root.tree()
-    /
-     └── foo
-         ├── bar (1000000,) int64
-         └── baz (1000, 1000) float32
+    In [0]: bar.info
+
+    In [0]: baz.info
+
+Groups also have the :func:`zarr.hierarchy.Group.tree` method, e.g.
+
+.. ipython::
+
+    In [0]: root.tree()
 
 If you're using Zarr within a Jupyter notebook (requires
 `ipytree <https://github.com/QuantStack/ipytree>`_), calling ``tree()`` will generate an
@@ -436,25 +439,31 @@ User attributes
 ---------------
 
 Zarr arrays and groups support custom key/value attributes, which can be useful for
-storing application-specific metadata. For example::
+storing application-specific metadata. For example
 
-    >>> root = zarr.group()
-    >>> root.attrs['foo'] = 'bar'
-    >>> z = root.zeros('zzz', shape=(10000, 10000))
-    >>> z.attrs['baz'] = 42
-    >>> z.attrs['qux'] = [1, 4, 7, 12]
-    >>> sorted(root.attrs)
-    ['foo']
-    >>> 'foo' in root.attrs
-    True
-    >>> root.attrs['foo']
-    'bar'
-    >>> sorted(z.attrs)
-    ['baz', 'qux']
-    >>> z.attrs['baz']
-    42
-    >>> z.attrs['qux']
-    [1, 4, 7, 12]
+.. ipython::
+
+    In [0]: root = zarr.group()
+
+    In [0]: root.attrs['foo'] = 'bar'
+
+    In [0]: z = root.zeros('zzz', shape=(10000, 10000))
+
+    In [0]: z.attrs['baz'] = 42
+
+    In [0]: z.attrs['qux'] = [1, 4, 7, 12]
+
+    In [0]: sorted(root.attrs)
+    
+    In [0]: 'foo' in root.attrs
+    
+    In [0]: root.attrs['foo']
+    
+    In [0]: sorted(z.attrs)
+    
+    In [0]: z.attrs['baz']
+    
+    In [0]: z.attrs['qux']
 
 Internally Zarr uses JSON to store array attributes, so attribute values must be
 JSON serializable.
@@ -478,103 +487,118 @@ Indexing with coordinate arrays
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Items from a Zarr array can be extracted by providing an integer array of
-coordinates. E.g.::
+coordinates. E.g.
 
-    >>> z = zarr.array(np.arange(10))
-    >>> z[:]
-    array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
-    >>> z.get_coordinate_selection([1, 4])
-    array([1, 4])
+.. ipython::
 
-Coordinate arrays can also be used to update data, e.g.::
+    In [0]: z = zarr.array(np.arange(10))
 
-    >>> z.set_coordinate_selection([1, 4], [-1, -2])
-    >>> z[:]
-    array([ 0, -1,  2,  3, -2,  5,  6,  7,  8,  9])
+    In [0]: z[:]
+    
+    In [0]: z.get_coordinate_selection([1, 4])
+    
+
+Coordinate arrays can also be used to update data, e.g.
+
+.. ipython::
+
+    In [0]: z.set_coordinate_selection([1, 4], [-1, -2])
+
+    In [0]: z[:]
 
 For multidimensional arrays, coordinates must be provided for each dimension,
-e.g.::
+e.g.
 
-    >>> z = zarr.array(np.arange(15).reshape(3, 5))
-    >>> z[:]
-    array([[ 0,  1,  2,  3,  4],
-           [ 5,  6,  7,  8,  9],
-           [10, 11, 12, 13, 14]])
-    >>> z.get_coordinate_selection(([0, 2], [1, 3]))
-    array([ 1, 13])
-    >>> z.set_coordinate_selection(([0, 2], [1, 3]), [-1, -2])
-    >>> z[:]
-    array([[ 0, -1,  2,  3,  4],
-           [ 5,  6,  7,  8,  9],
-           [10, 11, 12, -2, 14]])
+.. ipython::
+
+    In [0]: z = zarr.array(np.arange(15).reshape(3, 5))
+
+    In [0]: z[:]
+    
+    In [0]: z.get_coordinate_selection(([0, 2], [1, 3]))
+    
+    In [0]: z.set_coordinate_selection(([0, 2], [1, 3]), [-1, -2])
+    
+    In [0]: z[:]
+    
 
 For convenience, coordinate indexing is also available via the ``vindex``
-property, as well as the square bracket operator, e.g.::
+property, as well as the square bracket operator, e.g.
 
-    >>> z.vindex[[0, 2], [1, 3]]
-    array([-1, -2])
-    >>> z.vindex[[0, 2], [1, 3]] = [-3, -4]
-    >>> z[:]
-    array([[ 0, -3,  2,  3,  4],
-           [ 5,  6,  7,  8,  9],
-           [10, 11, 12, -4, 14]])
-    >>> z[[0, 2], [1, 3]]
-    array([-3, -4])
+.. ipython::
+
+    In [0]: z.vindex[[0, 2], [1, 3]]
+    
+    In [0]: z.vindex[[0, 2], [1, 3]] = [-3, -4]
+
+    In [0]: z[:]
+
+    In [0]: z[[0, 2], [1, 3]]
+    
 
 When the indexing arrays have different shapes, they are broadcast together.
-That is, the following two calls are equivalent::
+That is, the following two calls are equivalent
 
-    >>> z[1, [1, 3]]
-    array([5, 7])
-    >>> z[[1, 1], [1, 3]]
-    array([5, 7])
+.. ipython::
+
+    In [0]: z[1, [1, 3]]
+    
+    In [0]: z[[1, 1], [1, 3]]
+    
 
 Indexing with a mask array
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Items can also be extracted by providing a Boolean mask. E.g.::
+Items can also be extracted by providing a Boolean mask. E.g.
 
-    >>> z = zarr.array(np.arange(10))
-    >>> z[:]
-    array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
-    >>> sel = np.zeros_like(z, dtype=bool)
-    >>> sel[1] = True
-    >>> sel[4] = True
-    >>> z.get_mask_selection(sel)
-    array([1, 4])
-    >>> z.set_mask_selection(sel, [-1, -2])
-    >>> z[:]
-    array([ 0, -1,  2,  3, -2,  5,  6,  7,  8,  9])
+.. ipython::
 
-Here's a multidimensional example::
+    In [0]: z = zarr.array(np.arange(10))
 
-    >>> z = zarr.array(np.arange(15).reshape(3, 5))
-    >>> z[:]
-    array([[ 0,  1,  2,  3,  4],
-           [ 5,  6,  7,  8,  9],
-           [10, 11, 12, 13, 14]])
-    >>> sel = np.zeros_like(z, dtype=bool)
-    >>> sel[0, 1] = True
-    >>> sel[2, 3] = True
-    >>> z.get_mask_selection(sel)
-    array([ 1, 13])
-    >>> z.set_mask_selection(sel, [-1, -2])
-    >>> z[:]
-    array([[ 0, -1,  2,  3,  4],
-           [ 5,  6,  7,  8,  9],
-           [10, 11, 12, -2, 14]])
+    In [0]: z[:]
+    
+    In [0]: sel = np.zeros_like(z, dtype=bool)
+
+    In [0]: sel[1] = True
+    
+    In [0]: sel[4] = True
+    
+    In [0]: z.get_mask_selection(sel)
+    
+    In [0]: z.set_mask_selection(sel, [-1, -2])
+
+    In [0]: z[:]
+
+Here's a multidimensional example
+
+.. ipython::
+
+    In [0]: z = zarr.array(np.arange(15).reshape(3, 5))
+
+    In [0]: z[:]
+
+    In [0]: sel = np.zeros_like(z, dtype=bool)
+
+    In [0]: sel[0, 1] = True
+
+    In [0]: sel[2, 3] = True
+    
+    In [0]: z.get_mask_selection(sel)
+    
+    In [0]: z.set_mask_selection(sel, [-1, -2])
+
+    In [0]: z[:]
 
 For convenience, mask indexing is also available via the ``vindex`` property,
-e.g.::
+e.g.
 
-    >>> z.vindex[sel]
-    array([-1, -2])
-    >>> z.vindex[sel] = [-3, -4]
-    >>> z[:]
-    array([[ 0, -3,  2,  3,  4],
-           [ 5,  6,  7,  8,  9],
-           [10, 11, 12, -4, 14]])
+.. ipython::
 
+    In [0]: z.vindex[sel]
+    
+    In [0]: z.vindex[sel] = [-3, -4]
+
+    In [0]: z[:]
 Mask indexing is conceptually the same as coordinate indexing, and is
 implemented internally via the same machinery. Both styles of indexing allow
 selecting arbitrary items from an array, also known as point selection.
@@ -585,51 +609,47 @@ Orthogonal indexing
 Zarr arrays also support methods for orthogonal indexing, which allows
 selections to be made along each dimension of an array independently. For
 example, this allows selecting a subset of rows and/or columns from a
-2-dimensional array. E.g.::
+2-dimensional array. E.g.
 
-    >>> z = zarr.array(np.arange(15).reshape(3, 5))
-    >>> z[:]
-    array([[ 0,  1,  2,  3,  4],
-           [ 5,  6,  7,  8,  9],
-           [10, 11, 12, 13, 14]])
-    >>> z.get_orthogonal_selection(([0, 2], slice(None)))  # select first and third rows
-    array([[ 0,  1,  2,  3,  4],
-           [10, 11, 12, 13, 14]])
-    >>> z.get_orthogonal_selection((slice(None), [1, 3]))  # select second and fourth columns
-    array([[ 1,  3],
-           [ 6,  8],
-           [11, 13]])
-    >>> z.get_orthogonal_selection(([0, 2], [1, 3]))       # select rows [0, 2] and columns [1, 4]
-    array([[ 1,  3],
-           [11, 13]])
+.. ipython::
 
-Data can also be modified, e.g.::
+    In [0]: z = zarr.array(np.arange(15).reshape(3, 5))
 
-    >>> z.set_orthogonal_selection(([0, 2], [1, 3]), [[-1, -2], [-3, -4]])
-    >>> z[:]
+    In [0]: z[:]
+    
+    In [0]: z.get_orthogonal_selection(([0, 2], slice(None)))  # select first and third rows
+    
+    In [0]: z.get_orthogonal_selection((slice(None), [1, 3]))  # select second and fourth columns
+    
+    In [0]: z.get_orthogonal_selection(([0, 2], [1, 3]))       # select rows [0, 2] and columns [1, 4]
+    
+
+Data can also be modified, e.g.
+
+.. ipython::
+
+    In [0]: z.set_orthogonal_selection(([0, 2], [1, 3]), [[-1, -2], [-3, -4]])
+    In [0]: z[:]
     array([[ 0, -1,  2, -2,  4],
            [ 5,  6,  7,  8,  9],
            [10, -3, 12, -4, 14]])
 
 For convenience, the orthogonal indexing functionality is also available via the
-``oindex`` property, e.g.::
+``oindex`` property, e.g.
 
-    >>> z = zarr.array(np.arange(15).reshape(3, 5))
-    >>> z.oindex[[0, 2], :]  # select first and third rows
-    array([[ 0,  1,  2,  3,  4],
-           [10, 11, 12, 13, 14]])
-    >>> z.oindex[:, [1, 3]]  # select second and fourth columns
-    array([[ 1,  3],
-           [ 6,  8],
-           [11, 13]])
-    >>> z.oindex[[0, 2], [1, 3]]  # select rows [0, 2] and columns [1, 4]
-    array([[ 1,  3],
-           [11, 13]])
-    >>> z.oindex[[0, 2], [1, 3]] = [[-1, -2], [-3, -4]]
-    >>> z[:]
-    array([[ 0, -1,  2, -2,  4],
-           [ 5,  6,  7,  8,  9],
-           [10, -3, 12, -4, 14]])
+.. ipython::
+
+    In [0]: z = zarr.array(np.arange(15).reshape(3, 5))
+
+    In [0]: z.oindex[[0, 2], :]  # select first and third rows
+
+    In [0]: z.oindex[:, [1, 3]]  # select second and fourth columns
+    
+    In [0]: z.oindex[[0, 2], [1, 3]]  # select rows [0, 2] and columns [1, 4]
+    
+    In [0]: z.oindex[[0, 2], [1, 3]] = [[-1, -2], [-3, -4]]
+
+    In [0]: z[:]
 
 Any combination of integer, slice, 1D integer array and/or 1D Boolean array can
 be used for orthogonal indexing.
@@ -638,23 +658,24 @@ Indexing fields in structured arrays
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 All selection methods support a ``fields`` parameter which allows retrieving or
-replacing data for a specific field in an array with a structured dtype. E.g.::
+replacing data for a specific field in an array with a structured dtype. E.g.
 
-    >>> a = np.array([(b'aaa', 1, 4.2),
-    ...               (b'bbb', 2, 8.4),
-    ...               (b'ccc', 3, 12.6)],
-    ...              dtype=[('foo', 'S3'), ('bar', 'i4'), ('baz', 'f8')])
-    >>> z = zarr.array(a)
-    >>> z['foo']
-    array([b'aaa', b'bbb', b'ccc'],
-          dtype='|S3')
-    >>> z['baz']
-    array([  4.2,   8.4,  12.6])
-    >>> z.get_basic_selection(slice(0, 2), fields='bar')
-    array([1, 2], dtype=int32)
-    >>> z.get_coordinate_selection([0, 2], fields=['foo', 'baz'])
-    array([(b'aaa',   4.2), (b'ccc',  12.6)],
-          dtype=[('foo', 'S3'), ('baz', '<f8')])
+.. ipython::
+
+    In [0]: a = np.array([(b'aaa', 1, 4.2),
+       ...:            (b'bbb', 2, 8.4),
+       ...:           (b'ccc', 3, 12.6)],
+       ...:      dtype=[('foo', 'S3'), ('bar', 'i4'), ('baz', 'f8')])
+
+    In [0]: z = zarr.array(a)
+
+    In [0]: z['foo']
+    
+    In [0]: z['baz']
+
+    In [0]: z.get_basic_selection(slice(0, 2), fields='bar')
+ 
+    In [0]: z.get_coordinate_selection([0, 2], fields=['foo', 'baz'])
 
 .. _tutorial_storage:
 
@@ -669,49 +690,64 @@ Some pre-defined storage classes are provided in the :mod:`zarr.storage`
 module. For example, the :class:`zarr.storage.DirectoryStore` class provides a
 ``MutableMapping`` interface to a directory on the local file system. This is
 used under the hood by the :func:`zarr.convenience.open` function. In other words,
-the following code::
+the following code
 
-    >>> z = zarr.open('data/example.zarr', mode='w', shape=1000000, dtype='i4')
+.. ipython::
 
-...is short-hand for::
+    In [0]: z = zarr.open('data/example.zarr', mode='w', shape=1000000, dtype='i4')
 
-    >>> store = zarr.DirectoryStore('data/example.zarr')
-    >>> z = zarr.create(store=store, overwrite=True, shape=1000000, dtype='i4')
+...is short-hand for
 
-...and the following code::
+.. ipython::
 
-    >>> root = zarr.open('data/example.zarr', mode='w')
+    In [0]: store = zarr.DirectoryStore('data/example.zarr')
 
-...is short-hand for::
+    In [0]: z = zarr.create(store=store, overwrite=True, shape=1000000, dtype='i4')
 
-    >>> store = zarr.DirectoryStore('data/example.zarr')
-    >>> root = zarr.group(store=store, overwrite=True)
+...and the following code
+
+.. ipython::
+
+    In [0]: root = zarr.open('data/example.zarr', mode='w')
+
+...is short-hand for
+
+.. ipython::
+
+    In [0]: store = zarr.DirectoryStore('data/example.zarr')
+    
+    In [0]: root = zarr.group(store=store, overwrite=True)
 
 Any other compatible storage class could be used in place of
 :class:`zarr.storage.DirectoryStore` in the code examples above. For example,
 here is an array stored directly into a Zip file, via the
-:class:`zarr.storage.ZipStore` class::
+:class:`zarr.storage.ZipStore` class
 
-    >>> store = zarr.ZipStore('data/example.zip', mode='w')
-    >>> root = zarr.group(store=store)
-    >>> z = root.zeros('foo/bar', shape=(1000, 1000), chunks=(100, 100), dtype='i4')
-    >>> z[:] = 42
-    >>> store.close()
+.. ipython::
 
-Re-open and check that data have been written::
+    In [0]: store = zarr.ZipStore('data/example.zip', mode='w')
 
-    >>> store = zarr.ZipStore('data/example.zip', mode='r')
-    >>> root = zarr.group(store=store)
-    >>> z = root['foo/bar']
-    >>> z[:]
-    array([[42, 42, 42, ..., 42, 42, 42],
-           [42, 42, 42, ..., 42, 42, 42],
-           [42, 42, 42, ..., 42, 42, 42],
-           ...,
-           [42, 42, 42, ..., 42, 42, 42],
-           [42, 42, 42, ..., 42, 42, 42],
-           [42, 42, 42, ..., 42, 42, 42]], dtype=int32)
-    >>> store.close()
+    In [0]: root = zarr.group(store=store)
+
+    In [0]: z = root.zeros('foo/bar', shape=(1000, 1000), chunks=(100, 100), dtype='i4')
+ 
+    In [0]: z[:] = 42
+ 
+    In [0]: store.close()
+
+Re-open and check that data have been written
+
+.. ipython::
+
+    In [0]: store = zarr.ZipStore('data/example.zip', mode='r')
+
+    In [0]: root = zarr.group(store=store)
+
+    In [0]: z = root['foo/bar']
+
+    In [0]: z[:]
+    
+    In [0]: store.close()
 
 Note that there are some limitations on how Zip files can be used, because items
 within a Zip file cannot be updated in place. This means that data in the array
@@ -724,34 +760,53 @@ Another storage alternative is the :class:`zarr.storage.DBMStore` class, added
 in Zarr version 2.2. This class allows any DBM-style database to be used for
 storing an array or group. Here is an example using a Berkeley DB B-tree
 database for storage (requires `bsddb3
-<https://www.jcea.es/programacion/pybsddb.htm>`_ to be installed)::
+<https://www.jcea.es/programacion/pybsddb.htm>`_ to be installed)
 
-    >>> import bsddb3
-    >>> store = zarr.DBMStore('data/example.bdb', open=bsddb3.btopen)
-    >>> root = zarr.group(store=store, overwrite=True)
-    >>> z = root.zeros('foo/bar', shape=(1000, 1000), chunks=(100, 100), dtype='i4')
-    >>> z[:] = 42
-    >>> store.close()
+.. ipython::
+
+    In [0]: import bsddb3
+
+    In [0]: store = zarr.DBMStore('data/example.bdb', open=bsddb3.btopen)
+ 
+    In [0]: root = zarr.group(store=store, overwrite=True)
+    
+    In [0]: z = root.zeros('foo/bar', shape=(1000, 1000), chunks=(100, 100), dtype='i4')
+    
+    In [0]: z[:] = 42
+    
+    In [0]: store.close()
 
 Also added in Zarr version 2.2 is the :class:`zarr.storage.LMDBStore` class which
 enables the lightning memory-mapped database (LMDB) to be used for storing an array or
-group (requires `lmdb <https://lmdb.readthedocs.io/>`_ to be installed)::
+group (requires `lmdb <https://lmdb.readthedocs.io/>`_ to be installed)
 
-    >>> store = zarr.LMDBStore('data/example.lmdb')
-    >>> root = zarr.group(store=store, overwrite=True)
-    >>> z = root.zeros('foo/bar', shape=(1000, 1000), chunks=(100, 100), dtype='i4')
-    >>> z[:] = 42
-    >>> store.close()
+.. ipython::okexcept:
+
+    In [0]: store = zarr.LMDBStore('data/example.lmdb')
+    
+    In [0]: root = zarr.group(store=store, overwrite=True)
+    
+    In [0]: z = root.zeros('foo/bar', shape=(1000, 1000), chunks=(100, 100), dtype='i4')
+    
+    In [0]: z[:] = 42
+    
+    In [0]: store.close()
 
 In Zarr version 2.3 is the :class:`zarr.storage.SQLiteStore` class which
 enables the SQLite database to be used for storing an array or group (requires
-Python is built with SQLite support)::
+Python is built with SQLite support)
 
-    >>> store = zarr.SQLiteStore('data/example.sqldb')
-    >>> root = zarr.group(store=store, overwrite=True)
-    >>> z = root.zeros('foo/bar', shape=(1000, 1000), chunks=(100, 100), dtype='i4')
-    >>> z[:] = 42
-    >>> store.close()
+.. ipython::
+
+    In [0]: store = zarr.SQLiteStore('data/example.sqldb')
+
+    In [0]: root = zarr.group(store=store, overwrite=True)
+
+    In [0]: z = root.zeros('foo/bar', shape=(1000, 1000), chunks=(100, 100), dtype='i4')
+
+    In [0]: z[:] = 42
+
+    In [0]: store.close()
 
 Also added in Zarr version 2.3 are two storage classes for interfacing with server-client
 databases. The :class:`zarr.storage.RedisStore` class interfaces `Redis <https://redis.io/>`_
@@ -762,17 +817,24 @@ respectively require the `redis-py <https://redis-py.readthedocs.io>`_ and
 
 For compatibility with the `N5 <https://github.com/saalfeldlab/n5>`_ data format, Zarr also provides
 an N5 backend (this is currently an experimental feature). Similar to the zip storage class, an
-:class:`zarr.n5.N5Store` can be instantiated directly::
+:class:`zarr.n5.N5Store` can be instantiated directly
 
-    >>> store = zarr.N5Store('data/example.n5')
-    >>> root = zarr.group(store=store)
-    >>> z = root.zeros('foo/bar', shape=(1000, 1000), chunks=(100, 100), dtype='i4')
-    >>> z[:] = 42
+.. ipython::okwarning:
+
+    In [0]: store = zarr.N5Store('data/example.n5')
+
+    In [0]: root = zarr.group(store=store)
+    
+    In [0]: z = root.zeros('foo/bar', shape=(1000, 1000), chunks=(100, 100), dtype='i4')
+    
+    In [0]: z[:] = 42
 
 For convenience, the N5 backend will automatically be chosen when the filename
-ends with `.n5`::
+ends with `.n5`
 
-    >>> root = zarr.open('data/example.n5', mode='w')
+.. ipython::
+
+    In [0]: root = zarr.open('data/example.n5', mode='w')
 
 Distributed/cloud storage
 ~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -786,48 +848,48 @@ Google Cloud Storage (`GCSMap
 <http://gcsfs.readthedocs.io/en/latest/api.html#gcsfs.mapping.GCSMap>`_), which
 can be used with Zarr.
 
-Here is an example using S3Map to read an array created previously::
+Here is an example using S3Map to read an array created previously
 
-    >>> import s3fs
-    >>> import zarr
-    >>> s3 = s3fs.S3FileSystem(anon=True, client_kwargs=dict(region_name='eu-west-2'))
-    >>> store = s3fs.S3Map(root='zarr-demo/store', s3=s3, check=False)
-    >>> root = zarr.group(store=store)
-    >>> z = root['foo/bar/baz']
-    >>> z
-    <zarr.core.Array '/foo/bar/baz' (21,) |S1>
-    >>> z.info
-    Name               : /foo/bar/baz
-    Type               : zarr.core.Array
-    Data type          : |S1
-    Shape              : (21,)
-    Chunk shape        : (7,)
-    Order              : C
-    Read-only          : False
-    Compressor         : Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
-    Store type         : zarr.storage.KVStore
-    No. bytes          : 21
-    No. bytes stored   : 382
-    Storage ratio      : 0.1
-    Chunks initialized : 3/3
-    >>> z[:]
-    array([b'H', b'e', b'l', b'l', b'o', b' ', b'f', b'r', b'o', b'm', b' ',
-           b't', b'h', b'e', b' ', b'c', b'l', b'o', b'u', b'd', b'!'],
-          dtype='|S1')
-    >>> z[:].tobytes()
-    b'Hello from the cloud!'
+.. ipython::
+
+    In [0]: import s3fs
+
+    In [0]: import zarr
+    
+    In [0]: s3 = s3fs.S3FileSystem(anon=True, client_kwargs=dict(region_name='eu-west-2'))
+    
+    In [0]: store = s3fs.S3Map(root='zarr-demo/store', s3=s3, check=False)
+    
+    In [0]: root = zarr.group(store=store)
+    
+    In [0]: z = root['foo/bar/baz']
+    
+    In [0]: z
+    
+    In [0]: z.info
+    
+    In [0]: z[:]
+
+    In [0]: z[:].tobytes()
 
 Zarr now also has a builtin storage backend for Azure Blob Storage.
 The class is :class:`zarr.storage.ABSStore` (requires
 `azure-storage-blob <https://docs.microsoft.com/en-us/azure/storage/blobs/storage-quickstart-blobs-python>`_
-to be installed)::
+to be installed)
 
-    >>> import azure.storage.blob
-    >>> container_client = azure.storage.blob.ContainerClient(...)  # doctest: +SKIP
-    >>> store = zarr.ABSStore(client=container_client, prefix='zarr-testing')  # doctest: +SKIP
-    >>> root = zarr.group(store=store, overwrite=True)  # doctest: +SKIP
-    >>> z = root.zeros('foo/bar', shape=(1000, 1000), chunks=(100, 100), dtype='i4')  # doctest: +SKIP
-    >>> z[:] = 42  # doctest: +SKIP
+.. ipython::okexcept:
+
+    In [0]: import azure.storage.blob
+    
+    In [0]: container_client = azure.storage.blob.ContainerClient(...)  # doctest: +SKIP
+    
+    In [0]: store = zarr.ABSStore(client=container_client, prefix='zarr-testing')  # doctest: +SKIP
+    
+    In [0]: root = zarr.group(store=store, overwrite=True)  # doctest: +SKIP
+    
+    In [0]: z = root.zeros('foo/bar', shape=(1000, 1000), chunks=(100, 100), dtype='i4')  # doctest: +SKIP
+    
+    In [0]: z[:] = 42  # doctest: +SKIP
 
 When using an actual storage account, provide ``account_name`` and
 ``account_key`` arguments to :class:`zarr.storage.ABSStore`, the
@@ -846,22 +908,35 @@ limited network bandwidth).
 
 As of version 2.2, Zarr also provides the :class:`zarr.storage.LRUStoreCache`
 which can be used to implement a local in-memory cache layer over a remote
-store. E.g.::
+store. E.g.
 
-    >>> s3 = s3fs.S3FileSystem(anon=True, client_kwargs=dict(region_name='eu-west-2'))
-    >>> store = s3fs.S3Map(root='zarr-demo/store', s3=s3, check=False)
-    >>> cache = zarr.LRUStoreCache(store, max_size=2**28)
-    >>> root = zarr.group(store=cache)
-    >>> z = root['foo/bar/baz']
-    >>> from timeit import timeit
-    >>> # first data access is relatively slow, retrieved from store
-    ... timeit('print(z[:].tobytes())', number=1, globals=globals())  # doctest: +SKIP
-    b'Hello from the cloud!'
-    0.1081731989979744
-    >>> # second data access is faster, uses cache
-    ... timeit('print(z[:].tobytes())', number=1, globals=globals())  # doctest: +SKIP
-    b'Hello from the cloud!'
-    0.0009490990014455747
+.. ipython::
+
+    In [0]: import s3fs
+
+    In [0]: s3 = s3fs.S3FileSystem(anon=True, client_kwargs=dict(region_name='eu-west-2'))
+
+    In [0]: store = s3fs.S3Map(root='zarr-demo/store', s3=s3, check=False)
+
+    In [0]: cache = zarr.LRUStoreCache(store, max_size=2**28)
+
+    In [0]: root = zarr.group(store=cache)
+
+    In [0]: z = root['foo/bar/baz']
+
+    In [0]: from timeit import timeit
+
+    In [0]: from timeit import timeit
+ 
+    In [0]: # first data access is relatively slow, retrieved from store
+
+    In [0]: timeit('print(z[:].tobytes())', number=1, globals=globals())  # doctest: +SKIP
+    
+    In [0]: # second data access is faster, uses cache
+
+    In [0]: timeit('print(z[:].tobytes())', number=1, globals=globals())  # doctest: +SKIP
+
+    
 
 If you are still experiencing poor performance with distributed/cloud storage,
 please raise an issue on the GitHub issue tracker with any profiling data you
@@ -875,23 +950,26 @@ As of version 2.5, zarr supports passing URLs directly to `fsspec`_,
 and having it create the "mapping" instance automatically. This means, that
 for all of the backend storage implementations `supported by fsspec`_,
 you can skip importing and configuring the storage explicitly.
-For example::
+For example
 
-    >>> g = zarr.open_group("s3://zarr-demo/store", storage_options={'anon': True})   # doctest: +SKIP
-    >>> g['foo/bar/baz'][:].tobytes()  # doctest: +SKIP
-    b'Hello from the cloud!'
+.. ipython::
 
+    In [0]: g = zarr.open_group("s3://zarr-demo/store", storage_options={'anon': True})   # doctest: +SKIP
+    
+    In [0]: g['foo/bar/baz'][:].tobytes()  # doctest: +SKIP
+    
 The provision of the protocol specifier "s3://" will select the correct backend.
 Notice the kwargs ``storage_options``, used to pass parameters to that backend.
 
-As of version 2.6, write mode and complex URLs are also supported, such as::
+As of version 2.6, write mode and complex URLs are also supported, such as
 
-    >>> g = zarr.open_group("simplecache::s3://zarr-demo/store",
-    ...                     storage_options={"s3": {'anon': True}})  # doctest: +SKIP
-    >>> g['foo/bar/baz'][:].tobytes()  # downloads target file  # doctest: +SKIP
-    b'Hello from the cloud!'
-    >>> g['foo/bar/baz'][:].tobytes()  # uses cached file  # doctest: +SKIP
-    b'Hello from the cloud!'
+.. ipython::
+
+    In [0]: g = zarr.open_group("simplecache::s3://zarr-demo/store", storage_options={"s3": {'anon': True}})  # doctest: +SKIP
+    
+    In [0]: g['foo/bar/baz'][:].tobytes()  # downloads target file  # doctest: +SKIP
+    
+    In [0]: g['foo/bar/baz'][:].tobytes()  # uses cached file  # doctest: +SKIP
 
 The second invocation here will be much faster. Note that the ``storage_options``
 have become more complex here, to account for the two parts of the supplied
@@ -899,12 +977,17 @@ URL.
 
 It is also possible to initialize the filesystem outside of Zarr and then pass
 it through. This requires creating an :class:`zarr.storage.FSStore` object
-explicitly. For example::
+explicitly. For example
 
-    >>> import s3fs  * doctest: +SKIP
-    >>> fs = s3fs.S3FileSystem(anon=True)  # doctest: +SKIP
-    >>> store = zarr.storage.FSStore('/zarr-demo/store', fs=fs)  # doctest: +SKIP
-    >>> g = zarr.open_group(store)  # doctest: +SKIP
+.. ipython::
+
+    In [0]: import s3fs  # doctest: +SKIP
+    
+    In [0]: fs = s3fs.S3FileSystem(anon=True)  # doctest: +SKIP
+    
+    In [0]: store = zarr.storage.FSStore('/zarr-demo/store', fs=fs)  # doctest: +SKIP
+    
+    In [0]: g = zarr.open_group(store)  # doctest: +SKIP
 
 This is useful in cases where you want to also use the same fsspec filesystem object
 separately from Zarr.
@@ -928,7 +1011,7 @@ consolidated into a single one via
 :func:`zarr.convenience.consolidate_metadata`. Doing this can greatly increase
 the speed of reading the array metadata, e.g.::
 
-   >>> zarr.consolidate_metadata(store)  # doctest: +SKIP
+    >>> zarr.consolidate_metadata(store)  # doctest: +SKIP
 
 This creates a special key with a copy of all of the metadata from all of the
 metadata objects in the store.
@@ -936,7 +1019,7 @@ metadata objects in the store.
 Later, to open a Zarr store with consolidated metadata, use
 :func:`zarr.convenience.open_consolidated`, e.g.::
 
-   >>> root = zarr.open_consolidated(store)  # doctest: +SKIP
+   >>> root = zarr.open_consolidated(store) 
 
 This uses the special key to read all of the metadata in a single call to the
 backend storage.
@@ -957,54 +1040,59 @@ Copying/migrating data
 If you have some data in an HDF5 file and would like to copy some or all of it
 into a Zarr group, or vice-versa, the :func:`zarr.convenience.copy` and
 :func:`zarr.convenience.copy_all` functions can be used. Here's an example
-copying a group named 'foo' from an HDF5 file to a Zarr group::
+copying a group named 'foo' from an HDF5 file to a Zarr group
 
-    >>> import h5py
-    >>> import zarr
-    >>> import numpy as np
-    >>> source = h5py.File('data/example.h5', mode='w')
-    >>> foo = source.create_group('foo')
-    >>> baz = foo.create_dataset('bar/baz', data=np.arange(100), chunks=(50,))
-    >>> spam = source.create_dataset('spam', data=np.arange(100, 200), chunks=(30,))
-    >>> zarr.tree(source)
-    /
-     ├── foo
-     │   └── bar
-     │       └── baz (100,) int64
-     └── spam (100,) int64
-    >>> dest = zarr.open_group('data/example.zarr', mode='w')
-    >>> from sys import stdout
-    >>> zarr.copy(source['foo'], dest, log=stdout)
-    copy /foo
-    copy /foo/bar
-    copy /foo/bar/baz (100,) int64
-    all done: 3 copied, 0 skipped, 800 bytes copied
-    (3, 0, 800)
-    >>> dest.tree()  # N.B., no spam
-    /
-     └── foo
-         └── bar
-             └── baz (100,) int64
-    >>> source.close()
+.. ipython:: 
+
+    In [0]: import h5py 
+
+    In [0]: import zarr
+ 
+    In [0]: import numpy as np
+
+    In [0]: import ipytree
+  
+    In [0]: source = h5py.File('data/example.h5', mode='w')
+  
+    In [0]: foo = source.create_group('foo')
+  
+    In [0]: baz = foo.create_dataset('bar/baz', data=np.arange(100), chunks=(50,))
+  
+    In [0]: spam = source.create_dataset('spam', data=np.arange(100, 200), chunks=(30,))
+
+.. ipython:: python
+    :okexcept:
+    
+        zarr.tree(source)
+   
+        dest = zarr.open_group('data/example.zarr', mode='w')
+
+        from sys import stdout
+    
+        zarr.copy(source['foo'], dest, log=stdout)
+    
+        dest.tree()  #N.B.,no spam
+    
+        source.close()
 
 If rather than copying a single group or array you would like to copy all
-groups and arrays, use :func:`zarr.convenience.copy_all`, e.g.::
+groups and arrays, use :func:`zarr.convenience.copy_all`, e.g.
 
-    >>> source = h5py.File('data/example.h5', mode='r')
-    >>> dest = zarr.open_group('data/example2.zarr', mode='w')
-    >>> zarr.copy_all(source, dest, log=stdout)
-    copy /foo
-    copy /foo/bar
-    copy /foo/bar/baz (100,) int64
-    copy /spam (100,) int64
-    all done: 4 copied, 0 skipped, 1,600 bytes copied
-    (4, 0, 1600)
-    >>> dest.tree()
-    /
-     ├── foo
-     │   └── bar
-     │       └── baz (100,) int64
-     └── spam (100,) int64
+.. ipython::
+
+    In [0]: import h5py 
+
+    In [0]: import zarr
+
+    In [0]: from sys import stdout
+
+    In [0]: source = h5py.File('data/example.h5', mode='r')
+
+    In [0]: dest = zarr.open_group('data/example2.zarr', mode='w')
+    
+    In [0]: zarr.copy_all(source, dest, log=stdout)
+    
+    In [0]: dest.tree()
 
 If you need to copy data between two Zarr groups, the
 :func:`zarr.convenience.copy` and :func:`zarr.convenience.copy_all` functions can
