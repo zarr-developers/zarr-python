@@ -1102,44 +1102,34 @@ the :func:`zarr.convenience.copy_store` function can be used. This function
 copies data directly between the underlying stores, without any decompression or
 re-compression, and so should be faster. E.g.::
 
-    >>> import zarr
-    >>> import numpy as np
-    >>> store1 = zarr.DirectoryStore('data/example.zarr')
-    >>> root = zarr.group(store1, overwrite=True)
-    >>> baz = root.create_dataset('foo/bar/baz', data=np.arange(100), chunks=(50,))
-    >>> spam = root.create_dataset('spam', data=np.arange(100, 200), chunks=(30,))
-    >>> root.tree()
-    /
-     ├── foo
-     │   └── bar
-     │       └── baz (100,) int64
-     └── spam (100,) int64
-    >>> from sys import stdout
-    >>> store2 = zarr.ZipStore('data/example.zip', mode='w')
-    >>> zarr.copy_store(store1, store2, log=stdout)
-    copy .zgroup
-    copy foo/.zgroup
-    copy foo/bar/.zgroup
-    copy foo/bar/baz/.zarray
-    copy foo/bar/baz/0
-    copy foo/bar/baz/1
-    copy spam/.zarray
-    copy spam/0
-    copy spam/1
-    copy spam/2
-    copy spam/3
-    all done: 11 copied, 0 skipped, 1,138 bytes copied
-    (11, 0, 1138)
-    >>> new_root = zarr.group(store2)
-    >>> new_root.tree()
-    /
-     ├── foo
-     │   └── bar
-     │       └── baz (100,) int64
-     └── spam (100,) int64
-    >>> new_root['foo/bar/baz'][:]
-    array([ 0,  1,  2,  ..., 97, 98, 99])
-    >>> store2.close()  # zip stores need to be closed
+    . ipython::
+
+    In [0]: import zarr
+
+    In [0]: import numpy as np
+    
+    In [0]: store1 = zarr.DirectoryStore('data/example.zarr')
+    
+    In [0]: root = zarr.group(store1, overwrite=True)
+    
+    In [0]: baz = root.create_dataset('foo/bar/baz', data=np.arange(100), chunks=(50,))
+    
+    In [0]: spam = root.create_dataset('spam', data=np.arange(100, 200), chunks=(30,))
+    
+    In [0]: root.tree()
+    
+    In [0]: from sys import stdout
+    
+    In [0]: store2 = zarr.ZipStore('data/example.zip', mode='w')
+    
+    In [0]: zarr.copy_store(store1, store2, log=stdout)
+    
+    In [0]: new_root = zarr.group(store2)
+
+    In [0]: new_root.tree()
+   
+    In [0]: store2.close()  # zip stores need to be closed
+    
 
 .. _tutorial_strings:
 
