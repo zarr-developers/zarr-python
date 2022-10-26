@@ -247,7 +247,7 @@ latex_elements = {
 #  author, documentclass [howto, manual, or own class]).
 latex_documents = [
     (main_doc, 'zarr.tex', 'zarr Documentation',
-     'Zarr Developers', 'manual'),
+     author, 'manual'),
 ]
 
 # The name of an image file (relative to this directory) to place at the top of
@@ -311,8 +311,10 @@ texinfo_documents = [
 # Example configuration for intersphinx: refer to the Python standard library.
 # use in refs e.g:
 # :ref:`comparison manual <python:comparisons>`
-intersphinx_mapping = { 'python':('https://docs.python.org/', None),
-                        'numpy': ('https://numpy.org/doc/stable/', None)}
+intersphinx_mapping = {
+    'python': ('https://docs.python.org/', None),
+    'numpy': ('https://numpy.org/doc/stable/', None),
+}
 
 
 # sphinx-copybutton configuration
