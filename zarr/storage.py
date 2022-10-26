@@ -1757,7 +1757,12 @@ class ZipStore(Store):
     def __getitem__(self, key):
         with self.mutex:
             with self.zf.open(key) as f:  # will raise KeyError
-                return f.read()
+                data = f.read()
+
+                if data:
+                    return data
+                else:
+                    raise KeyError("Key not found")
 
     def __setitem__(self, key, value):
         if self.mode == 'r':

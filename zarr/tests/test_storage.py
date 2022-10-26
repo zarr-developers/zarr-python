@@ -198,12 +198,15 @@ class StoreTests:
         store[foo] = b'bar'
 
         del store[foo]
+
+        with pytest.raises(KeyError):
+            store[foo]
         
         # if foo in store:
-        if isinstance(store, ZipStore):
-            assert store[foo] == b''
-        else:
-            assert foo not in store
+        # if isinstance(store, ZipStore):
+        #     assert store[foo] == b''
+        # else:
+        #     assert foo not in store
 
     def test_popitem(self):
         store = self.create_store()
