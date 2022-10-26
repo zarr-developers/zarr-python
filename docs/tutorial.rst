@@ -11,16 +11,16 @@ similar functionality, but with some additional flexibility.
 Data types supported
 ====================
 
-For Fixed item size we have
+For Fixed item size: 
      Floating point numbers.(Eg float16, float32, float64), Integers.(Eg int8, 
      int16, int32, int64, unit8, unit16, unit32, unit64). Complex floating point numbers. 
      (Eg complex64,complex128), Datetime, timedelta, Boolean, Fixed length byte or Unicode 
      strings, Structured dtype
-For Variable item size
-    Objects
-•	Variable length byte string					           
-•	Variable length unicode strings
-•	Variable length 1D array of a primitive type
+For Variable item size:
+  Objects
+     • Variable length byte string					           
+     • Variable length unicode strings
+     • Variable length 1D array of a primitive type
 
 
 
