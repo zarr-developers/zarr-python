@@ -1,3 +1,4 @@
+from typing import Optional
 from warnings import warn
 
 import numpy as np
@@ -17,7 +18,7 @@ from zarr.util import normalize_dimension_separator
 
 
 def create(shape, chunks=True, dtype=None, compressor='default',
-           fill_value=0, order='C', store=None, synchronizer=None,
+           fill_value: Optional[int] = 0, order='C', store=None, synchronizer=None,
            overwrite=False, path=None, chunk_store=None, filters=None,
            cache_metadata=True, cache_attrs=True, read_only=False,
            object_codec=None, dimension_separator=None, write_empty_chunks=True,

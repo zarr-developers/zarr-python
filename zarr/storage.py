@@ -597,7 +597,7 @@ def init_group(
     store: StoreLike,
     overwrite: bool = False,
     path: Path = None,
-    chunk_store: StoreLike = None,
+    chunk_store: Optional[StoreLike] = None,
 ):
     """Initialize a group store. Note that this is a low-level function and there should be no
     need to call this directly from user code.
@@ -644,7 +644,7 @@ def _init_group_metadata(
     store: StoreLike,
     overwrite: Optional[bool] = False,
     path: Optional[str] = None,
-    chunk_store: StoreLike = None,
+    chunk_store: Optional[StoreLike] = None,
 ):
 
     store_version = getattr(store, '_store_version', 2)
