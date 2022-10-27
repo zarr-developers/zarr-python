@@ -702,8 +702,7 @@ def _dict_store_keys(d: Dict, prefix="", cls=dict):
     for k in d.keys():
         v = d[k]
         if isinstance(v, cls):
-            for sk in _dict_store_keys(v, prefix + k + '/', cls):
-                yield sk
+            yield from _dict_store_keys(v, prefix + k + '/', cls)
         else:
             yield prefix + k
 
@@ -863,8 +862,7 @@ class MemoryStore(Store):
         )
 
     def keys(self):
-        for k in _dict_store_keys(self.root, cls=self.cls):
-            yield k
+        yield from _dict_store_keys(self.root, cls=self.cls)
 
     def __iter__(self):
         return self.keys()
@@ -1462,7 +1460,7 @@ class FSStore(Store):
                     return sorted(new_children)
                 else:
                     return children
-        except IOError:
+        except OSError:
             return []
 
     def rmdir(self, path=None):
@@ -1794,8 +1792,7 @@ class ZipStore(Store):
             return sorted(self.zf.namelist())
 
     def keys(self):
-        for key in self.keylist():
-            yield key
+        yield from self.keylist()
 
     def __iter__(self):
         return self.keys()
@@ -2270,8 +2267,7 @@ class LMDBStore(Store):
     def values(self):
         with self.db.begin(buffers=self.buffers) as txn:
             with txn.cursor() as cursor:
-                for v in cursor.iternext(keys=False, values=True):
-                    yield v
+                yield from cursor.iternext(keys=False, values=True)
 
     def __iter__(self):
         return self.keys()
@@ -2581,8 +2577,7 @@ class SQLiteStore(Store):
 
     def items(self):
         kvs = self.cursor.execute('SELECT k, v FROM zarr')
-        for k, v in kvs:
-            yield k, v
+        yield from kvs
 
     def keys(self):
         ks = self.cursor.execute('SELECT k FROM zarr')
@@ -2796,12 +2791,10 @@ class RedisStore(Store):
                 for key in self.client.keys(self._key('*'))]
 
     def keys(self):
-        for key in self.keylist():
-            yield key
+        yield from self.keylist()
 
     def __iter__(self):
-        for key in self.keys():
-            yield key
+        yield from self.keys()
 
     def __len__(self):
         return len(self.keylist())
