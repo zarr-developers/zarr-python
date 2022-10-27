@@ -1100,9 +1100,9 @@ be used and provide the most flexibility. However, if you want to copy data
 in the most efficient way possible, without changing any configuration options,
 the :func:`zarr.convenience.copy_store` function can be used. This function
 copies data directly between the underlying stores, without any decompression or
-re-compression, and so should be faster. E.g.::
+re-compression, and so should be faster. E.g.
 
-    . ipython::
+.. ipython::
 
     In [0]: import zarr
 
@@ -1139,90 +1139,101 @@ String arrays
 There are several options for storing arrays of strings.
 
 If your strings are all ASCII strings, and you know the maximum length of the string in
-your array, then you can use an array with a fixed-length bytes dtype. E.g.::
+your array, then you can use an array with a fixed-length bytes dtype. E.g.
 
-    >>> z = zarr.zeros(10, dtype='S6')
-    >>> z
-    <zarr.core.Array (10,) |S6>
-    >>> z[0] = b'Hello'
-    >>> z[1] = b'world!'
-    >>> z[:]
-    array([b'Hello', b'world!', b'', b'', b'', b'', b'', b'', b'', b''],
-          dtype='|S6')
+.. ipython::
 
-A fixed-length unicode dtype is also available, e.g.::
+    In [0]: z = zarr.zeros(10, dtype='S6')
 
-    >>> greetings = ['¡Hola mundo!', 'Hej Världen!', 'Servus Woid!', 'Hei maailma!',
-    ...              'Xin chào thế giới', 'Njatjeta Botë!', 'Γεια σου κόσμε!',
-    ...              'こんにちは世界', '世界，你好！', 'Helló, világ!', 'Zdravo svete!',
-    ...              'เฮลโลเวิลด์']
-    >>> text_data = greetings * 10000
-    >>> z = zarr.array(text_data, dtype='U20')
-    >>> z
-    <zarr.core.Array (120000,) <U20>
-    >>> z[:]
-    array(['¡Hola mundo!', 'Hej Världen!', 'Servus Woid!', ...,
-           'Helló, világ!', 'Zdravo svete!', 'เฮลโลเวิลด์'],
-          dtype='<U20')
+    In [0]: z
+
+    In [0]: z[0] = b'Hello'
+
+    In [0]: z[1] = b'world!'
+
+    In [0]: z[:]
+    
+A fixed-length unicode dtype is also available, e.g.
+
+.. ipython::
+
+    In [0]: greetings = ['¡Hola mundo!', 'Hej Världen!', 'Servus Woid!', 'Hei maailma!', 'Xin chào thế giới', 'Njatjeta Botë!', 'Γεια σου κόσμε!', 'こんにちは世界', '世界，你好！', 'Helló, világ!', 'Zdravo svete!', 'เฮลโลเวิลด์']
+
+    In [0]: text_data = greetings * 10000
+    
+    In [0]: z = zarr.array(text_data, dtype='U20')
+
+    In [0]: z
+
+    In [0]: z[:]
 
 For variable-length strings, the ``object`` dtype can be used, but a codec must be
 provided to encode the data (see also :ref:`tutorial_objects` below). At the time of
 writing there are four codecs available that can encode variable length string
 objects: :class:`numcodecs.VLenUTF8`, :class:`numcodecs.JSON`, :class:`numcodecs.MsgPack`.
-and :class:`numcodecs.Pickle`. E.g. using ``VLenUTF8``::
+and :class:`numcodecs.Pickle`. E.g. using ``VLenUTF8``
 
-    >>> import numcodecs
-    >>> z = zarr.array(text_data, dtype=object, object_codec=numcodecs.VLenUTF8())
-    >>> z
-    <zarr.core.Array (120000,) object>
-    >>> z.filters
-    [VLenUTF8()]
-    >>> z[:]
-    array(['¡Hola mundo!', 'Hej Världen!', 'Servus Woid!', ...,
-           'Helló, világ!', 'Zdravo svete!', 'เฮลโลเวิลด์'], dtype=object)
+.. ipython::
+
+    In [0]: import numcodecs
+
+    In [0]: z = zarr.array(text_data, dtype=object, object_codec=numcodecs.VLenUTF8())
+
+    In [0]: z
+
+    In [0]: z.filters
+    
+    In [0]: z[:]
+    
 
 As a convenience, ``dtype=str`` (or ``dtype=unicode`` on Python 2.7) can be used, which
-is a short-hand for ``dtype=object, object_codec=numcodecs.VLenUTF8()``, e.g.::
+is a short-hand for ``dtype=object, object_codec=numcodecs.VLenUTF8()``, e.g.
 
-    >>> z = zarr.array(text_data, dtype=str)
-    >>> z
-    <zarr.core.Array (120000,) object>
-    >>> z.filters
-    [VLenUTF8()]
-    >>> z[:]
-    array(['¡Hola mundo!', 'Hej Världen!', 'Servus Woid!', ...,
-           'Helló, világ!', 'Zdravo svete!', 'เฮลโลเวิลด์'], dtype=object)
+.. ipython::
+
+    In [0]: z = zarr.array(text_data, dtype=str)
+
+    In [0]: z
+
+    In [0]: z.filters
+   
+    In [0]: z[:]
+    
 
 Variable-length byte strings are also supported via ``dtype=object``. Again an
 ``object_codec`` is required, which can be one of :class:`numcodecs.VLenBytes` or
 :class:`numcodecs.Pickle`. For convenience, ``dtype=bytes`` (or ``dtype=str`` on Python
 2.7) can be used as a short-hand for ``dtype=object, object_codec=numcodecs.VLenBytes()``,
-e.g.::
+e.g.
 
-    >>> bytes_data = [g.encode('utf-8') for g in greetings] * 10000
-    >>> z = zarr.array(bytes_data, dtype=bytes)
-    >>> z
-    <zarr.core.Array (120000,) object>
-    >>> z.filters
-    [VLenBytes()]
-    >>> z[:]
-    array([b'\xc2\xa1Hola mundo!', b'Hej V\xc3\xa4rlden!', b'Servus Woid!',
-           ..., b'Hell\xc3\xb3, vil\xc3\xa1g!', b'Zdravo svete!',
-           b'\xe0\xb9\x80\xe0\xb8\xae\xe0\xb8\xa5\xe0\xb9\x82\xe0\xb8\xa5\xe0\xb9\x80\xe0\xb8\xa7\xe0\xb8\xb4\xe0\xb8\xa5\xe0\xb8\x94\xe0\xb9\x8c'], dtype=object)
+.. ipython::
 
+    In [0]: bytes_data = [g.encode('utf-8') for g in greetings] * 10000
+
+    In [0]: z = zarr.array(bytes_data, dtype=bytes)
+
+    In [0]: z
+
+    In [0]: z.filters
+   
+    In [0]: z[:]
+    
 If you know ahead of time all the possible string values that can occur, you could
 also use the :class:`numcodecs.Categorize` codec to encode each unique string value as an
-integer. E.g.::
+integer. E.g.
 
-    >>> categorize = numcodecs.Categorize(greetings, dtype=object)
-    >>> z = zarr.array(text_data, dtype=object, object_codec=categorize)
-    >>> z
-    <zarr.core.Array (120000,) object>
-    >>> z.filters
-    [Categorize(dtype='|O', astype='|u1', labels=['¡Hola mundo!', 'Hej Världen!', 'Servus Woid!', ...])]
-    >>> z[:]
-    array(['¡Hola mundo!', 'Hej Världen!', 'Servus Woid!', ...,
-           'Helló, világ!', 'Zdravo svete!', 'เฮลโลเวิลด์'], dtype=object)
+.. ipython::
+
+    In [0]: categorize = numcodecs.Categorize(greetings, dtype=object)
+   
+    In [0]: z = zarr.array(text_data, dtype=object, object_codec=categorize)
+   
+    In [0]: z
+
+    In [0]: z.filters
+    
+    In [0]: z[:]
+    
 
 
 .. _tutorial_objects:
@@ -1240,15 +1251,21 @@ At the time of writing there are three codecs available that can serve as a gene
 purpose object codec and support encoding of a mixture of object types:
 :class:`numcodecs.JSON`, :class:`numcodecs.MsgPack`. and :class:`numcodecs.Pickle`.
 
-For example, using the JSON codec::
+For example, using the JSON codec
 
-    >>> z = zarr.empty(5, dtype=object, object_codec=numcodecs.JSON())
-    >>> z[0] = 42
-    >>> z[1] = 'foo'
-    >>> z[2] = ['bar', 'baz', 'qux']
-    >>> z[3] = {'a': 1, 'b': 2.2}
-    >>> z[:]
-    array([42, 'foo', list(['bar', 'baz', 'qux']), {'a': 1, 'b': 2.2}, None], dtype=object)
+.. ipython::
+
+    In [0]: z = zarr.empty(5, dtype=object, object_codec=numcodecs.JSON())
+
+    In [0]: z[0] = 42
+
+    In [0]: z[1] = 'foo'
+
+    In [0]: z[2] = ['bar', 'baz', 'qux']
+
+    In [0]: z[3] = {'a': 1, 'b': 2.2}
+
+    In [0]: z[:]
 
 Not all codecs support encoding of all object types. The
 :class:`numcodecs.Pickle` codec is the most flexible, supporting encoding any type
@@ -1263,35 +1280,44 @@ Ragged arrays
 
 If you need to store an array of arrays, where each member array can be of any length
 and stores the same primitive type (a.k.a. a ragged array), the
-:class:`numcodecs.VLenArray` codec can be used, e.g.::
+:class:`numcodecs.VLenArray` codec can be used, e.g.
 
-    >>> z = zarr.empty(4, dtype=object, object_codec=numcodecs.VLenArray(int))
-    >>> z
-    <zarr.core.Array (4,) object>
-    >>> z.filters
-    [VLenArray(dtype='<i8')]
-    >>> z[0] = np.array([1, 3, 5])
-    >>> z[1] = np.array([4])
-    >>> z[2] = np.array([7, 9, 14])
-    >>> z[:]
-    array([array([1, 3, 5]), array([4]), array([ 7,  9, 14]),
-           array([], dtype=int64)], dtype=object)
+.. ipython::
+
+    In [0]: z = zarr.empty(4, dtype=object, object_codec=numcodecs.VLenArray(int))
+
+    In [0]: z
+
+    In [0]: z.filters
+
+    In [0]: z[0] = np.array([1, 3, 5])
+
+    In [0]: z[1] = np.array([4])
+
+    In [0]: z[2] = np.array([7, 9, 14])
+
+    In [0]: z[:]
 
 As a convenience, ``dtype='array:T'`` can be used as a short-hand for
 ``dtype=object, object_codec=numcodecs.VLenArray('T')``, where 'T' can be any NumPy
-primitive dtype such as 'i4' or 'f8'. E.g.::
+primitive dtype such as 'i4' or 'f8'. E.g.
 
-    >>> z = zarr.empty(4, dtype='array:i8')
-    >>> z
-    <zarr.core.Array (4,) object>
-    >>> z.filters
-    [VLenArray(dtype='<i8')]
-    >>> z[0] = np.array([1, 3, 5])
-    >>> z[1] = np.array([4])
-    >>> z[2] = np.array([7, 9, 14])
-    >>> z[:]
-    array([array([1, 3, 5]), array([4]), array([ 7,  9, 14]),
-           array([], dtype=int64)], dtype=object)
+.. ipython::
+
+    In [0]: z = zarr.empty(4, dtype='array:i8')
+    
+    In [0]: z
+
+    In [0]: z.filters
+   
+    In [0]: z[0] = np.array([1, 3, 5])
+
+    In [0]: z[1] = np.array([4])
+
+    In [0]: z[2] = np.array([7, 9, 14])
+
+    In [0]: z[:]
+    
 
 .. _tutorial_chunks:
 
@@ -1310,41 +1336,53 @@ The optimal chunk shape will depend on how you want to access the data. E.g.,
 for a 2-dimensional array, if you only ever take slices along the first
 dimension, then chunk across the second dimenson. If you know you want to chunk
 across an entire dimension you can use ``None`` or ``-1`` within the ``chunks``
-argument, e.g.::
+argument, e.g.
 
-    >>> z1 = zarr.zeros((10000, 10000), chunks=(100, None), dtype='i4')
-    >>> z1.chunks
-    (100, 10000)
+.. ipython::
+
+    In [0]: z1 = zarr.zeros((10000, 10000), chunks=(100, None), dtype='i4')
+
+    In [0]: z1.chunks
 
 Alternatively, if you only ever take slices along the second dimension, then
-chunk across the first dimension, e.g.::
+chunk across the first dimension, e.g.
 
-    >>> z2 = zarr.zeros((10000, 10000), chunks=(None, 100), dtype='i4')
-    >>> z2.chunks
-    (10000, 100)
+.. ipython::
+
+    In [0]: z2 = zarr.zeros((10000, 10000), chunks=(None, 100), dtype='i4')
+
+    In [0]: z2.chunks
 
 If you require reasonable performance for both access patterns then you need to
-find a compromise, e.g.::
+find a compromise, e.g.
 
-    >>> z3 = zarr.zeros((10000, 10000), chunks=(1000, 1000), dtype='i4')
-    >>> z3.chunks
-    (1000, 1000)
+.. ipython::
+
+    In [0]: z3 = zarr.zeros((10000, 10000), chunks=(1000, 1000), dtype='i4')
+
+    In [0]: z3.chunks
 
 If you are feeling lazy, you can let Zarr guess a chunk shape for your data by
 providing ``chunks=True``, although please note that the algorithm for guessing
-a chunk shape is based on simple heuristics and may be far from optimal. E.g.::
+a chunk shape is based on simple heuristics and may be far from optimal. E.g.
 
-    >>> z4 = zarr.zeros((10000, 10000), chunks=True, dtype='i4')
-    >>> z4.chunks
-    (625, 625)
+.. ipython::
+
+    In [0]: z4 = zarr.zeros((10000, 10000), chunks=True, dtype='i4')
+
+    In [0]: z4.chunks
+
 
 If you know you are always going to be loading the entire array into memory, you
 can turn off chunks by providing ``chunks=False``, in which case there will be
-one single chunk for the array::
+one single chunk for the array
 
-    >>> z5 = zarr.zeros((10000, 10000), chunks=False, dtype='i4')
-    >>> z5.chunks
-    (10000, 10000)
+.. ipython::
+
+    In [0]: z5 = zarr.zeros((10000, 10000), chunks=False, dtype='i4')
+
+    In [0]: z5.chunks
+
 
 .. _tutorial_chunks_order:
 
@@ -1356,35 +1394,12 @@ The order of bytes **within each chunk** of an array can be changed via the
 multi-dimensional arrays, these two layouts may provide different compression
 ratios, depending on the correlation structure within the data. E.g.::
 
-    >>> a = np.arange(100000000, dtype='i4').reshape(10000, 10000).T
-    >>> c = zarr.array(a, chunks=(1000, 1000))
-    >>> c.info
-    Type               : zarr.core.Array
-    Data type          : int32
-    Shape              : (10000, 10000)
-    Chunk shape        : (1000, 1000)
-    Order              : C
-    Read-only          : False
-    Compressor         : Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
-    Store type         : zarr.storage.KVStore
-    No. bytes          : 400000000 (381.5M)
-    No. bytes stored   : 6696010 (6.4M)
-    Storage ratio      : 59.7
-    Chunks initialized : 100/100
-    >>> f = zarr.array(a, chunks=(1000, 1000), order='F')
-    >>> f.info
-    Type               : zarr.core.Array
-    Data type          : int32
-    Shape              : (10000, 10000)
-    Chunk shape        : (1000, 1000)
-    Order              : F
-    Read-only          : False
-    Compressor         : Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
-    Store type         : zarr.storage.KVStore
-    No. bytes          : 400000000 (381.5M)
-    No. bytes stored   : 4684636 (4.5M)
-    Storage ratio      : 85.4
-    Chunks initialized : 100/100
+    In [0]: a = np.arange(100000000, dtype='i4').reshape(10000, 10000).T
+
+    In [0]: c = zarr.array(a, chunks=(1000, 1000))
+    
+    In [0]: c.info
+    
 
 In the above example, Fortran order gives a better compression ratio. This is an
 artificial example but illustrates the general point that changing the order of
@@ -1411,52 +1426,50 @@ If you know that your data will form chunks that are almost always non-empty, th
 In this case, creating an array with ``write_empty_chunks=True`` (the default) will instruct Zarr to write every chunk without checking for emptiness.
 
 The following example illustrates the effect of the ``write_empty_chunks`` flag on
-the time required to write an array with different values.::
+the time required to write an array with different values.
 
-    >>> import zarr
-    >>> import numpy as np
-    >>> import time
-    >>> from tempfile import TemporaryDirectory
-    >>> def timed_write(write_empty_chunks):
-    ...     """
-    ...     Measure the time required and number of objects created when writing
-    ...     to a Zarr array with random ints or fill value.
-    ...     """
-    ...     chunks = (8192,)
-    ...     shape = (chunks[0] * 1024,)
-    ...     data = np.random.randint(0, 255, shape)
-    ...     dtype = 'uint8'
-    ...
-    ...     with TemporaryDirectory() as store:
-    ...         arr = zarr.open(store,
-    ...                         shape=shape,
-    ...                         chunks=chunks,
-    ...                         dtype=dtype,
-    ...                         write_empty_chunks=write_empty_chunks,
-    ...                         fill_value=0,
-    ...                         mode='w')
-    ...         # initialize all chunks
-    ...         arr[:] = 100
-    ...         result = []
-    ...         for value in (data, arr.fill_value):
-    ...             start = time.time()
-    ...             arr[:] = value
-    ...             elapsed = time.time() - start
-    ...             result.append((elapsed, arr.nchunks_initialized))
-    ...
-    ...         return result
-    >>> for write_empty_chunks in (True, False):
-    ...     full, empty = timed_write(write_empty_chunks)
-    ...     print(f'\nwrite_empty_chunks={write_empty_chunks}:\n\tRandom Data: {full[0]:.4f}s, {full[1]} objects stored\n\t Empty Data: {empty[0]:.4f}s, {empty[1]} objects stored\n')
+.. ipython:: 
 
-    write_empty_chunks=True:
-            Random Data: 0.1252s, 1024 objects stored
-            Empty Data: 0.1060s, 1024 objects stored
+    In [0]: import zarr
+   
+    In [0]: import numpy as np
+   
+    In [0]: import time
+   
+    In [0]: from tempfile import TemporaryDirectory
+   
+    In [0]: def timed_write(write_empty_chunks):
+       ...:     """
+       ...:     Measure the time required and number of objects created when writing
+       ...:     to a Zarr array with random ints or fill value.
+       ...:     """
+       ...:     chunks = (8192,)
+       ...:     shape = (chunks[0] * 1024,)
+       ...:     data = np.random.randint(0, 255, shape) 
+       ...:     dtype = 'uint8'
+       ...:
+       ...:     with TemporaryDirectory() as store:
+       ...:         arr = zarr.open(store,
+       ...:                         shape=shape,
+       ...:                         chunks=chunks,
+       ...:                         dtype=dtype,
+       ...:                         write_empty_chunks=write_empty_chunks,
+       ...:                         fill_value=0,
+       ...:                         mode='w')
+       ...:         # initialize all chunks
+       ...:         arr[:] = 100
+       ...:         result = []
+       ...:         for value in (data, arr.fill_value):
+       ...:             start = time.time()
+       ...:             arr[:] = value
+       ...:             elapsed = time.time() - start
+       ...:             result.append((elapsed, arr.nchunks_initialized))
+       ...:
+       ...:         return result
 
-
-    write_empty_chunks=False:
-            Random Data: 0.1359s, 1024 objects stored
-            Empty Data: 0.0301s, 0 objects stored
+    In [0]: for write_empty_chunks in (True, False):
+       ...:     full, empty = timed_write(write_empty_chunks)
+       ...:     print(f'\nwrite_empty_chunks={write_empty_chunks}:\n\tRandom Data: {full[0]:.4f}s, {full[1]} objects stored\n\t Empty Data: {empty[0]:.4f}s, {empty[1]} objects stored\n')
 
 In this example, writing random data is slightly slower with ``write_empty_chunks=True``,
 but writing empty data is substantially faster and generates far fewer objects in storage.
@@ -1472,27 +1485,37 @@ have planned. In such cases it can be advantageous to re-chunk the data. For sma
 datasets, or when the mismatch between input and output chunks is small
 such that only a few chunks of the input dataset need to be read to create each
 chunk in the output array, it is sufficient to simply copy the data to a new array
-with the desired chunking, e.g. ::
+with the desired chunking, e.g. 
 
-    >>> a = zarr.zeros((10000, 10000), chunks=(100,100), dtype='uint16', store='a.zarr')
-    >>> b = zarr.array(a, chunks=(100, 200), store='b.zarr')
+.. ipython::
+
+    In [0]: #a = zarr.zeros((10000, 10000), chunks=(100,100), dtype='uint16', store='a.zarr')
+
+    In [0]: #b = zarr.array(a, chunks=(100, 200), store='b.zarr')
 
 If the chunk shapes mismatch, however, a simple copy can lead to non-optimal data
 access patterns and incur a substantial performance hit when using
 file based stores. One of the most pathological examples is
-switching from column-based chunking to row-based chunking e.g. ::
+switching from column-based chunking to row-based chunking e.g. 
 
-    >>> a = zarr.zeros((10000,10000), chunks=(10000, 1), dtype='uint16', store='a.zarr')
-    >>> b = zarr.array(a, chunks=(1,10000), store='b.zarr')
+.. ipython::
+
+    In [0]: #m = zarr.zeros((10000,10000), chunks=(10000, 1), dtype='uint16', store='m.zarr')
+    
+    In [0]: #n = zarr.array(m, chunks=(1,10000), store='n.zarr')
 
 which will require every chunk in the input data set to be repeatedly read when creating
 each output chunk. If the entire array will fit within memory, this is simply resolved
 by forcing the entire input array into memory as a numpy array before converting
-back to zarr with the desired chunking. ::
+back to zarr with the desired chunking. 
 
-    >>> a = zarr.zeros((10000,10000), chunks=(10000, 1), dtype='uint16', store='a.zarr')
-    >>> b = a[...]
-    >>> c = zarr.array(b, chunks=(1,10000), store='c.zarr')
+.. ipython::
+
+    In [0]: #x = zarr.zeros((10000,10000), chunks=(10000, 1), dtype='uint16', store='x.zarr')
+
+    In [0]: #y = x[...]
+
+    In [0]: #z = zarr.array(y, chunks=(1,10000), store='z.zarr')
 
 For data sets which have mismatched chunks and which do not fit in memory, a
 more sophisticated approach to rechunking, such as offered by the
@@ -1536,26 +1559,30 @@ then it is possible both workers will attempt to modify the middle chunk at the
 same time, and synchronization is required to prevent data loss.
 
 Zarr provides support for chunk-level synchronization. E.g., create an array
-with thread synchronization::
+with thread synchronization
 
-    >>> z = zarr.zeros((10000, 10000), chunks=(1000, 1000), dtype='i4',
-    ...                 synchronizer=zarr.ThreadSynchronizer())
-    >>> z
-    <zarr.core.Array (10000, 10000) int32>
+.. ipython::
+
+    In [0]: z = zarr.zeros((10000, 10000), chunks=(1000, 1000), dtype='i4',
+       ...:                 synchronizer=zarr.ThreadSynchronizer())
+
+    In [0]: z
 
 This array is safe to read or write within a multi-threaded program.
 
 Zarr also provides support for process synchronization via file locking,
 provided that all processes have access to a shared file system, and provided
 that the underlying file system supports file locking (which is not the case for
-some networked file systems). E.g.::
+some networked file systems). E.g.
 
-    >>> synchronizer = zarr.ProcessSynchronizer('data/example.sync')
-    >>> z = zarr.open_array('data/example', mode='w', shape=(10000, 10000),
-    ...                     chunks=(1000, 1000), dtype='i4',
-    ...                     synchronizer=synchronizer)
-    >>> z
-    <zarr.core.Array (10000, 10000) int32>
+.. ipython::
+
+    In [0]: synchronizer = zarr.ProcessSynchronizer('data/example.sync')
+    
+    In [0]: z = zarr.open_array('data/example', mode='w', shape=(10000, 10000), chunks=(1000, 1000), dtype='i4', synchronizer=synchronizer)
+    
+    In [0]: z
+    
 
 This array is safe to read or write from multiple processes.
 
@@ -1587,31 +1614,44 @@ store like a :class:`zarr.storage.DirectoryStore`, :class:`zarr.storage.ZipStore
 that is pickled is the necessary parameters to allow the store to re-open any
 underlying files or databases upon being unpickled.
 
-E.g., pickle/unpickle an in-memory array::
+E.g., pickle/unpickle an in-memory array
 
-    >>> import pickle
-    >>> z1 = zarr.array(np.arange(100000))
-    >>> s = pickle.dumps(z1)
-    >>> len(s) > 5000  # relatively large because data have been pickled
-    True
-    >>> z2 = pickle.loads(s)
-    >>> z1 == z2
-    True
-    >>> np.all(z1[:] == z2[:])
-    True
+.. ipython::
 
-E.g., pickle/unpickle an array stored on disk::
+    In [0]: import pickle
 
-    >>> z3 = zarr.open('data/walnuts.zarr', mode='w', shape=100000, dtype='i8')
-    >>> z3[:] = np.arange(100000)
-    >>> s = pickle.dumps(z3)
-    >>> len(s) < 200  # small because no data have been pickled
-    True
-    >>> z4 = pickle.loads(s)
-    >>> z3 == z4
-    True
-    >>> np.all(z3[:] == z4[:])
-    True
+    
+    In [0]: z1 = zarr.array(np.arange(100000))
+    
+    In [0]: s = pickle.dumps(z1)
+    
+    In [0]: len(s) > 5000  # relatively large because data have been pickled
+    
+    In [0]: z2 = pickle.loads(s)
+    
+    In [0]: z1 == z2
+    
+    In [0]: np.all(z1[:] == z2[:])
+    
+
+E.g., pickle/unpickle an array stored on disk
+
+.. ipython::
+
+    In [0]: z3 = zarr.open('data/walnuts.zarr', mode='w', shape=100000, dtype='i8')
+ 
+    In [0]: z3[:] = np.arange(100000)
+    
+    In [0]: s = pickle.dumps(z3)
+    
+    In [0]: len(s) < 200  # small because no data have been pickled
+    
+    In [0]: z4 = pickle.loads(s)
+    
+    In [0]: z3 == z4
+    
+    In [0]: np.all(z3[:] == z4[:])
+    
 
 .. _tutorial_datetime:
 
@@ -1619,18 +1659,22 @@ Datetimes and timedeltas
 ------------------------
 
 NumPy's ``datetime64`` ('M8') and ``timedelta64`` ('m8') dtypes are supported for Zarr
-arrays, as long as the units are specified. E.g.::
+arrays, as long as the units are specified. E.g.
 
-    >>> z = zarr.array(['2007-07-13', '2006-01-13', '2010-08-13'], dtype='M8[D]')
-    >>> z
-    <zarr.core.Array (3,) datetime64[D]>
-    >>> z[:]
-    array(['2007-07-13', '2006-01-13', '2010-08-13'], dtype='datetime64[D]')
-    >>> z[0]
-    numpy.datetime64('2007-07-13')
-    >>> z[0] = '1999-12-31'
-    >>> z[:]
-    array(['1999-12-31', '2006-01-13', '2010-08-13'], dtype='datetime64[D]')
+.. ipython::
+
+    In [0]: z = zarr.array(['2007-07-13', '2006-01-13', '2010-08-13'], dtype='M8[D]')
+    
+    In [0]: z
+    
+    In [0]: z[:]
+    
+    In [0]: z[0]
+    
+    In [0]: z[0] = '1999-12-31'
+    
+    In [0]: z[:]
+    
 
 .. _tutorial_tips:
 
@@ -1642,12 +1686,17 @@ Usage tips
 Copying large arrays
 ~~~~~~~~~~~~~~~~~~~~
 
-Data can be copied between large arrays without needing much memory, e.g.::
+Data can be copied between large arrays without needing much memory, e.g.
 
-    >>> z1 = zarr.empty((10000, 10000), chunks=(1000, 1000), dtype='i4')
-    >>> z1[:] = 42
-    >>> z2 = zarr.empty_like(z1)
-    >>> z2[:] = z1
+.. ipython::
+
+    In [0]: z1 = zarr.empty((10000, 10000), chunks=(1000, 1000), dtype='i4')
+  
+    In [0]: z1[:] = 42
+  
+    In [0]: z2 = zarr.empty_like(z1)
+  
+    In [0]: z2[:] = z1
 
 Internally the example above works chunk-by-chunk, extracting only the data from
 ``z1`` required to fill each chunk in ``z2``. The source of the data (``z1``)
@@ -1661,11 +1710,14 @@ Configuring Blosc
 The Blosc compressor is able to use multiple threads internally to accelerate
 compression and decompression. By default, Blosc uses up to 8
 internal threads. The number of Blosc threads can be changed to increase or
-decrease this number, e.g.::
+decrease this number, e.g.
 
-    >>> from numcodecs import blosc
-    >>> blosc.set_nthreads(2)  # doctest: +SKIP
-    8
+.. ipython::
+
+    In [0]: from numcodecs import blosc
+    
+    In [0]: blosc.set_nthreads(2)  # doctest: +SKIP
+    
 
 When a Zarr array is being used within a multi-threaded program, Zarr
 automatically switches to using Blosc in a single-threaded
