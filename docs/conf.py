@@ -45,7 +45,7 @@ extensions = [
     'numpydoc',
     'sphinx_issues',
     "sphinx_copybutton",
-    'IPython.sphinxext.ipython_console_highlighting',
+    #'IPython.sphinxext.ipython_console_highlighting',
     'IPython.sphinxext.ipython_directive'
 ]
 
