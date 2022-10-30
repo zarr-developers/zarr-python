@@ -1321,6 +1321,21 @@ class TestFSStore(StoreTests):
         )
         assert (a[:] == -np.ones((8, 8, 8))).all()
 
+    def test_exceptions(self):
+        import fsspec
+        m = fsspec.filesystem("memory")
+        g = zarr.open_group("memory://test/out.zarr", mode='w')
+        arr = g.create_dataset("data", data=[1, 2, 3, 4],
+                               dtype="i4", compression=None, chunks=[2])
+        m.store["/test/out.zarr/data/0"] = None
+        del m.store["/test/out.zarr/data/1"]
+        assert g.store.getitems(["data/1"]) == {}  # not found
+        with pytest.raises(Exception):
+            # None is bad daa, as opposed to missing
+            g.store.getitems(["data/0", "data/1"])
+        with pytest.raises(Exception):
+            # None is bad daa, as opposed to missing
+            arr[:]
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
 class TestFSStoreWithKeySeparator(StoreTests):
