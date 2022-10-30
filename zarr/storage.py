@@ -1414,9 +1414,14 @@ class FSStore(Store):
         self, keys: Sequence[str], *, contexts: Mapping[str, Context]
     ) -> Mapping[str, Any]:
         keys_transformed = [self._normalize_key(key) for key in keys]
-        results = self.map.getitems(keys_transformed, on_error="omit")
+        results = self.map.getitems(keys_transformed, on_error="return")
         # The function calling this method may not recognize the transformed keys
         # So we send the values returned by self.map.getitems back into the original key space.
+        for k, v in results.copy().items():
+            if isinstance(v, self.exceptions):
+                results.pop(k)
+            elif isinstance(v, Exception):
+                raise v
         return {keys[keys_transformed.index(rk)]: rv for rk, rv in results.items()}
 
     def __getitem__(self, key):
