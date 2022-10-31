@@ -8,3 +8,4 @@ sphinx-rtd-theme
 numpydoc
 numpy!=1.21.0
 msgpack-python==0.5.6
+ipython
