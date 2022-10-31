@@ -17,6 +17,9 @@ Unreleased
 Maintenance
 ~~~~~~~~~~~
 
+* Simplify if/else statement.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1227`.
+
 * Migrate to ``pyproject.toml`` and remove redundant infrastructure.
   By :user:`Saransh Chopra <Saransh-cpp>` :issue:`1158`.
 
