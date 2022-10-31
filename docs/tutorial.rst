@@ -1049,6 +1049,8 @@ copying a group named 'foo' from an HDF5 file to a Zarr group
     In [0]: import zarr
  
     In [0]: import numpy as np
+
+    In [0]: import ipytree
   
     In [0]: source = h5py.File('data/example.h5', mode='w')
   
