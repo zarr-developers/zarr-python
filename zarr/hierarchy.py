@@ -634,8 +634,7 @@ class Group(MutableMapping):
                     yield _key if keys_only else (_key, self[key])
                 elif recurse and contains_group(self._store, path):
                     group = self[key]
-                    for i in getattr(group, method)(recurse=recurse):
-                        yield i
+                    yield from getattr(group, method)(recurse=recurse)
         else:
             dir_name = meta_root + self._path
             array_sfx = '.array' + self._metadata_key_suffix
@@ -652,8 +651,7 @@ class Group(MutableMapping):
                     yield _key if keys_only else (_key, self[key])
                 elif recurse and contains_group(self._store, path):
                     group = self[key]
-                    for i in getattr(group, method)(recurse=recurse):
-                        yield i
+                    yield from getattr(group, method)(recurse=recurse)
 
     def visitvalues(self, func):
         """Run ``func`` on each object.
@@ -687,8 +685,7 @@ class Group(MutableMapping):
             yield obj
             keys = sorted(getattr(obj, "keys", lambda: [])())
             for k in keys:
-                for v in _visit(obj[k]):
-                    yield v
+                yield from _visit(obj[k])
 
         for each_obj in islice(_visit(self), 1, None):
             value = func(each_obj)
