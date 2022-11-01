@@ -157,6 +157,7 @@ class Group(MutableMapping):
             raise ContainsArrayError(path)
 
         # initialize metadata
+        mkey = None
         try:
             mkey = _prefix_to_group_key(self._store, self._key_prefix)
             assert not mkey.endswith("root/.group")
@@ -1277,6 +1278,7 @@ def group(store=None, overwrite=False, chunk_store=None,
 
     path = normalize_storage_path(path)
 
+    requires_init = None
     if zarr_version == 2:
         requires_init = overwrite or not contains_group(store)
     elif zarr_version == 3:

@@ -161,13 +161,13 @@ def normalize_store_arg(store: Any, storage_options=None, mode="r", *,
     if zarr_version is None:
         # default to v2 store for backward compatibility
         zarr_version = getattr(store, "_store_version", DEFAULT_ZARR_VERSION)
-    elif zarr_version not in [2, 3]:
-        raise ValueError("zarr_version must be either 2 or 3")
     if zarr_version == 2:
         normalize_store = _normalize_store_arg_v2
     elif zarr_version == 3:
         from zarr._storage.v3 import _normalize_store_arg_v3
         normalize_store = _normalize_store_arg_v3
+    else:
+        raise ValueError("zarr_version must be either 2 or 3")
     return normalize_store(store, storage_options, mode)
 
 
@@ -597,7 +597,7 @@ def init_group(
     store: StoreLike,
     overwrite: bool = False,
     path: Path = None,
-    chunk_store: StoreLike = None,
+    chunk_store: Optional[StoreLike] = None,
 ):
     """Initialize a group store. Note that this is a low-level function and there should be no
     need to call this directly from user code.
@@ -644,7 +644,7 @@ def _init_group_metadata(
     store: StoreLike,
     overwrite: Optional[bool] = False,
     path: Optional[str] = None,
-    chunk_store: StoreLike = None,
+    chunk_store: Optional[StoreLike] = None,
 ):
 
     store_version = getattr(store, '_store_version', 2)
