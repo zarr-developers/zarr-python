@@ -148,7 +148,7 @@ Compressors
 
 A number of different compressors can be used with Zarr. A separate package
 called NumCodecs_ is available which provides a common interface to various
-compressor libraries including Blosc, Zstandard, LZ4, Zlib, BZ2 and
+compressor libraries including Blosc, Zstandard, LZ4, Zlib, BZ2, GZip, and
 LZMA. Different compressors can be provided via the ``compressor`` keyword
 argument accepted by all array creation functions. For example::
 
@@ -203,6 +203,47 @@ here is an array using Zstandard compression, level 1::
     ...                chunks=(1000, 1000), compressor=Zstd(level=1))
     >>> z.compressor
     Zstd(level=1)
+
+Getting the diagnostics on the compression ratio :
+
+    >>> z.info
+    Type               : zarr.core.Array
+    Data type          : int32
+    Shape              : (10000, 10000)
+    Chunk shape        : (1000, 1000)
+    Order              : C
+    Read-only          : False
+    Compressor         : Zstd(level=1)
+    Store type         : zarr.storage.KVStore
+    No. bytes          : 400000000 (381.5M)
+    No. bytes stored   : 299348530 (285.5M)
+    Storage ratio      : 1.3
+    Chunks initialized : 100/100
+
+
+Here is also an array using GZip compression, level 2::
+
+    >>> from numcodecs import GZip
+    >>> z = zarr.array(np.arange(100000000, dtype='i4').reshape(10000, 10000),
+    ...                chunks=(1000, 1000), compressor=GZip(level=2))
+    >>> z.compressor
+    GZip(level=2)
+
+Getting the diagnostics on the compression ratio :
+
+    >>> z.info
+    Type               : zarr.core.Array
+    Data type          : int32
+    Shape              : (10000, 10000)
+    Chunk shape        : (1000, 1000)
+    Order              : C
+    Read-only          : False
+    Compressor         : GZip(level=2)
+    Store type         : zarr.storage.KVStore
+    No. bytes          : 400000000 (381.5M)
+    No. bytes stored   : 138601771 (132.2M)
+    Storage ratio      : 2.9
+    Chunks initialized : 100/100
 
 Here is an example using LZMA with a custom filter pipeline including LZMA's
 built-in delta filter::
