@@ -720,8 +720,8 @@ class Group(MutableMapping):
         baz
         quux
 
-        Search for members matching some name query can be implemented using 
-        ``visit`` that is, ``find`` and ``findall``. Consider the following 
+        Search for members matching some name query can be implemented using
+        ``visit`` that is, ``find`` and ``findall``. Consider the following
         tree::
             /
              ├── aaa
@@ -739,7 +739,7 @@ class Group(MutableMapping):
         >>> root.create_group("aaa").create_group("bbb").create_group("ccc").create_group("aaa")
         <zarr.hierarchy.Group '/aaa/bbb/ccc/aaa'>
 
-        For ``find``, the first path that matches a given pattern (for example 
+        For ``find``, the first path that matches a given pattern (for example
         "aaa") is returned. Note that a non-None value is returned in the visit
         function to stop further iteration.
 
@@ -751,7 +751,7 @@ class Group(MutableMapping):
         ...     if pattern.search(path) is not None:
         ...         found = path
         ...         return True
-        ... 
+        ...
         >>> root.visit(find)
         True
         >>> print(found)
@@ -764,12 +764,12 @@ class Group(MutableMapping):
         >>> def findall(path):
         ...     if pattern.search(path) is not None:
         ...         found.append(path)
-        ... 
+        ...
         >>> root.visit(findall)
         >>> print(found)
         ['aaa', 'aaa/bbb', 'aaa/bbb/ccc', 'aaa/bbb/ccc/aaa']
 
-        To match only on the last part of the path, use a greedy regex to filter 
+        To match only on the last part of the path, use a greedy regex to filter
         out the prefix:
 
         >>> prefix_pattern = re.compile(r".*/")
@@ -785,11 +785,11 @@ class Group(MutableMapping):
         ...     if pattern.search(name) is not None:
         ...         found.append(path)
         ...     return None
-        ... 
+        ...
         >>> root.visit(findall)
         >>> print(found)
         ['aaa', 'aaa/bbb/ccc/aaa']
-        
+
         """
 
         base_len = len(self.name)
