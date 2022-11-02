@@ -1,4 +1,3 @@
-tox
 # version=x.x.x
 echo $version
 git tag -a v$version -m v$version
