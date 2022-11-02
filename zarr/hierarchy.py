@@ -755,7 +755,7 @@ class Group(MutableMapping):
         >>> root.visit(find)
         True
         >>> print(found)
-        'aaa'
+        aaa
 
         For ``findall``, all the results are gathered into a list
 
