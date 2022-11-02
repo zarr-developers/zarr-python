@@ -487,12 +487,11 @@ class _LogWriter:
         elif isinstance(log, str):
             self.log_file = io.open(log, mode='w')
             self.needs_closing = True
-        else:
-            if not hasattr(log, 'write'):
-                raise TypeError('log must be a callable function, file path or '
-                                'file-like object, found %r' % log)
+        elif hasattr(log, 'write'):
             self.log_file = log
-            self.needs_closing = False
+        else:
+            raise TypeError('log must be a callable function, file path or '
+                            'file-like object, found %r' % log)
 
     def __enter__(self):
         return self
