@@ -161,13 +161,13 @@ def normalize_store_arg(store: Any, storage_options=None, mode="r", *,
     if zarr_version is None:
         # default to v2 store for backward compatibility
         zarr_version = getattr(store, "_store_version", DEFAULT_ZARR_VERSION)
-    elif zarr_version not in [2, 3]:
-        raise ValueError("zarr_version must be either 2 or 3")
     if zarr_version == 2:
         normalize_store = _normalize_store_arg_v2
     elif zarr_version == 3:
         from zarr._storage.v3 import _normalize_store_arg_v3
         normalize_store = _normalize_store_arg_v3
+    else:
+        raise ValueError("zarr_version must be either 2 or 3")
     return normalize_store(store, storage_options, mode)
 
 
@@ -597,7 +597,7 @@ def init_group(
     store: StoreLike,
     overwrite: bool = False,
     path: Path = None,
-    chunk_store: StoreLike = None,
+    chunk_store: Optional[StoreLike] = None,
 ):
     """Initialize a group store. Note that this is a low-level function and there should be no
     need to call this directly from user code.
@@ -644,7 +644,7 @@ def _init_group_metadata(
     store: StoreLike,
     overwrite: Optional[bool] = False,
     path: Optional[str] = None,
-    chunk_store: StoreLike = None,
+    chunk_store: Optional[StoreLike] = None,
 ):
 
     store_version = getattr(store, '_store_version', 2)
@@ -702,8 +702,7 @@ def _dict_store_keys(d: Dict, prefix="", cls=dict):
     for k in d.keys():
         v = d[k]
         if isinstance(v, cls):
-            for sk in _dict_store_keys(v, prefix + k + '/', cls):
-                yield sk
+            yield from _dict_store_keys(v, prefix + k + '/', cls)
         else:
             yield prefix + k
 
@@ -863,8 +862,7 @@ class MemoryStore(Store):
         )
 
     def keys(self):
-        for k in _dict_store_keys(self.root, cls=self.cls):
-            yield k
+        yield from _dict_store_keys(self.root, cls=self.cls)
 
     def __iter__(self):
         return self.keys()
@@ -1462,7 +1460,7 @@ class FSStore(Store):
                     return sorted(new_children)
                 else:
                     return children
-        except IOError:
+        except OSError:
             return []
 
     def rmdir(self, path=None):
@@ -1794,8 +1792,7 @@ class ZipStore(Store):
             return sorted(self.zf.namelist())
 
     def keys(self):
-        for key in self.keylist():
-            yield key
+        yield from self.keylist()
 
     def __iter__(self):
         return self.keys()
@@ -2270,8 +2267,7 @@ class LMDBStore(Store):
     def values(self):
         with self.db.begin(buffers=self.buffers) as txn:
             with txn.cursor() as cursor:
-                for v in cursor.iternext(keys=False, values=True):
-                    yield v
+                yield from cursor.iternext(keys=False, values=True)
 
     def __iter__(self):
         return self.keys()
@@ -2581,8 +2577,7 @@ class SQLiteStore(Store):
 
     def items(self):
         kvs = self.cursor.execute('SELECT k, v FROM zarr')
-        for k, v in kvs:
-            yield k, v
+        yield from kvs
 
     def keys(self):
         ks = self.cursor.execute('SELECT k FROM zarr')
@@ -2796,12 +2791,10 @@ class RedisStore(Store):
                 for key in self.client.keys(self._key('*'))]
 
     def keys(self):
-        for key in self.keylist():
-            yield key
+        yield from self.keylist()
 
     def __iter__(self):
-        for key in self.keys():
-            yield key
+        yield from self.keys()
 
     def __len__(self):
         return len(self.keylist())
