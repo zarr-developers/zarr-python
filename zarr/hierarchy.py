@@ -638,17 +638,19 @@ class Group(MutableMapping):
         else:
             dir_name = meta_root + self._path
             array_sfx = '.array' + self._metadata_key_suffix
+            group_sfx = '.group' + self._metadata_key_suffix
+
             for key in sorted(listdir(self._store, dir_name)):
                 if key.endswith(array_sfx):
                     key = key[:-len(array_sfx)]
-                path = self._key_prefix + key
-                assert not path.startswith("meta/")
-                if key.endswith('.group' + self._metadata_key_suffix):
-                    # skip group metadata keys
-                    continue
-                if contains_array(self._store, path):
                     _key = key.rstrip("/")
                     yield _key if keys_only else (_key, self[key])
+
+                path = self._key_prefix + key
+                assert not path.startswith("meta/")
+                if key.endswith(group_sfx):
+                    # skip group metadata keys
+                    continue
                 elif recurse and contains_group(self._store, path):
                     group = self[key]
                     yield from getattr(group, method)(recurse=recurse)
