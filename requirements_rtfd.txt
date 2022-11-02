@@ -5,6 +5,7 @@ sphinx
 sphinx-issues
 sphinx-copybutton
 sphinx-rtd-theme
+pydata-sphinx-theme
 numpydoc
 numpy!=1.21.0
 msgpack-python==0.5.6
