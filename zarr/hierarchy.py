@@ -157,6 +157,7 @@ class Group(MutableMapping):
             raise ContainsArrayError(path)
 
         # initialize metadata
+        mkey = None
         try:
             mkey = _prefix_to_group_key(self._store, self._key_prefix)
             assert not mkey.endswith("root/.group")
@@ -633,8 +634,7 @@ class Group(MutableMapping):
                     yield _key if keys_only else (_key, self[key])
                 elif recurse and contains_group(self._store, path):
                     group = self[key]
-                    for i in getattr(group, method)(recurse=recurse):
-                        yield i
+                    yield from getattr(group, method)(recurse=recurse)
         else:
             dir_name = meta_root + self._path
             array_sfx = '.array' + self._metadata_key_suffix
@@ -651,8 +651,7 @@ class Group(MutableMapping):
                     yield _key if keys_only else (_key, self[key])
                 elif recurse and contains_group(self._store, path):
                     group = self[key]
-                    for i in getattr(group, method)(recurse=recurse):
-                        yield i
+                    yield from getattr(group, method)(recurse=recurse)
 
     def visitvalues(self, func):
         """Run ``func`` on each object.
@@ -686,8 +685,7 @@ class Group(MutableMapping):
             yield obj
             keys = sorted(getattr(obj, "keys", lambda: [])())
             for k in keys:
-                for v in _visit(obj[k]):
-                    yield v
+                yield from _visit(obj[k])
 
         for each_obj in islice(_visit(self), 1, None):
             value = func(each_obj)
@@ -1277,6 +1275,7 @@ def group(store=None, overwrite=False, chunk_store=None,
 
     path = normalize_storage_path(path)
 
+    requires_init = None
     if zarr_version == 2:
         requires_init = overwrite or not contains_group(store)
     elif zarr_version == 3:
