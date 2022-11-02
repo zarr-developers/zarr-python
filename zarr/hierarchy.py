@@ -720,6 +720,76 @@ class Group(MutableMapping):
         baz
         quux
 
+        Search for members matching some name query can be implemented using 
+        ``visit`` that is, ``find`` and ``findall``. Consider the following 
+        tree::
+            /
+             ├── aaa
+             │   └── bbb
+             │       └── ccc
+             │           └── aaa
+             ├── bar
+             └── foo
+
+        It is created as follows:
+
+        >>> root = zarr.group()
+        >>> foo = root.create_group("foo")
+        >>> bar = root.create_group("bar")
+        >>> root.create_group("aaa").create_group("bbb").create_group("ccc").create_group("aaa")
+        <zarr.hierarchy.Group '/aaa/bbb/ccc/aaa'>
+
+        For ``find``, the first path that matches a given pattern (for example 
+        "aaa") is returned. Note that a non-None value is returned in the visit
+        function to stop further iteration.
+
+        >>> import re
+        >>> pattern = re.compile("aaa")
+        >>> found = None
+        >>> def find(path):
+        ...     global found
+        ...     if pattern.search(path) is not None:
+        ...         found = path
+        ...         return True
+        ... 
+        >>> root.visit(find)
+        True
+        >>> print(found)
+        'aaa'
+
+        For ``findall``, all the results are gathered into a list
+
+        >>> pattern = re.compile("aaa")
+        >>> found = []
+        >>> def findall(path):
+        ...     if pattern.search(path) is not None:
+        ...         found.append(path)
+        ... 
+        >>> root.visit(findall)
+        >>> print(found)
+        ['aaa', 'aaa/bbb', 'aaa/bbb/ccc', 'aaa/bbb/ccc/aaa']
+
+        To match only on the last part of the path, use a greedy regex to filter 
+        out the prefix:
+
+        >>> prefix_pattern = re.compile(r".*/")
+        >>> pattern = re.compile("aaa")
+        >>> found = []
+        >>> def findall(path):
+        ...     match = prefix_pattern.match(path)
+        ...     if match is None:
+        ...         name = path
+        ...     else:
+        ...         _, end = match.span()
+        ...         name = path[end:]
+        ...     if pattern.search(name) is not None:
+        ...         found.append(path)
+        ...     return None
+        ... 
+        >>> root.visit(findall)
+        >>> print(found)
+        ['aaa', 'aaa/bbb/ccc/aaa']
+        
         """
 
         base_len = len(self.name)
