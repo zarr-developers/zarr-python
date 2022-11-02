@@ -1810,7 +1810,8 @@ class ZipStore(Store):
 
     def keylist(self):
         with self.mutex:
-            return sorted(self.zf.namelist())
+            namelist = [key for key in self.zf.namelist() if self.zf.getinfo(key) != b""]
+            return sorted(namelist)
 
     def keys(self):
         yield from self.keylist()
@@ -1824,7 +1825,10 @@ class ZipStore(Store):
     def __contains__(self, key):
         try:
             with self.mutex:
-                self.zf.getinfo(key)
+                value = self.zf.getinfo(key)
+
+                if value == b"":
+                    raise KeyError
 
         except KeyError:
             return False

@@ -201,7 +201,6 @@ class StoreTests:
 
         with pytest.raises(KeyError):
             store[foo]
-        
         # if foo in store:
         # if isinstance(store, ZipStore):
         #     assert store[foo] == b''
