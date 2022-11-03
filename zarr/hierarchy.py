@@ -723,13 +723,14 @@ class Group(MutableMapping):
         Search for members matching some name query can be implemented using
         ``visit`` that is, ``find`` and ``findall``. Consider the following
         tree::
-        /
-        ├── aaa
-        │   └── bbb
-        │       └── ccc
-        │           └── aaa
-        ├── bar
-        └── foo
+
+            /
+            ├── aaa
+            │   └── bbb
+            │       └── ccc
+            │           └── aaa
+            ├── bar
+            └── foo
 
         It is created as follows:
 
