@@ -182,6 +182,7 @@ print some diagnostics, e.g.::
     Storage ratio      : 118.4
     Chunks initialized : 100/100
 
+
 If you don't specify a compressor, by default Zarr uses the Blosc
 compressor. Blosc is generally very fast and can be configured in a variety of
 ways to improve the compression ratio for different types of data. Blosc is in
@@ -204,8 +205,8 @@ here is an array using Zstandard compression, level 1::
     >>> z.compressor
     Zstd(level=1)
 
-Getting the diagnostics on the compression ratio :
-```
+Getting the diagnostics on the compression ratio::
+
     >>> z.info
     Type               : zarr.core.Array
     Data type          : int32
@@ -219,18 +220,17 @@ Getting the diagnostics on the compression ratio :
     No. bytes stored   : 299348530 (285.5M)
     Storage ratio      : 1.3
     Chunks initialized : 100/100
-```
 
 Here is also an array using GZip compression, level 2::
-```
+
     >>> from numcodecs import GZip
     >>> z = zarr.array(np.arange(100000000, dtype='i4').reshape(10000, 10000),
     ...                chunks=(1000, 1000), compressor=GZip(level=2))
     >>> z.compressor
     GZip(level=2)
-```
-Getting the diagnostics on the compression ratio :
-```
+
+Getting the diagnostics on the compression ratio::
+
     >>> z.info
     Type               : zarr.core.Array
     Data type          : int32
@@ -244,7 +244,7 @@ Getting the diagnostics on the compression ratio :
     No. bytes stored   : 138601771 (132.2M)
     Storage ratio      : 2.9
     Chunks initialized : 100/100
-```
+
 Here is an example using LZMA with a custom filter pipeline including LZMA's
 built-in delta filter::
 
