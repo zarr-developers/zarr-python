@@ -92,7 +92,7 @@ the repository, you can do something like the following::
     $ mkdir -p ~/pyenv/zarr-dev
     $ python -m venv ~/pyenv/zarr-dev
     $ source ~/pyenv/zarr-dev/bin/activate
-    $ pip install -r requirements_dev_minimal.txt -r requirements_dev_numpy.txt
+    $ pip install -r requirements_dev_minimal.txt -r requirements_dev_numpy.txt -r requirements_rtfd.txt
     $ pip install -e .
 
 To verify that your development environment is working, you can run the unit tests::
@@ -248,6 +248,7 @@ The documentation can be built locally by running::
 
     $ cd docs
     $ make clean; make html
+    $ open _build/html/index.html
 
 The resulting built documentation will be available in the ``docs/_build/html`` folder.
 
