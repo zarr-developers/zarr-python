@@ -1604,10 +1604,13 @@ Please note that if Zarr is being used within a multi-process program, Blosc may
 be safe to use in multi-threaded mode and may cause the program to hang. If using Blosc
 in a multi-process program then it is recommended to set ``blosc.use_threads = False``.
 
-Also note that Data types supported For Fixed item size includes: (Floating point numbers.(Eg 
+Data types supported
+--------------------
+Data types supported For Fixed item size includes: (Floating point numbers.(Eg 
 float16, float32, float64), Integers.(Eg int8, int16, int32, int64, unit8, unit16, 
 unit32, unit64). Complex floating point numbers. (Eg complex64,complex128), Datetime,
 timedelta, Boolean, Fixed length byte or Unicode strings, Structured dtype))
+
 For Variable item size: (Objects of Variable length byte string, Variable length
 unicode strings and Variable length 1D array of a primitive type). for additional information
 on data types www.w3schools.com/python/numpy/numpy_data_types.asp
