@@ -52,7 +52,7 @@ Homepage = "https://github.com/zarr-developers/zarr-python"
 
 [tool.setuptools]
 packages = ["zarr", "zarr._storage", "zarr.tests"]
-license-files = ["LICENSE"]
+license-files = ["LICENSE.txt"]
 
 [tool.setuptools_scm]
 version_scheme = "guess-next-dev"
