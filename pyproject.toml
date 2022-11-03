@@ -34,6 +34,7 @@ classifiers = [
     'Programming Language :: Python :: 3.9',
     'Programming Language :: Python :: 3.10',
 ]
+license = { text = "MIT" }
 
 [project.optional-dependencies]
 jupyter = [
@@ -52,6 +53,7 @@ Homepage = "https://github.com/zarr-developers/zarr-python"
 
 [tool.setuptools]
 packages = ["zarr", "zarr._storage", "zarr.tests"]
+license-files = ["LICENSE.txt"]
 
 [tool.setuptools_scm]
 version_scheme = "guess-next-dev"
