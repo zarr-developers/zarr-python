@@ -21,6 +21,7 @@ from numcodecs.compat import ensure_bytes
 import zarr
 from zarr._storage.store import _get_hierarchy_metadata
 from zarr.codecs import BZ2, AsType, Blosc, Zlib
+from zarr.context import Context
 from zarr.convenience import consolidate_metadata
 from zarr.errors import ContainsArrayError, ContainsGroupError, MetadataError
 from zarr.hierarchy import group
@@ -2583,7 +2584,7 @@ def test_getitems_contexts():
             self.last_contexts = None
 
         def getitems(
-            self, keys: Sequence[str], contexts: Mapping[str, Mapping] = {}
+            self, keys: Sequence[str], contexts: Mapping[str, Context] = {}
         ) -> Mapping[str, Any]:
             self.last_contexts = contexts
             return {k: self.wrapped[k] for k in keys if k in self.wrapped}

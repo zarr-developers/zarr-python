@@ -6,6 +6,7 @@ from typing import Any, Sequence, List, Mapping, Optional, Union
 
 from zarr.meta import Metadata2, Metadata3
 from zarr.util import normalize_storage_path
+from zarr.context import Context
 
 # v2 store keys
 array_meta_key = '.zarray'
@@ -130,7 +131,7 @@ class BaseStore(MutableMapping):
         )
 
     def getitems(
-        self, keys: Sequence[str], contexts: Mapping[str, Mapping] = {}
+        self, keys: Sequence[str], contexts: Mapping[str, Context] = {}
     ) -> Mapping[str, Any]:
         """Retrieve data from multiple keys.
 
@@ -138,7 +139,7 @@ class BaseStore(MutableMapping):
         ----------
         keys : Iterable[str]
             The keys to retrieve
-        contexts: Mapping[str, Mapping]
+        contexts: Mapping[str, Context]
             A mapping of keys to their context. Each context is a mapping of store
             specific information. E.g. a context could be a dict telling the store
             the preferred output array type: `{"meta_array": cupy.empty(())}`
