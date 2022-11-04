@@ -20,7 +20,7 @@ Maintenance
 * Simplify if/else statement.
   By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1227`.
 
-* Delete unused ``build.cmd``
+* Delete unused files.
   By :user:`John Kirkham <jakirkham>` :issue:`1251`.
 
 * Migrate to ``pyproject.toml`` and remove redundant infrastructure.
