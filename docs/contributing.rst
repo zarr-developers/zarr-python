@@ -92,7 +92,7 @@ the repository, you can do something like the following::
     $ mkdir -p ~/pyenv/zarr-dev
     $ python -m venv ~/pyenv/zarr-dev
     $ source ~/pyenv/zarr-dev/bin/activate
-    $ pip install -r requirements_dev_minimal.txt -r requirements_dev_numpy.txt
+    $ pip install -r requirements_dev_minimal.txt -r requirements_dev_numpy.txt -r requirements_rtfd.txt
     $ pip install -e .
 
 To verify that your development environment is working, you can run the unit tests::
@@ -212,9 +212,12 @@ Test coverage
 
 Zarr maintains 100% test coverage under the latest Python stable release (currently
 Python 3.8). Both unit tests and docstring doctests are included when computing
-coverage. Running ``tox -e py38`` will automatically run the test suite with coverage
-and produce a coverage report. This should be 100% before code can be accepted into the
-main code base.
+coverage. Running::
+    
+    $ python -m pytest -v --cov=zarr --cov-config=.coveragerc zarr
+    
+will automatically run the test suite with coverage and produce a coverage report.
+This should be 100% before code can be accepted into the main code base.
 
 When submitting a pull request, coverage will also be collected across all supported
 Python versions via the Codecov service, and will be reported back within the pull
@@ -243,9 +246,11 @@ notes (``docs/release.rst``).
 
 The documentation can be built locally by running::
 
-    $ tox -e docs
+    $ cd docs
+    $ make clean; make html
+    $ open _build/html/index.html
 
-The resulting built documentation will be available in the ``.tox/docs/tmp/html`` folder.
+The resulting built documentation will be available in the ``docs/_build/html`` folder.
 
 Development best practices, policies and procedures
 ---------------------------------------------------
