@@ -50,6 +50,17 @@ Discussions = "https://github.com/zarr-developers/zarr-python/discussions"
 Documentation = "https://zarr.readthedocs.io/"
 Homepage = "https://github.com/zarr-developers/zarr-python"
 
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "pragma: ${PY_MAJOR_VERSION} no cover",
+]
+
+[tool.coverage.run]
+omit = [
+    "zarr/meta_v1.py",
+    "bench/compress_normal.py",
+]
 
 [tool.setuptools]
 packages = ["zarr", "zarr._storage", "zarr.tests"]
