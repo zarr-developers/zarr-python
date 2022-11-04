@@ -8,7 +8,7 @@ class Context(TypedDict, total=False):
     """ A context for component specific information
 
     All keys are optional. Any component reading the context must provide
-    a default value for any key not in the context.
+    a default implementation in the case a key cannot be found.
 
     Items
     -----
