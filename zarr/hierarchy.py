@@ -157,6 +157,7 @@ class Group(MutableMapping):
             raise ContainsArrayError(path)
 
         # initialize metadata
+        mkey = None
         try:
             mkey = _prefix_to_group_key(self._store, self._key_prefix)
             assert not mkey.endswith("root/.group")
@@ -633,26 +634,26 @@ class Group(MutableMapping):
                     yield _key if keys_only else (_key, self[key])
                 elif recurse and contains_group(self._store, path):
                     group = self[key]
-                    for i in getattr(group, method)(recurse=recurse):
-                        yield i
+                    yield from getattr(group, method)(recurse=recurse)
         else:
             dir_name = meta_root + self._path
             array_sfx = '.array' + self._metadata_key_suffix
+            group_sfx = '.group' + self._metadata_key_suffix
+
             for key in sorted(listdir(self._store, dir_name)):
                 if key.endswith(array_sfx):
                     key = key[:-len(array_sfx)]
-                path = self._key_prefix + key
-                assert not path.startswith("meta/")
-                if key.endswith('.group' + self._metadata_key_suffix):
-                    # skip group metadata keys
-                    continue
-                if contains_array(self._store, path):
                     _key = key.rstrip("/")
                     yield _key if keys_only else (_key, self[key])
+
+                path = self._key_prefix + key
+                assert not path.startswith("meta/")
+                if key.endswith(group_sfx):
+                    # skip group metadata keys
+                    continue
                 elif recurse and contains_group(self._store, path):
                     group = self[key]
-                    for i in getattr(group, method)(recurse=recurse):
-                        yield i
+                    yield from getattr(group, method)(recurse=recurse)
 
     def visitvalues(self, func):
         """Run ``func`` on each object.
@@ -686,8 +687,7 @@ class Group(MutableMapping):
             yield obj
             keys = sorted(getattr(obj, "keys", lambda: [])())
             for k in keys:
-                for v in _visit(obj[k]):
-                    yield v
+                yield from _visit(obj[k])
 
         for each_obj in islice(_visit(self), 1, None):
             value = func(each_obj)
@@ -720,6 +720,76 @@ class Group(MutableMapping):
         baz
         quux
 
+        Search for members matching some name query can be implemented using
+        ``visit`` that is, ``find`` and ``findall``. Consider the following
+        tree::
+
+            /
+            ├── aaa
+            │   └── bbb
+            │       └── ccc
+            │           └── aaa
+            ├── bar
+            └── foo
+
+        It is created as follows:
+
+        >>> root = zarr.group()
+        >>> foo = root.create_group("foo")
+        >>> bar = root.create_group("bar")
+        >>> root.create_group("aaa").create_group("bbb").create_group("ccc").create_group("aaa")
+        <zarr.hierarchy.Group '/aaa/bbb/ccc/aaa'>
+
+        For ``find``, the first path that matches a given pattern (for example
+        "aaa") is returned. Note that a non-None value is returned in the visit
+        function to stop further iteration.
+
+        >>> import re
+        >>> pattern = re.compile("aaa")
+        >>> found = None
+        >>> def find(path):
+        ...     global found
+        ...     if pattern.search(path) is not None:
+        ...         found = path
+        ...         return True
+        ...
+        >>> root.visit(find)
+        True
+        >>> print(found)
+        aaa
+
+        For ``findall``, all the results are gathered into a list
+
+        >>> pattern = re.compile("aaa")
+        >>> found = []
+        >>> def findall(path):
+        ...     if pattern.search(path) is not None:
+        ...         found.append(path)
+        ...
+        >>> root.visit(findall)
+        >>> print(found)
+        ['aaa', 'aaa/bbb', 'aaa/bbb/ccc', 'aaa/bbb/ccc/aaa']
+
+        To match only on the last part of the path, use a greedy regex to filter
+        out the prefix:
+
+        >>> prefix_pattern = re.compile(r".*/")
+        >>> pattern = re.compile("aaa")
+        >>> found = []
+        >>> def findall(path):
+        ...     match = prefix_pattern.match(path)
+        ...     if match is None:
+        ...         name = path
+        ...     else:
+        ...         _, end = match.span()
+        ...         name = path[end:]
+        ...     if pattern.search(name) is not None:
+        ...         found.append(path)
+        ...     return None
+        ...
+        >>> root.visit(findall)
+        >>> print(found)
+        ['aaa', 'aaa/bbb/ccc/aaa']
         """
 
         base_len = len(self.name)
@@ -1277,6 +1347,7 @@ def group(store=None, overwrite=False, chunk_store=None,
 
     path = normalize_storage_path(path)
 
+    requires_init = None
     if zarr_version == 2:
         requires_init = overwrite or not contains_group(store)
     elif zarr_version == 3:
