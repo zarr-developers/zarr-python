@@ -20,8 +20,14 @@ Maintenance
 * Simplify if/else statement.
   By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1227`.
 
+* Delete unused files.
+  By :user:`John Kirkham <jakirkham>` :issue:`1251`.
+
 * Migrate to ``pyproject.toml`` and remove redundant infrastructure.
   By :user:`Saransh Chopra <Saransh-cpp>` :issue:`1158`.
+
+* Migrate coverage to ``pyproject.toml``.
+  By :user:`John Kirkham <jakirkham>` :issue:`1250`.
 
 .. _release_2.13.3:
 
