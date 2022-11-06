@@ -26,6 +26,9 @@ Maintenance
 * Migrate to ``pyproject.toml`` and remove redundant infrastructure.
   By :user:`Saransh Chopra <Saransh-cpp>` :issue:`1158`.
 
+* Migrate coverage to ``pyproject.toml``.
+  By :user:`John Kirkham <jakirkham>` :issue:`1250`.
+
 .. _release_2.13.3:
 
 2.13.3
