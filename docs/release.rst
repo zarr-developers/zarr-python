@@ -17,17 +17,27 @@ Unreleased
 Maintenance
 ~~~~~~~~~~~
 
+* Migrate to ``pyproject.toml`` and remove redundant infrastructure.
+  By :user:`Saransh Chopra <Saransh-cpp>` :issue:`1158`.
+
+* Require ``setuptools`` 64.0.0+
+  By :user:`Saransh Chopra <Saransh-cpp>` :issue:`1193`.
+
+* Pin action versions (pypi-publish, setup-miniconda) for dependabot
+  By :user:`Saransh Chopra <Saransh-cpp>` :issue:`1205`.
+
+* Remove ``tox`` support
+  By :user:`Saransh Chopra <Saransh-cpp>` :issue:`1219`.
+
 * Simplify if/else statement.
   By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1227`.
+
+* Migrate coverage to ``pyproject.toml``.
+  By :user:`John Kirkham <jakirkham>` :issue:`1250`.
 
 * Delete unused files.
   By :user:`John Kirkham <jakirkham>` :issue:`1251`.
 
-* Migrate to ``pyproject.toml`` and remove redundant infrastructure.
-  By :user:`Saransh Chopra <Saransh-cpp>` :issue:`1158`.
-
-* Migrate coverage to ``pyproject.toml``.
-  By :user:`John Kirkham <jakirkham>` :issue:`1250`.
 
 .. _release_2.13.3:
 
