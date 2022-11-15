@@ -40,7 +40,7 @@ jobs:
       with:
         fetch-depth: 0
     - name: Setup Miniconda
-      uses: conda-incubator/setup-miniconda@master
+      uses: conda-incubator/setup-miniconda@v2.2.0
       with:
           channels: conda-forge
           python-version: ${{ matrix.python-version }}
@@ -74,7 +74,7 @@ jobs:
         conda activate zarr-env
         mkdir ~/blob_emulator
         azurite -l ~/blob_emulator --debug debug.log 2>&1 > stdouterr.log &
-        pytest --cov=zarr --cov-config=.coveragerc --doctest-plus --cov-report xml --cov=./ --timeout=300
+        pytest --cov=zarr --cov-config=pyproject.toml --doctest-plus --cov-report xml --cov=./ --timeout=300
     - uses: codecov/codecov-action@v3
       with:
         #token: ${{ secrets.CODECOV_TOKEN }} # not required for public repos
