@@ -35,6 +35,9 @@ Maintenance
 * Migrate coverage to ``pyproject.toml``.
   By :user:`John Kirkham <jakirkham>` :issue:`1250`.
 
+* Use ``conda-incubator/setup-miniconda@v2.2.0``.
+  By :user:`John Kirkham <jakirkham>` :issue:`1263`.
+
 * Delete unused files.
   By :user:`John Kirkham <jakirkham>` :issue:`1251`.
 
