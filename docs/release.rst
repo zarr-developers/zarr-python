@@ -32,6 +32,9 @@ Maintenance
 * Simplify if/else statement.
   By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1227`.
 
+* Get coverage up to 100%.
+  By :user:`John Kirkham <jakirkham>` :issue:`1264`.
+
 * Migrate coverage to ``pyproject.toml``.
   By :user:`John Kirkham <jakirkham>` :issue:`1250`.
 

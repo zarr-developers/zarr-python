@@ -1430,7 +1430,7 @@ def open_group(store=None, mode='a', cache_attrs=True, synchronizer=None, path=N
                                            mode=mode,
                                            zarr_version=zarr_version)
         if getattr(chunk_store, '_store_version', DEFAULT_ZARR_VERSION) != zarr_version:
-            raise ValueError(
+            raise ValueError(  # pragma: no cover
                 "zarr_version of store and chunk_store must match"
             )
 
