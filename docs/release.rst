@@ -32,8 +32,14 @@ Maintenance
 * Simplify if/else statement.
   By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1227`.
 
+* Get coverage up to 100%.
+  By :user:`John Kirkham <jakirkham>` :issue:`1264`.
+
 * Migrate coverage to ``pyproject.toml``.
   By :user:`John Kirkham <jakirkham>` :issue:`1250`.
+
+* Use ``conda-incubator/setup-miniconda@v2.2.0``.
+  By :user:`John Kirkham <jakirkham>` :issue:`1263`.
 
 * Delete unused files.
   By :user:`John Kirkham <jakirkham>` :issue:`1251`.
