@@ -29,6 +29,9 @@ Maintenance
 * Remove ``tox`` support
   By :user:`Saransh Chopra <Saransh-cpp>` :issue:`1219`.
 
+* Add workflow to label PRs with "needs release notes".
+  By :user:`Saransh Chopra <Saransh-cpp>` :issue:`1239`.
+
 * Simplify if/else statement.
   By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1227`.
 
