@@ -92,7 +92,7 @@ the repository, you can do something like the following::
     $ mkdir -p ~/pyenv/zarr-dev
     $ python -m venv ~/pyenv/zarr-dev
     $ source ~/pyenv/zarr-dev/bin/activate
-    $ pip install -r requirements_dev_minimal.txt -r requirements_dev_numpy.txt
+    $ pip install -r requirements_dev_minimal.txt -r requirements_dev_numpy.txt -r requirements_rtfd.txt
     $ pip install -e .
 
 To verify that your development environment is working, you can run the unit tests::
@@ -179,23 +179,45 @@ also collected automatically via the Codecov service, and total
 coverage over all builds must be 100% (although individual builds
 may be lower due to Python 2/3 or other differences).
 
-Code standards
-~~~~~~~~~~~~~~
+Code standards - using pre-commit
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 All code must conform to the PEP8 standard. Regarding line length, lines up to 100
 characters are allowed, although please try to keep under 90 wherever possible.
-Conformance can be checked by running::
 
-    $ python -m flake8 --max-line-length=100 zarr
+``Zarr`` uses a set of ``pre-commit`` hooks and the ``pre-commit`` bot to format,
+type-check, and prettify the codebase. ``pre-commit`` can be installed locally by
+running::
+
+    $ python -m pip install pre-commit
+
+The hooks can be installed locally by running::
+
+    $ pre-commit install
+
+This would run the checks every time a commit is created locally. These checks will also run
+on every commit pushed to an open PR, resulting in some automatic styling fixes by the
+``pre-commit`` bot. The checks will by default only run on the files modified by a commit,
+but the checks can be triggered for all the files by running::
+
+    $ pre-commit run --all-files
+
+If you would like to skip the failing checks and push the code for further discussion, use
+the ``--no-verify`` option with ``git commit``.
+
+
 
 Test coverage
 ~~~~~~~~~~~~~
 
 Zarr maintains 100% test coverage under the latest Python stable release (currently
 Python 3.8). Both unit tests and docstring doctests are included when computing
-coverage. Running ``tox -e py38`` will automatically run the test suite with coverage
-and produce a coverage report. This should be 100% before code can be accepted into the
-main code base.
+coverage. Running::
+    
+    $ python -m pytest -v --cov=zarr --cov-config=pyproject.toml zarr
+    
+will automatically run the test suite with coverage and produce a coverage report.
+This should be 100% before code can be accepted into the main code base.
 
 When submitting a pull request, coverage will also be collected across all supported
 Python versions via the Codecov service, and will be reported back within the pull
@@ -224,9 +246,11 @@ notes (``docs/release.rst``).
 
 The documentation can be built locally by running::
 
-    $ tox -e docs
+    $ cd docs
+    $ make clean; make html
+    $ open _build/html/index.html
 
-The resulting built documentation will be available in the ``.tox/docs/tmp/html`` folder.
+The resulting built documentation will be available in the ``docs/_build/html`` folder.
 
 Development best practices, policies and procedures
 ---------------------------------------------------

@@ -1,4 +1,4 @@
-.. _spec_v2:
+.. _spec_v3:
 
 Zarr storage specification version 3 (under development)
 ========================================================

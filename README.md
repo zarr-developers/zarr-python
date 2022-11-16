@@ -31,7 +31,7 @@
 <tr>
   <td>License</td>
   <td>
-    <a href="https://github.com/zarr-developers/zarr-python/blob/main/LICENSE">
+    <a href="https://github.com/zarr-developers/zarr-python/blob/main/LICENSE.txt">
     <img src="https://img.shields.io/pypi/l/zarr.svg" alt="license" />
     </a>
 </td>
@@ -40,10 +40,19 @@
   <td>Build Status</td>
   <td>
     <a href="https://github.com/zarr-developers/zarr-python/blob/main/.github/workflows/python-package.yml">
-    <img src="https://github.com/zarr-developers/zarr-python/actions/workflows/python-package.yml/badge.svg" alt="license" />
+    <img src="https://github.com/zarr-developers/zarr-python/actions/workflows/python-package.yml/badge.svg" alt="build status" />
     </a>
   </td>
 </tr>
+<tr>
+  <td>Pre-commit Status</td>
+  <td>
+    <a href=""https://github.com/zarr-developers/zarr-python/blob/main/.pre-commit-config.yaml">
+    <img src="https://results.pre-commit.ci/badge/github/zarr-developers/zarr-python/main.svg" alt="pre-commit status" />
+    </a>
+  </td>
+</tr>
+
 <tr>
   <td>Coverage</td>
   <td>

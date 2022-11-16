@@ -1,7 +1,0 @@
-tox
-# version=x.x.x
-echo $version
-git tag -a v$version -m v$version
-git push --tags
-python setup.py register sdist
-twine upload dist/zarr-${version}.tar.gz
