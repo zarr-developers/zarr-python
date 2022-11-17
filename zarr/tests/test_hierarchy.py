@@ -770,6 +770,19 @@ class TestGroup(unittest.TestCase):
 
         g1.store.close()
 
+    # regression test for https://github.com/zarr-developers/zarr-python/issues/1228
+    def test_double_counting_group_v3(self):
+        root_group = self.create_group()
+        group_names = ["foo", "foo-", "foo_"]
+        for name in group_names:
+            sub_group = root_group.create_group(name)
+            sub_group.create("bar", shape=10, dtype="i4")
+        assert list(root_group.group_keys()) == sorted(group_names)
+        assert list(root_group.groups()) == [
+            (name, root_group[name])
+            for name in sorted(group_names)
+        ]
+
     def test_empty_getitem_contains_iterators(self):
         # setup
         g = self.create_group()
