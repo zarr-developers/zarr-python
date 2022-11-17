@@ -14,6 +14,12 @@ Unreleased
     # .. warning::
     #    Pre-release! Use :command:`pip install --pre zarr` to evaluate this release.
 
+* Fix bug that caused double counting of groups in ``groups()`` and ``group_keys()``
+  methods with V3 stores.
+  By :user:`Ryan Abernathey <rabernat>` :issue:`1228`.
+
+.. _release_2.13.2:
+
 Maintenance
 ~~~~~~~~~~~
 
