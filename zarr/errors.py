@@ -1,5 +1,3 @@
-
-
 class MetadataError(Exception):
     pass
 

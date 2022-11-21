@@ -31,7 +31,7 @@
 <tr>
   <td>License</td>
   <td>
-    <a href="https://github.com/zarr-developers/zarr-python/blob/main/LICENSE">
+    <a href="https://github.com/zarr-developers/zarr-python/blob/main/LICENSE.txt">
     <img src="https://img.shields.io/pypi/l/zarr.svg" alt="license" />
     </a>
 </td>

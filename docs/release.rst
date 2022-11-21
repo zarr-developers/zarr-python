@@ -20,6 +20,34 @@ Maintenance
 * Migrate to ``pyproject.toml`` and remove redundant infrastructure.
   By :user:`Saransh Chopra <Saransh-cpp>` :issue:`1158`.
 
+* Require ``setuptools`` 64.0.0+
+  By :user:`Saransh Chopra <Saransh-cpp>` :issue:`1193`.
+
+* Pin action versions (pypi-publish, setup-miniconda) for dependabot
+  By :user:`Saransh Chopra <Saransh-cpp>` :issue:`1205`.
+
+* Remove ``tox`` support
+  By :user:`Saransh Chopra <Saransh-cpp>` :issue:`1219`.
+
+* Add workflow to label PRs with "needs release notes".
+  By :user:`Saransh Chopra <Saransh-cpp>` :issue:`1239`.
+
+* Simplify if/else statement.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1227`.
+
+* Get coverage up to 100%.
+  By :user:`John Kirkham <jakirkham>` :issue:`1264`.
+
+* Migrate coverage to ``pyproject.toml``.
+  By :user:`John Kirkham <jakirkham>` :issue:`1250`.
+
+* Use ``conda-incubator/setup-miniconda@v2.2.0``.
+  By :user:`John Kirkham <jakirkham>` :issue:`1263`.
+
+* Delete unused files.
+  By :user:`John Kirkham <jakirkham>` :issue:`1251`.
+
+
 .. _release_2.13.3:
 
 2.13.3

@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=64.0.0", "setuptools-scm", "wheel"]
+requires = ["setuptools>=64.0.0", "setuptools-scm"]
 build-backend = "setuptools.build_meta"
 
 
@@ -34,6 +34,7 @@ classifiers = [
     'Programming Language :: Python :: 3.9',
     'Programming Language :: Python :: 3.10',
 ]
+license = { text = "MIT" }
 
 [project.optional-dependencies]
 jupyter = [
@@ -49,9 +50,21 @@ Discussions = "https://github.com/zarr-developers/zarr-python/discussions"
 Documentation = "https://zarr.readthedocs.io/"
 Homepage = "https://github.com/zarr-developers/zarr-python"
 
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "pragma: ${PY_MAJOR_VERSION} no cover",
+]
+
+[tool.coverage.run]
+omit = [
+    "zarr/meta_v1.py",
+    "bench/compress_normal.py",
+]
 
 [tool.setuptools]
 packages = ["zarr", "zarr._storage", "zarr.tests"]
+license-files = ["LICENSE.txt"]
 
 [tool.setuptools_scm]
 version_scheme = "guess-next-dev"
