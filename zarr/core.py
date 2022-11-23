@@ -54,6 +54,7 @@ from zarr.util import (
 )
 
 # noinspection PyUnresolvedReferences
+
 class Array:
 
     """Instantiate an array from an initialized store.
@@ -2250,6 +2251,7 @@ class Array:
 # dvalue = 42.
 # docstr = "r"
 # print(docstr)  
+
 def zarr_chunk_slice_info():
     """Use pure zarr insides to get chunk/slice info."""
     ds = zarr.open("./example.zarr")
