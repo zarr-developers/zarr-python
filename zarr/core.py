@@ -2321,8 +2321,8 @@ def main():
   zarr_chunk_slice_info()
 if __name__ == '__main__':
     main()
- @property
- def info(self):
+    @property
+    def info(self):
         """Report some diagnostic information about the array.
 
         Examples
