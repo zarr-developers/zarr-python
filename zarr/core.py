@@ -6,7 +6,6 @@ import operator
 import re
 from functools import reduce
 from typing import Any
-from zarr.indexing import PartialChunkIterator
 import numpy as np
 from numcodecs.compat import ensure_bytes
 from zarr._storage.store import _prefix_to_attrs_key, assert_zarr_v3_api_available
@@ -55,6 +54,7 @@ from zarr.util import (
 
 # noinspection PyUnresolvedReferences
 class Array:
+   
     """Instantiate an array from an initialized store.
 
     Parameters
@@ -804,9 +804,6 @@ class Array:
         else:
             result = self.get_basic_selection(pure_selection, fields=fields)
         return result
-
-
-
 
     def get_basic_selection(self, selection=Ellipsis, out=None, fields=None):
         """Retrieve data for an item or region of the array.
@@ -2247,17 +2244,17 @@ class Array:
         r += '>'
         return r
 
-#dsize = (60, 404, 802)
-#dchunks = (12, 80, 160)
-#dvalue = 42.
-#docstr = "r"
-#print(docstr)  
+# dsize = (60, 404, 802)
+# dchunks = (12, 80, 160)
+# dvalue = 42.
+# docstr = "r"
+# print(docstr)  
 def zarr_chunk_slice_info():
     """Use pure zarr insides to get chunk/slice info."""
     ds = zarr.open("./example.zarr")
     print("Zarr stuffs")
     print("==================")
-    print(f"Data file loaded by Zarr\n: {ds}")
+    print(f"Data file loaded by Zarr \n: {ds}")
     print(f"Info of Data file loaded by Zarr\n: {ds.info}")
     # print(f"Data array loaded by Zarr\n: {ds[:]}")
     print(f"Data chunks: {ds.chunks}")
@@ -2323,8 +2320,9 @@ def main():
   zarr_chunk_slice_info()
 if __name__ == '__main__':
     main()
-    
     @property
+
+
     def info(self):
         """Report some diagnostic information about the array.
 
