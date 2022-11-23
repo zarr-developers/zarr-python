@@ -54,7 +54,6 @@ from zarr.util import (
 )
 
 # noinspection PyUnresolvedReferences
-
 class Array:
 
     """Instantiate an array from an initialized store.
@@ -2319,7 +2318,7 @@ def zarr_chunk_slice_info():
 
 
 def main():
-  zarr_chunk_slice_info()
+zarr_chunk_slice_info()
 if __name__ == '__main__':
     main()
     @property
