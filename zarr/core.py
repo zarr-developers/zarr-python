@@ -1,6 +1,4 @@
 import binascii
-import h5py
-import os
 import hashlib
 import itertools
 import math
@@ -8,13 +6,9 @@ import operator
 import re
 from functools import reduce
 from typing import Any
-import zarr
-from io import BytesIO
-from kerchunk.hdf import SingleHdf5ToZarr
 from zarr.indexing import PartialChunkIterator
 import numpy as np
 from numcodecs.compat import ensure_bytes
-
 from zarr._storage.store import _prefix_to_attrs_key, assert_zarr_v3_api_available
 from zarr.attrs import Attributes
 from zarr.codecs import AsType, get_codec
@@ -2253,87 +2247,13 @@ class Array:
         r += '>'
         return r
 
-dsize = (60, 404, 802)
-dchunks = (12, 80, 160)
-dvalue = 42.
-docstr = "r"
-print(docstr)  
-def build_zarr_dataset():   
- store = zarr.DirectoryStore('data/array.zarr')
- z = zarr.zeros(dsize, chunks=dchunks, store=store, overwrite=True)
- z[...] = dvalue
- zarr.save_array("example.zarr", z, compressor=None)
-def h5py_chunk_slice_info():
-     buf = BytesIO()
-     with h5py.File(buf, 'w') as fout:
-        fout.create_dataset('test', shape=dsize,
-                            chunks=dchunks, dtype='f8')
-        fout['test'][:] = dvalue
-     buf.seek(0)
-     
-     with h5py.File(buf, 'r') as fin:
-        ds = fin['test']
-        ds_id = fin['test'].id
-        num_chunks = ds_id.get_num_chunks()
-        print("\n")
-        print("H5Py stuffs")
-        print("==================")
-        print(f"Dataset number of chunks is {num_chunks}")
-        print("\nAnalyzing 0th and 5th chunks")
-        for j in [0, 5]:
-            print(f"Chunk index {j}")
-            si = ds_id.get_chunk_info(j)
-            print("Chunk index offset", si.chunk_offset)
-            print("Chunk byte offset", si.byte_offset)
-            print("Chunk size", si.size)
-
-        tot_size = ds.size * ds.dtype.itemsize
-        print(f"\nTotal chunks size {tot_size}")
-        print("\nNow looking at some slices:")
-        data_slice = ds[0:2]  # get converted to an ndarray
-        print(f"Slice Dataset[0:2] shape {data_slice.shape}")
-        # use zarr.indexing.PartialChunkIterator
-        PCI = PartialChunkIterator((slice(0, 2, 2), ), ds.shape)
-        print("Slice offset and size:", list(PCI)[0][0], "and",
-              list(PCI)[0][1] * ds.dtype.itemsize)
-        print("\n")
-        data_slice = ds[4:7]
-        print(f"Slice Dataset[4:7] shape {data_slice.shape}")
-        PCI = PartialChunkIterator((slice(4, 7, 1), ), ds.shape)
-        print("Slice offset and size", list(PCI)[0][0], "and",
-              list(PCI)[0][1] * ds.dtype.itemsize)
-        print("\n")
-        data_slice = ds[0:60]  # the whole cake
-        print(f"Slice Dataset[0:60] shape {data_slice.shape}")
-        PCI = PartialChunkIterator((slice(0, 60, 1), ), ds.shape)
-        print("Slice offset and size", list(PCI)[0][0], "and",
-              list(PCI)[0][1] * ds.dtype.itemsize)
-        print("\n")
-
-        # kerchunk it!
-        ds = SingleHdf5ToZarr(buf).translate()
-        print("\nKerchunk-IT stuffs")
-        print("======================")
-        no_chunks = len(ds["refs"].keys()) - 3
-        print(f"Dataset number of chunks is {no_chunks}")
-        print(f"(0, 0, 0) Chunk: offset and size:", ds["refs"]["test/0.0.0"][1], ds["refs"]["test/0.0.0"][2])
-        print(f"(0, 0, 5) Chunk: offset and size:", ds["refs"]["test/0.0.5"][1], ds["refs"]["test/0.0.5"][2])
-        # print(f"(0, 5, 0) Chunk: offset and size:", ds["refs"]["test/0.5.0"][1], ds["refs"]["test/0.5.0"][2])
-        chunk_sizes = []
-        for val in ds["refs"].values():
-            if isinstance(val[2], int) or isinstance(val[2], float):
-                chunk_sizes.append(val[2])
-        print("Min chunk size", np.min(chunk_sizes))
-        print("Max chunk size", np.max(chunk_sizes))
-        print("Total size (sum of chunks), UNCOMPRESSED:", np.sum(chunk_sizes))
-        print("\n")
-
-
+#dsize = (60, 404, 802)
+#dchunks = (12, 80, 160)
+#dvalue = 42.
+#docstr = "r"
+#print(docstr)  
 def zarr_chunk_slice_info():
     """Use pure zarr insides to get chunk/slice info."""
-    zarr_dir = "./example.zarr"
-    if not os.path.isdir(zarr_dir):
-        build_zarr_dataset()
     ds = zarr.open("./example.zarr")
     print("Zarr stuffs")
     print("==================")
@@ -2400,10 +2320,10 @@ def zarr_chunk_slice_info():
 
 
 def main():
-  h5py_chunk_slice_info()
   zarr_chunk_slice_info()
 if __name__ == '__main__':
     main()
+    
     @property
     def info(self):
         """Report some diagnostic information about the array.
