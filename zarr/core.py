@@ -2251,7 +2251,7 @@ class Array:
 # docstr = "r"
 # print(docstr)  
 def zarr_chunk_slice_info():
-"""Use pure zarr insides to get chunk/slice info."""
+    """Use pure zarr insides to get chunk/slice info."""
     ds = zarr.open("./example.zarr")
     print("Zarr stuffs")
     print("==================")
