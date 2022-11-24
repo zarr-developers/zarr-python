@@ -56,7 +56,7 @@ from zarr.util import (
 # noinspection PyUnresolvedReferences
 
 class Array:
-        """Instantiate an array from an initialized store.
+    """Instantiate an array from an initialized store.
 
     Parameters
     ----------
