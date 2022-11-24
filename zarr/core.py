@@ -53,8 +53,8 @@ from zarr.util import (
     ensure_ndarray_like
 )
 
-# noinspection PyUnresolvedReferences
 
+# noinspection PyUnresolvedReferences
 class Array:
     """Instantiate an array from an initialized store.
 
