@@ -2272,7 +2272,7 @@ class Array:
 # dvalue = 42.
 # docstr = "r"
 # print(docstr)
-     """Use pure zarr insides to get chunk/slice info."""
+        """Use pure zarr insides to get chunk/slice info."""
         ds = zarr.open("./example.zarr")
         print("Zarr stuffs")
         print("==================")
