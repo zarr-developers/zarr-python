@@ -56,8 +56,6 @@ from zarr.util import (
 # noinspection PyUnresolvedReferences
 
 class Array:
-    
-
     """Instantiate an array from an initialized store.
 
     Parameters
@@ -2326,7 +2324,6 @@ def main():
     
 if __name__ == '__main__':
     main()
-
     @property
     def info(self):
         """Report some diagnostic information about the array.
