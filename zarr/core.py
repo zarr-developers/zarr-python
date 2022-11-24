@@ -2321,17 +2321,17 @@ class Array:
         data_slice = ds[0:2]  # zarr data slice
         print(f"Slice Dataset[0:2] shape {data_slice.shape}")
         PCI = PartialChunkIterator((slice(0, 2, 1), ), ds.shape)
-        print("Slice offset and size", list(PCI)[0][0],"and",list(PCI)[0][1] * ds.dtype.itemsize)
+        print("Slice offset and size", list(PCI)[0][0], "and", list(PCI)[0][1] * ds.dtype.itemsize)
         print("\n")
         data_slice = ds[4:7]  # zarr data slice
         print(f"Slice Dataset[4:7] shape {data_slice.shape}")
         PCI = PartialChunkIterator((slice(4, 7, 1), ), ds.shape)
-        print("Slice offset and size", list(PCI)[0][0],"and",list(PCI)[0][1] * ds.dtype.itemsize)
+        print("Slice offset and size", list(PCI)[0][0], "and", list(PCI)[0][1] * ds.dtype.itemsize)
         print("\n")
         data_slice = ds[0:60]  # the whole cake
         print(f"Slice Dataset[0:60] shape {data_slice.shape}")
         PCI = PartialChunkIterator((slice(0, 60, 1), ), ds.shape)
-        print("Slice offset and size", list(PCI)[0][0],"and",list(PCI)[0][1] * ds.dtype.itemsize)
+        print("Slice offset and size", list(PCI)[0][0], "and", list(PCI)[0][1] * ds.dtype.itemsize)
         print("\n")
 
         # return self._info_reporter
