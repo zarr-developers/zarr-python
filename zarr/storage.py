@@ -1378,13 +1378,16 @@ class FSStore(Store):
     def setitems(self, values):
         if self.mode == 'r':
             raise ReadOnlyError()
-        values = {self._normalize_key(key): val for key, val in values.items()}
+
+        # Normalize keys and make sure the values are bytes
+        values = {self._normalize_key(key): ensure_bytes(val) for key, val in values.items()}
         self.map.setitems(values)
 
     def __setitem__(self, key, value):
         if self.mode == 'r':
             raise ReadOnlyError()
         key = self._normalize_key(key)
+        value = ensure_bytes(value)
         path = self.dir_path(key)
         try:
             if self.fs.isdir(path):
