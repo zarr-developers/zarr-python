@@ -45,6 +45,7 @@ extensions = [
     'numpydoc',
     'sphinx_issues',
     "sphinx_copybutton",
+    "sphinx_design"
 ]
 
 numpydoc_show_class_members = False
@@ -126,10 +127,15 @@ todo_include_todos = False
 # a list of builtin themes.
 html_theme = 'pydata_sphinx_theme'
 
+html_favicon = '_static/logo1.png'
+
 # Theme options are theme-specific and customize the look and feel of a theme
 # further.  For a list of options available for each theme, see the
 # documentation.
-html_theme_options = {'logo_only': True}
+html_theme_options = {
+  "github_url": "https://github.com/zarr-developers/zarr-python",
+  "collapse_navigation": True
+}
 
 # Add any paths that contain custom themes here, relative to this directory.
 #html_theme_path = []

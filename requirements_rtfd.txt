@@ -2,6 +2,7 @@ asciitree
 setuptools
 setuptools_scm
 sphinx
+sphinx_design
 sphinx-issues
 sphinx-copybutton
 sphinx-rtd-theme
