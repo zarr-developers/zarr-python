@@ -171,7 +171,7 @@ class ShardingStorageTransformer(StorageTransformer):  # lgtm[py/missing-equals]
     def __getitem__(self, key):
         if self._is_data_key(key):
             if self.supports_efficient_get_partial_values():
-                # Use the partial implementation, which fetches the index seperately
+                # Use the partial implementation, which fetches the index separately
                 value = self.get_partial_values([(key, (0, None))])[0]
                 if value is None:
                     raise KeyError(key)
