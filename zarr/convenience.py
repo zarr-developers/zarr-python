@@ -487,12 +487,11 @@ class _LogWriter:
         elif isinstance(log, str):
             self.log_file = io.open(log, mode='w')
             self.needs_closing = True
-        else:
-            if not hasattr(log, 'write'):
-                raise TypeError('log must be a callable function, file path or '
-                                'file-like object, found %r' % log)
+        elif hasattr(log, 'write'):
             self.log_file = log
-            self.needs_closing = False
+        else:
+            raise TypeError('log must be a callable function, file path or '
+                            'file-like object, found %r' % log)
 
     def __enter__(self):
         return self
@@ -1295,10 +1294,6 @@ def open_consolidated(store: StoreLike, metadata_key=".zmetadata", mode="r+", **
         # default is to store within 'consolidated' group on v3
         if not metadata_key.startswith('meta/root/'):
             metadata_key = 'meta/root/consolidated/' + metadata_key
-        if not path:
-            raise ValueError(
-                "path must be provided to open a Zarr 3.x consolidated store"
-            )
 
     # setup metadata store
     meta_store = ConsolidatedStoreClass(store, metadata_key=metadata_key)

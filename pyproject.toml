@@ -1,3 +1,93 @@
 [build-system]
-requires = ["setuptools>=40.8.0", "wheel"]
+requires = ["setuptools>=64.0.0", "setuptools-scm"]
 build-backend = "setuptools.build_meta"
+
+
+[project]
+name = "zarr"
+description = "An implementation of chunked, compressed, N-dimensional arrays for Python"
+readme = { file = "README.md", content-type = "text/markdown" }
+maintainers = [
+    { name = "Alistair Miles", email = "alimanfoo@googlemail.com" }
+]
+requires-python = ">=3.8"
+dependencies = [
+    'asciitree',
+    'numpy>=1.20',
+    'fasteners',
+    'numcodecs>=0.10.0',
+]
+dynamic = [
+  "version",
+]
+classifiers = [
+    'Development Status :: 6 - Mature',
+    'Intended Audience :: Developers',
+    'Intended Audience :: Information Technology',
+    'Intended Audience :: Science/Research',
+    'License :: OSI Approved :: MIT License',
+    'Programming Language :: Python',
+    'Topic :: Software Development :: Libraries :: Python Modules',
+    'Operating System :: Unix',
+    'Programming Language :: Python :: 3',
+    'Programming Language :: Python :: 3.8',
+    'Programming Language :: Python :: 3.9',
+    'Programming Language :: Python :: 3.10',
+]
+license = { text = "MIT" }
+
+[project.optional-dependencies]
+jupyter = [
+    'notebook',
+    'ipytree>=0.2.2',
+    'ipywidgets>=8.0.0',
+]
+
+[project.urls]
+"Bug Tracker" = "https://github.com/zarr-developers/zarr-python/issues"
+Changelog = "https://zarr.readthedocs.io/en/stable/release.html"
+Discussions = "https://github.com/zarr-developers/zarr-python/discussions"
+Documentation = "https://zarr.readthedocs.io/"
+Homepage = "https://github.com/zarr-developers/zarr-python"
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "pragma: ${PY_MAJOR_VERSION} no cover",
+]
+
+[tool.coverage.run]
+omit = [
+    "zarr/meta_v1.py",
+    "bench/compress_normal.py",
+]
+
+[tool.setuptools]
+packages = ["zarr", "zarr._storage", "zarr.tests"]
+license-files = ["LICENSE.txt"]
+
+[tool.setuptools_scm]
+version_scheme = "guess-next-dev"
+local_scheme = "dirty-tag"
+write_to = "zarr/version.py"
+
+[tool.mypy]
+python_version = "3.8"
+ignore_missing_imports = true
+follow_imports = "silent"
+
+[tool.pytest.ini_options]
+doctest_optionflags = [
+    "NORMALIZE_WHITESPACE",
+    "ELLIPSIS", 
+    "IGNORE_EXCEPTION_DETAIL",
+]
+addopts = [
+    "--durations=10",
+]
+filterwarnings = [
+    "error:::zarr.*",
+    "ignore:Not all N5 implementations support blosc compression.*:RuntimeWarning",
+    "ignore:PY_SSIZE_T_CLEAN will be required.*:DeprecationWarning",
+    "ignore:The loop argument is deprecated since Python 3.8.*:DeprecationWarning",
+]

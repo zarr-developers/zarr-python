@@ -4,76 +4,41 @@
 Zarr
 ====
 
-Zarr is a format for the storage of chunked, compressed, N-dimensional arrays.
-These documents describe the Zarr format and its Python implementation.
+Zarr is a format for the storage of chunked, compressed, N-dimensional arrays
+inspired by `HDF5 <https://www.hdfgroup.org/HDF5/>`_, `h5py
+<https://www.h5py.org/>`_ and `bcolz <https://bcolz.readthedocs.io/>`_.
+
+The project is fiscally sponsored by `NumFOCUS <https://numfocus.org/>`_, a US
+501(c)(3) public charity, and development is supported by the
+`MRC Centre for Genomics and Global Health <https://www.cggh.org>`_
+and the `Chan Zuckerberg Initiative <https://chanzuckerberg.com/>`_.
+
+These documents describe the Zarr Python implementation. More information
+about the Zarr format can be found on the `main website <https://zarr.dev>`_.
 
 Highlights
 ----------
 
-* Create N-dimensional arrays with any NumPy dtype.
-* Chunk arrays along any dimension.
-* Compress and/or filter chunks using any NumCodecs_ codec.
-* Store arrays in memory, on disk, inside a Zip file, on S3, ...
-* Read an array concurrently from multiple threads or processes.
-* Write to an array concurrently from multiple threads or processes.
-* Organize arrays into hierarchies via groups.
+ * Create N-dimensional arrays with any NumPy dtype.
+ * Chunk arrays along any dimension.
+ * Compress and/or filter chunks using any NumCodecs_ codec.
+ * Store arrays in memory, on disk, inside a Zip file, on S3, ...
+ * Read an array concurrently from multiple threads or processes.
+ * Write to an array concurrently from multiple threads or processes.
+ * Organize arrays into hierarchies via groups.
 
-Status
-------
-
-Zarr is still a young project. Feedback and bug reports are very welcome, please get in touch via
-the `GitHub issue tracker <https://github.com/zarr-developers/zarr-python/issues>`_. See
-:doc:`contributing` for further information about contributing to Zarr.
-
-Installation
+Contributing
 ------------
 
-Zarr depends on NumPy. It is generally best to `install NumPy
-<https://numpy.org/doc/stable/user/install.html>`_ first using whatever method is most
-appropriate for you operating system and Python distribution. Other dependencies should be
-installed automatically if using one of the installation methods below.
-
-Install Zarr from PyPI::
-
-    $ pip install zarr
-
-Alternatively, install Zarr via conda::
-
-    $ conda install -c conda-forge zarr
-
-To install the latest development version of Zarr, you can use pip with the
-latest GitHub main::
-
-    $ pip install git+https://github.com/zarr-developers/zarr-python.git
-
-To work with Zarr source code in development, install from GitHub::
-
-    $ git clone --recursive https://github.com/zarr-developers/zarr-python.git
-    $ cd zarr-python
-    $ python setup.py install
-
-To verify that Zarr has been fully installed, run the test suite::
-
-    $ pip install pytest
-    $ python -m pytest -v --pyargs zarr
-
-Contents
---------
-
-.. toctree::
-    :maxdepth: 2
-
-    tutorial
-    api
-    spec
-    release
-    contributing
+Feedback and bug reports are very welcome, please get in touch via
+the `GitHub issue tracker <https://github.com/zarr-developers/zarr-python/issues>`_. See
+:doc:`contributing` for further information about contributing to Zarr.
 
 Projects using Zarr
 -------------------
 
 If you are using Zarr, we would `love to hear about it
-<https://github.com/zarr-developers/zarr-python/issues/228>`_.
+<https://github.com/zarr-developers/community/issues/19>`_.
 
 Acknowledgments
 ---------------
@@ -81,22 +46,91 @@ Acknowledgments
 The following people have contributed to the development of Zarr by contributing code,
 documentation, code reviews, comments and/or ideas:
 
-* :user:`Francesc Alted <FrancescAlted>`
-* :user:`Martin Durant <martindurant>`
-* :user:`Stephan Hoyer <shoyer>`
-* :user:`John Kirkham <jakirkham>`
-* :user:`Alistair Miles <alimanfoo>`
-* :user:`Mamy Ratsimbazafy <mratsim>`
-* :user:`Matthew Rocklin <mrocklin>`
-* :user:`Vincent Schut <vincentschut>`
-* :user:`Anthony Scopatz <scopatz>`
-* :user:`Prakhar Goel <newt0311>`
+:user:`Alistair Miles <alimanfoo>`
+:user:`Altay Sansal <tasansal>`
+:user:`Anderson Banihirwe <andersy005>`
+:user:`Andrew Fulton <andrewfulton9>`
+:user:`Andrew Thomas <amcnicho>`
+:user:`Anthony Scopatz <scopatz>`
+:user:`Attila Bergou <abergou>`
+:user:`BGCMHou <BGCMHou>`
+:user:`Ben Jeffery <benjeffery>`
+:user:`Ben Williams <benjaminhwilliams>`
+:user:`Boaz Mohar <boazmohar>`
+:user:`Charles Noyes <CSNoyes>`
+:user:`Chris Barnes <clbarnes>`
+:user:`David Baddeley <David-Baddeley>`
+:user:`Davis Bennett <d-v-b>`
+:user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>`
+:user:`Eduardo Gonzalez <eddienko>`
+:user:`Elliott Sales de Andrade <QuLogic>`
+:user:`Eric Prestat <ericpre>`
+:user:`Eric Younkin <ericgyounkin>`
+:user:`Francesc Alted <FrancescAlted>`
+:user:`Greggory Lee <grlee77>`
+:user:`Gregory R. Lee <grlee77>`
+:user:`Ian Hunt-Isaak <ianhi>`
+:user:`James Bourbeau <jrbourbeau>`
+:user:`Jan Funke <funkey>`
+:user:`Jerome Kelleher <jeromekelleher>`
+:user:`Joe Hamman <jhamman>`
+:user:`Joe Jevnik <llllllllll>`
+:user:`John Kirkham <jakirkham>`
+:user:`Josh Moore <joshmoore>`
+:user:`Juan Nunez-Iglesias <jni>`
+:user:`Justin Swaney <jmswaney>`
+:user:`Mads R. B. Kristensen <madsbk>`
+:user:`Mamy Ratsimbazafy <mratsim>`
+:user:`Martin Durant <martindurant>`
+:user:`Matthew Rocklin <mrocklin>`
+:user:`Matthias Bussonnier <Carreau>`
+:user:`Mattia Almansi <malmans2>`
+:user:`Noah D Brenowitz <nbren12>`
+:user:`Oren Watson <orenwatson>`
+:user:`Pavithra Eswaramoorthy <pavithraes>`
+:user:`Poruri Sai Rahul <rahulporuri>`
+:user:`Prakhar Goel <newt0311>`
+:user:`Raphael Dussin <raphaeldussin>`
+:user:`Ray Bell <raybellwaves>`
+:user:`Richard Scott <RichardScottOZ>`
+:user:`Richard Shaw <jrs65>`
+:user:`Ryan Abernathey <rabernat>`
+:user:`Ryan Williams <ryan-williams>`
+:user:`Saransh Chopra <Saransh-cpp>`
+:user:`Sebastian Grill <yetyetanotherusername>`
+:user:`Shikhar Goenka <shikharsg>`
+:user:`Shivank Chaudhary <Alt-Shivam>`
+:user:`Stephan Hoyer <shoyer>`
+:user:`Stephan Saalfeld <axtimwalde>`
+:user:`Tarik Onalan <onalant>`
+:user:`Tim Crone <tjcrone>`
+:user:`Tobias Kölling <d70-t>`
+:user:`Tom Augspurger <TomAugspurger>`
+:user:`Tom White <tomwhite>`
+:user:`Tommy Tran <potter420>`
+:user:`Trevor Manz <manzt>`
+:user:`Vincent Schut <vincentschut>`
+:user:`Vyas Ramasubramani <vyasr>`
+:user:`Zain Patel <mzjp2>`
+:user:`gsakkis`
+:user:`hailiangzhang <hailiangzhang>`
+:user:`pmav99 <pmav99>`
+:user:`sbalmer <sbalmer>`
 
-Zarr is inspired by `HDF5 <https://www.hdfgroup.org/HDF5/>`_, `h5py
-<https://www.h5py.org/>`_ and `bcolz <https://bcolz.readthedocs.io/>`_.
+Contents
+--------
 
-Development of Zarr is supported by the
-`MRC Centre for Genomics and Global Health <https://www.cggh.org>`_.
+.. toctree::
+    :maxdepth: 2
+
+    installation
+    tutorial
+    api
+    spec
+    contributing
+    release
+    license
+    View homepage <https://zarr.dev/>
 
 Indices and tables
 ------------------

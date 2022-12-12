@@ -1,3 +1,4 @@
+from typing import Optional
 from warnings import warn
 
 import numpy as np
@@ -17,11 +18,11 @@ from zarr.util import normalize_dimension_separator
 
 
 def create(shape, chunks=True, dtype=None, compressor='default',
-           fill_value=0, order='C', store=None, synchronizer=None,
+           fill_value: Optional[int] = 0, order='C', store=None, synchronizer=None,
            overwrite=False, path=None, chunk_store=None, filters=None,
            cache_metadata=True, cache_attrs=True, read_only=False,
            object_codec=None, dimension_separator=None, write_empty_chunks=True,
-           *, zarr_version=None, storage_transformers=(), **kwargs):
+           *, zarr_version=None, meta_array=None, storage_transformers=(), **kwargs):
     """Create an array.
 
     Parameters
@@ -97,6 +98,14 @@ def create(shape, chunks=True, dtype=None, compressor='default',
         inferred from ``store`` or ``chunk_store`` if they are provided,
         otherwise defaulting to 2.
 
+        .. versionadded:: 2.12
+
+    meta_array : array-like, optional
+        An array instance to use for determining arrays to create and return
+        to users. Use `numpy.empty(())` by default.
+
+        .. versionadded:: 2.13
+
     Returns
     -------
     z : zarr.core.Array
@@ -163,7 +172,7 @@ def create(shape, chunks=True, dtype=None, compressor='default',
     dimension_separator = normalize_dimension_separator(dimension_separator)
 
     if zarr_version > 2 and path is None:
-        raise ValueError("path must be supplied to initialize a zarr v3 array")
+        path = '/'
 
     # initialize array metadata
     init_array(store, shape=shape, chunks=chunks, dtype=dtype, compressor=compressor,
@@ -174,7 +183,7 @@ def create(shape, chunks=True, dtype=None, compressor='default',
     # instantiate array
     z = Array(store, path=path, chunk_store=chunk_store, synchronizer=synchronizer,
               cache_metadata=cache_metadata, cache_attrs=cache_attrs, read_only=read_only,
-              write_empty_chunks=write_empty_chunks)
+              write_empty_chunks=write_empty_chunks, meta_array=meta_array)
 
     return z
 

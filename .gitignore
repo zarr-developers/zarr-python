@@ -35,7 +35,6 @@ pip-delete-this-directory.txt
 
 # Unit test / coverage reports
 htmlcov/
-.tox/
 .coverage
 .coverage.*
 .cache
@@ -66,6 +65,9 @@ zarr/version.py
 
 # emacs
 *~
+
+# VSCode
+.vscode/
 
 # test data
 #*.zarr

@@ -153,7 +153,7 @@ class FSStoreV3(FSStore, StoreV3):
         # initialize the /data/root/... folder corresponding to the array!
         # Note: zarr.tests.test_core_v3.TestArrayWithFSStoreV3PartialRead fails
         # without this explicit creation of directories
-        subdirectories = set([os.path.dirname(v) for v in values.keys()])
+        subdirectories = set(os.path.dirname(v) for v in values.keys())
         for subdirectory in subdirectories:
             data_dir = os.path.join(self.path, subdirectory)
             if not self.fs.exists(data_dir):

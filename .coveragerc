@@ -1,9 +1,0 @@
-[run]
-omit =
-    zarr/meta_v1.py
-    bench/compress_normal.py
-
-[report]
-exclude_lines =
-    pragma: no cover
-    pragma: ${PY_MAJOR_VERSION} no cover

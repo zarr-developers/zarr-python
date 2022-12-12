@@ -11,11 +11,12 @@ jobs:
       fail-fast: false
 
     steps:
-      - uses: actions/checkout@v1
+      - uses: actions/checkout@v3
         with:
           submodules: true
+          fetch-depth: 0
 
-      - uses: actions/setup-python@v1
+      - uses: actions/setup-python@v4.3.0
         name: Install Python
         with:
           python-version: '3.8'
@@ -35,7 +36,7 @@ jobs:
           else
             echo "All seem good"
           fi
-      - uses: actions/upload-artifact@v1
+      - uses: actions/upload-artifact@v3
         with:
           name: releases
           path: dist
@@ -44,7 +45,7 @@ jobs:
     needs: [build_artifacts]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v1
+      - uses: actions/download-artifact@v3
         with:
           name: releases
           path: dist
@@ -59,11 +60,11 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && startsWith(github.event.ref, 'refs/tags/v')
     steps:
-      - uses: actions/download-artifact@v1
+      - uses: actions/download-artifact@v3
         with:
           name: releases
           path: dist
-      - uses: pypa/gh-action-pypi-publish@master
+      - uses: pypa/gh-action-pypi-publish@v1
         with:
           user: __token__
           password: ${{ secrets.pypi_password }}

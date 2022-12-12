@@ -13,6 +13,8 @@ from zarr.indexing import (
     PartialChunkIterator,
 )
 
+from zarr.tests.util import CountingDict
+
 
 def test_normalize_integer_selection():
 
@@ -1451,3 +1453,75 @@ def test_numpy_int_indexing():
     z[:] = a
     assert a[42] == z[42]
     assert a[numpy.int64(42)] == z[numpy.int64(42)]
+
+
+@pytest.mark.parametrize(
+    "shape, chunks, ops",
+    [
+        # 1D test cases
+        ((1070,), (50,), [("__getitem__", (slice(200, 400),))]),
+        ((1070,), (50,), [("__getitem__", (slice(200, 400, 100),))]),
+        ((1070,), (50,), [
+            ("__getitem__", (slice(200, 400),)),
+            ("__setitem__", (slice(200, 400, 100),)),
+        ]),
+
+        # 2D test cases
+        ((40, 50), (5, 8), [
+            ("__getitem__", (slice(6, 37, 13), (slice(4, 10)))),
+            ("__setitem__", (slice(None), (slice(None)))),
+        ]),
+    ]
+)
+def test_accessed_chunks(shape, chunks, ops):
+    # Test that only the required chunks are accessed during basic selection operations
+    # shape: array shape
+    # chunks: chunk size
+    # ops: list of tuples with (optype, tuple of slices)
+    # optype = "__getitem__" or "__setitem__", tuple length must match number of dims
+    import itertools
+
+    # Use a counting dict as the backing store so we can track the items access
+    store = CountingDict()
+    z = zarr.create(shape=shape, chunks=chunks, store=store)
+
+    for ii, (optype, slices) in enumerate(ops):
+
+        # Resolve the slices into the accessed chunks for each dimension
+        chunks_per_dim = []
+        for N, C, sl in zip(shape, chunks, slices):
+            chunk_ind = np.arange(N, dtype=int)[sl] // C
+            chunks_per_dim.append(np.unique(chunk_ind))
+
+        # Combine and generate the cartesian product to determine the chunks keys that
+        # will be accessed
+        chunks_accessed = []
+        for comb in itertools.product(*chunks_per_dim):
+            chunks_accessed.append(".".join([str(ci) for ci in comb]))
+
+        counts_before = store.counter.copy()
+
+        # Perform the operation
+        if optype == "__getitem__":
+            z[slices]
+        else:
+            z[slices] = ii
+
+        # Get the change in counts
+        delta_counts = store.counter - counts_before
+
+        # Check that the access counts for the operation have increased by one for all
+        # the chunks we expect to be included
+        for ci in chunks_accessed:
+            assert delta_counts.pop((optype, ci)) == 1
+
+            # If the chunk was partially written to it will also have been read once. We
+            # don't determine if the chunk was actually partial here, just that the
+            # counts are consistent that this might have happened
+            if optype == "__setitem__":
+                assert (
+                    ("__getitem__", ci) not in delta_counts or
+                    delta_counts.pop(("__getitem__", ci)) == 1
+                )
+        # Check that no other chunks were accessed
+        assert len(delta_counts) == 0
