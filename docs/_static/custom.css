@@ -1,19 +1,23 @@
+/* override text color */
+.wy-menu-vertical a {
+    color: #000000;
+}
 
 /* Sidebar background color */
 .wy-nav-side, div.wy-side-nav-search {
-  background-color: rgb(38, 34, 98, 0); /* full alpha */
+  background-color: rgb(198, 197, 213, 0); /* full alpha */
 }
 
 /* Sidebar link click color */
 .wy-menu-vertical .toctree-l1 > a:active {
-  background-color: rgb(38, 34, 98);
-  color: rgb(252, 252, 252);
+  background-color: rgb(198, 197, 213);
+  color: rgb(0, 0, 0);
 }
 
 /* Link color is darker to make hovering more clear */
 .wy-menu-vertical .toctree-l1 > a:hover {
-  background-color: rgb(25, 22, 65);
-  color: rgb(252, 252, 252);
+  background-color: rgb(198, 197, 213);
+  color: rgb(0, 0, 0);
 }
 
 .wy-menu-vertical li.current > a:hover, .wy-menu-vertical li.current > a:active {

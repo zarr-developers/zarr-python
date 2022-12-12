@@ -75,8 +75,8 @@ The Zarr source code is hosted on GitHub at the following location:
 You will need your own fork to work on the code. Go to the link above and hit
 the "Fork" button. Then clone your fork to your local machine::
 
-    $ git clone git@github.com:your-user-name/zarr.git
-    $ cd zarr
+    $ git clone git@github.com:your-user-name/zarr-python.git
+    $ cd zarr-python
     $ git remote add upstream git@github.com:zarr-developers/zarr-python.git
 
 Creating a development environment
@@ -92,7 +92,7 @@ the repository, you can do something like the following::
     $ mkdir -p ~/pyenv/zarr-dev
     $ python -m venv ~/pyenv/zarr-dev
     $ source ~/pyenv/zarr-dev/bin/activate
-    $ pip install -r requirements_dev_minimal.txt -r requirements_dev_numpy.txt
+    $ pip install -r requirements_dev_minimal.txt -r requirements_dev_numpy.txt -r requirements_rtfd.txt
     $ pip install -e .
 
 To verify that your development environment is working, you can run the unit tests::
@@ -166,7 +166,7 @@ locally. To run the Azure Blob Service storage tests, run an Azure
 storage emulator (e.g., azurite) and set the environment variable
 ``ZARR_TEST_ABS=1``. If you're using Docker to run azurite, start the service with::
 
-    docker run --rm -p 10000:10000 mcr.microsoft.com/azure-storage/azurite azurite-blob --loose --blobHost 0.0.0.0 
+    docker run --rm -p 10000:10000 mcr.microsoft.com/azure-storage/azurite azurite-blob --loose --blobHost 0.0.0.0
 
 To run the Mongo DB storage tests, run a Mongo
 server locally and set the environment variable ``ZARR_TEST_MONGO=1``.
@@ -179,23 +179,45 @@ also collected automatically via the Codecov service, and total
 coverage over all builds must be 100% (although individual builds
 may be lower due to Python 2/3 or other differences).
 
-Code standards
-~~~~~~~~~~~~~~
+Code standards - using pre-commit
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 All code must conform to the PEP8 standard. Regarding line length, lines up to 100
 characters are allowed, although please try to keep under 90 wherever possible.
-Conformance can be checked by running::
 
-    $ python -m flake8 --max-line-length=100 zarr
+``Zarr`` uses a set of ``pre-commit`` hooks and the ``pre-commit`` bot to format,
+type-check, and prettify the codebase. ``pre-commit`` can be installed locally by
+running::
+
+    $ python -m pip install pre-commit
+
+The hooks can be installed locally by running::
+
+    $ pre-commit install
+
+This would run the checks every time a commit is created locally. These checks will also run
+on every commit pushed to an open PR, resulting in some automatic styling fixes by the
+``pre-commit`` bot. The checks will by default only run on the files modified by a commit,
+but the checks can be triggered for all the files by running::
+
+    $ pre-commit run --all-files
+
+If you would like to skip the failing checks and push the code for further discussion, use
+the ``--no-verify`` option with ``git commit``.
+
+
 
 Test coverage
 ~~~~~~~~~~~~~
 
 Zarr maintains 100% test coverage under the latest Python stable release (currently
 Python 3.8). Both unit tests and docstring doctests are included when computing
-coverage. Running ``tox -e py38`` will automatically run the test suite with coverage
-and produce a coverage report. This should be 100% before code can be accepted into the
-main code base.
+coverage. Running::
+    
+    $ python -m pytest -v --cov=zarr --cov-config=pyproject.toml zarr
+    
+will automatically run the test suite with coverage and produce a coverage report.
+This should be 100% before code can be accepted into the main code base.
 
 When submitting a pull request, coverage will also be collected across all supported
 Python versions via the Codecov service, and will be reported back within the pull
@@ -224,9 +246,11 @@ notes (``docs/release.rst``).
 
 The documentation can be built locally by running::
 
-    $ tox -e docs
+    $ cd docs
+    $ make clean; make html
+    $ open _build/html/index.html
 
-The resulting built documentation will be available in the ``.tox/docs/tmp/html`` folder.
+The resulting built documentation will be available in the ``docs/_build/html`` folder.
 
 Development best practices, policies and procedures
 ---------------------------------------------------
@@ -332,25 +356,34 @@ compatibility in some way.
 Release procedure
 ~~~~~~~~~~~~~~~~~
 
-.. note:: 
+.. note::
 
    Most of the release process is now handled by github workflow which should
-   automatically push a release to PyPI if a tag is pushed. 
+   automatically push a release to PyPI if a tag is pushed.
 
-Checkout and update the main branch::
+Before releasing, make sure that all pull requests which will be
+included in the release have been properly documented in
+`docs/release.rst`.
 
-    $ git checkout main
-    $ git pull
+To make a new release, go to
+https://github.com/zarr-developers/zarr-python/releases and
+click "Draft a new release". Choose a version number prefixed
+with a `v` (e.g. `v0.0.0`). For pre-releases, include the
+appropriate suffix (e.g. `v0.0.0a1` or `v0.0.0rc2`).
 
-Verify all tests pass on all supported Python versions, and docs build::
 
-    $ tox
+Set the description of the release to::
 
-Tag the version (where "X.X.X" stands for the version number, e.g., "2.2.0")::
+    See release notes https://zarr.readthedocs.io/en/stable/release.html#release-0-0-0
 
-    $ version=X.X.X
-    $ git tag -a v$version -m v$version
-    $ git push origin v$version
+replacing the correct version numbers. For pre-release versions,
+the URL should omit the pre-release suffix, e.g. "a1" or "rc1".
 
-Create a GitHub release in order to generate the Zenodo DOI and
-review the automatically generated zarr-feedstock PR.
+After creating the release, the documentation will be built on
+https://readthedocs.io. Full releases will be available under
+`/stable <https://zarr.readthedocs.io/en/stable>`_ while
+pre-releases will be available under
+`/latest <https://zarr.readthedocs.io/en/latest>`_.
+
+Also review and merge the https://github.com/conda-forge/zarr-feedstock
+pull request that will be automatically generated.

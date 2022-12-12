@@ -32,7 +32,7 @@ from zarr._storage.v3 import (ABSStoreV3, KVStoreV3, DirectoryStoreV3, MemorySto
                               FSStoreV3, ZipStoreV3, DBMStoreV3, LMDBStoreV3, SQLiteStoreV3,
                               LRUStoreCacheV3)
 from zarr.util import InfoReporter, buffer_size
-from zarr.tests.util import skip_test_env_var, have_fsspec, abs_container
+from zarr.tests.util import skip_test_env_var, have_fsspec, abs_container, mktemp
 
 
 _VERSIONS = ((2, 3) if v3_api_available else (2, ))
@@ -187,10 +187,6 @@ class TestGroup(unittest.TestCase):
             g4.create_group('/a/b/c')  # already exists
         with pytest.raises(ValueError):
             g1.create_group('')
-        with pytest.raises(ValueError):
-            g1.create_group('/')
-        with pytest.raises(ValueError):
-            g1.create_group('//')
 
         # multi
         g6, g7 = g1.create_groups('y', 'z')
@@ -774,6 +770,19 @@ class TestGroup(unittest.TestCase):
 
         g1.store.close()
 
+    # regression test for https://github.com/zarr-developers/zarr-python/issues/1228
+    def test_double_counting_group_v3(self):
+        root_group = self.create_group()
+        group_names = ["foo", "foo-", "foo_"]
+        for name in group_names:
+            sub_group = root_group.create_group(name)
+            sub_group.create("bar", shape=10, dtype="i4")
+        assert list(root_group.group_keys()) == sorted(group_names)
+        assert list(root_group.groups()) == [
+            (name, root_group[name])
+            for name in sorted(group_names)
+        ]
+
     def test_empty_getitem_contains_iterators(self):
         # setup
         g = self.create_group()
@@ -1020,17 +1029,13 @@ class TestGroup(unittest.TestCase):
             # case, but have kept it for v2 behavior compatibility)
             assert g2 == g1['foo//bar']
 
+            # TODO, root: fix these cases
             # v3: leading / implies we are at the root, not within a group,
             # so these all raise KeyError
             for path in ['/foo/bar', '//foo/bar', '//foo//bar//',
                          '///fooo///bar///']:
                 with pytest.raises(KeyError):
                     g1[path]
-
-            # For v3 a prefix must be supplied
-            for path in ['/', '//', '///']:
-                with pytest.raises(ValueError):
-                    g2[path]
 
         with pytest.raises(ValueError):
             g1['.']
@@ -1339,7 +1344,7 @@ class TestGroupWithZipStore(TestGroup):
 
     @staticmethod
     def create_store():
-        path = tempfile.mktemp(suffix='.zip')
+        path = mktemp(suffix='.zip')
         atexit.register(os.remove, path)
         store = ZipStore(path)
         return store, None
@@ -1367,7 +1372,7 @@ class TestGroupV3WithZipStore(TestGroupWithZipStore, TestGroupV3):
 
     @staticmethod
     def create_store():
-        path = tempfile.mktemp(suffix='.zip')
+        path = mktemp(suffix='.zip')
         atexit.register(os.remove, path)
         store = ZipStoreV3(path)
         return store, None
@@ -1377,7 +1382,7 @@ class TestGroupWithDBMStore(TestGroup):
 
     @staticmethod
     def create_store():
-        path = tempfile.mktemp(suffix='.anydbm')
+        path = mktemp(suffix='.anydbm')
         atexit.register(atexit_rmglob, path + '*')
         store = DBMStore(path, flag='n')
         return store, None
@@ -1388,7 +1393,7 @@ class TestGroupV3WithDBMStore(TestGroupWithDBMStore, TestGroupV3):
 
     @staticmethod
     def create_store():
-        path = tempfile.mktemp(suffix='.anydbm')
+        path = mktemp(suffix='.anydbm')
         atexit.register(atexit_rmglob, path + '*')
         store = DBMStoreV3(path, flag='n')
         return store, None
@@ -1399,7 +1404,7 @@ class TestGroupWithDBMStoreBerkeleyDB(TestGroup):
     @staticmethod
     def create_store():
         bsddb3 = pytest.importorskip("bsddb3")
-        path = tempfile.mktemp(suffix='.dbm')
+        path = mktemp(suffix='.dbm')
         atexit.register(os.remove, path)
         store = DBMStore(path, flag='n', open=bsddb3.btopen)
         return store, None
@@ -1411,7 +1416,7 @@ class TestGroupV3WithDBMStoreBerkeleyDB(TestGroupWithDBMStoreBerkeleyDB, TestGro
     @staticmethod
     def create_store():
         bsddb3 = pytest.importorskip("bsddb3")
-        path = tempfile.mktemp(suffix='.dbm')
+        path = mktemp(suffix='.dbm')
         atexit.register(os.remove, path)
         store = DBMStoreV3(path, flag='n', open=bsddb3.btopen)
         return store, None
@@ -1422,7 +1427,7 @@ class TestGroupWithLMDBStore(TestGroup):
     @staticmethod
     def create_store():
         pytest.importorskip("lmdb")
-        path = tempfile.mktemp(suffix='.lmdb')
+        path = mktemp(suffix='.lmdb')
         atexit.register(atexit_rmtree, path)
         store = LMDBStore(path)
         return store, None
@@ -1434,7 +1439,7 @@ class TestGroupV3WithLMDBStore(TestGroupWithLMDBStore, TestGroupV3):
     @staticmethod
     def create_store():
         pytest.importorskip("lmdb")
-        path = tempfile.mktemp(suffix='.lmdb')
+        path = mktemp(suffix='.lmdb')
         atexit.register(atexit_rmtree, path)
         store = LMDBStoreV3(path)
         return store, None
@@ -1444,7 +1449,7 @@ class TestGroupWithSQLiteStore(TestGroup):
 
     def create_store(self):
         pytest.importorskip("sqlite3")
-        path = tempfile.mktemp(suffix='.db')
+        path = mktemp(suffix='.db')
         atexit.register(atexit_rmtree, path)
         store = SQLiteStore(path)
         return store, None
@@ -1455,7 +1460,7 @@ class TestGroupV3WithSQLiteStore(TestGroupWithSQLiteStore, TestGroupV3):
 
     def create_store(self):
         pytest.importorskip("sqlite3")
-        path = tempfile.mktemp(suffix='.db')
+        path = mktemp(suffix='.db')
         atexit.register(atexit_rmtree, path)
         store = SQLiteStoreV3(path)
         return store, None
@@ -1556,9 +1561,6 @@ def test_group(zarr_version):
         assert '/' == g.name
     else:
         g = group(path='group1', zarr_version=zarr_version)
-        with pytest.raises(ValueError):
-            # must supply path for v3 groups
-            group(zarr_version=3)
         assert 'group1' == g.path
         assert '/group1' == g.name
     assert isinstance(g, Group)
@@ -1632,7 +1634,11 @@ def test_open_group(zarr_version):
     assert 0 == len(g)
     g.create_groups('foo', 'bar')
     assert 2 == len(g)
-    with pytest.raises(ValueError):
+    if zarr_version == 2:
+        with pytest.raises(ValueError):
+            open_group('data/array.zarr', mode='a', zarr_version=zarr_version)
+    else:
+        # TODO, root: should this raise an error?
         open_group('data/array.zarr', mode='a', zarr_version=zarr_version)
 
     # mode in 'w-', 'x'
@@ -1767,14 +1773,15 @@ def _check_tree(g, expect_bytes, expect_text):
     assert expect_repr == repr(g.tree())
     if ipytree:
         # noinspection PyProtectedMember
-        widget = g.tree()._ipython_display_()
+        widget = g.tree()._repr_mimebundle_()
         isinstance(widget, ipytree.Tree)
 
 
 @pytest.mark.parametrize('zarr_version', _VERSIONS)
-def test_tree(zarr_version):
+@pytest.mark.parametrize('at_root', [False, True])
+def test_tree(zarr_version, at_root):
     # setup
-    path = None if zarr_version == 2 else 'group1'
+    path = None if at_root else 'group1'
     g1 = group(path=path, zarr_version=zarr_version)
     g2 = g1.create_group('foo')
     g3 = g1.create_group('bar')
@@ -1782,17 +1789,18 @@ def test_tree(zarr_version):
     g5 = g3.create_group('quux')
     g5.create_dataset('baz', shape=100, chunks=10)
 
+    tree_path = '/' if at_root else path
     # test root group
     if zarr_version == 2:
-        expect_bytes = textwrap.dedent("""\
-        /
+        expect_bytes = textwrap.dedent(f"""\
+        {tree_path}
          +-- bar
          |   +-- baz
          |   +-- quux
          |       +-- baz (100,) float64
          +-- foo""").encode()
-        expect_text = textwrap.dedent("""\
-        /
+        expect_text = textwrap.dedent(f"""\
+        {tree_path}
          ├── bar
          │   ├── baz
          │   └── quux
@@ -1801,15 +1809,15 @@ def test_tree(zarr_version):
     else:
         # Almost the same as for v2, but has a path name and the
         # subgroups are not necessarily sorted alphabetically.
-        expect_bytes = textwrap.dedent("""\
-        group1
+        expect_bytes = textwrap.dedent(f"""\
+        {tree_path}
          +-- foo
          +-- bar
              +-- baz
              +-- quux
                  +-- baz (100,) float64""").encode()
-        expect_text = textwrap.dedent("""\
-        group1
+        expect_text = textwrap.dedent(f"""\
+        {tree_path}
          ├── foo
          └── bar
              ├── baz

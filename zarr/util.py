@@ -10,7 +10,7 @@ import numpy as np
 from asciitree import BoxStyle, LeftAligned
 from asciitree.traversal import Traversal
 from collections.abc import Iterable
-from numcodecs.compat import ensure_ndarray, ensure_text
+from numcodecs.compat import ensure_text, ensure_ndarray_like
 from numcodecs.registry import codec_registry
 from numcodecs.blosc import cbuffer_sizes, cbuffer_metainfo
 
@@ -352,7 +352,7 @@ def normalize_storage_path(path: Union[str, bytes, None]) -> str:
 
 
 def buffer_size(v) -> int:
-    return ensure_ndarray(v).nbytes
+    return ensure_ndarray_like(v).nbytes
 
 
 def info_text_report(items: Dict[Any, Any]) -> str:
@@ -533,10 +533,9 @@ class TreeViewer:
     def __repr__(self):
         return self.__unicode__()
 
-    def _ipython_display_(self):
+    def _repr_mimebundle_(self, **kwargs):
         tree = tree_widget(self.group, expand=self.expand, level=self.level)
-        tree._ipython_display_()
-        return tree
+        return tree._repr_mimebundle_(**kwargs)
 
 
 def check_array_shape(param, array, shape):
