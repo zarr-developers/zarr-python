@@ -2277,8 +2277,10 @@ class Array:
             cdata = chunk
 
         # ensure in-memory data is immutable and easy to compare
-        if (isinstance(self.chunk_store, KVStore)
-            or isinstance(self._chunk_store, KVStore)):
+        if (
+            isinstance(self.chunk_store, KVStore)
+            or isinstance(self._chunk_store, KVStore)
+        ):
             cdata = ensure_bytes(cdata)
 
         return cdata
