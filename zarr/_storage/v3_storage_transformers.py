@@ -2,6 +2,7 @@ import functools
 import itertools
 from typing import NamedTuple, Tuple, Optional, Union, Iterator
 
+from numcodecs.compat import ensure_bytes
 import numpy as np
 
 from zarr._storage.store import StorageTransformer, StoreV3, _rmdir_from_keys_v3
@@ -191,6 +192,7 @@ class ShardingStorageTransformer(StorageTransformer):  # lgtm[py/missing-equals]
             return self.inner_store.__getitem__(key)
 
     def __setitem__(self, key, value):
+        value = ensure_bytes(value)
         if self._is_data_key(key):
             shard_key, chunk_subkey = self._key_to_shard(key)
             chunks_to_read = set(self._get_chunks_in_shard(shard_key))
