@@ -738,8 +738,10 @@ def test_json_dumps_chunks_numpy_dtype():
     assert np.all(z[...] == 0)
 
 
-def test_create_with_storage_transformers():
-    kwargs = _init_creation_kwargs(zarr_version=3)
+@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
+@pytest.mark.parametrize('at_root', [False, True])
+def test_create_with_storage_transformers(at_root):
+    kwargs = _init_creation_kwargs(zarr_version=3, at_root=at_root)
     transformer = DummyStorageTransfomer(
         "dummy_type",
         test_value=DummyStorageTransfomer.TEST_CONSTANT
