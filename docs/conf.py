@@ -134,6 +134,7 @@ html_favicon = '_static/logo1.png'
 # documentation.
 html_theme_options = {
   "github_url": "https://github.com/zarr-developers/zarr-python",
+  "twitter_url": "https://twitter.com/zarr_dev",
   "collapse_navigation": True
 }
 
