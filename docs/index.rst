@@ -25,7 +25,7 @@ Zarr documentation
 `Issue Tracker <https://github.com/zarr-developers/zarr-python/issues>`_ |
 `Gitter <https://gitter.im/zarr-developers/community>`_
 
-Zarr is a Python package providing an implementation of compressed, chunked, N-dimensional arrays, designed for use in parallel computing.
+Zarr is a file storage format for chunked, compressed, N-dimensional arrays based on an open-source specification.
 
 .. grid:: 2
 
