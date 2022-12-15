@@ -22,7 +22,7 @@ def create(shape, chunks=True, dtype=None, compressor='default',
            overwrite=False, path=None, chunk_store=None, filters=None,
            cache_metadata=True, cache_attrs=True, read_only=False,
            object_codec=None, dimension_separator=None, write_empty_chunks=True,
-           attrs: Dict[str, Any]={}, *, zarr_version=None, meta_array=None, **kwargs):
+           attrs: Dict[str, Any] = {}, *, zarr_version=None, meta_array=None, **kwargs):
     """Create an array.
 
     Parameters
@@ -71,6 +71,8 @@ def create(shape, chunks=True, dtype=None, compressor='default',
         A codec to encode object arrays, only needed if dtype=object.
     dimension_separator : {'.', '/'}, optional
         Separator placed between the dimensions of a chunk.
+    attrs : JSON-serializable dict.
+        User attributes for the array. Defaults to {}.
 
         .. versionadded:: 2.8
 
@@ -479,6 +481,8 @@ def open_array(
         is deleted. This setting enables sparser storage, as only chunks with
         non-fill-value data are stored, at the expense of overhead associated
         with checking the data of each chunk.
+    attrs : JSON-serializable dict.
+        User attributes for the array. Defaults to {}.
 
         .. versionadded:: 2.11
 

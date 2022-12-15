@@ -1,5 +1,6 @@
 from collections.abc import MutableMapping
 from itertools import islice
+from typing import Any, Dict
 
 import numpy as np
 
@@ -920,12 +921,12 @@ class Group(MutableMapping):
 
         return self._write_op(self._create_group_nosync, name, overwrite=overwrite)
 
-    def _create_group_nosync(self, name, overwrite=False):
+    def _create_group_nosync(self, name, overwrite: bool = False, attrs: Dict[str, Any] = {}):
         path = self._item_path(name)
 
         # create terminal group
         init_group(self._store, path=path, chunk_store=self._chunk_store,
-                   overwrite=overwrite)
+                   overwrite=overwrite, attrs=attrs)
 
         return Group(self._store, path=path, read_only=self._read_only,
                      chunk_store=self._chunk_store, cache_attrs=self.attrs.cache,

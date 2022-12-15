@@ -303,7 +303,7 @@ def init_array(
     filters=None,
     object_codec=None,
     dimension_separator: Optional[str] = None,
-    attrs: Dict[str, Any]={}
+    attrs: Dict[str, Any] = {}
 ):
     """Initialize an array store with the given configuration. Note that this is a low-level
     function and there should be no need to call this directly from user code.
@@ -615,7 +615,7 @@ def init_group(
     overwrite: bool = False,
     path: Path = None,
     chunk_store: Optional[StoreLike] = None,
-    attrs={}
+    attrs: Dict[str, Any] = {},
 ):
     """Initialize a group store. Note that this is a low-level function and there should be no
     need to call this directly from user code.
@@ -651,7 +651,7 @@ def init_group(
     # initialise metadata
     _init_group_metadata(store=store, overwrite=overwrite, path=path,
                          chunk_store=chunk_store)
-    
+
     # initialize attrs
     if len(attrs):
         if path:
