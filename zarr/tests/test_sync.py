@@ -5,6 +5,7 @@ from multiprocessing import Pool as ProcessPool
 from multiprocessing import cpu_count
 from multiprocessing.pool import ThreadPool
 from tempfile import mkdtemp
+from typing import Any, Dict
 
 import numpy as np
 from numpy.testing import assert_array_equal
@@ -246,10 +247,10 @@ class MixinGroupSyncTests:
 class TestGroupWithThreadSynchronizer(TestGroup, MixinGroupSyncTests):
 
     def create_group(self, store=None, path=None, read_only=False,
-                     chunk_store=None, synchronizer=None):
+                     chunk_store=None, synchronizer=None, attrs: Dict[str, Any] = {}):
         if store is None:
             store, chunk_store = self.create_store()
-        init_group(store, path=path, chunk_store=chunk_store)
+        init_group(store, path=path, chunk_store=chunk_store, attrs=attrs)
         synchronizer = ThreadSynchronizer()
         g = Group(store, path=path, read_only=read_only,
                   chunk_store=chunk_store, synchronizer=synchronizer)
@@ -274,10 +275,10 @@ class TestGroupWithProcessSynchronizer(TestGroup, MixinGroupSyncTests):
         return store, None
 
     def create_group(self, store=None, path=None, read_only=False,
-                     chunk_store=None, synchronizer=None):
+                     chunk_store=None, synchronizer=None, attrs: Dict[str, Any] = {}):
         if store is None:
             store, chunk_store = self.create_store()
-        init_group(store, path=path, chunk_store=chunk_store)
+        init_group(store, path=path, chunk_store=chunk_store, attrs=attrs)
         sync_path = tempfile.mkdtemp()
         atexit.register(atexit_rmtree, sync_path)
         synchronizer = ProcessSynchronizer(sync_path)

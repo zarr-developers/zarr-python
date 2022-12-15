@@ -67,11 +67,14 @@ def test_array(zarr_version, at_root):
     expected_zarr_version = DEFAULT_ZARR_VERSION if zarr_version is None else zarr_version
     kwargs = _init_creation_kwargs(zarr_version, at_root)
 
-    # with numpy array
+    # with numpy array and attrs
     a = np.arange(100)
-    z = array(a, chunks=10, **kwargs)
+    attrs = {'foo': 10}
+    z = array(a, chunks=10, **kwargs, attrs=attrs)
+
     assert a.shape == z.shape
     assert a.dtype == z.dtype
+    assert attrs == dict(z.attrs)
     assert z._store._store_version == expected_zarr_version
     assert_array_equal(a, z[:])
 

@@ -5,6 +5,7 @@ import pickle
 import shutil
 import tempfile
 import textwrap
+from typing import Any, Dict
 import unittest
 
 import numpy as np
@@ -48,18 +49,18 @@ class TestGroup(unittest.TestCase):
         return KVStore(dict()), None
 
     def create_group(self, store=None, path=None, read_only=False,
-                     chunk_store=None, synchronizer=None):
+                     chunk_store=None, synchronizer=None, attrs: Dict[str, Any] = {}):
         # can be overridden in sub-classes
         if store is None:
             store, chunk_store = self.create_store()
-        init_group(store, path=path, chunk_store=chunk_store)
+        init_group(store, path=path, chunk_store=chunk_store, attrs=attrs)
         g = Group(store, path=path, read_only=read_only,
                   chunk_store=chunk_store, synchronizer=synchronizer)
         return g
 
     def test_group_init_1(self):
         store, chunk_store = self.create_store()
-        g = self.create_group(store, chunk_store=chunk_store)
+        g = self.create_group(store, chunk_store=chunk_store, attrs={'foo': 'bar'})
         assert store is g.store
         if chunk_store is None:
             assert store is g.chunk_store
@@ -70,7 +71,6 @@ class TestGroup(unittest.TestCase):
         assert '/' == g.name
         assert '' == g.basename
         assert isinstance(g.attrs, Attributes)
-        g.attrs['foo'] = 'bar'
         assert g.attrs['foo'] == 'bar'
         assert isinstance(g.info, InfoReporter)
         assert isinstance(repr(g.info), str)
@@ -1113,18 +1113,18 @@ class TestGroupV3(TestGroup, unittest.TestCase):
         return KVStoreV3(dict()), None
 
     def create_group(self, store=None, path='group', read_only=False,
-                     chunk_store=None, synchronizer=None):
+                     chunk_store=None, synchronizer=None, attrs: Dict[str, Any] = {}):
         # can be overridden in sub-classes
         if store is None:
             store, chunk_store = self.create_store()
-        init_group(store, path=path, chunk_store=chunk_store)
+        init_group(store, path=path, chunk_store=chunk_store, attrs=attrs)
         g = Group(store, path=path, read_only=read_only,
                   chunk_store=chunk_store, synchronizer=synchronizer)
         return g
 
     def test_group_init_1(self):
         store, chunk_store = self.create_store()
-        g = self.create_group(store, chunk_store=chunk_store)
+        g = self.create_group(store, chunk_store=chunk_store, attrs={'foo': 'bar'})
         assert store is g.store
         if chunk_store is None:
             assert store is g.chunk_store
@@ -1137,7 +1137,6 @@ class TestGroupV3(TestGroup, unittest.TestCase):
         assert 'group' == g.basename
 
         assert isinstance(g.attrs, Attributes)
-        g.attrs['foo'] = 'bar'
         assert g.attrs['foo'] == 'bar'
 
         assert isinstance(g.info, InfoReporter)

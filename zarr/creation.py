@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Any, Dict, Optional
 from warnings import warn
 
 import numpy as np
@@ -22,7 +22,7 @@ def create(shape, chunks=True, dtype=None, compressor='default',
            overwrite=False, path=None, chunk_store=None, filters=None,
            cache_metadata=True, cache_attrs=True, read_only=False,
            object_codec=None, dimension_separator=None, write_empty_chunks=True,
-           *, zarr_version=None, meta_array=None, **kwargs):
+           attrs: Dict[str, Any]={}, *, zarr_version=None, meta_array=None, **kwargs):
     """Create an array.
 
     Parameters
@@ -170,7 +170,7 @@ def create(shape, chunks=True, dtype=None, compressor='default',
     init_array(store, shape=shape, chunks=chunks, dtype=dtype, compressor=compressor,
                fill_value=fill_value, order=order, overwrite=overwrite, path=path,
                chunk_store=chunk_store, filters=filters, object_codec=object_codec,
-               dimension_separator=dimension_separator)
+               dimension_separator=dimension_separator, attrs=attrs)
 
     # instantiate array
     z = Array(store, path=path, chunk_store=chunk_store, synchronizer=synchronizer,
@@ -413,6 +413,7 @@ def open_array(
     storage_options=None,
     partial_decompress=False,
     write_empty_chunks=True,
+    attrs: Dict[str, Any] = {},
     *,
     zarr_version=None,
     dimension_separator=None,
@@ -557,7 +558,7 @@ def open_array(
         fill_value = np.array(fill_value, dtype=dtype)[()]
 
     # ensure store is initialized
-
+    # TODO: warning when creation kwargs (dtype, shape) are provided but mode is not w
     if mode in ['r', 'r+']:
         if not contains_array(store, path=path):
             if contains_group(store, path=path):
@@ -569,7 +570,7 @@ def open_array(
                    compressor=compressor, fill_value=fill_value,
                    order=order, filters=filters, overwrite=True, path=path,
                    object_codec=object_codec, chunk_store=chunk_store,
-                   dimension_separator=dimension_separator)
+                   dimension_separator=dimension_separator, attrs=attrs)
 
     elif mode == 'a':
         if not contains_array(store, path=path):
@@ -579,7 +580,7 @@ def open_array(
                        compressor=compressor, fill_value=fill_value,
                        order=order, filters=filters, path=path,
                        object_codec=object_codec, chunk_store=chunk_store,
-                       dimension_separator=dimension_separator)
+                       dimension_separator=dimension_separator, attrs=attrs)
 
     elif mode in ['w-', 'x']:
         if contains_group(store, path=path):
@@ -591,7 +592,7 @@ def open_array(
                        compressor=compressor, fill_value=fill_value,
                        order=order, filters=filters, path=path,
                        object_codec=object_codec, chunk_store=chunk_store,
-                       dimension_separator=dimension_separator)
+                       dimension_separator=dimension_separator, attrs=attrs)
 
     # determine read only status
     read_only = mode == 'r'

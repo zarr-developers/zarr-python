@@ -42,6 +42,7 @@ from numcodecs.compat import (
     ensure_contiguous_ndarray_like
 )
 from numcodecs.registry import codec_registry
+from zarr.attrs import Attributes
 
 from zarr.errors import (
     MetadataError,
@@ -62,6 +63,7 @@ from zarr._storage.absstore import ABSStore  # noqa: F401
 from zarr._storage.store import (_get_hierarchy_metadata,  # noqa: F401
                                  _get_metadata_suffix,
                                  _listdir_from_keys,
+                                 _prefix_to_attrs_key,
                                  _rename_from_keys,
                                  _rename_metadata_v3,
                                  _rmdir_from_keys,
@@ -300,7 +302,8 @@ def init_array(
     chunk_store: Optional[StoreLike] = None,
     filters=None,
     object_codec=None,
-    dimension_separator=None,
+    dimension_separator: Optional[str] = None,
+    attrs: Dict[str, Any]={}
 ):
     """Initialize an array store with the given configuration. Note that this is a low-level
     function and there should be no need to call this directly from user code.
@@ -335,6 +338,8 @@ def init_array(
         A codec to encode object arrays, only needed if dtype=object.
     dimension_separator : {'.', '/'}, optional
         Separator placed between the dimensions of a chunk.
+    attrs : JSON-serializable dict.
+        User attributes for the array. Defaults to {}.
 
     Examples
     --------
@@ -429,6 +434,18 @@ def init_array(
                          chunk_store=chunk_store, filters=filters,
                          object_codec=object_codec,
                          dimension_separator=dimension_separator)
+
+    if len(attrs):
+        if path:
+            key_prefix = path + '/'
+        else:
+            key_prefix = ''
+        _init_attrs(store, key_prefix, attrs)
+
+
+def _init_attrs(store: StoreLike, key_prefix: str, attrs: Dict[str, Any]):
+    akey = _prefix_to_attrs_key(store, key_prefix)
+    Attributes(store, key=akey, cache=False).update(attrs)
 
 
 def _init_array_metadata(
@@ -598,6 +615,7 @@ def init_group(
     overwrite: bool = False,
     path: Path = None,
     chunk_store: Optional[StoreLike] = None,
+    attrs={}
 ):
     """Initialize a group store. Note that this is a low-level function and there should be no
     need to call this directly from user code.
@@ -613,7 +631,8 @@ def init_group(
     chunk_store : Store, optional
         Separate storage for chunks. If not provided, `store` will be used
         for storage of both chunks and metadata.
-
+    attrs : JSON-serializable dict.
+        User attributes for the group. Defaults to {}.
     """
 
     # normalize path
@@ -632,6 +651,14 @@ def init_group(
     # initialise metadata
     _init_group_metadata(store=store, overwrite=overwrite, path=path,
                          chunk_store=chunk_store)
+    
+    # initialize attrs
+    if len(attrs):
+        if path:
+            key_prefix = path + '/'
+        else:
+            key_prefix = ''
+        _init_attrs(store, key_prefix, attrs)
 
     if store_version == 3:
         # TODO: Should initializing a v3 group also create a corresponding
