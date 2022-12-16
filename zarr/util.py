@@ -14,10 +14,12 @@ from numcodecs.compat import ensure_text, ensure_ndarray_like
 from numcodecs.registry import codec_registry
 from numcodecs.blosc import cbuffer_sizes, cbuffer_metainfo
 
-from typing import Any, Callable, Dict, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+
+JSON = Union[str, float, None, bool, List["JSON"], Dict[str, "JSON"]]
 
 
-def flatten(arg: Iterable) -> Iterable:
+def flatten(arg: Iterable[Any]) -> Iterable[Any]:
     for element in arg:
         if isinstance(element, Iterable) and not isinstance(element, (str, bytes)):
             yield from flatten(element)
@@ -51,12 +53,12 @@ def json_dumps(o: Any) -> bytes:
                       separators=(',', ': '), cls=NumberEncoder).encode('ascii')
 
 
-def json_loads(s: str) -> Dict[str, Any]:
+def json_loads(s: str) -> Dict[str, JSON]:
     """Read JSON in a consistent way."""
     return json.loads(ensure_text(s, 'ascii'))
 
 
-def normalize_shape(shape) -> Tuple[int]:
+def normalize_shape(shape: Any) -> Tuple[int, ...]:
     """Convenience function to normalize the `shape` argument."""
 
     if shape is None:

@@ -446,7 +446,7 @@ def _init_array_attrs(store: StoreLike, path: Optional[str], attrs: Dict[str, An
         else:
             key_prefix = ''
         akey = _prefix_to_array_attrs_key(store, key_prefix)
-        Attributes(store, key=akey, cache=False).update(attrs)
+        Attributes(store, key=akey, cache=False).put(attrs)
 
 
 def _init_group_attrs(store: StoreLike, path: Optional[str], attrs: Dict[str, Any]):
@@ -456,7 +456,7 @@ def _init_group_attrs(store: StoreLike, path: Optional[str], attrs: Dict[str, An
         else:
             key_prefix = ''
         akey = _prefix_to_group_attrs_key(store, key_prefix)
-        Attributes(store, key=akey, cache=False).update(attrs)
+        Attributes(store, key=akey, cache=False).put(attrs)
 
 
 def _init_array_metadata(
