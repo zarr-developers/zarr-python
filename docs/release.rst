@@ -18,6 +18,9 @@ Unreleased
   methods with V3 stores.
   By :user:`Ryan Abernathey <rabernat>` :issue:`1228`.
 
+* Add support for setting user-defined attributes at array / group creation time.
+  By :user: `Davis Bennett <d-v-b>` :issue:`538`.
+
 .. _release_2.13.2:
 
 Maintenance
