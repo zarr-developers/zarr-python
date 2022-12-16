@@ -63,7 +63,8 @@ from zarr._storage.absstore import ABSStore  # noqa: F401
 from zarr._storage.store import (_get_hierarchy_metadata,  # noqa: F401
                                  _get_metadata_suffix,
                                  _listdir_from_keys,
-                                 _prefix_to_attrs_key,
+                                 _prefix_to_array_attrs_key,
+                                 _prefix_to_group_attrs_key,
                                  _rename_from_keys,
                                  _rename_metadata_v3,
                                  _rmdir_from_keys,
@@ -435,17 +436,27 @@ def init_array(
                          object_codec=object_codec,
                          dimension_separator=dimension_separator)
 
+    _init_array_attrs(store, path, attrs)
+
+
+def _init_array_attrs(store: StoreLike, path: Optional[str], attrs: Dict[str, Any]):
     if len(attrs):
         if path:
             key_prefix = path + '/'
         else:
             key_prefix = ''
-        _init_attrs(store, key_prefix, attrs)
+        akey = _prefix_to_array_attrs_key(store, key_prefix)
+        Attributes(store, key=akey, cache=False).update(attrs)
 
 
-def _init_attrs(store: StoreLike, key_prefix: str, attrs: Dict[str, Any]):
-    akey = _prefix_to_attrs_key(store, key_prefix)
-    Attributes(store, key=akey, cache=False).update(attrs)
+def _init_group_attrs(store: StoreLike, path: Optional[str], attrs: Dict[str, Any]):
+    if len(attrs):
+        if path:
+            key_prefix = path + '/'
+        else:
+            key_prefix = ''
+        akey = _prefix_to_group_attrs_key(store, key_prefix)
+        Attributes(store, key=akey, cache=False).update(attrs)
 
 
 def _init_array_metadata(
@@ -653,12 +664,7 @@ def init_group(
                          chunk_store=chunk_store)
 
     # initialize attrs
-    if len(attrs):
-        if path:
-            key_prefix = path + '/'
-        else:
-            key_prefix = ''
-        _init_attrs(store, key_prefix, attrs)
+    _init_group_attrs(store, path, attrs)
 
     if store_version == 3:
         # TODO: Should initializing a v3 group also create a corresponding

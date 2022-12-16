@@ -10,7 +10,7 @@ from typing import Any
 import numpy as np
 from numcodecs.compat import ensure_bytes
 
-from zarr._storage.store import _prefix_to_attrs_key, assert_zarr_v3_api_available
+from zarr._storage.store import _prefix_to_array_attrs_key, assert_zarr_v3_api_available
 from zarr.attrs import Attributes
 from zarr.codecs import AsType, get_codec
 from zarr.errors import ArrayNotFoundError, ReadOnlyError, ArrayIndexError
@@ -215,7 +215,7 @@ class Array:
         self._load_metadata()
 
         # initialize attributes
-        akey = _prefix_to_attrs_key(self._store, self._key_prefix)
+        akey = _prefix_to_array_attrs_key(self._store, self._key_prefix)
         self._attrs = Attributes(store, key=akey, read_only=read_only,
                                  synchronizer=synchronizer, cache=cache_attrs)
 
