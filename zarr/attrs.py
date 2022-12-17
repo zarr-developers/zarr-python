@@ -1,6 +1,6 @@
 from typing import Any, Dict
 import warnings
-from collections.abc import MutableMapping
+from typing import MutableMapping
 
 from zarr._storage.store import Store, StoreV3
 from zarr.util import json_dumps

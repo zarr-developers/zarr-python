@@ -171,8 +171,8 @@ def normalize_chunks(
 
 
 def normalize_dtype(
-    dtype: Union[str, np.dtype[Any]], object_codec: Any
-) -> Tuple[np.dtype[Any], Any]:
+    dtype: Union[str, np.dtype], object_codec: Any
+) -> Tuple[np.dtype, Any]:
 
     # convenience API for object arrays
     if inspect.isclass(dtype):
@@ -212,8 +212,9 @@ def normalize_dtype(
 
 
 # noinspection PyTypeChecker
+# TODO: correctly type ellipsis
 def is_total_slice(
-    item: Union["builtins.Ellipsis", slice, Tuple[Any, ...]], shape: Tuple[int]
+    item: Union[slice, Tuple[Any, ...]], shape: Tuple[int]
 ) -> bool:
     """Determine whether `item` specifies a complete slice of array with the
     given `shape`. Used to optimize __setitem__ operations on the Chunk
@@ -293,7 +294,7 @@ def normalize_dimension_separator(sep: Optional[str]) -> Optional[str]:
         )
 
 
-def normalize_fill_value(fill_value: Any, dtype: np.dtype[Any]):
+def normalize_fill_value(fill_value: Any, dtype: np.dtype):
 
     if fill_value is None or dtype.hasobject:
         # no fill value
