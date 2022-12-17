@@ -1517,7 +1517,7 @@ def open_group(
     mode: str = "a",
     cache_attrs: bool = True,
     synchronizer=None,
-    path: str = None,
+    path: Optional[str] = None,
     chunk_store=None,
     storage_options=None,
     attrs: Dict[str, Any] = {},

@@ -9,7 +9,7 @@ import time
 import numpy as np
 from asciitree import BoxStyle, LeftAligned
 from asciitree.traversal import Traversal
-from typing import Iterable
+from typing import Iterable, Set
 from numcodecs.compat import ensure_text, ensure_ndarray_like
 from numcodecs.registry import codec_registry
 from numcodecs.blosc import cbuffer_sizes, cbuffer_metainfo
@@ -605,7 +605,7 @@ class PartialReadBuffer:
         self.start_points = None
         self.n_per_block = None
         self.start_points_max = None
-        self.read_blocks = set()
+        self.read_blocks: Set[int] = set()
 
         _key_path = self.map._key_to_str(store_key)
         _key_path = _key_path.split("/")
