@@ -68,7 +68,7 @@ class TestArray(unittest.TestCase):
 
         # normal initialization
         store = self.KVStoreClass(dict())
-        init_array(store, shape=100, chunks=10, dtype="<f8")
+        init_array(store, shape=100, attrs={}, chunks=10, dtype="<f8")
         a = Array(store, zarr_version=self.version)
         assert isinstance(a, Array)
         assert (100,) == a.shape
@@ -85,7 +85,7 @@ class TestArray(unittest.TestCase):
 
         # initialize at path
         store = self.KVStoreClass(dict())
-        init_array(store, shape=100, chunks=10, path='foo/bar', dtype='<f8')
+        init_array(store, shape=100, attrs={}, chunks=10, path='foo/bar', dtype='<f8')
         a = Array(store, path='foo/bar', zarr_version=self.version)
         assert isinstance(a, Array)
         assert (100,) == a.shape
@@ -105,7 +105,7 @@ class TestArray(unittest.TestCase):
 
         # group is in the way
         store = self.KVStoreClass(dict())
-        init_group(store, path='baz')
+        init_group(store, attrs={}, path='baz')
         with pytest.raises(ValueError):
             Array(store, path='baz', zarr_version=self.version)
 
@@ -115,7 +115,9 @@ class TestArray(unittest.TestCase):
         cache_metadata = kwargs.pop('cache_metadata', True)
         cache_attrs = kwargs.pop('cache_attrs', True)
         write_empty_chunks = kwargs.pop('write_empty_chunks', True)
-        init_array(store, **kwargs)
+        shape = kwargs.pop('shape')
+        attrs = kwargs.pop('attrs', {})
+        init_array(store, shape, attrs, **kwargs)
         return Array(store, read_only=read_only, cache_metadata=cache_metadata,
                      cache_attrs=cache_attrs, write_empty_chunks=write_empty_chunks,
                      zarr_version=self.version)
@@ -1564,12 +1566,12 @@ class TestArray(unittest.TestCase):
 class TestArrayWithPath(TestArray):
 
     @staticmethod
-    def create_array(read_only=False, **kwargs):
+    def create_array(shape, read_only=False, **kwargs):
         store = KVStore(dict())
         cache_metadata = kwargs.pop('cache_metadata', True)
         cache_attrs = kwargs.pop('cache_attrs', True)
         write_empty_chunks = kwargs.pop('write_empty_chunks', True)
-        init_array(store, path='foo/bar', **kwargs)
+        init_array(store, shape, path='foo/bar', **kwargs)
         return Array(store, path='foo/bar', read_only=read_only,
                      cache_metadata=cache_metadata, cache_attrs=cache_attrs,
                      write_empty_chunks=write_empty_chunks)
@@ -1608,14 +1610,14 @@ class TestArrayWithPath(TestArray):
 class TestArrayWithChunkStore(TestArray):
 
     @staticmethod
-    def create_array(read_only=False, **kwargs):
+    def create_array(shape, read_only=False, **kwargs):
         store = KVStore(dict())
         # separate chunk store
         chunk_store = KVStore(dict())
         cache_metadata = kwargs.pop('cache_metadata', True)
         cache_attrs = kwargs.pop('cache_attrs', True)
         write_empty_chunks = kwargs.pop('write_empty_chunks', True)
-        init_array(store, chunk_store=chunk_store, **kwargs)
+        init_array(store, shape, chunk_store=chunk_store, **kwargs)
         return Array(store, read_only=read_only, chunk_store=chunk_store,
                      cache_metadata=cache_metadata, cache_attrs=cache_attrs,
                      write_empty_chunks=write_empty_chunks)

@@ -293,6 +293,7 @@ def _require_parent_group(
 def init_array(
     store: StoreLike,
     shape: Tuple[int, ...],
+    attrs: Dict[str, Any],
     chunks: Union[bool, int, Tuple[int, ...]] = True,
     dtype=None,
     compressor="default",
@@ -304,7 +305,6 @@ def init_array(
     filters=None,
     object_codec=None,
     dimension_separator: Optional[str] = None,
-    attrs: Dict[str, Any] = {}
 ):
     """Initialize an array store with the given configuration. Note that this is a low-level
     function and there should be no need to call this directly from user code.
@@ -315,6 +315,8 @@ def init_array(
         A mapping that supports string keys and bytes-like values.
     shape : int or tuple of ints
         Array shape.
+    attrs : JSON-serializable dict.
+        User attributes for the array.
     chunks : bool, int or tuple of ints, optional
         Chunk shape. If True, will be guessed from `shape` and `dtype`. If
         False, will be set to `shape`, i.e., single chunk for the whole array.
@@ -339,8 +341,6 @@ def init_array(
         A codec to encode object arrays, only needed if dtype=object.
     dimension_separator : {'.', '/'}, optional
         Separator placed between the dimensions of a chunk.
-    attrs : JSON-serializable dict.
-        User attributes for the array. Defaults to {}.
 
     Examples
     --------
@@ -623,10 +623,10 @@ init_store = init_array
 
 def init_group(
     store: StoreLike,
+    attrs: Dict[str, Any],
     overwrite: bool = False,
     path: Path = None,
     chunk_store: Optional[StoreLike] = None,
-    attrs: Dict[str, Any] = {},
 ):
     """Initialize a group store. Note that this is a low-level function and there should be no
     need to call this directly from user code.

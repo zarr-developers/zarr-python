@@ -9,7 +9,7 @@ import time
 import numpy as np
 from asciitree import BoxStyle, LeftAligned
 from asciitree.traversal import Traversal
-from typing import Iterable, Set
+from typing import Iterable, Sequence, Set
 from numcodecs.compat import ensure_text, ensure_ndarray_like
 from numcodecs.registry import codec_registry
 from numcodecs.blosc import cbuffer_sizes, cbuffer_metainfo
@@ -63,7 +63,7 @@ def json_loads(s: str) -> Dict[str, JSON]:
     return json.loads(ensure_text(s, "ascii"))
 
 
-def normalize_shape(shape: Any) -> Tuple[int, ...]:
+def normalize_shape(shape: Union[int, Sequence[int]]) -> Tuple[int, ...]:
     """Convenience function to normalize the `shape` argument."""
 
     if shape is None:

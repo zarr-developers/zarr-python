@@ -457,7 +457,6 @@ def _prefix_to_array_attrs_key(store: StoreLike, prefix: str) -> str:
 
 def _prefix_to_group_attrs_key(store: StoreLike, prefix: str) -> str:
     if getattr(store, "_store_version", 2) == 3:
-        # for v3, attributes are stored in the array metadata
         sfx = _get_metadata_suffix(store)  # type: ignore
         if prefix:
             key = meta_root + prefix.rstrip('/') + ".group" + sfx
