@@ -3,7 +3,7 @@ import os
 import sys
 import pickle
 import shutil
-from typing import Optional, Tuple, Union
+from typing import Literal, Optional, Tuple, Union
 import unittest
 from itertools import zip_longest
 from tempfile import mkdtemp
@@ -82,7 +82,7 @@ class TestArray(unittest.TestCase):
     path = ""
     compressor = Zlib(level=1)
     filters = None
-    dimension_separator = None
+    dimension_separator: Optional[Literal["/", "."]] = None
     cache_metadata = True
     cache_attrs = True
     write_empty_chunks = True
@@ -3098,12 +3098,13 @@ class TestArrayWithDBMStoreV3BerkeleyDB(TestArrayV3):
 
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestArrayWithLMDBStoreV3(TestArrayV3):
+    lmdb_buffers = True
 
-    def create_store(self) -> DBMStoreV3:
+    def create_store(self) -> LMDBStoreV3:
         pytest.importorskip("lmdb")
         path = mktemp(suffix=".lmdb")
         atexit.register(atexit_rmtree, path)
-        store = LMDBStoreV3(path, buffers=True)
+        store = LMDBStoreV3(path, buffers=self.lmdb_buffers)
         return store
 
     def test_store_has_bytes_values(self):
@@ -3114,11 +3115,8 @@ class TestArrayWithLMDBStoreV3(TestArrayV3):
 
 
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
-class TestArrayWithLMDBStoreV3NoBuffers(TestArrayV3):
-
-    def test_nbytes_stored(self):
-        pass  # not implemented
-
+class TestArrayWithLMDBStoreV3NoBuffers(TestArrayWithLMDBStoreV3):
+    lmdb_buffers = False
 
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestArrayWithSQLiteStoreV3(TestArrayV3):
@@ -3241,7 +3239,7 @@ class TestArrayWithFSStoreV3(TestArrayV3):
     def create_store(self):
         path = mkdtemp()
         atexit.register(shutil.rmtree, path)
-        key_separator=self.dimension_separator
+        key_separator = self.dimension_separator
         store = FSStoreV3(
             path, key_separator=key_separator, auto_mkdir=True, **fsspec_mapper_kwargs
         )
