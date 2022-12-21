@@ -1,6 +1,6 @@
 # optional library requirements
 # bsddb3==6.2.6; sys_platform != 'win32'
-lmdb==1.3.0; sys_platform != 'win32'
+lmdb==1.4.0; sys_platform != 'win32'
 # optional library requirements for Jupyter
 ipytree==0.2.2
 ipywidgets==8.0.3
