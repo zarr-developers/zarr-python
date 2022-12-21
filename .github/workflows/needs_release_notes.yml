@@ -5,6 +5,7 @@ on:
 
 jobs:
   triage:
+    if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' }} && ${{ github.event.pull_request.user.login != 'pre-commit-ci[bot]' }}
     runs-on: ubuntu-latest
     steps:
     - uses: actions/labeler@main
