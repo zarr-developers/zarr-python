@@ -17,7 +17,7 @@ Unreleased
 * Fix bug that caused double counting of groups in ``groups()`` and ``group_keys()``
   methods with V3 stores.
   By :user:`Ryan Abernathey <rabernat>` :issue:`1228`.
-* Improve Zarr V3 support, adding partial store read/write and storage transformers and sharding.**
+* Improve Zarr V3 support, adding partial store read/write and storage transformers and sharding.
   Add features of the [v3 spec](https://zarr-specs.readthedocs.io/en/latest/core/v3.0.html):
   * storage transformers
   * `get_partial_values` and `set_partial_values`
