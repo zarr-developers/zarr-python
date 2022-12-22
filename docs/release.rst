@@ -17,40 +17,11 @@ Unreleased
 * Fix bug that caused double counting of groups in ``groups()`` and ``group_keys()``
   methods with V3 stores.
   By :user:`Ryan Abernathey <rabernat>` :issue:`1228`.
-* Improve Zarr V3 support, adding partial store read/write and storage transformers.
-
-.. _release_2.13.0:
-
-2.13.0
-------
-.. warning::
-    Pre-release! Use `pip install --pre zarr` to evaluate this release.
-
-Major changes
-~~~~~~~~~~~~~
-
-* Remove support for Python 3.7 in concert with NumPy dependency.
-  By :user:`Davis Bennett <d-v-b>`; :issue:`1067`.
-
-Bug fixes
-~~~~~~~~~
-
-* Fix bug in N5 storage that prevented arrays located in the root of the hierarchy from
-  bearing the `n5` keyword. Along with fixing this bug, new tests were added for N5 routines
-  that had previously been excluded from testing, and type annotations were added to the N5 codebase.
-  By :user:`Davis Bennett <d-v-b>`; :issue:`1092`.
-
-* Fix bug in LRUEStoreCache in which the current size wasn't reset on invalidation.
-  By :user:`BGCMHou <BGCMHou>` and :user:`Josh Moore <joshmoore>` :issue:`1076`, :issue:`1077`.
-
-Enhancements
-~~~~~~~~~~~~
-
-* **Improve Zarr V3 support, adding partial store read/write, storage transformers and sharding.**
-  Add two features of the [v3 spec](https://zarr-specs.readthedocs.io/en/latest/core/v3.0.html):
+* Improve Zarr V3 support, adding partial store read/write and storage transformers and sharding.**
+  Add features of the [v3 spec](https://zarr-specs.readthedocs.io/en/latest/core/v3.0.html):
+  * storage transformers
   * `get_partial_values` and `set_partial_values`
   * efficient `get_partial_values` implementation for `FSStoreV3`
-  * storage transformers interface
   * sharding storage transformer
   By :user:`Jonathan Striebel <jstriebel>`; :issue:`1096`, :issue:`1111`.
 
