@@ -4,7 +4,7 @@ from collections import defaultdict
 from collections.abc import MutableMapping
 from copy import copy
 from string import ascii_letters, digits
-from typing import Any, List, Mapping, Optional, Union
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, Union
 
 from zarr.meta import Metadata2, Metadata3
 from zarr.util import normalize_storage_path
@@ -261,10 +261,14 @@ class StoreV3(BaseStore):
         """Remove a data path and all its subkeys and related metadata.
         Expects a path without the data or meta root prefix."""
 
+    @property
     def supports_efficient_get_partial_values(self):
         return False
 
-    def get_partial_values(self, key_ranges):
+    def get_partial_values(
+        self,
+        key_ranges: Sequence[Tuple[str, Tuple[int, Optional[int]]]]
+    ) -> List[Union[bytes, memoryview, bytearray]]:
         """Get multiple partial values.
         key_ranges can be an iterable of key, range pairs,
         where a range specifies two integers range_start and range_length
@@ -274,8 +278,12 @@ class StoreV3(BaseStore):
         from the end of the file.
         A key may occur multiple times with different ranges.
         Inserts None for missing keys into the returned list."""
-        results = [None] * len(key_ranges)
-        indexed_ranges_by_key = defaultdict(list)
+        results: List[Union[bytes, memoryview, bytearray]] = (
+            [None] * len(key_ranges)  # type: ignore[list-item]
+        )
+        indexed_ranges_by_key: Dict[str, List[Tuple[int, Tuple[int, Optional[int]]]]] = (
+            defaultdict(list)
+        )
         for i, (key, range_) in enumerate(key_ranges):
             indexed_ranges_by_key[key].append((i, range_))
         for key, indexed_ranges in indexed_ranges_by_key.items():
@@ -504,8 +512,9 @@ class StorageTransformer(MutableMapping, abc.ABC):
     def __len__(self):
         return self.inner_store.__len__()
 
+    @property
     def supports_efficient_get_partial_values(self):
-        return self.inner_store.supports_efficient_get_partial_values()
+        return self.inner_store.supports_efficient_get_partial_values
 
     def get_partial_values(self, key_ranges):
         return self.inner_store.get_partial_values(key_ranges)
