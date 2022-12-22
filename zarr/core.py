@@ -1275,7 +1275,7 @@ class Array:
         if (
             not hasattr(self.chunk_store, "getitems") and not (
                 hasattr(self.chunk_store, "get_partial_values") and
-                self.chunk_store.supports_efficient_get_partial_values()
+                self.chunk_store.supports_efficient_get_partial_values
             )
         ) or any(map(lambda x: x == 0, self.shape)):
             # sequentially get one key at a time from storage
@@ -2041,7 +2041,7 @@ class Array:
             and not fields
             and self.dtype != object
             and hasattr(self.chunk_store, "get_partial_values")
-            and self.chunk_store.supports_efficient_get_partial_values()
+            and self.chunk_store.supports_efficient_get_partial_values
         ):
             partial_read_decode = True
             cdatas = {

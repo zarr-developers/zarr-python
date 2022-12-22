@@ -641,7 +641,7 @@ class PartialReadBuffer:
 
 class UncompressedPartialReadBufferV3:
     def __init__(self, store_key, chunk_store, itemsize):
-        assert chunk_store.supports_efficient_get_partial_values()
+        assert chunk_store.supports_efficient_get_partial_values
         self.chunk_store = chunk_store
         self.store_key = store_key
         self.itemsize = itemsize

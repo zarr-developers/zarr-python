@@ -182,6 +182,7 @@ class FSStoreV3(FSStore, StoreV3):
             if self.fs.isdir(store_path):
                 self.fs.rm(store_path, recursive=True)
 
+    @property
     def supports_efficient_get_partial_values(self):
         return True
 

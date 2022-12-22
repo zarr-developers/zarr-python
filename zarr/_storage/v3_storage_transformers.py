@@ -170,7 +170,7 @@ class ShardingStorageTransformer(StorageTransformer):  # lgtm[py/missing-equals]
 
     def __getitem__(self, key):
         if self._is_data_key(key):
-            if self.supports_efficient_get_partial_values():
+            if self.supports_efficient_get_partial_values:
                 # Use the partial implementation, which fetches the index separately
                 value = self.get_partial_values([(key, (0, None))])[0]
                 if value is None:
@@ -199,7 +199,7 @@ class ShardingStorageTransformer(StorageTransformer):  # lgtm[py/missing-equals]
             chunks_to_read.remove(chunk_subkey)
             new_content = {chunk_subkey: value}
             try:
-                if self.supports_efficient_get_partial_values():
+                if self.supports_efficient_get_partial_values:
                     index = self._get_index_from_store(shard_key)
                     full_shard_value = None
                 else:
@@ -220,7 +220,7 @@ class ShardingStorageTransformer(StorageTransformer):  # lgtm[py/missing-equals]
                 # use get_partial_values if less than half of the available chunks must be read:
                 # (This can be changed when set_partial_values can be used efficiently.)
                 use_partial_get = (
-                    self.supports_efficient_get_partial_values()
+                    self.supports_efficient_get_partial_values
                     and len(valid_chunk_slices) < len(chunk_slices) / 2
                 )
 
@@ -299,7 +299,7 @@ class ShardingStorageTransformer(StorageTransformer):  # lgtm[py/missing-equals]
         return sum(1 for _ in self.keys())
 
     def get_partial_values(self, key_ranges):
-        if self.supports_efficient_get_partial_values():
+        if self.supports_efficient_get_partial_values:
             transformed_key_ranges = []
             cached_indices = {}
             none_indices = []

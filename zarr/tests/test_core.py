@@ -3338,7 +3338,7 @@ class TestArrayWithFSStoreV3PartialReadUncompressedSharded(
 
     def test_supports_efficient_get_set_partial_values(self):
         z = self.create_array(shape=100, chunks=10)
-        assert z.chunk_store.supports_efficient_get_partial_values()
+        assert z.chunk_store.supports_efficient_get_partial_values
         assert not z.chunk_store.supports_efficient_set_partial_values()
 
     def expected(self):
@@ -3487,7 +3487,7 @@ class TestArrayWithShardingStorageTransformerV3(TestArrayWithPathV3):
 
     def test_supports_efficient_get_set_partial_values(self):
         z = self.create_array(shape=100, chunks=10)
-        assert not z.chunk_store.supports_efficient_get_partial_values()
+        assert not z.chunk_store.supports_efficient_get_partial_values
         assert not z.chunk_store.supports_efficient_set_partial_values()
 
     def expected(self):
