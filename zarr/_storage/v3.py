@@ -596,6 +596,16 @@ def _normalize_store_arg_v3(store: Any, storage_options=None, mode="r") -> BaseS
         return store
     if isinstance(store, os.PathLike):
         store = os.fspath(store)
+    if FSStore._fsspec_installed():
+        import fsspec
+        if isinstance(store, fsspec.FSMap):
+            return FSStoreV3(store.root,
+                             fs=store.fs,
+                             mode=mode,
+                             check=store.check,
+                             create=store.create,
+                             missing_exceptions=store.missing_exceptions,
+                             **(storage_options or {}))
     if isinstance(store, str):
         if "://" in store or "::" in store:
             store = FSStoreV3(store, mode=mode, **(storage_options or {}))
