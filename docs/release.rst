@@ -17,6 +17,8 @@ Unreleased
 * Fix bug that caused double counting of groups in ``groups()`` and ``group_keys()``
   methods with V3 stores.
   By :user:`Ryan Abernathey <rabernat>` :issue:`1228`.
+* Handle fsspec.FSMap using FSStore store
+  By :user:`Rafal Wojdyla <ravwojdyla>` :issue:`1304`.
 * Improve Zarr V3 support, adding partial store read/write and storage transformers.
   Add two features of the [v3 spec](https://zarr-specs.readthedocs.io/en/latest/core/v3.0.html):
   * storage transformers
