@@ -20,7 +20,7 @@ from pkg_resources import parse_version
 from zarr._storage.store import (
     v3_api_available,
 )
-from .._storage.v3_storage_transformers import ShardingStorageTransformer
+from .._storage.v3_storage_transformers import ShardingStorageTransformer, v3_sharding_available
 from zarr.core import Array
 from zarr.errors import ArrayNotFoundError, ContainsGroupError
 from zarr.meta import json_loads
@@ -3300,6 +3300,7 @@ class TestArrayWithFSStoreV3PartialRead(TestArrayWithPathV3, TestArrayWithFSStor
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
+@pytest.mark.skipif(not v3_sharding_available, reason="sharding is disabled")
 class TestArrayWithFSStoreV3PartialReadUncompressedSharded(
     TestArrayWithPathV3, TestArrayWithFSStorePartialRead
 ):
@@ -3445,6 +3446,7 @@ class TestArrayWithStorageTransformersV3(TestArrayWithChunkStoreV3):
 
 
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
+@pytest.mark.skipif(not v3_sharding_available, reason="sharding is disabled")
 class TestArrayWithShardingStorageTransformerV3(TestArrayWithPathV3):
 
     @staticmethod

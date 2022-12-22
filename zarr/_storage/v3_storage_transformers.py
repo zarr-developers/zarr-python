@@ -1,5 +1,6 @@
 import functools
 import itertools
+import os
 from typing import NamedTuple, Tuple, Optional, Union, Iterator
 
 from numcodecs.compat import ensure_bytes
@@ -10,6 +11,17 @@ from zarr.util import normalize_storage_path
 
 
 MAX_UINT_64 = 2 ** 64 - 1
+
+
+v3_sharding_available = os.environ.get('ZARR_V3_SHARDING', '0').lower() not in ['0', 'false']
+
+
+def assert_zarr_v3_sharding_available():
+    if not v3_sharding_available:
+        raise NotImplementedError(
+            "Using V3 sharding is experimental and not yet finalized! To enable support, set:\n"
+            "ZARR_V3_SHARDING=1"
+        )  # pragma: no cover
 
 
 class _ShardIndex(NamedTuple):
@@ -83,6 +95,7 @@ class ShardingStorageTransformer(StorageTransformer):  # lgtm[py/missing-equals]
     valid_types = ["indexed"]
 
     def __init__(self, _type, chunks_per_shard) -> None:
+        assert_zarr_v3_sharding_available()
         super().__init__(_type)
         if isinstance(chunks_per_shard, int):
             chunks_per_shard = (chunks_per_shard, )

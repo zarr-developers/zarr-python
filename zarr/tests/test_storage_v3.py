@@ -10,7 +10,7 @@ import pytest
 
 import zarr
 from zarr._storage.store import _get_hierarchy_metadata, v3_api_available, StorageTransformer
-from zarr._storage.v3_storage_transformers import ShardingStorageTransformer
+from zarr._storage.v3_storage_transformers import ShardingStorageTransformer, v3_sharding_available
 from zarr.core import Array
 from zarr.meta import _default_entry_point_metadata_v3
 from zarr.storage import (atexit_rmglob, atexit_rmtree, data_root,
@@ -528,6 +528,7 @@ class TestRedisStoreV3(StoreV3Tests):
         return store
 
 
+@pytest.mark.skipif(not v3_sharding_available, reason="sharding is disabled")
 class TestStorageTransformerV3(TestMappingStoreV3):
 
     def create_store(self, **kwargs):
