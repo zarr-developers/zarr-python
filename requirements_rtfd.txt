@@ -1,6 +1,7 @@
 asciitree
 setuptools
 setuptools_scm
+nbsphinx
 sphinx
 sphinx-issues
 sphinx-copybutton

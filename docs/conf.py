@@ -38,6 +38,7 @@ sys.path.append(os.path.abspath('..'))
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
 extensions = [
+    'nbsphinx',
     'sphinx.ext.autodoc',
     'sphinx.ext.autosummary',
     'sphinx.ext.viewcode',
@@ -50,6 +51,12 @@ extensions = [
 numpydoc_show_class_members = False
 numpydoc_class_members_toctree = False
 issues_github_path = 'zarr-developers/zarr-python'
+
+nbsphinx_execute = 'auto'
+nbsphinx_allow_errors = True
+
+#Handling errors with rendering notebook
+#nbsphinx_allow_errors = True
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']

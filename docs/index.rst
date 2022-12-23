@@ -124,7 +124,7 @@ Contents
     :maxdepth: 2
 
     installation
-    tutorial
+    tutorial_nb.ipynb
     api
     spec
     contributing
