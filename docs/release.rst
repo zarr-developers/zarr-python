@@ -14,6 +14,8 @@ Unreleased
     # .. warning::
     #    Pre-release! Use :command:`pip install --pre zarr` to evaluate this release.
 
+* Allow reading utf-8 encoded json files
+  By :user:`Nathan Zimmerberg <nhz2>` :issue:`1308`.
 * Fix bug that caused double counting of groups in ``groups()`` and ``group_keys()``
   methods with V3 stores.
   By :user:`Ryan Abernathey <rabernat>` :issue:`1228`.
