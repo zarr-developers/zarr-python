@@ -88,7 +88,7 @@ class Metadata2:
     ZARR_FORMAT = ZARR_FORMAT
 
     @classmethod
-    def parse_metadata(cls, s: Union[MappingType, str]) -> MappingType[str, Any]:
+    def parse_metadata(cls, s: Union[MappingType, bytes]) -> MappingType[str, Any]:
 
         # Here we allow that a store may return an already-parsed metadata object,
         # or a string of JSON that we will parse here. We allow for an already-parsed
@@ -106,7 +106,7 @@ class Metadata2:
         return meta
 
     @classmethod
-    def decode_array_metadata(cls, s: Union[MappingType, str]) -> MappingType[str, Any]:
+    def decode_array_metadata(cls, s: Union[MappingType, bytes]) -> MappingType[str, Any]:
         meta = cls.parse_metadata(s)
 
         # check metadata format
@@ -194,7 +194,7 @@ class Metadata2:
         return np.dtype(d)
 
     @classmethod
-    def decode_group_metadata(cls, s: Union[MappingType, str]) -> MappingType[str, Any]:
+    def decode_group_metadata(cls, s: Union[MappingType, bytes]) -> MappingType[str, Any]:
         meta = cls.parse_metadata(s)
 
         # check metadata format version
@@ -347,7 +347,7 @@ class Metadata3(Metadata2):
             return get_extended_dtype_info(np.dtype(d))
 
     @classmethod
-    def decode_group_metadata(cls, s: Union[MappingType, str]) -> MappingType[str, Any]:
+    def decode_group_metadata(cls, s: Union[MappingType, bytes]) -> MappingType[str, Any]:
         meta = cls.parse_metadata(s)
         # 1 / 0
         # # check metadata format version
@@ -386,7 +386,7 @@ class Metadata3(Metadata2):
 
     @classmethod
     def decode_hierarchy_metadata(
-        cls, s: Union[MappingType, str]
+        cls, s: Union[MappingType, bytes]
     ) -> MappingType[str, Any]:
         meta = cls.parse_metadata(s)
         # check metadata format
@@ -460,7 +460,7 @@ class Metadata3(Metadata2):
         return codec
 
     @classmethod
-    def decode_array_metadata(cls, s: Union[MappingType, str]) -> MappingType[str, Any]:
+    def decode_array_metadata(cls, s: Union[MappingType, bytes]) -> MappingType[str, Any]:
         meta = cls.parse_metadata(s)
 
         # extract array metadata fields

@@ -51,9 +51,9 @@ def json_dumps(o: Any) -> bytes:
                       separators=(',', ': '), cls=NumberEncoder).encode('ascii')
 
 
-def json_loads(s: str) -> Dict[str, Any]:
+def json_loads(s: bytes) -> Dict[str, Any]:
     """Read JSON in a consistent way."""
-    return json.loads(ensure_text(s, 'ascii'))
+    return json.loads(ensure_text(s, 'utf-8'))
 
 
 def normalize_shape(shape) -> Tuple[int]:

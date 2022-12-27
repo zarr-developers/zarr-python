@@ -452,7 +452,7 @@ def test_decode_array_unsupported_format():
         "order": "C"
     }''' % (ZARR_FORMAT - 1)
     with pytest.raises(MetadataError):
-        decode_array_metadata(meta_json)
+        decode_array_metadata(meta_json.encode('utf-8'))
 
 
 def test_decode_array_missing_fields():
@@ -462,7 +462,7 @@ def test_decode_array_missing_fields():
         "zarr_format": %s
     }''' % ZARR_FORMAT
     with pytest.raises(MetadataError):
-        decode_array_metadata(meta_json)
+        decode_array_metadata(meta_json.encode('utf-8'))
 
 
 def test_encode_decode_dtype():
@@ -481,7 +481,7 @@ def test_decode_group():
     b = '''{
         "zarr_format": %s
     }''' % ZARR_FORMAT
-    meta = decode_group_metadata(b)
+    meta = decode_group_metadata(b.encode('utf-8'))
     assert ZARR_FORMAT == meta['zarr_format']
 
     # unsupported format
@@ -489,7 +489,7 @@ def test_decode_group():
         "zarr_format": %s
     }''' % (ZARR_FORMAT - 1)
     with pytest.raises(MetadataError):
-        decode_group_metadata(b)
+        decode_group_metadata(b.encode('utf-8'))
 
 
 @pytest.mark.parametrize(
