@@ -17,10 +17,9 @@ Unreleased
 * Fix bug that caused double counting of groups in ``groups()`` and ``group_keys()``
   methods with V3 stores.
   By :user:`Ryan Abernathey <rabernat>` :issue:`1228`.
+
 * Handle fsspec.FSMap using FSStore store
   By :user:`Rafal Wojdyla <ravwojdyla>` :issue:`1304`.
-
-.. _release_2.13.2:
 
 Maintenance
 ~~~~~~~~~~~
@@ -54,6 +53,9 @@ Maintenance
 
 * Delete unused files.
   By :user:`John Kirkham <jakirkham>` :issue:`1251`.
+
+* Uopdate web links: http:// → https://
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1313`.
 
 
 .. _release_2.13.3:
