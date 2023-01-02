@@ -2554,8 +2554,13 @@ def test_normalize_store_arg(tmpdir):
         assert isinstance(store, Class)
 
     if have_fsspec:
+        import fsspec
+
         path = tempfile.mkdtemp()
         store = normalize_store_arg("file://" + path, zarr_version=2, mode='w')
+        assert isinstance(store, FSStore)
+
+        store = normalize_store_arg(fsspec.get_mapper("file://" + path))
         assert isinstance(store, FSStore)
 
 

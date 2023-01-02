@@ -17,6 +17,8 @@ Unreleased
 * Fix bug that caused double counting of groups in ``groups()`` and ``group_keys()``
   methods with V3 stores.
   By :user:`Ryan Abernathey <rabernat>` :issue:`1228`.
+* Handle fsspec.FSMap using FSStore store
+  By :user:`Rafal Wojdyla <ravwojdyla>` :issue:`1304`.
 
 * Add support for setting user-defined attributes at array / group creation time.
   By :user: `Davis Bennett <d-v-b>` :issue:`538`.
