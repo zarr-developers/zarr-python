@@ -139,6 +139,16 @@ def _normalize_store_arg_v2(store: Any, storage_options=None, mode="r") -> BaseS
         return store
     if isinstance(store, os.PathLike):
         store = os.fspath(store)
+    if FSStore._fsspec_installed():
+        import fsspec
+        if isinstance(store, fsspec.FSMap):
+            return FSStore(store.root,
+                           fs=store.fs,
+                           mode=mode,
+                           check=store.check,
+                           create=store.create,
+                           missing_exceptions=store.missing_exceptions,
+                           **(storage_options or {}))
     if isinstance(store, str):
         if "://" in store or "::" in store:
             return FSStore(store, mode=mode, **(storage_options or {}))
@@ -1308,6 +1318,8 @@ class FSStore(Store):
                  create=False,
                  missing_exceptions=None,
                  **storage_options):
+        if not self._fsspec_installed():  # pragma: no cover
+            raise ImportError("`fsspec` is required to use zarr's FSStore")
         import fsspec
 
         mapper_options = {"check": check, "create": create}
@@ -1478,6 +1490,13 @@ class FSStore(Store):
         if self.mode == 'r':
             raise ReadOnlyError()
         self.map.clear()
+
+    @classmethod
+    def _fsspec_installed(cls):
+        """Returns true if fsspec is installed"""
+        import importlib.util
+
+        return importlib.util.find_spec("fsspec") is not None
 
 
 class TempStore(DirectoryStore):
