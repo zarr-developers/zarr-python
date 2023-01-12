@@ -99,7 +99,7 @@ Release notes
 * Added the link to main website in readthedocs sidebar.
   By :user:`Stephanie_nkwatoh <steph237>` :issue: `1216`.
 
-* Remove redudant wheel dependency in `pyproject.toml`
+* Remove redundant wheel dependency in `pyproject.toml`
   By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue: `1233`.
 
 * Turned on `isloated_build` in `tox.ini` file
@@ -153,6 +153,7 @@ Release notes
 * Fix bug that caused double counting of groups in ``groups()`` and ``group_keys()``
   methods with V3 stores.
   By :user:`Ryan Abernathey <rabernat>` :issue:`1228`.
+
 * Handle fsspec.FSMap using FSStore store
   By :user:`Rafal Wojdyla <ravwojdyla>` :issue:`1304`.
 
