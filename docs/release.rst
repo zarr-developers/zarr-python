@@ -52,10 +52,10 @@ Documentation
 * Add `requirements_rtfd.txt` in `contributing.rst`.
   By :user:`AWA BRANDON AWA <DON-BRAN>` :issue:`1243`.
 
-* Add documentation for find/findall using visit
+* Add documentation for find/findall using visit.
   By :user:`Weddy Gikunda <caviere>` :issue:`1241`.
 
-* Refresh of the main landing page
+* Refresh of the main landing page.
   By :user:`Josh Moore <joshmoore>` :issue:`1173`.
 
 Maintenance
@@ -91,19 +91,19 @@ Maintenance
 * Delete unused files.
   By :user:`John Kirkham <jakirkham>` :issue:`1251`.
 
-* Skip labeler for bot PRs
+* Skip labeller for bot PRs.
   By :user:`Saransh Chopra <Saransh-cpp>` :issue:`1271`.
 
-* Restore Flake8 configuration
+* Restore Flake8 configuration.
   By :user:`John Kirkham <jakirkham>` :issue:`1249`.
 
-* Add missing newline at EOF
+* Add missing newline at EOF.
   By :user:`Dimitri Papadopoulos` :issue:`1253`.
 
-* Add `license_files` to `pyproject.toml`
+* Add `license_files` to `pyproject.toml`.
   By :user:`John Kirkham <jakirkham>` :issue:`1247`.
 
-* Adding `pyupgrade` suggestions
+* Adding `pyupgrade` suggestions.
   By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1225`.
 
 * Fixed some linting errors.
@@ -112,46 +112,46 @@ Maintenance
 * Added the link to main website in readthedocs sidebar.
   By :user:`Stephanie_nkwatoh <steph237>` :issue:`1216`.
 
-* Remove redundant wheel dependency in `pyproject.toml`
+* Remove redundant wheel dependency in `pyproject.toml`.
   By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1233`.
 
-* Turned on `isloated_build` in `tox.ini` file
+* Turned on `isloated_build` in `tox.ini` file.
   By :user:`AWA BRANDON AWA <DON-BRAN>` :issue:`1210`.
 
 * Fixed `flake8` alert and avoid duplication of `Zarr Developers`.
   By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1203`.
 
-* Bump to NumPy 1.20+ in `environment.yml`
+* Bump to NumPy 1.20+ in `environment.yml`.
   By :user:`John Kirkham <jakirkham>` :issue:`1201`.
 
-* Bump to NumPy 1.20 in `pyproject.toml`
+* Bump to NumPy 1.20 in `pyproject.toml`.
   By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1192`.
 
-* Remove LGTM (`.lgtm.yml`) configuration file
+* Remove LGTM (`.lgtm.yml`) configuration file.
   By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1191`.
 
-* Codespell will skip `fixture` in pre-commit
+* Codespell will skip `fixture` in pre-commit.
   By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1197`.
 
-* Add msgpack in `requirements_rtfd.txt`
+* Add msgpack in `requirements_rtfd.txt`.
   By :user:`Emmanuel Bolarinwa <GbotemiB>` :issue:`1188`.
 
 * Added license to docs fixed a typo from `_spec_v2` to `_spec_v3`.
   By :user:`AWA BRANDON AWA <DON-BRAN>` :issue:`1182`.
 
-* Fixed installation link in `README.md`
+* Fixed installation link in `README.md`.
   By :user:`AWA BRANDON AWA <DON-BRAN>` :issue:`1177`.
 
-* Fixed typos in `installation.rst` and `release.rst`
+* Fixed typos in `installation.rst` and `release.rst`.
   By :user:`Chizoba Nweke <zobbs-git>` :issue:`1178`.
 
-* Set `docs/conf.py` language to `en`
+* Set `docs/conf.py` language to `en`.
   By :user:`AWA BRANDON AWA <DON-BRAN>` :issue:`1174`.
 
-* Added `installation.rst` to the docs
+* Added `installation.rst` to the docs.
   By :user:`AWA BRANDON AWA <DON-BRAN>` :issue:`1170`.
 
-* Adjustment of year to `2015-2018` to `2015-2022` in the docs
+* Adjustment of year to `2015-2018` to `2015-2022` in the docs.
   By :user:`Emmanuel Bolarinwa <GbotemiB>` :issue:`1165`.
 
 * Updated `Forking the repository` section in `contributing.rst`.
