@@ -154,7 +154,7 @@ Maintenance
 * Adjustment of year to `2015-2018` to `2015-2022` in the docs
   By :user:`Emmanuel Bolarinwa <GbotemiB>` :issue:`1165`.
 
-* Updated `Forking the repository` section in `contributing.rst`
+* Updated `Forking the repository` section in `contributing.rst`.
   By :user:`AWA BRANDON AWA <DON-BRAN>` :issue:`1171`.
 
 * Updated GitHub actions
