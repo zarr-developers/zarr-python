@@ -19,15 +19,18 @@ Release notes
 2.13.4
 ------
 
-### Major changes
+Major changes
+~~~~~~~~~~~~~
 
 `NONE`
 
-### Enhancements
+Enhancements
+~~~~~~~~~~~~
 
 `NONE`
 
-### Bug fixes
+Bug fixes
+~~~~~~~~~
 
 * Fix bug that caused double counting of groups in ``groups()`` and ``group_keys()`` methods with V3 stores.
   By :user:`Ryan Abernathey <rabernat>` :issue:`1228`.
@@ -35,7 +38,8 @@ Release notes
 * Remove unnecessary calling of `contains_array` for key that ended in `.array.json`.
   By :user:`Joe Hamman <jhamman>` :issue: `1149`.
 
-### Documentation
+Documentation
+~~~~~~~~~~~~~
 
 * Fix minor indexing errors in tutorial and specification examples of documentation. 
   By :user:`Kola Babalola <sprynt001>` :issue: `1277`.
@@ -46,7 +50,8 @@ Release notes
 * Add documentation for find/findall using visit
   By :user:`Weddy Gikunda <caviere>` :issue: `1241`.
 
-### Maintenance
+Maintenance
+~~~~~~~~~~~
 
 * Migrate to ``pyproject.toml`` and remove redundant infrastructure.
   By :user:`Saransh Chopra <Saransh-cpp>` :issue:`1158`.
