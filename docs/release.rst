@@ -27,7 +27,8 @@ Major changes
 Enhancements
 ~~~~~~~~~~~~
 
-`NONE`
+* Handle fsspec.FSMap using FSStore store
+  By :user:`Rafal Wojdyla <ravwojdyla>` :issue:`1304`.
 
 Bug fixes
 ~~~~~~~~~
@@ -37,6 +38,10 @@ Bug fixes
 
 * Remove unnecessary calling of `contains_array` for key that ended in `.array.json`.
   By :user:`Joe Hamman <jhamman>` :issue:`1149`.
+
+* Fix bug that caused double counting of groups in ``groups()`` and ``group_keys()``
+  methods with V3 stores.
+  By :user:`Ryan Abernathey <rabernat>` :issue:`1228`.
 
 Documentation
 ~~~~~~~~~~~~~
@@ -49,6 +54,9 @@ Documentation
 
 * Add documentation for find/findall using visit
   By :user:`Weddy Gikunda <caviere>` :issue:`1241`.
+
+* Refresh of the main landing page
+  By :user:`Josh Moore <joshmoore>` :issue:`1173`.
 
 Maintenance
 ~~~~~~~~~~~
@@ -137,9 +145,6 @@ Maintenance
 * Fixed typos in `installation.rst` and `release.rst`
   By :user:`Chizoba Nweke <zobbs-git>` :issue:`1178`.
 
-* Refresh of the main landing page
-  By :user:`Josh Moore <joshmoore>` :issue:`1173`.
-
 * Set `docs/conf.py` language to `en`
   By :user:`AWA BRANDON AWA <DON-BRAN>` :issue:`1174`.
 
@@ -154,13 +159,6 @@ Maintenance
 
 * Updated GitHub actions
   By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1134`.
-
-* Fix bug that caused double counting of groups in ``groups()`` and ``group_keys()``
-  methods with V3 stores.
-  By :user:`Ryan Abernathey <rabernat>` :issue:`1228`.
-
-* Handle fsspec.FSMap using FSStore store
-  By :user:`Rafal Wojdyla <ravwojdyla>` :issue:`1304`.
 
 .. _release_2.13.3:
 
