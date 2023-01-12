@@ -157,8 +157,11 @@ Maintenance
 * Updated `Forking the repository` section in `contributing.rst`.
   By :user:`AWA BRANDON AWA <DON-BRAN>` :issue:`1171`.
 
-* Updated GitHub actions
+* Updated GitHub actions.
   By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1134`.
+
+* Uopdate web links: `http:// → https://`.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1313`.
 
 .. _release_2.13.3:
 
