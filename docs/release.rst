@@ -120,13 +120,13 @@ Maintenance
   By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1192`.
 
 * Remove LGTM (`.lgtm.yml`) configuration file
- By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1191`.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1191`.
 
 * Codespell will skip `fixture` in pre-commit
- By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1197`.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1197`.
 
 * Add msgpack in `requirements_rtfd.txt`
- By :user:`Emmanuel Bolarinwa <GbotemiB>` :issue:`1188`.
+  By :user:`Emmanuel Bolarinwa <GbotemiB>` :issue:`1188`.
 
 * Added license to docs fixed a typo from `_spec_v2` to `_spec_v3`.
   By :user:`AWA BRANDON AWA <DON-BRAN>` :issue:`1182`.
@@ -147,7 +147,7 @@ Maintenance
   By :user:`AWA BRANDON AWA <DON-BRAN>` :issue:`1170`.
 
 * Adjustment of year to `2015-2018` to `2015-2022` in the docs
- By :user:`Emmanuel Bolarinwa <GbotemiB>` :issue:`1165`.
+  By :user:`Emmanuel Bolarinwa <GbotemiB>` :issue:`1165`.
 
 * Updated `Forking the repository` section in `contributing.rst`
   By :user:`AWA BRANDON AWA <DON-BRAN>` :issue:`1171`.
