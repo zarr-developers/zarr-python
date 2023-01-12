@@ -27,7 +27,7 @@ Major changes
 Enhancements
 ~~~~~~~~~~~~
 
-* Handle fsspec.FSMap using FSStore store
+* Handle fsspec.FSMap using FSStore store.
   By :user:`Rafal Wojdyla <ravwojdyla>` :issue:`1304`.
 
 Bug fixes
