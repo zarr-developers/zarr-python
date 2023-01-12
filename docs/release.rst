@@ -6,24 +6,47 @@ Release notes
     # to document your changes. On releases it will be
     # re-indented so that it does not show up in the notes.
 
-.. _unreleased:
+    .. _unreleased:
 
-Unreleased
-----------
+    Unreleased
+    ----------
 ..
     # .. warning::
     #    Pre-release! Use :command:`pip install --pre zarr` to evaluate this release.
 
-* Fix bug that caused double counting of groups in ``groups()`` and ``group_keys()``
-  methods with V3 stores.
+.. _release_2.13.4:
+
+2.13.4
+------
+
+### Major changes
+
+`NONE`
+
+### Enhancements
+
+`NONE`
+
+### Bug fixes
+
+* Fix bug that caused double counting of groups in ``groups()`` and ``group_keys()`` methods with V3 stores.
   By :user:`Ryan Abernathey <rabernat>` :issue:`1228`.
-* Handle fsspec.FSMap using FSStore store
-  By :user:`Rafal Wojdyla <ravwojdyla>` :issue:`1304`.
 
-.. _release_2.13.2:
+* Remove unnecessary calling of `contains_array` for key that ended in `.array.json`.
+  By :user:`Joe Hamman <jhamman>` :issue: `1149`.
 
-Maintenance
-~~~~~~~~~~~
+### Documentation
+
+* Fix minor indexing errors in tutorial and specification examples of documentation. 
+  By :user:`Kola Babalola <sprynt001>` :issue: `1277`.
+
+* Add `requirements_rtfd.txt` in `contributing.rst`.
+  By :user:`AWA BRANDON AWA <DON-BRAN>` :issue: `1243`.
+
+* Add documentation for find/findall using visit
+  By :user:`Weddy Gikunda <caviere>` :issue: `1241`.
+
+### Maintenance
 
 * Migrate to ``pyproject.toml`` and remove redundant infrastructure.
   By :user:`Saransh Chopra <Saransh-cpp>` :issue:`1158`.
@@ -55,6 +78,83 @@ Maintenance
 * Delete unused files.
   By :user:`John Kirkham <jakirkham>` :issue:`1251`.
 
+* Skip labeler for bot PRs
+  By :user:`Saransh Chopra <Saransh-cpp>` :issue:`1271`.
+
+* Restore Flake8 configuration
+  By :user:`John Kirkham <jakirkham>` :issue: `1249`.
+
+* Add missing newline at EOF
+  By :user:`Dimitri Papadopoulos` :issue: `1253`.
+
+* Add `license_files` to `pyproject.toml`
+  By :user:`John Kirkham <jakirkham>` :issue: `1247`.
+
+* Adding `pyupgrade` suggestions
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue: `1225`.
+
+* Fixed some linting errors.
+  By :user:`Weddy Gikunda <caviere>` :issue: `1226`.
+
+* Added the link to main website in readthedocs sidebar.
+  By :user:`Stephanie_nkwatoh <steph237>` :issue: `1216`.
+
+* Remove redudant wheel dependency in `pyproject.toml`
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue: `1233`.
+
+* Turned on `isloated_build` in `tox.ini` file
+  By :user:`AWA BRANDON AWA <DON-BRAN>` :issue: `1210`.
+
+* Fixed `flake8` alert and avoid duplication of `Zarr Developers`.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue: `1203`.
+
+* Bump to NumPy 1.20+ in `environment.yml`
+  By :user:`John Kirkham <jakirkham>` :issue: `1201`.
+
+* Bump to NumPy 1.20 in `pyproject.toml`
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue: `1192`.
+
+* Remove LGTM (`.lgtm.yml`) configuration file
+ By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue: `1191`.
+
+* Codespell will skip `fixture` in pre-commit
+ By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue: `1197`.
+
+* Add msgpack in `requirements_rtfd.txt`
+ By :user:`Emmanuel Bolarinwa <GbotemiB>` :issue: `1188`.
+
+* Added license to docs fixed a typo from `_spec_v2` to `_spec_v3`.
+  By :user:`AWA BRANDON AWA <DON-BRAN>` :issue: `1182`.
+
+* Fixed installation link in `README.md`
+  By :user:`AWA BRANDON AWA <DON-BRAN>` :issue: `1177`.
+
+* Fixed typos in `installation.rst` and `release.rst`
+  By :user:`Chizoba Nweke <zobbs-git>` :issue: `1178`.
+
+* Refresh of the main landing page
+  By :user:`Josh Moore <joshmoore>` :issue: `1173`.
+
+* Set `docs/conf.py` language to `en`
+  By :user:`AWA BRANDON AWA <DON-BRAN>` :issue: `1174`.
+
+* Added `installation.rst` to the docs
+  By :user:`AWA BRANDON AWA <DON-BRAN>` :issue: `1170`.
+
+* Adjustment of year to `2015-2018` to `2015-2022` in the docs
+ By :user:`Emmanuel Bolarinwa <GbotemiB>` :issue: `1165`.
+
+* Updated `Forking the repository` section in `contributing.rst`
+  By :user:`AWA BRANDON AWA <DON-BRAN>` :issue: `1171`.
+
+* Updated GitHub actions
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue: `1134`.
+
+* Fix bug that caused double counting of groups in ``groups()`` and ``group_keys()``
+  methods with V3 stores.
+  By :user:`Ryan Abernathey <rabernat>` :issue:`1228`.
+* Handle fsspec.FSMap using FSStore store
+  By :user:`Rafal Wojdyla <ravwojdyla>` :issue:`1304`.
 
 .. _release_2.13.3:
 
