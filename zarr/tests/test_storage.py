@@ -27,7 +27,7 @@ from zarr.meta import ZARR_FORMAT, decode_array_metadata
 from zarr.n5 import N5Store, N5FSStore, N5_FORMAT, n5_attrs_key
 from zarr.storage import (ABSStore, ConsolidatedMetadataStore, DBMStore,
                           DictStore, DirectoryStore, KVStore, LMDBStore,
-                          LRUStoreCache, MemoryStore, MongoDBStore,
+                          LRUStoreCache, LRUChunkCache, MemoryStore, MongoDBStore,
                           NestedDirectoryStore, RedisStore, SQLiteStore,
                           Store, TempStore, ZipStore,
                           array_meta_key, atexit_rmglob, atexit_rmtree,
@@ -107,8 +107,8 @@ def test_deprecated_listdir_nosotre():
         listdir(store)
 
 
-class StoreTests:
-    """Abstract store tests."""
+class MutableMappingStoreTests(object):
+    """Abstract Mutable Mapping Tests"""
 
     version = 2
     root = ''
@@ -116,10 +116,6 @@ class StoreTests:
     def create_store(self, **kwargs):  # pragma: no cover
         # implement in sub-class
         raise NotImplementedError
-
-    def test_context_manager(self):
-        with self.create_store():
-            pass
 
     def test_get_set_del_contains(self):
         store = self.create_store()
@@ -310,6 +306,14 @@ class StoreTests:
             assert 5 == getsize(store, 'spong')
 
         store.close()
+
+
+class StoreTests(MutableMappingStoreTests):
+    """Abstract store tests."""
+
+    def test_context_manager(self):
+        with self.create_store():
+            pass
 
     # noinspection PyStatementEffect
     def test_hierarchy(self):
@@ -1989,15 +1993,15 @@ class TestRedisStore(StoreTests):
         return store
 
 
-class TestLRUStoreCache(StoreTests):
+class CacheTests:
 
     CountingClass = CountingDict
-    LRUStoreClass = LRUStoreCache
 
-    def create_store(self, **kwargs):
-        # wrapper therefore no dimension_separator argument
-        skip_if_nested_chunks(**kwargs)
-        return self.LRUStoreClass(dict(), max_size=2**27)
+    def create_store(self):  # pragma: no cover
+        raise NotImplementedError
+
+    def create_cache(self, store, max_size=None):  # pragma: no cover
+        raise NotImplementedError
 
     def test_cache_values_no_max_size(self):
 
@@ -2013,7 +2017,7 @@ class TestLRUStoreCache(StoreTests):
         assert 1 == store.counter['__setitem__', bar_key]
 
         # setup cache
-        cache = self.LRUStoreClass(store, max_size=None)
+        cache = self.create_cache(store)
         assert 0 == cache.hits
         assert 0 == cache.misses
 
@@ -2052,19 +2056,6 @@ class TestLRUStoreCache(StoreTests):
         assert 3 == store.counter['__getitem__', foo_key]
         assert 2 == store.counter['__setitem__', foo_key]
 
-        # test __delitem__
-        del cache[foo_key]
-        with pytest.raises(KeyError):
-            # noinspection PyStatementEffect
-            cache[foo_key]
-        with pytest.raises(KeyError):
-            # noinspection PyStatementEffect
-            store[foo_key]
-
-        # verify other keys untouched
-        assert 0 == store.counter['__getitem__', bar_key]
-        assert 1 == store.counter['__setitem__', bar_key]
-
     def test_cache_values_with_max_size(self):
 
         # setup store
@@ -2076,7 +2067,7 @@ class TestLRUStoreCache(StoreTests):
         assert 0 == store.counter['__getitem__', foo_key]
         assert 0 == store.counter['__getitem__', bar_key]
         # setup cache - can only hold one item
-        cache = self.LRUStoreClass(store, max_size=5)
+        cache = self.create_cache(store, max_size=5)
         assert 0 == cache.hits
         assert 0 == cache.misses
 
@@ -2123,7 +2114,7 @@ class TestLRUStoreCache(StoreTests):
         assert 0 == store.counter['__getitem__', foo_key]
         assert 0 == store.counter['__getitem__', bar_key]
         # setup cache - can hold two items
-        cache = self.LRUStoreClass(store, max_size=6)
+        cache = self.create_cache(store, max_size=6)
         assert 0 == cache.hits
         assert 0 == cache.misses
 
@@ -2163,6 +2154,40 @@ class TestLRUStoreCache(StoreTests):
         assert 4 == cache.hits
         assert 2 == cache.misses
 
+
+class TestLRUStoreCache(StoreTests, CacheTests):
+
+    LRUStoreClass = LRUStoreCache
+
+    def create_store(self, **kwargs):
+        # wrapper therefore no dimension_separator argument
+        skip_if_nested_chunks(**kwargs)
+        return self.LRUStoreClass(dict(), max_size=2**27)
+
+    def create_cache(self, store, max_size=None):
+        return self.LRUStoreClass(store=store, max_size=max_size)
+
+    def test_delitem(self):
+        # setup store
+        store = self.CountingClass()
+        store['foo'] = b'xxx'
+        store['bar'] = b'yyy'
+
+        # setup cache
+        cache = self.create_cache(store)
+
+        del cache['foo']
+        with pytest.raises(KeyError):
+            # noinspection PyStatementEffect
+            cache['foo']
+        with pytest.raises(KeyError):
+            # noinspection PyStatementEffect
+            store['foo']
+
+        # verify other keys untouched
+        assert 0 == store.counter['__getitem__', 'bar']
+        assert 1 == store.counter['__setitem__', 'bar']
+
     def test_cache_keys(self):
 
         # setup
@@ -2175,7 +2200,7 @@ class TestLRUStoreCache(StoreTests):
         assert 0 == store.counter['__contains__', foo_key]
         assert 0 == store.counter['__iter__']
         assert 0 == store.counter['keys']
-        cache = self.LRUStoreClass(store, max_size=None)
+        cache = self.create_cache(store)
 
         # keys should be cached on first call
         keys = sorted(cache.keys())
@@ -2223,6 +2248,70 @@ class TestLRUStoreCache(StoreTests):
         assert 1 == store.counter['__contains__', foo_key]
         assert keys == sorted(store)
         assert 1 == store.counter['__iter__']
+
+
+class TestLRUChunkCache(MutableMappingStoreTests, CacheTests):
+
+    # mock test object that will act as both the cache and the array
+    class MockChunkCacheArray(object):
+
+        def __init__(self, chunk_cache, store):
+            self.chunk_cache = chunk_cache
+            self._store = store
+            self.hits = 0
+            self.misses = 0
+
+        def __setitem__(self, key, value):
+            self._store[key] = value
+            self.chunk_cache[key] = value
+            self._reset_hits_misses()
+
+        def __getitem__(self, item):
+            try:
+                value = self.chunk_cache[item]
+            except KeyError:
+                value = self._store[item]
+                self.chunk_cache[item] = value
+            self._reset_hits_misses()
+            return value
+
+        def __delitem__(self, key):
+            self.chunk_cache.__delitem__(key)
+
+        def _reset_hits_misses(self):
+            self.hits = self.chunk_cache.hits
+            self.misses = self.chunk_cache.misses
+
+        def invalidate(self):
+            self.chunk_cache.invalidate()
+
+        def invalidate_values(self):
+            self.chunk_cache.invalidate_values()
+
+    def create_store(self):
+        return LRUChunkCache(max_size=2**27)
+
+    def create_cache(self, store, max_size=None):
+        return self.MockChunkCacheArray(LRUChunkCache(max_size=max_size), store=store)
+
+    def test_delitem(self):
+        # setup store
+        store = self.CountingClass()
+        store['foo'] = b'xxx'
+        store['bar'] = b'yyy'
+
+        # setup cache
+        cache = self.create_cache(store)
+
+        cache['foo']
+        del cache['foo']
+        with pytest.raises(KeyError):
+            # noinspection PyStatementEffect
+            cache.chunk_cache['foo']
+
+        # verify other keys untouched
+        assert 0 == store.counter['__getitem__', 'bar']
+        assert 1 == store.counter['__setitem__', 'bar']
 
 
 def test_getsize():

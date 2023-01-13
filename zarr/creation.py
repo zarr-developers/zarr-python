@@ -21,7 +21,7 @@ def create(shape, chunks=True, dtype=None, compressor='default',
            fill_value: Optional[int] = 0, order='C', store=None, synchronizer=None,
            overwrite=False, path=None, chunk_store=None, filters=None,
            cache_metadata=True, cache_attrs=True, read_only=False,
-           object_codec=None, dimension_separator=None, write_empty_chunks=True,
+           object_codec=None, dimension_separator=None, chunk_cache=None, write_empty_chunks=True,
            *, zarr_version=None, meta_array=None, **kwargs):
     """Create an array.
 
@@ -54,6 +54,15 @@ def create(shape, chunks=True, dtype=None, compressor='default',
     chunk_store : MutableMapping, optional
         Separate storage for chunks. If not provided, `store` will be used
         for storage of both chunks and metadata.
+    chunk_cache: MutableMapping, optional
+        Mapping to store decoded chunks for caching. Can be used in repeated
+        chunk access scenarios when decoding of data is computationally
+        expensive.
+        NOTE: When using the write cache feature with object arrays(i.e.
+        when dtype of array is 'object' and when writing to the array with
+        chunk_cache provided) could result in a slight slowdown as some
+        dtypes, like VLenArray, have to go through the encode-decode phase
+        before having the correct dtype.
     filters : sequence of Codecs, optional
         Sequence of filters to use to encode chunk data prior to compression.
     cache_metadata : bool, optional
@@ -175,7 +184,8 @@ def create(shape, chunks=True, dtype=None, compressor='default',
     # instantiate array
     z = Array(store, path=path, chunk_store=chunk_store, synchronizer=synchronizer,
               cache_metadata=cache_metadata, cache_attrs=cache_attrs, read_only=read_only,
-              write_empty_chunks=write_empty_chunks, meta_array=meta_array)
+              chunk_cache=chunk_cache, write_empty_chunks=write_empty_chunks,
+              meta_array=meta_array)
 
     return z
 
@@ -412,6 +422,7 @@ def open_array(
     chunk_store=None,
     storage_options=None,
     partial_decompress=False,
+    chunk_cache=None,
     write_empty_chunks=True,
     *,
     zarr_version=None,
@@ -479,6 +490,16 @@ def open_array(
         non-fill-value data are stored, at the expense of overhead associated
         with checking the data of each chunk.
 
+        .. versionadded:: 2.7
+    chunk_cache: MutableMapping, optional
+        Mapping to store decoded chunks for caching. Can be used in repeated
+        chunk access scenarios when decoding of data is computationally
+        expensive.
+        NOTE: When using the write cache feature with object arrays(i.e.
+        when dtype of array is 'object' and when writing to the array with
+        chunk_cache provided) could result in a slight slowdown as some
+        dtypes, like VLenArray, have to go through the encode-decode phase
+        before having the correct dtype.
         .. versionadded:: 2.11
 
     zarr_version : {None, 2, 3}, optional
@@ -599,7 +620,8 @@ def open_array(
     # instantiate array
     z = Array(store, read_only=read_only, synchronizer=synchronizer,
               cache_metadata=cache_metadata, cache_attrs=cache_attrs, path=path,
-              chunk_store=chunk_store, write_empty_chunks=write_empty_chunks)
+              chunk_store=chunk_store, chunk_cache=chunk_cache,
+              write_empty_chunks=write_empty_chunks)
 
     return z
 

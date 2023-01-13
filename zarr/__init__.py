@@ -14,7 +14,7 @@ from zarr._storage.store import v3_api_available
 from zarr.storage import (ABSStore, DBMStore, DictStore, DirectoryStore,
                           KVStore, LMDBStore, LRUStoreCache, MemoryStore, MongoDBStore,
                           NestedDirectoryStore, RedisStore, SQLiteStore,
-                          TempStore, ZipStore)
+                          TempStore, ZipStore, LRUChunkCache)
 from zarr.sync import ProcessSynchronizer, ThreadSynchronizer
 from zarr.version import version as __version__
 
