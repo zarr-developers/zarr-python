@@ -14,7 +14,18 @@ Release notes
     # .. warning::
     #    Pre-release! Use :command:`pip install --pre zarr` to evaluate this release.
 
-.. _release_2.13.4:
+.. _release_2.13.6:
+
+2.13.6
+------
+
+Maintenance
+~~~~~~~~~~~
+
+* Bump gh-action-pypi-publish to 1.6.4.
+  By :user:`Josh Moore <joshmoore>` :issue:`1320`.
+
+.. _release_2.13.5:
 
 2.13.5
 ------
@@ -24,6 +35,8 @@ Bug fixes
 
 * Ensure ``zarr.create`` uses writeable mode to fix issue with :issue:`1304`.
   By :user:`James Bourbeau <jrbourbeau>` :issue:`1309`.
+
+.. _release_2.13.4:
 
 2.13.4
 ------
