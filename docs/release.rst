@@ -19,10 +19,10 @@ Release notes
 2.13.5
 ------
 
-Enhancements
-~~~~~~~~~~~~
+Bug fixes
+~~~~~~~~~
 
-* Ensure ``zarr.create`` uses writeable mode.
+* Ensure ``zarr.create`` uses writeable mode to fix issues after :issue:`1304`.
   By :user:`James Bourbeau <jrbourbeau>` :issue:`1309`.
 
 2.13.4
