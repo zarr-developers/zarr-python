@@ -1,7 +1,12 @@
 // handle redirects
 (() => {
     let anchorMap = {
-        "installation": "installation.html"
+        "installation": "installation.html",
+        "getting-started": "getting_started.html#getting-started",
+        "highlights": "getting_started.html#highlights",
+        "contributing": "contributing.html",
+        "projects-using-zarr": "getting_started.html#projects-using-zarr",
+        "contents": "getting_started.html#contents"
     }
 
     let hash = window.location.hash.substring(1);
