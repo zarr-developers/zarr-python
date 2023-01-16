@@ -16,6 +16,15 @@ Release notes
 
 .. _release_2.13.4:
 
+2.13.5
+------
+
+Bug fixes
+~~~~~~~~~
+
+* Ensure ``zarr.create`` uses writeable mode to fix issues after :issue:`1304`.
+  By :user:`James Bourbeau <jrbourbeau>` :issue:`1309`.
+
 2.13.4
 ------
 
