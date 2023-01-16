@@ -1571,7 +1571,8 @@ class TestN5Store(TestNestedDirectoryStore):
 
     def test_init_group(self):
         store = self.create_store()
-        init_group(store, attrs={'foo': 'bar'})
+        init_group(store)
+        store['.zattrs'] = json_dumps({'foo': 'bar'})
         # check metadata
         assert group_meta_key in store
         assert group_meta_key in store.listdir()
@@ -1709,7 +1710,8 @@ class TestN5FSStore(TestFSStore):
 
     def test_init_group(self):
         store = self.create_store()
-        init_group(store, attrs={'foo': 'bar'})
+        init_group(store)
+        store['.zattrs'] = json_dumps({'foo': 'bar'})
         # check metadata
         assert group_meta_key in store
         assert group_meta_key in store.listdir()
@@ -2554,13 +2556,8 @@ def test_normalize_store_arg(tmpdir):
         assert isinstance(store, Class)
 
     if have_fsspec:
-        import fsspec
-
         path = tempfile.mkdtemp()
         store = normalize_store_arg("file://" + path, zarr_version=2, mode='w')
-        assert isinstance(store, FSStore)
-
-        store = normalize_store_arg(fsspec.get_mapper("file://" + path))
         assert isinstance(store, FSStore)
 
 

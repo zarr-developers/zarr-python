@@ -10,7 +10,7 @@ from typing import Any
 import numpy as np
 from numcodecs.compat import ensure_bytes
 
-from zarr._storage.store import _prefix_to_array_attrs_key, assert_zarr_v3_api_available
+from zarr._storage.store import _prefix_to_attrs_key, assert_zarr_v3_api_available
 from zarr.attrs import Attributes
 from zarr.codecs import AsType, get_codec
 from zarr.errors import ArrayNotFoundError, ReadOnlyError, ArrayIndexError
@@ -189,7 +189,6 @@ class Array:
 
         self._store = store
         self._chunk_store = chunk_store
-        self._transformed_chunk_store = None
         self._path = normalize_storage_path(path)
         if self._path:
             self._key_prefix = self._path + '/'
@@ -216,7 +215,7 @@ class Array:
         self._load_metadata()
 
         # initialize attributes
-        akey = _prefix_to_array_attrs_key(self._store, self._key_prefix)
+        akey = _prefix_to_attrs_key(self._store, self._key_prefix)
         self._attrs = Attributes(store, key=akey, read_only=read_only,
                                  synchronizer=synchronizer, cache=cache_attrs)
 
@@ -292,16 +291,6 @@ class Array:
             if filters:
                 filters = [get_codec(config) for config in filters]
             self._filters = filters
-
-            if self._version == 3:
-                storage_transformers = meta.get('storage_transformers', [])
-                if storage_transformers:
-                    transformed_store = self._chunk_store or self._store
-                    for storage_transformer in storage_transformers[::-1]:
-                        transformed_store = storage_transformer._copy_for_array(
-                            self, transformed_store
-                        )
-                    self._transformed_chunk_store = transformed_store
 
     def _refresh_metadata(self):
         if not self._cache_metadata:
@@ -382,12 +371,10 @@ class Array:
     @property
     def chunk_store(self):
         """A MutableMapping providing the underlying storage for array chunks."""
-        if self._transformed_chunk_store is not None:
-            return self._transformed_chunk_store
-        elif self._chunk_store is not None:
-            return self._chunk_store
-        else:
+        if self._chunk_store is None:
             return self._store
+        else:
+            return self._chunk_store
 
     @property
     def shape(self):
@@ -1813,7 +1800,7 @@ class Array:
             check_array_shape('value', value, sel_shape)
 
         # iterate over chunks in range
-        if not hasattr(self.chunk_store, "setitems") or self._synchronizer is not None \
+        if not hasattr(self.store, "setitems") or self._synchronizer is not None \
            or any(map(lambda x: x == 0, self.shape)):
             # iterative approach
             for chunk_coords, chunk_selection, out_selection in indexer:
@@ -2242,10 +2229,7 @@ class Array:
             cdata = chunk
 
         # ensure in-memory data is immutable and easy to compare
-        if (
-            isinstance(self.chunk_store, KVStore)
-            or isinstance(self._chunk_store, KVStore)
-        ):
+        if isinstance(self.chunk_store, KVStore):
             cdata = ensure_bytes(cdata)
 
         return cdata

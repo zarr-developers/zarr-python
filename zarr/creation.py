@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional
+from typing import Optional
 from warnings import warn
 
 import numpy as np
@@ -22,7 +22,7 @@ def create(shape, chunks=True, dtype=None, compressor='default',
            overwrite=False, path=None, chunk_store=None, filters=None,
            cache_metadata=True, cache_attrs=True, read_only=False,
            object_codec=None, dimension_separator=None, write_empty_chunks=True,
-           *, zarr_version=None, meta_array=None, storage_transformers=(), **kwargs):
+           *, zarr_version=None, meta_array=None, **kwargs):
     """Create an array.
 
     Parameters
@@ -71,8 +71,6 @@ def create(shape, chunks=True, dtype=None, compressor='default',
         A codec to encode object arrays, only needed if dtype=object.
     dimension_separator : {'.', '/'}, optional
         Separator placed between the dimensions of a chunk.
-    attrs : JSON-serializable dict.
-        User attributes for the array. Defaults to {}.
 
         .. versionadded:: 2.8
 
@@ -86,14 +84,6 @@ def create(shape, chunks=True, dtype=None, compressor='default',
         with checking the data of each chunk.
 
         .. versionadded:: 2.11
-
-    storage_transformers : sequence of StorageTransformers, optional
-        Setting storage transformers, changes the storage structure and behaviour
-        of data coming from the underlying store. The transformers are applied in the
-        order of the given sequence. Supplying an empty sequence is the same as omitting
-        the argument or setting it to None. May only be set when using zarr_version 3.
-
-        .. versionadded:: 2.13
 
     zarr_version : {None, 2, 3}, optional
         The zarr protocol version of the created array. If None, it will be
@@ -155,7 +145,7 @@ def create(shape, chunks=True, dtype=None, compressor='default',
         zarr_version = getattr(chunk_store, '_store_version', DEFAULT_ZARR_VERSION)
 
     # handle polymorphic store arg
-    store = normalize_store_arg(store, zarr_version=zarr_version, mode="w")
+    store = normalize_store_arg(store, zarr_version=zarr_version)
     zarr_version = getattr(store, '_store_version', DEFAULT_ZARR_VERSION)
 
     # API compatibility with h5py
@@ -180,7 +170,7 @@ def create(shape, chunks=True, dtype=None, compressor='default',
     init_array(store, shape=shape, chunks=chunks, dtype=dtype, compressor=compressor,
                fill_value=fill_value, order=order, overwrite=overwrite, path=path,
                chunk_store=chunk_store, filters=filters, object_codec=object_codec,
-               dimension_separator=dimension_separator, storage_transformers=storage_transformers)
+               dimension_separator=dimension_separator)
 
     # instantiate array
     z = Array(store, path=path, chunk_store=chunk_store, synchronizer=synchronizer,
@@ -423,7 +413,6 @@ def open_array(
     storage_options=None,
     partial_decompress=False,
     write_empty_chunks=True,
-    attrs: Dict[str, Any] = {},
     *,
     zarr_version=None,
     dimension_separator=None,
@@ -489,8 +478,6 @@ def open_array(
         is deleted. This setting enables sparser storage, as only chunks with
         non-fill-value data are stored, at the expense of overhead associated
         with checking the data of each chunk.
-    attrs : JSON-serializable dict.
-        User attributes for the array. Defaults to {}.
 
         .. versionadded:: 2.11
 
@@ -570,7 +557,7 @@ def open_array(
         fill_value = np.array(fill_value, dtype=dtype)[()]
 
     # ensure store is initialized
-    # TODO: warning when creation kwargs (dtype, shape) are provided but mode is not w
+
     if mode in ['r', 'r+']:
         if not contains_array(store, path=path):
             if contains_group(store, path=path):
@@ -582,7 +569,7 @@ def open_array(
                    compressor=compressor, fill_value=fill_value,
                    order=order, filters=filters, overwrite=True, path=path,
                    object_codec=object_codec, chunk_store=chunk_store,
-                   dimension_separator=dimension_separator, attrs=attrs)
+                   dimension_separator=dimension_separator)
 
     elif mode == 'a':
         if not contains_array(store, path=path):
@@ -592,7 +579,7 @@ def open_array(
                        compressor=compressor, fill_value=fill_value,
                        order=order, filters=filters, path=path,
                        object_codec=object_codec, chunk_store=chunk_store,
-                       dimension_separator=dimension_separator, attrs=attrs)
+                       dimension_separator=dimension_separator)
 
     elif mode in ['w-', 'x']:
         if contains_group(store, path=path):
@@ -604,7 +591,7 @@ def open_array(
                        compressor=compressor, fill_value=fill_value,
                        order=order, filters=filters, path=path,
                        object_codec=object_codec, chunk_store=chunk_store,
-                       dimension_separator=dimension_separator, attrs=attrs)
+                       dimension_separator=dimension_separator)
 
     # determine read only status
     read_only = mode == 'r'

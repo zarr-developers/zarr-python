@@ -42,7 +42,6 @@ from numcodecs.compat import (
     ensure_contiguous_ndarray_like
 )
 from numcodecs.registry import codec_registry
-from zarr.attrs import Attributes
 
 from zarr.errors import (
     MetadataError,
@@ -63,8 +62,6 @@ from zarr._storage.absstore import ABSStore  # noqa: F401
 from zarr._storage.store import (_get_hierarchy_metadata,  # noqa: F401
                                  _get_metadata_suffix,
                                  _listdir_from_keys,
-                                 _prefix_to_array_attrs_key,
-                                 _prefix_to_group_attrs_key,
                                  _rename_from_keys,
                                  _rename_metadata_v3,
                                  _rmdir_from_keys,
@@ -142,16 +139,6 @@ def _normalize_store_arg_v2(store: Any, storage_options=None, mode="r") -> BaseS
         return store
     if isinstance(store, os.PathLike):
         store = os.fspath(store)
-    if FSStore._fsspec_installed():
-        import fsspec
-        if isinstance(store, fsspec.FSMap):
-            return FSStore(store.root,
-                           fs=store.fs,
-                           mode=mode,
-                           check=store.check,
-                           create=store.create,
-                           missing_exceptions=store.missing_exceptions,
-                           **(storage_options or {}))
     if isinstance(store, str):
         if "://" in store or "::" in store:
             return FSStore(store, mode=mode, **(storage_options or {}))
@@ -314,7 +301,6 @@ def init_array(
     filters=None,
     object_codec=None,
     dimension_separator=None,
-    storage_transformers=(),
 ):
     """Initialize an array store with the given configuration. Note that this is a low-level
     function and there should be no need to call this directly from user code.
@@ -349,8 +335,6 @@ def init_array(
         A codec to encode object arrays, only needed if dtype=object.
     dimension_separator : {'.', '/'}, optional
         Separator placed between the dimensions of a chunk.
-    attrs : JSON-serializable dict.
-        User attributes for the array. Defaults to {}.
 
     Examples
     --------
@@ -444,30 +428,7 @@ def init_array(
                          order=order, overwrite=overwrite, path=path,
                          chunk_store=chunk_store, filters=filters,
                          object_codec=object_codec,
-                         dimension_separator=dimension_separator,
-                         storage_transformers=storage_transformers)
-
-    _init_array_attrs(store, path, attrs)
-
-
-def _init_array_attrs(store: StoreLike, path: Optional[str], attrs: Dict[str, Any]):
-    if len(attrs):
-        if path:
-            key_prefix = path + '/'
-        else:
-            key_prefix = ''
-        akey = _prefix_to_array_attrs_key(store, key_prefix)
-        Attributes(store, key=akey, cache=False).put(attrs)
-
-
-def _init_group_attrs(store: StoreLike, path: Optional[str], attrs: Dict[str, Any]):
-    if len(attrs):
-        if path:
-            key_prefix = path + '/'
-        else:
-            key_prefix = ''
-        akey = _prefix_to_group_attrs_key(store, key_prefix)
-        Attributes(store, key=akey, cache=False).put(attrs)
+                         dimension_separator=dimension_separator)
 
 
 def _init_array_metadata(
@@ -484,7 +445,6 @@ def _init_array_metadata(
     filters=None,
     object_codec=None,
     dimension_separator=None,
-    storage_transformers=(),
 ):
 
     store_version = getattr(store, '_store_version', 2)
@@ -606,7 +566,6 @@ def _init_array_metadata(
     if store_version < 3:
         meta.update(dict(chunks=chunks, dtype=dtype, order=order,
                          filters=filters_config))
-        assert not storage_transformers
     else:
         if dimension_separator is None:
             dimension_separator = "/"
@@ -620,8 +579,7 @@ def _init_array_metadata(
                                  separator=dimension_separator),
                  chunk_memory_layout=order,
                  data_type=dtype,
-                 attributes=attributes,
-                 storage_transformers=storage_transformers)
+                 attributes=attributes)
         )
 
     key = _prefix_to_array_key(store, _path_to_prefix(path))
@@ -640,7 +598,6 @@ def init_group(
     overwrite: bool = False,
     path: Path = None,
     chunk_store: Optional[StoreLike] = None,
-    attrs: Dict[str, Any] = {},
 ):
     """Initialize a group store. Note that this is a low-level function and there should be no
     need to call this directly from user code.
@@ -656,8 +613,7 @@ def init_group(
     chunk_store : Store, optional
         Separate storage for chunks. If not provided, `store` will be used
         for storage of both chunks and metadata.
-    attrs : JSON-serializable dict.
-        User attributes for the group. Defaults to {}.
+
     """
 
     # normalize path
@@ -676,9 +632,6 @@ def init_group(
     # initialise metadata
     _init_group_metadata(store=store, overwrite=overwrite, path=path,
                          chunk_store=chunk_store)
-
-    # initialize attrs
-    _init_group_attrs(store, path, attrs)
 
     if store_version == 3:
         # TODO: Should initializing a v3 group also create a corresponding
@@ -1355,8 +1308,6 @@ class FSStore(Store):
                  create=False,
                  missing_exceptions=None,
                  **storage_options):
-        if not self._fsspec_installed():  # pragma: no cover
-            raise ImportError("`fsspec` is required to use zarr's FSStore")
         import fsspec
 
         mapper_options = {"check": check, "create": create}
@@ -1527,13 +1478,6 @@ class FSStore(Store):
         if self.mode == 'r':
             raise ReadOnlyError()
         self.map.clear()
-
-    @classmethod
-    def _fsspec_installed(cls):
-        """Returns true if fsspec is installed"""
-        import importlib.util
-
-        return importlib.util.find_spec("fsspec") is not None
 
 
 class TempStore(DirectoryStore):

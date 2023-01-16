@@ -9,11 +9,7 @@ from numcodecs.abc import Codec
 from zarr.errors import MetadataError
 from zarr.util import json_dumps, json_loads
 
-from typing import cast, Union, Any, List, Mapping as MappingType, Optional, TYPE_CHECKING
-
-if TYPE_CHECKING:  # pragma: no cover
-    from zarr._storage.store import StorageTransformer
-
+from typing import cast, Union, Any, List, Mapping as MappingType, Optional
 
 ZARR_FORMAT = 2
 ZARR_FORMAT_v3 = 3
@@ -464,36 +460,6 @@ class Metadata3(Metadata2):
         return codec
 
     @classmethod
-    def _encode_storage_transformer_metadata(
-        cls,
-        storage_transformer: "StorageTransformer"
-    ) -> Optional[Mapping]:
-        return {
-            "extension": storage_transformer.extension_uri,
-            "type": storage_transformer.type,
-            "configuration": storage_transformer.get_config(),
-        }
-
-    @classmethod
-    def _decode_storage_transformer_metadata(cls, meta: Mapping) -> "StorageTransformer":
-        from zarr.tests.test_storage_v3 import DummyStorageTransfomer
-
-        # This might be changed to a proper registry in the future
-        KNOWN_STORAGE_TRANSFORMERS = [DummyStorageTransfomer]
-
-        conf = meta.get('configuration', {})
-        extension_uri = meta['extension']
-        transformer_type = meta['type']
-
-        for StorageTransformerCls in KNOWN_STORAGE_TRANSFORMERS:
-            if StorageTransformerCls.extension_uri == extension_uri:
-                break
-        else:  # pragma: no cover
-            raise NotImplementedError
-
-        return StorageTransformerCls.from_config(transformer_type, conf)
-
-    @classmethod
     def decode_array_metadata(cls, s: Union[MappingType, str]) -> MappingType[str, Any]:
         meta = cls.parse_metadata(s)
 
@@ -510,10 +476,6 @@ class Metadata3(Metadata2):
             # TODO: remove dimension_separator?
 
             compressor = cls._decode_codec_metadata(meta.get("compressor", None))
-            storage_transformers = meta.get("storage_transformers", ())
-            storage_transformers = [
-                cls._decode_storage_transformer_metadata(i) for i in storage_transformers
-            ]
             extensions = meta.get("extensions", [])
             meta = dict(
                 shape=tuple(meta["shape"]),
@@ -531,8 +493,6 @@ class Metadata3(Metadata2):
             # compressor field should be absent when there is no compression
             if compressor:
                 meta['compressor'] = compressor
-            if storage_transformers:
-                meta['storage_transformers'] = storage_transformers
 
         except Exception as e:
             raise MetadataError("error decoding metadata: %s" % e)
@@ -554,10 +514,6 @@ class Metadata3(Metadata2):
             object_codec = None
 
         compressor = cls._encode_codec_metadata(meta.get("compressor", None))
-        storage_transformers = meta.get("storage_transformers", ())
-        storage_transformers = [
-            cls._encode_storage_transformer_metadata(i) for i in storage_transformers
-        ]
         extensions = meta.get("extensions", [])
         meta = dict(
             shape=meta["shape"] + sdshape,
@@ -576,8 +532,6 @@ class Metadata3(Metadata2):
             meta["compressor"] = compressor
         if dimension_separator:
             meta["dimension_separator"] = dimension_separator
-        if storage_transformers:
-            meta["storage_transformers"] = storage_transformers
         return json_dumps(meta)
 
 

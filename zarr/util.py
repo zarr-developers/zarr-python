@@ -9,17 +9,15 @@ import time
 import numpy as np
 from asciitree import BoxStyle, LeftAligned
 from asciitree.traversal import Traversal
-from typing import Iterable
+from collections.abc import Iterable
 from numcodecs.compat import ensure_text, ensure_ndarray_like
 from numcodecs.registry import codec_registry
 from numcodecs.blosc import cbuffer_sizes, cbuffer_metainfo
 
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
-
-JSON = Union[str, float, None, bool, List["JSON"], Dict[str, "JSON"]]
+from typing import Any, Callable, Dict, Optional, Tuple, Union
 
 
-def flatten(arg: Iterable[Any]) -> Iterable[Any]:
+def flatten(arg: Iterable) -> Iterable:
     for element in arg:
         if isinstance(element, Iterable) and not isinstance(element, (str, bytes)):
             yield from flatten(element)
@@ -29,13 +27,14 @@ def flatten(arg: Iterable[Any]) -> Iterable[Any]:
 
 # codecs to use for object dtype convenience API
 object_codecs = {
-    str.__name__: "vlen-utf8",
-    bytes.__name__: "vlen-bytes",
-    "array": "vlen-array",
+    str.__name__: 'vlen-utf8',
+    bytes.__name__: 'vlen-bytes',
+    'array': 'vlen-array',
 }
 
 
 class NumberEncoder(json.JSONEncoder):
+
     def default(self, o):
         # See json.JSONEncoder.default docstring for explanation
         # This is necessary to encode numpy dtype
@@ -48,26 +47,20 @@ class NumberEncoder(json.JSONEncoder):
 
 def json_dumps(o: Any) -> bytes:
     """Write JSON in a consistent, human-readable way."""
-    return json.dumps(
-        o,
-        indent=4,
-        sort_keys=True,
-        ensure_ascii=True,
-        separators=(",", ": "),
-        cls=NumberEncoder,
-    ).encode("ascii")
+    return json.dumps(o, indent=4, sort_keys=True, ensure_ascii=True,
+                      separators=(',', ': '), cls=NumberEncoder).encode('ascii')
 
 
-def json_loads(s: str) -> Dict[str, JSON]:
+def json_loads(s: str) -> Dict[str, Any]:
     """Read JSON in a consistent way."""
-    return json.loads(ensure_text(s, "ascii"))
+    return json.loads(ensure_text(s, 'ascii'))
 
 
-def normalize_shape(shape: Any) -> Tuple[int, ...]:
+def normalize_shape(shape) -> Tuple[int]:
     """Convenience function to normalize the `shape` argument."""
 
     if shape is None:
-        raise TypeError("shape is None")
+        raise TypeError('shape is None')
 
     # handle 1D convenience form
     if isinstance(shape, numbers.Integral):
@@ -80,9 +73,9 @@ def normalize_shape(shape: Any) -> Tuple[int, ...]:
 
 # code to guess chunk shape, adapted from h5py
 
-CHUNK_BASE = 256 * 1024  # Multiplier by which chunks are adjusted
-CHUNK_MIN = 128 * 1024  # Soft lower limit (128k)
-CHUNK_MAX = 64 * 1024 * 1024  # Hard upper limit
+CHUNK_BASE = 256*1024  # Multiplier by which chunks are adjusted
+CHUNK_MIN = 128*1024  # Soft lower limit (128k)
+CHUNK_MAX = 64*1024*1024  # Hard upper limit
 
 
 def guess_chunks(shape: Tuple[int, ...], typesize: int) -> Tuple[int, ...]:
@@ -96,12 +89,12 @@ def guess_chunks(shape: Tuple[int, ...], typesize: int) -> Tuple[int, ...]:
 
     ndims = len(shape)
     # require chunks to have non-zero length for all dimensions
-    chunks = np.maximum(np.array(shape, dtype="=f8"), 1)
+    chunks = np.maximum(np.array(shape, dtype='=f8'), 1)
 
     # Determine the optimal chunk size in bytes using a PyTables expression.
     # This is kept as a float.
-    dset_size = np.product(chunks) * typesize
-    target_size = CHUNK_BASE * (2 ** np.log10(dset_size / (1024.0 * 1024)))
+    dset_size = np.product(chunks)*typesize
+    target_size = CHUNK_BASE * (2**np.log10(dset_size/(1024.*1024)))
 
     if target_size > CHUNK_MAX:
         target_size = CHUNK_MAX
@@ -115,12 +108,11 @@ def guess_chunks(shape: Tuple[int, ...], typesize: int) -> Tuple[int, ...]:
         # 1b. We're within 50% of the target chunk size, AND
         # 2. The chunk is smaller than the maximum chunk size
 
-        chunk_bytes = np.product(chunks) * typesize
+        chunk_bytes = np.product(chunks)*typesize
 
-        if (
-            chunk_bytes < target_size
-            or abs(chunk_bytes - target_size) / target_size < 0.5
-        ) and chunk_bytes < CHUNK_MAX:
+        if (chunk_bytes < target_size or
+                abs(chunk_bytes-target_size)/target_size < 0.5) and \
+                chunk_bytes < CHUNK_MAX:
             break
 
         if np.product(chunks) == 1:
@@ -154,7 +146,7 @@ def normalize_chunks(
 
     # handle bad dimensionality
     if len(chunks) > len(shape):
-        raise ValueError("too many dimensions in chunks")
+        raise ValueError('too many dimensions in chunks')
 
     # handle underspecified chunks
     if len(chunks) < len(shape):
@@ -163,59 +155,49 @@ def normalize_chunks(
 
     # handle None or -1 in chunks
     if -1 in chunks or None in chunks:
-        chunks = tuple(
-            s if c == -1 or c is None else int(c) for s, c in zip(shape, chunks)
-        )
+        chunks = tuple(s if c == -1 or c is None else int(c)
+                       for s, c in zip(shape, chunks))
 
     return tuple(chunks)
 
 
-def normalize_dtype(
-    dtype: Union[str, np.dtype], object_codec: Any
-) -> Tuple[np.dtype, Any]:
+def normalize_dtype(dtype: Union[str, np.dtype], object_codec) -> Tuple[np.dtype, Any]:
 
     # convenience API for object arrays
     if inspect.isclass(dtype):
         dtype = dtype.__name__  # type: ignore
     if isinstance(dtype, str):
         # allow ':' to delimit class from codec arguments
-        tokens = dtype.split(":")
+        tokens = dtype.split(':')
         key = tokens[0]
         if key in object_codecs:
             dtype = np.dtype(object)
             if object_codec is None:
                 codec_id = object_codecs[key]
                 if len(tokens) > 1:
-                    args = tokens[1].split(",")
+                    args = tokens[1].split(',')
                 else:
                     args = []
                 try:
                     object_codec = codec_registry[codec_id](*args)
                 except KeyError:  # pragma: no cover
-                    raise ValueError(
-                        "codec %r for object type %r is not "
-                        "available; please provide an "
-                        "object_codec manually" % (codec_id, key)
-                    )
+                    raise ValueError('codec %r for object type %r is not '
+                                     'available; please provide an '
+                                     'object_codec manually' % (codec_id, key))
             return dtype, object_codec
 
     dtype = np.dtype(dtype)
 
     # don't allow generic datetime64 or timedelta64, require units to be specified
-    if dtype == np.dtype("M8") or dtype == np.dtype("m8"):
-        raise ValueError(
-            "datetime64 and timedelta64 dtypes with generic units "
-            'are not supported, please specify units (e.g., "M8[ns]")'
-        )
+    if dtype == np.dtype('M8') or dtype == np.dtype('m8'):
+        raise ValueError('datetime64 and timedelta64 dtypes with generic units '
+                         'are not supported, please specify units (e.g., "M8[ns]")')
 
     return dtype, object_codec
 
 
 # noinspection PyTypeChecker
-# TODO: correctly type ellipsis
-def is_total_slice(
-    item: Union[slice, Tuple[Any, ...]], shape: Tuple[int]
-) -> bool:
+def is_total_slice(item, shape: Tuple[int]) -> bool:
     """Determine whether `item` specifies a complete slice of array with the
     given `shape`. Used to optimize __setitem__ operations on the Chunk
     class."""
@@ -227,23 +209,19 @@ def is_total_slice(
     if item == slice(None):
         return True
     if isinstance(item, slice):
-        item = (item,)
+        item = item,
     if isinstance(item, tuple):
         return all(
-            (
-                isinstance(s, slice)
-                and (
-                    (s == slice(None))
-                    or ((s.stop - s.start == l) and (s.step in [1, None]))
-                )
-            )
+            (isinstance(s, slice) and
+                ((s == slice(None)) or
+                 ((s.stop - s.start == l) and (s.step in [1, None]))))
             for s, l in zip(item, shape)
         )
     else:
-        raise TypeError("expected slice or tuple of slices, found %r" % item)
+        raise TypeError('expected slice or tuple of slices, found %r' % item)
 
 
-def normalize_resize_args(old_shape: Tuple[int, ...], *args):
+def normalize_resize_args(old_shape, *args):
 
     # normalize new shape argument
     if len(args) == 1:
@@ -255,32 +233,33 @@ def normalize_resize_args(old_shape: Tuple[int, ...], *args):
     else:
         new_shape = tuple(new_shape)
     if len(new_shape) != len(old_shape):
-        raise ValueError("new shape must have same number of dimensions")
+        raise ValueError('new shape must have same number of dimensions')
 
     # handle None in new_shape
-    new_shape = tuple(s if n is None else int(n) for s, n in zip(old_shape, new_shape))
+    new_shape = tuple(s if n is None else int(n)
+                      for s, n in zip(old_shape, new_shape))
 
     return new_shape
 
 
-def human_readable_size(size: int) -> str:
+def human_readable_size(size) -> str:
     if size < 2**10:
-        return "%s" % size
+        return '%s' % size
     elif size < 2**20:
-        return "%.1fK" % (size / float(2**10))
+        return '%.1fK' % (size / float(2**10))
     elif size < 2**30:
-        return "%.1fM" % (size / float(2**20))
+        return '%.1fM' % (size / float(2**20))
     elif size < 2**40:
-        return "%.1fG" % (size / float(2**30))
+        return '%.1fG' % (size / float(2**30))
     elif size < 2**50:
-        return "%.1fT" % (size / float(2**40))
+        return '%.1fT' % (size / float(2**40))
     else:
-        return "%.1fP" % (size / float(2**50))
+        return '%.1fP' % (size / float(2**50))
 
 
 def normalize_order(order: str) -> str:
     order = str(order).upper()
-    if order not in ["C", "F"]:
+    if order not in ['C', 'F']:
         raise ValueError("order must be either 'C' or 'F', found: %r" % order)
     return order
 
@@ -290,11 +269,10 @@ def normalize_dimension_separator(sep: Optional[str]) -> Optional[str]:
         return sep
     else:
         raise ValueError(
-            "dimension_separator must be either '.' or '/', found: %r" % sep
-        )
+            "dimension_separator must be either '.' or '/', found: %r" % sep)
 
 
-def normalize_fill_value(fill_value: Any, dtype: np.dtype):
+def normalize_fill_value(fill_value, dtype: np.dtype):
 
     if fill_value is None or dtype.hasobject:
         # no fill value
@@ -304,19 +282,17 @@ def normalize_fill_value(fill_value: Any, dtype: np.dtype):
         # structured arrays
         fill_value = np.zeros((), dtype=dtype)[()]
 
-    elif dtype.kind == "U":
+    elif dtype.kind == 'U':
         # special case unicode because of encoding issues on Windows if passed through numpy
         # https://github.com/alimanfoo/zarr/pull/172#issuecomment-343782713
 
         if not isinstance(fill_value, str):
-            raise ValueError(
-                "fill_value {!r} is not valid for dtype {}; must be a "
-                "unicode string".format(fill_value, dtype)
-            )
+            raise ValueError('fill_value {!r} is not valid for dtype {}; must be a '
+                             'unicode string'.format(fill_value, dtype))
 
     else:
         try:
-            if isinstance(fill_value, bytes) and dtype.kind == "V":
+            if isinstance(fill_value, bytes) and dtype.kind == 'V':
                 # special case for numpy 1.14 compatibility
                 fill_value = np.array(fill_value, dtype=dtype.str).view(dtype)[()]
             else:
@@ -324,10 +300,8 @@ def normalize_fill_value(fill_value: Any, dtype: np.dtype):
 
         except Exception as e:
             # re-raise with our own error message to be helpful
-            raise ValueError(
-                "fill_value {!r} is not valid for dtype {}; nested "
-                "exception: {}".format(fill_value, dtype, e)
-            )
+            raise ValueError('fill_value {!r} is not valid for dtype {}; nested '
+                             'exception: {}'.format(fill_value, dtype, e))
 
     return fill_value
 
@@ -336,7 +310,7 @@ def normalize_storage_path(path: Union[str, bytes, None]) -> str:
 
     # handle bytes
     if isinstance(path, bytes):
-        path = str(path, "ascii")
+        path = str(path, 'ascii')
 
     # ensure str
     if path is not None and not isinstance(path, str):
@@ -345,21 +319,21 @@ def normalize_storage_path(path: Union[str, bytes, None]) -> str:
     if path:
 
         # convert backslash to forward slash
-        path = path.replace("\\", "/")
+        path = path.replace('\\', '/')
 
         # ensure no leading slash
-        while len(path) > 0 and path[0] == "/":
+        while len(path) > 0 and path[0] == '/':
             path = path[1:]
 
         # ensure no trailing slash
-        while len(path) > 0 and path[-1] == "/":
+        while len(path) > 0 and path[-1] == '/':
             path = path[:-1]
 
         # collapse any repeated slashes
         previous_char = None
-        collapsed = ""
+        collapsed = ''
         for char in path:
-            if char == "/" and previous_char == "/":
+            if char == '/' and previous_char == '/':
                 pass
             else:
                 collapsed += char
@@ -367,51 +341,49 @@ def normalize_storage_path(path: Union[str, bytes, None]) -> str:
         path = collapsed
 
         # don't allow path segments with just '.' or '..'
-        segments = path.split("/")
-        if any(s in {".", ".."} for s in segments):
+        segments = path.split('/')
+        if any(s in {'.', '..'} for s in segments):
             raise ValueError("path containing '.' or '..' segment not allowed")
 
     else:
-        path = ""
+        path = ''
 
     return path
 
 
-def buffer_size(v: Any) -> int:
+def buffer_size(v) -> int:
     return ensure_ndarray_like(v).nbytes
 
 
 def info_text_report(items: Dict[Any, Any]) -> str:
     keys = [k for k, v in items]
     max_key_len = max(len(k) for k in keys)
-    report = ""
+    report = ''
     for k, v in items:
-        wrapper = TextWrapper(
-            width=80,
-            initial_indent=k.ljust(max_key_len) + " : ",
-            subsequent_indent=" " * max_key_len + " : ",
-        )
+        wrapper = TextWrapper(width=80,
+                              initial_indent=k.ljust(max_key_len) + ' : ',
+                              subsequent_indent=' '*max_key_len + ' : ')
         text = wrapper.fill(str(v))
-        report += text + "\n"
+        report += text + '\n'
     return report
 
 
-def info_html_report(items: Dict[Any, Any]) -> str:
+def info_html_report(items) -> str:
     report = '<table class="zarr-info">'
-    report += "<tbody>"
+    report += '<tbody>'
     for k, v in items:
-        report += (
-            "<tr>"
-            '<th style="text-align: left">%s</th>'
-            '<td style="text-align: left">%s</td>'
-            "</tr>" % (k, v)
-        )
-    report += "</tbody>"
-    report += "</table>"
+        report += '<tr>' \
+                  '<th style="text-align: left">%s</th>' \
+                  '<td style="text-align: left">%s</td>' \
+                  '</tr>' \
+                  % (k, v)
+    report += '</tbody>'
+    report += '</table>'
     return report
 
 
 class InfoReporter:
+
     def __init__(self, obj):
         self.obj = obj
 
@@ -425,25 +397,24 @@ class InfoReporter:
 
 
 class TreeNode:
-    def __init__(self, obj, depth: int = 0, level=None):
+
+    def __init__(self, obj, depth=0, level=None):
         self.obj = obj
         self.depth = depth
         self.level = level
 
     def get_children(self):
-        if hasattr(self.obj, "values"):
+        if hasattr(self.obj, 'values'):
             if self.level is None or self.depth < self.level:
                 depth = self.depth + 1
-                return [
-                    TreeNode(o, depth=depth, level=self.level)
-                    for o in self.obj.values()
-                ]
+                return [TreeNode(o, depth=depth, level=self.level)
+                        for o in self.obj.values()]
         return []
 
     def get_text(self):
         name = self.obj.name.split("/")[-1] or "/"
-        if hasattr(self.obj, "shape"):
-            name += " {} {}".format(self.obj.shape, self.obj.dtype)
+        if hasattr(self.obj, 'shape'):
+            name += ' {} {}'.format(self.obj.shape, self.obj.dtype)
         return name
 
     def get_type(self):
@@ -451,6 +422,7 @@ class TreeNode:
 
 
 class TreeTraversal(Traversal):
+
     def get_children(self, node):
         return node.get_children()
 
@@ -461,8 +433,8 @@ class TreeTraversal(Traversal):
         return node.get_text()
 
 
-tree_group_icon = "folder"
-tree_array_icon = "table"
+tree_group_icon = 'folder'
+tree_array_icon = 'table'
 
 
 def tree_get_icon(stype: str) -> str:
@@ -509,29 +481,37 @@ def tree_widget(group, expand, level):
 
 
 class TreeViewer:
+
     def __init__(self, group, expand=False, level=None):
 
         self.group = group
         self.expand = expand
         self.level = level
 
-        self.text_kwargs = dict(horiz_len=2, label_space=1, indent=1)
+        self.text_kwargs = dict(
+            horiz_len=2,
+            label_space=1,
+            indent=1
+        )
 
         self.bytes_kwargs = dict(
-            UP_AND_RIGHT="+", HORIZONTAL="-", VERTICAL="|", VERTICAL_AND_RIGHT="+"
+            UP_AND_RIGHT="+",
+            HORIZONTAL="-",
+            VERTICAL="|",
+            VERTICAL_AND_RIGHT="+"
         )
 
         self.unicode_kwargs = dict(
             UP_AND_RIGHT="\u2514",
             HORIZONTAL="\u2500",
             VERTICAL="\u2502",
-            VERTICAL_AND_RIGHT="\u251C",
+            VERTICAL_AND_RIGHT="\u251C"
         )
 
     def __bytes__(self):
         drawer = LeftAligned(
             traverse=TreeTraversal(),
-            draw=BoxStyle(gfx=self.bytes_kwargs, **self.text_kwargs),
+            draw=BoxStyle(gfx=self.bytes_kwargs, **self.text_kwargs)
         )
         root = TreeNode(self.group, level=self.level)
         result = drawer(root)
@@ -545,7 +525,7 @@ class TreeViewer:
     def __unicode__(self):
         drawer = LeftAligned(
             traverse=TreeTraversal(),
-            draw=BoxStyle(gfx=self.unicode_kwargs, **self.text_kwargs),
+            draw=BoxStyle(gfx=self.unicode_kwargs, **self.text_kwargs)
         )
         root = TreeNode(self.group, level=self.level)
         return drawer(root)
@@ -558,24 +538,17 @@ class TreeViewer:
         return tree._repr_mimebundle_(**kwargs)
 
 
-def check_array_shape(param, array: Any, shape: Tuple[int, ...]):
-    if not hasattr(array, "shape"):
-        raise TypeError(
-            "parameter {!r}: expected an array-like object, got {!r}".format(
-                param, type(array)
-            )
-        )
+def check_array_shape(param, array, shape):
+    if not hasattr(array, 'shape'):
+        raise TypeError('parameter {!r}: expected an array-like object, got {!r}'
+                        .format(param, type(array)))
     if array.shape != shape:
-        raise ValueError(
-            "parameter {!r}: expected array with shape {!r}, got {!r}".format(
-                param, shape, array.shape
-            )
-        )
+        raise ValueError('parameter {!r}: expected array with shape {!r}, got {!r}'
+                         .format(param, shape, array.shape))
 
 
-def is_valid_python_name(name: str):
+def is_valid_python_name(name):
     from keyword import iskeyword
-
     return name.isidentifier() and not iskeyword(name)
 
 
@@ -593,7 +566,7 @@ nolock = NoLock()
 
 
 class PartialReadBuffer:
-    def __init__(self, store_key: str, chunk_store):
+    def __init__(self, store_key, chunk_store):
         self.chunk_store = chunk_store
         # is it fsstore or an actual fsspec map object
         assert hasattr(self.chunk_store, "map")
@@ -608,9 +581,9 @@ class PartialReadBuffer:
         self.read_blocks = set()
 
         _key_path = self.map._key_to_str(store_key)
-        _key_path = _key_path.split("/")
+        _key_path = _key_path.split('/')
         _chunk_path = [self.chunk_store._normalize_key(_key_path[-1])]
-        _key_path = "/".join(_key_path[:-1] + _chunk_path)
+        _key_path = '/'.join(_key_path[:-1] + _chunk_path)
         self.key_path = _key_path
 
     def prepare_chunk(self):
@@ -620,7 +593,7 @@ class PartialReadBuffer:
         typesize, _shuffle, _memcpyd = cbuffer_metainfo(header)
         self.buff = mmap.mmap(-1, self.cbytes)
         self.buff[0:16] = header
-        self.nblocks: int = nbytes / blocksize
+        self.nblocks = nbytes / blocksize
         self.nblocks = (
             int(self.nblocks)
             if self.nblocks == int(self.nblocks)
@@ -639,7 +612,7 @@ class PartialReadBuffer:
         self.buff[16: (16 + (self.nblocks * 4))] = start_points_buffer
         self.n_per_block = blocksize / typesize
 
-    def read_part(self, start, nitems: int):
+    def read_part(self, start, nitems):
         assert self.buff is not None
         if self.nblocks == 1:
             return
@@ -666,14 +639,12 @@ class PartialReadBuffer:
         return self.chunk_store[self.store_key]
 
 
-def retry_call(
-    callabl: Callable,
-    args=None,
-    kwargs=None,
-    exceptions: Tuple[Any, ...] = (),
-    retries: int = 10,
-    wait: float = 0.1,
-) -> Any:
+def retry_call(callabl: Callable,
+               args=None,
+               kwargs=None,
+               exceptions: Tuple[Any, ...] = (),
+               retries: int = 10,
+               wait: float = 0.1) -> Any:
     """
     Make several attempts to invoke the callable. If one of the given exceptions
     is raised, wait the given period of time and retry up to the given number of
@@ -685,7 +656,7 @@ def retry_call(
     if kwargs is None:
         kwargs = {}
 
-    for attempt in range(1, retries + 1):
+    for attempt in range(1, retries+1):
         try:
             return callabl(*args, **kwargs)
         except exceptions:
