@@ -467,10 +467,15 @@ def test_normalize_store_arg_v3(tmpdir):
         normalize_store_arg(str(fn), zarr_version=3, mode='w', storage_options={"some": "kwargs"})
 
     if have_fsspec:
+        import fsspec
+
         path = tempfile.mkdtemp()
         store = normalize_store_arg("file://" + path, zarr_version=3, mode='w')
         assert isinstance(store, FSStoreV3)
         assert 'zarr.json' in store
+
+        store = normalize_store_arg(fsspec.get_mapper("file://" + path), zarr_version=3)
+        assert isinstance(store, FSStoreV3)
 
     fn = tmpdir.join('store.n5')
     with pytest.raises(NotImplementedError):

@@ -19,7 +19,7 @@ from zarr.storage import DirectoryStore, KVStore
 from zarr._storage.store import v3_api_available
 from zarr._storage.v3 import DirectoryStoreV3, KVStoreV3
 from zarr.sync import ThreadSynchronizer
-from zarr.tests.util import mktemp
+from zarr.tests.util import mktemp, have_fsspec
 
 _VERSIONS = ((None, 2, 3) if v3_api_available else (None, 2))
 _VERSIONS2 = ((2, 3) if v3_api_available else (2, ))
@@ -427,6 +427,18 @@ def test_create_in_dict(zarr_version, at_root):
 
     a = full(100, 5, store=dict(), **kwargs)
     assert isinstance(a.store, expected_store_type)
+
+
+@pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
+@pytest.mark.parametrize('zarr_version', _VERSIONS)
+@pytest.mark.parametrize('at_root', [False, True])
+def test_create_writeable_mode(zarr_version, at_root, tmp_path):
+    # Regression test for https://github.com/zarr-developers/zarr-python/issues/1306
+    import fsspec
+    kwargs = _init_creation_kwargs(zarr_version, at_root)
+    store = fsspec.get_mapper(str(tmp_path))
+    z = create(100, store=store, **kwargs)
+    assert z.store.map == store
 
 
 @pytest.mark.parametrize('zarr_version', _VERSIONS)
