@@ -19,10 +19,11 @@ Release notes
 2.13.4
 ------
 
-Major changes
+Appreciation
 ~~~~~~~~~~~~~
 
-`NONE`
+Special thanks to Outreachy participants for contributing to most of the maintenance PRs. Please read the blog post summarising the contribution phase and welcoming new Outreachy interns: https://zarr.dev/blog/welcoming-outreachy-2022-interns/
+
 
 Enhancements
 ~~~~~~~~~~~~
