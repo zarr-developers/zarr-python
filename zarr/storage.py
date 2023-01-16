@@ -313,13 +313,8 @@ def init_array(
     chunk_store: Optional[StoreLike] = None,
     filters=None,
     object_codec=None,
-<<<<<<< HEAD
-    dimension_separator: Optional[str] = None,
-    attrs: Dict[str, Any] = {}
-=======
     dimension_separator=None,
     storage_transformers=(),
->>>>>>> 385b5d3635618e086eb4752f81c652379751a5ad
 ):
     """Initialize an array store with the given configuration. Note that this is a low-level
     function and there should be no need to call this directly from user code.
