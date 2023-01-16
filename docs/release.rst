@@ -18,6 +18,9 @@ Unreleased
   methods with V3 stores.
   By :user:`Ryan Abernathey <rabernat>` :issue:`1228`.
 
+* Drop flake8 from the pre-commit checks. Add ruff and black to pre-commit
+  routines. Store linter configuration in ``pyproject.toml``.
+
 .. _release_2.13.2:
 
 Maintenance
