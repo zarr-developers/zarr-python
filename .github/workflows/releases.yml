@@ -16,7 +16,7 @@ jobs:
           submodules: true
           fetch-depth: 0
 
-      - uses: actions/setup-python@v4.3.0
+      - uses: actions/setup-python@v4.5.0
         name: Install Python
         with:
           python-version: '3.8'
