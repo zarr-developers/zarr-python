@@ -6,13 +6,19 @@ Release notes
     # to document your changes. On releases it will be
     # re-indented so that it does not show up in the notes.
 
-    .. _unreleased:
+.. _unreleased:
 
-    Unreleased
-    ----------
+Unreleased
+----------
 ..
     # .. warning::
     #    Pre-release! Use :command:`pip install --pre zarr` to evaluate this release.
+
+* Improve Zarr V3 support, adding partial store read/write and storage transformers.
+  Add two features of the [v3 spec](https://zarr-specs.readthedocs.io/en/latest/core/v3.0.html):
+  * storage transformers
+  * `get_partial_values` and `set_partial_values`
+  By :user:`Jonathan Striebel <jstriebel>`; :issue:`1096`.
 
 .. _release_2.13.6:
 
@@ -44,7 +50,10 @@ Bug fixes
 Appreciation
 ~~~~~~~~~~~~~
 
-Special thanks to Outreachy participants for contributing to most of the maintenance PRs. Please read the blog post summarising the contribution phase and welcoming new Outreachy interns: https://zarr.dev/blog/welcoming-outreachy-2022-interns/
+Special thanks to Outreachy participants for contributing to most of the
+maintenance PRs. Please read the blog post summarising the contribution phase
+and welcoming new Outreachy interns:
+https://zarr.dev/blog/welcoming-outreachy-2022-interns/
 
 
 Enhancements
