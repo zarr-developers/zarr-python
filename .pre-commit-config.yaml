@@ -11,16 +11,12 @@ repos:
     hooks:
     - id: ruff
       # Respect `exclude` and `extend-exclude` settings.
-      args: ["--force-exclude"] 
-  - repo: https://github.com/PyCQA/flake8
-    rev: 6.0.0
+      args: ["--force-exclude"]
+  - repo: https://github.com/psf/black
+    rev: 22.12.0
     hooks:
-    - id: flake8
-      args: [
-        --max-line-length=100
-      ]
-      exclude: ^(venv/|docs/)
-      types: ['python']
+    - id: black
+      language_version: python3.9
   - repo: https://github.com/codespell-project/codespell
     rev: v2.2.2
     hooks:
