@@ -22,3 +22,4 @@ h5py==3.7.0
 fsspec==2022.11.0
 s3fs==2022.11.0
 moto[server]>=4.0.8
+pre-commit==2.21.0
