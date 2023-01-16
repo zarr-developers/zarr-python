@@ -145,7 +145,7 @@ def create(shape, chunks=True, dtype=None, compressor='default',
         zarr_version = getattr(chunk_store, '_store_version', DEFAULT_ZARR_VERSION)
 
     # handle polymorphic store arg
-    store = normalize_store_arg(store, zarr_version=zarr_version)
+    store = normalize_store_arg(store, zarr_version=zarr_version, mode="w")
     zarr_version = getattr(store, '_store_version', DEFAULT_ZARR_VERSION)
 
     # API compatibility with h5py
