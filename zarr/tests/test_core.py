@@ -9,9 +9,22 @@ from tempfile import mkdtemp
 
 import numpy as np
 import pytest
-from numcodecs import (BZ2, JSON, LZ4, Blosc, Categorize, Delta,
-                       FixedScaleOffset, GZip, MsgPack, Pickle, VLenArray,
-                       VLenBytes, VLenUTF8, Zlib)
+from numcodecs import (
+    BZ2,
+    JSON,
+    LZ4,
+    Blosc,
+    Categorize,
+    Delta,
+    FixedScaleOffset,
+    GZip,
+    MsgPack,
+    Pickle,
+    VLenArray,
+    VLenBytes,
+    VLenUTF8,
+    Zlib,
+)
 from numcodecs.compat import ensure_bytes, ensure_ndarray
 from numcodecs.tests.common import greetings
 from numpy.testing import assert_array_almost_equal, assert_array_equal
@@ -61,7 +74,7 @@ from zarr.tests.util import abs_container, skip_test_env_var, have_fsspec, mktem
 class TestArray(unittest.TestCase):
 
     version = 2
-    root = ''
+    root = ""
     KVStoreClass = KVStore
 
     def test_array_init(self):
@@ -73,7 +86,7 @@ class TestArray(unittest.TestCase):
         assert isinstance(a, Array)
         assert (100,) == a.shape
         assert (10,) == a.chunks
-        assert '' == a.path
+        assert "" == a.path
         assert a.name is None
         assert a.basename is None
         assert store is a.store
@@ -85,14 +98,14 @@ class TestArray(unittest.TestCase):
 
         # initialize at path
         store = self.KVStoreClass(dict())
-        init_array(store, shape=100, chunks=10, path='foo/bar', dtype='<f8')
-        a = Array(store, path='foo/bar', zarr_version=self.version)
+        init_array(store, shape=100, chunks=10, path="foo/bar", dtype="<f8")
+        a = Array(store, path="foo/bar", zarr_version=self.version)
         assert isinstance(a, Array)
         assert (100,) == a.shape
         assert (10,) == a.chunks
-        assert 'foo/bar' == a.path
-        assert '/foo/bar' == a.name
-        assert 'bar' == a.basename
+        assert "foo/bar" == a.path
+        assert "/foo/bar" == a.name
+        assert "bar" == a.basename
         assert store is a.store
         if self.version == 2:
             assert "8fecb7a17ea1493d9c1430d04437b4f5b0b34985" == a.hexdigest()
@@ -105,25 +118,30 @@ class TestArray(unittest.TestCase):
 
         # group is in the way
         store = self.KVStoreClass(dict())
-        init_group(store, path='baz')
+        init_group(store, path="baz")
         with pytest.raises(ValueError):
-            Array(store, path='baz', zarr_version=self.version)
+            Array(store, path="baz", zarr_version=self.version)
 
     def create_array(self, read_only=False, **kwargs):
         store = self.KVStoreClass(dict())
-        kwargs.setdefault('compressor', Zlib(level=1))
-        cache_metadata = kwargs.pop('cache_metadata', True)
-        cache_attrs = kwargs.pop('cache_attrs', True)
-        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
+        kwargs.setdefault("compressor", Zlib(level=1))
+        cache_metadata = kwargs.pop("cache_metadata", True)
+        cache_attrs = kwargs.pop("cache_attrs", True)
+        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
         init_array(store, **kwargs)
-        return Array(store, read_only=read_only, cache_metadata=cache_metadata,
-                     cache_attrs=cache_attrs, write_empty_chunks=write_empty_chunks,
-                     zarr_version=self.version)
+        return Array(
+            store,
+            read_only=read_only,
+            cache_metadata=cache_metadata,
+            cache_attrs=cache_attrs,
+            write_empty_chunks=write_empty_chunks,
+            zarr_version=self.version,
+        )
 
     def test_store_has_text_keys(self):
         # Initialize array
         np.random.seed(42)
-        z = self.create_array(shape=(1050,), chunks=100, dtype='f8', compressor=[])
+        z = self.create_array(shape=(1050,), chunks=100, dtype="f8", compressor=[])
         z[:] = np.random.random(z.shape)
 
         expected_type = str
@@ -137,7 +155,7 @@ class TestArray(unittest.TestCase):
     def test_store_has_binary_values(self):
         # Initialize array
         np.random.seed(42)
-        z = self.create_array(shape=(1050,), chunks=100, dtype='f8', compressor=[])
+        z = self.create_array(shape=(1050,), chunks=100, dtype="f8", compressor=[])
         z[:] = np.random.random(z.shape)
 
         for v in z.chunk_store.values():
@@ -155,7 +173,7 @@ class TestArray(unittest.TestCase):
 
         # Initialize array
         np.random.seed(42)
-        z = self.create_array(shape=(1050,), chunks=100, dtype='f8', compressor=[])
+        z = self.create_array(shape=(1050,), chunks=100, dtype="f8", compressor=[])
         z[:] = np.random.random(z.shape)
 
         # Check in-memory array only contains `bytes`
@@ -169,7 +187,7 @@ class TestArray(unittest.TestCase):
         z = self.create_array(shape=1000, chunks=100)
         if self.version == 3:
             expect_nbytes_stored = sum(
-                buffer_size(v) for k, v in z.store.items() if k != 'zarr.json'
+                buffer_size(v) for k, v in z.store.items() if k != "zarr.json"
             )
         else:
             expect_nbytes_stored = sum(buffer_size(v) for v in z.store.values())
@@ -177,7 +195,7 @@ class TestArray(unittest.TestCase):
         z[:] = 42
         if self.version == 3:
             expect_nbytes_stored = sum(
-                buffer_size(v) for k, v in z.store.items() if k != 'zarr.json'
+                buffer_size(v) for k, v in z.store.items() if k != "zarr.json"
             )
         else:
             expect_nbytes_stored = sum(buffer_size(v) for v in z.store.values())
@@ -186,9 +204,9 @@ class TestArray(unittest.TestCase):
         # mess with store
         try:
             if self.version == 2:
-                z.store[z._key_prefix + 'foo'] = list(range(10))
+                z.store[z._key_prefix + "foo"] = list(range(10))
             else:
-                z.store['meta/root/foo'] = list(range(10))
+                z.store["meta/root/foo"] = list(range(10))
             assert -1 == z.nbytes_stored
         except TypeError:
             pass
@@ -218,8 +236,8 @@ class TestArray(unittest.TestCase):
         assert a.dtype == b.dtype
 
         # check attributes
-        z.attrs['foo'] = 'bar'
-        assert 'bar' == z.attrs['foo']
+        z.attrs["foo"] = "bar"
+        assert "bar" == z.attrs["foo"]
 
         # set data
         z[:] = a
@@ -284,8 +302,7 @@ class TestArray(unittest.TestCase):
             a = np.arange(1050)
             f = np.empty_like(a)
             f.fill(fill_value)
-            z = self.create_array(shape=a.shape, chunks=100, dtype=a.dtype,
-                                  fill_value=fill_value)
+            z = self.create_array(shape=a.shape, chunks=100, dtype=a.dtype, fill_value=fill_value)
             z[190:310] = a[190:310]
 
             assert_array_equal(f[:190], z[:190])
@@ -323,7 +340,7 @@ class TestArray(unittest.TestCase):
 
         # get
         assert_array_equal(a[50:150], z.get_orthogonal_selection(slice(50, 150)))
-        assert_array_equal(a[50:150], z.oindex[50: 150])
+        assert_array_equal(a[50:150], z.oindex[50:150])
         ix = [99, 100, 101]
         bix = np.zeros_like(a, dtype=bool)
         bix[ix] = True
@@ -472,7 +489,7 @@ class TestArray(unittest.TestCase):
         # filter if no fill value?
         shape = 1000, 10
         chunks = 300, 30
-        dtype = 'i8'
+        dtype = "i8"
         z = self.create_array(shape=shape, dtype=dtype, chunks=chunks)
         z[:] = 0
         expect = np.zeros(shape, dtype=dtype)
@@ -482,8 +499,7 @@ class TestArray(unittest.TestCase):
         z.store.close()
 
     def test_array_2d_partial(self):
-        z = self.create_array(shape=(1000, 10), chunks=(100, 2), dtype='i4',
-                              fill_value=0)
+        z = self.create_array(shape=(1000, 10), chunks=(100, 2), dtype="i4", fill_value=0)
 
         # check partial assignment, single row
         c = np.arange(z.shape[1])
@@ -527,11 +543,10 @@ class TestArray(unittest.TestCase):
 
         # 1D
         a = np.arange(1050)
-        for order in 'C', 'F':
-            z = self.create_array(shape=a.shape, chunks=100, dtype=a.dtype,
-                                  order=order)
+        for order in "C", "F":
+            z = self.create_array(shape=a.shape, chunks=100, dtype=a.dtype, order=order)
             assert order == z.order
-            if order == 'F':
+            if order == "F":
                 assert z[:].flags.f_contiguous
             else:
                 assert z[:].flags.c_contiguous
@@ -542,11 +557,10 @@ class TestArray(unittest.TestCase):
 
         # 2D
         a = np.arange(10000).reshape((100, 100))
-        for order in 'C', 'F':
-            z = self.create_array(shape=a.shape, chunks=(10, 10),
-                                  dtype=a.dtype, order=order)
+        for order in "C", "F":
+            z = self.create_array(shape=a.shape, chunks=(10, 10), dtype=a.dtype, order=order)
             assert order == z.order
-            if order == 'F':
+            if order == "F":
                 assert z[:].flags.f_contiguous
             else:
                 assert z[:].flags.c_contiguous
@@ -559,12 +573,12 @@ class TestArray(unittest.TestCase):
     def test_setitem_data_not_shared(self):
         # check that data don't end up being shared with another array
         # https://github.com/alimanfoo/zarr/issues/79
-        z = self.create_array(shape=20, chunks=10, dtype='i4')
-        a = np.arange(20, dtype='i4')
+        z = self.create_array(shape=20, chunks=10, dtype="i4")
+        a = np.arange(20, dtype="i4")
         z[:] = a
-        assert_array_equal(z[:], np.arange(20, dtype='i4'))
+        assert_array_equal(z[:], np.arange(20, dtype="i4"))
         a[:] = 0
-        assert_array_equal(z[:], np.arange(20, dtype='i4'))
+        assert_array_equal(z[:], np.arange(20, dtype="i4"))
         z.store.close()
 
     def expected(self):
@@ -582,29 +596,36 @@ class TestArray(unittest.TestCase):
         found = []
 
         # Check basic 1-D array
-        z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
+        z = self.create_array(shape=(1050,), chunks=100, dtype="<i4")
         found.append(z.hexdigest())
         z.store.close()
 
         # Check basic 1-D array with different type
-        z = self.create_array(shape=(1050,), chunks=100, dtype='<f4')
+        z = self.create_array(shape=(1050,), chunks=100, dtype="<f4")
         found.append(z.hexdigest())
         z.store.close()
 
         # Check basic 2-D array
-        z = self.create_array(shape=(20, 35,), chunks=10, dtype='<i4')
+        z = self.create_array(
+            shape=(
+                20,
+                35,
+            ),
+            chunks=10,
+            dtype="<i4",
+        )
         found.append(z.hexdigest())
         z.store.close()
 
         # Check basic 1-D array with some data
-        z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
-        z[200:400] = np.arange(200, 400, dtype='i4')
+        z = self.create_array(shape=(1050,), chunks=100, dtype="<i4")
+        z[200:400] = np.arange(200, 400, dtype="i4")
         found.append(z.hexdigest())
         z.store.close()
 
         # Check basic 1-D array with attributes
-        z = self.create_array(shape=(1050,), chunks=100, dtype='<i4')
-        z.attrs['foo'] = 'bar'
+        z = self.create_array(shape=(1050,), chunks=100, dtype="<i4")
+        z.attrs["foo"] = "bar"
         found.append(z.hexdigest())
         z.store.close()
 
@@ -612,31 +633,30 @@ class TestArray(unittest.TestCase):
 
     def test_resize_1d(self):
 
-        z = self.create_array(shape=105, chunks=10, dtype='i4',
-                              fill_value=0)
-        a = np.arange(105, dtype='i4')
+        z = self.create_array(shape=105, chunks=10, dtype="i4", fill_value=0)
+        a = np.arange(105, dtype="i4")
         z[:] = a
         assert (105,) == z.shape
         assert (105,) == z[:].shape
-        assert np.dtype('i4') == z.dtype
-        assert np.dtype('i4') == z[:].dtype
+        assert np.dtype("i4") == z.dtype
+        assert np.dtype("i4") == z[:].dtype
         assert (10,) == z.chunks
         assert_array_equal(a, z[:])
 
         z.resize(205)
         assert (205,) == z.shape
         assert (205,) == z[:].shape
-        assert np.dtype('i4') == z.dtype
-        assert np.dtype('i4') == z[:].dtype
+        assert np.dtype("i4") == z.dtype
+        assert np.dtype("i4") == z[:].dtype
         assert (10,) == z.chunks
         assert_array_equal(a, z[:105])
-        assert_array_equal(np.zeros(100, dtype='i4'), z[105:])
+        assert_array_equal(np.zeros(100, dtype="i4"), z[105:])
 
         z.resize(55)
         assert (55,) == z.shape
         assert (55,) == z[:].shape
-        assert np.dtype('i4') == z.dtype
-        assert np.dtype('i4') == z[:].dtype
+        assert np.dtype("i4") == z.dtype
+        assert np.dtype("i4") == z[:].dtype
         assert (10,) == z.chunks
         assert_array_equal(a[:55], z[:])
 
@@ -649,51 +669,50 @@ class TestArray(unittest.TestCase):
 
     def test_resize_2d(self):
 
-        z = self.create_array(shape=(105, 105), chunks=(10, 10), dtype='i4',
-                              fill_value=0)
-        a = np.arange(105*105, dtype='i4').reshape((105, 105))
+        z = self.create_array(shape=(105, 105), chunks=(10, 10), dtype="i4", fill_value=0)
+        a = np.arange(105 * 105, dtype="i4").reshape((105, 105))
         z[:] = a
         assert (105, 105) == z.shape
         assert (105, 105) == z[:].shape
-        assert np.dtype('i4') == z.dtype
-        assert np.dtype('i4') == z[:].dtype
+        assert np.dtype("i4") == z.dtype
+        assert np.dtype("i4") == z[:].dtype
         assert (10, 10) == z.chunks
         assert_array_equal(a, z[:])
 
         z.resize((205, 205))
         assert (205, 205) == z.shape
         assert (205, 205) == z[:].shape
-        assert np.dtype('i4') == z.dtype
-        assert np.dtype('i4') == z[:].dtype
+        assert np.dtype("i4") == z.dtype
+        assert np.dtype("i4") == z[:].dtype
         assert (10, 10) == z.chunks
         assert_array_equal(a, z[:105, :105])
-        assert_array_equal(np.zeros((100, 205), dtype='i4'), z[105:, :])
-        assert_array_equal(np.zeros((205, 100), dtype='i4'), z[:, 105:])
+        assert_array_equal(np.zeros((100, 205), dtype="i4"), z[105:, :])
+        assert_array_equal(np.zeros((205, 100), dtype="i4"), z[:, 105:])
 
         z.resize((55, 55))
         assert (55, 55) == z.shape
         assert (55, 55) == z[:].shape
-        assert np.dtype('i4') == z.dtype
-        assert np.dtype('i4') == z[:].dtype
+        assert np.dtype("i4") == z.dtype
+        assert np.dtype("i4") == z[:].dtype
         assert (10, 10) == z.chunks
         assert_array_equal(a[:55, :55], z[:])
 
         z.resize((55, 1))
         assert (55, 1) == z.shape
         assert (55, 1) == z[:].shape
-        assert np.dtype('i4') == z.dtype
-        assert np.dtype('i4') == z[:].dtype
+        assert np.dtype("i4") == z.dtype
+        assert np.dtype("i4") == z[:].dtype
         assert (10, 10) == z.chunks
         assert_array_equal(a[:55, :1], z[:])
 
         z.resize((1, 55))
         assert (1, 55) == z.shape
         assert (1, 55) == z[:].shape
-        assert np.dtype('i4') == z.dtype
-        assert np.dtype('i4') == z[:].dtype
+        assert np.dtype("i4") == z.dtype
+        assert np.dtype("i4") == z[:].dtype
         assert (10, 10) == z.chunks
         assert_array_equal(a[:1, :10], z[:, :10])
-        assert_array_equal(np.zeros((1, 55-10), dtype='i4'), z[:, 10:55])
+        assert_array_equal(np.zeros((1, 55 - 10), dtype="i4"), z[:, 10:55])
 
         # via shape setter
         z.shape = (105, 105)
@@ -733,7 +752,7 @@ class TestArray(unittest.TestCase):
 
     def test_append_2d(self):
 
-        a = np.arange(105*105, dtype='i4').reshape((105, 105))
+        a = np.arange(105 * 105, dtype="i4").reshape((105, 105))
         z = self.create_array(shape=a.shape, chunks=(10, 10), dtype=a.dtype)
         z[:] = a
         assert a.shape == z.shape
@@ -742,7 +761,7 @@ class TestArray(unittest.TestCase):
         actual = z[:]
         assert_array_equal(a, actual)
 
-        b = np.arange(105*105, 2*105*105, dtype='i4').reshape((105, 105))
+        b = np.arange(105 * 105, 2 * 105 * 105, dtype="i4").reshape((105, 105))
         e = np.append(a, b, axis=0)
         z.append(b)
         assert e.shape == z.shape
@@ -755,7 +774,7 @@ class TestArray(unittest.TestCase):
 
     def test_append_2d_axis(self):
 
-        a = np.arange(105*105, dtype='i4').reshape((105, 105))
+        a = np.arange(105 * 105, dtype="i4").reshape((105, 105))
         z = self.create_array(shape=a.shape, chunks=(10, 10), dtype=a.dtype)
         z[:] = a
         assert a.shape == z.shape
@@ -763,7 +782,7 @@ class TestArray(unittest.TestCase):
         assert (10, 10) == z.chunks
         assert_array_equal(a, z[:])
 
-        b = np.arange(105*105, 2*105*105, dtype='i4').reshape((105, 105))
+        b = np.arange(105 * 105, 2 * 105 * 105, dtype="i4").reshape((105, 105))
         e = np.append(a, b, axis=1)
         z.append(b, axis=1)
         assert e.shape == z.shape
@@ -814,8 +833,9 @@ class TestArray(unittest.TestCase):
     def test_pickle(self):
 
         # setup array
-        z = self.create_array(shape=1000, chunks=100, dtype=int, cache_metadata=False,
-                              cache_attrs=False)
+        z = self.create_array(
+            shape=1000, chunks=100, dtype=int, cache_metadata=False, cache_attrs=False
+        )
         shape = z.shape
         chunks = z.chunks
         dtype = z.dtype
@@ -858,28 +878,24 @@ class TestArray(unittest.TestCase):
         assert np.mean(a) == np.mean(z)
         assert_array_equal(np.mean(a, axis=1), np.mean(z, axis=1))
         condition = np.random.randint(0, 2, size=100, dtype=bool)
-        assert_array_equal(np.compress(condition, a, axis=0),
-                           np.compress(condition, z, axis=0))
+        assert_array_equal(np.compress(condition, a, axis=0), np.compress(condition, z, axis=0))
         indices = np.random.choice(100, size=50, replace=True)
-        assert_array_equal(np.take(a, indices, axis=1),
-                           np.take(z, indices, axis=1))
+        assert_array_equal(np.take(a, indices, axis=1), np.take(z, indices, axis=1))
 
         z.store.close()
 
         # use zarr array as indices or condition
-        zc = self.create_array(shape=condition.shape, dtype=condition.dtype,
-                               chunks=10, filters=None)
+        zc = self.create_array(
+            shape=condition.shape, dtype=condition.dtype, chunks=10, filters=None
+        )
         zc[:] = condition
-        assert_array_equal(np.compress(condition, a, axis=0),
-                           np.compress(zc, a, axis=0))
+        assert_array_equal(np.compress(condition, a, axis=0), np.compress(zc, a, axis=0))
         zc.store.close()
 
-        zi = self.create_array(shape=indices.shape, dtype=indices.dtype,
-                               chunks=10, filters=None)
+        zi = self.create_array(shape=indices.shape, dtype=indices.dtype, chunks=10, filters=None)
         zi[:] = indices
         # this triggers __array__() call with dtype argument
-        assert_array_equal(np.take(a, indices, axis=1),
-                           np.take(a, zi, axis=1))
+        assert_array_equal(np.take(a, indices, axis=1), np.take(a, zi, axis=1))
         zi.store.close()
 
     # noinspection PyStatementEffect
@@ -1010,18 +1026,16 @@ class TestArray(unittest.TestCase):
     def test_nchunks_initialized(self):
         for fill_value in (0, 1.0, np.nan):
             if isinstance(fill_value, int):
-                dtype = 'int'
+                dtype = "int"
             else:
-                dtype = 'float'
-            z = self.create_array(shape=100,
-                                  chunks=10,
-                                  fill_value=fill_value,
-                                  dtype=dtype,
-                                  write_empty_chunks=True)
+                dtype = "float"
+            z = self.create_array(
+                shape=100, chunks=10, fill_value=fill_value, dtype=dtype, write_empty_chunks=True
+            )
 
             assert 0 == z.nchunks_initialized
             # manually put something into the store to confuse matters
-            z.store[self.root + 'foo'] = b'bar'
+            z.store[self.root + "foo"] = b"bar"
             assert 0 == z.nchunks_initialized
             z[:] = 42
             assert 10 == z.nchunks_initialized
@@ -1035,13 +1049,7 @@ class TestArray(unittest.TestCase):
 
         dt = "(2, 2)f4"
         # setup some data
-        d = np.array([((0, 1),
-                       (1, 2)),
-                      ((1, 2),
-                       (2, 3)),
-                      ((2, 3),
-                       (3, 4))],
-                     dtype=dt)
+        d = np.array([((0, 1), (1, 2)), ((1, 2), (2, 3)), ((2, 3), (3, 4))], dtype=dt)
 
         for a in (d, d[:0]):
             for fill_value in None, 0:
@@ -1063,7 +1071,7 @@ class TestArray(unittest.TestCase):
 
                 # check use of fill value before array is initialised with data
                 if fill_value is not None:
-                    if fill_value == b'':
+                    if fill_value == b"":
                         # numpy 1.14 compatibility
                         np_fill_value = np.array(fill_value, dtype=a.dtype.str).view(a.dtype)[()]
                     else:
@@ -1095,34 +1103,45 @@ class TestArray(unittest.TestCase):
                 z.store.close()
 
     def test_structured_array(self):
-        d = np.array([(b'aaa', 1, 4.2),
-                      (b'bbb', 2, 8.4),
-                      (b'ccc', 3, 12.6)],
-                     dtype=[('foo', 'S3'), ('bar', 'i4'), ('baz', 'f8')])
-        fill_values = None, b'', (b'zzz', 42, 16.8)
+        d = np.array(
+            [(b"aaa", 1, 4.2), (b"bbb", 2, 8.4), (b"ccc", 3, 12.6)],
+            dtype=[("foo", "S3"), ("bar", "i4"), ("baz", "f8")],
+        )
+        fill_values = None, b"", (b"zzz", 42, 16.8)
         self.check_structured_array(d, fill_values)
 
     def test_structured_array_subshapes(self):
-        d = np.array([(0, ((0, 1, 2), (1, 2, 3)), b'aaa'),
-                      (1, ((1, 2, 3), (2, 3, 4)), b'bbb'),
-                      (2, ((2, 3, 4), (3, 4, 5)), b'ccc')],
-                     dtype=[('foo', 'i8'), ('bar', '(2, 3)f4'), ('baz', 'S3')])
-        fill_values = None, b'', (0, ((0, 0, 0), (1, 1, 1)), b'zzz')
+        d = np.array(
+            [
+                (0, ((0, 1, 2), (1, 2, 3)), b"aaa"),
+                (1, ((1, 2, 3), (2, 3, 4)), b"bbb"),
+                (2, ((2, 3, 4), (3, 4, 5)), b"ccc"),
+            ],
+            dtype=[("foo", "i8"), ("bar", "(2, 3)f4"), ("baz", "S3")],
+        )
+        fill_values = None, b"", (0, ((0, 0, 0), (1, 1, 1)), b"zzz")
         self.check_structured_array(d, fill_values)
 
     def test_structured_array_nested(self):
-        d = np.array([(0, (0, ((0, 1), (1, 2), (2, 3)), 0), b'aaa'),
-                      (1, (1, ((1, 2), (2, 3), (3, 4)), 1), b'bbb'),
-                      (2, (2, ((2, 3), (3, 4), (4, 5)), 2), b'ccc')],
-                     dtype=[('foo', 'i8'), ('bar', [('foo', 'i4'), ('bar', '(3, 2)f4'),
-                                                    ('baz', 'u1')]), ('baz', 'S3')])
-        fill_values = None, b'', (0, (0, ((0, 0), (1, 1), (2, 2)), 0), b'zzz')
+        d = np.array(
+            [
+                (0, (0, ((0, 1), (1, 2), (2, 3)), 0), b"aaa"),
+                (1, (1, ((1, 2), (2, 3), (3, 4)), 1), b"bbb"),
+                (2, (2, ((2, 3), (3, 4), (4, 5)), 2), b"ccc"),
+            ],
+            dtype=[
+                ("foo", "i8"),
+                ("bar", [("foo", "i4"), ("bar", "(3, 2)f4"), ("baz", "u1")]),
+                ("baz", "S3"),
+            ],
+        )
+        fill_values = None, b"", (0, (0, ((0, 0), (1, 1), (2, 2)), 0), b"zzz")
         self.check_structured_array(d, fill_values)
 
     def test_dtypes(self):
 
         # integers
-        for dtype in 'u1', 'u2', 'u4', 'u8', 'i1', 'i2', 'i4', 'i8':
+        for dtype in "u1", "u2", "u4", "u8", "i1", "i2", "i4", "i8":
             z = self.create_array(shape=10, chunks=3, dtype=dtype)
             assert z.dtype == np.dtype(dtype)
             a = np.arange(z.shape[0], dtype=dtype)
@@ -1131,7 +1150,7 @@ class TestArray(unittest.TestCase):
             z.store.close()
 
         # floats
-        for dtype in 'f2', 'f4', 'f8':
+        for dtype in "f2", "f4", "f8":
             z = self.create_array(shape=10, chunks=3, dtype=dtype)
             assert z.dtype == np.dtype(dtype)
             a = np.linspace(0, 1, z.shape[0], dtype=dtype)
@@ -1140,7 +1159,7 @@ class TestArray(unittest.TestCase):
             z.store.close()
 
         # complex
-        for dtype in 'c8', 'c16':
+        for dtype in "c8", "c16":
             z = self.create_array(shape=10, chunks=3, dtype=dtype)
             assert z.dtype == np.dtype(dtype)
             a = np.linspace(0, 1, z.shape[0], dtype=dtype)
@@ -1150,36 +1169,36 @@ class TestArray(unittest.TestCase):
             z.store.close()
 
         # datetime, timedelta
-        for base_type in 'Mm':
-            for resolution in 'D', 'us', 'ns':
-                dtype = '{}8[{}]'.format(base_type, resolution)
+        for base_type in "Mm":
+            for resolution in "D", "us", "ns":
+                dtype = "{}8[{}]".format(base_type, resolution)
                 z = self.create_array(shape=100, dtype=dtype, fill_value=0)
                 assert z.dtype == np.dtype(dtype)
-                a = np.random.randint(np.iinfo('i8').min, np.iinfo('i8').max,
-                                      size=z.shape[0],
-                                      dtype='i8').view(dtype)
+                a = np.random.randint(
+                    np.iinfo("i8").min, np.iinfo("i8").max, size=z.shape[0], dtype="i8"
+                ).view(dtype)
                 z[:] = a
                 assert_array_equal(a, z[:])
                 z.store.close()
 
         # unicode and bytestring dtypes
-        for dtype in ['S4', 'S6', 'U5', 'U5']:
+        for dtype in ["S4", "S6", "U5", "U5"]:
             n = 10
             z = self.create_array(shape=n, chunks=3, dtype=dtype)
             assert z.dtype == np.dtype(dtype)
-            if dtype.startswith('S'):
-                a = np.asarray([b'name'] * n, dtype=dtype)
+            if dtype.startswith("S"):
+                a = np.asarray([b"name"] * n, dtype=dtype)
             else:
-                a = np.asarray(['§Æ¥¿é'] * n, dtype=dtype)
+                a = np.asarray(["§Æ¥¿é"] * n, dtype=dtype)
             z[:] = a
             np.all(a == z[:])
             z.store.close()
 
         # check that datetime generic units are not allowed
         with pytest.raises(ValueError):
-            self.create_array(shape=100, dtype='M8')
+            self.create_array(shape=100, dtype="M8")
         with pytest.raises(ValueError):
-            self.create_array(shape=100, dtype='m8')
+            self.create_array(shape=100, dtype="m8")
 
     def test_object_arrays(self):
 
@@ -1195,48 +1214,48 @@ class TestArray(unittest.TestCase):
 
         # create an object array using msgpack
         z = self.create_array(shape=10, chunks=3, dtype=object, object_codec=MsgPack())
-        z[0] = 'foo'
-        assert z[0] == 'foo'
-        z[1] = b'bar'
-        assert z[1] == b'bar'
+        z[0] = "foo"
+        assert z[0] == "foo"
+        z[1] = b"bar"
+        assert z[1] == b"bar"
         z[2] = 1
         assert z[2] == 1
-        z[3] = [2, 4, 6, 'baz']
-        assert z[3] == [2, 4, 6, 'baz']
-        z[4] = {'a': 'b', 'c': 'd'}
-        assert z[4] == {'a': 'b', 'c': 'd'}
+        z[3] = [2, 4, 6, "baz"]
+        assert z[3] == [2, 4, 6, "baz"]
+        z[4] = {"a": "b", "c": "d"}
+        assert z[4] == {"a": "b", "c": "d"}
         a = z[:]
         assert a.dtype == object
         z.store.close()
 
         # create an object array using pickle
         z = self.create_array(shape=10, chunks=3, dtype=object, object_codec=Pickle())
-        z[0] = 'foo'
-        assert z[0] == 'foo'
-        z[1] = b'bar'
-        assert z[1] == b'bar'
+        z[0] = "foo"
+        assert z[0] == "foo"
+        z[1] = b"bar"
+        assert z[1] == b"bar"
         z[2] = 1
         assert z[2] == 1
-        z[3] = [2, 4, 6, 'baz']
-        assert z[3] == [2, 4, 6, 'baz']
-        z[4] = {'a': 'b', 'c': 'd'}
-        assert z[4] == {'a': 'b', 'c': 'd'}
+        z[3] = [2, 4, 6, "baz"]
+        assert z[3] == [2, 4, 6, "baz"]
+        z[4] = {"a": "b", "c": "d"}
+        assert z[4] == {"a": "b", "c": "d"}
         a = z[:]
         assert a.dtype == object
         z.store.close()
 
         # create an object array using JSON
         z = self.create_array(shape=10, chunks=3, dtype=object, object_codec=JSON())
-        z[0] = 'foo'
-        assert z[0] == 'foo'
+        z[0] = "foo"
+        assert z[0] == "foo"
         # z[1] = b'bar'
         # assert z[1] == b'bar'  # not supported for JSON
         z[2] = 1
         assert z[2] == 1
-        z[3] = [2, 4, 6, 'baz']
-        assert z[3] == [2, 4, 6, 'baz']
-        z[4] = {'a': 'b', 'c': 'd'}
-        assert z[4] == {'a': 'b', 'c': 'd'}
+        z[3] = [2, 4, 6, "baz"]
+        assert z[3] == [2, 4, 6, "baz"]
+        z[4] = {"a": "b", "c": "d"}
+        assert z[4] == {"a": "b", "c": "d"}
         a = z[:]
         assert a.dtype == object
         z.store.close()
@@ -1245,12 +1264,12 @@ class TestArray(unittest.TestCase):
 
         data = np.array(greetings * 1000, dtype=object)
         z = self.create_array(shape=data.shape, dtype=object, object_codec=VLenUTF8())
-        z[0] = 'foo'
-        assert z[0] == 'foo'
-        z[1] = 'bar'
-        assert z[1] == 'bar'
-        z[2] = 'baz'
-        assert z[2] == 'baz'
+        z[0] = "foo"
+        assert z[0] == "foo"
+        z[1] = "bar"
+        assert z[1] == "bar"
+        z[2] = "baz"
+        assert z[2] == "baz"
         z[:] = data
         a = z[:]
         assert a.dtype == object
@@ -1280,24 +1299,25 @@ class TestArray(unittest.TestCase):
         assert_array_equal(data, z[:])
         z.store.close()
 
-        z = self.create_array(shape=data.shape, dtype=object,
-                              object_codec=Categorize(greetings, dtype=object))
+        z = self.create_array(
+            shape=data.shape, dtype=object, object_codec=Categorize(greetings, dtype=object)
+        )
         z[:] = data
         assert_array_equal(data, z[:])
         z.store.close()
 
     def test_object_arrays_vlen_bytes(self):
 
-        greetings_bytes = [g.encode('utf8') for g in greetings]
+        greetings_bytes = [g.encode("utf8") for g in greetings]
         data = np.array(greetings_bytes * 1000, dtype=object)
 
         z = self.create_array(shape=data.shape, dtype=object, object_codec=VLenBytes())
-        z[0] = b'foo'
-        assert z[0] == b'foo'
-        z[1] = b'bar'
-        assert z[1] == b'bar'
-        z[2] = b'baz'
-        assert z[2] == b'baz'
+        z[0] = b"foo"
+        assert z[0] == b"foo"
+        z[1] = b"bar"
+        assert z[1] == b"bar"
+        z[2] = b"baz"
+        assert z[2] == b"baz"
         z[:] = data
         a = z[:]
         assert a.dtype == object
@@ -1319,9 +1339,9 @@ class TestArray(unittest.TestCase):
 
     def test_object_arrays_vlen_array(self):
 
-        data = np.array([np.array([1, 3, 7]),
-                         np.array([5]),
-                         np.array([2, 8, 12])] * 1000, dtype=object)
+        data = np.array(
+            [np.array([1, 3, 7]), np.array([5]), np.array([2, 8, 12])] * 1000, dtype=object
+        )
 
         def compare_arrays(expected, actual, item_dtype):
             assert isinstance(actual, np.ndarray)
@@ -1332,7 +1352,7 @@ class TestArray(unittest.TestCase):
                 assert_array_equal(ev, av)
                 assert av.dtype == item_dtype
 
-        codecs = VLenArray(int), VLenArray('<u4')
+        codecs = VLenArray(int), VLenArray("<u4")
         for codec in codecs:
             z = self.create_array(shape=data.shape, dtype=object, object_codec=codec)
             z[0] = np.array([4, 7])
@@ -1344,8 +1364,8 @@ class TestArray(unittest.TestCase):
             z.store.close()
 
         # convenience API
-        for item_type in 'int', '<u4':
-            z = self.create_array(shape=data.shape, dtype='array:{}'.format(item_type))
+        for item_type in "int", "<u4":
+            z = self.create_array(shape=data.shape, dtype="array:{}".format(item_type))
             assert z.dtype == object
             assert isinstance(z.filters[0], VLenArray)
             assert z.filters[0].dtype == np.dtype(item_type)
@@ -1356,11 +1376,10 @@ class TestArray(unittest.TestCase):
     def test_object_arrays_danger(self):
 
         # do something dangerous - manually force an object array with no object codec
-        z = self.create_array(shape=5, chunks=2, dtype=object, fill_value=0,
-                              object_codec=MsgPack())
+        z = self.create_array(shape=5, chunks=2, dtype=object, fill_value=0, object_codec=MsgPack())
         z._filters = None  # wipe filters
         with pytest.raises(RuntimeError):
-            z[0] = 'foo'
+            z[0] = "foo"
         with pytest.raises(RuntimeError):
             z[:] = 42
         z.store.close()
@@ -1368,10 +1387,13 @@ class TestArray(unittest.TestCase):
         # do something else dangerous
         data = greetings * 10
         for compressor in Zlib(1), Blosc():
-            z = self.create_array(shape=len(data), chunks=30, dtype=object,
-                                  object_codec=Categorize(greetings,
-                                                          dtype=object),
-                                  compressor=compressor)
+            z = self.create_array(
+                shape=len(data),
+                chunks=30,
+                dtype=object,
+                object_codec=Categorize(greetings, dtype=object),
+                compressor=compressor,
+            )
             z[:] = data
             v = z.view(filters=[])
             with pytest.raises(RuntimeError):
@@ -1386,8 +1408,9 @@ class TestArray(unittest.TestCase):
             z = self.create_array(shape=10, chunks=5, dtype="i4", object_codec=JSON())
         z.store.close()
 
-    @unittest.skipIf(parse_version(np.__version__) < parse_version('1.14.0'),
-                     "unsupported numpy version")
+    @unittest.skipIf(
+        parse_version(np.__version__) < parse_version("1.14.0"), "unsupported numpy version"
+    )
     def test_structured_array_contain_object(self):
 
         if "PartialRead" in self.__class__.__name__:
@@ -1395,9 +1418,8 @@ class TestArray(unittest.TestCase):
 
         # ----------- creation --------------
 
-        structured_dtype = [('c_obj', object), ('c_int', int)]
-        a = np.array([(b'aaa', 1),
-                      (b'bbb', 2)], dtype=structured_dtype)
+        structured_dtype = [("c_obj", object), ("c_int", int)]
+        a = np.array([(b"aaa", 1), (b"bbb", 2)], dtype=structured_dtype)
 
         # zarr-array with structured dtype require object codec
         with pytest.raises(ValueError):
@@ -1414,15 +1436,15 @@ class TestArray(unittest.TestCase):
 
         assert za[0] == a[0]
 
-        za[0] = (b'ccc', 3)
-        za[1:2] = np.array([(b'ddd', 4)], dtype=structured_dtype)  # ToDo: not work with list
-        assert_array_equal(za[:], np.array([(b'ccc', 3), (b'ddd', 4)], dtype=structured_dtype))
+        za[0] = (b"ccc", 3)
+        za[1:2] = np.array([(b"ddd", 4)], dtype=structured_dtype)  # ToDo: not work with list
+        assert_array_equal(za[:], np.array([(b"ccc", 3), (b"ddd", 4)], dtype=structured_dtype))
 
-        za['c_obj'] = [b'eee', b'fff']
-        za['c_obj', 0] = b'ggg'
-        assert_array_equal(za[:], np.array([(b'ggg', 3), (b'fff', 4)], dtype=structured_dtype))
-        assert za['c_obj', 0] == b'ggg'
-        assert za[1, 'c_int'] == 4
+        za["c_obj"] = [b"eee", b"fff"]
+        za["c_obj", 0] = b"ggg"
+        assert_array_equal(za[:], np.array([(b"ggg", 3), (b"fff", 4)], dtype=structured_dtype))
+        assert za["c_obj", 0] == b"ggg"
+        assert za[1, "c_int"] == 4
 
     def test_iteration_exceptions(self):
         # zero d array
@@ -1441,12 +1463,7 @@ class TestArray(unittest.TestCase):
         z = self.create_array(shape=a.shape, dtype=int)
         z[...] = a
 
-        params = (
-            (-1, 0),
-            (0, -1),
-            (0.5, 1),
-            (0, 0.5)
-        )
+        params = ((-1, 0), (0, -1), (0.5, 1), (0, 0.5))
 
         for start, end in params:
             with pytest.raises(ValueError):
@@ -1500,16 +1517,13 @@ class TestArray(unittest.TestCase):
             a = np.arange(np.product(shape)).reshape(shape)
             z[:] = a
             end_array = min(end, a.shape[0])
-            for expect, actual in zip_longest(a[start:end_array],
-                                              z.islice(start, end)):
+            for expect, actual in zip_longest(a[start:end_array], z.islice(start, end)):
                 assert_array_equal(expect, actual)
-            if hasattr(z.store, 'close'):
+            if hasattr(z.store, "close"):
                 z.store.close()
 
     def test_compressors(self):
-        compressors = [
-            None, BZ2(), Blosc(), LZ4(), Zlib(), GZip()
-        ]
+        compressors = [None, BZ2(), Blosc(), LZ4(), Zlib(), GZip()]
         if LZMA:
             compressors.append(LZMA())
         for compressor in compressors:
@@ -1521,11 +1535,11 @@ class TestArray(unittest.TestCase):
             a.store.close()
 
     def test_endian(self):
-        dtype = np.dtype('float32')
-        a1 = self.create_array(shape=1000, chunks=100, dtype=dtype.newbyteorder('<'))
+        dtype = np.dtype("float32")
+        a1 = self.create_array(shape=1000, chunks=100, dtype=dtype.newbyteorder("<"))
         a1[:] = 1
         x1 = a1[:]
-        a2 = self.create_array(shape=1000, chunks=100, dtype=dtype.newbyteorder('>'))
+        a2 = self.create_array(shape=1000, chunks=100, dtype=dtype.newbyteorder(">"))
         a2[:] = 1
         x2 = a2[:]
         assert_array_equal(x1, x2)
@@ -1533,46 +1547,52 @@ class TestArray(unittest.TestCase):
         a2.store.close()
 
     def test_attributes(self):
-        a = self.create_array(shape=10, chunks=10, dtype='i8')
-        a.attrs['foo'] = 'bar'
+        a = self.create_array(shape=10, chunks=10, dtype="i8")
+        a.attrs["foo"] = "bar"
         assert a.attrs.key in a.store
         attrs = json_loads(a.store[a.attrs.key])
         if self.version > 2:
             # in v3, attributes are in a sub-dictionary of the metadata
-            attrs = attrs['attributes']
-        assert 'foo' in attrs and attrs['foo'] == 'bar'
+            attrs = attrs["attributes"]
+        assert "foo" in attrs and attrs["foo"] == "bar"
 
-        a.attrs['bar'] = 'foo'
+        a.attrs["bar"] = "foo"
         assert a.attrs.key in a.store
         attrs = json_loads(a.store[a.attrs.key])
         if self.version > 2:
             # in v3, attributes are in a sub-dictionary of the metadata
-            attrs = attrs['attributes']
-        assert 'foo' in attrs and attrs['foo'] == 'bar'
-        assert 'bar' in attrs and attrs['bar'] == 'foo'
+            attrs = attrs["attributes"]
+        assert "foo" in attrs and attrs["foo"] == "bar"
+        assert "bar" in attrs and attrs["bar"] == "foo"
         a.store.close()
 
     def test_structured_with_object(self):
-        a = self.create_array(fill_value=(0.0, None),
-                              shape=10,
-                              chunks=10,
-                              dtype=[('x', float), ('y', object)],
-                              object_codec=Pickle())
+        a = self.create_array(
+            fill_value=(0.0, None),
+            shape=10,
+            chunks=10,
+            dtype=[("x", float), ("y", object)],
+            object_codec=Pickle(),
+        )
         assert tuple(a[0]) == (0.0, None)
 
 
 class TestArrayWithPath(TestArray):
-
     @staticmethod
     def create_array(read_only=False, **kwargs):
         store = KVStore(dict())
-        cache_metadata = kwargs.pop('cache_metadata', True)
-        cache_attrs = kwargs.pop('cache_attrs', True)
-        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
-        init_array(store, path='foo/bar', **kwargs)
-        return Array(store, path='foo/bar', read_only=read_only,
-                     cache_metadata=cache_metadata, cache_attrs=cache_attrs,
-                     write_empty_chunks=write_empty_chunks)
+        cache_metadata = kwargs.pop("cache_metadata", True)
+        cache_attrs = kwargs.pop("cache_attrs", True)
+        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
+        init_array(store, path="foo/bar", **kwargs)
+        return Array(
+            store,
+            path="foo/bar",
+            read_only=read_only,
+            cache_metadata=cache_metadata,
+            cache_attrs=cache_attrs,
+            write_empty_chunks=write_empty_chunks,
+        )
 
     def test_nchunks_initialized(self):
         pass
@@ -1583,42 +1603,46 @@ class TestArrayWithPath(TestArray):
             "1437428e69754b1e1a38bd7fc9e43669577620db",
             "6c530b6b9d73e108cc5ee7b6be3d552cc994bdbe",
             "4c0a76fb1222498e09dcd92f7f9221d6cea8b40e",
-            "05b0663ffe1785f38d3a459dec17e57a18f254af"
+            "05b0663ffe1785f38d3a459dec17e57a18f254af",
         ]
 
     def test_nbytes_stored(self):
 
         # MemoryStore as store
         z = self.create_array(shape=1000, chunks=100)
-        expect_nbytes_stored = sum(buffer_size(v)
-                                   for k, v in z.store.items()
-                                   if k.startswith('foo/bar/'))
+        expect_nbytes_stored = sum(
+            buffer_size(v) for k, v in z.store.items() if k.startswith("foo/bar/")
+        )
         assert expect_nbytes_stored == z.nbytes_stored
         z[:] = 42
-        expect_nbytes_stored = sum(buffer_size(v)
-                                   for k, v in z.store.items()
-                                   if k.startswith('foo/bar/'))
+        expect_nbytes_stored = sum(
+            buffer_size(v) for k, v in z.store.items() if k.startswith("foo/bar/")
+        )
         assert expect_nbytes_stored == z.nbytes_stored
 
         # mess with store
-        z.store[z._key_prefix + 'foo'] = list(range(10))
+        z.store[z._key_prefix + "foo"] = list(range(10))
         assert -1 == z.nbytes_stored
 
 
 class TestArrayWithChunkStore(TestArray):
-
     @staticmethod
     def create_array(read_only=False, **kwargs):
         store = KVStore(dict())
         # separate chunk store
         chunk_store = KVStore(dict())
-        cache_metadata = kwargs.pop('cache_metadata', True)
-        cache_attrs = kwargs.pop('cache_attrs', True)
-        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
+        cache_metadata = kwargs.pop("cache_metadata", True)
+        cache_attrs = kwargs.pop("cache_attrs", True)
+        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
         init_array(store, chunk_store=chunk_store, **kwargs)
-        return Array(store, read_only=read_only, chunk_store=chunk_store,
-                     cache_metadata=cache_metadata, cache_attrs=cache_attrs,
-                     write_empty_chunks=write_empty_chunks)
+        return Array(
+            store,
+            read_only=read_only,
+            chunk_store=chunk_store,
+            cache_metadata=cache_metadata,
+            cache_attrs=cache_attrs,
+            write_empty_chunks=write_empty_chunks,
+        )
 
     def expected(self):
         return [
@@ -1626,41 +1650,43 @@ class TestArrayWithChunkStore(TestArray):
             "1437428e69754b1e1a38bd7fc9e43669577620db",
             "6c530b6b9d73e108cc5ee7b6be3d552cc994bdbe",
             "4c0a76fb1222498e09dcd92f7f9221d6cea8b40e",
-            "05b0663ffe1785f38d3a459dec17e57a18f254af"
+            "05b0663ffe1785f38d3a459dec17e57a18f254af",
         ]
 
     def test_nbytes_stored(self):
 
         z = self.create_array(shape=1000, chunks=100)
         expect_nbytes_stored = sum(buffer_size(v) for v in z.store.values())
-        expect_nbytes_stored += sum(buffer_size(v)
-                                    for v in z.chunk_store.values())
+        expect_nbytes_stored += sum(buffer_size(v) for v in z.chunk_store.values())
         assert expect_nbytes_stored == z.nbytes_stored
         z[:] = 42
         expect_nbytes_stored = sum(buffer_size(v) for v in z.store.values())
-        expect_nbytes_stored += sum(buffer_size(v)
-                                    for v in z.chunk_store.values())
+        expect_nbytes_stored += sum(buffer_size(v) for v in z.chunk_store.values())
         assert expect_nbytes_stored == z.nbytes_stored
 
         # mess with store
-        z.chunk_store[z._key_prefix + 'foo'] = list(range(10))
+        z.chunk_store[z._key_prefix + "foo"] = list(range(10))
         assert -1 == z.nbytes_stored
 
 
 class TestArrayWithDirectoryStore(TestArray):
-
     @staticmethod
     def create_array(read_only=False, **kwargs):
         path = mkdtemp()
         atexit.register(shutil.rmtree, path)
         store = DirectoryStore(path)
-        cache_metadata = kwargs.pop('cache_metadata', True)
-        cache_attrs = kwargs.pop('cache_attrs', True)
-        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
-        kwargs.setdefault('compressor', Zlib(1))
+        cache_metadata = kwargs.pop("cache_metadata", True)
+        cache_attrs = kwargs.pop("cache_attrs", True)
+        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
+        kwargs.setdefault("compressor", Zlib(1))
         init_array(store, **kwargs)
-        return Array(store, read_only=read_only, cache_metadata=cache_metadata,
-                     cache_attrs=cache_attrs, write_empty_chunks=write_empty_chunks)
+        return Array(
+            store,
+            read_only=read_only,
+            cache_metadata=cache_metadata,
+            cache_attrs=cache_attrs,
+            write_empty_chunks=write_empty_chunks,
+        )
 
     def test_nbytes_stored(self):
 
@@ -1685,7 +1711,6 @@ def test_array_init_from_dict():
 
 @skip_test_env_var("ZARR_TEST_ABS")
 class TestArrayWithABSStore(TestArray):
-
     @staticmethod
     def absstore():
         client = abs_container()
@@ -1695,13 +1720,18 @@ class TestArrayWithABSStore(TestArray):
 
     def create_array(self, read_only=False, **kwargs):
         store = self.absstore()
-        kwargs.setdefault('compressor', Zlib(1))
-        cache_metadata = kwargs.pop('cache_metadata', True)
-        cache_attrs = kwargs.pop('cache_attrs', True)
-        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
+        kwargs.setdefault("compressor", Zlib(1))
+        cache_metadata = kwargs.pop("cache_metadata", True)
+        cache_attrs = kwargs.pop("cache_attrs", True)
+        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
         init_array(store, **kwargs)
-        return Array(store, read_only=read_only, cache_metadata=cache_metadata,
-                     cache_attrs=cache_attrs, write_empty_chunks=write_empty_chunks)
+        return Array(
+            store,
+            read_only=read_only,
+            cache_metadata=cache_metadata,
+            cache_attrs=cache_attrs,
+            write_empty_chunks=write_empty_chunks,
+        )
 
     @pytest.mark.xfail
     def test_nbytes_stored(self):
@@ -1714,19 +1744,23 @@ class TestArrayWithABSStore(TestArray):
 
 
 class TestArrayWithNestedDirectoryStore(TestArrayWithDirectoryStore):
-
     @staticmethod
     def create_array(read_only=False, **kwargs):
         path = mkdtemp()
         atexit.register(shutil.rmtree, path)
         store = NestedDirectoryStore(path)
-        cache_metadata = kwargs.pop('cache_metadata', True)
-        cache_attrs = kwargs.pop('cache_attrs', True)
-        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
-        kwargs.setdefault('compressor', Zlib(1))
+        cache_metadata = kwargs.pop("cache_metadata", True)
+        cache_attrs = kwargs.pop("cache_attrs", True)
+        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
+        kwargs.setdefault("compressor", Zlib(1))
         init_array(store, **kwargs)
-        return Array(store, read_only=read_only, cache_metadata=cache_metadata,
-                     cache_attrs=cache_attrs, write_empty_chunks=write_empty_chunks)
+        return Array(
+            store,
+            read_only=read_only,
+            cache_metadata=cache_metadata,
+            cache_attrs=cache_attrs,
+            write_empty_chunks=write_empty_chunks,
+        )
 
     def expected(self):
         return [
@@ -1739,19 +1773,23 @@ class TestArrayWithNestedDirectoryStore(TestArrayWithDirectoryStore):
 
 
 class TestArrayWithN5Store(TestArrayWithDirectoryStore):
-
     @staticmethod
     def create_array(read_only=False, **kwargs):
         path = mkdtemp()
         atexit.register(shutil.rmtree, path)
         store = N5Store(path)
-        cache_metadata = kwargs.pop('cache_metadata', True)
-        cache_attrs = kwargs.pop('cache_attrs', True)
-        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
-        kwargs.setdefault('compressor', Zlib(1))
+        cache_metadata = kwargs.pop("cache_metadata", True)
+        cache_attrs = kwargs.pop("cache_attrs", True)
+        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
+        kwargs.setdefault("compressor", Zlib(1))
         init_array(store, **kwargs)
-        return Array(store, read_only=read_only, cache_metadata=cache_metadata,
-                     cache_attrs=cache_attrs, write_empty_chunks=write_empty_chunks)
+        return Array(
+            store,
+            read_only=read_only,
+            cache_metadata=cache_metadata,
+            cache_attrs=cache_attrs,
+            write_empty_chunks=write_empty_chunks,
+        )
 
     def test_array_0d(self):
         # test behaviour for array with 0 dimensions
@@ -1806,8 +1844,7 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
             a = np.arange(nvalues, dtype=dtype)
             f = np.empty_like(a)
             f.fill(fill_value or 0)
-            z = self.create_array(shape=a.shape, chunks=100, dtype=a.dtype,
-                                  fill_value=fill_value)
+            z = self.create_array(shape=a.shape, chunks=100, dtype=a.dtype, fill_value=fill_value)
             z[190:310] = a[190:310]
 
             assert_array_equal(f[:190], z[:190])
@@ -1815,21 +1852,18 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
             assert_array_equal(f[310:], z[310:])
 
         with pytest.raises(ValueError):
-            z = self.create_array(shape=(nvalues,), chunks=100, dtype=dtype,
-                                  fill_value=1)
+            z = self.create_array(shape=(nvalues,), chunks=100, dtype=dtype, fill_value=1)
 
     def test_nchunks_initialized(self):
         fill_value = 0
-        dtype = 'int'
-        z = self.create_array(shape=100,
-                              chunks=10,
-                              fill_value=fill_value,
-                              dtype=dtype,
-                              write_empty_chunks=True)
+        dtype = "int"
+        z = self.create_array(
+            shape=100, chunks=10, fill_value=fill_value, dtype=dtype, write_empty_chunks=True
+        )
 
         assert 0 == z.nchunks_initialized
         # manually put something into the store to confuse matters
-        z.store['foo'] = b'bar'
+        z.store["foo"] = b"bar"
         assert 0 == z.nchunks_initialized
         z[:] = 42
         assert 10 == z.nchunks_initialized
@@ -1839,11 +1873,9 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
 
         # second round of similar tests with write_empty_chunks set to
         # False
-        z = self.create_array(shape=100,
-                              chunks=10,
-                              fill_value=fill_value,
-                              dtype=dtype,
-                              write_empty_chunks=False)
+        z = self.create_array(
+            shape=100, chunks=10, fill_value=fill_value, dtype=dtype, write_empty_chunks=False
+        )
         z[:] = 42
         assert 10 == z.nchunks_initialized
         # manually remove a chunk from the store
@@ -1856,61 +1888,69 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
 
         # N5 only supports 'C' at the moment
         with pytest.raises(ValueError):
-            self.create_array(shape=(10, 11), chunks=(10, 11), dtype='i8',
-                              order='F')
+            self.create_array(shape=(10, 11), chunks=(10, 11), dtype="i8", order="F")
 
         # 1D
         a = np.arange(1050)
-        z = self.create_array(shape=a.shape, chunks=100, dtype=a.dtype,
-                              order='C')
-        assert z.order == 'C'
+        z = self.create_array(shape=a.shape, chunks=100, dtype=a.dtype, order="C")
+        assert z.order == "C"
         assert z[:].flags.c_contiguous
         z[:] = a
         assert_array_equal(a, z[:])
 
         # 2D
         a = np.arange(10000).reshape((100, 100))
-        z = self.create_array(shape=a.shape, chunks=(10, 10),
-                              dtype=a.dtype, order='C')
+        z = self.create_array(shape=a.shape, chunks=(10, 10), dtype=a.dtype, order="C")
 
-        assert z.order == 'C'
+        assert z.order == "C"
         assert z[:].flags.c_contiguous
         z[:] = a
         actual = z[:]
         assert_array_equal(a, actual)
 
     def test_structured_array(self):
-        d = np.array([(b'aaa', 1, 4.2),
-                      (b'bbb', 2, 8.4),
-                      (b'ccc', 3, 12.6)],
-                     dtype=[('foo', 'S3'), ('bar', 'i4'), ('baz', 'f8')])
-        fill_values = None, b'', (b'zzz', 42, 16.8)
+        d = np.array(
+            [(b"aaa", 1, 4.2), (b"bbb", 2, 8.4), (b"ccc", 3, 12.6)],
+            dtype=[("foo", "S3"), ("bar", "i4"), ("baz", "f8")],
+        )
+        fill_values = None, b"", (b"zzz", 42, 16.8)
         with pytest.raises(TypeError):
             self.check_structured_array(d, fill_values)
 
     def test_structured_array_subshapes(self):
-        d = np.array([(0, ((0, 1, 2), (1, 2, 3)), b'aaa'),
-                      (1, ((1, 2, 3), (2, 3, 4)), b'bbb'),
-                      (2, ((2, 3, 4), (3, 4, 5)), b'ccc')],
-                     dtype=[('foo', 'i8'), ('bar', '(2, 3)f4'), ('baz', 'S3')])
-        fill_values = None, b'', (0, ((0, 0, 0), (1, 1, 1)), b'zzz')
+        d = np.array(
+            [
+                (0, ((0, 1, 2), (1, 2, 3)), b"aaa"),
+                (1, ((1, 2, 3), (2, 3, 4)), b"bbb"),
+                (2, ((2, 3, 4), (3, 4, 5)), b"ccc"),
+            ],
+            dtype=[("foo", "i8"), ("bar", "(2, 3)f4"), ("baz", "S3")],
+        )
+        fill_values = None, b"", (0, ((0, 0, 0), (1, 1, 1)), b"zzz")
         with pytest.raises(TypeError):
             self.check_structured_array(d, fill_values)
 
     def test_structured_array_nested(self):
-        d = np.array([(0, (0, ((0, 1), (1, 2), (2, 3)), 0), b'aaa'),
-                      (1, (1, ((1, 2), (2, 3), (3, 4)), 1), b'bbb'),
-                      (2, (2, ((2, 3), (3, 4), (4, 5)), 2), b'ccc')],
-                     dtype=[('foo', 'i8'), ('bar', [('foo', 'i4'), ('bar', '(3, 2)f4'),
-                                                    ('baz', 'u1')]), ('baz', 'S3')])
-        fill_values = None, b'', (0, (0, ((0, 0), (1, 1), (2, 2)), 0), b'zzz')
+        d = np.array(
+            [
+                (0, (0, ((0, 1), (1, 2), (2, 3)), 0), b"aaa"),
+                (1, (1, ((1, 2), (2, 3), (3, 4)), 1), b"bbb"),
+                (2, (2, ((2, 3), (3, 4), (4, 5)), 2), b"ccc"),
+            ],
+            dtype=[
+                ("foo", "i8"),
+                ("bar", [("foo", "i4"), ("bar", "(3, 2)f4"), ("baz", "u1")]),
+                ("baz", "S3"),
+            ],
+        )
+        fill_values = None, b"", (0, (0, ((0, 0), (1, 1), (2, 2)), 0), b"zzz")
         with pytest.raises(TypeError):
             self.check_structured_array(d, fill_values)
 
     def test_dtypes(self):
 
         # integers
-        for dtype in 'u1', 'u2', 'u4', 'u8', 'i1', 'i2', 'i4', 'i8':
+        for dtype in "u1", "u2", "u4", "u8", "i1", "i2", "i4", "i8":
             z = self.create_array(shape=10, chunks=3, dtype=dtype)
             assert z.dtype == np.dtype(dtype)
             a = np.arange(z.shape[0], dtype=dtype)
@@ -1918,7 +1958,7 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
             assert_array_equal(a, z[:])
 
         # floats
-        for dtype in 'f2', 'f4', 'f8':
+        for dtype in "f2", "f4", "f8":
             z = self.create_array(shape=10, chunks=3, dtype=dtype)
             assert z.dtype == np.dtype(dtype)
             a = np.linspace(0, 1, z.shape[0], dtype=dtype)
@@ -1927,9 +1967,9 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
 
         # check that datetime generic units are not allowed
         with pytest.raises(ValueError):
-            self.create_array(shape=100, dtype='M8')
+            self.create_array(shape=100, dtype="M8")
         with pytest.raises(ValueError):
-            self.create_array(shape=100, dtype='m8')
+            self.create_array(shape=100, dtype="m8")
 
     def test_object_arrays(self):
 
@@ -1960,7 +2000,7 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
 
     def test_object_arrays_vlen_bytes(self):
 
-        greetings_bytes = [g.encode('utf8') for g in greetings]
+        greetings_bytes = [g.encode("utf8") for g in greetings]
         data = np.array(greetings_bytes * 1000, dtype=object)
 
         with pytest.raises(ValueError):
@@ -1972,19 +2012,19 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
 
     def test_object_arrays_vlen_array(self):
 
-        data = np.array([np.array([1, 3, 7]),
-                         np.array([5]),
-                         np.array([2, 8, 12])] * 1000, dtype=object)
+        data = np.array(
+            [np.array([1, 3, 7]), np.array([5]), np.array([2, 8, 12])] * 1000, dtype=object
+        )
 
-        codecs = VLenArray(int), VLenArray('<u4')
+        codecs = VLenArray(int), VLenArray("<u4")
         for codec in codecs:
             with pytest.raises(ValueError):
                 self.create_array(shape=data.shape, dtype=object, object_codec=codec)
 
         # convenience API
-        for item_type in 'int', '<u4':
+        for item_type in "int", "<u4":
             with pytest.raises(ValueError):
-                self.create_array(shape=data.shape, dtype='array:{}'.format(item_type))
+                self.create_array(shape=data.shape, dtype="array:{}".format(item_type))
 
     def test_object_arrays_danger(self):
         # Cannot hacking out object codec as N5 doesn't allow object codecs
@@ -1999,15 +2039,13 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
         pass
 
     def test_attrs_n5_keywords(self):
-        z = self.create_array(shape=(1050,), chunks=100, dtype='i4')
+        z = self.create_array(shape=(1050,), chunks=100, dtype="i4")
         for k in n5_keywords:
             with pytest.warns(UserWarning):
                 z.attrs[k] = ""
 
     def test_compressors(self):
-        compressors = [
-            None, BZ2(), Zlib(), GZip(), MsgPack()
-        ]
+        compressors = [None, BZ2(), Zlib(), GZip(), MsgPack()]
         if LZMA:
             compressors.append(LZMA())
             compressors.append(LZMA(preset=1))
@@ -2019,9 +2057,7 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
             a1[:] = 1
             assert np.all(a1[:] == 1)
 
-        compressors_warn = [
-            Blosc()
-        ]
+        compressors_warn = [Blosc()]
         if LZMA:
             compressors_warn.append(LZMA(2))  # Try lzma.FORMAT_ALONE, which N5 doesn't support.
         for compressor in compressors_warn:
@@ -2034,85 +2070,101 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
 
     def expected(self):
         return [
-           '4e9cf910000506455f82a70938a272a3fce932e5',
-           'f9d4cbf1402901f63dea7acf764d2546e4b6aa38',
-           '1d8199f5f7b70d61aa0d29cc375212c3df07d50a',
-           '874880f91aa6736825584509144afe6b06b0c05c',
-           'e2258fedc74752196a8c8383db49e27193c995e2',
-           ]
+            "4e9cf910000506455f82a70938a272a3fce932e5",
+            "f9d4cbf1402901f63dea7acf764d2546e4b6aa38",
+            "1d8199f5f7b70d61aa0d29cc375212c3df07d50a",
+            "874880f91aa6736825584509144afe6b06b0c05c",
+            "e2258fedc74752196a8c8383db49e27193c995e2",
+        ]
 
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
 class TestArrayWithN5FSStore(TestArrayWithN5Store):
-
     @staticmethod
     def create_array(read_only=False, **kwargs):
         path = mkdtemp()
         atexit.register(shutil.rmtree, path)
         store = N5FSStore(path)
-        cache_metadata = kwargs.pop('cache_metadata', True)
-        cache_attrs = kwargs.pop('cache_attrs', True)
-        kwargs.setdefault('compressor', Zlib(1))
-        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
+        cache_metadata = kwargs.pop("cache_metadata", True)
+        cache_attrs = kwargs.pop("cache_attrs", True)
+        kwargs.setdefault("compressor", Zlib(1))
+        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
         init_array(store, **kwargs)
-        return Array(store, read_only=read_only, cache_metadata=cache_metadata,
-                     cache_attrs=cache_attrs, write_empty_chunks=write_empty_chunks)
+        return Array(
+            store,
+            read_only=read_only,
+            cache_metadata=cache_metadata,
+            cache_attrs=cache_attrs,
+            write_empty_chunks=write_empty_chunks,
+        )
 
 
 class TestArrayWithDBMStore(TestArray):
-
     @staticmethod
     def create_array(read_only=False, **kwargs):
-        path = mktemp(suffix='.anydbm')
-        atexit.register(atexit_rmglob, path + '*')
-        store = DBMStore(path, flag='n')
-        cache_metadata = kwargs.pop('cache_metadata', True)
-        cache_attrs = kwargs.pop('cache_attrs', True)
-        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
-        kwargs.setdefault('compressor', Zlib(1))
+        path = mktemp(suffix=".anydbm")
+        atexit.register(atexit_rmglob, path + "*")
+        store = DBMStore(path, flag="n")
+        cache_metadata = kwargs.pop("cache_metadata", True)
+        cache_attrs = kwargs.pop("cache_attrs", True)
+        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
+        kwargs.setdefault("compressor", Zlib(1))
         init_array(store, **kwargs)
-        return Array(store, read_only=read_only, cache_attrs=cache_attrs,
-                     cache_metadata=cache_metadata, write_empty_chunks=write_empty_chunks)
+        return Array(
+            store,
+            read_only=read_only,
+            cache_attrs=cache_attrs,
+            cache_metadata=cache_metadata,
+            write_empty_chunks=write_empty_chunks,
+        )
 
     def test_nbytes_stored(self):
         pass  # not implemented
 
 
 class TestArrayWithDBMStoreBerkeleyDB(TestArray):
-
     @staticmethod
     def create_array(read_only=False, **kwargs):
         bsddb3 = pytest.importorskip("bsddb3")
-        path = mktemp(suffix='.dbm')
+        path = mktemp(suffix=".dbm")
         atexit.register(os.remove, path)
-        store = DBMStore(path, flag='n', open=bsddb3.btopen)
-        cache_metadata = kwargs.pop('cache_metadata', True)
-        cache_attrs = kwargs.pop('cache_attrs', True)
-        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
-        kwargs.setdefault('compressor', Zlib(1))
+        store = DBMStore(path, flag="n", open=bsddb3.btopen)
+        cache_metadata = kwargs.pop("cache_metadata", True)
+        cache_attrs = kwargs.pop("cache_attrs", True)
+        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
+        kwargs.setdefault("compressor", Zlib(1))
         init_array(store, **kwargs)
-        return Array(store, read_only=read_only, cache_metadata=cache_metadata,
-                     cache_attrs=cache_attrs, write_empty_chunks=write_empty_chunks)
+        return Array(
+            store,
+            read_only=read_only,
+            cache_metadata=cache_metadata,
+            cache_attrs=cache_attrs,
+            write_empty_chunks=write_empty_chunks,
+        )
 
     def test_nbytes_stored(self):
         pass  # not implemented
 
 
 class TestArrayWithLMDBStore(TestArray):
-
     @staticmethod
     def create_array(read_only=False, **kwargs):
         pytest.importorskip("lmdb")
-        path = mktemp(suffix='.lmdb')
+        path = mktemp(suffix=".lmdb")
         atexit.register(atexit_rmtree, path)
         store = LMDBStore(path, buffers=True)
-        cache_metadata = kwargs.pop('cache_metadata', True)
-        cache_attrs = kwargs.pop('cache_attrs', True)
-        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
-        kwargs.setdefault('compressor', Zlib(1))
+        cache_metadata = kwargs.pop("cache_metadata", True)
+        cache_attrs = kwargs.pop("cache_attrs", True)
+        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
+        kwargs.setdefault("compressor", Zlib(1))
         init_array(store, **kwargs)
-        return Array(store, read_only=read_only, cache_metadata=cache_metadata,
-                     cache_attrs=cache_attrs, write_empty_chunks=write_empty_chunks)
+        return Array(
+            store,
+            read_only=read_only,
+            cache_metadata=cache_metadata,
+            cache_attrs=cache_attrs,
+            write_empty_chunks=write_empty_chunks,
+        )
 
     def test_store_has_bytes_values(self):
         pass  # returns values as memoryviews/buffers instead of bytes
@@ -2122,56 +2174,68 @@ class TestArrayWithLMDBStore(TestArray):
 
 
 class TestArrayWithLMDBStoreNoBuffers(TestArray):
-
     @staticmethod
     def create_array(read_only=False, **kwargs):
         pytest.importorskip("lmdb")
-        path = mktemp(suffix='.lmdb')
+        path = mktemp(suffix=".lmdb")
         atexit.register(atexit_rmtree, path)
         store = LMDBStore(path, buffers=False)
-        cache_metadata = kwargs.pop('cache_metadata', True)
-        cache_attrs = kwargs.pop('cache_attrs', True)
-        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
-        kwargs.setdefault('compressor', Zlib(1))
+        cache_metadata = kwargs.pop("cache_metadata", True)
+        cache_attrs = kwargs.pop("cache_attrs", True)
+        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
+        kwargs.setdefault("compressor", Zlib(1))
         init_array(store, **kwargs)
-        return Array(store, read_only=read_only, cache_metadata=cache_metadata,
-                     cache_attrs=cache_attrs, write_empty_chunks=write_empty_chunks)
+        return Array(
+            store,
+            read_only=read_only,
+            cache_metadata=cache_metadata,
+            cache_attrs=cache_attrs,
+            write_empty_chunks=write_empty_chunks,
+        )
 
     def test_nbytes_stored(self):
         pass  # not implemented
 
 
 class TestArrayWithSQLiteStore(TestArray):
-
     @staticmethod
     def create_array(read_only=False, **kwargs):
         pytest.importorskip("sqlite3")
-        path = mktemp(suffix='.db')
+        path = mktemp(suffix=".db")
         atexit.register(atexit_rmtree, path)
         store = SQLiteStore(path)
-        cache_metadata = kwargs.pop('cache_metadata', True)
-        cache_attrs = kwargs.pop('cache_attrs', True)
-        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
-        kwargs.setdefault('compressor', Zlib(1))
+        cache_metadata = kwargs.pop("cache_metadata", True)
+        cache_attrs = kwargs.pop("cache_attrs", True)
+        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
+        kwargs.setdefault("compressor", Zlib(1))
         init_array(store, **kwargs)
-        return Array(store, read_only=read_only, cache_metadata=cache_metadata,
-                     cache_attrs=cache_attrs, write_empty_chunks=write_empty_chunks)
+        return Array(
+            store,
+            read_only=read_only,
+            cache_metadata=cache_metadata,
+            cache_attrs=cache_attrs,
+            write_empty_chunks=write_empty_chunks,
+        )
 
     def test_nbytes_stored(self):
         pass  # not implemented
 
 
 class TestArrayWithNoCompressor(TestArray):
-
     def create_array(self, read_only=False, **kwargs):
         store = KVStore(dict())
-        kwargs.setdefault('compressor', None)
-        cache_metadata = kwargs.pop('cache_metadata', True)
-        cache_attrs = kwargs.pop('cache_attrs', True)
-        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
+        kwargs.setdefault("compressor", None)
+        cache_metadata = kwargs.pop("cache_metadata", True)
+        cache_attrs = kwargs.pop("cache_attrs", True)
+        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
         init_array(store, **kwargs)
-        return Array(store, read_only=read_only, cache_metadata=cache_metadata,
-                     cache_attrs=cache_attrs, write_empty_chunks=write_empty_chunks)
+        return Array(
+            store,
+            read_only=read_only,
+            cache_metadata=cache_metadata,
+            cache_attrs=cache_attrs,
+            write_empty_chunks=write_empty_chunks,
+        )
 
     def expected(self):
         return [
@@ -2184,17 +2248,21 @@ class TestArrayWithNoCompressor(TestArray):
 
 
 class TestArrayWithBZ2Compressor(TestArray):
-
     def create_array(self, read_only=False, **kwargs):
         store = KVStore(dict())
         compressor = BZ2(level=1)
-        kwargs.setdefault('compressor', compressor)
-        cache_metadata = kwargs.pop('cache_metadata', True)
-        cache_attrs = kwargs.pop('cache_attrs', True)
-        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
+        kwargs.setdefault("compressor", compressor)
+        cache_metadata = kwargs.pop("cache_metadata", True)
+        cache_attrs = kwargs.pop("cache_attrs", True)
+        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
         init_array(store, **kwargs)
-        return Array(store, read_only=read_only, cache_metadata=cache_metadata,
-                     cache_attrs=cache_attrs, write_empty_chunks=write_empty_chunks)
+        return Array(
+            store,
+            read_only=read_only,
+            cache_metadata=cache_metadata,
+            cache_attrs=cache_attrs,
+            write_empty_chunks=write_empty_chunks,
+        )
 
     def expected(self):
         return [
@@ -2207,17 +2275,21 @@ class TestArrayWithBZ2Compressor(TestArray):
 
 
 class TestArrayWithBloscCompressor(TestArray):
-
     def create_array(self, read_only=False, **kwargs):
         store = KVStore(dict())
-        compressor = Blosc(cname='zstd', clevel=1, shuffle=1)
-        kwargs.setdefault('compressor', compressor)
-        cache_metadata = kwargs.pop('cache_metadata', True)
-        cache_attrs = kwargs.pop('cache_attrs', True)
-        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
+        compressor = Blosc(cname="zstd", clevel=1, shuffle=1)
+        kwargs.setdefault("compressor", compressor)
+        cache_metadata = kwargs.pop("cache_metadata", True)
+        cache_attrs = kwargs.pop("cache_attrs", True)
+        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
         init_array(store, **kwargs)
-        return Array(store, read_only=read_only, cache_metadata=cache_metadata,
-                     cache_attrs=cache_attrs, write_empty_chunks=write_empty_chunks)
+        return Array(
+            store,
+            read_only=read_only,
+            cache_metadata=cache_metadata,
+            cache_attrs=cache_attrs,
+            write_empty_chunks=write_empty_chunks,
+        )
 
     def expected(self):
         return [
@@ -2235,19 +2307,23 @@ except ImportError:  # pragma: no cover
     LZMA = None
 
 
-@unittest.skipIf(LZMA is None, 'LZMA codec not available')
+@unittest.skipIf(LZMA is None, "LZMA codec not available")
 class TestArrayWithLZMACompressor(TestArray):
-
     def create_array(self, read_only=False, **kwargs):
         store = KVStore(dict())
         compressor = LZMA(preset=1)
-        kwargs.setdefault('compressor', compressor)
-        cache_metadata = kwargs.pop('cache_metadata', True)
-        cache_attrs = kwargs.pop('cache_attrs', True)
-        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
+        kwargs.setdefault("compressor", compressor)
+        cache_metadata = kwargs.pop("cache_metadata", True)
+        cache_attrs = kwargs.pop("cache_attrs", True)
+        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
         init_array(store, **kwargs)
-        return Array(store, read_only=read_only, cache_metadata=cache_metadata,
-                     cache_attrs=cache_attrs, write_empty_chunks=write_empty_chunks)
+        return Array(
+            store,
+            read_only=read_only,
+            cache_metadata=cache_metadata,
+            cache_attrs=cache_attrs,
+            write_empty_chunks=write_empty_chunks,
+        )
 
     def expected(self):
         return [
@@ -2260,24 +2336,28 @@ class TestArrayWithLZMACompressor(TestArray):
 
 
 class TestArrayWithFilters(TestArray):
-
     @staticmethod
     def create_array(read_only=False, **kwargs):
         store = KVStore(dict())
-        dtype = kwargs.get('dtype')
+        dtype = kwargs.get("dtype")
         filters = [
             Delta(dtype=dtype),
             FixedScaleOffset(dtype=dtype, scale=1, offset=0),
         ]
-        kwargs.setdefault('filters', filters)
+        kwargs.setdefault("filters", filters)
         compressor = Zlib(1)
-        kwargs.setdefault('compressor', compressor)
-        cache_metadata = kwargs.pop('cache_metadata', True)
-        cache_attrs = kwargs.pop('cache_attrs', True)
-        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
+        kwargs.setdefault("compressor", compressor)
+        cache_metadata = kwargs.pop("cache_metadata", True)
+        cache_attrs = kwargs.pop("cache_attrs", True)
+        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
         init_array(store, **kwargs)
-        return Array(store, read_only=read_only, cache_attrs=cache_attrs,
-                     cache_metadata=cache_metadata, write_empty_chunks=write_empty_chunks)
+        return Array(
+            store,
+            read_only=read_only,
+            cache_attrs=cache_attrs,
+            cache_metadata=cache_metadata,
+            write_empty_chunks=write_empty_chunks,
+        )
 
     def expected(self):
         return [
@@ -2369,7 +2449,6 @@ class TestArrayWithFilters(TestArray):
 
 # custom store, does not support getsize()
 class CustomMapping:
-
     def __init__(self):
         self.inner = KVStore(dict())
 
@@ -2402,17 +2481,21 @@ class CustomMapping:
 
 
 class TestArrayWithCustomMapping(TestArray):
-
     @staticmethod
     def create_array(read_only=False, **kwargs):
         store = CustomMapping()
-        kwargs.setdefault('compressor', Zlib(1))
-        cache_metadata = kwargs.pop('cache_metadata', True)
-        cache_attrs = kwargs.pop('cache_attrs', True)
-        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
+        kwargs.setdefault("compressor", Zlib(1))
+        cache_metadata = kwargs.pop("cache_metadata", True)
+        cache_attrs = kwargs.pop("cache_attrs", True)
+        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
         init_array(store, **kwargs)
-        return Array(store, read_only=read_only, cache_metadata=cache_metadata,
-                     cache_attrs=cache_attrs, write_empty_chunks=write_empty_chunks)
+        return Array(
+            store,
+            read_only=read_only,
+            cache_metadata=cache_metadata,
+            cache_attrs=cache_attrs,
+            write_empty_chunks=write_empty_chunks,
+        )
 
     def test_nbytes_stored(self):
         z = self.create_array(shape=1000, chunks=100)
@@ -2422,20 +2505,24 @@ class TestArrayWithCustomMapping(TestArray):
 
 
 class TestArrayNoCache(TestArray):
-
     @staticmethod
     def create_array(read_only=False, **kwargs):
         store = KVStore(dict())
-        kwargs.setdefault('compressor', Zlib(level=1))
-        cache_metadata = kwargs.pop('cache_metadata', True)
-        cache_attrs = kwargs.pop('cache_attrs', True)
-        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
+        kwargs.setdefault("compressor", Zlib(level=1))
+        cache_metadata = kwargs.pop("cache_metadata", True)
+        cache_attrs = kwargs.pop("cache_attrs", True)
+        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
         init_array(store, **kwargs)
-        return Array(store, read_only=read_only, cache_metadata=cache_metadata,
-                     cache_attrs=cache_attrs, write_empty_chunks=write_empty_chunks)
+        return Array(
+            store,
+            read_only=read_only,
+            cache_metadata=cache_metadata,
+            cache_attrs=cache_attrs,
+            write_empty_chunks=write_empty_chunks,
+        )
 
     def test_cache_metadata(self):
-        a1 = self.create_array(shape=100, chunks=10, dtype='i1', cache_metadata=False)
+        a1 = self.create_array(shape=100, chunks=10, dtype="i1", cache_metadata=False)
         path = None if self.version == 2 else a1.path
         a2 = Array(a1.store, path=path, cache_metadata=True)
         assert a1.shape == a2.shape
@@ -2476,20 +2563,20 @@ class TestArrayNoCache(TestArray):
         assert 30 == a2.nchunks
 
     def test_cache_attrs(self):
-        a1 = self.create_array(shape=100, chunks=10, dtype='i1', cache_attrs=False)
-        path = None if self.version == 2 else 'arr1'
+        a1 = self.create_array(shape=100, chunks=10, dtype="i1", cache_attrs=False)
+        path = None if self.version == 2 else "arr1"
         a2 = Array(a1.store, path=path, cache_attrs=True)
         assert a1.attrs.asdict() == a2.attrs.asdict()
 
         # a1 is not caching so *will* see updates made via other objects
-        a2.attrs['foo'] = 'xxx'
-        a2.attrs['bar'] = 42
+        a2.attrs["foo"] = "xxx"
+        a2.attrs["bar"] = 42
         assert a1.attrs.asdict() == a2.attrs.asdict()
 
         # a2 is caching so *will not* see updates made via other objects
-        a1.attrs['foo'] = 'yyy'
-        assert 'yyy' == a1.attrs['foo']
-        assert 'xxx' == a2.attrs['foo']
+        a1.attrs["foo"] = "yyy"
+        assert "yyy" == a1.attrs["foo"]
+        assert "xxx" == a2.attrs["foo"]
 
     def test_object_arrays_danger(self):
         # skip this one as it only works if metadata are cached
@@ -2497,28 +2584,28 @@ class TestArrayNoCache(TestArray):
 
 
 class TestArrayWithStoreCache(TestArray):
-
     @staticmethod
     def create_array(read_only=False, **kwargs):
         store = LRUStoreCache(dict(), max_size=None)
-        kwargs.setdefault('compressor', Zlib(level=1))
-        cache_metadata = kwargs.pop('cache_metadata', True)
-        cache_attrs = kwargs.pop('cache_attrs', True)
-        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
+        kwargs.setdefault("compressor", Zlib(level=1))
+        cache_metadata = kwargs.pop("cache_metadata", True)
+        cache_attrs = kwargs.pop("cache_attrs", True)
+        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
         init_array(store, **kwargs)
-        return Array(store, read_only=read_only, cache_metadata=cache_metadata,
-                     cache_attrs=cache_attrs, write_empty_chunks=write_empty_chunks)
+        return Array(
+            store,
+            read_only=read_only,
+            cache_metadata=cache_metadata,
+            cache_attrs=cache_attrs,
+            write_empty_chunks=write_empty_chunks,
+        )
 
     def test_store_has_bytes_values(self):
         # skip as the cache has no control over how the store provides values
         pass
 
 
-fsspec_mapper_kwargs = {
-    "check": True,
-    "create": True,
-    "missing_exceptions": None
-}
+fsspec_mapper_kwargs = {"check": True, "create": True, "missing_exceptions": None}
 
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
@@ -2527,23 +2614,28 @@ class TestArrayWithFSStore(TestArray):
     def create_array(read_only=False, **kwargs):
         path = mkdtemp()
         atexit.register(shutil.rmtree, path)
-        key_separator = kwargs.pop('key_separator', ".")
+        key_separator = kwargs.pop("key_separator", ".")
         store = FSStore(path, key_separator=key_separator, auto_mkdir=True, **fsspec_mapper_kwargs)
-        cache_metadata = kwargs.pop('cache_metadata', True)
-        cache_attrs = kwargs.pop('cache_attrs', True)
-        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
-        kwargs.setdefault('compressor', Blosc())
+        cache_metadata = kwargs.pop("cache_metadata", True)
+        cache_attrs = kwargs.pop("cache_attrs", True)
+        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
+        kwargs.setdefault("compressor", Blosc())
         init_array(store, **kwargs)
-        return Array(store, read_only=read_only, cache_metadata=cache_metadata,
-                     cache_attrs=cache_attrs, write_empty_chunks=write_empty_chunks)
+        return Array(
+            store,
+            read_only=read_only,
+            cache_metadata=cache_metadata,
+            cache_attrs=cache_attrs,
+            write_empty_chunks=write_empty_chunks,
+        )
 
     def expected(self):
         return [
-           "ab753fc81df0878589535ca9bad2816ba88d91bc",
-           "c16261446f9436b1e9f962e57ce3e8f6074abe8a",
-           "c2ef3b2fb2bc9dcace99cd6dad1a7b66cc1ea058",
-           "6e52f95ac15b164a8e96843a230fcee0e610729b",
-           "091fa99bc60706095c9ce30b56ce2503e0223f56",
+            "ab753fc81df0878589535ca9bad2816ba88d91bc",
+            "c16261446f9436b1e9f962e57ce3e8f6074abe8a",
+            "c2ef3b2fb2bc9dcace99cd6dad1a7b66cc1ea058",
+            "6e52f95ac15b164a8e96843a230fcee0e610729b",
+            "091fa99bc60706095c9ce30b56ce2503e0223f56",
         ]
 
 
@@ -2552,26 +2644,32 @@ class TestArrayWithFSStoreFromFilesystem(TestArray):
     @staticmethod
     def create_array(read_only=False, **kwargs):
         from fsspec.implementations.local import LocalFileSystem
+
         fs = LocalFileSystem(auto_mkdir=True)
         path = mkdtemp()
         atexit.register(shutil.rmtree, path)
-        key_separator = kwargs.pop('key_separator', ".")
+        key_separator = kwargs.pop("key_separator", ".")
         store = FSStore(path, fs=fs, key_separator=key_separator, **fsspec_mapper_kwargs)
-        cache_metadata = kwargs.pop('cache_metadata', True)
-        cache_attrs = kwargs.pop('cache_attrs', True)
-        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
-        kwargs.setdefault('compressor', Blosc())
+        cache_metadata = kwargs.pop("cache_metadata", True)
+        cache_attrs = kwargs.pop("cache_attrs", True)
+        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
+        kwargs.setdefault("compressor", Blosc())
         init_array(store, **kwargs)
-        return Array(store, read_only=read_only, cache_metadata=cache_metadata,
-                     cache_attrs=cache_attrs, write_empty_chunks=write_empty_chunks)
+        return Array(
+            store,
+            read_only=read_only,
+            cache_metadata=cache_metadata,
+            cache_attrs=cache_attrs,
+            write_empty_chunks=write_empty_chunks,
+        )
 
     def expected(self):
         return [
-           "ab753fc81df0878589535ca9bad2816ba88d91bc",
-           "c16261446f9436b1e9f962e57ce3e8f6074abe8a",
-           "c2ef3b2fb2bc9dcace99cd6dad1a7b66cc1ea058",
-           "6e52f95ac15b164a8e96843a230fcee0e610729b",
-           "091fa99bc60706095c9ce30b56ce2503e0223f56",
+            "ab753fc81df0878589535ca9bad2816ba88d91bc",
+            "c16261446f9436b1e9f962e57ce3e8f6074abe8a",
+            "c2ef3b2fb2bc9dcace99cd6dad1a7b66cc1ea058",
+            "6e52f95ac15b164a8e96843a230fcee0e610729b",
+            "091fa99bc60706095c9ce30b56ce2503e0223f56",
         ]
 
 
@@ -2584,7 +2682,7 @@ class TestArrayWithFSStorePartialRead(TestArray):
         store = FSStore(path)
         cache_metadata = kwargs.pop("cache_metadata", True)
         cache_attrs = kwargs.pop("cache_attrs", True)
-        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
+        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
         kwargs.setdefault("compressor", Blosc(blocksize=256))
         init_array(store, **kwargs)
         return Array(
@@ -2593,16 +2691,16 @@ class TestArrayWithFSStorePartialRead(TestArray):
             cache_metadata=cache_metadata,
             cache_attrs=cache_attrs,
             partial_decompress=True,
-            write_empty_chunks=write_empty_chunks
+            write_empty_chunks=write_empty_chunks,
         )
 
     def expected(self):
         return [
-           "dd7577d645c38767cf6f6d1ef8fd64002883a014",
-           "aa0de9892cf1ed3cda529efbf3233720b84489b7",
-           "e6191c44cf958576c29c41cef0f55b028a4dbdff",
-           "88adeeabb819feecccadf50152293dbb42f9107e",
-           "1426e084427f9920e29c9ec81b663d1005849455",
+            "dd7577d645c38767cf6f6d1ef8fd64002883a014",
+            "aa0de9892cf1ed3cda529efbf3233720b84489b7",
+            "e6191c44cf958576c29c41cef0f55b028a4dbdff",
+            "88adeeabb819feecccadf50152293dbb42f9107e",
+            "1426e084427f9920e29c9ec81b663d1005849455",
         ]
 
     def test_non_cont(self):
@@ -2612,9 +2710,9 @@ class TestArrayWithFSStorePartialRead(TestArray):
         assert z[0, :, 0].any()
 
     def test_read_nitems_less_than_blocksize_from_multiple_chunks(self):
-        '''Tests to make sure decompression doesn't fail when `nitems` is
+        """Tests to make sure decompression doesn't fail when `nitems` is
         less than a compressed block size, but covers multiple blocks
-        '''
+        """
         z = self.create_array(shape=1000000, chunks=100_000)
         z[40_000:80_000] = 1
         path = None if self.version == 2 else z.path
@@ -2622,9 +2720,9 @@ class TestArrayWithFSStorePartialRead(TestArray):
         assert (b[40_000:80_000] == 1).all()
 
     def test_read_from_all_blocks(self):
-        '''Tests to make sure `PartialReadBuffer.read_part` doesn't fail when
+        """Tests to make sure `PartialReadBuffer.read_part` doesn't fail when
         stop isn't in the `start_points` array
-        '''
+        """
         z = self.create_array(shape=1000000, chunks=100_000)
         z[2:99_000] = 1
         path = None if self.version == 2 else z.path
@@ -2634,28 +2732,32 @@ class TestArrayWithFSStorePartialRead(TestArray):
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
 class TestArrayWithFSStoreNested(TestArray):
-
     @staticmethod
     def create_array(read_only=False, **kwargs):
         path = mkdtemp()
         atexit.register(shutil.rmtree, path)
-        key_separator = kwargs.pop('key_separator', "/")
+        key_separator = kwargs.pop("key_separator", "/")
         store = FSStore(path, key_separator=key_separator, auto_mkdir=True)
-        cache_metadata = kwargs.pop('cache_metadata', True)
-        cache_attrs = kwargs.pop('cache_attrs', True)
-        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
-        kwargs.setdefault('compressor', Blosc())
+        cache_metadata = kwargs.pop("cache_metadata", True)
+        cache_attrs = kwargs.pop("cache_attrs", True)
+        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
+        kwargs.setdefault("compressor", Blosc())
         init_array(store, **kwargs)
-        return Array(store, read_only=read_only, cache_metadata=cache_metadata,
-                     cache_attrs=cache_attrs, write_empty_chunks=write_empty_chunks)
+        return Array(
+            store,
+            read_only=read_only,
+            cache_metadata=cache_metadata,
+            cache_attrs=cache_attrs,
+            write_empty_chunks=write_empty_chunks,
+        )
 
     def expected(self):
         return [
-           "94884f29b41b9beb8fc99ad7bf9c0cbf0f2ab3c9",
-           "077aa3bd77b8d354f8f6c15dce5ae4f545788a72",
-           "22be95d83c097460adb339d80b2d7fe19c513c16",
-           "85131cec526fa46938fd2c4a6083a58ee11037ea",
-           "c3167010c162c6198cb2bf3c1da2c46b047c69a1",
+            "94884f29b41b9beb8fc99ad7bf9c0cbf0f2ab3c9",
+            "077aa3bd77b8d354f8f6c15dce5ae4f545788a72",
+            "22be95d83c097460adb339d80b2d7fe19c513c16",
+            "85131cec526fa46938fd2c4a6083a58ee11037ea",
+            "c3167010c162c6198cb2bf3c1da2c46b047c69a1",
         ]
 
 
@@ -2665,11 +2767,11 @@ class TestArrayWithFSStoreNestedPartialRead(TestArray):
     def create_array(read_only=False, **kwargs):
         path = mkdtemp()
         atexit.register(shutil.rmtree, path)
-        key_separator = kwargs.pop('key_separator', "/")
+        key_separator = kwargs.pop("key_separator", "/")
         store = FSStore(path, key_separator=key_separator, auto_mkdir=True)
         cache_metadata = kwargs.pop("cache_metadata", True)
         cache_attrs = kwargs.pop("cache_attrs", True)
-        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
+        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
         kwargs.setdefault("compressor", Blosc())
         init_array(store, **kwargs)
         return Array(
@@ -2678,16 +2780,16 @@ class TestArrayWithFSStoreNestedPartialRead(TestArray):
             cache_metadata=cache_metadata,
             cache_attrs=cache_attrs,
             partial_decompress=True,
-            write_empty_chunks=write_empty_chunks
+            write_empty_chunks=write_empty_chunks,
         )
 
     def expected(self):
         return [
-           "94884f29b41b9beb8fc99ad7bf9c0cbf0f2ab3c9",
-           "077aa3bd77b8d354f8f6c15dce5ae4f545788a72",
-           "22be95d83c097460adb339d80b2d7fe19c513c16",
-           "85131cec526fa46938fd2c4a6083a58ee11037ea",
-           "c3167010c162c6198cb2bf3c1da2c46b047c69a1",
+            "94884f29b41b9beb8fc99ad7bf9c0cbf0f2ab3c9",
+            "077aa3bd77b8d354f8f6c15dce5ae4f545788a72",
+            "22be95d83c097460adb339d80b2d7fe19c513c16",
+            "85131cec526fa46938fd2c4a6083a58ee11037ea",
+            "c3167010c162c6198cb2bf3c1da2c46b047c69a1",
         ]
 
     def test_non_cont(self):
@@ -2697,9 +2799,9 @@ class TestArrayWithFSStoreNestedPartialRead(TestArray):
         assert z[0, :, 0].any()
 
     def test_read_nitems_less_than_blocksize_from_multiple_chunks(self):
-        '''Tests to make sure decompression doesn't fail when `nitems` is
+        """Tests to make sure decompression doesn't fail when `nitems` is
         less than a compressed block size, but covers multiple blocks
-        '''
+        """
         z = self.create_array(shape=1000000, chunks=100_000)
         z[40_000:80_000] = 1
         path = None if self.version == 2 else z.path
@@ -2707,9 +2809,9 @@ class TestArrayWithFSStoreNestedPartialRead(TestArray):
         assert (b[40_000:80_000] == 1).all()
 
     def test_read_from_all_blocks(self):
-        '''Tests to make sure `PartialReadBuffer.read_part` doesn't fail when
+        """Tests to make sure `PartialReadBuffer.read_part` doesn't fail when
         stop isn't in the `start_points` array
-        '''
+        """
         z = self.create_array(shape=1000000, chunks=100_000)
         z[2:99_000] = 1
         path = None if self.version == 2 else z.path
@@ -2720,6 +2822,7 @@ class TestArrayWithFSStoreNestedPartialRead(TestArray):
 ####
 # StoreV3 test classes inheriting from the above below this point
 ####
+
 
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestArrayV3(TestArray):
@@ -2736,7 +2839,7 @@ class TestArrayV3(TestArray):
             "5fb3d02b8f01244721582929b3cad578aec5cea5",
             "26b098bedb640846e18dc2fbc1c27684bb02b532",
             "799a458c287d431d747bec0728987ca4fe764549",
-            "c780221df84eb91cb62f633f12d3f1eaa9cee6bd"
+            "c780221df84eb91cb62f633f12d3f1eaa9cee6bd",
         ]
 
     # TODO: fix test_nbytes_stored
@@ -2748,16 +2851,21 @@ class TestArrayWithPathV3(TestArrayWithPath):
     version = 3
 
     @staticmethod
-    def create_array(array_path='arr1', read_only=False, **kwargs):
+    def create_array(array_path="arr1", read_only=False, **kwargs):
         store = KVStoreV3(dict())
-        kwargs.setdefault('compressor', Zlib(level=1))
-        cache_metadata = kwargs.pop('cache_metadata', True)
-        cache_attrs = kwargs.pop('cache_attrs', True)
-        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
+        kwargs.setdefault("compressor", Zlib(level=1))
+        cache_metadata = kwargs.pop("cache_metadata", True)
+        cache_attrs = kwargs.pop("cache_attrs", True)
+        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
         init_array(store, path=array_path, **kwargs)
-        return Array(store, path=array_path, read_only=read_only,
-                     cache_metadata=cache_metadata, cache_attrs=cache_attrs,
-                     write_empty_chunks=write_empty_chunks)
+        return Array(
+            store,
+            path=array_path,
+            read_only=read_only,
+            cache_metadata=cache_metadata,
+            cache_attrs=cache_attrs,
+            write_empty_chunks=write_empty_chunks,
+        )
 
     def test_array_init(self):
 
@@ -2769,7 +2877,7 @@ class TestArrayWithPathV3(TestArrayWithPath):
         assert isinstance(b, Array)
         assert (100,) == b.shape
         assert (10,) == b.chunks
-        assert '' == b.path
+        assert "" == b.path
         assert b.name is None
         assert b.basename is None
         assert store is b.store
@@ -2777,16 +2885,16 @@ class TestArrayWithPathV3(TestArrayWithPath):
 
         # initialize at path
         store = KVStoreV3(dict())
-        path = 'foo/bar'
-        init_array(store, shape=100, chunks=10, path=path, dtype='<f8')
+        path = "foo/bar"
+        init_array(store, shape=100, chunks=10, path=path, dtype="<f8")
         a = Array(store, path=path)
         assert not a.is_view
         assert isinstance(a, Array)
         assert (100,) == a.shape
         assert (10,) == a.chunks
         assert path == a.path
-        assert '/' + path == a.name
-        assert 'bar' == a.basename
+        assert "/" + path == a.name
+        assert "bar" == a.basename
         assert store is a.store
         assert "968dccbbfc0139f703ead2fd1d503ad6e44db307" == a.hexdigest()
 
@@ -2797,21 +2905,21 @@ class TestArrayWithPathV3(TestArrayWithPath):
 
         # group is in the way
         store = KVStoreV3(dict())
-        path = 'baz'
+        path = "baz"
         init_group(store, path=path)
         # can't open with an uninitialized array
         with pytest.raises(ArrayNotFoundError):
             Array(store, path=path)
         # can't open at same path as an existing group
         with pytest.raises(ContainsGroupError):
-            init_array(store, shape=100, chunks=10, path=path, dtype='<f8')
-        group_key = meta_root + path + '.group.json'
+            init_array(store, shape=100, chunks=10, path=path, dtype="<f8")
+        group_key = meta_root + path + ".group.json"
         assert group_key in store
         del store[group_key]
-        init_array(store, shape=100, chunks=10, path=path, dtype='<f8')
+        init_array(store, shape=100, chunks=10, path=path, dtype="<f8")
         Array(store, path=path)
         assert group_key not in store
-        assert (meta_root + path + '.array.json') in store
+        assert (meta_root + path + ".array.json") in store
 
     def expected(self):
         return [
@@ -2826,16 +2934,16 @@ class TestArrayWithPathV3(TestArrayWithPath):
 
         # dict as store
         z = self.create_array(shape=1000, chunks=100)
-        expect_nbytes_stored = sum(buffer_size(v) for k, v in z.store.items() if k != 'zarr.json')
+        expect_nbytes_stored = sum(buffer_size(v) for k, v in z.store.items() if k != "zarr.json")
         assert expect_nbytes_stored == z.nbytes_stored
         z[:] = 42
-        expect_nbytes_stored = sum(buffer_size(v) for k, v in z.store.items() if k != 'zarr.json')
+        expect_nbytes_stored = sum(buffer_size(v) for k, v in z.store.items() if k != "zarr.json")
         assert expect_nbytes_stored == z.nbytes_stored
         assert z.nchunks_initialized == 10
 
         # mess with store
         if not isinstance(z.store, (LRUStoreCacheV3, FSStoreV3)):
-            z.store[data_root + z._key_prefix + 'foo'] = list(range(10))
+            z.store[data_root + z._key_prefix + "foo"] = list(range(10))
             assert -1 == z.nbytes_stored
 
         z.store.close()
@@ -2873,7 +2981,7 @@ class TestArrayWithPathV3(TestArrayWithPath):
         z = self.create_array(shape=100, chunks=10)
         assert 0 == z.nchunks_initialized
         # manually put something into the store to confuse matters
-        z.store['meta/root/foo'] = b'bar'
+        z.store["meta/root/foo"] = b"bar"
         assert 0 == z.nchunks_initialized
         z[:] = 42
         assert 10 == z.nchunks_initialized
@@ -2883,78 +2991,88 @@ class TestArrayWithPathV3(TestArrayWithPath):
 
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestArrayWithChunkStoreV3(TestArrayWithChunkStore, TestArrayWithPathV3):
-
     @staticmethod
-    def create_array(array_path='arr1', read_only=False, **kwargs):
+    def create_array(array_path="arr1", read_only=False, **kwargs):
         store = KVStoreV3(dict())
         # separate chunk store
         chunk_store = KVStoreV3(dict())
-        cache_metadata = kwargs.pop('cache_metadata', True)
-        cache_attrs = kwargs.pop('cache_attrs', True)
-        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
+        cache_metadata = kwargs.pop("cache_metadata", True)
+        cache_attrs = kwargs.pop("cache_attrs", True)
+        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
         init_array(store, path=array_path, chunk_store=chunk_store, **kwargs)
-        return Array(store, path=array_path, read_only=read_only,
-                     chunk_store=chunk_store, cache_metadata=cache_metadata,
-                     cache_attrs=cache_attrs, write_empty_chunks=write_empty_chunks)
+        return Array(
+            store,
+            path=array_path,
+            read_only=read_only,
+            chunk_store=chunk_store,
+            cache_metadata=cache_metadata,
+            cache_attrs=cache_attrs,
+            write_empty_chunks=write_empty_chunks,
+        )
 
     def expected(self):
         return [
-            '1509abec4285494b61cd3e8d21f44adc3cf8ddf6',
-            '7cfb82ec88f7ecb7ab20ae3cb169736bc76332b8',
-            'b663857bb89a8ab648390454954a9cdd453aa24b',
-            '21e90fa927d09cbaf0e3b773130e2dc05d18ff9b',
-            'e8c1fdd18b5c2ee050b59d0c8c95d07db642459c',
+            "1509abec4285494b61cd3e8d21f44adc3cf8ddf6",
+            "7cfb82ec88f7ecb7ab20ae3cb169736bc76332b8",
+            "b663857bb89a8ab648390454954a9cdd453aa24b",
+            "21e90fa927d09cbaf0e3b773130e2dc05d18ff9b",
+            "e8c1fdd18b5c2ee050b59d0c8c95d07db642459c",
         ]
 
     def test_nbytes_stored(self):
 
         z = self.create_array(shape=1000, chunks=100)
-        expect_nbytes_stored = sum(buffer_size(v) for k, v in z.store.items() if k != 'zarr.json')
-        expect_nbytes_stored += sum(buffer_size(v)
-                                    for k, v in z.chunk_store.items() if k != 'zarr.json')
+        expect_nbytes_stored = sum(buffer_size(v) for k, v in z.store.items() if k != "zarr.json")
+        expect_nbytes_stored += sum(
+            buffer_size(v) for k, v in z.chunk_store.items() if k != "zarr.json"
+        )
         assert expect_nbytes_stored == z.nbytes_stored
         z[:] = 42
-        expect_nbytes_stored = sum(buffer_size(v) for k, v in z.store.items() if k != 'zarr.json')
-        expect_nbytes_stored += sum(buffer_size(v)
-                                    for k, v in z.chunk_store.items() if k != 'zarr.json')
+        expect_nbytes_stored = sum(buffer_size(v) for k, v in z.store.items() if k != "zarr.json")
+        expect_nbytes_stored += sum(
+            buffer_size(v) for k, v in z.chunk_store.items() if k != "zarr.json"
+        )
         assert expect_nbytes_stored == z.nbytes_stored
 
         # mess with store
-        z.chunk_store[data_root + z._key_prefix + 'foo'] = list(range(10))
+        z.chunk_store[data_root + z._key_prefix + "foo"] = list(range(10))
         assert -1 == z.nbytes_stored
 
 
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestArrayWithDirectoryStoreV3(TestArrayWithDirectoryStore, TestArrayWithPathV3):
-
     @staticmethod
-    def create_array(array_path='arr1', read_only=False, **kwargs):
+    def create_array(array_path="arr1", read_only=False, **kwargs):
         path = mkdtemp()
         atexit.register(shutil.rmtree, path)
         store = DirectoryStoreV3(path)
-        cache_metadata = kwargs.pop('cache_metadata', True)
-        cache_attrs = kwargs.pop('cache_attrs', True)
-        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
-        kwargs.setdefault('compressor', Zlib(1))
+        cache_metadata = kwargs.pop("cache_metadata", True)
+        cache_attrs = kwargs.pop("cache_attrs", True)
+        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
+        kwargs.setdefault("compressor", Zlib(1))
         init_array(store, path=array_path, **kwargs)
-        return Array(store, path=array_path, read_only=read_only,
-                     cache_metadata=cache_metadata, cache_attrs=cache_attrs,
-                     write_empty_chunks=write_empty_chunks)
+        return Array(
+            store,
+            path=array_path,
+            read_only=read_only,
+            cache_metadata=cache_metadata,
+            cache_attrs=cache_attrs,
+            write_empty_chunks=write_empty_chunks,
+        )
 
     def test_nbytes_stored(self):
         # dict as store
         z = self.create_array(shape=1000, chunks=100)
-        expect_nbytes_stored = sum(buffer_size(v) for k, v in z.store.items() if k != 'zarr.json')
+        expect_nbytes_stored = sum(buffer_size(v) for k, v in z.store.items() if k != "zarr.json")
         assert expect_nbytes_stored == z.nbytes_stored
         z[:] = 42
-        expect_nbytes_stored = sum(buffer_size(v) for k, v in z.store.items() if k != 'zarr.json')
+        expect_nbytes_stored = sum(buffer_size(v) for k, v in z.store.items() if k != "zarr.json")
         assert expect_nbytes_stored == z.nbytes_stored
 
 
 @skip_test_env_var("ZARR_TEST_ABS")
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestArrayWithABSStoreV3(TestArrayWithABSStore, TestArrayWithPathV3):
-
     @staticmethod
     def absstore():
         client = abs_container()
@@ -2962,15 +3080,21 @@ class TestArrayWithABSStoreV3(TestArrayWithABSStore, TestArrayWithPathV3):
         store.rmdir()
         return store
 
-    def create_array(self, array_path='arr1', read_only=False, **kwargs):
+    def create_array(self, array_path="arr1", read_only=False, **kwargs):
         store = self.absstore()
-        kwargs.setdefault('compressor', Zlib(1))
-        cache_metadata = kwargs.pop('cache_metadata', True)
-        cache_attrs = kwargs.pop('cache_attrs', True)
-        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
+        kwargs.setdefault("compressor", Zlib(1))
+        cache_metadata = kwargs.pop("cache_metadata", True)
+        cache_attrs = kwargs.pop("cache_attrs", True)
+        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
         init_array(store, path=array_path, **kwargs)
-        return Array(store, path=array_path, read_only=read_only, cache_metadata=cache_metadata,
-                     cache_attrs=cache_attrs, write_empty_chunks=write_empty_chunks)
+        return Array(
+            store,
+            path=array_path,
+            read_only=read_only,
+            cache_metadata=cache_metadata,
+            cache_attrs=cache_attrs,
+            write_empty_chunks=write_empty_chunks,
+        )
 
 
 # TODO: TestArrayWithN5StoreV3
@@ -2979,19 +3103,24 @@ class TestArrayWithABSStoreV3(TestArrayWithABSStore, TestArrayWithPathV3):
 
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestArrayWithDBMStoreV3(TestArrayWithDBMStore, TestArrayWithPathV3):
-
     @staticmethod
-    def create_array(array_path='arr1', read_only=False, **kwargs):
-        path = mktemp(suffix='.anydbm')
-        atexit.register(atexit_rmglob, path + '*')
-        store = DBMStoreV3(path, flag='n')
-        cache_metadata = kwargs.pop('cache_metadata', True)
-        cache_attrs = kwargs.pop('cache_attrs', True)
-        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
-        kwargs.setdefault('compressor', Zlib(1))
+    def create_array(array_path="arr1", read_only=False, **kwargs):
+        path = mktemp(suffix=".anydbm")
+        atexit.register(atexit_rmglob, path + "*")
+        store = DBMStoreV3(path, flag="n")
+        cache_metadata = kwargs.pop("cache_metadata", True)
+        cache_attrs = kwargs.pop("cache_attrs", True)
+        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
+        kwargs.setdefault("compressor", Zlib(1))
         init_array(store, path=array_path, **kwargs)
-        return Array(store, path=array_path, read_only=read_only, cache_attrs=cache_attrs,
-                     cache_metadata=cache_metadata, write_empty_chunks=write_empty_chunks)
+        return Array(
+            store,
+            path=array_path,
+            read_only=read_only,
+            cache_attrs=cache_attrs,
+            cache_metadata=cache_metadata,
+            write_empty_chunks=write_empty_chunks,
+        )
 
     def test_nbytes_stored(self):
         pass  # not implemented
@@ -2999,20 +3128,25 @@ class TestArrayWithDBMStoreV3(TestArrayWithDBMStore, TestArrayWithPathV3):
 
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestArrayWithDBMStoreV3BerkeleyDB(TestArrayWithDBMStoreBerkeleyDB, TestArrayWithPathV3):
-
     @staticmethod
-    def create_array(array_path='arr1', read_only=False, **kwargs):
+    def create_array(array_path="arr1", read_only=False, **kwargs):
         bsddb3 = pytest.importorskip("bsddb3")
-        path = mktemp(suffix='.dbm')
+        path = mktemp(suffix=".dbm")
         atexit.register(os.remove, path)
-        store = DBMStoreV3(path, flag='n', open=bsddb3.btopen)
-        cache_metadata = kwargs.pop('cache_metadata', True)
-        cache_attrs = kwargs.pop('cache_attrs', True)
-        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
-        kwargs.setdefault('compressor', Zlib(1))
+        store = DBMStoreV3(path, flag="n", open=bsddb3.btopen)
+        cache_metadata = kwargs.pop("cache_metadata", True)
+        cache_attrs = kwargs.pop("cache_attrs", True)
+        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
+        kwargs.setdefault("compressor", Zlib(1))
         init_array(store, path=array_path, **kwargs)
-        return Array(store, path=array_path, read_only=read_only, cache_metadata=cache_metadata,
-                     cache_attrs=cache_attrs, write_empty_chunks=write_empty_chunks)
+        return Array(
+            store,
+            path=array_path,
+            read_only=read_only,
+            cache_metadata=cache_metadata,
+            cache_attrs=cache_attrs,
+            write_empty_chunks=write_empty_chunks,
+        )
 
     def test_nbytes_stored(self):
         pass  # not implemented
@@ -3020,20 +3154,25 @@ class TestArrayWithDBMStoreV3BerkeleyDB(TestArrayWithDBMStoreBerkeleyDB, TestArr
 
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestArrayWithLMDBStoreV3(TestArrayWithLMDBStore, TestArrayWithPathV3):
-
     @staticmethod
-    def create_array(array_path='arr1', read_only=False, **kwargs):
+    def create_array(array_path="arr1", read_only=False, **kwargs):
         pytest.importorskip("lmdb")
-        path = mktemp(suffix='.lmdb')
+        path = mktemp(suffix=".lmdb")
         atexit.register(atexit_rmtree, path)
         store = LMDBStoreV3(path, buffers=True)
-        cache_metadata = kwargs.pop('cache_metadata', True)
-        cache_attrs = kwargs.pop('cache_attrs', True)
-        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
-        kwargs.setdefault('compressor', Zlib(1))
+        cache_metadata = kwargs.pop("cache_metadata", True)
+        cache_attrs = kwargs.pop("cache_attrs", True)
+        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
+        kwargs.setdefault("compressor", Zlib(1))
         init_array(store, path=array_path, **kwargs)
-        return Array(store, path=array_path, read_only=read_only, cache_metadata=cache_metadata,
-                     cache_attrs=cache_attrs, write_empty_chunks=write_empty_chunks)
+        return Array(
+            store,
+            path=array_path,
+            read_only=read_only,
+            cache_metadata=cache_metadata,
+            cache_attrs=cache_attrs,
+            write_empty_chunks=write_empty_chunks,
+        )
 
     def test_store_has_bytes_values(self):
         pass  # returns values as memoryviews/buffers instead of bytes
@@ -3044,20 +3183,25 @@ class TestArrayWithLMDBStoreV3(TestArrayWithLMDBStore, TestArrayWithPathV3):
 
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestArrayWithLMDBStoreV3NoBuffers(TestArrayWithLMDBStoreNoBuffers, TestArrayWithPathV3):
-
     @staticmethod
-    def create_array(array_path='arr1', read_only=False, **kwargs):
+    def create_array(array_path="arr1", read_only=False, **kwargs):
         pytest.importorskip("lmdb")
-        path = mktemp(suffix='.lmdb')
+        path = mktemp(suffix=".lmdb")
         atexit.register(atexit_rmtree, path)
         store = LMDBStoreV3(path, buffers=False)
-        cache_metadata = kwargs.pop('cache_metadata', True)
-        cache_attrs = kwargs.pop('cache_attrs', True)
-        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
-        kwargs.setdefault('compressor', Zlib(1))
+        cache_metadata = kwargs.pop("cache_metadata", True)
+        cache_attrs = kwargs.pop("cache_attrs", True)
+        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
+        kwargs.setdefault("compressor", Zlib(1))
         init_array(store, path=array_path, **kwargs)
-        return Array(store, path=array_path, read_only=read_only, cache_metadata=cache_metadata,
-                     cache_attrs=cache_attrs, write_empty_chunks=write_empty_chunks)
+        return Array(
+            store,
+            path=array_path,
+            read_only=read_only,
+            cache_metadata=cache_metadata,
+            cache_attrs=cache_attrs,
+            write_empty_chunks=write_empty_chunks,
+        )
 
     def test_nbytes_stored(self):
         pass  # not implemented
@@ -3065,20 +3209,25 @@ class TestArrayWithLMDBStoreV3NoBuffers(TestArrayWithLMDBStoreNoBuffers, TestArr
 
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestArrayWithSQLiteStoreV3(TestArrayWithPathV3, TestArrayWithSQLiteStore):
-
     @staticmethod
-    def create_array(array_path='arr1', read_only=False, **kwargs):
+    def create_array(array_path="arr1", read_only=False, **kwargs):
         pytest.importorskip("sqlite3")
-        path = mktemp(suffix='.db')
+        path = mktemp(suffix=".db")
         atexit.register(atexit_rmtree, path)
         store = SQLiteStoreV3(path)
-        cache_metadata = kwargs.pop('cache_metadata', True)
-        cache_attrs = kwargs.pop('cache_attrs', True)
-        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
-        kwargs.setdefault('compressor', Zlib(1))
+        cache_metadata = kwargs.pop("cache_metadata", True)
+        cache_attrs = kwargs.pop("cache_attrs", True)
+        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
+        kwargs.setdefault("compressor", Zlib(1))
         init_array(store, path=array_path, **kwargs)
-        return Array(store, path=array_path, read_only=read_only, cache_metadata=cache_metadata,
-                     cache_attrs=cache_attrs, write_empty_chunks=write_empty_chunks)
+        return Array(
+            store,
+            path=array_path,
+            read_only=read_only,
+            cache_metadata=cache_metadata,
+            cache_attrs=cache_attrs,
+            write_empty_chunks=write_empty_chunks,
+        )
 
     def test_nbytes_stored(self):
         pass  # not implemented
@@ -3098,8 +3247,8 @@ class TestArrayWithSQLiteStoreV3(TestArrayWithPathV3, TestArrayWithSQLiteStore):
 # Note: this custom mapping doesn't actually have all methods in the
 #       v3 spec (e.g. erase), but they aren't needed here.
 
-class CustomMappingV3(StoreV3):
 
+class CustomMappingV3(StoreV3):
     def __init__(self):
         self.inner = KVStoreV3(dict())
 
@@ -3136,24 +3285,29 @@ class CustomMappingV3(StoreV3):
 
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestArrayWithCustomMappingV3(TestArrayWithPathV3, TestArrayWithCustomMapping):
-
     @staticmethod
-    def create_array(array_path='arr1', read_only=False, **kwargs):
+    def create_array(array_path="arr1", read_only=False, **kwargs):
         store = CustomMappingV3()
-        kwargs.setdefault('compressor', Zlib(1))
-        cache_metadata = kwargs.pop('cache_metadata', True)
-        cache_attrs = kwargs.pop('cache_attrs', True)
-        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
+        kwargs.setdefault("compressor", Zlib(1))
+        cache_metadata = kwargs.pop("cache_metadata", True)
+        cache_attrs = kwargs.pop("cache_attrs", True)
+        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
         init_array(store, path=array_path, **kwargs)
-        return Array(store, path=array_path, read_only=read_only, cache_metadata=cache_metadata,
-                     cache_attrs=cache_attrs, write_empty_chunks=write_empty_chunks)
+        return Array(
+            store,
+            path=array_path,
+            read_only=read_only,
+            cache_metadata=cache_metadata,
+            cache_attrs=cache_attrs,
+            write_empty_chunks=write_empty_chunks,
+        )
 
     def test_nbytes_stored(self):
         z = self.create_array(shape=1000, chunks=100)
-        expect_nbytes_stored = sum(buffer_size(v) for k, v in z.store.items() if k != 'zarr.json')
+        expect_nbytes_stored = sum(buffer_size(v) for k, v in z.store.items() if k != "zarr.json")
         assert expect_nbytes_stored == z.nbytes_stored
         z[:] = 42
-        expect_nbytes_stored = sum(buffer_size(v) for k, v in z.store.items() if k != 'zarr.json')
+        expect_nbytes_stored = sum(buffer_size(v) for k, v in z.store.items() if k != "zarr.json")
         assert expect_nbytes_stored == z.nbytes_stored
 
     def test_len(self):
@@ -3165,17 +3319,22 @@ class TestArrayWithCustomMappingV3(TestArrayWithPathV3, TestArrayWithCustomMappi
 
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestArrayNoCacheV3(TestArrayWithPathV3, TestArrayNoCache):
-
     @staticmethod
-    def create_array(array_path='arr1', read_only=False, **kwargs):
+    def create_array(array_path="arr1", read_only=False, **kwargs):
         store = KVStoreV3(dict())
-        kwargs.setdefault('compressor', Zlib(level=1))
-        cache_metadata = kwargs.pop('cache_metadata', True)
-        cache_attrs = kwargs.pop('cache_attrs', True)
-        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
+        kwargs.setdefault("compressor", Zlib(level=1))
+        cache_metadata = kwargs.pop("cache_metadata", True)
+        cache_attrs = kwargs.pop("cache_attrs", True)
+        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
         init_array(store, path=array_path, **kwargs)
-        return Array(store, path=array_path, read_only=read_only, cache_metadata=cache_metadata,
-                     cache_attrs=cache_attrs, write_empty_chunks=write_empty_chunks)
+        return Array(
+            store,
+            path=array_path,
+            read_only=read_only,
+            cache_metadata=cache_metadata,
+            cache_attrs=cache_attrs,
+            write_empty_chunks=write_empty_chunks,
+        )
 
     def test_object_arrays_danger(self):
         # skip this one as it only works if metadata are cached
@@ -3184,17 +3343,22 @@ class TestArrayNoCacheV3(TestArrayWithPathV3, TestArrayNoCache):
 
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestArrayWithStoreCacheV3(TestArrayWithPathV3, TestArrayWithStoreCache):
-
     @staticmethod
-    def create_array(array_path='arr1', read_only=False, **kwargs):
+    def create_array(array_path="arr1", read_only=False, **kwargs):
         store = LRUStoreCacheV3(dict(), max_size=None)
-        kwargs.setdefault('compressor', Zlib(level=1))
-        cache_metadata = kwargs.pop('cache_metadata', True)
-        cache_attrs = kwargs.pop('cache_attrs', True)
-        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
+        kwargs.setdefault("compressor", Zlib(level=1))
+        cache_metadata = kwargs.pop("cache_metadata", True)
+        cache_attrs = kwargs.pop("cache_attrs", True)
+        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
         init_array(store, path=array_path, **kwargs)
-        return Array(store, path=array_path, read_only=read_only, cache_metadata=cache_metadata,
-                     cache_attrs=cache_attrs, write_empty_chunks=write_empty_chunks)
+        return Array(
+            store,
+            path=array_path,
+            read_only=read_only,
+            cache_metadata=cache_metadata,
+            cache_attrs=cache_attrs,
+            write_empty_chunks=write_empty_chunks,
+        )
 
     def test_store_has_bytes_values(self):
         # skip as the cache has no control over how the store provides values
@@ -3205,23 +3369,26 @@ class TestArrayWithStoreCacheV3(TestArrayWithPathV3, TestArrayWithStoreCache):
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestArrayWithFSStoreV3(TestArrayWithPathV3, TestArrayWithFSStore):
     @staticmethod
-    def create_array(array_path='arr1', read_only=False, **kwargs):
+    def create_array(array_path="arr1", read_only=False, **kwargs):
         path = mkdtemp()
         atexit.register(shutil.rmtree, path)
-        key_separator = kwargs.pop('key_separator', ".")
+        key_separator = kwargs.pop("key_separator", ".")
         store = FSStoreV3(
-            path,
-            key_separator=key_separator,
-            auto_mkdir=True,
-            **fsspec_mapper_kwargs
+            path, key_separator=key_separator, auto_mkdir=True, **fsspec_mapper_kwargs
         )
-        cache_metadata = kwargs.pop('cache_metadata', True)
-        cache_attrs = kwargs.pop('cache_attrs', True)
-        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
-        kwargs.setdefault('compressor', Blosc())
+        cache_metadata = kwargs.pop("cache_metadata", True)
+        cache_attrs = kwargs.pop("cache_attrs", True)
+        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
+        kwargs.setdefault("compressor", Blosc())
         init_array(store, path=array_path, **kwargs)
-        return Array(store, path=array_path, read_only=read_only, cache_metadata=cache_metadata,
-                     cache_attrs=cache_attrs, write_empty_chunks=write_empty_chunks)
+        return Array(
+            store,
+            path=array_path,
+            read_only=read_only,
+            cache_metadata=cache_metadata,
+            cache_attrs=cache_attrs,
+            write_empty_chunks=write_empty_chunks,
+        )
 
     def expected(self):
         return [
@@ -3237,20 +3404,27 @@ class TestArrayWithFSStoreV3(TestArrayWithPathV3, TestArrayWithFSStore):
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestArrayWithFSStoreV3FromFilesystem(TestArrayWithPathV3, TestArrayWithFSStore):
     @staticmethod
-    def create_array(array_path='arr1', read_only=False, **kwargs):
+    def create_array(array_path="arr1", read_only=False, **kwargs):
         from fsspec.implementations.local import LocalFileSystem
+
         fs = LocalFileSystem(auto_mkdir=True)
         path = mkdtemp()
         atexit.register(shutil.rmtree, path)
-        key_separator = kwargs.pop('key_separator', ".")
+        key_separator = kwargs.pop("key_separator", ".")
         store = FSStoreV3(path, fs=fs, key_separator=key_separator, **fsspec_mapper_kwargs)
-        cache_metadata = kwargs.pop('cache_metadata', True)
-        cache_attrs = kwargs.pop('cache_attrs', True)
-        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
-        kwargs.setdefault('compressor', Blosc())
+        cache_metadata = kwargs.pop("cache_metadata", True)
+        cache_attrs = kwargs.pop("cache_attrs", True)
+        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
+        kwargs.setdefault("compressor", Blosc())
         init_array(store, path=array_path, **kwargs)
-        return Array(store, path=array_path, read_only=read_only, cache_metadata=cache_metadata,
-                     cache_attrs=cache_attrs, write_empty_chunks=write_empty_chunks)
+        return Array(
+            store,
+            path=array_path,
+            read_only=read_only,
+            cache_metadata=cache_metadata,
+            cache_attrs=cache_attrs,
+            write_empty_chunks=write_empty_chunks,
+        )
 
     def expected(self):
         return [
@@ -3265,15 +3439,14 @@ class TestArrayWithFSStoreV3FromFilesystem(TestArrayWithPathV3, TestArrayWithFSS
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestArrayWithFSStoreV3PartialRead(TestArrayWithPathV3, TestArrayWithFSStorePartialRead):
-
     @staticmethod
-    def create_array(array_path='arr1', read_only=False, **kwargs):
+    def create_array(array_path="arr1", read_only=False, **kwargs):
         path = mkdtemp()
         atexit.register(shutil.rmtree, path)
         store = FSStoreV3(path)
         cache_metadata = kwargs.pop("cache_metadata", True)
         cache_attrs = kwargs.pop("cache_attrs", True)
-        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
+        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
         kwargs.setdefault("compressor", Blosc())
         init_array(store, path=array_path, **kwargs)
         return Array(
@@ -3299,20 +3472,25 @@ class TestArrayWithFSStoreV3PartialRead(TestArrayWithPathV3, TestArrayWithFSStor
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestArrayWithFSStoreV3Nested(TestArrayWithPathV3, TestArrayWithFSStoreNested):
-
     @staticmethod
-    def create_array(array_path='arr1', read_only=False, **kwargs):
+    def create_array(array_path="arr1", read_only=False, **kwargs):
         path = mkdtemp()
         atexit.register(shutil.rmtree, path)
-        key_separator = kwargs.pop('key_separator', "/")
+        key_separator = kwargs.pop("key_separator", "/")
         store = FSStoreV3(path, key_separator=key_separator, auto_mkdir=True)
-        cache_metadata = kwargs.pop('cache_metadata', True)
-        cache_attrs = kwargs.pop('cache_attrs', True)
-        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
-        kwargs.setdefault('compressor', Blosc())
+        cache_metadata = kwargs.pop("cache_metadata", True)
+        cache_attrs = kwargs.pop("cache_attrs", True)
+        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
+        kwargs.setdefault("compressor", Blosc())
         init_array(store, path=array_path, **kwargs)
-        return Array(store, path=array_path, read_only=read_only, cache_metadata=cache_metadata,
-                     cache_attrs=cache_attrs, write_empty_chunks=write_empty_chunks)
+        return Array(
+            store,
+            path=array_path,
+            read_only=read_only,
+            cache_metadata=cache_metadata,
+            cache_attrs=cache_attrs,
+            write_empty_chunks=write_empty_chunks,
+        )
 
     def expected(self):
         return [
@@ -3326,17 +3504,18 @@ class TestArrayWithFSStoreV3Nested(TestArrayWithPathV3, TestArrayWithFSStoreNest
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
-class TestArrayWithFSStoreV3NestedPartialRead(TestArrayWithPathV3,
-                                              TestArrayWithFSStoreNestedPartialRead):
+class TestArrayWithFSStoreV3NestedPartialRead(
+    TestArrayWithPathV3, TestArrayWithFSStoreNestedPartialRead
+):
     @staticmethod
-    def create_array(array_path='arr1', read_only=False, **kwargs):
+    def create_array(array_path="arr1", read_only=False, **kwargs):
         path = mkdtemp()
         atexit.register(shutil.rmtree, path)
-        key_separator = kwargs.pop('key_separator', "/")
+        key_separator = kwargs.pop("key_separator", "/")
         store = FSStoreV3(path, key_separator=key_separator, auto_mkdir=True)
         cache_metadata = kwargs.pop("cache_metadata", True)
         cache_attrs = kwargs.pop("cache_attrs", True)
-        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
+        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
         kwargs.setdefault("compressor", Blosc())
         init_array(store, path=array_path, **kwargs)
         return Array(
@@ -3369,11 +3548,11 @@ def test_array_mismatched_store_versions():
     chunk_store_v3 = KVStoreV3(dict())
 
     init_kwargs = dict(shape=100, chunks=10, dtype="<f8")
-    init_array(store_v2, path='dataset', chunk_store=chunk_store_v2, **init_kwargs)
-    init_array(store_v3, path='dataset', chunk_store=chunk_store_v3, **init_kwargs)
+    init_array(store_v2, path="dataset", chunk_store=chunk_store_v2, **init_kwargs)
+    init_array(store_v3, path="dataset", chunk_store=chunk_store_v3, **init_kwargs)
 
     # store and chunk_store must have the same zarr protocol version
     with pytest.raises(ValueError):
-        Array(store_v3, path='dataset', read_only=False, chunk_store=chunk_store_v2)
+        Array(store_v3, path="dataset", read_only=False, chunk_store=chunk_store_v2)
     with pytest.raises(ValueError):
-        Array(store_v2, path='dataset', read_only=False, chunk_store=chunk_store_v3)
+        Array(store_v2, path="dataset", read_only=False, chunk_store=chunk_store_v3)

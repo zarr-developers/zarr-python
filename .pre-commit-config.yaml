@@ -21,7 +21,8 @@ repos:
     rev: v2.2.2
     hooks:
       - id: codespell
-        args: ["-L", "ba,ihs,kake,nd,noe,nwo,te", "-S", "fixture"]
+        additional_dependencies:
+          - tomli
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.4.0
     hooks:

@@ -127,3 +127,7 @@ exclude = '''
   | docs
 )/
 '''
+
+[tool.codespell]
+ignore-words-list= "ba,ihs,kake,nd,noe,nwo,te,zar"
+skip = "fixture"
