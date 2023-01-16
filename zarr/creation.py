@@ -22,7 +22,7 @@ def create(shape, chunks=True, dtype=None, compressor='default',
            overwrite=False, path=None, chunk_store=None, filters=None,
            cache_metadata=True, cache_attrs=True, read_only=False,
            object_codec=None, dimension_separator=None, write_empty_chunks=True,
-           *, zarr_version=None, meta_array=None, **kwargs):
+           *, zarr_version=None, meta_array=None, storage_transformers=(), **kwargs):
     """Create an array.
 
     Parameters
@@ -85,6 +85,14 @@ def create(shape, chunks=True, dtype=None, compressor='default',
 
         .. versionadded:: 2.11
 
+    storage_transformers : sequence of StorageTransformers, optional
+        Setting storage transformers, changes the storage structure and behaviour
+        of data coming from the underlying store. The transformers are applied in the
+        order of the given sequence. Supplying an empty sequence is the same as omitting
+        the argument or setting it to None. May only be set when using zarr_version 3.
+
+        .. versionadded:: 2.13
+
     zarr_version : {None, 2, 3}, optional
         The zarr protocol version of the created array. If None, it will be
         inferred from ``store`` or ``chunk_store`` if they are provided,
@@ -145,7 +153,7 @@ def create(shape, chunks=True, dtype=None, compressor='default',
         zarr_version = getattr(chunk_store, '_store_version', DEFAULT_ZARR_VERSION)
 
     # handle polymorphic store arg
-    store = normalize_store_arg(store, zarr_version=zarr_version)
+    store = normalize_store_arg(store, zarr_version=zarr_version, mode="w")
     zarr_version = getattr(store, '_store_version', DEFAULT_ZARR_VERSION)
 
     # API compatibility with h5py
@@ -170,7 +178,7 @@ def create(shape, chunks=True, dtype=None, compressor='default',
     init_array(store, shape=shape, chunks=chunks, dtype=dtype, compressor=compressor,
                fill_value=fill_value, order=order, overwrite=overwrite, path=path,
                chunk_store=chunk_store, filters=filters, object_codec=object_codec,
-               dimension_separator=dimension_separator)
+               dimension_separator=dimension_separator, storage_transformers=storage_transformers)
 
     # instantiate array
     z = Array(store, path=path, chunk_store=chunk_store, synchronizer=synchronizer,
