@@ -50,9 +50,11 @@ from zarr._storage.v3 import (
     KVStoreV3,
     LMDBStoreV3,
     LRUStoreCacheV3,
+    RmdirV3,
     SQLiteStoreV3,
     StoreV3,
 )
+from zarr.tests.test_storage_v3 import DummyStorageTransfomer
 from zarr.util import buffer_size
 from zarr.tests.util import abs_container, skip_test_env_var, have_fsspec, mktemp
 
@@ -3099,7 +3101,7 @@ class TestArrayWithSQLiteStoreV3(TestArrayWithPathV3, TestArrayWithSQLiteStore):
 # Note: this custom mapping doesn't actually have all methods in the
 #       v3 spec (e.g. erase), but they aren't needed here.
 
-class CustomMappingV3(StoreV3):
+class CustomMappingV3(RmdirV3, StoreV3):
 
     def __init__(self):
         self.inner = KVStoreV3(dict())
@@ -3357,6 +3359,36 @@ class TestArrayWithFSStoreV3NestedPartialRead(TestArrayWithPathV3,
             "b663857bb89a8ab648390454954a9cdd453aa24b",
             "21e90fa927d09cbaf0e3b773130e2dc05d18ff9b",
             "e8c1fdd18b5c2ee050b59d0c8c95d07db642459c",
+        ]
+
+
+@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
+class TestArrayWithStorageTransformersV3(TestArrayWithChunkStoreV3):
+
+    @staticmethod
+    def create_array(array_path='arr1', read_only=False, **kwargs):
+        store = KVStoreV3(dict())
+        # separate chunk store
+        chunk_store = KVStoreV3(dict())
+        cache_metadata = kwargs.pop('cache_metadata', True)
+        cache_attrs = kwargs.pop('cache_attrs', True)
+        write_empty_chunks = kwargs.pop('write_empty_chunks', True)
+        dummy_storage_transformer = DummyStorageTransfomer(
+            "dummy_type", test_value=DummyStorageTransfomer.TEST_CONSTANT
+        )
+        init_array(store, path=array_path, chunk_store=chunk_store,
+                   storage_transformers=[dummy_storage_transformer], **kwargs)
+        return Array(store, path=array_path, read_only=read_only,
+                     chunk_store=chunk_store, cache_metadata=cache_metadata,
+                     cache_attrs=cache_attrs, write_empty_chunks=write_empty_chunks)
+
+    def expected(self):
+        return [
+            "3fb9a4f8233b09ad02067b6b7fc9fd5caa405c7d",
+            "89c8eb364beb84919fc9153d2c1ed2696274ec18",
+            "73307055c3aec095dd1232c38d793ef82a06bd97",
+            "6152c09255a5efa43b1a115546e35affa00c138c",
+            "2f8802fc391f67f713302e84fad4fd8f1366d6c2",
         ]
 
 
