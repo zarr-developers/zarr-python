@@ -6,7 +6,7 @@
         "highlights": "getting_started.html#highlights",
         "contributing": "contributing.html",
         "projects-using-zarr": "getting_started.html#projects-using-zarr",
-        "contents": "getting_started.html#contents"
+        "acknowledgments": "acknowledgments.html"
     }
 
     let hash = window.location.hash.substring(1);
