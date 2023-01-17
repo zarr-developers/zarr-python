@@ -135,6 +135,14 @@ html_favicon = '_static/logo1.png'
 html_theme_options = {
   "github_url": "https://github.com/zarr-developers/zarr-python",
   "twitter_url": "https://twitter.com/zarr_dev",
+  "icon_links": [
+    {
+        "name": "Zarr Dev",
+        "url": "https://zarr.dev/",
+        "icon": "_static/logo1.png",
+        "type": "local"
+    },
+  ],
   "collapse_navigation": True
 }
 
@@ -256,7 +264,7 @@ latex_elements = {
 # (source start file, target name, title,
 #  author, documentclass [howto, manual, or own class]).
 latex_documents = [
-    (main_doc, 'zarr.tex', 'zarr Documentation',
+    (main_doc, 'zarr.tex', 'Zarr-Python',
      author, 'manual'),
 ]
 
@@ -286,7 +294,7 @@ latex_documents = [
 # One entry per manual page. List of tuples
 # (source start file, name, description, authors, manual section).
 man_pages = [
-    (main_doc, 'zarr', 'zarr Documentation',
+    (main_doc, 'zarr', 'Zarr-Python',
      [author], 1)
 ]
 
@@ -300,7 +308,7 @@ man_pages = [
 # (source start file, target name, title, author,
 #  dir menu entry, description, category)
 texinfo_documents = [
-    (main_doc, 'zarr', 'zarr Documentation',
+    (main_doc, 'zarr', 'Zarr-Python',
      author, 'zarr', 'One line description of project.',
      'Miscellaneous'),
 ]

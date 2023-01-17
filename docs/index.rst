@@ -1,8 +1,8 @@
 .. _zarr_docs_mainpage:
 
-******************
-Zarr documentation
-******************
+***********
+Zarr-Python
+***********
 
 .. toctree::
     :maxdepth: 1
@@ -13,7 +13,9 @@ Zarr documentation
     api
     spec
     release
-
+    license
+    acknowledgments
+    contributing
 
 **Version**: |version|
 
@@ -62,7 +64,7 @@ Zarr is a file storage format for chunked, compressed, N-dimensional arrays base
             :color: dark
             :click-parent:
 
-            To the tutorial
+            To the Tutorial
 
     .. grid-item-card::
         :img-top: _static/index_api.svg
