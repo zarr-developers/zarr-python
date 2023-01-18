@@ -20,6 +20,10 @@ Unreleased
   * `get_partial_values` and `set_partial_values`
   By :user:`Jonathan Striebel <jstriebel>`; :issue:`1096`.
 
+* Drop flake8 from the pre-commit checks. Add ruff and black to pre-commit
+  checks. Store linter configuration in ``pyproject.toml``. 
+  By :user:`Davis Bennett <d-v-b>`; :issue:`xxxx` 
+
 .. _release_2.13.6:
 
 2.13.6
