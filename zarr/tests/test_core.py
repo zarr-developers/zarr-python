@@ -3,7 +3,7 @@ import os
 import sys
 import pickle
 import shutil
-from typing import Literal, Optional, Tuple, Union
+from typing import Literal, Optional, Tuple, Union, Any
 import unittest
 from itertools import zip_longest
 from tempfile import mkdtemp
@@ -87,6 +87,7 @@ class TestArray(unittest.TestCase):
     cache_attrs = True
     write_empty_chunks = True
     read_only = False
+    storage_transformers: Tuple[Any, ...] = ()
 
     def create_store(self) -> BaseStore:
         return KVStore(dict())
@@ -108,6 +109,7 @@ class TestArray(unittest.TestCase):
             "path": kwargs.pop("path", self.path),
             "compressor": self.compressor,
             "chunk_store": chunk_store,
+            "storage_transformers": self.storage_transformers,
         }
 
         access_array_kwargs = {
@@ -3282,33 +3284,10 @@ class TestArrayWithFSStoreV3NestedPartialRead(TestArrayWithFSStoreV3):
 
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestArrayWithStorageTransformersV3(TestArrayWithChunkStoreV3):
-    @staticmethod
-    def create_array(array_path="arr1", read_only=False, **kwargs):
-        store = KVStoreV3(dict())
-        # separate chunk store
-        chunk_store = KVStoreV3(dict())
-        cache_metadata = kwargs.pop("cache_metadata", True)
-        cache_attrs = kwargs.pop("cache_attrs", True)
-        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
-        dummy_storage_transformer = DummyStorageTransfomer(
-            "dummy_type", test_value=DummyStorageTransfomer.TEST_CONSTANT
-        )
-        init_array(
-            store,
-            path=array_path,
-            chunk_store=chunk_store,
-            storage_transformers=[dummy_storage_transformer],
-            **kwargs,
-        )
-        return Array(
-            store,
-            path=array_path,
-            read_only=read_only,
-            chunk_store=chunk_store,
-            cache_metadata=cache_metadata,
-            cache_attrs=cache_attrs,
-            write_empty_chunks=write_empty_chunks,
-        )
+
+    storage_transformers = (
+        DummyStorageTransfomer("dummy_type", test_value=DummyStorageTransfomer.TEST_CONSTANT),
+    )
 
     def expected(self):
         return [
