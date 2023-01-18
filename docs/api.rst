@@ -13,3 +13,10 @@ API reference
     api/codecs
     api/attrs
     api/sync
+
+Indices and tables
+------------------
+
+* :ref:`genindex`
+* :ref:`modindex`
+* :ref:`search`
