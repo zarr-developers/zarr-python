@@ -82,7 +82,7 @@ class TestArray(unittest.TestCase):
     path = ""
     compressor = Zlib(level=1)
     filters = None
-    dimension_separator: Optional[Literal["/", "."]] = None
+    dimension_separator: Literal["/", ".", None] = None
     cache_metadata = True
     cache_attrs = True
     write_empty_chunks = True
@@ -116,9 +116,7 @@ class TestArray(unittest.TestCase):
             "chunk_store": chunk_store,
             "cache_metadata": kwargs.pop("cache_metadata", self.cache_metadata),
             "cache_attrs": kwargs.pop("cache_attrs", self.cache_attrs),
-            "write_empty_chunks": kwargs.pop(
-                "write_empty_chunks", self.write_empty_chunks
-            ),
+            "write_empty_chunks": kwargs.pop("write_empty_chunks", self.write_empty_chunks),
         }
         init_array(store, shape, **{**init_array_kwargs, **kwargs})
 
@@ -185,7 +183,11 @@ class TestArray(unittest.TestCase):
     def test_store_has_binary_values(self):
         # Initialize array
         np.random.seed(42)
-        z = self.create_array(shape=(1050,), chunks=100, dtype="f8", compressor=[])
+        z = self.create_array(
+            shape=(1050,),
+            chunks=100,
+            dtype="f8",
+        )
         z[:] = np.random.random(z.shape)
 
         for v in z.chunk_store.values():
@@ -203,7 +205,11 @@ class TestArray(unittest.TestCase):
 
         # Initialize array
         np.random.seed(42)
-        z = self.create_array(shape=(1050,), chunks=100, dtype="f8", compressor=[])
+        z = self.create_array(
+            shape=(1050,),
+            chunks=100,
+            dtype="f8",
+        )
         z[:] = np.random.random(z.shape)
 
         # Check in-memory array only contains `bytes`
@@ -339,7 +345,12 @@ class TestArray(unittest.TestCase):
             a = np.arange(1050)
             f = np.empty_like(a)
             f.fill(fill_value)
-            z = self.create_array(shape=a.shape, chunks=100, dtype=a.dtype, fill_value=fill_value)
+            z = self.create_array(
+                shape=a.shape,
+                chunks=100,
+                dtype=a.dtype,
+                fill_value=fill_value,
+            )
             z[190:310] = a[190:310]
 
             assert_array_equal(f[:190], z[:190])
@@ -539,7 +550,11 @@ class TestArray(unittest.TestCase):
         shape = 1000, 10
         chunks = 300, 30
         dtype = "i8"
-        z = self.create_array(shape=shape, dtype=dtype, chunks=chunks)
+        z = self.create_array(
+            shape=shape,
+            dtype=dtype,
+            chunks=chunks,
+        )
         z[:] = 0
         expect = np.zeros(shape, dtype=dtype)
         actual = z[:]
@@ -704,8 +719,7 @@ class TestArray(unittest.TestCase):
         z.store.close()
 
         # Check basic 1-D array with attributes
-        z = self.create_array(
-            shape=(1050,), chunks=100, dtype="<i4")
+        z = self.create_array(shape=(1050,), chunks=100, dtype="<i4")
         z.attrs["foo"] = "bar"
         found.append(z.hexdigest())
         z.store.close()
@@ -993,9 +1007,7 @@ class TestArray(unittest.TestCase):
         assert np.mean(a) == np.mean(z)
         assert_array_equal(np.mean(a, axis=1), np.mean(z, axis=1))
         condition = np.random.randint(0, 2, size=100, dtype=bool)
-        assert_array_equal(
-            np.compress(condition, a, axis=0), np.compress(condition, z, axis=0)
-        )
+        assert_array_equal(np.compress(condition, a, axis=0), np.compress(condition, z, axis=0))
         indices = np.random.choice(100, size=50, replace=True)
         assert_array_equal(np.take(a, indices, axis=1), np.take(z, indices, axis=1))
 
@@ -1009,14 +1021,10 @@ class TestArray(unittest.TestCase):
             filters=None,
         )
         zc[:] = condition
-        assert_array_equal(
-            np.compress(condition, a, axis=0), np.compress(zc, a, axis=0)
-        )
+        assert_array_equal(np.compress(condition, a, axis=0), np.compress(zc, a, axis=0))
         zc.store.close()
 
-        zi = self.create_array(
-            shape=indices.shape, dtype=indices.dtype, chunks=10, filters=None
-        )
+        zi = self.create_array(shape=indices.shape, dtype=indices.dtype, chunks=10, filters=None)
         zi[:] = indices
         # this triggers __array__() call with dtype argument
         assert_array_equal(np.take(a, indices, axis=1), np.take(a, zi, axis=1))
@@ -1222,9 +1230,7 @@ class TestArray(unittest.TestCase):
                 if fill_value is not None:
                     if fill_value == b"":
                         # numpy 1.14 compatibility
-                        np_fill_value = np.array(fill_value, dtype=a.dtype.str).view(
-                            a.dtype
-                        )[()]
+                        np_fill_value = np.array(fill_value, dtype=a.dtype.str).view(a.dtype)[()]
                     else:
                         np_fill_value = np.array(fill_value, dtype=a.dtype)[()]
                     assert np_fill_value == z.fill_value
@@ -1666,9 +1672,7 @@ class TestArray(unittest.TestCase):
             )
 
         # create zarr-array by np-array
-        za = self.create_array(
-            shape=a.shape, dtype=structured_dtype, object_codec=Pickle()
-        )
+        za = self.create_array(shape=a.shape, dtype=structured_dtype, object_codec=Pickle())
         za[:] = a
 
         # must be equal
@@ -1679,18 +1683,12 @@ class TestArray(unittest.TestCase):
         assert za[0] == a[0]
 
         za[0] = (b"ccc", 3)
-        za[1:2] = np.array(
-            [(b"ddd", 4)], dtype=structured_dtype
-        )  # ToDo: not work with list
-        assert_array_equal(
-            za[:], np.array([(b"ccc", 3), (b"ddd", 4)], dtype=structured_dtype)
-        )
+        za[1:2] = np.array([(b"ddd", 4)], dtype=structured_dtype)  # ToDo: not work with list
+        assert_array_equal(za[:], np.array([(b"ccc", 3), (b"ddd", 4)], dtype=structured_dtype))
 
         za["c_obj"] = [b"eee", b"fff"]
         za["c_obj", 0] = b"ggg"
-        assert_array_equal(
-            za[:], np.array([(b"ggg", 3), (b"fff", 4)], dtype=structured_dtype)
-        )
+        assert_array_equal(za[:], np.array([(b"ggg", 3), (b"fff", 4)], dtype=structured_dtype))
         assert za["c_obj", 0] == b"ggg"
         assert za[1, "c_int"] == 4
 
@@ -1963,9 +1961,7 @@ class TestArrayWithABSStore(TestArray):
     def test_nbytes_stored(self):
         return super().test_nbytes_stored()
 
-    @pytest.mark.skipif(
-        sys.version_info < (3, 7), reason="attr not serializable in py36"
-    )
+    @pytest.mark.skipif(sys.version_info < (3, 7), reason="attr not serializable in py36")
     def test_pickle(self):
         # internal attribute on ContainerClient isn't serializable for py36 and earlier
         super().test_pickle()
@@ -2048,9 +2044,7 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
             a = np.arange(nvalues, dtype=dtype)
             f = np.empty_like(a)
             f.fill(fill_value or 0)
-            z = self.create_array(
-                shape=a.shape, chunks=100, dtype=a.dtype, fill_value=fill_value
-            )
+            z = self.create_array(shape=a.shape, chunks=100, dtype=a.dtype, fill_value=fill_value)
             z[190:310] = a[190:310]
 
             assert_array_equal(f[:190], z[:190])
@@ -2058,9 +2052,7 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
             assert_array_equal(f[310:], z[310:])
 
         with pytest.raises(ValueError):
-            z = self.create_array(
-                shape=(nvalues,), chunks=100, dtype=dtype, fill_value=1
-            )
+            z = self.create_array(shape=(nvalues,), chunks=100, dtype=dtype, fill_value=1)
 
     def test_nchunks_initialized(self):
         fill_value = 0
@@ -2276,9 +2268,7 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
 
         compressors_warn = [Blosc()]
         if LZMA:
-            compressors_warn.append(
-                LZMA(2)
-            )  # Try lzma.FORMAT_ALONE, which N5 doesn't support.
+            compressors_warn.append(LZMA(2))  # Try lzma.FORMAT_ALONE, which N5 doesn't support.
         for compressor in compressors_warn:
             with pytest.warns(RuntimeWarning):
                 a2 = self.create_array(shape=1000, chunks=100, compressor=compressor)
@@ -2321,7 +2311,6 @@ class TestArrayWithDBMStoreBerkeleyDB(TestArray):
     def create_store(self):
         bsddb3 = pytest.importorskip("bsddb3")
         path = mktemp(suffix=".dbm")
-        path = mktemp(suffix=".dbm")
         atexit.register(os.remove, path)
         store = DBMStore(path, flag="n", open=bsddb3.btopen)
         return store
@@ -2333,7 +2322,6 @@ class TestArrayWithDBMStoreBerkeleyDB(TestArray):
 class TestArrayWithLMDBStore(TestArray):
     def create_store(self):
         pytest.importorskip("lmdb")
-        path = mktemp(suffix=".lmdb")
         path = mktemp(suffix=".lmdb")
         atexit.register(atexit_rmtree, path)
         store = LMDBStore(path, buffers=True)
@@ -2459,9 +2447,7 @@ class TestArrayWithFilters(TestArray):
             "chunk_store": chunk_store,
             "cache_metadata": kwargs.pop("cache_metadata", self.cache_metadata),
             "cache_attrs": kwargs.pop("cache_attrs", self.cache_attrs),
-            "write_empty_chunks": kwargs.pop(
-                "write_empty_chunks", self.write_empty_chunks
-            ),
+            "write_empty_chunks": kwargs.pop("write_empty_chunks", self.write_empty_chunks),
         }
         init_array(store, shape, **{**init_array_kwargs, **kwargs})
 
@@ -2602,7 +2588,6 @@ class TestArrayWithCustomMapping(TestArray):
 class TestArrayNoCache(TestArray):
     def test_cache_metadata(self):
         a1 = self.create_array(shape=100, chunks=10, dtype="i1", cache_metadata=False)
-        a1 = self.create_array(shape=100, chunks=10, dtype="i1", cache_metadata=False)
         path = None if self.version == 2 else a1.path
         a2 = Array(a1.store, path=path, cache_metadata=True)
         assert a1.shape == a2.shape
@@ -2678,15 +2663,13 @@ fsspec_mapper_kwargs = {"check": True, "create": True, "missing_exceptions": Non
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
 class TestArrayWithFSStore(TestArray):
     compressor = Blosc()
-    dimension_separator = "."
+    dimension_separator: Literal[".", "/"] = "."
 
     def create_store(self):
         path = mkdtemp()
         atexit.register(shutil.rmtree, path)
         key_separator = self.dimension_separator
-        store = FSStore(
-            path, key_separator=key_separator, auto_mkdir=True, **fsspec_mapper_kwargs
-        )
+        store = FSStore(path, key_separator=key_separator, auto_mkdir=True, **fsspec_mapper_kwargs)
         return store
 
     def expected(self):
@@ -2711,9 +2694,7 @@ class TestArrayWithFSStoreFromFilesystem(TestArray):
         path = mkdtemp()
         atexit.register(shutil.rmtree, path)
         key_separator = self.dimension_separator
-        store = FSStore(
-            path, fs=fs, key_separator=key_separator, **fsspec_mapper_kwargs
-        )
+        store = FSStore(path, fs=fs, key_separator=key_separator, **fsspec_mapper_kwargs)
         return store
 
     def expected(self):
@@ -2837,7 +2818,7 @@ class TestArrayWithFSStoreNestedPartialRead(TestArrayWithFSStore):
 class TestArrayV3(TestArray):
     version = 3
     root = meta_root
-    path = 'arr1'
+    path = "arr1"
 
     def create_store(self):
         return KVStoreV3(dict())
@@ -2928,14 +2909,10 @@ class TestArrayWithPathV3(TestArrayV3):
 
         # dict as store
         z = self.create_array(shape=1000, chunks=100)
-        expect_nbytes_stored = sum(
-            buffer_size(v) for k, v in z.store.items() if k != "zarr.json"
-        )
+        expect_nbytes_stored = sum(buffer_size(v) for k, v in z.store.items() if k != "zarr.json")
         assert expect_nbytes_stored == z.nbytes_stored
         z[:] = 42
-        expect_nbytes_stored = sum(
-            buffer_size(v) for k, v in z.store.items() if k != "zarr.json"
-        )
+        expect_nbytes_stored = sum(buffer_size(v) for k, v in z.store.items() if k != "zarr.json")
         assert expect_nbytes_stored == z.nbytes_stored
         assert z.nchunks_initialized == 10
 
@@ -3011,17 +2988,13 @@ class TestArrayWithChunkStoreV3(TestArrayV3):
     def test_nbytes_stored(self):
 
         z = self.create_array(shape=1000, chunks=100)
-        expect_nbytes_stored = sum(
-            buffer_size(v) for k, v in z.store.items() if k != "zarr.json"
-        )
+        expect_nbytes_stored = sum(buffer_size(v) for k, v in z.store.items() if k != "zarr.json")
         expect_nbytes_stored += sum(
             buffer_size(v) for k, v in z.chunk_store.items() if k != "zarr.json"
         )
         assert expect_nbytes_stored == z.nbytes_stored
         z[:] = 42
-        expect_nbytes_stored = sum(
-            buffer_size(v) for k, v in z.store.items() if k != "zarr.json"
-        )
+        expect_nbytes_stored = sum(buffer_size(v) for k, v in z.store.items() if k != "zarr.json")
         expect_nbytes_stored += sum(
             buffer_size(v) for k, v in z.chunk_store.items() if k != "zarr.json"
         )
@@ -3034,7 +3007,6 @@ class TestArrayWithChunkStoreV3(TestArrayV3):
 
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestArrayWithDirectoryStoreV3(TestArrayV3):
-
     def create_store(self) -> BaseStore:
         path = mkdtemp()
         atexit.register(shutil.rmtree, path)
@@ -3043,21 +3015,16 @@ class TestArrayWithDirectoryStoreV3(TestArrayV3):
     def test_nbytes_stored(self):
         # dict as store
         z = self.create_array(shape=1000, chunks=100)
-        expect_nbytes_stored = sum(
-            buffer_size(v) for k, v in z.store.items() if k != "zarr.json"
-        )
+        expect_nbytes_stored = sum(buffer_size(v) for k, v in z.store.items() if k != "zarr.json")
         assert expect_nbytes_stored == z.nbytes_stored
         z[:] = 42
-        expect_nbytes_stored = sum(
-            buffer_size(v) for k, v in z.store.items() if k != "zarr.json"
-        )
+        expect_nbytes_stored = sum(buffer_size(v) for k, v in z.store.items() if k != "zarr.json")
         assert expect_nbytes_stored == z.nbytes_stored
 
 
 @skip_test_env_var("ZARR_TEST_ABS")
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestArrayWithABSStoreV3(TestArrayV3):
-
     def create_store(self) -> ABSStoreV3:
         client = abs_container()
         store = ABSStoreV3(client=client)
@@ -3071,7 +3038,6 @@ class TestArrayWithABSStoreV3(TestArrayV3):
 
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestArrayWithDBMStoreV3(TestArrayV3):
-
     def create_store(self) -> DBMStoreV3:
         path = mktemp(suffix=".anydbm")
         atexit.register(atexit_rmglob, path + "*")
@@ -3084,7 +3050,6 @@ class TestArrayWithDBMStoreV3(TestArrayV3):
 
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestArrayWithDBMStoreV3BerkeleyDB(TestArrayV3):
-
     def create_store(self) -> DBMStoreV3:
         bsddb3 = pytest.importorskip("bsddb3")
         path = mktemp(suffix=".dbm")
@@ -3118,9 +3083,9 @@ class TestArrayWithLMDBStoreV3(TestArrayV3):
 class TestArrayWithLMDBStoreV3NoBuffers(TestArrayWithLMDBStoreV3):
     lmdb_buffers = False
 
+
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestArrayWithSQLiteStoreV3(TestArrayV3):
-
     def create_store(self):
         pytest.importorskip("sqlite3")
         path = mktemp(suffix=".db")
@@ -3184,21 +3149,16 @@ class CustomMappingV3(RmdirV3, StoreV3):
 
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestArrayWithCustomMappingV3(TestArrayV3):
-
     def create_store(self):
         store = CustomMappingV3()
         return store
 
     def test_nbytes_stored(self):
         z = self.create_array(shape=1000, chunks=100)
-        expect_nbytes_stored = sum(
-            buffer_size(v) for k, v in z.store.items() if k != "zarr.json"
-        )
+        expect_nbytes_stored = sum(buffer_size(v) for k, v in z.store.items() if k != "zarr.json")
         assert expect_nbytes_stored == z.nbytes_stored
         z[:] = 42
-        expect_nbytes_stored = sum(
-            buffer_size(v) for k, v in z.store.items() if k != "zarr.json"
-        )
+        expect_nbytes_stored = sum(buffer_size(v) for k, v in z.store.items() if k != "zarr.json")
         assert expect_nbytes_stored == z.nbytes_stored
 
     def test_len(self):
@@ -3210,7 +3170,6 @@ class TestArrayWithCustomMappingV3(TestArrayV3):
 
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestArrayNoCacheV3(TestArrayWithPathV3):
-
     def create_store(self):
         store = KVStoreV3(dict())
         return store
@@ -3265,9 +3224,7 @@ class TestArrayWithFSStoreV3FromFilesystem(TestArrayWithFSStoreV3):
         path = mkdtemp()
         atexit.register(shutil.rmtree, path)
         key_separator = self.dimension_separator
-        store = FSStoreV3(
-            path, fs=fs, key_separator=key_separator, **fsspec_mapper_kwargs
-        )
+        store = FSStoreV3(path, fs=fs, key_separator=key_separator, **fsspec_mapper_kwargs)
         return store
 
     def expected(self):
