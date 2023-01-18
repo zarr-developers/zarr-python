@@ -7,18 +7,27 @@ import pytest
 
 from zarr.codecs import Blosc, Delta, Pickle, Zlib
 from zarr.errors import MetadataError
-from zarr.meta import (ZARR_FORMAT, decode_array_metadata, decode_dtype,
-                       decode_group_metadata, encode_array_metadata,
-                       encode_dtype, encode_fill_value, decode_fill_value,
-                       get_extended_dtype_info, _v3_complex_types,
-                       _v3_datetime_types, _default_entry_point_metadata_v3,
-                       Metadata3)
+from zarr.meta import (
+    ZARR_FORMAT,
+    decode_array_metadata,
+    decode_dtype,
+    decode_group_metadata,
+    encode_array_metadata,
+    encode_dtype,
+    encode_fill_value,
+    decode_fill_value,
+    get_extended_dtype_info,
+    _v3_complex_types,
+    _v3_datetime_types,
+    _default_entry_point_metadata_v3,
+    Metadata3,
+)
 from zarr.util import normalize_dtype, normalize_fill_value
 
 
 def assert_json_equal(expect, actual):
     if isinstance(actual, bytes):
-        actual = str(actual, 'ascii')
+        actual = str(actual, "ascii")
     ej = json.loads(expect)
     aj = json.loads(actual)
     assert ej == aj
@@ -29,14 +38,15 @@ def test_encode_decode_array_1():
     meta = dict(
         shape=(100,),
         chunks=(10,),
-        dtype=np.dtype('<f8'),
+        dtype=np.dtype("<f8"),
         compressor=Zlib(1).get_config(),
         fill_value=None,
         filters=None,
-        order='C'
+        order="C",
     )
 
-    meta_json = '''{
+    meta_json = (
+        """{
         "chunks": [10],
         "compressor": {"id": "zlib", "level": 1},
         "dtype": "<f8",
@@ -45,7 +55,9 @@ def test_encode_decode_array_1():
         "order": "C",
         "shape": [100],
         "zarr_format": %s
-    }''' % ZARR_FORMAT
+    }"""
+        % ZARR_FORMAT
+    )
 
     # test encoding
     meta_enc = encode_array_metadata(meta)
@@ -53,22 +65,22 @@ def test_encode_decode_array_1():
 
     # test decoding
     meta_dec = decode_array_metadata(meta_enc)
-    assert ZARR_FORMAT == meta_dec['zarr_format']
-    assert meta['shape'] == meta_dec['shape']
-    assert meta['chunks'] == meta_dec['chunks']
-    assert meta['dtype'] == meta_dec['dtype']
-    assert meta['compressor'] == meta_dec['compressor']
-    assert meta['order'] == meta_dec['order']
-    assert meta_dec['fill_value'] is None
-    assert meta_dec['filters'] is None
+    assert ZARR_FORMAT == meta_dec["zarr_format"]
+    assert meta["shape"] == meta_dec["shape"]
+    assert meta["chunks"] == meta_dec["chunks"]
+    assert meta["dtype"] == meta_dec["dtype"]
+    assert meta["compressor"] == meta_dec["compressor"]
+    assert meta["order"] == meta_dec["order"]
+    assert meta_dec["fill_value"] is None
+    assert meta_dec["filters"] is None
 
 
 def test_encode_decode_array_2():
 
     # some variations
-    df = Delta(astype='<u2', dtype='V14')
-    compressor = Blosc(cname='lz4', clevel=3, shuffle=2)
-    dtype = np.dtype([('a', '<i4'), ('b', 'S10')])
+    df = Delta(astype="<u2", dtype="V14")
+    compressor = Blosc(cname="lz4", clevel=3, shuffle=2)
+    dtype = np.dtype([("a", "<i4"), ("b", "S10")])
     fill_value = np.zeros((), dtype=dtype)[()]
     meta = dict(
         shape=(100, 100),
@@ -76,11 +88,12 @@ def test_encode_decode_array_2():
         dtype=dtype,
         compressor=compressor.get_config(),
         fill_value=fill_value,
-        order='F',
-        filters=[df.get_config()]
+        order="F",
+        filters=[df.get_config()],
     )
 
-    meta_json = '''{
+    meta_json = (
+        """{
         "chunks": [10, 10],
         "compressor": {
             "id": "blosc",
@@ -97,7 +110,9 @@ def test_encode_decode_array_2():
         "order": "F",
         "shape": [100, 100],
         "zarr_format": %s
-    }''' % ZARR_FORMAT
+    }"""
+        % ZARR_FORMAT
+    )
 
     # test encoding
     meta_enc = encode_array_metadata(meta)
@@ -105,23 +120,23 @@ def test_encode_decode_array_2():
 
     # test decoding
     meta_dec = decode_array_metadata(meta_enc)
-    assert ZARR_FORMAT == meta_dec['zarr_format']
-    assert meta['shape'] == meta_dec['shape']
-    assert meta['chunks'] == meta_dec['chunks']
-    assert meta['dtype'] == meta_dec['dtype']
-    assert meta['compressor'] == meta_dec['compressor']
-    assert meta['order'] == meta_dec['order']
-    assert fill_value == meta_dec['fill_value']
-    assert [df.get_config()] == meta_dec['filters']
+    assert ZARR_FORMAT == meta_dec["zarr_format"]
+    assert meta["shape"] == meta_dec["shape"]
+    assert meta["chunks"] == meta_dec["chunks"]
+    assert meta["dtype"] == meta_dec["dtype"]
+    assert meta["compressor"] == meta_dec["compressor"]
+    assert meta["order"] == meta_dec["order"]
+    assert fill_value == meta_dec["fill_value"]
+    assert [df.get_config()] == meta_dec["filters"]
 
 
 def test_encode_decode_array_complex():
 
     # some variations
-    for k in ['c8', 'c16']:
-        compressor = Blosc(cname='lz4', clevel=3, shuffle=2)
+    for k in ["c8", "c16"]:
+        compressor = Blosc(cname="lz4", clevel=3, shuffle=2)
         dtype = np.dtype(k)
-        fill_value = dtype.type(np.nan-1j)
+        fill_value = dtype.type(np.nan - 1j)
         meta = dict(
             shape=(100, 100),
             chunks=(10, 10),
@@ -129,10 +144,10 @@ def test_encode_decode_array_complex():
             compressor=compressor.get_config(),
             fill_value=fill_value,
             order=dtype.char,
-            filters=[]
+            filters=[],
         )
 
-        meta_json = '''{
+        meta_json = """{
             "chunks": [10, 10],
             "compressor": {
                 "id": "blosc",
@@ -147,7 +162,11 @@ def test_encode_decode_array_complex():
             "order": "%s",
             "shape": [100, 100],
             "zarr_format": %s
-        }''' % (dtype.str, dtype.char, ZARR_FORMAT)
+        }""" % (
+            dtype.str,
+            dtype.char,
+            ZARR_FORMAT,
+        )
 
         # test encoding
         meta_enc = encode_array_metadata(meta)
@@ -155,25 +174,25 @@ def test_encode_decode_array_complex():
 
         # test decoding
         meta_dec = decode_array_metadata(meta_enc)
-        assert ZARR_FORMAT == meta_dec['zarr_format']
-        assert meta['shape'] == meta_dec['shape']
-        assert meta['chunks'] == meta_dec['chunks']
-        assert meta['dtype'] == meta_dec['dtype']
-        assert meta['compressor'] == meta_dec['compressor']
-        assert meta['order'] == meta_dec['order']
+        assert ZARR_FORMAT == meta_dec["zarr_format"]
+        assert meta["shape"] == meta_dec["shape"]
+        assert meta["chunks"] == meta_dec["chunks"]
+        assert meta["dtype"] == meta_dec["dtype"]
+        assert meta["compressor"] == meta_dec["compressor"]
+        assert meta["order"] == meta_dec["order"]
         # Based off of this SO answer: https://stackoverflow.com/a/49972198
         assert np.all(
-            fill_value.view((np.uint8, fill_value.itemsize)) ==
-            meta_dec['fill_value'].view((np.uint8, meta_dec['fill_value'].itemsize))
+            fill_value.view((np.uint8, fill_value.itemsize))
+            == meta_dec["fill_value"].view((np.uint8, meta_dec["fill_value"].itemsize))
         )
-        assert [] == meta_dec['filters']
+        assert [] == meta_dec["filters"]
 
 
 def test_encode_decode_array_datetime_timedelta():
 
     # some variations
-    for k in ['m8[s]', 'M8[s]']:
-        compressor = Blosc(cname='lz4', clevel=3, shuffle=2)
+    for k in ["m8[s]", "M8[s]"]:
+        compressor = Blosc(cname="lz4", clevel=3, shuffle=2)
         dtype = np.dtype(k)
         fill_value = dtype.type("NaT")
         meta = dict(
@@ -183,10 +202,10 @@ def test_encode_decode_array_datetime_timedelta():
             compressor=compressor.get_config(),
             fill_value=fill_value,
             order=dtype.char,
-            filters=[]
+            filters=[],
         )
 
-        meta_json = '''{
+        meta_json = """{
             "chunks": [10, 10],
             "compressor": {
                 "id": "blosc",
@@ -201,7 +220,11 @@ def test_encode_decode_array_datetime_timedelta():
             "order": "%s",
             "shape": [100, 100],
             "zarr_format": %s
-        }''' % (dtype.str, dtype.char, ZARR_FORMAT)
+        }""" % (
+            dtype.str,
+            dtype.char,
+            ZARR_FORMAT,
+        )
 
         # test encoding
         meta_enc = encode_array_metadata(meta)
@@ -209,18 +232,18 @@ def test_encode_decode_array_datetime_timedelta():
 
         # test decoding
         meta_dec = decode_array_metadata(meta_enc)
-        assert ZARR_FORMAT == meta_dec['zarr_format']
-        assert meta['shape'] == meta_dec['shape']
-        assert meta['chunks'] == meta_dec['chunks']
-        assert meta['dtype'] == meta_dec['dtype']
-        assert meta['compressor'] == meta_dec['compressor']
-        assert meta['order'] == meta_dec['order']
+        assert ZARR_FORMAT == meta_dec["zarr_format"]
+        assert meta["shape"] == meta_dec["shape"]
+        assert meta["chunks"] == meta_dec["chunks"]
+        assert meta["dtype"] == meta_dec["dtype"]
+        assert meta["compressor"] == meta_dec["compressor"]
+        assert meta["order"] == meta_dec["order"]
         # Based off of this SO answer: https://stackoverflow.com/a/49972198
         assert np.all(
-            fill_value.view((np.uint8, fill_value.itemsize)) ==
-            meta_dec['fill_value'].view((np.uint8, meta_dec['fill_value'].itemsize))
+            fill_value.view((np.uint8, fill_value.itemsize))
+            == meta_dec["fill_value"].view((np.uint8, meta_dec["fill_value"].itemsize))
         )
-        assert [] == meta_dec['filters']
+        assert [] == meta_dec["filters"]
 
 
 def test_encode_decode_array_dtype_shape():
@@ -228,14 +251,15 @@ def test_encode_decode_array_dtype_shape():
     meta = dict(
         shape=(100,),
         chunks=(10,),
-        dtype=np.dtype('(10, 10)<f8'),
+        dtype=np.dtype("(10, 10)<f8"),
         compressor=Zlib(1).get_config(),
         fill_value=None,
         filters=None,
-        order='C'
+        order="C",
     )
 
-    meta_json = '''{
+    meta_json = (
+        """{
         "chunks": [10],
         "compressor": {"id": "zlib", "level": 1},
         "dtype": "<f8",
@@ -244,7 +268,9 @@ def test_encode_decode_array_dtype_shape():
         "order": "C",
         "shape": [100, 10, 10],
         "zarr_format": %s
-    }''' % ZARR_FORMAT
+    }"""
+        % ZARR_FORMAT
+    )
 
     # test encoding
     meta_enc = encode_array_metadata(meta)
@@ -252,32 +278,30 @@ def test_encode_decode_array_dtype_shape():
 
     # test decoding
     meta_dec = decode_array_metadata(meta_enc)
-    assert ZARR_FORMAT == meta_dec['zarr_format']
+    assert ZARR_FORMAT == meta_dec["zarr_format"]
     # to maintain consistency with numpy unstructured arrays, unpack dimensions into shape
-    assert meta['shape'] + meta['dtype'].shape == meta_dec['shape']
-    assert meta['chunks'] == meta_dec['chunks']
+    assert meta["shape"] + meta["dtype"].shape == meta_dec["shape"]
+    assert meta["chunks"] == meta_dec["chunks"]
     # to maintain consistency with numpy unstructured arrays, unpack dtypes
-    assert meta['dtype'].base == meta_dec['dtype']
-    assert meta['compressor'] == meta_dec['compressor']
-    assert meta['order'] == meta_dec['order']
-    assert meta_dec['fill_value'] is None
-    assert meta_dec['filters'] is None
+    assert meta["dtype"].base == meta_dec["dtype"]
+    assert meta["compressor"] == meta_dec["compressor"]
+    assert meta["order"] == meta_dec["order"]
+    assert meta_dec["fill_value"] is None
+    assert meta_dec["filters"] is None
 
 
 def test_encode_decode_array_dtype_shape_v3():
 
     meta = dict(
         shape=(100,),
-        chunk_grid=dict(type='regular',
-                        chunk_shape=(10,),
-                        separator=('/')),
-        data_type=np.dtype('(10, 10)<f8'),
+        chunk_grid=dict(type="regular", chunk_shape=(10,), separator=("/")),
+        data_type=np.dtype("(10, 10)<f8"),
         compressor=Zlib(1),
         fill_value=None,
-        chunk_memory_layout='C'
+        chunk_memory_layout="C",
     )
 
-    meta_json = '''{
+    meta_json = """{
         "attributes": {},
         "chunk_grid": {
             "chunk_shape": [10],
@@ -295,7 +319,7 @@ def test_encode_decode_array_dtype_shape_v3():
         "extensions": [],
         "fill_value": null,
         "shape": [100, 10, 10 ]
-    }'''
+    }"""
 
     # test encoding
     meta_enc = Metadata3.encode_array_metadata(meta)
@@ -304,14 +328,14 @@ def test_encode_decode_array_dtype_shape_v3():
     # test decoding
     meta_dec = Metadata3.decode_array_metadata(meta_enc)
     # to maintain consistency with numpy unstructured arrays, unpack dimensions into shape
-    assert meta['shape'] + meta['data_type'].shape == meta_dec['shape']
-    assert meta['chunk_grid'] == meta_dec['chunk_grid']
+    assert meta["shape"] + meta["data_type"].shape == meta_dec["shape"]
+    assert meta["chunk_grid"] == meta_dec["chunk_grid"]
     # to maintain consistency with numpy unstructured arrays, unpack dtypes
-    assert meta['data_type'].base == meta_dec['data_type']
-    assert meta['compressor'] == meta_dec['compressor']
-    assert meta['chunk_memory_layout'] == meta_dec['chunk_memory_layout']
-    assert meta_dec['fill_value'] is None
-    assert 'filters' not in meta_dec
+    assert meta["data_type"].base == meta_dec["data_type"]
+    assert meta["compressor"] == meta_dec["compressor"]
+    assert meta["chunk_memory_layout"] == meta_dec["chunk_memory_layout"]
+    assert meta_dec["fill_value"] is None
+    assert "filters" not in meta_dec
 
 
 def test_encode_decode_array_structured():
@@ -319,14 +343,15 @@ def test_encode_decode_array_structured():
     meta = dict(
         shape=(100,),
         chunks=(10,),
-        dtype=np.dtype('<i8, (10, 10)<f8, (5, 10, 15)u1'),
+        dtype=np.dtype("<i8, (10, 10)<f8, (5, 10, 15)u1"),
         compressor=Zlib(1).get_config(),
         fill_value=None,
         filters=None,
-        order='C'
+        order="C",
     )
 
-    meta_json = '''{
+    meta_json = (
+        """{
         "chunks": [10],
         "compressor": {"id": "zlib", "level": 1},
         "dtype": [["f0", "<i8"], ["f1", "<f8", [10, 10]], ["f2", "|u1", [5, 10, 15]]],
@@ -335,7 +360,9 @@ def test_encode_decode_array_structured():
         "order": "C",
         "shape": [100],
         "zarr_format": %s
-    }''' % ZARR_FORMAT
+    }"""
+        % ZARR_FORMAT
+    )
 
     # test encoding
     meta_enc = encode_array_metadata(meta)
@@ -343,16 +370,16 @@ def test_encode_decode_array_structured():
 
     # test decoding
     meta_dec = decode_array_metadata(meta_enc)
-    assert ZARR_FORMAT == meta_dec['zarr_format']
+    assert ZARR_FORMAT == meta_dec["zarr_format"]
     # to maintain consistency with numpy unstructured arrays, unpack dimensions into shape
-    assert meta['shape'] + meta['dtype'].shape == meta_dec['shape']
-    assert meta['chunks'] == meta_dec['chunks']
+    assert meta["shape"] + meta["dtype"].shape == meta_dec["shape"]
+    assert meta["chunks"] == meta_dec["chunks"]
     # to maintain consistency with numpy unstructured arrays, unpack dimensions into shape
-    assert meta['dtype'].base == meta_dec['dtype']
-    assert meta['compressor'] == meta_dec['compressor']
-    assert meta['order'] == meta_dec['order']
-    assert meta_dec['fill_value'] is None
-    assert meta_dec['filters'] is None
+    assert meta["dtype"].base == meta_dec["dtype"]
+    assert meta["compressor"] == meta_dec["compressor"]
+    assert meta["order"] == meta_dec["order"]
+    assert meta_dec["fill_value"] is None
+    assert meta_dec["filters"] is None
 
 
 def test_encode_decode_fill_values_nan():
@@ -368,14 +395,14 @@ def test_encode_decode_fill_values_nan():
         meta = dict(
             shape=(100,),
             chunks=(10,),
-            dtype=np.dtype('<f8'),
+            dtype=np.dtype("<f8"),
             compressor=Zlib(1).get_config(),
             fill_value=v,
             filters=None,
-            order='C'
+            order="C",
         )
 
-        meta_json = '''{
+        meta_json = """{
             "chunks": [10],
             "compressor": {"id": "zlib", "level": 1},
             "dtype": "<f8",
@@ -384,7 +411,10 @@ def test_encode_decode_fill_values_nan():
             "order": "C",
             "shape": [100],
             "zarr_format": %s
-        }''' % (s, ZARR_FORMAT)
+        }""" % (
+            s,
+            ZARR_FORMAT,
+        )
 
         # test encoding
         meta_enc = encode_array_metadata(meta)
@@ -392,14 +422,14 @@ def test_encode_decode_fill_values_nan():
 
         # test decoding
         meta_dec = decode_array_metadata(meta_enc)
-        actual = meta_dec['fill_value']
+        actual = meta_dec["fill_value"]
         assert f(actual)
 
 
 def test_encode_decode_fill_values_bytes():
 
-    dtype = np.dtype('S10')
-    fills = b'foo', bytes(10)
+    dtype = np.dtype("S10")
+    fills = b"foo", bytes(10)
 
     for v in fills:
 
@@ -411,14 +441,14 @@ def test_encode_decode_fill_values_bytes():
             compressor=Zlib(1).get_config(),
             fill_value=v,
             filters=None,
-            order='C'
+            order="C",
         )
         meta_enc = encode_array_metadata(meta)
 
         # define expected metadata encoded as JSON
         s = base64.standard_b64encode(v)
         s = s.decode()
-        meta_json = '''{
+        meta_json = """{
             "chunks": [10],
             "compressor": {"id": "zlib", "level": 1},
             "dtype": "|S10",
@@ -427,14 +457,17 @@ def test_encode_decode_fill_values_bytes():
             "order": "C",
             "shape": [100],
             "zarr_format": %s
-        }''' % (s, ZARR_FORMAT)
+        }""" % (
+            s,
+            ZARR_FORMAT,
+        )
 
         # test encoding
         assert_json_equal(meta_json, meta_enc)
 
         # test decoding
         meta_dec = decode_array_metadata(meta_enc)
-        actual = meta_dec['fill_value']
+        actual = meta_dec["fill_value"]
         expect = np.array(v, dtype=dtype)[()]
         assert expect == actual
 
@@ -442,7 +475,7 @@ def test_encode_decode_fill_values_bytes():
 def test_decode_array_unsupported_format():
 
     # unsupported format
-    meta_json = '''{
+    meta_json = """{
         "zarr_format": %s,
         "shape": [100],
         "chunks": [10],
@@ -450,7 +483,9 @@ def test_decode_array_unsupported_format():
         "compressor": {"id": "zlib", "level": 1},
         "fill_value": null,
         "order": "C"
-    }''' % (ZARR_FORMAT - 1)
+    }""" % (
+        ZARR_FORMAT - 1
+    )
     with pytest.raises(MetadataError):
         decode_array_metadata(meta_json)
 
@@ -458,16 +493,19 @@ def test_decode_array_unsupported_format():
 def test_decode_array_missing_fields():
 
     # missing fields
-    meta_json = '''{
+    meta_json = (
+        """{
         "zarr_format": %s
-    }''' % ZARR_FORMAT
+    }"""
+        % ZARR_FORMAT
+    )
     with pytest.raises(MetadataError):
         decode_array_metadata(meta_json)
 
 
 def test_encode_decode_dtype():
 
-    for dt in ['f8', [('a', 'f8')], [('a', 'f8'), ('b', 'i1')]]:
+    for dt in ["f8", [("a", "f8")], [("a", "f8"), ("b", "i1")]]:
         e = encode_dtype(np.dtype(dt))
         s = json.dumps(e)  # check JSON serializable
         o = json.loads(s)
@@ -478,16 +516,21 @@ def test_encode_decode_dtype():
 def test_decode_group():
 
     # typical
-    b = '''{
+    b = (
+        """{
         "zarr_format": %s
-    }''' % ZARR_FORMAT
+    }"""
+        % ZARR_FORMAT
+    )
     meta = decode_group_metadata(b)
-    assert ZARR_FORMAT == meta['zarr_format']
+    assert ZARR_FORMAT == meta["zarr_format"]
 
     # unsupported format
-    b = '''{
+    b = """{
         "zarr_format": %s
-    }''' % (ZARR_FORMAT - 1)
+    }""" % (
+        ZARR_FORMAT - 1
+    )
     with pytest.raises(MetadataError):
         decode_group_metadata(b)
 
@@ -497,13 +540,13 @@ def test_decode_group():
     [
         (
             (0.0, None),
-            [('x', float), ('y', object)],
+            [("x", float), ("y", object)],
             Pickle(),
             True,  # Pass
         ),
         (
             (0.0, None),
-            [('x', float), ('y', object)],
+            [("x", float), ("y", object)],
             None,
             False,  # Fail
         ),
@@ -529,13 +572,13 @@ def test_encode_fill_value(fill_value, dtype, object_codec, result):
     [
         (
             (0.0, None),
-            [('x', float), ('y', object)],
+            [("x", float), ("y", object)],
             Pickle(),
             True,  # Pass
         ),
         (
             (0.0, None),
-            [('x', float), ('y', object)],
+            [("x", float), ("y", object)],
             None,
             False,  # Fail
         ),
@@ -560,7 +603,7 @@ def test_decode_fill_value(fill_value, dtype, object_codec, result):
 
 def test_get_extended_dtype_info():
     extended_types = list(_v3_complex_types) + list(_v3_datetime_types)
-    extended_types += ['|S4', '|S8', '>U4', '<U4', '|O', '|V16']
+    extended_types += ["|S4", "|S8", ">U4", "<U4", "|O", "|V16"]
 
     for dtype in extended_types:
         try:
@@ -568,13 +611,13 @@ def test_get_extended_dtype_info():
         except TypeError:  # pragma: no cover
             # skip any numpy dtypes not supported by a particular architecture
             pass  # pragma: no cover
-        assert 'extension' in info
-        assert 'type' in info
-        assert 'fallback' in info
+        assert "extension" in info
+        assert "type" in info
+        assert "fallback" in info
 
-    class invalid_dtype():
+    class invalid_dtype:
 
-        str = 'unknown_type'
+        str = "unknown_type"
 
     with pytest.raises(ValueError):
         get_extended_dtype_info(invalid_dtype)
@@ -586,10 +629,10 @@ def test_metadata3_exceptions():
         # dict must have a key named 'type'
         Metadata3.decode_dtype({})
 
-    required = ["zarr_format", "metadata_encoding",  "metadata_key_suffix", "extensions"]
+    required = ["zarr_format", "metadata_encoding", "metadata_key_suffix", "extensions"]
     for key in required:
         meta = copy.copy(_default_entry_point_metadata_v3)
-        meta.pop('zarr_format')
+        meta.pop("zarr_format")
         with pytest.raises(ValueError):
             # cannot encode metadata that is missing a required key
             Metadata3.encode_hierarchy_metadata(meta)
@@ -602,22 +645,22 @@ def test_metadata3_exceptions():
 
     json = Metadata3.encode_hierarchy_metadata(_default_entry_point_metadata_v3)
     # form a new json bytes object with one of the keys missing
-    temp = json.split(b'\n')
+    temp = json.split(b"\n")
     temp = temp[:2] + temp[3:]
-    bad_json = b'\n'.join(temp)
+    bad_json = b"\n".join(temp)
     with pytest.raises(ValueError):
         # cannot encode metadata that is missing a required key
         Metadata3.decode_hierarchy_metadata(bad_json)
 
     json = Metadata3.encode_hierarchy_metadata(_default_entry_point_metadata_v3)
-    temp = json.split(b'\n')
+    temp = json.split(b"\n")
     temp = temp[:2] + [b'    "unexpected": [],'] + temp[2:]
-    bad_json = b'\n'.join(temp)
+    bad_json = b"\n".join(temp)
     with pytest.raises(ValueError):
         # cannot encode metadata that has extra, unexpected keys
         Metadata3.decode_hierarchy_metadata(bad_json)
 
-    codec_meta = dict(configuration=None, codec='unknown')
+    codec_meta = dict(configuration=None, codec="unknown")
     with pytest.raises(NotImplementedError):
         Metadata3._decode_codec_metadata(codec_meta)
 
