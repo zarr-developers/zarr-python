@@ -511,9 +511,15 @@ class Group(MutableMapping):
         else:
             dir_name = meta_root + self._path
             group_sfx = '.group' + self._metadata_key_suffix
-            for key in sorted(listdir(self._store, dir_name)):
+            # The fact that we call sorted means this can't be a streaming generator.
+            # The keys are already in memory.
+            all_keys = sorted(listdir(self._store, dir_name))
+            for key in all_keys:
                 if key.endswith(group_sfx):
                     key = key[:-len(group_sfx)]
+                    if key in all_keys:
+                        # otherwise we will double count this group
+                        continue
                 path = self._key_prefix + key
                 if path.endswith(".array" + self._metadata_key_suffix):
                     # skip array keys
@@ -552,24 +558,16 @@ class Group(MutableMapping):
                         zarr_version=self._version)
 
         else:
-            dir_name = meta_root + self._path
-            group_sfx = '.group' + self._metadata_key_suffix
-            for key in sorted(listdir(self._store, dir_name)):
-                if key.endswith(group_sfx):
-                    key = key[:-len(group_sfx)]
+            for key in self.group_keys():
                 path = self._key_prefix + key
-                if path.endswith(".array" + self._metadata_key_suffix):
-                    # skip array keys
-                    continue
-                if contains_group(self._store, path, explicit_only=False):
-                    yield key, Group(
-                        self._store,
-                        path=path,
-                        read_only=self._read_only,
-                        chunk_store=self._chunk_store,
-                        cache_attrs=self.attrs.cache,
-                        synchronizer=self._synchronizer,
-                        zarr_version=self._version)
+                yield key, Group(
+                    self._store,
+                    path=path,
+                    read_only=self._read_only,
+                    chunk_store=self._chunk_store,
+                    cache_attrs=self.attrs.cache,
+                    synchronizer=self._synchronizer,
+                    zarr_version=self._version)
 
     def array_keys(self, recurse=False):
         """Return an iterator over member names for arrays only.

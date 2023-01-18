@@ -14,6 +14,82 @@ Unreleased
     # .. warning::
     #    Pre-release! Use :command:`pip install --pre zarr` to evaluate this release.
 
+* Improve Zarr V3 support, adding partial store read/write and storage transformers.
+  Add two features of the [v3 spec](https://zarr-specs.readthedocs.io/en/latest/core/v3.0.html):
+  * storage transformers
+  * `get_partial_values` and `set_partial_values`
+  By :user:`Jonathan Striebel <jstriebel>`; :issue:`1096`.
+
+.. _release_2.13.6:
+
+2.13.6
+------
+
+Maintenance
+~~~~~~~~~~~
+
+* Bump gh-action-pypi-publish to 1.6.4.
+  By :user:`Josh Moore <joshmoore>` :issue:`1320`.
+
+.. _release_2.13.5:
+
+2.13.5
+------
+
+Bug fixes
+~~~~~~~~~
+
+* Ensure ``zarr.create`` uses writeable mode to fix issue with :issue:`1304`.
+  By :user:`James Bourbeau <jrbourbeau>` :issue:`1309`.
+
+.. _release_2.13.4:
+
+2.13.4
+------
+
+Appreciation
+~~~~~~~~~~~~~
+
+Special thanks to Outreachy participants for contributing to most of the
+maintenance PRs. Please read the blog post summarising the contribution phase
+and welcoming new Outreachy interns:
+https://zarr.dev/blog/welcoming-outreachy-2022-interns/
+
+
+Enhancements
+~~~~~~~~~~~~
+
+* Handle fsspec.FSMap using FSStore store.
+  By :user:`Rafal Wojdyla <ravwojdyla>` :issue:`1304`.
+
+Bug fixes
+~~~~~~~~~
+
+* Fix bug that caused double counting of groups in ``groups()`` and ``group_keys()`` methods with V3 stores.
+  By :user:`Ryan Abernathey <rabernat>` :issue:`1228`.
+
+* Remove unnecessary calling of `contains_array` for key that ended in `.array.json`.
+  By :user:`Joe Hamman <jhamman>` :issue:`1149`.
+
+* Fix bug that caused double counting of groups in ``groups()`` and ``group_keys()``
+  methods with V3 stores.
+  By :user:`Ryan Abernathey <rabernat>` :issue:`1228`.
+
+Documentation
+~~~~~~~~~~~~~
+
+* Fix minor indexing errors in tutorial and specification examples of documentation. 
+  By :user:`Kola Babalola <sprynt001>` :issue:`1277`.
+
+* Add `requirements_rtfd.txt` in `contributing.rst`.
+  By :user:`AWA BRANDON AWA <DON-BRAN>` :issue:`1243`.
+
+* Add documentation for find/findall using visit.
+  By :user:`Weddy Gikunda <caviere>` :issue:`1241`.
+
+* Refresh of the main landing page.
+  By :user:`Josh Moore <joshmoore>` :issue:`1173`.
+
 Maintenance
 ~~~~~~~~~~~
 
@@ -47,6 +123,77 @@ Maintenance
 * Delete unused files.
   By :user:`John Kirkham <jakirkham>` :issue:`1251`.
 
+* Skip labeller for bot PRs.
+  By :user:`Saransh Chopra <Saransh-cpp>` :issue:`1271`.
+
+* Restore Flake8 configuration.
+  By :user:`John Kirkham <jakirkham>` :issue:`1249`.
+
+* Add missing newline at EOF.
+  By :user:`Dimitri Papadopoulos` :issue:`1253`.
+
+* Add `license_files` to `pyproject.toml`.
+  By :user:`John Kirkham <jakirkham>` :issue:`1247`.
+
+* Adding `pyupgrade` suggestions.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1225`.
+
+* Fixed some linting errors.
+  By :user:`Weddy Gikunda <caviere>` :issue:`1226`.
+
+* Added the link to main website in readthedocs sidebar.
+  By :user:`Stephanie_nkwatoh <steph237>` :issue:`1216`.
+
+* Remove redundant wheel dependency in `pyproject.toml`.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1233`.
+
+* Turned on `isloated_build` in `tox.ini` file.
+  By :user:`AWA BRANDON AWA <DON-BRAN>` :issue:`1210`.
+
+* Fixed `flake8` alert and avoid duplication of `Zarr Developers`.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1203`.
+
+* Bump to NumPy 1.20+ in `environment.yml`.
+  By :user:`John Kirkham <jakirkham>` :issue:`1201`.
+
+* Bump to NumPy 1.20 in `pyproject.toml`.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1192`.
+
+* Remove LGTM (`.lgtm.yml`) configuration file.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1191`.
+
+* Codespell will skip `fixture` in pre-commit.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1197`.
+
+* Add msgpack in `requirements_rtfd.txt`.
+  By :user:`Emmanuel Bolarinwa <GbotemiB>` :issue:`1188`.
+
+* Added license to docs fixed a typo from `_spec_v2` to `_spec_v3`.
+  By :user:`AWA BRANDON AWA <DON-BRAN>` :issue:`1182`.
+
+* Fixed installation link in `README.md`.
+  By :user:`AWA BRANDON AWA <DON-BRAN>` :issue:`1177`.
+
+* Fixed typos in `installation.rst` and `release.rst`.
+  By :user:`Chizoba Nweke <zobbs-git>` :issue:`1178`.
+
+* Set `docs/conf.py` language to `en`.
+  By :user:`AWA BRANDON AWA <DON-BRAN>` :issue:`1174`.
+
+* Added `installation.rst` to the docs.
+  By :user:`AWA BRANDON AWA <DON-BRAN>` :issue:`1170`.
+
+* Adjustment of year to `2015-2018` to `2015-2022` in the docs.
+  By :user:`Emmanuel Bolarinwa <GbotemiB>` :issue:`1165`.
+
+* Updated `Forking the repository` section in `contributing.rst`.
+  By :user:`AWA BRANDON AWA <DON-BRAN>` :issue:`1171`.
+
+* Updated GitHub actions.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1134`.
+
+* Uopdate web links: `http:// → https://`.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1313`.
 
 .. _release_2.13.3:
 
