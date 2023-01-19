@@ -8,6 +8,11 @@ jobs:
     if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' }} && ${{ github.event.pull_request.user.login != 'pre-commit-ci[bot]' }}
     runs-on: ubuntu-latest
     steps:
+    - name: print-result
+      env:
+        USER: ${{ github.event.pull_request.user.login }}
+      run: |
+        echo "$USER"
     - uses: actions/labeler@main
       with:
         repo-token: ${{ secrets.GITHUB_TOKEN }}
