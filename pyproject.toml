@@ -61,6 +61,7 @@ omit = [
     "zarr/meta_v1.py",
     "bench/compress_normal.py",
 ]
+dynamic_context = "test_function"
 
 [tool.setuptools]
 packages = ["zarr", "zarr._storage", "zarr.tests"]

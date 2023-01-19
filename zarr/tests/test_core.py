@@ -85,6 +85,7 @@ class TestArray(unittest.TestCase):
     dimension_separator: Literal["/", ".", None] = None
     cache_metadata = True
     cache_attrs = True
+    partial_decompress: bool = False
     write_empty_chunks = True
     read_only = False
     storage_transformers: Tuple[Any, ...] = ()
@@ -96,15 +97,11 @@ class TestArray(unittest.TestCase):
     def create_chunk_store(self) -> Optional[BaseStore]:
         return None
 
-    def create_array(
-        self,
-        shape: Union[int, Tuple[int, ...]],
-        **kwargs,
-    ):
+    def create_array(self, shape: Union[int, Tuple[int, ...]], **kwargs):
 
         store = self.create_store()
         chunk_store = self.create_chunk_store()
-
+        # keyword arguments for array initialization
         init_array_kwargs = {
             "path": kwargs.pop("path", self.path),
             "compressor": self.compressor,
@@ -112,12 +109,14 @@ class TestArray(unittest.TestCase):
             "storage_transformers": self.storage_transformers,
         }
 
+        # keyword arguments for array instantiation
         access_array_kwargs = {
             "path": init_array_kwargs["path"],
             "read_only": kwargs.pop("read_only", self.read_only),
             "chunk_store": chunk_store,
             "cache_metadata": kwargs.pop("cache_metadata", self.cache_metadata),
             "cache_attrs": kwargs.pop("cache_attrs", self.cache_attrs),
+            "partial_decompress": kwargs.pop("partial_decompress", self.partial_decompress),
             "write_empty_chunks": kwargs.pop("write_empty_chunks", self.write_empty_chunks),
         }
         init_array(store, shape, **{**init_array_kwargs, **kwargs})
@@ -165,12 +164,7 @@ class TestArray(unittest.TestCase):
     def test_store_has_text_keys(self):
         # Initialize array
         np.random.seed(42)
-        z = self.create_array(
-            shape=(1050,),
-            chunks=100,
-            dtype="f8",
-            compressor=[],
-        )
+        z = self.create_array(shape=(1050,), chunks=100, dtype="f8", compressor=[])
 
         z[:] = np.random.random(z.shape)
 
@@ -207,11 +201,7 @@ class TestArray(unittest.TestCase):
 
         # Initialize array
         np.random.seed(42)
-        z = self.create_array(
-            shape=(1050,),
-            chunks=100,
-            dtype="f8",
-        )
+        z = self.create_array(shape=(1050,), chunks=100, dtype="f8")
         z[:] = np.random.random(z.shape)
 
         # Check in-memory array only contains `bytes`
@@ -222,10 +212,7 @@ class TestArray(unittest.TestCase):
     def test_nbytes_stored(self):
 
         # dict as store
-        z = self.create_array(
-            shape=1000,
-            chunks=100,
-        )
+        z = self.create_array(shape=1000, chunks=100)
         if self.version == 3:
             expect_nbytes_stored = sum(
                 buffer_size(v) for k, v in z.store.items() if k != "zarr.json"
@@ -257,11 +244,7 @@ class TestArray(unittest.TestCase):
     # noinspection PyStatementEffect
     def test_array_1d(self):
         a = np.arange(1050)
-        z = self.create_array(
-            shape=a.shape,
-            chunks=100,
-            dtype=a.dtype,
-        )
+        z = self.create_array(shape=a.shape, chunks=100, dtype=a.dtype)
 
         # check properties
         assert len(a) == len(z)
@@ -347,12 +330,7 @@ class TestArray(unittest.TestCase):
             a = np.arange(1050)
             f = np.empty_like(a)
             f.fill(fill_value)
-            z = self.create_array(
-                shape=a.shape,
-                chunks=100,
-                dtype=a.dtype,
-                fill_value=fill_value,
-            )
+            z = self.create_array(shape=a.shape, chunks=100, dtype=a.dtype, fill_value=fill_value)
             z[190:310] = a[190:310]
 
             assert_array_equal(f[:190], z[:190])
@@ -389,11 +367,7 @@ class TestArray(unittest.TestCase):
 
         # setup
         a = np.arange(1050)
-        z = self.create_array(
-            shape=a.shape,
-            chunks=100,
-            dtype=a.dtype,
-        )
+        z = self.create_array(shape=a.shape, chunks=100, dtype=a.dtype)
         z[:] = a
 
         # get
@@ -435,11 +409,7 @@ class TestArray(unittest.TestCase):
     # noinspection PyStatementEffect
     def test_array_2d(self):
         a = np.arange(10000).reshape((1000, 10))
-        z = self.create_array(
-            shape=a.shape,
-            chunks=(100, 2),
-            dtype=a.dtype,
-        )
+        z = self.create_array(shape=a.shape, chunks=(100, 2), dtype=a.dtype)
 
         # check properties
         assert len(a) == len(z)
@@ -552,11 +522,7 @@ class TestArray(unittest.TestCase):
         shape = 1000, 10
         chunks = 300, 30
         dtype = "i8"
-        z = self.create_array(
-            shape=shape,
-            dtype=dtype,
-            chunks=chunks,
-        )
+        z = self.create_array(shape=shape, dtype=dtype, chunks=chunks)
         z[:] = 0
         expect = np.zeros(shape, dtype=dtype)
         actual = z[:]
@@ -565,12 +531,7 @@ class TestArray(unittest.TestCase):
         z.store.close()
 
     def test_array_2d_partial(self):
-        z = self.create_array(
-            shape=(1000, 10),
-            chunks=(100, 2),
-            dtype="i4",
-            fill_value=0,
-        )
+        z = self.create_array(shape=(1000, 10), chunks=(100, 2), dtype="i4", fill_value=0)
 
         # check partial assignment, single row
         c = np.arange(z.shape[1])
@@ -615,12 +576,7 @@ class TestArray(unittest.TestCase):
         # 1D
         a = np.arange(1050)
         for order in "C", "F":
-            z = self.create_array(
-                shape=a.shape,
-                chunks=100,
-                dtype=a.dtype,
-                order=order,
-            )
+            z = self.create_array(shape=a.shape, chunks=100, dtype=a.dtype, order=order)
             assert order == z.order
             if order == "F":
                 assert z[:].flags.f_contiguous
@@ -634,12 +590,7 @@ class TestArray(unittest.TestCase):
         # 2D
         a = np.arange(10000).reshape((100, 100))
         for order in "C", "F":
-            z = self.create_array(
-                shape=a.shape,
-                chunks=(10, 10),
-                dtype=a.dtype,
-                order=order,
-            )
+            z = self.create_array(shape=a.shape, chunks=(10, 10), dtype=a.dtype, order=order)
             assert order == z.order
             if order == "F":
                 assert z[:].flags.f_contiguous
@@ -654,11 +605,7 @@ class TestArray(unittest.TestCase):
     def test_setitem_data_not_shared(self):
         # check that data don't end up being shared with another array
         # https://github.com/alimanfoo/zarr/issues/79
-        z = self.create_array(
-            shape=20,
-            chunks=10,
-            dtype="i4",
-        )
+        z = self.create_array(shape=20, chunks=10, dtype="i4")
         a = np.arange(20, dtype="i4")
         z[:] = a
         assert_array_equal(z[:], np.arange(20, dtype="i4"))
@@ -681,41 +628,22 @@ class TestArray(unittest.TestCase):
         found = []
 
         # Check basic 1-D array
-        z = self.create_array(
-            shape=(1050,),
-            chunks=100,
-            dtype="<i4",
-        )
+        z = self.create_array(shape=(1050,), chunks=100, dtype="<i4")
         found.append(z.hexdigest())
         z.store.close()
 
         # Check basic 1-D array with different type
-        z = self.create_array(
-            shape=(1050,),
-            chunks=100,
-            dtype="<f4",
-        )
+        z = self.create_array(shape=(1050,), chunks=100, dtype="<f4")
         found.append(z.hexdigest())
         z.store.close()
 
         # Check basic 2-D array
-        z = self.create_array(
-            shape=(
-                20,
-                35,
-            ),
-            chunks=10,
-            dtype="<i4",
-        )
+        z = self.create_array(shape=(20, 35), chunks=10, dtype="<i4")
         found.append(z.hexdigest())
         z.store.close()
 
         # Check basic 1-D array with some data
-        z = self.create_array(
-            shape=(1050,),
-            chunks=100,
-            dtype="<i4",
-        )
+        z = self.create_array(shape=(1050,), chunks=100, dtype="<i4")
         z[200:400] = np.arange(200, 400, dtype="i4")
         found.append(z.hexdigest())
         z.store.close()
@@ -730,12 +658,7 @@ class TestArray(unittest.TestCase):
 
     def test_resize_1d(self):
 
-        z = self.create_array(
-            shape=105,
-            chunks=10,
-            dtype="i4",
-            fill_value=0,
-        )
+        z = self.create_array(shape=105, chunks=10, dtype="i4", fill_value=0)
         a = np.arange(105, dtype="i4")
         z[:] = a
         assert (105,) == z.shape
@@ -771,12 +694,7 @@ class TestArray(unittest.TestCase):
 
     def test_resize_2d(self):
 
-        z = self.create_array(
-            shape=(105, 105),
-            chunks=(10, 10),
-            dtype="i4",
-            fill_value=0,
-        )
+        z = self.create_array(shape=(105, 105), chunks=(10, 10), dtype="i4", fill_value=0)
         a = np.arange(105 * 105, dtype="i4").reshape((105, 105))
         z[:] = a
         assert (105, 105) == z.shape
@@ -831,11 +749,7 @@ class TestArray(unittest.TestCase):
     def test_append_1d(self):
 
         a = np.arange(105)
-        z = self.create_array(
-            shape=a.shape,
-            chunks=10,
-            dtype=a.dtype,
-        )
+        z = self.create_array(shape=a.shape, chunks=10, dtype=a.dtype)
         z[:] = a
         assert a.shape == z.shape
         assert a.dtype == z.dtype
@@ -864,11 +778,7 @@ class TestArray(unittest.TestCase):
     def test_append_2d(self):
 
         a = np.arange(105 * 105, dtype="i4").reshape((105, 105))
-        z = self.create_array(
-            shape=a.shape,
-            chunks=(10, 10),
-            dtype=a.dtype,
-        )
+        z = self.create_array(shape=a.shape, chunks=(10, 10), dtype=a.dtype)
         z[:] = a
         assert a.shape == z.shape
         assert a.dtype == z.dtype
@@ -890,11 +800,7 @@ class TestArray(unittest.TestCase):
     def test_append_2d_axis(self):
 
         a = np.arange(105 * 105, dtype="i4").reshape((105, 105))
-        z = self.create_array(
-            shape=a.shape,
-            chunks=(10, 10),
-            dtype=a.dtype,
-        )
+        z = self.create_array(shape=a.shape, chunks=(10, 10), dtype=a.dtype)
         z[:] = a
         assert a.shape == z.shape
         assert a.dtype == z.dtype
@@ -913,11 +819,7 @@ class TestArray(unittest.TestCase):
 
     def test_append_bad_shape(self):
         a = np.arange(100)
-        z = self.create_array(
-            shape=a.shape,
-            chunks=10,
-            dtype=a.dtype,
-        )
+        z = self.create_array(shape=a.shape, chunks=10, dtype=a.dtype)
         z[:] = a
         b = a.reshape(10, 10)
         with pytest.raises(ValueError):
@@ -926,10 +828,7 @@ class TestArray(unittest.TestCase):
 
     def test_read_only(self):
 
-        z = self.create_array(
-            shape=1000,
-            chunks=100,
-        )
+        z = self.create_array(shape=1000, chunks=100)
         assert not z.read_only
         z.store.close()
 
@@ -959,11 +858,7 @@ class TestArray(unittest.TestCase):
     def test_pickle(self):
 
         # setup array
-        z = self.create_array(
-            shape=1000,
-            chunks=100,
-            dtype=int,
-        )
+        z = self.create_array(shape=1000, chunks=100, dtype=int, cache_metadata=False)
         shape = z.shape
         chunks = z.chunks
         dtype = z.dtype
@@ -997,10 +892,7 @@ class TestArray(unittest.TestCase):
         z2.store.close()
 
     def test_np_ufuncs(self):
-        z = self.create_array(
-            shape=(100, 100),
-            chunks=(10, 10),
-        )
+        z = self.create_array(shape=(100, 100), chunks=(10, 10))
         a = np.arange(10000).reshape(100, 100)
         z[:] = a
 
@@ -1017,10 +909,7 @@ class TestArray(unittest.TestCase):
 
         # use zarr array as indices or condition
         zc = self.create_array(
-            shape=condition.shape,
-            dtype=condition.dtype,
-            chunks=10,
-            filters=None,
+            shape=condition.shape, dtype=condition.dtype, chunks=10, filters=None
         )
         zc[:] = condition
         assert_array_equal(np.compress(condition, a, axis=0), np.compress(zc, a, axis=0))
@@ -1036,10 +925,7 @@ class TestArray(unittest.TestCase):
     def test_0len_dim_1d(self):
         # Test behaviour for 1D array with zero-length dimension.
 
-        z = self.create_array(
-            shape=0,
-            fill_value=0,
-        )
+        z = self.create_array(shape=0, fill_value=0)
         a = np.zeros(0)
         assert a.ndim == z.ndim
         assert a.shape == z.shape
@@ -1074,10 +960,7 @@ class TestArray(unittest.TestCase):
     def test_0len_dim_2d(self):
         # Test behavior for 2D array with a zero-length dimension.
 
-        z = self.create_array(
-            shape=(10, 0),
-            fill_value=0,
-        )
+        z = self.create_array(shape=(10, 0), fill_value=0)
         a = np.zeros((10, 0))
         assert a.ndim == z.ndim
         assert a.shape == z.shape
@@ -1118,12 +1001,7 @@ class TestArray(unittest.TestCase):
 
         # setup
         a = np.zeros(())
-        z = self.create_array(
-            shape=(),
-            dtype=a.dtype,
-            fill_value=0,
-            write_empty_chunks=False,
-        )
+        z = self.create_array(shape=(), dtype=a.dtype, fill_value=0, write_empty_chunks=False)
 
         # check properties
         assert a.ndim == z.ndim
@@ -1175,11 +1053,7 @@ class TestArray(unittest.TestCase):
             else:
                 dtype = "float"
             z = self.create_array(
-                shape=100,
-                chunks=10,
-                fill_value=fill_value,
-                dtype=dtype,
-                write_empty_chunks=True,
+                shape=100, chunks=10, fill_value=fill_value, dtype=dtype, write_empty_chunks=True
             )
 
             assert 0 == z.nchunks_initialized
@@ -1202,12 +1076,7 @@ class TestArray(unittest.TestCase):
 
         for a in (d, d[:0]):
             for fill_value in None, 0:
-                z = self.create_array(
-                    shape=a.shape[:-2],
-                    chunks=2,
-                    dtype=dt,
-                    fill_value=fill_value,
-                )
+                z = self.create_array(shape=a.shape[:-2], chunks=2, dtype=dt, fill_value=fill_value)
                 assert len(a) == len(z)
                 if fill_value is not None:
                     assert fill_value == z.fill_value
@@ -1218,12 +1087,7 @@ class TestArray(unittest.TestCase):
     def check_structured_array(self, d, fill_values):
         for a in (d, d[:0]):
             for fill_value in fill_values:
-                z = self.create_array(
-                    shape=a.shape,
-                    chunks=2,
-                    dtype=a.dtype,
-                    fill_value=fill_value,
-                )
+                z = self.create_array(shape=a.shape, chunks=2, dtype=a.dtype, fill_value=fill_value)
                 assert len(a) == len(z)
                 assert a.shape == z.shape
                 assert a.dtype == z.dtype
@@ -1301,11 +1165,7 @@ class TestArray(unittest.TestCase):
 
         # integers
         for dtype in "u1", "u2", "u4", "u8", "i1", "i2", "i4", "i8":
-            z = self.create_array(
-                shape=10,
-                chunks=3,
-                dtype=dtype,
-            )
+            z = self.create_array(shape=10, chunks=3, dtype=dtype)
             assert z.dtype == np.dtype(dtype)
             a = np.arange(z.shape[0], dtype=dtype)
             z[:] = a
@@ -1314,11 +1174,7 @@ class TestArray(unittest.TestCase):
 
         # floats
         for dtype in "f2", "f4", "f8":
-            z = self.create_array(
-                shape=10,
-                chunks=3,
-                dtype=dtype,
-            )
+            z = self.create_array(shape=10, chunks=3, dtype=dtype)
             assert z.dtype == np.dtype(dtype)
             a = np.linspace(0, 1, z.shape[0], dtype=dtype)
             z[:] = a
@@ -1327,11 +1183,7 @@ class TestArray(unittest.TestCase):
 
         # complex
         for dtype in "c8", "c16":
-            z = self.create_array(
-                shape=10,
-                chunks=3,
-                dtype=dtype,
-            )
+            z = self.create_array(shape=10, chunks=3, dtype=dtype)
             assert z.dtype == np.dtype(dtype)
             a = np.linspace(0, 1, z.shape[0], dtype=dtype)
             a -= 1j * a
@@ -1343,11 +1195,7 @@ class TestArray(unittest.TestCase):
         for base_type in "Mm":
             for resolution in "D", "us", "ns":
                 dtype = "{}8[{}]".format(base_type, resolution)
-                z = self.create_array(
-                    shape=100,
-                    dtype=dtype,
-                    fill_value=0,
-                )
+                z = self.create_array(shape=100, dtype=dtype, fill_value=0)
                 assert z.dtype == np.dtype(dtype)
                 a = np.random.randint(
                     np.iinfo("i8").min, np.iinfo("i8").max, size=z.shape[0], dtype="i8"
@@ -1359,11 +1207,7 @@ class TestArray(unittest.TestCase):
         # unicode and bytestring dtypes
         for dtype in ["S4", "S6", "U5", "U5"]:
             n = 10
-            z = self.create_array(
-                shape=n,
-                chunks=3,
-                dtype=dtype,
-            )
+            z = self.create_array(shape=n, chunks=3, dtype=dtype)
             assert z.dtype == np.dtype(dtype)
             if dtype.startswith("S"):
                 a = np.asarray([b"name"] * n, dtype=dtype)
@@ -1375,25 +1219,15 @@ class TestArray(unittest.TestCase):
 
         # check that datetime generic units are not allowed
         with pytest.raises(ValueError):
-            self.create_array(
-                shape=100,
-                dtype="M8",
-            )
+            self.create_array(shape=100, dtype="M8")
         with pytest.raises(ValueError):
-            self.create_array(
-                shape=100,
-                dtype="m8",
-            )
+            self.create_array(shape=100, dtype="m8")
 
     def test_object_arrays(self):
 
         # an object_codec is required for object arrays
         with pytest.raises(ValueError):
-            self.create_array(
-                shape=10,
-                chunks=3,
-                dtype=object,
-            )
+            self.create_array(shape=10, chunks=3, dtype=object)
 
         # an object_codec is required for object arrays, but allow to be provided via
         # filters to maintain API backwards compatibility
@@ -1434,12 +1268,7 @@ class TestArray(unittest.TestCase):
         z.store.close()
 
         # create an object array using JSON
-        z = self.create_array(
-            shape=10,
-            chunks=3,
-            dtype=object,
-            object_codec=JSON(),
-        )
+        z = self.create_array(shape=10, chunks=3, dtype=object, object_codec=JSON())
         z[0] = "foo"
         assert z[0] == "foo"
         # z[1] = b'bar'
@@ -1457,11 +1286,7 @@ class TestArray(unittest.TestCase):
     def test_object_arrays_vlen_text(self):
 
         data = np.array(greetings * 1000, dtype=object)
-        z = self.create_array(
-            shape=data.shape,
-            dtype=object,
-            object_codec=VLenUTF8(),
-        )
+        z = self.create_array(shape=data.shape, dtype=object, object_codec=VLenUTF8())
         z[0] = "foo"
         assert z[0] == "foo"
         z[1] = "bar"
@@ -1475,47 +1300,30 @@ class TestArray(unittest.TestCase):
         z.store.close()
 
         # convenience API
-        z = self.create_array(
-            shape=data.shape,
-            dtype=str,
-        )
+        z = self.create_array(shape=data.shape, dtype=str)
         assert z.dtype == object
         assert isinstance(z.filters[0], VLenUTF8)
         z[:] = data
         assert_array_equal(data, z[:])
         z.store.close()
 
-        z = self.create_array(
-            shape=data.shape,
-            dtype=object,
-            object_codec=MsgPack(),
-        )
+        z = self.create_array(shape=data.shape, dtype=object, object_codec=MsgPack())
+        z[:] = data
+        assert_array_equal(data, z[:])
+        z.store.close()
+
+        z = self.create_array(shape=data.shape, dtype=object, object_codec=JSON())
+        z[:] = data
+        assert_array_equal(data, z[:])
+        z.store.close()
+
+        z = self.create_array(shape=data.shape, dtype=object, object_codec=Pickle())
         z[:] = data
         assert_array_equal(data, z[:])
         z.store.close()
 
         z = self.create_array(
-            shape=data.shape,
-            dtype=object,
-            object_codec=JSON(),
-        )
-        z[:] = data
-        assert_array_equal(data, z[:])
-        z.store.close()
-
-        z = self.create_array(
-            shape=data.shape,
-            dtype=object,
-            object_codec=Pickle(),
-        )
-        z[:] = data
-        assert_array_equal(data, z[:])
-        z.store.close()
-
-        z = self.create_array(
-            shape=data.shape,
-            dtype=object,
-            object_codec=Categorize(greetings, dtype=object),
+            shape=data.shape, dtype=object, object_codec=Categorize(greetings, dtype=object)
         )
         z[:] = data
         assert_array_equal(data, z[:])
@@ -1526,11 +1334,7 @@ class TestArray(unittest.TestCase):
         greetings_bytes = [g.encode("utf8") for g in greetings]
         data = np.array(greetings_bytes * 1000, dtype=object)
 
-        z = self.create_array(
-            shape=data.shape,
-            dtype=object,
-            object_codec=VLenBytes(),
-        )
+        z = self.create_array(shape=data.shape, dtype=object, object_codec=VLenBytes())
         z[0] = b"foo"
         assert z[0] == b"foo"
         z[1] = b"bar"
@@ -1544,21 +1348,14 @@ class TestArray(unittest.TestCase):
         z.store.close()
 
         # convenience API
-        z = self.create_array(
-            shape=data.shape,
-            dtype=bytes,
-        )
+        z = self.create_array(shape=data.shape, dtype=bytes)
         assert z.dtype == object
         assert isinstance(z.filters[0], VLenBytes)
         z[:] = data
         assert_array_equal(data, z[:])
         z.store.close()
 
-        z = self.create_array(
-            shape=data.shape,
-            dtype=object,
-            object_codec=Pickle(),
-        )
+        z = self.create_array(shape=data.shape, dtype=object, object_codec=Pickle())
         z[:] = data
         assert_array_equal(data, z[:])
         z.store.close()
@@ -1581,11 +1378,7 @@ class TestArray(unittest.TestCase):
 
         codecs = VLenArray(int), VLenArray("<u4")
         for codec in codecs:
-            z = self.create_array(
-                shape=data.shape,
-                dtype=object,
-                object_codec=codec,
-            )
+            z = self.create_array(shape=data.shape, dtype=object, object_codec=codec)
             z[0] = np.array([4, 7])
             assert_array_equal(np.array([4, 7]), z[0])
             z[:] = data
@@ -1596,10 +1389,7 @@ class TestArray(unittest.TestCase):
 
         # convenience API
         for item_type in "int", "<u4":
-            z = self.create_array(
-                shape=data.shape,
-                dtype="array:{}".format(item_type),
-            )
+            z = self.create_array(shape=data.shape, dtype="array:{}".format(item_type))
             assert z.dtype == object
             assert isinstance(z.filters[0], VLenArray)
             assert z.filters[0].dtype == np.dtype(item_type)
@@ -1610,13 +1400,7 @@ class TestArray(unittest.TestCase):
     def test_object_arrays_danger(self):
 
         # do something dangerous - manually force an object array with no object codec
-        z = self.create_array(
-            shape=5,
-            chunks=2,
-            dtype=object,
-            fill_value=0,
-            object_codec=MsgPack(),
-        )
+        z = self.create_array(shape=5, chunks=2, dtype=object, fill_value=0, object_codec=MsgPack())
         z._filters = None  # wipe filters
         with pytest.raises(RuntimeError):
             z[0] = "foo"
@@ -1658,7 +1442,7 @@ class TestArray(unittest.TestCase):
     )
     def test_structured_array_contain_object(self):
 
-        if "PartialRead" in self.__class__.__name__:
+        if self.partial_decompress:
             pytest.skip("partial reads of object arrays not supported")
 
         # ----------- creation --------------
@@ -1668,10 +1452,7 @@ class TestArray(unittest.TestCase):
 
         # zarr-array with structured dtype require object codec
         with pytest.raises(ValueError):
-            self.create_array(
-                shape=a.shape,
-                dtype=structured_dtype,
-            )
+            self.create_array(shape=a.shape, dtype=structured_dtype)
 
         # create zarr-array by np-array
         za = self.create_array(shape=a.shape, dtype=structured_dtype, object_codec=Pickle())
@@ -1697,10 +1478,7 @@ class TestArray(unittest.TestCase):
     def test_iteration_exceptions(self):
         # zero d array
         a = np.array(1, dtype=int)
-        z = self.create_array(
-            shape=a.shape,
-            dtype=int,
-        )
+        z = self.create_array(shape=a.shape, dtype=int)
         z[...] = a
         with pytest.raises(TypeError):
             # noinspection PyStatementEffect
@@ -1711,10 +1489,7 @@ class TestArray(unittest.TestCase):
 
         # input argument error handling
         a = np.array((10, 10), dtype=int)
-        z = self.create_array(
-            shape=a.shape,
-            dtype=int,
-        )
+        z = self.create_array(shape=a.shape, dtype=int)
         z[...] = a
 
         params = ((-1, 0), (0, -1), (0.5, 1), (0, 0.5))
@@ -1746,11 +1521,7 @@ class TestArray(unittest.TestCase):
             ((10, 10, 10), (3, 3, 3)),
         )
         for shape, chunks in params:
-            z = self.create_array(
-                shape=shape,
-                chunks=chunks,
-                dtype=int,
-            )
+            z = self.create_array(shape=shape, chunks=chunks, dtype=int)
             a = np.arange(np.product(shape)).reshape(shape)
             z[:] = a
             for expect, actual in zip_longest(a, z):
@@ -1771,11 +1542,7 @@ class TestArray(unittest.TestCase):
             ((10, 10, 10), (3, 3, 3), 2, 4),
         )
         for shape, chunks, start, end in params:
-            z = self.create_array(
-                shape=shape,
-                chunks=chunks,
-                dtype=int,
-            )
+            z = self.create_array(shape=shape, chunks=chunks, dtype=int)
             a = np.arange(np.product(shape)).reshape(shape)
             z[:] = a
             end_array = min(end, a.shape[0])
@@ -1789,11 +1556,7 @@ class TestArray(unittest.TestCase):
         if LZMA:
             compressors.append(LZMA())
         for compressor in compressors:
-            a = self.create_array(
-                shape=1000,
-                chunks=100,
-                compressor=compressor,
-            )
+            a = self.create_array(shape=1000, chunks=100, compressor=compressor)
             a[0:100] = 1
             assert np.all(a[0:100] == 1)
             a[:] = 1
@@ -1802,18 +1565,10 @@ class TestArray(unittest.TestCase):
 
     def test_endian(self):
         dtype = np.dtype("float32")
-        a1 = self.create_array(
-            shape=1000,
-            chunks=100,
-            dtype=dtype.newbyteorder("<"),
-        )
+        a1 = self.create_array(shape=1000, chunks=100, dtype=dtype.newbyteorder("<"))
         a1[:] = 1
         x1 = a1[:]
-        a2 = self.create_array(
-            shape=1000,
-            chunks=100,
-            dtype=dtype.newbyteorder(">"),
-        )
+        a2 = self.create_array(shape=1000, chunks=100, dtype=dtype.newbyteorder(">"))
         a2[:] = 1
         x2 = a2[:]
         assert_array_equal(x1, x2)
@@ -1853,6 +1608,38 @@ class TestArray(unittest.TestCase):
             object_codec=Pickle(),
         )
         assert tuple(a[0]) == (0.0, None)
+
+    def test_non_cont(self):
+        if not self.partial_decompress:
+            pytest.skip("This test only applies to stores supporting partial reads")
+        z = self.create_array(shape=(500, 500, 500), chunks=(50, 50, 50), dtype="<i4")
+        z[:, :, :] = 1
+        # actually go through the partial read by accessing a single item
+        assert z[0, :, 0].any()
+
+    def test_read_nitems_less_than_blocksize_from_multiple_chunks(self):
+        """Tests to make sure decompression doesn't fail when `nitems` is
+        less than a compressed block size, but covers multiple blocks
+        """
+        if not self.partial_decompress:
+            pytest.skip("This test only applies to stores supporting partial reads")
+        z = self.create_array(shape=1000000, chunks=100_000)
+        z[40_000:80_000] = 1
+        path = None if self.version == 2 else z.path
+        b = Array(z.store, path=path, read_only=True, partial_decompress=True)
+        assert (b[40_000:80_000] == 1).all()
+
+    def test_read_from_all_blocks(self):
+        """Tests to make sure `PartialReadBuffer.read_part` doesn't fail when
+        stop isn't in the `start_points` array
+        """
+        if not self.partial_decompress:
+            pytest.skip("This test only applies to stores supporting partial reads")
+        z = self.create_array(shape=1000000, chunks=100_000)
+        z[2:99_000] = 1
+        path = None if self.version == 2 else z.path
+        b = Array(z.store, path=path, read_only=True, partial_decompress=True)
+        assert (b[2:99_000] == 1).all()
 
 
 class TestArrayWithPath(TestArray):
@@ -2060,11 +1847,7 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
         fill_value = 0
         dtype = "int"
         z = self.create_array(
-            shape=100,
-            chunks=10,
-            fill_value=fill_value,
-            dtype=dtype,
-            write_empty_chunks=True,
+            shape=100, chunks=10, fill_value=fill_value, dtype=dtype, write_empty_chunks=True
         )
 
         assert 0 == z.nchunks_initialized
@@ -2080,11 +1863,7 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
         # second round of similar tests with write_empty_chunks set to
         # False
         z = self.create_array(
-            shape=100,
-            chunks=10,
-            fill_value=fill_value,
-            dtype=dtype,
-            write_empty_chunks=False,
+            shape=100, chunks=10, fill_value=fill_value, dtype=dtype, write_empty_chunks=False
         )
         z[:] = 42
         assert 10 == z.nchunks_initialized
@@ -2423,11 +2202,7 @@ class TestArrayWithLZMACompressor(TestArray):
 class TestArrayWithFilters(TestArray):
     compressor = Zlib(1)
 
-    def create_array(
-        self,
-        shape: Union[int, Tuple[int, ...]],
-        **kwargs,
-    ):
+    def create_array(self, shape: Union[int, Tuple[int, ...]], **kwargs):
 
         store = self.create_store()
         chunk_store = self.create_chunk_store()
@@ -2712,6 +2487,7 @@ class TestArrayWithFSStoreFromFilesystem(TestArray):
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
 class TestArrayWithFSStorePartialRead(TestArray):
     compressor = Blosc(blocksize=256)
+    partial_decompress = True
 
     def create_store(self):
         path = mkdtemp()
@@ -2727,32 +2503,6 @@ class TestArrayWithFSStorePartialRead(TestArray):
             "88adeeabb819feecccadf50152293dbb42f9107e",
             "1426e084427f9920e29c9ec81b663d1005849455",
         ]
-
-    def test_non_cont(self):
-        z = self.create_array(shape=(500, 500, 500), chunks=(50, 50, 50), dtype="<i4")
-        z[:, :, :] = 1
-        # actually go through the partial read by accessing a single item
-        assert z[0, :, 0].any()
-
-    def test_read_nitems_less_than_blocksize_from_multiple_chunks(self):
-        """Tests to make sure decompression doesn't fail when `nitems` is
-        less than a compressed block size, but covers multiple blocks
-        """
-        z = self.create_array(shape=1000000, chunks=100_000)
-        z[40_000:80_000] = 1
-        path = None if self.version == 2 else z.path
-        b = Array(z.store, path=path, read_only=True, partial_decompress=True)
-        assert (b[40_000:80_000] == 1).all()
-
-    def test_read_from_all_blocks(self):
-        """Tests to make sure `PartialReadBuffer.read_part` doesn't fail when
-        stop isn't in the `start_points` array
-        """
-        z = self.create_array(shape=1000000, chunks=100_000)
-        z[2:99_000] = 1
-        path = None if self.version == 2 else z.path
-        b = Array(z.store, path=path, read_only=True, partial_decompress=True)
-        assert (b[2:99_000] == 1).all()
 
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
@@ -2774,6 +2524,7 @@ class TestArrayWithFSStoreNested(TestArrayWithFSStore):
 class TestArrayWithFSStoreNestedPartialRead(TestArrayWithFSStore):
     compressor = Blosc()
     dimension_separator = "/"
+    partial_decompress = True
 
     def expected(self):
         return [
@@ -2783,32 +2534,6 @@ class TestArrayWithFSStoreNestedPartialRead(TestArrayWithFSStore):
             "85131cec526fa46938fd2c4a6083a58ee11037ea",
             "c3167010c162c6198cb2bf3c1da2c46b047c69a1",
         ]
-
-    def test_non_cont(self):
-        z = self.create_array(shape=(500, 500, 500), chunks=(50, 50, 50), dtype="<i4")
-        z[:, :, :] = 1
-        # actually go through the partial read by accessing a single item
-        assert z[0, :, 0].any()
-
-    def test_read_nitems_less_than_blocksize_from_multiple_chunks(self):
-        """Tests to make sure decompression doesn't fail when `nitems` is
-        less than a compressed block size, but covers multiple blocks
-        """
-        z = self.create_array(shape=1000000, chunks=100_000)
-        z[40_000:80_000] = 1
-        path = None if self.version == 2 else z.path
-        b = Array(z.store, path=path, read_only=True, partial_decompress=True)
-        assert (b[40_000:80_000] == 1).all()
-
-    def test_read_from_all_blocks(self):
-        """Tests to make sure `PartialReadBuffer.read_part` doesn't fail when
-        stop isn't in the `start_points` array
-        """
-        z = self.create_array(shape=1000000, chunks=100_000)
-        z[2:99_000] = 1
-        path = None if self.version == 2 else z.path
-        b = Array(z.store, path=path, read_only=True, partial_decompress=True)
-        assert (b[2:99_000] == 1).all()
 
 
 ####
@@ -3242,6 +2967,8 @@ class TestArrayWithFSStoreV3FromFilesystem(TestArrayWithFSStoreV3):
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestArrayWithFSStoreV3PartialRead(TestArrayWithFSStoreV3):
+    partial_decompress = True
+
     def expected(self):
         return [
             "1509abec4285494b61cd3e8d21f44adc3cf8ddf6",
