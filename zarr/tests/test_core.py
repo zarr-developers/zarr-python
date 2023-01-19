@@ -2352,7 +2352,7 @@ class CustomMapping:
 
 
 class TestArrayWithCustomMapping(TestArray):
-    def get_store(self):
+    def create_store(self):
         return CustomMapping()
 
     def test_nbytes_stored(self):
@@ -2426,7 +2426,7 @@ class TestArrayNoCache(TestArray):
 
 
 class TestArrayWithStoreCache(TestArray):
-    def get_store(self):
+    def create_store(self):
         return LRUStoreCache(dict(), max_size=None)
 
     def test_store_has_bytes_values(self):
