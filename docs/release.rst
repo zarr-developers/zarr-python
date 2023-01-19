@@ -22,7 +22,7 @@ Unreleased
 
 * Drop flake8 from the pre-commit checks. Add ruff and black to pre-commit
   checks. Store linter configuration in ``pyproject.toml``. 
-  By :user:`Davis Bennett <d-v-b>`; :issue:`xxxx` 
+  By :user:`Davis Bennett <d-v-b>`; :issue:`1323` 
 
 .. _release_2.13.6:
 
