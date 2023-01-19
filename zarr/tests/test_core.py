@@ -55,6 +55,7 @@ from zarr.storage import (
     init_array,
     init_group,
     meta_root,
+    normalize_store_arg,
 )
 from zarr._storage.v3 import (
     ABSStoreV3,
@@ -135,8 +136,8 @@ class TestArray(unittest.TestCase):
         assert "" == a.path
         assert a.name is None
         assert a.basename is None
-        assert store is a.store
-        store.close()
+        assert a.store == normalize_store_arg(store)
+        a.store.close()
 
         # initialize at path
         store = self.create_store()
@@ -148,6 +149,8 @@ class TestArray(unittest.TestCase):
         assert "foo/bar" == a.path
         assert "/foo/bar" == a.name
         assert "bar" == a.basename
+        assert a.store == normalize_store_arg(store)
+        a.store.close()
 
         # store not initialized
         store = self.create_store()
