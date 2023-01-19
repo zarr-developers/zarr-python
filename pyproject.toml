@@ -56,6 +56,9 @@ exclude_lines = [
     "pragma: ${PY_MAJOR_VERSION} no cover",
 ]
 
+[tool.coverage.html]
+show_contexts = true
+
 [tool.coverage.run]
 omit = [
     "zarr/meta_v1.py",
