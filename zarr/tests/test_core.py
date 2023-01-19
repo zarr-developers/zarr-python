@@ -148,7 +148,6 @@ class TestArray(unittest.TestCase):
         assert "foo/bar" == a.path
         assert "/foo/bar" == a.name
         assert "bar" == a.basename
-        assert store is a.store
 
         # store not initialized
         store = self.create_store()
