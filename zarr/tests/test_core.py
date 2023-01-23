@@ -17,6 +17,7 @@ from numcodecs.tests.common import greetings
 from numpy.testing import assert_array_almost_equal, assert_array_equal
 from pkg_resources import parse_version
 
+import zarr
 from zarr._storage.store import (
     v3_api_available,
 )
@@ -3520,3 +3521,27 @@ def test_array_mismatched_store_versions():
         Array(store_v3, path='dataset', read_only=False, chunk_store=chunk_store_v2)
     with pytest.raises(ValueError):
         Array(store_v2, path='dataset', read_only=False, chunk_store=chunk_store_v3)
+
+
+@pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
+def test_issue_1279(tmpdir):
+    """See <https://github.com/zarr-developers/zarr-python/issues/1279>"""
+
+    data = np.arange(25).reshape((5, 5))
+    ds = zarr.create(
+        shape=data.shape,
+        chunks=(5, 5),
+        dtype=data.dtype,
+        compressor=(None),
+        store=FSStore(url=str(tmpdir), mode="a"),
+        order="F",
+    )
+
+    ds[:] = data
+
+    ds_reopened = zarr.open_array(
+        store=FSStore(url=str(tmpdir), mode="r")
+    )
+
+    written_data = ds_reopened[:]
+    assert_array_equal(data, written_data)
