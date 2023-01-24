@@ -22,7 +22,9 @@ Major changes
   adding partial store read/write and storage transformers.
   By :user:`Jonathan Striebel <jstriebel>`; :issue:`1096`.
 
-
+* Remove warnings emitted when using N5Store or N5FSStore with a blosc-compressed array.
+  By :user:`Davis Bennett <d-v-b>`; :issue:`1331`.
+  
 Bug fixes
 ~~~~~~~~~
 
