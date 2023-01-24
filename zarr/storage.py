@@ -55,8 +55,8 @@ from zarr.meta import encode_array_metadata, encode_group_metadata
 from zarr.util import (buffer_size, json_loads, nolock, normalize_chunks,
                        normalize_dimension_separator,
                        normalize_dtype, normalize_fill_value, normalize_order,
-                       normalize_shape, normalize_storage_path, retry_call
-                       )
+                       normalize_shape, normalize_storage_path, retry_call,
+                       ensure_contiguous_ndarray_or_bytes)
 
 from zarr._storage.absstore import ABSStore  # noqa: F401
 from zarr._storage.store import (_get_hierarchy_metadata,  # noqa: F401
@@ -1395,13 +1395,19 @@ class FSStore(Store):
     def setitems(self, values):
         if self.mode == 'r':
             raise ReadOnlyError()
-        values = {self._normalize_key(key): val for key, val in values.items()}
+
+        # Normalize keys and make sure the values are bytes
+        values = {
+            self._normalize_key(key): ensure_contiguous_ndarray_or_bytes(val)
+            for key, val in values.items()
+        }
         self.map.setitems(values)
 
     def __setitem__(self, key, value):
         if self.mode == 'r':
             raise ReadOnlyError()
         key = self._normalize_key(key)
+        value = ensure_contiguous_ndarray_or_bytes(value)
         path = self.dir_path(key)
         try:
             if self.fs.isdir(path):
