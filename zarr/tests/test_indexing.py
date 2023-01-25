@@ -283,8 +283,6 @@ def test_get_basic_selection_2d():
     for selection in bad_selections:
         with pytest.raises(IndexError):
             z.get_basic_selection(selection)
-        with pytest.raises(IndexError):
-            z[selection]
     # check fallback on fancy indexing
     fancy_selection = ([0, 1], [0, 1])
     np.testing.assert_array_equal(z[fancy_selection], [0, 11])
@@ -317,14 +315,154 @@ def test_fancy_indexing_fallback_on_get_setitem():
     )
 
 
-def test_fancy_indexing_doesnt_mix_with_slicing():
-    z = zarr.zeros((20, 20))
-    with pytest.raises(IndexError):
-        z[[1, 2, 3], :] = 2
-    with pytest.raises(IndexError):
-        np.testing.assert_array_equal(
-            z[[1, 2, 3], :], 0
+@pytest.mark.parametrize("index,expected_result",
+                         [
+                             # List first, then slice
+                             (
+                                     ([0, 1], slice(None)),
+                                     [[0, 1, 2],
+                                      [3, 4, 5]]
+                             ),
+                             # List first, then slice
+                             (
+                                     ([0, 1], slice(1, None)),
+                                     [[1, 2],
+                                      [4, 5]]
+                             ),
+                             # Slice first, then list
+                             (
+                                     (slice(0, 2), [0, 2]),
+                                     [[0, 2],
+                                      [3, 5]]
+                             ),
+                             # Slices only
+                             (
+                                     (slice(0, 2), slice(0, 2)),
+                                     [[0, 1],
+                                      [3, 4]]
+                             ),
+                             # List with repeated index
+                             (
+                                     ([1, 0, 1], slice(1, None)),
+                                     [[4, 5],
+                                      [1, 2],
+                                      [4, 5]]
+                             ),
+                             # 1D indexing
+                             (
+                                     ([1, 0, 1]),
+                                     [
+                                         [3, 4, 5],
+                                         [0, 1, 2],
+                                         [3, 4, 5]
+                                     ]
+                             )
+
+                         ])
+def test_orthogonal_indexing_fallback_on_getitem_2d(index, expected_result):
+    """
+    Tests the orthogonal indexing fallback on __getitem__ for a 2D matrix.
+
+    In addition to checking expected behavior, all indexing
+    is also checked against numpy.
+    """
+    # [0, 1, 2],
+    # [3, 4, 5],
+    # [6, 7, 8]
+    a = np.arange(9).reshape(3, 3)
+    z = zarr.array(a)
+
+    np.testing.assert_array_equal(z[index], a[index], err_msg="Indexing disagrees with numpy")
+    np.testing.assert_array_equal(z[index], expected_result)
+
+
+@pytest.mark.parametrize("index,expected_result",
+                         [
+                             # One slice, two integers
+                             (
+                                     (slice(0, 2), 1, 1),
+                                     [4, 13]
+                             ),
+                             # One integer, two slices
+                             (
+                                     (slice(0, 2), 1, slice(0, 2)),
+                                     [[3, 4], [12, 13]]
+                             ),
+                             # Two slices and a list
+                             (
+                                     (slice(0, 2), [1, 2], slice(0, 2)),
+                                     [[[3, 4], [6, 7]], [[12, 13], [15, 16]]]
+                             ),
+                         ])
+def test_orthogonal_indexing_fallback_on_getitem_3d(index, expected_result):
+    """
+    Tests the orthogonal indexing fallback on __getitem__ for a 3D matrix.
+
+    In addition to checking expected behavior, all indexing
+    is also checked against numpy.
+    """
+    #   [[[ 0,  1,  2],
+    #     [ 3,  4,  5],
+    #     [ 6,  7,  8]],
+
+    #    [[ 9, 10, 11],
+    #     [12, 13, 14],
+    #     [15, 16, 17]],
+
+    #    [[18, 19, 20],
+    #     [21, 22, 23],
+    #     [24, 25, 26]]]
+    a = np.arange(27).reshape(3, 3, 3)
+    z = zarr.array(a)
+
+    np.testing.assert_array_equal(z[index], a[index], err_msg="Indexing disagrees with numpy")
+    np.testing.assert_array_equal(z[index], expected_result)
+
+
+@pytest.mark.parametrize(
+    "index,expected_result",
+    [
+        # List and slice combined
+        (
+                ([0, 1], slice(1, 3)),
+                [[0, 1, 1],
+                 [0, 1, 1],
+                 [0, 0, 0]]
+        ),
+        # Index repetition is ignored on setitem
+        (
+                ([0, 1, 1, 1, 1, 1, 1], slice(1, 3)),
+                [[0, 1, 1],
+                 [0, 1, 1],
+                 [0, 0, 0]]
+        ),
+        # Slice with step
+        (
+                ([0, 2], slice(None, None, 2)),
+                [[1, 0, 1],
+                 [0, 0, 0],
+                 [1, 0, 1]]
         )
+    ]
+)
+def test_orthogonal_indexing_fallback_on_setitem_2d(index, expected_result):
+    """
+    Tests the orthogonal indexing fallback on __setitem__ for a 3D matrix.
+
+    In addition to checking expected behavior, all indexing
+    is also checked against numpy.
+    """
+    # Slice + fancy index
+    a = np.zeros((3, 3))
+    z = zarr.array(a)
+    z[index] = 1
+    a[index] = 1
+    np.testing.assert_array_equal(
+        z, expected_result
+    )
+    np.testing.assert_array_equal(
+        z, a, err_msg="Indexing disagrees with numpy"
+    )
 
 
 def test_fancy_indexing_doesnt_mix_with_implicit_slicing():
@@ -334,12 +472,6 @@ def test_fancy_indexing_doesnt_mix_with_implicit_slicing():
     with pytest.raises(IndexError):
         np.testing.assert_array_equal(
             z2[[1, 2, 3], [1, 2, 3]], 0
-        )
-    with pytest.raises(IndexError):
-        z2[[1, 2, 3]] = 2
-    with pytest.raises(IndexError):
-        np.testing.assert_array_equal(
-            z2[[1, 2, 3]], 0
         )
     with pytest.raises(IndexError):
         z2[..., [1, 2, 3]] = 2
@@ -768,6 +900,33 @@ def test_set_orthogonal_selection_3d():
         ix1 = ix1[::-1]
         ix2 = ix2[::-1]
         _test_set_orthogonal_selection_3d(v, a, z, ix0, ix1, ix2)
+
+
+def test_orthogonal_indexing_fallback_on_get_setitem():
+    z = zarr.zeros((20, 20))
+    z[[1, 2, 3], [1, 2, 3]] = 1
+    np.testing.assert_array_equal(
+        z[:4, :4],
+        [
+            [0, 0, 0, 0],
+            [0, 1, 0, 0],
+            [0, 0, 1, 0],
+            [0, 0, 0, 1],
+        ],
+    )
+    np.testing.assert_array_equal(
+        z[[1, 2, 3], [1, 2, 3]], 1
+    )
+    # test broadcasting
+    np.testing.assert_array_equal(
+        z[1, [1, 2, 3]], [1, 0, 0]
+    )
+    # test 1D fancy indexing
+    z2 = zarr.zeros(5)
+    z2[[1, 2, 3]] = 1
+    np.testing.assert_array_equal(
+        z2, [0, 1, 1, 1, 0]
+    )
 
 
 def _test_get_coordinate_selection(a, z, selection):

@@ -28,6 +28,7 @@ from zarr.indexing import (
     err_too_many_indices,
     is_contiguous_selection,
     is_pure_fancy_indexing,
+    is_pure_orthogonal_indexing,
     is_scalar,
     pop_fields,
 )
@@ -816,6 +817,8 @@ class Array:
         fields, pure_selection = pop_fields(selection)
         if is_pure_fancy_indexing(pure_selection, self.ndim):
             result = self.vindex[selection]
+        elif is_pure_orthogonal_indexing(pure_selection, self.ndim):
+            result = self.get_orthogonal_selection(pure_selection, fields=fields)
         else:
             result = self.get_basic_selection(pure_selection, fields=fields)
         return result
@@ -1382,6 +1385,8 @@ class Array:
         fields, pure_selection = pop_fields(selection)
         if is_pure_fancy_indexing(pure_selection, self.ndim):
             self.vindex[selection] = value
+        elif is_pure_orthogonal_indexing(pure_selection, self.ndim):
+            self.set_orthogonal_selection(pure_selection, value, fields=fields)
         else:
             self.set_basic_selection(pure_selection, value, fields=fields)
 

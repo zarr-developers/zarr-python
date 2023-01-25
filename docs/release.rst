@@ -22,6 +22,8 @@ Major changes
   adding partial store read/write and storage transformers.
   By :user:`Jonathan Striebel <jstriebel>`; :issue:`1096`.
 
+* Implement more extensive fallback of getitem/setitem for orthogonal indexing.
+  By :user:`Andreas Albert <AndreasAlbertQC>` :issue:`1029`.
 
 Bug fixes
 ~~~~~~~~~

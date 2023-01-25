@@ -634,6 +634,13 @@ For convenience, the orthogonal indexing functionality is also available via the
 Any combination of integer, slice, 1D integer array and/or 1D Boolean array can
 be used for orthogonal indexing.
 
+If the index contains at most one iterable, and otherwise contains only slices and integers,
+orthogonal indexing is also available directly on the array:
+
+    >>> z = zarr.array(np.arange(15).reshape(3, 5))
+    >>> all(z.oindex[[0, 2], :] == z[[0, 2], :])
+    True
+
 Indexing fields in structured arrays
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
