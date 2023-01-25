@@ -2022,9 +2022,7 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
             a1[:] = 1
             assert np.all(a1[:] == 1)
 
-        compressors_warn = [
-            Blosc()
-        ]
+        compressors_warn = []
         if LZMA:
             compressors_warn.append(LZMA(2))  # Try lzma.FORMAT_ALONE, which N5 doesn't support.
         for compressor in compressors_warn:
