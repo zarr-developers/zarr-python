@@ -5,16 +5,21 @@ import numbers
 from textwrap import TextWrapper
 import mmap
 import time
+from typing import Any, Callable, Dict, Optional, Tuple, Union
 
 import numpy as np
 from asciitree import BoxStyle, LeftAligned
 from asciitree.traversal import Traversal
 from collections.abc import Iterable
-from numcodecs.compat import ensure_text, ensure_ndarray_like
+from numcodecs.compat import (
+    ensure_text,
+    ensure_ndarray_like,
+    ensure_bytes,
+    ensure_contiguous_ndarray_like
+)
+from numcodecs.ndarray_like import NDArrayLike
 from numcodecs.registry import codec_registry
 from numcodecs.blosc import cbuffer_sizes, cbuffer_metainfo
-
-from typing import Any, Callable, Dict, Optional, Tuple, Union
 
 
 def flatten(arg: Iterable) -> Iterable:
@@ -696,3 +701,28 @@ def all_equal(value: Any, array: Any):
             # using == raises warnings from numpy deprecated pattern, but
             # using np.equal() raises type errors for structured dtypes...
             return np.all(value == array)
+
+
+def ensure_contiguous_ndarray_or_bytes(buf) -> Union[NDArrayLike, bytes]:
+    """Convenience function to coerce `buf` to ndarray-like array or bytes.
+
+    First check if `buf` can be zero-copy converted to a contiguous array.
+    If not, `buf` will be copied to a newly allocated `bytes` object.
+
+    Parameters
+    ----------
+    buf : ndarray-like, array-like, or bytes-like
+        A numpy array like object such as numpy.ndarray, cupy.ndarray, or
+        any object exporting a buffer interface.
+
+    Returns
+    -------
+    arr : NDArrayLike or bytes
+        A ndarray-like or bytes object
+    """
+
+    try:
+        return ensure_contiguous_ndarray_like(buf)
+    except TypeError:
+        # An error is raised if `buf` couldn't be zero-copy converted
+        return ensure_bytes(buf)
