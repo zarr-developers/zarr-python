@@ -317,6 +317,12 @@ def test_fancy_indexing_fallback_on_get_setitem():
 
 @pytest.mark.parametrize("index,expected_result",
                          [
+                             # Single iterable of integers
+                             (
+                                [0, 1],
+                                [[0, 1, 2],
+                                 [3, 4, 5]]
+                             ),
                              # List first, then slice
                              (
                                      ([0, 1], slice(None)),
@@ -378,6 +384,16 @@ def test_orthogonal_indexing_fallback_on_getitem_2d(index, expected_result):
 
 @pytest.mark.parametrize("index,expected_result",
                          [
+                             # Single iterable of integers
+                             (
+                                [0, 1],
+                                [[[0,  1,  2],
+                                  [3,  4,  5],
+                                  [6,  7,  8]],
+                                 [[9, 10, 11],
+                                  [12, 13, 14],
+                                  [15, 16, 17]]]
+                             ),
                              # One slice, two integers
                              (
                                      (slice(0, 2), 1, 1),
@@ -422,6 +438,15 @@ def test_orthogonal_indexing_fallback_on_getitem_3d(index, expected_result):
 @pytest.mark.parametrize(
     "index,expected_result",
     [
+        # Single iterable of integers
+        (
+            [0, 1],
+            [
+                [1, 1, 1],
+                [1, 1, 1],
+                [0, 0, 0]
+            ]
+        ),
         # List and slice combined
         (
                 ([0, 1], slice(1, 3)),
