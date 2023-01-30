@@ -1458,6 +1458,13 @@ class TestNestedDirectoryStore(TestDirectoryStore):
         store[self.root + '42'] = b'zzz'
         assert b'zzz' == store[self.root + '42']
 
+    def test_listdir(self):
+        store = self.create_store()
+        z = zarr.zeros((10, 10), chunks=(5, 5), store=store)
+        z[:] = 1  # write to all chunks
+        for k in store.listdir():
+            assert store.get(k) is not None
+
 
 class TestNestedDirectoryStoreNone:
 
