@@ -30,6 +30,8 @@ Bug fixes
 
 * Ensure contiguous data is give to ``FSStore``. Only copying if needed.
   By :user:`Mads R. B. Kristensen <madsbk>` :issue:`1285`.
+* NestedDirectoryStore.listdir now returns chunk keys with the correct '/' dimension_separator.
+  By :user:`Brett Graham <braingram>` :issue:`1334`.
 
 .. _release_2.13.6:
 
