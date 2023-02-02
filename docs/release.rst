@@ -6,33 +6,41 @@ Release notes
     # to document your changes. On releases it will be
     # re-indented so that it does not show up in the notes.
 
-.. _unreleased:
+    .. _unreleased:
 
-Unreleased
-----------
+    Unreleased
+    ----------
+
 ..
     # .. warning::
     #    Pre-release! Use :command:`pip install --pre zarr` to evaluate this release.
+
+.. _release_2.14.0:
+
+2.14.0
+------
 
 Major changes
 ~~~~~~~~~~~~~
 
 * Improve Zarr V3 support, adding partial store read/write and storage transformers.
-  Add two features of the [v3 spec](https://zarr-specs.readthedocs.io/en/latest/core/v3.0.html):
-  * storage transformers
-  * `get_partial_values` and `set_partial_values`
-  * efficient `get_partial_values` implementation for `FSStoreV3`
-  * sharding storage transformer
+  Add new features from the [v3 spec](https://zarr-specs.readthedocs.io/en/latest/core/v3.0.html):
+   * storage transformers
+   * `get_partial_values` and `set_partial_values`
+   * efficient `get_partial_values` implementation for `FSStoreV3`
+   * sharding storage transformer
   By :user:`Jonathan Striebel <jstriebel>`; :issue:`1096`, :issue:`1111`.
 
-* Remove warnings emitted when using N5Store or N5FSStore with a blosc-compressed array.
+* N5 nows supports Blosc.
+  Remove warnings emitted when using N5Store or N5FSStore with a blosc-compressed array.
   By :user:`Davis Bennett <d-v-b>`; :issue:`1331`.
-  
+
 Bug fixes
 ~~~~~~~~~
 
 * Ensure contiguous data is give to ``FSStore``. Only copying if needed.
   By :user:`Mads R. B. Kristensen <madsbk>` :issue:`1285`.
+
 * NestedDirectoryStore.listdir now returns chunk keys with the correct '/' dimension_separator.
   By :user:`Brett Graham <braingram>` :issue:`1334`.
 
