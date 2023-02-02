@@ -14,13 +14,16 @@ Unreleased
     # .. warning::
     #    Pre-release! Use :command:`pip install --pre zarr` to evaluate this release.
 
-
 Major changes
 ~~~~~~~~~~~~~
 
-* Improve `Zarr V3 support <https://zarr-specs.readthedocs.io/en/latest/core/v3.0.html>`_
-  adding partial store read/write and storage transformers.
-  By :user:`Jonathan Striebel <jstriebel>`; :issue:`1096`.
+* Improve Zarr V3 support, adding partial store read/write and storage transformers.
+  Add two features of the [v3 spec](https://zarr-specs.readthedocs.io/en/latest/core/v3.0.html):
+  * storage transformers
+  * `get_partial_values` and `set_partial_values`
+  * efficient `get_partial_values` implementation for `FSStoreV3`
+  * sharding storage transformer
+  By :user:`Jonathan Striebel <jstriebel>`; :issue:`1096`, :issue:`1111`.
 
 
 Bug fixes
