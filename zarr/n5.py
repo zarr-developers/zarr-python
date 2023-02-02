@@ -735,12 +735,6 @@ def compressor_config_to_n5(compressor_config: Optional[Dict[str, Any]]) -> Dict
 
     elif codec_id == 'blosc':
 
-        warnings.warn(
-            "Not all N5 implementations support blosc compression (yet). You "
-            "might not be able to open the dataset with another N5 library.",
-            RuntimeWarning
-        )
-
         n5_config['cname'] = _compressor_config['cname']
         n5_config['clevel'] = _compressor_config['clevel']
         n5_config['shuffle'] = _compressor_config['shuffle']
