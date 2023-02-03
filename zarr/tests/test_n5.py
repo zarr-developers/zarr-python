@@ -10,6 +10,7 @@ import shutil
 import json
 import zarr
 
+
 def test_make_n5_chunk_wrapper():
     dtype = 'uint8'
     chunk_shape = (10,)
