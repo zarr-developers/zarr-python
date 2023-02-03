@@ -689,6 +689,7 @@ def array_metadata_to_zarr(array_metadata: Dict[str, Any],
     array_metadata['order'] = 'C'
     array_metadata['filters'] = []
     array_metadata['dimension_separator'] = '.'
+    array_metadata['dtype'] = np.dtype(array_metadata['dtype']).str
 
     compressor_config = array_metadata['compressor']
     compressor_config = compressor_config_to_zarr(compressor_config)

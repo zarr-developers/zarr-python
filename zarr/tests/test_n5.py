@@ -1,7 +1,7 @@
 
 import pytest
 
-from zarr.n5 import N5ChunkWrapper,N5FSStore
+from zarr.n5 import N5ChunkWrapper, N5FSStore
 from zarr.storage import MemoryStore
 from numcodecs import GZip
 import numpy as np
