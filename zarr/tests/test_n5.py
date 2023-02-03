@@ -2,13 +2,12 @@
 import pytest
 
 from zarr.n5 import N5ChunkWrapper, N5FSStore
-from zarr.storage import MemoryStore
+from zarr.creation import create
 from numcodecs import GZip
 import numpy as np
 from typing import Tuple
 import shutil
 import json
-import zarr
 
 
 def test_make_n5_chunk_wrapper():
@@ -44,12 +43,8 @@ def test_partial_chunk_decode(chunk_shape: Tuple[int, ...]):
 def test_dtype_decode():
     store = 'data/array.n5'
     n5_store = N5FSStore(store)
-    z = zarr.open(n5_store)
-    z.create_dataset("test", shape=100, dtype="u1")
+    create(100, store=n5_store)
     dtype_n5 = json.loads(n5_store["test/.zarray"])["dtype"]
     shutil.rmtree(store)
-    zarr_store = MemoryStore()
-    z = zarr.open(zarr_store)
-    z.create_dataset("test", shape=100, dtype="u1")
-    dtype_zarr = json.loads(zarr_store["test/.zarray"])["dtype"]
+    dtype_zarr = json.loads(create(100).store["test/.zarray"])["dtype"]
     assert dtype_n5 == dtype_zarr
