@@ -1,11 +1,14 @@
 
 import pytest
 
-from zarr.n5 import N5ChunkWrapper
+from zarr.n5 import N5ChunkWrapper,N5FSStore
+from zarr.storage import MemoryStore
 from numcodecs import GZip
 import numpy as np
 from typing import Tuple
-
+import shutil
+import json
+import zarr
 
 def test_make_n5_chunk_wrapper():
     dtype = 'uint8'
@@ -35,3 +38,17 @@ def test_partial_chunk_decode(chunk_shape: Tuple[int, ...]):
     chunk[subslices] = 1
     subchunk = np.ascontiguousarray(chunk[subslices])
     assert np.array_equal(codec_wrapped.decode(codec_wrapped.encode(subchunk)), chunk)
+
+
+def test_dtype_decode():
+    store = 'data/array.n5'
+    n5_store = N5FSStore(store)
+    z = zarr.open(n5_store)
+    z.create_dataset("test", shape=100, dtype="u1")
+    dtype_n5 = json.loads(n5_store["test/.zarray"])["dtype"]
+    shutil.rmtree(store)
+    zarr_store = MemoryStore()
+    z = zarr.open(zarr_store)
+    z.create_dataset("test", shape=100, dtype="u1")
+    dtype_zarr = json.loads(zarr_store["test/.zarray"])["dtype"]
+    assert dtype_n5 == dtype_zarr
