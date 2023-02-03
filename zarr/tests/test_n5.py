@@ -7,7 +7,6 @@ from zarr.storage import atexit_rmtree
 from numcodecs import GZip
 import numpy as np
 from typing import Tuple
-import shutil
 import json
 import atexit
 
