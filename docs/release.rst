@@ -31,6 +31,9 @@ Major changes
 Bug fixes
 ~~~~~~~~~
 
+* Allow reading utf-8 encoded json files
+  By :user:`Nathan Zimmerberg <nhz2>` :issue:`1308`.
+
 * Ensure contiguous data is give to ``FSStore``. Only copying if needed.
   By :user:`Mads R. B. Kristensen <madsbk>` :issue:`1285`.
 * NestedDirectoryStore.listdir now returns chunk keys with the correct '/' dimension_separator.
