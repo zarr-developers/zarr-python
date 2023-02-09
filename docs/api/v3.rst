@@ -14,8 +14,8 @@ the regular Zarr namespace.
 
 Code snippet for creating Zarr V3 arrays::
 
-	>>>import zarr
-	>>>z = zarr.create((10000, 10000),
+	>>> import zarr
+	>>> z = zarr.create((10000, 10000),
                     chunks=(100, 100),
                     dtype='f8',
                     compressor='default',
@@ -24,7 +24,7 @@ Code snippet for creating Zarr V3 arrays::
 
 Further, you can use `z.info` to see details about the array you just created::
 
-	>>>z.info
+	>>> z.info
 	Name               : path-where-you-want-zarr-v3-array
 	Type               : zarr.core.Array
 	Data type          : float64
