@@ -16,11 +16,11 @@ Code snippet for creating Zarr V3 arrays::
 
 	>>> import zarr
 	>>> z = zarr.create((10000, 10000),
-	>>>			chunks=(100, 100),
-	>>>			dtype='f8',
-	>>>			compressor='default',
-	>>>			path='path-where-you-want-zarr-v3-array',
-	>>>			zarr_version=3)
+	>>>		chunks=(100, 100),
+	>>>		dtype='f8',
+	>>>		compressor='default',
+	>>>		path='path-where-you-want-zarr-v3-array',
+	>>>		zarr_version=3)
 
 Further, you can use `z.info` to see details about the array you just created::
 
