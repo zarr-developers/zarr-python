@@ -4,9 +4,10 @@ import pytest
 
 from zarr._storage.store import meta_root
 from zarr.attrs import Attributes
-from zarr.storage import KVStore
+from zarr.storage import KVStore, DirectoryStore
 from zarr._storage.v3 import KVStoreV3
 from zarr.tests.util import CountingDict, CountingDictV3
+from zarr.hierarchy import group
 
 
 @pytest.fixture(params=[2, 3])
@@ -42,10 +43,16 @@ class TestAttributes():
         a['baz'] = 42
         assert attrs_key in store
         assert isinstance(store[attrs_key], bytes)
-        d = json.loads(str(store[attrs_key], 'ascii'))
+        d = json.loads(str(store[attrs_key], 'utf-8'))
         if zarr_version == 3:
             d = d['attributes']
         assert dict(foo='bar', baz=42) == d
+
+    def test_utf8_encoding(self, zarr_version):
+
+        # fixture data
+        fixture = group(store=DirectoryStore('fixture'))
+        assert fixture['utf8attrs'].attrs.asdict() == dict(foo='た')
 
     def test_get_set_del_contains(self, zarr_version):
 
