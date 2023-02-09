@@ -43,6 +43,7 @@ def test_partial_chunk_decode(chunk_shape: Tuple[int, ...]):
 
 def test_dtype_decode():
     path = 'data/array.n5'
+    atexit_rmtree(path)
     atexit.register(atexit_rmtree, path)
     n5_store = N5FSStore(path)
     create(100, store=n5_store)

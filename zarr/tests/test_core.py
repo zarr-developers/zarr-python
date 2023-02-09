@@ -2034,13 +2034,12 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
             assert np.all(a2[:] == 1)
 
     def expected(self):
-        return [
-           '4e9cf910000506455f82a70938a272a3fce932e5',
-           'f9d4cbf1402901f63dea7acf764d2546e4b6aa38',
-           '1d8199f5f7b70d61aa0d29cc375212c3df07d50a',
-           '874880f91aa6736825584509144afe6b06b0c05c',
-           'e2258fedc74752196a8c8383db49e27193c995e2',
-           ]
+        return ['8811a77d54caaa1901d5cc4452d946ae433c8d90',
+                'd880b007d9779db5f2cdbe13274eb1cbac4a425a',
+                'd80eb66d5521744f051e816ab368d8ccfc2e3edf',
+                '568f9f837e4b682a3819cb122988e2eebeb6572b',
+                '4fdf4475d786d6694110db5619acd30c80dfc372'
+                ]
 
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
