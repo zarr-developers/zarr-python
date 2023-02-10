@@ -15,6 +15,17 @@ Release notes
     # .. warning::
     #    Pre-release! Use :command:`pip install --pre zarr` to evaluate this release.
 
+.. _release_2.14.1:
+
+2.14.1
+------
+
+Documentation
+~~~~~~~~~~~~~
+
+* Fix API links.
+  By :user:`Josh Moore <joshmoore>` :issue:`1346`.
+
 .. _release_2.14.0:
 
 2.14.0
