@@ -1,4 +1,3 @@
-
 import pytest
 
 from zarr.n5 import N5ChunkWrapper, N5FSStore
@@ -9,6 +8,8 @@ import numpy as np
 from typing import Tuple
 import json
 import atexit
+
+from zarr.tests.util import have_fsspec
 
 
 def test_make_n5_chunk_wrapper():
@@ -41,6 +42,7 @@ def test_partial_chunk_decode(chunk_shape: Tuple[int, ...]):
     assert np.array_equal(codec_wrapped.decode(codec_wrapped.encode(subchunk)), chunk)
 
 
+@pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
 def test_dtype_decode():
     path = 'data/array.n5'
     atexit_rmtree(path)
