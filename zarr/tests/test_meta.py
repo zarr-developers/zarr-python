@@ -623,3 +623,14 @@ def test_metadata3_exceptions():
 
     with pytest.raises(MetadataError):
         Metadata3.decode_array_metadata(dict())
+
+
+def test_encode_decode_with_metadata():
+    dt = np.dtype('S8', metadata={'msg': 'Hello'})
+    e = encode_dtype(dt)
+    d = decode_dtype(e)
+    assert dt == d
+    s_dt = np.dtype([('a', dt)])
+    e = encode_dtype(s_dt)
+    d = decode_dtype(e)
+    assert s_dt == d
