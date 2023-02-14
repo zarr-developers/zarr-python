@@ -47,6 +47,9 @@ Bug fixes
 * NestedDirectoryStore.listdir now returns chunk keys with the correct '/' dimension_separator.
   By :user:`Brett Graham <braingram>` :issue:`1334`.
 
+* N5Store/N5FSStore dtype returns zarr Stores readable dtype.
+  By :user:`Marwan Zouinkhi <mzouink>` :issue:`1339`.
+
 .. _release_2.13.6:
 
 2.13.6
