@@ -1,7 +1,9 @@
 import json
 
+import pathlib
 import pytest
 
+import zarr
 from zarr._storage.store import meta_root
 from zarr.attrs import Attributes
 from zarr.storage import KVStore, DirectoryStore
@@ -49,6 +51,16 @@ class TestAttributes():
         assert dict(foo='bar', baz=42) == d
 
     def test_utf8_encoding(self, zarr_version):
+
+        project_root = pathlib.Path(zarr.__file__).resolve().parent.parent
+        fixdir = project_root / "fixture" / "utf8attrs"
+        if not fixdir.exists():  # pragma: no cover
+            # store the data - should be one-time operation
+            fixdir.mkdir()
+            with (fixdir / ".zattrs").open("w", encoding="utf-8") as f:
+                f.write('{"foo": "た"}')
+            with (fixdir / ".zgroup").open("w", encoding="utf-8") as f:
+                f.write("""{\n    "zarr_format": 2\n}""")
 
         # fixture data
         fixture = group(store=DirectoryStore('fixture'))

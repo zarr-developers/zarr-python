@@ -12,7 +12,7 @@
     }
 
     let hash = window.location.hash.substring(1);
-    if (hash) {
-        window.location.replace(anchorMap[hash]);
+    if (hash && hash in anchorMap) {
+            window.location.replace(anchorMap[hash]);
     }
 })();
