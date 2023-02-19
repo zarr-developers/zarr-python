@@ -20,6 +20,12 @@ behave like NumPy arrays but whose data is divided into chunks and each chunk is
 compressed. If you are already familiar with HDF5 then Zarr arrays provide
 similar functionality, but with some additional flexibility.
 
+.. _tutorial_on_version_2:
+
+Tutorials Focused on Zarr Version 2
+===================================
+
+
 .. _tutorial_prerequisites:
 
 Prerequisites
@@ -812,6 +818,13 @@ For convenience, the N5 backend will automatically be chosen when the filename
 ends with `.n5`::
 
     >>> root = zarr.open('data/example.n5', mode='w')
+
+.. _tutorial_non_version_2:
+
+Tutorials NOT Focused on zarr version 2
+=======================================
+
+
 
 Distributed/cloud storage
 ~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1641,3 +1654,9 @@ automatic switching, set ``blosc.use_threads`` to ``None``.
 Please note that if Zarr is being used within a multi-process program, Blosc may not
 be safe to use in multi-threaded mode and may cause the program to hang. If using Blosc
 in a multi-process program then it is recommended to set ``blosc.use_threads = False``.
+
+
+.. _tutorial_on_interoperability:
+
+Tutorials on Interoperability of zarr
+=====================================
