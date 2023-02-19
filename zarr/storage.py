@@ -55,8 +55,8 @@ from zarr.meta import encode_array_metadata, encode_group_metadata
 from zarr.util import (buffer_size, json_loads, nolock, normalize_chunks,
                        normalize_dimension_separator,
                        normalize_dtype, normalize_fill_value, normalize_order,
-                       normalize_shape, normalize_storage_path, retry_call
-                       )
+                       normalize_shape, normalize_storage_path, retry_call,
+                       ensure_contiguous_ndarray_or_bytes)
 
 from zarr._storage.absstore import ABSStore  # noqa: F401
 from zarr._storage.store import (_get_hierarchy_metadata,  # noqa: F401
@@ -139,6 +139,16 @@ def _normalize_store_arg_v2(store: Any, storage_options=None, mode="r") -> BaseS
         return store
     if isinstance(store, os.PathLike):
         store = os.fspath(store)
+    if FSStore._fsspec_installed():
+        import fsspec
+        if isinstance(store, fsspec.FSMap):
+            return FSStore(store.root,
+                           fs=store.fs,
+                           mode=mode,
+                           check=store.check,
+                           create=store.create,
+                           missing_exceptions=store.missing_exceptions,
+                           **(storage_options or {}))
     if isinstance(store, str):
         if "://" in store or "::" in store:
             return FSStore(store, mode=mode, **(storage_options or {}))
@@ -301,6 +311,7 @@ def init_array(
     filters=None,
     object_codec=None,
     dimension_separator=None,
+    storage_transformers=(),
 ):
     """Initialize an array store with the given configuration. Note that this is a low-level
     function and there should be no need to call this directly from user code.
@@ -428,7 +439,8 @@ def init_array(
                          order=order, overwrite=overwrite, path=path,
                          chunk_store=chunk_store, filters=filters,
                          object_codec=object_codec,
-                         dimension_separator=dimension_separator)
+                         dimension_separator=dimension_separator,
+                         storage_transformers=storage_transformers)
 
 
 def _init_array_metadata(
@@ -445,6 +457,7 @@ def _init_array_metadata(
     filters=None,
     object_codec=None,
     dimension_separator=None,
+    storage_transformers=(),
 ):
 
     store_version = getattr(store, '_store_version', 2)
@@ -566,6 +579,7 @@ def _init_array_metadata(
     if store_version < 3:
         meta.update(dict(chunks=chunks, dtype=dtype, order=order,
                          filters=filters_config))
+        assert not storage_transformers
     else:
         if dimension_separator is None:
             dimension_separator = "/"
@@ -579,7 +593,8 @@ def _init_array_metadata(
                                  separator=dimension_separator),
                  chunk_memory_layout=order,
                  data_type=dtype,
-                 attributes=attributes)
+                 attributes=attributes,
+                 storage_transformers=storage_transformers)
         )
 
     key = _prefix_to_array_key(store, _path_to_prefix(path))
@@ -1189,7 +1204,9 @@ class DirectoryStore(Store):
                         for file_name in file_names:
                             file_path = os.path.join(dir_path, file_name)
                             rel_path = file_path.split(root_path + os.path.sep)[1]
-                            new_children.append(rel_path.replace(os.path.sep, '.'))
+                            new_children.append(rel_path.replace(
+                                os.path.sep,
+                                self._dimension_separator or '.'))
                 else:
                     new_children.append(entry)
             return sorted(new_children)
@@ -1308,6 +1325,8 @@ class FSStore(Store):
                  create=False,
                  missing_exceptions=None,
                  **storage_options):
+        if not self._fsspec_installed():  # pragma: no cover
+            raise ImportError("`fsspec` is required to use zarr's FSStore")
         import fsspec
 
         mapper_options = {"check": check, "create": create}
@@ -1378,13 +1397,19 @@ class FSStore(Store):
     def setitems(self, values):
         if self.mode == 'r':
             raise ReadOnlyError()
-        values = {self._normalize_key(key): val for key, val in values.items()}
+
+        # Normalize keys and make sure the values are bytes
+        values = {
+            self._normalize_key(key): ensure_contiguous_ndarray_or_bytes(val)
+            for key, val in values.items()
+        }
         self.map.setitems(values)
 
     def __setitem__(self, key, value):
         if self.mode == 'r':
             raise ReadOnlyError()
         key = self._normalize_key(key)
+        value = ensure_contiguous_ndarray_or_bytes(value)
         path = self.dir_path(key)
         try:
             if self.fs.isdir(path):
@@ -1478,6 +1503,13 @@ class FSStore(Store):
         if self.mode == 'r':
             raise ReadOnlyError()
         self.map.clear()
+
+    @classmethod
+    def _fsspec_installed(cls):
+        """Returns true if fsspec is installed"""
+        import importlib.util
+
+        return importlib.util.find_spec("fsspec") is not None
 
 
 class TempStore(DirectoryStore):

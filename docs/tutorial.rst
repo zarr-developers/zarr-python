@@ -564,9 +564,9 @@ When the indexing arrays have different shapes, they are broadcast together.
 That is, the following two calls are equivalent::
 
     >>> z[1, [1, 3]]
-    array([5, 7])
+    array([6, 8])
     >>> z[[1, 1], [1, 3]]
-    array([5, 7])
+    array([6, 8])
 
 Indexing with a mask array
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
