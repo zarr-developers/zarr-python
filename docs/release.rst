@@ -15,6 +15,17 @@ Release notes
     # .. warning::
     #    Pre-release! Use :command:`pip install --pre zarr` to evaluate this release.
 
+.. _release_2.14.2:
+
+2.14.2
+------
+
+Bug fixes
+~~~~~~~~~
+
+* Ensure ``zarr.group`` uses writeable mode to fix issue with :issue:`1304`.
+  By :user:`Brandur Thorgrimsson <swordcat>` :issue:`1354`.
+
 .. _release_2.14.1:
 
 2.14.1
