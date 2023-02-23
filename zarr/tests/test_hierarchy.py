@@ -1591,6 +1591,17 @@ def test_group(zarr_version):
     assert store is g.store
 
 
+@pytest.mark.skipif(have_fsspec is False, reason='needs fsspec')
+@pytest.mark.parametrize('zarr_version', _VERSIONS)
+def test_group_writeable_mode(zarr_version, tmp_path):
+    # Regression test for https://github.com/zarr-developers/zarr-python/issues/1353
+    import fsspec
+
+    store = fsspec.get_mapper(str(tmp_path))
+    zg = group(store=store)
+    assert zg.store.map == store
+
+
 @pytest.mark.parametrize('zarr_version', _VERSIONS)
 def test_open_group(zarr_version):
     # test the open_group() convenience function
