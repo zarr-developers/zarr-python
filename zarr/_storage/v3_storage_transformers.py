@@ -362,7 +362,6 @@ class ShardingStorageTransformer(StorageTransformer):  # lgtm[py/missing-equals]
                 reverse_lookup.append((len(merged_key_ranges), slice(0, None)))
                 merged_key_ranges.append((key, _range))
         for key, indexed_ranges in mergable_ranges_per_key.items():
-            reverse_slices = []
             current_start, current_length = (None, None)
             for i, (range_start, range_length) in sorted(indexed_ranges, key=lambda x: x[1]):
                 # range_start and range_length are positive integers
