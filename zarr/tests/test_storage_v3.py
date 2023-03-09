@@ -1,6 +1,7 @@
 import array
 import atexit
 import copy
+import inspect
 import os
 import tempfile
 
@@ -8,7 +9,9 @@ import numpy as np
 import pytest
 
 import zarr
-from zarr._storage.store import _get_hierarchy_metadata, v3_api_available
+from zarr._storage.store import _get_hierarchy_metadata, v3_api_available, StorageTransformer
+from zarr._storage.v3_storage_transformers import ShardingStorageTransformer, v3_sharding_available
+from zarr.core import Array
 from zarr.meta import _default_entry_point_metadata_v3
 from zarr.storage import (atexit_rmglob, atexit_rmtree, data_root,
                           default_compressor, getsize, init_array, meta_root,
@@ -86,6 +89,18 @@ class InvalidDummyStore():
 
     def keys(self):
         """keys"""
+
+
+class DummyStorageTransfomer(StorageTransformer):
+    TEST_CONSTANT = "test1234"
+
+    extension_uri = "https://purl.org/zarr/spec/storage_transformers/dummy/1.0"
+    valid_types = ["dummy_type"]
+
+    def __init__(self, _type, test_value) -> None:
+        super().__init__(_type)
+        assert test_value == self.TEST_CONSTANT
+        self.test_value = test_value
 
 
 def test_ensure_store_v3():
@@ -190,8 +205,11 @@ class StoreV3Tests(_StoreTests):
 
         store = self.create_store()
         path = 'arr1'
+        transformer = DummyStorageTransfomer(
+            "dummy_type", test_value=DummyStorageTransfomer.TEST_CONSTANT
+        )
         init_array(store, path=path, shape=1000, chunks=100,
-                   dimension_separator=pass_dim_sep)
+                   dimension_separator=pass_dim_sep, storage_transformers=[transformer])
 
         # check metadata
         mkey = meta_root + path + '.array.json'
@@ -204,6 +222,9 @@ class StoreV3Tests(_StoreTests):
         assert meta['fill_value'] is None
         # Missing MUST be assumed to be "/"
         assert meta['chunk_grid']['separator'] is want_dim_sep
+        assert len(meta["storage_transformers"]) == 1
+        assert isinstance(meta["storage_transformers"][0], DummyStorageTransfomer)
+        assert meta["storage_transformers"][0].test_value == DummyStorageTransfomer.TEST_CONSTANT
         store.close()
 
     def test_list_prefix(self):
@@ -234,6 +255,67 @@ class StoreV3Tests(_StoreTests):
         else:
             with pytest.raises(NotImplementedError):
                 store.rename('a', 'b')
+
+    def test_get_partial_values(self):
+        store = self.create_store()
+        store.supports_efficient_get_partial_values in [True, False]
+        store[data_root + 'foo'] = b'abcdefg'
+        store[data_root + 'baz'] = b'z'
+        assert [b'a'] == store.get_partial_values(
+            [
+                (data_root + 'foo', (0, 1))
+            ]
+        )
+        assert [
+            b'd', b'b', b'z', b'abc', b'defg', b'defg', b'g', b'ef'
+        ] == store.get_partial_values(
+            [
+                (data_root + 'foo', (3, 1)),
+                (data_root + 'foo', (1, 1)),
+                (data_root + 'baz', (0, 1)),
+                (data_root + 'foo', (0, 3)),
+                (data_root + 'foo', (3, 4)),
+                (data_root + 'foo', (3, None)),
+                (data_root + 'foo', (-1, None)),
+                (data_root + 'foo', (-3, 2)),
+            ]
+        )
+
+    def test_set_partial_values(self):
+        store = self.create_store()
+        store.supports_efficient_set_partial_values()
+        store[data_root + 'foo'] = b'abcdefg'
+        store.set_partial_values(
+            [
+                (data_root + 'foo', 0, b'hey')
+            ]
+        )
+        assert store[data_root + 'foo'] == b'heydefg'
+
+        store.set_partial_values(
+            [
+                (data_root + 'baz', 0, b'z')
+            ]
+        )
+        assert store[data_root + 'baz'] == b'z'
+        store.set_partial_values(
+            [
+                (data_root + 'foo', 1, b'oo'),
+                (data_root + 'baz', 1, b'zzz'),
+                (data_root + 'baz', 4, b'aaaa'),
+                (data_root + 'foo', 6, b'done'),
+            ]
+        )
+        assert store[data_root + 'foo'] == b'hoodefdone'
+        assert store[data_root + 'baz'] == b'zzzzaaaa'
+        store.set_partial_values(
+            [
+                (data_root + 'foo', -2, b'NE'),
+                (data_root + 'baz', -5, b'q'),
+            ]
+        )
+        assert store[data_root + 'foo'] == b'hoodefdoNE'
+        assert store[data_root + 'baz'] == b'zzzq'
 
 
 class TestMappingStoreV3(StoreV3Tests):
@@ -443,6 +525,43 @@ class TestRedisStoreV3(StoreV3Tests):
         return store
 
 
+@pytest.mark.skipif(not v3_sharding_available, reason="sharding is disabled")
+class TestStorageTransformerV3(TestMappingStoreV3):
+
+    def create_store(self, **kwargs):
+        inner_store = super().create_store(**kwargs)
+        dummy_transformer = DummyStorageTransfomer(
+            "dummy_type", test_value=DummyStorageTransfomer.TEST_CONSTANT
+        )
+        sharding_transformer = ShardingStorageTransformer(
+            "indexed", chunks_per_shard=2,
+        )
+        path = 'bla'
+        init_array(inner_store, path=path, shape=1000, chunks=100,
+                   dimension_separator=".",
+                   storage_transformers=[dummy_transformer, sharding_transformer])
+        store = Array(store=inner_store, path=path).chunk_store
+        store.erase_prefix("data/root/bla/")
+        store.clear()
+        return store
+
+    def test_method_forwarding(self):
+        store = self.create_store()
+        inner_store = store.inner_store.inner_store
+        assert store.list() == inner_store.list()
+        assert store.list_dir(data_root) == inner_store.list_dir(data_root)
+
+        assert store.is_readable()
+        assert store.is_writeable()
+        assert store.is_listable()
+        inner_store._readable = False
+        inner_store._writeable = False
+        inner_store._listable = False
+        assert not store.is_readable()
+        assert not store.is_writeable()
+        assert not store.is_listable()
+
+
 class TestLRUStoreCacheV3(_TestLRUStoreCache, StoreV3Tests):
 
     CountingClass = CountingDictV3
@@ -535,3 +654,19 @@ def test_top_level_imports():
             assert hasattr(zarr, store_name)  # pragma: no cover
         else:
             assert not hasattr(zarr, store_name)  # pragma: no cover
+
+
+def _get_public_and_dunder_methods(some_class):
+    return set(
+        name for name, _ in inspect.getmembers(some_class, predicate=inspect.isfunction)
+        if not name.startswith("_") or name.startswith("__")
+    )
+
+
+def test_storage_transformer_interface():
+    store_v3_methods = _get_public_and_dunder_methods(StoreV3)
+    store_v3_methods.discard("__init__")
+    storage_transformer_methods = _get_public_and_dunder_methods(StorageTransformer)
+    storage_transformer_methods.discard("__init__")
+    storage_transformer_methods.discard("get_config")
+    assert storage_transformer_methods == store_v3_methods
