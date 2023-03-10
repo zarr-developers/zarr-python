@@ -53,17 +53,18 @@ class TestAttributes():
     def test_utf8_encoding(self, zarr_version):
 
         project_root = pathlib.Path(zarr.__file__).resolve().parent.parent
-        fixdir = project_root / "fixture" / "utf8attrs"
-        if not fixdir.exists():  # pragma: no cover
+        fixdir = project_root / "fixture"
+        testdir = fixdir / "utf8attrs"
+        if not testdir.exists():  # pragma: no cover
             # store the data - should be one-time operation
-            fixdir.mkdir()
-            with (fixdir / ".zattrs").open("w", encoding="utf-8") as f:
+            testdir.mkdir()
+            with (testdir / ".zattrs").open("w", encoding="utf-8") as f:
                 f.write('{"foo": "た"}')
-            with (fixdir / ".zgroup").open("w", encoding="utf-8") as f:
+            with (testdir / ".zgroup").open("w", encoding="utf-8") as f:
                 f.write("""{\n    "zarr_format": 2\n}""")
 
         # fixture data
-        fixture = group(store=DirectoryStore('fixture'))
+        fixture = group(store=DirectoryStore(str(fixdir)))
         assert fixture['utf8attrs'].attrs.asdict() == dict(foo='た')
 
     def test_get_set_del_contains(self, zarr_version):
