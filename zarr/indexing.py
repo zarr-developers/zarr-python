@@ -101,6 +101,26 @@ def is_pure_fancy_indexing(selection, ndim):
     )
 
 
+def is_pure_orthogonal_indexing(selection, ndim):
+    if not ndim:
+        return False
+
+    # Case 1: Selection is a single iterable of integers
+    if is_integer_list(selection) or is_integer_array(selection, ndim=1):
+        return True
+
+    # Case two: selection contains either zero or one integer iterables.
+    # All other selection elements are slices or integers
+    return (
+            isinstance(selection, tuple) and len(selection) == ndim and
+            sum(is_integer_list(elem) or is_integer_array(elem) for elem in selection) <= 1 and
+            all(
+                is_integer_list(elem) or is_integer_array(elem)
+                or isinstance(elem, slice) or isinstance(elem, int) for
+                elem in selection)
+    )
+
+
 def normalize_integer_selection(dim_sel, dim_len):
 
     # normalize type to int

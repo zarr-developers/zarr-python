@@ -6,14 +6,17 @@ Release notes
     # to document your changes. On releases it will be
     # re-indented so that it does not show up in the notes.
 
-    .. _unreleased:
+.. _unreleased:
 
-    Unreleased
-    ----------
+Unreleased
+----------
 
 ..
     # .. warning::
     #    Pre-release! Use :command:`pip install --pre zarr` to evaluate this release.
+
+* Implement more extensive fallback of getitem/setitem for orthogonal indexing.
+  By :user:`Andreas Albert <AndreasAlbertQC>` :issue:`1029`.
 
 .. _release_2.14.2:
 
