@@ -1,7 +1,7 @@
 V3 Specification Implementation(``zarr._storage.v3``)
 =====================================================
 
-This module contains the implementation of the `Zarr V3 Specification <https://zarr-specs.readthedocs.io/en/latest/core/v3.0.html#zarr-core-specification-v3-0>`_.
+This module contains the implementation of the `Zarr V3 Specification <https://zarr-specs.readthedocs.io/en/latest/v3/core/v3.0.html>`_.
 
 .. warning::
     Since Zarr Python 2.12 release, this module provides experimental infrastructure for reading and
@@ -58,25 +58,7 @@ You can also check ``Store type`` here (which indicates Zarr V3).
 .. autoclass:: LRUStoreCacheV3
 .. autoclass:: ConsolidatedMetadataStoreV3
 
-In v3 `storage transformers <https://zarr-specs.readthedocs.io/en/latest/core/v3.0.html#id19>`_
-can be set via ``zarr.create(…, storage_transformers=[…])``.
-The experimental sharding storage transformer can be tested by setting
-the environment variable ``ZARR_V3_SHARDING=1``. Data written with this flag
-enabled should be expected to become stale until
-`ZEP 2 <https://zarr.dev/zeps/draft/ZEP0002.html>`_ is approved
-and fully implemented.
-
-.. module:: zarr._storage.v3_storage_transformers
-
-.. autoclass:: ShardingStorageTransformer
-
-The abstract base class for storage transformers is
-
-.. module:: zarr._storage.store
-
-.. autoclass:: StorageTransformer
-
-In v3 `storage transformers <https://zarr-specs.readthedocs.io/en/latest/core/v3.0.html#id19>`_
+In v3 `storage transformers <https://zarr-specs.readthedocs.io/en/latest/v3/array-storage-transformers/sharding/v1.0.html>`_
 can be set via ``zarr.create(…, storage_transformers=[…])``.
 The experimental sharding storage transformer can be tested by setting
 the environment variable ``ZARR_V3_SHARDING=1``. Data written with this flag
