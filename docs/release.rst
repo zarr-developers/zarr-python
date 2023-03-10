@@ -6,14 +6,42 @@ Release notes
     # to document your changes. On releases it will be
     # re-indented so that it does not show up in the notes.
 
-    .. _unreleased:
+.. _unreleased:
 
-    Unreleased
-    ----------
+Unreleased
+----------
 
 ..
     # .. warning::
     #    Pre-release! Use :command:`pip install --pre zarr` to evaluate this release.
+
+* Implement more extensive fallback of getitem/setitem for orthogonal indexing.
+  By :user:`Andreas Albert <AndreasAlbertQC>` :issue:`1029`.
+
+.. _release_2.14.2:
+
+2.14.2
+------
+
+Bug fixes
+~~~~~~~~~
+
+* Ensure ``zarr.group`` uses writeable mode to fix issue with :issue:`1304`.
+  By :user:`Brandur Thorgrimsson <swordcat>` :issue:`1354`.
+
+.. _release_2.14.1:
+
+2.14.1
+------
+
+Documentation
+~~~~~~~~~~~~~
+
+* Fix API links.
+  By :user:`Josh Moore <joshmoore>` :issue:`1346`.
+
+* Fix unit tests which prevented the conda-forge release.
+  By :user:`Josh Moore <joshmoore>` :issue:`1348`.
 
 .. _release_2.14.0:
 
@@ -46,6 +74,9 @@ Bug fixes
 
 * NestedDirectoryStore.listdir now returns chunk keys with the correct '/' dimension_separator.
   By :user:`Brett Graham <braingram>` :issue:`1334`.
+
+* N5Store/N5FSStore dtype returns zarr Stores readable dtype.
+  By :user:`Marwan Zouinkhi <mzouink>` :issue:`1339`.
 
 .. _release_2.13.6:
 

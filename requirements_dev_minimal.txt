@@ -5,4 +5,4 @@ numcodecs==0.11.0
 msgpack-python==0.5.6
 setuptools-scm==7.1.0
 # test requirements
-pytest==7.2.1
+pytest==7.2.2
