@@ -75,3 +75,21 @@ The abstract base class for storage transformers is
 .. module:: zarr._storage.store
 
 .. autoclass:: StorageTransformer
+
+In v3 `storage transformers <https://zarr-specs.readthedocs.io/en/latest/core/v3.0.html#id19>`_
+can be set via ``zarr.create(…, storage_transformers=[…])``.
+The experimental sharding storage transformer can be tested by setting
+the environment variable ``ZARR_V3_SHARDING=1``. Data written with this flag
+enabled should be expected to become stale until
+`ZEP 2 <https://zarr.dev/zeps/draft/ZEP0002.html>`_ is approved
+and fully implemented.
+
+.. module:: zarr._storage.v3_storage_transformers
+
+.. autoclass:: ShardingStorageTransformer
+
+The abstract base class for storage transformers is
+
+.. module:: zarr._storage.store
+
+.. autoclass:: StorageTransformer
