@@ -10,26 +10,73 @@ Release notes
 
 Unreleased
 ----------
+
 ..
     # .. warning::
     #    Pre-release! Use :command:`pip install --pre zarr` to evaluate this release.
 
-
-Major changes
-~~~~~~~~~~~~~
-
-* Improve `Zarr V3 support <https://zarr-specs.readthedocs.io/en/latest/core/v3.0.html>`_
-  adding partial store read/write and storage transformers.
-  By :user:`Jonathan Striebel <jstriebel>`; :issue:`1096`.
-
 * Implement more extensive fallback of getitem/setitem for orthogonal indexing.
   By :user:`Andreas Albert <AndreasAlbertQC>` :issue:`1029`.
+
+.. _release_2.14.2:
+
+2.14.2
+------
 
 Bug fixes
 ~~~~~~~~~
 
+* Ensure ``zarr.group`` uses writeable mode to fix issue with :issue:`1304`.
+  By :user:`Brandur Thorgrimsson <swordcat>` :issue:`1354`.
+
+.. _release_2.14.1:
+
+2.14.1
+------
+
+Documentation
+~~~~~~~~~~~~~
+
+* Fix API links.
+  By :user:`Josh Moore <joshmoore>` :issue:`1346`.
+
+* Fix unit tests which prevented the conda-forge release.
+  By :user:`Josh Moore <joshmoore>` :issue:`1348`.
+
+.. _release_2.14.0:
+
+2.14.0
+------
+
+Major changes
+~~~~~~~~~~~~~
+
+* Improve Zarr V3 support, adding partial store read/write and storage transformers.
+  Add new features from the `v3 spec <https://zarr-specs.readthedocs.io/en/latest/core/v3.0.html>`_:
+    * storage transformers
+    * `get_partial_values` and `set_partial_values`
+    * efficient `get_partial_values` implementation for `FSStoreV3`
+    * sharding storage transformer
+  By :user:`Jonathan Striebel <jstriebel>`; :issue:`1096`, :issue:`1111`.
+
+* N5 nows supports Blosc.
+  Remove warnings emitted when using N5Store or N5FSStore with a blosc-compressed array.
+  By :user:`Davis Bennett <d-v-b>`; :issue:`1331`.
+
+Bug fixes
+~~~~~~~~~
+
+* Allow reading utf-8 encoded json files
+  By :user:`Nathan Zimmerberg <nhz2>` :issue:`1308`.
+
 * Ensure contiguous data is give to ``FSStore``. Only copying if needed.
   By :user:`Mads R. B. Kristensen <madsbk>` :issue:`1285`.
+
+* NestedDirectoryStore.listdir now returns chunk keys with the correct '/' dimension_separator.
+  By :user:`Brett Graham <braingram>` :issue:`1334`.
+
+* N5Store/N5FSStore dtype returns zarr Stores readable dtype.
+  By :user:`Marwan Zouinkhi <mzouink>` :issue:`1339`.
 
 .. _release_2.13.6:
 

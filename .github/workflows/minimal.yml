@@ -24,6 +24,7 @@ jobs:
       shell: "bash -l {0}"
       env:
         ZARR_V3_EXPERIMENTAL_API: 1
+        ZARR_V3_SHARDING: 1
       run: |
         conda activate minimal
         python -m pip install .
@@ -32,6 +33,7 @@ jobs:
       shell: "bash -l {0}"
       env:
         ZARR_V3_EXPERIMENTAL_API: 1
+        ZARR_V3_SHARDING: 1
       run: |
         conda activate minimal
         rm -rf fixture/

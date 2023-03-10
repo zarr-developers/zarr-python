@@ -56,9 +56,9 @@ def json_dumps(o: Any) -> bytes:
                       separators=(',', ': '), cls=NumberEncoder).encode('ascii')
 
 
-def json_loads(s: str) -> Dict[str, Any]:
+def json_loads(s: Union[bytes, str]) -> Dict[str, Any]:
     """Read JSON in a consistent way."""
-    return json.loads(ensure_text(s, 'ascii'))
+    return json.loads(ensure_text(s, 'utf-8'))
 
 
 def normalize_shape(shape) -> Tuple[int]:
@@ -639,6 +639,25 @@ class PartialReadBuffer:
             else:
                 wanted_decompressed += self.n_per_block
             start_block += 1
+
+    def read_full(self):
+        return self.chunk_store[self.store_key]
+
+
+class UncompressedPartialReadBufferV3:
+    def __init__(self, store_key, chunk_store, itemsize):
+        assert chunk_store.supports_efficient_get_partial_values
+        self.chunk_store = chunk_store
+        self.store_key = store_key
+        self.itemsize = itemsize
+
+    def prepare_chunk(self):
+        pass
+
+    def read_part(self, start, nitems):
+        return self.chunk_store.get_partial_values(
+            [(self.store_key, (start * self.itemsize, nitems * self.itemsize))]
+        )[0]
 
     def read_full(self):
         return self.chunk_store[self.store_key]

@@ -92,7 +92,7 @@ class Metadata2:
     ZARR_FORMAT = ZARR_FORMAT
 
     @classmethod
-    def parse_metadata(cls, s: Union[MappingType, str]) -> MappingType[str, Any]:
+    def parse_metadata(cls, s: Union[MappingType, bytes, str]) -> MappingType[str, Any]:
 
         # Here we allow that a store may return an already-parsed metadata object,
         # or a string of JSON that we will parse here. We allow for an already-parsed
@@ -110,7 +110,7 @@ class Metadata2:
         return meta
 
     @classmethod
-    def decode_array_metadata(cls, s: Union[MappingType, str]) -> MappingType[str, Any]:
+    def decode_array_metadata(cls, s: Union[MappingType, bytes, str]) -> MappingType[str, Any]:
         meta = cls.parse_metadata(s)
 
         # check metadata format
@@ -198,7 +198,7 @@ class Metadata2:
         return np.dtype(d)
 
     @classmethod
-    def decode_group_metadata(cls, s: Union[MappingType, str]) -> MappingType[str, Any]:
+    def decode_group_metadata(cls, s: Union[MappingType, bytes, str]) -> MappingType[str, Any]:
         meta = cls.parse_metadata(s)
 
         # check metadata format version
@@ -351,7 +351,7 @@ class Metadata3(Metadata2):
             return get_extended_dtype_info(np.dtype(d))
 
     @classmethod
-    def decode_group_metadata(cls, s: Union[MappingType, str]) -> MappingType[str, Any]:
+    def decode_group_metadata(cls, s: Union[MappingType, bytes, str]) -> MappingType[str, Any]:
         meta = cls.parse_metadata(s)
         # 1 / 0
         # # check metadata format version
@@ -390,7 +390,7 @@ class Metadata3(Metadata2):
 
     @classmethod
     def decode_hierarchy_metadata(
-        cls, s: Union[MappingType, str]
+        cls, s: Union[MappingType, bytes, str]
     ) -> MappingType[str, Any]:
         meta = cls.parse_metadata(s)
         # check metadata format
@@ -477,9 +477,10 @@ class Metadata3(Metadata2):
     @classmethod
     def _decode_storage_transformer_metadata(cls, meta: Mapping) -> "StorageTransformer":
         from zarr.tests.test_storage_v3 import DummyStorageTransfomer
+        from zarr._storage.v3_storage_transformers import ShardingStorageTransformer
 
         # This might be changed to a proper registry in the future
-        KNOWN_STORAGE_TRANSFORMERS = [DummyStorageTransfomer]
+        KNOWN_STORAGE_TRANSFORMERS = [DummyStorageTransfomer, ShardingStorageTransformer]
 
         conf = meta.get('configuration', {})
         extension_uri = meta['extension']
@@ -494,7 +495,7 @@ class Metadata3(Metadata2):
         return StorageTransformerCls.from_config(transformer_type, conf)
 
     @classmethod
-    def decode_array_metadata(cls, s: Union[MappingType, str]) -> MappingType[str, Any]:
+    def decode_array_metadata(cls, s: Union[MappingType, bytes, str]) -> MappingType[str, Any]:
         meta = cls.parse_metadata(s)
 
         # extract array metadata fields
