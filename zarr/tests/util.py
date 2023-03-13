@@ -45,7 +45,7 @@ class CountingDict(Store):
         del self.wrapped[key]
 
     def getitems(
-        self, keys: Sequence[str], contexts: Mapping[str, Context] = {}
+        self, keys: Sequence[str], contexts: Mapping[str, Context]
     ) -> Mapping[str, Any]:
         for key in keys:
             self.counter['__getitem__', key] += 1

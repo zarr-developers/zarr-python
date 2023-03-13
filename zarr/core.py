@@ -1275,27 +1275,14 @@ class Array:
             check_array_shape('out', out, out_shape)
 
         # iterate over chunks
-        if (
-            math.prod(out_shape) > 0 and
-            not hasattr(self.chunk_store, "getitems") and not (
-                hasattr(self.chunk_store, "get_partial_values") and
-                self.chunk_store.supports_efficient_get_partial_values
-            )
-        ) or any(map(lambda x: x == 0, self.shape)):
-            # sequentially get one key at a time from storage
-            for chunk_coords, chunk_selection, out_selection in indexer:
 
-                # load chunk selection into output array
-                self._chunk_getitem(chunk_coords, chunk_selection, out, out_selection,
-                                    drop_axes=indexer.drop_axes, fields=fields)
-        else:
+        if math.prod(out_shape) > 0:
             # allow storage to get multiple items at once
             lchunk_coords, lchunk_selection, lout_selection = zip(*indexer)
             self._chunk_getitems(
                 lchunk_coords, lchunk_selection, out, lout_selection,
                 drop_axes=indexer.drop_axes, fields=fields
             )
-
         if out.shape:
             return out
         else:
@@ -2029,15 +2016,10 @@ class Array:
             }
         else:
             partial_read_decode = False
-            if not hasattr(self.chunk_store, "getitems"):
-                values = self.chunk_store.get_partial_values([(ckey, (0, None)) for ckey in ckeys])
-                cdatas = {key: value for key, value in zip(ckeys, values) if value is not None}
-            else:
-                contexts = {}
-                if not isinstance(self._meta_array, np.ndarray):
-                    contexts = {k: {"meta_array": self._meta_array} for k in ckeys}
-                cdatas = self.chunk_store.getitems(ckeys, contexts=contexts, on_error="omit")
-
+            contexts = {}
+            if not isinstance(self._meta_array, np.ndarray):
+                contexts = {k: {"meta_array": self._meta_array} for k in ckeys}
+            cdatas = self.chunk_store.getitems(ckeys, contexts)
 
         for ckey, chunk_select, out_select in zip(ckeys, lchunk_selection, lout_selection):
             if ckey in cdatas:

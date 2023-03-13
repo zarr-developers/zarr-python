@@ -9,7 +9,6 @@ import shutil
 import tempfile
 from contextlib import contextmanager
 from pickle import PicklingError
-from typing import Any, Mapping, Sequence
 from zipfile import ZipFile
 
 import numpy as np
@@ -21,7 +20,6 @@ from numcodecs.compat import ensure_bytes
 import zarr
 from zarr._storage.store import _get_hierarchy_metadata
 from zarr.codecs import BZ2, AsType, Blosc, Zlib
-from zarr.context import Context
 from zarr.convenience import consolidate_metadata
 from zarr.errors import ContainsArrayError, ContainsGroupError, MetadataError
 from zarr.hierarchy import group
@@ -2595,11 +2593,9 @@ def test_getitems_contexts():
             super().__init__()
             self.last_contexts = None
 
-        def getitems(
-            self, keys: Sequence[str], contexts: Mapping[str, Context] = {}
-        ) -> Mapping[str, Any]:
+        def getitems(self, keys, contexts):
             self.last_contexts = contexts
-            return {k: self.wrapped[k] for k in keys if k in self.wrapped}
+            return super().getitems(keys, contexts)
 
     store = MyStore()
     z = zarr.create(shape=(10,), store=store)
