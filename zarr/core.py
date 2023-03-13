@@ -1982,7 +1982,6 @@ class Array:
         # Keys to retrieve
         ckeys = [self._chunk_key(ch) for ch in lchunk_coords]
 
-        partial_read_decode = False
         # Check if we can do a partial read
         if (
             self._partial_decompress
@@ -1991,6 +1990,7 @@ class Array:
             and hasattr(self._compressor, "decode_partial")
             and not fields
             and self.dtype != object
+            and hasattr(self.chunk_store, "getitems")
         ):
             partial_read_decode = True
             cdatas = {
@@ -2014,6 +2014,10 @@ class Array:
                 for ckey in ckeys
                 if ckey in self.chunk_store
             }
+        elif hasattr(self.chunk_store, "get_partial_values"):
+            partial_read_decode = False
+            values = self.chunk_store.get_partial_values([(ckey, (0, None)) for ckey in ckeys])
+            cdatas = {key: value for key, value in zip(ckeys, values) if value is not None}
         else:
             partial_read_decode = False
             contexts = {}

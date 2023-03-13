@@ -157,15 +157,7 @@ class BaseStore(MutableMapping):
         ignores contexts. Overwrite this method to implement concurrent reads of multiple
         keys and/or to utilize the contexts.
         """
-        keys_in_self = [k for k in keys if k in self]  # Ignoring keys not in `self`
-        if hasattr(self, "get_partial_values"):
-            # Optimization, if `get_partial_values` is available, we use it to retrieve
-            # all the values in a single call.
-            values = self.get_partial_values([(k, (0, None)) for k in keys_in_self])
-        else:
-            # Otherwise, we just retrieve each key sequentially.
-            values = [self[k] for k in keys_in_self]
-        return dict(zip(keys_in_self, values))
+        return {k: self[k] for k in keys if k in self}
 
 
 class Store(BaseStore):
@@ -551,9 +543,6 @@ class StorageTransformer(MutableMapping, abc.ABC):
     @property
     def supports_efficient_get_partial_values(self):
         return self.inner_store.supports_efficient_get_partial_values
-
-    def getitems(self, keys, contexts):
-        return self.inner_store.getitems(keys, contexts)
 
     def get_partial_values(self, key_ranges):
         return self.inner_store.get_partial_values(key_ranges)
