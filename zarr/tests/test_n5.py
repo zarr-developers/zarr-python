@@ -1,10 +1,15 @@
-
 import pytest
 
-from zarr.n5 import N5ChunkWrapper
+from zarr.n5 import N5ChunkWrapper, N5FSStore
+from zarr.creation import create
+from zarr.storage import atexit_rmtree
 from numcodecs import GZip
 import numpy as np
 from typing import Tuple
+import json
+import atexit
+
+from zarr.tests.util import have_fsspec
 
 
 def test_make_n5_chunk_wrapper():
@@ -35,3 +40,15 @@ def test_partial_chunk_decode(chunk_shape: Tuple[int, ...]):
     chunk[subslices] = 1
     subchunk = np.ascontiguousarray(chunk[subslices])
     assert np.array_equal(codec_wrapped.decode(codec_wrapped.encode(subchunk)), chunk)
+
+
+@pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
+def test_dtype_decode():
+    path = 'data/array.n5'
+    atexit_rmtree(path)
+    atexit.register(atexit_rmtree, path)
+    n5_store = N5FSStore(path)
+    create(100, store=n5_store)
+    dtype_n5 = json.loads(n5_store[".zarray"])["dtype"]
+    dtype_zarr = json.loads(create(100).store[".zarray"])["dtype"]
+    assert dtype_n5 == dtype_zarr

@@ -689,6 +689,7 @@ def array_metadata_to_zarr(array_metadata: Dict[str, Any],
     array_metadata['order'] = 'C'
     array_metadata['filters'] = []
     array_metadata['dimension_separator'] = '.'
+    array_metadata['dtype'] = np.dtype(array_metadata['dtype']).str
 
     compressor_config = array_metadata['compressor']
     compressor_config = compressor_config_to_zarr(compressor_config)
@@ -734,12 +735,6 @@ def compressor_config_to_n5(compressor_config: Optional[Dict[str, Any]]) -> Dict
         n5_config['blockSize'] = _compressor_config['level']
 
     elif codec_id == 'blosc':
-
-        warnings.warn(
-            "Not all N5 implementations support blosc compression (yet). You "
-            "might not be able to open the dataset with another N5 library.",
-            RuntimeWarning
-        )
 
         n5_config['cname'] = _compressor_config['cname']
         n5_config['clevel'] = _compressor_config['clevel']

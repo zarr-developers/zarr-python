@@ -1336,7 +1336,7 @@ def group(store=None, overwrite=False, chunk_store=None,
     """
 
     # handle polymorphic store arg
-    store = _normalize_store_arg(store, zarr_version=zarr_version)
+    store = _normalize_store_arg(store, zarr_version=zarr_version, mode='w')
     if zarr_version is None:
         zarr_version = getattr(store, '_store_version', DEFAULT_ZARR_VERSION)
 
