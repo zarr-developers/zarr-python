@@ -931,7 +931,7 @@ class TestCopy:
         source_h5py = source.__module__.startswith('h5py.')
         if source_h5py:
             # dtype with no metadata
-            dt = np.dtype([('address', 'S4'), ('value','S8')])
+            dt = np.dtype([('address', 'S4'), ('value', 'S8')])
 
             # h5py puts internal keys in dtype metadata
             ds = source.create_dataset("toto", (1,), dtype=dt)

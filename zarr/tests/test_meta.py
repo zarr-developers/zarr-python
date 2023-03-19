@@ -630,4 +630,4 @@ def test_drop_metadata(tmpdir):
     descr = [('address', ('|S4', {'h5py_encoding': 'ascii'})),
              ('value', ('|S8', {'h5py_encoding': 'ascii'}))]
     dt = decode_dtype(descr)
-    assert dt.descr == [('address', '|S4'), ('value','|S8')]
+    assert dt.descr == [('address', '|S4'), ('value', '|S8')]
