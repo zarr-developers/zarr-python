@@ -623,3 +623,11 @@ def test_metadata3_exceptions():
 
     with pytest.raises(MetadataError):
         Metadata3.decode_array_metadata(dict())
+
+
+def test_drop_metadata(tmpdir):
+    # dtype descr with metadata, typical example found in an hdf5 dataset
+    descr = [('address', ('|S4', {'h5py_encoding': 'ascii'})),
+             ('value', ('|S8', {'h5py_encoding': 'ascii'}))]
+    dt = decode_dtype(descr)
+    assert dt.descr == [('address', '|S4'), ('value','|S8')]

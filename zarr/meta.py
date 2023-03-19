@@ -187,6 +187,12 @@ class Metadata2:
     @classmethod
     def _decode_dtype_descr(cls, d) -> List[Any]:
         # need to convert list of lists to list of tuples
+
+        # remove metadata in descr
+        if isinstance(d, (list, tuple)) and len(d) == 2 and isinstance(
+                d[1], dict):
+            return d[0]
+
         if isinstance(d, list):
             # recurse to handle nested structures
             d = [(k[0], cls._decode_dtype_descr(k[1])) + tuple(k[2:]) for k in d]

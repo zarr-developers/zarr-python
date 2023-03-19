@@ -927,6 +927,19 @@ class TestCopy:
         with pytest.raises(TypeError):
             copy(source['foo'], dest, dry_run=True, log=True)
 
+    def test_drop_metadata(self, source):
+        source_h5py = source.__module__.startswith('h5py.')
+        if source_h5py:
+            # dtype with no metadata
+            dt = np.dtype([('address', 'S4'), ('value','S8')])
+
+            # h5py puts internal keys in dtype metadata
+            ds = source.create_dataset("toto", (1,), dtype=dt)
+            z_from_h5 = zarr.zeros(1, dtype=ds.dtype)
+
+            # zarr should not take this into account
+            assert z_from_h5.dtype == dt
+
 
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestCopyV3(TestCopy):
