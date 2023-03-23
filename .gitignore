@@ -67,6 +67,9 @@ zarr/version.py
 # emacs
 *~
 
+# VSCode
+.vscode/
+
 # test data
 #*.zarr
 #*.zip
