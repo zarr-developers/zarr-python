@@ -94,29 +94,39 @@ the repository, you can do something like the following::
     $ mkdir -p ~/pyenv/zarr-dev
 
 Create the virtual environment::
+
     $ python -m venv ~/pyenv/zarr-dev
 
-Activate the virtual environemnt::  
+Activate the virtual environemnt::
+
     $ source ~/pyenv/zarr-dev/bin/activate
 
-Install all the Zarr dependencies::    
+Install all the Zarr dependencies::
+
     $ pip install -r requirements_dev_minimal.txt -r requirements_dev_numpy.txt
-::
+
+Then::
+
     $ pip install -e .
 
-For Windows, use::
+For Windows, you can do the following instead::
+
     mkdir -p ~/pyenv/zarr-dev
 
-::  
+:: 
+
     python -m venv ~/pyenv/zarr-dev
     
-::    
+::  
+
     source ~/pyenv/zarr-dev/Scripts/activate
     
-::    
+::  
+
     pip install -r requirements_dev_minimal.txt -r requirements_dev_numpy.txt
     
-::    
+:: 
+       
     pip install -e .
 
 
