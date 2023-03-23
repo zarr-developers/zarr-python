@@ -97,8 +97,8 @@ Create the virtual environment::
 
     $ python -m venv ~/pyenv/zarr-dev
 
-Activate the virtual environemnt::
-
+Activate the virtual environment::
+      
     $ source ~/pyenv/zarr-dev/bin/activate
 
 Install all the Zarr dependencies::
