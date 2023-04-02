@@ -152,6 +152,7 @@ class Array:
     set_mask_selection
     get_coordinate_selection
     set_coordinate_selection
+    set_options
     digest
     hexdigest
     resize
@@ -228,6 +229,9 @@ class Array:
         # initialize indexing helpers
         self._oindex = OIndex(self)
         self._vindex = VIndex(self)
+
+        # initialize options
+        self.set_options()
 
     def _load_metadata(self):
         """(Re)load metadata from store."""
@@ -964,6 +968,8 @@ class Array:
             cdata = self.chunk_store[ckey]
 
         except KeyError:
+            if not self._fill_missing_chunk:
+                raise
             # chunk not initialized
             chunk = np.zeros_like(self._meta_array, shape=(), dtype=self._dtype)
             if self._fill_value is not None:
@@ -1662,6 +1668,18 @@ class Array:
 
         self._set_selection(indexer, value, fields=fields)
 
+    def set_options(self, fill_missing_chunk=True):
+        """Set options.
+
+        Parameters
+        ----------
+        fill_missing_chunk : bool
+            Whether Zarr is supposed to fill missing chunks.  Defaults to True.
+
+        """
+
+        self._fill_missing_chunk = fill_missing_chunk
+
     def set_mask_selection(self, selection, value, fields=None):
         """Modify a selection of individual items, by providing a Boolean array of the
         same shape as the array against which the selection is being made, where True
@@ -1999,6 +2017,8 @@ class Array:
             cdata = self.chunk_store[ckey]
 
         except KeyError:
+            if not self._fill_missing_chunk:
+                raise
             # chunk not initialized
             if self._fill_value is not None:
                 if fields:
