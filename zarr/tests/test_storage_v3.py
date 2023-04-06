@@ -596,6 +596,16 @@ def test_normalize_store_arg_v3(tmpdir):
         store = normalize_store_arg(fsspec.get_mapper("file://" + path), zarr_version=3)
         assert isinstance(store, FSStoreV3)
 
+        # regression for https://github.com/zarr-developers/zarr-python/issues/1382
+        # contents of zarr.json are not important for this test
+        out = {"version": 1, "refs": {"zarr.json": "{...}"}}
+        store = normalize_store_arg(
+            "reference://",
+            storage_options={"fo": out, "remote_protocol": "memory"},
+            zarr_version=3
+        )
+        assert isinstance(store, FSStoreV3)
+
     fn = tmpdir.join('store.n5')
     with pytest.raises(NotImplementedError):
         normalize_store_arg(str(fn), zarr_version=3, mode='w')
