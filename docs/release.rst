@@ -18,6 +18,12 @@ Unreleased
 * Implement more extensive fallback of getitem/setitem for orthogonal indexing.
   By :user:`Andreas Albert <AndreasAlbertQC>` :issue:`1029`.
 
+Bug fixes
+~~~~~~~~~
+
+* Fix ``ReadOnlyError`` when opening V3 store via fsspec reference file system.
+  By :user:`Joe Hamman <jhamman>` :issue:`1383`.
+
 .. _release_2.14.2:
 
 2.14.2
