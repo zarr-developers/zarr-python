@@ -57,7 +57,7 @@ class TestAttributes():
         testdir = fixdir / "utf8attrs"
         if not testdir.exists():  # pragma: no cover
             # store the data - should be one-time operation
-            testdir.mkdir()
+            testdir.mkdir(parents=True, exist_ok=True)
             with (testdir / ".zattrs").open("w", encoding="utf-8") as f:
                 f.write('{"foo": "た"}')
             with (testdir / ".zgroup").open("w", encoding="utf-8") as f:
