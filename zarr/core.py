@@ -2023,7 +2023,7 @@ class Array:
             contexts = {}
             if not isinstance(self._meta_array, np.ndarray):
                 contexts = {k: {"meta_array": self._meta_array} for k in ckeys}
-            cdatas = self.chunk_store.getitems(ckeys, contexts)
+            cdatas = self.chunk_store.getitems(ckeys, contexts=contexts)
 
         for ckey, chunk_select, out_select in zip(ckeys, lchunk_selection, lout_selection):
             if ckey in cdatas:

@@ -133,7 +133,7 @@ class BaseStore(MutableMapping):
         )
 
     def getitems(
-        self, keys: Sequence[str], contexts: Mapping[str, Context]
+        self, keys: Sequence[str], *, contexts: Mapping[str, Context]
     ) -> Mapping[str, Any]:
         """Retrieve data from multiple keys.
 

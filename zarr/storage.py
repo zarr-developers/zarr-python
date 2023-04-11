@@ -1382,7 +1382,7 @@ class FSStore(Store):
         return key.lower() if self.normalize_keys else key
 
     def getitems(
-        self, keys: Sequence[str], contexts: Mapping[str, Context]
+        self, keys: Sequence[str], *, contexts: Mapping[str, Context]
     ) -> Mapping[str, Any]:
 
         keys_transformed = [self._normalize_key(key) for key in keys]

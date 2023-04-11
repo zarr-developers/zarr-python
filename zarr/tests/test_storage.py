@@ -2593,9 +2593,9 @@ def test_getitems_contexts():
             super().__init__()
             self.last_contexts = None
 
-        def getitems(self, keys, contexts):
+        def getitems(self, keys, *, contexts):
             self.last_contexts = contexts
-            return super().getitems(keys, contexts)
+            return super().getitems(keys, contexts=contexts)
 
     store = MyStore()
     z = zarr.create(shape=(10,), store=store)
