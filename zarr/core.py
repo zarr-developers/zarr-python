@@ -13,6 +13,7 @@ from numcodecs.compat import ensure_bytes
 from zarr._storage.store import _prefix_to_attrs_key, assert_zarr_v3_api_available
 from zarr.attrs import Attributes
 from zarr.codecs import AsType, get_codec
+from zarr.context import Context
 from zarr.errors import ArrayNotFoundError, ReadOnlyError, ArrayIndexError
 from zarr.indexing import (
     BasicIndexer,
@@ -41,6 +42,7 @@ from zarr.storage import (
     normalize_store_arg,
 )
 from zarr.util import (
+    ConstantMap,
     all_equal,
     InfoReporter,
     check_array_shape,
@@ -2022,7 +2024,7 @@ class Array:
             partial_read_decode = False
             contexts = {}
             if not isinstance(self._meta_array, np.ndarray):
-                contexts = {k: {"meta_array": self._meta_array} for k in ckeys}
+                contexts = ConstantMap(ckeys, constant=Context(meta_array=self._meta_array))
             cdatas = self.chunk_store.getitems(ckeys, contexts=contexts)
 
         for ckey, chunk_select, out_select in zip(ckeys, lchunk_selection, lout_selection):

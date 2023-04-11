@@ -20,6 +20,7 @@ from numcodecs.compat import ensure_bytes
 import zarr
 from zarr._storage.store import _get_hierarchy_metadata
 from zarr.codecs import BZ2, AsType, Blosc, Zlib
+from zarr.context import Context
 from zarr.convenience import consolidate_metadata
 from zarr.errors import ContainsArrayError, ContainsGroupError, MetadataError
 from zarr.hierarchy import group
@@ -37,7 +38,7 @@ from zarr.storage import (ABSStore, ConsolidatedMetadataStore, DBMStore,
 from zarr.storage import FSStore, rename, listdir
 from zarr._storage.v3 import KVStoreV3
 from zarr.tests.util import CountingDict, have_fsspec, skip_test_env_var, abs_container, mktemp
-from zarr.util import json_dumps
+from zarr.util import ConstantMap, json_dumps
 
 
 @contextmanager
@@ -2598,7 +2599,7 @@ def test_getitems_contexts():
             return super().getitems(keys, contexts=contexts)
 
     store = MyStore()
-    z = zarr.create(shape=(10,), store=store)
+    z = zarr.create(shape=(10,), chunks=1, store=store)
 
     # By default, not contexts are given to the store's getitems()
     z[0]
@@ -2608,3 +2609,11 @@ def test_getitems_contexts():
     z._meta_array = "my_meta_array"
     z[0]
     assert store.last_contexts == {'0': {'meta_array': 'my_meta_array'}}
+    assert isinstance(store.last_contexts, ConstantMap)
+    # Accseeing different chunks should trigger different key request
+    z[1]
+    assert store.last_contexts == {'1': {'meta_array': 'my_meta_array'}}
+    assert isinstance(store.last_contexts, ConstantMap)
+    z[2:4]
+    assert store.last_contexts == ConstantMap(['2', '3'], Context({'meta_array': 'my_meta_array'}))
+    assert isinstance(store.last_contexts, ConstantMap)
