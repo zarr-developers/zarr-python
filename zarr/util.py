@@ -1,4 +1,3 @@
-import collections.abc
 import inspect
 import json
 import math
@@ -11,6 +10,7 @@ from typing import (
     Callable,
     Dict,
     Iterator,
+    Mapping,
     Optional,
     Tuple,
     TypeVar,
@@ -760,7 +760,7 @@ def ensure_contiguous_ndarray_or_bytes(buf) -> Union[NDArrayLike, bytes]:
         return ensure_bytes(buf)
 
 
-class ConstantMap(collections.abc.Mapping[KeyType, ValueType]):
+class ConstantMap(Mapping[KeyType, ValueType]):
     """A read-only map that maps all keys to the same constant value
 
     Useful if you want to call `getitems()` with the same context for all keys.
