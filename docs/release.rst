@@ -15,11 +15,28 @@ Unreleased
     # .. warning::
     #    Pre-release! Use :command:`pip install --pre zarr` to evaluate this release.
 
+.. _release_2.15.0:
+
+2.15.0
+------
+
+Enhancements
+~~~~~~~~~~~~
+
 * Implement more extensive fallback of getitem/setitem for orthogonal indexing.
   By :user:`Andreas Albert <AndreasAlbertQC>` :issue:`1029`.
 
+Documentation
+~~~~~~~~~~~~~
+
+* Add API reference for V3 Implementation in the docs.
+  By :user:`Sanket Verma <MSanKeys963>` :issue:`1345`.
+
 Bug fixes
 ~~~~~~~~~
+
+* Fix the conda-forge error. Read :issue:`1347` for detailed info.
+  By :user:`Josh Moore <joshmoore>` :issue:`1364` and :issue:`1367`.
 
 * Fix ``ReadOnlyError`` when opening V3 store via fsspec reference file system.
   By :user:`Joe Hamman <jhamman>` :issue:`1383`.
