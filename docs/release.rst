@@ -26,6 +26,9 @@ Enhancements
 * Implement more extensive fallback of getitem/setitem for orthogonal indexing.
   By :user:`Andreas Albert <AndreasAlbertQC>` :issue:`1029`.
 
+* Getitems supports ``meta_array``.
+  By :user: 'Mads R. B. Kristensen <madsbk>' :issue:`1131`.
+
 Documentation
 ~~~~~~~~~~~~~
 
