@@ -27,7 +27,13 @@ Enhancements
   By :user:`Andreas Albert <AndreasAlbertQC>` :issue:`1029`.
 
 * Getitems supports ``meta_array``.
-  By :user: 'Mads R. B. Kristensen <madsbk>' :issue:`1131`.
+  By :user:`Mads R. B. Kristensen <madsbk>` :issue:`1131`.
+
+Maintenance
+~~~~~~~~~~~
+
+* Remove ``codecov`` from GitHub actions.
+  By :user:`John A. Kirkham <jakirkham>` :issue:`1391`.
 
 Documentation
 ~~~~~~~~~~~~~
