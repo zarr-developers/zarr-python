@@ -666,6 +666,8 @@ def _get_public_and_dunder_methods(some_class):
 def test_storage_transformer_interface():
     store_v3_methods = _get_public_and_dunder_methods(StoreV3)
     store_v3_methods.discard("__init__")
+    # Note, getitems() isn't mandatory when get_partial_values() is available
+    store_v3_methods.discard("getitems")
     storage_transformer_methods = _get_public_and_dunder_methods(StorageTransformer)
     storage_transformer_methods.discard("__init__")
     storage_transformer_methods.discard("get_config")
