@@ -5,12 +5,22 @@ import numbers
 from textwrap import TextWrapper
 import mmap
 import time
-from typing import Any, Callable, Dict, Optional, Tuple, Union
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Iterator,
+    Mapping,
+    Optional,
+    Tuple,
+    TypeVar,
+    Union,
+    Iterable
+)
 
 import numpy as np
 from asciitree import BoxStyle, LeftAligned
 from asciitree.traversal import Traversal
-from collections.abc import Iterable
 from numcodecs.compat import (
     ensure_text,
     ensure_ndarray_like,
@@ -20,6 +30,9 @@ from numcodecs.compat import (
 from numcodecs.ndarray_like import NDArrayLike
 from numcodecs.registry import codec_registry
 from numcodecs.blosc import cbuffer_sizes, cbuffer_metainfo
+
+KeyType = TypeVar('KeyType')
+ValueType = TypeVar('ValueType')
 
 
 def flatten(arg: Iterable) -> Iterable:
@@ -745,3 +758,38 @@ def ensure_contiguous_ndarray_or_bytes(buf) -> Union[NDArrayLike, bytes]:
     except TypeError:
         # An error is raised if `buf` couldn't be zero-copy converted
         return ensure_bytes(buf)
+
+
+class ConstantMap(Mapping[KeyType, ValueType]):
+    """A read-only map that maps all keys to the same constant value
+
+    Useful if you want to call `getitems()` with the same context for all keys.
+
+    Parameters
+    ----------
+    keys
+        The keys of the map. Will be copied to a frozenset if it isn't already.
+    constant
+        The constant that all keys are mapping to.
+    """
+
+    def __init__(self, keys: Iterable[KeyType], constant: ValueType) -> None:
+        self._keys = keys if isinstance(keys, frozenset) else frozenset(keys)
+        self._constant = constant
+
+    def __getitem__(self, key: KeyType) -> ValueType:
+        if key not in self._keys:
+            raise KeyError(repr(key))
+        return self._constant
+
+    def __iter__(self) -> Iterator[KeyType]:
+        return iter(self._keys)
+
+    def __len__(self) -> int:
+        return len(self._keys)
+
+    def __contains__(self, key: object) -> bool:
+        return key in self._keys
+
+    def __repr__(self) -> str:
+        return repr({k: v for k, v in self.items()})

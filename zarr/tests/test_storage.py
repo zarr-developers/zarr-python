@@ -20,6 +20,7 @@ from numcodecs.compat import ensure_bytes
 import zarr
 from zarr._storage.store import _get_hierarchy_metadata
 from zarr.codecs import BZ2, AsType, Blosc, Zlib
+from zarr.context import Context
 from zarr.convenience import consolidate_metadata
 from zarr.errors import ContainsArrayError, ContainsGroupError, MetadataError
 from zarr.hierarchy import group
@@ -37,7 +38,7 @@ from zarr.storage import (ABSStore, ConsolidatedMetadataStore, DBMStore,
 from zarr.storage import FSStore, rename, listdir
 from zarr._storage.v3 import KVStoreV3
 from zarr.tests.util import CountingDict, have_fsspec, skip_test_env_var, abs_container, mktemp
-from zarr.util import json_dumps
+from zarr.util import ConstantMap, json_dumps
 
 
 @contextmanager
@@ -2584,3 +2585,35 @@ def test_meta_prefix_6853():
 
     fixtures = group(store=DirectoryStore(str(fixture)))
     assert list(fixtures.arrays())
+
+
+def test_getitems_contexts():
+
+    class MyStore(CountingDict):
+        def __init__(self):
+            super().__init__()
+            self.last_contexts = None
+
+        def getitems(self, keys, *, contexts):
+            self.last_contexts = contexts
+            return super().getitems(keys, contexts=contexts)
+
+    store = MyStore()
+    z = zarr.create(shape=(10,), chunks=1, store=store)
+
+    # By default, not contexts are given to the store's getitems()
+    z[0]
+    assert len(store.last_contexts) == 0
+
+    # Setting a non-default meta_array, will create contexts for the store's getitems()
+    z._meta_array = "my_meta_array"
+    z[0]
+    assert store.last_contexts == {'0': {'meta_array': 'my_meta_array'}}
+    assert isinstance(store.last_contexts, ConstantMap)
+    # Accseeing different chunks should trigger different key request
+    z[1]
+    assert store.last_contexts == {'1': {'meta_array': 'my_meta_array'}}
+    assert isinstance(store.last_contexts, ConstantMap)
+    z[2:4]
+    assert store.last_contexts == ConstantMap(['2', '3'], Context({'meta_array': 'my_meta_array'}))
+    assert isinstance(store.last_contexts, ConstantMap)

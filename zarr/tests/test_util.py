@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 
 from zarr.core import Array
-from zarr.util import (all_equal, flatten, guess_chunks, human_readable_size,
+from zarr.util import (ConstantMap, all_equal, flatten, guess_chunks, human_readable_size,
                        info_html_report, info_text_report, is_total_slice,
                        json_dumps, normalize_chunks,
                        normalize_dimension_separator,
@@ -248,3 +248,16 @@ def test_json_dumps_numpy_dtype():
     # Check that we raise the error of the superclass for unsupported object
     with pytest.raises(TypeError):
         json_dumps(Array)
+
+
+def test_constant_map():
+    val = object()
+    m = ConstantMap(keys=[1, 2], constant=val)
+    assert len(m) == 2
+    assert m[1] is val
+    assert m[2] is val
+    assert 1 in m
+    assert 0 not in m
+    with pytest.raises(KeyError):
+        m[0]
+    assert repr(m) == repr({1: val, 2: val})
