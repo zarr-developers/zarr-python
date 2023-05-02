@@ -11,13 +11,13 @@ Release notes
     Unreleased
     ----------
 
-.. warning::
-   Pre-release! Use :command:`pip install --pre zarr` to evaluate this release.
-
 .. _release_2.15.0:
 
 2.15.0
 ------
+
+.. warning::
+   Pre-release! Use :command:`pip install --pre zarr` to evaluate this release.
 
 Enhancements
 ~~~~~~~~~~~~
