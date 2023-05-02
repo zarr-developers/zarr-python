@@ -31,7 +31,7 @@ from collections.abc import MutableMapping
 from os import scandir
 from pickle import PicklingError
 from threading import Lock, RLock
-from typing import Optional, Union, List, Tuple, Dict, Any
+from typing import Sequence, Mapping, Optional, Union, List, Tuple, Dict, Any
 import uuid
 import time
 
@@ -42,6 +42,7 @@ from numcodecs.compat import (
     ensure_contiguous_ndarray_like
 )
 from numcodecs.registry import codec_registry
+from zarr.context import Context
 
 from zarr.errors import (
     MetadataError,
@@ -1380,7 +1381,10 @@ class FSStore(Store):
 
         return key.lower() if self.normalize_keys else key
 
-    def getitems(self, keys, **kwargs):
+    def getitems(
+        self, keys: Sequence[str], *, contexts: Mapping[str, Context]
+    ) -> Mapping[str, Any]:
+
         keys_transformed = [self._normalize_key(key) for key in keys]
         results = self.map.getitems(keys_transformed, on_error="omit")
         # The function calling this method may not recognize the transformed keys
