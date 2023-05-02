@@ -6,19 +6,18 @@ Release notes
     # to document your changes. On releases it will be
     # re-indented so that it does not show up in the notes.
 
-.. _unreleased:
+    .. _unreleased:
 
-Unreleased
-----------
-
-..
-    # .. warning::
-    #    Pre-release! Use :command:`pip install --pre zarr` to evaluate this release.
+    Unreleased
+    ----------
 
 .. _release_2.15.0:
 
 2.15.0
 ------
+
+.. warning::
+   Pre-release! Use :command:`pip install --pre zarr` to evaluate this release.
 
 Enhancements
 ~~~~~~~~~~~~
