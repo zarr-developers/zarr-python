@@ -34,6 +34,9 @@ Maintenance
 * Remove ``codecov`` from GitHub actions.
   By :user:`John A. Kirkham <jakirkham>` :issue:`1391`.
 
+* Replace ``np.product`` with ``np.prod`` due to deprecation.
+  By :user:`James Bourbeau <jrbourbeau>` :issue:`1405`.
+
 Documentation
 ~~~~~~~~~~~~~
 
