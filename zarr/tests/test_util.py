@@ -119,6 +119,7 @@ def test_normalize_fill_value():
     structured_dtype = np.dtype([('foo', 'S3'), ('bar', 'i4'), ('baz', 'f8')])
     expect = np.array((b'', 0, 0.), dtype=structured_dtype)[()]
     assert expect == normalize_fill_value(0, dtype=structured_dtype)
+    assert expect == normalize_fill_value(expect, dtype=structured_dtype)
     assert '' == normalize_fill_value(0, dtype=np.dtype('U1'))
 
 
