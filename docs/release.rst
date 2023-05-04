@@ -55,6 +55,9 @@ Bug fixes
 * Fix ``normalize_fill_value`` for structured arrays.
   By :user:`Alan Du <alanhdu>` :issue:`1397`.
 
+* Remove h5py metadata in ``dtype_decode`` function.
+  By :user:`ninousf <ninousf>` :issue:`1368`.
+
 .. _release_2.14.2:
 
 2.14.2
