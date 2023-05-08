@@ -37,6 +37,9 @@ Maintenance
 * Remove ``codecov`` from GitHub actions.
   By :user:`John A. Kirkham <jakirkham>` :issue:`1391`.
 
+* Replace ``np.product`` with ``np.prod`` due to deprecation.
+  By :user:`James Bourbeau <jrbourbeau>` :issue:`1405`.
+
 Documentation
 ~~~~~~~~~~~~~
 
@@ -51,6 +54,9 @@ Bug fixes
 
 * Fix ``ReadOnlyError`` when opening V3 store via fsspec reference file system.
   By :user:`Joe Hamman <jhamman>` :issue:`1383`.
+
+* Fix ``normalize_fill_value`` for structured arrays.
+  By :user:`Alan Du <alanhdu>` :issue:`1397`.
 
 .. _release_2.14.2:
 
