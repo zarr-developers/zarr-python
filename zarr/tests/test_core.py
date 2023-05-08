@@ -1479,7 +1479,7 @@ class TestArray(unittest.TestCase):
         )
         for shape, chunks in params:
             z = self.create_array(shape=shape, chunks=chunks, dtype=int)
-            a = np.arange(np.product(shape)).reshape(shape)
+            a = np.arange(np.prod(shape)).reshape(shape)
             z[:] = a
             for expect, actual in zip_longest(a, z):
                 assert_array_equal(expect, actual)
@@ -1500,7 +1500,7 @@ class TestArray(unittest.TestCase):
         )
         for shape, chunks, start, end in params:
             z = self.create_array(shape=shape, chunks=chunks, dtype=int)
-            a = np.arange(np.product(shape)).reshape(shape)
+            a = np.arange(np.prod(shape)).reshape(shape)
             z[:] = a
             end_array = min(end, a.shape[0])
             for expect, actual in zip_longest(a[start:end_array],

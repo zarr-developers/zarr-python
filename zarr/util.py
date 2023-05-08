@@ -5,12 +5,22 @@ import numbers
 from textwrap import TextWrapper
 import mmap
 import time
-from typing import Any, Callable, Dict, Optional, Tuple, Union
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Iterator,
+    Mapping,
+    Optional,
+    Tuple,
+    TypeVar,
+    Union,
+    Iterable
+)
 
 import numpy as np
 from asciitree import BoxStyle, LeftAligned
 from asciitree.traversal import Traversal
-from collections.abc import Iterable
 from numcodecs.compat import (
     ensure_text,
     ensure_ndarray_like,
@@ -20,6 +30,9 @@ from numcodecs.compat import (
 from numcodecs.ndarray_like import NDArrayLike
 from numcodecs.registry import codec_registry
 from numcodecs.blosc import cbuffer_sizes, cbuffer_metainfo
+
+KeyType = TypeVar('KeyType')
+ValueType = TypeVar('ValueType')
 
 
 def flatten(arg: Iterable) -> Iterable:
@@ -98,7 +111,7 @@ def guess_chunks(shape: Tuple[int, ...], typesize: int) -> Tuple[int, ...]:
 
     # Determine the optimal chunk size in bytes using a PyTables expression.
     # This is kept as a float.
-    dset_size = np.product(chunks)*typesize
+    dset_size = np.prod(chunks)*typesize
     target_size = CHUNK_BASE * (2**np.log10(dset_size/(1024.*1024)))
 
     if target_size > CHUNK_MAX:
@@ -113,14 +126,14 @@ def guess_chunks(shape: Tuple[int, ...], typesize: int) -> Tuple[int, ...]:
         # 1b. We're within 50% of the target chunk size, AND
         # 2. The chunk is smaller than the maximum chunk size
 
-        chunk_bytes = np.product(chunks)*typesize
+        chunk_bytes = np.prod(chunks)*typesize
 
         if (chunk_bytes < target_size or
                 abs(chunk_bytes-target_size)/target_size < 0.5) and \
                 chunk_bytes < CHUNK_MAX:
             break
 
-        if np.product(chunks) == 1:
+        if np.prod(chunks) == 1:
             break  # Element size larger than CHUNK_MAX
 
         chunks[idx % ndims] = math.ceil(chunks[idx % ndims] / 2.0)
@@ -282,7 +295,7 @@ def normalize_fill_value(fill_value, dtype: np.dtype):
     if fill_value is None or dtype.hasobject:
         # no fill value
         pass
-    elif fill_value == 0:
+    elif not isinstance(fill_value, np.void) and fill_value == 0:
         # this should be compatible across numpy versions for any array type, including
         # structured arrays
         fill_value = np.zeros((), dtype=dtype)[()]
@@ -745,3 +758,38 @@ def ensure_contiguous_ndarray_or_bytes(buf) -> Union[NDArrayLike, bytes]:
     except TypeError:
         # An error is raised if `buf` couldn't be zero-copy converted
         return ensure_bytes(buf)
+
+
+class ConstantMap(Mapping[KeyType, ValueType]):
+    """A read-only map that maps all keys to the same constant value
+
+    Useful if you want to call `getitems()` with the same context for all keys.
+
+    Parameters
+    ----------
+    keys
+        The keys of the map. Will be copied to a frozenset if it isn't already.
+    constant
+        The constant that all keys are mapping to.
+    """
+
+    def __init__(self, keys: Iterable[KeyType], constant: ValueType) -> None:
+        self._keys = keys if isinstance(keys, frozenset) else frozenset(keys)
+        self._constant = constant
+
+    def __getitem__(self, key: KeyType) -> ValueType:
+        if key not in self._keys:
+            raise KeyError(repr(key))
+        return self._constant
+
+    def __iter__(self) -> Iterator[KeyType]:
+        return iter(self._keys)
+
+    def __len__(self) -> int:
+        return len(self._keys)
+
+    def __contains__(self, key: object) -> bool:
+        return key in self._keys
+
+    def __repr__(self) -> str:
+        return repr({k: v for k, v in self.items()})

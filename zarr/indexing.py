@@ -116,7 +116,7 @@ def is_pure_orthogonal_indexing(selection, ndim):
             sum(is_integer_list(elem) or is_integer_array(elem) for elem in selection) <= 1 and
             all(
                 is_integer_list(elem) or is_integer_array(elem)
-                or isinstance(elem, slice) or isinstance(elem, int) for
+                or isinstance(elem, (int, slice)) for
                 elem in selection)
     )
 
