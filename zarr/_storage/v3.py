@@ -618,12 +618,10 @@ def _normalize_store_arg_v3(store: Any, storage_options=None, mode="r") -> BaseS
             # return N5StoreV3(store)
         else:
             store = DirectoryStoreV3(store)
-        # add default zarr.json metadata
-        store['zarr.json'] = store._metadata_class.encode_hierarchy_metadata(None)
-        return store
     else:
         store = StoreV3._ensure_store(store)
-        if 'zarr.json' not in store:
-            # add default zarr.json metadata
-            store['zarr.json'] = store._metadata_class.encode_hierarchy_metadata(None)
+
+    if 'zarr.json' not in store:
+        # add default zarr.json metadata
+        store['zarr.json'] = store._metadata_class.encode_hierarchy_metadata(None)
     return store

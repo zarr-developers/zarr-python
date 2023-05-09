@@ -15,16 +15,16 @@ repos:
       exclude: ^(venv/|docs/)
       types: ['python']
   - repo: https://github.com/codespell-project/codespell
-    rev: v2.2.2
+    rev: v2.2.4
     hooks:
       - id: codespell
-        args: ["-L", "ba,ihs,kake,nd,noe,nwo,te", "-S", "fixture"]
+        args: ["-L", "ba,ihs,kake,nd,noe,nwo,te,fo", "-S", "fixture"]
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.4.0
     hooks:
     - id: check-yaml
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.0.1
+    rev: v1.2.0
     hooks:
       - id: mypy
         files: zarr

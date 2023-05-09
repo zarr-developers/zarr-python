@@ -1,6 +1,8 @@
 import collections
 import os
 import tempfile
+from typing import Any, Mapping, Sequence
+from zarr.context import Context
 
 from zarr.storage import Store
 from zarr._storage.v3 import StoreV3
@@ -41,6 +43,13 @@ class CountingDict(Store):
     def __delitem__(self, key):
         self.counter['__delitem__', key] += 1
         del self.wrapped[key]
+
+    def getitems(
+        self, keys: Sequence[str], *, contexts: Mapping[str, Context]
+    ) -> Mapping[str, Any]:
+        for key in keys:
+            self.counter['__getitem__', key] += 1
+        return {k: self.wrapped[k] for k in keys if k in self.wrapped}
 
 
 class CountingDictV3(CountingDict, StoreV3):
