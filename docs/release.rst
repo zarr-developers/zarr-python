@@ -37,6 +37,9 @@ Maintenance
 * Replace ``np.product`` with ``np.prod`` due to deprecation.
   By :user:`James Bourbeau <jrbourbeau>` :issue:`1405`.
 
+* Activate Py 3.11 builds.
+  By :user:`Joe Hamman <jhamman>` :issue:`1415`.
+
 Documentation
 ~~~~~~~~~~~~~
 
