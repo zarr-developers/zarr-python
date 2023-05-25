@@ -28,6 +28,9 @@ Enhancements
 * Getitems supports ``meta_array``.
   By :user:`Mads R. B. Kristensen <madsbk>` :issue:`1131`.
 
+* ``open_array()`` now takes the ``meta_array`` argument.
+  By :user:`Mads R. B. Kristensen <madsbk>` :issue:`1396`.
+
 Maintenance
 ~~~~~~~~~~~
 
@@ -176,7 +179,7 @@ Bug fixes
 Documentation
 ~~~~~~~~~~~~~
 
-* Fix minor indexing errors in tutorial and specification examples of documentation. 
+* Fix minor indexing errors in tutorial and specification examples of documentation.
   By :user:`Kola Babalola <sprynt001>` :issue:`1277`.
 
 * Add `requirements_rtfd.txt` in `contributing.rst`.

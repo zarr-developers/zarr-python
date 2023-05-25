@@ -424,6 +424,7 @@ def open_array(
     *,
     zarr_version=None,
     dimension_separator=None,
+    meta_array=None,
     **kwargs
 ):
     """Open an array using file-mode-like semantics.
@@ -498,6 +499,11 @@ def open_array(
         ('/') format. If None, the appropriate value will be read from `store`
         when present. Otherwise, defaults to '.' when ``zarr_version == 2``
         and `/` otherwise.
+    meta_array : array-like, optional
+        An array instance to use for determining arrays to create and return
+        to users. Use `numpy.empty(())` by default.
+
+        .. versionadded:: 2.15
 
     Returns
     -------
@@ -607,7 +613,7 @@ def open_array(
     # instantiate array
     z = Array(store, read_only=read_only, synchronizer=synchronizer,
               cache_metadata=cache_metadata, cache_attrs=cache_attrs, path=path,
-              chunk_store=chunk_store, write_empty_chunks=write_empty_chunks)
+              chunk_store=chunk_store, write_empty_chunks=write_empty_chunks, meta_array=meta_array)
 
     return z
 

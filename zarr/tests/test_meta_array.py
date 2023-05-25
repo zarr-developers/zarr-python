@@ -8,7 +8,7 @@ from numcodecs.registry import get_codec, register_codec
 
 import zarr.codecs
 from zarr.core import Array
-from zarr.creation import array, empty, full, ones, zeros
+from zarr.creation import array, empty, full, ones, open_array, zeros
 from zarr.hierarchy import open_group
 from zarr.storage import DirectoryStore, MemoryStore, Store, ZipStore
 
@@ -147,6 +147,23 @@ def test_array(tmp_path, module, compressor, store_type):
     assert z.chunks == z2.chunks
     assert z.dtype == z2.dtype
     xp.testing.assert_array_equal(z[:], z2[:])
+
+    store = init_store(tmp_path / "open_array", store_type)
+    a = xp.arange(100)
+    z = open_array(
+        store,
+        shape=a.shape,
+        dtype=a.dtype,
+        chunks=10,
+        compressor=compressor,
+        meta_array=xp.empty(())
+    )
+    z[:] = a
+    assert a.shape == z.shape
+    assert a.dtype == z.dtype
+    assert isinstance(a, type(z[:]))
+    assert isinstance(z.meta_array, type(xp.empty(())))
+    xp.testing.assert_array_equal(a, z[:])
 
 
 @pytest.mark.parametrize("module, compressor", param_module_and_compressor)
