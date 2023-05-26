@@ -2,6 +2,13 @@ Release notes
 =============
 
 ..
+    # Copy the warning statement _under_ the latest release version
+    # and unindent for pre-releases.
+
+    .. warning::
+       Pre-release! Use :command:`pip install --pre zarr` to evaluate this release.
+
+..
     # Unindent the section between releases in order
     # to document your changes. On releases it will be
     # re-indented so that it does not show up in the notes.
@@ -15,9 +22,6 @@ Release notes
 
 2.15.0
 ------
-
-.. warning::
-   Pre-release! Use :command:`pip install --pre zarr` to evaluate this release.
 
 Enhancements
 ~~~~~~~~~~~~
