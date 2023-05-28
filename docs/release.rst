@@ -18,6 +18,12 @@ Release notes
 Unreleased
 ----------
 
+Maintenance
+~~~~~~~~~~~
+
+    * Change occurrence of io.open() into open().
+      By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1421`.
+
 .. _release_2.16.1:
 
 2.16.1
