@@ -293,7 +293,7 @@ Maintenance
 * Updated GitHub actions.
   By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1134`.
 
-* Uopdate web links: `http:// → https://`.
+* Update web links: `http:// → https://`.
   By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1313`.
 
 .. _release_2.13.3:
