@@ -1666,7 +1666,7 @@ def test_set_selections_with_fields():
         ),
         (
             (slice(0, 10, 1),),
-            np.arange(0, 10).reshape((10)),
+            np.arange(0, 10).reshape(10),
             [(0, 10, (slice(0, 10, 1),))],
         ),
         ((0,), np.arange(0, 100).reshape((10, 10)), [(0, 10, (slice(0, 1, 1),))]),
@@ -1678,7 +1678,7 @@ def test_set_selections_with_fields():
             np.arange(0, 100).reshape((10, 10)),
             [(0, 1, (slice(0, 1, 1), slice(0, 1, 1)))],
         ),
-        ((0,), np.arange(0, 10).reshape((10)), [(0, 1, (slice(0, 1, 1),))]),
+        ((0,), np.arange(0, 10).reshape(10), [(0, 1, (slice(0, 1, 1),))]),
         pytest.param(
             (slice(5, 8, 1), slice(2, 4, 1), slice(0, 5, 1)),
             np.arange(2, 100002).reshape((10, 1, 10000)),
