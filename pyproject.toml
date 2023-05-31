@@ -116,7 +116,7 @@ follow_imports = "silent"
 [tool.pytest.ini_options]
 doctest_optionflags = [
     "NORMALIZE_WHITESPACE",
-    "ELLIPSIS", 
+    "ELLIPSIS",
     "IGNORE_EXCEPTION_DETAIL",
 ]
 addopts = [
