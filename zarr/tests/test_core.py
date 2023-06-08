@@ -811,6 +811,8 @@ class TestArray(unittest.TestCase):
         with pytest.raises(PermissionError):
             z.vindex[[0, 1, 2]] = 42
         with pytest.raises(PermissionError):
+            z.blocks[...] = 42
+        with pytest.raises(PermissionError):
             z.set_mask_selection(np.ones(z.shape, dtype=bool), 42)
 
         z.store.close()
