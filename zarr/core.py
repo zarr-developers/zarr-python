@@ -1235,7 +1235,8 @@ class Array:
                    [40, 41, 42, 43, 44, 45, 46, 47, 48, 49],
                    [50, 51, 52, 53, 54, 55, 56, 57, 58, 59]])
 
-        Which is equivalent to:
+        Which is equivalent to::
+
             >>> z[3:6, :]
             array([[30, 31, 32, 33, 34, 35, 36, 37, 38, 39],
                    [40, 41, 42, 43, 44, 45, 46, 47, 48, 49],
@@ -1258,7 +1259,7 @@ class Array:
         Slices are supported. However, only with a step size of one.
 
         Block index arrays may be multidimensional to index multidimensional arrays.
-        For example:
+        For example::
 
             >>> z.blocks[0, 1:3]
             array([[ 3,  4,  5,  6,  7,  8],
@@ -1773,7 +1774,7 @@ class Array:
 
         Examples
         --------
-        Setup a 2-dimensional array::
+        Set up a 2-dimensional array::
 
             >>> import zarr
             >>> import numpy as np
