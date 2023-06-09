@@ -15,7 +15,7 @@ pymongo==4.3.3
 # optional test requirements
 coverage
 pytest-cov==4.0.0
-pytest-doctestplus==0.12.1
+pytest-doctestplus==0.13.0
 pytest-timeout==2.1.0
 h5py==3.8.0
 fsspec==2023.5.0
