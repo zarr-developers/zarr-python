@@ -340,7 +340,7 @@ class TestArray(unittest.TestCase):
         assert_array_equal(a[bix], z.vindex[bix])
         assert_array_equal(a[200:400], z.get_block_selection(slice(2, 4)))
         assert_array_equal(a[200:400], z.blocks[2:4])
-        
+
         # set
         z.set_orthogonal_selection(slice(50, 150), 1)
         assert_array_equal(1, z[50:150])
