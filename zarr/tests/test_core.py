@@ -338,7 +338,9 @@ class TestArray(unittest.TestCase):
         assert_array_equal(a[bix], z.get_mask_selection(bix))
         assert_array_equal(a[bix], z.oindex[bix])
         assert_array_equal(a[bix], z.vindex[bix])
-
+        assert_array_equal(a[200:400], z.get_block_selection(slice(2, 4)))
+        assert_array_equal(a[200:400], z.blocks[2:4])
+        
         # set
         z.set_orthogonal_selection(slice(50, 150), 1)
         assert_array_equal(1, z[50:150])
@@ -358,7 +360,10 @@ class TestArray(unittest.TestCase):
         assert_array_equal(8, z.vindex[bix])
         z.oindex[bix] = 9
         assert_array_equal(9, z.oindex[bix])
-
+        z.set_block_selection(slice(2, 4), 10)
+        assert_array_equal(10, z[200:400])
+        z.blocks[2:4] = 11
+        assert_array_equal(11, z[200:400])
         z.store.close()
 
     # noinspection PyStatementEffect
