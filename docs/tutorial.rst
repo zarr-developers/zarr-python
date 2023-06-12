@@ -644,7 +644,7 @@ orthogonal indexing is also available directly on the array:
 Block Indexing
 ~~~~~~~~~~~~~~
 
-As of version 2.15, Zarr also support block indexing, which allows
+As of version 2.16.0, Zarr also support block indexing, which allows
 selections of whole chunks based on their logical indices along each dimension
 of an array. For example, this allows selecting a subset of chunk aligned rows and/or
 columns from a 2-dimensional array. E.g.::
