@@ -11,6 +11,9 @@ Release notes
     Unreleased
     ----------
 
+    * **Block Indexing**: Implemented blockwise (chunk blocks) indexing to ``zarr.Array``.
+      By :user:`Altay Sansal <tasansal>` :issue:`1428`
+
 .. _release_2.15.0:
 
 2.15.0
@@ -31,8 +34,6 @@ Enhancements
 * ``open_array()`` now takes the ``meta_array`` argument.
   By :user:`Mads R. B. Kristensen <madsbk>` :issue:`1396`.
 
-* **Block Indexing**: Implemented blockwise (chunk blocks) indexing to ``zarr.Array``.
-  By :user:`Altay Sansal <tasansal>` :issue:`1428`
 Maintenance
 ~~~~~~~~~~~
 
