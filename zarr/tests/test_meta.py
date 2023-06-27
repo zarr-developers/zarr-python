@@ -313,6 +313,7 @@ def test_encode_decode_array_dtype_shape_v3():
     assert meta_dec['fill_value'] is None
     assert 'filters' not in meta_dec
 
+
 @pytest.mark.parametrize("comp_id", ["gzip", "zlib", "blosc", "bz2", "lz4", "lzma"])
 def test_decode_metadata_implicit_compressor_config_v3(comp_id):
     meta = {
@@ -332,7 +333,7 @@ def test_decode_metadata_implicit_compressor_config_v3(comp_id):
         "data_type": "<f8",
         "extensions": [],
         "fill_value": None,
-        "shape": [100, 10, 10 ]
+        "shape": [100, 10, 10]
     }
     meta_json = json.dumps(meta)
 
