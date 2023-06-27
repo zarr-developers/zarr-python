@@ -441,25 +441,21 @@ class Metadata3(Metadata2):
         uri = 'https://purl.org/zarr/spec/codec/'
         conf = meta['configuration']
         if meta['codec'].startswith(uri + 'gzip/'):
-            codec = numcodecs.GZip(level=conf['level'])
+            conf["id"] = "gzip"
         elif meta['codec'].startswith(uri + 'zlib/'):
-            codec = numcodecs.Zlib(level=conf['level'])
+            conf["id"] = "zlib"
         elif meta['codec'].startswith(uri + 'blosc/'):
-            codec = numcodecs.Blosc(clevel=conf['clevel'],
-                                    shuffle=conf['shuffle'],
-                                    blocksize=conf['blocksize'],
-                                    cname=conf['cname'])
+            conf["id"] = "blosc"
         elif meta['codec'].startswith(uri + 'bz2/'):
-            codec = numcodecs.BZ2(level=conf['level'])
+            conf["id"] = "bz2"
         elif meta['codec'].startswith(uri + 'lz4/'):
-            codec = numcodecs.LZ4(acceleration=conf['acceleration'])
+            conf["id"] = "lz4"
         elif meta['codec'].startswith(uri + 'lzma/'):
-            codec = numcodecs.LZMA(format=conf['format'],
-                                   check=conf['check'],
-                                   preset=conf['preset'],
-                                   filters=conf['filters'])
+            conf["id"] = "lzma"
         else:
             raise NotImplementedError
+
+        codec = numcodecs.get_codec(conf)
 
         return codec
 
