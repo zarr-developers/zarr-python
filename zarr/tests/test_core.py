@@ -8,6 +8,7 @@ from itertools import zip_longest
 from tempfile import mkdtemp
 
 import numpy as np
+import packaging.version
 import pytest
 from numcodecs import (BZ2, JSON, LZ4, Blosc, Categorize, Delta,
                        FixedScaleOffset, GZip, MsgPack, Pickle, VLenArray,
@@ -15,7 +16,6 @@ from numcodecs import (BZ2, JSON, LZ4, Blosc, Categorize, Delta,
 from numcodecs.compat import ensure_bytes, ensure_ndarray
 from numcodecs.tests.common import greetings
 from numpy.testing import assert_array_almost_equal, assert_array_equal
-from pkg_resources import parse_version
 
 import zarr
 from zarr._storage.store import (
@@ -1389,7 +1389,7 @@ class TestArray(unittest.TestCase):
             z = self.create_array(shape=10, chunks=5, dtype="i4", object_codec=JSON())
         z.store.close()
 
-    @unittest.skipIf(parse_version(np.__version__) < parse_version('1.14.0'),
+    @unittest.skipIf(packaging.version.parse(np.__version__) < packaging.version.parse('1.14.0'),
                      "unsupported numpy version")
     def test_structured_array_contain_object(self):
 
