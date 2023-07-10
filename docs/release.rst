@@ -18,8 +18,14 @@ Release notes
 Unreleased
 ----------
 
+Enhancements
+~~~~~~~~~~~~
+
 * Allow for partial codec specification in V3 array metadata.
   By :user:`Joe Hamman <jhamman>` :issue:`1443`.
+
+* Add ``__contains__`` method to ``KVStore``. 
+  By :user:`Christoph Gohlke <cgohlke>` :issue:`1454`.
 
 .. _release_2.15.0:
 

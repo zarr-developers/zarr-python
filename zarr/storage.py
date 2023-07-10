@@ -744,6 +744,9 @@ class KVStore(Store):
     def __delitem__(self, key):
         del self._mutable_mapping[key]
 
+    def __contains__(self, key):
+        return key in self._mutable_mapping
+
     def get(self, key, default=None):
         return self._mutable_mapping.get(key, default)
 
