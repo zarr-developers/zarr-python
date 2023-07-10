@@ -23,6 +23,9 @@ Bug fixes
 
 * Add ``__contains__`` method to ``KVStore``. By :user:`Christoph Gohlke <cgohlke>` :issue:`1454`.
 
+    * **Block Indexing**: Implemented blockwise (chunk blocks) indexing to ``zarr.Array``.
+      By :user:`Altay Sansal <tasansal>` :issue:`1428`
+
 .. _release_2.15.0:
 
 2.15.0

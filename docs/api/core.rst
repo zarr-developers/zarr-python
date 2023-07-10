@@ -10,6 +10,8 @@ The Array class (``zarr.core``)
     .. automethod:: set_basic_selection
     .. automethod:: get_mask_selection
     .. automethod:: set_mask_selection
+    .. automethod:: get_block_selection
+    .. automethod:: set_block_selection
     .. automethod:: get_coordinate_selection
     .. automethod:: set_coordinate_selection
     .. automethod:: get_orthogonal_selection
