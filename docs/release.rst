@@ -13,10 +13,13 @@ Release notes
     # to document your changes. On releases it will be
     # re-indented so that it does not show up in the notes.
 
-    .. _unreleased:
+.. _unreleased:
 
-    Unreleased
-    ----------
+Unreleased
+----------
+
+* Allow for partial codec specification in V3 array metadata.
+  By :user:`Joe Hamman <jhamman>` :issue:`1443`.
 
 .. _release_2.15.0:
 
