@@ -696,6 +696,94 @@ class OIndex:
 
 
 # noinspection PyProtectedMember
+class BlockIndexer:
+
+    def __init__(self, selection, array):
+
+        # handle ellipsis
+        selection = replace_ellipsis(selection, array._shape)
+
+        # normalize list to array
+        selection = replace_lists(selection)
+
+        # setup per-dimension indexers
+        dim_indexers = []
+        for dim_sel, dim_len, dim_chunk_size in \
+                zip(selection, array._shape, array._chunks):
+            dim_numchunks = int(np.ceil(dim_len / dim_chunk_size))
+
+            if is_integer(dim_sel):
+                if dim_sel < 0:
+                    dim_sel = dim_numchunks + dim_sel
+
+                start = dim_sel * dim_chunk_size
+                stop = start + dim_chunk_size
+                slice_ = slice(start, stop)
+
+            elif is_slice(dim_sel):
+                start = dim_sel.start if dim_sel.start is not None else 0
+                stop = dim_sel.stop if dim_sel.stop is not None else dim_numchunks
+
+                if dim_sel.step not in {1, None}:
+                    raise IndexError('unsupported selection item for block indexing; '
+                                     'expected integer or slice with step=1, got {!r}'
+                                     .format(type(dim_sel)))
+
+                # Can't reuse wraparound_indices because it expects a numpy array
+                # We have integers here.
+                if start < 0:
+                    start = dim_numchunks + start
+                if stop < 0:
+                    stop = dim_numchunks + stop
+
+                start = start * dim_chunk_size
+                stop = stop * dim_chunk_size
+                slice_ = slice(start, stop)
+
+            else:
+                raise IndexError('unsupported selection item for block indexing; '
+                                 'expected integer or slice, got {!r}'
+                                 .format(type(dim_sel)))
+
+            dim_indexer = SliceDimIndexer(slice_, dim_len, dim_chunk_size)
+            dim_indexers.append(dim_indexer)
+
+            if start >= dim_len or start < 0:
+                raise BoundsCheckError(dim_len)
+
+        self.dim_indexers = dim_indexers
+        self.shape = tuple(s.nitems for s in self.dim_indexers)
+        self.drop_axes = None
+
+    def __iter__(self):
+        for dim_projections in itertools.product(*self.dim_indexers):
+            chunk_coords = tuple(p.dim_chunk_ix for p in dim_projections)
+            chunk_selection = tuple(p.dim_chunk_sel for p in dim_projections)
+            out_selection = tuple(p.dim_out_sel for p in dim_projections
+                                  if p.dim_out_sel is not None)
+
+            yield ChunkProjection(chunk_coords, chunk_selection, out_selection)
+
+
+class BlockIndex:
+
+    def __init__(self, array):
+        self.array = array
+
+    def __getitem__(self, selection):
+        fields, selection = pop_fields(selection)
+        selection = ensure_tuple(selection)
+        selection = replace_lists(selection)
+        return self.array.get_block_selection(selection, fields=fields)
+
+    def __setitem__(self, selection, value):
+        fields, selection = pop_fields(selection)
+        selection = ensure_tuple(selection)
+        selection = replace_lists(selection)
+        return self.array.set_block_selection(selection, value, fields=fields)
+
+
+# noinspection PyProtectedMember
 def is_coordinate_selection(selection, array):
     return (
         (len(selection) == len(array._shape)) and
