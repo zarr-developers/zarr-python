@@ -314,6 +314,34 @@ def test_encode_decode_array_dtype_shape_v3():
     assert 'filters' not in meta_dec
 
 
+@pytest.mark.parametrize("comp_id", ["gzip", "zlib", "blosc", "bz2", "lz4", "lzma"])
+def test_decode_metadata_implicit_compressor_config_v3(comp_id):
+    meta = {
+        "attributes": {},
+        "chunk_grid": {
+            "chunk_shape": [10],
+            "separator": "/",
+            "type": "regular"
+        },
+        "chunk_memory_layout": "C",
+        "compressor": {
+            "codec": f"https://purl.org/zarr/spec/codec/{comp_id}/1.0",
+            "configuration": {
+                # intentionally left empty
+            }
+        },
+        "data_type": "<f8",
+        "extensions": [],
+        "fill_value": None,
+        "shape": [100, 10, 10]
+    }
+    meta_json = json.dumps(meta)
+
+    # test decoding
+    meta_dec = Metadata3.decode_array_metadata(meta_json)
+    assert meta_dec['compressor'].codec_id == comp_id
+
+
 def test_encode_decode_array_structured():
 
     meta = dict(
