@@ -13,10 +13,15 @@ Release notes
     # to document your changes. On releases it will be
     # re-indented so that it does not show up in the notes.
 
-    .. _unreleased:
+.. _unreleased:
 
-    Unreleased
-    ----------
+Unreleased
+----------
+
+Bug fixes
+~~~~~~~~~
+
+* Add ``__contains__`` method to ``KVStore``. By :user:`Christoph Gohlke <cgohlke>` :issue:`1454`.
 
 .. _release_2.15.0:
 
