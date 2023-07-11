@@ -6,7 +6,7 @@ from zarr.util import normalize_storage_path
 from zarr._storage.store import _get_metadata_suffix, data_root, meta_root, Store, StoreV3
 
 __doctest_requires__ = {
-    ('ABSStore', 'ABSStore.*'): ['azure.storage.blob'],
+    ("ABSStore", "ABSStore.*"): ["azure.storage.blob"],
 }
 
 
@@ -60,10 +60,16 @@ class ABSStore(Store):
     ``azure-storage-blob>=12.5.0``.
     """
 
-    def __init__(self, container=None, prefix='', account_name=None, account_key=None,
-                 blob_service_kwargs=None, dimension_separator=None,
-                 client=None,
-                 ):
+    def __init__(
+        self,
+        container=None,
+        prefix="",
+        account_name=None,
+        account_key=None,
+        blob_service_kwargs=None,
+        dimension_separator=None,
+        client=None,
+    ):
         self._dimension_separator = dimension_separator
         self.prefix = normalize_storage_path(prefix)
         if client is None:
@@ -75,11 +81,14 @@ class ABSStore(Store):
             )
             warnings.warn(msg, FutureWarning, stacklevel=2)
             from azure.storage.blob import ContainerClient
+
             blob_service_kwargs = blob_service_kwargs or {}
             client = ContainerClient(
-                "https://{}.blob.core.windows.net/".format(account_name), container,
-                credential=account_key, **blob_service_kwargs
-                )
+                "https://{}.blob.core.windows.net/".format(account_name),
+                container,
+                credential=account_key,
+                **blob_service_kwargs
+            )
 
         self.client = client
         self._container = container
@@ -88,8 +97,10 @@ class ABSStore(Store):
 
     @staticmethod
     def _warn_deprecated(property_):
-        msg = ("The {} property is deprecated and will be removed in a future "
-               "version. Get the property from 'ABSStore.client' instead.")
+        msg = (
+            "The {} property is deprecated and will be removed in a future "
+            "version. Get the property from 'ABSStore.client' instead."
+        )
         warnings.warn(msg.format(property_), FutureWarning, stacklevel=3)
 
     @property
@@ -108,10 +119,10 @@ class ABSStore(Store):
         return self._account_key
 
     def _append_path_to_prefix(self, path):
-        if self.prefix == '':
+        if self.prefix == "":
             return normalize_storage_path(path)
         else:
-            return '/'.join([self.prefix, normalize_storage_path(path)])
+            return "/".join([self.prefix, normalize_storage_path(path)])
 
     @staticmethod
     def _strip_prefix_from_path(path, prefix):
@@ -119,17 +130,18 @@ class ABSStore(Store):
         path_norm = normalize_storage_path(path)
         prefix_norm = normalize_storage_path(prefix)
         if prefix:
-            return path_norm[(len(prefix_norm)+1):]
+            return path_norm[(len(prefix_norm) + 1) :]
         else:
             return path_norm
 
     def __getitem__(self, key):
         from azure.core.exceptions import ResourceNotFoundError
+
         blob_name = self._append_path_to_prefix(key)
         try:
             return self.client.download_blob(blob_name).readall()
         except ResourceNotFoundError:
-            raise KeyError('Blob %s not found' % blob_name)
+            raise KeyError("Blob %s not found" % blob_name)
 
     def __setitem__(self, key, value):
         value = ensure_bytes(value)
@@ -138,16 +150,17 @@ class ABSStore(Store):
 
     def __delitem__(self, key):
         from azure.core.exceptions import ResourceNotFoundError
+
         try:
             self.client.delete_blob(self._append_path_to_prefix(key))
         except ResourceNotFoundError:
-            raise KeyError('Blob %s not found' % key)
+            raise KeyError("Blob %s not found" % key)
 
     def __eq__(self, other):
         return (
-            isinstance(other, ABSStore) and
-            self.client == other.client and
-            self.prefix == other.prefix
+            isinstance(other, ABSStore)
+            and self.client == other.client
+            and self.prefix == other.prefix
         )
 
     def keys(self):
@@ -155,7 +168,7 @@ class ABSStore(Store):
 
     def __iter__(self):
         if self.prefix:
-            list_blobs_prefix = self.prefix + '/'
+            list_blobs_prefix = self.prefix + "/"
         else:
             list_blobs_prefix = None
         for blob in self.client.list_blobs(list_blobs_prefix):
@@ -171,17 +184,17 @@ class ABSStore(Store):
     def listdir(self, path=None):
         dir_path = normalize_storage_path(self._append_path_to_prefix(path))
         if dir_path:
-            dir_path += '/'
+            dir_path += "/"
         items = [
             self._strip_prefix_from_path(blob.name, dir_path)
-            for blob in self.client.walk_blobs(name_starts_with=dir_path, delimiter='/')
+            for blob in self.client.walk_blobs(name_starts_with=dir_path, delimiter="/")
         ]
         return items
 
     def rmdir(self, path=None):
         dir_path = normalize_storage_path(self._append_path_to_prefix(path))
         if dir_path:
-            dir_path += '/'
+            dir_path += "/"
         for blob in self.client.list_blobs(name_starts_with=dir_path):
             self.client.delete_blob(blob)
 
@@ -197,11 +210,11 @@ class ABSStore(Store):
             return blob_client.get_blob_properties().size
         else:
             size = 0
-            if fs_path == '':
+            if fs_path == "":
                 fs_path = None
-            elif not fs_path.endswith('/'):
-                fs_path += '/'
-            for blob in self.client.walk_blobs(name_starts_with=fs_path, delimiter='/'):
+            elif not fs_path.endswith("/"):
+                fs_path += "/"
+            for blob in self.client.walk_blobs(name_starts_with=fs_path, delimiter="/"):
                 blob_client = self.client.get_blob_client(blob)
                 if blob_client.exists():
                     size += blob_client.get_blob_properties().size
@@ -212,15 +225,14 @@ class ABSStore(Store):
 
 
 class ABSStoreV3(ABSStore, StoreV3):
-
     def list(self):
         return list(self.keys())
 
     def __eq__(self, other):
         return (
-            isinstance(other, ABSStoreV3) and
-            self.client == other.client and
-            self.prefix == other.prefix
+            isinstance(other, ABSStoreV3)
+            and self.client == other.client
+            and self.prefix == other.prefix
         )
 
     def __setitem__(self, key, value):
@@ -234,24 +246,24 @@ class ABSStoreV3(ABSStore, StoreV3):
 
             # If we disallow an empty path then we will need to modify
             # TestABSStoreV3 to have the create_store method use a prefix.
-            ABSStore.rmdir(self, '')
+            ABSStore.rmdir(self, "")
             return
 
         meta_dir = meta_root + path
-        meta_dir = meta_dir.rstrip('/')
+        meta_dir = meta_dir.rstrip("/")
         ABSStore.rmdir(self, meta_dir)
 
         # remove data folder
         data_dir = data_root + path
-        data_dir = data_dir.rstrip('/')
+        data_dir = data_dir.rstrip("/")
         ABSStore.rmdir(self, data_dir)
 
         # remove metadata files
         sfx = _get_metadata_suffix(self)
-        array_meta_file = meta_dir + '.array' + sfx
+        array_meta_file = meta_dir + ".array" + sfx
         if array_meta_file in self:
             del self[array_meta_file]
-        group_meta_file = meta_dir + '.group' + sfx
+        group_meta_file = meta_dir + ".group" + sfx
         if group_meta_file in self:
             del self[group_meta_file]
 
@@ -259,6 +271,7 @@ class ABSStoreV3(ABSStore, StoreV3):
     #       For now, calling the generic keys-based _getsize
     def getsize(self, path=None):
         from zarr.storage import _getsize  # avoid circular import
+
         return _getsize(self, path)
 
 
