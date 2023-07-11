@@ -10,6 +10,8 @@ import pytest
 
 import zarr
 from zarr._storage.store import _get_hierarchy_metadata, v3_api_available, StorageTransformer
+from zarr._storage.v3_storage_transformers import ShardingStorageTransformer, v3_sharding_available
+from zarr.core import Array
 from zarr.meta import _default_entry_point_metadata_v3
 from zarr.storage import (
     atexit_rmglob,
@@ -522,25 +524,43 @@ class TestRedisStoreV3(StoreV3Tests):
         return store
 
 
+@pytest.mark.skipif(not v3_sharding_available, reason="sharding is disabled")
 class TestStorageTransformerV3(TestMappingStoreV3):
     def create_store(self, **kwargs):
         inner_store = super().create_store(**kwargs)
-        storage_transformer = DummyStorageTransfomer(
+        dummy_transformer = DummyStorageTransfomer(
             "dummy_type", test_value=DummyStorageTransfomer.TEST_CONSTANT
         )
-        return storage_transformer._copy_for_array(None, inner_store)
+        sharding_transformer = ShardingStorageTransformer(
+            "indexed",
+            chunks_per_shard=2,
+        )
+        path = "bla"
+        init_array(
+            inner_store,
+            path=path,
+            shape=1000,
+            chunks=100,
+            dimension_separator=".",
+            storage_transformers=[dummy_transformer, sharding_transformer],
+        )
+        store = Array(store=inner_store, path=path).chunk_store
+        store.erase_prefix("data/root/bla/")
+        store.clear()
+        return store
 
     def test_method_forwarding(self):
         store = self.create_store()
-        assert store.list() == store.inner_store.list()
-        assert store.list_dir(data_root) == store.inner_store.list_dir(data_root)
+        inner_store = store.inner_store.inner_store
+        assert store.list() == inner_store.list()
+        assert store.list_dir(data_root) == inner_store.list_dir(data_root)
 
         assert store.is_readable()
         assert store.is_writeable()
         assert store.is_listable()
-        store.inner_store._readable = False
-        store.inner_store._writeable = False
-        store.inner_store._listable = False
+        inner_store._readable = False
+        inner_store._writeable = False
+        inner_store._listable = False
         assert not store.is_readable()
         assert not store.is_writeable()
         assert not store.is_listable()

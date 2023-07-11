@@ -1226,7 +1226,9 @@ class DirectoryStore(Store):
                         for file_name in file_names:
                             file_path = os.path.join(dir_path, file_name)
                             rel_path = file_path.split(root_path + os.path.sep)[1]
-                            new_children.append(rel_path.replace(os.path.sep, "."))
+                            new_children.append(
+                                rel_path.replace(os.path.sep, self._dimension_separator or ".")
+                            )
                 else:
                     new_children.append(entry)
             return sorted(new_children)

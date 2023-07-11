@@ -34,6 +34,7 @@ import zarr
 from zarr._storage.store import (
     v3_api_available,
 )
+from .._storage.v3_storage_transformers import ShardingStorageTransformer, v3_sharding_available
 from zarr.core import Array
 from zarr.errors import ArrayNotFoundError, ContainsGroupError
 from zarr.meta import json_loads
@@ -850,7 +851,6 @@ class TestArray(unittest.TestCase):
         attrs_cache = z.attrs.cache
         a = np.random.randint(0, 1000, 1000)
         z[:] = a
-
         # round trip through pickle
         dump = pickle.dumps(z)
         # some stores cannot be opened twice at the same time, need to close
@@ -2060,7 +2060,7 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
             a1[:] = 1
             assert np.all(a1[:] == 1)
 
-        compressors_warn = [Blosc()]
+        compressors_warn = []
         if LZMA:
             compressors_warn.append(LZMA(2))  # Try lzma.FORMAT_ALONE, which N5 doesn't support.
         for compressor in compressors_warn:
@@ -3474,6 +3474,59 @@ class TestArrayWithFSStoreV3PartialRead(TestArrayWithPathV3, TestArrayWithFSStor
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
+@pytest.mark.skipif(not v3_sharding_available, reason="sharding is disabled")
+class TestArrayWithFSStoreV3PartialReadUncompressedSharded(
+    TestArrayWithPathV3, TestArrayWithFSStorePartialRead
+):
+    @staticmethod
+    def create_array(array_path="arr1", read_only=False, **kwargs):
+        path = mkdtemp()
+        atexit.register(shutil.rmtree, path)
+        store = FSStoreV3(path)
+        cache_metadata = kwargs.pop("cache_metadata", True)
+        cache_attrs = kwargs.pop("cache_attrs", True)
+        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
+        kwargs.setdefault("compressor", None)
+        num_dims = 1 if isinstance(kwargs["shape"], int) else len(kwargs["shape"])
+        sharding_transformer = ShardingStorageTransformer(
+            "indexed", chunks_per_shard=(2,) * num_dims
+        )
+        init_array(store, path=array_path, storage_transformers=[sharding_transformer], **kwargs)
+        return Array(
+            store,
+            path=array_path,
+            read_only=read_only,
+            cache_metadata=cache_metadata,
+            cache_attrs=cache_attrs,
+            partial_decompress=True,
+            write_empty_chunks=write_empty_chunks,
+        )
+
+    def test_nbytes_stored(self):
+        z = self.create_array(shape=1000, chunks=100)
+        expect_nbytes_stored = sum(buffer_size(v) for k, v in z._store.items() if k != "zarr.json")
+        assert expect_nbytes_stored == z.nbytes_stored
+        z[:] = 42
+        expect_nbytes_stored = sum(buffer_size(v) for k, v in z._store.items() if k != "zarr.json")
+        assert expect_nbytes_stored == z.nbytes_stored
+
+    def test_supports_efficient_get_set_partial_values(self):
+        z = self.create_array(shape=100, chunks=10)
+        assert z.chunk_store.supports_efficient_get_partial_values
+        assert not z.chunk_store.supports_efficient_set_partial_values()
+
+    def expected(self):
+        return [
+            "90109fc2a4e17efbcb447003ea1c08828b91f71e",
+            "2b73519f7260dba3ddce0d2b70041888856fec6b",
+            "bca5798be2ed71d444f3045b05432d937682b7dd",
+            "9ff1084501e28520e577662a6e3073f1116c76a2",
+            "882a97cad42417f90f111d0cb916a21579650467",
+        ]
+
+
+@pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
+@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestArrayWithFSStoreV3Nested(TestArrayWithPathV3, TestArrayWithFSStoreNested):
     @staticmethod
     def create_array(array_path="arr1", read_only=False, **kwargs):
@@ -3578,6 +3631,67 @@ class TestArrayWithStorageTransformersV3(TestArrayWithChunkStoreV3):
             "73307055c3aec095dd1232c38d793ef82a06bd97",
             "6152c09255a5efa43b1a115546e35affa00c138c",
             "2f8802fc391f67f713302e84fad4fd8f1366d6c2",
+        ]
+
+
+@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
+@pytest.mark.skipif(not v3_sharding_available, reason="sharding is disabled")
+class TestArrayWithShardingStorageTransformerV3(TestArrayWithPathV3):
+    @staticmethod
+    def create_array(array_path="arr1", read_only=False, **kwargs):
+        store = KVStoreV3(dict())
+        cache_metadata = kwargs.pop("cache_metadata", True)
+        cache_attrs = kwargs.pop("cache_attrs", True)
+        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
+        kwargs.setdefault("compressor", None)
+        num_dims = 1 if isinstance(kwargs["shape"], int) else len(kwargs["shape"])
+        sharding_transformer = ShardingStorageTransformer(
+            "indexed", chunks_per_shard=(2,) * num_dims
+        )
+        init_array(store, path=array_path, storage_transformers=[sharding_transformer], **kwargs)
+        return Array(
+            store,
+            path=array_path,
+            read_only=read_only,
+            cache_metadata=cache_metadata,
+            cache_attrs=cache_attrs,
+            write_empty_chunks=write_empty_chunks,
+        )
+
+    def test_nbytes_stored(self):
+        z = self.create_array(shape=1000, chunks=100)
+        expect_nbytes_stored = sum(buffer_size(v) for k, v in z._store.items() if k != "zarr.json")
+        assert expect_nbytes_stored == z.nbytes_stored
+        z[:] = 42
+        expect_nbytes_stored = sum(buffer_size(v) for k, v in z._store.items() if k != "zarr.json")
+        assert expect_nbytes_stored == z.nbytes_stored
+
+        # mess with store
+        z.store[data_root + z._key_prefix + "foo"] = list(range(10))
+        assert -1 == z.nbytes_stored
+
+    def test_keys_inner_store(self):
+        z = self.create_array(shape=1000, chunks=100)
+        assert z.chunk_store.keys() == z._store.keys()
+        meta_keys = set(z.store.keys())
+        z[:] = 42
+        assert len(z.chunk_store.keys() - meta_keys) == 10
+        # inner store should have half the data keys,
+        # since chunks_per_shard is 2:
+        assert len(z._store.keys() - meta_keys) == 5
+
+    def test_supports_efficient_get_set_partial_values(self):
+        z = self.create_array(shape=100, chunks=10)
+        assert not z.chunk_store.supports_efficient_get_partial_values
+        assert not z.chunk_store.supports_efficient_set_partial_values()
+
+    def expected(self):
+        return [
+            "90109fc2a4e17efbcb447003ea1c08828b91f71e",
+            "2b73519f7260dba3ddce0d2b70041888856fec6b",
+            "bca5798be2ed71d444f3045b05432d937682b7dd",
+            "9ff1084501e28520e577662a6e3073f1116c76a2",
+            "882a97cad42417f90f111d0cb916a21579650467",
         ]
 
 

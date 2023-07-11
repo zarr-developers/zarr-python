@@ -51,6 +51,7 @@ from zarr.util import (
     normalize_shape,
     normalize_storage_path,
     PartialReadBuffer,
+    UncompressedPartialReadBufferV3,
     ensure_ndarray_like,
 )
 
@@ -1275,7 +1276,13 @@ class Array:
             check_array_shape("out", out, out_shape)
 
         # iterate over chunks
-        if not hasattr(self.chunk_store, "getitems") or any(map(lambda x: x == 0, self.shape)):
+        if (
+            not hasattr(self.chunk_store, "getitems")
+            and not (
+                hasattr(self.chunk_store, "get_partial_values")
+                and self.chunk_store.supports_efficient_get_partial_values
+            )
+        ) or any(map(lambda x: x == 0, self.shape)):
             # sequentially get one key at a time from storage
             for chunk_coords, chunk_selection, out_selection in indexer:
 
@@ -1914,6 +1921,8 @@ class Array:
                         cdata = cdata.read_full()
                     self._compressor.decode(cdata, dest)
                 else:
+                    if isinstance(cdata, UncompressedPartialReadBufferV3):
+                        cdata = cdata.read_full()
                     chunk = ensure_ndarray_like(cdata).view(self._dtype)
                     chunk = chunk.reshape(self._chunks, order=self._order)
                     np.copyto(dest, chunk)
@@ -1933,13 +1942,21 @@ class Array:
                         else dim
                         for i, dim in enumerate(self.chunks)
                     ]
-                    cdata.read_part(start, nitems)
-                    chunk_partial = self._decode_chunk(
-                        cdata.buff,
-                        start=start,
-                        nitems=nitems,
-                        expected_shape=expected_shape,
-                    )
+                    if isinstance(cdata, UncompressedPartialReadBufferV3):
+                        chunk_partial = self._decode_chunk(
+                            cdata.read_part(start, nitems),
+                            start=start,
+                            nitems=nitems,
+                            expected_shape=expected_shape,
+                        )
+                    else:
+                        cdata.read_part(start, nitems)
+                        chunk_partial = self._decode_chunk(
+                            cdata.buff,
+                            start=start,
+                            nitems=nitems,
+                            expected_shape=expected_shape,
+                        )
                     tmp[partial_out_selection] = chunk_partial
                 out[out_selection] = tmp[chunk_selection]
                 return
@@ -2037,9 +2054,29 @@ class Array:
                 for ckey in ckeys
                 if ckey in self.chunk_store
             }
+        elif (
+            self._partial_decompress
+            and not self._compressor
+            and not fields
+            and self.dtype != object
+            and hasattr(self.chunk_store, "get_partial_values")
+            and self.chunk_store.supports_efficient_get_partial_values
+        ):
+            partial_read_decode = True
+            cdatas = {
+                ckey: UncompressedPartialReadBufferV3(
+                    ckey, self.chunk_store, itemsize=self.itemsize
+                )
+                for ckey in ckeys
+                if ckey in self.chunk_store
+            }
         else:
             partial_read_decode = False
-            cdatas = self.chunk_store.getitems(ckeys, on_error="omit")
+            if not hasattr(self.chunk_store, "getitems"):
+                values = self.chunk_store.get_partial_values([(ckey, (0, None)) for ckey in ckeys])
+                cdatas = {key: value for key, value in zip(ckeys, values) if value is not None}
+            else:
+                cdatas = self.chunk_store.getitems(ckeys, on_error="omit")
         for ckey, chunk_select, out_select in zip(ckeys, lchunk_selection, lout_selection):
             if ckey in cdatas:
                 self._process_chunk(

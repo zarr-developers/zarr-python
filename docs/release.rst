@@ -14,11 +14,27 @@ Unreleased
     # .. warning::
     #    Pre-release! Use :command:`pip install --pre zarr` to evaluate this release.
 
+Major changes
+~~~~~~~~~~~~~
+
 * Improve Zarr V3 support, adding partial store read/write and storage transformers.
   Add two features of the [v3 spec](https://zarr-specs.readthedocs.io/en/latest/core/v3.0.html):
   * storage transformers
   * `get_partial_values` and `set_partial_values`
-  By :user:`Jonathan Striebel <jstriebel>`; :issue:`1096`.
+  * efficient `get_partial_values` implementation for `FSStoreV3`
+  * sharding storage transformer
+  By :user:`Jonathan Striebel <jstriebel>`; :issue:`1096`, :issue:`1111`.
+
+* Remove warnings emitted when using N5Store or N5FSStore with a blosc-compressed array.
+  By :user:`Davis Bennett <d-v-b>`; :issue:`1331`.
+  
+Bug fixes
+~~~~~~~~~
+
+* Ensure contiguous data is give to ``FSStore``. Only copying if needed.
+  By :user:`Mads R. B. Kristensen <madsbk>` :issue:`1285`.
+* NestedDirectoryStore.listdir now returns chunk keys with the correct '/' dimension_separator.
+  By :user:`Brett Graham <braingram>` :issue:`1334`.
 
 * Drop flake8 from the pre-commit checks. Add ruff and black to pre-commit
   checks. Store linter configuration in ``pyproject.toml``. 
