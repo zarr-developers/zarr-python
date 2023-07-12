@@ -7,7 +7,7 @@ ipywidgets==8.0.7
 # optional library requirements for services
 # don't let pyup change pinning for azure-storage-blob, need to pin to older
 # version to get compatibility with azure storage emulator on appveyor (FIXME)
-azure-storage-blob==12.16.0 # pyup: ignore
+azure-storage-blob==12.17.0 # pyup: ignore
 redis==4.5.5
 types-redis
 types-setuptools
