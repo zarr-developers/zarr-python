@@ -21,6 +21,9 @@ Unreleased
 Enhancements
 ~~~~~~~~~~~~
 
+* Use ``black`` and ``ruff`` for code styling and linting.
+  By :user:`Davis Bennett <d-v-b>` :issue:`1457`.
+
 * Allow for partial codec specification in V3 array metadata.
   By :user:`Joe Hamman <jhamman>` :issue:`1443`.
 
