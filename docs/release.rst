@@ -30,6 +30,12 @@ Enhancements
     * **Block Indexing**: Implemented blockwise (chunk blocks) indexing to ``zarr.Array``.
       By :user:`Altay Sansal <tasansal>` :issue:`1428`
 
+Maintenance
+~~~~~~~~~~~
+
+* Style the codebase with ``ruff`` and ``black``.
+  By :user:`Davis Bennett` <d-v-b> :issue:`1459`
+
 .. _release_2.15.0:
 
 2.15.0
