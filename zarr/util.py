@@ -86,7 +86,7 @@ def normalize_shape(shape: Union[int, Tuple[int, ...], None]) -> Tuple[int, ...]
         shape = (int(shape),)
 
     # normalize
-    shape = cast(Tuple[int], shape)
+    shape = cast(Tuple[int, ...], shape)
     shape = tuple(int(s) for s in shape)
     return shape
 
