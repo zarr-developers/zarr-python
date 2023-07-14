@@ -2401,13 +2401,6 @@ class TestArrayWithStoreCache(TestArray):
         pass
 
 
-fsspec_mapper_kwargs = {
-    "check": True,
-    "create": True,
-    "missing_exceptions": None
-}
-
-
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
 class TestArrayWithFSStore(TestArray):
     compressor = Blosc()
@@ -2417,7 +2410,12 @@ class TestArrayWithFSStore(TestArray):
         path = mkdtemp()
         atexit.register(shutil.rmtree, path)
         key_separator = self.dimension_separator
-        store = FSStore(path, key_separator=key_separator, auto_mkdir=True, **fsspec_mapper_kwargs)
+        store = FSStore(path,
+                        key_separator=key_separator,
+                        auto_mkdir=True,
+                        check=True,
+                        create=True,
+                        missing_exceptions=True)
         return store
 
     def expected(self):
@@ -2442,7 +2440,12 @@ class TestArrayWithFSStoreFromFilesystem(TestArray):
         path = mkdtemp()
         atexit.register(shutil.rmtree, path)
         key_separator = self.dimension_separator
-        store = FSStore(path, fs=fs, key_separator=key_separator, **fsspec_mapper_kwargs)
+        store = FSStore(path,
+                        fs=fs,
+                        key_separator=key_separator,
+                        check=True,
+                        create=True,
+                        missing_exceptions=None)
         return store
 
     def expected(self):
@@ -2943,7 +2946,12 @@ class TestArrayWithFSStoreV3(TestArrayV3):
         atexit.register(shutil.rmtree, path)
         key_separator = self.dimension_separator
         store = FSStoreV3(
-            path, key_separator=key_separator, auto_mkdir=True, **fsspec_mapper_kwargs
+            path,
+            key_separator=key_separator,
+            auto_mkdir=True,
+            create=True,
+            check=True,
+            missing_exceptions=None
         )
         return store
 
@@ -2967,7 +2975,12 @@ class TestArrayWithFSStoreV3FromFilesystem(TestArrayWithFSStoreV3):
         path = mkdtemp()
         atexit.register(shutil.rmtree, path)
         key_separator = self.dimension_separator
-        store = FSStoreV3(path, fs=fs, key_separator=key_separator, **fsspec_mapper_kwargs)
+        store = FSStoreV3(path,
+                          fs=fs,
+                          key_separator=key_separator,
+                          create=True,
+                          check=True,
+                          missing_exceptions=None)
         return store
 
     def expected(self):
