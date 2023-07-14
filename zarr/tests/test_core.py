@@ -85,7 +85,10 @@ class TestArray():
     def create_chunk_store(self) -> Optional[BaseStore]:
         return None
 
-    def create_storage_transformers(self, shape) -> Tuple[Any, ...]:
+    def create_storage_transformers(self, shape: Union[int, Tuple[int, ...]]) -> Tuple[Any, ...]:
+        return ()
+
+    def create_filters(self, dtype: Optional[str]) -> Tuple[Any, ...]:
         return ()
 
     def create_array(self, shape: Union[int, Tuple[int, ...]], **kwargs):
@@ -94,9 +97,10 @@ class TestArray():
         # keyword arguments for array initialization
         init_array_kwargs = {
             "path": kwargs.pop("path", self.path),
-            "compressor": self.compressor,
+            "compressor": kwargs.pop("compressor", self.compressor),
             "chunk_store": chunk_store,
             "storage_transformers": self.create_storage_transformers(shape),
+            "filters": kwargs.pop("filters", self.create_filters(kwargs.get("dtype", None)))
         }
 
         # keyword arguments for array instantiation
@@ -109,6 +113,7 @@ class TestArray():
             "partial_decompress": kwargs.pop("partial_decompress", self.partial_decompress),
             "write_empty_chunks": kwargs.pop("write_empty_chunks", self.write_empty_chunks),
         }
+
         init_array(store, shape, **{**init_array_kwargs, **kwargs})
 
         return Array(store, **access_array_kwargs)
@@ -2164,33 +2169,11 @@ class TestArrayWithFilters(TestArray):
 
     compressor = Zlib(1)
 
-    def create_array(self, shape: Union[int, Tuple[int, ...]], **kwargs):
-
-        store = self.create_store()
-        chunk_store = self.create_chunk_store()
-        dtype = kwargs.get("dtype", None)
-        filters = [
+    def create_filters(self, dtype: Optional[str]) -> Tuple[Any, ...]:
+        return (
             Delta(dtype=dtype),
             FixedScaleOffset(dtype=dtype, scale=1, offset=0),
-        ]
-        init_array_kwargs = {
-            "path": kwargs.pop("path", self.path),
-            "compressor": self.compressor,
-            "chunk_store": chunk_store,
-            "filters": filters,
-        }
-
-        access_array_kwargs = {
-            "path": init_array_kwargs["path"],
-            "read_only": kwargs.pop("read_only", self.read_only),
-            "chunk_store": chunk_store,
-            "cache_metadata": kwargs.pop("cache_metadata", self.cache_metadata),
-            "cache_attrs": kwargs.pop("cache_attrs", self.cache_attrs),
-            "write_empty_chunks": kwargs.pop("write_empty_chunks", self.write_empty_chunks),
-        }
-        init_array(store, shape, **{**init_array_kwargs, **kwargs})
-
-        return Array(store, **access_array_kwargs)
+            )
 
     def expected(self):
         return [
