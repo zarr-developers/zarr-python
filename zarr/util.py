@@ -15,7 +15,8 @@ from typing import (
     Tuple,
     TypeVar,
     Union,
-    Iterable
+    Iterable,
+    cast
 )
 
 import numpy as np
@@ -74,7 +75,7 @@ def json_loads(s: Union[bytes, str]) -> Dict[str, Any]:
     return json.loads(ensure_text(s, 'utf-8'))
 
 
-def normalize_shape(shape) -> Tuple[int]:
+def normalize_shape(shape: Union[int, Tuple[int, ...], None]) -> Tuple[int, ...]:
     """Convenience function to normalize the `shape` argument."""
 
     if shape is None:
@@ -85,6 +86,7 @@ def normalize_shape(shape) -> Tuple[int]:
         shape = (int(shape),)
 
     # normalize
+    shape = cast(Tuple[int], shape)
     shape = tuple(int(s) for s in shape)
     return shape
 
