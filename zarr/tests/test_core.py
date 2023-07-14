@@ -2060,6 +2060,7 @@ class TestArrayWithDBMStoreBerkeleyDB(TestArray):
 class TestArrayWithLMDBStore(TestArray):
 
     def create_store(self):
+        pytest.importorskip("lmdb")
         path = mktemp(suffix=".lmdb")
         atexit.register(atexit_rmtree, path)
         store = LMDBStore(path, buffers=True)
