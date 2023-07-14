@@ -300,7 +300,7 @@ def _require_parent_group(
 
 def init_array(
     store: StoreLike,
-    shape: Tuple[int, ...],
+    shape: Union[int, Tuple[int, ...]],
     chunks: Union[bool, int, Tuple[int, ...]] = True,
     dtype=None,
     compressor="default",
