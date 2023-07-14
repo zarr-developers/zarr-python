@@ -2415,7 +2415,7 @@ class TestArrayWithFSStore(TestArray):
                         auto_mkdir=True,
                         check=True,
                         create=True,
-                        missing_exceptions=True)
+                        missing_exceptions=None)
         return store
 
     def expected(self):
