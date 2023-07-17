@@ -641,6 +641,84 @@ orthogonal indexing is also available directly on the array:
     >>> all(z.oindex[[0, 2], :] == z[[0, 2], :])
     True
 
+Block Indexing
+~~~~~~~~~~~~~~
+
+As of version 2.16.0, Zarr also support block indexing, which allows
+selections of whole chunks based on their logical indices along each dimension
+of an array. For example, this allows selecting a subset of chunk aligned rows and/or
+columns from a 2-dimensional array. E.g.::
+
+    >>> import zarr
+    >>> import numpy as np
+    >>> z = zarr.array(np.arange(100).reshape(10, 10), chunks=(3, 3))
+
+Retrieve items by specifying their block coordinates::
+
+    >>> z.get_block_selection(1)
+    array([[30, 31, 32, 33, 34, 35, 36, 37, 38, 39],
+           [40, 41, 42, 43, 44, 45, 46, 47, 48, 49],
+           [50, 51, 52, 53, 54, 55, 56, 57, 58, 59]])
+
+Equivalent slicing::
+
+    >>> z[3:6]
+    array([[30, 31, 32, 33, 34, 35, 36, 37, 38, 39],
+           [40, 41, 42, 43, 44, 45, 46, 47, 48, 49],
+           [50, 51, 52, 53, 54, 55, 56, 57, 58, 59]])
+
+
+For convenience, the block selection functionality is also available via the
+`blocks` property, e.g.::
+
+    >>> z.blocks[1]
+    array([[30, 31, 32, 33, 34, 35, 36, 37, 38, 39],
+           [40, 41, 42, 43, 44, 45, 46, 47, 48, 49],
+           [50, 51, 52, 53, 54, 55, 56, 57, 58, 59]])
+
+Block index arrays may be multidimensional to index multidimensional arrays.
+For example::
+
+    >>> z.blocks[0, 1:3]
+    array([[ 3,  4,  5,  6,  7,  8],
+           [13, 14, 15, 16, 17, 18],
+           [23, 24, 25, 26, 27, 28]])
+
+Data can also be modified. Let's start by a simple 2D array::
+
+    >>> import zarr
+    >>> import numpy as np
+    >>> z = zarr.zeros((6, 6), dtype=int, chunks=2)
+
+Set data for a selection of items::
+
+    >>> z.set_block_selection((1, 0), 1)
+    >>> z[...]
+    array([[0, 0, 0, 0, 0, 0],
+           [0, 0, 0, 0, 0, 0],
+           [1, 1, 0, 0, 0, 0],
+           [1, 1, 0, 0, 0, 0],
+           [0, 0, 0, 0, 0, 0],
+           [0, 0, 0, 0, 0, 0]])
+
+For convenience, this functionality is also available via the ``blocks`` property.
+E.g.::
+
+        >>> z.blocks[:, 2] = 7
+        >>> z[...]
+        array([[0, 0, 0, 0, 7, 7],
+               [0, 0, 0, 0, 7, 7],
+               [1, 1, 0, 0, 7, 7],
+               [1, 1, 0, 0, 7, 7],
+               [0, 0, 0, 0, 7, 7],
+               [0, 0, 0, 0, 7, 7]])
+
+Any combination of integer and slice can be used for block indexing::
+
+        >>> z.blocks[2, 1:3]
+        array([[0, 0, 7, 7],
+               [0, 0, 7, 7]])
+
 Indexing fields in structured arrays
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

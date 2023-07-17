@@ -300,7 +300,7 @@ def _require_parent_group(
 
 def init_array(
     store: StoreLike,
-    shape: Tuple[int, ...],
+    shape: Union[int, Tuple[int, ...]],
     chunks: Union[bool, int, Tuple[int, ...]] = True,
     dtype=None,
     compressor="default",
@@ -743,6 +743,9 @@ class KVStore(Store):
 
     def __delitem__(self, key):
         del self._mutable_mapping[key]
+
+    def __contains__(self, key):
+        return key in self._mutable_mapping
 
     def get(self, key, default=None):
         return self._mutable_mapping.get(key, default)

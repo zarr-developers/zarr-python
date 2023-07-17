@@ -22,6 +22,8 @@ from zarr.indexing import (
     OIndex,
     OrthogonalIndexer,
     VIndex,
+    BlockIndex,
+    BlockIndexer,
     PartialChunkIterator,
     check_fields,
     check_no_multi_fields,
@@ -139,6 +141,7 @@ class Array:
     info
     vindex
     oindex
+    blocks
     write_empty_chunks
     meta_array
 
@@ -154,6 +157,8 @@ class Array:
     set_mask_selection
     get_coordinate_selection
     set_coordinate_selection
+    get_block_selection
+    set_block_selection
     digest
     hexdigest
     resize
@@ -230,6 +235,7 @@ class Array:
         # initialize indexing helpers
         self._oindex = OIndex(self)
         self._vindex = VIndex(self)
+        self._blocks = BlockIndex(self)
 
     def _load_metadata(self):
         """(Re)load metadata from store."""
@@ -578,6 +584,12 @@ class Array:
         return self._vindex
 
     @property
+    def blocks(self):
+        """Shortcut for blocked chunked indexing, see :func:`get_block_selection` and
+        :func:`set_block_selection` for documentation and examples."""
+        return self._blocks
+
+    @property
     def write_empty_chunks(self) -> bool:
         """A Boolean, True if chunks composed of the array's fill value
         will be stored. If False, such chunks will not be stored.
@@ -814,7 +826,8 @@ class Array:
         --------
         get_basic_selection, set_basic_selection, get_mask_selection, set_mask_selection,
         get_coordinate_selection, set_coordinate_selection, get_orthogonal_selection,
-        set_orthogonal_selection, vindex, oindex, __setitem__
+        set_orthogonal_selection, get_block_selection, set_block_selection,
+        vindex, oindex, blocks, __setitem__
 
         """
         fields, pure_selection = pop_fields(selection)
@@ -933,7 +946,8 @@ class Array:
         --------
         set_basic_selection, get_mask_selection, set_mask_selection,
         get_coordinate_selection, set_coordinate_selection, get_orthogonal_selection,
-        set_orthogonal_selection, vindex, oindex, __getitem__, __setitem__
+        set_orthogonal_selection, get_block_selection, set_block_selection,
+        vindex, oindex, blocks, __getitem__, __setitem__
 
         """
 
@@ -1089,7 +1103,8 @@ class Array:
         --------
         get_basic_selection, set_basic_selection, get_mask_selection, set_mask_selection,
         get_coordinate_selection, set_coordinate_selection, set_orthogonal_selection,
-        vindex, oindex, __getitem__, __setitem__
+        get_block_selection, set_block_selection,
+        vindex, oindex, blocks, __getitem__, __setitem__
 
         """
 
@@ -1160,7 +1175,8 @@ class Array:
         --------
         get_basic_selection, set_basic_selection, get_mask_selection, set_mask_selection,
         get_orthogonal_selection, set_orthogonal_selection, set_coordinate_selection,
-        vindex, oindex, __getitem__, __setitem__
+        get_block_selection, set_block_selection,
+        vindex, oindex, blocks, __getitem__, __setitem__
 
         """
 
@@ -1184,6 +1200,90 @@ class Array:
         out = out.reshape(indexer.sel_shape)
 
         return out
+
+    def get_block_selection(self, selection, out=None, fields=None):
+        """Retrieve a selection of individual chunk blocks, by providing the indices
+        (coordinates) for each chunk block.
+
+        Parameters
+        ----------
+        selection : tuple
+            An integer (coordinate) or slice for each dimension of the array.
+        out : ndarray, optional
+            If given, load the selected data directly into this array.
+        fields : str or sequence of str, optional
+            For arrays with a structured dtype, one or more fields can be specified to
+            extract data for.
+
+        Returns
+        -------
+        out : ndarray
+            A NumPy array containing the data for the requested selection.
+
+        Examples
+        --------
+        Setup a 2-dimensional array::
+
+            >>> import zarr
+            >>> import numpy as np
+            >>> z = zarr.array(np.arange(100).reshape(10, 10), chunks=(3, 3))
+
+        Retrieve items by specifying their block coordinates::
+
+            >>> z.get_block_selection((1, slice(None)))
+            array([[30, 31, 32, 33, 34, 35, 36, 37, 38, 39],
+                   [40, 41, 42, 43, 44, 45, 46, 47, 48, 49],
+                   [50, 51, 52, 53, 54, 55, 56, 57, 58, 59]])
+
+        Which is equivalent to::
+
+            >>> z[3:6, :]
+            array([[30, 31, 32, 33, 34, 35, 36, 37, 38, 39],
+                   [40, 41, 42, 43, 44, 45, 46, 47, 48, 49],
+                   [50, 51, 52, 53, 54, 55, 56, 57, 58, 59]])
+
+        For convenience, the block selection functionality is also available via the
+        `blocks` property, e.g.::
+
+            >>> z.blocks[1]
+            array([[30, 31, 32, 33, 34, 35, 36, 37, 38, 39],
+                   [40, 41, 42, 43, 44, 45, 46, 47, 48, 49],
+                   [50, 51, 52, 53, 54, 55, 56, 57, 58, 59]])
+
+        Notes
+        -----
+        Block indexing is a convenience indexing method to work on individual chunks
+        with chunk index slicing. It has the same concept as Dask's `Array.blocks`
+        indexing.
+
+        Slices are supported. However, only with a step size of one.
+
+        Block index arrays may be multidimensional to index multidimensional arrays.
+        For example::
+
+            >>> z.blocks[0, 1:3]
+            array([[ 3,  4,  5,  6,  7,  8],
+                   [13, 14, 15, 16, 17, 18],
+                   [23, 24, 25, 26, 27, 28]])
+
+        See Also
+        --------
+        get_basic_selection, set_basic_selection, get_mask_selection, set_mask_selection,
+        get_orthogonal_selection, set_orthogonal_selection, get_coordinate_selection,
+        set_coordinate_selection, set_block_selection,
+        vindex, oindex, blocks, __getitem__, __setitem__
+
+        """
+        if not self._cache_metadata:
+            self._load_metadata()
+
+        # check args
+        check_fields(fields, self._dtype)
+
+        # setup indexer
+        indexer = BlockIndexer(selection, self)
+
+        return self._get_selection(indexer=indexer, out=out, fields=fields)
 
     def get_mask_selection(self, selection, out=None, fields=None):
         """Retrieve a selection of individual items, by providing a Boolean array of the
@@ -1238,8 +1338,8 @@ class Array:
         --------
         get_basic_selection, set_basic_selection, set_mask_selection,
         get_orthogonal_selection, set_orthogonal_selection, get_coordinate_selection,
-        set_coordinate_selection, vindex, oindex, __getitem__, __setitem__
-
+        set_coordinate_selection, get_block_selection, set_block_selection,
+        vindex, oindex, blocks, __getitem__, __setitem__
         """
 
         # refresh metadata
@@ -1376,7 +1476,8 @@ class Array:
         --------
         get_basic_selection, set_basic_selection, get_mask_selection, set_mask_selection,
         get_coordinate_selection, set_coordinate_selection, get_orthogonal_selection,
-        set_orthogonal_selection, vindex, oindex, __getitem__
+        set_orthogonal_selection, get_block_selection, set_block_selection,
+        vindex, oindex, blocks, __getitem__
 
         """
         fields, pure_selection = pop_fields(selection)
@@ -1464,7 +1565,8 @@ class Array:
         --------
         get_basic_selection, get_mask_selection, set_mask_selection,
         get_coordinate_selection, set_coordinate_selection, get_orthogonal_selection,
-        set_orthogonal_selection, vindex, oindex, __getitem__, __setitem__
+        set_orthogonal_selection, get_block_selection, set_block_selection,
+        vindex, oindex, blocks, __getitem__, __setitem__
 
         """
 
@@ -1555,7 +1657,8 @@ class Array:
         --------
         get_basic_selection, set_basic_selection, get_mask_selection, set_mask_selection,
         get_coordinate_selection, set_coordinate_selection, get_orthogonal_selection,
-        vindex, oindex, __getitem__, __setitem__
+        get_block_selection, set_block_selection,
+        vindex, oindex, blocks, __getitem__, __setitem__
 
         """
 
@@ -1627,7 +1730,8 @@ class Array:
         --------
         get_basic_selection, set_basic_selection, get_mask_selection, set_mask_selection,
         get_orthogonal_selection, set_orthogonal_selection, get_coordinate_selection,
-        vindex, oindex, __getitem__, __setitem__
+        get_block_selection, set_block_selection,
+        vindex, oindex, blocks, __getitem__, __setitem__
 
         """
 
@@ -1651,6 +1755,89 @@ class Array:
                 value = np.array(value, like=self._meta_array)
         if hasattr(value, 'shape') and len(value.shape) > 1:
             value = value.reshape(-1)
+
+        self._set_selection(indexer, value, fields=fields)
+
+    def set_block_selection(self, selection, value, fields=None):
+        """Modify a selection of individual blocks, by providing the chunk indices
+        (coordinates) for each block to be modified.
+
+        Parameters
+        ----------
+        selection : tuple
+            An integer (coordinate) or slice for each dimension of the array.
+        value : scalar or array-like
+            Value to be stored into the array.
+        fields : str or sequence of str, optional
+            For arrays with a structured dtype, one or more fields can be specified to set
+            data for.
+
+        Examples
+        --------
+        Set up a 2-dimensional array::
+
+            >>> import zarr
+            >>> import numpy as np
+            >>> z = zarr.zeros((6, 6), dtype=int, chunks=2)
+
+        Set data for a selection of items::
+
+            >>> z.set_block_selection((1, 0), 1)
+            >>> z[...]
+            array([[0, 0, 0, 0, 0, 0],
+                   [0, 0, 0, 0, 0, 0],
+                   [1, 1, 0, 0, 0, 0],
+                   [1, 1, 0, 0, 0, 0],
+                   [0, 0, 0, 0, 0, 0],
+                   [0, 0, 0, 0, 0, 0]])
+
+        For convenience, this functionality is also available via the `blocks` property.
+        E.g.::
+
+            >>> z.blocks[2, 1] = 4
+            >>> z[...]
+            array([[0, 0, 0, 0, 0, 0],
+                   [0, 0, 0, 0, 0, 0],
+                   [1, 1, 0, 0, 0, 0],
+                   [1, 1, 0, 0, 0, 0],
+                   [0, 0, 4, 4, 0, 0],
+                   [0, 0, 4, 4, 0, 0]])
+
+            >>> z.blocks[:, 2] = 7
+            >>> z[...]
+            array([[0, 0, 0, 0, 7, 7],
+                   [0, 0, 0, 0, 7, 7],
+                   [1, 1, 0, 0, 7, 7],
+                   [1, 1, 0, 0, 7, 7],
+                   [0, 0, 4, 4, 7, 7],
+                   [0, 0, 4, 4, 7, 7]])
+
+        Notes
+        -----
+        Block indexing is a convenience indexing method to work on individual chunks
+        with chunk index slicing. It has the same concept as Dask's `Array.blocks`
+        indexing.
+
+        Slices are supported. However, only with a step size of one.
+
+        See Also
+        --------
+        get_basic_selection, set_basic_selection, get_mask_selection, set_mask_selection,
+        get_orthogonal_selection, set_orthogonal_selection, get_coordinate_selection,
+        get_block_selection, set_block_selection,
+        vindex, oindex, blocks, __getitem__, __setitem__
+
+        """
+        # guard conditions
+        if self._read_only:
+            raise ReadOnlyError()
+
+        # refresh metadata
+        if not self._cache_metadata:
+            self._load_metadata_nosync()
+
+        # setup indexer
+        indexer = BlockIndexer(selection, self)
 
         self._set_selection(indexer, value, fields=fields)
 
@@ -1712,7 +1899,8 @@ class Array:
         --------
         get_basic_selection, set_basic_selection, get_mask_selection,
         get_orthogonal_selection, set_orthogonal_selection, get_coordinate_selection,
-        set_coordinate_selection, vindex, oindex, __getitem__, __setitem__
+        set_coordinate_selection, get_block_selection, set_block_selection,
+        vindex, oindex, blocks, __getitem__, __setitem__
 
         """
 
