@@ -13,10 +13,28 @@ Release notes
     # to document your changes. On releases it will be
     # re-indented so that it does not show up in the notes.
 
-    .. _unreleased:
+.. _unreleased:
 
-    Unreleased
-    ----------
+Unreleased
+----------
+
+Enhancements
+~~~~~~~~~~~~
+
+* Allow for partial codec specification in V3 array metadata.
+  By :user:`Joe Hamman <jhamman>` :issue:`1443`.
+
+* Add ``__contains__`` method to ``KVStore``. 
+  By :user:`Christoph Gohlke <cgohlke>` :issue:`1454`.
+
+    * **Block Indexing**: Implemented blockwise (chunk blocks) indexing to ``zarr.Array``.
+      By :user:`Altay Sansal <tasansal>` :issue:`1428`
+
+Maintenance
+~~~~~~~~~~~
+
+* Refactor the core array tests to reduce code duplication.
+  By :user:`Davis Bennett <d-v-b>` :issue:`1462`.
 
 .. _release_2.15.0:
 

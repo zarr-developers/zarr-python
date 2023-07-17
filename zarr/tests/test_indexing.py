@@ -1096,7 +1096,6 @@ def _test_set_coordinate_selection(v, a, z, selection):
 
 
 def test_set_coordinate_selection_1d():
-
     # setup
     v = np.arange(1050, dtype=int)
     a = np.empty(v.shape, dtype=v.dtype)
@@ -1152,6 +1151,185 @@ def test_set_coordinate_selection_2d():
     ix1 = np.array([[1, 3, 2],
                     [2, 0, 5]])
     _test_set_coordinate_selection(v, a, z, (ix0, ix1))
+
+
+def _test_get_block_selection(a, z, selection, expected_idx):
+    expect = a[expected_idx]
+    actual = z.get_block_selection(selection)
+    assert_array_equal(expect, actual)
+    actual = z.blocks[selection]
+    assert_array_equal(expect, actual)
+
+
+block_selections_1d = [
+    # test single item
+    0,
+    5,
+    # test wraparound
+    -1,
+    -4,
+    # test slice
+    slice(5),
+    slice(None, 3),
+    slice(5, 6),
+    slice(-3, -1),
+    slice(None),  # Full slice
+]
+
+block_selections_1d_array_projection = [
+    # test single item
+    slice(100),
+    slice(500, 600),
+    # test wraparound
+    slice(1000, None),
+    slice(700, 800),
+    # test slice
+    slice(500),
+    slice(None, 300),
+    slice(500, 600),
+    slice(800, 1000),
+    slice(None),
+]
+
+block_selections_1d_bad = [
+    # slice not supported
+    slice(3, 8, 2),
+    # bad stuff
+    2.3,
+    'foo',
+    b'xxx',
+    None,
+    (0, 0),
+    (slice(None), slice(None)),
+    [0, 5, 3]
+]
+
+
+def test_get_block_selection_1d():
+    # setup
+    a = np.arange(1050, dtype=int)
+    z = zarr.create(shape=a.shape, chunks=100, dtype=a.dtype)
+    z[:] = a
+
+    for selection, expected_idx in \
+            zip(block_selections_1d, block_selections_1d_array_projection):
+        _test_get_block_selection(a, z, selection, expected_idx)
+
+    bad_selections = block_selections_1d_bad + [
+        z.nchunks + 1,  # out of bounds
+        -(z.nchunks + 1),  # out of bounds
+    ]
+
+    for selection in bad_selections:
+        with pytest.raises(IndexError):
+            z.get_block_selection(selection)
+        with pytest.raises(IndexError):
+            z.blocks[selection]
+
+
+block_selections_2d = [
+    # test single item
+    (0, 0),
+    (1, 2),
+    # test wraparound
+    (-1, -1),
+    (-3, -2),
+    # test slice
+    (slice(1), slice(2)),
+    (slice(None, 2), slice(-2, -1)),
+    (slice(2, 3), slice(-2, None)),
+    (slice(-3, -1), slice(-3, -2)),
+    (slice(None), slice(None)),  # Full slice
+]
+
+block_selections_2d_array_projection = [
+    # test single item
+    (slice(300), slice(3)),
+    (slice(300, 600), slice(6, 9)),
+    # test wraparound
+    (slice(900, None), slice(9, None)),
+    (slice(300, 600), slice(6, 9)),
+    # test slice
+    (slice(300), slice(6)),
+    (slice(None, 600), slice(6, 9)),
+    (slice(600, 900), slice(6, None)),
+    (slice(300, 900), slice(3, 6)),
+    (slice(None), slice(None)),  # Full slice
+]
+
+
+def test_get_block_selection_2d():
+    # setup
+    a = np.arange(10000, dtype=int).reshape(1000, 10)
+    z = zarr.create(shape=a.shape, chunks=(300, 3), dtype=a.dtype)
+    z[:] = a
+
+    for selection, expected_idx in \
+            zip(block_selections_2d, block_selections_2d_array_projection):
+        _test_get_block_selection(a, z, selection, expected_idx)
+
+    with pytest.raises(IndexError):
+        selection = slice(5, 15), [1, 2, 3]
+        z.get_block_selection(selection)
+    with pytest.raises(IndexError):
+        selection = Ellipsis, [1, 2, 3]
+        z.get_block_selection(selection)
+    with pytest.raises(IndexError):  # out of bounds
+        selection = slice(15, 20), slice(None)
+        z.get_block_selection(selection)
+
+
+def _test_set_block_selection(v: np.ndarray, a: np.ndarray, z: zarr.Array, selection, expected_idx):
+    for value in 42, v[expected_idx], v[expected_idx].tolist():
+        # setup expectation
+        a[:] = 0
+        a[expected_idx] = value
+        # test long-form API
+        z[:] = 0
+        z.set_block_selection(selection, value)
+        assert_array_equal(a, z[:])
+        # test short-form API
+        z[:] = 0
+        z.blocks[selection] = value
+        assert_array_equal(a, z[:])
+
+
+def test_set_block_selection_1d():
+    # setup
+    v = np.arange(1050, dtype=int)
+    a = np.empty(v.shape, dtype=v.dtype)
+    z = zarr.create(shape=a.shape, chunks=100, dtype=a.dtype)
+
+    for selection, expected_idx in \
+            zip(block_selections_1d, block_selections_1d_array_projection):
+        _test_set_block_selection(v, a, z, selection, expected_idx)
+
+    for selection in block_selections_1d_bad:
+        with pytest.raises(IndexError):
+            z.set_block_selection(selection, 42)
+        with pytest.raises(IndexError):
+            z.blocks[selection] = 42
+
+
+def test_set_block_selection_2d():
+    # setup
+    v = np.arange(10000, dtype=int).reshape(1000, 10)
+    a = np.empty(v.shape, dtype=v.dtype)
+    z = zarr.create(shape=a.shape, chunks=(300, 3), dtype=a.dtype)
+
+    for selection, expected_idx in \
+            zip(block_selections_2d, block_selections_2d_array_projection):
+        _test_set_block_selection(v, a, z, selection, expected_idx)
+
+    with pytest.raises(IndexError):
+        selection = slice(5, 15), [1, 2, 3]
+        z.set_block_selection(selection, 42)
+    with pytest.raises(IndexError):
+        selection = Ellipsis, [1, 2, 3]
+        z.set_block_selection(selection, 42)
+    with pytest.raises(IndexError):  # out of bounds
+        selection = slice(15, 20), slice(None)
+        z.set_block_selection(selection, 42)
 
 
 def _test_get_mask_selection(a, z, selection):
