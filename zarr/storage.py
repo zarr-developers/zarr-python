@@ -1378,7 +1378,12 @@ class FSStore(Store):
         if key:
             *bits, end = key.split('/')
 
-            if end not in (self._array_meta_key, self._group_meta_key, self._attrs_key):
+            if end not in (
+                self._array_meta_key,
+                self._group_meta_key,
+                self._attrs_key,
+                ".zmetadata",  # see: #1121
+            ):
                 end = end.replace('.', self.key_separator)
                 key = '/'.join(bits + [end])
 
