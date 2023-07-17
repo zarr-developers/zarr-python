@@ -3,10 +3,10 @@ import os
 import sys
 import pickle
 import shutil
+from typing import Any, Literal, Optional, Tuple, Union
 import unittest
 from itertools import zip_longest
 from tempfile import mkdtemp
-
 import numpy as np
 import packaging.version
 import pytest
@@ -32,6 +32,7 @@ from numpy.testing import assert_array_almost_equal, assert_array_equal
 
 import zarr
 from zarr._storage.store import (
+    BaseStore,
     v3_api_available,
 )
 from .._storage.v3_storage_transformers import ShardingStorageTransformer, v3_sharding_available
@@ -55,6 +56,7 @@ from zarr.storage import (
     init_array,
     init_group,
     meta_root,
+    normalize_store_arg,
 )
 from zarr._storage.v3 import (
     ABSStoreV3,
@@ -75,16 +77,64 @@ from zarr.tests.util import abs_container, skip_test_env_var, have_fsspec, mktem
 # noinspection PyMethodMayBeStatic
 
 
-class TestArray(unittest.TestCase):
-
+class TestArray:
     version = 2
     root = ""
-    KVStoreClass = KVStore
+    path = ""
+    compressor = Zlib(level=1)
+    filters = None
+    dimension_separator: Literal["/", ".", None] = None
+    cache_metadata = True
+    cache_attrs = True
+    partial_decompress: bool = False
+    write_empty_chunks = True
+    read_only = False
+    storage_transformers: Tuple[Any, ...] = ()
+
+    def create_store(self) -> BaseStore:
+        return KVStore(dict())
+
+    # used by child classes
+    def create_chunk_store(self) -> Optional[BaseStore]:
+        return None
+
+    def create_storage_transformers(self, shape: Union[int, Tuple[int, ...]]) -> Tuple[Any, ...]:
+        return ()
+
+    def create_filters(self, dtype: Optional[str]) -> Tuple[Any, ...]:
+        return ()
+
+    def create_array(self, shape: Union[int, Tuple[int, ...]], **kwargs):
+        store = self.create_store()
+        chunk_store = self.create_chunk_store()
+        # keyword arguments for array initialization
+        init_array_kwargs = {
+            "path": kwargs.pop("path", self.path),
+            "compressor": kwargs.pop("compressor", self.compressor),
+            "chunk_store": chunk_store,
+            "storage_transformers": self.create_storage_transformers(shape),
+            "filters": kwargs.pop("filters", self.create_filters(kwargs.get("dtype", None))),
+        }
+
+        # keyword arguments for array instantiation
+        access_array_kwargs = {
+            "path": init_array_kwargs["path"],
+            "read_only": kwargs.pop("read_only", self.read_only),
+            "chunk_store": chunk_store,
+            "cache_metadata": kwargs.pop("cache_metadata", self.cache_metadata),
+            "cache_attrs": kwargs.pop("cache_attrs", self.cache_attrs),
+            "partial_decompress": kwargs.pop("partial_decompress", self.partial_decompress),
+            "write_empty_chunks": kwargs.pop("write_empty_chunks", self.write_empty_chunks),
+        }
+
+        init_array(store, shape, **{**init_array_kwargs, **kwargs})
+
+        return Array(store, **access_array_kwargs)
 
     def test_array_init(self):
 
         # normal initialization
-        store = self.KVStoreClass(dict())
+        store = self.create_store()
         init_array(store, shape=100, chunks=10, dtype="<f8")
         a = Array(store, zarr_version=self.version)
         assert isinstance(a, Array)
@@ -93,15 +143,11 @@ class TestArray(unittest.TestCase):
         assert "" == a.path
         assert a.name is None
         assert a.basename is None
-        assert store is a.store
-        if self.version == 2:
-            assert "8fecb7a17ea1493d9c1430d04437b4f5b0b34985" == a.hexdigest()
-        else:
-            assert "968dccbbfc0139f703ead2fd1d503ad6e44db307" == a.hexdigest()
+        assert a.store == normalize_store_arg(store)
         store.close()
 
         # initialize at path
-        store = self.KVStoreClass(dict())
+        store = self.create_store()
         init_array(store, shape=100, chunks=10, path="foo/bar", dtype="<f8")
         a = Array(store, path="foo/bar", zarr_version=self.version)
         assert isinstance(a, Array)
@@ -110,37 +156,18 @@ class TestArray(unittest.TestCase):
         assert "foo/bar" == a.path
         assert "/foo/bar" == a.name
         assert "bar" == a.basename
-        assert store is a.store
-        if self.version == 2:
-            assert "8fecb7a17ea1493d9c1430d04437b4f5b0b34985" == a.hexdigest()
-        else:
-            assert "968dccbbfc0139f703ead2fd1d503ad6e44db307" == a.hexdigest()
+        assert a.store == normalize_store_arg(store)
+
         # store not initialized
-        store = self.KVStoreClass(dict())
+        store = self.create_store()
         with pytest.raises(ValueError):
             Array(store, zarr_version=self.version)
 
         # group is in the way
-        store = self.KVStoreClass(dict())
+        store = self.create_store()
         init_group(store, path="baz")
         with pytest.raises(ValueError):
             Array(store, path="baz", zarr_version=self.version)
-
-    def create_array(self, read_only=False, **kwargs):
-        store = self.KVStoreClass(dict())
-        kwargs.setdefault("compressor", Zlib(level=1))
-        cache_metadata = kwargs.pop("cache_metadata", True)
-        cache_attrs = kwargs.pop("cache_attrs", True)
-        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
-        init_array(store, **kwargs)
-        return Array(
-            store,
-            read_only=read_only,
-            cache_metadata=cache_metadata,
-            cache_attrs=cache_attrs,
-            write_empty_chunks=write_empty_chunks,
-            zarr_version=self.version,
-        )
 
     def test_store_has_text_keys(self):
         # Initialize array
@@ -186,7 +213,6 @@ class TestArray(unittest.TestCase):
         z.store.close()
 
     def test_nbytes_stored(self):
-
         # dict as store
         z = self.create_array(shape=1000, chunks=100)
         if self.version == 3:
@@ -210,7 +236,7 @@ class TestArray(unittest.TestCase):
             if self.version == 2:
                 z.store[z._key_prefix + "foo"] = list(range(10))
             else:
-                z.store["meta/root/foo"] = list(range(10))
+                z.store[f"meta/root{z.name}/foo"] = list(range(10))
             assert -1 == z.nbytes_stored
         except TypeError:
             pass
@@ -1589,21 +1615,8 @@ class TestArray(unittest.TestCase):
 
 
 class TestArrayWithPath(TestArray):
-    @staticmethod
-    def create_array(read_only=False, **kwargs):
-        store = KVStore(dict())
-        cache_metadata = kwargs.pop("cache_metadata", True)
-        cache_attrs = kwargs.pop("cache_attrs", True)
-        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
-        init_array(store, path="foo/bar", **kwargs)
-        return Array(
-            store,
-            path="foo/bar",
-            read_only=read_only,
-            cache_metadata=cache_metadata,
-            cache_attrs=cache_attrs,
-            write_empty_chunks=write_empty_chunks,
-        )
+    path = "foo/bar"
+    compressor = Blosc()
 
     def test_nchunks_initialized(self):
         pass
@@ -1637,23 +1650,10 @@ class TestArrayWithPath(TestArray):
 
 
 class TestArrayWithChunkStore(TestArray):
-    @staticmethod
-    def create_array(read_only=False, **kwargs):
-        store = KVStore(dict())
-        # separate chunk store
-        chunk_store = KVStore(dict())
-        cache_metadata = kwargs.pop("cache_metadata", True)
-        cache_attrs = kwargs.pop("cache_attrs", True)
-        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
-        init_array(store, chunk_store=chunk_store, **kwargs)
-        return Array(
-            store,
-            read_only=read_only,
-            chunk_store=chunk_store,
-            cache_metadata=cache_metadata,
-            cache_attrs=cache_attrs,
-            write_empty_chunks=write_empty_chunks,
-        )
+    compressor = Blosc()
+
+    def create_chunk_store(self):
+        return KVStore(dict())
 
     def expected(self):
         return [
@@ -1681,23 +1681,11 @@ class TestArrayWithChunkStore(TestArray):
 
 
 class TestArrayWithDirectoryStore(TestArray):
-    @staticmethod
-    def create_array(read_only=False, **kwargs):
+    def create_store(self):
         path = mkdtemp()
         atexit.register(shutil.rmtree, path)
         store = DirectoryStore(path)
-        cache_metadata = kwargs.pop("cache_metadata", True)
-        cache_attrs = kwargs.pop("cache_attrs", True)
-        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
-        kwargs.setdefault("compressor", Zlib(1))
-        init_array(store, **kwargs)
-        return Array(
-            store,
-            read_only=read_only,
-            cache_metadata=cache_metadata,
-            cache_attrs=cache_attrs,
-            write_empty_chunks=write_empty_chunks,
-        )
+        return store
 
     def test_nbytes_stored(self):
 
@@ -1722,27 +1710,11 @@ def test_array_init_from_dict():
 
 @skip_test_env_var("ZARR_TEST_ABS")
 class TestArrayWithABSStore(TestArray):
-    @staticmethod
-    def absstore():
+    def create_store(self):
         client = abs_container()
         store = ABSStore(client=client)
         store.rmdir()
         return store
-
-    def create_array(self, read_only=False, **kwargs):
-        store = self.absstore()
-        kwargs.setdefault("compressor", Zlib(1))
-        cache_metadata = kwargs.pop("cache_metadata", True)
-        cache_attrs = kwargs.pop("cache_attrs", True)
-        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
-        init_array(store, **kwargs)
-        return Array(
-            store,
-            read_only=read_only,
-            cache_metadata=cache_metadata,
-            cache_attrs=cache_attrs,
-            write_empty_chunks=write_empty_chunks,
-        )
 
     @pytest.mark.xfail
     def test_nbytes_stored(self):
@@ -1755,23 +1727,11 @@ class TestArrayWithABSStore(TestArray):
 
 
 class TestArrayWithNestedDirectoryStore(TestArrayWithDirectoryStore):
-    @staticmethod
-    def create_array(read_only=False, **kwargs):
+    def create_store(self):
         path = mkdtemp()
         atexit.register(shutil.rmtree, path)
         store = NestedDirectoryStore(path)
-        cache_metadata = kwargs.pop("cache_metadata", True)
-        cache_attrs = kwargs.pop("cache_attrs", True)
-        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
-        kwargs.setdefault("compressor", Zlib(1))
-        init_array(store, **kwargs)
-        return Array(
-            store,
-            read_only=read_only,
-            cache_metadata=cache_metadata,
-            cache_attrs=cache_attrs,
-            write_empty_chunks=write_empty_chunks,
-        )
+        return store
 
     def expected(self):
         return [
@@ -1784,23 +1744,11 @@ class TestArrayWithNestedDirectoryStore(TestArrayWithDirectoryStore):
 
 
 class TestArrayWithN5Store(TestArrayWithDirectoryStore):
-    @staticmethod
-    def create_array(read_only=False, **kwargs):
+    def create_store(self):
         path = mkdtemp()
         atexit.register(shutil.rmtree, path)
         store = N5Store(path)
-        cache_metadata = kwargs.pop("cache_metadata", True)
-        cache_attrs = kwargs.pop("cache_attrs", True)
-        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
-        kwargs.setdefault("compressor", Zlib(1))
-        init_array(store, **kwargs)
-        return Array(
-            store,
-            read_only=read_only,
-            cache_metadata=cache_metadata,
-            cache_attrs=cache_attrs,
-            write_empty_chunks=write_empty_chunks,
-        )
+        return store
 
     def test_array_0d(self):
         # test behaviour for array with 0 dimensions
@@ -2091,91 +2039,43 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
 class TestArrayWithN5FSStore(TestArrayWithN5Store):
-    @staticmethod
-    def create_array(read_only=False, **kwargs):
+    def create_store(self):
         path = mkdtemp()
         atexit.register(shutil.rmtree, path)
         store = N5FSStore(path)
-        cache_metadata = kwargs.pop("cache_metadata", True)
-        cache_attrs = kwargs.pop("cache_attrs", True)
-        kwargs.setdefault("compressor", Zlib(1))
-        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
-        init_array(store, **kwargs)
-        return Array(
-            store,
-            read_only=read_only,
-            cache_metadata=cache_metadata,
-            cache_attrs=cache_attrs,
-            write_empty_chunks=write_empty_chunks,
-        )
+        return store
 
 
 class TestArrayWithDBMStore(TestArray):
-    @staticmethod
-    def create_array(read_only=False, **kwargs):
+    def create_store(self):
         path = mktemp(suffix=".anydbm")
         atexit.register(atexit_rmglob, path + "*")
         store = DBMStore(path, flag="n")
-        cache_metadata = kwargs.pop("cache_metadata", True)
-        cache_attrs = kwargs.pop("cache_attrs", True)
-        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
-        kwargs.setdefault("compressor", Zlib(1))
-        init_array(store, **kwargs)
-        return Array(
-            store,
-            read_only=read_only,
-            cache_attrs=cache_attrs,
-            cache_metadata=cache_metadata,
-            write_empty_chunks=write_empty_chunks,
-        )
+        return store
 
     def test_nbytes_stored(self):
         pass  # not implemented
 
 
 class TestArrayWithDBMStoreBerkeleyDB(TestArray):
-    @staticmethod
-    def create_array(read_only=False, **kwargs):
+    def create_store(self):
         bsddb3 = pytest.importorskip("bsddb3")
         path = mktemp(suffix=".dbm")
         atexit.register(os.remove, path)
         store = DBMStore(path, flag="n", open=bsddb3.btopen)
-        cache_metadata = kwargs.pop("cache_metadata", True)
-        cache_attrs = kwargs.pop("cache_attrs", True)
-        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
-        kwargs.setdefault("compressor", Zlib(1))
-        init_array(store, **kwargs)
-        return Array(
-            store,
-            read_only=read_only,
-            cache_metadata=cache_metadata,
-            cache_attrs=cache_attrs,
-            write_empty_chunks=write_empty_chunks,
-        )
+        return store
 
     def test_nbytes_stored(self):
         pass  # not implemented
 
 
 class TestArrayWithLMDBStore(TestArray):
-    @staticmethod
-    def create_array(read_only=False, **kwargs):
+    def create_store(self):
         pytest.importorskip("lmdb")
         path = mktemp(suffix=".lmdb")
         atexit.register(atexit_rmtree, path)
         store = LMDBStore(path, buffers=True)
-        cache_metadata = kwargs.pop("cache_metadata", True)
-        cache_attrs = kwargs.pop("cache_attrs", True)
-        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
-        kwargs.setdefault("compressor", Zlib(1))
-        init_array(store, **kwargs)
-        return Array(
-            store,
-            read_only=read_only,
-            cache_metadata=cache_metadata,
-            cache_attrs=cache_attrs,
-            write_empty_chunks=write_empty_chunks,
-        )
+        return store
 
     def test_store_has_bytes_values(self):
         pass  # returns values as memoryviews/buffers instead of bytes
@@ -2185,68 +2085,31 @@ class TestArrayWithLMDBStore(TestArray):
 
 
 class TestArrayWithLMDBStoreNoBuffers(TestArray):
-    @staticmethod
-    def create_array(read_only=False, **kwargs):
+    def create_store(self):
         pytest.importorskip("lmdb")
         path = mktemp(suffix=".lmdb")
         atexit.register(atexit_rmtree, path)
         store = LMDBStore(path, buffers=False)
-        cache_metadata = kwargs.pop("cache_metadata", True)
-        cache_attrs = kwargs.pop("cache_attrs", True)
-        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
-        kwargs.setdefault("compressor", Zlib(1))
-        init_array(store, **kwargs)
-        return Array(
-            store,
-            read_only=read_only,
-            cache_metadata=cache_metadata,
-            cache_attrs=cache_attrs,
-            write_empty_chunks=write_empty_chunks,
-        )
+        return store
 
     def test_nbytes_stored(self):
         pass  # not implemented
 
 
 class TestArrayWithSQLiteStore(TestArray):
-    @staticmethod
-    def create_array(read_only=False, **kwargs):
+    def create_store(self):
         pytest.importorskip("sqlite3")
         path = mktemp(suffix=".db")
         atexit.register(atexit_rmtree, path)
         store = SQLiteStore(path)
-        cache_metadata = kwargs.pop("cache_metadata", True)
-        cache_attrs = kwargs.pop("cache_attrs", True)
-        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
-        kwargs.setdefault("compressor", Zlib(1))
-        init_array(store, **kwargs)
-        return Array(
-            store,
-            read_only=read_only,
-            cache_metadata=cache_metadata,
-            cache_attrs=cache_attrs,
-            write_empty_chunks=write_empty_chunks,
-        )
+        return store
 
     def test_nbytes_stored(self):
         pass  # not implemented
 
 
 class TestArrayWithNoCompressor(TestArray):
-    def create_array(self, read_only=False, **kwargs):
-        store = KVStore(dict())
-        kwargs.setdefault("compressor", None)
-        cache_metadata = kwargs.pop("cache_metadata", True)
-        cache_attrs = kwargs.pop("cache_attrs", True)
-        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
-        init_array(store, **kwargs)
-        return Array(
-            store,
-            read_only=read_only,
-            cache_metadata=cache_metadata,
-            cache_attrs=cache_attrs,
-            write_empty_chunks=write_empty_chunks,
-        )
+    compressor = None
 
     def expected(self):
         return [
@@ -2259,21 +2122,8 @@ class TestArrayWithNoCompressor(TestArray):
 
 
 class TestArrayWithBZ2Compressor(TestArray):
-    def create_array(self, read_only=False, **kwargs):
-        store = KVStore(dict())
-        compressor = BZ2(level=1)
-        kwargs.setdefault("compressor", compressor)
-        cache_metadata = kwargs.pop("cache_metadata", True)
-        cache_attrs = kwargs.pop("cache_attrs", True)
-        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
-        init_array(store, **kwargs)
-        return Array(
-            store,
-            read_only=read_only,
-            cache_metadata=cache_metadata,
-            cache_attrs=cache_attrs,
-            write_empty_chunks=write_empty_chunks,
-        )
+
+    compressor = BZ2(level=1)
 
     def expected(self):
         return [
@@ -2286,21 +2136,8 @@ class TestArrayWithBZ2Compressor(TestArray):
 
 
 class TestArrayWithBloscCompressor(TestArray):
-    def create_array(self, read_only=False, **kwargs):
-        store = KVStore(dict())
-        compressor = Blosc(cname="zstd", clevel=1, shuffle=1)
-        kwargs.setdefault("compressor", compressor)
-        cache_metadata = kwargs.pop("cache_metadata", True)
-        cache_attrs = kwargs.pop("cache_attrs", True)
-        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
-        init_array(store, **kwargs)
-        return Array(
-            store,
-            read_only=read_only,
-            cache_metadata=cache_metadata,
-            cache_attrs=cache_attrs,
-            write_empty_chunks=write_empty_chunks,
-        )
+
+    compressor = Blosc(cname="zstd", clevel=1, shuffle=1)
 
     def expected(self):
         return [
@@ -2320,21 +2157,8 @@ except ImportError:  # pragma: no cover
 
 @unittest.skipIf(LZMA is None, "LZMA codec not available")
 class TestArrayWithLZMACompressor(TestArray):
-    def create_array(self, read_only=False, **kwargs):
-        store = KVStore(dict())
-        compressor = LZMA(preset=1)
-        kwargs.setdefault("compressor", compressor)
-        cache_metadata = kwargs.pop("cache_metadata", True)
-        cache_attrs = kwargs.pop("cache_attrs", True)
-        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
-        init_array(store, **kwargs)
-        return Array(
-            store,
-            read_only=read_only,
-            cache_metadata=cache_metadata,
-            cache_attrs=cache_attrs,
-            write_empty_chunks=write_empty_chunks,
-        )
+
+    compressor = LZMA(preset=1)
 
     def expected(self):
         return [
@@ -2347,27 +2171,13 @@ class TestArrayWithLZMACompressor(TestArray):
 
 
 class TestArrayWithFilters(TestArray):
-    @staticmethod
-    def create_array(read_only=False, **kwargs):
-        store = KVStore(dict())
-        dtype = kwargs.get("dtype")
-        filters = [
+
+    compressor = Zlib(1)
+
+    def create_filters(self, dtype: Optional[str]) -> Tuple[Any, ...]:
+        return (
             Delta(dtype=dtype),
             FixedScaleOffset(dtype=dtype, scale=1, offset=0),
-        ]
-        kwargs.setdefault("filters", filters)
-        compressor = Zlib(1)
-        kwargs.setdefault("compressor", compressor)
-        cache_metadata = kwargs.pop("cache_metadata", True)
-        cache_attrs = kwargs.pop("cache_attrs", True)
-        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
-        init_array(store, **kwargs)
-        return Array(
-            store,
-            read_only=read_only,
-            cache_attrs=cache_attrs,
-            cache_metadata=cache_metadata,
-            write_empty_chunks=write_empty_chunks,
         )
 
     def expected(self):
@@ -2490,23 +2300,13 @@ class CustomMapping:
     def __contains__(self, item):
         return item in self.inner
 
+    def close(self):
+        return self.inner.close()
+
 
 class TestArrayWithCustomMapping(TestArray):
-    @staticmethod
-    def create_array(read_only=False, **kwargs):
-        store = CustomMapping()
-        kwargs.setdefault("compressor", Zlib(1))
-        cache_metadata = kwargs.pop("cache_metadata", True)
-        cache_attrs = kwargs.pop("cache_attrs", True)
-        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
-        init_array(store, **kwargs)
-        return Array(
-            store,
-            read_only=read_only,
-            cache_metadata=cache_metadata,
-            cache_attrs=cache_attrs,
-            write_empty_chunks=write_empty_chunks,
-        )
+    def create_store(self):
+        return CustomMapping()
 
     def test_nbytes_stored(self):
         z = self.create_array(shape=1000, chunks=100)
@@ -2516,22 +2316,6 @@ class TestArrayWithCustomMapping(TestArray):
 
 
 class TestArrayNoCache(TestArray):
-    @staticmethod
-    def create_array(read_only=False, **kwargs):
-        store = KVStore(dict())
-        kwargs.setdefault("compressor", Zlib(level=1))
-        cache_metadata = kwargs.pop("cache_metadata", True)
-        cache_attrs = kwargs.pop("cache_attrs", True)
-        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
-        init_array(store, **kwargs)
-        return Array(
-            store,
-            read_only=read_only,
-            cache_metadata=cache_metadata,
-            cache_attrs=cache_attrs,
-            write_empty_chunks=write_empty_chunks,
-        )
-
     def test_cache_metadata(self):
         a1 = self.create_array(shape=100, chunks=10, dtype="i1", cache_metadata=False)
         path = None if self.version == 2 else a1.path
@@ -2595,50 +2379,32 @@ class TestArrayNoCache(TestArray):
 
 
 class TestArrayWithStoreCache(TestArray):
-    @staticmethod
-    def create_array(read_only=False, **kwargs):
-        store = LRUStoreCache(dict(), max_size=None)
-        kwargs.setdefault("compressor", Zlib(level=1))
-        cache_metadata = kwargs.pop("cache_metadata", True)
-        cache_attrs = kwargs.pop("cache_attrs", True)
-        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
-        init_array(store, **kwargs)
-        return Array(
-            store,
-            read_only=read_only,
-            cache_metadata=cache_metadata,
-            cache_attrs=cache_attrs,
-            write_empty_chunks=write_empty_chunks,
-        )
+    def create_store(self):
+        return LRUStoreCache(dict(), max_size=None)
 
     def test_store_has_bytes_values(self):
         # skip as the cache has no control over how the store provides values
         pass
 
 
-fsspec_mapper_kwargs = {"check": True, "create": True, "missing_exceptions": None}
-
-
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
 class TestArrayWithFSStore(TestArray):
-    @staticmethod
-    def create_array(read_only=False, **kwargs):
+    compressor = Blosc()
+    dimension_separator: Literal[".", "/"] = "."
+
+    def create_store(self):
         path = mkdtemp()
         atexit.register(shutil.rmtree, path)
-        key_separator = kwargs.pop("key_separator", ".")
-        store = FSStore(path, key_separator=key_separator, auto_mkdir=True, **fsspec_mapper_kwargs)
-        cache_metadata = kwargs.pop("cache_metadata", True)
-        cache_attrs = kwargs.pop("cache_attrs", True)
-        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
-        kwargs.setdefault("compressor", Blosc())
-        init_array(store, **kwargs)
-        return Array(
-            store,
-            read_only=read_only,
-            cache_metadata=cache_metadata,
-            cache_attrs=cache_attrs,
-            write_empty_chunks=write_empty_chunks,
+        key_separator = self.dimension_separator
+        store = FSStore(
+            path,
+            key_separator=key_separator,
+            auto_mkdir=True,
+            check=True,
+            create=True,
+            missing_exceptions=None,
         )
+        return store
 
     def expected(self):
         return [
@@ -2652,27 +2418,25 @@ class TestArrayWithFSStore(TestArray):
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
 class TestArrayWithFSStoreFromFilesystem(TestArray):
-    @staticmethod
-    def create_array(read_only=False, **kwargs):
+    compressor = Blosc()
+    dimension_separator = "."
+
+    def create_store(self):
         from fsspec.implementations.local import LocalFileSystem
 
         fs = LocalFileSystem(auto_mkdir=True)
         path = mkdtemp()
         atexit.register(shutil.rmtree, path)
-        key_separator = kwargs.pop("key_separator", ".")
-        store = FSStore(path, fs=fs, key_separator=key_separator, **fsspec_mapper_kwargs)
-        cache_metadata = kwargs.pop("cache_metadata", True)
-        cache_attrs = kwargs.pop("cache_attrs", True)
-        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
-        kwargs.setdefault("compressor", Blosc())
-        init_array(store, **kwargs)
-        return Array(
-            store,
-            read_only=read_only,
-            cache_metadata=cache_metadata,
-            cache_attrs=cache_attrs,
-            write_empty_chunks=write_empty_chunks,
+        key_separator = self.dimension_separator
+        store = FSStore(
+            path,
+            fs=fs,
+            key_separator=key_separator,
+            check=True,
+            create=True,
+            missing_exceptions=None,
         )
+        return store
 
     def expected(self):
         return [
@@ -2686,24 +2450,14 @@ class TestArrayWithFSStoreFromFilesystem(TestArray):
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
 class TestArrayWithFSStorePartialRead(TestArray):
-    @staticmethod
-    def create_array(read_only=False, **kwargs):
+    compressor = Blosc(blocksize=256)
+    partial_decompress = True
+
+    def create_store(self):
         path = mkdtemp()
         atexit.register(shutil.rmtree, path)
         store = FSStore(path)
-        cache_metadata = kwargs.pop("cache_metadata", True)
-        cache_attrs = kwargs.pop("cache_attrs", True)
-        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
-        kwargs.setdefault("compressor", Blosc(blocksize=256))
-        init_array(store, **kwargs)
-        return Array(
-            store,
-            read_only=read_only,
-            cache_metadata=cache_metadata,
-            cache_attrs=cache_attrs,
-            partial_decompress=True,
-            write_empty_chunks=write_empty_chunks,
-        )
+        return store
 
     def expected(self):
         return [
@@ -2742,25 +2496,9 @@ class TestArrayWithFSStorePartialRead(TestArray):
 
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
-class TestArrayWithFSStoreNested(TestArray):
-    @staticmethod
-    def create_array(read_only=False, **kwargs):
-        path = mkdtemp()
-        atexit.register(shutil.rmtree, path)
-        key_separator = kwargs.pop("key_separator", "/")
-        store = FSStore(path, key_separator=key_separator, auto_mkdir=True)
-        cache_metadata = kwargs.pop("cache_metadata", True)
-        cache_attrs = kwargs.pop("cache_attrs", True)
-        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
-        kwargs.setdefault("compressor", Blosc())
-        init_array(store, **kwargs)
-        return Array(
-            store,
-            read_only=read_only,
-            cache_metadata=cache_metadata,
-            cache_attrs=cache_attrs,
-            write_empty_chunks=write_empty_chunks,
-        )
+class TestArrayWithFSStoreNested(TestArrayWithFSStore):
+    compressor = Blosc()
+    dimension_separator = "/"
 
     def expected(self):
         return [
@@ -2773,26 +2511,10 @@ class TestArrayWithFSStoreNested(TestArray):
 
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
-class TestArrayWithFSStoreNestedPartialRead(TestArray):
-    @staticmethod
-    def create_array(read_only=False, **kwargs):
-        path = mkdtemp()
-        atexit.register(shutil.rmtree, path)
-        key_separator = kwargs.pop("key_separator", "/")
-        store = FSStore(path, key_separator=key_separator, auto_mkdir=True)
-        cache_metadata = kwargs.pop("cache_metadata", True)
-        cache_attrs = kwargs.pop("cache_attrs", True)
-        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
-        kwargs.setdefault("compressor", Blosc())
-        init_array(store, **kwargs)
-        return Array(
-            store,
-            read_only=read_only,
-            cache_metadata=cache_metadata,
-            cache_attrs=cache_attrs,
-            partial_decompress=True,
-            write_empty_chunks=write_empty_chunks,
-        )
+class TestArrayWithFSStoreNestedPartialRead(TestArrayWithFSStore):
+    compressor = Blosc()
+    dimension_separator = "/"
+    partial_decompress = True
 
     def expected(self):
         return [
@@ -2837,10 +2559,12 @@ class TestArrayWithFSStoreNestedPartialRead(TestArray):
 
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestArrayV3(TestArray):
-
     version = 3
     root = meta_root
-    KVStoreClass = KVStoreV3
+    path = "arr1"
+
+    def create_store(self):
+        return KVStoreV3(dict())
 
     def expected(self):
         # tests for array without path will not be run for v3 stores
@@ -2857,30 +2581,10 @@ class TestArrayV3(TestArray):
 
 
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
-class TestArrayWithPathV3(TestArrayWithPath):
-
-    version = 3
-
-    @staticmethod
-    def create_array(array_path="arr1", read_only=False, **kwargs):
-        store = KVStoreV3(dict())
-        kwargs.setdefault("compressor", Zlib(level=1))
-        cache_metadata = kwargs.pop("cache_metadata", True)
-        cache_attrs = kwargs.pop("cache_attrs", True)
-        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
-        init_array(store, path=array_path, **kwargs)
-        return Array(
-            store,
-            path=array_path,
-            read_only=read_only,
-            cache_metadata=cache_metadata,
-            cache_attrs=cache_attrs,
-            write_empty_chunks=write_empty_chunks,
-        )
-
+class TestArrayWithPathV3(TestArrayV3):
     def test_array_init(self):
 
-        store = KVStoreV3(dict())
+        store = self.create_store()
         # can initialize an array without a path
         init_array(store, shape=100, chunks=10, dtype="<f8")
         b = Array(store)
@@ -2895,7 +2599,7 @@ class TestArrayWithPathV3(TestArrayWithPath):
         assert "968dccbbfc0139f703ead2fd1d503ad6e44db307" == b.hexdigest()
 
         # initialize at path
-        store = KVStoreV3(dict())
+        store = self.create_store()
         path = "foo/bar"
         init_array(store, shape=100, chunks=10, path=path, dtype="<f8")
         a = Array(store, path=path)
@@ -2910,12 +2614,12 @@ class TestArrayWithPathV3(TestArrayWithPath):
         assert "968dccbbfc0139f703ead2fd1d503ad6e44db307" == a.hexdigest()
 
         # store not initialized
-        store = KVStoreV3(dict())
+        store = self.create_store()
         with pytest.raises(ValueError):
             Array(store)
 
         # group is in the way
-        store = KVStoreV3(dict())
+        store = self.create_store()
         path = "baz"
         init_group(store, path=path)
         # can't open with an uninitialized array
@@ -3001,25 +2705,12 @@ class TestArrayWithPathV3(TestArrayWithPath):
 
 
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
-class TestArrayWithChunkStoreV3(TestArrayWithChunkStore, TestArrayWithPathV3):
-    @staticmethod
-    def create_array(array_path="arr1", read_only=False, **kwargs):
+class TestArrayWithChunkStoreV3(TestArrayV3):
+    compressor = Blosc()
+
+    def create_chunk_store(self):
         store = KVStoreV3(dict())
-        # separate chunk store
-        chunk_store = KVStoreV3(dict())
-        cache_metadata = kwargs.pop("cache_metadata", True)
-        cache_attrs = kwargs.pop("cache_attrs", True)
-        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
-        init_array(store, path=array_path, chunk_store=chunk_store, **kwargs)
-        return Array(
-            store,
-            path=array_path,
-            read_only=read_only,
-            chunk_store=chunk_store,
-            cache_metadata=cache_metadata,
-            cache_attrs=cache_attrs,
-            write_empty_chunks=write_empty_chunks,
-        )
+        return store
 
     def expected(self):
         return [
@@ -3051,25 +2742,11 @@ class TestArrayWithChunkStoreV3(TestArrayWithChunkStore, TestArrayWithPathV3):
 
 
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
-class TestArrayWithDirectoryStoreV3(TestArrayWithDirectoryStore, TestArrayWithPathV3):
-    @staticmethod
-    def create_array(array_path="arr1", read_only=False, **kwargs):
+class TestArrayWithDirectoryStoreV3(TestArrayV3):
+    def create_store(self) -> BaseStore:
         path = mkdtemp()
         atexit.register(shutil.rmtree, path)
-        store = DirectoryStoreV3(path)
-        cache_metadata = kwargs.pop("cache_metadata", True)
-        cache_attrs = kwargs.pop("cache_attrs", True)
-        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
-        kwargs.setdefault("compressor", Zlib(1))
-        init_array(store, path=array_path, **kwargs)
-        return Array(
-            store,
-            path=array_path,
-            read_only=read_only,
-            cache_metadata=cache_metadata,
-            cache_attrs=cache_attrs,
-            write_empty_chunks=write_empty_chunks,
-        )
+        return DirectoryStoreV3(path)
 
     def test_nbytes_stored(self):
         # dict as store
@@ -3083,29 +2760,12 @@ class TestArrayWithDirectoryStoreV3(TestArrayWithDirectoryStore, TestArrayWithPa
 
 @skip_test_env_var("ZARR_TEST_ABS")
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
-class TestArrayWithABSStoreV3(TestArrayWithABSStore, TestArrayWithPathV3):
-    @staticmethod
-    def absstore():
+class TestArrayWithABSStoreV3(TestArrayV3):
+    def create_store(self) -> ABSStoreV3:
         client = abs_container()
         store = ABSStoreV3(client=client)
         store.rmdir()
         return store
-
-    def create_array(self, array_path="arr1", read_only=False, **kwargs):
-        store = self.absstore()
-        kwargs.setdefault("compressor", Zlib(1))
-        cache_metadata = kwargs.pop("cache_metadata", True)
-        cache_attrs = kwargs.pop("cache_attrs", True)
-        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
-        init_array(store, path=array_path, **kwargs)
-        return Array(
-            store,
-            path=array_path,
-            read_only=read_only,
-            cache_metadata=cache_metadata,
-            cache_attrs=cache_attrs,
-            write_empty_chunks=write_empty_chunks,
-        )
 
 
 # TODO: TestArrayWithN5StoreV3
@@ -3113,77 +2773,40 @@ class TestArrayWithABSStoreV3(TestArrayWithABSStore, TestArrayWithPathV3):
 
 
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
-class TestArrayWithDBMStoreV3(TestArrayWithDBMStore, TestArrayWithPathV3):
-    @staticmethod
-    def create_array(array_path="arr1", read_only=False, **kwargs):
+class TestArrayWithDBMStoreV3(TestArrayV3):
+    def create_store(self) -> DBMStoreV3:
         path = mktemp(suffix=".anydbm")
         atexit.register(atexit_rmglob, path + "*")
         store = DBMStoreV3(path, flag="n")
-        cache_metadata = kwargs.pop("cache_metadata", True)
-        cache_attrs = kwargs.pop("cache_attrs", True)
-        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
-        kwargs.setdefault("compressor", Zlib(1))
-        init_array(store, path=array_path, **kwargs)
-        return Array(
-            store,
-            path=array_path,
-            read_only=read_only,
-            cache_attrs=cache_attrs,
-            cache_metadata=cache_metadata,
-            write_empty_chunks=write_empty_chunks,
-        )
+        return store
 
     def test_nbytes_stored(self):
         pass  # not implemented
 
 
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
-class TestArrayWithDBMStoreV3BerkeleyDB(TestArrayWithDBMStoreBerkeleyDB, TestArrayWithPathV3):
-    @staticmethod
-    def create_array(array_path="arr1", read_only=False, **kwargs):
+class TestArrayWithDBMStoreV3BerkeleyDB(TestArrayV3):
+    def create_store(self) -> DBMStoreV3:
         bsddb3 = pytest.importorskip("bsddb3")
         path = mktemp(suffix=".dbm")
         atexit.register(os.remove, path)
         store = DBMStoreV3(path, flag="n", open=bsddb3.btopen)
-        cache_metadata = kwargs.pop("cache_metadata", True)
-        cache_attrs = kwargs.pop("cache_attrs", True)
-        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
-        kwargs.setdefault("compressor", Zlib(1))
-        init_array(store, path=array_path, **kwargs)
-        return Array(
-            store,
-            path=array_path,
-            read_only=read_only,
-            cache_metadata=cache_metadata,
-            cache_attrs=cache_attrs,
-            write_empty_chunks=write_empty_chunks,
-        )
+        return store
 
     def test_nbytes_stored(self):
         pass  # not implemented
 
 
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
-class TestArrayWithLMDBStoreV3(TestArrayWithLMDBStore, TestArrayWithPathV3):
-    @staticmethod
-    def create_array(array_path="arr1", read_only=False, **kwargs):
+class TestArrayWithLMDBStoreV3(TestArrayV3):
+    lmdb_buffers = True
+
+    def create_store(self) -> LMDBStoreV3:
         pytest.importorskip("lmdb")
         path = mktemp(suffix=".lmdb")
         atexit.register(atexit_rmtree, path)
-        store = LMDBStoreV3(path, buffers=True)
-        cache_metadata = kwargs.pop("cache_metadata", True)
-        cache_attrs = kwargs.pop("cache_attrs", True)
-        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
-        kwargs.setdefault("compressor", Zlib(1))
-        init_array(store, path=array_path, **kwargs)
-        return Array(
-            store,
-            path=array_path,
-            read_only=read_only,
-            cache_metadata=cache_metadata,
-            cache_attrs=cache_attrs,
-            write_empty_chunks=write_empty_chunks,
-        )
+        store = LMDBStoreV3(path, buffers=self.lmdb_buffers)
+        return store
 
     def test_store_has_bytes_values(self):
         pass  # returns values as memoryviews/buffers instead of bytes
@@ -3193,52 +2816,21 @@ class TestArrayWithLMDBStoreV3(TestArrayWithLMDBStore, TestArrayWithPathV3):
 
 
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
-class TestArrayWithLMDBStoreV3NoBuffers(TestArrayWithLMDBStoreNoBuffers, TestArrayWithPathV3):
-    @staticmethod
-    def create_array(array_path="arr1", read_only=False, **kwargs):
-        pytest.importorskip("lmdb")
-        path = mktemp(suffix=".lmdb")
-        atexit.register(atexit_rmtree, path)
-        store = LMDBStoreV3(path, buffers=False)
-        cache_metadata = kwargs.pop("cache_metadata", True)
-        cache_attrs = kwargs.pop("cache_attrs", True)
-        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
-        kwargs.setdefault("compressor", Zlib(1))
-        init_array(store, path=array_path, **kwargs)
-        return Array(
-            store,
-            path=array_path,
-            read_only=read_only,
-            cache_metadata=cache_metadata,
-            cache_attrs=cache_attrs,
-            write_empty_chunks=write_empty_chunks,
-        )
+class TestArrayWithLMDBStoreV3NoBuffers(TestArrayWithLMDBStoreV3):
+    lmdb_buffers = False
 
     def test_nbytes_stored(self):
         pass  # not implemented
 
 
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
-class TestArrayWithSQLiteStoreV3(TestArrayWithPathV3, TestArrayWithSQLiteStore):
-    @staticmethod
-    def create_array(array_path="arr1", read_only=False, **kwargs):
+class TestArrayWithSQLiteStoreV3(TestArrayV3):
+    def create_store(self):
         pytest.importorskip("sqlite3")
         path = mktemp(suffix=".db")
         atexit.register(atexit_rmtree, path)
         store = SQLiteStoreV3(path)
-        cache_metadata = kwargs.pop("cache_metadata", True)
-        cache_attrs = kwargs.pop("cache_attrs", True)
-        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
-        kwargs.setdefault("compressor", Zlib(1))
-        init_array(store, path=array_path, **kwargs)
-        return Array(
-            store,
-            path=array_path,
-            read_only=read_only,
-            cache_metadata=cache_metadata,
-            cache_attrs=cache_attrs,
-            write_empty_chunks=write_empty_chunks,
-        )
+        return store
 
     def test_nbytes_stored(self):
         pass  # not implemented
@@ -3295,23 +2887,10 @@ class CustomMappingV3(RmdirV3, StoreV3):
 
 
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
-class TestArrayWithCustomMappingV3(TestArrayWithPathV3, TestArrayWithCustomMapping):
-    @staticmethod
-    def create_array(array_path="arr1", read_only=False, **kwargs):
+class TestArrayWithCustomMappingV3(TestArrayV3):
+    def create_store(self):
         store = CustomMappingV3()
-        kwargs.setdefault("compressor", Zlib(1))
-        cache_metadata = kwargs.pop("cache_metadata", True)
-        cache_attrs = kwargs.pop("cache_attrs", True)
-        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
-        init_array(store, path=array_path, **kwargs)
-        return Array(
-            store,
-            path=array_path,
-            read_only=read_only,
-            cache_metadata=cache_metadata,
-            cache_attrs=cache_attrs,
-            write_empty_chunks=write_empty_chunks,
-        )
+        return store
 
     def test_nbytes_stored(self):
         z = self.create_array(shape=1000, chunks=100)
@@ -3329,23 +2908,10 @@ class TestArrayWithCustomMappingV3(TestArrayWithPathV3, TestArrayWithCustomMappi
 
 
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
-class TestArrayNoCacheV3(TestArrayWithPathV3, TestArrayNoCache):
-    @staticmethod
-    def create_array(array_path="arr1", read_only=False, **kwargs):
+class TestArrayNoCacheV3(TestArrayWithPathV3):
+    def create_store(self):
         store = KVStoreV3(dict())
-        kwargs.setdefault("compressor", Zlib(level=1))
-        cache_metadata = kwargs.pop("cache_metadata", True)
-        cache_attrs = kwargs.pop("cache_attrs", True)
-        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
-        init_array(store, path=array_path, **kwargs)
-        return Array(
-            store,
-            path=array_path,
-            read_only=read_only,
-            cache_metadata=cache_metadata,
-            cache_attrs=cache_attrs,
-            write_empty_chunks=write_empty_chunks,
-        )
+        return store
 
     def test_object_arrays_danger(self):
         # skip this one as it only works if metadata are cached
@@ -3353,23 +2919,10 @@ class TestArrayNoCacheV3(TestArrayWithPathV3, TestArrayNoCache):
 
 
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
-class TestArrayWithStoreCacheV3(TestArrayWithPathV3, TestArrayWithStoreCache):
-    @staticmethod
-    def create_array(array_path="arr1", read_only=False, **kwargs):
+class TestArrayWithStoreCacheV3(TestArrayV3):
+    def create_store(self):
         store = LRUStoreCacheV3(dict(), max_size=None)
-        kwargs.setdefault("compressor", Zlib(level=1))
-        cache_metadata = kwargs.pop("cache_metadata", True)
-        cache_attrs = kwargs.pop("cache_attrs", True)
-        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
-        init_array(store, path=array_path, **kwargs)
-        return Array(
-            store,
-            path=array_path,
-            read_only=read_only,
-            cache_metadata=cache_metadata,
-            cache_attrs=cache_attrs,
-            write_empty_chunks=write_empty_chunks,
-        )
+        return store
 
     def test_store_has_bytes_values(self):
         # skip as the cache has no control over how the store provides values
@@ -3378,28 +2931,22 @@ class TestArrayWithStoreCacheV3(TestArrayWithPathV3, TestArrayWithStoreCache):
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
-class TestArrayWithFSStoreV3(TestArrayWithPathV3, TestArrayWithFSStore):
-    @staticmethod
-    def create_array(array_path="arr1", read_only=False, **kwargs):
+class TestArrayWithFSStoreV3(TestArrayV3):
+    compressor = Blosc()
+
+    def create_store(self):
         path = mkdtemp()
         atexit.register(shutil.rmtree, path)
-        key_separator = kwargs.pop("key_separator", ".")
+        key_separator = self.dimension_separator
         store = FSStoreV3(
-            path, key_separator=key_separator, auto_mkdir=True, **fsspec_mapper_kwargs
+            path,
+            key_separator=key_separator,
+            auto_mkdir=True,
+            create=True,
+            check=True,
+            missing_exceptions=None,
         )
-        cache_metadata = kwargs.pop("cache_metadata", True)
-        cache_attrs = kwargs.pop("cache_attrs", True)
-        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
-        kwargs.setdefault("compressor", Blosc())
-        init_array(store, path=array_path, **kwargs)
-        return Array(
-            store,
-            path=array_path,
-            read_only=read_only,
-            cache_metadata=cache_metadata,
-            cache_attrs=cache_attrs,
-            write_empty_chunks=write_empty_chunks,
-        )
+        return store
 
     def expected(self):
         return [
@@ -3413,29 +2960,23 @@ class TestArrayWithFSStoreV3(TestArrayWithPathV3, TestArrayWithFSStore):
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
-class TestArrayWithFSStoreV3FromFilesystem(TestArrayWithPathV3, TestArrayWithFSStore):
-    @staticmethod
-    def create_array(array_path="arr1", read_only=False, **kwargs):
+class TestArrayWithFSStoreV3FromFilesystem(TestArrayWithFSStoreV3):
+    def create_store(self):
         from fsspec.implementations.local import LocalFileSystem
 
         fs = LocalFileSystem(auto_mkdir=True)
         path = mkdtemp()
         atexit.register(shutil.rmtree, path)
-        key_separator = kwargs.pop("key_separator", ".")
-        store = FSStoreV3(path, fs=fs, key_separator=key_separator, **fsspec_mapper_kwargs)
-        cache_metadata = kwargs.pop("cache_metadata", True)
-        cache_attrs = kwargs.pop("cache_attrs", True)
-        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
-        kwargs.setdefault("compressor", Blosc())
-        init_array(store, path=array_path, **kwargs)
-        return Array(
-            store,
-            path=array_path,
-            read_only=read_only,
-            cache_metadata=cache_metadata,
-            cache_attrs=cache_attrs,
-            write_empty_chunks=write_empty_chunks,
+        key_separator = self.dimension_separator
+        store = FSStoreV3(
+            path,
+            fs=fs,
+            key_separator=key_separator,
+            create=True,
+            check=True,
+            missing_exceptions=None,
         )
+        return store
 
     def expected(self):
         return [
@@ -3449,26 +2990,8 @@ class TestArrayWithFSStoreV3FromFilesystem(TestArrayWithPathV3, TestArrayWithFSS
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
-class TestArrayWithFSStoreV3PartialRead(TestArrayWithPathV3, TestArrayWithFSStorePartialRead):
-    @staticmethod
-    def create_array(array_path="arr1", read_only=False, **kwargs):
-        path = mkdtemp()
-        atexit.register(shutil.rmtree, path)
-        store = FSStoreV3(path)
-        cache_metadata = kwargs.pop("cache_metadata", True)
-        cache_attrs = kwargs.pop("cache_attrs", True)
-        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
-        kwargs.setdefault("compressor", Blosc())
-        init_array(store, path=array_path, **kwargs)
-        return Array(
-            store,
-            path=array_path,
-            read_only=read_only,
-            cache_metadata=cache_metadata,
-            cache_attrs=cache_attrs,
-            partial_decompress=True,
-            write_empty_chunks=write_empty_chunks,
-        )
+class TestArrayWithFSStoreV3PartialRead(TestArrayWithFSStoreV3):
+    partial_decompress = True
 
     def expected(self):
         return [
@@ -3483,32 +3006,16 @@ class TestArrayWithFSStoreV3PartialRead(TestArrayWithPathV3, TestArrayWithFSStor
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 @pytest.mark.skipif(not v3_sharding_available, reason="sharding is disabled")
-class TestArrayWithFSStoreV3PartialReadUncompressedSharded(
-    TestArrayWithPathV3, TestArrayWithFSStorePartialRead
-):
-    @staticmethod
-    def create_array(array_path="arr1", read_only=False, **kwargs):
-        path = mkdtemp()
-        atexit.register(shutil.rmtree, path)
-        store = FSStoreV3(path)
-        cache_metadata = kwargs.pop("cache_metadata", True)
-        cache_attrs = kwargs.pop("cache_attrs", True)
-        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
-        kwargs.setdefault("compressor", None)
-        num_dims = 1 if isinstance(kwargs["shape"], int) else len(kwargs["shape"])
+class TestArrayWithFSStoreV3PartialReadUncompressedSharded(TestArrayWithFSStoreV3):
+    partial_decompress = True
+    compressor = None
+
+    def create_storage_transformers(self, shape) -> Tuple[Any]:
+        num_dims = 1 if isinstance(shape, int) else len(shape)
         sharding_transformer = ShardingStorageTransformer(
             "indexed", chunks_per_shard=(2,) * num_dims
         )
-        init_array(store, path=array_path, storage_transformers=[sharding_transformer], **kwargs)
-        return Array(
-            store,
-            path=array_path,
-            read_only=read_only,
-            cache_metadata=cache_metadata,
-            cache_attrs=cache_attrs,
-            partial_decompress=True,
-            write_empty_chunks=write_empty_chunks,
-        )
+        return (sharding_transformer,)
 
     def test_nbytes_stored(self):
         z = self.create_array(shape=1000, chunks=100)
@@ -3535,26 +3042,8 @@ class TestArrayWithFSStoreV3PartialReadUncompressedSharded(
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
-class TestArrayWithFSStoreV3Nested(TestArrayWithPathV3, TestArrayWithFSStoreNested):
-    @staticmethod
-    def create_array(array_path="arr1", read_only=False, **kwargs):
-        path = mkdtemp()
-        atexit.register(shutil.rmtree, path)
-        key_separator = kwargs.pop("key_separator", "/")
-        store = FSStoreV3(path, key_separator=key_separator, auto_mkdir=True)
-        cache_metadata = kwargs.pop("cache_metadata", True)
-        cache_attrs = kwargs.pop("cache_attrs", True)
-        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
-        kwargs.setdefault("compressor", Blosc())
-        init_array(store, path=array_path, **kwargs)
-        return Array(
-            store,
-            path=array_path,
-            read_only=read_only,
-            cache_metadata=cache_metadata,
-            cache_attrs=cache_attrs,
-            write_empty_chunks=write_empty_chunks,
-        )
+class TestArrayWithFSStoreV3Nested(TestArrayWithFSStoreV3):
+    dimension_separator = "/"
 
     def expected(self):
         return [
@@ -3568,29 +3057,8 @@ class TestArrayWithFSStoreV3Nested(TestArrayWithPathV3, TestArrayWithFSStoreNest
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
-class TestArrayWithFSStoreV3NestedPartialRead(
-    TestArrayWithPathV3, TestArrayWithFSStoreNestedPartialRead
-):
-    @staticmethod
-    def create_array(array_path="arr1", read_only=False, **kwargs):
-        path = mkdtemp()
-        atexit.register(shutil.rmtree, path)
-        key_separator = kwargs.pop("key_separator", "/")
-        store = FSStoreV3(path, key_separator=key_separator, auto_mkdir=True)
-        cache_metadata = kwargs.pop("cache_metadata", True)
-        cache_attrs = kwargs.pop("cache_attrs", True)
-        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
-        kwargs.setdefault("compressor", Blosc())
-        init_array(store, path=array_path, **kwargs)
-        return Array(
-            store,
-            path=array_path,
-            read_only=read_only,
-            cache_metadata=cache_metadata,
-            cache_attrs=cache_attrs,
-            partial_decompress=True,
-            write_empty_chunks=write_empty_chunks,
-        )
+class TestArrayWithFSStoreV3NestedPartialRead(TestArrayWithFSStoreV3):
+    dimension_separator = "/"
 
     def expected(self):
         return [
@@ -3604,32 +3072,9 @@ class TestArrayWithFSStoreV3NestedPartialRead(
 
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestArrayWithStorageTransformersV3(TestArrayWithChunkStoreV3):
-    @staticmethod
-    def create_array(array_path="arr1", read_only=False, **kwargs):
-        store = KVStoreV3(dict())
-        # separate chunk store
-        chunk_store = KVStoreV3(dict())
-        cache_metadata = kwargs.pop("cache_metadata", True)
-        cache_attrs = kwargs.pop("cache_attrs", True)
-        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
-        dummy_storage_transformer = DummyStorageTransfomer(
-            "dummy_type", test_value=DummyStorageTransfomer.TEST_CONSTANT
-        )
-        init_array(
-            store,
-            path=array_path,
-            chunk_store=chunk_store,
-            storage_transformers=[dummy_storage_transformer],
-            **kwargs,
-        )
-        return Array(
-            store,
-            path=array_path,
-            read_only=read_only,
-            chunk_store=chunk_store,
-            cache_metadata=cache_metadata,
-            cache_attrs=cache_attrs,
-            write_empty_chunks=write_empty_chunks,
+    def create_storage_transformers(self, shape) -> Tuple[Any]:
+        return (
+            DummyStorageTransfomer("dummy_type", test_value=DummyStorageTransfomer.TEST_CONSTANT),
         )
 
     def expected(self):
@@ -3644,27 +3089,12 @@ class TestArrayWithStorageTransformersV3(TestArrayWithChunkStoreV3):
 
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 @pytest.mark.skipif(not v3_sharding_available, reason="sharding is disabled")
-class TestArrayWithShardingStorageTransformerV3(TestArrayWithPathV3):
-    @staticmethod
-    def create_array(array_path="arr1", read_only=False, **kwargs):
-        store = KVStoreV3(dict())
-        cache_metadata = kwargs.pop("cache_metadata", True)
-        cache_attrs = kwargs.pop("cache_attrs", True)
-        write_empty_chunks = kwargs.pop("write_empty_chunks", True)
-        kwargs.setdefault("compressor", None)
-        num_dims = 1 if isinstance(kwargs["shape"], int) else len(kwargs["shape"])
-        sharding_transformer = ShardingStorageTransformer(
-            "indexed", chunks_per_shard=(2,) * num_dims
-        )
-        init_array(store, path=array_path, storage_transformers=[sharding_transformer], **kwargs)
-        return Array(
-            store,
-            path=array_path,
-            read_only=read_only,
-            cache_metadata=cache_metadata,
-            cache_attrs=cache_attrs,
-            write_empty_chunks=write_empty_chunks,
-        )
+class TestArrayWithShardingStorageTransformerV3(TestArrayV3):
+    compressor = None
+
+    def create_storage_transformers(self, shape) -> Tuple[Any]:
+        num_dims = 1 if isinstance(shape, int) else len(shape)
+        return (ShardingStorageTransformer("indexed", chunks_per_shard=(2,) * num_dims),)
 
     def test_nbytes_stored(self):
         z = self.create_array(shape=1000, chunks=100)

@@ -5,7 +5,19 @@ import numbers
 from textwrap import TextWrapper
 import mmap
 import time
-from typing import Any, Callable, Dict, Iterator, Mapping, Optional, Tuple, TypeVar, Union, Iterable
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Iterator,
+    Mapping,
+    Optional,
+    Tuple,
+    TypeVar,
+    Union,
+    Iterable,
+    cast,
+)
 
 import numpy as np
 from asciitree import BoxStyle, LeftAligned
@@ -63,7 +75,7 @@ def json_loads(s: Union[bytes, str]) -> Dict[str, Any]:
     return json.loads(ensure_text(s, "utf-8"))
 
 
-def normalize_shape(shape) -> Tuple[int]:
+def normalize_shape(shape: Union[int, Tuple[int, ...], None]) -> Tuple[int, ...]:
     """Convenience function to normalize the `shape` argument."""
 
     if shape is None:
@@ -74,6 +86,7 @@ def normalize_shape(shape) -> Tuple[int]:
         shape = (int(shape),)
 
     # normalize
+    shape = cast(Tuple[int, ...], shape)
     shape = tuple(int(s) for s in shape)
     return shape
 
