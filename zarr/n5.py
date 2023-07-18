@@ -18,16 +18,16 @@ from .storage import array_meta_key as zarr_array_meta_key
 from .storage import attrs_key as zarr_attrs_key
 from .storage import group_meta_key as zarr_group_meta_key
 
-N5_FORMAT = "2.0.0"
+N5_FORMAT = '2.0.0'
 
 zarr_to_n5_keys = [
-    ("chunks", "blockSize"),
-    ("dtype", "dataType"),
-    ("compressor", "compression"),
-    ("shape", "dimensions"),
+    ('chunks', 'blockSize'),
+    ('dtype', 'dataType'),
+    ('compressor', 'compression'),
+    ('shape', 'dimensions')
 ]
-n5_attrs_key = "attributes.json"
-n5_keywords = ["n5", "dataType", "dimensions", "blockSize", "compression"]
+n5_attrs_key = 'attributes.json'
+n5_keywords = ['n5', 'dataType', 'dimensions', 'blockSize', 'compression']
 
 
 class N5Store(NestedDirectoryStore):
@@ -173,13 +173,13 @@ class N5Store(NestedDirectoryStore):
             if key_new not in self:
                 return False
             # group if not a dataset (attributes do not contain 'dimensions')
-            return "dimensions" not in self._load_n5_attrs(key_new)
+            return 'dimensions' not in self._load_n5_attrs(key_new)
 
         elif key.endswith(zarr_array_meta_key):
 
             key_new = key.replace(zarr_array_meta_key, n5_attrs_key)
             # array if attributes contain 'dimensions'
-            return "dimensions" in self._load_n5_attrs(key_new)
+            return 'dimensions' in self._load_n5_attrs(key_new)
 
         elif key.endswith(zarr_attrs_key):
 
@@ -195,7 +195,10 @@ class N5Store(NestedDirectoryStore):
         return super().__contains__(key_new)
 
     def __eq__(self, other):
-        return isinstance(other, N5Store) and self.path == other.path
+        return (
+            isinstance(other, N5Store) and
+            self.path == other.path
+        )
 
     def listdir(self, path: Optional[str] = None):
 
@@ -226,7 +229,7 @@ class N5Store(NestedDirectoryStore):
                         for file_name in file_names:
                             file_path = os.path.join(dir_path, file_name)
                             rel_path = file_path.split(root_path + os.path.sep)[1]
-                            new_child = rel_path.replace(os.path.sep, ".")
+                            new_child = rel_path.replace(os.path.sep, '.')
                             new_children.append(invert_chunk_coords(new_child))
                 else:
                     new_children.append(entry)
@@ -262,7 +265,7 @@ class N5Store(NestedDirectoryStore):
             attrs_key = os.path.join(path, n5_attrs_key)
 
         n5_attrs = self._load_n5_attrs(attrs_key)
-        return len(n5_attrs) > 0 and "dimensions" not in n5_attrs
+        return len(n5_attrs) > 0 and 'dimensions' not in n5_attrs
 
     def _is_array(self, path: str):
 
@@ -271,7 +274,7 @@ class N5Store(NestedDirectoryStore):
         else:
             attrs_key = os.path.join(path, n5_attrs_key)
 
-        return "dimensions" in self._load_n5_attrs(attrs_key)
+        return 'dimensions' in self._load_n5_attrs(attrs_key)
 
     def _contains_attrs(self, path: str):
 
@@ -337,28 +340,27 @@ class N5FSStore(FSStore):
     dimensions, hence the Zarr arrays targeting N5 have the deceptive
     "." dimension separator.
     """
-
-    _array_meta_key = "attributes.json"
-    _group_meta_key = "attributes.json"
-    _attrs_key = "attributes.json"
+    _array_meta_key = 'attributes.json'
+    _group_meta_key = 'attributes.json'
+    _attrs_key = 'attributes.json'
 
     def __init__(self, *args, **kwargs):
-        if "dimension_separator" in kwargs:
-            kwargs.pop("dimension_separator")
-            warnings.warn("Keyword argument `dimension_separator` will be ignored")
+        if 'dimension_separator' in kwargs:
+            kwargs.pop('dimension_separator')
+            warnings.warn('Keyword argument `dimension_separator` will be ignored')
         dimension_separator = "."
         super().__init__(*args, dimension_separator=dimension_separator, **kwargs)
 
     @staticmethod
     def _swap_separator(key: str):
-        segments = list(key.split("/"))
+        segments = list(key.split('/'))
         if segments:
             last_segment = segments[-1]
             if _prog_ckey.match(last_segment):
-                coords = list(last_segment.split("."))
-                last_segment = "/".join(coords[::-1])
+                coords = list(last_segment.split('.'))
+                last_segment = '/'.join(coords[::-1])
                 segments = segments[:-1] + [last_segment]
-                key = "/".join(segments)
+                key = '/'.join(segments)
         return key
 
     def _normalize_key(self, key: str):
@@ -525,7 +527,7 @@ class N5FSStore(FSStore):
                     for file_name in self.fs.find(entry_path):
                         file_path = os.path.join(root_path, file_name)
                         rel_path = file_path.split(root_path)[1]
-                        new_child = rel_path.lstrip("/").replace("/", ".")
+                        new_child = rel_path.lstrip('/').replace('/', ".")
                         new_children.append(invert_chunk_coords(new_child))
                 else:
                     new_children.append(entry)
@@ -584,7 +586,7 @@ class N5FSStore(FSStore):
 
 def is_chunk_key(key: str):
     rv = False
-    segments = list(key.split("/"))
+    segments = list(key.split('/'))
     if segments:
         last_segment = segments[-1]
         rv = bool(_prog_ckey.match(last_segment))
@@ -592,116 +594,118 @@ def is_chunk_key(key: str):
 
 
 def invert_chunk_coords(key: str):
-    segments = list(key.split("/"))
+    segments = list(key.split('/'))
     if segments:
         last_segment = segments[-1]
         if _prog_ckey.match(last_segment):
-            coords = list(last_segment.split("."))
-            last_segment = "/".join(coords[::-1])
+            coords = list(last_segment.split('.'))
+            last_segment = '/'.join(coords[::-1])
             segments = segments[:-1] + [last_segment]
-            key = "/".join(segments)
+            key = '/'.join(segments)
     return key
 
 
 def group_metadata_to_n5(group_metadata: Dict[str, Any]) -> Dict[str, Any]:
-    """Convert group metadata from zarr to N5 format."""
-    del group_metadata["zarr_format"]
+    '''Convert group metadata from zarr to N5 format.'''
+    del group_metadata['zarr_format']
     # TODO: This should only exist at the top-level
-    group_metadata["n5"] = N5_FORMAT
+    group_metadata['n5'] = N5_FORMAT
     return group_metadata
 
 
 def group_metadata_to_zarr(group_metadata: Dict[str, Any]) -> Dict[str, Any]:
-    """Convert group metadata from N5 to zarr format."""
+    '''Convert group metadata from N5 to zarr format.'''
     # This only exists at the top level
-    group_metadata.pop("n5", None)
-    group_metadata["zarr_format"] = ZARR_FORMAT
+    group_metadata.pop('n5', None)
+    group_metadata['zarr_format'] = ZARR_FORMAT
     return group_metadata
 
 
 def array_metadata_to_n5(array_metadata: Dict[str, Any], top_level=False) -> Dict[str, Any]:
-    """Convert array metadata from zarr to N5 format. If the `top_level` keyword argument is True,
-    then the `N5` : N5_FORMAT key : value pair will be inserted into the metadata."""
+    '''Convert array metadata from zarr to N5 format. If the `top_level` keyword argument is True,
+    then the `N5` : N5_FORMAT key : value pair will be inserted into the metadata.'''
 
     for f, t in zarr_to_n5_keys:
         array_metadata[t] = array_metadata.pop(f)
-    del array_metadata["zarr_format"]
+    del array_metadata['zarr_format']
     if top_level:
-        array_metadata["n5"] = N5_FORMAT
+        array_metadata['n5'] = N5_FORMAT
     try:
-        dtype = np.dtype(array_metadata["dataType"])
+        dtype = np.dtype(array_metadata['dataType'])
     except TypeError:
-        raise TypeError(f"Data type {array_metadata['dataType']} is not supported by N5")
+        raise TypeError(
+            f"Data type {array_metadata['dataType']} is not supported by N5")
 
-    array_metadata["dataType"] = dtype.name
-    array_metadata["dimensions"] = array_metadata["dimensions"][::-1]
-    array_metadata["blockSize"] = array_metadata["blockSize"][::-1]
+    array_metadata['dataType'] = dtype.name
+    array_metadata['dimensions'] = array_metadata['dimensions'][::-1]
+    array_metadata['blockSize'] = array_metadata['blockSize'][::-1]
 
-    if "fill_value" in array_metadata:
-        if array_metadata["fill_value"] != 0 and array_metadata["fill_value"] is not None:
+    if 'fill_value' in array_metadata:
+        if array_metadata['fill_value'] != 0 and array_metadata['fill_value'] is not None:
             raise ValueError(
-                f"""Received fill_value = {array_metadata['fill_value']},
-                but N5 only supports fill_value = 0"""
-            )
-        del array_metadata["fill_value"]
+                f'''Received fill_value = {array_metadata['fill_value']},
+                but N5 only supports fill_value = 0'''
+                )
+        del array_metadata['fill_value']
 
-    if "order" in array_metadata:
-        if array_metadata["order"] != "C":
+    if 'order' in array_metadata:
+        if array_metadata['order'] != 'C':
             raise ValueError(
                 f"Received order = {array_metadata['order']}, but N5 only supports order = C"
-            )
-        del array_metadata["order"]
+                )
+        del array_metadata['order']
 
-    if "filters" in array_metadata:
-        if array_metadata["filters"] != [] and array_metadata["filters"] is not None:
-            raise ValueError("Received filters, but N5 storage does not support zarr filters")
-        del array_metadata["filters"]
+    if 'filters' in array_metadata:
+        if array_metadata['filters'] != [] and array_metadata['filters'] is not None:
+            raise ValueError(
+                "Received filters, but N5 storage does not support zarr filters"
+                )
+        del array_metadata['filters']
 
-    assert "compression" in array_metadata
-    compressor_config = array_metadata["compression"]
+    assert 'compression' in array_metadata
+    compressor_config = array_metadata['compression']
     compressor_config = compressor_config_to_n5(compressor_config)
-    array_metadata["compression"] = compressor_config
+    array_metadata['compression'] = compressor_config
 
-    if "dimension_separator" in array_metadata:
-        del array_metadata["dimension_separator"]
+    if 'dimension_separator' in array_metadata:
+        del array_metadata['dimension_separator']
 
     return array_metadata
 
 
-def array_metadata_to_zarr(
-    array_metadata: Dict[str, Any], top_level: bool = False
-) -> Dict[str, Any]:
-    """Convert array metadata from N5 to zarr format.
-    If the `top_level` keyword argument is True, then the `N5` key will be removed from metadata"""
+def array_metadata_to_zarr(array_metadata: Dict[str, Any],
+                           top_level: bool = False) -> Dict[str, Any]:
+    '''Convert array metadata from N5 to zarr format.
+    If the `top_level` keyword argument is True, then the `N5` key will be removed from metadata'''
     for t, f in zarr_to_n5_keys:
         array_metadata[t] = array_metadata.pop(f)
     if top_level:
-        array_metadata.pop("n5")
-    array_metadata["zarr_format"] = ZARR_FORMAT
+        array_metadata.pop('n5')
+    array_metadata['zarr_format'] = ZARR_FORMAT
 
-    array_metadata["shape"] = array_metadata["shape"][::-1]
-    array_metadata["chunks"] = array_metadata["chunks"][::-1]
-    array_metadata["fill_value"] = 0  # also if None was requested
-    array_metadata["order"] = "C"
-    array_metadata["filters"] = []
-    array_metadata["dimension_separator"] = "."
-    array_metadata["dtype"] = np.dtype(array_metadata["dtype"]).str
+    array_metadata['shape'] = array_metadata['shape'][::-1]
+    array_metadata['chunks'] = array_metadata['chunks'][::-1]
+    array_metadata['fill_value'] = 0  # also if None was requested
+    array_metadata['order'] = 'C'
+    array_metadata['filters'] = []
+    array_metadata['dimension_separator'] = '.'
+    array_metadata['dtype'] = np.dtype(array_metadata['dtype']).str
 
-    compressor_config = array_metadata["compressor"]
+    compressor_config = array_metadata['compressor']
     compressor_config = compressor_config_to_zarr(compressor_config)
-    array_metadata["compressor"] = {
-        "id": N5ChunkWrapper.codec_id,
-        "compressor_config": compressor_config,
-        "dtype": array_metadata["dtype"],
-        "chunk_shape": array_metadata["chunks"],
+    array_metadata['compressor'] = {
+        'id': N5ChunkWrapper.codec_id,
+        'compressor_config': compressor_config,
+        'dtype': array_metadata['dtype'],
+        'chunk_shape': array_metadata['chunks']
     }
 
     return array_metadata
 
 
 def attrs_to_zarr(attrs: Dict[str, Any]) -> Dict[str, Any]:
-    """Get all zarr attributes from an N5 attributes dictionary (i.e.,
-    all non-keyword attributes)."""
+    '''Get all zarr attributes from an N5 attributes dictionary (i.e.,
+    all non-keyword attributes).'''
 
     # remove all N5 keywords
     for n5_key in n5_keywords:
@@ -714,133 +718,134 @@ def attrs_to_zarr(attrs: Dict[str, Any]) -> Dict[str, Any]:
 def compressor_config_to_n5(compressor_config: Optional[Dict[str, Any]]) -> Dict[str, Any]:
 
     if compressor_config is None:
-        return {"type": "raw"}
+        return {'type': 'raw'}
     else:
         _compressor_config = compressor_config
 
     # peel wrapper, if present
-    if _compressor_config["id"] == N5ChunkWrapper.codec_id:
-        _compressor_config = _compressor_config["compressor_config"]
+    if _compressor_config['id'] == N5ChunkWrapper.codec_id:
+        _compressor_config = _compressor_config['compressor_config']
 
-    codec_id = _compressor_config["id"]
-    n5_config = {"type": codec_id}
+    codec_id = _compressor_config['id']
+    n5_config = {'type': codec_id}
 
-    if codec_id == "bz2":
+    if codec_id == 'bz2':
 
-        n5_config["type"] = "bzip2"
-        n5_config["blockSize"] = _compressor_config["level"]
+        n5_config['type'] = 'bzip2'
+        n5_config['blockSize'] = _compressor_config['level']
 
-    elif codec_id == "blosc":
+    elif codec_id == 'blosc':
 
-        n5_config["cname"] = _compressor_config["cname"]
-        n5_config["clevel"] = _compressor_config["clevel"]
-        n5_config["shuffle"] = _compressor_config["shuffle"]
-        n5_config["blocksize"] = _compressor_config["blocksize"]
+        n5_config['cname'] = _compressor_config['cname']
+        n5_config['clevel'] = _compressor_config['clevel']
+        n5_config['shuffle'] = _compressor_config['shuffle']
+        n5_config['blocksize'] = _compressor_config['blocksize']
 
-    elif codec_id == "lzma":
+    elif codec_id == 'lzma':
 
         # Switch to XZ for N5 if we are using the default XZ format.
         # Note: 4 is the default, which is lzma.CHECK_CRC64.
-        if _compressor_config["format"] == 1 and _compressor_config["check"] in [-1, 4]:
-            n5_config["type"] = "xz"
+        if _compressor_config['format'] == 1 and _compressor_config['check'] in [-1, 4]:
+            n5_config['type'] = 'xz'
         else:
             warnings.warn(
                 "Not all N5 implementations support lzma compression (yet). You "
                 "might not be able to open the dataset with another N5 library.",
-                RuntimeWarning,
+                RuntimeWarning
             )
-            n5_config["format"] = _compressor_config["format"]
-            n5_config["check"] = _compressor_config["check"]
-            n5_config["filters"] = _compressor_config["filters"]
+            n5_config['format'] = _compressor_config['format']
+            n5_config['check'] = _compressor_config['check']
+            n5_config['filters'] = _compressor_config['filters']
 
         # The default is lzma.PRESET_DEFAULT, which is 6.
-        if _compressor_config["preset"]:
-            n5_config["preset"] = _compressor_config["preset"]
+        if _compressor_config['preset']:
+            n5_config['preset'] = _compressor_config['preset']
         else:
-            n5_config["preset"] = 6
+            n5_config['preset'] = 6
 
-    elif codec_id == "zlib":
+    elif codec_id == 'zlib':
 
-        n5_config["type"] = "gzip"
-        n5_config["level"] = _compressor_config["level"]
-        n5_config["useZlib"] = True
+        n5_config['type'] = 'gzip'
+        n5_config['level'] = _compressor_config['level']
+        n5_config['useZlib'] = True
 
-    elif codec_id == "gzip":
+    elif codec_id == 'gzip':
 
-        n5_config["type"] = "gzip"
-        n5_config["level"] = _compressor_config["level"]
-        n5_config["useZlib"] = False
+        n5_config['type'] = 'gzip'
+        n5_config['level'] = _compressor_config['level']
+        n5_config['useZlib'] = False
 
     else:
 
-        n5_config.update({k: v for k, v in _compressor_config.items() if k != "type"})
+        n5_config.update({k: v for k, v in _compressor_config.items() if k != 'type'})
 
     return n5_config
 
 
 def compressor_config_to_zarr(compressor_config: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 
-    codec_id = compressor_config["type"]
-    zarr_config = {"id": codec_id}
+    codec_id = compressor_config['type']
+    zarr_config = {'id': codec_id}
 
-    if codec_id == "bzip2":
+    if codec_id == 'bzip2':
 
-        zarr_config["id"] = "bz2"
-        zarr_config["level"] = compressor_config["blockSize"]
+        zarr_config['id'] = 'bz2'
+        zarr_config['level'] = compressor_config['blockSize']
 
-    elif codec_id == "blosc":
+    elif codec_id == 'blosc':
 
-        zarr_config["cname"] = compressor_config["cname"]
-        zarr_config["clevel"] = compressor_config["clevel"]
-        zarr_config["shuffle"] = compressor_config["shuffle"]
-        zarr_config["blocksize"] = compressor_config["blocksize"]
+        zarr_config['cname'] = compressor_config['cname']
+        zarr_config['clevel'] = compressor_config['clevel']
+        zarr_config['shuffle'] = compressor_config['shuffle']
+        zarr_config['blocksize'] = compressor_config['blocksize']
 
-    elif codec_id == "lzma":
+    elif codec_id == 'lzma':
 
-        zarr_config["format"] = compressor_config["format"]
-        zarr_config["check"] = compressor_config["check"]
-        zarr_config["preset"] = compressor_config["preset"]
-        zarr_config["filters"] = compressor_config["filters"]
+        zarr_config['format'] = compressor_config['format']
+        zarr_config['check'] = compressor_config['check']
+        zarr_config['preset'] = compressor_config['preset']
+        zarr_config['filters'] = compressor_config['filters']
 
-    elif codec_id == "xz":
+    elif codec_id == 'xz':
 
-        zarr_config["id"] = "lzma"
-        zarr_config["format"] = 1  # lzma.FORMAT_XZ
-        zarr_config["check"] = -1
-        zarr_config["preset"] = compressor_config["preset"]
-        zarr_config["filters"] = None
+        zarr_config['id'] = 'lzma'
+        zarr_config['format'] = 1  # lzma.FORMAT_XZ
+        zarr_config['check'] = -1
+        zarr_config['preset'] = compressor_config['preset']
+        zarr_config['filters'] = None
 
-    elif codec_id == "gzip":
+    elif codec_id == 'gzip':
 
-        if "useZlib" in compressor_config and compressor_config["useZlib"]:
-            zarr_config["id"] = "zlib"
-            zarr_config["level"] = compressor_config["level"]
+        if 'useZlib' in compressor_config and compressor_config['useZlib']:
+            zarr_config['id'] = 'zlib'
+            zarr_config['level'] = compressor_config['level']
         else:
-            zarr_config["id"] = "gzip"
-            zarr_config["level"] = compressor_config["level"]
+            zarr_config['id'] = 'gzip'
+            zarr_config['level'] = compressor_config['level']
 
-    elif codec_id == "raw":
+    elif codec_id == 'raw':
 
         return None
 
     else:
 
-        zarr_config.update({k: v for k, v in compressor_config.items() if k != "type"})
+        zarr_config.update({k: v for k, v in compressor_config.items() if k != 'type'})
 
     return zarr_config
 
 
 class N5ChunkWrapper(Codec):
 
-    codec_id = "n5_wrapper"
+    codec_id = 'n5_wrapper'
 
     def __init__(self, dtype, chunk_shape, compressor_config=None, compressor=None):
 
         self.dtype = np.dtype(dtype)
         self.chunk_shape = tuple(chunk_shape)
         # is the dtype a little endian format?
-        self._little_endian = self.dtype.byteorder == "<" or (
-            self.dtype.byteorder == "=" and sys.byteorder == "little"
+        self._little_endian = (
+            self.dtype.byteorder == '<' or
+            (self.dtype.byteorder == '=' and sys.byteorder == 'little')
         )
 
         if compressor:
@@ -848,7 +853,9 @@ class N5ChunkWrapper(Codec):
                 raise ValueError("Only one of compressor_config or compressor should be given.")
             compressor_config = compressor.get_config()
 
-        if compressor_config is None and compressor is None or compressor_config["id"] == "raw":
+        if (
+                compressor_config is None and compressor is None or
+                compressor_config['id'] == 'raw'):
             self.compressor_config = None
             self._compressor = None
         else:
@@ -856,7 +863,10 @@ class N5ChunkWrapper(Codec):
             self.compressor_config = self._compressor.get_config()
 
     def get_config(self):
-        config = {"id": self.codec_id, "compressor_config": self.compressor_config}
+        config = {
+            'id': self.codec_id,
+            'compressor_config': self.compressor_config
+        }
         return config
 
     def encode(self, chunk):
@@ -869,7 +879,7 @@ class N5ChunkWrapper(Codec):
         if self._compressor:
             return header + self._compressor.encode(chunk)
         else:
-            return header + chunk.tobytes(order="A")
+            return header + chunk.tobytes(order='A')
 
     def decode(self, chunk, out=None) -> bytes:
 
@@ -879,9 +889,10 @@ class N5ChunkWrapper(Codec):
         if out is not None:
 
             # out should only be used if we read a complete chunk
-            assert chunk_shape == self.chunk_shape, "Expected chunk of shape {}, found {}".format(
-                self.chunk_shape, chunk_shape
-            )
+            assert chunk_shape == self.chunk_shape, (
+                "Expected chunk of shape {}, found {}".format(
+                    self.chunk_shape,
+                    chunk_shape))
 
             if self._compressor:
                 self._compressor.decode(chunk, out)
@@ -916,21 +927,25 @@ class N5ChunkWrapper(Codec):
     @staticmethod
     def _create_header(chunk):
 
-        mode = struct.pack(">H", 0)
-        num_dims = struct.pack(">H", len(chunk.shape))
-        shape = b"".join(struct.pack(">I", d) for d in chunk.shape[::-1])
+        mode = struct.pack('>H', 0)
+        num_dims = struct.pack('>H', len(chunk.shape))
+        shape = b''.join(
+            struct.pack('>I', d)
+            for d in chunk.shape[::-1]
+        )
 
         return mode + num_dims + shape
 
     @staticmethod
     def _read_header(chunk):
 
-        num_dims = struct.unpack(">H", chunk[2:4])[0]
+        num_dims = struct.unpack('>H', chunk[2:4])[0]
         shape = tuple(
-            struct.unpack(">I", chunk[i : i + 4])[0] for i in range(4, num_dims * 4 + 4, 4)
+            struct.unpack('>I', chunk[i:i+4])[0]
+            for i in range(4, num_dims*4 + 4, 4)
         )[::-1]
 
-        len_header = 4 + num_dims * 4
+        len_header = 4 + num_dims*4
 
         return len_header, shape
 
@@ -947,7 +962,7 @@ class N5ChunkWrapper(Codec):
         if not self._little_endian:
             return data
 
-        a = np.frombuffer(data, self.dtype.newbyteorder(">"))
+        a = np.frombuffer(data, self.dtype.newbyteorder('>'))
         return a.astype(self.dtype)
 
 

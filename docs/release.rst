@@ -36,9 +36,6 @@ Maintenance
 * Refactor the core array tests to reduce code duplication.
   By :user:`Davis Bennett <d-v-b>` :issue:`1462`.
 
-* Style the codebase with ``ruff`` and ``black``.
-  By :user:`Davis Bennett` <d-v-b> :issue:`1459`
-
 .. _release_2.15.0:
 
 2.15.0

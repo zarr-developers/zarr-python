@@ -156,7 +156,7 @@ def test_array(tmp_path, module, compressor, store_type):
         dtype=a.dtype,
         chunks=10,
         compressor=compressor,
-        meta_array=xp.empty(()),
+        meta_array=xp.empty(())
     )
     z[:] = a
     assert a.shape == z.shape

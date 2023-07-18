@@ -72,42 +72,6 @@ version_scheme = "guess-next-dev"
 local_scheme = "dirty-tag"
 write_to = "zarr/version.py"
 
-[tool.ruff]
-line-length = 100
-exclude = [
-    ".bzr",
-    ".direnv",
-    ".eggs",
-    ".git",
-    ".mypy_cache",
-    ".nox",
-    ".pants.d",
-    ".ruff_cache",
-    ".venv",
-    "__pypackages__",
-    "_build",
-    "buck-out",
-    "build",
-    "dist",
-    "venv",
-    "docs"
-]
-
-[tool.black]
-line-length = 100
-exclude = '''
-/(
-    \.git
-  | \.mypy_cache
-  | \.venv
-  | _build
-  | buck-out
-  | build
-  | dist
-  | docs
-)/
-'''
-
 [tool.mypy]
 python_version = "3.8"
 ignore_missing_imports = true
