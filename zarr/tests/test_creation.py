@@ -757,3 +757,20 @@ def test_create_with_storage_transformers(at_root):
     z = create(1000000000, chunks=True, storage_transformers=[transformer], **kwargs)
     assert isinstance(z.chunk_store, DummyStorageTransfomer)
     assert z.chunk_store.test_value == DummyStorageTransfomer.TEST_CONSTANT
+
+
+@pytest.mark.parametrize(('init_shape', 'init_chunks', 'shape', 'chunks'),
+                         (((1,), (1,), (1,), (1,)),
+                          ((1.0,), (1.0,), (1,), (1,)),
+                          ((1.0,), False, (1,), (1,)),
+                          ((1.0,), True, (1,), (1,)),
+                          ((1.0,), None, (1,), (1,)),))
+def test_shape_chunk_ints(init_shape, init_chunks, shape, chunks):
+    g = open_group()
+    array = g.create_dataset('ds', shape=init_shape, chunks=init_chunks, dtype=np.uint8)
+
+    assert all(isinstance(s, int) for s in array.shape), f'Expected shape to be all ints but found {array.shape=}.'
+    assert all(isinstance(c, int) for c in array.chunks), f'Expected chunks to be all ints but found {array.chunks=}.'
+    assert array.shape == shape, f'Expected {shape=} but found {array.shape=}.'
+    assert array.chunks == chunks, f'Expected {chunks=} but found {array.chunks=}.'
+
