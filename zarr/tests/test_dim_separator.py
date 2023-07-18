@@ -6,25 +6,29 @@ from functools import partial
 
 import zarr
 from zarr.core import Array
-from zarr.storage import (DirectoryStore, NestedDirectoryStore, FSStore)
+from zarr.storage import DirectoryStore, NestedDirectoryStore, FSStore
 from zarr.tests.util import have_fsspec
 
 
 needs_fsspec = pytest.mark.skipif(not have_fsspec, reason="needs fsspec")
 
 
-@pytest.fixture(params=("static_flat",
-                        "static_flat_legacy",
-                        "static_nested",
-                        "static_nested_legacy",
-                        "directory_nested",
-                        "directory_flat",
-                        "directory_default",
-                        "nesteddirectory_nested",
-                        "nesteddirectory_default",
-                        pytest.param("fs_nested", marks=needs_fsspec),
-                        pytest.param("fs_flat", marks=needs_fsspec),
-                        pytest.param("fs_default", marks=needs_fsspec)))
+@pytest.fixture(
+    params=(
+        "static_flat",
+        "static_flat_legacy",
+        "static_nested",
+        "static_nested_legacy",
+        "directory_nested",
+        "directory_flat",
+        "directory_default",
+        "nesteddirectory_nested",
+        "nesteddirectory_default",
+        pytest.param("fs_nested", marks=needs_fsspec),
+        pytest.param("fs_flat", marks=needs_fsspec),
+        pytest.param("fs_default", marks=needs_fsspec),
+    )
+)
 def dataset(tmpdir, request):
     """
     Generate a variety of different Zarrs using
@@ -38,7 +42,7 @@ def dataset(tmpdir, request):
 
     if which.startswith("static"):
         project_root = pathlib.Path(zarr.__file__).resolve().parent.parent
-        suffix = which[len("static_"):]
+        suffix = which[len("static_") :]
         static = project_root / "fixture" / suffix
 
         if not static.exists():  # pragma: no cover
@@ -52,8 +56,7 @@ def dataset(tmpdir, request):
                     generator = DirectoryStore
                 else:
                     # Explicit dimension_separator metadata included
-                    generator = partial(DirectoryStore,
-                                        dimension_separator=".")
+                    generator = partial(DirectoryStore, dimension_separator=".")
 
             # store the data - should be one-time operation
             s = generator(str(static))
@@ -129,9 +132,5 @@ def test_nested(dataset):
     without the dimension_separator metadata. However, for none-Nested
     datasets without any metadata, NestedDirectoryStore will fail.
     """
-    failure = (
-        "flat_legacy" in dataset or
-        "directory_default" in dataset or
-        "fs_default" in dataset
-    )
+    failure = "flat_legacy" in dataset or "directory_default" in dataset or "fs_default" in dataset
     verify(Array(store=NestedDirectoryStore(dataset)), failure)

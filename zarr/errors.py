@@ -67,8 +67,9 @@ class NegativeStepError(IndexError):
 
 
 def err_too_many_indices(selection, shape):
-    raise IndexError('too many indices for array; expected {}, got {}'
-                     .format(len(shape), len(selection)))
+    raise IndexError(
+        "too many indices for array; expected {}, got {}".format(len(shape), len(selection))
+    )
 
 
 class VindexInvalidSelectionError(_BaseZarrIndexError):
