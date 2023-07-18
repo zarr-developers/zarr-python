@@ -27,15 +27,11 @@ _default_entry_point_metadata_v3 = {
     "extensions": [],
 }
 
-_v3_core_types = set(
-    "".join(d) for d in itertools.product("<>", ("u", "i", "f"), ("2", "4", "8"))
-)
+_v3_core_types = set("".join(d) for d in itertools.product("<>", ("u", "i", "f"), ("2", "4", "8")))
 _v3_core_types = {"bool", "i1", "u1"} | _v3_core_types
 
 # The set of complex types allowed ({"<c8", "<c16", ">c8", ">c16"})
-_v3_complex_types = set(
-    f"{end}c{_bytes}" for end, _bytes in itertools.product("<>", ("8", "16"))
-)
+_v3_complex_types = set(f"{end}c{_bytes}" for end, _bytes in itertools.product("<>", ("8", "16")))
 
 # All dtype.str values corresponding to datetime64 and timedelta64
 # see: https://numpy.org/doc/stable/reference/arrays.datetime.html#datetime-units
@@ -43,7 +39,7 @@ _date_units = ["Y", "M", "W", "D"]
 _time_units = ["h", "m", "s", "ms", "us", "μs", "ns", "ps", "fs", "as"]
 _v3_datetime_types = set(
     f"{end}{kind}8[{unit}]"
-    for end, unit, kind in itertools.product("<>", _date_units + _time_units, ('m', 'M'))
+    for end, unit, kind in itertools.product("<>", _date_units + _time_units, ("m", "M"))
 )
 
 
@@ -217,9 +213,7 @@ class Metadata2:
         return json_dumps(meta)
 
     @classmethod
-    def decode_fill_value(
-        cls, v: Any, dtype: np.dtype, object_codec: Any = None
-    ) -> Any:
+    def decode_fill_value(cls, v: Any, dtype: np.dtype, object_codec: Any = None) -> Any:
         # early out
         if v is None:
             return v
@@ -267,9 +261,7 @@ class Metadata2:
             return np.array(v, dtype=dtype)[()]
 
     @classmethod
-    def encode_fill_value(
-        cls, v: Any, dtype: np.dtype, object_codec: Any = None
-    ) -> Any:
+    def encode_fill_value(cls, v: Any, dtype: np.dtype, object_codec: Any = None) -> Any:
         # early out
         if v is None:
             return v
@@ -318,11 +310,9 @@ class Metadata3(Metadata2):
         if isinstance(d, dict):
             # extract the type from the extension info
             try:
-                d = d['type']
+                d = d["type"]
             except KeyError:
-                raise KeyError(
-                    "Extended dtype info must provide a key named 'type'."
-                )
+                raise KeyError("Extended dtype info must provide a key named 'type'.")
         d = cls._decode_dtype_descr(d)
         dtype = np.dtype(d)
         if validate:
@@ -389,9 +379,7 @@ class Metadata3(Metadata2):
         return json_dumps(meta)
 
     @classmethod
-    def decode_hierarchy_metadata(
-        cls, s: Union[MappingType, bytes, str]
-    ) -> MappingType[str, Any]:
+    def decode_hierarchy_metadata(cls, s: Union[MappingType, bytes, str]) -> MappingType[str, Any]:
         meta = cls.parse_metadata(s)
         # check metadata format
         # zarr_format = meta.get("zarr_format", None)
@@ -414,7 +402,7 @@ class Metadata3(Metadata2):
         # only support gzip for now
         config = codec.get_config()
         del config["id"]
-        uri = 'https://purl.org/zarr/spec/codec/'
+        uri = "https://purl.org/zarr/spec/codec/"
         if isinstance(codec, numcodecs.GZip):
             uri = uri + "gzip/1.0"
         elif isinstance(codec, numcodecs.Zlib):
@@ -438,19 +426,19 @@ class Metadata3(Metadata2):
         if meta is None:
             return None
 
-        uri = 'https://purl.org/zarr/spec/codec/'
-        conf = meta['configuration']
-        if meta['codec'].startswith(uri + 'gzip/'):
+        uri = "https://purl.org/zarr/spec/codec/"
+        conf = meta["configuration"]
+        if meta["codec"].startswith(uri + "gzip/"):
             conf["id"] = "gzip"
-        elif meta['codec'].startswith(uri + 'zlib/'):
+        elif meta["codec"].startswith(uri + "zlib/"):
             conf["id"] = "zlib"
-        elif meta['codec'].startswith(uri + 'blosc/'):
+        elif meta["codec"].startswith(uri + "blosc/"):
             conf["id"] = "blosc"
-        elif meta['codec'].startswith(uri + 'bz2/'):
+        elif meta["codec"].startswith(uri + "bz2/"):
             conf["id"] = "bz2"
-        elif meta['codec'].startswith(uri + 'lz4/'):
+        elif meta["codec"].startswith(uri + "lz4/"):
             conf["id"] = "lz4"
-        elif meta['codec'].startswith(uri + 'lzma/'):
+        elif meta["codec"].startswith(uri + "lzma/"):
             conf["id"] = "lzma"
         else:
             raise NotImplementedError
@@ -461,8 +449,7 @@ class Metadata3(Metadata2):
 
     @classmethod
     def _encode_storage_transformer_metadata(
-        cls,
-        storage_transformer: "StorageTransformer"
+        cls, storage_transformer: "StorageTransformer"
     ) -> Optional[Mapping]:
         return {
             "extension": storage_transformer.extension_uri,
@@ -478,9 +465,9 @@ class Metadata3(Metadata2):
         # This might be changed to a proper registry in the future
         KNOWN_STORAGE_TRANSFORMERS = [DummyStorageTransfomer, ShardingStorageTransformer]
 
-        conf = meta.get('configuration', {})
-        extension_uri = meta['extension']
-        transformer_type = meta['type']
+        conf = meta.get("configuration", {})
+        extension_uri = meta["extension"]
+        transformer_type = meta["type"]
 
         for StorageTransformerCls in KNOWN_STORAGE_TRANSFORMERS:
             if StorageTransformerCls.extension_uri == extension_uri:
@@ -527,9 +514,9 @@ class Metadata3(Metadata2):
             )
             # compressor field should be absent when there is no compression
             if compressor:
-                meta['compressor'] = compressor
+                meta["compressor"] = compressor
             if storage_transformers:
-                meta['storage_transformers'] = storage_transformers
+                meta["storage_transformers"] = storage_transformers
 
         except Exception as e:
             raise MetadataError("error decoding metadata: %s" % e)

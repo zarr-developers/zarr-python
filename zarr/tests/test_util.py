@@ -5,22 +5,36 @@ import numpy as np
 import pytest
 
 from zarr.core import Array
-from zarr.util import (ConstantMap, all_equal, flatten, guess_chunks, human_readable_size,
-                       info_html_report, info_text_report, is_total_slice,
-                       json_dumps, normalize_chunks,
-                       normalize_dimension_separator,
-                       normalize_fill_value, normalize_order,
-                       normalize_resize_args, normalize_shape, retry_call,
-                       tree_array_icon, tree_group_icon, tree_get_icon,
-                       tree_widget)
+from zarr.util import (
+    ConstantMap,
+    all_equal,
+    flatten,
+    guess_chunks,
+    human_readable_size,
+    info_html_report,
+    info_text_report,
+    is_total_slice,
+    json_dumps,
+    normalize_chunks,
+    normalize_dimension_separator,
+    normalize_fill_value,
+    normalize_order,
+    normalize_resize_args,
+    normalize_shape,
+    retry_call,
+    tree_array_icon,
+    tree_group_icon,
+    tree_get_icon,
+    tree_widget,
+)
 
 
 def test_normalize_dimension_separator():
     assert None is normalize_dimension_separator(None)
-    assert '/' == normalize_dimension_separator('/')
-    assert '.' == normalize_dimension_separator('.')
+    assert "/" == normalize_dimension_separator("/")
+    assert "." == normalize_dimension_separator(".")
     with pytest.raises(ValueError):
-        normalize_dimension_separator('X')
+        normalize_dimension_separator("X")
 
 
 def test_normalize_shape():
@@ -30,7 +44,7 @@ def test_normalize_shape():
     with pytest.raises(TypeError):
         normalize_shape(None)
     with pytest.raises(ValueError):
-        normalize_shape('foo')
+        normalize_shape("foo")
 
 
 def test_normalize_chunks():
@@ -47,7 +61,7 @@ def test_normalize_chunks():
     assert (30, 20, 10) == normalize_chunks((30, 20, None), (100, 20, 10), 1)
     assert (30, 20, 10) == normalize_chunks((30, 20, 10), (100, 20, 10), 1)
     with pytest.raises(ValueError):
-        normalize_chunks('foo', (100,), 1)
+        normalize_chunks("foo", (100,), 1)
     with pytest.raises(ValueError):
         normalize_chunks((100, 10), (100,), 1)
 
@@ -77,7 +91,7 @@ def test_is_total_slice():
     assert not is_total_slice((slice(0, 100, 2), slice(0, 100)), (100, 100))
 
     with pytest.raises(TypeError):
-        is_total_slice('foo', (100,))
+        is_total_slice("foo", (100,))
 
 
 def test_normalize_resize_args():
@@ -97,30 +111,30 @@ def test_normalize_resize_args():
 
 
 def test_human_readable_size():
-    assert '100' == human_readable_size(100)
-    assert '1.0K' == human_readable_size(2**10)
-    assert '1.0M' == human_readable_size(2**20)
-    assert '1.0G' == human_readable_size(2**30)
-    assert '1.0T' == human_readable_size(2**40)
-    assert '1.0P' == human_readable_size(2**50)
+    assert "100" == human_readable_size(100)
+    assert "1.0K" == human_readable_size(2**10)
+    assert "1.0M" == human_readable_size(2**20)
+    assert "1.0G" == human_readable_size(2**30)
+    assert "1.0T" == human_readable_size(2**40)
+    assert "1.0P" == human_readable_size(2**50)
 
 
 def test_normalize_order():
-    assert 'F' == normalize_order('F')
-    assert 'C' == normalize_order('C')
-    assert 'F' == normalize_order('f')
-    assert 'C' == normalize_order('c')
+    assert "F" == normalize_order("F")
+    assert "C" == normalize_order("C")
+    assert "F" == normalize_order("f")
+    assert "C" == normalize_order("c")
     with pytest.raises(ValueError):
-        normalize_order('foo')
+        normalize_order("foo")
 
 
 def test_normalize_fill_value():
-    assert b'' == normalize_fill_value(0, dtype=np.dtype('S1'))
-    structured_dtype = np.dtype([('foo', 'S3'), ('bar', 'i4'), ('baz', 'f8')])
-    expect = np.array((b'', 0, 0.), dtype=structured_dtype)[()]
+    assert b"" == normalize_fill_value(0, dtype=np.dtype("S1"))
+    structured_dtype = np.dtype([("foo", "S3"), ("bar", "i4"), ("baz", "f8")])
+    expect = np.array((b"", 0, 0.0), dtype=structured_dtype)[()]
     assert expect == normalize_fill_value(0, dtype=structured_dtype)
     assert expect == normalize_fill_value(expect, dtype=structured_dtype)
-    assert '' == normalize_fill_value(0, dtype=np.dtype('U1'))
+    assert "" == normalize_fill_value(0, dtype=np.dtype("U1"))
 
 
 def test_guess_chunks():
@@ -158,16 +172,16 @@ def test_guess_chunks():
 
 
 def test_info_text_report():
-    items = [('foo', 'bar'), ('baz', 'qux')]
+    items = [("foo", "bar"), ("baz", "qux")]
     expect = "foo : bar\nbaz : qux\n"
     assert expect == info_text_report(items)
 
 
 def test_info_html_report():
-    items = [('foo', 'bar'), ('baz', 'qux')]
+    items = [("foo", "bar"), ("baz", "qux")]
     actual = info_html_report(items)
-    assert '<table' == actual[:6]
-    assert '</table>' == actual[-8:]
+    assert "<table" == actual[:6]
+    assert "</table>" == actual[-8:]
 
 
 def test_tree_get_icon():
@@ -184,15 +198,13 @@ def test_tree_widget_missing_ipytree():
         "to get the required ipytree dependency for displaying the tree "
         "widget. If using jupyterlab<3, you also need to run "
         "`jupyter labextension install ipytree`"
-        )
+    )
     with pytest.raises(ImportError, match=re.escape(pattern)):
         tree_widget(None, None, None)
 
 
 def test_retry_call():
-
     class Fixture:
-
         def __init__(self, pass_on=1):
             self.c = 0
             self.pass_on = pass_on
@@ -217,9 +229,27 @@ def test_retry_call():
 
 
 def test_flatten():
-    assert list(flatten(['0', ['1', ['2', ['3', [4, ]]]]])) == ['0', '1', '2', '3', 4]
-    assert list(flatten('foo')) == ['f', 'o', 'o']
-    assert list(flatten(['foo'])) == ['foo']
+    assert list(
+        flatten(
+            [
+                "0",
+                [
+                    "1",
+                    [
+                        "2",
+                        [
+                            "3",
+                            [
+                                4,
+                            ],
+                        ],
+                    ],
+                ],
+            ]
+        )
+    ) == ["0", "1", "2", "3", 4]
+    assert list(flatten("foo")) == ["f", "o", "o"]
+    assert list(flatten(["foo"])) == ["foo"]
 
 
 def test_all_equal():
@@ -232,11 +262,11 @@ def test_all_equal():
     assert all_equal(np.nan, np.array([np.nan, np.nan]))
     assert not all_equal(np.nan, np.array([np.nan, 1.0]))
 
-    assert all_equal({'a': -1}, np.array([{'a': -1}, {'a': -1}], dtype='object'))
-    assert not all_equal({'a': -1}, np.array([{'a': -1}, {'a': 2}], dtype='object'))
+    assert all_equal({"a": -1}, np.array([{"a": -1}, {"a": -1}], dtype="object"))
+    assert not all_equal({"a": -1}, np.array([{"a": -1}, {"a": 2}], dtype="object"))
 
-    assert all_equal(np.timedelta64(999, 'D'), np.array([999, 999], dtype='timedelta64[D]'))
-    assert not all_equal(np.timedelta64(999, 'D'), np.array([999, 998], dtype='timedelta64[D]'))
+    assert all_equal(np.timedelta64(999, "D"), np.array([999, 999], dtype="timedelta64[D]"))
+    assert not all_equal(np.timedelta64(999, "D"), np.array([999, 998], dtype="timedelta64[D]"))
 
     # all_equal(None, *) always returns False
     assert not all_equal(None, np.array([None, None]))
