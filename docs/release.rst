@@ -18,6 +18,11 @@ Release notes
 Unreleased
 ----------
 
+.. _release_2.16.0:
+
+2.16.0
+------
+
 Enhancements
 ~~~~~~~~~~~~
 
@@ -27,8 +32,8 @@ Enhancements
 * Add ``__contains__`` method to ``KVStore``. 
   By :user:`Christoph Gohlke <cgohlke>` :issue:`1454`.
 
-    * **Block Indexing**: Implemented blockwise (chunk blocks) indexing to ``zarr.Array``.
-      By :user:`Altay Sansal <tasansal>` :issue:`1428`
+* **Block Indexing**: Implemented blockwise (chunk blocks) indexing to ``zarr.Array``.
+  By :user:`Altay Sansal <tasansal>` :issue:`1428`
 
 Maintenance
 ~~~~~~~~~~~
