@@ -39,6 +39,9 @@ Maintenance
 * Style the codebase with ``ruff`` and ``black``.
   By :user:`Davis Bennett` <d-v-b> :issue:`1459`
 
+* Ensure that chunks is tuple of ints upon array creation.
+  By :user:`Philipp Hanslovsky` <hanslovsky> :issue:`1461`
+
 .. _release_2.15.0:
 
 2.15.0
