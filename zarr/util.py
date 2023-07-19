@@ -5,7 +5,6 @@ import numbers
 from textwrap import TextWrapper
 import mmap
 import time
-from functools import wraps
 from typing import (
     Any,
     Callable,
@@ -76,18 +75,6 @@ def json_loads(s: Union[bytes, str]) -> Dict[str, Any]:
     return json.loads(ensure_text(s, "utf-8"))
 
 
-def _as_int_tuple(func: Callable) -> Callable:
-    """Wrap a function that returns a tuple and cast the return value to tuple of ints."""
-
-    @wraps(func)
-    def wrapper(*args, **kwargs) -> Tuple[int, ...]:
-        returned_tuple = func(*args, **kwargs)
-        return tuple(int(t) for t in returned_tuple)
-
-    return wrapper
-
-
-@_as_int_tuple
 def normalize_shape(shape: Union[int, Tuple[int, ...], None]) -> Tuple[int, ...]:
     """Convenience function to normalize the `shape` argument."""
 
@@ -157,7 +144,6 @@ def guess_chunks(shape: Tuple[int, ...], typesize: int) -> Tuple[int, ...]:
     return tuple(int(x) for x in chunks)
 
 
-@_as_int_tuple
 def normalize_chunks(chunks: Any, shape: Tuple[int, ...], typesize: int) -> Tuple[int, ...]:
     """Convenience function to normalize the `chunks` argument for an array
     with the given `shape`."""
@@ -189,6 +175,7 @@ def normalize_chunks(chunks: Any, shape: Tuple[int, ...], typesize: int) -> Tupl
     if -1 in chunks or None in chunks:
         chunks = tuple(s if c == -1 or c is None else int(c) for s, c in zip(shape, chunks))
 
+    chunks = tuple(int(c) for c in chunks)
     return chunks
 
 
