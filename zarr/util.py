@@ -77,6 +77,8 @@ def json_loads(s: Union[bytes, str]) -> Dict[str, Any]:
 
 
 def _as_int_tuple(func: Callable) -> Callable:
+    """Wrap a function that returns a tuple and cast the return value to tuple of ints."""
+
     @wraps(func)
     def wrapper(*args, **kwargs) -> Tuple[int, ...]:
         returned_tuple = func(*args, **kwargs)
