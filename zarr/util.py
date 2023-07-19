@@ -76,9 +76,9 @@ def json_loads(s: Union[bytes, str]) -> Dict[str, Any]:
     return json.loads(ensure_text(s, "utf-8"))
 
 
-def _as_int_tuple(func: Callable[[...], tuple]):
+def _as_int_tuple(func: Callable) -> Callable:
     @wraps(func)
-    def wrapper(*args, **kwargs) -> tuple[int, ...]:
+    def wrapper(*args, **kwargs) -> Tuple[int, ...]:
         returned_tuple = func(*args, **kwargs)
         return tuple(int(t) for t in returned_tuple)
 
