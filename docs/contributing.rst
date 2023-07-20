@@ -379,6 +379,8 @@ Set the description of the release to::
 replacing the correct version numbers. For pre-release versions,
 the URL should omit the pre-release suffix, e.g. "a1" or "rc1".
 
+Click on "Generate release notes" to auto-file the description.
+
 After creating the release, the documentation will be built on
 https://readthedocs.io. Full releases will be available under
 `/stable <https://zarr.readthedocs.io/en/stable>`_ while
