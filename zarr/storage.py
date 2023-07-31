@@ -2448,7 +2448,7 @@ class LRUStoreCache(Store):
 
     def _keys(self):
         if self._keys_cache is None:
-            self._keys_cache = list(self._store.keys())
+            self._keys_cache = set(self._store.keys())
         return self._keys_cache
 
     def listdir(self, path: Path = None):
@@ -2504,6 +2504,18 @@ class LRUStoreCache(Store):
         with self._mutex:
             self._invalidate_keys()
 
+    def _update_key(self, key):
+        if self._keys_cache is None:
+            self._keys_cache = set(self._store.keys())
+        else:
+            self._keys_cache.add(key)
+        if self._contains_cache is None:
+            self._contains_cache = set(self._keys())
+        else:
+            self._contains_cache.add(key)
+
+        self._listdir_cache.clear()
+
     def _invalidate_keys(self):
         self._keys_cache = None
         self._contains_cache = None
@@ -2539,7 +2551,7 @@ class LRUStoreCache(Store):
     def __setitem__(self, key, value):
         self._store[key] = value
         with self._mutex:
-            self._invalidate_keys()
+            self._update_key(key)
             self._invalidate_value(key)
             self._cache_value(key, value)
 
