@@ -2067,11 +2067,10 @@ class Array:
         fields,
         out_selection,
         partial_read_decode=False,
-        coords=None
+        coords=None,
     ):
         """Take binary data from storage and fill output array"""
-        shape = [c if isinstance(c, int) else c[coords[i]]
-                 for i, c in enumerate(self._chunks)]
+        shape = [c if isinstance(c, int) else c[coords[i]] for i, c in enumerate(self._chunks)]
         if (
             out_is_ndarray
             and not fields
@@ -2226,7 +2225,9 @@ class Array:
                 contexts = ConstantMap(ckeys, constant=Context(meta_array=self._meta_array))
             cdatas = self.chunk_store.getitems(ckeys, contexts=contexts)
 
-        for ckey, coords, chunk_select, out_select in zip(ckeys, lchunk_coords, lchunk_selection, lout_selection):
+        for ckey, coords, chunk_select, out_select in zip(
+            ckeys, lchunk_coords, lchunk_selection, lout_selection
+        ):
             if ckey in cdatas:
                 self._process_chunk(
                     out,
@@ -2237,7 +2238,7 @@ class Array:
                     fields,
                     out_select,
                     partial_read_decode=partial_read_decode,
-                    coords=coords
+                    coords=coords,
                 )
             else:
                 # check exception type
@@ -2309,8 +2310,9 @@ class Array:
 
     def _chunk_setitem_nosync(self, chunk_coords, chunk_selection, value, fields=None):
         ckey = self._chunk_key(chunk_coords)
-        cdata = self._process_for_setitem(ckey, chunk_selection, value, coords=chunk_coords,
-                                          fields=fields)
+        cdata = self._process_for_setitem(
+            ckey, chunk_selection, value, coords=chunk_coords, fields=fields
+        )
 
         # attempt to delete chunk if it only contains the fill value
         if (not self.write_empty_chunks) and all_equal(self.fill_value, cdata):
@@ -2319,8 +2321,7 @@ class Array:
             self.chunk_store[ckey] = self._encode_chunk(cdata)
 
     def _process_for_setitem(self, ckey, chunk_selection, value, coords=None, fields=None):
-        shape = [c if isinstance(c, int) else c[coords[i]]
-                 for i, c in enumerate(self._chunks)]
+        shape = [c if isinstance(c, int) else c[coords[i]] for i, c in enumerate(self._chunks)]
         if is_total_slice(chunk_selection, shape) and not fields:
             # totally replace chunk
 

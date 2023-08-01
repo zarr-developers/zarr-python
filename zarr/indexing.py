@@ -197,20 +197,14 @@ class VarSliceDimIndexer:
                 # past last valid chunk
                 break
             slice_start = max(start - self.offsets[i], 0 + remainder)
-            slice_end = min(
-                stop - self.offsets[i], self.offsets[i + 1] - self.offsets[i]
-            )
+            slice_end = min(stop - self.offsets[i], self.offsets[i + 1] - self.offsets[i])
             if slice_start == slice_end:
                 continue
-            remainder = (
-                (self.offsets[i] + slice_start) - self.offsets[i + 1]
-            ) % step
+            remainder = ((self.offsets[i] + slice_start) - self.offsets[i + 1]) % step
             nelem = (slice_end - slice_start) // step
             self.projections.append(
                 ChunkDimProjection(
-                    i,
-                    slice(slice_start, slice_end, step),
-                    slice(nfilled, nfilled + nelem)
+                    i, slice(slice_start, slice_end, step), slice(nfilled, nfilled + nelem)
                 )
             )
             nfilled += nelem
