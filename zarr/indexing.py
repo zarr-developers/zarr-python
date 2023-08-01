@@ -163,6 +163,85 @@ class IntDimIndexer:
         yield ChunkDimProjection(dim_chunk_ix, dim_chunk_sel, dim_out_sel)
 
 
+class VarSliceDimIndexer:
+    def __init__(self, dim_sel: slice, dim_len: int, chunk_lengths: list[int]):
+        # normalize
+        start = dim_sel.start
+        if start is None:
+            start = 0
+        elif start < 0:
+            start = dim_len - start
+
+        stop = dim_sel.stop
+        if stop is None:
+            stop = dim_len
+        elif stop < 0:
+            stop = dim_len - stop
+        step = dim_sel.step or 1
+        if step < 0:
+            raise NotImplementedError
+
+        # store attributes
+        self.offsets = np.cumsum([0] + chunk_lengths)
+        self.dim_len = dim_len
+        self.dim_sel = dim_sel
+        self.projections = []
+
+        remainder = 0
+        nfilled = 0
+        for i in range(len(chunk_lengths)):
+            if start > self.offsets[i + 1]:
+                # not yet at first chunk
+                continue
+            if stop < self.offsets[i]:
+                # past last valid chunk
+                break
+            slice_start = max(start - self.offsets[i], 0 + remainder)
+            slice_end = min(
+                stop - self.offsets[i], self.offsets[i + 1] - self.offsets[i]
+            )
+            if slice_start == slice_end:
+                continue
+            remainder = (
+                (self.offsets[i] + slice_start) - self.offsets[i + 1]
+            ) % step
+            nelem = (slice_end - slice_start) // step
+            self.projections.append(
+                ChunkDimProjection(
+                    i,
+                    slice(slice_start, slice_end, step),
+                    slice(nfilled, nfilled + nelem)
+                )
+            )
+            nfilled += nelem
+
+        self.nitems = nfilled
+
+    def __iter__(self):
+        yield from self.projections
+
+
+class VarIntDimIndexer:
+    def __init__(self, dim_sel: int, dim_len: int, chunk_lengths: list[int]):
+
+        self.offsets = np.cumsum([0] + chunk_lengths)
+        self.dim_len = dim_len
+
+        # normalize
+        dim_sel = normalize_integer_selection(dim_sel, self.dim_len)
+
+        # store attributes
+        self.dim_sel = dim_sel
+        self.nitems = 1
+
+    def __iter__(self):
+        for ix, off in enumerate(self.offsets):
+            if off > self.dim_sel:
+                break
+        ix -= 1
+        yield ChunkDimProjection(ix, self.dim_sel - self.offsets[ix], None)
+
+
 def ceildiv(a, b):
     return math.ceil(a / b)
 
@@ -339,10 +418,16 @@ class BasicIndexer:
         for dim_sel, dim_len, dim_chunk_len in zip(selection, array._shape, array._chunks):
 
             if is_integer(dim_sel):
-                dim_indexer = IntDimIndexer(dim_sel, dim_len, dim_chunk_len)
+                if isinstance(dim_chunk_len, int):
+                    dim_indexer = IntDimIndexer(dim_sel, dim_len, dim_chunk_len)
+                else:
+                    dim_indexer = VarIntDimIndexer(dim_sel, dim_len, dim_chunk_len)
 
             elif is_slice(dim_sel):
-                dim_indexer = SliceDimIndexer(dim_sel, dim_len, dim_chunk_len)
+                if isinstance(dim_chunk_len, int):
+                    dim_indexer = SliceDimIndexer(dim_sel, dim_len, dim_chunk_len)
+                else:
+                    dim_indexer = VarSliceDimIndexer(dim_sel, dim_len, dim_chunk_len)
 
             else:
                 raise IndexError(
@@ -614,10 +699,16 @@ class OrthogonalIndexer:
         for dim_sel, dim_len, dim_chunk_len in zip(selection, array._shape, array._chunks):
 
             if is_integer(dim_sel):
-                dim_indexer = IntDimIndexer(dim_sel, dim_len, dim_chunk_len)
+                if isinstance(dim_chunk_len, int):
+                    dim_indexer = IntDimIndexer(dim_sel, dim_len, dim_chunk_len)
+                else:
+                    dim_indexer = VarIntDimIndexer(dim_sel, dim_len, dim_chunk_len)
 
             elif isinstance(dim_sel, slice):
-                dim_indexer = SliceDimIndexer(dim_sel, dim_len, dim_chunk_len)
+                if isinstance(dim_chunk_len, int):
+                    dim_indexer = SliceDimIndexer(dim_sel, dim_len, dim_chunk_len)
+                else:
+                    dim_indexer = VarSliceDimIndexer(dim_sel, dim_len, dim_chunk_len)
 
             elif is_integer_array(dim_sel):
                 dim_indexer = IntArrayDimIndexer(dim_sel, dim_len, dim_chunk_len)
