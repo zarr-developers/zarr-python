@@ -177,6 +177,9 @@ class VarSliceDimIndexer:
             stop = dim_len
         elif stop < 0:
             stop = dim_len - stop
+        else:
+            stop = min(stop, dim_len)
+
         step = dim_sel.step or 1
         if step < 0:
             raise NotImplementedError
@@ -187,27 +190,65 @@ class VarSliceDimIndexer:
         self.dim_sel = dim_sel
         self.projections = []
 
-        remainder = 0
-        nfilled = 0
-        for i in range(len(chunk_lengths)):
-            if start > self.offsets[i + 1]:
-                # not yet at first chunk
-                continue
-            if stop < self.offsets[i]:
-                # past last valid chunk
-                break
-            slice_start = max(start - self.offsets[i], 0 + remainder)
-            slice_end = min(stop - self.offsets[i], self.offsets[i + 1] - self.offsets[i])
-            if slice_start == slice_end:
-                continue
-            remainder = ((self.offsets[i] + slice_start) - self.offsets[i + 1]) % step
-            nelem = (slice_end - slice_start) // step
+        first_chunk, last_chunk = np.searchsorted(self.offsets[1:], [start, stop])
+
+        # Special case: single chunk
+        if first_chunk == last_chunk:
+            slice_start = start - self.offsets[first_chunk]
+            slice_end = stop - self.offsets[first_chunk]
+
+            n_filled = ceildiv((slice_end - slice_start), step)
+
             self.projections.append(
                 ChunkDimProjection(
-                    i, slice(slice_start, slice_end, step), slice(nfilled, nfilled + nelem)
+                    first_chunk,
+                    slice(
+                        start - self.offsets[first_chunk],
+                        stop - self.offsets[first_chunk],
+                        step
+                    ),
+                    slice(0, n_filled)
                 )
             )
-            nfilled += nelem
+            self.nitems = n_filled
+            return
+
+        # First chunk, don't need to worry about step for starting pos
+        slice_start = start - self.offsets[first_chunk]
+        slice_end = chunk_lengths[first_chunk]
+        nfilled = ceildiv((slice_end - slice_start), step)
+        self.projections.append(
+            ChunkDimProjection(
+                first_chunk,
+                slice(
+                    slice_start,
+                    slice_end,
+                    step,
+                ),
+                slice(0, nfilled)
+            )
+        )
+        for i in range(first_chunk + 1, last_chunk + 1):
+            rem = (self.offsets[i] - start) % step
+
+            if rem != 0:
+                slice_start = step - rem
+            else:
+                slice_start = 0
+
+            slice_end = min(chunk_lengths[i], stop-self.offsets[i])
+            slice_len = ceildiv((slice_end - slice_start), step)
+            if slice_end <= slice_start:
+                continue
+            cur_nfilled = nfilled + slice_len
+            self.projections.append(
+                ChunkDimProjection(
+                    i, 
+                    slice(slice_start, slice_end, step),
+                    slice(nfilled, cur_nfilled),
+                )
+            )
+            nfilled = cur_nfilled
 
         self.nitems = nfilled
 
