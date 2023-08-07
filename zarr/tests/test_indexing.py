@@ -1794,13 +1794,23 @@ def test_accessed_chunks(shape, chunks, ops):
 @pytest.mark.parametrize(
     "chunking, index",
     [
+        # Single chunk
         ([[10]], (slice(5, 7),)),
+        # Sample from single chunk
         ([[1, 9]], (slice(5, 7),)),
+        # Slice across multiple chunks
         ([[1, 5, 4]], (slice(5, 7),)),
+        # Full slice across multiple chunks
         ([[1, 2, 2, 5]], (slice(None),)),
+        # slice across multiple chunks
         ([[1, 2, 2, 5]], (slice(2, 8),)),
+        # slice across multiple chunks with step
         ([[1, 2, 2, 5]], (slice(None, None, 2),)),
+        # slice across multiple chunks with start and step
         ([[1, 2, 2, 5]], (slice(1, None, 2),)),
+        # Skip many chunks
+        ([[3, 3, 1, 1, 1, 1, 3, 1, 3]], (slice(1, None, 4),)),
+        # Slice 2d case
         ([[1, 2, 2, 5], 5], (slice(1, None, 2), slice(None))),
     ]
 )

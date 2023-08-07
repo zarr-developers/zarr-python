@@ -192,54 +192,29 @@ class VarSliceDimIndexer:
 
         first_chunk, last_chunk = np.searchsorted(self.offsets[1:], [start, stop])
 
-        # Special case: single chunk
-        if first_chunk == last_chunk:
-            slice_start = start - self.offsets[first_chunk]
-            slice_end = stop - self.offsets[first_chunk]
+        rem = 0
+        nfilled = 0
+        next_slice_start = start - self.offsets[first_chunk]
 
-            n_filled = ceildiv((slice_end - slice_start), step)
-
-            self.projections.append(
-                ChunkDimProjection(
-                    first_chunk,
-                    slice(
-                        start - self.offsets[first_chunk],
-                        stop - self.offsets[first_chunk],
-                        step
-                    ),
-                    slice(0, n_filled)
-                )
-            )
-            self.nitems = n_filled
-            return
-
-        # First chunk, don't need to worry about step for starting pos
-        slice_start = start - self.offsets[first_chunk]
-        slice_end = chunk_lengths[first_chunk]
-        nfilled = ceildiv((slice_end - slice_start), step)
-        self.projections.append(
-            ChunkDimProjection(
-                first_chunk,
-                slice(
-                    slice_start,
-                    slice_end,
-                    step,
-                ),
-                slice(0, nfilled)
-            )
-        )
-        for i in range(first_chunk + 1, last_chunk + 1):
-            rem = (self.offsets[i] - start) % step
-
-            if rem != 0:
-                slice_start = step - rem
-            else:
-                slice_start = 0
-
+        for i in range(first_chunk, last_chunk + 1):
+            # Setup slice for this chunk
+            slice_start = next_slice_start
             slice_end = min(chunk_lengths[i], stop-self.offsets[i])
             slice_len = ceildiv((slice_end - slice_start), step)
+
+            # Prepare for next iteration
+            # We do this ahead of the next iteration so that we don't need to special case the first chunk
+            rem = (self.offsets[i + 1] - start) % step
+            if rem != 0:
+                next_slice_start = step - rem
+            else:
+                next_slice_start = 0
+
+            # Skip iteration if slice is empty
             if slice_end <= slice_start:
                 continue
+
+            # Add projection for this chunk + update nfilled
             cur_nfilled = nfilled + slice_len
             self.projections.append(
                 ChunkDimProjection(
