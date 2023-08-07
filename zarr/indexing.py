@@ -522,6 +522,55 @@ class BoolArrayDimIndexer:
             yield ChunkDimProjection(dim_chunk_ix, dim_chunk_sel, dim_out_sel)
 
 
+class VarBoolArrayDimIndexer:
+    def __init__(self, dim_sel, dim_len, dim_chunk_lens: list[int]):
+
+        # check number of dimensions
+        if not is_bool_array(dim_sel, 1):
+            raise IndexError(
+                "Boolean arrays in an orthogonal selection must " "be 1-dimensional only"
+            )
+
+        # check shape
+        if dim_sel.shape[0] != dim_len:
+            raise IndexError(
+                "Boolean array has the wrong length for dimension; "
+                "expected {}, got {}".format(dim_len, dim_sel.shape[0])
+            )
+
+        # store attributes
+        self.dim_sel = dim_sel
+        self.dim_len = dim_len
+        self.dim_chunk_lens = dim_chunk_lens
+        self.nchunks = len(dim_chunk_lens)
+        self.offsets = np.cumsum([0] + dim_chunk_lens)
+
+        # precompute number of selected items for each chunk
+        self.chunk_nitems = np.zeros(self.nchunks, dtype="i8")
+        np.add.reduceat(dim_sel, self.offsets[:-1], out=self.chunk_nitems)
+        self.chunk_nitems_cumsum = np.cumsum(self.chunk_nitems)
+        self.nitems = self.chunk_nitems_cumsum[-1]
+        self.dim_chunk_ixs = np.nonzero(self.chunk_nitems)[0]
+
+    def __iter__(self):
+
+        # iterate over chunks with at least one item
+        for dim_chunk_ix in self.dim_chunk_ixs:
+
+            # find region in chunk
+            dim_offset = self.offsets[dim_chunk_ix]
+            dim_chunk_sel = self.dim_sel[dim_offset : self.offsets[dim_chunk_ix + 1]]
+
+            # find region in output
+            if dim_chunk_ix == 0:
+                start = 0
+            else:
+                start = self.chunk_nitems_cumsum[dim_chunk_ix - 1]
+            stop = self.chunk_nitems_cumsum[dim_chunk_ix]
+            dim_out_sel = slice(start, stop)
+
+            yield ChunkDimProjection(dim_chunk_ix, dim_chunk_sel, dim_out_sel)
+
 class Order:
     UNKNOWN = 0
     INCREASING = 1
@@ -553,6 +602,95 @@ def wraparound_indices(x, dim_len):
 def boundscheck_indices(x, dim_len):
     if np.any(x < 0) or np.any(x >= dim_len):
         raise BoundsCheckError(dim_len)
+
+
+class VarIntArrayDimIndexer:
+    """Integer array selection against a single dimension."""
+
+    def __init__(
+        self,
+        dim_sel,
+        dim_len,
+        dim_chunk_lens: list[int],
+        wraparound=True,
+        boundscheck=True,
+        order=Order.UNKNOWN,
+    ):
+
+        # ensure 1d array
+        dim_sel = np.asanyarray(dim_sel)
+        if not is_integer_array(dim_sel, 1):
+            raise IndexError(
+                "integer arrays in an orthogonal selection must be " "1-dimensional only"
+            )
+
+        # handle wraparound
+        if wraparound:
+            wraparound_indices(dim_sel, dim_len)
+
+        # handle out of bounds
+        if boundscheck:
+            boundscheck_indices(dim_sel, dim_len)
+
+        # store attributes
+        self.dim_len = dim_len
+        self.dim_chunk_lens = dim_chunk_lens
+        self.nchunks = len(dim_chunk_lens)
+        self.nitems = len(dim_sel)
+        self.offsets = np.cumsum([0] + dim_chunk_lens)
+
+        # determine which chunk is needed for each selection item
+        # note: for dense integer selections, the division operation here is the
+        # bottleneck
+        dim_sel_chunk = np.digitize(dim_sel, self.offsets[1:])
+
+        # determine order of indices
+        if order == Order.UNKNOWN:
+            order = Order.check(dim_sel)
+        self.order = order
+
+        if self.order == Order.INCREASING:
+            self.dim_sel = dim_sel
+            self.dim_out_sel = None
+        elif self.order == Order.DECREASING:
+            self.dim_sel = dim_sel[::-1]
+            # TODO should be possible to do this without creating an arange
+            self.dim_out_sel = np.arange(self.nitems - 1, -1, -1)
+        else:
+            # sort indices to group by chunk
+            self.dim_out_sel = np.argsort(dim_sel_chunk)
+            self.dim_sel = np.take(dim_sel, self.dim_out_sel)
+
+        # precompute number of selected items for each chunk
+        self.chunk_nitems = np.bincount(dim_sel_chunk, minlength=self.nchunks)
+
+        # find chunks that we need to visit
+        self.dim_chunk_ixs = np.nonzero(self.chunk_nitems)[0]
+
+        # compute offsets into the output array
+        self.chunk_nitems_cumsum = np.cumsum(self.chunk_nitems)
+
+    def __iter__(self):
+
+        for dim_chunk_ix in self.dim_chunk_ixs:
+
+            # find region in output
+            if dim_chunk_ix == 0:
+                start = 0
+            else:
+                start = self.chunk_nitems_cumsum[dim_chunk_ix - 1]
+            stop = self.chunk_nitems_cumsum[dim_chunk_ix]
+            if self.order == Order.INCREASING:
+                dim_out_sel = slice(start, stop)
+            else:
+                dim_out_sel = self.dim_out_sel[start:stop]
+
+            # find region in chunk
+            dim_offset = self.offsets[dim_chunk_ix]
+            dim_chunk_sel = self.dim_sel[start:stop] - dim_offset
+
+            yield ChunkDimProjection(dim_chunk_ix, dim_chunk_sel, dim_out_sel)
+
 
 
 class IntArrayDimIndexer:
@@ -721,10 +859,16 @@ class OrthogonalIndexer:
                     dim_indexer = VarSliceDimIndexer(dim_sel, dim_len, dim_chunk_len)
 
             elif is_integer_array(dim_sel):
-                dim_indexer = IntArrayDimIndexer(dim_sel, dim_len, dim_chunk_len)
+                if isinstance(dim_chunk_len, int):
+                    dim_indexer = IntArrayDimIndexer(dim_sel, dim_len, dim_chunk_len)
+                else:
+                    dim_indexer = VarIntArrayDimIndexer(dim_sel, dim_len, dim_chunk_len)
 
             elif is_bool_array(dim_sel):
-                dim_indexer = BoolArrayDimIndexer(dim_sel, dim_len, dim_chunk_len)
+                if isinstance(dim_chunk_len, int):
+                    dim_indexer = BoolArrayDimIndexer(dim_sel, dim_len, dim_chunk_len)
+                else:
+                    dim_indexer = VarBoolArrayDimIndexer(dim_sel, dim_len, dim_chunk_len)
 
             else:
                 raise IndexError(
