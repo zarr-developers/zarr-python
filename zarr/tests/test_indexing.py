@@ -1795,6 +1795,8 @@ def test_accessed_chunks(shape, chunks, ops):
     "chunking, index",
     [
         ([[10]], (slice(5, 7),)),
+        ([[1, 9]], (slice(5, 7),)),
+        ([[1, 5, 4]], (slice(5, 7),)),
         ([[1, 2, 2, 5]], (slice(None),)),
         ([[1, 2, 2, 5]], (slice(2, 8),)),
         ([[1, 2, 2, 5]], (slice(None, None, 2),)),
