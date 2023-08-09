@@ -51,6 +51,7 @@ docs = [
     'sphinx-rtd-theme',
     'pydata-sphinx-theme',
     'numpydoc',
+    'numcodecs[msgpack]',
 ]
 
 [project.urls]
