@@ -43,6 +43,15 @@ jupyter = [
     'ipytree>=0.2.2',
     'ipywidgets>=8.0.0',
 ]
+docs = [
+    'sphinx',
+    'sphinx_design',
+    'sphinx-issues',
+    'sphinx-copybutton',
+    'sphinx-rtd-theme',
+    'pydata-sphinx-theme',
+    'numpydoc',
+]
 
 [project.urls]
 "Bug Tracker" = "https://github.com/zarr-developers/zarr-python/issues"
