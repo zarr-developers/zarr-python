@@ -1790,3 +1790,44 @@ def test_accessed_chunks(shape, chunks, ops):
                 ) == 1
         # Check that no other chunks were accessed
         assert len(delta_counts) == 0
+
+@pytest.mark.parametrize(
+    "chunking, index",
+    [
+        # Single chunk
+        ([[10]], (slice(5, 7),)),
+        # Sample from single chunk
+        ([[1, 9]], (slice(5, 7),)),
+        # Slice across multiple chunks
+        ([[1, 5, 4]], (slice(5, 7),)),
+        # Full slice across multiple chunks
+        ([[1, 2, 2, 5]], (slice(None),)),
+        # slice across multiple chunks
+        ([[1, 2, 2, 5]], (slice(2, 8),)),
+        # slice across multiple chunks with step
+        ([[1, 2, 2, 5]], (slice(None, None, 2),)),
+        # slice across multiple chunks with start and step
+        ([[1, 2, 2, 5]], (slice(1, None, 2),)),
+        # Skip many chunks
+        ([[3, 3, 1, 1, 1, 1, 3, 1, 3]], (slice(1, None, 4),)),
+        # Slice 2d case
+        ([[1, 2, 2, 5], 5], (slice(1, None, 2), slice(None))),
+        # Fancy indexing
+        ([[1, 2, 2, 5], 1], (np.array([0, 3, 7]),)),
+        # out of order fancy indexing
+        ([[1, 3, 1, 1, 5], 1], (np.array([6, 6, 6, 0, 10]),)),
+        # boolean indexing
+        ([[2, 1, 2], 2], ([True, False, False, True, True], slice(None))),
+    ]
+)
+def test_varchunk_indexing(chunking, index):
+    from functools import reduce
+    from operator import mul
+    shape = tuple(x * 2 if isinstance(x, int) else sum(x) for x in chunking)
+    np_array = np.arange(reduce(mul, shape)).reshape(shape)
+    var_chunked = zarr.array(np_array, chunks=chunking)
+    regular_chunked = zarr.array(np_array)
+
+    expected = regular_chunked[index]
+    actual = var_chunked[index]
+    np.testing.assert_equal(actual, expected)
