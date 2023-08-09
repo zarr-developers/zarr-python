@@ -35,7 +35,7 @@ Enhancements
 * Allow for partial codec specification in V3 array metadata.
   By :user:`Joe Hamman <jhamman>` :issue:`1443`.
 
-* Add ``__contains__`` method to ``KVStore``. 
+* Add ``__contains__`` method to ``KVStore``.
   By :user:`Christoph Gohlke <cgohlke>` :issue:`1454`.
 
 * **Block Indexing**: Implemented blockwise (chunk blocks) indexing to ``zarr.Array``.
@@ -49,6 +49,9 @@ Maintenance
 
 * Style the codebase with ``ruff`` and ``black``.
   By :user:`Davis Bennett` <d-v-b> :issue:`1459`
+
+* Ensure that chunks is tuple of ints upon array creation.
+  By :user:`Philipp Hanslovsky` <hanslovsky> :issue:`1461`
 
 .. _release_2.15.0:
 

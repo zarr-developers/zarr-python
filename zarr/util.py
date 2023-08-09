@@ -175,7 +175,8 @@ def normalize_chunks(chunks: Any, shape: Tuple[int, ...], typesize: int) -> Tupl
     if -1 in chunks or None in chunks:
         chunks = tuple(s if c == -1 or c is None else int(c) for s, c in zip(shape, chunks))
 
-    return tuple(chunks)
+    chunks = tuple(int(c) for c in chunks)
+    return chunks
 
 
 def normalize_dtype(dtype: Union[str, np.dtype], object_codec) -> Tuple[np.dtype, Any]:
