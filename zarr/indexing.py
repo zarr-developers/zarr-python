@@ -1,7 +1,10 @@
+from __future__ import annotations
+
 import collections
 import itertools
 import math
 import numbers
+from typing import List
 
 import numpy as np
 
@@ -164,7 +167,7 @@ class IntDimIndexer:
 
 
 class VarSliceDimIndexer:
-    def __init__(self, dim_sel: slice, dim_len: int, chunk_lengths: list[int]):
+    def __init__(self, dim_sel: slice, dim_len: int, chunk_lengths: List[int]):
         # normalize
         start = dim_sel.start
         if start is None:
@@ -232,7 +235,7 @@ class VarSliceDimIndexer:
 
 
 class VarIntDimIndexer:
-    def __init__(self, dim_sel: int, dim_len: int, chunk_lengths: list[int]):
+    def __init__(self, dim_sel: int, dim_len: int, chunk_lengths: List[int]):
 
         self.offsets = np.cumsum([0] + chunk_lengths)
         self.dim_len = dim_len
@@ -523,7 +526,7 @@ class BoolArrayDimIndexer:
 
 
 class VarBoolArrayDimIndexer:
-    def __init__(self, dim_sel, dim_len, dim_chunk_lens: list[int]):
+    def __init__(self, dim_sel, dim_len, dim_chunk_lens: List[int]):
 
         # check number of dimensions
         if not is_bool_array(dim_sel, 1):
@@ -611,7 +614,7 @@ class VarIntArrayDimIndexer:
         self,
         dim_sel,
         dim_len,
-        dim_chunk_lens: list[int],
+        dim_chunk_lens: List[int],
         wraparound=True,
         boundscheck=True,
         order=Order.UNKNOWN,
