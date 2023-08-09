@@ -1791,6 +1791,7 @@ def test_accessed_chunks(shape, chunks, ops):
         # Check that no other chunks were accessed
         assert len(delta_counts) == 0
 
+
 @pytest.mark.parametrize(
     "chunking, index",
     [
@@ -1818,11 +1819,12 @@ def test_accessed_chunks(shape, chunks, ops):
         ([[1, 3, 1, 1, 5], 1], (np.array([6, 6, 6, 0, 10]),)),
         # boolean indexing
         ([[2, 1, 2], 2], ([True, False, False, True, True], slice(None))),
-    ]
+    ],
 )
 def test_varchunk_indexing(chunking, index):
     from functools import reduce
     from operator import mul
+
     shape = tuple(x * 2 if isinstance(x, int) else sum(x) for x in chunking)
     np_array = np.arange(reduce(mul, shape)).reshape(shape)
     var_chunked = zarr.array(np_array, chunks=chunking)

@@ -199,7 +199,7 @@ class VarSliceDimIndexer:
         for i in range(first_chunk, last_chunk + 1):
             # Setup slice for this chunk
             slice_start = next_slice_start
-            slice_end = min(chunk_lengths[i], stop-self.offsets[i])
+            slice_end = min(chunk_lengths[i], stop - self.offsets[i])
             slice_len = ceildiv((slice_end - slice_start), step)
 
             # Prepare for next iteration
@@ -218,7 +218,7 @@ class VarSliceDimIndexer:
             cur_nfilled = nfilled + slice_len
             self.projections.append(
                 ChunkDimProjection(
-                    i, 
+                    i,
                     slice(slice_start, slice_end, step),
                     slice(nfilled, cur_nfilled),
                 )
@@ -571,6 +571,7 @@ class VarBoolArrayDimIndexer:
 
             yield ChunkDimProjection(dim_chunk_ix, dim_chunk_sel, dim_out_sel)
 
+
 class Order:
     UNKNOWN = 0
     INCREASING = 1
@@ -690,7 +691,6 @@ class VarIntArrayDimIndexer:
             dim_chunk_sel = self.dim_sel[start:stop] - dim_offset
 
             yield ChunkDimProjection(dim_chunk_ix, dim_chunk_sel, dim_out_sel)
-
 
 
 class IntArrayDimIndexer:
