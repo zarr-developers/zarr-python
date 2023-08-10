@@ -3,7 +3,7 @@ import shutil
 import tempfile
 from multiprocessing import Pool as ProcessPool
 from multiprocessing import cpu_count
-from multiprocessing.pool import ThreadPool
+from multiprocessing.pool import Pool, ThreadPool
 from tempfile import mkdtemp
 
 import numpy as np
@@ -79,7 +79,7 @@ class MixinArraySyncTests:
         pool.terminate()
 
     def test_parallel_append(self):
-        n = 100
+        n = 200
 
         # setup
         arr = self.create_array(shape=1000, chunks=999, dtype="i4")
@@ -170,7 +170,7 @@ class TestArrayWithProcessSynchronizer(TestArray, MixinArraySyncTests):
         )
 
     # noinspection PyMethodMayBeStatic
-    def create_pool(self):
+    def create_pool(self) -> Pool:
         pool = ProcessPool(processes=cpu_count())
         return pool
 

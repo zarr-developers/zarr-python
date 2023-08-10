@@ -571,19 +571,6 @@ def is_valid_python_name(name):
     return name.isidentifier() and not iskeyword(name)
 
 
-class NoLock:
-    """A lock that doesn't lock."""
-
-    def __enter__(self):
-        pass
-
-    def __exit__(self, *args):
-        pass
-
-
-nolock = NoLock()
-
-
 class PartialReadBuffer:
     def __init__(self, store_key, chunk_store):
         self.chunk_store = chunk_store

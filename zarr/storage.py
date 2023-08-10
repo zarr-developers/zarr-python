@@ -49,10 +49,10 @@ from zarr.errors import (
     ReadOnlyError,
 )
 from zarr.meta import encode_array_metadata, encode_group_metadata
+from zarr.sync import NoLock
 from zarr.util import (
     buffer_size,
     json_loads,
-    nolock,
     normalize_chunks,
     normalize_dimension_separator,
     normalize_dtype,
@@ -2080,7 +2080,7 @@ class DBMStore(Store):
             # locks, but err on the side of caution.
             self.write_mutex = Lock()
         else:
-            self.write_mutex = nolock
+            self.write_mutex = NoLock()
         self.open_kwargs = open_kwargs
         self._dimension_separator = dimension_separator
 

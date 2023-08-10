@@ -5,7 +5,7 @@ import math
 import operator
 import re
 from functools import reduce
-from typing import Any
+from typing import Any, ContextManager
 
 import numpy as np
 from numcodecs.compat import ensure_bytes
@@ -43,6 +43,7 @@ from zarr.storage import (
     listdir,
     normalize_store_arg,
 )
+from zarr.sync import DummySynchronizer, Synchronized
 from zarr.util import (
     ConstantMap,
     all_equal,
@@ -50,7 +51,6 @@ from zarr.util import (
     check_array_shape,
     human_readable_size,
     is_total_slice,
-    nolock,
     normalize_chunks,
     normalize_resize_args,
     normalize_shape,
@@ -62,7 +62,7 @@ from zarr.util import (
 
 
 # noinspection PyUnresolvedReferences
-class Array:
+class Array(Synchronized):
     """Instantiate an array from an initialized store.
 
     Parameters
@@ -204,7 +204,10 @@ class Array:
         else:
             self._key_prefix = ""
         self._read_only = bool(read_only)
-        self._synchronizer = synchronizer
+        if synchronizer is None:
+            self._synchronizer = DummySynchronizer()
+        else:
+            self._synchronizer = synchronizer
         self._cache_metadata = cache_metadata
         self._is_view = False
         self._partial_decompress = partial_decompress
@@ -220,13 +223,19 @@ class Array:
             self._hierarchy_metadata = _get_hierarchy_metadata(store=self._store)
             self._metadata_key_suffix = self._hierarchy_metadata["metadata_key_suffix"]
 
+        self._attrs_key = _prefix_to_attrs_key(self._store, self._key_prefix)
+        self._array_key = _prefix_to_array_key(self._store, self._key_prefix)
+
         # initialize metadata
         self._load_metadata()
 
         # initialize attributes
-        akey = _prefix_to_attrs_key(self._store, self._key_prefix)
         self._attrs = Attributes(
-            store, key=akey, read_only=read_only, synchronizer=synchronizer, cache=cache_attrs
+            store,
+            key=self._attrs_key,
+            read_only=read_only,
+            synchronizer=synchronizer,
+            cache=cache_attrs,
         )
 
         # initialize info reporter
@@ -239,17 +248,12 @@ class Array:
 
     def _load_metadata(self):
         """(Re)load metadata from store."""
-        if self._synchronizer is None:
+        with self.synchronizer[self._array_key]:
             self._load_metadata_nosync()
-        else:
-            mkey = _prefix_to_array_key(self._store, self._key_prefix)
-            with self._synchronizer[mkey]:
-                self._load_metadata_nosync()
 
     def _load_metadata_nosync(self):
         try:
-            mkey = _prefix_to_array_key(self._store, self._key_prefix)
-            meta_bytes = self._store[mkey]
+            meta_bytes = self._store[self._array_key]
         except KeyError:
             raise ArrayNotFoundError(self._path)
         else:
@@ -355,8 +359,7 @@ class Array:
                     attributes=self.attrs.asdict(),
                 )
             )
-        mkey = _prefix_to_array_key(self._store, self._key_prefix)
-        self._store[mkey] = self._store._metadata_class.encode_array_metadata(meta)
+        self._store[self._array_key] = self._store._metadata_class.encode_array_metadata(meta)
 
     @property
     def store(self):
@@ -2011,11 +2014,7 @@ class Array:
             check_array_shape("value", value, sel_shape)
 
         # iterate over chunks in range
-        if (
-            not hasattr(self.chunk_store, "setitems")
-            or self._synchronizer is not None
-            or any(map(lambda x: x == 0, self.shape))
-        ):
+        if not hasattr(self.chunk_store, "setitems") or any(map(lambda x: x == 0, self.shape)):
             # iterative approach
             for chunk_coords, chunk_selection, out_selection in indexer:
 
@@ -2291,16 +2290,8 @@ class Array:
             Value to set.
 
         """
-
-        if self._synchronizer is None:
-            # no synchronization
-            lock = nolock
-        else:
-            # synchronize on the chunk
-            ckey = self._chunk_key(chunk_coords)
-            lock = self._synchronizer[ckey]
-
-        with lock:
+        ckey = self._chunk_key(chunk_coords)
+        with self._synchronizer[ckey]:
             self._chunk_setitem_nosync(chunk_coords, chunk_selection, value, fields=fields)
 
     def _chunk_setitem_nosync(self, chunk_coords, chunk_selection, value, fields=None):
@@ -2489,7 +2480,8 @@ class Array:
         return self._info_reporter
 
     def info_items(self):
-        return self._synchronized_op(self._info_items_nosync)
+        with self._synchronizer[self._array_key]:
+            return self._info_items_nosync()
 
     def _info_items_nosync(self):
         def typestr(o):
@@ -2524,8 +2516,7 @@ class Array:
         items += [("Compressor", repr(self.compressor))]
 
         # synchronizer
-        if self._synchronizer is not None:
-            items += [("Synchronizer type", typestr(self._synchronizer))]
+        items += [("Synchronizer type", typestr(self._synchronizer))]
 
         # storage info
         items += [("Store type", typestr(self._store))]
@@ -2565,8 +2556,7 @@ class Array:
         for i in itertools.product(*[range(s) for s in self.cdata_shape]):
             h.update(self.chunk_store.get(self._chunk_key(i), b""))
 
-        mkey = _prefix_to_array_key(self._store, self._key_prefix)
-        h.update(self.store.get(mkey, b""))
+        h.update(self.store.get(self._array_key, b""))
 
         h.update(self.store.get(self.attrs.key, b""))
 
@@ -2618,30 +2608,13 @@ class Array:
     def __setstate__(self, state):
         self.__init__(**state)
 
-    def _synchronized_op(self, f, *args, **kwargs):
-
-        if self._synchronizer is None:
-            # no synchronization
-            lock = nolock
-
-        else:
-            # synchronize on the array
-            mkey = _prefix_to_array_key(self._store, self._key_prefix)
-            lock = self._synchronizer[mkey]
-
-        with lock:
-            self._refresh_metadata_nosync()
-            result = f(*args, **kwargs)
-
-        return result
-
-    def _write_op(self, f, *args, **kwargs):
+    def _write_context(self, key: str) -> ContextManager:
 
         # guard condition
-        if self._read_only:
+        if self.read_only:
             raise ReadOnlyError()
 
-        return self._synchronized_op(f, *args, **kwargs)
+        return self.synchronizer[key]
 
     def resize(self, *args):
         """Change the shape of the array by growing or shrinking one or more
@@ -2672,8 +2645,9 @@ class Array:
         would be restored by a subsequent resize operation that grows the array size.
 
         """
-
-        return self._write_op(self._resize_nosync, *args)
+        with self._write_context(self._array_key):
+            self._refresh_metadata_nosync()
+            self._resize_nosync(*args)
 
     def _resize_nosync(self, *args):
 
@@ -2752,7 +2726,9 @@ class Array:
         (20000, 2000)
 
         """
-        return self._write_op(self._append_nosync, data, axis=axis)
+        with self._write_context(self._array_key):
+            self._refresh_metadata_nosync()
+            return self._append_nosync(data, axis=axis)
 
     def _append_nosync(self, data, axis=0):
 

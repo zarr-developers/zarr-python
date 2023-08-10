@@ -1,11 +1,13 @@
+from typing import ContextManager
 import warnings
 from collections.abc import MutableMapping
 
 from zarr._storage.store import Store, StoreV3
+from zarr.sync import DummySynchronizer, Synchronized
 from zarr.util import json_dumps
 
 
-class Attributes(MutableMapping):
+class Attributes(MutableMapping, Synchronized):
     """Class providing access to user attributes on an array or group. Should not be
     instantiated directly, will be available via the `.attrs` property of an array or
     group.
@@ -34,7 +36,10 @@ class Attributes(MutableMapping):
         self.read_only = read_only
         self.cache = cache
         self._cached_asdict = None
-        self.synchronizer = synchronizer
+        if synchronizer is None:
+            self.synchronizer = DummySynchronizer()
+        else:
+            self.synchronizer = synchronizer
 
     def _get_nosync(self):
         try:
@@ -72,21 +77,17 @@ class Attributes(MutableMapping):
     def __getitem__(self, item):
         return self.asdict()[item]
 
-    def _write_op(self, f, *args, **kwargs):
+    def _write_context(self, key: str) -> ContextManager:
 
         # guard condition
         if self.read_only:
             raise PermissionError("attributes are read-only")
 
-        # synchronization
-        if self.synchronizer is None:
-            return f(*args, **kwargs)
-        else:
-            with self.synchronizer[self.key]:
-                return f(*args, **kwargs)
+        return self.synchronizer[key]
 
     def __setitem__(self, item, value):
-        self._write_op(self._setitem_nosync, item, value)
+        with self._write_context(self.key):
+            self._setitem_nosync(item, value)
 
     def _setitem_nosync(self, item, value):
 
@@ -103,7 +104,8 @@ class Attributes(MutableMapping):
         self._put_nosync(d)
 
     def __delitem__(self, item):
-        self._write_op(self._delitem_nosync, item)
+        with self._write_context(self.key):
+            self._delitem_nosync(item)
 
     def _delitem_nosync(self, key):
 
@@ -122,10 +124,11 @@ class Attributes(MutableMapping):
     def put(self, d):
         """Overwrite all attributes with the key/value pairs in the provided dictionary
         `d` in a single operation."""
-        if self._version == 2:
-            self._write_op(self._put_nosync, d)
-        else:
-            self._write_op(self._put_nosync, dict(attributes=d))
+        with self._write_context(self.key):
+            if self._version == 2:
+                self._put_nosync(d)
+            else:
+                self._put_nosync(dict(attributes=d))
 
     def _put_nosync(self, d):
 
@@ -175,7 +178,8 @@ class Attributes(MutableMapping):
     # noinspection PyMethodOverriding
     def update(self, *args, **kwargs):
         """Update the values of several attributes in a single operation."""
-        self._write_op(self._update_nosync, *args, **kwargs)
+        with self._write_context(self.key):
+            self._update_nosync(*args, **kwargs)
 
     def _update_nosync(self, *args, **kwargs):
 

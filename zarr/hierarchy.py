@@ -1,5 +1,6 @@
 from collections.abc import MutableMapping
 from itertools import islice
+from typing import Any, Tuple
 
 import numpy as np
 
@@ -46,17 +47,17 @@ from zarr.storage import (
     rmdir,
 )
 from zarr._storage.v3 import MemoryStoreV3
+from zarr.sync import DummySynchronizer, Synchronized
 from zarr.util import (
     InfoReporter,
     TreeViewer,
     is_valid_python_name,
-    nolock,
     normalize_shape,
     normalize_storage_path,
 )
 
 
-class Group(MutableMapping):
+class Group(MutableMapping, Synchronized):
     """Instantiate a group from an initialized store.
 
     Parameters
@@ -164,7 +165,12 @@ class Group(MutableMapping):
         else:
             self._key_prefix = ""
         self._read_only = read_only
-        self._synchronizer = synchronizer
+
+        if synchronizer is None:
+            self.synchronizer = DummySynchronizer()
+        else:
+            self.synchronizer = synchronizer
+
         if meta_array is not None:
             self._meta_array = np.empty_like(meta_array, shape=())
         else:
@@ -251,11 +257,6 @@ class Group(MutableMapping):
             return self._store
         else:
             return self._chunk_store
-
-    @property
-    def synchronizer(self):
-        """Object used to synchronize write access to groups and arrays."""
-        return self._synchronizer
 
     @property
     def attrs(self):
@@ -371,8 +372,7 @@ class Group(MutableMapping):
         ]
 
         # synchronizer
-        if self._synchronizer is not None:
-            items += [("Synchronizer type", typestr(self._synchronizer))]
+        items += [("Synchronizer type", typestr(self.synchronizer))]
 
         # storage info
         items += [("Store type", typestr(self._store))]
@@ -399,7 +399,7 @@ class Group(MutableMapping):
             "read_only": self._read_only,
             "chunk_store": self._chunk_store,
             "cache_attrs": self._attrs.cache,
-            "synchronizer": self._synchronizer,
+            "synchronizer": self.synchronizer,
             "zarr_version": self._version,
             "meta_array": self._meta_array,
         }
@@ -464,7 +464,7 @@ class Group(MutableMapping):
                 read_only=self._read_only,
                 path=path,
                 chunk_store=self._chunk_store,
-                synchronizer=self._synchronizer,
+                synchronizer=self.synchronizer,
                 cache_attrs=self.attrs.cache,
                 zarr_version=self._version,
                 meta_array=self._meta_array,
@@ -476,7 +476,7 @@ class Group(MutableMapping):
                 path=path,
                 chunk_store=self._chunk_store,
                 cache_attrs=self.attrs.cache,
-                synchronizer=self._synchronizer,
+                synchronizer=self.synchronizer,
                 zarr_version=self._version,
                 meta_array=self._meta_array,
             )
@@ -490,7 +490,7 @@ class Group(MutableMapping):
                     path=path,
                     chunk_store=self._chunk_store,
                     cache_attrs=self.attrs.cache,
-                    synchronizer=self._synchronizer,
+                    synchronizer=self.synchronizer,
                     zarr_version=self._version,
                     meta_array=self._meta_array,
                 )
@@ -503,7 +503,8 @@ class Group(MutableMapping):
         self.array(item, value, overwrite=True)
 
     def __delitem__(self, item):
-        return self._write_op(self._delitem_nosync, item)
+        with self._write_context(group_meta_key):
+            return self._delitem_nosync(item)
 
     def _delitem_nosync(self, item):
         path = self._item_path(item)
@@ -597,7 +598,7 @@ class Group(MutableMapping):
                         read_only=self._read_only,
                         chunk_store=self._chunk_store,
                         cache_attrs=self.attrs.cache,
-                        synchronizer=self._synchronizer,
+                        synchronizer=self.synchronizer,
                         zarr_version=self._version,
                     )
 
@@ -610,7 +611,7 @@ class Group(MutableMapping):
                     read_only=self._read_only,
                     chunk_store=self._chunk_store,
                     cache_attrs=self.attrs.cache,
-                    synchronizer=self._synchronizer,
+                    synchronizer=self.synchronizer,
                     zarr_version=self._version,
                 )
 
@@ -918,21 +919,13 @@ class Group(MutableMapping):
 
         return TreeViewer(self, expand=expand, level=level)
 
-    def _write_op(self, f, *args, **kwargs):
+    def _write_context(self, key: str):
 
         # guard condition
         if self._read_only:
             raise ReadOnlyError()
 
-        if self._synchronizer is None:
-            # no synchronization
-            lock = nolock
-        else:
-            # synchronize on the root group
-            lock = self._synchronizer[group_meta_key]
-
-        with lock:
-            return f(*args, **kwargs)
+        return self.synchronizer[key]
 
     def create_group(self, name, overwrite=False):
         """Create a sub-group.
@@ -957,8 +950,8 @@ class Group(MutableMapping):
         >>> g4 = g1.create_group('baz/quux')
 
         """
-
-        return self._write_op(self._create_group_nosync, name, overwrite=overwrite)
+        with self._write_context(group_meta_key):
+            return self._create_group_nosync(name, overwrite=overwrite)
 
     def _create_group_nosync(self, name, overwrite=False):
         path = self._item_path(name)
@@ -972,7 +965,7 @@ class Group(MutableMapping):
             read_only=self._read_only,
             chunk_store=self._chunk_store,
             cache_attrs=self.attrs.cache,
-            synchronizer=self._synchronizer,
+            synchronizer=self.synchronizer,
             zarr_version=self._version,
         )
 
@@ -1004,8 +997,8 @@ class Group(MutableMapping):
         True
 
         """
-
-        return self._write_op(self._require_group_nosync, name, overwrite=overwrite)
+        with self._write_context(group_meta_key):
+            return self._require_group_nosync(name, overwrite=overwrite)
 
     def _require_group_nosync(self, name, overwrite=False):
         path = self._item_path(name)
@@ -1022,16 +1015,16 @@ class Group(MutableMapping):
             read_only=self._read_only,
             chunk_store=self._chunk_store,
             cache_attrs=self.attrs.cache,
-            synchronizer=self._synchronizer,
+            synchronizer=self.synchronizer,
             zarr_version=self._version,
         )
 
-    def require_groups(self, *names):
+    def require_groups(self, *names) -> Tuple["Group", ...]:
         """Convenience method to require multiple groups in a single call."""
         return tuple(self.require_group(name) for name in names)
 
     # noinspection PyIncorrectDocstring
-    def create_dataset(self, name, **kwargs):
+    def create_dataset(self, name, **kwargs) -> Array:
         """Create an array.
 
         Arrays are known as "datasets" in HDF5 terminology. For compatibility
@@ -1090,16 +1083,16 @@ class Group(MutableMapping):
 
         """
         assert "mode" not in kwargs
+        with self._write_context(group_meta_key):
+            return self._create_dataset_nosync(name, **kwargs)
 
-        return self._write_op(self._create_dataset_nosync, name, **kwargs)
-
-    def _create_dataset_nosync(self, name, data=None, **kwargs):
+    def _create_dataset_nosync(self, name, data=None, **kwargs) -> Array:
 
         assert "mode" not in kwargs
         path = self._item_path(name)
 
         # determine synchronizer
-        kwargs.setdefault("synchronizer", self._synchronizer)
+        kwargs.setdefault("synchronizer", self.synchronizer)
         kwargs.setdefault("cache_attrs", self.attrs.cache)
 
         # create array
@@ -1111,7 +1104,7 @@ class Group(MutableMapping):
 
         return a
 
-    def require_dataset(self, name, shape, dtype=None, exact=False, **kwargs):
+    def require_dataset(self, name, shape, dtype=None, exact=False, **kwargs) -> Array:
         """Obtain an array, creating if it doesn't exist.
 
         Arrays are known as "datasets" in HDF5 terminology. For compatibility
@@ -1132,10 +1125,10 @@ class Group(MutableMapping):
             `dtype` can be cast from array dtype.
 
         """
-
-        return self._write_op(
-            self._require_dataset_nosync, name, shape=shape, dtype=dtype, exact=exact, **kwargs
-        )
+        with self._write_context(group_meta_key):
+            return self._require_dataset_nosync(
+                name, shape=shape, dtype=dtype, exact=exact, **kwargs
+            )
 
     def _require_dataset_nosync(self, name, shape, dtype=None, exact=False, **kwargs):
 
@@ -1145,7 +1138,7 @@ class Group(MutableMapping):
 
             # array already exists at path, validate that it is the right shape and type
 
-            synchronizer = kwargs.get("synchronizer", self._synchronizer)
+            synchronizer = kwargs.get("synchronizer", self.synchronizer)
             cache_metadata = kwargs.get("cache_metadata", True)
             cache_attrs = kwargs.get("cache_attrs", self.attrs.cache)
             a = Array(
@@ -1180,55 +1173,60 @@ class Group(MutableMapping):
     def create(self, name, **kwargs):
         """Create an array. Keyword arguments as per
         :func:`zarr.creation.create`."""
-        return self._write_op(self._create_nosync, name, **kwargs)
+        with self._write_context(group_meta_key):
+            return self._create_nosync(name, **kwargs)
 
     def _create_nosync(self, name, **kwargs):
         path = self._item_path(name)
-        kwargs.setdefault("synchronizer", self._synchronizer)
+        kwargs.setdefault("synchronizer", self.synchronizer)
         kwargs.setdefault("cache_attrs", self.attrs.cache)
         return create(store=self._store, path=path, chunk_store=self._chunk_store, **kwargs)
 
     def empty(self, name, **kwargs):
         """Create an array. Keyword arguments as per
         :func:`zarr.creation.empty`."""
-        return self._write_op(self._empty_nosync, name, **kwargs)
+        with self._write_context(group_meta_key):
+            return self._empty_nosync(name, **kwargs)
 
     def _empty_nosync(self, name, **kwargs):
         path = self._item_path(name)
-        kwargs.setdefault("synchronizer", self._synchronizer)
+        kwargs.setdefault("synchronizer", self.synchronizer)
         kwargs.setdefault("cache_attrs", self.attrs.cache)
         return empty(store=self._store, path=path, chunk_store=self._chunk_store, **kwargs)
 
     def zeros(self, name, **kwargs):
         """Create an array. Keyword arguments as per
         :func:`zarr.creation.zeros`."""
-        return self._write_op(self._zeros_nosync, name, **kwargs)
+        with self._write_context(group_meta_key):
+            return self._zeros_nosync(name, **kwargs)
 
     def _zeros_nosync(self, name, **kwargs):
         path = self._item_path(name)
-        kwargs.setdefault("synchronizer", self._synchronizer)
+        kwargs.setdefault("synchronizer", self.synchronizer)
         kwargs.setdefault("cache_attrs", self.attrs.cache)
         return zeros(store=self._store, path=path, chunk_store=self._chunk_store, **kwargs)
 
     def ones(self, name, **kwargs):
         """Create an array. Keyword arguments as per
         :func:`zarr.creation.ones`."""
-        return self._write_op(self._ones_nosync, name, **kwargs)
+        with self._write_context(group_meta_key):
+            return self._ones_nosync(name, **kwargs)
 
     def _ones_nosync(self, name, **kwargs):
         path = self._item_path(name)
-        kwargs.setdefault("synchronizer", self._synchronizer)
+        kwargs.setdefault("synchronizer", self.synchronizer)
         kwargs.setdefault("cache_attrs", self.attrs.cache)
         return ones(store=self._store, path=path, chunk_store=self._chunk_store, **kwargs)
 
-    def full(self, name, fill_value, **kwargs):
+    def full(self, name: str, fill_value, **kwargs):
         """Create an array. Keyword arguments as per
         :func:`zarr.creation.full`."""
-        return self._write_op(self._full_nosync, name, fill_value, **kwargs)
+        with self._write_context(group_meta_key):
+            return self._full_nosync(name, fill_value, **kwargs)
 
-    def _full_nosync(self, name, fill_value, **kwargs):
+    def _full_nosync(self, name: str, fill_value: Any, **kwargs):
         path = self._item_path(name)
-        kwargs.setdefault("synchronizer", self._synchronizer)
+        kwargs.setdefault("synchronizer", self.synchronizer)
         kwargs.setdefault("cache_attrs", self.attrs.cache)
         return full(
             store=self._store,
@@ -1241,22 +1239,24 @@ class Group(MutableMapping):
     def array(self, name, data, **kwargs):
         """Create an array. Keyword arguments as per
         :func:`zarr.creation.array`."""
-        return self._write_op(self._array_nosync, name, data, **kwargs)
+        with self._write_context(group_meta_key):
+            return self._array_nosync(name, data, **kwargs)
 
     def _array_nosync(self, name, data, **kwargs):
         path = self._item_path(name)
-        kwargs.setdefault("synchronizer", self._synchronizer)
+        kwargs.setdefault("synchronizer", self.synchronizer)
         kwargs.setdefault("cache_attrs", self.attrs.cache)
         return array(data, store=self._store, path=path, chunk_store=self._chunk_store, **kwargs)
 
     def empty_like(self, name, data, **kwargs):
         """Create an array. Keyword arguments as per
         :func:`zarr.creation.empty_like`."""
-        return self._write_op(self._empty_like_nosync, name, data, **kwargs)
+        with self._write_context(group_meta_key):
+            return self._empty_like_nosync(name, data, **kwargs)
 
     def _empty_like_nosync(self, name, data, **kwargs):
         path = self._item_path(name)
-        kwargs.setdefault("synchronizer", self._synchronizer)
+        kwargs.setdefault("synchronizer", self.synchronizer)
         kwargs.setdefault("cache_attrs", self.attrs.cache)
         return empty_like(
             data, store=self._store, path=path, chunk_store=self._chunk_store, **kwargs
@@ -1265,11 +1265,12 @@ class Group(MutableMapping):
     def zeros_like(self, name, data, **kwargs):
         """Create an array. Keyword arguments as per
         :func:`zarr.creation.zeros_like`."""
-        return self._write_op(self._zeros_like_nosync, name, data, **kwargs)
+        with self._write_context(group_meta_key):
+            return self._zeros_like_nosync(name, data, **kwargs)
 
     def _zeros_like_nosync(self, name, data, **kwargs):
         path = self._item_path(name)
-        kwargs.setdefault("synchronizer", self._synchronizer)
+        kwargs.setdefault("synchronizer", self.synchronizer)
         kwargs.setdefault("cache_attrs", self.attrs.cache)
         return zeros_like(
             data, store=self._store, path=path, chunk_store=self._chunk_store, **kwargs
@@ -1278,11 +1279,12 @@ class Group(MutableMapping):
     def ones_like(self, name, data, **kwargs):
         """Create an array. Keyword arguments as per
         :func:`zarr.creation.ones_like`."""
-        return self._write_op(self._ones_like_nosync, name, data, **kwargs)
+        with self._write_context(group_meta_key):
+            return self._ones_like_nosync(name, data, **kwargs)
 
     def _ones_like_nosync(self, name, data, **kwargs):
         path = self._item_path(name)
-        kwargs.setdefault("synchronizer", self._synchronizer)
+        kwargs.setdefault("synchronizer", self.synchronizer)
         kwargs.setdefault("cache_attrs", self.attrs.cache)
         return ones_like(
             data, store=self._store, path=path, chunk_store=self._chunk_store, **kwargs
@@ -1291,11 +1293,12 @@ class Group(MutableMapping):
     def full_like(self, name, data, **kwargs):
         """Create an array. Keyword arguments as per
         :func:`zarr.creation.full_like`."""
-        return self._write_op(self._full_like_nosync, name, data, **kwargs)
+        with self._write_context(group_meta_key):
+            return self._full_like_nosync(name, data, **kwargs)
 
     def _full_like_nosync(self, name, data, **kwargs):
         path = self._item_path(name)
-        kwargs.setdefault("synchronizer", self._synchronizer)
+        kwargs.setdefault("synchronizer", self.synchronizer)
         kwargs.setdefault("cache_attrs", self.attrs.cache)
         return full_like(
             data, store=self._store, path=path, chunk_store=self._chunk_store, **kwargs
@@ -1335,7 +1338,8 @@ class Group(MutableMapping):
         if "/" in dest:
             self.require_group("/" + dest.rsplit("/", 1)[0])
 
-        self._write_op(self._move_nosync, source, dest)
+        with self._write_context(group_meta_key):
+            self._move_nosync(source, dest)
 
 
 def _normalize_store_arg(store, *, storage_options=None, mode="r", zarr_version=None):
