@@ -2470,6 +2470,7 @@ class Array(Synchronized):
         Order              : C
         Read-only          : False
         Compressor         : Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
+        Synchronizer type  : zarr.sync.DummySynchronizer
         Store type         : zarr.storage.KVStore
         No. bytes          : 4000000 (3.8M)
         No. bytes stored   : 320
