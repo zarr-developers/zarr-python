@@ -24,6 +24,9 @@ Maintenance
 * Require ``setuptools_scm`` version ``1.5.4``\+
   By :user:`John A. Kirkham <jakirkham>` :issue:`1477`.
 
+* Add ``docs`` requirements to ``pyproject.toml``
+  By :user:`John A. Kirkham <jakirkham>` :issue:`1494`.
+
 .. _release_2.16.0:
 
 2.16.0
