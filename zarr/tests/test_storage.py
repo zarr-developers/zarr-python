@@ -2201,31 +2201,28 @@ class TestLRUStoreCache(StoreTests):
         assert 0 == store.counter["__iter__"]
         assert 1 == store.counter["keys"]
 
-        # cache should be cleared if store is modified - crude but simple for now
+        # Cache should update when a key is added or updated
         cache[baz_key] = b"zzz"
         keys = sorted(cache.keys())
-        assert keys == [bar_key, baz_key, foo_key]
-        assert 2 == store.counter["keys"]
-        # keys should now be cached
-        assert keys == sorted(cache.keys())
-        assert 2 == store.counter["keys"]
+        assert 1 == store.counter["keys"]
+        assert baz_key in keys
 
         # manually invalidate keys
         cache.invalidate_keys()
         keys = sorted(cache.keys())
         assert keys == [bar_key, baz_key, foo_key]
-        assert 3 == store.counter["keys"]
+        assert 2 == store.counter["keys"]
         assert 0 == store.counter["__contains__", foo_key]
         assert 0 == store.counter["__iter__"]
         cache.invalidate_keys()
         keys = sorted(cache)
         assert keys == [bar_key, baz_key, foo_key]
-        assert 4 == store.counter["keys"]
+        assert 3 == store.counter["keys"]
         assert 0 == store.counter["__contains__", foo_key]
         assert 0 == store.counter["__iter__"]
         cache.invalidate_keys()
         assert foo_key in cache
-        assert 5 == store.counter["keys"]
+        assert 4 == store.counter["keys"]
         assert 0 == store.counter["__contains__", foo_key]
         assert 0 == store.counter["__iter__"]
 
