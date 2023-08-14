@@ -173,13 +173,13 @@ class VarSliceDimIndexer:
         if start is None:
             start = 0
         elif start < 0:
-            start = dim_len - start
+            start = dim_len + start
 
         stop = dim_sel.stop
         if stop is None:
             stop = dim_len
         elif stop < 0:
-            stop = dim_len - stop
+            stop = dim_len + stop
         else:
             stop = min(stop, dim_len)
 
@@ -205,8 +205,8 @@ class VarSliceDimIndexer:
             slice_end = min(chunk_lengths[i], stop - self.offsets[i])
             slice_len = ceildiv((slice_end - slice_start), step)
 
-            # Prepare for next iteration
-            # We do this ahead of the next iteration so that we don't need to special case the first chunk
+            # Prepare for next iteration. We do this ahead of the next iteration
+            # so that we don't need to special case the first chunk
             rem = (self.offsets[i + 1] - start) % step
             if rem != 0:
                 next_slice_start = step - rem

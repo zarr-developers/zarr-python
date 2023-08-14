@@ -1801,6 +1801,8 @@ def test_accessed_chunks(shape, chunks, ops):
         ([[1, 9]], (slice(5, 7),)),
         # Slice across multiple chunks
         ([[1, 5, 4]], (slice(5, 7),)),
+        # Slice across multiple chunks, negative
+        ([[1, 5, 4]], (slice(-6, -2),)),
         # Full slice across multiple chunks
         ([[1, 2, 2, 5]], (slice(None),)),
         # slice across multiple chunks
@@ -1819,6 +1821,8 @@ def test_accessed_chunks(shape, chunks, ops):
         ([[1, 3, 1, 1, 5], 1], (np.array([6, 6, 6, 0, 10]),)),
         # boolean indexing
         ([[2, 1, 2], 2], ([True, False, False, True, True], slice(None))),
+        # single int indexing
+        ([[2, 1, 2]], (1,)),
     ],
 )
 def test_varchunk_indexing(chunking, index):
@@ -1833,3 +1837,26 @@ def test_varchunk_indexing(chunking, index):
     expected = regular_chunked[index]
     actual = var_chunked[index]
     np.testing.assert_equal(actual, expected)
+
+
+# single int indexing
+@pytest.mark.parametrize(
+    "chunking, index, err",
+    [
+        # negative step
+        ([[2, 1, 2]], (slice(None, None, -1)), NotImplementedError),
+        # boolean, wrong length
+        ([[2, 1, 2], 2], ([True, False, False, True], slice(None)), IndexError),
+        # boolean orthogonal
+        ([[2, 1, 2], 2], ([True, False, False, True, True], [True, False]), IndexError),
+    ]
+)
+def test_varchunk_errors(chunking, index, err):
+    from functools import reduce
+    from operator import mul
+
+    shape = tuple(x * 2 if isinstance(x, int) else sum(x) for x in chunking)
+    np_array = np.arange(reduce(mul, shape)).reshape(shape)
+    var_chunked = zarr.array(np_array, chunks=chunking)
+    with pytest.raises(err):
+        var_chunked[index]
