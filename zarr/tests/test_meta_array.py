@@ -9,7 +9,7 @@ from numcodecs.registry import get_codec, register_codec
 import zarr.codecs
 from zarr.core import Array
 from zarr.creation import array, empty, full, ones, open_array, zeros
-from zarr.hierarchy import open_group
+from zarr.hierarchy import open_group, group
 from zarr.storage import DirectoryStore, MemoryStore, Store, ZipStore
 
 
@@ -234,12 +234,13 @@ def test_full(module, compressor):
     assert np.all(np.isnan(z[:]))
 
 
+@pytest.mark.parametrize("group_create_function", [group, open_group])
 @pytest.mark.parametrize("module, compressor", param_module_and_compressor)
 @pytest.mark.parametrize("store_type", [None, DirectoryStore, MemoryStore, ZipStore])
-def test_group(tmp_path, module, compressor, store_type):
+def test_group(tmp_path, group_create_function, module, compressor, store_type):
     xp = ensure_module(module)
     store = init_store(tmp_path, store_type)
-    g = open_group(store, meta_array=xp.empty(()))
+    g = group_create_function(store, meta_array=xp.empty(()))
     g.ones("data", shape=(10, 11), dtype=int, compressor=compressor)
     a = g["data"]
     assert a.shape == (10, 11)
