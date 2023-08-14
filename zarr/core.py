@@ -2070,7 +2070,7 @@ class Array:
         coords=None,
     ):
         """Take binary data from storage and fill output array"""
-        shape = [c if isinstance(c, int) else c[coords[i]] for i, c in enumerate(self._chunks)]
+        shape = tuple(c if isinstance(c, int) else c[coords[i]] for i, c in enumerate(self._chunks))
         if (
             out_is_ndarray
             and not fields
@@ -2321,7 +2321,7 @@ class Array:
             self.chunk_store[ckey] = self._encode_chunk(cdata)
 
     def _process_for_setitem(self, ckey, chunk_selection, value, coords=None, fields=None):
-        shape = [c if isinstance(c, int) else c[coords[i]] for i, c in enumerate(self._chunks)]
+        shape = tuple(c if isinstance(c, int) else c[coords[i]] for i, c in enumerate(self._chunks))
         if is_total_slice(chunk_selection, shape) and not fields:
             # totally replace chunk
 
@@ -2358,12 +2358,12 @@ class Array:
                     )
                     chunk.fill(self._fill_value)
                 elif self._dtype == object:
-                    chunk = np.empty(self.shape, dtype=self._dtype, order=self._order)
+                    chunk = np.empty(shape, dtype=self._dtype, order=self._order)
                 else:
                     # N.B., use zeros here so any region beyond the array has consistent
                     # and compressible data
                     chunk = np.zeros_like(
-                        self._meta_array, shape=self.shape, dtype=self._dtype, order=self._order
+                        self._meta_array, shape=shape, dtype=self._dtype, order=self._order
                     )
 
             else:
