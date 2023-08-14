@@ -92,8 +92,8 @@ the repository, you can do something like the following::
     $ mkdir -p ~/pyenv/zarr-dev
     $ python -m venv ~/pyenv/zarr-dev
     $ source ~/pyenv/zarr-dev/bin/activate
-    $ pip install -r requirements_dev_minimal.txt -r requirements_dev_numpy.txt -r requirements_rtfd.txt
-    $ pip install -e .
+    $ pip install -r requirements_dev_minimal.txt -r requirements_dev_numpy.txt
+    $ pip install -e .[docs]
 
 To verify that your development environment is working, you can run the unit tests::
 
