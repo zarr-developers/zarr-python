@@ -1849,7 +1849,7 @@ def test_varchunk_indexing(chunking, index):
         ([[2, 1, 2], 2], ([True, False, False, True], slice(None)), IndexError),
         # boolean orthogonal
         ([[2, 1, 2], 2], ([True, False, False, True, True], [True, False]), IndexError),
-    ]
+    ],
 )
 def test_varchunk_errors(chunking, index, err):
     from functools import reduce
