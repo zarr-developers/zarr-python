@@ -509,7 +509,7 @@ class LRUStoreCacheV3(RmdirV3, LRUStoreCache, StoreV3):
         self._max_size = max_size
         self._current_size = 0
         self._keys_cache = None
-        self._contains_cache = None
+        self._contains_cache = {}
         self._listdir_cache: Dict[Path, Any] = dict()
         self._values_cache: Dict[Path, Any] = OrderedDict()
         self._mutex = Lock()
