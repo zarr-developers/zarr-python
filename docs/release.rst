@@ -18,6 +18,11 @@ Release notes
 Unreleased
 ----------
 
+.. _release_2.16.1:
+
+2.16.1
+------
+
 Maintenance
 ~~~~~~~~~~~
 
