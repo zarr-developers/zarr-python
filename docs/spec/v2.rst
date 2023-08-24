@@ -140,7 +140,7 @@ consists of 3 parts:
   ``"M"``: datetime; ``"S"``: string (fixed-length sequence of char); ``"U"``: unicode
   (fixed-length sequence of Py_UNICODE); ``"V"``: other (void * – each item is a
   fixed-size chunk of memory))
-* An integer specifying the number of bytes the type uses.
+* An integer specifying the number of bytes the type uses (Exceptions: for ``"U"``, this is the number of characters; multiply by four to obtain the number of bytes. for object type ``"O"``, a number is not included here.).
 
 The byte order MUST be specified. E.g., ``"<f8"``, ``">i4"``, ``"|b1"`` and
 ``"|S12"`` are valid data type encodings.
