@@ -1467,11 +1467,16 @@ class FSStore(Store):
     def delitems(self, keys):
         if self.mode == "r":
             raise ReadOnlyError()
-        # only remove the keys that exist in the store
-        nkeys = [self._normalize_key(key) for key in keys if key in self]
-        # rm errors if you pass an empty collection
-        if len(nkeys) > 0:
+
+        try:  # should much faster
+            nkeys = [self._normalize_key(key) for key in keys]
+            # rm errors if you pass an empty collection
             self.map.delitems(nkeys)
+        except FileNotFoundError:
+            nkeys = [self._normalize_key(key) for key in keys if key in self]
+            # rm errors if you pass an empty collection
+            if len(nkeys) > 0:
+                self.map.delitems(nkeys)
 
     def __contains__(self, key):
         key = self._normalize_key(key)
