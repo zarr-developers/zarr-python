@@ -178,7 +178,7 @@ class TestArray:
 
         for k in z.chunk_store.keys():
             if not isinstance(k, expected_type):  # pragma: no cover
-                pytest.fail("Non-text key: %s" % repr(k))
+                pytest.fail(f"Non-text key: {k!r}")
 
         z.store.close()
 
@@ -192,7 +192,7 @@ class TestArray:
             try:
                 ensure_ndarray(v)
             except TypeError:  # pragma: no cover
-                pytest.fail("Non-bytes-like value: %s" % repr(v))
+                pytest.fail(f"Non-bytes-like value: {v!r}")
 
         z.store.close()
 
@@ -1202,7 +1202,7 @@ class TestArray:
         # datetime, timedelta
         for base_type in "Mm":
             for resolution in "D", "us", "ns":
-                dtype = "{}8[{}]".format(base_type, resolution)
+                dtype = f"{base_type}8[{resolution}]"
                 z = self.create_array(shape=100, dtype=dtype, fill_value=0)
                 assert z.dtype == np.dtype(dtype)
                 a = np.random.randint(
@@ -1392,7 +1392,7 @@ class TestArray:
 
         # convenience API
         for item_type in "int", "<u4":
-            z = self.create_array(shape=data.shape, dtype="array:{}".format(item_type))
+            z = self.create_array(shape=data.shape, dtype=f"array:{item_type}")
             assert z.dtype == object
             assert isinstance(z.filters[0], VLenArray)
             assert z.filters[0].dtype == np.dtype(item_type)
@@ -1962,7 +1962,7 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
         # convenience API
         for item_type in "int", "<u4":
             with pytest.raises(ValueError):
-                self.create_array(shape=data.shape, dtype="array:{}".format(item_type))
+                self.create_array(shape=data.shape, dtype=f"array:{item_type}")
 
     def test_object_arrays_danger(self):
         # Cannot hacking out object codec as N5 doesn't allow object codecs

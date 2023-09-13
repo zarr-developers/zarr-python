@@ -30,6 +30,9 @@ Docs
 Maintenance
 ~~~~~~~~~~~
 
+* Change occurrences of % and format() to f-strings.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1423`.
+
 * Change occurrence of ``io.open()`` into ``open()``.
   By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1421`.
 
@@ -41,8 +44,6 @@ Maintenance
 
 * Allow ``black`` code formatter to be run with any Python version.
   By :user:`David Stansby <dstansby>` :issue:`1549`.
-
-
 
 .. _release_2.16.1:
 

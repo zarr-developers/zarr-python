@@ -10,7 +10,7 @@ def decode_metadata(b):
     meta = json.loads(s)
     zarr_format = meta.get("zarr_format", None)
     if zarr_format != 1:
-        raise MetadataError("unsupported zarr format: %s" % zarr_format)
+        raise MetadataError(f"unsupported zarr format: {zarr_format}")
     try:
         meta = dict(
             zarr_format=meta["zarr_format"],
@@ -23,7 +23,7 @@ def decode_metadata(b):
             order=meta["order"],
         )
     except Exception as e:
-        raise MetadataError("error decoding metadata: %s" % e)
+        raise MetadataError(f"error decoding metadata: {e}")
     else:
         return meta
 

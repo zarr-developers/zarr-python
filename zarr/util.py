@@ -180,7 +180,6 @@ def normalize_chunks(chunks: Any, shape: Tuple[int, ...], typesize: int) -> Tupl
 
 
 def normalize_dtype(dtype: Union[str, np.dtype], object_codec) -> Tuple[np.dtype, Any]:
-
     # convenience API for object arrays
     if inspect.isclass(dtype):
         dtype = dtype.__name__  # type: ignore
@@ -200,9 +199,8 @@ def normalize_dtype(dtype: Union[str, np.dtype], object_codec) -> Tuple[np.dtype
                     object_codec = codec_registry[codec_id](*args)
                 except KeyError:  # pragma: no cover
                     raise ValueError(
-                        "codec %r for object type %r is not "
-                        "available; please provide an "
-                        "object_codec manually" % (codec_id, key)
+                        f"codec {codec_id!r} for object type {key!r} is not "
+                        f"available; please provide an object_codec manually"
                     )
             return dtype, object_codec
 
@@ -241,11 +239,10 @@ def is_total_slice(item, shape: Tuple[int]) -> bool:
             for it, sh in zip(item, shape)
         )
     else:
-        raise TypeError("expected slice or tuple of slices, found %r" % item)
+        raise TypeError(f"expected slice or tuple of slices, found {item!r}")
 
 
 def normalize_resize_args(old_shape, *args):
-
     # normalize new shape argument
     if len(args) == 1:
         new_shape = args[0]
@@ -266,23 +263,23 @@ def normalize_resize_args(old_shape, *args):
 
 def human_readable_size(size) -> str:
     if size < 2**10:
-        return "%s" % size
+        return f"{size}"
     elif size < 2**20:
-        return "%.1fK" % (size / float(2**10))
+        return f"{size / float(2**10):.1f}K"
     elif size < 2**30:
-        return "%.1fM" % (size / float(2**20))
+        return f"{size / float(2**20):.1f}M"
     elif size < 2**40:
-        return "%.1fG" % (size / float(2**30))
+        return f"{size / float(2**30):.1f}G"
     elif size < 2**50:
-        return "%.1fT" % (size / float(2**40))
+        return f"{size / float(2**40):.1f}T"
     else:
-        return "%.1fP" % (size / float(2**50))
+        return f"{size / float(2**50):.1f}P"
 
 
 def normalize_order(order: str) -> str:
     order = str(order).upper()
     if order not in ["C", "F"]:
-        raise ValueError("order must be either 'C' or 'F', found: %r" % order)
+        raise ValueError(f"order must be either 'C' or 'F', found: {order!r}")
     return order
 
 
@@ -290,11 +287,10 @@ def normalize_dimension_separator(sep: Optional[str]) -> Optional[str]:
     if sep in (".", "/", None):
         return sep
     else:
-        raise ValueError("dimension_separator must be either '.' or '/', found: %r" % sep)
+        raise ValueError(f"dimension_separator must be either '.' or '/', found: {sep!r}")
 
 
 def normalize_fill_value(fill_value, dtype: np.dtype):
-
     if fill_value is None or dtype.hasobject:
         # no fill value
         pass
@@ -309,8 +305,8 @@ def normalize_fill_value(fill_value, dtype: np.dtype):
 
         if not isinstance(fill_value, str):
             raise ValueError(
-                "fill_value {!r} is not valid for dtype {}; must be a "
-                "unicode string".format(fill_value, dtype)
+                f"fill_value {fill_value!r} is not valid for dtype {dtype}; "
+                f"must be a  unicode string"
             )
 
     else:
@@ -324,15 +320,14 @@ def normalize_fill_value(fill_value, dtype: np.dtype):
         except Exception as e:
             # re-raise with our own error message to be helpful
             raise ValueError(
-                "fill_value {!r} is not valid for dtype {}; nested "
-                "exception: {}".format(fill_value, dtype, e)
+                f"fill_value {fill_value!r} is not valid for dtype {dtype}; "
+                f"nested exception: {e}"
             )
 
     return fill_value
 
 
 def normalize_storage_path(path: Union[str, bytes, None]) -> str:
-
     # handle bytes
     if isinstance(path, bytes):
         path = str(path, "ascii")
@@ -342,7 +337,6 @@ def normalize_storage_path(path: Union[str, bytes, None]) -> str:
         path = str(path)
 
     if path:
-
         # convert backslash to forward slash
         path = path.replace("\\", "/")
 
@@ -400,10 +394,10 @@ def info_html_report(items) -> str:
     report += "<tbody>"
     for k, v in items:
         report += (
-            "<tr>"
-            '<th style="text-align: left">%s</th>'
-            '<td style="text-align: left">%s</td>'
-            "</tr>" % (k, v)
+            f"<tr>"
+            f'<th style="text-align: left">{k}</th>'
+            f'<td style="text-align: left">{v}</td>'
+            f"</tr>"
         )
     report += "</tbody>"
     report += "</table>"
@@ -439,7 +433,7 @@ class TreeNode:
     def get_text(self):
         name = self.obj.name.split("/")[-1] or "/"
         if hasattr(self.obj, "shape"):
-            name += " {} {}".format(self.obj.shape, self.obj.dtype)
+            name += f" {self.obj.shape} {self.obj.dtype}"
         return name
 
     def get_type(self):
@@ -467,7 +461,7 @@ def tree_get_icon(stype: str) -> str:
     elif stype == "Group":
         return tree_group_icon
     else:
-        raise ValueError("Unknown type: %s" % stype)
+        raise ValueError(f"Unknown type: {stype}")
 
 
 def tree_widget_sublist(node, root=False, expand=False):
@@ -491,10 +485,10 @@ def tree_widget(group, expand, level):
         import ipytree
     except ImportError as error:
         raise ImportError(
-            "{}: Run `pip install zarr[jupyter]` or `conda install ipytree`"
-            "to get the required ipytree dependency for displaying the tree "
-            "widget. If using jupyterlab<3, you also need to run "
-            "`jupyter labextension install ipytree`".format(error)
+            f"{error}: Run `pip install zarr[jupyter]` or `conda install ipytree`"
+            f"to get the required ipytree dependency for displaying the tree "
+            f"widget. If using jupyterlab<3, you also need to run "
+            f"`jupyter labextension install ipytree`"
         )
 
     result = ipytree.Tree()
@@ -506,7 +500,6 @@ def tree_widget(group, expand, level):
 
 class TreeViewer:
     def __init__(self, group, expand=False, level=None):
-
         self.group = group
         self.expand = expand
         self.level = level
@@ -554,14 +547,10 @@ class TreeViewer:
 
 def check_array_shape(param, array, shape):
     if not hasattr(array, "shape"):
-        raise TypeError(
-            "parameter {!r}: expected an array-like object, got {!r}".format(param, type(array))
-        )
+        raise TypeError(f"parameter {param!r}: expected an array-like object, got {type(array)!r}")
     if array.shape != shape:
         raise ValueError(
-            "parameter {!r}: expected array with shape {!r}, got {!r}".format(
-                param, shape, array.shape
-            )
+            f"parameter {param!r}: expected array with shape {shape!r}, got {array.shape!r}"
         )
 
 

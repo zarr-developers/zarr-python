@@ -2702,14 +2702,12 @@ class SQLiteStore(Store):
         path = normalize_storage_path(path)
         sep = "_" if path == "" else "/"
         keys = self.cursor.execute(
-            """
+            f"""
             SELECT DISTINCT SUBSTR(m, 0, INSTR(m, "/")) AS l FROM (
                 SELECT LTRIM(SUBSTR(k, LENGTH(?) + 1), "/") || "/" AS m
                 FROM zarr WHERE k LIKE (? || "{sep}%")
             ) ORDER BY l ASC
-            """.format(
-                sep=sep
-            ),
+            """,
             (path, path),
         )
         keys = list(map(operator.itemgetter(0), keys))
@@ -2865,7 +2863,7 @@ class RedisStore(Store):
         self.client = redis.Redis(**kwargs)
 
     def _key(self, key):
-        return "{prefix}:{key}".format(prefix=self._prefix, key=key)
+        return f"{self._prefix}:{key}"
 
     def __getitem__(self, key):
         return self.client[self._key(key)]
@@ -2950,7 +2948,7 @@ class ConsolidatedMetadataStore(Store):
         consolidated_format = meta.get("zarr_consolidated_format", None)
         if consolidated_format != 1:
             raise MetadataError(
-                "unsupported zarr consolidated metadata format: %s" % consolidated_format
+                f"unsupported zarr consolidated metadata format: {consolidated_format}"
             )
 
         # decode metadata

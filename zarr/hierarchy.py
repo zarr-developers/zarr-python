@@ -145,7 +145,7 @@ class Group(MutableMapping):
         synchronizer=None,
         zarr_version=None,
         *,
-        meta_array=None
+        meta_array=None,
     ):
         store: BaseStore = _normalize_store_arg(store, zarr_version=zarr_version)
         if zarr_version is None:
@@ -340,9 +340,9 @@ class Group(MutableMapping):
 
     def __repr__(self):
         t = type(self)
-        r = "<{}.{}".format(t.__module__, t.__name__)
+        r = f"<{t.__module__}.{t.__name__}"
         if self.name:
-            r += " %r" % self.name
+            r += f" {self.name!r}"
         if self._read_only:
             r += " read-only"
         r += ">"
@@ -358,7 +358,7 @@ class Group(MutableMapping):
 
     def info_items(self):
         def typestr(o):
-            return "{}.{}".format(type(o).__module__, type(o).__name__)
+            return f"{type(o).__module__}.{type(o).__name__}"
 
         items = []
 
@@ -1161,17 +1161,15 @@ class Group(MutableMapping):
             shape = normalize_shape(shape)
             if shape != a.shape:
                 raise TypeError(
-                    "shape do not match existing array; expected {}, got {}".format(a.shape, shape)
+                    f"shape do not match existing array; expected {a.shape}, got {shape}"
                 )
             dtype = np.dtype(dtype)
             if exact:
                 if dtype != a.dtype:
-                    raise TypeError(
-                        "dtypes do not match exactly; expected {}, got {}".format(a.dtype, dtype)
-                    )
+                    raise TypeError(f"dtypes do not match exactly; expected {a.dtype}, got {dtype}")
             else:
                 if not np.can_cast(dtype, a.dtype):
-                    raise TypeError("dtypes ({}, {}) cannot be safely cast".format(dtype, a.dtype))
+                    raise TypeError(f"dtypes ({dtype}, {a.dtype}) cannot be safely cast")
             return a
 
         else:
@@ -1235,7 +1233,7 @@ class Group(MutableMapping):
             path=path,
             chunk_store=self._chunk_store,
             fill_value=fill_value,
-            **kwargs
+            **kwargs,
         )
 
     def array(self, name, data, **kwargs):
@@ -1361,7 +1359,7 @@ def group(
     path=None,
     *,
     zarr_version=None,
-    meta_array=None
+    meta_array=None,
 ):
     """Create a group.
 
@@ -1452,7 +1450,7 @@ def open_group(
     storage_options=None,
     *,
     zarr_version=None,
-    meta_array=None
+    meta_array=None,
 ):
     """Open a group using file-mode-like semantics.
 

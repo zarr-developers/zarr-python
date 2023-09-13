@@ -45,19 +45,16 @@ def test_encode_decode_array_1():
         order="C",
     )
 
-    meta_json = (
-        """{
+    meta_json = f"""{{
         "chunks": [10],
-        "compressor": {"id": "zlib", "level": 1},
+        "compressor": {{"id": "zlib", "level": 1}},
         "dtype": "<f8",
         "fill_value": null,
         "filters": null,
         "order": "C",
         "shape": [100],
-        "zarr_format": %s
-    }"""
-        % ZARR_FORMAT
-    )
+        "zarr_format": {ZARR_FORMAT}
+    }}"""
 
     # test encoding
     meta_enc = encode_array_metadata(meta)
@@ -92,27 +89,24 @@ def test_encode_decode_array_2():
         filters=[df.get_config()],
     )
 
-    meta_json = (
-        """{
+    meta_json = f"""{{
         "chunks": [10, 10],
-        "compressor": {
+        "compressor": {{
             "id": "blosc",
             "clevel": 3,
             "cname": "lz4",
             "shuffle": 2,
             "blocksize": 0
-        },
+        }},
         "dtype": [["a", "<i4"], ["b", "|S10"]],
         "fill_value": "AAAAAAAAAAAAAAAAAAA=",
         "filters": [
-            {"id": "delta", "astype": "<u2", "dtype": "|V14"}
+            {{"id": "delta", "astype": "<u2", "dtype": "|V14"}}
         ],
         "order": "F",
         "shape": [100, 100],
-        "zarr_format": %s
-    }"""
-        % ZARR_FORMAT
-    )
+        "zarr_format": {ZARR_FORMAT}
+    }}"""
 
     # test encoding
     meta_enc = encode_array_metadata(meta)
@@ -147,26 +141,22 @@ def test_encode_decode_array_complex():
             filters=[],
         )
 
-        meta_json = """{
+        meta_json = f"""{{
             "chunks": [10, 10],
-            "compressor": {
+            "compressor": {{
                 "id": "blosc",
                 "clevel": 3,
                 "cname": "lz4",
                 "shuffle": 2,
                 "blocksize": 0
-            },
-            "dtype": "%s",
+            }},
+            "dtype": "{dtype.str}",
             "fill_value": ["NaN", -1.0],
             "filters": [],
-            "order": "%s",
+            "order": "{dtype.char}",
             "shape": [100, 100],
-            "zarr_format": %s
-        }""" % (
-            dtype.str,
-            dtype.char,
-            ZARR_FORMAT,
-        )
+            "zarr_format": {ZARR_FORMAT}
+        }}"""
 
         # test encoding
         meta_enc = encode_array_metadata(meta)
@@ -205,26 +195,22 @@ def test_encode_decode_array_datetime_timedelta():
             filters=[],
         )
 
-        meta_json = """{
+        meta_json = f"""{{
             "chunks": [10, 10],
-            "compressor": {
+            "compressor": {{
                 "id": "blosc",
                 "clevel": 3,
                 "cname": "lz4",
                 "shuffle": 2,
                 "blocksize": 0
-            },
-            "dtype": "%s",
+            }},
+            "dtype": "{dtype.str}",
             "fill_value": -9223372036854775808,
             "filters": [],
-            "order": "%s",
+            "order": "{dtype.char}",
             "shape": [100, 100],
-            "zarr_format": %s
-        }""" % (
-            dtype.str,
-            dtype.char,
-            ZARR_FORMAT,
-        )
+            "zarr_format": {ZARR_FORMAT}
+        }}"""
 
         # test encoding
         meta_enc = encode_array_metadata(meta)
@@ -258,19 +244,16 @@ def test_encode_decode_array_dtype_shape():
         order="C",
     )
 
-    meta_json = (
-        """{
+    meta_json = f"""{{
         "chunks": [10],
-        "compressor": {"id": "zlib", "level": 1},
+        "compressor": {{"id": "zlib", "level": 1}},
         "dtype": "<f8",
         "fill_value": null,
         "filters": null,
         "order": "C",
         "shape": [100, 10, 10],
-        "zarr_format": %s
-    }"""
-        % ZARR_FORMAT
-    )
+        "zarr_format": {ZARR_FORMAT}
+    }}"""
 
     # test encoding
     meta_enc = encode_array_metadata(meta)
@@ -374,19 +357,16 @@ def test_encode_decode_array_structured():
         order="C",
     )
 
-    meta_json = (
-        """{
+    meta_json = f"""{{
         "chunks": [10],
-        "compressor": {"id": "zlib", "level": 1},
+        "compressor": {{"id": "zlib", "level": 1}},
         "dtype": [["f0", "<i8"], ["f1", "<f8", [10, 10]], ["f2", "|u1", [5, 10, 15]]],
         "fill_value": null,
         "filters": null,
         "order": "C",
         "shape": [100],
-        "zarr_format": %s
-    }"""
-        % ZARR_FORMAT
-    )
+        "zarr_format": {ZARR_FORMAT}
+    }}"""
 
     # test encoding
     meta_enc = encode_array_metadata(meta)
@@ -426,19 +406,16 @@ def test_encode_decode_fill_values_nan():
             order="C",
         )
 
-        meta_json = """{
+        meta_json = f"""{{
             "chunks": [10],
-            "compressor": {"id": "zlib", "level": 1},
+            "compressor": {{"id": "zlib", "level": 1}},
             "dtype": "<f8",
-            "fill_value": "%s",
+            "fill_value": "{s}",
             "filters": null,
             "order": "C",
             "shape": [100],
-            "zarr_format": %s
-        }""" % (
-            s,
-            ZARR_FORMAT,
-        )
+            "zarr_format": {ZARR_FORMAT}
+        }}"""
 
         # test encoding
         meta_enc = encode_array_metadata(meta)
@@ -472,19 +449,16 @@ def test_encode_decode_fill_values_bytes():
         # define expected metadata encoded as JSON
         s = base64.standard_b64encode(v)
         s = s.decode()
-        meta_json = """{
+        meta_json = f"""{{
             "chunks": [10],
-            "compressor": {"id": "zlib", "level": 1},
+            "compressor": {{"id": "zlib", "level": 1}},
             "dtype": "|S10",
-            "fill_value": "%s",
+            "fill_value": "{s}",
             "filters": null,
             "order": "C",
             "shape": [100],
-            "zarr_format": %s
-        }""" % (
-            s,
-            ZARR_FORMAT,
-        )
+            "zarr_format": {ZARR_FORMAT}
+        }}"""
 
         # test encoding
         assert_json_equal(meta_json, meta_enc)
@@ -499,17 +473,15 @@ def test_encode_decode_fill_values_bytes():
 def test_decode_array_unsupported_format():
 
     # unsupported format
-    meta_json = """{
-        "zarr_format": %s,
+    meta_json = f"""{{
+        "zarr_format": {ZARR_FORMAT - 1},
         "shape": [100],
         "chunks": [10],
         "dtype": "<f8",
-        "compressor": {"id": "zlib", "level": 1},
+        "compressor": {{"id": "zlib", "level": 1}},
         "fill_value": null,
         "order": "C"
-    }""" % (
-        ZARR_FORMAT - 1
-    )
+    }}"""
     with pytest.raises(MetadataError):
         decode_array_metadata(meta_json)
 
@@ -517,12 +489,9 @@ def test_decode_array_unsupported_format():
 def test_decode_array_missing_fields():
 
     # missing fields
-    meta_json = (
-        """{
-        "zarr_format": %s
-    }"""
-        % ZARR_FORMAT
-    )
+    meta_json = f"""{{
+        "zarr_format": {ZARR_FORMAT}
+    }}"""
     with pytest.raises(MetadataError):
         decode_array_metadata(meta_json)
 
@@ -540,21 +509,16 @@ def test_encode_decode_dtype():
 def test_decode_group():
 
     # typical
-    b = (
-        """{
-        "zarr_format": %s
-    }"""
-        % ZARR_FORMAT
-    )
+    b = f"""{{
+        "zarr_format": {ZARR_FORMAT}
+    }}"""
     meta = decode_group_metadata(b)
     assert ZARR_FORMAT == meta["zarr_format"]
 
     # unsupported format
-    b = """{
-        "zarr_format": %s
-    }""" % (
-        ZARR_FORMAT - 1
-    )
+    b = f"""{{
+        "zarr_format": {ZARR_FORMAT - 1}
+    }}"""
     with pytest.raises(MetadataError):
         decode_group_metadata(b)
 

@@ -2448,11 +2448,11 @@ class Array:
 
     def __repr__(self):
         t = type(self)
-        r = "<{}.{}".format(t.__module__, t.__name__)
+        r = f"<{t.__module__}.{t.__name__}"
         if self.name:
-            r += " %r" % self.name
-        r += " %s" % str(self.shape)
-        r += " %s" % self.dtype
+            r += f" {self.name!r}"
+        r += f" {str(self.shape)}"
+        r += f" {self.dtype}"
         if self._read_only:
             r += " read-only"
         r += ">"
@@ -2488,11 +2488,11 @@ class Array:
 
     def _info_items_nosync(self):
         def typestr(o):
-            return "{}.{}".format(type(o).__module__, type(o).__name__)
+            return f"{type(o).__module__}.{type(o).__name__}"
 
         def bytestr(n):
             if n > 2**10:
-                return "{} ({})".format(n, human_readable_size(n))
+                return f"{n} ({human_readable_size(n)})"
             else:
                 return str(n)
 
@@ -2503,7 +2503,7 @@ class Array:
             items += [("Name", self.name)]
         items += [
             ("Type", typestr(self)),
-            ("Data type", "%s" % self.dtype),
+            ("Data type", str(self.dtype)),
             ("Shape", str(self.shape)),
             ("Chunk shape", str(self.chunks)),
             ("Order", self.order),
@@ -2513,7 +2513,7 @@ class Array:
         # filters
         if self.filters:
             for i, f in enumerate(self.filters):
-                items += [("Filter [%s]" % i, repr(f))]
+                items += [(f"Filter [{i}]", repr(f))]
 
         # compressor
         items += [("Compressor", repr(self.compressor))]
@@ -2530,9 +2530,9 @@ class Array:
         if self.nbytes_stored > 0:
             items += [
                 ("No. bytes stored", bytestr(self.nbytes_stored)),
-                ("Storage ratio", "%.1f" % (self.nbytes / self.nbytes_stored)),
+                ("Storage ratio", f"{self.nbytes / self.nbytes_stored:.1f}"),
             ]
-        items += [("Chunks initialized", "{}/{}".format(self.nchunks_initialized, self.nchunks))]
+        items += [("Chunks initialized", f"{self.nchunks_initialized}/{self.nchunks}")]
 
         return items
 

@@ -227,7 +227,7 @@ class StoreV3(BaseStore):
             # TODO: Possibly allow key == ".zmetadata" too if we write a
             #       consolidated metadata spec corresponding to this?
         ):
-            raise ValueError("keys starts with unexpected value: `{}`".format(key))
+            raise ValueError(f"key starts with unexpected value: `{key}`")
 
         if key.endswith("/"):
             raise ValueError("keys may not end in /")

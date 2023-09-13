@@ -112,7 +112,7 @@ class Metadata2:
         # check metadata format
         zarr_format = meta.get("zarr_format", None)
         if zarr_format != cls.ZARR_FORMAT:
-            raise MetadataError("unsupported zarr format: %s" % zarr_format)
+            raise MetadataError(f"unsupported zarr format: {zarr_format}")
 
         # extract array metadata fields
         try:
@@ -200,7 +200,7 @@ class Metadata2:
         # check metadata format version
         zarr_format = meta.get("zarr_format", None)
         if zarr_format != cls.ZARR_FORMAT:
-            raise MetadataError("unsupported zarr format: %s" % zarr_format)
+            raise MetadataError(f"unsupported zarr format: {zarr_format}")
 
         meta = dict(zarr_format=zarr_format)
         return meta
@@ -347,7 +347,7 @@ class Metadata3(Metadata2):
         # # check metadata format version
         # zarr_format = meta.get("zarr_format", None)
         # if zarr_format != cls.ZARR_FORMAT:
-        #     raise MetadataError("unsupported zarr format: %s" % zarr_format)
+        #     raise MetadataError(f"unsupported zarr format: {zarr_format}")
 
         assert "attributes" in meta
         # meta = dict(attributes=meta['attributes'])
@@ -384,7 +384,7 @@ class Metadata3(Metadata2):
         # check metadata format
         # zarr_format = meta.get("zarr_format", None)
         # if zarr_format != "https://purl.org/zarr/spec/protocol/core/3.0":
-        #     raise MetadataError("unsupported zarr format: %s" % zarr_format)
+        #     raise MetadataError(f"unsupported zarr format: {zarr_format}")
         if set(meta.keys()) != {
             "zarr_format",
             "metadata_encoding",
@@ -519,7 +519,7 @@ class Metadata3(Metadata2):
                 meta["storage_transformers"] = storage_transformers
 
         except Exception as e:
-            raise MetadataError("error decoding metadata: %s" % e)
+            raise MetadataError(f"error decoding metadata: {e}")
         else:
             return meta
 
