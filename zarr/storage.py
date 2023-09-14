@@ -1467,12 +1467,17 @@ class FSStore(Store):
     def delitems(self, keys):
         if self.mode == "r":
             raise ReadOnlyError()
-
-        try:  # should much faster
+        try:
+            # First try to remove keys without checking if they exist. For high latency
+            # storage, this is much faster than first checking if they keys exist.
             nkeys = [self._normalize_key(key) for key in keys]
             # rm errors if you pass an empty collection
-            self.map.delitems(nkeys)
+            if len(nkeys) > 0:
+                self.map.delitems(nkeys)
         except FileNotFoundError:
+            # FileNotFounderror will be raised when a storage backend interprets
+            # deleting a file that does not exist as an error (e.g., LocalFileSystem).
+            # In this case, we must first check if keys exist, then delete those keys.
             nkeys = [self._normalize_key(key) for key in keys if key in self]
             # rm errors if you pass an empty collection
             if len(nkeys) > 0:
