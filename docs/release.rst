@@ -18,11 +18,22 @@ Release notes
 Unreleased
 ----------
 
+.. _release_2.16.1:
+
+2.16.1
+------
+
 Maintenance
 ~~~~~~~~~~~
 
 * Require ``setuptools_scm`` version ``1.5.4``\+
   By :user:`John A. Kirkham <jakirkham>` :issue:`1477`.
+
+* Add ``docs`` requirements to ``pyproject.toml``
+  By :user:`John A. Kirkham <jakirkham>` :issue:`1494`.
+
+* Fixed caching issue in ``LRUStoreCache``.
+  By :user:`Mads R. B. Kristensen <madsbk>` :issue:`1499`.
 
 .. _release_2.16.0:
 

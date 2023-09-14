@@ -1,6 +1,7 @@
 ci:
   autoupdate_commit_msg: "chore: update pre-commit hooks"
   autofix_commit_msg: "style: pre-commit fixes"
+  autofix_prs: false
 default_stages: [commit, push]
 default_language_version:
   python: python3

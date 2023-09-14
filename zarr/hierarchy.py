@@ -1360,7 +1360,8 @@ def group(
     synchronizer=None,
     path=None,
     *,
-    zarr_version=None
+    zarr_version=None,
+    meta_array=None
 ):
     """Create a group.
 
@@ -1382,6 +1383,11 @@ def group(
         Array synchronizer.
     path : string, optional
         Group path within store.
+    meta_array : array-like, optional
+        An array instance to use for determining arrays to create and return
+        to users. Use `numpy.empty(())` by default.
+
+        .. versionadded:: 2.16.1
 
     Returns
     -------
@@ -1432,6 +1438,7 @@ def group(
         synchronizer=synchronizer,
         path=path,
         zarr_version=zarr_version,
+        meta_array=meta_array,
     )
 
 
