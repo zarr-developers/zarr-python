@@ -1166,9 +1166,9 @@ class TestFSStore(StoreTests):
         if self.version == 2:
             assert set(store.listdir()) == {".zgroup", "bar"}
         else:
-            assert set(store.listdir()) == set(["data", "meta", "zarr.json"])
-            assert set(store.listdir("meta/root/" + path)) == set(["bar", "bar.group.json"])
-            assert set(store.listdir("data/root/" + path)) == set(["bar"])
+            assert set(store.listdir()) == {"data", "meta", "zarr.json"}
+            assert set(store.listdir("meta/root/" + path)) == {"bar", "bar.group.json"}
+            assert set(store.listdir("data/root/" + path)) == {"bar"}
         assert foo["bar"]["baz"][(0, 0, 0)] == 1
 
     def test_not_fsspec(self):
