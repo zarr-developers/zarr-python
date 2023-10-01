@@ -31,6 +31,7 @@ from numcodecs.compat import (
 from numcodecs.ndarray_like import NDArrayLike
 from numcodecs.registry import codec_registry
 from numcodecs.blosc import cbuffer_sizes, cbuffer_metainfo
+from zarr.types import DIMENSION_SEPARATOR
 
 KeyType = TypeVar("KeyType")
 ValueType = TypeVar("ValueType")
@@ -286,9 +287,9 @@ def normalize_order(order: str) -> str:
     return order
 
 
-def normalize_dimension_separator(sep: Optional[str]) -> Optional[str]:
+def normalize_dimension_separator(sep: Optional[str]) -> Optional[DIMENSION_SEPARATOR]:
     if sep in (".", "/", None):
-        return sep
+        return cast(DIMENSION_SEPARATOR, sep)
     else:
         raise ValueError("dimension_separator must be either '.' or '/', found: %r" % sep)
 

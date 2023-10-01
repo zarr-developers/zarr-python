@@ -1,7 +1,10 @@
-from typing import Optional
+from collections.abc import MutableMapping
+from typing import Optional, Tuple, Union, Sequence
 from warnings import warn
 
 import numpy as np
+import numpy.typing as npt
+from numcodecs.abc import Codec
 from numcodecs.registry import codec_registry
 
 from zarr._storage.store import DEFAULT_ZARR_VERSION
@@ -19,32 +22,35 @@ from zarr.storage import (
     normalize_storage_path,
     normalize_store_arg,
 )
+from zarr._storage.store import StorageTransformer
+from zarr.sync import Synchronizer
+from zarr.types import ZARR_VERSION, DIMENSION_SEPARATOR, MEMORY_ORDER
 from zarr.util import normalize_dimension_separator
 
 
 def create(
-    shape,
-    chunks=True,
-    dtype=None,
+    shape: Union[int, Tuple[int, ...]],
+    chunks: bool = True,
+    dtype: Optional[Union[str, npt.DTypeLike]] = None,
     compressor="default",
     fill_value: Optional[int] = 0,
-    order="C",
-    store=None,
-    synchronizer=None,
-    overwrite=False,
-    path=None,
-    chunk_store=None,
-    filters=None,
-    cache_metadata=True,
-    cache_attrs=True,
-    read_only=False,
-    object_codec=None,
-    dimension_separator=None,
-    write_empty_chunks=True,
+    order: MEMORY_ORDER = "C",
+    store: Optional[Union[str, MutableMapping]] = None,
+    synchronizer: Optional[Synchronizer] = None,
+    overwrite: bool = False,
+    path: Optional[str] = None,
+    chunk_store: Optional[MutableMapping] = None,
+    filters: Optional[Sequence[Codec]] = None,
+    cache_metadata: bool = True,
+    cache_attrs: bool = True,
+    read_only: bool = False,
+    object_codec: Optional[Codec] = None,
+    dimension_separator: Optional[DIMENSION_SEPARATOR] = None,
+    write_empty_chunks: bool = True,
     *,
-    zarr_version=None,
-    meta_array=None,
-    storage_transformers=(),
+    zarr_version: Optional[ZARR_VERSION] = None,
+    meta_array: Optional[npt.ArrayLike] = None,
+    storage_transformers: Sequence[StorageTransformer] = (),
     **kwargs,
 ):
     """Create an array.
