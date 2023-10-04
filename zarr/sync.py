@@ -1,14 +1,16 @@
 import os
 from collections import defaultdict
 from threading import Lock
+from typing import Protocol
 
 import fasteners
 
 
-class Synchronizer:
+class Synchronizer(Protocol):
     """Base class for synchronizers."""
 
-    pass
+    def __getitem__(self, item):
+        ...
 
 
 class ThreadSynchronizer(Synchronizer):
