@@ -24,21 +24,21 @@ from zarr.storage import (
 )
 from zarr._storage.store import StorageTransformer
 from zarr.sync import Synchronizer
-from zarr.types import ZARR_VERSION, DIMENSION_SEPARATOR, MEMORY_ORDER, MetaArray
+from zarr.types import ZARR_VERSION, DIMENSION_SEPARATOR, MEMORY_ORDER, MetaArray, PathLike
 from zarr.util import normalize_dimension_separator
 
 
 def create(
     shape: Union[int, Tuple[int, ...]],
     chunks: bool = True,
-    dtype: Optional[Union[str, npt.DTypeLike]] = None,
+    dtype: Optional[npt.DTypeLike] = None,
     compressor="default",
     fill_value: Optional[int] = 0,
     order: MEMORY_ORDER = "C",
     store: Optional[Union[str, MutableMapping]] = None,
     synchronizer: Optional[Synchronizer] = None,
     overwrite: bool = False,
-    path: Optional[str] = None,
+    path: Optional[PathLike] = None,
     chunk_store: Optional[MutableMapping] = None,
     filters: Optional[Sequence[Codec]] = None,
     cache_metadata: bool = True,

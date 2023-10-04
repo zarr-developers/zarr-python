@@ -1,8 +1,11 @@
-from typing import Literal, Protocol
+from typing import Literal, Protocol, Union
 
 ZARR_VERSION = Literal[2, 3]
 DIMENSION_SEPARATOR = Literal[".", "/"]
 MEMORY_ORDER = Literal["C", "F"]
+
+
+PathLike = Union[str, bytes, None]
 
 
 class MetaArray(Protocol):
