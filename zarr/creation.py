@@ -24,7 +24,7 @@ from zarr.storage import (
 )
 from zarr._storage.store import StorageTransformer
 from zarr.sync import Synchronizer
-from zarr.types import ZARR_VERSION, DIMENSION_SEPARATOR, MEMORY_ORDER
+from zarr.types import ZARR_VERSION, DIMENSION_SEPARATOR, MEMORY_ORDER, MetaArray
 from zarr.util import normalize_dimension_separator
 
 
@@ -49,7 +49,7 @@ def create(
     write_empty_chunks: bool = True,
     *,
     zarr_version: Optional[ZARR_VERSION] = None,
-    meta_array: Optional[npt.ArrayLike] = None,
+    meta_array: Optional[MetaArray] = None,
     storage_transformers: Sequence[StorageTransformer] = (),
     **kwargs,
 ):
