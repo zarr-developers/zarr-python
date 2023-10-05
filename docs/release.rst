@@ -18,6 +18,12 @@ Release notes
 Unreleased
 ----------
 
+Bug fixes
+~~~~~~~~~
+
+* Preserve ``dimension_separator`` when resizing arrays.
+  By :user:`Ziwen Liu <ziw-liu>` :issue:`1533`.
+
 .. _release_2.16.1:
 
 2.16.1
