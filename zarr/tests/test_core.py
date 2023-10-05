@@ -132,7 +132,6 @@ class TestArray:
         return Array(store, **access_array_kwargs)
 
     def test_array_init(self):
-
         # normal initialization
         store = self.create_store()
         init_array(store, shape=100, chunks=10, dtype="<f8")
@@ -328,7 +327,6 @@ class TestArray:
 
     def test_array_1d_fill_value(self):
         for fill_value in -1, 0, 1, 10:
-
             a = np.arange(1050)
             f = np.empty_like(a)
             f.fill(fill_value)
@@ -575,7 +573,6 @@ class TestArray:
         z.store.close()
 
     def test_array_order(self):
-
         # 1D
         a = np.arange(1050)
         for order in "C", "F":
@@ -667,7 +664,6 @@ class TestArray:
         assert self.expected() == found
 
     def test_resize_1d(self):
-
         z = self.create_array(shape=105, chunks=10, dtype="i4", fill_value=0)
         a = np.arange(105, dtype="i4")
         z[:] = a
@@ -703,7 +699,6 @@ class TestArray:
         z.store.close()
 
     def test_resize_2d(self):
-
         z = self.create_array(shape=(105, 105), chunks=(10, 10), dtype="i4", fill_value=0)
         a = np.arange(105 * 105, dtype="i4").reshape((105, 105))
         z[:] = a
@@ -756,8 +751,14 @@ class TestArray:
 
         z.store.close()
 
-    def test_append_1d(self):
+        # checks that resizing preserves metadata
+        if self.dimension_separator == "/":
+            z_ = zarr.open(z.store)
+            if hasattr(z_, "dimension_separator"):
+                assert z_.dimension_separator == self.dimension_separator
+            z_.store.close()
 
+    def test_append_1d(self):
         a = np.arange(105)
         z = self.create_array(shape=a.shape, chunks=10, dtype=a.dtype)
         z[:] = a
@@ -786,7 +787,6 @@ class TestArray:
         z.store.close()
 
     def test_append_2d(self):
-
         a = np.arange(105 * 105, dtype="i4").reshape((105, 105))
         z = self.create_array(shape=a.shape, chunks=(10, 10), dtype=a.dtype)
         z[:] = a
@@ -808,7 +808,6 @@ class TestArray:
         z.store.close()
 
     def test_append_2d_axis(self):
-
         a = np.arange(105 * 105, dtype="i4").reshape((105, 105))
         z = self.create_array(shape=a.shape, chunks=(10, 10), dtype=a.dtype)
         z[:] = a
@@ -837,7 +836,6 @@ class TestArray:
         z.store.close()
 
     def test_read_only(self):
-
         z = self.create_array(shape=1000, chunks=100)
         assert not z.read_only
         z.store.close()
@@ -868,7 +866,6 @@ class TestArray:
         z.store.close()
 
     def test_pickle(self):
-
         # setup array
         z = self.create_array(
             shape=1000, chunks=100, dtype=int, cache_metadata=False, cache_attrs=False
@@ -1082,7 +1079,6 @@ class TestArray:
             z.store.close()
 
     def test_array_dtype_shape(self):
-
         dt = "(2, 2)f4"
         # setup some data
         d = np.array([((0, 1), (1, 2)), ((1, 2), (2, 3)), ((2, 3), (3, 4))], dtype=dt)
@@ -1175,7 +1171,6 @@ class TestArray:
         self.check_structured_array(d, fill_values)
 
     def test_dtypes(self):
-
         # integers
         for dtype in "u1", "u2", "u4", "u8", "i1", "i2", "i4", "i8":
             z = self.create_array(shape=10, chunks=3, dtype=dtype)
@@ -1237,7 +1232,6 @@ class TestArray:
             self.create_array(shape=100, dtype="m8")
 
     def test_object_arrays(self):
-
         # an object_codec is required for object arrays
         with pytest.raises(ValueError):
             self.create_array(shape=10, chunks=3, dtype=object)
@@ -1297,7 +1291,6 @@ class TestArray:
         z.store.close()
 
     def test_object_arrays_vlen_text(self):
-
         data = np.array(greetings * 1000, dtype=object)
         z = self.create_array(shape=data.shape, dtype=object, object_codec=VLenUTF8())
         z[0] = "foo"
@@ -1343,7 +1336,6 @@ class TestArray:
         z.store.close()
 
     def test_object_arrays_vlen_bytes(self):
-
         greetings_bytes = [g.encode("utf8") for g in greetings]
         data = np.array(greetings_bytes * 1000, dtype=object)
 
@@ -1374,7 +1366,6 @@ class TestArray:
         z.store.close()
 
     def test_object_arrays_vlen_array(self):
-
         data = np.array(
             [np.array([1, 3, 7]), np.array([5]), np.array([2, 8, 12])] * 1000, dtype=object
         )
@@ -1410,7 +1401,6 @@ class TestArray:
             z.store.close()
 
     def test_object_arrays_danger(self):
-
         # do something dangerous - manually force an object array with no object codec
         z = self.create_array(shape=5, chunks=2, dtype=object, fill_value=0, object_codec=MsgPack())
         z._filters = None  # wipe filters
@@ -1438,7 +1428,6 @@ class TestArray:
             z.store.close()
 
     def test_object_codec_warnings(self):
-
         with pytest.warns(UserWarning):
             # provide object_codec, but not object dtype
             z = self.create_array(shape=10, chunks=5, dtype="i4", object_codec=JSON())
@@ -1449,7 +1438,6 @@ class TestArray:
         "unsupported numpy version",
     )
     def test_structured_array_contain_object(self):
-
         if "PartialRead" in self.__class__.__name__:
             pytest.skip("partial reads of object arrays not supported")
 
@@ -1631,7 +1619,6 @@ class TestArrayWithPath(TestArray):
         ]
 
     def test_nbytes_stored(self):
-
         # MemoryStore as store
         z = self.create_array(shape=1000, chunks=100)
         expect_nbytes_stored = sum(
@@ -1665,7 +1652,6 @@ class TestArrayWithChunkStore(TestArray):
         ]
 
     def test_nbytes_stored(self):
-
         z = self.create_array(shape=1000, chunks=100)
         expect_nbytes_stored = sum(buffer_size(v) for v in z.store.values())
         expect_nbytes_stored += sum(buffer_size(v) for v in z.chunk_store.values())
@@ -1688,7 +1674,6 @@ class TestArrayWithDirectoryStore(TestArray):
         return store
 
     def test_nbytes_stored(self):
-
         # dict as store
         z = self.create_array(shape=1000, chunks=100)
         expect_nbytes_stored = sum(buffer_size(v) for v in z.store.values())
@@ -1844,7 +1829,6 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
         assert 0 == z.nchunks_initialized
 
     def test_array_order(self):
-
         # N5 only supports 'C' at the moment
         with pytest.raises(ValueError):
             self.create_array(shape=(10, 11), chunks=(10, 11), dtype="i8", order="F")
@@ -1907,7 +1891,6 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
             self.check_structured_array(d, fill_values)
 
     def test_dtypes(self):
-
         # integers
         for dtype in "u1", "u2", "u4", "u8", "i1", "i2", "i4", "i8":
             z = self.create_array(shape=10, chunks=3, dtype=dtype)
@@ -1931,7 +1914,6 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
             self.create_array(shape=100, dtype="m8")
 
     def test_object_arrays(self):
-
         # an object_codec is required for object arrays
         with pytest.raises(ValueError):
             self.create_array(shape=10, chunks=3, dtype=object)
@@ -1947,7 +1929,6 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
             self.create_array(shape=10, chunks=3, dtype=object, object_codec=MsgPack())
 
     def test_object_arrays_vlen_text(self):
-
         data = np.array(greetings * 1000, dtype=object)
 
         with pytest.raises(ValueError):
@@ -1958,7 +1939,6 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
             self.create_array(shape=data.shape, dtype=str)
 
     def test_object_arrays_vlen_bytes(self):
-
         greetings_bytes = [g.encode("utf8") for g in greetings]
         data = np.array(greetings_bytes * 1000, dtype=object)
 
@@ -1970,7 +1950,6 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
             self.create_array(shape=data.shape, dtype=bytes)
 
     def test_object_arrays_vlen_array(self):
-
         data = np.array(
             [np.array([1, 3, 7]), np.array([5]), np.array([2, 8, 12])] * 1000, dtype=object
         )
@@ -2122,7 +2101,6 @@ class TestArrayWithNoCompressor(TestArray):
 
 
 class TestArrayWithBZ2Compressor(TestArray):
-
     compressor = BZ2(level=1)
 
     def expected(self):
@@ -2136,7 +2114,6 @@ class TestArrayWithBZ2Compressor(TestArray):
 
 
 class TestArrayWithBloscCompressor(TestArray):
-
     compressor = Blosc(cname="zstd", clevel=1, shuffle=1)
 
     def expected(self):
@@ -2157,7 +2134,6 @@ except ImportError:  # pragma: no cover
 
 @unittest.skipIf(LZMA is None, "LZMA codec not available")
 class TestArrayWithLZMACompressor(TestArray):
-
     compressor = LZMA(preset=1)
 
     def expected(self):
@@ -2171,7 +2147,6 @@ class TestArrayWithLZMACompressor(TestArray):
 
 
 class TestArrayWithFilters(TestArray):
-
     compressor = Zlib(1)
 
     def create_filters(self, dtype: Optional[str]) -> Tuple[Any, ...]:
@@ -2583,7 +2558,6 @@ class TestArrayV3(TestArray):
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestArrayWithPathV3(TestArrayV3):
     def test_array_init(self):
-
         store = self.create_store()
         # can initialize an array without a path
         init_array(store, shape=100, chunks=10, dtype="<f8")
@@ -2646,7 +2620,6 @@ class TestArrayWithPathV3(TestArrayV3):
         ]
 
     def test_nbytes_stored(self):
-
         # dict as store
         z = self.create_array(shape=1000, chunks=100)
         expect_nbytes_stored = sum(buffer_size(v) for k, v in z.store.items() if k != "zarr.json")
@@ -2664,7 +2637,6 @@ class TestArrayWithPathV3(TestArrayV3):
         z.store.close()
 
     def test_view(self):
-
         # dict as store
         z = self.create_array(shape=1005, chunks=100, dtype=float)
 
@@ -2722,7 +2694,6 @@ class TestArrayWithChunkStoreV3(TestArrayV3):
         ]
 
     def test_nbytes_stored(self):
-
         z = self.create_array(shape=1000, chunks=100)
         expect_nbytes_stored = sum(buffer_size(v) for k, v in z.store.items() if k != "zarr.json")
         expect_nbytes_stored += sum(
@@ -2901,7 +2872,6 @@ class TestArrayWithCustomMappingV3(TestArrayV3):
         assert expect_nbytes_stored == z.nbytes_stored
 
     def test_len(self):
-
         # dict as store
         z = self.create_array(shape=1000, chunks=100)
         assert len(z._store) == 2
