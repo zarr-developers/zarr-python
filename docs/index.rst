@@ -60,6 +60,7 @@ Zarr is a file storage format for chunked, compressed, N-dimensional arrays base
         +++
 
         .. button-ref:: tutorial
+            :ref-type: ref
             :expand:
             :color: dark
             :click-parent:
