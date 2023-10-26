@@ -8,8 +8,8 @@ from numcodecs.registry import get_codec, register_codec
 
 import zarr.codecs
 from zarr.core import Array
-from zarr.creation import array, empty, full, ones, zeros
-from zarr.hierarchy import open_group
+from zarr.creation import array, empty, full, ones, open_array, zeros
+from zarr.hierarchy import open_group, group
 from zarr.storage import DirectoryStore, MemoryStore, Store, ZipStore
 
 
@@ -148,6 +148,23 @@ def test_array(tmp_path, module, compressor, store_type):
     assert z.dtype == z2.dtype
     xp.testing.assert_array_equal(z[:], z2[:])
 
+    store = init_store(tmp_path / "open_array", store_type)
+    a = xp.arange(100)
+    z = open_array(
+        store,
+        shape=a.shape,
+        dtype=a.dtype,
+        chunks=10,
+        compressor=compressor,
+        meta_array=xp.empty(()),
+    )
+    z[:] = a
+    assert a.shape == z.shape
+    assert a.dtype == z.dtype
+    assert isinstance(a, type(z[:]))
+    assert isinstance(z.meta_array, type(xp.empty(())))
+    xp.testing.assert_array_equal(a, z[:])
+
 
 @pytest.mark.parametrize("module, compressor", param_module_and_compressor)
 def test_empty(module, compressor):
@@ -217,12 +234,13 @@ def test_full(module, compressor):
     assert np.all(np.isnan(z[:]))
 
 
+@pytest.mark.parametrize("group_create_function", [group, open_group])
 @pytest.mark.parametrize("module, compressor", param_module_and_compressor)
 @pytest.mark.parametrize("store_type", [None, DirectoryStore, MemoryStore, ZipStore])
-def test_group(tmp_path, module, compressor, store_type):
+def test_group(tmp_path, group_create_function, module, compressor, store_type):
     xp = ensure_module(module)
     store = init_store(tmp_path, store_type)
-    g = open_group(store, meta_array=xp.empty(()))
+    g = group_create_function(store, meta_array=xp.empty(()))
     g.ones("data", shape=(10, 11), dtype=int, compressor=compressor)
     a = g["data"]
     assert a.shape == (10, 11)

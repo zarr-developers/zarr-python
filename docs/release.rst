@@ -2,6 +2,13 @@ Release notes
 =============
 
 ..
+    # Copy the warning statement _under_ the latest release version
+    # and unindent for pre-releases.
+
+    .. warning::
+       Pre-release! Use :command:`pip install --pre zarr` to evaluate this release.
+
+..
     # Unindent the section between releases in order
     # to document your changes. On releases it will be
     # re-indented so that it does not show up in the notes.
@@ -10,31 +17,168 @@ Release notes
 
 Unreleased
 ----------
-..
-    # .. warning::
-    #    Pre-release! Use :command:`pip install --pre zarr` to evaluate this release.
+
+Maintenance
+~~~~~~~~~~~
+
+* Initialise some sets in tests with set literals instead of list literals.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1534`.
+
+* Allow ``black`` code formatter to be run with any Python version.
+  By :user:`David Stansby <dstansby>` :issue:`1549`
+
+.. _release_2.16.1:
+
+2.16.1
+------
+
+Maintenance
+~~~~~~~~~~~
+
+* Require ``setuptools_scm`` version ``1.5.4``\+
+  By :user:`John A. Kirkham <jakirkham>` :issue:`1477`.
+
+* Add ``docs`` requirements to ``pyproject.toml``
+  By :user:`John A. Kirkham <jakirkham>` :issue:`1494`.
+
+* Fixed caching issue in ``LRUStoreCache``.
+  By :user:`Mads R. B. Kristensen <madsbk>` :issue:`1499`.
+
+.. _release_2.16.0:
+
+2.16.0
+------
+
+Enhancements
+~~~~~~~~~~~~
+
+* Allow for partial codec specification in V3 array metadata.
+  By :user:`Joe Hamman <jhamman>` :issue:`1443`.
+
+* Add ``__contains__`` method to ``KVStore``.
+  By :user:`Christoph Gohlke <cgohlke>` :issue:`1454`.
+
+* **Block Indexing**: Implemented blockwise (chunk blocks) indexing to ``zarr.Array``.
+  By :user:`Altay Sansal <tasansal>` :issue:`1428`
+
+Maintenance
+~~~~~~~~~~~
+
+* Refactor the core array tests to reduce code duplication.
+  By :user:`Davis Bennett <d-v-b>` :issue:`1462`.
+
+* Style the codebase with ``ruff`` and ``black``.
+  By :user:`Davis Bennett` <d-v-b> :issue:`1459`
+
+* Ensure that chunks is tuple of ints upon array creation.
+  By :user:`Philipp Hanslovsky` <hanslovsky> :issue:`1461`
+
+.. _release_2.15.0:
+
+2.15.0
+------
+
+Enhancements
+~~~~~~~~~~~~
+
+* Implement more extensive fallback of getitem/setitem for orthogonal indexing.
+  By :user:`Andreas Albert <AndreasAlbertQC>` :issue:`1029`.
+
+* Getitems supports ``meta_array``.
+  By :user:`Mads R. B. Kristensen <madsbk>` :issue:`1131`.
+
+* ``open_array()`` now takes the ``meta_array`` argument.
+  By :user:`Mads R. B. Kristensen <madsbk>` :issue:`1396`.
+
+Maintenance
+~~~~~~~~~~~
+
+* Remove ``codecov`` from GitHub actions.
+  By :user:`John A. Kirkham <jakirkham>` :issue:`1391`.
+
+* Replace ``np.product`` with ``np.prod`` due to deprecation.
+  By :user:`James Bourbeau <jrbourbeau>` :issue:`1405`.
+
+* Activate Py 3.11 builds.
+  By :user:`Joe Hamman <jhamman>` :issue:`1415`.
+
+Documentation
+~~~~~~~~~~~~~
+
+* Add API reference for V3 Implementation in the docs.
+  By :user:`Sanket Verma <MSanKeys963>` :issue:`1345`.
+
+Bug fixes
+~~~~~~~~~
+
+* Fix the conda-forge error. Read :issue:`1347` for detailed info.
+  By :user:`Josh Moore <joshmoore>` :issue:`1364` and :issue:`1367`.
+
+* Fix ``ReadOnlyError`` when opening V3 store via fsspec reference file system.
+  By :user:`Joe Hamman <jhamman>` :issue:`1383`.
+
+* Fix ``normalize_fill_value`` for structured arrays.
+  By :user:`Alan Du <alanhdu>` :issue:`1397`.
+
+.. _release_2.14.2:
+
+2.14.2
+------
+
+Bug fixes
+~~~~~~~~~
+
+* Ensure ``zarr.group`` uses writeable mode to fix issue with :issue:`1304`.
+  By :user:`Brandur Thorgrimsson <swordcat>` :issue:`1354`.
+
+.. _release_2.14.1:
+
+2.14.1
+------
+
+Documentation
+~~~~~~~~~~~~~
+
+* Fix API links.
+  By :user:`Josh Moore <joshmoore>` :issue:`1346`.
+
+* Fix unit tests which prevented the conda-forge release.
+  By :user:`Josh Moore <joshmoore>` :issue:`1348`.
+
+.. _release_2.14.0:
+
+2.14.0
+------
 
 Major changes
 ~~~~~~~~~~~~~
 
 * Improve Zarr V3 support, adding partial store read/write and storage transformers.
-  Add two features of the [v3 spec](https://zarr-specs.readthedocs.io/en/latest/core/v3.0.html):
-  * storage transformers
-  * `get_partial_values` and `set_partial_values`
-  * efficient `get_partial_values` implementation for `FSStoreV3`
-  * sharding storage transformer
+  Add new features from the `v3 spec <https://zarr-specs.readthedocs.io/en/latest/core/v3.0.html>`_:
+    * storage transformers
+    * `get_partial_values` and `set_partial_values`
+    * efficient `get_partial_values` implementation for `FSStoreV3`
+    * sharding storage transformer
   By :user:`Jonathan Striebel <jstriebel>`; :issue:`1096`, :issue:`1111`.
 
-* Remove warnings emitted when using N5Store or N5FSStore with a blosc-compressed array.
+* N5 nows supports Blosc.
+  Remove warnings emitted when using N5Store or N5FSStore with a blosc-compressed array.
   By :user:`Davis Bennett <d-v-b>`; :issue:`1331`.
-  
+
 Bug fixes
 ~~~~~~~~~
 
+* Allow reading utf-8 encoded json files
+  By :user:`Nathan Zimmerberg <nhz2>` :issue:`1308`.
+
 * Ensure contiguous data is give to ``FSStore``. Only copying if needed.
   By :user:`Mads R. B. Kristensen <madsbk>` :issue:`1285`.
+
 * NestedDirectoryStore.listdir now returns chunk keys with the correct '/' dimension_separator.
   By :user:`Brett Graham <braingram>` :issue:`1334`.
+
+* N5Store/N5FSStore dtype returns zarr Stores readable dtype.
+  By :user:`Marwan Zouinkhi <mzouink>` :issue:`1339`.
 
 .. _release_2.13.6:
 
@@ -94,7 +238,7 @@ Bug fixes
 Documentation
 ~~~~~~~~~~~~~
 
-* Fix minor indexing errors in tutorial and specification examples of documentation. 
+* Fix minor indexing errors in tutorial and specification examples of documentation.
   By :user:`Kola Babalola <sprynt001>` :issue:`1277`.
 
 * Add `requirements_rtfd.txt` in `contributing.rst`.
@@ -208,7 +352,7 @@ Maintenance
 * Updated GitHub actions.
   By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1134`.
 
-* Uopdate web links: `http:// → https://`.
+* Update web links: `http:// → https://`.
   By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1313`.
 
 .. _release_2.13.3:

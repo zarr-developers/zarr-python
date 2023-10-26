@@ -15,10 +15,12 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ['3.8', '3.9', '3.10']
+        python-version: ['3.8', '3.9', '3.10', '3.11']
         numpy_version: ['>=1.22.0', '==1.20.*']
         exclude:
           - python-version: '3.10'
+            numpy_version: '==1.20.*'
+          - python-version: '3.11'
             numpy_version: '==1.20.*'
     services:
       redis:
@@ -36,7 +38,7 @@ jobs:
         ports:
           - 27017:27017
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
       with:
         fetch-depth: 0
     - name: Setup Miniconda
@@ -58,7 +60,7 @@ jobs:
       run: |
         conda activate zarr-env
         python -m pip install --upgrade pip
-        python -m pip install -U pip setuptools wheel codecov line_profiler
+        python -m pip install -U pip setuptools wheel line_profiler
         python -m pip install -rrequirements_dev_minimal.txt numpy${{matrix.numpy_version}} -rrequirements_dev_optional.txt pymongo redis
         python -m pip install .
         python -m pip freeze
@@ -78,7 +80,7 @@ jobs:
         pytest --cov=zarr --cov-config=pyproject.toml --doctest-plus --cov-report xml --cov=./ --timeout=300
     - uses: codecov/codecov-action@v3
       with:
-        #token: ${{ secrets.CODECOV_TOKEN }} # not required for public repos
+        token: ${{ secrets.CODECOV_TOKEN }} # not required for public repos
           #files: ./coverage1.xml,./coverage2.xml # optional
           #flags: unittests # optional
           #name: codecov-umbrella # optional

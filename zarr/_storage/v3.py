@@ -9,44 +9,60 @@ from zarr.errors import (
     MetadataError,
     ReadOnlyError,
 )
-from zarr.util import (buffer_size, json_loads, normalize_storage_path)
+from zarr.util import buffer_size, json_loads, normalize_storage_path
 
 from zarr._storage.absstore import ABSStoreV3  # noqa: F401
-from zarr._storage.store import (_get_hierarchy_metadata,  # noqa: F401
-                                 _get_metadata_suffix,
-                                 _listdir_from_keys,
-                                 _rename_from_keys,
-                                 _rename_metadata_v3,
-                                 _rmdir_from_keys,
-                                 _rmdir_from_keys_v3,
-                                 _path_to_prefix,
-                                 _prefix_to_array_key,
-                                 _prefix_to_group_key,
-                                 array_meta_key,
-                                 attrs_key,
-                                 data_root,
-                                 group_meta_key,
-                                 meta_root,
-                                 BaseStore,
-                                 Store,
-                                 StoreV3)
-from zarr.storage import (DBMStore, ConsolidatedMetadataStore, DirectoryStore, FSStore, KVStore,
-                          LMDBStore, LRUStoreCache, MemoryStore, MongoDBStore, RedisStore,
-                          SQLiteStore, ZipStore, _getsize)
+from zarr._storage.store import (  # noqa: F401
+    _get_hierarchy_metadata,
+    _get_metadata_suffix,
+    _listdir_from_keys,
+    _rename_from_keys,
+    _rename_metadata_v3,
+    _rmdir_from_keys,
+    _rmdir_from_keys_v3,
+    _path_to_prefix,
+    _prefix_to_array_key,
+    _prefix_to_group_key,
+    array_meta_key,
+    attrs_key,
+    data_root,
+    group_meta_key,
+    meta_root,
+    BaseStore,
+    Store,
+    StoreV3,
+)
+from zarr.storage import (
+    DBMStore,
+    ConsolidatedMetadataStore,
+    DirectoryStore,
+    FSStore,
+    KVStore,
+    LMDBStore,
+    LRUStoreCache,
+    MemoryStore,
+    MongoDBStore,
+    RedisStore,
+    SQLiteStore,
+    ZipStore,
+    _getsize,
+)
 
 __doctest_requires__ = {
-    ('RedisStore', 'RedisStore.*'): ['redis'],
-    ('MongoDBStore', 'MongoDBStore.*'): ['pymongo'],
-    ('LRUStoreCache', 'LRUStoreCache.*'): ['s3fs'],
+    ("RedisStore", "RedisStore.*"): ["redis"],
+    ("MongoDBStore", "MongoDBStore.*"): ["pymongo"],
+    ("LRUStoreCache", "LRUStoreCache.*"): ["s3fs"],
 }
 
 
 try:
     # noinspection PyUnresolvedReferences
     from zarr.codecs import Blosc
+
     default_compressor = Blosc()
 except ImportError:  # pragma: no cover
     from zarr.codecs import Zlib
+
     default_compressor = Zlib()
 
 
@@ -55,7 +71,7 @@ Path = Union[str, bytes, None]
 StoreLike = Union[BaseStore, MutableMapping]
 
 
-class RmdirV3():
+class RmdirV3:
     """Mixin class that can be used to ensure override of any existing v2 rmdir class."""
 
     def rmdir(self, path: str = "") -> None:
@@ -64,7 +80,6 @@ class RmdirV3():
 
 
 class KVStoreV3(RmdirV3, KVStore, StoreV3):
-
     def list(self):
         return list(self._mutable_mapping.keys())
 
@@ -73,10 +88,7 @@ class KVStoreV3(RmdirV3, KVStore, StoreV3):
         super().__setitem__(key, value)
 
     def __eq__(self, other):
-        return (
-            isinstance(other, KVStoreV3) and
-            self._mutable_mapping == other._mutable_mapping
-        )
+        return isinstance(other, KVStoreV3) and self._mutable_mapping == other._mutable_mapping
 
 
 KVStoreV3.__doc__ = KVStore.__doc__
@@ -122,15 +134,15 @@ class FSStoreV3(FSStore, StoreV3):
         return list(self.keys())
 
     def _normalize_key(self, key):
-        key = normalize_storage_path(key).lstrip('/')
+        key = normalize_storage_path(key).lstrip("/")
         return key.lower() if self.normalize_keys else key
 
     def getsize(self, path=None):
         size = 0
-        if path is None or path == '':
+        if path is None or path == "":
             # size of both the data and meta subdirs
             dirs = []
-            for d in ['data/root', 'meta/root']:
+            for d in ["data/root", "meta/root"]:
                 dir_path = os.path.join(self.path, d)
                 if os.path.exists(dir_path):
                     dirs.append(dir_path)
@@ -146,7 +158,7 @@ class FSStoreV3(FSStore, StoreV3):
         return size
 
     def setitems(self, values):
-        if self.mode == 'r':
+        if self.mode == "r":
             raise ReadOnlyError()
         values = {self._normalize_key(key): val for key, val in values.items()}
 
@@ -162,7 +174,7 @@ class FSStoreV3(FSStore, StoreV3):
         self.map.setitems(values)
 
     def rmdir(self, path=None):
-        if self.mode == 'r':
+        if self.mode == "r":
             raise ReadOnlyError()
         if path:
             for base in [meta_root, data_root]:
@@ -172,10 +184,10 @@ class FSStoreV3(FSStore, StoreV3):
 
             # remove any associated metadata files
             sfx = _get_metadata_suffix(self)
-            meta_dir = (meta_root + path).rstrip('/')
-            array_meta_file = meta_dir + '.array' + sfx
+            meta_dir = (meta_root + path).rstrip("/")
+            array_meta_file = meta_dir + ".array" + sfx
             self.pop(array_meta_file, None)
-            group_meta_file = meta_dir + '.group' + sfx
+            group_meta_file = meta_dir + ".group" + sfx
             self.pop(group_meta_file, None)
         else:
             store_path = self.dir_path(path)
@@ -213,7 +225,6 @@ class FSStoreV3(FSStore, StoreV3):
 
 
 class MemoryStoreV3(MemoryStore, StoreV3):
-
     def __init__(self, root=None, cls=dict, dimension_separator=None):
         if root is None:
             self.root = cls()
@@ -225,9 +236,7 @@ class MemoryStoreV3(MemoryStore, StoreV3):
 
     def __eq__(self, other):
         return (
-            isinstance(other, MemoryStoreV3) and
-            self.root == other.root and
-            self.cls == other.cls
+            isinstance(other, MemoryStoreV3) and self.root == other.root and self.cls == other.cls
         )
 
     def __setitem__(self, key, value):
@@ -256,13 +265,13 @@ class MemoryStoreV3(MemoryStore, StoreV3):
                 if base == meta_root:
                     # check for and move corresponding metadata
                     sfx = _get_metadata_suffix(self)
-                    src_meta = src_key + '.array' + sfx
+                    src_meta = src_key + ".array" + sfx
                     if src_meta in src_parent:
-                        dst_meta = dst_key + '.array' + sfx
+                        dst_meta = dst_key + ".array" + sfx
                         dst_parent[dst_meta] = src_parent.pop(src_meta)
-                    src_meta = src_key + '.group' + sfx
+                    src_meta = src_key + ".group" + sfx
                     if src_meta in src_parent:
-                        dst_meta = dst_key + '.group' + sfx
+                        dst_meta = dst_key + ".group" + sfx
                         dst_parent[dst_meta] = src_parent.pop(src_meta)
                 any_renamed = True
         any_renamed = _rename_metadata_v3(self, src_path, dst_path) or any_renamed
@@ -284,10 +293,10 @@ class MemoryStoreV3(MemoryStore, StoreV3):
 
             # remove any associated metadata files
             sfx = _get_metadata_suffix(self)
-            meta_dir = (meta_root + path).rstrip('/')
-            array_meta_file = meta_dir + '.array' + sfx
+            meta_dir = (meta_root + path).rstrip("/")
+            array_meta_file = meta_dir + ".array" + sfx
             self.pop(array_meta_file, None)
-            group_meta_file = meta_dir + '.group' + sfx
+            group_meta_file = meta_dir + ".group" + sfx
             self.pop(group_meta_file, None)
         else:
             # clear out root
@@ -298,15 +307,11 @@ MemoryStoreV3.__doc__ = MemoryStore.__doc__
 
 
 class DirectoryStoreV3(DirectoryStore, StoreV3):
-
     def list(self):
         return list(self.keys())
 
     def __eq__(self, other):
-        return (
-            isinstance(other, DirectoryStoreV3) and
-            self.path == other.path
-        )
+        return isinstance(other, DirectoryStoreV3) and self.path == other.path
 
     def __setitem__(self, key, value):
         self._validate_key(key)
@@ -315,25 +320,24 @@ class DirectoryStoreV3(DirectoryStore, StoreV3):
     def getsize(self, path: Path = None):
         return _getsize(self, path)
 
-    def rename(self, src_path, dst_path, metadata_key_suffix='.json'):
+    def rename(self, src_path, dst_path, metadata_key_suffix=".json"):
         store_src_path = normalize_storage_path(src_path)
         store_dst_path = normalize_storage_path(dst_path)
 
         dir_path = self.path
         any_existed = False
-        for root_prefix in ['meta', 'data']:
-            src_path = os.path.join(dir_path, root_prefix, 'root', store_src_path)
+        for root_prefix in ["meta", "data"]:
+            src_path = os.path.join(dir_path, root_prefix, "root", store_src_path)
             if os.path.exists(src_path):
                 any_existed = True
-                dst_path = os.path.join(dir_path, root_prefix, 'root', store_dst_path)
+                dst_path = os.path.join(dir_path, root_prefix, "root", store_dst_path)
                 os.renames(src_path, dst_path)
 
-        for suffix in ['.array' + metadata_key_suffix,
-                       '.group' + metadata_key_suffix]:
-            src_meta = os.path.join(dir_path, 'meta', 'root', store_src_path + suffix)
+        for suffix in [".array" + metadata_key_suffix, ".group" + metadata_key_suffix]:
+            src_meta = os.path.join(dir_path, "meta", "root", store_src_path + suffix)
             if os.path.exists(src_meta):
                 any_existed = True
-                dst_meta = os.path.join(dir_path, 'meta', 'root', store_dst_path + suffix)
+                dst_meta = os.path.join(dir_path, "meta", "root", store_dst_path + suffix)
                 dst_dir = os.path.dirname(dst_meta)
                 if not os.path.exists(dst_dir):
                     os.makedirs(dst_dir)
@@ -352,10 +356,10 @@ class DirectoryStoreV3(DirectoryStore, StoreV3):
 
             # remove any associated metadata files
             sfx = _get_metadata_suffix(self)
-            meta_dir = (meta_root + path).rstrip('/')
-            array_meta_file = meta_dir + '.array' + sfx
+            meta_dir = (meta_root + path).rstrip("/")
+            array_meta_file = meta_dir + ".array" + sfx
             self.pop(array_meta_file, None)
-            group_meta_file = meta_dir + '.group' + sfx
+            group_meta_file = meta_dir + ".group" + sfx
             self.pop(group_meta_file, None)
 
         elif os.path.isdir(dir_path):
@@ -366,16 +370,15 @@ DirectoryStoreV3.__doc__ = DirectoryStore.__doc__
 
 
 class ZipStoreV3(ZipStore, StoreV3):
-
     def list(self):
         return list(self.keys())
 
     def __eq__(self, other):
         return (
-            isinstance(other, ZipStore) and
-            self.path == other.path and
-            self.compression == other.compression and
-            self.allowZip64 == other.allowZip64
+            isinstance(other, ZipStore)
+            and self.path == other.path
+            and self.compression == other.compression
+            and self.allowZip64 == other.allowZip64
         )
 
     def __setitem__(self, key, value):
@@ -405,7 +408,6 @@ ZipStoreV3.__doc__ = ZipStore.__doc__
 
 
 class RedisStoreV3(RmdirV3, RedisStore, StoreV3):
-
     def list(self):
         return list(self.keys())
 
@@ -418,7 +420,6 @@ RedisStoreV3.__doc__ = RedisStore.__doc__
 
 
 class MongoDBStoreV3(RmdirV3, MongoDBStore, StoreV3):
-
     def list(self):
         return list(self.keys())
 
@@ -431,7 +432,6 @@ MongoDBStoreV3.__doc__ = MongoDBStore.__doc__
 
 
 class DBMStoreV3(RmdirV3, DBMStore, StoreV3):
-
     def list(self):
         return list(self.keys())
 
@@ -444,7 +444,6 @@ DBMStoreV3.__doc__ = DBMStore.__doc__
 
 
 class LMDBStoreV3(RmdirV3, LMDBStore, StoreV3):
-
     def list(self):
         return list(self.keys())
 
@@ -457,7 +456,6 @@ LMDBStoreV3.__doc__ = LMDBStore.__doc__
 
 
 class SQLiteStoreV3(SQLiteStore, StoreV3):
-
     def list(self):
         return list(self.keys())
 
@@ -490,15 +488,13 @@ class SQLiteStoreV3(SQLiteStore, StoreV3):
         if path:
             for base in [meta_root, data_root]:
                 with self.lock:
-                    self.cursor.execute(
-                        'DELETE FROM zarr WHERE k LIKE (? || "/%")', (base + path,)
-                    )
+                    self.cursor.execute('DELETE FROM zarr WHERE k LIKE (? || "/%")', (base + path,))
             # remove any associated metadata files
             sfx = _get_metadata_suffix(self)
-            meta_dir = (meta_root + path).rstrip('/')
-            array_meta_file = meta_dir + '.array' + sfx
+            meta_dir = (meta_root + path).rstrip("/")
+            array_meta_file = meta_dir + ".array" + sfx
             self.pop(array_meta_file, None)
-            group_meta_file = meta_dir + '.group' + sfx
+            group_meta_file = meta_dir + ".group" + sfx
             self.pop(group_meta_file, None)
         else:
             self.clear()
@@ -508,13 +504,12 @@ SQLiteStoreV3.__doc__ = SQLiteStore.__doc__
 
 
 class LRUStoreCacheV3(RmdirV3, LRUStoreCache, StoreV3):
-
     def __init__(self, store, max_size: int):
         self._store = StoreV3._ensure_store(store)
         self._max_size = max_size
         self._current_size = 0
         self._keys_cache = None
-        self._contains_cache = None
+        self._contains_cache = {}
         self._listdir_cache: Dict[Path, Any] = dict()
         self._values_cache: Dict[Path, Any] = OrderedDict()
         self._mutex = Lock()
@@ -572,10 +567,11 @@ class ConsolidatedMetadataStoreV3(ConsolidatedMetadataStore, StoreV3):
         meta = json_loads(self.store[metadata_key])
 
         # check format of consolidated metadata
-        consolidated_format = meta.get('zarr_consolidated_format', None)
+        consolidated_format = meta.get("zarr_consolidated_format", None)
         if consolidated_format != 1:
-            raise MetadataError('unsupported zarr consolidated metadata format: %s' %
-                                consolidated_format)
+            raise MetadataError(
+                "unsupported zarr consolidated metadata format: %s" % consolidated_format
+            )
 
         # decode metadata
         self.meta_store: Store = KVStoreV3(meta["metadata"])
@@ -586,44 +582,45 @@ class ConsolidatedMetadataStoreV3(ConsolidatedMetadataStore, StoreV3):
 
 def _normalize_store_arg_v3(store: Any, storage_options=None, mode="r") -> BaseStore:
     # default to v2 store for backward compatibility
-    zarr_version = getattr(store, '_store_version', 3)
+    zarr_version = getattr(store, "_store_version", 3)
     if zarr_version != 3:
         raise ValueError("store must be a version 3 store")
     if store is None:
         store = KVStoreV3(dict())
         # add default zarr.json metadata
-        store['zarr.json'] = store._metadata_class.encode_hierarchy_metadata(None)
+        store["zarr.json"] = store._metadata_class.encode_hierarchy_metadata(None)
         return store
     if isinstance(store, os.PathLike):
         store = os.fspath(store)
     if FSStore._fsspec_installed():
         import fsspec
+
         if isinstance(store, fsspec.FSMap):
-            return FSStoreV3(store.root,
-                             fs=store.fs,
-                             mode=mode,
-                             check=store.check,
-                             create=store.create,
-                             missing_exceptions=store.missing_exceptions,
-                             **(storage_options or {}))
+            return FSStoreV3(
+                store.root,
+                fs=store.fs,
+                mode=mode,
+                check=store.check,
+                create=store.create,
+                missing_exceptions=store.missing_exceptions,
+                **(storage_options or {}),
+            )
     if isinstance(store, str):
         if "://" in store or "::" in store:
             store = FSStoreV3(store, mode=mode, **(storage_options or {}))
         elif storage_options:
             raise ValueError("storage_options passed with non-fsspec path")
-        elif store.endswith('.zip'):
+        elif store.endswith(".zip"):
             store = ZipStoreV3(store, mode=mode)
-        elif store.endswith('.n5'):
+        elif store.endswith(".n5"):
             raise NotImplementedError("N5Store not yet implemented for V3")
             # return N5StoreV3(store)
         else:
             store = DirectoryStoreV3(store)
-        # add default zarr.json metadata
-        store['zarr.json'] = store._metadata_class.encode_hierarchy_metadata(None)
-        return store
     else:
         store = StoreV3._ensure_store(store)
-        if 'zarr.json' not in store:
-            # add default zarr.json metadata
-            store['zarr.json'] = store._metadata_class.encode_hierarchy_metadata(None)
+
+    if "zarr.json" not in store:
+        # add default zarr.json metadata
+        store["zarr.json"] = store._metadata_class.encode_hierarchy_metadata(None)
     return store

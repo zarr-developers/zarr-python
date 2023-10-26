@@ -1,6 +1,8 @@
 import collections
 import os
 import tempfile
+from typing import Any, Mapping, Sequence
+from zarr.context import Context
 
 from zarr.storage import Store
 from zarr._storage.v3 import StoreV3
@@ -9,38 +11,44 @@ import pytest
 
 
 class CountingDict(Store):
-
     def __init__(self):
         self.wrapped = dict()
         self.counter = collections.Counter()
 
     def __len__(self):
-        self.counter['__len__'] += 1
+        self.counter["__len__"] += 1
         return len(self.wrapped)
 
     def keys(self):
-        self.counter['keys'] += 1
+        self.counter["keys"] += 1
         return self.wrapped.keys()
 
     def __iter__(self):
-        self.counter['__iter__'] += 1
+        self.counter["__iter__"] += 1
         return iter(self.wrapped)
 
     def __contains__(self, item):
-        self.counter['__contains__', item] += 1
+        self.counter["__contains__", item] += 1
         return item in self.wrapped
 
     def __getitem__(self, item):
-        self.counter['__getitem__', item] += 1
+        self.counter["__getitem__", item] += 1
         return self.wrapped[item]
 
     def __setitem__(self, key, value):
-        self.counter['__setitem__', key] += 1
+        self.counter["__setitem__", key] += 1
         self.wrapped[key] = value
 
     def __delitem__(self, key):
-        self.counter['__delitem__', key] += 1
+        self.counter["__delitem__", key] += 1
         del self.wrapped[key]
+
+    def getitems(
+        self, keys: Sequence[str], *, contexts: Mapping[str, Context]
+    ) -> Mapping[str, Any]:
+        for key in keys:
+            self.counter["__getitem__", key] += 1
+        return {k: self.wrapped[k] for k in keys if k in self.wrapped}
 
 
 class CountingDictV3(CountingDict, StoreV3):
@@ -48,10 +56,9 @@ class CountingDictV3(CountingDict, StoreV3):
 
 
 def skip_test_env_var(name):
-    """ Checks for environment variables indicating whether tests requiring services should be run
-    """
-    value = os.environ.get(name, '0')
-    return pytest.mark.skipif(value == '0', reason='Tests not enabled via environment variable')
+    """Checks for environment variables indicating whether tests requiring services should be run"""
+    value = os.environ.get(name, "0")
+    return pytest.mark.skipif(value == "0", reason="Tests not enabled via environment variable")
 
 
 try:

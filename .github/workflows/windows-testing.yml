@@ -16,9 +16,9 @@ jobs:
     strategy:
       fail-fast: True
       matrix:
-        python-version: ['3.8', '3.9', '3.10']
+        python-version: ['3.8', '3.9', '3.10', '3.11']
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - uses: conda-incubator/setup-miniconda@v2.2.0

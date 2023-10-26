@@ -8,19 +8,20 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, Union
 
 from zarr.meta import Metadata2, Metadata3
 from zarr.util import normalize_storage_path
+from zarr.context import Context
 
 # v2 store keys
-array_meta_key = '.zarray'
-group_meta_key = '.zgroup'
-attrs_key = '.zattrs'
+array_meta_key = ".zarray"
+group_meta_key = ".zgroup"
+attrs_key = ".zattrs"
 
 # v3 paths
-meta_root = 'meta/root/'
-data_root = 'data/root/'
+meta_root = "meta/root/"
+data_root = "data/root/"
 
 DEFAULT_ZARR_VERSION = 2
 
-v3_api_available = os.environ.get('ZARR_V3_EXPERIMENTAL_API', '0').lower() not in ['0', 'false']
+v3_api_available = os.environ.get("ZARR_V3_EXPERIMENTAL_API", "0").lower() not in ["0", "false"]
 
 
 def assert_zarr_v3_api_available():
@@ -131,6 +132,33 @@ class BaseStore(MutableMapping):
             f"wrap it in Zarr.storage.KVStore. Got {store}"
         )
 
+    def getitems(
+        self, keys: Sequence[str], *, contexts: Mapping[str, Context]
+    ) -> Mapping[str, Any]:
+        """Retrieve data from multiple keys.
+
+        Parameters
+        ----------
+        keys : Iterable[str]
+            The keys to retrieve
+        contexts: Mapping[str, Context]
+            A mapping of keys to their context. Each context is a mapping of store
+            specific information. E.g. a context could be a dict telling the store
+            the preferred output array type: `{"meta_array": cupy.empty(())}`
+
+        Returns
+        -------
+        Mapping
+            A collection mapping the input keys to their results.
+
+        Notes
+        -----
+        This default implementation uses __getitem__() to read each key sequentially and
+        ignores contexts. Overwrite this method to implement concurrent reads of multiple
+        keys and/or to utilize the contexts.
+        """
+        return {k: self[k] for k in keys if k in self}
+
 
 class Store(BaseStore):
     """Abstract store class used by implementations following the Zarr v2 spec.
@@ -201,11 +229,11 @@ class StoreV3(BaseStore):
         ):
             raise ValueError("keys starts with unexpected value: `{}`".format(key))
 
-        if key.endswith('/'):
+        if key.endswith("/"):
             raise ValueError("keys may not end in /")
 
     def list_prefix(self, prefix):
-        if prefix.startswith('/'):
+        if prefix.startswith("/"):
             raise ValueError("prefix must not begin with /")
         # TODO: force prefix to end with /?
         return [k for k in self.list() if k.startswith(prefix)]
@@ -266,8 +294,7 @@ class StoreV3(BaseStore):
         return False
 
     def get_partial_values(
-        self,
-        key_ranges: Sequence[Tuple[str, Tuple[int, Optional[int]]]]
+        self, key_ranges: Sequence[Tuple[str, Tuple[int, Optional[int]]]]
     ) -> List[Union[bytes, memoryview, bytearray]]:
         """Get multiple partial values.
         key_ranges can be an iterable of key, range pairs,
@@ -278,11 +305,9 @@ class StoreV3(BaseStore):
         from the end of the file.
         A key may occur multiple times with different ranges.
         Inserts None for missing keys into the returned list."""
-        results: List[Union[bytes, memoryview, bytearray]] = (
-            [None] * len(key_ranges)  # type: ignore[list-item]
-        )
-        indexed_ranges_by_key: Dict[str, List[Tuple[int, Tuple[int, Optional[int]]]]] = (
-            defaultdict(list)
+        results: List[Union[bytes, memoryview, bytearray]] = [None] * len(key_ranges)  # type: ignore[list-item] # noqa: E501
+        indexed_ranges_by_key: Dict[str, List[Tuple[int, Tuple[int, Optional[int]]]]] = defaultdict(
+            list
         )
         for i, (key, range_) in enumerate(key_ranges):
             indexed_ranges_by_key[key].append((i, range_))
@@ -295,7 +320,7 @@ class StoreV3(BaseStore):
                 if range_length is None:
                     results[i] = value[range_from:]
                 else:
-                    results[i] = value[range_from:range_from + range_length]
+                    results[i] = value[range_from : range_from + range_length]
         return results
 
     def supports_efficient_set_partial_values(self):
@@ -328,7 +353,7 @@ class StoreV3(BaseStore):
                 if start < 0:
                     values[key][start:] = value
                 else:
-                    values[key][start:start + len(value)] = value
+                    values[key][start : start + len(value)] = value
         for key, value in values.items():
             self[key] = value
 
@@ -349,14 +374,13 @@ class StoreV3(BaseStore):
         We'll do this conversion in a few places automatically
         """
         from zarr._storage.v3 import KVStoreV3  # avoid circular import
+
         if store is None:
             return None
         elif isinstance(store, StoreV3):
             return store
         elif isinstance(store, Store):
-            raise ValueError(
-                f"cannot initialize a v3 store with a v{store._store_version} store"
-            )
+            raise ValueError(f"cannot initialize a v3 store with a v{store._store_version} store")
         elif isinstance(store, MutableMapping):
             return KVStoreV3(store)
         else:
@@ -416,10 +440,7 @@ class StorageTransformer(MutableMapping, abc.ABC):
         # Override in sub-class if need special encoding of config values.
         # By default, assume all non-private members are configuration
         # parameters except for type .
-        return {
-            k: v for k, v in self.__dict__.items()
-            if not k.startswith('_') and k != "type"
-        }
+        return {k: v for k, v in self.__dict__.items() if not k.startswith("_") and k != "type"}
 
     @classmethod
     def from_config(cls, _type, config):
@@ -432,18 +453,18 @@ class StorageTransformer(MutableMapping, abc.ABC):
 
     @property
     def inner_store(self) -> Union["StorageTransformer", StoreV3]:
-        assert self._inner_store is not None, (
-            "inner_store is not initialized, first get a copy via _copy_for_array."
-        )
+        assert (
+            self._inner_store is not None
+        ), "inner_store is not initialized, first get a copy via _copy_for_array."
         return self._inner_store
 
     # The following implementations are usually fine to keep as-is:
 
     def __eq__(self, other):
         return (
-            type(self) == type(other) and
-            self._inner_store == other._inner_store and
-            self.get_config() == other.get_config()
+            type(self) == type(other)
+            and self._inner_store == other._inner_store
+            and self.get_config() == other.get_config()
         )
 
     def erase(self, key):
@@ -533,42 +554,41 @@ StoreLike = Union[BaseStore, MutableMapping]
 def _path_to_prefix(path: Optional[str]) -> str:
     # assume path already normalized
     if path:
-        prefix = path + '/'
+        prefix = path + "/"
     else:
-        prefix = ''
+        prefix = ""
     return prefix
 
 
 def _get_hierarchy_metadata(store: StoreV3) -> Mapping[str, Any]:
-    version = getattr(store, '_store_version', 2)
+    version = getattr(store, "_store_version", 2)
     if version < 3:
-        raise ValueError("zarr.json hierarchy metadata not stored for "
-                         f"zarr v{version} stores")
-    if 'zarr.json' not in store:
+        raise ValueError("zarr.json hierarchy metadata not stored for " f"zarr v{version} stores")
+    if "zarr.json" not in store:
         raise ValueError("zarr.json metadata not found in store")
-    return store._metadata_class.decode_hierarchy_metadata(store['zarr.json'])
+    return store._metadata_class.decode_hierarchy_metadata(store["zarr.json"])
 
 
 def _get_metadata_suffix(store: StoreV3) -> str:
-    if 'zarr.json' in store:
-        return _get_hierarchy_metadata(store)['metadata_key_suffix']
-    return '.json'
+    if "zarr.json" in store:
+        return _get_hierarchy_metadata(store)["metadata_key_suffix"]
+    return ".json"
 
 
 def _rename_metadata_v3(store: StoreV3, src_path: str, dst_path: str) -> bool:
     """Rename source or group metadata file associated with src_path."""
     any_renamed = False
     sfx = _get_metadata_suffix(store)
-    src_path = src_path.rstrip('/')
-    dst_path = dst_path.rstrip('/')
-    _src_array_json = meta_root + src_path + '.array' + sfx
+    src_path = src_path.rstrip("/")
+    dst_path = dst_path.rstrip("/")
+    _src_array_json = meta_root + src_path + ".array" + sfx
     if _src_array_json in store:
-        new_key = meta_root + dst_path + '.array' + sfx
+        new_key = meta_root + dst_path + ".array" + sfx
         store[new_key] = store.pop(_src_array_json)
         any_renamed = True
-    _src_group_json = meta_root + src_path + '.group' + sfx
+    _src_group_json = meta_root + src_path + ".group" + sfx
     if _src_group_json in store:
-        new_key = meta_root + dst_path + '.group' + sfx
+        new_key = meta_root + dst_path + ".group" + sfx
         store[new_key] = store.pop(_src_group_json)
         any_renamed = True
     return any_renamed
@@ -578,7 +598,7 @@ def _rename_from_keys(store: BaseStore, src_path: str, dst_path: str) -> None:
     # assume path already normalized
     src_prefix = _path_to_prefix(src_path)
     dst_prefix = _path_to_prefix(dst_path)
-    version = getattr(store, '_store_version', 2)
+    version = getattr(store, "_store_version", 2)
     if version == 2:
         for key in list(store.keys()):
             if key.startswith(src_prefix):
@@ -590,7 +610,7 @@ def _rename_from_keys(store: BaseStore, src_path: str, dst_path: str) -> None:
             _src_prefix = root_prefix + src_prefix
             _dst_prefix = root_prefix + dst_prefix
             for key in store.list_prefix(_src_prefix):  # type: ignore
-                new_key = _dst_prefix + key[len(_src_prefix):]
+                new_key = _dst_prefix + key[len(_src_prefix) :]
                 store[new_key] = store.pop(key)
                 any_renamed = True
         any_meta_renamed = _rename_metadata_v3(store, src_path, dst_path)  # type: ignore
@@ -611,20 +631,20 @@ def _rmdir_from_keys(store: StoreLike, path: Optional[str] = None) -> None:
 def _rmdir_from_keys_v3(store: StoreV3, path: str = "") -> None:
 
     meta_dir = meta_root + path
-    meta_dir = meta_dir.rstrip('/')
+    meta_dir = meta_dir.rstrip("/")
     _rmdir_from_keys(store, meta_dir)
 
     # remove data folder
     data_dir = data_root + path
-    data_dir = data_dir.rstrip('/')
+    data_dir = data_dir.rstrip("/")
     _rmdir_from_keys(store, data_dir)
 
     # remove metadata files
     sfx = _get_metadata_suffix(store)
-    array_meta_file = meta_dir + '.array' + sfx
+    array_meta_file = meta_dir + ".array" + sfx
     if array_meta_file in store:
         store.erase(array_meta_file)  # type: ignore
-    group_meta_file = meta_dir + '.group' + sfx
+    group_meta_file = meta_dir + ".group" + sfx
     if group_meta_file in store:
         store.erase(group_meta_file)  # type: ignore
 
@@ -635,8 +655,8 @@ def _listdir_from_keys(store: BaseStore, path: Optional[str] = None) -> List[str
     children = set()
     for key in list(store.keys()):
         if key.startswith(prefix) and len(key) > len(prefix):
-            suffix = key[len(prefix):]
-            child = suffix.split('/')[0]
+            suffix = key[len(prefix) :]
+            child = suffix.split("/")[0]
             children.add(child)
     return sorted(children)
 
@@ -647,7 +667,7 @@ def _prefix_to_array_key(store: StoreLike, prefix: str) -> str:
         if prefix:
             key = meta_root + prefix.rstrip("/") + ".array" + sfx
         else:
-            key = meta_root[:-1] + '.array' + sfx
+            key = meta_root[:-1] + ".array" + sfx
     else:
         key = prefix + array_meta_key
     return key
@@ -657,9 +677,9 @@ def _prefix_to_group_key(store: StoreLike, prefix: str) -> str:
     if getattr(store, "_store_version", 2) == 3:
         sfx = _get_metadata_suffix(store)  # type: ignore
         if prefix:
-            key = meta_root + prefix.rstrip('/') + ".group" + sfx
+            key = meta_root + prefix.rstrip("/") + ".group" + sfx
         else:
-            key = meta_root[:-1] + '.group' + sfx
+            key = meta_root[:-1] + ".group" + sfx
     else:
         key = prefix + group_meta_key
     return key
@@ -670,9 +690,9 @@ def _prefix_to_attrs_key(store: StoreLike, prefix: str) -> str:
         # for v3, attributes are stored in the array metadata
         sfx = _get_metadata_suffix(store)  # type: ignore
         if prefix:
-            key = meta_root + prefix.rstrip('/') + ".array" + sfx
+            key = meta_root + prefix.rstrip("/") + ".array" + sfx
         else:
-            key = meta_root[:-1] + '.array' + sfx
+            key = meta_root[:-1] + ".array" + sfx
     else:
         key = prefix + attrs_key
     return key

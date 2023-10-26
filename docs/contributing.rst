@@ -92,8 +92,8 @@ the repository, you can do something like the following::
     $ mkdir -p ~/pyenv/zarr-dev
     $ python -m venv ~/pyenv/zarr-dev
     $ source ~/pyenv/zarr-dev/bin/activate
-    $ pip install -r requirements_dev_minimal.txt -r requirements_dev_numpy.txt -r requirements_rtfd.txt
-    $ pip install -e .
+    $ pip install -r requirements_dev_minimal.txt -r requirements_dev_numpy.txt
+    $ pip install -e .[docs]
 
 To verify that your development environment is working, you can run the unit tests::
 
@@ -213,9 +213,9 @@ Test coverage
 Zarr maintains 100% test coverage under the latest Python stable release (currently
 Python 3.8). Both unit tests and docstring doctests are included when computing
 coverage. Running::
-    
+
     $ python -m pytest -v --cov=zarr --cov-config=pyproject.toml zarr
-    
+
 will automatically run the test suite with coverage and produce a coverage report.
 This should be 100% before code can be accepted into the main code base.
 
@@ -378,6 +378,8 @@ Set the description of the release to::
 
 replacing the correct version numbers. For pre-release versions,
 the URL should omit the pre-release suffix, e.g. "a1" or "rc1".
+
+Click on "Generate release notes" to auto-file the description.
 
 After creating the release, the documentation will be built on
 https://readthedocs.io. Full releases will be available under

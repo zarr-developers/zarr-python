@@ -11,12 +11,12 @@ jobs:
       fail-fast: false
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           submodules: true
           fetch-depth: 0
 
-      - uses: actions/setup-python@v4.3.0
+      - uses: actions/setup-python@v4.6.0
         name: Install Python
         with:
           python-version: '3.8'
@@ -64,7 +64,7 @@ jobs:
         with:
           name: releases
           path: dist
-      - uses: pypa/gh-action-pypi-publish@v1.6.4
+      - uses: pypa/gh-action-pypi-publish@v1.8.10
         with:
           user: __token__
           password: ${{ secrets.pypi_password }}

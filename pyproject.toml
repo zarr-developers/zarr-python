@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=64.0.0", "setuptools-scm"]
+requires = ["setuptools>=64.0.0", "setuptools-scm>1.5.4"]
 build-backend = "setuptools.build_meta"
 
 
@@ -13,7 +13,7 @@ maintainers = [
 requires-python = ">=3.8"
 dependencies = [
     'asciitree',
-    'numpy>=1.20',
+    'numpy>=1.20,!=1.21.0',
     'fasteners',
     'numcodecs>=0.10.0',
 ]
@@ -33,6 +33,7 @@ classifiers = [
     'Programming Language :: Python :: 3.8',
     'Programming Language :: Python :: 3.9',
     'Programming Language :: Python :: 3.10',
+    'Programming Language :: Python :: 3.11',
 ]
 license = { text = "MIT" }
 
@@ -41,6 +42,16 @@ jupyter = [
     'notebook',
     'ipytree>=0.2.2',
     'ipywidgets>=8.0.0',
+]
+docs = [
+    'sphinx',
+    'sphinx_design',
+    'sphinx-issues',
+    'sphinx-copybutton',
+    'sphinx-rtd-theme',
+    'pydata-sphinx-theme',
+    'numpydoc',
+    'numcodecs[msgpack]',
 ]
 
 [project.urls]
@@ -71,6 +82,42 @@ version_scheme = "guess-next-dev"
 local_scheme = "dirty-tag"
 write_to = "zarr/version.py"
 
+[tool.ruff]
+line-length = 100
+exclude = [
+    ".bzr",
+    ".direnv",
+    ".eggs",
+    ".git",
+    ".mypy_cache",
+    ".nox",
+    ".pants.d",
+    ".ruff_cache",
+    ".venv",
+    "__pypackages__",
+    "_build",
+    "buck-out",
+    "build",
+    "dist",
+    "venv",
+    "docs"
+]
+
+[tool.black]
+line-length = 100
+exclude = '''
+/(
+    \.git
+  | \.mypy_cache
+  | \.venv
+  | _build
+  | buck-out
+  | build
+  | dist
+  | docs
+)/
+'''
+
 [tool.mypy]
 python_version = "3.8"
 ignore_missing_imports = true
@@ -79,7 +126,7 @@ follow_imports = "silent"
 [tool.pytest.ini_options]
 doctest_optionflags = [
     "NORMALIZE_WHITESPACE",
-    "ELLIPSIS", 
+    "ELLIPSIS",
     "IGNORE_EXCEPTION_DETAIL",
 ]
 addopts = [

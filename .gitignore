@@ -8,6 +8,7 @@ __pycache__/
 # Distribution / packaging
 .Python
 env/
+.venv/
 build/
 develop-eggs/
 dist/
@@ -76,3 +77,5 @@ zarr/version.py
 #doesnotexist
 #test_sync*
 data/*
+
+.DS_Store
