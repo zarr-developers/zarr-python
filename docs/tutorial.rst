@@ -986,7 +986,7 @@ It is also possible to initialize the filesystem outside of Zarr and then pass
 it through. This requires creating an :class:`zarr.storage.FSStore` object
 explicitly. For example::
 
-    >>> import s3fs  * doctest: +SKIP
+    >>> import s3fs  # doctest: +SKIP
     >>> fs = s3fs.S3FileSystem(anon=True)  # doctest: +SKIP
     >>> store = zarr.storage.FSStore('/zarr-demo/store', fs=fs)  # doctest: +SKIP
     >>> g = zarr.open_group(store)  # doctest: +SKIP
