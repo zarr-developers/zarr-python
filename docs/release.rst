@@ -21,11 +21,28 @@ Unreleased
 Maintenance
 ~~~~~~~~~~~
 
+* Initialise some sets in tests with set literals instead of list literals.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1534`.
+
+* Allow ``black`` code formatter to be run with any Python version.
+  By :user:`David Stansby <dstansby>` :issue:`1549`
+
+.. _release_2.16.1:
+
+2.16.1
+------
+
+Maintenance
+~~~~~~~~~~~
+
 * Require ``setuptools_scm`` version ``1.5.4``\+
   By :user:`John A. Kirkham <jakirkham>` :issue:`1477`.
 
 * Add ``docs`` requirements to ``pyproject.toml``
   By :user:`John A. Kirkham <jakirkham>` :issue:`1494`.
+
+* Fixed caching issue in ``LRUStoreCache``.
+  By :user:`Mads R. B. Kristensen <madsbk>` :issue:`1499`.
 
 .. _release_2.16.0:
 

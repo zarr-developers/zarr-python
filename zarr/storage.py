@@ -2393,7 +2393,7 @@ class LRUStoreCache(Store):
         self._max_size = max_size
         self._current_size = 0
         self._keys_cache = None
-        self._contains_cache = None
+        self._contains_cache: Dict[Any, Any] = {}
         self._listdir_cache: Dict[Path, Any] = dict()
         self._values_cache: Dict[Path, Any] = OrderedDict()
         self._mutex = Lock()
@@ -2434,9 +2434,9 @@ class LRUStoreCache(Store):
 
     def __contains__(self, key):
         with self._mutex:
-            if self._contains_cache is None:
-                self._contains_cache = set(self._keys())
-            return key in self._contains_cache
+            if key not in self._contains_cache:
+                self._contains_cache[key] = key in self._store
+            return self._contains_cache[key]
 
     def clear(self):
         self._store.clear()
@@ -2506,7 +2506,7 @@ class LRUStoreCache(Store):
 
     def _invalidate_keys(self):
         self._keys_cache = None
-        self._contains_cache = None
+        self._contains_cache.clear()
         self._listdir_cache.clear()
 
     def _invalidate_value(self, key):

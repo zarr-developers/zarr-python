@@ -1166,9 +1166,9 @@ class TestFSStore(StoreTests):
         if self.version == 2:
             assert set(store.listdir()) == {".zgroup", "bar"}
         else:
-            assert set(store.listdir()) == set(["data", "meta", "zarr.json"])
-            assert set(store.listdir("meta/root/" + path)) == set(["bar", "bar.group.json"])
-            assert set(store.listdir("data/root/" + path)) == set(["bar"])
+            assert set(store.listdir()) == {"data", "meta", "zarr.json"}
+            assert set(store.listdir("meta/root/" + path)) == {"bar", "bar.group.json"}
+            assert set(store.listdir("data/root/" + path)) == {"bar"}
         assert foo["bar"]["baz"][(0, 0, 0)] == 1
 
     def test_not_fsspec(self):
@@ -2196,7 +2196,10 @@ class TestLRUStoreCache(StoreTests):
         assert keys == sorted(cache.keys())
         assert 1 == store.counter["keys"]
         assert foo_key in cache
-        assert 0 == store.counter["__contains__", foo_key]
+        assert 1 == store.counter["__contains__", foo_key]
+        # the next check for `foo_key` is cached
+        assert foo_key in cache
+        assert 1 == store.counter["__contains__", foo_key]
         assert keys == sorted(cache)
         assert 0 == store.counter["__iter__"]
         assert 1 == store.counter["keys"]
@@ -2215,23 +2218,23 @@ class TestLRUStoreCache(StoreTests):
         keys = sorted(cache.keys())
         assert keys == [bar_key, baz_key, foo_key]
         assert 3 == store.counter["keys"]
-        assert 0 == store.counter["__contains__", foo_key]
+        assert 1 == store.counter["__contains__", foo_key]
         assert 0 == store.counter["__iter__"]
         cache.invalidate_keys()
         keys = sorted(cache)
         assert keys == [bar_key, baz_key, foo_key]
         assert 4 == store.counter["keys"]
-        assert 0 == store.counter["__contains__", foo_key]
+        assert 1 == store.counter["__contains__", foo_key]
         assert 0 == store.counter["__iter__"]
         cache.invalidate_keys()
         assert foo_key in cache
-        assert 5 == store.counter["keys"]
-        assert 0 == store.counter["__contains__", foo_key]
+        assert 4 == store.counter["keys"]
+        assert 2 == store.counter["__contains__", foo_key]
         assert 0 == store.counter["__iter__"]
 
         # check these would get counted if called directly
         assert foo_key in store
-        assert 1 == store.counter["__contains__", foo_key]
+        assert 3 == store.counter["__contains__", foo_key]
         assert keys == sorted(store)
         assert 1 == store.counter["__iter__"]
 
