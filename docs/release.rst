@@ -21,6 +21,9 @@ Unreleased
 Maintenance
 ~~~~~~~~~~~
 
+* Change occurrence of ``io.open()`` into ``open()``.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1421`.
+
 * Preserve ``dimension_separator`` when resizing arrays.
   By :user:`Ziwen Liu <ziw-liu>` :issue:`1533`.
 
