@@ -482,7 +482,6 @@ def _init_array_metadata(
     dimension_separator=None,
     storage_transformers=(),
 ):
-
     store_version = getattr(store, "_store_version", 2)
 
     path = normalize_storage_path(path)
@@ -687,7 +686,6 @@ def _init_group_metadata(
     path: Optional[str] = None,
     chunk_store: Optional[StoreLike] = None,
 ):
-
     store_version = getattr(store, "_store_version", 2)
     path = normalize_storage_path(path)
 
@@ -1055,7 +1053,6 @@ class DirectoryStore(Store):
     """
 
     def __init__(self, path, normalize_keys=False, dimension_separator=None):
-
         # guard conditions
         path = os.path.abspath(path)
         if os.path.exists(path) and not os.path.isdir(path):
@@ -1415,7 +1412,6 @@ class FSStore(Store):
     def getitems(
         self, keys: Sequence[str], *, contexts: Mapping[str, Context]
     ) -> Mapping[str, Any]:
-
         keys_transformed = [self._normalize_key(key) for key in keys]
         results = self.map.getitems(keys_transformed, on_error="omit")
         # The function calling this method may not recognize the transformed keys
@@ -1768,7 +1764,6 @@ class ZipStore(Store):
         mode="a",
         dimension_separator=None,
     ):
-
         # store properties
         path = os.path.abspath(path)
         self.path = path
