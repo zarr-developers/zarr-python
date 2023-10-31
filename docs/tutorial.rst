@@ -1175,8 +1175,9 @@ A fixed-length unicode dtype is also available, e.g.::
 For variable-length strings, the ``object`` dtype can be used, but a codec must be
 provided to encode the data (see also :ref:`tutorial_objects` below). At the time of
 writing there are four codecs available that can encode variable length string
-objects: :class:`numcodecs.VLenUTF8`, :class:`numcodecs.JSON`, :class:`numcodecs.MsgPack`.
-and :class:`numcodecs.Pickle`. E.g. using ``VLenUTF8``::
+objects: :class:`numcodecs.vlen.VLenUTF8`, :class:`numcodecs.json.JSON`,
+:class:`numcodecs.msgpacks.MsgPack`. and :class:`numcodecs.pickles.Pickle`.
+E.g. using ``VLenUTF8``::
 
     >>> import numcodecs
     >>> z = zarr.array(text_data, dtype=object, object_codec=numcodecs.VLenUTF8())
@@ -1201,8 +1202,8 @@ is a short-hand for ``dtype=object, object_codec=numcodecs.VLenUTF8()``, e.g.::
            'Helló, világ!', 'Zdravo svete!', 'เฮลโลเวิลด์'], dtype=object)
 
 Variable-length byte strings are also supported via ``dtype=object``. Again an
-``object_codec`` is required, which can be one of :class:`numcodecs.VLenBytes` or
-:class:`numcodecs.Pickle`. For convenience, ``dtype=bytes`` (or ``dtype=str`` on Python
+``object_codec`` is required, which can be one of :class:`numcodecs.vlen.VLenBytes` or
+:class:`numcodecs.pickles.Pickle`. For convenience, ``dtype=bytes`` (or ``dtype=str`` on Python
 2.7) can be used as a short-hand for ``dtype=object, object_codec=numcodecs.VLenBytes()``,
 e.g.::
 
@@ -1218,7 +1219,7 @@ e.g.::
            b'\xe0\xb9\x80\xe0\xb8\xae\xe0\xb8\xa5\xe0\xb9\x82\xe0\xb8\xa5\xe0\xb9\x80\xe0\xb8\xa7\xe0\xb8\xb4\xe0\xb8\xa5\xe0\xb8\x94\xe0\xb9\x8c'], dtype=object)
 
 If you know ahead of time all the possible string values that can occur, you could
-also use the :class:`numcodecs.Categorize` codec to encode each unique string value as an
+also use the :class:`numcodecs.categorize.Categorize` codec to encode each unique string value as an
 integer. E.g.::
 
     >>> categorize = numcodecs.Categorize(greetings, dtype=object)
@@ -1245,7 +1246,7 @@ The best codec to use will depend on what type of objects are present in the arr
 
 At the time of writing there are three codecs available that can serve as a general
 purpose object codec and support encoding of a mixture of object types:
-:class:`numcodecs.JSON`, :class:`numcodecs.MsgPack`. and :class:`numcodecs.Pickle`.
+:class:`numcodecs.json.JSON`, :class:`numcodecs.msgpacks.MsgPack`. and :class:`numcodecs.pickles.Pickle`.
 
 For example, using the JSON codec::
 
@@ -1258,7 +1259,7 @@ For example, using the JSON codec::
     array([42, 'foo', list(['bar', 'baz', 'qux']), {'a': 1, 'b': 2.2}, None], dtype=object)
 
 Not all codecs support encoding of all object types. The
-:class:`numcodecs.Pickle` codec is the most flexible, supporting encoding any type
+:class:`numcodecs.pickles.Pickle` codec is the most flexible, supporting encoding any type
 of Python object. However, if you are sharing data with anyone other than yourself, then
 Pickle is not recommended as it is a potential security risk. This is because malicious
 code can be embedded within pickled data. The JSON and MsgPack codecs do not have any
@@ -1270,7 +1271,7 @@ Ragged arrays
 
 If you need to store an array of arrays, where each member array can be of any length
 and stores the same primitive type (a.k.a. a ragged array), the
-:class:`numcodecs.VLenArray` codec can be used, e.g.::
+:class:`numcodecs.vlen.VLenArray` codec can be used, e.g.::
 
     >>> z = zarr.empty(4, dtype=object, object_codec=numcodecs.VLenArray(int))
     >>> z
