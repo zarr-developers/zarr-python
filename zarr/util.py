@@ -289,7 +289,7 @@ def normalize_order(order: str) -> str:
 
 def normalize_dimension_separator(sep: Optional[str]) -> Optional[DIMENSION_SEPARATOR]:
     if sep in (".", "/", None):
-        return cast(DIMENSION_SEPARATOR, sep)
+        return cast(Optional[DIMENSION_SEPARATOR], sep)
     else:
         raise ValueError("dimension_separator must be either '.' or '/', found: %r" % sep)
 
