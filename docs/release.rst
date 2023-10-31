@@ -18,6 +18,13 @@ Release notes
 Unreleased
 ----------
 
+Docs
+~~~~
+
+* The documentation build now fails if there are any warnings.
+  By :user:`David Stansby <dstansby>` :issue:`1548`.
+
+
 Maintenance
 ~~~~~~~~~~~
 
