@@ -1,5 +1,4 @@
 """Convenience functions for storing and loading data."""
-import io
 import itertools
 import os
 import re
@@ -28,6 +27,8 @@ from zarr.util import TreeViewer, buffer_size, normalize_storage_path
 from typing import Union
 
 StoreLike = Union[BaseStore, MutableMapping, str, None]
+
+_builtin_open = open  # builtin open is later shadowed by a local open function
 
 
 def _check_and_update_path(store: BaseStore, path):
@@ -491,7 +492,7 @@ class _LogWriter:
         elif callable(log):
             self.log_func = log
         elif isinstance(log, str):
-            self.log_file = io.open(log, mode="w")
+            self.log_file = _builtin_open(log, mode="w")
             self.needs_closing = True
         elif hasattr(log, "write"):
             self.log_file = log

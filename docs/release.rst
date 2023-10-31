@@ -18,6 +18,21 @@ Release notes
 Unreleased
 ----------
 
+Maintenance
+~~~~~~~~~~~
+
+* Change occurrence of ``io.open()`` into ``open()``.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1421`.
+
+* Preserve ``dimension_separator`` when resizing arrays.
+  By :user:`Ziwen Liu <ziw-liu>` :issue:`1533`.
+
+* Initialise some sets in tests with set literals instead of list literals.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1534`.
+
+* Allow ``black`` code formatter to be run with any Python version.
+  By :user:`David Stansby <dstansby>` :issue:`1549`.
+
 .. _release_2.16.1:
 
 2.16.1

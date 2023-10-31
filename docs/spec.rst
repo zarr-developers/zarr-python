@@ -4,7 +4,7 @@ Specifications
 ==============
 
 .. toctree::
-    :maxdepth: 3
+    :maxdepth: 1
 
     spec/v3
     spec/v2
