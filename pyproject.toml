@@ -13,7 +13,7 @@ maintainers = [
 requires-python = ">=3.9"
 dependencies = [
     'asciitree',
-    'numpy>=1.20,!=1.21.0',
+    'numpy>=1.21.1',
     'fasteners',
     'numcodecs>=0.10.0',
 ]
