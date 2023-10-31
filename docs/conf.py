@@ -332,6 +332,7 @@ texinfo_documents = [
 intersphinx_mapping = {
     "python": ("https://docs.python.org/", None),
     "numpy": ("https://numpy.org/doc/stable/", None),
+    "numcodecs": ("https://numcodecs.readthedocs.io/en/stable/", None),
 }
 
 

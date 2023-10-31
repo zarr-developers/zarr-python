@@ -24,6 +24,8 @@ Docs
 * The documentation build now fails if there are any warnings.
   By :user:`David Stansby <dstansby>` :issue:`1548`.
 
+* Add links to ``numcodecs`` docs in the tutorial.
+  By :user:`David Stansby <dstansby>` :issue:`1535`.
 
 Maintenance
 ~~~~~~~~~~~
@@ -39,6 +41,8 @@ Maintenance
 
 * Allow ``black`` code formatter to be run with any Python version.
   By :user:`David Stansby <dstansby>` :issue:`1549`.
+
+
 
 .. _release_2.16.1:
 
