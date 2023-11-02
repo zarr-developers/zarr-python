@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 
 [project]
-name = "zarr"
+name = "Zarr"
 description = "An implementation of chunked, compressed, N-dimensional arrays for Python"
 readme = { file = "README.md", content-type = "text/markdown" }
 maintainers = [
@@ -48,7 +48,6 @@ docs = [
     'sphinx_design',
     'sphinx-issues',
     'sphinx-copybutton',
-    'sphinx-rtd-theme',
     'pydata-sphinx-theme',
     'numpydoc',
     'numcodecs[msgpack]',
