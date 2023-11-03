@@ -6,14 +6,14 @@ from typing import TYPE_CHECKING, Any, Dict, Literal, Optional, Union
 
 from attr import asdict, evolve, frozen
 
-from zarrita.array_v2 import ArrayV2
-from zarrita.common import ZARRAY_JSON, ZATTRS_JSON, ZGROUP_JSON, make_cattr
-from zarrita.metadata import RuntimeConfiguration
-from zarrita.store import StoreLike, StorePath, make_store_path
-from zarrita.sync import sync
+from zarr.v3.array_v2 import ArrayV2
+from zarr.v3.common import ZARRAY_JSON, ZATTRS_JSON, ZGROUP_JSON, make_cattr
+from zarr.v3.metadata import RuntimeConfiguration
+from zarr.v3.store import StoreLike, StorePath, make_store_path
+from zarr.v3.sync import sync
 
 if TYPE_CHECKING:
-    from zarrita.group import Group
+    from zarr.v3.group import Group
 
 
 @frozen
@@ -187,8 +187,8 @@ class GroupV2:
         )
 
     async def convert_to_v3_async(self) -> Group:
-        from zarrita.common import ZARR_JSON
-        from zarrita.group import Group, GroupMetadata
+        from zarr.v3.common import ZARR_JSON
+        from zarr.v3.group import Group, GroupMetadata
 
         new_metadata = GroupMetadata(attributes=self.attributes or {})
         new_metadata_bytes = new_metadata.to_bytes()

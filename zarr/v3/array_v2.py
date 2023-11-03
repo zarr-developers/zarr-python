@@ -9,7 +9,7 @@ import numpy as np
 from attr import evolve, frozen
 from numcodecs.compat import ensure_bytes, ensure_ndarray
 
-from zarrita.common import (
+from zarr.v3.common import (
     ZARRAY_JSON,
     ZATTRS_JSON,
     BytesLike,
@@ -19,13 +19,13 @@ from zarrita.common import (
     concurrent_map,
     to_thread,
 )
-from zarrita.indexing import BasicIndexer, all_chunk_coords, is_total_slice
-from zarrita.metadata import ArrayV2Metadata, RuntimeConfiguration
-from zarrita.store import StoreLike, StorePath, make_store_path
-from zarrita.sync import sync
+from zarr.v3.indexing import BasicIndexer, all_chunk_coords, is_total_slice
+from zarr.v3.metadata import ArrayV2Metadata, RuntimeConfiguration
+from zarr.v3.store import StoreLike, StorePath, make_store_path
+from zarr.v3.sync import sync
 
 if TYPE_CHECKING:
-    from zarrita.array import Array
+    from zarr.v3.array import Array
 
 
 @frozen
@@ -437,9 +437,9 @@ class ArrayV2:
     async def convert_to_v3_async(self) -> Array:
         from sys import byteorder as sys_byteorder
 
-        from zarrita.array import Array
-        from zarrita.common import ZARR_JSON
-        from zarrita.metadata import (
+        from zarr.v3.array import Array
+        from zarr.v3.common import ZARR_JSON
+        from zarr.v3.metadata import (
             ArrayMetadata,
             BloscCodecConfigurationMetadata,
             BloscCodecMetadata,

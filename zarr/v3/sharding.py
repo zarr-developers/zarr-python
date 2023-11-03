@@ -5,27 +5,27 @@ from typing import Iterator, List, Mapping, NamedTuple, Optional, Set, Tuple
 import numpy as np
 from attrs import frozen
 
-from zarrita.codecs import ArrayBytesCodec, CodecPipeline
-from zarrita.common import (
+from zarr.v3.codecs import ArrayBytesCodec, CodecPipeline
+from zarr.v3.common import (
     BytesLike,
     ChunkCoords,
     SliceSelection,
     concurrent_map,
     product,
 )
-from zarrita.indexing import (
+from zarr.v3.indexing import (
     BasicIndexer,
     c_order_iter,
     is_total_slice,
     morton_order_iter,
 )
-from zarrita.metadata import (
+from zarr.v3.metadata import (
     CoreArrayMetadata,
     DataType,
     ShardingCodecConfigurationMetadata,
     ShardingCodecMetadata,
 )
-from zarrita.store import StorePath
+from zarr.v3.store import StorePath
 
 MAX_UINT_64 = 2**64 - 1
 
