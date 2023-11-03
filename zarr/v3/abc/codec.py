@@ -1,3 +1,13 @@
+# Notes:
+# 1. These are missing methods described in the spec. I expected to see these method definitions:
+# def compute_encoded_representation_type(self, decoded_representation_type):
+# def encode(self, decoded_value):
+# def decode(self, encoded_value, decoded_representation_type):
+# def partial_decode(self, input_handle, decoded_representation_type, decoded_regions):
+# def compute_encoded_size(self, input_size):
+# 2. Understand why array metadata is included on all codecs
+
+
 from __future__ import annotations
 
 from abc import abstractmethod, ABC
