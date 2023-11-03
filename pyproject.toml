@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 
 [project]
-name = "Zarr"
+name = "zarr"
 description = "An implementation of chunked, compressed, N-dimensional arrays for Python"
 readme = { file = "README.md", content-type = "text/markdown" }
 maintainers = [
