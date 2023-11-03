@@ -15,9 +15,7 @@ def _ensure_tuple(v: Selection) -> SliceSelection:
 
 def _err_too_many_indices(selection: SliceSelection, shape: ChunkCoords):
     raise IndexError(
-        "too many indices for array; expected {}, got {}".format(
-            len(shape), len(selection)
-        )
+        "too many indices for array; expected {}, got {}".format(len(shape), len(selection))
     )
 
 
@@ -113,9 +111,7 @@ class _SliceDimIndexer:
                 dim_chunk_sel_stop = self.stop - dim_offset
 
             dim_chunk_sel = slice(dim_chunk_sel_start, dim_chunk_sel_stop, self.step)
-            dim_chunk_nitems = _ceildiv(
-                (dim_chunk_sel_stop - dim_chunk_sel_start), self.step
-            )
+            dim_chunk_nitems = _ceildiv((dim_chunk_sel_stop - dim_chunk_sel_start), self.step)
             dim_out_sel = slice(dim_out_offset, dim_out_offset + dim_chunk_nitems)
 
             yield _ChunkDimProjection(dim_chunk_ix, dim_chunk_sel, dim_out_sel)
@@ -199,10 +195,7 @@ def is_total_slice(item: Selection, shape: ChunkCoords):
                 isinstance(dim_sel, slice)
                 and (
                     (dim_sel == slice(None))
-                    or (
-                        (dim_sel.stop - dim_sel.start == dim_len)
-                        and (dim_sel.step in [1, None])
-                    )
+                    or ((dim_sel.stop - dim_sel.start == dim_len) and (dim_sel.step in [1, None]))
                 )
             )
             for dim_sel, dim_len in zip(item, shape)
@@ -211,9 +204,5 @@ def is_total_slice(item: Selection, shape: ChunkCoords):
         raise TypeError("expected slice or tuple of slices, found %r" % item)
 
 
-def all_chunk_coords(
-    shape: ChunkCoords, chunk_shape: ChunkCoords
-) -> Iterator[ChunkCoords]:
-    return itertools.product(
-        *(range(0, _ceildiv(s, c)) for s, c in zip(shape, chunk_shape))
-    )
+def all_chunk_coords(shape: ChunkCoords, chunk_shape: ChunkCoords) -> Iterator[ChunkCoords]:
+    return itertools.product(*(range(0, _ceildiv(s, c)) for s, c in zip(shape, chunk_shape)))

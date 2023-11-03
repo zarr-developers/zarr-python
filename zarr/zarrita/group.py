@@ -80,9 +80,7 @@ class Group:
         store_path = make_store_path(store)
         zarr_json_bytes = await (store_path / ZARR_JSON).get_async()
         assert zarr_json_bytes is not None
-        return cls.from_json(
-            store_path, json.loads(zarr_json_bytes), runtime_configuration
-        )
+        return cls.from_json(store_path, json.loads(zarr_json_bytes), runtime_configuration)
 
     @classmethod
     def open(
@@ -140,9 +138,7 @@ class Group:
         return sync(self.get_async(path), self.runtime_configuration.asyncio_loop)
 
     async def create_group_async(self, path: str, **kwargs) -> Group:
-        runtime_configuration = kwargs.pop(
-            "runtime_configuration", self.runtime_configuration
-        )
+        runtime_configuration = kwargs.pop("runtime_configuration", self.runtime_configuration)
         return await self.__class__.create_async(
             self.store_path / path,
             runtime_configuration=runtime_configuration,
@@ -150,14 +146,10 @@ class Group:
         )
 
     def create_group(self, path: str, **kwargs) -> Group:
-        return sync(
-            self.create_group_async(path), self.runtime_configuration.asyncio_loop
-        )
+        return sync(self.create_group_async(path), self.runtime_configuration.asyncio_loop)
 
     async def create_array_async(self, path: str, **kwargs) -> Array:
-        runtime_configuration = kwargs.pop(
-            "runtime_configuration", self.runtime_configuration
-        )
+        runtime_configuration = kwargs.pop("runtime_configuration", self.runtime_configuration)
         return await Array.create_async(
             self.store_path / path,
             runtime_configuration=runtime_configuration,

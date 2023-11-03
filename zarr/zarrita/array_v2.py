@@ -261,17 +261,13 @@ class ArrayV2:
         else:
             out[out_selection] = self.metadata.fill_value
 
-    async def _decode_chunk(
-        self, chunk_bytes: Optional[BytesLike]
-    ) -> Optional[np.ndarray]:
+    async def _decode_chunk(self, chunk_bytes: Optional[BytesLike]) -> Optional[np.ndarray]:
         if chunk_bytes is None:
             return None
 
         if self.metadata.compressor is not None:
             compressor = numcodecs.get_codec(self.metadata.compressor)
-            chunk_array = ensure_ndarray(
-                await to_thread(compressor.decode, chunk_bytes)
-            )
+            chunk_array = ensure_ndarray(await to_thread(compressor.decode, chunk_bytes))
         else:
             chunk_array = ensure_ndarray(chunk_bytes)
 
@@ -377,9 +373,7 @@ class ArrayV2:
 
             await self._write_chunk_to_store(store_path, chunk_array)
 
-    async def _write_chunk_to_store(
-        self, store_path: StorePath, chunk_array: np.ndarray
-    ):
+    async def _write_chunk_to_store(self, store_path: StorePath, chunk_array: np.ndarray):
         chunk_bytes: Optional[BytesLike]
         if np.all(chunk_array == self.metadata.fill_value):
             # chunks that only contain fill_value will be removed
@@ -401,23 +395,16 @@ class ArrayV2:
 
         if self.metadata.compressor is not None:
             compressor = numcodecs.get_codec(self.metadata.compressor)
-            if (
-                not chunk_array.flags.c_contiguous
-                and not chunk_array.flags.f_contiguous
-            ):
+            if not chunk_array.flags.c_contiguous and not chunk_array.flags.f_contiguous:
                 chunk_array = chunk_array.copy(order="A")
-            encoded_chunk_bytes = ensure_bytes(
-                await to_thread(compressor.encode, chunk_array)
-            )
+            encoded_chunk_bytes = ensure_bytes(await to_thread(compressor.encode, chunk_array))
         else:
             encoded_chunk_bytes = ensure_bytes(chunk_array)
 
         return encoded_chunk_bytes
 
     def _encode_chunk_key(self, chunk_coords: ChunkCoords) -> str:
-        chunk_identifier = self.metadata.dimension_separator.join(
-            map(str, chunk_coords)
-        )
+        chunk_identifier = self.metadata.dimension_separator.join(map(str, chunk_coords))
         return "0" if chunk_identifier == "" else chunk_identifier
 
     async def resize_async(self, new_shape: ChunkCoords) -> ArrayV2:
@@ -445,9 +432,7 @@ class ArrayV2:
         return evolve(self, metadata=new_metadata)
 
     def resize(self, new_shape: ChunkCoords) -> ArrayV2:
-        return sync(
-            self.resize_async(new_shape), self.runtime_configuration.asyncio_loop
-        )
+        return sync(self.resize_async(new_shape), self.runtime_configuration.asyncio_loop)
 
     async def convert_to_v3_async(self) -> Array:
         from sys import byteorder as sys_byteorder
@@ -491,14 +476,10 @@ class ArrayV2:
 
         if self.metadata.order == "F":
             codecs.append(
-                TransposeCodecMetadata(
-                    configuration=TransposeCodecConfigurationMetadata(order="F")
-                )
+                TransposeCodecMetadata(configuration=TransposeCodecConfigurationMetadata(order="F"))
             )
         codecs.append(
-            BytesCodecMetadata(
-                configuration=BytesCodecConfigurationMetadata(endian=endian)
-            )
+            BytesCodecMetadata(configuration=BytesCodecConfigurationMetadata(endian=endian))
         )
 
         if self.metadata.compressor is not None:
@@ -523,9 +504,7 @@ class ArrayV2:
             elif v2_codec["id"] == "gzip":
                 codecs.append(
                     GzipCodecMetadata(
-                        configuration=GzipCodecConfigurationMetadata(
-                            level=v2_codec.get("level", 5)
-                        )
+                        configuration=GzipCodecConfigurationMetadata(level=v2_codec.get("level", 5))
                     )
                 )
 
@@ -537,9 +516,7 @@ class ArrayV2:
                 )
             ),
             data_type=data_type,
-            fill_value=0
-            if self.metadata.fill_value is None
-            else self.metadata.fill_value,
+            fill_value=0 if self.metadata.fill_value is None else self.metadata.fill_value,
             chunk_key_encoding=V2ChunkKeyEncodingMetadata(
                 configuration=V2ChunkKeyEncodingConfigurationMetadata(
                     separator=self.metadata.dimension_separator
@@ -559,9 +536,7 @@ class ArrayV2:
         )
 
     async def update_attributes_async(self, new_attributes: Dict[str, Any]) -> ArrayV2:
-        await (self.store_path / ZATTRS_JSON).set_async(
-            json.dumps(new_attributes).encode()
-        )
+        await (self.store_path / ZATTRS_JSON).set_async(json.dumps(new_attributes).encode())
         return evolve(self, attributes=new_attributes)
 
     def update_attributes(self, new_attributes: Dict[str, Any]) -> ArrayV2:
@@ -571,9 +546,7 @@ class ArrayV2:
         )
 
     def convert_to_v3(self) -> Array:
-        return sync(
-            self.convert_to_v3_async(), loop=self.runtime_configuration.asyncio_loop
-        )
+        return sync(self.convert_to_v3_async(), loop=self.runtime_configuration.asyncio_loop)
 
     def __repr__(self):
         return f"<Array_v2 {self.store_path} shape={self.shape} dtype={self.dtype}>"

@@ -25,9 +25,7 @@ async def open_auto_async(
 ) -> Union[Array, ArrayV2, Group, GroupV2]:
     store_path = make_store_path(store)
     try:
-        return await Group.open_or_array(
-            store_path, runtime_configuration=runtime_configuration_
-        )
+        return await Group.open_or_array(store_path, runtime_configuration=runtime_configuration_)
     except KeyError:
         return await GroupV2.open_or_array(store_path, runtime_configuration_)
 

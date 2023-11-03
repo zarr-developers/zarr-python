@@ -70,9 +70,7 @@ class Store:
             from upath import UPath
             from upath.implementations.local import PosixUPath, WindowsUPath
 
-            if isinstance(pth, UPath) and not isinstance(
-                pth, (PosixUPath, WindowsUPath)
-            ):
+            if isinstance(pth, UPath) and not isinstance(pth, (PosixUPath, WindowsUPath)):
                 storage_options = pth._kwargs.copy()
                 storage_options.pop("_url", None)
                 return RemoteStore(str(pth), **storage_options)
@@ -84,9 +82,7 @@ class Store:
     async def multi_get_async(
         self, keys: List[Tuple[str, Optional[Tuple[int, int]]]]
     ) -> List[Optional[BytesLike]]:
-        return await asyncio.gather(
-            *[self.get_async(key, byte_range) for key, byte_range in keys]
-        )
+        return await asyncio.gather(*[self.get_async(key, byte_range) for key, byte_range in keys])
 
     async def get_async(
         self, key: str, byte_range: Optional[Tuple[int, Optional[int]]] = None
@@ -97,10 +93,7 @@ class Store:
         self, key_values: List[Tuple[str, BytesLike, Optional[Tuple[int, int]]]]
     ) -> None:
         await asyncio.gather(
-            *[
-                self.set_async(key, value, byte_range)
-                for key, value, byte_range in key_values
-            ]
+            *[self.set_async(key, value, byte_range) for key, value, byte_range in key_values]
         )
 
     async def set_async(
@@ -222,17 +215,13 @@ class RemoteStore(Store):
             )
             self.root = url.rstrip("/")
         # test instantiate file system
-        fs, _ = fsspec.core.url_to_fs(
-            str(self.root), asynchronous=True, **self.root._kwargs
-        )
+        fs, _ = fsspec.core.url_to_fs(str(self.root), asynchronous=True, **self.root._kwargs)
         assert fs.__class__.async_impl, "FileSystem needs to support async operations."
 
     def make_fs(self) -> Tuple[AsyncFileSystem, str]:
         storage_options = self.root._kwargs.copy()
         storage_options.pop("_url", None)
-        fs, root = fsspec.core.url_to_fs(
-            str(self.root), asynchronous=True, **self.root._kwargs
-        )
+        fs, root = fsspec.core.url_to_fs(str(self.root), asynchronous=True, **self.root._kwargs)
         assert fs.__class__.async_impl, "FileSystem needs to support async operations."
         return fs, root
 
