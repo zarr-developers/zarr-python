@@ -1,3 +1,10 @@
+# TODO:
+# 1. Stores should inherit from zarr.v3.abc.store classes
+# 2. remove "_async" suffix from all methods?
+
+# Changes I've made here:
+# 1. Make delay import of fsspec
+
 from __future__ import annotations
 
 import asyncio
@@ -5,13 +12,11 @@ import io
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
-import fsspec
-from fsspec.asyn import AsyncFileSystem
-
 from zarr.v3.common import BytesLike, to_thread
 
 if TYPE_CHECKING:
     from upath import UPath
+    from fsspec.asyn import AsyncFileSystem
 
 
 def _dereference_path(root: str, path: str) -> str:
@@ -205,6 +210,7 @@ class RemoteStore(Store):
 
     def __init__(self, url: Union[UPath, str], **storage_options: Dict[str, Any]):
         from upath import UPath
+        import fsspec
 
         if isinstance(url, str):
             self.root = UPath(url, **storage_options)
@@ -219,6 +225,8 @@ class RemoteStore(Store):
         assert fs.__class__.async_impl, "FileSystem needs to support async operations."
 
     def make_fs(self) -> Tuple[AsyncFileSystem, str]:
+        import fsspec
+
         storage_options = self.root._kwargs.copy()
         storage_options.pop("_url", None)
         fs, root = fsspec.core.url_to_fs(str(self.root), asynchronous=True, **self.root._kwargs)

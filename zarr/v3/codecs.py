@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
 from functools import reduce
 from typing import TYPE_CHECKING, Iterable, List, Literal, Optional, Tuple, Union
 from warnings import warn
@@ -13,6 +12,7 @@ from numcodecs.blosc import Blosc
 from numcodecs.gzip import GZip
 from zstandard import ZstdCompressor, ZstdDecompressor
 
+from zarr.v3.abc.codec import Codec, ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec
 from zarr.v3.common import BytesLike, to_thread
 from zarr.v3.metadata import (
     BloscCodecConfigurationMetadata,
@@ -36,68 +36,6 @@ if TYPE_CHECKING:
 
 # See https://zarr.readthedocs.io/en/stable/tutorial.html#configuring-blosc
 numcodecs.blosc.use_threads = False
-
-
-class Codec(ABC):
-    supports_partial_decode: bool
-    supports_partial_encode: bool
-    is_fixed_size: bool
-    array_metadata: CoreArrayMetadata
-
-    @abstractmethod
-    def compute_encoded_size(self, input_byte_length: int) -> int:
-        pass
-
-    def resolve_metadata(self) -> CoreArrayMetadata:
-        return self.array_metadata
-
-
-class ArrayArrayCodec(Codec):
-    @abstractmethod
-    async def decode(
-        self,
-        chunk_array: np.ndarray,
-    ) -> np.ndarray:
-        pass
-
-    @abstractmethod
-    async def encode(
-        self,
-        chunk_array: np.ndarray,
-    ) -> Optional[np.ndarray]:
-        pass
-
-
-class ArrayBytesCodec(Codec):
-    @abstractmethod
-    async def decode(
-        self,
-        chunk_array: BytesLike,
-    ) -> np.ndarray:
-        pass
-
-    @abstractmethod
-    async def encode(
-        self,
-        chunk_array: np.ndarray,
-    ) -> Optional[BytesLike]:
-        pass
-
-
-class BytesBytesCodec(Codec):
-    @abstractmethod
-    async def decode(
-        self,
-        chunk_array: BytesLike,
-    ) -> BytesLike:
-        pass
-
-    @abstractmethod
-    async def encode(
-        self,
-        chunk_array: BytesLike,
-    ) -> Optional[BytesLike]:
-        pass
 
 
 @frozen

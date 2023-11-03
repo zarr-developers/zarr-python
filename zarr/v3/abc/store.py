@@ -9,7 +9,7 @@ class Store(ABC):
 
 class ReadStore(Store):
     @abstractmethod
-    def get(self, key: str) -> bytes:
+    async def get(self, key: str) -> bytes:
         """Retrieve the value associated with a given key.
 
         Parameters
@@ -23,7 +23,7 @@ class ReadStore(Store):
         ...
 
     @abstractmethod
-    def get_partial_values(self, key_ranges: List[Tuple[str, int]]) -> bytes:
+    async def get_partial_values(self, key_ranges: List[Tuple[str, int]]) -> bytes:
         """Retrieve possibly partial values from given key_ranges.
 
         Parameters
@@ -41,7 +41,7 @@ class ReadStore(Store):
 
 class WriteStore(ReadStore):
     @abstractmethod
-    def set(self, key: str, value: bytes) -> None:
+    async def set(self, key: str, value: bytes) -> None:
         """Store a (key, value) pair.
 
         Parameters
@@ -52,7 +52,7 @@ class WriteStore(ReadStore):
         ...
 
     @abstractmethod
-    def set_partial_values(self, key_start_values: List[Tuple[str, int, bytes]]) -> None:
+    async def set_partial_values(self, key_start_values: List[Tuple[str, int, bytes]]) -> None:
         """Store values at a given key, starting at byte range_start.
 
         Parameters
@@ -67,7 +67,7 @@ class WriteStore(ReadStore):
 
 class ListMixin:
     @abstractmethod
-    def list(self) -> List[str]:
+    async def list(self) -> List[str]:
         """Retrieve all keys in the store.
 
         Returns
@@ -77,7 +77,7 @@ class ListMixin:
         ...
 
     @abstractmethod
-    def list_prefix(self, prefix: str) -> List[str]:
+    async def list_prefix(self, prefix: str) -> List[str]:
         """Retrieve all keys in the store.
 
         Parameters
@@ -91,7 +91,7 @@ class ListMixin:
         ...
 
     @abstractmethod
-    def list_dir(self, prefix: str) -> List[str]:
+    async def list_dir(self, prefix: str) -> List[str]:
         """
         Retrieve all keys and prefixes with a given prefix and which do not contain the character
         “/” after the given prefix.
