@@ -13,8 +13,8 @@ from numcodecs.blosc import Blosc
 from numcodecs.gzip import GZip
 from zstandard import ZstdCompressor, ZstdDecompressor
 
-from zarrita.common import BytesLike, to_thread
-from zarrita.metadata import (
+from zarr.v3.common import BytesLike, to_thread
+from zarr.v3.metadata import (
     BloscCodecConfigurationMetadata,
     BloscCodecMetadata,
     BytesCodecConfigurationMetadata,
@@ -32,7 +32,7 @@ from zarrita.metadata import (
 )
 
 if TYPE_CHECKING:
-    from zarrita.metadata import CoreArrayMetadata
+    from zarr.v3.metadata import CoreArrayMetadata
 
 # See https://zarr.readthedocs.io/en/stable/tutorial.html#configuring-blosc
 numcodecs.blosc.use_threads = False
@@ -129,7 +129,7 @@ class CodecPipeline:
             elif codec_metadata.name == "crc32c":
                 codec = Crc32cCodec.from_metadata(codec_metadata, array_metadata)
             elif codec_metadata.name == "sharding_indexed":
-                from zarrita.sharding import ShardingCodec
+                from zarr.v3.sharding import ShardingCodec
 
                 codec = ShardingCodec.from_metadata(codec_metadata, array_metadata)
             else:
@@ -142,7 +142,7 @@ class CodecPipeline:
 
     @staticmethod
     def _validate_codecs(codecs: List[Codec], array_metadata: CoreArrayMetadata) -> None:
-        from zarrita.sharding import ShardingCodec
+        from zarr.v3.sharding import ShardingCodec
 
         assert any(
             isinstance(codec, ArrayBytesCodec) for codec in codecs
@@ -387,7 +387,7 @@ class TransposeCodec(ArrayArrayCodec):
         )
 
     def resolve_metadata(self) -> CoreArrayMetadata:
-        from zarrita.metadata import CoreArrayMetadata
+        from zarr.v3.metadata import CoreArrayMetadata
 
         return CoreArrayMetadata(
             shape=tuple(

@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from typing import Union
 
-import zarrita.codecs  # noqa: F401
-from zarrita.array import Array  # noqa: F401
-from zarrita.array_v2 import ArrayV2  # noqa: F401
-from zarrita.group import Group  # noqa: F401
-from zarrita.group_v2 import GroupV2  # noqa: F401
-from zarrita.metadata import RuntimeConfiguration, runtime_configuration  # noqa: F401
-from zarrita.store import (  # noqa: F401
+import zarr.v3.codecs  # noqa: F401
+from zarr.v3.array import Array  # noqa: F401
+from zarr.v3.array_v2 import ArrayV2  # noqa: F401
+from zarr.v3.group import Group  # noqa: F401
+from zarr.v3.group_v2 import GroupV2  # noqa: F401
+from zarr.v3.metadata import RuntimeConfiguration, runtime_configuration  # noqa: F401
+from zarr.v3.store import (  # noqa: F401
     LocalStore,
     RemoteStore,
     Store,
@@ -16,7 +16,7 @@ from zarrita.store import (  # noqa: F401
     StorePath,
     make_store_path,
 )
-from zarrita.sync import sync as _sync
+from zarr.v3.sync import sync as _sync
 
 
 async def open_auto_async(

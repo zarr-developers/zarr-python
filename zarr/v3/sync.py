@@ -80,7 +80,7 @@ def _get_loop():
             # previous two calls from another thread
             if loop[0] is None:
                 loop[0] = asyncio.new_event_loop()
-                th = threading.Thread(target=loop[0].run_forever, name="zarritaIO")
+                th = threading.Thread(target=loop[0].run_forever, name="zarrIO")
                 th.daemon = True
                 th.start()
                 iothread[0] = th

@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 import numpy as np
 from attr import asdict, field, frozen
 
-from zarrita.common import ChunkCoords, make_cattr
+from zarr.v3.common import ChunkCoords, make_cattr
 
 
 @frozen

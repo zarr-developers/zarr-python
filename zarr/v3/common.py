@@ -31,7 +31,7 @@ Selection = Union[slice, SliceSelection]
 
 
 def make_cattr():
-    from zarrita.metadata import (
+    from zarr.v3.metadata import (
         BloscCodecMetadata,
         BytesCodecMetadata,
         ChunkKeyEncodingMetadata,

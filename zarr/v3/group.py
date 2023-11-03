@@ -5,11 +5,11 @@ from typing import Any, Dict, Literal, Optional, Union
 
 from attr import asdict, evolve, field, frozen
 
-from zarrita.array import Array
-from zarrita.common import ZARR_JSON, make_cattr
-from zarrita.metadata import RuntimeConfiguration
-from zarrita.store import StoreLike, StorePath, make_store_path
-from zarrita.sync import sync
+from zarr.v3.array import Array
+from zarr.v3.common import ZARR_JSON, make_cattr
+from zarr.v3.metadata import RuntimeConfiguration
+from zarr.v3.store import StoreLike, StorePath, make_store_path
+from zarr.v3.sync import sync
 
 
 @frozen

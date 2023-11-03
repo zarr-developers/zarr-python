@@ -6,17 +6,17 @@ from typing import Any, Dict, Iterable, Literal, Optional, Tuple, Union
 import numpy as np
 from attr import evolve, frozen
 
-from zarrita.array_v2 import ArrayV2
-from zarrita.codecs import CodecMetadata, CodecPipeline, bytes_codec
-from zarrita.common import (
+from zarr.v3.array_v2 import ArrayV2
+from zarr.v3.codecs import CodecMetadata, CodecPipeline, bytes_codec
+from zarr.v3.common import (
     ZARR_JSON,
     ChunkCoords,
     Selection,
     SliceSelection,
     concurrent_map,
 )
-from zarrita.indexing import BasicIndexer, all_chunk_coords, is_total_slice
-from zarrita.metadata import (
+from zarr.v3.indexing import BasicIndexer, all_chunk_coords, is_total_slice
+from zarr.v3.metadata import (
     ArrayMetadata,
     DataType,
     DefaultChunkKeyEncodingConfigurationMetadata,
@@ -28,9 +28,9 @@ from zarrita.metadata import (
     V2ChunkKeyEncodingMetadata,
     dtype_to_data_type,
 )
-from zarrita.sharding import ShardingCodec
-from zarrita.store import StoreLike, StorePath, make_store_path
-from zarrita.sync import sync
+from zarr.v3.sharding import ShardingCodec
+from zarr.v3.store import StoreLike, StorePath, make_store_path
+from zarr.v3.sync import sync
 
 
 @frozen

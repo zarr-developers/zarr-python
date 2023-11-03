@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 import fsspec
 from fsspec.asyn import AsyncFileSystem
 
-from zarrita.common import BytesLike, to_thread
+from zarr.v3.common import BytesLike, to_thread
 
 if TYPE_CHECKING:
     from upath import UPath
