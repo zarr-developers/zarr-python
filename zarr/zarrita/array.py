@@ -90,9 +90,7 @@ class Array:
             assert not await (store_path / ZARR_JSON).exists_async()
 
         data_type = (
-            DataType[dtype]
-            if isinstance(dtype, str)
-            else DataType[dtype_to_data_type[dtype.str]]
+            DataType[dtype] if isinstance(dtype, str) else DataType[dtype_to_data_type[dtype.str]]
         )
 
         codecs = list(codecs) if codecs is not None else [bytes_codec()]
@@ -107,9 +105,7 @@ class Array:
             shape=shape,
             data_type=data_type,
             chunk_grid=RegularChunkGridMetadata(
-                configuration=RegularChunkGridConfigurationMetadata(
-                    chunk_shape=chunk_shape
-                )
+                configuration=RegularChunkGridConfigurationMetadata(chunk_shape=chunk_shape)
             ),
             chunk_key_encoding=(
                 V2ChunkKeyEncodingMetadata(
@@ -437,9 +433,7 @@ class Array:
 
             await self._write_chunk_to_store(store_path, chunk_array)
 
-    async def _write_chunk_to_store(
-        self, store_path: StorePath, chunk_array: np.ndarray
-    ):
+    async def _write_chunk_to_store(self, store_path: StorePath, chunk_array: np.ndarray):
         if np.all(chunk_array == self.metadata.fill_value):
             # chunks that only contain fill_value will be removed
             await store_path.delete_async()
@@ -477,9 +471,7 @@ class Array:
         return evolve(self, metadata=new_metadata)
 
     def resize(self, new_shape: ChunkCoords) -> Array:
-        return sync(
-            self.resize_async(new_shape), self.runtime_configuration.asyncio_loop
-        )
+        return sync(self.resize_async(new_shape), self.runtime_configuration.asyncio_loop)
 
     async def update_attributes_async(self, new_attributes: Dict[str, Any]) -> Array:
         new_metadata = evolve(self.metadata, attributes=new_attributes)

@@ -25,9 +25,7 @@ def _get_lock() -> threading.Lock:
     return _lock
 
 
-async def _runner(
-    event: threading.Event, coro: Coroutine, result_box: List[Optional[Any]]
-):
+async def _runner(event: threading.Event, coro: Coroutine, result_box: List[Optional[Any]]):
     try:
         result_box[0] = await coro
     except Exception as ex:

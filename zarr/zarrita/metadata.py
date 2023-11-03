@@ -139,9 +139,7 @@ class V2ChunkKeyEncodingMetadata:
         return "0" if chunk_identifier == "" else chunk_identifier
 
 
-ChunkKeyEncodingMetadata = Union[
-    DefaultChunkKeyEncodingMetadata, V2ChunkKeyEncodingMetadata
-]
+ChunkKeyEncodingMetadata = Union[DefaultChunkKeyEncodingMetadata, V2ChunkKeyEncodingMetadata]
 
 
 BloscShuffle = Literal["noshuffle", "shuffle", "bitshuffle"]
@@ -281,9 +279,7 @@ class ArrayMetadata:
     def ndim(self) -> int:
         return len(self.shape)
 
-    def get_core_metadata(
-        self, runtime_configuration: RuntimeConfiguration
-    ) -> CoreArrayMetadata:
+    def get_core_metadata(self, runtime_configuration: RuntimeConfiguration) -> CoreArrayMetadata:
         return CoreArrayMetadata(
             shape=self.shape,
             chunk_shape=self.chunk_grid.configuration.chunk_shape,
@@ -301,8 +297,7 @@ class ArrayMetadata:
         return json.dumps(
             asdict(
                 self,
-                filter=lambda attr, value: attr.name != "dimension_names"
-                or value is not None,
+                filter=lambda attr, value: attr.name != "dimension_names" or value is not None,
             ),
             default=_json_convert,
         ).encode()

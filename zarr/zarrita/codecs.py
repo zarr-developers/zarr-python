@@ -141,9 +141,7 @@ class CodecPipeline:
         return cls(out)
 
     @staticmethod
-    def _validate_codecs(
-        codecs: List[Codec], array_metadata: CoreArrayMetadata
-    ) -> None:
+    def _validate_codecs(codecs: List[Codec], array_metadata: CoreArrayMetadata) -> None:
         from zarrita.sharding import ShardingCodec
 
         assert any(
@@ -180,9 +178,7 @@ class CodecPipeline:
                 )
 
             if isinstance(codec, ShardingCodec):
-                assert len(codec.configuration.chunk_shape) == len(
-                    array_metadata.shape
-                ), (
+                assert len(codec.configuration.chunk_shape) == len(array_metadata.shape), (
                     "The shard's `chunk_shape` and array's `shape` need to have the "
                     + "same number of dimensions."
                 )
@@ -198,10 +194,7 @@ class CodecPipeline:
                 )
             prev_codec = codec
 
-        if (
-            any(isinstance(codec, ShardingCodec) for codec in codecs)
-            and len(codecs) > 1
-        ):
+        if any(isinstance(codec, ShardingCodec) for codec in codecs) and len(codecs) > 1:
             warn(
                 "Combining a `sharding_indexed` codec disables partial reads and "
                 + "writes, which may lead to inefficient performance."
@@ -211,9 +204,7 @@ class CodecPipeline:
         return [codec for codec in self.codecs if isinstance(codec, ArrayArrayCodec)]
 
     def _array_bytes_codec(self) -> ArrayBytesCodec:
-        return next(
-            codec for codec in self.codecs if isinstance(codec, ArrayBytesCodec)
-        )
+        return next(codec for codec in self.codecs if isinstance(codec, ArrayBytesCodec))
 
     def _bytes_bytes_codecs(self) -> List[BytesBytesCodec]:
         return [codec for codec in self.codecs if isinstance(codec, BytesBytesCodec)]
@@ -250,9 +241,7 @@ class CodecPipeline:
         return chunk_bytes
 
     def compute_encoded_size(self, byte_length: int) -> int:
-        return reduce(
-            lambda acc, codec: codec.compute_encoded_size(acc), self.codecs, byte_length
-        )
+        return reduce(lambda acc, codec: codec.compute_encoded_size(acc), self.codecs, byte_length)
 
 
 @frozen
@@ -268,9 +257,7 @@ class BloscCodec(BytesBytesCodec):
     ) -> BloscCodec:
         configuration = codec_metadata.configuration
         if configuration.typesize == 0:
-            configuration = evolve(
-                configuration, typesize=array_metadata.data_type.byte_count
-            )
+            configuration = evolve(configuration, typesize=array_metadata.data_type.byte_count)
         config_dict = asdict(codec_metadata.configuration)
         config_dict.pop("typesize", None)
         map_shuffle_str_to_int = {"noshuffle": 0, "shuffle": 1, "bitshuffle": 2}
@@ -309,8 +296,7 @@ class BytesCodec(ArrayBytesCodec):
         cls, codec_metadata: BytesCodecMetadata, array_metadata: CoreArrayMetadata
     ) -> BytesCodec:
         assert (
-            array_metadata.dtype.itemsize == 1
-            or codec_metadata.configuration.endian is not None
+            array_metadata.dtype.itemsize == 1 or codec_metadata.configuration.endian is not None
         ), "The `endian` configuration needs to be specified for multi-byte data types."
         return cls(
             array_metadata=array_metadata,
@@ -336,9 +322,7 @@ class BytesCodec(ArrayBytesCodec):
                 prefix = "<"
             else:
                 prefix = ">"
-            dtype = np.dtype(
-                f"{prefix}{self.array_metadata.data_type.to_numpy_shortname()}"
-            )
+            dtype = np.dtype(f"{prefix}{self.array_metadata.data_type.to_numpy_shortname()}")
         else:
             dtype = np.dtype(f"|{self.array_metadata.data_type.to_numpy_shortname()}")
         chunk_array = np.frombuffer(chunk_bytes, dtype)
@@ -377,9 +361,7 @@ class TransposeCodec(ArrayArrayCodec):
     ) -> TransposeCodec:
         configuration = codec_metadata.configuration
         if configuration.order == "F":
-            order = tuple(
-                array_metadata.ndim - x - 1 for x in range(array_metadata.ndim)
-            )
+            order = tuple(array_metadata.ndim - x - 1 for x in range(array_metadata.ndim))
 
         elif configuration.order == "C":
             order = tuple(range(array_metadata.ndim))
@@ -409,8 +391,7 @@ class TransposeCodec(ArrayArrayCodec):
 
         return CoreArrayMetadata(
             shape=tuple(
-                self.array_metadata.shape[self.order[i]]
-                for i in range(self.array_metadata.ndim)
+                self.array_metadata.shape[self.order[i]] for i in range(self.array_metadata.ndim)
             ),
             chunk_shape=tuple(
                 self.array_metadata.chunk_shape[self.order[i]]
@@ -563,18 +544,12 @@ def blosc_codec(
     )
 
 
-def bytes_codec(
-    endian: Optional[Literal["big", "little"]] = "little"
-) -> BytesCodecMetadata:
+def bytes_codec(endian: Optional[Literal["big", "little"]] = "little") -> BytesCodecMetadata:
     return BytesCodecMetadata(configuration=BytesCodecConfigurationMetadata(endian))
 
 
-def transpose_codec(
-    order: Union[Tuple[int, ...], Literal["C", "F"]]
-) -> TransposeCodecMetadata:
-    return TransposeCodecMetadata(
-        configuration=TransposeCodecConfigurationMetadata(order)
-    )
+def transpose_codec(order: Union[Tuple[int, ...], Literal["C", "F"]]) -> TransposeCodecMetadata:
+    return TransposeCodecMetadata(configuration=TransposeCodecConfigurationMetadata(order))
 
 
 def gzip_codec(level: int = 5) -> GzipCodecMetadata:
@@ -582,9 +557,7 @@ def gzip_codec(level: int = 5) -> GzipCodecMetadata:
 
 
 def zstd_codec(level: int = 0, checksum: bool = False) -> ZstdCodecMetadata:
-    return ZstdCodecMetadata(
-        configuration=ZstdCodecConfigurationMetadata(level, checksum)
-    )
+    return ZstdCodecMetadata(configuration=ZstdCodecConfigurationMetadata(level, checksum))
 
 
 def crc32c_codec() -> Crc32cCodecMetadata:
@@ -599,7 +572,5 @@ def sharding_codec(
     codecs = codecs or [bytes_codec()]
     index_codecs = index_codecs or [bytes_codec(), crc32c_codec()]
     return ShardingCodecMetadata(
-        configuration=ShardingCodecConfigurationMetadata(
-            chunk_shape, codecs, index_codecs
-        )
+        configuration=ShardingCodecConfigurationMetadata(chunk_shape, codecs, index_codecs)
     )

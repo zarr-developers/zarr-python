@@ -47,9 +47,7 @@ def make_cattr():
 
     converter = Converter()
 
-    def _structure_chunk_key_encoding_metadata(
-        d: Dict[str, Any], _t
-    ) -> ChunkKeyEncodingMetadata:
+    def _structure_chunk_key_encoding_metadata(d: Dict[str, Any], _t) -> ChunkKeyEncodingMetadata:
         if d["name"] == "default":
             return converter.structure(d, DefaultChunkKeyEncodingMetadata)
         if d["name"] == "v2":
@@ -97,8 +95,7 @@ def make_cattr():
         raise KeyError
 
     converter.register_structure_hook_factory(
-        lambda t: str(t)
-        == "typing.Union[typing.Literal['C', 'F'], typing.Tuple[int, ...]]",
+        lambda t: str(t) == "typing.Union[typing.Literal['C', 'F'], typing.Tuple[int, ...]]",
         lambda t: _structure_order,
     )
 
@@ -151,9 +148,7 @@ async def concurrent_map(
             async with sem:
                 return await func(*item)
 
-        return await asyncio.gather(
-            *[asyncio.ensure_future(run(item)) for item in items]
-        )
+        return await asyncio.gather(*[asyncio.ensure_future(run(item)) for item in items])
 
 
 async def to_thread(func, /, *args, **kwargs):

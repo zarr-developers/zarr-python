@@ -162,9 +162,7 @@ class GroupV2:
         return sync(self.get_async(path), self.runtime_configuration.asyncio_loop)
 
     async def create_group_async(self, path: str, **kwargs) -> GroupV2:
-        runtime_configuration = kwargs.pop(
-            "runtime_configuration", self.runtime_configuration
-        )
+        runtime_configuration = kwargs.pop("runtime_configuration", self.runtime_configuration)
         return await self.__class__.create_async(
             self.store_path / path,
             runtime_configuration=runtime_configuration,
@@ -172,14 +170,10 @@ class GroupV2:
         )
 
     def create_group(self, path: str, **kwargs) -> GroupV2:
-        return sync(
-            self.create_group_async(path), self.runtime_configuration.asyncio_loop
-        )
+        return sync(self.create_group_async(path), self.runtime_configuration.asyncio_loop)
 
     async def create_array_async(self, path: str, **kwargs) -> ArrayV2:
-        runtime_configuration = kwargs.pop(
-            "runtime_configuration", self.runtime_configuration
-        )
+        runtime_configuration = kwargs.pop("runtime_configuration", self.runtime_configuration)
         return await ArrayV2.create_async(
             self.store_path / path,
             runtime_configuration=runtime_configuration,
@@ -208,9 +202,7 @@ class GroupV2:
         )
 
     async def update_attributes_async(self, new_attributes: Dict[str, Any]) -> GroupV2:
-        await (self.store_path / ZATTRS_JSON).set_async(
-            json.dumps(new_attributes).encode()
-        )
+        await (self.store_path / ZATTRS_JSON).set_async(json.dumps(new_attributes).encode())
         return evolve(self, attributes=new_attributes)
 
     def update_attributes(self, new_attributes: Dict[str, Any]) -> GroupV2:
@@ -220,9 +212,7 @@ class GroupV2:
         )
 
     def convert_to_v3(self) -> Group:
-        return sync(
-            self.convert_to_v3_async(), loop=self.runtime_configuration.asyncio_loop
-        )
+        return sync(self.convert_to_v3_async(), loop=self.runtime_configuration.asyncio_loop)
 
     def __repr__(self):
         return f"<Group_v2 {self.store_path}>"
