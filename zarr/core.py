@@ -199,7 +199,6 @@ class Array:
         except KeyError:
             raise ArrayNotFoundError(self._path)
         else:
-
             # decode and store metadata as instance members
             meta = self._store._metadata_class.decode_array_metadata(meta_bytes)
             self._meta = meta
@@ -287,7 +286,14 @@ class Array:
             filters=filters_config,
         )
         if getattr(self._store, "_store_version", 2) == 2:
-            meta.update(dict(chunks=self._chunks, dtype=self._dtype, order=self._order))
+            meta.update(
+                dict(
+                    chunks=self._chunks,
+                    dtype=self._dtype,
+                    order=self._order,
+                    dimension_separator=self._dimension_separator,
+                )
+            )
         else:
             meta.update(
                 dict(
@@ -1304,7 +1310,6 @@ class Array:
         return self._get_selection(indexer=indexer, out=out, fields=fields)
 
     def _get_selection(self, indexer, out=None, fields=None):
-
         # We iterate over all chunks which overlap the selection and thus contain data
         # that needs to be extracted. Each chunk is processed in turn, extracting the
         # necessary data and storing into the correct location in the output array.
@@ -1929,7 +1934,6 @@ class Array:
         self._set_selection(indexer, value, fields=fields)
 
     def _set_selection(self, indexer, value, fields=None):
-
         # We iterate over all chunks which overlap the selection and thus contain data
         # that needs to be replaced. Each chunk is processed in turn, extracting the
         # necessary data from the value array and storing into the chunk array.
@@ -1964,7 +1968,6 @@ class Array:
         ):
             # iterative approach
             for chunk_coords, chunk_selection, out_selection in indexer:
-
                 # extract data to store
                 if sel_shape == ():
                     chunk_value = value
@@ -2023,7 +2026,6 @@ class Array:
             and not self._filters
             and self._dtype != object
         ):
-
             dest = out[out_selection]
             # Assume that array-like objects that doesn't have a
             # `writeable` flag is writable.
@@ -2034,7 +2036,6 @@ class Array:
             )
 
             if write_direct:
-
                 # optimization: we want the whole chunk, and the destination is
                 # contiguous, so we can decompress directly from the chunk
                 # into the destination array
@@ -2267,7 +2268,6 @@ class Array:
             # to access the existing chunk data
 
             if is_scalar(value, self._dtype):
-
                 # setup array filled with value
                 chunk = np.empty_like(
                     self._meta_array, shape=self._chunks, dtype=self._dtype, order=self._order
@@ -2275,7 +2275,6 @@ class Array:
                 chunk.fill(value)
 
             else:
-
                 # ensure array is contiguous
                 chunk = value.astype(self._dtype, order=self._order, copy=False)
 
@@ -2283,12 +2282,10 @@ class Array:
             # partially replace the contents of this chunk
 
             try:
-
                 # obtain compressed data for chunk
                 cdata = self.chunk_store[ckey]
 
             except KeyError:
-
                 # chunk not initialized
                 if self._fill_value is not None:
                     chunk = np.empty_like(
@@ -2305,7 +2302,6 @@ class Array:
                     )
 
             else:
-
                 # decode chunk
                 chunk = self._decode_chunk(cdata)
                 if not chunk.flags.writeable:
@@ -2375,7 +2371,6 @@ class Array:
         return chunk
 
     def _encode_chunk(self, chunk):
-
         # apply filters
         if self._filters:
             for f in self._filters:
@@ -2565,7 +2560,6 @@ class Array:
         self.__init__(**state)
 
     def _synchronized_op(self, f, *args, **kwargs):
-
         if self._synchronizer is None:
             # no synchronization
             lock = nolock
@@ -2582,7 +2576,6 @@ class Array:
         return result
 
     def _write_op(self, f, *args, **kwargs):
-
         # guard condition
         if self._read_only:
             raise ReadOnlyError()
@@ -2622,7 +2615,6 @@ class Array:
         return self._write_op(self._resize_nosync, *args)
 
     def _resize_nosync(self, *args):
-
         # normalize new shape argument
         old_shape = self._shape
         new_shape = normalize_resize_args(old_shape, *args)
@@ -2701,7 +2693,6 @@ class Array:
         return self._write_op(self._append_nosync, data, axis=axis)
 
     def _append_nosync(self, data, axis=0):
-
         # ensure data is array-like
         if not hasattr(data, "shape"):
             data = np.asanyarray(data, like=self._meta_array)

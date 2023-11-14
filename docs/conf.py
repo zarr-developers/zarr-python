@@ -72,7 +72,7 @@ main_doc = "index"
 
 # General information about the project.
 project = "zarr"
-copyright = "2022, Zarr Developers"
+copyright = "2023, Zarr Developers"
 author = "Zarr Developers"
 
 version = zarr.__version__
@@ -148,6 +148,7 @@ html_theme_options = {
         },
     ],
     "collapse_navigation": True,
+    "navigation_with_keys": False,
 }
 
 # Add any paths that contain custom themes here, relative to this directory.
@@ -335,6 +336,7 @@ texinfo_documents = [
 intersphinx_mapping = {
     "python": ("https://docs.python.org/", None),
     "numpy": ("https://numpy.org/doc/stable/", None),
+    "numcodecs": ("https://numcodecs.readthedocs.io/en/stable/", None),
 }
 
 

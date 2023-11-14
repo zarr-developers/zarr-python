@@ -18,6 +18,32 @@ Release notes
 Unreleased
 ----------
 
+Docs
+~~~~
+
+* The documentation build now fails if there are any warnings.
+  By :user:`David Stansby <dstansby>` :issue:`1548`.
+
+* Add links to ``numcodecs`` docs in the tutorial.
+  By :user:`David Stansby <dstansby>` :issue:`1535`.
+
+Maintenance
+~~~~~~~~~~~
+
+* Change occurrence of ``io.open()`` into ``open()``.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1421`.
+
+* Preserve ``dimension_separator`` when resizing arrays.
+  By :user:`Ziwen Liu <ziw-liu>` :issue:`1533`.
+
+* Initialise some sets in tests with set literals instead of list literals.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1534`.
+
+* Allow ``black`` code formatter to be run with any Python version.
+  By :user:`David Stansby <dstansby>` :issue:`1549`.
+
+
+
 .. _release_2.16.1:
 
 2.16.1
@@ -146,10 +172,12 @@ Major changes
 
 * Improve Zarr V3 support, adding partial store read/write and storage transformers.
   Add new features from the `v3 spec <https://zarr-specs.readthedocs.io/en/latest/core/v3.0.html>`_:
+
     * storage transformers
     * `get_partial_values` and `set_partial_values`
     * efficient `get_partial_values` implementation for `FSStoreV3`
     * sharding storage transformer
+
   By :user:`Jonathan Striebel <jstriebel>`; :issue:`1096`, :issue:`1111`.
 
 * N5 nows supports Blosc.
