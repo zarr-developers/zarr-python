@@ -1,5 +1,5 @@
 The Array class (``zarr.core``)
 ===============================
-.. module:: zarr.core
 
-.. automodsumm:: zarr.core
+.. automodapi:: zarr.core
+   :no-heading:
