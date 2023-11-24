@@ -85,9 +85,9 @@ Creating a development environment
 To work with the Zarr source code, it is recommended to set up a Python virtual
 environment and install all Zarr dependencies using the same versions as are used by
 the core developers and continuous integration services. Assuming you have a Python
-3 interpreter already installed, and have also installed the virtualenv package, and
-you have cloned the Zarr source code and your current working directory is the root of
-the repository, you can do something like the following::
+3 interpreter already installed, and you have cloned the Zarr source code and your
+current working directory is the root of the repository, you can do something like
+the following::
 
     $ mkdir -p ~/pyenv/zarr-dev
     $ python -m venv ~/pyenv/zarr-dev
