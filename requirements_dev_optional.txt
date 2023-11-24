@@ -17,7 +17,7 @@ coverage
 pytest-cov==4.1.0
 pytest-doctestplus==1.0.0
 pytest-timeout==2.1.0
-h5py==3.9.0
+h5py==3.10.0
 fsspec==2023.10.0
 s3fs==2023.10.0
 moto[server]>=4.0.8

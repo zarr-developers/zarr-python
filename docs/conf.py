@@ -42,6 +42,7 @@ extensions = [
     "sphinx.ext.autosummary",
     "sphinx.ext.viewcode",
     "sphinx.ext.intersphinx",
+    "sphinx_automodapi.automodapi",
     "numpydoc",
     "sphinx_issues",
     "sphinx_copybutton",
@@ -51,6 +52,9 @@ extensions = [
 numpydoc_show_class_members = False
 numpydoc_class_members_toctree = False
 issues_github_path = "zarr-developers/zarr-python"
+
+automodapi_inheritance_diagram = False
+automodapi_toctreedirnm = "_autoapi"
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ["_templates"]
