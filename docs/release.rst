@@ -1521,11 +1521,11 @@ Bug fixes
 Documentation
 ~~~~~~~~~~~~~
 
-* Some changes have been made to the :ref:`spec_v2` document to clarify
+* Some changes have been made to the Zarr Specification v2 document to clarify
   ambiguities and add some missing information. These changes do not break compatibility
   with any of the material as previously implemented, and so the changes have been made
   in-place in the document without incrementing the document version number. See the
-  section on :ref:`spec_v2_changes` in the specification document for more information.
+  section on changes in the specification document for more information.
 * A new :ref:`tutorial_indexing` section has been added to the tutorial.
 * A new :ref:`tutorial_strings` section has been added to the tutorial
   (:issue:`135`, :issue:`175`).
