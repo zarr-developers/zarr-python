@@ -60,7 +60,7 @@ class ZArrayMetadata:
     dimension_separator: Literal[".", "/"] = "."
     compressor: Optional[Dict[str, Any]] = None
     zarr_format: Literal[2] = 2
-    attributes: Optional[Dict[str, Any]]
+    attributes: Optional[Dict[str, Any]] = {}
 
     @property
     def ndim(self) -> int:
@@ -87,6 +87,7 @@ class ZArray:
     metadata: ZArrayMetadata
     store_path: StorePath
     runtime_configuration: RuntimeConfiguration
+    attributes: Dict[str, Any]
 
     @classmethod
     async def create_async(

@@ -49,7 +49,7 @@ from zarr.v3.sync import sync
 
 
 @frozen
-class ArrayMetadata:
+class ZArrayMetadata:
     shape: ChunkCoords
     data_type: DataType
     chunk_grid: RegularChunkGridMetadata
@@ -93,13 +93,13 @@ class ArrayMetadata:
         ).encode()
 
     @classmethod
-    def from_json(cls, zarr_json: Any) -> ArrayMetadata:
+    def from_json(cls, zarr_json: Any) -> ZArrayMetadata:
         return make_cattr().structure(zarr_json, cls)
 
 
 @frozen
 class ZArrayAsync(AsynchronousArray):
-    metadata: ArrayMetadata
+    metadata: ZArrayMetadata
     store_path: StorePath
     runtime_configuration: RuntimeConfiguration
     codec_pipeline: CodecPipeline
@@ -139,7 +139,7 @@ class ZArrayAsync(AsynchronousArray):
             else:
                 fill_value = 0
 
-        metadata = ArrayMetadata(
+        metadata = ZArrayMetadata(
             shape=shape,
             data_type=data_type,
             chunk_grid=RegularChunkGridMetadata(
@@ -184,7 +184,7 @@ class ZArrayAsync(AsynchronousArray):
         zarr_json: Any,
         runtime_configuration: RuntimeConfiguration,
     ) -> ZArrayAsync:
-        metadata = ArrayMetadata.from_json(zarr_json)
+        metadata = ZArrayMetadata.from_json(zarr_json)
         async_array = cls(
             metadata=metadata,
             store_path=store_path,

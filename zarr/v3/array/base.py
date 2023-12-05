@@ -8,7 +8,13 @@ from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 import numpy as np
 from attr import frozen
 
-from zarr.v3.common import ChunkCoords
+""" from zarr.v3.array import v3
+from zarr.v3.array import v2
+ """
+from zarr.v3.common import BytesLike, ChunkCoords, SliceSelection, to_thread
+from zarr.v3.store import StorePath
+import numcodecs
+from numcodecs.compat import ensure_bytes, ensure_ndarray
 
 
 @frozen
@@ -142,105 +148,6 @@ class V2ChunkKeyEncodingMetadata:
 ChunkKeyEncodingMetadata = Union[DefaultChunkKeyEncodingMetadata, V2ChunkKeyEncodingMetadata]
 
 
-BloscShuffle = Literal["noshuffle", "shuffle", "bitshuffle"]
-
-
-@frozen
-class BloscCodecConfigurationMetadata:
-    typesize: int
-    cname: Literal["lz4", "lz4hc", "blosclz", "zstd", "snappy", "zlib"] = "zstd"
-    clevel: int = 5
-    shuffle: BloscShuffle = "noshuffle"
-    blocksize: int = 0
-
-
-blosc_shuffle_int_to_str: Dict[int, BloscShuffle] = {
-    0: "noshuffle",
-    1: "shuffle",
-    2: "bitshuffle",
-}
-
-
-@frozen
-class BloscCodecMetadata:
-    configuration: BloscCodecConfigurationMetadata
-    name: Literal["blosc"] = "blosc"
-
-
-@frozen
-class BytesCodecConfigurationMetadata:
-    endian: Optional[Literal["big", "little"]] = "little"
-
-
-@frozen
-class BytesCodecMetadata:
-    configuration: BytesCodecConfigurationMetadata
-    name: Literal["bytes"] = "bytes"
-
-
-@frozen
-class TransposeCodecConfigurationMetadata:
-    order: Union[Literal["C", "F"], Tuple[int, ...]] = "C"
-
-
-@frozen
-class TransposeCodecMetadata:
-    configuration: TransposeCodecConfigurationMetadata
-    name: Literal["transpose"] = "transpose"
-
-
-@frozen
-class GzipCodecConfigurationMetadata:
-    level: int = 5
-
-
-@frozen
-class GzipCodecMetadata:
-    configuration: GzipCodecConfigurationMetadata
-    name: Literal["gzip"] = "gzip"
-
-
-@frozen
-class ZstdCodecConfigurationMetadata:
-    level: int = 0
-    checksum: bool = False
-
-
-@frozen
-class ZstdCodecMetadata:
-    configuration: ZstdCodecConfigurationMetadata
-    name: Literal["zstd"] = "zstd"
-
-
-@frozen
-class Crc32cCodecMetadata:
-    name: Literal["crc32c"] = "crc32c"
-
-
-@frozen
-class ShardingCodecConfigurationMetadata:
-    chunk_shape: ChunkCoords
-    codecs: List["CodecMetadata"]
-    index_codecs: List["CodecMetadata"]
-
-
-@frozen
-class ShardingCodecMetadata:
-    configuration: ShardingCodecConfigurationMetadata
-    name: Literal["sharding_indexed"] = "sharding_indexed"
-
-
-CodecMetadata = Union[
-    BloscCodecMetadata,
-    BytesCodecMetadata,
-    TransposeCodecMetadata,
-    GzipCodecMetadata,
-    ZstdCodecMetadata,
-    ShardingCodecMetadata,
-    Crc32cCodecMetadata,
-]
-
-
 @frozen
 class CoreArrayMetadata:
     shape: ChunkCoords
@@ -256,3 +163,26 @@ class CoreArrayMetadata:
     @property
     def ndim(self) -> int:
         return len(self.shape)
+
+
+""" @frozen
+class ZArray:
+    shape: ChunkCoords
+    chunk_shape: ChunkCoords
+    dtype: DataType
+    T: "ZArray" 
+    size: int
+    ndim: int
+    attrs: Dict[str, Any]
+    order: Literal["C", "F"]
+    metadata: Union[v2.ZArrayMetadata, v3.ZArrayMetadata]
+    chunk_store: StorePath
+    metadata_store: StorePath
+
+    @property
+    def ndim(self) -> int:
+        return len(self.metadata.shape)
+    
+    @property
+    def dtype(self) -> np.dtype:
+        return np.dtype(self.metadata.dtype) """

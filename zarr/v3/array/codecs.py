@@ -13,26 +13,109 @@ from numcodecs.gzip import GZip
 from zstandard import ZstdCompressor, ZstdDecompressor
 
 from zarr.v3.abc.codec import Codec, ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec
-from zarr.v3.common import BytesLike, to_thread
-from zarr.v3.array.base import (
-    BloscCodecConfigurationMetadata,
-    BloscCodecMetadata,
-    BytesCodecConfigurationMetadata,
-    BytesCodecMetadata,
-    CodecMetadata,
-    Crc32cCodecMetadata,
-    GzipCodecConfigurationMetadata,
-    GzipCodecMetadata,
-    ShardingCodecConfigurationMetadata,
-    ShardingCodecMetadata,
-    TransposeCodecConfigurationMetadata,
-    TransposeCodecMetadata,
-    ZstdCodecConfigurationMetadata,
-    ZstdCodecMetadata,
-)
+from zarr.v3.common import BytesLike, ChunkCoords, to_thread
 
 if TYPE_CHECKING:
     from zarr.v3.array.base import CoreArrayMetadata
+
+
+BloscShuffle = Literal["noshuffle", "shuffle", "bitshuffle"]
+
+
+@frozen
+class BloscCodecConfigurationMetadata:
+    typesize: int
+    cname: Literal["lz4", "lz4hc", "blosclz", "zstd", "snappy", "zlib"] = "zstd"
+    clevel: int = 5
+    shuffle: BloscShuffle = "noshuffle"
+    blocksize: int = 0
+
+
+blosc_shuffle_int_to_str: Dict[int, BloscShuffle] = {
+    0: "noshuffle",
+    1: "shuffle",
+    2: "bitshuffle",
+}
+
+
+@frozen
+class BloscCodecMetadata:
+    configuration: BloscCodecConfigurationMetadata
+    name: Literal["blosc"] = "blosc"
+
+
+@frozen
+class BytesCodecConfigurationMetadata:
+    endian: Optional[Literal["big", "little"]] = "little"
+
+
+@frozen
+class BytesCodecMetadata:
+    configuration: BytesCodecConfigurationMetadata
+    name: Literal["bytes"] = "bytes"
+
+
+@frozen
+class TransposeCodecConfigurationMetadata:
+    order: Union[Literal["C", "F"], Tuple[int, ...]] = "C"
+
+
+@frozen
+class TransposeCodecMetadata:
+    configuration: TransposeCodecConfigurationMetadata
+    name: Literal["transpose"] = "transpose"
+
+
+@frozen
+class GzipCodecConfigurationMetadata:
+    level: int = 5
+
+
+@frozen
+class GzipCodecMetadata:
+    configuration: GzipCodecConfigurationMetadata
+    name: Literal["gzip"] = "gzip"
+
+
+@frozen
+class ZstdCodecConfigurationMetadata:
+    level: int = 0
+    checksum: bool = False
+
+
+@frozen
+class ZstdCodecMetadata:
+    configuration: ZstdCodecConfigurationMetadata
+    name: Literal["zstd"] = "zstd"
+
+
+@frozen
+class Crc32cCodecMetadata:
+    name: Literal["crc32c"] = "crc32c"
+
+
+@frozen
+class ShardingCodecConfigurationMetadata:
+    chunk_shape: ChunkCoords
+    codecs: List["CodecMetadata"]
+    index_codecs: List["CodecMetadata"]
+
+
+@frozen
+class ShardingCodecMetadata:
+    configuration: ShardingCodecConfigurationMetadata
+    name: Literal["sharding_indexed"] = "sharding_indexed"
+
+
+CodecMetadata = Union[
+    BloscCodecMetadata,
+    BytesCodecMetadata,
+    TransposeCodecMetadata,
+    GzipCodecMetadata,
+    ZstdCodecMetadata,
+    ShardingCodecMetadata,
+    Crc32cCodecMetadata,
+]
 
 # See https://zarr.readthedocs.io/en/stable/tutorial.html#configuring-blosc
 numcodecs.blosc.use_threads = False
