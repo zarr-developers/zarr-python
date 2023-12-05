@@ -19,7 +19,7 @@ from zarr.v3.array.indexing import (
     is_total_slice,
     morton_order_iter,
 )
-from zarr.v3.array.base import CoreArrayMetadata, DataType
+from zarr.v3.array.base import CoreArrayMetadata
 from zarr.v3.array.codecs import ShardingCodecConfigurationMetadata, ShardingCodecMetadata
 from zarr.v3.store import StorePath
 

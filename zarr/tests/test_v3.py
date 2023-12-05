@@ -68,3 +68,6 @@ def test_array(
     # exists in the store, then we will get an unhandled exception
     arr[:] = data
     assert np.array_equal(arr[:], data)
+
+    # partial write
+    arr[slice(0, 1)] = data[slice(0, 1)]

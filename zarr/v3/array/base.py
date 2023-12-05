@@ -30,7 +30,7 @@ def runtime_configuration(
     return RuntimeConfiguration(order=order, concurrency=concurrency)
 
 
-class DataType(Enum):
+""" class DataType(Enum):
     bool = "bool"
     int8 = "int8"
     int16 = "int16"
@@ -74,7 +74,15 @@ class DataType(Enum):
             DataType.float32: "f4",
             DataType.float64: "f8",
         }
-        return data_type_to_numpy[self]
+        return data_type_to_numpy[self] """
+
+
+def byte_count(dtype: np.dtype) -> int:
+    return dtype.itemsize
+
+
+def to_numpy_shortname(dtype: np.dtype) -> str:
+    return dtype.str.lstrip("|").lstrip("^").lstrip("<").lstrip(">")
 
 
 dtype_to_data_type = {
@@ -97,13 +105,10 @@ dtype_to_data_type = {
 class CoreArrayMetadata:
     shape: ChunkCoords
     chunk_shape: ChunkCoords
-    data_type: DataType
+    # data_type: DataType
+    dtype: np.dtype
     fill_value: Any
     runtime_configuration: RuntimeConfiguration
-
-    @property
-    def dtype(self) -> np.dtype:
-        return np.dtype(self.data_type.value)
 
     @property
     def ndim(self) -> int:

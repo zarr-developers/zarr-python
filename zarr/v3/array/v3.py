@@ -26,6 +26,8 @@ from zarr.v3.array.chunk import (
     ChunkKeyEncodingMetadata,
     V2ChunkKeyEncodingConfigurationMetadata,
     V2ChunkKeyEncodingMetadata,
+    _read_chunk_v3,
+    _write_chunk_v3,
 )
 
 # from zarr.v3.array_v2 import ArrayV2
@@ -41,7 +43,6 @@ from zarr.v3.common import (
 from zarr.v3.array.indexing import BasicIndexer, all_chunk_coords, is_total_slice
 from zarr.v3.array.base import (
     CoreArrayMetadata,
-    DataType,
     RuntimeConfiguration,
     dtype_to_data_type,
 )
@@ -53,7 +54,7 @@ from zarr.v3.sync import sync
 @frozen
 class ZArrayMetadata:
     shape: ChunkCoords
-    data_type: DataType
+    data_type: np.dtype
     chunk_grid: RegularChunkGridMetadata
     chunk_key_encoding: ChunkKeyEncodingMetadata
     fill_value: Any
@@ -64,10 +65,6 @@ class ZArrayMetadata:
     node_type: Literal["array"] = "array"
 
     @property
-    def dtype(self) -> np.dtype:
-        return np.dtype(self.data_type.value)
-
-    @property
     def ndim(self) -> int:
         return len(self.shape)
 
@@ -75,15 +72,15 @@ class ZArrayMetadata:
         return CoreArrayMetadata(
             shape=self.shape,
             chunk_shape=self.chunk_grid.configuration.chunk_shape,
-            data_type=self.data_type,
+            dtype=self.data_type,
             fill_value=self.fill_value,
             runtime_configuration=runtime_configuration,
         )
 
     def to_bytes(self) -> bytes:
         def _json_convert(o):
-            if isinstance(o, DataType):
-                return o.name
+            if isinstance(o, np.dtype):
+                return str(o)
             raise TypeError
 
         return json.dumps(
@@ -129,14 +126,19 @@ class ZArrayAsync(AsynchronousArray):
         if not exists_ok:
             assert not await (store_path / ZARR_JSON).exists_async()
 
-        data_type = (
+            """     
+            data_type = (
             DataType[dtype] if isinstance(dtype, str) else DataType[dtype_to_data_type[dtype.str]]
-        )
-
+            )
+            """
+        if isinstance(dtype, str):
+            data_type = np.dtype(dtype)
+        else:
+            data_type = dtype
         codecs = list(codecs) if codecs is not None else [bytes_codec()]
 
         if fill_value is None:
-            if data_type == DataType.bool:
+            if data_type == "bool":
                 fill_value = False
             else:
                 fill_value = 0
@@ -245,7 +247,7 @@ class ZArrayAsync(AsynchronousArray):
 
     @property
     def dtype(self) -> np.dtype:
-        return self.metadata.dtype
+        return self.metadata.data_type
 
     @property
     def attrs(self) -> dict[str, Any]:
@@ -261,17 +263,26 @@ class ZArrayAsync(AsynchronousArray):
         # setup output array
         out = np.zeros(
             indexer.shape,
-            dtype=self.metadata.dtype,
+            dtype=self.metadata.data_type,
             order=self.runtime_configuration.order,
         )
 
         # reading chunks and decoding them
         await concurrent_map(
             [
-                (chunk_coords, chunk_selection, out_selection, out)
+                (
+                    self.metadata.chunk_key_encoding,
+                    self.metadata.fill_value,
+                    self.store_path,
+                    self.codec_pipeline,
+                    chunk_coords,
+                    chunk_selection,
+                    out_selection,
+                    out,
+                )
                 for chunk_coords, chunk_selection, out_selection in indexer
             ],
-            self._read_chunk,
+            _read_chunk_v3,
             self.runtime_configuration.concurrency,
         )
 
@@ -294,6 +305,7 @@ class ZArrayAsync(AsynchronousArray):
         ), "`dimension_names` and `shape` need to have the same number of dimensions."
         assert self.metadata.fill_value is not None, "`fill_value` is required."
 
+    """
     async def _read_chunk(
         self,
         chunk_coords: ChunkCoords,
@@ -323,6 +335,7 @@ class ZArrayAsync(AsynchronousArray):
                 out[out_selection] = tmp
             else:
                 out[out_selection] = self.metadata.fill_value
+    """
 
     async def setitem(self, selection: Selection, value: np.ndarray) -> None:
         chunk_shape = self.metadata.chunk_grid.configuration.chunk_shape
@@ -342,25 +355,31 @@ class ZArrayAsync(AsynchronousArray):
             if not hasattr(value, "shape"):
                 value = np.asarray(value, self.metadata.dtype)
             assert value.shape == sel_shape
-            if value.dtype.name != self.metadata.dtype.name:
-                value = value.astype(self.metadata.dtype, order="A")
+            if value.dtype.name != self.dtype.name:
+                value = value.astype(self.dtype, order="A")
 
         # merging with existing data and encoding chunks
         await concurrent_map(
             [
                 (
+                    self.metadata.chunk_key_encoding,
+                    self.store_path,
+                    self.dtype,
+                    self.codec_pipeline,
                     value,
                     chunk_shape,
                     chunk_coords,
                     chunk_selection,
                     out_selection,
+                    self.metadata.fill_value,
                 )
                 for chunk_coords, chunk_selection, out_selection in indexer
             ],
-            self._write_chunk,
+            _write_chunk_v3,
             self.runtime_configuration.concurrency,
         )
 
+    """
     async def _write_chunk(
         self,
         value: np.ndarray,
@@ -425,6 +444,7 @@ class ZArrayAsync(AsynchronousArray):
                 await store_path.delete_async()
             else:
                 await store_path.set_async(chunk_bytes)
+    """
 
     async def resize(self, new_shape: ChunkCoords) -> ZArray:
         assert len(new_shape) == len(self.metadata.shape)

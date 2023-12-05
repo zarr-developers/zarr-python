@@ -11,9 +11,12 @@ from numcodecs.compat import ensure_bytes, ensure_ndarray
 from zarr.v3.array.chunk import (
     V2ChunkKeyEncodingConfigurationMetadata,
     V2ChunkKeyEncodingMetadata,
+    _read_chunk_v3,
     _write_chunk_v2,
+    _write_chunk_v3,
 )
 from zarr.v3.array.chunk import read_chunk_v2
+from zarr.v3.array.codecs import CodecPipeline, bytes_codec
 from zarr.v3.common import (
     ZARRAY_JSON,
     ZATTRS_JSON,
@@ -26,7 +29,7 @@ from zarr.v3.common import (
     to_thread,
 )
 from zarr.v3.array.indexing import BasicIndexer, all_chunk_coords, is_total_slice
-from zarr.v3.array.base import RuntimeConfiguration
+from zarr.v3.array.base import CoreArrayMetadata, RuntimeConfiguration
 from zarr.v3.store import StoreLike, StorePath, make_store_path
 from zarr.v3.sync import sync
 
@@ -319,23 +322,36 @@ class ZArray:
                 separator=self.metadata.dimension_separator
             )
         )
+
         if self.metadata.filters is None:
             filters = []
         else:
             filters = self.metadata.filters
 
-        await read_chunk_v2(
-            self.metadata.fill_value,
+        if self.metadata.compressor is None:
+            codecs = [bytes_codec()]
+        else:
+            codecs = [self.metadata.compressor] + filters
+
+        codec_pipeline = CodecPipeline.from_metadata(
+            codecs,
+            CoreArrayMetadata(
+                shape=self.metadata.shape,
+                chunk_shape=self.metadata.chunks,
+                dtype=self.metadata.dtype,
+                fill_value=self.metadata.fill_value,
+                runtime_configuration=self.runtime_configuration,
+            ),
+        )
+
+        await _read_chunk_v3(
             chunk_key_encoding=chunk_key_encoding,
+            fill_value=self.metadata.fill_value,
             store_path=self.store_path,
-            chunks=self.metadata.chunks,
             chunk_coords=chunk_coords,
             chunk_selection=chunk_selection,
+            codec_pipeline=codec_pipeline,
             out_selection=out_selection,
-            compressor=self.metadata.compressor,
-            filters=filters,
-            dtype=self.metadata.dtype,
-            order=self.metadata.order,
             out=out,
         )
 
@@ -385,11 +401,28 @@ class ZArray:
                 separator=self.metadata.dimension_separator
             )
         )
+        sel_shape = indexer.shape
+
         if self.metadata.filters is None:
             filters = []
         else:
             filters = self.metadata.filters
-        sel_shape = indexer.shape
+
+        if self.metadata.compressor is None:
+            codecs = [bytes_codec()]
+        else:
+            codecs = [self.metadata.compressor] + filters
+
+        codec_pipeline = CodecPipeline.from_metadata(
+            codecs,
+            CoreArrayMetadata(
+                shape=self.metadata.shape,
+                chunk_shape=self.metadata.chunks,
+                dtype=self.metadata.dtype,
+                fill_value=self.metadata.fill_value,
+                runtime_configuration=self.runtime_configuration,
+            ),
+        )
 
         # check value shape
         if np.isscalar(value):
@@ -406,14 +439,11 @@ class ZArray:
         await concurrent_map(
             [
                 (
-                    value,
                     chunk_key_encoding,
                     self.store_path,
                     self.metadata.dtype,
-                    self.metadata.order,
-                    self.metadata.compressor,
-                    filters,
-                    self.metadata.chunks,
+                    codec_pipeline,
+                    value,
                     chunk_shape,
                     chunk_coords,
                     chunk_selection,
@@ -422,7 +452,7 @@ class ZArray:
                 )
                 for chunk_coords, chunk_selection, out_selection in indexer
             ],
-            _write_chunk_v2,
+            _write_chunk_v3,
         )
 
     """

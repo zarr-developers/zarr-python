@@ -24,6 +24,7 @@ from numcodecs.gzip import GZip
 from zstandard import ZstdCompressor, ZstdDecompressor
 
 from zarr.v3.abc.codec import Codec, ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec
+from zarr.v3.array.base import to_numpy_shortname
 from zarr.v3.common import BytesLike, ChunkCoords, to_thread
 
 if TYPE_CHECKING:
@@ -359,9 +360,9 @@ class BytesCodec(ArrayBytesCodec):
                 prefix = "<"
             else:
                 prefix = ">"
-            dtype = np.dtype(f"{prefix}{self.array_metadata.data_type.to_numpy_shortname()}")
+            dtype = np.dtype(f"{prefix}{to_numpy_shortname(self.array_metadata.dtype)}")
         else:
-            dtype = np.dtype(f"|{self.array_metadata.data_type.to_numpy_shortname()}")
+            dtype = np.dtype(f"|{to_numpy_shortname(self.array_metadata.dtype)}")
         chunk_array = np.frombuffer(chunk_bytes, dtype)
 
         # ensure correct chunk shape
