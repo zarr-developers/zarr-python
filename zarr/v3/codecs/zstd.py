@@ -4,6 +4,7 @@ from typing import (
     TYPE_CHECKING,
     Literal,
     Optional,
+    Type,
 )
 
 from attr import frozen, field
@@ -12,6 +13,7 @@ from zstandard import ZstdCompressor, ZstdDecompressor
 from zarr.v3.abc.codec import BytesBytesCodec
 from zarr.v3.codecs.registry import register_codec
 from zarr.v3.common import BytesLike, to_thread
+from zarr.v3.metadata import CodecMetadata
 
 if TYPE_CHECKING:
     from zarr.v3.metadata import CoreArrayMetadata
@@ -37,15 +39,16 @@ class ZstdCodec(BytesBytesCodec):
 
     @classmethod
     def from_metadata(
-        cls, codec_metadata: ZstdCodecMetadata, array_metadata: CoreArrayMetadata
+        cls, codec_metadata: CodecMetadata, array_metadata: CoreArrayMetadata
     ) -> ZstdCodec:
+        assert isinstance(codec_metadata, ZstdCodecMetadata)
         return cls(
             array_metadata=array_metadata,
             configuration=codec_metadata.configuration,
         )
 
     @classmethod
-    def get_metadata_class(cls) -> ZstdCodecMetadata:
+    def get_metadata_class(cls) -> Type[ZstdCodecMetadata]:
         return ZstdCodecMetadata
 
     def _compress(self, data: bytes) -> bytes:

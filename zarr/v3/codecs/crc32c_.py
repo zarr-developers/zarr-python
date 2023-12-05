@@ -4,6 +4,7 @@ from typing import (
     TYPE_CHECKING,
     Literal,
     Optional,
+    Type,
 )
 
 import numpy as np
@@ -13,6 +14,7 @@ from crc32c import crc32c
 from zarr.v3.abc.codec import BytesBytesCodec
 from zarr.v3.codecs.registry import register_codec
 from zarr.v3.common import BytesLike
+from zarr.v3.metadata import CodecMetadata
 
 if TYPE_CHECKING:
     from zarr.v3.metadata import CoreArrayMetadata
@@ -30,12 +32,13 @@ class Crc32cCodec(BytesBytesCodec):
 
     @classmethod
     def from_metadata(
-        cls, codec_metadata: Crc32cCodecMetadata, array_metadata: CoreArrayMetadata
+        cls, codec_metadata: CodecMetadata, array_metadata: CoreArrayMetadata
     ) -> Crc32cCodec:
+        assert isinstance(codec_metadata, Crc32cCodecMetadata)
         return cls(array_metadata=array_metadata)
 
     @classmethod
-    def get_metadata_class(cls) -> Crc32cCodecMetadata:
+    def get_metadata_class(cls) -> Type[Crc32cCodecMetadata]:
         return Crc32cCodecMetadata
 
     async def decode(

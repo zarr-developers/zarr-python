@@ -4,6 +4,7 @@ from typing import (
     TYPE_CHECKING,
     Literal,
     Optional,
+    Type,
 )
 
 import numpy as np
@@ -12,6 +13,7 @@ from attr import frozen, field
 from zarr.v3.abc.codec import ArrayBytesCodec
 from zarr.v3.codecs.registry import register_codec
 from zarr.v3.common import BytesLike
+from zarr.v3.metadata import CodecMetadata
 
 if TYPE_CHECKING:
     from zarr.v3.metadata import CoreArrayMetadata
@@ -36,8 +38,9 @@ class BytesCodec(ArrayBytesCodec):
 
     @classmethod
     def from_metadata(
-        cls, codec_metadata: BytesCodecMetadata, array_metadata: CoreArrayMetadata
+        cls, codec_metadata: CodecMetadata, array_metadata: CoreArrayMetadata
     ) -> BytesCodec:
+        assert isinstance(codec_metadata, BytesCodecMetadata)
         assert (
             array_metadata.dtype.itemsize == 1 or codec_metadata.configuration.endian is not None
         ), "The `endian` configuration needs to be specified for multi-byte data types."
@@ -47,7 +50,7 @@ class BytesCodec(ArrayBytesCodec):
         )
 
     @classmethod
-    def get_metadata_class(cls) -> BytesCodecMetadata:
+    def get_metadata_class(cls) -> Type[BytesCodecMetadata]:
         return BytesCodecMetadata
 
     def _get_byteorder(self, array: np.ndarray) -> Literal["big", "little"]:

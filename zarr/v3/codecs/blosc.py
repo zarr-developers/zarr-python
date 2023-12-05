@@ -5,6 +5,7 @@ from typing import (
     Dict,
     Literal,
     Optional,
+    Type,
 )
 
 import numcodecs
@@ -15,6 +16,7 @@ from numcodecs.blosc import Blosc
 from zarr.v3.abc.codec import BytesBytesCodec
 from zarr.v3.codecs.registry import register_codec
 from zarr.v3.common import BytesLike, to_thread
+from zarr.v3.metadata import CodecMetadata
 
 if TYPE_CHECKING:
     from zarr.v3.metadata import CoreArrayMetadata
@@ -57,8 +59,9 @@ class BloscCodec(BytesBytesCodec):
 
     @classmethod
     def from_metadata(
-        cls, codec_metadata: BloscCodecMetadata, array_metadata: CoreArrayMetadata
+        cls, codec_metadata: CodecMetadata, array_metadata: CoreArrayMetadata
     ) -> BloscCodec:
+        assert isinstance(codec_metadata, BloscCodecMetadata)
         configuration = codec_metadata.configuration
         if configuration.typesize == 0:
             configuration = evolve(configuration, typesize=array_metadata.data_type.byte_count)
@@ -73,7 +76,7 @@ class BloscCodec(BytesBytesCodec):
         )
 
     @classmethod
-    def get_metadata_class(cls) -> BloscCodecMetadata:
+    def get_metadata_class(cls) -> Type[BloscCodecMetadata]:
         return BloscCodecMetadata
 
     async def decode(
