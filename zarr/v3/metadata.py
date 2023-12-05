@@ -147,6 +147,11 @@ class CodecMetadata(Protocol):
     configuration: Optional[Any]
 
 
+class ShardingCodecIndexLocation(Enum):
+    start = "start"
+    end = "end"
+
+
 @frozen
 class CoreArrayMetadata:
     shape: ChunkCoords
@@ -196,7 +201,7 @@ class ArrayMetadata:
 
     def to_bytes(self) -> bytes:
         def _json_convert(o):
-            if isinstance(o, DataType):
+            if isinstance(o, Enum):
                 return o.name
             raise TypeError
 
