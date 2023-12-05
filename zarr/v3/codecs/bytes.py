@@ -46,6 +46,10 @@ class BytesCodec(ArrayBytesCodec):
             configuration=codec_metadata.configuration,
         )
 
+    @classmethod
+    def get_metadata_class(cls) -> BytesCodecMetadata:
+        return BytesCodecMetadata
+
     def _get_byteorder(self, array: np.ndarray) -> Literal["big", "little"]:
         if array.dtype.byteorder == "<":
             return "little"
@@ -92,7 +96,7 @@ class BytesCodec(ArrayBytesCodec):
         return input_byte_length
 
 
-register_codec("bytes", BytesCodec, BytesCodecMetadata)
+register_codec("bytes", BytesCodec)
 
 # compatibility with earlier versions of ZEP1
-register_codec("endian", BytesCodec, BytesCodecMetadata)
+register_codec("endian", BytesCodec)

@@ -72,6 +72,10 @@ class BloscCodec(BytesBytesCodec):
             blosc_codec=Blosc.from_config(config_dict),
         )
 
+    @classmethod
+    def get_metadata_class(cls) -> BloscCodecMetadata:
+        return BloscCodecMetadata
+
     async def decode(
         self,
         chunk_bytes: bytes,
@@ -89,4 +93,4 @@ class BloscCodec(BytesBytesCodec):
         raise NotImplementedError
 
 
-register_codec("blosc", BloscCodec, BloscCodecMetadata)
+register_codec("blosc", BloscCodec)

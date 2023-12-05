@@ -34,6 +34,10 @@ class Crc32cCodec(BytesBytesCodec):
     ) -> Crc32cCodec:
         return cls(array_metadata=array_metadata)
 
+    @classmethod
+    def get_metadata_class(cls) -> Crc32cCodecMetadata:
+        return Crc32cCodecMetadata
+
     async def decode(
         self,
         chunk_bytes: bytes,
@@ -54,4 +58,4 @@ class Crc32cCodec(BytesBytesCodec):
         return input_byte_length + 4
 
 
-register_codec("crc32c", Crc32cCodec, Crc32cCodecMetadata)
+register_codec("crc32c", Crc32cCodec)

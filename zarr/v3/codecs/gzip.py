@@ -43,6 +43,10 @@ class GzipCodec(BytesBytesCodec):
             configuration=codec_metadata.configuration,
         )
 
+    @classmethod
+    def get_metadata_class(cls) -> GzipCodecMetadata:
+        return GzipCodecMetadata
+
     async def decode(
         self,
         chunk_bytes: bytes,
@@ -59,4 +63,4 @@ class GzipCodec(BytesBytesCodec):
         raise NotImplementedError
 
 
-register_codec("gzip", GzipCodec, GzipCodecMetadata)
+register_codec("gzip", GzipCodec)

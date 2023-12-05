@@ -40,6 +40,10 @@ class Codec(ABC):
     ) -> "Type[Codec]":
         pass
 
+    @classmethod
+    def get_metadata_class(cls) -> "Type[CodecMetadata]":
+        pass
+
 
 class ArrayArrayCodec(Codec):
     @abstractmethod

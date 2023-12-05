@@ -44,6 +44,10 @@ class ZstdCodec(BytesBytesCodec):
             configuration=codec_metadata.configuration,
         )
 
+    @classmethod
+    def get_metadata_class(cls) -> ZstdCodecMetadata:
+        return ZstdCodecMetadata
+
     def _compress(self, data: bytes) -> bytes:
         ctx = ZstdCompressor(
             level=self.configuration.level, write_checksum=self.configuration.checksum
@@ -70,4 +74,4 @@ class ZstdCodec(BytesBytesCodec):
         raise NotImplementedError
 
 
-register_codec("zstd", ZstdCodec, ZstdCodecMetadata)
+register_codec("zstd", ZstdCodec)
