@@ -513,6 +513,10 @@ class Array(SynchronousArray):
         return self._async_array.attrs
 
     @property
+    def metadata(self) -> ArrayMetadata:
+        return self._async_array.metadata
+
+    @property
     def store_path(self) -> str:
         return self._async_array.store_path
 

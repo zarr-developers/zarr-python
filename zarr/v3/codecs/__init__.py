@@ -180,8 +180,19 @@ def bytes_codec(endian: Optional[Literal["big", "little"]] = "little") -> "Bytes
     return BytesCodecMetadata(configuration=BytesCodecConfigurationMetadata(endian))
 
 
-def transpose_codec(order: Union[Tuple[int, ...], Literal["C", "F"]]) -> "TransposeCodecMetadata":
+def transpose_codec(
+    order: Union[Tuple[int, ...], Literal["C", "F"]], ndim: Optional[int] = None
+) -> "TransposeCodecMetadata":
     from zarr.v3.codecs.transpose import TransposeCodecMetadata, TransposeCodecConfigurationMetadata
+
+    if order == "C" or order == "F":
+        assert (
+            isinstance(ndim, int) and ndim > 0
+        ), 'When using "C" or "F" the `ndim` argument needs to be provided.'
+        if order == "C":
+            order = tuple(range(ndim))
+        if order == "F":
+            order = tuple(ndim - i - 1 for i in range(ndim))
 
     return TransposeCodecMetadata(configuration=TransposeCodecConfigurationMetadata(order))
 

@@ -18,7 +18,6 @@ __lazy_load_codecs: Dict[str, EntryPoint] = {}
 
 def _collect_entrypoints() -> None:
     entry_points = get_entry_points()
-    print(entry_points.keys())
     if hasattr(entry_points, "select"):
         # If entry_points() has a select method, use that. Python 3.10+
         for e in entry_points.select(group="zarr.codecs"):
