@@ -1,11 +1,17 @@
 from __future__ import annotations
 
-from typing import Iterator, List, Mapping, NamedTuple, Optional, Set, Tuple
+from typing import Iterator, List, Literal, Mapping, NamedTuple, Optional, Set, Tuple
+from attr import field, frozen
 
 import numpy as np
-from attrs import frozen
+from zarr.v3.abc.codec import (
+    ArrayBytesCodec,
+    ArrayBytesCodecPartialDecodeMixin,
+    ArrayBytesCodecPartialEncodeMixin,
+)
 
-from zarr.v3.codecs import ArrayBytesCodec, CodecPipeline
+from zarr.v3.codecs import CodecPipeline
+from zarr.v3.codecs.registry import register_codec
 from zarr.v3.common import (
     BytesLike,
     ChunkCoords,
@@ -22,12 +28,24 @@ from zarr.v3.indexing import (
 from zarr.v3.metadata import (
     CoreArrayMetadata,
     DataType,
-    ShardingCodecConfigurationMetadata,
-    ShardingCodecMetadata,
+    CodecMetadata,
 )
 from zarr.v3.store import StorePath
 
 MAX_UINT_64 = 2**64 - 1
+
+
+@frozen
+class ShardingCodecConfigurationMetadata:
+    chunk_shape: ChunkCoords
+    codecs: List["CodecMetadata"]
+    index_codecs: List["CodecMetadata"]
+
+
+@frozen
+class ShardingCodecMetadata:
+    configuration: ShardingCodecConfigurationMetadata
+    name: Literal["sharding_indexed"] = field(default="sharding_indexed", init=False)
 
 
 class _ShardIndex(NamedTuple):
@@ -162,7 +180,9 @@ class _ShardBuilder(_ShardProxy):
 
 
 @frozen
-class ShardingCodec(ArrayBytesCodec):
+class ShardingCodec(
+    ArrayBytesCodec, ArrayBytesCodecPartialDecodeMixin, ArrayBytesCodecPartialEncodeMixin
+):
     array_metadata: CoreArrayMetadata
     configuration: ShardingCodecConfigurationMetadata
     codec_pipeline: CodecPipeline
@@ -260,7 +280,7 @@ class ShardingCodec(ArrayBytesCodec):
         store_path: StorePath,
         selection: SliceSelection,
     ) -> Optional[np.ndarray]:
-        # print("decode_partial")
+        print("decode_partial")
         shard_shape = self.array_metadata.chunk_shape
         chunk_shape = self.configuration.chunk_shape
 
@@ -514,3 +534,6 @@ class ShardingCodec(ArrayBytesCodec):
 
     def compute_encoded_size(self, input_byte_length: int) -> int:
         return input_byte_length + self._shard_index_size()
+
+
+register_codec("sharding_indexed", ShardingCodec, ShardingCodecMetadata)
