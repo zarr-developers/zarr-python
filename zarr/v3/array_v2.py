@@ -445,7 +445,6 @@ class ArrayV2:
             BloscCodecMetadata,
             BytesCodecConfigurationMetadata,
             BytesCodecMetadata,
-            CodecMetadata,
             DataType,
             GzipCodecConfigurationMetadata,
             GzipCodecMetadata,
