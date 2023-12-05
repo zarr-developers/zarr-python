@@ -66,6 +66,10 @@ class TransposeCodec(ArrayArrayCodec):
             order=order,
         )
 
+    @classmethod
+    def get_metadata_class(cls) -> TransposeCodecMetadata:
+        return TransposeCodecMetadata
+
     def resolve_metadata(self) -> CoreArrayMetadata:
         from zarr.v3.metadata import CoreArrayMetadata
 
@@ -103,4 +107,4 @@ class TransposeCodec(ArrayArrayCodec):
         return input_byte_length
 
 
-register_codec("transpose", TransposeCodec, TransposeCodecMetadata)
+register_codec("transpose", TransposeCodec)

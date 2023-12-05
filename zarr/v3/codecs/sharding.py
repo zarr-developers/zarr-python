@@ -262,6 +262,10 @@ class ShardingCodec(
             chunks_per_shard=chunks_per_shard,
         )
 
+    @classmethod
+    def get_metadata_class(cls) -> ShardingCodecMetadata:
+        return ShardingCodecMetadata
+
     async def decode(
         self,
         shard_bytes: BytesLike,
@@ -576,4 +580,4 @@ class ShardingCodec(
         return input_byte_length + self._shard_index_size()
 
 
-register_codec("sharding_indexed", ShardingCodec, ShardingCodecMetadata)
+register_codec("sharding_indexed", ShardingCodec)
