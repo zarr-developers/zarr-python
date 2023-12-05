@@ -42,6 +42,7 @@ extensions = [
     "sphinx.ext.autosummary",
     "sphinx.ext.viewcode",
     "sphinx.ext.intersphinx",
+    "sphinx_automodapi.automodapi",
     "numpydoc",
     "sphinx_issues",
     "sphinx_copybutton",
@@ -51,6 +52,9 @@ extensions = [
 numpydoc_show_class_members = False
 numpydoc_class_members_toctree = False
 issues_github_path = "zarr-developers/zarr-python"
+
+automodapi_inheritance_diagram = False
+automodapi_toctreedirnm = "_autoapi"
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ["_templates"]
@@ -68,7 +72,7 @@ main_doc = "index"
 
 # General information about the project.
 project = "zarr"
-copyright = "2022, Zarr Developers"
+copyright = "2023, Zarr Developers"
 author = "Zarr Developers"
 
 version = zarr.__version__
@@ -144,6 +148,7 @@ html_theme_options = {
         },
     ],
     "collapse_navigation": True,
+    "navigation_with_keys": False,
 }
 
 # Add any paths that contain custom themes here, relative to this directory.
@@ -331,6 +336,7 @@ texinfo_documents = [
 intersphinx_mapping = {
     "python": ("https://docs.python.org/", None),
     "numpy": ("https://numpy.org/doc/stable/", None),
+    "numcodecs": ("https://numcodecs.readthedocs.io/en/stable/", None),
 }
 
 

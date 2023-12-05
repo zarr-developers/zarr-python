@@ -480,17 +480,17 @@ Indexing with coordinate arrays
 Items from a Zarr array can be extracted by providing an integer array of
 coordinates. E.g.::
 
-    >>> z = zarr.array(np.arange(10))
+    >>> z = zarr.array(np.arange(10) ** 2)
     >>> z[:]
-    array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
-    >>> z.get_coordinate_selection([1, 4])
-    array([1, 4])
+    array([ 0,  1,  4,  9, 16, 25, 36, 49, 64, 81])
+    >>> z.get_coordinate_selection([2, 5])
+    array([ 4, 25])
 
 Coordinate arrays can also be used to update data, e.g.::
 
-    >>> z.set_coordinate_selection([1, 4], [-1, -2])
+    >>> z.set_coordinate_selection([2, 5], [-1, -2])
     >>> z[:]
-    array([ 0, -1,  2,  3, -2,  5,  6,  7,  8,  9])
+    array([ 0,  1, -1,  9, 16, -2, 36, 49, 64, 81])
 
 For multidimensional arrays, coordinates must be provided for each dimension,
 e.g.::
@@ -534,17 +534,17 @@ Indexing with a mask array
 
 Items can also be extracted by providing a Boolean mask. E.g.::
 
-    >>> z = zarr.array(np.arange(10))
+    >>> z = zarr.array(np.arange(10) ** 2)
     >>> z[:]
-    array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
+    array([ 0,  1,  4,  9, 16, 25, 36, 49, 64, 81])
     >>> sel = np.zeros_like(z, dtype=bool)
-    >>> sel[1] = True
-    >>> sel[4] = True
+    >>> sel[2] = True
+    >>> sel[5] = True
     >>> z.get_mask_selection(sel)
-    array([1, 4])
+    array([ 4, 25])
     >>> z.set_mask_selection(sel, [-1, -2])
     >>> z[:]
-    array([ 0, -1,  2,  3, -2,  5,  6,  7,  8,  9])
+    array([ 0,  1, -1,  9, 16, -2, 36, 49, 64, 81])
 
 Here's a multidimensional example::
 
@@ -986,7 +986,7 @@ It is also possible to initialize the filesystem outside of Zarr and then pass
 it through. This requires creating an :class:`zarr.storage.FSStore` object
 explicitly. For example::
 
-    >>> import s3fs  * doctest: +SKIP
+    >>> import s3fs  # doctest: +SKIP
     >>> fs = s3fs.S3FileSystem(anon=True)  # doctest: +SKIP
     >>> store = zarr.storage.FSStore('/zarr-demo/store', fs=fs)  # doctest: +SKIP
     >>> g = zarr.open_group(store)  # doctest: +SKIP
@@ -1175,8 +1175,9 @@ A fixed-length unicode dtype is also available, e.g.::
 For variable-length strings, the ``object`` dtype can be used, but a codec must be
 provided to encode the data (see also :ref:`tutorial_objects` below). At the time of
 writing there are four codecs available that can encode variable length string
-objects: :class:`numcodecs.VLenUTF8`, :class:`numcodecs.JSON`, :class:`numcodecs.MsgPack`.
-and :class:`numcodecs.Pickle`. E.g. using ``VLenUTF8``::
+objects: :class:`numcodecs.vlen.VLenUTF8`, :class:`numcodecs.json.JSON`,
+:class:`numcodecs.msgpacks.MsgPack`. and :class:`numcodecs.pickles.Pickle`.
+E.g. using ``VLenUTF8``::
 
     >>> import numcodecs
     >>> z = zarr.array(text_data, dtype=object, object_codec=numcodecs.VLenUTF8())
@@ -1201,8 +1202,8 @@ is a short-hand for ``dtype=object, object_codec=numcodecs.VLenUTF8()``, e.g.::
            'Helló, világ!', 'Zdravo svete!', 'เฮลโลเวิลด์'], dtype=object)
 
 Variable-length byte strings are also supported via ``dtype=object``. Again an
-``object_codec`` is required, which can be one of :class:`numcodecs.VLenBytes` or
-:class:`numcodecs.Pickle`. For convenience, ``dtype=bytes`` (or ``dtype=str`` on Python
+``object_codec`` is required, which can be one of :class:`numcodecs.vlen.VLenBytes` or
+:class:`numcodecs.pickles.Pickle`. For convenience, ``dtype=bytes`` (or ``dtype=str`` on Python
 2.7) can be used as a short-hand for ``dtype=object, object_codec=numcodecs.VLenBytes()``,
 e.g.::
 
@@ -1218,7 +1219,7 @@ e.g.::
            b'\xe0\xb9\x80\xe0\xb8\xae\xe0\xb8\xa5\xe0\xb9\x82\xe0\xb8\xa5\xe0\xb9\x80\xe0\xb8\xa7\xe0\xb8\xb4\xe0\xb8\xa5\xe0\xb8\x94\xe0\xb9\x8c'], dtype=object)
 
 If you know ahead of time all the possible string values that can occur, you could
-also use the :class:`numcodecs.Categorize` codec to encode each unique string value as an
+also use the :class:`numcodecs.categorize.Categorize` codec to encode each unique string value as an
 integer. E.g.::
 
     >>> categorize = numcodecs.Categorize(greetings, dtype=object)
@@ -1245,7 +1246,7 @@ The best codec to use will depend on what type of objects are present in the arr
 
 At the time of writing there are three codecs available that can serve as a general
 purpose object codec and support encoding of a mixture of object types:
-:class:`numcodecs.JSON`, :class:`numcodecs.MsgPack`. and :class:`numcodecs.Pickle`.
+:class:`numcodecs.json.JSON`, :class:`numcodecs.msgpacks.MsgPack`. and :class:`numcodecs.pickles.Pickle`.
 
 For example, using the JSON codec::
 
@@ -1258,7 +1259,7 @@ For example, using the JSON codec::
     array([42, 'foo', list(['bar', 'baz', 'qux']), {'a': 1, 'b': 2.2}, None], dtype=object)
 
 Not all codecs support encoding of all object types. The
-:class:`numcodecs.Pickle` codec is the most flexible, supporting encoding any type
+:class:`numcodecs.pickles.Pickle` codec is the most flexible, supporting encoding any type
 of Python object. However, if you are sharing data with anyone other than yourself, then
 Pickle is not recommended as it is a potential security risk. This is because malicious
 code can be embedded within pickled data. The JSON and MsgPack codecs do not have any
@@ -1270,7 +1271,7 @@ Ragged arrays
 
 If you need to store an array of arrays, where each member array can be of any length
 and stores the same primitive type (a.k.a. a ragged array), the
-:class:`numcodecs.VLenArray` codec can be used, e.g.::
+:class:`numcodecs.vlen.VLenArray` codec can be used, e.g.::
 
     >>> z = zarr.empty(4, dtype=object, object_codec=numcodecs.VLenArray(int))
     >>> z
@@ -1315,7 +1316,7 @@ better performance, at least when using the Blosc compression library.
 
 The optimal chunk shape will depend on how you want to access the data. E.g.,
 for a 2-dimensional array, if you only ever take slices along the first
-dimension, then chunk across the second dimenson. If you know you want to chunk
+dimension, then chunk across the second dimension. If you know you want to chunk
 across an entire dimension you can use ``None`` or ``-1`` within the ``chunks``
 argument, e.g.::
 

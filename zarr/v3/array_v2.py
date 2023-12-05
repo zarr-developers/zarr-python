@@ -20,7 +20,7 @@ from zarr.v3.common import (
     to_thread,
 )
 from zarr.v3.indexing import BasicIndexer, all_chunk_coords, is_total_slice
-from zarr.v3.metadata import ArrayV2Metadata, CodecMetadata, RuntimeConfiguration
+from zarr.v3.metadata import ArrayV2Metadata, RuntimeConfiguration
 from zarr.v3.store import StoreLike, StorePath, make_store_path
 from zarr.v3.sync import sync
 
