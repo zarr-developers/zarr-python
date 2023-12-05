@@ -79,22 +79,22 @@ class BaseArray(ABC):
         ...
 
 
-class AsynchronousArray(BaseArray):
+class AsyncArray(BaseArray):
     """This class can be implemented as a v2 or v3 array"""
 
     @classmethod
     @abstractmethod
-    async def from_json(cls, zarr_json: Any, store: ReadStore) -> AsynchronousArray:
+    async def from_json(cls, zarr_json: Any, store: ReadStore) -> AsyncArray:
         ...
 
     @classmethod
     @abstractmethod
-    async def open(cls, store: ReadStore) -> AsynchronousArray:
+    async def open(cls, store: ReadStore) -> AsyncArray:
         ...
 
     @classmethod
     @abstractmethod
-    async def create(cls, store: WriteStore, *, shape, **kwargs) -> AsynchronousArray:
+    async def create(cls, store: WriteStore, *, shape, **kwargs) -> AsyncArray:
         ...
 
     @abstractmethod
@@ -106,24 +106,24 @@ class AsynchronousArray(BaseArray):
         ...
 
 
-class SynchronousArray(BaseArray):
+class SyncArray(BaseArray):
     """
     This class can be implemented as a v2 or v3 array
     """
 
     @classmethod
     @abstractmethod
-    def from_json(cls, zarr_json: Any, store: ReadStore) -> SynchronousArray:
+    def from_json(cls, zarr_json: Any, store: ReadStore) -> SyncArray:
         ...
 
     @classmethod
     @abstractmethod
-    def open(cls, store: ReadStore) -> SynchronousArray:
+    def open(cls, store: ReadStore) -> SyncArray:
         ...
 
     @classmethod
     @abstractmethod
-    def create(cls, store: WriteStore, *, shape, **kwargs) -> SynchronousArray:
+    def create(cls, store: WriteStore, *, shape, **kwargs) -> SyncArray:
         ...
 
     @abstractmethod

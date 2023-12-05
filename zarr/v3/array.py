@@ -1,6 +1,6 @@
 # Notes on what I've changed here:
 # 1. Split Array into AsyncArray and Array
-# 2. Inherit from abc (SynchronousArray, AsynchronousArray)
+# 2. Inherit from abc (SyncArray, AsyncArray)
 # 3. Added .size and .attrs methods
 # 4. Temporarily disabled the creation of ArrayV2
 # 5. Added from_json to AsyncArray
@@ -17,8 +17,9 @@ from typing import Any, Dict, Iterable, Literal, Optional, Tuple, Union
 import numpy as np
 from attr import evolve, frozen
 
-from zarr.v3.abc.array import SynchronousArray, AsynchronousArray
+from zarr.v3.abc.array import SyncArray, AsyncArray
 from zarr.v3.abc.codec import ArrayBytesCodecPartialDecodeMixin
+
 
 # from zarr.v3.array_v2 import ArrayV2
 from zarr.v3.codecs import CodecMetadata, CodecPipeline, bytes_codec
@@ -48,7 +49,7 @@ from zarr.v3.sync import sync
 
 
 @frozen
-class AsyncArray(AsynchronousArray):
+class AsyncArray(AsyncArray):
     metadata: ArrayMetadata
     store_path: StorePath
     runtime_configuration: RuntimeConfiguration
@@ -415,7 +416,7 @@ class AsyncArray(AsynchronousArray):
 
 
 @frozen
-class Array(SynchronousArray):
+class Array(SyncArray):
     _async_array: AsyncArray
 
     @classmethod
