@@ -11,6 +11,7 @@ from typing import (
     Optional,
     Set,
     Tuple,
+    Type,
 )
 from attr import field, frozen
 
@@ -223,9 +224,11 @@ class ShardingCodec(
     @classmethod
     def from_metadata(
         cls,
-        codec_metadata: ShardingCodecMetadata,
+        codec_metadata: CodecMetadata,
         array_metadata: CoreArrayMetadata,
     ) -> ShardingCodec:
+        assert isinstance(codec_metadata, ShardingCodecMetadata)
+
         chunks_per_shard = tuple(
             s // c
             for s, c in zip(
@@ -263,7 +266,7 @@ class ShardingCodec(
         )
 
     @classmethod
-    def get_metadata_class(cls) -> ShardingCodecMetadata:
+    def get_metadata_class(cls) -> Type[ShardingCodecMetadata]:
         return ShardingCodecMetadata
 
     async def decode(

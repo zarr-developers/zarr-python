@@ -35,12 +35,14 @@ class Codec(ABC):
         return self.array_metadata
 
     @classmethod
+    @abstractmethod
     def from_metadata(
         cls, codec_metadata: "CodecMetadata", array_metadata: CoreArrayMetadata
-    ) -> "Type[Codec]":
+    ) -> Codec:
         pass
 
     @classmethod
+    @abstractmethod
     def get_metadata_class(cls) -> "Type[CodecMetadata]":
         pass
 

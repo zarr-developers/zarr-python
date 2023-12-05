@@ -143,8 +143,9 @@ ChunkKeyEncodingMetadata = Union[DefaultChunkKeyEncodingMetadata, V2ChunkKeyEnco
 
 
 class CodecMetadata(Protocol):
-    name: str
-    configuration: Optional[Any]
+    @property
+    def name(self) -> str:
+        pass
 
 
 class ShardingCodecIndexLocation(Enum):

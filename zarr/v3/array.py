@@ -374,7 +374,7 @@ class AsyncArray(AsynchronousArray):
             else:
                 await store_path.set_async(chunk_bytes)
 
-    async def resize(self, new_shape: ChunkCoords) -> Array:
+    async def resize(self, new_shape: ChunkCoords) -> AsyncArray:
         assert len(new_shape) == len(self.metadata.shape)
         new_metadata = evolve(self.metadata, shape=new_shape)
 

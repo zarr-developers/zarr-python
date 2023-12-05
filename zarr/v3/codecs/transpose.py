@@ -5,6 +5,7 @@ from typing import (
     Literal,
     Optional,
     Tuple,
+    Type,
 )
 
 import numpy as np
@@ -12,6 +13,7 @@ from attr import frozen, field
 
 from zarr.v3.abc.codec import ArrayArrayCodec
 from zarr.v3.codecs.registry import register_codec
+from zarr.v3.metadata import CodecMetadata
 
 if TYPE_CHECKING:
     from zarr.v3.metadata import CoreArrayMetadata
@@ -36,8 +38,10 @@ class TransposeCodec(ArrayArrayCodec):
 
     @classmethod
     def from_metadata(
-        cls, codec_metadata: TransposeCodecMetadata, array_metadata: CoreArrayMetadata
+        cls, codec_metadata: CodecMetadata, array_metadata: CoreArrayMetadata
     ) -> TransposeCodec:
+        assert isinstance(codec_metadata, TransposeCodecMetadata)
+
         configuration = codec_metadata.configuration
         # Compatibility with older version of ZEP1
         if configuration.order == "F":  # type: ignore
@@ -67,7 +71,7 @@ class TransposeCodec(ArrayArrayCodec):
         )
 
     @classmethod
-    def get_metadata_class(cls) -> TransposeCodecMetadata:
+    def get_metadata_class(cls) -> Type[TransposeCodecMetadata]:
         return TransposeCodecMetadata
 
     def resolve_metadata(self) -> CoreArrayMetadata:
