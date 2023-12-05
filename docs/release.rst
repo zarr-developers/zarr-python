@@ -43,6 +43,9 @@ Docs
 Maintenance
 ~~~~~~~~~~~
 
+* Cache result of ``FSStore._fsspec_installed()``.
+  By :user:`Janick Martinez Esturo <ph03>` :issue:`1581`.
+
 * Extend copyright notice to 2023.
   By :user:`Jack Kelly <JackKelly>` :issue:`1528`.
 
