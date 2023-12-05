@@ -14,7 +14,7 @@ from zstandard import ZstdCompressor, ZstdDecompressor
 
 from zarr.v3.abc.codec import Codec, ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec
 from zarr.v3.common import BytesLike, to_thread
-from zarr.v3.metadata import (
+from zarr.v3.array.base import (
     BloscCodecConfigurationMetadata,
     BloscCodecMetadata,
     BytesCodecConfigurationMetadata,
@@ -32,7 +32,7 @@ from zarr.v3.metadata import (
 )
 
 if TYPE_CHECKING:
-    from zarr.v3.metadata import CoreArrayMetadata
+    from zarr.v3.array.base import CoreArrayMetadata
 
 # See https://zarr.readthedocs.io/en/stable/tutorial.html#configuring-blosc
 numcodecs.blosc.use_threads = False
@@ -325,7 +325,7 @@ class TransposeCodec(ArrayArrayCodec):
         )
 
     def resolve_metadata(self) -> CoreArrayMetadata:
-        from zarr.v3.metadata import CoreArrayMetadata
+        from zarr.v3.array.base import CoreArrayMetadata
 
         return CoreArrayMetadata(
             shape=tuple(

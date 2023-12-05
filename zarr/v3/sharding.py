@@ -5,7 +5,7 @@ from typing import Iterator, List, Mapping, NamedTuple, Optional, Set, Tuple
 import numpy as np
 from attrs import frozen
 
-from zarr.v3.codecs import ArrayBytesCodec, CodecPipeline
+from zarr.v3.array.codecs import ArrayBytesCodec, CodecPipeline
 from zarr.v3.common import (
     BytesLike,
     ChunkCoords,
@@ -13,13 +13,13 @@ from zarr.v3.common import (
     concurrent_map,
     product,
 )
-from zarr.v3.indexing import (
+from zarr.v3.array.indexing import (
     BasicIndexer,
     c_order_iter,
     is_total_slice,
     morton_order_iter,
 )
-from zarr.v3.metadata import (
+from zarr.v3.array.base import (
     CoreArrayMetadata,
     DataType,
     ShardingCodecConfigurationMetadata,

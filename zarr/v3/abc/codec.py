@@ -19,7 +19,7 @@ from zarr.v3.common import BytesLike
 
 
 if TYPE_CHECKING:
-    from zarr.v3.metadata import CoreArrayMetadata
+    from zarr.v3.array.base import CoreArrayMetadata
 
 
 class Codec(ABC):

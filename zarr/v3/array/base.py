@@ -6,9 +6,9 @@ from enum import Enum
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import numpy as np
-from attr import asdict, field, frozen
+from attr import frozen
 
-from zarr.v3.common import ChunkCoords, make_cattr
+from zarr.v3.common import ChunkCoords
 
 
 @frozen
@@ -256,84 +256,3 @@ class CoreArrayMetadata:
     @property
     def ndim(self) -> int:
         return len(self.shape)
-
-
-@frozen
-class ArrayMetadata:
-    shape: ChunkCoords
-    data_type: DataType
-    chunk_grid: RegularChunkGridMetadata
-    chunk_key_encoding: ChunkKeyEncodingMetadata
-    fill_value: Any
-    codecs: List[CodecMetadata]
-    attributes: Dict[str, Any] = field(factory=dict)
-    dimension_names: Optional[Tuple[str, ...]] = None
-    zarr_format: Literal[3] = 3
-    node_type: Literal["array"] = "array"
-
-    @property
-    def dtype(self) -> np.dtype:
-        return np.dtype(self.data_type.value)
-
-    @property
-    def ndim(self) -> int:
-        return len(self.shape)
-
-    def get_core_metadata(self, runtime_configuration: RuntimeConfiguration) -> CoreArrayMetadata:
-        return CoreArrayMetadata(
-            shape=self.shape,
-            chunk_shape=self.chunk_grid.configuration.chunk_shape,
-            data_type=self.data_type,
-            fill_value=self.fill_value,
-            runtime_configuration=runtime_configuration,
-        )
-
-    def to_bytes(self) -> bytes:
-        def _json_convert(o):
-            if isinstance(o, DataType):
-                return o.name
-            raise TypeError
-
-        return json.dumps(
-            asdict(
-                self,
-                filter=lambda attr, value: attr.name != "dimension_names" or value is not None,
-            ),
-            default=_json_convert,
-        ).encode()
-
-    @classmethod
-    def from_json(cls, zarr_json: Any) -> ArrayMetadata:
-        return make_cattr().structure(zarr_json, cls)
-
-
-@frozen
-class ArrayV2Metadata:
-    shape: ChunkCoords
-    chunks: ChunkCoords
-    dtype: np.dtype
-    fill_value: Union[None, int, float] = 0
-    order: Literal["C", "F"] = "C"
-    filters: Optional[List[Dict[str, Any]]] = None
-    dimension_separator: Literal[".", "/"] = "."
-    compressor: Optional[Dict[str, Any]] = None
-    zarr_format: Literal[2] = 2
-
-    @property
-    def ndim(self) -> int:
-        return len(self.shape)
-
-    def to_bytes(self) -> bytes:
-        def _json_convert(o):
-            if isinstance(o, np.dtype):
-                if o.fields is None:
-                    return o.str
-                else:
-                    return o.descr
-            raise TypeError
-
-        return json.dumps(asdict(self), default=_json_convert).encode()
-
-    @classmethod
-    def from_json(cls, zarr_json: Any) -> ArrayV2Metadata:
-        return make_cattr().structure(zarr_json, cls)
