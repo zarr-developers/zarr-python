@@ -1,7 +1,18 @@
 from __future__ import annotations
 
 from functools import reduce
-from typing import TYPE_CHECKING, Iterable, List, Literal, Optional, Tuple, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    Iterable,
+    List,
+    Literal,
+    Optional,
+    Protocol,
+    Tuple,
+    Union,
+)
 from warnings import warn
 
 import numcodecs
@@ -20,6 +31,11 @@ if TYPE_CHECKING:
 
 
 BloscShuffle = Literal["noshuffle", "shuffle", "bitshuffle"]
+
+
+class CodecMetadata(Protocol):
+    name: str
+    configuration: Optional[Any]
 
 
 @frozen

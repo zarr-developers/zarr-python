@@ -18,6 +18,15 @@ import numpy as np
 from attr import asdict, evolve, frozen, field
 
 from zarr.v3.abc.array import SynchronousArray, AsynchronousArray
+from zarr.v3.array.chunk import (
+    DefaultChunkKeyEncodingConfigurationMetadata,
+    DefaultChunkKeyEncodingMetadata,
+    RegularChunkGridConfigurationMetadata,
+    RegularChunkGridMetadata,
+    ChunkKeyEncodingMetadata,
+    V2ChunkKeyEncodingConfigurationMetadata,
+    V2ChunkKeyEncodingMetadata,
+)
 
 # from zarr.v3.array_v2 import ArrayV2
 from zarr.v3.array.codecs import CodecMetadata, CodecPipeline, bytes_codec
@@ -31,16 +40,9 @@ from zarr.v3.common import (
 )
 from zarr.v3.array.indexing import BasicIndexer, all_chunk_coords, is_total_slice
 from zarr.v3.array.base import (
-    ChunkKeyEncodingMetadata,
     CoreArrayMetadata,
     DataType,
-    DefaultChunkKeyEncodingConfigurationMetadata,
-    DefaultChunkKeyEncodingMetadata,
-    RegularChunkGridConfigurationMetadata,
-    RegularChunkGridMetadata,
     RuntimeConfiguration,
-    V2ChunkKeyEncodingConfigurationMetadata,
-    V2ChunkKeyEncodingMetadata,
     dtype_to_data_type,
 )
 from zarr.v3.sharding import ShardingCodec

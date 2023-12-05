@@ -8,7 +8,12 @@ import numcodecs
 import numpy as np
 from attr import evolve, frozen, asdict, field
 from numcodecs.compat import ensure_bytes, ensure_ndarray
-
+from zarr.v3.array.chunk import (
+    V2ChunkKeyEncodingConfigurationMetadata,
+    V2ChunkKeyEncodingMetadata,
+    _write_chunk_v2,
+)
+from zarr.v3.array.chunk import read_chunk_v2
 from zarr.v3.common import (
     ZARRAY_JSON,
     ZATTRS_JSON,
@@ -283,6 +288,7 @@ class ZArray:
         else:
             return out[()]
 
+        """     
     async def _read_chunk(
         self,
         chunk_coords: ChunkCoords,
@@ -298,8 +304,43 @@ class ZArray:
             out[out_selection] = tmp
         else:
             out[out_selection] = self.metadata.fill_value
+    """
 
-    async def _decode_chunk(self, chunk_bytes: Optional[BytesLike]) -> Optional[np.ndarray]:
+    async def _read_chunk(
+        self,
+        chunk_coords: ChunkCoords,
+        chunk_selection: SliceSelection,
+        out_selection: SliceSelection,
+        out: np.ndarray,
+    ):
+
+        chunk_key_encoding = V2ChunkKeyEncodingMetadata(
+            configuration=V2ChunkKeyEncodingConfigurationMetadata(
+                separator=self.metadata.dimension_separator
+            )
+        )
+        if self.metadata.filters is None:
+            filters = []
+        else:
+            filters = self.metadata.filters
+
+        await read_chunk_v2(
+            self.metadata.fill_value,
+            chunk_key_encoding=chunk_key_encoding,
+            store_path=self.store_path,
+            chunks=self.metadata.chunks,
+            chunk_coords=chunk_coords,
+            chunk_selection=chunk_selection,
+            out_selection=out_selection,
+            compressor=self.metadata.compressor,
+            filters=filters,
+            dtype=self.metadata.dtype,
+            order=self.metadata.order,
+            out=out,
+        )
+
+        """     
+        async def _decode_chunk(self, chunk_bytes: Optional[BytesLike]) -> Optional[np.ndarray]:
         if chunk_bytes is None:
             return None
 
@@ -327,6 +368,7 @@ class ZArray:
             )
 
         return chunk_array
+        """
 
     def __setitem__(self, selection: Selection, value: np.ndarray) -> None:
         sync(self.set_async(selection, value), self.runtime_configuration.asyncio_loop)
@@ -338,7 +380,15 @@ class ZArray:
             shape=self.metadata.shape,
             chunk_shape=chunk_shape,
         )
-
+        chunk_key_encoding = V2ChunkKeyEncodingMetadata(
+            configuration=V2ChunkKeyEncodingConfigurationMetadata(
+                separator=self.metadata.dimension_separator
+            )
+        )
+        if self.metadata.filters is None:
+            filters = []
+        else:
+            filters = self.metadata.filters
         sel_shape = indexer.shape
 
         # check value shape
@@ -357,16 +407,25 @@ class ZArray:
             [
                 (
                     value,
+                    chunk_key_encoding,
+                    self.store_path,
+                    self.metadata.dtype,
+                    self.metadata.order,
+                    self.metadata.compressor,
+                    filters,
+                    self.metadata.chunks,
                     chunk_shape,
                     chunk_coords,
                     chunk_selection,
                     out_selection,
+                    self.metadata.fill_value,
                 )
                 for chunk_coords, chunk_selection, out_selection in indexer
             ],
-            self._write_chunk,
+            _write_chunk_v2,
         )
 
+    """
     async def _write_chunk(
         self,
         value: np.ndarray,
@@ -410,7 +469,7 @@ class ZArray:
             chunk_array[chunk_selection] = value[out_selection]
 
             await self._write_chunk_to_store(store_path, chunk_array)
-
+    
     async def _write_chunk_to_store(self, store_path: StorePath, chunk_array: np.ndarray):
         chunk_bytes: Optional[BytesLike]
         if np.all(chunk_array == self.metadata.fill_value):
@@ -444,6 +503,7 @@ class ZArray:
     def _encode_chunk_key(self, chunk_coords: ChunkCoords) -> str:
         chunk_identifier = self.metadata.dimension_separator.join(map(str, chunk_coords))
         return "0" if chunk_identifier == "" else chunk_identifier
+    """
 
     async def resize_async(self, new_shape: ChunkCoords) -> ZArray:
         assert len(new_shape) == len(self.metadata.shape)

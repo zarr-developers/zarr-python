@@ -94,61 +94,6 @@ dtype_to_data_type = {
 
 
 @frozen
-class RegularChunkGridConfigurationMetadata:
-    chunk_shape: ChunkCoords
-
-
-@frozen
-class RegularChunkGridMetadata:
-    configuration: RegularChunkGridConfigurationMetadata
-    name: Literal["regular"] = "regular"
-
-
-@frozen
-class DefaultChunkKeyEncodingConfigurationMetadata:
-    separator: Literal[".", "/"] = "/"
-
-
-@frozen
-class DefaultChunkKeyEncodingMetadata:
-    configuration: DefaultChunkKeyEncodingConfigurationMetadata = (
-        DefaultChunkKeyEncodingConfigurationMetadata()
-    )
-    name: Literal["default"] = "default"
-
-    def decode_chunk_key(self, chunk_key: str) -> ChunkCoords:
-        if chunk_key == "c":
-            return ()
-        return tuple(map(int, chunk_key[1:].split(self.configuration.separator)))
-
-    def encode_chunk_key(self, chunk_coords: ChunkCoords) -> str:
-        return self.configuration.separator.join(map(str, ("c",) + chunk_coords))
-
-
-@frozen
-class V2ChunkKeyEncodingConfigurationMetadata:
-    separator: Literal[".", "/"] = "."
-
-
-@frozen
-class V2ChunkKeyEncodingMetadata:
-    configuration: V2ChunkKeyEncodingConfigurationMetadata = (
-        V2ChunkKeyEncodingConfigurationMetadata()
-    )
-    name: Literal["v2"] = "v2"
-
-    def decode_chunk_key(self, chunk_key: str) -> ChunkCoords:
-        return tuple(map(int, chunk_key.split(self.configuration.separator)))
-
-    def encode_chunk_key(self, chunk_coords: ChunkCoords) -> str:
-        chunk_identifier = self.configuration.separator.join(map(str, chunk_coords))
-        return "0" if chunk_identifier == "" else chunk_identifier
-
-
-ChunkKeyEncodingMetadata = Union[DefaultChunkKeyEncodingMetadata, V2ChunkKeyEncodingMetadata]
-
-
-@frozen
 class CoreArrayMetadata:
     shape: ChunkCoords
     chunk_shape: ChunkCoords
@@ -185,4 +130,19 @@ class ZArray:
     
     @property
     def dtype(self) -> np.dtype:
-        return np.dtype(self.metadata.dtype) """
+        return np.dtype(self.metadata.dtype) 
+    
+    @property
+    def size(self) -> int
+        return np.prod(self.metadata.shape)
+    
+    @property
+    def T(self) -> 'ZArray':
+        ...
+
+    def __getitem__(*args):
+        return _chunk_getitem_sync(*args):
+    
+    def __setitem__(*args):
+        return _chunk_setitem_sync(*args)
+    """

@@ -1,6 +1,7 @@
-from typing import Any, Literal, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union
+
+from attr import frozen
 from zarr.util import is_total_slice
-from zarr.v3.array.base import ChunkKeyEncodingMetadata
 from zarr.v3.common import BytesLike, ChunkCoords, SliceSelection, to_thread
 import numpy as np
 import numcodecs
@@ -9,18 +10,85 @@ from numcodecs.compat import ensure_bytes, ensure_ndarray
 from zarr.v3.store import StorePath
 
 
-async def _read_chunk_v2(
+@frozen
+class RegularChunkGridConfigurationMetadata:
+    chunk_shape: ChunkCoords
+
+
+@frozen
+class RegularChunkGridMetadata:
+    configuration: RegularChunkGridConfigurationMetadata
+    name: Literal["regular"] = "regular"
+
+
+@frozen
+class DefaultChunkKeyEncodingConfigurationMetadata:
+    separator: Literal[".", "/"] = "/"
+
+
+@frozen
+class DefaultChunkKeyEncodingMetadata:
+    configuration: DefaultChunkKeyEncodingConfigurationMetadata = (
+        DefaultChunkKeyEncodingConfigurationMetadata()
+    )
+    name: Literal["default"] = "default"
+
+    def decode_chunk_key(self, chunk_key: str) -> ChunkCoords:
+        if chunk_key == "c":
+            return ()
+        return tuple(map(int, chunk_key[1:].split(self.configuration.separator)))
+
+    def encode_chunk_key(self, chunk_coords: ChunkCoords) -> str:
+        return self.configuration.separator.join(map(str, ("c",) + chunk_coords))
+
+
+@frozen
+class V2ChunkKeyEncodingConfigurationMetadata:
+    separator: Literal[".", "/"] = "."
+
+
+@frozen
+class V2ChunkKeyEncodingMetadata:
+    configuration: V2ChunkKeyEncodingConfigurationMetadata = (
+        V2ChunkKeyEncodingConfigurationMetadata()
+    )
+    name: Literal["v2"] = "v2"
+
+    def decode_chunk_key(self, chunk_key: str) -> ChunkCoords:
+        return tuple(map(int, chunk_key.split(self.configuration.separator)))
+
+    def encode_chunk_key(self, chunk_coords: ChunkCoords) -> str:
+        chunk_identifier = self.configuration.separator.join(map(str, chunk_coords))
+        return "0" if chunk_identifier == "" else chunk_identifier
+
+
+ChunkKeyEncodingMetadata = Union[DefaultChunkKeyEncodingMetadata, V2ChunkKeyEncodingMetadata]
+
+
+async def read_chunk_v2(
     fill_value: Any,
     chunk_key_encoding: ChunkKeyEncodingMetadata,
     store_path,
+    chunks: ChunkCoords,
     chunk_coords: ChunkCoords,
     chunk_selection: SliceSelection,
     out_selection: SliceSelection,
+    compressor: Optional[Dict[str, Any]],
+    filters: List[Optional[Dict[str, Any]]],
+    dtype: np.dtype,
+    order: Literal["C", "F"],
     out: np.ndarray,
 ):
     store_path = store_path / chunk_key_encoding.encode_chunk_key(chunk_coords)
-
-    chunk_array = await _decode_chunk_v2(await store_path.get_async())
+    chunk_bytes = await store_path.get_async()
+    chunk_array = await _decode_chunk_v2(
+        compressor=compressor,
+        dtype=dtype,
+        chunks=chunks,
+        filters=filters,
+        order=order,
+        chunk_bytes=chunk_bytes,
+    )
     if chunk_array is not None:
         tmp = chunk_array[chunk_selection]
         out[out_selection] = tmp
@@ -29,18 +97,19 @@ async def _read_chunk_v2(
 
 
 async def _decode_chunk_v2(
-    self,
+    compressor: Optional[Dict[str, Any]],
     dtype: np.dtype,
     chunks: ChunkCoords,
     order: Literal["C", "F"],
     filters: Tuple[Any],
     chunk_bytes: Optional[BytesLike],
 ) -> Optional[np.ndarray]:
+
     if chunk_bytes is None:
         return None
 
-    if self.metadata.compressor is not None:
-        compressor = numcodecs.get_codec(self.metadata.compressor)
+    if compressor is not None:
+        compressor = numcodecs.get_codec(compressor)
         chunk_array = ensure_ndarray(await to_thread(compressor.decode, chunk_bytes))
     else:
         chunk_array = ensure_ndarray(chunk_bytes)
@@ -65,73 +134,116 @@ async def _decode_chunk_v2(
 
 
 async def _write_chunk_v2(
-    self,
     value: np.ndarray,
+    chunk_key_encoding: ChunkKeyEncodingMetadata,
+    store_path: StorePath,
+    dtype: np.dtype,
+    order: Literal["C", "F"],
+    compressor: Any,
+    filters: List[Any],
+    chunks: ChunkCoords,
     chunk_shape: ChunkCoords,
     chunk_coords: ChunkCoords,
     chunk_selection: SliceSelection,
     out_selection: SliceSelection,
+    fill_value: Any,
 ):
-    store_path = self.store_path / self._encode_chunk_key(chunk_coords)
+    store_path = store_path / chunk_key_encoding.encode_chunk_key(chunk_coords)
 
     if is_total_slice(chunk_selection, chunk_shape):
         # write entire chunks
         if np.isscalar(value):
             chunk_array = np.empty(
                 chunk_shape,
-                dtype=self.metadata.dtype,
-                order=self.metadata.order,
+                dtype=dtype,
+                order=order,
             )
             chunk_array.fill(value)
         else:
             chunk_array = value[out_selection]
-        await self._write_chunk_to_store(store_path, chunk_array)
+
+        await _write_chunk_to_store_v2(
+            fill_value=fill_value,
+            store_path=store_path,
+            chunk_array=chunk_array,
+            order=order,
+            compressor=compressor,
+            filters=filters,
+        )
 
     else:
         # writing partial chunks
         # read chunk first
-        tmp = await self._decode_chunk(await store_path.get_async())
+        chunk_bytes = await store_path.get_async()
+        tmp = await _decode_chunk_v2(
+            compressor=compressor,
+            dtype=dtype,
+            chunks=chunks,
+            order=order,
+            filters=filters,
+            chunk_bytes=chunk_bytes,
+        )
 
         # merge new value
         if tmp is None:
             chunk_array = np.empty(
                 chunk_shape,
-                dtype=self.metadata.dtype,
-                order=self.metadata.order,
+                dtype=dtype,
+                order=order,
             )
-            chunk_array.fill(self.metadata.fill_value)
+            chunk_array.fill(fill_value)
         else:
             chunk_array = tmp.copy(
-                order=self.metadata.order,
+                order=order,
             )  # make a writable copy
         chunk_array[chunk_selection] = value[out_selection]
 
-        await self._write_chunk_to_store(store_path, chunk_array)
+        await _write_chunk_to_store_v2(
+            fill_value=fill_value,
+            store_path=store_path,
+            chunk_array=chunk_array,
+            order=order,
+            compressor=compressor,
+            filters=filters,
+        )
 
 
-async def _write_chunk_to_store_v2(self, store_path: StorePath, chunk_array: np.ndarray):
+async def _write_chunk_to_store_v2(
+    fill_value: Any,
+    store_path: StorePath,
+    chunk_array: np.ndarray,
+    order: Literal["C", "F"],
+    compressor: Dict[str, Any],
+    filters,
+):
     chunk_bytes: Optional[BytesLike]
-    if np.all(chunk_array == self.metadata.fill_value):
+    if np.all(chunk_array == fill_value):
         # chunks that only contain fill_value will be removed
         await store_path.delete_async()
     else:
-        chunk_bytes = await self._encode_chunk(chunk_array)
+        chunk_bytes = await _encode_chunk_v2(
+            chunk_array=chunk_array, order=order, compressor=compressor, filters=filters
+        )
         if chunk_bytes is None:
             await store_path.delete_async()
         else:
             await store_path.set_async(chunk_bytes)
 
 
-async def _encode_chunk_v2(self, chunk_array: np.ndarray) -> Optional[BytesLike]:
-    chunk_array = chunk_array.ravel(order=self.metadata.order)
+async def _encode_chunk_v2(
+    chunk_array: np.ndarray,
+    order: Literal["C", "F"],
+    compressor: Any,
+    filters: List[Any],
+) -> Optional[BytesLike]:
+    chunk_array = chunk_array.ravel(order=order)
 
-    if self.metadata.filters is not None:
-        for filter_metadata in self.metadata.filters:
-            filter = numcodecs.get_codec(filter_metadata)
-            chunk_array = await to_thread(filter.encode, chunk_array)
+    for filter_metadata in filters:
+        filter = numcodecs.get_codec(filter_metadata)
+        chunk_array = await to_thread(filter.encode, chunk_array)
 
-    if self.metadata.compressor is not None:
-        compressor = numcodecs.get_codec(self.metadata.compressor)
+    if compressor is not None:
+        compressor = numcodecs.get_codec(compressor)
         if not chunk_array.flags.c_contiguous and not chunk_array.flags.f_contiguous:
             chunk_array = chunk_array.copy(order="A")
         encoded_chunk_bytes = ensure_bytes(await to_thread(compressor.encode, chunk_array))
@@ -139,11 +251,6 @@ async def _encode_chunk_v2(self, chunk_array: np.ndarray) -> Optional[BytesLike]
         encoded_chunk_bytes = ensure_bytes(chunk_array)
 
     return encoded_chunk_bytes
-
-
-def _encode_chunk_key_v2(self, chunk_coords: ChunkCoords) -> str:
-    chunk_identifier = self.metadata.dimension_separator.join(map(str, chunk_coords))
-    return "0" if chunk_identifier == "" else chunk_identifier
 
 
 async def _write_chunk_v3(
@@ -214,24 +321,20 @@ async def _write_chunk_to_store_v3(self, store_path: StorePath, chunk_array: np.
 
 
 async def _read_chunk_v3(
-    self,
+    chunk_key_encoding: ChunkKeyEncodingMetadata,
     fill_value: Any,
     store_path,
+    codec_pipeline,
     chunk_coords: ChunkCoords,
     chunk_selection: SliceSelection,
     out_selection: SliceSelection,
     out: np.ndarray,
 ):
-    chunk_key_encoding = self.metadata.chunk_key_encoding
     chunk_key = chunk_key_encoding.encode_chunk_key(chunk_coords)
-    store_path = self.store_path / chunk_key
+    store_path = store_path / chunk_key
 
-    if len(self.codec_pipeline.codecs) == 1 and isinstance(
-        self.codec_pipeline.codecs[0], ShardingCodec
-    ):
-        chunk_array = await self.codec_pipeline.codecs[0].decode_partial(
-            store_path, chunk_selection
-        )
+    if len(codec_pipeline.codecs) == 1 and isinstance(codec_pipeline.codecs[0], ShardingCodec):
+        chunk_array = await codec_pipeline.codecs[0].decode_partial(store_path, chunk_selection)
         if chunk_array is not None:
             out[out_selection] = chunk_array
         else:
@@ -239,7 +342,7 @@ async def _read_chunk_v3(
     else:
         chunk_bytes = await store_path.get_async()
         if chunk_bytes is not None:
-            chunk_array = await self.codec_pipeline.decode(chunk_bytes)
+            chunk_array = await codec_pipeline.decode(chunk_bytes)
             tmp = chunk_array[chunk_selection]
             out[out_selection] = tmp
         else:
