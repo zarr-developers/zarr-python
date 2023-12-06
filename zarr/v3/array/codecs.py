@@ -428,7 +428,7 @@ class TransposeCodec(ArrayArrayCodec):
         from zarr.v3.array.base import ChunkMetadata
 
         return ChunkMetadata(
-            shape=tuple(
+            array_shape=tuple(
                 self.array_metadata.shape[self.order[i]] for i in range(self.array_metadata.ndim)
             ),
             chunk_shape=tuple(

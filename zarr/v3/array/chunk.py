@@ -51,7 +51,7 @@ class V2ChunkKeyEncodingConfigurationMetadata:
 """
 
 
-""" @frozen
+@frozen
 class V2ChunkKeyEncodingMetadata:
     configuration: DefaultChunkKeyEncodingConfigurationMetadata = (
         DefaultChunkKeyEncodingConfigurationMetadata()
@@ -64,7 +64,7 @@ class V2ChunkKeyEncodingMetadata:
     def encode_chunk_key(self, chunk_coords: ChunkCoords) -> str:
         chunk_identifier = self.configuration.separator.join(map(str, chunk_coords))
         return "0" if chunk_identifier == "" else chunk_identifier
- """
+
 
 ChunkKeyEncodingMetadata = DefaultChunkKeyEncodingMetadata
 

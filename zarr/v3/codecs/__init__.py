@@ -88,7 +88,7 @@ class CodecPipeline:
                 )
 
             if isinstance(codec, ShardingCodec):
-                assert len(codec.configuration.chunk_shape) == len(array_metadata.shape), (
+                assert len(codec.configuration.chunk_shape) == len(array_metadata.array_shape), (
                     "The shard's `chunk_shape` and array's `shape` need to have the "
                     + "same number of dimensions."
                 )

@@ -317,7 +317,7 @@ class Array:
         codec_pipeline = CodecPipeline.from_metadata(
             codecs,
             ChunkMetadata(
-                shape=self.metadata.shape,
+                array_shape=self.metadata.shape,
                 chunk_shape=self.metadata.chunks,
                 dtype=self.metadata.dtype,
                 fill_value=self.metadata.fill_value,
@@ -366,7 +366,7 @@ class Array:
         codec_pipeline = CodecPipeline.from_metadata(
             codecs,
             ChunkMetadata(
-                shape=self.metadata.shape,
+                array_shape=self.metadata.shape,
                 chunk_shape=self.metadata.chunks,
                 dtype=self.metadata.dtype,
                 fill_value=self.metadata.fill_value,

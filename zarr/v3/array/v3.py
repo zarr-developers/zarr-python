@@ -71,7 +71,7 @@ class ArrayMetadata:
 
     def get_core_metadata(self, runtime_configuration: RuntimeConfiguration) -> ChunkMetadata:
         return ChunkMetadata(
-            shape=self.shape,
+            array_shape=self.shape,
             chunk_shape=self.chunk_grid.configuration.chunk_shape,
             dtype=self.data_type,
             fill_value=self.fill_value,
@@ -490,6 +490,10 @@ class Array(SynchronousArray):
     @property
     def attrs(self) -> dict:
         return self._async_array.attrs
+
+    @property
+    def metadata(self) -> ArrayMetadata:
+        return self._async_array.metadata
 
     @property
     def store_path(self) -> str:

@@ -112,7 +112,7 @@ class ChunkMetadata:
 
     @property
     def ndim(self) -> int:
-        return len(self.shape)
+        return len(self.array_shape)
 
 
 """ @frozen

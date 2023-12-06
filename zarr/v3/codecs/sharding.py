@@ -238,7 +238,7 @@ class ShardingCodec(
         )
         # rewriting the metadata to scope it to the shard
         shard_metadata = ChunkMetadata(
-            shape=array_metadata.chunk_shape,
+            array_shape=array_metadata.chunk_shape,
             chunk_shape=codec_metadata.configuration.chunk_shape,
             dtype=array_metadata.dtype,
             fill_value=array_metadata.fill_value,
@@ -250,7 +250,7 @@ class ShardingCodec(
         index_codec_pipeline = CodecPipeline.from_metadata(
             codec_metadata.configuration.index_codecs,
             ChunkMetadata(
-                shape=chunks_per_shard + (2,),
+                array_shape=chunks_per_shard + (2,),
                 chunk_shape=chunks_per_shard + (2,),
                 dtype=np.dtype("uint64"),
                 fill_value=MAX_UINT_64,
