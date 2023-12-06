@@ -231,7 +231,7 @@ async def test_order(
     with_sharding: bool,
 ):
     data = np.arange(0, 256, dtype="uint16").reshape((32, 8), order=input_order)
-    breakpoint()
+
     codecs_: List[CodecMetadata] = (
         [
             codecs.sharding_codec(
