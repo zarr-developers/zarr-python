@@ -318,7 +318,6 @@ class ShardingCodec(
         store_path: StorePath,
         selection: SliceSelection,
     ) -> Optional[np.ndarray]:
-        print("decode_partial")
         shard_shape = self.array_metadata.chunk_shape
         chunk_shape = self.configuration.chunk_shape
 
