@@ -16,7 +16,6 @@ from typing import Any, Dict, Iterable, Literal, Optional, Tuple, Union
 import numpy as np
 from attr import evolve, frozen
 
-from zarr.v3.abc.array import SyncArray, AsyncArray
 from zarr.v3.abc.codec import ArrayBytesCodecPartialDecodeMixin
 
 
