@@ -42,8 +42,8 @@ def store() -> Iterator[Store]:
 
 
 @pytest.fixture
-def sample_data() -> Iterator[np.ndarray]:
-    yield np.arange(0, 128 * 128 * 128, dtype="uint16").reshape((128, 128, 128), order="F")
+def sample_data() -> np.ndarray:
+    return np.arange(0, 128 * 128 * 128, dtype="uint16").reshape((128, 128, 128), order="F")
 
 
 @pytest.mark.parametrize(

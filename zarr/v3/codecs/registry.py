@@ -42,7 +42,7 @@ def _get_codec_item(key: str) -> CodecRegistryItem:
             item = __codec_registry.get(key)
     if item:
         return item
-    raise KeyError
+    raise KeyError(key)
 
 
 def get_codec_metadata_class(key: str) -> Type[CodecMetadata]:
