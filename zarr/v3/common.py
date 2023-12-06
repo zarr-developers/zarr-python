@@ -31,19 +31,13 @@ Selection = Union[slice, SliceSelection]
 
 
 def make_cattr():
-    from zarr.v3.array.base import (
-        BloscCodecMetadata,
-        BytesCodecMetadata,
+    from zarr.v3.metadata import (
         ChunkKeyEncodingMetadata,
         CodecMetadata,
-        Crc32cCodecMetadata,
         DefaultChunkKeyEncodingMetadata,
-        GzipCodecMetadata,
-        ShardingCodecMetadata,
-        TransposeCodecMetadata,
         V2ChunkKeyEncodingMetadata,
-        ZstdCodecMetadata,
     )
+    from zarr.v3.codecs.registry import get_codec_metadata_class
 
     converter = Converter()
 
@@ -59,24 +53,8 @@ def make_cattr():
     )
 
     def _structure_codec_metadata(d: Dict[str, Any], _t=None) -> CodecMetadata:
-        if d["name"] == "endian":
-            d["name"] = "bytes"
-
-        if d["name"] == "blosc":
-            return converter.structure(d, BloscCodecMetadata)
-        if d["name"] == "bytes":
-            return converter.structure(d, BytesCodecMetadata)
-        if d["name"] == "transpose":
-            return converter.structure(d, TransposeCodecMetadata)
-        if d["name"] == "gzip":
-            return converter.structure(d, GzipCodecMetadata)
-        if d["name"] == "zstd":
-            return converter.structure(d, ZstdCodecMetadata)
-        if d["name"] == "sharding_indexed":
-            return converter.structure(d, ShardingCodecMetadata)
-        if d["name"] == "crc32c":
-            return converter.structure(d, Crc32cCodecMetadata)
-        raise KeyError
+        codec_metadata_cls = get_codec_metadata_class(d["name"])
+        return converter.structure(d, codec_metadata_cls)
 
     converter.register_structure_hook(CodecMetadata, _structure_codec_metadata)
 

@@ -37,9 +37,9 @@ def test_array(
     fill_value: float,
 ):
     store_path = str(tmpdir)
-    arr: Union[v2.ZArray, v3.ZArray]
+    arr: Union[v2.Array, v3.Array]
     if zarr_version == "v2":
-        arr = v2.ZArray.create(
+        arr = v2.Array.create(
             store=store_path,
             shape=shape,
             dtype=dtype,
@@ -50,7 +50,7 @@ def test_array(
             exists_ok=True,
         )
     else:
-        arr = v3.ZArray.create(
+        arr = v3.Array.create(
             store=store_path,
             shape=shape,
             dtype=dtype,

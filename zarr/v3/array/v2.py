@@ -9,12 +9,9 @@ import numpy as np
 from attr import evolve, frozen, asdict, field
 from numcodecs.compat import ensure_bytes, ensure_ndarray
 from zarr.v3.array.chunk import (
-    V2ChunkKeyEncodingConfigurationMetadata,
-    V2ChunkKeyEncodingMetadata,
     read_chunk,
     write_chunk,
 )
-from zarr.v3.array.codecs import CodecPipeline, bytes_codec
 from zarr.v3.common import (
     ZARRAY_JSON,
     ZATTRS_JSON,
@@ -28,6 +25,10 @@ from zarr.v3.common import (
 )
 from zarr.v3.array.indexing import BasicIndexer, all_chunk_coords, is_total_slice
 from zarr.v3.array.base import ChunkMetadata, RuntimeConfiguration
+from zarr.v3.array.chunk import (
+    DefaultChunkKeyEncodingConfigurationMetadata,
+    DefaultChunkKeyEncodingMetadata,
+)
 from zarr.v3.store import StoreLike, StorePath, make_store_path
 from zarr.v3.sync import sync
 
@@ -37,7 +38,7 @@ if TYPE_CHECKING:
 
 @frozen
 class _AsyncArrayProxy:
-    array: ZArray
+    array: Array
 
     def __getitem__(self, selection: Selection) -> _AsyncArraySelectionProxy:
         return _AsyncArraySelectionProxy(self.array, selection)
@@ -45,7 +46,7 @@ class _AsyncArrayProxy:
 
 @frozen
 class _AsyncArraySelectionProxy:
-    array: ZArray
+    array: Array
     selection: Selection
 
     async def get(self) -> np.ndarray:
@@ -56,7 +57,7 @@ class _AsyncArraySelectionProxy:
 
 
 @frozen
-class ZArrayMetadata:
+class ArrayMetadata:
     shape: ChunkCoords
     chunks: ChunkCoords
     dtype: np.dtype
@@ -84,13 +85,13 @@ class ZArrayMetadata:
         return json.dumps(asdict(self), default=_json_convert).encode()
 
     @classmethod
-    def from_json(cls, zarr_json: Any) -> ZArrayMetadata:
+    def from_json(cls, zarr_json: Any) -> ArrayMetadata:
         return make_cattr().structure(zarr_json, cls)
 
 
 @frozen
-class ZArray:
-    metadata: ZArrayMetadata
+class Array:
+    metadata: ArrayMetadata
     store_path: StorePath
     runtime_configuration: RuntimeConfiguration
     attributes: Dict[str, Any]
@@ -111,12 +112,12 @@ class ZArray:
         attributes: Optional[Dict[str, Any]] = None,
         exists_ok: bool = False,
         runtime_configuration: RuntimeConfiguration = RuntimeConfiguration(),
-    ) -> ZArray:
+    ) -> Array:
         store_path = make_store_path(store)
         if not exists_ok:
             assert not await (store_path / ZARRAY_JSON).exists_async()
 
-        metadata = ZArrayMetadata(
+        metadata = ArrayMetadata(
             shape=shape,
             dtype=np.dtype(dtype),
             chunks=chunks,
@@ -155,7 +156,7 @@ class ZArray:
         attributes: Optional[Dict[str, Any]] = None,
         exists_ok: bool = False,
         runtime_configuration: RuntimeConfiguration = RuntimeConfiguration(),
-    ) -> ZArray:
+    ) -> Array:
         return sync(
             cls.create_async(
                 store,
@@ -179,7 +180,7 @@ class ZArray:
         cls,
         store: StoreLike,
         runtime_configuration: RuntimeConfiguration = RuntimeConfiguration(),
-    ) -> ZArray:
+    ) -> Array:
         store_path = make_store_path(store)
         zarray_bytes, zattrs_bytes = await asyncio.gather(
             (store_path / ZARRAY_JSON).get_async(),
@@ -198,7 +199,7 @@ class ZArray:
         cls,
         store: StoreLike,
         runtime_configuration: RuntimeConfiguration = RuntimeConfiguration(),
-    ) -> ZArray:
+    ) -> Array:
         return sync(
             cls.open_async(store, runtime_configuration),
             runtime_configuration.asyncio_loop,
@@ -211,8 +212,8 @@ class ZArray:
         zarray_json: Any,
         zattrs_json: Optional[Any],
         runtime_configuration: RuntimeConfiguration = RuntimeConfiguration(),
-    ) -> ZArray:
-        metadata = ZArrayMetadata.from_json(zarray_json)
+    ) -> Array:
+        metadata = ArrayMetadata.from_json(zarray_json)
         out = cls(
             store_path=store_path,
             metadata=metadata,
@@ -298,7 +299,7 @@ class ZArray:
     ):
 
         chunk_key_encoding = V2ChunkKeyEncodingMetadata(
-            configuration=V2ChunkKeyEncodingConfigurationMetadata(
+            configuration=DefaultChunkKeyEncodingConfigurationMetadata(
                 separator=self.metadata.dimension_separator
             )
         )
@@ -345,10 +346,10 @@ class ZArray:
             shape=self.metadata.shape,
             chunk_shape=chunk_shape,
         )
-        chunk_key_encoding = V2ChunkKeyEncodingMetadata(
-            configuration=V2ChunkKeyEncodingConfigurationMetadata(
+        chunk_key_encoding = DefaultChunkKeyEncodingMetadata(
+            configuration=DefaultChunkKeyEncodingConfigurationMetadata(
                 separator=self.metadata.dimension_separator
-            )
+            ),
         )
         sel_shape = indexer.shape
 
@@ -403,7 +404,7 @@ class ZArray:
             write_chunk,
         )
 
-    async def resize_async(self, new_shape: ChunkCoords) -> ZArray:
+    async def resize_async(self, new_shape: ChunkCoords) -> Array:
         assert len(new_shape) == len(self.metadata.shape)
         new_metadata = evolve(self.metadata, shape=new_shape)
 
@@ -427,10 +428,10 @@ class ZArray:
         await (self.store_path / ZARRAY_JSON).set_async(new_metadata.to_bytes())
         return evolve(self, metadata=new_metadata)
 
-    def resize(self, new_shape: ChunkCoords) -> ZArray:
+    def resize(self, new_shape: ChunkCoords) -> Array:
         return sync(self.resize_async(new_shape), self.runtime_configuration.asyncio_loop)
 
-    async def convert_to_v3_async(self) -> v3.ZArray:
+    async def convert_to_v3_async(self) -> v3.Array:
         from sys import byteorder as sys_byteorder
         import zarr.v3.array.v3 as v3
         from zarr.v3.common import ZARR_JSON
@@ -503,7 +504,7 @@ class ZArray:
                     )
                 )
 
-        new_metadata = v3.ZArrayMetadata(
+        new_metadata = v3.ArrayMetadata(
             shape=self.metadata.shape,
             chunk_grid=RegularChunkGridMetadata(
                 configuration=RegularChunkGridConfigurationMetadata(
@@ -524,23 +525,23 @@ class ZArray:
         new_metadata_bytes = new_metadata.to_bytes()
         await (self.store_path / ZARR_JSON).set_async(new_metadata_bytes)
 
-        return ZArray.from_json(
+        return Array.from_json(
             store_path=self.store_path,
             zarr_json=json.loads(new_metadata_bytes),
             runtime_configuration=self.runtime_configuration,
         )
 
-    async def update_attributes_async(self, new_attributes: Dict[str, Any]) -> ZArray:
+    async def update_attributes_async(self, new_attributes: Dict[str, Any]) -> Array:
         await (self.store_path / ZATTRS_JSON).set_async(json.dumps(new_attributes).encode())
         return evolve(self, attributes=new_attributes)
 
-    def update_attributes(self, new_attributes: Dict[str, Any]) -> ZArray:
+    def update_attributes(self, new_attributes: Dict[str, Any]) -> Array:
         return sync(
             self.update_attributes_async(new_attributes),
             self.runtime_configuration.asyncio_loop,
         )
 
-    def convert_to_v3(self) -> ZArray:
+    def convert_to_v3(self) -> Array:
         return sync(self.convert_to_v3_async(), loop=self.runtime_configuration.asyncio_loop)
 
     def __repr__(self):

@@ -2,11 +2,10 @@ from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 from attr import frozen
 from zarr.util import is_total_slice
-from zarr.v3.array.codecs import CodecPipeline
 from zarr.v3.common import BytesLike, ChunkCoords, SliceSelection, to_thread
 import numpy as np
 import numcodecs
-from zarr.v3.sharding import ShardingCodec
+from zarr.v3.codecs.sharding import ShardingCodec, CodecPipeline
 from numcodecs.compat import ensure_bytes, ensure_ndarray
 from zarr.v3.store import StorePath
 
@@ -33,25 +32,29 @@ class DefaultChunkKeyEncodingMetadata:
         DefaultChunkKeyEncodingConfigurationMetadata()
     )
     name: Literal["default"] = "default"
+    _chunk_prefix: str = "c"
 
     def decode_chunk_key(self, chunk_key: str) -> ChunkCoords:
-        if chunk_key == "c":
+        if chunk_key == self._chunk_prefix:
             return ()
-        return tuple(map(int, chunk_key[1:].split(self.configuration.separator)))
+        return tuple(
+            map(int, chunk_key[len(self._chunk_prefix) :].split(self.configuration.separator))
+        )
 
     def encode_chunk_key(self, chunk_coords: ChunkCoords) -> str:
-        return self.configuration.separator.join(map(str, ("c",) + chunk_coords))
+        return self.configuration.separator.join(map(str, (self._chunk_prefix,) + chunk_coords))
 
 
-@frozen
+""" @frozen
 class V2ChunkKeyEncodingConfigurationMetadata:
-    separator: Literal[".", "/"] = "."
+    separator: Literal[".", "/"] = "." 
+"""
 
 
-@frozen
+""" @frozen
 class V2ChunkKeyEncodingMetadata:
-    configuration: V2ChunkKeyEncodingConfigurationMetadata = (
-        V2ChunkKeyEncodingConfigurationMetadata()
+    configuration: DefaultChunkKeyEncodingConfigurationMetadata = (
+        DefaultChunkKeyEncodingConfigurationMetadata()
     )
     name: Literal["v2"] = "v2"
 
@@ -61,9 +64,9 @@ class V2ChunkKeyEncodingMetadata:
     def encode_chunk_key(self, chunk_coords: ChunkCoords) -> str:
         chunk_identifier = self.configuration.separator.join(map(str, chunk_coords))
         return "0" if chunk_identifier == "" else chunk_identifier
+ """
 
-
-ChunkKeyEncodingMetadata = Union[DefaultChunkKeyEncodingMetadata, V2ChunkKeyEncodingMetadata]
+ChunkKeyEncodingMetadata = DefaultChunkKeyEncodingMetadata
 
 
 async def write_chunk(

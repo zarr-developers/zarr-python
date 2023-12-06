@@ -10,9 +10,10 @@
 # 2. Do we really need runtime_configuration? Specifically, the asyncio_loop seems problematic
 
 from __future__ import annotations
+from enum import Enum
 
 import json
-from typing import Any, Dict, Iterable, Literal, Optional, Tuple, Union
+from typing import Any, Dict, Iterable, List, Literal, Optional, Tuple, Union
 
 import numpy as np
 from attr import asdict, evolve, frozen, field
@@ -24,14 +25,11 @@ from zarr.v3.array.chunk import (
     RegularChunkGridConfigurationMetadata,
     RegularChunkGridMetadata,
     ChunkKeyEncodingMetadata,
-    V2ChunkKeyEncodingConfigurationMetadata,
-    V2ChunkKeyEncodingMetadata,
     read_chunk,
     write_chunk,
 )
 
-# from zarr.v3.array_v2 import ArrayV2
-from zarr.v3.array.codecs import CodecMetadata, CodecPipeline, bytes_codec
+from zarr.v3.codecs import CodecMetadata, CodecPipeline, bytes_codec
 from zarr.v3.common import (
     ZARR_JSON,
     ChunkCoords,
@@ -46,13 +44,16 @@ from zarr.v3.array.base import (
     RuntimeConfiguration,
     dtype_to_data_type,
 )
-from zarr.v3.sharding import ShardingCodec
+from zarr.v3.codecs.sharding import ShardingCodec
 from zarr.v3.store import StoreLike, StorePath, make_store_path
 from zarr.v3.sync import sync
 
+AttributeItem = Union[Dict[str, "AttributeItem"], List["AttributeItem"], str, int, float, bool]
+Attributes = Dict[str, AttributeItem]
+
 
 @frozen
-class ZArrayMetadata:
+class ArrayMetadata:
     shape: ChunkCoords
     data_type: np.dtype
     chunk_grid: RegularChunkGridMetadata
@@ -81,24 +82,28 @@ class ZArrayMetadata:
         def _json_convert(o):
             if isinstance(o, np.dtype):
                 return str(o)
+            if isinstance(o, Enum):
+                return o.name
             raise TypeError
 
         return json.dumps(
             asdict(
                 self,
-                filter=lambda attr, value: attr.name != "dimension_names" or value is not None,
+                filter=lambda attr, value: not attr.name.startswith("_")
+                or attr.name != "dimension_names"
+                or value is not None,
             ),
             default=_json_convert,
         ).encode()
 
     @classmethod
-    def from_json(cls, zarr_json: Any) -> ZArrayMetadata:
+    def from_json(cls, zarr_json: Any) -> ArrayMetadata:
         return make_cattr().structure(zarr_json, cls)
 
 
 @frozen
-class ZArrayAsync(AsynchronousArray):
-    metadata: ZArrayMetadata
+class AsyncArray(AsynchronousArray):
+    metadata: ArrayMetadata
     store_path: StorePath
     runtime_configuration: RuntimeConfiguration
     codec_pipeline: CodecPipeline
@@ -121,7 +126,7 @@ class ZArrayAsync(AsynchronousArray):
         attributes: Optional[Dict[str, Any]] = None,
         runtime_configuration: RuntimeConfiguration = RuntimeConfiguration(),
         exists_ok: bool = False,
-    ) -> ZArrayAsync:
+    ) -> AsyncArray:
         store_path = make_store_path(store)
         if not exists_ok:
             assert not await (store_path / ZARR_JSON).exists_async()
@@ -143,17 +148,18 @@ class ZArrayAsync(AsynchronousArray):
             else:
                 fill_value = 0
 
-        metadata = ZArrayMetadata(
+        metadata = ArrayMetadata(
             shape=shape,
             data_type=data_type,
             chunk_grid=RegularChunkGridMetadata(
                 configuration=RegularChunkGridConfigurationMetadata(chunk_shape=chunk_shape)
             ),
             chunk_key_encoding=(
-                V2ChunkKeyEncodingMetadata(
-                    configuration=V2ChunkKeyEncodingConfigurationMetadata(
+                DefaultChunkKeyEncodingMetadata(
+                    configuration=DefaultChunkKeyEncodingConfigurationMetadata(
                         separator=chunk_key_encoding[1]
-                    )
+                    ),
+                    chunk_prefix="",
                 )
                 if chunk_key_encoding[0] == "v2"
                 else DefaultChunkKeyEncodingMetadata(
@@ -187,8 +193,8 @@ class ZArrayAsync(AsynchronousArray):
         store_path: StorePath,
         zarr_json: Any,
         runtime_configuration: RuntimeConfiguration,
-    ) -> ZArrayAsync:
-        metadata = ZArrayMetadata.from_json(zarr_json)
+    ) -> AsyncArray:
+        metadata = ArrayMetadata.from_json(zarr_json)
         async_array = cls(
             metadata=metadata,
             store_path=store_path,
@@ -205,7 +211,7 @@ class ZArrayAsync(AsynchronousArray):
         cls,
         store: StoreLike,
         runtime_configuration: RuntimeConfiguration = RuntimeConfiguration(),
-    ) -> ZArrayAsync:
+    ) -> AsyncArray:
         store_path = make_store_path(store)
         zarr_json_bytes = await (store_path / ZARR_JSON).get_async()
         assert zarr_json_bytes is not None
@@ -220,7 +226,7 @@ class ZArrayAsync(AsynchronousArray):
         cls,
         store: StoreLike,
         runtime_configuration: RuntimeConfiguration = RuntimeConfiguration(),
-    ) -> ZArrayAsync:  # TODO: Union[AsyncArray, ArrayV2]
+    ) -> AsyncArray:  # TODO: Union[AsyncArray, ArrayV2]
         store_path = make_store_path(store)
         v3_metadata_bytes = await (store_path / ZARR_JSON).get_async()
         if v3_metadata_bytes is not None:
@@ -250,7 +256,7 @@ class ZArrayAsync(AsynchronousArray):
         return self.metadata.data_type
 
     @property
-    def attrs(self) -> dict[str, Any]:
+    def attrs(self) -> Attributes:
         return self.metadata.attributes
 
     async def getitem(self, selection: Selection):
@@ -346,7 +352,7 @@ class ZArrayAsync(AsynchronousArray):
             self.runtime_configuration.concurrency,
         )
 
-    async def resize(self, new_shape: ChunkCoords) -> ZArray:
+    async def resize(self, new_shape: ChunkCoords) -> Array:
         assert len(new_shape) == len(self.metadata.shape)
         new_metadata = evolve(self.metadata, shape=new_shape)
 
@@ -372,7 +378,7 @@ class ZArrayAsync(AsynchronousArray):
         await (self.store_path / ZARR_JSON).set_async(new_metadata.to_bytes())
         return evolve(self, metadata=new_metadata)
 
-    async def update_attributes(self, new_attributes: Dict[str, Any]) -> ZArray:
+    async def update_attributes(self, new_attributes: Dict[str, Any]) -> Array:
         new_metadata = evolve(self.metadata, attributes=new_attributes)
 
         # Write new metadata
@@ -387,8 +393,8 @@ class ZArrayAsync(AsynchronousArray):
 
 
 @frozen
-class ZArray(SynchronousArray):
-    _async_array: ZArrayAsync
+class Array(SynchronousArray):
+    _async_array: AsyncArray
 
     @classmethod
     def create(
@@ -408,9 +414,9 @@ class ZArray(SynchronousArray):
         attributes: Optional[Dict[str, Any]] = None,
         runtime_configuration: RuntimeConfiguration = RuntimeConfiguration(),
         exists_ok: bool = False,
-    ) -> ZArray:
+    ) -> Array:
         async_array = sync(
-            ZArrayAsync.create(
+            AsyncArray.create(
                 store=store,
                 shape=shape,
                 dtype=dtype,
@@ -433,8 +439,8 @@ class ZArray(SynchronousArray):
         store_path: StorePath,
         zarr_json: Any,
         runtime_configuration: RuntimeConfiguration,
-    ) -> ZArray:
-        async_array = ZArrayAsync.from_json(
+    ) -> Array:
+        async_array = AsyncArray.from_json(
             store_path=store_path, zarr_json=zarr_json, runtime_configuration=runtime_configuration
         )
         return cls(async_array)
@@ -444,10 +450,10 @@ class ZArray(SynchronousArray):
         cls,
         store: StoreLike,
         runtime_configuration: RuntimeConfiguration = RuntimeConfiguration(),
-    ) -> ZArray:
+    ) -> Array:
 
         async_array = sync(
-            ZArrayAsync.open(store, runtime_configuration=runtime_configuration),
+            AsyncArray.open(store, runtime_configuration=runtime_configuration),
             runtime_configuration.asyncio_loop,
         )
         async_array._validate_metadata()
@@ -458,9 +464,9 @@ class ZArray(SynchronousArray):
         cls,
         store: StoreLike,
         runtime_configuration: RuntimeConfiguration = RuntimeConfiguration(),
-    ) -> ZArray:  # TODO: Union[Array, ArrayV2]:
+    ) -> Array:  # TODO: Union[Array, ArrayV2]:
         async_array = sync(
-            ZArrayAsync.open_auto(store, runtime_configuration),
+            AsyncArray.open_auto(store, runtime_configuration),
             runtime_configuration.asyncio_loop,
         )
         return cls(async_array)
@@ -501,13 +507,13 @@ class ZArray(SynchronousArray):
             self._async_array.runtime_configuration.asyncio_loop,
         )
 
-    def resize(self, new_shape: ChunkCoords) -> ZArray:
+    def resize(self, new_shape: ChunkCoords) -> Array:
         return sync(
             self._async_array.resize(new_shape),
             self._async_array.runtime_configuration.asyncio_loop,
         )
 
-    def update_attributes(self, new_attributes: Dict[str, Any]) -> ZArray:
+    def update_attributes(self, new_attributes: Dict[str, Any]) -> Array:
         return sync(
             self._async_array.update_attributes(new_attributes),
             self._async_array.runtime_configuration.asyncio_loop,

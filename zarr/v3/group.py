@@ -5,7 +5,7 @@ from typing import Any, Dict, Literal, Optional, Union
 
 from attr import asdict, evolve, field, frozen
 
-from zarr.v3.array.v3 import ZArray
+from zarr.v3.array.v3 import Array
 from zarr.v3.common import ZARR_JSON, make_cattr
 from zarr.v3.array.base import RuntimeConfiguration
 from zarr.v3.store import StoreLike, StorePath, make_store_path
@@ -112,7 +112,7 @@ class Group:
         cls,
         store: StoreLike,
         runtime_configuration: RuntimeConfiguration = RuntimeConfiguration(),
-    ) -> Union[ZArray, Group]:
+    ) -> Union[Array, Group]:
         store_path = make_store_path(store)
         zarr_json_bytes = await (store_path / ZARR_JSON).get_async()
         if zarr_json_bytes is None:
@@ -121,7 +121,7 @@ class Group:
         if zarr_json["node_type"] == "group":
             return cls.from_json(store_path, zarr_json, runtime_configuration)
         if zarr_json["node_type"] == "array":
-            return ZArray.from_json(
+            return Array.from_json(
                 store_path, zarr_json, runtime_configuration=runtime_configuration
             )
         raise KeyError
@@ -129,12 +129,12 @@ class Group:
     async def _save_metadata(self) -> None:
         await (self.store_path / ZARR_JSON).set_async(self.metadata.to_bytes())
 
-    async def get_async(self, path: str) -> Union[ZArray, Group]:
+    async def get_async(self, path: str) -> Union[Array, Group]:
         return await self.__class__.open_or_array(
             self.store_path / path, self.runtime_configuration
         )
 
-    def __getitem__(self, path: str) -> Union[ZArray, Group]:
+    def __getitem__(self, path: str) -> Union[Array, Group]:
         return sync(self.get_async(path), self.runtime_configuration.asyncio_loop)
 
     async def create_group_async(self, path: str, **kwargs) -> Group:
@@ -148,15 +148,15 @@ class Group:
     def create_group(self, path: str, **kwargs) -> Group:
         return sync(self.create_group_async(path), self.runtime_configuration.asyncio_loop)
 
-    async def create_array_async(self, path: str, **kwargs) -> ZArray:
+    async def create_array_async(self, path: str, **kwargs) -> Array:
         runtime_configuration = kwargs.pop("runtime_configuration", self.runtime_configuration)
-        return await ZArray.create_async(
+        return await Array.create_async(
             self.store_path / path,
             runtime_configuration=runtime_configuration,
             **kwargs,
         )
 
-    def create_array(self, path: str, **kwargs) -> ZArray:
+    def create_array(self, path: str, **kwargs) -> Array:
         return sync(
             self.create_array_async(path, **kwargs),
             self.runtime_configuration.asyncio_loop,

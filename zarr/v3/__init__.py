@@ -2,9 +2,8 @@ from __future__ import annotations
 
 from typing import Union
 
-import zarr.v3.array.codecs  # noqa: F401
-from zarr.v3.array.v3 import ZArray as ZArrayV3  # noqa: F401
-from zarr.v3.array.v2 import ZArray as ZArrayV2  # noqa: F401
+from zarr.v3.array.v3 import Array as ZArrayV3  # noqa: F401
+from zarr.v3.array.v2 import Array as ZArrayV2  # noqa: F401
 from zarr.v3.group import Group  # noqa: F401
 from zarr.v3.group_v2 import GroupV2  # noqa: F401
 from zarr.v3.array.base import RuntimeConfiguration, runtime_configuration  # noqa: F401

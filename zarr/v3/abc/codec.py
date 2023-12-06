@@ -12,9 +12,12 @@ from __future__ import annotations
 
 from abc import abstractmethod, ABC
 from typing import TYPE_CHECKING, Optional, Type
+from typing import TYPE_CHECKING, Optional, Type
 
 import numpy as np
 
+from zarr.v3.common import BytesLike, SliceSelection
+from zarr.v3.store import StorePath
 from zarr.v3.common import BytesLike, SliceSelection
 from zarr.v3.store import StorePath
 
@@ -70,6 +73,27 @@ class ArrayBytesCodec(Codec):
         self,
         chunk_array: np.ndarray,
     ) -> Optional[BytesLike]:
+        pass
+
+
+class ArrayBytesCodecPartialDecodeMixin:
+    @abstractmethod
+    async def decode_partial(
+        self,
+        store_path: StorePath,
+        selection: SliceSelection,
+    ) -> Optional[np.ndarray]:
+        pass
+
+
+class ArrayBytesCodecPartialEncodeMixin:
+    @abstractmethod
+    async def encode_partial(
+        self,
+        store_path: StorePath,
+        chunk_array: np.ndarray,
+        selection: SliceSelection,
+    ) -> None:
         pass
 
 

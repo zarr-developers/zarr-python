@@ -167,7 +167,7 @@ class CodecPipeline:
             elif codec_metadata.name == "crc32c":
                 codec = Crc32cCodec.from_metadata(codec_metadata, array_metadata)
             elif codec_metadata.name == "sharding_indexed":
-                from zarr.v3.sharding import ShardingCodec
+                from zarr.v3.codecs.sharding import ShardingCodec
 
                 codec = ShardingCodec.from_metadata(codec_metadata, array_metadata)
             else:
@@ -180,7 +180,7 @@ class CodecPipeline:
 
     @staticmethod
     def _validate_codecs(codecs: List[Codec], array_metadata: ChunkMetadata) -> None:
-        from zarr.v3.sharding import ShardingCodec
+        from zarr.v3.codecs.sharding import ShardingCodec
 
         assert any(
             isinstance(codec, ArrayBytesCodec) for codec in codecs
