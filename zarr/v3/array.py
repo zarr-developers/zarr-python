@@ -1,6 +1,5 @@
 # Notes on what I've changed here:
 # 1. Split Array into AsyncArray and Array
-# 2. Inherit from abc (SyncArray, AsyncArray)
 # 3. Added .size and .attrs methods
 # 4. Temporarily disabled the creation of ArrayV2
 # 5. Added from_json to AsyncArray
@@ -49,7 +48,7 @@ from zarr.v3.sync import sync
 
 
 @frozen
-class AsyncArray(AsyncArray):
+class AsyncArray:
     metadata: ArrayMetadata
     store_path: StorePath
     runtime_configuration: RuntimeConfiguration
@@ -416,7 +415,7 @@ class AsyncArray(AsyncArray):
 
 
 @frozen
-class Array(SyncArray):
+class Array:
     _async_array: AsyncArray
 
     @classmethod
