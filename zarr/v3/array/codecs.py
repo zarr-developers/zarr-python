@@ -28,7 +28,7 @@ from zarr.v3.array.base import to_numpy_shortname
 from zarr.v3.common import BytesLike, ChunkCoords, to_thread
 
 if TYPE_CHECKING:
-    from zarr.v3.array.base import CoreArrayMetadata
+    from zarr.v3.array.base import ChunkMetadata
 
 
 BloscShuffle = Literal["noshuffle", "shuffle", "bitshuffle"]
@@ -146,7 +146,7 @@ class CodecPipeline:
     def from_metadata(
         cls,
         codecs_metadata: Iterable[CodecMetadata],
-        array_metadata: CoreArrayMetadata,
+        array_metadata: ChunkMetadata,
     ) -> CodecPipeline:
         out: List[Codec] = []
         for codec_metadata in codecs_metadata or []:
@@ -179,7 +179,7 @@ class CodecPipeline:
         return cls(out)
 
     @staticmethod
-    def _validate_codecs(codecs: List[Codec], array_metadata: CoreArrayMetadata) -> None:
+    def _validate_codecs(codecs: List[Codec], array_metadata: ChunkMetadata) -> None:
         from zarr.v3.sharding import ShardingCodec
 
         assert any(
@@ -284,14 +284,14 @@ class CodecPipeline:
 
 @frozen
 class BloscCodec(BytesBytesCodec):
-    array_metadata: CoreArrayMetadata
+    array_metadata: ChunkMetadata
     configuration: BloscCodecConfigurationMetadata
     blosc_codec: Blosc
     is_fixed_size = False
 
     @classmethod
     def from_metadata(
-        cls, codec_metadata: BloscCodecMetadata, array_metadata: CoreArrayMetadata
+        cls, codec_metadata: BloscCodecMetadata, array_metadata: ChunkMetadata
     ) -> BloscCodec:
         configuration = codec_metadata.configuration
         if configuration.typesize == 0:
@@ -325,13 +325,13 @@ class BloscCodec(BytesBytesCodec):
 
 @frozen
 class BytesCodec(ArrayBytesCodec):
-    array_metadata: CoreArrayMetadata
+    array_metadata: ChunkMetadata
     configuration: BytesCodecConfigurationMetadata
     is_fixed_size = True
 
     @classmethod
     def from_metadata(
-        cls, codec_metadata: BytesCodecMetadata, array_metadata: CoreArrayMetadata
+        cls, codec_metadata: BytesCodecMetadata, array_metadata: ChunkMetadata
     ) -> BytesCodec:
         assert (
             array_metadata.dtype.itemsize == 1 or codec_metadata.configuration.endian is not None
@@ -389,13 +389,13 @@ class BytesCodec(ArrayBytesCodec):
 
 @frozen
 class TransposeCodec(ArrayArrayCodec):
-    array_metadata: CoreArrayMetadata
+    array_metadata: ChunkMetadata
     order: Tuple[int, ...]
     is_fixed_size = True
 
     @classmethod
     def from_metadata(
-        cls, codec_metadata: TransposeCodecMetadata, array_metadata: CoreArrayMetadata
+        cls, codec_metadata: TransposeCodecMetadata, array_metadata: ChunkMetadata
     ) -> TransposeCodec:
         configuration = codec_metadata.configuration
         if configuration.order == "F":
@@ -424,10 +424,10 @@ class TransposeCodec(ArrayArrayCodec):
             order=order,
         )
 
-    def resolve_metadata(self) -> CoreArrayMetadata:
-        from zarr.v3.array.base import CoreArrayMetadata
+    def resolve_metadata(self) -> ChunkMetadata:
+        from zarr.v3.array.base import ChunkMetadata
 
-        return CoreArrayMetadata(
+        return ChunkMetadata(
             shape=tuple(
                 self.array_metadata.shape[self.order[i]] for i in range(self.array_metadata.ndim)
             ),
@@ -463,13 +463,13 @@ class TransposeCodec(ArrayArrayCodec):
 
 @frozen
 class GzipCodec(BytesBytesCodec):
-    array_metadata: CoreArrayMetadata
+    array_metadata: ChunkMetadata
     configuration: GzipCodecConfigurationMetadata
     is_fixed_size = True
 
     @classmethod
     def from_metadata(
-        cls, codec_metadata: GzipCodecMetadata, array_metadata: CoreArrayMetadata
+        cls, codec_metadata: GzipCodecMetadata, array_metadata: ChunkMetadata
     ) -> GzipCodec:
         return cls(
             array_metadata=array_metadata,
@@ -494,13 +494,13 @@ class GzipCodec(BytesBytesCodec):
 
 @frozen
 class ZstdCodec(BytesBytesCodec):
-    array_metadata: CoreArrayMetadata
+    array_metadata: ChunkMetadata
     configuration: ZstdCodecConfigurationMetadata
     is_fixed_size = True
 
     @classmethod
     def from_metadata(
-        cls, codec_metadata: ZstdCodecMetadata, array_metadata: CoreArrayMetadata
+        cls, codec_metadata: ZstdCodecMetadata, array_metadata: ChunkMetadata
     ) -> ZstdCodec:
         return cls(
             array_metadata=array_metadata,
@@ -535,12 +535,12 @@ class ZstdCodec(BytesBytesCodec):
 
 @frozen
 class Crc32cCodec(BytesBytesCodec):
-    array_metadata: CoreArrayMetadata
+    array_metadata: ChunkMetadata
     is_fixed_size = True
 
     @classmethod
     def from_metadata(
-        cls, codec_metadata: Crc32cCodecMetadata, array_metadata: CoreArrayMetadata
+        cls, codec_metadata: Crc32cCodecMetadata, array_metadata: ChunkMetadata
     ) -> Crc32cCodec:
         return cls(array_metadata=array_metadata)
 

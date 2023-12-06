@@ -19,7 +19,7 @@ from zarr.v3.array.indexing import (
     is_total_slice,
     morton_order_iter,
 )
-from zarr.v3.array.base import CoreArrayMetadata
+from zarr.v3.array.base import ChunkMetadata
 from zarr.v3.array.codecs import ShardingCodecConfigurationMetadata, ShardingCodecMetadata
 from zarr.v3.store import StorePath
 
@@ -159,7 +159,7 @@ class _ShardBuilder(_ShardProxy):
 
 @frozen
 class ShardingCodec(ArrayBytesCodec):
-    array_metadata: CoreArrayMetadata
+    array_metadata: ChunkMetadata
     configuration: ShardingCodecConfigurationMetadata
     codec_pipeline: CodecPipeline
     index_codec_pipeline: CodecPipeline
@@ -169,7 +169,7 @@ class ShardingCodec(ArrayBytesCodec):
     def from_metadata(
         cls,
         codec_metadata: ShardingCodecMetadata,
-        array_metadata: CoreArrayMetadata,
+        array_metadata: ChunkMetadata,
     ) -> ShardingCodec:
         chunks_per_shard = tuple(
             s // c
@@ -179,7 +179,7 @@ class ShardingCodec(ArrayBytesCodec):
             )
         )
         # rewriting the metadata to scope it to the shard
-        shard_metadata = CoreArrayMetadata(
+        shard_metadata = ChunkMetadata(
             shape=array_metadata.chunk_shape,
             chunk_shape=codec_metadata.configuration.chunk_shape,
             data_type=array_metadata.data_type,
@@ -191,7 +191,7 @@ class ShardingCodec(ArrayBytesCodec):
         )
         index_codec_pipeline = CodecPipeline.from_metadata(
             codec_metadata.configuration.index_codecs,
-            CoreArrayMetadata(
+            ChunkMetadata(
                 shape=chunks_per_shard + (2,),
                 chunk_shape=chunks_per_shard + (2,),
                 data_type=DataType.uint64,

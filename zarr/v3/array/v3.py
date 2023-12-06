@@ -26,8 +26,8 @@ from zarr.v3.array.chunk import (
     ChunkKeyEncodingMetadata,
     V2ChunkKeyEncodingConfigurationMetadata,
     V2ChunkKeyEncodingMetadata,
-    _read_chunk_v3,
-    _write_chunk_v3,
+    read_chunk,
+    write_chunk,
 )
 
 # from zarr.v3.array_v2 import ArrayV2
@@ -42,7 +42,7 @@ from zarr.v3.common import (
 )
 from zarr.v3.array.indexing import BasicIndexer, all_chunk_coords, is_total_slice
 from zarr.v3.array.base import (
-    CoreArrayMetadata,
+    ChunkMetadata,
     RuntimeConfiguration,
     dtype_to_data_type,
 )
@@ -68,8 +68,8 @@ class ZArrayMetadata:
     def ndim(self) -> int:
         return len(self.shape)
 
-    def get_core_metadata(self, runtime_configuration: RuntimeConfiguration) -> CoreArrayMetadata:
-        return CoreArrayMetadata(
+    def get_core_metadata(self, runtime_configuration: RuntimeConfiguration) -> ChunkMetadata:
+        return ChunkMetadata(
             shape=self.shape,
             chunk_shape=self.chunk_grid.configuration.chunk_shape,
             dtype=self.data_type,
@@ -282,7 +282,7 @@ class ZArrayAsync(AsynchronousArray):
                 )
                 for chunk_coords, chunk_selection, out_selection in indexer
             ],
-            _read_chunk_v3,
+            read_chunk,
             self.runtime_configuration.concurrency,
         )
 
@@ -304,38 +304,6 @@ class ZArrayAsync(AsynchronousArray):
             self.metadata.dimension_names
         ), "`dimension_names` and `shape` need to have the same number of dimensions."
         assert self.metadata.fill_value is not None, "`fill_value` is required."
-
-    """
-    async def _read_chunk(
-        self,
-        chunk_coords: ChunkCoords,
-        chunk_selection: SliceSelection,
-        out_selection: SliceSelection,
-        out: np.ndarray,
-    ):
-        chunk_key_encoding = self.metadata.chunk_key_encoding
-        chunk_key = chunk_key_encoding.encode_chunk_key(chunk_coords)
-        store_path = self.store_path / chunk_key
-
-        if len(self.codec_pipeline.codecs) == 1 and isinstance(
-            self.codec_pipeline.codecs[0], ShardingCodec
-        ):
-            chunk_array = await self.codec_pipeline.codecs[0].decode_partial(
-                store_path, chunk_selection
-            )
-            if chunk_array is not None:
-                out[out_selection] = chunk_array
-            else:
-                out[out_selection] = self.metadata.fill_value
-        else:
-            chunk_bytes = await store_path.get_async()
-            if chunk_bytes is not None:
-                chunk_array = await self.codec_pipeline.decode(chunk_bytes)
-                tmp = chunk_array[chunk_selection]
-                out[out_selection] = tmp
-            else:
-                out[out_selection] = self.metadata.fill_value
-    """
 
     async def setitem(self, selection: Selection, value: np.ndarray) -> None:
         chunk_shape = self.metadata.chunk_grid.configuration.chunk_shape
@@ -364,7 +332,6 @@ class ZArrayAsync(AsynchronousArray):
                 (
                     self.metadata.chunk_key_encoding,
                     self.store_path,
-                    self.dtype,
                     self.codec_pipeline,
                     value,
                     chunk_shape,
@@ -375,76 +342,9 @@ class ZArrayAsync(AsynchronousArray):
                 )
                 for chunk_coords, chunk_selection, out_selection in indexer
             ],
-            _write_chunk_v3,
+            write_chunk,
             self.runtime_configuration.concurrency,
         )
-
-    """
-    async def _write_chunk(
-        self,
-        value: np.ndarray,
-        chunk_shape: ChunkCoords,
-        chunk_coords: ChunkCoords,
-        chunk_selection: SliceSelection,
-        out_selection: SliceSelection,
-    ):
-        chunk_key_encoding = self.metadata.chunk_key_encoding
-        chunk_key = chunk_key_encoding.encode_chunk_key(chunk_coords)
-        store_path = self.store_path / chunk_key
-
-        if is_total_slice(chunk_selection, chunk_shape):
-            # write entire chunks
-            if np.isscalar(value):
-                chunk_array = np.empty(
-                    chunk_shape,
-                    dtype=self.metadata.dtype,
-                )
-                chunk_array.fill(value)
-            else:
-                chunk_array = value[out_selection]
-            await self._write_chunk_to_store(store_path, chunk_array)
-
-        elif len(self.codec_pipeline.codecs) == 1 and isinstance(
-            self.codec_pipeline.codecs[0], ShardingCodec
-        ):
-            sharding_codec = self.codec_pipeline.codecs[0]
-            # print("encode_partial", chunk_coords, chunk_selection, repr(self))
-            await sharding_codec.encode_partial(
-                store_path,
-                value[out_selection],
-                chunk_selection,
-            )
-        else:
-            # writing partial chunks
-            # read chunk first
-            chunk_bytes = await store_path.get_async()
-
-            # merge new value
-            if chunk_bytes is None:
-                chunk_array = np.empty(
-                    chunk_shape,
-                    dtype=self.metadata.dtype,
-                )
-                chunk_array.fill(self.metadata.fill_value)
-            else:
-                chunk_array = (
-                    await self.codec_pipeline.decode(chunk_bytes)
-                ).copy()  # make a writable copy
-            chunk_array[chunk_selection] = value[out_selection]
-
-            await self._write_chunk_to_store(store_path, chunk_array)
-
-    async def _write_chunk_to_store(self, store_path: StorePath, chunk_array: np.ndarray):
-        if np.all(chunk_array == self.metadata.fill_value):
-            # chunks that only contain fill_value will be removed
-            await store_path.delete_async()
-        else:
-            chunk_bytes = await self.codec_pipeline.encode(chunk_array)
-            if chunk_bytes is None:
-                await store_path.delete_async()
-            else:
-                await store_path.set_async(chunk_bytes)
-    """
 
     async def resize(self, new_shape: ChunkCoords) -> ZArray:
         assert len(new_shape) == len(self.metadata.shape)

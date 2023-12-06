@@ -102,7 +102,7 @@ dtype_to_data_type = {
 
 
 @frozen
-class CoreArrayMetadata:
+class ChunkMetadata:
     shape: ChunkCoords
     chunk_shape: ChunkCoords
     # data_type: DataType

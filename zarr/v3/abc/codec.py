@@ -20,23 +20,23 @@ from zarr.v3.store import StorePath
 
 
 if TYPE_CHECKING:
-    from zarr.v3.array.base import CoreArrayMetadata, CodecMetadata
+    from zarr.v3.array.base import ChunkMetadata, CodecMetadata
 
 
 class Codec(ABC):
     is_fixed_size: bool
-    array_metadata: CoreArrayMetadata
+    array_metadata: ChunkMetadata
 
     @abstractmethod
     def compute_encoded_size(self, input_byte_length: int) -> int:
         pass
 
-    def resolve_metadata(self) -> CoreArrayMetadata:
+    def resolve_metadata(self) -> ChunkMetadata:
         return self.array_metadata
 
     @classmethod
     def from_metadata(
-        cls, codec_metadata: "CodecMetadata", array_metadata: CoreArrayMetadata
+        cls, codec_metadata: "CodecMetadata", array_metadata: ChunkMetadata
     ) -> "Type[Codec]":
         pass
 
