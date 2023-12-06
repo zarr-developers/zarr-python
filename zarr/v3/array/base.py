@@ -103,7 +103,7 @@ dtype_to_data_type = {
 
 @frozen
 class ChunkMetadata:
-    shape: ChunkCoords
+    array_shape: ChunkCoords
     chunk_shape: ChunkCoords
     # data_type: DataType
     dtype: np.dtype
