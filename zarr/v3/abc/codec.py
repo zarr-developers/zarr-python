@@ -11,29 +11,37 @@
 from __future__ import annotations
 
 from abc import abstractmethod, ABC
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Optional, Type
+from typing import TYPE_CHECKING, Optional, Type
 
 import numpy as np
 
-from zarr.v3.common import BytesLike
+from zarr.v3.common import BytesLike, SliceSelection
+from zarr.v3.store import StorePath
+from zarr.v3.common import BytesLike, SliceSelection
+from zarr.v3.store import StorePath
 
 
 if TYPE_CHECKING:
-    from zarr.v3.metadata import CoreArrayMetadata
+    from zarr.v3.array.base import ChunkMetadata, CodecMetadata
 
 
 class Codec(ABC):
-    supports_partial_decode: bool
-    supports_partial_encode: bool
     is_fixed_size: bool
-    array_metadata: CoreArrayMetadata
+    array_metadata: ChunkMetadata
 
     @abstractmethod
     def compute_encoded_size(self, input_byte_length: int) -> int:
         pass
 
-    def resolve_metadata(self) -> CoreArrayMetadata:
+    def resolve_metadata(self) -> ChunkMetadata:
         return self.array_metadata
+
+    @classmethod
+    def from_metadata(
+        cls, codec_metadata: "CodecMetadata", array_metadata: ChunkMetadata
+    ) -> "Type[Codec]":
+        pass
 
 
 class ArrayArrayCodec(Codec):
@@ -65,6 +73,48 @@ class ArrayBytesCodec(Codec):
         self,
         chunk_array: np.ndarray,
     ) -> Optional[BytesLike]:
+        pass
+
+
+class ArrayBytesCodecPartialDecodeMixin:
+    @abstractmethod
+    async def decode_partial(
+        self,
+        store_path: StorePath,
+        selection: SliceSelection,
+    ) -> Optional[np.ndarray]:
+        pass
+
+
+class ArrayBytesCodecPartialEncodeMixin:
+    @abstractmethod
+    async def encode_partial(
+        self,
+        store_path: StorePath,
+        chunk_array: np.ndarray,
+        selection: SliceSelection,
+    ) -> None:
+        pass
+
+
+class ArrayBytesCodecPartialDecodeMixin:
+    @abstractmethod
+    async def decode_partial(
+        self,
+        store_path: StorePath,
+        selection: SliceSelection,
+    ) -> Optional[np.ndarray]:
+        pass
+
+
+class ArrayBytesCodecPartialEncodeMixin:
+    @abstractmethod
+    async def encode_partial(
+        self,
+        store_path: StorePath,
+        chunk_array: np.ndarray,
+        selection: SliceSelection,
+    ) -> None:
         pass
 
 

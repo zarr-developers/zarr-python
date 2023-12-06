@@ -3,10 +3,11 @@ from __future__ import annotations
 import json
 from asyncio import AbstractEventLoop
 from enum import Enum
-from typing import Any, Dict, List, Literal, Optional, Tuple, Union
+from typing import Any, Dict, List, Literal, Optional, Protocol, Tuple, Union
 
 import numpy as np
 from attr import asdict, field, frozen
+from zarr.v3.array.base import ChunkMetadata
 
 from zarr.v3.common import ChunkCoords, make_cattr
 
@@ -142,107 +143,19 @@ class V2ChunkKeyEncodingMetadata:
 ChunkKeyEncodingMetadata = Union[DefaultChunkKeyEncodingMetadata, V2ChunkKeyEncodingMetadata]
 
 
-BloscShuffle = Literal["noshuffle", "shuffle", "bitshuffle"]
+class CodecMetadata(Protocol):
+    @property
+    def name(self) -> str:
+        pass
 
 
-@frozen
-class BloscCodecConfigurationMetadata:
-    typesize: int
-    cname: Literal["lz4", "lz4hc", "blosclz", "zstd", "snappy", "zlib"] = "zstd"
-    clevel: int = 5
-    shuffle: BloscShuffle = "noshuffle"
-    blocksize: int = 0
+class ShardingCodecIndexLocation(Enum):
+    start = "start"
+    end = "end"
 
 
-blosc_shuffle_int_to_str: Dict[int, BloscShuffle] = {
-    0: "noshuffle",
-    1: "shuffle",
-    2: "bitshuffle",
-}
-
-
-@frozen
-class BloscCodecMetadata:
-    configuration: BloscCodecConfigurationMetadata
-    name: Literal["blosc"] = "blosc"
-
-
-@frozen
-class BytesCodecConfigurationMetadata:
-    endian: Optional[Literal["big", "little"]] = "little"
-
-
-@frozen
-class BytesCodecMetadata:
-    configuration: BytesCodecConfigurationMetadata
-    name: Literal["bytes"] = "bytes"
-
-
-@frozen
-class TransposeCodecConfigurationMetadata:
-    order: Union[Literal["C", "F"], Tuple[int, ...]] = "C"
-
-
-@frozen
-class TransposeCodecMetadata:
-    configuration: TransposeCodecConfigurationMetadata
-    name: Literal["transpose"] = "transpose"
-
-
-@frozen
-class GzipCodecConfigurationMetadata:
-    level: int = 5
-
-
-@frozen
-class GzipCodecMetadata:
-    configuration: GzipCodecConfigurationMetadata
-    name: Literal["gzip"] = "gzip"
-
-
-@frozen
-class ZstdCodecConfigurationMetadata:
-    level: int = 0
-    checksum: bool = False
-
-
-@frozen
-class ZstdCodecMetadata:
-    configuration: ZstdCodecConfigurationMetadata
-    name: Literal["zstd"] = "zstd"
-
-
-@frozen
-class Crc32cCodecMetadata:
-    name: Literal["crc32c"] = "crc32c"
-
-
-@frozen
-class ShardingCodecConfigurationMetadata:
-    chunk_shape: ChunkCoords
-    codecs: List["CodecMetadata"]
-    index_codecs: List["CodecMetadata"]
-
-
-@frozen
-class ShardingCodecMetadata:
-    configuration: ShardingCodecConfigurationMetadata
-    name: Literal["sharding_indexed"] = "sharding_indexed"
-
-
-CodecMetadata = Union[
-    BloscCodecMetadata,
-    BytesCodecMetadata,
-    TransposeCodecMetadata,
-    GzipCodecMetadata,
-    ZstdCodecMetadata,
-    ShardingCodecMetadata,
-    Crc32cCodecMetadata,
-]
-
-
-@frozen
-class CoreArrayMetadata:
+""" @frozen
+class ChunkMetadata:
     shape: ChunkCoords
     chunk_shape: ChunkCoords
     data_type: DataType
@@ -256,6 +169,7 @@ class CoreArrayMetadata:
     @property
     def ndim(self) -> int:
         return len(self.shape)
+ """
 
 
 @frozen
@@ -279,8 +193,8 @@ class ArrayMetadata:
     def ndim(self) -> int:
         return len(self.shape)
 
-    def get_core_metadata(self, runtime_configuration: RuntimeConfiguration) -> CoreArrayMetadata:
-        return CoreArrayMetadata(
+    def get_core_metadata(self, runtime_configuration: RuntimeConfiguration) -> ChunkMetadata:
+        return ChunkMetadata(
             shape=self.shape,
             chunk_shape=self.chunk_grid.configuration.chunk_shape,
             data_type=self.data_type,
@@ -290,7 +204,7 @@ class ArrayMetadata:
 
     def to_bytes(self) -> bytes:
         def _json_convert(o):
-            if isinstance(o, DataType):
+            if isinstance(o, Enum):
                 return o.name
             raise TypeError
 

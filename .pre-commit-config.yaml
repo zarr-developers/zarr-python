@@ -27,7 +27,7 @@ repos:
     hooks:
     - id: check-yaml
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.3.0
+    rev: v1.7.1
     hooks:
       - id: mypy
         files: zarr
@@ -35,3 +35,4 @@ repos:
         additional_dependencies:
           - types-redis
           - types-setuptools
+          - attrs

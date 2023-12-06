@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 import io
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, MutableMapping, Optional, Tuple, Union
 
 from zarr.v3.common import BytesLike, to_thread
 
@@ -282,6 +282,53 @@ class RemoteStore(Store):
 
     def __repr__(self) -> str:
         return f"RemoteStore({repr(str(self))})"
+
+
+class MemoryStore(Store):
+    supports_partial_writes = True
+    store_dict: MutableMapping[str, bytes]
+
+    def __init__(self, store_dict: Optional[MutableMapping[str, bytes]] = None):
+        self.store_dict = store_dict or {}
+
+    async def get_async(
+        self, key: str, byte_range: Optional[Tuple[int, Optional[int]]] = None
+    ) -> Optional[BytesLike]:
+        assert isinstance(key, str)
+        try:
+            value = self.store_dict[key]
+            if byte_range is not None:
+                value = value[byte_range[0] : byte_range[1]]
+            return value
+        except KeyError:
+            return None
+
+    async def set_async(
+        self, key: str, value: BytesLike, byte_range: Optional[Tuple[int, int]] = None
+    ) -> None:
+        assert isinstance(key, str)
+
+        if byte_range is not None:
+            buf = bytearray(self.store_dict[key])
+            buf[byte_range[0] : byte_range[1]] = value
+            self.store_dict[key] = buf
+        else:
+            self.store_dict[key] = value
+
+    async def delete_async(self, key: str) -> None:
+        try:
+            del self.store_dict[key]
+        except KeyError:
+            pass
+
+    async def exists_async(self, key: str) -> bool:
+        return key in self.store_dict
+
+    def __str__(self) -> str:
+        return f"memory://{id(self.store_dict)}"
+
+    def __repr__(self) -> str:
+        return f"MemoryStore({repr(str(self))})"
 
 
 StoreLike = Union[Store, StorePath, Path, str]

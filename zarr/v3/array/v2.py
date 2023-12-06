@@ -6,9 +6,12 @@ from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Union
 
 import numcodecs
 import numpy as np
-from attr import evolve, frozen
+from attr import evolve, frozen, asdict, field
 from numcodecs.compat import ensure_bytes, ensure_ndarray
-
+from zarr.v3.array.chunk import (
+    read_chunk,
+    write_chunk,
+)
 from zarr.v3.common import (
     ZARRAY_JSON,
     ZATTRS_JSON,
@@ -17,20 +20,25 @@ from zarr.v3.common import (
     Selection,
     SliceSelection,
     concurrent_map,
+    make_cattr,
     to_thread,
 )
-from zarr.v3.indexing import BasicIndexer, all_chunk_coords, is_total_slice
-from zarr.v3.metadata import ArrayV2Metadata, RuntimeConfiguration
+from zarr.v3.array.indexing import BasicIndexer, all_chunk_coords, is_total_slice
+from zarr.v3.array.base import ChunkMetadata, RuntimeConfiguration
+from zarr.v3.array.chunk import (
+    DefaultChunkKeyEncodingConfigurationMetadata,
+    DefaultChunkKeyEncodingMetadata,
+)
 from zarr.v3.store import StoreLike, StorePath, make_store_path
 from zarr.v3.sync import sync
 
 if TYPE_CHECKING:
-    from zarr.v3.array import Array
+    import zarr.v3.array.v3 as v3
 
 
 @frozen
 class _AsyncArrayProxy:
-    array: ArrayV2
+    array: Array
 
     def __getitem__(self, selection: Selection) -> _AsyncArraySelectionProxy:
         return _AsyncArraySelectionProxy(self.array, selection)
@@ -38,7 +46,7 @@ class _AsyncArrayProxy:
 
 @frozen
 class _AsyncArraySelectionProxy:
-    array: ArrayV2
+    array: Array
     selection: Selection
 
     async def get(self) -> np.ndarray:
@@ -49,11 +57,44 @@ class _AsyncArraySelectionProxy:
 
 
 @frozen
-class ArrayV2:
-    metadata: ArrayV2Metadata
-    attributes: Optional[Dict[str, Any]]
+class ArrayMetadata:
+    shape: ChunkCoords
+    chunks: ChunkCoords
+    dtype: np.dtype
+    fill_value: Union[None, int, float] = 0
+    order: Literal["C", "F"] = "C"
+    filters: Optional[List[Dict[str, Any]]] = None
+    dimension_separator: Literal[".", "/"] = "."
+    compressor: Optional[Dict[str, Any]] = None
+    zarr_format: Literal[2] = 2
+    attributes: Optional[Dict[str, Any]] = {}
+
+    @property
+    def ndim(self) -> int:
+        return len(self.shape)
+
+    def to_bytes(self) -> bytes:
+        def _json_convert(o):
+            if isinstance(o, np.dtype):
+                if o.fields is None:
+                    return o.str
+                else:
+                    return o.descr
+            raise TypeError
+
+        return json.dumps(asdict(self), default=_json_convert).encode()
+
+    @classmethod
+    def from_json(cls, zarr_json: Any) -> ArrayMetadata:
+        return make_cattr().structure(zarr_json, cls)
+
+
+@frozen
+class Array:
+    metadata: ArrayMetadata
     store_path: StorePath
     runtime_configuration: RuntimeConfiguration
+    attributes: Dict[str, Any]
 
     @classmethod
     async def create_async(
@@ -71,12 +112,12 @@ class ArrayV2:
         attributes: Optional[Dict[str, Any]] = None,
         exists_ok: bool = False,
         runtime_configuration: RuntimeConfiguration = RuntimeConfiguration(),
-    ) -> ArrayV2:
+    ) -> Array:
         store_path = make_store_path(store)
         if not exists_ok:
             assert not await (store_path / ZARRAY_JSON).exists_async()
 
-        metadata = ArrayV2Metadata(
+        metadata = ArrayMetadata(
             shape=shape,
             dtype=np.dtype(dtype),
             chunks=chunks,
@@ -115,7 +156,7 @@ class ArrayV2:
         attributes: Optional[Dict[str, Any]] = None,
         exists_ok: bool = False,
         runtime_configuration: RuntimeConfiguration = RuntimeConfiguration(),
-    ) -> ArrayV2:
+    ) -> Array:
         return sync(
             cls.create_async(
                 store,
@@ -139,7 +180,7 @@ class ArrayV2:
         cls,
         store: StoreLike,
         runtime_configuration: RuntimeConfiguration = RuntimeConfiguration(),
-    ) -> ArrayV2:
+    ) -> Array:
         store_path = make_store_path(store)
         zarray_bytes, zattrs_bytes = await asyncio.gather(
             (store_path / ZARRAY_JSON).get_async(),
@@ -158,7 +199,7 @@ class ArrayV2:
         cls,
         store: StoreLike,
         runtime_configuration: RuntimeConfiguration = RuntimeConfiguration(),
-    ) -> ArrayV2:
+    ) -> Array:
         return sync(
             cls.open_async(store, runtime_configuration),
             runtime_configuration.asyncio_loop,
@@ -171,8 +212,8 @@ class ArrayV2:
         zarray_json: Any,
         zattrs_json: Optional[Any],
         runtime_configuration: RuntimeConfiguration = RuntimeConfiguration(),
-    ) -> ArrayV2:
-        metadata = ArrayV2Metadata.from_json(zarray_json)
+    ) -> Array:
+        metadata = ArrayMetadata.from_json(zarray_json)
         out = cls(
             store_path=store_path,
             metadata=metadata,
@@ -209,6 +250,10 @@ class ArrayV2:
     @property
     def dtype(self) -> np.dtype:
         return self.metadata.dtype
+
+    @property
+    def attrs(self) -> dict[str, Any]:
+        return self.metadata.attributes
 
     @property
     def async_(self) -> _AsyncArrayProxy:
@@ -252,43 +297,44 @@ class ArrayV2:
         out_selection: SliceSelection,
         out: np.ndarray,
     ):
-        store_path = self.store_path / self._encode_chunk_key(chunk_coords)
 
-        chunk_array = await self._decode_chunk(await store_path.get_async())
-        if chunk_array is not None:
-            tmp = chunk_array[chunk_selection]
-            out[out_selection] = tmp
-        else:
-            out[out_selection] = self.metadata.fill_value
-
-    async def _decode_chunk(self, chunk_bytes: Optional[BytesLike]) -> Optional[np.ndarray]:
-        if chunk_bytes is None:
-            return None
-
-        if self.metadata.compressor is not None:
-            compressor = numcodecs.get_codec(self.metadata.compressor)
-            chunk_array = ensure_ndarray(await to_thread(compressor.decode, chunk_bytes))
-        else:
-            chunk_array = ensure_ndarray(chunk_bytes)
-
-        # ensure correct dtype
-        if str(chunk_array.dtype) != self.metadata.dtype:
-            chunk_array = chunk_array.view(self.metadata.dtype)
-
-        # apply filters in reverse order
-        if self.metadata.filters is not None:
-            for filter_metadata in self.metadata.filters[::-1]:
-                filter = numcodecs.get_codec(filter_metadata)
-                chunk_array = await to_thread(filter.decode, chunk_array)
-
-        # ensure correct chunk shape
-        if chunk_array.shape != self.metadata.chunks:
-            chunk_array = chunk_array.reshape(
-                self.metadata.chunks,
-                order=self.metadata.order,
+        chunk_key_encoding = V2ChunkKeyEncodingMetadata(
+            configuration=DefaultChunkKeyEncodingConfigurationMetadata(
+                separator=self.metadata.dimension_separator
             )
+        )
 
-        return chunk_array
+        if self.metadata.filters is None:
+            filters = []
+        else:
+            filters = self.metadata.filters
+
+        if self.metadata.compressor is None:
+            codecs = [bytes_codec()]
+        else:
+            codecs = [self.metadata.compressor] + filters
+
+        codec_pipeline = CodecPipeline.from_metadata(
+            codecs,
+            ChunkMetadata(
+                array_shape=self.metadata.shape,
+                chunk_shape=self.metadata.chunks,
+                dtype=self.metadata.dtype,
+                fill_value=self.metadata.fill_value,
+                runtime_configuration=self.runtime_configuration,
+            ),
+        )
+
+        await read_chunk(
+            chunk_key_encoding=chunk_key_encoding,
+            fill_value=self.metadata.fill_value,
+            store_path=self.store_path,
+            chunk_coords=chunk_coords,
+            chunk_selection=chunk_selection,
+            codec_pipeline=codec_pipeline,
+            out_selection=out_selection,
+            out=out,
+        )
 
     def __setitem__(self, selection: Selection, value: np.ndarray) -> None:
         sync(self.set_async(selection, value), self.runtime_configuration.asyncio_loop)
@@ -300,8 +346,33 @@ class ArrayV2:
             shape=self.metadata.shape,
             chunk_shape=chunk_shape,
         )
-
+        chunk_key_encoding = DefaultChunkKeyEncodingMetadata(
+            configuration=DefaultChunkKeyEncodingConfigurationMetadata(
+                separator=self.metadata.dimension_separator
+            ),
+        )
         sel_shape = indexer.shape
+
+        if self.metadata.filters is None:
+            filters = []
+        else:
+            filters = self.metadata.filters
+
+        if self.metadata.compressor is None:
+            codecs = [bytes_codec()]
+        else:
+            codecs = [self.metadata.compressor] + filters
+
+        codec_pipeline = CodecPipeline.from_metadata(
+            codecs,
+            ChunkMetadata(
+                array_shape=self.metadata.shape,
+                chunk_shape=self.metadata.chunks,
+                dtype=self.metadata.dtype,
+                fill_value=self.metadata.fill_value,
+                runtime_configuration=self.runtime_configuration,
+            ),
+        )
 
         # check value shape
         if np.isscalar(value):
@@ -318,96 +389,22 @@ class ArrayV2:
         await concurrent_map(
             [
                 (
+                    chunk_key_encoding,
+                    self.store_path,
+                    codec_pipeline,
                     value,
                     chunk_shape,
                     chunk_coords,
                     chunk_selection,
                     out_selection,
+                    self.metadata.fill_value,
                 )
                 for chunk_coords, chunk_selection, out_selection in indexer
             ],
-            self._write_chunk,
+            write_chunk,
         )
 
-    async def _write_chunk(
-        self,
-        value: np.ndarray,
-        chunk_shape: ChunkCoords,
-        chunk_coords: ChunkCoords,
-        chunk_selection: SliceSelection,
-        out_selection: SliceSelection,
-    ):
-        store_path = self.store_path / self._encode_chunk_key(chunk_coords)
-
-        if is_total_slice(chunk_selection, chunk_shape):
-            # write entire chunks
-            if np.isscalar(value):
-                chunk_array = np.empty(
-                    chunk_shape,
-                    dtype=self.metadata.dtype,
-                    order=self.metadata.order,
-                )
-                chunk_array.fill(value)
-            else:
-                chunk_array = value[out_selection]
-            await self._write_chunk_to_store(store_path, chunk_array)
-
-        else:
-            # writing partial chunks
-            # read chunk first
-            tmp = await self._decode_chunk(await store_path.get_async())
-
-            # merge new value
-            if tmp is None:
-                chunk_array = np.empty(
-                    chunk_shape,
-                    dtype=self.metadata.dtype,
-                    order=self.metadata.order,
-                )
-                chunk_array.fill(self.metadata.fill_value)
-            else:
-                chunk_array = tmp.copy(
-                    order=self.metadata.order,
-                )  # make a writable copy
-            chunk_array[chunk_selection] = value[out_selection]
-
-            await self._write_chunk_to_store(store_path, chunk_array)
-
-    async def _write_chunk_to_store(self, store_path: StorePath, chunk_array: np.ndarray):
-        chunk_bytes: Optional[BytesLike]
-        if np.all(chunk_array == self.metadata.fill_value):
-            # chunks that only contain fill_value will be removed
-            await store_path.delete_async()
-        else:
-            chunk_bytes = await self._encode_chunk(chunk_array)
-            if chunk_bytes is None:
-                await store_path.delete_async()
-            else:
-                await store_path.set_async(chunk_bytes)
-
-    async def _encode_chunk(self, chunk_array: np.ndarray) -> Optional[BytesLike]:
-        chunk_array = chunk_array.ravel(order=self.metadata.order)
-
-        if self.metadata.filters is not None:
-            for filter_metadata in self.metadata.filters:
-                filter = numcodecs.get_codec(filter_metadata)
-                chunk_array = await to_thread(filter.encode, chunk_array)
-
-        if self.metadata.compressor is not None:
-            compressor = numcodecs.get_codec(self.metadata.compressor)
-            if not chunk_array.flags.c_contiguous and not chunk_array.flags.f_contiguous:
-                chunk_array = chunk_array.copy(order="A")
-            encoded_chunk_bytes = ensure_bytes(await to_thread(compressor.encode, chunk_array))
-        else:
-            encoded_chunk_bytes = ensure_bytes(chunk_array)
-
-        return encoded_chunk_bytes
-
-    def _encode_chunk_key(self, chunk_coords: ChunkCoords) -> str:
-        chunk_identifier = self.metadata.dimension_separator.join(map(str, chunk_coords))
-        return "0" if chunk_identifier == "" else chunk_identifier
-
-    async def resize_async(self, new_shape: ChunkCoords) -> ArrayV2:
+    async def resize_async(self, new_shape: ChunkCoords) -> Array:
         assert len(new_shape) == len(self.metadata.shape)
         new_metadata = evolve(self.metadata, shape=new_shape)
 
@@ -431,16 +428,15 @@ class ArrayV2:
         await (self.store_path / ZARRAY_JSON).set_async(new_metadata.to_bytes())
         return evolve(self, metadata=new_metadata)
 
-    def resize(self, new_shape: ChunkCoords) -> ArrayV2:
+    def resize(self, new_shape: ChunkCoords) -> Array:
         return sync(self.resize_async(new_shape), self.runtime_configuration.asyncio_loop)
 
-    async def convert_to_v3_async(self) -> Array:
+    async def convert_to_v3_async(self) -> v3.Array:
         from sys import byteorder as sys_byteorder
-
-        from zarr.v3.array import Array
+        import zarr.v3.array.v3 as v3
         from zarr.v3.common import ZARR_JSON
-        from zarr.v3.metadata import (
-            ArrayMetadata,
+
+        from zarr.v3.array.base import (
             BloscCodecConfigurationMetadata,
             BloscCodecMetadata,
             BytesCodecConfigurationMetadata,
@@ -508,7 +504,7 @@ class ArrayV2:
                     )
                 )
 
-        new_metadata = ArrayMetadata(
+        new_metadata = v3.ArrayMetadata(
             shape=self.metadata.shape,
             chunk_grid=RegularChunkGridMetadata(
                 configuration=RegularChunkGridConfigurationMetadata(
@@ -535,11 +531,11 @@ class ArrayV2:
             runtime_configuration=self.runtime_configuration,
         )
 
-    async def update_attributes_async(self, new_attributes: Dict[str, Any]) -> ArrayV2:
+    async def update_attributes_async(self, new_attributes: Dict[str, Any]) -> Array:
         await (self.store_path / ZATTRS_JSON).set_async(json.dumps(new_attributes).encode())
         return evolve(self, attributes=new_attributes)
 
-    def update_attributes(self, new_attributes: Dict[str, Any]) -> ArrayV2:
+    def update_attributes(self, new_attributes: Dict[str, Any]) -> Array:
         return sync(
             self.update_attributes_async(new_attributes),
             self.runtime_configuration.asyncio_loop,
