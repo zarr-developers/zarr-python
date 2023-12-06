@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import functools
 import threading
 from typing import Any, Coroutine, List, Optional
 
@@ -95,14 +94,12 @@ class SyncMixin:
 
     _sync_configuration: SyncConfiguration
 
-    def _sync(self, method, *args, **kwargs):  # TODO: type this
-        @functools.wraps(method)
-        def wrap(*args, **kwargs):
-            return sync(method, *args, loop=self._sync_configuration.asyncio_loop, **kwargs)
+    def _sync(self, coroutine: Coroutine):  # TODO: type this
+        # TODO: refactor this to to take *args and **kwargs and pass those to the method
+        # this should allow us to better type the sync wrapper
+        return sync(coroutine, loop=self._sync_configuration.asyncio_loop)
 
-        return wrap(*args, **kwargs)
-
-    def _sync_iter(self, func, *args, **kwargs) -> List[Any]:  # TODO: type this
+    def _sync_iter(self, func: Coroutine, *args, **kwargs) -> List[Any]:  # TODO: type this
         async def iter_to_list() -> List[Any]:
             # TODO: replace with generators so we don't materialize the entire iterator at once
             return [item async for item in func(*args, **kwargs)]

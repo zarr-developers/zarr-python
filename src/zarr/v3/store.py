@@ -65,6 +65,14 @@ class StorePath:
     def __repr__(self) -> str:
         return f"StorePath({self.store.__class__.__name__}, {repr(str(self))})"
 
+    def __eq__(self, other: Any) -> bool:
+        try:
+            if self.store == other.store and self.path == other.path:
+                return True
+        except Exception:
+            pass
+        return False
+
 
 class Store:
     supports_partial_writes = False

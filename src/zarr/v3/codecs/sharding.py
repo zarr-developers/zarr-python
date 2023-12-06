@@ -43,7 +43,7 @@ from zarr.v3.metadata import (
     CodecMetadata,
     ShardingCodecIndexLocation,
 )
-from zarr.v3.store import StorePath
+from zarr.v3.stores import StorePath
 
 MAX_UINT_64 = 2**64 - 1
 

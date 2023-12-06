@@ -23,18 +23,31 @@ class ReadStore(Store):
         ...
 
     @abstractmethod
-    async def get_partial_values(self, key_ranges: List[Tuple[str, int]]) -> bytes:
+    async def get_partial_values(self, key_ranges: List[Tuple[str, Tuple[int, int]]]) -> List[bytes]:
         """Retrieve possibly partial values from given key_ranges.
 
         Parameters
         ----------
-        key_ranges : list[tuple[str, int]]
+        key_ranges : list[tuple[str, tuple[int, int]]]
             Ordered set of key, range pairs, a key may occur multiple times with different ranges
 
         Returns
         -------
         list[bytes]
             list of values, in the order of the key_ranges, may contain null/none for missing keys
+        """
+        ...
+
+    async def exists(self, key: str) -> bool:
+        """Check if a key exists in the store.
+
+        Parameters
+        ----------
+        key : str
+
+        Returns
+        -------
+        bool
         """
         ...
 
@@ -50,6 +63,20 @@ class WriteStore(ReadStore):
         value : bytes
         """
         ...
+
+    async def delete(self, key: str) -> None
+        """Remove a key from the store
+
+        Parameters
+        ----------
+        key : str
+        """
+        ...
+
+
+class PartialWriteStore(WriteStore):
+    # TODO, instead of using this, should we just check if the store is a PartialWriteStore?
+    supports_partial_writes = True 
 
     @abstractmethod
     async def set_partial_values(self, key_start_values: List[Tuple[str, int, bytes]]) -> None:
@@ -78,7 +105,7 @@ class ListMixin:
 
     @abstractmethod
     async def list_prefix(self, prefix: str) -> List[str]:
-        """Retrieve all keys in the store.
+        """Retrieve all keys in the store with a given prefix.
 
         Parameters
         ----------
