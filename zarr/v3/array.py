@@ -18,6 +18,7 @@ import numpy as np
 from attr import evolve, frozen
 
 from zarr.v3.abc.array import SynchronousArray, AsynchronousArray
+from zarr.v3.abc.codec import ArrayBytesCodecPartialDecodeMixin
 
 # from zarr.v3.array_v2 import ArrayV2
 from zarr.v3.codecs import CodecMetadata, CodecPipeline, bytes_codec
@@ -41,7 +42,7 @@ from zarr.v3.metadata import (
     V2ChunkKeyEncodingMetadata,
     dtype_to_data_type,
 )
-from zarr.v3.sharding import ShardingCodec
+from zarr.v3.codecs.sharding import ShardingCodec
 from zarr.v3.store import StoreLike, StorePath, make_store_path
 from zarr.v3.sync import sync
 
@@ -253,7 +254,7 @@ class AsyncArray(AsynchronousArray):
         store_path = self.store_path / chunk_key
 
         if len(self.codec_pipeline.codecs) == 1 and isinstance(
-            self.codec_pipeline.codecs[0], ShardingCodec
+            self.codec_pipeline.codecs[0], ArrayBytesCodecPartialDecodeMixin
         ):
             chunk_array = await self.codec_pipeline.codecs[0].decode_partial(
                 store_path, chunk_selection
@@ -373,7 +374,7 @@ class AsyncArray(AsynchronousArray):
             else:
                 await store_path.set_async(chunk_bytes)
 
-    async def resize(self, new_shape: ChunkCoords) -> Array:
+    async def resize(self, new_shape: ChunkCoords) -> AsyncArray:
         assert len(new_shape) == len(self.metadata.shape)
         new_metadata = evolve(self.metadata, shape=new_shape)
 
@@ -472,7 +473,6 @@ class Array(SynchronousArray):
         store: StoreLike,
         runtime_configuration: RuntimeConfiguration = RuntimeConfiguration(),
     ) -> Array:
-
         async_array = sync(
             AsyncArray.open(store, runtime_configuration=runtime_configuration),
             runtime_configuration.asyncio_loop,
@@ -511,6 +511,10 @@ class Array(SynchronousArray):
     @property
     def attrs(self) -> dict:
         return self._async_array.attrs
+
+    @property
+    def metadata(self) -> ArrayMetadata:
+        return self._async_array.metadata
 
     @property
     def store_path(self) -> str:

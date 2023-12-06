@@ -1,11 +1,29 @@
 from __future__ import annotations
 
-from typing import Iterator, List, Mapping, NamedTuple, Optional, Set, Tuple
+from typing import (
+    Awaitable,
+    Callable,
+    Iterator,
+    List,
+    Literal,
+    Mapping,
+    NamedTuple,
+    Optional,
+    Set,
+    Tuple,
+    Type,
+)
+from attr import field, frozen
 
 import numpy as np
-from attrs import frozen
+from zarr.v3.abc.codec import (
+    ArrayBytesCodec,
+    ArrayBytesCodecPartialDecodeMixin,
+    ArrayBytesCodecPartialEncodeMixin,
+)
 
-from zarr.v3.codecs import ArrayBytesCodec, CodecPipeline
+from zarr.v3.codecs import CodecPipeline
+from zarr.v3.codecs.registry import register_codec
 from zarr.v3.common import (
     BytesLike,
     ChunkCoords,
@@ -22,12 +40,26 @@ from zarr.v3.indexing import (
 from zarr.v3.metadata import (
     CoreArrayMetadata,
     DataType,
-    ShardingCodecConfigurationMetadata,
-    ShardingCodecMetadata,
+    CodecMetadata,
+    ShardingCodecIndexLocation,
 )
 from zarr.v3.store import StorePath
 
 MAX_UINT_64 = 2**64 - 1
+
+
+@frozen
+class ShardingCodecConfigurationMetadata:
+    chunk_shape: ChunkCoords
+    codecs: List["CodecMetadata"]
+    index_codecs: List["CodecMetadata"]
+    index_location: ShardingCodecIndexLocation = ShardingCodecIndexLocation.end
+
+
+@frozen
+class ShardingCodecMetadata:
+    configuration: ShardingCodecConfigurationMetadata
+    name: Literal["sharding_indexed"] = field(default="sharding_indexed", init=False)
 
 
 class _ShardIndex(NamedTuple):
@@ -49,7 +81,7 @@ class _ShardIndex(NamedTuple):
         if (chunk_start, chunk_len) == (MAX_UINT_64, MAX_UINT_64):
             return None
         else:
-            return (int(chunk_start), int(chunk_start + chunk_len))
+            return (int(chunk_start), int(chunk_start) + int(chunk_len))
 
     def set_chunk_slice(self, chunk_coords: ChunkCoords, chunk_slice: Optional[slice]) -> None:
         localized_chunk = self._localize_chunk(chunk_coords)
@@ -95,9 +127,15 @@ class _ShardProxy(Mapping):
 
     @classmethod
     async def from_bytes(cls, buf: BytesLike, codec: ShardingCodec) -> _ShardProxy:
+        shard_index_size = codec._shard_index_size()
         obj = cls()
         obj.buf = memoryview(buf)
-        obj.index = await codec._decode_shard_index(obj.buf[-codec._shard_index_size() :])
+        if codec.configuration.index_location == ShardingCodecIndexLocation.start:
+            shard_index_bytes = obj.buf[:shard_index_size]
+        else:
+            shard_index_bytes = obj.buf[-shard_index_size:]
+
+        obj.index = await codec._decode_shard_index(shard_index_bytes)
         return obj
 
     @classmethod
@@ -156,13 +194,27 @@ class _ShardBuilder(_ShardProxy):
         self.buf.extend(value)
         self.index.set_chunk_slice(chunk_coords, slice(chunk_start, chunk_start + chunk_length))
 
-    def finalize(self, index_bytes: BytesLike) -> BytesLike:
-        self.buf.extend(index_bytes)
-        return self.buf
+    async def finalize(
+        self,
+        index_location: ShardingCodecIndexLocation,
+        index_encoder: Callable[[_ShardIndex], Awaitable[BytesLike]],
+    ) -> BytesLike:
+        index_bytes = await index_encoder(self.index)
+        if index_location == ShardingCodecIndexLocation.start:
+            self.index.offsets_and_lengths[..., 0] += len(index_bytes)
+            index_bytes = await index_encoder(self.index)  # encode again with corrected offsets
+            out_buf = bytearray(index_bytes)
+            out_buf.extend(self.buf)
+        else:
+            out_buf = self.buf
+            out_buf.extend(index_bytes)
+        return out_buf
 
 
 @frozen
-class ShardingCodec(ArrayBytesCodec):
+class ShardingCodec(
+    ArrayBytesCodec, ArrayBytesCodecPartialDecodeMixin, ArrayBytesCodecPartialEncodeMixin
+):
     array_metadata: CoreArrayMetadata
     configuration: ShardingCodecConfigurationMetadata
     codec_pipeline: CodecPipeline
@@ -172,9 +224,11 @@ class ShardingCodec(ArrayBytesCodec):
     @classmethod
     def from_metadata(
         cls,
-        codec_metadata: ShardingCodecMetadata,
+        codec_metadata: CodecMetadata,
         array_metadata: CoreArrayMetadata,
     ) -> ShardingCodec:
+        assert isinstance(codec_metadata, ShardingCodecMetadata)
+
         chunks_per_shard = tuple(
             s // c
             for s, c in zip(
@@ -210,6 +264,10 @@ class ShardingCodec(ArrayBytesCodec):
             index_codec_pipeline=index_codec_pipeline,
             chunks_per_shard=chunks_per_shard,
         )
+
+    @classmethod
+    def get_metadata_class(cls) -> Type[ShardingCodecMetadata]:
+        return ShardingCodecMetadata
 
     async def decode(
         self,
@@ -260,7 +318,6 @@ class ShardingCodec(ArrayBytesCodec):
         store_path: StorePath,
         selection: SliceSelection,
     ) -> Optional[np.ndarray]:
-        # print("decode_partial")
         shard_shape = self.array_metadata.chunk_shape
         chunk_shape = self.configuration.chunk_shape
 
@@ -390,7 +447,9 @@ class ShardingCodec(ArrayBytesCodec):
             if chunk_bytes is not None:
                 shard_builder.append(chunk_coords, chunk_bytes)
 
-        return shard_builder.finalize(await self._encode_shard_index(shard_builder.index))
+        return await shard_builder.finalize(
+            self.configuration.index_location, self._encode_shard_index
+        )
 
     async def encode_partial(
         self,
@@ -477,7 +536,10 @@ class ShardingCodec(ArrayBytesCodec):
             await store_path.delete_async()
         else:
             await store_path.set_async(
-                shard_builder.finalize(await self._encode_shard_index(shard_builder.index))
+                await shard_builder.finalize(
+                    self.configuration.index_location,
+                    self._encode_shard_index,
+                )
             )
 
     def _is_total_shard(self, all_chunk_coords: Set[ChunkCoords]) -> bool:
@@ -497,7 +559,11 @@ class ShardingCodec(ArrayBytesCodec):
         return self.index_codec_pipeline.compute_encoded_size(16 * product(self.chunks_per_shard))
 
     async def _load_shard_index_maybe(self, store_path: StorePath) -> Optional[_ShardIndex]:
-        index_bytes = await store_path.get_async((-self._shard_index_size(), None))
+        shard_index_size = self._shard_index_size()
+        if self.configuration.index_location == ShardingCodecIndexLocation.start:
+            index_bytes = await store_path.get_async((0, shard_index_size))
+        else:
+            index_bytes = await store_path.get_async((-shard_index_size, None))
         if index_bytes is not None:
             return await self._decode_shard_index(index_bytes)
         return None
@@ -514,3 +580,6 @@ class ShardingCodec(ArrayBytesCodec):
 
     def compute_encoded_size(self, input_byte_length: int) -> int:
         return input_byte_length + self._shard_index_size()
+
+
+register_codec("sharding_indexed", ShardingCodec)
