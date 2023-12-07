@@ -26,7 +26,6 @@ class Attributes(MutableMapping):
     """
 
     def __init__(self, store, key=".zattrs", read_only=False, cache=True, synchronizer=None):
-
         self._version = getattr(store, "_store_version", 2)
         _Store = Store if self._version == 2 else StoreV3
         self.store = _Store._ensure_store(store)
@@ -73,7 +72,6 @@ class Attributes(MutableMapping):
         return self.asdict()[item]
 
     def _write_op(self, f, *args, **kwargs):
-
         # guard condition
         if self.read_only:
             raise PermissionError("attributes are read-only")
@@ -89,7 +87,6 @@ class Attributes(MutableMapping):
         self._write_op(self._setitem_nosync, item, value)
 
     def _setitem_nosync(self, item, value):
-
         # load existing data
         d = self._get_nosync()
 
@@ -106,7 +103,6 @@ class Attributes(MutableMapping):
         self._write_op(self._delitem_nosync, item)
 
     def _delitem_nosync(self, key):
-
         # load existing data
         d = self._get_nosync()
 
@@ -128,7 +124,6 @@ class Attributes(MutableMapping):
             self._write_op(self._put_nosync, dict(attributes=d))
 
     def _put_nosync(self, d):
-
         d_to_check = d if self._version == 2 else d["attributes"]
         if not all(isinstance(item, str) for item in d_to_check):
             # TODO: Raise an error for non-string keys
@@ -178,7 +173,6 @@ class Attributes(MutableMapping):
         self._write_op(self._update_nosync, *args, **kwargs)
 
     def _update_nosync(self, *args, **kwargs):
-
         # load existing data
         d = self._get_nosync()
 

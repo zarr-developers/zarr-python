@@ -72,7 +72,6 @@ def test_normalize_chunks():
 
 
 def test_is_total_slice():
-
     # 1D
     assert is_total_slice(Ellipsis, (100,))
     assert is_total_slice(slice(None), (100,))
@@ -95,7 +94,6 @@ def test_is_total_slice():
 
 
 def test_normalize_resize_args():
-
     # 1D
     assert (200,) == normalize_resize_args((100,), 200)
     assert (200,) == normalize_resize_args((100,), (200,))

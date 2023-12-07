@@ -14,7 +14,7 @@ repos:
       # Respect `exclude` and `extend-exclude` settings.
       args: ["--force-exclude"]
   - repo: https://github.com/psf/black
-    rev: 22.12.0
+    rev: 23.10.1
     hooks:
     - id: black
   - repo: https://github.com/codespell-project/codespell

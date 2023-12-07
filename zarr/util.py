@@ -180,7 +180,6 @@ def normalize_chunks(chunks: Any, shape: Tuple[int, ...], typesize: int) -> Tupl
 
 
 def normalize_dtype(dtype: Union[str, np.dtype], object_codec) -> Tuple[np.dtype, Any]:
-
     # convenience API for object arrays
     if inspect.isclass(dtype):
         dtype = dtype.__name__  # type: ignore
@@ -245,7 +244,6 @@ def is_total_slice(item, shape: Tuple[int]) -> bool:
 
 
 def normalize_resize_args(old_shape, *args):
-
     # normalize new shape argument
     if len(args) == 1:
         new_shape = args[0]
@@ -294,7 +292,6 @@ def normalize_dimension_separator(sep: Optional[str]) -> Optional[str]:
 
 
 def normalize_fill_value(fill_value, dtype: np.dtype):
-
     if fill_value is None or dtype.hasobject:
         # no fill value
         pass
@@ -332,7 +329,6 @@ def normalize_fill_value(fill_value, dtype: np.dtype):
 
 
 def normalize_storage_path(path: Union[str, bytes, None]) -> str:
-
     # handle bytes
     if isinstance(path, bytes):
         path = str(path, "ascii")
@@ -342,7 +338,6 @@ def normalize_storage_path(path: Union[str, bytes, None]) -> str:
         path = str(path)
 
     if path:
-
         # convert backslash to forward slash
         path = path.replace("\\", "/")
 
@@ -506,7 +501,6 @@ def tree_widget(group, expand, level):
 
 class TreeViewer:
     def __init__(self, group, expand=False, level=None):
-
         self.group = group
         self.expand = expand
         self.level = level
