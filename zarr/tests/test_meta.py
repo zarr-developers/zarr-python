@@ -34,7 +34,6 @@ def assert_json_equal(expect, actual):
 
 
 def test_encode_decode_array_1():
-
     meta = dict(
         shape=(100,),
         chunks=(10,),
@@ -73,7 +72,6 @@ def test_encode_decode_array_1():
 
 
 def test_encode_decode_array_2():
-
     # some variations
     df = Delta(astype="<u2", dtype="V14")
     compressor = Blosc(cname="lz4", clevel=3, shuffle=2)
@@ -125,7 +123,6 @@ def test_encode_decode_array_2():
 
 
 def test_encode_decode_array_complex():
-
     # some variations
     for k in ["c8", "c16"]:
         compressor = Blosc(cname="lz4", clevel=3, shuffle=2)
@@ -179,7 +176,6 @@ def test_encode_decode_array_complex():
 
 
 def test_encode_decode_array_datetime_timedelta():
-
     # some variations
     for k in ["m8[s]", "M8[s]"]:
         compressor = Blosc(cname="lz4", clevel=3, shuffle=2)
@@ -233,7 +229,6 @@ def test_encode_decode_array_datetime_timedelta():
 
 
 def test_encode_decode_array_dtype_shape():
-
     meta = dict(
         shape=(100,),
         chunks=(10,),
@@ -274,7 +269,6 @@ def test_encode_decode_array_dtype_shape():
 
 
 def test_encode_decode_array_dtype_shape_v3():
-
     meta = dict(
         shape=(100,),
         chunk_grid=dict(type="regular", chunk_shape=(10,), separator=("/")),
@@ -346,7 +340,6 @@ def test_decode_metadata_implicit_compressor_config_v3(comp_id):
 
 
 def test_encode_decode_array_structured():
-
     meta = dict(
         shape=(100,),
         chunks=(10,),
@@ -387,7 +380,6 @@ def test_encode_decode_array_structured():
 
 
 def test_encode_decode_fill_values_nan():
-
     fills = (
         (np.nan, "NaN", np.isnan),
         (np.NINF, "-Infinity", np.isneginf),
@@ -395,7 +387,6 @@ def test_encode_decode_fill_values_nan():
     )
 
     for v, s, f in fills:
-
         meta = dict(
             shape=(100,),
             chunks=(10,),
@@ -428,12 +419,10 @@ def test_encode_decode_fill_values_nan():
 
 
 def test_encode_decode_fill_values_bytes():
-
     dtype = np.dtype("S10")
     fills = b"foo", bytes(10)
 
     for v in fills:
-
         # setup and encode metadata
         meta = dict(
             shape=(100,),
@@ -471,7 +460,6 @@ def test_encode_decode_fill_values_bytes():
 
 
 def test_decode_array_unsupported_format():
-
     # unsupported format
     meta_json = f"""{{
         "zarr_format": {ZARR_FORMAT - 1},
@@ -487,7 +475,6 @@ def test_decode_array_unsupported_format():
 
 
 def test_decode_array_missing_fields():
-
     # missing fields
     meta_json = f"""{{
         "zarr_format": {ZARR_FORMAT}
@@ -497,7 +484,6 @@ def test_decode_array_missing_fields():
 
 
 def test_encode_decode_dtype():
-
     for dt in ["f8", [("a", "f8")], [("a", "f8"), ("b", "i1")]]:
         e = encode_dtype(np.dtype(dt))
         s = json.dumps(e)  # check JSON serializable
@@ -507,7 +493,6 @@ def test_encode_decode_dtype():
 
 
 def test_decode_group():
-
     # typical
     b = f"""{{
         "zarr_format": {ZARR_FORMAT}
@@ -541,7 +526,6 @@ def test_decode_group():
     ],
 )
 def test_encode_fill_value(fill_value, dtype, object_codec, result):
-
     # normalize metadata (copied from _init_array_metadata)
     dtype, object_codec = normalize_dtype(dtype, object_codec)
     dtype = dtype.base
@@ -573,7 +557,6 @@ def test_encode_fill_value(fill_value, dtype, object_codec, result):
     ],
 )
 def test_decode_fill_value(fill_value, dtype, object_codec, result):
-
     # normalize metadata (copied from _init_array_metadata)
     dtype, object_codec = normalize_dtype(dtype, object_codec)
     dtype = dtype.base
@@ -604,7 +587,6 @@ def test_get_extended_dtype_info():
         assert "fallback" in info
 
     class invalid_dtype:
-
         str = "unknown_type"
 
     with pytest.raises(ValueError):
@@ -612,7 +594,6 @@ def test_get_extended_dtype_info():
 
 
 def test_metadata3_exceptions():
-
     with pytest.raises(KeyError):
         # dict must have a key named 'type'
         Metadata3.decode_dtype({})

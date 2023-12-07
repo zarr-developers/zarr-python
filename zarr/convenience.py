@@ -673,10 +673,8 @@ def copy_store(
 
     # setup logging
     with _LogWriter(log) as log:
-
         # iterate over source keys
         for source_key in sorted(source.keys()):
-
             # filter to keys under source path
             if source_store_version == 2:
                 if not source_key.startswith(source_path):
@@ -876,7 +874,6 @@ def copy(
 
     # setup logging
     with _LogWriter(log) as log:
-
         # do the copying
         n_copied, n_skipped, n_bytes_copied = _copy(
             log,
@@ -942,12 +939,10 @@ def _copy(log, source, dest, name, root, shallow, without_attrs, if_exists, dry_
 
         # take action
         if do_copy:
-
             # log a message about what we're going to do
             log(f"copy {source.name} {source.shape} {source.dtype}")
 
             if not dry_run:
-
                 # clear the way
                 if exists:
                     del dest[name]
@@ -1030,12 +1025,10 @@ def _copy(log, source, dest, name, root, shallow, without_attrs, if_exists, dry_
 
         # take action
         if do_copy:
-
             # log action
             log(f"copy {source.name}")
 
             if not dry_run:
-
                 # clear the way
                 if exists_array:
                     del dest[name]
@@ -1048,7 +1041,6 @@ def _copy(log, source, dest, name, root, shallow, without_attrs, if_exists, dry_
                     grp.attrs.update(source.attrs)
 
             else:
-
                 # setup for dry run without creating any groups in the
                 # destination
                 if dest is not None:
@@ -1181,7 +1173,6 @@ def copy_all(
 
     # setup logging
     with _LogWriter(log) as log:
-
         for k in source.keys():
             c, s, b = _copy(
                 log,
@@ -1254,7 +1245,6 @@ def consolidate_metadata(store: BaseStore, metadata_key=".zmetadata", *, path=""
             return key.endswith(".zarray") or key.endswith(".zgroup") or key.endswith(".zattrs")
 
     else:
-
         assert_zarr_v3_api_available()
 
         sfx = _get_metadata_suffix(store)  # type: ignore

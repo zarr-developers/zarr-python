@@ -240,7 +240,6 @@ class ABSStoreV3(ABSStore, StoreV3):
         super().__setitem__(key, value)
 
     def rmdir(self, path=None):
-
         if not path:
             # Currently allowing clear to delete everything as in v2
 

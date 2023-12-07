@@ -89,7 +89,6 @@ class Metadata2:
 
     @classmethod
     def parse_metadata(cls, s: Union[MappingType, bytes, str]) -> MappingType[str, Any]:
-
         # Here we allow that a store may return an already-parsed metadata object,
         # or a string of JSON that we will parse here. We allow for an already-parsed
         # object to accommodate a consolidated metadata store, where all the metadata for

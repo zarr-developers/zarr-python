@@ -919,7 +919,6 @@ class Group(MutableMapping):
         return TreeViewer(self, expand=expand, level=level)
 
     def _write_op(self, f, *args, **kwargs):
-
         # guard condition
         if self._read_only:
             raise ReadOnlyError()
@@ -1094,7 +1093,6 @@ class Group(MutableMapping):
         return self._write_op(self._create_dataset_nosync, name, **kwargs)
 
     def _create_dataset_nosync(self, name, data=None, **kwargs):
-
         assert "mode" not in kwargs
         path = self._item_path(name)
 
@@ -1138,11 +1136,9 @@ class Group(MutableMapping):
         )
 
     def _require_dataset_nosync(self, name, shape, dtype=None, exact=False, **kwargs):
-
         path = self._item_path(name)
 
         if contains_array(self._store, path):
-
             # array already exists at path, validate that it is the right shape and type
 
             synchronizer = kwargs.get("synchronizer", self._synchronizer)
