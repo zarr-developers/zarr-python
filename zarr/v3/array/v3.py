@@ -19,12 +19,17 @@ import numpy as np
 from attr import asdict, evolve, frozen, field
 
 from zarr.v3.abc.array import SynchronousArray, AsynchronousArray
-from zarr.v3.array.chunk import (
+from zarr.v3.metadata import (
     DefaultChunkKeyEncodingConfigurationMetadata,
-    DefaultChunkKeyEncodingMetadata,
     RegularChunkGridConfigurationMetadata,
     RegularChunkGridMetadata,
+    DefaultChunkKeyEncodingMetadata,
+    DefaultChunkKeyEncodingMetadata,
     ChunkKeyEncodingMetadata,
+    V2ChunkKeyEncodingConfigurationMetadata,
+)
+from zarr.v3.array.chunk import (
+    V2ChunkKeyEncodingMetadata,
     read_chunk,
     write_chunk,
 )
@@ -155,11 +160,10 @@ class AsyncArray(AsynchronousArray):
                 configuration=RegularChunkGridConfigurationMetadata(chunk_shape=chunk_shape)
             ),
             chunk_key_encoding=(
-                DefaultChunkKeyEncodingMetadata(
-                    configuration=DefaultChunkKeyEncodingConfigurationMetadata(
+                V2ChunkKeyEncodingMetadata(
+                    configuration=V2ChunkKeyEncodingConfigurationMetadata(
                         separator=chunk_key_encoding[1]
-                    ),
-                    chunk_prefix="",
+                    )
                 )
                 if chunk_key_encoding[0] == "v2"
                 else DefaultChunkKeyEncodingMetadata(

@@ -12,6 +12,7 @@ from zarr.v3.array.chunk import (
     read_chunk,
     write_chunk,
 )
+from zarr.v3.codecs import CodecPipeline, bytes_codec
 from zarr.v3.common import (
     ZARRAY_JSON,
     ZATTRS_JSON,
@@ -25,10 +26,16 @@ from zarr.v3.common import (
 )
 from zarr.v3.array.indexing import BasicIndexer, all_chunk_coords, is_total_slice
 from zarr.v3.array.base import ChunkMetadata, RuntimeConfiguration
-from zarr.v3.array.chunk import (
+from zarr.v3.metadata import (
     DefaultChunkKeyEncodingConfigurationMetadata,
     DefaultChunkKeyEncodingMetadata,
+    V2ChunkKeyEncodingMetadata,
 )
+
+""" from zarr.v3.array.chunk import (
+    DefaultChunkKeyEncodingConfigurationMetadata,
+    DefaultChunkKeyEncodingMetadata,
+) """
 from zarr.v3.store import StoreLike, StorePath, make_store_path
 from zarr.v3.sync import sync
 
@@ -95,6 +102,7 @@ class Array:
     store_path: StorePath
     runtime_configuration: RuntimeConfiguration
     attributes: Dict[str, Any]
+    chunk_key_encoding: Any
 
     @classmethod
     async def create_async(
@@ -131,10 +139,18 @@ class Array:
             if filters is not None
             else None,
         )
+
+        chunk_key_encoding = V2ChunkKeyEncodingMetadata(
+            configuration=DefaultChunkKeyEncodingConfigurationMetadata(
+                separator=metadata.dimension_separator
+            )
+        )
+
         array = cls(
             metadata=metadata,
             store_path=store_path,
             attributes=attributes,
+            chunk_key_encoding=chunk_key_encoding,
             runtime_configuration=runtime_configuration,
         )
         await array._save_metadata()
@@ -214,10 +230,18 @@ class Array:
         runtime_configuration: RuntimeConfiguration = RuntimeConfiguration(),
     ) -> Array:
         metadata = ArrayMetadata.from_json(zarray_json)
+
+        chunk_key_encoding = V2ChunkKeyEncodingMetadata(
+            configuration=DefaultChunkKeyEncodingConfigurationMetadata(
+                separator=metadata.dimension_separator
+            )
+        )
+
         out = cls(
             store_path=store_path,
             metadata=metadata,
             attributes=zattrs_json,
+            chunk_key_encoding=chunk_key_encoding,
             runtime_configuration=runtime_configuration,
         )
         out._validate_metadata()
@@ -298,12 +322,6 @@ class Array:
         out: np.ndarray,
     ):
 
-        chunk_key_encoding = V2ChunkKeyEncodingMetadata(
-            configuration=DefaultChunkKeyEncodingConfigurationMetadata(
-                separator=self.metadata.dimension_separator
-            )
-        )
-
         if self.metadata.filters is None:
             filters = []
         else:
@@ -326,7 +344,7 @@ class Array:
         )
 
         await read_chunk(
-            chunk_key_encoding=chunk_key_encoding,
+            chunk_key_encoding=self.chunk_key_encoding,
             fill_value=self.metadata.fill_value,
             store_path=self.store_path,
             chunk_coords=chunk_coords,
@@ -345,11 +363,6 @@ class Array:
             selection,
             shape=self.metadata.shape,
             chunk_shape=chunk_shape,
-        )
-        chunk_key_encoding = DefaultChunkKeyEncodingMetadata(
-            configuration=DefaultChunkKeyEncodingConfigurationMetadata(
-                separator=self.metadata.dimension_separator
-            ),
         )
         sel_shape = indexer.shape
 
@@ -389,7 +402,7 @@ class Array:
         await concurrent_map(
             [
                 (
-                    chunk_key_encoding,
+                    self.chunk_key_encoding,
                     self.store_path,
                     codec_pipeline,
                     value,

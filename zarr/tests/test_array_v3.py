@@ -7,7 +7,7 @@ import numpy as np
 from zarr.v3.common import ChunkCoords
 
 # todo: parametrize by chunks
-@pytest.mark.parametrize("zarr_version", ("v2", "v3"))
+@pytest.mark.parametrize("zarr_version", ("2", "3"))
 @pytest.mark.parametrize(
     "shape",
     (
@@ -28,23 +28,25 @@ from zarr.v3.common import ChunkCoords
 )
 @pytest.mark.parametrize("attributes", ({}, dict(a=10, b=10)))
 @pytest.mark.parametrize("fill_value", (0, 1, 2))
+@pytest.mark.parametrize("dimension_separator", (".", "/"))
 def test_array(
     tmpdir,
-    zarr_version: Literal["v2", "v3"],
+    zarr_version: Literal["2", "3"],
     shape: Tuple[int, ...],
     dtype: Union[str, np.dtype],
     attributes: Dict[str, Any],
     fill_value: float,
+    dimension_separator: Literal[".", "/"],
 ):
     store_path = str(tmpdir)
     arr: Union[v2.Array, v3.Array]
-    if zarr_version == "v2":
+    if zarr_version == "2":
         arr = v2.Array.create(
             store=store_path,
             shape=shape,
             dtype=dtype,
             chunks=shape,
-            dimension_separator="/",
+            dimension_separator=dimension_separator,
             fill_value=fill_value,
             attributes=attributes,
             exists_ok=True,
