@@ -221,9 +221,8 @@ class StoreV3(BaseStore):
             )
 
         if (
-            not key.startswith("data/")
-            and (not key.startswith("meta/"))
-            and (not key == "zarr.json")
+            not key.startswith(("data/", "meta/"))
+            and key != "zarr.json"
             # TODO: Possibly allow key == ".zmetadata" too if we write a
             #       consolidated metadata spec corresponding to this?
         ):
