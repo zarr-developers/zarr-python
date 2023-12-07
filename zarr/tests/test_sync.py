@@ -223,7 +223,6 @@ def _require_group(arg):
 
 class MixinGroupSyncTests:
     def test_parallel_create_group(self):
-
         # setup
         g = self.create_group()
         pool = self.create_pool()
@@ -242,7 +241,6 @@ class MixinGroupSyncTests:
         pool.terminate()
 
     def test_parallel_require_group(self):
-
         # setup
         g = self.create_group()
         pool = self.create_pool()

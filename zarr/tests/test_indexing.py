@@ -17,7 +17,6 @@ from zarr.tests.util import CountingDict
 
 
 def test_normalize_integer_selection():
-
     assert 1 == normalize_integer_selection(1, 100)
     assert 99 == normalize_integer_selection(-1, 100)
     with pytest.raises(IndexError):
@@ -29,7 +28,6 @@ def test_normalize_integer_selection():
 
 
 def test_replace_ellipsis():
-
     # 1D, single item
     assert (0,) == replace_ellipsis(0, (100,))
 
@@ -68,7 +66,6 @@ def test_replace_ellipsis():
 
 
 def test_get_basic_selection_0d():
-
     # setup
     a = np.array(42)
     z = zarr.create(shape=a.shape, dtype=a.dtype, fill_value=None)
@@ -191,7 +188,6 @@ def _test_get_basic_selection(a, z, selection):
 
 # noinspection PyStatementEffect
 def test_get_basic_selection_1d():
-
     # setup
     a = np.arange(1050, dtype=int)
     z = zarr.create(shape=a.shape, chunks=100, dtype=a.dtype)
@@ -264,7 +260,6 @@ basic_selections_2d_bad = [
 
 # noinspection PyStatementEffect
 def test_get_basic_selection_2d():
-
     # setup
     a = np.arange(10000, dtype=int).reshape(1000, 10)
     z = zarr.create(shape=a.shape, chunks=(300, 3), dtype=a.dtype)
@@ -423,7 +418,6 @@ def test_fancy_indexing_doesnt_mix_with_implicit_slicing():
 
 
 def test_set_basic_selection_0d():
-
     # setup
     v = np.array(42)
     a = np.zeros_like(v)
@@ -479,7 +473,6 @@ def _test_get_orthogonal_selection(a, z, selection):
 
 # noinspection PyStatementEffect
 def test_get_orthogonal_selection_1d_bool():
-
     # setup
     a = np.arange(1050, dtype=int)
     z = zarr.create(shape=a.shape, chunks=100, dtype=a.dtype)
@@ -502,7 +495,6 @@ def test_get_orthogonal_selection_1d_bool():
 
 # noinspection PyStatementEffect
 def test_get_orthogonal_selection_1d_int():
-
     # setup
     a = np.arange(1050, dtype=int)
     z = zarr.create(shape=a.shape, chunks=100, dtype=a.dtype)
@@ -561,7 +553,6 @@ def _test_get_orthogonal_selection_2d(a, z, ix0, ix1):
 
 # noinspection PyStatementEffect
 def test_get_orthogonal_selection_2d():
-
     # setup
     a = np.arange(10000, dtype=int).reshape(1000, 10)
     z = zarr.create(shape=a.shape, chunks=(300, 3), dtype=a.dtype)
@@ -570,7 +561,6 @@ def test_get_orthogonal_selection_2d():
     np.random.seed(42)
     # test with different degrees of sparseness
     for p in 0.5, 0.1, 0.01:
-
         # boolean arrays
         ix0 = np.random.binomial(1, p, size=a.shape[0]).astype(bool)
         ix1 = np.random.binomial(1, 0.5, size=a.shape[1]).astype(bool)
@@ -641,7 +631,6 @@ def _test_get_orthogonal_selection_3d(a, z, ix0, ix1, ix2):
 
 
 def test_get_orthogonal_selection_3d():
-
     # setup
     a = np.arange(100000, dtype=int).reshape(200, 50, 10)
     z = zarr.create(shape=a.shape, chunks=(60, 20, 3), dtype=a.dtype)
@@ -650,7 +639,6 @@ def test_get_orthogonal_selection_3d():
     np.random.seed(42)
     # test with different degrees of sparseness
     for p in 0.5, 0.1, 0.01:
-
         # boolean arrays
         ix0 = np.random.binomial(1, p, size=a.shape[0]).astype(bool)
         ix1 = np.random.binomial(1, 0.5, size=a.shape[1]).astype(bool)
@@ -673,7 +661,6 @@ def test_get_orthogonal_selection_3d():
 
 
 def test_orthogonal_indexing_edge_cases():
-
     a = np.arange(6).reshape(1, 2, 3)
     z = zarr.create(shape=a.shape, chunks=(1, 2, 3), dtype=a.dtype)
     z[:] = a
@@ -706,7 +693,6 @@ def _test_set_orthogonal_selection(v, a, z, selection):
 
 
 def test_set_orthogonal_selection_1d():
-
     # setup
     v = np.arange(1050, dtype=int)
     a = np.empty(v.shape, dtype=int)
@@ -715,7 +701,6 @@ def test_set_orthogonal_selection_1d():
     # test with different degrees of sparseness
     np.random.seed(42)
     for p in 0.5, 0.1, 0.01:
-
         # boolean arrays
         ix = np.random.binomial(1, p, size=a.shape[0]).astype(bool)
         _test_set_orthogonal_selection(v, a, z, ix)
@@ -734,7 +719,6 @@ def test_set_orthogonal_selection_1d():
 
 
 def _test_set_orthogonal_selection_2d(v, a, z, ix0, ix1):
-
     selections = [
         # index both axes with array
         (ix0, ix1),
@@ -749,7 +733,6 @@ def _test_set_orthogonal_selection_2d(v, a, z, ix0, ix1):
 
 
 def test_set_orthogonal_selection_2d():
-
     # setup
     v = np.arange(10000, dtype=int).reshape(1000, 10)
     a = np.empty_like(v)
@@ -758,7 +741,6 @@ def test_set_orthogonal_selection_2d():
     np.random.seed(42)
     # test with different degrees of sparseness
     for p in 0.5, 0.1, 0.01:
-
         # boolean arrays
         ix0 = np.random.binomial(1, p, size=a.shape[0]).astype(bool)
         ix1 = np.random.binomial(1, 0.5, size=a.shape[1]).astype(bool)
@@ -780,7 +762,6 @@ def test_set_orthogonal_selection_2d():
 
 
 def _test_set_orthogonal_selection_3d(v, a, z, ix0, ix1, ix2):
-
     selections = (
         # single value
         (84, 42, 4),
@@ -807,7 +788,6 @@ def _test_set_orthogonal_selection_3d(v, a, z, ix0, ix1, ix2):
 
 
 def test_set_orthogonal_selection_3d():
-
     # setup
     v = np.arange(100000, dtype=int).reshape(200, 50, 10)
     a = np.empty_like(v)
@@ -816,7 +796,6 @@ def test_set_orthogonal_selection_3d():
     np.random.seed(42)
     # test with different degrees of sparseness
     for p in 0.5, 0.1, 0.01:
-
         # boolean arrays
         ix0 = np.random.binomial(1, p, size=a.shape[0]).astype(bool)
         ix1 = np.random.binomial(1, 0.5, size=a.shape[1]).astype(bool)
@@ -888,7 +867,6 @@ coordinate_selections_1d_bad = [
 
 # noinspection PyStatementEffect
 def test_get_coordinate_selection_1d():
-
     # setup
     a = np.arange(1050, dtype=int)
     z = zarr.create(shape=a.shape, chunks=100, dtype=a.dtype)
@@ -932,7 +910,6 @@ def test_get_coordinate_selection_1d():
 
 
 def test_get_coordinate_selection_2d():
-
     # setup
     a = np.arange(10000, dtype=int).reshape(1000, 10)
     z = zarr.create(shape=a.shape, chunks=(300, 3), dtype=a.dtype)
@@ -1027,7 +1004,6 @@ def test_set_coordinate_selection_1d():
 
 
 def test_set_coordinate_selection_2d():
-
     # setup
     v = np.arange(10000, dtype=int).reshape(1000, 10)
     a = np.empty_like(v)
@@ -1258,7 +1234,6 @@ mask_selections_1d_bad = [
 
 # noinspection PyStatementEffect
 def test_get_mask_selection_1d():
-
     # setup
     a = np.arange(1050, dtype=int)
     z = zarr.create(shape=a.shape, chunks=100, dtype=a.dtype)
@@ -1285,7 +1260,6 @@ def test_get_mask_selection_1d():
 
 # noinspection PyStatementEffect
 def test_get_mask_selection_2d():
-
     # setup
     a = np.arange(10000, dtype=int).reshape(1000, 10)
     z = zarr.create(shape=a.shape, chunks=(300, 3), dtype=a.dtype)
@@ -1318,7 +1292,6 @@ def _test_set_mask_selection(v, a, z, selection):
 
 
 def test_set_mask_selection_1d():
-
     # setup
     v = np.arange(1050, dtype=int)
     a = np.empty_like(v)
@@ -1338,7 +1311,6 @@ def test_set_mask_selection_1d():
 
 
 def test_set_mask_selection_2d():
-
     # setup
     v = np.arange(10000, dtype=int).reshape(1000, 10)
     a = np.empty_like(v)
@@ -1352,7 +1324,6 @@ def test_set_mask_selection_2d():
 
 
 def test_get_selection_out():
-
     # basic selections
     a = np.arange(1050)
     z = zarr.create(shape=1050, chunks=100, dtype=a.dtype)
@@ -1426,7 +1397,6 @@ def test_get_selection_out():
 
 
 def test_get_selections_with_fields():
-
     a = [("aaa", 1, 4.2), ("bbb", 2, 8.4), ("ccc", 3, 12.6)]
     a = np.array(a, dtype=[("foo", "S3"), ("bar", "i4"), ("baz", "f8")])
     z = zarr.create(shape=a.shape, chunks=2, dtype=a.dtype, fill_value=None)
@@ -1444,7 +1414,6 @@ def test_get_selections_with_fields():
     ]
 
     for fields in fields_fixture:
-
         # total selection
         expect = a[fields]
         actual = z.get_basic_selection(Ellipsis, fields=fields)
@@ -1534,7 +1503,6 @@ def test_get_selections_with_fields():
 
 
 def test_set_selections_with_fields():
-
     v = [("aaa", 1, 4.2), ("bbb", 2, 8.4), ("ccc", 3, 12.6)]
     v = np.array(v, dtype=[("foo", "S3"), ("bar", "i4"), ("baz", "f8")])
     a = np.empty_like(v)
@@ -1553,7 +1521,6 @@ def test_set_selections_with_fields():
     ]
 
     for fields in fields_fixture:
-
         # currently multi-field assignment is not supported in numpy, so we won't support
         # it either
         if isinstance(fields, list) and len(fields) > 1:
@@ -1567,7 +1534,6 @@ def test_set_selections_with_fields():
                 z.set_mask_selection([True, False, True], v, fields=fields)
 
         else:
-
             if isinstance(fields, list) and len(fields) == 1:
                 # work around numpy does not support multi-field assignment even if there
                 # is only one field
@@ -1752,7 +1718,6 @@ def test_accessed_chunks(shape, chunks, ops):
     z = zarr.create(shape=shape, chunks=chunks, store=store)
 
     for ii, (optype, slices) in enumerate(ops):
-
         # Resolve the slices into the accessed chunks for each dimension
         chunks_per_dim = []
         for N, C, sl in zip(shape, chunks, slices):
