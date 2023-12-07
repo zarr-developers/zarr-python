@@ -28,6 +28,7 @@ import warnings
 import zipfile
 from collections import OrderedDict
 from collections.abc import MutableMapping
+from functools import lru_cache
 from os import scandir
 from pickle import PicklingError
 from threading import Lock, RLock
@@ -1540,6 +1541,7 @@ class FSStore(Store):
         self.map.clear()
 
     @classmethod
+    @lru_cache(maxsize=None)
     def _fsspec_installed(cls):
         """Returns true if fsspec is installed"""
         import importlib.util
