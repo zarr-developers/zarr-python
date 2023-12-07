@@ -7,7 +7,6 @@ from zarr.util import InfoReporter
 
 @pytest.mark.parametrize("array_size", [10, 15000])
 def test_info(array_size):
-
     # setup
     g = zarr.group(store=dict(), chunk_store=dict(), synchronizer=zarr.ThreadSynchronizer())
     g.create_group("foo")
