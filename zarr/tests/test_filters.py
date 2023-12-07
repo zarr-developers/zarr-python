@@ -30,7 +30,6 @@ else:
 
 
 def test_array_with_delta_filter():
-
     # setup
     astype = "u1"
     dtype = "i8"
@@ -38,7 +37,6 @@ def test_array_with_delta_filter():
     data = np.arange(100, dtype=dtype)
 
     for compressor in compressors:
-
         a = array(data, chunks=10, compressor=compressor, filters=filters)
 
         # check round-trip
@@ -57,7 +55,6 @@ def test_array_with_delta_filter():
 
 
 def test_array_with_astype_filter():
-
     # setup
     encode_dtype = "i1"
     decode_dtype = "i8"
@@ -68,7 +65,6 @@ def test_array_with_astype_filter():
     data = np.arange(shape, dtype=decode_dtype)
 
     for compressor in compressors:
-
         a = array(data, chunks=chunks, compressor=compressor, filters=filters)
 
         # check round-trip
@@ -88,7 +84,6 @@ def test_array_with_astype_filter():
 
 
 def test_array_with_scaleoffset_filter():
-
     # setup
     astype = "u1"
     dtype = "f8"
@@ -97,7 +92,6 @@ def test_array_with_scaleoffset_filter():
     data = np.linspace(1000, 1001, 34, dtype="f8")
 
     for compressor in compressors:
-
         a = array(data, chunks=5, compressor=compressor, filters=filters)
 
         # check round-trip
@@ -116,7 +110,6 @@ def test_array_with_scaleoffset_filter():
 
 
 def test_array_with_quantize_filter():
-
     # setup
     dtype = "f8"
     digits = 3
@@ -125,7 +118,6 @@ def test_array_with_quantize_filter():
     data = np.linspace(0, 1, 34, dtype=dtype)
 
     for compressor in compressors:
-
         a = array(data, chunks=5, compressor=compressor, filters=filters)
 
         # check round-trip
@@ -144,14 +136,12 @@ def test_array_with_quantize_filter():
 
 
 def test_array_with_packbits_filter():
-
     # setup
     flt = PackBits()
     filters = [flt]
     data = np.random.randint(0, 2, size=100, dtype=bool)
 
     for compressor in compressors:
-
         a = array(data, chunks=5, compressor=compressor, filters=filters)
 
         # check round-trip
@@ -170,14 +160,12 @@ def test_array_with_packbits_filter():
 
 
 def test_array_with_categorize_filter():
-
     # setup
     data = np.random.choice(["foo", "bar", "baz"], size=100)
     flt = Categorize(dtype=data.dtype, labels=["foo", "bar", "baz"])
     filters = [flt]
 
     for compressor in compressors:
-
         a = array(data, chunks=5, compressor=compressor, filters=filters)
 
         # check round-trip
