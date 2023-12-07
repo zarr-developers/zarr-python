@@ -1719,17 +1719,15 @@ def test_accessed_chunks(shape, chunks, ops):
 
     for ii, (optype, slices) in enumerate(ops):
         # Resolve the slices into the accessed chunks for each dimension
-        chunks_per_dim = []
-        for N, C, sl in zip(shape, chunks, slices):
-            chunk_ind = np.arange(N, dtype=int)[sl] // C
-            chunks_per_dim.append(np.unique(chunk_ind))
+        chunks_per_dim = [
+            np.unique(np.arange(N, dtype=int)[sl] // C) for N, C, sl in zip(shape, chunks, slices)
+        ]
 
         # Combine and generate the cartesian product to determine the chunks keys that
         # will be accessed
-        chunks_accessed = []
-        for comb in itertools.product(*chunks_per_dim):
-            chunks_accessed.append(".".join([str(ci) for ci in comb]))
-
+        chunks_accessed = (
+            ".".join([str(ci) for ci in comb]) for comb in itertools.product(*chunks_per_dim)
+        )
         counts_before = store.counter.copy()
 
         # Perform the operation
