@@ -8,6 +8,7 @@ import pytest
 from numpy.testing import assert_array_equal
 
 from zarr._storage.store import DEFAULT_ZARR_VERSION
+from zarr._storage.v3_storage_transformers import DummyStorageTransfomer
 from zarr.codecs import Zlib
 from zarr.core import Array
 from zarr.creation import (
@@ -30,7 +31,6 @@ from zarr.storage import DirectoryStore, KVStore
 from zarr._storage.store import v3_api_available
 from zarr._storage.v3 import DirectoryStoreV3, KVStoreV3
 from zarr.sync import ThreadSynchronizer
-from zarr.tests.test_storage_v3 import DummyStorageTransfomer
 from zarr.tests.util import mktemp, have_fsspec
 
 
