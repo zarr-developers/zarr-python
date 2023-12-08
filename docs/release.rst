@@ -18,6 +18,12 @@ Release notes
 Unreleased
 ----------
 
+Enhancements
+~~~~~~~~~~~~
+
+* Added type hints to ``zarr.creation.create()``.
+  By :user:`David Stansby <dstansby>` :issue:`1536`.
+
 Docs
 ~~~~
 
