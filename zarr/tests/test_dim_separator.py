@@ -7,7 +7,7 @@ from functools import partial
 import zarr
 from zarr.core import Array
 from zarr.storage import DirectoryStore, NestedDirectoryStore, FSStore
-from zarr.tests.util import have_fsspec
+from .util import have_fsspec
 
 
 needs_fsspec = pytest.mark.skipif(not have_fsspec, reason="needs fsspec")

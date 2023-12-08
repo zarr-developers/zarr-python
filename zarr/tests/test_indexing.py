@@ -13,7 +13,7 @@ from zarr.indexing import (
     PartialChunkIterator,
 )
 
-from zarr.tests.util import CountingDict
+from .util import CountingDict
 
 
 def test_normalize_integer_selection():

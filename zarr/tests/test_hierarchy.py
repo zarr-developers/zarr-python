@@ -57,7 +57,7 @@ from zarr._storage.v3 import (
     LRUStoreCacheV3,
 )
 from zarr.util import InfoReporter, buffer_size
-from zarr.tests.util import skip_test_env_var, have_fsspec, abs_container, mktemp
+from .util import skip_test_env_var, have_fsspec, abs_container, mktemp
 
 
 _VERSIONS = (2, 3) if v3_api_available else (2,)

@@ -76,7 +76,7 @@ from zarr._storage.v3 import (
 )
 
 from zarr.util import buffer_size
-from zarr.tests.util import abs_container, skip_test_env_var, have_fsspec, mktemp
+from .util import abs_container, skip_test_env_var, have_fsspec, mktemp
 
 # noinspection PyMethodMayBeStatic
 
