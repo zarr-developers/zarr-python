@@ -94,9 +94,7 @@ class ArrayMetadata:
         return json.dumps(
             asdict(
                 self,
-                filter=lambda attr, value: not attr.name.startswith("_")
-                or attr.name != "dimension_names"
-                or value is not None,
+                filter=lambda attr, value: attr.name != "dimension_names" or value is not None,
             ),
             default=_json_convert,
         ).encode()
