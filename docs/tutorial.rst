@@ -480,17 +480,17 @@ Indexing with coordinate arrays
 Items from a Zarr array can be extracted by providing an integer array of
 coordinates. E.g.::
 
-    >>> z = zarr.array(np.arange(10))
+    >>> z = zarr.array(np.arange(10) ** 2)
     >>> z[:]
-    array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
-    >>> z.get_coordinate_selection([1, 4])
-    array([1, 4])
+    array([ 0,  1,  4,  9, 16, 25, 36, 49, 64, 81])
+    >>> z.get_coordinate_selection([2, 5])
+    array([ 4, 25])
 
 Coordinate arrays can also be used to update data, e.g.::
 
-    >>> z.set_coordinate_selection([1, 4], [-1, -2])
+    >>> z.set_coordinate_selection([2, 5], [-1, -2])
     >>> z[:]
-    array([ 0, -1,  2,  3, -2,  5,  6,  7,  8,  9])
+    array([ 0,  1, -1,  9, 16, -2, 36, 49, 64, 81])
 
 For multidimensional arrays, coordinates must be provided for each dimension,
 e.g.::
@@ -534,17 +534,17 @@ Indexing with a mask array
 
 Items can also be extracted by providing a Boolean mask. E.g.::
 
-    >>> z = zarr.array(np.arange(10))
+    >>> z = zarr.array(np.arange(10) ** 2)
     >>> z[:]
-    array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
+    array([ 0,  1,  4,  9, 16, 25, 36, 49, 64, 81])
     >>> sel = np.zeros_like(z, dtype=bool)
-    >>> sel[1] = True
-    >>> sel[4] = True
+    >>> sel[2] = True
+    >>> sel[5] = True
     >>> z.get_mask_selection(sel)
-    array([1, 4])
+    array([ 4, 25])
     >>> z.set_mask_selection(sel, [-1, -2])
     >>> z[:]
-    array([ 0, -1,  2,  3, -2,  5,  6,  7,  8,  9])
+    array([ 0,  1, -1,  9, 16, -2, 36, 49, 64, 81])
 
 Here's a multidimensional example::
 
@@ -986,7 +986,7 @@ It is also possible to initialize the filesystem outside of Zarr and then pass
 it through. This requires creating an :class:`zarr.storage.FSStore` object
 explicitly. For example::
 
-    >>> import s3fs  * doctest: +SKIP
+    >>> import s3fs  # doctest: +SKIP
     >>> fs = s3fs.S3FileSystem(anon=True)  # doctest: +SKIP
     >>> store = zarr.storage.FSStore('/zarr-demo/store', fs=fs)  # doctest: +SKIP
     >>> g = zarr.open_group(store)  # doctest: +SKIP

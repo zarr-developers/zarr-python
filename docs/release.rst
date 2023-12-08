@@ -27,14 +27,33 @@ Enhancements
 Docs
 ~~~~
 
+* Minor correction and changes in documentation.
+  By :user:`Sanket Verma <MSanKeys963>` :issue:`1509`.
+
+* Fix typo in documentation.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1554`
+
 * The documentation build now fails if there are any warnings.
   By :user:`David Stansby <dstansby>` :issue:`1548`.
 
 * Add links to ``numcodecs`` docs in the tutorial.
   By :user:`David Stansby <dstansby>` :issue:`1535`.
 
+* Enable offline formats for documentation builds.
+  By :user:`Sanket Verma <MSanKeys963>` :issue:`1551`.
+
+* Minor tweak to advanced indexing tutorial examples.
+  By :user:`Ross Barnowski <rossbar>` :issue:`1550`.
+
+
 Maintenance
 ~~~~~~~~~~~
+
+* Cache result of ``FSStore._fsspec_installed()``.
+  By :user:`Janick Martinez Esturo <ph03>` :issue:`1581`.
+
+* Extend copyright notice to 2023.
+  By :user:`Jack Kelly <JackKelly>` :issue:`1528`.
 
 * Change occurrence of ``io.open()`` into ``open()``.
   By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1421`.
@@ -48,6 +67,8 @@ Maintenance
 * Allow ``black`` code formatter to be run with any Python version.
   By :user:`David Stansby <dstansby>` :issue:`1549`.
 
+* Remove ``sphinx-rtd-theme`` dependency from ``pyproject.toml``.
+  By :user:`Sanket Verma <MSanKeys963>` :issue:`1563`.
 
 
 .. _release_2.16.1:

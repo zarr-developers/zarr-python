@@ -240,7 +240,6 @@ def create(
 
 
 def _kwargs_compat(compressor, fill_value, kwargs):
-
     # to be compatible with h5py, as well as backwards-compatible with Zarr
     # 1.x, accept 'compression' and 'compression_opts' keyword arguments
 
@@ -703,7 +702,6 @@ def open_array(
 
 
 def _like_args(a, kwargs):
-
     shape, chunks = _get_shape_chunks(a)
     if shape is not None:
         kwargs.setdefault("shape", shape)
