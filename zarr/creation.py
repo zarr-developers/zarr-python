@@ -30,7 +30,7 @@ from zarr.util import normalize_dimension_separator
 
 def create(
     shape: Union[int, Tuple[int, ...]],
-    chunks: bool = True,
+    chunks: Union[int, Tuple[int, ...], bool] = True,
     dtype: Optional[npt.DTypeLike] = None,
     compressor="default",
     fill_value: Optional[int] = 0,
