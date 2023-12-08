@@ -61,16 +61,10 @@ class ZstdCodec(BytesBytesCodec):
         ctx = ZstdDecompressor()
         return ctx.decompress(data)
 
-    async def decode(
-        self,
-        chunk_bytes: bytes,
-    ) -> BytesLike:
+    async def decode(self, chunk_bytes: bytes, config: RuntimeConfiguration) -> BytesLike:
         return await to_thread(self._decompress, chunk_bytes)
 
-    async def encode(
-        self,
-        chunk_bytes: bytes,
-    ) -> Optional[BytesLike]:
+    async def encode(self, chunk_bytes: bytes, config: RuntimeConfiguration) -> Optional[BytesLike]:
         return await to_thread(self._compress, chunk_bytes)
 
     def compute_encoded_size(self, _input_byte_length: int) -> int:

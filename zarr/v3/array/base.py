@@ -108,7 +108,6 @@ class ChunkMetadata:
     # data_type: DataType
     dtype: np.dtype
     fill_value: Any
-    runtime_configuration: RuntimeConfiguration
 
     @property
     def ndim(self) -> int:

@@ -14,6 +14,7 @@ from attr import asdict, evolve, frozen, field
 from numcodecs.blosc import Blosc
 
 from zarr.v3.abc.codec import BytesBytesCodec
+from zarr.v3.array.base import RuntimeConfiguration
 from zarr.v3.codecs.registry import register_codec
 from zarr.v3.common import BytesLike, to_thread
 from zarr.v3.metadata import CodecMetadata
@@ -79,16 +80,10 @@ class BloscCodec(BytesBytesCodec):
     def get_metadata_class(cls) -> Type[BloscCodecMetadata]:
         return BloscCodecMetadata
 
-    async def decode(
-        self,
-        chunk_bytes: bytes,
-    ) -> BytesLike:
+    async def decode(self, chunk_bytes: bytes, config: RuntimeConfiguration) -> BytesLike:
         return await to_thread(self.blosc_codec.decode, chunk_bytes)
 
-    async def encode(
-        self,
-        chunk_bytes: bytes,
-    ) -> Optional[BytesLike]:
+    async def encode(self, chunk_bytes: bytes, config: RuntimeConfiguration) -> Optional[BytesLike]:
         chunk_array = np.frombuffer(chunk_bytes, dtype=self.array_metadata.dtype)
         return await to_thread(self.blosc_codec.encode, chunk_array)
 

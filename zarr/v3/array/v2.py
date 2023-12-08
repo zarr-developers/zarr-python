@@ -32,10 +32,6 @@ from zarr.v3.metadata import (
     V2ChunkKeyEncodingMetadata,
 )
 
-""" from zarr.v3.array.chunk import (
-    DefaultChunkKeyEncodingConfigurationMetadata,
-    DefaultChunkKeyEncodingMetadata,
-) """
 from zarr.v3.store import StoreLike, StorePath, make_store_path
 from zarr.v3.sync import sync
 
@@ -74,7 +70,7 @@ class ArrayMetadata:
     dimension_separator: Literal[".", "/"] = "."
     compressor: Optional[Dict[str, Any]] = None
     zarr_format: Literal[2] = 2
-    attributes: Optional[Dict[str, Any]] = {}
+    attributes: Dict[str, Any] = {}
 
     @property
     def ndim(self) -> int:
@@ -339,7 +335,6 @@ class Array:
                 chunk_shape=self.metadata.chunks,
                 dtype=self.metadata.dtype,
                 fill_value=self.metadata.fill_value,
-                runtime_configuration=self.runtime_configuration,
             ),
         )
 
@@ -383,7 +378,6 @@ class Array:
                 chunk_shape=self.metadata.chunks,
                 dtype=self.metadata.dtype,
                 fill_value=self.metadata.fill_value,
-                runtime_configuration=self.runtime_configuration,
             ),
         )
 

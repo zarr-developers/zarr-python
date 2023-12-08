@@ -28,6 +28,8 @@ BytesLike = Union[bytes, bytearray, memoryview]
 ChunkCoords = Tuple[int, ...]
 SliceSelection = Tuple[slice, ...]
 Selection = Union[slice, SliceSelection]
+AttributeItem = Union[Dict[str, "AttributeItem"], List["AttributeItem"], str, int, float, bool]
+Attributes = Dict[str, AttributeItem]
 
 
 def make_cattr():

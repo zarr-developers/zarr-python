@@ -12,6 +12,7 @@ import numpy as np
 from attr import frozen, field
 
 from zarr.v3.abc.codec import ArrayArrayCodec
+from zarr.v3.array.base import RuntimeConfiguration
 from zarr.v3.codecs.registry import register_codec
 from zarr.v3.metadata import CodecMetadata
 
@@ -88,13 +89,9 @@ class TransposeCodec(ArrayArrayCodec):
             ),
             dtype=self.array_metadata.dtype,
             fill_value=self.array_metadata.fill_value,
-            runtime_configuration=self.array_metadata.runtime_configuration,
         )
 
-    async def decode(
-        self,
-        chunk_array: np.ndarray,
-    ) -> np.ndarray:
+    async def decode(self, chunk_array: np.ndarray, config: RuntimeConfiguration) -> np.ndarray:
         inverse_order = [0 for _ in range(self.array_metadata.ndim)]
         for x, i in enumerate(self.order):
             inverse_order[x] = i
@@ -102,8 +99,7 @@ class TransposeCodec(ArrayArrayCodec):
         return chunk_array
 
     async def encode(
-        self,
-        chunk_array: np.ndarray,
+        self, chunk_array: np.ndarray, config: RuntimeConfiguration
     ) -> Optional[np.ndarray]:
         chunk_array = chunk_array.transpose(self.order)
         return chunk_array

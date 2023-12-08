@@ -5,6 +5,7 @@ from typing import Any, Dict, Literal, Tuple, Union
 import numpy as np
 
 from zarr.v3.common import ChunkCoords
+from zarr.v3.metadata import DefaultChunkKeyEncodingMetadata, RegularChunkGridMetadata
 
 # todo: parametrize by chunks
 @pytest.mark.parametrize("zarr_version", ("2", "3"))
@@ -73,3 +74,43 @@ def test_array(
 
     # partial write
     arr[slice(0, 1)] = data[slice(0, 1)]
+
+
+@pytest.mark.parametrize("zarr_format", (2, 3))
+def test_init_format(zarr_format: Literal[2, 3]):
+    dtype = "uint8"
+    shape = (10,)
+    if zarr_format == 2:
+        with pytest.raises(ValueError):
+            arr = v2.ArrayMetadata(shape=shape, dtype=dtype, chunks=shape, zarr_format=3)
+    else:
+        with pytest.raises(ValueError):
+            arr = v3.ArrayMetadata(
+                shape=shape,
+                data_type=dtype,
+                codecs=[],
+                chunk_grid=RegularChunkGridMetadata(configuration={"chunk_shape": shape}),
+                fill_value=0,
+                chunk_key_encoding=DefaultChunkKeyEncodingMetadata(),
+                zarr_format=2,
+            )
+
+
+@pytest.mark.parametrize("zarr_format", ("2", "3"))
+def test_init_node_type(zarr_format: Literal["2", "3"]):
+    dtype = "uint8"
+    shape = (10,)
+    if zarr_format == 2:
+        with pytest.raises(ValueError):
+            arr = v2.ArrayMetadata(shape=shape, dtype=dtype, chunks=shape, node_type="group")
+    else:
+        with pytest.raises(ValueError):
+            arr = v3.ArrayMetadata(
+                shape=shape,
+                data_type=dtype,
+                codecs=[],
+                chunk_grid=RegularChunkGridMetadata(configuration={"chunk_shape": shape}),
+                fill_value=0,
+                chunk_key_encoding=DefaultChunkKeyEncodingMetadata(),
+                node_type="group",
+            )

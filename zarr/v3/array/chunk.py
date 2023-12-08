@@ -2,6 +2,7 @@ from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 from attr import frozen
 from zarr.util import is_total_slice
+from zarr.v3.array.base import RuntimeConfiguration
 from zarr.v3.common import BytesLike, ChunkCoords, SliceSelection, to_thread
 import numpy as np
 import numcodecs
@@ -79,6 +80,7 @@ async def write_chunk(
     chunk_selection: SliceSelection,
     out_selection: SliceSelection,
     fill_value: Any,
+    config: RuntimeConfiguration,
 ):
     chunk_key_encoding = chunk_key_encoding
     chunk_key = chunk_key_encoding.encode_chunk_key(chunk_coords)
@@ -99,6 +101,7 @@ async def write_chunk(
             chunk_array=chunk_array,
             codec_pipeline=codec_pipeline,
             fill_value=fill_value,
+            config=config,
         )
 
     elif len(codec_pipeline.codecs) == 1 and isinstance(codec_pipeline.codecs[0], ShardingCodec):
@@ -108,6 +111,7 @@ async def write_chunk(
             store_path,
             value[out_selection],
             chunk_selection,
+            config=config,
         )
     else:
         # writing partial chunks
@@ -122,7 +126,9 @@ async def write_chunk(
             )
             chunk_array.fill(fill_value)
         else:
-            chunk_array = (await codec_pipeline.decode(chunk_bytes)).copy()  # make a writable copy
+            chunk_array = (
+                await codec_pipeline.decode(chunk_bytes, config=config)
+            ).copy()  # make a writable copy
         chunk_array[chunk_selection] = value[out_selection]
 
         await write_chunk_to_store(
@@ -130,17 +136,22 @@ async def write_chunk(
             chunk_array=chunk_array,
             fill_value=fill_value,
             codec_pipeline=codec_pipeline,
+            config=config,
         )
 
 
 async def write_chunk_to_store(
-    store_path: StorePath, chunk_array: np.ndarray, fill_value: Any, codec_pipeline: List[Any]
+    store_path: StorePath,
+    chunk_array: np.ndarray,
+    fill_value: Any,
+    codec_pipeline: List[Any],
+    config: RuntimeConfiguration,
 ):
     if np.all(chunk_array == fill_value):
         # chunks that only contain fill_value will be removed
         await store_path.delete_async()
     else:
-        chunk_bytes = await codec_pipeline.encode(chunk_array)
+        chunk_bytes = await codec_pipeline.encode(chunk_array, config)
         if chunk_bytes is None:
             await store_path.delete_async()
         else:
@@ -156,12 +167,15 @@ async def read_chunk(
     chunk_selection: SliceSelection,
     out_selection: SliceSelection,
     out: np.ndarray,
+    config: RuntimeConfiguration,
 ):
     chunk_key = chunk_key_encoding.encode_chunk_key(chunk_coords)
     store_path = store_path / chunk_key
 
     if len(codec_pipeline.codecs) == 1 and isinstance(codec_pipeline.codecs[0], ShardingCodec):
-        chunk_array = await codec_pipeline.codecs[0].decode_partial(store_path, chunk_selection)
+        chunk_array = await codec_pipeline.codecs[0].decode_partial(
+            store_path, chunk_selection, config=config
+        )
         if chunk_array is not None:
             out[out_selection] = chunk_array
         else:
@@ -169,7 +183,7 @@ async def read_chunk(
     else:
         chunk_bytes = await store_path.get_async()
         if chunk_bytes is not None:
-            chunk_array = await codec_pipeline.decode(chunk_bytes)
+            chunk_array = await codec_pipeline.decode(chunk_bytes, config=config)
             tmp = chunk_array[chunk_selection]
             out[out_selection] = tmp
         else:

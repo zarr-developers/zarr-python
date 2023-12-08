@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Optional, Type
 from typing import TYPE_CHECKING, Optional, Type
 
 import numpy as np
+from zarr.v3.array.base import RuntimeConfiguration
 
 from zarr.v3.common import BytesLike, SliceSelection
 from zarr.v3.store import StorePath
@@ -70,8 +71,7 @@ class ArrayBytesCodec(Codec):
 
     @abstractmethod
     async def encode(
-        self,
-        chunk_array: np.ndarray,
+        self, chunk_array: np.ndarray, config: RuntimeConfiguration
     ) -> Optional[BytesLike]:
         pass
 

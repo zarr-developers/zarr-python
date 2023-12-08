@@ -11,7 +11,7 @@ import numpy as np
 from attr import frozen, field
 
 from zarr.v3.abc.codec import ArrayBytesCodec
-from zarr.v3.array.base import to_numpy_shortname
+from zarr.v3.array.base import RuntimeConfiguration, to_numpy_shortname
 from zarr.v3.codecs.registry import register_codec
 from zarr.v3.common import BytesLike
 from zarr.v3.metadata import CodecMetadata
@@ -64,10 +64,7 @@ class BytesCodec(ArrayBytesCodec):
 
             return sys.byteorder
 
-    async def decode(
-        self,
-        chunk_bytes: BytesLike,
-    ) -> np.ndarray:
+    async def decode(self, chunk_bytes: BytesLike, config: RuntimeConfiguration) -> np.ndarray:
         short_name = to_numpy_shortname(self.array_metadata.dtype)
         if self.array_metadata.dtype.itemsize > 0:
             if self.configuration.endian == "little":
@@ -87,8 +84,7 @@ class BytesCodec(ArrayBytesCodec):
         return chunk_array
 
     async def encode(
-        self,
-        chunk_array: np.ndarray,
+        self, chunk_array: np.ndarray, config: RuntimeConfiguration
     ) -> Optional[BytesLike]:
         if chunk_array.dtype.itemsize > 1:
             byteorder = self._get_byteorder(chunk_array)

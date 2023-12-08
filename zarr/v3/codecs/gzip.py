@@ -11,6 +11,7 @@ from attr import frozen, field
 from numcodecs.gzip import GZip
 
 from zarr.v3.abc.codec import BytesBytesCodec
+from zarr.v3.array.base import RuntimeConfiguration
 from zarr.v3.codecs.registry import register_codec
 from zarr.v3.common import BytesLike, to_thread
 from zarr.v3.metadata import CodecMetadata
@@ -51,16 +52,10 @@ class GzipCodec(BytesBytesCodec):
     def get_metadata_class(cls) -> Type[GzipCodecMetadata]:
         return GzipCodecMetadata
 
-    async def decode(
-        self,
-        chunk_bytes: bytes,
-    ) -> BytesLike:
+    async def decode(self, chunk_bytes: bytes, config: RuntimeConfiguration) -> BytesLike:
         return await to_thread(GZip(self.configuration.level).decode, chunk_bytes)
 
-    async def encode(
-        self,
-        chunk_bytes: bytes,
-    ) -> Optional[BytesLike]:
+    async def encode(self, chunk_bytes: bytes, config: RuntimeConfiguration) -> Optional[BytesLike]:
         return await to_thread(GZip(self.configuration.level).encode, chunk_bytes)
 
     def compute_encoded_size(self, _input_byte_length: int) -> int:

@@ -12,6 +12,7 @@ from attr import frozen, field
 from crc32c import crc32c
 
 from zarr.v3.abc.codec import BytesBytesCodec
+from zarr.v3.array.base import RuntimeConfiguration
 from zarr.v3.codecs.registry import register_codec
 from zarr.v3.common import BytesLike
 from zarr.v3.metadata import CodecMetadata
@@ -41,20 +42,14 @@ class Crc32cCodec(BytesBytesCodec):
     def get_metadata_class(cls) -> Type[Crc32cCodecMetadata]:
         return Crc32cCodecMetadata
 
-    async def decode(
-        self,
-        chunk_bytes: bytes,
-    ) -> BytesLike:
+    async def decode(self, chunk_bytes: bytes, config: RuntimeConfiguration) -> BytesLike:
         crc32_bytes = chunk_bytes[-4:]
         inner_bytes = chunk_bytes[:-4]
 
         assert np.uint32(crc32c(inner_bytes)).tobytes() == bytes(crc32_bytes)
         return inner_bytes
 
-    async def encode(
-        self,
-        chunk_bytes: bytes,
-    ) -> Optional[BytesLike]:
+    async def encode(self, chunk_bytes: bytes, config: RuntimeConfiguration) -> Optional[BytesLike]:
         return chunk_bytes + np.uint32(crc32c(chunk_bytes)).tobytes()
 
     def compute_encoded_size(self, input_byte_length: int) -> int:

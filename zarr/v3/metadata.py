@@ -170,7 +170,7 @@ class ChunkMetadata:
     def ndim(self) -> int:
         return len(self.shape)
  """
-
+""" 
 
 @frozen
 class ArrayMetadata:
@@ -251,3 +251,4 @@ class ArrayV2Metadata:
     @classmethod
     def from_json(cls, zarr_json: Any) -> ArrayV2Metadata:
         return make_cattr().structure(zarr_json, cls)
+ """

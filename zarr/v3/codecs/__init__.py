@@ -16,6 +16,7 @@ import numpy as np
 from attr import frozen
 
 from zarr.v3.abc.codec import Codec, ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec
+from zarr.v3.array.base import RuntimeConfiguration
 from zarr.v3.common import BytesLike
 from zarr.v3.metadata import CodecMetadata, ShardingCodecIndexLocation
 from zarr.v3.codecs.registry import get_codec_class
@@ -119,31 +120,33 @@ class CodecPipeline:
     def _bytes_bytes_codecs(self) -> List[BytesBytesCodec]:
         return [codec for codec in self.codecs if isinstance(codec, BytesBytesCodec)]
 
-    async def decode(self, chunk_bytes: BytesLike) -> np.ndarray:
+    async def decode(self, chunk_bytes: BytesLike, config: RuntimeConfiguration) -> np.ndarray:
         for bb_codec in self._bytes_bytes_codecs()[::-1]:
-            chunk_bytes = await bb_codec.decode(chunk_bytes)
+            chunk_bytes = await bb_codec.decode(chunk_bytes, config=config)
 
-        chunk_array = await self._array_bytes_codec().decode(chunk_bytes)
+        chunk_array = await self._array_bytes_codec().decode(chunk_bytes, config)
 
         for aa_codec in self._array_array_codecs()[::-1]:
-            chunk_array = await aa_codec.decode(chunk_array)
+            chunk_array = await aa_codec.decode(chunk_array, config=config)
 
         return chunk_array
 
-    async def encode(self, chunk_array: np.ndarray) -> Optional[BytesLike]:
+    async def encode(
+        self, chunk_array: np.ndarray, config: RuntimeConfiguration
+    ) -> Optional[BytesLike]:
         for aa_codec in self._array_array_codecs():
-            chunk_array_maybe = await aa_codec.encode(chunk_array)
+            chunk_array_maybe = await aa_codec.encode(chunk_array, config=config)
             if chunk_array_maybe is None:
                 return None
             chunk_array = chunk_array_maybe
 
-        chunk_bytes_maybe = await self._array_bytes_codec().encode(chunk_array)
+        chunk_bytes_maybe = await self._array_bytes_codec().encode(chunk_array, config=config)
         if chunk_bytes_maybe is None:
             return None
         chunk_bytes = chunk_bytes_maybe
 
         for bb_codec in self._bytes_bytes_codecs():
-            chunk_bytes_maybe = await bb_codec.encode(chunk_bytes)
+            chunk_bytes_maybe = await bb_codec.encode(chunk_bytes, config)
             if chunk_bytes_maybe is None:
                 return None
             chunk_bytes = chunk_bytes_maybe

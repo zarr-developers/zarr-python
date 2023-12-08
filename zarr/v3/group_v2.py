@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any, Dict, Literal, Optional, Union
 from attr import asdict, evolve, frozen
 
 from zarr.v3.array.v2 import Array
-from zarr.v3.common import ZARRAY_JSON, ZATTRS_JSON, ZGROUP_JSON, make_cattr
+from zarr.v3.common import ZARRAY_JSON, ZATTRS_JSON, ZGROUP_JSON, Attributes, make_cattr
 from zarr.v3.array.base import RuntimeConfiguration
 from zarr.v3.store import StoreLike, StorePath, make_store_path
 from zarr.v3.sync import sync
@@ -33,7 +33,7 @@ class GroupV2:
     metadata: GroupV2Metadata
     store_path: StorePath
     runtime_configuration: RuntimeConfiguration
-    attributes: Optional[Dict[str, Any]] = None
+    attributes: Dict[str, Any] = None
 
     @classmethod
     async def create_async(

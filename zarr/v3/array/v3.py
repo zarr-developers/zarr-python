@@ -37,6 +37,7 @@ from zarr.v3.array.chunk import (
 from zarr.v3.codecs import CodecMetadata, CodecPipeline, bytes_codec
 from zarr.v3.common import (
     ZARR_JSON,
+    Attributes,
     ChunkCoords,
     Selection,
     SliceSelection,
@@ -52,9 +53,6 @@ from zarr.v3.array.base import (
 from zarr.v3.codecs.sharding import ShardingCodec
 from zarr.v3.store import StoreLike, StorePath, make_store_path
 from zarr.v3.sync import sync
-
-AttributeItem = Union[Dict[str, "AttributeItem"], List["AttributeItem"], str, int, float, bool]
-Attributes = Dict[str, AttributeItem]
 
 
 @frozen
@@ -80,7 +78,6 @@ class ArrayMetadata:
             chunk_shape=self.chunk_grid.configuration.chunk_shape,
             dtype=self.data_type,
             fill_value=self.fill_value,
-            runtime_configuration=runtime_configuration,
         )
 
     def to_bytes(self) -> bytes:
@@ -126,7 +123,7 @@ class AsyncArray(AsynchronousArray):
         ] = ("default", "/"),
         codecs: Optional[Iterable[CodecMetadata]] = None,
         dimension_names: Optional[Iterable[str]] = None,
-        attributes: Optional[Dict[str, Any]] = None,
+        attributes: Dict[str, Any] = None,
         runtime_configuration: RuntimeConfiguration = RuntimeConfiguration(),
         exists_ok: bool = False,
     ) -> AsyncArray:
@@ -287,6 +284,7 @@ class AsyncArray(AsynchronousArray):
                     chunk_selection,
                     out_selection,
                     out,
+                    self.runtime_configuration,
                 )
                 for chunk_coords, chunk_selection, out_selection in indexer
             ],
@@ -347,6 +345,7 @@ class AsyncArray(AsynchronousArray):
                     chunk_selection,
                     out_selection,
                     self.metadata.fill_value,
+                    self.runtime_configuration,
                 )
                 for chunk_coords, chunk_selection, out_selection in indexer
             ],

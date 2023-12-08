@@ -6,7 +6,7 @@ from typing import Any, Dict, Literal, Optional, Union
 from attr import asdict, evolve, field, frozen
 
 from zarr.v3.array.v3 import Array
-from zarr.v3.common import ZARR_JSON, make_cattr
+from zarr.v3.common import ZARR_JSON, Attributes, make_cattr
 from zarr.v3.array.base import RuntimeConfiguration
 from zarr.v3.store import StoreLike, StorePath, make_store_path
 from zarr.v3.sync import sync
@@ -14,7 +14,7 @@ from zarr.v3.sync import sync
 
 @frozen
 class GroupMetadata:
-    attributes: Dict[str, Any] = field(factory=dict)
+    attributes: Attributes = field(factory=dict)
     zarr_format: Literal[3] = 3
     node_type: Literal["group"] = "group"
 
