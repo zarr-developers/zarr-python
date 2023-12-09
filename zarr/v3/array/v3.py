@@ -72,7 +72,7 @@ class ArrayMetadata:
     def ndim(self) -> int:
         return len(self.shape)
 
-    def get_core_metadata(self, runtime_configuration: RuntimeConfiguration) -> ChunkMetadata:
+    def get_core_metadata(self) -> ChunkMetadata:
         return ChunkMetadata(
             array_shape=self.shape,
             chunk_shape=self.chunk_grid.configuration.chunk_shape,
@@ -179,7 +179,7 @@ class AsyncArray(AsynchronousArray):
             store_path=store_path,
             runtime_configuration=runtime_configuration,
             codec_pipeline=CodecPipeline.from_metadata(
-                metadata.codecs, metadata.get_core_metadata(runtime_configuration)
+                metadata.codecs, metadata.get_core_metadata()
             ),
         )
 
@@ -199,7 +199,7 @@ class AsyncArray(AsynchronousArray):
             store_path=store_path,
             runtime_configuration=runtime_configuration,
             codec_pipeline=CodecPipeline.from_metadata(
-                metadata.codecs, metadata.get_core_metadata(runtime_configuration)
+                metadata.codecs, metadata.get_core_metadata()
             ),
         )
         async_array._validate_metadata()

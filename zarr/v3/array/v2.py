@@ -347,6 +347,7 @@ class Array:
             codec_pipeline=codec_pipeline,
             out_selection=out_selection,
             out=out,
+            config=self.runtime_configuration,
         )
 
     def __setitem__(self, selection: Selection, value: np.ndarray) -> None:
@@ -405,6 +406,7 @@ class Array:
                     chunk_selection,
                     out_selection,
                     self.metadata.fill_value,
+                    self.runtime_configuration,
                 )
                 for chunk_coords, chunk_selection, out_selection in indexer
             ],
