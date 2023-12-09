@@ -99,6 +99,7 @@ class Array:
     runtime_configuration: RuntimeConfiguration
     attributes: Dict[str, Any]
     chunk_key_encoding: Any
+    codec_pipeline: CodecPipeline
 
     @classmethod
     async def create_async(
@@ -142,12 +143,33 @@ class Array:
             )
         )
 
+        if metadata.filters is None:
+            filters = []
+        else:
+            filters = metadata.filters
+
+        if metadata.compressor is None:
+            codecs = [bytes_codec()]
+        else:
+            codecs = [metadata.compressor] + filters
+
+        codec_pipeline = CodecPipeline.from_metadata(
+            codecs,
+            ChunkMetadata(
+                array_shape=metadata.shape,
+                chunk_shape=metadata.chunks,
+                dtype=metadata.dtype,
+                fill_value=metadata.fill_value,
+            ),
+        )
+
         array = cls(
             metadata=metadata,
             store_path=store_path,
             attributes=attributes,
             chunk_key_encoding=chunk_key_encoding,
             runtime_configuration=runtime_configuration,
+            codec_pipeline=codec_pipeline,
         )
         await array._save_metadata()
         return array
@@ -318,33 +340,13 @@ class Array:
         out: np.ndarray,
     ):
 
-        if self.metadata.filters is None:
-            filters = []
-        else:
-            filters = self.metadata.filters
-
-        if self.metadata.compressor is None:
-            codecs = [bytes_codec()]
-        else:
-            codecs = [self.metadata.compressor] + filters
-
-        codec_pipeline = CodecPipeline.from_metadata(
-            codecs,
-            ChunkMetadata(
-                array_shape=self.metadata.shape,
-                chunk_shape=self.metadata.chunks,
-                dtype=self.metadata.dtype,
-                fill_value=self.metadata.fill_value,
-            ),
-        )
-
         await read_chunk(
             chunk_key_encoding=self.chunk_key_encoding,
             fill_value=self.metadata.fill_value,
             store_path=self.store_path,
             chunk_coords=chunk_coords,
             chunk_selection=chunk_selection,
-            codec_pipeline=codec_pipeline,
+            codec_pipeline=self.codec_pipeline,
             out_selection=out_selection,
             out=out,
             config=self.runtime_configuration,
@@ -361,26 +363,6 @@ class Array:
             chunk_shape=chunk_shape,
         )
         sel_shape = indexer.shape
-
-        if self.metadata.filters is None:
-            filters = []
-        else:
-            filters = self.metadata.filters
-
-        if self.metadata.compressor is None:
-            codecs = [bytes_codec()]
-        else:
-            codecs = [self.metadata.compressor] + filters
-
-        codec_pipeline = CodecPipeline.from_metadata(
-            codecs,
-            ChunkMetadata(
-                array_shape=self.metadata.shape,
-                chunk_shape=self.metadata.chunks,
-                dtype=self.metadata.dtype,
-                fill_value=self.metadata.fill_value,
-            ),
-        )
 
         # check value shape
         if np.isscalar(value):
@@ -399,7 +381,7 @@ class Array:
                 (
                     self.chunk_key_encoding,
                     self.store_path,
-                    codec_pipeline,
+                    self.codec_pipeline,
                     value,
                     chunk_shape,
                     chunk_coords,
