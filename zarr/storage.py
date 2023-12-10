@@ -40,6 +40,7 @@ from numcodecs.abc import Codec
 from numcodecs.compat import ensure_bytes, ensure_text, ensure_contiguous_ndarray_like
 from numcodecs.registry import codec_registry
 from zarr.context import Context
+from zarr.types import PathLike as Path
 
 from zarr.errors import (
     MetadataError,
@@ -105,7 +106,6 @@ except ImportError:  # pragma: no cover
     default_compressor = Zlib()
 
 
-Path = Union[str, bytes, None]
 # allow MutableMapping for backwards compatibility
 StoreLike = Union[BaseStore, MutableMapping]
 

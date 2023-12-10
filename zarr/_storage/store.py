@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, Union
 from zarr.meta import Metadata2, Metadata3
 from zarr.util import normalize_storage_path
 from zarr.context import Context
+from zarr.types import ZARR_VERSION
 
 # v2 store keys
 array_meta_key = ".zarray"
@@ -19,7 +20,7 @@ attrs_key = ".zattrs"
 meta_root = "meta/root/"
 data_root = "data/root/"
 
-DEFAULT_ZARR_VERSION = 2
+DEFAULT_ZARR_VERSION: ZARR_VERSION = 2
 
 v3_api_available = os.environ.get("ZARR_V3_EXPERIMENTAL_API", "0").lower() not in ["0", "false"]
 
