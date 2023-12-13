@@ -1413,17 +1413,23 @@ class FSStore(Store):
     def getitems(
         self, keys: Sequence[str], *, contexts: Mapping[str, Context]
     ) -> Mapping[str, Any]:
-        keys_transformed = [self._normalize_key(key) for key in keys]
-        results = self.map.getitems(keys_transformed, on_error="return")
-        # Only recognized errors will prompt KeyErrors in the function calling this method
-        for k, v in results.copy().items():
+        keys_transformed = {self._normalize_key(key): key for key in keys}
+        results_transformed = self.map.getitems(list(keys_transformed), on_error="return")
+        results = {}
+        for k, v in results_transformed.items():
             if isinstance(v, self.exceptions):
-                results.pop(k)
+                # Cause recognized exceptions to prompt a KeyError in the
+                # function calling this method
+                continue
             elif isinstance(v, Exception):
+                # Raise any other exception
                 raise v
-        # The function calling this method may not recognize the transformed keys, so we
-        # send the values returned by self.map.getitems back into the original key space.
-        return {keys[keys_transformed.index(rk)]: rv for rk, rv in results.items()}
+            else:
+                # The function calling this method may not recognize the transformed
+                # keys, so we send the values returned by self.map.getitems back into
+                # the original key space.
+                results[keys_transformed[k]] = v
+        return results
 
     def __getitem__(self, key):
         key = self._normalize_key(key)

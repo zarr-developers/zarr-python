@@ -1098,6 +1098,12 @@ class TestDirectoryStore(StoreTests):
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
 class TestFSStore(StoreTests):
+    @pytest.fixture
+    def memory_store(self):
+        store = FSStore("memory://test/out.zarr")
+        yield store
+        store.map.fs.store.clear()
+
     def create_store(self, normalize_keys=False, dimension_separator=".", path=None, **kwargs):
         if path is None:
             path = tempfile.mkdtemp()
@@ -1337,14 +1343,13 @@ class TestFSStore(StoreTests):
         )
         assert (a[:] == -np.ones((8, 8, 8))).all()
 
-    def test_exceptions(self):
-        import fsspec
-
-        m = fsspec.filesystem("memory")
-        g = zarr.open_group("memory://test/out.zarr", mode="w")
+    def test_exceptions(self, memory_store):
+        path = memory_store.path
+        m = memory_store.fs
+        g = zarr.open_group(memory_store, mode="w")
         arr = g.create_dataset("data", data=[1, 2, 3, 4], dtype="i4", compression=None, chunks=[2])
-        m.store["/test/out.zarr/data/0"] = None
-        del m.store["/test/out.zarr/data/1"]
+        m.store[path + "/data/0"] = None
+        del m.store[path + "/data/1"]
         assert g.store.getitems(["data/1"], contexts={}) == {}  # not found
         with pytest.raises(Exception):
             # None is bad data, as opposed to missing
@@ -1352,8 +1357,6 @@ class TestFSStore(StoreTests):
         with pytest.raises(Exception):
             # None is bad data, as opposed to missing
             arr[:]
-        # clear the global memory filesystem's store for use in other tests
-        m.store.clear()
 
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
