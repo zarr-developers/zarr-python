@@ -317,6 +317,7 @@ class Array:
             dtype=self.metadata.dtype,
             order=self.metadata.order,
         )
+        out.fill(self.metadata.fill_value)
 
         # reading chunks and decoding them
         await concurrent_map(
@@ -341,10 +342,8 @@ class Array:
     ):
 
         await read_chunk(
-            chunk_key_encoding=self.chunk_key_encoding,
-            fill_value=self.metadata.fill_value,
+            chunk_key=self.chunk_key_encoding.encode_chunk_key(chunk_coords),
             store_path=self.store_path,
-            chunk_coords=chunk_coords,
             chunk_selection=chunk_selection,
             codec_pipeline=self.codec_pipeline,
             out_selection=out_selection,

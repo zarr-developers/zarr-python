@@ -261,7 +261,7 @@ class AsyncArray(AsynchronousArray):
     async def getitem(self, selection: Selection):
         indexer = BasicIndexer(
             selection,
-            shape=self.metadata.shape,
+            shape=self.shape,
             chunk_shape=self.metadata.chunk_grid.configuration.chunk_shape,
         )
 
@@ -271,16 +271,15 @@ class AsyncArray(AsynchronousArray):
             dtype=self.metadata.data_type,
             order=self.runtime_configuration.order,
         )
+        out.fill(self.metadata.fill_value)
 
         # reading chunks and decoding them
         await concurrent_map(
             [
                 (
-                    self.metadata.chunk_key_encoding,
-                    self.metadata.fill_value,
+                    self.metadata.chunk_key_encoding.encode_chunk_key(chunk_coords),
                     self.store_path,
                     self.codec_pipeline,
-                    chunk_coords,
                     chunk_selection,
                     out_selection,
                     out,

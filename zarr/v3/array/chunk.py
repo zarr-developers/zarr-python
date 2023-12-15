@@ -159,17 +159,14 @@ async def write_chunk_to_store(
 
 
 async def read_chunk(
-    chunk_key_encoding: ChunkKeyEncodingMetadata,
-    fill_value: Any,
+    chunk_key: str,
     store_path,
     codec_pipeline,
-    chunk_coords: ChunkCoords,
     chunk_selection: SliceSelection,
     out_selection: SliceSelection,
     out: np.ndarray,
     config: RuntimeConfiguration,
-):
-    chunk_key = chunk_key_encoding.encode_chunk_key(chunk_coords)
+) -> None:
     store_path = store_path / chunk_key
 
     if len(codec_pipeline.codecs) == 1 and isinstance(codec_pipeline.codecs[0], ShardingCodec):
@@ -178,13 +175,9 @@ async def read_chunk(
         )
         if chunk_array is not None:
             out[out_selection] = chunk_array
-        else:
-            out[out_selection] = fill_value
     else:
         chunk_bytes = await store_path.get_async()
         if chunk_bytes is not None:
             chunk_array = await codec_pipeline.decode(chunk_bytes, config=config)
             tmp = chunk_array[chunk_selection]
             out[out_selection] = tmp
-        else:
-            out[out_selection] = fill_value
