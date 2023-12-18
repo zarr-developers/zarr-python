@@ -130,7 +130,6 @@ check_untyped_defs = true
 [[tool.mypy.overrides]]
 module = [
     "zarr.tests.*",
-    "zarr.core",
     "zarr._storage.*"
 ]
 check_untyped_defs = false
