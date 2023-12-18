@@ -42,7 +42,6 @@ from numcodecs.compat import ensure_bytes, ensure_text, ensure_contiguous_ndarra
 from numcodecs.registry import codec_registry
 from zarr.context import Context
 from zarr.types import PathLike as Path, DIMENSION_SEPARATOR
-from zarr.util import NoLock
 
 from zarr.errors import (
     MetadataError,
@@ -57,6 +56,7 @@ from zarr.util import (
     buffer_size,
     json_loads,
     nolock,
+    NoLock,
     normalize_chunks,
     normalize_dimension_separator,
     normalize_dtype,
@@ -835,7 +835,7 @@ class MemoryStore(Store):
 
     def __setstate__(self, state):
         root, cls = state
-        self.__init__(root=root, cls=cls)
+        self.__init__(root=root, cls=cls)  # type: ignore[misc]
 
     def _get_parent(self, item: str):
         parent = self.root
@@ -1803,7 +1803,9 @@ class ZipStore(Store):
         # get clobbered
         if mode in "wx":
             mode = "a"
-        self.__init__(path=path, compression=compression, allowZip64=allowZip64, mode=mode)
+        self.__init__(  # type: ignore[misc]
+            path=path, compression=compression, allowZip64=allowZip64, mode=mode
+        )
 
     def close(self):
         """Closes the underlying zip file, ensuring all records are written."""
@@ -2083,7 +2085,7 @@ class DBMStore(Store):
         self.mode = mode
         self.open = open
         self.write_lock = write_lock
-        self.write_mutex: Union[Lock, NoLock]
+        self.write_mutex: Lock | NoLock
         if write_lock:
             # This may not be required as some dbm implementations manage their own
             # locks, but err on the side of caution.
@@ -2105,7 +2107,9 @@ class DBMStore(Store):
         path, flag, mode, open, write_lock, open_kws = state
         if flag[0] == "n":
             flag = "c" + flag[1:]  # don't clobber an existing database
-        self.__init__(path=path, flag=flag, mode=mode, open=open, write_lock=write_lock, **open_kws)
+        self.__init__(  # type: ignore[misc]
+            path=path, flag=flag, mode=mode, open=open, write_lock=write_lock, **open_kws
+        )
 
     def close(self):
         """Closes the underlying database file."""
@@ -2296,7 +2300,7 @@ class LMDBStore(Store):
 
     def __setstate__(self, state):
         path, buffers, kwargs = state
-        self.__init__(path=path, buffers=buffers, **kwargs)
+        self.__init__(path=path, buffers=buffers, **kwargs)  # type: ignore[misc]
 
     def close(self):
         """Closes the underlying database."""
@@ -2407,10 +2411,10 @@ class LRUStoreCache(Store):
         self._store: BaseStore = BaseStore._ensure_store(store)
         self._max_size = max_size
         self._current_size = 0
-        self._keys_cache = None
+        self._keys_cache: None | list = None
         self._contains_cache: Dict[Any, Any] = {}
         self._listdir_cache: Dict[Path, Any] = dict()
-        self._values_cache: Dict[Path, Any] = OrderedDict()
+        self._values_cache: OrderedDict[Path, Any] = OrderedDict()
         self._mutex = Lock()
         self.hits = self.misses = 0
 
@@ -2647,7 +2651,7 @@ class SQLiteStore(Store):
 
     def __setstate__(self, state):
         path, kwargs = state
-        self.__init__(path=path, **kwargs)
+        self.__init__(path=path, **kwargs)  # type: ignore[misc]
 
     def close(self):
         """Closes the underlying database."""
@@ -2725,8 +2729,7 @@ class SQLiteStore(Store):
             """,
             (path, path),
         )
-        keys = list(map(operator.itemgetter(0), keys))
-        return keys
+        return list(map(operator.itemgetter(0), keys))
 
     def getsize(self, path=None):
         path = normalize_storage_path(path)
@@ -2838,7 +2841,7 @@ class MongoDBStore(Store):
 
     def __setstate__(self, state):
         database, collection, kwargs = state
-        self.__init__(database=database, collection=collection, **kwargs)
+        self.__init__(database=database, collection=collection, **kwargs)  # type: ignore[misc]
 
     def close(self):
         """Cleanup client resources and disconnect from MongoDB."""
@@ -2912,7 +2915,7 @@ class RedisStore(Store):
 
     def __setstate__(self, state):
         prefix, kwargs = state
-        self.__init__(prefix=prefix, **kwargs)
+        self.__init__(prefix=prefix, **kwargs)  # type: ignore[misc]
 
     def clear(self):
         for key in self.keys():

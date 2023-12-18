@@ -147,7 +147,9 @@ class Group(MutableMapping):
         *,
         meta_array=None,
     ):
-        store: BaseStore = _normalize_store_arg(store, zarr_version=zarr_version)
+        store: BaseStore = _normalize_store_arg(  # type: ignore[no-redef]
+            store, zarr_version=zarr_version
+        )
         if zarr_version is None:
             zarr_version = getattr(store, "_store_version", DEFAULT_ZARR_VERSION)
 
@@ -155,7 +157,9 @@ class Group(MutableMapping):
             assert_zarr_v3_api_available()
 
         if chunk_store is not None:
-            chunk_store: BaseStore = _normalize_store_arg(chunk_store, zarr_version=zarr_version)
+            chunk_store: BaseStore = _normalize_store_arg(  # type: ignore[no-redef]
+                chunk_store, zarr_version=zarr_version
+            )
         self._store = store
         self._chunk_store = chunk_store
         self._path = normalize_storage_path(path)
@@ -200,6 +204,7 @@ class Group(MutableMapping):
             self._meta = self._store._metadata_class.decode_group_metadata(meta_bytes)
 
         # setup attributes
+        akey: str | None
         if self._version == 2:
             akey = self._key_prefix + attrs_key
         else:
@@ -405,7 +410,7 @@ class Group(MutableMapping):
         }
 
     def __setstate__(self, state):
-        self.__init__(**state)
+        self.__init__(**state)  # type: ignore[misc]
 
     def _item_path(self, item):
         absolute = isinstance(item, str) and item and item[0] == "/"
@@ -523,7 +528,7 @@ class Group(MutableMapping):
 
     def __dir__(self):
         # noinspection PyUnresolvedReferences
-        base = super().__dir__()
+        base = list(super().__dir__())
         keys = sorted(set(base + list(self)))
         keys = [k for k in keys if is_valid_python_name(k)]
         return keys

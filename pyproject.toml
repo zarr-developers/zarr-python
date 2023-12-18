@@ -123,6 +123,18 @@ ignore_missing_imports = true
 warn_unused_configs = true
 warn_redundant_casts = true
 warn_unused_ignores = true
+strict_equality = true
+strict_concatenate = true
+check_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = [
+    "zarr.tests.*",
+    "zarr.indexing",
+    "zarr.core",
+    "zarr._storage.*"
+]
+check_untyped_defs = false
 
 [tool.pytest.ini_options]
 doctest_optionflags = [

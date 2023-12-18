@@ -1,5 +1,6 @@
 import warnings
 from collections.abc import MutableMapping
+from typing import Any
 
 from zarr._storage.store import Store, StoreV3
 from zarr.util import json_dumps
@@ -39,7 +40,7 @@ class Attributes(MutableMapping):
         try:
             data = self.store[self.key]
         except KeyError:
-            d = dict()
+            d: dict[str, Any] = dict()
             if self._version > 2:
                 d["attributes"] = {}
         else:
