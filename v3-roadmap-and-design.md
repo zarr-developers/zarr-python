@@ -57,7 +57,7 @@ During the development of the V3 Specification, a [prototype implementation](htt
 
 ### Async API
 
-Zarr-Python is an IO library. As such, supporting concurrent action against the storage layer is critical to achieving acceptable performance. The Zarr-Python 2 was not designed with asynchronous computation in mind and as a result has struggled to effectively leverage the benefits of concurrency. At one point, `getitems` and `setitems` support was added to the Zarr store model but that is not leveraged throughout the API. 
+Zarr-Python is an IO library. As such, supporting concurrent action against the storage layer is critical to achieving acceptable performance. The Zarr-Python 2 was not designed with asynchronous computation in mind and as a result has struggled to effectively leverage the benefits of concurrency. At one point, `getitems` and `setitems` support was added to the Zarr store model but that is only used for operating on a set of chunks in a single variable. 
 
 With Zarr-Python 3.0, we have the opportunity to revisit this design. The proposal here is as follows:
 
