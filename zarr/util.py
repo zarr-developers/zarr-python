@@ -183,7 +183,7 @@ def normalize_chunks(chunks: Any, shape: Tuple[int, ...], typesize: int) -> Tupl
 def normalize_dtype(dtype: Union[str, np.dtype], object_codec) -> Tuple[np.dtype, Any]:
     # convenience API for object arrays
     if inspect.isclass(dtype):
-        dtype = dtype.__name__  # type: ignore
+        dtype = dtype.__name__
     if isinstance(dtype, str):
         # allow ':' to delimit class from codec arguments
         tokens = dtype.split(":")
