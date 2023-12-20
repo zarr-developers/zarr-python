@@ -49,6 +49,9 @@ Docs
 Maintenance
 ~~~~~~~~~~~
 
+* FSStore now raises rather than return bad data.
+  By :user:`Martin Durant <martindurant>` and :user:`Ian Carroll <itcarroll>` :issue:`1604`.
+
 * Cache result of ``FSStore._fsspec_installed()``.
   By :user:`Janick Martinez Esturo <ph03>` :issue:`1581`.
 
