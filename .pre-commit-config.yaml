@@ -11,8 +11,6 @@ repos:
     rev: 'v0.1.8'
     hooks:
     - id: ruff
-      # Respect `exclude` and `extend-exclude` settings.
-      args: ["--force-exclude"]
   - repo: https://github.com/psf/black
     rev: 23.12.0
     hooks:
