@@ -31,6 +31,7 @@ from numcodecs.compat import (
 from numcodecs.ndarray_like import NDArrayLike
 from numcodecs.registry import codec_registry
 from numcodecs.blosc import cbuffer_sizes, cbuffer_metainfo
+from zarr.types import DIMENSION_SEPARATOR
 
 KeyType = TypeVar("KeyType")
 ValueType = TypeVar("ValueType")
@@ -182,7 +183,7 @@ def normalize_chunks(chunks: Any, shape: Tuple[int, ...], typesize: int) -> Tupl
 def normalize_dtype(dtype: Union[str, np.dtype], object_codec) -> Tuple[np.dtype, Any]:
     # convenience API for object arrays
     if inspect.isclass(dtype):
-        dtype = dtype.__name__  # type: ignore
+        dtype = dtype.__name__
     if isinstance(dtype, str):
         # allow ':' to delimit class from codec arguments
         tokens = dtype.split(":")
@@ -284,9 +285,9 @@ def normalize_order(order: str) -> str:
     return order
 
 
-def normalize_dimension_separator(sep: Optional[str]) -> Optional[str]:
+def normalize_dimension_separator(sep: Optional[str]) -> Optional[DIMENSION_SEPARATOR]:
     if sep in (".", "/", None):
-        return sep
+        return cast(Optional[DIMENSION_SEPARATOR], sep)
     else:
         raise ValueError("dimension_separator must be either '.' or '/', found: %r" % sep)
 
