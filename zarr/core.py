@@ -60,6 +60,8 @@ from zarr.util import (
     ensure_ndarray_like,
 )
 
+__all__ = ["Array"]
+
 
 # noinspection PyUnresolvedReferences
 class Array:
@@ -110,62 +112,6 @@ class Array:
         to users. Use `numpy.empty(())` by default.
 
         .. versionadded:: 2.13
-
-
-    Attributes
-    ----------
-    store
-    path
-    name
-    read_only
-    chunk_store
-    shape
-    chunks
-    dtype
-    compression
-    compression_opts
-    dimension_separator
-    fill_value
-    order
-    synchronizer
-    filters
-    attrs
-    size
-    itemsize
-    nbytes
-    nbytes_stored
-    cdata_shape
-    nchunks
-    nchunks_initialized
-    is_view
-    info
-    vindex
-    oindex
-    blocks
-    write_empty_chunks
-    meta_array
-
-    Methods
-    -------
-    __getitem__
-    __setitem__
-    get_basic_selection
-    set_basic_selection
-    get_orthogonal_selection
-    set_orthogonal_selection
-    get_mask_selection
-    set_mask_selection
-    get_coordinate_selection
-    set_coordinate_selection
-    get_block_selection
-    set_block_selection
-    digest
-    hexdigest
-    resize
-    append
-    view
-    astype
-
     """
 
     def __init__(
@@ -2590,7 +2536,7 @@ class Array:
         checksum = binascii.hexlify(self.digest(hashname=hashname))
 
         # This is a bytes object on Python 3 and we want a str.
-        if type(checksum) is not str:
+        if not isinstance(checksum, str):
             checksum = checksum.decode("utf8")
 
         return checksum

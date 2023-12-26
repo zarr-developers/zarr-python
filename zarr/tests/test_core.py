@@ -3,7 +3,7 @@ import os
 import sys
 import pickle
 import shutil
-from typing import Any, Literal, Optional, Tuple, Union
+from typing import Any, Literal, Optional, Tuple, Union, Sequence
 import unittest
 from itertools import zip_longest
 from tempfile import mkdtemp
@@ -26,6 +26,7 @@ from numcodecs import (
     VLenUTF8,
     Zlib,
 )
+from numcodecs.abc import Codec
 from numcodecs.compat import ensure_bytes, ensure_ndarray
 from numcodecs.tests.common import greetings
 from numpy.testing import assert_array_almost_equal, assert_array_equal
@@ -73,6 +74,7 @@ from zarr._storage.v3 import (
 from zarr.tests.test_storage_v3 import DummyStorageTransfomer
 from zarr.util import buffer_size
 from zarr.tests.util import abs_container, skip_test_env_var, have_fsspec, mktemp
+from zarr.types import DIMENSION_SEPARATOR
 
 # noinspection PyMethodMayBeStatic
 
@@ -82,8 +84,8 @@ class TestArray:
     root = ""
     path = ""
     compressor = Zlib(level=1)
-    filters = None
-    dimension_separator: Literal["/", ".", None] = None
+    filters: Optional[Sequence[Codec]] = None
+    dimension_separator: Optional[DIMENSION_SEPARATOR] = None
     cache_metadata = True
     cache_attrs = True
     partial_decompress: bool = False

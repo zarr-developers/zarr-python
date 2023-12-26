@@ -31,6 +31,7 @@ from numcodecs.compat import (
 from numcodecs.ndarray_like import NDArrayLike
 from numcodecs.registry import codec_registry
 from numcodecs.blosc import cbuffer_sizes, cbuffer_metainfo
+from zarr.types import DIMENSION_SEPARATOR
 
 KeyType = TypeVar("KeyType")
 ValueType = TypeVar("ValueType")
@@ -180,10 +181,9 @@ def normalize_chunks(chunks: Any, shape: Tuple[int, ...], typesize: int) -> Tupl
 
 
 def normalize_dtype(dtype: Union[str, np.dtype], object_codec) -> Tuple[np.dtype, Any]:
-
     # convenience API for object arrays
     if inspect.isclass(dtype):
-        dtype = dtype.__name__  # type: ignore
+        dtype = dtype.__name__
     if isinstance(dtype, str):
         # allow ':' to delimit class from codec arguments
         tokens = dtype.split(":")
@@ -245,7 +245,6 @@ def is_total_slice(item, shape: Tuple[int]) -> bool:
 
 
 def normalize_resize_args(old_shape, *args):
-
     # normalize new shape argument
     if len(args) == 1:
         new_shape = args[0]
@@ -286,15 +285,14 @@ def normalize_order(order: str) -> str:
     return order
 
 
-def normalize_dimension_separator(sep: Optional[str]) -> Optional[str]:
+def normalize_dimension_separator(sep: Optional[str]) -> Optional[DIMENSION_SEPARATOR]:
     if sep in (".", "/", None):
-        return sep
+        return cast(Optional[DIMENSION_SEPARATOR], sep)
     else:
         raise ValueError("dimension_separator must be either '.' or '/', found: %r" % sep)
 
 
 def normalize_fill_value(fill_value, dtype: np.dtype):
-
     if fill_value is None or dtype.hasobject:
         # no fill value
         pass
@@ -332,7 +330,6 @@ def normalize_fill_value(fill_value, dtype: np.dtype):
 
 
 def normalize_storage_path(path: Union[str, bytes, None]) -> str:
-
     # handle bytes
     if isinstance(path, bytes):
         path = str(path, "ascii")
@@ -342,7 +339,6 @@ def normalize_storage_path(path: Union[str, bytes, None]) -> str:
         path = str(path)
 
     if path:
-
         # convert backslash to forward slash
         path = path.replace("\\", "/")
 
@@ -506,7 +502,6 @@ def tree_widget(group, expand, level):
 
 class TreeViewer:
     def __init__(self, group, expand=False, level=None):
-
         self.group = group
         self.expand = expand
         self.level = level
