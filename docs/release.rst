@@ -45,6 +45,9 @@ Docs
 * Minor tweak to advanced indexing tutorial examples.
   By :user:`Ross Barnowski <rossbar>` :issue:`1550`.
 
+* Automatically document array members using sphinx-automodapi.
+  By :user:`David Stansby <dstansby>` :issue:`1547`.
+
 
 Maintenance
 ~~~~~~~~~~~
@@ -70,6 +73,26 @@ Maintenance
 * Remove ``sphinx-rtd-theme`` dependency from ``pyproject.toml``.
   By :user:`Sanket Verma <MSanKeys963>` :issue:`1563`.
 
+* Remove ``CODE_OF_CONDUCT.md`` file from the Zarr-Python repository.
+  By :user:`Sanket Verma <MSanKeys963>` :issue:`1572`.
+
+* Bump version of black in pre-commit.
+  By :user:`David Stansby <dtstansby>` :issue:`1559`.
+
+* Use list comprehension where applicable.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1555`.
+
+* Use format specification mini-language to format string.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1558`.
+
+* Single startswith() call instead of multiple ones.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1556`.
+
+* Move codespell options around.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1196`.
+
+* Remove unused mypy ignore comments.
+  By :user:`David Stansby <dtstansby>` :issue:`1602`.
 
 .. _release_2.16.1:
 
