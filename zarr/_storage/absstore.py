@@ -1,9 +1,12 @@
 """This module contains storage classes related to Azure Blob Storage (ABS)"""
 
+from typing import Optional
 import warnings
+
 from numcodecs.compat import ensure_bytes
 from zarr.util import normalize_storage_path
 from zarr._storage.store import _get_metadata_suffix, data_root, meta_root, Store, StoreV3
+from zarr.types import DIMENSION_SEPARATOR
 
 __doctest_requires__ = {
     ("ABSStore", "ABSStore.*"): ["azure.storage.blob"],
@@ -67,7 +70,7 @@ class ABSStore(Store):
         account_name=None,
         account_key=None,
         blob_service_kwargs=None,
-        dimension_separator=None,
+        dimension_separator: Optional[DIMENSION_SEPARATOR] = None,
         client=None,
     ):
         self._dimension_separator = dimension_separator
