@@ -25,19 +25,18 @@ During the development of the V3 Specification, a [prototype implementation](htt
 ## Goals
 
 - Provide a complete implementation of Zarr V3 through the Zarr-Python API
-- Align the Zarr-Python array API with the [array API Standard](https://data-apis.org/array-api/latest/)
 - Clear the way for exciting extensions / ZEPs (i.e. [sharding](https://zarr-specs.readthedocs.io/en/latest/v3/codecs/sharding-indexed/v1.0.html), [variable chunking](https://zarr.dev/zeps/draft/ZEP0003.html), etc.)
 - Provide a developer API that can be used to implement and register V3 extensions
 - Improve the performance of Zarr-Python by streamlining the interface between the Store layer and higher level APIs (e.g. Groups and Arrays)
 - Clean up the internal and user facing APIs 
 - Improve code quality and robustness (e.g. achieve 100% type hint coverage)
+- Align the Zarr-Python array API with the [array API Standard](https://data-apis.org/array-api/latest/)
 
 ## Examples of what 3.0 will enable?
 1. Reading and writing V3 spec-compliant groups and arrays
 2. V3 extensions including sharding and variable chunking.
-3. Consolidation of writes (e.g. array metadata + attributes concurrently)
-4. Improved concurrency when creating/reading/writing to stores (imagine a `create_hierarchy(zarr_objects)` function).
-5. User-developed extensions (e.g. storage-transformers) can be registered with Zarr-Python at runtime
+3. Improved performance by leveraging concurrency when creating/reading/writing to stores (imagine a `create_hierarchy(zarr_objects)` function).
+4. User-developed extensions (e.g. storage-transformers) can be registered with Zarr-Python at runtime
 
 ## Non-goals (of this document)
 
@@ -74,7 +73,7 @@ With Zarr-Python 3.0, we have the opportunity to revisit this design. The propos
         ...
         async def get(self, key: str) -> bytes:
             ...
-        async def get_partial_values(self, key_ranges: List[Tuple[str, int]]) -> bytes:
+        async def get_partial_values(self, key_ranges: List[Tuple[str, Tuple[int, Optional[int]]]]) -> bytes:
             ...
     # (no sync interface here)
     ``` 
@@ -123,8 +122,7 @@ With the `Store` and core `AsyncArray`/ `AsyncGroup` classes being predominantly
 3. Will Zarr help manage the async contexts encouraged by some libraries (e.g. [AioBotoCore](https://aiobotocore.readthedocs.io/en/latest/tutorial.html#using-botocore))?
   a. Many async IO libraries require entering an async context before interacting with the API. We expect some experimentation to be needed here but the initial design will follow something close to what fsspec does ([example in s3fs](https://github.com/fsspec/s3fs/blob/949442693ec940b35cda3420c17a864fbe426567/s3fs/core.py#L527)).
 4. Why not provide a synchronous Store interface?
-  a. We could but this design is simpler. It would mean supporting it in the `AsyncGroup` and `AsyncArray` classes which, may be more trouble than its worth.
-  b. One option would be to provide a `SyncStore` interface and an `AsyncStoreWrapper` that wraps each method in a `loop.run_in_executor`. This would help avoid long-running blocking tasks in the main loop.
+  a. We could but this design is simpler. It would mean supporting it in the `AsyncGroup` and `AsyncArray` classes which, may be more trouble than its worth. Storage backends that do not have an async API will be encouraged to wrap blocking calls in an async wrapper (e.g. `loop.run_in_executor`).
 
 ### Store API
 
@@ -138,13 +136,13 @@ class ReadWriteStore:
     async def get(self, key: str) -> bytes:
         ...
 
-    async def get_partial_values(self, key_ranges: List[Tuple[str, int]]) -> bytes:
+    async def get_partial_values(self, key_ranges: List[Tuple[str, int, int]) -> bytes:
         ...
 		
-    async def set(self, key: str, value: bytes) -> None:
+    async def set(self, key: str, value: Union[bytes, bytearray, memoryview]) -> None:
         ...  # required for writable stores
 
-    async def set_partial_values(self, key_start_values: List[Tuple[str, int, bytes]]) -> None:
+    async def set_partial_values(self, key_start_values: List[Tuple[str, int, Union[bytes, bytearray, memoryview]]]) -> None:
         ...  # required for writable stores
 
     async def list(self) -> List[str]:
@@ -215,13 +213,17 @@ In addition to the core array API defined above, the Array class should have the
 
 - `.metadata` (see Metadata Interface below)
 - `.attrs` - (pull from metadata object)
-- `.info` - (pull from existing property)
+- `.info` - (pull from existing property †)
+
+*† In Zarr-Python 2, the info property lists the store to identify initialized chunks. By default this will be turned off in 3.0 but will be configurable.*
 
 **Indexing**
 
 Zarr-Python currently supports `__getitem__` style indexing and the special `oindex` and `vindex` indexers. These are not part of the current Array API standard (see [data-apis/array-api\#669](https://github.com/data-apis/array-api/issues/669)) but they have been [proposed as a NEP](https://numpy.org/neps/nep-0021-advanced-indexing.html). Zarr-Python will maintain these in 3.0.
 
 We are also exploring a new high-level indexing API that will enabled optimized batch/concurrent loading of many chunks. We expect this to be important to enable performant loading of data in the context of sharding. See [this discussion](https://github.com/zarr-developers/zarr-python/discussions/1569) for more detail.
+
+Concurrent indexing across multiple arrays will be possible using the AsyncArray API.
 
 **Async and Sync Array APIs**
 
@@ -296,6 +298,8 @@ arr2.save()
 
 zarr.save_many([arr1 ,arr2])
 ```
+
+*Note: this batch creation API likely needs additional design effort prior to implementation.*
 
 ### Plugin API
 
