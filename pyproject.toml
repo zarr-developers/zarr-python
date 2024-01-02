@@ -65,6 +65,7 @@ Homepage = "https://github.com/zarr-developers/zarr-python"
 exclude_lines = [
     "pragma: no cover",
     "pragma: ${PY_MAJOR_VERSION} no cover",
+    '.*\.\.\.' # Ignore "..." lines
 ]
 
 [tool.coverage.run]
@@ -119,9 +120,10 @@ exclude = '''
 '''
 
 [tool.mypy]
-python_version = "3.8"
 ignore_missing_imports = true
-follow_imports = "silent"
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
 
 [tool.pytest.ini_options]
 doctest_optionflags = [
@@ -137,3 +139,8 @@ filterwarnings = [
     "ignore:PY_SSIZE_T_CLEAN will be required.*:DeprecationWarning",
     "ignore:The loop argument is deprecated since Python 3.8.*:DeprecationWarning",
 ]
+
+
+[tool.codespell]
+ignore-words-list = "ba,ihs,kake,nd,noe,nwo,te,fo,zar"
+skip = 'fixture,.git'

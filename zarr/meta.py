@@ -89,7 +89,6 @@ class Metadata2:
 
     @classmethod
     def parse_metadata(cls, s: Union[MappingType, bytes, str]) -> MappingType[str, Any]:
-
         # Here we allow that a store may return an already-parsed metadata object,
         # or a string of JSON that we will parse here. We allow for an already-parsed
         # object to accommodate a consolidated metadata store, where all the metadata for
@@ -235,8 +234,8 @@ class Metadata2:
                 return np.array(v, dtype=dtype)[()]
         elif dtype.kind in "c":
             v = (
-                cls.decode_fill_value(v[0], dtype.type().real.dtype),  # type: ignore
-                cls.decode_fill_value(v[1], dtype.type().imag.dtype),  # type: ignore
+                cls.decode_fill_value(v[0], dtype.type().real.dtype),
+                cls.decode_fill_value(v[1], dtype.type().imag.dtype),
             )
             v = v[0] + 1j * v[1]
             return np.array(v, dtype=dtype)[()]
