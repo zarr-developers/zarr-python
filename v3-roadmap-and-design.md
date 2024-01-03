@@ -40,7 +40,7 @@ During the development of the V3 Specification, a [prototype implementation](htt
 
 ## Non-goals (of this document)
 
-- Implementation of any Zarr V3 extensions
+- Implementation of any unaccepted Zarr V3 extensions
 - Major revisions to the Zarr V3 spec
 
 ## Requirements
